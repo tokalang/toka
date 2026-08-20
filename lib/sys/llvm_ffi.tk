@@ -13,7 +13,7 @@ extern fn toka_llvm_type_void(*ctx: void) -> *void
 extern fn toka_llvm_type_int(bits: i32, *ctx: void) -> *void
 extern fn toka_llvm_type_double(*ctx: void) -> *void
 extern fn toka_llvm_type_pointer(*ctx: void) -> *void
-extern fn toka_llvm_type_function(*retTy: void, *paramTys: void, paramCount: i32, isVarArg: bool) -> *void
+extern fn toka_llvm_type_function(*retTy: void, nul *paramTys: void, paramCount: i32, isVarArg: bool) -> *void
 
 extern fn toka_llvm_create_builder(*ctx: void) -> *void
 extern fn toka_llvm_dispose_builder(*builder: void) -> void
@@ -24,12 +24,12 @@ extern fn toka_llvm_build_sub(*builder: void, *lhs: void, *rhs: void, *name: cha
 extern fn toka_llvm_build_mul(*builder: void, *lhs: void, *rhs: void, *name: char) -> *void
 extern fn toka_llvm_build_ret(*builder: void, *val: void) -> *void
 extern fn toka_llvm_build_ret_void(*builder: void) -> *void
-extern fn toka_llvm_build_call(*builder: void, *fn_val: void, *args: void, argCount: i32, *name: char) -> *void
+extern fn toka_llvm_build_call(*builder: void, *fn_val: void, nul *args: void, argCount: i32, *name: char) -> *void
 
 extern fn toka_llvm_build_alloca(*builder: void, *ty: void, *name: char) -> *void
 extern fn toka_llvm_build_load(*builder: void, *ty: void, *ptr: void, *name: char) -> *void
 extern fn toka_llvm_build_store(*builder: void, *val: void, *ptr: void) -> *void
-extern fn toka_llvm_build_gep(*builder: void, *ty: void, *ptr: void, *indices: void, indexCount: i32, *name: char) -> *void
+extern fn toka_llvm_build_gep(*builder: void, *ty: void, *ptr: void, nul *indices: void, indexCount: i32, *name: char) -> *void
 extern fn toka_llvm_build_br(*builder: void, *destBlock: void) -> *void
 extern fn toka_llvm_build_cond_br(*builder: void, *cond: void, *thenBlock: void, *elseBlock: void) -> *void
 extern fn toka_llvm_build_icmp(*builder: void, op: i32, *lhs: void, *rhs: void, *name: char) -> *void

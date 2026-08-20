@@ -55,7 +55,7 @@ pub fn chdir_impl(path: Addr) -> bool {
 pub fn getenv_impl(name: string) -> Option<string> {
     unsafe {
         // libc_getenv returns *char (Borrowed)
-        auto *val = libc_getenv(name.c_str())
+        auto nul *val = libc_getenv(name.c_str())
         
         if *val == null {
             return Option<string>::None

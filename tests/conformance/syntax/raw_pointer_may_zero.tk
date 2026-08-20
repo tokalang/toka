@@ -1,0 +1,13 @@
+fn is_present(nul *p: i32) -> bool {
+    return *p != null
+}
+
+fn main() -> i32 {
+    auto value = 7:i32
+    auto *live = *value as *i32
+    auto nul *empty = null:nul *i32
+
+    assert(is_present(*live), "non-zero raw pointer widens to nul *T")
+    assert(!is_present(*empty), "nul *T carries a zero address")
+    return 0
+}

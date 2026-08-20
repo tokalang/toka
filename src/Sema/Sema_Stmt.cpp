@@ -1249,9 +1249,13 @@ void Sema::checkStmt(Stmt *S) {
         expectedRetObj = resolveType(toka::Type::fromString(CurrentFunctionReturnType));
     }
 
-    bool bypassNullRet = false;
-    if (m_InUnsafeContext && expectedRetObj && expectedRetObj->isRawPointer() && ExprTypeObj && ExprTypeObj->isNullType()) {
-        bypassNullRet = true;
+    bool diagnosedNullRet = false;
+    if (expectedRetObj && expectedRetObj->isRawPointer() &&
+        !expectedRetObj->IsNullable && ExprTypeObj &&
+        ExprTypeObj->isNullType()) {
+      error(Ret, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+            expectedRetObj->toString());
+      diagnosedNullRet = true;
     }
 
     std::shared_ptr<Type> expectedReturnValueObj = expectedRetObj;
@@ -1321,7 +1325,8 @@ void Sema::checkStmt(Stmt *S) {
       }
     }
 
-    if (!bypassNullRet && !HasError && !isTypeCompatible(expectedRetObj, ExprTypeObj)) {
+    if (!diagnosedNullRet && !HasError &&
+        !isTypeCompatible(expectedRetObj, ExprTypeObj)) {
       bool handled = false;
       if (expectedRetObj && expectedRetObj->isReference()) {
         if (auto *ve = dynamic_cast<VariableExpr *>(Ret->ReturnValue.get())) {
@@ -1600,6 +1605,15 @@ void Sema::checkStmt(Stmt *S) {
         // morphology from inferred soul
         if (Var->IsRawPointer || Var->IsUnique || Var->IsShared ||
             Var->IsReference) {
+          if (Var->IsRawPointer && !Var->IsPointerNullable && InitTypeObj &&
+              InitTypeObj->isRawPointer() && InitTypeObj->IsNullable) {
+            auto nonzeroType = InitTypeObj->withAttributes(
+                InitTypeObj->IsWritable, false, InitTypeObj->IsBlocked);
+            error(Var, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+                  nonzeroType->toString());
+            Var->TypeName = "unknown";
+            return;
+          }
           // TypeSyntax canonicalizes the nullable-handle wrapper as `nul^T`,
           // while legacy hand-written spelling may use `nul ^T`.  Both name
           // the same RHS type; remove only the wrapper before matching the

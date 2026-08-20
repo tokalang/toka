@@ -16,7 +16,7 @@ fn next_pow2(n: usize) -> usize {
 }
 
 pub shape RingCore<'T> (
-    nul *#buf#: ['T] = null as *['T],
+    nul *#buf#: ['T] = null as nul *['T],
     cap#: usize = 0,
     mask#: usize = 0,
     head#: usize = 0,
@@ -28,7 +28,7 @@ impl<'T: @Send> RingCore<'T>@Send {}
 impl<'T> RingCore<'T> {
     pub fn new() -> RingCore<'T> {
         return RingCore<'T>(
-            *buf = null as *['T],
+            *buf = null as nul *['T],
             cap = 0,
             mask = 0,
             head = 0,
@@ -149,7 +149,7 @@ impl<'T> RingCore<'T>@Encap {
             if self.*buf != null {
                 self#.clear()
                 unsafe free [0] self.*#buf
-                self.*buf = null as *['T]
+                self.*buf = null as nul *['T]
             }
             self.cap = 0
             self.mask = 0

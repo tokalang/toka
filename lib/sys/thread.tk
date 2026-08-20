@@ -5,7 +5,7 @@ import sys/libc::{libc_malloc, libc_free, libc_pthread_create, libc_pthread_join
 /// Returns the thread ID (Addr) or 0 on failure.
 pub fn sys_thread_spawn(func_ptr: Addr, arg_ptr: Addr) -> Addr {
     unsafe {
-        auto *thread_ptr# = (libc_malloc(8 as usize) as *Addr)
+        auto *thread_ptr# = (libc_malloc(8 as usize).unwrap() as *Addr)
         thread_ptr = 0:Addr
         
         auto rc = libc_pthread_create(
@@ -30,7 +30,7 @@ pub fn sys_thread_spawn(func_ptr: Addr, arg_ptr: Addr) -> Addr {
 /// Joins a running thread. Returns the pointer returned by the thread, or 0 on failure.
 pub fn sys_thread_join(tid: Addr) -> Addr {
     unsafe {
-        auto *retval_ptr# = (libc_malloc(8 as usize) as *Addr)
+        auto *retval_ptr# = (libc_malloc(8 as usize).unwrap() as *Addr)
         retval_ptr = 0:Addr
         
         auto rc = libc_pthread_join(tid, (*retval_ptr) as Addr)

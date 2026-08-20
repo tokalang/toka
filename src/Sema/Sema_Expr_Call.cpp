@@ -2629,12 +2629,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       checkStrictMorphology(Call->Args[i].get(), targetMorph, sourceMorph, ctx);
     }
 
-    bool bypassNull = false;
-    if (Ext != nullptr && m_InUnsafeContext && paramType && paramType->isRawPointer() && argType && argType->isNullType()) {
-        bypassNull = true;
+    bool diagnosedNull = false;
+    if (paramType && paramType->isRawPointer() && !paramType->IsNullable &&
+        argType && argType->isNullType()) {
+      error(Call->Args[i].get(), DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+            paramType->toString());
+      diagnosedNull = true;
     }
 
-    if (!bypassNull && !isTypeCompatible(paramType, argType)) {
+    if (!diagnosedNull && !isTypeCompatible(paramType, argType)) {
       error(Call->Args[i].get(),
             DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
             std::to_string(i + 1), diagnosticTypeName(paramType),

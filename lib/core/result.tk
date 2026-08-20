@@ -24,8 +24,7 @@ impl<'T, 'E> Result<'T, 'E> {
             auto Result<'T, 'E>::Ok('val) => return 'val
             _ => {
                 libc_exit(1)
-                auto *p = 0 as *'T
-                return p
+                unreachable
             }
         }
     }
@@ -35,8 +34,7 @@ impl<'T, 'E> Result<'T, 'E> {
             auto Result<'T, 'E>::Err('e) => return 'e
             _ => {
                 libc_exit(1)
-                auto *e = 0 as *'E
-                return e
+                unreachable
             }
         }
     }

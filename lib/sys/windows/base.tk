@@ -8,11 +8,11 @@ pub fn path_sep() -> char {
     return 92:char
 }
 
-pub fn to_utf16(*s: char) -> *u16 {
+pub fn to_utf16(*s: char) -> nul *u16 {
     unsafe {
-        auto len = MultiByteToWideChar(65001, 0, *s, -1, 0:Addr as *u16, 0)
-        if len <= 0 { return 0:Addr as *u16 }
-        auto *ptr = libc_malloc((len as usize) * 2) as *u16
+        auto len = MultiByteToWideChar(65001, 0, *s, -1, null:nul *u16, 0)
+        if len <= 0 { return null:nul *u16 }
+        auto *ptr = libc_malloc((len as usize) * 2).unwrap() as *u16
         MultiByteToWideChar(65001, 0, *s, -1, *ptr, len)
         return *ptr
     }
@@ -20,10 +20,10 @@ pub fn to_utf16(*s: char) -> *u16 {
 
 pub fn from_utf16(*w: u16) -> string {
     unsafe {
-        auto len = WideCharToMultiByte(65001, 0, *w, -1, 0:Addr as *char, 0, 0:Addr as *char, 0:Addr)
+        auto len = WideCharToMultiByte(65001, 0, *w, -1, null:nul *char, 0, null:nul *char, 0:Addr)
         if len <= 1 { return string::from("") }
-        auto *ptr = libc_malloc(len as usize) as *char
-        WideCharToMultiByte(65001, 0, *w, -1, *ptr, len, 0:Addr as *char, 0:Addr)
+        auto *ptr = libc_malloc(len as usize).unwrap() as *char
+        WideCharToMultiByte(65001, 0, *w, -1, *ptr, len, null:nul *char, 0:Addr)
         return string::from_take(*ptr)
     }
 }
@@ -56,9 +56,9 @@ pub fn get_arg_impl(i: i32) -> string {
 
 pub fn getcwd_impl() -> string {
     unsafe {
-        auto len = GetCurrentDirectoryW(0, 0:Addr as *u16)
+        auto len = GetCurrentDirectoryW(0, null:nul *u16)
         if len == 0 { return string::from("") }
-        auto *buf = libc_malloc((len as usize) * 2) as *u16
+        auto *buf = libc_malloc((len as usize) * 2).unwrap() as *u16
         GetCurrentDirectoryW(len, *buf)
         auto res = from_utf16(*buf)
         libc_free(*buf as *void)
@@ -68,7 +68,7 @@ pub fn getcwd_impl() -> string {
 
 pub fn chdir_impl(path: Addr) -> bool {
     unsafe {
-        auto *wpath = to_utf16(path as *char)
+        auto *wpath = to_utf16(path as *char).unwrap()
         auto res = SetCurrentDirectoryW(*wpath)
         libc_free(*wpath as *void)
         return res != 0
@@ -77,13 +77,13 @@ pub fn chdir_impl(path: Addr) -> bool {
 
 pub fn getenv_impl(name: string) -> Option<string> {
     unsafe {
-        auto *wname = to_utf16(name.c_str())
-        auto len = GetEnvironmentVariableW(*wname, 0:Addr as *u16, 0)
+        auto *wname = to_utf16(name.c_str()).unwrap()
+        auto len = GetEnvironmentVariableW(*wname, null:nul *u16, 0)
         if len == 0 {
             libc_free(*wname as *void)
             return Option<string>::None
         }
-        auto *buf = libc_malloc((len as usize) * 2) as *u16
+        auto *buf = libc_malloc((len as usize) * 2).unwrap() as *u16
         GetEnvironmentVariableW(*wname, *buf, len)
         auto res = from_utf16(*buf)
         libc_free(*wname as *void)
@@ -94,8 +94,8 @@ pub fn getenv_impl(name: string) -> Option<string> {
 
 pub fn setenv_impl(name: string, value: string) -> bool {
     unsafe {
-        auto *wname = to_utf16(name.c_str())
-        auto *wval = to_utf16(value.c_str())
+        auto *wname = to_utf16(name.c_str()).unwrap()
+        auto *wval = to_utf16(value.c_str()).unwrap()
         auto res = SetEnvironmentVariableW(*wname, *wval)
         libc_free(*wname as *void)
         libc_free(*wval as *void)
@@ -105,8 +105,8 @@ pub fn setenv_impl(name: string, value: string) -> bool {
 
 pub fn unsetenv_impl(name: string) -> bool {
     unsafe {
-        auto *wname = to_utf16(name.c_str())
-        auto res = SetEnvironmentVariableW(*wname, 0:Addr as *u16)
+        auto *wname = to_utf16(name.c_str()).unwrap()
+        auto res = SetEnvironmentVariableW(*wname, null:nul *u16)
         libc_free(*wname as *void)
         return res != 0
     }

@@ -18,17 +18,17 @@ extern fn SetFileAttributesW(*lpFileName: u16, dwFileAttributes: DWORD) -> BOOL
 
 extern fn GetLastError() -> DWORD
 
-extern fn MultiByteToWideChar(CodePage: u32, dwFlags: DWORD, *lpMultiByteStr: char, cbMultiByte: i32, *lpWideCharStr: u16, cchWideChar: i32) -> i32
-extern fn WideCharToMultiByte(CodePage: u32, dwFlags: DWORD, *lpWideCharStr: u16, cchWideChar: i32, *lpMultiByteStr: char, cbMultiByte: i32, *lpDefaultChar: char, lpUsedDefaultChar: Addr) -> i32
+extern fn MultiByteToWideChar(CodePage: u32, dwFlags: DWORD, *lpMultiByteStr: char, cbMultiByte: i32, nul *lpWideCharStr: u16, cchWideChar: i32) -> i32
+extern fn WideCharToMultiByte(CodePage: u32, dwFlags: DWORD, *lpWideCharStr: u16, cchWideChar: i32, nul *lpMultiByteStr: char, cbMultiByte: i32, nul *lpDefaultChar: char, lpUsedDefaultChar: Addr) -> i32
 
 extern fn GetCommandLineW() -> *u16
 extern fn CommandLineToArgvW(*lpCmdLine: u16, *pNumArgs: i32) -> *Addr
 extern fn LocalFree(hMem: Addr) -> Addr
 
-extern fn GetCurrentDirectoryW(nBufferLength: DWORD, *lpBuffer: u16) -> DWORD
+extern fn GetCurrentDirectoryW(nBufferLength: DWORD, nul *lpBuffer: u16) -> DWORD
 extern fn SetCurrentDirectoryW(*lpPathName: u16) -> BOOL
-extern fn GetEnvironmentVariableW(*lpName: u16, *lpBuffer: u16, nSize: DWORD) -> DWORD
-extern fn SetEnvironmentVariableW(*lpName: u16, *lpValue: u16) -> BOOL
+extern fn GetEnvironmentVariableW(*lpName: u16, nul *lpBuffer: u16, nSize: DWORD) -> DWORD
+extern fn SetEnvironmentVariableW(*lpName: u16, nul *lpValue: u16) -> BOOL
 
 extern fn ExitProcess(uExitCode: u32) -> void
 extern fn toka_panic(*msg_ptr: char, len: i32) -> void

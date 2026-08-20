@@ -3,6 +3,58 @@
   "description": "Toka 1.0 Language Conformance Test Suite Manifest",
   "suites": [
     {
+      "id": "syntax_raw_pointer_may_zero_01",
+      "path": "syntax/raw_pointer_may_zero.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Plain raw pointers are non-zero and widen to raw-pointer-specific nul *T values"
+    },
+    {
+      "id": "diag_nonzero_raw_rejects_null_cast_01",
+      "path": "diagnostics/nonzero_raw_rejects_null_cast.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0483",
+      "expected_span_line": 2,
+      "timeout_seconds": 10,
+      "description": "A null literal cannot construct a plain non-zero raw pointer"
+    },
+    {
+      "id": "diag_nonzero_raw_rejects_zero_cast_01",
+      "path": "diagnostics/nonzero_raw_rejects_zero_cast.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0483",
+      "expected_span_line": 2,
+      "timeout_seconds": 10,
+      "description": "A statically known zero address cannot construct a plain non-zero raw pointer"
+    },
+    {
+      "id": "diag_nonzero_raw_rejects_may_zero_flow_01",
+      "path": "diagnostics/nonzero_raw_rejects_may_zero_flow.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0483",
+      "expected_span_line": 3,
+      "timeout_seconds": 10,
+      "description": "An inferred plain raw binding cannot erase may-zero provenance"
+    },
+    {
+      "id": "diag_nonzero_raw_rejects_null_comparison_01",
+      "path": "diagnostics/nonzero_raw_rejects_null_comparison.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0483",
+      "expected_span_line": 4,
+      "timeout_seconds": 10,
+      "description": "A plain non-zero raw pointer cannot be compared with null"
+    },
+    {
+      "id": "codegen_nonzero_raw_alloc_guard_01",
+      "path": "codegen/nonzero_raw_alloc_guard.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "icmp ne ptr %0, null",
+      "timeout_seconds": 10,
+      "description": "Built-in alloc traps on native allocation failure before producing non-zero *T"
+    },
+    {
       "id": "syntax_miss_outcome_01",
       "path": "syntax/miss_outcome.tk",
       "type": "run",

@@ -138,7 +138,7 @@ impl<'K, 'V> HashMap<'K, 'V> {
         
         loop true {
             unsafe {
-                auto *m_ptr# = self.meta.unsafe_get(idx):*u8
+                auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
                 if m_ptr == 0 {
                     if found_slot == capacity {
                         found_slot = idx
@@ -153,7 +153,7 @@ impl<'K, 'V> HashMap<'K, 'V> {
                     }
                 } else {
                     // Occupied. Check Key match.
-                    auto *'k_ptr# = self.keys.unsafe_get(idx):*K
+                    auto *'k_ptr# = self.keys.unsafe_get(idx) as *K
                     if 'k_ptr.eq('key) {
                         found_slot = idx
                         is_new = false
@@ -193,7 +193,7 @@ impl<'K, 'V> HashMap<'K, 'V> {
             auto i# = 0:usize
             auto moved_count# = 0
             loop i < self.cap {
-                auto *m_ptr# = self.meta.unsafe_get(i):*u8
+                auto *m_ptr# = self.meta.unsafe_get(i) as *u8
                 if m_ptr == 1 {
                      moved_count += 1
                      auto 'key = cede self.keys.buf[i]:K
@@ -203,7 +203,7 @@ impl<'K, 'V> HashMap<'K, 'V> {
                      auto start_idx = idx
                      
                      loop true {
-                         auto *nm_ptr# = new_m.unsafe_get(idx):*u8
+                         auto *nm_ptr# = new_m.unsafe_get(idx) as *u8
                          if nm_ptr == 0 {
                              nm_ptr = 1
                              new_k.buf[idx] = cede 'key
@@ -246,7 +246,7 @@ impl<'K, 'V: @Copy> HashMap<'K, 'V> {
 
          loop true {
              unsafe {
-                 auto *m_ptr# = self.meta.unsafe_get(idx):*u8
+                 auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
 
                  if m_ptr == 0 {
                      return Option<'V>::None
@@ -254,9 +254,9 @@ impl<'K, 'V: @Copy> HashMap<'K, 'V> {
 
                  if m_ptr == 1 {
                      // Occupied, check key
-                     auto *'k_ptr# = self.keys.unsafe_get(idx):*K
+                     auto *'k_ptr# = self.keys.unsafe_get(idx) as *K
                      if 'k_ptr.eq('key) {
-                         auto *'v_ptr# = self.vals.unsafe_get(idx):*V
+                         auto *'v_ptr# = self.vals.unsafe_get(idx) as *V
                          return Option<'V>::Some('v_ptr)
                      }
                  }
@@ -282,14 +282,14 @@ impl<'K, 'V> HashMap<'K, 'V> {
 
          loop true {
              unsafe {
-                 auto *m_ptr# = self.meta.unsafe_get(idx):*u8
+                 auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
 
                  if m_ptr == 0 {
                      return Option<&'V>::None
                  }
 
                  if m_ptr == 1 {
-                     auto *'k_ptr# = self.keys.unsafe_get(idx):*K
+                     auto *'k_ptr# = self.keys.unsafe_get(idx) as *K
                      if 'k_ptr.eq('key) {
                          return Option<&'V>::Some(&self.vals.buf[idx])
                      }
@@ -317,12 +317,12 @@ impl<'K, 'V> HashMap<'K, 'V> {
          
          loop true {
              unsafe {
-                 auto *m_ptr# = self.meta.unsafe_get(idx):*u8
+                 auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
                  if m_ptr == 0 {
                      return Option<'V>::None
                  }
                  if m_ptr == 1 {
-                     auto *'k_ptr# = self.keys.unsafe_get(idx):*K
+                     auto *'k_ptr# = self.keys.unsafe_get(idx) as *K
                      if 'k_ptr.eq('key) {
                          m_ptr = 2 // Mark as tombstone
                          self.len -= 1
@@ -343,7 +343,7 @@ impl<'K, 'V> HashMap<'K, 'V> {
         unsafe {
             auto i# = 0:usize
             loop i < self.cap {
-                auto *m_ptr# = self.meta.unsafe_get(i):*u8
+                auto *m_ptr# = self.meta.unsafe_get(i) as *u8
                 if m_ptr == 1 {
                     m_ptr = 0
                     auto '_old_k = cede self.keys.buf[i]:K

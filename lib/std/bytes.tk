@@ -20,10 +20,12 @@ effects:
 {
     unsafe {
         if sizeof([u8; N_]) == 0:usize {
-            return bytes(&buf = null as *[byte] as &[byte], len = 0)
+            auto empty = ""
+            return bytes(&buf = (empty.raw_ptr() as *[byte]) as &[byte], len = 0)
         }
         auto base_addr = &data[0] as Addr
-        auto ret = bytes(&buf = null as *[byte] as &[byte], len = sizeof([u8; N_]))
+        auto empty = ""
+        auto ret = bytes(&buf = (empty.raw_ptr() as *[byte]) as &[byte], len = sizeof([u8; N_]))
         copy_memory(&ret as Addr, &base_addr as Addr, 8)
         return ret
     }
@@ -38,10 +40,12 @@ effects:
 {
     unsafe {
         if data.len() == 0:usize {
-            return bytes(&buf = null as *[byte] as &[byte], len = 0:usize)
+            auto empty = ""
+            return bytes(&buf = (empty.raw_ptr() as *[byte]) as &[byte], len = 0:usize)
         }
         auto base_addr = data.unsafe_as_raw() as Addr
-        auto ret = bytes(&buf = null as *[byte] as &[byte], len = data.len())
+        auto empty = ""
+        auto ret = bytes(&buf = (empty.raw_ptr() as *[byte]) as &[byte], len = data.len())
         copy_memory(&ret as Addr, &base_addr as Addr, 8:usize)
         return ret
     }
@@ -69,7 +73,7 @@ pub fn append_bytes_to_vec(target#: Vec<u8>, data: bytes) {
 }
 
 pub shape Bytes (
-    nul *#buf#: [u8] = null as *[u8],
+    nul *#buf#: [u8] = null as nul *[u8],
     len#: usize = 0,
     cap#: usize = 0
 )
@@ -79,7 +83,7 @@ impl Bytes@Encap {
         unsafe {
             if self.*buf != null {
                 unsafe free [self.len]self.*#buf
-                self.*buf = null as *[u8]
+                self.*buf = null as nul *[u8]
             }
         }
     }
@@ -90,7 +94,7 @@ impl Bytes {
     pub fn clone(self) -> Bytes {
         unsafe {
             if self.cap == 0 || self.len == 0 {
-                return Bytes(*buf = null as *[u8], len = 0, cap = 0)
+                return Bytes(*buf = null as nul *[u8], len = 0, cap = 0)
             }
             auto *new_buf# = unsafe alloc [self.cap] u8 as *[u8]
             auto i# = 0:usize
@@ -105,7 +109,7 @@ impl Bytes {
 
 impl Bytes {
     pub fn new() -> Bytes {
-        return Bytes(*buf = null as *[u8], len = 0, cap = 0)
+        return Bytes(*buf = null as nul *[u8], len = 0, cap = 0)
     }
 
     pub fn with_capacity(cap: usize) -> Bytes {
@@ -125,7 +129,7 @@ impl Bytes {
             auto owned# = cede v
             auto l = owned.len()
             auto c = owned.cap()
-            auto *p# = owned#.unsafe_into_raw()
+            auto nul *p# = owned#.unsafe_into_raw()
             return Bytes(*buf = *p, len = l, cap = c)
         }
     }
@@ -136,10 +140,10 @@ impl Bytes {
         unsafe {
             auto l = self.len
             auto c = self.cap
-            auto *p# = self.*buf
+            auto nul *p# = self.*buf
             self.len = 0
             self.cap = 0
-            self.*buf = null as *[u8]
+            self.*buf = null as nul *[u8]
             return Vec<u8>(*buf = *p, len = l, cap = c)
         }
     }
@@ -184,22 +188,25 @@ impl Bytes {
 
     // Raw access is intentionally explicit: ordinary users should pass a
     // Bytes value or its borrowed `bytes` view, not retain this pointer.
-    pub fn unsafe_raw_ptr(self) -> *u8 {
+    pub fn unsafe_raw_ptr(self) -> nul *u8 {
         unsafe {
             if self.len == 0 || self.*buf == null {
-                return null as *u8
+                return null as nul *u8
             }
-            return self.*buf as *u8
+            auto *live_buf = self.*buf.unwrap()
+            return *live_buf as *u8
         }
     }
 
     pub fn as_slice(self) -> bytes <- self {
         unsafe {
             if self.len == 0 || self.*buf == null {
-                return bytes(&buf = null as *[byte] as &[byte], len = 0)
+                auto empty = ""
+                return bytes(&buf = (empty.raw_ptr() as *[byte]) as &[byte], len = 0)
             }
             auto base_addr = self.*buf as Addr
-            auto ret = bytes(&buf = null as *[byte] as &[byte], len = self.len)
+            auto empty = ""
+            auto ret = bytes(&buf = (empty.raw_ptr() as *[byte]) as &[byte], len = self.len)
             copy_memory(&ret as Addr, &base_addr as Addr, 8)
             return ret
         }

@@ -147,7 +147,7 @@ pub fn main() -> i32 {
                 print_json_node_ptr(*val_p)
                 put(string::from("\n"))
                 // fflush stdout (null pointer to flush all)
-                libc_fflush(null as *void)
+                libc_fflush(null as nul *void)
             }
             println("--------------------------")
             

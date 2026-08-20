@@ -63,11 +63,12 @@ pub fn temp_file_create_impl(directory: string) -> Addr {
 
 pub fn temp_file_path_impl(handle: Addr) -> Option<string> {
     unsafe {
-        auto *path = toka_temp_file_path(handle)
-        if *path == (ADDR0 as *char) {
+        auto nul *path = toka_temp_file_path(handle)
+        if *path == null {
             return Option<string>::None
         }
-        return Option<string>::Some(string::from_cstr(*path))
+        auto *live_path = path.unwrap()
+        return Option<string>::Some(string::from_cstr(*live_path))
     }
 }
 

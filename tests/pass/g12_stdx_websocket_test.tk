@@ -81,7 +81,7 @@ fn run_websocket_server(cede listener: TcpListener) -> async i32 {
     auto close_res = ws#.read_text_async().await
     if close_res.is_err() {
         println("[WsServer] Received Close frame or clean disconnection after Ping/Pong PASSED!")
-        libc_fflush(0 as *void)
+        libc_fflush(null:nul *void)
         return 0
     }
     println("[WsServer Error] close_res was NOT an error!")
@@ -172,7 +172,7 @@ fn run_websocket_client(port: u16) -> async i32 {
         return 10
     }
     println("[WsClient] Sent Close frame successfully!")
-    libc_fflush(0 as *void)
+    libc_fflush(null:nul *void)
     return 0
 }
 
@@ -197,7 +197,7 @@ fn main_async() -> async i32 {
         return 1
     }
     println("g12_stdx_websocket_test PASSED Cleanly!")
-    libc_fflush(0 as *void)
+    libc_fflush(null:nul *void)
     return 0
 }
 

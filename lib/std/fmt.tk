@@ -55,7 +55,7 @@ impl StringBuilder {
 
     pub fn append_u64(self#, v: u64) {
         unsafe {
-             auto *buf = libc_malloc(32) as *char
+             auto *buf = libc_malloc(32).unwrap() as *char
              libc_snprintf(*buf, 32, c"%llu", v)
              self.buffer#.push_cstr(*buf)
              libc_free(*buf as *void)

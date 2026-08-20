@@ -29,7 +29,7 @@ impl Counter {
 // Module-level factory functions removed. using static methods.
 
 pub shape Vec<'T> (
-    nul *#buf#: ['T] = null as *['T],
+    nul *#buf#: ['T] = null as nul *['T],
     len#: usize = 0,
     cap#: usize = 0
 )
@@ -217,7 +217,7 @@ impl<'T> Vec<'T> {
     /// Vec, leaving this Vec empty and immediately reusable.
     pub fn take(self#) -> Vec<'T> {
         unsafe {
-            auto *taken_buf = self.*buf
+            auto nul *taken_buf = self.*buf
             auto taken_len = self.len
             auto taken_cap = self.cap
             self.*buf = null
@@ -257,13 +257,13 @@ impl<'T> Vec<'T> {
     pub fn get_ref(self, index: usize) -> *'T {
         unsafe {
              if index >= self.len {
-                 return null
+                 libc_abort()
              }
              return *self.buf[index]
         }
     }
 
-    pub fn from_raw(*buf: ['T], len: usize, cap: usize) -> Vec<'T> {
+    pub fn from_raw(nul *buf: ['T], len: usize, cap: usize) -> Vec<'T> {
         return Vec<'T>(
             *buf=*buf,
             len=len,
@@ -281,27 +281,20 @@ impl<'T> Vec<'T> {
 
     pub fn unsafe_get(self, index: usize) -> *'T {
         unsafe {
-            if self.*buf != null {
-                // *?'T -> *['T]
-                // unsafe
-                auto *ptr = self.*buf as *['T]
-                return *ptr[index]
-            }
-            return null
+            auto *ptr = self.*buf.unwrap() as *['T]
+            return *ptr[index]
         }
     }
 
-    pub fn unsafe_as_raw(self) -> *['T] {
-        unsafe {
-            return self.*buf as *['T]
-        }
+    pub fn unsafe_as_raw(self) -> nul *['T] {
+        return self.*buf
     }
 
-    pub fn unsafe_into_raw(self#) -> *['T] {
+    pub fn unsafe_into_raw(self#) -> nul *['T] {
         unsafe {
             // Nullify buffer to prevent drop from freeing it
             // This is used when ownership is manually transferred
-            auto *ptr = self.*buf as *['T]
+            auto nul *ptr = self.*buf
             self.*buf = null
             self.cap = 0
             self.len = 0

@@ -341,6 +341,7 @@ DIAG(ERR_FILE_IO,                 Error,   "E0901", "File I/O Error: {}")
 DIAG(ERR_CLI_ARG,                 Error,   "E0902", "Invalid command line argument: {}")
 
 // --- Miscellaneous ---
+DIAG(ERR_NONZERO_RAW_NULL_FLOW, Error, "E0483", "Plain raw pointer type '{}' cannot contain or test null; use 'nul *T' for a may-zero raw address")
 DIAG(ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER, Error, "E04476", "Morphology symbols (^, *, ~) cannot prefix a member access expression. To get the pointer handle of a member, the sigil must be placed directly before the member name (e.g., use 'm.~a' instead of '~m.a')")
 DIAG(ERR_SEMA_MORPHOLOGY_SYMBOLS_ARE_ONLY_ALLOWED_AT_TH, Error, "E04477", "Morphology symbols (^, *, ~, &) are only allowed at the terminal of an access chain")
 DIAG(ERR_SEMA_PERMISSION_SYMBOLS_ARE_ONLY_ALLOWED_AT_TH, Error, "E04478", "Permission symbols (#, ?) are only allowed at the terminal of an access chain")

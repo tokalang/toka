@@ -18,9 +18,9 @@ extern fn __builtin_coro_suspend() -> void
 extern fn toka_tls_read(*handle: void, *buf: void, len: usize) -> i32
 extern fn toka_tls_write(*handle: void, *buf: void, len: usize) -> i32
 extern fn toka_tls_close(*handle: void) -> void
-extern fn toka_tls_context_new() -> *void
-extern fn toka_tls_server_context_new() -> *void
-extern fn toka_tls_server_context_new_with_cert_file(*cert: char, *key: char) -> *void
+extern fn toka_tls_context_new() -> nul *void
+extern fn toka_tls_server_context_new() -> nul *void
+extern fn toka_tls_server_context_new_with_cert_file(*cert: char, *key: char) -> nul *void
 extern fn toka_tls_set_verify_mode(*handle: void, verify_peer: i32) -> void
 extern fn toka_tls_set_ca_file(*handle: void, *ca_path: char) -> i32
 extern fn toka_tls_set_sni(*handle: void, *host: char) -> i32
@@ -33,7 +33,7 @@ alias NetResult<T> = Result<T, string>
 
 // TLS context/control adapters. The OpenSSL ABI is kept below stdx; callers
 // should use TcpStream::tls_* for I/O and handshakes.
-pub fn net_tls_context_new() -> *void {
+pub fn net_tls_context_new() -> nul *void {
     unsafe { return toka_tls_context_new() }
 }
 
@@ -47,11 +47,11 @@ pub fn net_random_bytes(cede buffer: Vec<u8>) -> Result<Vec<u8>, string> {
     return fill_secure_random_bytes(cede buffer)
 }
 
-pub fn net_tls_server_context_new() -> *void {
+pub fn net_tls_server_context_new() -> nul *void {
     unsafe { return toka_tls_server_context_new() }
 }
 
-pub fn net_tls_server_context_new_with_cert_file(cert_path: string, key_path: string) -> *void {
+pub fn net_tls_server_context_new_with_cert_file(cert_path: string, key_path: string) -> nul *void {
     auto cert_cstr# = cert_path.clone()
     auto key_cstr# = key_path.clone()
     auto *cert_ptr# = cert_cstr.raw_ptr() as *char
@@ -888,7 +888,7 @@ impl TcpStream {
 // Opaque ownership wrapper for a TLS engine instance. The C handle never
 // leaves std/net: higher layers own a TlsSession, not a raw OpenSSL pointer.
 pub shape TlsSession (
-    *#handle: void
+    nul *#handle: void
 )
 
 impl TlsSession@Encap {
@@ -900,72 +900,76 @@ impl TlsSession@Encap {
 
 impl TlsSession {
     pub fn empty() -> TlsSession {
-        auto *null_handle# = (0 as Addr) as *void
+        auto nul *null_handle# = null:nul *void
         return TlsSession(*handle = *null_handle)
     }
 
     pub fn client() -> TlsSession {
-        auto *created# = net_tls_context_new()
+        auto nul *created# = net_tls_context_new()
         return TlsSession(*handle = *created)
     }
 
     pub fn server() -> TlsSession {
-        auto *created# = net_tls_server_context_new()
+        auto nul *created# = net_tls_server_context_new()
         return TlsSession(*handle = *created)
     }
 
     pub fn server_with_cert_file(cert_path: string, key_path: string) -> TlsSession {
-        auto *created# = net_tls_server_context_new_with_cert_file(cert_path, key_path)
+        auto nul *created# = net_tls_server_context_new_with_cert_file(cert_path, key_path)
         return TlsSession(*handle = *created)
     }
 
     pub fn is_valid(self) -> bool {
-        return (self.*handle as Addr) != 0
+        return self.*handle != null
+    }
+
+    fn live_handle(self) -> *void {
+        return self.*handle.unwrap()
     }
 
     pub fn take(self#) -> TlsSession {
         auto session = TlsSession(*handle = self.*handle)
-        auto *null_handle# = (0 as Addr) as *void
+        auto nul *null_handle# = null:nul *void
         self.*handle = *null_handle
         return session
     }
 
     pub fn close(self#) {
         if self#.is_valid() {
-            net_tls_close(self.*handle)
-            auto *null_handle# = (0 as Addr) as *void
+            net_tls_close(self.live_handle())
+            auto nul *null_handle# = null:nul *void
             self.*handle = *null_handle
         }
     }
 
     pub fn set_verify_mode(self#, verify_peer: bool) {
         if self#.is_valid() {
-            net_tls_set_verify_mode(self.*handle, verify_peer)
+            net_tls_set_verify_mode(self.live_handle(), verify_peer)
         }
     }
 
     pub fn set_ca_file(self#, ca_path: string) -> i32 {
         if !self#.is_valid() { return -1 }
-        return net_tls_set_ca_file(self.*handle, ca_path)
+        return net_tls_set_ca_file(self.live_handle(), ca_path)
     }
 
     pub fn set_sni(self#, host: string) -> i32 {
         if !self#.is_valid() { return -1 }
-        return net_tls_set_sni(self.*handle, host)
+        return net_tls_set_sni(self.live_handle(), host)
     }
 
     pub fn connect_async(self#, tcp#: TcpStream, timeout_ms: i32) -> async Result<(), string> {
         if !self#.is_valid() {
             return Result<(), string>::Err(string::from("TLS session is closed"))
         }
-        return tcp#.tls_connect_async(self.*handle, timeout_ms).await
+        return tcp#.tls_connect_async(self.live_handle(), timeout_ms).await
     }
 
     pub fn accept_async(self#, tcp#: TcpStream, timeout_ms: i32) -> async Result<(), string> {
         if !self#.is_valid() {
             return Result<(), string>::Err(string::from("TLS session is closed"))
         }
-        return tcp#.tls_accept_async(self.*handle, timeout_ms).await
+        return tcp#.tls_accept_async(self.live_handle(), timeout_ms).await
     }
 
     // Compatibility-only pointer entry points remain on TcpStream. New stdx
@@ -974,14 +978,14 @@ impl TlsSession {
         if !self#.is_valid() {
             return Result<usize, string>::Err(string::from("TLS session is closed"))
         }
-        return tcp#.tls_read_async(self.*handle, *buf, len, timeout_ms).await
+        return tcp#.tls_read_async(self.live_handle(), *buf, len, timeout_ms).await
     }
 
     pub fn write_all_async(self#, tcp#: TcpStream, *buf: u8, len: usize, timeout_ms: i32) -> async Result<(), string> {
         if !self#.is_valid() {
             return Result<(), string>::Err(string::from("TLS session is closed"))
         }
-        return tcp#.tls_write_all_async(self.*handle, *buf, len, timeout_ms).await
+        return tcp#.tls_write_all_async(self.live_handle(), *buf, len, timeout_ms).await
     }
 
     // The Vec is retained by the coroutine frame while the TLS reactor waits
@@ -1002,7 +1006,7 @@ impl TlsSession {
                 owned#.unsafe_set_len(max_len)
             }
             auto *buf_ptr# = owned.unsafe_get(0)
-            auto read_res = tcp#.tls_read_async(self.*handle, *buf_ptr, max_len, timeout_ms).await
+            auto read_res = tcp#.tls_read_async(self.live_handle(), *buf_ptr, max_len, timeout_ms).await
             match read_res {
                 auto Result<usize, string>::Ok(n) => { bytes_read = n }
                 auto Result<usize, string>::Err(&e) => {
@@ -1039,7 +1043,7 @@ impl TlsSession {
             message = string::from("TLS session is closed")
         } else if len > 0:usize {
             auto *buf_ptr# = owned.unsafe_get(0)
-            auto write_res = tcp#.tls_write_all_async(self.*handle, *buf_ptr, len, timeout_ms).await
+            auto write_res = tcp#.tls_write_all_async(self.live_handle(), *buf_ptr, len, timeout_ms).await
             if write_res.is_err() {
                 failed = true
                 message = write_res.unwrap_err()

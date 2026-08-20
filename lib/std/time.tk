@@ -257,7 +257,7 @@ impl SystemTime {
             auto tm_buf = [0:i32; 16]
             auto *tm_addr = &tm_buf[0] as *void
             
-            auto *tm_ptr = toka_localtime_r(&s_val as *i64, *tm_addr)
+            auto nul *tm_ptr = toka_localtime_r(&s_val as *i64, *tm_addr)
             
             if *tm_ptr == null {
                 return DateTime(year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, wday = 0, yday = 0, isdst = 0)
@@ -285,7 +285,7 @@ impl SystemTime {
             auto tm_buf = [0:i32; 16]
             auto *tm_addr = &tm_buf[0] as *void
             
-            auto *tm_ptr = toka_gmtime_r(&s_val as *i64, *tm_addr)
+            auto nul *tm_ptr = toka_gmtime_r(&s_val as *i64, *tm_addr)
             
             if *tm_ptr == null {
                 return DateTime(year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, wday = 0, yday = 0, isdst = 0)

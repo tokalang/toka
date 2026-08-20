@@ -39,9 +39,9 @@ pub fn opendir_impl(path: Addr) -> Addr {
         }
         auto star = string::from("*")
         search_path#.push_str(star.as_str())
-        auto *wsearch = to_utf16(search_path.c_str())
+        auto *wsearch = to_utf16(search_path.c_str()).unwrap()
         
-        auto *wd# = libc_malloc(sizeof(WinDir)) as *WinDir
+        auto *wd# = libc_malloc(sizeof(WinDir)).unwrap() as *WinDir
         auto h = FindFirstFileW(*wsearch, *(wd.find_data) as Addr)
         
         libc_free(*wsearch as *void)
@@ -85,7 +85,7 @@ pub fn mkdir_impl(path: Addr) -> bool {
     unsafe {
         auto path_str = string::from_cstr(path as *char)
         auto path_normalized = path_str.replace('/' as char, '\\' as char)
-        auto *wpath = to_utf16(path_normalized.c_str())
+        auto *wpath = to_utf16(path_normalized.c_str()).unwrap()
         auto res = CreateDirectoryW(*wpath, ADDR0)
         libc_free(*wpath as *void)
         return res != 0
@@ -96,7 +96,7 @@ pub fn rmdir_impl(path: Addr) -> bool {
     unsafe {
         auto path_str = string::from_cstr(path as *char)
         auto path_normalized = path_str.replace('/' as char, '\\' as char)
-        auto *wpath = to_utf16(path_normalized.c_str())
+        auto *wpath = to_utf16(path_normalized.c_str()).unwrap()
         auto res = RemoveDirectoryW(*wpath)
         libc_free(*wpath as *void)
         return res != 0
@@ -111,7 +111,7 @@ pub fn path_exists(path: Addr) -> bool {
         if len > 3 && path_normalized.ends_with("\\") {
             path_normalized = path_normalized.substring(0, (len - 1) as i32)
         }
-        auto *wpath = to_utf16(path_normalized.c_str())
+        auto *wpath = to_utf16(path_normalized.c_str()).unwrap()
         auto res = GetFileAttributesW(*wpath)
         libc_free(*wpath as *void)
         return res != 0xFFFFFFFF:u32
@@ -162,21 +162,21 @@ pub fn stat_impl(path: Addr) -> Addr {
         if len > 3 && path_normalized.ends_with("\\") {
             path_normalized = path_normalized.substring(0, (len - 1) as i32)
         }
-        auto *wpath = to_utf16(path_normalized.c_str())
+        auto *wpath = to_utf16(path_normalized.c_str()).unwrap()
         auto attr = GetFileAttributesW(*wpath)
         if attr == 0xFFFFFFFF:u32 {
             libc_free(*wpath as *void)
             return ADDR0
         }
         
-        auto *ws# = libc_malloc(sizeof(WinStat)) as *WinStat
+        auto *ws# = libc_malloc(sizeof(WinStat)).unwrap() as *WinStat
         ws.size = 0
         ws.mode = 0x8000 // REG
         auto is_dir = (attr & 0x00000010:u32) != 0
         if is_dir {
             ws.mode = 0x4000 // DIR
         } else {
-            auto *fd# = libc_malloc(sizeof(WIN32_FIND_DATAW)) as *WIN32_FIND_DATAW
+            auto *fd# = libc_malloc(sizeof(WIN32_FIND_DATAW)).unwrap() as *WIN32_FIND_DATAW
             auto h = FindFirstFileW(*wpath, *fd as Addr)
             if h as Addr != 0xFFFFFFFFFFFFFFFF:Addr {
                 ws.size = ((fd.nFileSizeHigh as u64) << 32) | (fd.nFileSizeLow as u64)

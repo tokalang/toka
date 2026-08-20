@@ -6,7 +6,7 @@ import std/task::{sleep_async, block_on}
 
 fn print_msg(*msg: char) {
     libc_printf(c"%s\n", *msg)
-    libc_fflush(0 as *void)
+    libc_fflush(null:nul *void)
 }
 
 fn recursive_chain(depth: i32) -> async i32 {

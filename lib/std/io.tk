@@ -63,14 +63,15 @@ impl File {
             }
             temp_buf[mode_len] = 0 as char
 
-            auto *p = libc_fopen(path.c_str(), &temp_buf[0] as *char)
-            if *p == (ADDR0 as *void) {
+            auto nul *p = libc_fopen(path.c_str(), &temp_buf[0] as *char)
+            if *p == null {
                 return Result<File, IoError>::Err(
                     IoError::new("open", sys::get_last_error(), "failed to open file")
                 )
             }
+            auto *live_p = p.unwrap()
             return Result<File, IoError>::Ok(File(
-                *handle = *#p,
+                *handle = *#live_p,
                 opened = true,
                 owned = true
             ))
@@ -84,11 +85,8 @@ impl File {
         match cede opened {
             auto Result<File, IoError>::Ok('file) => return 'file
             _ => {
-                return File(
-                    *handle = ADDR0 as *#void,
-                    opened = false,
-                    owned = true
-                )
+                libc_abort()
+                unreachable
             }
         }
     }
@@ -97,10 +95,9 @@ impl File {
 impl File@Encap {
     fn drop(self#) {
         unsafe {
-            if self.owned && self.opened && self.*handle != (ADDR0 as *void) {
+            if self.owned && self.opened {
                 libc_fclose(self.*handle)
                 self.opened = false
-                self.*handle = ADDR0 as *void
             }
         }
     }
@@ -130,7 +127,6 @@ impl File {
         )
         self.opened = false
         self.owned = false
-        self.*handle = ADDR0 as *void
         return cede f
     }
     pub fn close(self#) {
@@ -138,7 +134,6 @@ impl File {
             if self.opened {
                 libc_fclose(self.*handle)
                 self.opened = false
-                self.*handle = ADDR0 as *void
             }
         }
     }
@@ -157,7 +152,7 @@ impl File {
                 return IoStringResult::Ok(string::from(""))
             }
             
-            auto *buf# = libc_malloc((size + 1) as usize) as *[char]
+            auto *buf# = libc_malloc((size + 1) as usize).unwrap() as *[char]
             auto count = libc_fread(*buf as *void, 1, size as usize, self.*handle)
             auto last_idx = count as i32
             buf[last_idx] = 0 as char
@@ -212,7 +207,7 @@ impl File {
             auto done# = false
             
             loop !done {
-                auto *res = libc_fgets(*temp_ptr, buf_size, self.*handle)
+                auto nul *res = libc_fgets(*temp_ptr, buf_size, self.*handle)
                 if *res == null {
                     done = true
                 } else {
@@ -301,9 +296,10 @@ pub fn print_line(s: string) {
 
 pub fn exists(path: string) -> bool {
     unsafe {
-        auto *p = libc_fopen(path.c_str(), c"r")
+        auto nul *p = libc_fopen(path.c_str(), c"r")
         if *p != null {
-            libc_fclose(*p)
+            auto *live_p = p.unwrap()
+            libc_fclose(*live_p)
             return true
         }
         return false

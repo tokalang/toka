@@ -1,8 +1,8 @@
-error[E0422]: Type mismatch for member '*ptr': expected '*i32', but got 'null'
- --> tests/fail/trait_bounds_auto.tk:15:20
+error[E0483]: Plain raw pointer type '*i32' cannot contain or test null; use 'nul *T' for a may-zero raw address
+ --> tests/fail/trait_bounds_auto.tk:15:45
     |
  15 |     auto ^u2 = new UnsafeData(value=0, *ptr=null)
-    |                    ^
+    |                                             ^
 error[E0606]: Type 'UnsafeData' does not satisfy trait bound '@Send' for generic parameter 'T'
  --> tests/fail/trait_bounds_auto.tk:16:5
     |

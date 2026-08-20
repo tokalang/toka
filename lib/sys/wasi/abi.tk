@@ -15,6 +15,6 @@ extern fn toka_panic(*msg_ptr: char, len: i32) -> void
 extern fn toka_get_last_error() -> i32
 
 extern fn toka_wasi_argc() -> i32
-extern fn toka_wasi_argv(index: i32) -> *char
+extern fn toka_wasi_argv(index: i32) -> nul *char
 
 extern fn __errno_location() -> Addr

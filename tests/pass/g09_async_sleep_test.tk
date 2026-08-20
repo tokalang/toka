@@ -15,7 +15,7 @@ fn log_ms(*msg: char) {
         dt.year, dt.month, dt.day, 
         dt.hour, dt.minute, dt.second, 
         msec, *msg)
-    libc_fflush(0 as *void)
+    libc_fflush(null:nul *void)
 }
 
 fn worker_a() -> async i32 {

@@ -1,0 +1,5 @@
+fn main() -> i32 {
+    auto *p# = unsafe alloc i32(7)
+    unsafe free *p
+    return 0
+}

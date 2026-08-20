@@ -247,7 +247,7 @@ auto g_win_reactor# = 0:Addr
 fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
     unsafe {
         if g_win_reactor == 0:Addr {
-            auto *r# = libc_malloc(sizeof(WinReactor)) as *WinReactor
+            auto *r# = libc_malloc(sizeof(WinReactor)).unwrap() as *WinReactor
             r.fds = libc_malloc(128 * 4:usize) as Addr
             r.coros = libc_malloc(128 * 8:usize) as Addr
             r.is_write = libc_malloc(128 * 4:usize) as Addr
@@ -314,7 +314,7 @@ fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
 pub fn reactor_create_impl() -> i32 {
     unsafe {
         if g_win_reactor == 0:Addr {
-            auto *r# = libc_malloc(sizeof(WinReactor)) as *WinReactor
+            auto *r# = libc_malloc(sizeof(WinReactor)).unwrap() as *WinReactor
             r.fds = libc_malloc(128 * 4:usize) as Addr
             r.coros = libc_malloc(128 * 8:usize) as Addr
             r.is_write = libc_malloc(128 * 4:usize) as Addr
@@ -351,9 +351,9 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
             return 0
         }
 
-        auto *readfds# = libc_malloc(1024) as *char
-        auto *writefds# = libc_malloc(1024) as *char
-        auto *exceptfds# = libc_malloc(1024) as *char
+        auto *readfds# = libc_malloc(1024).unwrap() as *char
+        auto *writefds# = libc_malloc(1024).unwrap() as *char
+        auto *exceptfds# = libc_malloc(1024).unwrap() as *char
 
         auto *read_count# = *readfds as *u32
         read_count = 0:u32
@@ -389,7 +389,7 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
             idx += 1
         }
 
-        auto *tv# = libc_malloc(8) as *i32
+        auto *tv# = libc_malloc(8).unwrap() as *i32
         auto *tv_sec# = *tv as *i32
         tv_sec = timeout_ms / 1000
         auto *tv_usec# = (*tv as usize + 4:usize) as *i32

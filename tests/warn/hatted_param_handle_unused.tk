@@ -5,11 +5,11 @@ fn payload_only(*s: string) -> i32 {
 }
 
 fn handle_used(*s: string) -> bool {
-    return *s == null
+    return (*s as Addr) != 0:Addr
 }
 
 fn accept_raw(*s: string) -> bool {
-    return *s == null
+    return (*s as Addr) != 0:Addr
 }
 
 fn handle_forwarded(*s: string) -> bool {

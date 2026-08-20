@@ -28,7 +28,7 @@ fn main() -> i32 {
     assert((diff as usize) == 8:usize, "Allocation must be 8-byte aligned")
 
     // 2. Test generic alloc_type
-    auto *p_ptr# = alloc_type<Point>(arena)
+    auto *p_ptr# = alloc_type<Point>(arena).unwrap()
     assert((*p_ptr as Addr) != ADDR0, "p_ptr should be valid")
     
     // Write data to the pointer
@@ -41,7 +41,7 @@ fn main() -> i32 {
 
     // 3. Test alloc_array
     println("Testing alloc_array...")
-    auto *#arr_ptr# = alloc_array<Point>(arena, 3:usize) as *#[Point]
+    auto *#arr_ptr# = alloc_array<Point>(arena, 3:usize).unwrap() as *#[Point]
     assert((*arr_ptr as Addr) != ADDR0, "arr_ptr should be valid")
     
     unsafe {

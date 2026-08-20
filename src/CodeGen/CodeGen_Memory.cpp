@@ -197,6 +197,7 @@ PhysEntity CodeGen::genAllocExpr(const AllocExpr *ae) {
 
   llvm::CallInst *rawPtr = m_Builder.CreateCall(allocHook, sizeVal);
   markMemoryEvent(rawPtr, "allocate");
+  genNullCheck(rawPtr, ae, "allocation failed");
   llvm::Type *ptrTy = llvm::PointerType::getUnqual(m_Context);
   llvm::Value *castedPtr = m_Builder.CreateBitCast(rawPtr, ptrTy);
 

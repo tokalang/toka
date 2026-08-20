@@ -16,7 +16,7 @@ shape Resource(
 )
 
 fn main() -> i32 {
-    auto r = Resource(ptr = 0 as *i32)
+    auto r = Resource(ptr = 1 as *i32)
     // EXPECT: error[E0...]:
     // Should fail: Resource has *i32 but no drop impl
     return 0

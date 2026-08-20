@@ -19,8 +19,8 @@ import core/utf8::{Cursor, REPLACEMENT_CHAR}
 import core/option::{Option}
 import core/result::{Result}
 import core/internal/runtime::__toka_panic_handler
-extern fn libc_malloc(size: usize) -> *void
-extern fn libc_free(*ptr: void) -> void
+extern fn libc_malloc(size: usize) -> nul *void
+extern fn libc_free(nul *ptr: void) -> void
 extern fn libc_memcpy(*dest: void, *src: void, n: usize) -> *void
 extern fn libc_sprintf(*dest: char, *format: char, ...) -> usize
 extern fn libc_snprintf(*dest: char, size: usize, *format: char, ...) -> i32
@@ -39,7 +39,7 @@ impl char {
 }
 
 pub shape string (
-    nul *#buf#: [char] = null as *[char],
+    nul *#buf#: [char] = null as nul *[char],
     len#: usize = 0,
     cap#: usize = 0
 )
@@ -172,14 +172,15 @@ impl string {
         }
     }
 
-    pub fn from_cstr(*s: char) -> string {
+    pub fn from_cstr(nul *s: char) -> string {
         if *s == null {
             return string::new()
         }
         unsafe {
-            auto l = libc_strlen(*s)
+            auto *buf = s.unwrap()
+            auto l = libc_strlen(*buf)
             auto *p# = unsafe alloc [l + 1] char as *[char]
-            libc_memcpy(*p as *void, *s as *void, l)
+            libc_memcpy(*p as *void, *buf as *void, l)
             p[l] = 0 as char
             
             return string(
@@ -279,10 +280,11 @@ impl string {
 
     pub fn c_str(self) -> *char {
         if self.*buf == null {
-            return null as *char
+            return "".raw_ptr()
         }
         unsafe {
-            return self.*buf as *char
+            auto *live_buf = self.*buf.unwrap()
+            return *live_buf as *char
         }
     }
 
@@ -330,7 +332,8 @@ impl string {
                 auto new_cap = (self.cap * 2) + needed + 1
                 auto *tmp# = unsafe alloc [new_cap] char
                 if self.*buf != null {
-                    libc_memcpy(*tmp as *void, self.*buf as *void, self.len)
+                    auto *live_buf = self.*buf.unwrap()
+                    libc_memcpy(*tmp as *void, *live_buf as *void, self.len)
                     // The bytes were copied into tmp, so the old backing
                     // allocation has no live owning elements to destroy.
                     unsafe free [0]self.*#buf
@@ -422,7 +425,7 @@ impl string {
         auto l = self.len
         if l == 0 { return Option<Char32>::None }
         unsafe {
-            auto *b# = self.*buf
+            auto *b# = self.*buf.unwrap()
             auto last_byte_pos = l - 1
             auto b0 = b[last_byte_pos] as u8
             if b0 < 0x80 {
@@ -622,7 +625,7 @@ impl string {
         auto res# = string::from("")
         unsafe {
              auto i# = 0:usize
-             auto *s_buf = self.*buf
+             auto *s_buf = self.*buf.unwrap()
              auto *old_buf = old_s.raw_ptr() as *[char]
              
              loop i < self.len {
@@ -670,7 +673,7 @@ impl string {
             auto res# = string::from_with_len(self.c_str(), self.len)
             auto i# = 0:usize
             auto *dest# = (res.c_str() as usize) as *[char]#
-            auto *src = self.*buf
+            auto *src = self.*buf.unwrap()
             loop i < self.len {
                 dest[i] = src[self.len - 1 - i]
                 i = i + 1
@@ -685,7 +688,7 @@ impl string@Hash {
         unsafe {
             auto hash# = 5381:u64
             auto i# = 0:usize
-            auto *b = self.*buf
+            auto *b = self.*buf.unwrap()
             loop i < self.len {
                 auto c = b[i] as u64
                 hash = ((hash << 5) + hash) + c
@@ -769,7 +772,7 @@ impl u64 {
     pub fn to_string_fmt(self, fmt: str) -> string { return _format_i64(self as i64, fmt) }
     pub fn to_string(self) -> string {
         unsafe {
-             auto *buf# = libc_malloc(32) as *char
+             auto *buf# = libc_malloc(32).unwrap() as *char
              libc_snprintf(*buf, 32, c"%llu", self)
              auto s = string::from_cstr(*buf)
              libc_free(*buf as *void)

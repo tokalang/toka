@@ -23,13 +23,13 @@ fn main() -> i32 {
             auto Option<i32>::Some(v) => {
                 if v != j * 10 {
                     libc_printf(c"Value mismatch at %d! Expected %d, got %d\n", j, j * 10, v)
-                    libc_fflush(0 as *void)
+                    libc_fflush(null:nul *void)
                     err_count += 1
                 }
             }
             auto Option<i32>::None => {
                 libc_printf(c"Missing key: %d!\n", j)
-                libc_fflush(0 as *void)
+                libc_fflush(null:nul *void)
                 err_count += 1
             }
         }
@@ -38,7 +38,7 @@ fn main() -> i32 {
     
     if err_count > 0 {
         libc_printf(c"Total errors: %d\n", err_count)
-        libc_fflush(0 as *void)
+        libc_fflush(null:nul *void)
         return 101
     }
     

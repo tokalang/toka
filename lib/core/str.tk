@@ -85,7 +85,7 @@ impl ViewStrSplitIterator {
 
 impl ViewStrSplitIterator {
     pub fn raw_ptr(self) -> *char {
-        if self.len == 0 { return null as *char }
+        if self.len == 0 { return c"" }
         unsafe {
             // Retrieve the pointer by taking the address of the first element of the slice.
             // This is safe because self.len > 0.
@@ -390,7 +390,8 @@ impl str {
     pub fn as_bytes(self) -> bytes <- self {
         unsafe {
             auto cpy = self.clone()
-            auto ret = bytes(&buf = null as *[byte] as &[byte], len = self.len)
+            auto empty = ""
+            auto ret = bytes(&buf = (empty.raw_ptr() as *[byte]) as &[byte], len = self.len)
             copy_memory(&ret as Addr, &cpy as Addr, 16)
             return ret
         }
@@ -659,7 +660,7 @@ fn _internal_str_cast(s: str) -> str <- s {
 
 // A raw null-terminated C-string pointer representation
 pub shape cstr(
-    *buf: char
+    nul *buf: char
 )
 
 impl cstr@Encap {
@@ -673,7 +674,7 @@ impl cstr {
     pub fn clone(self) -> cstr <- self {
         return cstr(*buf = self.*buf)
     }
-    pub fn raw_ptr(self) -> *char {
+    pub fn raw_ptr(self) -> nul *char {
         return self.*buf
     }
 }
@@ -691,10 +692,11 @@ impl cstr {
     {
         unsafe {
             if self.*buf == null {
-                return str(&buf = null as *[char] as &[char], len = 0)
+                return ""
             }
-            auto len = libc_strlen(self.*buf)
-            return str(&buf = (self.*buf as *[char]) as &[char], len = len)
+            auto *buf = self.*buf.unwrap()
+            auto len = libc_strlen(*buf)
+            return str(&buf = (*buf as *[char]) as &[char], len = len)
         }
     }
 }
@@ -758,8 +760,12 @@ impl bytes {
         }
         unsafe {
             auto new_len = end - start
+            if new_len == 0 {
+                return bytes(&buf = self.&buf, len = 0)
+            }
             auto base_addr = &(self.buf[start]) as Addr
-            auto ret = bytes(&buf = null as *[byte] as &[byte], len = new_len)
+            auto empty = ""
+            auto ret = bytes(&buf = (empty.raw_ptr() as *[byte]) as &[byte], len = new_len)
             copy_memory(&ret as Addr, &base_addr as Addr, 8)
             return ret
         }
@@ -767,10 +773,7 @@ impl bytes {
 
     pub fn try_to_str(self) -> Result<str, UnicodeError> <- self {
         if self.len == 0 {
-            unsafe {
-                auto ret = str(&buf = null as *[char] as &[char], len = 0)
-                return Result<str, UnicodeError>::Ok(ret)
-            }
+            return Result<str, UnicodeError>::Ok("")
         }
         
         unsafe {
@@ -787,7 +790,7 @@ impl bytes {
             }
             
             auto cpy = self.clone()
-            auto ret = str(&buf = null as *[char] as &[char], len = self.len)
+            auto ret = ""
             copy_memory(&ret as Addr, &cpy as Addr, 16)
             return Result<str, UnicodeError>::Ok(ret)
         }

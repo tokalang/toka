@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    auto *p = 0 as *i32
+    return 0
+}

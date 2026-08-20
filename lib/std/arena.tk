@@ -11,25 +11,25 @@ shape ArenaChunk (
     data: Addr,
     capacity: usize,
     offset#: usize,
-    nul *#next: ArenaChunk = null as *ArenaChunk
+    nul *#next: ArenaChunk = null as nul *ArenaChunk
 )
 
 pub shape Arena (
-    nul *#chunks: ArenaChunk = null as *ArenaChunk,
+    nul *#chunks: ArenaChunk = null as nul *ArenaChunk,
     default_chunk_size: usize = 65536:usize
 )
 
 impl Arena {
     pub fn new() -> Arena {
         return Arena(
-            *chunks = null as *ArenaChunk,
+            *chunks = null as nul *ArenaChunk,
             default_chunk_size = 65536:usize
         )
     }
 
     pub fn new_with_capacity(capacity: usize) -> Arena {
         return Arena(
-            *chunks = null as *ArenaChunk,
+            *chunks = null as nul *ArenaChunk,
             default_chunk_size = capacity
         )
     }
@@ -48,18 +48,19 @@ impl Arena {
 
         unsafe {
             // 1. Attempt to find space in existing chunks
-            auto *#curr# = self.*chunks
+            auto nul *#curr# = self.*chunks
             loop true {
                 auto curr_addr = *curr as Addr
                 if curr_addr == ADDR0 { break }
+                auto *#live_curr# = curr.unwrap()
 
-                auto available = curr.capacity - curr.offset
+                auto available = live_curr.capacity - live_curr.offset
                 if available >= aligned_size {
-                    auto addr = curr.data + curr.offset
-                    curr.offset = curr.offset + aligned_size
+                    auto addr = live_curr.data + live_curr.offset
+                    live_curr.offset = live_curr.offset + aligned_size
                     return addr
                 }
-                *curr = curr.*next as *#ArenaChunk
+                *curr = live_curr.*next
             }
 
             // 2. No chunk has enough space, allocate a new chunk
@@ -99,13 +100,14 @@ impl Arena {
      */
     pub fn reset(self#) {
         unsafe {
-            auto *#curr# = self.*chunks
+            auto nul *#curr# = self.*chunks
             loop true {
                 auto curr_addr = *curr as Addr
                 if curr_addr == ADDR0 { break }
+                auto *#live_curr# = curr.unwrap()
 
-                curr.offset = 0:usize
-                *curr = curr.*next as *#ArenaChunk
+                live_curr.offset = 0:usize
+                *curr = live_curr.*next
             }
         }
     }
@@ -115,19 +117,20 @@ impl Arena {
      */
     pub fn release(self#) {
         unsafe {
-            auto *#curr# = self.*chunks
+            auto nul *#curr# = self.*chunks
             loop true {
                 auto curr_addr = *curr as Addr
                 if curr_addr == ADDR0 { break }
+                auto *#live_curr# = curr.unwrap()
 
-                auto *next# = curr.*next
+                auto nul *next# = live_curr.*next
 
-                libc_free(curr.data as *void)
-                unsafe free [1] (*curr as *[ArenaChunk])
+                libc_free(live_curr.data as *void)
+                unsafe free [1] (*live_curr as *[ArenaChunk])
 
                 *curr = *next
             }
-            self.*chunks = null as *ArenaChunk
+            self.*chunks = null as nul *ArenaChunk
         }
     }
 }
@@ -135,19 +138,19 @@ impl Arena {
 /**
  * Allocate generic type 'T safely and return a raw pointer to it.
  */
-pub fn alloc_type<'T>(arena#: Arena) -> *'T {
+pub fn alloc_type<'T>(arena#: Arena) -> nul *'T {
     auto size = sizeof('T)
     auto addr = arena#.alloc_bytes(size)
-    return addr as *'T
+    return addr as nul *'T
 }
 
 /**
  * Allocate an array of generic type 'T inside the arena chunk pool.
  */
-pub fn alloc_array<'T>(arena#: Arena, count: usize) -> *'T {
+pub fn alloc_array<'T>(arena#: Arena, count: usize) -> nul *'T {
     auto size = sizeof('T) * count
     auto addr = arena#.alloc_bytes(size)
-    return addr as *'T
+    return addr as nul *'T
 }
 
 /**

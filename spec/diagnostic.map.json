@@ -850,6 +850,16 @@
       "level": "Warning",
       "message": "The 'none' payload literal is deprecated; choose Init, 'T | miss', Option, or a domain state explicitly"
     },
+    "E0483": {
+      "stage": "Sema",
+      "domain": "Pointer",
+      "kind": "NonZeroRawNullFlow",
+      "confidence": "Guaranteed",
+      "description": "Plain raw pointers are non-zero values. A raw address that may be zero must use the raw-pointer-specific nul *T form.",
+      "id": "ERR_NONZERO_RAW_NULL_FLOW",
+      "level": "Error",
+      "message": "Plain raw pointer type '{}' cannot contain or test null; use 'nul *T' for a may-zero raw address"
+    },
     "S0401": {
       "stage": "Sema",
       "domain": "ControlFlow",

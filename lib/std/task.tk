@@ -39,7 +39,7 @@ pub trait @HostEventSource {
 // The inbox is bound to the thread that creates it.  It deliberately has no
 // Send implementation, so worker code can transfer only its sender half.
 shape HostThreadAffinity (
-    *marker: void = null as *void
+    nul *marker: void = null as nul *void
 )
 
 impl HostThreadAffinity@Encap {
@@ -129,7 +129,7 @@ pub fn host_mailbox<'T: @Send>() -> HostMailbox<'T> {
         sender = HostMailboxSender<'T>(sender = cede pair.tx),
         inbox = HostMailboxInbox<'T>(
             receiver = cede pair.rx,
-            thread_affinity = HostThreadAffinity(*marker = null as *void)
+            thread_affinity = HostThreadAffinity(*marker = null as nul *void)
         )
     )
 }
@@ -261,56 +261,63 @@ pub fn register_timer_token(wait_id: u32, slot_gen: u32, ms: i32) {
     unlock_queue()
 }
 
-pub fn __toka_spawn(*task: void) {
+pub fn __toka_spawn(nul *task: void) {
     if *task != null {
-        core_task::toka_task_start(*task)
+        auto *live_task = task.unwrap()
+        core_task::toka_task_start(*live_task)
     }
 }
 
 import core/task::{TaskHandle, __toka_coro_resume, __toka_coro_done, __toka_coro_destroy, task_get_coro_handle, toka_task_request_cancel, toka_task_is_cancel_requested, toka_task_subscribe_completion, toka_task_unsubscribe_completion, toka_tcb_is_canceled, toka_task_clear_current}
 
 pub fn task_cancel<'T>(handle: TaskHandle<'T>) {
-    auto *tcb = task_get_coro_handle<'T>(handle)
+    auto nul *tcb = task_get_coro_handle<'T>(handle)
     if *tcb != null {
-        toka_task_request_cancel(*tcb)
+        auto *live_tcb = tcb.unwrap()
+        toka_task_request_cancel(*live_tcb)
     }
 }
 
 pub fn task_is_cancel_requested<'T>(handle: TaskHandle<'T>) -> bool {
-    auto *tcb = task_get_coro_handle<'T>(handle)
+    auto nul *tcb = task_get_coro_handle<'T>(handle)
     if *tcb != null {
-        return toka_task_is_cancel_requested(*tcb) != 0
+        auto *live_tcb = tcb.unwrap()
+        return toka_task_is_cancel_requested(*live_tcb) != 0
     }
     return false
 }
 
 pub fn task_is_canceled<'T>(handle: TaskHandle<'T>) -> bool {
-    auto *tcb = task_get_coro_handle<'T>(handle)
+    auto nul *tcb = task_get_coro_handle<'T>(handle)
     if *tcb != null {
-        return toka_tcb_is_canceled(*tcb)
+        auto *live_tcb = tcb.unwrap()
+        return toka_tcb_is_canceled(*live_tcb)
     }
     return false
 }
 
 pub fn task_subscribe_completion<'T>(handle: TaskHandle<'T>, wait_id: u32, slot_gen: u32) -> bool {
-    auto *tcb = task_get_coro_handle<'T>(handle)
+    auto nul *tcb = task_get_coro_handle<'T>(handle)
     if *tcb != null {
-        return toka_task_subscribe_completion(*tcb, wait_id, slot_gen) != 0
+        auto *live_tcb = tcb.unwrap()
+        return toka_task_subscribe_completion(*live_tcb, wait_id, slot_gen) != 0
     }
     return false
 }
 
 pub fn task_unsubscribe_completion<'T>(handle: TaskHandle<'T>, wait_id: u32, slot_gen: u32) -> bool {
-    auto *tcb = task_get_coro_handle<'T>(handle)
+    auto nul *tcb = task_get_coro_handle<'T>(handle)
     if *tcb != null {
-        return toka_task_unsubscribe_completion(*tcb, wait_id, slot_gen) != 0
+        auto *live_tcb = tcb.unwrap()
+        return toka_task_unsubscribe_completion(*live_tcb, wait_id, slot_gen) != 0
     }
     return false
 }
 
-pub fn __toka_detach_task(*task: void) {
+pub fn __toka_detach_task(nul *task: void) {
     if *task != null {
-        core_task::toka_task_detach(*task)
+        auto *live_task = task.unwrap()
+        core_task::toka_task_detach(*live_task)
     }
 }
 
@@ -319,11 +326,14 @@ fn collect_detached_tasks() {
     lock_queue()
     auto i# = 0:usize
     loop i < g_detached_tasks.len() {
-        if __toka_coro_done(g_detached_tasks.get_ref(i).addr as *void) {
-            auto task = g_detached_tasks#.remove(i).unwrap()
-            completed#.push(cede task)
-        } else {
-            i += 1
+        unsafe {
+            auto *task_ptr = g_detached_tasks.get_ref(i) as *TaskPtr
+            if __toka_coro_done(task_ptr.addr as *void) {
+                auto task = g_detached_tasks#.remove(i).unwrap()
+                completed#.push(cede task)
+            } else {
+                i += 1
+            }
         }
     }
     unlock_queue()
@@ -456,12 +466,13 @@ pub fn pump_with_host<'H: @HostEventSource>(host#: H, max_wait_millis: i32) -> R
     }
 }
 
-pub fn __toka_register_timer(*task: void, ms: i32) {
+pub fn __toka_register_timer(nul *task: void, ms: i32) {
     if *task != null {
+        auto *live_task = task.unwrap()
         auto task_id# = 0:u64
         auto task_instance# = 0:u64
         auto wait_gen# = 0:u64
-        auto ok = core_task::toka_task_prepare_suspend_token(*task, &task_id as *u64, &task_instance as *u64, &wait_gen as *u64)
+        auto ok = core_task::toka_task_prepare_suspend_token(*live_task, &task_id as *u64, &task_instance as *u64, &wait_gen as *u64)
         if ok != 0 {
             auto wait_id# = 0:u32
             auto slot_gen# = 0:u32
@@ -471,24 +482,25 @@ pub fn __toka_register_timer(*task: void, ms: i32) {
                 lock_queue()
                 g_timer_queue#.push(TimerEntry(wait_id=wait_id, slot_gen=slot_gen, expire_at=expire_time))
                 unlock_queue()
-                core_task::toka_task_commit_suspend(*task)
+                core_task::toka_task_commit_suspend(*live_task)
             } else {
-                core_task::toka_task_abort_suspend(*task)
+                core_task::toka_task_abort_suspend(*live_task)
             }
         }
     }
 }
 
 // Spawn loop for blocking environments
-pub fn __toka_spawn_blocking(*task: void) {
+pub fn __toka_spawn_blocking(nul *task: void) {
     if *task == null { return }
-    core_task::toka_task_start(*task)
+    auto *live_task = task.unwrap()
+    core_task::toka_task_start(*live_task)
 
     loop true {
         collect_detached_tasks()
         drain_ready_tasks()
 
-        if core_task::toka_tcb_is_done(*task) && core_task::toka_task_active_detached_count() == 0:u32 {
+        if core_task::toka_tcb_is_done(*live_task) && core_task::toka_task_active_detached_count() == 0:u32 {
             break
         }
 
@@ -497,7 +509,7 @@ pub fn __toka_spawn_blocking(*task: void) {
         }
 
         poll_reactor(next_wait_timeout(100:i32))
-    }
+        }
 }
 
 // === Thread & Time Utilities ===
@@ -550,5 +562,5 @@ pub fn detach_forget<T>(cede handle: TaskHandle<T>) {
     if owned_handle.*coro_handle != null {
         __toka_detach_task(owned_handle.*coro_handle)
     }
-    owned_handle.*coro_handle = null as *void
+    owned_handle.*coro_handle = null as nul *void
 }

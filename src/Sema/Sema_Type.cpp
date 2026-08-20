@@ -1262,7 +1262,8 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
     }
   }
   if (T->isNullType()) {
-    if (S->isPointer() || S->isSmartPointer() || S->isReference())
+    if ((S->isPointer() || S->isSmartPointer() || S->isReference()) &&
+        S->IsNullable)
       return true;
   }
 

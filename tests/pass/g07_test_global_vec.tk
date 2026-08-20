@@ -8,16 +8,16 @@ pub fn modify_vec() {
     g_dummy_vec#.push(10)
     g_dummy_vec#.push(20)
     libc_printf(c"[DIAG] Inside modify_vec, len=%d\n", g_dummy_vec.len() as i32)
-    libc_fflush(0 as *void)
+    libc_fflush(null:nul *void)
 }
 
 pub fn main() -> i32 {
     libc_printf(c"[DIAG] Start main, len=%d\n", g_dummy_vec.len() as i32)
-    libc_fflush(0 as *void)
+    libc_fflush(null:nul *void)
     
     modify_vec()
     
     libc_printf(c"[DIAG] Back in main, len=%d\n", g_dummy_vec.len() as i32)
-    libc_fflush(0 as *void)
+    libc_fflush(null:nul *void)
     return 0
 }

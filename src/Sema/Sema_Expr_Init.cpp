@@ -1268,12 +1268,15 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
       exprTypeObj = memberTypeObj;
     }
 
-    bool bypassNullStruct = false;
-    if (m_InUnsafeContext && memberTypeObj && memberTypeObj->isRawPointer() && exprTypeObj && exprTypeObj->isNullType()) {
-        bypassNullStruct = true;
+    bool diagnosedNullStruct = false;
+    if (memberTypeObj && memberTypeObj->isRawPointer() &&
+        !memberTypeObj->IsNullable && exprTypeObj && exprTypeObj->isNullType()) {
+      error(pair.second.get(), DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+            memberTypeObj->toString());
+      diagnosedNullStruct = true;
     }
 
-    if (!bypassNullStruct &&
+    if (!diagnosedNullStruct &&
         !(isTypeCompatible(memberTypeObj, exprTypeObj) ||
           isFieldInitializerCompatible(memberTypeObj, exprTypeObj))) {
       error(Init, DiagID::ERR_MEMBER_TYPE_MISMATCH, pair.first,
@@ -1354,12 +1357,16 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
           exprTypeObj = memberTypeObj;
         }
 
-        bool bypassNullStruct = false;
-        if (m_InUnsafeContext && memberTypeObj && memberTypeObj->isRawPointer() && exprTypeObj && exprTypeObj->isNullType()) {
-            bypassNullStruct = true;
+        bool diagnosedNullStruct = false;
+        if (memberTypeObj && memberTypeObj->isRawPointer() &&
+            !memberTypeObj->IsNullable && exprTypeObj &&
+            exprTypeObj->isNullType()) {
+          error(cloned.get(), DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+                memberTypeObj->toString());
+          diagnosedNullStruct = true;
         }
 
-        if (!bypassNullStruct &&
+        if (!diagnosedNullStruct &&
             !(isTypeCompatible(memberTypeObj, exprTypeObj) ||
               isFieldInitializerCompatible(memberTypeObj, exprTypeObj))) {
           error(Init, DiagID::ERR_MEMBER_TYPE_MISMATCH, defField.Name,
@@ -1471,12 +1478,15 @@ Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
       HasError = true;
     }
 
-    bool bypassNullStruct = false;
-    if (m_InUnsafeContext && memberTypeObj && memberTypeObj->isRawPointer() && exprTypeObj && exprTypeObj->isNullType()) {
-        bypassNullStruct = true;
+    bool diagnosedNullStruct = false;
+    if (memberTypeObj && memberTypeObj->isRawPointer() &&
+        !memberTypeObj->IsNullable && exprTypeObj && exprTypeObj->isNullType()) {
+      error(pair.second.get(), DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+            memberTypeObj->toString());
+      diagnosedNullStruct = true;
     }
 
-    if (!bypassNullStruct &&
+    if (!diagnosedNullStruct &&
         !(isTypeCompatible(memberTypeObj, exprTypeObj) ||
           isFieldInitializerCompatible(memberTypeObj, exprTypeObj))) {
       error(Init, DiagID::ERR_MEMBER_TYPE_MISMATCH, pair.first,

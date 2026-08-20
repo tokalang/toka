@@ -28,12 +28,6 @@ pub fn rc_new<T>(val: T) -> *RcBox<T> {
             data=val 
         )
 
-        if *ptr == null {
-            // OOM
-            return null
-        }    
-        
-        
         return *ptr
     }
 }
@@ -44,8 +38,6 @@ pub fn rc_new<T>(val: T) -> *RcBox<T> {
 // 2. ptr  ()
 pub fn rc_inc<T>(*ptr: RcBox<T>) {
     unsafe {
-        if *ptr == null { return }
-        
         // : fetch_add(&ptr.strong, 1) ->
         // strong
         fetch_add(ptr.*strong#, 1, Ordering::Relaxed)
@@ -55,8 +47,6 @@ pub fn rc_inc<T>(*ptr: RcBox<T>) {
 // [] rc_dec<T>
 pub fn rc_dec<T>(*ptr: RcBox<T>) {
     unsafe {
-        if *ptr == null { return }
-
         // strong  price  atomic
         auto old_count = fetch_sub(ptr.*strong#, 1, Ordering::Relaxed)
 

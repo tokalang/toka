@@ -92,26 +92,35 @@ counter = 3
 > W0411 与 W0410。当前版本暂时保留旧 lowering 以便迁移；raw pointer
 > `nul *T` 和物理 `null` 不在本轮弃用范围内。
 
-Toka 1.0 刻意区分三种“无”。它们的物理表示可能同构，但在类型系统中不是别名：
+Toka 将操作未命中、物理零地址与正在退役的 Safe nullable 表层明确分开。
+它们的物理表示可能同构，但在类型系统中不是别名：
 
 | 语义域 | 表层写法 | 空状态 | 含义 |
 | :--- | :--- | :--- | :--- |
-| 可空 handle | `nul *T`、`nul ^T`、`nul ~T` | `null` | handle 存储存在，但不指向对象 |
-| 可空 payload | `T?` | `none` | payload 槽位存在，但当前没有 payload 值 |
-| 可选结果 | `Option<T>` | `Option<T>::None` | 一次操作没有产生结果 |
+| raw may-zero 地址 | `nul *T` | `null` | unsafe / FFI 地址在物理上可能为零 |
+| raw 非零地址 | `*T` | 无 | 地址保证非零，但解引用仍要求 `unsafe` |
+| 操作未命中 | `T \| miss` | `miss` | 一次操作没有产生 `T` |
+| 通用可选值 | `Option<T>` | `Option<T>::None` | 被存储的值明确具有零或一个的基数 |
+| 旧 Safe nullable | `T?`、`nul ^T`、`nul ~T` | `none` / `null` | 仅在警告迁移期保留 |
 
 例如：
 
 ```toka
 auto nul *ptr = null:nul *i32
+auto value = lookup(key) // 返回类型声明为 T | miss
 auto maybe = none:i32?
 auto result = Option<i32>::None:Option<i32>
 ```
 
-`T?` 不是 `Option<T>` 的语法糖，`none` 不是 `Option<T>::None`，可空
-handle 也不是 `Option` handle。Toka 不在这三个语义域之间进行隐式转换或
-自动 flatten。借用 handle（`&`）不可为空；`nul` 只用于 raw、unique、
-shared 这几类 handle 形态。
+普通 `*T` 不能由 `null` 构造，不能接收或返回 `null`，也不能与 `null`
+比较。`*T` 可以扩大为 `nul *T`；反向转换必须显式调用经过运行时检查的
+`pointer.unwrap()`。因此，`nul` 是 raw pointer 的物理属性，不是通用的
+nullable 类型构造器；新的 Safe 代码中，borrow、unique 与 shared handle
+都必须指向有效对象。
+
+`T?` 不是 `Option<T>` 的语法糖，`none` 不是 `Option<T>::None`，而
+`T | miss` 也不是持久可空存储。Toka 不在这些语义域之间隐式转换或自动
+flatten。
 
 当一次操作可以成功取得一个可空 payload 时，这个区别是可观察的：
 
@@ -972,7 +981,7 @@ println("x={}, y={}", x, y)
 
 ```toka
 extern fn sleep(seconds: i32) -> i32
-extern fn libc_free(*ptr: void) -> void
+extern fn libc_free(nul *ptr: void) -> void
 ```
 
 原始分配与释放是显式 unsafe 操作。
@@ -984,10 +993,14 @@ auto *node = unsafe alloc Node(val = 1)
 unsafe free *node
 ```
 
+内建 `alloc` 是不可失败语义的非零分配操作：分配失败会终止执行，而不会返回
+零地址 `*T`。可失败的原生分配器必须把结果声明为 `nul *T`（例如
+`libc_malloc`），调用方必须显式检查或 unwrap。
+
 指针转换使用 `as`。
 
 ```toka
-auto *ptr = addr as *i32
+auto *ptr = unsafe addr as *i32 // 调用方断言 addr 非零
 auto raw = *ptr as *void
 ```
 

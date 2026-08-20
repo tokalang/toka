@@ -1,5 +1,5 @@
 error[E0448]: Pointer morphology mismatch: expected explicit '*' (from LHS/Target), found 'value' (from RHS/Source)
  --> tests/fail/sovereign_shape.tk:19:14
     |
- 19 |     auto r = Resource(ptr = 0 as *i32)
+ 19 |     auto r = Resource(ptr = 1 as *i32)
     |              ^

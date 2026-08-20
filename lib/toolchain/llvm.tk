@@ -74,18 +74,19 @@ import sys/llvm_ffi::{
 
 // 1. LLVMContext
 pub shape LLVMContext (
-    *#handle: void
+    *#handle: void,
+    disposed#: bool = false
 )
 
 impl LLVMContext {
     pub fn new() -> LLVMContext {
-        return LLVMContext(*handle = toka_llvm_create_context() as *#void)
+        return LLVMContext(*handle = toka_llvm_create_context() as *#void, disposed = false)
     }
 
     pub fn dispose(self#) {
-        if self.*handle != null {
+        if !self.disposed {
             toka_llvm_dispose_context(self.*handle)
-            self.*handle = null as *#void
+            self.disposed = true
         }
     }
 }
@@ -121,7 +122,7 @@ impl LLVMType {
 
     pub fn function(retTy: LLVMType, *paramTys: [LLVMType], count: usize, isVarArg: bool) -> LLVMType {
         if count == 0:usize {
-            return LLVMType(*handle = toka_llvm_type_function(retTy.*handle, null as *void, 0, isVarArg))
+            return LLVMType(*handle = toka_llvm_type_function(retTy.*handle, null as nul *void, 0, isVarArg))
         }
 
         unsafe {
@@ -250,18 +251,19 @@ impl LLVMBasicBlock {
 
 // 5. LLVMModule
 pub shape LLVMModule (
-    *#handle: void
+    *#handle: void,
+    disposed#: bool = false
 )
 
 impl LLVMModule {
     pub fn new(name: string, ctx: LLVMContext) -> LLVMModule {
-        return LLVMModule(*handle = toka_llvm_create_module(name.c_str(), ctx.*handle) as *#void)
+        return LLVMModule(*handle = toka_llvm_create_module(name.c_str(), ctx.*handle) as *#void, disposed = false)
     }
 
     pub fn dispose(self#) {
-        if self.*handle != null {
+        if !self.disposed {
             toka_llvm_dispose_module(self.*handle)
-            self.*handle = null as *#void
+            self.disposed = true
         }
     }
 
@@ -282,16 +284,17 @@ impl LLVMModule {
 
     pub fn verify(self) -> Result<(), string> {
         unsafe {
-            auto *err_ptr# = null as *char
+            auto nul *err_ptr# = null as nul *char
             auto ok = toka_llvm_verify_module(self.*handle, &err_ptr as *void)
             if ok {
                 return Result<(), string>::Ok(())
             }
-            if *err_ptr == null as *char {
+            if *err_ptr == null as nul *char {
                 return Result<(), string>::Err("Unknown LLVM verification error".to_string())
             }
-            auto err_msg = string::from_cstr(*err_ptr)
-            toka_llvm_dispose_string(*err_ptr)
+            auto *live_err = err_ptr.unwrap()
+            auto err_msg = string::from_cstr(*live_err)
+            toka_llvm_dispose_string(*live_err)
             return Result<(), string>::Err(err_msg)
         }
     }
@@ -306,18 +309,19 @@ impl LLVMModule@Encap {
 
 // 6. LLVMBuilder
 pub shape LLVMBuilder (
-    *#handle: void
+    *#handle: void,
+    disposed#: bool = false
 )
 
 impl LLVMBuilder {
     pub fn new(ctx: LLVMContext) -> LLVMBuilder {
-        return LLVMBuilder(*handle = toka_llvm_create_builder(ctx.*handle) as *#void)
+        return LLVMBuilder(*handle = toka_llvm_create_builder(ctx.*handle) as *#void, disposed = false)
     }
 
     pub fn dispose(self#) {
-        if self.*handle != null {
+        if !self.disposed {
             toka_llvm_dispose_builder(self.*handle)
-            self.*handle = null as *#void
+            self.disposed = true
         }
     }
 
@@ -347,7 +351,7 @@ impl LLVMBuilder {
 
     pub fn build_call(self#, fn_val: LLVMValue, *args: [LLVMValue], count: usize, name: string) -> LLVMValue {
         if count == 0:usize {
-            return LLVMValue(*handle = toka_llvm_build_call(self.*handle, fn_val.*handle, null as *void, 0, name.c_str()))
+            return LLVMValue(*handle = toka_llvm_build_call(self.*handle, fn_val.*handle, null as nul *void, 0, name.c_str()))
         }
 
         unsafe {
@@ -378,7 +382,7 @@ impl LLVMBuilder {
 
     pub fn build_gep(self#, ty: LLVMType, ptr: LLVMValue, *indices: [LLVMValue], count: usize, name: string) -> LLVMValue {
         if count == 0:usize {
-            return LLVMValue(*handle = toka_llvm_build_gep(self.*handle, ty.*handle, ptr.*handle, null as *void, 0, name.c_str()))
+            return LLVMValue(*handle = toka_llvm_build_gep(self.*handle, ty.*handle, ptr.*handle, null as nul *void, 0, name.c_str()))
         }
         unsafe {
             auto *handles# = unsafe alloc [count] Addr

@@ -1227,12 +1227,15 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       }
     }
 
-    bool bypassNullAssign = false;
-    if (m_InUnsafeContext && lhsCompatType && lhsCompatType->isRawPointer() && rhsType && rhsType->isNullType()) {
-        bypassNullAssign = true;
+    bool diagnosedNullAssign = false;
+    if (lhsCompatType && lhsCompatType->isRawPointer() &&
+        !lhsCompatType->IsNullable && rhsType && rhsType->isNullType()) {
+      error(Bin, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+            lhsCompatType->toString());
+      diagnosedNullAssign = true;
     }
 
-    if (!bypassNullAssign && !isRefAssign && !isSmartNew &&
+    if (!diagnosedNullAssign && !isRefAssign && !isSmartNew &&
         !isTypeCompatible(lhsCompatType, rhsType) && LHS != "unknown" &&
         RHS != "unknown") {
       if (auto outcome =
@@ -1445,14 +1448,24 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
 
   if (Bin->Op == "==" || Bin->Op == "!=" || Bin->Op == "<" || Bin->Op == ">" ||
       Bin->Op == "<=" || Bin->Op == ">=") {
-    bool bypassNullCmp = false;
-    if (m_InUnsafeContext) {
-        if (lhsType && lhsType->isRawPointer() && rhsType && rhsType->isNullType()) bypassNullCmp = true;
-        if (rhsType && rhsType->isRawPointer() && lhsType && lhsType->isNullType()) bypassNullCmp = true;
+    bool diagnosedNullCmp = false;
+    if (lhsType && lhsType->isRawPointer() && rhsType && rhsType->isNullType()) {
+      if (!lhsType->IsNullable) {
+        error(Bin, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+              lhsType->toString());
+        diagnosedNullCmp = true;
+      }
+    }
+    if (rhsType && rhsType->isRawPointer() && lhsType && lhsType->isNullType()) {
+      if (!rhsType->IsNullable) {
+        error(Bin, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+              rhsType->toString());
+        diagnosedNullCmp = true;
+      }
     }
 
     // [Phase 2] Syntactic Sugar / Operator Overloading for == and !=
-    if ((Bin->Op == "==" || Bin->Op == "!=") && !bypassNullCmp) {
+    if ((Bin->Op == "==" || Bin->Op == "!=") && !diagnosedNullCmp) {
       auto projectOwnedStringViewForEquality =
           [&](std::unique_ptr<Expr> &operand,
               std::shared_ptr<toka::Type> &operandType,
@@ -1509,7 +1522,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       }
     }
 
-    if (!bypassNullCmp && !isTypeCompatible(lhsType, rhsType) &&
+    if (!diagnosedNullCmp && !isTypeCompatible(lhsType, rhsType) &&
         !isTypeCompatible(rhsType, lhsType)) {
       error(Bin, DiagID::ERR_INVALID_OP, Bin->Op, LHS, RHS);
     }

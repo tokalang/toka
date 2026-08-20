@@ -103,28 +103,36 @@ counter = 3
 > temporarily available for migration. Raw `nul *T` and physical `null` are
 > outside this deprecation slice.
 
-Toka 1.0 intentionally distinguishes three meanings of absence. They may have
-isomorphic physical representations, but they are not aliases in the type
-system:
+Toka distinguishes operation outcomes from physical zero addresses and from
+the retiring safe-nullable surface. They may have isomorphic physical
+representations, but they are not aliases in the type system:
 
 | Domain | Surface form | Empty state | Meaning |
 | :--- | :--- | :--- | :--- |
-| Nullable handle | `nul *T`, `nul ^T`, `nul ~T` | `null` | A handle is present as storage but does not designate an object |
-| Nullable payload | `T?` | `none` | A payload slot is present but currently contains no payload value |
-| Optional result | `Option<T>` | `Option<T>::None` | An operation produced no result |
+| Raw may-zero address | `nul *T` | `null` | An unsafe/FFI address may physically be zero |
+| Raw non-zero address | `*T` | none | The raw address is non-zero, although dereference still requires `unsafe` |
+| Operation miss | `T \| miss` | `miss` | An operation did not produce a `T` |
+| General optional value | `Option<T>` | `Option<T>::None` | A stored value explicitly has zero-or-one cardinality |
+| Legacy safe nullable | `T?`, `nul ^T`, `nul ~T` | `none` / `null` | Retained only during the warning migration phase |
 
 For example:
 
 ```toka
 auto nul *ptr = null:nul *i32
+auto value = lookup(key) // declared T | miss
 auto maybe = none:i32?
 auto result = Option<i32>::None:Option<i32>
 ```
 
+Plain `*T` cannot be constructed from, assigned from, returned from, or
+compared with `null`. `*T` widens to `nul *T`; the reverse direction requires
+the explicit checked `pointer.unwrap()`. `nul` is therefore a raw-pointer
+physical property, not a general nullable type constructor. Borrow, unique,
+and shared handles designate valid objects in new safe code.
+
 `T?` is not syntax sugar for `Option<T>`, `none` is not
-`Option<T>::None`, and a nullable handle is not an `Option` handle. Toka does
-not implicitly convert or flatten these domains. Borrow handles (`&`) are not
-nullable; use `nul` only with raw, unique, or shared handle forms.
+`Option<T>::None`, and `T | miss` is not persistent nullable storage. Toka
+does not implicitly convert or flatten these domains.
 
 The distinction is observable when an operation can successfully produce a
 nullable payload:
@@ -1099,7 +1107,7 @@ External functions use `extern fn`.
 
 ```toka
 extern fn sleep(seconds: i32) -> i32
-extern fn libc_free(*ptr: void) -> void
+extern fn libc_free(nul *ptr: void) -> void
 ```
 
 Raw allocation and deallocation are explicit and unsafe.
@@ -1110,6 +1118,11 @@ shape Node(val: i32)
 auto *node = unsafe alloc Node(val = 1)
 unsafe free *node
 ```
+
+Built-in `alloc` is an infallible, non-zero allocation operation: allocation
+failure terminates instead of producing a zero `*T`. A fallible native
+allocator must expose its result as `nul *T` (for example `libc_malloc`) and
+the caller must check or unwrap it explicitly.
 
 For a raw array, the count on `free[count]` is the number of live elements
 starting at index zero that must be dropped before the allocation is released.
@@ -1141,7 +1154,7 @@ unsafe free [0] *old
 Pointer casts use `as`.
 
 ```toka
-auto *ptr = addr as *i32
+auto *ptr = unsafe addr as *i32 // caller asserts that addr is non-zero
 auto raw = *ptr as *void
 ```
 

@@ -2283,7 +2283,31 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     } else if (targetIsRaw) {
       bool srcIsStr = srcType->isStringType();
       bool srcIsNull = srcType->isNullType();
-      if (!(srcIsAddr || srcIsRaw || srcIsNumeric || srcIsStr || srcIsNull || srcType->isUniquePtr() || srcType->isSharedPtr() || srcType->isReference())) {
+      auto isKnownZeroAddress = [&](auto &&self, const Expr *expr) -> bool {
+        if (auto *number = dynamic_cast<const NumberExpr *>(expr))
+          return number->Value == 0;
+        if (auto *variable = dynamic_cast<const VariableExpr *>(expr))
+          return variable->Name == "ADDR0";
+        if (auto *innerCast = dynamic_cast<const CastExpr *>(expr))
+          return self(self, innerCast->Expression.get());
+        return false;
+      };
+      if (srcIsNull && !targetType->IsNullable) {
+        error(Cast, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+              targetType->toString());
+      }
+      if (!targetType->IsNullable &&
+          isKnownZeroAddress(isKnownZeroAddress, Cast->Expression.get())) {
+        error(Cast, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+              targetType->toString());
+      }
+      if (srcIsRaw && srcType->IsNullable && !targetType->IsNullable) {
+        error(Cast, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+              targetType->toString());
+      }
+      if (!(srcIsAddr || srcIsRaw || srcIsNumeric || srcIsStr || srcIsNull ||
+            srcType->isUniquePtr() ||
+            srcType->isSharedPtr() || srcType->isReference())) {
         error(Cast, DiagID::ERR_CAST_MISMATCH, srcType->toString(),
               Cast->TargetType);
       }

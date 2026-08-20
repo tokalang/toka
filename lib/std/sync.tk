@@ -75,7 +75,7 @@ impl<'T: @Send> Mutex<'T> {
             
             auto temp_h = self.handle:Addr
             auto *p# = (self.data_ptr as *'T#)
-            auto *tok = 0:Addr as *byte
+            auto nul *tok = null:nul *byte
             
             return Result<MutexLock<'T>, Error>::Ok(MutexLock<'T>(
                 handle = temp_h,
@@ -123,7 +123,7 @@ impl<'T> Mutex<'T>@Encap {
 pub shape MutexLock<'T: @Send>(
     handle: Addr,
     &'data#: T,
-    *thread_token: byte
+    nul *thread_token: byte
 )
 
 impl<'T> MutexLock<'T>@Encap {
@@ -191,7 +191,7 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
             
             auto temp_h = self.handle:Addr
             auto *p = (self.data_ptr as *'T)
-            auto *tok = 0:Addr as *byte
+            auto nul *tok = null:nul *byte
             
             return Result<RwReadLock<'T>, Error>::Ok(RwReadLock<'T>(
                 handle = temp_h,
@@ -214,7 +214,7 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
             
             auto temp_h = self.handle:Addr
             auto *p# = (self.data_ptr as *'T#)
-            auto *tok = 0:Addr as *byte
+            auto nul *tok = null:nul *byte
             
             return Result<RwWriteLock<'T>, Error>::Ok(RwWriteLock<'T>(
                 handle = temp_h,
@@ -261,7 +261,7 @@ impl<'T> RwMutex<'T>@Encap {
 pub shape RwReadLock<'T: @{Send, Sync}>(
     handle: Addr,
     &'data: T,
-    *thread_token: byte
+    nul *thread_token: byte
 )
 
 impl<'T> RwReadLock<'T>@Encap {
@@ -284,7 +284,7 @@ impl<'T: @{Send, Sync}> RwReadLock<'T> {
 pub shape RwWriteLock<'T: @{Send, Sync}>(
     handle: Addr,
     &'data#: T,
-    *thread_token: byte
+    nul *thread_token: byte
 )
 
 impl<'T> RwWriteLock<'T>@Encap {

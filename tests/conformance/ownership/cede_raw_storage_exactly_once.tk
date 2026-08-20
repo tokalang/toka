@@ -34,7 +34,7 @@ impl Outer@Encap {
 }
 
 shape RawStore<'T> (
-    nul *#buf#: [T] = null as *[T],
+    nul *#buf#: [T] = null as nul *[T],
     len#: usize = 0:usize,
     cap#: usize = 0:usize
 )
@@ -44,7 +44,7 @@ impl<'T> RawStore<'T>@Encap {
         unsafe {
             if self.*buf != null {
                 unsafe free [self.len] self.*#buf
-                self.*buf = null as *[T]
+                self.*buf = null as nul *[T]
             }
             self.len = 0:usize
             self.cap = 0:usize
@@ -55,7 +55,7 @@ impl<'T> RawStore<'T>@Encap {
 
 impl<'T> RawStore<'T> {
     fn new() -> RawStore<'T> {
-        return RawStore<T>(*buf = null as *[T], len = 0:usize, cap = 0:usize)
+        return RawStore<T>(*buf = null as nul *[T], len = 0:usize, cap = 0:usize)
     }
 
     fn grow(self#) {
