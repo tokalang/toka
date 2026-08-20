@@ -1,0 +1,52 @@
+import core/string::{string}
+import core/traits::{@Encap}
+import std/vec::{Vec}
+
+auto g_drop_count# = 0:i32
+
+shape Resource(id: i32, name: string)
+
+impl Resource@Encap {
+    pub id, name
+
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
+
+fn resource(id: i32, name: str) -> Resource {
+    return Resource(id = id, name = string::from(name))
+}
+
+fn main() -> i32 {
+    {
+        auto values# = Vec<Resource>::with_capacity(4:usize)
+        values#.push(cede resource(2, "two"))
+        values#.push(cede resource(4, "four"))
+
+        values#.insert(0:usize, cede resource(1, "one"))
+        values#.insert(2:usize, cede resource(3, "three"))
+        if g_drop_count != 0:i32 { return 1 }
+        if values.len() != 4:usize { return 2 }
+        if values.get_ref(0:usize).id != 1 || values.get_ref(1:usize).id != 2 { return 3 }
+        if values.get_ref(2:usize).id != 3 || values.get_ref(3:usize).id != 4 { return 4 }
+
+        // Full-capacity insertion exercises grow followed by a middle shift.
+        values#.insert(2:usize, cede resource(5, "five"))
+        if g_drop_count != 0:i32 || values.len() != 5:usize { return 5 }
+        if values.get_ref(2:usize).id != 5 || values.get_ref(3:usize).id != 3 { return 6 }
+
+        {
+            auto removed = values#.remove(1:usize).unwrap()
+            if removed.id != 2 || !removed.name.as_str().equals("two") { return 7 }
+        }
+        if g_drop_count != 1:i32 { return 8 }
+
+        // Reuse the moved-from tail slot after removal.
+        values#.push(cede resource(6, "six"))
+        if values.len() != 5:usize || values.get_ref(4:usize).id != 6 { return 9 }
+    }
+
+    if g_drop_count != 6:i32 { return 10 }
+    return 0
+}

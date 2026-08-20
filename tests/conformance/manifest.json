@@ -139,6 +139,31 @@
       "description": "Move-only resources survive Vec growth, middle removal, pop, clear, reuse, and exactly-once drop"
     },
     {
+      "id": "std_vec_resource_insert_relocation_01",
+      "path": "std/vec_resource_insert_relocation.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Vec insertion semantically relocates move-only resources across middle shifts and growth with exactly-once drop"
+    },
+    {
+      "id": "std_vec_lending_borrow_01",
+      "path": "std/vec_lending_borrow.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Vec shared and exclusive element borrows are safely tied to the container lifetime"
+    },
+    {
+      "id": "diag_vec_borrow_blocks_mutation_01",
+      "path": "diagnostics/vec_borrow_blocks_mutation.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0441",
+      "expected_span_line": 7,
+      "timeout_seconds": 10,
+      "description": "A live Vec element borrow prevents container mutation"
+    },
+    {
       "id": "std_vec_resource_iteration_01",
       "path": "std/vec_resource_iteration.tk",
       "type": "run",

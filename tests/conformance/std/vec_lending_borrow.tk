@@ -1,0 +1,20 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(10:i32)
+    values#.push(20:i32)
+
+    {
+        auto &first = values.borrow(0:usize)
+        if first != 10:i32 { return 1 }
+    }
+
+    {
+        auto &second# = values#.borrow_mut(1:usize)
+        second = 25:i32
+    }
+
+    if values.get(1:usize) != 25:i32 { return 2 }
+    return 0
+}

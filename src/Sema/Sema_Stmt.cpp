@@ -1946,18 +1946,11 @@ void Sema::checkStmt(Stmt *S) {
           collectConditionalTodoDependencies(Var->Init.get());
     }
 
-    std::string dependencySoul =
-        Info.TypeObj ? Info.TypeObj->getSoulName() : "";
-    bool isBorrowedViewValue =
-        dependencySoul == "str" || dependencySoul == "bytes";
-    bool isBorrowLikeStoredValue = isBorrowLikeType(Info.TypeObj);
-    bool isBorrowingCallable =
-        Info.TypeObj &&
-        (Info.TypeObj->isFunction() || Info.TypeObj->isDynFn());
-    if (!depsToCommitAsBorrow.empty() &&
-        (Var->IsReference || morph == "&" || isBorrowedViewValue ||
-         isBorrowLikeStoredValue || isBorrowingCallable ||
-         !Info.FieldDependencySet.empty())) {
+    // A declared return dependency is itself the caller-side borrow contract.
+    // Commit it even when generic type resolution has not yet exposed an
+    // embedded reference (for example Option<&T>). Filtering by the inferred
+    // storage type made such lending APIs lose their PAL protection.
+    if (!depsToCommitAsBorrow.empty()) {
       for (const auto &dep : depsToCommitAsBorrow) {
         if (dep.empty())
           continue;

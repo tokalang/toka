@@ -212,9 +212,34 @@ impl<'T> Vec<'T> {
             return Option<'T>::Some(cede 'val)
         }
     }
+
+    /// Returns a shared element borrow tied to the lifetime of this Vec.
+    pub fn borrow(self, index: usize) -> &'T <- self {
+        if index >= self.len {
+            unsafe {
+                libc_printf(c"[Vec] panic: borrow index out of bounds\n")
+                libc_abort()
+            }
+        }
+        unsafe {
+            return &self.buf[index]
+        }
+    }
+
+    /// Returns an exclusive element borrow tied to the lifetime of this Vec.
+    pub fn borrow_mut(self#, index: usize) -> &'T# <- self {
+        if index >= self.len {
+            unsafe {
+                libc_printf(c"[Vec] panic: mutable borrow index out of bounds\n")
+                libc_abort()
+            }
+        }
+        unsafe {
+            return &self.buf[index]
+        }
+    }
     
-    // Unsafe Reference Get (Returns Pointer/Handle)
-    // Used to peek without copying/moving.
+    // Legacy raw-pointer access. New code should use borrow/borrow_mut.
     pub fn get_ref(self, index: usize) -> *'T {
         unsafe {
              if index >= self.len {
