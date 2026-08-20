@@ -811,10 +811,31 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   // m_ShapeProps (HasDrop) and MethodMap are populated before sovereignty
   // checks.
   // [FIX] Moved here to ensure storedDecl->Members is populated first.
-  if (GenericImplMap.count(implKey)) {
-    for (auto *ImplTemplate : GenericImplMap[implKey]) {
-      instantiateGenericImpl(ImplTemplate, mangledName,
-                             GenericShape->GenericArgs, storedDecl);
+  std::set<ImplDecl*> instantiatedImpls;
+  auto instantiateMatchingImpls = [&](const std::string &k) {
+    if (GenericImplMap.count(k)) {
+      for (auto *ImplTemplate : GenericImplMap[k]) {
+        if (instantiatedImpls.insert(ImplTemplate).second) {
+          instantiateGenericImpl(ImplTemplate, mangledName,
+                                 GenericShape->GenericArgs, storedDecl);
+        }
+      }
+    }
+  };
+  instantiateMatchingImpls(implKey);
+  if (implKey != Template->Name) instantiateMatchingImpls(Template->Name);
+  if (!Template->CodegenName.empty() && implKey != Template->CodegenName)
+    instantiateMatchingImpls(Template->CodegenName);
+  std::string implSuffix = "::" + Template->Name;
+  for (const auto &pair : GenericImplMap) {
+    if (pair.first.length() >= implSuffix.length() &&
+        pair.first.compare(pair.first.length() - implSuffix.length(), implSuffix.length(), implSuffix) == 0) {
+      for (auto *ImplTemplate : pair.second) {
+        if (instantiatedImpls.insert(ImplTemplate).second) {
+          instantiateGenericImpl(ImplTemplate, mangledName,
+                                 GenericShape->GenericArgs, storedDecl);
+        }
+      }
     }
   }
   validateSlice4CopyAndDup(*GenericInstancesModule);

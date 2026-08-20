@@ -1,0 +1,16 @@
+// tokakv/tests/diag_borrow_outlives_guard.tk
+// Diagnostic test: Returning a borrow originating from a local lock guard must fail with E0455.
+
+import std/sync::{RwMutex}
+
+fn escape_borrow() -> &i32 {
+    auto rw = RwMutex<i32>::new(10)
+    auto r = rw.read_lock().unwrap()
+    // Returning reference tied to local guard r must trigger E0455
+    return r.get_ref()
+}
+
+fn main() -> i32 {
+    auto &_ = escape_borrow()
+    return 0
+}

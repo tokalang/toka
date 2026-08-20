@@ -76,7 +76,7 @@ def main():
         try:
             if test_type == "ir-verify":
                 cmd = [tokac_bin, "--emit-llvm", test_full_path, "-o", out_ll]
-                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env)
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env, cwd=root_dir)
                 if res.returncode != 0:
                     print(f"[FAILED] [{test_id}] LLVM IR generation failed unexpectedly:")
                     print(res.stdout + res.stderr)
@@ -123,7 +123,7 @@ def main():
 
             elif test_type == "compile-fail":
                 cmd = [tokac_bin, test_full_path, "-o", out_bin]
-                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env)
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env, cwd=root_dir)
                 if res.returncode == 0:
                     print(f"[FAILED] [{test_id}] Expected compilation failure but succeeded.")
                     failed_count += 1
@@ -149,7 +149,7 @@ def main():
 
             elif test_type in ("run", "run-fail", "compile-pass"):
                 cmd = [tokac_bin, test_full_path, "-o", out_bin]
-                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env)
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env, cwd=root_dir)
                 if res.returncode != 0:
                     print(f"[FAILED] [{test_id}] Compilation failed unexpectedly:")
                     print(res.stdout + res.stderr)
@@ -162,7 +162,7 @@ def main():
                     continue
 
                 # Execute binary with timeout
-                run_res = subprocess.run([out_bin], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env)
+                run_res = subprocess.run([out_bin], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env, cwd=root_dir)
                 if test_type == "run-fail":
                     if run_res.returncode == 0:
                         print(f"[FAILED] [{test_id}] Expected fail-closed runtime termination but execution succeeded.")

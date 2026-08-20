@@ -1,0 +1,11 @@
+import std/data_file::{WalFile}
+
+fn main() -> i32 {
+    auto path = string::from("test")
+    auto w_res = WalFile::open(path)
+    if w_res.is_ok() {
+        auto w = w_res.unwrap()
+        auto fd = w.fd
+    }
+    return 0
+}

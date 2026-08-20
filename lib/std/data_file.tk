@@ -1,0 +1,620 @@
+// Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+// lib/std/data_file.tk
+// Positional, unbuffered, owner-carrying I/O for database and storage engines.
+
+import core/types::{usize, isize, Addr, ADDR0}
+import core/traits::{@Dup}
+import core/result::{Result}
+import core/option::{Option}
+import std/vec::{Vec}
+import std/error::{IoError}
+import sys/libc::{
+    toka_datafile_open_read,
+    toka_datafile_read_retain,
+    toka_datafile_read_release,
+    toka_datafile_read_size,
+    toka_datafile_open_wal,
+    toka_datafile_open_sibling_temp,
+    toka_datafile_commit_temp,
+    toka_datafile_pread,
+    toka_datafile_pwrite,
+    toka_datafile_sync_data,
+    toka_datafile_sync_all,
+    toka_datafile_truncate,
+    toka_datafile_close,
+    libc_remove
+}
+
+/// ReadAt 成功结果（携带归还的 buffer 所有权）
+pub shape ReadAtResult (
+    buffer: Vec<u8>,
+    bytes_read: usize,
+    eof: bool
+)
+
+impl ReadAtResult {
+    pub fn take_buffer(cede self) -> Vec<u8> {
+        return cede self.buffer
+    }
+}
+
+/// ReadAt 失败错误（原路归还 buffer 所有权）
+pub shape ReadAtError (
+    buffer: Vec<u8>,
+    error: IoError
+)
+
+impl ReadAtError {
+    pub fn take_buffer(cede self) -> Vec<u8> {
+        return cede self.buffer
+    }
+}
+
+/// WriteAt 成功结果
+pub shape WriteAtResult (
+    buffer: Vec<u8>,
+    bytes_written: usize,
+    complete: bool
+)
+
+impl WriteAtResult {
+    pub fn take_buffer(cede self) -> Vec<u8> {
+        return cede self.buffer
+    }
+}
+
+/// WriteAt 失败错误（携带已写进度与归还的 buffer）
+pub shape WriteAtError (
+    buffer: Vec<u8>,
+    bytes_written: usize,
+    error: IoError
+)
+
+impl WriteAtError {
+    pub fn take_buffer(cede self) -> Vec<u8> {
+        return cede self.buffer
+    }
+}
+
+/// =========================================================================
+/// ReadDataFile：SSTable 专用，只读无缓冲文件，支持多线程并发读，无 public close
+/// 采用严格 RAII 资源所有权模型（@Encap drop 自动递减原子引用计数，零暴露内部句柄）
+/// =========================================================================
+
+pub shape ReadDataFile (
+    handle#: Addr
+)
+
+impl ReadDataFile@Send {}
+impl ReadDataFile@Sync {}
+
+impl ReadDataFile@Encap {
+    fn drop(self#) {
+        if self.handle != 0:Addr {
+            unsafe { toka_datafile_read_release(self.handle) }
+            self.handle = 0:Addr
+        }
+    }
+}
+
+impl ReadDataFile {
+    /// 打开只读数据文件（SSTable 场景）
+    pub fn open(path: string) -> Result<ReadDataFile, IoError> {
+        auto path_cstr# = path.clone()
+        auto *path_ptr# = path_cstr.c_str()
+        auto os_err# = 0:i32
+        auto handle = unsafe toka_datafile_open_read(*path_ptr, &os_err as *i32)
+        if handle == 0:Addr {
+            return Result<ReadDataFile, IoError>::Err(
+                IoError::new("open_read", os_err, "failed to open data file for reading")
+            )
+        }
+        return Result<ReadDataFile, IoError>::Ok(ReadDataFile(
+            handle = handle
+        ))
+    }
+
+    /// 显式克隆只读句柄（底层原子引用计数自增，返回拥有独立 RAII 析构能力的只读资源句柄）
+    pub fn clone(self) -> ReadDataFile {
+        if self.handle != 0:Addr {
+            unsafe { toka_datafile_read_retain(self.handle) }
+        }
+        return ReadDataFile(handle = self.handle)
+    }
+
+    /// Returns the exact physical file size using handle-based fstat.
+    pub fn size(self) -> Result<u64, IoError> {
+        if self.handle == 0:Addr {
+            return Result<u64, IoError>::Err(
+                IoError::new("size", 9:i32, "data file is closed or invalid handle")
+            )
+        }
+        auto out_size# = 0:u64
+        auto os_err# = 0:i32
+        auto res = unsafe toka_datafile_read_size(self.handle, &out_size as *u64, &os_err as *i32)
+        if res != 0:i32 {
+            return Result<u64, IoError>::Err(
+                IoError::new("size", os_err, "failed to stat data file handle")
+            )
+        }
+        return Result<u64, IoError>::Ok(out_size)
+    }
+
+    /// 在指定物理偏移量读取最多 max_len 字节（只读 receiver self，支持共享并发调用）
+    pub fn read_at(self, cede buffer#: Vec<u8>, offset: u64, max_len: usize) -> Result<ReadAtResult, ReadAtError> {
+        auto buf# = cede buffer
+        if max_len > buf.cap() {
+            return Result<ReadAtResult, ReadAtError>::Err(ReadAtError(
+                buffer = cede buf,
+                error = IoError::new("read_at", 22:i32, "max_len exceeds buffer capacity")
+            ))
+        }
+
+        if max_len == 0:usize {
+            return Result<ReadAtResult, ReadAtError>::Ok(ReadAtResult(
+                buffer = cede buf,
+                bytes_read = 0:usize,
+                eof = false
+            ))
+        }
+
+        if self.handle == 0:Addr {
+            return Result<ReadAtResult, ReadAtError>::Err(ReadAtError(
+                buffer = cede buf,
+                error = IoError::new("read_at", 9:i32, "file is closed or invalid handle")
+            ))
+        }
+
+        buf#.unsafe_set_len(max_len)
+        auto *ptr# = buf.unsafe_get(0:usize)
+        auto os_err# = 0:i32
+        auto n = unsafe toka_datafile_pread(self.handle, *ptr as *void, max_len, offset, &os_err as *i32)
+        if n < 0:i64 {
+            buf#.unsafe_set_len(0:usize)
+            return Result<ReadAtResult, ReadAtError>::Err(ReadAtError(
+                buffer = cede buf,
+                error = IoError::new("read_at", os_err, "pread failed")
+            ))
+        }
+
+        auto read_count = n as usize
+        buf#.unsafe_set_len(read_count)
+        auto is_eof = (max_len > 0:usize && read_count == 0:usize)
+        return Result<ReadAtResult, ReadAtError>::Ok(ReadAtResult(
+            buffer = cede buf,
+            bytes_read = read_count,
+            eof = is_eof
+        ))
+    }
+}
+
+impl ReadDataFile@Dup {
+    pub fn dup(self) -> Self {
+        return self.clone()
+    }
+}
+
+/// =========================================================================
+/// WalFile：WAL 专用，单写者无缓冲文件，严禁跨线程共享写入
+/// =========================================================================
+
+pub shape WalFile (
+    fd#: i32,
+    opened#: bool
+)
+
+impl WalFile@Send {}
+// 注意：严禁声明 WalFile@Sync，类型系统静态排斥跨线程共享引用
+
+impl WalFile@Encap {
+    fn drop(self#) {
+        if self.opened && self.fd >= 0:i32 {
+            auto os_err# = 0:i32
+            unsafe { toka_datafile_close(self.fd, &os_err as *i32) }
+            self.opened = false
+            self.fd = -1:i32
+        }
+    }
+}
+
+impl WalFile {
+    /// 打开或创建 WAL 文件（O_RDWR | O_CREAT，严禁 O_APPEND）
+    pub fn open(path: string) -> Result<WalFile, IoError> {
+        auto path_cstr# = path.clone()
+        auto *path_ptr# = path_cstr.c_str()
+        auto os_err# = 0:i32
+        auto fd = unsafe toka_datafile_open_wal(*path_ptr, &os_err as *i32)
+        if fd < 0:i32 {
+            return Result<WalFile, IoError>::Err(
+                IoError::new("open_wal", os_err, "failed to open data file for WAL writing")
+            )
+        }
+        return Result<WalFile, IoError>::Ok(WalFile(
+            fd = fd,
+            opened = true
+        ))
+    }
+
+    /// 向指定物理偏移量写入 buffer 内容（允许内核短写）
+    pub fn write_at(self#, cede buffer#: Vec<u8>, offset: u64) -> Result<WriteAtResult, WriteAtError> {
+        auto buf# = cede buffer
+        if !self.opened || self.fd < 0:i32 {
+            return Result<WriteAtResult, WriteAtError>::Err(WriteAtError(
+                buffer = cede buf,
+                bytes_written = 0:usize,
+                error = IoError::new("write_at", 9:i32, "file is closed or invalid fd")
+            ))
+        }
+
+        if buf.len() == 0:usize {
+            return Result<WriteAtResult, WriteAtError>::Ok(WriteAtResult(
+                buffer = cede buf,
+                bytes_written = 0:usize,
+                complete = true
+            ))
+        }
+
+        auto *ptr# = buf.unsafe_get(0:usize)
+        auto os_err# = 0:i32
+        auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, buf.len(), offset, &os_err as *i32)
+        if n < 0:i64 {
+            return Result<WriteAtResult, WriteAtError>::Err(WriteAtError(
+                buffer = cede buf,
+                bytes_written = 0:usize,
+                error = IoError::new("write_at", os_err, "pwrite failed")
+            ))
+        }
+
+        auto written = n as usize
+        auto is_complete = (written == buf.len())
+        return Result<WriteAtResult, WriteAtError>::Ok(WriteAtResult(
+            buffer = cede buf,
+            bytes_written = written,
+            complete = is_complete
+        ))
+    }
+
+    /// 循环写入直到完整写完 buffer，遇错误返回本次调用累计进度与已写字节数
+    pub fn write_all_at(self#, cede buffer#: Vec<u8>, offset: u64) -> Result<WriteAtResult, WriteAtError> {
+        auto buf# = cede buffer
+        if !self.opened || self.fd < 0:i32 {
+            return Result<WriteAtResult, WriteAtError>::Err(WriteAtError(
+                buffer = cede buf,
+                bytes_written = 0:usize,
+                error = IoError::new("write_all_at", 9:i32, "file is closed or invalid fd")
+            ))
+        }
+
+        auto total_len = buf.len()
+        if total_len == 0:usize {
+            return Result<WriteAtResult, WriteAtError>::Ok(WriteAtResult(
+                buffer = cede buf,
+                bytes_written = 0:usize,
+                complete = true
+            ))
+        }
+
+        auto total_written# = 0:usize
+        loop total_written < total_len {
+            auto remaining = total_len - total_written
+            auto *ptr# = buf.unsafe_get(total_written)
+            auto curr_offset = offset + (total_written as u64)
+            auto os_err# = 0:i32
+            auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, remaining, curr_offset, &os_err as *i32)
+            if n < 0:i64 {
+                return Result<WriteAtResult, WriteAtError>::Err(WriteAtError(
+                    buffer = cede buf,
+                    bytes_written = total_written,
+                    error = IoError::new("write_all_at", os_err, "pwrite failed during write_all_at")
+                ))
+            }
+            if n == 0:i64 {
+                return Result<WriteAtResult, WriteAtError>::Err(WriteAtError(
+                    buffer = cede buf,
+                    bytes_written = total_written,
+                    error = IoError::new("write_all_at", 0:i32, "zero bytes written during write_all_at")
+                ))
+            }
+            total_written = total_written + (n as usize)
+        }
+
+        return Result<WriteAtResult, WriteAtError>::Ok(WriteAtResult(
+            buffer = cede buf,
+            bytes_written = total_written,
+            complete = true
+        ))
+    }
+
+    /// 请求 OS 同步数据完整性 (Linux fdatasync / macOS 等价探测)
+    pub fn sync_data(self#) -> Result<(), IoError> {
+        if !self.opened || self.fd < 0:i32 {
+            return Result<(), IoError>::Err(
+                IoError::new("sync_data", 9:i32, "file is closed or invalid fd")
+            )
+        }
+        auto os_err# = 0:i32
+        auto res = unsafe toka_datafile_sync_data(self.fd, &os_err as *i32)
+        if res != 0:i32 {
+            return Result<(), IoError>::Err(
+                IoError::new("sync_data", os_err, "fdatasync failed")
+            )
+        }
+        return Result<(), IoError>::Ok(())
+    }
+
+    /// 请求 OS 同步全部数据与元数据 (fsync)
+    pub fn sync_all(self#) -> Result<(), IoError> {
+        if !self.opened || self.fd < 0:i32 {
+            return Result<(), IoError>::Err(
+                IoError::new("sync_all", 9:i32, "file is closed or invalid fd")
+            )
+        }
+        auto os_err# = 0:i32
+        auto res = unsafe toka_datafile_sync_all(self.fd, &os_err as *i32)
+        if res != 0:i32 {
+            return Result<(), IoError>::Err(
+                IoError::new("sync_all", os_err, "fsync failed")
+            )
+        }
+        return Result<(), IoError>::Ok(())
+    }
+
+    /// 截断文件至指定字节长度（用于 WAL 尾部残缺记录安全截断）
+    pub fn truncate(self#, length: u64) -> Result<(), IoError> {
+        if !self.opened || self.fd < 0:i32 {
+            return Result<(), IoError>::Err(
+                IoError::new("truncate", 9:i32, "file is closed or invalid fd")
+            )
+        }
+        auto os_err# = 0:i32
+        auto res = unsafe toka_datafile_truncate(self.fd, length, &os_err as *i32)
+        if res != 0:i32 {
+            return Result<(), IoError>::Err(
+                IoError::new("truncate", os_err, "ftruncate failed")
+            )
+        }
+        return Result<(), IoError>::Ok(())
+    }
+
+    /// 显式关闭文件（独占接收者 self#）
+    pub fn close(self#) -> Result<(), IoError> {
+        if !self.opened || self.fd < 0:i32 {
+            return Result<(), IoError>::Ok(())
+        }
+        auto os_err# = 0:i32
+        auto res = unsafe toka_datafile_close(self.fd, &os_err as *i32)
+        self.opened = false
+        self.fd = -1:i32
+        if res != 0:i32 {
+            return Result<(), IoError>::Err(
+                IoError::new("close", os_err, "close failed")
+            )
+        }
+        return Result<(), IoError>::Ok(())
+    }
+}
+
+/// =========================================================================
+/// PendingOutputFile: Exclusive output file for crash-durable atomic publishing
+/// =========================================================================
+
+pub const PENDING_STAGE_PRE_RENAME: i32 = 0:i32
+pub const PENDING_STAGE_RENAMED_DIR_SYNC_FAILED: i32 = 1:i32
+pub const PENDING_STAGE_COMMITTED: i32 = 2:i32
+
+pub shape PendingOutputFile (
+    fd#: i32,
+    temp_path#: string,
+    target_path#: string,
+    stage#: i32,
+    opened#: bool
+)
+
+impl PendingOutputFile@Send {}
+// Note: PendingOutputFile is strictly @Send but NOT @Sync (exclusive single-writer owner).
+
+impl PendingOutputFile@Encap {
+    fn drop(self#) {
+        if self.fd >= 0:i32 {
+            auto os_err# = 0:i32
+            unsafe { toka_datafile_close(self.fd, &os_err as *i32) }
+            self.fd = -1:i32
+        }
+        // Temporary file cleanup must NOT depend on self.opened:
+        // Whenever stage == PRE_RENAME (stage 0), the uncommitted temporary sibling must be unlinked.
+        // Once renamed (stage >= 1), the file lives at target_path and MUST NEVER be unlinked on drop.
+        if self.stage == PENDING_STAGE_PRE_RENAME && self.temp_path.len() > 0:usize {
+            auto temp_cstr# = self.temp_path.clone()
+            auto *tp# = temp_cstr.c_str()
+            unsafe { libc_remove(*tp) }
+        }
+        self.opened = false
+    }
+}
+
+impl PendingOutputFile {
+    /// Creates an exclusive temporary file sibling to target_path in the exact same directory.
+    pub fn create_sibling_temp(target_path: string) -> Result<PendingOutputFile, IoError> {
+        auto t_cstr# = target_path.clone()
+        auto *t_ptr# = t_cstr.c_str()
+
+        // Allocate buffer for returned temp path
+        auto temp_buf# = Vec<u8>::with_capacity(1024:usize)
+        temp_buf#.unsafe_set_len(1024:usize)
+        auto *out_ptr# = temp_buf.unsafe_get(0:usize)
+        auto os_err# = 0:i32
+
+        auto fd = unsafe toka_datafile_open_sibling_temp(*t_ptr, *out_ptr as *char, 1024:usize, &os_err as *i32)
+        if fd < 0:i32 {
+            return Result<PendingOutputFile, IoError>::Err(
+                IoError::new("create_sibling_temp", os_err, "failed to create sibling temporary file")
+            )
+        }
+
+        // Measure generated C string length in temp_buf
+        auto actual_len# = 0:usize
+        loop actual_len < 1024:usize {
+            if temp_buf.get(actual_len) == 0:u8 {
+                break
+            }
+            actual_len = actual_len + 1:usize
+        }
+
+        auto temp_str = string::from_raw(*out_ptr, actual_len)
+        return Result<PendingOutputFile, IoError>::Ok(PendingOutputFile(
+            fd = fd,
+            temp_path = cede temp_str,
+            target_path = target_path.clone(),
+            stage = PENDING_STAGE_PRE_RENAME,
+            opened = true
+        ))
+    }
+
+    pub fn temp_path(self) -> string {
+        return self.temp_path.clone()
+    }
+
+    pub fn target_path(self) -> string {
+        return self.target_path.clone()
+    }
+
+    pub fn stage(self) -> i32 {
+        return self.stage
+    }
+
+    pub fn write_at(self#, cede buffer: Vec<u8>, offset: u64) -> Result<WriteAtResult, WriteAtError> {
+        auto buf# = cede buffer
+        auto count = buf.len()
+        if !self.opened || self.fd < 0:i32 || self.stage >= PENDING_STAGE_RENAMED_DIR_SYNC_FAILED {
+            return Result<WriteAtResult, WriteAtError>::Err(WriteAtError(
+                buffer = cede buf,
+                bytes_written = 0:usize,
+                error = IoError::new("write_at", 9:i32, "pending output file is closed or already committed")
+            ))
+        }
+
+        if count == 0:usize {
+            return Result<WriteAtResult, WriteAtError>::Ok(WriteAtResult(
+                buffer = cede buf,
+                bytes_written = 0:usize,
+                complete = true
+            ))
+        }
+
+        auto *ptr# = buf.unsafe_get(0:usize)
+        auto os_err# = 0:i32
+        auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, count, offset, &os_err as *i32)
+        if n < 0:i64 {
+            return Result<WriteAtResult, WriteAtError>::Err(WriteAtError(
+                buffer = cede buf,
+                bytes_written = 0:usize,
+                error = IoError::new("write_at", os_err, "pwrite failed on pending output file")
+            ))
+        }
+
+        auto written = n as usize
+        return Result<WriteAtResult, WriteAtError>::Ok(WriteAtResult(
+            buffer = cede buf,
+            bytes_written = written,
+            complete = (written == count)
+        ))
+    }
+
+    pub fn write_all_at(self#, cede buffer: Vec<u8>, offset: u64) -> Result<WriteAtResult, WriteAtError> {
+        auto buf# = cede buffer
+        auto total_bytes = buf.len()
+        if total_bytes == 0:usize {
+            return Result<WriteAtResult, WriteAtError>::Ok(WriteAtResult(
+                buffer = cede buf,
+                bytes_written = 0:usize,
+                complete = true
+            ))
+        }
+
+        auto curr_offset# = offset
+        auto total_written# = 0:usize
+
+        loop total_written < total_bytes {
+            auto chunk_len = total_bytes - total_written
+            if !self.opened || self.fd < 0:i32 || self.stage >= PENDING_STAGE_RENAMED_DIR_SYNC_FAILED {
+                return Result<WriteAtResult, WriteAtError>::Err(WriteAtError(
+                    buffer = cede buf,
+                    bytes_written = total_written,
+                    error = IoError::new("write_all_at", 9:i32, "pending output file is closed or already committed")
+                ))
+            }
+
+            auto *ptr# = buf.unsafe_get(total_written)
+            auto os_err# = 0:i32
+            auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, chunk_len, curr_offset, &os_err as *i32)
+            if n <= 0:i64 {
+                return Result<WriteAtResult, WriteAtError>::Err(WriteAtError(
+                    buffer = cede buf,
+                    bytes_written = total_written,
+                    error = IoError::new("write_all_at", os_err, "pwrite failed or made zero progress")
+                ))
+            }
+
+            auto written = n as usize
+            total_written = total_written + written
+            curr_offset = curr_offset + (written as u64)
+        }
+
+        return Result<WriteAtResult, WriteAtError>::Ok(WriteAtResult(
+            buffer = cede buf,
+            bytes_written = total_written,
+            complete = true
+        ))
+    }
+
+    pub fn sync_all(self#) -> Result<(), IoError> {
+        if !self.opened || self.fd < 0:i32 || self.stage >= PENDING_STAGE_RENAMED_DIR_SYNC_FAILED {
+            return Result<(), IoError>::Err(
+                IoError::new("sync_all", 9:i32, "pending output file is closed or already committed")
+            )
+        }
+        auto os_err# = 0:i32
+        auto res = unsafe toka_datafile_sync_all(self.fd, &os_err as *i32)
+        if res != 0:i32 {
+            return Result<(), IoError>::Err(
+                IoError::new("sync_all", os_err, "failed to sync pending output file data and metadata")
+            )
+        }
+        return Result<(), IoError>::Ok(())
+    }
+
+    /// Atomically and durably publishes the file: fsync(fd) -> close(fd) -> rename(temp, target) -> fsync(parent_dir).
+    pub fn commit(self#) -> Result<(), IoError> {
+        if !self.opened || self.fd < 0:i32 {
+            return Result<(), IoError>::Err(
+                IoError::new("commit", 9:i32, "pending output file is already closed")
+            )
+        }
+
+        auto temp_cstr# = self.temp_path.clone()
+        auto *temp_ptr# = temp_cstr.c_str()
+        auto target_cstr# = self.target_path.clone()
+        auto *target_ptr# = target_cstr.c_str()
+
+        auto out_stage# = 0:i32
+        auto os_err# = 0:i32
+
+        auto res = unsafe toka_datafile_commit_temp(self.fd, *temp_ptr, *target_ptr, &out_stage as *i32, &os_err as *i32)
+        self.stage = out_stage
+        self.opened = false
+        self.fd = -1:i32
+
+        if res != 0:i32 {
+            if self.stage == PENDING_STAGE_RENAMED_DIR_SYNC_FAILED {
+                return Result<(), IoError>::Err(
+                    IoError::new("commit_uncertain", os_err, "file renamed to target path but parent directory metadata sync failed")
+                )
+            }
+            return Result<(), IoError>::Err(
+                IoError::new("commit", os_err, "failed to atomically commit output file")
+            )
+        }
+
+        return Result<(), IoError>::Ok(())
+    }
+}

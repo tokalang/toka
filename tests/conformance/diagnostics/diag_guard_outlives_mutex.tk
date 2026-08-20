@@ -1,0 +1,17 @@
+// tokakv/tests/diag_guard_outlives_mutex.tk
+// Diagnostic test: Returning a lock guard from a function where Mutex is local must fail with E0455.
+
+import std/sync::{RwMutex, RwReadLock}
+import core/result::{Result}
+import std/error::{Error}
+
+fn escape_guard() -> Result<RwReadLock<i32>, Error> {
+    auto rw = RwMutex<i32>::new(10)
+    // Returning guard tied to local rw must trigger E0455
+    return rw.read_lock()
+}
+
+fn main() -> i32 {
+    auto _ = escape_guard()
+    return 0
+}

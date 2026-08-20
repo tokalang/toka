@@ -1,0 +1,179 @@
+import std/io::{println}
+import std/vec::{Vec}
+import std/fs::{create_temp_file_system}
+import std/env::{set_var}
+import std/data_file::{
+    PendingOutputFile, ReadDataFile,
+    PENDING_STAGE_PRE_RENAME, PENDING_STAGE_RENAMED_DIR_SYNC_FAILED, PENDING_STAGE_COMMITTED
+}
+
+fn test_abort_cleanup() {
+    auto tmp# = create_temp_file_system().unwrap()
+    auto target_path# = tmp.path().clone()
+    target_path#.push_str("_target1.sst")
+
+    auto temp_path# = string::new()
+    {
+        auto pending_res = PendingOutputFile::create_sibling_temp(target_path.clone())
+        assert(pending_res.is_ok(), "create_sibling_temp failed")
+        auto pending# = pending_res.unwrap()
+        temp_path = pending.temp_path()
+        assert(pending.stage() == PENDING_STAGE_PRE_RENAME, "stage must be PRE_RENAME")
+
+        auto buf# = Vec<u8>::new()
+        buf#.push(65:u8)
+        buf#.push(66:u8)
+        auto w_res = pending#.write_all_at(cede buf, 0:u64)
+        assert(w_res.is_ok(), "write_all_at failed")
+        // pending dropped here without calling commit()!
+    }
+
+    // After dropping without commit, the temp file must be unlinked automatically
+    auto check_temp = ReadDataFile::open(temp_path)
+    assert(check_temp.is_err(), "Temp file MUST BE UNLINKED on uncommitted drop")
+
+    auto check_target = ReadDataFile::open(target_path)
+    assert(check_target.is_err(), "Target file must not exist on aborted write")
+
+    tmp#.remove()
+}
+
+fn test_successful_commit_and_size() {
+    auto tmp# = create_temp_file_system().unwrap()
+    auto target_path# = tmp.path().clone()
+    target_path#.push_str("_target2.sst")
+
+    auto temp_path# = string::new()
+    auto pending_res = PendingOutputFile::create_sibling_temp(target_path.clone())
+    assert(pending_res.is_ok(), "create_sibling_temp failed")
+    auto pending# = pending_res.unwrap()
+    temp_path = pending.temp_path()
+
+    auto buf# = Vec<u8>::new()
+    buf#.push(72:u8) // 'H'
+    buf#.push(69:u8) // 'E'
+    buf#.push(76:u8) // 'L'
+    buf#.push(76:u8) // 'L'
+    buf#.push(79:u8) // 'O'
+    auto w_res = pending#.write_all_at(cede buf, 0:u64)
+    assert(w_res.is_ok(), "write_all_at failed")
+
+    auto c_res = pending#.commit()
+    assert(c_res.is_ok(), "commit failed")
+    assert(pending.stage() == PENDING_STAGE_COMMITTED, "stage must be COMMITTED")
+
+    // Temp file should no longer exist (renamed)
+    auto check_temp = ReadDataFile::open(temp_path)
+    assert(check_temp.is_err(), "Temp file must no longer exist after commit")
+
+    // Target file must exist and contain exact 5 bytes
+    auto check_target = ReadDataFile::open(target_path.clone())
+    assert(check_target.is_ok(), "Target file MUST exist after commit")
+    auto reader = check_target.unwrap()
+
+    // Test handle-based fstat size()
+    auto size_res = reader.size()
+    assert(size_res.is_ok(), "reader.size() failed")
+    assert(size_res.unwrap() == 5:u64, "reader.size() must return exact file size 5")
+
+    auto read_buf# = Vec<u8>::with_capacity(5:usize)
+    auto r_res = reader.read_at(cede read_buf, 0:u64, 5:usize)
+    assert(r_res.is_ok(), "read_at on committed target failed")
+    auto out = r_res.unwrap()
+    assert(out.bytes_read == 5:usize, "bytes_read mismatch")
+    auto res_buf = out.take_buffer()
+    assert(res_buf.get(0:usize) == 72:u8, "Byte 0 mismatch")
+    assert(res_buf.get(4:usize) == 79:u8, "Byte 4 mismatch")
+
+    // Test atomic no-replace (target already exists)
+    auto pending_dup_res = PendingOutputFile::create_sibling_temp(target_path.clone())
+    assert(pending_dup_res.is_ok(), "create_sibling_temp 2 failed")
+    auto pending_dup# = pending_dup_res.unwrap()
+    auto b2# = Vec<u8>::new()
+    b2#.push(99:u8)
+    pending_dup#.write_all_at(cede b2, 0:u64)
+    auto c_dup_res = pending_dup#.commit()
+    assert(c_dup_res.is_err(), "Commit over existing target MUST FAIL with atomic no-replace!")
+
+    // Existing target must remain untouched with original 5 bytes
+    auto reader2 = ReadDataFile::open(target_path).unwrap()
+    assert(reader2.size().unwrap() == 5:u64, "Existing target must remain untouched!")
+
+    tmp#.remove()
+}
+
+fn test_dir_sync_failpoint_keeps_renamed_target() {
+    auto tmp# = create_temp_file_system().unwrap()
+    auto target_path# = tmp.path().clone()
+    target_path#.push_str("_target3.sst")
+
+    set_var(string::from("TOKA_FAILPOINT"), string::from("forced_parent_dir_sync_error"))
+
+    {
+        auto pending_res = PendingOutputFile::create_sibling_temp(target_path.clone())
+        assert(pending_res.is_ok(), "create_sibling_temp failed")
+        auto pending# = pending_res.unwrap()
+
+        auto buf# = Vec<u8>::new()
+        buf#.push(88:u8)
+        pending#.write_all_at(cede buf, 0:u64)
+
+        auto c_res = pending#.commit()
+        assert(c_res.is_err(), "commit must return error when dir sync fails")
+        auto err = c_res.unwrap_err()
+        assert(err.operation().as_str().equals("commit_uncertain"), "Error must be commit_uncertain")
+        assert(pending.stage() == PENDING_STAGE_RENAMED_DIR_SYNC_FAILED, "Stage must be RENAMED_DIR_SYNC_FAILED")
+        // pending dropped here! Drop must NOT delete target_path!
+    }
+
+    set_var(string::from("TOKA_FAILPOINT"), string::from(""))
+
+    // Target file MUST STILL EXIST because rename already succeeded!
+    auto check_target = ReadDataFile::open(target_path)
+    assert(check_target.is_ok(), "Target file MUST NOT be unlinked on drop after rename!")
+
+    tmp#.remove()
+}
+
+fn test_pre_rename_failure_unlinks_temp() {
+    auto tmp# = create_temp_file_system().unwrap()
+    auto target_path# = tmp.path().clone()
+    target_path#.push_str("_target4.sst")
+
+    // 1. Create existing target
+    auto p1# = PendingOutputFile::create_sibling_temp(target_path.clone()).unwrap()
+    auto b1# = Vec<u8>::new()
+    b1#.push(1:u8)
+    p1#.write_all_at(cede b1, 0:u64).unwrap()
+    p1#.commit().unwrap()
+
+    // 2. Second pending output file tries to commit over existing target
+    auto temp2_path# = string::new()
+    {
+        auto p2# = PendingOutputFile::create_sibling_temp(target_path.clone()).unwrap()
+        temp2_path = p2.temp_path()
+        auto b2# = Vec<u8>::new()
+        b2#.push(2:u8)
+        p2#.write_all_at(cede b2, 0:u64).unwrap()
+
+        auto c_res = p2#.commit()
+        assert(c_res.is_err(), "Commit MUST fail because target exists")
+        assert(p2.stage() == PENDING_STAGE_PRE_RENAME, "Stage must remain PRE_RENAME")
+        // p2 is dropped here after failed commit!
+    }
+
+    // 3. Verify that p2's temporary file was unlinked on drop despite failed commit()
+    auto check_temp = ReadDataFile::open(temp2_path)
+    assert(check_temp.is_err(), "Temp file MUST BE UNLINKED on drop after pre-rename commit failure")
+
+    tmp#.remove()
+}
+
+fn main() -> i32 {
+    test_abort_cleanup()
+    test_successful_commit_and_size()
+    test_dir_sync_failpoint_keeps_renamed_target()
+    test_pre_rename_failure_unlinks_temp()
+    println("[Conformance] PendingOutputFile Tests PASSED!")
+    return 0
+}

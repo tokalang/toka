@@ -8,7 +8,9 @@ import sys/libc::{
     libc_pthread_rwlock_init, libc_pthread_rwlock_destroy, 
     libc_pthread_rwlock_rdlock, libc_pthread_rwlock_wrlock, libc_pthread_rwlock_unlock,
     libc_pthread_cond_init, libc_pthread_cond_destroy, 
-    libc_pthread_cond_wait, libc_pthread_cond_signal, libc_pthread_cond_broadcast
+    libc_pthread_cond_wait, libc_pthread_cond_signal, libc_pthread_cond_broadcast,
+    toka_atomic_fetch_add_i32, toka_atomic_fetch_sub_i32,
+    toka_atomic_load_i32, toka_atomic_store_i32
 }
 
 // -----------------------------------------------------------------------------
@@ -17,8 +19,7 @@ import sys/libc::{
 
 pub fn sys_mutex_create() -> Addr {
     unsafe {
-        auto *handle_ptr# = (libc_malloc(64 as usize) as *byte)
-        auto handle_addr = (*handle_ptr) as Addr
+        auto handle_addr = libc_malloc(64 as usize) as Addr
         libc_pthread_mutex_init(handle_addr, 0:Addr)
         return handle_addr
     }
@@ -47,8 +48,7 @@ pub fn sys_mutex_destroy(handle: Addr) {
 
 pub fn sys_rwlock_create() -> Addr {
     unsafe {
-        auto *handle_ptr# = (libc_malloc(256 as usize) as *byte)
-        auto handle_addr = (*handle_ptr) as Addr
+        auto handle_addr = libc_malloc(256 as usize) as Addr
         libc_pthread_rwlock_init(handle_addr, 0:Addr)
         return handle_addr
     }
@@ -81,8 +81,7 @@ pub fn sys_rwlock_destroy(handle: Addr) {
 
 pub fn sys_cond_create() -> Addr {
     unsafe {
-        auto *handle_ptr# = (libc_malloc(64 as usize) as *byte)
-        auto handle_addr = (*handle_ptr) as Addr
+        auto handle_addr = libc_malloc(64 as usize) as Addr
         libc_pthread_cond_init(handle_addr, 0:Addr)
         return handle_addr
     }
@@ -107,6 +106,51 @@ pub fn sys_cond_destroy(handle: Addr) {
         unsafe {
             libc_pthread_cond_destroy(handle)
             libc_free(handle as *void)
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Atomic RefCount
+// -----------------------------------------------------------------------------
+
+pub fn sys_atomic_init_i32(val: i32) -> Addr {
+    unsafe {
+        auto ptr = libc_malloc(4 as usize) as Addr
+        auto *i_ptr# = (ptr as *i32#)
+        i_ptr = val
+        return ptr
+    }
+}
+
+pub fn sys_atomic_fetch_add_i32(ptr: Addr, val: i32) -> i32 {
+    unsafe {
+        return toka_atomic_fetch_add_i32(ptr, val)
+    }
+}
+
+pub fn sys_atomic_fetch_sub_i32(ptr: Addr, val: i32) -> i32 {
+    unsafe {
+        return toka_atomic_fetch_sub_i32(ptr, val)
+    }
+}
+
+pub fn sys_atomic_load_i32(ptr: Addr) -> i32 {
+    unsafe {
+        return toka_atomic_load_i32(ptr)
+    }
+}
+
+pub fn sys_atomic_store_i32(ptr: Addr, val: i32) {
+    unsafe {
+        toka_atomic_store_i32(ptr, val)
+    }
+}
+
+pub fn sys_atomic_destroy_i32(ptr: Addr) {
+    if ptr != 0:Addr {
+        unsafe {
+            libc_free(ptr as *void)
         }
     }
 }

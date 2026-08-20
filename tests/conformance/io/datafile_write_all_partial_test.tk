@@ -1,0 +1,74 @@
+import std/io::{println}
+import std/data_file::{ReadDataFile, WalFile}
+import std/vec::{Vec}
+import std/fs::{create_temp_file_system}
+import sys/libc::{toka_test_set_failpoint}
+
+fn main() -> i32 {
+    auto tmp_res = create_temp_file_system()
+    assert(tmp_res.is_ok(), "create_temp_file_system failed")
+    auto tmp# = tmp_res.unwrap()
+    auto path = tmp.path().clone()
+
+    auto wal_res = WalFile::open(path.clone())
+    assert(wal_res.is_ok(), "WalFile::open failed")
+    auto wal# = wal_res.unwrap()
+
+    // 1. Test forced_short_pwrite: write_all_at must loop and write all 64 bytes despite short pwrite
+    unsafe { toka_test_set_failpoint(c"forced_short_pwrite", 1:i32) }
+
+    auto data_buf# = Vec<u8>::with_capacity(64:usize)
+    auto i# = 0:usize
+    loop i < 64:usize {
+        data_buf#.push((i + 10) as u8)
+        i = i + 1:usize
+    }
+
+    auto res = wal#.write_all_at(cede data_buf, 0:u64)
+    assert(res.is_ok(), "write_all_at must handle short pwrites")
+    auto out = res.unwrap()
+    assert(out.complete, "Must be complete")
+    assert(out.bytes_written == 64:usize, "Must have written all 64 bytes through short pwrite loop")
+    auto ret_buf# = out.take_buffer()
+    assert(ret_buf.len() == 64:usize, "Buffer len preserved")
+
+    // Clear failpoint
+    unsafe { toka_test_set_failpoint(c"", 0:i32) }
+
+    // 2. Test forced_pwrite_error: write_all_at fails on first write and returns 0 bytes written + returned buffer
+    unsafe { toka_test_set_failpoint(c"forced_pwrite_error", 1:i32) }
+
+    auto err_res = wal#.write_all_at(cede ret_buf, 64:u64)
+    assert(err_res.is_err(), "Forced pwrite error must fail")
+    auto err_out = err_res.unwrap_err()
+    assert(err_out.bytes_written == 0:usize, "0 bytes written on injected write error")
+    assert(err_out.error.os_code == 5:i32, "OS error must be EIO (5)")
+    auto buf_recovered# = err_out.take_buffer()
+    assert(buf_recovered.len() == 64:usize, "Buffer recovered from pwrite error")
+
+    // Clear failpoint
+    unsafe { toka_test_set_failpoint(c"", 0:i32) }
+
+    // 3. Test forced_sync_error: sync_data and sync_all must return Err with EIO
+    unsafe { toka_test_set_failpoint(c"forced_sync_error", 1:i32) }
+
+    auto sync_d_res = wal#.sync_data()
+    assert(sync_d_res.is_err(), "sync_data must fail under forced_sync_error")
+    assert(sync_d_res.unwrap_err().os_code == 5:i32, "sync_data error code must be EIO")
+
+    auto sync_a_res = wal#.sync_all()
+    assert(sync_a_res.is_err(), "sync_all must fail under forced_sync_error")
+    assert(sync_a_res.unwrap_err().os_code == 5:i32, "sync_all error code must be EIO")
+
+    // Clear failpoint
+    unsafe { toka_test_set_failpoint(c"", 0:i32) }
+
+    // 4. Verify clean sync succeeds after clearing failpoint
+    assert(wal#.sync_data().is_ok(), "Clean sync_data must succeed")
+    assert(wal#.sync_all().is_ok(), "Clean sync_all must succeed")
+
+    wal#.close()
+    tmp#.remove()
+    println("[Conformance] DataFile Partial/Short Write and Sync Error Invariants PASSED!")
+    return 0
+}

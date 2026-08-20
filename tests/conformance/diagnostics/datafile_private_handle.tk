@@ -1,0 +1,11 @@
+import std/data_file::{ReadDataFile}
+
+fn main() -> i32 {
+    auto path = string::from("test")
+    auto r_res = ReadDataFile::open(path)
+    if r_res.is_ok() {
+        auto r = r_res.unwrap()
+        auto h = r.handle
+    }
+    return 0
+}

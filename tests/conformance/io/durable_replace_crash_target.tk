@@ -1,0 +1,29 @@
+import std/io::{println}
+import std/fs::{atomic_write_durable}
+import std/env as env
+import core/str::{bytes}
+
+fn main() -> i32 {
+    auto path_opt = env::var(string::from("TOKA_CRASH_TARGET_PATH"))
+    if path_opt.is_none() {
+        println("Missing TOKA_CRASH_TARGET_PATH")
+        return 1
+    }
+    auto target_path = path_opt.unwrap()
+
+    auto content_opt = env::var(string::from("TOKA_CRASH_CONTENT"))
+    if content_opt.is_none() {
+        println("Missing TOKA_CRASH_CONTENT")
+        return 1
+    }
+    auto content = content_opt.unwrap()
+
+    auto b = content.as_bytes()
+    auto res = atomic_write_durable(target_path, b)
+    if res.is_err() {
+        println("atomic_write_durable error")
+        return 2
+    }
+    println("SUCCESS")
+    return 0
+}

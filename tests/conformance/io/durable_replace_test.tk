@@ -1,0 +1,24 @@
+import std/io::{println}
+import std/fs::{atomic_write_durable, sync_directory, create_temp_file_system}
+import core/str::{bytes}
+
+fn main() -> i32 {
+    auto tmp_res = create_temp_file_system()
+    assert(tmp_res.is_ok(), "create_temp_file_system failed")
+    auto tmp# = tmp_res.unwrap()
+    auto path = tmp.path().clone()
+
+    auto content_v1 = "MANIFEST_VERSION_0001"
+    auto b1 = content_v1.as_bytes()
+    auto write_res1 = atomic_write_durable(path.clone(), b1)
+    assert(write_res1.is_ok(), "atomic_write_durable v1 failed")
+
+    auto content_v2 = "MANIFEST_VERSION_0002_DURABLE_UPGRADE"
+    auto b2 = content_v2.as_bytes()
+    auto write_res2 = atomic_write_durable(path.clone(), b2)
+    assert(write_res2.is_ok(), "atomic_write_durable v2 failed")
+
+    tmp#.remove()
+    println("[Conformance] Atomic Write Durable PASSED!")
+    return 0
+}

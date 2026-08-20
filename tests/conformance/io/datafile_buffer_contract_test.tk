@@ -1,0 +1,85 @@
+import std/io::{println}
+import std/data_file::{ReadDataFile, WalFile}
+import std/vec::{Vec}
+import std/fs::{create_temp_file_system}
+
+fn main() -> i32 {
+    auto tmp_res = create_temp_file_system()
+    assert(tmp_res.is_ok(), "create_temp_file_system failed")
+    auto tmp# = tmp_res.unwrap()
+    auto path = tmp.path().clone()
+
+    // 1. Write initial payload via WalFile
+    auto wal_res = WalFile::open(path.clone())
+    assert(wal_res.is_ok(), "WalFile::open failed")
+    auto wal# = wal_res.unwrap()
+
+    auto test_data = "0123456789ABCDEF"
+    auto write_buf# = Vec<u8>::with_capacity(16:usize)
+    auto i# = 0:usize
+    loop i < 16:usize {
+        write_buf#.push(test_data.at(i).unwrap() as u8)
+        i = i + 1:usize
+    }
+
+    auto write_res = wal#.write_all_at(cede write_buf, 0:u64)
+    assert(write_res.is_ok(), "write_all_at failed")
+    auto write_out = write_res.unwrap()
+    assert(write_out.complete, "WAL write_all_at must complete")
+    assert(write_out.bytes_written == 16:usize, "WAL write_all_at must write exactly 16 bytes")
+
+    auto sync_res = wal#.sync_data()
+    assert(sync_res.is_ok(), "sync_data failed")
+
+    auto close_res = wal#.close()
+    assert(close_res.is_ok(), "close failed")
+
+    // 2. Open ReadDataFile (immutable reader) and test buffer contracts
+    auto reader_res = ReadDataFile::open(path.clone())
+    assert(reader_res.is_ok(), "ReadDataFile::open failed")
+    auto reader = reader_res.unwrap()
+
+    // Contract 1: max_len > buffer.cap() must immediately return Err and return buffer
+    auto small_buf# = Vec<u8>::with_capacity(4:usize)
+    auto err_res = reader.read_at(cede small_buf, 0:u64, 10:usize)
+    assert(err_res.is_err(), "max_len > cap must return Err")
+    auto err_out = err_res.unwrap_err()
+    auto returned_buf = err_out.take_buffer()
+    assert(returned_buf.cap() == 4:usize, "Capacity must be preserved on error")
+    assert(returned_buf.len() == 0:usize, "Length must be 0 on capacity error")
+
+    // Contract 2: max_len == 0 must return Ok with bytes_read = 0 and eof = false
+    auto zero_buf# = Vec<u8>::with_capacity(8:usize)
+    auto zero_res = reader.read_at(cede zero_buf, 0:u64, 0:usize)
+    assert(zero_res.is_ok(), "max_len == 0 must succeed")
+    auto zero_out = zero_res.unwrap()
+    assert(zero_out.bytes_read == 0:usize, "max_len == 0 must return 0 bytes")
+    assert(!zero_out.eof, "max_len == 0 must not set eof = true")
+
+    // Contract 3: Normal read at offset 4 of length 4
+    auto normal_buf# = Vec<u8>::with_capacity(16:usize)
+    auto read_res = reader.read_at(cede normal_buf, 4:u64, 4:usize)
+    assert(read_res.is_ok(), "normal read must succeed")
+    auto read_out = read_res.unwrap()
+    assert(read_out.bytes_read == 4:usize, "bytes_read must be 4")
+    assert(!read_out.eof, "eof must be false for middle read")
+    auto res_buf = read_out.take_buffer()
+    assert(res_buf.len() == 4:usize, "Buffer length must be updated to 4")
+    assert(res_buf.get(0:usize) == '4' as u8, "Byte 0 mismatch")
+    assert(res_buf.get(1:usize) == '5' as u8, "Byte 1 mismatch")
+    assert(res_buf.get(2:usize) == '6' as u8, "Byte 2 mismatch")
+    assert(res_buf.get(3:usize) == '7' as u8, "Byte 3 mismatch")
+
+    // Contract 4: Read at EOF (offset 16) with max_len > 0 must set eof = true
+    auto eof_buf# = Vec<u8>::with_capacity(16:usize)
+    auto eof_res = reader.read_at(cede eof_buf, 16:u64, 8:usize)
+    assert(eof_res.is_ok(), "eof read must succeed")
+    auto eof_out = eof_res.unwrap()
+    assert(eof_out.bytes_read == 0:usize, "EOF bytes_read must be 0")
+    assert(eof_out.eof, "EOF must be true when read past file end")
+
+    // reader drops automatically here
+    tmp#.remove()
+    println("[Conformance] DataFile Buffer Contract PASSED!")
+    return 0
+}

@@ -1,0 +1,103 @@
+import std/io::{println}
+import std/data_file::{ReadDataFile, WalFile}
+import std/vec::{Vec}
+import std/fs::{create_temp_file_system}
+
+fn main() -> i32 {
+    auto tmp_res = create_temp_file_system()
+    assert(tmp_res.is_ok(), "create_temp_file_system failed")
+    auto tmp# = tmp_res.unwrap()
+    auto path = tmp.path().clone()
+
+    auto wal_res = WalFile::open(path.clone())
+    assert(wal_res.is_ok(), "WalFile::open failed")
+    auto wal# = wal_res.unwrap()
+
+    // 1. Test WalFile single-buffer recycling across 50 append iterations
+    auto write_buf# = Vec<u8>::with_capacity(256:usize)
+    auto cap_initial = write_buf.cap()
+
+    auto i# = 0:usize
+    loop i < 50:usize {
+        write_buf#.clear()
+        auto j# = 0:usize
+        loop j < 64:usize {
+            write_buf#.push(((i + j) % 256:usize) as u8)
+            j = j + 1:usize
+        }
+        auto curr_offset = (i * 64:usize) as u64
+        auto write_res = wal#.write_all_at(cede write_buf, curr_offset)
+        assert(write_res.is_ok(), "write_all_at loop failed")
+        auto out = write_res.unwrap()
+        assert(out.complete, "write must be complete")
+        assert(out.bytes_written == 64:usize, "bytes_written must be 64")
+        write_buf = out.take_buffer()
+        assert(write_buf.cap() == cap_initial, "Buffer capacity must remain stable across reuse")
+        i = i + 1:usize
+    }
+
+    wal#.sync_all()
+
+    // 2. Test ReadDataFile single-buffer recycling across 50 read iterations (immutable reader)
+    auto reader_res = ReadDataFile::open(path.clone())
+    assert(reader_res.is_ok(), "ReadDataFile::open failed")
+    auto reader = reader_res.unwrap()
+
+    auto read_buf# = Vec<u8>::with_capacity(512:usize)
+    auto read_cap_initial = read_buf.cap()
+
+    auto r_iter# = 0:usize
+    loop r_iter < 50:usize {
+        auto offset = (r_iter * 64:usize) as u64
+        auto read_res = reader.read_at(cede read_buf, offset, 64:usize)
+        assert(read_res.is_ok(), "read_at loop failed")
+        auto out = read_res.unwrap()
+        assert(out.bytes_read == 64:usize, "bytes_read mismatch")
+        assert(!out.eof, "eof should be false")
+        read_buf = out.take_buffer()
+        assert(read_buf.cap() == read_cap_initial, "Read buffer capacity must remain stable")
+        assert(read_buf.len() == 64:usize, "Read buffer length must be updated to 64")
+        auto k# = 0:usize
+        loop k < 64:usize {
+            auto expected = ((r_iter + k) % 256:usize) as u8
+            assert(read_buf.get(k) == expected, "Content verification failed in read loop")
+            k = k + 1:usize
+        }
+        r_iter = r_iter + 1:usize
+    }
+
+    // 3. Test Error Path: Capacity overflow returns original buffer
+    auto small_buf# = Vec<u8>::with_capacity(32:usize)
+    auto small_cap = small_buf.cap()
+    auto err_res = reader.read_at(cede small_buf, 0:u64, 100:usize)
+    assert(err_res.is_err(), "Capacity overflow read must error")
+    auto err_out = err_res.unwrap_err()
+    auto returned = err_out.take_buffer()
+    assert(returned.cap() == small_cap, "Capacity must be preserved on error return")
+    assert(returned.len() == 0:usize, "Length must be reset to 0 on capacity error return")
+
+    // 4. Test Error Path: Closed WalFile write_at returns buffer
+    wal#.close()
+    auto fail_buf# = Vec<u8>::with_capacity(64:usize)
+    auto fail_cap = fail_buf.cap()
+    fail_buf#.push(42:u8)
+    auto closed_write_res = wal#.write_at(cede fail_buf, 0:u64)
+    assert(closed_write_res.is_err(), "Write to closed file must error")
+    auto closed_err = closed_write_res.unwrap_err()
+    assert(closed_err.bytes_written == 0:usize, "Zero bytes written on closed file")
+    auto returned_fail_buf# = closed_err.take_buffer()
+    assert(returned_fail_buf.cap() == fail_cap, "Buffer capacity preserved after write error")
+    assert(returned_fail_buf.len() == 1:usize, "Buffer length preserved after write error")
+
+    // 5. Test Error Path: Closed WalFile write_all_at returns buffer
+    auto closed_all_res = wal#.write_all_at(cede returned_fail_buf, 0:u64)
+    assert(closed_all_res.is_err(), "write_all_at to closed file must error")
+    auto closed_all_err = closed_all_res.unwrap_err()
+    assert(closed_all_err.bytes_written == 0:usize, "Zero bytes written on closed file in write_all_at")
+    auto returned_all_buf = closed_all_err.take_buffer()
+    assert(returned_all_buf.cap() == fail_cap, "Buffer capacity preserved after write_all_at error")
+
+    tmp#.remove()
+    println("[Conformance] DataFile Owner-Carrying Buffer Return & Error Paths PASSED!")
+    return 0
+}

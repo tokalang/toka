@@ -2399,6 +2399,131 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "An explicitly ceded aggregate field projection has one cleanup owner"
+    },
+    {
+      "id": "io_datafile_buffer_contract_01",
+      "path": "io/datafile_buffer_contract_test.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "DataFile buffer capacity contract, EOF, and positional semantics"
+    },
+    {
+      "id": "io_datafile_concurrency_01",
+      "path": "io/datafile_concurrency_test.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 15,
+      "description": "ReadDataFile Send+Sync concurrent multi-threaded reads with zero collisions"
+    },
+    {
+      "id": "io_datafile_owner_return_01",
+      "path": "io/datafile_owner_return_test.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "DataFile buffer recycling and owner-carrying return on success/error"
+    },
+    {
+      "id": "io_durable_replace_01",
+      "path": "io/durable_replace_test.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Atomic durable file replace and directory sync"
+    },
+    {
+      "id": "io_datafile_write_all_partial_01",
+      "path": "io/datafile_write_all_partial_test.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "WalFile short pwrite looping, partial write progress reporting, and sync error invariants"
+    },
+    {
+      "id": "io_datafile_shared_view_01",
+      "path": "io/datafile_shared_view_test.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "ReadDataFile read-only receiver (self) shared reads across functions"
+    },
+    {
+      "id": "diag_datafile_private_handle_01",
+      "path": "diagnostics/datafile_private_handle.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0418",
+      "expected_span_line": 8,
+      "timeout_seconds": 10,
+      "description": "ReadDataFile handle field is private and cannot be accessed externally"
+    },
+    {
+      "id": "diag_datafile_private_wal_fd_01",
+      "path": "diagnostics/datafile_private_wal_fd.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0418",
+      "expected_span_line": 8,
+      "timeout_seconds": 10,
+      "description": "WalFile fd field is private and cannot be accessed externally"
+    },
+    {
+      "id": "io_datafile_truncate_01",
+      "path": "io/datafile_truncate_test.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "WalFile::truncate physical truncation of file"
+    },
+    {
+      "id": "io_pending_output_file_01",
+      "path": "io/pending_output_file_test.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "PendingOutputFile atomic durable commit pipeline and drop unlinking"
+    },
+    {
+      "id": "std_rwmutex_conformance_01",
+      "path": "std/rwmutex_conformance_01.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "RwMutex shared readers, exclusive writers, guard drops, and cross-thread sync"
+    },
+    {
+      "id": "std_rwmutex_resource_drop_conformance_01",
+      "path": "std/rwmutex_resource_drop_conformance.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Mutex and RwMutex generic resource drop, lifetime borrow bounds, and cross-thread sync"
+    },
+    {
+      "id": "diag_guard_not_send_01",
+      "path": "diagnostics/diag_guard_not_send.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0477",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "Lock guards do not implement @Send or @Sync and cannot be captured into thread closures"
+    },
+    {
+      "id": "diag_guard_outlives_mutex_01",
+      "path": "diagnostics/diag_guard_outlives_mutex.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0455",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "Returning a lock guard from a function where Mutex is local must fail"
+    },
+    {
+      "id": "diag_borrow_outlives_guard_01",
+      "path": "diagnostics/diag_borrow_outlives_guard.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0455",
+      "expected_span_line": 10,
+      "timeout_seconds": 10,
+      "description": "Returning a borrow originating from a local lock guard must fail"
     }
   ]
 }

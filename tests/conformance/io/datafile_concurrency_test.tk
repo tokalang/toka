@@ -1,0 +1,138 @@
+import std/io::{println}
+import std/data_file::{ReadDataFile, WalFile}
+import std/vec::{Vec}
+import std/fs::{create_temp_file_system}
+import std/thread::{thread_spawn, JoinHandle}
+
+fn main() -> i32 {
+    auto tmp_res = create_temp_file_system()
+    assert(tmp_res.is_ok(), "create_temp_file_system failed")
+    auto tmp# = tmp_res.unwrap()
+    auto path = tmp.path().clone()
+
+    // 1. Prepare 64KB test file with deterministic pattern: byte(i) = (i * 31 + 7) % 256
+    auto wal_res = WalFile::open(path.clone())
+    assert(wal_res.is_ok(), "WalFile::open failed")
+    auto wal# = wal_res.unwrap()
+
+    auto total_bytes = 65536:usize
+    auto write_buf# = Vec<u8>::with_capacity(total_bytes)
+    auto i# = 0:usize
+    loop i < total_bytes {
+        auto val = ((i * 31:usize + 7:usize) % 256:usize) as u8
+        write_buf#.push(val)
+        i = i + 1:usize
+    }
+
+    auto write_res = wal#.write_all_at(cede write_buf, 0:u64)
+    assert(write_res.is_ok(), "write_all_at failed")
+    assert(write_res.unwrap().bytes_written == total_bytes, "Must write all 64KB")
+
+    wal#.sync_all()
+    wal#.close()
+
+    // 2. Open ReadDataFile (Owned RAII resource)
+    auto reader_res = ReadDataFile::open(path.clone())
+    assert(reader_res.is_ok(), "ReadDataFile::open failed")
+    auto reader = reader_res.unwrap()
+
+    // 3. Clone distinct RAII resource handles for each worker thread (zero manual retain/release)
+    auto r1 = reader.clone()
+    auto r2 = reader.clone()
+    auto r3 = reader.clone()
+    auto r4 = reader.clone()
+
+    // 4. Spawn 4 worker threads performing concurrent random-offset reads using read-only receiver (self)
+    auto t1# = thread_spawn<i32>(cede { [cede r1] =>
+        auto buf# = Vec<u8>::with_capacity(128:usize)
+        auto iter# = 0:usize
+        loop iter < 50:usize {
+            auto offset = (iter * 1024:usize) as u64
+            auto read_res = r1.read_at(cede buf, offset, 128:usize)
+            assert(read_res.is_ok(), "Thread 1 read_at failed")
+            auto out = read_res.unwrap()
+            assert(out.bytes_read == 128:usize, "Thread 1 read size mismatch")
+            buf = out.take_buffer()
+            auto k# = 0:usize
+            loop k < 128:usize {
+                auto expected = (((offset as usize + k) * 31:usize + 7:usize) % 256:usize) as u8
+                assert(buf.get(k) == expected, "Thread 1 byte mismatch")
+                k = k + 1:usize
+            }
+            iter = iter + 1:usize
+        }
+        return 0
+    })
+
+    auto t2# = thread_spawn<i32>(cede { [cede r2] =>
+        auto buf# = Vec<u8>::with_capacity(256:usize)
+        auto iter# = 0:usize
+        loop iter < 50:usize {
+            auto offset = (iter * 512:usize + 128:usize) as u64
+            auto read_res = r2.read_at(cede buf, offset, 256:usize)
+            assert(read_res.is_ok(), "Thread 2 read_at failed")
+            auto out = read_res.unwrap()
+            assert(out.bytes_read == 256:usize, "Thread 2 read size mismatch")
+            buf = out.take_buffer()
+            auto k# = 0:usize
+            loop k < 256:usize {
+                auto expected = (((offset as usize + k) * 31:usize + 7:usize) % 256:usize) as u8
+                assert(buf.get(k) == expected, "Thread 2 byte mismatch")
+                k = k + 1:usize
+            }
+            iter = iter + 1:usize
+        }
+        return 0
+    })
+
+    auto t3# = thread_spawn<i32>(cede { [cede r3] =>
+        auto buf# = Vec<u8>::with_capacity(64:usize)
+        auto iter# = 0:usize
+        loop iter < 50:usize {
+            auto offset = (iter * 256:usize + 64:usize) as u64
+            auto read_res = r3.read_at(cede buf, offset, 64:usize)
+            assert(read_res.is_ok(), "Thread 3 read_at failed")
+            auto out = read_res.unwrap()
+            assert(out.bytes_read == 64:usize, "Thread 3 read size mismatch")
+            buf = out.take_buffer()
+            auto k# = 0:usize
+            loop k < 64:usize {
+                auto expected = (((offset as usize + k) * 31:usize + 7:usize) % 256:usize) as u8
+                assert(buf.get(k) == expected, "Thread 3 byte mismatch")
+                k = k + 1:usize
+            }
+            iter = iter + 1:usize
+        }
+        return 0
+    })
+
+    auto t4# = thread_spawn<i32>(cede { [cede r4] =>
+        auto buf# = Vec<u8>::with_capacity(512:usize)
+        auto iter# = 0:usize
+        loop iter < 50:usize {
+            auto offset = (iter * 1024:usize + 32:usize) as u64
+            auto read_res = r4.read_at(cede buf, offset, 512:usize)
+            assert(read_res.is_ok(), "Thread 4 read_at failed")
+            auto out = read_res.unwrap()
+            assert(out.bytes_read == 512:usize, "Thread 4 read size mismatch")
+            buf = out.take_buffer()
+            auto k# = 0:usize
+            loop k < 512:usize {
+                auto expected = (((offset as usize + k) * 31:usize + 7:usize) % 256:usize) as u8
+                assert(buf.get(k) == expected, "Thread 4 byte mismatch")
+                k = k + 1:usize
+            }
+            iter = iter + 1:usize
+        }
+        return 0
+    })
+
+    assert(t1#.join().unwrap() == 0, "Thread 1 joined with failure")
+    assert(t2#.join().unwrap() == 0, "Thread 2 joined with failure")
+    assert(t3#.join().unwrap() == 0, "Thread 3 joined with failure")
+    assert(t4#.join().unwrap() == 0, "Thread 4 joined with failure")
+
+    tmp#.remove()
+    println("[Conformance] DataFile Concurrency (Send + Sync RAII Shared Read) PASSED!")
+    return 0
+}

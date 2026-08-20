@@ -172,6 +172,7 @@ def rebuild_runtime(clang, clangxx, sysroot, cxxflags):
     openssl_cflags, _ = get_openssl_flags()
     if openssl_cflags:
         cmd_rt.extend(openssl_cflags.split())
+    cmd_rt.append("-DTOKA_TESTING=1")
     cmd_rt.extend(["-c", "lib/sys/toka_rt.c", "-o", "lib/sys/toka_rt.o"])
     
     rt_res = subprocess.run(cmd_rt, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

@@ -18,6 +18,7 @@ import sys/libc::*
 import sys/os/base as sys
 import core/result::{Result}
 import std/error::{IoError}
+pub import std/data_file::{ReadDataFile, WalFile, ReadAtResult, ReadAtError, WriteAtResult, WriteAtError}
 
 // Intrinsic (Legacy backup)
 extern fn print_legacy(fmt: str, ...) -> void

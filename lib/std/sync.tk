@@ -1,53 +1,68 @@
+// Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 
-import sys/sync::{sys_mutex_create, sys_mutex_lock, sys_mutex_unlock, sys_mutex_destroy, sys_rwlock_create, sys_rwlock_rdlock, sys_rwlock_wrlock, sys_rwlock_unlock, sys_rwlock_destroy, sys_cond_create, sys_cond_wait, sys_cond_signal, sys_cond_broadcast, sys_cond_destroy}
+import sys/sync::{
+    sys_mutex_create, sys_mutex_lock, sys_mutex_unlock, sys_mutex_destroy,
+    sys_rwlock_create, sys_rwlock_rdlock, sys_rwlock_wrlock, sys_rwlock_unlock, sys_rwlock_destroy,
+    sys_cond_create, sys_cond_wait, sys_cond_signal, sys_cond_broadcast, sys_cond_destroy
+}
+import sys/thread::{sys_alloc_thread_env, sys_free_thread_env}
 import core/result::{Result}
+import core/option::{Option}
 import std/error::{Error}
 
 /// A mutual exclusion primitive useful for protecting shared data
 pub shape Mutex<'T: @Send>(
     handle#: Addr,
-    'data#: T
+    data_ptr#: Addr
 )
 
 impl<'T: @Send> Mutex<'T>@Sync {}
 impl<'T: @Send> Mutex<'T>@Send {}
 
 impl<'T: @Send> Mutex<'T> {
-    pub fn get_handle(self#) -> Addr {
+    pub fn get_handle(self) -> Addr {
         return self.handle
     }
     
-    pub fn get_raw_addr(self#) -> Addr {
-        unsafe {
-            auto *mut_ptr = ((*self) as *Mutex<'T>)
-            return *mut_ptr as Addr
-        }
-    }
-    
     pub fn new(data: cede 'T) -> Mutex<'T> {
-        return Mutex<'T>(
-            handle = sys_mutex_create(),
-            data = cede data
-        )
+        unsafe {
+            auto env = sys_alloc_thread_env(sizeof('T) as usize)
+            auto *p# = (env as *['T])
+            p[0] = cede data
+            return Mutex<'T>(
+                handle = sys_mutex_create(),
+                data_ptr = env
+            )
+        }
     }
     
     /// Directly allocates and initializes a new Mutex as a shared pointer (~Mutex)
     pub fn make(data: cede 'T) -> ^Mutex<'T> {
-        return new Mutex<'T>(
-            handle = sys_mutex_create(),
-            data = cede data
-        )
+        unsafe {
+            auto env = sys_alloc_thread_env(sizeof('T) as usize)
+            auto *p# = (env as *['T])
+            p[0] = cede data
+            return new Mutex<'T>(
+                handle = sys_mutex_create(),
+                data_ptr = env
+            )
+        }
     }
 
     pub fn make_shared(data: cede 'T) -> ~Mutex<'T> {
-        auto ~mutex = new Mutex<'T>(
-            handle = sys_mutex_create(),
-            data = cede data
-        )
-        return cede ~mutex
+        unsafe {
+            auto env = sys_alloc_thread_env(sizeof('T) as usize)
+            auto *p# = (env as *['T])
+            p[0] = cede data
+            auto ~mutex = new Mutex<'T>(
+                handle = sys_mutex_create(),
+                data_ptr = env
+            )
+            return cede ~mutex
+        }
     }
     
-    pub fn lock(self) -> Result<MutexLock<'T>, Error> {
+    pub fn lock(self) -> Result<MutexLock<'T>, Error> <- self {
         unsafe {
             auto rc = sys_mutex_lock(self.handle)
             if rc != 0 {
@@ -59,11 +74,13 @@ impl<'T: @Send> Mutex<'T> {
             }
             
             auto temp_h = self.handle:Addr
-            auto *mut_ptr = ((*self) as *Mutex<'T>)
+            auto *p# = (self.data_ptr as *'T#)
+            auto *tok = 0:Addr as *byte
             
             return Result<MutexLock<'T>, Error>::Ok(MutexLock<'T>(
                 handle = temp_h,
-                *data = *mut_ptr.data
+                &data = *p,
+                *thread_token = *tok
             ))
         }
     }
@@ -82,29 +99,32 @@ impl<'T: @Send> Mutex<'T> {
             return Result<i32, Error>::Ok(rc)
         }
     }
-    
 }
 
 impl<'T> Mutex<'T>@Encap {
     fn drop(self#) {
         unsafe {
-            auto h = self.handle:Addr
-            if h != 0:Addr {
-                sys_mutex_destroy(h)
-                                self.handle = 0:Addr
+            if self.data_ptr != 0:Addr {
+                auto *p# = (self.data_ptr as *['T])
+                {
+                    auto _ = Option<'T>::Some(cede p[0])
+                }
+                sys_free_thread_env(self.data_ptr)
+                self.data_ptr = 0:Addr
+            }
+            if self.handle != 0:Addr {
+                sys_mutex_destroy(self.handle)
+                self.handle = 0:Addr
             }
         }
     }
-    
 }
 
 pub shape MutexLock<'T: @Send>(
     handle: Addr,
-    *'data#: T
+    &'data#: T,
+    *thread_token: byte
 )
-
-impl<'T: @Send> MutexLock<'T>@Send {}
-impl<'T: @Sync> MutexLock<'T>@Sync {}
 
 impl<'T> MutexLock<'T>@Encap {
     fn drop(self#) {
@@ -115,19 +135,18 @@ impl<'T> MutexLock<'T>@Encap {
             }
         }
     }
-    
 }
 
 impl<'T: @Send> MutexLock<'T> {
-    pub fn get_ref(self) -> *'T# {
-        return self.*data
+    pub fn get_ref(self) -> &'T# <- self {
+        return &(self.data)
     }
 }
 
 /// A reader-writer lock
 pub shape RwMutex<'T: @{Send, Sync}>(
     handle#: Addr,
-    'data#: T
+    data_ptr#: Addr
 )
 
 impl<'T: @{Send, Sync}> RwMutex<'T>@Sync {}
@@ -135,13 +154,31 @@ impl<'T: @{Send, Sync}> RwMutex<'T>@Send {}
 
 impl<'T: @{Send, Sync}> RwMutex<'T> {
     pub fn new(data: cede 'T) -> RwMutex<'T> {
-        return RwMutex<'T>(
-            handle = sys_rwlock_create(),
-            data = cede data
-        )
+        unsafe {
+            auto env = sys_alloc_thread_env(sizeof('T) as usize)
+            auto *p# = (env as *['T])
+            p[0] = cede data
+            return RwMutex<'T>(
+                handle = sys_rwlock_create(),
+                data_ptr = env
+            )
+        }
+    }
+
+    pub fn make_shared(data: cede 'T) -> ~RwMutex<'T> {
+        unsafe {
+            auto env = sys_alloc_thread_env(sizeof('T) as usize)
+            auto *p# = (env as *['T])
+            p[0] = cede data
+            auto ~rwlock = new RwMutex<'T>(
+                handle = sys_rwlock_create(),
+                data_ptr = env
+            )
+            return cede ~rwlock
+        }
     }
     
-    pub fn read_lock(self) -> Result<RwReadLock<'T>, Error> {
+    pub fn read_lock(self) -> Result<RwReadLock<'T>, Error> <- self {
         unsafe {
             auto rc = sys_rwlock_rdlock(self.handle)
             if rc != 0 {
@@ -153,16 +190,18 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
             }
             
             auto temp_h = self.handle:Addr
-            auto *mut_ptr = ((*self) as *RwMutex<'T>)
+            auto *p = (self.data_ptr as *'T)
+            auto *tok = 0:Addr as *byte
             
             return Result<RwReadLock<'T>, Error>::Ok(RwReadLock<'T>(
                 handle = temp_h,
-                *data = *mut_ptr.data
+                &data = *p,
+                *thread_token = *tok
             ))
         }
     }
     
-    pub fn write_lock(self) -> Result<RwWriteLock<'T>, Error> {
+    pub fn write_lock(self) -> Result<RwWriteLock<'T>, Error> <- self {
         unsafe {
             auto rc = sys_rwlock_wrlock(self.handle)
             if rc != 0 {
@@ -174,11 +213,13 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
             }
             
             auto temp_h = self.handle:Addr
-            auto *mut_ptr = ((*self) as *RwMutex<'T>)
+            auto *p# = (self.data_ptr as *'T#)
+            auto *tok = 0:Addr as *byte
             
             return Result<RwWriteLock<'T>, Error>::Ok(RwWriteLock<'T>(
                 handle = temp_h,
-                *data = *mut_ptr.data
+                &data = *p,
+                *thread_token = *tok
             ))
         }
     }
@@ -201,23 +242,27 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
 impl<'T> RwMutex<'T>@Encap {
     fn drop(self#) {
         unsafe {
-            auto h = self.handle:Addr
-            if h != 0:Addr {
-                sys_rwlock_destroy(h)
-                                self.handle = 0:Addr
+            if self.data_ptr != 0:Addr {
+                auto *p# = (self.data_ptr as *['T])
+                {
+                    auto _ = Option<'T>::Some(cede p[0])
+                }
+                sys_free_thread_env(self.data_ptr)
+                self.data_ptr = 0:Addr
+            }
+            if self.handle != 0:Addr {
+                sys_rwlock_destroy(self.handle)
+                self.handle = 0:Addr
             }
         }
     }
-    
 }
 
 pub shape RwReadLock<'T: @{Send, Sync}>(
     handle: Addr,
-    *'data: T
+    &'data: T,
+    *thread_token: byte
 )
-
-impl<'T: @{Send, Sync}> RwReadLock<'T>@Send {}
-impl<'T: @{Send, Sync}> RwReadLock<'T>@Sync {}
 
 impl<'T> RwReadLock<'T>@Encap {
     fn drop(self#) {
@@ -228,22 +273,19 @@ impl<'T> RwReadLock<'T>@Encap {
             }
         }
     }
-    
 }
 
 impl<'T: @{Send, Sync}> RwReadLock<'T> {
-    pub fn get_ref(self) -> *'T {
-        return self.*data
+    pub fn get_ref(self) -> &'T <- self {
+        return &(self.data)
     }
 }
 
 pub shape RwWriteLock<'T: @{Send, Sync}>(
     handle: Addr,
-    *'data#: T
+    &'data#: T,
+    *thread_token: byte
 )
-
-impl<'T: @{Send, Sync}> RwWriteLock<'T>@Send {}
-impl<'T: @{Send, Sync}> RwWriteLock<'T>@Sync {}
 
 impl<'T> RwWriteLock<'T>@Encap {
     fn drop(self#) {
@@ -254,74 +296,47 @@ impl<'T> RwWriteLock<'T>@Encap {
             }
         }
     }
-    
 }
 
 impl<'T: @{Send, Sync}> RwWriteLock<'T> {
-    pub fn get_ref(self) -> *'T# {
-        return self.*data
+    pub fn get_ref(self) -> &'T# <- self {
+        return &(self.data)
     }
 }
 
-// ------------------------------------------------------
-// 3. Condition Variables
-// ------------------------------------------------------
-
-/// A Condition Variable for thread synchronization.
-/// Parametrized with 'T to ensure it pairs safely with MutexLock<'T>.
-pub shape CondVar<'T: @Send> (
+/// A Condition Variable
+pub shape CondVar<'T: @Send>(
     handle#: Addr
 )
 
 impl<'T: @Send> CondVar<'T>@Sync {}
 impl<'T: @Send> CondVar<'T>@Send {}
 
-impl<'T> CondVar<'T>@Encap {
-    fn drop(self#) {
-        unsafe {
-            auto h = self.handle:Addr
-            if h != 0:Addr {
-                sys_cond_destroy(h)
-                                self.handle = 0:Addr
-            }
-        }
-    }
-    
-}
-
 impl<'T: @Send> CondVar<'T> {
-    /// Creates a new Condition Variable
     pub fn new() -> CondVar<'T> {
         return CondVar<'T>(
             handle = sys_cond_create()
         )
     }
-    
-    /// Directly allocates and initializes a new CondVar as a shared pointer (~CondVar<'T>)
+
     pub fn make() -> ^CondVar<'T> {
         return new CondVar<'T>(
             handle = sys_cond_create()
         )
     }
-    
-    /// Suspends the current thread until another thread calls notify_one() or notify_all().
-    /// This method temporarily and atomically unlocks the MutexLock before sleeping.
-    /// The lock is guaranteed to be re-acquired natively before this method returns.
-    pub fn wait_cond(self, mut_lock: MutexLock<'T>) {
+
+    pub fn wait_cond(self, lock: MutexLock<'T>) {
         unsafe {
-            // Unlocks the mutex, puts the thread to sleep, and wakes up locked again.
-            sys_cond_wait(self.handle, mut_lock.handle)
+            sys_cond_wait(self.handle, lock.handle)
         }
     }
 
-    /// Wakes up a single thread waiting on this condition variable.
     pub fn notify_one(self) {
         unsafe {
             sys_cond_signal(self.handle)
         }
     }
 
-    /// Wakes up all threads currently waiting on this condition variable.
     pub fn notify_all(self) {
         unsafe {
             sys_cond_broadcast(self.handle)
@@ -329,13 +344,21 @@ impl<'T: @Send> CondVar<'T> {
     }
 }
 
-// ------------------------------------------------------
-// 4. Once (One-Time Execution Utility)
-// ------------------------------------------------------
+impl<'T> CondVar<'T>@Encap {
+    fn drop(self#) {
+        unsafe {
+            auto h = self.handle:Addr
+            if h != 0:Addr {
+                sys_cond_destroy(h)
+                self.handle = 0:Addr
+            }
+        }
+    }
+}
 
 /// A synchronization primitive that can be used to run a function exactly once.
 pub shape Once(
-    mutex: Mutex<bool>,
+    mutex#: Mutex<bool>,
     done#: bool
 )
 
@@ -358,23 +381,19 @@ impl Once {
     }
 
     pub fn call(self#, f#: fn#()) {
-        auto lock = self.mutex.lock().unwrap()
+        auto lock = self.mutex#.lock().unwrap()
         if self.done {
             return
         }
         
-            f#()
+        f#()
         self.done = true
     }
 }
 
-// ------------------------------------------------------
-// 5. WaitGroup (Multi-Task Coordination Barrier)
-// ------------------------------------------------------
-
 /// A WaitGroup waits for a collection of threads or tasks to finish.
 pub shape WaitGroup(
-    mutex: Mutex<i32>,
+    mutex#: Mutex<i32>,
     cond: CondVar<i32>
 )
 
@@ -397,8 +416,8 @@ impl WaitGroup {
     }
 
     pub fn add(self#, delta: i32) {
-        auto lock = self.mutex.lock().unwrap()
-        auto *val# = lock.get_ref()
+        auto lock = self.mutex#.lock().unwrap()
+        auto &val# = lock.get_ref()
         val = val + delta
         if val <= 0 {
             self.cond.notify_all()
@@ -409,11 +428,13 @@ impl WaitGroup {
         self#.add(-1)
     }
 
-    pub fn wait_all(self) {
-        auto lock = self.mutex.lock().unwrap()
-        auto *val = lock.get_ref()
+    pub fn wait_all(self#) {
+        auto lock = self.mutex#.lock().unwrap()
+        auto &val = lock.get_ref()
         loop {
-            if val <= 0 { break }
+            if val <= 0 {
+                break
+            }
             self.cond.wait_cond(lock)
         }
     }

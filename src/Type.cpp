@@ -835,10 +835,16 @@ void ShapeType::resolve(ShapeDecl *decl) {
 
 bool ShapeType::isSend(class Sema *S) const {
   if (!S) return false;
+  if (Decl) {
+    return S->isShapeSend(Decl->Name);
+  }
   return S->isShapeSend(S->resolveType(this->toString()));
 }
 bool ShapeType::isSync(class Sema *S) const {
   if (!S) return false;
+  if (Decl) {
+    return S->isShapeSync(Decl->Name);
+  }
   return S->isShapeSync(S->resolveType(this->toString()));
 }
 std::string FunctionType::toString() const {

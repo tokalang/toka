@@ -1,0 +1,249 @@
+// toka/tests/conformance/std/rwmutex_resource_drop_conformance.tk
+// Conformance test verifying Mutex and RwMutex resource-drop semantics, borrow lifetimes, and cross-thread synchronization.
+
+import core/types::{usize}
+import core/result::{Result}
+import std/io::{println}
+import std/vec::{Vec}
+import std/sync::{Mutex, RwMutex, RwReadLock, MutexLock}
+import std/thread::{thread_spawn, yield_now}
+import sys/sync::{sys_atomic_init_i32, sys_atomic_fetch_add_i32, sys_atomic_destroy_i32}
+
+shape TrackingItem (
+    id: i32,
+    counter: Addr
+)
+
+impl TrackingItem@Encap {
+    fn drop(self#) {
+        unsafe {
+            if self.counter != 0:Addr {
+                sys_atomic_fetch_add_i32(self.counter, 1)
+            }
+        }
+    }
+}
+
+impl TrackingItem@Send {}
+impl TrackingItem@Sync {}
+
+fn test_resource_drop_in_mutex() {
+    auto c = sys_atomic_init_i32(0)
+    {
+        auto ~m = Mutex<Vec<TrackingItem>>::make_shared(cede Vec<TrackingItem>::new())
+        {
+            auto l_res = m.lock()
+            assert(l_res.is_ok(), "lock must succeed")
+            auto l = l_res.unwrap()
+            auto &v# = l.get_ref()
+            v#.push(cede TrackingItem(id = 1, counter = c))
+            v#.push(cede TrackingItem(id = 2, counter = c))
+            v#.push(cede TrackingItem(id = 3, counter = c))
+            assert(v.len() == 3:usize, "Vec len must be 3")
+        }
+        // Read and verify under lock
+        {
+            auto l_res = m.lock()
+            assert(l_res.is_ok(), "lock must succeed")
+            auto l = l_res.unwrap()
+            auto &v# = l.get_ref()
+            assert(v.len() == 3:usize, "Vec len must still be 3")
+        }
+        unsafe {
+            assert(sys_atomic_fetch_add_i32(c, 0) == 0, "No TrackingItems must be dropped while Mutex is alive")
+        }
+    } // ~m drops here
+    unsafe {
+        auto count_final = sys_atomic_fetch_add_i32(c, 0)
+        assert(count_final == 3, "Exactly 3 TrackingItems must be dropped after Mutex destruction")
+        sys_atomic_destroy_i32(c)
+    }
+}
+
+fn test_resource_drop_in_rwmutex() {
+    auto c = sys_atomic_init_i32(0)
+    {
+        auto ~rw = RwMutex<Vec<TrackingItem>>::make_shared(cede Vec<TrackingItem>::new())
+        // 1. Write lock
+        {
+            auto w_res = rw.write_lock()
+            assert(w_res.is_ok(), "write_lock must succeed")
+            auto w = w_res.unwrap()
+            auto &v# = w.get_ref()
+            v#.push(cede TrackingItem(id = 10, counter = c))
+            v#.push(cede TrackingItem(id = 20, counter = c))
+            v#.push(cede TrackingItem(id = 30, counter = c))
+            v#.push(cede TrackingItem(id = 40, counter = c))
+            assert(v.len() == 4:usize, "Vec len must be 4")
+        }
+        // 2. Read lock
+        {
+            auto r_res = rw.read_lock()
+            assert(r_res.is_ok(), "read_lock must succeed")
+            auto r = r_res.unwrap()
+            auto &v = r.get_ref()
+            assert(v.len() == 4:usize, "Vec len must be 4 under read_lock")
+        }
+        unsafe {
+            assert(sys_atomic_fetch_add_i32(c, 0) == 0, "No TrackingItems must be dropped while RwMutex is alive")
+        }
+    } // ~rw drops here
+    unsafe {
+        auto count_final = sys_atomic_fetch_add_i32(c, 0)
+        assert(count_final == 4, "Exactly 4 TrackingItems must be dropped after RwMutex destruction")
+        sys_atomic_destroy_i32(c)
+    }
+}
+
+fn test_outer_shared_owner_drop() {
+    auto c = sys_atomic_init_i32(0)
+    {
+        auto ~rw1 = RwMutex<Vec<TrackingItem>>::make_shared(cede Vec<TrackingItem>::new())
+        {
+            auto w = rw1.write_lock().unwrap()
+            auto &v# = w.get_ref()
+            v#.push(cede TrackingItem(id = 100, counter = c))
+            v#.push(cede TrackingItem(id = 200, counter = c))
+        }
+        {
+            auto ~rw2 = ~rw1
+            unsafe {
+                assert(sys_atomic_fetch_add_i32(c, 0) == 0, "No drops when cloned")
+            }
+            auto r = rw2.read_lock().unwrap()
+            auto &v = r.get_ref()
+            assert(v.len() == 2:usize, "Length is 2 under rw2")
+        } // ~rw2 drops here, but ~rw1 is still alive
+        unsafe {
+            assert(sys_atomic_fetch_add_i32(c, 0) == 0, "No drops when ~rw2 dropped because ~rw1 is still alive")
+        }
+    } // ~rw1 drops here, payload must drop now
+    unsafe {
+        assert(sys_atomic_fetch_add_i32(c, 0) == 2, "Exactly 2 items dropped when last owner dropped")
+        sys_atomic_destroy_i32(c)
+    }
+}
+
+fn leave_early(m: Mutex<TrackingItem>) -> bool {
+    auto l_res = m.lock()
+    if l_res.is_err() {
+        return false
+    }
+    auto l = l_res.unwrap()
+    auto &item = l.get_ref()
+    if item.id == 100 {
+        return true
+    }
+    return false
+}
+
+fn test_early_return_unlock() -> bool {
+    auto c = sys_atomic_init_i32(0)
+    {
+        auto m = Mutex<TrackingItem>::new(cede TrackingItem(id = 100, counter = c))
+        auto res = leave_early(m)
+        assert(res, "leave_early must return true")
+
+        // Acquire lock again on the same Mutex instance to prove guard unlocked upon early return
+        {
+            auto l2_res = m.lock()
+            assert(l2_res.is_ok(), "Second lock after early return must succeed immediately")
+        }
+        unsafe {
+            assert(sys_atomic_fetch_add_i32(c, 0) == 0, "Item must not be dropped while Mutex is alive")
+        }
+    }
+    unsafe {
+        assert(sys_atomic_fetch_add_i32(c, 0) == 1, "Item must drop exactly once when Mutex drops")
+        sys_atomic_destroy_i32(c)
+    }
+    return true
+}
+
+shape SharedCounter (
+    val#: i32
+)
+impl SharedCounter@Send {}
+impl SharedCounter@Sync {}
+
+fn test_cross_thread_rwmutex() {
+    auto ~rw = RwMutex<SharedCounter>::make_shared(SharedCounter(val = 0))
+    auto ~rw1 = ~rw
+    auto ~rw2 = ~rw
+    auto ~rw_w = ~rw
+
+    auto r1_fn = { [cede rw1] =>
+        auto ~local = ~rw1
+        auto round# = 0
+        loop round < 30 {
+            auto r_res = local.read_lock()
+            if r_res.is_ok() {
+                auto r = r_res.unwrap()
+                auto &c = r.get_ref()
+                assert(c.val >= 0, "val must be non-negative")
+            }
+            yield_now()
+            round = round + 1
+        }
+        return cede 0
+    }:fn() -> cede i32
+
+    auto r2_fn = { [cede rw2] =>
+        auto ~local = ~rw2
+        auto round# = 0
+        loop round < 30 {
+            auto r_res = local.read_lock()
+            if r_res.is_ok() {
+                auto r = r_res.unwrap()
+                auto &c = r.get_ref()
+                assert(c.val >= 0, "val must be non-negative")
+            }
+            yield_now()
+            round = round + 1
+        }
+        return cede 0
+    }:fn() -> cede i32
+
+    auto w_fn = { [cede rw_w] =>
+        auto ~local = ~rw_w
+        auto round# = 0
+        loop round < 20 {
+            auto w_res = local.write_lock()
+            if w_res.is_ok() {
+                auto w = w_res.unwrap()
+                auto &c# = w.get_ref()
+                c.val = c.val + 1
+            }
+            yield_now()
+            round = round + 1
+        }
+        return cede 0
+    }:fn() -> cede i32
+
+    auto th1# = thread_spawn<i32>(cede r1_fn)
+    auto th2# = thread_spawn<i32>(cede r2_fn)
+    auto th_w# = thread_spawn<i32>(cede w_fn)
+
+    th1#.join().unwrap()
+    th2#.join().unwrap()
+    th_w#.join().unwrap()
+
+    auto final_r = rw.read_lock().unwrap()
+    auto &final_c = final_r.get_ref()
+    assert(final_c.val == 20, "final value must be 20")
+}
+
+pub fn main() -> i32 {
+    println("Running test_resource_drop_in_mutex...")
+    test_resource_drop_in_mutex()
+    println("Running test_resource_drop_in_rwmutex...")
+    test_resource_drop_in_rwmutex()
+    println("Running test_outer_shared_owner_drop...")
+    test_outer_shared_owner_drop()
+    println("Running test_early_return_unlock...")
+    assert(test_early_return_unlock(), "early return test passed")
+    println("Running test_cross_thread_rwmutex...")
+    test_cross_thread_rwmutex()
+    println("[PASS] All RwMutex & Mutex Resource Drop Conformance Tests Succeeded!")
+    return 0
+}

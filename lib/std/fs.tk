@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 import sys/os/fs as sys
+import sys/libc::{toka_dir_sync, toka_atomic_write_durable}
 
 import std/io::{File, IoStringResult, println}
 import std/env as env
@@ -19,6 +20,7 @@ import std/error::{IoError}
 import core/result::{Result}
 import core/option::{Option}
 import core/traits::{@Iterator}
+import core/str::{bytes}
 
 /**
  * Directory Iterator
@@ -334,4 +336,43 @@ pub fn create_temp_file_system() -> Result<TempFile, IoError> {
         _ => {}
     }
     return create_temp_file(string::from("/tmp"))
+}
+
+/**
+ * Forces filesystem directory metadata to persistent storage.
+ * On POSIX systems, opens the directory and performs fsync.
+ * Unsupported platforms (e.g. Windows/WASI) return an unsupported IoError.
+ */
+pub fn sync_directory(dir_path: string) -> Result<(), IoError> {
+    auto *dir_ptr# = dir_path.c_str()
+    auto os_err# = 0:i32
+    auto res = unsafe toka_dir_sync(*dir_ptr, &os_err as *i32)
+    if res != 0:i32 {
+        return Result<(), IoError>::Err(
+            IoError::new("sync_directory", os_err, "failed to sync directory metadata")
+        )
+    }
+    return Result<(), IoError>::Ok(())
+}
+
+/**
+ * Performs a crash-durable atomic file replacement:
+ * 1. Writes data to a sibling unique temporary file;
+ * 2. Syncs temporary file data and metadata (fsync);
+ * 3. Closes temporary file;
+ * 4. Atomically renames temporary file over target path;
+ * 5. Syncs containing parent directory metadata (fsync).
+ */
+pub fn atomic_write_durable(path: string, content: bytes) -> Result<(), IoError> {
+    auto path_cstr# = path.clone()
+    auto *path_ptr# = path_cstr.c_str()
+    auto *data_ptr# = content.raw_ptr() as *u8
+    auto os_err# = 0:i32
+    auto res = unsafe toka_atomic_write_durable(*path_ptr, *data_ptr, content.size(), &os_err as *i32)
+    if res != 0:i32 {
+        return Result<(), IoError>::Err(
+            IoError::new("atomic_write_durable", os_err, "failed to atomically and durably write file")
+        )
+    }
+    return Result<(), IoError>::Ok(())
 }

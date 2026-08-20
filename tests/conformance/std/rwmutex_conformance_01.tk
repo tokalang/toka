@@ -1,0 +1,118 @@
+// Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+// tests/conformance/std/rwmutex_conformance_01.tk
+// Conformance test: RwMutex shared readers, exclusive writers, guard drops, and cross-thread sync.
+
+import std/sync::{RwMutex}
+import std/thread::{thread_spawn}
+import std/vec::{Vec}
+
+shape SharedState (
+    read_count#: i32,
+    write_count#: i32
+)
+
+impl SharedState@Send {}
+impl SharedState@Sync {}
+
+fn test_shared_readers() {
+    auto ~rw = RwMutex<SharedState>::make_shared(SharedState(read_count = 0, write_count = 0))
+    auto ~r1 = ~rw
+    auto ~r2 = ~rw
+    auto ~r3 = ~rw
+
+    auto l1 = r1.read_lock().unwrap()
+    auto l2 = r2.read_lock().unwrap()
+    auto l3 = r3.read_lock().unwrap()
+
+    auto &s1 = l1.get_ref()
+    auto &s2 = l2.get_ref()
+    auto &s3 = l3.get_ref()
+
+    assert(s1.read_count == 0, "s1 read_count must be 0")
+    assert(s2.read_count == 0, "s2 read_count must be 0")
+    assert(s3.read_count == 0, "s3 read_count must be 0")
+}
+
+fn test_writer_exclusion_and_mutation() {
+    auto ~rw = RwMutex<SharedState>::make_shared(SharedState(read_count = 0, write_count = 0))
+    auto ~r_clone = ~rw
+
+    // 1. Write lock mutation
+    {
+        auto w_lock = r_clone.write_lock().unwrap()
+        auto &w_state# = w_lock.get_ref()
+        w_state.write_count = 42
+    }
+
+    // 2. Subsequent read lock observes mutation after write guard drop
+    {
+        auto r_lock = r_clone.read_lock().unwrap()
+        auto &r_state = r_lock.get_ref()
+        assert(r_state.write_count == 42, "Must observe updated write_count after lock drop")
+    }
+}
+
+fn test_cross_thread_concurrency() {
+    auto ~rw = RwMutex<SharedState>::make_shared(SharedState(read_count = 0, write_count = 0))
+    auto ~t1_rw = ~rw
+    auto ~t2_rw = ~rw
+    auto ~t3_rw = ~rw
+    auto ~t4_rw = ~rw
+
+    // 2 reader threads
+    auto r1_fn = { [cede t1_rw] =>
+        auto ~local = ~t1_rw
+        auto i# = 0
+        loop i < 50 {
+            auto l = local.read_lock().unwrap()
+            auto &s = l.get_ref()
+            assert(s.write_count >= 0, "write_count must be non-negative")
+            i = i + 1
+        }
+        return cede 0
+    }:fn() -> cede i32
+
+    auto r2_fn = { [cede t2_rw] =>
+        auto ~local = ~t2_rw
+        auto i# = 0
+        loop i < 50 {
+            auto l = local.read_lock().unwrap()
+            auto &s = l.get_ref()
+            assert(s.write_count >= 0, "write_count must be non-negative")
+            i = i + 1
+        }
+        return cede 0
+    }:fn() -> cede i32
+
+    // 1 writer thread
+    auto w_fn = { [cede t3_rw] =>
+        auto ~local = ~t3_rw
+        auto i# = 0
+        loop i < 50 {
+            auto wl = local.write_lock().unwrap()
+            auto &ws# = wl.get_ref()
+            ws.write_count = ws.write_count + 1
+            i = i + 1
+        }
+        return cede 0
+    }:fn() -> cede i32
+
+    auto r_th1# = thread_spawn<i32>(cede r1_fn)
+    auto r_th2# = thread_spawn<i32>(cede r2_fn)
+    auto w_th# = thread_spawn<i32>(cede w_fn)
+
+    r_th1#.join().unwrap()
+    r_th2#.join().unwrap()
+    w_th#.join().unwrap()
+
+    auto final_lock = t4_rw.read_lock().unwrap()
+    auto &final_state = final_lock.get_ref()
+    assert(final_state.write_count == 50, "Final write_count must be 50")
+}
+
+pub fn main() -> i32 {
+    test_shared_readers()
+    test_writer_exclusion_and_mutation()
+    test_cross_thread_concurrency()
+    return 0
+}

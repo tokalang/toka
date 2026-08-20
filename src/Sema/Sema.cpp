@@ -5364,17 +5364,58 @@ void Sema::computeShapeProperties(const std::string &shapeName, Module &M) {
   const ShapeDecl *S = nullptr;
   if (ShapeMap.count(shapeName))
     S = ShapeMap[shapeName];
-  // Also check ModuleScope if using full path? Assume simplified for now or
-  // look in M.Shapes
+  std::string resolvedName = resolveType(shapeName);
+  if (!S && ShapeMap.count(resolvedName))
+    S = ShapeMap[resolvedName];
   if (!S) {
     for (auto &sh : M.Shapes)
-      if (sh->Name == shapeName) {
+      if (sh->Name == shapeName || sh->Name == resolvedName) {
         S = sh.get();
         break;
       }
   }
+  if (!S) {
+    std::string suffix = "::" + shapeName;
+    for (auto &pair : ShapeMap) {
+      if (pair.first.length() >= suffix.length() &&
+          pair.first.compare(pair.first.length() - suffix.length(), suffix.length(), suffix) == 0) {
+        S = pair.second;
+        break;
+      }
+    }
+  }
+  if (!S) {
+    size_t instancePos = shapeName.find("_M_");
+    if (instancePos == std::string::npos)
+      instancePos = shapeName.find('<');
+    if (instancePos != std::string::npos) {
+      std::string baseName = shapeName.substr(0, instancePos);
+      std::string resolvedBase = resolveType(baseName);
+      if (ShapeMap.count(baseName))
+        S = ShapeMap[baseName];
+      else if (ShapeMap.count(resolvedBase))
+        S = ShapeMap[resolvedBase];
+      if (!S) {
+        for (auto &sh : M.Shapes)
+          if (sh->Name == baseName || sh->Name == resolvedBase) {
+            S = sh.get();
+            break;
+          }
+      }
+      if (!S) {
+        std::string suffix = "::" + baseName;
+        for (auto &pair : ShapeMap) {
+          if (pair.first.length() >= suffix.length() &&
+              pair.first.compare(pair.first.length() - suffix.length(), suffix.length(), suffix) == 0) {
+            S = pair.second;
+            break;
+          }
+        }
+      }
+    }
+  }
 
-    if (S) {
+  if (S) {
     for (auto &member : S->Members) {
       std::string typeStr = member.Type;
       if (member.IsRawPointer) {
@@ -5382,11 +5423,13 @@ void Sema::computeShapeProperties(const std::string &shapeName, Module &M) {
       }
 
       // [NEW] Trait auto-derivation
-      auto memberTypeObj = toka::Type::fromString(typeStr);
-      if (member.IsRawPointer) {
+      if (typeStr.size() > 0 && typeStr.front() == '\'') {
+        // Generic type parameter - satisfied by bounds at instantiation
+      } else if (member.IsRawPointer) {
         props.IsSend = false;
         props.IsSync = false;
       } else {
+        auto memberTypeObj = toka::Type::fromString(typeStr);
         if (member.IsUnique) memberTypeObj = std::make_shared<toka::UniquePointerType>(memberTypeObj);
         else if (member.IsShared) memberTypeObj = std::make_shared<toka::SharedPointerType>(memberTypeObj);
         else if (member.IsReference) memberTypeObj = std::make_shared<toka::ReferenceType>(memberTypeObj);
@@ -5624,29 +5667,71 @@ void Sema::checkStartBoundaryArgument(ASTNode *Node,
 }
 
 bool Sema::isShapeSend(const std::string &shapeName) {
-  // First, explicit manual trait impl ALWAYS takes precedence
-  if (ImplMap.count(shapeName + "@Send")) {
-    // std::cerr << "DEBUG isShapeSend(" << shapeName << ") -> true (ImplMap)\n";
+  std::string clean = toka::Type::stripMorphology(shapeName);
+  if (ImplMap.count(clean + "@Send")) {
     return true;
   }
-  
-  if (!m_ShapeProps.count(shapeName) && CurrentModule) {
-    computeShapeProperties(shapeName, *CurrentModule);
+  std::string resolved = resolveType(clean);
+  std::string cleanResolved = toka::Type::stripMorphology(resolved);
+  if (ImplMap.count(cleanResolved + "@Send")) {
+    return true;
   }
-  
-  bool res = m_ShapeProps[shapeName].IsSend;
-  if (!res) {
 
+  std::string sendSuffix = "::" + clean + "@Send";
+  std::string resolvedSendSuffix = "::" + cleanResolved + "@Send";
+  for (const auto &pair : ImplMap) {
+    if ((pair.first.length() >= sendSuffix.length() &&
+         pair.first.compare(pair.first.length() - sendSuffix.length(), sendSuffix.length(), sendSuffix) == 0) ||
+        (pair.first.length() >= resolvedSendSuffix.length() &&
+         pair.first.compare(pair.first.length() - resolvedSendSuffix.length(), resolvedSendSuffix.length(), resolvedSendSuffix) == 0)) {
+      return true;
+    }
   }
+
+  if ((!m_ShapeProps.count(clean) || m_ShapeProps[clean].Status != ShapeAnalysisStatus::Analyzed) && CurrentModule) {
+    computeShapeProperties(clean, *CurrentModule);
+  }
+  if ((!m_ShapeProps.count(cleanResolved) || m_ShapeProps[cleanResolved].Status != ShapeAnalysisStatus::Analyzed) && CurrentModule) {
+    computeShapeProperties(cleanResolved, *CurrentModule);
+  }
+
+  bool res = true;
+  if (m_ShapeProps.count(clean))
+    res = m_ShapeProps[clean].IsSend;
+  else if (m_ShapeProps.count(cleanResolved))
+    res = m_ShapeProps[cleanResolved].IsSend;
   return res;
 }
 
 bool Sema::isShapeSync(const std::string &shapeName) {
-  if (ImplMap.count(shapeName + "@Sync") || ImplMap.count(shapeName + "@sync")) return true;
-  if (!m_ShapeProps.count(shapeName) && CurrentModule) {
-    computeShapeProperties(shapeName, *CurrentModule);
+  std::string clean = toka::Type::stripMorphology(shapeName);
+  if (ImplMap.count(clean + "@Sync") || ImplMap.count(clean + "@sync")) return true;
+  std::string resolved = resolveType(clean);
+  std::string cleanResolved = toka::Type::stripMorphology(resolved);
+  if (ImplMap.count(cleanResolved + "@Sync") || ImplMap.count(cleanResolved + "@sync")) return true;
+
+  std::string syncSuffix = "::" + clean + "@Sync";
+  std::string resolvedSyncSuffix = "::" + cleanResolved + "@Sync";
+  for (const auto &pair : ImplMap) {
+    if ((pair.first.length() >= syncSuffix.length() &&
+         pair.first.compare(pair.first.length() - syncSuffix.length(), syncSuffix.length(), syncSuffix) == 0) ||
+        (pair.first.length() >= resolvedSyncSuffix.length() &&
+         pair.first.compare(pair.first.length() - resolvedSyncSuffix.length(), resolvedSyncSuffix.length(), resolvedSyncSuffix) == 0)) {
+      return true;
+    }
   }
-  return m_ShapeProps[shapeName].IsSync;
+
+  if ((!m_ShapeProps.count(clean) || m_ShapeProps[clean].Status != ShapeAnalysisStatus::Analyzed) && CurrentModule) {
+    computeShapeProperties(clean, *CurrentModule);
+  }
+  if ((!m_ShapeProps.count(cleanResolved) || m_ShapeProps[cleanResolved].Status != ShapeAnalysisStatus::Analyzed) && CurrentModule) {
+    computeShapeProperties(cleanResolved, *CurrentModule);
+  }
+  if (m_ShapeProps.count(clean))
+    return m_ShapeProps[clean].IsSync;
+  if (m_ShapeProps.count(cleanResolved))
+    return m_ShapeProps[cleanResolved].IsSync;
+  return true;
 }
 
 FunctionDecl *Sema::instantiateGenericFunction(

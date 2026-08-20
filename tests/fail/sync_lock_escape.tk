@@ -1,0 +1,10 @@
+import std/sync::{RwMutex, RwReadLock}
+
+fn escape_lock() -> RwReadLock<i32> {
+    auto rw = RwMutex<i32>::new(10)
+    return rw.read_lock().unwrap()
+}
+
+pub fn main() -> i32 {
+    return 0
+}

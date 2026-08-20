@@ -439,13 +439,17 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
                  infoPtr->ClosureNonSyncCopyCaptures.begin(),
                  infoPtr->ClosureNonSyncCopyCaptures.end());
            }
-        } else if (!infoPtr->TypeObj || !infoPtr->TypeObj->isSend(this)) {
-           Clo->BoundaryNonSendCaptures.push_back(varName);
-        } else if ((explicitMode == CaptureMode::ExplicitCopy ||
-                    explicitMode == CaptureMode::ExplicitDup) &&
-                   !infoPtr->TypeObj->isSync(this)) {
-           Clo->BoundaryNonSyncCopyCaptures.push_back(varName);
-        }
+         } else {
+            bool isSendVal = infoPtr->TypeObj ? infoPtr->TypeObj->isSend(this) : false;
+            if (!infoPtr->TypeObj || !isSendVal) {
+               Clo->BoundaryNonSendCaptures.push_back(varName);
+            }
+            if ((explicitMode == CaptureMode::ExplicitCopy ||
+                 explicitMode == CaptureMode::ExplicitDup) &&
+                !infoPtr->TypeObj->isSync(this)) {
+               Clo->BoundaryNonSyncCopyCaptures.push_back(varName);
+            }
+         }
 
         ShapeMember sm;
         sm.Name = varName;

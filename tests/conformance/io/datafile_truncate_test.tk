@@ -1,0 +1,56 @@
+import std/io::{println}
+import std/data_file::{ReadDataFile, WalFile}
+import std/vec::{Vec}
+import std/fs::{create_temp_file_system}
+
+fn main() -> i32 {
+    auto tmp_res = create_temp_file_system()
+    assert(tmp_res.is_ok(), "create_temp_file_system failed")
+    auto tmp# = tmp_res.unwrap()
+    auto path = tmp.path().clone()
+
+    // 1. Write 128 bytes via WalFile
+    auto wal_res = WalFile::open(path.clone())
+    assert(wal_res.is_ok(), "WalFile::open failed")
+    auto wal# = wal_res.unwrap()
+
+    auto buf# = Vec<u8>::with_capacity(128:usize)
+    auto i# = 0:usize
+    loop i < 128:usize {
+        buf#.push((i % 256:usize) as u8)
+        i = i + 1:usize
+    }
+
+    assert(wal#.write_all_at(cede buf, 0:u64).is_ok(), "write_all_at 128 bytes failed")
+    wal#.sync_all()
+
+    // 2. Physical truncate to 64 bytes
+    auto trunc_res = wal#.truncate(64:u64)
+    assert(trunc_res.is_ok(), "WalFile::truncate failed")
+    wal#.sync_all()
+    wal#.close()
+
+    // 3. Open ReadDataFile and verify file length is exactly 64 bytes
+    auto reader_res = ReadDataFile::open(path.clone())
+    assert(reader_res.is_ok(), "ReadDataFile::open failed")
+    auto reader = reader_res.unwrap()
+
+    auto read_buf# = Vec<u8>::with_capacity(32:usize)
+    // Read at offset 60 for 16 bytes: only 4 bytes (60..64) should be returned, with EOF
+    auto read_res = reader.read_at(cede read_buf, 60:u64, 16:usize)
+    assert(read_res.is_ok(), "read_at 60 failed")
+    auto out = read_res.unwrap()
+    assert(out.bytes_read == 4:usize, "bytes_read must be exactly 4 bytes")
+
+    // Read at offset 64: should return 0 bytes and eof = true
+    auto eof_buf# = out.take_buffer()
+    auto eof_res = reader.read_at(cede eof_buf, 64:u64, 16:usize)
+    assert(eof_res.is_ok(), "read_at 64 failed")
+    auto eof_out = eof_res.unwrap()
+    assert(eof_out.bytes_read == 0:usize, "bytes_read at 64 must be 0")
+    assert(eof_out.eof, "eof at 64 must be true")
+
+    tmp#.remove()
+    println("[Conformance] WalFile::truncate PASSED!")
+    return 0
+}

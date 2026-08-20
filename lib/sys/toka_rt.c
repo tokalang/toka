@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <stdatomic.h>
 #include <limits.h>
 #include <time.h>
 #include <signal.h>
@@ -171,6 +173,713 @@ int toka_atomic_write_file(const char *path, const unsigned char *data, size_t l
     if (status != 0) unlink(temporary);
     free(temporary);
     return status;
+#endif
+}
+
+#ifdef TOKA_TESTING
+// Failpoint mechanism for test harness only (enabled strictly when TOKA_TESTING is defined)
+static int g_toka_failpoint_action = 0;
+static char g_toka_failpoint_name[64] = {0};
+
+void toka_test_set_failpoint(const char *name, int action) {
+    if (!name || name[0] == '\0') {
+        g_toka_failpoint_name[0] = '\0';
+        g_toka_failpoint_action = 0;
+        return;
+    }
+    strncpy(g_toka_failpoint_name, name, sizeof(g_toka_failpoint_name) - 1);
+    g_toka_failpoint_name[sizeof(g_toka_failpoint_name) - 1] = '\0';
+    g_toka_failpoint_action = action;
+}
+
+static int toka_check_failpoint(const char *name) {
+    if (g_toka_failpoint_name[0] != '\0' && strcmp(g_toka_failpoint_name, name) == 0) {
+        return g_toka_failpoint_action != 0 ? g_toka_failpoint_action : 1;
+    }
+    const char *env = getenv("TOKA_FAILPOINT");
+    if (env && strcmp(env, name) == 0) {
+        return 1;
+    }
+    return 0;
+}
+
+int toka_test_check_failpoint(const char *name) {
+    if (toka_check_failpoint(name)) {
+#if !defined(_WIN32) && !defined(__wasi__)
+        raise(SIGKILL);
+#else
+        exit(137);
+#endif
+        return 1;
+    }
+    return 0;
+}
+#else
+void toka_test_set_failpoint(const char *name, int action) {
+    (void)name;
+    (void)action;
+}
+#define toka_check_failpoint(name) (0)
+int toka_test_check_failpoint(const char *name) {
+    (void)name;
+    return 0;
+}
+#endif
+
+static _Atomic uint64_t g_toka_next_engine_id = 1;
+
+uint64_t toka_kv_next_engine_id(void) {
+    return atomic_fetch_add(&g_toka_next_engine_id, 1);
+}
+
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
+#endif
+
+#ifndef O_DIRECTORY
+#define O_DIRECTORY 0
+#endif
+
+typedef struct {
+    int32_t fd;
+    _Atomic int32_t ref_count;
+} toka_read_datafile_t;
+
+uint64_t toka_datafile_open_read(const char *path, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)path;
+    if (os_error) *os_error = ENOSYS;
+    return 0;
+#else
+    if (!path) {
+        if (os_error) *os_error = EINVAL;
+        return 0;
+    }
+    int fd;
+    while ((fd = open(path, O_RDONLY | O_CLOEXEC)) < 0) {
+        if (errno == EINTR) continue;
+        if (os_error) *os_error = errno;
+        return 0;
+    }
+    struct stat st_read;
+    if (fstat(fd, &st_read) == 0 && S_ISDIR(st_read.st_mode)) {
+        close(fd);
+        if (os_error) *os_error = EISDIR;
+        return 0;
+    }
+    toka_read_datafile_t *rf = (toka_read_datafile_t *)malloc(sizeof(toka_read_datafile_t));
+    if (!rf) {
+        close(fd);
+        if (os_error) *os_error = ENOMEM;
+        return 0;
+    }
+    rf->fd = fd;
+    rf->ref_count = 1;
+    if (os_error) *os_error = 0;
+    return (uint64_t)(uintptr_t)rf;
+#endif
+}
+
+void toka_datafile_read_retain(uint64_t handle) {
+    if (handle == 0) return;
+    toka_read_datafile_t *rf = (toka_read_datafile_t *)(uintptr_t)handle;
+    atomic_fetch_add(&rf->ref_count, 1);
+}
+
+void toka_datafile_read_release(uint64_t handle) {
+    if (handle == 0) return;
+    toka_read_datafile_t *rf = (toka_read_datafile_t *)(uintptr_t)handle;
+    if (atomic_fetch_sub(&rf->ref_count, 1) == 1) {
+        if (rf->fd >= 0) close(rf->fd);
+        free(rf);
+    }
+}
+
+int32_t toka_atomic_fetch_add_i32(int32_t *ptr, int32_t val) {
+    return atomic_fetch_add((_Atomic int32_t *)ptr, val);
+}
+
+int32_t toka_atomic_fetch_sub_i32(int32_t *ptr, int32_t val) {
+    return atomic_fetch_sub((_Atomic int32_t *)ptr, val);
+}
+
+int32_t toka_atomic_load_i32(int32_t *ptr) {
+    return atomic_load((_Atomic int32_t *)ptr);
+}
+
+void toka_atomic_store_i32(int32_t *ptr, int32_t val) {
+    atomic_store((_Atomic int32_t *)ptr, val);
+}
+
+int32_t toka_datafile_open_wal(const char *path, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)path;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    if (!path) {
+        if (os_error) *os_error = EINVAL;
+        return -1;
+    }
+    int fd;
+    while ((fd = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0644)) < 0) {
+        if (errno == EINTR) continue;
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+    struct stat st_wal;
+    if (fstat(fd, &st_wal) == 0 && S_ISDIR(st_wal.st_mode)) {
+        close(fd);
+        if (os_error) *os_error = EISDIR;
+        return -1;
+    }
+    if (os_error) *os_error = 0;
+    return (int32_t)fd;
+#endif
+}
+
+int32_t toka_datafile_open_sibling_temp(const char *target_path, char *out_temp_path, size_t temp_path_cap, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)target_path; (void)out_temp_path; (void)temp_path_cap;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    if (!target_path || !out_temp_path || temp_path_cap < 16) {
+        if (os_error) *os_error = EINVAL;
+        return -1;
+    }
+    char dir[1024];
+    const char *last_slash = strrchr(target_path, '/');
+    if (last_slash) {
+        size_t dlen = (size_t)(last_slash - target_path);
+        if (dlen >= sizeof(dir)) {
+            if (os_error) *os_error = ENAMETOOLONG;
+            return -1;
+        }
+        if (dlen == 0) {
+            strncpy(dir, "/", sizeof(dir));
+        } else {
+            memcpy(dir, target_path, dlen);
+            dir[dlen] = '\0';
+        }
+    } else {
+        strncpy(dir, ".", sizeof(dir));
+    }
+
+    static _Atomic uint32_t s_temp_counter = 0;
+    uint32_t seq = atomic_fetch_add(&s_temp_counter, 1);
+    pid_t pid = getpid();
+
+    char temp_template[1024];
+    int res = snprintf(temp_template, sizeof(temp_template), "%s/.tmp_sstable_%d_%u_XXXXXX", dir, (int)pid, seq);
+    if (res < 0 || (size_t)res >= sizeof(temp_template)) {
+        if (os_error) *os_error = ENAMETOOLONG;
+        return -1;
+    }
+
+    int fd = mkstemp(temp_template);
+    if (fd < 0) {
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+
+    fcntl(fd, F_SETFD, FD_CLOEXEC);
+
+    if (strlen(temp_template) >= temp_path_cap) {
+        close(fd);
+        unlink(temp_template);
+        if (os_error) *os_error = ENAMETOOLONG;
+        return -1;
+    }
+
+    strncpy(out_temp_path, temp_template, temp_path_cap - 1);
+    out_temp_path[temp_path_cap - 1] = '\0';
+
+    if (os_error) *os_error = 0;
+    return (int32_t)fd;
+#endif
+}
+
+static int toka_atomic_rename_noreplace(const char *temp_path, const char *target_path) {
+#if defined(__APPLE__)
+    if (link(temp_path, target_path) != 0) {
+        return -1;
+    }
+    unlink(temp_path);
+    return 0;
+#elif defined(__linux__)
+#ifndef RENAME_NOREPLACE
+#define RENAME_NOREPLACE (1 << 0)
+#endif
+    int res = syscall(SYS_renameat2, AT_FDCWD, temp_path, AT_FDCWD, target_path, RENAME_NOREPLACE);
+    if (res != 0 && (errno == ENOSYS || errno == EINVAL)) {
+        if (link(temp_path, target_path) != 0) {
+            return -1;
+        }
+        unlink(temp_path);
+        return 0;
+    }
+    return res;
+#else
+    if (link(temp_path, target_path) != 0) {
+        return -1;
+    }
+    unlink(temp_path);
+    return 0;
+#endif
+}
+
+int32_t toka_dir_sync(const char *dir_path, int32_t *os_error);
+
+int32_t toka_datafile_commit_temp(int32_t fd, const char *temp_path, const char *target_path, int32_t *out_stage, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)fd; (void)temp_path; (void)target_path; (void)out_stage;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    if (out_stage) *out_stage = 0; // Stage 0: PRE_RENAME_FAILURE
+    if (fd < 0 || !temp_path || !target_path) {
+        if (fd >= 0) close(fd);
+        if (os_error) *os_error = EINVAL;
+        return -1;
+    }
+
+    int res;
+#if defined(__APPLE__)
+    res = fcntl(fd, F_FULLFSYNC);
+    if (res < 0) {
+        while ((res = fsync(fd)) < 0) {
+            if (errno == EINTR) continue;
+            int err = errno;
+            close(fd);
+            if (os_error) *os_error = err;
+            return -1;
+        }
+    }
+#else
+    while ((res = fsync(fd)) < 0) {
+        if (errno == EINTR) continue;
+        int err = errno;
+        close(fd);
+        if (os_error) *os_error = err;
+        return -1;
+    }
+#endif
+
+    if (close(fd) != 0) {
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+
+    // Atomic non-overwriting rename to prevent destroying existing published tables
+    if (toka_atomic_rename_noreplace(temp_path, target_path) != 0) {
+        int err = errno;
+        unlink(temp_path);
+        if (os_error) *os_error = err;
+        return -1;
+    }
+    if (out_stage) *out_stage = 1; // Stage 1: RENAMED_DIR_SYNC_FAILURE (final path exists, must not unlink)
+
+    if (toka_check_failpoint("forced_parent_dir_sync_error")) {
+        if (os_error) *os_error = EIO;
+        return -1;
+    }
+
+    char dir[1024];
+    const char *last_slash = strrchr(target_path, '/');
+    if (last_slash) {
+        size_t dlen = (size_t)(last_slash - target_path);
+        if (dlen == 0) {
+            strncpy(dir, "/", sizeof(dir));
+        } else {
+            if (dlen >= sizeof(dir)) dlen = sizeof(dir) - 1;
+            memcpy(dir, target_path, dlen);
+            dir[dlen] = '\0';
+        }
+    } else {
+        strncpy(dir, ".", sizeof(dir));
+    }
+
+    int dir_err = 0;
+    int dir_res = toka_dir_sync(dir, &dir_err);
+    if (dir_res != 0) {
+        if (os_error) *os_error = dir_err ? dir_err : EIO;
+        return -1;
+    }
+
+    if (out_stage) *out_stage = 2; // Stage 2: COMMITTED
+    if (os_error) *os_error = 0;
+    return 0;
+#endif
+}
+
+int32_t toka_datafile_read_size(uint64_t handle, uint64_t *out_size, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)handle; (void)out_size;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    toka_read_datafile_t *rf = (toka_read_datafile_t *)(uintptr_t)handle;
+    if (!rf || rf->fd < 0 || !out_size) {
+        if (os_error) *os_error = EINVAL;
+        return -1;
+    }
+    struct stat st;
+    if (fstat(rf->fd, &st) != 0) {
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+    *out_size = (uint64_t)st.st_size;
+    if (os_error) *os_error = 0;
+    return 0;
+#endif
+}
+
+int64_t toka_datafile_pread(uint64_t handle, void *buf, size_t count, uint64_t offset, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)handle; (void)buf; (void)count; (void)offset;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    toka_read_datafile_t *rf = (toka_read_datafile_t *)(uintptr_t)handle;
+    if (!rf || rf->fd < 0 || (!buf && count != 0)) {
+        if (os_error) *os_error = EINVAL;
+        return -1;
+    }
+    if (count == 0) {
+        if (os_error) *os_error = 0;
+        return 0;
+    }
+    ssize_t res;
+    while ((res = pread(rf->fd, buf, count, (off_t)offset)) < 0) {
+        if (errno == EINTR) continue;
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+    if (os_error) *os_error = 0;
+    return (int64_t)res;
+#endif
+}
+
+int64_t toka_datafile_pwrite(int32_t fd, const void *buf, size_t count, uint64_t offset, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)fd; (void)buf; (void)count; (void)offset;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    if (fd < 0 || (!buf && count != 0)) {
+        if (os_error) *os_error = EINVAL;
+        return -1;
+    }
+    if (count == 0) {
+        if (os_error) *os_error = 0;
+        return 0;
+    }
+    if (toka_check_failpoint("forced_short_pwrite") && count > 1) {
+        count = count / 2;
+    }
+    if (toka_check_failpoint("forced_pwrite_error")) {
+        if (os_error) *os_error = EIO;
+        return -1;
+    }
+    ssize_t res;
+    while ((res = pwrite(fd, buf, count, (off_t)offset)) < 0) {
+        if (errno == EINTR) continue;
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+    if (os_error) *os_error = 0;
+    return (int64_t)res;
+#endif
+}
+
+int32_t toka_datafile_sync_data(int32_t fd, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)fd;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    if (fd < 0) {
+        if (os_error) *os_error = EBADF;
+        return -1;
+    }
+    if (toka_check_failpoint("forced_sync_error")) {
+        if (os_error) *os_error = EIO;
+        return -1;
+    }
+    int res;
+#if defined(__linux__)
+    while ((res = fdatasync(fd)) < 0) {
+        if (errno == EINTR) continue;
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+#else
+    while ((res = fsync(fd)) < 0) {
+        if (errno == EINTR) continue;
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+#endif
+    if (os_error) *os_error = 0;
+    return 0;
+#endif
+}
+
+int32_t toka_datafile_sync_all(int32_t fd, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)fd;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    if (fd < 0) {
+        if (os_error) *os_error = EBADF;
+        return -1;
+    }
+    if (toka_check_failpoint("forced_sync_error")) {
+        if (os_error) *os_error = EIO;
+        return -1;
+    }
+    int res;
+#if defined(__APPLE__)
+    res = fcntl(fd, F_FULLFSYNC);
+    if (res < 0) {
+        while ((res = fsync(fd)) < 0) {
+            if (errno == EINTR) continue;
+            if (os_error) *os_error = errno;
+            return -1;
+        }
+    }
+#else
+    while ((res = fsync(fd)) < 0) {
+        if (errno == EINTR) continue;
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+#endif
+    if (os_error) *os_error = 0;
+    return 0;
+#endif
+}
+
+int32_t toka_datafile_truncate(int32_t fd, uint64_t length, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)fd; (void)length;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    if (fd < 0) {
+        if (os_error) *os_error = EBADF;
+        return -1;
+    }
+    int res;
+    while ((res = ftruncate(fd, (off_t)length)) < 0) {
+        if (errno == EINTR) continue;
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+    if (os_error) *os_error = 0;
+    return 0;
+#endif
+}
+
+int32_t toka_datafile_close(int32_t fd, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)fd;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    if (fd < 0) {
+        if (os_error) *os_error = EBADF;
+        return -1;
+    }
+    int res = close(fd);
+    if (res != 0) {
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+    if (os_error) *os_error = 0;
+    return 0;
+#endif
+}
+
+int32_t toka_dir_sync(const char *dir_path, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)dir_path;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    if (!dir_path || dir_path[0] == '\0') {
+        if (os_error) *os_error = EINVAL;
+        return -1;
+    }
+    int fd;
+    while ((fd = open(dir_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)) < 0) {
+        if (errno == EINTR) continue;
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+    int res;
+#if defined(__APPLE__)
+    res = fcntl(fd, F_FULLFSYNC);
+    if (res < 0) {
+        while ((res = fsync(fd)) < 0) {
+            if (errno == EINTR) continue;
+            int err = errno;
+            close(fd);
+            if (os_error) *os_error = err;
+            return -1;
+        }
+    }
+#else
+    while ((res = fsync(fd)) < 0) {
+        if (errno == EINTR) continue;
+        int err = errno;
+        close(fd);
+        if (os_error) *os_error = err;
+        return -1;
+    }
+#endif
+    if (close(fd) != 0) {
+        if (os_error) *os_error = errno;
+        return -1;
+    }
+    if (os_error) *os_error = 0;
+    return 0;
+#endif
+}
+
+static char *toka_get_parent_directory(const char *path) {
+    if (!path) return NULL;
+    char *dup = strdup(path);
+    if (!dup) return NULL;
+    char *last_slash = strrchr(dup, '/');
+    if (!last_slash) {
+        free(dup);
+        return strdup(".");
+    }
+    if (last_slash == dup) {
+        dup[1] = '\0';
+        return dup;
+    }
+    *last_slash = '\0';
+    return dup;
+}
+
+int32_t toka_atomic_write_durable(const char *path, const unsigned char *data, size_t len, int32_t *os_error) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)path; (void)data; (void)len;
+    if (os_error) *os_error = ENOSYS;
+    return -1;
+#else
+    if (!path || (!data && len != 0)) {
+        if (os_error) *os_error = EINVAL;
+        return -1;
+    }
+
+    struct stat existing;
+    int preserve_mode = stat(path, &existing) == 0 && S_ISREG(existing.st_mode);
+
+    static const char suffix[] = ".toka-tmp-XXXXXX";
+    size_t path_len = strlen(path);
+    char *temporary = malloc(path_len + sizeof(suffix));
+    if (!temporary) {
+        if (os_error) *os_error = ENOMEM;
+        return -1;
+    }
+    memcpy(temporary, path, path_len);
+    memcpy(temporary + path_len, suffix, sizeof(suffix));
+
+    int fd = mkstemp(temporary);
+    if (fd < 0) {
+        int err = errno;
+        free(temporary);
+        if (os_error) *os_error = err;
+        return -1;
+    }
+
+    if (preserve_mode && fchmod(fd, existing.st_mode & 0777) != 0) {
+        int err = errno;
+        close(fd);
+        unlink(temporary);
+        free(temporary);
+        if (os_error) *os_error = err;
+        return -1;
+    }
+
+    size_t written = 0;
+    while (written < len) {
+        ssize_t count = write(fd, data + written, len - written);
+        if (count > 0) {
+            written += (size_t)count;
+            continue;
+        }
+        if (count < 0 && errno == EINTR) continue;
+        int err = (count < 0) ? errno : EIO;
+        close(fd);
+        unlink(temporary);
+        free(temporary);
+        if (os_error) *os_error = err;
+        return -1;
+    }
+
+    if (toka_check_failpoint("after_temp_write")) {
+        raise(SIGKILL);
+    }
+
+    int32_t sync_err = 0;
+    if (toka_datafile_sync_all(fd, &sync_err) != 0) {
+        close(fd);
+        unlink(temporary);
+        free(temporary);
+        if (os_error) *os_error = sync_err;
+        return -1;
+    }
+
+    if (toka_check_failpoint("after_temp_sync")) {
+        raise(SIGKILL);
+    }
+
+    if (close(fd) != 0) {
+        int err = errno;
+        unlink(temporary);
+        free(temporary);
+        if (os_error) *os_error = err;
+        return -1;
+    }
+
+    if (rename(temporary, path) != 0) {
+        int err = errno;
+        unlink(temporary);
+        free(temporary);
+        if (os_error) *os_error = err;
+        return -1;
+    }
+    free(temporary);
+
+    if (toka_check_failpoint("after_rename")) {
+        raise(SIGKILL);
+    }
+
+    char *parent_dir = toka_get_parent_directory(path);
+    if (!parent_dir) {
+        if (os_error) *os_error = ENOMEM;
+        return -1;
+    }
+    int32_t dir_err = 0;
+    int dir_res = toka_dir_sync(parent_dir, &dir_err);
+    free(parent_dir);
+    if (dir_res != 0) {
+        if (os_error) *os_error = dir_err;
+        return -1;
+    }
+
+    if (toka_check_failpoint("after_parent_dir_sync")) {
+        raise(SIGKILL);
+    }
+
+    if (os_error) *os_error = 0;
+    return 0;
 #endif
 }
 

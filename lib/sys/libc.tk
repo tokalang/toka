@@ -101,6 +101,22 @@ extern fn libc_fflush(*stream: void) -> i32
 extern fn libc_remove(*filename: char) -> i32
 extern fn libc_rename(*old_path: char, *new_path: char) -> i32
 extern fn toka_atomic_write_file(*path: char, *data: u8, len: usize) -> i32
+extern fn toka_datafile_open_read(*path: char, *os_error: i32) -> Addr
+extern fn toka_datafile_read_retain(handle: Addr) -> void
+extern fn toka_datafile_read_release(handle: Addr) -> void
+extern fn toka_datafile_read_size(handle: Addr, *out_size: u64, *os_error: i32) -> i32
+extern fn toka_datafile_open_wal(*path: char, *os_error: i32) -> i32
+extern fn toka_datafile_open_sibling_temp(*target_path: char, *out_temp_path: char, temp_path_cap: usize, *os_error: i32) -> i32
+extern fn toka_datafile_commit_temp(fd: i32, *temp_path: char, *target_path: char, *out_stage: i32, *os_error: i32) -> i32
+extern fn toka_datafile_pread(handle: Addr, *buf: void, count: usize, offset: u64, *os_error: i32) -> i64
+extern fn toka_datafile_pwrite(fd: i32, *buf: void, count: usize, offset: u64, *os_error: i32) -> i64
+extern fn toka_datafile_sync_data(fd: i32, *os_error: i32) -> i32
+extern fn toka_datafile_sync_all(fd: i32, *os_error: i32) -> i32
+extern fn toka_datafile_truncate(fd: i32, length: u64, *os_error: i32) -> i32
+extern fn toka_datafile_close(fd: i32, *os_error: i32) -> i32
+extern fn toka_dir_sync(*dir_path: char, *os_error: i32) -> i32
+extern fn toka_atomic_write_durable(*path: char, *data: u8, len: usize, *os_error: i32) -> i32
+extern fn toka_test_set_failpoint(*name: char, action: i32) -> void
 extern fn toka_temp_file_create(*directory: char) -> Addr
 extern fn toka_temp_file_path(handle: Addr) -> *char
 extern fn toka_temp_file_write(handle: Addr, *data: u8, len: usize) -> i64
@@ -204,3 +220,13 @@ extern fn libc_pthread_rwlock_destroy(rwlock: Addr) -> i32
 extern fn libc_pthread_rwlock_rdlock(rwlock: Addr) -> i32
 extern fn libc_pthread_rwlock_wrlock(rwlock: Addr) -> i32
 extern fn libc_pthread_rwlock_unlock(rwlock: Addr) -> i32
+
+// Atomic operations
+extern fn toka_atomic_fetch_add_i32(ptr: Addr, val: i32) -> i32
+extern fn toka_atomic_fetch_sub_i32(ptr: Addr, val: i32) -> i32
+extern fn toka_atomic_load_i32(ptr: Addr) -> i32
+extern fn toka_atomic_store_i32(ptr: Addr, val: i32) -> void
+
+// Test harness failpoints (guarded by TOKA_DISABLE_FAILPOINTS)
+extern fn toka_test_check_failpoint(*name: char) -> i32
+extern fn toka_test_set_failpoint(*name: char, action: i32) -> void

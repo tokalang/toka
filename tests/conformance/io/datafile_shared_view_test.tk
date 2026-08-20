@@ -1,0 +1,65 @@
+import std/io::{println}
+import std/data_file::{ReadDataFile, WalFile}
+import std/vec::{Vec}
+import std/fs::{create_temp_file_system}
+
+fn read_block(reader: ReadDataFile, offset: u64, size: usize) -> Vec<u8> {
+    auto buf# = Vec<u8>::with_capacity(size)
+    auto res = reader.read_at(cede buf, offset, size)
+    assert(res.is_ok(), "read_block failed")
+    auto out = res.unwrap()
+    assert(out.bytes_read == size, "read_block size mismatch")
+    return out.take_buffer()
+}
+
+fn verify_shared_reads(reader: ReadDataFile, expected_data: string) -> bool {
+    // Both reads execute on the same shared read-only reader
+    auto b1 = read_block(reader, 0:u64, 8:usize)
+    auto b2 = read_block(reader, 8:u64, 8:usize)
+
+    auto k# = 0:usize
+    loop k < 8:usize {
+        assert(b1.get(k) == expected_data.at(k).unwrap() as u8, "b1 byte mismatch")
+        assert(b2.get(k) == expected_data.at(8:usize + k).unwrap() as u8, "b2 byte mismatch")
+        k = k + 1:usize
+    }
+    return true
+}
+
+fn main() -> i32 {
+    auto tmp_res = create_temp_file_system()
+    assert(tmp_res.is_ok(), "create_temp_file_system failed")
+    auto tmp# = tmp_res.unwrap()
+    auto path = tmp.path().clone()
+
+    auto wal_res = WalFile::open(path.clone())
+    assert(wal_res.is_ok(), "WalFile::open failed")
+    auto wal# = wal_res.unwrap()
+
+    auto data = string::from("0123456789ABCDEF")
+    auto write_buf# = Vec<u8>::with_capacity(16:usize)
+    auto i# = 0:usize
+    loop i < 16:usize {
+        write_buf#.push(data.at(i).unwrap() as u8)
+        i = i + 1:usize
+    }
+    assert(wal#.write_all_at(cede write_buf, 0:u64).is_ok(), "WAL write failed")
+    wal#.sync_all()
+    wal#.close()
+
+    // Open ReadDataFile as shared/read-only resource
+    auto reader_res = ReadDataFile::open(path.clone())
+    assert(reader_res.is_ok(), "ReadDataFile::open failed")
+    auto reader = reader_res.unwrap()
+
+    // Pass immutable reader to multiple functions without mutable receiver
+    assert(verify_shared_reads(reader, data), "Shared read verification failed")
+
+    // Call read_at directly on the original reader
+    auto b3 = read_block(reader, 4:u64, 4:usize)
+    assert(b3.get(0:usize) == '4' as u8, "b3 byte mismatch")
+
+    tmp#.remove()
+    println("[Conformance] ReadDataFile Shared Read Receiver (self) PASSED!")
+    return 0
+}

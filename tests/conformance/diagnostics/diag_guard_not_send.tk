@@ -1,0 +1,16 @@
+// toka/tests/conformance/diagnostics/diag_guard_not_send.tk
+// Diagnostic test: Lock guards do not implement @Send or @Sync; capturing guard with cede into a thread closure must fail compilation with E0477.
+
+import std/sync::{RwMutex}
+import std/thread::{thread_spawn}
+
+fn main() -> i32 {
+    auto rw = RwMutex<i32>::new(10)
+    auto r_lock = rw.read_lock().unwrap()
+    // Lock guards do not implement @Send; capturing via cede into thread_spawn closure must fail with E0477
+    auto worker = { [cede r_lock] =>
+        return cede 0
+    }:fn() -> cede i32
+    auto handle# = thread_spawn<i32>(cede worker)
+    return 0
+}
