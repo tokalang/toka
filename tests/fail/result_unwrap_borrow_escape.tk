@@ -1,0 +1,11 @@
+import core/result::{Result}
+
+fn escape_result_borrow() -> &i32 {
+    auto local = 9
+    auto wrapped = Result<&i32, i32>::Ok(&local)
+    return wrapped.unwrap()
+}
+
+pub fn main() -> i32 {
+    return 0
+}

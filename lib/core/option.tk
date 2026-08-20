@@ -18,13 +18,12 @@ impl<'T> Option<'T> {
         return self.is_some() == false
     }
 
-    pub fn unwrap(cede self) -> 'T {
+    pub fn unwrap(cede self) -> 'T <- self {
         match cede self {
             auto Option<'T>::Some('val) => return 'val
             _ => {
                 libc_exit(1)
-                auto dummy = Option<'T>::None
-                return dummy.unwrap()
+                unreachable
             }
         }
     }

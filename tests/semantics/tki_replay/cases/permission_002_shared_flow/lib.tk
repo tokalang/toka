@@ -77,12 +77,12 @@ impl Cell {
     }
 }
 
-// EXPECT_TKI: pub fn writable_option(p#: i32) -> Option<&i32#>
-pub fn writable_option(p#: i32) -> Option<&i32#> {
+// EXPECT_TKI: pub fn writable_option(p#: i32) -> Option<&i32#> <- p
+pub fn writable_option(p#: i32) -> Option<&i32#> <- p {
     return Option<&i32#>::Some(&p)
 }
 
-// EXPECT_TKI: pub fn readonly_option(p: i32) -> Option<&i32>
-pub fn readonly_option(p: i32) -> Option<&i32> {
+// EXPECT_TKI: pub fn readonly_option(p: i32) -> Option<&i32> <- p
+pub fn readonly_option(p: i32) -> Option<&i32> <- p {
     return Option<&i32>::None
 }

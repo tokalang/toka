@@ -1,0 +1,10 @@
+error[E0455]: Returning reference to local variable 'rw' is unsafe
+ --> tests/fail/sync_lock_escape.tk:5:5
+   |
+ 5 |     return rw.read_lock().unwrap()
+   |     ^
+note: escaping local declared here
+ --> tests/fail/sync_lock_escape.tk:4:10
+   |
+ 4 |     auto rw = RwMutex<i32>::new(10)
+   |          ^

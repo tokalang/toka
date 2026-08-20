@@ -93,7 +93,7 @@ impl ViewStrSplitIterator {
         }
     }
 
-    pub fn next(self#) -> Option<str> {
+    pub fn next(self#) -> Option<str> <- self {
         if self.finished {
             return Option<str>::None
         }
@@ -175,7 +175,7 @@ impl ViewStrLinesIterator {
 }
 
 impl ViewStrLinesIterator {
-    pub fn next(self#) -> Option<str> {
+    pub fn next(self#) -> Option<str> <- self {
         auto line_opt = self.split_iter#.next()
         if line_opt.is_none() {
             return Option<str>::None
@@ -612,8 +612,7 @@ impl str {
     }
 
     pub fn lines(self) -> ViewStrLinesIterator <- self {
-        auto nl_str = _internal_str_cast("\n")
-        auto s_iter = self.split(nl_str)
+        auto s_iter = self.split("\n")
         return ViewStrLinesIterator(split_iter = s_iter)
     }
 

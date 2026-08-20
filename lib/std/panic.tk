@@ -11,7 +11,7 @@ impl<'T> Option<'T> {
                     libc_printf(c"[Option] panic: %s\n", msg)
                     libc_abort()
                 }
-                return self.unwrap()
+                unreachable
             }
         }
     }
@@ -27,7 +27,7 @@ impl<'T, 'E> Result<'T, 'E> {
                     libc_printf(c"[Result] panic: %s\n", msg)
                     libc_abort()
                 }
-                return self.unwrap()
+                unreachable
             }
         }
     }
@@ -41,7 +41,7 @@ impl<'T, 'E> Result<'T, 'E> {
                     libc_printf(c"[Result] panic: %s\n", msg)
                     libc_abort()
                 }
-                return self.unwrap_err()
+                unreachable
             }
         }
     }

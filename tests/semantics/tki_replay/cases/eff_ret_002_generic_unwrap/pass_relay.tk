@@ -1,0 +1,13 @@
+import ./lib::{wrap}
+
+fn relay(value: i32) -> &i32 <- value {
+    auto wrapped = wrap(value)
+    return wrapped.unwrap()
+}
+
+fn main() -> i32 {
+    auto value = 21
+    auto &borrowed = relay(value)
+    if borrowed != 21 { return 1 }
+    return 0
+}

@@ -23,10 +23,12 @@ fn main() -> i32 {
     assert(id2.generation() == 1, "second generation should be 1")
     
     // 2. Retrieve elements
-    auto e1_opt = slab.get(id1)
-    assert(e1_opt.is_some(), "should retrieve id1")
-    auto &e1 = e1_opt.unwrap()
-    assert(e1.val == 10, "value should be 10")
+    {
+        auto e1_opt = slab.get(id1)
+        assert(e1_opt.is_some(), "should retrieve id1")
+        auto &e1 = e1_opt.unwrap()
+        assert(e1.val == 10, "value should be 10")
+    }
     
     // 3. Remove an element and check slot reuse
     auto removed_e1 = slab#.remove(id1).unwrap()
@@ -45,14 +47,18 @@ fn main() -> i32 {
     // 6. Accessing Slot 0 with old id1 should fail due to generational check!
     assert(slab.get(id1).is_none(), "generational ID should prevent ABA stale read")
     
-    auto &e3 = slab.get(id3).unwrap()
-    assert(e3.val == 30, "reused slot should have new value 30")
+    {
+        auto &e3 = slab.get(id3).unwrap()
+        assert(e3.val == 30, "reused slot should have new value 30")
+    }
 
     // 7. Verify get_mut allows mutation
-    auto e3_mut_opt = slab#.get_mut(id3)
-    assert(e3_mut_opt.is_some(), "should retrieve mutable e3")
-    auto &e3_mut# = e3_mut_opt.unwrap()
-    e3_mut.val = 35
+    {
+        auto e3_mut_opt = slab#.get_mut(id3)
+        assert(e3_mut_opt.is_some(), "should retrieve mutable e3")
+        auto &e3_mut# = e3_mut_opt.unwrap()
+        e3_mut.val = 35
+    }
     
     auto &e3_updated = slab.get(id3).unwrap()
     assert(e3_updated.val == 35, "mutated value should be 35")

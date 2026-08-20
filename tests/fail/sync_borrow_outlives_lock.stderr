@@ -1,0 +1,10 @@
+error[E0440]: Cannot move 'r' while it is borrowed
+ --> tests/fail/sync_borrow_outlives_lock.tk:7:20
+   |
+ 7 |     auto moved_r = cede r
+   |                    ^
+note: conflicting borrow originates here
+ --> tests/fail/sync_borrow_outlives_lock.tk:6:11
+   |
+ 6 |     auto &borrowed = r.get_ref()
+   |           ^

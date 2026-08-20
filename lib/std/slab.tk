@@ -162,8 +162,8 @@ impl<'T> Slab<'T> {
         if idx >= self.entries.len() {
             return Option<&'T>::None
         }
-        unsafe {
-            auto *#entry# = self.entries.unsafe_get(idx)
+        {
+            auto &entry = self.entries.borrow(idx)
             if entry.generation as usize != id.generation() {
                 return Option<&'T>::None
             }
@@ -183,8 +183,8 @@ impl<'T> Slab<'T> {
         if idx >= self.entries.len() {
             return Option<&'T#>::None
         }
-        unsafe {
-            auto *#entry# = self.entries.unsafe_get(idx)
+        {
+            auto &entry# = self.entries#.borrow_mut(idx)
             if entry.generation as usize != id.generation() {
                 return Option<&'T#>::None
             }

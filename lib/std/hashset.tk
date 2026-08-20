@@ -90,9 +90,8 @@ impl<'T> HashSetIterator<'T>@BorrowIterator {
     type BorrowedItem = &'T
 
     pub fn next_ref(self#) -> Option<BorrowedItem> <- self {
-        match self.map_iter#.next_ref() {
-            auto Option<EntryRef<'T, bool>>::Some(entry) => return Option<BorrowedItem>::Some(entry.key())
-            auto Option<EntryRef<'T, bool>>::None => return Option<BorrowedItem>::None
-        }
+        auto entry = self.map_iter#.next_ref()
+        if entry.is_none() { return Option<BorrowedItem>::None }
+        return Option<BorrowedItem>::Some(entry.unwrap().key())
     }
 }

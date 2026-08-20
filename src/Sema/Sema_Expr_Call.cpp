@@ -849,7 +849,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             for (size_t i = 0; i < Call->Args.size(); ++i) {
               auto &Arg = Call->Args[i];
               Arg = foldGenericConstant(std::move(Arg)); // [FIX]
+              m_LastBorrowSource.clear();
               checkExpr(Arg.get());
+              if (!m_LastBorrowSource.empty())
+                m_LastLifeDependencies.insert(m_LastBorrowSource);
             }
 
             // Set ResolvedShape for CodeGen
@@ -2796,11 +2799,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                       m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
                       contributedDeps = true;
                     }
-                    size_t before = m_LastLifeDependencies.size();
-                    m_LastLifeDependencies.insert(argInfo->LifeDependencySet.begin(),
-                                                  argInfo->LifeDependencySet.end());
-                    if (m_LastLifeDependencies.size() != before)
+                    if (!argInfo->LifeDependencySet.empty()) {
+                      m_LastLifeDependencies.insert(
+                          argInfo->LifeDependencySet.begin(),
+                          argInfo->LifeDependencySet.end());
                       contributedDeps = true;
+                    }
                   }
                 }
 
@@ -2809,10 +2813,18 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                   argResolvedType = argInfo->TypeObj;
 
                 bool isDottedDependency = argName != dep;
+                bool isLifetimeAnchor = false;
+                if (argResolvedType) {
+                  auto soul = std::dynamic_pointer_cast<ShapeType>(
+                      argResolvedType->getSoulType());
+                  isLifetimeAnchor = soul && soul->Decl &&
+                                     soul->Decl->HasExplicitDrop &&
+                                     ReturnType &&
+                                     resolveType(ReturnType)->isReference();
+                }
                 if (isExpressionDependency || isDottedDependency ||
-                    contributedDeps ||
-                    isCurrentFunctionParam ||
-                    !isBorrowLikeType(argResolvedType)) {
+                    isCurrentFunctionParam || !contributedDeps ||
+                    isLifetimeAnchor) {
                   m_LastLifeDependencies.insert(argVar);
                 }
                 recordDecision(

@@ -1,0 +1,21 @@
+import core/option::{Option}
+import core/result::{Result}
+
+fn relay_option(value: i32) -> &i32 <- value {
+    auto wrapped = Option<&i32>::Some(&value)
+    return wrapped.unwrap()
+}
+
+fn relay_result(value: i32) -> &i32 <- value {
+    auto wrapped = Result<&i32, i32>::Ok(&value)
+    return wrapped.unwrap()
+}
+
+fn main() -> i32 {
+    auto value = 17
+    auto &from_option = relay_option(value)
+    if from_option != 17 { return 1 }
+    auto &from_result = relay_result(value)
+    if from_result != 17 { return 2 }
+    return 0
+}

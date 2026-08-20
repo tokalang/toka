@@ -1,0 +1,12 @@
+// EXPECT_ERROR: E0455
+import ./lib::{wrap}
+
+fn escape() -> &i32 {
+    auto local = 23
+    auto wrapped = wrap(local)
+    return wrapped.unwrap()
+}
+
+fn main() -> i32 {
+    return 0
+}

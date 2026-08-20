@@ -730,12 +730,19 @@ void Sema::checkStmt(Stmt *S) {
         if (auto outcome =
                 std::dynamic_pointer_cast<MissOutcomeType>(t))
           return isBorrowLikeType(outcome->PayloadType);
-        if (t->isReference())
+        if (t->isReference() || t->isFunction() || t->isDynFn())
           return true;
         if (auto *shape = dynamic_cast<ShapeType *>(t.get())) {
           for (const auto &arg : shape->GenericArgs) {
             if (isBorrowLikeType(arg))
               return true;
+          }
+          if (shape->GenericArgs.empty() && shape->Decl &&
+              shape->Decl->InstantiationTemplate) {
+            for (const auto &arg : shape->Decl->InstantiationArgs) {
+              if (isBorrowLikeType(arg))
+                return true;
+            }
           }
           std::string name = t->getSoulName();
           if (name == "str" || name == "bytes")
@@ -804,51 +811,52 @@ void Sema::checkStmt(Stmt *S) {
       bool isTrackedRet =
           isBorrowLikeType(expectedRetObj) || isBorrowLikeType(ExprTypeObj) ||
           returnsBorrowExpr(Ret->ReturnValue.get()) ||
-          carriesLifeDependencyExpr(Ret->ReturnValue.get());
+          (carriesLifeDependencyExpr(Ret->ReturnValue.get()) &&
+           (!expectedRetObj || expectedRetObj->isUnknown() ||
+            isBorrowLikeType(expectedRetObj) || isBorrowLikeType(ExprTypeObj)));
 
       if (isTrackedRet) {
           std::set<std::string> returnedDeps;
 
-          auto recordDependencyPathTo = [&](std::set<std::string> &out,
-                                            const std::string &dep) {
+          std::set<std::string> resolvingDependencyPaths;
+          std::function<void(std::set<std::string> &, const std::string &)>
+              recordDependencyPathTo;
+          recordDependencyPathTo = [&](std::set<std::string> &out,
+                                       const std::string &dep) {
             if (dep.empty())
               return;
+            if (!resolvingDependencyPaths.insert(dep).second) {
+              out.insert(dep);
+              return;
+            }
             std::string baseName = dep;
             size_t dotPos = baseName.find('.');
             if (dotPos != std::string::npos)
               baseName = baseName.substr(0, dotPos);
 
-            bool isParam = false;
-            if (CurrentFunction) {
-              for (const auto &Arg : CurrentFunction->Args) {
-                if (Arg.Name == baseName) {
-                  isParam = true;
-                  break;
-                }
-              }
-            }
-
-            SymbolInfo depInfo;
-            if (CurrentScope->lookup(baseName, depInfo)) {
+            SymbolInfo *depInfo = nullptr;
+            std::string actualName;
+            if (CurrentScope->findVariableWithDeref(baseName, depInfo,
+                                                    actualName) &&
+                depInfo) {
               bool contributedDeps = false;
-              if (!depInfo.BorrowedFrom.empty()) {
-                out.insert(depInfo.BorrowedFrom);
+              if (!depInfo->BorrowedFrom.empty() &&
+                  depInfo->BorrowedFrom != dep) {
+                recordDependencyPathTo(out, depInfo->BorrowedFrom);
                 contributedDeps = true;
               }
-              size_t depCountBefore = out.size();
-              out.insert(depInfo.LifeDependencySet.begin(),
-                         depInfo.LifeDependencySet.end());
-              if (out.size() != depCountBefore)
+              for (const auto &source : depInfo->LifeDependencySet) {
+                if (source == dep || source == depInfo->BorrowedFrom)
+                  continue;
+                recordDependencyPathTo(out, source);
                 contributedDeps = true;
-              if (!contributedDeps && isParam)
+              }
+              if (!contributedDeps)
                 out.insert(dep);
-              return;
+            } else {
+              out.insert(dep);
             }
-
-            if (isParam)
-              out.insert(dep);
-            else
-              out.insert(dep);
+            resolvingDependencyPaths.erase(dep);
           };
 
           auto recordDependencyPath = [&](const std::string &dep) {
@@ -875,7 +883,7 @@ void Sema::checkStmt(Stmt *S) {
               if (Addr->Op == TokenType::Ampersand) {
                 std::string path = getPath(Addr->RHS.get());
                 if (!path.empty()) {
-                    out.insert(path);
+                    recordDependencyPathTo(out, path);
                 }
               }
             }
@@ -883,7 +891,7 @@ void Sema::checkStmt(Stmt *S) {
             else if (auto *AddrOf = dynamic_cast<AddressOfExpr *>(E)) {
                 std::string path = getPath(AddrOf->Expression.get());
                 if (!path.empty()) {
-                    out.insert(path);
+                    recordDependencyPathTo(out, path);
                 }
             }
             // Case 2: Returning existing reference variable `x`
@@ -953,7 +961,7 @@ void Sema::checkStmt(Stmt *S) {
                     if (Type::stripMorphology(dep) == "self") {
                       std::string path = getPath(Method->Object.get());
                       if (!path.empty())
-                        out.insert(path);
+                        recordDependencyPathTo(out, path);
                       continue;
                     }
                     for (size_t i = 1;
@@ -963,7 +971,7 @@ void Sema::checkStmt(Stmt *S) {
                         continue;
                       std::string path = getPath(Method->Args[i - 1].get());
                       if (!path.empty())
-                        out.insert(path);
+                        recordDependencyPathTo(out, path);
                       break;
                     }
                   }

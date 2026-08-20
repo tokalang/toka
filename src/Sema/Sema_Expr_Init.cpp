@@ -432,15 +432,17 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     }
 
     if (Pat->IsReference && !TargetPath.empty()) {
-      Info.BorrowedFrom = TargetPath;
+      const std::string dependencyPath =
+          TargetAccessPath ? TargetAccessPath.toLegacyString() : TargetPath;
+      Info.BorrowedFrom = dependencyPath;
       Info.BorrowedPath = TargetAccessPath
                               ? TargetAccessPath
                               : canonicalizeAccessPath(makeAccessPath(TargetPath));
-      Info.LifeDependencySet.insert(TargetPath);
+      Info.LifeDependencySet.insert(dependencyPath);
 
       // Also inherit any transitive dependencies if the target path is a known symbol
       SymbolInfo *targetInfo = nullptr;
-      if (CurrentScope->findSymbol(TargetPath, targetInfo)) {
+      if (CurrentScope->findSymbol(dependencyPath, targetInfo)) {
         Info.LifeDependencySet.insert(targetInfo->LifeDependencySet.begin(),
                                       targetInfo->LifeDependencySet.end());
       }

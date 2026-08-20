@@ -1,0 +1,11 @@
+import core/option::{Option}
+
+fn escape_option_borrow() -> &i32 {
+    auto local = 7
+    auto wrapped = Option<&i32>::Some(&local)
+    return wrapped.unwrap()
+}
+
+pub fn main() -> i32 {
+    return 0
+}

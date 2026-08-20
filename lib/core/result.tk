@@ -19,7 +19,7 @@ impl<'T, 'E> Result<'T, 'E> {
         return self.is_ok() == false
     }
 
-    pub fn unwrap(cede self) -> 'T {
+    pub fn unwrap(cede self) -> 'T <- self {
         match cede self {
             auto Result<'T, 'E>::Ok('val) => return 'val
             _ => {
@@ -29,7 +29,7 @@ impl<'T, 'E> Result<'T, 'E> {
         }
     }
 
-    pub fn unwrap_err(cede self) -> 'E {
+    pub fn unwrap_err(cede self) -> 'E <- self {
         match cede self {
             auto Result<'T, 'E>::Err('e) => return 'e
             _ => {

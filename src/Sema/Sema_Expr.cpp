@@ -1032,6 +1032,12 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
               for (const auto &arg : st->GenericArgs) {
                   if (checkType(arg)) return true;
               }
+              if (st->GenericArgs.empty() && st->Decl &&
+                  st->Decl->InstantiationTemplate) {
+                  for (const auto &arg : st->Decl->InstantiationArgs) {
+                      if (checkType(arg)) return true;
+                  }
+              }
               std::string sName = t->getSoulName();
               if (visited.count(sName) == 0) {
                   visited.insert(sName);
@@ -4660,16 +4666,25 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                        m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
                        contributedDeps = true;
                      }
-                     size_t before = m_LastLifeDependencies.size();
-                     m_LastLifeDependencies.insert(argInfo->LifeDependencySet.begin(),
-                                                   argInfo->LifeDependencySet.end());
-                     if (m_LastLifeDependencies.size() != before)
+                     if (!argInfo->LifeDependencySet.empty()) {
+                       m_LastLifeDependencies.insert(
+                           argInfo->LifeDependencySet.begin(),
+                           argInfo->LifeDependencySet.end());
                        contributedDeps = true;
+                     }
                    }
 
-                   if (isExpressionDependency || contributedDeps ||
-                       isCurrentFunctionParam ||
-                       !isBorrowLikeType(argResolvedType)) {
+                   bool isLifetimeAnchor = false;
+                   if (argResolvedType) {
+                     auto soul = std::dynamic_pointer_cast<ShapeType>(
+                         argResolvedType->getSoulType());
+                     isLifetimeAnchor = soul && soul->Decl &&
+                                        soul->Decl->HasExplicitDrop &&
+                                        retType &&
+                                        resolveType(retType)->isReference();
+                   }
+                   if (isExpressionDependency || isCurrentFunctionParam ||
+                       !contributedDeps || isLifetimeAnchor) {
                      m_LastLifeDependencies.insert(argVar);
                    }
                    recordDecision(
@@ -4814,6 +4829,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         SymbolInfo *Info = nullptr;
         std::string actualName;
         if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
+          if (Info) {
+            if (!Info->BorrowedFrom.empty())
+              m_LastLifeDependencies.insert(Info->BorrowedFrom);
+            m_LastLifeDependencies.insert(Info->LifeDependencySet.begin(),
+                                          Info->LifeDependencySet.end());
+          }
           CurrentScope->markMoved(actualName, E->Loc);
           PALCheckerState.markMoved(path);
         }

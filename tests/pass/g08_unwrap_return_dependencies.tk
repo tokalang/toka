@@ -1,0 +1,76 @@
+import core/option::{Option}
+import core/result::{Result}
+import core/string::{string}
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0:i32
+
+shape Token(value: i32)
+
+impl Token@Encap {
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
+
+fn option_string() -> string {
+    auto wrapped = Option<string>::Some(string::from("option"))
+    return wrapped.unwrap()
+}
+
+fn result_string() -> string {
+    auto wrapped = Result<string, i32>::Ok(string::from("result"))
+    return wrapped.unwrap()
+}
+
+fn result_error_string() -> string {
+    auto wrapped = Result<i32, string>::Err(string::from("error"))
+    return wrapped.unwrap_err()
+}
+
+fn option_scalar() -> i32 {
+    auto wrapped = Option<i32>::Some(7)
+    return wrapped.unwrap()
+}
+
+fn result_scalar() -> i32 {
+    auto wrapped = Result<i32, i32>::Ok(9)
+    return wrapped.unwrap()
+}
+
+fn option_resource() -> Token {
+    auto wrapped = Option<Token>::Some(Token(value = 11))
+    return wrapped.unwrap()
+}
+
+fn result_resource() -> Token {
+    auto wrapped = Result<Token, i32>::Ok(Token(value = 13))
+    return wrapped.unwrap()
+}
+
+fn main() -> i32 {
+    auto option_text = option_string()
+    if option_text.as_str() != "option" { return 1 }
+
+    auto result_text = result_string()
+    if result_text.as_str() != "result" { return 2 }
+
+    auto error_text = result_error_string()
+    if error_text.as_str() != "error" { return 3 }
+
+    if option_scalar() != 7 { return 4 }
+    if result_scalar() != 9 { return 5 }
+
+    {
+        auto token = option_resource()
+        if token.value != 11 { return 6 }
+    }
+    if g_drop_count != 1:i32 { return 7 }
+
+    {
+        auto token = result_resource()
+        if token.value != 13 { return 8 }
+    }
+    if g_drop_count != 2:i32 { return 9 }
+    return 0
+}

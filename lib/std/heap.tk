@@ -16,7 +16,7 @@ pub shape BinaryHeap<'T>(
 )
 
 impl<'T: @Copy> BinaryHeap<'T> {
-    pub fn new(cmp: fn('T, 'T) -> bool) -> BinaryHeap<'T> {
+    pub fn new(cmp: fn('T, 'T) -> bool) -> BinaryHeap<'T> <- cmp {
         auto data# = Vec<'T>::new()
         return BinaryHeap<'T>(
             data = cede data,

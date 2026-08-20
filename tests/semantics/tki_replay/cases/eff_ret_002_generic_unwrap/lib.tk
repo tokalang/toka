@@ -1,0 +1,16 @@
+// EXPECT_TKI: pub fn unwrap(cede self: Self) -> 'T <- self
+pub shape Carrier<'T> (
+    Value('T) = 1
+)
+
+impl<'T> Carrier<'T> {
+    pub fn unwrap(cede self) -> 'T <- self {
+        match cede self {
+            auto Carrier<'T>::Value('value) => return 'value
+        }
+    }
+}
+
+pub fn wrap(value: i32) -> Carrier<&i32> <- value {
+    return Carrier<&i32>::Value(&value)
+}
