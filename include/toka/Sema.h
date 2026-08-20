@@ -95,6 +95,7 @@ struct SymbolInfo {
   // A closure value must retain its capture facts after the literal is bound.
   // Unknown function values are intentionally not treated as boundary-safe.
   bool HasClosureBoundarySummary = false;
+  std::set<std::string> ClosureExplicitCaptures;
   std::set<std::string> ClosureImplicitCaptures;
   std::set<std::string> ClosureNonSendCaptures;
   std::set<std::string> ClosureNonSyncCopyCaptures;

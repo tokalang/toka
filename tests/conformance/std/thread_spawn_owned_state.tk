@@ -1,0 +1,44 @@
+import core/string::{string}
+import core/traits::{@Encap}
+import std/thread::{thread_spawn_with_state, JoinHandle, sleep_ms}
+
+auto g_drop_count# = 0:i32
+
+shape Token(text: string)
+
+impl Token@Encap {
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
+
+fn run_token(token: Token) -> cede i32 {
+    sleep_ms(10:u32)
+    if !token.text.as_str().equals("owned-thread-state") {
+        return cede 7:i32
+    }
+    return cede 0:i32
+}
+
+fn spawn_worker() -> JoinHandle<i32> {
+    auto token = Token(text = string::from("owned-thread-state"))
+    auto entry = { state =>
+        return cede run_token(state)
+    }:fn(Token) -> cede i32
+    return thread_spawn_with_state<Token, i32>(cede token, entry)
+}
+
+fn clobber_stack() -> i32 {
+    auto text = string::from("stack-clobber")
+    return text.len() as i32
+}
+
+fn main() -> i32 {
+    auto handle# = spawn_worker()
+    if clobber_stack() == 0:i32 { return 1 }
+    auto result = handle#.join()
+    if result.is_err() { return 2 }
+    if result.unwrap() != 0:i32 { return 3 }
+    if g_drop_count != 1:i32 { return 4 }
+    return 0
+}

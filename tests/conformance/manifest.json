@@ -155,6 +155,23 @@
       "description": "Vec shared and exclusive element borrows are safely tied to the container lifetime"
     },
     {
+      "id": "std_thread_spawn_owned_state_01",
+      "path": "std/thread_spawn_owned_state.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Owned thread state survives creator-frame escape and drops exactly once after join"
+    },
+    {
+      "id": "diag_thread_spawn_owned_state_capture_01",
+      "path": "diagnostics/thread_spawn_owned_state_capture.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0478",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "Owned thread entry cannot capture hidden state outside its explicit owned state argument"
+    },
+    {
       "id": "diag_vec_borrow_blocks_mutation_01",
       "path": "diagnostics/vec_borrow_blocks_mutation.tk",
       "type": "compile-fail",

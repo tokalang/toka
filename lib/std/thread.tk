@@ -23,7 +23,24 @@ pub fn yield_now() {
 pub alias ThreadClosure<'T> = fn#() -> cede 'T
 
 shape ClosureBox<'T>(closure: fn#() -> cede 'T, self_ptr: Addr)
+shape ThreadEnvReclaimer(ptr#: Addr)
+
+impl ThreadEnvReclaimer@Encap {
+    fn drop(self#) {
+        if self.ptr != 0:Addr {
+            sys_free_thread_env(self.ptr)
+            self.ptr = 0:Addr
+        }
+    }
+}
+
+shape ThreadStateBox<'S, 'T>(
+    'state: S,
+    entry: fn('S) -> cede 'T,
+    reclaimer: ThreadEnvReclaimer
+)
 shape TrampBox(f: fn() -> Addr)
+shape StateTrampBox(f: cede fn#() -> Addr)
 
 /// Spawns a new OS thread, running the given closure.
 /// 
@@ -80,6 +97,48 @@ pub fn thread_spawn<'T: @Send>(cede f: cede fn#() -> cede 'T) -> JoinHandle<'T> 
         // Free our trampoline shell immediately, thread only needs the bare C pointers inside
         sys_free_thread_env((*tramp_buf) as Addr)
         
+        return JoinHandle<'T>(id = thread_id)
+    }
+}
+
+/// Spawns a thread with explicitly owned state and a non-capturing entry
+/// function. The state is heap-boxed, remains valid after the creator returns,
+/// and is dropped exactly once after the entry function completes.
+pub fn thread_spawn_with_state<'S: @Send, 'T: @Send>(
+    cede 'state: S,
+    entry: fn('S) -> cede 'T
+) -> JoinHandle<'T> {
+    unsafe {
+        auto box_addr = sys_alloc_thread_env(sizeof(ThreadStateBox<'S, 'T>) as usize)
+        auto *box_ptr# = (box_addr as *ThreadStateBox<'S, 'T>)
+        box_ptr = ThreadStateBox<'S, 'T>(
+            state = cede 'state,
+            entry = entry,
+            reclaimer = ThreadEnvReclaimer(ptr = box_addr)
+        )
+
+        auto captured_box = box_ptr
+        auto tramp_fn = { [cede captured_box] =>
+            unsafe {
+                auto box = cede captured_box
+                auto *ret_ptr# = (sys_alloc_thread_env(sizeof('T) as usize) as *'T)
+                auto entry = box.entry
+                ret_ptr = cede entry(box.state)
+                return (*ret_ptr) as Addr
+            }
+        }:cede fn#() -> Addr
+
+        auto *tramp_buf# = (sys_alloc_thread_env(sizeof(StateTrampBox) as usize) as *StateTrampBox)
+        tramp_buf = StateTrampBox(f = cede tramp_fn)
+        auto func_ptr_addr = unwrap_fat_pointer((*tramp_buf) as Addr)
+        auto *invoker_ptr# = (func_ptr_addr as *Addr)
+        auto real_invoker = invoker_ptr
+
+        // `captured_box` is a payload capture, so its closure environment has
+        // exactly the same layout as ThreadStateBox. The heap box itself is
+        // therefore the stable environment passed to the native thread.
+        auto thread_id = sys_thread_spawn(real_invoker, box_addr)
+        sys_free_thread_env((*tramp_buf) as Addr)
         return JoinHandle<'T>(id = thread_id)
     }
 }

@@ -47,6 +47,16 @@ static bool isExecutionBoundaryCalleeName(std::string Name) {
   return Name == "thread_spawn";
 }
 
+static bool isOwnedStateThreadCalleeName(std::string Name) {
+  size_t scopePos = Name.rfind("::");
+  if (scopePos != std::string::npos)
+    Name = Name.substr(scopePos + 2);
+  size_t genericPos = Name.find('<');
+  if (genericPos != std::string::npos)
+    Name = Name.substr(0, genericPos);
+  return Name == "thread_spawn_with_state";
+}
+
 static ClosureExpr *findClosureExpr(Expr *E) {
   if (!E)
     return nullptr;
@@ -2235,6 +2245,57 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       m_ExpectedCedeTransfer = oldExpectedCedeTransfer;
     }
     projectOwnedStringView(Call->Args[i], argType, paramType);
+
+    if (isOwnedStateThreadCalleeName(OriginalName) && i == 1) {
+      ClosureExpr *entryClosure = findClosureExpr(Call->Args[i].get());
+      if (entryClosure) {
+        for (const auto &capture : entryClosure->ExplicitCaptures) {
+          DiagnosticEngine::report(
+              getLoc(Call->Args[i].get()),
+              DiagID::ERR_SEMA_OWNED_THREAD_ENTRY_CAPTURE,
+              Type::stripMorphology(capture.Name));
+          HasError = true;
+        }
+        for (const auto &capture : entryClosure->ImplicitCaptures) {
+          DiagnosticEngine::report(
+              getLoc(Call->Args[i].get()),
+              DiagID::ERR_SEMA_OWNED_THREAD_ENTRY_CAPTURE, capture);
+          HasError = true;
+        }
+      } else if (auto *entryVariable =
+                     findVariableExpr(Call->Args[i].get())) {
+        SymbolInfo *entryInfo = nullptr;
+        std::string actualName;
+        if (!CurrentScope->findVariableWithDeref(
+                entryVariable->Name, entryInfo, actualName) || !entryInfo ||
+            !entryInfo->HasClosureBoundarySummary) {
+          DiagnosticEngine::report(
+              getLoc(Call->Args[i].get()),
+              DiagID::ERR_SEMA_EXEC_BOUNDARY_UNKNOWN_CLOSURE,
+              entryVariable->Name, OriginalName);
+          HasError = true;
+        } else {
+          for (const auto &capture : entryInfo->ClosureExplicitCaptures) {
+            DiagnosticEngine::report(
+                getLoc(Call->Args[i].get()),
+                DiagID::ERR_SEMA_OWNED_THREAD_ENTRY_CAPTURE, capture);
+            HasError = true;
+          }
+          for (const auto &capture : entryInfo->ClosureImplicitCaptures) {
+            DiagnosticEngine::report(
+                getLoc(Call->Args[i].get()),
+                DiagID::ERR_SEMA_OWNED_THREAD_ENTRY_CAPTURE, capture);
+            HasError = true;
+          }
+        }
+      } else {
+        DiagnosticEngine::report(
+            getLoc(Call->Args[i].get()),
+            DiagID::ERR_SEMA_EXEC_BOUNDARY_UNKNOWN_CLOSURE,
+            "owned thread entry", OriginalName);
+        HasError = true;
+      }
+    }
 
     if (isExecutionBoundaryCalleeName(OriginalName)) {
       auto reportSummary = [&](ASTNode *Node, const std::string &valueName,

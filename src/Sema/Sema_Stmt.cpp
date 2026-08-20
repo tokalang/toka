@@ -1756,6 +1756,9 @@ void Sema::checkStmt(Stmt *S) {
         }
       }
       Info.HasClosureBoundarySummary = clo->HasBoundaryCaptureSummary;
+      for (const auto &capture : clo->ExplicitCaptures)
+        Info.ClosureExplicitCaptures.insert(
+            Type::stripMorphology(capture.Name));
       Info.ClosureImplicitCaptures.insert(
           clo->BoundaryImplicitCaptures.begin(),
           clo->BoundaryImplicitCaptures.end());
@@ -1771,6 +1774,7 @@ void Sema::checkStmt(Stmt *S) {
                                               sourceName) && sourceInfo &&
           sourceInfo->HasClosureBoundarySummary) {
         Info.HasClosureBoundarySummary = true;
+        Info.ClosureExplicitCaptures = sourceInfo->ClosureExplicitCaptures;
         Info.ClosureImplicitCaptures = sourceInfo->ClosureImplicitCaptures;
         Info.ClosureNonSendCaptures = sourceInfo->ClosureNonSendCaptures;
         Info.ClosureNonSyncCopyCaptures =

@@ -108,6 +108,7 @@ DIAG(ERR_SEMA_EXEC_BOUNDARY_IMPLICIT_CAPTURE, Error,   "E04582", "Closure passed
 DIAG(ERR_SEMA_START_BOUNDARY_ARGUMENT, Error,   "E04583", "Task started across execution boundary cannot borrow argument '{}' of type '{}'; use a non-borrowing scalar or transfer an owned value through a cede parameter and cede argument")
 DIAG(ERR_SEMA_START_BOUNDARY_DEPENDENCY, Error,   "E04584", "Task started across execution boundary carries borrowed dependency '{}'; consume it with '.await' or '.wait', or transfer ownership before '.start'")
 DIAG(ERR_SEMA_EXEC_BOUNDARY_UNKNOWN_CLOSURE, Error,   "E0476", "Closure value '{}' has no capture summary and cannot cross execution boundary '{}'")
+DIAG(ERR_SEMA_OWNED_THREAD_ENTRY_CAPTURE, Error,      "E0478", "Owned thread entry must not capture '{}'; pass all state through the owned state argument")
 DIAG(ERR_SEMA_EXEC_BOUNDARY_NON_SEND_CAPTURE, Error,   "E0477", "Closure passed across execution boundary '{}' captures '{}' with a value that is not @Send")
 DIAG(ERR_SEMA_EXEC_BOUNDARY_COPY_NON_SYNC_CAPTURE, Error,   "E0478", "Closure passed across execution boundary '{}' copy-captures '{}' with a value that is not @Sync")
 DIAG(ERR_TYPED_TODO_INCOMPLETE,   Error,   "E04603", "Incomplete todo requires a value satisfying '{}'")

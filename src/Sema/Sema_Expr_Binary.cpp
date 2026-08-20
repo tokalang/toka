@@ -1077,6 +1077,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         if (Bin->Op == "=" && !containsMemberExpr(Bin->LHS.get())) {
           auto clearClosureSummary = [&]() {
             targetInfo->HasClosureBoundarySummary = false;
+            targetInfo->ClosureExplicitCaptures.clear();
             targetInfo->ClosureImplicitCaptures.clear();
             targetInfo->ClosureNonSendCaptures.clear();
             targetInfo->ClosureNonSyncCopyCaptures.clear();
@@ -1098,6 +1099,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           if (auto *closure = dynamic_cast<ClosureExpr *>(closureSource)) {
             targetInfo->HasClosureBoundarySummary =
                 closure->HasBoundaryCaptureSummary;
+            for (const auto &capture : closure->ExplicitCaptures)
+              targetInfo->ClosureExplicitCaptures.insert(
+                  Type::stripMorphology(capture.Name));
             targetInfo->ClosureImplicitCaptures = std::set<std::string>(
                 closure->BoundaryImplicitCaptures.begin(),
                 closure->BoundaryImplicitCaptures.end());
@@ -1115,6 +1119,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                                                     sourceName) && sourceInfo &&
                 sourceInfo->HasClosureBoundarySummary) {
               targetInfo->HasClosureBoundarySummary = true;
+              targetInfo->ClosureExplicitCaptures =
+                  sourceInfo->ClosureExplicitCaptures;
               targetInfo->ClosureImplicitCaptures =
                   sourceInfo->ClosureImplicitCaptures;
               targetInfo->ClosureNonSendCaptures =

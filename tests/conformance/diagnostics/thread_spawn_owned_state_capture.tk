@@ -1,0 +1,15 @@
+import std/thread::{thread_spawn_with_state}
+
+shape State(value: i32)
+
+fn main() -> i32 {
+    auto state = State(value = 1:i32)
+    auto extra = 2:i32
+    auto _handle = thread_spawn_with_state<State, i32>(
+        cede state,
+        { [cede extra] worker_state =>
+            return cede worker_state.value + extra
+        }:fn(State) -> cede i32
+    )
+    return 0
+}
