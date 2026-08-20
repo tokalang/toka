@@ -53,7 +53,37 @@ def strip_ansi(value):
 def parse_counts(name, output):
     clean = strip_ansi(output)
     counts = {}
-    if name in ("pass", "fail", "warn", "async"):
+    if name == "build":
+        match = re.search(
+            r"(\d+)% tests passed,\s*(\d+) tests failed out of (\d+)",
+            clean,
+        )
+        if match:
+            failed = int(match.group(2))
+            total = int(match.group(3))
+            counts["ctest"] = {
+                "passed": total - failed,
+                "failed": failed,
+                "total": total,
+            }
+    elif name == "pass":
+        passed = re.findall(r"Passed:\s*(\d+)", clean)
+        failed = re.findall(r"Failed:\s*(\d+)", clean)
+        if passed:
+            counts["pass_suite"] = {
+                "passed": int(passed[-1]),
+                "failed": int(failed[-1]) if failed else 0,
+            }
+        conformance = re.search(
+            r"Conformance Suite Results:\s*(\d+) Passed,\s*(\d+) Failed",
+            clean,
+        )
+        if conformance:
+            counts["conformance"] = {
+                "passed": int(conformance.group(1)),
+                "failed": int(conformance.group(2)),
+            }
+    elif name in ("fail", "warn", "async"):
         passed = re.findall(r"Passed:\s*(\d+)", clean)
         failed = re.findall(r"Failed:\s*(\d+)", clean)
         if passed:
@@ -183,7 +213,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--version", default="v1.0.0-rc.6")
+    parser.add_argument("--version", default="v1.0.0-rc.7")
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -253,11 +283,15 @@ def main():
     stages = (
         ("build", (
             ["cmake", "--build", str(build_dir), "--parallel", env["CORES"]],
+            ["ctest", "--test-dir", str(build_dir), "--output-on-failure"],
             [sys.executable, "tools/scripts/test_pass.py", "--prepare-runtime-only"],
             toka_command,
         )),
-        ("pass", ([sys.executable, "tools/scripts/test_pass.py",
-                   "--exclude-file", "spec/ci_quarantined_pass_tests.list"],)),
+        ("pass", (
+            [sys.executable, "tools/scripts/test_pass.py",
+             "--exclude-file", "spec/ci_quarantined_pass_tests.list"],
+            [sys.executable, "tools/run_conformance.py"],
+        )),
         ("fail", ([sys.executable, "tools/scripts/test_verify_fail.py",
                    "--exclude-file", "spec/ci_quarantined_fail_tests.list"],)),
         ("warn", ([sys.executable, "tools/scripts/test_verify_warn.py"],)),

@@ -14,10 +14,10 @@ qualification authority for the exact Linux/macOS four-target matrix.
 From the repository root, first choose an immutable candidate SHA:
 
 ```sh
-RC6_CANDIDATE_SHA=$(git rev-parse HEAD)
+RC7_CANDIDATE_SHA=$(git rev-parse HEAD)
 python3 tools/scripts/prequalify_release.py \
-  --revision "$RC6_CANDIDATE_SHA" \
-  --version v1.0.0-rc.6 \
+  --revision "$RC7_CANDIDATE_SHA" \
+  --version v1.0.0-rc.7 \
   --target native \
   --target linux-arm64 \
   --target linux-x64

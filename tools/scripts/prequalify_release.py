@@ -236,7 +236,7 @@ def main():
     )
     parser.add_argument("--revision", default="HEAD",
                         help="committed candidate revision (default: HEAD)")
-    parser.add_argument("--version", default="v1.0.0-rc.6",
+    parser.add_argument("--version", default="v1.0.0-rc.7",
                         help="release label beginning with v")
     parser.add_argument("--target", choices=SUPPORTED_TARGETS, action="append",
                         help="native, linux-arm64, or linux-x64; repeatable")

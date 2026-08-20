@@ -15,7 +15,7 @@ include(CTest)
 # still supply an explicit label through the separate override.
 set(TOKA_RELEASE_VERSION_OVERRIDE "" CACHE STRING
     "Optional version string reported by an explicitly labeled release build")
-set(TOKA_VERSION_STRING "${TokaCompiler_VERSION}-rc.6")
+set(TOKA_VERSION_STRING "${TokaCompiler_VERSION}-rc.7")
 if(NOT TOKA_RELEASE_VERSION_OVERRIDE STREQUAL "")
     set(TOKA_VERSION_STRING "${TOKA_RELEASE_VERSION_OVERRIDE}")
 endif()

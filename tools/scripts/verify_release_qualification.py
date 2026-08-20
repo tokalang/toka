@@ -15,6 +15,47 @@ STAGES = (
     "sanitizer", "package_smoke",
 )
 
+MIN_CTEST_PASSED = 15
+MIN_CONFORMANCE_PASSED = 298
+
+
+def integer_count(counts, key):
+    value = counts.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def count_errors(stage, target):
+    name = stage.get("name")
+    counts = stage.get("counts")
+    if not isinstance(counts, dict):
+        return ["%s: stage %s counts are missing" % (target, name)]
+    if name == "build":
+        ctest = counts.get("ctest")
+        if not isinstance(ctest, dict):
+            return ["%s: build CTest counts are missing" % target]
+        failed = integer_count(ctest, "failed")
+        passed = integer_count(ctest, "passed")
+        if failed != 0 or passed is None or passed < MIN_CTEST_PASSED:
+            return ["%s: build CTest baseline is not satisfied" % target]
+    if name == "pass":
+        suite = counts.get("pass_suite")
+        conformance = counts.get("conformance")
+        errors = []
+        if not isinstance(suite, dict) or \
+                integer_count(suite, "failed") != 0:
+            errors.append("%s: pass-suite counts are missing or failed" % target)
+        conformance_failed = integer_count(conformance, "failed") \
+            if isinstance(conformance, dict) else None
+        conformance_passed = integer_count(conformance, "passed") \
+            if isinstance(conformance, dict) else None
+        if conformance_failed != 0 or conformance_passed is None or \
+                conformance_passed < MIN_CONFORMANCE_PASSED:
+            errors.append("%s: conformance baseline is not satisfied" % target)
+        return errors
+    return []
+
 
 def report_errors(report, revision, version_label):
     errors = []
@@ -38,6 +79,7 @@ def report_errors(report, revision, version_label):
     for stage in stages:
         if stage.get("result") != "pass":
             errors.append("%s: stage %s is not pass" % (target, stage.get("name", "<missing>")))
+        errors.extend(count_errors(stage, target))
     return errors
 
 

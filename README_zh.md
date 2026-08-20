@@ -1,4 +1,4 @@
-[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [快速开始](#快速开始) | [Public Preview 状态](docs/release_notes_v1.0.0-rc.6.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
+[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [快速开始](#快速开始) | [Public Preview 状态](docs/release_notes_v1.0.0-rc.7.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
 
 # Toka 编程语言
 
@@ -56,7 +56,7 @@ Toka 当前处于 Public Preview。为获得可复现的安装，请使用一个
 release candidate：
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.6
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.7
 toka doctor
 ```
 
@@ -286,6 +286,6 @@ Toka 受 C / C++ 的表示控制和确定性资源管理启发，也受 Rust 的
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 1.0.0-rc.6 candidate}
+  note         = {Version 1.0.0-rc.7 candidate}
 }
 ```

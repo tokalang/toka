@@ -10,11 +10,14 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools/scripts"))
+from release_gate import parse_counts
 WORKFLOW = ROOT / ".github/workflows/release.yml"
 PROMOTION = ROOT / ".github/workflows/promote_release.yml"
+INTEL_REPLAY = ROOT / ".github/workflows/rc7_macos_x64_draft_replay.yml"
 QUALIFICATION = ROOT / "tools/scripts/verify_release_qualification.py"
 ASSETS = ROOT / "tools/scripts/verify_release_assets.py"
-ACTIVE_CANDIDATE = "v1.0.0-rc.6"
+ACTIVE_CANDIDATE = "v1.0.0-rc.7"
 ACTIVE_RELEASE_NOTES = ROOT / ("docs/release_notes_%s.md" % ACTIVE_CANDIDATE)
 TARGETS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64")
 STAGES = (
@@ -54,11 +57,22 @@ def run_expect_failure(command):
 
 
 def report(target, revision, label):
+    stages = []
+    for stage in STAGES:
+        counts = {}
+        if stage == "build":
+            counts = {"ctest": {"passed": 15, "failed": 0, "total": 15}}
+        elif stage == "pass":
+            counts = {
+                "pass_suite": {"passed": 412, "failed": 0},
+                "conformance": {"passed": 298, "failed": 0},
+            }
+        stages.append({"name": stage, "result": "pass", "counts": counts})
     return {
         "schema": "toka.release-gate", "version": 2, "result": "pass",
         "target": target, "revision": revision, "version_label": label,
         "source_dirty": False,
-        "stages": [{"name": stage, "result": "pass"} for stage in STAGES],
+        "stages": stages,
     }
 
 
@@ -86,6 +100,24 @@ def exercise_verifiers():
              "--revision", revision, "--version-label", label, "--output", str(summary)])
         summary_document = json.loads(summary.read_text(encoding="utf-8"))
         require(summary_document["result"] == "pass", "valid qualification reports were rejected")
+        reduced = report("linux-x64", revision, label)
+        reduced["stages"][1]["counts"]["conformance"]["passed"] = 297
+        (evidence / "release-gate-linux-x64.json").write_text(
+            json.dumps(reduced), encoding="utf-8")
+        run_expect_failure([sys.executable, str(QUALIFICATION),
+                            "--evidence-dir", str(evidence),
+                            "--revision", revision, "--version-label", label,
+                            "--output", str(root / "reduced-summary.json")])
+        malformed = report("linux-x64", revision, label)
+        malformed["stages"][0]["counts"]["ctest"]["passed"] = None
+        (evidence / "release-gate-linux-x64.json").write_text(
+            json.dumps(malformed), encoding="utf-8")
+        run_expect_failure([sys.executable, str(QUALIFICATION),
+                            "--evidence-dir", str(evidence),
+                            "--revision", revision, "--version-label", label,
+                            "--output", str(root / "malformed-summary.json")])
+        (evidence / "release-gate-linux-x64.json").write_text(
+            json.dumps(report("linux-x64", revision, label)), encoding="utf-8")
         (evidence / "release-gate-linux-x64.json").write_text(
             json.dumps(report("linux-x64", "c" * 40, label)), encoding="utf-8")
         run_expect_failure([sys.executable, str(QUALIFICATION), "--evidence-dir", str(evidence),
@@ -109,14 +141,34 @@ def exercise_verifiers():
 
 
 def main():
+    build_counts = parse_counts(
+        "build", "100% tests passed, 0 tests failed out of 15\n")
+    require(build_counts == {
+        "ctest": {"passed": 15, "failed": 0, "total": 15}},
+        "release gate did not parse CTest evidence")
+    pass_counts = parse_counts(
+        "pass",
+        "Summary:\n  Passed: 412\n  Failed: 0\n"
+        "--- Conformance Suite Results: 298 Passed, 0 Failed ---\n",
+    )
+    require(pass_counts == {
+        "pass_suite": {"passed": 412, "failed": 0},
+        "conformance": {"passed": 298, "failed": 0},
+    }, "release gate did not separate pass and Conformance evidence")
+
     text = WORKFLOW.read_text(encoding="utf-8")
     promotion = PROMOTION.read_text(encoding="utf-8")
+    intel_replay = INTEL_REPLAY.read_text(encoding="utf-8")
     gate = job_block(text, "release-gate", "qualification-summary")
     summary = job_block(text, "qualification-summary", "create-draft-release")
     draft = job_block(text, "create-draft-release")
 
     require("publish_release" not in text,
             "manual qualification must not have an automatic publish switch")
+    require("macos-15-intel" in intel_replay and
+            "v1.0.0-rc.7" in intel_replay and
+            "--require-checksums" in intel_replay,
+            "RC7 Intel replay workflow is missing the exact draft replay contract")
     require(ACTIVE_RELEASE_NOTES.is_file(),
             "active candidate is missing tag-release notes: " + str(ACTIVE_RELEASE_NOTES))
     require("softprops/action-gh-release" not in gate,
