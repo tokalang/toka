@@ -213,6 +213,20 @@ impl<'T> Vec<'T> {
         }
     }
 
+    /// Moves the backing allocation and all initialized elements into a new
+    /// Vec, leaving this Vec empty and immediately reusable.
+    pub fn take(self#) -> Vec<'T> {
+        unsafe {
+            auto *taken_buf = self.*buf
+            auto taken_len = self.len
+            auto taken_cap = self.cap
+            self.*buf = null
+            self.len = 0
+            self.cap = 0
+            return Vec<'T>(*buf = *taken_buf, len = taken_len, cap = taken_cap)
+        }
+    }
+
     /// Returns a shared element borrow tied to the lifetime of this Vec.
     pub fn borrow(self, index: usize) -> &'T <- self {
         if index >= self.len {
