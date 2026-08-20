@@ -1440,6 +1440,23 @@
       "description": "A fresh allocation directly initializes a shared field with one owned reference-count handle"
     },
     {
+      "id": "ownership_shared_field_shared_source_lifecycle_01",
+      "path": "ownership/shared_field_shared_source_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Shared-field initialization retains an owned local once and a borrowed member exactly once"
+    },
+    {
+      "id": "ownership_anonymous_record_shared_field_refcount_01",
+      "path": "ownership/anonymous_record_shared_field_refcount.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "atomicrmw add",
+      "expected_ir_pattern_count": 2,
+      "timeout_seconds": 10,
+      "description": "Anonymous records emit one retain for an owned shared local and one for a borrowed member"
+    },
+    {
       "id": "ownership_shared_field_factory_initialization_lifecycle_01",
       "path": "ownership/shared_field_factory_initialization_lifecycle.tk",
       "type": "run",

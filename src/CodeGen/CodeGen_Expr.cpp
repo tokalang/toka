@@ -92,6 +92,28 @@ static bool isOwnedUniquePromotionSource(const Expr *expr) {
          expr->ResolvedType && expr->ResolvedType->isUniquePtr();
 }
 
+static bool sharedInitializerProducesOwnedHandle(const Expr *expr) {
+  while (expr) {
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+    } else if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
+      expr = unsafeExpr->Expression.get();
+    } else {
+      break;
+    }
+  }
+  if (!expr)
+    return false;
+
+  if (auto *unary = dynamic_cast<const UnaryExpr *>(expr))
+    return unary->Op == TokenType::Tilde;
+
+  return dynamic_cast<const CedeExpr *>(expr) ||
+         dynamic_cast<const VariableExpr *>(expr) ||
+         dynamic_cast<const CallExpr *>(expr) ||
+         dynamic_cast<const MethodCallExpr *>(expr);
+}
+
 void CodeGen::emitAcquire(llvm::Value *sharedHandle, std::shared_ptr<Type> pointeeType) {
   if (!sharedHandle || !sharedHandle->getType()->isStructTy())
     return;
@@ -7186,10 +7208,12 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
           m_Builder.CreateStructGEP(st, alloca, idx, "field_" + f.first);
     }
 
-    const bool ownsFreshSharedHandle = f.second && f.second->ResolvedType &&
-                                       f.second->ResolvedType->isSharedPtr() &&
-                                       isOwnedUniquePromotionSource(f.second.get());
-    if (!ownsFreshSharedHandle && f.second && f.second->ResolvedType &&
+    const bool ownsSharedHandle =
+        f.second && f.second->ResolvedType &&
+        f.second->ResolvedType->isSharedPtr() &&
+        (isOwnedUniquePromotionSource(f.second.get()) ||
+         sharedInitializerProducesOwnedHandle(f.second.get()));
+    if (!ownsSharedHandle && f.second && f.second->ResolvedType &&
         f.second->ResolvedType->isSharedPtr()) {
       emitAcquire(fieldVal, f.second->ResolvedType->getPointeeType());
     }
@@ -7406,10 +7430,15 @@ PhysEntity CodeGen::genAnonymousRecordExpr(const AnonymousRecordExpr *expr) {
     // GEP to element i (Struct layout matches Fields order)
     llvm::Value *ptr = m_Builder.CreateStructGEP(recType, alloca, i);
 
-    // [Constitution] Shared Pointer RC Acquisition for Anonymous Records
-    if (expr->Fields[i].second->ResolvedType &&
-        expr->Fields[i].second->ResolvedType->isSharedPtr()) {
-      emitAcquire(val, expr->Fields[i].second->ResolvedType->getPointeeType());
+    const Expr *fieldExpr = expr->Fields[i].second.get();
+    const bool ownsSharedHandle =
+        fieldExpr && fieldExpr->ResolvedType &&
+        fieldExpr->ResolvedType->isSharedPtr() &&
+        (isOwnedUniquePromotionSource(fieldExpr) ||
+         sharedInitializerProducesOwnedHandle(fieldExpr));
+    if (!ownsSharedHandle && fieldExpr && fieldExpr->ResolvedType &&
+        fieldExpr->ResolvedType->isSharedPtr()) {
+      emitAcquire(val, fieldExpr->ResolvedType->getPointeeType());
     }
 
     m_Builder.CreateStore(val, ptr);

@@ -1,0 +1,42 @@
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0
+
+shape Resource (
+    value: i32
+)
+
+impl Resource@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+shape ResourceGraph (
+    ~root#: Resource
+)
+
+fn main() -> i32 {
+    {
+        auto ~root# = new Resource(value = 7)
+        {
+            auto graph = ResourceGraph(~root = ~root)
+            if graph.root.value != 7 {
+                return 1
+            }
+            {
+                auto copied_graph = ResourceGraph(~root = graph.~root)
+                if copied_graph.root.value != 7 {
+                    return 2
+                }
+            }
+            if g_drop_count != 0 {
+                return 3
+            }
+        }
+        if g_drop_count != 0 {
+            return 4
+        }
+    }
+    return g_drop_count - 1
+}
