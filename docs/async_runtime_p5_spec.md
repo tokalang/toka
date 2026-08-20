@@ -468,7 +468,7 @@ current implementation and atomic ordering remain subject to Section 6:
 - `queue_publication`: the normative `NoTicket | Unpublished(full ticket) |
   Published(full ticket)` state paired with each `Queued(gen)` epoch; scheduler
   insertion uses the TCB RFC's linearizable `publish_once` primitive.
-- `WaitSetToken? active_wait_set`: links a preparing or suspended task to the
+- `Option<WaitSetToken> active_wait_set`: links a preparing or suspended task to the
   one group that arbitrates all of that suspension's registrations. The token
   carries `wait_set_id` and `wait_set_generation`; each member registration
   separately carries its full `WaitToken`. Bare reusable numeric IDs and a

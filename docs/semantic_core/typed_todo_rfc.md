@@ -148,8 +148,8 @@ guard todo
 ```
 
 `guard todo` is excluded even when a boolean condition might seem useful:
-Toka guards establish narrowing facts for a traceable nullable path, and a todo
-has no path or provenance to narrow.
+raw may-zero guards establish a non-zero fact for a traceable raw path, and a
+todo has no path, address, or provenance to narrow.
 
 ## Calls, transfer, and returns
 

@@ -33,8 +33,9 @@ only a live Hit owns and drops `T`.
 
 ## Compatibility boundary
 
-This slice does not change `Option<T>` or the runtime representation of legacy
-nullable handles and payloads. The safe nullable surface now emits migration
-warnings before its separate removal; raw/FFI null remains outside that work.
-`T | miss` and `Option<T>` have no implicit conversion. Later migrations must
-classify each API by meaning rather than mechanically rewriting types.
+`Option<T>` remains an ordinary explicit zero-or-one container and has no
+implicit conversion with `T | miss`. Safe nullable payloads/owning handles,
+`none`, and nullable postfix/assertion syntax are permanently removed by
+E0484-E0487; they have no Sema, PAL, TKI, or CodeGen representation. Physical
+zero remains raw-pointer-specific through `nul *T`. Later Option migrations
+must classify each API by meaning rather than mechanically rewriting types.

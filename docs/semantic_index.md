@@ -83,6 +83,9 @@ permission flags with `"kind": "field"`.
 
 Tools must treat a contract as a declaration capability: a use-site marker
 expresses intent and is still constrained by the declared capability and PAL.
+`handleNullable` is a compatibility field whose true state now means only raw
+`nul *T` may-zero. `payloadNullable` is retained in the schema but is always
+false because Safe nullable payloads are removed.
 This distinction prevents an AI tool from suggesting a `#` marker as though it
 could create payload or handle authority. The field is optional so consumers
 must tolerate its absence for symbol kinds without a declaration contract.

@@ -32,7 +32,9 @@ Every record has seven required facts:
 - `acquire`: native symbol that creates or returns the handle;
 - `release`: release symbol for `owned`, or exactly `"none"` for `borrowed`;
 - `ownership`: `"owned"` or `"borrowed"`;
-- `nullable`: whether acquire may produce no handle;
+- `nullable`: whether acquire may produce physical address zero; Safe Toka
+  exposes such an acquire result as raw `nul *T`, never as a nullable owning
+  handle;
 - `thread_affinity`: `"any"` or `"ui"`;
 - `send`: whether the handle may cross a task/thread boundary.
 

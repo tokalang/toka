@@ -160,38 +160,26 @@ For `~`, `&`, and non-moving alias propagation:
 5. Raw pointers follow this rule in safe code; an explicit `unsafe` operation
    is required before raw payload authority can be used.
 
-## 5. Nullability and guards
+## 5. Raw may-zero flow and guards
 
-Independent flow from a nullable source to a non-null destination requires a
-dominating guard over the **same canonical path**. A guard refines the current
-null-state only; it neither adds H/P authority nor removes a referent ceiling.
-
-The implemented projection form is branch-local and direction-sensitive:
-
-```toka
-if record.item is null {
-    // record.item remains nullable here
-} else {
-    auto item = cede record.item:Item // same path, proven non-null
-}
-```
-
-The same rule applies to a fixed-array index such as `values[0]`. A `guard`
-may express the same proof for an exact direct local member or fixed-array
-constant index:
+Safe nullable payloads and owning handles are removed. The only presence proof
+in this flow contract concerns a `nul *T` source crossing into a non-zero `*T`
+destination. It requires a dominating guard over the **same canonical path**.
+The proof refines only the physical zero-address fact; it neither adds H/P
+authority nor removes a referent ceiling.
 
 ```toka
-guard record.item {
-    auto item = cede record.item:Item
+guard *raw {
+    auto *live = raw.unwrap()
 } else {
     return
 }
 ```
 
-This remains a branch-local proof. It is not propagated to siblings, a
-different path, a dynamic index, a caller-supplied root, or beyond the guard.
-No implicit `cede` conversion from nullable to non-null is permitted without
-that proof.
+This proof is branch-local. It is not propagated to siblings, a different
+path, a dynamic index, a caller-supplied root, or beyond the guard. No implicit
+`cede` conversion from may-zero raw to non-zero raw is permitted without the
+same-path proof.
 
 ## 6. Patterns and partial moves
 
@@ -234,7 +222,7 @@ contract.
 | whole owned/unique transfer into a fresh binding, parameter, return, or whole owned consuming receiver | Independent; destination declaration supplies local H/P subject to retained represented ceilings | design-frozen; current-revision qualification required per surface |
 | `~`, `&`, and ordinary alias propagation through currently admitted locals, calls, returns, fields, closures, and conservative reference/pattern binders | Shared; direct source supplies the non-amplifying payload ceiling | design-frozen; historical `Partial` surfaces remain qualification-pending |
 | source-invalidating transfer into an existing binding | destination keeps its declaration; only a canonically proven disjoint source/destination pair may enter the atomic PlaceState/cleanup commit in `OWN-FLOW-01`, including an admitted moving Shared-handle form | design-frozen; current-revision cleanup and overlap-rejection evidence required |
-| direct nullable whole/member or fixed-array constant-index transfer after a same-path guard | guard refines presence only; it grants no H/P | bounded frozen surface |
+| direct raw may-zero whole/member or fixed-array constant-index transfer after a same-path guard | guard refines physical non-zero presence only; it grants no H/P | bounded frozen surface |
 | direct-field or fixed-array constant-index partial `cede`, including the direct-field consuming-receiver subset | Shared for authority; lifecycle governed separately by `partial_cede_lifecycle_rfc.md` | bounded surface only where that lifecycle RFC admits and qualifies the exact place |
 | safe raw observation | Shared/non-upgrading | frozen conservative boundary |
 | dynamic/container index, spread, enum payload, arbitrary nested/nonlocal consuming receiver, custom-drop projection | no general classification or lifecycle authority | safe source rejects; resolver-owned intrinsic or explicit `unsafe` boundary only |
@@ -251,13 +239,13 @@ Promotion of an additional row requires all of:
   or state change; source-backed and source-less consumers must agree on the
   same rule and diagnostic, while a proven distinct-root control remains
   accepted;
-- nullable guarded and unguarded tests over canonical paths where applicable;
+- raw may-zero guarded and unguarded tests over canonical paths where applicable;
 - `.tki` replay preserving every flow-relevant signature and declaration fact;
 - PAL conflict tests proving transfer cannot bypass an active overlap;
 - `if`, `guard`, `match`, and loop joins preserving direct-flow ceilings from
   every continuing predecessor without branch-order dependence; and
 - diagnostics that distinguish declaration authority, flow ceiling, null
-  proof, PAL conflict, and unsupported lifecycle eligibility.
+  raw non-zero proof, PAL conflict, and unsupported lifecycle eligibility.
 
 TKI carries no ambient flow authority. H/P declarations, represented referent
 ceilings, field graphs, structural Copy/drop eligibility, and the canonical

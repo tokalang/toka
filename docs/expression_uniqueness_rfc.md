@@ -181,9 +181,9 @@ The two RHS forms have distinct roles:
 
 - `expression: Type` is a type ascription. It establishes `Type` at the
   expression site and supplies that complete expected type recursively to the
-  expression. It is the spelling for literal width, `todo`, nullable absence,
-  empty containers, generic construction, control-flow expressions, and an
-  unannotated closure's callable signature.
+  expression. It is the spelling for literal width, `todo`, raw may-zero
+  pointer literals, empty containers, generic construction, control-flow
+  expressions, and an unannotated closure's callable signature.
 - `expression as Type` is an explicit conversion. It is required whenever the
   program requests an actual permitted conversion rather than merely
   constraining an expression's type.
@@ -208,10 +208,11 @@ fact. This is not an exception to the RHS rule.
 The implementation must not merely move text from `auto name: T = expression`
 to `auto name = expression:T`. A RHS ascription must provide every complete
 expected-type flow that the removed declaration type previously provided,
-including typed `todo`, nullable and empty aggregate forms, generic
+including typed `todo`, raw may-zero and empty aggregate forms, generic
 construction, control-flow expressions, and closure parameter/return
-injection. An ascribed `uninit` must retain `uninit`'s zero initialization-mask
-state and CodeGen's no-store behavior.
+injection. Safe nullable aggregate forms no longer exist. An ascribed `uninit`
+must retain `uninit`'s zero initialization-mask state and CodeGen's no-store
+behavior.
 
 Declaration-side annotations remain necessary where no initializer exists by
 definition, such as parameters, fields, return contracts, and type

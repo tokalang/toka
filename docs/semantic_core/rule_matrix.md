@@ -782,8 +782,9 @@ Primary references:
 - Primary diagnostics: runtime panic output; compile-time ownership diagnostics
 - Implementation areas: `src/CodeGen/CodeGen_Stmt.cpp`,
   `src/CodeGen/CodeGen_Memory.cpp`, `lib/sys/toka_rt.c`
-- Positive tests: `tests/pass/g09_resource_cleanup_matrix.tk`,
-  `tests/pass/g08_nullable_pointer_unwrap_panic.tk`
+- Positive tests: `tests/pass/g09_resource_cleanup_matrix.tk`, and the
+  historical filename `tests/pass/g08_nullable_pointer_unwrap_panic.tk`
+  covering raw may-zero `.unwrap()` panic
 - Interface replay requirements: ownership transfer and resource facts replay;
   panic transport is a same-toolchain runtime contract, not `.tki` metadata.
 

@@ -120,7 +120,10 @@ small domain admits only concrete first-order physical types:
 - non-generic nominal types whose defining declaration has a resolver-known
   coordinate.
 
-Every node records its physical `cede`, writable, nullable, and blocked bits.
+Every node records its physical `cede`, writable, may-zero, and blocked bits.
+The may-zero bit is admitted only for raw `nul *T`; value, borrow, unique, and
+shared nodes always record false. The existing wire position is retained for
+candidate-schema compatibility and does not reintroduce Safe nullable types.
 A nominal node records its defining shape identity rather than an unqualified
 display name. Function types, dynamic function types, `Uninit`, anonymous
 records, projections, variant suffixes, symbolic const extents, generic

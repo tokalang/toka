@@ -4,7 +4,7 @@
 > `pub(crate)`、`pub(path)` 与 wildcard 可见性描述不得作为当前实现或生成代码依据。
 
 初始审计日期：2026-06-29
-当前更新日期：2026-07-12
+当前更新日期：2026-08-20
 
 本文以 `docs/syntax.md` 与 `docs/syntax_zh.md` 为公开语法声明源，对照当前编译器实现、标准库用例与测试集，检查语法设计是否已经被测试锁定，以及哪些规则仍需要补充更直接的 pass/fail 用例。
 
@@ -23,7 +23,7 @@
 
 已经可以认为基本闭合的区域：
 
-- `auto` 绑定、`#` 可变权限、nullable payload / nullable handle
+- `auto` 绑定、`#` 可变权限、Safe nullable 永久删除与 raw may-zero
 - payload / handle 分层，以及 `&`、`*`、`^`、`~` 的基本使用
 - `$` 显式只读 / 阻断继承标记，以及 handle 字段的层内权限继承边界
 - `cede` 调用契约与未消费检查
@@ -52,7 +52,7 @@
 | --- | --- | --- | --- |
 | 1. Core Model | 基本锁定 | pointer、member、morphic、PAL 相关 pass/fail 已覆盖 payload/handle 差异；最小 payload/handle 视图对照已补 | 后续缺口转向更细的诊断质量，而不是核心规则本身 |
 | 2. Files / Imports / Entry | 基本锁定 | `g03_import_item.tk`、`g03_module.tk`、relative import、import fail cases；`pub import` source-less TKI re-export 已补 | 后续可按需细化多级 re-export 与 wildcard import 的组合 |
-| 3. Bindings / Mutability / Nullability | 基本锁定 | nullable、borrow、mutation、strict pointer、null fail cases 均存在 | nullable handle 的 raw / unique / shared 正例和非 nullable 反例已补最小矩阵；`nul &` 已锁为非法 |
+| 3. Bindings / Mutability / May-zero | 锁定 | E0484-E0487 锁定 `T?`、`none`、`nul ^/~` 与 nullable postfix/assertion 的永久删除；raw `*T` / `nul *T` 正反矩阵完整 | `nul &` 非法；`.await?` 是独立取消结果语法，不属于 Safe nullable |
 | 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress、hatted parameter warning matrix 均有用例 | 后续可转向 handle 组合场景，而不是基础帽子规则 |
 | 5. Functions / Parameters / `cede` | 锁定较好 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 后续主要是诊断措辞与组合矩阵细化；核心 cede 契约已经实施 |
 | 5a. PAL / Borrow Safety | 主体冻结 | `g08_pal_stress_test`、branch restore、loop local move、labeled break / continue、borrowed-field escape、borrow / move fail cases | 后续转向精度审计与诊断，不继续扩展主体规则 |

@@ -15,7 +15,7 @@ gate results on Linux x64/arm64 and macOS x64/arm64.
   scope cleanup. The resource matrix checks exact drop counts across direct
   transfer, taken and untaken branches, closure capture, async suspension, and
   detached owned handoff.
-- Nullable raw-pointer `.unwrap` lowers through the stable runtime panic path
+- Raw may-zero pointer `.unwrap` lowers through the stable runtime panic path
   with the message `null pointer unwrap`; it no longer reaches an LLVM trap.
 - Bare `[N]T(...)` array construction is outside the frozen 1.0 expression
   grammar and is rejected in Sema with `E04586` before CodeGen.

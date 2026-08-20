@@ -128,7 +128,7 @@ shape TaskControlBlock (
     state: TCBState,
     queue_publication: QueuePublicationState,
     cancel_state: CancelRequestState,
-    cleanup_obligation: TaskCleanupObligation?,
+    cleanup_obligation: Option<TaskCleanupObligation>,
     result_state: TaskResultState, // Pending, ReadyLive, Taken, Canceled
     result_claim_state: TaskResultClaimState, // Unclaimed, Claimed
     result_payload: TaskResultPayload,
@@ -136,7 +136,7 @@ shape TaskControlBlock (
     frame_cleanup_fn: fn(*void, FrameCleanupMode),
     result_owner: TaskResultOwner,
     // ConsumerOwned(disposition) | RuntimeOwned(Detached | ScopeNode(node_token))
-    active_wait_set: WaitSetToken?,
+    active_wait_set: Option<WaitSetToken>,
     completion_registry: CompletionRegistry
 )
 
@@ -146,7 +146,7 @@ shape WaitSet (
     task_schedule_generation: u64,
     state: WaitSetState, // Waiting, WonPending(outcome),
                          // WonCommitted(outcome), Inactive
-    winner: WaitOutcome?, // write-once stable record retained for resume
+    winner: Option<WaitOutcome>, // write-once stable record retained for resume
     active_slot_count: u32
 )
 

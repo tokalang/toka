@@ -4,6 +4,9 @@
 > design, including removed scoped and wildcard visibility forms. Do not use it
 > to decide current compiler or library behaviour. The current semantic entry
 > point is [`encap_current_contract.md`](encap_current_contract.md).
+> This archive also describes the removed Safe nullable payload/drop model.
+> Current Toka rejects that surface with E0484-E0487; only raw `nul *T`
+> may-zero remains.
 
 **Status:** Superseded design record.
 
