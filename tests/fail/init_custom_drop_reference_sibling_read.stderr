@@ -1,25 +1,20 @@
 error[E0410]: Use of uninitialized variable or member 'pair'
- --> tests/fail/init_custom_drop_reference_sibling_read.tk:13:22
+ --> tests/fail/init_custom_drop_reference_sibling_read.tk:17:22
     |
- 13 |     auto &borrow# = &pair
+ 17 |     auto &borrow# = &pair
     |                      ^
 error[E0441]: Cannot access 'pair' while it is mutably borrowed
- --> tests/fail/init_custom_drop_reference_sibling_read.tk:15:16
+ --> tests/fail/init_custom_drop_reference_sibling_read.tk:19:16
     |
- 15 |     return pair.y
+ 19 |     return pair.y
     |                ^
 note: conflicting borrow originates here
- --> tests/fail/init_custom_drop_reference_sibling_read.tk:13:21
+ --> tests/fail/init_custom_drop_reference_sibling_read.tk:17:21
     |
- 13 |     auto &borrow# = &pair
+ 17 |     auto &borrow# = &pair
     |                     ^
 error[E0410]: Use of uninitialized variable or member 'pair.y'
- --> tests/fail/init_custom_drop_reference_sibling_read.tk:15:16
+ --> tests/fail/init_custom_drop_reference_sibling_read.tk:19:16
     |
- 15 |     return pair.y
+ 19 |     return pair.y
     |                ^
-error[E0412]: Reference '&borrow' to uninitialized variable 'pair' escapes scope without initialization
- --> tests/fail/init_custom_drop_reference_sibling_read.tk:11:18
-    |
- 11 | fn main() -> i32 {
-    |                  ^

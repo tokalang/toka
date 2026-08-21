@@ -3,38 +3,18 @@ error[E0410]: Use of uninitialized variable or member 'x'
    |
  6 |     auto &ref = &x
    |                  ^
-error[E0412]: Reference '&ref' to uninitialized variable 'x' escapes scope without initialization
- --> tests/fail/unset_escape.tk:4:32
-   |
- 4 | fn test_return_unset() -> &i32 {
-   |                                ^
 error[E0410]: Use of uninitialized variable or member 'y'
  --> tests/fail/unset_escape.tk:14:23
     |
  14 |         auto &refY = &y
     |                       ^
-error[E0412]: Reference '&refY' to uninitialized variable 'y' escapes scope without initialization
- --> tests/fail/unset_escape.tk:13:10
-    |
- 13 |     loop {
-    |          ^
 error[E0410]: Use of uninitialized variable or member 'z'
  --> tests/fail/unset_escape.tk:22:19
     |
  22 |     auto &refZ = &z
     |                   ^
-error[E0412]: Reference '&refZ' to uninitialized variable 'z' escapes scope without initialization
- --> tests/fail/unset_escape.tk:20:22
-    |
- 20 | fn test_pass_unset() {
-    |                      ^
 error[E0410]: Use of uninitialized variable or member 'a'
  --> tests/fail/unset_escape.tk:36:23
     |
  36 |         auto &refA = &a
     |                       ^
-error[E0412]: Reference '&refA' to uninitialized variable 'a' escapes scope without initialization
- --> tests/fail/unset_escape.tk:35:5
-    |
- 35 |     {
-    |     ^

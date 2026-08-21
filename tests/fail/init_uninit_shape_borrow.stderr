@@ -3,8 +3,3 @@ error[E0410]: Use of uninitialized variable or member 'pair'
    |
  9 |     auto &borrow# = &pair
    |                      ^
-error[E0412]: Reference '&borrow' to uninitialized variable 'pair' escapes scope without initialization
- --> tests/fail/init_uninit_shape_borrow.tk:7:18
-   |
- 7 | fn main() -> i32 {
-   |                  ^

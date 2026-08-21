@@ -1437,6 +1437,7 @@ void Sema::checkStmt(Stmt *S) {
 
     std::string InitType = "";
     std::shared_ptr<toka::Type> InitTypeObj = nullptr;
+    m_LastBorrowSource.clear();
     if (Var->Init) {
       Var->Init = foldGenericConstant(std::move(Var->Init));
       m_ControlFlowStack.push_back({Var->Name, NoProducedValue, nullptr, false, true});
@@ -1900,7 +1901,8 @@ void Sema::checkStmt(Stmt *S) {
           }
         }
 
-        if ((srcPtr->InitMask & fullMask) != fullMask) {
+        if (!hasPlaceState(srcPtr->placeFact(), PlaceState::Never) &&
+            (srcPtr->InitMask & fullMask) != fullMask) {
           // It's Dirty!
           Info.DirtyReferentMask = srcPtr->InitMask;
         } else {

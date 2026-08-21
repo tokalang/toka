@@ -1,10 +1,14 @@
 // CHECK: error[E0410]
+import core/traits::{@Encap}
+
 shape Pair (
     x: i32,
     y: i32
 )
 
-impl Pair {
+impl Pair@Encap {
+    pub x
+    pub y
     fn drop(self#) {}
 }
 

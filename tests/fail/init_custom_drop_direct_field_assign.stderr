@@ -1,0 +1,5 @@
+error[E04617]: Cannot assign to uninitialized local 'pair'; use 'init pair = ...'
+ --> tests/fail/init_custom_drop_direct_field_assign.tk:17:12
+    |
+ 17 |     pair.x = 1
+    |            ^

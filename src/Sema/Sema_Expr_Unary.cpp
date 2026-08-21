@@ -324,13 +324,16 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
       if (!pathToBorrow.empty()) {
         Expr *rootExpr = Unary->RHS.get();
         std::string rootName;
+        bool isProjectionBorrow = false;
         while (rootExpr) {
           if (auto *VE = dynamic_cast<VariableExpr *>(rootExpr)) {
             rootName = VE->Name;
             break;
           } else if (auto *ME = dynamic_cast<MemberExpr *>(rootExpr)) {
+            isProjectionBorrow = true;
             rootExpr = ME->Object.get();
           } else if (auto *IE = dynamic_cast<ArrayIndexExpr *>(rootExpr)) {
+            isProjectionBorrow = true;
             rootExpr = IE->Array.get();
           } else if (auto *UE = dynamic_cast<UnaryExpr *>(rootExpr)) {
             rootExpr = UE->RHS.get();
@@ -340,19 +343,74 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
             break;
           }
         }
+        bool borrowUnavailable = false;
         if (!rootName.empty()) {
           SymbolInfo *rootInfo = nullptr;
           std::string actualRoot;
           if (CurrentScope->findVariableWithDeref(rootName, rootInfo, actualRoot) && rootInfo) {
             if (!rootInfo->IsReference()) {
-              if (hasPlaceState(rootInfo->placeFact(), PlaceState::Never) ||
-                  !rootInfo->ExactPlace.isDefinitelyLive() ||
-                  rootInfo->InitMask == 0) {
-                DiagnosticEngine::report(getLoc(Unary), DiagID::ERR_USE_UNSET, pathToBorrow);
-                HasError = true;
+              if (!isProjectionBorrow) {
+                // Borrow whole root: root ExactPlace must be definitely Live
+                if (hasPlaceState(rootInfo->placeFact(), PlaceState::Never) ||
+                    !rootInfo->ExactPlace.isDefinitelyLive()) {
+                  borrowUnavailable = true;
+                }
+              } else {
+                // Borrow projection:
+                // root whole fact must be exactly Live
+                if (!hasExactlyPlaceState(rootInfo->placeFact(), PlaceState::Live)) {
+                  borrowUnavailable = true;
+                } else {
+                  // Check selected projection fact
+                  if (auto *ME = dynamic_cast<MemberExpr *>(Unary->RHS.get())) {
+                    if (rootInfo->TypeObj && rootInfo->TypeObj->isShape()) {
+                      auto shapeType = std::dynamic_pointer_cast<ShapeType>(rootInfo->TypeObj);
+                      ShapeDecl *SD = shapeType ? shapeType->Decl : nullptr;
+                      if (!SD)
+                        SD = findVisibleShapeDecl(rootInfo->TypeObj->getSoulName(), getLoc(ME));
+                      if (SD) {
+                        for (int i = 0; i < (int)SD->Members.size(); ++i) {
+                          if (toka::Type::stripMorphology(SD->Members[i].Name) ==
+                              toka::Type::stripMorphology(ME->Member)) {
+                            if (rootInfo->partialMovePlan().admits(PartialMoveProjectionKind::DirectField, i)) {
+                              if (!hasExactlyPlaceState(
+                                      rootInfo->ExactPlace.projectionFact(
+                                          PartialMoveProjectionKind::DirectField, i),
+                                      PlaceState::Live)) {
+                                borrowUnavailable = true;
+                              }
+                            }
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  } else if (auto *IE = dynamic_cast<ArrayIndexExpr *>(Unary->RHS.get())) {
+                    if (IE->Indices.size() == 1) {
+                      if (auto *constant = dynamic_cast<NumberExpr *>(IE->Indices[0].get())) {
+                        if (rootInfo->partialMovePlan().admits(
+                                PartialMoveProjectionKind::FixedArrayElement, constant->Value)) {
+                          if (!hasExactlyPlaceState(
+                                  rootInfo->ExactPlace.projectionFact(
+                                      PartialMoveProjectionKind::FixedArrayElement, constant->Value),
+                                  PlaceState::Live)) {
+                            borrowUnavailable = true;
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           }
+        }
+
+        if (borrowUnavailable) {
+          DiagnosticEngine::report(getLoc(Unary), DiagID::ERR_USE_UNSET, pathToBorrow);
+          HasError = true;
+          m_LastBorrowSource.clear();
+          return refType;
         }
 
         if (!PALCheckerState.recordBorrow(

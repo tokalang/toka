@@ -750,11 +750,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           if (InfoPtr->DirtyReferentMask != ~0ULL)
             isLHSWritable = true;
         } else if (InfoPtr->partialMovePlan().isAdmitted()) {
-          if (!InfoPtr->ExactPlace.isDefinitelyLive())
+          if (!InfoPtr->ExactPlace.isDefinitelyLive() ||
+              hasExactlyPlaceState(InfoPtr->placeFact(), PlaceState::Moved))
             isLHSWritable = true;
-        } else {
-          if (InfoPtr->InitMask != ~0ULL)
-            isLHSWritable = true;
+        } else if (hasExactlyPlaceState(InfoPtr->placeFact(), PlaceState::Moved)) {
+          isLHSWritable = true;
         }
         
         // This assignment reaches a payload path.  Handle rebindability

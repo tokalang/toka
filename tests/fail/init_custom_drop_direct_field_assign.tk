@@ -1,4 +1,4 @@
-// CHECK: error[E0410]
+// CHECK: error[E04617]
 import core/traits::{@Encap}
 
 shape Pair (
@@ -14,8 +14,6 @@ impl Pair@Encap {
 
 fn main() -> i32 {
     auto pair# = uninit:Pair
-    auto &borrow# = &pair
-    borrow.x = 1
-    borrow.y = 2
+    pair.x = 1
     return 0
 }
