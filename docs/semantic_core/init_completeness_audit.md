@@ -1,9 +1,8 @@
 # Init Completeness Audit (Layer 1 Reliability & Soundness)
 
-**Status:** Completed baseline audit. The declared P1 delayed-initialization
-boundary is proven sound: no uninitialized reads, duplicate constructions, or
-erroneous drops can be admitted by the compiler. Higher-order expressiveness
-extensions remain cleanly classified as Deferred.
+**Status:** Preliminary baseline audit. No P0 soundness defect was found in
+the inspected P1 paths, but proof remains incomplete while legacy InitMask
+participates in semantic decisions and several matrix rows lack direct evidence.
 
 ---
 
@@ -19,8 +18,9 @@ layers:
    - No application of `init` to a moved place;
    - No drop of never-constructed or moved-out storage;
    - Exact single drop of conditionally or fully constructed resources across
-     all control-flow exits (normal fallthrough, explicit returns, loop breaks,
-     and unwinding).
+     all normal control-flow exits (normal fallthrough, explicit returns, and
+     loop breaks; runtime panic/abort executes direct process termination
+     without unwinding cleanup).
 
 2. **Layer 2: Language Expressiveness Coverage**
    Capabilities not yet admitted into the core language (such as field-wise
@@ -28,8 +28,8 @@ layers:
    formally designated as **Deferred**. Their absence is an intentional scope
    boundary rather than a soundness defect.
 
-This audit focuses on proving **Layer 1 Soundness** and establishing an
-immutable completeness matrix.
+This audit establishes the preliminary baseline, identifies the hybrid migration
+state, and catalogues required verification evidence.
 
 ---
 
@@ -46,47 +46,49 @@ immutable completeness matrix.
 > **Document Drift Rectification**: [`init_contract_rfc.md`](init_contract_rfc.md)
 > originally marked "outcome-dependent contracts remain deferred". The codebase
 > has since implemented and verified G17 Outcome Contracts ([`outcome_contract_rfc.md`](outcome_contract_rfc.md))
-> at Level A. This audit confirms that G17 integrates directly with `PlaceState`
-> and does not introduce a competing state machine.
+> at Level A. This audit confirms that G17 integrates with `PlaceState` without
+> defining an alternate state model.
 
 ---
 
 ## 3. Deep-Dive Audit of Five Critical Risk Areas
 
-### Risk Area 1: Single Source of Truth System
+### Risk Area 1: State System Coexistence & Hybrid Migration
 
 ```mermaid
 flowchart TD
-    subgraph Sema ["Sema (Semantic Truth Authority)"]
-        EP["ExactPlaceFacts (SymbolInfo::ExactPlace)"]
-        PS["PlaceStateFact (SymbolInfo::placeFact())<br/>{Never, Live, Moved}"]
-        EP --> PS
+    subgraph Sema ["Sema (Semantic Checking)"]
+        EP["ExactPlaceFacts (SymbolInfo::ExactPlace)<br/>Whole-place & admitted projection facts"]
+        IM["InitMask (Legacy 64-bit mask)<br/>Directly queried in Sema_Expr, Sema_Stmt, etc."]
+        EP <--> IM
     end
 
-    subgraph LegacyBridge ["Compatibility View (Derived)"]
-        IM["InitMask (applyToLegacyInitMask)"]
-        PS -.-> IM
-    end
-
-    subgraph CodeGen ["CodeGen (Lowering & Execution Artifacts)"]
-        DF["DropFlag (alloca i1) -> Drop Liveness"]
-        IF["InitFlag (alloca i1) -> Runtime 'is uninit'"]
+    subgraph CodeGen ["CodeGen (Lowering & Runtime Artifacts)"]
+        DF["DropFlag (alloca i1) -> Scope Drop Liveness"]
+        IF["InitFlag (alloca i1) -> Runtime 'is uninit' evaluation"]
     end
 
     Sema ==> CodeGen
 ```
 
-- **Sema Authority**: `SymbolInfo::placeFact()` binds directly to
-  `ExactPlaceFacts::whole()`. All compile-time admissibility decisions (read
-  legality, `init` legality, move legality) inspect `PlaceStateFact` directly.
-- **`InitMask` Status**: `InitMask` is purely a derived compatibility bitmask
-  updated via `ExactPlace.applyToLegacyInitMask(...)`. It does not make
-  autonomous semantic decisions that can contradict `PlaceStateFact`.
-- **CodeGen Artifacts**: `InitFlag` and `DropFlag` are LLVM `alloca` instances
-  generated during lowering. They execute the dynamic runtime checks verified by
-  Sema and never feed back into compile-time type/contract checking.
+- **Current Reality: Hybrid System**: While `PlaceState` (via `ExactPlaceFacts`)
+  governs whole-place `Never`/`Live`/`Moved` state transitions and `init`
+  preconditions, legacy `InitMask` is **not purely a derived projection**. It
+  still actively participates in semantic decisions across the compiler:
+  - `Sema_Expr.cpp`: queries `InitMask` to determine aggregate read legality;
+  - `Sema_Expr_Member.cpp`: inspects individual bits to determine field initialization;
+  - `Sema_Expr_Binary.cpp`: checks `InitMask` for uninitialized fields and LHS writability;
+  - `Sema_Stmt.cpp`: evaluates `DirtyReferentMask` / `InitMask` to check whether dirty references may escape scope;
+  - Multiple control flow merges (`if`, `match`, `loop`) independently merge `InitMask` alongside `ExactPlaces`.
+- **Soundness Impact**: While no divergence between `PlaceState` and `InitMask`
+  was observed in inspected paths, the coexistence of two active decision
+  surfaces means `PlaceState` cannot yet be proclaimed the sole semantic source of truth.
+- **CodeGen Lowering**: `InitFlag` and `DropFlag` are LLVM `alloca` instances
+  generated during lowering. They execute the runtime branch checks and cleanup
+  dispatches without performing compile-time contract checking.
 
-**Verdict: Proven & Clean.** `PlaceState` is the sole semantic source of truth.
+**Verdict: Hybrid / migration incomplete.** A full migration roadmap to retire
+autonomous `InitMask` decision paths is required.
 
 ---
 
@@ -98,7 +100,7 @@ flowchart TD
   If any reachable path leaves a place $x$ as `Never`, the merged fact satisfies
   $\text{hasPlaceState}(\text{merged}, \text{Never}) = \text{true}$ and
   $\text{hasExactlyPlaceState}(\text{merged}, \text{Live}) = \text{false}$.
-- **Consequences Proven**:
+- **Inspected Behaviors**:
   1. **Reads/Moves**: Rejected because reads require definite `Live`
      (`hasExactlyPlaceState(..., Live)`).
   2. **Subsequent `init`**: Rejected because `init` requires definite `Never`
@@ -107,10 +109,10 @@ flowchart TD
      If any path failed to construct $x$, `ERR_INIT_BLOCK_UNFULFILLED` is emitted.
   4. **Loops & Breaks**: Loop back-edges and labelled breaks join facts into the
      loop exit state; zero-trip loops retain entry `Never` in the union.
-  5. **Divergence**: Diverging paths (`return`, `panic`, `never`) are pruned from
+  5. **Divergence**: Diverging paths (`return`, `never`) are pruned from
      the fallthrough join via `allPathsJump` / `allPathsReturn`.
 
-**Verdict: Proven & Tested.**
+**Verdict: Inspected & Tested (targeted adversarial suite needed).**
 
 ---
 
@@ -132,14 +134,15 @@ flowchart TD
    Consumes `InitAuthority` and transitions to `Live`.
 2. `Live --cede--> Moved`: Moves ownership out of the place. Place remains
    allocated but unavailable.
-3. `Moved --init--> X`: **Statically rejected**. `placeFact()` contains `Moved`,
-   which fails `hasExactlyPlaceState(..., Never)`.
+3. `Moved --init--> X`: **Statically rejected** by `hasExactlyPlaceState(..., Never)`.
+   *(Requires dedicated test case to complete evidence chain).*
 4. `Moved --ordinary assignment--> Live`: Admitted for mutable bindings.
    Sets `InitMask = ~0ULL` and marks `DropFlag = true`.
-   Crucially, CodeGen inspects `DropFlag` prior to assignment; because `DropFlag`
-   was reset to `false` upon move, **no phantom old value is dropped**.
+   CodeGen inspects `DropFlag` prior to assignment; because `DropFlag`
+   was reset to `false` upon move, no phantom old value is dropped.
+   *(Requires dedicated whole-place drop-counter test).*
 
-**Verdict: Proven & Tested.**
+**Verdict: Inspected (evidence gaps identified in INIT-05 and INIT-20).**
 
 ---
 
@@ -154,10 +157,10 @@ flowchart TD
 | Ceded then repopulated | `Live` | Reset to `true` at assignment | Exactly 1 drop on scope exit |
 | Aggregate partial move | `Live` (masked) | `DropMask` updated per field | Masked drop cascade; no double drop |
 
-- **ASan & Drop Counters**: Conformance and regression suites verify drop
-  counters across normal exits, early returns, and loop breaks.
+- **Runtime Panic**: Toka runtime invokes `abort` on POSIX and `ExitProcess` on
+  Windows; panic paths do not execute unwinding cleanup.
 
-**Verdict: Proven & Tested.**
+**Verdict: Inspected & Tested on existing fixtures.**
 
 ---
 
@@ -171,7 +174,7 @@ flowchart TD
   identical `PlaceState::Never` initial condition and enforces callee-side
   `PlaceState::Live` fulfillment on retained generic and non-generic bodies.
 
-**Verdict: Proven & Tested.**
+**Verdict: Tested.**
 
 ---
 
@@ -179,26 +182,26 @@ flowchart TD
 
 | ID | Feature / Invariant | Status | Classification | Evidence / Test |
 |---|---|---|---|---|
-| **INIT-01** | `auto x = uninit:T` establishes typed `Never` place | **Proven** | Implemented | `tests/pass/g04_scratch_uninit.tk` |
-| **INIT-02** | `init x = expr` constructs `Never -> Live` on plain immutable local | **Proven** | Implemented | `tests/pass/g16_init_direct_local_test.tk` |
-| **INIT-03** | Ordinary assign to `Never` rejected (`ERR_INIT_REQUIRES_EXPLICIT`) | **Proven** | Implemented | `tests/fail/g16_init_requires_explicit.tk` |
-| **INIT-04** | Duplicate `init` on `Live` rejected (`ERR_INIT_REQUIRES_UNINITIALIZED`) | **Proven** | Implemented | `tests/fail/g16_init_repeated_local.tk` |
-| **INIT-05** | `init` on `Moved` rejected (`ERR_INIT_REQUIRES_UNINITIALIZED`) | **Proven** | Implemented | `tests/fail/g16_init_repeated_local.tk` |
-| **INIT-06** | Lexical `init x { ... }` block requires entry `Never` | **Proven** | Implemented | `tests/pass/g16_init_lexical_block_test.tk` |
-| **INIT-07** | Lexical `init x { ... }` unfulfilled exit rejected | **Proven** | Implemented | `tests/fail/g16_init_block_unfulfilled.tk` |
-| **INIT-08** | Lexical `init` early `break`/`continue` escape rejected | **Proven** | Implemented | `tests/fail/g16_init_block_exit.tk` |
-| **INIT-09** | `if x is uninit` predicate narrows branches (`Never` / `Live`) | **Proven** | Implemented | `tests/pass/g16_init_state_predicate_test.tk` |
-| **INIT-10** | `is uninit` outside lexical block or non-maybe rejected | **Proven** | Implemented | `tests/fail/g16_init_state_predicate_outside.tk` |
-| **INIT-11** | Synchronous plain `init` formal parameter contract | **Proven** | Implemented | `tests/pass/g16_init_parameter_test.tk` |
-| **INIT-12** | `init` formal unfulfilled on fallthrough/return rejected | **Proven** | Implemented | `tests/fail/g16_init_parameter_unfulfilled.tk` |
-| **INIT-13** | `init` formal passing non-`Never` actual rejected | **Proven** | Implemented | `tests/fail/g16_init_parameter_invalid_argument.tk` |
-| **INIT-14** | `init` formal in `async fn` rejected | **Proven** | Implemented | `tests/fail/g16_init_parameter_async.tk` |
-| **INIT-15** | Unresolved lexical `init` obligation across `.await` rejected | **Proven** | Implemented | `tests/fail/g16_init_block_await_unresolved.tk` |
-| **INIT-16** | G17 Outcome Contract conditional `init`/`uninit` post-states | **Proven** | Implemented (Level A) | `tests/conformance/` & `outcome_contract_rfc.md` |
-| **INIT-17** | Generic function `init` formal and TKI roundtrip | **Proven** | Implemented | `tests/pass/g16_init_parameter_generic_test.tk` |
-| **INIT-18** | Zero runtime drop on never-initialized resource | **Proven** | Implemented | `tests/pass/g16_init_cleanup_liveness_test.tk` |
-| **INIT-19** | Dynamic drop flag cleanup on branch-initialized resource | **Proven** | Implemented | `tests/pass/g16_init_cleanup_liveness_test.tk` |
-| **INIT-20** | Repopulating moved resource drops only new value | **Proven** | Implemented | `tests/conformance/ownership/` |
+| **INIT-01** | `auto x = uninit:T` establishes typed `Never` place | **Tested** | Implemented | `tests/pass/g04_scratch_uninit.tk` |
+| **INIT-02** | `init x = expr` constructs `Never -> Live` on plain immutable local | **Tested** | Implemented | `tests/pass/g16_init_direct_local_test.tk` |
+| **INIT-03** | Ordinary assign to `Never` rejected (`ERR_INIT_REQUIRES_EXPLICIT`) | **Tested** | Implemented | `tests/fail/g16_init_requires_explicit.tk` |
+| **INIT-04** | Duplicate `init` on `Live` rejected (`ERR_INIT_REQUIRES_UNINITIALIZED`) | **Tested** | Implemented | `tests/fail/g16_init_repeated_local.tk` |
+| **INIT-05** | `init` on `Moved` rejected (`ERR_INIT_REQUIRES_UNINITIALIZED`) | **Missing evidence** | Implemented | *Needs dedicated test (`cede` then `init`)* |
+| **INIT-06** | Lexical `init x { ... }` block requires entry `Never` | **Tested** | Implemented | `tests/pass/g16_init_lexical_block_test.tk` |
+| **INIT-07** | Lexical `init x { ... }` unfulfilled exit rejected | **Tested** | Implemented | `tests/fail/g16_init_block_unfulfilled.tk` |
+| **INIT-08** | Lexical `init` early `break`/`continue` escape rejected | **Tested** | Implemented | `tests/fail/g16_init_block_exit.tk`<br>`tests/fail/g16_init_block_continue_exit.tk` |
+| **INIT-09** | `if x is uninit` predicate narrows branches (`Never` / `Live`) | **Tested** | Implemented | `tests/pass/g16_init_state_predicate_test.tk` |
+| **INIT-10** | `is uninit` outside lexical block or non-maybe rejected | **Tested** | Implemented | `tests/fail/g16_init_state_predicate_outside.tk` |
+| **INIT-11** | Synchronous plain `init` formal parameter contract | **Tested** | Implemented | `tests/pass/g16_init_parameter_test.tk` |
+| **INIT-12** | `init` formal unfulfilled on fallthrough/return rejected | **Tested** | Implemented | `tests/fail/g16_init_parameter_unfulfilled.tk`<br>`tests/fail/g16_init_parameter_return_unfulfilled.tk` |
+| **INIT-13** | `init` formal passing non-`Never` actual rejected | **Tested** | Implemented | `tests/fail/g16_init_parameter_invalid_argument.tk` |
+| **INIT-14** | `init` formal in `async fn` rejected | **Tested** | Implemented | `tests/fail/g16_init_parameter_async.tk` |
+| **INIT-15** | Unresolved lexical `init` obligation across `.await` rejected | **Tested** | Implemented | `tests/fail/g16_init_block_await_unresolved.tk` |
+| **INIT-16** | G17 Outcome Contract conditional `init`/`uninit` post-states | **Tested** | Implemented (Level A) | `tests/semantics/tki_replay/cases/outcome_001_direct_match/` |
+| **INIT-17** | Generic function `init` formal and TKI roundtrip | **Tested** | Implemented | `tests/semantics/tki_replay/cases/init_002_parameter/`<br>`tests/pass/g16_init_parameter_generic_test.tk` |
+| **INIT-18** | Zero runtime drop on never-initialized resource | **Tested** | Implemented | `tests/pass/g16_init_cleanup_liveness_test.tk` |
+| **INIT-19** | Dynamic drop flag cleanup on branch-initialized resource | **Tested** | Implemented | `tests/pass/g16_init_cleanup_liveness_test.tk` |
+| **INIT-20** | Repopulating moved resource drops only new value | **Missing evidence** | Implemented | *Needs dedicated whole-place drop-counter test* |
 | **INIT-21** | Field-wise delayed initialization (`init x.field = ...`) | **Deferred** | Deferred (P2) | Scope boundary |
 | **INIT-22** | Async `init` formal parameter | **Deferred** | Deferred (P2) | Scope boundary |
 | **INIT-23** | Method receiver `init self` | **Deferred** | Deferred (P2) | Scope boundary |
@@ -207,8 +210,11 @@ flowchart TD
 
 ## 5. Audit Findings & Summary
 
-- **P0 Soundness Bugs**: **0**. No path permits uninitialized memory access or double destruction.
-- **P1 Semantic Capability Gaps**: **0** within the declared P1 whole-place synchronous boundary.
-- **P2 Documentation & Alignment**:
-  1. Updated [`init_contract_rfc.md`](init_contract_rfc.md) reference to clarify that G17 Outcome Contracts are implemented at Level A.
-  2. Established this completeness audit as the official sound baseline for Toka 1.0.
+- **Confirmed P0 bugs**: 0 in inspected cases.
+- **Unproven soundness claims**: `InitMask` / `ExactPlace` equivalence in hybrid semantic checking, and missing state-transition evidence (`INIT-05`, `INIT-20`).
+- **Deferred expressiveness**: field-wise and async init contracts (`INIT-21`, `INIT-22`, `INIT-23`).
+- **Action Items for Completeness Proof**:
+  1. Add test for `init` on `Moved` place (`INIT-05`);
+  2. Add whole-place `moved -> repopulate` drop counter test (`INIT-20`);
+  3. Construct a transition matrix test for lexical `init` jump paths;
+  4. Develop the migration plan to retire autonomous `InitMask` semantic decision paths.
