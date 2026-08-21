@@ -3739,20 +3739,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       valType = valTypeObj->toString();
     }
 
-    // Escape Blockade: Check for Dirty Reference
-    if (pe->Value) {
-      if (auto *Var = dynamic_cast<VariableExpr *>(pe->Value.get())) {
-        SymbolInfo *info = nullptr;
-        if (CurrentScope->findSymbol(Var->Name, info)) {
-          if (info->IsReference() && info->DirtyReferentMask != ~0ULL) {
-            DiagnosticEngine::report(getLoc(pe), DiagID::ERR_ESCAPE_UNSET,
-                                     Var->Name);
-            HasError = true;
-          }
-        }
-      }
-    }
-
     bool foundReceiver = false;
     if (!m_ControlFlowStack.empty()) {
       for (auto it = m_ControlFlowStack.rbegin();
@@ -3786,18 +3772,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       error(be, DiagID::ERR_SEMA_TOKA_1_0_DOES_NOT_SUPPORT_YIELDING_VALU_2);
       valTypeObj = checkExpr(be->Value.get());
       valType = valTypeObj->toString();
-
-      // Escape Blockade: Check for Dirty Reference
-      if (auto *Var = dynamic_cast<VariableExpr *>(be->Value.get())) {
-        SymbolInfo *info = nullptr;
-        if (CurrentScope->findSymbol(Var->Name, info)) {
-          if (info->IsReference() && info->DirtyReferentMask != ~0ULL) {
-            DiagnosticEngine::report(getLoc(be), DiagID::ERR_ESCAPE_UNSET,
-                                     Var->Name);
-            HasError = true;
-          }
-        }
-      }
     }
 
     ControlFlowInfo *target = nullptr;

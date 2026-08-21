@@ -753,10 +753,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         if (dynamic_cast<VariableExpr *>(NakedLHS))
           isWholeLHS = true;
 
-        if (InfoPtr->IsReference()) {
-          if (InfoPtr->DirtyReferentMask != ~0ULL)
-            isLHSWritable = true;
-        } else if (isWholeLHS) {
+        if (isWholeLHS) {
           if (hasExactlyPlaceState(InfoPtr->placeFact(), PlaceState::Moved))
             isLHSWritable = true;
         } else if (auto *M = dynamic_cast<MemberExpr *>(NakedLHS)) {
@@ -942,8 +939,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                             PartialMoveProjectionKind::DirectField, i),
                         PlaceState::Moved);
                   } else {
-                    isUnset = !(EffectiveInfo->InitMask & bit) &&
-                              !(EffectiveInfo->DirtyReferentMask & bit);
+                    isUnset = !(EffectiveInfo->InitMask & bit);
                   }
 
                   if (isUnset) {
@@ -1343,12 +1339,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
 
         // Update the symbol itself (if it's the source or a ref in
         // chain)
-        if (Sym->IsReference()) {
-          if (isPartial)
-            Sym->DirtyReferentMask |= updateBits;
-          else
-            Sym->DirtyReferentMask = ~0ULL;
-        } else {
+        if (!Sym->IsReference()) {
           Sym->InitMask |= updateBits;
         }
 
@@ -1367,13 +1358,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       std::string actualName;
       if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
         // Full Assignment to Variable (or Reference)
-        // If it's a reference, we propagate Cleanliness to Source
-        if (Info->IsReference()) {
-          Info->DirtyReferentMask = ~0ULL;
-          if (!Info->BorrowedFrom.empty()) {
-            propagateInit(Info->BorrowedFrom, ~0ULL, false);
-          }
-        } else {
+        if (!Info->IsReference()) {
           Info->InitMask = ~0ULL;
           if (isExplicitInit && Info == initTargetInfo)
             Info->ExactPlace.transitionWhole(PlaceState::Never,
@@ -1411,14 +1396,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
               }
 
               if (bitsToSet != 0) {
-                // Apply locally
-                if (Info->IsReference()) {
-                  Info->DirtyReferentMask |= bitsToSet;
-                  // Propagate Up
-                  if (!Info->BorrowedFrom.empty()) {
-                    propagateInit(Info->BorrowedFrom, bitsToSet, true);
-                  }
-                } else {
+                if (!Info->IsReference()) {
                   initializeProjectionFacts(*Info);
                   if (Info->ExactPlace.transitionProjection(
                           PartialMoveProjectionKind::DirectField,

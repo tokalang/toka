@@ -509,52 +509,6 @@ void Sema::checkStmt(Stmt *S) {
       }
     }
 
-    // SCOPE GUARD: Hot Potato Check
-    // Iterate over symbols in the current scope before exiting.
-    // If any symbol is a Reference with DirtyReferentMask != Full,
-    // we must ensure its Referent (BorrowedFrom) is now Clean.
-    // However, the Referent might be in a parent scope. We need to check the
-    // Referent's CURRENT state. Wait, simpler model first: If the Ref is marked
-    // Dirty, it means it TOOK responsibility. We check if the Ref *itself*
-    // thinks it's done? No, the Ref doesn't update its own DirtyMask
-    // automatically unless we implement flow sensitive updates to
-    // DirtyReferentMask on assignment. BETTER APPROACH based on plan: "Check if
-    // the referent (Source) has been fully initialized (Cleaned) within this
-    // scope."
-
-    // We need to iterate the Symbols in CurrentScope.
-    for (auto const &[name, info] : CurrentScope->Symbols) {
-      if (info.IsReference() && info.DirtyReferentMask != ~0ULL) {
-        // It was a dirty reference.
-        // Check if it's still dirty?
-        // Actually, we should check the SOURCE variable's current InitMask.
-        SymbolInfo *sourceInfo = nullptr;
-        if (!info.BorrowedFrom.empty() &&
-            CurrentScope->findSymbol(info.BorrowedFrom, sourceInfo)) {
-          bool referentIsShape =
-              (sourceInfo->TypeObj && sourceInfo->TypeObj->isShape());
-          uint64_t signature = ~0ULL;
-          if (referentIsShape) {
-            std::string soul = sourceInfo->TypeObj->getSoulName();
-            if (ShapeMap.count(soul)) {
-              ShapeDecl *SD = ShapeMap[soul];
-              signature = (1ULL << SD->Members.size()) - 1;
-              if (SD->Members.size() >= 64)
-                signature = ~0ULL;
-            }
-          }
-
-          // Check if Source is now fully initialized
-          if ((sourceInfo->InitMask & signature) != signature) {
-            DiagnosticEngine::report(getLoc(Block),
-                                     DiagID::ERR_DIRTY_REF_ESCAPE, name,
-                                     info.BorrowedFrom);
-            HasError = true;
-          }
-        }
-      }
-    }
-
     bool isWarningExempt = false;
     if (Block->Loc.isValid()) {
       std::string path = DiagnosticEngine::SrcMgr->getFullSourceLoc(Block->Loc).FileName;
@@ -700,18 +654,6 @@ void Sema::checkStmt(Stmt *S) {
                   ? functionOutcome->PayloadType->toString()
                   : "unknown");
           HasError = true;
-        }
-      }
-
-      // Escape Blockade: Check for Dirty Reference
-      if (auto *Var = dynamic_cast<VariableExpr *>(Ret->ReturnValue.get())) {
-        SymbolInfo *info = nullptr;
-        if (CurrentScope->findSymbol(Var->Name, info)) {
-          if (info->IsReference() && info->DirtyReferentMask != ~0ULL) {
-            DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_ESCAPE_UNSET,
-                                     Var->Name);
-            HasError = true;
-          }
         }
       }
 
@@ -1887,28 +1829,6 @@ void Sema::checkStmt(Stmt *S) {
           if (originLoc.isValid())
             DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
                                      "shorter-lived dependency declared here");
-        }
-
-        // [Hot Potato] Propagate InitMask from Source to Reference
-        uint64_t fullMask = ~0ULL;
-        if (srcPtr->TypeObj && srcPtr->TypeObj->isShape()) {
-          std::string soul = srcPtr->TypeObj->getSoulName();
-          if (ShapeMap.count(soul)) {
-            ShapeDecl *SD = ShapeMap[soul];
-            uint64_t bits = (1ULL << SD->Members.size()) - 1;
-            if (SD->Members.size() >= 64)
-              bits = ~0ULL;
-            fullMask = bits;
-          }
-        }
-
-        if (!hasPlaceState(srcPtr->placeFact(), PlaceState::Never) &&
-            (srcPtr->InitMask & fullMask) != fullMask) {
-          // It's Dirty!
-          Info.DirtyReferentMask = srcPtr->InitMask;
-          assert(false && "Internal invariant violation: accepted program created a dirty reference!");
-        } else {
-          Info.DirtyReferentMask = ~0ULL; // Clean
         }
       }
 

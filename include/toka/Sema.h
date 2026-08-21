@@ -66,13 +66,6 @@ struct SymbolInfo {
     ExactPlace.setPlan(plan, InitMask);
   }
 
-  // "Hot Potato" Tracking
-  // If this symbol is a Reference (&T), this mask tracks the InitMask of the
-  // REFERENT. If a bit is 0, it means the referent's corresponding field is
-  // Unset, and THIS reference is responsible for initializing it (or passing
-  // the responsibility).
-  uint64_t DirtyReferentMask = ~0ULL; // Default to Clean
-
   // Borrow Tracking
   std::string BorrowedFrom =
       ""; // If this is a reference, name of the source variable

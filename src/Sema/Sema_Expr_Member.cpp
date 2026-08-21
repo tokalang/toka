@@ -150,9 +150,6 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
           // An admitted local projection uses its exact fact. References and
           // non-admitted aggregate forms retain their legacy mask boundary.
           uint64_t maskToCheck = Info->InitMask;
-          if (Info->IsReference()) {
-            maskToCheck = Info->DirtyReferentMask;
-          }
 
           auto shapeType =
               std::dynamic_pointer_cast<ShapeType>(Info->TypeObj);
