@@ -1741,6 +1741,14 @@
       "description": "Assigning a direct field after cede restores that field's cleanup obligation"
     },
     {
+      "id": "ownership_moved_whole_place_repopulate_lifecycle_01",
+      "path": "ownership/moved_whole_place_repopulate_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Whole-place repopulation of a moved slot restores exactly one drop obligation without phantom drop"
+    },
+    {
       "id": "ownership_cede_fixed_array_index_lifecycle_01",
       "path": "ownership/cede_fixed_array_index_lifecycle.tk",
       "type": "run",

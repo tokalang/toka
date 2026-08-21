@@ -1,0 +1,11 @@
+// CHECK: error[E04616]
+shape Resource (
+    id: i32
+)
+
+fn main() -> i32 {
+    auto value = Resource(id = 1)
+    auto moved = cede value
+    init value = Resource(id = 2)
+    return 0
+}

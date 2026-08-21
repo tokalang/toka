@@ -186,10 +186,10 @@ autonomous `InitMask` decision paths is required.
 | **INIT-02** | `init x = expr` constructs `Never -> Live` on plain immutable local | **Tested** | Implemented | `tests/pass/g16_init_direct_local_test.tk` |
 | **INIT-03** | Ordinary assign to `Never` rejected (`ERR_INIT_REQUIRES_EXPLICIT`) | **Tested** | Implemented | `tests/fail/g16_init_requires_explicit.tk` |
 | **INIT-04** | Duplicate `init` on `Live` rejected (`ERR_INIT_REQUIRES_UNINITIALIZED`) | **Tested** | Implemented | `tests/fail/g16_init_repeated_local.tk` |
-| **INIT-05** | `init` on `Moved` rejected (`ERR_INIT_REQUIRES_UNINITIALIZED`) | **Missing evidence** | Implemented | *Needs dedicated test (`cede` then `init`)* |
+| **INIT-05** | `init` on `Moved` rejected (`ERR_INIT_REQUIRES_UNINITIALIZED`) | **Tested** | Implemented | `tests/fail/g16_init_moved_rejected.tk` |
 | **INIT-06** | Lexical `init x { ... }` block requires entry `Never` | **Tested** | Implemented | `tests/pass/g16_init_lexical_block_test.tk` |
 | **INIT-07** | Lexical `init x { ... }` unfulfilled exit rejected | **Tested** | Implemented | `tests/fail/g16_init_block_unfulfilled.tk` |
-| **INIT-08** | Lexical `init` early `break`/`continue` escape rejected | **Tested** | Implemented | `tests/fail/g16_init_block_exit.tk`<br>`tests/fail/g16_init_block_continue_exit.tk` |
+| **INIT-08** | Lexical `init` early `break`/`continue` escape rejected | **Tested** | Implemented | `tests/fail/g16_init_block_exit.tk`<br>`tests/fail/g16_init_block_continue_exit.tk`<br>`tests/fail/g16_init_block_labelled_break.tk`<br>`tests/fail/g16_init_block_labelled_continue.tk` |
 | **INIT-09** | `if x is uninit` predicate narrows branches (`Never` / `Live`) | **Tested** | Implemented | `tests/pass/g16_init_state_predicate_test.tk` |
 | **INIT-10** | `is uninit` outside lexical block or non-maybe rejected | **Tested** | Implemented | `tests/fail/g16_init_state_predicate_outside.tk` |
 | **INIT-11** | Synchronous plain `init` formal parameter contract | **Tested** | Implemented | `tests/pass/g16_init_parameter_test.tk` |
@@ -201,7 +201,7 @@ autonomous `InitMask` decision paths is required.
 | **INIT-17** | Generic function `init` formal and TKI roundtrip | **Tested** | Implemented | `tests/semantics/tki_replay/cases/init_002_parameter/`<br>`tests/pass/g16_init_parameter_generic_test.tk` |
 | **INIT-18** | Zero runtime drop on never-initialized resource | **Tested** | Implemented | `tests/pass/g16_init_cleanup_liveness_test.tk` |
 | **INIT-19** | Dynamic drop flag cleanup on branch-initialized resource | **Tested** | Implemented | `tests/pass/g16_init_cleanup_liveness_test.tk` |
-| **INIT-20** | Repopulating moved resource drops only new value | **Missing evidence** | Implemented | *Needs dedicated whole-place drop-counter test* |
+| **INIT-20** | Repopulating moved resource drops only new value | **Tested** | Implemented | `tests/conformance/ownership/moved_whole_place_repopulate_lifecycle.tk` |
 | **INIT-21** | Field-wise delayed initialization (`init x.field = ...`) | **Deferred** | Deferred (P2) | Scope boundary |
 | **INIT-22** | Async `init` formal parameter | **Deferred** | Deferred (P2) | Scope boundary |
 | **INIT-23** | Method receiver `init self` | **Deferred** | Deferred (P2) | Scope boundary |
@@ -211,10 +211,10 @@ autonomous `InitMask` decision paths is required.
 ## 5. Audit Findings & Summary
 
 - **Confirmed P0 bugs**: 0 in inspected cases.
-- **Unproven soundness claims**: `InitMask` / `ExactPlace` equivalence in hybrid semantic checking, and missing state-transition evidence (`INIT-05`, `INIT-20`).
+- **Unproven soundness claims**: `InitMask` / `ExactPlace` equivalence in hybrid semantic checking.
 - **Deferred expressiveness**: field-wise and async init contracts (`INIT-21`, `INIT-22`, `INIT-23`).
 - **Action Items for Completeness Proof**:
-  1. Add test for `init` on `Moved` place (`INIT-05`);
-  2. Add whole-place `moved -> repopulate` drop counter test (`INIT-20`);
-  3. Construct a transition matrix test for lexical `init` jump paths;
+  1. ~~Add test for `init` on `Moved` place (`INIT-05`)~~ (*Closed via `g16_init_moved_rejected.tk`*);
+  2. ~~Add whole-place `moved -> repopulate` drop counter test (`INIT-20`)~~ (*Closed via `moved_whole_place_repopulate_lifecycle.tk`*);
+  3. ~~Construct transition matrix tests for lexical `init` jump paths~~ (*Closed via `g16_init_block_labelled_break.tk` & `g16_init_block_labelled_continue.tk`*);
   4. Develop the migration plan to retire autonomous `InitMask` semantic decision paths.

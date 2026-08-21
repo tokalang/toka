@@ -1,0 +1,5 @@
+error[E04616]: 'init' requires a definite uninitialized local place; 'value' is not eligible
+ --> tests/fail/g16_init_moved_rejected.tk:9:5
+   |
+ 9 |     init value = Resource(id = 2)
+   |     ^

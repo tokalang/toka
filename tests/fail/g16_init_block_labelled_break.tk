@@ -1,0 +1,9 @@
+// CHECK: error[E04619]
+fn main() {
+    auto value = uninit:i32
+    auto outer = loop {
+        init value {
+            break to outer
+        }
+    }:()
+}

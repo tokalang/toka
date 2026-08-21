@@ -1,0 +1,32 @@
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0
+
+shape Resource (
+    id: i32
+)
+
+impl Resource@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+fn main() -> i32 {
+    {
+        auto value# = Resource(id = 1)
+        auto moved = cede value
+
+        value = Resource(id = 2)
+
+        // Repopulating the moved slot must not drop the already-moved phantom slot
+        assert(g_drop_count == 0, "no phantom drop on repopulation")
+
+        assert(moved.id == 1, "moved value is intact")
+        assert(value.id == 2, "repopulated value is intact")
+    }
+
+    // Both the moved owner and the repopulated owner must drop exactly once
+    assert(g_drop_count == 2, "both moved owner and repopulated value drop exactly once")
+    return 0
+}

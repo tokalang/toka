@@ -1,0 +1,5 @@
+error[E04619]: Cannot continue across an active 'init' block
+ --> tests/fail/g16_init_block_labelled_continue.tk:6:13
+   |
+ 6 |             continue to outer
+   |             ^
