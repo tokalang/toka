@@ -2057,13 +2057,20 @@ void Sema::checkStmt(Stmt *S) {
         Info.CallableReceiver = closure->CallableReceiver;
     }
 
-    if (Var->Init) {
-      Info.InitMask = m_LastInitMask;
-    } else {
+    const auto *cast = dynamic_cast<CastExpr *>(Var->Init.get());
+    const bool isAscribedUninit =
+        cast && cast->Kind == CastKind::Ascription &&
+        dynamic_cast<UnsetExpr *>(cast->Expression.get());
+    const bool isUninitializedDecl =
+        !Var->Init || dynamic_cast<UnsetExpr *>(Var->Init.get()) || isAscribedUninit;
+
+    if (isUninitializedDecl) {
       Info.InitMask = 0;
+      Info.placeFact() = PlaceState::Never;
+    } else {
+      Info.InitMask = (m_LastInitMask == 0) ? ~0ULL : m_LastInitMask;
+      Info.placeFact() = PlaceState::Live;
     }
-    Info.placeFact() =
-        Info.InitMask == 0 ? PlaceState::Never : PlaceState::Live;
 
     // Rule: Numeric Substitution (Constant variables)
     if (Var->Init && Var->TypeName == "i32" && !Var->IsValueMutable) {

@@ -421,13 +421,16 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   } else if (isAssign) {
     VariableExpr *rootLHSVar = nullptr;
     Expr *currLHS = Bin->LHS.get();
+    bool isProjectionLHS = false;
     while (currLHS) {
       if (auto *V = dynamic_cast<VariableExpr *>(currLHS)) {
         rootLHSVar = V;
         break;
       } else if (auto *M = dynamic_cast<MemberExpr *>(currLHS)) {
+        isProjectionLHS = true;
         currLHS = M->Object.get();
       } else if (auto *I = dynamic_cast<ArrayIndexExpr *>(currLHS)) {
+        isProjectionLHS = true;
         currLHS = I->Array.get();
       } else if (auto *U = dynamic_cast<UnaryExpr *>(currLHS)) {
         currLHS = U->RHS.get();
@@ -443,9 +446,12 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       CurrentScope->findVariableWithDeref(rootLHSVar->Name, rootLHSInfo, actualRootLHSName);
     }
     if (rootLHSInfo && !rootLHSInfo->IsReference()) {
-      if (hasPlaceState(rootLHSInfo->placeFact(), PlaceState::Never) || rootLHSInfo->InitMask == 0) {
+      if (hasPlaceState(rootLHSInfo->placeFact(), PlaceState::Never)) {
         error(Bin, DiagID::ERR_INIT_REQUIRES_EXPLICIT, rootLHSVar->Name,
               rootLHSVar->Name);
+        isUnsetInit = true;
+      } else if (isProjectionLHS && hasExactlyPlaceState(rootLHSInfo->placeFact(), PlaceState::Moved)) {
+        error(Bin, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED, rootLHSVar->Name);
         isUnsetInit = true;
       }
     }
