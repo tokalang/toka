@@ -757,10 +757,10 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           if (InfoPtr->DirtyReferentMask != ~0ULL)
             isLHSWritable = true;
         } else if (isWholeLHS) {
-          if (hasPlaceState(InfoPtr->placeFact(), PlaceState::Moved))
+          if (hasExactlyPlaceState(InfoPtr->placeFact(), PlaceState::Moved))
             isLHSWritable = true;
         } else if (auto *M = dynamic_cast<MemberExpr *>(NakedLHS)) {
-          if (hasPlaceState(InfoPtr->placeFact(), PlaceState::Live) &&
+          if (hasExactlyPlaceState(InfoPtr->placeFact(), PlaceState::Live) &&
               InfoPtr->TypeObj && InfoPtr->TypeObj->isShape()) {
             auto shapeType = std::dynamic_pointer_cast<ShapeType>(InfoPtr->TypeObj);
             ShapeDecl *SD = shapeType ? shapeType->Decl : nullptr;
@@ -771,7 +771,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                 if (toka::Type::stripMorphology(SD->Members[i].Name) ==
                     toka::Type::stripMorphology(M->Member)) {
                   if (InfoPtr->partialMovePlan().admits(PartialMoveProjectionKind::DirectField, i)) {
-                    if (hasPlaceState(
+                    if (hasExactlyPlaceState(
                             InfoPtr->ExactPlace.projectionFact(
                                 PartialMoveProjectionKind::DirectField, i),
                             PlaceState::Moved)) {
@@ -784,12 +784,12 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
             }
           }
         } else if (auto *Idx = dynamic_cast<ArrayIndexExpr *>(NakedLHS)) {
-          if (hasPlaceState(InfoPtr->placeFact(), PlaceState::Live) &&
+          if (hasExactlyPlaceState(InfoPtr->placeFact(), PlaceState::Live) &&
               Idx->Indices.size() == 1) {
             if (auto *constant = dynamic_cast<NumberExpr *>(Idx->Indices[0].get())) {
               if (InfoPtr->partialMovePlan().admits(
                       PartialMoveProjectionKind::FixedArrayElement, constant->Value)) {
-                if (hasPlaceState(
+                if (hasExactlyPlaceState(
                         InfoPtr->ExactPlace.projectionFact(
                             PartialMoveProjectionKind::FixedArrayElement, constant->Value),
                         PlaceState::Moved)) {
@@ -937,7 +937,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                   if (!EffectiveInfo->IsReference() &&
                       EffectiveInfo->partialMovePlan().admits(
                           PartialMoveProjectionKind::DirectField, i)) {
-                    isUnset = hasPlaceState(
+                    isUnset = hasExactlyPlaceState(
                         EffectiveInfo->ExactPlace.projectionFact(
                             PartialMoveProjectionKind::DirectField, i),
                         PlaceState::Moved);
