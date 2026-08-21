@@ -1,0 +1,17 @@
+import std/io::{println}
+
+shape Point (
+    x: i32,
+    y: i32
+)
+
+fn main() -> i32 {
+    auto p = uninit:Point
+    init p = Point(x = 10, y = 20)
+    auto &borrow = &p
+    assert(borrow.x == 10, "borrow.x check")
+    assert(borrow.y == 20, "borrow.y check")
+
+    println("[Conformance] Borrow After Whole Init PASSED!")
+    return 0
+}

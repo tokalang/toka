@@ -1,0 +1,31 @@
+import std/io::{println}
+
+shape Token (
+    id: i32
+)
+
+shape Pair (
+    left: Token,
+    right: Token
+)
+
+fn main() -> i32 {
+    auto pair = Pair(
+        left = Token(id = 1),
+        right = Token(id = 2)
+    )
+    auto t1 = cede pair.left
+    auto t2 = cede pair.right
+    assert(t1.id == 1, "t1 id check")
+    assert(t2.id == 2, "t2 id check")
+
+    pair.left = Token(id = 3)
+    pair.right = Token(id = 4)
+
+    auto &borrow = &pair
+    assert(borrow.left.id == 3, "borrow.left id check")
+    assert(borrow.right.id == 4, "borrow.right id check")
+
+    println("[Conformance] Borrow Whole Aggregate After Repopulating All Moved Fields PASSED!")
+    return 0
+}

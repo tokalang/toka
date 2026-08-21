@@ -1,0 +1,17 @@
+import std/io::{println}
+
+shape Token (
+    id: i32
+)
+
+fn main() -> i32 {
+    auto arr = [Token(id = 1)]
+    auto taken = cede arr[0]
+    assert(taken.id == 1, "taken array element check")
+
+    arr[0] = Token(id = 2)
+    assert(arr[0].id == 2, "repopulated array element check")
+
+    println("[Conformance] Single Element Array Repopulate After Cede PASSED!")
+    return 0
+}

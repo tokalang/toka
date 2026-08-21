@@ -1,0 +1,21 @@
+import std/io::{println}
+
+shape Token (
+    id: i32
+)
+
+shape Single (
+    value: Token
+)
+
+fn main() -> i32 {
+    auto pair = Single(value = Token(id = 1))
+    auto taken = cede pair.value
+    assert(taken.id == 1, "taken value check")
+
+    pair.value = Token(id = 2)
+    assert(pair.value.id == 2, "repopulated value check")
+
+    println("[Conformance] Single Field Repopulate After Cede PASSED!")
+    return 0
+}

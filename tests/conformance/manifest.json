@@ -1749,6 +1749,46 @@
       "description": "Whole-place repopulation of a moved slot restores exactly one drop obligation without phantom drop"
     },
     {
+      "id": "ownership_borrow_live_sibling_after_field_cede_01",
+      "path": "ownership/borrow_live_sibling_after_field_cede.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Borrowing a live sibling projection is allowed even when another field has been ceded"
+    },
+    {
+      "id": "ownership_single_field_repopulate_after_cede_01",
+      "path": "ownership/single_field_repopulate_after_cede.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Repopulating the only field of a single-field shape after cede is allowed"
+    },
+    {
+      "id": "ownership_single_element_array_repopulate_after_cede_01",
+      "path": "ownership/single_element_array_repopulate_after_cede.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Repopulating the only element of a single-element array after cede is allowed"
+    },
+    {
+      "id": "ownership_borrow_after_whole_init_01",
+      "path": "ownership/borrow_after_whole_init.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Borrowing a whole place after explicit whole init is allowed"
+    },
+    {
+      "id": "ownership_borrow_whole_aggregate_after_repopulating_all_moved_fields_01",
+      "path": "ownership/borrow_whole_aggregate_after_repopulating_all_moved_fields.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Borrowing the whole aggregate after all moved fields are repopulated is allowed"
+    },
+    {
       "id": "ownership_cede_fixed_array_index_lifecycle_01",
       "path": "ownership/cede_fixed_array_index_lifecycle.tk",
       "type": "run",
