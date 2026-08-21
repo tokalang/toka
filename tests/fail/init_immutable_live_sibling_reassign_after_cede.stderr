@@ -1,0 +1,10 @@
+error[E04572]: Cannot assign to immutable entity. Missing writable token '#' or '!'.
+ --> tests/fail/init_immutable_live_sibling_reassign_after_cede.tk:21:16
+    |
+ 21 |     pair.right = Token(id = 3)
+    |                ^
+error[E0443]: Cannot modify immutable entity 'Token'
+ --> tests/fail/init_immutable_live_sibling_reassign_after_cede.tk:21:9
+    |
+ 21 |     pair.right = Token(id = 3)
+    |         ^

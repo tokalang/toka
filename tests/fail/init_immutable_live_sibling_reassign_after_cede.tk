@@ -1,0 +1,23 @@
+// CHECK: error[E04572]
+import core/traits::{@Encap}
+
+shape Token(id: i32)
+
+impl Token@Encap {
+    pub id
+    fn drop(self#) {}
+}
+
+shape Pair(left: Token, right: Token)
+
+fn main() -> i32 {
+    auto pair = Pair(
+        left = Token(id = 1),
+        right = Token(id = 2)
+    )
+    auto taken = cede pair.left
+
+    // right is still Live, pair has no '#'.
+    pair.right = Token(id = 3)
+    return taken.id
+}

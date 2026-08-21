@@ -1,0 +1,18 @@
+// CHECK: error[E04572]
+import core/traits::{@Encap}
+
+shape Token(id: i32)
+
+impl Token@Encap {
+    pub id
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto values = [Token(id = 1), Token(id = 2)]
+    auto taken = cede values[0]
+
+    // values[1] is still Live.
+    values[1] = Token(id = 3)
+    return taken.id
+}
