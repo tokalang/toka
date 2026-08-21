@@ -205,16 +205,20 @@ autonomous `InitMask` decision paths is required.
 | **INIT-21** | Field-wise delayed initialization (`init x.field = ...`) | **Deferred** | Deferred (P2) | Scope boundary |
 | **INIT-22** | Async `init` formal parameter | **Deferred** | Deferred (P2) | Scope boundary |
 | **INIT-23** | Method receiver `init self` | **Deferred** | Deferred (P2) | Scope boundary |
+| **INIT-24** | Ordinary borrow/projection cannot transport InitAuthority | **Failing / P0 remediation** | P1 Boundary Invariant | Needs fail-closed enforcement |
 
 ---
 
 ## 5. Audit Findings & Summary
 
-- **Confirmed P0 bugs**: 0 in inspected cases.
+- **Confirmed P0 bugs**: **1**
+  - Ordinary reference/projection writes could partially initialize a
+    non-admitted aggregate through legacy InitMask, admit an uninitialized
+    sibling read, and fail to establish the aggregate DropFlag.
 - **Unproven soundness claims**: `InitMask` / `ExactPlace` equivalence in hybrid semantic checking.
 - **Deferred expressiveness**: field-wise and async init contracts (`INIT-21`, `INIT-22`, `INIT-23`).
-- **Action Items for Completeness Proof**:
-  1. ~~Add test for `init` on `Moved` place (`INIT-05`)~~ (*Closed via `g16_init_moved_rejected.tk`*);
-  2. ~~Add whole-place `moved -> repopulate` drop counter test (`INIT-20`)~~ (*Closed via `moved_whole_place_repopulate_lifecycle.tk`*);
-  3. ~~Construct transition matrix tests for lexical `init` jump paths~~ (*Closed via `g16_init_block_labelled_break.tk` & `g16_init_block_labelled_continue.tk`*);
+- **Action Items for Completeness Proof & P0 Remediation**:
+  1. Fail-closed: Prevent ordinary reference creation from non-Live places;
+  2. Fail-closed: Reject ordinary member/index assignments on Never whole places;
+  3. Close P0 regression matrix across custom-drop, shared-member, and array forms;
   4. Develop the migration plan to retire autonomous `InitMask` semantic decision paths.

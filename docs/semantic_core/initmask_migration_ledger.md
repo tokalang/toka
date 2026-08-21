@@ -68,7 +68,7 @@ functional roles:
 |---|---|---|---|
 | `checkFunctionDecl`<br>`Sema.cpp:4600` | Semantic Write | `Info.InitMask = 0` for `init` formal parameter | Retain synchronization while `InitMask` exists; primary authority is `setWhole(PlaceState::Never)`. |
 | `checkCallExpr`<br>`Sema_Expr_Call.cpp:2692, 2696` | Semantic Write | Sets `place->InitMask = 0` or `~0ULL` for outcome-matched post-states | Primary authority is `transitionWhole(...)`; mask write is compatibility sync. |
-| `propagateInit`<br>`Sema_Expr_Binary.cpp:1282-1284` | Semantic Write | Updates `Sym->InitMask` on assignment propagation | Refactor to propagate `ExactPlaceFacts` along borrow paths. |
+| `propagateInit`<br>`Sema_Expr_Binary.cpp:1282-1284` | Semantic Write | Updates `Sym->InitMask` on assignment propagation | **P0 Defect**: `isPartial` sets non-reference root `InitMask` to `~0ULL`, admitting uninitialized sibling reads and omitting `DropFlag`. Must fail-closed by rejecting ordinary borrow of non-Live places. |
 | `checkBinaryExpr`<br>`Sema_Expr_Binary.cpp:1309` | Semantic Write | Sets `Info->InitMask = ~0ULL` on whole-place assignment | Primary authority is `transitionWhole(...)` & `repopulateAllProjections()`. |
 | `checkBinaryExpr`<br>`Sema_Expr_Binary.cpp:1360` | Semantic Write | `Info->InitMask |= bitsToSet` (Exact-first with fallback) | Exact projection transition is attempted first; fallback bitmask is updated. |
 | `checkBinaryExpr`<br>`Sema_Expr_Binary.cpp:1386` | Semantic Write | `Info->InitMask |= (1ULL << constant)` (Exact-first with fallback) | Exact index transition is attempted first; fallback bitmask is updated. |
