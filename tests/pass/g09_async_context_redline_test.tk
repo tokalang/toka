@@ -24,7 +24,7 @@ pub fn deadline_server(cede listener: TcpListener) -> async i32 {
         auto *buf# = unsafe alloc [64]u8;
         auto bg# = background();
         auto timeout_res = with_timeout(cede bg, 30);
-        auto canceler = timeout_res.canceler;
+        auto canceler = cede timeout_res.canceler;
 
         auto read_res = net_async_read_context(stream, *buf as *u8, 64:usize, canceler).await;
         if read_res.is_err() {
@@ -51,10 +51,10 @@ pub fn parent_cascade_server(cede listener: TcpListener) -> async i32 {
         auto *buf# = unsafe alloc [64]u8;
         auto bg# = background();
         auto parent_res = with_cancel(cede bg);
-        auto parent_canceler = parent_res.canceler;
-        auto parent_ctx# = parent_res.ctx;
+        auto parent_canceler = cede parent_res.canceler;
+        auto parent_ctx# = cede parent_res.ctx;
         auto child_res = with_cancel(cede parent_ctx);
-        auto child_canceler = child_res.canceler;
+        auto child_canceler = cede child_res.canceler;
 
         auto cancel_task = trigger_cancel_parent_task(cede parent_canceler.clone()).start;
 
@@ -84,7 +84,7 @@ pub fn unregister_test_server(cede listener: TcpListener) -> async i32 {
         auto *buf# = unsafe alloc [64]u8;
         auto bg# = background();
         auto cancel_res = with_cancel(cede bg);
-        auto canceler = cancel_res.canceler;
+        auto canceler = cede cancel_res.canceler;
 
         auto count_before = canceler.active_token_count();
         auto read_res = net_async_read_context(stream, *buf as *u8, 64:usize, canceler.clone()).await;

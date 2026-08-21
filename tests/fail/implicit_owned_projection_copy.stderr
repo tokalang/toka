@@ -1,0 +1,5 @@
+error[E04641]: Binding 'copied' receives owning projection 'Var(owner).resource'; use 'cede Var(owner).resource' to transfer ownership explicitly
+ --> tests/fail/implicit_owned_projection_copy.tk:17:24
+    |
+ 17 |     auto copied = owner.resource
+    |                        ^

@@ -33,7 +33,7 @@ pub fn async_context_server(cede listener: TcpListener) -> async i32 {
         // 2. Context cancellation test while IO operation is suspended
         auto bg# = background();
         auto cancel_res = with_cancel(cede bg);
-        auto canceler = cancel_res.canceler;
+        auto canceler = cede cancel_res.canceler;
 
         // Spawn task to trigger canceler after 50ms while server is suspended on net_async_read_context
         auto cancel_handle = trigger_cancel_task(cede canceler.clone()).start;

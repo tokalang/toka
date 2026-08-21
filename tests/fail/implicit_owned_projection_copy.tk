@@ -1,0 +1,19 @@
+import core/traits::{@Encap}
+
+shape Resource(
+    value: i32
+)
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+shape Owner(
+    resource: Resource
+)
+
+fn main() -> i32 {
+    auto owner = Owner(resource = Resource(value = 1))
+    auto copied = owner.resource
+    return copied.value
+}

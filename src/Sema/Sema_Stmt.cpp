@@ -1490,6 +1490,28 @@ void Sema::checkStmt(Stmt *S) {
         InitType = ascription->TargetType;
       }
 
+      if (!Var->IsMorphicExempt &&
+          !dynamic_cast<CedeExpr *>(Var->Init.get()) && InitTypeObj &&
+          InitTypeObj->requiresExplicitOwnershipTransfer(this)) {
+        Expr *directSource = Var->Init.get();
+        while (true) {
+          if (auto *cast = dynamic_cast<CastExpr *>(directSource)) {
+            directSource = cast->Expression.get();
+          } else if (auto *unsafeExpr =
+                         dynamic_cast<UnsafeExpr *>(directSource)) {
+            directSource = unsafeExpr->Expression.get();
+          } else {
+            break;
+          }
+        }
+        if (dynamic_cast<MemberExpr *>(directSource) &&
+            makeAccessPath(directSource)) {
+          error(Var->Init.get(),
+                DiagID::ERR_SEMA_OWNED_PROJECTION_BINDING_REQUIRES_CEDE,
+                Var->Name, directSource->toString(), directSource->toString());
+        }
+      }
+
       // `cede` does not prove that a may-zero raw source is non-zero.
       if (auto *cede = dynamic_cast<CedeExpr *>(Var->Init.get())) {
         // An inner ascription is the explicit destination contract.

@@ -2863,6 +2863,12 @@
       "message": "Argument '{}' explicitly transfers ownership with 'cede', but parameter '{}' is borrowed; declare the parameter 'cede' or remove 'cede'",
       "description": "A cede argument cannot flow into a borrowed parameter."
     },
+    "E04641": {
+      "id": "ERR_SEMA_OWNED_PROJECTION_BINDING_REQUIRES_CEDE",
+      "level": "Error",
+      "message": "Binding '{}' receives owning projection '{}'; use 'cede {}' to transfer ownership explicitly",
+      "description": "Binding an owning projection requires an explicit cede so the source aggregate's field lifecycle is updated."
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

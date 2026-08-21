@@ -67,6 +67,24 @@ static bool isFreshAllocationExpr(const Expr *expr) {
          dynamic_cast<const AllocExpr *>(expr);
 }
 
+static bool isOwnedAggregateRvalue(const Expr *expr) {
+  while (expr) {
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+    } else if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
+      expr = unsafeExpr->Expression.get();
+    } else if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
+      expr = postfix->LHS.get();
+    } else {
+      break;
+    }
+  }
+  return dynamic_cast<const CallExpr *>(expr) ||
+         dynamic_cast<const MethodCallExpr *>(expr) ||
+         dynamic_cast<const InitStructExpr *>(expr) ||
+         dynamic_cast<const ArrayInitExpr *>(expr);
+}
+
 // A call which returns ^T transfers a fresh owning pointer to its caller, just
 // as `new T` does.  When Sema inserts an implicit ^T -> ~T cast for such a
 // value, CodeGen must build the first shared handle rather than store the raw
@@ -6868,6 +6886,12 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
         if (sourceTy) {
           llvm::Value *stored =
               m_Builder.CreateLoad(sourceTy, sourceAddr, "cede.projected");
+          if (auto *member = dynamic_cast<const MemberExpr *>(directSource)) {
+            if (isOwnedAggregateRvalue(member->Object.get())) {
+              m_Builder.CreateStore(llvm::Constant::getNullValue(sourceTy),
+                                    sourceAddr);
+            }
+          }
           return PhysEntity(stored, ce->ResolvedType->toString(), sourceTy,
                             false);
         }

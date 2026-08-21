@@ -9,7 +9,7 @@ fn test_timer_context_smoke() -> async i32 {
     println("[Smoke 1] Starting Timer Context Smoke Test...")
     auto bg# = background()
     auto res = with_timeout<BackgroundContext>(cede bg, 10)
-    auto ctx# = res.ctx
+    auto ctx# = cede res.ctx
     auto canceler = res.canceler.clone()
 
     auto h = sleep_async(30).start
@@ -26,7 +26,7 @@ fn test_cancel_context_smoke() -> async i32 {
     println("[Smoke 2] Starting Cancel Context Smoke Test...")
     auto bg# = background()
     auto res = with_cancel<BackgroundContext>(cede bg)
-    auto ctx# = res.ctx
+    auto ctx# = cede res.ctx
     auto canceler = res.canceler.clone()
 
     auto task_h = sleep_async(20).start
@@ -42,7 +42,7 @@ fn test_sequential_context_reuse() -> async i32 {
     println("[Smoke 3] Starting Sequential Context Reuse Smoke Test...")
     auto bg1# = background()
     auto res1 = with_timeout<BackgroundContext>(cede bg1, 5)
-    auto ctx1# = res1.ctx
+    auto ctx1# = cede res1.ctx
     auto canceler1 = res1.canceler.clone()
 
     sleep_async(10).await
@@ -51,7 +51,7 @@ fn test_sequential_context_reuse() -> async i32 {
 
     auto bg2# = background()
     auto res2 = with_timeout<BackgroundContext>(cede bg2, 50)
-    auto ctx2# = res2.ctx
+    auto ctx2# = cede res2.ctx
     auto canceler2 = res2.canceler.clone()
 
     assert(!ctx2.is_canceled(), "[Smoke 3] Second context must be fresh")
@@ -65,7 +65,7 @@ fn test_task_complete_before_cancel() -> async i32 {
     println("[Smoke 4] Starting Task Complete Before Cancel Test...")
     auto bg# = background()
     auto res = with_cancel<BackgroundContext>(cede bg)
-    auto ctx# = res.ctx
+    auto ctx# = cede res.ctx
     auto canceler = res.canceler.clone()
 
     auto fast_task = sleep_async(5).start

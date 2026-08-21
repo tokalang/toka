@@ -25,12 +25,21 @@ receipts, and release state belong in the
   moved while their active borrow remains live. Source-less `.tki` replay
   retains the same checks.
 - HashMap resize no longer double-frees replaced Vec buffers.
+- Binding an owning field projection now requires explicit `cede`; Context
+  result extraction follows the same rule and no longer creates duplicate
+  cleanup owners.
+- Resource fields spread from an owned temporary are transferred before the
+  temporary aggregate is reclaimed, preventing use-after-free of the new
+  aggregate's payload.
 - Context cancellation owns its error payload and retains shared state across
   detached timer/propagation frames.
 - WebSocket binary/control payloads transfer ownership into async frames.
 - Nested dependent generic shapes defer materialization until outer type
   parameters are substituted, while constrained Send/Sync proofs remain
   structural and fail closed.
+- Local Docker prequalification isolates each Linux target's CMake build tree;
+  Linux runtime builds include the architecture syscall definitions required
+  by atomic no-replace rename.
 
 ## Interface cache boundary
 

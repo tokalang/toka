@@ -11,7 +11,7 @@ fn test_cancel() -> async i32 {
     println("2. Background context created")
     auto res = with_cancel<BackgroundContext>(cede bg)
     println("3. with_cancel completed")
-    auto ctx# = res.ctx
+    auto ctx# = cede res.ctx
     auto canceler = res.canceler.clone()
     println("4. canceler cloned")
     
@@ -75,7 +75,7 @@ fn test_timeout() -> async i32 {
     println("2. Background context created")
     auto res = with_timeout<BackgroundContext>(cede bg, 20)
     println("3. with_timeout completed")
-    auto ctx# = res.ctx
+    auto ctx# = cede res.ctx
     auto canceler = res.canceler.clone()
     println("4. Context and canceler obtained")
     
@@ -107,7 +107,7 @@ fn test_propagation() -> async i32 {
     println("  [test_prop] starting test_propagation")
     auto bg# = background()
     auto parent_res = with_cancel<BackgroundContext>(cede bg)
-    auto parent_ctx# = parent_res.ctx
+    auto parent_ctx# = cede parent_res.ctx
     auto parent_canceler = parent_res.canceler.clone()
     
     println("  [test_prop] checking if parent is canceled initially")
@@ -115,7 +115,7 @@ fn test_propagation() -> async i32 {
     
     println("  [test_prop] creating child context")
     auto child_res = with_cancel<CancelContext<BackgroundContext>>(cede parent_ctx)
-    auto child_ctx# = child_res.ctx
+    auto child_ctx# = cede child_res.ctx
     auto child_canceler = child_res.canceler.clone()
     
     println("  [test_prop] checking if child is canceled initially")

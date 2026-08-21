@@ -53,7 +53,7 @@ fn coordinator() -> async i32 {
     unsafe {
         auto *buf# = unsafe alloc [64]u8
         auto ctx_res = with_cancel(cede background())
-        auto canceler = ctx_res.canceler
+        auto canceler = cede ctx_res.canceler
         auto cancel_task = cancel_after_witness(cede canceler.clone()).start
 
         // 1. Canceled read via Context Canceler

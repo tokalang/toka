@@ -1129,11 +1129,11 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
 
           const bool isResource =
               memberTypeObj->requiresExplicitOwnershipTransfer(this);
+          const bool isBaseTemporary =
+              dynamic_cast<MethodCallExpr *>(spreadNode->Base.get()) != nullptr ||
+              dynamic_cast<CallExpr *>(spreadNode->Base.get()) != nullptr;
 
           if (isResource) {
-            bool isBaseTemporary = dynamic_cast<MethodCallExpr*>(spreadNode->Base.get()) != nullptr || 
-                                   dynamic_cast<CallExpr*>(spreadNode->Base.get()) != nullptr;
-                                   
             if (!isSpreadCede && !isBaseTemporary) {
               error(spreadExprObj, DiagID::ERR_SEMA_FIELD_OF_TYPE_IS_NON_COPYABLE_YOU_MUST_EX, defField.Name, memberTypeObj->toString());
               recordDecision(
@@ -1153,7 +1153,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
           // spread synthesizes.  Preserve that transfer on each synthetic
           // member expression so the ordinary named-field ownership check and
           // CodeGen see the same explicit boundary as the source spread.
-          if (isSpreadCede && isResource) {
+          if ((isSpreadCede || isBaseTemporary) && isResource) {
             auto cededMember = std::make_unique<CedeExpr>(std::move(memberInitializer));
             cededMember->Loc = spreadExprObj->Loc;
             memberInitializer = std::move(cededMember);
