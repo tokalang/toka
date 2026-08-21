@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
+import argparse
 import json
 import os
 import sys
 import subprocess
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--build-dir", default="build")
+    args = parser.parse_args()
+
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     manifest_path = os.path.join(root_dir, "tests", "conformance", "manifest.json")
-    tokac_bin = os.path.join(root_dir, "build", "bin", "tokac")
+    build_dir = args.build_dir
+    if not os.path.isabs(build_dir):
+        build_dir = os.path.join(root_dir, build_dir)
+    build_dir = os.path.abspath(build_dir)
+    tokac_bin = os.path.join(build_dir, "bin", "tokac")
     source_lib_dir = os.path.join(root_dir, "lib")
-    build_lib_dir = os.path.join(root_dir, "build", "lib")
+    build_lib_dir = os.path.join(build_dir, "lib")
     runtime_object = os.path.join(build_lib_dir, "sys", "toka_rt.o")
     tmp_dir = os.path.join(root_dir, "tmp")
     os.makedirs(tmp_dir, exist_ok=True)

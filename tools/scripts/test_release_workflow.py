@@ -17,6 +17,7 @@ PROMOTION = ROOT / ".github/workflows/promote_release.yml"
 INTEL_REPLAY = ROOT / ".github/workflows/rc7_macos_x64_draft_replay.yml"
 QUALIFICATION = ROOT / "tools/scripts/verify_release_qualification.py"
 ASSETS = ROOT / "tools/scripts/verify_release_assets.py"
+RELEASE_GATE = ROOT / "tools/scripts/release_gate.py"
 ACTIVE_CANDIDATE = "v1.0.0-rc.7"
 ACTIVE_RELEASE_NOTES = ROOT / ("docs/release_notes_%s.md" % ACTIVE_CANDIDATE)
 TARGETS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64")
@@ -159,6 +160,7 @@ def main():
     text = WORKFLOW.read_text(encoding="utf-8")
     promotion = PROMOTION.read_text(encoding="utf-8")
     intel_replay = INTEL_REPLAY.read_text(encoding="utf-8")
+    release_gate = RELEASE_GATE.read_text(encoding="utf-8")
     gate = job_block(text, "release-gate", "qualification-summary")
     summary = job_block(text, "qualification-summary", "create-draft-release")
     draft = job_block(text, "create-draft-release")
@@ -169,6 +171,9 @@ def main():
             "v1.0.0-rc.7" in intel_replay and
             "--require-checksums" in intel_replay,
             "RC7 Intel replay workflow is missing the exact draft replay contract")
+    require('"tools/run_conformance.py",' in release_gate and
+            '"--build-dir", str(build_dir)' in release_gate,
+            "release gate does not pass its configured build directory to Conformance")
     require(ACTIVE_RELEASE_NOTES.is_file(),
             "active candidate is missing tag-release notes: " + str(ACTIVE_RELEASE_NOTES))
     require("softprops/action-gh-release" not in gate,

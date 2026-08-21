@@ -290,7 +290,8 @@ def main():
         ("pass", (
             [sys.executable, "tools/scripts/test_pass.py",
              "--exclude-file", "spec/ci_quarantined_pass_tests.list"],
-            [sys.executable, "tools/run_conformance.py"],
+            [sys.executable, "tools/run_conformance.py",
+             "--build-dir", str(build_dir)],
         )),
         ("fail", ([sys.executable, "tools/scripts/test_verify_fail.py",
                    "--exclude-file", "spec/ci_quarantined_fail_tests.list"],)),
