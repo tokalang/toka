@@ -211,12 +211,14 @@ autonomous `InitMask` decision paths is required.
 
 ## 5. Audit Findings & Summary
 
-- **Status**: **P0 fix implemented; path-sensitive verification incomplete**
-- **Confirmed P0 bugs**: **1** (remediated with path-sensitive Fail-Closed borrow and assignment enforcement).
+- **Status**: **P0 remediation verified; hybrid InitMask migration remains incomplete**
+- **Confirmed P0 bugs**: **1**, remediated and verified at `99c55e9a`.
+- **INIT-24**: Verified by local full suites, cache validation, sanitizer audit, standard hosted CI ([run 32488604518](https://github.com/tokalang/toka/actions/runs/32488604518)), and Windows Dogfood ([run 32488604674](https://github.com/tokalang/toka/actions/runs/32488604674)).
 - **Unproven soundness claims**: `InitMask` / `ExactPlace` equivalence in hybrid semantic checking.
 - **Deferred expressiveness**: field-wise and async init contracts (`INIT-21`, `INIT-22`, `INIT-23`).
 - **Action Items for Completeness Proof & P0 Remediation**:
-  1. Fail-closed: Prevent ordinary reference creation from non-Live places (path-sensitive, admitting live sibling projections);
-  2. Fail-closed: Reject ordinary member/index assignments on Never whole places (while admitting whole-place repopulation and moved projection repopulation);
-  3. Close P0 regression matrix across custom-drop (@Encap), shared-member, array forms, and positive conformance tests;
-  4. Develop the migration plan to retire autonomous `InitMask` semantic decision paths.
+  1. Fail-closed: Prevent ordinary reference creation from non-Live places (path-sensitive, admitting live sibling projections) [VERIFIED];
+  2. Fail-closed: Reject ordinary member/index assignments on Never whole places (while admitting whole-place repopulation and moved projection repopulation) [VERIFIED];
+  3. Close P0 regression matrix across custom-drop (@Encap), shared-member, array forms, and positive conformance tests [VERIFIED];
+  4. Perform DirtyReferentMask reachability audit to assess elimination vs formalization of referent tracking;
+  5. Develop the migration plan to retire autonomous `InitMask` semantic decision paths.
