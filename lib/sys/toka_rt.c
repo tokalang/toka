@@ -291,7 +291,9 @@ void toka_datafile_read_release(uint64_t handle) {
     if (handle == 0) return;
     toka_read_datafile_t *rf = (toka_read_datafile_t *)(uintptr_t)handle;
     if (atomic_fetch_sub(&rf->ref_count, 1) == 1) {
+#if !defined(_WIN32) && !defined(__wasi__)
         if (rf->fd >= 0) close(rf->fd);
+#endif
         free(rf);
     }
 }
@@ -401,6 +403,7 @@ int32_t toka_datafile_open_sibling_temp(const char *target_path, char *out_temp_
 #endif
 }
 
+#if !defined(_WIN32) && !defined(__wasi__)
 static int toka_atomic_rename_noreplace(const char *temp_path, const char *target_path) {
 #if defined(__APPLE__)
     if (link(temp_path, target_path) != 0) {
@@ -429,6 +432,7 @@ static int toka_atomic_rename_noreplace(const char *temp_path, const char *targe
     return 0;
 #endif
 }
+#endif
 
 int32_t toka_dir_sync(const char *dir_path, int32_t *os_error);
 
