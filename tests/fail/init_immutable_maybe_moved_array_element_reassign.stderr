@@ -1,0 +1,10 @@
+error[E04572]: Cannot assign to immutable entity. Missing writable token '#' or '!'.
+ --> tests/fail/init_immutable_maybe_moved_array_element_reassign.tk:16:15
+    |
+ 16 |     values[0] = Token(id = 3)
+    |               ^
+error[E0443]: Cannot modify immutable entity 'Token'
+ --> tests/fail/init_immutable_maybe_moved_array_element_reassign.tk:16:11
+    |
+ 16 |     values[0] = Token(id = 3)
+    |           ^

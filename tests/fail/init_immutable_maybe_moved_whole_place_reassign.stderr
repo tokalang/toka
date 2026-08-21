@@ -1,0 +1,10 @@
+error[E04572]: Cannot assign to immutable entity. Missing writable token '#' or '!'.
+ --> tests/fail/init_immutable_maybe_moved_whole_place_reassign.tk:16:11
+    |
+ 16 |     token = Token(id = 2)
+    |           ^
+error[E0443]: Cannot modify immutable entity 'Token'
+ --> tests/fail/init_immutable_maybe_moved_whole_place_reassign.tk:16:5
+    |
+ 16 |     token = Token(id = 2)
+    |     ^

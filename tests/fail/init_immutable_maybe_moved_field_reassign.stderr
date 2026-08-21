@@ -1,0 +1,10 @@
+error[E04572]: Cannot assign to immutable entity. Missing writable token '#' or '!'.
+ --> tests/fail/init_immutable_maybe_moved_field_reassign.tk:18:15
+    |
+ 18 |     pair.left = Token(id = 3)
+    |               ^
+error[E0443]: Cannot modify immutable entity 'Token'
+ --> tests/fail/init_immutable_maybe_moved_field_reassign.tk:18:9
+    |
+ 18 |     pair.left = Token(id = 3)
+    |         ^
