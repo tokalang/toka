@@ -197,7 +197,7 @@ def run_docker(source, output, target, revision, version, docker_cores, dry_run)
         raise PrequalificationError("could not build local Linux qualification image")
     report = output / ("release-gate-%s.json" % target)
     work = output / ("work-%s" % target)
-    build = "/src/build-" + target
+    build = "/src/build"
     gate_command = " ".join([
         "git config --global --add safe.directory /src",
         "&&",
@@ -270,23 +270,22 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     results = []
     with tempfile.TemporaryDirectory(prefix="toka-release-prequalification-") as temporary:
-        source = Path(temporary) / "source"
-        try:
-            clone_revision(revision, source, args.dry_run)
-            for target in resolved_targets:
-                try:
-                    if target.startswith("linux-") and target != native_target():
-                        result = run_docker(source, output, target, revision, args.version,
-                                            args.docker_cores, args.dry_run)
-                    elif target.startswith("linux-"):
-                        result = run_native(source, output, target, revision, args.version, args.dry_run)
-                    else:
-                        result = run_native(source, output, target, revision, args.version, args.dry_run)
-                except PrequalificationError as error:
-                    result = {"error": str(error), "result": "fail", "target": target}
-                results.append(result)
-        except PrequalificationError as error:
-            results.append({"error": str(error), "result": "fail", "target": "checkout"})
+        for target in resolved_targets:
+            source = Path(temporary) / ("source-" + target)
+            try:
+                clone_revision(revision, source, args.dry_run)
+                if target.startswith("linux-") and target != native_target():
+                    result = run_docker(source, output, target, revision, args.version,
+                                        args.docker_cores, args.dry_run)
+                elif target.startswith("linux-"):
+                    result = run_native(source, output, target, revision,
+                                        args.version, args.dry_run)
+                else:
+                    result = run_native(source, output, target, revision,
+                                        args.version, args.dry_run)
+            except PrequalificationError as error:
+                result = {"error": str(error), "result": "fail", "target": target}
+            results.append(result)
 
     overall = "planned" if args.dry_run else (
         "pass" if results and all(result["result"] == "pass" for result in results) else "fail"

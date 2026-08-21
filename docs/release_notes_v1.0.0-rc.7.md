@@ -37,9 +37,9 @@ receipts, and release state belong in the
 - Nested dependent generic shapes defer materialization until outer type
   parameters are substituted, while constrained Send/Sync proofs remain
   structural and fail closed.
-- Local Docker prequalification isolates each Linux target's CMake build tree;
-  Linux runtime builds include the architecture syscall definitions required
-  by atomic no-replace rename.
+- Local Docker prequalification isolates each Linux target's source checkout
+  and CMake build tree; Linux runtime builds include the architecture syscall
+  definitions required by atomic no-replace rename.
 
 ## Interface cache boundary
 
