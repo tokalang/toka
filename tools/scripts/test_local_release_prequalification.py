@@ -41,11 +41,15 @@ def main():
                 "dry-run omitted Docker Linux targets")
         require(any(entry["executor"] == "native" for entry in summary["targets"]),
                 "dry-run omitted the native gate")
-        require("source-macos-arm64" in result.stdout and
-                "source-linux-arm64" in result.stdout and
+        require("source-linux-arm64" in result.stdout and
                 "source-linux-x64" in result.stdout,
-                "each target must have an isolated source checkout")
-        require(result.stdout.count("--build-dir /src/build") == 2,
+                "Docker targets must have isolated source checkouts")
+        require(result.stdout.count("git clone --no-checkout --no-local") ==
+                len(summary["targets"]),
+                "each resolved target must clone an isolated source checkout")
+        docker_targets = sum(1 for entry in summary["targets"]
+                             if entry["executor"] == "docker")
+        require(result.stdout.count("--build-dir /src/build") == docker_targets,
                 "Docker gates must use the isolated checkout's standard build directory")
 
         invalid = subprocess.run([
