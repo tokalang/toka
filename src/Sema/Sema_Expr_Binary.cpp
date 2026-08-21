@@ -746,15 +746,58 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
             }
         }
 
+        bool isWholeLHS = false;
+        Expr *NakedLHS = Bin->LHS.get();
+        while (auto *C = dynamic_cast<CastExpr *>(NakedLHS))
+          NakedLHS = C->Expression.get();
+        if (dynamic_cast<VariableExpr *>(NakedLHS))
+          isWholeLHS = true;
+
         if (InfoPtr->IsReference()) {
           if (InfoPtr->DirtyReferentMask != ~0ULL)
             isLHSWritable = true;
-        } else if (InfoPtr->partialMovePlan().isAdmitted()) {
-          if (!InfoPtr->ExactPlace.isDefinitelyLive() ||
-              hasExactlyPlaceState(InfoPtr->placeFact(), PlaceState::Moved))
+        } else if (isWholeLHS) {
+          if (hasExactlyPlaceState(InfoPtr->placeFact(), PlaceState::Moved))
             isLHSWritable = true;
-        } else if (hasExactlyPlaceState(InfoPtr->placeFact(), PlaceState::Moved)) {
-          isLHSWritable = true;
+        } else if (auto *M = dynamic_cast<MemberExpr *>(NakedLHS)) {
+          if (hasExactlyPlaceState(InfoPtr->placeFact(), PlaceState::Live) &&
+              InfoPtr->TypeObj && InfoPtr->TypeObj->isShape()) {
+            auto shapeType = std::dynamic_pointer_cast<ShapeType>(InfoPtr->TypeObj);
+            ShapeDecl *SD = shapeType ? shapeType->Decl : nullptr;
+            if (!SD)
+              SD = findVisibleShapeDecl(InfoPtr->TypeObj->getSoulName(), getLoc(M));
+            if (SD) {
+              for (int i = 0; i < (int)SD->Members.size(); ++i) {
+                if (toka::Type::stripMorphology(SD->Members[i].Name) ==
+                    toka::Type::stripMorphology(M->Member)) {
+                  if (InfoPtr->partialMovePlan().admits(PartialMoveProjectionKind::DirectField, i)) {
+                    if (hasExactlyPlaceState(
+                            InfoPtr->ExactPlace.projectionFact(
+                                PartialMoveProjectionKind::DirectField, i),
+                            PlaceState::Moved)) {
+                      isLHSWritable = true;
+                    }
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        } else if (auto *Idx = dynamic_cast<ArrayIndexExpr *>(NakedLHS)) {
+          if (hasExactlyPlaceState(InfoPtr->placeFact(), PlaceState::Live) &&
+              Idx->Indices.size() == 1) {
+            if (auto *constant = dynamic_cast<NumberExpr *>(Idx->Indices[0].get())) {
+              if (InfoPtr->partialMovePlan().admits(
+                      PartialMoveProjectionKind::FixedArrayElement, constant->Value)) {
+                if (hasExactlyPlaceState(
+                        InfoPtr->ExactPlace.projectionFact(
+                            PartialMoveProjectionKind::FixedArrayElement, constant->Value),
+                        PlaceState::Moved)) {
+                  isLHSWritable = true;
+                }
+              }
+            }
+          }
         }
         
         // This assignment reaches a payload path.  Handle rebindability
@@ -894,10 +937,10 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                   if (!EffectiveInfo->IsReference() &&
                       EffectiveInfo->partialMovePlan().admits(
                           PartialMoveProjectionKind::DirectField, i)) {
-                    isUnset = !hasExactlyPlaceState(
+                    isUnset = hasExactlyPlaceState(
                         EffectiveInfo->ExactPlace.projectionFact(
                             PartialMoveProjectionKind::DirectField, i),
-                        PlaceState::Live);
+                        PlaceState::Moved);
                   } else {
                     isUnset = !(EffectiveInfo->InitMask & bit) &&
                               !(EffectiveInfo->DirtyReferentMask & bit);
