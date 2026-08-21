@@ -41,6 +41,12 @@ def main():
                 "dry-run omitted Docker Linux targets")
         require(any(entry["executor"] == "native" for entry in summary["targets"]),
                 "dry-run omitted the native gate")
+        require("-B /src/build-linux-arm64" in result.stdout and
+                "--build-dir /src/build-linux-arm64" in result.stdout,
+                "ARM64 Docker gate does not have an isolated build directory")
+        require("-B /src/build-linux-x64" in result.stdout and
+                "--build-dir /src/build-linux-x64" in result.stdout,
+                "x64 Docker gate does not have an isolated build directory")
 
         invalid = subprocess.run([
             sys.executable, str(RUNNER), "--dry-run", "--docker-cores", "0",

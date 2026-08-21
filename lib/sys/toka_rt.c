@@ -27,6 +27,7 @@
 #include <bcrypt.h>
 #elif defined(__linux__)
 #include <sys/random.h>
+#include <sys/syscall.h>
 #include <fcntl.h>
 #include <unistd.h>
 #endif

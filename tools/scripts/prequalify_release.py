@@ -197,15 +197,16 @@ def run_docker(source, output, target, revision, version, docker_cores, dry_run)
         raise PrequalificationError("could not build local Linux qualification image")
     report = output / ("release-gate-%s.json" % target)
     work = output / ("work-%s" % target)
+    build = "/src/build-" + target
     gate_command = " ".join([
         "git config --global --add safe.directory /src",
         "&&",
-        "cmake -S /src -B /src/build -G Ninja -DCMAKE_BUILD_TYPE=Release",
+        "cmake -S /src -B " + build + " -G Ninja -DCMAKE_BUILD_TYPE=Release",
         "-DTOKA_RELEASE_VERSION_OVERRIDE=" + version.lstrip("v"),
         "&&",
         "python3 tools/scripts/release_gate.py --target " + target,
         "--version " + version,
-        "--build-dir /src/build",
+        "--build-dir " + build,
         "--work-dir /out/work-" + target,
         "--output /out/" + report.name,
     ])
