@@ -54,13 +54,24 @@ def parse_counts(name, output):
     clean = strip_ansi(output)
     counts = {}
     if name == "build":
-        match = re.search(
+        detailed = re.search(
             r"(\d+)% tests passed,\s*(\d+) tests failed out of (\d+)",
             clean,
         )
-        if match:
-            failed = int(match.group(2))
-            total = int(match.group(3))
+        compact = re.search(
+            r"100% tests passed out of (\d+)",
+            clean,
+        )
+        if detailed:
+            failed = int(detailed.group(2))
+            total = int(detailed.group(3))
+        elif compact:
+            failed = 0
+            total = int(compact.group(1))
+        else:
+            failed = None
+            total = None
+        if failed is not None:
             counts["ctest"] = {
                 "passed": total - failed,
                 "failed": failed,

@@ -142,11 +142,25 @@ def exercise_verifiers():
 
 
 def main():
-    build_counts = parse_counts(
+    build_linux = parse_counts(
         "build", "100% tests passed, 0 tests failed out of 15\n")
-    require(build_counts == {
+    require(build_linux == {
         "ctest": {"passed": 15, "failed": 0, "total": 15}},
-        "release gate did not parse CTest evidence")
+        "release gate did not parse Linux CTest evidence")
+    build_macos = parse_counts(
+        "build", "100% tests passed out of 15\n")
+    require(build_macos == {
+        "ctest": {"passed": 15, "failed": 0, "total": 15}},
+        "release gate did not parse macOS CTest evidence")
+    build_failure = parse_counts(
+        "build", "80% tests passed, 3 tests failed out of 15\n")
+    require(build_failure == {
+        "ctest": {"passed": 12, "failed": 3, "total": 15}},
+        "release gate did not parse failed CTest evidence")
+    build_malformed = parse_counts(
+        "build", "80% tests passed out of 15\n")
+    require(build_malformed == {},
+        "release gate must fail-closed on malformed compact CTest output")
     pass_counts = parse_counts(
         "pass",
         "Summary:\n  Passed: 412\n  Failed: 0\n"
