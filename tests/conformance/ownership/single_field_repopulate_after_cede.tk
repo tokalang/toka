@@ -1,20 +1,34 @@
 import std/io::{println}
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0:i32
 
 shape Token (
     id: i32
 )
+
+impl Token@Encap {
+    pub id
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
 
 shape Single (
     value: Token
 )
 
 fn main() -> i32 {
-    auto pair = Single(value = Token(id = 1))
-    auto taken = cede pair.value
-    assert(taken.id == 1, "taken value check")
+    {
+        auto pair = Single(value = Token(id = 1))
+        auto taken = cede pair.value
+        assert(taken.id == 1, "taken value check")
 
-    pair.value = Token(id = 2)
-    assert(pair.value.id == 2, "repopulated value check")
+        pair.value = Token(id = 2)
+        assert(pair.value.id == 2, "repopulated value check")
+    }
+    // taken dropped (1) + repopulated pair.value dropped (1) = 2
+    assert(g_drop_count == 2:i32, "Single field repopulate must drop taken and repopulated token exactly once")
 
     println("[Conformance] Single Field Repopulate After Cede PASSED!")
     return 0

@@ -1,16 +1,30 @@
 import std/io::{println}
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0:i32
 
 shape Token (
     id: i32
 )
 
-fn main() -> i32 {
-    auto arr = [Token(id = 1)]
-    auto taken = cede arr[0]
-    assert(taken.id == 1, "taken array element check")
+impl Token@Encap {
+    pub id
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
 
-    arr[0] = Token(id = 2)
-    assert(arr[0].id == 2, "repopulated array element check")
+fn main() -> i32 {
+    {
+        auto arr = [Token(id = 1)]
+        auto taken = cede arr[0]
+        assert(taken.id == 1, "taken array element check")
+
+        arr[0] = Token(id = 2)
+        assert(arr[0].id == 2, "repopulated array element check")
+    }
+    // taken dropped (1) + repopulated arr[0] dropped (1) = 2
+    assert(g_drop_count == 2:i32, "Single element array repopulate must drop taken and repopulated element exactly once")
 
     println("[Conformance] Single Element Array Repopulate After Cede PASSED!")
     return 0

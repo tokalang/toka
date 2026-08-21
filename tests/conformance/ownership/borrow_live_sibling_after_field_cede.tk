@@ -1,8 +1,18 @@
 import std/io::{println}
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0:i32
 
 shape Token (
     id: i32
 )
+
+impl Token@Encap {
+    pub id
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
 
 shape Pair (
     left: Token,
@@ -10,15 +20,19 @@ shape Pair (
 )
 
 fn main() -> i32 {
-    auto pair = Pair(
-        left = Token(id = 1),
-        right = Token(id = 2)
-    )
-    auto taken = cede pair.left
-    assert(taken.id == 1, "taken id check")
+    {
+        auto pair = Pair(
+            left = Token(id = 1),
+            right = Token(id = 2)
+        )
+        auto taken = cede pair.left
+        assert(taken.id == 1, "taken id check")
 
-    auto &borrow = &(pair.right)
-    assert(borrow.id == 2, "borrowed sibling id check")
+        auto &borrow = &(pair.right)
+        assert(borrow.id == 2, "borrowed sibling id check")
+    }
+    // taken dropped (1) + retained pair.right dropped (1) = 2
+    assert(g_drop_count == 2:i32, "Live sibling borrow must drop moved owner and retained sibling exactly once")
 
     println("[Conformance] Borrow Live Sibling After Field Cede PASSED!")
     return 0
