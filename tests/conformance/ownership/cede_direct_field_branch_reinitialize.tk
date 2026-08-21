@@ -1,12 +1,14 @@
+import std/io::{println}
 import core/traits::{@Encap}
 
-auto g_drop_count# = 0
+auto g_drop_count# = 0:i32
 
 shape Token(id: i32)
 
 impl Token@Encap {
+    pub id
     fn drop(self#) {
-        g_drop_count += 1
+        g_drop_count += 1:i32
     }
 }
 
@@ -17,7 +19,7 @@ shape Pair(
 
 fn branch_then_reinitialize(take_left: bool) -> i32 {
     {
-        auto pair = Pair(left = Token(id = 1), right = Token(id = 2))
+        auto pair# = Pair(left = Token(id = 1), right = Token(id = 2))
         if take_left {
             auto taken = cede pair.left
             assert(taken.id == 1, "branch transfer captures the field")
@@ -31,6 +33,13 @@ fn branch_then_reinitialize(take_left: bool) -> i32 {
 
 fn main() -> i32 {
     assert(branch_then_reinitialize(true) == 0, "ceded branch")
-    assert(g_drop_count == 3, "transferred and reinitialized fields drop once")
+    assert(branch_then_reinitialize(false) == 0, "non-ceded branch")
+    // Each invocation drops 3 tokens:
+    // true: taken (1) + replacement (1) + right (1) = 3
+    // false: replaced old-left (1) + replacement (1) + right (1) = 3
+    // Total = 6
+    assert(g_drop_count == 6:i32, "both branches must drop all tokens exactly once")
+
+    println("[Conformance] Cede Direct Field Branch Reinitialize PASSED!")
     return 0
 }

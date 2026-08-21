@@ -1906,7 +1906,7 @@
       "type": "run",
       "expected_exit_code": 0,
       "timeout_seconds": 10,
-      "description": "A joined direct-field transfer can be reinitialized with exactly-once cleanup"
+      "description": "A mutable aggregate can reinitialize a conditionally moved-or-live projection with dynamic cleanup"
     },
     {
       "id": "diag_cede_direct_field_invalidates_source_01",
