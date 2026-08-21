@@ -1455,6 +1455,68 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
         SymbolInfo *Info = nullptr;
         if (CurrentScope->findSymbol(baseVar, Info)) {
+            bool isProjectionBorrow = (pathToBorrow != baseVar);
+            bool borrowUnavailable = false;
+            if (!Info->IsReference()) {
+              if (!isProjectionBorrow) {
+                if (hasPlaceState(Info->placeFact(), PlaceState::Never) ||
+                    !Info->ExactPlace.isDefinitelyLive()) {
+                  borrowUnavailable = true;
+                }
+              } else {
+                if (!hasExactlyPlaceState(Info->placeFact(), PlaceState::Live)) {
+                  borrowUnavailable = true;
+                } else {
+                  if (auto *ME = dynamic_cast<MemberExpr *>(scan)) {
+                    if (Info->TypeObj && Info->TypeObj->isShape()) {
+                      auto shapeType = std::dynamic_pointer_cast<ShapeType>(Info->TypeObj);
+                      ShapeDecl *SD = shapeType ? shapeType->Decl : nullptr;
+                      if (!SD)
+                        SD = findVisibleShapeDecl(Info->TypeObj->getSoulName(), getLoc(ME));
+                      if (SD) {
+                        for (int i = 0; i < (int)SD->Members.size(); ++i) {
+                          if (toka::Type::stripMorphology(SD->Members[i].Name) ==
+                              toka::Type::stripMorphology(ME->Member)) {
+                            if (Info->partialMovePlan().admits(PartialMoveProjectionKind::DirectField, i)) {
+                              if (!hasExactlyPlaceState(
+                                      Info->ExactPlace.projectionFact(
+                                          PartialMoveProjectionKind::DirectField, i),
+                                      PlaceState::Live)) {
+                                borrowUnavailable = true;
+                              }
+                            }
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  } else if (auto *IE = dynamic_cast<ArrayIndexExpr *>(scan)) {
+                    if (IE->Indices.size() == 1) {
+                      if (auto *constant = dynamic_cast<NumberExpr *>(IE->Indices[0].get())) {
+                        if (Info->partialMovePlan().admits(
+                                PartialMoveProjectionKind::FixedArrayElement, constant->Value)) {
+                          if (!hasExactlyPlaceState(
+                                  Info->ExactPlace.projectionFact(
+                                      PartialMoveProjectionKind::FixedArrayElement, constant->Value),
+                                  PlaceState::Live)) {
+                            borrowUnavailable = true;
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            if (borrowUnavailable) {
+              m_LastBorrowSource.clear();
+              auto refType = std::make_shared<toka::ReferenceType>(innerObj);
+              refType->IsNullable = false;
+              refType->IsWritable = wantMutable;
+              return refType;
+            }
+
             if (wantMutable && pathToBorrow == baseVar) {
                 if (!Info->IsSoulMutable()) {
                     error(Addr, DiagID::ERR_BORROW_IMMUT, baseVar);

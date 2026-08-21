@@ -185,6 +185,14 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
             }
         }
 
+        if (!EffectiveInfo->IsReference()) {
+          if (hasPlaceState(EffectiveInfo->placeFact(), PlaceState::Never) ||
+              !EffectiveInfo->ExactPlace.isDefinitelyLive()) {
+            m_LastBorrowSource.clear();
+            return refType;
+          }
+        }
+
         if (!m_InLHS) {
           std::string pathToBorrow = getPathString(Unary->RHS.get());
           if (!pathToBorrow.empty()) {

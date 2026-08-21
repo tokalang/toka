@@ -3,16 +3,6 @@ error[E0410]: Use of uninitialized variable or member 'pair'
     |
  17 |     auto &borrow# = &pair
     |                      ^
-error[E0441]: Cannot access 'pair' while it is mutably borrowed
- --> tests/fail/init_custom_drop_reference_sibling_read.tk:19:16
-    |
- 19 |     return pair.y
-    |                ^
-note: conflicting borrow originates here
- --> tests/fail/init_custom_drop_reference_sibling_read.tk:17:21
-    |
- 17 |     auto &borrow# = &pair
-    |                     ^
 error[E0410]: Use of uninitialized variable or member 'pair.y'
  --> tests/fail/init_custom_drop_reference_sibling_read.tk:19:16
     |
