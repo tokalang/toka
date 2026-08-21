@@ -6341,13 +6341,23 @@ std::string Sema::getModuleName(Module *M) {
 }
 
 int Sema::getScopeDepth(const std::string &Name) {
-  Scope *S = CurrentScope;
-  while (S) {
-    if (S->Symbols.count(Name))
-      return S->Depth;
-    S = S->Parent;
+  if (Name.empty() || !CurrentScope)
+    return 0;
+
+  const size_t delim = Name.find_first_of(".[");
+  std::string root = (delim == std::string::npos) ? Name : Name.substr(0, delim);
+  root = Type::stripMorphology(root);
+
+  SymbolInfo *info = nullptr;
+  std::string actualName = root;
+  Scope *ownerScope = nullptr;
+
+  if (CurrentScope->findVariableWithDerefScope(root, info, actualName, ownerScope) && ownerScope) {
+    return ownerScope->Depth;
   }
-  return 0; // Global or not found (Global is 0)
+
+  // Symbol not found in any scope. Fail-closed to avoid treating unresolvable paths as global.
+  return 999999;
 }
 
 bool Sema::checkVisibility(ASTNode *Node, ShapeDecl *SD) {

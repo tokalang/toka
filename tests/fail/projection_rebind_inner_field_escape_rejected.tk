@@ -1,0 +1,11 @@
+shape Pair(left: i32, right: i32)
+
+fn main() -> i32 {
+    auto outer = Pair(left = 1, right = 2)
+    auto &#slot# = &(outer.left)
+    {
+        auto inner = Pair(left = 3, right = 4)
+        &slot = &(inner.right)
+    }
+    return slot
+}

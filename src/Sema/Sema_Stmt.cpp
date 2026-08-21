@@ -1724,28 +1724,53 @@ void Sema::checkStmt(Stmt *S) {
       for (const auto &dep : m_LastLifeDependencies) {
         Info.LifeDependencySet.insert(dep);
         depsToCommitAsBorrow.insert(dep);
+
         SymbolInfo *depInfo = nullptr;
-        if (CurrentScope->findSymbol(dep, depInfo)) {
-            Info.LifeDependencySet.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
-            depsToCommitAsBorrow.insert(depInfo->LifeDependencySet.begin(),
-                                        depInfo->LifeDependencySet.end());
+        const size_t delim = dep.find_first_of(".[");
+        std::string depRoot = (delim == std::string::npos) ? dep : dep.substr(0, delim);
+        depRoot = Type::stripMorphology(depRoot);
+        std::string actualDepName = depRoot;
+        if (CurrentScope->findVariableWithDeref(depRoot, depInfo, actualDepName) && depInfo) {
+          Info.LifeDependencySet.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
+          depsToCommitAsBorrow.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
         }
 
-        int srcDepth = getScopeDepth(dep);
-        int myDepth = CurrentScope->Depth;
-        if (myDepth < srcDepth) {
-          DiagnosticEngine::report(getLoc(Var), DiagID::ERR_BORROW_LIFETIME,
-                                   Var->Name, dep);
-          HasError = true;
-          SourceLocation originLoc = findPathDeclaration(dep);
-          recordDecision(Var, SemanticRuleID::EffRet001,
-                         SemanticOperation::EscapingDependency,
-                         SemanticDecision::Reject,
-                         SemanticReason::LifetimeDepthViolation, Var->Name,
-                         dep, originLoc);
-          if (originLoc.isValid())
-            DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
-                                     "shorter-lived dependency declared here");
+        if (depInfo && !depInfo->IsReference() && !depInfo->LifeDependencySet.empty() && isBorrowLikeType(depInfo->TypeObj)) {
+          for (const auto &transDep : depInfo->LifeDependencySet) {
+            int transDepth = getScopeDepth(transDep);
+            int myDepth = CurrentScope->Depth;
+            if (myDepth < transDepth && isBorrowLikeType(Info.TypeObj)) {
+              DiagnosticEngine::report(getLoc(Var), DiagID::ERR_BORROW_LIFETIME,
+                                       Var->Name, transDep);
+              HasError = true;
+              SourceLocation originLoc = findPathDeclaration(transDep);
+              recordDecision(Var, SemanticRuleID::EffRet001,
+                             SemanticOperation::EscapingDependency,
+                             SemanticDecision::Reject,
+                             SemanticReason::LifetimeDepthViolation, Var->Name,
+                             transDep, originLoc);
+              if (originLoc.isValid())
+                DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                         "shorter-lived dependency declared here");
+            }
+          }
+        } else {
+          int srcDepth = getScopeDepth(dep);
+          int myDepth = CurrentScope->Depth;
+          if (myDepth < srcDepth && isBorrowLikeType(Info.TypeObj)) {
+            DiagnosticEngine::report(getLoc(Var), DiagID::ERR_BORROW_LIFETIME,
+                                     Var->Name, dep);
+            HasError = true;
+            SourceLocation originLoc = findPathDeclaration(dep);
+            recordDecision(Var, SemanticRuleID::EffRet001,
+                           SemanticOperation::EscapingDependency,
+                           SemanticDecision::Reject,
+                           SemanticReason::LifetimeDepthViolation, Var->Name,
+                           dep, originLoc);
+            if (originLoc.isValid())
+              DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                       "shorter-lived dependency declared here");
+          }
         }
       }
       m_LastLifeDependencies.clear();
@@ -1810,26 +1835,30 @@ void Sema::checkStmt(Stmt *S) {
       Info.LifeDependencySet.insert(m_LastBorrowSource);
 
       SymbolInfo *srcPtr = nullptr;
-      if (CurrentScope->findSymbol(m_LastBorrowSource, srcPtr)) {
+      const size_t delim = m_LastBorrowSource.find_first_of(".[");
+      std::string srcRoot = (delim == std::string::npos) ? m_LastBorrowSource : m_LastBorrowSource.substr(0, delim);
+      srcRoot = Type::stripMorphology(srcRoot);
+      std::string actualSrcName = srcRoot;
+      if (CurrentScope->findVariableWithDeref(srcRoot, srcPtr, actualSrcName) && srcPtr) {
         Info.LifeDependencySet.insert(srcPtr->LifeDependencySet.begin(), srcPtr->LifeDependencySet.end());
+      }
 
-        // [NEW] Lifetime check: Depth(Me) >= Depth(Src)
-        int srcDepth = getScopeDepth(m_LastBorrowSource);
-        int myDepth = CurrentScope->Depth;
-        if (myDepth < srcDepth) {
-          DiagnosticEngine::report(getLoc(Var), DiagID::ERR_BORROW_LIFETIME,
-                                   Var->Name, m_LastBorrowSource);
-          HasError = true;
-          SourceLocation originLoc = findPathDeclaration(m_LastBorrowSource);
-          recordDecision(Var, SemanticRuleID::EffRet001,
-                         SemanticOperation::EscapingDependency,
-                         SemanticDecision::Reject,
-                         SemanticReason::LifetimeDepthViolation, Var->Name,
-                         m_LastBorrowSource, originLoc);
-          if (originLoc.isValid())
-            DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
-                                     "shorter-lived dependency declared here");
-        }
+      // [NEW] Lifetime check: Depth(Me) >= Depth(Src)
+      int srcDepth = getScopeDepth(m_LastBorrowSource);
+      int myDepth = CurrentScope->Depth;
+      if (myDepth < srcDepth) {
+        DiagnosticEngine::report(getLoc(Var), DiagID::ERR_BORROW_LIFETIME,
+                                 Var->Name, m_LastBorrowSource);
+        HasError = true;
+        SourceLocation originLoc = findPathDeclaration(m_LastBorrowSource);
+        recordDecision(Var, SemanticRuleID::EffRet001,
+                       SemanticOperation::EscapingDependency,
+                       SemanticDecision::Reject,
+                       SemanticReason::LifetimeDepthViolation, Var->Name,
+                       m_LastBorrowSource, originLoc);
+        if (originLoc.isValid())
+          DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                   "shorter-lived dependency declared here");
       }
 
       Info.BorrowedFrom = m_LastBorrowSource;

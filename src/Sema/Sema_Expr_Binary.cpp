@@ -1044,79 +1044,63 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         for (const auto &dep : rhsDeps) {
             mergedDeps.insert(dep);
             SymbolInfo *depInfo = nullptr;
-            std::string depName = dep;
-            if (!CurrentScope->findSymbol(depName, depInfo)) {
-                if (CurrentScope->findSymbol("&" + depName, depInfo)) { depName = "&" + depName; }
-                else if (CurrentScope->findSymbol("*" + depName, depInfo)) { depName = "*" + depName; }
-                else if (CurrentScope->findSymbol("^" + depName, depInfo)) { depName = "^" + depName; }
-                else if (CurrentScope->findSymbol("~" + depName, depInfo)) { depName = "~" + depName; }
-            }
-            if (depInfo) {
+            const size_t delim = dep.find_first_of(".[");
+            std::string depRoot = (delim == std::string::npos) ? dep : dep.substr(0, delim);
+            depRoot = Type::stripMorphology(depRoot);
+            std::string actualDepName = depRoot;
+            if (CurrentScope->findVariableWithDeref(depRoot, depInfo, actualDepName) && depInfo) {
                 mergedDeps.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
             }
         }
 
         int targetDepth = getScopeDepth(lookupName);
-        std::set<std::string> visited;
-        std::function<bool(std::shared_ptr<toka::Type>)> checkType = [&](std::shared_ptr<toka::Type> t) -> bool {
-            if (!t) return false;
-            if (t->isReference()) return true;
-            if (auto *st = dynamic_cast<ShapeType *>(t.get())) {
-                for (const auto &arg : st->GenericArgs) {
-                    if (checkType(arg)) return true;
-                }
-                std::string sName = t->getSoulName();
-                if (visited.count(sName) == 0) {
-                    visited.insert(sName);
-                    if (ShapeMap.count(sName)) {
-                        ShapeDecl *SD = ShapeMap[sName];
-                        for (const auto &m : SD->Members) {
-                            auto mT = getPhysicalType(m);
-                            if (checkType(mT)) return true;
-                        }
+        const bool targetHoldsBorrow = targetInfo->IsReference() || isBorrowLikeType(targetInfo->TypeObj);
+        if (targetHoldsBorrow) {
+          for (const auto &dep : rhsDeps) {
+            targetInfo->LifeDependencySet.insert(dep);
+            SymbolInfo *depInfo = nullptr;
+            const size_t delim = dep.find_first_of(".[");
+            std::string depRoot = (delim == std::string::npos) ? dep : dep.substr(0, delim);
+            depRoot = Type::stripMorphology(depRoot);
+            std::string actualDepName = depRoot;
+            if (CurrentScope->findVariableWithDeref(depRoot, depInfo, actualDepName) && depInfo) {
+              targetInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
+            }
+
+            if (depInfo && !depInfo->IsReference() && !depInfo->LifeDependencySet.empty() && isBorrowLikeType(depInfo->TypeObj)) {
+                for (const auto &transDep : depInfo->LifeDependencySet) {
+                    int depDepth = getScopeDepth(transDep);
+                    if (targetDepth < depDepth) {
+                        error(Bin, DiagID::ERR_BORROW_LIFETIME, targetObjName, transDep);
+                        SourceLocation originLoc = findPathDeclaration(transDep);
+                        recordDecision(
+                            Bin, SemanticRuleID::EffRet001,
+                            SemanticOperation::EscapingDependency,
+                            SemanticDecision::Reject,
+                            SemanticReason::LifetimeDepthViolation,
+                            targetObjName, transDep, originLoc);
+                        if (originLoc.isValid())
+                          DiagnosticEngine::report(
+                              originLoc, DiagID::NOTE_GENERIC,
+                              "shorter-lived dependency declared here");
                     }
                 }
+            } else {
+                int depDepth = getScopeDepth(dep);
+                if (targetDepth < depDepth) {
+                  error(Bin, DiagID::ERR_BORROW_LIFETIME, targetObjName, dep);
+                  SourceLocation originLoc = findPathDeclaration(dep);
+                  recordDecision(Bin, SemanticRuleID::EffRet001,
+                                 SemanticOperation::EscapingDependency,
+                                 SemanticDecision::Reject,
+                                 SemanticReason::LifetimeDepthViolation,
+                                 targetObjName, dep, originLoc);
+                  if (originLoc.isValid())
+                    DiagnosticEngine::report(
+                        originLoc, DiagID::NOTE_GENERIC,
+                        "shorter-lived dependency declared here");
+                }
             }
-            return false;
-        };
-
-        for (const auto &dep : mergedDeps) {
-          SymbolInfo *depInfo = nullptr;
-          if (CurrentScope->findSymbol(dep, depInfo) && !depInfo->IsReference() && checkType(depInfo->TypeObj)) {
-              for (const auto &transDep : depInfo->LifeDependencySet) {
-                  int depDepth = getScopeDepth(transDep);
-                  if (targetDepth < depDepth) {
-                      error(Bin, DiagID::ERR_BORROW_LIFETIME, targetObjName, transDep);
-                      SourceLocation originLoc = findPathDeclaration(transDep);
-                      recordDecision(
-                          Bin, SemanticRuleID::EffRet001,
-                          SemanticOperation::EscapingDependency,
-                          SemanticDecision::Reject,
-                          SemanticReason::LifetimeDepthViolation,
-                          targetObjName, transDep, originLoc);
-                      if (originLoc.isValid())
-                        DiagnosticEngine::report(
-                            originLoc, DiagID::NOTE_GENERIC,
-                            "shorter-lived dependency declared here");
-                  }
-                  targetInfo->LifeDependencySet.insert(transDep);
-              }
-          } else {
-              int depDepth = getScopeDepth(dep);
-              if (targetDepth < depDepth) {
-                error(Bin, DiagID::ERR_BORROW_LIFETIME, targetObjName, dep);
-                SourceLocation originLoc = findPathDeclaration(dep);
-                recordDecision(Bin, SemanticRuleID::EffRet001,
-                               SemanticOperation::EscapingDependency,
-                               SemanticDecision::Reject,
-                               SemanticReason::LifetimeDepthViolation,
-                               targetObjName, dep, originLoc);
-                if (originLoc.isValid())
-                  DiagnosticEngine::report(
-                      originLoc, DiagID::NOTE_GENERIC,
-                      "shorter-lived dependency declared here");
-              }
-              targetInfo->LifeDependencySet.insert(dep);
           }
         }
 

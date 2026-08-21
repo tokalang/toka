@@ -12,8 +12,8 @@ With the remediation of the uninitialized borrow vulnerability (where `Never` or
 
 ### Key Audit Conclusions & Results:
 1. **Unreachable in Accepted Programs:** Entry-point borrow guards reject creating references to non-Live places; no accepted program can ever construct a reference with `DirtyReferentMask != ~0ULL`.
-2. **Dynamic Invariant Proof:** A debug invariant (`assert(Info.DirtyReferentMask == ~0ULL)`) was instrumented and executed across all 412 Pass tests, 376 Fail tests, 305 Conformance tests, 44 Semantic Replay cases, 15 CTests, 3 Cache Validation suites, and the FZ3 ASan/UBSan reliability fuzzer with 0 assertion failures.
-3. **Structured Projection Verification:** Verified that `BorrowedPath`, `LifeDependencySet`, and `PALCheckerState` fully enforce lifetime depth checking, borrow loans, and return escape contracts on projection paths without relying on legacy string lookups.
+2. **Dynamic Invariant Proof:** A debug invariant (`assert(Info.DirtyReferentMask == ~0ULL)`) was instrumented and executed across all test suites under active-assertion builds (`build-debug` and `build-asan-fresh` ASan/UBSan fuzzer) with 0 assertion failures, confirming that no valid AST path constructs a non-full mask.
+3. **Structured Projection Lifetime Closure:** Fixed a P0 lifetime escape where `getScopeDepth()` formerly treated unresolved dotted projection paths as global depth 0. Rewrote `getScopeDepth()` to resolve root identifiers structurally via `findVariableWithDerefScope()` with fail-closed sentinel depth (`999999`). Verified that outer reference rebound to inner projections, nested fields, array elements, and reborrows strictly fail with `error[E0456]`.
 4. **Clean Deletion Completed:** Removed `DirtyReferentMask` from `struct SymbolInfo` (`Sema.h`), `Sema_Stmt.cpp`, `Sema_Expr_Binary.cpp`, `Sema_Expr.cpp`, and `Sema_Expr_Member.cpp`.
 5. **Reserved Diagnostics:** Diagnostic codes `E0411` (`ERR_ESCAPE_UNSET`) and `E0412` (`ERR_DIRTY_REF_ESCAPE`) remain reserved in `DiagnosticDefs.def` to preserve toolchain stability.
 

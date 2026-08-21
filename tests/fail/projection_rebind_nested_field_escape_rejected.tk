@@ -1,0 +1,12 @@
+shape Node(val: i32)
+shape Container(node: Node)
+
+fn main() -> i32 {
+    auto outer = Container(node = Node(val = 1))
+    auto &#slot# = &(outer.node.val)
+    {
+        auto inner = Container(node = Node(val = 2))
+        &slot = &(inner.node.val)
+    }
+    return slot
+}

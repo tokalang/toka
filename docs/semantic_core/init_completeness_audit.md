@@ -78,7 +78,7 @@ flowchart TD
   - `Sema_Expr.cpp`: queries `InitMask` to determine aggregate read legality;
   - `Sema_Expr_Member.cpp`: inspects individual bits to determine field initialization;
   - `Sema_Expr_Binary.cpp`: checks `InitMask` for uninitialized fields and LHS writability;
-  - `Sema_Stmt.cpp`: evaluates `DirtyReferentMask` / `InitMask` to check whether dirty references may escape scope;
+  - `Sema_Stmt.cpp`: synchronizes `InitMask` on local declarations (Class C `DirtyReferentMask` removed);
   - Multiple control flow merges (`if`, `match`, `loop`) independently merge `InitMask` alongside `ExactPlaces`.
 - **Soundness Impact**: While no divergence between `PlaceState` and `InitMask`
   was observed in inspected paths, the coexistence of two active decision

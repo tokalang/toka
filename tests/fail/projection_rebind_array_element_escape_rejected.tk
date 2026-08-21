@@ -1,0 +1,11 @@
+shape ArrayBox(elements: [i32; 2])
+
+fn main() -> i32 {
+    auto outer = ArrayBox(elements = [1, 2])
+    auto &#slot# = &(outer.elements[0])
+    {
+        auto inner = ArrayBox(elements = [3, 4])
+        &slot = &(inner.elements[1])
+    }
+    return slot
+}

@@ -1,0 +1,10 @@
+error[E0456]: Object 'slot' (lived longer) cannot depend on 'inner.node.val' (lived shorter)
+ --> tests/fail/projection_rebind_nested_field_escape_rejected.tk:9:15
+   |
+ 9 |         &slot = &(inner.node.val)
+   |               ^
+note: shorter-lived dependency declared here
+ --> tests/fail/projection_rebind_nested_field_escape_rejected.tk:8:14
+   |
+ 8 |         auto inner = Container(node = Node(val = 2))
+   |              ^

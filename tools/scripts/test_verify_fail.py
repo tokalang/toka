@@ -7,7 +7,7 @@ import re
 import difflib
 
 # Configuration
-TOKAC = "./build/bin/tokac"
+TOKAC = os.environ.get("TOKAC", "./build/bin/tokac")
 FAIL_TEST_DIR = "tests/fail"
 TOKAC_SCOPE_ARGS = ["--workspace-node", "toka-tests-v1",
                     "--workspace-root", os.path.abspath(os.getcwd())]

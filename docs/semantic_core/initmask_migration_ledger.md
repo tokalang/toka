@@ -42,7 +42,7 @@ functional roles:
 |---|---|---|
 | **Class A** | **Whole-Place Semantic Decisions** | Migrate directly to `SymbolInfo::placeFact()` (`PlaceStateFact`) and `ExactPlaceFacts::isDefinitelyLive()`. |
 | **Class B** | **Projection & Member Liveness** | Governed by the new Projection Tracking Requirements. Exact-first with legacy fallback until non-admitted projections are formalized. |
-| **Class C** | **Dirty Reference Referent State** | Deletion candidate pending executable reachability proof via Debug invariant and verified projection lifetime closure (`BorrowedPath` / `LifeDependencySet`). |
+| **Class C** | **Dirty Reference Referent State** | **Completed Deletion**: Cleanly removed `DirtyReferentMask` across the compiler (`c169e2f2`). Lifetimes and escapes fully enforced via `BorrowedPath` and `LifeDependencySet`. |
 | **Class D** | **Initializer Synthesis & Expression State** | Retain `m_LastInitMask` as an expression-level constructor synthesis helper, strictly decoupled from statement-level delayed-init facts. |
 
 ---
@@ -53,14 +53,14 @@ functional roles:
 
 | Function / File | Operation | Current Decision / Role | ExactPlace Equivalent | Classification & Migration Note |
 |---|---|---|---|---|
-| `checkVariableExpr`<br>`Sema_Expr.cpp:1954-1972` | Semantic Read | Fallback check for uninitialized aggregate / non-admitted shape read rejection (`ERR_USE_UNSET`) | `ExactPlace.isDefinitelyLive()` (already used for plain scalars & admitted projections) | **Class B/C Fallback**: Plain scalars already use `ExactPlace`. Mask serves non-admitted aggregates and references. |
+| `checkVariableExpr`<br>`Sema_Expr.cpp:1954-1972` | Semantic Read | Fallback check for uninitialized aggregate / non-admitted shape read rejection (`ERR_USE_UNSET`) | `ExactPlace.isDefinitelyLive()` (already used for plain scalars & admitted projections) | **Class B Fallback**: Plain scalars already use `ExactPlace`. Mask serves non-admitted aggregates. |
 | `checkMemberExpr`<br>`Sema_Expr_Member.cpp:152-178` | Semantic Read | Reads `maskToCheck` for field read availability when `!usesExactProjection` (`ERR_USE_UNSET`) | `ExactPlace.projectionFact(DirectField, i)` (only for admitted direct fields) | **Class B Fallback**: Non-admitted structs/tuples fall back to `maskToCheck`. Requires `InitializationProjectionPlan`. |
 | `checkArrayIndexExpr`<br>`Sema_Expr_Member.cpp:567-573` | Semantic Read | Checks `Info->InitMask & (1ULL << idx)` for fixed-array element read availability (`ERR_USE_UNSET`) | `ExactPlace.projectionFact(FixedArrayElement, idx)` | **Class B Fallback**: Non-admitted arrays fall back to `InitMask`. |
 | `checkBinaryExpr`<br>`Sema_Expr_Binary.cpp:728-730` | Semantic Read | Fallback writability check: `InfoPtr->InitMask != ~0ULL` grants `isLHSWritable` | `hasPlaceState(InfoPtr->placeFact(), Never)` (already used for admitted locals) | **Class A/B Fallback**: Plain locals already use `ExactPlace`; mask serves legacy non-admitted aggregates. |
 | `checkBinaryExpr`<br>`Sema_Expr_Binary.cpp:874-876` | Semantic Read | Checks `!(EffectiveInfo->InitMask & bit)` for member LHS uninitialized writability | `!hasExactlyPlaceState(projectionFact(DirectField, i), Live)` | **Class B Fallback**: Fallback for non-admitted member assignments. |
-| `checkBlockStmt`<br>`Sema_Stmt.cpp:547` | Semantic Read | Checks `(sourceInfo->InitMask & signature) != signature` for dirty reference escape (`ERR_DIRTY_REF_ESCAPE`) | Structured Borrow / Lifetime Check (`BorrowedPath`) | **Class C**: Candidate for deletion pending executable unreachable invariant verification. |
-| `checkReturnStmt`<br>`Sema_Stmt.cpp:709` | Semantic Read | Checks `DirtyReferentMask != ~0ULL` at return exit | Structured Return Contract (`LifeDependencySet`) | **Class C**: Candidate for deletion pending executable unreachable invariant verification. |
-| `checkVarDecl`<br>`Sema_Stmt.cpp:1905` | Semantic Read | Checks `(srcPtr->InitMask & fullMask) != fullMask` to detect reference borrowing uninit referent | Fail-Closed Borrow Gate & `PlaceState` | **Class C**: Candidate for deletion pending executable unreachable invariant verification. |
+| `checkBlockStmt`<br>`Sema_Stmt.cpp` | Semantic Read | *(Deleted)* Formerly checked `DirtyReferentMask` for scope exit | Structured Borrow / Lifetime Check (`BorrowedPath`) | **Class C (Completed)**: Cleanly deleted in `c169e2f2`. |
+| `checkReturnStmt`<br>`Sema_Stmt.cpp` | Semantic Read | *(Deleted)* Formerly checked `DirtyReferentMask` at return exit | Structured Return Contract (`LifeDependencySet`) | **Class C (Completed)**: Cleanly deleted in `c169e2f2`. |
+| `checkVarDecl`<br>`Sema_Stmt.cpp` | Semantic Read | *(Deleted)* Formerly checked `(srcPtr->InitMask & fullMask)` to set `DirtyReferentMask` | Fail-Closed Borrow Gate & `PlaceState` | **Class C (Completed)**: Cleanly deleted in `c169e2f2`. |
 
 ### 3.2 Semantic Write Sites (Exact-First with Fallback)
 

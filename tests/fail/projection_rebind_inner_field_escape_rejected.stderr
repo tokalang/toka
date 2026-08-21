@@ -1,0 +1,10 @@
+error[E0456]: Object 'slot' (lived longer) cannot depend on 'inner.right' (lived shorter)
+ --> tests/fail/projection_rebind_inner_field_escape_rejected.tk:8:15
+   |
+ 8 |         &slot = &(inner.right)
+   |               ^
+note: shorter-lived dependency declared here
+ --> tests/fail/projection_rebind_inner_field_escape_rejected.tk:7:14
+   |
+ 7 |         auto inner = Pair(left = 3, right = 4)
+   |              ^
