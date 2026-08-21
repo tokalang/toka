@@ -205,17 +205,18 @@ autonomous `InitMask` decision paths is required.
 | **INIT-21** | Field-wise delayed initialization (`init x.field = ...`) | **Deferred** | Deferred (P2) | Scope boundary |
 | **INIT-22** | Async `init` formal parameter | **Deferred** | Deferred (P2) | Scope boundary |
 | **INIT-23** | Method receiver `init self` | **Deferred** | Deferred (P2) | Scope boundary |
-| **INIT-24** | Ordinary borrow/projection cannot transport InitAuthority | **Tested** | P1 Boundary Invariant | `tests/fail/init_uninit_shape_direct_field_assign.tk`<br>`tests/fail/init_uninit_scalar_borrow.tk`<br>`tests/fail/init_uninit_shape_borrow.tk`<br>`tests/fail/init_custom_drop_reference_sibling_read.tk`<br>`tests/fail/init_custom_drop_reference_full_write.tk`<br>`tests/fail/init_shared_member_reference_partial_init.tk`<br>`tests/fail/init_uninit_array_index_assign.tk` |
+| **INIT-24** | Ordinary borrow/projection cannot transport InitAuthority | **Tested** | P1 Boundary Invariant | `tests/fail/init_uninit_shape_direct_field_assign.tk`<br>`tests/fail/init_uninit_scalar_borrow.tk`<br>`tests/fail/init_uninit_shape_borrow.tk`<br>`tests/fail/init_custom_drop_reference_sibling_read.tk`<br>`tests/fail/init_custom_drop_reference_full_write.tk`<br>`tests/fail/init_custom_drop_direct_field_assign.tk`<br>`tests/fail/init_shared_member_reference_partial_init.tk`<br>`tests/fail/init_uninit_array_index_assign.tk`<br>`tests/conformance/ownership/borrow_live_sibling_after_field_cede.tk`<br>`tests/conformance/ownership/single_field_repopulate_after_cede.tk`<br>`tests/conformance/ownership/single_element_array_repopulate_after_cede.tk`<br>`tests/conformance/ownership/borrow_after_whole_init.tk`<br>`tests/conformance/ownership/borrow_whole_aggregate_after_repopulating_all_moved_fields.tk` |
 
 ---
 
 ## 5. Audit Findings & Summary
 
-- **Confirmed P0 bugs**: **0 active** (1 remediated: ordinary reference/projection writes fail-closed rejected on non-Live roots).
+- **Status**: **P0 fix implemented; path-sensitive verification incomplete**
+- **Confirmed P0 bugs**: **1** (remediated with path-sensitive Fail-Closed borrow and assignment enforcement).
 - **Unproven soundness claims**: `InitMask` / `ExactPlace` equivalence in hybrid semantic checking.
 - **Deferred expressiveness**: field-wise and async init contracts (`INIT-21`, `INIT-22`, `INIT-23`).
 - **Action Items for Completeness Proof & P0 Remediation**:
-  1. ~~Fail-closed: Prevent ordinary reference creation from non-Live places~~ (*Closed*);
-  2. ~~Fail-closed: Reject ordinary member/index assignments on Never whole places~~ (*Closed*);
-  3. ~~Close P0 regression matrix across custom-drop, shared-member, and array forms~~ (*Closed*);
+  1. Fail-closed: Prevent ordinary reference creation from non-Live places (path-sensitive, admitting live sibling projections);
+  2. Fail-closed: Reject ordinary member/index assignments on Never whole places (while admitting whole-place repopulation and moved projection repopulation);
+  3. Close P0 regression matrix across custom-drop (@Encap), shared-member, array forms, and positive conformance tests;
   4. Develop the migration plan to retire autonomous `InitMask` semantic decision paths.
