@@ -42,7 +42,7 @@ functional roles:
 |---|---|---|
 | **Class A** | **Whole-Place Semantic Decisions** | Migrate directly to `SymbolInfo::placeFact()` (`PlaceStateFact`) and `ExactPlaceFacts::isDefinitelyLive()`. |
 | **Class B** | **Projection & Member Liveness** | Governed by the new Projection Tracking Requirements. Exact-first with legacy fallback until non-admitted projections are formalized. |
-| **Class C** | **Dirty Reference Referent State** | Migrate `DirtyReferentMask` to structured referent facts / borrow authority model. Cannot be mechanically removed without referent fact model. |
+| **Class C** | **Dirty Reference Referent State** | Deletion candidate pending executable reachability proof via Debug invariant and verified projection lifetime closure (`BorrowedPath` / `LifeDependencySet`). |
 | **Class D** | **Initializer Synthesis & Expression State** | Retain `m_LastInitMask` as an expression-level constructor synthesis helper, strictly decoupled from statement-level delayed-init facts. |
 
 ---
@@ -58,9 +58,9 @@ functional roles:
 | `checkArrayIndexExpr`<br>`Sema_Expr_Member.cpp:567-573` | Semantic Read | Checks `Info->InitMask & (1ULL << idx)` for fixed-array element read availability (`ERR_USE_UNSET`) | `ExactPlace.projectionFact(FixedArrayElement, idx)` | **Class B Fallback**: Non-admitted arrays fall back to `InitMask`. |
 | `checkBinaryExpr`<br>`Sema_Expr_Binary.cpp:728-730` | Semantic Read | Fallback writability check: `InfoPtr->InitMask != ~0ULL` grants `isLHSWritable` | `hasPlaceState(InfoPtr->placeFact(), Never)` (already used for admitted locals) | **Class A/B Fallback**: Plain locals already use `ExactPlace`; mask serves legacy non-admitted aggregates. |
 | `checkBinaryExpr`<br>`Sema_Expr_Binary.cpp:874-876` | Semantic Read | Checks `!(EffectiveInfo->InitMask & bit)` for member LHS uninitialized writability | `!hasExactlyPlaceState(projectionFact(DirectField, i), Live)` | **Class B Fallback**: Fallback for non-admitted member assignments. |
-| `checkBlockStmt`<br>`Sema_Stmt.cpp:547` | Semantic Read | Checks `(sourceInfo->InitMask & signature) != signature` for dirty reference escape (`ERR_DIRTY_REF_ESCAPE`) | Structured Referent Fact / Borrow Obligation Record | **Class C**: Must not be removed without referent facts. |
-| `checkReturnStmt`<br>`Sema_Stmt.cpp:709` | Semantic Read | Checks `DirtyReferentMask != ~0ULL` at return exit | Structured Referent Fact / Return Obligation | **Class C**: Must not be removed without referent facts. |
-| `checkVarDecl`<br>`Sema_Stmt.cpp:1905` | Semantic Read | Checks `(srcPtr->InitMask & fullMask) != fullMask` to detect reference borrowing uninit referent | Source `PlaceState` & projection inspection | **Class C**: Binds dirty referent tracking. |
+| `checkBlockStmt`<br>`Sema_Stmt.cpp:547` | Semantic Read | Checks `(sourceInfo->InitMask & signature) != signature` for dirty reference escape (`ERR_DIRTY_REF_ESCAPE`) | Structured Borrow / Lifetime Check (`BorrowedPath`) | **Class C**: Candidate for deletion pending executable unreachable invariant verification. |
+| `checkReturnStmt`<br>`Sema_Stmt.cpp:709` | Semantic Read | Checks `DirtyReferentMask != ~0ULL` at return exit | Structured Return Contract (`LifeDependencySet`) | **Class C**: Candidate for deletion pending executable unreachable invariant verification. |
+| `checkVarDecl`<br>`Sema_Stmt.cpp:1905` | Semantic Read | Checks `(srcPtr->InitMask & fullMask) != fullMask` to detect reference borrowing uninit referent | Fail-Closed Borrow Gate & `PlaceState` | **Class C**: Candidate for deletion pending executable unreachable invariant verification. |
 
 ### 3.2 Semantic Write Sites (Exact-First with Fallback)
 
