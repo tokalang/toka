@@ -1,0 +1,59 @@
+import std/io::{println}
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0:i32
+
+shape Token(id: i32)
+
+impl Token@Encap {
+    pub id
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
+
+shape Pair(
+    left: Token,
+    right: Token
+)
+
+fn get_right(pair: Pair) -> &Token <- pair {
+    return &(pair.right)
+}
+
+fn mutate_left(pair#: Pair, new_id: i32) {
+    auto &left# = &(pair.left)
+    left.id = new_id
+}
+
+fn main() -> i32 {
+    // 1. Projection return dependency and reborrowing
+    {
+        auto pair = Pair(
+            left = Token(id = 10),
+            right = Token(id = 20)
+        )
+        auto &right_ref = get_right(pair)
+        assert(right_ref.id == 20, "returned projection reference reads correct field")
+        
+        // Reborrow from projection reference
+        auto &id_ref = &(right_ref.id)
+        assert(id_ref == 20, "reborrowed scalar reference reads correct value")
+    }
+    assert(g_drop_count == 2:i32, "pair tokens dropped after block exit")
+
+    // 2. Mutable projection reference write
+    {
+        auto pair# = Pair(
+            left = Token(id = 1),
+            right = Token(id = 2)
+        )
+        mutate_left(pair#, 42)
+        assert(pair.left.id == 42, "mutable projection write modified left field")
+        assert(pair.right.id == 2, "sibling field unaffected")
+    }
+    assert(g_drop_count == 4:i32, "mutated pair tokens dropped cleanly")
+
+    println("[Conformance] Projection Reborrow and Return Dependency PASSED!")
+    return 0
+}

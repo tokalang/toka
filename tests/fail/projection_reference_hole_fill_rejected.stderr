@@ -1,0 +1,5 @@
+error[E0410]: Use of uninitialized variable or member 'pair'
+ --> tests/fail/projection_reference_hole_fill_rejected.tk:18:22
+    |
+ 18 |     auto &borrow# = &pair
+    |                      ^

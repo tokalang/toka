@@ -19,6 +19,7 @@
 #include "toka/Sema.h"
 #include "toka/Type.h"
 #include <algorithm>
+#include <cassert>
 #include <functional>
 #include <iostream>
 #include <set>
@@ -1905,6 +1906,7 @@ void Sema::checkStmt(Stmt *S) {
             (srcPtr->InitMask & fullMask) != fullMask) {
           // It's Dirty!
           Info.DirtyReferentMask = srcPtr->InitMask;
+          assert(false && "Internal invariant violation: accepted program created a dirty reference!");
         } else {
           Info.DirtyReferentMask = ~0ULL; // Clean
         }

@@ -1,0 +1,10 @@
+error[E0455]: Returning reference to local variable 'pair.right' is unsafe
+ --> tests/fail/projection_borrow_shorter_lived_escape.tk:9:5
+   |
+ 9 |     return &(pair.right)
+   |     ^
+note: escaping local declared here
+ --> tests/fail/projection_borrow_shorter_lived_escape.tk:5:10
+   |
+ 5 |     auto pair = Pair(
+   |          ^

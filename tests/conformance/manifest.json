@@ -1909,6 +1909,14 @@
       "description": "A mutable aggregate can reinitialize a conditionally moved-or-live projection with dynamic cleanup"
     },
     {
+      "id": "ownership_projection_reborrow_and_return_dependency_01",
+      "path": "ownership/projection_reborrow_and_return_dependency.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Projection references support reborrowing, function return dependencies, and mutable field writes"
+    },
+    {
       "id": "diag_cede_direct_field_invalidates_source_01",
       "path": "diagnostics/cede_direct_field_invalidates_source.tk",
       "type": "compile-fail",

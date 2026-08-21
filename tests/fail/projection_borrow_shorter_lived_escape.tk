@@ -1,0 +1,10 @@
+shape Token(id: i32)
+shape Pair(left: Token, right: Token)
+
+fn escape_projection() -> &Token {
+    auto pair = Pair(
+        left = Token(id = 1),
+        right = Token(id = 2)
+    )
+    return &(pair.right)
+}
