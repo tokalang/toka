@@ -1,0 +1,6 @@
+// CHECK: error[E0410]
+fn main() -> i32 {
+    auto x = uninit:i32
+    auto &borrow = &x
+    return 0
+}

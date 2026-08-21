@@ -1,0 +1,11 @@
+// CHECK: error[E0410]
+shape Container (
+    ~ptr: i32,
+    val: i32
+)
+
+fn main() -> i32 {
+    auto c# = uninit:Container
+    auto &borrow# = &c
+    return 0
+}

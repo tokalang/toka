@@ -1,0 +1,5 @@
+error[E04617]: Cannot assign to uninitialized local 'arr'; use 'init arr = ...'
+ --> tests/fail/init_uninit_array_index_assign.tk:4:12
+   |
+ 4 |     arr[0] = 1
+   |            ^

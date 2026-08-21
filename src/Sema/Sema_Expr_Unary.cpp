@@ -322,21 +322,54 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     if (!m_InLHS) {
       std::string pathToBorrow = getPathString(Unary->RHS.get());
       if (!pathToBorrow.empty()) {
-         if (!PALCheckerState.recordBorrow(
-                 canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
-                 isExclusive, Unary->Loc)) {
-             error(Unary, DiagID::ERR_BORROW_MUT, pathToBorrow);
-             if (PALCheckerState.lastConflict()) {
-               recordPALConflict(
-                   Unary,
-                   isExclusive
-                       ? PALOperationClass::ExclusivePayloadBorrow
-                       : PALOperationClass::SharedPayloadBorrow,
-                   canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
-                   *PALCheckerState.lastConflict());
-             }
-         }
-         m_LastBorrowSource = pathToBorrow;
+        Expr *rootExpr = Unary->RHS.get();
+        std::string rootName;
+        while (rootExpr) {
+          if (auto *VE = dynamic_cast<VariableExpr *>(rootExpr)) {
+            rootName = VE->Name;
+            break;
+          } else if (auto *ME = dynamic_cast<MemberExpr *>(rootExpr)) {
+            rootExpr = ME->Object.get();
+          } else if (auto *IE = dynamic_cast<ArrayIndexExpr *>(rootExpr)) {
+            rootExpr = IE->Array.get();
+          } else if (auto *UE = dynamic_cast<UnaryExpr *>(rootExpr)) {
+            rootExpr = UE->RHS.get();
+          } else if (auto *CE = dynamic_cast<CastExpr *>(rootExpr)) {
+            rootExpr = CE->Expression.get();
+          } else {
+            break;
+          }
+        }
+        if (!rootName.empty()) {
+          SymbolInfo *rootInfo = nullptr;
+          std::string actualRoot;
+          if (CurrentScope->findVariableWithDeref(rootName, rootInfo, actualRoot) && rootInfo) {
+            if (!rootInfo->IsReference()) {
+              if (hasPlaceState(rootInfo->placeFact(), PlaceState::Never) ||
+                  !rootInfo->ExactPlace.isDefinitelyLive() ||
+                  rootInfo->InitMask == 0) {
+                DiagnosticEngine::report(getLoc(Unary), DiagID::ERR_USE_UNSET, pathToBorrow);
+                HasError = true;
+              }
+            }
+          }
+        }
+
+        if (!PALCheckerState.recordBorrow(
+                canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
+                isExclusive, Unary->Loc)) {
+            error(Unary, DiagID::ERR_BORROW_MUT, pathToBorrow);
+            if (PALCheckerState.lastConflict()) {
+              recordPALConflict(
+                  Unary,
+                  isExclusive
+                      ? PALOperationClass::ExclusivePayloadBorrow
+                      : PALOperationClass::SharedPayloadBorrow,
+                  canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
+                  *PALCheckerState.lastConflict());
+            }
+        }
+        m_LastBorrowSource = pathToBorrow;
       }
     }
     return refType;

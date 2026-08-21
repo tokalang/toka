@@ -418,15 +418,37 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       // ordinary value read; it should satisfy the binding-use diagnostic.
       initTargetInfo->HasBeenUsed = true;
     }
-  } else if (isAssign && isWholePlainLocal &&
-             hasPlaceState(initTargetInfo->placeFact(),
-                           PlaceState::Never)) {
-    error(Bin, DiagID::ERR_INIT_REQUIRES_EXPLICIT, initTarget->Name,
-          initTarget->Name);
-    // Continue through the legacy initialization lowering after reporting the
-    // source-contract violation so recovery does not emit a second immutable
-    // assignment diagnostic for the same write.
-    isUnsetInit = true;
+  } else if (isAssign) {
+    VariableExpr *rootLHSVar = nullptr;
+    Expr *currLHS = Bin->LHS.get();
+    while (currLHS) {
+      if (auto *V = dynamic_cast<VariableExpr *>(currLHS)) {
+        rootLHSVar = V;
+        break;
+      } else if (auto *M = dynamic_cast<MemberExpr *>(currLHS)) {
+        currLHS = M->Object.get();
+      } else if (auto *I = dynamic_cast<ArrayIndexExpr *>(currLHS)) {
+        currLHS = I->Array.get();
+      } else if (auto *U = dynamic_cast<UnaryExpr *>(currLHS)) {
+        currLHS = U->RHS.get();
+      } else if (auto *C = dynamic_cast<CastExpr *>(currLHS)) {
+        currLHS = C->Expression.get();
+      } else {
+        break;
+      }
+    }
+    SymbolInfo *rootLHSInfo = nullptr;
+    std::string actualRootLHSName;
+    if (rootLHSVar) {
+      CurrentScope->findVariableWithDeref(rootLHSVar->Name, rootLHSInfo, actualRootLHSName);
+    }
+    if (rootLHSInfo && !rootLHSInfo->IsReference()) {
+      if (hasPlaceState(rootLHSInfo->placeFact(), PlaceState::Never) || rootLHSInfo->InitMask == 0) {
+        error(Bin, DiagID::ERR_INIT_REQUIRES_EXPLICIT, rootLHSVar->Name,
+              rootLHSVar->Name);
+        isUnsetInit = true;
+      }
+    }
   }
   if (m_IsUnsetInitCall) {
     isRefAssign = true;
@@ -1278,10 +1300,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           else
             Sym->DirtyReferentMask = ~0ULL;
         } else {
-          if (isPartial)
-            Sym->InitMask = ~0ULL;
-          else
-            Sym->InitMask |= updateBits;
+          Sym->InitMask |= updateBits;
         }
 
         // Move to next upstream source

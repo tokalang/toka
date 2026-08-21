@@ -1,0 +1,5 @@
+error[E0410]: Use of uninitialized variable or member 'pair'
+ --> tests/fail/init_custom_drop_reference_full_write.tk:13:22
+    |
+ 13 |     auto &borrow# = &pair
+    |                      ^

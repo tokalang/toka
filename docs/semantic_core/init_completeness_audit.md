@@ -205,20 +205,17 @@ autonomous `InitMask` decision paths is required.
 | **INIT-21** | Field-wise delayed initialization (`init x.field = ...`) | **Deferred** | Deferred (P2) | Scope boundary |
 | **INIT-22** | Async `init` formal parameter | **Deferred** | Deferred (P2) | Scope boundary |
 | **INIT-23** | Method receiver `init self` | **Deferred** | Deferred (P2) | Scope boundary |
-| **INIT-24** | Ordinary borrow/projection cannot transport InitAuthority | **Failing / P0 remediation** | P1 Boundary Invariant | Needs fail-closed enforcement |
+| **INIT-24** | Ordinary borrow/projection cannot transport InitAuthority | **Tested** | P1 Boundary Invariant | `tests/fail/init_uninit_shape_direct_field_assign.tk`<br>`tests/fail/init_uninit_scalar_borrow.tk`<br>`tests/fail/init_uninit_shape_borrow.tk`<br>`tests/fail/init_custom_drop_reference_sibling_read.tk`<br>`tests/fail/init_custom_drop_reference_full_write.tk`<br>`tests/fail/init_shared_member_reference_partial_init.tk`<br>`tests/fail/init_uninit_array_index_assign.tk` |
 
 ---
 
 ## 5. Audit Findings & Summary
 
-- **Confirmed P0 bugs**: **1**
-  - Ordinary reference/projection writes could partially initialize a
-    non-admitted aggregate through legacy InitMask, admit an uninitialized
-    sibling read, and fail to establish the aggregate DropFlag.
+- **Confirmed P0 bugs**: **0 active** (1 remediated: ordinary reference/projection writes fail-closed rejected on non-Live roots).
 - **Unproven soundness claims**: `InitMask` / `ExactPlace` equivalence in hybrid semantic checking.
 - **Deferred expressiveness**: field-wise and async init contracts (`INIT-21`, `INIT-22`, `INIT-23`).
 - **Action Items for Completeness Proof & P0 Remediation**:
-  1. Fail-closed: Prevent ordinary reference creation from non-Live places;
-  2. Fail-closed: Reject ordinary member/index assignments on Never whole places;
-  3. Close P0 regression matrix across custom-drop, shared-member, and array forms;
+  1. ~~Fail-closed: Prevent ordinary reference creation from non-Live places~~ (*Closed*);
+  2. ~~Fail-closed: Reject ordinary member/index assignments on Never whole places~~ (*Closed*);
+  3. ~~Close P0 regression matrix across custom-drop, shared-member, and array forms~~ (*Closed*);
   4. Develop the migration plan to retire autonomous `InitMask` semantic decision paths.

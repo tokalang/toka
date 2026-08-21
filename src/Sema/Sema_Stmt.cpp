@@ -1439,8 +1439,6 @@ void Sema::checkStmt(Stmt *S) {
     std::shared_ptr<toka::Type> InitTypeObj = nullptr;
     if (Var->Init) {
       Var->Init = foldGenericConstant(std::move(Var->Init));
-      if (Var->IsReference)
-        m_AllowUnsetUsage = true;
       m_ControlFlowStack.push_back({Var->Name, NoProducedValue, nullptr, false, true});
       std::shared_ptr<toka::Type> declTargetTy = nullptr;
       if (!Var->TypeName.empty() && Var->TypeName != "auto") {

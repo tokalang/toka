@@ -1,0 +1,11 @@
+// CHECK: error[E0410]
+shape Point (
+    x: i32,
+    y: i32
+)
+
+fn main() -> i32 {
+    auto pair# = uninit:Point
+    auto &borrow# = &pair
+    return 0
+}

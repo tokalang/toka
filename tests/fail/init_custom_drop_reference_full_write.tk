@@ -1,0 +1,17 @@
+// CHECK: error[E0410]
+shape Pair (
+    x: i32,
+    y: i32
+)
+
+impl Pair {
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto pair# = uninit:Pair
+    auto &borrow# = &pair
+    borrow.x = 1
+    borrow.y = 2
+    return 0
+}
