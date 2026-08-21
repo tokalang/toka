@@ -69,7 +69,7 @@ fn main() -> i32 {
     // The original remains unchanged until an explicit clone call.
     
     println("--- Test 4: Variable Reassignment ---")
-    auto t5 = Tracker(id=5, cloned=false)
+    auto t5# = Tracker(id=5, cloned=false)
     auto t6 = Tracker(id=6, cloned=false)
     
     // Assignment uses an explicit clone of t6.
