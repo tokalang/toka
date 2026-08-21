@@ -4,8 +4,9 @@
 `init local = value`, lexical `init local { ... }`, its restricted `is uninit`
 predicate, and plain synchronous `init` formals. The formal signature and the
 contextual `init` call argument, including retained generic bodies, survive
-source-less TKI replay. Field-wise,
-outcome-dependent, and async contracts remain deferred. A fulfilled local may
+source-less TKI replay. Field-wise and async contracts remain deferred (G17
+outcome-dependent contracts are implemented separately at Level A; see
+[outcome_contract_rfc.md](outcome_contract_rfc.md)). A fulfilled local may
 remain in an async frame, but an unresolved lexical construction obligation
 cannot cross `.await`.
 
