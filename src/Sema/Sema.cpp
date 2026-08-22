@@ -6340,14 +6340,19 @@ std::string Sema::getModuleName(Module *M) {
   return name;
 }
 
+std::string Sema::extractPathRoot(const std::string &Path) {
+  if (Path.empty())
+    return {};
+  const size_t delim = Path.find_first_of(".[");
+  std::string root = (delim == std::string::npos) ? Path : Path.substr(0, delim);
+  return Type::stripMorphology(root);
+}
+
 int Sema::getScopeDepth(const std::string &Name) {
   if (Name.empty() || !CurrentScope)
     return 0;
 
-  const size_t delim = Name.find_first_of(".[");
-  std::string root = (delim == std::string::npos) ? Name : Name.substr(0, delim);
-  root = Type::stripMorphology(root);
-
+  std::string root = extractPathRoot(Name);
   SymbolInfo *info = nullptr;
   std::string actualName = root;
   Scope *ownerScope = nullptr;
@@ -6357,7 +6362,7 @@ int Sema::getScopeDepth(const std::string &Name) {
   }
 
   // Symbol not found in any scope. Fail-closed to avoid treating unresolvable paths as global.
-  return 999999;
+  return FAIL_CLOSED_SCOPE_DEPTH;
 }
 
 bool Sema::checkVisibility(ASTNode *Node, ShapeDecl *SD) {

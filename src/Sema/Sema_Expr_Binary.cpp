@@ -1044,9 +1044,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         for (const auto &dep : rhsDeps) {
             mergedDeps.insert(dep);
             SymbolInfo *depInfo = nullptr;
-            const size_t delim = dep.find_first_of(".[");
-            std::string depRoot = (delim == std::string::npos) ? dep : dep.substr(0, delim);
-            depRoot = Type::stripMorphology(depRoot);
+            std::string depRoot = extractPathRoot(dep);
             std::string actualDepName = depRoot;
             if (CurrentScope->findVariableWithDeref(depRoot, depInfo, actualDepName) && depInfo) {
                 mergedDeps.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
@@ -1059,9 +1057,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           for (const auto &dep : rhsDeps) {
             targetInfo->LifeDependencySet.insert(dep);
             SymbolInfo *depInfo = nullptr;
-            const size_t delim = dep.find_first_of(".[");
-            std::string depRoot = (delim == std::string::npos) ? dep : dep.substr(0, delim);
-            depRoot = Type::stripMorphology(depRoot);
+            std::string depRoot = extractPathRoot(dep);
             std::string actualDepName = depRoot;
             if (CurrentScope->findVariableWithDeref(depRoot, depInfo, actualDepName) && depInfo) {
               targetInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());

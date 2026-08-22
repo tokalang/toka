@@ -220,5 +220,5 @@ autonomous `InitMask` decision paths is required.
   1. Fail-closed: Prevent ordinary reference creation from non-Live places (path-sensitive, admitting live sibling projections) [VERIFIED];
   2. Fail-closed: Reject ordinary member/index assignments on Never whole places (while admitting whole-place repopulation and moved projection repopulation) [VERIFIED];
   3. Close P0 regression matrix across custom-drop (@Encap), shared-member, array forms, and positive conformance tests [VERIFIED];
-  4. Perform DirtyReferentMask reachability audit to assess elimination vs formalization of referent tracking;
+  4. Perform DirtyReferentMask reachability audit and elimination [COMPLETED - cleanly removed in `c169e2f2`, reachability proof and projection lifetime closure verified in `dirty_referent_reachability_audit.md`];
   5. Develop the migration plan to retire autonomous `InitMask` semantic decision paths.

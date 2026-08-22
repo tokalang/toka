@@ -1726,9 +1726,7 @@ void Sema::checkStmt(Stmt *S) {
         depsToCommitAsBorrow.insert(dep);
 
         SymbolInfo *depInfo = nullptr;
-        const size_t delim = dep.find_first_of(".[");
-        std::string depRoot = (delim == std::string::npos) ? dep : dep.substr(0, delim);
-        depRoot = Type::stripMorphology(depRoot);
+        std::string depRoot = extractPathRoot(dep);
         std::string actualDepName = depRoot;
         if (CurrentScope->findVariableWithDeref(depRoot, depInfo, actualDepName) && depInfo) {
           Info.LifeDependencySet.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
@@ -1835,9 +1833,7 @@ void Sema::checkStmt(Stmt *S) {
       Info.LifeDependencySet.insert(m_LastBorrowSource);
 
       SymbolInfo *srcPtr = nullptr;
-      const size_t delim = m_LastBorrowSource.find_first_of(".[");
-      std::string srcRoot = (delim == std::string::npos) ? m_LastBorrowSource : m_LastBorrowSource.substr(0, delim);
-      srcRoot = Type::stripMorphology(srcRoot);
+      std::string srcRoot = extractPathRoot(m_LastBorrowSource);
       std::string actualSrcName = srcRoot;
       if (CurrentScope->findVariableWithDeref(srcRoot, srcPtr, actualSrcName) && srcPtr) {
         Info.LifeDependencySet.insert(srcPtr->LifeDependencySet.begin(), srcPtr->LifeDependencySet.end());

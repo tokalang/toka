@@ -692,6 +692,8 @@ private:
   std::string ownershipSourceLabel(const Expr *expression);
   SymbolInfo *resolveBorrowSource(SymbolInfo *Info,
                                   std::string &EffectiveName);
+  static constexpr int FAIL_CLOSED_SCOPE_DEPTH = 999999;
+  static std::string extractPathRoot(const std::string &Path);
   int getScopeDepth(const std::string &
                         Name); // [NEW] Get depth of scope where name is defined
 

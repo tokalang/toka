@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-TOKAC = "./build/bin/tokac"
+TOKAC = os.environ.get("TOKAC", "./build/bin/tokac")
 WARN_TEST_DIR = "tests/warn"
 TMP_TEST_DIR = Path("tmp/warn_cases")
 

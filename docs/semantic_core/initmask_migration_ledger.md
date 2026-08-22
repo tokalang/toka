@@ -109,13 +109,59 @@ functional roles:
 ## 4. Complete Raw Symbol Inventory
 
 ```text
-src/Sema/Sema.cpp:874:    info.ExactPlace.setPlan(info.partialMovePlan(), info.InitMask);
-src/Sema/Sema.cpp:878:  info.InitMask = info.ExactPlace.applyToLegacyInitMask(info.InitMask);
-src/Sema/Sema.cpp:4600:      Info.InitMask = 0;
-src/Sema/Sema_Expr_Call.cpp:951:            it->second.InitMask =
-src/Sema/Sema_Expr_Call.cpp:952:                exactPlace.second.applyToLegacyInitMask(it->second.InitMask);
-src/Sema/Sema_Expr_Call.cpp:2692:        place->InitMask = 0;
-src/Sema/Sema_Expr_Call.cpp:2696:        place->InitMask = ~0ULL;
+src/Sema/Sema_Expr_Binary.cpp:942:                    isUnset = !(EffectiveInfo->InitMask & bit);
+src/Sema/Sema_Expr_Binary.cpp:1308:    // [Fix] Update InitMask logic for uninitialized variables
+src/Sema/Sema_Expr_Binary.cpp:1327:          Sym->InitMask |= updateBits;
+src/Sema/Sema_Expr_Binary.cpp:1346:          Info->InitMask = ~0ULL;
+src/Sema/Sema_Expr_Binary.cpp:1390:                    Info->InitMask |= bitsToSet;
+src/Sema/Sema_Expr_Binary.cpp:1416:              Info->InitMask |= (1ULL << constant->Value);
+src/Sema/Sema_Expr.cpp:627:static std::map<std::string, uint64_t> captureVisibleInitMasks(Scope *ScopePtr) {
+src/Sema/Sema_Expr.cpp:632:        masks[pair.first] = pair.second.InitMask;
+src/Sema/Sema_Expr.cpp:690:      info->InitMask = pair.second;
+src/Sema/Sema_Expr.cpp:701:      info->InitMask = pair.second.applyToLegacyInitMask(info->InitMask);
+src/Sema/Sema_Expr.cpp:708:  state.InitMasks = captureVisibleInitMasks(CurrentScope);
+src/Sema/Sema_Expr.cpp:722:  std::map<std::string, uint64_t> mergedMasks = states.front().InitMasks;
+src/Sema/Sema_Expr.cpp:735:    for (const auto &pair : state.InitMasks) {
+src/Sema/Sema_Expr.cpp:741:          state.InitMasks.count(pair.first) ? state.InitMasks.at(pair.first) : 0;
+src/Sema/Sema_Expr.cpp:1005:  m_LastInitMask = ~0ULL; // Default to fully set
+src/Sema/Sema_Expr.cpp:1023:    m_LastInitMask = ~0ULL;
+src/Sema/Sema_Expr.cpp:1364:    m_LastInitMask = 0;
+src/Sema/Sema_Expr.cpp:2016:      } else if (Info.InitMask == 0) {
+src/Sema/Sema_Expr.cpp:2029:            if ((Info.InitMask & expected) != expected) {
+src/Sema/Sema_Expr.cpp:2041:    m_LastInitMask = Info.InitMask;
+src/Sema/Sema_Expr.cpp:2154:        m_LastInitMask = 0;
+src/Sema/Sema_Expr.cpp:2504:      infoPtr->InitMask = state == PlaceState::Never ? 0 : ~0ULL;
+src/Sema/Sema_Expr.cpp:2528:    auto masksBefore = captureVisibleInitMasks(CurrentScope);
+src/Sema/Sema_Expr.cpp:2540:    auto masksThen = captureVisibleInitMasks(CurrentScope);
+src/Sema/Sema_Expr.cpp:2575:      auto masksElse = captureVisibleInitMasks(CurrentScope);
+src/Sema/Sema_Expr.cpp:2611:          info->InitMask = thenM & elseM;
+src/Sema/Sema_Expr.cpp:2644:        info->InitMask = pair.second;
+src/Sema/Sema_Expr.cpp:2656:            info->InitMask = ~0ULL;
+src/Sema/Sema_Expr.cpp:2677:            info->InitMask = hasExactlyPlaceState(info->placeFact(),
+src/Sema/Sema_Expr.cpp:2785:      masksBefore[pair.first] = pair.second.InitMask;
+src/Sema/Sema_Expr.cpp:2793:        CurrentScope->Symbols[pair.first].InitMask = pair.second;
+src/Sema/Sema_Expr.cpp:2801:        info.InitMask = pair.second.applyToLegacyInitMask(info.InitMask);
+src/Sema/Sema_Expr.cpp:2809:        masks[pair.first] = pair.second.InitMask;
+src/Sema/Sema_Expr.cpp:2906:            pair.second.InitMask = masksElse[pair.first];
+src/Sema/Sema_Expr.cpp:2918:            pair.second.InitMask = masksThen[pair.first];
+src/Sema/Sema_Expr.cpp:2931:          pair.second.InitMask = thenMask & elseMask;
+src/Sema/Sema_Expr.cpp:2953:          pair.second.InitMask = thenMask & entryMask;
+src/Sema/Sema_Expr.cpp:3039:      masksBefore[pair.first] = pair.second.InitMask;
+src/Sema/Sema_Expr.cpp:3077:        masksBody[pair.first] = pair.second.InitMask;
+src/Sema/Sema_Expr.cpp:3088:        pair.second.InitMask = entryMask & bodyMask;
+src/Sema/Sema_Expr.cpp:3308:    auto masksBefore = captureVisibleInitMasks(CurrentScope);
+src/Sema/Sema_Expr.cpp:3391:    auto masksBody = captureVisibleInitMasks(CurrentScope);
+src/Sema/Sema_Expr.cpp:3413:      masksElse = captureVisibleInitMasks(CurrentScope);
+src/Sema/Sema_Expr.cpp:3442:          info->InitMask = bodyMask & elseMask;
+src/Sema/Sema_Expr.cpp:3472:          info->InitMask = entryMask & bodyMask;
+src/Sema/Sema_Expr.cpp:3986:    m_LastInitMask = ~0ULL;
+src/Sema/Sema_Expr.cpp:5181:      masksBefore[pair.first] = pair.second.InitMask;
+src/Sema/Sema_Expr.cpp:5194:        CurrentScope->Symbols[pair.first].InitMask = pair.second;
+src/Sema/Sema_Expr.cpp:5202:        info.InitMask = pair.second.applyToLegacyInitMask(info.InitMask);
+src/Sema/Sema_Expr.cpp:5233:              placeInfo->InitMask = isLive ? ~0ULL : 0;
+src/Sema/Sema_Expr.cpp:5268:            mergedMasks[pair.first] = pair.second.InitMask;
+src/Sema/Sema_Expr.cpp:5276:            uint64_t armMask = pair.second.InitMask;
+src/Sema/Sema_Expr.cpp:5317:          pair.second.InitMask = mergedMasks[pair.first];
 src/Sema/Sema_Expr_Init.cpp:1234:    memberMasks[pair.first] = m_LastInitMask;
 src/Sema/Sema_Expr_Init.cpp:1353:        memberMasks[defField.Name] = m_LastInitMask;
 src/Sema/Sema_Expr_Init.cpp:1407:        m_LastInitMask = memberMasks[pair.first];
@@ -124,78 +170,28 @@ src/Sema/Sema_Expr_Init.cpp:1425:  m_LastInitMask = mask;
 src/Sema/Sema_Expr_Init.cpp:1443:    m_LastInitMask = 0;
 src/Sema/Sema_Expr_Init.cpp:1487:    m_LastInitMask = ~0ULL;
 src/Sema/Sema_Expr_Init.cpp:1530:  m_LastInitMask = ~0ULL;
+src/Sema/Sema_Stmt.cpp:2021:      Info.InitMask = 0;
+src/Sema/Sema_Stmt.cpp:2024:      Info.InitMask = (m_LastInitMask == 0) ? ~0ULL : m_LastInitMask;
 src/Sema/Sema_Expr_Member.cpp:152:          uint64_t maskToCheck = Info->InitMask;
-src/Sema/Sema_Expr_Member.cpp:154:            maskToCheck = Info->DirtyReferentMask;
-src/Sema/Sema_Expr_Member.cpp:568:                     (Info->InitMask & (1ULL << constant->Value)) != 0);
+src/Sema/Sema_Expr_Member.cpp:565:                     (Info->InitMask & (1ULL << constant->Value)) != 0);
+src/Sema/Sema_Expr_Call.cpp:951:            it->second.InitMask =
+src/Sema/Sema_Expr_Call.cpp:952:                exactPlace.second.applyToLegacyInitMask(it->second.InitMask);
+src/Sema/Sema_Expr_Call.cpp:2692:        place->InitMask = 0;
+src/Sema/Sema_Expr_Call.cpp:2696:        place->InitMask = ~0ULL;
+src/Sema/Sema.cpp:874:    info.ExactPlace.setPlan(info.partialMovePlan(), info.InitMask);
+src/Sema/Sema.cpp:878:  info.InitMask = info.ExactPlace.applyToLegacyInitMask(info.InitMask);
+src/Sema/Sema.cpp:4600:      Info.InitMask = 0;
 include/toka/Sema.h:50:  uint64_t InitMask =
 include/toka/Sema.h:53:  // projections. `InitMask` remains a compatibility liveness view until its
 include/toka/Sema.h:66:    ExactPlace.setPlan(plan, InitMask);
-include/toka/Sema.h:70:  // If this symbol is a Reference (&T), this mask tracks the InitMask of the
-include/toka/Sema.h:74:  uint64_t DirtyReferentMask = ~0ULL;
-include/toka/Sema.h:407:  uint64_t m_LastInitMask =
-src/Sema/Sema_Expr_Binary.cpp:722:          if (InfoPtr->DirtyReferentMask != ~0ULL)
-src/Sema/Sema_Expr_Binary.cpp:728:          if (InfoPtr->InitMask != ~0ULL)
-src/Sema/Sema_Expr_Binary.cpp:874:                    isUnset = !(EffectiveInfo->InitMask & bit) &&
-src/Sema/Sema_Expr_Binary.cpp:875:                              !(EffectiveInfo->DirtyReferentMask & bit);
-src/Sema/Sema_Expr_Binary.cpp:1257:    // [Fix] Update InitMask logic for uninitialized variables
-src/Sema/Sema_Expr_Binary.cpp:1277:            Sym->DirtyReferentMask |= updateBits;
-src/Sema/Sema_Expr_Binary.cpp:1279:            Sym->DirtyReferentMask = ~0ULL;
-src/Sema/Sema_Expr_Binary.cpp:1282:            Sym->InitMask = ~0ULL;
-src/Sema/Sema_Expr_Binary.cpp:1284:            Sym->InitMask |= updateBits;
-src/Sema/Sema_Expr_Binary.cpp:1304:          Info->DirtyReferentMask = ~0ULL;
-src/Sema/Sema_Expr_Binary.cpp:1309:          Info->InitMask = ~0ULL;
-src/Sema/Sema_Expr_Binary.cpp:1348:                  Info->DirtyReferentMask |= bitsToSet;
-src/Sema/Sema_Expr_Binary.cpp:1360:                    Info->InitMask |= bitsToSet;
-src/Sema/Sema_Expr_Binary.cpp:1386:              Info->InitMask |= (1ULL << constant->Value);
-src/Sema/Sema_Expr.cpp:632:        masks[pair.first] = pair.second.InitMask;
-src/Sema/Sema_Expr.cpp:690:      info->InitMask = pair.second;
-src/Sema/Sema_Expr.cpp:701:      info->InitMask = pair.second.applyToLegacyInitMask(info->InitMask);
-src/Sema/Sema_Expr.cpp:1005:  m_LastInitMask = ~0ULL;
-src/Sema/Sema_Expr.cpp:1023:    m_LastInitMask = ~0ULL;
-src/Sema/Sema_Expr.cpp:1364:    m_LastInitMask = 0;
-src/Sema/Sema_Expr.cpp:1954:      } else if (Info.InitMask == 0) {
-src/Sema/Sema_Expr.cpp:1967:            if ((Info.InitMask & expected) != expected) {
-src/Sema/Sema_Expr.cpp:1979:    m_LastInitMask = Info.InitMask;
-src/Sema/Sema_Expr.cpp:2092:        m_LastInitMask = 0;
-src/Sema/Sema_Expr.cpp:2442:      infoPtr->InitMask = state == PlaceState::Never ? 0 : ~0ULL;
-src/Sema/Sema_Expr.cpp:2549:          info->InitMask = thenM & elseM;
-src/Sema/Sema_Expr.cpp:2582:        info->InitMask = pair.second;
-src/Sema/Sema_Expr.cpp:2594:            info->InitMask = ~0ULL;
-src/Sema/Sema_Expr.cpp:2615:            info->InitMask = hasExactlyPlaceState(info->placeFact(),
-src/Sema/Sema_Expr.cpp:2723:      masksBefore[pair.first] = pair.second.InitMask;
-src/Sema/Sema_Expr.cpp:2731:        CurrentScope->Symbols[pair.first].InitMask = pair.second;
-src/Sema/Sema_Expr.cpp:2739:        info.InitMask = pair.second.applyToLegacyInitMask(info.InitMask);
-src/Sema/Sema_Expr.cpp:2747:        masks[pair.first] = pair.second.InitMask;
-src/Sema/Sema_Expr.cpp:2844:            pair.second.InitMask = masksElse[pair.first];
-src/Sema/Sema_Expr.cpp:2856:            pair.second.InitMask = masksThen[pair.first];
-src/Sema/Sema_Expr.cpp:2869:          pair.second.InitMask = thenMask & elseMask;
-src/Sema/Sema_Expr.cpp:2891:          pair.second.InitMask = thenMask & entryMask;
-src/Sema/Sema_Expr.cpp:2977:      masksBefore[pair.first] = pair.second.InitMask;
-src/Sema/Sema_Expr.cpp:3015:        masksBody[pair.first] = pair.second.InitMask;
-src/Sema/Sema_Expr.cpp:3026:        pair.second.InitMask = entryMask & bodyMask;
-src/Sema/Sema_Expr.cpp:3380:          info->InitMask = bodyMask & elseMask;
-src/Sema/Sema_Expr.cpp:3410:          info->InitMask = entryMask & bodyMask;
-src/Sema/Sema_Expr.cpp:3685:          if (info->IsReference() && info->DirtyReferentMask != ~0ULL) {
-src/Sema/Sema_Expr.cpp:3732:          if (info->IsReference() && info->DirtyReferentMask != ~0ULL) {
-src/Sema/Sema_Expr.cpp:3950:    m_LastInitMask = ~0ULL;
-src/Sema/Sema_Expr.cpp:5145:      masksBefore[pair.first] = pair.second.InitMask;
-src/Sema/Sema_Expr.cpp:5158:        CurrentScope->Symbols[pair.first].InitMask = pair.second;
-src/Sema/Sema_Expr.cpp:5166:        info.InitMask = pair.second.applyToLegacyInitMask(info.InitMask);
-src/Sema/Sema_Expr.cpp:5197:              placeInfo->InitMask = isLive ? ~0ULL : 0;
-src/Sema/Sema_Expr.cpp:5232:            mergedMasks[pair.first] = pair.second.InitMask;
-src/Sema/Sema_Expr.cpp:5240:            uint64_t armMask = pair.second.InitMask;
-src/Sema/Sema_Expr.cpp:5281:          pair.second.InitMask = mergedMasks[pair.first];
-src/Sema/Sema_Stmt.cpp:513:    // If any symbol is a Reference with DirtyReferentMask != Full,
-src/Sema/Sema_Stmt.cpp:520:    // DirtyReferentMask on assignment. BETTER APPROACH based on plan: "Check if
-src/Sema/Sema_Stmt.cpp:526:      if (info.IsReference() && info.DirtyReferentMask != ~0ULL) {
-src/Sema/Sema_Stmt.cpp:529:        // Actually, we should check the SOURCE variable's current InitMask.
-src/Sema/Sema_Stmt.cpp:547:          if ((sourceInfo->InitMask & signature) != signature) {
-src/Sema/Sema_Stmt.cpp:709:          if (info->IsReference() && info->DirtyReferentMask != ~0ULL) {
-src/Sema/Sema_Stmt.cpp:1892:        // [Hot Potato] Propagate InitMask from Source to Reference
-src/Sema/Sema_Stmt.cpp:1905:        if ((srcPtr->InitMask & fullMask) != fullMask) {
-src/Sema/Sema_Stmt.cpp:1907:          Info.DirtyReferentMask = srcPtr->InitMask;
-src/Sema/Sema_Stmt.cpp:1909:          Info.DirtyReferentMask = ~0ULL; // Clean
-src/Sema/Sema_Stmt.cpp:2063:      Info.InitMask = m_LastInitMask;
-src/Sema/Sema_Stmt.cpp:2065:      Info.InitMask = 0;
-src/Sema/Sema_Stmt.cpp:2068:        Info.InitMask == 0 ? PlaceState::Never : PlaceState::Live;
+include/toka/Sema.h:400:  uint64_t m_LastInitMask =
+include/toka/Sema.h:592:    std::map<std::string, uint64_t> InitMasks;
+include/toka/PlaceState.h:147:  static constexpr ProjectionPlaceFacts fromLegacyInitMask(uint64_t tracked,
+include/toka/PlaceState.h:175:  constexpr uint64_t applyToLegacyInitMask(uint64_t legacy) const {
+include/toka/PlaceState.h:266:  constexpr void setPlan(PartialMovePlan plan, uint64_t legacyInitMask) {
+include/toka/PlaceState.h:269:                        ? ProjectionPlaceFacts::fromLegacyInitMask(
+include/toka/PlaceState.h:270:                              plan.eligibleMask(), legacyInitMask)
+include/toka/PlaceState.h:287:  constexpr uint64_t applyToLegacyInitMask(uint64_t legacy) const {
+include/toka/PlaceState.h:288:    return m_Projections.applyToLegacyInitMask(legacy);
+include/toka/PlaceState.h:318:                        ? ProjectionPlaceFacts::fromLegacyInitMask(
 ```
