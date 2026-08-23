@@ -2118,6 +2118,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         Cast->TargetTypeSyntax
             ? toka::Type::fromSyntax(Cast->TargetTypeSyntax)
             : toka::Type::fromString(Cast->TargetType));
+    validateHandleGrammar(getLoc(Cast), targetType);
     validateDynTraitObjectSafetyInType(targetType, getLoc(Cast));
     if (Cast->Kind == CastKind::Implicit) {
       checkExpr(Cast->Expression.get(), targetType);

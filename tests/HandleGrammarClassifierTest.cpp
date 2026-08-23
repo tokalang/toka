@@ -110,6 +110,44 @@ int main() {
         }
     }
 
-    std::cout << "HandleGrammarClassifierTest: " << passed << "/" << testCases.size() << " test cases passed.\n";
-    return (passed == testCases.size()) ? 0 : 1;
+    // --- 7. Recursive Structural Boundaries ---
+    struct RecursiveTestCase {
+        std::string typeStr;
+        HandleGrammarViolation expectedViolation;
+    };
+
+    std::vector<RecursiveTestCase> recursiveCases = {
+        {"*Option<&i32>", HandleGrammarViolation::None},
+        {"Option<*&i32>", HandleGrammarViolation::MixedManagedRaw},
+        {"[*^i32; 4]", HandleGrammarViolation::MixedManagedRaw},
+        {"[*&i32]", HandleGrammarViolation::MixedManagedRaw},
+        {"fn(*&i32)->i32", HandleGrammarViolation::MixedManagedRaw},
+        {"fn(i32)->*&i32", HandleGrammarViolation::MixedManagedRaw},
+        {"Uninit<*&i32>", HandleGrammarViolation::MixedManagedRaw},
+        {"*&i32|miss", HandleGrammarViolation::MixedManagedRaw},
+        {"Option<&&&i32>", HandleGrammarViolation::ExceededBorrowDepth},
+        {"Option<^^i32>", HandleGrammarViolation::ExceededManagedDepth},
+        {"Option<^&i32>", HandleGrammarViolation::InvalidManagedLayerOrder},
+    };
+
+    for (const auto &rc : recursiveCases) {
+        auto ty = Type::fromString(rc.typeStr);
+        if (!ty) {
+            std::cerr << "FAIL: Type::fromString returned null for recursive case '" << rc.typeStr << "'\n";
+            continue;
+        }
+        auto issue = Type::findHandleGrammarIssueRecursive(ty);
+        HandleGrammarViolation actual = issue.has_value() ? issue->violation : HandleGrammarViolation::None;
+        if (actual == rc.expectedViolation) {
+            passed++;
+        } else {
+            std::cerr << "FAIL: recursive " << rc.typeStr << " violation mismatch. Expected "
+                      << static_cast<int>(rc.expectedViolation) << ", Got "
+                      << static_cast<int>(actual) << "\n";
+        }
+    }
+
+    size_t totalTests = testCases.size() + recursiveCases.size();
+    std::cout << "HandleGrammarClassifierTest: " << passed << "/" << totalTests << " test cases passed.\n";
+    return (passed == totalTests) ? 0 : 1;
 }

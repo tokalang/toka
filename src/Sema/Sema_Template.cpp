@@ -474,8 +474,8 @@ void Sema::instantiateGenericImpl(
                                {FormationPhase::GenericInstance}, Template->TypeName,
                                genericArgsStr, "return", Method->Loc, false,
                                candidateFnId);
-      auto profile = toka::Type::classifyHandleGrammar(ClonedFn->ResolvedReturnType);
-      if (!profile.isValid())
+      auto issue = toka::Type::findHandleGrammarIssueRecursive(ClonedFn->ResolvedReturnType);
+      if (issue.has_value() && !issue->isValid())
         hasGrammarViolation = true;
     }
     for (const auto &arg : ClonedFn->Args) {
@@ -484,8 +484,8 @@ void Sema::instantiateGenericImpl(
                                  {FormationPhase::GenericInstance}, Template->TypeName,
                                  genericArgsStr, arg.Name, Method->Loc, false,
                                  candidateFnId);
-        auto profile = toka::Type::classifyHandleGrammar(arg.ResolvedType);
-        if (!profile.isValid())
+        auto issue = toka::Type::findHandleGrammarIssueRecursive(arg.ResolvedType);
+        if (issue.has_value() && !issue->isValid())
           hasGrammarViolation = true;
       }
     }

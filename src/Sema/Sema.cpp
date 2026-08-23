@@ -3045,6 +3045,7 @@ void Sema::declareGlobals(Module &M) {
     auto aliasTypeObj = toka::Type::fromSyntax(targetSyntax);
     if (!aliasTypeObj)
       aliasTypeObj = toka::Type::fromString(target);
+    validateHandleGrammar(Alias->Loc, aliasTypeObj);
     recordHandleGrammarAudit(aliasTypeObj, aliasOrigin, {FormationPhase::DirectResolution}, Alias->Name, "", "", Alias->Loc);
     SymbolInfo info;
     info.TypeObj = toka::Type::fromString(Alias->Name);
@@ -3087,8 +3088,9 @@ void Sema::declareGlobals(Module &M) {
     if (St->CodegenName.empty())
       St->CodegenName = St->Name;
     for (const auto &Member : St->Members) {
-      validateDynTraitObjectSafetyInType(
-          Sema::synthesizePhysicalType(Member), getLoc(St.get()));
+      auto memTy = toka::Type::fromString(Sema::synthesizePhysicalType(Member));
+      validateHandleGrammar(St->Loc, memTy);
+      validateDynTraitObjectSafetyInType(memTy, getLoc(St.get()));
     }
   }
   // 6. Register Globals
@@ -3100,6 +3102,7 @@ void Sema::declareGlobals(Module &M) {
       info.TypeObj = v->TypeName.empty()
                          ? toka::Type::fromString("unknown")
                          : toka::Type::fromString(synthesizePhysicalType(*v));
+      validateHandleGrammar(getLoc(v), info.TypeObj);
       info.IsRebindable = v->IsRebindable;
       info.CodegenName = v->Name;
       info.ASTPtr = v;
@@ -3418,8 +3421,9 @@ void Sema::registerGlobals(Module &M) {
   }
   for (auto &St : M.Shapes) {
     for (const auto &Member : St->Members) {
-      validateDynTraitObjectSafetyInType(
-          Sema::synthesizePhysicalType(Member), getLoc(St.get()));
+      auto memTy = toka::Type::fromString(Sema::synthesizePhysicalType(Member));
+      validateHandleGrammar(St->Loc, memTy);
+      validateDynTraitObjectSafetyInType(memTy, getLoc(St.get()));
     }
   }
   for (auto &G : M.Globals) {
@@ -3432,6 +3436,7 @@ void Sema::registerGlobals(Module &M) {
                                ? toka::Type::fromString("unknown")
                                : toka::Type::fromString(
                                      synthesizePhysicalType(*v));
+      validateHandleGrammar(getLoc(v), globalInfo.TypeObj);
       globalInfo.IsRebindable = v->IsRebindable;
       globalInfo.Permission = BindingPermission::fromLegacy(
           v->IsRawPointer, v->IsUnique, v->IsShared, v->IsReference,
@@ -4001,6 +4006,9 @@ void Sema::registerImpl(ImplDecl *Impl) {
                         ? toka::Type::fromSyntax(Impl->HeaderSyntax.Type)
                         : toka::Type::fromString(Impl->TypeName));
   }
+  if (resolvedSelfType) {
+    validateHandleGrammar(getLoc(Impl), resolvedSelfType);
+  }
   auto resolvedSelfShape = std::dynamic_pointer_cast<ShapeType>(
       resolvedSelfType ? resolvedSelfType->getSoulType() : nullptr);
   if (!Impl->ResolvedOwner && resolvedSelfShape)
@@ -4417,6 +4425,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   }
 
   if (Fn->ResolvedReturnType) {
+    validateHandleGrammar(getLoc(Fn), Fn->ResolvedReturnType);
     std::string fnId = !Fn->CodegenName.empty() ? Fn->CodegenName : Fn->Name;
     bool isGeneric = (Fn->TemplateOrigin != nullptr || (!Fn->CodegenName.empty() && Fn->CodegenName.find("_M_") != std::string::npos));
     SyntaxOrigin origin = (CurrentModule && CurrentModule->IsInterface) ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
@@ -4580,6 +4589,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
 
     if (Arg.ResolvedType) {
+      validateHandleGrammar(argLoc, Arg.ResolvedType);
       std::string fnId = !Fn->CodegenName.empty() ? Fn->CodegenName : Fn->Name;
       bool isGeneric = (Fn->TemplateOrigin != nullptr || (!Fn->CodegenName.empty() && Fn->CodegenName.find("_M_") != std::string::npos));
       SyntaxOrigin origin = (CurrentModule && CurrentModule->IsInterface) ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;

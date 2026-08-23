@@ -176,6 +176,9 @@ public:
   // Pure classification of Handle / Pointer continuous chains
   static HandleGrammarProfile classifyHandleGrammar(const std::shared_ptr<Type> &type);
 
+  // Recursive inspection of Handle Grammar issues across all structural boundaries
+  static std::optional<HandleGrammarProfile> findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type);
+
   bool isShape() const { return typeKind == Shape; }
   virtual std::string getSoulName() const { return toString(); }
 

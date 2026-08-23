@@ -1373,10 +1373,13 @@ void Sema::checkStmt(Stmt *S) {
                                Var->Name);
       HasError = true;
     }
-    if (!Var->ResolvedType && !Var->TypeName.empty() &&
-        Var->TypeName != "auto") {
-      validateTypeVisibilityInType(Var->TypeName, getLoc(Var));
-      validateDynTraitObjectSafetyInType(Var->TypeName, getLoc(Var));
+    if (!Var->TypeName.empty() && Var->TypeName != "auto") {
+      auto explicitTy = Var->DeclaredTypeSyntax ? toka::Type::fromSyntax(Var->DeclaredTypeSyntax) : toka::Type::fromString(Var->TypeName);
+      validateHandleGrammar(getLoc(Var), explicitTy);
+      if (!Var->ResolvedType) {
+        validateTypeVisibilityInType(Var->TypeName, getLoc(Var));
+        validateDynTraitObjectSafetyInType(Var->TypeName, getLoc(Var));
+      }
     }
 
     std::string InitType = "";

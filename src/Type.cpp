@@ -2041,4 +2041,63 @@ HandleGrammarProfile Type::classifyHandleGrammar(const std::shared_ptr<Type> &ty
   return profile;
 }
 
+std::optional<HandleGrammarProfile>
+Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type) {
+  if (!type)
+    return std::nullopt;
+
+  // 1. Check current continuous pointer chain starting at this node
+  auto profile = classifyHandleGrammar(type);
+  if (!profile.isValid())
+    return profile;
+
+  // 2. If this is a pointer, continuous chain has ended at the non-pointer pointee.
+  if (type->isPointer()) {
+    std::shared_ptr<Type> current = type;
+    while (current && current->isPointer()) {
+      current = current->getPointeeType();
+    }
+    if (current)
+      return findHandleGrammarIssueRecursive(current);
+    return std::nullopt;
+  }
+
+  // 3. Recurse across structural boundaries
+  if (auto arr = dynamic_cast<const ArrayType *>(type.get())) {
+    return findHandleGrammarIssueRecursive(arr->ElementType);
+  }
+  if (auto slc = dynamic_cast<const SliceType *>(type.get())) {
+    return findHandleGrammarIssueRecursive(slc->ElementType);
+  }
+  if (auto shape = dynamic_cast<const ShapeType *>(type.get())) {
+    for (const auto &arg : shape->GenericArgs) {
+      if (auto issue = findHandleGrammarIssueRecursive(arg))
+        return issue;
+    }
+    return std::nullopt;
+  }
+  if (auto fn = dynamic_cast<const FunctionType *>(type.get())) {
+    for (const auto &param : fn->ParamTypes) {
+      if (auto issue = findHandleGrammarIssueRecursive(param))
+        return issue;
+    }
+    return findHandleGrammarIssueRecursive(fn->ReturnType);
+  }
+  if (auto dynFn = dynamic_cast<const DynFnType *>(type.get())) {
+    for (const auto &param : dynFn->ParamTypes) {
+      if (auto issue = findHandleGrammarIssueRecursive(param))
+        return issue;
+    }
+    return findHandleGrammarIssueRecursive(dynFn->ReturnType);
+  }
+  if (auto uninit = dynamic_cast<const UninitType *>(type.get())) {
+    return findHandleGrammarIssueRecursive(uninit->InnerType);
+  }
+  if (auto outcome = dynamic_cast<const MissOutcomeType *>(type.get())) {
+    return findHandleGrammarIssueRecursive(outcome->PayloadType);
+  }
+
+  return std::nullopt;
+}
+
 } // namespace toka

@@ -120,6 +120,11 @@ DIAG(ERR_EXPOSED_UNSAFE_TYPE,     Error,   "E0480", "Public API '{}' exposes uns
 DIAG(ERR_EXPOSED_UNSAFE_RET,      Error,   "E0481", "Public API '{}' exposes unsafe return type '{}'. Use 'str' or 'String', or prefix the function name with 'unsafe_'")
 DIAG(ERR_EXPOSED_UNSAFE_FIELD,    Error,   "E0482", "Public Shape '{}' exposes unsafe field '{}' of type '{}'. Use 'str' or 'String', or prefix the shape name with 'Unsafe' or 'Raw'")
 
+// --- Sema: Handle Grammar Invariants ---
+DIAG(ERR_ILLEGAL_HANDLE_ORDER,    Error,   "E0490", "Illegal handle grammar ordering in type '{}'")
+DIAG(ERR_EXCEEDED_HANDLE_DEPTH,   Error,   "E0491", "Exceeded maximum handle depth in type '{}'")
+DIAG(ERR_MIXED_HANDLE_RAW,        Error,   "E0492", "Illegal mixing of managed handles and raw pointers in type '{}'")
+
 // --- Sema: Memory Safety ---
 DIAG(ERR_UNSAFE_ALLOC_CTX,        Error,   "E0501", "Operation 'alloc' is only allowed in unsafe context")
 DIAG(ERR_FREE_SMART,              Error,   "E0502", "Manual 'free' forbidden for smart pointer '{}'; memory is managed automatically")
@@ -551,3 +556,4 @@ DIAG(ERR_CODEGEN_FAILED_TO_RESOLVE_MEMBER_IN, Error, "E0756", "Failed to resolve
 DIAG(ERR_CODEGEN_CANNOT_DETERMINE_SIZE_OF_INCOMPLETE_TY, Error, "E0757", "Cannot determine size of incomplete type: {}")
 DIAG(ERR_CODEGEN_COMPILE_TIME_FIELD_ITERATION_VARIABLES, Error, "E0758", "Compile-time field iteration variables cannot be used contextually where runtime values are expected (must be folded statically).")
 DIAG(ERR_CODEGEN_EXTERN_SIGNATURE_CONFLICT, Error, "E0759", "Conflicting extern declarations for '{}': existing LLVM type '{}', requested '{}'")
+DIAG(ERR_CODEGEN_ILLEGAL_HANDLE_GRAMMAR_INVARIANT, Error, "E0760", "Hard CodeGen Invariant: illegal handle grammar reached code generator: '{}'")

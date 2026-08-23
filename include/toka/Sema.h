@@ -728,6 +728,11 @@ private:
   bool isTypeNameVisible(const std::string &typeName, SourceLocation loc);
   bool validateTypeVisibilityInType(const std::string &typeName,
                                     SourceLocation loc);
+  bool validateHandleGrammar(SourceLocation loc,
+                             const std::shared_ptr<toka::Type> &type);
+  void reportHandleGrammarViolation(SourceLocation loc,
+                                    const std::shared_ptr<toka::Type> &type,
+                                    HandleGrammarViolation violation);
   bool validateTypeVisibilityInType(std::shared_ptr<toka::Type> type,
                                     SourceLocation loc);
   bool isBorrowLikeType(std::shared_ptr<toka::Type> type) const;

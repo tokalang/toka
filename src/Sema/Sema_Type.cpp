@@ -55,6 +55,39 @@ anonymousRecordSemanticKey(const std::vector<ShapeMember> &members) {
   return key;
 }
 
+void Sema::reportHandleGrammarViolation(SourceLocation loc,
+                                       const std::shared_ptr<toka::Type> &type,
+                                       HandleGrammarViolation violation) {
+  std::string typeStr = type ? type->toString() : "unknown";
+  switch (violation) {
+  case HandleGrammarViolation::InvalidManagedLayerOrder:
+    DiagnosticEngine::report(loc, DiagID::ERR_ILLEGAL_HANDLE_ORDER, typeStr);
+    break;
+  case HandleGrammarViolation::ExceededManagedDepth:
+  case HandleGrammarViolation::ExceededBorrowDepth:
+    DiagnosticEngine::report(loc, DiagID::ERR_EXCEEDED_HANDLE_DEPTH, typeStr);
+    break;
+  case HandleGrammarViolation::MixedManagedRaw:
+    DiagnosticEngine::report(loc, DiagID::ERR_MIXED_HANDLE_RAW, typeStr);
+    break;
+  default:
+    break;
+  }
+  HasError = true;
+}
+
+bool Sema::validateHandleGrammar(SourceLocation loc,
+                                 const std::shared_ptr<toka::Type> &type) {
+  if (!type)
+    return true;
+  auto issue = toka::Type::findHandleGrammarIssueRecursive(type);
+  if (issue.has_value() && issue->violation != HandleGrammarViolation::None) {
+    reportHandleGrammarViolation(loc, type, issue->violation);
+    return false;
+  }
+  return true;
+}
+
 std::shared_ptr<toka::Type>
 Sema::lowerAliasTarget(const AliasInfo &alias) const {
   auto res = alias.TargetSyntax ? toka::Type::fromSyntax(alias.TargetSyntax)
