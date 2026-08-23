@@ -1,0 +1,78 @@
+// tests/pass/g08_handle_grammar_valid_matrix.tk
+// Complete verification matrix of all valid Handle Grammar shapes & depths
+
+import std/io::println
+import std/vec::Vec
+
+auto g_drop_count# = 0
+
+shape Point (
+    x: i32,
+    y: i32
+)
+
+shape DroppableResource (
+    id: i32,
+    ^inner: Point
+)
+
+impl DroppableResource@Encap {
+    pub id
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+// 1. Level 1 Legal Handles in Shape fields: *T, nul *T, ^T, ~T, &T
+shape Level1Holder (
+    ^u: Point,
+    ~s: Point,
+    *r: Point,
+    nul *nr: Point,
+    &b: Point
+)
+
+fn test_lifecycle_and_drops() -> bool {
+    g_drop_count = 0
+    {
+        auto res = DroppableResource(id = 1, ^inner = new Point(x = 100, y = 200))
+        assert(res.inner.x == 100, "inner x must match")
+        assert(g_drop_count == 0, "must not drop before scope exit")
+    }
+    assert(g_drop_count == 1, "must drop exactly once on scope exit")
+    return true
+}
+
+fn main() -> i32 {
+    assert(test_lifecycle_and_drops(), "Lifecycle and drop test must pass")
+
+    auto pt# = Point(x = 10, y = 20)
+    auto ^u = new Point(x = 1, y = 2)
+    auto ~s = new Point(x = 3, y = 4)
+
+    // Level 1: &T, *T, nul *T
+    auto &b = &pt
+    auto *#rp = *#pt:*Point
+    auto nul *#nrp = null as nul *Point
+
+    // Level 2: &^T, &~T via borrow
+    auto &bu = &u
+    auto &bs = &s
+
+    // Level 2: &&T via Vec<&Point> iterator
+    auto v# = Vec<&Point>::with_capacity(2)
+    v#.push(&pt)
+    for auto &&x in v {
+        assert(x.x == 10, "Double borrow &&T iteration value must match")
+    }
+
+    assert(b.x == 10, "b.x must be 10")
+    assert(bu.x == 1, "bu.x must be 1")
+    assert(bs.y == 4, "bs.y must be 4")
+    if *nrp == null {
+        println("nrp is null verified")
+    }
+
+    println("Handle Grammar Valid Matrix: 100% PASS")
+    return 0
+}
