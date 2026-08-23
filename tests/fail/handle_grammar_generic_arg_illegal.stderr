@@ -1,0 +1,10 @@
+error[E01266]: 'auto' binding 'opt' cannot have a declaration-side type annotation; ascribe its initializer instead
+ --> tests/fail/handle_grammar_generic_arg_illegal.tk:4:13
+   |
+ 4 |     auto opt: Option<*&i32> = Option<*&i32>::None
+   |             ^
+error[E01172]: Expected expression
+ --> tests/fail/handle_grammar_generic_arg_illegal.tk:7:1
+   |
+ 7 | fn main() -> i32 {
+   | ^

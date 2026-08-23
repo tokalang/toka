@@ -1,0 +1,9 @@
+fn bad_unsafe() {
+    unsafe {
+        auto z = 0 as *~i32
+    }
+}
+
+fn main() -> i32 {
+    return 0
+}

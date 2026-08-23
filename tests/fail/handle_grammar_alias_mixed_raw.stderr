@@ -1,0 +1,5 @@
+error[E0492]: Illegal mixing of managed handles and raw pointers in type '*&i32'
+ --> tests/fail/handle_grammar_alias_mixed_raw.tk:1:7
+   |
+ 1 | alias Bad = *&i32
+   |       ^

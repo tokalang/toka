@@ -1,0 +1,5 @@
+error[E0490]: Illegal handle grammar ordering in type '~&i32'
+ --> tests/fail/handle_grammar_fn_param_illegal.tk:1:7
+   |
+ 1 | alias BadParam = ~&i32
+   |       ^

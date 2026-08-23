@@ -1,0 +1,16 @@
+error[E0492]: Illegal mixing of managed handles and raw pointers in type '*&i32'
+ --> tests/fail/handle_grammar_cast_illegal.tk:2:16
+   |
+ 2 |     auto y = x as *&i32
+   |                ^
+error[E0450]: Invalid cast: cannot convert 'void' to '*&i32' via 'as'; only 'Addr' and '*' conversions are supported
+ --> tests/fail/handle_grammar_cast_illegal.tk:2:16
+   |
+ 2 |     auto y = x as *&i32
+   |                ^
+error[E0467]: Variable 'y' implies pointer type '*&i32' but lacks explicit sigil. Use 'auto *y' or dereference.
+ --> tests/fail/handle_grammar_cast_illegal.tk:2:10
+   |
+ 2 |     auto y = x as *&i32
+   |          ^
+   |   👉 help: Variable implies pointer type but lacks explicit sigil. Did you mean '^var'?

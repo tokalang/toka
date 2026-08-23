@@ -1,0 +1,5 @@
+error[E0492]: Illegal mixing of managed handles and raw pointers in type '[*^i32; 4]'
+ --> tests/fail/handle_grammar_array_element_illegal.tk:1:7
+   |
+ 1 | alias BadArray = [*^i32; 4]
+   |       ^

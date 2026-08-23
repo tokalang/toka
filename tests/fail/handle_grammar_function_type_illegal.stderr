@@ -1,0 +1,5 @@
+error[E0492]: Illegal mixing of managed handles and raw pointers in type 'fn(*&i32) -> i32'
+ --> tests/fail/handle_grammar_function_type_illegal.tk:1:7
+   |
+ 1 | alias BadFn = fn(*&i32) -> i32
+   |       ^

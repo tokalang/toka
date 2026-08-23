@@ -1,0 +1,16 @@
+error[E0492]: Illegal mixing of managed handles and raw pointers in type '*~i32'
+ --> tests/fail/handle_grammar_unsafe_block_illegal.tk:3:20
+   |
+ 3 |         auto z = 0 as *~i32
+   |                    ^
+error[E0483]: Plain raw pointer type '*~i32' cannot contain or test null; use 'nul *T' for a may-zero raw address
+ --> tests/fail/handle_grammar_unsafe_block_illegal.tk:3:20
+   |
+ 3 |         auto z = 0 as *~i32
+   |                    ^
+error[E0467]: Variable 'z' implies pointer type '*~i32' but lacks explicit sigil. Use 'auto *z' or dereference.
+ --> tests/fail/handle_grammar_unsafe_block_illegal.tk:3:14
+   |
+ 3 |         auto z = 0 as *~i32
+   |              ^
+   |   👉 help: Variable implies pointer type but lacks explicit sigil. Did you mean '^var'?

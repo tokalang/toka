@@ -1,0 +1,9 @@
+alias BadRet = ^^i32
+
+fn bad_return() -> BadRet {
+    return 0 as BadRet
+}
+
+fn main() -> i32 {
+    return 0
+}

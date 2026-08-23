@@ -1,0 +1,9 @@
+alias BadParam = ~&i32
+
+fn bad_param(x: BadParam) -> i32 {
+    return 0
+}
+
+fn main() -> i32 {
+    return 0
+}
