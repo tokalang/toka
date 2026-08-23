@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 
 #include "toka/DiagnosticEngine.h"
+#include "toka/HandleGrammarAudit.h"
 #include "toka/Sema.h"
 #include "toka/Type.h"
 #include "toka/Parser.h"
@@ -56,8 +57,14 @@ anonymousRecordSemanticKey(const std::vector<ShapeMember> &members) {
 
 std::shared_ptr<toka::Type>
 Sema::lowerAliasTarget(const AliasInfo &alias) const {
-  return alias.TargetSyntax ? toka::Type::fromSyntax(alias.TargetSyntax)
-                            : toka::Type::fromString(alias.Target);
+  auto res = alias.TargetSyntax ? toka::Type::fromSyntax(alias.TargetSyntax)
+                                : toka::Type::fromString(alias.Target);
+  if (res) {
+    SyntaxOrigin origin = (CurrentModule && CurrentModule->IsInterface) ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
+    recordHandleGrammarAudit(res, origin, {FormationPhase::AliasExpansion},
+                             alias.Target, "", "");
+  }
+  return res;
 }
 
 std::shared_ptr<toka::Type> Sema::instantiateAliasTarget(
@@ -74,7 +81,12 @@ std::shared_ptr<toka::Type> Sema::instantiateAliasTarget(
     if (!name.empty() && name.front() == '\'')
       replacements.emplace(name.substr(1), arguments[i]);
   }
-  return target->substitute(replacements);
+  auto res = target->substitute(replacements);
+  if (res) {
+    recordHandleGrammarAudit(res, SyntaxOrigin::SourceSurface, {FormationPhase::AliasExpansion, FormationPhase::GenericInstance},
+                             alias.Target, "", "");
+  }
+  return res;
 }
 
 bool areStructsStructurallyCompatible(Sema *sema, const std::string &targetName, const std::string &sourceName) {
@@ -125,6 +137,11 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
                                               bool force) {
   if (!type)
     return nullptr;
+
+  std::string fnId = CurrentFunction ? (!CurrentFunction->CodegenName.empty() ? CurrentFunction->CodegenName : CurrentFunction->Name) : "";
+  SyntaxOrigin origin = (CurrentModule && CurrentModule->IsInterface) ? SyntaxOrigin::TKIImport : SyntaxOrigin::Generated;
+  recordHandleGrammarAudit(type, origin, {FormationPhase::IntermediateLowering},
+                           "", "", "", SourceLocation(), false, fnId);
 
   if (auto ptr = std::dynamic_pointer_cast<toka::PointerType>(type)) {
     auto inner = resolveType(ptr->getPointeeType(), false);
@@ -751,6 +768,17 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
       // retaining only a string so imported shapes keep their declaration
       // identity even when modules export the same short name.
       m.ResolvedType = resolveType(subObj);
+      if (m.ResolvedType) {
+        std::string genericArgsStr = "<";
+        for (size_t gi = 0; gi < GenericShape->GenericArgs.size(); ++gi) {
+          if (gi > 0) genericArgsStr += ", ";
+          genericArgsStr += GenericShape->GenericArgs[gi] ? GenericShape->GenericArgs[gi]->toString() : "unknown";
+        }
+        genericArgsStr += ">";
+        recordHandleGrammarAudit(m.ResolvedType, SyntaxOrigin::SourceSurface,
+                                 {FormationPhase::GenericInstance},
+                                 templateName, genericArgsStr, m.Name, m.Loc);
+      }
     };
 
     // [NEW] Handle Nested Substitution for SubMembers (Variants)
@@ -1247,11 +1275,11 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
 
   // 6. Physical null compatibility is raw-pointer-specific.
   if (S->isNullType()) {
-    if (T->isRawPointer() && T->IsNullable)
+    if (T->isRawPointer() && (T->IsNullable || m_InUnsafeContext))
       return true;
   }
   if (T->isNullType()) {
-    if (S->isRawPointer() && S->IsNullable)
+    if (S->isRawPointer() && (S->IsNullable || m_InUnsafeContext))
       return true;
   }
 

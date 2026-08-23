@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/CodeGen.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/HandleGrammarAudit.h"
 #include "toka/MemberAccess.h"
 #include "toka/Type.h"
 #include "toka/Parser.h"
@@ -165,6 +166,20 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
                                      bool declOnly) {
   if (!func->GenericParams.empty())
     return nullptr;
+
+  struct FnGuard {
+    const FunctionDecl *&Target;
+    const FunctionDecl *Old;
+    FnGuard(const FunctionDecl *&t, const FunctionDecl *fn) : Target(t), Old(t) { Target = fn; }
+    ~FnGuard() { Target = Old; }
+  } fnGuard(m_CurrentFunction, func);
+
+  if (handleGrammarAuditEnabled() && func) {
+    markHandleGrammarFunctionCodeGenLowered(func->Name);
+    if (!func->CodegenName.empty() && func->CodegenName != func->Name) {
+      markHandleGrammarFunctionCodeGenLowered(func->CodegenName);
+    }
+  }
 
   const bool isAsyncEntrypoint =
       overrideName.empty() && func->Name == "main" &&
@@ -3439,6 +3454,11 @@ llvm::Type *CodeGen::resolveType(const std::string &baseType, bool hasPointer) {
 llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
   if (!type) {
     return llvm::Type::getVoidTy(m_Context);
+  }
+
+  if (handleGrammarAuditEnabled()) {
+    std::string fnId = m_CurrentFunction ? (!m_CurrentFunction->CodegenName.empty() ? m_CurrentFunction->CodegenName : m_CurrentFunction->Name) : "";
+    markHandleGrammarTypeLowered(type, fnId);
   }
 
   // A miss outcome is a real returned value with two states.  Keep its

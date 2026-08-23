@@ -14,6 +14,7 @@
 #include "toka/CodeGen.h"
 #include "toka/AssignmentStats.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/HandleGrammarAudit.h"
 #include "toka/HandleSurfaceStats.h"
 #include "toka/Lexer.h"
 #include "toka/MemoryContract.h"
@@ -69,7 +70,6 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/TargetParser/Triple.h"
-#include <unistd.h>
 #include <sys/stat.h>
 #include <cstdio>
 
@@ -176,6 +176,13 @@ private:
   bool &Capabilities;
   bool &TodoGoals;
   bool &ConditionalFacts;
+};
+
+class HandleGrammarAuditFlushGuard {
+public:
+  ~HandleGrammarAuditFlushGuard() {
+    toka::flushHandleGrammarAudit();
+  }
 };
 
 class StructuredDiagnosticsDumpGuard {
@@ -774,6 +781,7 @@ int main(int argc, char **argv) {
       structuredDiagnostics);
   MachineFailureDiagnosticsDumpGuard machineFailureDiagnosticsGuard(
       machineFailureDiagnostics);
+  HandleGrammarAuditFlushGuard handleGrammarAuditFlushGuard;
   bool runTopologyEval = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
   std::string outputFile = "";
@@ -2080,6 +2088,9 @@ int main(int argc, char **argv) {
   }
   if (toka::handleSurfaceStatsEnabled()) {
     toka::dumpHandleSurfaceStatsJson(llvm::outs(), astModules.size());
+  }
+  if (toka::handleGrammarAuditEnabled()) {
+    toka::flushHandleGrammarAudit();
   }
 
   return 0;

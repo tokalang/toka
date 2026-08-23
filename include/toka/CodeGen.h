@@ -158,6 +158,7 @@ private:
   std::unique_ptr<llvm::IRBuilder<>> m_GlobalInitBuilder = nullptr;
   llvm::Function *getOrCreateGlobalInit();
 
+  const FunctionDecl *m_CurrentFunction = nullptr;
   std::map<std::string, const FunctionDecl *> m_Functions;
   std::map<std::string, const ExternDecl *> m_Externs;
   std::map<std::string, TokaSymbol> m_Symbols;

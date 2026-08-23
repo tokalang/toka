@@ -14,6 +14,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/HandleGrammarAudit.h"
 #include "toka/Parser.h"
 #include "toka/Sema.h"
 #include "toka/Type.h"
@@ -453,6 +454,45 @@ void Sema::instantiateGenericImpl(
           semanticArgument ? semanticArgument->substitute(Replacements)
                            : nullptr;
     }
+    std::string genericArgsStr = "<";
+    for (size_t gi = 0; gi < GenericArgs.size(); ++gi) {
+      if (gi > 0) genericArgsStr += ", ";
+      genericArgsStr += GenericArgs[gi] ? GenericArgs[gi]->toString() : "unknown";
+    }
+    genericArgsStr += ">";
+
+    std::string candidateFnId = Template->TypeName + genericArgsStr + "::" + Method->Name + "(";
+    for (size_t ai = 0; ai < ClonedFn->Args.size(); ++ai) {
+      if (ai > 0) candidateFnId += ", ";
+      candidateFnId += ClonedFn->Args[ai].ResolvedType ? ClonedFn->Args[ai].ResolvedType->toString() : "unknown";
+    }
+    candidateFnId += ") -> " + (ClonedFn->ResolvedReturnType ? ClonedFn->ResolvedReturnType->toString() : "void");
+
+    bool hasGrammarViolation = false;
+    if (ClonedFn->ResolvedReturnType) {
+      recordHandleGrammarAudit(ClonedFn->ResolvedReturnType, SyntaxOrigin::Generated,
+                               {FormationPhase::GenericInstance}, Template->TypeName,
+                               genericArgsStr, "return", Method->Loc, false,
+                               candidateFnId);
+      auto profile = toka::Type::classifyHandleGrammar(ClonedFn->ResolvedReturnType);
+      if (!profile.isValid())
+        hasGrammarViolation = true;
+    }
+    for (const auto &arg : ClonedFn->Args) {
+      if (arg.ResolvedType) {
+        recordHandleGrammarAudit(arg.ResolvedType, SyntaxOrigin::Generated,
+                                 {FormationPhase::GenericInstance}, Template->TypeName,
+                                 genericArgsStr, arg.Name, Method->Loc, false,
+                                 candidateFnId);
+        auto profile = toka::Type::classifyHandleGrammar(arg.ResolvedType);
+        if (!profile.isValid())
+          hasGrammarViolation = true;
+      }
+    }
+
+    if (hasGrammarViolation)
+      continue;
+
     InstantiationLexicalScopes[ClonedFn.get()] = instantiationScope;
     auto definition = DeclarationLexicalScopes.find(Method.get());
     if (definition != DeclarationLexicalScopes.end())
@@ -462,6 +502,22 @@ void Sema::instantiateGenericImpl(
     recordInstantiationType(
         ClonedFn.get(), resolveType(std::make_shared<toka::ShapeType>(
                             ConcreteTypeName)));
+
+    std::string fnId = !ClonedFn->CodegenName.empty() ? ClonedFn->CodegenName : ClonedFn->Name;
+    markHandleGrammarFunctionInstantiated(fnId);
+
+    if (ClonedFn->ResolvedReturnType) {
+      recordHandleGrammarAudit(ClonedFn->ResolvedReturnType, SyntaxOrigin::SourceSurface,
+                               {FormationPhase::GenericInstance},
+                               Template->TypeName, genericArgsStr, ClonedFn->Name, Method->Loc, true, fnId);
+    }
+    for (size_t ai = 0; ai < ClonedFn->Args.size(); ++ai) {
+      if (ClonedFn->Args[ai].ResolvedType) {
+        recordHandleGrammarAudit(ClonedFn->Args[ai].ResolvedType, SyntaxOrigin::SourceSurface,
+                                 {FormationPhase::GenericInstance},
+                                 Template->TypeName, genericArgsStr, ClonedFn->Name + "::" + ClonedFn->Args[ai].Name, ClonedFn->Args[ai].Loc, true, fnId);
+      }
+    }
 
     NewMethods.push_back(std::move(ClonedFn));
   }
@@ -608,10 +664,13 @@ bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName,
   const std::string concreteTypeName =
       resolvedConcreteType ? resolvedConcreteType->toString() : "unknown";
   // A morphic argument can carry its value-mutable suffix through template
-  // substitution (for example `TaskPtr#`). Trait facts are nominal and are
-  // registered on `TaskPtr`, so normalize only the lookup/proof key.
-  std::string nominalConcreteType =
-      toka::Type::stripMorphology(concreteTypeName);
+  std::string nominalConcreteType = concreteTypeName;
+  while (!nominalConcreteType.empty() &&
+         (nominalConcreteType.back() == '#' ||
+          nominalConcreteType.back() == '?' ||
+          nominalConcreteType.back() == '$')) {
+    nominalConcreteType.pop_back();
+  }
   auto dependentShapeProvesAutoTrait = [&](const std::string &traitFamily) {
     auto root = std::dynamic_pointer_cast<ShapeType>(
         resolvedConcreteType ? resolvedConcreteType->getSoulType() : nullptr);
@@ -709,7 +768,8 @@ bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName,
         continue;
     }
     if (getTraitFamilyName(canonicalBound) == "Dup") {
-      if (proveSlice4CopyType(resolvedConcreteType))
+      if (resolvedConcreteType && !resolvedConcreteType->isReference() &&
+          proveSlice4CopyType(resolvedConcreteType))
         continue;
     }
 

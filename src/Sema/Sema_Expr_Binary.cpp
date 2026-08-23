@@ -1269,7 +1269,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     }
 
     bool diagnosedNullAssign = false;
-    if (lhsCompatType && lhsCompatType->isRawPointer() &&
+    if (!m_InUnsafeContext && lhsCompatType && lhsCompatType->isRawPointer() &&
         !lhsCompatType->IsNullable && rhsType && rhsType->isNullType()) {
       error(Bin, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
             lhsCompatType->toString());
@@ -1470,14 +1470,14 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       Bin->Op == "<=" || Bin->Op == ">=") {
     bool diagnosedNullCmp = false;
     if (lhsType && lhsType->isRawPointer() && rhsType && rhsType->isNullType()) {
-      if (!lhsType->IsNullable) {
+      if (!m_InUnsafeContext && !lhsType->IsNullable) {
         error(Bin, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
               lhsType->toString());
         diagnosedNullCmp = true;
       }
     }
     if (rhsType && rhsType->isRawPointer() && lhsType && lhsType->isNullType()) {
-      if (!rhsType->IsNullable) {
+      if (!m_InUnsafeContext && !rhsType->IsNullable) {
         error(Bin, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
               rhsType->toString());
         diagnosedNullCmp = true;

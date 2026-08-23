@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/HandleGrammarAudit.h"
 #include "toka/Parser.h"
 #include "toka/SemanticEvidence.h"
 #include "toka/Sema.h"
@@ -621,6 +622,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             MetAST = MethodDecls[methodKey][VariantName];
         }
         Call->ResolvedFn = MetAST;
+        if (MetAST) {
+          std::string fnId = !MetAST->CodegenName.empty() ? MetAST->CodegenName : MetAST->Name;
+          markHandleGrammarFunctionReachable(fnId);
+        }
 
         if (MetAST) {
             size_t expectedArgs = MetAST->Args.size();
@@ -737,6 +742,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                   MetAST = MethodDecls[methodKey][VariantName];
               }
               Call->ResolvedFn = MetAST;
+              if (MetAST) {
+                std::string fnId = !MetAST->CodegenName.empty() ? MetAST->CodegenName : MetAST->Name;
+                markHandleGrammarFunctionReachable(fnId);
+              }
 
               for (size_t i = 0; i < Call->Args.size(); ++i) {
                 Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
@@ -1766,6 +1775,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   if (Fn) {
     Call->ResolvedFn = Fn;
+    std::string fnId = !Fn->CodegenName.empty() ? Fn->CodegenName : Fn->Name;
+    markHandleGrammarFunctionReachable(fnId);
     for (auto &arg : Fn->Args) {
       ParamTypes.push_back(arg.ResolvedType
                                ? resolveType(arg.ResolvedType)
@@ -2637,8 +2648,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     bool diagnosedNull = false;
-    if (paramType && paramType->isRawPointer() && !paramType->IsNullable &&
-        argType && argType->isNullType()) {
+    if (!m_InUnsafeContext && paramType && paramType->isRawPointer() &&
+        !paramType->IsNullable && argType && argType->isNullType()) {
       error(Call->Args[i].get(), DiagID::ERR_NONZERO_RAW_NULL_FLOW,
             paramType->toString());
       diagnosedNull = true;

@@ -19,6 +19,7 @@
 #include "toka/Type.h"
 #include "toka/PathUtils.h"
 #include "toka/Parser.h"
+#include "toka/HandleGrammarAudit.h"
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -2913,10 +2914,15 @@ void Sema::declareGlobals(Module &M) {
     if (isAtomicWrapperDeclaration(M, *Fn))
       TrustedAtomicWrapperDeclarations.insert(Fn.get());
     Fn->CodegenName = functionCodegenName(M, *Fn);
+    SyntaxOrigin fnOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
+    auto fnRetTy = Fn->ReturnTypeSyntax ? toka::Type::fromSyntax(Fn->ReturnTypeSyntax) : toka::Type::fromString(Fn->ReturnType);
+    recordHandleGrammarAudit(fnRetTy, fnOrigin, {FormationPhase::DirectResolution}, "", "", "return", Fn->Loc, false, functionCodegenName(M, *Fn));
     for (const auto &Arg : Fn->Args) {
       debugCheckBindingPermission(Arg);
       debugCheckBindingTypeString("function argument", Arg.Name, Arg.Type,
                                   Arg.Permission, Fn->Loc);
+      auto argTy = Sema::synthesizePhysicalTypeObject(Arg, false);
+      recordHandleGrammarAudit(argTy, fnOrigin, {FormationPhase::DirectResolution}, "", "", Arg.Name, Fn->Loc, false, functionCodegenName(M, *Fn));
     }
     ms.Functions[Fn->Name] = Fn.get();
     auto &overloads = ms.FunctionOverloads[Fn->Name];
@@ -2942,6 +2948,9 @@ void Sema::declareGlobals(Module &M) {
                                DiagID::ERR_EXTERN_RESULT_CONTRACT, Ext->Name);
       HasError = true;
     }
+    SyntaxOrigin extOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
+    auto extRetTy = Ext->ReturnTypeSyntax ? toka::Type::fromSyntax(Ext->ReturnTypeSyntax) : toka::Type::fromString(Ext->ReturnType);
+    recordHandleGrammarAudit(extRetTy, extOrigin, {FormationPhase::DirectResolution}, "", "", "return", Ext->Loc, false, Ext->Name);
     for (auto &Arg : Ext->Args) {
       debugCheckBindingPermission(Arg);
       debugCheckBindingTypeString("extern argument", Arg.Name, Arg.Type,
@@ -2950,6 +2959,7 @@ void Sema::declareGlobals(Module &M) {
         Arg.ResolvedType =
             resolveType(Sema::synthesizePhysicalTypeObject(Arg));
       }
+      recordHandleGrammarAudit(Arg.ResolvedType, extOrigin, {FormationPhase::DirectResolution}, "", "", Arg.Name, Ext->Loc, false, Ext->Name);
     }
     ms.Externs[Ext->Name] = Ext.get();
     ExternMap[Ext->Name] = Ext.get();
@@ -2961,6 +2971,11 @@ void Sema::declareGlobals(Module &M) {
   // 3. Register Shapes
   for (auto &St : M.Shapes) {
     DeclarationLexicalScopes[St.get()] = &ms;
+    SyntaxOrigin shapeOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
+    for (const auto &mem : St->Members) {
+      auto memTy = mem.TypeSyntax ? toka::Type::fromSyntax(mem.TypeSyntax) : toka::Type::fromString(mem.Type);
+      recordHandleGrammarAudit(memTy, shapeOrigin, {FormationPhase::DirectResolution}, St->Name, "", mem.Name, St->Loc);
+    }
     if (St->IsCompilerSynthesized) {
       St->NominalId.reset();
     } else {
@@ -3026,6 +3041,11 @@ void Sema::declareGlobals(Module &M) {
                                    Alias->GenericParams};
     TypeAliasMap[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
                                  Alias->GenericParams};
+    SyntaxOrigin aliasOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
+    auto aliasTypeObj = toka::Type::fromSyntax(targetSyntax);
+    if (!aliasTypeObj)
+      aliasTypeObj = toka::Type::fromString(target);
+    recordHandleGrammarAudit(aliasTypeObj, aliasOrigin, {FormationPhase::DirectResolution}, Alias->Name, "", "", Alias->Loc);
     SymbolInfo info;
     info.TypeObj = toka::Type::fromString(Alias->Name);
     info.IsTypeName = true;
@@ -4396,6 +4416,15 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     Fn->ResolvedReturnType = toka::Type::fromString("void");
   }
 
+  if (Fn->ResolvedReturnType) {
+    std::string fnId = !Fn->CodegenName.empty() ? Fn->CodegenName : Fn->Name;
+    bool isGeneric = (Fn->TemplateOrigin != nullptr || (!Fn->CodegenName.empty() && Fn->CodegenName.find("_M_") != std::string::npos));
+    SyntaxOrigin origin = (CurrentModule && CurrentModule->IsInterface) ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
+    recordHandleGrammarAudit(Fn->ResolvedReturnType, origin,
+                             {isGeneric ? FormationPhase::GenericInstance : FormationPhase::DirectResolution},
+                             Fn->Name, "", "return", getLoc(Fn), isGeneric, fnId);
+  }
+
   Fn->ResolvedOutcomeTransition.reset();
   if (!Fn->OutcomeContract.empty()) {
     auto invalidOutcome = [&](const std::string &detail) {
@@ -4548,6 +4577,15 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
       // Assign to AST Node for CodeGen
       Arg.ResolvedType = Info.TypeObj;
+    }
+
+    if (Arg.ResolvedType) {
+      std::string fnId = !Fn->CodegenName.empty() ? Fn->CodegenName : Fn->Name;
+      bool isGeneric = (Fn->TemplateOrigin != nullptr || (!Fn->CodegenName.empty() && Fn->CodegenName.find("_M_") != std::string::npos));
+      SyntaxOrigin origin = (CurrentModule && CurrentModule->IsInterface) ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
+      recordHandleGrammarAudit(Arg.ResolvedType, origin,
+                               {isGeneric ? FormationPhase::GenericInstance : FormationPhase::DirectResolution},
+                               Fn->Name, "", Arg.Name, argLoc, isGeneric, fnId);
     }
 
     if (Arg.DefaultValue && Info.TypeObj && Info.TypeObj->isMissOutcome()) {
@@ -5233,6 +5271,12 @@ void Sema::analyzeShapes(Module &M) {
         const std::string fullTypeStr = Sema::synthesizePhysicalType(m);
         validateTypeVisibilityInType(fullTypeStr, getLoc(S.get()));
         m.ResolvedType = resolveType(Sema::synthesizePhysicalTypeObject(m));
+        if (m.ResolvedType) {
+          SyntaxOrigin origin = (CurrentModule && CurrentModule->IsInterface) ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
+          recordHandleGrammarAudit(m.ResolvedType, origin,
+                                   {FormationPhase::DirectResolution},
+                                   S->Name, "", m.Name, m.Loc.isValid() ? m.Loc : getLoc(S.get()));
+        }
 
         if (m.DefaultValue && m.ResolvedType &&
             m.ResolvedType->isMissOutcome()) {
