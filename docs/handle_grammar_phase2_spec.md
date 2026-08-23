@@ -1,0 +1,192 @@
+# Tokalang Handle Grammar Phase 2 Specification: Admission Invariants, Diagnostic Enforcement & Zero-Violation Migration
+
+**Status**: Frozen Specification (M0)
+**Target Milestone**: Phase 2 Admission & Zero-Violation Migration
+**Previous Baseline**: `c6b2e72f` (tag: `handle-grammar-phase1-baseline`)
+
+---
+
+## 1. Grammatical Admission & Boundary Invariants
+
+### 1.1 Admitted vs Prohibited Continuous Handle Chains
+
+A **continuous handle chain** is a sequence of direct pointer/handle morphologies applied without an intervening structural or nominal boundary node.
+
+- **Admitted Level 1 (Pure Handles)**:
+  - `*T` (raw pointer)
+  - `nul *T` (nullable raw pointer)
+  - `^T` (unique owning heap pointer)
+  - `~T` (shared ARC pointer)
+  - `&T` (borrow view reference)
+  - `&T#` (mutable borrow view reference)
+- **Admitted Level 2 (Borrow Extensions)**:
+  - `&^T` (borrow view of unique heap pointer)
+  - `&~T` (borrow view of shared ARC pointer)
+  - `&&T` (double borrow / reference to reference)
+- **Admitted Raw Depth $N$**:
+  - `**T`, `***T`, `****T`... (arbitrary depth pure raw pointers).
+- **Prohibited Forms (Strict Compiler Rejection)**:
+  - **`InvalidManagedLayerOrder`**: `^&T`, `~&T` (managed pointer whose inner layer is a borrow reference; at managed depth 2, the outer layer must be `&`).
+  - **`ExceededManagedDepth`**: `^^T`, `~~T`, `^~T`, `~^T`, `&^^T`, `&&^T`, `&&~T`... (nested managed owning layers).
+  - **`ExceededBorrowDepth`**: `&&&T`, `&&&&T`... (continuous borrow depth $> 2$).
+  - **`MixedManagedRaw`**: `*^T`, `^*T`, `*~T`, `~*T`, `*&T`, `&*T`, `**^T`, `*&^T`, `&*~T`, `***^T`... (mixing raw pointer and managed handle layers within one continuous handle chain).
+
+### 1.2 Boundary Semantics
+
+A continuous handle chain terminates at **any non-Pointer Type node** in the type AST/graph:
+- Nominal shapes (`ShapeType`), generic applications (`ShapeType::GenericArgs`)
+- Arrays (`ArrayType`), slices (`SliceType`)
+- Tuples (`TupleType`), functions (`FunctionType`, `DynFnType`)
+- Uninitialized slots (`UninitType`)
+
+**Boundary Examples**:
+- `*Box<&T>`: **Legal** (`Box` is a nominal shape boundary separating outer `*` and inner `&`).
+- `Option<*&T>`: **Illegal** (inner generic argument `*&T` is classified independently and rejected).
+- `[*^T; 4]`: **Illegal** (array element `*^T` is classified independently and rejected).
+- `*[&T; 4]`: **Legal** (array `[&T; 4]` is a structural boundary separating outer `*` and inner `&`).
+
+### 1.3 Raw Nullability Invariants
+
+- Nullability (`nul`) is exclusively valid on raw pointer layers.
+- Multi-layer raw nullability binds per layer:
+  - `nul **T`: Outer raw pointer is nullable; inner raw pointer is non-null.
+  - `*nul *T`: Outer raw pointer is non-null; inner raw pointer is nullable.
+  - `nul *nul *T`: Both outer and inner raw pointers are nullable.
+- Managed handles (`^`, `~`, `&`) are strictly non-nullable by language construction.
+
+### 1.4 Unsafe Non-Exemption
+
+`unsafe` blocks grant raw memory dereference and raw pointer arithmetic privileges, but **never** exempt type signatures or local declarations from Handle Grammar rules. Writing `*^T` or `*&T` inside an `unsafe` block is strictly rejected at semantic analysis.
+
+---
+
+## 2. Diagnostic Allocations & Error Codes
+
+The following diagnostic identifiers are reserved in `include/toka/DiagnosticDefs.def`:
+
+```text
+E0490 DIAG(ERR_ILLEGAL_HANDLE_ORDER,          Error, "E0490", "Illegal handle ordering in '{}': at managed depth 2, the outer layer must be '&' (e.g. '&^T' or '&~T'), not an inner borrow ('^&T' or '~&T')")
+E0491 DIAG(ERR_EXCEEDED_HANDLE_DEPTH,         Error, "E0491", "Exceeded handle depth in type '{}': managed owning pointers cannot be nested ('^^T', '~~T'), and borrow depth cannot exceed 2 ('&&&T')")
+E0492 DIAG(ERR_MIXED_HANDLE_RAW,              Error, "E0492", "Illegal mixed handle grammar in type '{}': mixing raw pointers and managed handles ('*^T', '^*T', '*&T', '&*T') within one continuous handle chain is prohibited")
+E0760 DIAG(ERR_CODEGEN_ILLEGAL_HANDLE_GRAMMAR, Error, "E0760", "Internal CodeGen invariant violation: illegal Handle Grammar type '{}' reached LLVM lowering")
+```
+
+---
+
+## 3. Type-Layer Recursive Validator & Diagnostic Issue Model
+
+### 3.1 Shared Issue Data Structure
+
+Defined in `include/toka/Type.h`:
+
+```cpp
+struct HandleGrammarIssue {
+  HandleGrammarViolation Violation = HandleGrammarViolation::None;
+  std::vector<unsigned> TypePath; // Structural navigation path in composite type graph
+  unsigned OuterLayer = 0;
+  unsigned InnerLayer = 0;
+  std::shared_ptr<Type> OffendingType;
+  TypeSyntaxPtr OffendingSyntax;
+  std::string CustomMessage;
+};
+```
+
+### 3.2 Recursive Traversal Rules
+
+`Type::findHandleGrammarIssueRecursive()` recursively traverses:
+1. `PointerType::PointeeType`
+2. `ArrayType::ElementType` & `SliceType::ElementType`
+3. `ShapeType::GenericArgs` & concrete member types
+4. `FunctionType::ParamTypes` & `FunctionType::ReturnType`
+5. `DynFnType::ParamTypes` & `DynFnType::ReturnType`
+6. `MissOutcomeType::PayloadType`
+7. `UninitType::InnerType`
+8. Anonymous record fields & associated type projections
+9. Cycle-visited guard for recursive shape graphs.
+
+### 3.3 Consumer Unification
+
+- **Sema Admission**: Emits `E0490`–`E0492` with exact source spans and generic instantiation notes.
+- **CodeGen Invariant**: Asserts `!findHandleGrammarIssueRecursive(type).has_value()` in `src/CodeGen/CodeGen_Decl.cpp:3454` (`getLLVMType()`), reporting `E0760` on violation.
+- **Classifier Unit Tests**: Directly asserts on composite and recursive type fixtures.
+
+---
+
+## 4. SFINAE Tri-Classification Policy
+
+When evaluating generic templates and candidate methods:
+
+1. **Template Definition Contains Illegal Syntax**:
+   - Immediate compilation error at template declaration (e.g. `fn f<'T>(x: *^'T)`).
+2. **Generic Parameter Substitution Produces Illegal Signature**:
+   - SFINAE filtering: candidate method is cleanly dropped from the overload/method candidate set.
+   - Audited with `Decision=RejectedSFINAE`, `is_instantiated=false`, `is_llvm_lowered=false`.
+3. **Template Signature Legal, Body Instantiation Produces Illegal Local Type**:
+   - Hard compilation error during instantiation.
+   - Diagnostic emitted at the offending statement with an attached `Note` pointing to the template instantiation call site.
+
+---
+
+## 5. Audit Event Taxonomy & Lifecycle Flags
+
+To prevent conflating orthogonal lifecycle stages with filtering decisions:
+
+- **`Decision`**:
+  - `Observed`: Standard compiler type observation.
+  - `RejectedSFINAE`: Candidate filtered out during template candidate evaluation.
+- **`Lifecycle Flags`**:
+  - `is_transient`: Internal compiler intermediate lowering AST type.
+  - `is_admitted`: Surface/TKI type accepted by compiler frontend.
+  - `is_instantiated`: Template monomorphized instance created.
+  - `is_llvm_lowered`: Type lowered to LLVM IR via `getLLVMType()`.
+
+---
+
+## 6. Migration Inventory: 34 JSON Transients + 17 Lowering Transients
+
+The Phase 1 baseline identified 51 `IntermediateLowering` transient violations. They are strictly partitioned and resolved across M2 and M4:
+
+### 6.1 M2 Scope: 34 JSON Storage Transients ($N=34$)
+- `34 *^[Uninit<T>]`: Uninitialized buffer allocations in `lib/stdx/serde/json.tk`.
+- **M2 Resolution Goal**: Redesign generic JSON uninitialized storage, clearing all 12 LLVM lowering violations and 34 JSON storage transients.
+- **M2 Acceptance Metric**: `JSON IntermediateLowering violations = 0`.
+
+### 6.2 M4 Scope: 17 Lowering Transients ($N=17$) Across 6 Discrete Clusters
+The remaining 17 transients are resolved across 6 independent commits:
+
+| Cluster | Count | Pattern | Subsystem / Location | Target Equivalent |
+|---|---|---|---|---|
+| 1. ARC Identity | 7 | `*~Data`, `*~Resource`, `&*~Resource` | Match guard runtime identity (`g08_match_guard_leak.tk`) | ARC identity token / intrinsic |
+| 2. Shared Cell Re-wrapping | 5 | `~~Cell`, `~#~#Cell` | Permission transfer AST lowering | Deduplicate shared wrapper synthesis |
+| 3. Existing Unique Handle | 2 | `^^Point` | Re-wrapping existing unique handles (`g08_test.tk`, `g08_noshared.tk`) | Preserve unique handle identity without re-wrapping |
+| 4. FFI Out-Parameter | 1 | `&nul *char#` | `LLVMModule_verify` | Pure raw `**char` ABI pointer |
+| 5. Raw-on-Borrow Address | 1 | `*&i32` | Address-of reference in `main` | Address-of referent |
+| 6. Raw-on-Unique Address | 1 | `*^SummaryData` | Memory summary pointer in `source_summary.tk` | Address of pointee payload storage |
+| **Total** | **17** | | | **Strict Sum = 17** |
+
+---
+
+## 7. TKI Interface Format Version 3 & Fail-Closed Strategy
+
+- In `include/toka/InterfaceVersion.h`:
+  - `TOKA_INTERFACE_FORMAT_VERSION`: Bump `2 -> 3`.
+  - `TOKA_COMPILER_INTERFACE_VERSION`: Bump `0.9.9-12 -> 0.9.9-13`.
+- **Fail-Closed Rule**: All format v2 TKI modules are rejected fail-closed upon import.
+- **Cache Invalidation**: Cache salt updated to invalidate all existing precompiled v2 interface files.
+
+---
+
+## 8. Final Acceptance Criteria
+
+Phase 2 completion requires the clean audit scan to verify:
+
+```text
+SourceSurface admitted violation : 0
+TKIImport admitted violation     : 0
+Instantiated violation           : 0
+LLVMTypeLowered violation        : 0
+Generated non-SFINAE transient   : 0
+RejectedSFINAE candidates        : Permitted non-zero (strictly is_instantiated=false, is_llvm_lowered=false)
+All 9 Verification Suites        : 100% Passed (rc=0)
+CTest Matrix (16+)               : 100% Passed
+```
