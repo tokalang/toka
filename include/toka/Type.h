@@ -28,6 +28,25 @@ class Sema;      // Forward declaration
 
 enum class CallableReceiverMode { Shared, Mutable, Consuming };
 
+enum class HandleGrammarViolation {
+  None,
+  ExceededManagedDepth,      // ^^T, ^~T, ~^T, ~~T
+  ExceededBorrowDepth,       // &&&T, &&&&T
+  InvalidManagedLayerOrder,  // ^&T, ~&T (Managed second layer is not an outer borrow)
+  MixedManagedRaw            // *^T, ^*T, *&T, &*T, *~T, ~*T
+};
+
+struct HandleGrammarProfile {
+  unsigned continuousManagedDepth = 0;
+  unsigned continuousBorrowDepth = 0;
+  unsigned continuousRawDepth = 0;
+  bool crossesManagedRawBoundary = false;
+  HandleGrammarViolation violation = HandleGrammarViolation::None;
+
+  bool isValid() const { return violation == HandleGrammarViolation::None; }
+  std::string describeViolation() const;
+};
+
 // Classifies the cleanup/transfer responsibility of a resolved value.  This
 // is compiler-internal semantic metadata: it is not a source annotation and
 // does not alter a type's public spelling.
@@ -153,6 +172,9 @@ public:
   // name
   static std::string stripMorphology(const std::string &name);
   static std::string stripPrefixes(const std::string &name);
+
+  // Pure classification of Handle / Pointer continuous chains
+  static HandleGrammarProfile classifyHandleGrammar(const std::shared_ptr<Type> &type);
 
   bool isShape() const { return typeKind == Shape; }
   virtual std::string getSoulName() const { return toString(); }

@@ -160,6 +160,8 @@ if(BUILD_TESTING)
         tests/PlaceStateFact.cpp)
     add_executable(toka_nominal_shape_id
         tests/NominalShapeId.cpp)
+    add_executable(toka_handle_grammar_classifier
+        tests/HandleGrammarClassifierTest.cpp)
     target_include_directories(toka_typesyntax_canonicalization PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_canonical_declaration_witness PRIVATE
@@ -173,6 +175,8 @@ if(BUILD_TESTING)
     target_include_directories(toka_place_state_fact PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_nominal_shape_id PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(toka_handle_grammar_classifier PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     add_test(NAME toka_typesyntax_canonicalization
         COMMAND toka_typesyntax_canonicalization)
@@ -188,6 +192,8 @@ if(BUILD_TESTING)
         COMMAND toka_place_state_fact)
     add_test(NAME toka_nominal_shape_id
         COMMAND toka_nominal_shape_id)
+    add_test(NAME toka_handle_grammar_classifier
+        COMMAND toka_handle_grammar_classifier)
 endif()
 
 add_subdirectory(src)
@@ -199,6 +205,7 @@ if(BUILD_TESTING)
     target_link_libraries(toka_semantic_manifest_attestation PRIVATE toka_frontend)
     target_link_libraries(toka_semantic_dependency_closure PRIVATE toka_frontend)
     target_link_libraries(toka_nominal_shape_id PRIVATE toka_frontend)
+    target_link_libraries(toka_handle_grammar_classifier PRIVATE toka_frontend)
 endif()
 
 # Build the native runtime and the user-facing tools into one SDK layout.  The

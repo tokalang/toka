@@ -1930,4 +1930,115 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
   return shape;
 }
 
+std::string HandleGrammarProfile::describeViolation() const {
+  switch (violation) {
+  case HandleGrammarViolation::None:
+    return "Valid";
+  case HandleGrammarViolation::ExceededManagedDepth:
+    return "ExceededManagedDepth";
+  case HandleGrammarViolation::ExceededBorrowDepth:
+    return "ExceededBorrowDepth";
+  case HandleGrammarViolation::InvalidManagedLayerOrder:
+    return "InvalidManagedLayerOrder";
+  case HandleGrammarViolation::MixedManagedRaw:
+    return "MixedManagedRaw";
+  }
+  return "Unknown";
+}
+
+HandleGrammarProfile Type::classifyHandleGrammar(const std::shared_ptr<Type> &type) {
+  HandleGrammarProfile profile;
+  if (!type)
+    return profile;
+
+  // Unpack continuous pointer layers until hitting a structural boundary
+  std::vector<Type::Kind> layers;
+  std::shared_ptr<Type> current = type;
+  while (current && current->isPointer()) {
+    layers.push_back(current->typeKind);
+    current = current->getPointeeType();
+  }
+
+  if (layers.empty()) {
+    return profile;
+  }
+
+  // Check for presence of both Raw and Managed in the continuous chain
+  bool hasRaw = false;
+  bool hasManaged = false;
+  for (auto k : layers) {
+    if (k == Type::RawPtr)
+      hasRaw = true;
+    else if (k == Type::UniquePtr || k == Type::SharedPtr || k == Type::Reference)
+      hasManaged = true;
+  }
+
+  if (hasRaw && hasManaged) {
+    profile.crossesManagedRawBoundary = true;
+    profile.violation = HandleGrammarViolation::MixedManagedRaw;
+    for (auto k : layers) {
+      if (k == Type::RawPtr)
+        profile.continuousRawDepth++;
+      else {
+        profile.continuousManagedDepth++;
+        if (k == Type::Reference)
+          profile.continuousBorrowDepth++;
+      }
+    }
+    return profile;
+  }
+
+  if (hasRaw) {
+    // Pure raw chain: *T, **T, ***T ...
+    profile.continuousRawDepth = layers.size();
+    profile.violation = HandleGrammarViolation::None;
+    return profile;
+  }
+
+  // Pure managed chain: combinations of ^, ~, &
+  profile.continuousManagedDepth = layers.size();
+  for (size_t i = 0; i < layers.size(); ++i) {
+    if (layers[i] == Type::Reference)
+      profile.continuousBorrowDepth++;
+    else
+      break; // Borrow depth is continuous leading references from outer to inner
+  }
+
+  if (layers.size() == 1) {
+    // Single managed handle: ^T, ~T, &T
+    profile.violation = HandleGrammarViolation::None;
+    return profile;
+  }
+
+  if (layers.size() == 2) {
+    // Two managed handles.
+    // Allowed: &^T, &~T, &&T (outer layer must be Reference)
+    if (layers[0] == Type::Reference) {
+      profile.violation = HandleGrammarViolation::None;
+      return profile;
+    }
+
+    // Outer layer is ^ or ~
+    if (layers[1] == Type::Reference) {
+      // ^&T or ~&T: Managed second layer is not an outer borrow (invalid order)
+      profile.violation = HandleGrammarViolation::InvalidManagedLayerOrder;
+      return profile;
+    }
+
+    // ^^T, ^~T, ~^T, ~~T: Exceeded managed owning depth
+    profile.violation = HandleGrammarViolation::ExceededManagedDepth;
+    return profile;
+  }
+
+  // layers.size() >= 3
+  if (layers.size() == profile.continuousBorrowDepth) {
+    // &&&T, &&&&T: Exceeded borrow depth
+    profile.violation = HandleGrammarViolation::ExceededBorrowDepth;
+  } else {
+    // Multi-level managed combinations >= 3 (e.g. &^^T, ^^^T)
+    profile.violation = HandleGrammarViolation::ExceededManagedDepth;
+  }
+  return profile;
+}
+
 } // namespace toka
