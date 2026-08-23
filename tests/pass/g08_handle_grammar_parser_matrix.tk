@@ -1,0 +1,50 @@
+// tests/pass/g08_handle_grammar_parser_matrix.tk
+// Verification of Level-2 borrow syntax, layered raw pointers, and && expression disambiguation
+
+import std/io::println
+import std/vec::Vec
+
+// 1. Alias definitions with Level 2 handles and layered raw
+alias DoubleBorrowI32 = &&i32
+alias BorrowUniqueI32 = &^i32
+alias BorrowSharedI32 = &~i32
+alias TripleRawI32 = ***i32
+alias NulOuterRawI32 = nul **i32
+alias NulInnerRawI32 = *nul *i32
+alias NulBothRawI32 = nul *nul *i32
+
+shape Item (
+    id: i32
+)
+
+fn test_parser_and_expression_disambiguation() -> bool {
+    auto val = 42
+    auto &ref1 = &val
+
+    // Logical && in expressions MUST NOT be confused with double borrow type syntax
+    auto condition = (val == 42) && (ref1 == 42) && (val > 0)
+    assert(condition, "Logical && in expression must evaluate correctly")
+
+    auto ^u = new Item(id = 100)
+    auto &bu = &u
+    assert(bu.id == 100, "Borrow of unique handle must access fields")
+
+    auto ~s = new Item(id = 200)
+    auto &bs = &s
+    assert(bs.id == 200, "Borrow of shared handle must access fields")
+
+    // Double borrow via Vec iterator
+    auto v# = Vec<&i32>::with_capacity(2)
+    v#.push(&val)
+    for auto &&x in v {
+        assert(x == 42, "Double borrow &&x in loop must match")
+    }
+
+    return true
+}
+
+fn main() -> i32 {
+    assert(test_parser_and_expression_disambiguation(), "Parser and expression disambiguation passed")
+    println("Handle Grammar Parser Matrix: 100% PASS")
+    return 0
+}

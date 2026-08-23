@@ -204,5 +204,74 @@ int main() {
   passed &= expectCanonical("miss outcome substitution", substitutedOutcome,
                             "u64|miss");
 
+  // === Level-2 Handles & Multi-layer Raw Tests (Phase 2 M1) ===
+  const auto doubleBorrow = TypeSyntax::morphology(
+      "&", TypeSyntax::morphology("&", i32, loc(140), loc(143)), loc(139), loc(143));
+  const auto borrowUnique = TypeSyntax::morphology(
+      "&", TypeSyntax::morphology("^", i32, loc(140), loc(143)), loc(139), loc(143));
+  const auto borrowShared = TypeSyntax::morphology(
+      "&", TypeSyntax::morphology("~", i32, loc(140), loc(143)), loc(139), loc(143));
+  const auto tripleRaw = TypeSyntax::morphology(
+      "*", TypeSyntax::morphology("*", TypeSyntax::morphology("*", i32, loc(142), loc(145)), loc(141), loc(145)), loc(140), loc(145));
+
+  const auto nulOuterRaw = TypeSyntax::morphology(
+      "nul", TypeSyntax::morphology("*", TypeSyntax::morphology("*", i32, loc(141), loc(144)), loc(140), loc(144)), loc(139), loc(144));
+  const auto nulInnerRaw = TypeSyntax::morphology(
+      "*", TypeSyntax::morphology("nul", TypeSyntax::morphology("*", i32, loc(141), loc(144)), loc(140), loc(144)), loc(139), loc(144));
+  const auto nulBothRaw = TypeSyntax::morphology(
+      "nul", TypeSyntax::morphology("*", TypeSyntax::morphology("nul", TypeSyntax::morphology("*", i32, loc(142), loc(145)), loc(141), loc(145)), loc(140), loc(145)), loc(139), loc(145));
+
+  passed &= expectCanonical("double borrow canonical", doubleBorrow, "&&i32");
+  passed &= expectCanonical("borrow unique canonical", borrowUnique, "&^i32");
+  passed &= expectCanonical("borrow shared canonical", borrowShared, "&~i32");
+  passed &= expectCanonical("triple raw canonical", tripleRaw, "***i32");
+  passed &= expectCanonical("nul outer raw canonical", nulOuterRaw, "nul**i32");
+  passed &= expectCanonical("nul inner raw canonical", nulInnerRaw, "*nul*i32");
+  passed &= expectCanonical("nul both raw canonical", nulBothRaw, "nul*nul*i32");
+
+  passed &= expectLowered("double borrow direct lowering", doubleBorrow);
+  passed &= expectLowered("borrow unique direct lowering", borrowUnique);
+  passed &= expectLowered("borrow shared direct lowering", borrowShared);
+  passed &= expectLowered("triple raw direct lowering", tripleRaw);
+  passed &= expectLowered("nul outer raw direct lowering", nulOuterRaw);
+  passed &= expectLowered("nul inner raw direct lowering", nulInnerRaw);
+  passed &= expectLowered("nul both raw direct lowering", nulBothRaw);
+
+  passed &= expectSemanticRoundTrip("double borrow semantic reification", doubleBorrow);
+  passed &= expectSemanticRoundTrip("borrow unique semantic reification", borrowUnique);
+  passed &= expectSemanticRoundTrip("borrow shared semantic reification", borrowShared);
+  passed &= expectSemanticRoundTrip("triple raw semantic reification", tripleRaw);
+  passed &= expectSemanticRoundTrip("nul outer raw semantic reification", nulOuterRaw);
+  passed &= expectSemanticRoundTrip("nul inner raw semantic reification", nulInnerRaw);
+  passed &= expectSemanticRoundTrip("nul both raw semantic reification", nulBothRaw);
+
+  // Mangling collision check across distinct layered handle / raw types
+  std::vector<std::pair<std::string, TypeSyntaxPtr>> allSyntaxes = {
+      {"&&i32", doubleBorrow},
+      {"&^i32", borrowUnique},
+      {"&~i32", borrowShared},
+      {"***i32", tripleRaw},
+      {"nul**i32", nulOuterRaw},
+      {"*nul*i32", nulInnerRaw},
+      {"nul*nul*i32", nulBothRaw},
+  };
+  std::map<std::string, std::string> seenMangles;
+  for (const auto &p : allSyntaxes) {
+    auto t = toka::Type::fromSyntax(p.second);
+    if (!t) {
+      std::cerr << p.first << ": failed to lower type for mangling check\n";
+      passed = false;
+      continue;
+    }
+    std::string m = t->getMangledName();
+    if (seenMangles.count(m)) {
+      std::cerr << "Mangle collision between '" << p.first << "' and '"
+                << seenMangles[m] << "' on mangled name: " << m << "\n";
+      passed = false;
+    } else {
+      seenMangles[m] = p.first;
+    }
+  }
+
   return passed ? 0 : 1;
 }

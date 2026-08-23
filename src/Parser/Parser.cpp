@@ -81,6 +81,7 @@ bool Parser::isTypeStart() const {
   case TokenType::KwCede:
   case TokenType::KwNul:
   case TokenType::Ampersand:
+  case TokenType::And:
   case TokenType::Star:
   case TokenType::Caret:
   case TokenType::Tilde:
@@ -398,7 +399,8 @@ private:
             Tokens[index].Kind == TokenType::Star ||
             Tokens[index].Kind == TokenType::Caret ||
             Tokens[index].Kind == TokenType::Tilde ||
-            Tokens[index].Kind == TokenType::Ampersand)) {
+            Tokens[index].Kind == TokenType::Ampersand ||
+            Tokens[index].Kind == TokenType::And)) {
       ++index;
     }
     return index + 3 < Tokens.size() &&
@@ -431,6 +433,9 @@ private:
       } else if (match(TokenType::KwCede)) {
         prefixes.emplace_back("cede ", Tokens[Pos - 1].Loc);
       } else if (match(TokenType::Ampersand)) {
+        prefixes.emplace_back("&", Tokens[Pos - 1].Loc);
+      } else if (match(TokenType::And)) {
+        prefixes.emplace_back("&", Tokens[Pos - 1].Loc);
         prefixes.emplace_back("&", Tokens[Pos - 1].Loc);
       } else if (match(TokenType::Star)) {
         prefixes.emplace_back("*", Tokens[Pos - 1].Loc);
@@ -776,15 +781,17 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
           return token.Kind == TokenType::KwNul ||
                  token.Kind == TokenType::KwCede ||
                  token.Kind == TokenType::Ampersand ||
+                 token.Kind == TokenType::And ||
                  token.Kind == TokenType::Star ||
                  token.Kind == TokenType::Caret ||
                  token.Kind == TokenType::Tilde ||
                  token.Kind == TokenType::TokenWrite;
         });
     const bool nextIsTypePrefix =
-        check(TokenType::Ampersand) || check(TokenType::Star) ||
-        check(TokenType::Caret) || check(TokenType::Tilde) ||
-        check(TokenType::TokenWrite);
+        check(TokenType::Ampersand) || check(TokenType::And) ||
+        check(TokenType::Star) || check(TokenType::Caret) ||
+        check(TokenType::Tilde) || check(TokenType::TokenWrite) ||
+        check(TokenType::KwNul) || check(TokenType::KwCede);
     // A leading `*`, `&`, or other morphology token is part of a type (for
     // example the cast in `value as *char`).  Once a complete type has begun,
     // the same token kinds delimit the enclosing expression grammar.
@@ -891,6 +898,7 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
           tokens[next].Kind == TokenType::Tilde ||
           tokens[next].Kind == TokenType::Star ||
           tokens[next].Kind == TokenType::Ampersand ||
+          tokens[next].Kind == TokenType::And ||
           tokens[next].Kind == TokenType::Identifier ||
           tokens[next].Kind == TokenType::KwUpperSelf)
         break;
