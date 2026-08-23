@@ -1,0 +1,29 @@
+// tests/pass/g03_nullable_raw_pointer_matrix.tk
+// Verification of explicit nullable raw pointer ('nul *T') operations in Toka
+
+import std/io::println
+
+extern fn libc_free(nul *ptr: void) -> void
+
+fn main() -> i32 {
+    // 1. Explicit nullable raw pointer declaration and null initialization
+    auto nul *#p = null as nul *i32
+    assert(*p == null, "p should be null initially")
+
+    auto val# = 100
+    // 2. Pointing to valid address
+    *p = (*#val:*i32) as nul *i32
+    assert(*p != null, "p should be non-null after assignment")
+
+    unsafe {
+        // 3. Re-assigning to null inside unsafe block
+        *p = null
+        assert(*p == null, "p must be null after reset")
+
+        // 4. Passing null to extern fn expecting nullable raw pointer
+        libc_free(null as nul *void)
+    }
+
+    println("nul *T matrix verified cleanly")
+    return 0
+}

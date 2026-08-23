@@ -18,6 +18,7 @@
 #include "toka/SourceManager.h"
 #include "toka/Sema.h"
 #include "toka/Type.h"
+#include "toka/HandleGrammarAudit.h"
 #include <algorithm>
 #include <cassert>
 #include <functional>
@@ -1218,7 +1219,7 @@ void Sema::checkStmt(Stmt *S) {
                                     ? PermissionFlow{}
                                     : getPermissionFlow(
                                           Ret->ReturnValue.get());
-    if (returnFlow.Kind == PermissionFlowKind::Shared &&
+    if (!m_InUnsafeContext && returnFlow.Kind == PermissionFlowKind::Shared &&
         requiresPayloadWrite(expectedReturnValueObj) &&
         !returnFlow.DirectCapability.PayloadWritable) {
       error(Ret->ReturnValue.get(),
@@ -1719,6 +1720,58 @@ void Sema::checkStmt(Stmt *S) {
       if ((Var->IsPointerNullable || hadNul) && morph.find("nul") == std::string::npos)
         morph = "nul " + morph;
     }
+
+    // [Constitution 1.3] Dual-Attribute Synthesis
+    BindingPermission LocalPermission;
+    if (!morph.empty()) {
+      std::string normalizedMorph = morph;
+      if (normalizedMorph.rfind("nul ", 0) == 0)
+        normalizedMorph = normalizedMorph.substr(4);
+
+      switch (normalizedMorph.empty() ? '\0' : normalizedMorph[0]) {
+      case '^':
+        LocalPermission.Morphology = BindingMorphology::Unique;
+        break;
+      case '~':
+        LocalPermission.Morphology = BindingMorphology::Shared;
+        break;
+      case '&':
+        LocalPermission.Morphology = BindingMorphology::Reference;
+        break;
+      case '*':
+        LocalPermission.Morphology = BindingMorphology::Raw;
+        break;
+      default:
+        break;
+      }
+
+      LocalPermission.IdentityRebindable = Var->IsRebindable;
+      LocalPermission.IdentityMayBeZero = Var->IsPointerNullable || hadNul;
+    }
+    LocalPermission.SoulWritable =
+        Var->IsValueMutable || (morph.empty() && Var->IsRebindable);
+    Info.Permission = LocalPermission;
+
+    if (!Info.TypeObj) {
+      if (inferredType && morph.empty() && InitTypeObj && InitTypeObj->isShape()) {
+        Info.TypeObj = resolveType(InitTypeObj->withAttributes(
+            LocalPermission.SoulWritable, false), false);
+        if (Info.TypeObj) Info.TypeObj->IsCede = false;
+      } else {
+        Info.TypeObj = resolveType(
+            Sema::synthesizePhysicalTypeObject(
+                LocalPermission,
+                inferredType ? TypeSyntaxPtr{} : Var->DeclaredTypeSyntax,
+                baseType, false),
+            false);
+      }
+      if (!Info.TypeObj) {
+        Info.TypeObj = Sema::synthesizePhysicalTypeObject(
+            LocalPermission,
+            inferredType ? TypeSyntaxPtr{} : Var->DeclaredTypeSyntax, baseType,
+            false);
+      }
+    }
     std::set<std::string> depsToCommitAsBorrow;
     if (!m_LastLifeDependencies.empty()) {
       for (const auto &dep : m_LastLifeDependencies) {
@@ -1892,38 +1945,6 @@ void Sema::checkStmt(Stmt *S) {
 
     m_LastBorrowSource = ""; // Clear for next var
 
-    // [Constitution 1.3] Dual-Attribute Synthesis
-    BindingPermission LocalPermission;
-    if (!morph.empty()) {
-      std::string normalizedMorph = morph;
-      if (normalizedMorph.rfind("nul ", 0) == 0)
-        normalizedMorph = normalizedMorph.substr(4);
-
-      switch (normalizedMorph.empty() ? '\0' : normalizedMorph[0]) {
-      case '^':
-        LocalPermission.Morphology = BindingMorphology::Unique;
-        break;
-      case '~':
-        LocalPermission.Morphology = BindingMorphology::Shared;
-        break;
-      case '&':
-        LocalPermission.Morphology = BindingMorphology::Reference;
-        break;
-      case '*':
-        LocalPermission.Morphology = BindingMorphology::Raw;
-        break;
-      default:
-        break;
-      }
-
-      LocalPermission.IdentityRebindable = Var->IsRebindable;
-      LocalPermission.IdentityMayBeZero = Var->IsPointerNullable || hadNul;
-    }
-    // Preserve the legacy local rule: without a handle morphology, # acts on
-    // the soul/value rather than as a rebindable identity marker.
-    LocalPermission.SoulWritable =
-        Var->IsValueMutable || (morph.empty() && Var->IsRebindable);
-    Info.Permission = LocalPermission;
     if (Var->Init) {
       // Shared flow is checked only against the direct initializer.  Earlier
       // hops have already reduced that initializer's capability, so this
@@ -1938,25 +1959,44 @@ void Sema::checkStmt(Stmt *S) {
       }
     }
 
-    if (inferredType && morph.empty() && InitTypeObj &&
-        InitTypeObj->isShape()) {
-      Info.TypeObj = resolveType(InitTypeObj->withAttributes(
-          LocalPermission.SoulWritable, false), false);
-      Info.TypeObj->IsCede = false;
-    } else {
-      auto directType = resolveType(
-          Sema::synthesizePhysicalTypeObject(
-              LocalPermission,
-              inferredType ? TypeSyntaxPtr{} : Var->DeclaredTypeSyntax,
-              baseType, false),
-          false);
-      Info.TypeObj = directType;
-    }
     if (!Info.TypeObj) {
-      Info.TypeObj = Sema::synthesizePhysicalTypeObject(
-          LocalPermission,
-          inferredType ? TypeSyntaxPtr{} : Var->DeclaredTypeSyntax, baseType,
-          false);
+      if (inferredType && morph.empty() && InitTypeObj &&
+          InitTypeObj->isShape()) {
+        Info.TypeObj = resolveType(InitTypeObj->withAttributes(
+            LocalPermission.SoulWritable, false), false);
+        if (Info.TypeObj) Info.TypeObj->IsCede = false;
+      } else {
+        auto directType = resolveType(
+            Sema::synthesizePhysicalTypeObject(
+                LocalPermission,
+                inferredType ? TypeSyntaxPtr{} : Var->DeclaredTypeSyntax,
+                baseType, false),
+            false);
+        Info.TypeObj = directType;
+      }
+      if (!Info.TypeObj) {
+        Info.TypeObj = Sema::synthesizePhysicalTypeObject(
+            LocalPermission,
+            inferredType ? TypeSyntaxPtr{} : Var->DeclaredTypeSyntax, baseType,
+            false);
+      }
+    }
+
+    if (Info.TypeObj) {
+      std::string fnId = CurrentFunction ? (!CurrentFunction->CodegenName.empty() ? CurrentFunction->CodegenName : CurrentFunction->Name) : "";
+      bool isGeneric = (CurrentFunction && (CurrentFunction->TemplateOrigin != nullptr || (!CurrentFunction->CodegenName.empty() && CurrentFunction->CodegenName.find("_M_") != std::string::npos)));
+      std::vector<FormationPhase> phases;
+      if (isGeneric) {
+        phases.push_back(FormationPhase::GenericInstance);
+      }
+      if (inferredType) {
+        phases.push_back(FormationPhase::IntermediateLowering);
+      } else {
+        phases.push_back(FormationPhase::DirectResolution);
+      }
+      SyntaxOrigin origin = (CurrentModule && CurrentModule->IsInterface) ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
+      recordHandleGrammarAudit(Info.TypeObj, origin, phases,
+                               CurrentFunction ? CurrentFunction->Name : "", "", Var->Name, Var->Loc, isGeneric, fnId);
     }
 
     // Only a complete contextual todo may seed a conditional binding.  An
