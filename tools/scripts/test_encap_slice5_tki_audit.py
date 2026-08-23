@@ -74,7 +74,7 @@ def main() -> int:
         assert interface.is_file(), "v5 provider did not emit a TKI"
         text = interface.read_text(encoding="utf-8")
         for expected in (
-                "// @meta format_version: 2",
+                "// @meta format_version: 3",
                 "// @meta identity_schema_version: 2",
                 "// @meta logical_module_path: lib",
                 "// @meta resolver_binding_digest:",
@@ -152,7 +152,7 @@ def main() -> int:
             generic_dup_ir)
         assert len(generic_dup_calls) == 1, generic_dup_ir
 
-        v1 = text.replace("// @meta format_version: 2",
+        v1 = text.replace("// @meta format_version: 3",
                           "// @meta format_version: 1", 1)
         interface.write_text(v1, encoding="utf-8")
         rejected_v1 = compile_source(consumer, root, expect_success=False)

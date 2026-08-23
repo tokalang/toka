@@ -780,7 +780,7 @@ mkdir -p "$TEST_DIR/sourceless_interface"
 
 cat << 'EOF' > "$TEST_DIR/sourceless_interface/lib.tki"
 // @meta compiler_version: any
-// @meta format_version: 2
+// @meta format_version: 3
 // @meta target_triple: any
 // @meta source_hash: any
 // @meta identity_schema_version: 2

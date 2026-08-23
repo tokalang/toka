@@ -21,7 +21,7 @@ write_metadata() {
     local path="$1"
     {
         echo "// @meta compiler_version: any"
-        echo "// @meta format_version: 2"
+        echo "// @meta format_version: 3"
         echo "// @meta target_triple: any"
         echo "// @meta source_hash: any"
         echo "// @meta identity_schema_version: 2"

@@ -199,6 +199,10 @@ bool Parser::rejectTypeSideReferenceParameter(const Token &nameTok,
   if (typeName[pos] != '&')
     return false;
 
+  // Level-2 double borrow parameter: &x: &T is legal
+  if (!bindingPrefix.empty() && bindingPrefix.find('&') != std::string::npos)
+    return false;
+
   std::string baseType = typeName;
   baseType.erase(pos, 1);
 
