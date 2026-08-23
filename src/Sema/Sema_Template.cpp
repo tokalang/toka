@@ -746,13 +746,15 @@ bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName,
     };
     return proveType(root);
   };
-  if (auto shape = std::dynamic_pointer_cast<ShapeType>(
-          resolvedConcreteType ? resolvedConcreteType->getSoulType()
-                               : nullptr)) {
-    if (shape->Decl) {
-      nominalConcreteType = shape->Decl->CodegenName.empty()
-                                ? shape->Decl->Name
-                                : shape->Decl->CodegenName;
+  if (resolvedConcreteType && !resolvedConcreteType->isReference() &&
+      !resolvedConcreteType->isPointer()) {
+    if (auto shape = std::dynamic_pointer_cast<ShapeType>(
+            resolvedConcreteType->getSoulType())) {
+      if (shape->Decl) {
+        nominalConcreteType = shape->Decl->CodegenName.empty()
+                                  ? shape->Decl->Name
+                                  : shape->Decl->CodegenName;
+      }
     }
   }
 
