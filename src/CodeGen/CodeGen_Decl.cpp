@@ -3456,6 +3456,14 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
     return llvm::Type::getVoidTy(m_Context);
   }
 
+  auto issue = Type::findHandleGrammarIssueRecursive(type);
+  if (issue.has_value() && !issue->isValid()) {
+    DiagnosticEngine::report(m_CurrentFunction ? m_CurrentFunction->Loc : SourceLocation(),
+                             DiagID::ERR_CODEGEN_ILLEGAL_HANDLE_GRAMMAR_INVARIANT,
+                             type->toString());
+    return nullptr;
+  }
+
   if (handleGrammarAuditEnabled()) {
     std::string fnId = m_CurrentFunction ? (!m_CurrentFunction->CodegenName.empty() ? m_CurrentFunction->CodegenName : m_CurrentFunction->Name) : "";
     markHandleGrammarTypeLowered(type, fnId);

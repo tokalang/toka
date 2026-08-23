@@ -1602,6 +1602,10 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
       llvm::Value *identityAddr = emitHandleAddr(unary->RHS.get());
       if (!identityAddr)
         return nullptr;
+      if (unary->RHS->ResolvedType && unary->RHS->ResolvedType->isSharedPtr()) {
+        std::string typeName = unary->RHS->ResolvedType ? unary->RHS->ResolvedType->toString() : "";
+        return PhysEntity(identityAddr, typeName, m_Builder.getPtrTy(), false);
+      }
       llvm::Type *ptrTy = m_Builder.getPtrTy();
       if (unary->RHS->ResolvedType)
         ptrTy = getLLVMType(unary->RHS->ResolvedType);

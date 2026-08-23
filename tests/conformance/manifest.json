@@ -813,7 +813,7 @@
       "id": "diag_index_handle_rebind_not_surface_01",
       "path": "diagnostics/index_handle_rebind_is_not_a_1_0_surface.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E0408",
+      "expected_diagnostic_code": "E04572",
       "expected_span_line": 7,
       "timeout_seconds": 10,
       "description": "An indexed element has no independent handle-rebind surface in Toka 1.0"

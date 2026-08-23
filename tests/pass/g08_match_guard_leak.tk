@@ -22,7 +22,7 @@ impl SharedHandle@Encap {
 }
 
 fn get_ref_count(~res: Resource) -> i32 {
-    auto *handle_ptr = &(*res) as *SharedHandle
+    auto *handle_ptr = *res as *SharedHandle
     if *handle_ptr.ref_ptr is null {
         return 0
     }

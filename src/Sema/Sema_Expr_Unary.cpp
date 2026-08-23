@@ -243,6 +243,12 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
           res->IsNullable = Unary->HasNull;
           return res;
         }
+        if (physType && (physType->isSharedPtr() || physType->isUniquePtr() || physType->isReference())) {
+          auto res = std::make_shared<toka::RawPointerType>(physType->getPointeeType());
+          res->IsWritable = handleViewWritable;
+          res->IsNullable = Unary->HasNull;
+          return res;
+        }
         auto res = std::make_shared<toka::RawPointerType>(rhsType);
         res->IsWritable = handleViewWritable;
         res->IsNullable = Unary->HasNull;
@@ -457,6 +463,9 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
          }
       }
     }
+    if (inner && inner->isUniquePtr()) {
+      return inner->withAttributes(Unary->IsRebindable || (m_IsAssignmentTarget && inner->IsWritable), false);
+    }
     auto res = std::make_shared<toka::UniquePointerType>(inner);
     res->IsWritable = Unary->IsRebindable || (m_IsAssignmentTarget && inner->IsWritable);
     res->IsNullable = false;
@@ -479,6 +488,9 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
          }
       }
     }
+    if (inner && inner->isSharedPtr()) {
+      return inner->withAttributes(Unary->IsRebindable || (m_IsAssignmentTarget && inner->IsWritable), false);
+    }
     auto res = std::make_shared<toka::SharedPointerType>(inner);
     res->IsWritable = Unary->IsRebindable || (m_IsAssignmentTarget && inner->IsWritable);
     res->IsNullable = false;
@@ -486,6 +498,9 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
   }
 
   if (Unary->Op == TokenType::Star) {
+    if (inner && (inner->isSharedPtr() || inner->isUniquePtr() || inner->isReference())) {
+      inner = inner->getPointeeType();
+    }
     auto rawPtr = std::make_shared<toka::RawPointerType>(inner);
     rawPtr->IsNullable = Unary->HasNull;
     rawPtr->IsWritable = Unary->IsRebindable || (m_IsAssignmentTarget && inner->IsWritable);

@@ -7,4 +7,4 @@ fn main() -> i32 {
     ~values[0] = cede ~replacement
     return 0
 }
-// EXPECT_ERROR: E0408
+// EXPECT_ERROR: E04572

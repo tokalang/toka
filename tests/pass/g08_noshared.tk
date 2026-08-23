@@ -144,7 +144,7 @@ fn main() -> i32 {
     {
         println("Testing Move Semantics...\n")
         auto ^p = new Point(x=999, y=111, z=0)
-        auto ^q = ^p
+        auto q = cede p
         println("[{}]Moved Heap Point: q.x={}", logi++, q.x)
         assert(q.x == 999, "Move semantics q.x mismatch")
     }

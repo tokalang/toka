@@ -284,15 +284,19 @@ impl LLVMModule {
 
     pub fn verify(self) -> Result<(), string> {
         unsafe {
-            auto nul *err_ptr# = null as nul *char
-            auto ok = toka_llvm_verify_module(self.*handle, &err_ptr as *void)
+            auto *#err_buf# = unsafe alloc [1] Addr
+            err_buf[0] = 0 as Addr
+            auto ok = toka_llvm_verify_module(self.*handle, *err_buf as *void)
             if ok {
+                unsafe free [1] *err_buf
                 return Result<(), string>::Ok(())
             }
-            if *err_ptr == null as nul *char {
+            auto raw_addr = err_buf[0]
+            unsafe free [1] *err_buf
+            if raw_addr == 0 as Addr {
                 return Result<(), string>::Err("Unknown LLVM verification error".to_string())
             }
-            auto *live_err = err_ptr.unwrap()
+            auto *live_err = raw_addr as *char
             auto err_msg = string::from_cstr(*live_err)
             toka_llvm_dispose_string(*live_err)
             return Result<(), string>::Err(err_msg)
