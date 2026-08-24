@@ -47,6 +47,19 @@ struct HandleGrammarProfile {
   std::string describeViolation() const;
 };
 
+struct HandleGrammarIssue {
+  HandleGrammarViolation Violation = HandleGrammarViolation::None;
+  std::vector<unsigned> TypePath; // Structural navigation path in composite type graph
+  unsigned OuterLayer = 0;
+  unsigned InnerLayer = 0;
+  std::shared_ptr<class Type> OffendingType;
+  TypeSyntaxPtr OffendingSyntax;
+  std::string CustomMessage;
+
+  bool isValid() const { return Violation == HandleGrammarViolation::None; }
+  std::string describeViolation() const;
+};
+
 // Classifies the cleanup/transfer responsibility of a resolved value.  This
 // is compiler-internal semantic metadata: it is not a source annotation and
 // does not alter a type's public spelling.
@@ -177,7 +190,11 @@ public:
   static HandleGrammarProfile classifyHandleGrammar(const std::shared_ptr<Type> &type);
 
   // Recursive inspection of Handle Grammar issues across all structural boundaries
-  static std::optional<HandleGrammarProfile> findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type);
+  static std::optional<HandleGrammarIssue> findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type);
+  static std::optional<HandleGrammarIssue>
+  findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
+                                  std::set<const Type *> &visited,
+                                  std::vector<unsigned> currentPath = {});
 
   bool isShape() const { return typeKind == Shape; }
   virtual std::string getSoulName() const { return toString(); }

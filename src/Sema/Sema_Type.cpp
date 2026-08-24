@@ -81,8 +81,8 @@ bool Sema::validateHandleGrammar(SourceLocation loc,
   if (!type)
     return true;
   auto issue = toka::Type::findHandleGrammarIssueRecursive(type);
-  if (issue.has_value() && issue->violation != HandleGrammarViolation::None) {
-    reportHandleGrammarViolation(loc, type, issue->violation);
+  if (issue.has_value() && issue->Violation != HandleGrammarViolation::None) {
+    reportHandleGrammarViolation(loc, issue->OffendingType ? issue->OffendingType : type, issue->Violation);
     return false;
   }
   return true;

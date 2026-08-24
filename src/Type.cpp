@@ -2041,60 +2041,110 @@ HandleGrammarProfile Type::classifyHandleGrammar(const std::shared_ptr<Type> &ty
   return profile;
 }
 
-std::optional<HandleGrammarProfile>
+std::string HandleGrammarIssue::describeViolation() const {
+  switch (Violation) {
+  case HandleGrammarViolation::None:
+    return "None";
+  case HandleGrammarViolation::ExceededManagedDepth:
+    return "ExceededManagedDepth";
+  case HandleGrammarViolation::ExceededBorrowDepth:
+    return "ExceededBorrowDepth";
+  case HandleGrammarViolation::InvalidManagedLayerOrder:
+    return "InvalidManagedLayerOrder";
+  case HandleGrammarViolation::MixedManagedRaw:
+    return "MixedManagedRaw";
+  }
+  return "Unknown";
+}
+
+std::optional<HandleGrammarIssue>
 Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type) {
+  std::set<const Type *> visited;
+  return findHandleGrammarIssueRecursive(type, visited, {});
+}
+
+std::optional<HandleGrammarIssue>
+Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
+                                      std::set<const Type *> &visited,
+                                      std::vector<unsigned> currentPath) {
   if (!type)
     return std::nullopt;
 
   // 1. Check current continuous pointer chain starting at this node
   auto profile = classifyHandleGrammar(type);
-  if (!profile.isValid())
-    return profile;
+  if (!profile.isValid()) {
+    HandleGrammarIssue issue;
+    issue.Violation = profile.violation;
+    issue.TypePath = currentPath;
+    issue.OuterLayer = profile.continuousBorrowDepth + profile.continuousManagedDepth;
+    issue.InnerLayer = profile.continuousRawDepth;
+    issue.OffendingType = type;
+    issue.CustomMessage = profile.describeViolation();
+    return issue;
+  }
 
-  // 2. If this is a pointer, continuous chain has ended at the non-pointer pointee.
+  // 2. If this is a pointer, unwrap until non-pointer and continue
   if (type->isPointer()) {
     std::shared_ptr<Type> current = type;
     while (current && current->isPointer()) {
       current = current->getPointeeType();
     }
     if (current)
-      return findHandleGrammarIssueRecursive(current);
+      return findHandleGrammarIssueRecursive(current, visited, currentPath);
     return std::nullopt;
   }
 
+  // Cycle visited guard for recursive type graphs
+  if (!visited.insert(type.get()).second)
+    return std::nullopt;
+
   // 3. Recurse across structural boundaries
   if (auto arr = dynamic_cast<const ArrayType *>(type.get())) {
-    return findHandleGrammarIssueRecursive(arr->ElementType);
+    currentPath.push_back(0);
+    return findHandleGrammarIssueRecursive(arr->ElementType, visited, currentPath);
   }
   if (auto slc = dynamic_cast<const SliceType *>(type.get())) {
-    return findHandleGrammarIssueRecursive(slc->ElementType);
+    currentPath.push_back(0);
+    return findHandleGrammarIssueRecursive(slc->ElementType, visited, currentPath);
   }
   if (auto shape = dynamic_cast<const ShapeType *>(type.get())) {
-    for (const auto &arg : shape->GenericArgs) {
-      if (auto issue = findHandleGrammarIssueRecursive(arg))
+    for (size_t gi = 0; gi < shape->GenericArgs.size(); ++gi) {
+      auto path = currentPath;
+      path.push_back(static_cast<unsigned>(gi));
+      if (auto issue = findHandleGrammarIssueRecursive(shape->GenericArgs[gi], visited, path))
         return issue;
     }
     return std::nullopt;
   }
   if (auto fn = dynamic_cast<const FunctionType *>(type.get())) {
-    for (const auto &param : fn->ParamTypes) {
-      if (auto issue = findHandleGrammarIssueRecursive(param))
+    for (size_t pi = 0; pi < fn->ParamTypes.size(); ++pi) {
+      auto path = currentPath;
+      path.push_back(static_cast<unsigned>(pi));
+      if (auto issue = findHandleGrammarIssueRecursive(fn->ParamTypes[pi], visited, path))
         return issue;
     }
-    return findHandleGrammarIssueRecursive(fn->ReturnType);
+    auto path = currentPath;
+    path.push_back(999);
+    return findHandleGrammarIssueRecursive(fn->ReturnType, visited, path);
   }
   if (auto dynFn = dynamic_cast<const DynFnType *>(type.get())) {
-    for (const auto &param : dynFn->ParamTypes) {
-      if (auto issue = findHandleGrammarIssueRecursive(param))
+    for (size_t pi = 0; pi < dynFn->ParamTypes.size(); ++pi) {
+      auto path = currentPath;
+      path.push_back(static_cast<unsigned>(pi));
+      if (auto issue = findHandleGrammarIssueRecursive(dynFn->ParamTypes[pi], visited, path))
         return issue;
     }
-    return findHandleGrammarIssueRecursive(dynFn->ReturnType);
+    auto path = currentPath;
+    path.push_back(999);
+    return findHandleGrammarIssueRecursive(dynFn->ReturnType, visited, path);
   }
   if (auto uninit = dynamic_cast<const UninitType *>(type.get())) {
-    return findHandleGrammarIssueRecursive(uninit->InnerType);
+    currentPath.push_back(0);
+    return findHandleGrammarIssueRecursive(uninit->InnerType, visited, currentPath);
   }
   if (auto outcome = dynamic_cast<const MissOutcomeType *>(type.get())) {
-    return findHandleGrammarIssueRecursive(outcome->PayloadType);
+    currentPath.push_back(0);
+    return findHandleGrammarIssueRecursive(outcome->PayloadType, visited, currentPath);
   }
 
   return std::nullopt;

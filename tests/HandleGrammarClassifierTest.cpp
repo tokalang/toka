@@ -128,6 +128,8 @@ int main() {
         {"Option<&&&i32>", HandleGrammarViolation::ExceededBorrowDepth},
         {"Option<^^i32>", HandleGrammarViolation::ExceededManagedDepth},
         {"Option<^&i32>", HandleGrammarViolation::InvalidManagedLayerOrder},
+        {"Option<Option<*&i32>>", HandleGrammarViolation::MixedManagedRaw},
+        {"fn(Option<*~i32>)->void", HandleGrammarViolation::MixedManagedRaw},
     };
 
     for (const auto &rc : recursiveCases) {
@@ -137,7 +139,7 @@ int main() {
             continue;
         }
         auto issue = Type::findHandleGrammarIssueRecursive(ty);
-        HandleGrammarViolation actual = issue.has_value() ? issue->violation : HandleGrammarViolation::None;
+        HandleGrammarViolation actual = issue.has_value() ? issue->Violation : HandleGrammarViolation::None;
         if (actual == rc.expectedViolation) {
             passed++;
         } else {
