@@ -282,6 +282,14 @@ public:
         entry.EnclosingFunctionCodeGen = CodeGenLoweredFunctions.count(canonicalFnId) ? CodeGenStatus::Lowered : CodeGenStatus::NotLowered;
         FunctionToEntriesMap[canonicalFnId].push_back(key);
       }
+      if (entry.Decision == AuditDecision::RejectedSource) {
+        for (auto &pair : Entries) {
+          if (pair.second.CanonicalTypeIdentity == typeId) {
+            pair.second.Decision = AuditDecision::RejectedSource;
+            pair.second.IsTransient = false;
+          }
+        }
+      }
       Entries.emplace(key, entry);
     } else {
       for (auto ph : phases) {
@@ -306,6 +314,19 @@ public:
           it->second.EnclosingFunctionCodeGen = CodeGenStatus::Lowered;
         else if (it->second.EnclosingFunctionCodeGen == CodeGenStatus::Unknown)
           it->second.EnclosingFunctionCodeGen = CodeGenStatus::NotLowered;
+      }
+    }
+  }
+
+  void markRejected(const std::string &typeId, const std::string &canonicalFnId = "") {
+    if (!Enabled || typeId.empty())
+      return;
+    for (auto &pair : Entries) {
+      if (pair.second.CanonicalTypeIdentity == typeId) {
+        if (canonicalFnId.empty() || pair.second.CanonicalFnId.empty() || pair.second.CanonicalFnId == canonicalFnId) {
+          pair.second.Decision = AuditDecision::RejectedSource;
+          pair.second.IsTransient = false;
+        }
       }
     }
   }
@@ -439,6 +460,12 @@ inline void recordHandleGrammarAudit(const std::shared_ptr<Type> &type,
 
 inline void markHandleGrammarTypeLowered(const std::shared_ptr<Type> &type, const std::string &canonicalFnId = "") {
   HandleGrammarAuditRecorder::instance().markTypeLowered(type, canonicalFnId);
+}
+
+inline void markHandleGrammarRejected(const std::shared_ptr<Type> &type, const std::string &canonicalFnId = "") {
+  if (type) {
+    HandleGrammarAuditRecorder::instance().markRejected(type->canonicalIdentity(), canonicalFnId);
+  }
 }
 
 inline void markHandleGrammarFunctionInstantiated(const std::string &canonicalFnId) {

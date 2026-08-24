@@ -113,6 +113,7 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir):
     suites_dir = os.path.join(run_dir, "suites")
     os.makedirs(suites_dir, exist_ok=True)
 
+    ctest_dir = "build-debug" if os.path.exists("build-debug/CTestTestfile.cmake") else "build"
     suites = [
         ("Pass Suite (test_pass.py)", ["python3", "tools/scripts/test_pass.py"], "pass_suite.log"),
         ("Fail Suite (test_verify_fail.py)", ["python3", "tools/scripts/test_verify_fail.py"], "fail_suite.log"),
@@ -122,7 +123,7 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir):
         ("TKI Cache Validation (test_tki_cache_validation.sh)", ["bash", "tools/scripts/test_tki_cache_validation.sh"], "tki_cache_validation.log"),
         ("Cache Invalidation (test_semantic_cache_invalidation.sh)", ["bash", "tools/scripts/test_semantic_cache_invalidation.sh"], "cache_invalidation.log"),
         ("Mixed Core Cache (test_mixed_core_cache.sh)", ["bash", "tools/scripts/test_mixed_core_cache.sh"], "mixed_core_cache.log"),
-        ("CTest (build-debug)", ["ctest", "--test-dir", "build-debug", "--output-on-failure"], "ctest.log"),
+        (f"CTest ({ctest_dir})", ["ctest", "--test-dir", ctest_dir, "--output-on-failure"], "ctest.log"),
     ]
 
     import hashlib
@@ -250,6 +251,23 @@ def aggregate_receipts(audit_dir):
                 existing["is_admitted"] = True
 
     entries = list(unique_canonical_entries.values())
+
+    # Link Generated transients to RejectedSource if the type was rejected at source
+    rejected_type_ids = set()
+    for e in entries:
+        if e.get("decision") == "RejectedSource":
+            if e.get("type_id"):
+                rejected_type_ids.add(e.get("type_id"))
+            if e.get("type"):
+                rejected_type_ids.add(e.get("type"))
+
+    for e in entries:
+        tid = e.get("type_id")
+        tstr = e.get("type")
+        if (tid in rejected_type_ids or tstr in rejected_type_ids) and e.get("decision") == "Observed":
+            e["decision"] = "RejectedSource"
+            e["is_transient"] = False
+
     N = len(entries)
 
     # Taxonomy calculations
@@ -307,6 +325,30 @@ def aggregate_receipts(audit_dir):
         if llvm_ty:
             llvm_lowered_violations += 1
 
+    import hashlib
+    def get_cmd_output(c):
+        try:
+            return subprocess.check_output(c, stderr=subprocess.STDOUT).decode("utf-8", errors="ignore").strip()
+        except Exception:
+            return ""
+
+    git_commit = get_cmd_output(["git", "rev-parse", "HEAD"])
+    git_diff = get_cmd_output(["git", "diff", "HEAD"])
+    git_diff_hash = hashlib.sha256(git_diff.encode("utf-8")).hexdigest()
+
+    # Dynamic compute controlled file hashes over all git tracked files
+    tracked_files = get_cmd_output(["git", "ls-files"]).splitlines()
+    controlled_file_hashes = {}
+    for tf in sorted(tracked_files):
+        tf = tf.strip()
+        if not tf or not os.path.isfile(tf):
+            continue
+        try:
+            with open(tf, "rb") as f:
+                controlled_file_hashes[tf] = hashlib.sha256(f.read()).hexdigest()
+        except Exception:
+            pass
+
     print("\n" + "="*80, flush=True)
     print(f"   HANDLE GRAMMAR AUTHORITATIVE RECEIPT & TAXONOMY (SCHEMA v{SCHEMA_VERSION})", flush=True)
     print("="*80, flush=True)
@@ -314,6 +356,9 @@ def aggregate_receipts(audit_dir):
     print(f"Process-Isolated Log Files Emitted : {len(audit_files)}", flush=True)
     print(f"Raw Events Emitted Across All Runs : {raw_event_count}", flush=True)
     print(f"Unique Canonical Entries (N)       : {N}", flush=True)
+    print(f"Git Commit Hash                    : {git_commit}", flush=True)
+    print(f"Git Diff Hash (SHA-256)            : {git_diff_hash}", flush=True)
+    print(f"Tracked Files Measured             : {len(controlled_file_hashes)}", flush=True)
 
     print(f"\n--- AUTHORITATIVE ADMISSION & LOWERING GATES (M0 THRESHOLDS) ---", flush=True)
     print(f"   • Admitted SourceSurface Violations : {admitted_sourcesurface:<4} [TARGET: 0]", flush=True)
@@ -321,8 +366,8 @@ def aggregate_receipts(audit_dir):
     print(f"   • Non-SFINAE Transients             : {non_sfinae_transients:<4} [TARGET: 0]", flush=True)
     print(f"   • Instantiated Violations           : {instantiated_violations:<4} [TARGET: 0]", flush=True)
     print(f"   • LLVM Lowered Violations           : {llvm_lowered_violations:<4} [TARGET: 0]", flush=True)
-    print(f"   • Rejected SFINAE Evidence          : {rejected_sfinae}", flush=True)
-    print(f"   • Rejected Compile-Fail Evidence    : {rejected_source}", flush=True)
+    print(f"   • Rejected SFINAE Evidence          : {rejected_sfinae:<4} [TARGET: 4]", flush=True)
+    print(f"   • Rejected Compile-Fail Evidence    : {rejected_source:<4} [TARGET: 14]", flush=True)
 
     print(f"\n1. Decision Taxonomy Breakdown (N={N}):", flush=True)
     for k, v in sorted(by_decision.items()):
@@ -362,6 +407,12 @@ def aggregate_receipts(audit_dir):
     receipt_data = {
         "schema_version": SCHEMA_VERSION,
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "integrity": {
+            "git_commit": git_commit,
+            "git_diff_hash": git_diff_hash,
+            "controlled_file_count": len(controlled_file_hashes),
+            "controlled_file_hashes": controlled_file_hashes
+        },
         "total_canonical_entries": N,
         "metrics": {
             "admitted_sourcesurface_violations": admitted_sourcesurface,

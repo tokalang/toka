@@ -73,6 +73,7 @@ void Sema::reportHandleGrammarViolation(SourceLocation loc,
   default:
     break;
   }
+  markHandleGrammarRejected(type);
   HasError = true;
 }
 
