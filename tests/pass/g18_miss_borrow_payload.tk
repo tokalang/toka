@@ -1,0 +1,22 @@
+fn find_value(value: i32, hit: bool) -> &i32 | miss
+effects: return <- value {
+    if hit {
+        return &value
+    }
+    return miss
+}
+
+fn main() -> i32 {
+    auto value = 42
+    match find_value(value, true) {
+        auto &borrowed => {
+            assert(borrowed == 42, "borrowed miss hit payload mismatch")
+        }
+        miss => return 1
+    }
+    match find_value(value, false) {
+        auto &borrowed => return 2
+        miss => {}
+    }
+    return 0
+}

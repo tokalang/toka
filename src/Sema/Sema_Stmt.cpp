@@ -1297,8 +1297,9 @@ void Sema::checkStmt(Stmt *S) {
       }
     } else if (!HasError && !isMissReturn) {
 
-      MorphKind targetMorph =
-          morphKindFromTypeString(CurrentFunctionReturnType);
+      // A hit return into `T | miss` is checked against the payload's
+      // morphology, not the outcome wrapper (whose root has no hat).
+      MorphKind targetMorph = morphKindFromType(expectedReturnValueObj);
       MorphKind sourceMorph = getSyntacticMorphology(Ret->ReturnValue.get());
       
       bool exempt = false;

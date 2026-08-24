@@ -2478,8 +2478,19 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
         llvm::Value *payloadAddr =
             m_Builder.CreateStructGEP(layout, targetAddr, 1,
                                       "miss.payload.addr");
-        genPatternBinding(arm->Pat.get(), payloadAddr,
-                          layout->getElementType(1), outcome->PayloadType);
+        if (arm->Pat->IsReference && outcome->PayloadType &&
+            outcome->PayloadType->isReference()) {
+          // A reference-valued hit stores the referent address in outcome
+          // payload storage. `auto &value` binds that address, not the address
+          // of the outcome's pointer slot.
+          llvm::Value *payloadRef = m_Builder.CreateLoad(
+              m_Builder.getPtrTy(), payloadAddr, "miss.ref.payload");
+          genPatternBinding(arm->Pat.get(), payloadRef,
+                            m_Builder.getPtrTy(), outcome->PayloadType);
+        } else {
+          genPatternBinding(arm->Pat.get(), payloadAddr,
+                            layout->getElementType(1), outcome->PayloadType);
+        }
       }
       if (arm) {
         m_CFStack.push_back(
