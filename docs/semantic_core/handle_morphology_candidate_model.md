@@ -7,6 +7,9 @@
 **Supersedes:** Nothing. It records a candidate model and identifies parts of the
 current Phase 2 implementation that remain under review.
 
+The staged execution plan is maintained in
+[Morphology Constraints and Borrow API Migration Plan](morphology_constraints_and_borrow_api_plan.md).
+
 ## 1. Decision boundary
 
 The hat model is not declared successful or failed by this document. The
