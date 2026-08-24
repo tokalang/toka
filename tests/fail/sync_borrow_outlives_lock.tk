@@ -3,7 +3,7 @@ import std/sync::{RwMutex}
 pub fn main() -> i32 {
     auto rw = RwMutex<i32>::new(10)
     auto r = rw.read_lock().unwrap()
-    auto &borrowed = r.get_ref()
+    auto &borrowed = r.borrow()
     auto moved_r = cede r
     auto x = borrowed
     return 0

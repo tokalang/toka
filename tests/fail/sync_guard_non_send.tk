@@ -5,7 +5,7 @@ pub fn main() -> i32 {
     auto rw = RwMutex<i32>::new(10)
     auto r = rw.read_lock().unwrap()
     auto f = { [cede r] =>
-        auto &v = r.get_ref()
+        auto &v = r.borrow()
         return cede 0
     }:fn() -> cede i32
     auto th = thread_spawn<i32>(cede f)

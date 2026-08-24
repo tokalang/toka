@@ -6,5 +6,5 @@ error[E0440]: Cannot move 'r' while it is borrowed
 note: conflicting borrow originates here
  --> tests/fail/sync_borrow_outlives_lock.tk:6:11
    |
- 6 |     auto &borrowed = r.get_ref()
+ 6 |     auto &borrowed = r.borrow()
    |           ^
