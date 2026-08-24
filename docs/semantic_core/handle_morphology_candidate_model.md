@@ -358,6 +358,42 @@ substitutions in their declared domain. Any conditional member must display an
 explicit morphology constraint in source, TKI, semantic evidence, and
 diagnostics.
 
+### 8.6 Borrowing API naming convention
+
+The safe standard-library borrowing surface uses one capability-oriented verb
+family:
+
+```toka
+borrow(index)          -> &'T
+borrow_mut(index)      -> &'T#
+try_borrow(index)      -> Option<&'T>
+try_borrow_mut(index)  -> Option<&'T#>
+```
+
+The method name does not create the loan by itself; the reference return and
+its dependency contract remain the semantic source of truth. The name makes
+that operation visible and consistent at the API surface.
+
+Other access families remain disjoint:
+
+```toka
+dup(index)         -> 'T
+try_dup(index)     -> Option<'T>
+unsafe_get(index)  -> *'T
+```
+
+Consequently:
+
+- a safe method named `get_ref` must not return a raw pointer;
+- the legacy `Vec::get_ref() -> *'T` surface is migration debt and must be
+  removed rather than redefined silently;
+- ordinary legacy `get_ref` callers migrate to `borrow`/`try_borrow`;
+- callers that genuinely require a raw address migrate to `unsafe_get`;
+- owned duplication currently spelled `get`/`get_opt` migrates to
+  `dup`/`try_dup`;
+- temporary compatibility aliases may exist during migration, but the final
+  public surface contains only one spelling for each capability.
+
 ## 9. Open decisions
 
 The following questions must be resolved before a new Phase 2 baseline tag:
