@@ -48,9 +48,46 @@ struct HandleGrammarProfile {
   std::string describeViolation() const;
 };
 
+enum class TypePathKind {
+  Pointee,
+  ArrayElement,
+  SliceElement,
+  GenericArg,
+  FunctionParam,
+  FunctionReturn,
+  ShapeMember,
+  AnonymousRecordField,
+  ProjectionTarget,
+  OutcomePayload,
+  UninitInner
+};
+
+struct TypePathElement {
+  TypePathKind Kind = TypePathKind::Pointee;
+  unsigned Index = 0;
+  std::string Name;
+
+  std::string toString() const {
+    switch (Kind) {
+    case TypePathKind::Pointee: return "Pointee";
+    case TypePathKind::ArrayElement: return "ArrayElement";
+    case TypePathKind::SliceElement: return "SliceElement";
+    case TypePathKind::GenericArg: return "GenericArg(" + std::to_string(Index) + ")";
+    case TypePathKind::FunctionParam: return "FunctionParam(" + std::to_string(Index) + ")";
+    case TypePathKind::FunctionReturn: return "FunctionReturn";
+    case TypePathKind::ShapeMember: return "ShapeMember(" + (Name.empty() ? std::to_string(Index) : Name) + ")";
+    case TypePathKind::AnonymousRecordField: return "AnonymousRecordField(" + (Name.empty() ? std::to_string(Index) : Name) + ")";
+    case TypePathKind::ProjectionTarget: return "ProjectionTarget";
+    case TypePathKind::OutcomePayload: return "OutcomePayload";
+    case TypePathKind::UninitInner: return "UninitInner";
+    }
+    return "Unknown";
+  }
+};
+
 struct HandleGrammarIssue {
   HandleGrammarViolation Violation = HandleGrammarViolation::None;
-  std::vector<unsigned> TypePath; // Structural navigation path in composite type graph
+  std::vector<TypePathElement> TypePath; // Structural navigation path in composite type graph
   unsigned OuterLayer = 0;
   unsigned InnerLayer = 0;
   std::shared_ptr<class Type> OffendingType;
@@ -59,6 +96,7 @@ struct HandleGrammarIssue {
 
   bool isValid() const { return Violation == HandleGrammarViolation::None; }
   std::string describeViolation() const;
+  std::string formatTypePath() const;
 };
 
 // Classifies the cleanup/transfer responsibility of a resolved value.  This
@@ -191,11 +229,14 @@ public:
   static HandleGrammarProfile classifyHandleGrammar(const std::shared_ptr<Type> &type);
 
   // Recursive inspection of Handle Grammar issues across all structural boundaries
-  static std::optional<HandleGrammarIssue> findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type);
   static std::optional<HandleGrammarIssue>
   findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
+                                  const TypeSyntaxPtr &syntax = nullptr);
+  static std::optional<HandleGrammarIssue>
+  findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
+                                  const TypeSyntaxPtr &syntax,
                                   std::set<const Type *> &visited,
-                                  std::vector<unsigned> currentPath = {});
+                                  std::vector<TypePathElement> currentPath = {});
 
   bool isShape() const { return typeKind == Shape; }
   virtual std::string getSoulName() const { return toString(); }

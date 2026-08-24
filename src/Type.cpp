@@ -2057,16 +2057,87 @@ std::string HandleGrammarIssue::describeViolation() const {
   return "Unknown";
 }
 
-std::optional<HandleGrammarIssue>
-Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type) {
-  std::set<const Type *> visited;
-  return findHandleGrammarIssueRecursive(type, visited, {});
+std::string HandleGrammarIssue::formatTypePath() const {
+  if (TypePath.empty())
+    return "<root>";
+  std::string result;
+  for (size_t i = 0; i < TypePath.size(); ++i) {
+    if (i > 0)
+      result += " -> ";
+    result += TypePath[i].toString();
+  }
+  return result;
+}
+
+static void computeLayerIndices(const std::shared_ptr<Type> &type, HandleGrammarViolation violation,
+                                unsigned &outerLayer, unsigned &innerLayer) {
+  outerLayer = 0;
+  innerLayer = 1;
+  if (!type) return;
+
+  std::vector<Type::Kind> layerKinds;
+  std::shared_ptr<Type> cur = type;
+  while (cur && cur->isPointer()) {
+    layerKinds.push_back(cur->typeKind);
+    cur = cur->getPointeeType();
+  }
+
+  if (violation == HandleGrammarViolation::ExceededBorrowDepth) {
+    outerLayer = 0;
+    innerLayer = layerKinds.size() > 0 ? static_cast<unsigned>(layerKinds.size() - 1) : 2;
+    return;
+  }
+  if (violation == HandleGrammarViolation::ExceededManagedDepth) {
+    outerLayer = 0;
+    innerLayer = 1;
+    for (size_t i = 0; i + 1 < layerKinds.size(); ++i) {
+      bool isManaged1 = (layerKinds[i] == Type::UniquePtr || layerKinds[i] == Type::SharedPtr);
+      bool isManaged2 = (layerKinds[i+1] == Type::UniquePtr || layerKinds[i+1] == Type::SharedPtr);
+      if (isManaged1 && isManaged2) {
+        outerLayer = static_cast<unsigned>(i);
+        innerLayer = static_cast<unsigned>(i + 1);
+        return;
+      }
+    }
+  }
+  if (violation == HandleGrammarViolation::InvalidManagedLayerOrder) {
+    for (size_t i = 0; i + 1 < layerKinds.size(); ++i) {
+      bool isManaged1 = (layerKinds[i] == Type::UniquePtr || layerKinds[i] == Type::SharedPtr);
+      bool isBorrow2 = (layerKinds[i+1] == Type::Reference);
+      if (isManaged1 && isBorrow2) {
+        outerLayer = static_cast<unsigned>(i);
+        innerLayer = static_cast<unsigned>(i + 1);
+        return;
+      }
+    }
+  }
+  if (violation == HandleGrammarViolation::MixedManagedRaw) {
+    for (size_t i = 0; i + 1 < layerKinds.size(); ++i) {
+      bool isRaw1 = (layerKinds[i] == Type::RawPtr);
+      bool isManagedOrBorrow1 = (layerKinds[i] == Type::UniquePtr || layerKinds[i] == Type::SharedPtr || layerKinds[i] == Type::Reference);
+      bool isRaw2 = (layerKinds[i+1] == Type::RawPtr);
+      bool isManagedOrBorrow2 = (layerKinds[i+1] == Type::UniquePtr || layerKinds[i+1] == Type::SharedPtr || layerKinds[i+1] == Type::Reference);
+      if ((isRaw1 && isManagedOrBorrow2) || (isManagedOrBorrow1 && isRaw2)) {
+        outerLayer = static_cast<unsigned>(i);
+        innerLayer = static_cast<unsigned>(i + 1);
+        return;
+      }
+    }
+  }
 }
 
 std::optional<HandleGrammarIssue>
 Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
+                                      const TypeSyntaxPtr &syntax) {
+  std::set<const Type *> visited;
+  return findHandleGrammarIssueRecursive(type, syntax, visited, {});
+}
+
+std::optional<HandleGrammarIssue>
+Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
+                                      const TypeSyntaxPtr &syntax,
                                       std::set<const Type *> &visited,
-                                      std::vector<unsigned> currentPath) {
+                                      std::vector<TypePathElement> currentPath) {
   if (!type)
     return std::nullopt;
 
@@ -2076,9 +2147,9 @@ Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
     HandleGrammarIssue issue;
     issue.Violation = profile.violation;
     issue.TypePath = currentPath;
-    issue.OuterLayer = profile.continuousBorrowDepth + profile.continuousManagedDepth;
-    issue.InnerLayer = profile.continuousRawDepth;
+    computeLayerIndices(type, profile.violation, issue.OuterLayer, issue.InnerLayer);
     issue.OffendingType = type;
+    issue.OffendingSyntax = syntax;
     issue.CustomMessage = profile.describeViolation();
     return issue;
   }
@@ -2086,11 +2157,18 @@ Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
   // 2. If this is a pointer, unwrap until non-pointer and continue
   if (type->isPointer()) {
     std::shared_ptr<Type> current = type;
+    TypeSyntaxPtr curSyntax = syntax;
     while (current && current->isPointer()) {
       current = current->getPointeeType();
+      if (curSyntax && curSyntax->NodeKind == TypeSyntax::Kind::Morphology && curSyntax->Subject) {
+        curSyntax = curSyntax->Subject;
+      }
     }
-    if (current)
-      return findHandleGrammarIssueRecursive(current, visited, currentPath);
+    if (current) {
+      auto path = currentPath;
+      path.push_back({TypePathKind::Pointee, 0, ""});
+      return findHandleGrammarIssueRecursive(current, curSyntax, visited, path);
+    }
     return std::nullopt;
   }
 
@@ -2100,51 +2178,124 @@ Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
 
   // 3. Recurse across structural boundaries
   if (auto arr = dynamic_cast<const ArrayType *>(type.get())) {
-    currentPath.push_back(0);
-    return findHandleGrammarIssueRecursive(arr->ElementType, visited, currentPath);
+    TypeSyntaxPtr elemSyntax = syntax;
+    if (elemSyntax && elemSyntax->NodeKind == TypeSyntax::Kind::Array) {
+      elemSyntax = elemSyntax->Subject;
+    }
+    auto path = currentPath;
+    path.push_back({TypePathKind::ArrayElement, 0, ""});
+    return findHandleGrammarIssueRecursive(arr->ElementType, elemSyntax, visited, path);
   }
   if (auto slc = dynamic_cast<const SliceType *>(type.get())) {
-    currentPath.push_back(0);
-    return findHandleGrammarIssueRecursive(slc->ElementType, visited, currentPath);
+    TypeSyntaxPtr elemSyntax = syntax;
+    if (elemSyntax && elemSyntax->NodeKind == TypeSyntax::Kind::Slice) {
+      elemSyntax = elemSyntax->Subject;
+    }
+    auto path = currentPath;
+    path.push_back({TypePathKind::SliceElement, 0, ""});
+    return findHandleGrammarIssueRecursive(slc->ElementType, elemSyntax, visited, path);
   }
   if (auto shape = dynamic_cast<const ShapeType *>(type.get())) {
+    // 3a. Generic arguments
     for (size_t gi = 0; gi < shape->GenericArgs.size(); ++gi) {
       auto path = currentPath;
-      path.push_back(static_cast<unsigned>(gi));
-      if (auto issue = findHandleGrammarIssueRecursive(shape->GenericArgs[gi], visited, path))
+      path.push_back({TypePathKind::GenericArg, static_cast<unsigned>(gi), ""});
+      TypeSyntaxPtr argSyntax = nullptr;
+      if (syntax && syntax->NodeKind == TypeSyntax::Kind::GenericApplication && gi < syntax->Arguments.size()) {
+        argSyntax = syntax->Arguments[gi].Type;
+      }
+      if (auto issue = findHandleGrammarIssueRecursive(shape->GenericArgs[gi], argSyntax, visited, path))
         return issue;
     }
+
+    // 3b. Concrete shape members
+    if (shape->Decl) {
+      for (size_t mi = 0; mi < shape->Decl->Members.size(); ++mi) {
+        auto &member = shape->Decl->Members[mi];
+        std::shared_ptr<Type> mType = member.ResolvedType;
+        if (!mType && member.TypeSyntax) {
+          mType = Type::fromSyntax(member.TypeSyntax);
+        }
+        if (!mType && !member.Type.empty()) {
+          mType = Type::fromString(member.Type);
+        }
+        if (mType) {
+          auto path = currentPath;
+          path.push_back({TypePathKind::ShapeMember, static_cast<unsigned>(mi), member.Name});
+          if (auto issue = findHandleGrammarIssueRecursive(mType, member.TypeSyntax, visited, path))
+            return issue;
+        }
+      }
+    }
+
+    // 3c. Anonymous records & projections via SourceSyntax
+    if (shape->SourceSyntax) {
+      if (shape->SourceSyntax->NodeKind == TypeSyntax::Kind::AnonymousRecord) {
+        for (size_t fi = 0; fi < shape->SourceSyntax->Fields.size(); ++fi) {
+          auto &field = shape->SourceSyntax->Fields[fi];
+          if (field.Type) {
+            auto fType = Type::fromSyntax(field.Type);
+            if (fType) {
+              auto path = currentPath;
+              path.push_back({TypePathKind::AnonymousRecordField, static_cast<unsigned>(fi), field.Name});
+              if (auto issue = findHandleGrammarIssueRecursive(fType, field.Type, visited, path))
+                return issue;
+            }
+          }
+        }
+      } else if (shape->SourceSyntax->NodeKind == TypeSyntax::Kind::AssociatedProjection && shape->SourceSyntax->Subject) {
+        auto tType = Type::fromSyntax(shape->SourceSyntax->Subject);
+        if (tType) {
+          auto path = currentPath;
+          path.push_back({TypePathKind::ProjectionTarget, 0, ""});
+          if (auto issue = findHandleGrammarIssueRecursive(tType, shape->SourceSyntax->Subject, visited, path))
+            return issue;
+        }
+      }
+    }
+
     return std::nullopt;
   }
   if (auto fn = dynamic_cast<const FunctionType *>(type.get())) {
     for (size_t pi = 0; pi < fn->ParamTypes.size(); ++pi) {
       auto path = currentPath;
-      path.push_back(static_cast<unsigned>(pi));
-      if (auto issue = findHandleGrammarIssueRecursive(fn->ParamTypes[pi], visited, path))
+      path.push_back({TypePathKind::FunctionParam, static_cast<unsigned>(pi), ""});
+      TypeSyntaxPtr pSyntax = nullptr;
+      if (syntax && syntax->NodeKind == TypeSyntax::Kind::Function && pi < syntax->Elements.size()) {
+        pSyntax = syntax->Elements[pi];
+      }
+      if (auto issue = findHandleGrammarIssueRecursive(fn->ParamTypes[pi], pSyntax, visited, path))
         return issue;
     }
     auto path = currentPath;
-    path.push_back(999);
-    return findHandleGrammarIssueRecursive(fn->ReturnType, visited, path);
+    path.push_back({TypePathKind::FunctionReturn, 0, ""});
+    TypeSyntaxPtr retSyntax = nullptr;
+    if (syntax && syntax->NodeKind == TypeSyntax::Kind::Function) {
+      retSyntax = syntax->Result;
+    }
+    return findHandleGrammarIssueRecursive(fn->ReturnType, retSyntax, visited, path);
   }
   if (auto dynFn = dynamic_cast<const DynFnType *>(type.get())) {
     for (size_t pi = 0; pi < dynFn->ParamTypes.size(); ++pi) {
       auto path = currentPath;
-      path.push_back(static_cast<unsigned>(pi));
-      if (auto issue = findHandleGrammarIssueRecursive(dynFn->ParamTypes[pi], visited, path))
+      path.push_back({TypePathKind::FunctionParam, static_cast<unsigned>(pi), ""});
+      if (auto issue = findHandleGrammarIssueRecursive(dynFn->ParamTypes[pi], nullptr, visited, path))
         return issue;
     }
     auto path = currentPath;
-    path.push_back(999);
-    return findHandleGrammarIssueRecursive(dynFn->ReturnType, visited, path);
+    path.push_back({TypePathKind::FunctionReturn, 0, ""});
+    return findHandleGrammarIssueRecursive(dynFn->ReturnType, nullptr, visited, path);
   }
   if (auto uninit = dynamic_cast<const UninitType *>(type.get())) {
-    currentPath.push_back(0);
-    return findHandleGrammarIssueRecursive(uninit->InnerType, visited, currentPath);
+    auto path = currentPath;
+    path.push_back({TypePathKind::UninitInner, 0, ""});
+    return findHandleGrammarIssueRecursive(uninit->InnerType, nullptr, visited, path);
   }
   if (auto outcome = dynamic_cast<const MissOutcomeType *>(type.get())) {
-    currentPath.push_back(0);
-    return findHandleGrammarIssueRecursive(outcome->PayloadType, visited, currentPath);
+    auto path = currentPath;
+    path.push_back({TypePathKind::OutcomePayload, 0, ""});
+    TypeSyntaxPtr plSyntax = (syntax && syntax->NodeKind == TypeSyntax::Kind::MissOutcome) ? syntax->Subject : nullptr;
+    return findHandleGrammarIssueRecursive(outcome->PayloadType, plSyntax, visited, path);
   }
 
   return std::nullopt;

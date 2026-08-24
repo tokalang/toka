@@ -110,26 +110,29 @@ int main() {
         }
     }
 
-    // --- 7. Recursive Structural Boundaries ---
+    // --- 7. Recursive Structural Boundaries with Typed Paths and Layer Indices ---
     struct RecursiveTestCase {
         std::string typeStr;
         HandleGrammarViolation expectedViolation;
+        std::string expectedPath;
+        unsigned expectedOuterLayer;
+        unsigned expectedInnerLayer;
     };
 
     std::vector<RecursiveTestCase> recursiveCases = {
-        {"*Option<&i32>", HandleGrammarViolation::None},
-        {"Option<*&i32>", HandleGrammarViolation::MixedManagedRaw},
-        {"[*^i32; 4]", HandleGrammarViolation::MixedManagedRaw},
-        {"[*&i32]", HandleGrammarViolation::MixedManagedRaw},
-        {"fn(*&i32)->i32", HandleGrammarViolation::MixedManagedRaw},
-        {"fn(i32)->*&i32", HandleGrammarViolation::MixedManagedRaw},
-        {"Uninit<*&i32>", HandleGrammarViolation::MixedManagedRaw},
-        {"*&i32|miss", HandleGrammarViolation::MixedManagedRaw},
-        {"Option<&&&i32>", HandleGrammarViolation::ExceededBorrowDepth},
-        {"Option<^^i32>", HandleGrammarViolation::ExceededManagedDepth},
-        {"Option<^&i32>", HandleGrammarViolation::InvalidManagedLayerOrder},
-        {"Option<Option<*&i32>>", HandleGrammarViolation::MixedManagedRaw},
-        {"fn(Option<*~i32>)->void", HandleGrammarViolation::MixedManagedRaw},
+        {"*Option<&i32>", HandleGrammarViolation::None, "", 0, 0},
+        {"Option<*&i32>", HandleGrammarViolation::MixedManagedRaw, "GenericArg(0)", 0, 1},
+        {"[*^i32; 4]", HandleGrammarViolation::MixedManagedRaw, "ArrayElement", 0, 1},
+        {"[*&i32]", HandleGrammarViolation::MixedManagedRaw, "SliceElement", 0, 1},
+        {"fn(*&i32)->i32", HandleGrammarViolation::MixedManagedRaw, "FunctionParam(0)", 0, 1},
+        {"fn(i32)->*&i32", HandleGrammarViolation::MixedManagedRaw, "FunctionReturn", 0, 1},
+        {"Uninit<*&i32>", HandleGrammarViolation::MixedManagedRaw, "UninitInner", 0, 1},
+        {"*&i32|miss", HandleGrammarViolation::MixedManagedRaw, "OutcomePayload", 0, 1},
+        {"Option<&&&i32>", HandleGrammarViolation::ExceededBorrowDepth, "GenericArg(0)", 0, 2},
+        {"Option<^^i32>", HandleGrammarViolation::ExceededManagedDepth, "GenericArg(0)", 0, 1},
+        {"Option<^&i32>", HandleGrammarViolation::InvalidManagedLayerOrder, "GenericArg(0)", 0, 1},
+        {"Option<Option<*&i32>>", HandleGrammarViolation::MixedManagedRaw, "GenericArg(0) -> GenericArg(0)", 0, 1},
+        {"fn(Option<*~i32>)->void", HandleGrammarViolation::MixedManagedRaw, "FunctionParam(0) -> GenericArg(0)", 0, 1},
     };
 
     for (const auto &rc : recursiveCases) {
@@ -140,13 +143,27 @@ int main() {
         }
         auto issue = Type::findHandleGrammarIssueRecursive(ty);
         HandleGrammarViolation actual = issue.has_value() ? issue->Violation : HandleGrammarViolation::None;
-        if (actual == rc.expectedViolation) {
-            passed++;
-        } else {
+        if (actual != rc.expectedViolation) {
             std::cerr << "FAIL: recursive " << rc.typeStr << " violation mismatch. Expected "
                       << static_cast<int>(rc.expectedViolation) << ", Got "
                       << static_cast<int>(actual) << "\n";
+            continue;
         }
+        if (actual != HandleGrammarViolation::None) {
+            std::string pathStr = issue->formatTypePath();
+            if (pathStr != rc.expectedPath) {
+                std::cerr << "FAIL: recursive " << rc.typeStr << " path mismatch. Expected '"
+                          << rc.expectedPath << "', Got '" << pathStr << "'\n";
+                continue;
+            }
+            if (issue->OuterLayer != rc.expectedOuterLayer || issue->InnerLayer != rc.expectedInnerLayer) {
+                std::cerr << "FAIL: recursive " << rc.typeStr << " layer index mismatch. Expected ("
+                          << rc.expectedOuterLayer << ", " << rc.expectedInnerLayer << "), Got ("
+                          << issue->OuterLayer << ", " << issue->InnerLayer << ")\n";
+                continue;
+            }
+        }
+        passed++;
     }
 
     size_t totalTests = testCases.size() + recursiveCases.size();
