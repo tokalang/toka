@@ -89,6 +89,39 @@ bool Sema::validateHandleGrammar(SourceLocation loc,
   return true;
 }
 
+bool Sema::validateAliasTarget(SourceLocation loc,
+                               const std::string &aliasName,
+                               const TypeSyntaxPtr &targetSyntax,
+                               const std::shared_ptr<toka::Type> &targetType) {
+  if (targetSyntax) {
+    TypeSyntaxPtr cur = targetSyntax;
+    while (cur && cur->NodeKind == TypeSyntax::Kind::Morphology) {
+      std::string rootMorph = cur->Text;
+      DiagnosticEngine::report(loc, DiagID::ERR_ALIAS_ROOT_HANDLE_MORPHOLOGY,
+                               aliasName, rootMorph);
+      HasError = true;
+      return false;
+    }
+  }
+
+  if (targetType && (targetType->isPointer() || targetType->isSmartPointer() ||
+                     targetType->isReference())) {
+    std::string rootMorph = targetType->isUniquePtr() ? "^" :
+                            targetType->isSharedPtr() ? "~" :
+                            targetType->isReference() ? "&" : "*";
+    DiagnosticEngine::report(loc, DiagID::ERR_ALIAS_ROOT_HANDLE_MORPHOLOGY,
+                             aliasName, rootMorph);
+    HasError = true;
+    return false;
+  }
+
+  if (targetType) {
+    if (!validateHandleGrammar(loc, targetType))
+      return false;
+  }
+  return true;
+}
+
 std::shared_ptr<toka::Type>
 Sema::lowerAliasTarget(const AliasInfo &alias) const {
   auto res = alias.TargetSyntax ? toka::Type::fromSyntax(alias.TargetSyntax)

@@ -5765,19 +5765,15 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
             bool calleeExpectsLevel2Borrow = false;
             if (funcDecl && i < funcDecl->Args.size()) {
               const auto &calleeArg = funcDecl->Args[i];
-              if (calleeArg.IsReference) {
+              if (calleeArg.Permission.isLevel2Borrow()) {
+                calleeExpectsLevel2Borrow = true;
+              } else if (calleeArg.IsReference) {
                 auto calleeTy = calleeArg.ResolvedType;
-                if (!calleeArg.Type.empty() && m_TypeAliases.count(calleeArg.Type)) {
-                  calleeTy = m_TypeAliases[calleeArg.Type];
-                } else if (calleeTy && m_TypeAliases.count(calleeTy->toString())) {
-                  calleeTy = m_TypeAliases[calleeTy->toString()];
-                }
-                if (calleeArg.IsUnique || calleeArg.IsShared) {
-                  calleeExpectsLevel2Borrow = true;
-                } else if (calleeTy && (calleeTy->isReference() || calleeTy->isUniquePtr() || calleeTy->isSharedPtr())) {
-                  calleeExpectsLevel2Borrow = true;
-                } else if (!calleeArg.Type.empty() && (calleeArg.Type[0] == '&' || calleeArg.Type[0] == '^' || calleeArg.Type[0] == '~')) {
-                  calleeExpectsLevel2Borrow = true;
+                if (calleeTy && calleeTy->isReference()) {
+                  auto inner = calleeTy->getPointeeType();
+                  if (inner && (inner->isReference() || inner->isUniquePtr() || inner->isSharedPtr())) {
+                    calleeExpectsLevel2Borrow = true;
+                  }
                 }
               }
             }

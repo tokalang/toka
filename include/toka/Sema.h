@@ -945,6 +945,37 @@ private:
       }
     }
 
+    if (!Permission.HandleLayers.empty()) {
+      std::shared_ptr<toka::Type> result = soul;
+      for (auto it = Permission.HandleLayers.rbegin(); it != Permission.HandleLayers.rend(); ++it) {
+        const auto &layer = *it;
+        std::shared_ptr<toka::PointerType> physical;
+        switch (layer.Morphology) {
+        case BindingMorphology::Raw:
+          physical = std::make_shared<toka::RawPointerType>(result);
+          break;
+        case BindingMorphology::Unique:
+          physical = std::make_shared<toka::UniquePointerType>(result);
+          break;
+        case BindingMorphology::Shared:
+          physical = std::make_shared<toka::SharedPointerType>(result);
+          break;
+        case BindingMorphology::Reference:
+          physical = std::make_shared<toka::ReferenceType>(result);
+          break;
+        case BindingMorphology::None:
+          break;
+        }
+        if (physical) {
+          physical->IsWritable = layer.Rebindable;
+          physical->IsNullable = layer.Nullable;
+          physical->IsBlocked = layer.Blocked;
+          result = physical;
+        }
+      }
+      return result;
+    }
+
     if (Permission.Morphology == BindingMorphology::None)
       return soul;
 
@@ -984,6 +1015,10 @@ private:
     physical->IsBlocked = Permission.IdentityBlocked;
     return physical;
   }
+
+  bool validateAliasTarget(SourceLocation loc, const std::string &aliasName,
+                           const TypeSyntaxPtr &targetSyntax,
+                           const std::shared_ptr<toka::Type> &targetType);
 
   // Helper for type synthesis from AST nodes with binding/path permissions.
   template <typename T>

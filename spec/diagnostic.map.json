@@ -3198,6 +3198,12 @@
       "level": "Error",
       "message": "Conflicting extern declarations for '{}': existing LLVM type '{}', requested '{}'",
       "description": "All declarations for one extern symbol must lower to the same LLVM function type."
+    },
+    "E0760": {
+      "id": "ERR_CODEGEN_ILLEGAL_HANDLE_GRAMMAR",
+      "level": "Error",
+      "message": "Internal CodeGen invariant violation: illegal Handle Grammar type '{}' reached LLVM lowering",
+      "description": "Internal CodeGen invariant violation: illegal Handle Grammar type '{}' reached LLVM lowering"
     }
   }
 }

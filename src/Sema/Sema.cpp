@@ -3050,7 +3050,7 @@ void Sema::declareGlobals(Module &M) {
     auto aliasTypeObj = toka::Type::fromSyntax(targetSyntax);
     if (!aliasTypeObj)
       aliasTypeObj = toka::Type::fromString(target);
-    validateHandleGrammar(Alias->Loc, aliasTypeObj);
+    validateAliasTarget(Alias->Loc, Alias->Name, targetSyntax, aliasTypeObj);
     recordHandleGrammarAudit(aliasTypeObj, aliasOrigin, {FormationPhase::DirectResolution}, Alias->Name, "", "", Alias->Loc);
     SymbolInfo info;
     info.TypeObj = toka::Type::fromString(Alias->Name);
@@ -3404,6 +3404,10 @@ void Sema::registerGlobals(Module &M) {
                                    Alias->GenericParams};
     TypeAliasMap[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
                                  Alias->GenericParams};
+    auto aliasTypeObj = toka::Type::fromSyntax(targetSyntax);
+    if (!aliasTypeObj)
+      aliasTypeObj = toka::Type::fromString(target);
+    validateAliasTarget(Alias->Loc, Alias->Name, targetSyntax, aliasTypeObj);
 
     SymbolInfo aliasInfo;
     aliasInfo.TypeObj = toka::Type::fromString(Alias->Name);

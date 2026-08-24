@@ -3002,19 +3002,15 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         bool calleeExpectsLevel2Borrow = false;
         if (fd && targetArgIdx < fd->Args.size()) {
           const auto &calleeArg = fd->Args[targetArgIdx];
-          if (calleeArg.IsReference) {
+          if (calleeArg.Permission.isLevel2Borrow()) {
+            calleeExpectsLevel2Borrow = true;
+          } else if (calleeArg.IsReference) {
             auto calleeTy = calleeArg.ResolvedType;
-            if (!calleeArg.Type.empty() && m_TypeAliases.count(calleeArg.Type)) {
-              calleeTy = m_TypeAliases[calleeArg.Type];
-            } else if (calleeTy && m_TypeAliases.count(calleeTy->toString())) {
-              calleeTy = m_TypeAliases[calleeTy->toString()];
-            }
-            if (calleeArg.IsUnique || calleeArg.IsShared) {
-              calleeExpectsLevel2Borrow = true;
-            } else if (calleeTy && (calleeTy->isReference() || calleeTy->isUniquePtr() || calleeTy->isSharedPtr())) {
-              calleeExpectsLevel2Borrow = true;
-            } else if (!calleeArg.Type.empty() && (calleeArg.Type[0] == '&' || calleeArg.Type[0] == '^' || calleeArg.Type[0] == '~')) {
-              calleeExpectsLevel2Borrow = true;
+            if (calleeTy && calleeTy->isReference()) {
+              auto inner = calleeTy->getPointeeType();
+              if (inner && (inner->isReference() || inner->isUniquePtr() || inner->isSharedPtr())) {
+                calleeExpectsLevel2Borrow = true;
+              }
             }
           }
         }
@@ -3493,7 +3489,7 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
   auto issue = Type::findHandleGrammarIssueRecursive(type);
   if (issue.has_value() && !issue->isValid()) {
     DiagnosticEngine::report(m_CurrentFunction ? m_CurrentFunction->Loc : SourceLocation(),
-                             DiagID::ERR_CODEGEN_ILLEGAL_HANDLE_GRAMMAR_INVARIANT,
+                             DiagID::ERR_CODEGEN_ILLEGAL_HANDLE_GRAMMAR,
                              type->toString());
     return nullptr;
   }
