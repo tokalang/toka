@@ -82,7 +82,7 @@ impl ModuleSnapshot {
         auto c_dependencies# = Vec<string>::new()
         auto i# = 0:usize
         loop i < self.dependencies.len() {
-            c_dependencies#.push(cede self.dependencies.get_ref(i).clone())
+            c_dependencies#.push(cede self.dependencies.borrow(i).clone())
             i += 1
         }
         return ModuleSnapshot(
@@ -126,7 +126,7 @@ fn snapshot_to_json(snapshot: ModuleSnapshot, buf#: string) -> string {
     auto i# = 0:usize
     loop i < snapshot.dependencies.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string(snapshot.dependencies.get_ref(i).as_str(), buf)
+        json_write_string(snapshot.dependencies.borrow(i).as_str(), buf)
         i += 1
     }
     buf#.push_str("]}")
@@ -156,7 +156,7 @@ impl DependencyManifest {
         auto c_roots# = Vec<string>::new()
         auto i# = 0:usize
         loop i < self.roots.len() {
-            c_roots#.push(cede self.roots.get_ref(i).clone())
+            c_roots#.push(cede self.roots.borrow(i).clone())
             i += 1
         }
         auto c_modules# = HashMap<string, ModuleSnapshot>::new()
@@ -184,7 +184,7 @@ fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
     auto i# = 0:usize
     loop i < manifest.roots.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string(manifest.roots.get_ref(i).as_str(), buf)
+        json_write_string(manifest.roots.borrow(i).as_str(), buf)
         i += 1
     }
     buf#.push_str("],\"modules\":{")
@@ -228,7 +228,7 @@ impl RebuildModuleInfo {
         auto c_dirty_deps# = Vec<string>::new()
         auto i# = 0:usize
         loop i < self.dirty_deps.len() {
-            c_dirty_deps#.push(cede self.dirty_deps.get_ref(i).clone())
+            c_dirty_deps#.push(cede self.dirty_deps.borrow(i).clone())
             i += 1
         }
         return RebuildModuleInfo(
@@ -246,7 +246,7 @@ fn info_to_json(info: RebuildModuleInfo) -> string {
     auto i# = 0:usize
     loop i < info.dirty_deps.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string(info.dirty_deps.get_ref(i).as_str(), buf)
+        json_write_string(info.dirty_deps.borrow(i).as_str(), buf)
         i += 1
     }
     buf#.push_str("]}")
@@ -276,7 +276,7 @@ impl RebuildPlan {
         auto c_dirty_roots# = Vec<string>::new()
         auto i# = 0:usize
         loop i < self.dirty_roots.len() {
-            c_dirty_roots#.push(cede self.dirty_roots.get_ref(i).clone())
+            c_dirty_roots#.push(cede self.dirty_roots.borrow(i).clone())
             i += 1
         }
         auto c_dirty_modules# = HashMap<string, RebuildModuleInfo>::new()
@@ -305,7 +305,7 @@ fn plan_to_json('plan: RebuildPlan) -> string {
     auto i# = 0:usize
     loop i < 'plan.dirty_roots.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string('plan.dirty_roots.get_ref(i).as_str(), buf)
+        json_write_string('plan.dirty_roots.borrow(i).as_str(), buf)
         i += 1
     }
     buf#.push_str("],\"dirty_modules\":{")
@@ -349,7 +349,7 @@ impl DfsResult {
         auto c_chain# = Vec<string>::new()
         auto i# = 0:usize
         loop i < self.chain.len() {
-            c_chain#.push(cede self.chain.get_ref(i).clone())
+            c_chain#.push(cede self.chain.borrow(i).clone())
             i += 1
         }
         return DfsResult(
@@ -363,7 +363,7 @@ impl DfsResult {
 fn vec_contains('vec: Vec<string>, 'item: string) -> bool {
     auto i# = 0:usize
     loop i < 'vec.len() {
-        if 'vec.get_ref(i).as_str().equals('item) {
+        if 'vec.borrow(i).as_str().equals('item) {
             return true
         }
         i += 1
@@ -375,7 +375,7 @@ fn roots_equal('a: Vec<string>, 'b: Vec<string>) -> bool {
     if 'a.len() != 'b.len() { return false }
     auto i# = 0:usize
     loop i < 'a.len() {
-        if !vec_contains('b, 'a.get_ref(i).clone()) {
+        if !vec_contains('b, 'a.borrow(i).clone()) {
             return false
         }
         i += 1
@@ -485,7 +485,7 @@ fn check_dirty_recursive(
     visiting#: HashMap<string, bool>
 ) -> DfsResult {
     {
-        auto memo_opt = memo.get_ref(node)
+        auto memo_opt = memo.try_borrow(node)
         if memo_opt.is_none() == false {
             return cede memo_opt.unwrap().clone()
         }
@@ -500,7 +500,7 @@ fn check_dirty_recursive(
         )
     }
     
-    auto dirty_reason_opt = dirty_map.get_ref(node)
+    auto dirty_reason_opt = dirty_map.try_borrow(node)
     if dirty_reason_opt.is_none() == false {
         auto res = DfsResult(
             is_dirty = true,
@@ -511,7 +511,7 @@ fn check_dirty_recursive(
         return cede res
     }
     
-    auto curr_info_opt = current_graph.modules.get_ref(node)
+    auto curr_info_opt = current_graph.modules.try_borrow(node)
     if curr_info_opt.is_none() {
         auto res = DfsResult(
             is_dirty = true,
@@ -526,7 +526,7 @@ fn check_dirty_recursive(
     
     auto i# = 0:usize
     loop i < curr_info.dependencies.len() {
-        auto dep = curr_info.dependencies.get_ref(i).clone()
+        auto dep = curr_info.dependencies.borrow(i).clone()
         if vec_contains(current_graph.roots, dep) && !vec_contains(current_graph.roots, node) {
             i += 1
             continue
@@ -537,7 +537,7 @@ fn check_dirty_recursive(
             chain#.push(cede dep.clone())
             auto j# = 0:usize
             loop j < dep_res.chain.len() {
-                chain#.push(cede dep_res.chain.get_ref(j).clone())
+                chain#.push(cede dep_res.chain.borrow(j).clone())
                 j += 1
             }
             auto res = DfsResult(
@@ -571,7 +571,7 @@ fn generate_rebuild_plan(
         plan.status = cede string::from("dirty")
         auto i# = 0:usize
         loop i < current_graph.roots.len() {
-            plan.dirty_roots#.push(cede current_graph.roots.get_ref(i).clone())
+            plan.dirty_roots#.push(cede current_graph.roots.borrow(i).clone())
             i += 1
         }
         auto iter# = current_graph.modules.iter()
@@ -593,7 +593,7 @@ fn generate_rebuild_plan(
         plan.status = cede string::from("dirty")
         auto i# = 0:usize
         loop i < current_graph.roots.len() {
-            plan.dirty_roots#.push(cede current_graph.roots.get_ref(i).clone())
+            plan.dirty_roots#.push(cede current_graph.roots.borrow(i).clone())
             i += 1
         }
         auto iter# = current_graph.modules.iter()
@@ -615,7 +615,7 @@ fn generate_rebuild_plan(
         plan.status = cede string::from("dirty")
         auto i# = 0:usize
         loop i < current_graph.roots.len() {
-            plan.dirty_roots#.push(cede current_graph.roots.get_ref(i).clone())
+            plan.dirty_roots#.push(cede current_graph.roots.borrow(i).clone())
             i += 1
         }
         auto iter# = current_graph.modules.iter()
@@ -643,7 +643,7 @@ fn generate_rebuild_plan(
         auto m_path = m_path_ref.clone()
         auto &curr_info = entry.val()
         
-        auto old_info_opt = old_manifest.modules.get_ref(m_path)
+        auto old_info_opt = old_manifest.modules.try_borrow(m_path)
         if old_info_opt.is_none() {
             dirty_map#.insert(cede m_path.clone(), cede string::from("new module"))
             continue
@@ -716,7 +716,7 @@ fn generate_rebuild_plan(
             auto chain# = Vec<string>::new()
             auto j# = 0:usize
             loop j < res.chain.len() {
-                chain#.push(cede res.chain.get_ref(j).clone())
+                chain#.push(cede res.chain.borrow(j).clone())
                 j += 1
             }
             auto k# = m_path.clone()
@@ -959,7 +959,7 @@ fn run_build_impl(
         auto requested_node_index# = 0:usize
         loop requested_node_index < requested_pkg_nodes.len() {
             compiler_args#.push(cede string::from("--pkg-node"))
-            compiler_args#.push(cede requested_pkg_nodes.get_ref(requested_node_index).clone())
+            compiler_args#.push(cede requested_pkg_nodes.borrow(requested_node_index).clone())
             requested_node_index += 1
         }
         if validate_semantic_manifests {
@@ -1098,7 +1098,7 @@ fn run_build_impl(
             auto plan_arg_index# = 0:usize
             loop plan_arg_index < compiler_args.len() {
                 auto plan_arg# = string::from("--compiler-arg=")
-                plan_arg#.push_str(compiler_args.get_ref(plan_arg_index).as_str())
+                plan_arg#.push_str(compiler_args.borrow(plan_arg_index).as_str())
                 plan_cmd#.arg(plan_arg)
                 plan_arg_index += 1
             }
@@ -1117,7 +1117,7 @@ fn run_build_impl(
         auto driver_arg_index# = 0:usize
         loop driver_arg_index < compiler_args.len() {
             auto driver_arg# = string::from("--compiler-arg=")
-            driver_arg#.push_str(compiler_args.get_ref(driver_arg_index).as_str())
+            driver_arg#.push_str(compiler_args.borrow(driver_arg_index).as_str())
             cmd1#.arg(driver_arg)
             driver_arg_index += 1
         }
