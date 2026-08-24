@@ -457,10 +457,20 @@ impl<'T: @FromJson> Option<'T>@FromJson {
         unsafe {
             auto *buf = unsafe alloc [1] 'T as *['T]
             libc_memset(*buf as *void, 0, sizeof('T))
-            rem = buf[0]#.parse_json(rem)!
-            self = Option<'T>::Some(cede buf[0])
-            unsafe free [0] *buf
-            return JsonRes::Ok(rem)
+            auto cur_len = rem.len()
+            match buf[0]#.parse_json(rem) {
+                auto Result<str, str>::Ok('next_rem) => {
+                    auto consumed = cur_len - 'next_rem.len()
+                    rem = rem.substr(consumed, rem.len() - consumed)
+                    self = Option<'T>::Some(cede buf[0])
+                    unsafe free [0] *buf
+                    return JsonRes::Ok(rem)
+                }
+                auto Result<str, str>::Err('e) => {
+                    unsafe free [0] *buf
+                    return JsonRes::Err('e)
+                }
+            }
         }
     }
 }
@@ -472,25 +482,45 @@ impl<'T: @FromJson, 'E: @FromJson> Result<'T, 'E>@FromJson {
         rem = rem.substr(1, rem.len() - 1)
         rem = json_skip_whitespace(rem)
         
-        auto key# = ""
+        auto key# = string::new()
         rem = key#.parse_json(rem)!
         rem = json_skip_whitespace(rem)
         if rem.len() == 0 || rem.byte_at(0) != 58 { return JsonRes::Err("Expected : for Result") }
         rem = rem.substr(1, rem.len() - 1)
         
         unsafe {
-            if key.equals("Ok") {
+            if key.as_str().equals("Ok") {
                 auto *buf = unsafe alloc [1] 'T as *['T]
                 libc_memset(*buf as *void, 0, sizeof('T))
-                rem = buf[0]#.parse_json(rem)!
-                self = Result<'T, 'E>::Ok(cede buf[0])
-                unsafe free [0] *buf
-            } else if key.equals("Err") {
+                auto cur_len = rem.len()
+                match buf[0]#.parse_json(rem) {
+                    auto Result<str, str>::Ok('next_rem) => {
+                        auto consumed = cur_len - 'next_rem.len()
+                        rem = rem.substr(consumed, rem.len() - consumed)
+                        self = Result<'T, 'E>::Ok(cede buf[0])
+                        unsafe free [0] *buf
+                    }
+                    auto Result<str, str>::Err('e) => {
+                        unsafe free [0] *buf
+                        return JsonRes::Err('e)
+                    }
+                }
+            } else if key.as_str().equals("Err") {
                 auto *e_buf = unsafe alloc [1] 'E as *['E]
                 libc_memset(*e_buf as *void, 0, sizeof('E))
-                rem = e_buf[0]#.parse_json(rem)!
-                self = Result<'T, 'E>::Err(cede e_buf[0])
-                unsafe free [0] *e_buf
+                auto cur_len = rem.len()
+                match e_buf[0]#.parse_json(rem) {
+                    auto Result<str, str>::Ok('next_rem) => {
+                        auto consumed = cur_len - 'next_rem.len()
+                        rem = rem.substr(consumed, rem.len() - consumed)
+                        self = Result<'T, 'E>::Err(cede e_buf[0])
+                        unsafe free [0] *e_buf
+                    }
+                    auto Result<str, str>::Err('e) => {
+                        unsafe free [0] *e_buf
+                        return JsonRes::Err('e)
+                    }
+                }
             } else {
                 return JsonRes::Err("Invalid key for Result")
             }
@@ -522,22 +552,41 @@ impl<'K: @FromJson, 'V: @FromJson> HashMap<'K, 'V>@FromJson {
             unsafe {
                 auto *k_buf = unsafe alloc [1] 'K as *['K]
                 libc_memset(*k_buf as *void, 0, sizeof('K))
-                res = k_buf[0]#.parse_json(res)!
-                
-                res = json_skip_whitespace(res)
-                if res.len() == 0 || res.byte_at(0) != 58 {
-                    unsafe free [0] *k_buf
-                    return JsonRes::Err("Expected :")
+                auto k_cur_len = res.len()
+                match k_buf[0]#.parse_json(res) {
+                    auto Result<str, str>::Ok('k_rem) => {
+                        auto k_consumed = k_cur_len - 'k_rem.len()
+                        res = res.substr(k_consumed, res.len() - k_consumed)
+                        res = json_skip_whitespace(res)
+                        if res.len() == 0 || res.byte_at(0) != 58 {
+                            unsafe free [0] *k_buf
+                            return JsonRes::Err("Expected :")
+                        }
+                        res = res.substr(1, res.len() - 1)
+
+                        auto *v_buf = unsafe alloc [1] 'V as *['V]
+                        libc_memset(*v_buf as *void, 0, sizeof('V))
+                        auto v_cur_len = res.len()
+                        match v_buf[0]#.parse_json(res) {
+                            auto Result<str, str>::Ok('v_rem) => {
+                                auto v_consumed = v_cur_len - 'v_rem.len()
+                                res = res.substr(v_consumed, res.len() - v_consumed)
+                                self#.insert(cede k_buf[0], cede v_buf[0])
+                                unsafe free [0] *k_buf
+                                unsafe free [0] *v_buf
+                            }
+                            auto Result<str, str>::Err('e) => {
+                                unsafe free [0] *k_buf
+                                unsafe free [0] *v_buf
+                                return JsonRes::Err('e)
+                            }
+                        }
+                    }
+                    auto Result<str, str>::Err('e) => {
+                        unsafe free [0] *k_buf
+                        return JsonRes::Err('e)
+                    }
                 }
-                res = res.substr(1, res.len() - 1)
-                
-                auto *v_buf = unsafe alloc [1] 'V as *['V]
-                libc_memset(*v_buf as *void, 0, sizeof('V))
-                res = v_buf[0]#.parse_json(res)!
-                
-                self#.insert(cede k_buf[0], cede v_buf[0])
-                unsafe free [0] *k_buf
-                unsafe free [0] *v_buf
             }
         }
         return JsonRes::Ok(res)
@@ -562,9 +611,19 @@ impl<'T: @FromJson> Vec<'T>@FromJson {
             unsafe {
                 auto *item_buf = unsafe alloc [1] 'T as *['T]
                 libc_memset(*item_buf as *void, 0, sizeof('T))
-                res = item_buf[0]#.parse_json(res)!
-                self#.push(cede item_buf[0])
-                unsafe free [0] *item_buf
+                auto cur_len = res.len()
+                match item_buf[0]#.parse_json(res) {
+                    auto Result<str, str>::Ok('next_rem) => {
+                        auto consumed = cur_len - 'next_rem.len()
+                        res = res.substr(consumed, res.len() - consumed)
+                        self#.push(cede item_buf[0])
+                        unsafe free [0] *item_buf
+                    }
+                    auto Result<str, str>::Err('e) => {
+                        unsafe free [0] *item_buf
+                        return JsonRes::Err('e)
+                    }
+                }
             }
         }
         return JsonRes::Ok(res)

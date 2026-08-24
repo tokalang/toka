@@ -1,0 +1,100 @@
+import std/io::println
+import core/option::{Option}
+import core/result::{Result}
+import std/vec::{Vec}
+import std/hashmap::{HashMap}
+import stdx/serde/json::{@FromJson, JsonRes}
+
+auto g_drops# = 0
+
+shape StrictRes (
+    id: i32
+)
+impl StrictRes@FromJson {
+    pub fn parse_json(self#, json: str) -> JsonRes <- json {
+        if json.starts_with("FAIL") {
+            return JsonRes::Err("Explicit parse failure")
+        }
+        return self.id#.parse_json(json)
+    }
+}
+impl StrictRes@Encap {
+    pub id
+    fn drop(self#) {
+        g_drops += 1
+    }
+}
+
+fn main() -> i32 {
+    // 1. Option Success
+    {
+        auto opt# = Option<StrictRes>::None
+        auto res = opt#.parse_json("42")
+        assert(res.is_ok(), "Option parse must succeed")
+        assert(opt.is_some(), "Option must be some")
+    }
+    assert(g_drops == 1, "StrictRes dropped after Option goes out of scope")
+
+    // 2. Option Malformed / Parse Failure
+    {
+        auto opt# = Option<StrictRes>::None
+        auto res = opt#.parse_json("FAIL_MALFORMED")
+        assert(!res.is_ok(), "Option parse must fail on malformed")
+        assert(opt.is_none(), "Option must remain none")
+    }
+    assert(g_drops == 1, "No extra drop occurred on failed parse")
+
+    // 3. Result Success
+    {
+        auto r# = Result<StrictRes, i32>::Err(0)
+        auto res = r#.parse_json("{\"Ok\": 42}")
+        assert(res.is_ok(), "Result parse must succeed")
+    }
+    assert(g_drops == 2, "StrictRes dropped after Result goes out of scope")
+
+    // 4. Result Failure
+    {
+        auto r# = Result<StrictRes, i32>::Err(0)
+        auto res = r#.parse_json("{\"Ok\": FAIL_MALFORMED}")
+        assert(!res.is_ok(), "Result parse must fail on inner malformed")
+    }
+    assert(g_drops == 2, "No extra drop occurred on failed Result parse")
+
+    // 5. Vec Success
+    {
+        auto v# = Vec<StrictRes>::new()
+        auto res = v#.parse_json("[42]")
+        assert(res.is_ok(), "Vec parse must succeed")
+        assert(v.len() == 1, "Vec len must be 1")
+    }
+    assert(g_drops == 3, "StrictRes dropped after Vec goes out of scope")
+
+    // 6. Vec Failure
+    {
+        auto v# = Vec<StrictRes>::new()
+        auto res = v#.parse_json("[42, FAIL]")
+        assert(!res.is_ok(), "Vec parse must fail on second element")
+    }
+    assert(g_drops == 4, "Partial elements in Vec properly cleaned up")
+
+    // 7. HashMap Success
+    {
+        auto m# = HashMap<string, StrictRes>::new()
+        auto res = m#.parse_json("{\"item\": 42}")
+        assert(res.is_ok(), "HashMap parse must succeed")
+        assert(m.len() == 1, "HashMap len must be 1")
+    }
+    assert(g_drops == 5, "StrictRes in HashMap dropped after map goes out of scope")
+
+    // 8. HashMap Failure (bad value)
+    {
+        auto m# = HashMap<string, StrictRes>::new()
+        auto res = m#.parse_json("{\"item\": FAIL}")
+        assert(!res.is_ok(), "HashMap parse must fail on malformed value")
+        assert(m.len() == 0, "HashMap must be empty")
+    }
+    assert(g_drops == 5, "No extra drop on failed HashMap value parse")
+
+    println("All generic failure-safe serde tests PASSED!")
+    return 0
+}

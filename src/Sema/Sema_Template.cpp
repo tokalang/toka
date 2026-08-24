@@ -629,8 +629,19 @@ void Sema::instantiateGenericImpl(
   registerImpl(RawPtr);
 
   // Now Check it!
-  // This will check method bodies
+  // This will check method bodies with isolated expression state
+  bool oldIntermediate = m_InIntermediatePath;
+  bool oldMemberBase = m_IsMemberBase;
+  bool oldInLHS = m_InLHS;
+  m_InIntermediatePath = false;
+  m_IsMemberBase = false;
+  m_InLHS = false;
+
   checkImpl(RawPtr);
+
+  m_InIntermediatePath = oldIntermediate;
+  m_IsMemberBase = oldMemberBase;
+  m_InLHS = oldInLHS;
   exitScope();
 
   // Done.
