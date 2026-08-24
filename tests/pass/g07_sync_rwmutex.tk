@@ -12,8 +12,8 @@ fn main() -> i32 {
         
         auto rl2 = rw#.read_lock().unwrap()
         
-        auto *p1 = rl1.get_ref()
-        auto *p2 = rl2.get_ref()
+        auto &p1 = rl1.borrow()
+        auto &p2 = rl2.borrow()
         
         println("Reader 1 sees: {}", p1)
         println("Reader 2 sees: {}", p2)
@@ -27,7 +27,7 @@ fn main() -> i32 {
     {
         auto wl = rw#.write_lock().unwrap()
         
-        auto *wp# = wl.get_ref()
+        auto &wp# = wl.borrow_mut()
         wp = 100
         println("Writer changed value to: {}", wp)
     }
@@ -35,7 +35,7 @@ fn main() -> i32 {
     println("Verifying write_lock mutation via read_lock...")
     {
         auto rl = rw#.read_lock().unwrap()
-        auto *p = rl.get_ref()
+        auto &p = rl.borrow()
         println("Final value: {}", p)
         if p != 100 {
             return 1

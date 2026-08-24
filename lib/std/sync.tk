@@ -138,6 +138,14 @@ impl<'T> MutexLock<'T>@Encap {
 }
 
 impl<'T: @Send> MutexLock<'T> {
+    pub fn borrow_mut(self) -> &value#: T
+    effects:
+        &value <- self
+    {
+        return &(self.data)
+    }
+
+    // Temporary compatibility alias. New code uses borrow_mut().
     pub fn get_ref(self) -> &'T# <- self {
         return &(self.data)
     }
@@ -276,6 +284,14 @@ impl<'T> RwReadLock<'T>@Encap {
 }
 
 impl<'T: @{Send, Sync}> RwReadLock<'T> {
+    pub fn borrow(self) -> &value: T
+    effects:
+        &value <- self
+    {
+        return &(self.data)
+    }
+
+    // Temporary compatibility alias. New code uses borrow().
     pub fn get_ref(self) -> &'T <- self {
         return &(self.data)
     }
@@ -299,6 +315,14 @@ impl<'T> RwWriteLock<'T>@Encap {
 }
 
 impl<'T: @{Send, Sync}> RwWriteLock<'T> {
+    pub fn borrow_mut(self) -> &value#: T
+    effects:
+        &value <- self
+    {
+        return &(self.data)
+    }
+
+    // Temporary compatibility alias. New code uses borrow_mut().
     pub fn get_ref(self) -> &'T# <- self {
         return &(self.data)
     }
@@ -417,7 +441,7 @@ impl WaitGroup {
 
     pub fn add(self#, delta: i32) {
         auto lock = self.mutex#.lock().unwrap()
-        auto &val# = lock.get_ref()
+        auto &val# = lock.borrow_mut()
         val = val + delta
         if val <= 0 {
             self.cond.notify_all()
@@ -430,7 +454,7 @@ impl WaitGroup {
 
     pub fn wait_all(self#) {
         auto lock = self.mutex#.lock().unwrap()
-        auto &val = lock.get_ref()
+        auto &val = lock.borrow_mut()
         loop {
             if val <= 0 {
                 break
