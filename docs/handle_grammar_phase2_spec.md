@@ -1,8 +1,20 @@
 # Tokalang Handle Grammar Phase 2 Specification: Admission Invariants, Diagnostic Enforcement & Zero-Violation Migration
 
-**Status**: Frozen Specification (M0)
+**Status**: Historical implementation baseline under design review; not a
+final Toka 1.0 syntax freeze
 **Target Milestone**: Phase 2 Admission & Zero-Violation Migration
 **Previous Baseline**: `c6b2e72f` (tag: `handle-grammar-phase1-baseline`)
+
+> **Design review notice:** Parameter-root policy, morphic substitution, and
+> substitution-time SFINAE in this document are being reconsidered. See the
+> non-normative
+> [Handle Morphology Candidate Model](semantic_core/handle_morphology_candidate_model.md)
+> for the current design direction. This specification remains useful as an
+> implementation and audit history, but must not be cited as the final Toka
+> 1.0 surface contract. In particular, examples in this historical document
+> that infer `&^T` from `&u` are under review: the candidate model distinguishes
+> payload borrowing (`&u -> &T`) from explicit handle-identity borrowing
+> (`&^u -> &^T`).
 
 ---
 
@@ -54,13 +66,24 @@ A continuous handle chain terminates at **any non-Pointer Type node** in the typ
   - `nul *nul *T`: Both outer and inner raw pointers are nullable.
 - Managed handles (`^`, `~`, `&`) are strictly non-nullable by language construction.
 
-### 1.5 Binding-Side Morphology vs Pure Soul Type Annotations
+### 1.5 Parameter Root Single-Depth Boundary & Binding-Side Morphology
 
-In variable, parameter, and member declarations with explicit binding names:
-- Handle morphology chains belong exclusively to the **binding identifier** (e.g. `^x: i32`, `&^x: i32`, `&~x: i32`, `&&x: i32`, `cede ^x: i32`).
-- The type annotation after `:` represents the pure soul/payload type (`i32`, `Point`, `Option<i32>`).
-- Parameter type annotations beginning with root handle morphology (e.g. `fn foo(x: ^i32)` or `fn foo(&x: ^i32)`) are rejected with diagnostic `E0494` (suggesting migration to `^x: i32` or `&^x: i32`).
-- Pure type positions without binding names (function return types like `fn make() -> ^i32`, generic arguments like `Option<^i32>`, `Vec<&i32>`, and function types like `fn(&i32) -> ^i32`) continue to accept explicit type-side handle morphology.
+In all formal parameter declarations, the root binding chain is limited to one
+handle layer. Non-`cede` parameters already capture/alias their argument, so a
+second borrow layer on the formal root is redundant.
+
+- Admitted roots include `x: T`, `^x: T`, `~x: T`, `&x: T`, `*x: T`,
+  `nul *x: T`, and `cede ^x: T`.
+- Globally illegal chains still report `E0490`–`E0492`.
+- Globally legal multi-layer types such as `&^T`, `&~T`, `&&T`, and `**T`
+  remain valid outside formal roots, but their use as a formal root reports
+  `E0495`.
+- Parameter type annotations beginning with root morphology remain rejected by
+  `E0494`; hats belong on the binding name.
+
+Level-2 borrows remain valid as first-class local, return, and structural child
+types. Borrow target selection is explicit: `&u` borrows the payload as `&T`,
+while `&^u` borrows the unique handle identity as `&^T`.
 
 ### 1.6 Type Alias Boundary & Root Morphology Invariants
 
@@ -76,12 +99,13 @@ In variable, parameter, and member declarations with explicit binding names:
 The following diagnostic identifiers are reserved in `include/toka/DiagnosticDefs.def`:
 
 ```text
-E0490 DIAG(ERR_ILLEGAL_HANDLE_ORDER,          Error, "E0490", "Illegal handle ordering in '{}': at managed depth 2, the outer layer must be '&' (e.g. '&^T' or '&~T'), not an inner borrow ('^&T' or '~&T')")
-E0491 DIAG(ERR_EXCEEDED_HANDLE_DEPTH,         Error, "E0491", "Exceeded handle depth in type '{}': managed owning pointers cannot be nested ('^^T', '~~T'), and borrow depth cannot exceed 2 ('&&&T')")
-E0492 DIAG(ERR_MIXED_HANDLE_RAW,              Error, "E0492", "Illegal mixed handle grammar in type '{}': mixing raw pointers and managed handles ('*^T', '^*T', '*&T', '&*T') within one continuous handle chain is prohibited")
-E0493 DIAG(ERR_ALIAS_ROOT_HANDLE_MORPHOLOGY,   Error, "E0493", "Alias target '{}' cannot begin with root handle morphology '{}'; root hats must remain visible on the binding at each use site")
-E0494 DIAG(ERR_PARSER_TYPE_SIDE_PARAM_MORPHOLOGY, Error, "E0494", "Parameter type '{}' cannot begin with root handle morphology '{}'; place the root morphology on the parameter binding instead (did you mean '{}'?)")
-E0760 DIAG(ERR_CODEGEN_ILLEGAL_HANDLE_GRAMMAR, Error, "E0760", "Internal CodeGen invariant violation: illegal Handle Grammar type '{}' reached LLVM lowering")
+E0490 DIAG(ERR_ILLEGAL_HANDLE_ORDER,             Error, "E0490", "Illegal handle grammar ordering in type '{}'")
+E0491 DIAG(ERR_EXCEEDED_HANDLE_DEPTH,            Error, "E0491", "Exceeded maximum handle depth in type '{}'")
+E0492 DIAG(ERR_MIXED_HANDLE_RAW,                 Error, "E0492", "Illegal mixing of managed handles and raw pointers in type '{}'")
+E0493 DIAG(ERR_ALIAS_ROOT_HANDLE_MORPHOLOGY,      Error, "E0493", "Alias target '{}' cannot begin with root handle morphology '{}'; root hats must remain visible on the binding at each use site")
+E0494 DIAG(ERR_PARSER_TYPE_SIDE_PARAM_MORPHOLOGY,Error, "E0494", "Parameter type '{}' cannot begin with root handle morphology '{}'; place the root morphology on the parameter binding instead (did you mean '{}'?)")
+E0495 DIAG(ERR_PARAM_HANDLE_DEPTH_FORBIDDEN,     Error, "E0495", "Parameter '{}' cannot use root handle chain '{}'; formal parameter roots are limited to one handle layer (did you mean '{}'?)")
+E0760 DIAG(ERR_CODEGEN_ILLEGAL_HANDLE_GRAMMAR,   Error, "E0760", "Internal CodeGen invariant violation: illegal Handle Grammar type '{}' reached LLVM lowering")
 ```
 
 ---
