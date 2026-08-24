@@ -327,8 +327,12 @@ fn collect_detached_tasks() {
     auto i# = 0:usize
     loop i < g_detached_tasks.len() {
         unsafe {
-            auto *task_ptr = g_detached_tasks.get_ref(i) as *TaskPtr
-            if __toka_coro_done(task_ptr.addr as *void) {
+            auto is_done# = false
+            {
+                auto &task_ptr = g_detached_tasks.borrow(i)
+                is_done = __toka_coro_done(task_ptr.addr as *void)
+            }
+            if is_done {
                 auto task = g_detached_tasks#.remove(i).unwrap()
                 completed#.push(cede task)
             } else {

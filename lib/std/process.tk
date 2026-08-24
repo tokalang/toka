@@ -231,7 +231,7 @@ impl Command {
 
         auto i# = 0:usize
         loop i < self.args.len() {
-            auto &arg = self.args.get_ref(i)
+            auto &arg = self.args.borrow(i)
             auto view = arg.as_str()
             auto j# = 0:usize
             loop j < view.len() {
@@ -280,7 +280,7 @@ impl Command {
         auto env_blob# = string::from("")
         auto index# = 0:usize
         loop index < self.environment.len() {
-            auto &entry = self.environment.get_ref(index)
+            auto &entry = self.environment.borrow(index)
             auto key = entry.key.as_str()
             if key.len() == 0:usize {
                 return Result<string, ProcessError>::Err(ProcessError(
