@@ -430,6 +430,30 @@ def aggregate_receipts(audit_dir):
         json.dump(receipt_data, rf, indent=2)
     print(f"Authoritative receipt manifest saved to {receipt_file}.", flush=True)
 
+    gate_failures = []
+    if admitted_sourcesurface != 0:
+        gate_failures.append(f"Admitted SourceSurface Violations: {admitted_sourcesurface} (expected 0)")
+    if admitted_tkiimport != 0:
+        gate_failures.append(f"Admitted TKIImport Violations: {admitted_tkiimport} (expected 0)")
+    if non_sfinae_transients != 0:
+        gate_failures.append(f"Non-SFINAE Transients: {non_sfinae_transients} (expected 0)")
+    if instantiated_violations != 0:
+        gate_failures.append(f"Instantiated Violations: {instantiated_violations} (expected 0)")
+    if llvm_lowered_violations != 0:
+        gate_failures.append(f"LLVM Lowered Violations: {llvm_lowered_violations} (expected 0)")
+    if rejected_sfinae < 4:
+        gate_failures.append(f"Rejected SFINAE Evidence: {rejected_sfinae} (expected >= 4)")
+    if rejected_source < 14:
+        gate_failures.append(f"Rejected Compile-Fail Evidence: {rejected_source} (expected >= 14)")
+
+    if gate_failures:
+        print(f"\n[FATAL] Handle Grammar Audit Gate Validation FAILED:", flush=True)
+        for gf in gate_failures:
+            print(f"  • {gf}", flush=True)
+        sys.exit(1)
+    else:
+        print(f"\n[PASS] All Authoritative Handle Grammar Gates Passed Cleanly!", flush=True)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Handle Grammar Morphic Audit Tool")
     parser.add_argument("--scan", action="store_true", help="Run full scan across all repository .tk files and test suites")
