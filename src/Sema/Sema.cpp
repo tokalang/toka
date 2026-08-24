@@ -6076,7 +6076,38 @@ FunctionDecl *Sema::instantiateGenericFunction(
     }
     applyTypeSyntaxSubst(Arg.TypeSyntax, Arg.Type);
   }
-  applyTypeSyntaxSubst(Instance->ReturnTypeSyntax, Instance->ReturnType);
+  if (Instance->ReturnContract.BindingBorrowsSoul &&
+      Instance->ReturnTypeSyntax) {
+    TypeSyntaxPtr root = Instance->ReturnTypeSyntax;
+    if (root->NodeKind == TypeSyntax::Kind::Morphology &&
+        !root->IsPostfix && root->Text == "&") {
+      root = root->Subject;
+      while (root && root->NodeKind == TypeSyntax::Kind::Morphology &&
+             root->IsPostfix)
+        root = root->Subject;
+    } else {
+      root = nullptr;
+    }
+
+    auto returnSubstMap = substMap;
+    if (root && root->NodeKind == TypeSyntax::Kind::Named) {
+      auto replacement = returnSubstMap.find(root->Text);
+      if (replacement != returnSubstMap.end() && replacement->second)
+        replacement->second = replacement->second->getSoulType();
+    }
+    std::map<std::string, TypeSyntaxPtr> typedReturnSubst;
+    for (const auto &[name, replacement] : returnSubstMap) {
+      if (replacement)
+        typedReturnSubst.emplace(
+            name, replacement->toSyntax(Instance->ReturnTypeSyntax->Begin,
+                                        Instance->ReturnTypeSyntax->End));
+    }
+    Instance->ReturnTypeSyntax =
+        Instance->ReturnTypeSyntax->substitute(typedReturnSubst);
+    Instance->ReturnType = Instance->ReturnTypeSyntax->toCanonicalString();
+  } else {
+    applyTypeSyntaxSubst(Instance->ReturnTypeSyntax, Instance->ReturnType);
+  }
   Instance->syncReturnContractTypeCache();
 
   // Source syntax is retained for diagnostics and TKI export, but a bound
@@ -6100,6 +6131,26 @@ FunctionDecl *Sema::instantiateGenericFunction(
                 : toka::Type::fromString(Template->ReturnType);
   Instance->ResolvedReturnType =
       semanticReturn ? semanticReturn->substitute(substMap) : nullptr;
+  if (Instance->ReturnContract.BindingBorrowsSoul &&
+      Instance->ResolvedReturnType) {
+    auto reference = std::dynamic_pointer_cast<toka::ReferenceType>(
+        Instance->ResolvedReturnType);
+    if (reference && reference->PointeeType) {
+      auto soul = reference->PointeeType->getSoulType();
+      if (soul) {
+        soul = soul->withAttributes(
+            soul->IsWritable ||
+                Instance->ReturnContract.BindingSoulWritable,
+            soul->IsNullable, soul->IsBlocked);
+        auto projected = std::make_shared<toka::ReferenceType>(soul);
+        projected->IsWritable = reference->IsWritable;
+        projected->IsNullable = reference->IsNullable;
+        projected->IsBlocked = reference->IsBlocked;
+        projected->IsCede = reference->IsCede;
+        Instance->ResolvedReturnType = projected;
+      }
+    }
+  }
 
   // Body type parameters remain written as T/Vec<T>.  They are resolved
   // through the exact Type aliases installed in the surrounding

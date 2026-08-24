@@ -88,6 +88,60 @@ static TypeSyntaxPtr substituteTypeSyntax(
   return input->substitute(typedReplacements);
 }
 
+static std::map<std::string, std::shared_ptr<toka::Type>>
+namedReturnSoulReplacements(
+    const FunctionDecl *function,
+    const std::map<std::string, std::shared_ptr<toka::Type>> &replacements) {
+  if (!function || !function->ReturnContract.BindingBorrowsSoul ||
+      !function->ReturnTypeSyntax)
+    return replacements;
+
+  TypeSyntaxPtr root = function->ReturnTypeSyntax;
+  if (root->NodeKind != TypeSyntax::Kind::Morphology || root->IsPostfix ||
+      root->Text != "&")
+    return replacements;
+  root = root->Subject;
+  while (root && root->NodeKind == TypeSyntax::Kind::Morphology &&
+         root->IsPostfix)
+    root = root->Subject;
+  if (!root || root->NodeKind != TypeSyntax::Kind::Named)
+    return replacements;
+
+  auto replacement = replacements.find(root->Text);
+  if (replacement == replacements.end() || !replacement->second)
+    return replacements;
+
+  auto projected = replacements;
+  projected[root->Text] = replacement->second->getSoulType();
+  return projected;
+}
+
+static std::shared_ptr<toka::Type>
+projectNamedReturnSoul(const FunctionDecl *function,
+                       const std::shared_ptr<toka::Type> &substituted) {
+  if (!function || !function->ReturnContract.BindingBorrowsSoul ||
+      !substituted)
+    return substituted;
+
+  auto reference = std::dynamic_pointer_cast<toka::ReferenceType>(substituted);
+  if (!reference || !reference->PointeeType)
+    return substituted;
+
+  auto soul = reference->PointeeType->getSoulType();
+  if (!soul)
+    return substituted;
+  soul = soul->withAttributes(
+      soul->IsWritable || function->ReturnContract.BindingSoulWritable,
+      soul->IsNullable, soul->IsBlocked);
+
+  auto projected = std::make_shared<toka::ReferenceType>(soul);
+  projected->IsWritable = reference->IsWritable;
+  projected->IsNullable = reference->IsNullable;
+  projected->IsBlocked = reference->IsBlocked;
+  projected->IsCede = reference->IsCede;
+  return projected;
+}
+
 // --- Helper: Generic Instantiator Visitor ---
 // Traverses the AST and applies substitution to all Type Strings.
 // Since we don't have a central AST Visitor, we implement specific traversals
@@ -150,7 +204,14 @@ public:
   }
 
   void visitFunction(FunctionDecl *Fn) {
-    sub(Fn->ReturnTypeSyntax, Fn->ReturnType);
+    if (Fn->ReturnTypeSyntax) {
+      auto returnReplacements = namedReturnSoulReplacements(Fn, active());
+      Fn->ReturnTypeSyntax =
+          substituteTypeSyntax(Fn->ReturnTypeSyntax, returnReplacements);
+      Fn->ReturnType = Fn->ReturnTypeSyntax->toCanonicalString();
+    } else {
+      Fn->ReturnType = sub(Fn->ReturnType);
+    }
     Fn->syncReturnContractTypeCache();
     for (auto &Arg : Fn->Args) {
       if (MorphicParams.count(Arg.Type)) {
@@ -445,6 +506,8 @@ void Sema::instantiateGenericImpl(
             : toka::Type::fromString(Method->ReturnType);
     ClonedFn->ResolvedReturnType =
         semanticReturn ? semanticReturn->substitute(Replacements) : nullptr;
+    ClonedFn->ResolvedReturnType =
+        projectNamedReturnSoul(ClonedFn.get(), ClonedFn->ResolvedReturnType);
     for (size_t i = 0; i < Method->Args.size() &&
                        i < ClonedFn->Args.size();
          ++i) {

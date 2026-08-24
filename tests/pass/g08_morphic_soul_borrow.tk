@@ -1,0 +1,33 @@
+shape MorphBox<'T>(
+    'data: T
+)
+
+fn borrow_payload<'T>(box: MorphBox<'T>) -> &item: T
+effects:
+    &item <- box
+{
+    return &(box.data)
+}
+
+fn main() -> i32 {
+    {
+        auto box = MorphBox<^i32>(^data = new i32(41))
+        auto &payload = borrow_payload<^i32>(box)
+        assert(payload == 41, "morphic unique payload borrow failed")
+    }
+
+    {
+        auto box = MorphBox<~i32>(~data = new i32(42))
+        auto &payload = borrow_payload<~i32>(box)
+        assert(payload == 42, "morphic shared payload borrow failed")
+    }
+
+    {
+        auto value = 43
+        auto box = MorphBox<&i32>(&data = &value)
+        auto &payload = borrow_payload<&i32>(box)
+        assert(payload == 43, "morphic reference payload borrow failed")
+    }
+
+    return 0
+}

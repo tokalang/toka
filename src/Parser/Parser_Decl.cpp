@@ -328,12 +328,19 @@ ReturnContractSyntax Parser::parseReturnContract(bool allowDependencies,
     Token nameTok =
         consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_RETURN_NAME);
     contract.BindingName = nameTok.Text;
+    contract.BindingSoulWritable = nameTok.HasWrite;
+    contract.BindingBorrowsSoul = contract.BindingPrefix == "&";
     consume(TokenType::Colon, DiagID::ERR_EXPECTED_COLON);
     if (!isTypeStart()) {
       error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
     } else {
       contract.TypeSyntax = parseTypeSyntax(true, false, false, allowNever);
       contract.HasExplicitResultType = true;
+      if (contract.BindingSoulWritable) {
+        contract.TypeSyntax = TypeSyntax::morphology(
+            "#", contract.TypeSyntax, contract.TypeSyntax->Begin,
+            contract.TypeSyntax->End, true);
+      }
       if (!contract.BindingPrefix.empty()) {
         contract.TypeSyntax = TypeSyntax::morphology(
             contract.BindingPrefix, contract.TypeSyntax,

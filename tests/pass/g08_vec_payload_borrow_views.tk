@@ -1,0 +1,16 @@
+import std/vec::Vec
+
+fn main() -> i32 {
+    {
+        auto values# = Vec<i32>::new()
+        values#.push(41)
+        auto &payload# = values#.borrow_mut(0:usize)
+        payload = 42
+        assert(payload == 42,
+               "Vec<T>.borrow_mut view must retain the written payload")
+        assert(values.get(0:usize) == 42,
+               "Vec<T>.borrow_mut must expose writable payload")
+    }
+
+    return 0
+}

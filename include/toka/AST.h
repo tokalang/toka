@@ -1776,6 +1776,14 @@ struct ReturnContractSyntax {
   ReturnResultKind ResultKind = ReturnResultKind::Unit;
   std::string BindingName;
   std::string BindingPrefix;
+  // Source-level payload permission belongs to the named result binding
+  // (`-> &item#: T`), not to the Soul spelling after the colon.  TypeSyntax
+  // receives the corresponding postfix morphology only as a semantic cache.
+  bool BindingSoulWritable = false;
+  // A named `&result: T` contract borrows the payload selected by `T`.  If a
+  // morphic generic later substitutes `T = ^U`, `~U`, or `&U`, the result is
+  // `&U`, not an identity borrow such as `&^U`.
+  bool BindingBorrowsSoul = false;
   EffectKind Effect = EffectKind::None;
   std::vector<ReturnDependencyRouteSyntax> Routes;
   SourceLocation Begin;

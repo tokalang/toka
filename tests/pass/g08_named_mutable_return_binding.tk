@@ -1,0 +1,18 @@
+shape MutableCell(
+    'value: i32
+)
+
+fn borrow_value_mut(cell#: MutableCell) -> &value#: i32
+effects:
+    &value <- cell
+{
+    return &(cell.value)
+}
+
+fn main() -> i32 {
+    auto cell# = MutableCell(value = 41)
+    auto &view# = borrow_value_mut(cell#)
+    view = 42
+    assert(cell.value == 42, "named mutable return must preserve payload write permission")
+    return 0
+}

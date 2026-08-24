@@ -228,7 +228,10 @@ impl<'T> Vec<'T> {
     }
 
     /// Returns a shared element borrow tied to the lifetime of this Vec.
-    pub fn borrow(self, index: usize) -> &'T <- self {
+    pub fn borrow(self, index: usize) -> &item: T
+    effects:
+        &item <- self
+    {
         if index >= self.len {
             unsafe {
                 libc_printf(c"[Vec] panic: borrow index out of bounds\n")
@@ -241,7 +244,10 @@ impl<'T> Vec<'T> {
     }
 
     /// Returns an exclusive element borrow tied to the lifetime of this Vec.
-    pub fn borrow_mut(self#, index: usize) -> &'T# <- self {
+    pub fn borrow_mut(self#, index: usize) -> &item#: T
+    effects:
+        &item <- self
+    {
         if index >= self.len {
             unsafe {
                 libc_printf(c"[Vec] panic: mutable borrow index out of bounds\n")
