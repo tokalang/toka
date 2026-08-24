@@ -55,7 +55,7 @@ pub fn __path_canonicalize(p: string) -> string {
         if i > 0 {
             res#.push_str("/")
         }
-        res#.push_str(resolved_parts.get_ref(i).as_str())
+        res#.push_str(resolved_parts.borrow(i).as_str())
         i += 1
     }
     return res
