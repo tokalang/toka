@@ -59,7 +59,7 @@ def run_quick_scan(tokac_bin, run_dir, scratch_dir):
         ]),
         ("Handle Grammar TKI Replay", [
             "bash", "tools/scripts/test_semantic_replay.sh"
-        ], {"CASE_ROOT": "tests/semantics/tki_replay/cases/handle_001_level2_param_signatures"}),
+        ], {"TOKAC": tokac_bin, "CASE_ROOT": "tests/semantics/tki_replay/cases/handle_001_level2_param_signatures"}),
         ("Handle Grammar Classifier CTest", [
             "ctest", "--test-dir", ctest_dir, "-R", "toka_handle_grammar_classifier", "--output-on-failure"
         ])
@@ -275,7 +275,7 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir, jobs=8, check_only=True):
             print(f"  • {name} (exit code {rc})", flush=True)
         sys.exit(1)
 
-def aggregate_receipts(audit_dir):
+def aggregate_receipts(audit_dir, tokac_bin=None):
     audit_files = [os.path.join(audit_dir, f) for f in os.listdir(audit_dir) if f.endswith(".jsonl")]
     raw_events = []
     for af in audit_files:
@@ -403,28 +403,47 @@ def aggregate_receipts(audit_dir):
             llvm_lowered_violations += 1
 
     import hashlib
-    def get_cmd_output(c):
+
+    def get_git_output(args):
         try:
-            return subprocess.check_output(c, stderr=subprocess.STDOUT).decode("utf-8", errors="ignore").strip()
-        except Exception:
+            res = subprocess.run(["git"] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if res.returncode != 0:
+                print(f"[WARN] git {' '.join(args)} returned code {res.returncode}: {res.stderr.strip()}", file=sys.stderr)
+                return ""
+            return res.stdout.strip()
+        except Exception as ex:
+            print(f"[WARN] Git error: {ex}", file=sys.stderr)
             return ""
 
-    git_commit = get_cmd_output(["git", "rev-parse", "HEAD"])
-    git_diff = get_cmd_output(["git", "diff", "HEAD"])
+    git_commit = get_git_output(["rev-parse", "HEAD"])
+    git_diff = get_git_output(["diff", "HEAD"])
     git_diff_hash = hashlib.sha256(git_diff.encode("utf-8")).hexdigest()
 
     # Dynamic compute controlled file hashes over all git tracked files
-    tracked_files = get_cmd_output(["git", "ls-files"]).splitlines()
+    tracked_files_raw = get_git_output(["ls-files"])
+    tracked_files = [line.strip() for line in tracked_files_raw.splitlines() if line.strip()]
     controlled_file_hashes = {}
     for tf in sorted(tracked_files):
-        tf = tf.strip()
-        if not tf or not os.path.isfile(tf):
+        if not os.path.isfile(tf):
             continue
         try:
             with open(tf, "rb") as f:
                 controlled_file_hashes[tf] = hashlib.sha256(f.read()).hexdigest()
         except Exception:
             pass
+
+    tokac_provenance = {}
+    if tokac_bin and os.path.exists(tokac_bin):
+        tokac_real = os.path.realpath(tokac_bin)
+        try:
+            with open(tokac_real, "rb") as f:
+                tokac_hash = hashlib.sha256(f.read()).hexdigest()
+            tokac_provenance = {
+                "binary_path": tokac_real,
+                "binary_sha256": tokac_hash
+            }
+        except Exception:
+            tokac_provenance = {"binary_path": tokac_real}
 
     print("\n" + "="*80, flush=True)
     print(f"   HANDLE GRAMMAR AUTHORITATIVE RECEIPT & TAXONOMY (SCHEMA v{SCHEMA_VERSION})", flush=True)
@@ -433,6 +452,8 @@ def aggregate_receipts(audit_dir):
     print(f"Process-Isolated Log Files Emitted : {len(audit_files)}", flush=True)
     print(f"Raw Events Emitted Across All Runs : {raw_event_count}", flush=True)
     print(f"Unique Canonical Entries (N)       : {N}", flush=True)
+    print(f"Compiler Binary Path               : {tokac_provenance.get('binary_path', 'unknown')}", flush=True)
+    print(f"Compiler Binary SHA-256            : {tokac_provenance.get('binary_sha256', 'unknown')}", flush=True)
     print(f"Git Commit Hash                    : {git_commit}", flush=True)
     print(f"Git Diff Hash (SHA-256)            : {git_diff_hash}", flush=True)
     print(f"Tracked Files Measured             : {len(controlled_file_hashes)}", flush=True)
@@ -487,6 +508,7 @@ def aggregate_receipts(audit_dir):
         "integrity": {
             "git_commit": git_commit,
             "git_diff_hash": git_diff_hash,
+            "compiler": tokac_provenance,
             "controlled_file_count": len(controlled_file_hashes),
             "controlled_file_hashes": controlled_file_hashes
         },
@@ -540,7 +562,8 @@ if __name__ == "__main__":
     parser.add_argument("--check-only", action="store_true", default=True, help="Use --check-only in Step 1 file scanning (default: True)")
     parser.add_argument("--no-check-only", dest="check_only", action="store_false", help="Generate object files in Step 1 file scanning")
     parser.add_argument("--audit-dir", type=str, default="", help="Directory containing process-isolated audit JSONL files")
-    parser.add_argument("--tokac", type=str, default="build-debug/bin/tokac", help="Path to tokac binary")
+    default_tokac = "build/bin/tokac" if os.path.exists("build/bin/tokac") else "build-debug/bin/tokac"
+    parser.add_argument("--tokac", type=str, default=default_tokac, help=f"Path to tokac binary (default: {default_tokac})")
     args = parser.parse_args()
 
     tokac_bin = os.path.abspath(args.tokac)
@@ -551,7 +574,7 @@ if __name__ == "__main__":
         os.makedirs(audit_dir, exist_ok=True)
         os.makedirs(scratch_dir, exist_ok=True)
         run_quick_scan(tokac_bin, audit_dir, scratch_dir)
-        aggregate_receipts(audit_dir)
+        aggregate_receipts(audit_dir, tokac_bin=tokac_bin)
     elif args.full or args.scan or not args.audit_dir:
         run_id = int(time.time())
         audit_dir = f"/tmp/toka_audit_run_{run_id}"
@@ -559,6 +582,6 @@ if __name__ == "__main__":
         os.makedirs(audit_dir, exist_ok=True)
         os.makedirs(scratch_dir, exist_ok=True)
         run_full_scan(tokac_bin, audit_dir, scratch_dir, jobs=args.jobs, check_only=args.check_only)
-        aggregate_receipts(audit_dir)
+        aggregate_receipts(audit_dir, tokac_bin=tokac_bin)
     else:
-        aggregate_receipts(args.audit_dir)
+        aggregate_receipts(args.audit_dir, tokac_bin=tokac_bin)

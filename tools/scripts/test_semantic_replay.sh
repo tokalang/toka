@@ -346,14 +346,29 @@ run_case() {
     fi
 }
 
-for case_dir in "$CASE_ROOT"/*; do
-    [ -d "$case_dir" ] || continue
-    run_case "$case_dir"
-done
+if [ -f "$CASE_ROOT/lib.tk" ]; then
+    run_case "$CASE_ROOT"
+else
+    for case_dir in "$CASE_ROOT"/*; do
+        [ -d "$case_dir" ] || continue
+        if [ -n "${CASE_FILTER:-}" ]; then
+            case_name="$(basename "$case_dir")"
+            if [[ "$case_name" != *"$CASE_FILTER"* ]]; then
+                continue
+            fi
+        fi
+        run_case "$case_dir"
+    done
+fi
 
 echo "----------------------------------------"
 echo "Semantic replay cases passed: $passed"
 echo "Semantic replay cases failed: $failed"
+
+if [ "$((passed + failed))" -eq 0 ]; then
+    echo "error: no semantic replay cases were executed (fail-closed)" >&2
+    exit 1
+fi
 
 if [ "$failed" -ne 0 ]; then
     exit 1
