@@ -84,7 +84,7 @@ impl TemplateContext {
             auto copy_list# = Vec<string>::new()
             auto i# = 0:usize
             loop i < list_ref.len() {
-                auto &item_ref = list_ref.get_ref(i).unwrap()
+                auto &item_ref = list_ref.borrow(i)
                 copy_list#.push(cede string::from(item_ref.as_str()))
                 i = i + 1:usize
             }
@@ -99,7 +99,7 @@ impl TemplateContext {
         }
         auto i# = 0:usize
         loop i < self.funcs.len() {
-            auto &fh = self.funcs.get_ref(i).unwrap()
+            auto &fh = self.funcs.borrow(i)
             if fh.name.as_str().equals(name) {
                 return true
             }
@@ -131,7 +131,7 @@ impl TemplateContext {
         // Check registered function handlers
         auto i# = 0:usize
         loop i < self.funcs.len() {
-            auto &fh = self.funcs.get_ref(i).unwrap()
+            auto &fh = self.funcs.borrow(i)
             if fh.name.as_str().equals(name.as_str()) {
                 auto f_ptr = fh.func_ptr
                 auto res = f_ptr(arg.as_str())
@@ -260,7 +260,7 @@ impl Template {
         auto out# = string::from("")
         auto i# = 0:usize
         loop i < self.nodes.len() {
-            auto &node = self.nodes.get_ref(i).unwrap()
+            auto &node = self.nodes.borrow(i)
             if node.node_type == NODE_TEXT {
                 out#.push_str(node.content.as_str())
                 i = i + 1:usize
@@ -276,7 +276,7 @@ impl Template {
                     i = i + 1:usize
                     auto in_else# = false
                     loop i < self.nodes.len() {
-                        auto &sub = self.nodes.get_ref(i).unwrap()
+                        auto &sub = self.nodes.borrow(i)
                         if sub.node_type == NODE_ACTION {
                             auto sub_trimmed = trim_str(sub.content.as_str())
                             if sub_trimmed.as_str().equals("else") {
@@ -316,7 +316,7 @@ impl Template {
                     auto body_start = i + 1:usize
                     auto body_end# = body_start
                     loop body_end < self.nodes.len() {
-                        auto &sub = self.nodes.get_ref(body_end).unwrap()
+                        auto &sub = self.nodes.borrow(body_end)
                         if sub.node_type == NODE_ACTION && trim_str(sub.content.as_str()).as_str().equals("end") {
                             break
                         }
@@ -327,13 +327,13 @@ impl Template {
                         auto items = list_opt.unwrap()
                         auto item_idx# = 0:usize
                         loop item_idx < items.len() {
-                            auto &item_val = items.get_ref(item_idx).unwrap()
+                            auto &item_val = items.borrow(item_idx)
                             auto sub_ctx# = TemplateContext::new()
                             sub_ctx#.set(cede string::from("."), cede string::from(item_val.as_str()))
 
                             auto b_idx# = body_start
                             loop b_idx < body_end {
-                                auto &b_node = self.nodes.get_ref(b_idx).unwrap()
+                                auto &b_node = self.nodes.borrow(b_idx)
                                 if b_node.node_type == NODE_TEXT {
                                     out#.push_str(b_node.content.as_str())
                                 } else {

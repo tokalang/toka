@@ -68,7 +68,7 @@ impl PrometheusRegistry {
         auto copied# = Vec<MetricEntry>::new()
         auto index# = 0:usize
         loop index < self.entries.len() {
-            copied#.push(cede self.entries.get_ref(index).clone())
+            copied#.push(cede self.entries.borrow(index).clone())
             index += 1
         }
         return PrometheusRegistry(entries = cede copied)
@@ -83,7 +83,7 @@ impl PrometheusRegistry {
     fn index_of(self, name: str) -> i64 {
         auto index# = 0:usize
         loop index < self.entries.len() {
-            auto entry = self.entries.get_ref(index).clone()
+            auto entry = self.entries.borrow(index).clone()
             if entry.name.equals(name) {
                 return index as i64
             }
@@ -148,7 +148,7 @@ impl PrometheusRegistry {
         auto out# = string::from("")
         auto index# = 0:usize
         loop index < self.entries.len() {
-            auto entry = self.entries.get_ref(index).clone()
+            auto entry = self.entries.borrow(index).clone()
             out#.push_str("# TYPE ")
             out#.push_str(entry.name.as_str())
             out#.push_str(" ")

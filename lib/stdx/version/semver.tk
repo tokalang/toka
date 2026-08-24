@@ -151,8 +151,8 @@ fn parse_pre_release(input: str, start: usize, end: usize) -> Result<Vec<PreRele
 fn compare_pre_release(left: Vec<PreReleaseId>, right: Vec<PreReleaseId>) -> i32 {
     auto index# = 0:usize
     loop index < left.len() && index < right.len() {
-        auto left_id = left.get_ref(index).clone()
-        auto right_id = right.get_ref(index).clone()
+        auto left_id = left.borrow(index).clone()
+        auto right_id = right.borrow(index).clone()
         match left_id {
             auto PreReleaseId::Numeric(left_number) => {
                 match right_id {
@@ -219,13 +219,13 @@ impl SemVer {
         auto copied_pre# = Vec<PreReleaseId>::new()
         auto pre_index# = 0:usize
         loop pre_index < self.pre_release.len() {
-            copied_pre#.push(cede self.pre_release.get_ref(pre_index).clone())
+            copied_pre#.push(cede self.pre_release.borrow(pre_index).clone())
             pre_index = pre_index + 1:usize
         }
         auto copied_build# = Vec<string>::new()
         auto build_index# = 0:usize
         loop build_index < self.build.len() {
-            copied_build#.push(cede string::from(self.build.get_ref(build_index).as_str()))
+            copied_build#.push(cede string::from(self.build.borrow(build_index).as_str()))
             build_index = build_index + 1:usize
         }
         return SemVer(
@@ -314,7 +314,7 @@ impl SemVer {
         loop pre_index < self.pre_release.len() {
             if pre_index == 0:usize { output#.push_byte_raw('-' as u8) }
             else { output#.push_byte_raw('.' as u8) }
-            match self.pre_release.get_ref(pre_index).clone() {
+            match self.pre_release.borrow(pre_index).clone() {
                 auto PreReleaseId::Numeric(value) => output#.push_str(string::from_i64(value).as_str())
                 auto PreReleaseId::Text(&value) => output#.push_str(value.as_str())
             }
@@ -324,7 +324,7 @@ impl SemVer {
         loop build_index < self.build.len() {
             if build_index == 0:usize { output#.push_byte_raw('+' as u8) }
             else { output#.push_byte_raw('.' as u8) }
-            output#.push_str(self.build.get_ref(build_index).as_str())
+            output#.push_str(self.build.borrow(build_index).as_str())
             build_index = build_index + 1:usize
         }
         return cede output
