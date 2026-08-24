@@ -1,0 +1,7 @@
+pub trait @BadTrait2 {
+    pub fn bad() -> *&i32
+}
+
+fn main() -> i32 {
+    return 0
+}

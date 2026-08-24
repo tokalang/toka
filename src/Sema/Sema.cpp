@@ -2950,6 +2950,7 @@ void Sema::declareGlobals(Module &M) {
     }
     SyntaxOrigin extOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
     auto extRetTy = Ext->ReturnTypeSyntax ? toka::Type::fromSyntax(Ext->ReturnTypeSyntax) : toka::Type::fromString(Ext->ReturnType);
+    validateHandleGrammar(Ext->Loc, extRetTy);
     recordHandleGrammarAudit(extRetTy, extOrigin, {FormationPhase::DirectResolution}, "", "", "return", Ext->Loc, false, Ext->Name);
     for (auto &Arg : Ext->Args) {
       debugCheckBindingPermission(Arg);
@@ -2957,8 +2958,9 @@ void Sema::declareGlobals(Module &M) {
                                   Arg.Permission, Ext->Loc);
       if (!Arg.ResolvedType) {
         Arg.ResolvedType =
-            resolveType(Sema::synthesizePhysicalTypeObject(Arg));
+            resolveType(Sema::synthesizePhysicalTypeObject(Arg, false));
       }
+      validateHandleGrammar(Ext->Loc, Arg.ResolvedType);
       recordHandleGrammarAudit(Arg.ResolvedType, extOrigin, {FormationPhase::DirectResolution}, "", "", Arg.Name, Ext->Loc, false, Ext->Name);
     }
     ms.Externs[Ext->Name] = Ext.get();
@@ -3074,6 +3076,17 @@ void Sema::declareGlobals(Module &M) {
     std::string traitKey = "@" + Trait->Name;
     for (auto &Method : Trait->Methods) {
       DeclarationLexicalScopes[Method.get()] = &ms;
+      SyntaxOrigin traitOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
+      auto methodRetTy = Method->ReturnTypeSyntax ? toka::Type::fromSyntax(Method->ReturnTypeSyntax) : toka::Type::fromString(Method->ReturnType);
+      validateHandleGrammar(Method->Loc, methodRetTy);
+      recordHandleGrammarAudit(methodRetTy, traitOrigin, {FormationPhase::DirectResolution}, Trait->Name, "", "return", Method->Loc, false, Method->Name);
+      for (auto &Arg : Method->Args) {
+        if (!Arg.ResolvedType) {
+          Arg.ResolvedType = resolveType(Sema::synthesizePhysicalTypeObject(Arg, false));
+        }
+        validateHandleGrammar(Method->Loc, Arg.ResolvedType);
+        recordHandleGrammarAudit(Arg.ResolvedType, traitOrigin, {FormationPhase::DirectResolution}, Trait->Name, "", Arg.Name, Method->Loc, false, Method->Name);
+      }
       MethodMap[traitKey][Method->Name] = Method->ReturnType;
       MethodDecls[traitKey][Method->Name] = Method.get();
     }

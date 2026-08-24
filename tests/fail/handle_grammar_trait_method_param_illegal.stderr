@@ -1,0 +1,5 @@
+error[E0492]: Illegal mixing of managed handles and raw pointers in type '*^i32'
+ --> tests/fail/handle_grammar_trait_method_param_illegal.tk:2:12
+   |
+ 2 |     pub fn bad(x: *^i32)
+   |            ^
