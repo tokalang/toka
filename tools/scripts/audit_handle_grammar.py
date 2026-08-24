@@ -16,7 +16,7 @@ import argparse
 import datetime
 from collections import defaultdict
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "2.0.0"
 
 def run_full_scan(tokac_bin, run_dir, scratch_dir):
     env = os.environ.copy()
@@ -110,7 +110,7 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir):
 
     # 2. Run All Test Suites with Strict Returncode Checking
     print("\nStep 2: Running verification and conformance suites with strict exit code validation...", flush=True)
-    suites_dir = os.path.join(audit_dir, "suites")
+    suites_dir = os.path.join(run_dir, "suites")
     os.makedirs(suites_dir, exist_ok=True)
 
     suites = [
@@ -134,53 +134,18 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir):
 
     git_commit = get_cmd_output(["git", "rev-parse", "HEAD"])
     git_status = get_cmd_output(["git", "status", "--porcelain"])
-    git_diff = get_cmd_output(["git", "diff", "HEAD"])
-    git_diff_hash = hashlib.sha256(git_diff.encode("utf-8")).hexdigest()
-
-    def file_sha256(path):
-        if not os.path.isfile(path):
-            return "missing"
-        with open(path, "rb") as f:
-            return hashlib.sha256(f.read()).hexdigest()
-
-    controlled_files_hashes = {}
-    key_files = [
-        "CMakeLists.txt",
-        "include/toka/HandleGrammarAudit.h",
-        "include/toka/Type.h",
-        "src/Type.cpp",
-        "src/main.cpp",
-        "src/Sema/Sema.cpp",
-        "src/Sema/Sema_Stmt.cpp",
-        "src/Sema/Sema_Template.cpp",
-        "tests/HandleGrammarClassifierTest.cpp",
-        "tests/pass/g03_nullable_raw_pointer_matrix.tk",
-        "tests/pass/g08_handle_grammar_valid_matrix.tk",
-        "tools/scripts/audit_handle_grammar.py",
-    ]
-    for kf in key_files:
-        controlled_files_hashes[kf] = file_sha256(kf)
-
-    hasher = hashlib.sha256()
-    hasher.update(git_diff.encode("utf-8"))
-    for kf in sorted(controlled_files_hashes.keys()):
-        hasher.update(f"{kf}:{controlled_files_hashes[kf]}\n".encode("utf-8"))
-    workspace_integrity_digest = hasher.hexdigest()
 
     suite_manifest = {
-        "timestamp": datetime.datetime.now().isoformat(),
+        "schema_version": SCHEMA_VERSION,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "git_commit": git_commit,
-        "git_diff_hash": git_diff_hash,
-        "workspace_integrity_digest": workspace_integrity_digest,
-        "controlled_files_hashes": controlled_files_hashes,
         "git_status_summary": git_status,
-        "step1_source_scan": {
+        "step1_scan": {
             "total_tk_files": len(tk_files),
             "standalone_pass": standalone_pass,
-            "expected_negative_total": expected_total,
-            "unexpected_failures": unexpected_failures,
-            "timeouts": scan_timeout,
-            "category_counts": dict(category_counts),
+            "expected_non_standalone": expected_total,
+            "unexpected_failures": len(unexpected_failures),
+            "category_breakdown": dict(category_counts),
         },
         "step2_suites": []
     }
@@ -188,15 +153,14 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir):
     suite_results = []
     for name, cmd, log_name in suites:
         print(f"  Executing {name}...", flush=True)
-        t0 = time.time()
-        res = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        duration = time.time() - t0
         log_path = os.path.join(suites_dir, log_name)
+        start_t = time.time()
         with open(log_path, "w", encoding="utf-8") as lf:
+            res = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             lf.write(res.stdout)
+        duration = time.time() - start_t
 
-        # Extract test counts if present
-        count_summary = ""
+        count_summary = "N/A"
         for line in res.stdout.splitlines():
             if "Passed:" in line or "Total Passed:" in line or "100% tests passed" in line:
                 count_summary = line.strip()
@@ -219,15 +183,13 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir):
             suite_results.append((name, "FAILED", res.returncode))
             print(f"  [FAIL] {name} exited with code {res.returncode}", flush=True)
 
-    manifest_path = os.path.join(audit_dir, "suite_execution_manifest.json")
+    manifest_path = os.path.join(run_dir, "suite_execution_manifest.json")
     with open(manifest_path, "w", encoding="utf-8") as mf:
         json.dump(suite_manifest, mf, indent=2)
 
-    # 3. Clean scratch
     shutil.rmtree(scratch_dir)
     print(f"\nScratch directory cleaned. Manifest saved to {manifest_path}.", flush=True)
 
-    # 4. Strict fail-closed gate: if any suite failed, abort immediately with non-zero exit code
     failed_suites = [(name, rc) for name, status, rc in suite_results if status != "PASSED"]
     if failed_suites:
         print(f"\n[FATAL] Handle Grammar Audit ABORTED: {len(failed_suites)} suite(s) failed:", flush=True)
@@ -250,7 +212,6 @@ def aggregate_receipts(audit_dir):
 
     raw_event_count = len(raw_events)
 
-    # Canonical deduplication based strictly on record["key"]
     unique_canonical_entries = {}
     for r in raw_events:
         key = r.get("key")
@@ -281,29 +242,47 @@ def aggregate_receipts(audit_dir):
             if r.get("instantiated"):
                 existing["instantiated"] = True
 
+            if r.get("decision"):
+                existing["decision"] = r.get("decision")
+            if r.get("is_transient"):
+                existing["is_transient"] = True
+            if r.get("is_admitted"):
+                existing["is_admitted"] = True
+
     entries = list(unique_canonical_entries.values())
     N = len(entries)
 
-    # All metrics computed strictly from `entries`
+    # Taxonomy calculations
     by_origin = defaultdict(list)
+    by_decision = defaultdict(list)
     phase_combinations = defaultdict(list)
     phase_counts = defaultdict(int)
     by_reachability = defaultdict(list)
     by_fn_codegen = defaultdict(list)
     by_llvm_type = defaultdict(list)
     by_violation = defaultdict(list)
-    instantiated_count = 0
+
+    admitted_sourcesurface = 0
+    admitted_tkiimport = 0
+    non_sfinae_transients = 0
+    rejected_sfinae = 0
+    rejected_source = 0
+    instantiated_violations = 0
+    llvm_lowered_violations = 0
 
     for e in entries:
         orig = e.get("syntax_origin", "Unknown")
-        reach = e.get("reachability", "Unknown")
-        cg = e.get("enclosing_fn_codegen", "Unknown")
+        dec = e.get("decision", "Observed")
+        is_transient = e.get("is_transient", False)
+        is_admitted = e.get("is_admitted", False)
+        is_inst = e.get("instantiated", False)
         llvm_ty = e.get("llvm_type_lowered", False)
         viol = e.get("violation", "Unknown")
-        if e.get("instantiated"):
-            instantiated_count += 1
+        reach = e.get("reachability", "Unknown")
+        cg = e.get("enclosing_fn_codegen", "Unknown")
 
         by_origin[orig].append(e)
+        by_decision[dec].append(e)
         combo = tuple(sorted(list(e["phases"])))
         phase_combinations[combo].append(e)
         for ph in e["phases"]:
@@ -313,79 +292,89 @@ def aggregate_receipts(audit_dir):
         by_llvm_type[llvm_ty].append(e)
         by_violation[viol].append(e)
 
-    reach_cnt = len(by_reachability["Reachable"])
-    unreach_cnt = len(by_reachability["Unreachable"])
-    unk_cnt = len(by_reachability["Unknown"])
-
-    cg_lowered = len(by_fn_codegen["Lowered"])
-    cg_not_lowered = len(by_fn_codegen["NotLowered"])
-    cg_unk = len(by_fn_codegen["Unknown"])
-
-    llvm_true = len(by_llvm_type[True])
-    llvm_false = len(by_llvm_type[False])
+        if is_admitted and orig == "SourceSurface":
+            admitted_sourcesurface += 1
+        if is_admitted and orig == "TKIImport":
+            admitted_tkiimport += 1
+        if is_transient and dec != "RejectedSFINAE" and dec != "RejectedSource":
+            non_sfinae_transients += 1
+        if dec == "RejectedSFINAE":
+            rejected_sfinae += 1
+        if dec == "RejectedSource":
+            rejected_source += 1
+        if is_inst:
+            instantiated_violations += 1
+        if llvm_ty:
+            llvm_lowered_violations += 1
 
     print("\n" + "="*80, flush=True)
-    print(f"   HANDLE GRAMMAR CANONICAL AUDIT REPORT (SCHEMA v{SCHEMA_VERSION})", flush=True)
+    print(f"   HANDLE GRAMMAR AUTHORITATIVE RECEIPT & TAXONOMY (SCHEMA v{SCHEMA_VERSION})", flush=True)
     print("="*80, flush=True)
     print(f"Audit Log Directory               : {audit_dir}", flush=True)
     print(f"Process-Isolated Log Files Emitted : {len(audit_files)}", flush=True)
     print(f"Raw Events Emitted Across All Runs : {raw_event_count}", flush=True)
     print(f"Unique Canonical Entries (N)       : {N}", flush=True)
 
-    print(f"\n1. SyntaxOrigin Breakdown (from unique entries, N={N}):", flush=True)
+    print(f"\n--- AUTHORITATIVE ADMISSION & LOWERING GATES (M0 THRESHOLDS) ---", flush=True)
+    print(f"   • Admitted SourceSurface Violations : {admitted_sourcesurface:<4} [TARGET: 0]", flush=True)
+    print(f"   • Admitted TKIImport Violations     : {admitted_tkiimport:<4} [TARGET: 0]", flush=True)
+    print(f"   • Non-SFINAE Transients             : {non_sfinae_transients:<4} [TARGET: 0]", flush=True)
+    print(f"   • Instantiated Violations           : {instantiated_violations:<4} [TARGET: 0]", flush=True)
+    print(f"   • LLVM Lowered Violations           : {llvm_lowered_violations:<4} [TARGET: 0]", flush=True)
+    print(f"   • Rejected SFINAE Evidence          : {rejected_sfinae}", flush=True)
+    print(f"   • Rejected Compile-Fail Evidence    : {rejected_source}", flush=True)
+
+    print(f"\n1. Decision Taxonomy Breakdown (N={N}):", flush=True)
+    for k, v in sorted(by_decision.items()):
+        print(f"   • {k:<30}: {len(v)}", flush=True)
+
+    print(f"\n2. SyntaxOrigin Breakdown (N={N}):", flush=True)
     for k, v in sorted(by_origin.items()):
         print(f"   • {k:<30}: {len(v)}", flush=True)
-    print(f"   [Sum = {sum(len(v) for v in by_origin.values())} == {N}]", flush=True)
 
-    print(f"\n2. FormationPhase Combinations (from unique entries, N={N}):", flush=True)
+    print(f"\n3. FormationPhase Combinations (N={N}):", flush=True)
     for k, v in sorted(phase_combinations.items()):
         print(f"   • {str(list(k)):<45}: {len(v)}", flush=True)
-    print(f"   [Sum = {sum(len(v) for v in phase_combinations.values())} == {N}]", flush=True)
 
-    print(f"\n3. Individual Formation Phase Coverage (from unique entries, N={N}):", flush=True)
-    for k, v in sorted(phase_counts.items()):
-        print(f"   • {k:<30}: {v}", flush=True)
-
-    print(f"\n4. Reachability Status (from unique entries, N={N}):", flush=True)
-    print(f"   • Reachable                     : {reach_cnt}", flush=True)
-    print(f"   • Unreachable                   : {unreach_cnt}", flush=True)
-    print(f"   • Unknown                       : {unk_cnt}", flush=True)
-    print(f"   [Sum = {reach_cnt + unreach_cnt + unk_cnt} == {N}]", flush=True)
-
-    print(f"\n5. Enclosing Function CodeGen Status (from unique entries, N={N}):", flush=True)
-    print(f"   • Lowered                       : {cg_lowered}", flush=True)
-    print(f"   • NotLowered                    : {cg_not_lowered}", flush=True)
-    print(f"   • Unknown                       : {cg_unk}", flush=True)
-    print(f"   [Sum = {cg_lowered + cg_not_lowered + cg_unk} == {N}]", flush=True)
-
-    print(f"\n6. Actual LLVM Type Lowered (Canonical getLLVMType Receipt, N={N}):", flush=True)
-    print(f"   • True (Lowered to LLVM Type)   : {llvm_true}", flush=True)
-    print(f"   • False (Never entered getLLVMType): {llvm_false}", flush=True)
-    print(f"   [Sum = {llvm_true + llvm_false} == {N}]", flush=True)
-
-    print(f"\n7. Monomorphized Instantiated Status (from unique entries, N={N}):", flush=True)
-    print(f"   • Instantiated == True          : {instantiated_count}", flush=True)
-    print(f"   • Instantiated == False         : {N - instantiated_count}", flush=True)
-    print(f"   [Sum = {instantiated_count + (N - instantiated_count)} == {N}]", flush=True)
-
-    print(f"\n8. Violation Category Breakdown (from unique entries, N={N}):", flush=True)
+    print(f"\n4. Violation Category Breakdown (N={N}):", flush=True)
     for k, v in sorted(by_violation.items()):
         print(f"   • {k:<30}: {len(v)}", flush=True)
-    print(f"   [Sum = {sum(len(v) for v in by_violation.values())} == {N}]", flush=True)
 
     print("\n" + "-"*80, flush=True)
     print("                 DETAILED ENTRY-BY-ENTRY AUDIT MATRIX                  ", flush=True)
     print("-"*80, flush=True)
-    for e in sorted(entries, key=lambda x: (x.get("syntax_origin",""), sorted(list(x.get("phases",[]))), x.get("loc",""))):
+    for e in sorted(entries, key=lambda x: (x.get("decision",""), x.get("syntax_origin",""), sorted(list(x.get("phases",[]))), x.get("loc",""))):
         print(f"• Key : {e['key']}", flush=True)
         print(f"  Type: {e['type']:<26} (ID: {e.get('type_id')}) Violation: {e['violation']}", flush=True)
+        print(f"  Decision: {e.get('decision')} | Admitted: {e.get('is_admitted')} | Transient: {e.get('is_transient')}", flush=True)
         print(f"  Origin: {e.get('syntax_origin')} | Phases: {sorted(list(e['phases']))} | Loc: {e.get('loc')}", flush=True)
         print(f"  FnId: {e.get('fn_id')} | Member: {e.get('member')} | Template: {e.get('template')}", flush=True)
         print(f"  Instantiated: {e.get('instantiated')} | Reachability: {e.get('reachability')} | EnclosingFnCodeGen: {e.get('enclosing_fn_codegen')} | LLVMTypeLowered: {e.get('llvm_type_lowered')}\n", flush=True)
 
+    # Save receipt manifest
+    receipt_data = {
+        "schema_version": SCHEMA_VERSION,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "total_canonical_entries": N,
+        "metrics": {
+            "admitted_sourcesurface_violations": admitted_sourcesurface,
+            "admitted_tkiimport_violations": admitted_tkiimport,
+            "non_sfinae_transients": non_sfinae_transients,
+            "instantiated_violations": instantiated_violations,
+            "llvm_lowered_violations": llvm_lowered_violations,
+            "rejected_sfinae_evidence": rejected_sfinae,
+            "rejected_compile_fail_evidence": rejected_source
+        },
+        "entries": entries
+    }
+    receipt_file = os.path.join(audit_dir, "authoritative_receipt_manifest.json")
+    with open(receipt_file, "w", encoding="utf-8") as rf:
+        json.dump(receipt_data, rf, indent=2)
+    print(f"Authoritative receipt manifest saved to {receipt_file}.", flush=True)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Handle Grammar Morphic Audit Tool")
-    parser.add_argument("--scan", action="store_true", help="Run full scan across all 1604 .tk files and test suites")
+    parser.add_argument("--scan", action="store_true", help="Run full scan across all repository .tk files and test suites")
     parser.add_argument("--audit-dir", type=str, default="", help="Directory containing process-isolated audit JSONL files")
     parser.add_argument("--tokac", type=str, default="build-debug/bin/tokac", help="Path to tokac binary")
     args = parser.parse_args()

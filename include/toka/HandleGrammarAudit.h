@@ -117,6 +117,24 @@ inline const char *codeGenStatusToString(CodeGenStatus status) {
   return "Unknown";
 }
 
+enum class AuditDecision {
+  Observed,
+  RejectedSFINAE,
+  RejectedSource
+};
+
+inline const char *auditDecisionToString(AuditDecision d) {
+  switch (d) {
+  case AuditDecision::Observed:
+    return "Observed";
+  case AuditDecision::RejectedSFINAE:
+    return "RejectedSFINAE";
+  case AuditDecision::RejectedSource:
+    return "RejectedSource";
+  }
+  return "Observed";
+}
+
 struct HandleGrammarAuditEntry {
   std::string CanonicalKey;
   std::string SourceLoc;
@@ -133,6 +151,9 @@ struct HandleGrammarAuditEntry {
   CodeGenStatus EnclosingFunctionCodeGen = CodeGenStatus::Unknown;
   bool IsLLVMTypeLowered = false;
   bool IsMethodInstantiated = false;
+  AuditDecision Decision = AuditDecision::Observed;
+  bool IsTransient = false;
+  bool IsAdmitted = false;
 
   void addPhase(FormationPhase phase) {
     Phases.insert(phase);
@@ -237,6 +258,22 @@ public:
       for (auto ph : phases) entry.addPhase(ph);
       entry.CanonicalFnId = canonicalFnId;
       entry.IsMethodInstantiated = isMethodInstantiated;
+      bool isTransient = false;
+      for (auto ph : phases) {
+        if (ph == FormationPhase::IntermediateLowering)
+          isTransient = true;
+      }
+      entry.IsTransient = isTransient;
+      if (isTransient) {
+        entry.Decision = AuditDecision::Observed;
+        entry.IsAdmitted = false;
+      } else if (origin == SyntaxOrigin::Generated) {
+        entry.Decision = AuditDecision::RejectedSFINAE;
+        entry.IsAdmitted = false;
+      } else {
+        entry.Decision = AuditDecision::RejectedSource;
+        entry.IsAdmitted = false;
+      }
       if (canonicalFnId.empty()) {
         entry.Reachability = ReachabilityStatus::Unknown;
         entry.EnclosingFunctionCodeGen = CodeGenStatus::Unknown;
@@ -247,9 +284,16 @@ public:
       }
       Entries.emplace(key, entry);
     } else {
-      for (auto ph : phases) it->second.addPhase(ph);
-      if (isMethodInstantiated)
+      for (auto ph : phases) {
+        it->second.addPhase(ph);
+        if (ph == FormationPhase::IntermediateLowering)
+          it->second.IsTransient = true;
+      }
+      if (isMethodInstantiated) {
         it->second.IsMethodInstantiated = true;
+        it->second.Decision = AuditDecision::Observed;
+        it->second.IsAdmitted = true;
+      }
       if (!canonicalFnId.empty()) {
         it->second.CanonicalFnId = canonicalFnId;
         FunctionToEntriesMap[canonicalFnId].push_back(key);
@@ -355,6 +399,9 @@ public:
           << "\",\"enclosing_fn_codegen\":\"" << codeGenStatusToString(e.EnclosingFunctionCodeGen)
           << "\",\"llvm_type_lowered\":" << (e.IsLLVMTypeLowered ? "true" : "false")
           << ",\"instantiated\":" << (e.IsMethodInstantiated ? "true" : "false")
+          << ",\"decision\":\"" << auditDecisionToString(e.Decision) << "\""
+          << ",\"is_transient\":" << (e.IsTransient ? "true" : "false")
+          << ",\"is_admitted\":" << (e.IsAdmitted ? "true" : "false")
           << "}\n";
     }
   }
