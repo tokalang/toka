@@ -1028,6 +1028,9 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       std::function<bool(std::shared_ptr<toka::Type>)> checkType = [&](std::shared_ptr<toka::Type> t) -> bool {
           if (!t) return false;
           if (t->isReference()) return true;
+          if (auto *outcome = dynamic_cast<MissOutcomeType *>(t.get())) {
+              return checkType(outcome->PayloadType);
+          }
           if (auto *st = dynamic_cast<ShapeType *>(t.get())) {
               for (const auto &arg : st->GenericArgs) {
                   if (checkType(arg)) return true;
@@ -5172,6 +5175,19 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::string targetPath = getPathString(me->Target.get());
     AccessPath targetAccessPath =
         canonicalizeAccessPath(makeAccessPath(me->Target.get()));
+    // A call returning `&T | miss` has no direct syntactic access path, but
+    // its return contract records the owner(s) in m_LastLifeDependencies.
+    // Feed the single-owner case into pattern binding so the hit arm carries
+    // an active PAL loan rather than only a lifetime note.
+    if (auto missOutcome =
+            std::dynamic_pointer_cast<MissOutcomeType>(targetTypeObj);
+        targetPath.empty() && missOutcome && missOutcome->PayloadType &&
+        missOutcome->PayloadType->isReference() &&
+        m_LastLifeDependencies.size() == 1) {
+      targetPath = *m_LastLifeDependencies.begin();
+      targetAccessPath =
+          canonicalizeAccessPath(makeAccessPath(targetPath));
+    }
     PermissionFlow targetFlow = getPermissionFlow(me->Target.get());
     AccessCapability targetCapability = targetFlow.DirectCapability;
     if (targetFlow.Kind == PermissionFlowKind::Shared)

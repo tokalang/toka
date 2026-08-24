@@ -1,0 +1,17 @@
+// EXPECT: error[E0441]
+fn find_value(value#: i32, hit: bool) -> &i32# | miss
+effects: return <- value {
+    if hit { return &value }
+    return miss
+}
+
+fn main() -> i32 {
+    auto value# = 42
+    match find_value(value#, true) {
+        auto &borrowed# => {
+            auto observed = value
+            return borrowed + observed
+        }
+        miss => return 0
+    }
+}
