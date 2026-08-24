@@ -114,6 +114,9 @@ Morphology bounds participate in:
 - diagnostics at both definition and substitution sites.
 
 The same-version TKI round trip must preserve the exact declared domain.
+The first implemented slice keeps interface format v3 and bumps compiler
+interface provenance to `0.9.9-14`; old compiler-interface caches therefore
+fail closed even though the enclosing format generation is unchanged.
 
 ## 3. Generic definition closure
 
@@ -155,10 +158,10 @@ outcomes:
 - `Vec::unsafe_get` remains raw and acquires an explicit `RawExtendable`
   constraint or moves to an appropriately constrained implementation.
 
-After removing the legacy `Vec::get_ref`, the migration-only audit target is
-`RejectedSFINAE >= 2`, covering only `Vec::unsafe_get` on the two borrowed
-element fixtures. It remains temporary until `RawExtendable` replaces implicit
-filtering and must not be copied into the final Phase 2 baseline.
+`Vec::unsafe_get` now lives in an explicitly `RawExtendable` impl domain.
+Borrowed element instances are rejected by that declared constraint rather
+than by illegal-signature SFINAE, so the terminal audit target is
+`RejectedSFINAE == 0`.
 
 ## 5. Borrow API declaration migration
 

@@ -275,13 +275,6 @@ impl<'T> Vec<'T> {
         }
     }
 
-    pub fn unsafe_get(self, index: usize) -> *'T {
-        unsafe {
-            auto *ptr = self.*buf.unwrap() as *['T]
-            return *ptr[index]
-        }
-    }
-
     pub fn unsafe_as_raw(self) -> nul *['T] {
         return self.*buf
     }
@@ -376,6 +369,18 @@ impl<'T: @Copy> Vec<'T> {
                 i += 1
             }
             self.len = new_len
+        }
+    }
+}
+
+impl<'T> Vec<'T>
+where:
+    'T: morphology raw_extendable
+{
+    pub fn unsafe_get(self, index: usize) -> *'T {
+        unsafe {
+            auto *ptr = self.*buf.unwrap() as *['T]
+            return *ptr[index]
         }
     }
 }

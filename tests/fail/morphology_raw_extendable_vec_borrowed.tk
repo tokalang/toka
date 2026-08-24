@@ -1,0 +1,12 @@
+import std/vec::Vec
+
+// EXPECT: error[E0621]
+fn main() -> i32 {
+    auto value = 42
+    auto values# = Vec<&i32>::new()
+    values#.push(&value)
+    unsafe {
+        values.unsafe_get(0:usize)
+    }
+    return 0
+}
