@@ -250,7 +250,8 @@ impl AgentService {
         {
             auto locked = self.state.lock()
             if locked.is_err() { return }
-            auto *state# = locked.unwrap().get_ref()
+            auto held_lock = locked.unwrap()
+            auto &state# = held_lock.borrow_mut()
             state.events#.push(cede AgentRunEvent(run_id = string::from(run_id), kind = string::from(kind), data = string::from(data)))
             logger = Option<JsonLogger>::Some(state.logger.clone())
         }
@@ -268,7 +269,8 @@ impl AgentService {
     fn next_run(self#) -> Result<string, string> {
         auto locked = self.state.lock()
         if locked.is_err() { return Result<string, string>::Err(string::from("agent service mutex failure")) }
-        auto *state# = locked.unwrap().get_ref()
+        auto held_lock = locked.unwrap()
+        auto &state# = held_lock.borrow_mut()
         if state.closed { return Result<string, string>::Err(string::from("agent service is closed")) }
         state.next_run_id += 1:usize
         auto run_id# = string::from("run-")
@@ -281,7 +283,8 @@ impl AgentService {
         {
             auto locked = self.state.lock()
             if locked.is_err() { return Result<string, string>::Err(string::from("agent service mutex failure")) }
-            auto *state = locked.unwrap().get_ref()
+            auto held_lock = locked.unwrap()
+            auto &state = held_lock.borrow_mut()
             provider = Option<AgentProvider>::Some(state.provider.clone())
         }
         match cede provider.unwrap() {
@@ -381,7 +384,7 @@ impl AgentService {
     pub fn process_tool(self#, program: str, argument: str) -> Result<string, string> {
         auto allowed# = false
         { auto locked = self.state.lock(); if locked.is_err() { return Result<string, string>::Err(string::from("agent service mutex failure")) }
-          auto *state# = locked.unwrap().get_ref(); allowed = vec_contains(state.process_tools, program) }
+          auto held_lock = locked.unwrap(); auto &state = held_lock.borrow_mut(); allowed = vec_contains(state.process_tools, program) }
         if !allowed { return Result<string, string>::Err(string::from("process tool is not allowlisted")) }
         auto command# = Command::new(string::from(program))
         command#.arg(string::from(argument))
@@ -400,7 +403,8 @@ impl AgentService {
         {
             auto locked = self.state.lock()
             if locked.is_err() { return Result<string, string>::Err(string::from("agent service mutex failure")) }
-            auto *state# = locked.unwrap().get_ref()
+            auto held_lock = locked.unwrap()
+            auto &state = held_lock.borrow_mut()
             auto index# = 0:usize
             loop index < state.http_tools.len() {
                 if string_starts_with(url, state.http_tools.get(index).as_str()) { allowed = true }
@@ -425,7 +429,7 @@ impl AgentService {
         auto redis# = Option<RedisPool>::None
         auto postgres# = Option<PostgresPool>::None
         { auto locked = self.state.lock(); if locked.is_err() { return Result<string, string>::Err(string::from("agent service mutex failure")) }
-          auto *state# = locked.unwrap().get_ref(); redis = Option<RedisPool>::Some(state.redis#.clone()); postgres = Option<PostgresPool>::Some(state.postgres#.clone()) }
+          auto held_lock = locked.unwrap(); auto &state# = held_lock.borrow_mut(); redis = Option<RedisPool>::Some(state.redis#.clone()); postgres = Option<PostgresPool>::Some(state.postgres#.clone()) }
         auto idempotency# = string::from("agent:idempotency:")
         idempotency#.push_str(idempotency_key)
         auto cache_lease = redis.unwrap()#.acquire_async(100:i32).await
@@ -481,7 +485,7 @@ impl AgentService {
         if completion#.commit_async().await.is_err() { return Result<string, string>::Err(string::from("agent completion audit commit failed")) }
         self#.emit(run_id.as_str(), "model.completed", answer.as_str())
         self#.emit(run_id.as_str(), "run.completed", "ok")
-        { auto locked = self.state.lock(); if locked.is_ok() { auto *state# = locked.unwrap().get_ref(); auto _runs = state.metrics#.inc_counter("agent_runs_total", 1:i64) } }
+        { auto locked = self.state.lock(); if locked.is_ok() { auto held_lock = locked.unwrap(); auto &state# = held_lock.borrow_mut(); auto _runs = state.metrics#.inc_counter("agent_runs_total", 1:i64) } }
         return Result<string, string>::Ok(run_id)
     }
 
@@ -489,10 +493,11 @@ impl AgentService {
         auto body# = string::from("")
         auto locked = self.state.lock()
         if locked.is_err() { return json_error(500:i32, "agent service mutex failure") }
-        auto *state# = locked.unwrap().get_ref()
+        auto held_lock = locked.unwrap()
+        auto &state = held_lock.borrow_mut()
         auto index# = 0:usize
         loop index < state.events.len() {
-            auto event = state.events.get_ref(index).clone()
+            auto event = state.events.borrow(index).clone()
             if event.run_id.as_str().equals(run_id) {
                 body#.push_str(ndjson_event(cede event).as_str())
             }
@@ -505,7 +510,7 @@ impl AgentService {
         auto matched# = Option<string>::None
         auto run_id# = Option<string>::None
         { auto locked = self.state.lock(); if locked.is_err() { return json_error(500:i32, "agent service mutex failure") }
-          auto *state# = locked.unwrap().get_ref(); if state.closed { return json_error(503:i32, "agent service is closed") }
+          auto held_lock = locked.unwrap(); auto &state = held_lock.borrow_mut(); if state.closed { return json_error(503:i32, "agent service is closed") }
           auto found = state.router.recognize(request.method, request.path.as_str()); if found.is_some() { auto match_value = found.unwrap(); matched = Option<string>::Some(match_value.route_name()); auto param = match_value.param("id"); if param.is_some() { run_id = Option<string>::Some(param.unwrap()) } } }
         if matched.is_none() { return json_error(404:i32, "route not found") }
         auto route = matched.unwrap()
@@ -514,7 +519,8 @@ impl AgentService {
         if route.as_str().equals("metrics") {
             auto locked = self.state.lock()
             if locked.is_err() { return json_error(500:i32, "agent service mutex failure") }
-            auto *state# = locked.unwrap().get_ref()
+            auto held_lock = locked.unwrap()
+            auto &state = held_lock.borrow_mut()
             return response(200:i32, "text/plain; version=0.0.4", cede state.metrics.render())
         }
         auto key = request.headers.get("idempotency-key")
@@ -533,7 +539,8 @@ impl AgentService {
         {
             auto locked = self.state.lock()
             if locked.is_err() { return }
-            auto *state# = locked.unwrap().get_ref()
+            auto held_lock = locked.unwrap()
+            auto &state# = held_lock.borrow_mut()
             if state.closed { return }
             state.closed = true
             redis = Option<RedisPool>::Some(state.redis#.clone())
