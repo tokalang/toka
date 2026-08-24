@@ -524,6 +524,36 @@
       "message": "Public Shape '{}' exposes unsafe field '{}' of type '{}'. Use 'str' or 'String', or prefix the shape name with 'Unsafe' or 'Raw'",
       "description": "Public Shape '{}' exposes unsafe field '{}' of type '{}'. Use 'str' or 'String', or prefix the shape name with 'Unsafe' or 'Raw'"
     },
+    "E0490": {
+      "id": "ERR_ILLEGAL_HANDLE_ORDER",
+      "level": "Error",
+      "message": "Illegal handle grammar ordering in type '{}'",
+      "description": "Illegal handle grammar ordering in type '{}'"
+    },
+    "E0491": {
+      "id": "ERR_EXCEEDED_HANDLE_DEPTH",
+      "level": "Error",
+      "message": "Exceeded maximum handle depth in type '{}'",
+      "description": "Exceeded maximum handle depth in type '{}'"
+    },
+    "E0492": {
+      "id": "ERR_MIXED_HANDLE_RAW",
+      "level": "Error",
+      "message": "Illegal mixing of managed handles and raw pointers in type '{}'",
+      "description": "Illegal mixing of managed handles and raw pointers in type '{}'"
+    },
+    "E0493": {
+      "id": "ERR_ALIAS_ROOT_HANDLE_MORPHOLOGY",
+      "level": "Error",
+      "message": "Alias target '{}' cannot begin with root handle morphology '{}'; root hats must remain visible on the binding at each use site",
+      "description": "Alias target '{}' cannot begin with root handle morphology '{}'; root hats must remain visible on the binding at each use site"
+    },
+    "E0494": {
+      "id": "ERR_PARSER_TYPE_SIDE_PARAM_MORPHOLOGY",
+      "level": "Error",
+      "message": "Parameter type '{}' cannot begin with root handle morphology '{}'; place the root morphology on the parameter binding instead (did you mean '{}'?)",
+      "description": "Parameter type '{}' cannot begin with root handle morphology '{}'; place the root morphology on the parameter binding instead (did you mean '{}'?)"
+    },
     "E0501": {
       "id": "ERR_UNSAFE_ALLOC_CTX",
       "level": "Error",

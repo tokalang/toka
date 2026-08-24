@@ -54,9 +54,20 @@ A continuous handle chain terminates at **any non-Pointer Type node** in the typ
   - `nul *nul *T`: Both outer and inner raw pointers are nullable.
 - Managed handles (`^`, `~`, `&`) are strictly non-nullable by language construction.
 
-### 1.4 Unsafe Non-Exemption
+### 1.5 Binding-Side Morphology vs Pure Soul Type Annotations
 
-`unsafe` blocks grant raw memory dereference and raw pointer arithmetic privileges, but **never** exempt type signatures or local declarations from Handle Grammar rules. Writing `*^T` or `*&T` inside an `unsafe` block is strictly rejected at semantic analysis.
+In variable, parameter, and member declarations with explicit binding names:
+- Handle morphology chains belong exclusively to the **binding identifier** (e.g. `^x: i32`, `&^x: i32`, `&~x: i32`, `&&x: i32`, `cede ^x: i32`).
+- The type annotation after `:` represents the pure soul/payload type (`i32`, `Point`, `Option<i32>`).
+- Parameter type annotations beginning with root handle morphology (e.g. `fn foo(x: ^i32)` or `fn foo(&x: ^i32)`) are rejected with diagnostic `E0494` (suggesting migration to `^x: i32` or `&^x: i32`).
+- Pure type positions without binding names (function return types like `fn make() -> ^i32`, generic arguments like `Option<^i32>`, `Vec<&i32>`, and function types like `fn(&i32) -> ^i32`) continue to accept explicit type-side handle morphology.
+
+### 1.6 Type Alias Boundary & Root Morphology Invariants
+
+- Type aliases (`alias Name = Target` and `type Strong = Target`) define aliases for **soul and nominal types**.
+- An `alias` whose root AST node begins with handle morphology (`^`, `~`, `&`, `*`, `nul *`, or parenthesized equivalents `(^T)`) is strictly rejected with diagnostic `E0493`. Root hats must remain visible at variable binding use sites.
+- Subtypes located behind structural/nominal boundaries within an alias (e.g. `alias OptUnique = Option<^i32>`, `alias VecRef = Vec<&i32>`) are fully legal because the container boundary isolates the inner capability.
+- Nested type parameters within aliases remain subject to recursive Handle Grammar validation (`Option<^^i32>` is rejected under `E0491`).
 
 ---
 
@@ -68,6 +79,8 @@ The following diagnostic identifiers are reserved in `include/toka/DiagnosticDef
 E0490 DIAG(ERR_ILLEGAL_HANDLE_ORDER,          Error, "E0490", "Illegal handle ordering in '{}': at managed depth 2, the outer layer must be '&' (e.g. '&^T' or '&~T'), not an inner borrow ('^&T' or '~&T')")
 E0491 DIAG(ERR_EXCEEDED_HANDLE_DEPTH,         Error, "E0491", "Exceeded handle depth in type '{}': managed owning pointers cannot be nested ('^^T', '~~T'), and borrow depth cannot exceed 2 ('&&&T')")
 E0492 DIAG(ERR_MIXED_HANDLE_RAW,              Error, "E0492", "Illegal mixed handle grammar in type '{}': mixing raw pointers and managed handles ('*^T', '^*T', '*&T', '&*T') within one continuous handle chain is prohibited")
+E0493 DIAG(ERR_ALIAS_ROOT_HANDLE_MORPHOLOGY,   Error, "E0493", "Alias target '{}' cannot begin with root handle morphology '{}'; root hats must remain visible on the binding at each use site")
+E0494 DIAG(ERR_PARSER_TYPE_SIDE_PARAM_MORPHOLOGY, Error, "E0494", "Parameter type '{}' cannot begin with root handle morphology '{}'; place the root morphology on the parameter binding instead (did you mean '{}'?)")
 E0760 DIAG(ERR_CODEGEN_ILLEGAL_HANDLE_GRAMMAR, Error, "E0760", "Internal CodeGen invariant violation: illegal Handle Grammar type '{}' reached LLVM lowering")
 ```
 

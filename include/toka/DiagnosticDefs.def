@@ -124,6 +124,8 @@ DIAG(ERR_EXPOSED_UNSAFE_FIELD,    Error,   "E0482", "Public Shape '{}' exposes u
 DIAG(ERR_ILLEGAL_HANDLE_ORDER,    Error,   "E0490", "Illegal handle grammar ordering in type '{}'")
 DIAG(ERR_EXCEEDED_HANDLE_DEPTH,   Error,   "E0491", "Exceeded maximum handle depth in type '{}'")
 DIAG(ERR_MIXED_HANDLE_RAW,        Error,   "E0492", "Illegal mixing of managed handles and raw pointers in type '{}'")
+DIAG(ERR_ALIAS_ROOT_HANDLE_MORPHOLOGY, Error,   "E0493", "Alias target '{}' cannot begin with root handle morphology '{}'; root hats must remain visible on the binding at each use site")
+DIAG(ERR_PARSER_TYPE_SIDE_PARAM_MORPHOLOGY, Error,   "E0494", "Parameter type '{}' cannot begin with root handle morphology '{}'; place the root morphology on the parameter binding instead (did you mean '{}'?)")
 
 // --- Sema: Memory Safety ---
 DIAG(ERR_UNSAFE_ALLOC_CTX,        Error,   "E0501", "Operation 'alloc' is only allowed in unsafe context")
@@ -556,4 +558,3 @@ DIAG(ERR_CODEGEN_FAILED_TO_RESOLVE_MEMBER_IN, Error, "E0756", "Failed to resolve
 DIAG(ERR_CODEGEN_CANNOT_DETERMINE_SIZE_OF_INCOMPLETE_TY, Error, "E0757", "Cannot determine size of incomplete type: {}")
 DIAG(ERR_CODEGEN_COMPILE_TIME_FIELD_ITERATION_VARIABLES, Error, "E0758", "Compile-time field iteration variables cannot be used contextually where runtime values are expected (must be folded statically).")
 DIAG(ERR_CODEGEN_EXTERN_SIGNATURE_CONFLICT, Error, "E0759", "Conflicting extern declarations for '{}': existing LLVM type '{}', requested '{}'")
-DIAG(ERR_CODEGEN_ILLEGAL_HANDLE_GRAMMAR_INVARIANT, Error, "E0760", "Hard CodeGen Invariant: illegal handle grammar reached code generator: '{}'")

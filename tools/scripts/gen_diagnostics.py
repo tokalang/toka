@@ -39,6 +39,7 @@ def main():
         ("Sema: Control Flow & Functions", lambda c: c in ["E0431", "E0432", "E0433", "E0434", "E0435", "E0436", "E0437", "E0464", "E0465"]),
         ("Sema: Ownership & Resources (Toka Specials)", lambda c: c in ["E0438", "E0439", "E0440", "E0441", "E0442", "E0443", "E0444", "E0458", "E0445", "E0451", "E0446", "E0466", "E0468", "E0473", "E0474", "E0475", "E0447", "E0448", "E0449", "E0450", "E0467", "E0452", "E0453", "E0454", "E0455", "E0456", "E0457", "E0460", "E0461", "E04581", "E04582", "E04583", "E04584", "E0476", "E0477", "E0478", "E04603", "E04604", "E04605", "E04635"]),
         ("Sema: Safety Redline Boundaries", lambda c: c in ["E0480", "E0481", "E0482"]),
+        ("Sema: Handle Grammar Invariants", lambda c: c in ["E0490", "E0491", "E0492", "E0493", "E0494"]),
         ("Sema: Memory Safety", lambda c: c in ["E0501", "E0502", "E0503"]),
         ("Pattern Matching", lambda c: c in ["E0550", "E0551", "E0552", "E0553", "E0554"]),
         ("Generics (Upcoming)", lambda c: c in ["E0601", "E0602", "E0603", "E0604", "E0607", "E0701", "E0702", "E0605", "E0606", "E0608", "E0609", "E0610", "E0611", "E0612", "E0613", "E0614", "E0615", "E0616", "E0617", "E0619", "E0620"]),
