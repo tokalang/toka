@@ -18,7 +18,70 @@ from collections import defaultdict
 
 SCHEMA_VERSION = "2.0.0"
 
-def run_full_scan(tokac_bin, run_dir, scratch_dir):
+import concurrent.futures
+
+def run_quick_scan(tokac_bin, run_dir, scratch_dir):
+    env = os.environ.copy()
+    env["TOKAC"] = tokac_bin
+    env["TOKA_HANDLE_GRAMMAR_AUDIT"] = "1"
+    env["TOKA_HANDLE_GRAMMAR_AUDIT_DIR"] = run_dir
+
+    print(f"=== [Handle Grammar Audit] Starting Quick Scan (Schema v{SCHEMA_VERSION}) ===", flush=True)
+    print(f"Audit log directory: {run_dir}", flush=True)
+
+    ctest_dir = "build-debug" if os.path.exists("build-debug/CTestTestfile.cmake") else "build"
+
+    quick_steps = [
+        ("Handle Grammar Pass Suite", [
+            "python3", "tools/scripts/test_pass.py",
+            "tests/pass/g08_level2_param_signatures.tk",
+            "tests/pass/g08_smart_ptr_borrow.tk",
+            "tests/pass/g08_handle_grammar_parser_matrix.tk",
+            "tests/pass/g08_handle_grammar_valid_matrix.tk"
+        ]),
+        ("Handle Grammar Fail Suite", [
+            "python3", "tools/scripts/test_verify_fail.py",
+            "tests/fail/handle_grammar_alias_exceeded_depth.tk",
+            "tests/fail/handle_grammar_alias_illegal_order.tk",
+            "tests/fail/handle_grammar_alias_mixed_raw.tk",
+            "tests/fail/handle_grammar_array_element_illegal.tk",
+            "tests/fail/handle_grammar_cast_illegal.tk",
+            "tests/fail/handle_grammar_extern_param_illegal.tk",
+            "tests/fail/handle_grammar_extern_return_illegal.tk",
+            "tests/fail/handle_grammar_fn_param_illegal.tk",
+            "tests/fail/handle_grammar_fn_return_illegal.tk",
+            "tests/fail/handle_grammar_function_type_illegal.tk",
+            "tests/fail/handle_grammar_generic_arg_illegal.tk",
+            "tests/fail/handle_grammar_param_level1_redundant.tk",
+            "tests/fail/handle_grammar_trait_method_param_illegal.tk",
+            "tests/fail/handle_grammar_trait_method_return_illegal.tk",
+            "tests/fail/handle_grammar_unsafe_block_illegal.tk"
+        ]),
+        ("Handle Grammar TKI Replay", [
+            "bash", "tools/scripts/test_semantic_replay.sh"
+        ], {"CASE_ROOT": "tests/semantics/tki_replay/cases/handle_001_level2_param_signatures"}),
+        ("Handle Grammar Classifier CTest", [
+            "ctest", "--test-dir", ctest_dir, "-R", "toka_handle_grammar_classifier", "--output-on-failure"
+        ])
+    ]
+
+    for step in quick_steps:
+        name = step[0]
+        cmd = step[1]
+        step_env = env.copy()
+        if len(step) > 2:
+            step_env.update(step[2])
+        print(f"  Executing {name}...", flush=True)
+        t0 = time.time()
+        res = subprocess.run(cmd, env=step_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        dur = time.time() - t0
+        if res.returncode == 0:
+            print(f"  [PASS] {name} succeeded ({dur:.1f}s)", flush=True)
+        else:
+            print(f"  [FAIL] {name} failed with code {res.returncode}:\n{res.stdout}", flush=True)
+            sys.exit(1)
+
+def run_full_scan(tokac_bin, run_dir, scratch_dir, jobs=8, check_only=True):
     env = os.environ.copy()
     env["TOKAC"] = tokac_bin
     env["TOKA_HANDLE_GRAMMAR_AUDIT"] = "1"
@@ -27,6 +90,8 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir):
     print(f"=== [Handle Grammar Audit] Starting Full Scan (Schema v{SCHEMA_VERSION}) ===", flush=True)
     print(f"Audit log directory: {run_dir}", flush=True)
     print(f"Scratch output dir : {scratch_dir}", flush=True)
+    print(f"Parallel workers   : {jobs}", flush=True)
+    print(f"Scan check-only    : {check_only}", flush=True)
 
     # 1. Scan all repository .tk files
     tk_files = []
@@ -65,30 +130,42 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir):
         return None
 
     print(f"\nStep 1: Compiling all {len(tk_files)} repository .tk files with isolated scratch outputs...", flush=True)
-    processed = 0
     standalone_pass = 0
     category_counts = defaultdict(int)
     unexpected_failures = []
     scan_timeout = []
 
-    for f in tk_files:
-        out_obj = os.path.join(scratch_dir, f"out_{processed}.o")
-        cmd = [tokac_bin, "-c", f, "-I", "lib", "-I", ".", "-o", out_obj]
+    def compile_one_file(idx_and_f):
+        idx, f = idx_and_f
+        out_obj = os.path.join(scratch_dir, f"out_{idx}.o")
+        if check_only:
+            cmd = [tokac_bin, "--check-only", f, "-I", "lib", "-I", "."]
+        else:
+            cmd = [tokac_bin, "-c", f, "-I", "lib", "-I", ".", "-o", out_obj]
         try:
             res = subprocess.run(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=25)
-            if res.returncode == 0:
+            return (f, res.returncode, None)
+        except subprocess.TimeoutExpired:
+            return (f, -1, "timeout")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
+        futures = [executor.submit(compile_one_file, item) for item in enumerate(tk_files)]
+        done_count = 0
+        for fut in concurrent.futures.as_completed(futures):
+            f, rc, timeout = fut.result()
+            done_count += 1
+            if timeout:
+                scan_timeout.append(f)
+            elif rc == 0:
                 standalone_pass += 1
             else:
-                category = is_expected_non_standalone(f)
-                if category:
-                    category_counts[category] += 1
+                cat = is_expected_non_standalone(f)
+                if cat:
+                    category_counts[cat] += 1
                 else:
                     unexpected_failures.append(f)
-        except subprocess.TimeoutExpired:
-            scan_timeout.append(f)
-        processed += 1
-        if processed % 200 == 0 or processed == len(tk_files):
-            print(f"  Processed {processed}/{len(tk_files)} files...", flush=True)
+            if done_count % 200 == 0 or done_count == len(tk_files):
+                print(f"  Processed {done_count}/{len(tk_files)} files...", flush=True)
 
     expected_total = sum(category_counts.values())
     print(f"  Source compilation scan metrics:", flush=True)
@@ -456,19 +533,32 @@ def aggregate_receipts(audit_dir):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Handle Grammar Morphic Audit Tool")
-    parser.add_argument("--scan", action="store_true", help="Run full scan across all repository .tk files and test suites")
+    parser.add_argument("--quick", action="store_true", help="Run quick pre-push verification of Handle Grammar matrices, classifier, and TKI replay")
+    parser.add_argument("--full", action="store_true", help="Run full scan across all repository .tk files and 9 test suites")
+    parser.add_argument("--scan", action="store_true", help="Alias for --full")
+    parser.add_argument("--jobs", "-j", type=int, default=8, help="Number of parallel worker threads for file scanning (default: 8)")
+    parser.add_argument("--check-only", action="store_true", default=True, help="Use --check-only in Step 1 file scanning (default: True)")
+    parser.add_argument("--no-check-only", dest="check_only", action="store_false", help="Generate object files in Step 1 file scanning")
     parser.add_argument("--audit-dir", type=str, default="", help="Directory containing process-isolated audit JSONL files")
     parser.add_argument("--tokac", type=str, default="build-debug/bin/tokac", help="Path to tokac binary")
     args = parser.parse_args()
 
     tokac_bin = os.path.abspath(args.tokac)
-    if args.scan or not args.audit_dir:
+    if args.quick:
         run_id = int(time.time())
         audit_dir = f"/tmp/toka_audit_run_{run_id}"
         scratch_dir = f"/tmp/toka_scan_scratch_{run_id}"
         os.makedirs(audit_dir, exist_ok=True)
         os.makedirs(scratch_dir, exist_ok=True)
-        run_full_scan(tokac_bin, audit_dir, scratch_dir)
+        run_quick_scan(tokac_bin, audit_dir, scratch_dir)
+        aggregate_receipts(audit_dir)
+    elif args.full or args.scan or not args.audit_dir:
+        run_id = int(time.time())
+        audit_dir = f"/tmp/toka_audit_run_{run_id}"
+        scratch_dir = f"/tmp/toka_scan_scratch_{run_id}"
+        os.makedirs(audit_dir, exist_ok=True)
+        os.makedirs(scratch_dir, exist_ok=True)
+        run_full_scan(tokac_bin, audit_dir, scratch_dir, jobs=args.jobs, check_only=args.check_only)
         aggregate_receipts(audit_dir)
     else:
         aggregate_receipts(args.audit_dir)
