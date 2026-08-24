@@ -63,7 +63,7 @@ impl Database {
     pub fn get(self, key: u64) -> Option<string> {
         auto index = find_row(self.rows, key)
         if index < 0 { return Option<string>::None }
-        auto *row = self.rows.get_ref(index as usize)
+        auto &row = self.rows.borrow(index as usize)
         auto value = row.value.clone()
         return Option<string>::Some(cede value)
     }
@@ -72,7 +72,7 @@ impl Database {
         auto output# = StringBuilder::new()
         auto i# = 0:usize
         loop i < self.rows.len() {
-            auto *row = self.rows.get_ref(i)
+            auto &row = self.rows.borrow(i)
             output#.append_u64(row.key)
             output#.append_char('\t' as char)
             output#.append_str(row.value)
@@ -114,7 +114,7 @@ impl Database {
         auto inserted# = false
         auto i# = 0:usize
         loop i < self.rows.len() {
-            auto *row = self.rows.get_ref(i)
+            auto &row = self.rows.borrow(i)
             if !inserted && key < row.key {
                 append_record(output, key, value)
                 inserted = true
@@ -135,7 +135,7 @@ impl Database {
         auto output# = string::from("QSLITE\t1\n")
         auto i# = 0:usize
         loop i < self.rows.len() {
-            auto *row = self.rows.get_ref(i)
+            auto &row = self.rows.borrow(i)
             if row.key != key { append_record(output, row.key, row.value) }
             i += 1
         }
@@ -150,7 +150,7 @@ fn error(code: i32, message: str) -> DbError {
 fn find_row(rows: Vec<Row>, key: u64) -> i32 {
     auto i# = 0:usize
     loop i < rows.len() {
-        auto *row = rows.get_ref(i)
+        auto &row = rows.borrow(i)
         if row.key == key { return i as i32 }
         if row.key > key { return -1 }
         i += 1
