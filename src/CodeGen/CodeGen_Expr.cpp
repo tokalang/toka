@@ -1629,8 +1629,33 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
   // [Constitution 1.3] Reference Sigil: &p (Static Borrow)
   if (unary->Op == TokenType::Ampersand) {
     llvm::Value *soulAddr = emitEntityAddr(unary->RHS.get());
+    bool borrowsSelectedHandle = false;
+    if (auto *selected = dynamic_cast<const UnaryExpr *>(unary->RHS.get())) {
+      borrowsSelectedHandle =
+          selected->Op == TokenType::Caret ||
+          selected->Op == TokenType::Tilde ||
+          selected->Op == TokenType::Ampersand ||
+          selected->Op == TokenType::MorphicIdentity;
+    }
+    if (!borrowsSelectedHandle && soulAddr &&
+        dynamic_cast<const ArrayIndexExpr *>(unary->RHS.get()) &&
+        unary->RHS->ResolvedType) {
+      auto elementType = unary->RHS->ResolvedType;
+      if (elementType->isSharedPtr()) {
+        auto *sharedTy = getLLVMType(elementType);
+        auto *dataAddr = m_Builder.CreateStructGEP(
+            sharedTy, soulAddr, 0, "borrow.shared.data.addr");
+        soulAddr = m_Builder.CreateLoad(m_Builder.getPtrTy(), dataAddr,
+                                        "borrow.shared.data");
+      } else if (elementType->isUniquePtr() || elementType->isReference()) {
+        soulAddr = m_Builder.CreateLoad(m_Builder.getPtrTy(), soulAddr,
+                                        "borrow.handle.payload");
+      }
+    }
     std::string typeName = "";
-    if (unary->RHS->ResolvedType)
+    if (unary->ResolvedType)
+      typeName = unary->ResolvedType->toString();
+    else if (unary->RHS->ResolvedType)
       typeName = "&" + unary->RHS->ResolvedType->toString();
     return PhysEntity(soulAddr, typeName, m_Builder.getPtrTy(), false);
   }

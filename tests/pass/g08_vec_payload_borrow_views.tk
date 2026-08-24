@@ -2,6 +2,14 @@ import std/vec::Vec
 
 fn main() -> i32 {
     {
+        auto value = 43
+        auto values# = Vec<&i32>::new()
+        values#.push(&value)
+        auto &payload = values.borrow(0:usize)
+        assert(payload == 43, "Vec<&T>.borrow must expose &T payload")
+    }
+
+    {
         auto values# = Vec<i32>::new()
         values#.push(41)
         auto &payload# = values#.borrow_mut(0:usize)

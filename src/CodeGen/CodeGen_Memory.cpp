@@ -1433,7 +1433,8 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
       return genAddr(unary->RHS.get());
     }
     if (unary->Op == TokenType::Star || unary->Op == TokenType::Caret ||
-        unary->Op == TokenType::Tilde) {
+        unary->Op == TokenType::Tilde ||
+        unary->Op == TokenType::MorphicIdentity) {
       // [Constitution] *p, ^p, ~p refer to the Identity (the pointer handle).
       // Their "address" is the address of the handle box (the alloca).
       if (auto *v = dynamic_cast<const VariableExpr *>(unary->RHS.get())) {

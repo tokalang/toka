@@ -18,6 +18,11 @@ fn test_parser_and_expression_disambiguation() -> bool {
     auto val = 42
     auto &ref1 = &val
 
+    // The parenthesized morphic selector must not consume the existing
+    // character-literal spelling for an opening parenthesis.
+    auto paren = '('
+    assert(paren == '(', "'(' must remain a character literal")
+
     // Logical && in expressions MUST NOT be confused with double borrow type syntax
     auto condition = (val == 42) && (ref1 == 42) && (val > 0)
     assert(condition, "Logical && in expression must evaluate correctly")

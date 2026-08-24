@@ -427,7 +427,8 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       match(TokenType::PlusPlus) || match(TokenType::MinusMinus) ||
       match(TokenType::Caret) || match(TokenType::Tilde) ||
       match(TokenType::Star) || match(TokenType::Ampersand) ||
-      match(TokenType::And) || match(TokenType::At)) {
+      match(TokenType::And) || match(TokenType::At) ||
+      match(TokenType::MorphicIdentity)) {
     Token tok = previous();
     TokenType op = tok.Kind;
     auto sub = parsePrimary(allowTrailingClosure);
@@ -442,7 +443,8 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     auto node = std::make_unique<UnaryExpr>(op, std::move(sub));
     if (op == TokenType::Ampersand) {
       if (auto *selected = dynamic_cast<UnaryExpr *>(node->RHS.get())) {
-        if (selected->Op == TokenType::Ampersand)
+        if (selected->Op == TokenType::Ampersand ||
+            selected->Op == TokenType::MorphicIdentity)
           selected->SelectsHandleIdentity = true;
       }
     }

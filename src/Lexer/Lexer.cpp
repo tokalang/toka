@@ -552,6 +552,11 @@ Token Lexer::punctuation() {
   case '"':
     return viewString(); // Call viewString handler
   case '\'': {
+    // A quote followed by a parenthesized expression selects that
+    // expression's abstract/morphic handle identity.  Preserve ordinary
+    // character literals such as `'('` by recognizing their closing quote.
+    if (peek() == '(' && peekNext() != '\'')
+      return Token{TokenType::MorphicIdentity, "'", line, col};
     if (isAlpha(peek())) {
       const char *lookahead = m_Current;
       while (isAlpha(*lookahead) || isDigit(*lookahead) || *lookahead == '_') {

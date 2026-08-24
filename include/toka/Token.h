@@ -170,7 +170,10 @@ enum class TokenType {
   // Keep new reserved words at the end so they do not renumber tokens exposed
   // in diagnostics.
   KwEncap,
-  KwNever
+  KwNever,
+  // Abstract morphology identity selector.  It is currently spelled as a
+  // parenthesized expression prefix: `'(expr)`.
+  MorphicIdentity
 };
 
 struct Token {

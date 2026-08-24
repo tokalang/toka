@@ -480,7 +480,7 @@ impl<'T> VecIterator<'T>@BorrowIterator {
 
         self.pos += 1
         unsafe {
-            return Option<BorrowedItem>::Some(&self.buf[self.pos - 1])
+            return Option<BorrowedItem>::Some(&'(self.buf[self.pos - 1]))
         }
     }
 }

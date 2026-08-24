@@ -238,6 +238,24 @@ the payload view, while `&^x`, `&~x`, or `&'x` borrow the explicitly selected
 handle identity. A function boundary receives the required level-1 handle view
 through its ordinary capture contract instead of adding a level-2 formal root.
 
+For a non-binding expression whose concrete morphology is abstract, the
+parenthesized selector is explicit:
+
+```toka
+&items[index]       // borrow Soul(items[index])
+&'(items[index])    // borrow the abstract `'T` handle identity
+```
+
+`BorrowIterator` uses the second form because `Vec<&T>` must yield `&&T`.
+Ordinary container `borrow`/`borrow_mut` use the first form and yield `&T`.
+This selector does not itself prove that every substitution is legal; a public
+generic `&'T` signature still requires the planned `BorrowExtendable` bound.
+
+The present implementation qualifies the selector in the iterator projection
+path. General first-class local binding and direct function-return ABI coverage
+for `&^T`, `&~T`, and `&&T` remains a separate lowering milestone and must not
+be inferred from iterator success.
+
 ### 5.2 Other prefixes
 
 Without a narrower declared domain:

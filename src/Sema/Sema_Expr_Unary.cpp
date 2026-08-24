@@ -76,14 +76,19 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
       m_DisableSoulCollapse = true;
     }
   }
+  if (Unary->Op == TokenType::MorphicIdentity)
+    m_DisableSoulCollapse = true;
   bool savedNegativeLiteral = m_CheckingNegativeIntegerLiteral;
   bool savedAllowPermissionSuffix = m_AllowPermissionSuffix;
   bool savedBorrowingSelectedHandle = m_BorrowingSelectedHandle;
+  bool borrowsSelectedHandle = false;
   if (Unary->Op == TokenType::Ampersand) {
     if (auto *selected = dynamic_cast<UnaryExpr *>(Unary->RHS.get())) {
       if (selected->Op == TokenType::Caret ||
           selected->Op == TokenType::Tilde ||
-          selected->Op == TokenType::Ampersand) {
+          selected->Op == TokenType::Ampersand ||
+          selected->Op == TokenType::MorphicIdentity) {
+        borrowsSelectedHandle = true;
         m_BorrowingSelectedHandle = true;
       }
     }
@@ -327,6 +332,13 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
 
   // Fallback for non-variable expressions or other op types
   std::shared_ptr<toka::Type> inner = rhsType;
+  if (Unary->Op == TokenType::Ampersand && !borrowsSelectedHandle && inner) {
+    auto soul = inner->getSoulType();
+    if (soul) {
+      inner = soul->withAttributes(m_ExpectedWritability, soul->IsNullable,
+                                   soul->IsBlocked);
+    }
+  }
   if (Unary->Op == TokenType::Star) {
     // Identity (*)
     if (rhsType->isArray()) {
