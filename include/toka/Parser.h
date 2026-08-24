@@ -74,9 +74,10 @@ private:
   void errorTypeSideMorphicBinding(const Token &nameTok,
                                    const std::string &bindingPrefix,
                                    const std::string &typeName);
-  bool rejectTypeSideReferenceParameter(const Token &nameTok,
-                                        const std::string &bindingPrefix,
-                                        std::string &typeName);
+  bool rejectTypeSideHandleMorphology(const Token &nameTok,
+                                      const std::string &bindingPrefix,
+                                      TypeSyntaxPtr &typeSyntax,
+                                      std::string &typeName);
   bool isTypeStart() const;
 
   bool HasError = false;

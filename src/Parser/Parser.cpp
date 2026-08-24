@@ -183,41 +183,49 @@ void Parser::errorTypeSideMorphicBinding(const Token &nameTok,
   error(nameTok, DiagID::ERR_GENERIC_PARSE, msg);
 }
 
-bool Parser::rejectTypeSideReferenceParameter(const Token &nameTok,
-                                              const std::string &bindingPrefix,
-                                              std::string &typeName) {
-  size_t pos = typeName.find_first_not_of(" \t\r\n");
-  if (pos == std::string::npos)
+bool Parser::rejectTypeSideHandleMorphology(const Token &nameTok,
+                                            const std::string &bindingPrefix,
+                                            TypeSyntaxPtr &typeSyntax,
+                                            std::string &typeName) {
+  if (!typeSyntax)
     return false;
 
-  if (typeName.compare(pos, 5, "cede ") == 0) {
-    pos = typeName.find_first_not_of(" \t\r\n", pos + 5);
-    if (pos == std::string::npos)
-      return false;
+  TypeSyntaxPtr current = typeSyntax;
+  std::string rootMorphology = "";
+  while (current && current->NodeKind == TypeSyntax::Kind::Morphology) {
+    rootMorphology += current->Text;
+    current = current->Subject;
   }
 
-  if (typeName[pos] != '&')
+  if (rootMorphology.empty()) {
+    size_t pos = typeName.find_first_not_of(" \t\r\n");
+    if (pos != std::string::npos) {
+      if (typeName.compare(pos, 5, "cede ") == 0) {
+        pos = typeName.find_first_not_of(" \t\r\n", pos + 5);
+      }
+      if (pos != std::string::npos && (typeName[pos] == '^' || typeName[pos] == '~' ||
+                                      typeName[pos] == '&' || typeName[pos] == '*')) {
+        rootMorphology = std::string(1, typeName[pos]);
+      }
+    }
+  }
+
+  if (rootMorphology.empty())
     return false;
 
-  // Level-2 double borrow parameter: &x: &T is legal
-  if (!bindingPrefix.empty() && bindingPrefix.find('&') != std::string::npos)
-    return false;
+  std::string soulType = current ? canonicalType(current) : typeName;
+  std::string suggestedPrefix = bindingPrefix + rootMorphology;
+  std::string suggestion = suggestedPrefix + nameTok.Text + ": " + soulType;
 
-  std::string baseType = typeName;
-  baseType.erase(pos, 1);
+  DiagnosticEngine::report(typeSyntax->Begin,
+                           DiagID::ERR_PARSER_TYPE_SIDE_PARAM_MORPHOLOGY,
+                           typeName, rootMorphology, suggestion);
+  HasError = true;
 
-  std::string ordinary = nameTok.Text + ": " + baseType;
-  std::string identity = bindingPrefix.empty()
-                             ? "&" + nameTok.Text + ": " + baseType
-                             : bindingPrefix + nameTok.Text + ": " + baseType;
-  std::string msg =
-      "Reference morphology (&) must prefix the binding name, not the type "
-      "name. Function parameters are implicitly captured; write '" +
-      ordinary + "' for ordinary access, or '" + identity +
-      "' only when passing or rebinding the reference identity.";
-  error(nameTok, DiagID::ERR_GENERIC_PARSE, msg);
-
-  typeName = baseType;
+  if (current) {
+    typeSyntax = current;
+    typeName = canonicalType(current);
+  }
   return true;
 }
 
