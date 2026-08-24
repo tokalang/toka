@@ -152,7 +152,7 @@ pub fn main() -> i32 {
             println("--------------------------")
             
             // Check keys
-            if map_ptr.get_ref(string::from("name")).is_some() {
+            if map_ptr.try_borrow(string::from("name")).is_some() {
                 println("Contains name!")
             }
         }

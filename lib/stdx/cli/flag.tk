@@ -52,7 +52,7 @@ impl ParsedArgs {
     }
 
     pub fn get_int(self, name: string) -> i64 {
-        match self.values.get_ref(name) {
+        match self.values.try_borrow(name) {
             auto Option<&FlagValue>::Some(&val) => {
                 match val {
                     auto FlagValue::Int(v) => return v
@@ -64,7 +64,7 @@ impl ParsedArgs {
     }
 
     pub fn get_float(self, name: string) -> f64 {
-        match self.values.get_ref(name) {
+        match self.values.try_borrow(name) {
             auto Option<&FlagValue>::Some(&val) => {
                 match val {
                     auto FlagValue::Float(v) => return v
@@ -76,7 +76,7 @@ impl ParsedArgs {
     }
 
     pub fn get_bool(self, name: string) -> bool {
-        match self.values.get_ref(name) {
+        match self.values.try_borrow(name) {
             auto Option<&FlagValue>::Some(&val) => {
                 match val {
                     auto FlagValue::Bool(v) => return v
@@ -88,7 +88,7 @@ impl ParsedArgs {
     }
 
     pub fn get_string(self, name: string) -> string {
-        match self.values.get_ref(name) {
+        match self.values.try_borrow(name) {
             auto Option<&FlagValue>::Some(&val) => {
                 match val {
                     auto FlagValue::Str(&v) => return v.clone()

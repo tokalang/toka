@@ -265,7 +265,7 @@ impl<'K, 'V: @Copy> HashMap<'K, 'V> {
 }
 
 impl<'K, 'V> HashMap<'K, 'V> {
-    pub fn get_ref(self, 'key: K) -> Option<&'V>
+    pub fn try_borrow(self, 'key: K) -> Option<&'V>
     effects: return <- self {
          auto capacity = self.cap
          if capacity == 0 { return Option<&'V>::None }
@@ -296,8 +296,14 @@ impl<'K, 'V> HashMap<'K, 'V> {
          return Option<&'V>::None
     }
 
+    // Temporary compatibility alias. New code uses try_borrow().
+    pub fn get_ref(self, 'key: K) -> Option<&'V>
+    effects: return <- self {
+         return self.try_borrow('key)
+    }
+
     pub fn contains_key(self, 'key: K) -> bool {
-         auto val_opt = self.get_ref('key)
+         auto val_opt = self.try_borrow('key)
          return val_opt.is_some()
     }
 

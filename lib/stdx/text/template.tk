@@ -70,7 +70,7 @@ impl TemplateContext {
     pub fn get_var(self, key: str) -> Option<string> {
         auto k = string::from(key)
         if self.vars.contains_key(string::from(k.as_str())) {
-            auto &val_ref = self.vars.get_ref(k).unwrap()
+            auto &val_ref = self.vars.try_borrow(k).unwrap()
             auto res = string::from(val_ref.as_str())
             return Option<string>::Some(cede res)
         }
@@ -80,7 +80,7 @@ impl TemplateContext {
     pub fn get_list(self, key: str) -> Option<Vec<string>> {
         auto k = string::from(key)
         if self.lists.contains_key(string::from(k.as_str())) {
-            auto &list_ref = self.lists.get_ref(k).unwrap()
+            auto &list_ref = self.lists.try_borrow(k).unwrap()
             auto copy_list# = Vec<string>::new()
             auto i# = 0:usize
             loop i < list_ref.len() {
