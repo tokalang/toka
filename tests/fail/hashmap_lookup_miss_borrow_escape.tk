@@ -1,0 +1,15 @@
+import std/hashmap::HashMap
+
+// EXPECT: error[E0455]
+fn escape_lookup() -> &string | miss {
+    auto map# = HashMap<i32, string>::new()
+    map#.insert(1, cede string::from("one"))
+    return map.lookup(1)
+}
+
+fn main() -> i32 {
+    match escape_lookup() {
+        auto &value => return value.len() as i32
+        miss => return 0
+    }
+}

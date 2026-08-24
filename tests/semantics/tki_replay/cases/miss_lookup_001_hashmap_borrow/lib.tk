@@ -1,0 +1,11 @@
+import std/hashmap::HashMap
+
+// EXPECT_TKI: pub fn find_value(map: HashMap<i32,string>, key: i32) -> &string|miss <- map
+// EXPECT_TKI_ROUNDTRIP
+
+pub fn find_value(map: HashMap<i32, string>, key: i32) -> &string | miss
+effects:
+    return <- map
+{
+    return map.lookup(key)
+}

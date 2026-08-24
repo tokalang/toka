@@ -1,0 +1,24 @@
+import std/hashmap::HashMap
+
+fn main() -> i32 {
+    auto map# = HashMap<i32, string>::new()
+    map#.insert(7, cede string::from("seven"))
+
+    match map.lookup(7) {
+        auto &value => {
+            assert(value.as_str().equals("seven"),
+                   "lookup hit must borrow the stored value")
+        }
+        miss => return 1
+    }
+
+    match map.lookup(8) {
+        auto &value => return 2
+        miss => {}
+    }
+
+    // Keep the Option surface available for callers that store absence as
+    // data rather than immediately branching on the lookup operation.
+    assert(map.try_borrow(7).is_some(), "try_borrow compatibility failed")
+    return 0
+}

@@ -353,6 +353,42 @@ impl<'K, 'V> HashMap<'K, 'V> {
 
 }
 
+impl<'K, 'V> HashMap<'K, 'V>
+where:
+    'V: morphology borrow_extendable
+{
+    /// Returns a borrowed value on hit, or the operation outcome `miss`.
+    /// Unlike Option, this surface is intended for immediate branch/forward
+    /// control flow rather than storing absence as data.
+    pub fn lookup(self, 'key: K) -> &'V | miss
+    effects: return <- self {
+         auto capacity = self.cap
+         if capacity == 0 { return miss }
+         auto idx# = ('key.hash() as usize) & (capacity - 1)
+         auto start_idx = idx
+
+         loop true {
+             unsafe {
+                 auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
+                 if m_ptr == 0 {
+                     return miss
+                 }
+                 if m_ptr == 1 {
+                     auto *'k_ptr# = self.keys.unsafe_get(idx) as *K
+                     if 'k_ptr.eq('key) {
+                         return &'(self.vals.buf[idx])
+                     }
+                 }
+             }
+             idx = (idx + 1) & (capacity - 1)
+             if idx == start_idx {
+                 return miss
+             }
+         }
+         return miss
+    }
+}
+
 impl<'K, 'V> HashMap<'K, 'V>@Iterable {
     type Iter = HashMapIterator<'K, 'V>
 

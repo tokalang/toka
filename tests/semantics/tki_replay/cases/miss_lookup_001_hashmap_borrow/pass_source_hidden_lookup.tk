@@ -1,0 +1,19 @@
+import std/hashmap::HashMap
+import ./lib::find_value
+
+fn main() -> i32 {
+    auto map# = HashMap<i32, string>::new()
+    map#.insert(1, cede string::from("one"))
+
+    match find_value(map, 1) {
+        auto &value => {
+            if !value.as_str().equals("one") { return 1 }
+        }
+        miss => return 2
+    }
+    match find_value(map, 2) {
+        auto &value => return 3
+        miss => {}
+    }
+    return 0
+}
