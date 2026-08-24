@@ -53,7 +53,7 @@ pub shape YamlDocument (
     root: JsonNode
 )
 
-fn clone_json_node(*ptr: JsonNode) -> JsonNode {
+fn clone_json_node(ptr: JsonNode) -> JsonNode {
     match ptr {
         auto NullNode(v) => return JsonNode::NullNode(v)
         auto BoolNode(b) => return JsonNode::BoolNode(b)
@@ -63,7 +63,7 @@ fn clone_json_node(*ptr: JsonNode) -> JsonNode {
             auto out# = Vec<JsonNode>::new()
             auto i# = 0:usize
             loop i < arr.len() {
-                out#.push(clone_json_node(arr.get_ref(i)))
+                out#.push(clone_json_node(arr.borrow(i)))
                 i = i + 1:usize
             }
             return JsonNode::ArrayNode(cede out)
@@ -78,7 +78,7 @@ impl YamlDocument {
     }
 
     pub fn root(self) -> JsonNode {
-        return clone_json_node(&(self.root) as *JsonNode)
+        return clone_json_node(self.root)
     }
 }
 
@@ -237,11 +237,11 @@ fn parse_yaml_to_json(input: str) -> Result<JsonNode, YamlError> {
     }
 
     // Ensure all non-blank lines were consumed by document root
-    loop pos < lines.len() && lines.get_ref(pos).is_blank {
+    loop pos < lines.len() && lines.borrow(pos).is_blank {
         pos = pos + 1:usize
     }
     if pos < lines.len() {
-        auto unconsumed = lines.get_ref(pos).clone()
+        auto unconsumed = lines.borrow(pos).clone()
         return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("unexpected content after document root"), unconsumed.line_no, unconsumed.col_no))
     }
 
@@ -253,7 +253,7 @@ fn parse_block_node(lines: Vec<YamlLine>, pos#: usize, min_indent: usize, depth:
         return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("maximum recursion depth of 128 exceeded"), 1:usize, 1:usize))
     }
 
-    loop pos < lines.len() && lines.get_ref(pos).is_blank {
+    loop pos < lines.len() && lines.borrow(pos).is_blank {
         pos = pos + 1:usize
     }
 
@@ -261,7 +261,7 @@ fn parse_block_node(lines: Vec<YamlLine>, pos#: usize, min_indent: usize, depth:
         return Result<JsonNode, YamlError>::Ok(JsonNode::NullNode(0))
     }
 
-    auto cur_line = lines.get_ref(pos).clone()
+    auto cur_line = lines.borrow(pos).clone()
     if cur_line.indent < min_indent {
         return Result<JsonNode, YamlError>::Ok(JsonNode::NullNode(0))
     }
@@ -369,12 +369,12 @@ fn parse_block_sequence(lines: Vec<YamlLine>, pos#: usize, seq_indent: usize, de
     auto items# = Vec<JsonNode>::new()
 
     loop pos < lines.len() {
-        loop pos < lines.len() && lines.get_ref(pos).is_blank {
+        loop pos < lines.len() && lines.borrow(pos).is_blank {
             pos = pos + 1:usize
         }
         if pos >= lines.len() { break }
 
-        auto cur_line = lines.get_ref(pos).clone()
+        auto cur_line = lines.borrow(pos).clone()
         if cur_line.indent != seq_indent { break }
         auto content = trim_comment(cur_line.content.as_str())
         if !is_sequence_start(content.as_str()) { break }
@@ -412,8 +412,8 @@ fn parse_block_sequence(lines: Vec<YamlLine>, pos#: usize, seq_indent: usize, de
                     }
 
                     loop pos < lines.len() {
-                        if lines.get_ref(pos).is_blank { pos = pos + 1:usize; continue }
-                        auto nxt_line = lines.get_ref(pos).clone()
+                        if lines.borrow(pos).is_blank { pos = pos + 1:usize; continue }
+                        auto nxt_line = lines.borrow(pos).clone()
                         if nxt_line.indent != seq_indent + 2:usize { break }
                         auto nxt_content = trim_comment(nxt_line.content.as_str())
                         if !is_sequence_start(nxt_content.as_str()) { break }
@@ -441,12 +441,12 @@ fn parse_block_mapping(lines: Vec<YamlLine>, pos#: usize, map_indent: usize, dep
     auto map# = HashMap<string, JsonNode>::new()
 
     loop pos < lines.len() {
-        loop pos < lines.len() && lines.get_ref(pos).is_blank {
+        loop pos < lines.len() && lines.borrow(pos).is_blank {
             pos = pos + 1:usize
         }
         if pos >= lines.len() { break }
 
-        auto cur_line = lines.get_ref(pos).clone()
+        auto cur_line = lines.borrow(pos).clone()
         if cur_line.indent != map_indent { break }
         auto content = trim_comment(cur_line.content.as_str())
         if !is_mapping_start(content.as_str()) { break }
@@ -490,10 +490,10 @@ fn parse_block_mapping(lines: Vec<YamlLine>, pos#: usize, map_indent: usize, dep
             }
         } else {
             auto nxt_pos# = pos
-            loop nxt_pos < lines.len() && lines.get_ref(nxt_pos).is_blank {
+            loop nxt_pos < lines.len() && lines.borrow(nxt_pos).is_blank {
                 nxt_pos = nxt_pos + 1:usize
             }
-            if nxt_pos < lines.len() && lines.get_ref(nxt_pos).indent > map_indent {
+            if nxt_pos < lines.len() && lines.borrow(nxt_pos).indent > map_indent {
                 auto child_val = parse_block_node(lines, pos, map_indent + 1:usize, depth + 1:usize)
                 if child_val.is_err() { return Result<JsonNode, YamlError>::Err(child_val.unwrap_err()) }
                 val = cede child_val.unwrap()
@@ -531,7 +531,7 @@ fn parse_inline_mapping_item(lines: Vec<YamlLine>, pos#: usize, min_indent: usiz
         if s_val.is_err() { return Result<JsonNode, YamlError>::Err(s_val.unwrap_err()) }
         val = cede s_val.unwrap()
     } else {
-        if pos < lines.len() && lines.get_ref(pos).indent > min_indent {
+        if pos < lines.len() && lines.borrow(pos).indent > min_indent {
             auto child_val = parse_block_node(lines, pos, min_indent + 1:usize, depth + 1:usize)
             if child_val.is_err() { return Result<JsonNode, YamlError>::Err(child_val.unwrap_err()) }
             val = cede child_val.unwrap()
@@ -543,10 +543,10 @@ fn parse_inline_mapping_item(lines: Vec<YamlLine>, pos#: usize, min_indent: usiz
     map#.insert(cede key_str, cede val)
 
     loop pos < lines.len() {
-        loop pos < lines.len() && lines.get_ref(pos).is_blank { pos = pos + 1:usize }
+        loop pos < lines.len() && lines.borrow(pos).is_blank { pos = pos + 1:usize }
         if pos >= lines.len() { break }
 
-        auto cur_line = lines.get_ref(pos).clone()
+        auto cur_line = lines.borrow(pos).clone()
         if cur_line.indent < min_indent { break }
         auto content = trim_comment(cur_line.content.as_str())
         if !is_mapping_start(content.as_str()) { break }
@@ -579,7 +579,7 @@ fn parse_inline_mapping_item(lines: Vec<YamlLine>, pos#: usize, min_indent: usiz
             if s_val.is_err() { return Result<JsonNode, YamlError>::Err(s_val.unwrap_err()) }
             v_val = cede s_val.unwrap()
         } else {
-            if pos < lines.len() && lines.get_ref(pos).indent > cur_line.indent {
+            if pos < lines.len() && lines.borrow(pos).indent > cur_line.indent {
                 auto child_val = parse_block_node(lines, pos, cur_line.indent + 1:usize, depth + 1:usize)
                 if child_val.is_err() { return Result<JsonNode, YamlError>::Err(child_val.unwrap_err()) }
                 v_val = cede child_val.unwrap()
@@ -650,7 +650,7 @@ fn parse_block_scalar(lines: Vec<YamlLine>, pos#: usize, header_line: YamlLine, 
     auto prev_more# = false
 
     loop pos < lines.len() {
-        auto line = lines.get_ref(pos).clone()
+        auto line = lines.borrow(pos).clone()
         if line.is_blank {
             pending_blanks = pending_blanks + 1:usize
             pos = pos + 1:usize
@@ -818,7 +818,7 @@ fn y_parse_quoted_multiline(lines: Vec<YamlLine>, pos#: usize, first_content: st
     continued = first_res.unwrap() == 1
 
     loop pos < lines.len() {
-        auto line = lines.get_ref(pos).clone()
+        auto line = lines.borrow(pos).clone()
         if line.is_blank {
             pending_blanks = pending_blanks + 1:usize
             pos = pos + 1:usize
@@ -890,7 +890,7 @@ fn parse_scalar_or_value_with_continuation(lines: Vec<YamlLine>, pos#: usize, co
             auto s_val = str_res.unwrap()
 
             if pos < lines.len() {
-                auto nxt_line = lines.get_ref(pos).clone()
+                auto nxt_line = lines.borrow(pos).clone()
                 if !nxt_line.is_blank && nxt_line.indent >= min_continuation_indent {
                     auto nxt_c = trim_comment(nxt_line.content.as_str())
                     if nxt_c.len() > 0:usize && !is_mapping_start(nxt_c.as_str()) && !is_sequence_start(nxt_c.as_str()) {
@@ -915,7 +915,7 @@ fn parse_scalar_or_value_with_continuation(lines: Vec<YamlLine>, pos#: usize, co
     auto scalar_buf# = string::from(content)
     auto pending_blanks# = 0:usize
     loop pos < lines.len() {
-        auto nxt = lines.get_ref(pos).clone()
+        auto nxt = lines.borrow(pos).clone()
         if nxt.is_blank {
             pending_blanks = pending_blanks + 1:usize
             pos = pos + 1:usize
