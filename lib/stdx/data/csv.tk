@@ -184,11 +184,11 @@ pub fn write_records(cede records: Vec<Vec<string>>) -> string {
     auto output# = string::from("")
     auto row_index# = 0:usize
     loop row_index < owned_records.len() {
-        auto *row = owned_records.get_ref(row_index)
+        auto &row = owned_records.borrow(row_index)
         auto field_index# = 0:usize
         loop field_index < row.len() {
             if field_index > 0 { output#.push_byte_raw(44:u8) }
-            auto field = row.get_ref(field_index).clone()
+            auto field = row.borrow(field_index).clone()
             write_field(cede field, output)
             field_index = field_index + 1:usize
         }
