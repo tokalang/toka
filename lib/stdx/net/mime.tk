@@ -90,7 +90,7 @@ fn lower_ascii(input: string) -> string {
 fn has_param(params: Vec<MimeParam>, name: str) -> bool {
     auto index# = 0:usize
     loop index < params.len() {
-        auto param = params.get_ref(index).clone()
+        auto param = params.borrow(index).clone()
         if param.name.as_str().equals(name) {
             return true
         }
@@ -109,7 +109,7 @@ impl Mime {
         auto copied# = Vec<MimeParam>::new()
         auto index# = 0:usize
         loop index < self.params.len() {
-            copied#.push(cede self.params.get_ref(index).clone())
+            copied#.push(cede self.params.borrow(index).clone())
             index = index + 1:usize
         }
         return Mime(
@@ -234,7 +234,7 @@ impl Mime {
         auto normalized = lower_ascii(name.to_string())
         auto index# = 0:usize
         loop index < self.params.len() {
-            auto param = self.params.get_ref(index).clone()
+            auto param = self.params.borrow(index).clone()
             if param.name.as_str().equals(normalized.as_str()) {
                 return Option<string>::Some(string::from(param.value.as_str()))
             }
@@ -247,7 +247,7 @@ impl Mime {
         auto output# = self.essence()
         auto index# = 0:usize
         loop index < self.params.len() {
-            auto param = self.params.get_ref(index).clone()
+            auto param = self.params.borrow(index).clone()
             output#.push_str("; ")
             output#.push_str(param.name.as_str())
             output#.push_byte_raw('=' as u8)

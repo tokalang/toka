@@ -108,7 +108,7 @@ impl HeaderMap {
         auto new_entries# = Vec<HeaderEntry>::new()
         auto idx# = 0:usize
         loop idx < self.entries.len() {
-            auto entry = self.entries.get_ref(idx).clone()
+            auto entry = self.entries.borrow(idx).clone()
             new_entries#.push(cede entry)
             idx = idx + 1
         }
@@ -216,7 +216,7 @@ impl HeaderMap {
         auto found# = false
         auto found_idx# = 0:usize
         loop idx < self.entries.len() {
-            auto entry = self.entries#.get_ref(idx).clone()
+            auto entry = self.entries#.borrow(idx).clone()
             if entry.key.as_str().eq_ignore_ascii_case(key.as_str()) {
                 found = true
                 found_idx = idx
@@ -234,7 +234,7 @@ impl HeaderMap {
     pub fn get(self, key: str) -> Option<string> {
         auto idx# = 0:usize
         loop idx < self.entries.len() {
-            auto entry = self.entries.get_ref(idx).clone()
+            auto entry = self.entries.borrow(idx).clone()
             if entry.key.as_str().eq_ignore_ascii_case(key) {
                 return Option<string>::Some(string::from(entry.value.as_str()))
             }
@@ -305,7 +305,7 @@ impl HttpRequest {
         auto has_cl# = false
         auto idx# = 0:usize
         loop idx < self.headers.entries.len() {
-            auto entry = self.headers.entries.get_ref(idx).clone()
+            auto entry = self.headers.entries.borrow(idx).clone()
             if entry.key.as_str().eq_ignore_ascii_case("host") {
                 has_host = true
             }
@@ -446,7 +446,7 @@ impl HttpResponse {
 
         auto idx# = 0:usize
         loop idx < self.headers.entries.len() {
-            auto entry = self.headers.entries.get_ref(idx).clone()
+            auto entry = self.headers.entries.borrow(idx).clone()
             if entry.key.as_str().eq_ignore_ascii_case("connection") {
                 has_connection = true
             }
@@ -1061,7 +1061,7 @@ impl HttpResponseStream {
         auto headers# = Vec<HttpHeaderView>::new()
         auto index# = 0:usize
         loop index < self.headers.len() {
-            auto header = self.headers.get_ref(index).clone()
+            auto header = self.headers.borrow(index).clone()
             headers#.push(cede header)
             index += 1
         }
@@ -1089,14 +1089,14 @@ impl HttpResponseStream {
 
     pub fn get_header_view(self, idx: usize) -> Option<HttpHeaderView> {
         if idx < self.headers.len() {
-            return Option<HttpHeaderView>::Some(self.headers.get_ref(idx).clone())
+            return Option<HttpHeaderView>::Some(self.headers.borrow(idx).clone())
         }
         return Option<HttpHeaderView>::None
     }
 
     pub fn header_name(self#, idx: usize) -> Option<string> {
         if idx < self.headers.len() {
-            auto view = self.headers#.get_ref(idx).clone()
+            auto view = self.headers#.borrow(idx).clone()
             return Option<string>::Some(view.name(self.raw_header_buf))
         }
         return Option<string>::None
@@ -1104,7 +1104,7 @@ impl HttpResponseStream {
 
     pub fn header_value(self#, idx: usize) -> Option<string> {
         if idx < self.headers.len() {
-            auto view = self.headers#.get_ref(idx).clone()
+            auto view = self.headers#.borrow(idx).clone()
             return Option<string>::Some(view.value(self.raw_header_buf))
         }
         return Option<string>::None
