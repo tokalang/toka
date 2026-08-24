@@ -5,7 +5,7 @@ fn main() -> i32 {
     auto &#slot# = &(outer.left)
     {
         auto inner = Pair(left = 3, right = 4)
-        auto &r# = &(inner.right)
+        auto &r = &(inner.right)
         &slot = &r
     }
     return slot

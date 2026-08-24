@@ -6,5 +6,5 @@ error[E0456]: Object 'slot' (lived longer) cannot depend on 'r' (lived shorter)
 note: shorter-lived dependency declared here
  --> tests/fail/projection_rebind_reborrow_escape_rejected.tk:8:15
    |
- 8 |         auto &r# = &(inner.right)
+ 8 |         auto &r = &(inner.right)
    |               ^
