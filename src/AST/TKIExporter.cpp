@@ -64,6 +64,93 @@ static std::string escapeCharLiteral(char value) {
 }
 
 // Static helper to reconstruct variable names physical morphology
+static std::string reconstructVarFromPermission(
+    const std::string &rawName,
+    const std::string &typeStr,
+    const BindingPermission &permission,
+    bool isExplicitBound,
+    bool isCeded
+) {
+    std::string result = "";
+    if (isCeded) {
+        result += "cede ";
+    }
+    if (isExplicitBound) {
+        result += "`";
+    }
+
+    if (!permission.HandleLayers.empty()) {
+        for (const auto &layer : permission.HandleLayers) {
+            if (layer.Nullable) {
+                result += "nul ";
+            }
+            switch (layer.Morphology) {
+            case BindingMorphology::Raw:
+                result += "*";
+                break;
+            case BindingMorphology::Unique:
+                result += "^";
+                break;
+            case BindingMorphology::Shared:
+                result += "~";
+                break;
+            case BindingMorphology::Reference:
+                result += "&";
+                break;
+            case BindingMorphology::None:
+                break;
+            }
+            if (layer.Rebindable) {
+                result += "#";
+            } else if (layer.Blocked) {
+                result += "$";
+            }
+        }
+    } else {
+        if (permission.IdentityMayBeZero) {
+            result += "nul ";
+        }
+        switch (permission.Morphology) {
+        case BindingMorphology::Unique:
+            result += "^";
+            break;
+        case BindingMorphology::Shared:
+            result += "~";
+            break;
+        case BindingMorphology::Reference:
+            result += "&";
+            break;
+        case BindingMorphology::Raw:
+            result += "*";
+            break;
+        case BindingMorphology::None:
+            break;
+        }
+        if (permission.IdentityRebindable) {
+            result += "#";
+        } else if (permission.IdentityBlocked) {
+            result += "$";
+        }
+    }
+
+    std::string name = toka::Type::stripMorphology(rawName);
+    bool nameHasMorphicPrefix = !name.empty() && name[0] == '\'';
+    std::string strippedType = toka::Type::stripPrefixes(typeStr);
+    bool typeHasMorphicPrefix = !strippedType.empty() && strippedType[0] == '\'';
+    if ((permission.MorphicExempt || typeHasMorphicPrefix) && !nameHasMorphicPrefix) {
+        result += "'";
+    }
+    result += name;
+
+    if (permission.SoulWritable) {
+        result += "#";
+    } else if (permission.SoulBlocked) {
+        result += "$";
+    }
+
+    return result;
+}
+
 static std::string reconstructVar(
     const std::string &rawName,
     const std::string &typeStr,
@@ -73,49 +160,13 @@ static std::string reconstructVar(
     bool isValueMutable, bool isValueNullable, bool isValueBlocked
 ) {
     (void)isValueNullable;
-    std::string result = "";
-    if (isCeded) {
-        result += "cede ";
-    }
-    if (isExplicitBound) {
-        result += "`";
-    }
-    if (isPointerNullable) {
-        result += "nul ";
-    }
-
-    if (isUnique) {
-        result += "^";
-    } else if (isShared) {
-        result += "~";
-    } else if (isReference) {
-        result += "&";
-    } else if (hasPointer) {
-        result += "*";
-    }
-
-    if (isRebindable) {
-        result += "#";
-    } else if (isRebindBlocked) {
-        result += "$";
-    }
-
-    std::string name = toka::Type::stripMorphology(rawName);
-    bool nameHasMorphicPrefix = !name.empty() && name[0] == '\'';
-    std::string strippedType = toka::Type::stripPrefixes(typeStr);
-    bool typeHasMorphicPrefix = !strippedType.empty() && strippedType[0] == '\'';
-    if ((isMorphicExempt || typeHasMorphicPrefix) && !nameHasMorphicPrefix) {
-        result += "'";
-    }
-    result += name;
-
-    if (isValueMutable) {
-        result += "#";
-    } else if (isValueBlocked) {
-        result += "$";
-    }
-
-    return result;
+    auto perm = BindingPermission::fromLegacy(
+        hasPointer, isUnique, isShared, isReference,
+        isRebindable, isPointerNullable, isRebindBlocked,
+        isValueMutable, isValueNullable, isValueBlocked,
+        isMorphicExempt
+    );
+    return reconstructVarFromPermission(rawName, typeStr, perm, isExplicitBound, isCeded);
 }
 
 static std::string exportBindingType(const std::string &typeStr, bool preserveInnerMorphology = false) {
@@ -770,18 +821,14 @@ void TKIExporter::printArg(const FunctionDecl::Arg &arg) {
     bool keepTypeSideCede =
         arg.IsCeded && hasTypeSideMorphicPrefix(type) &&
         !nameHasMorphicPrefix && !arg.IsMorphicExempt;
-    std::string varStr = reconstructVar(
-        arg.Name, keepTypeSideCede ? exportBindingType(type) : type,
-        arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
-        arg.IsPointerNullable, arg.IsRebindable, arg.IsRebindBlocked,
-        false, arg.IsMorphicExempt, keepTypeSideCede ? false : arg.IsCeded,
-        arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked
+    std::string varStr = reconstructVarFromPermission(
+        arg.Name, type, arg.Permission,
+        false, keepTypeSideCede ? false : arg.IsCeded
     );
-    bool isLevel2Borrow = arg.IsReference && !type.empty() && (type[0] == '^' || type[0] == '~' || type[0] == '&');
     if (keepTypeSideCede) {
-        m_OS << varStr << ": cede " << (isLevel2Borrow ? type : toka::Type::stripPrefixes(type));
+        m_OS << varStr << ": cede " << type;
     } else {
-        m_OS << varStr << ": " << exportBindingType(type, isLevel2Borrow);
+        m_OS << varStr << ": " << type;
     }
     if (arg.DefaultValue) {
         m_OS << " = ";
