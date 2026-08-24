@@ -193,7 +193,15 @@ bool Parser::rejectTypeSideHandleMorphology(const Token &nameTok,
   TypeSyntaxPtr current = typeSyntax;
   std::string rootMorphology = "";
   while (current && current->NodeKind == TypeSyntax::Kind::Morphology) {
-    rootMorphology += current->Text;
+    if (current->Text == "cede" || current->Text == "cede ") {
+      current = current->Subject;
+      continue;
+    }
+    if (current->Text == "^" || current->Text == "~" || current->Text == "&" ||
+        current->Text == "*" || current->Text == "&&" || current->Text == "&^" ||
+        current->Text == "&~" || current->Text == "nul" || current->Text == "nul ") {
+      rootMorphology += current->Text;
+    }
     current = current->Subject;
   }
 

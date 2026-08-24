@@ -867,18 +867,18 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         errorTypeSideMorphicBinding(argName, argPrefix, argType);
         argType = argType.substr(1);
       }
+      if (argType.rfind("cede ", 0) == 0) {
+        isCeded = true;
+        argType = argType.substr(5);
+        argTypeSyntax =
+            TypeSyntax::withoutLeadingMorphology(argTypeSyntax, "cede ");
+      }
       rejectTypeSideHandleMorphology(argName, argPrefix, argTypeSyntax, argType);
 
       FunctionDecl::Arg arg;
       arg.Loc = argName.Loc;
       arg.IsCeded = isCeded;
       arg.IsInit = isInit;
-      if (argType.rfind("cede ", 0) == 0) {
-        arg.IsCeded = true;
-        argType = argType.substr(5);
-        argTypeSyntax =
-            TypeSyntax::withoutLeadingMorphology(argTypeSyntax, "cede ");
-      }
       arg.Name = argName.Text;
       arg.Type = argType;
       arg.TypeSyntax = argTypeSyntax;
