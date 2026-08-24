@@ -229,18 +229,20 @@ public:
       return;
 
     TotalTypesFormed++;
-    auto profile = Type::classifyHandleGrammar(type);
-    if (profile.isValid()) {
+    auto issue = Type::findHandleGrammarIssueRecursive(type);
+    if (!issue.has_value()) {
       ValidProfiles++;
       return;
     }
 
     InvalidProfiles++;
+    std::shared_ptr<Type> violatingType = issue->OffendingType ? issue->OffendingType : type;
+    auto profile = Type::classifyHandleGrammar(violatingType);
     std::string locStr = formatLocation(loc);
-    std::string typeStr = type->toString();
-    std::string typeId = type->canonicalIdentity();
+    std::string typeStr = violatingType->toString();
+    std::string typeId = violatingType->canonicalIdentity();
     std::string originStr = syntaxOriginToString(origin);
-    std::string violationStr = profile.describeViolation();
+    std::string violationStr = issue->describeViolation();
     std::string key = originStr + "|" + locStr + "|" + templateOrShapeName + "|" + genericArgs + "|" + memberOrMethodName + "|" + typeStr + "|" + typeId + "|" + violationStr + "|" + canonicalFnId;
 
     auto it = Entries.find(key);

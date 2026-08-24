@@ -1,7 +1,6 @@
 import core/option::{Option}
 
-fn bad_generic() {
-    auto opt: Option<*&i32> = Option<*&i32>::None
+fn bad_generic(opt: Option<*&i32>) {
 }
 
 fn main() -> i32 {

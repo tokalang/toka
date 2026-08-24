@@ -2916,12 +2916,14 @@ void Sema::declareGlobals(Module &M) {
     Fn->CodegenName = functionCodegenName(M, *Fn);
     SyntaxOrigin fnOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
     auto fnRetTy = Fn->ReturnTypeSyntax ? toka::Type::fromSyntax(Fn->ReturnTypeSyntax) : toka::Type::fromString(Fn->ReturnType);
+    validateHandleGrammar(Fn->Loc, fnRetTy);
     recordHandleGrammarAudit(fnRetTy, fnOrigin, {FormationPhase::DirectResolution}, "", "", "return", Fn->Loc, false, functionCodegenName(M, *Fn));
     for (const auto &Arg : Fn->Args) {
       debugCheckBindingPermission(Arg);
       debugCheckBindingTypeString("function argument", Arg.Name, Arg.Type,
                                   Arg.Permission, Fn->Loc);
       auto argTy = Sema::synthesizePhysicalTypeObject(Arg, false);
+      validateHandleGrammar(Fn->Loc, argTy);
       recordHandleGrammarAudit(argTy, fnOrigin, {FormationPhase::DirectResolution}, "", "", Arg.Name, Fn->Loc, false, functionCodegenName(M, *Fn));
     }
     ms.Functions[Fn->Name] = Fn.get();
@@ -2976,6 +2978,7 @@ void Sema::declareGlobals(Module &M) {
     SyntaxOrigin shapeOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
     for (const auto &mem : St->Members) {
       auto memTy = mem.TypeSyntax ? toka::Type::fromSyntax(mem.TypeSyntax) : toka::Type::fromString(mem.Type);
+      validateHandleGrammar(St->Loc, memTy);
       recordHandleGrammarAudit(memTy, shapeOrigin, {FormationPhase::DirectResolution}, St->Name, "", mem.Name, St->Loc);
     }
     if (St->IsCompilerSynthesized) {
