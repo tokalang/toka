@@ -493,7 +493,7 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
         auto mapping_index# = 0:usize
         loop mapping_index < pkg_mappings.len() {
             if mapping_index > 0:usize { mapping_env#.push_str("\n") }
-            mapping_env#.push_str(pkg_mappings.get_ref(mapping_index).as_str())
+            mapping_env#.push_str(pkg_mappings.borrow(mapping_index).as_str())
             mapping_index += 1
         }
         env::set_var(string::from("TOKA_PKG_MAP_V1"), mapping_env)
@@ -517,12 +517,12 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
         auto semantic_manifest_provenance_dir# = string::from("")
         auto profile_index# = 0:usize
         loop profile_index < extra_args.len() {
-            if extra_args.get_ref(profile_index).eq(string::from("--validate-semantic-manifests")) {
+            if extra_args.borrow(profile_index).eq(string::from("--validate-semantic-manifests")) {
                 validate_semantic_manifests = true
-            } else if extra_args.get_ref(profile_index).eq(string::from("--validate-semantic-manifest-attestations")) {
+            } else if extra_args.borrow(profile_index).eq(string::from("--validate-semantic-manifest-attestations")) {
                 validate_semantic_manifest_attestations = true
-            } else if extra_args.get_ref(profile_index).eq(string::from("--semantic-manifest-provenance-dir")) && profile_index + 1:usize < extra_args.len() {
-                semantic_manifest_provenance_dir = extra_args.get_ref(profile_index + 1:usize).clone()
+            } else if extra_args.borrow(profile_index).eq(string::from("--semantic-manifest-provenance-dir")) && profile_index + 1:usize < extra_args.len() {
+                semantic_manifest_provenance_dir = extra_args.borrow(profile_index + 1:usize).clone()
             }
             profile_index += 1
         }
@@ -538,13 +538,13 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
         auto pkg_index# = 0:usize
         loop pkg_index < pkg_mappings.len() {
             compile#.arg(string::from("--pkg"))
-            compile#.arg(cede pkg_mappings.get_ref(pkg_index).clone())
+            compile#.arg(cede pkg_mappings.borrow(pkg_index).clone())
             pkg_index += 1
         }
         auto node_index# = 0:usize
         loop node_index < pkg_node_mappings.len() {
             compile#.arg(string::from("--pkg-node"))
-            compile#.arg(cede pkg_node_mappings.get_ref(node_index).clone())
+            compile#.arg(cede pkg_node_mappings.borrow(node_index).clone())
             node_index += 1
         }
         if validate_semantic_manifests {
@@ -583,12 +583,12 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
         auto run_node_index# = 0:usize
         loop run_node_index < pkg_node_mappings.len() {
             run#.arg(string::from("--pkg-node"))
-            run#.arg(cede pkg_node_mappings.get_ref(run_node_index).clone())
+            run#.arg(cede pkg_node_mappings.borrow(run_node_index).clone())
             run_node_index += 1
         }
         auto idx_extra# = 0:usize
         loop idx_extra < extra_args.len() {
-            run#.arg(cede extra_args.get_ref(idx_extra).clone())
+            run#.arg(cede extra_args.borrow(idx_extra).clone())
             idx_extra += 1
         }
         auto run_result = run#.try_status()

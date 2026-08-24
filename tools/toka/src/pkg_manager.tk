@@ -14,7 +14,7 @@ fn package_helper_path() -> string {
     candidates#.push(cede string::from("../../../lib/toolchain/toka_package.py"))
     auto i# = 0:usize
     loop i < candidates.len() {
-        auto candidate = candidates.get_ref(i).clone()
+        auto candidate = candidates.borrow(i).clone()
         if exists(candidate.clone()) { return candidate }
         i += 1
     }
