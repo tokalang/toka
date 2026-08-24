@@ -1,4 +1,4 @@
-fn bad_cast(x: *void) {
+fn bad_cast(*x: void) {
     auto y = x as *&i32
 }
 

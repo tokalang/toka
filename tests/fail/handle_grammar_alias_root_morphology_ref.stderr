@@ -1,0 +1,5 @@
+error[E0493]: Alias target 'R' cannot begin with root handle morphology '&'; root hats must remain visible on the binding at each use site
+ --> tests/fail/handle_grammar_alias_root_morphology_ref.tk:1:7
+   |
+ 1 | alias R = &i32
+   |       ^

@@ -1,5 +1,5 @@
 error[E0491]: Exceeded maximum handle depth in type '^^i32'
- --> tests/fail/handle_grammar_fn_return_illegal.tk:1:7
+ --> tests/fail/handle_grammar_fn_return_illegal.tk:1:4
    |
- 1 | alias BadRet = ^^i32
-   |       ^
+ 1 | fn bad_ret() -> ^^i32 {
+   |    ^

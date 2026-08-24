@@ -1,0 +1,5 @@
+error[E0494]: Parameter type '~i32' cannot begin with root handle morphology '~'; place the root morphology on the parameter binding instead (did you mean '&~x: i32'?)
+ --> tests/fail/handle_grammar_param_typeside_borrow_shared.tk:1:12
+   |
+ 1 | fn bad(&x: ~i32) -> i32 {
+   |            ^

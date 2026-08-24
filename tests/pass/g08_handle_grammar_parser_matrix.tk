@@ -4,14 +4,11 @@
 import std/io::println
 import std/vec::Vec
 
-// 1. Alias definitions with Level 2 handles and layered raw
-alias DoubleBorrowI32 = &&i32
-alias BorrowUniqueI32 = &^i32
-alias BorrowSharedI32 = &~i32
-alias TripleRawI32 = ***i32
-alias NulOuterRawI32 = nul **i32
-alias NulInnerRawI32 = *nul *i32
-alias NulBothRawI32 = nul *nul *i32
+// 1. Valid structural aliases (container boundaries isolate inner handles)
+alias OptUnique = Option<^i32>
+alias OptShared = Option<~i32>
+alias OptRef = Option<&i32>
+alias Pair = (i32, i32)
 
 shape Item (
     id: i32

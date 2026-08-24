@@ -1,38 +1,34 @@
-// EXPECT_TKI: pub alias UniqueInt = ^i32
-// EXPECT_TKI: pub alias SharedInt = ~i32
-// EXPECT_TKI: pub alias RefInt = &i32
-// EXPECT_TKI: pub fn test_unique(&x: ^i32) -> i32
-// EXPECT_TKI: pub fn test_shared(&x: ~i32) -> i32
-// EXPECT_TKI: pub fn test_ref(&x: &i32) -> i32
-// EXPECT_TKI: pub fn test_alias_unique(&x: UniqueInt) -> i32
-// EXPECT_TKI: pub fn test_alias_shared(&x: SharedInt) -> i32
-// EXPECT_TKI: pub fn test_alias_ref(&x: RefInt) -> i32
+// EXPECT_TKI: pub alias Int = i32
+// EXPECT_TKI: pub fn test_unique(&^x: i32) -> i32
+// EXPECT_TKI: pub fn test_shared(&~x: i32) -> i32
+// EXPECT_TKI: pub fn test_ref(&&x: i32) -> i32
+// EXPECT_TKI: pub fn test_alias_unique(&^x: Int) -> i32
+// EXPECT_TKI: pub fn test_alias_shared(&~x: Int) -> i32
+// EXPECT_TKI: pub fn test_alias_ref(&&x: Int) -> i32
 // EXPECT_TKI_ROUNDTRIP
 
-pub alias UniqueInt = ^i32
-pub alias SharedInt = ~i32
-pub alias RefInt = &i32
+pub alias Int = i32
 
-pub fn test_unique(&x: ^i32) -> i32 {
+pub fn test_unique(&^x: i32) -> i32 {
     return x
 }
 
-pub fn test_shared(&x: ~i32) -> i32 {
+pub fn test_shared(&~x: i32) -> i32 {
     return x
 }
 
-pub fn test_ref(&x: &i32) -> i32 {
+pub fn test_ref(&&x: i32) -> i32 {
     return x
 }
 
-pub fn test_alias_unique(&x: UniqueInt) -> i32 {
+pub fn test_alias_unique(&^x: Int) -> i32 {
     return x
 }
 
-pub fn test_alias_shared(&x: SharedInt) -> i32 {
+pub fn test_alias_shared(&~x: Int) -> i32 {
     return x
 }
 
-pub fn test_alias_ref(&x: RefInt) -> i32 {
+pub fn test_alias_ref(&&x: Int) -> i32 {
     return x
 }

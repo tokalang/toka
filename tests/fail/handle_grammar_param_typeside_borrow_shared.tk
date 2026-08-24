@@ -1,4 +1,4 @@
-fn bad_param(~&x: i32) -> i32 {
+fn bad(&x: ~i32) -> i32 {
     return 0
 }
 

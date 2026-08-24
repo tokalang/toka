@@ -1,0 +1,5 @@
+error[E0493]: Alias target 'P' cannot begin with root handle morphology 'nul'; root hats must remain visible on the binding at each use site
+ --> tests/fail/handle_grammar_alias_root_morphology_raw.tk:1:7
+   |
+ 1 | alias P = nul *i32
+   |       ^

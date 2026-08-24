@@ -1,0 +1,5 @@
+error[E0490]: Illegal handle grammar ordering in type '^&i32'
+ --> tests/fail/handle_grammar_param_binding_order_illegal.tk:1:4
+   |
+ 1 | fn order(^&x: i32) -> i32 {
+   |    ^

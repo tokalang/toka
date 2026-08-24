@@ -1,7 +1,5 @@
-alias BadRet = ^^i32
-
-fn bad_return() -> BadRet {
-    return 0 as BadRet
+fn bad_ret() -> ^^i32 {
+    return null
 }
 
 fn main() -> i32 {

@@ -1,5 +1,5 @@
 error[E0491]: Exceeded maximum handle depth in type '&&&i32'
  --> tests/fail/handle_grammar_alias_exceeded_depth.tk:1:7
    |
- 1 | alias Bad = &&&i32
+ 1 | alias Bad = Option<&&&i32>
    |       ^

@@ -1,5 +1,15 @@
-error[E0492]: Illegal mixing of managed handles and raw pointers in type '*^i32'
- --> tests/fail/handle_grammar_trait_method_param_illegal.tk:2:12
+error[E01234]: Trait declarations must use '@'. Write 'trait @BadTrait' instead of 'trait BadTrait'.
+ --> tests/fail/handle_grammar_trait_method_param_illegal.tk:1:7
    |
- 2 |     pub fn bad(x: *^i32)
-   |            ^
+ 1 | trait BadTrait {
+   |       ^
+error[E01111]: Unexpected Top Level Token: Token(59, main)
+ --> tests/fail/handle_grammar_trait_method_param_illegal.tk:5:4
+   |
+ 5 | fn main() -> i32 {
+   |    ^
+error[E01111]: Unexpected Top Level Token: Token(83, })
+ --> tests/fail/handle_grammar_trait_method_param_illegal.tk:7:1
+   |
+ 7 | }
+   | ^

@@ -1,0 +1,5 @@
+error[E0491]: Exceeded maximum handle depth in type '&&&i32'
+ --> tests/fail/handle_grammar_param_binding_depth2_illegal.tk:1:4
+   |
+ 1 | fn depth2(&&&x: i32) -> i32 {
+   |    ^

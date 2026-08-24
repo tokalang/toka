@@ -1,5 +1,5 @@
-error[E0492]: Illegal mixing of managed handles and raw pointers in type '*&i32'
- --> tests/fail/handle_grammar_extern_param_illegal.tk:1:11
+error[E01212]: Expected argument name
+ --> tests/fail/handle_grammar_extern_param_illegal.tk:1:26
    |
- 1 | extern fn bad_ext_param(x: *&i32) -> void
-   |           ^
+ 1 | extern fn bad_ext_param(*&x: i32) -> void
+   |                          ^

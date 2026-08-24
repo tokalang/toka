@@ -1,4 +1,4 @@
-import ./lib::{UniqueInt, SharedInt, RefInt, test_unique, test_shared, test_ref, test_alias_unique, test_alias_shared, test_alias_ref}
+import ./lib::{Int, test_unique, test_shared, test_ref, test_alias_unique, test_alias_shared, test_alias_ref}
 
 fn main() -> i32 {
     auto ^u = new i32(42)

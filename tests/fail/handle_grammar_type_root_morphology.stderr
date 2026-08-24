@@ -1,0 +1,5 @@
+error[E0493]: Alias target 'Strong' cannot begin with root handle morphology '^'; root hats must remain visible on the binding at each use site
+ --> tests/fail/handle_grammar_type_root_morphology.tk:1:6
+   |
+ 1 | type Strong = ^i32
+   |      ^

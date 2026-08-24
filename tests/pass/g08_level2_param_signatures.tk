@@ -1,37 +1,49 @@
-pub alias UniqueInt = ^i32
-pub alias SharedInt = ~i32
-pub alias RefInt = &i32
+shape Container<'T>(
+    'value: T
+)
 
-pub fn test_unique(&x: ^i32) -> i32 {
+pub alias Int = i32
+pub alias OptUnique = Option<^i32>
+pub alias ContRef = Container<&i32>
+
+pub fn test_unique(&^x: i32) -> i32 {
     return x
 }
 
-pub fn test_shared(&x: ~i32) -> i32 {
+pub fn test_shared(&~x: i32) -> i32 {
     return x
 }
 
-pub fn test_ref(&x: &i32) -> i32 {
+pub fn test_ref(&&x: i32) -> i32 {
     return x
 }
 
-pub fn test_alias_unique(&x: UniqueInt) -> i32 {
+pub fn test_alias_unique(&^x: Int) -> i32 {
     return x
 }
 
-pub fn test_alias_shared(&x: SharedInt) -> i32 {
+pub fn test_alias_shared(&~x: Int) -> i32 {
     return x
 }
 
-pub fn test_alias_ref(&x: RefInt) -> i32 {
+pub fn test_alias_ref(&&x: Int) -> i32 {
     return x
 }
 
-pub fn test_generic<'T>(&x: ^'T) -> 'T {
+pub fn test_generic<T>(&^x: T) -> T {
     return x
 }
 
-pub fn test_generic_ref<'T>(&x: &'T) -> 'T {
+pub fn test_generic_ref<T>(&&x: T) -> T {
     return x
+}
+
+pub fn accept_option(x: Option<^i32>) -> bool {
+    return true
+}
+
+pub fn accept_container(x: Container<&i32>) -> bool {
+    return true
 }
 
 fn main() -> i32 {
@@ -49,6 +61,8 @@ fn main() -> i32 {
     assert(test_ref(&ref_val) == 200, "test_ref failed")
     assert(test_alias_ref(&ref_val) == 200, "test_alias_ref failed")
     assert(test_generic_ref<i32>(&ref_val) == 200, "test_generic_ref failed")
+
+    assert(accept_option(OptUnique::None), "accept_option failed")
 
     return 0
 }

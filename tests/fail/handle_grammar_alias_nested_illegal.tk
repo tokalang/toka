@@ -1,4 +1,4 @@
-alias Bad = Option<&&&i32>
+alias Bad = Option<^^i32>
 
 fn main() -> i32 {
     return 0
