@@ -21,7 +21,7 @@ fn main() -> i32 {
     if second.is_err() { return 4 }
     auto second_events = second.unwrap()
     if second_events.len() != 1:usize { return 5 }
-    auto event = second_events.get_ref(0:usize).clone()
+    auto event = second_events.borrow(0:usize).clone()
     if !event.event_type().as_str().equals("delta") || !event.data().as_str().equals("hello\nworld") { return 6 }
     auto id = event.id()
     if id.is_none() { return 7 }

@@ -31,8 +31,8 @@ fn main() -> i32 {
         values#.push(cede make_resource(8, "eight"))
 
         if values.len() != 8:usize || values.cap() < 8:usize { return 1 }
-        if values.get_ref(0:usize).id != 1 { return 2 }
-        if !values.get_ref(7:usize).name.as_str().equals("eight") { return 3 }
+        if values.borrow(0:usize).id != 1 { return 2 }
+        if !values.borrow(7:usize).name.as_str().equals("eight") { return 3 }
 
         {
             auto removed = values#.remove(3:usize).unwrap()
@@ -51,14 +51,14 @@ fn main() -> i32 {
         if g_drop_count != 2:i32 { return 7 }
 
         if values.len() != 6:usize { return 8 }
-        if values.get_ref(3:usize).id != 5 { return 9 }
-        if values.get_ref(5:usize).id != 7 { return 10 }
+        if values.borrow(3:usize).id != 5 { return 9 }
+        if values.borrow(5:usize).id != 7 { return 10 }
 
         values#.clear()
         if !values.is_empty() || g_drop_count != 8:i32 { return 11 }
 
         values#.push(cede make_resource(9, "nine"))
-        if values.get_ref(0:usize).id != 9 { return 12 }
+        if values.borrow(0:usize).id != 9 { return 12 }
     }
 
     if g_drop_count != 9:i32 { return 13 }

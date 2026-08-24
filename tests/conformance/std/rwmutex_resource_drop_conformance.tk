@@ -35,7 +35,7 @@ fn test_resource_drop_in_mutex() {
             auto l_res = m.lock()
             assert(l_res.is_ok(), "lock must succeed")
             auto l = l_res.unwrap()
-            auto &v# = l.get_ref()
+            auto &v# = l.borrow_mut()
             v#.push(cede TrackingItem(id = 1, counter = c))
             v#.push(cede TrackingItem(id = 2, counter = c))
             v#.push(cede TrackingItem(id = 3, counter = c))
@@ -46,7 +46,7 @@ fn test_resource_drop_in_mutex() {
             auto l_res = m.lock()
             assert(l_res.is_ok(), "lock must succeed")
             auto l = l_res.unwrap()
-            auto &v# = l.get_ref()
+            auto &v# = l.borrow_mut()
             assert(v.len() == 3:usize, "Vec len must still be 3")
         }
         unsafe {
@@ -69,7 +69,7 @@ fn test_resource_drop_in_rwmutex() {
             auto w_res = rw.write_lock()
             assert(w_res.is_ok(), "write_lock must succeed")
             auto w = w_res.unwrap()
-            auto &v# = w.get_ref()
+            auto &v# = w.borrow_mut()
             v#.push(cede TrackingItem(id = 10, counter = c))
             v#.push(cede TrackingItem(id = 20, counter = c))
             v#.push(cede TrackingItem(id = 30, counter = c))
@@ -81,7 +81,7 @@ fn test_resource_drop_in_rwmutex() {
             auto r_res = rw.read_lock()
             assert(r_res.is_ok(), "read_lock must succeed")
             auto r = r_res.unwrap()
-            auto &v = r.get_ref()
+            auto &v = r.borrow()
             assert(v.len() == 4:usize, "Vec len must be 4 under read_lock")
         }
         unsafe {
@@ -101,7 +101,7 @@ fn test_outer_shared_owner_drop() {
         auto ~rw1 = RwMutex<Vec<TrackingItem>>::make_shared(cede Vec<TrackingItem>::new())
         {
             auto w = rw1.write_lock().unwrap()
-            auto &v# = w.get_ref()
+            auto &v# = w.borrow_mut()
             v#.push(cede TrackingItem(id = 100, counter = c))
             v#.push(cede TrackingItem(id = 200, counter = c))
         }
@@ -111,7 +111,7 @@ fn test_outer_shared_owner_drop() {
                 assert(sys_atomic_fetch_add_i32(c, 0) == 0, "No drops when cloned")
             }
             auto r = rw2.read_lock().unwrap()
-            auto &v = r.get_ref()
+            auto &v = r.borrow()
             assert(v.len() == 2:usize, "Length is 2 under rw2")
         } // ~rw2 drops here, but ~rw1 is still alive
         unsafe {
@@ -130,7 +130,7 @@ fn leave_early(m: Mutex<TrackingItem>) -> bool {
         return false
     }
     auto l = l_res.unwrap()
-    auto &item = l.get_ref()
+    auto &item = l.borrow_mut()
     if item.id == 100 {
         return true
     }
@@ -179,7 +179,7 @@ fn test_cross_thread_rwmutex() {
             auto r_res = local.read_lock()
             if r_res.is_ok() {
                 auto r = r_res.unwrap()
-                auto &c = r.get_ref()
+                auto &c = r.borrow()
                 assert(c.val >= 0, "val must be non-negative")
             }
             yield_now()
@@ -195,7 +195,7 @@ fn test_cross_thread_rwmutex() {
             auto r_res = local.read_lock()
             if r_res.is_ok() {
                 auto r = r_res.unwrap()
-                auto &c = r.get_ref()
+                auto &c = r.borrow()
                 assert(c.val >= 0, "val must be non-negative")
             }
             yield_now()
@@ -211,7 +211,7 @@ fn test_cross_thread_rwmutex() {
             auto w_res = local.write_lock()
             if w_res.is_ok() {
                 auto w = w_res.unwrap()
-                auto &c# = w.get_ref()
+                auto &c# = w.borrow_mut()
                 c.val = c.val + 1
             }
             yield_now()
@@ -229,7 +229,7 @@ fn test_cross_thread_rwmutex() {
     th_w#.join().unwrap()
 
     auto final_r = rw.read_lock().unwrap()
-    auto &final_c = final_r.get_ref()
+    auto &final_c = final_r.borrow()
     assert(final_c.val == 20, "final value must be 20")
 }
 

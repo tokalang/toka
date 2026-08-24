@@ -24,9 +24,9 @@ fn test_shared_readers() {
     auto l2 = r2.read_lock().unwrap()
     auto l3 = r3.read_lock().unwrap()
 
-    auto &s1 = l1.get_ref()
-    auto &s2 = l2.get_ref()
-    auto &s3 = l3.get_ref()
+    auto &s1 = l1.borrow()
+    auto &s2 = l2.borrow()
+    auto &s3 = l3.borrow()
 
     assert(s1.read_count == 0, "s1 read_count must be 0")
     assert(s2.read_count == 0, "s2 read_count must be 0")
@@ -40,14 +40,14 @@ fn test_writer_exclusion_and_mutation() {
     // 1. Write lock mutation
     {
         auto w_lock = r_clone.write_lock().unwrap()
-        auto &w_state# = w_lock.get_ref()
+        auto &w_state# = w_lock.borrow_mut()
         w_state.write_count = 42
     }
 
     // 2. Subsequent read lock observes mutation after write guard drop
     {
         auto r_lock = r_clone.read_lock().unwrap()
-        auto &r_state = r_lock.get_ref()
+        auto &r_state = r_lock.borrow()
         assert(r_state.write_count == 42, "Must observe updated write_count after lock drop")
     }
 }
@@ -65,7 +65,7 @@ fn test_cross_thread_concurrency() {
         auto i# = 0
         loop i < 50 {
             auto l = local.read_lock().unwrap()
-            auto &s = l.get_ref()
+            auto &s = l.borrow()
             assert(s.write_count >= 0, "write_count must be non-negative")
             i = i + 1
         }
@@ -77,7 +77,7 @@ fn test_cross_thread_concurrency() {
         auto i# = 0
         loop i < 50 {
             auto l = local.read_lock().unwrap()
-            auto &s = l.get_ref()
+            auto &s = l.borrow()
             assert(s.write_count >= 0, "write_count must be non-negative")
             i = i + 1
         }
@@ -90,7 +90,7 @@ fn test_cross_thread_concurrency() {
         auto i# = 0
         loop i < 50 {
             auto wl = local.write_lock().unwrap()
-            auto &ws# = wl.get_ref()
+            auto &ws# = wl.borrow_mut()
             ws.write_count = ws.write_count + 1
             i = i + 1
         }
@@ -106,7 +106,7 @@ fn test_cross_thread_concurrency() {
     w_th#.join().unwrap()
 
     auto final_lock = t4_rw.read_lock().unwrap()
-    auto &final_state = final_lock.get_ref()
+    auto &final_state = final_lock.borrow()
     assert(final_state.write_count == 50, "Final write_count must be 50")
 }
 

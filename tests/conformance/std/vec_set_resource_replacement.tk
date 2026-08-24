@@ -24,8 +24,8 @@ fn main() -> i32 {
         )
 
         if g_drop_count != 1:i32 { return 1 }
-        if values.get_ref(0:usize).id != 2 { return 2 }
-        if !values.get_ref(0:usize).name.as_str().equals("replacement") {
+        if values.borrow(0:usize).id != 2 { return 2 }
+        if !values.borrow(0:usize).name.as_str().equals("replacement") {
             return 3
         }
 
@@ -34,7 +34,7 @@ fn main() -> i32 {
             cede Resource(id = 3, name = string::from("out-of-bounds"))
         )
         if g_drop_count != 2:i32 { return 4 }
-        if values.len() != 1:usize || values.get_ref(0:usize).id != 2 {
+        if values.len() != 1:usize || values.borrow(0:usize).id != 2 {
             return 5
         }
     }

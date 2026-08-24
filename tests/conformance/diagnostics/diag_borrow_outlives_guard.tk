@@ -7,7 +7,7 @@ fn escape_borrow() -> &i32 {
     auto rw = RwMutex<i32>::new(10)
     auto r = rw.read_lock().unwrap()
     // Returning reference tied to local guard r must trigger E0455
-    return r.get_ref()
+    return r.borrow()
 }
 
 fn main() -> i32 {

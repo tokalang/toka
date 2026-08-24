@@ -28,13 +28,13 @@ fn main() -> i32 {
         values#.insert(2:usize, cede resource(3, "three"))
         if g_drop_count != 0:i32 { return 1 }
         if values.len() != 4:usize { return 2 }
-        if values.get_ref(0:usize).id != 1 || values.get_ref(1:usize).id != 2 { return 3 }
-        if values.get_ref(2:usize).id != 3 || values.get_ref(3:usize).id != 4 { return 4 }
+        if values.borrow(0:usize).id != 1 || values.borrow(1:usize).id != 2 { return 3 }
+        if values.borrow(2:usize).id != 3 || values.borrow(3:usize).id != 4 { return 4 }
 
         // Full-capacity insertion exercises grow followed by a middle shift.
         values#.insert(2:usize, cede resource(5, "five"))
         if g_drop_count != 0:i32 || values.len() != 5:usize { return 5 }
-        if values.get_ref(2:usize).id != 5 || values.get_ref(3:usize).id != 3 { return 6 }
+        if values.borrow(2:usize).id != 5 || values.borrow(3:usize).id != 3 { return 6 }
 
         {
             auto removed = values#.remove(1:usize).unwrap()
@@ -44,7 +44,7 @@ fn main() -> i32 {
 
         // Reuse the moved-from tail slot after removal.
         values#.push(cede resource(6, "six"))
-        if values.len() != 5:usize || values.get_ref(4:usize).id != 6 { return 9 }
+        if values.len() != 5:usize || values.borrow(4:usize).id != 6 { return 9 }
     }
 
     if g_drop_count != 6:i32 { return 10 }

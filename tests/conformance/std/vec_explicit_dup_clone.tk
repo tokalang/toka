@@ -56,12 +56,12 @@ fn main() -> i32 {
         values#.clear()
 
         if copied.len() != 2:usize { return 6 }
-        if copied.get_ref(0:usize).as_str() != "alpha" { return 7 }
-        if copied.get_ref(1:usize).as_str() != "beta" { return 8 }
+        if copied.borrow(0:usize).as_str() != "alpha" { return 7 }
+        if copied.borrow(1:usize).as_str() != "beta" { return 8 }
 
         auto duplicated# = copied.dup()
         copied#.clear()
-        if duplicated.get_ref(0:usize).as_str() != "alpha" { return 9 }
+        if duplicated.borrow(0:usize).as_str() != "alpha" { return 9 }
         duplicated#.clear()
 
         auto first = string::from("direct")
@@ -78,7 +78,7 @@ fn main() -> i32 {
         resources#.clear()
 
         if g_drop_count != 3:i32 { return 11 }
-        if copied.get_ref(0:usize).value.as_str() != "owned" { return 12 }
+        if copied.borrow(0:usize).value.as_str() != "owned" { return 12 }
         copied#.clear()
         if g_drop_count != 4:i32 { return 13 }
     }
