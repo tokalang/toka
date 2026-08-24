@@ -1,0 +1,35 @@
+alias UniqueInt = ^i32
+alias SharedInt = ~i32
+
+fn test_unique(&x: ^i32) -> i32 {
+    return x
+}
+
+fn test_shared(&x: ~i32) -> i32 {
+    return x
+}
+
+fn test_alias_unique(&x: UniqueInt) -> i32 {
+    return x
+}
+
+fn test_alias_shared(&x: SharedInt) -> i32 {
+    return x
+}
+
+fn test_generic<'T>(&x: ^'T) -> 'T {
+    return x
+}
+
+fn main() -> i32 {
+    auto ^u = new i32(42)
+    assert(test_unique(&u) == 42, "test_unique failed")
+    assert(test_alias_unique(&u) == 42, "test_alias_unique failed")
+    assert(test_generic<i32>(&u) == 42, "test_generic failed")
+
+    auto ~s = new i32(100)
+    assert(test_shared(&s) == 100, "test_shared failed")
+    assert(test_alias_shared(&s) == 100, "test_alias_shared failed")
+
+    return 0
+}

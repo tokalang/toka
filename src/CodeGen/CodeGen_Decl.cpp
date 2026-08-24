@@ -2996,7 +2996,17 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         const std::string baseName =
             Type::stripMorphology(var->codegenName());
         const auto symbol = m_Symbols.find(baseName);
-        if (symbol != m_Symbols.end() &&
+        bool calleeExpectsLevel2Borrow = false;
+        if (fd && targetArgIdx < fd->Args.size()) {
+          const auto &calleeArg = fd->Args[targetArgIdx];
+          if (calleeArg.ResolvedType && calleeArg.ResolvedType->isReference()) {
+            auto inner = calleeArg.ResolvedType->getPointeeType();
+            if (inner && (inner->isReference() || inner->isUniquePtr() || inner->isSharedPtr())) {
+              calleeExpectsLevel2Borrow = true;
+            }
+          }
+        }
+        if (!calleeExpectsLevel2Borrow && symbol != m_Symbols.end() &&
             (symbol->second.mode == AddressingMode::Reference ||
              (symbol->second.mode == AddressingMode::Pointer &&
               symbol->second.morphology == Morphology::None))) {
@@ -3252,7 +3262,7 @@ void CodeGen::fillSymbolMetadata(TokaSymbol &sym, const std::string &typeStr,
   std::string ts = typeStr;
 
   // 1. Peel recursive indirection prefixes
-  while (!ts.empty() && (ts[0] == '*' || ts[0] == '^' || ts[0] == '~')) {
+  while (!ts.empty() && (ts[0] == '*' || ts[0] == '^' || ts[0] == '~' || ts[0] == '&')) {
     sym.indirectionLevel++;
     ts = ts.substr(1);
   }
@@ -3270,9 +3280,21 @@ void CodeGen::fillSymbolMetadata(TokaSymbol &sym, const std::string &typeStr,
   }
 
   // 3. Extract Elemental Soul Type (the 'Meat')
-  sym.soulType = resolveType(ts, false);
-  if (!sym.soulType)
-    sym.soulType = allocaElemTy;
+  if (sym.soulTypeObj) {
+    auto soulObj = sym.soulTypeObj->getSoulType();
+    sym.soulType = getLLVMType(soulObj);
+  } else {
+    sym.soulType = resolveType(ts, false);
+    if (!sym.soulType) {
+      sym.soulType = allocaElemTy;
+    } else if (sym.soulType->isPointerTy() &&
+               (isReference || hasPointer || isUnique || isShared)) {
+      auto resolvedTypeObj = toka::Type::fromString(ts);
+      if (resolvedTypeObj) {
+        sym.soulType = getLLVMType(resolvedTypeObj->getSoulType());
+      }
+    }
+  }
 
   // 4. Morphology (Ownership/Cleanup)
   if (isUnique)

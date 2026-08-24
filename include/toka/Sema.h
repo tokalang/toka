@@ -949,13 +949,14 @@ private:
       return soul;
 
     std::shared_ptr<toka::PointerType> physical;
-    if (Permission.Morphology == BindingMorphology::Raw && soul->isRawPointer()) {
+    bool isInferred = (Syntax == nullptr);
+    if (isInferred && Permission.Morphology == BindingMorphology::Raw && soul->isRawPointer()) {
       physical = std::dynamic_pointer_cast<toka::PointerType>(soul);
-    } else if (Permission.Morphology == BindingMorphology::Unique && soul->isUniquePtr()) {
+    } else if (isInferred && Permission.Morphology == BindingMorphology::Unique && soul->isUniquePtr()) {
       physical = std::dynamic_pointer_cast<toka::PointerType>(soul);
-    } else if (Permission.Morphology == BindingMorphology::Shared && soul->isSharedPtr()) {
+    } else if (isInferred && Permission.Morphology == BindingMorphology::Shared && soul->isSharedPtr()) {
       physical = std::dynamic_pointer_cast<toka::PointerType>(soul);
-    } else if (Permission.Morphology == BindingMorphology::Reference && soul->isReference()) {
+    } else if (isInferred && Permission.Morphology == BindingMorphology::Reference && soul->isReference()) {
       physical = std::dynamic_pointer_cast<toka::PointerType>(soul);
     } else {
       switch (Permission.Morphology) {

@@ -4581,12 +4581,6 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     validateTypeVisibilityInType(Arg.Type, argLoc);
     validateDynTraitObjectSafetyInType(Arg.Type, argLoc);
 
-    if (Arg.IsReference && !Arg.IsRebindable &&
-        Type::stripMorphology(Arg.Name) != "self") {
-      DiagnosticEngine::report(argLoc, DiagID::ERR_REDUNDANT_PARAM_BORROW);
-      HasError = true;
-    }
-
     SymbolInfo Info;
     // Preserve full generic-substituted Arg.Type values like "&i32".
     // [Fix] Preserve pre-resolved Types (e.g. Synthetic Closures)
@@ -4609,6 +4603,25 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       recordHandleGrammarAudit(Arg.ResolvedType, origin,
                                {isGeneric ? FormationPhase::GenericInstance : FormationPhase::DirectResolution},
                                Fn->Name, "", Arg.Name, argLoc, isGeneric, fnId);
+    }
+
+    if (Arg.IsReference && !Arg.IsRebindable &&
+        Type::stripMorphology(Arg.Name) != "self") {
+      bool isLegalLevel2Borrow = false;
+      if (Arg.ResolvedType && Arg.ResolvedType->isReference()) {
+        auto inner = Arg.ResolvedType->getPointeeType();
+        if (inner && (inner->isUniquePtr() || inner->isSharedPtr() || inner->isReference())) {
+          isLegalLevel2Borrow = true;
+        }
+      }
+      if (!isLegalLevel2Borrow) {
+        if (!Arg.ResolvedType || !Arg.ResolvedType->isReference() ||
+            !Arg.ResolvedType->getPointeeType() ||
+            !Arg.ResolvedType->getPointeeType()->isRawPointer()) {
+          DiagnosticEngine::report(argLoc, DiagID::ERR_REDUNDANT_PARAM_BORROW);
+          HasError = true;
+        }
+      }
     }
 
     if (Arg.DefaultValue && Info.TypeObj && Info.TypeObj->isMissOutcome()) {
