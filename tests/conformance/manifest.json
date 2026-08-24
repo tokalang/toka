@@ -816,7 +816,7 @@
       "expected_diagnostic_code": "E04572",
       "expected_span_line": 7,
       "timeout_seconds": 10,
-      "description": "An indexed element has no independent handle-rebind surface in Toka 1.0"
+      "description": "An indexed element has no independent handle-rebind surface in Toka 1.0 (classified under capability/immutability diagnostic E04572)"
     },
     {
       "id": "diag_handle_use_site_cannot_forge_rebind_01",

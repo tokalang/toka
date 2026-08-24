@@ -110,6 +110,12 @@ struct HandleGrammarIssue {
 - **CodeGen Invariant**: Asserts `!findHandleGrammarIssueRecursive(type).has_value()` in `src/CodeGen/CodeGen_Decl.cpp:3454` (`getLLVMType()`), reporting `E0760` on violation.
 - **Classifier Unit Tests**: Directly asserts on composite and recursive type fixtures.
 
+### 3.4 Diagnostic Evolution: Indexed Handle Rebind (`E0408` → `E04572`)
+
+In Toka 1.0, indexed elements (such as `~values[0] = cede ~replacement`) do not have an independent handle-rebind surface. Historically, assignment into indexed handle expressions produced type conversion error `E0408` due to AST morphology unwrapping. Under Phase 2:
+- Handle rebind validity is checked through capability and immutability rules, classifying indexed handle reassignments under `E04572` (immutable/unrebindable target surface).
+- The conformance suite test `diag_index_handle_rebind_not_surface_01` verifies that attempting to rebind an indexed handle continues to be rejected at compile-time with `E04572`.
+
 ---
 
 ## 4. SFINAE Tri-Classification Policy
