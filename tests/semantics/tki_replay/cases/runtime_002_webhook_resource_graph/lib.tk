@@ -34,7 +34,7 @@ impl TriggerRule {
                 auto total# = 100:i32
                 auto index# = 0:usize
                 loop index < children.len() {
-                    total += children.get_ref(index).score()
+                    total += children.borrow(index).score()
                     index += 1:usize
                 }
                 return total

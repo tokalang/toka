@@ -14,27 +14,27 @@ fn main() -> i32 {
         auto hooks# = (cede built).unwrap()
 
         if hooks.len() != 2:usize { return 11 }
-        if hooks.get_ref(0:usize).prefix != 10000:i64 + round as i64 ||
-           hooks.get_ref(0:usize).suffix != 10:i32 + round ||
-           !hooks.get_ref(0:usize).name.as_str().equals("alpha-hook") {
+        if hooks.borrow(0:usize).prefix != 10000:i64 + round as i64 ||
+           hooks.borrow(0:usize).suffix != 10:i32 + round ||
+           !hooks.borrow(0:usize).name.as_str().equals("alpha-hook") {
             return 12
         }
-        if hooks.get_ref(0:usize).bindings.len() != 2:usize ||
-           hooks.get_ref(0:usize).bindings.get_ref(0:usize).ordinal != 1000:i64 + round as i64 ||
-           hooks.get_ref(0:usize).bindings.get_ref(0:usize).tail != 10:i32 + round ||
-           !hooks.get_ref(0:usize).bindings.get_ref(0:usize).enabled ||
-           !hooks.get_ref(0:usize).bindings.get_ref(0:usize).source.as_str().equals("/tmp/a") ||
-           !hooks.get_ref(0:usize).bindings.get_ref(0:usize).target.as_str().equals("/srv/first") {
+        if hooks.borrow(0:usize).bindings.len() != 2:usize ||
+           hooks.borrow(0:usize).bindings.borrow(0:usize).ordinal != 1000:i64 + round as i64 ||
+           hooks.borrow(0:usize).bindings.borrow(0:usize).tail != 10:i32 + round ||
+           !hooks.borrow(0:usize).bindings.borrow(0:usize).enabled ||
+           !hooks.borrow(0:usize).bindings.borrow(0:usize).source.as_str().equals("/tmp/a") ||
+           !hooks.borrow(0:usize).bindings.borrow(0:usize).target.as_str().equals("/srv/first") {
             return 13
         }
-        if hooks.get_ref(0:usize).bindings.get_ref(1:usize).ordinal != 1100:i64 + round as i64 ||
-           hooks.get_ref(0:usize).bindings.get_ref(1:usize).tail != 110:i32 + round ||
-           hooks.get_ref(0:usize).bindings.get_ref(1:usize).enabled ||
-           !hooks.get_ref(0:usize).bindings.get_ref(1:usize).source.as_str().equals("/tmp/b") ||
-           !hooks.get_ref(0:usize).bindings.get_ref(1:usize).target.as_str().equals("/srv/second") {
+        if hooks.borrow(0:usize).bindings.borrow(1:usize).ordinal != 1100:i64 + round as i64 ||
+           hooks.borrow(0:usize).bindings.borrow(1:usize).tail != 110:i32 + round ||
+           hooks.borrow(0:usize).bindings.borrow(1:usize).enabled ||
+           !hooks.borrow(0:usize).bindings.borrow(1:usize).source.as_str().equals("/tmp/b") ||
+           !hooks.borrow(0:usize).bindings.borrow(1:usize).target.as_str().equals("/srv/second") {
             return 14
         }
-        if hooks.get_ref(0:usize).rule_score() != 215:i32 { return 15 }
+        if hooks.borrow(0:usize).rule_score() != 215:i32 { return 15 }
 
         auto optional# = remote::make_optional_hook(round)
         if optional.is_none() { return 16 }
@@ -54,7 +54,7 @@ fn main() -> i32 {
         if removed.prefix != 20000:i64 + round as i64 ||
            removed.suffix != 20:i32 + round ||
            !removed.name.as_str().equals("beta-hook") ||
-           removed.bindings.get_ref(0:usize).ordinal != 2000:i64 + round as i64 ||
+           removed.bindings.borrow(0:usize).ordinal != 2000:i64 + round as i64 ||
            removed.rule_score() != 215:i32 {
             return 20
         }
@@ -68,21 +68,21 @@ fn main() -> i32 {
         if forwarded_result.is_err() { return 22 }
         auto forwarded# = (cede forwarded_result).unwrap()
         if forwarded.len() != 3:usize { return 23 }
-        if forwarded.get_ref(0:usize).prefix != 10000:i64 + round as i64 ||
-           forwarded.get_ref(1:usize).prefix != 30000:i64 + round as i64 ||
-           forwarded.get_ref(2:usize).prefix != 20000:i64 + round as i64 {
+        if forwarded.borrow(0:usize).prefix != 10000:i64 + round as i64 ||
+           forwarded.borrow(1:usize).prefix != 30000:i64 + round as i64 ||
+           forwarded.borrow(2:usize).prefix != 20000:i64 + round as i64 {
             return 24
         }
 
         {
             auto discarded# = forwarded#.remove(1:usize).unwrap()
             if !discarded.name.as_str().equals("optional-hook") ||
-               discarded.bindings.get_ref(1:usize).tail != 130:i32 + round {
+               discarded.bindings.borrow(1:usize).tail != 130:i32 + round {
                 return 25
             }
         }
         if forwarded.len() != 2:usize ||
-           forwarded.get_ref(1:usize).rule_score() != 215:i32 {
+           forwarded.borrow(1:usize).rule_score() != 215:i32 {
             return 26
         }
         forwarded#.clear()

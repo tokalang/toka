@@ -34,13 +34,13 @@ fn main() -> i32 {
         if remote_items.len() != 9:usize || local_items.len() != 9:usize {
             return 1
         }
-        if remote_items.get_ref(0:usize).prefix != 101:i64 ||
-           remote_items.get_ref(8:usize).suffix != 99:i32 ||
-           !remote_items.get_ref(8:usize).label.as_str().equals("nine") {
+        if remote_items.borrow(0:usize).prefix != 101:i64 ||
+           remote_items.borrow(8:usize).suffix != 99:i32 ||
+           !remote_items.borrow(8:usize).label.as_str().equals("nine") {
             return 2
         }
-        if local_items.get_ref(0:usize).tag != 1:u8 ||
-           local_items.get_ref(8:usize).value != 90:i32 {
+        if local_items.borrow(0:usize).tag != 1:u8 ||
+           local_items.borrow(8:usize).value != 90:i32 {
             return 3
         }
 
@@ -61,9 +61,9 @@ fn main() -> i32 {
             return 6
         }
         if g_local_drop_count != 1:i32 { return 7 }
-        if remote_items.get_ref(3:usize).prefix != 505:i64 ||
-           !remote_items.get_ref(3:usize).label.as_str().equals("five") ||
-           local_items.get_ref(3:usize).value != 50:i32 {
+        if remote_items.borrow(3:usize).prefix != 505:i64 ||
+           !remote_items.borrow(3:usize).label.as_str().equals("five") ||
+           local_items.borrow(3:usize).value != 50:i32 {
             return 8
         }
 
