@@ -172,7 +172,7 @@ impl DataAccessService {
             auto locked = self.state.lock()
             if locked.is_err() { return }
             auto lock_value = locked.unwrap()
-            auto *state_value# = lock_value.get_ref()
+            auto &state_value# = lock_value.borrow_mut()
             if state_value.closed { return }
             auto _incremented = state_value.metrics#.inc_counter("data_service_requests_total", 1:i64)
             if source.equals("cache") && status_code >= 200:i32 && status_code < 300:i32 {
@@ -213,7 +213,7 @@ impl DataAccessService {
         auto locked = self.state.lock()
         if locked.is_err() { return json_error(500:i32, "metrics mutex failure") }
         auto lock_value = locked.unwrap()
-        auto *state_value# = lock_value.get_ref()
+        auto &state_value# = lock_value.borrow_mut()
         if state_value.closed { return json_error(503:i32, "service is closed") }
         return response(200:i32, "text/plain; version=0.0.4; charset=utf-8", cede state_value.metrics.render())
     }
@@ -237,7 +237,7 @@ impl DataAccessService {
                 return response_with_request_id(cede json_error(500:i32, "service mutex failure"), request_id.as_str())
             }
             auto lock_value = locked.unwrap()
-            auto *state_value# = lock_value.get_ref()
+            auto &state_value# = lock_value.borrow_mut()
             state_value.next_request_id += 1:usize
             match cede incoming_request_id {
                 auto Option<string>::Some('value) => {
@@ -351,7 +351,7 @@ impl DataAccessService {
             auto locked = self.state.lock()
             if locked.is_err() { return }
             auto lock_value = locked.unwrap()
-            auto *state_value# = lock_value.get_ref()
+            auto &state_value# = lock_value.borrow_mut()
             if state_value.closed { return }
             state_value.closed = true
             redis = Option<RedisPool>::Some(state_value.redis#.clone())
