@@ -17,7 +17,6 @@
 #include "toka/HandleGrammarAudit.h"
 #include "toka/MemberAccess.h"
 #include "toka/Type.h"
-#include "toka/Sema.h"
 #include "toka/Parser.h"
 #include "toka/PathUtils.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
@@ -2784,7 +2783,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   std::string funcName =
       expr->ResolvedFn && !expr->ResolvedFn->CodegenName.empty()
           ? expr->ResolvedFn->CodegenName
-          : (methodOwnerName.empty() ? expr->Method : methodOwnerName + "_" + expr->Method);
+          : methodOwnerName + "_" + expr->Method;
   llvm::Function *callee = m_Module->getFunction(funcName);
 
   // Check Traits
@@ -2826,11 +2825,6 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     callee = m_Module->getFunction(encapFunc);
   }
 
-  if (!callee && m_Module->getFunction(expr->Method)) {
-    callee = m_Module->getFunction(expr->Method);
-    funcName = expr->Method;
-  }
-
   if (!callee) {
     error(expr, DiagID::ERR_CODEGEN_METHOD_NOT_FOUND_FOR_TYPE_MANGLED, expr->Method, typeName, funcName);
     return nullptr;
@@ -2840,9 +2834,6 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   const FunctionDecl *fd = expr->ResolvedFn;
   if (!fd && m_Functions.count(funcName)) {
     fd = m_Functions[funcName];
-  }
-  if (!fd && m_Functions.count(expr->Method)) {
-    fd = m_Functions[expr->Method];
   }
 
   bool isMethodAsync = (fd && fd->Effect == EffectKind::Async);
