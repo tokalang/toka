@@ -259,16 +259,6 @@ impl<'T> Vec<'T> {
         }
     }
     
-    // Legacy raw-pointer access. New code should use borrow/borrow_mut.
-    pub fn get_ref(self, index: usize) -> *'T {
-        unsafe {
-             if index >= self.len {
-                 libc_abort()
-             }
-             return *self.buf[index]
-        }
-    }
-
     pub fn from_raw(nul *buf: ['T], len: usize, cap: usize) -> Vec<'T> {
         return Vec<'T>(
             *buf=*buf,

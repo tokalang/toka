@@ -155,8 +155,10 @@ outcomes:
 - `Vec::unsafe_get` remains raw and acquires an explicit `RawExtendable`
   constraint or moves to an appropriately constrained implementation.
 
-The audit target `RejectedSFINAE >= 4` remains migration-only until these cases
-are converted. It must not be copied into the final Phase 2 baseline.
+After removing the legacy `Vec::get_ref`, the migration-only audit target is
+`RejectedSFINAE >= 2`, covering only `Vec::unsafe_get` on the two borrowed
+element fixtures. It remains temporary until `RawExtendable` replaces implicit
+filtering and must not be copied into the final Phase 2 baseline.
 
 ## 5. Borrow API declaration migration
 

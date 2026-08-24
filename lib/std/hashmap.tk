@@ -296,12 +296,6 @@ impl<'K, 'V> HashMap<'K, 'V> {
          return Option<&'V>::None
     }
 
-    // Temporary compatibility alias. New code uses try_borrow().
-    pub fn get_ref(self, 'key: K) -> Option<&'V>
-    effects: return <- self {
-         return self.try_borrow('key)
-    }
-
     pub fn contains_key(self, 'key: K) -> bool {
          auto val_opt = self.try_borrow('key)
          return val_opt.is_some()

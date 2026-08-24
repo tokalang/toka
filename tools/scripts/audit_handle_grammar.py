@@ -486,7 +486,7 @@ def aggregate_receipts(audit_dir, tokac_bin=None):
     print(f"   • Non-SFINAE Transients             : {non_sfinae_transients:<4} [TARGET: 0]", flush=True)
     print(f"   • Instantiated Violations           : {instantiated_violations:<4} [TARGET: 0]", flush=True)
     print(f"   • LLVM Lowered Violations           : {llvm_lowered_violations:<4} [TARGET: 0]", flush=True)
-    print(f"   • Rejected SFINAE Evidence          : {rejected_sfinae:<4} [TARGET: 4]", flush=True)
+    print(f"   • Rejected SFINAE Evidence          : {rejected_sfinae:<4} [TARGET: 2]", flush=True)
     print(f"   • Rejected Compile-Fail Evidence    : {rejected_source:<4} [TARGET: 14]", flush=True)
 
     print(f"\n1. Decision Taxonomy Breakdown (N={N}):", flush=True)
@@ -562,8 +562,8 @@ def aggregate_receipts(audit_dir, tokac_bin=None):
         gate_failures.append(f"Instantiated Violations: {instantiated_violations} (expected 0)")
     if llvm_lowered_violations != 0:
         gate_failures.append(f"LLVM Lowered Violations: {llvm_lowered_violations} (expected 0)")
-    if rejected_sfinae < 4:
-        gate_failures.append(f"Rejected SFINAE Evidence: {rejected_sfinae} (expected >= 4)")
+    if rejected_sfinae < 2:
+        gate_failures.append(f"Rejected SFINAE Evidence: {rejected_sfinae} (expected >= 2)")
     if rejected_source < 14:
         gate_failures.append(f"Rejected Compile-Fail Evidence: {rejected_source} (expected >= 14)")
 

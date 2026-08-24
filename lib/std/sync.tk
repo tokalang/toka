@@ -145,10 +145,6 @@ impl<'T: @Send> MutexLock<'T> {
         return &(self.data)
     }
 
-    // Temporary compatibility alias. New code uses borrow_mut().
-    pub fn get_ref(self) -> &'T# <- self {
-        return &(self.data)
-    }
 }
 
 /// A reader-writer lock
@@ -291,10 +287,6 @@ impl<'T: @{Send, Sync}> RwReadLock<'T> {
         return &(self.data)
     }
 
-    // Temporary compatibility alias. New code uses borrow().
-    pub fn get_ref(self) -> &'T <- self {
-        return &(self.data)
-    }
 }
 
 pub shape RwWriteLock<'T: @{Send, Sync}>(
@@ -322,10 +314,6 @@ impl<'T: @{Send, Sync}> RwWriteLock<'T> {
         return &(self.data)
     }
 
-    // Temporary compatibility alias. New code uses borrow_mut().
-    pub fn get_ref(self) -> &'T# <- self {
-        return &(self.data)
-    }
 }
 
 /// A Condition Variable
