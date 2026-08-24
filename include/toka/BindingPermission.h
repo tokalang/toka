@@ -1,17 +1,7 @@
-// Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 #pragma once
+
+#include <vector>
+#include <string>
 
 namespace toka {
 
@@ -23,6 +13,13 @@ enum class BindingMorphology {
   Reference,
 };
 
+struct HandleLayer {
+  BindingMorphology Morphology = BindingMorphology::None;
+  bool Rebindable = false; // #
+  bool Nullable = false;   // nul
+  bool Blocked = false;    // $
+};
+
 // Structured view of Toka's binding/path permission surface.
 //
 // This intentionally models the source-level contract:
@@ -32,6 +29,14 @@ enum class BindingMorphology {
 // Parser AST bools remain as recovery inputs for precise removed-syntax
 // diagnostics. Semantic permission carries only admitted language facts.
 struct BindingPermission {
+  // Ordered sequence of handle layers from outermost to innermost:
+  // e.g. &^x => [ {Reference}, {Unique} ]
+  // e.g. &~x => [ {Reference}, {Shared} ]
+  // e.g. &&x => [ {Reference}, {Reference} ]
+  // e.g. ^x  => [ {Unique} ]
+  // e.g. *x  => [ {Raw} ]
+  std::vector<HandleLayer> HandleLayers;
+
   BindingMorphology Morphology = BindingMorphology::None;
 
   bool IdentityRebindable = false; // ^#p, *#p, &#p
@@ -43,16 +48,61 @@ struct BindingPermission {
 
   bool MorphicExempt = false;      // 'T preserves morphology
 
+  bool isLevel2Borrow() const {
+    return HandleLayers.size() == 2 &&
+           HandleLayers[0].Morphology == BindingMorphology::Reference &&
+           (HandleLayers[1].Morphology == BindingMorphology::Unique ||
+            HandleLayers[1].Morphology == BindingMorphology::Shared ||
+            HandleLayers[1].Morphology == BindingMorphology::Reference);
+  }
+
+  bool isBorrowOfUnique() const {
+    return HandleLayers.size() == 2 &&
+           HandleLayers[0].Morphology == BindingMorphology::Reference &&
+           HandleLayers[1].Morphology == BindingMorphology::Unique;
+  }
+
+  bool isBorrowOfShared() const {
+    return HandleLayers.size() == 2 &&
+           HandleLayers[0].Morphology == BindingMorphology::Reference &&
+           HandleLayers[1].Morphology == BindingMorphology::Shared;
+  }
+
+  bool isDoubleBorrow() const {
+    return HandleLayers.size() == 2 &&
+           HandleLayers[0].Morphology == BindingMorphology::Reference &&
+           HandleLayers[1].Morphology == BindingMorphology::Reference;
+  }
+
+  BindingMorphology outerMorphology() const {
+    return HandleLayers.empty() ? Morphology : HandleLayers[0].Morphology;
+  }
+
+  BindingMorphology innerMorphology() const {
+    return HandleLayers.size() >= 2 ? HandleLayers[1].Morphology : BindingMorphology::None;
+  }
+
+  void syncProjections() {
+    if (!HandleLayers.empty()) {
+      Morphology = HandleLayers[0].Morphology;
+      IdentityRebindable = HandleLayers[0].Rebindable;
+      IdentityMayBeZero = HandleLayers[0].Nullable;
+      IdentityBlocked = HandleLayers[0].Blocked;
+    } else {
+      Morphology = BindingMorphology::None;
+    }
+  }
+
   static BindingMorphology legacyMorphology(bool isRawPointer,
                                             bool isUnique,
                                             bool isShared,
                                             bool isReference) {
+    if (isReference)
+      return BindingMorphology::Reference;
     if (isUnique)
       return BindingMorphology::Unique;
     if (isShared)
       return BindingMorphology::Shared;
-    if (isReference)
-      return BindingMorphology::Reference;
     if (isRawPointer)
       return BindingMorphology::Raw;
     return BindingMorphology::None;
@@ -70,6 +120,14 @@ struct BindingPermission {
     BindingPermission permission;
     permission.Morphology =
         legacyMorphology(isRawPointer, isUnique, isShared, isReference);
+    if (permission.Morphology != BindingMorphology::None) {
+      HandleLayer layer;
+      layer.Morphology = permission.Morphology;
+      layer.Rebindable = isRebindable;
+      layer.Nullable = isPointerNullable;
+      layer.Blocked = isRebindBlocked;
+      permission.HandleLayers.push_back(layer);
+    }
     permission.IdentityRebindable = isRebindable;
     permission.IdentityMayBeZero = isPointerNullable;
     permission.IdentityBlocked = isRebindBlocked;
