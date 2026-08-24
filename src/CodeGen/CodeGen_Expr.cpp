@@ -5762,11 +5762,30 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
             // Materialization (genExpr)
             val = nullptr;
           } else {
+            bool calleeExpectsLevel2Borrow = false;
+            if (funcDecl && i < funcDecl->Args.size()) {
+              const auto &calleeArg = funcDecl->Args[i];
+              if (calleeArg.IsReference) {
+                auto calleeTy = calleeArg.ResolvedType;
+                if (!calleeArg.Type.empty() && m_TypeAliases.count(calleeArg.Type)) {
+                  calleeTy = m_TypeAliases[calleeArg.Type];
+                } else if (calleeTy && m_TypeAliases.count(calleeTy->toString())) {
+                  calleeTy = m_TypeAliases[calleeTy->toString()];
+                }
+                if (calleeArg.IsUnique || calleeArg.IsShared) {
+                  calleeExpectsLevel2Borrow = true;
+                } else if (calleeTy && (calleeTy->isReference() || calleeTy->isUniquePtr() || calleeTy->isSharedPtr())) {
+                  calleeExpectsLevel2Borrow = true;
+                } else if (!calleeArg.Type.empty() && (calleeArg.Type[0] == '&' || calleeArg.Type[0] == '^' || calleeArg.Type[0] == '~')) {
+                  calleeExpectsLevel2Borrow = true;
+                }
+              }
+            }
             std::string baseName = toka::Type::stripMorphology(ve->Name);
             if (m_Symbols.count(baseName)) {
                auto &sym = m_Symbols[baseName];
-               if (sym.mode == AddressingMode::Reference || 
-                   (sym.mode == AddressingMode::Pointer && sym.morphology == Morphology::None)) {
+               if (!calleeExpectsLevel2Borrow && (sym.mode == AddressingMode::Reference || 
+                   (sym.mode == AddressingMode::Pointer && sym.morphology == Morphology::None))) {
                    val = getEntityAddr(ve->codegenName());
                } else {
                    val = getIdentityAddr(ve->codegenName());

@@ -1,23 +1,36 @@
-alias UniqueInt = ^i32
-alias SharedInt = ~i32
+pub alias UniqueInt = ^i32
+pub alias SharedInt = ~i32
+pub alias RefInt = &i32
 
-fn test_unique(&x: ^i32) -> i32 {
+pub fn test_unique(&x: ^i32) -> i32 {
     return x
 }
 
-fn test_shared(&x: ~i32) -> i32 {
+pub fn test_shared(&x: ~i32) -> i32 {
     return x
 }
 
-fn test_alias_unique(&x: UniqueInt) -> i32 {
+pub fn test_ref(&x: &i32) -> i32 {
     return x
 }
 
-fn test_alias_shared(&x: SharedInt) -> i32 {
+pub fn test_alias_unique(&x: UniqueInt) -> i32 {
     return x
 }
 
-fn test_generic<'T>(&x: ^'T) -> 'T {
+pub fn test_alias_shared(&x: SharedInt) -> i32 {
+    return x
+}
+
+pub fn test_alias_ref(&x: RefInt) -> i32 {
+    return x
+}
+
+pub fn test_generic<'T>(&x: ^'T) -> 'T {
+    return x
+}
+
+pub fn test_generic_ref<'T>(&x: &'T) -> 'T {
     return x
 }
 
@@ -30,6 +43,12 @@ fn main() -> i32 {
     auto ~s = new i32(100)
     assert(test_shared(&s) == 100, "test_shared failed")
     assert(test_alias_shared(&s) == 100, "test_alias_shared failed")
+
+    auto val = 200
+    auto &ref_val = &val
+    assert(test_ref(&ref_val) == 200, "test_ref failed")
+    assert(test_alias_ref(&ref_val) == 200, "test_alias_ref failed")
+    assert(test_generic_ref<i32>(&ref_val) == 200, "test_generic_ref failed")
 
     return 0
 }

@@ -118,7 +118,14 @@ static std::string reconstructVar(
     return result;
 }
 
-static std::string exportBindingType(const std::string &typeStr) {
+static std::string exportBindingType(const std::string &typeStr, bool preserveInnerMorphology = false) {
+    if (preserveInnerMorphology) {
+        std::string res = typeStr;
+        if (!res.empty() && res[0] == '\'') {
+            res.erase(0, 1);
+        }
+        return res;
+    }
     std::string stripped = toka::Type::stripPrefixes(typeStr);
     if (!stripped.empty() && stripped[0] == '\'') {
         stripped.erase(0, 1);
@@ -770,10 +777,11 @@ void TKIExporter::printArg(const FunctionDecl::Arg &arg) {
         false, arg.IsMorphicExempt, keepTypeSideCede ? false : arg.IsCeded,
         arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked
     );
+    bool isLevel2Borrow = arg.IsReference && !type.empty() && (type[0] == '^' || type[0] == '~' || type[0] == '&');
     if (keepTypeSideCede) {
-        m_OS << varStr << ": cede " << toka::Type::stripPrefixes(type);
+        m_OS << varStr << ": cede " << (isLevel2Borrow ? type : toka::Type::stripPrefixes(type));
     } else {
-        m_OS << varStr << ": " << exportBindingType(type);
+        m_OS << varStr << ": " << exportBindingType(type, isLevel2Borrow);
     }
     if (arg.DefaultValue) {
         m_OS << " = ";

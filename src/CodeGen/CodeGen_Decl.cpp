@@ -17,6 +17,7 @@
 #include "toka/HandleGrammarAudit.h"
 #include "toka/MemberAccess.h"
 #include "toka/Type.h"
+#include "toka/Sema.h"
 #include "toka/Parser.h"
 #include "toka/PathUtils.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
@@ -2783,7 +2784,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   std::string funcName =
       expr->ResolvedFn && !expr->ResolvedFn->CodegenName.empty()
           ? expr->ResolvedFn->CodegenName
-          : methodOwnerName + "_" + expr->Method;
+          : (methodOwnerName.empty() ? expr->Method : methodOwnerName + "_" + expr->Method);
   llvm::Function *callee = m_Module->getFunction(funcName);
 
   // Check Traits
@@ -2825,6 +2826,11 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     callee = m_Module->getFunction(encapFunc);
   }
 
+  if (!callee && m_Module->getFunction(expr->Method)) {
+    callee = m_Module->getFunction(expr->Method);
+    funcName = expr->Method;
+  }
+
   if (!callee) {
     error(expr, DiagID::ERR_CODEGEN_METHOD_NOT_FOUND_FOR_TYPE_MANGLED, expr->Method, typeName, funcName);
     return nullptr;
@@ -2834,6 +2840,9 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   const FunctionDecl *fd = expr->ResolvedFn;
   if (!fd && m_Functions.count(funcName)) {
     fd = m_Functions[funcName];
+  }
+  if (!fd && m_Functions.count(expr->Method)) {
+    fd = m_Functions[expr->Method];
   }
 
   bool isMethodAsync = (fd && fd->Effect == EffectKind::Async);
@@ -2945,9 +2954,12 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   for (size_t i = 0; i < expr->Args.size(); ++i) {
     const auto *cededArg =
         dynamic_cast<const CedeExpr *>(expr->Args[i].get());
-    const Expr *cededSource = cededArg ? cededArg->Value.get() : nullptr;
-    while (auto *cast = dynamic_cast<const CastExpr *>(cededSource))
-      cededSource = cast->Expression.get();
+    const auto *unaryArg =
+        dynamic_cast<const UnaryExpr *>(expr->Args[i].get());
+    const Expr *source = cededArg ? cededArg->Value.get()
+                                  : ((unaryArg && unaryArg->Op == TokenType::Ampersand) ? unaryArg->RHS.get() : nullptr);
+    while (auto *cast = dynamic_cast<const CastExpr *>(source))
+      source = cast->Expression.get();
     bool isCaptured = false;
     size_t targetArgIdx = isStatic ? i : (i + 1);
     size_t llvmArgIdx = targetArgIdx + (isSRet ? 1 : 0);
@@ -2980,8 +2992,8 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         }
       }
 
-      // [Fix] Unique/Shared/Rebindable Pointers MUST be passed by Reference (Capture)
-      if (arg.IsUnique || arg.IsShared || arg.IsRebindable) {
+      // [Fix] Unique/Shared/Rebindable/Reference Pointers MUST be passed by Reference (Capture)
+      if (arg.IsReference || arg.IsUnique || arg.IsShared || arg.IsRebindable) {
         isCaptured = true;
       }
     }
@@ -2992,16 +3004,25 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
       // a ceded local must not be materialized into an aggregate temporary:
       // the callee receives the source storage and the caller's drop
       // obligation is discharged below.
-      if (auto *var = dynamic_cast<const VariableExpr *>(cededSource)) {
+      if (auto *var = dynamic_cast<const VariableExpr *>(source)) {
         const std::string baseName =
             Type::stripMorphology(var->codegenName());
         const auto symbol = m_Symbols.find(baseName);
         bool calleeExpectsLevel2Borrow = false;
         if (fd && targetArgIdx < fd->Args.size()) {
           const auto &calleeArg = fd->Args[targetArgIdx];
-          if (calleeArg.ResolvedType && calleeArg.ResolvedType->isReference()) {
-            auto inner = calleeArg.ResolvedType->getPointeeType();
-            if (inner && (inner->isReference() || inner->isUniquePtr() || inner->isSharedPtr())) {
+          if (calleeArg.IsReference) {
+            auto calleeTy = calleeArg.ResolvedType;
+            if (!calleeArg.Type.empty() && m_TypeAliases.count(calleeArg.Type)) {
+              calleeTy = m_TypeAliases[calleeArg.Type];
+            } else if (calleeTy && m_TypeAliases.count(calleeTy->toString())) {
+              calleeTy = m_TypeAliases[calleeTy->toString()];
+            }
+            if (calleeArg.IsUnique || calleeArg.IsShared) {
+              calleeExpectsLevel2Borrow = true;
+            } else if (calleeTy && (calleeTy->isReference() || calleeTy->isUniquePtr() || calleeTy->isSharedPtr())) {
+              calleeExpectsLevel2Borrow = true;
+            } else if (!calleeArg.Type.empty() && (calleeArg.Type[0] == '&' || calleeArg.Type[0] == '^' || calleeArg.Type[0] == '~')) {
               calleeExpectsLevel2Borrow = true;
             }
           }
@@ -3014,9 +3035,9 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         } else {
           argVal = getIdentityAddr(var->codegenName());
         }
-      } else if (dynamic_cast<const MemberExpr *>(cededSource) ||
-                 dynamic_cast<const ArrayIndexExpr *>(cededSource)) {
-        argVal = genAddr(cededSource);
+      } else if (dynamic_cast<const MemberExpr *>(source) ||
+                 dynamic_cast<const ArrayIndexExpr *>(source)) {
+        argVal = genAddr(source);
       }
       if (!argVal)
         argVal = genAddr(expr->Args[i].get());
@@ -3067,11 +3088,11 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
       return nullptr;
 
     if (cededArg && isCaptured) {
-      if (auto *var = dynamic_cast<const VariableExpr *>(cededSource))
+      if (auto *var = dynamic_cast<const VariableExpr *>(source))
         suppressDropForMove(var->Name);
-      else if (auto *member = dynamic_cast<const MemberExpr *>(cededSource))
+      else if (auto *member = dynamic_cast<const MemberExpr *>(source))
         suppressDropForPartialMove(member);
-      else if (auto *index = dynamic_cast<const ArrayIndexExpr *>(cededSource))
+      else if (auto *index = dynamic_cast<const ArrayIndexExpr *>(source))
         suppressDropForPartialMove(index);
     }
 
