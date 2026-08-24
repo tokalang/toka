@@ -217,6 +217,11 @@ static std::string genericFunctionCodegenName(const Module &M,
   }
   appendStableIdentityPart(identity, fn.Name);
   appendStableIdentityPart(identity, std::to_string(fn.GenericParams.size()));
+  for (const auto &param : fn.GenericParams) {
+    appendStableIdentityPart(identity, param.Name);
+    for (auto bound : param.MorphologyBounds)
+      appendStableIdentityPart(identity, morphologyConstraintName(bound));
+  }
   return "__toka_gfn_" + exactSymbolEncoding(identity);
 }
 
@@ -944,7 +949,17 @@ std::string Sema::canonicalImplDefinitionId(const ImplDecl *impl) const {
       owner = "module:" + module->Name;
     }
   }
+  std::string constraints;
+  for (const auto &param : impl->GenericParams) {
+    for (auto bound : param.MorphologyBounds) {
+      constraints += param.Name;
+      constraints += ":";
+      constraints += morphologyConstraintName(bound);
+      constraints += ",";
+    }
+  }
   return owner + ";impl:" + impl->TypeName + "@" + impl->TraitName +
+         ";morphology:" + constraints +
          ";loc:" + std::to_string(impl->Loc.getRawEncoding());
 }
 
@@ -5869,6 +5884,11 @@ FunctionDecl *Sema::instantiateGenericFunction(
 
   // [NEW] Check Trait Bounds
   for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
+    if (!checkMorphologyBounds(
+            CallSite ? getLoc(CallSite) : Template->Loc,
+            Template->GenericParams[i], Args[i], false)) {
+      return nullptr;
+    }
     if (!Template->GenericParams[i].TraitBounds.empty()) {
       auto bounds = substituteTraitBounds(
           Template->GenericParams[i].TraitBounds, Template->GenericParams,

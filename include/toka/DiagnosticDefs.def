@@ -161,6 +161,8 @@ DIAG(ERR_ASSOC_TYPE_NAME_CONFLICTS_WITH_GENERIC, Error,   "E0616", "Associated t
 DIAG(ERR_DYN_TRAIT_NOT_OBJECT_SAFE, Error,   "E0617", "Trait '@{}' cannot be used as 'dyn @{}': {}")
 DIAG(ERR_ATOMIC_INTRINSIC_TYPE_DOMAIN, Error,   "E0619", "Atomic intrinsic '{}' does not support type '{}'; expected {} (bool uses i1 and must be represented by a byte-sized integer, as std/atomic::AtomicBool does)")
 DIAG(ERR_ATOMIC_ORDERING_INVALID, Error,   "E0620", "Atomic operation '{}' rejects ordering '{}': {}")
+DIAG(ERR_MORPHOLOGY_BOUND_UNSATISFIED, Error, "E0621", "Type '{}' does not satisfy morphology bound '{}' for generic parameter {}")
+DIAG(ERR_MORPHOLOGY_BOUND_REQUIRES_MORPHIC, Error, "E0622", "Morphology bound '{}' requires morphic generic parameter {}")
 
 // --- Parser Errors ---
 DIAG(ERR_EXPECTED_SEMI,           Error,   "E0101", "Expected ';' or newline after statement")
@@ -324,6 +326,7 @@ DIAG(ERR_PARSER_WHERE_IMPL_REMOVED, Error,   "E01258", "Where constraints use ':
 DIAG(ERR_PARSER_EXPECTED_TYPE_ANNOTATION, Error,   "E01259", "Expected a type annotation")
 DIAG(ERR_PARSER_EXTERN_RETURN_DEPENDENCY_UNSUPPORTED, Error,   "E01260", "Extern declarations cannot declare return dependencies")
 DIAG(ERR_PARSER_AUTO_BINDING_TYPE_ANNOTATION, Error,   "E01266", "'auto' binding '{}' cannot have a declaration-side type annotation; ascribe its initializer instead")
+DIAG(ERR_PARSER_UNKNOWN_MORPHOLOGY_CONSTRAINT, Error, "E01267", "Unknown morphology constraint '{}'; expected soul_only, borrow_extendable, or raw_extendable")
 DIAG(ERR_PARSER_AUTO_BINDING_REQUIRES_INITIALIZER, Error,   "E01262", "'auto' binding '{}' requires an initializer")
 DIAG(ERR_PARSER_DEFAULT_WILDCARD_REMOVED, Error,   "E01263", "'default' is not a match wildcard; use '_' instead")
 DIAG(ERR_PARSER_BITWISE_OPERATOR_MUST_BE_SURROUNDED, Error,   "E01264", "Binary bitwise operators must be surrounded by spaces")

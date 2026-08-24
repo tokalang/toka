@@ -1,0 +1,21 @@
+import ./lib::{RawDomain, ConstrainedShape, make_domain, constrained_marker}
+
+fn main() -> i32 {
+    auto domain = make_domain()
+    if domain.raw_marker() != 73 {
+        return 1
+    }
+    auto raw_domain = RawDomain<*i32>(marker = 74)
+    if raw_domain.raw_marker() != 74 {
+        return 2
+    }
+    auto deep_raw_domain = RawDomain<**i32>(marker = 75)
+    if deep_raw_domain.raw_marker() != 75 {
+        return 3
+    }
+    auto constrained = ConstrainedShape<i32>(marker = 76)
+    if constrained.marker != 76 || constrained_marker<i32>(1) != 76 {
+        return 4
+    }
+    return 0
+}

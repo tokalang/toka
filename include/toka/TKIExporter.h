@@ -49,6 +49,8 @@ private:
 
   // Printing helpers
   void printGenericParams(const std::vector<GenericParam> &params);
+  bool printMorphologyWhereConstraints(
+      const std::vector<GenericParam> &params);
   void printArg(const FunctionDecl::Arg &arg);
 };
 

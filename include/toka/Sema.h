@@ -849,6 +849,10 @@ private:
                         const std::shared_ptr<toka::Type> &ConcreteType,
                         bool isSilent = false,
                         SourceLocation BoundLoc = SourceLocation());
+  bool checkMorphologyBounds(
+      SourceLocation Loc, const GenericParam &Param,
+      const std::shared_ptr<toka::Type> &ConcreteType,
+      bool isSilent = false);
   std::vector<std::string> substituteTraitBounds(
       const std::vector<std::string> &Bounds,
       const std::vector<GenericParam> &Params,

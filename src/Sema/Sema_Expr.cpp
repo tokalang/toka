@@ -4123,6 +4123,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       return duplicated;
     }
 
+    std::string lazyImplKey;
+    std::vector<std::shared_ptr<toka::Type>> lazyGenericArgs;
     if (isDupCall ||
         !(MethodMap.count(soulType) &&
           MethodMap[soulType].count(Met->Method))) {
@@ -4138,13 +4140,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (lt != std::string::npos) {
         BaseName = BaseName.substr(0, lt);
       }
-      const std::string implKey = genericImplKey(BaseName, getLoc(Met));
-      if (GenericImplMap.count(implKey)) {
+      lazyImplKey = genericImplKey(BaseName, getLoc(Met));
+      if (GenericImplMap.count(lazyImplKey)) {
           // [FIX] Pass generic arguments to instantiateGenericImpl
-          std::vector<std::shared_ptr<toka::Type>> genericArgs;
           if (objectShape) {
             auto *ST = objectShape.get();
-            genericArgs =
+            lazyGenericArgs =
                 ST->GenericArgs.empty() && ST->Decl &&
                         ST->Decl->InstantiationTemplate
                     ? ST->Decl->InstantiationArgs
@@ -4153,11 +4154,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             // Fallback: parse from string
             auto parsed = Type::fromString(ConcreteTypeName);
             if (auto *PST = dynamic_cast<ShapeType *>(parsed.get())) {
-              genericArgs = PST->GenericArgs;
+              lazyGenericArgs = PST->GenericArgs;
             }
           }
-          for (auto *ImplTemplate : GenericImplMap[implKey]) {
-            instantiateGenericImpl(ImplTemplate, ConcreteTypeName, genericArgs,
+          for (auto *ImplTemplate : GenericImplMap[lazyImplKey]) {
+            instantiateGenericImpl(ImplTemplate, ConcreteTypeName,
+                                   lazyGenericArgs,
                                    objectShape ? objectShape->Decl : nullptr);
           }
       }
@@ -4793,6 +4795,31 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       std::string pSoul = Type::stripMorphology(Pointee);
       if (MethodMap.count(pSoul) && MethodMap[pSoul].count(Met->Method)) {
         return toka::Type::fromString(MethodMap[pSoul][Met->Method]);
+      }
+    }
+    if (!lazyImplKey.empty() && GenericImplMap.count(lazyImplKey)) {
+      for (auto *implTemplate : GenericImplMap[lazyImplKey]) {
+        if (!implTemplate ||
+            implTemplate->GenericParams.size() != lazyGenericArgs.size())
+          continue;
+        bool declaresMethod = false;
+        for (const auto &method : implTemplate->Methods) {
+          if (method && method->Name == Met->Method) {
+            declaresMethod = true;
+            break;
+          }
+        }
+        if (!declaresMethod)
+          continue;
+        for (size_t i = 0; i < lazyGenericArgs.size(); ++i) {
+          if (checkMorphologyBounds(implTemplate->Loc,
+                                    implTemplate->GenericParams[i],
+                                    lazyGenericArgs[i], true))
+            continue;
+          checkMorphologyBounds(getLoc(Met), implTemplate->GenericParams[i],
+                                lazyGenericArgs[i], false);
+          return toka::Type::fromString("unknown");
+        }
       }
     }
     // [Intrinsic] unset() & unwrap()

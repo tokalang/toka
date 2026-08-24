@@ -739,6 +739,9 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
     auto &Param = Template->GenericParams[i];
     auto ArgType = GenericShape->GenericArgs[i];
 
+    if (!checkMorphologyBounds(Template->Loc, Param, ArgType))
+      return GenericShape;
+
     // Morphic constraint check
     if (!Param.IsMorphic) {
       if (ArgType->isRawPointer() || ArgType->isUniquePtr() || ArgType->isSharedPtr() || ArgType->isReference()) {

@@ -33,6 +33,24 @@ namespace toka {
 class ASTNode;
 class FunctionDecl;
 
+enum class MorphologyConstraintKind {
+  SoulOnly,
+  BorrowExtendable,
+  RawExtendable,
+};
+
+inline const char *morphologyConstraintName(MorphologyConstraintKind kind) {
+  switch (kind) {
+  case MorphologyConstraintKind::SoulOnly:
+    return "soul_only";
+  case MorphologyConstraintKind::BorrowExtendable:
+    return "borrow_extendable";
+  case MorphologyConstraintKind::RawExtendable:
+    return "raw_extendable";
+  }
+  return "unknown";
+}
+
 struct GenericParam {
   std::string Name;
   std::string Type; // Empty if it's a type parameter
@@ -41,6 +59,7 @@ struct GenericParam {
   TypeSyntaxPtr TypeSyntax;
   bool IsConst = false;
   std::vector<std::string> TraitBounds;
+  std::vector<MorphologyConstraintKind> MorphologyBounds;
   bool IsMorphic = false; // [NEW] True if name starts with '
 };
 

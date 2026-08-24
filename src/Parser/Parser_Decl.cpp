@@ -142,10 +142,32 @@ void Parser::parseWhereConstraints(std::vector<GenericParam> &genericParams,
         consume(TokenType::Colon, DiagID::ERR_PARSER_EXPECTED_WHERE_RELATION);
       }
     }
-    std::vector<std::string> bounds = parseTraitFacetTarget();
+    std::vector<std::string> bounds;
+    std::optional<MorphologyConstraintKind> morphologyBound;
+    if (check(TokenType::Identifier) && peek().Text == "morphology") {
+      advance();
+      Token constraint = consume(
+          TokenType::Identifier,
+          DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME_IN_CONSTRAINT);
+      if (constraint.Text == "soul_only") {
+        morphologyBound = MorphologyConstraintKind::SoulOnly;
+      } else if (constraint.Text == "borrow_extendable") {
+        morphologyBound = MorphologyConstraintKind::BorrowExtendable;
+      } else if (constraint.Text == "raw_extendable") {
+        morphologyBound = MorphologyConstraintKind::RawExtendable;
+      } else {
+        error(constraint, DiagID::ERR_PARSER_UNKNOWN_MORPHOLOGY_CONSTRAINT,
+              constraint.Text);
+      }
+    } else {
+      bounds = parseTraitFacetTarget();
+    }
 
     if (subject.Text == "Self") {
-      if (selfTraitBounds) {
+      if (morphologyBound.has_value()) {
+        error(subject, DiagID::ERR_PARSER_WHERE_UNSUPPORTED_SUBJECT,
+              subject.Text);
+      } else if (selfTraitBounds) {
         appendUnique(*selfTraitBounds, bounds);
       } else {
         error(subject, DiagID::ERR_PARSER_WHERE_UNSUPPORTED_SUBJECT,
@@ -168,6 +190,12 @@ void Parser::parseWhereConstraints(std::vector<GenericParam> &genericParams,
       error(subject, DiagID::ERR_PARSER_WHERE_UNSUPPORTED_SUBJECT,
             subject.Text);
       continue;
+    }
+    if (morphologyBound.has_value() &&
+        std::find(paramIt->MorphologyBounds.begin(),
+                  paramIt->MorphologyBounds.end(), *morphologyBound) ==
+            paramIt->MorphologyBounds.end()) {
+      paramIt->MorphologyBounds.push_back(*morphologyBound);
     }
     appendUnique(paramIt->TraitBounds, bounds);
   }

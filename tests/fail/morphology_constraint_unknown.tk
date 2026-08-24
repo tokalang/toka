@@ -1,0 +1,9 @@
+// EXPECT: error[E01267]
+shape Bad<'T>
+where:
+    'T: morphology impossible_domain
+(
+    'value: T
+)
+
+fn main() -> i32 { return 0 }

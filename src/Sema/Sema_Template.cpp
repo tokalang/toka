@@ -403,6 +403,10 @@ void Sema::instantiateGenericImpl(
 
   // [NEW] Check Trait Bounds (SFINAE)
   for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
+    if (!checkMorphologyBounds(Template->Loc, Template->GenericParams[i],
+                               GenericArgs[i], true /* isSilent */)) {
+      return; // Explicit domain constraint: this impl is not applicable.
+    }
     if (!Template->GenericParams[i].TraitBounds.empty()) {
       auto bounds = substituteTraitBounds(
           Template->GenericParams[i].TraitBounds, Template->GenericParams,
@@ -708,6 +712,64 @@ void Sema::instantiateGenericImpl(
   exitScope();
 
   // Done.
+}
+
+bool Sema::checkMorphologyBounds(
+    SourceLocation Loc, const GenericParam &Param,
+    const std::shared_ptr<toka::Type> &ConcreteType, bool isSilent) {
+  if (Param.MorphologyBounds.empty())
+    return true;
+
+  if (!Param.IsMorphic) {
+    if (!isSilent) {
+      DiagnosticEngine::report(
+          Loc, DiagID::ERR_MORPHOLOGY_BOUND_REQUIRES_MORPHIC,
+          morphologyConstraintName(Param.MorphologyBounds.front()),
+          Param.Name);
+      HasError = true;
+    }
+    return false;
+  }
+
+  auto concrete = resolveType(ConcreteType);
+  auto satisfies = [&](MorphologyConstraintKind bound) {
+    if (!concrete)
+      return false;
+    if (bound == MorphologyConstraintKind::SoulOnly)
+      return !concrete->isPointer() && !concrete->isReference() &&
+             !concrete->isSmartPointer();
+
+    if (bound == MorphologyConstraintKind::RawExtendable) {
+      auto current = concrete;
+      while (current && current->isRawPointer())
+        current = current->getPointeeType();
+      return current && !current->isPointer() && !current->isReference() &&
+             !current->isSmartPointer();
+    }
+
+    if (!concrete->isPointer() && !concrete->isReference() &&
+        !concrete->isSmartPointer())
+      return true;
+    if (concrete->isRawPointer())
+      return false;
+    auto pointee = concrete->getPointeeType();
+    return pointee && !pointee->isPointer() && !pointee->isReference() &&
+           !pointee->isSmartPointer();
+  };
+
+  for (auto bound : Param.MorphologyBounds) {
+    if (satisfies(bound))
+      continue;
+    if (!isSilent) {
+      DiagnosticEngine::report(
+          Loc, DiagID::ERR_MORPHOLOGY_BOUND_UNSATISFIED,
+          concrete ? concrete->toString() : "unknown",
+          morphologyConstraintName(bound), Param.Name);
+      HasError = true;
+    }
+    return false;
+  }
+  return true;
 }
 
 std::vector<std::string> Sema::substituteTraitBounds(

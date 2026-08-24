@@ -455,6 +455,8 @@ void TKIExporter::exportTypeAlias(const TypeAliasDecl &decl) {
     if (decl.IsPub) m_OS << "pub ";
     m_OS << (decl.IsStrong ? "type " : "alias ") << decl.Name;
     printGenericParams(decl.GenericParams);
+    if (printMorphologyWhereConstraints(decl.GenericParams))
+        indent();
     m_OS << " = " << exportTypeSyntax(decl.TargetTypeSyntax, decl.TargetType);
     m_OS << "\n";
 }
@@ -465,6 +467,8 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
     if (decl.IsPub) m_OS << "pub ";
     m_OS << "shape " << decl.Name;
     printGenericParams(decl.GenericParams);
+    if (printMorphologyWhereConstraints(decl.GenericParams))
+        indent();
 
     if (decl.Kind == ShapeKind::Array) {
         const auto &member = decl.Members[0];
@@ -581,10 +585,15 @@ void TKIExporter::exportImpl(const ImplDecl &decl) {
         std::string cleanTrait = decl.TraitName;
         if (cleanTrait[0] == '@') cleanTrait = cleanTrait.substr(1);
         m_OS << exportTypeSyntax(decl.HeaderSyntax.Type, decl.TypeName)
-             << "@" << cleanTrait << " {\n";
+             << "@" << cleanTrait;
     } else {
-        m_OS << exportTypeSyntax(decl.HeaderSyntax.Type, decl.TypeName)
-             << " {\n";
+        m_OS << exportTypeSyntax(decl.HeaderSyntax.Type, decl.TypeName);
+    }
+    if (printMorphologyWhereConstraints(decl.GenericParams)) {
+        indent();
+        m_OS << "{\n";
+    } else {
+        m_OS << " {\n";
     }
     m_Indent++;
 
@@ -660,8 +669,12 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
         }
     }
 
+    bool hasMorphologyWhere =
+        printMorphologyWhereConstraints(decl.GenericParams);
+
     if (useEffectsBlock) {
-        m_OS << "\n";
+        if (!hasMorphologyWhere)
+            m_OS << "\n";
         m_Indent++;
         writeln("effects:");
         m_Indent++;
@@ -690,6 +703,10 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
         m_Indent -= 2;
         indent();
     }
+
+    if (hasMorphologyWhere && !useEffectsBlock &&
+        !decl.ResolvedOutcomeTransition)
+        indent();
 
     if (decl.ResolvedOutcomeTransition) {
         m_OS << "\n";
@@ -811,6 +828,29 @@ void TKIExporter::printGenericParams(const std::vector<GenericParam> &params) {
         }
     }
     m_OS << ">";
+}
+
+bool TKIExporter::printMorphologyWhereConstraints(
+    const std::vector<GenericParam> &params) {
+    bool any = false;
+    for (const auto &param : params)
+        any = any || !param.MorphologyBounds.empty();
+    if (!any)
+        return false;
+
+    m_OS << "\n";
+    indent();
+    m_OS << "where:\n";
+    m_Indent++;
+    for (const auto &param : params) {
+        for (auto bound : param.MorphologyBounds) {
+            indent();
+            m_OS << param.Name << ": morphology "
+                 << morphologyConstraintName(bound) << "\n";
+        }
+    }
+    m_Indent--;
+    return true;
 }
 
 void TKIExporter::printArg(const FunctionDecl::Arg &arg) {

@@ -1,0 +1,34 @@
+// EXPECT_TKI: 'T: morphology raw_extendable
+// EXPECT_TKI: pub fn raw_marker(self: Self) -> i32
+// EXPECT_TKI_ROUNDTRIP
+
+pub shape RawDomain<'T>(
+    marker: i32
+)
+
+pub shape ConstrainedShape<'T>
+where:
+    'T: morphology raw_extendable
+(
+    marker: i32
+)
+
+impl<'T> RawDomain<'T>
+where:
+    'T: morphology raw_extendable
+{
+    pub fn raw_marker(self) -> i32 {
+        return self.marker
+    }
+}
+
+pub fn make_domain() -> RawDomain<i32> {
+    return RawDomain<i32>(marker = 73)
+}
+
+pub fn constrained_marker<'T>('value: T) -> i32
+where:
+    'T: morphology raw_extendable
+{
+    return 76
+}

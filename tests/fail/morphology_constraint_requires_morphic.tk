@@ -1,0 +1,12 @@
+// EXPECT: error[E0622]
+shape Bad<T>
+where:
+    T: morphology raw_extendable
+(
+    value: T
+)
+
+fn main() -> i32 {
+    auto value = Bad<i32>(value = 1)
+    return 0
+}

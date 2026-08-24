@@ -452,6 +452,10 @@ private:
         if (i)
           result += ", ";
         result += function.GenericParams[i].Name;
+        for (auto bound : function.GenericParams[i].MorphologyBounds) {
+          result += ": morphology ";
+          result += morphologyConstraintName(bound);
+        }
       }
       result += ">";
     }
