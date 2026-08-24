@@ -13,7 +13,7 @@ pub fn main() -> i32 {
         return 1
     }
     auto mut_guard = lock_res.unwrap()
-    auto &mut_val# = mut_guard.get_ref()
+    auto &mut_val# = mut_guard.borrow_mut()
     // Increment the data using standard mutable reference
     mut_val = mut_val + 10
     println("Main thread initial data: {}", mut_val)
@@ -26,7 +26,7 @@ pub fn main() -> i32 {
         sleep_ms(100:u32)
         auto ~local_m = ~thread_m
         auto mut_guard2 = local_m.lock().unwrap()
-        auto &mut_val2# = mut_guard2.get_ref()
+        auto &mut_val2# = mut_guard2.borrow_mut()
         mut_val2 = mut_val2 + 20
         println("Worker thread changed data to: {}", mut_val2)
         return cede 0
@@ -38,7 +38,7 @@ pub fn main() -> i32 {
     
     {
         auto mut_guard3 = m.lock().unwrap()
-        auto &mut_val3 = mut_guard3.get_ref()
+        auto &mut_val3 = mut_guard3.borrow_mut()
         println("Main thread final data: {}", mut_val3)
         
         if mut_val3 == 30 {

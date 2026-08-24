@@ -20,7 +20,7 @@ pub fn main() -> i32 {
         auto ~local_cv = ~thread_cv
         auto lock = local_m.lock().unwrap()
         
-        auto &s_ptr# = lock.get_ref()
+        auto &s_ptr# = lock.borrow_mut()
         loop {
             if s_ptr.ready { break }
             println("Consumer sleeping...")
@@ -42,7 +42,7 @@ pub fn main() -> i32 {
     {
         auto lock_prod = m.lock().unwrap()
         
-        auto &s_prod# = lock_prod.get_ref()
+        auto &s_prod# = lock_prod.borrow_mut()
         s_prod.val = 42
         s_prod.ready = true
         println("Producer set value and ready flag")

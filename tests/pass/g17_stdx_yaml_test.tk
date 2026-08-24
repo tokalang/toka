@@ -20,25 +20,25 @@ exp_num: 1e3
 
     match root {
         auto JsonNode::ObjectNode(&map) => {
-            auto &name_node = map.get_ref(string::from("name")).unwrap()
+            auto &name_node = map.try_borrow(string::from("name")).unwrap()
             match name_node {
                 auto StrNode(&s) => { assert(s.as_str().equals("toka-service"), "name must match toka-service") }
                 _ => { assert(false, "name node must be StrNode") }
             }
 
-            auto &port_node = map.get_ref(string::from("port")).unwrap()
+            auto &port_node = map.try_borrow(string::from("port")).unwrap()
             match port_node {
                 auto NumNode(n) => { assert(n == 8080.0, "port node must equal 8080") }
                 _ => { assert(false, "port node must be NumNode") }
             }
 
-            auto &enabled_node = map.get_ref(string::from("enabled")).unwrap()
+            auto &enabled_node = map.try_borrow(string::from("enabled")).unwrap()
             match enabled_node {
                 auto BoolNode(b) => { assert(b == true, "enabled node must be true") }
                 _ => { assert(false, "enabled node must be BoolNode") }
             }
 
-            auto &nil_node = map.get_ref(string::from("nil_val")).unwrap()
+            auto &nil_node = map.try_borrow(string::from("nil_val")).unwrap()
             match nil_node {
                 auto NullNode(_) => {}
                 _ => { assert(false, "nil_val node must be NullNode") }
@@ -60,15 +60,15 @@ fn test_c41_c44_regressions_fixed() {
     match root_c41 {
         auto ArrayNode(&arr) => {
             assert(arr.len() == 1:usize, "c41 array len must be 1")
-            auto &item = arr.get_ref(0:usize).unwrap()
+            auto &item = arr.borrow(0:usize)
             match item {
                 auto ObjectNode(&map) => {
-                    auto &a_val = map.get_ref(string::from("a")).unwrap()
+                    auto &a_val = map.try_borrow(string::from("a")).unwrap()
                     match a_val {
                         auto NumNode(n) => { assert(n == 1.0, "a must equal 1") }
                         _ => { assert(false, "a must be NumNode") }
                     }
-                    auto &b_val = map.get_ref(string::from("b")).unwrap()
+                    auto &b_val = map.try_borrow(string::from("b")).unwrap()
                     match b_val {
                         auto NumNode(n) => { assert(n == 2.0, "b must equal 2") }
                         _ => { assert(false, "b must be NumNode") }
@@ -111,7 +111,7 @@ description: value1
 
     match root {
         auto JsonNode::ObjectNode(&map) => {
-            auto &desc_node = map.get_ref(string::from("description")).unwrap()
+            auto &desc_node = map.try_borrow(string::from("description")).unwrap()
             match desc_node {
                 auto StrNode(&s) => {
                     assert(s.as_str().equals("value1 continuation line3"), "unquoted multiline scalar must fold with single space")
@@ -137,16 +137,16 @@ fn test_nested_sequences_and_inline_null_mapping() {
     match root_seq {
         auto ArrayNode(&arr) => {
             assert(arr.len() == 2:usize, "top level array len must be 2")
-            auto &sub_seq = arr.get_ref(0:usize).unwrap()
+            auto &sub_seq = arr.borrow(0:usize)
             match sub_seq {
                 auto ArrayNode(&sub_arr) => {
                     assert(sub_arr.len() == 2:usize, "sub array len must be 2")
-                    auto &e0 = sub_arr.get_ref(0:usize).unwrap()
+                    auto &e0 = sub_arr.borrow(0:usize)
                     match e0 {
                         auto StrNode(&s) => { assert(s.as_str().equals("x"), "element 0 must be x") }
                         _ => { assert(false, "sub element 0 must be StrNode") }
                     }
-                    auto &e1 = sub_arr.get_ref(1:usize).unwrap()
+                    auto &e1 = sub_arr.borrow(1:usize)
                     match e1 {
                         auto StrNode(&s) => { assert(s.as_str().equals("y"), "element 1 must be y") }
                         _ => { assert(false, "sub element 1 must be StrNode") }
@@ -169,15 +169,15 @@ fn test_nested_sequences_and_inline_null_mapping() {
 
     match root_map {
         auto ArrayNode(&arr) => {
-            auto &item0 = arr.get_ref(0:usize).unwrap()
+            auto &item0 = arr.borrow(0:usize)
             match item0 {
                 auto ObjectNode(&map) => {
-                    auto &a_val = map.get_ref(string::from("a")).unwrap()
+                    auto &a_val = map.try_borrow(string::from("a")).unwrap()
                     match a_val {
                         auto NullNode(_) => {}
                         _ => { assert(false, "key 'a' must map to NullNode") }
                     }
-                    auto &b_val = map.get_ref(string::from("b")).unwrap()
+                    auto &b_val = map.try_borrow(string::from("b")).unwrap()
                     match b_val {
                         auto StrNode(&s) => { assert(s.as_str().equals("c"), "key 'b' must match 'c'") }
                         _ => { assert(false, "key 'b' must map to StrNode") }
@@ -204,25 +204,25 @@ unicode_val: \"\\u00e9\"
 
     match root {
         auto JsonNode::ObjectNode(&map) => {
-            auto &msg = map.get_ref(string::from("msg")).unwrap()
+            auto &msg = map.try_borrow(string::from("msg")).unwrap()
             match msg {
                 auto StrNode(&s) => { assert(s.as_str().equals("hi\nthere"), "msg must contain actual newline") }
                 _ => { assert(false, "msg must be StrNode") }
             }
 
-            auto &esc_q = map.get_ref(string::from("escaped_quote")).unwrap()
+            auto &esc_q = map.try_borrow(string::from("escaped_quote")).unwrap()
             match esc_q {
                 auto StrNode(&s) => { assert(s.as_str().equals("a\"b"), "escaped quote must equal a\"b") }
                 _ => { assert(false, "escaped_quote must be StrNode") }
             }
 
-            auto &esc_s = map.get_ref(string::from("escaped_slash")).unwrap()
+            auto &esc_s = map.try_borrow(string::from("escaped_slash")).unwrap()
             match esc_s {
                 auto StrNode(&s) => { assert(s.as_str().equals("c\\d"), "escaped slash must equal c\\d") }
                 _ => { assert(false, "escaped_slash must be StrNode") }
             }
 
-            auto &uni_val = map.get_ref(string::from("unicode_val")).unwrap()
+            auto &uni_val = map.try_borrow(string::from("unicode_val")).unwrap()
             match uni_val {
                 auto StrNode(&s) => { assert(s.as_str().equals("é"), "unicode escape \\u00e9 must equal é") }
                 _ => { assert(false, "unicode_val must be StrNode") }
@@ -246,15 +246,15 @@ fn test_flow_nesting_and_shorthand() {
 
     match root {
         auto JsonNode::ObjectNode(&map) => {
-            auto &config = map.get_ref(string::from("config")).unwrap()
+            auto &config = map.try_borrow(string::from("config")).unwrap()
             match config {
                 auto JsonNode::ObjectNode(&cfg_map) => {
-                    auto &a_node = cfg_map.get_ref(string::from("a")).unwrap()
+                    auto &a_node = cfg_map.try_borrow(string::from("a")).unwrap()
                     match a_node {
                         auto NullNode(_) => {}
                         _ => { assert(false, "shorthand key 'a' must be NullNode") }
                     }
-                    auto &b_node = cfg_map.get_ref(string::from("b")).unwrap()
+                    auto &b_node = cfg_map.try_borrow(string::from("b")).unwrap()
                     match b_node {
                         auto NumNode(n) => { assert(n == 1.0, "key 'b' must equal 1") }
                         _ => { assert(false, "key 'b' must be NumNode") }
@@ -337,17 +337,17 @@ c: \"a\\
     auto ml_root = parsed_ml.unwrap()
     match ml_root {
         auto JsonNode::ObjectNode(&map) => {
-            auto &a_node = map.get_ref(string::from("a")).unwrap()
+            auto &a_node = map.try_borrow(string::from("a")).unwrap()
             match a_node {
                 auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("multi line"), "double-quoted multiline must fold to space") }
                 _ => { assert(false, "a must be StrNode") }
             }
-            auto &b_node = map.get_ref(string::from("b")).unwrap()
+            auto &b_node = map.try_borrow(string::from("b")).unwrap()
             match b_node {
                 auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("single quote"), "single-quoted multiline must fold to space") }
                 _ => { assert(false, "b must be StrNode") }
             }
-            auto &c_node = map.get_ref(string::from("c")).unwrap()
+            auto &c_node = map.try_borrow(string::from("c")).unwrap()
             match c_node {
                 auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("ab"), "backslash line continuation must join without space") }
                 _ => { assert(false, "c must be StrNode") }
@@ -378,27 +378,27 @@ cont: foo
     auto bs_root = parsed_bs.unwrap()
     match bs_root {
         auto JsonNode::ObjectNode(&map) => {
-            auto &keep = map.get_ref(string::from("keep")).unwrap()
+            auto &keep = map.try_borrow(string::from("keep")).unwrap()
             match keep {
                 auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("keep\n\n"), "keep chomp must retain trailing blank line") }
                 _ => { assert(false, "keep must be StrNode") }
             }
-            auto &keep2 = map.get_ref(string::from("keep2")).unwrap()
+            auto &keep2 = map.try_borrow(string::from("keep2")).unwrap()
             match keep2 {
                 auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("strip"), "strip chomp must drop trailing breaks") }
                 _ => { assert(false, "keep2 must be StrNode") }
             }
-            auto &folded = map.get_ref(string::from("folded")).unwrap()
+            auto &folded = map.try_borrow(string::from("folded")).unwrap()
             match folded {
                 auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("folded\n more\nnormal\n"), "more-indented folded lines must stay literal") }
                 _ => { assert(false, "folded must be StrNode") }
             }
-            auto &lit = map.get_ref(string::from("lit")).unwrap()
+            auto &lit = map.try_borrow(string::from("lit")).unwrap()
             match lit {
                 auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("\nx\n"), "leading blank line in literal block must be kept") }
                 _ => { assert(false, "lit must be StrNode") }
             }
-            auto &cont = map.get_ref(string::from("cont")).unwrap()
+            auto &cont = map.try_borrow(string::from("cont")).unwrap()
             match cont {
                 auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("foo - bar"), "plain scalar continuation must fold sequence-looking lines") }
                 _ => { assert(false, "cont must be StrNode") }

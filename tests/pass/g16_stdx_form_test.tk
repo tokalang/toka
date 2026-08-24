@@ -19,13 +19,13 @@ fn main() -> i32 {
 
     auto parsed = parse(encoded.as_str()).unwrap()
     assert(parsed.len() == 4:usize, "form parsing must preserve all fields")
-    assert(parsed.get_ref(0:usize).clone().value().equals("hello world+"), "decoded first field")
-    assert(parsed.get_ref(1:usize).clone().name().equals("tag"), "first duplicate key")
-    assert(parsed.get_ref(2:usize).clone().value().equals("lang"), "second duplicate value")
-    assert(parsed.get_ref(3:usize).clone().value().equals(""), "empty value retained")
+    assert(parsed.borrow(0:usize).clone().value().equals("hello world+"), "decoded first field")
+    assert(parsed.borrow(1:usize).clone().name().equals("tag"), "first duplicate key")
+    assert(parsed.borrow(2:usize).clone().value().equals("lang"), "second duplicate value")
+    assert(parsed.borrow(3:usize).clone().value().equals(""), "empty value retained")
 
     auto bare = parse("flag&x=1").unwrap()
-    assert(bare.len() == 2:usize && bare.get_ref(0:usize).clone().value().equals(""),
+    assert(bare.len() == 2:usize && bare.borrow(0:usize).clone().value().equals(""),
            "bare key must parse as an empty value")
     return 0
 }

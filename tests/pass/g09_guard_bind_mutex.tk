@@ -9,7 +9,7 @@ fn main() -> i32 {
     // First lock
     {
         auto g = m#.lock().unwrap()
-        auto *p# = g.get_ref()
+        auto &p# = g.borrow_mut()
         p = 10
         println("val: {}", p)
     }
@@ -17,7 +17,7 @@ fn main() -> i32 {
     // Test mutability directly
     {
         auto g = m#.lock().unwrap()
-        auto *p2 = g.get_ref()
+        auto &p2 = g.borrow_mut()
         println("final val: {}", p2)
     }
     

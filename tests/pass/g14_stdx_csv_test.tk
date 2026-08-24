@@ -4,8 +4,8 @@ import stdx/data/csv::{parse_records, write_records, read_record, write_record}
 import stdx/io/bufio::{BufferedReader, BufferedWriter}
 
 fn assert_field(records#: Vec<Vec<string>>, row: usize, column: usize, expected: str) {
-    auto *record = records.get_ref(row)
-    auto *field = record.get_ref(column)
+    auto &record = records.borrow(row)
+    auto &field = record.borrow(column)
     assert(field.as_str().equals(expected), "unexpected CSV field")
 }
 
@@ -77,7 +77,7 @@ fn test_streaming_adapters() {
         auto record_opt = next.unwrap()
         assert(record_opt.is_some(), "streaming CSV record must read")
         auto record = record_opt.unwrap()
-        auto field = record.get_ref(1).clone()
+        auto field = record.borrow(1).clone()
         assert(field.as_str().equals("one\r\ntwo"), "streaming CSV field mismatch")
         auto eof = read_record<File>(reader, 64)
         assert(eof.is_ok(), "streaming CSV EOF read must not fail")

@@ -9,7 +9,7 @@ fn main() -> i32 {
     {
         auto g = m#.lock().unwrap()
         println("Locked")
-        auto &p# = g.get_ref()
+        auto &p# = g.borrow_mut()
         println("Data is {}", p)
         p = 100
         println("Modified to {}", p)
@@ -17,7 +17,7 @@ fn main() -> i32 {
     
     println("Before second lock")
     auto g = m#.lock().unwrap()
-    auto &p2# = g.get_ref()
+    auto &p2# = g.borrow_mut()
     println("Second lock data is {}", p2)
     if p2 == 100 {
         println("Value persisted!")

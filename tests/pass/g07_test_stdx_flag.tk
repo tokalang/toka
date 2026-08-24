@@ -50,7 +50,7 @@ fn main() -> i32 {
     }
 
     auto pos = parsed_args.positionals()
-    if pos.len() != 2:usize || pos.get_ref(0).as_str() != "start" || pos.get_ref(1).as_str() != "web" {
+    if pos.len() != 2:usize || pos.borrow(0).as_str() != "start" || pos.borrow(1).as_str() != "web" {
         println("positionals assertion failed")
         return 1
     }

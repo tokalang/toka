@@ -14,7 +14,7 @@ fn test_guard_ext() -> i32 {
     println("Lock acquired successfully.")
     
     // The lock MUST still be held here, and g MUST be valid to read/write!
-    auto *p# = g.get_ref()
+    auto &p# = g.borrow_mut()
     if (p != 100) {
         println("Invalid state!")
         return 2
@@ -32,7 +32,7 @@ fn test_match_ext() -> i32 {
     match m#.lock() {
         auto Result::Ok(&g) => {
             println("Match lock acquired.")
-            auto *p# = g.get_ref()
+            auto &p# = g.borrow_mut()
             p = 400
         }
         _ => {
@@ -44,7 +44,7 @@ fn test_match_ext() -> i32 {
     guard auto Result::Ok(&g2) = m#.lock() else {
         return 2
     }
-    auto *p2# = g2.get_ref()
+    auto &p2# = g2.borrow_mut()
     if (p2 != 400) {
         return 3
     }

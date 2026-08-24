@@ -20,21 +20,21 @@ pub fn main() -> i32 {
     auto init1# = { [cede state1] =>
         auto ~local_state = ~state1
         auto lock = local_state.lock().unwrap()
-        auto &val# = lock.get_ref()
+        auto &val# = lock.borrow_mut()
         val.counter = val.counter + 1
         println("init_fn executed!")
     }:fn#()
     auto init2# = { [cede state2] =>
         auto ~local_state = ~state2
         auto lock = local_state.lock().unwrap()
-        auto &val# = lock.get_ref()
+        auto &val# = lock.borrow_mut()
         val.counter = val.counter + 1
         println("init_fn executed!")
     }:fn#()
     auto init3# = { [cede state3] =>
         auto ~local_state = ~state3
         auto lock = local_state.lock().unwrap()
-        auto &val# = lock.get_ref()
+        auto &val# = lock.borrow_mut()
         val.counter = val.counter + 1
         println("init_fn executed!")
     }:fn#()
@@ -63,7 +63,7 @@ pub fn main() -> i32 {
     t3#.join().unwrap()
     
     auto lock = state.lock().unwrap()
-    auto &val = lock.get_ref()
+    auto &val = lock.borrow_mut()
     println("Once counter value: {}", val.counter)
     assert(val.counter == 1, "Expected counter to be 1")
     

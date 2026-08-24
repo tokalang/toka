@@ -16,11 +16,11 @@ fn main() -> i32 {
     auto rows# = Vec<ResourceRow>::new()
     rows#.push(cede ResourceRow(key = 19, value = string::from("first")))
     auto candidate# = Vec<ResourceRow>::new()
-    auto *source = rows.get_ref(0)
+    auto &source = rows.borrow(0)
     candidate#.push(cede source.clone())
     if candidate.len() != 1 { return 10 }
-    if candidate.get_ref(0).key != 19 { return 11 }
-    auto *copied = candidate.get_ref(0)
+    if candidate.borrow(0).key != 19 { return 11 }
+    auto &copied = candidate.borrow(0)
     if copied.value != string::from("first") { return 12 }
     return 0
 }
