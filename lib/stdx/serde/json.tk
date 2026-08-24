@@ -559,6 +559,7 @@ impl<'K: @FromJson, 'V: @FromJson> HashMap<'K, 'V>@FromJson {
                         res = res.substr(k_consumed, res.len() - k_consumed)
                         res = json_skip_whitespace(res)
                         if res.len() == 0 || res.byte_at(0) != 58 {
+                            auto _k = cede k_buf[0]
                             unsafe free [0] *k_buf
                             return JsonRes::Err("Expected :")
                         }
@@ -576,6 +577,7 @@ impl<'K: @FromJson, 'V: @FromJson> HashMap<'K, 'V>@FromJson {
                                 unsafe free [0] *v_buf
                             }
                             auto Result<str, str>::Err('e) => {
+                                auto _k = cede k_buf[0]
                                 unsafe free [0] *k_buf
                                 unsafe free [0] *v_buf
                                 return JsonRes::Err('e)
