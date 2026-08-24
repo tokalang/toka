@@ -1,0 +1,44 @@
+import std/slab::Slab
+
+shape Item(
+    value#: i32
+)
+
+fn main() -> i32 {
+    auto slab# = Slab<Item>::new()
+    auto original = slab#.insert(Item(value = 10))
+
+    match slab.lookup(original.clone()) {
+        auto &item => assert(item.value == 10, "slab lookup hit failed")
+        miss => return 1
+    }
+
+    match slab#.lookup_mut(original.clone()) {
+        auto &item# => item.value = 11
+        miss => return 2
+    }
+
+    match slab.lookup(original.clone()) {
+        auto &item => assert(item.value == 11, "slab lookup_mut failed")
+        miss => return 3
+    }
+
+    auto removed = slab#.remove(original.clone())
+    assert(removed.is_some(), "slab remove failed")
+    match slab.lookup(original.clone()) {
+        auto &item => return 4
+        miss => {}
+    }
+
+    auto replacement = slab#.insert(Item(value = 20))
+    assert(replacement.index() == original.index(), "slot must be reused")
+    match slab.lookup(original) {
+        auto &item => return 5
+        miss => {}
+    }
+    match slab.lookup(replacement) {
+        auto &item => assert(item.value == 20, "replacement lookup failed")
+        miss => return 6
+    }
+    return 0
+}

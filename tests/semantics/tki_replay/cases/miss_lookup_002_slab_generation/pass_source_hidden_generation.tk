@@ -1,0 +1,36 @@
+import std/slab::Slab
+import ./lib::{find_item, find_item_mut}
+
+fn main() -> i32 {
+    auto slab# = Slab<i32>::new()
+    auto original = slab#.insert(10)
+
+    match find_item(slab, original.clone()) {
+        auto &value => {
+            if value != 10 { return 1 }
+        }
+        miss => return 2
+    }
+
+    match find_item_mut(slab#, original.clone()) {
+        auto &value# => value = 11
+        miss => return 3
+    }
+
+    auto removed = slab#.remove(original.clone())
+    if removed.is_none() { return 4 }
+    auto replacement = slab#.insert(20)
+    if replacement.index() != original.index() { return 5 }
+
+    match find_item(slab, original) {
+        auto &value => return 6
+        miss => {}
+    }
+    match find_item(slab, replacement) {
+        auto &value => {
+            if value != 20 { return 7 }
+        }
+        miss => return 8
+    }
+    return 0
+}

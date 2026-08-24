@@ -1,0 +1,16 @@
+import std/slab::Slab
+
+shape Item(value: i32)
+
+// EXPECT: error[E0441]
+fn main() -> i32 {
+    auto slab# = Slab<Item>::new()
+    auto id = slab#.insert(Item(value = 10))
+    match slab.lookup(id.clone()) {
+        auto &item => {
+            slab#.remove(id)
+            return item.value
+        }
+        miss => return 0
+    }
+}

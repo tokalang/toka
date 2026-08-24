@@ -200,6 +200,47 @@ impl<'T> Slab<'T> {
     }
 }
 
+impl<'T> Slab<'T>
+where:
+    'T: morphology borrow_extendable
+{
+    pub fn lookup(self, id: SlabID) -> &'T | miss
+    effects: return <- self {
+        auto idx = id.index()
+        if idx >= self.entries.len() {
+            return miss
+        }
+        {
+            auto &entry = self.entries.borrow(idx)
+            if entry.generation as usize != id.generation() {
+                return miss
+            }
+            match entry.val {
+                auto Some(&val) => return &val
+                None => return miss
+            }
+        }
+    }
+
+    pub fn lookup_mut(self#, id: SlabID) -> &'T# | miss
+    effects: return <- self {
+        auto idx = id.index()
+        if idx >= self.entries.len() {
+            return miss
+        }
+        {
+            auto &entry# = self.entries#.borrow_mut(idx)
+            if entry.generation as usize != id.generation() {
+                return miss
+            }
+            match entry.val {
+                auto Some(&val#) => return &val
+                None => return miss
+            }
+        }
+    }
+}
+
 impl<'T> Slab<'T>@Encap {
     fn drop(self#) {
         self#.clear()

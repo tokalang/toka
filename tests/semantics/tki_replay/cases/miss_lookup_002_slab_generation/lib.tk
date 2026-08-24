@@ -1,0 +1,19 @@
+import std/slab::{Slab, SlabID}
+
+// EXPECT_TKI: pub fn find_item(slab: Slab<i32>, id: SlabID) -> &i32|miss <- slab
+// EXPECT_TKI: pub fn find_item_mut(slab#: Slab<i32>, id: SlabID) -> &i32#|miss <- slab
+// EXPECT_TKI_ROUNDTRIP
+
+pub fn find_item(slab: Slab<i32>, id: SlabID) -> &i32 | miss
+effects:
+    return <- slab
+{
+    return slab.lookup(id)
+}
+
+pub fn find_item_mut(slab#: Slab<i32>, id: SlabID) -> &i32# | miss
+effects:
+    return <- slab
+{
+    return slab#.lookup_mut(id)
+}

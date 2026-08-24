@@ -1,19 +1,26 @@
 # Lookup-to-Miss Pilot
 
-**Status:** successful bounded pilot; broader migration not yet authorized
+**Status:** two successful bounded pilots; broad mechanical migration is not
+recommended
 
 ## Scope
 
-The pilot adds a non-breaking `HashMap::lookup` surface alongside
-`HashMap::try_borrow`:
+The pilots add non-breaking lookup surfaces alongside the existing
+`Option`-returning APIs:
 
 ```toka
-lookup(key)      -> &'V | miss
-try_borrow(key)  -> Option<&'V>
+HashMap::lookup(key)       -> &'V | miss
+HashMap::try_borrow(key)   -> Option<&'V>
+
+Slab::lookup(id)           -> &'T | miss
+Slab::lookup_mut(id)       -> &'T# | miss
+Slab::get(id)              -> Option<&'T>
+Slab::get_mut(id)          -> Option<&'T#>
 ```
 
-`lookup` is available when `'V` satisfies `borrow_extendable`. It preserves
-the stored value's admitted morphology and returns a borrow tied to the map.
+The lookup methods are available when the stored type satisfies
+`borrow_extendable`. They preserve the stored value's admitted morphology and
+return a borrow tied to the container.
 
 ## Findings
 
@@ -23,13 +30,29 @@ the stored value's admitted morphology and returns a borrow tied to the map.
   passed as ordinary data.
 - A lookup borrow cannot escape a local map; the pilot retains the E0455
   lifetime boundary.
-- Source-hidden TKI replay preserves both `&V | miss` and `return <- map`.
+- Slab's stale generation is naturally an immediate `miss`: an old ID misses
+  after slot reuse while the replacement ID hits. Mutable hits preserve `&T#`.
+- A matched Slab borrow blocks removal of the borrowed entry/container in the
+  hit arm (E0441).
+- Source-hidden TKI replay preserves `&T | miss`, `&T# | miss`, and their
+  `return <- owner` contracts for both pilots.
 - The pilot exposed and fixed two general outcome bugs: hit-return morphology
   was compared against the wrapper instead of its payload, and reference-valued
   hit patterns bound the outcome's pointer slot instead of its referent.
+- The Slab pilot exposed a third general bug: the expression checker did not
+  recognize a reference nested in a miss outcome, discarded the return
+  dependency, and therefore failed to register the hit-arm PAL loan.
 
-## Preliminary decision
+## Decision after two pilots
 
-The feature has real value for immediate lookup control flow. Keep the pilot
-API and evaluate one ID-based lookup (for example Slab) before considering a
-broader 1.0 migration. Do not replace `Option` mechanically.
+`miss` has demonstrated value for lookup operations whose ordinary consumer
+branches immediately. It is especially clear for ID/generation lookup, where
+staleness is expected control flow rather than a value to retain.
+
+Keep the HashMap and Slab lookup APIs as the qualified 1.0 surface, alongside
+their `Option` forms. Migrate additional core lookup APIs only case by case:
+
+- use `T | miss` when absence is locally and immediately matched;
+- use `Option<T>` when absence must be stored, returned as data, transformed,
+  or passed onward;
+- do not rename or replace existing `Option` APIs mechanically.
