@@ -352,6 +352,13 @@ def aggregate_receipts(audit_dir):
         print(f"  Instantiated: {e.get('instantiated')} | Reachability: {e.get('reachability')} | EnclosingFnCodeGen: {e.get('enclosing_fn_codegen')} | LLVMTypeLowered: {e.get('llvm_type_lowered')}\n", flush=True)
 
     # Save receipt manifest
+    serializable_entries = []
+    for e in entries:
+        ed = dict(e)
+        if isinstance(ed.get("phases"), (set, list)):
+            ed["phases"] = sorted(list(ed["phases"]))
+        serializable_entries.append(ed)
+
     receipt_data = {
         "schema_version": SCHEMA_VERSION,
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -365,7 +372,7 @@ def aggregate_receipts(audit_dir):
             "rejected_sfinae_evidence": rejected_sfinae,
             "rejected_compile_fail_evidence": rejected_source
         },
-        "entries": entries
+        "entries": serializable_entries
     }
     receipt_file = os.path.join(audit_dir, "authoritative_receipt_manifest.json")
     with open(receipt_file, "w", encoding="utf-8") as rf:

@@ -1756,7 +1756,8 @@ void Sema::checkStmt(Stmt *S) {
     Info.Permission = LocalPermission;
 
     if (!Info.TypeObj) {
-      if (inferredType && morph.empty() && InitTypeObj && InitTypeObj->isShape()) {
+      if (inferredType && morph.empty() && InitTypeObj &&
+          InitTypeObj->isShape()) {
         Info.TypeObj = resolveType(InitTypeObj->withAttributes(
             LocalPermission.SoulWritable, false), false);
         if (Info.TypeObj) Info.TypeObj->IsCede = false;

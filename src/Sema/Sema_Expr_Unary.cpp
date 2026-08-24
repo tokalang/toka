@@ -120,14 +120,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
   if (auto *Var = dynamic_cast<VariableExpr *>(Unary->RHS.get())) {
     SymbolInfo *Info = nullptr;
     std::string actualName = Var->Name;
-    if (!CurrentScope->findSymbol(actualName, Info)) {
-      if (CurrentScope->findSymbol("&" + actualName, Info)) { actualName = "&" + actualName; }
-      else if (CurrentScope->findSymbol("*" + actualName, Info)) { actualName = "*" + actualName; }
-      else if (CurrentScope->findSymbol("^" + actualName, Info)) { actualName = "^" + actualName; }
-      else if (CurrentScope->findSymbol("~" + actualName, Info)) { actualName = "~" + actualName; }
-    }
-
-    if (CurrentScope->findSymbol(actualName, Info)) {
+    if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName) && Info) {
       if (Unary->Op == TokenType::Star || Unary->Op == TokenType::Caret ||
           Unary->Op == TokenType::Tilde || Unary->Op == TokenType::Ampersand) {
         Info->HasHandleBeenUsed = true;
@@ -274,6 +267,9 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
         if (physType && physType->isUniquePtr()) {
           return physType->withAttributes(handleViewWritable, false);
         }
+        if (rhsType && rhsType->isUniquePtr()) {
+          return rhsType->withAttributes(handleViewWritable, false);
+        }
         auto res = std::make_shared<toka::UniquePointerType>(rhsType);
         res->IsWritable = handleViewWritable;
         res->IsNullable = false;
@@ -298,6 +294,9 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
         }
         if (physType && physType->isSharedPtr()) {
           return physType->withAttributes(handleViewWritable, false);
+        }
+        if (rhsType && rhsType->isSharedPtr()) {
+          return rhsType->withAttributes(handleViewWritable, false);
         }
         auto res = std::make_shared<toka::SharedPointerType>(rhsType);
         res->IsWritable = handleViewWritable;

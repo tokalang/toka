@@ -934,25 +934,46 @@ private:
         false,
         soul->IsBlocked || Permission.SoulBlocked);
 
+    if (auto ptr = std::dynamic_pointer_cast<toka::PointerType>(soul)) {
+      if (Permission.SoulWritable && ptr->PointeeType) {
+        ptr->PointeeType = ptr->PointeeType->withAttributes(
+            true, ptr->PointeeType->IsNullable, ptr->PointeeType->IsBlocked);
+      }
+      if (Permission.SoulBlocked && ptr->PointeeType) {
+        ptr->PointeeType = ptr->PointeeType->withAttributes(
+            false, ptr->PointeeType->IsNullable, true);
+      }
+    }
+
     if (Permission.Morphology == BindingMorphology::None)
       return soul;
 
     std::shared_ptr<toka::PointerType> physical;
-    switch (Permission.Morphology) {
-    case BindingMorphology::Raw:
-      physical = std::make_shared<toka::RawPointerType>(soul);
-      break;
-    case BindingMorphology::Unique:
-      physical = std::make_shared<toka::UniquePointerType>(soul);
-      break;
-    case BindingMorphology::Shared:
-      physical = std::make_shared<toka::SharedPointerType>(soul);
-      break;
-    case BindingMorphology::Reference:
-      physical = std::make_shared<toka::ReferenceType>(soul);
-      break;
-    case BindingMorphology::None:
-      break;
+    if (Permission.Morphology == BindingMorphology::Raw && soul->isRawPointer()) {
+      physical = std::dynamic_pointer_cast<toka::PointerType>(soul);
+    } else if (Permission.Morphology == BindingMorphology::Unique && soul->isUniquePtr()) {
+      physical = std::dynamic_pointer_cast<toka::PointerType>(soul);
+    } else if (Permission.Morphology == BindingMorphology::Shared && soul->isSharedPtr()) {
+      physical = std::dynamic_pointer_cast<toka::PointerType>(soul);
+    } else if (Permission.Morphology == BindingMorphology::Reference && soul->isReference()) {
+      physical = std::dynamic_pointer_cast<toka::PointerType>(soul);
+    } else {
+      switch (Permission.Morphology) {
+      case BindingMorphology::Raw:
+        physical = std::make_shared<toka::RawPointerType>(soul);
+        break;
+      case BindingMorphology::Unique:
+        physical = std::make_shared<toka::UniquePointerType>(soul);
+        break;
+      case BindingMorphology::Shared:
+        physical = std::make_shared<toka::SharedPointerType>(soul);
+        break;
+      case BindingMorphology::Reference:
+        physical = std::make_shared<toka::ReferenceType>(soul);
+        break;
+      case BindingMorphology::None:
+        break;
+      }
     }
     if (!physical)
       return soul;
