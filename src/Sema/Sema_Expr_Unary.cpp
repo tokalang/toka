@@ -65,17 +65,29 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     }
   }
 
-  // [Fix] Disable soul collapse for pointer hats. Identity should be
-  // seen.
+  // Handle-selection hats must see the identity. A bare operand under `&`
+  // intentionally keeps ordinary soul collapse: `&u` borrows the payload
+  // selected by `u`, while `&^u` first selects `^u` and therefore borrows the
+  // unique handle identity.
   bool savedDisable = m_DisableSoulCollapse;
   if (Unary->Op == TokenType::Star || Unary->Op == TokenType::Caret ||
-      Unary->Op == TokenType::Tilde || Unary->Op == TokenType::Ampersand) {
+      Unary->Op == TokenType::Tilde) {
     if (dynamic_cast<VariableExpr *>(Unary->RHS.get())) {
       m_DisableSoulCollapse = true;
     }
   }
   bool savedNegativeLiteral = m_CheckingNegativeIntegerLiteral;
   bool savedAllowPermissionSuffix = m_AllowPermissionSuffix;
+  bool savedBorrowingSelectedHandle = m_BorrowingSelectedHandle;
+  if (Unary->Op == TokenType::Ampersand) {
+    if (auto *selected = dynamic_cast<UnaryExpr *>(Unary->RHS.get())) {
+      if (selected->Op == TokenType::Caret ||
+          selected->Op == TokenType::Tilde ||
+          selected->Op == TokenType::Ampersand) {
+        m_BorrowingSelectedHandle = true;
+      }
+    }
+  }
   if (Unary->Op == TokenType::Minus || Unary->Op == TokenType::Bang) {
     m_AllowPermissionSuffix = false;
   }
@@ -84,6 +96,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     m_CheckingNegativeIntegerLiteral = true;
   }
   auto rhsType = checkExpr(Unary->RHS.get());
+  m_BorrowingSelectedHandle = savedBorrowingSelectedHandle;
   m_AllowPermissionSuffix = savedAllowPermissionSuffix;
   m_CheckingNegativeIntegerLiteral = savedNegativeLiteral;
   m_DisableSoulCollapse = savedDisable;
@@ -145,6 +158,12 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
                   : (Unary->IsRebindable ||
                      (m_IsAssignmentTarget && Info->IsHandleRebindable()));
 
+      if (Unary->Op == TokenType::Ampersand &&
+          Unary->SelectsHandleIdentity && physType &&
+          physType->isReference()) {
+        return physType->withAttributes(handleViewWritable, false);
+      }
+
       if (Unary->Op == TokenType::Ampersand) {
         auto innerType = rhsType;
         bool handleMutable = handleViewWritable;
@@ -186,7 +205,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
           }
         }
 
-        if (!m_InLHS) {
+        if (!m_InLHS && !m_BorrowingSelectedHandle) {
           std::string pathToBorrow = getPathString(Unary->RHS.get());
           if (!pathToBorrow.empty()) {
              AccessPath sourcePath = makeAccessPath(Unary->RHS.get());
@@ -249,7 +268,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
       }
 
       if (Unary->Op == TokenType::Caret) {
-        if (!m_InLHS) {
+        if (!m_InLHS && !m_BorrowingSelectedHandle) {
           std::string pathToBorrow = getPathString(Unary->RHS.get());
           if (!pathToBorrow.empty()) {
              auto conflict = PALCheckerState.verifyInvalidation(
@@ -317,6 +336,10 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     }
     if (!inner)
       inner = rhsType;
+  }
+  if (Unary->Op == TokenType::Ampersand &&
+      Unary->SelectsHandleIdentity && inner && inner->isReference()) {
+    return inner->withAttributes(Unary->IsRebindable, false);
   }
   if (Unary->Op == TokenType::Ampersand) {
     auto refType = std::make_shared<toka::ReferenceType>(inner);
@@ -447,7 +470,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
   }
 
   if (Unary->Op == TokenType::Caret) {
-    if (!m_InLHS) {
+    if (!m_InLHS && !m_BorrowingSelectedHandle) {
       std::string pathToBorrow = getPathString(Unary->RHS.get());
       if (!pathToBorrow.empty()) {
          auto conflict = PALCheckerState.verifyInvalidation(

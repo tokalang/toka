@@ -369,6 +369,7 @@ public:
   bool IsValueNullable = false; // Removed `T?` parser-recovery bit only.
   bool IsRebindBlocked = false; // For ^$ or *$
   bool IsValueBlocked = false;  // For identifier$
+  bool SelectsHandleIdentity = false; // Inner `&` in `&&x`
   BindingPermission Permission;
   // Actually UnaryExpr covers ^, *, ~, etc.
 
@@ -386,6 +387,7 @@ public:
     n->IsValueNullable = IsValueNullable;
     n->IsRebindBlocked = IsRebindBlocked;
     n->IsValueBlocked = IsValueBlocked;
+    n->SelectsHandleIdentity = SelectsHandleIdentity;
     n->Permission = Permission;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
@@ -1867,6 +1869,7 @@ public:
     bool IsCeded = false;         // [NEW] Ownership consumed by callee
     // The callee constructs caller-owned storage supplied as `init place`.
     bool IsInit = false;
+    bool HadRejectedTypeSideMorphology = false;
     BindingPermission Permission;
 
     std::shared_ptr<toka::Type> ResolvedType;
@@ -1891,6 +1894,7 @@ public:
       a.IsMorphicExempt = IsMorphicExempt;
       a.IsCeded = IsCeded;
       a.IsInit = IsInit;
+      a.HadRejectedTypeSideMorphology = HadRejectedTypeSideMorphology;
       a.Permission = Permission;
       a.ResolvedType = ResolvedType;
       a.DefaultValue = cloneNode(DefaultValue);
@@ -2075,6 +2079,22 @@ struct CaptureItem {
   }
 };
 
+struct ClosureParamSyntax {
+  std::string Name;
+  BindingPermission Permission;
+  SourceLocation Loc;
+  bool HadRejectedTypeSideMorphology = false;
+
+  ClosureParamSyntax clone() const {
+    ClosureParamSyntax p;
+    p.Name = Name;
+    p.Permission = Permission;
+    p.Loc = Loc;
+    p.HadRejectedTypeSideMorphology = HadRejectedTypeSideMorphology;
+    return p;
+  }
+};
+
 class ClosureExpr : public Expr {
 public:
   std::vector<CaptureItem> ExplicitCaptures;
@@ -2088,6 +2108,7 @@ public:
   std::vector<std::string> BoundaryNonSyncCopyCaptures;
   
   bool HasExplicitArgs = false;
+  std::vector<ClosureParamSyntax> Params; // Structured closure parameters
   std::vector<std::string> ArgNames; // Either explicit names or filled lazily by Sema
   std::vector<std::shared_ptr<toka::Type>> InjectedParamTypes; // [NEW] Top-down type injection
   int MaxImplicitArgIndex = -1; // Tracks max index (.a=0, .b=1) used in the body
@@ -2111,6 +2132,9 @@ public:
     n->BoundaryNonSendCaptures = BoundaryNonSendCaptures;
     n->BoundaryNonSyncCopyCaptures = BoundaryNonSyncCopyCaptures;
     n->HasExplicitArgs = HasExplicitArgs;
+    for (const auto &p : Params) {
+      n->Params.push_back(p.clone());
+    }
     n->ArgNames = ArgNames;
     n->MaxImplicitArgIndex = MaxImplicitArgIndex;
     n->ReturnType = ReturnType;
@@ -2148,6 +2172,7 @@ public:
     bool IsValueBlocked = false;
     bool IsMorphicExempt = false;
     bool IsCeded = false;
+    bool HadRejectedTypeSideMorphology = false;
     BindingPermission Permission;
 
     std::shared_ptr<toka::Type> ResolvedType;
@@ -2171,6 +2196,7 @@ public:
       a.IsValueBlocked = IsValueBlocked;
       a.IsMorphicExempt = IsMorphicExempt;
       a.IsCeded = IsCeded;
+      a.HadRejectedTypeSideMorphology = HadRejectedTypeSideMorphology;
       a.Permission = Permission;
       a.ResolvedType = ResolvedType;
       a.DefaultValue = cloneNode(DefaultValue);

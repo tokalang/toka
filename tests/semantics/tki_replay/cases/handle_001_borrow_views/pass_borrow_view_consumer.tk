@@ -1,0 +1,19 @@
+import ./lib::{Item, Int, OptUnique, inspect_unique, inspect_shared, consume_unique, pass_option}
+
+fn main() -> i32 {
+    auto ^u = new Item(val = 42)
+    assert(inspect_unique(^u) == 42, "inspect_unique failed")
+    assert(consume_unique(cede ^u) == 42, "consume_unique failed")
+
+    auto ~s = new Item(val = 100)
+    assert(inspect_shared(~s) == 100, "inspect_shared failed")
+
+    auto ^borrowed_owner = new Item(val = 75)
+    auto &^owner_view = &^borrowed_owner
+    assert(owner_view.val == 75, "local handle-identity borrow failed")
+
+    auto ^opt_val = new Item(val = 50)
+    assert(pass_option(OptUnique::Some(cede ^opt_val)), "pass_option failed")
+
+    return 0
+}

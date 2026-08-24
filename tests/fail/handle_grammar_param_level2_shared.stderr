@@ -1,0 +1,5 @@
+error[E0495]: Parameter 'x' cannot use root handle chain '&~'; formal parameter roots are limited to one handle layer (did you mean '~x: i32'?)
+ --> tests/fail/handle_grammar_param_level2_shared.tk:1:10
+   |
+ 1 | fn bad(&~x: i32) -> i32 {
+   |          ^

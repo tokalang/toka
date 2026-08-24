@@ -814,6 +814,9 @@ void TKIExporter::printGenericParams(const std::vector<GenericParam> &params) {
 }
 
 void TKIExporter::printArg(const FunctionDecl::Arg &arg) {
+    if (arg.Permission.HandleLayers.size() > 1) {
+        assert(false && "TKIExporter invariant violation: multi-layer formal parameter root reaches TKI emission");
+    }
     if (arg.IsInit)
         m_OS << "init ";
     const std::string type = exportTypeSyntax(arg.TypeSyntax, arg.Type);

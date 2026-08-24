@@ -34,7 +34,8 @@ enum class HandleGrammarViolation {
   ExceededManagedDepth,      // ^^T, ^~T, ~^T, ~~T
   ExceededBorrowDepth,       // &&&T, &&&&T
   InvalidManagedLayerOrder,  // ^&T, ~&T (Managed second layer is not an outer borrow)
-  MixedManagedRaw            // *^T, ^*T, *&T, &*T, *~T, ~*T
+  MixedManagedRaw,           // *^T, ^*T, *&T, &*T, *~T, ~*T
+  ParamHandleDepthForbidden  // Globally legal multi-layer type used as a formal root
 };
 
 struct HandleGrammarProfile {
@@ -357,6 +358,11 @@ public:
   bool equals(const Type &other) const override;
   bool isCompatibleWith(const Type &target) const override;
   std::shared_ptr<Type> getPointeeType() const override { return PointeeType; }
+  std::string getSoulName() const override {
+    if (PointeeType)
+      return PointeeType->getSoulName();
+    return toString();
+  }
   std::shared_ptr<Type> getSoulType() const override {
     if (PointeeType)
       return PointeeType->getSoulType();

@@ -1,0 +1,59 @@
+shape Container<'T>(
+    'value: T
+)
+
+pub alias Int = i32
+pub alias OptUnique = Option<^i32>
+pub alias ContRef = Container<&i32>
+
+pub fn accept_option(x: Option<^i32>) -> bool {
+    return true
+}
+
+pub fn accept_container(x: Container<&i32>) -> bool {
+    return true
+}
+
+fn main() -> i32 {
+    // Bare borrow selects the payload; an explicitly hatted operand selects
+    // and borrows the handle identity.
+    {
+        auto ^u = new i32(42)
+        auto &payload = &u
+        assert(payload == 42, "unique payload borrow failed")
+    }
+    {
+        auto ^u = new i32(43)
+        auto &^owner = &^u
+        assert(owner == 43, "unique handle borrow failed")
+    }
+
+    {
+        auto ~s = new i32(100)
+        auto &shared_payload = &s
+        assert(shared_payload == 100, "shared payload borrow failed")
+    }
+    {
+        auto ~s = new i32(101)
+        auto &~shared_owner = &~s
+        assert(shared_owner == 101, "shared handle borrow failed")
+    }
+
+    {
+        auto val = 200
+        auto &ref_val = &val
+        auto &ref_payload = &ref_val
+        assert(ref_payload == 200, "reference payload borrow failed")
+    }
+    {
+        auto val = 201
+        auto &ref_val = &val
+        auto &&ref_handle = &&ref_val
+        assert(ref_handle == 201, "reference handle borrow failed")
+    }
+
+    // Structural aliases may contain handles below their root boundary.
+    assert(accept_option(OptUnique::None), "accept_option failed")
+
+    return 0
+}

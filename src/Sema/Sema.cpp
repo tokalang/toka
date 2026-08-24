@@ -2962,7 +2962,10 @@ void Sema::declareGlobals(Module &M) {
         Arg.ResolvedType =
             resolveType(Sema::synthesizePhysicalTypeObject(Arg, false));
       }
-      validateHandleGrammar(Ext->Loc, Arg.ResolvedType);
+      validateParameterHandleChain(Arg.Loc.isValid() ? Arg.Loc : Ext->Loc,
+                                   Arg.Name, Arg.Permission, Arg.ResolvedType,
+                                   Arg.TypeSyntax,
+                                   Arg.HadRejectedTypeSideMorphology);
       recordHandleGrammarAudit(Arg.ResolvedType, extOrigin, {FormationPhase::DirectResolution}, "", "", Arg.Name, Ext->Loc, false, Ext->Name);
     }
     ms.Externs[Ext->Name] = Ext.get();
@@ -4591,6 +4594,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     SymbolInfo Info;
     // Preserve full generic-substituted Arg.Type values like "&i32".
     // [Fix] Preserve pre-resolved Types (e.g. Synthetic Closures)
+    bool paramOk = true;
     if (Arg.ResolvedType) {
       Info.TypeObj = resolveType(Arg.ResolvedType);
       Arg.ResolvedType = Info.TypeObj;
@@ -4603,7 +4607,9 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
 
     if (Arg.ResolvedType) {
-      validateHandleGrammar(argLoc, Arg.ResolvedType);
+      paramOk = validateParameterHandleChain(
+          argLoc, Arg.Name, Arg.Permission, Arg.ResolvedType, Arg.TypeSyntax,
+          Arg.HadRejectedTypeSideMorphology);
       std::string fnId = !Fn->CodegenName.empty() ? Fn->CodegenName : Fn->Name;
       bool isGeneric = (Fn->TemplateOrigin != nullptr || (!Fn->CodegenName.empty() && Fn->CodegenName.find("_M_") != std::string::npos));
       SyntaxOrigin origin = (CurrentModule && CurrentModule->IsInterface) ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
@@ -4612,22 +4618,13 @@ void Sema::checkFunction(FunctionDecl *Fn) {
                                Fn->Name, "", Arg.Name, argLoc, isGeneric, fnId);
     }
 
-    if (Arg.IsReference && !Arg.IsRebindable &&
+    if (paramOk && Arg.IsReference && !Arg.IsRebindable &&
         Type::stripMorphology(Arg.Name) != "self") {
-      bool isLegalLevel2Borrow = false;
-      if (Arg.ResolvedType && Arg.ResolvedType->isReference()) {
-        auto inner = Arg.ResolvedType->getPointeeType();
-        if (inner && (inner->isUniquePtr() || inner->isSharedPtr() || inner->isReference())) {
-          isLegalLevel2Borrow = true;
-        }
-      }
-      if (!isLegalLevel2Borrow) {
-        if (!Arg.ResolvedType || !Arg.ResolvedType->isReference() ||
-            !Arg.ResolvedType->getPointeeType() ||
-            !Arg.ResolvedType->getPointeeType()->isRawPointer()) {
-          DiagnosticEngine::report(argLoc, DiagID::ERR_REDUNDANT_PARAM_BORROW);
-          HasError = true;
-        }
+      if (!Arg.ResolvedType || !Arg.ResolvedType->isReference() ||
+          !Arg.ResolvedType->getPointeeType() ||
+          !Arg.ResolvedType->getPointeeType()->isRawPointer()) {
+        DiagnosticEngine::report(argLoc, DiagID::ERR_REDUNDANT_PARAM_BORROW);
+        HasError = true;
       }
     }
 

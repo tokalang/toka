@@ -1702,9 +1702,15 @@ void Sema::checkStmt(Stmt *S) {
       baseType = baseType.substr(4);
     }
     
-    // Strip redundant sigil from baseType if it matches morph
-    if (baseType.size() > 1 && (baseType[0] == '^' || baseType[0] == '~' ||
-                                baseType[0] == '*' || baseType[0] == '&')) {
+    // Binding-side morphology wraps the soul selected by the initializer.
+    // For inferred declarations, take that soul structurally instead of
+    // concatenating textual prefixes: `auto &x = &u` remains `&T`, while
+    // `auto &^h = &^u` becomes `&^T` exactly once.
+    if (inferredType && !Var->Permission.HandleLayers.empty() && InitTypeObj) {
+      baseType = InitTypeObj->getSoulName();
+    } else if (baseType.size() > 1 &&
+               (baseType[0] == '^' || baseType[0] == '~' ||
+                baseType[0] == '*' || baseType[0] == '&')) {
       if (morph.empty()) {
         morph = std::string(1, baseType[0]);
         baseType = baseType.substr(1);
@@ -1725,32 +1731,7 @@ void Sema::checkStmt(Stmt *S) {
     }
 
     // [Constitution 1.3] Dual-Attribute Synthesis
-    BindingPermission LocalPermission;
-    if (!morph.empty()) {
-      std::string normalizedMorph = morph;
-      if (normalizedMorph.rfind("nul ", 0) == 0)
-        normalizedMorph = normalizedMorph.substr(4);
-
-      switch (normalizedMorph.empty() ? '\0' : normalizedMorph[0]) {
-      case '^':
-        LocalPermission.Morphology = BindingMorphology::Unique;
-        break;
-      case '~':
-        LocalPermission.Morphology = BindingMorphology::Shared;
-        break;
-      case '&':
-        LocalPermission.Morphology = BindingMorphology::Reference;
-        break;
-      case '*':
-        LocalPermission.Morphology = BindingMorphology::Raw;
-        break;
-      default:
-        break;
-      }
-
-      LocalPermission.IdentityRebindable = Var->IsRebindable;
-      LocalPermission.IdentityMayBeZero = Var->IsPointerNullable || hadNul;
-    }
+    BindingPermission LocalPermission = Var->Permission;
     LocalPermission.SoulWritable =
         Var->IsValueMutable || (morph.empty() && Var->IsRebindable);
     Info.Permission = LocalPermission;
@@ -1987,6 +1968,9 @@ void Sema::checkStmt(Stmt *S) {
     }
 
     if (Info.TypeObj) {
+      if (!validateHandleGrammar(getLoc(Var), Info.TypeObj)) {
+        HasError = true;
+      }
       std::string fnId = CurrentFunction ? (!CurrentFunction->CodegenName.empty() ? CurrentFunction->CodegenName : CurrentFunction->Name) : "";
       bool isGeneric = (CurrentFunction && (CurrentFunction->TemplateOrigin != nullptr || (!CurrentFunction->CodegenName.empty() && CurrentFunction->CodegenName.find("_M_") != std::string::npos)));
       std::vector<FormationPhase> phases;
@@ -2394,7 +2378,9 @@ void Sema::checkStmt(Stmt *S) {
             Info.TypeObj = soulType;
           }
 
-          if (!Destruct->Variables[i].IsReference) {
+          if (!Destruct->Variables[i].IsReference &&
+              !Info.TypeObj->isPointer() && !Info.TypeObj->isReference() &&
+              !Info.TypeObj->isSmartPointer()) {
             std::string sName = Info.TypeObj->getSoulName();
             if (!sName.empty() && ShapeMap.count(sName)) {
               if (!ShapeMap[sName]->MangledDestructorName.empty()) {

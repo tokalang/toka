@@ -385,7 +385,9 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
 
     if (Info.TypeObj) {
         // [Safety Gate] Prevent implicit destructure copying of Resources
-        if (!Pat->IsReference && !Info.IsMorphicExempt) {
+        if (!Pat->IsReference && !Info.IsMorphicExempt &&
+            !Info.TypeObj->isPointer() && !Info.TypeObj->isReference() &&
+            !Info.TypeObj->isSmartPointer()) {
             std::string soulName = Info.TypeObj->getSoulName();
             if (!soulName.empty() && ShapeMap.count(soulName)) {
                 if (!ShapeMap[soulName]->MangledDestructorName.empty()) {

@@ -34,7 +34,7 @@ def run_quick_scan(tokac_bin, run_dir, scratch_dir):
     quick_steps = [
         ("Handle Grammar Pass Suite", [
             "python3", "tools/scripts/test_pass.py",
-            "tests/pass/g08_level2_param_signatures.tk",
+            "tests/pass/g08_level2_borrow_views.tk",
             "tests/pass/g08_smart_ptr_borrow.tk",
             "tests/pass/g08_handle_grammar_parser_matrix.tk",
             "tests/pass/g08_handle_grammar_valid_matrix.tk"
@@ -60,6 +60,12 @@ def run_quick_scan(tokac_bin, run_dir, scratch_dir):
             "tests/fail/handle_grammar_param_binding_depth_illegal.tk",
             "tests/fail/handle_grammar_param_binding_depth2_illegal.tk",
             "tests/fail/handle_grammar_param_binding_mixed_illegal.tk",
+            "tests/fail/handle_grammar_param_level2_unique.tk",
+            "tests/fail/handle_grammar_param_level2_shared.tk",
+            "tests/fail/handle_grammar_param_level2_ref.tk",
+            "tests/fail/handle_grammar_param_level2_raw.tk",
+            "tests/fail/handle_grammar_param_level2_nul_raw.tk",
+            "tests/fail/handle_grammar_param_closure_illegal.tk",
             "tests/fail/handle_grammar_array_element_illegal.tk",
             "tests/fail/handle_grammar_cast_illegal.tk",
             "tests/fail/handle_grammar_extern_param_illegal.tk",
@@ -75,7 +81,7 @@ def run_quick_scan(tokac_bin, run_dir, scratch_dir):
         ]),
         ("Handle Grammar TKI Replay", [
             "bash", "tools/scripts/test_semantic_replay.sh"
-        ], {"TOKAC": tokac_bin, "CASE_ROOT": "tests/semantics/tki_replay/cases/handle_001_level2_param_signatures"}),
+        ], {"TOKAC": tokac_bin, "CASE_ROOT": "tests/semantics/tki_replay/cases/handle_001_borrow_views"}),
         ("Handle Grammar Classifier CTest", [
             "ctest", "--test-dir", ctest_dir, "-R", "toka_handle_grammar_classifier", "--output-on-failure"
         ])

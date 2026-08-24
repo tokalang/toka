@@ -53,7 +53,7 @@ pub shape YamlDocument (
     root: JsonNode
 )
 
-fn clone_json_node(ptr: *JsonNode) -> JsonNode {
+fn clone_json_node(*ptr: JsonNode) -> JsonNode {
     match ptr {
         auto NullNode(v) => return JsonNode::NullNode(v)
         auto BoolNode(b) => return JsonNode::BoolNode(b)

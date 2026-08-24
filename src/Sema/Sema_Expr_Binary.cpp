@@ -274,6 +274,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   if (!rhsIsTodo && !getPathString(Bin->RHS.get()).empty()) {
       rhsBorrowSource = m_LastBorrowSource;
   }
+  const std::set<std::string> rhsLifeDependencies = m_LastLifeDependencies;
 
   bool oldLHS = m_InLHS;
   m_InLHS = isAssign;
@@ -1014,27 +1015,18 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     if (!targetObjName.empty()) {
       SymbolInfo *targetInfo = nullptr;
       std::string lookupName = targetObjName;
-      if (!CurrentScope->findSymbol(lookupName, targetInfo)) {
-          if (CurrentScope->findSymbol("&" + lookupName, targetInfo)) { lookupName = "&" + lookupName; }
-          else if (CurrentScope->findSymbol("*" + lookupName, targetInfo)) { lookupName = "*" + lookupName; }
-          else if (CurrentScope->findSymbol("^" + lookupName, targetInfo)) { lookupName = "^" + lookupName; }
-          else if (CurrentScope->findSymbol("~" + lookupName, targetInfo)) { lookupName = "~" + lookupName; }
-      }
+      CurrentScope->findVariableWithDeref(targetObjName, targetInfo,
+                                          lookupName);
 
       if (targetInfo) {
-        std::set<std::string> rhsDeps = m_LastLifeDependencies;
-        if (!m_LastBorrowSource.empty())
-          rhsDeps.insert(m_LastBorrowSource);
+        std::set<std::string> rhsDeps = rhsLifeDependencies;
+        if (!rhsBorrowSource.empty())
+          rhsDeps.insert(rhsBorrowSource);
         
         if (auto *rv = dynamic_cast<VariableExpr *>(Bin->RHS.get())) {
           SymbolInfo *ri = nullptr;
           std::string rhsName = rv->Name;
-          if (!CurrentScope->findSymbol(rhsName, ri)) {
-              if (CurrentScope->findSymbol("&" + rhsName, ri)) { rhsName = "&" + rhsName; }
-              else if (CurrentScope->findSymbol("*" + rhsName, ri)) { rhsName = "*" + rhsName; }
-              else if (CurrentScope->findSymbol("^" + rhsName, ri)) { rhsName = "^" + rhsName; }
-              else if (CurrentScope->findSymbol("~" + rhsName, ri)) { rhsName = "~" + rhsName; }
-          }
+          CurrentScope->findVariableWithDeref(rv->Name, ri, rhsName);
           if (ri) {
             rhsDeps.insert(ri->LifeDependencySet.begin(), ri->LifeDependencySet.end());
           }

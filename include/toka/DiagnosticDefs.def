@@ -345,6 +345,7 @@ DIAG(ERR_FILE_IO,                 Error,   "E0901", "File I/O Error: {}")
 DIAG(ERR_CLI_ARG,                 Error,   "E0902", "Invalid command line argument: {}")
 
 // --- Miscellaneous ---
+DIAG(ERR_PARAM_HANDLE_DEPTH_FORBIDDEN, Error, "E0495", "Parameter '{}' cannot use root handle chain '{}'; formal parameter roots are limited to one handle layer (did you mean '{}'?)")
 DIAG(ERR_NONZERO_RAW_NULL_FLOW, Error, "E0483", "Plain raw pointer type '{}' cannot contain or test null; use 'nul *T' for a may-zero raw address")
 DIAG(ERR_SAFE_NULLABLE_PAYLOAD_REMOVED, Error, "E0484", "Safe nullable payload syntax '{}' has been removed; use Init, 'T | miss', Option<T>, or an explicit domain state")
 DIAG(ERR_SAFE_NULLABLE_HANDLE_REMOVED, Error, "E0485", "Safe nullable handle syntax '{}' has been removed; '^T' and '~T' must designate valid objects, while physical null requires 'nul *T'")

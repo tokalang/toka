@@ -1,6 +1,6 @@
 shape Info(reason: i32)
 
-// EXPECT: error[E0105]
+// EXPECT: error[E0494]
 fn bad(info: &Info) -> i32 {
     return info.reason
 }

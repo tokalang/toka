@@ -8,7 +8,7 @@ impl UnsafeData {
     pub fn clone(self) -> ^UnsafeData { return new UnsafeData(value=0, *ptr=self.ptr) }
 }
 
-fn process_send<T: @Send>(val: ^T) {}
+fn process_send<T: @Send>(^val: T) {}
 
 pub fn main() -> i32 {
     // ERROR: UnsafeData is not Send because it has a raw pointer

@@ -788,19 +788,25 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         bool layerNull = match(TokenType::KwNul);
         if (match(TokenType::And)) {
           Token t = previous();
+          if (layerNull) {
+            error(t, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+          }
           HandleLayer l1;
           l1.Morphology = BindingMorphology::Reference;
           l1.Nullable = layerNull;
+          l1.Rebindable = t.IsSwappablePtr;
+          l1.Blocked = t.IsBlocked;
           handleLayers.push_back(l1);
 
           HandleLayer l2;
           l2.Morphology = BindingMorphology::Reference;
-          l2.Rebindable = t.IsSwappablePtr;
-          l2.Blocked = t.IsBlocked;
           handleLayers.push_back(l2);
           argPrefix += "&&";
         } else if (match(TokenType::Ampersand)) {
           Token t = previous();
+          if (layerNull) {
+            error(t, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+          }
           HandleLayer l;
           l.Morphology = BindingMorphology::Reference;
           l.Nullable = layerNull;
@@ -810,6 +816,10 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           argPrefix += "&";
         } else if (match(TokenType::Caret)) {
           Token t = previous();
+          if (layerNull) {
+            DiagnosticEngine::report(t.Loc, DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED, "nul ^T");
+            HasError = true;
+          }
           HandleLayer l;
           l.Morphology = BindingMorphology::Unique;
           l.Nullable = layerNull;
@@ -819,6 +829,10 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           argPrefix += "^";
         } else if (match(TokenType::Tilde)) {
           Token t = previous();
+          if (layerNull) {
+            DiagnosticEngine::report(t.Loc, DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED, "nul ~T");
+            HasError = true;
+          }
           HandleLayer l;
           l.Morphology = BindingMorphology::Shared;
           l.Nullable = layerNull;
@@ -873,12 +887,13 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         argTypeSyntax =
             TypeSyntax::withoutLeadingMorphology(argTypeSyntax, "cede ");
       }
-      rejectTypeSideHandleMorphology(argName, argPrefix, argTypeSyntax, argType);
+      bool rejectedTypeSide = rejectTypeSideHandleMorphology(argName, argPrefix, argTypeSyntax, argType);
 
       FunctionDecl::Arg arg;
       arg.Loc = argName.Loc;
       arg.IsCeded = isCeded;
       arg.IsInit = isInit;
+      arg.HadRejectedTypeSideMorphology = rejectedTypeSide;
       arg.Name = argName.Text;
       arg.Type = argType;
       arg.TypeSyntax = argTypeSyntax;
@@ -972,22 +987,52 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       if (check(TokenType::DotDotDot))
         break;
       bool isCeded = match(TokenType::KwCede);
-      bool isPtrNullable = match(TokenType::KwNul);
-      bool hasPointer = false;
       std::string argPrefix = "";
-      if (match(TokenType::Caret)) {
-        hasPointer = true;
-        argPrefix = "^";
-      } else if (match(TokenType::Star)) {
-        hasPointer = true;
-        argPrefix = "*";
+      std::vector<HandleLayer> handleLayers;
+      while (true) {
+        bool layerNullable = match(TokenType::KwNul);
+        if (match(TokenType::And)) {
+          Token t = previous();
+          if (layerNullable) {
+            error(t, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+          }
+          handleLayers.push_back({BindingMorphology::Reference, false, layerNullable, false});
+          handleLayers.push_back({BindingMorphology::Reference, false, false, false});
+          argPrefix += "&&";
+        } else if (match(TokenType::Ampersand)) {
+          Token t = previous();
+          if (layerNullable) {
+            error(t, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+          }
+          handleLayers.push_back({BindingMorphology::Reference, false, layerNullable, false});
+          argPrefix += "&";
+        } else if (match(TokenType::Caret)) {
+          Token t = previous();
+          if (layerNullable) {
+            DiagnosticEngine::report(t.Loc, DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED, "nul ^T");
+            HasError = true;
+          }
+          handleLayers.push_back({BindingMorphology::Unique, false, layerNullable, false});
+          argPrefix += "^";
+        } else if (match(TokenType::Tilde)) {
+          Token t = previous();
+          if (layerNullable) {
+            DiagnosticEngine::report(t.Loc, DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED, "nul ~T");
+            HasError = true;
+          }
+          handleLayers.push_back({BindingMorphology::Shared, false, layerNullable, false});
+          argPrefix += "~";
+        } else if (match(TokenType::Star)) {
+          handleLayers.push_back({BindingMorphology::Raw, false, layerNullable, false});
+          argPrefix += "*";
+        } else {
+          if (layerNullable) {
+            error(previous(), DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+          }
+          break;
+        }
       }
-      if (isPtrNullable && argPrefix == "^") {
-        HasError = true;
-        DiagnosticEngine::report(
-            previous().Loc,
-            DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED, "nul ^T");
-      }
+
       Token argName = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_ARGUMENT_NAME);
       std::string argType = "i64"; // recovery type after a reported parse error
       TypeSyntaxPtr argTypeSyntax;
@@ -1006,30 +1051,28 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
         errorTypeSideMorphicBinding(argName, argPrefix, argType);
         argType = argType.substr(1);
       }
-      rejectTypeSideHandleMorphology(argName, argPrefix, argTypeSyntax, argType);
-
-      ExternDecl::Arg arg;
-      arg.Loc = argName.Loc;
-      arg.IsCeded = isCeded;
       if (argType.rfind("cede ", 0) == 0) {
-        arg.IsCeded = true;
+        isCeded = true;
         argType = argType.substr(5);
         argTypeSyntax =
             TypeSyntax::withoutLeadingMorphology(argTypeSyntax, "cede ");
       }
+      bool rejectedTypeSide = rejectTypeSideHandleMorphology(argName, argPrefix, argTypeSyntax, argType);
+
+      ExternDecl::Arg arg;
+      arg.Loc = argName.Loc;
+      arg.IsCeded = isCeded;
+      arg.HadRejectedTypeSideMorphology = rejectedTypeSide;
       arg.Name = argName.Text;
       arg.Type = argType;
       arg.TypeSyntax = argTypeSyntax;
-      arg.IsRawPointer = hasPointer;
-      arg.IsPointerNullable = isPtrNullable;
+      arg.IsRawPointer = !handleLayers.empty() && handleLayers[0].Morphology == BindingMorphology::Raw;
+      arg.IsPointerNullable = !handleLayers.empty() && handleLayers[0].Nullable;
       arg.IsValueMutable = argName.HasWrite;
       arg.IsValueNullable = argName.HasNull;
       arg.IsMorphicExempt = nameIsMorphic;
-      arg.Permission = BindingPermission::fromLegacy(
-          arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
-          arg.IsRebindable, arg.IsPointerNullable, arg.IsRebindBlocked,
-          arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked,
-          arg.IsMorphicExempt);
+      arg.Permission.HandleLayers = handleLayers;
+      arg.Permission.syncProjections();
       if (match(TokenType::Equal)) {
         arg.DefaultValue = parseExpr();
       }

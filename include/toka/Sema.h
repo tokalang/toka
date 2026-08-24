@@ -249,6 +249,14 @@ public:
     if (Symbols.count("*" + Name)) { OutInfo = &Symbols["*" + Name]; ActualName = "*" + Name; return true; }
     if (Symbols.count("^" + Name)) { OutInfo = &Symbols["^" + Name]; ActualName = "^" + Name; return true; }
     if (Symbols.count("~" + Name)) { OutInfo = &Symbols["~" + Name]; ActualName = "~" + Name; return true; }
+    const std::string soulName = Type::stripMorphology(Name);
+    for (auto &entry : Symbols) {
+      if (Type::stripMorphology(entry.first) == soulName) {
+        OutInfo = &entry.second;
+        ActualName = entry.first;
+        return true;
+      }
+    }
     if (Parent) return Parent->findVariableWithDeref(Name, OutInfo, ActualName);
     return false;
   }
@@ -260,6 +268,15 @@ public:
     if (Symbols.count("*" + Name)) { OutInfo = &Symbols["*" + Name]; ActualName = "*" + Name; OutScope = this; return true; }
     if (Symbols.count("^" + Name)) { OutInfo = &Symbols["^" + Name]; ActualName = "^" + Name; OutScope = this; return true; }
     if (Symbols.count("~" + Name)) { OutInfo = &Symbols["~" + Name]; ActualName = "~" + Name; OutScope = this; return true; }
+    const std::string soulName = Type::stripMorphology(Name);
+    for (auto &entry : Symbols) {
+      if (Type::stripMorphology(entry.first) == soulName) {
+        OutInfo = &entry.second;
+        ActualName = entry.first;
+        OutScope = this;
+        return true;
+      }
+    }
     if (Parent) return Parent->findVariableWithDerefScope(Name, OutInfo, ActualName, OutScope);
     return false;
   }
@@ -572,6 +589,7 @@ private:
   bool m_InLHS = false;
   bool m_IsUnsetInitCall = false;     // [NEW] Track .unset() intrinsic
   bool m_DisableSoulCollapse = false; // [NEW] Track context for soul collapse
+  bool m_BorrowingSelectedHandle = false; // `&^x`, `&~x`, `&&x`
   bool m_InIntermediatePath =
       false; // [Ch 5] Track if we are in a chain (not leaf)
   bool m_IsAssignmentTarget =
@@ -1019,6 +1037,13 @@ private:
   bool validateAliasTarget(SourceLocation loc, const std::string &aliasName,
                            const TypeSyntaxPtr &targetSyntax,
                            const std::shared_ptr<toka::Type> &targetType);
+
+  bool validateParameterHandleChain(SourceLocation loc,
+                                    const std::string &paramName,
+                                    const BindingPermission &permission,
+                                    const std::shared_ptr<toka::Type> &physicalType,
+                                    const TypeSyntaxPtr &typeSyntax,
+                                    bool hadRejectedTypeSideMorphology);
 
   // Helper for type synthesis from AST nodes with binding/path permissions.
   template <typename T>

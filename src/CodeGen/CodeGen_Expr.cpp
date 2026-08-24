@@ -5762,26 +5762,11 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
             // Materialization (genExpr)
             val = nullptr;
           } else {
-            bool calleeExpectsLevel2Borrow = false;
-            if (funcDecl && i < funcDecl->Args.size()) {
-              const auto &calleeArg = funcDecl->Args[i];
-              if (calleeArg.Permission.isLevel2Borrow()) {
-                calleeExpectsLevel2Borrow = true;
-              } else if (calleeArg.IsReference) {
-                auto calleeTy = calleeArg.ResolvedType;
-                if (calleeTy && calleeTy->isReference()) {
-                  auto inner = calleeTy->getPointeeType();
-                  if (inner && (inner->isReference() || inner->isUniquePtr() || inner->isSharedPtr())) {
-                    calleeExpectsLevel2Borrow = true;
-                  }
-                }
-              }
-            }
             std::string baseName = toka::Type::stripMorphology(ve->Name);
             if (m_Symbols.count(baseName)) {
                auto &sym = m_Symbols[baseName];
-               if (!calleeExpectsLevel2Borrow && (sym.mode == AddressingMode::Reference || 
-                   (sym.mode == AddressingMode::Pointer && sym.morphology == Morphology::None))) {
+               if (sym.mode == AddressingMode::Reference ||
+                   (sym.mode == AddressingMode::Pointer && sym.morphology == Morphology::None)) {
                    val = getEntityAddr(ve->codegenName());
                } else {
                    val = getIdentityAddr(ve->codegenName());

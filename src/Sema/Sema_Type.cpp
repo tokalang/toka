@@ -70,6 +70,11 @@ void Sema::reportHandleGrammarViolation(SourceLocation loc,
   case HandleGrammarViolation::MixedManagedRaw:
     DiagnosticEngine::report(loc, DiagID::ERR_MIXED_HANDLE_RAW, typeStr);
     break;
+  case HandleGrammarViolation::ParamHandleDepthForbidden:
+    DiagnosticEngine::report(loc, DiagID::ERR_PARAM_HANDLE_DEPTH_FORBIDDEN,
+                             "param", typeStr,
+                             type ? type->getSoulName() : "T");
+    break;
   default:
     break;
   }
@@ -120,6 +125,63 @@ bool Sema::validateAliasTarget(SourceLocation loc,
       return false;
   }
   return true;
+}
+
+bool Sema::validateParameterHandleChain(
+    SourceLocation loc, const std::string &paramName,
+    const BindingPermission &permission,
+    const std::shared_ptr<toka::Type> &physicalType,
+    const TypeSyntaxPtr &typeSyntax, bool hadRejectedTypeSideMorphology) {
+  if (hadRejectedTypeSideMorphology)
+    return false;
+
+  if (physicalType) {
+    auto issue = toka::Type::findHandleGrammarIssueRecursive(physicalType);
+    if (issue.has_value() && issue->Violation != HandleGrammarViolation::None) {
+      reportHandleGrammarViolation(
+          loc, issue->OffendingType ? issue->OffendingType : physicalType,
+          issue->Violation);
+      return false;
+    }
+  }
+
+  if (permission.HandleLayers.size() <= 1)
+    return true;
+
+  std::string rootChain;
+  for (const auto &layer : permission.HandleLayers) {
+    if (layer.Nullable)
+      rootChain += "nul ";
+    switch (layer.Morphology) {
+    case BindingMorphology::Raw: rootChain += "*"; break;
+    case BindingMorphology::Unique: rootChain += "^"; break;
+    case BindingMorphology::Shared: rootChain += "~"; break;
+    case BindingMorphology::Reference: rootChain += "&"; break;
+    case BindingMorphology::None: break;
+    }
+  }
+
+  const auto &kept = permission.HandleLayers.back();
+  std::string suggestedMorph;
+  if (kept.Nullable)
+    suggestedMorph += "nul ";
+  switch (kept.Morphology) {
+  case BindingMorphology::Raw: suggestedMorph += "*"; break;
+  case BindingMorphology::Unique: suggestedMorph += "^"; break;
+  case BindingMorphology::Shared: suggestedMorph += "~"; break;
+  case BindingMorphology::Reference: suggestedMorph += "&"; break;
+  case BindingMorphology::None: break;
+  }
+
+  const std::string cleanName = toka::Type::stripMorphology(paramName);
+  const std::string soul =
+      typeSyntax ? typeSyntax->toCanonicalString()
+                 : (physicalType ? physicalType->getSoulName() : "T");
+  DiagnosticEngine::report(
+      loc, DiagID::ERR_PARAM_HANDLE_DEPTH_FORBIDDEN, cleanName, rootChain,
+      suggestedMorph + cleanName + ": " + soul);
+  HasError = true;
+  return false;
 }
 
 std::shared_ptr<toka::Type>

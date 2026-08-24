@@ -1,0 +1,33 @@
+// EXPECT_TKI: pub shape Item(val: i32)
+// EXPECT_TKI: pub alias Int = i32
+// EXPECT_TKI: pub alias OptUnique = Option<^Item>
+// EXPECT_TKI: pub fn inspect_unique(^x: Item) -> i32
+// EXPECT_TKI: pub fn inspect_shared(~x: Item) -> i32
+// EXPECT_TKI: pub fn consume_unique(cede ^x: Item) -> i32
+// EXPECT_TKI: pub fn pass_option(x: Option<^Item>) -> bool
+// EXPECT_TKI_ROUNDTRIP
+
+pub shape Item(val: i32)
+
+pub alias Int = i32
+pub alias OptUnique = Option<^Item>
+
+pub fn inspect_unique(^x: Item) -> i32 {
+    return x.val
+}
+
+pub fn inspect_shared(~x: Item) -> i32 {
+    return x.val
+}
+
+pub fn consume_unique(cede ^x: Item) -> i32 {
+    auto ^moved = cede ^x
+    return moved.val
+}
+
+pub fn pass_option(x: Option<^Item>) -> bool {
+    match x {
+        auto Some(^val) => return val.val > 0
+        auto None => return false
+    }
+}

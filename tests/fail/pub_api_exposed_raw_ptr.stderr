@@ -1,5 +1,5 @@
 error[E0480]: Public API 'foo' exposes unsafe type '*i32' in parameter 'ptr'. Use 'str' or 'String', or prefix the function name with 'unsafe_'
  --> tests/fail/pub_api_exposed_raw_ptr.tk:1:8
    |
- 1 | pub fn foo(ptr: *i32) {
+ 1 | pub fn foo(*ptr: i32) {
    |        ^

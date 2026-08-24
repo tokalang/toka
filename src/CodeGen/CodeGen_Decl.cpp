@@ -1555,6 +1555,15 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
   if (var->ResolvedType) {
       sym.soulTypeObj = var->ResolvedType;
       sym.soulType = getLLVMType(var->ResolvedType->getSoulType());
+      int semanticDepth = 0;
+      auto layer = var->ResolvedType;
+      while (layer && (layer->isPointer() || layer->isReference() ||
+                       layer->isSmartPointer())) {
+        ++semanticDepth;
+        layer = layer->getPointeeType();
+      }
+      if (semanticDepth > 0)
+        sym.indirectionLevel = semanticDepth;
   }
   
   sym.isRebindable = var->IsRebindable;
@@ -2999,22 +3008,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         const std::string baseName =
             Type::stripMorphology(var->codegenName());
         const auto symbol = m_Symbols.find(baseName);
-        bool calleeExpectsLevel2Borrow = false;
-        if (fd && targetArgIdx < fd->Args.size()) {
-          const auto &calleeArg = fd->Args[targetArgIdx];
-          if (calleeArg.Permission.isLevel2Borrow()) {
-            calleeExpectsLevel2Borrow = true;
-          } else if (calleeArg.IsReference) {
-            auto calleeTy = calleeArg.ResolvedType;
-            if (calleeTy && calleeTy->isReference()) {
-              auto inner = calleeTy->getPointeeType();
-              if (inner && (inner->isReference() || inner->isUniquePtr() || inner->isSharedPtr())) {
-                calleeExpectsLevel2Borrow = true;
-              }
-            }
-          }
-        }
-        if (!calleeExpectsLevel2Borrow && symbol != m_Symbols.end() &&
+        if (symbol != m_Symbols.end() &&
             (symbol->second.mode == AddressingMode::Reference ||
              (symbol->second.mode == AddressingMode::Pointer &&
               symbol->second.morphology == Morphology::None))) {
@@ -3278,7 +3272,8 @@ void CodeGen::fillSymbolMetadata(TokaSymbol &sym, const std::string &typeStr,
   // 2. Determine Addressing Mode
   if (isReference) {
     sym.mode = AddressingMode::Reference;
-    sym.indirectionLevel = 1;
+    if (sym.indirectionLevel == 0)
+      sym.indirectionLevel = 1;
   } else if (hasPointer || isUnique || isShared || sym.indirectionLevel > 0) {
     sym.mode = AddressingMode::Pointer;
     if (sym.indirectionLevel == 0)

@@ -1942,6 +1942,8 @@ std::string HandleGrammarProfile::describeViolation() const {
     return "InvalidManagedLayerOrder";
   case HandleGrammarViolation::MixedManagedRaw:
     return "MixedManagedRaw";
+  case HandleGrammarViolation::ParamHandleDepthForbidden:
+    return "ParamHandleDepthForbidden";
   }
   return "Unknown";
 }
@@ -2053,6 +2055,8 @@ std::string HandleGrammarIssue::describeViolation() const {
     return "InvalidManagedLayerOrder";
   case HandleGrammarViolation::MixedManagedRaw:
     return "MixedManagedRaw";
+  case HandleGrammarViolation::ParamHandleDepthForbidden:
+    return "ParamHandleDepthForbidden";
   }
   return "Unknown";
 }
@@ -2264,8 +2268,17 @@ Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
       if (syntax && syntax->NodeKind == TypeSyntax::Kind::Function && pi < syntax->Elements.size()) {
         pSyntax = syntax->Elements[pi];
       }
-      if (auto issue = findHandleGrammarIssueRecursive(fn->ParamTypes[pi], pSyntax, visited, path))
+      const auto &pType = fn->ParamTypes[pi];
+      if (auto issue = findHandleGrammarIssueRecursive(pType, pSyntax, visited, path))
         return issue;
+      if (pType && (pType->isPointer() || pType->isReference())) {
+        auto inner = pType->getPointeeType();
+        if (inner && (inner->isPointer() || inner->isReference())) {
+          return HandleGrammarIssue{
+              HandleGrammarViolation::ParamHandleDepthForbidden, path, 0, 1,
+              pType, pSyntax, ""};
+        }
+      }
     }
     auto path = currentPath;
     path.push_back({TypePathKind::FunctionReturn, 0, ""});
@@ -2279,8 +2292,17 @@ Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
     for (size_t pi = 0; pi < dynFn->ParamTypes.size(); ++pi) {
       auto path = currentPath;
       path.push_back({TypePathKind::FunctionParam, static_cast<unsigned>(pi), ""});
-      if (auto issue = findHandleGrammarIssueRecursive(dynFn->ParamTypes[pi], nullptr, visited, path))
+      const auto &pType = dynFn->ParamTypes[pi];
+      if (auto issue = findHandleGrammarIssueRecursive(pType, nullptr, visited, path))
         return issue;
+      if (pType && (pType->isPointer() || pType->isReference())) {
+        auto inner = pType->getPointeeType();
+        if (inner && (inner->isPointer() || inner->isReference())) {
+          return HandleGrammarIssue{
+              HandleGrammarViolation::ParamHandleDepthForbidden, path, 0, 1,
+              pType, nullptr, ""};
+        }
+      }
     }
     auto path = currentPath;
     path.push_back({TypePathKind::FunctionReturn, 0, ""});

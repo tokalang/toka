@@ -327,6 +327,11 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
           FunctionDecl::Arg arg;
           arg.Name = Clo->ArgNames[i];
           arg.Type = tName;
+          if (i < Clo->Params.size()) {
+            arg.Permission = Clo->Params[i].Permission;
+            arg.Loc = Clo->Params[i].Loc;
+            arg.HadRejectedTypeSideMorphology = Clo->Params[i].HadRejectedTypeSideMorphology;
+          }
           closureParams.push_back(std::move(arg));
       }
   } else if (Clo->MaxImplicitArgIndex >= 0) {
@@ -348,7 +353,12 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
 
   // Define params in scope
   for (auto &p : closureParams) {
-    p.ResolvedType = toka::Type::fromString(p.Type); // Dynamic (fallback to T0 if generic)
+    p.ResolvedType = Sema::synthesizePhysicalTypeObject(p, false);
+    if (!p.ResolvedType)
+      p.ResolvedType = toka::Type::fromString(p.Type);
+    validateParameterHandleChain(
+        p.Loc.isValid() ? p.Loc : Clo->Loc, p.Name, p.Permission,
+        p.ResolvedType, p.TypeSyntax, p.HadRejectedTypeSideMorphology);
     SymbolInfo info;
     info.TypeObj = p.ResolvedType;
     CurrentScope->define(p.Name, info);

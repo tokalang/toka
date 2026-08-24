@@ -1,6 +1,4 @@
-pub fn foo(*ptr: i32) {
-}
-
 fn main() -> i32 {
+    auto f = { &^x => x }
     return 0
 }

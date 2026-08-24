@@ -554,6 +554,12 @@
       "message": "Parameter type '{}' cannot begin with root handle morphology '{}'; place the root morphology on the parameter binding instead (did you mean '{}'?)",
       "description": "Parameter type '{}' cannot begin with root handle morphology '{}'; place the root morphology on the parameter binding instead (did you mean '{}'?)"
     },
+    "E0495": {
+      "id": "ERR_PARAM_HANDLE_DEPTH_FORBIDDEN",
+      "level": "Error",
+      "message": "Parameter '{}' cannot use root handle chain '{}'; formal parameter roots are limited to one handle layer (did you mean '{}'?)",
+      "description": "Formal parameter bindings are limited to a single handle layer because non-cede parameters already capture their argument without transfer."
+    },
     "E0501": {
       "id": "ERR_UNSAFE_ALLOC_CTX",
       "level": "Error",

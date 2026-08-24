@@ -41,13 +41,19 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   bool isPtrNullable = match(TokenType::KwNul); // [New Rule] nul pointer modifier
   bool isRebindable = false;
   bool isRebindBlocked = false;
+  std::vector<HandleLayer> handleLayers;
 
   std::string morphologyPrefix = "";
   while (true) {
     if (match(TokenType::Ampersand)) {
-      isRef = true;
       morphologyPrefix += "&";
       Token tok = previous();
+      HandleLayer layer;
+      layer.Morphology = BindingMorphology::Reference;
+      layer.Rebindable = tok.IsSwappablePtr;
+      layer.Nullable = tok.HasNull;
+      layer.Blocked = tok.IsBlocked;
+      handleLayers.push_back(layer);
       isRebindable = tok.IsSwappablePtr;
       isPtrNullable = isPtrNullable || tok.HasNull;
       isRebindBlocked = tok.IsBlocked;
@@ -55,9 +61,17 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
         error(tok, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
       }
     } else if (match(TokenType::And)) {
-      isRef = true;
       morphologyPrefix += "&&";
       Token tok = previous();
+      HandleLayer outer;
+      outer.Morphology = BindingMorphology::Reference;
+      outer.Rebindable = tok.IsSwappablePtr;
+      outer.Nullable = tok.HasNull;
+      outer.Blocked = tok.IsBlocked;
+      handleLayers.push_back(outer);
+      HandleLayer inner;
+      inner.Morphology = BindingMorphology::Reference;
+      handleLayers.push_back(inner);
       isRebindable = tok.IsSwappablePtr;
       isPtrNullable = isPtrNullable || tok.HasNull;
       isRebindBlocked = tok.IsBlocked;
@@ -65,29 +79,57 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
         error(tok, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
       }
     } else if (match(TokenType::Caret)) {
-      isUnique = true;
       morphologyPrefix += "^";
       Token tok = previous();
+      HandleLayer layer;
+      layer.Morphology = BindingMorphology::Unique;
+      layer.Rebindable = tok.IsSwappablePtr;
+      layer.Nullable = tok.HasNull;
+      layer.Blocked = tok.IsBlocked;
+      handleLayers.push_back(layer);
       isRebindable = tok.IsSwappablePtr;
       isPtrNullable = isPtrNullable || tok.HasNull;
       isRebindBlocked = tok.IsBlocked;
     } else if (match(TokenType::Star)) {
-      hasPointer = true;
       morphologyPrefix += "*";
       Token tok = previous();
+      HandleLayer layer;
+      layer.Morphology = BindingMorphology::Raw;
+      layer.Rebindable = tok.IsSwappablePtr;
+      layer.Nullable = tok.HasNull;
+      layer.Blocked = tok.IsBlocked;
+      handleLayers.push_back(layer);
       isRebindable = tok.IsSwappablePtr;
       isPtrNullable = isPtrNullable || tok.HasNull;
       isRebindBlocked = tok.IsBlocked;
     } else if (match(TokenType::Tilde)) {
-      isShared = true;
       morphologyPrefix += "~";
       Token tok = previous();
+      HandleLayer layer;
+      layer.Morphology = BindingMorphology::Shared;
+      layer.Rebindable = tok.IsSwappablePtr;
+      layer.Nullable = tok.HasNull;
+      layer.Blocked = tok.IsBlocked;
+      handleLayers.push_back(layer);
       isRebindable = tok.IsSwappablePtr;
       isPtrNullable = isPtrNullable || tok.HasNull;
       isRebindBlocked = tok.IsBlocked;
     } else {
       break;
     }
+  }
+
+  if (!handleLayers.empty()) {
+    handleLayers.front().Nullable =
+        handleLayers.front().Nullable || isPtrNullable;
+    const auto outer = handleLayers.front().Morphology;
+    isRef = outer == BindingMorphology::Reference;
+    isUnique = outer == BindingMorphology::Unique;
+    isShared = outer == BindingMorphology::Shared;
+    hasPointer = outer == BindingMorphology::Raw;
+    isRebindable = handleLayers.front().Rebindable;
+    isRebindBlocked = handleLayers.front().Blocked;
+    isPtrNullable = handleLayers.front().Nullable;
   }
 
   if (isPtrNullable && (isUnique || isShared)) {
@@ -270,11 +312,11 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   node->IsRebindable = isRebindable;
   node->IsPointerNullable = isPtrNullable;
   node->IsRebindBlocked = isRebindBlocked;
-  node->Permission = BindingPermission::fromLegacy(
-      node->IsRawPointer, node->IsUnique, node->IsShared, node->IsReference,
-      node->IsRebindable, node->IsPointerNullable, node->IsRebindBlocked,
-      node->IsValueMutable, node->IsValueNullable, node->IsValueBlocked,
-      node->IsMorphicExempt);
+  node->Permission.HandleLayers = handleLayers;
+  node->Permission.syncProjections();
+  node->Permission.SoulWritable = node->IsValueMutable;
+  node->Permission.SoulBlocked = node->IsValueBlocked;
+  node->Permission.MorphicExempt = node->IsMorphicExempt;
   node->TypeName = typeName;
   node->DeclaredTypeSyntax = typeSyntax;
 

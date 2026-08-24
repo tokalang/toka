@@ -1392,6 +1392,10 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
         auto it = m_Symbols.find(baseName);
         if (it != m_Symbols.end()) {
           TokaSymbol &sym = it->second;
+          if (unary->SelectsHandleIdentity &&
+              sym.mode == AddressingMode::Reference) {
+            return getIdentityAddr(v->codegenName());
+          }
           if (sym.indirectionLevel > 0) {
             return getEntityAddr(v->codegenName());
           }

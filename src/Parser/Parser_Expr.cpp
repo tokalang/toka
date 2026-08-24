@@ -433,12 +433,19 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     auto sub = parsePrimary(allowTrailingClosure);
     if (op == TokenType::And) {
       auto inner = std::make_unique<UnaryExpr>(TokenType::Ampersand, std::move(sub));
+      inner->SelectsHandleIdentity = true;
       inner->setLocation(tok, m_CurrentFile);
       auto outer = std::make_unique<UnaryExpr>(TokenType::Ampersand, std::move(inner));
       outer->setLocation(tok, m_CurrentFile);
       return outer;
     }
     auto node = std::make_unique<UnaryExpr>(op, std::move(sub));
+    if (op == TokenType::Ampersand) {
+      if (auto *selected = dynamic_cast<UnaryExpr *>(node->RHS.get())) {
+        if (selected->Op == TokenType::Ampersand)
+          selected->SelectsHandleIdentity = true;
+      }
+    }
     node->HasNull = tok.HasNull;
     node->IsRebindable = tok.IsSwappablePtr;
     node->IsValueMutable = tok.HasWrite;
@@ -1541,63 +1548,93 @@ std::unique_ptr<Expr> Parser::parseClosureExpr() {
       if (peekAt(lookahead).Kind == TokenType::RBracket) lookahead++;
   }
 
-  while (true) {
-    TokenType t = peekAt(lookahead).Kind;
-    if (t == TokenType::FatArrow) {
-      hasArrow = true;
-      break;
-    }
-    if (t == TokenType::EndOfFile) break;
-    if (t != TokenType::Identifier && t != TokenType::Comma && t != TokenType::Ampersand && t != TokenType::Caret && t != TokenType::Tilde && t != TokenType::Star && t != TokenType::TokenNull && t != TokenType::TokenWrite) {
-      break;
-    }
-    lookahead++;
-  }
-
-  if (hasArrow) {
-    // 1. Optional Captures inside the braces
-    if (match(TokenType::LBracket)) {
-      while (!check(TokenType::RBracket) && !check(TokenType::EndOfFile)) {
-         CaptureItem cap;
-         cap.Loc = peek().Loc;
-         if (match(TokenType::KwCede)) cap.Mode = CaptureMode::ExplicitCede;
-         else if (match(TokenType::KwCopy)) cap.Mode = CaptureMode::ExplicitCopy;
-         else if (check(TokenType::Identifier) && peek().Text == "dup") {
-           advance();
-           cap.Mode = CaptureMode::ExplicitDup;
-         }
-         else { error(peek(), DiagID::ERR_PARSER_EXPECTED_CEDE_OR_COPY_MODIFIER_IN_CLOSU); return nullptr; }
-         
-         std::string prefix = "";
-         if (match(TokenType::Tilde)) prefix = "~";
-         else if (match(TokenType::Caret)) prefix = "^";
-         else if (match(TokenType::Star)) prefix = "*";
-         else if (match(TokenType::Ampersand)) prefix = "&";
-
-         if (match(TokenType::TokenNull)) prefix += "?";
-         if (match(TokenType::TokenWrite)) prefix += "#";
-
-         cap.Name = prefix + consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_VARIABLE_NAME_TO_CAPTURE).Text;
-         
-         expr->ExplicitCaptures.push_back(cap);
-         if (!check(TokenType::RBracket)) consume(TokenType::Comma, DiagID::ERR_PARSER_EXPECTED_IN_CAPTURE_LIST);
+    while (true) {
+      TokenType t = peekAt(lookahead).Kind;
+      if (t == TokenType::FatArrow) {
+        hasArrow = true;
+        break;
       }
-      consume(TokenType::RBracket, DiagID::ERR_PARSER_EXPECTED_TO_END_CAPTURE_LIST);
+      if (t == TokenType::EndOfFile) break;
+      if (t != TokenType::Identifier && t != TokenType::Comma && t != TokenType::Ampersand &&
+          t != TokenType::And && t != TokenType::Caret && t != TokenType::Tilde &&
+          t != TokenType::Star && t != TokenType::TokenNull && t != TokenType::TokenWrite) {
+        break;
+      }
+      lookahead++;
     }
 
-    // 2. Explicit typed parameters
-    while (!check(TokenType::FatArrow) && !check(TokenType::EndOfFile)) {
-      // skip basic sigils if user puts them
-      match(TokenType::Caret); match(TokenType::Tilde); match(TokenType::Star); match(TokenType::Ampersand);
-      match(TokenType::TokenNull); match(TokenType::TokenWrite);
-      if (check(TokenType::FatArrow)) break; // handle zero explicit args `{ [cede x] => ... }`
-      Token name = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_PARAMETER_NAME);
-      expr->ArgNames.push_back(name.Text);
-      if (!check(TokenType::FatArrow)) {
-        consume(TokenType::Comma, DiagID::ERR_PARSER_EXPECTED_BETWEEN_PARAMETER_NAMES);
+    if (hasArrow) {
+      // 1. Optional Captures inside the braces
+      if (match(TokenType::LBracket)) {
+        while (!check(TokenType::RBracket) && !check(TokenType::EndOfFile)) {
+           CaptureItem cap;
+           cap.Loc = peek().Loc;
+           if (match(TokenType::KwCede)) cap.Mode = CaptureMode::ExplicitCede;
+           else if (match(TokenType::KwCopy)) cap.Mode = CaptureMode::ExplicitCopy;
+           else if (check(TokenType::Identifier) && peek().Text == "dup") {
+             advance();
+             cap.Mode = CaptureMode::ExplicitDup;
+           }
+           else { error(peek(), DiagID::ERR_PARSER_EXPECTED_CEDE_OR_COPY_MODIFIER_IN_CLOSU); return nullptr; }
+
+           std::string prefix = "";
+           if (match(TokenType::Tilde)) prefix = "~";
+           else if (match(TokenType::Caret)) prefix = "^";
+           else if (match(TokenType::Star)) prefix = "*";
+           else if (match(TokenType::Ampersand)) prefix = "&";
+
+           if (match(TokenType::TokenNull)) prefix += "?";
+           if (match(TokenType::TokenWrite)) prefix += "#";
+
+           cap.Name = prefix + consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_VARIABLE_NAME_TO_CAPTURE).Text;
+
+           expr->ExplicitCaptures.push_back(cap);
+           if (!check(TokenType::RBracket)) consume(TokenType::Comma, DiagID::ERR_PARSER_EXPECTED_IN_CAPTURE_LIST);
+        }
+        consume(TokenType::RBracket, DiagID::ERR_PARSER_EXPECTED_TO_END_CAPTURE_LIST);
       }
-    }
-    consume(TokenType::FatArrow, DiagID::ERR_PARSER_EXPECTED_AFTER_CLOSURE_PARAMETERS);
+
+      // 2. Explicit parameters with structured handle layers
+      while (!check(TokenType::FatArrow) && !check(TokenType::EndOfFile)) {
+        if (check(TokenType::FatArrow)) break; // handle zero explicit args `{ [cede x] => ... }`
+        SourceLocation paramLoc = peek().Loc;
+        std::vector<HandleLayer> layers;
+        while (true) {
+          if (match(TokenType::And)) {
+            layers.push_back({BindingMorphology::Reference, false, false, false});
+            layers.push_back({BindingMorphology::Reference, false, false, false});
+          } else if (match(TokenType::Ampersand)) {
+            layers.push_back({BindingMorphology::Reference, false, false, false});
+          } else if (match(TokenType::Caret)) {
+            layers.push_back({BindingMorphology::Unique, false, false, false});
+          } else if (match(TokenType::Tilde)) {
+            layers.push_back({BindingMorphology::Shared, false, false, false});
+          } else if (match(TokenType::Star)) {
+            layers.push_back({BindingMorphology::Raw, false, false, false});
+          } else {
+            break;
+          }
+        }
+        if (match(TokenType::TokenNull)) {
+          if (!layers.empty()) layers.back().Nullable = true;
+        }
+        if (match(TokenType::TokenWrite)) {
+          if (!layers.empty()) layers.back().Rebindable = true;
+        }
+        if (check(TokenType::FatArrow)) break;
+        Token name = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_PARAMETER_NAME);
+        ClosureParamSyntax param;
+        param.Name = name.Text;
+        param.Loc = paramLoc;
+        param.Permission.HandleLayers = layers;
+        param.Permission.syncProjections();
+        expr->Params.push_back(param);
+        expr->ArgNames.push_back(name.Text);
+        if (!check(TokenType::FatArrow)) {
+          consume(TokenType::Comma, DiagID::ERR_PARSER_EXPECTED_BETWEEN_PARAMETER_NAMES);
+        }
+      }
+      consume(TokenType::FatArrow, DiagID::ERR_PARSER_EXPECTED_AFTER_CLOSURE_PARAMETERS);
   }
 
   if (!hasArrow && check(TokenType::LBracket) && isCaptureModifier(peekAt(1))) {
