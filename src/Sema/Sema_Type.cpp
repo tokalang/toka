@@ -18,6 +18,7 @@
 #include "toka/Sema.h"
 #include "toka/Type.h"
 #include "toka/Parser.h"
+#include <algorithm>
 #include <cctype>
 #include <functional>
 #include <iostream>
@@ -46,7 +47,11 @@ static void markCallerBoundTypeLeaves(
   if (!type || !visited.insert(type.get()).second)
     return;
   if (auto shape = std::dynamic_pointer_cast<toka::ShapeType>(type)) {
-    if (!shape->Decl && shape->GenericArgs.empty())
+    const bool isConstantLiteral =
+        !shape->Name.empty() &&
+        std::all_of(shape->Name.begin(), shape->Name.end(),
+                    [](unsigned char c) { return std::isdigit(c); });
+    if (!shape->Decl && shape->GenericArgs.empty() && !isConstantLiteral)
       shape->BypassesCurrentTypeAlias = true;
     for (const auto &argument : shape->GenericArgs)
       markCallerBoundTypeLeaves(argument, visited);
