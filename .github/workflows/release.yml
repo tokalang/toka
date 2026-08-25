@@ -73,16 +73,22 @@ jobs:
       - name: Resolve version label
         id: version
         shell: bash
+        env:
+          TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          label="${{ inputs.tag_name || github.ref_name }}"
-          case "$label" in v*) ;; *) echo "release label must begin with v" >&2; exit 1 ;; esac
-          echo "label=$label" >> "$GITHUB_OUTPUT"
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "release label must be a canonical RC tag" >&2
+            exit 1
+          fi
+          echo "label=$TAG_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Configure compiler
+        env:
+          VERSION_LABEL: ${{ steps.version.outputs.label }}
         run: |
           set -euo pipefail
-          release_version="${{ steps.version.outputs.label }}"
+          release_version="$VERSION_LABEL"
           release_version="${release_version#v}"
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DTOKA_RELEASE_VERSION_OVERRIDE="$release_version" \
@@ -95,13 +101,15 @@ jobs:
         env:
           OS: ${{ matrix.os }}
           ARCH: ${{ matrix.arch }}
+          TARGET_NAME: ${{ matrix.name }}
+          VERSION_LABEL: ${{ steps.version.outputs.label }}
         run: |
           set -euo pipefail
           python3 tools/scripts/release_gate.py \
-            --target "${{ matrix.name }}" \
-            --version "${{ steps.version.outputs.label }}" \
-            --work-dir "build/release-gate-work-${{ matrix.name }}" \
-            --output "build/release-gate-${{ matrix.name }}.json"
+            --target "$TARGET_NAME" \
+            --version "$VERSION_LABEL" \
+            --work-dir "build/release-gate-work-$TARGET_NAME" \
+            --output "build/release-gate-$TARGET_NAME.json"
 
       - name: Upload gate evidence
         if: always()
@@ -137,12 +145,16 @@ jobs:
       - name: Resolve candidate identity
         id: candidate
         shell: bash
+        env:
+          TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          label="${{ inputs.tag_name || github.ref_name }}"
-          case "$label" in v*) ;; *) echo "release label must begin with v" >&2; exit 1 ;; esac
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "release label must be a canonical RC tag" >&2
+            exit 1
+          fi
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "label=$label" >> "$GITHUB_OUTPUT"
+          echo "label=$TAG_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Download all gate evidence
         if: always()
@@ -157,11 +169,14 @@ jobs:
 
       - name: Verify exact qualification reports
         if: always()
+        env:
+          CANDIDATE_REVISION: ${{ steps.candidate.outputs.revision }}
+          VERSION_LABEL: ${{ steps.candidate.outputs.label }}
         run: |
           python3 tools/scripts/verify_release_qualification.py \
             --evidence-dir qualification-evidence \
-            --revision "${{ steps.candidate.outputs.revision }}" \
-            --version-label "${{ steps.candidate.outputs.label }}" \
+            --revision "$CANDIDATE_REVISION" \
+            --version-label "$VERSION_LABEL" \
             --output build/release-qualification-summary.json
 
       - name: Upload qualification summary
@@ -189,9 +204,15 @@ jobs:
       - name: Resolve version label
         id: version
         shell: bash
+        env:
+          TAG_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          echo "label=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "release label must be a canonical RC tag" >&2
+            exit 1
+          fi
+          echo "label=$TAG_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Download all tagged archives
         uses: actions/download-artifact@v4
@@ -201,10 +222,12 @@ jobs:
           merge-multiple: true
 
       - name: Verify exact assets and write checksums
+        env:
+          VERSION_LABEL: ${{ steps.version.outputs.label }}
         run: |
           python3 tools/scripts/verify_release_assets.py \
             --assets-dir release-assets \
-            --version-label "${{ steps.version.outputs.label }}" \
+            --version-label "$VERSION_LABEL" \
             --checksums-output release-assets/SHA256SUMS
 
       - name: Create draft release

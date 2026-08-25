@@ -2,15 +2,39 @@ name: RC8 macOS x64 Draft Replay
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact commit peeled from the annotated v1.0.0-rc.8 tag
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   replay:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: v1.0.0-rc.8
+          fetch-depth: 0
+
+      - name: Bind replay to the audited annotated candidate tag
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "candidate_sha must be a full lowercase commit SHA" >&2
+            exit 1
+          fi
+          git rev-parse 'refs/tags/v1.0.0-rc.8^{tag}' >/dev/null
+          peeled_sha=$(git rev-parse 'refs/tags/v1.0.0-rc.8^{commit}')
+          test "$peeled_sha" = "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          grep -F "| Immutable candidate SHA | \`$CANDIDATE_SHA\` |" \
+            docs/release_audits/v1.0.0-rc.8.md
 
       - name: Install RC8 SDK host dependencies
         run: brew install lld@20 zstd openssl@3

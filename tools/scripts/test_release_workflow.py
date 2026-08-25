@@ -45,6 +45,28 @@ def job_block(text, name, next_name=None):
     return text[start:end]
 
 
+def shell_run_blocks(text):
+    lines = text.splitlines()
+    blocks = []
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].lstrip()
+        if stripped != "run: |":
+            index += 1
+            continue
+        run_indent = len(lines[index]) - len(stripped)
+        body = []
+        index += 1
+        while index < len(lines):
+            line = lines[index]
+            if line.strip() and len(line) - len(line.lstrip()) <= run_indent:
+                break
+            body.append(line)
+            index += 1
+        blocks.append("\n".join(body))
+    return blocks
+
+
 def run(command):
     result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE)
@@ -183,14 +205,33 @@ def main():
             "manual qualification must not have an automatic publish switch")
     require("macos-15-intel" in intel_replay and
             "v1.0.0-rc.8" in intel_replay and
-            "--require-checksums" in intel_replay,
+            "--require-checksums" in intel_replay and
+            "contents: read" in intel_replay and
+            "candidate_sha:" in intel_replay and
+            "ref: v1.0.0-rc.8" in intel_replay and
+            "refs/tags/v1.0.0-rc.8^{tag}" in intel_replay and
+            "refs/tags/v1.0.0-rc.8^{commit}" in intel_replay and
+            "docs/release_audits/v1.0.0-rc.8.md" in intel_replay,
             "RC8 Intel replay workflow is missing the exact draft replay contract")
     require('"tools/run_conformance.py",' in release_gate and
             '"--build-dir", str(build_dir)' in release_gate,
             "release gate does not pass its configured build directory to Conformance")
     require('"tools/scripts/audit_handle_grammar.py"' in release_gate and
-            '"--quick", "--tokac", env["TOKAC"]' in release_gate,
+            '"--quick", "--tokac", env["TOKAC"]' in release_gate and
+            '"--build-dir", str(build_dir)' in release_gate,
             "release gate does not enforce the Handle/Place quick security gate")
+    for workflow_name, workflow_text in (
+        ("release", text), ("promotion", promotion)
+    ):
+        for block in shell_run_blocks(workflow_text):
+            require("${{ inputs.tag_name" not in block and
+                    "${{ inputs.first_hour_receipt" not in block and
+                    "${{ github.ref_name" not in block and
+                    "${{ steps.version.outputs.label" not in block and
+                    "${{ steps.candidate.outputs" not in block,
+                    workflow_name + " workflow interpolates context into shell")
+    require("canonical RC tag" in text and "canonical RC tag" in promotion,
+            "release workflows do not validate canonical RC tag names")
     require(ACTIVE_RELEASE_NOTES.is_file(),
             "active candidate is missing tag-release notes: " + str(ACTIVE_RELEASE_NOTES))
     require("softprops/action-gh-release" not in gate,

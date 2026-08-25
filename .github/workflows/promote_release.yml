@@ -20,6 +20,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Validate promotion inputs
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+          FIRST_HOUR_RECEIPT: ${{ inputs.first_hour_receipt }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "tag_name must be a canonical RC tag" >&2
+            exit 1
+          fi
+          if (( ${#FIRST_HOUR_RECEIPT} > 1024 )) || \
+             [[ ! "$FIRST_HOUR_RECEIPT" =~ ^[A-Za-z0-9][A-Za-z0-9:/._#?=\&%+-]*$ ]]; then
+            echo "first_hour_receipt contains unsupported characters" >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag_name }}
@@ -27,23 +43,25 @@ jobs:
       - name: Verify draft state
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
-          test "$(gh release view "${{ inputs.tag_name }}" --json isDraft --jq .isDraft)" = "true"
-          test "$(gh release view "${{ inputs.tag_name }}" --json isPrerelease --jq .isPrerelease)" = "true"
+          test "$(gh release view "$TAG_NAME" --json isDraft --jq .isDraft)" = "true"
+          test "$(gh release view "$TAG_NAME" --json isPrerelease --jq .isPrerelease)" = "true"
 
       - name: Verify exact draft asset names
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
           expected_assets=$(printf '%s\n' \
             SHA256SUMS \
-            "toka-${{ inputs.tag_name }}-linux-arm64.tar.gz" \
-            "toka-${{ inputs.tag_name }}-linux-x64.tar.gz" \
-            "toka-${{ inputs.tag_name }}-macos-arm64.tar.gz" \
-            "toka-${{ inputs.tag_name }}-macos-x64.tar.gz")
-          actual_assets=$(gh release view "${{ inputs.tag_name }}" --json assets \
+            "toka-$TAG_NAME-linux-arm64.tar.gz" \
+            "toka-$TAG_NAME-linux-x64.tar.gz" \
+            "toka-$TAG_NAME-macos-arm64.tar.gz" \
+            "toka-$TAG_NAME-macos-x64.tar.gz")
+          actual_assets=$(gh release view "$TAG_NAME" --json assets \
             --jq '.assets[].name' | LC_ALL=C sort)
           if [ "$actual_assets" != "$expected_assets" ]; then
             echo "draft asset names do not match the required release set" >&2
@@ -53,23 +71,26 @@ jobs:
       - name: Download and verify published draft assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
-          gh release download "${{ inputs.tag_name }}" --dir release-assets \
+          gh release download "$TAG_NAME" --dir release-assets \
             --pattern 'toka-*.tar.gz' --pattern SHA256SUMS
           python3 tools/scripts/verify_release_assets.py \
             --assets-dir release-assets \
-            --version-label "${{ inputs.tag_name }}" \
+            --version-label "$TAG_NAME" \
             --checksums-output release-assets/SHA256SUMS \
             --require-checksums
 
       - name: Publish reviewed pre-release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ inputs.tag_name }}
+          FIRST_HOUR_RECEIPT: ${{ inputs.first_hour_receipt }}
         run: |
           set -euo pipefail
-          gh release edit "${{ inputs.tag_name }}" --draft=false --prerelease --latest=false
+          gh release edit "$TAG_NAME" --draft=false --prerelease --latest=false
           {
             echo "Published after first-hour replay receipt:"
-            echo "${{ inputs.first_hour_receipt }}"
+            printf '%s\n' "$FIRST_HOUR_RECEIPT"
           } >> "$GITHUB_STEP_SUMMARY"
