@@ -232,6 +232,23 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       m_IsConsumingEffect = true;
   }
 
+  auto checkArgumentWithHandleCapture =
+      [&](Expr *argument, const std::shared_ptr<toka::Type> &expectedType,
+          bool parameterIsUnique,
+          bool parameterIsCeded) -> std::shared_ptr<toka::Type> {
+    const bool oldBorrowingSelectedHandle = m_BorrowingSelectedHandle;
+    auto resolvedExpected = expectedType ? resolveType(expectedType) : nullptr;
+    if (!parameterIsCeded &&
+        (parameterIsUnique ||
+         (resolvedExpected && resolvedExpected->isUniquePtr()))) {
+      m_BorrowingSelectedHandle = true;
+    }
+    auto result = expectedType ? checkExpr(argument, expectedType)
+                               : checkExpr(argument);
+    m_BorrowingSelectedHandle = oldBorrowingSelectedHandle;
+    return result;
+  };
+
   // Generic bodies keep type-parameter spellings in expression syntax.  If
   // an instantiated parameter names a primitive, normalize the synthetic
   // constructor call (for example the `T(value)` inside `unsafe alloc
@@ -654,7 +671,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
           m_AllowPermissionSuffix =
               hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
-          auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+          auto argTy = checkArgumentWithHandleCapture(
+              Call->Args[i].get(), expectedTy,
+              MetAST && i < MetAST->Args.size() && MetAST->Args[i].IsUnique,
+              MetAST && i < MetAST->Args.size() && MetAST->Args[i].IsCeded);
           m_AllowPermissionSuffix = oldAllowPermissionSuffix;
           if (MetAST && i < MetAST->Args.size()) {
             const auto &param = MetAST->Args[i];
@@ -764,7 +784,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
                 m_AllowPermissionSuffix =
                     hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
-                auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+                auto argTy = checkArgumentWithHandleCapture(
+                    Call->Args[i].get(), expectedTy,
+                    MetAST && i < MetAST->Args.size() &&
+                        MetAST->Args[i].IsUnique,
+                    MetAST && i < MetAST->Args.size() &&
+                        MetAST->Args[i].IsCeded);
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 if (MetAST && i < MetAST->Args.size()) {
                   const auto &param = MetAST->Args[i];
@@ -984,7 +1009,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
       m_AllowPermissionSuffix =
           hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
-      auto argType = checkExpr(Call->Args[i].get());
+      auto argType = checkArgumentWithHandleCapture(
+          Call->Args[i].get(), expectedType, Candidate->Args[i].IsUnique,
+          Candidate->Args[i].IsCeded);
       m_AllowPermissionSuffix = oldAllowPermissionSuffix;
       if (!expectedType || !argType || expectedType->isUnknown() ||
           argType->isUnknown()) {
@@ -1261,7 +1288,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
                 m_AllowPermissionSuffix =
                     hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
-                auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+                auto argTy = checkArgumentWithHandleCapture(
+                    Call->Args[i].get(), expectedTy,
+                    invokeFn->Args[i + 1].IsUnique,
+                    invokeFn->Args[i + 1].IsCeded);
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 const auto &param = invokeFn->Args[i + 1];
                 checkCedeArgument(Call->Args[i].get(), param, argTy,
@@ -1419,7 +1449,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
             m_AllowPermissionSuffix =
                 hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
-            auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+            auto argTy = checkArgumentWithHandleCapture(
+                Call->Args[i].get(), expectedTy,
+                expectedTy && expectedTy->isUniquePtr(),
+                expectedTy && expectedTy->IsCede);
             m_AllowPermissionSuffix = oldAllowPermissionSuffix;
             AccessCapability declaredCapability =
                 getAccessCapability(Call->Args[i].get(), true);
@@ -1470,7 +1503,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
             m_AllowPermissionSuffix =
                 hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
-            auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+            auto argTy = checkArgumentWithHandleCapture(
+                Call->Args[i].get(), expectedTy,
+                expectedTy && expectedTy->isUniquePtr(),
+                expectedTy && expectedTy->IsCede);
             m_AllowPermissionSuffix = oldAllowPermissionSuffix;
             AccessCapability declaredCapability =
                 getAccessCapability(Call->Args[i].get(), true);
@@ -1626,7 +1662,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
               m_AllowPermissionSuffix =
                   hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
-              auto argType = checkExpr(Call->Args[i].get());
+              auto argType = checkArgumentWithHandleCapture(
+                  Call->Args[i].get(), nullptr, Param.IsUnique,
+                  Param.IsCeded);
               m_AllowPermissionSuffix = oldAllowPermissionSuffix;
               precheckedArgTypes[i] = argType;
               std::shared_ptr<toka::Type> candidate;
@@ -1687,7 +1725,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
         m_AllowPermissionSuffix =
             hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
-        auto argType = checkExpr(Call->Args[i].get());
+        auto argType = checkArgumentWithHandleCapture(
+            Call->Args[i].get(), nullptr, locIsUnique, Param.IsCeded);
         m_AllowPermissionSuffix = oldAllowPermissionSuffix;
         precheckedArgTypes[i] = argType;
         if (!argType || argType->isUnknown())
@@ -2250,9 +2289,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
       m_AllowPermissionSuffix =
           hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
+      const bool declaredUniqueCapture =
+          (Fn && i < Fn->Args.size() && Fn->Args[i].IsUnique) ||
+          (Ext && i < Ext->Args.size() && Ext->Args[i].IsUnique);
       argType = i < precheckedArgTypes.size() && precheckedArgTypes[i]
                     ? precheckedArgTypes[i]
-                    : checkExpr(Call->Args[i].get(), paramType);
+                    : checkArgumentWithHandleCapture(
+                          Call->Args[i].get(), paramType,
+                          declaredUniqueCapture, expectedCedeTransfer);
       m_AllowPermissionSuffix = oldAllowPermissionSuffix;
       m_ExpectedCedeTransfer = oldExpectedCedeTransfer;
     }

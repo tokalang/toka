@@ -1242,8 +1242,37 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     const bool fieldReceivesOwnedValue =
         memberTypeObj &&
         memberTypeObj->requiresExplicitOwnershipTransfer(this);
-    if (fieldReceivesOwnedValue &&
+    bool directUniqueValueMove = false;
+    if (memberTypeObj && memberTypeObj->isUniquePtr() &&
         !dynamic_cast<CedeExpr *>(pair.second.get())) {
+      Expr *directSource = pair.second.get();
+      while (auto *cast = dynamic_cast<CastExpr *>(directSource))
+        directSource = cast->Expression.get();
+      if (auto *unary = dynamic_cast<UnaryExpr *>(directSource);
+          unary && unary->Op == TokenType::Caret) {
+        if (auto *variable = dynamic_cast<VariableExpr *>(unary->RHS.get())) {
+          SymbolInfo *sourceInfo = nullptr;
+          std::string actualName;
+          if (CurrentScope->findVariableWithDeref(
+                  variable->Name, sourceInfo, actualName) &&
+              sourceInfo && sourceInfo->IsUnique()) {
+            directUniqueValueMove = true;
+            if (sourceInfo->IsFunctionParameter && !sourceInfo->IsCeded) {
+              error(pair.second.get(),
+                    DiagID::ERR_SEMA_DIRECT_MOVE_NON_CEDE_PARAMETER,
+                    actualName);
+            } else {
+              CurrentScope->markMoved(actualName, getLoc(pair.second.get()));
+              PALCheckerState.markMoved(
+                  canonicalizeAccessPath(makeAccessPath(actualName)));
+            }
+          }
+        }
+      }
+    }
+    if (fieldReceivesOwnedValue &&
+        !dynamic_cast<CedeExpr *>(pair.second.get()) &&
+        !directUniqueValueMove) {
       Expr *directSource = pair.second.get();
       while (auto *cast = dynamic_cast<CastExpr *>(directSource))
         directSource = cast->Expression.get();

@@ -31,8 +31,12 @@ later release.
   layer. A writable parent can authorize handle rebinding, while the pointee
   payload remains read-only unless the field or binding explicitly carries a
   payload-side `#`, such as `^p#` or `*p#`.
-- `cede` as an explicit transfer contract: both caller and callee must honor
-  the transfer path.
+- Unique value semantics and `cede` contracts are distinct: a selected
+  `^source` moved into an initializing, assigning, or returning unique value
+  context is an intrinsic direct move and omits `cede`. Ordinary `^param`
+  remains a non-consuming handle capture. A declared `cede ^param` is the
+  explicit consuming-call contract; both caller and callee must honor it, and
+  a direct unique value move in the callee may discharge the obligation.
 - Hatted parameter contract: unused handle views remain warning-level
   diagnostics; redundant `&param` remains an error.
 - Trait syntax: `trait @Name`, `Type@Trait`, `@{A, B}` facet sets, and `where:`

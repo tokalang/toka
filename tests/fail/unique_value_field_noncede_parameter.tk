@@ -1,0 +1,13 @@
+shape Cell(value: i32)
+shape Holder(^item: Cell)
+
+// EXPECT: error[E04642]
+fn steal(^cell: Cell) -> i32 {
+    auto holder = Holder(^item = ^cell)
+    return holder.item.value
+}
+
+fn main() -> i32 {
+    auto ^source = new Cell(value = 1)
+    return steal(^source)
+}

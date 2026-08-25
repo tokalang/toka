@@ -1,0 +1,65 @@
+shape Cell(value: i32)
+shape Inspector()
+shape Holder(^item: Cell)
+
+fn inspect_unique(^cell: Cell) -> i32 {
+    return cell.value
+}
+
+fn inspect_generic<T>(^cell: T) -> bool {
+    return true
+}
+
+impl Inspector {
+    fn inspect(self, ^cell: Cell) -> i32 {
+        return cell.value
+    }
+}
+
+fn consume_into_local(cede ^cell: Cell) -> i32 {
+    auto ^owned = ^cell
+    return owned.value
+}
+
+fn forward_unique(cede ^cell: Cell) -> ^Cell {
+    return ^cell
+}
+
+fn make_unique() -> ^Cell {
+    auto ^source = new Cell(value = 41)
+    return ^source
+}
+
+fn main() -> i32 {
+    auto inspector = Inspector()
+    auto ^owner = make_unique()
+    {
+        auto &view = &owner
+        assert(inspect_unique(^owner) == 41,
+               "ordinary unique parameter capture must not move")
+        assert(inspect_generic(^owner),
+               "generic unique parameter capture must not move")
+        assert(inspector.inspect(^owner) == 41,
+               "ordinary unique method parameter capture must not move")
+        assert(view.value == 41, "capture must preserve an active payload loan")
+    }
+    assert(owner.value == 41, "ordinary unique capture invalidated its owner")
+
+    auto ^moved = ^owner
+    assert(moved.value == 41, "direct unique initialization did not move")
+
+    auto ^field_source = new Cell(value = 45)
+    auto holder = Holder(^item = ^field_source)
+    assert(holder.item.value == 45,
+           "direct unique field initialization did not move")
+
+    auto ^local_source = new Cell(value = 42)
+    assert(consume_into_local(cede ^local_source) == 42,
+           "direct local move did not discharge cede parameter")
+
+    auto ^return_source = new Cell(value = 43)
+    auto ^forwarded = forward_unique(cede ^return_source)
+    assert(forwarded.value == 43,
+           "direct return move did not discharge cede parameter")
+    return 0
+}

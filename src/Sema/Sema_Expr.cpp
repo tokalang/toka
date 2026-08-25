@@ -4479,7 +4479,19 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
                 m_AllowPermissionSuffix =
                     hasExplicitCallArgumentWriteSigil(Met->Args[i].get());
+                const bool oldBorrowingSelectedHandle =
+                    m_BorrowingSelectedHandle;
+                auto resolvedExpectedParamTy = resolveType(expectedParamTy);
+                if (i < expectedArgs && !FD->Args[i + 1].IsCeded &&
+                    (FD->Args[i + 1].IsUnique ||
+                     (resolvedExpectedParamTy &&
+                      resolvedExpectedParamTy->isUniquePtr()))) {
+                  // Ordinary unique-handle parameters capture the selected
+                  // handle place; only `cede ^param` is a consuming call.
+                  m_BorrowingSelectedHandle = true;
+                }
                 auto argTy = checkExpr(Met->Args[i].get(), expectedParamTy);
+                m_BorrowingSelectedHandle = oldBorrowingSelectedHandle;
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 projectOwnedStringView(Met->Args[i], argTy, expectedParamTy);
 

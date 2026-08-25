@@ -201,22 +201,30 @@ Primary references:
 ### OWN-MOVE-001: Unique ownership is exclusive and moves invalidate the source path
 
 - Status: Core guarantee
-- Source form: moving or `cede`-ing a `^T` resource, then using the source
+- Source form: `auto ^to = ^from`, `return ^from`, or a declared cede
+  parameter/capture transfer, followed by use of the source
 - Operation class: `OwnershipTransfer`, `Invalidation`
-- Decision: the moved source path cannot be used after transfer. A source-
+- Decision: a selected unique handle entering an initializing, assigning, or
+  returning unique value context is an intrinsic direct move and omits
+  `cede`. An ordinary `^param` is a non-consuming handle capture; moving it is
+  rejected unless the parameter was declared `cede`. The moved source path
+  cannot be used after transfer. A source-
   invalidating move into an existing destination additionally requires the
   canonical paths to be `Disjoint`; equality, either prefix direction, and
   unknown overlap reject before destination retirement, source invalidation,
   or cleanup-state change. This overlap rule is design-frozen but remains a
   current-HEAD P-1 implementation/evidence blocker.
 - Rationale: a unique resource has one valid owner at a time.
-- Primary diagnostics: `E0438`, `E0440`, `E04501`
+- Primary diagnostics: `E0438`, `E0440`, `E04501`, `E04642`
 - Implementation areas: `src/Sema/Sema_Expr.cpp`,
   `src/Sema/Sema_Expr_Init.cpp`, `src/Sema/Sema_Stmt.cpp`
 - Positive tests: `tests/pass/g08_sema_move_ok.tk`,
+  `tests/pass/g08_unique_value_move_semantics.tk`,
   `tests/pass/g08_linked_list_uniqueptr.tk`,
   `tests/pass/g08_smart_ptr_borrow.tk`
 - Negative tests: `tests/fail/safety_use_moved.tk`,
+  `tests/fail/unique_value_return_noncede_parameter.tk`,
+  `tests/fail/unique_value_local_move_noncede_parameter.tk`,
   `tests/fail/sema_move.tk`, `tests/fail/unique_freeze_move.tk`,
   `tests/fail/unique_freeze_mutate.tk`, `tests/fail/move_in_loop.tk`,
   `tests/fail/move_direct_in_loop.tk`
@@ -236,7 +244,10 @@ Primary references:
 - Source form: `fn f(cede r: R)`, call `f(cede r)`, body consumes `r`
 - Operation class: `CedeObligation`, `OwnershipTransfer`
 - Decision: callers must explicitly pass `cede`; callees must consume, forward,
-  store, return, or otherwise complete the obligation. Any existing-destination
+  store, return, or otherwise complete the obligation. For a unique cede
+  parameter, an intrinsic value move (`auto ^owned = ^param` or
+  `return ^param`) completes the obligation without a redundant inner `cede`.
+  Any existing-destination
   transfer also inherits `OWN-MOVE-001`'s canonical-disjointness precondition.
 - Rationale: declared transfer is both permission and obligation.
 - Primary diagnostics: `E0473`, `E0474`, `E04509`, `E04570`

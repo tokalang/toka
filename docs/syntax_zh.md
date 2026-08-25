@@ -205,8 +205,21 @@ shape Node(val: i32)
 
 auto ^#head = new Node(val = 0)
 auto ^replacement = new Node(val = 1)
-^head = cede ^replacement
+^head = ^replacement
 ```
+
+显式选中的 unique handle 具有仿射值语义。当 `^source` 用来初始化、赋值或
+返回一个 unique 值时，这个值使用必然是 move，并省略 `cede`：
+
+```toka
+auto ^next = ^head       // direct unique move；head 失效
+return ^next             // 返回 unique 值；next 失效
+```
+
+move 语义来自值上下文，而不是 `^source` 单独承担的含义。把 `^source` 传给
+普通 `^param` 仍然是逻辑上的 handle 捕获，不会 move。参数若声明为
+`cede ^param`，则仍是显式消费契约：调用方写 `cede ^source`，被调函数可以用
+`auto ^owned = ^param` 或 `return ^param` 这样的直接 unique move 履行契约。
 
 `#` 的位置有语义差异。`^#p`、`*#p`、`~#p`、`&#p` 表示 handle identity 可重绑定；`^p#`、`*p#`、`~p#`、`&p#` 里的 `#` 仍在绑定名 / payload 侧，不授予 handle 重绑定权限。两种权限都需要时，两个位置都要写，例如 `^#p#`。
 
@@ -335,7 +348,7 @@ PAL 扩展到 raw pointer；raw pointer 仍属于显式 unsafe / FFI 边界。
 
 稳定契约遵循四条核心规则：
 1. **独占所有权是唯一的（Unique ownership is exclusive）：** `^` 资源在任意时刻只能由一个有效 handle 拥有。
-2. **转移是显式的（Transfer is explicit）：** 所有权交接必须在语法上可见。直接书写帽子形态的 unique-handle move 也属于显式转移语法；`cede` 用于声明了 cede 契约的参数和显式 cede 交接路径，且必须履行相应的转移义务。
+2. **转移是显式的（Transfer is explicit）：** 所有权交接必须在语法上可见。unique handle 进入 unique 值上下文时直接 move（`auto ^to = ^from`、`return ^from`）并省略 `cede`；值上下文与带帽源共同构成显式转移语法。`cede` 继续用于声明了 cede 的参数/捕获边界，且相应转移义务必须被履行。
 3. **借用有效性受保护（Borrow validity is protected）：** 在活跃借用存在时，任何可能使该借用失效的操作（如 move、`cede`、drop、handle 重绑定或底层重新分配等）都将被拒绝。
 4. **独占修改需要独占权限（Exclusive mutation requires exclusive permission）：** 可变/独占借用与其他重叠的活跃借用冲突。普通不可变借用的设计含义是该借用视图本身只读，而不是对原路径可达的全部存储作出全局冻结承诺。普通 payload 写入、独占修改与失效性操作会被分开分类。
 

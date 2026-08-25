@@ -1,0 +1,15 @@
+import ./lib::{Cell, inspect_unique, forward_unique}
+
+fn main() -> i32 {
+    auto ^owner = new Cell(value = 44)
+    {
+        auto &view = &owner
+        if inspect_unique(^owner) != 44 { return 1 }
+        if view.value != 44 { return 2 }
+    }
+    if owner.value != 44 { return 3 }
+
+    auto ^forwarded = forward_unique(cede ^owner)
+    if forwarded.value != 44 { return 4 }
+    return 0
+}

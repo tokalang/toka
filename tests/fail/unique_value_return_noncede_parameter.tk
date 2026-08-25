@@ -1,0 +1,12 @@
+shape Cell(value: i32)
+
+// EXPECT: error[E04642]
+fn steal(^cell: Cell) -> ^Cell {
+    return ^cell
+}
+
+fn main() -> i32 {
+    auto ^source = new Cell(value = 1)
+    auto ^stolen = steal(^source)
+    return stolen.value
+}

@@ -64,16 +64,23 @@ In particular, a function call's logical in-place capture is a PAL relation;
 it is not a type constructor. Passing an `&^T` value through a captured
 parameter does not change its type to `&&^T`.
 
-`cede` is the only ownership-transfer verb. Hats select a handle view or
-identity; by themselves they do not copy or transfer ownership:
+Hats select a handle view or identity; by themselves they do not copy or
+transfer ownership. A selected unique handle nevertheless has affine value
+semantics: using `^source` to initialize, assign, or return a unique value is
+an intrinsic direct move and omits `cede`. This move belongs to the surrounding
+value context, not to every occurrence of `^source`:
 
 ```toka
 fn observe(^x: Node)          // non-transferring unique-handle view
 fn take(cede ^x: Node)        // explicit ownership-transfer contract
+auto ^next = ^owner           // direct unique value move
+return ^next                  // direct unique value return
 ```
 
-The design review must retain this separation in Sema, TKI, diagnostics, and
-CodeGen.
+The caller of a cede parameter still writes `cede ^owner`; the callee can
+discharge that contract with `auto ^owned = ^x` or `return ^x`. The design
+review must retain the separation among handle selection, affine value use,
+and cede call/capture contracts in Sema, TKI, diagnostics, and CodeGen.
 
 ### 2.4 View selection and target-aware borrowing
 
@@ -439,7 +446,9 @@ The current surface remains viable only if the completed design provides:
 
 - one structural desugaring into `SoulType`, `HandleType`, `BindingMode`, and
   PAL effects;
-- `cede` as the sole ownership-transfer operation;
+- intrinsic direct move for unique value contexts, with `cede` reserved for
+  explicit consuming parameter/capture contracts and other non-value transfer
+  boundaries;
 - generic substitution closure or explicit morphology-domain constraints;
 - identical admission rules across source, TKI, reflection, and CodeGen;
 - no independently maintained parameter, alias, generic, or lowering

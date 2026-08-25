@@ -512,6 +512,7 @@ DIAG(ERR_MISS_OUTCOME_DEFAULT_FORBIDDEN, Error, "E04638", "Type '{}' has no defa
 DIAG(ERR_MISS_OUTCOME_MATCH_INVALID, Error, "E04639", "A '{}' match must distinguish 'miss' from one fresh payload binding")
 DIAG(ERR_SEMA_CEDE_ARGUMENT_TO_BORROWED_PARAMETER, Error, "E04640", "Argument '{}' explicitly transfers ownership with 'cede', but parameter '{}' is borrowed; declare the parameter 'cede' or remove 'cede'")
 DIAG(ERR_SEMA_OWNED_PROJECTION_BINDING_REQUIRES_CEDE, Error, "E04641", "Binding '{}' receives owning projection '{}'; use 'cede {}' to transfer ownership explicitly")
+DIAG(ERR_SEMA_DIRECT_MOVE_NON_CEDE_PARAMETER, Error, "E04642", "Cannot move unique parameter '{}' because it is a borrowed capture; declare the parameter 'cede' to transfer ownership")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

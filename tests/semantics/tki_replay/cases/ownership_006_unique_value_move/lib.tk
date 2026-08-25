@@ -1,0 +1,14 @@
+// EXPECT_TKI: pub shape Cell(value: i32)
+// EXPECT_TKI: pub fn inspect_unique(^cell: Cell) -> i32
+// EXPECT_TKI: pub fn forward_unique(cede ^cell: Cell) -> ^Cell
+// EXPECT_TKI_ROUNDTRIP
+
+pub shape Cell(value: i32)
+
+pub fn inspect_unique(^cell: Cell) -> i32 {
+    return cell.value
+}
+
+pub fn forward_unique(cede ^cell: Cell) -> ^Cell {
+    return ^cell
+}

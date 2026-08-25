@@ -515,16 +515,21 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       std::string actualRHSName = RHSVar->Name;
       if (CurrentScope->findVariableWithDeref(RHSVar->Name, RHSInfoPtr, actualRHSName) &&
           RHSInfoPtr->IsUnique()) {
-        auto conflict = PALCheckerState.verifyInvalidation(
-            canonicalizeAccessPath(makeAccessPath(actualRHSName)));
-        if (conflict) {
+        if (RHSInfoPtr->IsFunctionParameter && !RHSInfoPtr->IsCeded) {
+          error(Bin, DiagID::ERR_SEMA_DIRECT_MOVE_NON_CEDE_PARAMETER,
+                actualRHSName);
+        } else {
+          auto conflict = PALCheckerState.verifyInvalidation(
+              canonicalizeAccessPath(makeAccessPath(actualRHSName)));
+          if (conflict) {
             error(Bin, DiagID::ERR_MOVE_BORROWED, conflict->displayPath());
             recordPALConflict(
                 Bin, PALOperationClass::Invalidation,
                 canonicalizeAccessPath(makeAccessPath(actualRHSName)),
                 *conflict);
+          }
+          CurrentScope->markMoved(actualRHSName, Bin->Loc);
         }
-        CurrentScope->markMoved(actualRHSName, Bin->Loc);
       }
     }
     

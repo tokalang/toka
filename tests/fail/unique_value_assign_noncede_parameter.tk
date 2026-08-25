@@ -1,0 +1,13 @@
+shape Cell(value: i32)
+
+// EXPECT: error[E04642]
+fn steal_into(^source: Cell, ^#destination: Cell) {
+    ^destination = ^source
+}
+
+fn main() -> i32 {
+    auto ^source = new Cell(value = 1)
+    auto ^#destination = new Cell(value = 2)
+    steal_into(^source, ^#destination)
+    return 0
+}

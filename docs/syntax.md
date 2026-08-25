@@ -224,8 +224,24 @@ shape Node(val: i32)
 
 auto ^#head = new Node(val = 0)
 auto ^replacement = new Node(val = 1)
-^head = cede ^replacement
+^head = ^replacement
 ```
+
+A selected unique handle has affine value semantics. When `^source` is used
+to initialize, assign, or return a unique value, that value use is intrinsically
+a move and the `cede` keyword is omitted:
+
+```toka
+auto ^next = ^head       // direct unique move; head is invalidated
+return ^next             // unique value return; next is invalidated
+```
+
+This rule belongs to the value context, not to the `^source` expression by
+itself. Passing `^source` to an ordinary `^param` is the normal logical handle
+capture and does not move it. A parameter declared `cede ^param` remains an
+explicit consumption contract: the caller writes `cede ^source`, while the
+callee may discharge the obligation by a direct unique move such as
+`auto ^owned = ^param` or `return ^param`.
 
 The position of `#` is semantic. `^#p`, `*#p`, `~#p`, and `&#p` mark the handle identity as rebindable. `^p#`, `*p#`, `~p#`, and `&p#` keep `#` on the binding name / payload side; they do not grant handle rebinding authority. When both permissions are needed, write both positions, such as `^#p#`.
 
@@ -389,7 +405,7 @@ For Toka 1.0, PAL is frozen as **Path-Anchored Ledger**: a local, path-based saf
 
 The stable contract is governed by four core rules:
 1. **Unique ownership is exclusive:** A `^` resource is owned by one valid handle at any time.
-2. **Transfer is explicit:** Ownership handoff must be syntactically visible. Direct hatted unique-handle moves are visible transfer syntax; `cede` is required for declared cede contracts and explicit cede handoff paths, and any transfer obligation must be fulfilled.
+2. **Transfer is explicit:** Ownership handoff must be syntactically visible. A unique handle used in a unique value context moves directly (`auto ^to = ^from`, `return ^from`) and omits `cede`; the paired value context and hatted source are the visible transfer syntax. `cede` remains required at declared cede parameter/capture boundaries, and any such transfer obligation must be fulfilled.
 3. **Borrow validity is protected:** Operations that can invalidate an active borrow (such as moves, `cede`, drops, handle rebinding, or reallocations of the underlying storage) are rejected.
 4. **Exclusive mutation requires exclusive permission:** Exclusive/mutable borrows conflict with other overlapping active borrows. A standard immutable borrow is a read-only capability of that borrow view, not a global freeze promise for all storage reachable from the original path. Ordinary payload writes, exclusive mutations, and invalidating operations are classified separately.
 

@@ -634,6 +634,39 @@ void Sema::checkStmt(Stmt *S) {
       ExprType = RetTypeObj->toString();
       m_ControlFlowStack.pop_back();
 
+      // A hatted unique handle used as a returned value is an intrinsic move.
+      // Unlike an ordinary `^param` capture, a cede parameter is authorized to
+      // cross this ownership boundary; the direct move also discharges its
+      // consumption obligation without a redundant `return cede ^param`.
+      auto resolvedReturnExpectation = resolveType(returnExpectation);
+      if (resolvedReturnExpectation &&
+          resolvedReturnExpectation->isUniquePtr()) {
+        Expr *moveSource = Ret->ReturnValue.get();
+        while (auto *cast = dynamic_cast<CastExpr *>(moveSource))
+          moveSource = cast->Expression.get();
+        if (auto *unary = dynamic_cast<UnaryExpr *>(moveSource);
+            unary && unary->Op == TokenType::Caret) {
+          moveSource = unary->RHS.get();
+          if (auto *variable = dynamic_cast<VariableExpr *>(moveSource)) {
+            SymbolInfo *sourceInfo = nullptr;
+            std::string actualName;
+            if (CurrentScope->findVariableWithDeref(
+                    variable->Name, sourceInfo, actualName) &&
+                sourceInfo && sourceInfo->IsUnique()) {
+              if (sourceInfo->IsFunctionParameter && !sourceInfo->IsCeded) {
+                error(Ret->ReturnValue.get(),
+                      DiagID::ERR_SEMA_DIRECT_MOVE_NON_CEDE_PARAMETER,
+                      actualName);
+              } else {
+                CurrentScope->markMoved(actualName, getLoc(Ret));
+                PALCheckerState.markMoved(
+                    canonicalizeAccessPath(makeAccessPath(actualName)));
+              }
+            }
+          }
+        }
+      }
+
       if (functionOutcome) {
         if (RetTypeObj && RetTypeObj->isMissOutcome() &&
             isTypeCompatible(functionOutcome, RetTypeObj)) {
@@ -2100,21 +2133,27 @@ void Sema::checkStmt(Stmt *S) {
           if (SourceInfoPtr->IsUnique()) {
             if (!hasPlaceState(SourceInfoPtr->placeFact(),
                                PlaceState::Moved)) {
-              if (!moveCheckedByExpression) {
-                auto conflict = PALCheckerState.verifyInvalidation(
-                    canonicalizeAccessPath(makeAccessPath(actName)));
-                if (conflict) {
-                  DiagnosticEngine::report(getLoc(Var),
-                                           DiagID::ERR_MOVE_BORROWED,
-                                           conflict->displayPath());
-                  HasError = true;
-                  recordPALConflict(
-                      Var, PALOperationClass::Invalidation,
-                      canonicalizeAccessPath(makeAccessPath(actName)),
-                      *conflict);
+              if (SourceInfoPtr->IsFunctionParameter &&
+                  !SourceInfoPtr->IsCeded) {
+                error(Var, DiagID::ERR_SEMA_DIRECT_MOVE_NON_CEDE_PARAMETER,
+                      actName);
+              } else {
+                if (!moveCheckedByExpression) {
+                  auto conflict = PALCheckerState.verifyInvalidation(
+                      canonicalizeAccessPath(makeAccessPath(actName)));
+                  if (conflict) {
+                    DiagnosticEngine::report(getLoc(Var),
+                                             DiagID::ERR_MOVE_BORROWED,
+                                             conflict->displayPath());
+                    HasError = true;
+                    recordPALConflict(
+                        Var, PALOperationClass::Invalidation,
+                        canonicalizeAccessPath(makeAccessPath(actName)),
+                        *conflict);
+                  }
                 }
+                CurrentScope->markMoved(actName, getLoc(Var));
               }
-              CurrentScope->markMoved(actName, getLoc(Var));
             }
           }
         }
