@@ -1,0 +1,15 @@
+shape Counter(
+    reads#: i32,
+    ordinary: i32
+)
+
+fn main() -> i32 {
+    auto ~counter = new Counter(reads = 0, ordinary = 9)
+    auto values = [cede ~counter]
+    for alias ~x in values {
+        x.reads += 1
+        assert(x.reads == 1,
+               "interior-mutable field must retain its own P through alias")
+    }
+    return 0
+}

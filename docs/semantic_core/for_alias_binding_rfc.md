@@ -72,6 +72,14 @@ ABI. Read-only sources, unqualified H/P requests, and containers without a
 matching stable-place carrier also fail closed with E04645. General local
 `alias view = place` and consuming `for auto ^x` remain separate work.
 
+Fixed arrays additionally qualify Shared handle elements because their
+envelope layout and slot lifetime are statically known. `alias ~x#` requires
+P already present on the shared pointee view, and `alias ~#x` requires H from
+the containing array slot. Shape permissions remain unchanged through an
+alias: an explicit blocked field (`field$`) caps inherited P, while an
+interior-mutable field (`field#`) supplies only its own P and never makes an
+ordinary sibling writable.
+
 The parser preserves handle-layer permission requests separately from payload
 `#`, so `alias ^x#` and `alias ^#x` cannot collapse into one case. Fixed arrays
 and Vec qualify these distinct P/H requests independently. Vec's generic

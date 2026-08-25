@@ -1,0 +1,14 @@
+// EXPECT: error[E04573]
+shape Counter(
+    reads#: i32,
+    ordinary: i32
+)
+
+fn main() -> i32 {
+    auto ~counter = new Counter(reads = 0, ordinary = 9)
+    auto values = [cede ~counter]
+    for alias ~x in values {
+        x.ordinary = 10
+    }
+    return 0
+}
