@@ -261,6 +261,8 @@ int main() {
         {"fn(i32)->*&i32", HandleGrammarViolation::MixedManagedRaw, "FunctionReturn", 0, 1},
         {"Uninit<*&i32>", HandleGrammarViolation::MixedManagedRaw, "UninitInner", 0, 1},
         {"*&i32|miss", HandleGrammarViolation::MixedManagedRaw, "OutcomePayload", 0, 1},
+        {"__PlaceOutcome<&i32>", HandleGrammarViolation::None, "", 0, 0},
+        {"__PlaceOutcome<*&i32>", HandleGrammarViolation::MixedManagedRaw, "PlaceOutcomeItem", 0, 1},
         {"Option<&&&i32>", HandleGrammarViolation::ExceededBorrowDepth, "GenericArg(0)", 0, 2},
         {"Option<^^i32>", HandleGrammarViolation::ExceededManagedDepth, "GenericArg(0)", 0, 1},
         {"Option<^&i32>", HandleGrammarViolation::InvalidManagedLayerOrder, "GenericArg(0)", 0, 1},

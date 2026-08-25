@@ -86,12 +86,6 @@ pub trait @MutableBorrowIterator {
     pub fn next_mut(self#) -> Option<BorrowedItem> <- self
 }
 
-// Compiler-recognized carrier for the exact Item place.  Although it has a
-// source declaration so TKI and separate compilation can name its ABI, Sema
-// admits it only on @PlaceIterator::next_place and compiler-generated
-// `for alias` lowering.
-pub shape __PlaceOutcome<'T>(tag: u8, place: Addr)
-
 pub trait @PlaceIterator {
     type Item
     pub fn next_place(self#) -> __PlaceOutcome<Item> <- self

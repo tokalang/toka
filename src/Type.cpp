@@ -95,6 +95,11 @@ std::string Type::canonicalIdentity() const {
                        outcome->PayloadType
                            ? outcome->PayloadType->canonicalIdentity()
                            : "null");
+  } else if (auto place = dynamic_cast<const PlaceOutcomeType *>(this)) {
+    appendIdentityPart(result, "place-item",
+                       place->ItemType
+                           ? place->ItemType->canonicalIdentity()
+                           : "null");
   } else if (auto pointer = dynamic_cast<const PointerType *>(this)) {
     appendIdentityPart(result, "pointee", pointer->PointeeType
                                                   ? pointer->PointeeType
@@ -207,6 +212,12 @@ std::string Type::getMangledName() const {
                                     : "unknown";
     return "O" + attributes(*this) + framed(payload);
   }
+  if (auto place = dynamic_cast<const PlaceOutcomeType *>(this)) {
+    const std::string item = place->ItemType
+                                 ? place->ItemType->getMangledName()
+                                 : "unknown";
+    return "P" + attributes(*this) + framed(item);
+  }
   if (auto array = dynamic_cast<const ArrayType *>(this)) {
     const std::string element =
         array->ElementType ? array->ElementType->getMangledName() : "unknown";
@@ -286,6 +297,8 @@ ValueOwnership Type::valueOwnership(class Sema *S) const {
                ? outcome->PayloadType->valueOwnership(S)
                : ValueOwnership::Trivial;
   }
+  case PlaceOutcome:
+    return ValueOwnership::Trivial;
   case UninitWrapper: {
     const auto *uninit = dynamic_cast<const UninitType *>(this);
     return uninit && uninit->InnerType
@@ -448,6 +461,40 @@ bool MissOutcomeType::isSend(class Sema *S) const {
 bool MissOutcomeType::isSync(class Sema *S) const {
   return PayloadType && PayloadType->isSync(S);
 }
+
+std::string PlaceOutcomeType::toString() const {
+  return "__PlaceOutcome<" +
+         (ItemType ? ItemType->toString() : std::string("unknown")) + ">";
+}
+
+bool PlaceOutcomeType::equals(const Type &other) const {
+  if (!Type::equals(other))
+    return false;
+  const auto *place = dynamic_cast<const PlaceOutcomeType *>(&other);
+  return place && ItemType && place->ItemType &&
+         ItemType->equals(*place->ItemType);
+}
+
+std::shared_ptr<Type>
+PlaceOutcomeType::withAttributes(bool w, bool n, bool b) const {
+  return cloneWithAttrs(this, w, n, b);
+}
+
+std::shared_ptr<Type> PlaceOutcomeType::substitute(
+    const std::map<std::string, std::shared_ptr<Type>> &substMap) const {
+  auto result = std::dynamic_pointer_cast<PlaceOutcomeType>(
+      withAttributes(IsWritable, IsNullable, IsBlocked));
+  if (ItemType)
+    result->ItemType = ItemType->substitute(substMap);
+  return result;
+}
+
+ValueOwnership PlaceOutcomeType::valueOwnership(class Sema *) const {
+  return ValueOwnership::Trivial;
+}
+
+bool PlaceOutcomeType::isSend(class Sema *) const { return false; }
+bool PlaceOutcomeType::isSync(class Sema *) const { return false; }
 
 std::string PrimitiveType::toString() const {
   std::string s = "";
@@ -1259,6 +1306,14 @@ TypeSyntaxPtr typeSyntaxFromType(const Type &type, SourceLocation begin,
             ? outcome->PayloadType->toSyntax(begin, end)
             : TypeSyntax::named("unknown", begin, end),
         begin, end);
+  } else if (auto place = dynamic_cast<const PlaceOutcomeType *>(&type)) {
+    syntax = TypeSyntax::generic(
+        TypeSyntax::named("__PlaceOutcome", begin, end),
+        {TypeArgumentSyntax::type(
+            place->ItemType
+                ? place->ItemType->toSyntax(begin, end)
+                : TypeSyntax::named("unknown", begin, end))},
+        begin, end);
   } else if (auto pointer = dynamic_cast<const PointerType *>(&type)) {
     TypeSyntaxPtr pointee = pointer->PointeeType
                                 ? pointer->PointeeType->toSyntax(begin, end)
@@ -1406,6 +1461,8 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
                                  : std::string();
     if (name == "Uninit" && arguments.size() == 1)
       return std::make_shared<UninitType>(arguments.front());
+    if (name == "__PlaceOutcome" && arguments.size() == 1)
+      return std::make_shared<PlaceOutcomeType>(arguments.front());
     return std::make_shared<ShapeType>(name, std::move(arguments),
                                        syntax->PathSuffix);
   }
@@ -1939,6 +1996,15 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
     return uninit;
   }
 
+  if (baseName == "__PlaceOutcome" && genericArgs.size() == 1) {
+    auto place = std::make_shared<PlaceOutcomeType>(genericArgs[0]);
+    place->IsWritable = isWritable;
+    place->IsNullable = false;
+    place->IsBlocked = isBlocked;
+    place->IsCede = isCede;
+    return place;
+  }
+
   auto shape = std::make_shared<ShapeType>(baseName, genericArgs, variantSuffix);
   shape->IsWritable = isWritable;
   shape->IsNullable = false;
@@ -2335,6 +2401,20 @@ Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
     path.push_back({TypePathKind::OutcomePayload, 0, ""});
     TypeSyntaxPtr plSyntax = (syntax && syntax->NodeKind == TypeSyntax::Kind::MissOutcome) ? syntax->Subject : nullptr;
     return findHandleGrammarIssueRecursive(outcome->PayloadType, plSyntax, visited, path);
+  }
+  if (auto place = dynamic_cast<const PlaceOutcomeType *>(type.get())) {
+    auto path = currentPath;
+    path.push_back({TypePathKind::PlaceOutcomeItem, 0, ""});
+    TypeSyntaxPtr itemSyntax = nullptr;
+    if (syntax && syntax->NodeKind == TypeSyntax::Kind::GenericApplication &&
+        syntax->Subject &&
+        syntax->Subject->toCanonicalString() == "__PlaceOutcome" &&
+        syntax->Arguments.size() == 1 &&
+        syntax->Arguments.front().ArgumentKind ==
+            TypeArgumentSyntax::Kind::Type)
+      itemSyntax = syntax->Arguments.front().Type;
+    return findHandleGrammarIssueRecursive(place->ItemType, itemSyntax,
+                                           visited, path);
   }
 
   return std::nullopt;

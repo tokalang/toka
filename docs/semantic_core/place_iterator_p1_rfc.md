@@ -57,6 +57,11 @@ It only transports an exact place. It does not grant or transform:
 Those remain governed by `BindingPermission`, ordinary access-capability
 resolution, and PAL.
 
+The implementation uses the dedicated `Type::PlaceOutcome` /
+`PlaceOutcomeType` semantic kind. No public shape declaration, field layout,
+constructor, `sizeof`, or reflection identity exists in the ordinary type
+system.
+
 ### 3.1 Placement restrictions
 
 `__PlaceOutcome<T>` is admitted only as the exact result kind of the

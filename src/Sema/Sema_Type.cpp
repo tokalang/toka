@@ -79,6 +79,10 @@ static void markCallerBoundTypeLeaves(
                               visited);
     return;
   }
+  if (auto place = std::dynamic_pointer_cast<toka::PlaceOutcomeType>(type)) {
+    markCallerBoundTypeLeaves(place->ItemType, declaredParameters, visited);
+    return;
+  }
   if (auto function = std::dynamic_pointer_cast<toka::FunctionType>(type)) {
     for (const auto &parameter : function->ParamTypes)
       markCallerBoundTypeLeaves(parameter, declaredParameters, visited);
@@ -125,6 +129,8 @@ static bool containsDeferredTypeParameter(
     return containsDeferredTypeParameter(uninit->InnerType, visited);
   if (auto outcome = std::dynamic_pointer_cast<toka::MissOutcomeType>(type))
     return containsDeferredTypeParameter(outcome->PayloadType, visited);
+  if (auto place = std::dynamic_pointer_cast<toka::PlaceOutcomeType>(type))
+    return containsDeferredTypeParameter(place->ItemType, visited);
   if (auto function = std::dynamic_pointer_cast<toka::FunctionType>(type)) {
     for (const auto &parameter : function->ParamTypes) {
       if (containsDeferredTypeParameter(parameter, visited))
@@ -214,13 +220,10 @@ bool Sema::containsInternalPlaceOutcome(
       [&](const std::shared_ptr<toka::Type> &current) -> bool {
     if (!current || !visited.insert(current.get()).second)
       return false;
+    if (current->isPlaceOutcome())
+      return true;
     if (auto shape = std::dynamic_pointer_cast<ShapeType>(
             current->getSoulType())) {
-      if ((shape->Decl && shape->Decl->InstantiationTemplate &&
-           shape->Decl->InstantiationTemplate->Name == "__PlaceOutcome") ||
-          shape->Name == "__PlaceOutcome" ||
-          shape->Name.rfind("__PlaceOutcome_M", 0) == 0)
-        return true;
       for (const auto &argument : shape->GenericArgs) {
         if (contains(argument))
           return true;
@@ -486,6 +489,18 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
                                   outcome->IsNullable,
                                   outcome->IsBlocked));
       resolved->PayloadType = payload;
+      return resolved;
+    }
+  }
+
+  if (auto place =
+          std::dynamic_pointer_cast<toka::PlaceOutcomeType>(type)) {
+    auto item = resolveType(place->ItemType, false);
+    if (item != place->ItemType) {
+      auto resolved = std::dynamic_pointer_cast<toka::PlaceOutcomeType>(
+          place->withAttributes(place->IsWritable, place->IsNullable,
+                                place->IsBlocked));
+      resolved->ItemType = item;
       return resolved;
     }
   }

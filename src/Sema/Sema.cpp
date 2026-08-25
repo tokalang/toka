@@ -4553,6 +4553,10 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         validateNames(outcome->PayloadType);
         return;
       }
+      if (auto place = std::dynamic_pointer_cast<PlaceOutcomeType>(type)) {
+        validateNames(place->ItemType);
+        return;
+      }
       if (auto function = std::dynamic_pointer_cast<FunctionType>(type)) {
         for (const auto &parameter : function->ParamTypes)
           validateNames(parameter);

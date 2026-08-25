@@ -336,9 +336,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
     }
 
-    return resolveType(std::make_shared<toka::ShapeType>(
-        "__PlaceOutcome",
-        std::vector<std::shared_ptr<toka::Type>>{item}));
+    return resolveType(std::make_shared<toka::PlaceOutcomeType>(item));
   }
 
   if (CallName == "__PlaceOutcome") {

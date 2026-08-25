@@ -60,7 +60,8 @@ enum class TypePathKind {
   AnonymousRecordField,
   ProjectionTarget,
   OutcomePayload,
-  UninitInner
+  UninitInner,
+  PlaceOutcomeItem
 };
 
 struct TypePathElement {
@@ -81,6 +82,7 @@ struct TypePathElement {
     case TypePathKind::ProjectionTarget: return "ProjectionTarget";
     case TypePathKind::OutcomePayload: return "OutcomePayload";
     case TypePathKind::UninitInner: return "UninitInner";
+    case TypePathKind::PlaceOutcomeItem: return "PlaceOutcomeItem";
     }
     return "Unknown";
   }
@@ -125,7 +127,8 @@ public:
     DynFn,
     MissOutcome,
     UninitWrapper,
-    Unresolved // String-based placeholder
+    Unresolved, // String-based placeholder
+    PlaceOutcome
   };
 
   enum class Morphology {
@@ -191,6 +194,7 @@ public:
   bool isUnknown() const { return typeKind == Unresolved; }
   bool isUninit() const { return typeKind == UninitWrapper; }
   bool isMissOutcome() const { return typeKind == MissOutcome; }
+  bool isPlaceOutcome() const { return typeKind == PlaceOutcome; }
 
   bool isFatPointer() const {
     return false;
@@ -543,6 +547,26 @@ public:
 
   explicit MissOutcomeType(std::shared_ptr<Type> payload)
       : Type(MissOutcome), PayloadType(std::move(payload)) {}
+  std::string toString() const override;
+  bool equals(const Type &other) const override;
+  std::shared_ptr<Type> withAttributes(bool w, bool n,
+                                       bool b = false) const override;
+  std::shared_ptr<Type> substitute(
+      const std::map<std::string, std::shared_ptr<Type>> &substMap) const override;
+  ValueOwnership valueOwnership(class Sema *S = nullptr) const override;
+  bool isSend(class Sema *S = nullptr) const override;
+  bool isSync(class Sema *S = nullptr) const override;
+};
+
+// Compiler-only exact-place transport used exclusively by
+// @PlaceIterator::next_place and compiler-generated `for alias` lowering.
+// It is never an ordinary storable source type.
+class PlaceOutcomeType : public Type {
+public:
+  std::shared_ptr<Type> ItemType;
+
+  explicit PlaceOutcomeType(std::shared_ptr<Type> item)
+      : Type(PlaceOutcome), ItemType(std::move(item)) {}
   std::string toString() const override;
   bool equals(const Type &other) const override;
   std::shared_ptr<Type> withAttributes(bool w, bool n,

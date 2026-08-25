@@ -1,0 +1,5 @@
+// EXPECT: error[E04648]
+fn main() -> i32 {
+    auto info = reflect<__PlaceOutcome<i32>>()
+    return 0
+}

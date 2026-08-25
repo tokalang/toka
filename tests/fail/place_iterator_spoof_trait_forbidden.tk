@@ -1,5 +1,3 @@
-import core/traits::{__PlaceOutcome}
-
 // EXPECT: error[E04648]
 pub trait @PlaceIterator {
     type Item

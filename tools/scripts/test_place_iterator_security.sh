@@ -22,7 +22,7 @@ EOF
 # Control: the canonical toolchain std/vec provider may yield a place rooted
 # in its self-backed storage.
 cat > "$WORK_ROOT/lib/std/vec.tk" <<'EOF'
-import core/traits::{@PlaceIterator, __PlaceOutcome}
+import core/traits::{@PlaceIterator}
 
 pub shape ProbeIter(&buf: [i32])
 
@@ -45,7 +45,7 @@ EOF
 # Redline: the same canonical provider cannot return a place rooted in a local
 # whose lifetime ends with next_place.
 cat > "$WORK_ROOT/lib/std/vec.tk" <<'EOF'
-import core/traits::{@PlaceIterator, __PlaceOutcome}
+import core/traits::{@PlaceIterator}
 
 pub shape ProbeIter(&buf: [i32])
 shape LocalBox(value: i32 = 0)

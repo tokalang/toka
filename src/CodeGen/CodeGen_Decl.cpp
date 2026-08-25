@@ -3531,6 +3531,14 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
         m_Context, {llvm::Type::getInt1Ty(m_Context), payload});
   }
 
+  // PlaceOutcome is a compiler-only logical {Hit, element-place} carrier.
+  // Its Item morphology is semantic metadata; the physical payload is one
+  // pointer-width address and never ReferenceType<Item> storage.
+  if (type->isPlaceOutcome()) {
+    return llvm::StructType::get(
+        m_Context, {llvm::Type::getInt8Ty(m_Context), getIntPtrTy()});
+  }
+
   // Handle Primitives
   if (type->typeKind == Type::Primitive) {
     auto prim = std::static_pointer_cast<PrimitiveType>(type);

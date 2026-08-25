@@ -1,5 +1,3 @@
-import core/traits::{__PlaceOutcome}
-
 // EXPECT: error[E04648]
 fn leak(value: __PlaceOutcome<i32>) -> i32 {
     return 0

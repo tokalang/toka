@@ -1,5 +1,3 @@
-import core/traits::{__PlaceOutcome}
-
 pub trait @PlaceIterator {
     type Item
     pub fn next_place(self#) -> i32

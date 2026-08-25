@@ -1379,6 +1379,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                        : toka::Type::fromString(CE->ReflectedTypeStr));
     if (CE->ReflectedType)
       CE->ReflectedTypeStr = CE->ReflectedType->toString();
+    if (containsInternalPlaceOutcome(CE->ReflectedType))
+      error(CE, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+            CE->ReflectedType->toString());
     return toka::Type::fromString("TypeInfo");
   }
 
@@ -3299,25 +3302,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     } else {
                       auto carrier = resolveType(
                           toka::Type::fromString(nextAliasRet));
-                      auto placeOutcome = std::dynamic_pointer_cast<ShapeType>(
-                          carrier ? carrier->getSoulType() : nullptr);
-                      std::shared_ptr<toka::Type> element;
-                      bool exactCarrier = false;
-                      if (placeOutcome) {
-                        if (placeOutcome->Decl &&
-                            placeOutcome->Decl->InstantiationTemplate &&
-                            placeOutcome->Decl->InstantiationTemplate->Name ==
-                                "__PlaceOutcome" &&
-                            !placeOutcome->Decl->InstantiationArgs.empty()) {
-                          exactCarrier = true;
-                          element =
-                              placeOutcome->Decl->InstantiationArgs.front();
-                        } else if (placeOutcome->Name == "__PlaceOutcome" &&
-                                   placeOutcome->GenericArgs.size() == 1) {
-                          exactCarrier = true;
-                          element = placeOutcome->GenericArgs.front();
-                        }
-                      }
+                      auto placeOutcome =
+                          std::dynamic_pointer_cast<PlaceOutcomeType>(carrier);
+                      std::shared_ptr<toka::Type> element =
+                          placeOutcome ? placeOutcome->ItemType : nullptr;
+                      const bool exactCarrier = placeOutcome != nullptr;
                       FunctionDecl *placeNext = nullptr;
                       if (MethodDecls.count(iterSoul) &&
                           MethodDecls[iterSoul].count(aliasNext))
@@ -3899,6 +3888,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                        : toka::Type::fromString(se->TypeStr));
     if (se->OperandType)
       se->TypeStr = se->OperandType->toString();
+    if (containsInternalPlaceOutcome(se->OperandType))
+      error(se, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+            se->OperandType->toString());
     se->ResolvedType = toka::Type::fromString("usize");
     return se->ResolvedType;
   } else if (auto *pe = dynamic_cast<PassExpr *>(E)) {
@@ -4127,6 +4119,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                         : toka::Type::fromString(New->Type));
     std::string resolvedName = resolvedType ? resolvedType->toString()
                                             : New->Type;
+    if (containsInternalPlaceOutcome(resolvedType))
+      error(New, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY, resolvedName);
 
     if (resolvedType && resolvedType->isMissOutcome() &&
         !New->Initializer) {
@@ -4199,6 +4193,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                            : toka::Type::fromString(AllocE->TypeName));
     std::string baseType = baseTypeObj ? baseTypeObj->toString()
                                        : AllocE->TypeName;
+    if (containsInternalPlaceOutcome(baseTypeObj))
+      error(AllocE, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY, baseType);
     if (AllocE->IsArray) {
       if (AllocE->ArraySize) {
         checkExpr(AllocE->ArraySize.get());

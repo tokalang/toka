@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@Copy, @Dup, @Encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator, @MutableBorrowIterator, @PlaceIterator, __PlaceOutcome}
+import core/traits::{@Copy, @Dup, @Encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator, @MutableBorrowIterator, @PlaceIterator}
 import sys/libc::*
 import core/option::{Option}
 
