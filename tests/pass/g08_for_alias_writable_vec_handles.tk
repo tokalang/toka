@@ -1,0 +1,47 @@
+import std/vec::Vec
+
+shape Cell(value#: i32)
+
+fn main() -> i32 {
+    auto ^owner# = new Cell(value = 1)
+    auto owners# = Vec<^Cell#>::new()
+    owners#.push(cede ^owner)
+
+    for alias ^x# in owners {
+        x.value = 2
+    }
+    for alias ^x in owners {
+        assert(x.value == 2,
+               "Vec handle alias must write qualified pointee payload")
+    }
+
+    for alias ^#x in owners {
+        auto ^replacement# = new Cell(value = 3)
+        ^x = ^replacement
+    }
+    for alias ^x in owners {
+        assert(x.value == 3,
+               "Vec handle alias must rebind the original element slot")
+    }
+
+    for alias ^#x# in owners {
+        x.value = 4
+    }
+    for alias ^x in owners {
+        assert(x.value == 4,
+               "Vec handle alias must preserve independent H and P")
+    }
+
+    auto first = 10
+    auto second = 20
+    auto refs# = Vec<&i32>::new()
+    refs#.push(&first)
+    for alias &#x in refs {
+        &x = &second
+    }
+    for alias &x in refs {
+        assert(x == 20,
+               "Vec reference alias must rebind the original element slot")
+    }
+    return 0
+}

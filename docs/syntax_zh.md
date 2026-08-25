@@ -731,7 +731,10 @@ cursor 是普通作用域值，在迭代结束、`break` 和函数退出时执�
 只有原 element place 已具备对应能力时才准入。alias 永不放大权限，容器可写
 也绝不能穿透 handle 边界提升 pointee 权限。非数组 writable alias 通过
 `iter_mut` 与 `@MutableBorrowIterator::next_mut` 取得稳定 place；源码与 TKI
-导入路径都必须保留 `<- self` 依赖。
+导入路径都必须保留 `<- self` 依赖。carrier 的 `BorrowedItem` 只保留元素的
+原始 morphology，本身不增加权限。例如 Vec 的泛型 carrier 返回 `&'T`：
+元素 `^T#` 可提供 pointee P，而可写 Vec 元素槽可为 `^#x` 提供 H；两项权限
+始终独立检查。
 
 值迭代不会隐式 `cede` 集合或元素；其所有权行为完全由 `next` 声明返回的
 `Item` 决定，并继续服从普通复制和资源规则。Toka 1.0 不定义 consuming

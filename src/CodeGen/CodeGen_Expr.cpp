@@ -551,6 +551,30 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
       }
     }
   }
+  // An indexed element whose semantic type is a handle is itself a handle
+  // slot.  This is the representation used by Vec's raw backing storage and
+  // by fixed arrays.  Lower a Sema-classified Handle assignment through that
+  // slot rather than treating the pointer-shaped RHS as payload data.
+  TokaSymbol indexedHandle;
+  if (effectiveRebind && !symLHS && indexTarget && lhsExpr->ResolvedType &&
+      (lhsExpr->ResolvedType->isPointer() ||
+       lhsExpr->ResolvedType->isSmartPointer() ||
+       lhsExpr->ResolvedType->isReference())) {
+    llvm::Value *indexedHandleAddr = emitEntityAddr(lhsExpr);
+    if (indexedHandleAddr) {
+      fillSymbolMetadata(indexedHandle, lhsExpr->ResolvedType,
+                         getLLVMType(lhsExpr->ResolvedType));
+      indexedHandle.isRebindable = true;
+      auto soul = lhsExpr->ResolvedType->getSoulType();
+      if (soul && m_Shapes.count(soul->getSoulName())) {
+        indexedHandle.hasDrop = true;
+        indexedHandle.dropFunc =
+            m_Shapes[soul->getSoulName()]->MangledDestructorName;
+      }
+      symLHS = &indexedHandle;
+      lhsAlloca = indexedHandleAddr;
+    }
+  }
   if (effectiveRebind && symLHS && lhsAlloca) {
     // Scene B: Envelope Rebind
     if (symLHS->morphology == Morphology::Shared &&
@@ -567,7 +591,20 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
       handleAddr = m_Builder.CreateLoad(m_Builder.getPtrTy(), lhsAlloca,
                                         "rebind.caller_handle_slot");
     }
-    emitEnvelopeRebind(handleAddr, rhsVal, *symLHS, lhsExpr);
+    // Unsafe container internals use `cede source[index]` to hand a moved
+    // owner into an uninitialized or already-moved raw slot.  Reading and
+    // releasing that destination would inspect uninitialized storage.  The
+    // explicit unsafe block owns this narrow storage invariant; ordinary
+    // indexed replacement and every safe alias rebind still release the old
+    // owner through emitEnvelopeRebind.
+    const bool unsafeIndexedCedeHandoff =
+        indexTarget && m_InUnsafeContext &&
+        dynamic_cast<const CedeExpr *>(rhsExpr) != nullptr;
+    if (unsafeIndexedCedeHandoff) {
+      markMemoryEvent(m_Builder.CreateStore(rhsVal, handleAddr), "rebind");
+    } else {
+      emitEnvelopeRebind(handleAddr, rhsVal, *symLHS, lhsExpr);
+    }
   } else {
     // Scene A: Soul Assignment
     llvm::Value *soulAddr = emitEntityAddr(lhsExpr);
@@ -4026,8 +4063,11 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     if (iterAlloca && m_TypeToName.count(iterAlloca->getAllocatedType())) {
         iterTyName = m_TypeToName[iterAlloca->getAllocatedType()];
     }
+    const bool requestsExclusiveAlias =
+        fe->IsPlaceAlias &&
+        (fe->IsMutable || fe->Permission.IdentityRebindable);
     std::string nextMethodName =
-        fe->IsPlaceAlias && fe->IsMutable
+        requestsExclusiveAlias
             ? "next_mut"
             : (fe->IsReference ? "next_ref" : "next");
     std::string nextFnName =
@@ -5801,7 +5841,12 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       // (Capture) This matches genFunction ABI where they are treated as
       // Captured Arguments. This allows the Callee to manipulate the Handle
       // (e.g. invalidating it on Move or rebinding it).
-      if (isArgUnique || isArgShared || arg.IsRebindable ||
+      // A cede unique parameter receives the moved heap handle value.  Only
+      // non-consuming unique parameters capture the caller's handle slot.
+      // Keeping both behind the same opaque-pointer ABI shape would make the
+      // callee interpret either payload bytes as a pointer or a handle value
+      // as a slot address.
+      if ((isArgUnique && !arg.IsCeded) || isArgShared || arg.IsRebindable ||
           capturesMorphicHandleIdentity) {
         isCaptured = true;
       }
@@ -7058,7 +7103,11 @@ PhysEntity CodeGen::genContinueExpr(const ContinueExpr *ce) {
 }
 
 PhysEntity CodeGen::genUnsafeExpr(const UnsafeExpr *ue) {
-  return genExpr(ue->Expression.get());
+  bool oldUnsafe = m_InUnsafeContext;
+  m_InUnsafeContext = true;
+  PhysEntity result = genExpr(ue->Expression.get());
+  m_InUnsafeContext = oldUnsafe;
+  return result;
 }
 
 PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {

@@ -768,7 +768,11 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
 }
 
 llvm::Value *CodeGen::genUnsafeStmt(const UnsafeStmt *us) {
-  return genStmt(us->Statement.get());
+  bool oldUnsafe = m_InUnsafeContext;
+  m_InUnsafeContext = true;
+  llvm::Value *result = genStmt(us->Statement.get());
+  m_InUnsafeContext = oldUnsafe;
+  return result;
 }
 
 llvm::Value *CodeGen::genExprStmt(const ExprStmt *es) {

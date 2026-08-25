@@ -31,6 +31,9 @@ declarations.
 - Place aliases pass a stable source identity to `iter`/`iter_mut`; value-like
   collections are never copied into a staging slot before the alias carrier
   is created.
+- Mutable carriers preserve exact element morphology rather than manufacturing
+  permission. Vec's `&'T` return uses explicit morphic identity to yield the
+  element slot; Sema separately proves pointee P and slot H.
 - PAL holds a shared source borrow for the implicit loop cursor. Borrowed loop
   variables inherit the source dependency, and the compiler releases only the
   borrow introduced for that loop.

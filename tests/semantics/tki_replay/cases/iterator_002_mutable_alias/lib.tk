@@ -2,8 +2,8 @@ import core/option::{Option}
 import core/traits::{@Encap, @Iterable, @Iterator, @MutableBorrowIterator}
 
 // EXPECT_TKI: impl UnsafeValuesMutCursor@MutableBorrowIterator
-// EXPECT_TKI: type BorrowedItem = &i32#
-// EXPECT_TKI: pub fn next_mut(self#: UnsafeValuesMutCursor) -> Option<&i32#> <- self
+// EXPECT_TKI: type BorrowedItem = &i32
+// EXPECT_TKI: pub fn next_mut(self#: UnsafeValuesMutCursor) -> Option<&i32> <- self
 
 pub shape Values(value#: i32)
 
@@ -50,7 +50,7 @@ impl Values {
 }
 
 impl UnsafeValuesMutCursor@MutableBorrowIterator {
-    type BorrowedItem = &i32#
+    type BorrowedItem = &i32
 
     pub fn next_mut(self#) -> Option<BorrowedItem> <- self {
         if self.done { return Option<BorrowedItem>::None }

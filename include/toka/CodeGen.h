@@ -173,6 +173,7 @@ private:
   std::string m_CurrentSelfType;
   std::map<std::string, llvm::Value *> m_NamedValues;
   bool m_InLHS = false;
+  bool m_InUnsafeContext = false;
   llvm::Value *m_CurrentCoroHandle = nullptr;
   llvm::Value *m_CurrentCoroPromise = nullptr;
   llvm::Value *m_CurrentCoroTCB = nullptr;

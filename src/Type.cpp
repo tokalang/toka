@@ -1190,6 +1190,19 @@ replacePointerPointee(const std::shared_ptr<Type> &pointer,
   return result;
 }
 
+std::shared_ptr<Type>
+applySoulAttributes(const std::shared_ptr<Type> &type, bool writable,
+                    bool blocked) {
+  if (!type)
+    return type;
+  if (type->isPointer()) {
+    auto pointee = applySoulAttributes(type->getPointeeType(), writable,
+                                       blocked);
+    return replacePointerPointee(type, pointee);
+  }
+  return type->withAttributes(writable, false, blocked);
+}
+
 bool isGeneratedCanonicalTypeLeaf(const std::string &name) {
   // TypeSyntax::named() is also used by the pre-existing generic-template
   // substitution cache.  That cache may hold a whole *generated semantic*
@@ -1781,9 +1794,13 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
         break;
     }
     auto pointee = Type::fromString(s.substr(offset));
-    // Duality: the outer suffixes stripped earlier belong to the soul
+    // Duality: suffixes following a complete handle chain belong to the
+    // deepest Soul, not merely to the immediately nested handle.  For
+    // example `&^T#` grants P on T, while `&^#T` grants H on the unique
+    // layer.  Preserve that distinction in this legacy string bridge just as
+    // the structural TypeSyntax path already does.
     if (isWritable || isBlocked) {
-      pointee = pointee->withAttributes(isWritable, false, isBlocked);
+      pointee = applySoulAttributes(pointee, isWritable, isBlocked);
     }
 
     std::shared_ptr<PointerType> ptr;

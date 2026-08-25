@@ -824,7 +824,10 @@ the original element place already has that capability. Alias never amplifies
 authority and container writability never crosses a handle boundary. A
 writable non-array alias uses `iter_mut` plus
 `@MutableBorrowIterator::next_mut`; both the source-backed and TKI-imported
-signatures must retain `<- self`.
+signatures must retain `<- self`. The carrier's `BorrowedItem` preserves the
+element's exact morphology and does not add authority itself. For example,
+Vec's generic carrier returns `&'T`: `^T#` can supply pointee P, while a
+writable Vec slot can supply H for `^#x`; these are checked independently.
 
 Value iteration does not implicitly cede the collection or its elements. Its
 ownership behavior is exactly the declared `Item` returned by `next`, and the

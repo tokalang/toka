@@ -1,0 +1,13 @@
+// EXPECT: error[E04645]
+import std/vec::Vec
+
+shape Cell(value: i32)
+
+fn main() -> i32 {
+    auto owners = Vec<^Cell>::new()
+    for alias ^#x in owners {
+        auto ^replacement = new Cell(value = 2)
+        ^x = ^replacement
+    }
+    return 0
+}

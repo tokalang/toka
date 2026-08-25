@@ -455,16 +455,16 @@ impl<'T> VecMutIterator<'T>@Encap { fn drop(self#) {} }
 
 impl<'T> VecMutIterator<'T>@MutableBorrowIterator
 where:
-    'T: morphology soul_only
+    'T: morphology borrow_extendable
 {
-    type BorrowedItem = &'T#
+    type BorrowedItem = &'T
 
     pub fn next_mut(self#) -> Option<BorrowedItem> <- self {
         if self.pos >= self.len { return Option<BorrowedItem>::None }
         auto index = self.pos
         self.pos += 1
         unsafe {
-            return Option<BorrowedItem>::Some(&self.buf[index])
+            return Option<BorrowedItem>::Some(&'(self.buf[index]))
         }
     }
 }

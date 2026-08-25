@@ -655,13 +655,11 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       // callee owns the heap handle, not the caller's temporary handle slot.
       llvm::AllocaInst *alloca =
           createEntryBlockAlloca(pTy, nullptr, argName + ".addr");
-      if (arg.getType()->isPointerTy()) {
-        llvm::Value *loadedHeapPtr =
-            m_Builder.CreateLoad(pTy, &arg, argName + ".moved_handle");
-        m_Builder.CreateStore(loadedHeapPtr, alloca);
-      } else {
-        m_Builder.CreateStore(&arg, alloca);
-      }
+      // The LLVM parameter already is the moved heap handle value.  `&arg`
+      // is an llvm::Argument object, not an address passed by the caller;
+      // loading through it interprets the pointee payload bytes as a second
+      // pointer and corrupts every generic `cede ^T` parameter.
+      m_Builder.CreateStore(&arg, alloca);
       finalStorage = alloca;
       isOwnedParam = true;
       storesMovedUniqueHandleDirectly = true;

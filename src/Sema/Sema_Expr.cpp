@@ -3210,8 +3210,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     } else {
         // 2. Iterator Protocol Method Lookup
         std::string baseSoulType = toka::Type::stripMorphology(soulType);
+        const bool requestsExclusiveAlias =
+            fe->IsPlaceAlias &&
+            (fe->IsMutable || fe->Permission.IdentityRebindable);
         const std::string iterMethod =
-            fe->IsPlaceAlias && fe->IsMutable ? "iter_mut" : "iter";
+            requestsExclusiveAlias ? "iter_mut" : "iter";
         if (!MethodMap.count(baseSoulType) || !MethodMap[baseSoulType].count(iterMethod)) {
             error(fe->Collection.get(), DiagID::ERR_SEMA_TYPE_DOES_NOT_IMPLEMENT_ITERATOR_PROTOCOL, soulType);
             fullType = "i32";
@@ -3258,11 +3261,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 fullType = "i32";
             } else {
                 if (fe->IsPlaceAlias) {
+                    const bool requestsExclusiveAlias =
+                        fe->IsMutable ||
+                        fe->Permission.IdentityRebindable;
                     const std::string aliasNext =
-                        fe->IsMutable ? "next_mut" : "next_ref";
+                        requestsExclusiveAlias ? "next_mut" : "next_ref";
                     const std::string aliasFacet =
-                        fe->IsMutable ? "@MutableBorrowIterator"
-                                      : "@BorrowIterator";
+                        requestsExclusiveAlias ? "@MutableBorrowIterator"
+                                               : "@BorrowIterator";
                     std::string nextRefRet =
                         MethodMap[iterSoul].count(aliasNext)
                             ? MethodMap[iterSoul][aliasNext] : "";
@@ -3361,20 +3367,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!isArray && !fe->ResolvedNextFn)
         qualified = false;
       if (isHandleElement) {
-        if (!isArray) {
-          qualified = false;
-        } else {
-          if (fe->IsMutable) {
-            auto pointee = capabilityElement->getPointeeType();
-            if (!pointee || !pointee->IsWritable)
-              qualified = false;
-          }
-          if (fe->Permission.IdentityRebindable) {
-            auto sourceCapability =
-                getAccessCapability(fe->Collection.get(), true);
-            if (!sourceCapability.PayloadWritable)
-              qualified = false;
-          }
+        if (fe->IsMutable) {
+          auto pointee = capabilityElement->getPointeeType();
+          if (!pointee || !pointee->IsWritable)
+            qualified = false;
+        }
+        if (fe->Permission.IdentityRebindable) {
+          auto sourceCapability =
+              getAccessCapability(fe->Collection.get(), true);
+          if (!sourceCapability.PayloadWritable)
+            qualified = false;
         }
       } else {
         auto sourceCapability = getAccessCapability(fe->Collection.get(), true);
@@ -3428,6 +3430,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (fe->IsPlaceAlias && fe->Permission.IdentityRebindable && Info.TypeObj)
       Info.TypeObj = Info.TypeObj->withAttributes(
           true, Info.TypeObj->IsNullable, Info.TypeObj->IsBlocked);
+    if (fe->IsPlaceAlias && fe->IsMutable && Info.TypeObj)
+      Info.TypeObj = toka::Type::fromString(Info.TypeObj->toString() + "#");
     if (fe->IsPlaceAlias && Info.TypeObj) {
       auto soul = Info.TypeObj->getSoulType();
       auto written = soul ? toka::Type::fromString(

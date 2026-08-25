@@ -541,7 +541,8 @@ Primary references:
 - Interface replay requirements: `@Iterable::Iter`, `@Iterator::Item`,
   `@BorrowIterator::BorrowedItem`,
   `@MutableBorrowIterator::BorrowedItem`, method signatures, and dependencies
-  are exported together.
+  are exported together. Mutable `BorrowedItem` preserves exact element
+  morphology; its stable-place protocol does not itself grant H or P.
 - Replay tests: `tests/semantics/tki_replay/cases/iterator_001_protocol` covers
   value and borrowed loops plus a source-mutation rejection through both
   source-backed and source-less imports;

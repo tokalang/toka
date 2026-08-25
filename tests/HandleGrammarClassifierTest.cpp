@@ -144,6 +144,39 @@ bool checkTestCase(const TestCase &tc) {
     return true;
 }
 
+bool testNestedPermissionRoundTrip() {
+    auto payload = Type::fromString("&^i32#");
+    auto payloadInner = payload ? payload->getPointeeType() : nullptr;
+    auto payloadSoul = payloadInner ? payloadInner->getPointeeType() : nullptr;
+    if (!payload || !payloadInner || !payloadSoul || payload->IsWritable ||
+        payloadInner->IsWritable || !payloadSoul->IsWritable ||
+        payload->toString() != "&^i32#") {
+        std::cerr << "FAIL: &^i32# must preserve P on the deepest soul\n";
+        return false;
+    }
+
+    auto handle = Type::fromString("&^#i32");
+    auto handleInner = handle ? handle->getPointeeType() : nullptr;
+    auto handleSoul = handleInner ? handleInner->getPointeeType() : nullptr;
+    if (!handle || !handleInner || !handleSoul || handle->IsWritable ||
+        !handleInner->IsWritable || handleSoul->IsWritable ||
+        handle->toString() != "&^#i32") {
+        std::cerr << "FAIL: &^#i32 must preserve H on the inner handle\n";
+        return false;
+    }
+
+    auto both = Type::fromString("&^#i32#");
+    auto bothInner = both ? both->getPointeeType() : nullptr;
+    auto bothSoul = bothInner ? bothInner->getPointeeType() : nullptr;
+    if (!both || !bothInner || !bothSoul || both->IsWritable ||
+        !bothInner->IsWritable || !bothSoul->IsWritable ||
+        both->toString() != "&^#i32#") {
+        std::cerr << "FAIL: &^#i32# must preserve independent H and P\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -269,8 +302,11 @@ int main() {
     if (testSemaLocalDeductions()) {
         passed++;
     }
+    if (testNestedPermissionRoundTrip()) {
+        passed++;
+    }
 
-    size_t totalTests = testCases.size() + recursiveCases.size() + 1;
+    size_t totalTests = testCases.size() + recursiveCases.size() + 2;
     std::cout << "HandleGrammarClassifierTest: " << passed << "/" << totalTests << " test cases passed.\n";
     return (passed == totalTests) ? 0 : 1;
 }

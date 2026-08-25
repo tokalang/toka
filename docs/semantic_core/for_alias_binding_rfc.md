@@ -1,10 +1,9 @@
 # For Alias Binding Contract
 
 **Status:** Core read/write semantics frozen. Shared/read aliases are qualified
-for stable `@BorrowIterator` element places. Writable Soul aliases are
-qualified for fixed arrays and Soul-only `Vec<T>` mutable carriers; fixed-array
-handle H/P aliases are qualified independently. General local alias bindings
-and mutable container carriers for handle elements remain deferred.
+for stable `@BorrowIterator` element places. Writable Soul and legal managed
+handle aliases are qualified for fixed arrays and `Vec<T>` mutable carriers.
+General local alias bindings remain deferred.
 
 `for auto` remains source-compatible and always creates a first-class Item
 value. That value may itself have handle morphology such as `&T` or `&&T`.
@@ -57,17 +56,19 @@ pointee-payload authority. Interior mutability and shape inheritance therefore
 apply exactly as they do through the original place. Shared aliases establish
 shared PAL loans; any requested write/rebind establishes an exclusive loan for
 the loop lifetime. `alias x#` is qualified over writable fixed-array element
-places and Soul-only `Vec<T>` elements through the separate `iter_mut` /
+places and `Vec<T>` elements through the separate `iter_mut` /
 `@MutableBorrowIterator::next_mut` stable-place carrier. For fixed-array handle
 elements, `alias ^x#` requires P on the element's pointee view, while
 `alias ^#x` requires H on the containing element slot; neither request creates
-the capability it asks for. Read-only sources, unqualified H/P requests, and
-containers without a matching stable-place carrier fail closed with E04645.
-General local `alias view = place`, mutable container carriers for handle
-elements, and consuming `for auto ^x` remain separate work.
+the capability it asks for. Vec uses the same split: the carrier returns
+`&'T`, preserving exact element morphology without adding `#`; P comes only
+from the element's existing pointee type, while H comes only from a writable
+Vec element slot. Read-only sources, unqualified H/P requests, and containers
+without a matching stable-place carrier fail closed with E04645. General local
+`alias view = place` and consuming `for auto ^x` remain separate work.
 
 The parser preserves handle-layer permission requests separately from payload
 `#`, so `alias ^x#` and `alias ^#x` cannot collapse into one case. Fixed arrays
-now qualify these distinct P/H paths directly. Generic mutable iterators must
-provide equally distinct carriers before handle-element aliases can be
-admitted; they never fall back to the Soul-only mutable iterator.
+and Vec qualify these distinct P/H requests independently. Vec's generic
+carrier uses morphic identity (`&'(...)`) to return the address of the exact
+element slot; it never infers handle identity from LLVM pointer shape.

@@ -8,7 +8,7 @@ shape MutableCursor(
 )
 
 impl MutableCursor@MutableBorrowIterator {
-    type BorrowedItem = &i32#
+    type BorrowedItem = &i32
 
     pub fn next_mut(self#) -> Option<BorrowedItem> {
         if self.done { return Option<BorrowedItem>::None }
