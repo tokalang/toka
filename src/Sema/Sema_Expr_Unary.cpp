@@ -273,7 +273,8 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
       }
 
       if (Unary->Op == TokenType::Caret) {
-        if (!m_InLHS && !m_BorrowingSelectedHandle) {
+        if (!m_InLHS && !m_BorrowingSelectedHandle &&
+            !(m_SuppressRejectedAliasInvalidation && Info->IsPlaceAlias)) {
           std::string pathToBorrow = getPathString(Unary->RHS.get());
           if (!pathToBorrow.empty()) {
              auto conflict = PALCheckerState.verifyInvalidation(

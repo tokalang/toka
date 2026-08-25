@@ -178,6 +178,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     SuffixGuard(bool &f, bool newVal) : flag(f), oldVal(f) { flag = newVal; }
     ~SuffixGuard() { flag = oldVal; }
   } suffixGuard(m_AllowPermissionSuffix, false);
+  SuffixGuard aliasInvalidationGuard(m_SuppressRejectedAliasInvalidation,
+                                     m_SuppressRejectedAliasInvalidation);
 
   bool isAssign = (Bin->Op == "=" || Bin->Op == "+=" || Bin->Op == "-=" ||
                    Bin->Op == "*=" || Bin->Op == "/=" || Bin->Op == "%=");
@@ -232,6 +234,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       transferSource = unary->RHS.get();
     }
     if (transferSource) {
+      if (!dynamic_cast<CedeExpr *>(Bin->RHS.get()) &&
+          diagnosePlaceAliasOwnershipTransfer(Bin, transferSource))
+        m_SuppressRejectedAliasInvalidation = true;
       const AccessPath destination =
           canonicalizeAccessPath(makeAccessPath(Bin->LHS.get()));
       const AccessPath source =
@@ -515,7 +520,10 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       std::string actualRHSName = RHSVar->Name;
       if (CurrentScope->findVariableWithDeref(RHSVar->Name, RHSInfoPtr, actualRHSName) &&
           RHSInfoPtr->IsUnique()) {
-        if (RHSInfoPtr->IsFunctionParameter && !RHSInfoPtr->IsCeded) {
+        if (RHSInfoPtr->IsPlaceAlias) {
+          // The pre-check above already emitted E04646.  Do not let the
+          // rejected transfer invalidate the alias's source collection.
+        } else if (RHSInfoPtr->IsFunctionParameter && !RHSInfoPtr->IsCeded) {
           error(Bin, DiagID::ERR_SEMA_DIRECT_MOVE_NON_CEDE_PARAMETER,
                 actualRHSName);
         } else {

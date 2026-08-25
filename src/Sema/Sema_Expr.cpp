@@ -3654,7 +3654,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                           actualName);
     }
     if (cedeRootInfo && cedeRootInfo->IsPlaceAlias) {
-      error(ce, DiagID::ERR_SEMA_CANNOT_CEDE_PLACE_ALIAS,
+      error(ce, DiagID::ERR_SEMA_CANNOT_TRANSFER_PLACE_ALIAS,
             Type::stripMorphology(cedePath.RootName));
       cedingPlaceAlias = true;
       innerTy = ce->Value->ResolvedType ? ce->Value->ResolvedType
@@ -4529,9 +4529,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   std::string actualReceiverName;
                   if (CurrentScope->findVariableWithDeref(
                           var->Name, receiverInfo, actualReceiverName) &&
-                      receiverInfo && receiverInfo->IsFunctionParameter &&
-                      !receiverInfo->IsCeded && receiverInfo->TypeObj &&
-                      !proveSlice4CopyType(receiverInfo->TypeObj)) {
+                      receiverInfo && receiverInfo->IsPlaceAlias) {
+                    error(Met->Object.get(),
+                          DiagID::ERR_SEMA_CANNOT_TRANSFER_PLACE_ALIAS,
+                          var->Name);
+                  } else if (receiverInfo &&
+                             receiverInfo->IsFunctionParameter &&
+                             !receiverInfo->IsCeded && receiverInfo->TypeObj &&
+                             !proveSlice4CopyType(receiverInfo->TypeObj)) {
                     error(Met->Object.get(),
                           DiagID::ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER,
                           var->Name);

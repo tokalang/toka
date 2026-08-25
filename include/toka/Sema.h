@@ -605,6 +605,10 @@ private:
   bool m_IsMemberBase =
       false; // [NEW] Track if we are checking the base of a member access
   bool m_IsConsumingEffect = false; // [NEW] Track if current eval context consumes async/wait effects
+  // A precise E04646 has already rejected this ownership transfer.  Keep
+  // unary handle selection type-checking for recovery without also reporting
+  // the less specific PAL invalidation conflict for the same alias.
+  bool m_SuppressRejectedAliasInvalidation = false;
   bool m_IsStartingTask = false; // Enforce the strict detached-task boundary.
 
   bool m_AllowPermissionSuffix = false; // [NEW] Track explicit method call context
@@ -689,6 +693,7 @@ private:
   AccessPath makeAccessPath(Expr *E);
   AccessPath makeAccessPath(const std::string &Path);
   AccessPath canonicalizeAccessPath(const AccessPath &Path);
+  bool diagnosePlaceAliasOwnershipTransfer(ASTNode *Site, Expr *Source);
   bool returnTypeHasMember(FunctionDecl *Function,
                            const std::string &Member);
   std::string getDependencyPathString(Expr *E);

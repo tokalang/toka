@@ -1231,8 +1231,22 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
       checkStrictMorphology(Init, expectedMorph, providedMorph, pDefMember->Name);
     }
 
+    bool rejectedAliasField = false;
+    if (memberTypeObj && memberTypeObj->isUniquePtr() &&
+        !dynamic_cast<CedeExpr *>(pair.second.get())) {
+      Expr *transferSource = pair.second.get();
+      while (auto *cast = dynamic_cast<CastExpr *>(transferSource))
+        transferSource = cast->Expression.get();
+      if (auto *unary = dynamic_cast<UnaryExpr *>(transferSource);
+          unary && unary->Op == TokenType::Caret)
+        rejectedAliasField = diagnosePlaceAliasOwnershipTransfer(
+            pair.second.get(), unary->RHS.get());
+    }
+    bool oldSuppressAliasInvalidation = m_SuppressRejectedAliasInvalidation;
+    m_SuppressRejectedAliasInvalidation = rejectedAliasField;
     std::shared_ptr<toka::Type> exprTypeObj =
         checkExpr(pair.second.get(), memberTypeObj);
+    m_SuppressRejectedAliasInvalidation = oldSuppressAliasInvalidation;
     memberMasks[pair.first] = m_LastInitMask;
 
     // Named field initialization is an ownership boundary just like a `cede`

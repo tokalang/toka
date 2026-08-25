@@ -1,0 +1,12 @@
+// EXPECT: error[E04646]
+shape Cell(value: i32)
+shape Holder(^cell: Cell)
+
+fn main() -> i32 {
+    auto ^first = new Cell(value = 1)
+    auto owners# = [cede ^first]
+    for alias ^x in owners {
+        auto holder = Holder(^cell = ^x)
+    }
+    return 0
+}

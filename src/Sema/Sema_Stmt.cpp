@@ -627,9 +627,25 @@ void Sema::checkStmt(Stmt *S) {
                                                     ? functionOutcome->PayloadType
                                                     : toka::Type::fromString(
                                                           CurrentFunctionReturnType);
+      auto resolvedReturnExpectation = resolveType(returnExpectation);
+      bool rejectedAliasReturn = false;
+      if (resolvedReturnExpectation &&
+          resolvedReturnExpectation->isUniquePtr()) {
+        Expr *transferSource = Ret->ReturnValue.get();
+        while (auto *cast = dynamic_cast<CastExpr *>(transferSource))
+          transferSource = cast->Expression.get();
+        if (auto *unary = dynamic_cast<UnaryExpr *>(transferSource);
+            unary && unary->Op == TokenType::Caret)
+          rejectedAliasReturn = diagnosePlaceAliasOwnershipTransfer(
+              Ret->ReturnValue.get(), unary->RHS.get());
+      }
+      bool oldSuppressAliasInvalidation =
+          m_SuppressRejectedAliasInvalidation;
+      m_SuppressRejectedAliasInvalidation = rejectedAliasReturn;
       m_ControlFlowStack.push_back(
           {"", CurrentFunctionReturnType, nullptr, false, true});
       auto RetTypeObj = checkExpr(Ret->ReturnValue.get(), returnExpectation);
+      m_SuppressRejectedAliasInvalidation = oldSuppressAliasInvalidation;
       ExprTypeObj = RetTypeObj;
       ExprType = RetTypeObj->toString();
       m_ControlFlowStack.pop_back();
@@ -638,7 +654,6 @@ void Sema::checkStmt(Stmt *S) {
       // Unlike an ordinary `^param` capture, a cede parameter is authorized to
       // cross this ownership boundary; the direct move also discharges its
       // consumption obligation without a redundant `return cede ^param`.
-      auto resolvedReturnExpectation = resolveType(returnExpectation);
       if (resolvedReturnExpectation &&
           resolvedReturnExpectation->isUniquePtr()) {
         Expr *moveSource = Ret->ReturnValue.get();
@@ -1458,7 +1473,21 @@ void Sema::checkStmt(Stmt *S) {
       m_LastBorrowSource = ""; // [NEW] Clear stale borrow source
       bool oldConsuming = m_IsConsumingEffect;
       m_IsConsumingEffect = true;
+      bool rejectedAliasInit = false;
+      if (Var->IsUnique || (declTargetTy && declTargetTy->isUniquePtr())) {
+        Expr *transferSource = Var->Init.get();
+        while (auto *cast = dynamic_cast<CastExpr *>(transferSource))
+          transferSource = cast->Expression.get();
+        if (auto *unary = dynamic_cast<UnaryExpr *>(transferSource);
+            unary && unary->Op == TokenType::Caret)
+          rejectedAliasInit =
+              diagnosePlaceAliasOwnershipTransfer(Var, unary->RHS.get());
+      }
+      bool oldSuppressAliasInvalidation =
+          m_SuppressRejectedAliasInvalidation;
+      m_SuppressRejectedAliasInvalidation = rejectedAliasInit;
       InitTypeObj = checkExpr(Var->Init.get(), declTargetTy);
+      m_SuppressRejectedAliasInvalidation = oldSuppressAliasInvalidation;
       m_IsConsumingEffect = oldConsuming;
       m_ExpectedWritability = oldExpectedWritability;
       InitType = InitTypeObj->toString();

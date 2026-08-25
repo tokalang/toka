@@ -31,10 +31,12 @@ Vec<~T>  -> for alias ~x
 ```
 
 An alias has no independent storage, ownership root, or drop obligation. It
-cannot escape, be stored, or be ceded, including through a projection rooted
-at the alias. Direct cede attempts fail with E04646. Its PAL loan is anchored
-to the source collection/element place and blocks invalidating mutation for
-the loop lifetime. The initial slice uses `@BorrowIterator` as the internal
+cannot escape, be stored as an owner, or be consumed, including through a
+projection rooted at the alias. Explicit `cede` and intrinsic unique value
+moves (`auto ^y = ^x`, `return ^x`, handle assignment, and owning-field
+initialization) all fail with E04646. Its PAL loan is anchored to the source
+collection/element place and blocks invalidating mutation for the loop
+lifetime. The initial slice uses `@BorrowIterator` as the internal
 stable-address carrier; iterators without such a carrier reject `for alias`.
 
 Permission intent is written only on the alias pattern; the source expression

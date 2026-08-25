@@ -140,6 +140,26 @@ AccessPath Sema::makeAccessPath(const std::string &Path) {
   return result;
 }
 
+bool Sema::diagnosePlaceAliasOwnershipTransfer(ASTNode *site, Expr *source) {
+  AccessPath path = makeAccessPath(source);
+  if (!path)
+    return false;
+
+  SymbolInfo *info = nullptr;
+  if (path.RootID != 0)
+    CurrentScope->findSymbolByID(path.RootID, info);
+  if (!info && !path.RootName.empty()) {
+    std::string actualName;
+    CurrentScope->findVariableWithDeref(path.RootName, info, actualName);
+  }
+  if (!info || !info->IsPlaceAlias)
+    return false;
+
+  error(site, DiagID::ERR_SEMA_CANNOT_TRANSFER_PLACE_ALIAS,
+        Type::stripMorphology(path.RootName));
+  return true;
+}
+
 AccessPath Sema::canonicalizeAccessPath(const AccessPath &Path) {
   if (!Path || !CurrentScope)
     return Path;
