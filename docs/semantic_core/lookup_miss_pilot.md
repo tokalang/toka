@@ -51,7 +51,9 @@ preserve the stored value's admitted morphology.
 - BTreeMap was deliberately rejected as a borrowed-lookup candidate. Its nodes
   are connected through raw `Addr` values, so a local `*BTreeNode` cannot prove
   that a returned `&V` is rooted in the map; E0455 correctly rejects the escape.
-  An unsafe cast would hide the provenance break rather than repair it.
+  An unsafe cast would hide the provenance break rather than repair it. Its
+  existing by-value `get` is therefore restricted to `V: @Dup` and performs an
+  explicit `dup`; it is not a substitute for a future provenance-safe borrow.
 
 ## Decision after the bounded pilots
 

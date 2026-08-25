@@ -1,0 +1,78 @@
+import std/btreemap::BTreeMap
+import std/ring::RingCore
+import std/deque::VecDeque
+import core/primitives
+import core/traits::@Dup
+
+auto g_drops# = 0
+auto g_dups# = 0
+
+shape Resource(id: i32)
+
+impl Resource@Encap {
+    fn drop(self#) {
+        g_drops += 1
+    }
+}
+
+impl Resource@Dup {
+    pub fn dup(self) -> Resource {
+        g_dups += 1
+        return Resource(id = self.id)
+    }
+}
+
+fn check_btreemap() {
+    g_drops = 0
+    g_dups = 0
+    {
+        auto map# = BTreeMap<i32, Resource>::new()
+        map#.insert(1, cede Resource(id = 1))
+        {
+            auto found = map.get(1)
+            assert(found.is_some(), "BTreeMap get missed stored resource")
+            assert(g_dups == 1, "BTreeMap get must call dup exactly once")
+        }
+        assert(g_drops == 1, "BTreeMap duplicate must drop exactly once")
+    }
+    assert(g_drops == 2, "BTreeMap stored resource must drop exactly once")
+}
+
+fn check_ring() {
+    g_drops = 0
+    g_dups = 0
+    {
+        auto ring# = RingCore<Resource>::new()
+        ring#.push_back(cede Resource(id = 2))
+        {
+            auto found = ring.get(0:usize)
+            assert(found.is_some(), "RingCore get missed stored resource")
+            assert(g_dups == 1, "RingCore get must call dup exactly once")
+        }
+        assert(g_drops == 1, "RingCore duplicate must drop exactly once")
+    }
+    assert(g_drops == 2, "RingCore stored resource must drop exactly once")
+}
+
+fn check_deque() {
+    g_drops = 0
+    g_dups = 0
+    {
+        auto deque# = VecDeque<Resource>::new()
+        deque#.push_back(cede Resource(id = 3))
+        {
+            auto found = deque.get(0:usize)
+            assert(found.is_some(), "VecDeque get missed stored resource")
+            assert(g_dups == 1, "VecDeque get must call dup exactly once")
+        }
+        assert(g_drops == 1, "VecDeque duplicate must drop exactly once")
+    }
+    assert(g_drops == 2, "VecDeque stored resource must drop exactly once")
+}
+
+fn main() -> i32 {
+    check_btreemap()
+    check_ring()
+    check_deque()
+    return 0
+}

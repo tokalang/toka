@@ -1,5 +1,5 @@
 import core/types::{usize}
-import core/traits::{@Encap}
+import core/traits::{@Encap, @Dup}
 import core/option::{Option}
 import std/vec::{Vec}
 
@@ -19,6 +19,12 @@ impl SlabID {
 
     pub fn generation(self) -> usize {
         return (self.raw >> 32:u64) as usize
+    }
+}
+
+impl SlabID@Dup {
+    pub fn dup(self) -> SlabID {
+        return self.clone()
     }
 }
 

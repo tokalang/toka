@@ -1,0 +1,13 @@
+import std/btreemap::BTreeMap
+import core/primitives
+
+shape Resource(id: i32)
+impl Resource@Encap { fn drop(self#) {} }
+
+// EXPECT: error[E0417]
+fn main() -> i32 {
+    auto map# = BTreeMap<i32, Resource>::new()
+    map#.insert(1, cede Resource(id = 1))
+    auto found = map.get(1)
+    return 0
+}

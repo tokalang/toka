@@ -289,22 +289,28 @@ Primary references:
 ### OWN-RESOURCE-001: Resource values cannot be silently copied
 
 - Status: Core guarantee
-- Source form: copy capture, naked destructuring, spread, or implicit deref of
-  a resource-bearing value
+- Source form: copy capture, naked destructuring, spread, implicit deref, or a
+  by-value container `get` of a resource-bearing value
 - Operation class: resource-copy prevention
-- Decision: resource duplication requires explicit `clone`, explicit borrow, or
-  explicit transfer, depending on the form.
+- Decision: resource duplication requires explicit `clone`/`dup`, explicit
+  borrow, or explicit transfer, depending on the form. A by-value container
+  `get` exists only for `@Dup` elements and calls `dup`; move-only elements
+  cannot acquire that member.
 - Rationale: silent bitwise copies can duplicate ownership and cause double
   drop.
 - Primary diagnostics: `E0468`, `E0554`, `E04581`, `E04535`
 - Implementation areas: `src/Sema/Sema_Expr_Closure.cpp`,
   `src/Sema/Sema_Expr_Init.cpp`, `src/Sema/Sema_Expr_Member.cpp`
 - Positive tests: `tests/pass/g08_explicit_clone_verified.tk`,
+  `tests/pass/g07_container_get_dup_lifecycle.tk`,
   `tests/pass/g04_destruct_match_ideal.tk`,
   `tests/pass/g07_implicit_borrow_match.tk`
 - Negative tests: `tests/fail/destruct_resource_copy.tk`,
   `tests/fail/closure_copy_capture_resource.tk`,
-  `tests/fail/spread_resource_no_cede.tk`
+  `tests/fail/spread_resource_no_cede.tk`,
+  `tests/fail/btreemap_get_non_dup_resource.tk`,
+  `tests/fail/ring_get_non_dup_resource.tk`,
+  `tests/fail/deque_get_non_dup_resource.tk`
 - Interface replay requirements: shape resource facts, drop/clone facts, and
   field morphology must remain compiler-visible.
 - Replay tests: `tests/semantics/tki_replay/cases/own_resource_001_private_field`

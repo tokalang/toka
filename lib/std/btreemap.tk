@@ -1,5 +1,5 @@
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@PartialOrd, @PartialEq, @Encap}
+import core/traits::{@PartialOrd, @PartialEq, @Encap, @Dup}
 import core/option::{Option, Option}
 
 pub fn addr_is_null(a: Addr) -> bool {
@@ -189,7 +189,7 @@ pub shape BTreeMap<'K: @PartialOrd, 'V> (
     len#: usize = 0
 )
 
-pub fn btree_node_get<'K: @PartialOrd, 'V>(node_addr: Addr, 'key: K) -> Option<'V> {
+pub fn btree_node_get<'K: @PartialOrd, 'V: @Dup>(node_addr: Addr, 'key: K) -> Option<'V> {
     unsafe {
         auto current_addr# = node_addr
         loop true {
@@ -200,8 +200,7 @@ pub fn btree_node_get<'K: @PartialOrd, 'V>(node_addr: Addr, 'key: K) -> Option<'
                 auto k_ptr = n.keys[i]
                 auto cmp_res = 'key.cmp(k_ptr)
                 if cmp_res == 0 {
-                    auto v_ptr = n.vals[i]
-                    return Option<'V>::Some(v_ptr)
+                    return Option<'V>::Some(n.vals[i].dup())
                 }
                 if cmp_res < 0 {
                     break
@@ -214,6 +213,26 @@ pub fn btree_node_get<'K: @PartialOrd, 'V>(node_addr: Addr, 'key: K) -> Option<'
             current_addr = n.children[i]
         }
         return Option<'V>::None
+    }
+}
+
+pub fn btree_node_contains<'K: @PartialOrd, 'V>(node_addr: Addr, 'key: K) -> bool {
+    unsafe {
+        auto current_addr# = node_addr
+        loop true {
+            if addr_is_null(current_addr) { return false }
+            auto *n# = current_addr as *BTreeNode<'K, 'V>
+            auto i# = 0:usize
+            loop i < n.len {
+                auto cmp_res = 'key.cmp(n.keys[i])
+                if cmp_res == 0 { return true }
+                if cmp_res < 0 { break }
+                i += 1
+            }
+            if n.is_leaf { return false }
+            current_addr = n.children[i]
+        }
+        return false
     }
 }
 
@@ -275,10 +294,15 @@ impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V> {
             }
         }
     }
+    pub fn contains_key(self, 'key: K) -> bool {
+        return btree_node_contains<'K, 'V>(self.root_addr, 'key)
+    }
+}
+
+impl<'K: @PartialOrd, 'V: @Dup> BTreeMap<'K, 'V> {
+    /// Duplicates the stored value. Move-only values intentionally have no
+    /// by-value get surface; use a container-specific borrow or removal API.
     pub fn get(self, 'key: K) -> Option<'V> {
         return btree_node_get<'K, 'V>(self.root_addr, 'key)
-    }
-    pub fn contains_key(self, 'key: K) -> bool {
-        return self.get('key).is_some()
     }
 }

@@ -2,6 +2,7 @@ import std/io::{println, File}
 import std/fs::{Metadata, metadata}
 import std/btreemap::{BTreeMap}
 import core/option::{Option}
+import core/traits::{@Dup}
 
 pub shape FileInfo (
     mtime: i64,
@@ -69,6 +70,17 @@ pub shape FileState (
     artifact_path: string
 )
 
+impl FileState@Dup {
+    pub fn dup(self) -> FileState {
+        return FileState(
+            path = self.path.clone(),
+            mtime = self.mtime,
+            size = self.size,
+            artifact_path = self.artifact_path.clone()
+        )
+    }
+}
+
 pub shape CacheStore (
     states#: BTreeMap<string, FileState> = BTreeMap<string, FileState>::new(),
     cache_path: string
@@ -109,7 +121,7 @@ impl CacheStore {
                         path = path.clone(),
                         mtime = parse_i64(mtime_str),
                         size = parse_u64(size_str),
-                        artifact_path = artifact
+                        artifact_path = cede artifact
                     )
                     store.states#.insert(cede path, cede state)
                 }

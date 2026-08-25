@@ -1,0 +1,12 @@
+import std/deque::VecDeque
+
+shape Resource(id: i32)
+impl Resource@Encap { fn drop(self#) {} }
+
+// EXPECT: error[E0417]
+fn main() -> i32 {
+    auto deque# = VecDeque<Resource>::new()
+    deque#.push_back(cede Resource(id = 1))
+    auto found = deque.get(0:usize)
+    return 0
+}

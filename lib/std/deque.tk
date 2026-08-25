@@ -1,6 +1,6 @@
 import std/ring::{RingCore}
 import core/option::{Option}
-import core/traits::{@Encap}
+import core/traits::{@Encap, @Dup}
 import core/types::{usize}
 
 pub shape VecDeque<'T> (
@@ -40,6 +40,10 @@ impl<'T> VecDeque<'T> {
         return self.ring#.pop_front()
     }
 
+}
+
+impl<'T: @Dup> VecDeque<'T> {
+    /// Duplicates an element without removing it.
     pub fn get(self, index: usize) -> Option<'T> {
         return self.ring.get(index)
     }
