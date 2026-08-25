@@ -310,7 +310,8 @@ def main():
         ("semantic_replay", (
             ["tools/scripts/test_semantic_replay.sh"],
             [sys.executable, "tools/scripts/audit_handle_grammar.py",
-             "--quick", "--tokac", env["TOKAC"]],
+             "--quick", "--tokac", env["TOKAC"],
+             "--build-dir", str(build_dir)],
             ["bash", "tools/scripts/test_outcome_body_recheck.sh"],
             ["bash", "tools/scripts/test_semantic_manifest_build_profile.sh"],
             ["bash", "tools/scripts/test_semantic_manifest_attestation.sh"],

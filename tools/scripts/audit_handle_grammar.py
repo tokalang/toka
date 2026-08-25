@@ -3,7 +3,7 @@
 # Licensed under the Apache License, Version 2.0.
 """
 Handle Grammar Morphic Audit Tool & Receipt Aggregator
-Schema Version: 1.0.0
+Schema Version: 2.1.0
 """
 
 import os
@@ -14,13 +14,87 @@ import json
 import time
 import argparse
 import datetime
+import hashlib
+from pathlib import Path
 from collections import defaultdict
 
-SCHEMA_VERSION = "2.0.0"
+SCHEMA_VERSION = "2.1.0"
 
 import concurrent.futures
 
-def run_quick_scan(tokac_bin, run_dir, scratch_dir):
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def resolve_build_dir(tokac_bin, requested):
+    if requested:
+        build_dir = Path(requested).resolve()
+    else:
+        tokac_path = Path(tokac_bin).resolve()
+        if tokac_path.parent.name != "bin":
+            raise RuntimeError(
+                "Cannot derive the configured build directory from --tokac; "
+                "pass --build-dir explicitly"
+            )
+        build_dir = tokac_path.parent.parent
+    if not (build_dir / "CTestTestfile.cmake").is_file():
+        raise RuntimeError(
+            f"Configured build directory has no CTestTestfile.cmake: {build_dir}"
+        )
+    return str(build_dir)
+
+
+def ctest_build_provenance(build_dir):
+    shown = subprocess.run(
+        ["ctest", "--show-only=json-v1", "--test-dir", build_dir],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if shown.returncode != 0:
+        raise RuntimeError(
+            f"Unable to enumerate CTest binaries for {build_dir}: "
+            f"{shown.stderr.strip()}"
+        )
+    data = json.loads(shown.stdout)
+    executables = {}
+    for test in data.get("tests", []):
+        command = test.get("command", [])
+        if not command:
+            continue
+        executable = Path(command[0])
+        if not executable.is_absolute():
+            executable = (Path(build_dir) / executable).resolve()
+        if executable.is_file():
+            executables[str(executable)] = sha256_file(executable)
+
+    metadata = {}
+    cache = Path(build_dir) / "CMakeCache.txt"
+    if cache.is_file():
+        metadata[str(cache.resolve())] = sha256_file(cache)
+    configured_root = Path(build_dir).resolve()
+    for current, directories, files in os.walk(configured_root):
+        current_path = Path(current)
+        if current_path != configured_root and "CMakeCache.txt" in files:
+            directories[:] = []
+            continue
+        if "CTestTestfile.cmake" in files:
+            ctest_file = current_path / "CTestTestfile.cmake"
+            metadata[str(ctest_file.resolve())] = sha256_file(ctest_file)
+
+    return {
+        "build_dir": str(Path(build_dir).resolve()),
+        "ctest_test_count": len(data.get("tests", [])),
+        "test_executable_hashes": executables,
+        "build_metadata_hashes": metadata,
+    }
+
+
+def run_quick_scan(tokac_bin, build_dir, run_dir, scratch_dir, jobs=8):
     env = os.environ.copy()
     env["TOKAC"] = tokac_bin
     env["TOKA_HANDLE_GRAMMAR_AUDIT"] = "1"
@@ -29,9 +103,11 @@ def run_quick_scan(tokac_bin, run_dir, scratch_dir):
     print(f"=== [Handle Grammar Audit] Starting Quick Scan (Schema v{SCHEMA_VERSION}) ===", flush=True)
     print(f"Audit log directory: {run_dir}", flush=True)
 
-    ctest_dir = "build-debug" if os.path.exists("build-debug/CTestTestfile.cmake") else "build"
-
     quick_steps = [
+        ("Handle Grammar Classifier Build", [
+            "cmake", "--build", build_dir, "--target",
+            "toka_handle_grammar_classifier", "--parallel", str(jobs)
+        ]),
         ("Handle Grammar Pass Suite", [
             "python3", "tools/scripts/test_pass.py",
             "tests/pass/g08_level2_borrow_views.tk",
@@ -91,8 +167,13 @@ def run_quick_scan(tokac_bin, run_dir, scratch_dir):
             "tests/fail/place_outcome_associated_type_forbidden.tk",
             "tests/fail/place_outcome_cast_forbidden.tk",
             "tests/fail/place_outcome_impl_owner_forbidden.tk",
-            "tests/fail/place_outcome_reserved_declaration_forbidden.tk"
+            "tests/fail/place_outcome_reserved_declaration_forbidden.tk",
+            "tests/fail/generic_impl_unknown_nested_type.tk",
+            "tests/fail/generic_trait_unknown_nested_type.tk"
         ]),
+        ("Generic Signature Fail-Closed", [
+            "python3", "tools/scripts/test_generic_signature_fail_closed.py"
+        ], {"TOKAC": tokac_bin}),
         ("Handle Grammar TKI Replay", [
             "bash", "tools/scripts/test_semantic_replay.sh"
         ], {"TOKAC": tokac_bin, "CASE_ROOT": "tests/semantics/tki_replay/cases/handle_001_borrow_views"}),
@@ -106,7 +187,7 @@ def run_quick_scan(tokac_bin, run_dir, scratch_dir):
             "bash", "tools/scripts/test_place_iterator_security.sh"
         ], {"TOKAC": tokac_bin}),
         ("Handle Grammar Classifier CTest", [
-            "ctest", "--test-dir", ctest_dir, "-R", "toka_handle_grammar_classifier", "--output-on-failure"
+            "ctest", "--test-dir", build_dir, "-R", "toka_handle_grammar_classifier", "--output-on-failure"
         ])
     ]
 
@@ -126,7 +207,7 @@ def run_quick_scan(tokac_bin, run_dir, scratch_dir):
             print(f"  [FAIL] {name} failed with code {res.returncode}:\n{res.stdout}", flush=True)
             sys.exit(1)
 
-def run_full_scan(tokac_bin, run_dir, scratch_dir, jobs=8, check_only=True):
+def run_full_scan(tokac_bin, build_dir, run_dir, scratch_dir, jobs=8, check_only=True):
     env = os.environ.copy()
     env["TOKAC"] = tokac_bin
     env["TOKA_HANDLE_GRAMMAR_AUDIT"] = "1"
@@ -138,39 +219,76 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir, jobs=8, check_only=True):
     print(f"Parallel workers   : {jobs}", flush=True)
     print(f"Scan check-only    : {check_only}", flush=True)
 
-    # 1. Scan all repository .tk files
-    tk_files = []
-    for root, dirs, files in os.walk("."):
-        if any(p in root for p in ["build", "tmp", ".git"]):
-            continue
-        for f in files:
-            if f.endswith(".tk"):
-                tk_files.append(os.path.join(root, f))
+    suites_dir = os.path.join(run_dir, "suites")
+    os.makedirs(suites_dir, exist_ok=True)
+
+    print(f"Configured build dir: {build_dir}", flush=True)
+    build_cmd = ["cmake", "--build", build_dir, "--parallel", str(jobs)]
+    build_log_path = os.path.join(suites_dir, "configured_build.log")
+    build_started = time.time()
+    with open(build_log_path, "w", encoding="utf-8") as build_log:
+        build_result = subprocess.run(
+            build_cmd, env=env, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True
+        )
+        build_log.write(build_result.stdout)
+    build_duration = time.time() - build_started
+    if build_result.returncode != 0:
+        print(build_result.stdout, flush=True)
+        print("[FATAL] Configured build failed before repository scan.", flush=True)
+        sys.exit(1)
+
+    # 1. Scan every tracked repository .tk file. Using Git's exact tracked set
+    # avoids both build-tree pollution and accidental substring exclusions such
+    # as the legitimate lib/build/ package.
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.tk"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    if tracked.returncode != 0:
+        print(tracked.stderr.decode("utf-8", errors="replace"), flush=True)
+        print("[FATAL] Unable to enumerate tracked .tk files.", flush=True)
+        sys.exit(1)
+    tk_files = sorted(
+        path for path in tracked.stdout.decode("utf-8", errors="strict").split("\0")
+        if path
+    )
+    missing_tracked = [path for path in tk_files if not os.path.isfile(path)]
+    if missing_tracked:
+        print(
+            f"[FATAL] Tracked .tk coverage is incomplete; missing paths: "
+            f"{missing_tracked[:10]}", flush=True
+        )
+        sys.exit(1)
+    tracked_tk_digest = hashlib.sha256(
+        "\0".join(tk_files).encode("utf-8")
+    ).hexdigest()
 
     def is_expected_non_standalone(file_path):
+        normalized = "/" + file_path.replace("\\", "/").lstrip("./")
         # 1. Negative compile-fail / warn test suites
-        if "/tests/fail/" in file_path or "/tests/warn/" in file_path:
+        if "/tests/fail/" in normalized or "/tests/warn/" in normalized:
             return "Expected Compile-Fail Test"
         # 2. Conformance diagnostic compile-fail tests
-        if "/tests/conformance/diagnostics/" in file_path:
+        if "/tests/conformance/diagnostics/" in normalized:
             return "Conformance Diagnostic Compile-Fail Test"
         # 3. Tooling diagnostic tests
-        if "/tests/tooling/" in file_path:
+        if "/tests/tooling/" in normalized:
             return "Tooling Diagnostic Test"
         # 4. Multi-file semantic cache & replay fixtures (including fail_main fixtures)
-        if "/tests/semantics/" in file_path or "/tests/fixtures/" in file_path or "/tests/import_test/" in file_path or "/tests/runtime/" in file_path or "/tests/wasm/" in file_path:
+        if "/tests/semantics/" in normalized or "/tests/fixtures/" in normalized or "/tests/import_test/" in normalized or "/tests/runtime/" in normalized or "/tests/wasm/" in normalized:
             return "Multi-File Semantic / Integration Fixture"
         # 5. Foreign OS platform implementations (Linux/Wasi/Windows on macOS)
-        if any(p in file_path for p in ["lib/sys/linux/", "lib/sys/wasi/", "lib/sys/windows/"]):
+        if any(p in normalized for p in ["/lib/sys/linux/", "/lib/sys/wasi/", "/lib/sys/windows/"]):
             return "Foreign OS Platform Implementation"
         # 6. Multi-file tool packages with inter-file module dependencies
-        if file_path.startswith("./tools/") or file_path.startswith("tools/"):
+        if normalized.startswith("/tools/"):
             return "Multi-File Tool Package Submodule"
         # 7. Multi-file example packages with manifests
-        if file_path.startswith("./examples/") or file_path.startswith("examples/"):
+        if normalized.startswith("/examples/"):
             return "Multi-File Example Project Package"
         # 8. Non-standalone test submodules
-        if any(p in file_path for p in ["submodules/", "mod.tk", "_submodule.tk"]):
+        if any(p in normalized for p in ["submodules/", "mod.tk", "_submodule.tk"]):
             return "Non-Standalone Test Submodule"
         return None
 
@@ -232,24 +350,19 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir, jobs=8, check_only=True):
 
     # 2. Run All Test Suites with Strict Returncode Checking
     print("\nStep 2: Running verification and conformance suites with strict exit code validation...", flush=True)
-    suites_dir = os.path.join(run_dir, "suites")
-    os.makedirs(suites_dir, exist_ok=True)
-
-    ctest_dir = "build-debug" if os.path.exists("build-debug/CTestTestfile.cmake") else "build"
     suites = [
         ("Pass Suite (test_pass.py)", ["python3", "tools/scripts/test_pass.py"], "pass_suite.log"),
         ("Fail Suite (test_verify_fail.py)", ["python3", "tools/scripts/test_verify_fail.py"], "fail_suite.log"),
         ("Conformance Suite (run_conformance.py)", ["python3", "tools/run_conformance.py"], "conformance_suite.log"),
         ("Semantic Replay Suite (test_semantic_replay.sh)", ["bash", "tools/scripts/test_semantic_replay.sh"], "semantic_replay.log"),
         ("Place Iterator Security (test_place_iterator_security.sh)", ["bash", "tools/scripts/test_place_iterator_security.sh"], "place_iterator_security.log"),
+        ("Generic Signature Fail-Closed (test_generic_signature_fail_closed.py)", ["python3", "tools/scripts/test_generic_signature_fail_closed.py"], "generic_signature_fail_closed.log"),
         ("Verify Warn Suite (test_verify_warn.py)", ["python3", "tools/scripts/test_verify_warn.py"], "verify_warn.log"),
         ("TKI Cache Validation (test_tki_cache_validation.sh)", ["bash", "tools/scripts/test_tki_cache_validation.sh"], "tki_cache_validation.log"),
         ("Cache Invalidation (test_semantic_cache_invalidation.sh)", ["bash", "tools/scripts/test_semantic_cache_invalidation.sh"], "cache_invalidation.log"),
         ("Mixed Core Cache (test_mixed_core_cache.sh)", ["bash", "tools/scripts/test_mixed_core_cache.sh"], "mixed_core_cache.log"),
-        (f"CTest ({ctest_dir})", ["ctest", "--test-dir", ctest_dir, "--output-on-failure"], "ctest.log"),
+        (f"CTest ({build_dir})", ["ctest", "--test-dir", build_dir, "--output-on-failure"], "ctest.log"),
     ]
-
-    import hashlib
     def get_cmd_output(c):
         try:
             return subprocess.check_output(c, stderr=subprocess.STDOUT).decode("utf-8", errors="ignore").strip()
@@ -258,23 +371,51 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir, jobs=8, check_only=True):
 
     git_commit = get_cmd_output(["git", "rev-parse", "HEAD"])
     git_status = get_cmd_output(["git", "status", "--porcelain"])
+    compiler_path = os.path.realpath(tokac_bin)
+    if not os.path.isfile(compiler_path):
+        print(f"[FATAL] Compiler binary disappeared after build: {compiler_path}", flush=True)
+        sys.exit(1)
+    compiler_provenance = {
+        "binary_path": compiler_path,
+        "binary_sha256": sha256_file(compiler_path),
+    }
+    try:
+        build_provenance = ctest_build_provenance(build_dir)
+    except (RuntimeError, ValueError) as error:
+        print(f"[FATAL] {error}", flush=True)
+        sys.exit(1)
 
     suite_manifest = {
         "schema_version": SCHEMA_VERSION,
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "git_commit": git_commit,
         "git_status_summary": git_status,
+        "compiler": compiler_provenance,
+        "configured_build": build_provenance,
         "step1_scan": {
             "total_tk_files": len(tk_files),
+            "tracked_tk_files": len(tk_files),
+            "scanned_tk_files": len(tk_files),
+            "tracked_file_list_sha256": tracked_tk_digest,
+            "tracked_coverage_complete": True,
             "standalone_pass": standalone_pass,
             "expected_non_standalone": expected_total,
             "unexpected_failures": len(unexpected_failures),
             "category_breakdown": dict(category_counts),
         },
-        "step2_suites": []
+        "step2_suites": [{
+            "name": "Configured Build",
+            "cmd": build_cmd,
+            "returncode": build_result.returncode,
+            "status": "PASSED",
+            "duration_seconds": round(build_duration, 2),
+            "log_file": "configured_build.log",
+            "log_sha256": sha256_file(build_log_path),
+            "test_summary": "Configured build completed before scan and CTest",
+        }]
     }
 
-    suite_results = []
+    suite_results = [("Configured Build", "PASSED", build_result.returncode)]
     for name, cmd, log_name in suites:
         print(f"  Executing {name}...", flush=True)
         log_path = os.path.join(suites_dir, log_name)
@@ -296,6 +437,7 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir, jobs=8, check_only=True):
             "status": "PASSED" if res.returncode == 0 else "FAILED",
             "duration_seconds": round(duration, 2),
             "log_file": log_name,
+            "log_sha256": sha256_file(log_path),
             "test_summary": count_summary,
         }
         suite_manifest["step2_suites"].append(suite_entry)
@@ -321,8 +463,11 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir, jobs=8, check_only=True):
             print(f"  • {name} (exit code {rc})", flush=True)
         sys.exit(1)
 
-def aggregate_receipts(audit_dir, tokac_bin=None):
+def aggregate_receipts(audit_dir, tokac_bin=None, require_suite_evidence=False):
     audit_files = [os.path.join(audit_dir, f) for f in os.listdir(audit_dir) if f.endswith(".jsonl")]
+    audit_log_hashes = {
+        os.path.basename(path): sha256_file(path) for path in sorted(audit_files)
+    }
     raw_events = []
     for af in audit_files:
         with open(af, "r") as fp:
@@ -448,8 +593,6 @@ def aggregate_receipts(audit_dir, tokac_bin=None):
         if llvm_ty:
             llvm_lowered_violations += 1
 
-    import hashlib
-
     def get_git_output(args):
         try:
             res = subprocess.run(["git"] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -490,6 +633,98 @@ def aggregate_receipts(audit_dir, tokac_bin=None):
             }
         except Exception:
             tokac_provenance = {"binary_path": tokac_real}
+
+    suite_evidence = {}
+    suite_manifest_path = os.path.join(audit_dir, "suite_execution_manifest.json")
+    if os.path.isfile(suite_manifest_path):
+        try:
+            with open(suite_manifest_path, "r", encoding="utf-8") as source:
+                suite_manifest = json.load(source)
+            verified_logs = {}
+            for entry in suite_manifest.get("step2_suites", []):
+                log_name = entry.get("log_file")
+                expected_hash = entry.get("log_sha256")
+                if not log_name or not expected_hash:
+                    raise RuntimeError(
+                        f"Suite entry lacks bound log evidence: {entry.get('name')}"
+                    )
+                log_path = os.path.join(audit_dir, "suites", log_name)
+                if not os.path.isfile(log_path):
+                    raise RuntimeError(f"Suite log is missing: {log_path}")
+                actual_hash = sha256_file(log_path)
+                if actual_hash != expected_hash:
+                    raise RuntimeError(
+                        f"Suite log digest mismatch for {log_name}: "
+                        f"{actual_hash} != {expected_hash}"
+                    )
+                verified_logs[log_name] = actual_hash
+            suite_compiler = suite_manifest.get("compiler", {})
+            if tokac_provenance.get("binary_sha256") != suite_compiler.get(
+                "binary_sha256"
+            ):
+                raise RuntimeError(
+                    "Suite compiler digest does not match the authoritative "
+                    "compiler digest"
+                )
+            if suite_manifest.get("git_commit") != git_commit:
+                raise RuntimeError(
+                    "Suite manifest commit does not match the authoritative "
+                    "receipt commit"
+                )
+            scan_evidence = suite_manifest.get("step1_scan", {})
+            current_tracked = subprocess.run(
+                ["git", "ls-files", "-z", "--", "*.tk"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            if current_tracked.returncode != 0:
+                raise RuntimeError("Unable to re-enumerate tracked .tk files")
+            current_tk_files = sorted(
+                path for path in current_tracked.stdout.decode(
+                    "utf-8", errors="strict"
+                ).split("\0") if path
+            )
+            current_tk_digest = hashlib.sha256(
+                "\0".join(current_tk_files).encode("utf-8")
+            ).hexdigest()
+            if (
+                not scan_evidence.get("tracked_coverage_complete")
+                or scan_evidence.get("tracked_tk_files") != len(current_tk_files)
+                or scan_evidence.get("scanned_tk_files") != len(current_tk_files)
+                or scan_evidence.get("tracked_file_list_sha256")
+                != current_tk_digest
+            ):
+                raise RuntimeError(
+                    "Suite scan does not cover the current exact tracked .tk set"
+                )
+            configured_build = suite_manifest.get("configured_build", {})
+            if configured_build.get("ctest_test_count", 0) <= 0:
+                raise RuntimeError("Configured CTest provenance has no tests")
+            for evidence_group in (
+                "test_executable_hashes", "build_metadata_hashes"
+            ):
+                for path, expected_hash in configured_build.get(
+                    evidence_group, {}
+                ).items():
+                    if not os.path.isfile(path) or sha256_file(path) != expected_hash:
+                        raise RuntimeError(
+                            f"Configured build provenance changed for {path}"
+                        )
+            suite_evidence = {
+                "manifest_file": "suite_execution_manifest.json",
+                "manifest_sha256": sha256_file(suite_manifest_path),
+                "verified_log_sha256": verified_logs,
+                "configured_build": configured_build,
+                "tracked_tk_coverage": scan_evidence,
+            }
+        except (OSError, ValueError, RuntimeError) as error:
+            print(f"[FATAL] Invalid suite evidence: {error}", flush=True)
+            sys.exit(1)
+    elif require_suite_evidence:
+        print(
+            f"[FATAL] Full audit has no suite execution manifest: "
+            f"{suite_manifest_path}", flush=True
+        )
+        sys.exit(1)
 
     print("\n" + "="*80, flush=True)
     print(f"   HANDLE GRAMMAR AUTHORITATIVE RECEIPT & TAXONOMY (SCHEMA v{SCHEMA_VERSION})", flush=True)
@@ -556,8 +791,10 @@ def aggregate_receipts(audit_dir, tokac_bin=None):
             "git_diff_hash": git_diff_hash,
             "compiler": tokac_provenance,
             "controlled_file_count": len(controlled_file_hashes),
-            "controlled_file_hashes": controlled_file_hashes
+            "controlled_file_hashes": controlled_file_hashes,
+            "audit_log_sha256": audit_log_hashes
         },
+        "suite_evidence": suite_evidence,
         "total_canonical_entries": N,
         "metrics": {
             "admitted_sourcesurface_violations": admitted_sourcesurface,
@@ -602,7 +839,7 @@ def aggregate_receipts(audit_dir, tokac_bin=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Handle Grammar Morphic Audit Tool")
     parser.add_argument("--quick", action="store_true", help="Run quick pre-push verification of Handle Grammar matrices, classifier, and TKI replay")
-    parser.add_argument("--full", action="store_true", help="Run full scan across all repository .tk files and 9 test suites")
+    parser.add_argument("--full", action="store_true", help="Run full scan across every tracked repository .tk file and all verification suites")
     parser.add_argument("--scan", action="store_true", help="Alias for --full")
     parser.add_argument("--jobs", "-j", type=int, default=8, help="Number of parallel worker threads for file scanning (default: 8)")
     parser.add_argument("--check-only", action="store_true", default=True, help="Use --check-only in Step 1 file scanning (default: True)")
@@ -610,16 +847,21 @@ if __name__ == "__main__":
     parser.add_argument("--audit-dir", type=str, default="", help="Directory containing process-isolated audit JSONL files")
     default_tokac = "build/bin/tokac" if os.path.exists("build/bin/tokac") else "build-debug/bin/tokac"
     parser.add_argument("--tokac", type=str, default=default_tokac, help=f"Path to tokac binary (default: {default_tokac})")
+    parser.add_argument("--build-dir", type=str, default="", help="Configured CMake build directory; defaults to the build root containing --tokac")
     args = parser.parse_args()
 
     tokac_bin = os.path.abspath(args.tokac)
+    try:
+        build_dir = resolve_build_dir(tokac_bin, args.build_dir)
+    except RuntimeError as error:
+        parser.error(str(error))
     if args.quick:
         run_id = int(time.time())
         audit_dir = f"/tmp/toka_audit_run_{run_id}"
         scratch_dir = f"/tmp/toka_scan_scratch_{run_id}"
         os.makedirs(audit_dir, exist_ok=True)
         os.makedirs(scratch_dir, exist_ok=True)
-        run_quick_scan(tokac_bin, audit_dir, scratch_dir)
+        run_quick_scan(tokac_bin, build_dir, audit_dir, scratch_dir, jobs=args.jobs)
         aggregate_receipts(audit_dir, tokac_bin=tokac_bin)
     elif args.full or args.scan or not args.audit_dir:
         run_id = int(time.time())
@@ -627,7 +869,7 @@ if __name__ == "__main__":
         scratch_dir = f"/tmp/toka_scan_scratch_{run_id}"
         os.makedirs(audit_dir, exist_ok=True)
         os.makedirs(scratch_dir, exist_ok=True)
-        run_full_scan(tokac_bin, audit_dir, scratch_dir, jobs=args.jobs, check_only=args.check_only)
-        aggregate_receipts(audit_dir, tokac_bin=tokac_bin)
+        run_full_scan(tokac_bin, build_dir, audit_dir, scratch_dir, jobs=args.jobs, check_only=args.check_only)
+        aggregate_receipts(audit_dir, tokac_bin=tokac_bin, require_suite_evidence=True)
     else:
         aggregate_receipts(args.audit_dir, tokac_bin=tokac_bin)
