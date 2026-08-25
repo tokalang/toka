@@ -3127,6 +3127,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     return std::make_shared<UnitType>();
   } else if (auto *fe = dynamic_cast<ForExpr *>(E)) {
+    if (fe->IsPlaceAlias && fe->IsMutable) {
+      error(fe, DiagID::ERR_FOR_ALIAS_WRITABLE_NOT_QUALIFIED);
+    }
     // [Phase 2] Comptime Macro Unroll Detection
     bool isMacroUnroll = false;
     std::string ReflectedShapeName = "";
