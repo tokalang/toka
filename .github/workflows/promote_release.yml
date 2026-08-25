@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: Existing draft tag to publish, for example v1.0.0-rc.7
+        description: Existing draft tag to publish, for example v1.0.0-rc.8
         required: true
         type: string
       first_hour_receipt:

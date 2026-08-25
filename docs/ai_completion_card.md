@@ -121,6 +121,16 @@ loop !done {
 Use `auto OptRefI32::Some(&value)`, not `auto &value`. Copy a borrowed scalar
 with `value:i32` before accumulating or storing it.
 
+When only the element place is needed, prefer the exact alias form; it avoids
+materializing an additional borrow carrier:
+
+```toka
+for alias &value in refs {
+    auto copied = value:i32
+    total += copied
+}
+```
+
 ## Explicit ownership transfer
 
 `cede` marks a real ownership handoff. When a signature accepts `cede value`,
@@ -175,7 +185,7 @@ guard auto Result<i32, string>::Ok(value) = parse_decimal(text) else {
     return 1
 }
 
-guard auto Option<&i32>::Some(&first) = values.get_ref(0) else {
+guard auto Option<i32>::Some(first) = values.get_opt(0) else {
     return 0
 }
 ```

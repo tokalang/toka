@@ -224,7 +224,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--version", default="v1.0.0-rc.7")
+    parser.add_argument("--version", default="v1.0.0-rc.8")
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -309,6 +309,8 @@ def main():
         ("warn", ([sys.executable, "tools/scripts/test_verify_warn.py"],)),
         ("semantic_replay", (
             ["tools/scripts/test_semantic_replay.sh"],
+            [sys.executable, "tools/scripts/audit_handle_grammar.py",
+             "--quick", "--tokac", env["TOKAC"]],
             ["bash", "tools/scripts/test_outcome_body_recheck.sh"],
             ["bash", "tools/scripts/test_semantic_manifest_build_profile.sh"],
             ["bash", "tools/scripts/test_semantic_manifest_attestation.sh"],

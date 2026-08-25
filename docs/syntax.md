@@ -777,7 +777,7 @@ for auto x# in [1, 2, 3] {
 `#` makes the iteration binding writable. The binding keyword is always
 `auto`; `for let` is not part of Toka syntax.
 
-Non-array iteration uses four ordinary traits from `core/traits`. They are not
+Non-array iteration uses five ordinary traits from `core/traits`. They are not
 implicit prelude traits:
 
 ```toka
@@ -800,6 +800,11 @@ trait @MutableBorrowIterator {
     type BorrowedItem
     pub fn next_mut(self#) -> Option<BorrowedItem> <- self
 }
+
+trait @PlaceIterator {
+    type Item
+    pub fn next_place(self#) -> __PlaceOutcome<Item> <- self
+}
 ```
 
 `for auto item in values` requires `values: @Iterable` and its `Iter` type to
@@ -812,22 +817,25 @@ during that interval is rejected. The hidden cursor is a normal scoped value
 and is dropped on exhaustion, `break`, and function exit.
 
 `for alias P in values` is the explicit element-place form. It creates no
-Item/reference value and anchors `P` directly to the stable place supplied by
-`@BorrowIterator`. `P` must exactly reproduce the element morphology: `T` uses
-`alias x`, `&T` uses `alias &x`, and so on; adding or removing a hat is an
-error. Existing `for auto` forms remain unchanged.
+Item/reference value. For the qualified shared/read Array and Vec path, the
+compiler consumes the exact place supplied by `@PlaceIterator`; its
+`__PlaceOutcome<Item>` result is an internal protocol kind and cannot be named,
+stored, reflected, or constructed by ordinary source. `P` must exactly
+reproduce `Item` morphology: `T` uses `alias x`, `&T` uses `alias &x`, and so
+on. Adding or removing a hat is an error. Existing `for auto` forms remain
+unchanged and continue to use `@Iterator` / `@BorrowIterator`.
 
 Write/rebind intent is declared on the alias pattern, not repeated on the
 source expression. `alias x#`, `alias ^x#`, and `alias ^#x` request the same
 payload/handle capabilities as ordinary bindings; each is admitted only when
 the original element place already has that capability. Alias never amplifies
 authority and container writability never crosses a handle boundary. A
-writable non-array alias uses `iter_mut` plus
-`@MutableBorrowIterator::next_mut`; both the source-backed and TKI-imported
-signatures must retain `<- self`. The carrier's `BorrowedItem` preserves the
-element's exact morphology and does not add authority itself. For example,
-Vec's generic carrier returns `&'T`: `^T#` can supply pointee P, while a
-writable Vec slot can supply H for `^#x`; these are checked independently.
+writable non-array alias currently uses the RC8 compatibility lane of
+`iter_mut` plus `@MutableBorrowIterator::next_mut`; both source-backed and
+TKI-imported signatures retain `<- self`. This compatibility carrier does not
+make writable alias part of `@PlaceIterator` P1 and grants no authority itself.
+For example, `^T#` can supply pointee P, while a writable Vec slot can supply H
+for `^#x`; these are checked independently.
 
 Value iteration does not implicitly cede the collection or its elements. Its
 ownership behavior is exactly the declared `Item` returned by `next`, and the

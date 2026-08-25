@@ -183,6 +183,13 @@ These items do not block the 1.0 syntax freeze. They record the extension
 surface that should remain conservative in 1.0 and can be refined after the
 core contract ships.
 
+- RC8 exact-place alias iteration is a qualified candidate, not a retroactive
+  permanence promise for every level-2 storage form. Shared/read Array and Vec
+  use internal `@PlaceIterator` transport; writable non-array alias and
+  `for auto &&x` remain compatibility lanes. Mutable PlaceIterator P2, alias
+  return, projection-place, and a final structural level-2 ban require a
+  separate post-RC8 decision.
+
 - `dyn @Trait` boundary: the 1.0 surface is single-facet `dyn @Trait` without
   associated-type binding. Future work may specify multi-facet objects,
   associated-type binding, object lifetime / ownership forms, and dyn object

@@ -24,7 +24,7 @@ def main():
         output = Path(temporary) / "output"
         command = [
             sys.executable, str(RUNNER), "--dry-run", "--revision", "HEAD",
-            "--version", "v1.0.0-rc.7", "--target", "native",
+            "--version", "v1.0.0-rc.8", "--target", "native",
             "--target", "linux-arm64", "--target", "linux-x64",
             "--output-dir", str(output),
         ]

@@ -420,7 +420,7 @@
       "id": "diag_dup_owned_pointer_rejected_01",
       "path": "diagnostics/dup_owned_pointer_rejected.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E0406",
+      "expected_diagnostic_code": "E04649",
       "expected_span_line": 5,
       "timeout_seconds": 10,
       "description": "Intrinsic Dup cannot duplicate an owning smart-pointer handle"
@@ -429,7 +429,7 @@
       "id": "diag_dup_cede_receiver_rejected_01",
       "path": "diagnostics/dup_cede_receiver_rejected.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E0406",
+      "expected_diagnostic_code": "E04649",
       "expected_span_line": 5,
       "timeout_seconds": 10,
       "description": "Dup rejects a consuming receiver even when a cast wraps the cede expression"

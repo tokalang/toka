@@ -14,11 +14,11 @@ sys.path.insert(0, str(ROOT / "tools/scripts"))
 from release_gate import parse_counts
 WORKFLOW = ROOT / ".github/workflows/release.yml"
 PROMOTION = ROOT / ".github/workflows/promote_release.yml"
-INTEL_REPLAY = ROOT / ".github/workflows/rc7_macos_x64_draft_replay.yml"
+INTEL_REPLAY = ROOT / ".github/workflows/rc8_macos_x64_draft_replay.yml"
 QUALIFICATION = ROOT / "tools/scripts/verify_release_qualification.py"
 ASSETS = ROOT / "tools/scripts/verify_release_assets.py"
 RELEASE_GATE = ROOT / "tools/scripts/release_gate.py"
-ACTIVE_CANDIDATE = "v1.0.0-rc.7"
+ACTIVE_CANDIDATE = "v1.0.0-rc.8"
 ACTIVE_RELEASE_NOTES = ROOT / ("docs/release_notes_%s.md" % ACTIVE_CANDIDATE)
 TARGETS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64")
 STAGES = (
@@ -182,12 +182,15 @@ def main():
     require("publish_release" not in text,
             "manual qualification must not have an automatic publish switch")
     require("macos-15-intel" in intel_replay and
-            "v1.0.0-rc.7" in intel_replay and
+            "v1.0.0-rc.8" in intel_replay and
             "--require-checksums" in intel_replay,
-            "RC7 Intel replay workflow is missing the exact draft replay contract")
+            "RC8 Intel replay workflow is missing the exact draft replay contract")
     require('"tools/run_conformance.py",' in release_gate and
             '"--build-dir", str(build_dir)' in release_gate,
             "release gate does not pass its configured build directory to Conformance")
+    require('"tools/scripts/audit_handle_grammar.py"' in release_gate and
+            '"--quick", "--tokac", env["TOKAC"]' in release_gate,
+            "release gate does not enforce the Handle/Place quick security gate")
     require(ACTIVE_RELEASE_NOTES.is_file(),
             "active candidate is missing tag-release notes: " + str(ACTIVE_RELEASE_NOTES))
     require("softprops/action-gh-release" not in gate,

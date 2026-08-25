@@ -44,7 +44,7 @@ fi
 case "$VERSION" in
   v*) ;;
   *)
-    echo "Invalid release tag '$VERSION'. Pass a tag such as v1.0.0-rc.7."
+    echo "Invalid release tag '$VERSION'. Pass a tag such as v1.0.0-rc.8."
     exit 1
     ;;
 esac

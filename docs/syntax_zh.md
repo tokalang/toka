@@ -689,7 +689,7 @@ for auto x# in [1, 2, 3] {
 
 `#` 使迭代绑定可写。迭代绑定关键字始终是 `auto`；`for let` 不属于 Toka 语法。
 
-非数组迭代使用 `core/traits` 中四个普通 trait；它们不是隐式 prelude
+非数组迭代使用 `core/traits` 中五个普通 trait；它们不是隐式 prelude
 trait：
 
 ```toka
@@ -712,6 +712,11 @@ trait @MutableBorrowIterator {
     type BorrowedItem
     pub fn next_mut(self#) -> Option<BorrowedItem> <- self
 }
+
+trait @PlaceIterator {
+    type Item
+    pub fn next_place(self#) -> __PlaceOutcome<Item> <- self
+}
 ```
 
 `for auto item in values` 要求 `values: @Iterable`，并且其 `Iter` 类型实现
@@ -721,20 +726,21 @@ trait @MutableBorrowIterator {
 保持源集合被借用；此时修改、替换、移动或 `cede` 源集合会被拒绝。隐藏
 cursor 是普通作用域值，在迭代结束、`break` 和函数退出时执行 drop。
 
-`for alias P in values` 是显式 element-place 形式。它不创建 Item/reference
-值，而是把 `P` 直接锚定到 `@BorrowIterator` 提供的稳定 place。`P` 必须精确
-复述元素 morphology：`T` 写 `alias x`，`&T` 写 `alias &x`；增加或删除任何
-帽层都会报错。现有 `for auto` 语义保持不变。
+`for alias P in values` 是显式 element-place 形式，不创建 Item/reference
+值。对已资格化的 shared/read Array 与 Vec 路径，编译器直接消费
+`@PlaceIterator` 提供的 exact place；其 `__PlaceOutcome<Item>` 是内部协议
+kind，普通源码不能命名、存储、反射或构造。`P` 必须精确复述 `Item`
+morphology：`T` 写 `alias x`，`&T` 写 `alias &x`；增加或删除帽层都会报错。
+现有 `for auto` 保持不变，继续使用 `@Iterator` / `@BorrowIterator`。
 
 写入/重绑定意图只写在 alias pattern 上，不在 source 表达式后重复写 `#`。
 `alias x#`、`alias ^x#`、`alias ^#x` 分别请求既有的 payload/handle 权限；
 只有原 element place 已具备对应能力时才准入。alias 永不放大权限，容器可写
-也绝不能穿透 handle 边界提升 pointee 权限。非数组 writable alias 通过
-`iter_mut` 与 `@MutableBorrowIterator::next_mut` 取得稳定 place；源码与 TKI
-导入路径都必须保留 `<- self` 依赖。carrier 的 `BorrowedItem` 只保留元素的
-原始 morphology，本身不增加权限。例如 Vec 的泛型 carrier 返回 `&'T`：
-元素 `^T#` 可提供 pointee P，而可写 Vec 元素槽可为 `^#x` 提供 H；两项权限
-始终独立检查。
+也绝不能穿透 handle 边界提升 pointee 权限。非数组 writable alias 在 RC8
+仍走 `iter_mut` 与 `@MutableBorrowIterator::next_mut` 的兼容通道；源码与 TKI
+导入路径都保留 `<- self` 依赖。该兼容 carrier 不属于 `@PlaceIterator` P1，
+也不增加权限。元素 `^T#` 可提供 pointee P，而可写 Vec 元素槽可为 `^#x`
+提供 H；两项权限始终独立检查。
 
 值迭代不会隐式 `cede` 集合或元素；其所有权行为完全由 `next` 声明返回的
 `Item` 决定，并继续服从普通复制和资源规则。Toka 1.0 不定义 consuming
