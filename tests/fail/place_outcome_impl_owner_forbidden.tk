@@ -1,0 +1,6 @@
+// EXPECT: error[E04648]
+impl __PlaceOutcome<i32> {
+    fn leaked(self) -> i32 { return 1 }
+}
+
+fn main() -> i32 { return 0 }

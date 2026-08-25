@@ -2125,6 +2125,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         Cast->TargetTypeSyntax
             ? toka::Type::fromSyntax(Cast->TargetTypeSyntax)
             : toka::Type::fromString(Cast->TargetType));
+    if (containsInternalPlaceOutcome(targetType))
+      error(Cast, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+            targetType->toString());
     validateHandleGrammar(getLoc(Cast), targetType);
     validateDynTraitObjectSafetyInType(targetType, getLoc(Cast));
     if (Cast->Kind == CastKind::Implicit) {

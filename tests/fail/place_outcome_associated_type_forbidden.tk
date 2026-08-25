@@ -1,0 +1,12 @@
+trait @Probe {
+    type Item
+}
+
+shape Holder()
+
+// EXPECT: error[E04648]
+impl Holder@Probe {
+    type Item = __PlaceOutcome<i32>
+}
+
+fn main() -> i32 { return 0 }

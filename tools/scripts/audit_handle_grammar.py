@@ -86,7 +86,12 @@ def run_quick_scan(tokac_bin, run_dir, scratch_dir):
             "tests/fail/place_iterator_spoof_trait_forbidden.tk",
             "tests/fail/place_iterator_spoof_impl_forbidden.tk",
             "tests/fail/place_outcome_sizeof_forbidden.tk",
-            "tests/fail/place_outcome_reflection_forbidden.tk"
+            "tests/fail/place_outcome_reflection_forbidden.tk",
+            "tests/fail/place_outcome_global_forbidden.tk",
+            "tests/fail/place_outcome_associated_type_forbidden.tk",
+            "tests/fail/place_outcome_cast_forbidden.tk",
+            "tests/fail/place_outcome_impl_owner_forbidden.tk",
+            "tests/fail/place_outcome_reserved_declaration_forbidden.tk"
         ]),
         ("Handle Grammar TKI Replay", [
             "bash", "tools/scripts/test_semantic_replay.sh"

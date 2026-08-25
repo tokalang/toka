@@ -2585,6 +2585,9 @@ Sema::registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
         resolvedAssoc = resolvedAssoc->substitute({{knownName, knownType}});
     }
     resolvedAssoc = resolveType(resolvedAssoc);
+    if (containsInternalPlaceOutcome(resolvedAssoc))
+      error(Impl, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+            resolvedAssoc->toString());
     resolvedAssocType = resolvedAssoc ? resolvedAssoc->toString() : "unknown";
     replacements[name] = resolvedAssoc;
 
@@ -3034,6 +3037,8 @@ void Sema::declareGlobals(Module &M) {
   // 3. Register Shapes
   for (auto &St : M.Shapes) {
     DeclarationLexicalScopes[St.get()] = &ms;
+    if (St->Name == "__PlaceOutcome")
+      error(St.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY, St->Name);
     SyntaxOrigin shapeOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
     for (const auto &mem : St->Members) {
       auto memTy = mem.TypeSyntax ? toka::Type::fromSyntax(mem.TypeSyntax) : toka::Type::fromString(mem.Type);
@@ -3084,6 +3089,9 @@ void Sema::declareGlobals(Module &M) {
   // 4. Register TypeAliases
   for (auto &Alias : M.TypeAliases) {
     DeclarationLexicalScopes[Alias.get()] = &ms;
+    if (Alias->Name == "__PlaceOutcome")
+      error(Alias.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+            Alias->Name);
     std::string target = Alias->TargetTypeSyntax
                              ? Alias->TargetTypeSyntax->toCanonicalString()
                              : Alias->TargetType;
@@ -3993,13 +4001,19 @@ void Sema::registerGlobals(Module &M) {
 
     if (!v->TypeName.empty())
       validateTypeVisibilityInType(v->TypeName, getLoc(v));
+    auto globalType = v->TypeName.empty()
+                          ? toka::Type::fromString("unknown")
+                          : toka::Type::fromString(
+                                synthesizePhysicalType(*v));
+    if (containsInternalPlaceOutcome(globalType))
+      error(v, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+            globalType->toString());
     debugCheckBindingTypeString("global variable", v->Name, v->TypeName,
                                 v->Permission, v->Loc);
 
     auto symbol = CurrentScope->Symbols.find(v->Name);
     if (symbol != CurrentScope->Symbols.end()) {
-      symbol->second.TypeObj = toka::Type::fromString(
-          v->TypeName.empty() ? "unknown" : synthesizePhysicalType(*v));
+      symbol->second.TypeObj = globalType;
       symbol->second.IsRebindable = v->IsRebindable;
       symbol->second.ASTPtr = v;
     }
@@ -4345,6 +4359,13 @@ void Sema::registerImpl(ImplDecl *Impl) {
 void Sema::declareImpl(ImplDecl *Impl) {
   registerSlice2Policy(Impl);
   registerSlice4Impl(Impl);
+  auto declaredOwnerType =
+      Impl->HeaderSyntax.Type
+          ? toka::Type::fromSyntax(Impl->HeaderSyntax.Type)
+          : toka::Type::fromString(Impl->TypeName);
+  if (containsInternalPlaceOutcome(declaredOwnerType))
+    error(Impl, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+          declaredOwnerType->toString());
   TraitDecl *declaredTrait = Impl->TraitName.empty()
                                  ? nullptr
                                  : findVisibleTraitDecl(Impl->TraitName,

@@ -1,0 +1,4 @@
+// EXPECT: error[E04648]
+auto leaked = uninit as __PlaceOutcome<i32>
+
+fn main() -> i32 { return 0 }

@@ -1,0 +1,4 @@
+// EXPECT: error[E04648]
+pub shape __PlaceOutcome<T>(value: T)
+
+fn main() -> i32 { return 0 }
