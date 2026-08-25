@@ -1,6 +1,7 @@
 # Morphology Constraints and Borrow API Migration Plan
 
-**Status:** Execution plan under review
+**Status:** Initial morphology-domain slice implemented and source/TKI
+qualified; final borrow/dup API naming cleanup remains
 
 **Prerequisites:**
 
@@ -117,6 +118,13 @@ The same-version TKI round trip must preserve the exact declared domain.
 The first implemented slice keeps interface format v3 and bumps compiler
 interface provenance to `0.9.9-14`; old compiler-interface caches therefore
 fail closed even though the enclosing format generation is unchanged.
+
+The terminal domain matrix is exercised by
+`g08_morphology_constraint_domains.tk` and the source-hidden
+`morphology_002_domains` replay. They admit Soul, `^Soul`, `~Soul`, and `&Soul`
+for `BorrowExtendable`, admit only Soul for `SoulOnly`, and diagnose raw or
+already-level-2 borrow extension with E0621. `morphology_001_raw_extendable`
+continues to qualify Soul and arbitrary-depth pure raw chains.
 
 ## 3. Generic definition closure
 

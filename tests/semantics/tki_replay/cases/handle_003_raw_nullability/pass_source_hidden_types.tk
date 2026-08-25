@@ -1,0 +1,11 @@
+import ./lib::{accept_outer, accept_inner, accept_both}
+
+fn main() -> i32 {
+    if !accept_outer(Option<nul **i32>::None) { return 1 }
+    if !accept_inner(Option<*nul *i32>::None) { return 2 }
+    if !accept_both(Option<nul *nul *i32>::None) { return 3 }
+    if sizeof(nul **i32) == 0:usize { return 4 }
+    if sizeof(*nul *i32) == 0:usize { return 5 }
+    if sizeof(nul *nul *i32) == 0:usize { return 6 }
+    return 0
+}

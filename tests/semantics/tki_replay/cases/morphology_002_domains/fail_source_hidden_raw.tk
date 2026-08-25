@@ -1,0 +1,9 @@
+import ./lib::borrow_identity
+
+// EXPECT_ERROR: E0621
+fn main() -> i32 {
+    auto value = 1
+    auto *pointer = *value
+    auto view = borrow_identity<*i32>(*pointer)
+    return 0
+}

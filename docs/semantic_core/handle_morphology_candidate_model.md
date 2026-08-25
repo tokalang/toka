@@ -429,20 +429,24 @@ Consequently:
 
 ## 9. Open decisions
 
+The initial compiler slice has selected the spelling
+`'T: morphology borrow_extendable` (and the corresponding `soul_only` /
+`raw_extendable` names). Public declarations spell constraints explicitly;
+private inference remains deferred. `RawExtendable` admits a Soul or any
+well-formed pure raw chain independent of which individual raw layers are
+nullable. The source-hidden `morphology_001_raw_extendable` and
+`morphology_002_domains` cases lock these initial decisions.
+
 The following questions must be resolved before a new Phase 2 baseline tag:
 
-1. What is the source spelling of `BorrowExtendable`, `RawExtendable`, and any
-   other morphology-domain constraints?
-2. Are constraints always explicit, or may private declarations infer them
-   while public declarations must spell them?
-3. Does the default morphic domain include arbitrary raw depth, and how are
-   per-layer raw nullability constraints represented?
-4. Which escape, storage, forwarding, and rebinding operations are admitted
+1. Whether private declarations should ever infer morphology constraints
+   instead of using the currently explicit model.
+2. Which escape, storage, forwarding, and rebinding operations are admitted
    for a first-class local or returned `&^T` value? Formal parameters use the
    existing capture contract rather than a separate `&^x: T` root.
-5. How are constrained members represented by reflection and method lookup
+3. How are constrained members represented by reflection and method lookup
    without SFINAE disappearance?
-6. Which existing standard-library signatures must be rewritten or moved to a
+4. Which existing standard-library signatures must be rewritten or moved to a
    constrained implementation?
 
 ## 10. Survival criteria for the hat surface

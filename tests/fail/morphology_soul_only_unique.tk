@@ -1,0 +1,13 @@
+shape Cell(value: i32)
+
+fn soul_marker<'T>('value: T) -> i32
+where:
+    'T: morphology soul_only {
+    return 1
+}
+
+// EXPECT: error[E0621]
+fn main() -> i32 {
+    auto ^owner = new Cell(value = 1)
+    return soul_marker<^Cell>(^owner)
+}

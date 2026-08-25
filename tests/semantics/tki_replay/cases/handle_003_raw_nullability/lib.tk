@@ -1,0 +1,8 @@
+// EXPECT_TKI: pub fn accept_outer(value: Option<nul**i32>) -> bool
+// EXPECT_TKI: pub fn accept_inner(value: Option<*nul*i32>) -> bool
+// EXPECT_TKI: pub fn accept_both(value: Option<nul*nul*i32>) -> bool
+// EXPECT_TKI_ROUNDTRIP
+
+pub fn accept_outer(value: Option<nul **i32>) -> bool { return true }
+pub fn accept_inner(value: Option<*nul *i32>) -> bool { return true }
+pub fn accept_both(value: Option<nul *nul *i32>) -> bool { return true }

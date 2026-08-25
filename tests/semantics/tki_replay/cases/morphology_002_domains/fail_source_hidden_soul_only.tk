@@ -1,0 +1,7 @@
+import ./lib::{Cell, soul_marker}
+
+// EXPECT_ERROR: E0621
+fn main() -> i32 {
+    auto ^owner = new Cell(value = 1)
+    return soul_marker<^Cell>(^owner)
+}

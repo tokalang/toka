@@ -66,6 +66,12 @@ A continuous handle chain terminates at **any non-Pointer Type node** in the typ
   - `nul *nul *T`: Both outer and inner raw pointers are nullable.
 - Managed handles (`^`, `~`, `&`) are strictly non-nullable by language construction.
 
+Canonicalization, semantic reification, and mangling separation for the three
+two-layer nullability arrangements are covered by
+`tests/TypeSyntaxCanonicalization.cpp`. Source parsing/lowering and source-hidden
+TKI replay are covered by `g08_raw_layered_nullability_types.tk` and
+`handle_003_raw_nullability`.
+
 ### 1.5 Parameter Root Single-Depth Boundary & Binding-Side Morphology
 
 In all formal parameter declarations, the root binding chain is limited to one

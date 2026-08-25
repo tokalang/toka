@@ -1,0 +1,36 @@
+shape Cell(value: i32)
+
+fn borrow_identity<'T>('value: T) -> &'T
+where:
+    'T: morphology borrow_extendable
+effects: return <- 'value {
+    return &'value
+}
+
+fn soul_marker<'T>('value: T) -> i32
+where:
+    'T: morphology soul_only {
+    return 1
+}
+
+fn main() -> i32 {
+    auto plain = 1
+    auto &plain_view = borrow_identity(plain)
+    assert(plain_view == 1, "Soul must satisfy borrow_extendable")
+
+    auto ^unique = new Cell(value = 2)
+    auto &^unique_view = borrow_identity(^unique)
+    assert(unique_view.value == 2, "^Soul must satisfy borrow_extendable")
+
+    auto ~shared = new Cell(value = 3)
+    auto &~shared_view = borrow_identity(~shared)
+    assert(shared_view.value == 3, "~Soul must satisfy borrow_extendable")
+
+    auto cell = Cell(value = 4)
+    auto &reference = &cell
+    auto &&reference_view = borrow_identity(&reference)
+    assert(reference_view.value == 4, "&Soul must satisfy borrow_extendable")
+
+    assert(soul_marker(plain) == 1, "Soul must satisfy soul_only")
+    return 0
+}

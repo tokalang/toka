@@ -1,0 +1,22 @@
+import ./lib::{Cell, borrow_identity, soul_marker}
+
+fn main() -> i32 {
+    auto plain = 1
+    auto &plain_view = borrow_identity(plain)
+    if plain_view != 1 { return 1 }
+
+    auto ^unique = new Cell(value = 2)
+    auto &^unique_view = borrow_identity(^unique)
+    if unique_view.value != 2 { return 2 }
+
+    auto ~shared = new Cell(value = 3)
+    auto &~shared_view = borrow_identity(~shared)
+    if shared_view.value != 3 { return 3 }
+
+    auto cell = Cell(value = 4)
+    auto &reference = &cell
+    auto &&reference_view = borrow_identity(&reference)
+    if reference_view.value != 4 { return 4 }
+
+    return soul_marker(plain) - 1
+}

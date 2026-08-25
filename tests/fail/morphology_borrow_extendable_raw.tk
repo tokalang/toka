@@ -1,0 +1,14 @@
+fn borrow_identity<'T>('value: T) -> &'T
+where:
+    'T: morphology borrow_extendable
+effects: return <- 'value {
+    return &'value
+}
+
+// EXPECT: error[E0621]
+fn main() -> i32 {
+    auto value = 1
+    auto *pointer = *value
+    auto view = borrow_identity<*i32>(*pointer)
+    return 0
+}

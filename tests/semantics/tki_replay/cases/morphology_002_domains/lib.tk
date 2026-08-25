@@ -1,0 +1,18 @@
+// EXPECT_TKI: 'T: morphology borrow_extendable
+// EXPECT_TKI: 'T: morphology soul_only
+// EXPECT_TKI_ROUNDTRIP
+
+pub shape Cell(value: i32)
+
+pub fn borrow_identity<'T>('value: T) -> &'T
+where:
+    'T: morphology borrow_extendable
+effects: return <- 'value {
+    return &'value
+}
+
+pub fn soul_marker<'T>('value: T) -> i32
+where:
+    'T: morphology soul_only {
+    return 1
+}

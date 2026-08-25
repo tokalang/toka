@@ -1,0 +1,18 @@
+fn accept_outer(value: Option<nul **i32>) -> bool { return true }
+fn accept_inner(value: Option<*nul *i32>) -> bool { return true }
+fn accept_both(value: Option<nul *nul *i32>) -> bool { return true }
+
+fn main() -> i32 {
+    auto a = sizeof(nul **i32)
+    auto b = sizeof(*nul *i32)
+    auto c = sizeof(nul *nul *i32)
+    assert(a > 0:usize && b > 0:usize && c > 0:usize,
+           "layered raw pointer types must lower")
+    assert(accept_outer(Option<nul **i32>::None),
+           "outer-nullable raw type failed")
+    assert(accept_inner(Option<*nul *i32>::None),
+           "inner-nullable raw type failed")
+    assert(accept_both(Option<nul *nul *i32>::None),
+           "both-nullable raw type failed")
+    return 0
+}
