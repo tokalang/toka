@@ -3343,8 +3343,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
     }
 
-    if (fe->IsPlaceAlias && fe->IsMutable) {
-      if (!isArray && !fe->ResolvedNextFn) {
+    if (fe->IsPlaceAlias &&
+        (fe->IsMutable || fe->Permission.IdentityRebindable)) {
+      auto requestedElement = resolveType(toka::Type::fromString(fullType));
+      const bool isHandleElement =
+          requestedElement &&
+          (requestedElement->isPointer() || requestedElement->isReference() ||
+           requestedElement->isSmartPointer());
+      if (isHandleElement || (!isArray && !fe->ResolvedNextFn)) {
         error(fe, DiagID::ERR_FOR_ALIAS_WRITABLE_NOT_QUALIFIED);
       } else {
         auto sourceCapability = getAccessCapability(fe->Collection.get(), true);

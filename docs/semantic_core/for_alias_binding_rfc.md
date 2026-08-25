@@ -61,3 +61,8 @@ sources, handle-morphology elements, and containers without that carrier fail
 closed with E04645.
 General local `alias view = place`, handle H/P writable aliases, mutable
 container iterators, and consuming `for auto ^x` remain separate work.
+
+The parser preserves handle-layer permission requests separately from payload
+`#`, so `alias ^x#` and `alias ^#x` cannot collapse into one case. Until their
+distinct P/H carriers are qualified, both remain explicit E04645 fail-closed
+paths rather than falling back to the Soul-only mutable iterator.

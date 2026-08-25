@@ -1,0 +1,11 @@
+shape Cell(value: i32)
+
+// EXPECT: error[E04645]
+fn main() -> i32 {
+    auto ^first = new Cell(value = 1)
+    auto owners# = [cede ^first]
+    for alias ^x# in owners {
+        x.value = 2
+    }
+    return 0
+}

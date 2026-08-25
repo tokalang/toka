@@ -1449,19 +1449,37 @@ std::unique_ptr<Expr> Parser::parseForExpr() {
   }
   std::string morphologyPrefix = "";
   bool isRef = false;
+  std::vector<HandleLayer> handleLayers;
   while (true) {
     if (match(TokenType::Ampersand)) {
       isRef = true;
       morphologyPrefix += "&";
+      Token t = previous();
+      handleLayers.push_back({BindingMorphology::Reference, t.IsSwappablePtr,
+                              t.HasNull, t.IsBlocked});
     } else if (match(TokenType::And)) {
       isRef = true;
       morphologyPrefix += "&&";
+      Token t = previous();
+      handleLayers.push_back({BindingMorphology::Reference, t.IsSwappablePtr,
+                              t.HasNull, t.IsBlocked});
+      handleLayers.push_back(
+          {BindingMorphology::Reference, false, false, false});
     } else if (match(TokenType::Caret)) {
       morphologyPrefix += "^";
+      Token t = previous();
+      handleLayers.push_back({BindingMorphology::Unique, t.IsSwappablePtr,
+                              t.HasNull, t.IsBlocked});
     } else if (match(TokenType::Star)) {
       morphologyPrefix += "*";
+      Token t = previous();
+      handleLayers.push_back({BindingMorphology::Raw, t.IsSwappablePtr,
+                              t.HasNull, t.IsBlocked});
     } else if (match(TokenType::Tilde)) {
       morphologyPrefix += "~";
+      Token t = previous();
+      handleLayers.push_back({BindingMorphology::Shared, t.IsSwappablePtr,
+                              t.HasNull, t.IsBlocked});
     } else {
       break;
     }
@@ -1484,6 +1502,10 @@ std::unique_ptr<Expr> Parser::parseForExpr() {
   node->Permission = BindingPermission::fromLegacy(
       morphologyPrefix == "*", morphologyPrefix == "^", morphologyPrefix == "~",
       isRef, false, false, false, isMut, false, false);
+  if (!handleLayers.empty()) {
+    node->Permission.HandleLayers = std::move(handleLayers);
+    node->Permission.syncProjections();
+  }
   node->setLocation(tok, m_CurrentFile);
   return node;
 }
