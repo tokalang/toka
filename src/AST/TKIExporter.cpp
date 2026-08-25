@@ -1171,9 +1171,11 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         exportStmt(loopEx->Body.get());
     } else if (auto forEx = dynamic_cast<const ForExpr *>(expr)) {
         m_OS << "for ";
-        if (forEx->IsMutable) m_OS << "mut ";
-        else m_OS << "auto ";
-        m_OS << forEx->MorphologyPrefix << forEx->VarName << " in ";
+        m_OS << (forEx->IsPlaceAlias ? "alias " : "auto ");
+        m_OS << reconstructVarFromPermission(
+                    forEx->VarName, forEx->IterElementType,
+                    forEx->Permission, false, false)
+             << " in ";
         exportExpr(forEx->Collection.get());
         m_OS << " ";
         exportStmt(forEx->Body.get());

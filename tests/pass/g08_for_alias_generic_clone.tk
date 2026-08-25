@@ -1,0 +1,15 @@
+import std/vec::Vec
+
+fn count_refs<T>(refs: Vec<&T>) -> i32 {
+    for alias &x in refs {
+        return 1
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    auto value = 7
+    auto refs# = Vec<&i32>::new()
+    refs#.push(&value)
+    return count_refs<i32>(refs) - 1
+}

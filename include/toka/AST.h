@@ -1399,6 +1399,7 @@ public:
     n->ResolvedType = ResolvedType;
     n->Permission = Permission;
     n->IsPlaceAlias = IsPlaceAlias;
+    n->MorphologyPrefix = MorphologyPrefix;
     n->IterElementType = IterElementType;
     n->ResolvedIterElementType = ResolvedIterElementType;
     n->IteratorType = IteratorType;

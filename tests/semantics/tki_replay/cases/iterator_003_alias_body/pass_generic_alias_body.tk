@@ -1,0 +1,7 @@
+import ./lib::{count_refs}
+
+fn main() -> i32 {
+    auto value = 9
+    auto refs = [&value]
+    return count_refs<i32>(refs) - 1
+}
