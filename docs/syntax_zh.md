@@ -721,6 +721,11 @@ cursor 是普通作用域值，在迭代结束、`break` 和函数退出时执�
 复述元素 morphology：`T` 写 `alias x`，`&T` 写 `alias &x`；增加或删除任何
 帽层都会报错。现有 `for auto` 语义保持不变。
 
+写入/重绑定意图只写在 alias pattern 上，不在 source 表达式后重复写 `#`。
+`alias x#`、`alias ^x#`、`alias ^#x` 分别请求既有的 payload/handle 权限；
+只有原 element place 已具备对应能力时才准入。alias 永不放大权限，容器可写
+也绝不能穿透 handle 边界提升 pointee 权限。
+
 值迭代不会隐式 `cede` 集合或元素；其所有权行为完全由 `next` 声明返回的
 `Item` 决定，并继续服从普通复制和资源规则。Toka 1.0 不定义 consuming
 iterator 或 async-iterator 协议。

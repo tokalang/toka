@@ -812,6 +812,12 @@ Item/reference value and anchors `P` directly to the stable place supplied by
 `alias x`, `&T` uses `alias &x`, and so on; adding or removing a hat is an
 error. Existing `for auto` forms remain unchanged.
 
+Write/rebind intent is declared on the alias pattern, not repeated on the
+source expression. `alias x#`, `alias ^x#`, and `alias ^#x` request the same
+payload/handle capabilities as ordinary bindings; each is admitted only when
+the original element place already has that capability. Alias never amplifies
+authority and container writability never crosses a handle boundary.
+
 Value iteration does not implicitly cede the collection or its elements. Its
 ownership behavior is exactly the declared `Item` returned by `next`, and the
 ordinary copy/resource rules still apply. Toka 1.0 does not define a consuming
