@@ -1,0 +1,14 @@
+import stdx/net/http::HeaderMap
+
+// EXPECT: error[E0441]
+fn main() -> i32 {
+    auto headers# = HeaderMap::new()
+    auto inserted = headers#.insert(string::from("x-id"), string::from("one"))
+    match headers.lookup("x-id") {
+        auto &value => {
+            headers#.insert(string::from("x-id"), string::from("two"))
+            return value.len() as i32
+        }
+        miss => return 0
+    }
+}

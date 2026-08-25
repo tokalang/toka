@@ -1,0 +1,23 @@
+import stdx/net/http::HeaderMap
+import ./lib::find_header
+
+fn main() -> i32 {
+    auto headers# = HeaderMap::new()
+    auto inserted = headers#.insert(
+        string::from("content-type"),
+        string::from("application/json")
+    )
+    if inserted.is_err() { return 1 }
+
+    match find_header(headers, "Content-Type") {
+        auto &value => {
+            if !value.as_str().equals("application/json") { return 2 }
+        }
+        miss => return 3
+    }
+    match find_header(headers, "x-absent") {
+        auto &value => return 4
+        miss => {}
+    }
+    return 0
+}

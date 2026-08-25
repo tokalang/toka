@@ -243,8 +243,25 @@ impl HeaderMap {
         return Option<string>::None
     }
 
+    /// Returns a header value borrow for immediate hit/miss control flow.
+    pub fn lookup(self, key: str) -> &string | miss
+    effects: return <- self {
+        auto idx# = 0:usize
+        loop idx < self.entries.len() {
+            auto &entry = self.entries.borrow(idx)
+            if entry.key.as_str().eq_ignore_ascii_case(key) {
+                return &(entry.value)
+            }
+            idx = idx + 1
+        }
+        return miss
+    }
+
     pub fn contains_key(self, key: str) -> bool {
-        return self.get(key).is_some()
+        match self.lookup(key) {
+            auto &value => return true
+            miss => return false
+        }
     }
 }
 
@@ -689,35 +706,36 @@ pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) ->
         return Result<HttpRequest, string>::Err(string::from("Unsupported Transfer-Encoding header"))
     }
 
-    auto cl_opt = req.headers#.get("content-length")
-    if cl_opt.is_some() {
-        auto cl_str = cl_opt.unwrap()
-        auto cl_res = parse_content_length(cl_str.as_str())
-        if cl_res.is_err() {
-            return Result<HttpRequest, string>::Err(cl_res.unwrap_err())
-        }
-        auto target_cl = cl_res.unwrap()
+    match req.headers.lookup("content-length") {
+        auto &cl_str => {
+            auto cl_res = parse_content_length(cl_str.as_str())
+            if cl_res.is_err() {
+                return Result<HttpRequest, string>::Err(cl_res.unwrap_err())
+            }
+            auto target_cl = cl_res.unwrap()
 
-        if body_start < req_len {
-            auto actual_body_len = req_len - body_start
+            if body_start < req_len {
+                auto actual_body_len = req_len - body_start
 
-            if target_cl > actual_body_len {
-                return Result<HttpRequest, string>::Err(string::from("Content-Length exceeds payload body length"))
-            }
-            if target_cl < actual_body_len {
-                return Result<HttpRequest, string>::Err(string::from("Trailing bytes after Content-Length payload unsupported in Phase 1"))
-            }
-            body_str = cede string_slice(req_str, body_start, target_cl)
-        } else {
-            if target_cl > 0:usize {
-                return Result<HttpRequest, string>::Err(string::from("Content-Length exceeds payload body length"))
+                if target_cl > actual_body_len {
+                    return Result<HttpRequest, string>::Err(string::from("Content-Length exceeds payload body length"))
+                }
+                if target_cl < actual_body_len {
+                    return Result<HttpRequest, string>::Err(string::from("Trailing bytes after Content-Length payload unsupported in Phase 1"))
+                }
+                body_str = cede string_slice(req_str, body_start, target_cl)
+            } else {
+                if target_cl > 0:usize {
+                    return Result<HttpRequest, string>::Err(string::from("Content-Length exceeds payload body length"))
+                }
             }
         }
-    } else {
-        // Without Content-Length (or Transfer-Encoding), body length is strictly 0.
-        // If there are trailing bytes after header boundary without Content-Length, reject in Phase 1.
-        if body_start < req_len {
-            return Result<HttpRequest, string>::Err(string::from("Trailing bytes without Content-Length unsupported in Phase 1"))
+        miss => {
+            // Without Content-Length (or Transfer-Encoding), body length is strictly 0.
+            // If there are trailing bytes after header boundary without Content-Length, reject in Phase 1.
+            if body_start < req_len {
+                return Result<HttpRequest, string>::Err(string::from("Trailing bytes without Content-Length unsupported in Phase 1"))
+            }
         }
     }
 
@@ -1749,22 +1767,26 @@ impl HttpClient {
         }
 
         auto cl_rem# = -1:i64
-        auto cl_opt = resp_headers#.get("content-length")
-        if cl_opt.is_some() {
-            auto cl_res = parse_content_length(cl_opt.unwrap().as_str())
-            if cl_res.is_err() {
-                owned_stream#.close()
-                return Result<HttpResponseStream, string>::Err(string::from("Invalid Content-Length header value"))
+        match resp_headers.lookup("content-length") {
+            auto &cl_value => {
+                auto cl_res = parse_content_length(cl_value.as_str())
+                if cl_res.is_err() {
+                    owned_stream#.close()
+                    return Result<HttpResponseStream, string>::Err(string::from("Invalid Content-Length header value"))
+                }
+                cl_rem = cl_res.unwrap() as i64
             }
-            cl_rem = cl_res.unwrap() as i64
+            miss => {}
         }
 
         auto is_chunked# = false
-        auto te_opt = resp_headers#.get("transfer-encoding")
-        if te_opt.is_some() {
-            if te_opt.unwrap().clone().to_ascii_lowercase().eq(string::from("chunked")) {
-                is_chunked = true
+        match resp_headers.lookup("transfer-encoding") {
+            auto &te_value => {
+                if te_value.clone().to_ascii_lowercase().eq(string::from("chunked")) {
+                    is_chunked = true
+                }
             }
+            miss => {}
         }
 
         return Result<HttpResponseStream, string>::Ok(HttpResponseStream(

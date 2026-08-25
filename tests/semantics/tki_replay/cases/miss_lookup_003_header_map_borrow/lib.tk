@@ -1,0 +1,11 @@
+import stdx/net/http::HeaderMap
+
+// EXPECT_TKI: pub fn find_header(headers: HeaderMap, key: str) -> &string|miss <- headers
+// EXPECT_TKI_ROUNDTRIP
+
+pub fn find_header(headers: HeaderMap, key: str) -> &string | miss
+effects:
+    return <- headers
+{
+    return headers.lookup(key)
+}
