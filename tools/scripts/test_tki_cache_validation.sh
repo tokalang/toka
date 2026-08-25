@@ -144,6 +144,32 @@ if ! grep -q "Incompatible or stale interface file" "$TEST_DIR/err4.txt"; then
 fi
 echo "PASS: Test 4"
 
+# 4b. A pre-PlaceIterator 0.9.9-14 interface lacks the independent place-yield
+# ABI schema and must fail closed without renaming unrelated nominal types.
+echo "Test 4b: Missing PlaceIterator ABI schema rejection"
+cat << 'EOF' > "$TEST_DIR/lib.tk"
+pub fn get_num() -> i32 {
+    return 100
+}
+EOF
+"$TOKAC_ABS" -c "$TEST_DIR/lib.tk" -o "$TEST_DIR/lib.o"
+rm -f "$TEST_DIR/lib.tk"
+grep -v '^// @meta place_yield_abi_schema:' \
+    "$TEST_DIR/lib.tki" > "$TEST_DIR/temp.tki"
+mv "$TEST_DIR/temp.tki" "$TEST_DIR/lib.tki"
+
+if "$TOKAC_ABS" "$TEST_DIR/main.tk" "$TEST_DIR/lib.o" \
+    -o "$TEST_DIR/main_app_4b" 2> "$TEST_DIR/err4b.txt"; then
+    echo "FAIL: Expected missing place-yield ABI schema rejection"
+    exit 1
+fi
+if ! grep -q "Incompatible or stale interface file" "$TEST_DIR/err4b.txt"; then
+    echo "FAIL: Expected stale interface error for missing place-yield schema"
+    cat "$TEST_DIR/err4b.txt"
+    exit 1
+fi
+echo "PASS: Test 4b"
+
 # 5. Test case 5: No metadata rejection
 echo "Test 5: Missing metadata rejection"
 cat << 'EOF' > "$TEST_DIR/lib.tk"
@@ -784,6 +810,7 @@ cat << 'EOF' > "$TEST_DIR/sourceless_interface/lib.tki"
 // @meta target_triple: any
 // @meta source_hash: any
 // @meta identity_schema_version: 2
+// @meta place_yield_abi_schema: 1
 // @meta logical_module_path: unbound
 // @meta resolver_binding_digest: unbound
 

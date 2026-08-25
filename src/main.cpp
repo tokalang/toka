@@ -1282,8 +1282,10 @@ int main(int argc, char **argv) {
               case toka::TKICacheStatus::MissingSourceHash: return "MissingSourceHash";
               case toka::TKICacheStatus::MissingSourcePath: return "MissingSourcePath";
               case toka::TKICacheStatus::MissingIdentitySchema: return "MissingIdentitySchema";
+              case toka::TKICacheStatus::MissingPlaceYieldSchema: return "MissingPlaceYieldSchema";
               case toka::TKICacheStatus::MissingModuleIdentity: return "MissingModuleIdentity";
               case toka::TKICacheStatus::InterfaceIdentityMismatch: return "InterfaceIdentityMismatch";
+              case toka::TKICacheStatus::PlaceYieldSchemaMismatch: return "PlaceYieldSchemaMismatch";
               case toka::TKICacheStatus::CompilerVersionMismatch: return "CompilerVersionMismatch";
               case toka::TKICacheStatus::FormatVersionMismatch: return "FormatVersionMismatch";
               case toka::TKICacheStatus::TargetTripleMismatch: return "TargetTripleMismatch";

@@ -76,6 +76,7 @@ def main() -> int:
         for expected in (
                 "// @meta format_version: 3",
                 "// @meta identity_schema_version: 2",
+                "// @meta place_yield_abi_schema: 1",
                 "// @meta logical_module_path: lib",
                 "// @meta resolver_binding_digest:",
                 "// @tki v2 field_graph: NonZero.raw = i32",

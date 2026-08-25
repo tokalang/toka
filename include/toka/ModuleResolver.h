@@ -20,8 +20,10 @@ enum class TKICacheStatus {
     MissingSourceHash,
     MissingSourcePath,
     MissingIdentitySchema,
+    MissingPlaceYieldSchema,
     MissingModuleIdentity,
     InterfaceIdentityMismatch,
+    PlaceYieldSchemaMismatch,
     CompilerVersionMismatch,
     FormatVersionMismatch,
     TargetTripleMismatch,
@@ -35,6 +37,7 @@ struct TKIMetadata {
     std::string SourceHash;
     std::string SourcePath;
     std::string IdentitySchemaVersion;
+    std::string PlaceYieldSchemaVersion;
     std::string LogicalModulePath;
     std::string ResolverBindingDigest;
 };

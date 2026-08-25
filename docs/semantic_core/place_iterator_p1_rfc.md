@@ -1,6 +1,7 @@
 # Place Iterator P1 RFC
 
-**Status:** P1 shared/read Array + Vec slice implemented; Cold Full Gate pending.
+**Status:** P1 shared/read Array + Vec slice implemented; qualification
+receipts are commit-bound.
 
 ## 1. Objective
 
@@ -200,6 +201,11 @@ place-yield ABI schema version
 
 The importer restores the global epoch law from the schema version. It does
 not accept custom epoch, capability, or stability fields in P1.
+
+The first place-yield ABI slice retains interface format v3 and compiler
+interface provenance `0.9.9-14`, but requires independent
+`place_yield_abi_schema: 1` metadata. Older `0.9.9-14` interfaces without this
+schema fail closed without renaming unrelated toolchain nominal identities.
 
 Source-backed and source-hidden compilation must agree on:
 

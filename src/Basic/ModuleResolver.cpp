@@ -827,6 +827,8 @@ bool ModuleResolver::readTKIMetadata(const std::string &path, TKIMetadata &meta)
                 else if (key == "source_path") meta.SourcePath = val;
                 else if (key == "identity_schema_version")
                     meta.IdentitySchemaVersion = val;
+                else if (key == "place_yield_abi_schema")
+                    meta.PlaceYieldSchemaVersion = val;
                 else if (key == "logical_module_path")
                     meta.LogicalModulePath = val;
                 else if (key == "resolver_binding_digest")
@@ -882,6 +884,10 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(
         reason = "Missing identity_schema_version metadata";
         return TKICacheStatus::MissingIdentitySchema;
     }
+    if (meta.PlaceYieldSchemaVersion.empty()) {
+        reason = "Missing place_yield_abi_schema metadata";
+        return TKICacheStatus::MissingPlaceYieldSchema;
+    }
     if (meta.LogicalModulePath.empty() || meta.ResolverBindingDigest.empty()) {
         reason = "Missing logical_module_path or resolver_binding_digest metadata";
         return TKICacheStatus::MissingModuleIdentity;
@@ -890,6 +896,12 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(
         reason = "Interface identity schema mismatch (expected 2, got " +
                  meta.IdentitySchemaVersion + ")";
         return TKICacheStatus::InterfaceIdentityMismatch;
+    }
+    if (meta.PlaceYieldSchemaVersion != TOKA_PLACE_YIELD_ABI_SCHEMA_VERSION) {
+        reason = "Place-yield ABI schema mismatch (expected " +
+                 std::string(TOKA_PLACE_YIELD_ABI_SCHEMA_VERSION) +
+                 ", got " + meta.PlaceYieldSchemaVersion + ")";
+        return TKICacheStatus::PlaceYieldSchemaMismatch;
     }
     ShadowModuleCoordinate coordinate = deriveShadowCoordinate(
         PathUtils::canonicalize(identityPath));

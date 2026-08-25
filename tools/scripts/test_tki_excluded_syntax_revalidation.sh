@@ -25,6 +25,7 @@ write_metadata() {
         echo "// @meta target_triple: any"
         echo "// @meta source_hash: any"
         echo "// @meta identity_schema_version: 2"
+        echo "// @meta place_yield_abi_schema: 1"
         echo "// @meta logical_module_path: unbound"
         echo "// @meta resolver_binding_digest: unbound"
         echo "// @meta source_path: $path.tk"

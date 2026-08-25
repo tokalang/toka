@@ -3318,8 +3318,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                           element = placeOutcome->GenericArgs.front();
                         }
                       }
+                      FunctionDecl *placeNext = nullptr;
+                      if (MethodDecls.count(iterSoul) &&
+                          MethodDecls[iterSoul].count(aliasNext))
+                        placeNext = MethodDecls[iterSoul][aliasNext];
                       if (!exactCarrier || !element ||
-                          !ImplMap.count(baseIterSoul + aliasFacet)) {
+                          !ImplMap.count(baseIterSoul + aliasFacet) ||
+                          !placeNext ||
+                          !m_QualifiedPlaceIteratorProviders.count(
+                              placeNext)) {
                         error(fe,
                               DiagID::ERR_FOR_ALIAS_REQUIRES_PLACE_ITERATOR);
                         fullType = "i32";
@@ -3328,10 +3335,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                         fe->IterElementType = fullType;
                         fe->IsReference = true;
                         fe->UsesPlaceIterator = true;
-                        if (MethodDecls.count(iterSoul) &&
-                            MethodDecls[iterSoul].count(aliasNext))
-                          fe->ResolvedNextFn =
-                              MethodDecls[iterSoul][aliasNext];
+                        fe->ResolvedNextFn = placeNext;
                       }
                     }
                 } else {

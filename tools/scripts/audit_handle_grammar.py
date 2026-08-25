@@ -35,6 +35,7 @@ def run_quick_scan(tokac_bin, run_dir, scratch_dir):
         ("Handle Grammar Pass Suite", [
             "python3", "tools/scripts/test_pass.py",
             "tests/pass/g08_level2_borrow_views.tk",
+            "tests/pass/g08_level2_return_views.tk",
             "tests/pass/g08_smart_ptr_borrow.tk",
             "tests/pass/g08_handle_grammar_parser_matrix.tk",
             "tests/pass/g08_handle_grammar_valid_matrix.tk",
@@ -80,14 +81,23 @@ def run_quick_scan(tokac_bin, run_dir, scratch_dir):
             "tests/fail/handle_grammar_trait_method_return_illegal.tk",
             "tests/fail/handle_grammar_unsafe_block_illegal.tk",
             "tests/fail/place_outcome_direct_call_forbidden.tk",
-            "tests/fail/place_outcome_surface_forbidden.tk"
+            "tests/fail/place_outcome_surface_forbidden.tk",
+            "tests/fail/generic_unknown_nested_type.tk",
+            "tests/fail/place_iterator_spoof_trait_forbidden.tk",
+            "tests/fail/place_iterator_spoof_impl_forbidden.tk"
         ]),
         ("Handle Grammar TKI Replay", [
             "bash", "tools/scripts/test_semantic_replay.sh"
         ], {"TOKAC": tokac_bin, "CASE_ROOT": "tests/semantics/tki_replay/cases/handle_001_borrow_views"}),
+        ("Level-2 Return Compatibility Replay", [
+            "bash", "tools/scripts/test_semantic_replay.sh"
+        ], {"TOKAC": tokac_bin, "CASE_ROOT": "tests/semantics/tki_replay/cases/handle_002_level2_returns"}),
         ("Place Iterator P1 TKI Replay", [
             "bash", "tools/scripts/test_semantic_replay.sh"
         ], {"TOKAC": tokac_bin, "CASE_ROOT": "tests/semantics/tki_replay/cases/iterator_003_alias_body"}),
+        ("Place Iterator P1 Security", [
+            "bash", "tools/scripts/test_place_iterator_security.sh"
+        ], {"TOKAC": tokac_bin}),
         ("Handle Grammar Classifier CTest", [
             "ctest", "--test-dir", ctest_dir, "-R", "toka_handle_grammar_classifier", "--output-on-failure"
         ])
@@ -224,6 +234,7 @@ def run_full_scan(tokac_bin, run_dir, scratch_dir, jobs=8, check_only=True):
         ("Fail Suite (test_verify_fail.py)", ["python3", "tools/scripts/test_verify_fail.py"], "fail_suite.log"),
         ("Conformance Suite (run_conformance.py)", ["python3", "tools/run_conformance.py"], "conformance_suite.log"),
         ("Semantic Replay Suite (test_semantic_replay.sh)", ["bash", "tools/scripts/test_semantic_replay.sh"], "semantic_replay.log"),
+        ("Place Iterator Security (test_place_iterator_security.sh)", ["bash", "tools/scripts/test_place_iterator_security.sh"], "place_iterator_security.log"),
         ("Verify Warn Suite (test_verify_warn.py)", ["python3", "tools/scripts/test_verify_warn.py"], "verify_warn.log"),
         ("TKI Cache Validation (test_tki_cache_validation.sh)", ["bash", "tools/scripts/test_tki_cache_validation.sh"], "tki_cache_validation.log"),
         ("Cache Invalidation (test_semantic_cache_invalidation.sh)", ["bash", "tools/scripts/test_semantic_cache_invalidation.sh"], "cache_invalidation.log"),

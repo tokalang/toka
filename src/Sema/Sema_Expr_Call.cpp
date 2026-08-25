@@ -273,16 +273,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   // produce the exact internal carrier for its Item morphology.
   if (CallName == "__place_end" || CallName == "__place_hit") {
     const bool isHit = CallName == "__place_hit";
-    bool trustedProvider = false;
-    if (CurrentFunction) {
-      auto owner = DeclarationLexicalScopes.find(CurrentFunction);
-      trustedProvider = owner != DeclarationLexicalScopes.end() &&
-                        owner->second &&
-                        owner->second->IsTrustedSystemModule;
-    }
     const bool inProvider = CurrentFunction &&
                             CurrentFunction->Name == "next_place" &&
-                            trustedProvider;
+                            m_QualifiedPlaceIteratorProviders.count(
+                                CurrentFunction) != 0;
     if (!inProvider || Call->GenericArgs.size() != 1 ||
         Call->Args.size() != (isHit ? 1u : 0u)) {
       error(Call, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY, CallName);
@@ -303,8 +297,34 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     if (isHit) {
       auto *identity =
           dynamic_cast<UnaryExpr *>(Call->Args.front().get());
+      AccessPath yieldedPath =
+          identity && identity->RHS ? makeAccessPath(identity->RHS.get())
+                                    : AccessPath{};
+      bool admittedRoot = yieldedPath &&
+                          Type::stripMorphology(yieldedPath.RootName) ==
+                              "self";
+      if (!admittedRoot && yieldedPath && CurrentFunction) {
+        for (const auto &dependency : CurrentFunction->LifeDependencies) {
+          if (Type::stripMorphology(
+                  extractPathRoot(dependency)) ==
+              Type::stripMorphology(yieldedPath.RootName)) {
+            admittedRoot = true;
+            break;
+          }
+        }
+      }
+      SymbolInfo *rootInfo = nullptr;
+      if (admittedRoot && yieldedPath.RootID != 0)
+        CurrentScope->findSymbolByID(yieldedPath.RootID, rootInfo);
+      if (admittedRoot && !rootInfo) {
+        std::string actualRoot = yieldedPath.RootName;
+        CurrentScope->findVariableWithDeref(yieldedPath.RootName, rootInfo,
+                                            actualRoot);
+      }
+      admittedRoot = admittedRoot && rootInfo &&
+                     rootInfo->IsFunctionParameter;
       if (!identity || identity->Op != TokenType::MorphicIdentity ||
-          !identity->RHS || !makeAccessPath(identity->RHS.get())) {
+          !identity->RHS || !yieldedPath || !admittedRoot) {
         error(Call, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY, CallName);
         return toka::Type::fromString("unknown");
       }

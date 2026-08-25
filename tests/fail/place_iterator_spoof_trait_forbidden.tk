@@ -1,0 +1,9 @@
+import core/traits::{__PlaceOutcome}
+
+// EXPECT: error[E04648]
+pub trait @PlaceIterator {
+    type Item
+    pub fn next_place(self#) -> __PlaceOutcome<Item> <- self
+}
+
+fn main() -> i32 { return 0 }

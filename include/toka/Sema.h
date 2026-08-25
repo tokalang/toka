@@ -454,6 +454,10 @@ private:
   // TypeName -> {MethodName -> FunctionDecl*}
   std::map<std::string, std::map<std::string, FunctionDecl *>> MethodDecls;
   std::map<std::string, TraitDecl *> TraitMap;
+  // Canonical P1 lang-item identity and the only providers currently
+  // qualified to construct/transport __PlaceOutcome.
+  TraitDecl *m_CorePlaceIteratorTrait = nullptr;
+  std::set<const FunctionDecl *> m_QualifiedPlaceIteratorProviders;
   // Key: "StructName@TraitName" -> {MethodName -> FunctionDecl*}
   std::map<std::string, std::map<std::string, FunctionDecl *>> ImplMap;
   std::map<std::string, AssociatedTypeBinding> AssociatedTypeMap;
@@ -489,6 +493,7 @@ private:
     std::map<std::string, AliasInfo> TypeAliases;
     std::map<std::string, TraitDecl *> Traits;
     std::map<std::string, VariableDecl *> Globals;
+    std::set<std::string> GenericTypeParameterNames;
   };
 
   // RFC @Encap epoch Slice 1 facts. These are observational data only until a

@@ -18,7 +18,6 @@
 #include "toka/Sema.h"
 #include "toka/Type.h"
 #include "toka/Parser.h"
-#include <algorithm>
 #include <cctype>
 #include <functional>
 #include <iostream>
@@ -43,57 +42,63 @@ static bool isAnonymousRecord(const std::shared_ptr<toka::Type> &type) {
 // that distinction on the semantic Type graph before cloning/substitution.
 static void markCallerBoundTypeLeaves(
     const std::shared_ptr<toka::Type> &type,
+    const std::set<std::string> &declaredParameters,
     std::set<const toka::Type *> &visited) {
   if (!type || !visited.insert(type.get()).second)
     return;
   if (auto shape = std::dynamic_pointer_cast<toka::ShapeType>(type)) {
-    const bool isConstantLiteral =
-        !shape->Name.empty() &&
-        std::all_of(shape->Name.begin(), shape->Name.end(),
-                    [](unsigned char c) { return std::isdigit(c); });
-    if (!shape->Decl && shape->GenericArgs.empty() && !isConstantLiteral)
+    const bool isCallerParameter =
+        declaredParameters.count(shape->Name) != 0 ||
+        (!shape->Name.empty() && shape->Name.front() == '\'' &&
+         declaredParameters.count(shape->Name.substr(1)) != 0);
+    if (!shape->Decl && shape->GenericArgs.empty() && isCallerParameter)
       shape->BypassesCurrentTypeAlias = true;
     for (const auto &argument : shape->GenericArgs)
-      markCallerBoundTypeLeaves(argument, visited);
+      markCallerBoundTypeLeaves(argument, declaredParameters, visited);
     return;
   }
   if (type->isPointer()) {
-    markCallerBoundTypeLeaves(type->getPointeeType(), visited);
+    markCallerBoundTypeLeaves(type->getPointeeType(), declaredParameters,
+                              visited);
     return;
   }
   if (auto array = std::dynamic_pointer_cast<toka::ArrayType>(type)) {
-    markCallerBoundTypeLeaves(array->ElementType, visited);
+    markCallerBoundTypeLeaves(array->ElementType, declaredParameters, visited);
     return;
   }
   if (auto slice = std::dynamic_pointer_cast<toka::SliceType>(type)) {
-    markCallerBoundTypeLeaves(slice->ElementType, visited);
+    markCallerBoundTypeLeaves(slice->ElementType, declaredParameters, visited);
     return;
   }
   if (auto uninit = std::dynamic_pointer_cast<toka::UninitType>(type)) {
-    markCallerBoundTypeLeaves(uninit->InnerType, visited);
+    markCallerBoundTypeLeaves(uninit->InnerType, declaredParameters, visited);
     return;
   }
   if (auto outcome = std::dynamic_pointer_cast<toka::MissOutcomeType>(type)) {
-    markCallerBoundTypeLeaves(outcome->PayloadType, visited);
+    markCallerBoundTypeLeaves(outcome->PayloadType, declaredParameters,
+                              visited);
     return;
   }
   if (auto function = std::dynamic_pointer_cast<toka::FunctionType>(type)) {
     for (const auto &parameter : function->ParamTypes)
-      markCallerBoundTypeLeaves(parameter, visited);
-    markCallerBoundTypeLeaves(function->ReturnType, visited);
+      markCallerBoundTypeLeaves(parameter, declaredParameters, visited);
+    markCallerBoundTypeLeaves(function->ReturnType, declaredParameters,
+                              visited);
     return;
   }
   if (auto function = std::dynamic_pointer_cast<toka::DynFnType>(type)) {
     for (const auto &parameter : function->ParamTypes)
-      markCallerBoundTypeLeaves(parameter, visited);
-    markCallerBoundTypeLeaves(function->ReturnType, visited);
+      markCallerBoundTypeLeaves(parameter, declaredParameters, visited);
+    markCallerBoundTypeLeaves(function->ReturnType, declaredParameters,
+                              visited);
   }
 }
 
 static void markCallerBoundTypeLeaves(
-    const std::shared_ptr<toka::Type> &type) {
+    const std::shared_ptr<toka::Type> &type,
+    const std::set<std::string> &declaredParameters) {
   std::set<const toka::Type *> visited;
-  markCallerBoundTypeLeaves(type, visited);
+  markCallerBoundTypeLeaves(type, declaredParameters, visited);
 }
 
 static bool containsDeferredTypeParameter(
@@ -759,10 +764,25 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
 
     // [NEW] Monomorphization Trigger
     if (!shape->GenericArgs.empty()) {
+      static const std::set<std::string> noDeclaredParameters;
+      const std::set<std::string> *declaredParameters =
+          &noDeclaredParameters;
+      if (CurrentFunction) {
+        auto owner = DeclarationLexicalScopes.find(CurrentFunction);
+        if (owner != DeclarationLexicalScopes.end() && owner->second)
+          declaredParameters =
+              &owner->second->GenericTypeParameterNames;
+      } else if (CurrentModule) {
+        ModuleScope *owner = CurrentModule->Loc.isValid()
+                                 ? getLexicalModule(CurrentModule->Loc)
+                                 : nullptr;
+        if (owner)
+          declaredParameters = &owner->GenericTypeParameterNames;
+      }
       // 1. Resolve arguments first
       for (auto &Arg : shape->GenericArgs) {
         Arg = resolveType(Arg, force);
-        markCallerBoundTypeLeaves(Arg);
+        markCallerBoundTypeLeaves(Arg, *declaredParameters);
       }
       // A type containing a caller-bound parameter is a generic expression,
       // not a monomorphization request.  Materializing Vec<&T>, for example,

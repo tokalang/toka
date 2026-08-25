@@ -1,0 +1,18 @@
+import core/traits::{__PlaceOutcome}
+
+pub trait @PlaceIterator {
+    type Item
+    pub fn next_place(self#) -> i32
+}
+
+shape Fake()
+
+// EXPECT: error[E04648]
+impl Fake@PlaceIterator {
+    type Item = i32
+    pub fn next_place(self#) -> __PlaceOutcome<Item> <- self {
+        return __place_end<Item>()
+    }
+}
+
+fn main() -> i32 { return 0 }

@@ -1,0 +1,8 @@
+import std/vec::Vec
+
+// EXPECT: error[E0463]
+fn bad<T>(values: Vec<MissingType>) -> i32 {
+    return 0
+}
+
+fn main() -> i32 { return 0 }

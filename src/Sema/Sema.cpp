@@ -244,6 +244,12 @@ static bool isTrustedStdAtomicModule(const Module &module) {
          module.ShadowLogicalModulePath == "std/atomic";
 }
 
+static bool isTrustedCoreTraitsModule(const Module &module) {
+  return module.IsTrustedSystemModule && module.ShadowCoordinateKnown &&
+         module.ShadowCoordinateOrigin == "toolchain" &&
+         module.ShadowLogicalModulePath == "core/traits";
+}
+
 static bool isAtomicIntrinsicDeclaration(const Module &module,
                                          const FunctionDecl &function) {
   static const std::set<std::string> Names = {
@@ -2794,6 +2800,7 @@ bool Sema::checkModule(Module &M) {
 
   for (size_t i = 0; i < M.Functions.size(); ++i) {
     if (!M.Functions[i]->GenericParams.empty()) {
+      checkFunction(M.Functions[i].get());
       checkUnsafePublicFunctionBoundary(M.Functions[i].get());
       continue; // [NEW] Skip Generic Templates
     }
@@ -2888,6 +2895,26 @@ Sema::makeDeclaredShapeId(const Module &module,
 
 void Sema::declareGlobals(Module &M) {
   recordHandleSurfaceModule(M);
+  std::set<std::string> declaredTypeParameters;
+  auto rememberTypeParameters = [&](const std::vector<GenericParam> &params) {
+    for (const auto &parameter : params) {
+      if (parameter.IsConst)
+        continue;
+      declaredTypeParameters.insert(parameter.Name);
+      if (!parameter.Name.empty() && parameter.Name.front() == '\'')
+        declaredTypeParameters.insert(parameter.Name.substr(1));
+    }
+  };
+  for (const auto &function : M.Functions)
+    rememberTypeParameters(function->GenericParams);
+  for (const auto &shape : M.Shapes)
+    rememberTypeParameters(shape->GenericParams);
+  for (const auto &trait : M.Traits)
+    rememberTypeParameters(trait->GenericParams);
+  for (const auto &impl : M.Impls)
+    rememberTypeParameters(impl->GenericParams);
+  for (const auto &alias : M.TypeAliases)
+    rememberTypeParameters(alias->GenericParams);
   if (std::find(DeclaredModules.begin(), DeclaredModules.end(), &M) ==
       DeclaredModules.end())
     DeclaredModules.push_back(&M);
@@ -2897,6 +2924,8 @@ void Sema::declareGlobals(Module &M) {
       : toka::PathUtils::canonicalize(
             DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
   ModuleScope &ms = ModuleMap[fileName];
+  ms.GenericTypeParameterNames.insert(declaredTypeParameters.begin(),
+                                      declaredTypeParameters.end());
   ms.IsTrustedSystemModule =
       ms.IsTrustedSystemModule || M.IsTrustedSystemModule;
   ms.ShadowCoordinateKnown = M.ShadowCoordinateKnown;
@@ -3097,6 +3126,8 @@ void Sema::declareGlobals(Module &M) {
   // 5. Register Traits
   for (auto &Trait : M.Traits) {
     DeclarationLexicalScopes[Trait.get()] = &ms;
+    if (Trait->Name == "PlaceIterator" && isTrustedCoreTraitsModule(M))
+      m_CorePlaceIteratorTrait = Trait.get();
     if (Trait->Name == "Clone" || Trait->Name == "Drop") {
       DiagnosticEngine::report(getLoc(Trait.get()), DiagID::ERR_GENERIC_SEMA,
                                "the legacy @Clone and @Drop facets are removed");
@@ -3118,7 +3149,7 @@ void Sema::declareGlobals(Module &M) {
       SyntaxOrigin traitOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
       auto methodRetTy = Method->ReturnTypeSyntax ? toka::Type::fromSyntax(Method->ReturnTypeSyntax) : toka::Type::fromString(Method->ReturnType);
       if (containsInternalPlaceOutcome(methodRetTy) &&
-          !(Trait->Name == "PlaceIterator" &&
+          !(Trait.get() == m_CorePlaceIteratorTrait &&
             Method->Name == "next_place"))
         error(Method.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
               methodRetTy->toString());
@@ -4091,6 +4122,19 @@ void Sema::registerImpl(ImplDecl *Impl) {
                 ? findVisibleTraitDecl(Impl->TraitName, getLoc(Impl))
                 : findTraitDecl(Impl->TraitName);
   std::string canonicalTrait = canonicalTraitName(Impl->TraitName, traitDecl);
+  auto implOwner = DeclarationLexicalScopes.find(Impl);
+  const bool qualifiedPlaceImpl =
+      traitDecl && traitDecl == m_CorePlaceIteratorTrait &&
+      implOwner != DeclarationLexicalScopes.end() && implOwner->second &&
+      implOwner->second->IsTrustedSystemModule &&
+      implOwner->second->ShadowCoordinateKnown &&
+      implOwner->second->ShadowLogicalModulePath == "std/vec";
+  if (qualifiedPlaceImpl) {
+    for (const auto &method : Impl->Methods) {
+      if (method->Name == "next_place")
+        m_QualifiedPlaceIteratorProviders.insert(method.get());
+    }
+  }
   recordSlice1ImplFact(Impl, resolvedTypeName, canonicalTrait);
 
   if (getTraitFamilyName(canonicalTrait) == "ErrorInto") {
@@ -4171,6 +4215,8 @@ void Sema::registerImpl(ImplDecl *Impl) {
     requireSelfDependency("next_ref");
   if (getTraitFamilyName(canonicalTrait) == "MutableBorrowIterator")
     requireSelfDependency("next_mut");
+  if (getTraitFamilyName(canonicalTrait) == "PlaceIterator")
+    requireSelfDependency("next_place");
 
   const std::string methodOwnerName =
       Impl->ResolvedOwner &&
@@ -4299,8 +4345,17 @@ void Sema::registerImpl(ImplDecl *Impl) {
 void Sema::declareImpl(ImplDecl *Impl) {
   registerSlice2Policy(Impl);
   registerSlice4Impl(Impl);
+  TraitDecl *declaredTrait = Impl->TraitName.empty()
+                                 ? nullptr
+                                 : findVisibleTraitDecl(Impl->TraitName,
+                                                        getLoc(Impl));
+  auto implOwner = DeclarationLexicalScopes.find(Impl);
   const bool isPlaceFacet =
-      getTraitFamilyName(Impl->TraitName) == "PlaceIterator";
+      declaredTrait && declaredTrait == m_CorePlaceIteratorTrait &&
+      implOwner != DeclarationLexicalScopes.end() && implOwner->second &&
+      implOwner->second->IsTrustedSystemModule &&
+      implOwner->second->ShadowCoordinateKnown &&
+      implOwner->second->ShadowLogicalModulePath == "std/vec";
   for (auto &Method : Impl->Methods) {
     auto returnType = Method->ReturnTypeSyntax
                           ? toka::Type::fromSyntax(Method->ReturnTypeSyntax)
@@ -4396,6 +4451,8 @@ void Sema::declareImpl(ImplDecl *Impl) {
     requireSelfDependency("next_ref");
   if (getTraitFamilyName(canonicalTrait) == "MutableBorrowIterator")
     requireSelfDependency("next_mut");
+  if (getTraitFamilyName(canonicalTrait) == "PlaceIterator")
+    requireSelfDependency("next_place");
   const std::string methodOwnerName =
       Impl->ResolvedOwner &&
               Impl->ResolvedOwner->OwnerLinkName.rfind("__toka_owner_", 0) == 0
@@ -4453,10 +4510,123 @@ void Sema::declareImpl(ImplDecl *Impl) {
 }
 
 void Sema::checkFunction(FunctionDecl *Fn) {
-  // [NEW] Skip Generic Templates
-  // We cannot check them until they are instantiated with concrete types.
-  if (!Fn->GenericParams.empty())
+  // Generic templates do not execute a body check until instantiation, but
+  // their public type syntax must still reject unknown names at the
+  // declaration point.  Validate names without resolving or instantiating the
+  // signature so this audit cannot mutate later generic CodeGen state.
+  if (!Fn->GenericParams.empty()) {
+    std::set<std::string> parameterNames;
+    std::map<std::string, std::set<std::string>> parameterBounds;
+    for (const auto &parameter : Fn->GenericParams) {
+      if (parameter.IsConst)
+        continue;
+      std::string name = parameter.Name;
+      if (!name.empty() && name.front() == '\'')
+        name.erase(0, 1);
+      parameterNames.insert(name);
+      for (const auto &bound : parameter.TraitBounds)
+        parameterBounds[name].insert(getTraitFamilyName(bound));
+    }
+
+    std::set<const Type *> visited;
+    std::function<void(const std::shared_ptr<Type> &)> validateNames =
+        [&](const std::shared_ptr<Type> &type) {
+      if (!type || !visited.insert(type.get()).second)
+        return;
+      if (type->isPointer()) {
+        validateNames(type->getPointeeType());
+        return;
+      }
+      if (auto array = std::dynamic_pointer_cast<ArrayType>(type)) {
+        validateNames(array->ElementType);
+        return;
+      }
+      if (auto slice = std::dynamic_pointer_cast<SliceType>(type)) {
+        validateNames(slice->ElementType);
+        return;
+      }
+      if (auto uninit = std::dynamic_pointer_cast<UninitType>(type)) {
+        validateNames(uninit->InnerType);
+        return;
+      }
+      if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(type)) {
+        validateNames(outcome->PayloadType);
+        return;
+      }
+      if (auto function = std::dynamic_pointer_cast<FunctionType>(type)) {
+        for (const auto &parameter : function->ParamTypes)
+          validateNames(parameter);
+        validateNames(function->ReturnType);
+        return;
+      }
+      if (auto function = std::dynamic_pointer_cast<DynFnType>(type)) {
+        for (const auto &parameter : function->ParamTypes)
+          validateNames(parameter);
+        validateNames(function->ReturnType);
+        return;
+      }
+      auto shape = std::dynamic_pointer_cast<ShapeType>(type);
+      if (!shape)
+        return;
+
+      if (!shape->Name.empty() && shape->Name.front() == '(' &&
+          shape->Name.back() == ')') {
+        if (shape->SourceSyntax &&
+            shape->SourceSyntax->NodeKind ==
+                TypeSyntax::Kind::AnonymousRecord) {
+          for (const auto &field : shape->SourceSyntax->Fields)
+            validateNames(Type::fromSyntax(field.Type));
+        }
+        return;
+      }
+
+      std::string name = shape->Name;
+      if (!name.empty() && name.front() == '\'')
+        name.erase(0, 1);
+      bool admitted = parameterNames.count(name) != 0;
+      size_t projectionAt = findTopLevelChar(name, '@');
+      size_t projectionScope =
+          projectionAt == std::string::npos
+              ? std::string::npos
+              : findTopLevelDoubleColon(name, projectionAt + 1);
+      if (!admitted && projectionAt != std::string::npos &&
+          projectionScope != std::string::npos) {
+        const std::string base =
+            trimTypeString(name.substr(0, projectionAt));
+        const std::string trait = getTraitFamilyName(trimTypeString(
+            name.substr(projectionAt + 1,
+                        projectionScope - projectionAt - 1)));
+        admitted = parameterBounds.count(base) &&
+                   parameterBounds[base].count(trait);
+      }
+      if (!admitted && !isTypeNameVisible(shape->Name, Fn->Loc)) {
+        DiagnosticEngine::report(Fn->Loc, DiagID::ERR_UNDEFINED_TYPE,
+                                 shape->Name);
+        HasError = true;
+      }
+
+      ShapeDecl *genericDecl = shape->Decl;
+      if (!genericDecl) {
+        auto declaration = ShapeMap.find(shape->Name);
+        if (declaration != ShapeMap.end())
+          genericDecl = declaration->second;
+      }
+      for (size_t i = 0; i < shape->GenericArgs.size(); ++i) {
+        if (genericDecl && i < genericDecl->GenericParams.size() &&
+            genericDecl->GenericParams[i].IsConst)
+          continue;
+        validateNames(shape->GenericArgs[i]);
+      }
+    };
+
+    validateNames(Fn->ReturnTypeSyntax
+                      ? Type::fromSyntax(Fn->ReturnTypeSyntax)
+                      : Type::fromString(Fn->ReturnType));
+    for (const auto &argument : Fn->Args) {
+      validateNames(Sema::synthesizePhysicalTypeObject(argument, false));
+    }
     return;
+  }
 
   ActiveNodeRAII Active(Fn);
 

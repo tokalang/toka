@@ -361,6 +361,8 @@ void TKIExporter::exportModule(const Module &module) {
                          module.ShadowLogicalModulePath)
         : "unbound";
     writeln("// @meta identity_schema_version: 2");
+    writeln("// @meta place_yield_abi_schema: " +
+            std::string(TOKA_PLACE_YIELD_ABI_SCHEMA_VERSION));
     writeln("// @meta logical_module_path: " + logicalPath);
     writeln("// @meta resolver_binding_digest: " + resolverDigest);
     for (const auto &fact : module.InterfaceV2Facts)
