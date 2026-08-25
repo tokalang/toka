@@ -1,0 +1,9 @@
+// EXPECT: error[E04645]
+fn main() -> i32 {
+    auto value = 1
+    auto refs# = [&value]
+    for alias &x# in refs {
+        x = 2
+    }
+    return 0
+}

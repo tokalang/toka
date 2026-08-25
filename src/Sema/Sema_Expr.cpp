@@ -3346,18 +3346,43 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (fe->IsPlaceAlias &&
         (fe->IsMutable || fe->Permission.IdentityRebindable)) {
       auto requestedElement = resolveType(toka::Type::fromString(fullType));
+      // `fullType` includes the alias pattern's requested `#`.  It is an
+      // access intent, not evidence that the source element already grants
+      // P.  Fixed arrays have an explicit element declaration, so qualify
+      // handle payload access against that unmodified type instead.
+      auto capabilityElement =
+          isArray ? resolveType(toka::Type::fromString(elemType))
+                  : requestedElement;
       const bool isHandleElement =
-          requestedElement &&
-          (requestedElement->isPointer() || requestedElement->isReference() ||
-           requestedElement->isSmartPointer());
-      if (isHandleElement || (!isArray && !fe->ResolvedNextFn)) {
-        error(fe, DiagID::ERR_FOR_ALIAS_WRITABLE_NOT_QUALIFIED);
+          capabilityElement &&
+          (capabilityElement->isPointer() || capabilityElement->isReference() ||
+           capabilityElement->isSmartPointer());
+      bool qualified = true;
+      if (!isArray && !fe->ResolvedNextFn)
+        qualified = false;
+      if (isHandleElement) {
+        if (!isArray) {
+          qualified = false;
+        } else {
+          if (fe->IsMutable) {
+            auto pointee = capabilityElement->getPointeeType();
+            if (!pointee || !pointee->IsWritable)
+              qualified = false;
+          }
+          if (fe->Permission.IdentityRebindable) {
+            auto sourceCapability =
+                getAccessCapability(fe->Collection.get(), true);
+            if (!sourceCapability.PayloadWritable)
+              qualified = false;
+          }
+        }
       } else {
         auto sourceCapability = getAccessCapability(fe->Collection.get(), true);
-        if (!sourceCapability.PayloadWritable) {
-          error(fe, DiagID::ERR_FOR_ALIAS_WRITABLE_NOT_QUALIFIED);
-        }
+        if (!sourceCapability.PayloadWritable)
+          qualified = false;
       }
+      if (!qualified)
+        error(fe, DiagID::ERR_FOR_ALIAS_WRITABLE_NOT_QUALIFIED);
     }
 
     auto masksBefore = captureVisibleInitMasks(CurrentScope);
@@ -3379,7 +3404,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (iteratorSourcePath &&
           PALCheckerState.getState(iteratorSourcePath) == PathState::Free) {
         if (!PALCheckerState.recordBorrow(iteratorSourcePath,
-                                          fe->IsPlaceAlias && fe->IsMutable,
+                                          fe->IsPlaceAlias &&
+                                              (fe->IsMutable ||
+                                               fe->Permission.IdentityRebindable),
                                           getLoc(fe))) {
           error(fe->Collection.get(), DiagID::ERR_BORROW_MUT,
                 iteratorSourcePath.toLegacyString());
@@ -3394,12 +3421,25 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     CurrentScope->IsLoop = true;
     SymbolInfo Info;
     Info.TypeObj = toka::Type::fromString(fullType);
+    if (fe->IsPlaceAlias) {
+      Info.Permission = fe->Permission;
+      Info.IsPlaceAlias = true;
+    }
+    if (fe->IsPlaceAlias && fe->Permission.IdentityRebindable && Info.TypeObj)
+      Info.TypeObj = Info.TypeObj->withAttributes(
+          true, Info.TypeObj->IsNullable, Info.TypeObj->IsBlocked);
     if (fe->IsPlaceAlias && Info.TypeObj) {
       auto soul = Info.TypeObj->getSoulType();
       auto written = soul ? toka::Type::fromString(
                                 fe->MorphologyPrefix + soul->toString())
                           : nullptr;
-      if (!written || !written->equals(*Info.TypeObj)) {
+      auto morphologyOnly = [](std::string value) {
+        value.erase(std::remove(value.begin(), value.end(), '#'), value.end());
+        value.erase(std::remove(value.begin(), value.end(), '$'), value.end());
+        return value;
+      };
+      if (!written || morphologyOnly(written->toString()) !=
+                          morphologyOnly(Info.TypeObj->toString())) {
         error(fe, DiagID::ERR_FOR_ALIAS_MORPHOLOGY_MISMATCH,
               fe->MorphologyPrefix + fe->VarName,
               Info.TypeObj->toString());
@@ -3602,13 +3642,32 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     if (auto *call = dynamic_cast<CallExpr *>(ce->Value.get()))
       call->CallableReceiver = CallableReceiverMode::Consuming;
-    auto innerTy = checkExpr(ce->Value.get());
-    bool canInvalidate = true;
+    bool cedingPlaceAlias = false;
+    std::shared_ptr<toka::Type> innerTy;
+    AccessPath cedePath = makeAccessPath(ce->Value.get());
+    SymbolInfo *cedeRootInfo = nullptr;
+    if (cedePath.RootID != 0)
+      CurrentScope->findSymbolByID(cedePath.RootID, cedeRootInfo);
+    if (!cedeRootInfo && !cedePath.RootName.empty()) {
+      std::string actualName;
+      CurrentScope->findVariableWithDeref(cedePath.RootName, cedeRootInfo,
+                                          actualName);
+    }
+    if (cedeRootInfo && cedeRootInfo->IsPlaceAlias) {
+      error(ce, DiagID::ERR_SEMA_CANNOT_CEDE_PLACE_ALIAS,
+            Type::stripMorphology(cedePath.RootName));
+      cedingPlaceAlias = true;
+      innerTy = ce->Value->ResolvedType ? ce->Value->ResolvedType
+                                        : cedeRootInfo->TypeObj;
+    }
+    if (!cedingPlaceAlias)
+      innerTy = checkExpr(ce->Value.get());
+    bool canInvalidate = !cedingPlaceAlias;
     
     // [Fix] Enforce tracking move semantics and borrow check for `cede` expression universally.
     if (ce->Value) {
       std::string pathToMove = getPathString(ce->Value.get());
-      if (!pathToMove.empty()) {
+      if (canInvalidate && !pathToMove.empty()) {
           auto conflict = PALCheckerState.verifyInvalidation(
               canonicalizeAccessPath(makeAccessPath(ce->Value.get())));
           if (conflict) {
@@ -3645,7 +3704,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             if (Info->IsFunctionParameter && !Info->IsCeded) {
                 error(ce, DiagID::ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER, Var->Name);
             }
-            CurrentScope->markMoved(actualName, ce->Loc);
+            if (canInvalidate)
+              CurrentScope->markMoved(actualName, ce->Loc);
         }
       } else if (auto *Member = dynamic_cast<MemberExpr *>(underlying)) {
         // A direct field transfer from a local compiler-managed record leaves

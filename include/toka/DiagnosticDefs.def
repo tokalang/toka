@@ -516,6 +516,7 @@ DIAG(ERR_SEMA_DIRECT_MOVE_NON_CEDE_PARAMETER, Error, "E04642", "Cannot move uniq
 DIAG(ERR_FOR_ALIAS_MORPHOLOGY_MISMATCH, Error, "E04643", "for alias pattern '{}' must exactly match element morphology '{}'")
 DIAG(ERR_FOR_ALIAS_REQUIRES_PLACE_ITERATOR, Error, "E04644", "for alias requires an iterator that yields a stable element place")
 DIAG(ERR_FOR_ALIAS_WRITABLE_NOT_QUALIFIED, Error, "E04645", "writable for alias is not yet qualified for this element place")
+DIAG(ERR_SEMA_CANNOT_CEDE_PLACE_ALIAS, Error, "E04646", "Cannot cede alias '{}'; a place alias has no ownership to transfer")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

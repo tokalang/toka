@@ -4197,6 +4197,7 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
                          : lowerTypeSyntax(nullptr, fe->IterElementType),
                      elem->getType());
   sym.typeName = fe->IterElementType;
+  sym.isRebindable = fe->Permission.IdentityRebindable;
   m_Symbols[vBaseName] = sym;
 
   std::string myLabel = "";

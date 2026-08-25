@@ -147,6 +147,10 @@ struct SymbolInfo {
   bool HasPayloadBeenUsed = false;
   bool HasHandleBeenUsed = false;
   bool IsDeclaredVariable = false;
+  // A place alias names storage owned by another binding.  It may carry
+  // qualified H/P access, but never owns the place and therefore cannot be
+  // ceded or acquire an independent drop obligation.
+  bool IsPlaceAlias = false;
   const ImportDecl* ImportingDecl = nullptr;
   bool IsTypeName = false;
   bool IsTraitName = false;
