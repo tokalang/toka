@@ -35,6 +35,108 @@ static bool isAnonymousRecord(const std::shared_ptr<toka::Type> &type) {
   return shapeT->Name.rfind("__Toka_Anon_Rec_", 0) == 0;
 }
 
+// A resolved generic argument belongs to the caller's lexical context.  Any
+// unresolved leaf it still contains is therefore a caller type parameter, not
+// a name that a nested generic's substitution scope may capture.  Preserve
+// that distinction on the semantic Type graph before cloning/substitution.
+static void markCallerBoundTypeLeaves(
+    const std::shared_ptr<toka::Type> &type,
+    std::set<const toka::Type *> &visited) {
+  if (!type || !visited.insert(type.get()).second)
+    return;
+  if (auto shape = std::dynamic_pointer_cast<toka::ShapeType>(type)) {
+    if (!shape->Decl && shape->GenericArgs.empty())
+      shape->BypassesCurrentTypeAlias = true;
+    for (const auto &argument : shape->GenericArgs)
+      markCallerBoundTypeLeaves(argument, visited);
+    return;
+  }
+  if (type->isPointer()) {
+    markCallerBoundTypeLeaves(type->getPointeeType(), visited);
+    return;
+  }
+  if (auto array = std::dynamic_pointer_cast<toka::ArrayType>(type)) {
+    markCallerBoundTypeLeaves(array->ElementType, visited);
+    return;
+  }
+  if (auto slice = std::dynamic_pointer_cast<toka::SliceType>(type)) {
+    markCallerBoundTypeLeaves(slice->ElementType, visited);
+    return;
+  }
+  if (auto uninit = std::dynamic_pointer_cast<toka::UninitType>(type)) {
+    markCallerBoundTypeLeaves(uninit->InnerType, visited);
+    return;
+  }
+  if (auto outcome = std::dynamic_pointer_cast<toka::MissOutcomeType>(type)) {
+    markCallerBoundTypeLeaves(outcome->PayloadType, visited);
+    return;
+  }
+  if (auto function = std::dynamic_pointer_cast<toka::FunctionType>(type)) {
+    for (const auto &parameter : function->ParamTypes)
+      markCallerBoundTypeLeaves(parameter, visited);
+    markCallerBoundTypeLeaves(function->ReturnType, visited);
+    return;
+  }
+  if (auto function = std::dynamic_pointer_cast<toka::DynFnType>(type)) {
+    for (const auto &parameter : function->ParamTypes)
+      markCallerBoundTypeLeaves(parameter, visited);
+    markCallerBoundTypeLeaves(function->ReturnType, visited);
+  }
+}
+
+static void markCallerBoundTypeLeaves(
+    const std::shared_ptr<toka::Type> &type) {
+  std::set<const toka::Type *> visited;
+  markCallerBoundTypeLeaves(type, visited);
+}
+
+static bool containsDeferredTypeParameter(
+    const std::shared_ptr<toka::Type> &type,
+    std::set<const toka::Type *> &visited) {
+  if (!type || !visited.insert(type.get()).second)
+    return false;
+  if (auto shape = std::dynamic_pointer_cast<toka::ShapeType>(type)) {
+    if (shape->BypassesCurrentTypeAlias)
+      return true;
+    for (const auto &argument : shape->GenericArgs) {
+      if (containsDeferredTypeParameter(argument, visited))
+        return true;
+    }
+    return false;
+  }
+  if (type->isPointer())
+    return containsDeferredTypeParameter(type->getPointeeType(), visited);
+  if (auto array = std::dynamic_pointer_cast<toka::ArrayType>(type))
+    return containsDeferredTypeParameter(array->ElementType, visited);
+  if (auto slice = std::dynamic_pointer_cast<toka::SliceType>(type))
+    return containsDeferredTypeParameter(slice->ElementType, visited);
+  if (auto uninit = std::dynamic_pointer_cast<toka::UninitType>(type))
+    return containsDeferredTypeParameter(uninit->InnerType, visited);
+  if (auto outcome = std::dynamic_pointer_cast<toka::MissOutcomeType>(type))
+    return containsDeferredTypeParameter(outcome->PayloadType, visited);
+  if (auto function = std::dynamic_pointer_cast<toka::FunctionType>(type)) {
+    for (const auto &parameter : function->ParamTypes) {
+      if (containsDeferredTypeParameter(parameter, visited))
+        return true;
+    }
+    return containsDeferredTypeParameter(function->ReturnType, visited);
+  }
+  if (auto function = std::dynamic_pointer_cast<toka::DynFnType>(type)) {
+    for (const auto &parameter : function->ParamTypes) {
+      if (containsDeferredTypeParameter(parameter, visited))
+        return true;
+    }
+    return containsDeferredTypeParameter(function->ReturnType, visited);
+  }
+  return false;
+}
+
+static bool containsDeferredTypeParameter(
+    const std::shared_ptr<toka::Type> &type) {
+  std::set<const toka::Type *> visited;
+  return containsDeferredTypeParameter(type, visited);
+}
+
 static void appendAnonymousRecordKeyPart(std::string &key,
                                          const std::string &part) {
   key += std::to_string(part.size());
@@ -521,12 +623,25 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
     }
 
     // [NEW] Local Scope Alias Lookup (for T -> i32)
-    if (CurrentScope) {
-      SymbolInfo Sym;
-      if (CurrentScope->lookup(shape->Name, Sym)) {
-        if (Sym.IsTypeAlias && Sym.TypeObj) {
+    if (CurrentScope && !shape->BypassesCurrentTypeAlias) {
+      SymbolInfo *Sym = nullptr;
+      if (CurrentScope->findSymbol(shape->Name, Sym)) {
+        if (Sym && Sym->IsTypeAlias && Sym->TypeObj) {
+          // Generic substitution must be capture-avoiding.  Given an outer
+          // T and an inner generic instantiated as Inner<&T>, the inner
+          // scope contains T := &T.  Resolving the free T inside that target
+          // against the same mapping would expand forever (&T -> &&T -> ...).
+          // Treat a re-entry as the still-free outer type name; a surrounding
+          // substitution scope may resolve it later.
+          if (!m_ResolvingTypeAliasSymbols.insert(Sym->SymbolID).second) {
+            shape->BypassesCurrentTypeAlias = true;
+            return type;
+          }
           // We found T -> i32 (TypeObj).
-          auto resolved = resolveType(Sym.TypeObj, force);
+          auto resolved = resolveType(Sym->TypeObj, force);
+          m_ResolvingTypeAliasSymbols.erase(Sym->SymbolID);
+          if (!resolved)
+            return type;
           auto attributed = resolved->withAttributes(
               type->IsWritable, type->IsNullable, type->IsBlocked);
           attributed->IsCede = attributed->IsCede || type->IsCede;
@@ -593,6 +708,25 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
       // 1. Resolve arguments first
       for (auto &Arg : shape->GenericArgs) {
         Arg = resolveType(Arg, force);
+        markCallerBoundTypeLeaves(Arg);
+      }
+      // A type containing a caller-bound parameter is a generic expression,
+      // not a monomorphization request.  Materializing Vec<&T>, for example,
+      // would instantiate Vec and every impl with an unresolved T and allow
+      // nested substitution scopes to capture it repeatedly.  Keep the
+      // nominal template identity and defer all shape/impl instantiation until
+      // the enclosing function receives concrete arguments.
+      bool deferred = false;
+      for (const auto &Arg : shape->GenericArgs)
+        deferred = deferred || containsDeferredTypeParameter(Arg);
+      if (deferred) {
+        SourceLocation lookupLoc =
+            CurrentFunction && CurrentFunction->Loc.isValid()
+                ? CurrentFunction->Loc
+                : CurrentModule ? CurrentModule->Loc : SourceLocation();
+        if (ShapeDecl *decl = findVisibleShapeDecl(shape->Name, lookupLoc))
+          shape->resolve(decl);
+        return shape;
       }
       // 2. Instantiate
       return instantiateGenericShape(shape);

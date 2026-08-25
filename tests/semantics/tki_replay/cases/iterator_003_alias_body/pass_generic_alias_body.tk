@@ -1,7 +1,9 @@
 import ./lib::{count_refs}
+import std/vec::Vec
 
 fn main() -> i32 {
     auto value = 9
-    auto refs = [&value]
+    auto refs# = Vec<&i32>::new()
+    refs#.push(&value)
     return count_refs<i32>(refs) - 1
 }

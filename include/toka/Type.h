@@ -474,6 +474,10 @@ public:
   // legacy ShapeType carrier (anonymous records and projections).  It is not
   // part of type identity or exported spelling.
   TypeSyntaxPtr SourceSyntax;
+  // Capture-avoidance marker for a free type parameter carried into a nested
+  // generic substitution whose parameter happens to use the same spelling.
+  // This is lexical-resolution metadata, not part of the public type identity.
+  bool BypassesCurrentTypeAlias = false;
   ShapeDecl *Decl = nullptr;
   bool IsSync = false; // [NEW] Track atomic reference status based on definition
   ShapeType(const std::string &name,

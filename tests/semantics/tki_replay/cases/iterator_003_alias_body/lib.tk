@@ -1,6 +1,8 @@
+import std/vec::Vec
+
 // EXPECT_TKI: for alias &x in refs
 // EXPECT_TKI_ROUNDTRIP
-pub fn count_refs<T>(refs: [&T; 1]) -> i32 {
+pub fn count_refs<T>(refs: Vec<&T>) -> i32 {
     for alias &x in refs {
         return 1
     }

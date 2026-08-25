@@ -422,6 +422,11 @@ private:
       1; // Default to fully initialized (1 for simple var)
   bool m_AllowUnsetUsage = false;
   Scope *CurrentScope = nullptr;
+  // A generic substitution may itself contain an outer type parameter with
+  // the same spelling (for example, instantiating Inner<T> with &T).  While
+  // expanding one lexical type alias, do not let its target recursively bind
+  // that free name back to the alias currently being expanded.
+  std::set<uint64_t> m_ResolvingTypeAliasSymbols;
   std::vector<FunctionDecl *>
       GlobalFunctions; // All functions across all modules
   std::map<std::string, ExternDecl *> ExternMap;
