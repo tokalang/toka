@@ -268,6 +268,64 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
   }
 
+  // The place constructors are not ordinary functions.  They are admitted
+  // only while checking the compiler-recognized next_place provider body and
+  // produce the exact internal carrier for its Item morphology.
+  if (CallName == "__place_end" || CallName == "__place_hit") {
+    const bool isHit = CallName == "__place_hit";
+    bool trustedProvider = false;
+    if (CurrentFunction) {
+      auto owner = DeclarationLexicalScopes.find(CurrentFunction);
+      trustedProvider = owner != DeclarationLexicalScopes.end() &&
+                        owner->second &&
+                        owner->second->IsTrustedSystemModule;
+    }
+    const bool inProvider = CurrentFunction &&
+                            CurrentFunction->Name == "next_place" &&
+                            trustedProvider;
+    if (!inProvider || Call->GenericArgs.size() != 1 ||
+        Call->Args.size() != (isHit ? 1u : 0u)) {
+      error(Call, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY, CallName);
+      return toka::Type::fromString("unknown");
+    }
+
+    std::shared_ptr<toka::Type> item;
+    if (!Call->GenericArgSyntax.empty() &&
+        Call->GenericArgSyntax.front().ArgumentKind ==
+            TypeArgumentSyntax::Kind::Type &&
+        Call->GenericArgSyntax.front().Type) {
+      item = resolveType(
+          toka::Type::fromSyntax(Call->GenericArgSyntax.front().Type));
+    } else {
+      item = resolveType(toka::Type::fromString(Call->GenericArgs.front()));
+    }
+
+    if (isHit) {
+      auto *identity =
+          dynamic_cast<UnaryExpr *>(Call->Args.front().get());
+      if (!identity || identity->Op != TokenType::MorphicIdentity ||
+          !identity->RHS || !makeAccessPath(identity->RHS.get())) {
+        error(Call, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY, CallName);
+        return toka::Type::fromString("unknown");
+      }
+      auto yielded = checkExpr(Call->Args.front().get());
+      if (!yielded || !item || !yielded->equals(*item)) {
+        error(Call, DiagID::ERR_FOR_ALIAS_MORPHOLOGY_MISMATCH,
+              yielded ? yielded->toString() : "unknown",
+              item ? item->toString() : "unknown");
+      }
+    }
+
+    return resolveType(std::make_shared<toka::ShapeType>(
+        "__PlaceOutcome",
+        std::vector<std::shared_ptr<toka::Type>>{item}));
+  }
+
+  if (CallName == "__PlaceOutcome") {
+    error(Call, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY, CallName);
+    return toka::Type::fromString("unknown");
+  }
+
   // 1. Primitives (Constructors/Casts) e.g. i32(42)
   if (isPrimitiveValueConstructorName(CallName)) {
     for (auto &Arg : Call->Args) {

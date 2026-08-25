@@ -1378,6 +1378,7 @@ public:
   std::string IteratorType;
   FunctionDecl *ResolvedIterFn = nullptr;
   FunctionDecl *ResolvedNextFn = nullptr;
+  bool UsesPlaceIterator = false;
 
   // [Phase 2] Comptime Macro Unrolling
   bool IsComptimeUnrolled = false;
@@ -1405,6 +1406,7 @@ public:
     n->IteratorType = IteratorType;
     n->ResolvedIterFn = nullptr;
     n->ResolvedNextFn = nullptr;
+    n->UsesPlaceIterator = UsesPlaceIterator;
     return n;
   }
 };

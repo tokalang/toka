@@ -2031,6 +2031,10 @@ void Sema::checkStmt(Stmt *S) {
     }
 
     if (Info.TypeObj) {
+      if (containsInternalPlaceOutcome(Info.TypeObj)) {
+        error(Var, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+              Info.TypeObj->toString());
+      }
       if (!validateHandleGrammar(getLoc(Var), Info.TypeObj)) {
         HasError = true;
       }

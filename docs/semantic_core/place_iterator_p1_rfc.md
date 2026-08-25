@@ -1,6 +1,6 @@
 # Place Iterator P1 RFC
 
-**Status:** P1 design frozen; implementation pending.
+**Status:** P1 shared/read Array + Vec slice implemented; Cold Full Gate pending.
 
 ## 1. Objective
 
@@ -263,3 +263,20 @@ P4  third-party verifier, unsafe constructor, projection-place, HashMap
 
 Only after every alias carrier has migrated may the project reconsider mode B
 and structural managed level-2 rejection.
+
+## 13. Implemented Qualification Slice
+
+The P1 implementation binds shared/read Vec alias iteration to
+`@PlaceIterator::next_place`. Its LLVM carrier is the logical pair
+`{hit-tag, Addr}`; CodeGen converts the address directly into the alias symbol's
+storage identity and does not construct `ReferenceType<Item>`.
+
+The retained qualification anchors are:
+
+- `g08_for_alias_place_iterator_vec_ref.tk` for `Vec<&i32>` runtime behavior;
+- `place_outcome_direct_call_forbidden.tk` for the ordinary-call boundary;
+- `iterator_003_alias_body` for generic `Vec<&T>`, TKI body round-trip,
+  source-hidden replay, `next_place` selection, and direct place-address IR;
+- the pre-existing writable Vec alias tests, which remain on the compatibility
+  carrier until P2/P3;
+- `g07_for_iterators.tk`, which keeps `for auto &&x` on `@BorrowIterator`.

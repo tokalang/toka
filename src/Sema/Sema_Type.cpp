@@ -19,6 +19,7 @@
 #include "toka/Type.h"
 #include "toka/Parser.h"
 #include <cctype>
+#include <functional>
 #include <iostream>
 #include <set>
 #include <string>
@@ -194,6 +195,54 @@ bool Sema::validateHandleGrammar(SourceLocation loc,
     return false;
   }
   return true;
+}
+
+bool Sema::containsInternalPlaceOutcome(
+    const std::shared_ptr<toka::Type> &type) const {
+  std::set<const toka::Type *> visited;
+  std::function<bool(const std::shared_ptr<toka::Type> &)> contains =
+      [&](const std::shared_ptr<toka::Type> &current) -> bool {
+    if (!current || !visited.insert(current.get()).second)
+      return false;
+    if (auto shape = std::dynamic_pointer_cast<ShapeType>(
+            current->getSoulType())) {
+      if ((shape->Decl && shape->Decl->InstantiationTemplate &&
+           shape->Decl->InstantiationTemplate->Name == "__PlaceOutcome") ||
+          shape->Name == "__PlaceOutcome" ||
+          shape->Name.rfind("__PlaceOutcome_M", 0) == 0)
+        return true;
+      for (const auto &argument : shape->GenericArgs) {
+        if (contains(argument))
+          return true;
+      }
+    }
+    if (current->isPointer() && contains(current->getPointeeType()))
+      return true;
+    if (auto array = std::dynamic_pointer_cast<ArrayType>(current))
+      return contains(array->ElementType);
+    if (auto slice = std::dynamic_pointer_cast<SliceType>(current))
+      return contains(slice->ElementType);
+    if (auto uninit = std::dynamic_pointer_cast<UninitType>(current))
+      return contains(uninit->InnerType);
+    if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(current))
+      return contains(outcome->PayloadType);
+    if (auto function = std::dynamic_pointer_cast<FunctionType>(current)) {
+      for (const auto &parameter : function->ParamTypes) {
+        if (contains(parameter))
+          return true;
+      }
+      return contains(function->ReturnType);
+    }
+    if (auto function = std::dynamic_pointer_cast<DynFnType>(current)) {
+      for (const auto &parameter : function->ParamTypes) {
+        if (contains(parameter))
+          return true;
+      }
+      return contains(function->ReturnType);
+    }
+    return false;
+  };
+  return contains(type);
 }
 
 bool Sema::validateAliasTarget(SourceLocation loc,

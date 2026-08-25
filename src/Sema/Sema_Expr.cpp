@@ -3266,30 +3266,73 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                         fe->IsMutable ||
                         fe->Permission.IdentityRebindable;
                     const std::string aliasNext =
-                        requestsExclusiveAlias ? "next_mut" : "next_ref";
+                        requestsExclusiveAlias ? "next_mut" : "next_place";
                     const std::string aliasFacet =
                         requestsExclusiveAlias ? "@MutableBorrowIterator"
-                                               : "@BorrowIterator";
-                    std::string nextRefRet =
+                                               : "@PlaceIterator";
+                    std::string nextAliasRet =
                         MethodMap[iterSoul].count(aliasNext)
                             ? MethodMap[iterSoul][aliasNext] : "";
-                    std::string payload;
-                    if (nextRefRet.size() > 7 &&
-                        nextRefRet.substr(0, 7) == "Option<")
-                      payload = nextRefRet.substr(7, nextRefRet.size() - 8);
-                    auto borrowed = resolveType(toka::Type::fromString(payload));
-                    if (!borrowed || !borrowed->isReference() ||
-                        !ImplMap.count(baseIterSoul + aliasFacet)) {
-                      error(fe, DiagID::ERR_FOR_ALIAS_REQUIRES_PLACE_ITERATOR);
-                      fullType = "i32";
+                    if (requestsExclusiveAlias) {
+                      std::string payload;
+                      if (nextAliasRet.size() > 7 &&
+                          nextAliasRet.substr(0, 7) == "Option<")
+                        payload = nextAliasRet.substr(
+                            7, nextAliasRet.size() - 8);
+                      auto borrowed =
+                          resolveType(toka::Type::fromString(payload));
+                      if (!borrowed || !borrowed->isReference() ||
+                          !ImplMap.count(baseIterSoul + aliasFacet)) {
+                        error(fe,
+                              DiagID::ERR_FOR_ALIAS_REQUIRES_PLACE_ITERATOR);
+                        fullType = "i32";
+                      } else {
+                        auto element = borrowed->getPointeeType();
+                        fullType = element ? element->toString() : "unknown";
+                        fe->IterElementType = fullType;
+                        fe->IsReference = true;
+                        if (MethodDecls.count(iterSoul) &&
+                            MethodDecls[iterSoul].count(aliasNext))
+                          fe->ResolvedNextFn =
+                              MethodDecls[iterSoul][aliasNext];
+                      }
                     } else {
-                      auto element = borrowed->getPointeeType();
-                      fullType = element ? element->toString() : "unknown";
-                      fe->IterElementType = fullType;
-                      fe->IsReference = true;
-                      if (MethodDecls.count(iterSoul) &&
-                          MethodDecls[iterSoul].count(aliasNext))
-                        fe->ResolvedNextFn = MethodDecls[iterSoul][aliasNext];
+                      auto carrier = resolveType(
+                          toka::Type::fromString(nextAliasRet));
+                      auto placeOutcome = std::dynamic_pointer_cast<ShapeType>(
+                          carrier ? carrier->getSoulType() : nullptr);
+                      std::shared_ptr<toka::Type> element;
+                      bool exactCarrier = false;
+                      if (placeOutcome) {
+                        if (placeOutcome->Decl &&
+                            placeOutcome->Decl->InstantiationTemplate &&
+                            placeOutcome->Decl->InstantiationTemplate->Name ==
+                                "__PlaceOutcome" &&
+                            !placeOutcome->Decl->InstantiationArgs.empty()) {
+                          exactCarrier = true;
+                          element =
+                              placeOutcome->Decl->InstantiationArgs.front();
+                        } else if (placeOutcome->Name == "__PlaceOutcome" &&
+                                   placeOutcome->GenericArgs.size() == 1) {
+                          exactCarrier = true;
+                          element = placeOutcome->GenericArgs.front();
+                        }
+                      }
+                      if (!exactCarrier || !element ||
+                          !ImplMap.count(baseIterSoul + aliasFacet)) {
+                        error(fe,
+                              DiagID::ERR_FOR_ALIAS_REQUIRES_PLACE_ITERATOR);
+                        fullType = "i32";
+                      } else {
+                        fullType = element->toString();
+                        fe->IterElementType = fullType;
+                        fe->IsReference = true;
+                        fe->UsesPlaceIterator = true;
+                        if (MethodDecls.count(iterSoul) &&
+                            MethodDecls[iterSoul].count(aliasNext))
+                          fe->ResolvedNextFn =
+                              MethodDecls[iterSoul][aliasNext];
+                      }
                     }
                 } else {
                 // 2. Compare user's morphology prefix with E's morphology to determine intent
@@ -4914,6 +4957,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             return resolveType(std::make_shared<ShapeType>(
                 "TaskHandle",
                 std::vector<std::shared_ptr<toka::Type>>{retType}));
+        }
+        if (containsInternalPlaceOutcome(retType)) {
+          error(Met, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+                retType ? retType->toString() : "__PlaceOutcome");
+          return toka::Type::fromString("unknown");
         }
         return retType;
       }

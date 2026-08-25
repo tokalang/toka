@@ -1,6 +1,8 @@
 import ./lib::{count_refs}
 import std/vec::Vec
 
+// EXPECT_REPLAY_IR: @PlaceIterator_VecIterator
+// EXPECT_REPLAY_IR: .place.bits = load i64
 fn main() -> i32 {
     auto value = 9
     auto refs# = Vec<&i32>::new()

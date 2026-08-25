@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@Copy, @Dup, @Encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator, @MutableBorrowIterator}
+import core/traits::{@Copy, @Dup, @Encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator, @MutableBorrowIterator, @PlaceIterator, __PlaceOutcome}
 import sys/libc::*
 import core/option::{Option}
 
@@ -510,6 +510,22 @@ impl<'T> VecIterator<'T>@BorrowIterator {
         self.pos += 1
         unsafe {
             return Option<BorrowedItem>::Some(&'(self.buf[self.pos - 1]))
+        }
+    }
+}
+
+impl<'T> VecIterator<'T>@PlaceIterator {
+    type Item = 'T
+
+    pub fn next_place(self#) -> __PlaceOutcome<Item> <- self {
+        if self.pos >= self.len {
+            return __place_end<Item>()
+        }
+
+        auto index = self.pos
+        self.pos += 1
+        unsafe {
+            return __place_hit<Item>('(self.buf[index]))
         }
     }
 }

@@ -2931,6 +2931,9 @@ void Sema::declareGlobals(Module &M) {
     Fn->CodegenName = functionCodegenName(M, *Fn);
     SyntaxOrigin fnOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
     auto fnRetTy = Fn->ReturnTypeSyntax ? toka::Type::fromSyntax(Fn->ReturnTypeSyntax) : toka::Type::fromString(Fn->ReturnType);
+    if (containsInternalPlaceOutcome(fnRetTy))
+      error(Fn.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+            fnRetTy->toString());
     validateHandleGrammar(Fn->Loc, fnRetTy);
     recordHandleGrammarAudit(fnRetTy, fnOrigin, {FormationPhase::DirectResolution}, "", "", "return", Fn->Loc, false, functionCodegenName(M, *Fn));
     for (const auto &Arg : Fn->Args) {
@@ -2938,6 +2941,9 @@ void Sema::declareGlobals(Module &M) {
       debugCheckBindingTypeString("function argument", Arg.Name, Arg.Type,
                                   Arg.Permission, Fn->Loc);
       auto argTy = Sema::synthesizePhysicalTypeObject(Arg, false);
+      if (containsInternalPlaceOutcome(argTy))
+        error(Fn.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+              argTy->toString());
       validateHandleGrammar(Fn->Loc, argTy);
       recordHandleGrammarAudit(argTy, fnOrigin, {FormationPhase::DirectResolution}, "", "", Arg.Name, Fn->Loc, false, functionCodegenName(M, *Fn));
     }
@@ -2967,6 +2973,9 @@ void Sema::declareGlobals(Module &M) {
     }
     SyntaxOrigin extOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
     auto extRetTy = Ext->ReturnTypeSyntax ? toka::Type::fromSyntax(Ext->ReturnTypeSyntax) : toka::Type::fromString(Ext->ReturnType);
+    if (containsInternalPlaceOutcome(extRetTy))
+      error(Ext.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+            extRetTy->toString());
     validateHandleGrammar(Ext->Loc, extRetTy);
     recordHandleGrammarAudit(extRetTy, extOrigin, {FormationPhase::DirectResolution}, "", "", "return", Ext->Loc, false, Ext->Name);
     for (auto &Arg : Ext->Args) {
@@ -2977,6 +2986,9 @@ void Sema::declareGlobals(Module &M) {
         Arg.ResolvedType =
             resolveType(Sema::synthesizePhysicalTypeObject(Arg, false));
       }
+      if (containsInternalPlaceOutcome(Arg.ResolvedType))
+        error(Ext.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+              Arg.ResolvedType->toString());
       validateParameterHandleChain(Arg.Loc.isValid() ? Arg.Loc : Ext->Loc,
                                    Arg.Name, Arg.Permission, Arg.ResolvedType,
                                    Arg.TypeSyntax,
@@ -2996,6 +3008,9 @@ void Sema::declareGlobals(Module &M) {
     SyntaxOrigin shapeOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
     for (const auto &mem : St->Members) {
       auto memTy = mem.TypeSyntax ? toka::Type::fromSyntax(mem.TypeSyntax) : toka::Type::fromString(mem.Type);
+      if (containsInternalPlaceOutcome(memTy))
+        error(St.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+              memTy->toString());
       validateHandleGrammar(St->Loc, memTy);
       recordHandleGrammarAudit(memTy, shapeOrigin, {FormationPhase::DirectResolution}, St->Name, "", mem.Name, St->Loc);
     }
@@ -3069,6 +3084,9 @@ void Sema::declareGlobals(Module &M) {
     if (!aliasTypeObj)
       aliasTypeObj = toka::Type::fromString(target);
     validateAliasTarget(Alias->Loc, Alias->Name, targetSyntax, aliasTypeObj);
+    if (containsInternalPlaceOutcome(aliasTypeObj))
+      error(Alias.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+            aliasTypeObj->toString());
     recordHandleGrammarAudit(aliasTypeObj, aliasOrigin, {FormationPhase::DirectResolution}, Alias->Name, "", "", Alias->Loc);
     SymbolInfo info;
     info.TypeObj = toka::Type::fromString(Alias->Name);
@@ -3099,12 +3117,20 @@ void Sema::declareGlobals(Module &M) {
       DeclarationLexicalScopes[Method.get()] = &ms;
       SyntaxOrigin traitOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
       auto methodRetTy = Method->ReturnTypeSyntax ? toka::Type::fromSyntax(Method->ReturnTypeSyntax) : toka::Type::fromString(Method->ReturnType);
+      if (containsInternalPlaceOutcome(methodRetTy) &&
+          !(Trait->Name == "PlaceIterator" &&
+            Method->Name == "next_place"))
+        error(Method.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+              methodRetTy->toString());
       validateHandleGrammar(Method->Loc, methodRetTy);
       recordHandleGrammarAudit(methodRetTy, traitOrigin, {FormationPhase::DirectResolution}, Trait->Name, "", "return", Method->Loc, false, Method->Name);
       for (auto &Arg : Method->Args) {
         if (!Arg.ResolvedType) {
           Arg.ResolvedType = resolveType(Sema::synthesizePhysicalTypeObject(Arg, false));
         }
+        if (containsInternalPlaceOutcome(Arg.ResolvedType))
+          error(Method.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+                Arg.ResolvedType->toString());
         validateHandleGrammar(Method->Loc, Arg.ResolvedType);
         recordHandleGrammarAudit(Arg.ResolvedType, traitOrigin, {FormationPhase::DirectResolution}, Trait->Name, "", Arg.Name, Method->Loc, false, Method->Name);
       }
@@ -4273,6 +4299,23 @@ void Sema::registerImpl(ImplDecl *Impl) {
 void Sema::declareImpl(ImplDecl *Impl) {
   registerSlice2Policy(Impl);
   registerSlice4Impl(Impl);
+  const bool isPlaceFacet =
+      getTraitFamilyName(Impl->TraitName) == "PlaceIterator";
+  for (auto &Method : Impl->Methods) {
+    auto returnType = Method->ReturnTypeSyntax
+                          ? toka::Type::fromSyntax(Method->ReturnTypeSyntax)
+                          : toka::Type::fromString(Method->ReturnType);
+    if (containsInternalPlaceOutcome(returnType) &&
+        !(isPlaceFacet && Method->Name == "next_place"))
+      error(Method.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+            returnType->toString());
+    for (const auto &Arg : Method->Args) {
+      auto argumentType = Sema::synthesizePhysicalTypeObject(Arg, false);
+      if (containsInternalPlaceOutcome(argumentType))
+        error(Method.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
+              argumentType->toString());
+    }
+  }
   std::string baseName = Impl->TypeName;
   size_t lt = baseName.find('<');
   if (lt != std::string::npos) {

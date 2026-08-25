@@ -1,0 +1,10 @@
+import std/vec::Vec
+
+// EXPECT: error[E04648]
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    auto iter# = values.iter()
+    auto saved = iter#.next_place()
+    return 0
+}

@@ -4067,7 +4067,9 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
         fe->IsPlaceAlias &&
         (fe->IsMutable || fe->Permission.IdentityRebindable);
     std::string nextMethodName =
-        requestsExclusiveAlias
+        fe->UsesPlaceIterator
+            ? "next_place"
+            : requestsExclusiveAlias
             ? "next_mut"
             : (fe->IsReference ? "next_ref" : "next");
     std::string nextFnName =
@@ -4201,12 +4203,23 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     auto semanticElement = fe->ResolvedIterElementType
                                ? fe->ResolvedIterElementType
                                : lowerTypeSyntax(nullptr, fe->IterElementType);
-    auto carrierType = fe->IsPlaceAlias && semanticElement
-                           ? std::make_shared<ReferenceType>(semanticElement)
-                           : semanticElement;
-    elemTy = getLLVMType(carrierType);
     llvm::Value *payloadValuePtr = m_Builder.CreateBitCast(payloadGEP, llvm::PointerType::get(m_Context, 0), "payload_cast");
-    elem = m_Builder.CreateLoad(elemTy, payloadValuePtr, vName);
+    if (fe->UsesPlaceIterator) {
+      // __PlaceOutcome stores the exact element-place address as Addr.  It is
+      // not a ReferenceType<Item> value and therefore must not add a semantic
+      // handle layer for Item=&T.
+      elemTy = getIntPtrTy();
+      llvm::Value *placeBits =
+          m_Builder.CreateLoad(elemTy, payloadValuePtr, vName + ".place.bits");
+      elem = m_Builder.CreateIntToPtr(placeBits, m_Builder.getPtrTy(),
+                                      vName + ".place");
+    } else {
+      auto carrierType = fe->IsPlaceAlias && semanticElement
+                             ? std::make_shared<ReferenceType>(semanticElement)
+                             : semanticElement;
+      elemTy = getLLVMType(carrierType);
+      elem = m_Builder.CreateLoad(elemTy, payloadValuePtr, vName);
+    }
     elemPtr = payloadValuePtr;
   }
 
@@ -4709,6 +4722,35 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
 }
 
 PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
+  if (call->Callee == "__place_end" || call->Callee == "__place_hit") {
+    llvm::Type *carrierTy = getLLVMType(call->ResolvedType);
+    auto *carrierStruct = llvm::dyn_cast_or_null<llvm::StructType>(carrierTy);
+    if (!carrierStruct || carrierStruct->getNumElements() != 2)
+      return {};
+    llvm::Value *result = llvm::Constant::getNullValue(carrierStruct);
+    if (call->Callee == "__place_hit") {
+      const Expr *placeExpr = call->Args.empty() ? nullptr
+                                                : call->Args.front().get();
+      if (auto *identity = dynamic_cast<const UnaryExpr *>(placeExpr);
+          identity && identity->Op == TokenType::MorphicIdentity)
+        placeExpr = identity->RHS.get();
+      llvm::Value *placeAddr = emitEntityAddr(placeExpr);
+      if (!placeAddr)
+        return {};
+      llvm::Value *placeBits =
+          m_Builder.CreatePtrToInt(placeAddr, getIntPtrTy(), "place.bits");
+      result = m_Builder.CreateInsertValue(
+          result, llvm::ConstantInt::get(carrierStruct->getElementType(0), 1),
+          {0}, "place.hit.tag");
+      result = m_Builder.CreateInsertValue(result, placeBits, {1},
+                                           "place.hit.addr");
+    }
+    return PhysEntity(result,
+                      call->ResolvedType ? call->ResolvedType->toString()
+                                         : "__PlaceOutcome",
+                      carrierStruct, false);
+  }
+
   if (call->Callee == "core/mem::bit_cast" || call->Callee == "bit_cast") {
       PhysEntity argEnt = genExpr(call->Args[0].get());
       llvm::Type *destLLVMTy = getLLVMType(call->ResolvedType);

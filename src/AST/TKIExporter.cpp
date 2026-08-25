@@ -929,6 +929,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
             case TokenType::Tilde: opStr = "~"; break;
             case TokenType::Star: opStr = "*"; break;
             case TokenType::Ampersand: opStr = "&"; break;
+            case TokenType::MorphicIdentity: opStr = "'"; break;
             case TokenType::Plus: opStr = "+"; break;
             case TokenType::Minus: opStr = "-"; break;
             case TokenType::Bang: opStr = "!"; break;

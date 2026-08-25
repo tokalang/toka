@@ -762,6 +762,8 @@ private:
                                     SourceLocation loc);
   bool validateHandleGrammar(SourceLocation loc,
                              const std::shared_ptr<toka::Type> &type);
+  bool containsInternalPlaceOutcome(
+      const std::shared_ptr<toka::Type> &type) const;
   void reportHandleGrammarViolation(SourceLocation loc,
                                     const std::shared_ptr<toka::Type> &type,
                                     HandleGrammarViolation violation);
