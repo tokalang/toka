@@ -423,6 +423,11 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
            }
         }
         
+        if (infoPtr->IsPlaceAlias) {
+           error(Clo, DiagID::ERR_SEMA_CANNOT_CAPTURE_PLACE_ALIAS, varName);
+           continue;
+        }
+
         if (!infoPtr->IsDeclaredVariable) {
            continue;
         }

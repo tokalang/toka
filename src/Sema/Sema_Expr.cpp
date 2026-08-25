@@ -100,7 +100,8 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
     if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName) &&
         Info) {
       bool isPlainOwnedValue =
-          Info->IsDeclaredVariable && !Info->IsFunctionParameter &&
+          Info->IsDeclaredVariable && !Info->IsPlaceAlias &&
+          !Info->IsFunctionParameter &&
           Info->Permission.Morphology == BindingMorphology::None &&
           Info->TypeObj && !Info->TypeObj->isPointer() &&
           !Info->TypeObj->isSmartPointer() && !Info->TypeObj->isReference();
@@ -3432,6 +3433,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (fe->IsPlaceAlias) {
       Info.Permission = fe->Permission;
       Info.IsPlaceAlias = true;
+      Info.IsDeclaredVariable = true;
     }
     if (fe->IsPlaceAlias && fe->Permission.IdentityRebindable && Info.TypeObj)
       Info.TypeObj = Info.TypeObj->withAttributes(

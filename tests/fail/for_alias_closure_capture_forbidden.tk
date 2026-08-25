@@ -1,0 +1,9 @@
+// EXPECT: error[E04647]
+fn main() -> i32 {
+    auto values = [9]
+    for alias x in values {
+        auto read = { => x }:fn() -> i32
+        return read()
+    }
+    return 0
+}

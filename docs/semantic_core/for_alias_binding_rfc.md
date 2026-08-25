@@ -34,7 +34,9 @@ An alias has no independent storage, ownership root, or drop obligation. It
 cannot escape, be stored as an owner, or be consumed, including through a
 projection rooted at the alias. Explicit `cede` and intrinsic unique value
 moves (`auto ^y = ^x`, `return ^x`, handle assignment, and owning-field
-initialization) all fail with E04646. Its PAL loan is anchored to the source
+initialization) all fail with E04646. Closure capture would materialize an
+independent aggregate field and therefore fails with E04647 even when the
+closure appears locally non-escaping. Its PAL loan is anchored to the source
 collection/element place and blocks invalidating mutation for the loop
 lifetime. The initial slice uses `@BorrowIterator` as the internal
 stable-address carrier; iterators without such a carrier reject `for alias`.
