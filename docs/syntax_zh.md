@@ -716,6 +716,11 @@ trait @BorrowIterator {
 保持源集合被借用；此时修改、替换、移动或 `cede` 源集合会被拒绝。隐藏
 cursor 是普通作用域值，在迭代结束、`break` 和函数退出时执行 drop。
 
+`for alias P in values` 是显式 element-place 形式。它不创建 Item/reference
+值，而是把 `P` 直接锚定到 `@BorrowIterator` 提供的稳定 place。`P` 必须精确
+复述元素 morphology：`T` 写 `alias x`，`&T` 写 `alias &x`；增加或删除任何
+帽层都会报错。现有 `for auto` 语义保持不变。
+
 值迭代不会隐式 `cede` 集合或元素；其所有权行为完全由 `next` 声明返回的
 `Item` 决定，并继续服从普通复制和资源规则。Toka 1.0 不定义 consuming
 iterator 或 async-iterator 协议。

@@ -806,6 +806,12 @@ the duration of a `for` loop. Mutating, replacing, moving, or ceding the source
 during that interval is rejected. The hidden cursor is a normal scoped value
 and is dropped on exhaustion, `break`, and function exit.
 
+`for alias P in values` is the explicit element-place form. It creates no
+Item/reference value and anchors `P` directly to the stable place supplied by
+`@BorrowIterator`. `P` must exactly reproduce the element morphology: `T` uses
+`alias x`, `&T` uses `alias &x`, and so on; adding or removing a hat is an
+error. Existing `for auto` forms remain unchanged.
+
 Value iteration does not implicitly cede the collection or its elements. Its
 ownership behavior is exactly the declared `Item` returned by `next`, and the
 ordinary copy/resource rules still apply. Toka 1.0 does not define a consuming

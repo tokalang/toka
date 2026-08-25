@@ -1439,7 +1439,10 @@ std::unique_ptr<Expr> Parser::parseForExpr() {
   if (tok.Kind != TokenType::KwFor)
     tok = consume(TokenType::KwFor, DiagID::ERR_PARSER_EXPECTED_FOR);
 
-  if (match(TokenType::KwLet)) {
+  bool isPlaceAlias = false;
+  if (match(TokenType::KwAlias)) {
+    isPlaceAlias = true;
+  } else if (match(TokenType::KwLet)) {
     error(previous(), DiagID::ERR_PARSER_FOR_LET_REMOVED);
   } else if (!match(TokenType::KwAuto)) {
     consume(TokenType::KwAuto, DiagID::ERR_PARSER_EXPECTED_AUTO_OR_LET_DECLARATION_IN_FOR);
@@ -1477,6 +1480,7 @@ std::unique_ptr<Expr> Parser::parseForExpr() {
                                         std::move(collection), std::move(body),
                                         std::move(elseBody));
   node->MorphologyPrefix = morphologyPrefix;
+  node->IsPlaceAlias = isPlaceAlias;
   node->Permission = BindingPermission::fromLegacy(
       morphologyPrefix == "*", morphologyPrefix == "^", morphologyPrefix == "~",
       isRef, false, false, false, isMut, false, false);

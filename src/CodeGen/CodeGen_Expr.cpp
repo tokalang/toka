@@ -4144,9 +4144,13 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
   } else {
     // Extract payload
     llvm::Value *payloadGEP = m_Builder.CreateStructGEP(optAlloca->getAllocatedType(), optAlloca, 1);
-    elemTy = getLLVMType(fe->ResolvedIterElementType
-                             ? fe->ResolvedIterElementType
-                             : lowerTypeSyntax(nullptr, fe->IterElementType));
+    auto semanticElement = fe->ResolvedIterElementType
+                               ? fe->ResolvedIterElementType
+                               : lowerTypeSyntax(nullptr, fe->IterElementType);
+    auto carrierType = fe->IsPlaceAlias && semanticElement
+                           ? std::make_shared<ReferenceType>(semanticElement)
+                           : semanticElement;
+    elemTy = getLLVMType(carrierType);
     llvm::Value *payloadValuePtr = m_Builder.CreateBitCast(payloadGEP, llvm::PointerType::get(m_Context, 0), "payload_cast");
     elem = m_Builder.CreateLoad(elemTy, payloadValuePtr, vName);
     elemPtr = payloadValuePtr;
@@ -4167,15 +4171,23 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
   // store the element address.  Protocol `next_ref()` already returns that
   // address as its payload and must keep the loaded payload instead.
   llvm::Value *bindingValue = (fe->IsReference && isArray) ? elemPtr : elem;
-  llvm::AllocaInst *vAlloca =
-      createEntryBlockAlloca(bindingValue->getType(), nullptr, vBaseName);
-  m_Builder.CreateStore(bindingValue, vAlloca);
+  llvm::Value *bindingStorage = nullptr;
+  if (fe->IsPlaceAlias) {
+    // Alias bindings have no independent value slot. next_ref's payload (or
+    // the array GEP) is already the stable element-place address.
+    bindingStorage = bindingValue;
+  } else {
+    llvm::AllocaInst *vAlloca =
+        createEntryBlockAlloca(bindingValue->getType(), nullptr, vBaseName);
+    m_Builder.CreateStore(bindingValue, vAlloca);
+    bindingStorage = vAlloca;
+  }
 
   // Register in legacy and new symbol tables
-  m_NamedValues[vBaseName] = vAlloca;
+  m_NamedValues[vBaseName] = bindingStorage;
 
   TokaSymbol sym;
-  sym.allocaPtr = vAlloca;
+  sym.allocaPtr = bindingStorage;
   fillSymbolMetadata(sym,
                      fe->ResolvedIterElementType
                          ? fe->ResolvedIterElementType

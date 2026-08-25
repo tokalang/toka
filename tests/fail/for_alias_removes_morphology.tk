@@ -1,0 +1,10 @@
+import std/vec::Vec
+
+// EXPECT: error[E04643]
+fn main() -> i32 {
+    auto value = 1
+    auto refs# = Vec<&i32>::new()
+    refs#.push(&value)
+    for alias x in refs { return x }
+    return 0
+}

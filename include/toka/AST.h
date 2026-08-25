@@ -1367,6 +1367,7 @@ public:
   std::string VarName;
   std::string MorphologyPrefix;
   bool IsReference = false;
+  bool IsPlaceAlias = false;
   bool IsMutable = false;
   BindingPermission Permission;
   std::unique_ptr<Expr> Collection;
@@ -1397,6 +1398,7 @@ public:
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     n->Permission = Permission;
+    n->IsPlaceAlias = IsPlaceAlias;
     n->IterElementType = IterElementType;
     n->ResolvedIterElementType = ResolvedIterElementType;
     n->IteratorType = IteratorType;

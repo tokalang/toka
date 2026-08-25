@@ -1,0 +1,26 @@
+import std/vec::Vec
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    values#.push(2)
+    auto sum# = 0
+    for alias x in values { sum += x }
+    if sum != 3 { return 1 }
+
+    auto value = 10
+    auto refs# = Vec<&i32>::new()
+    refs#.push(&value)
+    for alias &x in refs {
+        if x != 10 { return 2 }
+    }
+
+    // Existing value/reference-value iteration remains valid.
+    for auto &x in refs {
+        if x != 10 { return 3 }
+    }
+    for auto &&x in refs {
+        if x != 10 { return 4 }
+    }
+    return 0
+}

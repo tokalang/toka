@@ -3201,7 +3201,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     if (isArray) {
         // Array emulation of next/next_ref
-        fullType = fe->MorphologyPrefix + elemType;
+        fullType = fe->IsPlaceAlias ? elemType
+                                    : fe->MorphologyPrefix + elemType;
+        if (fe->IsPlaceAlias)
+          fe->IsReference = true;
         if (fe->IsMutable) fullType += "#";
                        fe->IterElementType = fullType;
     } else {
@@ -3248,10 +3251,33 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     E_type = nextRetStr.substr(7, nextRetStr.size() - 8);
                 }
             }
-            if (E_type.empty()) {
+            if (E_type.empty() && !fe->IsPlaceAlias) {
                 error(fe, DiagID::ERR_SEMA_ITERATOR_PROTOCOL_REQUIRES_NEXT_TO_RETURN);
                 fullType = "i32";
             } else {
+                if (fe->IsPlaceAlias) {
+                    std::string nextRefRet =
+                        MethodMap[iterSoul].count("next_ref")
+                            ? MethodMap[iterSoul]["next_ref"] : "";
+                    std::string payload;
+                    if (nextRefRet.size() > 7 &&
+                        nextRefRet.substr(0, 7) == "Option<")
+                      payload = nextRefRet.substr(7, nextRefRet.size() - 8);
+                    auto borrowed = resolveType(toka::Type::fromString(payload));
+                    if (!borrowed || !borrowed->isReference() ||
+                        !ImplMap.count(baseIterSoul + "@BorrowIterator")) {
+                      error(fe, DiagID::ERR_FOR_ALIAS_REQUIRES_PLACE_ITERATOR);
+                      fullType = "i32";
+                    } else {
+                      auto element = borrowed->getPointeeType();
+                      fullType = element ? element->toString() : "unknown";
+                      fe->IterElementType = fullType;
+                      fe->IsReference = true;
+                      if (MethodDecls.count(iterSoul) &&
+                          MethodDecls[iterSoul].count("next_ref"))
+                        fe->ResolvedNextFn = MethodDecls[iterSoul]["next_ref"];
+                    }
+                } else {
                 // 2. Compare user's morphology prefix with E's morphology to determine intent
                 size_t prefRef = 0;
                 for (char c : fe->MorphologyPrefix) { if (c == '&') prefRef++; else break; }
@@ -3305,6 +3331,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                          fullType = "i32";
                      }
                 }
+                }
             }
         }
     }
@@ -3342,6 +3369,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     CurrentScope->IsLoop = true;
     SymbolInfo Info;
     Info.TypeObj = toka::Type::fromString(fullType);
+    if (fe->IsPlaceAlias && Info.TypeObj) {
+      auto soul = Info.TypeObj->getSoulType();
+      auto written = soul ? toka::Type::fromString(
+                                fe->MorphologyPrefix + soul->toString())
+                          : nullptr;
+      if (!written || !written->equals(*Info.TypeObj)) {
+        error(fe, DiagID::ERR_FOR_ALIAS_MORPHOLOGY_MISMATCH,
+              fe->MorphologyPrefix + fe->VarName,
+              Info.TypeObj->toString());
+      }
+    }
     fe->ResolvedIterElementType = Info.TypeObj;
     if (fe->IsReference && !iteratorSourceName.empty()) {
       Info.BorrowedFrom = iteratorSourceName;

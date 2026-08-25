@@ -1,0 +1,9 @@
+import std/vec::Vec
+
+// EXPECT: error[E04643]
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    for alias &x in values { return x }
+    return 0
+}
