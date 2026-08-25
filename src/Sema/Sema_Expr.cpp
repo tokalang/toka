@@ -3367,6 +3367,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!isArray && !fe->ResolvedNextFn)
         qualified = false;
       if (isHandleElement) {
+        // Vec<~T> still lacks a qualified generic shared-envelope transfer
+        // path (push/pop/reallocation).  Read-only aliases remain valid via
+        // next_ref, but mutable shared H/P aliases must fail before CodeGen
+        // rather than inheriting the Unique/Reference carrier proof.
+        if (!isArray && capabilityElement->isSharedPtr())
+          qualified = false;
         if (fe->IsMutable) {
           auto pointee = capabilityElement->getPointeeType();
           if (!pointee || !pointee->IsWritable)

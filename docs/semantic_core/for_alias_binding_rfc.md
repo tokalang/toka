@@ -1,9 +1,10 @@
 # For Alias Binding Contract
 
 **Status:** Core read/write semantics frozen. Shared/read aliases are qualified
-for stable `@BorrowIterator` element places. Writable Soul and legal managed
-handle aliases are qualified for fixed arrays and `Vec<T>` mutable carriers.
-General local alias bindings remain deferred.
+for stable `@BorrowIterator` element places. Writable Soul and managed handle
+aliases are qualified for fixed arrays; Vec mutable carriers are qualified for
+Soul, Unique, and Reference elements. Mutable Vec shared-envelope aliases and
+general local alias bindings remain deferred.
 
 `for auto` remains source-compatible and always creates a first-class Item
 value. That value may itself have handle morphology such as `&T` or `&&T`.
@@ -60,11 +61,13 @@ places and `Vec<T>` elements through the separate `iter_mut` /
 `@MutableBorrowIterator::next_mut` stable-place carrier. For fixed-array handle
 elements, `alias ^x#` requires P on the element's pointee view, while
 `alias ^#x` requires H on the containing element slot; neither request creates
-the capability it asks for. Vec uses the same split: the carrier returns
-`&'T`, preserving exact element morphology without adding `#`; P comes only
-from the element's existing pointee type, while H comes only from a writable
-Vec element slot. Read-only sources, unqualified H/P requests, and containers
-without a matching stable-place carrier fail closed with E04645. General local
+the capability it asks for. Vec Unique/Reference elements use the same split:
+the carrier returns `&'T`, preserving exact element morphology without adding
+`#`; P comes only from the element's existing pointee type, while H comes only
+from a writable Vec element slot. Mutable Vec shared-envelope aliases remain
+E04645 fail-closed until `Vec<~T>` has a qualified generic envelope-transfer
+ABI. Read-only sources, unqualified H/P requests, and containers without a
+matching stable-place carrier also fail closed with E04645. General local
 `alias view = place` and consuming `for auto ^x` remain separate work.
 
 The parser preserves handle-layer permission requests separately from payload
