@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@Copy, @Dup, @Encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator}
+import core/traits::{@Copy, @Dup, @Encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator, @MutableBorrowIterator}
 import sys/libc::*
 import core/option::{Option}
 
@@ -391,6 +391,12 @@ pub shape VecIterator<'T> (
     pos#: usize = 0
 )
 
+pub shape VecMutIterator<'T> (
+    nul *buf#: ['T],
+    len#: usize = 0,
+    pos#: usize = 0
+)
+
 // Owned iteration is separate from VecIterator: the latter is a borrowed
 // cursor returned by @Iterable::iter and therefore carries a source
 // dependency. VecIntoIterator owns the Vec and may move each element out.
@@ -431,6 +437,34 @@ impl<'T> Vec<'T>@Iterable {
                 len = self.len,
                 pos = 0
             )
+        }
+    }
+}
+
+impl<'T> Vec<'T> {
+    pub fn iter_mut(self#) -> VecMutIterator<'T> <- self {
+        return VecMutIterator<'T>(
+            *buf = self.*buf,
+            len = self.len,
+            pos = 0
+        )
+    }
+}
+
+impl<'T> VecMutIterator<'T>@Encap { fn drop(self#) {} }
+
+impl<'T> VecMutIterator<'T>@MutableBorrowIterator
+where:
+    'T: morphology soul_only
+{
+    type BorrowedItem = &'T#
+
+    pub fn next_mut(self#) -> Option<BorrowedItem> <- self {
+        if self.pos >= self.len { return Option<BorrowedItem>::None }
+        auto index = self.pos
+        self.pos += 1
+        unsafe {
+            return Option<BorrowedItem>::Some(&self.buf[index])
         }
     }
 }

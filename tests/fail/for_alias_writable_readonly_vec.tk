@@ -1,0 +1,8 @@
+import std/vec::Vec
+
+// EXPECT: error[E04645]
+fn main() -> i32 {
+    auto values = Vec<i32>::new()
+    for alias x# in values { x += 1 }
+    return 0
+}

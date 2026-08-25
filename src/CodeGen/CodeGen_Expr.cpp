@@ -4015,7 +4015,10 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     if (iterAlloca && m_TypeToName.count(iterAlloca->getAllocatedType())) {
         iterTyName = m_TypeToName[iterAlloca->getAllocatedType()];
     }
-    std::string nextMethodName = fe->IsReference ? "next_ref" : "next";
+    std::string nextMethodName =
+        fe->IsPlaceAlias && fe->IsMutable
+            ? "next_mut"
+            : (fe->IsReference ? "next_ref" : "next");
     std::string nextFnName =
         fe->ResolvedNextFn && !fe->ResolvedNextFn->CodegenName.empty()
             ? fe->ResolvedNextFn->CodegenName

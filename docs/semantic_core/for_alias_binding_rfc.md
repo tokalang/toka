@@ -55,6 +55,9 @@ apply exactly as they do through the original place. Shared aliases establish
 shared PAL loans; any requested write/rebind establishes the corresponding
 exclusive loan for the loop lifetime. The first writable slice qualifies
 `alias x#` over writable fixed-array element places; read-only arrays and
-containers without a mutable stable-place carrier fail closed with E04645.
+Soul-only `Vec<T>` elements are also qualified through the separate
+`iter_mut` / `@MutableBorrowIterator::next_mut` stable-place carrier. Read-only
+sources, handle-morphology elements, and containers without that carrier fail
+closed with E04645.
 General local `alias view = place`, handle H/P writable aliases, mutable
 container iterators, and consuming `for auto ^x` remain separate work.

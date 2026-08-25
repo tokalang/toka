@@ -3210,7 +3210,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     } else {
         // 2. Iterator Protocol Method Lookup
         std::string baseSoulType = toka::Type::stripMorphology(soulType);
-        if (!MethodMap.count(baseSoulType) || !MethodMap[baseSoulType].count("iter")) {
+        const std::string iterMethod =
+            fe->IsPlaceAlias && fe->IsMutable ? "iter_mut" : "iter";
+        if (!MethodMap.count(baseSoulType) || !MethodMap[baseSoulType].count(iterMethod)) {
             error(fe->Collection.get(), DiagID::ERR_SEMA_TYPE_DOES_NOT_IMPLEMENT_ITERATOR_PROTOCOL, soulType);
             fullType = "i32";
         } else {
@@ -3219,15 +3221,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               error(fe->Collection.get(),
                     DiagID::ERR_SEMA_ITERABLE_TRAIT_REQUIRED, soulType);
             }
-            std::string iterObjStr = MethodMap[baseSoulType]["iter"];
+            std::string iterObjStr = MethodMap[baseSoulType][iterMethod];
             iterObjStr = resolveType(iterObjStr, false);
             auto iterObj = toka::Type::fromString(iterObjStr);
             auto iterSoul = iterObj->getSoulType()->toString();
             std::string baseIterSoul = toka::Type::stripMorphology(iterSoul);
             fe->IteratorType = baseIterSoul;
             if (MethodDecls.count(baseSoulType) &&
-                MethodDecls[baseSoulType].count("iter")) {
-              fe->ResolvedIterFn = MethodDecls[baseSoulType]["iter"];
+                MethodDecls[baseSoulType].count(iterMethod)) {
+              fe->ResolvedIterFn = MethodDecls[baseSoulType][iterMethod];
               bool dependsOnSelf = false;
               for (const auto &dep : fe->ResolvedIterFn->LifeDependencies) {
                 if (Type::stripMorphology(dep) == "self") {
@@ -3256,16 +3258,21 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 fullType = "i32";
             } else {
                 if (fe->IsPlaceAlias) {
+                    const std::string aliasNext =
+                        fe->IsMutable ? "next_mut" : "next_ref";
+                    const std::string aliasFacet =
+                        fe->IsMutable ? "@MutableBorrowIterator"
+                                      : "@BorrowIterator";
                     std::string nextRefRet =
-                        MethodMap[iterSoul].count("next_ref")
-                            ? MethodMap[iterSoul]["next_ref"] : "";
+                        MethodMap[iterSoul].count(aliasNext)
+                            ? MethodMap[iterSoul][aliasNext] : "";
                     std::string payload;
                     if (nextRefRet.size() > 7 &&
                         nextRefRet.substr(0, 7) == "Option<")
                       payload = nextRefRet.substr(7, nextRefRet.size() - 8);
                     auto borrowed = resolveType(toka::Type::fromString(payload));
                     if (!borrowed || !borrowed->isReference() ||
-                        !ImplMap.count(baseIterSoul + "@BorrowIterator")) {
+                        !ImplMap.count(baseIterSoul + aliasFacet)) {
                       error(fe, DiagID::ERR_FOR_ALIAS_REQUIRES_PLACE_ITERATOR);
                       fullType = "i32";
                     } else {
@@ -3274,8 +3281,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                       fe->IterElementType = fullType;
                       fe->IsReference = true;
                       if (MethodDecls.count(iterSoul) &&
-                          MethodDecls[iterSoul].count("next_ref"))
-                        fe->ResolvedNextFn = MethodDecls[iterSoul]["next_ref"];
+                          MethodDecls[iterSoul].count(aliasNext))
+                        fe->ResolvedNextFn = MethodDecls[iterSoul][aliasNext];
                     }
                 } else {
                 // 2. Compare user's morphology prefix with E's morphology to determine intent
@@ -3337,7 +3344,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     if (fe->IsPlaceAlias && fe->IsMutable) {
-      if (!isArray) {
+      if (!isArray && !fe->ResolvedNextFn) {
         error(fe, DiagID::ERR_FOR_ALIAS_WRITABLE_NOT_QUALIFIED);
       } else {
         auto sourceCapability = getAccessCapability(fe->Collection.get(), true);

@@ -1,0 +1,13 @@
+import std/vec::Vec
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    values#.push(2)
+    for alias x# in values {
+        x += 10
+    }
+    assert(values.get(0) == 11 && values.get(1) == 12,
+           "writable Vec alias must update original element places")
+    return 0
+}
