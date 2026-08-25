@@ -161,8 +161,6 @@ DIAG(ERR_ASSOC_TYPE_NAME_CONFLICTS_WITH_GENERIC, Error,   "E0616", "Associated t
 DIAG(ERR_DYN_TRAIT_NOT_OBJECT_SAFE, Error,   "E0617", "Trait '@{}' cannot be used as 'dyn @{}': {}")
 DIAG(ERR_ATOMIC_INTRINSIC_TYPE_DOMAIN, Error,   "E0619", "Atomic intrinsic '{}' does not support type '{}'; expected {} (bool uses i1 and must be represented by a byte-sized integer, as std/atomic::AtomicBool does)")
 DIAG(ERR_ATOMIC_ORDERING_INVALID, Error,   "E0620", "Atomic operation '{}' rejects ordering '{}': {}")
-DIAG(ERR_MORPHOLOGY_BOUND_UNSATISFIED, Error, "E0621", "Type '{}' does not satisfy morphology bound '{}' for generic parameter {}")
-DIAG(ERR_MORPHOLOGY_BOUND_REQUIRES_MORPHIC, Error, "E0622", "Morphology bound '{}' requires morphic generic parameter {}")
 
 // --- Parser Errors ---
 DIAG(ERR_EXPECTED_SEMI,           Error,   "E0101", "Expected ';' or newline after statement")
@@ -326,7 +324,7 @@ DIAG(ERR_PARSER_WHERE_IMPL_REMOVED, Error,   "E01258", "Where constraints use ':
 DIAG(ERR_PARSER_EXPECTED_TYPE_ANNOTATION, Error,   "E01259", "Expected a type annotation")
 DIAG(ERR_PARSER_EXTERN_RETURN_DEPENDENCY_UNSUPPORTED, Error,   "E01260", "Extern declarations cannot declare return dependencies")
 DIAG(ERR_PARSER_AUTO_BINDING_TYPE_ANNOTATION, Error,   "E01266", "'auto' binding '{}' cannot have a declaration-side type annotation; ascribe its initializer instead")
-DIAG(ERR_PARSER_UNKNOWN_MORPHOLOGY_CONSTRAINT, Error, "E01267", "Unknown morphology constraint '{}'; expected soul_only, borrow_extendable, or raw_extendable")
+DIAG(ERR_PARSER_UNKNOWN_MORPHOLOGY_CONSTRAINT, Error,   "E01267", "Unknown morphology constraint '{}'; expected soul_only, borrow_extendable, or raw_extendable")
 DIAG(ERR_PARSER_AUTO_BINDING_REQUIRES_INITIALIZER, Error,   "E01262", "'auto' binding '{}' requires an initializer")
 DIAG(ERR_PARSER_DEFAULT_WILDCARD_REMOVED, Error,   "E01263", "'default' is not a match wildcard; use '_' instead")
 DIAG(ERR_PARSER_BITWISE_OPERATOR_MUST_BE_SURROUNDED, Error,   "E01264", "Binary bitwise operators must be surrounded by spaces")
@@ -349,6 +347,8 @@ DIAG(ERR_CLI_ARG,                 Error,   "E0902", "Invalid command line argume
 
 // --- Miscellaneous ---
 DIAG(ERR_PARAM_HANDLE_DEPTH_FORBIDDEN, Error, "E0495", "Parameter '{}' cannot use root handle chain '{}'; formal parameter roots are limited to one handle layer (did you mean '{}'?)")
+DIAG(ERR_MORPHOLOGY_BOUND_UNSATISFIED, Error, "E0621", "Type '{}' does not satisfy morphology bound '{}' for generic parameter {}")
+DIAG(ERR_MORPHOLOGY_BOUND_REQUIRES_MORPHIC, Error, "E0622", "Morphology bound '{}' requires morphic generic parameter {}")
 DIAG(ERR_NONZERO_RAW_NULL_FLOW, Error, "E0483", "Plain raw pointer type '{}' cannot contain or test null; use 'nul *T' for a may-zero raw address")
 DIAG(ERR_SAFE_NULLABLE_PAYLOAD_REMOVED, Error, "E0484", "Safe nullable payload syntax '{}' has been removed; use Init, 'T | miss', Option<T>, or an explicit domain state")
 DIAG(ERR_SAFE_NULLABLE_HANDLE_REMOVED, Error, "E0485", "Safe nullable handle syntax '{}' has been removed; '^T' and '~T' must designate valid objects, while physical null requires 'nul *T'")
@@ -519,6 +519,9 @@ DIAG(ERR_FOR_ALIAS_WRITABLE_NOT_QUALIFIED, Error, "E04645", "writable for alias 
 DIAG(ERR_SEMA_CANNOT_TRANSFER_PLACE_ALIAS, Error, "E04646", "Cannot move or cede alias '{}'; a place alias has no ownership to transfer")
 DIAG(ERR_SEMA_CANNOT_CAPTURE_PLACE_ALIAS, Error, "E04647", "Cannot capture alias '{}' in a closure; a place alias has no independent storage")
 DIAG(ERR_PLACE_OUTCOME_INTERNAL_ONLY, Error, "E04648", "Compiler place outcome '{}' may only be constructed and consumed by the for alias place protocol")
+DIAG(ERR_DUP_RECEIVER_CONTRACT, Error, "E04649", ".dup() requires a non-consuming, non-owning receiver and no arguments")
+DIAG(ERR_NOMINAL_SHAPE_IDENTITY_MISSING, Error, "E04650", "Cannot establish a stable nominal identity for shape '{}'")
+DIAG(ERR_SHAPE_SOVEREIGNTY_VIOLATION, Error, "E04651", "Shape sovereignty validation failed: {}")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

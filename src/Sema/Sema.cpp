@@ -3054,9 +3054,7 @@ void Sema::declareGlobals(Module &M) {
       St->NominalId = makeDeclaredShapeId(M, *St);
       if (!St->NominalId) {
         DiagnosticEngine::report(
-            St->Loc, DiagID::ERR_GENERIC_SEMA,
-            "Cannot establish a stable nominal identity for shape '" +
-                St->Name + "'");
+            St->Loc, DiagID::ERR_NOMINAL_SHAPE_IDENTITY_MISSING, St->Name);
         HasError = true;
       } else {
         DeclaredShapeIdentityRecords.push_back({&M, St.get()});
@@ -5218,7 +5216,8 @@ void Sema::checkShapeSovereignty() {
   std::map<const ShapeDecl *, const Module *> declarationOwners;
   std::set<const ShapeDecl *> visited;
   auto reportViolation = [&](SourceLocation loc, const std::string &message) {
-    DiagnosticEngine::report(loc, DiagID::ERR_GENERIC_SEMA, message);
+    DiagnosticEngine::report(loc, DiagID::ERR_SHAPE_SOVEREIGNTY_VIOLATION,
+                             message);
     HasError = true;
   };
   for (const auto &record : DeclaredShapeIdentityRecords) {

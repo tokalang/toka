@@ -4287,8 +4287,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
              unwrapCedeDirectSource(Met->Object.get())) ||
          (ObjTypeObj && ObjTypeObj->isSmartPointer()))) {
       DiagnosticEngine::report(
-          getLoc(Met), DiagID::ERR_GENERIC_SEMA,
-          ".dup() requires a non-consuming, non-owning receiver and no arguments");
+          getLoc(Met), DiagID::ERR_DUP_RECEIVER_CONTRACT);
       HasError = true;
       return toka::Type::fromString("unknown");
     }
