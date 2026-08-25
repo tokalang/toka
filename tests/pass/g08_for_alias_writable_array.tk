@@ -1,0 +1,9 @@
+fn main() -> i32 {
+    auto values# = [1, 2, 3]
+    for alias x# in values {
+        x += 10
+    }
+    assert(values[0] == 11 && values[1] == 12 && values[2] == 13,
+           "writable array alias must update original element places")
+    return 0
+}

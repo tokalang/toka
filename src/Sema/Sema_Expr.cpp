@@ -3127,9 +3127,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     return std::make_shared<UnitType>();
   } else if (auto *fe = dynamic_cast<ForExpr *>(E)) {
-    if (fe->IsPlaceAlias && fe->IsMutable) {
-      error(fe, DiagID::ERR_FOR_ALIAS_WRITABLE_NOT_QUALIFIED);
-    }
     // [Phase 2] Comptime Macro Unroll Detection
     bool isMacroUnroll = false;
     std::string ReflectedShapeName = "";
@@ -3339,6 +3336,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
     }
 
+    if (fe->IsPlaceAlias && fe->IsMutable) {
+      if (!isArray) {
+        error(fe, DiagID::ERR_FOR_ALIAS_WRITABLE_NOT_QUALIFIED);
+      } else {
+        auto sourceCapability = getAccessCapability(fe->Collection.get(), true);
+        if (!sourceCapability.PayloadWritable) {
+          error(fe, DiagID::ERR_FOR_ALIAS_WRITABLE_NOT_QUALIFIED);
+        }
+      }
+    }
+
     auto masksBefore = captureVisibleInitMasks(CurrentScope);
     auto movedBefore = captureVisibleMoved(CurrentScope);
     auto exactPlacesBefore = captureVisibleExactPlaceFacts(CurrentScope);
@@ -3357,7 +3365,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       iteratorSourceName = getPathString(fe->Collection.get());
       if (iteratorSourcePath &&
           PALCheckerState.getState(iteratorSourcePath) == PathState::Free) {
-        if (!PALCheckerState.recordBorrow(iteratorSourcePath, false,
+        if (!PALCheckerState.recordBorrow(iteratorSourcePath,
+                                          fe->IsPlaceAlias && fe->IsMutable,
                                           getLoc(fe))) {
           error(fe->Collection.get(), DiagID::ERR_BORROW_MUT,
                 iteratorSourcePath.toLegacyString());
