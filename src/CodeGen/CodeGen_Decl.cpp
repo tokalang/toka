@@ -578,9 +578,8 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     // target that value, not the pointer slot.
     llvm::Value *ownedValueStorage = nullptr;
     bool isOwnedParam = false;
-    // A ceded unique argument arrives through the caller's temporary handle
-    // slot.  After loading that slot into callee-owned storage it has one
-    // fewer physical indirection than an ordinary in-place capture.
+    // A ceded unique argument arrives as the moved heap handle value.  It has
+    // one fewer physical indirection than an ordinary in-place capture.
     bool storesMovedUniqueHandleDirectly = false;
 
     bool isDirectType = typeObj && !typeObj->isPointer() && !typeObj->isReference() && !argDecl.IsShared && !argDecl.IsUnique && !typeObj->isUniquePtr() && !typeObj->isSharedPtr();
@@ -606,12 +605,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       } else if ((argDecl.IsUnique || (typeObj && typeObj->isUniquePtr())) && argDecl.IsCeded) {
         // Single Handle Move for cede ^T (No double indirection!)
         llvm::AllocaInst *alloca = createEntryBlockAlloca(pTy, nullptr, argName + ".addr");
-        if (arg.getType()->isPointerTy()) {
-          llvm::Value *loadedHeapPtr = m_Builder.CreateLoad(pTy, &arg);
-          m_Builder.CreateStore(loadedHeapPtr, alloca);
-        } else {
-          m_Builder.CreateStore(&arg, alloca);
-        }
+        // The coroutine entry ABI matches synchronous cede ^T: the LLVM
+        // argument already is the owned heap handle, never a caller slot.
+        m_Builder.CreateStore(&arg, alloca);
         finalStorage = alloca;
         isOwnedParam = true;
         storesMovedUniqueHandleDirectly = true;
