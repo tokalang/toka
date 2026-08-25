@@ -2810,10 +2810,33 @@ bool Sema::checkModule(Module &M) {
     checkFunction(M.Functions[i].get());
   }
 
+  for (const auto &trait : M.Traits) {
+    std::set<std::string> allowedNames = {"Self"};
+    for (const auto &associated : trait->AssociatedTypes)
+      allowedNames.insert(associated.Name);
+    for (const auto &method : trait->Methods)
+      validateGenericSignatureTypeNames(method.get(), trait->GenericParams,
+                                        allowedNames);
+  }
+
   // 2c. Check Impl blocks (NEW: Proper Self Injection)
   for (size_t i = 0; i < M.Impls.size(); ++i) {
     if (!M.Impls[i]->GenericParams.empty()) {
+      std::set<std::string> allowedNames = {"Self"};
+      for (const auto &associated : M.Impls[i]->AssociatedTypes)
+        allowedNames.insert(associated.Name);
+      TraitDecl *trait = M.Impls[i]->TraitName.empty()
+                             ? nullptr
+                             : findVisibleTraitDecl(M.Impls[i]->TraitName,
+                                                    M.Impls[i]->Loc);
+      if (trait) {
+        for (const auto &associated : trait->AssociatedTypes)
+          allowedNames.insert(associated.Name);
+      }
       for (auto &Method : M.Impls[i]->Methods) {
+        validateGenericSignatureTypeNames(Method.get(),
+                                          M.Impls[i]->GenericParams,
+                                          allowedNames);
         checkUnsafePublicFunctionBoundary(Method.get());
       }
       continue; // Skip templates, they are checked upon instantiation
@@ -4528,126 +4551,134 @@ void Sema::declareImpl(ImplDecl *Impl) {
   }
 }
 
+void Sema::validateGenericSignatureTypeNames(
+    FunctionDecl *Fn, const std::vector<GenericParam> &enclosingParams,
+    const std::set<std::string> &enclosingTypeNames) {
+  if (!Fn)
+    return;
+
+  std::vector<GenericParam> allParams = enclosingParams;
+  allParams.insert(allParams.end(), Fn->GenericParams.begin(),
+                   Fn->GenericParams.end());
+  std::set<std::string> parameterNames;
+  std::map<std::string, std::set<std::string>> parameterBounds;
+  for (const auto &parameter : allParams) {
+    if (parameter.IsConst)
+      continue;
+    std::string name = parameter.Name;
+    if (!name.empty() && name.front() == '\'')
+      name.erase(0, 1);
+    parameterNames.insert(name);
+    for (const auto &bound : parameter.TraitBounds)
+      parameterBounds[name].insert(getTraitFamilyName(bound));
+  }
+  parameterNames.insert(enclosingTypeNames.begin(), enclosingTypeNames.end());
+
+  std::set<const Type *> visited;
+  std::function<void(const std::shared_ptr<Type> &)> validateNames =
+      [&](const std::shared_ptr<Type> &type) {
+        if (!type || !visited.insert(type.get()).second)
+          return;
+        if (type->isPointer()) {
+          validateNames(type->getPointeeType());
+          return;
+        }
+        if (auto array = std::dynamic_pointer_cast<ArrayType>(type)) {
+          validateNames(array->ElementType);
+          return;
+        }
+        if (auto slice = std::dynamic_pointer_cast<SliceType>(type)) {
+          validateNames(slice->ElementType);
+          return;
+        }
+        if (auto uninit = std::dynamic_pointer_cast<UninitType>(type)) {
+          validateNames(uninit->InnerType);
+          return;
+        }
+        if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(type)) {
+          validateNames(outcome->PayloadType);
+          return;
+        }
+        if (auto place = std::dynamic_pointer_cast<PlaceOutcomeType>(type)) {
+          validateNames(place->ItemType);
+          return;
+        }
+        if (auto function = std::dynamic_pointer_cast<FunctionType>(type)) {
+          for (const auto &parameter : function->ParamTypes)
+            validateNames(parameter);
+          validateNames(function->ReturnType);
+          return;
+        }
+        if (auto function = std::dynamic_pointer_cast<DynFnType>(type)) {
+          for (const auto &parameter : function->ParamTypes)
+            validateNames(parameter);
+          validateNames(function->ReturnType);
+          return;
+        }
+        auto shape = std::dynamic_pointer_cast<ShapeType>(type);
+        if (!shape)
+          return;
+
+        if (!shape->Name.empty() && shape->Name.front() == '(' &&
+            shape->Name.back() == ')') {
+          if (shape->SourceSyntax && shape->SourceSyntax->NodeKind ==
+                                         TypeSyntax::Kind::AnonymousRecord) {
+            for (const auto &field : shape->SourceSyntax->Fields)
+              validateNames(Type::fromSyntax(field.Type));
+          }
+          return;
+        }
+
+        std::string name = shape->Name;
+        if (!name.empty() && name.front() == '\'')
+          name.erase(0, 1);
+        bool admitted = parameterNames.count(name) != 0;
+        size_t projectionAt = findTopLevelChar(name, '@');
+        size_t projectionScope =
+            projectionAt == std::string::npos
+                ? std::string::npos
+                : findTopLevelDoubleColon(name, projectionAt + 1);
+        if (!admitted && projectionAt != std::string::npos &&
+            projectionScope != std::string::npos) {
+          const std::string base = trimTypeString(name.substr(0, projectionAt));
+          const std::string trait =
+              getTraitFamilyName(trimTypeString(name.substr(
+                  projectionAt + 1, projectionScope - projectionAt - 1)));
+          admitted =
+              parameterBounds.count(base) && parameterBounds[base].count(trait);
+        }
+        if (!admitted && !isTypeNameVisible(shape->Name, Fn->Loc)) {
+          DiagnosticEngine::report(Fn->Loc, DiagID::ERR_UNDEFINED_TYPE,
+                                   shape->Name);
+          HasError = true;
+        }
+
+        ShapeDecl *genericDecl = shape->Decl;
+        if (!genericDecl) {
+          auto declaration = ShapeMap.find(shape->Name);
+          if (declaration != ShapeMap.end())
+            genericDecl = declaration->second;
+        }
+        for (size_t i = 0; i < shape->GenericArgs.size(); ++i) {
+          if (genericDecl && i < genericDecl->GenericParams.size() &&
+              genericDecl->GenericParams[i].IsConst)
+            continue;
+          validateNames(shape->GenericArgs[i]);
+        }
+      };
+
+  validateNames(Fn->ReturnTypeSyntax ? Type::fromSyntax(Fn->ReturnTypeSyntax)
+                                     : Type::fromString(Fn->ReturnType));
+  for (const auto &argument : Fn->Args)
+    validateNames(Sema::synthesizePhysicalTypeObject(argument, false));
+}
+
 void Sema::checkFunction(FunctionDecl *Fn) {
   // Generic templates do not execute a body check until instantiation, but
-  // their public type syntax must still reject unknown names at the
-  // declaration point.  Validate names without resolving or instantiating the
-  // signature so this audit cannot mutate later generic CodeGen state.
+  // their signatures must still reject unknown names at the declaration
+  // point without resolving or instantiating later CodeGen state.
   if (!Fn->GenericParams.empty()) {
-    std::set<std::string> parameterNames;
-    std::map<std::string, std::set<std::string>> parameterBounds;
-    for (const auto &parameter : Fn->GenericParams) {
-      if (parameter.IsConst)
-        continue;
-      std::string name = parameter.Name;
-      if (!name.empty() && name.front() == '\'')
-        name.erase(0, 1);
-      parameterNames.insert(name);
-      for (const auto &bound : parameter.TraitBounds)
-        parameterBounds[name].insert(getTraitFamilyName(bound));
-    }
-
-    std::set<const Type *> visited;
-    std::function<void(const std::shared_ptr<Type> &)> validateNames =
-        [&](const std::shared_ptr<Type> &type) {
-      if (!type || !visited.insert(type.get()).second)
-        return;
-      if (type->isPointer()) {
-        validateNames(type->getPointeeType());
-        return;
-      }
-      if (auto array = std::dynamic_pointer_cast<ArrayType>(type)) {
-        validateNames(array->ElementType);
-        return;
-      }
-      if (auto slice = std::dynamic_pointer_cast<SliceType>(type)) {
-        validateNames(slice->ElementType);
-        return;
-      }
-      if (auto uninit = std::dynamic_pointer_cast<UninitType>(type)) {
-        validateNames(uninit->InnerType);
-        return;
-      }
-      if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(type)) {
-        validateNames(outcome->PayloadType);
-        return;
-      }
-      if (auto place = std::dynamic_pointer_cast<PlaceOutcomeType>(type)) {
-        validateNames(place->ItemType);
-        return;
-      }
-      if (auto function = std::dynamic_pointer_cast<FunctionType>(type)) {
-        for (const auto &parameter : function->ParamTypes)
-          validateNames(parameter);
-        validateNames(function->ReturnType);
-        return;
-      }
-      if (auto function = std::dynamic_pointer_cast<DynFnType>(type)) {
-        for (const auto &parameter : function->ParamTypes)
-          validateNames(parameter);
-        validateNames(function->ReturnType);
-        return;
-      }
-      auto shape = std::dynamic_pointer_cast<ShapeType>(type);
-      if (!shape)
-        return;
-
-      if (!shape->Name.empty() && shape->Name.front() == '(' &&
-          shape->Name.back() == ')') {
-        if (shape->SourceSyntax &&
-            shape->SourceSyntax->NodeKind ==
-                TypeSyntax::Kind::AnonymousRecord) {
-          for (const auto &field : shape->SourceSyntax->Fields)
-            validateNames(Type::fromSyntax(field.Type));
-        }
-        return;
-      }
-
-      std::string name = shape->Name;
-      if (!name.empty() && name.front() == '\'')
-        name.erase(0, 1);
-      bool admitted = parameterNames.count(name) != 0;
-      size_t projectionAt = findTopLevelChar(name, '@');
-      size_t projectionScope =
-          projectionAt == std::string::npos
-              ? std::string::npos
-              : findTopLevelDoubleColon(name, projectionAt + 1);
-      if (!admitted && projectionAt != std::string::npos &&
-          projectionScope != std::string::npos) {
-        const std::string base =
-            trimTypeString(name.substr(0, projectionAt));
-        const std::string trait = getTraitFamilyName(trimTypeString(
-            name.substr(projectionAt + 1,
-                        projectionScope - projectionAt - 1)));
-        admitted = parameterBounds.count(base) &&
-                   parameterBounds[base].count(trait);
-      }
-      if (!admitted && !isTypeNameVisible(shape->Name, Fn->Loc)) {
-        DiagnosticEngine::report(Fn->Loc, DiagID::ERR_UNDEFINED_TYPE,
-                                 shape->Name);
-        HasError = true;
-      }
-
-      ShapeDecl *genericDecl = shape->Decl;
-      if (!genericDecl) {
-        auto declaration = ShapeMap.find(shape->Name);
-        if (declaration != ShapeMap.end())
-          genericDecl = declaration->second;
-      }
-      for (size_t i = 0; i < shape->GenericArgs.size(); ++i) {
-        if (genericDecl && i < genericDecl->GenericParams.size() &&
-            genericDecl->GenericParams[i].IsConst)
-          continue;
-        validateNames(shape->GenericArgs[i]);
-      }
-    };
-
-    validateNames(Fn->ReturnTypeSyntax
-                      ? Type::fromSyntax(Fn->ReturnTypeSyntax)
-                      : Type::fromString(Fn->ReturnType));
-    for (const auto &argument : Fn->Args) {
-      validateNames(Sema::synthesizePhysicalTypeObject(argument, false));
-    }
+    validateGenericSignatureTypeNames(Fn);
     return;
   }
 

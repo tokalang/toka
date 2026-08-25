@@ -739,6 +739,9 @@ private:
   void checkUnsafePublicFunctionBoundary(FunctionDecl *Fn);
   void checkUnsafePublicShapeBoundary(ShapeDecl *Shape);
   void checkFunction(FunctionDecl *Fn);
+  void validateGenericSignatureTypeNames(
+      FunctionDecl *Fn, const std::vector<GenericParam> &enclosingParams = {},
+      const std::set<std::string> &enclosingTypeNames = {});
   std::string getTraitFamilyName(const std::string &traitName) const;
   std::string canonicalTraitName(const std::string &traitName,
                                  const TraitDecl *trait) const;

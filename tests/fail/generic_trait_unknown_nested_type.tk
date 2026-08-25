@@ -1,0 +1,9 @@
+shape Wrap<T>(value: T)
+
+trait @Bad<T> {
+    fn bad(value: Wrap<MissingType>) -> i32
+}
+
+fn main() -> i32 { return 0 }
+
+// EXPECT: error[E0463]

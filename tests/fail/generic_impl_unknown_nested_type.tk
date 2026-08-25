@@ -1,0 +1,12 @@
+shape Wrap<T>(value: T)
+shape Box<T>(value: T)
+
+impl<T> Box<T> {
+    fn bad(value: Wrap<MissingType>) -> i32 {
+        return 0
+    }
+}
+
+fn main() -> i32 { return 0 }
+
+// EXPECT: error[E0463]
