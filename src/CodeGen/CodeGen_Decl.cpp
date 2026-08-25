@@ -531,6 +531,31 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         (isDirectValue && (isAggregate || argDecl.IsValueMutable)) ||
         argDecl.IsRebindable || argDecl.IsUnique || argDecl.IsShared;
 
+    const bool isMorphicParameter =
+        argDecl.IsMorphicExempt ||
+        (!argDecl.Name.empty() && argDecl.Name[0] == '\'');
+    bool returnsCapturedHandleIdentity = false;
+    if (isMorphicParameter && func->ResolvedReturnType &&
+        func->ResolvedReturnType->isReference()) {
+      auto returnedPointee = func->ResolvedReturnType->getPointeeType();
+      const bool isLevel2Return =
+          returnedPointee &&
+          (returnedPointee->isPointer() || returnedPointee->isReference() ||
+           returnedPointee->isSmartPointer());
+      if (isLevel2Return) {
+        const std::string cleanArg = Type::stripMorphology(argDecl.Name);
+        for (const auto &dep : func->LifeDependencies) {
+          if (Type::stripMorphology(dep) == cleanArg) {
+            returnsCapturedHandleIdentity = true;
+            break;
+          }
+        }
+      }
+    }
+    if (returnsCapturedHandleIdentity) {
+      needsCapture = true;
+    }
+
     if (argDecl.IsInit)
       needsCapture = true;
 
@@ -703,6 +728,12 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     sym.isCallerHandleSlot =
         needsCapture && !storesMovedUniqueHandleDirectly &&
         argDecl.IsRebindable && !argDecl.IsShared;
+    sym.capturedHandleSlotNeedsLoad =
+        needsCapture && !storesMovedUniqueHandleDirectly &&
+        llvm::isa<llvm::AllocaInst>(finalStorage) &&
+        (argDecl.IsUnique ||
+         (typeObj && typeObj->isUniquePtr()) ||
+         returnsCapturedHandleIdentity);
     sym.isMutable = isMutable;
 
     m_Symbols[argName] = sym;

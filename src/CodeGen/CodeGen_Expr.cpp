@@ -5710,10 +5710,10 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       pTy = callee->getFunctionType()->getParamType(paramIdx);
 
     bool isCaptured = false;
+    bool capturesMorphicHandleIdentity = false;
 
     if (funcDecl && i < funcDecl->Args.size()) {
       const auto &arg = funcDecl->Args[i];
-      
       bool isArgUnique = arg.IsUnique;
       bool isArgShared = arg.IsShared;
       bool isArgRef = arg.IsReference;
@@ -5723,6 +5723,27 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
           isArgShared = isArgShared || arg.ResolvedType->isSharedPtr();
           isArgRef = isArgRef || arg.ResolvedType->isReference();
           hasArgPtr = hasArgPtr || arg.ResolvedType->isPointer();
+      }
+      const bool isMorphicParameter =
+          arg.IsMorphicExempt ||
+          (!arg.Name.empty() && arg.Name[0] == '\'');
+      if (isMorphicParameter && funcDecl->ResolvedReturnType &&
+          funcDecl->ResolvedReturnType->isReference()) {
+        auto returnedPointee =
+            funcDecl->ResolvedReturnType->getPointeeType();
+        const bool isLevel2Return =
+            returnedPointee &&
+            (returnedPointee->isPointer() || returnedPointee->isReference() ||
+             returnedPointee->isSmartPointer());
+        if (isLevel2Return) {
+          const std::string cleanArg = Type::stripMorphology(arg.Name);
+          for (const auto &dep : funcDecl->LifeDependencies) {
+            if (Type::stripMorphology(dep) == cleanArg) {
+              capturesMorphicHandleIdentity = true;
+              break;
+            }
+          }
+        }
       }
 
       // Force Capture for Unique Pointers to enable In-Place Move / Borrow
@@ -5753,7 +5774,8 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       // (Capture) This matches genFunction ABI where they are treated as
       // Captured Arguments. This allows the Callee to manipulate the Handle
       // (e.g. invalidating it on Move or rebinding it).
-      if (isArgUnique || isArgShared || arg.IsRebindable) {
+      if (isArgUnique || isArgShared || arg.IsRebindable ||
+          capturesMorphicHandleIdentity) {
         isCaptured = true;
       }
     } else if (extDecl && i < extDecl->Args.size()) {
@@ -5801,7 +5823,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
             std::string baseName = toka::Type::stripMorphology(ve->Name);
             if (m_Symbols.count(baseName)) {
                auto &sym = m_Symbols[baseName];
-               if (sym.mode == AddressingMode::Reference ||
+               if (capturesMorphicHandleIdentity) {
+                   val = getIdentityAddr(ve->codegenName());
+               } else if (sym.mode == AddressingMode::Reference ||
                    (sym.mode == AddressingMode::Pointer && sym.morphology == Morphology::None)) {
                    val = getEntityAddr(ve->codegenName());
                } else {

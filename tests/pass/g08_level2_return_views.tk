@@ -1,0 +1,44 @@
+shape Cell(value: i32)
+
+alias MaybeUniqueView = Option<&^Cell>
+alias MaybeSharedView = Option<&~Cell>
+alias MaybeReferenceView = Option<&&Cell>
+
+fn unique_view(^owner: Cell) -> &^Cell
+effects: return <- owner {
+    return &^owner
+}
+
+fn shared_view(~owner: Cell) -> &~Cell
+effects: return <- owner {
+    return &~owner
+}
+
+fn reference_view<'T>('reference: T) -> &'T
+where:
+    'T: morphology borrow_extendable
+effects: return <- 'reference {
+    return &'reference
+}
+
+fn main() -> i32 {
+    auto ^unique = new Cell(value = 10)
+    auto &^uv = unique_view(^unique)
+    assert(uv.value == 10, "&^T return lost unique handle identity")
+
+    auto ~shared = new Cell(value = 20)
+    auto &~sv = shared_view(~shared)
+    assert(sv.value == 20, "&~T return lost shared handle identity")
+
+    auto value = Cell(value = 30)
+    auto &reference = &value
+    auto &&rv = reference_view(&reference)
+    assert(rv.value == 30, "&&T return lost reference handle identity")
+
+    auto a = MaybeUniqueView::None
+    auto b = MaybeSharedView::None
+    auto c = MaybeReferenceView::None
+    assert(a.is_none() && b.is_none() && c.is_none(),
+           "level-2 structural aliases failed")
+    return 0
+}

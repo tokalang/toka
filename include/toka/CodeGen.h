@@ -67,6 +67,10 @@ struct TokaSymbol {
   // the caller's handle-slot address.  Rebinding must store through that
   // address, never overwrite the callee's capture slot.
   bool isCallerHandleSlot = false;
+  // A non-consuming captured handle may be represented by a callee-local
+  // slot whose value is the caller's real handle-slot address. Handle-identity
+  // borrowing must load this wrapper once before returning/borrowing it.
+  bool capturedHandleSlotNeedsLoad = false;
   bool isMutable = false;    // # on entity (Writable data)
   bool isContinuous = false; // Sequence marker (alloc [N])
   std::string typeName;   // Original type string (e.g. "dyn @Shape")

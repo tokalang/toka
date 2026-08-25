@@ -1,0 +1,23 @@
+import ./lib::{Cell, MaybeUniqueView, MaybeSharedView, MaybeReferenceView,
+              unique_view, shared_view, reference_view}
+
+fn main() -> i32 {
+    auto ^unique = new Cell(value = 10)
+    auto &^uv = unique_view(^unique)
+    if uv.value != 10 { return 1 }
+
+    auto ~shared = new Cell(value = 20)
+    auto &~sv = shared_view(~shared)
+    if sv.value != 20 { return 2 }
+
+    auto value = Cell(value = 30)
+    auto &reference = &value
+    auto &&rv = reference_view(&reference)
+    if rv.value != 30 { return 3 }
+
+    auto a = MaybeUniqueView::None
+    auto b = MaybeSharedView::None
+    auto c = MaybeReferenceView::None
+    if a.is_some() || b.is_some() || c.is_some() { return 4 }
+    return 0
+}

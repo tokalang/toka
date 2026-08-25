@@ -258,10 +258,11 @@ Ordinary container `borrow`/`borrow_mut` use the first form and yield `&T`.
 This selector does not itself prove that every substitution is legal; a public
 generic `&'T` signature still requires the planned `BorrowExtendable` bound.
 
-The present implementation qualifies the selector in the iterator projection
-path. General first-class local binding and direct function-return ABI coverage
-for `&^T`, `&~T`, and `&&T` remains a separate lowering milestone and must not
-be inferred from iterator success.
+The implementation now qualifies the selector in both iterator projections and
+direct function returns. `g08_level2_return_views.tk` exercises `&^T`, `&~T`,
+and constrained morphic `&&T` return ABI; `handle_002_level2_returns` repeats
+the same contracts after hiding the provider source. Local escape and owner
+invalidation remain fail-closed through E0455 and E0440.
 
 ### 5.2 Other prefixes
 
@@ -358,6 +359,10 @@ auto &~shared_owner = &~s   // resolved type &~Node
 
 The tests must inspect resolved semantic types; equivalent payload reads are
 not sufficient evidence.
+
+The classifier unit test performs the resolved-type assertions for local view
+selection, while `g08_level2_return_views.tk` and the source-hidden replay prove
+the corresponding runtime ABI and dependency behavior.
 
 ### 8.2 Morphic composition
 

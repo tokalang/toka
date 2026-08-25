@@ -85,6 +85,12 @@ Level-2 borrows remain valid as first-class local, return, and structural child
 types. Borrow target selection is explicit: `&u` borrows the payload as `&T`,
 while `&^u` borrows the unique handle identity as `&^T`.
 
+The admitted return surface is qualified by
+`tests/pass/g08_level2_return_views.tk` and the source-hidden
+`tests/semantics/tki_replay/cases/handle_002_level2_returns` case. They cover
+`&^T`, `&~T`, and constrained morphic `&&T`, plus structural aliases containing
+each form.
+
 ### 1.6 Type Alias Boundary & Root Morphology Invariants
 
 - Type aliases (`alias Name = Target` and `type Strong = Target`) define aliases for **soul and nominal types**.

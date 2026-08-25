@@ -1438,7 +1438,7 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
       // [Constitution] *p, ^p, ~p refer to the Identity (the pointer handle).
       // Their "address" is the address of the handle box (the alloca).
       if (auto *v = dynamic_cast<const VariableExpr *>(unary->RHS.get())) {
-        return getIdentityAddr(v->codegenName());
+        return emitHandleAddr(v);
       }
       // For recursive unary, we'd need to go deeper, but Toka usually has 1
       // level.
@@ -1857,7 +1857,15 @@ llvm::Value *CodeGen::emitEntityAddr(const Expr *expr) {
 
 llvm::Value *CodeGen::emitHandleAddr(const Expr *expr) {
   if (auto *var = dynamic_cast<const VariableExpr *>(expr)) {
-    return getIdentityAddr(var->codegenName());
+    llvm::Value *identity = getIdentityAddr(var->codegenName());
+    const std::string baseName = Type::stripMorphology(var->codegenName());
+    auto symbol = m_Symbols.find(baseName);
+    if (identity && symbol != m_Symbols.end() &&
+        symbol->second.capturedHandleSlotNeedsLoad) {
+      return m_Builder.CreateLoad(m_Builder.getPtrTy(), identity,
+                                  baseName + ".captured_handle_slot");
+    }
+    return identity;
   }
   return genAddr(expr);
 }

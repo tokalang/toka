@@ -1,0 +1,14 @@
+shape Cell(value: i32)
+
+fn unique_view(^owner: Cell) -> &^Cell
+effects: return <- owner {
+    return &^owner
+}
+
+// EXPECT: error[E0440]
+fn main() -> i32 {
+    auto ^owner = new Cell(value = 1)
+    auto &^view = unique_view(^owner)
+    auto ^moved = ^owner
+    return view.value
+}

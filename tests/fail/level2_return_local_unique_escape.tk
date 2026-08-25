@@ -1,0 +1,12 @@
+shape Cell(value: i32)
+
+// EXPECT: error[E0455]
+fn bad() -> &^Cell {
+    auto ^local = new Cell(value = 1)
+    return &^local
+}
+
+fn main() -> i32 {
+    auto &^view = bad()
+    return view.value
+}
