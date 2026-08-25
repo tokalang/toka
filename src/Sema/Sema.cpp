@@ -4143,6 +4143,8 @@ void Sema::registerImpl(ImplDecl *Impl) {
     requireSelfDependency("iter");
   if (getTraitFamilyName(canonicalTrait) == "BorrowIterator")
     requireSelfDependency("next_ref");
+  if (getTraitFamilyName(canonicalTrait) == "MutableBorrowIterator")
+    requireSelfDependency("next_mut");
 
   const std::string methodOwnerName =
       Impl->ResolvedOwner &&
@@ -4349,6 +4351,8 @@ void Sema::declareImpl(ImplDecl *Impl) {
     requireSelfDependency("iter");
   if (getTraitFamilyName(canonicalTrait) == "BorrowIterator")
     requireSelfDependency("next_ref");
+  if (getTraitFamilyName(canonicalTrait) == "MutableBorrowIterator")
+    requireSelfDependency("next_mut");
   const std::string methodOwnerName =
       Impl->ResolvedOwner &&
               Impl->ResolvedOwner->OwnerLinkName.rfind("__toka_owner_", 0) == 0

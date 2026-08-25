@@ -1,0 +1,62 @@
+import core/option::{Option}
+import core/traits::{@Encap, @Iterable, @Iterator, @MutableBorrowIterator}
+
+// EXPECT_TKI: impl UnsafeValuesMutCursor@MutableBorrowIterator
+// EXPECT_TKI: type BorrowedItem = &i32#
+// EXPECT_TKI: pub fn next_mut(self#: UnsafeValuesMutCursor) -> Option<&i32#> <- self
+
+pub shape Values(value#: i32)
+
+pub shape ValuesCursor(
+    &value: i32,
+    done#: bool
+)
+
+pub shape UnsafeValuesMutCursor(
+    nul *buf#: [i32],
+    done#: bool
+)
+
+impl ValuesCursor@Encap { fn drop(self#) {} }
+impl UnsafeValuesMutCursor@Encap { fn drop(self#) {} }
+
+impl Values@Iterable {
+    type Iter = ValuesCursor
+
+    pub fn iter(self) -> Iter <- self {
+        return ValuesCursor(&value = &(self.value), done = false)
+    }
+}
+
+impl ValuesCursor@Iterator {
+    type Item = i32
+
+    pub fn next(self#) -> Option<Item> {
+        if self.done { return Option<Item>::None }
+        self.done = true
+        return Option<Item>::Some(self.value)
+    }
+}
+
+impl Values {
+    pub fn iter_mut(self#) -> UnsafeValuesMutCursor <- self {
+        unsafe {
+            return UnsafeValuesMutCursor(
+                *buf = &(self.value) as *[i32],
+                done = false
+            )
+        }
+    }
+}
+
+impl UnsafeValuesMutCursor@MutableBorrowIterator {
+    type BorrowedItem = &i32#
+
+    pub fn next_mut(self#) -> Option<BorrowedItem> <- self {
+        if self.done { return Option<BorrowedItem>::None }
+        self.done = true
+        unsafe {
+            return Option<BorrowedItem>::Some(&(self.buf[0]))
+        }
+    }
+}

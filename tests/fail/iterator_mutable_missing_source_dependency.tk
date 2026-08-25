@@ -1,0 +1,20 @@
+// EXPECT: error[E04589]
+import core/option::{Option}
+import core/traits::{@MutableBorrowIterator}
+
+shape MutableCursor(
+    &value#: i32,
+    done#: bool
+)
+
+impl MutableCursor@MutableBorrowIterator {
+    type BorrowedItem = &i32#
+
+    pub fn next_mut(self#) -> Option<BorrowedItem> {
+        if self.done { return Option<BorrowedItem>::None }
+        self.done = true
+        return Option<BorrowedItem>::Some(&(self.value))
+    }
+}
+
+fn main() -> i32 { return 0 }

@@ -689,7 +689,7 @@ for auto x# in [1, 2, 3] {
 
 `#` 使迭代绑定可写。迭代绑定关键字始终是 `auto`；`for let` 不属于 Toka 语法。
 
-非数组迭代使用 `core/traits` 中三个普通 trait；它们不是隐式 prelude
+非数组迭代使用 `core/traits` 中四个普通 trait；它们不是隐式 prelude
 trait：
 
 ```toka
@@ -706,6 +706,11 @@ trait @Iterator {
 trait @BorrowIterator {
     type BorrowedItem
     pub fn next_ref(self#) -> Option<BorrowedItem> <- self
+}
+
+trait @MutableBorrowIterator {
+    type BorrowedItem
+    pub fn next_mut(self#) -> Option<BorrowedItem> <- self
 }
 ```
 
@@ -724,7 +729,9 @@ cursor 是普通作用域值，在迭代结束、`break` 和函数退出时执�
 写入/重绑定意图只写在 alias pattern 上，不在 source 表达式后重复写 `#`。
 `alias x#`、`alias ^x#`、`alias ^#x` 分别请求既有的 payload/handle 权限；
 只有原 element place 已具备对应能力时才准入。alias 永不放大权限，容器可写
-也绝不能穿透 handle 边界提升 pointee 权限。
+也绝不能穿透 handle 边界提升 pointee 权限。非数组 writable alias 通过
+`iter_mut` 与 `@MutableBorrowIterator::next_mut` 取得稳定 place；源码与 TKI
+导入路径都必须保留 `<- self` 依赖。
 
 值迭代不会隐式 `cede` 集合或元素；其所有权行为完全由 `next` 声明返回的
 `Item` 决定，并继续服从普通复制和资源规则。Toka 1.0 不定义 consuming

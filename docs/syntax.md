@@ -777,7 +777,7 @@ for auto x# in [1, 2, 3] {
 `#` makes the iteration binding writable. The binding keyword is always
 `auto`; `for let` is not part of Toka syntax.
 
-Non-array iteration uses three ordinary traits from `core/traits`. They are not
+Non-array iteration uses four ordinary traits from `core/traits`. They are not
 implicit prelude traits:
 
 ```toka
@@ -794,6 +794,11 @@ trait @Iterator {
 trait @BorrowIterator {
     type BorrowedItem
     pub fn next_ref(self#) -> Option<BorrowedItem> <- self
+}
+
+trait @MutableBorrowIterator {
+    type BorrowedItem
+    pub fn next_mut(self#) -> Option<BorrowedItem> <- self
 }
 ```
 
@@ -816,7 +821,10 @@ Write/rebind intent is declared on the alias pattern, not repeated on the
 source expression. `alias x#`, `alias ^x#`, and `alias ^#x` request the same
 payload/handle capabilities as ordinary bindings; each is admitted only when
 the original element place already has that capability. Alias never amplifies
-authority and container writability never crosses a handle boundary.
+authority and container writability never crosses a handle boundary. A
+writable non-array alias uses `iter_mut` plus
+`@MutableBorrowIterator::next_mut`; both the source-backed and TKI-imported
+signatures must retain `<- self`.
 
 Value iteration does not implicitly cede the collection or its elements. Its
 ownership behavior is exactly the declared `Item` returned by `next`, and the

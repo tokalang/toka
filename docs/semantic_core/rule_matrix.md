@@ -522,12 +522,14 @@ Primary references:
 
 ### ITER-PROTOCOL-001: Non-array iteration is resolved through formal facets
 
-- Source form: `for auto x in values` and `for auto &x in values`
+- Source form: `for auto x in values`, `for auto &x in values`, and qualified
+  `for alias x# in values`
 - Operation class: protocol resolution and morphology-selected iteration
 - Decision: a non-array collection must implement `@Iterable`; its associated
   cursor must implement `@Iterator`, and reference iteration additionally
-  requires `@BorrowIterator`. Inherent methods with the same names do not
-  satisfy the protocol.
+  requires `@BorrowIterator`. Writable place aliases select `iter_mut` and
+  require `@MutableBorrowIterator`. Inherent methods with the same names do
+  not satisfy the protocol.
 - Diagnostics: `E04587` for a structural-only collection and `E04588` for a
   cursor missing the required facet. Existing `E04498`/`E04500` retain the
   `Option<Item>` return-shape checks.
@@ -537,11 +539,14 @@ Primary references:
 - Negative tests: `tests/fail/iterator_structural_protocol_rejected.tk` and
   `tests/fail/iterator_missing_source_dependency.tk`.
 - Interface replay requirements: `@Iterable::Iter`, `@Iterator::Item`,
-  `@BorrowIterator::BorrowedItem`, method signatures, and dependencies are
-  exported together.
+  `@BorrowIterator::BorrowedItem`,
+  `@MutableBorrowIterator::BorrowedItem`, method signatures, and dependencies
+  are exported together.
 - Replay tests: `tests/semantics/tki_replay/cases/iterator_001_protocol` covers
   value and borrowed loops plus a source-mutation rejection through both
-  source-backed and source-less imports.
+  source-backed and source-less imports;
+  `tests/semantics/tki_replay/cases/iterator_002_mutable_alias` proves mutable
+  alias write-through to the original value-like collection on both paths.
 
 ### ITER-LIFETIME-001: Cursor lifetime remains anchored to its source
 
@@ -549,10 +554,11 @@ Primary references:
   `for`.
 - Operation class: escaping dependency, PAL shared borrow, and deterministic
   cleanup.
-- Decision: `@Iterable::iter` and `@BorrowIterator::next_ref` must declare
-  `<- self`. A live cursor prevents mutation, replacement, move, or cede of the
-  source. A cursor cannot escape a local source. The compiler-generated cursor
-  is dropped on normal exhaustion, `break`, and function return.
+- Decision: `@Iterable::iter`, `@BorrowIterator::next_ref`, and
+  `@MutableBorrowIterator::next_mut` must declare `<- self`. A live cursor
+  prevents mutation, replacement, move, or cede of the source. A cursor cannot
+  escape a local source. The compiler-generated cursor is dropped on normal
+  exhaustion, `break`, and function return.
 - Diagnostics: `E04589` for a missing protocol dependency, `E0441` for source
   mutation while borrowed, and `E0455` for a cursor escaping a local source.
 - Positive tests: `tests/pass/g08_iterator_pal_protocol.tk` proves the borrow is

@@ -3896,9 +3896,14 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
 
         if (collVal_ent.typeName[0] != '*' && collVal_ent.typeName[0] != '&' && collVal_ent.typeName[0] != '^' && collVal_ent.typeName[0] != '~') {
            if (iterFn && iterFn->arg_size() > 1 && iterFn->getArg(1)->getType()->isPointerTy()) {
-               llvm::AllocaInst *tmp = createEntryBlockAlloca(collVal->getType());
-               m_Builder.CreateStore(collVal, tmp);
-               args.push_back(tmp);
+               if (fe->IsPlaceAlias && collSourceEnt.isAddress) {
+                 args.push_back(collSourceEnt.value);
+               } else {
+                 llvm::AllocaInst *tmp =
+                     createEntryBlockAlloca(collVal->getType());
+                 m_Builder.CreateStore(collVal, tmp);
+                 args.push_back(tmp);
+               }
            } else {
                args.push_back(collVal);
            }
@@ -3912,9 +3917,15 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     } else {
         if (collVal_ent.typeName[0] != '*' && collVal_ent.typeName[0] != '&' && collVal_ent.typeName[0] != '^' && collVal_ent.typeName[0] != '~') {
            if (iterFn && iterFn->arg_size() > 0 && iterFn->getArg(0)->getType()->isPointerTy()) {
-               llvm::AllocaInst *tmp = createEntryBlockAlloca(collVal->getType());
-               m_Builder.CreateStore(collVal, tmp);
-               iterVal = m_Builder.CreateCall(iterFn, {tmp}, "iter_inst");
+               if (fe->IsPlaceAlias && collSourceEnt.isAddress) {
+                 iterVal = m_Builder.CreateCall(iterFn, {collSourceEnt.value},
+                                                "iter_inst");
+               } else {
+                 llvm::AllocaInst *tmp =
+                     createEntryBlockAlloca(collVal->getType());
+                 m_Builder.CreateStore(collVal, tmp);
+                 iterVal = m_Builder.CreateCall(iterFn, {tmp}, "iter_inst");
+               }
            } else {
                iterVal = m_Builder.CreateCall(iterFn, {collVal}, "iter_inst");
            }

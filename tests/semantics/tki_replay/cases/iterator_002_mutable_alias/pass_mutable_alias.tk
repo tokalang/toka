@@ -1,0 +1,11 @@
+import ./lib::{Values}
+
+// SOURCE_BACKED_RUNTIME
+
+pub fn main() -> i32 {
+    auto values# = Values(value = 7)
+    for alias value# in values {
+        value += 5
+    }
+    return values.value - 12
+}

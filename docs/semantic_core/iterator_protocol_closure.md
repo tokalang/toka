@@ -14,7 +14,10 @@ The frozen facets are:
 - `@Iterable` with associated `Iter` and `iter(self) -> Iter <- self`;
 - `@Iterator` with associated `Item` and `next(self#) -> Option<Item>`;
 - `@BorrowIterator` with associated `BorrowedItem` and
-  `next_ref(self#) -> Option<BorrowedItem> <- self`.
+  `next_ref(self#) -> Option<BorrowedItem> <- self`;
+- `@MutableBorrowIterator` with associated `BorrowedItem` and
+  `next_mut(self#) -> Option<BorrowedItem> <- self`, selected only by a
+  qualified writable `for alias` path.
 
 Only `@Encap`, `@Send`, `@Sync`, and the later `@Callable` protocol are implicit
 prelude traits. Iterator facets use normal lexical imports when named in
@@ -25,6 +28,9 @@ declarations.
 - Sema resolves the facets and records the selected `iter` and `next` methods
   on `ForExpr`; CodeGen consumes those resolved declarations instead of
   reconstructing method names.
+- Place aliases pass a stable source identity to `iter`/`iter_mut`; value-like
+  collections are never copied into a staging slot before the alias carrier
+  is created.
 - PAL holds a shared source borrow for the implicit loop cursor. Borrowed loop
   variables inherit the source dependency, and the compiler releases only the
   borrow introduced for that loop.
@@ -43,8 +49,9 @@ declarations.
 - Focused fail: structural protocol rejection, missing `<- self`, loop/source
   mutation, saved-cursor mutation, and local-source escape.
 - Same-version source/source-less replay:
-  `iterator_001_protocol`, included in the deterministic 12/12 semantic replay
-  gate.
+  `iterator_001_protocol` and `iterator_002_mutable_alias`; the latter binds
+  the mutable associated type, `<- self` dependency, original-place identity,
+  and runtime write-through after hiding the provider source.
 - Existing Vec, HashMap, HashSet, associated-type, build-system, PAL, and
   control-flow tests continue to compile and run. The local gates pass 320/320
   positive, 242/242 negative, 1/1 warning, and 12/12 replay cases.
