@@ -1,0 +1,16 @@
+// EXPECT_ERROR: E04573
+
+import ./lib::{Item, OptRaw}
+
+fn main() -> i32 {
+    auto raw_val = Item(val = 70)
+    auto *raw_ptr = *raw_val as *Item
+    auto option = OptRaw::Some(*raw_ptr)
+    match option {
+        auto Some(*view#) => {
+            view.val = 71
+        }
+        auto None => {}
+    }
+    return 0
+}

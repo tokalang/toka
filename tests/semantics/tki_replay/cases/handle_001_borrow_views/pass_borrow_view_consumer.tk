@@ -1,4 +1,6 @@
-import ./lib::{Item, Int, OptUnique, inspect_unique, inspect_shared, consume_unique, pass_option}
+// SOURCE_BACKED_RUNTIME
+
+import ./lib::{Item, Int, OptUnique, OptShared, OptRaw, inspect_unique, inspect_shared, consume_unique, pass_option, pass_shared_option, pass_raw_option}
 
 fn main() -> i32 {
     auto ^u = new Item(val = 42)
@@ -14,6 +16,15 @@ fn main() -> i32 {
 
     auto ^opt_val = new Item(val = 50)
     assert(pass_option(OptUnique::Some(cede ^opt_val)), "pass_option failed")
+
+    auto ~shared_val = new Item(val = 60)
+    assert(pass_shared_option(OptShared::Some(~shared_val)),
+           "pass_shared_option failed")
+
+    auto raw_val# = Item(val = 70)
+    auto *raw_ptr = *raw_val as *Item
+    assert(pass_raw_option(OptRaw::Some(*raw_ptr)),
+           "pass_raw_option failed")
 
     return 0
 }

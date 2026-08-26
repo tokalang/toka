@@ -352,9 +352,13 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
 
     auto expectedTypeObj = toka::Type::fromString(T);
     bool isMorphicExempt = (!Pat->Name.empty() && Pat->Name[0] == '\'');
-    if (expectedTypeObj->isReference() && !Pat->IsReference && !isMorphicExempt) {
-        DiagnosticEngine::report(getLoc(Pat), DiagID::ERR_SEMA_CANNOT_BIND_REFERENCE_MEMBER_TO_A_NON_R_2, Pat->Name);
-        HasError = true;
+    if (expectedTypeObj->isReference() && !Pat->IsReference &&
+        !isMorphicExempt) {
+      DiagnosticEngine::report(
+          getLoc(Pat),
+          DiagID::ERR_SEMA_CANNOT_BIND_REFERENCE_MEMBER_TO_A_NON_R_2,
+          Pat->Name);
+      HasError = true;
     }
 
     SymbolInfo Info;
@@ -362,12 +366,16 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     // Construct type string to parse object. Pattern bindings infer
     // type T. If Reference, it is &T.
     std::string fullType = "";
-    if (Pat->IsReference)
+    // A reference pattern over a reference-valued element preserves that
+    // element's exact morphology.  It only creates a new &T borrow view when
+    // the matched value itself is a Soul.
+    if (Pat->IsReference &&
+        (!expectedTypeObj || !expectedTypeObj->isReference()))
       fullType = "&";
     fullType += T;
 
     if (!Pat->Name.empty() && Pat->Name[0] == '\'') {
-        Info.IsMorphicExempt = true;
+      Info.IsMorphicExempt = true;
     }
 
     bool bindingPayloadWritable = Pat->IsValueMutable;
@@ -382,31 +390,37 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     if (bindingPayloadWritable)
       fullType += "#";
     Info.TypeObj = toka::Type::fromString(fullType);
+    if (auto resolvedBindingType = resolveType(Info.TypeObj, false))
+      Info.TypeObj = resolvedBindingType;
+    // CodeGen must receive the exact semantic type of a fresh binder.  The
+    // enclosing payload type is insufficient for handle patterns because it
+    // loses the binder's addressing mode and soul metadata.
+    Pat->MatchedValueType = Info.TypeObj;
 
     if (Info.TypeObj) {
-        // [Safety Gate] Prevent implicit destructure copying of Resources
-        if (!Pat->IsReference && !Info.IsMorphicExempt &&
-            !Info.TypeObj->isPointer() && !Info.TypeObj->isReference() &&
-            !Info.TypeObj->isSmartPointer()) {
-            std::string soulName = Info.TypeObj->getSoulName();
-            if (!soulName.empty() && ShapeMap.count(soulName)) {
-                if (!ShapeMap[soulName]->MangledDestructorName.empty()) {
-                    DiagnosticEngine::report(getLoc(Pat), DiagID::ERR_ILLEGAL_RESOURCE_COPY, soulName, Pat->Name);
-                    HasError = true;
-                    SourceLocation originLoc = ShapeMap[soulName]->Loc;
-                    recordDecision(
-                        Pat, SemanticRuleID::OwnResource001,
-                        SemanticOperation::ResourceCopy,
-                        SemanticDecision::Reject,
-                        SemanticReason::ResourceCopyForbidden, Pat->Name,
-                        soulName, originLoc);
-                    if (originLoc.isValid())
-                      DiagnosticEngine::report(
-                          originLoc, DiagID::NOTE_GENERIC,
-                          "resource type declared here");
-                }
-            }
+      // [Safety Gate] Prevent implicit destructure copying of Resources
+      if (!Pat->IsReference && !Info.IsMorphicExempt &&
+          !Info.TypeObj->isPointer() && !Info.TypeObj->isReference() &&
+          !Info.TypeObj->isSmartPointer()) {
+        std::string soulName = Info.TypeObj->getSoulName();
+        if (!soulName.empty() && ShapeMap.count(soulName)) {
+          if (!ShapeMap[soulName]->MangledDestructorName.empty()) {
+            DiagnosticEngine::report(getLoc(Pat),
+                                     DiagID::ERR_ILLEGAL_RESOURCE_COPY,
+                                     soulName, Pat->Name);
+            HasError = true;
+            SourceLocation originLoc = ShapeMap[soulName]->Loc;
+            recordDecision(Pat, SemanticRuleID::OwnResource001,
+                           SemanticOperation::ResourceCopy,
+                           SemanticDecision::Reject,
+                           SemanticReason::ResourceCopyForbidden, Pat->Name,
+                           soulName, originLoc);
+            if (originLoc.isValid())
+              DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                       "resource type declared here");
+          }
         }
+      }
     }
 
     if (Info.TypeObj) {

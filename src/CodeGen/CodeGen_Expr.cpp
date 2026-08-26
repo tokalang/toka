@@ -4310,10 +4310,10 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
 }
 
 void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
-                                llvm::Value *targetAddr,
-                                llvm::Type *targetType,
+                                llvm::Value *targetAddr, llvm::Type *targetType,
                                 std::shared_ptr<Type> targetTypeObj) {
-  if (targetType && targetType->isVoidTy()) return;
+  if (targetType && targetType->isVoidTy())
+    return;
 
   if (pat->PatternKind == MatchArm::Pattern::Variable) {
     if (pat->Binding == MatchArm::Pattern::BindingOrigin::Existing)
@@ -4321,25 +4321,14 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
 
     llvm::Value *val = targetAddr;
     std::string pName = pat->Name;
-    bool isUnique = false;
-    bool isShared = false;
-    bool isRaw = false;
-
-    // Detect Morphology from Name
-    std::string checkName = pName;
-    while (!checkName.empty()) {
-      char c = checkName[0];
-      if (c == '^')
-        isUnique = true;
-      else if (c == '~')
-        isShared = true;
-      else if (c == '*')
-        isRaw = true;
-      else if (c == '#' || c == '&' || c == '!') { /* skip */
-      } else
-        break;
-      checkName = checkName.substr(1);
-    }
+    std::shared_ptr<Type> bindingTypeObj =
+        pat->MatchedValueType ? pat->MatchedValueType : targetTypeObj;
+    const bool isUnique =
+        bindingTypeObj && bindingTypeObj->typeKind == Type::UniquePtr;
+    const bool isShared =
+        bindingTypeObj && bindingTypeObj->typeKind == Type::SharedPtr;
+    const bool isRaw =
+        bindingTypeObj && bindingTypeObj->typeKind == Type::RawPtr;
 
     while (!pName.empty() &&
            (pName[0] == '*' || pName[0] == '#' || pName[0] == '&' ||
@@ -4363,32 +4352,41 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
 
     if (!pat->IsReference) {
       val = m_Builder.CreateLoad(targetType, targetAddr, pName);
-      
+
       if (isShared && val->getType()->isStructTy()) {
-          llvm::Value *refPtr = m_Builder.CreateExtractValue(val, 1, pName + "_refptr");
-          llvm::Value *refNN = m_Builder.CreateIsNotNull(refPtr, pName + "_ref_nn");
+        llvm::Value *refPtr =
+            m_Builder.CreateExtractValue(val, 1, pName + "_refptr");
+        llvm::Value *refNN =
+            m_Builder.CreateIsNotNull(refPtr, pName + "_ref_nn");
 
-          llvm::Function *F = m_Builder.GetInsertBlock()->getParent();
-          llvm::BasicBlock *doIncBB = llvm::BasicBlock::Create(m_Context, pName + "_inc", F);
-          llvm::BasicBlock *contBB = llvm::BasicBlock::Create(m_Context, pName + "_cont", F);
+        llvm::Function *F = m_Builder.GetInsertBlock()->getParent();
+        llvm::BasicBlock *doIncBB =
+            llvm::BasicBlock::Create(m_Context, pName + "_inc", F);
+        llvm::BasicBlock *contBB =
+            llvm::BasicBlock::Create(m_Context, pName + "_cont", F);
 
-          m_Builder.CreateCondBr(refNN, doIncBB, contBB);
-          m_Builder.SetInsertPoint(doIncBB);
+        m_Builder.CreateCondBr(refNN, doIncBB, contBB);
+        m_Builder.SetInsertPoint(doIncBB);
 
-          // Option A: All shared pointer refcount operations are atomic by default (@arc)
-          bool isAtomic = true;
+        // Option A: All shared pointer refcount operations are atomic by
+        // default (@arc)
+        bool isAtomic = true;
 
-          if (isAtomic) {
-              // Retain/Inc uses Monotonic (Relaxed) memory ordering for maximal throughput
-              m_Builder.CreateAtomicRMW(llvm::AtomicRMWInst::Add, refPtr, m_Builder.getInt32(1), llvm::MaybeAlign(4), llvm::AtomicOrdering::Monotonic);
-          } else {
-              llvm::Value *cnt = m_Builder.CreateLoad(llvm::Type::getInt32Ty(m_Context), refPtr);
-              llvm::Value *inc = m_Builder.CreateAdd(cnt, m_Builder.getInt32(1));
-              m_Builder.CreateStore(inc, refPtr);
-          }
+        if (isAtomic) {
+          // Retain/Inc uses Monotonic (Relaxed) memory ordering for maximal
+          // throughput
+          m_Builder.CreateAtomicRMW(llvm::AtomicRMWInst::Add, refPtr,
+                                    m_Builder.getInt32(1), llvm::MaybeAlign(4),
+                                    llvm::AtomicOrdering::Monotonic);
+        } else {
+          llvm::Value *cnt =
+              m_Builder.CreateLoad(llvm::Type::getInt32Ty(m_Context), refPtr);
+          llvm::Value *inc = m_Builder.CreateAdd(cnt, m_Builder.getInt32(1));
+          m_Builder.CreateStore(inc, refPtr);
+        }
 
-          m_Builder.CreateBr(contBB);
-          m_Builder.SetInsertPoint(contBB);
+        m_Builder.CreateBr(contBB);
+        m_Builder.SetInsertPoint(contBB);
       }
     }
 
@@ -4405,39 +4403,24 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
 
     TokaSymbol sym;
     sym.allocaPtr = alloca;
-    // For pattern bindings, metadata is often already inferred by Sema
-    fillSymbolMetadata(sym, "", false, false, false, pat->IsReference,
-                       pat->IsValueMutable, targetType);
-    sym.isRebindable = false;
-    sym.isContinuous = targetType->isArrayTy();
-
-    // [HOTFIX] Exempt variables (like 'val) preserve their raw morphology!
-    if (!pName.empty() && pName[0] == '\'') {
-        sym.mode = AddressingMode::Direct;
-        sym.indirectionLevel = 0;
-        sym.morphology = Morphology::None;
-        sym.soulType = targetType;
-    }
-
-    // [Fix] Set Morphology and Indirection explicitly for Pattern Bindings
-    if (isUnique) {
-      sym.morphology = Morphology::Unique;
-      sym.indirectionLevel = 1;
-    } else if (isShared) {
-      sym.morphology = Morphology::Shared;
-      // Shared is a struct value, so indirection is 0 (alloca holds the struct)
-      // Unless targetType was already a pointer to shared?
-      // genMatchExpr loads target. If variable was ~T, targetVal is {T*, Ref}.
-      // So alloca stores {T*, Ref}. Indirection 0.
+    // Sema records the exact fresh-binder type.  Populate the complete symbol
+    // metadata from it so handle binders cannot retain Direct addressing mode.
+    fillSymbolMetadata(sym, bindingTypeObj, val->getType());
+    // A morphic binder transports an instantiated reference value itself;
+    // unlike an ordinary `&name` binder, reading `'name` must not implicitly
+    // dereference it.  Owning/shared/raw handles deliberately remain Pointer.
+    if (!pName.empty() && pName.front() == '\'' && bindingTypeObj &&
+        bindingTypeObj->isReference()) {
+      sym.mode = AddressingMode::Direct;
       sym.indirectionLevel = 0;
-    } else if (isRaw || targetType->isPointerTy()) {
-      sym.morphology = Morphology::Raw;
-      sym.indirectionLevel = 1;
+      sym.morphology = Morphology::None;
+      sym.soulType = val->getType();
     }
+    sym.isRebindable = false;
 
     std::string typeName = "";
-    if (targetTypeObj) {
-      auto soul = targetTypeObj;
+    if (bindingTypeObj) {
+      auto soul = bindingTypeObj;
       while (soul && (soul->isPointer() || soul->isReference() ||
                       soul->isSmartPointer())) {
         soul = soul->getPointeeType();
@@ -4450,14 +4433,13 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
         if (pat->IsReference)
           sym.soulType = getLLVMType(soul);
       }
-      sym.soulTypeObj = targetTypeObj;
     }
 
     std::string dropFunc = "";
     bool hasDrop = false;
     ShapeDecl *exactDropShape = nullptr;
-    if (targetTypeObj) {
-      auto soul = targetTypeObj;
+    if (bindingTypeObj) {
+      auto soul = bindingTypeObj;
       while (soul && (soul->isPointer() || soul->isReference() ||
                       soul->isSmartPointer())) {
         soul = soul->getPointeeType();

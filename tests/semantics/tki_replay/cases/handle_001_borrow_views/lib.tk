@@ -1,16 +1,22 @@
 // EXPECT_TKI: pub shape Item(val: i32)
 // EXPECT_TKI: pub alias Int = i32
 // EXPECT_TKI: pub alias OptUnique = Option<^Item>
+// EXPECT_TKI: pub alias OptShared = Option<~Item>
+// EXPECT_TKI: pub alias OptRaw = Option<*Item>
 // EXPECT_TKI: pub fn inspect_unique(^x: Item) -> i32
 // EXPECT_TKI: pub fn inspect_shared(~x: Item) -> i32
 // EXPECT_TKI: pub fn consume_unique(cede ^x: Item) -> i32
 // EXPECT_TKI: pub fn pass_option(x: Option<^Item>) -> bool
+// EXPECT_TKI: pub fn pass_shared_option(x: Option<~Item>) -> bool
+// EXPECT_TKI: pub fn pass_raw_option(x: Option<*Item>) -> bool
 // EXPECT_TKI_ROUNDTRIP
 
 pub shape Item(val: i32)
 
 pub alias Int = i32
 pub alias OptUnique = Option<^Item>
+pub alias OptShared = Option<~Item>
+pub alias OptRaw = Option<*Item>
 
 pub fn inspect_unique(^x: Item) -> i32 {
     return x.val
@@ -27,7 +33,21 @@ pub fn consume_unique(cede ^x: Item) -> i32 {
 
 pub fn pass_option(x: Option<^Item>) -> bool {
     match x {
-        auto Some(^val) => return val.val > 0
+        auto Some(^val) => return val.val == 50
+        auto None => return false
+    }
+}
+
+pub fn pass_shared_option(x: Option<~Item>) -> bool {
+    match x {
+        auto Some(~val) => return val.val == 60
+        auto None => return false
+    }
+}
+
+pub fn pass_raw_option(x: Option<*Item>) -> bool {
+    match x {
+        auto Some(*val) => return val.val == 70
         auto None => return false
     }
 }
