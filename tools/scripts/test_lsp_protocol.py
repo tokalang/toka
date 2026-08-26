@@ -25,6 +25,16 @@ class LspClient:
         self.reader = threading.Thread(target=self._read_messages, daemon=True)
         self.reader.start()
 
+    def _transport_failure(self, reason):
+        returncode = self.process.poll()
+        if returncode is None:
+            try:
+                returncode = self.process.wait(timeout=0.2)
+            except subprocess.TimeoutExpired:
+                returncode = None
+        self.messages.put(RuntimeError(
+            "%s; tokalsp returncode=%s" % (reason, returncode)))
+
     def _read_messages(self):
         try:
             while True:
@@ -32,6 +42,8 @@ class LspClient:
                 while True:
                     line = self.process.stdout.readline()
                     if not line:
+                        self._transport_failure(
+                            "tokalsp stdout closed while reading headers")
                         return
                     if line in (b"\n", b"\r\n"):
                         break
@@ -40,6 +52,9 @@ class LspClient:
                 length = int(headers["content-length"])
                 body = self.process.stdout.read(length)
                 if len(body) != length:
+                    self._transport_failure(
+                        "tokalsp stdout closed during message body (%d/%d bytes)"
+                        % (len(body), length))
                     return
                 self.messages.put(json.loads(body.decode("utf-8")))
         except Exception as error:
@@ -82,7 +97,9 @@ class LspClient:
     def fail_with_stderr(self, message):
         self.process.terminate()
         _, stderr = self.process.communicate(timeout=5)
-        raise RuntimeError(message + "\n" + stderr.decode("utf-8", errors="replace"))
+        raise RuntimeError(
+            message + "\ntokalsp returncode=%s\n" % self.process.returncode +
+            stderr.decode("utf-8", errors="replace"))
 
 
 def require(condition, message):

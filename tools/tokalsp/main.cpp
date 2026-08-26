@@ -295,9 +295,13 @@ public:
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
     while (true) {
-      std::optional<std::string> body = readMessage();
-      if (!body)
+      std::string transportFailure;
+      std::optional<std::string> body = readMessage(transportFailure);
+      if (!body) {
+        if (!ShutdownRequested && !transportFailure.empty())
+          std::cerr << "tokalsp transport error: " << transportFailure << '\n';
         return ShutdownRequested ? 0 : 1;
+      }
       if (process(*body))
         return ShutdownRequested ? 0 : 1;
     }
@@ -354,36 +358,64 @@ private:
     return found ? *found : std::string();
   }
 
-  static std::optional<std::string> readMessage() {
+  static std::optional<std::string> readMessage(std::string &failure) {
+    constexpr size_t MaxMessageBytes = 64U * 1024U * 1024U;
     std::string line;
     size_t contentLength = 0;
-    bool sawHeader = false;
-    while (std::getline(std::cin, line)) {
+    bool sawContentLength = false;
+    bool sawAnyHeader = false;
+    while (true) {
+      if (!std::getline(std::cin, line)) {
+        failure = sawAnyHeader ? "truncated message headers"
+                               : "unexpected EOF before message headers";
+        return std::nullopt;
+      }
       if (!line.empty() && line.back() == '\r')
         line.pop_back();
       if (line.empty())
         break;
-      sawHeader = true;
-      std::string lower = line;
-      std::transform(lower.begin(), lower.end(), lower.begin(),
+      sawAnyHeader = true;
+      size_t delimiter = line.find(':');
+      if (delimiter == std::string::npos) {
+        failure = "malformed message header";
+        return std::nullopt;
+      }
+      std::string name = trim(line.substr(0, delimiter));
+      std::transform(name.begin(), name.end(), name.begin(),
                      [](unsigned char ch) { return std::tolower(ch); });
-      constexpr std::string_view header = "content-length:";
-      if (lower.substr(0, header.size()) == header) {
+      if (name == "content-length") {
+        if (sawContentLength) {
+          failure = "duplicate Content-Length header";
+          return std::nullopt;
+        }
+        std::string value = trim(line.substr(delimiter + 1));
         try {
-          contentLength = static_cast<size_t>(
-              std::stoull(trim(line.substr(header.size()))));
+          size_t parsed = 0;
+          unsigned long long length = std::stoull(value, &parsed);
+          if (parsed != value.size() || length == 0 ||
+              length > MaxMessageBytes) {
+            failure = "invalid Content-Length header";
+            return std::nullopt;
+          }
+          contentLength = static_cast<size_t>(length);
+          sawContentLength = true;
         } catch (...) {
+          failure = "invalid Content-Length header";
           return std::nullopt;
         }
       }
     }
-    if (!sawHeader || contentLength == 0)
+    if (!sawContentLength) {
+      failure = "missing Content-Length header";
       return std::nullopt;
+    }
     std::string body(contentLength, '\0');
     std::cin.read(body.data(), static_cast<std::streamsize>(contentLength));
-    return static_cast<size_t>(std::cin.gcount()) == contentLength
-               ? std::optional<std::string>(std::move(body))
-               : std::nullopt;
+    if (static_cast<size_t>(std::cin.gcount()) != contentLength) {
+      failure = "truncated message body";
+      return std::nullopt;
+    }
+    return body;
   }
 
   static void sendBody(const std::string &body) {

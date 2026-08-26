@@ -211,7 +211,9 @@ def main():
                 client.fail_with_stderr(str(error))
             stderr = client.process.stderr.read().decode(
                 "utf-8", errors="replace")
-            raise RuntimeError(str(error) + "\n" + stderr) from error
+            raise RuntimeError(
+                str(error) + "\ntokalsp returncode=%s\n" %
+                client.process.returncode + stderr) from error
 
         final_clean = subprocess.run(
             [str(tokac), "--check-only", str(main_path)], cwd=root, env=env,
