@@ -304,24 +304,62 @@ void CodeGen::suppressDropForMove(const std::string &name) {
   }
 }
 
-void CodeGen::suppressDropForMorphicAggregate(const Expr *expr) {
-  while (expr) {
-    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
-      expr = cast->Expression.get();
-    } else if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
-      expr = unsafeExpr->Expression.get();
+void CodeGen::applyAggregateTransfer(AggregateTransferKind transfer,
+                                     const Expr *expr, llvm::Value *value) {
+  if (transfer == AggregateTransferKind::CopyValue ||
+      transfer == AggregateTransferKind::CopyIdentity)
+    return;
+
+  const Expr *identity = expr;
+  while (identity) {
+    if (auto *cast = dynamic_cast<const CastExpr *>(identity)) {
+      identity = cast->Expression.get();
+    } else if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(identity)) {
+      identity = unsafeExpr->Expression.get();
+    } else if (auto *cede = dynamic_cast<const CedeExpr *>(identity)) {
+      identity = cede->Value.get();
     } else {
       break;
     }
   }
 
-  auto *variable = dynamic_cast<const VariableExpr *>(expr);
+  auto *variable = dynamic_cast<const VariableExpr *>(identity);
   if (!variable)
     return;
   const std::string name = Type::stripMorphology(variable->codegenName());
   auto symbol = m_Symbols.find(name);
-  if (symbol != m_Symbols.end() && symbol->second.isMorphicValueTransport)
-    suppressDropForMove(name);
+  if (symbol == m_Symbols.end())
+    return;
+
+  if (transfer == AggregateTransferKind::Unqualified) {
+    if (symbol->second.isMorphicValueTransport)
+      error(expr, DiagID::ERR_CODEGEN_INVALID_REPRESENTATION_FOR,
+            "morphic aggregate transfer without a Sema plan");
+    return;
+  }
+
+  if (transfer == AggregateTransferKind::RetainShared) {
+    auto type = expr && expr->ResolvedType ? expr->ResolvedType
+                                          : symbol->second.soulTypeObj;
+    if (value && type && type->isSharedPtr())
+      emitAcquire(value, type->getPointeeType());
+    return;
+  }
+
+  if (transfer != AggregateTransferKind::MoveOwned)
+    return;
+
+  suppressDropForMove(name);
+  llvm::Value *slot = symbol->second.allocaPtr;
+  if (!slot)
+    return;
+  llvm::Type *slotType = nullptr;
+  if (auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(slot))
+    slotType = alloca->getAllocatedType();
+  else if (symbol->second.soulTypeObj)
+    slotType = getLLVMType(symbol->second.soulTypeObj);
+  if (slotType)
+    m_Builder.CreateStore(llvm::Constant::getNullValue(slotType), slot);
 }
 
 int CodeGen::getDirectMemberDropIndex(const VariableScopeInfo &entry,

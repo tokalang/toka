@@ -2535,10 +2535,12 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
           llvm::Value *payloadRef = m_Builder.CreateLoad(
               m_Builder.getPtrTy(), payloadAddr, "miss.ref.payload");
           genPatternBinding(arm->Pat.get(), payloadRef,
-                            m_Builder.getPtrTy(), outcome->PayloadType);
+                            m_Builder.getPtrTy(), outcome->PayloadType,
+                            expr->TransfersPayloadOwnership);
         } else {
           genPatternBinding(arm->Pat.get(), payloadAddr,
-                            layout->getElementType(1), outcome->PayloadType);
+                            layout->getElementType(1), outcome->PayloadType,
+                            expr->TransfersPayloadOwnership);
         }
       }
       if (arm) {
@@ -2816,14 +2818,16 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
               if (payloadTypeObj && !payloadTypeObj->isReference()) {
                 genPatternBinding(subPat->SubPatterns[0].get(), payloadAddr,
                                   getLLVMType(payloadTypeObj),
-                                  payloadTypeObj);
+                                  payloadTypeObj,
+                                  expr->TransfersPayloadOwnership);
               } else {
                 llvm::Value *payloadRef = m_Builder.CreateLoad(
                     llvm::PointerType::getUnqual(m_Context), payloadAddr,
                     "enum_ref_payload");
                 genPatternBinding(subPat->SubPatterns[0].get(), payloadRef,
                                   llvm::PointerType::getUnqual(m_Context),
-                                  payloadTypeObj);
+                                  payloadTypeObj,
+                                  expr->TransfersPayloadOwnership);
               }
             } else {
             llvm::Type *payloadLayoutType = nullptr;
@@ -2898,7 +2902,8 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
                 }
 
                 genPatternBinding(subPat->SubPatterns[i].get(), fieldAddr,
-                                  fieldTy, subTypeObj);
+                                  fieldTy, subTypeObj,
+                                  expr->TransfersPayloadOwnership);
               }
             }
             }
@@ -2950,7 +2955,9 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
 
         // [Fix] Bind Variable Pattern if needed
         if (arm->Pat->PatternKind == MatchArm::Pattern::Variable) {
-          genPatternBinding(arm->Pat.get(), targetAddr, targetType, expr->Target->ResolvedType);
+          genPatternBinding(arm->Pat.get(), targetAddr, targetType,
+                            expr->Target->ResolvedType,
+                            expr->TransfersPayloadOwnership);
         }
 
         m_CFStack.push_back(
@@ -3466,7 +3473,8 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
         m_Builder.SetInsertPoint(guardBB);
 
         m_ScopeStack.push_back({});
-        genPatternBinding(arm->Pat.get(), targetAddr, targetType, expr->Target->ResolvedType);
+        genPatternBinding(arm->Pat.get(), targetAddr, targetType,
+                          expr->Target->ResolvedType, false);
 
         PhysEntity guardVal_ent = genExpr(arm->Guard.get()).load(m_Builder);
         llvm::Value *guardVal = guardVal_ent.load(m_Builder);
@@ -3481,7 +3489,9 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
       // 3. ARM Body
       m_Builder.SetInsertPoint(armBB);
       m_ScopeStack.push_back({});
-      genPatternBinding(arm->Pat.get(), targetAddr, targetType, expr->Target->ResolvedType);
+      genPatternBinding(arm->Pat.get(), targetAddr, targetType,
+                        expr->Target->ResolvedType,
+                        expr->TransfersPayloadOwnership);
 
       m_CFStack.push_back(
           {"", mergeBB, nullptr, resultAddr, m_ScopeStack.size()});
@@ -4323,7 +4333,8 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
 
 void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
                                 llvm::Value *targetAddr, llvm::Type *targetType,
-                                std::shared_ptr<Type> targetTypeObj) {
+                                std::shared_ptr<Type> targetTypeObj,
+                                bool transfersOwnership) {
   if (targetType && targetType->isVoidTy())
     return;
 
@@ -4365,7 +4376,7 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
     if (!pat->IsReference) {
       val = m_Builder.CreateLoad(targetType, targetAddr, pName);
 
-      if (isShared && val->getType()->isStructTy()) {
+      if (isShared && !transfersOwnership && val->getType()->isStructTy()) {
         llvm::Value *refPtr =
             m_Builder.CreateExtractValue(val, 1, pName + "_refptr");
         llvm::Value *refNN =
@@ -4609,7 +4620,8 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
                 subTypeObj = variant->ResolvedType;
               }
 
-              genPatternBinding(pat->SubPatterns[i].get(), fieldAddr, fieldTy, subTypeObj);
+              genPatternBinding(pat->SubPatterns[i].get(), fieldAddr, fieldTy,
+                                subTypeObj, transfersOwnership);
             }
           }
         }
@@ -4696,12 +4708,14 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
               }
           }
           genPatternBinding(pat->SubPatterns[i].get(), fieldAddr,
-                            st->getElementType(memberIndex), subTypeObj);
+                            st->getElementType(memberIndex), subTypeObj,
+                            transfersOwnership);
         }
       }
     } else if (!pat->SubPatterns.empty()) {
       // Single payload case (not wrapped in a payload record/struct)
-      genPatternBinding(pat->SubPatterns[0].get(), targetAddr, targetType, targetTypeObj);
+      genPatternBinding(pat->SubPatterns[0].get(), targetAddr, targetType,
+                        targetTypeObj, transfersOwnership);
     }
   }
 }
@@ -5690,9 +5704,14 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
         if (tag != -1) {
           std::vector<llvm::Value *> args;
-          for (auto &argExpr : call->Args) {
+          for (size_t i = 0; i < call->Args.size(); ++i) {
+            auto &argExpr = call->Args[i];
             args.push_back(genExpr(argExpr.get()).load(m_Builder));
-            suppressDropForMorphicAggregate(argExpr.get());
+            applyAggregateTransfer(
+                i < call->ArgumentTransfers.size()
+                    ? call->ArgumentTransfers[i]
+                    : AggregateTransferKind::Unqualified,
+                argExpr.get(), args.back());
           }
           if (!args.empty() && !args.back())
             return nullptr;
@@ -7167,7 +7186,13 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
       createEntryBlockAlloca(st, nullptr, init->ShapeName + "_init");
   auto &fields = m_StructFieldNames[shapeName];
 
-  for (const auto &f : init->Members) {
+  for (size_t memberIndex = 0; memberIndex < init->Members.size();
+       ++memberIndex) {
+    const auto &f = init->Members[memberIndex];
+    const AggregateTransferKind transfer =
+        memberIndex < init->MemberTransfers.size()
+            ? init->MemberTransfers[memberIndex]
+            : AggregateTransferKind::Unqualified;
     int idx = -1;
     for (int i = 0; i < (int)fields.size(); ++i) {
       std::string fn = fields[i];
@@ -7237,7 +7262,7 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
                                        : llvm::UndefValue::get(elemTy);
     } else {
       fieldVal = genExpr(f.second.get()).load(m_Builder);
-      suppressDropForMorphicAggregate(f.second.get());
+      applyAggregateTransfer(transfer, f.second.get(), fieldVal);
     }
 
     if (!fieldVal)
@@ -7288,7 +7313,8 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
         f.second->ResolvedType->isSharedPtr() &&
         (isOwnedUniquePromotionSource(f.second.get()) ||
          sharedInitializerProducesOwnedHandle(f.second.get()));
-    if (!ownsSharedHandle && f.second && f.second->ResolvedType &&
+    if (transfer != AggregateTransferKind::RetainShared &&
+        !ownsSharedHandle && f.second && f.second->ResolvedType &&
         f.second->ResolvedType->isSharedPtr()) {
       emitAcquire(fieldVal, f.second->ResolvedType->getPointeeType());
     }
@@ -7507,13 +7533,18 @@ PhysEntity CodeGen::genAnonymousRecordExpr(const AnonymousRecordExpr *expr) {
     llvm::Value *ptr = m_Builder.CreateStructGEP(recType, alloca, i);
 
     const Expr *fieldExpr = expr->Fields[i].second.get();
-    suppressDropForMorphicAggregate(fieldExpr);
+    const AggregateTransferKind transfer =
+        i < expr->FieldTransfers.size()
+            ? expr->FieldTransfers[i]
+            : AggregateTransferKind::Unqualified;
+    applyAggregateTransfer(transfer, fieldExpr, val);
     const bool ownsSharedHandle =
         fieldExpr && fieldExpr->ResolvedType &&
         fieldExpr->ResolvedType->isSharedPtr() &&
         (isOwnedUniquePromotionSource(fieldExpr) ||
          sharedInitializerProducesOwnedHandle(fieldExpr));
-    if (!ownsSharedHandle && fieldExpr && fieldExpr->ResolvedType &&
+    if (transfer != AggregateTransferKind::RetainShared &&
+        !ownsSharedHandle && fieldExpr && fieldExpr->ResolvedType &&
         fieldExpr->ResolvedType->isSharedPtr()) {
       emitAcquire(val, fieldExpr->ResolvedType->getPointeeType());
     }

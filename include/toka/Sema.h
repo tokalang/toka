@@ -704,6 +704,8 @@ private:
   AccessPath makeAccessPath(const std::string &Path);
   AccessPath canonicalizeAccessPath(const AccessPath &Path);
   bool diagnosePlaceAliasOwnershipTransfer(ASTNode *Site, Expr *Source);
+  AggregateTransferKind qualifyAggregateTransfer(
+      Expr *Source, const std::shared_ptr<Type> &DestinationType);
   bool returnTypeHasMember(FunctionDecl *Function,
                            const std::string &Member);
   std::string getDependencyPathString(Expr *E);

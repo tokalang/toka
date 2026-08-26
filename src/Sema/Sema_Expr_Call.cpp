@@ -961,6 +961,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               Arg = foldGenericConstant(std::move(Arg)); // [FIX]
               m_LastBorrowSource.clear();
               checkExpr(Arg.get());
+              std::shared_ptr<Type> payloadType;
+              if (!Memb.SubMembers.empty() && i < Memb.SubMembers.size())
+                payloadType = getPhysicalType(Memb.SubMembers[i]);
+              else if (!Memb.Type.empty())
+                payloadType = getPhysicalType(Memb);
+              if (Call->ArgumentTransfers.size() != Call->Args.size())
+                Call->ArgumentTransfers.assign(
+                    Call->Args.size(), AggregateTransferKind::Unqualified);
+              Call->ArgumentTransfers[i] =
+                  qualifyAggregateTransfer(Arg.get(), payloadType);
               if (!m_LastBorrowSource.empty())
                 m_LastLifeDependencies.insert(m_LastBorrowSource);
             }
@@ -2059,13 +2069,20 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
       // Reconstruct Call->Args as canonical BinaryExpr("=", var, val)
       std::vector<std::unique_ptr<Expr>> canonicalArgs;
-      for (auto &pair : syntheticInit.Members) {
+      std::vector<AggregateTransferKind> canonicalTransfers;
+      for (size_t i = 0; i < syntheticInit.Members.size(); ++i) {
+        auto &pair = syntheticInit.Members[i];
         if (pair.first == "..") continue;
         auto nameVar = std::make_unique<VariableExpr>(pair.first);
         auto bin = std::make_unique<BinaryExpr>("=", std::move(nameVar), std::move(pair.second));
         canonicalArgs.push_back(std::move(bin));
+        canonicalTransfers.push_back(
+            i < syntheticInit.MemberTransfers.size()
+                ? syntheticInit.MemberTransfers[i]
+                : AggregateTransferKind::Unqualified);
       }
       Call->Args = std::move(canonicalArgs);
+      Call->ArgumentTransfers = std::move(canonicalTransfers);
       Call->ResolvedShape = Sh;
 
       if (TypeAliasMap.count(OriginalName) &&

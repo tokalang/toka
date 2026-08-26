@@ -1,15 +1,32 @@
 // EXPECT_TKI: pub shape Item(val: i32)
 // EXPECT_TKI: pub shape Carrier<'T>(Value('T) = 1)
+// EXPECT_TKI: pub shape RepeatCarrier<'T>(Value('T) = 1)
 // EXPECT_TKI: pub shape IndexCarrier<'T>(Value('T) = 1)
 // EXPECT_TKI: pub shape CedeCarrier<'T>(Value('T) = 1)
 // EXPECT_TKI_ROUNDTRIP
 
+import core/traits::{@Encap}
+
+auto g_item_drop_count# = 0
+
 pub shape Item(val: i32)
+
+impl Item@Encap {
+    pub val
+
+    fn drop(self#) {
+        g_item_drop_count += 1
+    }
+}
 
 impl Item {
     pub fn read(self) -> i32 {
         return self.val
     }
+}
+
+pub fn item_drop_count() -> i32 {
+    return g_item_drop_count
 }
 
 pub shape Carrier<'T>(
@@ -43,6 +60,29 @@ impl<'T> Carrier<'T> {
         }
     }
 
+}
+
+pub shape RepeatCarrier<'T>(
+    Value('T) = 1
+)
+
+impl<'T> RepeatCarrier<'T> {
+    pub fn field(cede self) -> i32 {
+        match cede self {
+            auto RepeatCarrier<'T>::Value('value) => return 'value.val
+        }
+    }
+
+    pub fn double_rewrap(cede self) -> RepeatCarrier<'T> {
+        match cede self {
+            auto RepeatCarrier<'T>::Value('value) => {
+                auto first = RepeatCarrier<'T>::Value('value)
+                auto seen = first.field()
+                assert(seen != -1, "first aggregate must remain readable")
+                return RepeatCarrier<'T>::Value('value)
+            }
+        }
+    }
 }
 
 pub shape IndexCarrier<'T>(

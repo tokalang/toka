@@ -33,6 +33,17 @@ namespace toka {
 class ASTNode;
 class FunctionDecl;
 
+// Sema-qualified ownership behavior for a value inserted into aggregate
+// storage.  The disposition belongs to the insertion edge, not to the source
+// binding: CodeGen must never infer it from a morphic name.
+enum class AggregateTransferKind {
+  Unqualified,
+  CopyValue,
+  MoveOwned,
+  RetainShared,
+  CopyIdentity,
+};
+
 enum class MorphologyConstraintKind {
   SoulOnly,
   BorrowExtendable,
@@ -694,6 +705,7 @@ class InitStructExpr : public Expr {
 public:
   std::string ShapeName;
   std::vector<std::pair<std::string, std::unique_ptr<Expr>>> Members;
+  std::vector<AggregateTransferKind> MemberTransfers;
   std::vector<std::string> CededBases;
   InitStructExpr(
       const std::string &name,
@@ -710,6 +722,7 @@ public:
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     n->CededBases = CededBases;
+    n->MemberTransfers = MemberTransfers;
     return n;
   }
 };
@@ -717,6 +730,7 @@ public:
 class AnonymousRecordExpr : public Expr {
 public:
   std::vector<std::pair<std::string, std::unique_ptr<Expr>>> Fields;
+  std::vector<AggregateTransferKind> FieldTransfers;
   std::string AssignedTypeName; // Filled by Sema, used by CodeGen
 
   AnonymousRecordExpr(
@@ -742,6 +756,7 @@ public:
     }
     auto n = std::make_unique<AnonymousRecordExpr>(std::move(fields));
     n->AssignedTypeName = AssignedTypeName;
+    n->FieldTransfers = FieldTransfers;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;
@@ -756,6 +771,7 @@ public:
   std::string Callee;
   std::string OriginalCallee;
   std::vector<std::unique_ptr<Expr>> Args;
+  std::vector<AggregateTransferKind> ArgumentTransfers;
   // Parallel to Args: an init argument denotes storage, never an rvalue.
   std::vector<bool> IsInitArgument;
   std::vector<std::string> GenericArgs; // [NEW]
@@ -808,6 +824,7 @@ public:
     n->ResolvedFn = nullptr; // Reset sema cache
     n->IsIsomorphicCopy = IsIsomorphicCopy;
     n->CallableReceiver = CallableReceiver;
+    n->ArgumentTransfers = ArgumentTransfers;
     return n;
   }
 };
@@ -1139,6 +1156,7 @@ class MatchExpr : public Expr {
 public:
   std::unique_ptr<Expr> Target;
   std::vector<std::unique_ptr<MatchArm>> Arms;
+  bool TransfersPayloadOwnership = false;
 
   MatchExpr(std::unique_ptr<Expr> target,
             std::vector<std::unique_ptr<MatchArm>> arms)
@@ -1147,6 +1165,7 @@ public:
   std::string toString() const override { return "Match(...)"; }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<MatchExpr>(cloneNode(Target), cloneVec(Arms));
+    n->TransfersPayloadOwnership = TransfersPayloadOwnership;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

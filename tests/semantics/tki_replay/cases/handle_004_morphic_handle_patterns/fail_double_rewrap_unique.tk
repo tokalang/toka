@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E0438
+
+import ./lib::{Item, RepeatCarrier}
+
+fn main() -> i32 {
+    auto ^item = new Item(val = 121)
+    auto carrier = RepeatCarrier<^Item>::Value(cede ^item)
+    auto duplicated = carrier.double_rewrap()
+    return duplicated.field()
+}

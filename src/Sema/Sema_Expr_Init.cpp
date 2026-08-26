@@ -29,6 +29,73 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+AggregateTransferKind Sema::qualifyAggregateTransfer(
+    Expr *source, const std::shared_ptr<Type> &destinationType) {
+  if (!source)
+    return AggregateTransferKind::Unqualified;
+
+  Expr *identity = source;
+  while (identity) {
+    if (auto *cast = dynamic_cast<CastExpr *>(identity)) {
+      identity = cast->Expression.get();
+    } else if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(identity)) {
+      identity = unsafeExpr->Expression.get();
+    } else if (auto *cede = dynamic_cast<CedeExpr *>(identity)) {
+      identity = cede->Value.get();
+    } else {
+      break;
+    }
+  }
+
+  auto *variable = dynamic_cast<VariableExpr *>(identity);
+  if (!variable)
+    return AggregateTransferKind::Unqualified;
+
+  SymbolInfo *sourceInfo = nullptr;
+  std::string actualName;
+  if (!CurrentScope->findVariableWithDeref(variable->Name, sourceInfo,
+                                           actualName) ||
+      !sourceInfo || !sourceInfo->IsMorphicExempt)
+    return AggregateTransferKind::Unqualified;
+
+  auto concreteType = source->ResolvedType ? source->ResolvedType
+                                           : sourceInfo->TypeObj;
+  if (concreteType)
+    concreteType = resolveType(concreteType, false);
+  if (!concreteType && destinationType)
+    concreteType = resolveType(destinationType, false);
+  if (!concreteType || concreteType->isUnknown())
+    return AggregateTransferKind::CopyValue;
+
+  if (concreteType->isSharedPtr())
+    return AggregateTransferKind::RetainShared;
+  if (concreteType->isRawPointer() || concreteType->isReference())
+    return AggregateTransferKind::CopyIdentity;
+  if (!concreteType->requiresExplicitOwnershipTransfer(this))
+    return AggregateTransferKind::CopyValue;
+
+  if (hasPlaceState(sourceInfo->placeFact(), PlaceState::Moved))
+    return AggregateTransferKind::MoveOwned;
+
+  if (sourceInfo->IsFunctionParameter && !sourceInfo->IsCeded) {
+    error(source, DiagID::ERR_SEMA_DIRECT_MOVE_NON_CEDE_PARAMETER,
+          actualName);
+    return AggregateTransferKind::MoveOwned;
+  }
+
+  AccessPath path = canonicalizeAccessPath(makeAccessPath(actualName));
+  if (auto conflict = PALCheckerState.verifyInvalidation(path)) {
+    error(source, DiagID::ERR_MOVE_BORROWED, conflict->displayPath());
+    recordPALConflict(source, PALOperationClass::Invalidation, path,
+                      *conflict);
+    return AggregateTransferKind::MoveOwned;
+  }
+
+  CurrentScope->markMoved(actualName, getLoc(source));
+  PALCheckerState.markMoved(path);
+  return AggregateTransferKind::MoveOwned;
+}
+
 static bool requiresPayloadWrite(const std::shared_ptr<toka::Type> &Type) {
   if (!Type)
     return false;
@@ -1185,6 +1252,8 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
   }
 
   bool hasInvalidMember = false;
+  Init->MemberTransfers.assign(Init->Members.size(),
+                               AggregateTransferKind::Unqualified);
   for (size_t i = 0; i < Init->Members.size(); ++i) {
     auto &pair = Init->Members[i];
     if (pair.first == "..") {
@@ -1260,6 +1329,8 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     m_SuppressRejectedAliasInvalidation = rejectedAliasField;
     std::shared_ptr<toka::Type> exprTypeObj =
         checkExpr(pair.second.get(), memberTypeObj);
+    Init->MemberTransfers[i] =
+        qualifyAggregateTransfer(pair.second.get(), memberTypeObj);
     m_SuppressRejectedAliasInvalidation = oldSuppressAliasInvalidation;
     memberMasks[pair.first] = m_LastInitMask;
 
@@ -1300,7 +1371,8 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     }
     if (fieldReceivesOwnedValue &&
         !dynamic_cast<CedeExpr *>(pair.second.get()) &&
-        !directUniqueValueMove) {
+        !directUniqueValueMove &&
+        Init->MemberTransfers[i] != AggregateTransferKind::MoveOwned) {
       Expr *directSource = pair.second.get();
       while (auto *cast = dynamic_cast<CastExpr *>(directSource))
         directSource = cast->Expression.get();
@@ -1543,6 +1615,10 @@ Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
 
     std::shared_ptr<toka::Type> exprTypeObj =
         checkExpr(pair.second.get(), memberTypeObj);
+    Init->MemberTransfers.assign(Init->Members.size(),
+                                 AggregateTransferKind::Unqualified);
+    Init->MemberTransfers[0] =
+        qualifyAggregateTransfer(pair.second.get(), memberTypeObj);
     m_LastInitMask = ~0ULL; // Variant initializer is complete if one field is set
 
     PermissionFlow memberFlow = getPermissionFlow(pair.second.get());

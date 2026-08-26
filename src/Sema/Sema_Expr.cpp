@@ -1597,13 +1597,19 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::vector<ShapeMember> members;
     std::set<std::string> seenFields;
 
-    for (auto &f : Rec->Fields) {
+    Rec->FieldTransfers.assign(Rec->Fields.size(),
+                               AggregateTransferKind::Unqualified);
+    for (size_t fieldIndex = 0; fieldIndex < Rec->Fields.size();
+         ++fieldIndex) {
+      auto &f = Rec->Fields[fieldIndex];
       if (seenFields.count(f.first)) {
         error(Rec, DiagID::ERR_DUPLICATE_FIELD, f.first);
       }
       seenFields.insert(f.first);
 
       auto fieldTypeObj = checkExpr(f.second.get());
+      Rec->FieldTransfers[fieldIndex] =
+          qualifyAggregateTransfer(f.second.get(), fieldTypeObj);
       std::string fieldT = fieldTypeObj->toString();
       if (fieldTypeObj->isUnknown())
         return toka::Type::fromString("unknown");
@@ -5361,6 +5367,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     return toka::Type::fromString("[i32; 0]");
   } else if (auto *me = dynamic_cast<MatchExpr *>(E)) {
     auto targetTypeObj = checkExpr(me->Target.get());
+    me->TransfersPayloadOwnership =
+        dynamic_cast<CedeExpr *>(me->Target.get()) != nullptr;
     std::string targetType = targetTypeObj->toString();
     std::string resultType = NoProducedValue;
     std::shared_ptr<toka::Type> resultTypeObj;

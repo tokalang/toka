@@ -250,7 +250,8 @@ private:
   std::vector<FullExpressionTemporary> m_FullExpressionTemporaries;
 
   void suppressDropForMove(const std::string &name);
-  void suppressDropForMorphicAggregate(const Expr *expr);
+  void applyAggregateTransfer(AggregateTransferKind transfer,
+                              const Expr *expr, llvm::Value *value);
   void markInitLive(const BinaryExpr *assignment);
   void markInitLive(const VariableExpr *place);
   void markInitState(const VariableExpr *place, llvm::Value *isLive);
@@ -366,7 +367,9 @@ private:
   PhysEntity genLoopExpr(const LoopExpr *expr);
   PhysEntity genForExpr(const ForExpr *expr);
   void genPatternBinding(const MatchArm::Pattern *pat, llvm::Value *targetAddr,
-                         llvm::Type *targetType, std::shared_ptr<Type> targetTypeObj = nullptr);
+                         llvm::Type *targetType,
+                         std::shared_ptr<Type> targetTypeObj = nullptr,
+                         bool transfersOwnership = false);
   PhysEntity genInitStructExpr(const InitStructExpr *expr);
   PhysEntity genAnonymousRecordExpr(const AnonymousRecordExpr *expr);
   PhysEntity genMethodCall(const MethodCallExpr *expr);

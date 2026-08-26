@@ -1,0 +1,31 @@
+// SOURCE_BACKED_RUNTIME
+
+import ./lib::{Item, RepeatCarrier, item_drop_count}
+
+fn main() -> i32 {
+    auto before = item_drop_count()
+    {
+        auto ~shared_item = new Item(val = 122)
+        auto shared_carrier = RepeatCarrier<~Item>::Value(~shared_item)
+        auto shared_result = shared_carrier.double_rewrap()
+        assert(shared_result.field() == 122,
+               "shared repeated transport must retain the handle")
+    }
+    assert(item_drop_count() == before + 1,
+           "shared repeated transport must drop the payload exactly once")
+
+    auto raw_item# = Item(val = 123)
+    auto *raw_ptr = *raw_item as *Item
+    auto raw_carrier = RepeatCarrier<*Item>::Value(*raw_ptr)
+    auto raw_result = raw_carrier.double_rewrap()
+    assert(raw_result.field() == 123,
+           "raw repeated transport must copy identity")
+
+    auto ref_item = Item(val = 124)
+    auto ref_carrier = RepeatCarrier<&Item>::Value(&ref_item)
+    auto ref_result = ref_carrier.double_rewrap()
+    assert(ref_result.field() == 124,
+           "reference repeated transport must copy identity")
+
+    return 0
+}
