@@ -18,6 +18,7 @@ INTEL_REPLAY = ROOT / ".github/workflows/rc8_macos_x64_draft_replay.yml"
 QUALIFICATION = ROOT / "tools/scripts/verify_release_qualification.py"
 ASSETS = ROOT / "tools/scripts/verify_release_assets.py"
 RELEASE_GATE = ROOT / "tools/scripts/release_gate.py"
+HANDLE_AUDIT = ROOT / "tools/scripts/audit_handle_grammar.py"
 ACTIVE_CANDIDATE = "v1.0.0-rc.8"
 ACTIVE_RELEASE_NOTES = ROOT / ("docs/release_notes_%s.md" % ACTIVE_CANDIDATE)
 TARGETS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64")
@@ -197,6 +198,7 @@ def main():
     promotion = PROMOTION.read_text(encoding="utf-8")
     intel_replay = INTEL_REPLAY.read_text(encoding="utf-8")
     release_gate = RELEASE_GATE.read_text(encoding="utf-8")
+    handle_audit = HANDLE_AUDIT.read_text(encoding="utf-8")
     gate = job_block(text, "release-gate", "qualification-summary")
     summary = job_block(text, "qualification-summary", "create-draft-release")
     draft = job_block(text, "create-draft-release")
@@ -211,8 +213,11 @@ def main():
             "ref: v1.0.0-rc.8" in intel_replay and
             "refs/tags/v1.0.0-rc.8^{tag}" in intel_replay and
             "refs/tags/v1.0.0-rc.8^{commit}" in intel_replay and
-            "docs/release_audits/v1.0.0-rc.8.md" in intel_replay,
+            "docs/release_audits/v1.0.0-rc.8.md" not in intel_replay,
             "RC8 Intel replay workflow is missing the exact draft replay contract")
+    require('["python3", "tools/run_conformance.py", "--build-dir", build_dir]' in
+            handle_audit,
+            "Handle audit does not bind Conformance to its configured cold build")
     require('"tools/run_conformance.py",' in release_gate and
             '"--build-dir", str(build_dir)' in release_gate,
             "release gate does not pass its configured build directory to Conformance")

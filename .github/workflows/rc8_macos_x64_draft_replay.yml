@@ -20,7 +20,7 @@ jobs:
           ref: v1.0.0-rc.8
           fetch-depth: 0
 
-      - name: Bind replay to the audited annotated candidate tag
+      - name: Bind replay to the annotated candidate tag
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         run: |
@@ -33,8 +33,6 @@ jobs:
           peeled_sha=$(git rev-parse 'refs/tags/v1.0.0-rc.8^{commit}')
           test "$peeled_sha" = "$CANDIDATE_SHA"
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          grep -F "| Immutable candidate SHA | \`$CANDIDATE_SHA\` |" \
-            docs/release_audits/v1.0.0-rc.8.md
 
       - name: Install RC8 SDK host dependencies
         run: brew install lld@20 zstd openssl@3

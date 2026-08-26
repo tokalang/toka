@@ -353,7 +353,7 @@ def run_full_scan(tokac_bin, build_dir, run_dir, scratch_dir, jobs=8, check_only
     suites = [
         ("Pass Suite (test_pass.py)", ["python3", "tools/scripts/test_pass.py"], "pass_suite.log"),
         ("Fail Suite (test_verify_fail.py)", ["python3", "tools/scripts/test_verify_fail.py"], "fail_suite.log"),
-        ("Conformance Suite (run_conformance.py)", ["python3", "tools/run_conformance.py"], "conformance_suite.log"),
+        ("Conformance Suite (run_conformance.py)", ["python3", "tools/run_conformance.py", "--build-dir", build_dir], "conformance_suite.log"),
         ("Semantic Replay Suite (test_semantic_replay.sh)", ["bash", "tools/scripts/test_semantic_replay.sh"], "semantic_replay.log"),
         ("Place Iterator Security (test_place_iterator_security.sh)", ["bash", "tools/scripts/test_place_iterator_security.sh"], "place_iterator_security.log"),
         ("Generic Signature Fail-Closed (test_generic_signature_fail_closed.py)", ["python3", "tools/scripts/test_generic_signature_fail_closed.py"], "generic_signature_fail_closed.log"),
