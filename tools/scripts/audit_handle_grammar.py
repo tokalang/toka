@@ -177,6 +177,9 @@ def run_quick_scan(tokac_bin, build_dir, run_dir, scratch_dir, jobs=8):
         ("Handle Grammar TKI Replay", [
             "bash", "tools/scripts/test_semantic_replay.sh"
         ], {"TOKAC": tokac_bin, "CASE_ROOT": "tests/semantics/tki_replay/cases/handle_001_borrow_views"}),
+        ("Morphic Handle Pattern Replay", [
+            "bash", "tools/scripts/test_semantic_replay.sh"
+        ], {"TOKAC": tokac_bin, "CASE_ROOT": "tests/semantics/tki_replay/cases/handle_004_morphic_handle_patterns"}),
         ("Level-2 Return Compatibility Replay", [
             "bash", "tools/scripts/test_semantic_replay.sh"
         ], {"TOKAC": tokac_bin, "CASE_ROOT": "tests/semantics/tki_replay/cases/handle_002_level2_returns"}),

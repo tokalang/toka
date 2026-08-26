@@ -58,10 +58,11 @@ enum class Morphology {
 
 struct TokaSymbol {
   llvm::Value *allocaPtr = nullptr; // Identity (The stationary "Box" address)
-  llvm::Type *soulType = nullptr;   // Soul Type (Explicit layout for LLVM 17 GEP/Load)
+  llvm::Type *soulType =
+      nullptr; // Soul Type (Explicit layout for LLVM 17 GEP/Load)
   AddressingMode mode = AddressingMode::Direct; // Path type
-  Morphology morphology = Morphology::None; // Ownership/Cleanup logic
-  int indirectionLevel = 0; // Depth (1 for *p, 2 for **p)
+  Morphology morphology = Morphology::None;     // Ownership/Cleanup logic
+  int indirectionLevel = 0;                     // Depth (1 for *p, 2 for **p)
   bool isRebindable = false; // # on identity (Swappable address)
   // A rebindable non-shared parameter is captured as an alloca containing
   // the caller's handle-slot address.  Rebinding must store through that
@@ -71,9 +72,13 @@ struct TokaSymbol {
   // slot whose value is the caller's real handle-slot address. Handle-identity
   // borrowing must load this wrapper once before returning/borrowing it.
   bool capturedHandleSlotNeedsLoad = false;
-  bool isMutable = false;    // # on entity (Writable data)
-  bool isContinuous = false; // Sequence marker (alloc [N])
-  std::string typeName;   // Original type string (e.g. "dyn @Shape")
+  // A generic `'name` pattern transports its full instantiated value in
+  // value contexts while retaining normal handle/reference projection for
+  // member, index, and method contexts.
+  bool isMorphicValueTransport = false;
+  bool isMutable = false;            // # on entity (Writable data)
+  bool isContinuous = false;         // Sequence marker (alloc [N])
+  std::string typeName;              // Original type string (e.g. "dyn @Shape")
   std::shared_ptr<Type> soulTypeObj; // The new Type Object source of truth
   bool hasDrop = false;
   std::string dropFunc = "";
@@ -245,6 +250,7 @@ private:
   std::vector<FullExpressionTemporary> m_FullExpressionTemporaries;
 
   void suppressDropForMove(const std::string &name);
+  void suppressDropForMorphicAggregate(const Expr *expr);
   void markInitLive(const BinaryExpr *assignment);
   void markInitLive(const VariableExpr *place);
   void markInitState(const VariableExpr *place, llvm::Value *isLive);

@@ -1,0 +1,71 @@
+// SOURCE_BACKED_RUNTIME
+
+import ./lib::{Carrier, CedeCarrier, IndexCarrier, Item}
+
+fn main() -> i32 {
+    auto ^u_exact = new Item(val = 73)
+    auto unique_exact = Carrier<^Item>::Value(cede ^u_exact)
+    auto ^u_result = unique_exact.unsafe_exact()
+    assert(u_result.val == 73, "unique exact transport failed")
+
+    auto ^u_field = new Item(val = 74)
+    auto unique_field = Carrier<^Item>::Value(cede ^u_field)
+    assert(unique_field.field() == 74, "unique field projection failed")
+
+    auto ^u_method = new Item(val = 75)
+    auto unique_method = Carrier<^Item>::Value(cede ^u_method)
+    assert(unique_method.method() == 75, "unique method projection failed")
+
+    auto ^u_cede = new Item(val = 77)
+    auto unique_cede = CedeCarrier<^Item>::Value(cede ^u_cede)
+    auto ^u_cede_result = unique_cede.unsafe_forward()
+    assert(u_cede_result.val == 77, "unique cede transport failed")
+
+    auto ~s_exact = new Item(val = 83)
+    auto shared_exact = Carrier<~Item>::Value(~s_exact)
+    auto ~s_result = shared_exact.unsafe_exact()
+    assert(s_result.val == 83, "shared exact transport failed")
+
+    auto ~s_field = new Item(val = 84)
+    auto shared_field = Carrier<~Item>::Value(~s_field)
+    assert(shared_field.field() == 84, "shared field projection failed")
+
+    auto ~s_method = new Item(val = 85)
+    auto shared_method = Carrier<~Item>::Value(~s_method)
+    assert(shared_method.method() == 85, "shared method projection failed")
+
+    auto raw_exact_value# = Item(val = 93)
+    auto *raw_exact_ptr = *raw_exact_value as *Item
+    auto raw_exact = Carrier<*Item>::Value(*raw_exact_ptr)
+    auto *raw_result = raw_exact.unsafe_exact()
+    assert(raw_result.val == 93, "raw exact transport failed")
+
+    auto raw_field_value# = Item(val = 94)
+    auto *raw_field_ptr = *raw_field_value as *Item
+    auto raw_field = Carrier<*Item>::Value(*raw_field_ptr)
+    assert(raw_field.field() == 94, "raw field projection failed")
+
+    auto raw_method_value# = Item(val = 95)
+    auto *raw_method_ptr = *raw_method_value as *Item
+    auto raw_method = Carrier<*Item>::Value(*raw_method_ptr)
+    assert(raw_method.method() == 95, "raw method projection failed")
+
+    auto ref_exact_value = Item(val = 103)
+    auto ref_exact = Carrier<&Item>::Value(&ref_exact_value)
+    auto &ref_result = ref_exact.unsafe_exact()
+    assert(ref_result.val == 103, "reference exact transport failed")
+
+    auto ref_field_value = Item(val = 104)
+    auto ref_field = Carrier<&Item>::Value(&ref_field_value)
+    assert(ref_field.field() == 104, "reference field projection failed")
+
+    auto ref_method_value = Item(val = 105)
+    auto ref_method = Carrier<&Item>::Value(&ref_method_value)
+    assert(ref_method.method() == 105, "reference method projection failed")
+
+    auto ^indexed_values = new [2]Item(val = 113)
+    auto indexed = IndexCarrier<^[Item]>::Value(cede ^indexed_values)
+    assert(indexed.index() == 113, "morphic handle index projection failed")
+
+    return 0
+}

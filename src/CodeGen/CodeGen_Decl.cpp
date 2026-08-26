@@ -2631,17 +2631,22 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   const Expr *receiverExpr = expr->Object.get();
   while (auto *postfix = dynamic_cast<const PostfixExpr *>(receiverExpr))
     receiverExpr = postfix->LHS.get();
-  const auto *receiverVar =
-      dynamic_cast<const VariableExpr *>(receiverExpr);
+  const auto *receiverVar = dynamic_cast<const VariableExpr *>(receiverExpr);
   const auto receiverSymbol =
-      receiverVar ? m_Symbols.find(Type::stripMorphology(receiverVar->codegenName()))
-                  : m_Symbols.end();
+      receiverVar
+          ? m_Symbols.find(Type::stripMorphology(receiverVar->codegenName()))
+          : m_Symbols.end();
   const bool receiverIsDirectUnique =
       receiverVar &&
-      ((receiverVar->ResolvedType && receiverVar->ResolvedType->isUniquePtr()) ||
+      ((receiverVar->ResolvedType &&
+        receiverVar->ResolvedType->isUniquePtr()) ||
        receiverVar->IsUnique ||
        (receiverSymbol != m_Symbols.end() &&
         receiverSymbol->second.morphology == Morphology::Unique));
+  const bool receiverIsMorphicProjection =
+      receiverSymbol != m_Symbols.end() &&
+      receiverSymbol->second.isMorphicValueTransport &&
+      receiverSymbol->second.mode != AddressingMode::Direct;
 
   // `genVariableExpr` carries a unique receiver as its payload address but
   // also records a pointer-shaped IR type. Loading that entity once more
@@ -2649,7 +2654,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   // payload address is already its method receiver value.
   PhysEntity receiverEntity;
   llvm::Value *objVal = nullptr;
-  if (receiverIsDirectUnique) {
+  if (receiverIsDirectUnique || receiverIsMorphicProjection) {
     objVal = getEntityAddr(receiverVar->codegenName());
   } else {
     receiverEntity = genExpr(expr->Object.get());

@@ -1,0 +1,11 @@
+// SOURCE_BACKED_RUNTIME
+
+import ./lib::{Carrier, Item}
+
+fn main() -> i32 {
+    auto ^value = new Item(val = 76)
+    auto carrier = Carrier<^Item>::Value(cede ^value)
+    auto rewrapped = carrier.rewrap()
+    assert(rewrapped.field() == 76, "unique aggregate transport failed")
+    return 0
+}

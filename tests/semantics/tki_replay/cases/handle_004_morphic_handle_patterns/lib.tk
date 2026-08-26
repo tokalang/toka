@@ -1,0 +1,70 @@
+// EXPECT_TKI: pub shape Item(val: i32)
+// EXPECT_TKI: pub shape Carrier<'T>(Value('T) = 1)
+// EXPECT_TKI: pub shape IndexCarrier<'T>(Value('T) = 1)
+// EXPECT_TKI: pub shape CedeCarrier<'T>(Value('T) = 1)
+// EXPECT_TKI_ROUNDTRIP
+
+pub shape Item(val: i32)
+
+impl Item {
+    pub fn read(self) -> i32 {
+        return self.val
+    }
+}
+
+pub shape Carrier<'T>(
+    Value('T) = 1
+)
+
+impl<'T> Carrier<'T> {
+    pub fn unsafe_exact(cede self) -> 'T <- self {
+        match cede self {
+            auto Carrier<'T>::Value('value) => return 'value
+        }
+    }
+
+    pub fn field(cede self) -> i32 {
+        match cede self {
+            auto Carrier<'T>::Value('value) => return 'value.val
+        }
+    }
+
+    pub fn method(cede self) -> i32 {
+        match cede self {
+            auto Carrier<'T>::Value('value) => return 'value.read()
+        }
+    }
+
+    pub fn rewrap(cede self) -> Carrier<'T> {
+        match cede self {
+            auto Carrier<'T>::Value('value) => {
+                return Carrier<'T>::Value('value)
+            }
+        }
+    }
+
+}
+
+pub shape IndexCarrier<'T>(
+    Value('T) = 1
+)
+
+impl<'T> IndexCarrier<'T> {
+    pub fn index(cede self) -> i32 {
+        match cede self {
+            auto IndexCarrier<'T>::Value('value) => return 'value[1].val
+        }
+    }
+}
+
+pub shape CedeCarrier<'T>(
+    Value('T) = 1
+)
+
+impl<'T> CedeCarrier<'T> {
+    pub fn unsafe_forward(cede self) -> 'T <- self {
+        match cede self {
+            auto CedeCarrier<'T>::Value('value) => return cede ^'value
+        }
+    }
+}

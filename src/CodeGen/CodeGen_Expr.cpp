@@ -2010,23 +2010,7 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
          (checkName.back() == '?' || checkName.back() == '!'))
     checkName.pop_back();
 
-  // Use getEntityAddr to get the Soul address (fully dereferenced if needed)
-  soulAddr = getEntityAddr(varName);
-
-  if (var->ResolvedType && var->ResolvedType->isSharedPtr()) {
-    isShared = true;
-    soulAddr = getIdentityAddr(varName); // [Fix] Handle Address for RValue
-  } else if (m_Symbols.count(checkName) &&
-             m_Symbols[checkName].morphology == Morphology::Shared) {
-    isShared = true;
-    soulAddr = getIdentityAddr(checkName); // [Fix] Handle Address for RValue
-  }
-
-  if (!soulAddr) {
-    return nullptr;
-  }
-
-  // Get the base name (no morphology) for symbol lookup
+  // Get the base name (no morphology) for symbol lookup.
   std::string baseName = varName;
   while (!baseName.empty() &&
          (baseName[0] == '*' || baseName[0] == '#' || baseName[0] == '&' ||
@@ -2037,23 +2021,53 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
           baseName.back() == '!'))
     baseName.pop_back();
 
+  auto symbolIt = m_Symbols.find(baseName);
+  TokaSymbol *sym = symbolIt == m_Symbols.end() ? nullptr : &symbolIt->second;
+  const bool exactMorphicTransport =
+      !m_InLHS && sym && sym->isMorphicValueTransport;
+
+  // Use getEntityAddr to get the Soul address (fully dereferenced if needed)
+  soulAddr = exactMorphicTransport ? getIdentityAddr(baseName)
+                                   : getEntityAddr(varName);
+
+  if (!exactMorphicTransport && var->ResolvedType &&
+      var->ResolvedType->isSharedPtr()) {
+    isShared = true;
+    soulAddr = getIdentityAddr(varName); // [Fix] Handle Address for RValue
+  } else if (!exactMorphicTransport && m_Symbols.count(checkName) &&
+             m_Symbols[checkName].morphology == Morphology::Shared) {
+    isShared = true;
+    soulAddr = getIdentityAddr(checkName); // [Fix] Handle Address for RValue
+  }
+
+  if (!soulAddr) {
+    return nullptr;
+  }
+
   llvm::Type *soulType = nullptr;
-  if (m_Symbols.count(baseName)) {
-    soulType = m_Symbols[baseName].soulType;
+  if (sym) {
+    soulType = exactMorphicTransport && sym->soulTypeObj
+                   ? getLLVMType(sym->soulTypeObj)
+                   : sym->soulType;
   } else {
     // [Fix] Closure Environment Fallback: Retrieve exact type from ShapeDecl
     if (m_Symbols.count("self")) {
       auto selfTy = m_Symbols["self"].soulTypeObj;
       if (selfTy && selfTy->isReference()) {
-        selfTy = std::static_pointer_cast<toka::PointerType>(selfTy)->PointeeType;
+        selfTy =
+            std::static_pointer_cast<toka::PointerType>(selfTy)->PointeeType;
       }
-      if (selfTy && selfTy->isShape() && selfTy->getSoulName().find("__Closure_") == 0) {
+      if (selfTy && selfTy->isShape() &&
+          selfTy->getSoulName().find("__Closure_") == 0) {
         auto shapeTy = std::static_pointer_cast<ShapeType>(selfTy);
         if (shapeTy->Decl) {
           for (const auto &memb : shapeTy->Decl->Members) {
             if (memb.Name == baseName) {
               if (memb.ResolvedType && memb.ResolvedType->isReference()) {
-                soulType = getLLVMType(std::static_pointer_cast<toka::PointerType>(memb.ResolvedType)->PointeeType);
+                soulType =
+                    getLLVMType(std::static_pointer_cast<toka::PointerType>(
+                                    memb.ResolvedType)
+                                    ->PointeeType);
               } else if (memb.ResolvedType) {
                 soulType = getLLVMType(memb.ResolvedType);
               }
@@ -2094,10 +2108,9 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
   }
 
   // [Fix] Shared Pointer Handle Type Correction
-  if (isShared && soulType) {
+  if (!exactMorphicTransport && isShared && soulType) {
     llvm::Type *ptrTy = llvm::PointerType::getUnqual(m_Context);
-    llvm::Type *refTy =
-        llvm::PointerType::getUnqual(m_Context);
+    llvm::Type *refTy = llvm::PointerType::getUnqual(m_Context);
     soulType = llvm::StructType::get(m_Context, {ptrTy, refTy});
   } else if (var->ResolvedType && var->ResolvedType->isUniquePtr() &&
              soulType) {
@@ -2113,10 +2126,8 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
   }
 
   std::string typeName = "";
-  TokaSymbol *sym = nullptr;
-  if (m_Symbols.count(baseName)) {
-    typeName = m_Symbols[baseName].typeName;
-    sym = &m_Symbols[baseName];
+  if (sym) {
+    typeName = sym->typeName;
   } else if (m_TypeToName.count(soulType)) {
     typeName = m_TypeToName[soulType];
   }
@@ -2136,7 +2147,8 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
   if (!m_InLHS && soulAddr && !llvm::isa<llvm::Function>(soulAddr) &&
       !llvm::isa<llvm::GlobalVariable>(soulAddr)) {
 
-    if (var->ResolvedType && var->ResolvedType->isSharedPtr()) {
+    if (!exactMorphicTransport && var->ResolvedType &&
+        var->ResolvedType->isSharedPtr()) {
       // SharedPtr: Share (Load + Acquire)
       llvm::Value *val = m_Builder.CreateLoad(soulType, soulAddr, "share.val");
       emitAcquire(val, var->ResolvedType->getPointeeType());
@@ -4406,16 +4418,7 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
     // Sema records the exact fresh-binder type.  Populate the complete symbol
     // metadata from it so handle binders cannot retain Direct addressing mode.
     fillSymbolMetadata(sym, bindingTypeObj, val->getType());
-    // A morphic binder transports its instantiated value itself.  Reading
-    // `'name` must not implicitly dereference an instantiated reference/raw/
-    // managed handle.  Explicit ^name/~name/*name patterns are not exempt and
-    // retain the Pointer mode populated above.
-    if (!pName.empty() && pName.front() == '\'') {
-      sym.mode = AddressingMode::Direct;
-      sym.indirectionLevel = 0;
-      sym.morphology = Morphology::None;
-      sym.soulType = val->getType();
-    }
+    sym.isMorphicValueTransport = !pName.empty() && pName.front() == '\'';
     sym.isRebindable = false;
 
     std::string typeName = "";
@@ -5689,6 +5692,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
           std::vector<llvm::Value *> args;
           for (auto &argExpr : call->Args) {
             args.push_back(genExpr(argExpr.get()).load(m_Builder));
+            suppressDropForMorphicAggregate(argExpr.get());
           }
           if (!args.empty() && !args.back())
             return nullptr;
@@ -7233,6 +7237,7 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
                                        : llvm::UndefValue::get(elemTy);
     } else {
       fieldVal = genExpr(f.second.get()).load(m_Builder);
+      suppressDropForMorphicAggregate(f.second.get());
     }
 
     if (!fieldVal)
@@ -7502,6 +7507,7 @@ PhysEntity CodeGen::genAnonymousRecordExpr(const AnonymousRecordExpr *expr) {
     llvm::Value *ptr = m_Builder.CreateStructGEP(recType, alloca, i);
 
     const Expr *fieldExpr = expr->Fields[i].second.get();
+    suppressDropForMorphicAggregate(fieldExpr);
     const bool ownsSharedHandle =
         fieldExpr && fieldExpr->ResolvedType &&
         fieldExpr->ResolvedType->isSharedPtr() &&

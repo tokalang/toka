@@ -288,13 +288,13 @@ llvm::Value *CodeGen::genDeleteStmt(const DeleteStmt *del) {
 void CodeGen::suppressDropForMove(const std::string &name) {
   std::string movedName = Type::stripMorphology(name);
   for (int i = (int)m_ScopeStack.size() - 1; i >= 0; --i) {
-    for (auto entry = m_ScopeStack[i].rbegin();
-         entry != m_ScopeStack[i].rend(); ++entry) {
+    for (auto entry = m_ScopeStack[i].rbegin(); entry != m_ScopeStack[i].rend();
+         ++entry) {
       if (Type::stripMorphology(entry->Name) != movedName)
         continue;
       if (entry->DropFlag) {
-        m_Builder.CreateStore(
-            llvm::ConstantInt::getFalse(m_Context), entry->DropFlag);
+        m_Builder.CreateStore(llvm::ConstantInt::getFalse(m_Context),
+                              entry->DropFlag);
       } else {
         entry->HasDrop = false;
         entry->IsShared = false;
@@ -304,13 +304,33 @@ void CodeGen::suppressDropForMove(const std::string &name) {
   }
 }
 
+void CodeGen::suppressDropForMorphicAggregate(const Expr *expr) {
+  while (expr) {
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+    } else if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
+      expr = unsafeExpr->Expression.get();
+    } else {
+      break;
+    }
+  }
+
+  auto *variable = dynamic_cast<const VariableExpr *>(expr);
+  if (!variable)
+    return;
+  const std::string name = Type::stripMorphology(variable->codegenName());
+  auto symbol = m_Symbols.find(name);
+  if (symbol != m_Symbols.end() && symbol->second.isMorphicValueTransport)
+    suppressDropForMove(name);
+}
+
 int CodeGen::getDirectMemberDropIndex(const VariableScopeInfo &entry,
                                       const MemberExpr *member) const {
   if (!member)
     return -1;
   auto *root = dynamic_cast<const VariableExpr *>(member->Object.get());
-  if (!root || Type::stripMorphology(root->Name) !=
-                   Type::stripMorphology(entry.Name))
+  if (!root ||
+      Type::stripMorphology(root->Name) != Type::stripMorphology(entry.Name))
     return -1;
   if (member->Index < 0 ||
       !entry.PartialMove.admits(PartialMoveProjectionKind::DirectField,
