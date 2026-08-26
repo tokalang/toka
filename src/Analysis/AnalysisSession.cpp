@@ -2,21 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "toka/AnalysisSession.h"
+#include "toka/InterfaceVersion.h"
 #include "toka/ModuleResolver.h"
 #include "toka/PathUtils.h"
 #include "toka/Sema.h"
 #include <algorithm>
 #include <chrono>
-#include <sstream>
 #include <queue>
+#include <sstream>
 
 namespace toka {
 
 AnalysisSession::AnalysisSession(std::vector<std::string> searchPaths,
                                  std::map<std::string, std::string> packageMap,
-                                 std::vector<std::string> trustedSystemRoots)
+                                 std::vector<std::string> trustedSystemRoots,
+                                 std::string toolchainNodeId)
     : SearchPaths(std::move(searchPaths)), PackageMap(std::move(packageMap)),
       TrustedSystemRoots(std::move(trustedSystemRoots)),
+      ToolchainNodeId(std::move(toolchainNodeId)),
       Sources(std::make_unique<SourceManager>()) {}
 
 void AnalysisSession::openDocument(const std::string &path,
@@ -108,8 +111,11 @@ AnalysisResult AnalysisSession::analyze(const std::string &rootPath) {
   }
 
   std::vector<std::unique_ptr<Module>> parsedModules;
+  if (ToolchainNodeId.empty())
+    ToolchainNodeId =
+        std::string("toolchain-v1-") + TOKA_COMPILER_INTERFACE_VERSION;
   ModuleResolver resolver(*Sources, SearchPaths, PackageMap, true,
-                          TrustedSystemRoots);
+                          TrustedSystemRoots, {}, "", "", ToolchainNodeId);
   resolver.setSourceOverrides(Overlays);
   resolver.setVersionedSources(true);
   if (rootOnlyOverlayChange) {

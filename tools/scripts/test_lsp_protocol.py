@@ -153,7 +153,11 @@ def main():
                     }
                 },
             )
-            require(client.diagnostics(uri), "didOpen did not publish compiler diagnostics")
+            opened_diagnostics = client.diagnostics(uri)
+            require(
+                any(item.get("code") == "E0402" for item in opened_diagnostics),
+                "didOpen did not publish root E0402 diagnostics",
+            )
 
             valid_lines = [
                 "fn bump(x: i32) -> i32 {",

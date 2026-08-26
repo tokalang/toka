@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "toka/AnalysisSession.h"
+#include "toka/InterfaceVersion.h"
 #include "toka/Parser.h"
 #include "toka/PathUtils.h"
 #include "toka/Version.h"
@@ -269,16 +270,23 @@ public:
   explicit LanguageServer(const char *argv0)
       : Formatter(findSibling(argv0, "tokafmt")) {
     toka::Parser::TargetTriple = llvm::sys::getDefaultTargetTriple();
-    SearchPaths = environmentPaths("TOKA_LIB");
+    std::vector<std::string> tokaLibPaths = environmentPaths("TOKA_LIB");
+    SearchPaths = tokaLibPaths;
+    TrustedSystemRoots = std::move(tokaLibPaths);
     std::vector<std::string> additional = environmentPaths("TOKA_PATH");
     SearchPaths.insert(SearchPaths.end(), additional.begin(), additional.end());
     llvm::SmallString<256> executable(argv0 ? argv0 : "");
     llvm::sys::path::remove_filename(executable);
     llvm::SmallString<256> bundled(executable);
     llvm::sys::path::append(bundled, "..", "share", "toka", "lib");
-    if (llvm::sys::fs::exists(bundled))
-      SearchPaths.push_back(bundled.str().str());
-    Session = std::make_unique<toka::AnalysisSession>(SearchPaths);
+    llvm::SmallString<256> bundledPrelude(bundled);
+    llvm::sys::path::append(bundledPrelude, "core", "prelude.tk");
+    if (llvm::sys::fs::exists(bundledPrelude)) {
+      std::string bundledPath = bundled.str().str();
+      SearchPaths.push_back(bundledPath);
+      TrustedSystemRoots.push_back(std::move(bundledPath));
+    }
+    createSession();
   }
 
   int run() {
@@ -300,6 +308,9 @@ private:
   std::unique_ptr<toka::AnalysisSession> Session;
   toka::AnalysisResult LastAnalysis;
   std::vector<std::string> SearchPaths;
+  std::vector<std::string> TrustedSystemRoots;
+  const std::string ToolchainNodeId =
+      std::string("toolchain-v1-") + TOKA_COMPILER_INTERFACE_VERSION;
   std::string RootUri;
   std::string Formatter;
   bool ShutdownRequested = false;
@@ -321,6 +332,12 @@ private:
       start = end + 1;
     }
     return paths;
+  }
+
+  void createSession() {
+    Session = std::make_unique<toka::AnalysisSession>(
+        SearchPaths, std::map<std::string, std::string>{}, TrustedSystemRoots,
+        ToolchainNodeId);
   }
 
   static std::string findSibling(const char *argv0, llvm::StringRef name) {
@@ -476,7 +493,7 @@ private:
         root = path->str();
       if (!root.empty()) {
         SearchPaths.push_back(root);
-        Session = std::make_unique<toka::AnalysisSession>(SearchPaths);
+        createSession();
       }
     }
     llvm::json::Object sync{{"openClose", true}, {"change", 1}};

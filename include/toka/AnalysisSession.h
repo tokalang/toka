@@ -35,7 +35,8 @@ class AnalysisSession {
 public:
   AnalysisSession(std::vector<std::string> searchPaths = {},
                   std::map<std::string, std::string> packageMap = {},
-                  std::vector<std::string> trustedSystemRoots = {});
+                  std::vector<std::string> trustedSystemRoots = {},
+                  std::string toolchainNodeId = "");
 
   void openDocument(const std::string &path, std::string content);
   void updateDocument(const std::string &path, std::string content);
@@ -52,6 +53,7 @@ private:
   std::vector<std::string> SearchPaths;
   std::map<std::string, std::string> PackageMap;
   std::vector<std::string> TrustedSystemRoots;
+  std::string ToolchainNodeId;
   std::map<std::string, std::string> Overlays;
   std::unique_ptr<SourceManager> Sources;
   std::vector<std::unique_ptr<Module>> Modules;
