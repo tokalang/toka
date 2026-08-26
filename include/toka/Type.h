@@ -15,6 +15,7 @@
 #include "toka/TypeSyntax.h"
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include <map>

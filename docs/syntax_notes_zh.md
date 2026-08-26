@@ -186,7 +186,7 @@
 | ~~`auto Tuple(val = .x, ..)`~~ (对元组进行具名解构) <br> **已彻底废除** | ~~`auto Tuple(val, _)`~~ <br> 元组 (Tuple) 与位置解构 | ~~**铁律 (E0421: 元组非结构体禁令)**：元组（Tuple）没有具名字段，仅允许使用位置解构。严禁对元组使用具名解构，否则会抛出 `E0421`。~~ <br> **【已废除】Toka 已彻底从编译器中剥离元组语法。** 所有聚合数据必须具名，且 Struct 不再支持位置解构，必须使用具名解构。对非结构体（如 Tagged Enum）进行具名解构将抛出 `E0421`。 |
 | `auto RefPair(s_val = .s)`<br>(解构带有指针形态 of 字段 `&s`) | `auto RefPair(&s_val = .&s)` | **铁律 (E0448: 指针形态错配拦截)**：为了捍卫“帽子法则”底线，严防隐式解引用越权，当解构声明或 `match` 模式匹配含有 `&`、`^`、`~`、`*` 等形态修饰的成员时，**解构绑定的键名与值绑定均必须显式且一致地戴帽**！若将 `&s` 剥去帽子写成 `s`，编译器会抛出 `E0448` 错误进行拦截。 |
 | **公共 API 安全红线 (Safety Redline)** | | |
-| `pub fn foo(p: *char)` <br> `pub shape S(ptr: *i32)` | `fn unsafe_foo(p: *char)` <br> `shape UnsafeS(ptr: *i32)` | **安全红线铁律 (E0480/E0481/E0482)**：公共 API 签名（参数/返回值）与公共 Shape 字段**严禁直接暴露裸指针（如 `*char` / `*T`）或不安全类型**。违规者将在编译期被高压电网强杀阻断。唯一豁免场景是：函数名以 `unsafe_`、`raw_` 或 `__` 开头；结构体名以 `Unsafe` 或 `Raw` 开头；或定义位于物理的 `lib/`、`prelude`、`tests/pass/`、`build.tk` 中（标准库与测试自愈豁免）。 |
+| `pub fn foo(*p: char)` <br> `pub shape S(*ptr: i32)` | `fn unsafe_foo(*p: char)` <br> `shape UnsafeS(*ptr: i32)` | **安全红线铁律 (E0480/E0481/E0482)**：公共 API 签名（参数/返回值）与公共 Shape 字段**严禁直接暴露裸指针（如 `*char` / `*T`）或不安全类型**。违规者将在编译期被高压电网强杀阻断。唯一豁免场景是：函数名以 `unsafe_`、`raw_` 或 `__` 开头；结构体名以 `Unsafe` 或 `Raw` 开头；或定义位于物理的 `lib/`、`prelude`、`tests/pass/`、`build.tk` 中（标准库与测试自愈豁免）。 |
 
 
 ## **待办事项 / 核心架构坏味道记录 (TODO)**

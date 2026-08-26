@@ -121,7 +121,7 @@ shape WaitToken (
 
 shape TaskControlBlock (
     token: TaskToken,
-    frame: *void,
+    *frame: void,
     frame_access_state: FrameAccessState, // Open(pin_count) | Retired
     lifetime_ref_count: AtomicU64,
     task_schedule_generation: u64,

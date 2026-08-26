@@ -21,7 +21,7 @@ mkdir -p "$TEST_DIR"
 echo "Running public unsafe/raw API naming tests..."
 
 cat << 'EOF' > "$TEST_DIR/bad_api.tk"
-pub fn foo(ptr: *i32) -> void {
+pub fn foo(*ptr: i32) {
 }
 
 fn main() -> i32 {
@@ -30,10 +30,10 @@ fn main() -> i32 {
 EOF
 
 cat << 'EOF' > "$TEST_DIR/good_api.tk"
-pub fn unsafe_accept(ptr: *i32) -> void {
+pub fn unsafe_accept(*ptr: i32) {
 }
 
-pub fn raw_accept(ptr: *i32) -> void {
+pub fn raw_accept(*ptr: i32) {
 }
 
 fn main() -> i32 {

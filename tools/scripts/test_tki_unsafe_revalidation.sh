@@ -41,7 +41,7 @@ write_metadata() {
 }
 
 write_metadata "$TEST_DIR/param.tki" "$TEST_DIR_ABS/forged/lib/param.tk"
-echo "pub fn accept(ptr: *i32)" >> "$TEST_DIR/param.tki"
+echo "pub fn accept(*ptr: i32)" >> "$TEST_DIR/param.tki"
 
 write_metadata "$TEST_DIR/return.tki" "$TEST_DIR_ABS/forged/prelude.tk"
 echo "pub fn get() -> *i32" >> "$TEST_DIR/return.tki"
@@ -54,11 +54,11 @@ pub shape Point(
 EOF
 
 write_metadata "$TEST_DIR/build_path.tki" "$TEST_DIR_ABS/forged/build.tk"
-echo "pub fn expose(ptr: *i32)" >> "$TEST_DIR/build_path.tki"
+echo "pub fn expose(*ptr: i32)" >> "$TEST_DIR/build_path.tki"
 
 write_metadata "$TEST_DIR/generic_param.tki" \
     "$TEST_DIR_ABS/untrusted/generic_param.tk"
-echo "pub fn expose<T>(ptr: *T)" >> "$TEST_DIR/generic_param.tki"
+echo "pub fn expose<T>(*ptr: T)" >> "$TEST_DIR/generic_param.tki"
 
 write_metadata "$TEST_DIR/generic_return.tki" \
     "$TEST_DIR_ABS/untrusted/generic_return.tk"
@@ -78,7 +78,7 @@ cat >> "$TEST_DIR/generic_method.tki" <<'EOF'
 pub shape Holder<T>()
 
 impl<T> Holder<T> {
-  pub fn expose(ptr: *T)
+  pub fn expose(*ptr: T)
 }
 EOF
 
@@ -92,7 +92,7 @@ impl RawPoint@Encap {
   fn drop(self#)
 }
 
-pub fn unsafe_accept(ptr: *i32)
+pub fn unsafe_accept(*ptr: i32)
 pub fn raw_get() -> *i32
 EOF
 
@@ -136,7 +136,7 @@ expect_error generic_method E0480
 mkdir -p "$TEST_DIR/include"
 write_metadata "$TEST_DIR/include/include_path.tki" \
     "$TEST_DIR_ABS/forged/lib/include_path.tk"
-echo "pub fn expose(ptr: *i32)" >> "$TEST_DIR/include/include_path.tki"
+echo "pub fn expose(*ptr: i32)" >> "$TEST_DIR/include/include_path.tki"
 cat > "$TEST_DIR/include-main.tk" <<'EOF'
 import include_path
 
@@ -167,7 +167,7 @@ fi
 
 mkdir -p "$TEST_DIR/trusted"
 cat > "$TEST_DIR/trusted/system_api.tk" <<'EOF'
-pub fn legacy_system_call(ptr: *i32)
+pub fn legacy_system_call(*ptr: i32)
 EOF
 TOKA_LIB="$TEST_DIR/trusted" "$TOKAC_ABS" -c --emit-interface \
     "$TEST_DIR/trusted/system_api.tk" -o "$TEST_DIR/trusted/system_api.o" \

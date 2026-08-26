@@ -40,8 +40,8 @@ does not denote the ordinary result of a completed Toka action.
 The eventual public boundary is therefore:
 
 ```toka
-extern fn puts(text: *u8) -> void
-extern fn copy(dst: *void, src: *void, size: usize) -> void
+extern fn puts(*text: u8) -> void
+extern fn copy(*dst: void, *src: void, size: usize) -> void
 ```
 
 `void` remains valid at those FFI/raw-pointer boundaries. Normal Toka
