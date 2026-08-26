@@ -4406,11 +4406,11 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
     // Sema records the exact fresh-binder type.  Populate the complete symbol
     // metadata from it so handle binders cannot retain Direct addressing mode.
     fillSymbolMetadata(sym, bindingTypeObj, val->getType());
-    // A morphic binder transports an instantiated reference value itself;
-    // unlike an ordinary `&name` binder, reading `'name` must not implicitly
-    // dereference it.  Owning/shared/raw handles deliberately remain Pointer.
-    if (!pName.empty() && pName.front() == '\'' && bindingTypeObj &&
-        bindingTypeObj->isReference()) {
+    // A morphic binder transports its instantiated value itself.  Reading
+    // `'name` must not implicitly dereference an instantiated reference/raw/
+    // managed handle.  Explicit ^name/~name/*name patterns are not exempt and
+    // retain the Pointer mode populated above.
+    if (!pName.empty() && pName.front() == '\'') {
       sym.mode = AddressingMode::Direct;
       sym.indirectionLevel = 0;
       sym.morphology = Morphology::None;
