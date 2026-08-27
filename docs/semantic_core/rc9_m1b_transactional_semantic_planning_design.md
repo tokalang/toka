@@ -321,7 +321,9 @@ TransferDropLiability(edge, liability source, destination)
 RetainSharedLiability(edge, source, destination)
 RecordDependency(edge, destination, roots)
 EndBoundaryLoan(edge, loan)
-FinalizeTemporaryCleanup(edge?, cleanup)
+TransferBoundaryLoanRegion(edge, loan, old region, new region, destination)
+FinalizeTemporaryCleanup(edge, cleanup)
+TransferCleanupRegion(edge, cleanup, old region, new region, destination)
 StageResolvedCall(call id, validated plan)
 ```
 
@@ -451,7 +453,7 @@ BoundaryIntents
     (move/copy/borrow, source invalidation, dependency handoff, drop liability)
 
 FinalizationIntents
-    end call-region loans, finish/disarm full-expression cleanup, end region
+    end/transfer call-region loans, complete/disarm/transfer cleanup, end region
 ```
 
 Actual expressions are prepared in source order, and their evaluation effects
@@ -460,8 +462,9 @@ boundary intents do not invalidate or borrow their source place while later
 actuals are being prepared. Whole-call validation considers all boundary
 intents, expression accesses, receiver aliases, and the final evaluation
 working state together; conflicts reject the call independent of partial
-parent mutation. Boundary-installed call loans and transferred/untransferred
-temporary cleanup receive mandatory Finalization intents at the same time.
+parent mutation. Boundary-installed call loans and temporary cleanup receive
+mandatory End/Transfer and Complete/Disarm/Transfer Finalization intents at the
+same time.
 
 A nested call is itself validated and adopted into the candidate transaction
 as an evaluation effect, so its already-complete source transition is visible
@@ -490,7 +493,8 @@ PreparedCall
 
 Each `ArgumentPlan` combines its `ExprFacts` with the selected formal and
 records transfer, source disposition, exact-place admission, dependency,
-drop liability, spelling, and init facts.
+drop liability, spelling, and init facts. Source disposition is independent of
+transfer mode and cannot be inferred from derived invalidation actions.
 
 Preparation follows source evaluation order inside the call transaction.
 Validation then considers the entire call together:

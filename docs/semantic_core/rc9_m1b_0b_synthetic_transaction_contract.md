@@ -1,6 +1,6 @@
 # RC9 M1b.0b Synthetic Transaction Contract
 
-**Design status:** M1b.0b-D.1 proposed for independent review.
+**Design status:** M1b.0b-D.2 proposed for independent review.
 
 **Implementation status:** Not implemented and not admitted by this document.
 No transaction/journal class, identity builder, Sema/PAL/Evidence/CodeGen/CLI
@@ -137,6 +137,7 @@ ValidatedTransferEdge
     TransferMode
     TypeId
     SourcePlace?                 exact structured PlaceId
+    SourceDisposition
     ExactPlaceAdmission?         whole/projection witness and cleanup mask
     DestinationId
     LiabilitySource
@@ -144,13 +145,39 @@ ValidatedTransferEdge
     DependencyRoots[]
     BoundaryKind
     SharedDisposition
-    LoanId? / RegionId?
+    BoundaryLoanPlan?
+    TemporaryCleanupPlan?
 ```
 
 `TransferMode` covers borrow capture, value/identity copy, owned move, shared
 transfer/retain, temporary consumption, init handoff, and pending-outcome
 handoff. `SharedDisposition` is explicitly `NotShared`, `MoveIdentity`, or
 `RetainIdentity`; it is never inferred from a liability action.
+
+`SourceDisposition` is an independent tagged fact:
+
+```text
+KeepLive
+InvalidateWhole
+InvalidateProjection
+NoSourcePlace
+```
+
+It is not inferred from the presence or absence of journal actions. In
+particular, `CopyValue + KeepLive` and `CopyValue + InvalidateWhole` are
+distinct valid edges.
+
+- `KeepLive` requires no invalidation action and forbids one.
+- `InvalidateWhole` requires a source place, matching whole-place admission,
+  and exactly one whole invalidation action for the edge.
+- `InvalidateProjection` requires the exact projected source, matching partial
+  admission/cleanup mask, and exactly one projection invalidation action whose
+  path and mask equal the edge.
+- `NoSourcePlace` requires an absent source/admission and forbids place
+  invalidation; it is used for admitted temporaries/source-less transfers.
+
+Source disposition, admission, derived action, cleanup mask, and tagged
+liability source/target must all agree on the same edge.
 
 `LiabilitySource` is a tagged sum:
 
@@ -172,6 +199,42 @@ NoLiability
 ```
 
 Untagged "source/cleanup identity" payloads are forbidden.
+
+`BoundaryLoanPlan` contains `LoanId`, source/referent, initial call
+`RegionId`, destination, capability, and exactly one Finalization disposition:
+
+```text
+EndAtCallFinalization
+TransferAtFinalization(new RegionId, DestinationId)
+```
+
+The new region must structurally outlive the call region and satisfy dependency
+escape/boundary rules. A transferred loan remains live under the same `LoanId`
+and its new region owns the later terminal `EndLoan`; the original call cannot
+also end it.
+
+`TemporaryCleanupPlan` carries cleanup region from creation:
+
+```text
+TemporaryCleanupPlan
+    TemporaryId
+    CleanupId
+    TypeId
+    current RegionId
+    liability
+    RegionExitDisposition
+
+RegionExitDisposition
+    Complete
+    Disarm(TransferEdgeId, DestinationId)
+    TransferRegion(TransferEdgeId, new RegionId, DestinationId)
+```
+
+For each region exit exactly one disposition applies. `TransferRegion` keeps
+the cleanup live in a strictly longer region; transfer chains are acyclic and
+must eventually reach exactly one ultimate `Complete` or `Disarm`. A cleanup
+cannot complete, disarm, and extend on competing paths without a validated
+branch/outcome join.
 
 All invalidation, cleanup disarm/terminal, liability transfer, dependency
 handoff, destination, and shared disposition actions derived for one transfer
@@ -234,13 +297,14 @@ Evaluation -> Boundary -> Finalization
 - `Boundary` applies actions derived from validated transfer edges and may
   install call-region loans or create pending outcome obligations.
 - `Finalization` ends call/full-expression regions, ends boundary loans,
-  completes untransferred temporary cleanup, and disarms cleanup whose
-  liability moved to a destination.
+  transfers explicitly extended loans, completes or extends untransferred
+  temporary cleanup, and disarms cleanup whose liability moved to a
+  destination.
 
 An unresolved pending outcome obligation may intentionally survive the
 original call's Finalization phase; its later match/forward/cancel operation
-owns resolution. No other boundary loan or full-expression cleanup may survive
-without an explicit longer-lived region/obligation witness.
+owns resolution. A boundary loan or cleanup may survive only through its typed
+region-transfer disposition and longer-lived region witness.
 
 ## Derived typed journal
 
@@ -273,7 +337,7 @@ subjects, `void *`, and untagged integer identities are forbidden.
 | `BeginLoan` | `LoanId`, source/referent `PlaceId`, `RegionId`, capability |
 | `EndLoan` | live `LoanId`, matching region/end reason |
 | `CreateTemporary` | `TemporaryId`, `TypeId`, producing node |
-| `ScheduleTemporaryCleanup` | `CleanupId`, owner temporary/place, liability |
+| `ScheduleTemporaryCleanup` | cleanup plan with owner, `TypeId`, current region, liability and region-exit disposition |
 | `CompleteTemporaryCleanup` | live `CleanupId`, completion reason |
 | `ApplyNestedCall` | `ValidatedCallId`, ordered nested journal/model patch |
 
@@ -306,13 +370,16 @@ action. A no-change plan is not an excuse to emit a state mutation.
 | Action | Required typed facts |
 | --- | --- |
 | `EndBoundaryLoan` | edge, live boundary `LoanId`, matching call `RegionId` |
-| `CompleteFullExpressionCleanup` | live untransferred `CleanupId`, terminal reason |
+| `TransferBoundaryLoanRegion` | edge, loan, old call region, longer new region, destination |
+| `CompleteFullExpressionCleanup` | edge, live untransferred `CleanupId`, terminal reason |
 | `DisarmTransferredCleanup` | edge, transferred `CleanupId`, matching liability target |
+| `TransferCleanupRegion` | edge, cleanup, old region, strictly longer new region, destination |
 | `EndCallRegion` | call `RegionId`, proof that all non-escaping loans/cleanups are terminal |
 
 Finalization actions are derived together with their boundary actions. A
-boundary loan cannot reuse evaluation `EndLoan`, and cleanup cannot be both
-completed and disarmed.
+boundary loan cannot reuse evaluation `EndLoan` and must exactly once end or
+transfer from the call region. At each cleanup-region exit, complete, disarm,
+and region transfer are mutually exclusive.
 
 ### Model patch staging
 
@@ -330,9 +397,9 @@ must prove:
 2. phase and payload kind agree and phases are ordered Evaluation, Boundary,
    Finalization;
 3. every `EndLoan` matches exactly one live loan and no loan is ended twice;
-4. each scheduled cleanup ends in exactly one evaluation/full-expression
-   completion, or one boundary liability transfer followed by exactly one
-   matching Finalization disarm; no cleanup is silently lost;
+4. each scheduled cleanup carries a region and has exactly one disposition at
+   every region exit; transfer chains strictly outlive their predecessor and
+   eventually reach one completion or disarm, with no cleanup silently lost;
 5. place invalidations have exact-place/admission witnesses and compatible
    cleanup masks;
 6. every transfer-derived action references one complete validated edge and
@@ -341,8 +408,8 @@ must prove:
 7. drop/shared liability is conserved per edge;
 8. immediate init and pending outcome transitions consume the correct live
    obligation and legal prior state, with every pending case accounted for;
-9. all call-region boundary loans end during Finalization and all
-   full-expression cleanups reach one legal terminal;
+9. all call-region boundary loans exactly once end or transfer during
+   Finalization, and all cleanup region exits reach one legal disposition;
 10. nested-call journals are already validated and preserve source order;
 11. model patches have valid keys and no unequal duplicate entry; and
 12. no boundary intent was applied to evaluation working state before
@@ -366,19 +433,31 @@ journal, diagnostics, internal facts, and model patch. A frame exposes no
 The dedicated lifecycle is:
 
 ```text
-BranchFrameSet: Open -> Sealed -> Merged
-                Open/Sealed ----> Discarded
+BranchFrameSet: TopologyOpen -> Open -> Sealed -> Merged
+                any preterminal state ---------> Discarded
 
-BranchFrame:    Open -> Sealed -> Consumed
-                Open/Sealed ----> Discarded
+BranchFrame:    Provisional -> Registered -> Sealed -> Consumed
+                Provisional -> Removed          topology not frozen
+                Registered/Sealed -> Discarded  whole-set discard only
 ```
 
-Every frame must be sealed or explicitly discarded before the set can seal.
-`Merged`, `Consumed`, and `Discarded` are terminal; repeated seal/merge/discard
-or mutation after a terminal state fails closed as an internal lifecycle
-error.
+Frames may be added or removed only while the set is `TopologyOpen` and the
+frame is provisional. `freezeTopology()` captures the complete path inventory
+and converts every remaining frame to `Registered`; it also captures parent
+identity/base epoch/base snapshot. No registered frame can be removed.
 
-After branch analysis, each frame is sealed with an explicit reachability
+Every registered source path must seal as exactly one of reachable,
+unreachable, or explicit unchanged-base. A missing `else` is a registered
+unchanged-base frame. If any registered/sealed frame is discarded or otherwise
+cannot seal, its owning set must transition wholly to `Discarded`, discard all
+frames, and forbid set seal/merge. Parent state, epoch, and digest remain
+unchanged.
+
+`Removed`, `Merged`, `Consumed`, and `Discarded` are terminal. Repeated
+freeze/seal/merge/discard or mutation after a terminal state fails closed as an
+internal lifecycle error.
+
+After branch analysis, each registered frame is sealed with its explicit path
 fact. The set prebuilds one
 `BranchMergePatch` using the common base and the normative policies below,
 then applies that patch to the still-open parent with one no-throw immutable
@@ -398,8 +477,8 @@ digest, and published snapshot remain unchanged. No rebase is permitted.
 
 Merge order is canonical `BranchKey` order and must produce the same result
 when input enumeration is reversed. An unreachable branch contributes the
-fact-lattice bottom. A missing `else` contributes an explicit unchanged-base
-frame rather than silently omitting a path.
+fact-lattice bottom. The frozen topology, not the set of surviving frames,
+defines the merge inputs.
 
 ### Join algebra
 
@@ -424,7 +503,7 @@ state change.
 
 | State family | Sibling merge rule |
 | --- | --- |
-| reachability | remove unreachable frames; all unreachable yields unreachable |
+| reachability | registered unreachable frames contribute bottom; all unreachable yields unreachable |
 | init/place facts | existing definite-state lattice join; disagreement becomes Maybe/fail-closed fact |
 | moved/used/mutated facts | moved/place lattice join; used/mutated union, never last-writer wins |
 | exact projection masks | projection-wise join under the same admitted plan; incompatible plans reject |
@@ -457,8 +536,8 @@ though M1b.0b stores only fixture payloads:
 | `SyntheticArgumentTable` | call site + synthetic role | derived node identity and logical position |
 | `ReceiverLoweringTable` | call site | receiver facts and callable/method lowering recipe |
 | `GenericInstanceTable` | generic instance identity | template declaration, substitution, owner coordinate |
-| `TemporaryCleanupTable` | `CleanupId` | owner, type/liability, scheduled terminal action |
-| `InitOutcomeTable` | obligation/transition identity | destination and legal state transition |
+| `TemporaryCleanupTable` | `CleanupId` | owner, type/liability, current region, transfer chain and terminal recipe |
+| `InitOutcomeTable` | obligation/transition identity | destination, pending case matrix and legal state transition |
 | `ValidatedCallTable` | `ValidatedCallId`/call site | immutable prepared/validated plan and journal reference |
 | `LoweringRecipeTable` | `LoweringRecipeId` | logical argument/receiver/default/synthetic recipe |
 | `SourceOriginTable` | derived semantic identity | `SourceOriginId` and parsed/template origin relation |
@@ -631,11 +710,17 @@ The M1b.0b review receipt must include all of the following.
 
 - success and invalid-phase cases for every required action kind;
 - strict Evaluation/Boundary/Finalization ordering;
+- identical `CopyValue` mode edges proving `KeepLive` versus
+  `InvalidateWhole/Projection` behavior and derived-action differences;
+- KeepLive-with-invalidation, invalidation-without-admission/action, whole/
+  projection path/mask mismatch, and NoSourcePlace-with-source rejection;
 - mismatched edge source/destination/mask/liability/dependency/shared-mode
   actions reject even when each payload is individually valid;
 - unmatched/double `EndLoan` rejection;
-- missing/double `EndBoundaryLoan` and call-region terminal rejection;
-- missing/double temporary cleanup terminal rejection;
+- boundary loan End/Transfer success matrix plus missing/double/mismatched
+  region-transfer rejection;
+- cleanup Complete/Disarm/TransferRegion success matrix, mutual-exclusion,
+  non-outliving/cyclic transfer, and missing/double ultimate terminal rejection;
 - liability conservation failures;
 - invalid exact-place/mask and immediate init transitions;
 - pending outcome remain-uninit, resolve, forward, cancel, double resolution,
@@ -647,6 +732,9 @@ The M1b.0b review receipt must include all of the following.
 - two/three siblings, reversed enumeration, unreachable branch, and implicit
   base/else path;
 - BranchFrameSet/Frame lifecycle and double/terminal operation rejection;
+- provisional removal before topology freeze, plus registered-frame discard
+  forcing whole-set discard and permanent merge rejection with unchanged
+  parent/epoch/digest;
 - stale parent detection before prebuild and immediately before swap;
 - commutative, associative, idempotent, and bottom-identity property tests for
   every lattice family and compatible partial-join family;
