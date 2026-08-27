@@ -2479,6 +2479,32 @@
       "description": "Const generic impl values remain compile-time symbols in return and repeated-array expressions"
     },
     {
+      "id": "diag_aggregate_owned_value_requires_cede_01",
+      "path": "diagnostics/aggregate_owned_value_requires_cede.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04652",
+      "expected_span_line": 7,
+      "timeout_seconds": 10,
+      "description": "An owning aggregate local cannot be implicitly duplicated into another binding"
+    },
+    {
+      "id": "ownership_aggregate_owned_value_cede_exactly_once_01",
+      "path": "ownership/aggregate_owned_value_cede_exactly_once.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "An explicitly ceded owning aggregate local has one cleanup owner"
+    },
+    {
+      "id": "diag_aggregate_owned_value_use_after_cede_01",
+      "path": "diagnostics/aggregate_owned_value_use_after_cede.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0438",
+      "expected_span_line": 9,
+      "timeout_seconds": 10,
+      "description": "An owning aggregate local is unavailable after explicit cede transfer"
+    },
+    {
       "id": "diag_aggregate_owned_field_requires_cede_01",
       "path": "diagnostics/aggregate_owned_field_requires_cede.tk",
       "type": "compile-fail",

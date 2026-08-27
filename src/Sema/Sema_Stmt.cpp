@@ -1513,8 +1513,31 @@ void Sema::checkStmt(Stmt *S) {
             break;
           }
         }
-        if (dynamic_cast<MemberExpr *>(directSource) &&
-            makeAccessPath(directSource)) {
+        if (auto *sourceVar = dynamic_cast<VariableExpr *>(directSource);
+            sourceVar && makeAccessPath(directSource)) {
+          SymbolInfo *sourceInfo = nullptr;
+          std::string actualName;
+          const bool sourceAlreadyMoved =
+              CurrentScope->findVariableWithDeref(
+                  sourceVar->Name, sourceInfo, actualName) &&
+              sourceInfo &&
+              hasPlaceState(sourceInfo->placeFact(), PlaceState::Moved);
+          auto sourceType = sourceInfo ? sourceInfo->TypeObj : nullptr;
+          if (sourceType)
+            sourceType = resolveType(sourceType, false);
+          const bool sourceOwnsAggregate =
+              InitTypeObj->isShape() && sourceType && sourceType->isShape() &&
+              sourceType->requiresExplicitOwnershipTransfer(this);
+          if (!sourceAlreadyMoved && sourceOwnsAggregate) {
+            std::string sourcePath = getPathString(directSource);
+            if (sourcePath.empty())
+              sourcePath = directSource->toString();
+            error(Var->Init.get(),
+                  DiagID::ERR_SEMA_OWNED_VALUE_BINDING_REQUIRES_CEDE,
+                  Var->Name, sourcePath, sourcePath);
+          }
+        } else if (dynamic_cast<MemberExpr *>(directSource) &&
+                   makeAccessPath(directSource)) {
           error(Var->Init.get(),
                 DiagID::ERR_SEMA_OWNED_PROJECTION_BINDING_REQUIRES_CEDE,
                 Var->Name, directSource->toString(), directSource->toString());

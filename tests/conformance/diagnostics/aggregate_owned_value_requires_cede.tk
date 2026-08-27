@@ -1,0 +1,9 @@
+shape Cell(value: i32)
+shape Holder(^item: Cell)
+
+fn main() -> i32 {
+    auto ^source = new Cell(value = 42)
+    auto first = Holder(^item = ^source)
+    auto second = first
+    return second.item.value
+}

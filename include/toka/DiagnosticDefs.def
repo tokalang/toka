@@ -522,6 +522,7 @@ DIAG(ERR_PLACE_OUTCOME_INTERNAL_ONLY, Error, "E04648", "Compiler place outcome '
 DIAG(ERR_DUP_RECEIVER_CONTRACT, Error, "E04649", ".dup() requires a non-consuming, non-owning receiver and no arguments")
 DIAG(ERR_NOMINAL_SHAPE_IDENTITY_MISSING, Error, "E04650", "Cannot establish a stable nominal identity for shape '{}'")
 DIAG(ERR_SHAPE_SOVEREIGNTY_VIOLATION, Error, "E04651", "Shape sovereignty validation failed: {}")
+DIAG(ERR_SEMA_OWNED_VALUE_BINDING_REQUIRES_CEDE, Error, "E04652", "Binding '{}' would duplicate owning value '{}'; use 'cede {}' to transfer ownership explicitly")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

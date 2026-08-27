@@ -1,0 +1,24 @@
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0:i32
+
+shape Cell(value: i32)
+
+impl Cell@Encap {
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
+
+shape Holder(^item: Cell)
+
+fn main() -> i32 {
+    {
+        auto ^source = new Cell(value = 42)
+        auto first = Holder(^item = ^source)
+        auto second = cede first
+        assert(second.item.value == 42,
+               "ceded aggregate owner corrupted")
+    }
+    return g_drop_count - 1:i32
+}
