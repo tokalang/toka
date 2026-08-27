@@ -9,8 +9,9 @@ remains blocked until its state-manifest and synthetic lifecycle gates pass.
 No semantic behavior, PAL state, CodeGen path, evidence contract, TKI format,
 or ABI is changed by this design.
 
-**Implementation status:** M1b.0a scaffold implemented and unit-qualified.
-M1b.0b and all semantic consumers remain unimplemented.
+**Implementation status:** M1b.0a and the BUILD_TESTING-only M1b.0b synthetic
+reference are implemented and locally qualified. Independent 0b acceptance is
+pending; all semantic consumers remain unimplemented.
 
 **Design baseline:**
 `20410f4cbe6615a3c4a662fd6d64def0e956de0a`.

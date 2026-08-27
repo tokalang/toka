@@ -53,10 +53,10 @@ It deliberately does not promote M1a's mutable AST vectors. Production plans
 live in an immutable `SemanticModel`, and all candidate/speculative work is
 isolated in a discardable analysis transaction.
 
-M1b-D.1 admits, and the current implementation contains, only the no-behavior
-M1b.0a identity/model scaffold. The transaction lifecycle API remains a
-separately reviewed M1b.0b slice; no
-ownership commit or planner wiring is admitted by that scaffold.
+The current implementation contains the no-behavior M1b.0a identity/model
+scaffold and an unlinked BUILD_TESTING-only M1b.0b synthetic reference. The 0b
+slice is locally qualified but still awaits independent post-implementation
+acceptance; no ownership commit or planner wiring is admitted.
 The proposed review contract is
 [`RC9 M1b.0b Synthetic Transaction Contract`](semantic_core/rc9_m1b_0b_synthetic_transaction_contract.md).
 

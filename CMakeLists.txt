@@ -164,6 +164,10 @@ if(BUILD_TESTING)
         tests/HandleGrammarClassifierTest.cpp)
     add_executable(toka_semantic_model_scaffold
         tests/SemanticModelScaffold.cpp)
+    add_executable(toka_synthetic_transfer_contract
+        tests/SyntheticTransferContract.cpp)
+    add_executable(toka_synthetic_semantic_transaction
+        tests/SyntheticSemanticTransaction.cpp)
     target_include_directories(toka_typesyntax_canonicalization PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_canonical_declaration_witness PRIVATE
@@ -181,6 +185,10 @@ if(BUILD_TESTING)
     target_include_directories(toka_handle_grammar_classifier PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_semantic_model_scaffold PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(toka_synthetic_transfer_contract PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(toka_synthetic_semantic_transaction PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     add_test(NAME toka_typesyntax_canonicalization
         COMMAND toka_typesyntax_canonicalization)
@@ -200,6 +208,10 @@ if(BUILD_TESTING)
         COMMAND toka_handle_grammar_classifier)
     add_test(NAME toka_semantic_model_scaffold
         COMMAND toka_semantic_model_scaffold)
+    add_test(NAME toka_synthetic_transfer_contract
+        COMMAND toka_synthetic_transfer_contract)
+    add_test(NAME toka_synthetic_semantic_transaction
+        COMMAND toka_synthetic_semantic_transaction)
 endif()
 
 add_subdirectory(src)

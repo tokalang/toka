@@ -122,7 +122,8 @@ does not promote these AST vectors into commit authority. M1b first introduces
 semantic identities, immutable facts, discardable transactions, and a
 `SemanticModel`; it then replaces `PendingValidation` and `Unclassified` in a
 qualified subset before any ownership commit implementation begins. Current
-implementation is limited to the M1b.0a opaque identities and empty model; the
-transaction lifecycle requires the separate
+implementation is limited to M1b.0a values plus the unlinked BUILD_TESTING-only
+M1b.0b synthetic reference; production still has only the empty model. The
+transaction lifecycle follows the separately reviewed
 [`M1b.0b Synthetic Transaction Contract`](rc9_m1b_0b_synthetic_transaction_contract.md)
-review and synthetic gates.
+and awaits post-implementation acceptance.
