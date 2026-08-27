@@ -1,6 +1,6 @@
 # RC9 M1b.0b Synthetic Transaction Contract
 
-**Design status:** Proposed for independent M1b.0b review.
+**Design status:** M1b.0b-D.1 proposed for independent review.
 
 **Implementation status:** Not implemented and not admitted by this document.
 No transaction/journal class, identity builder, Sema/PAL/Evidence/CodeGen/CLI
@@ -34,6 +34,8 @@ TypeId
 CallSiteId
 SourceOriginId
 ConversionId
+ArgumentPlanId
+TransferEdgeId
 DestinationId
 TemporaryId
 CleanupId
@@ -44,6 +46,7 @@ OutcomeTransitionId
 ValidatedCallId
 LoweringRecipeId
 SemanticModelPatchId
+SemanticRevisionId
 BranchSetId
 BranchKey
 JournalActionId
@@ -113,11 +116,137 @@ The builder:
 Scaffold tests use an explicit test friend/accessor or typed fixture builder.
 They do not keep a production raw-key escape hatch.
 
-## Typed journal
+## Semantic authority before journal derivation
 
-### Lanes
+Journal actions are not independently authored transfer facts. The synthetic
+planner first constructs and validates complete edges and obligations. Only
+then may it derive a phase-ordered journal.
 
-The synthetic journal has three typed lanes:
+### ValidatedTransferEdge
+
+Every call argument has an `ArgumentPlanId`; every receiver, return, capture,
+init, or temporary handoff has an equivalent tagged `PlanOrigin`. Each origin
+owns one or more structurally derived `TransferEdgeId` values. `PlanOrigin` is
+tagged as argument, receiver, return, capture, init/outcome, or temporary and
+contains only the corresponding strong identities. The authoritative edge is:
+
+```text
+ValidatedTransferEdge
+    TransferEdgeId
+    PlanOrigin
+    TransferMode
+    TypeId
+    SourcePlace?                 exact structured PlaceId
+    ExactPlaceAdmission?         whole/projection witness and cleanup mask
+    DestinationId
+    LiabilitySource
+    LiabilityTarget
+    DependencyRoots[]
+    BoundaryKind
+    SharedDisposition
+    LoanId? / RegionId?
+```
+
+`TransferMode` covers borrow capture, value/identity copy, owned move, shared
+transfer/retain, temporary consumption, init handoff, and pending-outcome
+handoff. `SharedDisposition` is explicitly `NotShared`, `MoveIdentity`, or
+`RetainIdentity`; it is never inferred from a liability action.
+
+`LiabilitySource` is a tagged sum:
+
+```text
+None
+PlaceCleanup(PlaceId, CleanupId)
+TemporaryCleanup(TemporaryId, CleanupId)
+SharedHandle(PlaceId, CleanupId?)
+```
+
+`LiabilityTarget` is likewise tagged:
+
+```text
+SourceRetained(LiabilitySource)
+DestinationAssumed(DestinationId, CleanupId?)
+SharedRetained(DestinationId, CleanupId)
+CompletedAtFinalization(CleanupId)
+NoLiability
+```
+
+Untagged "source/cleanup identity" payloads are forbidden.
+
+All invalidation, cleanup disarm/terminal, liability transfer, dependency
+handoff, destination, and shared disposition actions derived for one transfer
+must reference the same `TransferEdgeId`. Edge validation rejects a source,
+destination, mask, dependency, or liability component borrowed from a
+different edge even when every individual identity is otherwise valid.
+
+An edge is immutable after validation. Journal validation checks derivation
+from the edge; it does not reconstruct or repair the edge from actions.
+
+### Pending outcome obligation
+
+An outcome-governed init call creates an obligation because the runtime case
+is not selected when the call returns:
+
+```text
+PendingOutcomeObligation
+    InitObligationId
+    TransferEdgeId
+    OutcomeTransitionId
+    DestinationId
+    Return/transition declaration identity
+    CasePlan[]
+
+CasePlan
+    case identity
+    destination post-state          initialized | remain-uninit
+    liability/cleanup transition
+    dependency transition
+```
+
+Its lifecycle is:
+
+```text
+Pending -> Resolved(case)
+Pending -> Forwarded(new obligation identity)
+Pending -> Cancelled(cancel cleanup plan)
+```
+
+`CreatePendingOutcomeObligation` is derived at the original call boundary.
+`ResolveOutcomeCase` belongs to the later consuming match/direct-outcome
+operation and selects exactly one prevalidated arm. Forwarding preserves the
+complete case matrix under a new destination/obligation identity. Cancellation
+must name the cleanup/liability result for every still-pending arm. An
+obligation cannot disappear, resolve twice, be used as initialized while
+pending, or collapse `remain-uninit` into an initialized state.
+
+Per-arm cleanup liability is part of `CasePlan`, not a later CodeGen guess.
+
+### Call phase plan
+
+Each validated call has a strict phase plan:
+
+```text
+Evaluation -> Boundary -> Finalization
+```
+
+- `Evaluation` prepares actual-expression and nested-call effects in source
+  order without applying the outer formal boundary.
+- `Boundary` applies actions derived from validated transfer edges and may
+  install call-region loans or create pending outcome obligations.
+- `Finalization` ends call/full-expression regions, ends boundary loans,
+  completes untransferred temporary cleanup, and disarms cleanup whose
+  liability moved to a destination.
+
+An unresolved pending outcome obligation may intentionally survive the
+original call's Finalization phase; its later match/forward/cancel operation
+owns resolution. No other boundary loan or full-expression cleanup may survive
+without an explicit longer-lived region/obligation witness.
+
+## Derived typed journal
+
+### Phases
+
+The synthetic journal has three typed phases:
 
 ```text
 Evaluation
@@ -127,12 +256,13 @@ Boundary
     actions introduced by a selected formal, receiver, return, capture,
     init, or outcome boundary
 
-Model
-    immutable SemanticModel/elaboration/lowering patch publication
+Finalization
+    post-boundary loan termination, cleanup completion/disarm, and region end
 ```
 
-Each action carries a structural `JournalActionId`, lane, source semantic node,
-typed payload, and required precondition witness. String opcodes, display-path
+Each action carries a structural `JournalActionId`, phase, source semantic
+node, typed payload, and required precondition witness. Transfer-derived
+actions also carry their `TransferEdgeId`. String opcodes, display-path
 subjects, `void *`, and untagged integer identities are forbidden.
 
 ### Required evaluation actions
@@ -155,25 +285,41 @@ terminal action; disappearance from a mask is not proof of completion.
 
 | Action | Required typed facts |
 | --- | --- |
-| `InvalidateWholePlace` | admitted whole `PlaceId`, destination, prior-state witness |
-| `InvalidateProjection` | exact projected `PlaceId`, cleanup mask, admission witness |
-| `InstallBoundaryBorrow` | `LoanId`, source/referent, destination, region, capability |
-| `TransferDropLiability` | source/cleanup identity, destination, `TypeId` properties |
-| `TransferTemporaryLiability` | `CleanupId`, `DestinationId`, target liability |
-| `RetainSharedLiability` | source, destination, retain/release proof |
-| `RecordDependencyHandoff` | destination, dependency roots, boundary kind |
-| `FulfillInitObligation` | `InitObligationId`, destination, before/after place state |
-| `ApplyOutcomeTransition` | `OutcomeTransitionId`, destination, selected case, before/after state |
+| `InvalidateWholePlace` | edge, admitted source/destination, prior-state witness |
+| `InvalidateProjection` | edge, exact source/destination, edge cleanup mask/admission witness |
+| `InstallBoundaryBorrow` | edge, `LoanId`, source/referent, destination, call region, capability |
+| `TransferDropLiability` | edge, tagged liability source/target, `TypeId` properties |
+| `TransferTemporaryLiability` | edge, temporary `CleanupId`, destination liability target |
+| `RetainSharedLiability` | edge, shared source/destination and retain/release proof |
+| `RecordDependencyHandoff` | edge, destination, dependency roots, boundary kind |
+| `FulfillImmediateInitObligation` | edge, obligation, destination, before/after place state |
+| `CreatePendingOutcomeObligation` | edge and complete immutable pending obligation/case matrix |
+| `ResolveOutcomeCase` | pending obligation, selected case plan, consuming operation identity |
+| `ForwardPendingOutcome` | pending obligation and derived destination/obligation identity |
+| `CancelPendingOutcome` | pending obligation and complete cancel cleanup/liability plan |
 
 `KeepSourceLive` remains a validated plan fact and never creates a journal
 action. A no-change plan is not an excuse to emit a state mutation.
 
-### Required model actions
+### Required finalization actions
 
-Model actions stage complete immutable entries for the side tables defined
-below through `StageModelPatch(SemanticModelPatchId, immutable patch)`.
-Table entries and patch identity are strongly typed and carry no AST pointer
-mutation.
+| Action | Required typed facts |
+| --- | --- |
+| `EndBoundaryLoan` | edge, live boundary `LoanId`, matching call `RegionId` |
+| `CompleteFullExpressionCleanup` | live untransferred `CleanupId`, terminal reason |
+| `DisarmTransferredCleanup` | edge, transferred `CleanupId`, matching liability target |
+| `EndCallRegion` | call `RegionId`, proof that all non-escaping loans/cleanups are terminal |
+
+Finalization actions are derived together with their boundary actions. A
+boundary loan cannot reuse evaluation `EndLoan`, and cleanup cannot be both
+completed and disarmed.
+
+### Model patch staging
+
+The immutable `SemanticModelPatch` is orthogonal to call phases and is not a
+fourth journal lane. It is staged with the validated call/transaction under a
+`SemanticModelPatchId`; table entries and patch identity are strongly typed
+and carry no AST pointer mutation.
 
 ### Journal validity
 
@@ -181,18 +327,25 @@ Before a transaction can transition to `Validated`, its synthetic validator
 must prove:
 
 1. every action ID is valid and unique within the transaction;
-2. lane and payload kind agree;
+2. phase and payload kind agree and phases are ordered Evaluation, Boundary,
+   Finalization;
 3. every `EndLoan` matches exactly one live loan and no loan is ended twice;
-4. each scheduled cleanup ends in exactly one completion or liability
-   transfer, and no cleanup is silently lost;
+4. each scheduled cleanup ends in exactly one evaluation/full-expression
+   completion, or one boundary liability transfer followed by exactly one
+   matching Finalization disarm; no cleanup is silently lost;
 5. place invalidations have exact-place/admission witnesses and compatible
    cleanup masks;
-6. drop/shared liability is conserved;
-7. init and outcome transitions consume the correct live obligation and legal
-   prior state;
-8. nested-call journals are already validated and preserve source order;
-9. model patches have valid keys and no unequal duplicate entry; and
-10. no boundary intent was applied to evaluation working state before
+6. every transfer-derived action references one complete validated edge and
+   agrees with its source, destination, mask, liability, dependency, and
+   shared disposition;
+7. drop/shared liability is conserved per edge;
+8. immediate init and pending outcome transitions consume the correct live
+   obligation and legal prior state, with every pending case accounted for;
+9. all call-region boundary loans end during Finalization and all
+   full-expression cleanups reach one legal terminal;
+10. nested-call journals are already validated and preserve source order;
+11. model patches have valid keys and no unequal duplicate entry; and
+12. no boundary intent was applied to evaluation working state before
     whole-boundary validation.
 
 The validated journal is immutable. Adoption/publication uses its prebuilt
@@ -206,9 +359,24 @@ transaction lifecycle with another public terminal state.
 
 An open parent creates a parent-owned `BranchFrameSet` identified by
 `BranchSetId`. Each `BranchFrame` has a unique structural `BranchKey`, the same
-parent identity/base epoch/base snapshot, and isolated manifest state,
-journal, diagnostics, Evidence, and model patch. A frame exposes no
+captured parent identity/base epoch/base snapshot, and isolated manifest state,
+journal, diagnostics, internal facts, and model patch. A frame exposes no
 `adopt()`/`commit()` API.
+
+The dedicated lifecycle is:
+
+```text
+BranchFrameSet: Open -> Sealed -> Merged
+                Open/Sealed ----> Discarded
+
+BranchFrame:    Open -> Sealed -> Consumed
+                Open/Sealed ----> Discarded
+```
+
+Every frame must be sealed or explicitly discarded before the set can seal.
+`Merged`, `Consumed`, and `Discarded` are terminal; repeated seal/merge/discard
+or mutation after a terminal state fails closed as an internal lifecycle
+error.
 
 After branch analysis, each frame is sealed with an explicit reachability
 fact. The set prebuilds one
@@ -217,10 +385,40 @@ then applies that patch to the still-open parent with one no-throw immutable
 state swap and one epoch advance. All frames are consumed by their owning set.
 Failure leaves the parent and every unconsumed frame unchanged.
 
+Both before merge prebuild and immediately before the final swap, the set must
+prove:
+
+```text
+parent identity == captured parent identity
+parent current epoch == BranchFrameSet base epoch
+```
+
+A mismatch is `StaleParent`: parent/set/frame lifecycle, epoch, manifest/model
+digest, and published snapshot remain unchanged. No rebase is permitted.
+
 Merge order is canonical `BranchKey` order and must produce the same result
 when input enumeration is reversed. An unreachable branch contributes the
 fact-lattice bottom. A missing `else` contributes an explicit unchanged-base
 frame rather than silently omitting a path.
+
+### Join algebra
+
+Every lattice-governed state family supplies a typed `BranchJoinSpec` with
+`bottom`, equality, and `join`. Synthetic exhaustive/property tests must prove
+for all fixture values:
+
+```text
+join(a, b) = join(b, a)
+join(join(a, b), c) = join(a, join(b, c))
+join(a, a) = a
+join(bottom, a) = a
+```
+
+Sorting frames by `BranchKey` is only deterministic enumeration; it is not a
+substitute for these commutative, associative, idempotent, and bottom-identity
+laws. Conflict-checked map/model union is a partial join: the same laws must
+hold for compatible inputs, while any incompatible grouping rejects with no
+state change.
 
 ### Merge policies
 
@@ -236,7 +434,7 @@ frame rather than silently omitting a path.
 | init/outcome obligations | join only through declared transition lattice; unresolved incompatible obligations reject |
 | generic/model/side tables | deterministic key union; equal duplicates coalesce, unequal duplicates reject |
 | diagnostics/warnings | stable source/diagnostic-key union with frozen dedup rules |
-| internal Evidence/index | stable identity-key union; public Evidence rules remain separate |
+| internal facts/index | stable identity-key union; public Evidence rules remain separate |
 | identities/source origins | no allocation or remap; equal key must mean equal full identity |
 | pure caches | excluded only under the D.1 cold/warm/order-invariance proof |
 
@@ -250,6 +448,8 @@ though M1b.0b stores only fixture payloads:
 
 | Side table | Key | Logical payload |
 | --- | --- | --- |
+| `DeclarationFacts` | `DeclarationId`/resolved declaration identity | owner coordinates, signature/contract and boundary facts |
+| `TypePropertiesByType` | `TypeId` | immutable Copy/ownership/dependency/drop/send/sync properties |
 | `ExprFactsTable` | `SemanticNodeId` | candidate-relative type/value/place/dependency facts |
 | `ResolvedCallTable` | `CallSiteId` | `ResolvedCalleeId`, formal identities, route/effect/boundary facts |
 | `ImplicitConversionTable` | `ConversionId` | expression, source/destination `TypeId`, conversion kind |
@@ -263,6 +463,24 @@ though M1b.0b stores only fixture payloads:
 | `LoweringRecipeTable` | `LoweringRecipeId` | logical argument/receiver/default/synthetic recipe |
 | `SourceOriginTable` | derived semantic identity | `SourceOriginId` and parsed/template origin relation |
 
+All tables plus the complete transactional manifest state belong to one
+immutable revision:
+
+```text
+SemanticRevision
+    SemanticRevisionId
+    TransactionalStateManifest snapshot/digest
+    SemanticModel              all side tables above
+    Source-origin/cross-reference index
+
+PublishedSemanticSnapshot
+    shared immutable handle to exactly one SemanticRevision
+```
+
+Root publication prebuilds and validates the complete successor revision, then
+performs one no-throw snapshot-handle swap. Observers pin one handle and may not
+combine tables or manifest state obtained from different revisions.
+
 Default arguments, implicit conversions, generic specializations, callable
 receivers, and synthetic arguments are side-table facts. Preparation may not
 insert arguments, set `ResolvedFn`, write resolved types, or otherwise mutate
@@ -272,6 +490,21 @@ Patch union is deterministic. Repeating an equal entry is idempotent; the same
 key with a different payload rejects before adoption. A lowering recipe is
 logical and contains no LLVM value, slot address, ABI decision, or CodeGen
 state.
+
+The same collision/cross-reference validator is mandatory for candidate child
+to parent, nested child to candidate, branch merge, and root to published
+revision:
+
+- different complete keys coexist even when their hash values collide;
+- same complete key plus equal payload coalesces idempotently;
+- same complete key plus unequal payload rejects atomically;
+- every referenced identity exists in the same successor revision or its
+  immutable base, with the expected identity domain; and
+- no cleanup, lowering recipe, call, type, declaration, or source-origin entry
+  may publish with a dangling/cross-revision identity.
+
+Any failure preserves operation lifecycle, parent/root epoch, complete model
+and manifest digest, and the published snapshot handle.
 
 Diagnostics from every analyzed branch follow the existing diagnostic
 reachability policy and are merged independently from post-branch semantic
@@ -305,6 +538,51 @@ No adapter may reinterpret an implicit signature-driven plan as a fulfilled v1
 caller spelling obligation. Committed transactional evidence requires the
 separately versioned Evidence v2 activation artifact.
 
+## Executable fault-injection matrix
+
+M1b.0b exposes only this finite enum:
+
+```text
+SyntheticFaultPoint
+    None
+    PatchUnion
+    FullKeyCollisionValidation
+    CrossReferenceValidation
+    ImmutableSuccessorBuild
+    ManifestDigest
+    BranchLatticeJoin
+    RejectedResultPrebuild
+    AdoptSuccessorBuild
+    RootSuccessorBuild
+    PreSwap
+```
+
+Injection is an explicit one-operation test parameter owned by the synthetic
+fixture. It is never a global/static flag, environment variable, CLI option,
+or production behavior path.
+
+| Fault point | Required state after injected failure |
+| --- | --- |
+| `PatchUnion` | operation owner stays pre-operation; parent/root epoch, model/manifest digest and published snapshot unchanged |
+| `FullKeyCollisionValidation` | same lifecycle as entry; no entry coalesced/rejected partially; all frames/children unchanged |
+| `CrossReferenceValidation` | same lifecycle as entry; no dangling entry staged; all revision handles/digests unchanged |
+| `ImmutableSuccessorBuild` | no successor swap; caller/child/frame/root states and epochs unchanged |
+| `ManifestDigest` | no lifecycle transition; old digest remains authoritative and complete |
+| `BranchLatticeJoin` | parent remains `Open` at captured epoch; set/frames remain `Sealed`; all digests unchanged |
+| `RejectedResultPrebuild` | selected transaction remains `Open`; rejected-output snapshot and semantic parent remain unchanged |
+| `AdoptSuccessorBuild` | parent remains `Open`; child remains `Validated`; both epochs/digests unchanged |
+| `RootSuccessorBuild` | root remains `Validated`; published revision ID/handle/digest unchanged |
+| `PreSwap` | operation-specific pre-swap states above remain unchanged; no observer sees a new revision/output |
+
+Each fault is exercised at candidate-child, nested-child, branch, and root
+boundaries where applicable. Tests compare complete D.1 manifest, model,
+identity/cache, lifecycle, epoch, journal, diagnostics/internal-fact, and
+published-handle digests—not a selected subset.
+
+The final immutable pointer/handle swap is not a fault point. It must be
+compile-time `noexcept` and tested to expose only the complete old or complete
+new snapshot. There is no injectable or fallible operation after the swap.
+
 ## Synthetic reference implementation boundary
 
 If this contract is accepted, M1b.0b implementation is limited to:
@@ -312,11 +590,14 @@ If this contract is accepted, M1b.0b implementation is limited to:
 - controlled identity builders and the new strong value domains;
 - D.1 lifecycle states/errors with structural transaction/fork identity;
 - fixture-backed `TransactionalStateManifest` and complete digest;
-- typed journal/action validation;
+- immutable validated transfer edges, tagged liability sources/targets, and
+  pending outcome obligations;
+- derived Evaluation/Boundary/Finalization journal/action validation;
 - parent-owned sibling `BranchFrameSet` merge;
-- immutable fixture side-table patches;
-- atomic published-state and rejected-output swaps; and
-- deterministic fault injection before each successor-state swap.
+- immutable fixture side-table patches and single-handle `SemanticRevision`;
+- atomic published-revision and rejected-output swaps; and
+- the finite `SyntheticFaultPoint` matrix before each applicable successor
+  swap.
 
 It remains a `BUILD_TESTING`-only target and does not link `toka_frontend`.
 Production source files may not include its transaction/journal header. The
@@ -333,6 +614,7 @@ The M1b.0b review receipt must include all of the following.
 - raw-key production construction is inaccessible;
 - all new domains reject invalid components and implicit cross-domain use;
 - probe/fork/branch order produces identical identities;
+- argument-plan/transfer-edge/revision identities remain structurally stable;
 - engaged/absent trait substitution and every callee tag remain valid/invalid
   as specified; and
 - projection order changes structured place identity and hash/equality results.
@@ -347,21 +629,51 @@ The M1b.0b review receipt must include all of the following.
 
 ### Typed actions
 
-- success and invalid-lane cases for every required action kind;
+- success and invalid-phase cases for every required action kind;
+- strict Evaluation/Boundary/Finalization ordering;
+- mismatched edge source/destination/mask/liability/dependency/shared-mode
+  actions reject even when each payload is individually valid;
 - unmatched/double `EndLoan` rejection;
+- missing/double `EndBoundaryLoan` and call-region terminal rejection;
 - missing/double temporary cleanup terminal rejection;
 - liability conservation failures;
-- invalid exact-place/mask, init, and outcome transitions; and
+- invalid exact-place/mask and immediate init transitions;
+- pending outcome remain-uninit, resolve, forward, cancel, double resolution,
+  and per-arm cleanup/liability matrices; and
 - nested journal ordering and boundary-intent deferral.
 
 ### Branch merge
 
 - two/three siblings, reversed enumeration, unreachable branch, and implicit
   base/else path;
+- BranchFrameSet/Frame lifecycle and double/terminal operation rejection;
+- stale parent detection before prebuild and immediately before swap;
+- commutative, associative, idempotent, and bottom-identity property tests for
+  every lattice family and compatible partial-join family;
 - place/PAL/dependency lattice results;
 - compatible/incompatible cleanup and init/outcome obligations;
 - equal side-table coalescing and unequal collision rejection; and
 - merge fault injection with unchanged parent/frame digests.
+
+### Semantic revision and side tables
+
+- `DeclarationFacts`, `TypePropertiesByType`, and every elaboration/lowering
+  table publish through one `SemanticRevision` snapshot handle;
+- collision matrices run at child-parent, nested-child, branch, and root
+  publication boundaries;
+- different full keys with forced equal hashes coexist;
+- same key/equal payload coalesces and same key/unequal payload rejects;
+- cross-table reference closure rejects missing or wrong-domain identities;
+- collision/reference failures preserve lifecycle, epoch, complete digest, and
+  published revision handle; and
+- observers cannot combine tables from different revisions.
+
+### Fault matrix
+
+- every applicable `SyntheticFaultPoint` is exercised with the exact expected
+  lifecycle/epoch/digest state above;
+- fault order/repetition is deterministic and has no global residue; and
+- final publication swap is statically and dynamically proven `noexcept`.
 
 ### Rejection and compatibility
 

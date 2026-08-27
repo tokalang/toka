@@ -46,7 +46,7 @@ resolve candidates
     -> plan the receiver and all arguments in one call transaction
     -> validate type, place, PAL, dependency, boundary, and liability facts
     -> adopt the validated child once into the parent transaction
-    -> publish the final SemanticModel after Sema succeeds
+    -> publish one final SemanticRevision snapshot after Sema succeeds
     -> execute validated plans in CodeGen
 ```
 
@@ -238,7 +238,7 @@ AnalysisTransaction
     WorkingPlaceState
     SemanticJournal
     DiagnosticBuffer
-    EvidenceBuffer
+    InternalFactBuffer
     SemanticModelPatch
 ```
 
@@ -272,7 +272,8 @@ The operations are frozen as follows:
   global counter.
 - `validate()` is valid only from `Open`. Success moves to `Validated`;
   rejection returns a separate rejected result and the transaction must be
-  discarded after extracting its buffered diagnostics/rejection Evidence.
+  discarded after extracting its buffered diagnostics/internal rejection
+  facts.
 - `adopt(child)` is valid only when the parent is `Open`, the child is
   `Validated`, the child names that exact parent, and the child's `BaseEpoch`
   equals the parent's current `Epoch`. It consumes the child, changes the child
@@ -304,29 +305,39 @@ the manifest's separately proven pure-cache exception.
 
 The final adoption/publication action is a no-throw immutable-state pointer
 swap (or an equivalently no-throw mechanism). It cannot replay a journal into
-live state entry by entry. Root publication swaps the complete
-`PublishedSemanticState`; no diagnostic, Evidence, semantic-index, model, PAL,
-or place-state consumer can observe a prefix.
+live state entry by entry. Root publication swaps one complete
+`PublishedSemanticSnapshot` handle whose `SemanticRevision` contains manifest
+state and every semantic side table; no diagnostic, internal-fact,
+semantic-index, model, PAL, or place-state consumer can observe a prefix or
+combine revisions.
 
 The journal contains logical actions, not LLVM lowering:
 
 ```text
-InvalidateWhole(place)
-InvalidateProjection(place, cleanup mask)
-InstallBorrow(source, referent, capability)
-TransferDropLiability(source, destination)
-RetainSharedLiability(source, destination)
-RecordDependency(destination, roots)
+InvalidateWhole(edge, place)
+InvalidateProjection(edge, place, cleanup mask)
+InstallBorrow(edge, source, referent, capability)
+TransferDropLiability(edge, liability source, destination)
+RetainSharedLiability(edge, source, destination)
+RecordDependency(edge, destination, roots)
+EndBoundaryLoan(edge, loan)
+FinalizeTemporaryCleanup(edge?, cleanup)
 StageResolvedCall(call id, validated plan)
 ```
 
 `KeepLive` is a validated plan fact, not a journal action, because it changes
 no state.
 
-All PAL, place, drop, dependency, diagnostics, evidence, and semantic-model
-writes go through the transaction. Direct mutation of parent scopes, global
-PAL state, AST resolution caches, evidence singletons, or diagnostic output
-from a probe is forbidden.
+The
+[`M1b.0b Synthetic Transaction Contract`](rc9_m1b_0b_synthetic_transaction_contract.md)
+freezes complete `ValidatedTransferEdge` authority, pending outcome
+obligations, and strict Evaluation/Boundary/Finalization derivation. Journal
+actions cannot independently invent these facts.
+
+All PAL, place, drop, dependency, diagnostics, internal-fact, and
+semantic-model writes go through the transaction. Direct mutation of parent
+scopes, global PAL state, AST resolution caches, evidence singletons, or
+diagnostic output from a probe is forbidden.
 
 The only probe-global writes allowed are pure deterministic interning or
 memoization entries satisfying the cache rule above.
@@ -349,14 +360,15 @@ failure.
 | resolved callees/types, implicit conversions, default arguments and callable receivers | `SemanticModelPatch`/lowering recipe; source AST mutation forbidden |
 | synthetic/default arguments and compiler-created nodes | structurally identified transaction-local lowering recipe/model patch |
 | diagnostics, notes, warnings and warning-dedup state | immutable dedup snapshot plus transaction-local diagnostic buffer |
-| Evidence, todo/conditional facts and semantic index | transaction-local buffers/model patch |
+| internal semantic/rejection facts, todo/conditional facts and semantic index | transaction-local buffers/model patch; public Evidence v1 unavailable |
 | semantic IDs and source origins | structural deterministic construction; no probe-visible allocator |
 | type/declaration interning caches | pure deterministic cache only; otherwise transaction-local patch |
 | generic/lookup/layout convenience caches | classified individually as pure or transaction-local; unclassified cache writes forbidden |
 | CodeGen state, emitted IR and ABI lowering state | unavailable during Sema transactions |
 
 The manifest digest covers the parent and published forms of every row,
-including empty/nonempty buffers, ID/cache state, and warning/evidence dedup.
+including empty/nonempty buffers, ID/cache state, and warning/internal-fact
+dedup.
 `discard()` and failed/stale lifecycle operations must preserve that complete
 digest. Pure-cache entries may be excluded from byte equality only after a
 separate test proves output, identity, and candidate-order invariance with the
@@ -369,19 +381,23 @@ discarded. After resolution either the selected candidate's diagnostics or a
 deterministically ranked no-viable-candidate diagnostic is published.
 
 A rejected selected call may publish an immutable `RejectedAnalysisResult`
-containing its selected diagnostics and rejection-only Evidence after the
-semantic transaction is discarded. That output publication is separate from
-`adopt`/`commit` and is atomic as a complete buffer. It commits no ownership,
-PAL, place, dependency, drop-liability, or authoritative semantic-model
-change. Other error-recovery facts, if needed, live in the same explicitly
-non-authoritative result.
+containing its selected diagnostics and `InternalRejectionFact` values after
+the semantic transaction is discarded. It never contains public Evidence v1.
+That output publication is separate from `adopt`/`commit` and is atomic as a
+complete buffer. It commits no ownership, PAL, place, dependency,
+drop-liability, or authoritative semantic-model change. Other error-recovery
+facts, if needed, live in the same explicitly non-authoritative result.
+
+RC8 legacy analysis remains the sole producer of cede-obligation Evidence v1
+throughout M1b pre-activation work. Transactional public evidence is unavailable
+until the separately versioned Evidence v2 artifact is accepted and activated.
 
 ### Nested and speculative analysis
 
 - A nested call validates into the current transaction, not global state.
 - Closure capture precompute returns an explicit `CaptureSummary`; its
   transaction is discarded and cannot retain `ResolvedFn`, synthetic
-  receivers, RootIDs, diagnostics, or evidence.
+  receivers, RootIDs, diagnostics, internal facts, or public evidence.
 - Overload and trait candidates each use sibling transactions from the same
   snapshot.
 - Generic instance declaration/model entries remain local to the selected
@@ -421,9 +437,9 @@ Candidate viability/type ranking runs while sibling transactions remain
 selected child performs whole-call validation and transitions once from
 `Open` to `Validated`.
 
-### Evaluation effects versus boundary actions
+### Evaluation, boundary, and finalization phases
 
-The candidate transaction maintains two logical lanes:
+The candidate transaction maintains three logical phases:
 
 ```text
 EvaluationJournal
@@ -433,6 +449,9 @@ EvaluationJournal
 BoundaryIntents
     actions introduced by the selected formal/receiver boundary
     (move/copy/borrow, source invalidation, dependency handoff, drop liability)
+
+FinalizationIntents
+    end call-region loans, finish/disarm full-expression cleanup, end region
 ```
 
 Actual expressions are prepared in source order, and their evaluation effects
@@ -441,14 +460,15 @@ boundary intents do not invalidate or borrow their source place while later
 actuals are being prepared. Whole-call validation considers all boundary
 intents, expression accesses, receiver aliases, and the final evaluation
 working state together; conflicts reject the call independent of partial
-parent mutation.
+parent mutation. Boundary-installed call loans and transferred/untransferred
+temporary cleanup receive mandatory Finalization intents at the same time.
 
 A nested call is itself validated and adopted into the candidate transaction
 as an evaluation effect, so its already-complete source transition is visible
 to later outer arguments. After whole-call validation the ordered journal
-contains source-order evaluation effects followed by the admitted outer call
-boundary transition. This separation is mandatory; an implementation may not
-model an outer formal move by eagerly mutating global or candidate working
+contains source-order evaluation effects, the admitted outer boundary, and
+mandatory Finalization. This separation is mandatory; an implementation may
+not model an outer formal move by eagerly mutating global or candidate working
 place state during argument preparation.
 
 ## Whole-call planning
@@ -498,7 +518,8 @@ runtime argument evaluation or promise runtime rollback.
 
 ## SemanticModel handoff
 
-Successful Sema publishes immutable side tables keyed by semantic identity:
+Successful Sema publishes one immutable `SemanticRevision` containing manifest
+state plus side tables keyed by semantic identity:
 
 ```text
 SemanticModel
@@ -510,13 +531,17 @@ SemanticModel
     SourceOrigins
 ```
 
+All consumers pin the same revision snapshot handle. A table cannot be
+published, observed, or replaced independently of the others.
+
 AST nodes remain source/lowering structure. They are not the authority for a
 resolved formal, transfer decision, PAL transition, or drop liability.
 Cloning an AST cannot copy a validated plan accidentally because plans live in
 the model under the clone's distinct semantic node identity.
 
-Evidence derives from the same model. It must not rerun source-text or type
-classification.
+Future transactional public Evidence v2 derives from the same model. It must
+not rerun source-text or type classification; frozen Evidence v1 remains on
+the RC8 legacy producer.
 
 ## CodeGen contract
 
@@ -591,8 +616,9 @@ no transaction type or production Sema/Evidence/CodeGen include.
 
 ### M1b.1 — transactional probe infrastructure
 
-- Route diagnostics, evidence, PAL/place deltas, and semantic-model patches
-  through a transaction for call preparation.
+- Route diagnostics, internal facts, PAL/place deltas, and semantic-model
+  patches through a transaction for call preparation. Public Evidence v1 stays
+  on the legacy path.
 - Move closure precompute and candidate probing to discardable children.
 - Do not activate call ownership changes.
 
@@ -636,15 +662,16 @@ Before any live Sema subsystem can consume the transaction API, synthetic
 tests must prove:
 
 1. nonempty child discard leaves parent, root publication, model, IDs, caches,
-   diagnostics, Evidence, and manifest digest unchanged;
+   diagnostics, internal facts, and manifest digest unchanged;
 2. nonempty child adopt transfers its complete patch exactly once;
 3. nested validated children adopt bottom-up without exposing an intermediate
    published state;
 4. stale child adoption, wrong-parent adoption, child commit, double adopt,
    double commit, double discard, and writes after a terminal state fail
    closed;
-5. a diagnostics/Evidence-only rejected result can publish selected
-   diagnostics separately while its semantic transaction is discarded;
+5. a diagnostics/internal-facts-only rejected result can publish selected
+   diagnostics separately while its semantic transaction is discarded and
+   public Evidence v1 remains absent;
 6. fork/probe/discard order produces identical structural identities and
    final model digest;
 7. injected failure during successor-state construction changes no lifecycle
@@ -661,7 +688,8 @@ M1b.5 implementation may not begin until one revision proves all of these:
 
 1. Every preparation and candidate path runs inside a transaction.
 2. Discard restores an identical digest of PAL, place state, scope ownership,
-   dependency facts, diagnostics, evidence, and semantic-model contents.
+   dependency facts, diagnostics, internal facts, and semantic-model contents;
+   public Evidence v1 remains legacy-produced and byte-identical.
 3. Closure precompute and repeated probes produce no AST or identity mutation.
 4. The admitted direct-call subset has complete type, exact-place, dependency,
    boundary, and drop-liability facts; no pending fact grants authority.
