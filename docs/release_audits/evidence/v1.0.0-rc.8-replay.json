@@ -57,6 +57,14 @@
       "target": "macos-arm64"
     }
   ],
+  "promotion": {
+    "public_manifest_sha256": "1ac41b2f68dd3e7e33dcb3dd459fa8ed18ab1caf503a1a4597d8b2f261465cdc",
+    "public_manifest_unauthenticated_download": "pass",
+    "public_url": "https://github.com/tokalang/toka/releases/tag/v1.0.0-rc.8",
+    "published_at": "2026-08-27T02:45:56Z",
+    "result": "pass",
+    "run_id": 33034284678
+  },
   "qualification_run_id": 32997707636,
   "qualification_summary_sha256": "02e6aab0f5376d429006df4a63a3a1bc3432b4add92687caaecd7f29cd7ab5fb",
   "result": "pass",
