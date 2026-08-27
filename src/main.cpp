@@ -14,6 +14,7 @@
 #include "toka/CodeGen.h"
 #include "toka/AssignmentStats.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/DirectCallObservationAudit.h"
 #include "toka/HandleGrammarAudit.h"
 #include "toka/HandleSurfaceStats.h"
 #include "toka/Lexer.h"
@@ -129,6 +130,8 @@ void printHelp() {
       << "  --semantic-evidence=json        Emit public semantic evidence v1\n"
       << "  --cede-obligations=json         Emit cede obligation evidence v1\n"
       << "  --call-transfer-shadow=json     Emit audit-only RC9 call transfer plans\n"
+      << "  --m1b-d3-direct-call-observation=json\n"
+      << "                                  Emit Shadow-only D.3 direct-call observations\n"
       << "  --capabilities=json             Emit H/P call capability pilot v1\n"
       << "  --todo-goals=json               Emit typed-todo goals v1\n"
       << "  --conditional-facts=json        Emit typed-todo conditional facts v1\n"
@@ -182,6 +185,20 @@ private:
   bool &Capabilities;
   bool &TodoGoals;
   bool &ConditionalFacts;
+};
+
+class D3ObservationDumpGuard {
+public:
+  D3ObservationDumpGuard(bool &enabled, toka::D3ObservationSession &session)
+      : Enabled(enabled), Session(session) {}
+  ~D3ObservationDumpGuard() {
+    if (Enabled)
+      Session.dumpJSON(std::cout);
+  }
+
+private:
+  bool &Enabled;
+  toka::D3ObservationSession &Session;
 };
 
 class HandleGrammarAuditFlushGuard {
@@ -757,6 +774,8 @@ int main(int argc, char **argv) {
   bool dumpSemanticEvidence = false;
   bool dumpCedeObligations = false;
   bool dumpCallTransferShadow = false;
+  bool dumpD3DirectCallObservation = false;
+  bool emitD3DirectCallObservation = false;
   bool dumpCapabilities = false;
   bool dumpTodoGoals = false;
   bool dumpConditionalFacts = false;
@@ -780,6 +799,9 @@ int main(int argc, char **argv) {
   bool experimentalNoCapture = false;
   bool experimentalReadOnly = false;
   bool machineFailureDiagnostics = false;
+  toka::D3ObservationSession d3ObservationSession;
+  D3ObservationDumpGuard d3ObservationGuard(emitD3DirectCallObservation,
+                                             d3ObservationSession);
   SemanticEvidenceDumpGuard semanticEvidenceGuard(
       dumpCallTransferShadow, dumpCedeObligations, dumpCapabilities,
       dumpTodoGoals, dumpConditionalFacts);
@@ -888,6 +910,8 @@ int main(int argc, char **argv) {
       dumpCedeObligations = true;
     } else if (arg == "--call-transfer-shadow=json") {
       dumpCallTransferShadow = true;
+    } else if (arg == "--m1b-d3-direct-call-observation=json") {
+      dumpD3DirectCallObservation = true;
     } else if (arg == "--capabilities=json") {
       dumpCapabilities = true;
     } else if (arg == "--todo-goals=json") {
@@ -1031,6 +1055,8 @@ int main(int argc, char **argv) {
 
   if (dumpCallTransferShadow)
     checkOnly = true;
+  if (dumpD3DirectCallObservation)
+    checkOnly = true;
   if (compileOnly) {
     emitInterface = true;
   }
@@ -1044,6 +1070,22 @@ int main(int argc, char **argv) {
   bool emitTrustedMemoryEvidence =
       compileOnly && emitInterface && configuredBuildDir &&
       configuredBuildDir[0] != '\0';
+
+  if (dumpD3DirectCallObservation &&
+      (structuredDiagnostics || g_JsonDiagnostics || dumpDependencies ||
+       dumpAssignmentStats || dumpHandleSurfaceStats || dumpSemanticEvidence ||
+       dumpCedeObligations || dumpCallTransferShadow || dumpCapabilities ||
+       dumpTodoGoals || dumpConditionalFacts || dumpMemorySummaries ||
+       dumpMemoryContracts || dumpEncapSlice1Facts || dumpSemanticIndex ||
+       dumpSemanticContext || !semanticQuery.empty() || runTopologyEval ||
+       !explainCode.empty())) {
+    llvm::errs()
+        << "--m1b-d3-direct-call-observation=json cannot be combined with "
+           "another JSON, semantic, or evaluation output mode\n";
+    structuredDiagnostics = false;
+    dumpD3DirectCallObservation = false;
+    return 1;
+  }
 
   if (dumpCallTransferShadow &&
       (structuredDiagnostics || g_JsonDiagnostics || dumpDependencies ||
@@ -1150,6 +1192,7 @@ int main(int argc, char **argv) {
                     "semantic output mode\n";
     return 1;
   }
+  emitD3DirectCallObservation = dumpD3DirectCallObservation;
   toka::SemanticEvidence::enable(dumpSemanticEvidence || dumpCedeObligations ||
                                  dumpCallTransferShadow || dumpCapabilities ||
                                  dumpTodoGoals || dumpConditionalFacts);
@@ -1445,6 +1488,8 @@ int main(int argc, char **argv) {
 
   toka::Sema sema;
   sema.setBorrowCheckEnabled(!disableBorrowCheck);
+  sema.setDirectCallObservationSession(
+      dumpD3DirectCallObservation ? &d3ObservationSession : nullptr);
 
   // Pass 1: Declare all global symbols across all modules to build the global module map
   for (const auto &ast : astModules) {

@@ -18,6 +18,8 @@ using toka::ResolvedCalleeId;
 using toka::ResolvedCalleeKind;
 using toka::RootSymbolId;
 using toka::SemanticModel;
+using toka::SemanticIdentityBuilder;
+using toka::SemanticIdentityError;
 using toka::SemanticNodeId;
 using toka::SubstitutionId;
 
@@ -34,9 +36,16 @@ static_assert(!std::is_constructible_v<RootSymbolId, FieldId>);
 static_assert(std::is_empty_v<SemanticModel>);
 
 int main() {
-  const auto node = SemanticNodeId::fromCanonicalKey("unit:a;node:7");
-  const auto sameNode = SemanticNodeId::fromCanonicalKey("unit:a;node:7");
-  const auto otherNode = SemanticNodeId::fromCanonicalKey("unit:a;node:8");
+  const auto nodeResult =
+      SemanticIdentityBuilder::semanticNode("unit:a", "node:7");
+  const auto sameNodeResult =
+      SemanticIdentityBuilder::semanticNode("unit:a", "node:7");
+  const auto otherNodeResult =
+      SemanticIdentityBuilder::semanticNode("unit:a", "node:8");
+  CHECK(nodeResult && sameNodeResult && otherNodeResult);
+  const auto node = nodeResult.value();
+  const auto sameNode = sameNodeResult.value();
+  const auto otherNode = otherNodeResult.value();
   CHECK(node.valid());
   CHECK(node == sameNode);
   CHECK(node != otherNode);
@@ -49,14 +58,25 @@ int main() {
   nodes.insert(otherNode);
   CHECK(nodes.size() == 2);
 
-  const auto declaration =
-      DeclarationId::fromCanonicalKey("crate:std;module:thread;fn:spawn");
-  const auto substitution = SubstitutionId::fromCanonicalKey("T=i32");
-  const auto trait =
-      DeclarationId::fromCanonicalKey("crate:core;trait:Callable");
-  const auto slot = MethodSlotId::fromCanonicalKey("slot:call");
-  const auto contract = CallableContractId::fromCanonicalKey("fn(i32)->i32");
-  const auto langItem = LangItemId::fromCanonicalKey("thread_handoff");
+  const auto declarationResult = SemanticIdentityBuilder::declaration(
+      "crate:std;module:thread", "fn:spawn");
+  const auto traitResult = SemanticIdentityBuilder::declaration(
+      "crate:core", "trait:Callable");
+  CHECK(declarationResult && traitResult);
+  const auto declaration = declarationResult.value();
+  const auto trait = traitResult.value();
+  const auto substitutionResult =
+      SemanticIdentityBuilder::substitution(declaration, "T=i32");
+  const auto slotResult = SemanticIdentityBuilder::methodSlot(trait, "call");
+  const auto contractResult = SemanticIdentityBuilder::callableContract(
+      "crate:core", "fn(i32)->i32");
+  const auto langItemResult =
+      SemanticIdentityBuilder::langItem("crate:core", "thread_handoff");
+  CHECK(substitutionResult && slotResult && contractResult && langItemResult);
+  const auto substitution = substitutionResult.value();
+  const auto slot = slotResult.value();
+  const auto contract = contractResult.value();
+  const auto langItem = langItemResult.value();
 
   const auto direct = ResolvedCalleeId::direct(declaration);
   const auto directAgain = ResolvedCalleeId::direct(declaration);
@@ -91,8 +111,13 @@ int main() {
   std::set<ResolvedCalleeId> orderedCallees(callees.begin(), callees.end());
   CHECK(orderedCallees.size() == callees.size());
 
-  const auto root = RootSymbolId::fromCanonicalKey("scope:main;binding:value");
-  const auto field = FieldId::fromCanonicalKey("shape:Pair;field:right");
+  const auto rootResult =
+      SemanticIdentityBuilder::rootSymbol(declaration, "binding:value");
+  const auto fieldResult =
+      SemanticIdentityBuilder::field(declaration, "shape:Pair;field:right");
+  CHECK(rootResult && fieldResult);
+  const auto root = rootResult.value();
+  const auto field = fieldResult.value();
   const auto fieldProjection = PlaceProjection::field(field);
   const auto constantProjection = PlaceProjection::constantIndex(3);
   const auto dynamicProjection = PlaceProjection::dynamicIndex(node);
@@ -118,6 +143,19 @@ int main() {
   std::unordered_set<PlaceId> places = {whole, projected, sameProjected,
                                         dynamic};
   CHECK(places.size() == 3);
+
+  const auto emptyOrigin =
+      SemanticIdentityBuilder::semanticNode("", "node:1");
+  const auto emptyWitness =
+      SemanticIdentityBuilder::semanticNode("unit:a", "");
+  const auto invalidParent =
+      SemanticIdentityBuilder::rootSymbol(DeclarationId{}, "binding:value");
+  CHECK(!emptyOrigin &&
+        emptyOrigin.error() == SemanticIdentityError::EmptyOrigin);
+  CHECK(!emptyWitness &&
+        emptyWitness.error() == SemanticIdentityError::EmptyWitness);
+  CHECK(!invalidParent &&
+        invalidParent.error() == SemanticIdentityError::InvalidParent);
 
   constexpr SemanticModel model;
   static_assert(model.empty());

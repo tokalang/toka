@@ -8,6 +8,7 @@
 #pragma once
 
 #include "toka/SourceLocation.h"
+#include <cstddef>
 #include <cstdint>
 #include <iosfwd>
 #include <string>
@@ -219,6 +220,31 @@ struct ConditionalFactRecord {
   bool operator==(const ConditionalFactRecord &rhs) const;
 };
 
+struct SemanticEvidenceAuditState {
+  bool Enabled = false;
+  bool CallTransferShadowEnabled = false;
+  size_t DecisionCount = 0;
+  size_t CedeObligationCount = 0;
+  size_t CallTransferShadowCount = 0;
+  size_t CapabilityCount = 0;
+  size_t TodoGoalCount = 0;
+  size_t ConditionalFactCount = 0;
+
+  bool operator==(const SemanticEvidenceAuditState &rhs) const {
+    return Enabled == rhs.Enabled &&
+           CallTransferShadowEnabled == rhs.CallTransferShadowEnabled &&
+           DecisionCount == rhs.DecisionCount &&
+           CedeObligationCount == rhs.CedeObligationCount &&
+           CallTransferShadowCount == rhs.CallTransferShadowCount &&
+           CapabilityCount == rhs.CapabilityCount &&
+           TodoGoalCount == rhs.TodoGoalCount &&
+           ConditionalFactCount == rhs.ConditionalFactCount;
+  }
+  bool operator!=(const SemanticEvidenceAuditState &rhs) const {
+    return !(*this == rhs);
+  }
+};
+
 class SemanticEvidence {
 public:
   static constexpr unsigned SchemaVersion = 1;
@@ -227,6 +253,7 @@ public:
   static bool isEnabled();
   static void enableCallTransferShadow(bool value);
   static bool isCallTransferShadowEnabled();
+  static SemanticEvidenceAuditState auditState();
   static void reset();
   static void record(SemanticRuleID rule, SemanticOperation operation,
                      SemanticDecision decision, SemanticReason reason,

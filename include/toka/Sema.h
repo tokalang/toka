@@ -16,6 +16,7 @@
 #include "toka/AST.h"
 #include "toka/AccessPath.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/DirectCallObservationAudit.h"
 #include "toka/PlaceState.h"
 #include "toka/Type.h"
 #include "toka/PAL_Checker.h"
@@ -352,6 +353,10 @@ public:
     PALCheckerState.IsEnabled = enabled;
   }
 
+  void setDirectCallObservationSession(D3ObservationSession *session) {
+    m_D3ObservationSession = session;
+  }
+
   bool hasErrors() const { return HasError; }
 
   const std::map<std::string, std::shared_ptr<toka::Type>>& getParenthesizedRecordTypes() const {
@@ -568,6 +573,17 @@ private:
   void recordSlice5InterfaceFacts(Module &M);
   bool proveSlice4Copy(const ShapeDecl *Shape);
   bool proveSlice4CopyType(std::shared_ptr<toka::Type> Type);
+  D3CopyProof lookupD3CopyProof(const std::shared_ptr<toka::Type> &Type) const;
+  D3CopyProof lookupD3CopyProofImpl(
+      const std::shared_ptr<toka::Type> &Type,
+      std::set<const ShapeDecl *> &Visiting) const;
+  D3CopyProof lookupD3ShapeCopyProof(
+      const ShapeDecl *Shape, std::set<const ShapeDecl *> &Visiting) const;
+  D3TypeCategory
+  classifyD3TypeCategory(const std::shared_ptr<toka::Type> &Type) const;
+  D3ObservationSentinel captureD3ObservationSentinel(
+      CallExpr *Call, Expr *Actual) const;
+  D3SourceLocation makeD3SourceLocation(SourceLocation Location) const;
   Slice4CopyRecipe deriveSlice4CopyRecipe(const ShapeDecl *Shape);
   Slice4CopyRecipe deriveSlice4CopyRecipeType(
       std::shared_ptr<toka::Type> Type, const ShapeDecl *Context);
@@ -621,6 +637,7 @@ private:
   bool m_SuppressRejectedAliasInvalidation = false;
   bool m_IsStartingTask = false; // Enforce the strict detached-task boundary.
   const Expr *m_StartBoundaryRoot = nullptr;
+  D3ObservationSession *m_D3ObservationSession = nullptr;
 
   bool m_AllowPermissionSuffix = false; // [NEW] Track explicit method call context
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity

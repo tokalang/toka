@@ -164,6 +164,8 @@ if(BUILD_TESTING)
         tests/HandleGrammarClassifierTest.cpp)
     add_executable(toka_semantic_model_scaffold
         tests/SemanticModelScaffold.cpp)
+    add_executable(toka_direct_call_observation
+        tests/DirectCallObservation.cpp)
     target_include_directories(toka_typesyntax_canonicalization PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_canonical_declaration_witness PRIVATE
@@ -181,6 +183,8 @@ if(BUILD_TESTING)
     target_include_directories(toka_handle_grammar_classifier PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_semantic_model_scaffold PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(toka_direct_call_observation PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     add_test(NAME toka_typesyntax_canonicalization
         COMMAND toka_typesyntax_canonicalization)
@@ -200,6 +204,8 @@ if(BUILD_TESTING)
         COMMAND toka_handle_grammar_classifier)
     add_test(NAME toka_semantic_model_scaffold
         COMMAND toka_semantic_model_scaffold)
+    add_test(NAME toka_direct_call_observation
+        COMMAND toka_direct_call_observation)
 endif()
 
 add_subdirectory(src)
@@ -212,11 +218,16 @@ if(BUILD_TESTING)
     target_link_libraries(toka_semantic_dependency_closure PRIVATE toka_frontend)
     target_link_libraries(toka_nominal_shape_id PRIVATE toka_frontend)
     target_link_libraries(toka_handle_grammar_classifier PRIVATE toka_frontend)
+    target_link_libraries(toka_direct_call_observation PRIVATE toka_frontend)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(NAME toka_call_transfer_shadow_m1
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_call_transfer_shadow_m1.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_direct_call_observation_d3a
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_direct_call_observation_d3a.py
                 --build-dir ${CMAKE_BINARY_DIR})
     endif()
 endif()

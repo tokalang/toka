@@ -15,6 +15,7 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleGrammarAudit.h"
 #include "toka/Parser.h"
+#include "toka/PathUtils.h"
 #include "toka/SemanticEvidence.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
@@ -107,6 +108,69 @@ static VariableExpr *findVariableExpr(Expr *E) {
   if (auto *Unary = dynamic_cast<UnaryExpr *>(E))
     return findVariableExpr(Unary->RHS.get());
   return nullptr;
+}
+
+static Expr *d3UnwrapSourceExpr(Expr *expression) {
+  Expr *source = expression;
+  while (source) {
+    if (auto *cede = dynamic_cast<CedeExpr *>(source))
+      source = cede->Value.get();
+    else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source))
+      source = unsafe->Expression.get();
+    else if (auto *postfix = dynamic_cast<PostfixExpr *>(source);
+             postfix && isShadowTransparentPostfix(postfix->Op))
+      source = postfix->LHS.get();
+    else
+      break;
+  }
+  return source;
+}
+
+static CallExpr *d3FindNestedCall(Expr *expression) {
+  Expr *source = expression;
+  while (source) {
+    if (auto *cede = dynamic_cast<CedeExpr *>(source))
+      source = cede->Value.get();
+    else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source))
+      source = unsafe->Expression.get();
+    else if (auto *pass = dynamic_cast<PassExpr *>(source))
+      source = pass->Value.get();
+    else if (auto *cast = dynamic_cast<CastExpr *>(source))
+      source = cast->Expression.get();
+    else if (auto *unary = dynamic_cast<UnaryExpr *>(source))
+      source = unary->RHS.get();
+    else if (auto *postfix = dynamic_cast<PostfixExpr *>(source);
+             postfix && isShadowTransparentPostfix(postfix->Op))
+      source = postfix->LHS.get();
+    else
+      break;
+  }
+  return dynamic_cast<CallExpr *>(source);
+}
+
+static std::string d3PlaceStateName(PlaceStateFact fact) {
+  std::string result;
+  auto append = [&](const char *name) {
+    if (!result.empty())
+      result += '|';
+    result += name;
+  };
+  if (fact.contains(PlaceState::Never))
+    append("Never");
+  if (fact.contains(PlaceState::Live))
+    append("Live");
+  if (fact.contains(PlaceState::Moved))
+    append("Moved");
+  return result.empty() ? "Bottom" : result;
+}
+
+static const char *d3PALStateName(PathState state) {
+  switch (state) {
+  case PathState::Free: return "Free";
+  case PathState::BorrowedShared: return "BorrowedShared";
+  case PathState::BorrowedMut: return "BorrowedMut";
+  }
+  return "Free";
 }
 
 static bool isMayZeroRawCedeSource(const Expr *expr) {
@@ -282,6 +346,196 @@ Sema::classifyShadowExecutionBoundary(FunctionDecl *function) const {
       identity->Name == "thread_spawn_with_state")
     return CallExecutionBoundary::ThreadHandoff;
   return CallExecutionBoundary::None;
+}
+
+D3SourceLocation Sema::makeD3SourceLocation(SourceLocation location) const {
+  D3SourceLocation result;
+  if (!location.isValid() || !DiagnosticEngine::SrcMgr)
+    return result;
+  auto full = DiagnosticEngine::SrcMgr->getFullSourceLoc(location);
+  if (!full.isValid())
+    return result;
+  result.File = PathUtils::canonicalize(full.FileName);
+  result.Line = full.Line;
+  result.Column = full.Column;
+  return result;
+}
+
+D3CopyProof Sema::lookupD3ShapeCopyProof(
+    const ShapeDecl *shape, std::set<const ShapeDecl *> &visiting) const {
+  if (!shape || !shape->GenericParams.empty())
+    return D3CopyProof::Indeterminate;
+  if (!visiting.insert(shape).second)
+    return D3CopyProof::Indeterminate;
+  if (shape->HasExplicitDrop ||
+      (Slice2PolicyMap.count(shape) != 0 &&
+       Slice4CopyRequests.count(shape) == 0)) {
+    visiting.erase(shape);
+    return D3CopyProof::ProvenNonCopy;
+  }
+
+  bool indeterminate = false;
+  auto combineMember = [&](const ShapeMember &member) {
+    if (!member.ResolvedType) {
+      indeterminate = true;
+      return true;
+    }
+    D3CopyProof proof = lookupD3CopyProofImpl(member.ResolvedType, visiting);
+    if (proof == D3CopyProof::ProvenNonCopy)
+      return false;
+    if (proof == D3CopyProof::Indeterminate)
+      indeterminate = true;
+    return true;
+  };
+  for (const auto &member : shape->Members) {
+    if (shape->Kind != ShapeKind::Enum && !combineMember(member)) {
+      visiting.erase(shape);
+      return D3CopyProof::ProvenNonCopy;
+    }
+    for (const auto &submember : member.SubMembers) {
+      if (!combineMember(submember)) {
+        visiting.erase(shape);
+        return D3CopyProof::ProvenNonCopy;
+      }
+    }
+  }
+  visiting.erase(shape);
+  return indeterminate ? D3CopyProof::Indeterminate
+                       : D3CopyProof::ProvenCopy;
+}
+
+D3CopyProof
+Sema::lookupD3CopyProof(const std::shared_ptr<toka::Type> &type) const {
+  std::set<const ShapeDecl *> visiting;
+  return lookupD3CopyProofImpl(type, visiting);
+}
+
+D3CopyProof Sema::lookupD3CopyProofImpl(
+    const std::shared_ptr<toka::Type> &type,
+    std::set<const ShapeDecl *> &visiting) const {
+  if (!type || type->isUnknown())
+    return D3CopyProof::Indeterminate;
+  if (type->isUniquePtr() || type->isSharedPtr())
+    return D3CopyProof::ProvenNonCopy;
+  if (type->isRawPointer() || type->isReference() || type->isFunction() ||
+      type->isDynFn() || type->isVoid() || type->isUnit() ||
+      type->isBoolean() || type->isInteger() || type->isFloatingPoint())
+    return D3CopyProof::ProvenCopy;
+  if (type->isArray())
+    return lookupD3CopyProofImpl(type->getArrayElementType(), visiting);
+  if (!type->isShape())
+    return D3CopyProof::Indeterminate;
+  auto shapeType = std::dynamic_pointer_cast<ShapeType>(type);
+  if (!shapeType || !shapeType->Decl)
+    return D3CopyProof::Indeterminate;
+  return lookupD3ShapeCopyProof(shapeType->Decl, visiting);
+}
+
+D3TypeCategory Sema::classifyD3TypeCategory(
+    const std::shared_ptr<toka::Type> &type) const {
+  if (!type || type->isUnknown())
+    return D3TypeCategory::Indeterminate;
+  if (type->isSharedPtr())
+    return D3TypeCategory::SharedIdentity;
+  if (type->isRawPointer() || type->isReference())
+    return D3TypeCategory::RawOrReferenceIdentity;
+  if (type->isFunction() || type->isDynFn())
+    return D3TypeCategory::FunctionOrDynIdentity;
+  if (type->isUniquePtr())
+    return D3TypeCategory::OwnedIdentity;
+  if (type->isBoolean() || type->isInteger() || type->isFloatingPoint() ||
+      type->isUnit())
+    return D3TypeCategory::Scalar;
+  if (type->isShape()) {
+    std::string soul = Type::stripMorphology(type->getSoulName());
+    if (size_t scope = soul.rfind("::"); scope != std::string::npos)
+      soul = soul.substr(scope + 2);
+    if (soul == "str" || soul == "bytes" || soul == "cstr" ||
+        soul == "ViewStrSplitIterator" || soul == "ViewStrLinesIterator")
+      return D3TypeCategory::BorrowedAggregate;
+    return D3TypeCategory::Aggregate;
+  }
+  if (type->isArray())
+    return D3TypeCategory::Aggregate;
+  return D3TypeCategory::Unsupported;
+}
+
+D3ObservationSentinel Sema::captureD3ObservationSentinel(
+    CallExpr *call, Expr *actual) const {
+  D3ObservationSentinel sentinel;
+  sentinel.CallNodeIdentity = reinterpret_cast<uintptr_t>(call);
+  sentinel.ActualNodeIdentity = reinterpret_cast<uintptr_t>(actual);
+  sentinel.ResolvedFunctionIdentity =
+      reinterpret_cast<uintptr_t>(call ? call->ResolvedFn : nullptr);
+  sentinel.ArgumentCount = call ? call->Args.size() : 0;
+  sentinel.Callee = call ? call->Callee : "";
+  sentinel.ActualSyntax = actual ? actual->toString() : "";
+  sentinel.ActualResolvedType =
+      actual && actual->ResolvedType ? actual->ResolvedType->canonicalIdentity()
+                                     : "";
+
+  Expr *source = d3UnwrapSourceExpr(actual);
+  if (auto *variable = dynamic_cast<VariableExpr *>(source)) {
+    SymbolInfo *info = nullptr;
+    std::string actualName = variable->Name;
+    if (CurrentScope && CurrentScope->findVariableWithDeref(
+                            variable->Name, info, actualName) &&
+        info) {
+      sentinel.SourceSymbolId = info->SymbolID;
+      sentinel.SourceIdentity = actualName;
+      sentinel.SourcePlaceState = d3PlaceStateName(info->placeFact());
+      sentinel.SourceInitMask = info->InitMask;
+      sentinel.SourceMoved = info->Moved;
+      sentinel.SourceUsed = info->HasBeenUsed;
+      sentinel.SourceMutated = info->HasBeenMutated;
+      sentinel.SourcePlaceAlias = info->IsPlaceAlias;
+      sentinel.SourceBorrowedPath = info->BorrowedPath.toDebugString();
+      sentinel.SourceDependencies.assign(info->LifeDependencySet.begin(),
+                                         info->LifeDependencySet.end());
+      AccessPath path;
+      path.RootID = info->SymbolID;
+      path.RootName = actualName;
+      path.RootLoc = info->DeclLoc;
+      sentinel.PALState = d3PALStateName(PALCheckerState.getState(path));
+    }
+  }
+  if (sentinel.SourcePlaceState.empty())
+    sentinel.SourcePlaceState = "NoSourcePlace";
+  if (sentinel.PALState.empty())
+    sentinel.PALState = "Free";
+
+  sentinel.DiagnosticErrorCount = DiagnosticEngine::ErrorCount;
+  for (const auto &record : DiagnosticEngine::records())
+    sentinel.DiagnosticCodes.push_back(record.Code);
+  sentinel.Evidence = SemanticEvidence::auditState();
+  sentinel.Slice4CopyProofCount = Slice4CopyProofs.size();
+  sentinel.CopyProofFactCount = CopyProofMap.size();
+  auto resolved = actual ? actual->ResolvedType : nullptr;
+  auto shapeType = std::dynamic_pointer_cast<ShapeType>(resolved);
+  if (shapeType && shapeType->Decl) {
+    auto proof = Slice4CopyProofs.find(shapeType->Decl);
+    if (proof == Slice4CopyProofs.end()) {
+      sentinel.ReferencedCopyProof = "Missing";
+    } else {
+      switch (proof->second) {
+      case Slice1CopyProof::Unknown:
+        sentinel.ReferencedCopyProof = "Unknown";
+        break;
+      case Slice1CopyProof::ProvenCopy:
+        sentinel.ReferencedCopyProof = "ProvenCopy";
+        break;
+      case Slice1CopyProof::ProvenNonCopy:
+        sentinel.ReferencedCopyProof = "ProvenNonCopy";
+        break;
+      }
+    }
+  }
+  sentinel.LastDependencies.assign(m_LastLifeDependencies.begin(),
+                                   m_LastLifeDependencies.end());
+  sentinel.PrecomputingCaptures = m_IsPrecomputingCaptures;
+  sentinel.ExpectedCedeTransfer = m_ExpectedCedeTransfer;
+  sentinel.AllowPermissionSuffix = m_AllowPermissionSuffix;
+  return sentinel;
 }
 
 CallTransferPlan Sema::buildShadowCallTransferPlan(
@@ -1416,6 +1670,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   FunctionDecl *Fn = nullptr;
   ExternDecl *Ext = nullptr;
   ShapeDecl *Sh = nullptr; // Constructor
+  bool d3CandidateProbeObserved = false;
 
   // A generic body retains its type-parameter spelling and resolves it
   // through the exact alias installed by the instantiation scope.  Constructor
@@ -1440,6 +1695,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   }
 
   auto functionAcceptsCall = [&](FunctionDecl *Candidate) -> bool {
+    d3CandidateProbeObserved = true;
     if (!Candidate) {
       return false;
     }
@@ -2773,6 +3029,145 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     return owner->second->Name + "::" + type->toString();
   };
 
+  std::optional<D3CallObservationInput> d3ObservationInput;
+  std::optional<D3ObservationScope> d3ObservationScope;
+  D3ObservationSentinel d3PreCaptureBefore;
+  bool d3PreCaptureUnchanged = false;
+  std::vector<std::string> d3PreCaptureDifferences;
+  size_t d3DiagnosticStart = 0;
+  std::shared_ptr<toka::Type> d3LegacyArgumentType;
+  bool d3LegacyTypeMismatch = false;
+
+  if (m_D3ObservationSession) {
+    std::optional<D3GateExclusionReason> gateExclusion;
+    if (m_D3ObservationSession->hasActiveObservation()) {
+      gateExclusion = D3GateExclusionReason::NestedObservationContext;
+    } else if (m_IsPrecomputingCaptures) {
+      gateExclusion = D3GateExclusionReason::NonFinalSemanticTraversal;
+    } else if (!Fn || Ext || !Fn->Loc.isValid()) {
+      gateExclusion = D3GateExclusionReason::WrongRoute;
+    } else if (d3CandidateProbeObserved ||
+               std::any_of(precheckedArgTypes.begin(), precheckedArgTypes.end(),
+                           [](const auto &type) { return type != nullptr; })) {
+      gateExclusion =
+          D3GateExclusionReason::CandidateProbeOrSpeculativeContext;
+    } else {
+      auto owner = DeclarationLexicalScopes.find(Fn);
+      ModuleScope *lexical = lexicalModuleForCall();
+      if (owner == DeclarationLexicalScopes.end() || !owner->second ||
+          owner->second != lexical || !CurrentModule ||
+          CurrentModule->IsInterface) {
+        gateExclusion = D3GateExclusionReason::NonSameLexical;
+      } else {
+        D3SourceLocation gateLocation = makeD3SourceLocation(Call->Loc);
+        std::string gateIdentity =
+            gateLocation.File + ":" + std::to_string(gateLocation.Line) +
+            ":" + std::to_string(gateLocation.Column) + ":" + CallName;
+        if (!m_D3ObservationSession->claimFinalTraversal(
+                std::move(gateIdentity)))
+          gateExclusion = D3GateExclusionReason::NonFinalSemanticTraversal;
+      }
+    }
+
+    if (gateExclusion) {
+      m_D3ObservationSession->noteGateExclusion(*gateExclusion);
+    } else {
+      Expr *actual = Call->Args.empty() ? nullptr : Call->Args.front().get();
+      d3PreCaptureBefore = captureD3ObservationSentinel(Call, actual);
+
+      D3CallObservationInput input;
+      auto callLocation = makeD3SourceLocation(Call->Loc);
+      auto functionLocation = makeD3SourceLocation(Fn->Loc);
+      auto witness = [](const D3SourceLocation &location,
+                        const std::string &name) {
+        return std::to_string(location.Line) + ":" +
+               std::to_string(location.Column) + ":" + name;
+      };
+      input.Pre.IdentityOrigin = callLocation.File;
+      input.Pre.CallWitness = witness(callLocation, CallName);
+      input.Pre.CalleeWitness = witness(functionLocation, Fn->Name);
+      input.Pre.CalleeName = Fn->Name;
+      input.Pre.CallLocation = callLocation;
+      input.Pre.MultipleArguments =
+          Call->Args.size() != 1 || Fn->Args.size() != 1;
+      input.Pre.Generic = Fn->TemplateOrigin || !Fn->GenericParams.empty() ||
+                          !Call->GenericArgs.empty();
+      input.Pre.VariadicOrDefault = Fn->IsVariadic;
+      for (const auto &formal : Fn->Args)
+        input.Pre.VariadicOrDefault =
+            input.Pre.VariadicOrDefault || formal.DefaultValue != nullptr;
+      input.Pre.VariadicOrDefault =
+          input.Pre.VariadicOrDefault || providedCount != Call->Args.size();
+      input.Pre.InitOrOutcome = Fn->ResolvedOutcomeTransition.has_value();
+      input.Pre.AsyncOrExecutionBoundary =
+          Fn->Effect != EffectKind::None || Call == m_StartBoundaryRoot ||
+          classifyShadowExecutionBoundary(Fn) != CallExecutionBoundary::None;
+      input.Pre.ReturnDependencyOrRegionEscape =
+          !Fn->LifeDependencies.empty() || !Fn->MemberDependencies.empty();
+
+      if (!Fn->Args.empty()) {
+        const auto &formal = Fn->Args.front();
+        auto formalLocation = makeD3SourceLocation(formal.Loc);
+        input.Pre.FormalWitness = witness(formalLocation, formal.Name);
+        input.Pre.DestinationWitness = "formal:1:" + formal.Name;
+        input.Pre.FormalName = formal.Name;
+        input.Pre.FormalType = !ParamTypes.empty() && ParamTypes.front()
+                                   ? ParamTypes.front()->canonicalIdentity()
+                                   : formal.Type;
+        input.Pre.FormalLocation = formalLocation;
+        input.Pre.FormalCeded = formal.IsCeded;
+        input.Pre.InitOrOutcome =
+            input.Pre.InitOrOutcome || formal.IsInit ||
+            (!Call->Args.empty() && Call->isInitArgument(0));
+      }
+
+      input.Pre.ExplicitCede = dynamic_cast<CedeExpr *>(actual) != nullptr;
+      Expr *source = d3UnwrapSourceExpr(actual);
+      input.Pre.SourceSpelling = source ? source->toString() : "<none>";
+      if (auto *variable = dynamic_cast<VariableExpr *>(source)) {
+        input.Pre.ActualCategory = D3ActualCategory::WholePlace;
+        SymbolInfo *info = nullptr;
+        std::string actualName = variable->Name;
+        if (CurrentScope->findVariableWithDeref(variable->Name, info,
+                                                actualName) &&
+            info) {
+          auto declarationLocation = makeD3SourceLocation(info->DeclLoc);
+          input.Pre.SourceWitness =
+              witness(declarationLocation, actualName);
+          input.Pre.SourcePlaceAlias = info->IsPlaceAlias;
+        }
+      } else if (dynamic_cast<MemberExpr *>(source) ||
+                 dynamic_cast<ArrayIndexExpr *>(source) ||
+                 dynamic_cast<DereferenceExpr *>(source)) {
+        input.Pre.ActualCategory = D3ActualCategory::Projection;
+        input.Pre.SourceWitness = "projection:" + input.Pre.SourceSpelling;
+      } else if (source) {
+        input.Pre.ActualCategory = D3ActualCategory::WholeTemporary;
+        auto sourceLocation = makeD3SourceLocation(source->Loc);
+        input.Pre.SourceWitness =
+            "temporary:" + witness(sourceLocation, source->toString());
+      }
+      input.Pre.SourceStateBefore =
+          d3PreCaptureBefore.SourcePlaceState;
+      input.Pre.PALStateBefore = d3PreCaptureBefore.PALState;
+      input.Pre.CoreFactsComplete =
+          !input.Pre.IdentityOrigin.empty() && !input.Pre.CallWitness.empty() &&
+          !input.Pre.CalleeWitness.empty() &&
+          (input.Pre.MultipleArguments ||
+           (!input.Pre.FormalWitness.empty() &&
+            !input.Pre.SourceWitness.empty()));
+
+      D3ObservationSentinel d3PreCaptureAfter =
+          captureD3ObservationSentinel(Call, actual);
+      d3PreCaptureDifferences = differingD3SentinelFields(
+          d3PreCaptureBefore, d3PreCaptureAfter);
+      d3PreCaptureUnchanged = d3PreCaptureDifferences.empty();
+      d3ObservationInput = std::move(input);
+      d3DiagnosticStart = DiagnosticEngine::records().size();
+      d3ObservationScope.emplace(m_D3ObservationSession);
+    }
+  }
+
   for (size_t i = 0; i < Call->Args.size(); ++i) {
     Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
 
@@ -2846,6 +3241,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       m_ExpectedCedeTransfer = oldExpectedCedeTransfer;
     }
     projectOwnedStringView(Call->Args[i], argType, paramType);
+    if (d3ObservationInput && i == 0)
+      d3LegacyArgumentType = argType;
 
     if (isOwnedStateThreadCalleeName(OriginalName) && i == 1) {
       ClosureExpr *entryClosure = findClosureExpr(Call->Args[i].get());
@@ -3268,8 +3665,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       diagnosedNull = true;
     }
 
-    if (morphologyValid && !diagnosedNull &&
-        !isTypeCompatible(paramType, argType)) {
+    const bool legacyTypeMismatch =
+        morphologyValid && !diagnosedNull &&
+        !isTypeCompatible(paramType, argType);
+    if (d3ObservationInput && i == 0)
+      d3LegacyTypeMismatch = legacyTypeMismatch;
+    if (legacyTypeMismatch) {
       error(Call->Args[i].get(),
             DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
             std::to_string(i + 1), diagnosticTypeName(paramType),
@@ -3280,6 +3681,77 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         Call->Args[i]->ResolvedType = paramType;
       }
     }
+  }
+
+  if (d3ObservationInput) {
+    Expr *actual = Call->Args.empty() ? nullptr : Call->Args.front().get();
+    D3ObservationSentinel d3PostBefore =
+        captureD3ObservationSentinel(Call, actual);
+
+    auto &input = *d3ObservationInput;
+    if (!d3LegacyArgumentType && actual)
+      d3LegacyArgumentType = actual->ResolvedType;
+    if (!d3LegacyArgumentType) {
+      Expr *source = d3UnwrapSourceExpr(actual);
+      if (auto *variable = dynamic_cast<VariableExpr *>(source)) {
+        SymbolInfo *info = nullptr;
+        std::string actualName = variable->Name;
+        if (CurrentScope->findVariableWithDeref(variable->Name, info,
+                                                actualName) &&
+            info)
+          d3LegacyArgumentType = info->TypeObj;
+      }
+    }
+
+    input.Pre.NestedObservation = false;
+    if (CallExpr *nested = d3FindNestedCall(actual))
+      input.Pre.NestedObservation = nested != Call && nested->ResolvedFn;
+    input.Post.ActualType =
+        d3LegacyArgumentType
+            ? d3LegacyArgumentType->canonicalIdentity()
+            : "";
+    input.Post.TypeCategory =
+        classifyD3TypeCategory(d3LegacyArgumentType);
+    input.Post.CopyProof = lookupD3CopyProof(d3LegacyArgumentType);
+    input.Post.LegacyTypeMismatch = d3LegacyTypeMismatch;
+    input.Post.LegacySucceeded = true;
+    const auto &diagnostics = DiagnosticEngine::records();
+    for (size_t index = d3DiagnosticStart; index < diagnostics.size(); ++index) {
+      input.Post.LegacyDiagnosticCodes.push_back(diagnostics[index].Code);
+      if (diagnostics[index].Level == DiagLevel::Error)
+        input.Post.LegacySucceeded = false;
+    }
+    input.Post.AdmissionFactsComplete =
+        d3LegacyArgumentType && !d3LegacyArgumentType->isUnknown() &&
+        input.Post.TypeCategory != D3TypeCategory::Indeterminate;
+    input.Post.WholePlaceEligible =
+        input.Pre.ActualCategory == D3ActualCategory::WholePlace &&
+        input.Pre.SourceStateBefore == "Live" &&
+        input.Pre.PALStateBefore == "Free" && !input.Pre.SourcePlaceAlias;
+    input.Post.LiabilityComplete =
+        input.Post.TypeCategory != D3TypeCategory::Indeterminate &&
+        input.Post.TypeCategory != D3TypeCategory::Unsupported;
+    input.Post.RegionFactsComplete =
+        !input.Pre.ReturnDependencyOrRegionEscape;
+
+    m_D3ObservationSession->noteFactoryInvocation();
+    D3FactoryObservationRecord factoryRecord =
+        DirectCallObservationFactory::observe(std::move(input));
+    D3ObservationSentinel d3PostAfter =
+        captureD3ObservationSentinel(Call, actual);
+    std::vector<std::string> postDifferences =
+        differingD3SentinelFields(d3PostBefore, d3PostAfter);
+
+    D3ObservationEnvelope envelope;
+    envelope.FactoryRecord = std::move(factoryRecord);
+    envelope.PreFactCaptureUnchanged = d3PreCaptureUnchanged;
+    envelope.PostCacheAndFactoryUnchanged = postDifferences.empty();
+    for (const auto &field : d3PreCaptureDifferences)
+      envelope.DifferingSentinelFields.push_back("pre." + field);
+    for (const auto &field : postDifferences)
+      envelope.DifferingSentinelFields.push_back("post." + field);
+    m_D3ObservationSession->append(std::move(envelope));
+    d3ObservationScope.reset();
   }
 
   // Trusted atomic wrappers preserve Ordering as a runtime enum value, but a

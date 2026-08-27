@@ -28,6 +28,8 @@ set(toka_frontend_sources
     Sema/SemanticManifestEnvelope.cpp
     Sema/SemanticManifestAttestation.cpp
     Sema/SemanticEvidence.cpp
+    Sema/DirectCallObservation.cpp
+    Sema/DirectCallObservationAudit.cpp
     Sema/SemanticIndex.cpp
     Sema/MemorySummary.cpp
     Sema/MemoryEvidence.cpp

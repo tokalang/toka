@@ -24,7 +24,15 @@ struct CallableContract;
 struct LangItem;
 struct RootSymbol;
 struct Field;
+struct Formal;
+struct ArgumentPlan;
+struct TransferEdge;
+struct Destination;
+struct Region;
+struct PatchEntry;
 } // namespace semantic_identity_domain
+
+class SemanticIdentityBuilder;
 
 // M1b.0a identity values contain canonical structural keys. They allocate no
 // IDs and expose no counter; later builders are responsible for constructing
@@ -32,10 +40,6 @@ struct Field;
 template <typename Domain> class SemanticIdentity {
 public:
   SemanticIdentity() = default;
-
-  static SemanticIdentity fromCanonicalKey(std::string canonicalKey) {
-    return SemanticIdentity(std::move(canonicalKey));
-  }
 
   bool valid() const noexcept { return !CanonicalKey.empty(); }
   const std::string &canonicalKey() const noexcept { return CanonicalKey; }
@@ -60,6 +64,7 @@ public:
   }
 
 private:
+  friend class SemanticIdentityBuilder;
   std::string CanonicalKey;
 
   explicit SemanticIdentity(std::string canonicalKey)
@@ -75,6 +80,156 @@ using CallableContractId =
 using LangItemId = SemanticIdentity<semantic_identity_domain::LangItem>;
 using RootSymbolId = SemanticIdentity<semantic_identity_domain::RootSymbol>;
 using FieldId = SemanticIdentity<semantic_identity_domain::Field>;
+using FormalId = SemanticIdentity<semantic_identity_domain::Formal>;
+using ArgumentPlanId =
+    SemanticIdentity<semantic_identity_domain::ArgumentPlan>;
+using TransferEdgeId = SemanticIdentity<semantic_identity_domain::TransferEdge>;
+using DestinationId = SemanticIdentity<semantic_identity_domain::Destination>;
+using RegionId = SemanticIdentity<semantic_identity_domain::Region>;
+using PatchEntryId = SemanticIdentity<semantic_identity_domain::PatchEntry>;
+
+enum class SemanticIdentityError : uint8_t {
+  None,
+  EmptyOrigin,
+  EmptyWitness,
+  InvalidParent,
+};
+
+template <typename Identity> class SemanticIdentityBuildResult {
+public:
+  bool hasValue() const noexcept {
+    return Error == SemanticIdentityError::None && Value.valid();
+  }
+  explicit operator bool() const noexcept { return hasValue(); }
+  const Identity &value() const noexcept { return Value; }
+  SemanticIdentityError error() const noexcept { return Error; }
+
+private:
+  friend class SemanticIdentityBuilder;
+  Identity Value;
+  SemanticIdentityError Error = SemanticIdentityError::EmptyWitness;
+
+  SemanticIdentityBuildResult(Identity value, SemanticIdentityError error)
+      : Value(std::move(value)), Error(error) {}
+};
+
+// Production identities are constructed from typed parents and nonempty
+// structural witnesses. Raw canonical-key construction is intentionally not a
+// public API.
+class SemanticIdentityBuilder final {
+public:
+  static SemanticIdentityBuildResult<SemanticNodeId>
+  semanticNode(std::string origin, std::string witness) {
+    return build<SemanticNodeId>("node", std::move(origin),
+                                 std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<DeclarationId>
+  declaration(std::string origin, std::string witness) {
+    return build<DeclarationId>("declaration", std::move(origin),
+                                std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<SubstitutionId>
+  substitution(const DeclarationId &parent, std::string witness) {
+    return buildWithParent<SubstitutionId>("substitution", parent,
+                                           std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<MethodSlotId>
+  methodSlot(const DeclarationId &parent, std::string witness) {
+    return buildWithParent<MethodSlotId>("method-slot", parent,
+                                         std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<CallableContractId>
+  callableContract(std::string origin, std::string witness) {
+    return build<CallableContractId>("callable-contract", std::move(origin),
+                                     std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<LangItemId>
+  langItem(std::string origin, std::string witness) {
+    return build<LangItemId>("lang-item", std::move(origin),
+                             std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<RootSymbolId>
+  rootSymbol(const DeclarationId &parent, std::string witness) {
+    return buildWithParent<RootSymbolId>("root-symbol", parent,
+                                         std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<FieldId>
+  field(const DeclarationId &parent, std::string witness) {
+    return buildWithParent<FieldId>("field", parent, std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<FormalId>
+  formal(const DeclarationId &parent, std::string witness) {
+    return buildWithParent<FormalId>("formal", parent, std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<ArgumentPlanId>
+  argumentPlan(const SemanticNodeId &parent, std::string witness) {
+    return buildWithParent<ArgumentPlanId>("argument-plan", parent,
+                                           std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<TransferEdgeId>
+  transferEdge(const ArgumentPlanId &parent, std::string witness) {
+    return buildWithParent<TransferEdgeId>("transfer-edge", parent,
+                                           std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<DestinationId>
+  destination(const FormalId &parent, std::string witness) {
+    return buildWithParent<DestinationId>("destination", parent,
+                                          std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<RegionId>
+  region(const SemanticNodeId &parent, std::string witness) {
+    return buildWithParent<RegionId>("region", parent, std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<PatchEntryId>
+  patchEntry(const TransferEdgeId &parent, std::string witness) {
+    return buildWithParent<PatchEntryId>("patch-entry", parent,
+                                         std::move(witness));
+  }
+
+private:
+  static void appendPart(std::string &key, const std::string &part) {
+    key += std::to_string(part.size());
+    key += ':';
+    key += part;
+    key += ';';
+  }
+
+  template <typename Identity>
+  static SemanticIdentityBuildResult<Identity>
+  build(const char *domain, std::string origin, std::string witness) {
+    if (origin.empty())
+      return {Identity{}, SemanticIdentityError::EmptyOrigin};
+    if (witness.empty())
+      return {Identity{}, SemanticIdentityError::EmptyWitness};
+    std::string key = "toka.semantic-identity.v1;";
+    appendPart(key, domain);
+    appendPart(key, origin);
+    appendPart(key, witness);
+    return {Identity(std::move(key)), SemanticIdentityError::None};
+  }
+
+  template <typename Identity, typename Parent>
+  static SemanticIdentityBuildResult<Identity>
+  buildWithParent(const char *domain, const Parent &parent,
+                  std::string witness) {
+    if (!parent.valid())
+      return {Identity{}, SemanticIdentityError::InvalidParent};
+    return build<Identity>(domain, parent.canonicalKey(), std::move(witness));
+  }
+};
 
 enum class PlaceProjectionKind : uint8_t {
   Field,

@@ -102,7 +102,7 @@ public:
   bool upgradeBorrow(const AccessPath &path);
 
   // Gets the exact state of a path
-  PathState getState(const AccessPath &path);
+  PathState getState(const AccessPath &path) const;
 
   // Commits a specific transient borrow so it persists until the scope ends
   void commitTransient(const AccessPath &path);

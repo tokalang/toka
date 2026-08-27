@@ -224,6 +224,17 @@ bool SemanticEvidence::isCallTransferShadowEnabled() {
   return CallTransferShadowEnabled;
 }
 
+SemanticEvidenceAuditState SemanticEvidence::auditState() {
+  return {Enabled,
+          CallTransferShadowEnabled,
+          Records.size(),
+          CedeObligations.size(),
+          CallTransferShadows.size(),
+          CapabilityCalls.size(),
+          TodoGoals.size(),
+          ConditionalFacts.size()};
+}
+
 void SemanticEvidence::reset() {
   Records.clear();
   CedeObligations.clear();

@@ -1,0 +1,19 @@
+shape Pair(left: i32, right: i32)
+
+fn consume_pair(cede value: Pair) -> i32 {
+    auto moved = cede value
+    return moved.left + moved.right
+}
+
+fn consume_i32(cede value: i32) -> i32 {
+    auto moved = cede value
+    return moved
+}
+
+fn main() -> i32 {
+    auto pair = Pair(left = 1:i32, right = 2:i32)
+    auto pair_result = consume_pair(pair)
+    auto scalar = 3:i32
+    auto scalar_result = consume_i32(scalar)
+    return pair_result + scalar_result - 6:i32
+}

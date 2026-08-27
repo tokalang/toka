@@ -153,12 +153,12 @@ PALChecker::verifyOperation(const AccessPath &path, PALOperationClass op) {
   return verifyAccess(path);
 }
 
-PathState PALChecker::getState(const AccessPath &path) {
+PathState PALChecker::getState(const AccessPath &path) const {
   if (!IsEnabled) return PathState::Free;
   for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
-    if (it->Map.count(path)) {
-      return it->Map[path].State;
-    }
+    auto entry = it->Map.find(path);
+    if (entry != it->Map.end())
+      return entry->second.State;
   }
   return PathState::Free;
 }

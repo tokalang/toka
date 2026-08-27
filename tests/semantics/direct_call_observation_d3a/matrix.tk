@@ -1,0 +1,66 @@
+import core/traits::{@Encap}
+
+shape Pair(left: i32, right: i32)
+shape Resource(value: i32)
+shape Holder(inner: Resource)
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn inspect(value: Resource) -> i32 {
+    return value.value
+}
+
+fn inspect_i32(value: i32) -> i32 {
+    return value
+}
+
+fn consume(cede value: Resource) -> i32 {
+    auto moved = cede value
+    return moved.value
+}
+
+fn consume_pair(cede value: Pair) -> i32 {
+    auto moved = cede value
+    return moved.left + moved.right
+}
+
+fn make_resource() -> Resource {
+    return Resource(value = 9:i32)
+}
+
+fn main() -> i32 {
+    auto borrowed = Resource(value = 1:i32)
+    auto borrowed_result = inspect(borrowed)
+
+    auto explicit_resource = Resource(value = 2:i32)
+    auto explicit_result = consume(cede explicit_resource)
+
+    auto bare_resource = Resource(value = 3:i32)
+    auto bare_result = consume(bare_resource)
+
+    auto pair_bare = Pair(left = 4:i32, right = 5:i32)
+    auto pair_bare_result = consume_pair(pair_bare)
+
+    auto pair_explicit = Pair(left = 6:i32, right = 7:i32)
+    auto pair_explicit_result = consume_pair(cede pair_explicit)
+
+    auto temporary_result = consume(cede Resource(value = 8:i32))
+
+    auto scalar = 10:i32
+    auto scalar_result = inspect_i32(scalar)
+    auto aggregate_temporary_result = inspect(Resource(value = 11:i32))
+
+    auto explicit_borrow = Resource(value = 12:i32)
+    auto explicit_borrow_result = inspect(cede explicit_borrow)
+
+    auto holder = Holder(inner = Resource(value = 13:i32))
+    auto projected_result = consume(cede holder.inner)
+
+    auto nested_result = consume(make_resource())
+    return borrowed_result + explicit_result + bare_result + pair_bare_result +
+           pair_explicit_result + temporary_result + scalar_result +
+           aggregate_temporary_result + explicit_borrow_result +
+           projected_result + nested_result
+}

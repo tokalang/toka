@@ -1,8 +1,9 @@
 # RC9 M1b-D.3 Ordinary Direct-Call Vertical Slice
 
-**Design status:** Proposed for independent review.
+**Design status:** Accepted for D.3a implementation / Shadow-only.
 
-**Implementation status:** Not implemented. M1b.1, ownership commit, CodeGen
+**Implementation status:** D.3a ordinary direct-call Shadow vertical slice
+implemented and qualification-gated. M1b.1, ownership commit, CodeGen
 consumption, Evidence v2, and caller-spelling activation remain unauthorized.
 
 **Baseline:** `19a94dbf4ac36a21c068ba32fdf5aaa8ae6c483c`.
@@ -577,7 +578,7 @@ Before this slice can be called complete, one revision must prove:
 
 ## Admission decision
 
-This document admits no implementation until independently reviewed. After
-review it may authorize only the ordinary direct-call Shadow slice above. It
-does not authorize M1b.1, semantic adopt/commit, CodeGen consumption, Evidence
-v2, branch join, or caller-spelling activation.
+Independent review authorized and the implementation is limited to the
+ordinary direct-call Shadow slice above. This status does not authorize M1b.1,
+semantic adopt/commit, CodeGen consumption, Evidence v2, branch join, or
+caller-spelling activation.
