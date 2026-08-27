@@ -1,7 +1,10 @@
 # RC9 Ownership Transfer Plan — Draft / Non-normative
 
-**Status:** RC9 M0 audit only. This document is not a language contract and
-does not authorize semantic, TKI, ABI, or surface-syntax changes.
+**Status:** RC9 M0 audit and implementation planning. This document remains
+non-normative. The separately reviewed
+[`RC9 Signature-Driven Call Transfer ADR`](semantic_core/rc9_signature_driven_call_transfer_adr.md)
+is accepted for RC9, but its behavior is not implemented or active until all
+of that ADR's activation gates pass.
 
 **Baseline:** `v1.0.0-rc.8` / `997713f4828b43a5b82aa3363d99a37e9e6f2417`.
 
@@ -19,6 +22,20 @@ Every ownership-sensitive edge is reviewed along three independent axes:
 Closing only a drop flag is not a move proof. Clearing a slot is not a Sema
 fact. Retaining a shared handle is not permission to keep a unique source
 live. RC9 implementation work must preserve those distinctions.
+
+## Accepted call-transfer direction
+
+The RC9 ADR accepts resolved-formal, signature-driven transfer at call
+boundaries. Argument-level `cede` will become optional for an ownership-taking
+formal only after a unified Sema plan proves the transfer, source disposition,
+dependency result, and drop liability. Existing explicit spelling remains
+legal, and a compiler lint will allow projects to require visible implicit
+place invalidation.
+
+This decision is prospective. RC8's unconditional caller-spelling rule and
+cede evidence v1 remain the active historical contract while implementation
+is incomplete. EXP-LIN-01 remains a confirmed RC8 specification/implementation
+divergence and will be marked `Superseded by RC9 ADR` only at activation.
 
 ## RC8 CodeGen call-site ledger
 
@@ -67,8 +84,9 @@ invalid combinations, but M0 deliberately does not freeze its representation.
 
 ## RC9 implementation admission criteria
 
-Implementation remains blocked until RC8 qualification is resolved and a
-separate review approves all of the following:
+Staged implementation may proceed under the accepted ADR, but the caller-
+spelling behavior change remains blocked until one qualified revision proves
+all of the following:
 
 - Sema is the sole authority for every reachable transfer decision.
 - PAL and `PlaceState` record the same source invalidation before CodeGen.
@@ -77,6 +95,9 @@ separate review approves all of the following:
   source-hidden.
 - Branch, loop, partial move, closure, async, return, and call edges have
   explicit tests.
+- Cede obligation evidence v1 remains frozen and a versioned v2 represents
+  spelling, transfer, and source disposition independently.
+- The implicit-call-move lint exists before caller spelling becomes optional.
 - No TKI or ABI change is inferred from this draft.
 
 ## M0 exclusions
