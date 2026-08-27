@@ -709,23 +709,28 @@ private:
       Expr *Source, const std::shared_ptr<Type> &DestinationType);
   CallValueCategory classifyShadowCallValueCategory(
       Expr *Argument, AccessPath &SourcePlace);
+  std::shared_ptr<Type> queryShadowCallArgumentType(
+      Expr *Argument, const std::shared_ptr<Type> &DestinationType);
+  CallExecutionBoundary
+  classifyShadowExecutionBoundary(FunctionDecl *Function) const;
   CallTransferPlan buildShadowCallTransferPlan(
       ASTNode *CallSite, Expr *Argument,
       const std::shared_ptr<Type> &ArgumentType,
       const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
-      bool FormalIsInit, bool LegacyCallerRuleApplied,
+      bool FormalIsInit, bool ActualIsInit, bool LegacyCallerRuleApplied,
       bool LegacyCedeExempt, CallTransferRoute Route, bool IsAsync,
-      const std::string &Callee, unsigned ArgumentIndex,
+      CallExecutionBoundary ExecutionBoundary, unsigned ArgumentIndex,
       unsigned FormalIndex);
   void recordShadowCallTransfer(
       ASTNode *CallSite, std::vector<CallTransferPlan> &Plans,
       unsigned ArgumentIndex, unsigned FormalIndex, Expr *Argument,
       const std::shared_ptr<Type> &ArgumentType,
       const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
-      bool FormalIsInit, bool LegacyCallerRuleApplied,
+      bool FormalIsInit, bool ActualIsInit, bool LegacyCallerRuleApplied,
       bool LegacyCedeExempt, CallTransferRoute Route, const std::string &Callee,
       const std::string &Parameter,
-      SourceLocation ParameterLoc, bool IsAsync);
+      SourceLocation ParameterLoc, bool IsAsync,
+      CallExecutionBoundary ExecutionBoundary = CallExecutionBoundary::None);
   bool returnTypeHasMember(FunctionDecl *Function,
                            const std::string &Member);
   std::string getDependencyPathString(Expr *E);

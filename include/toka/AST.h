@@ -135,6 +135,7 @@ struct CallTransferPlan {
   CallExecutionBoundary ExecutionBoundary = CallExecutionBoundary::None;
   bool FormalIsCeded = false;
   bool FormalIsInit = false;
+  bool ActualIsInit = false;
   bool ExplicitCede = false;
   bool LegacyCallerRuleApplied = false;
   bool LegacyCedeExempt = false;

@@ -44,7 +44,7 @@ def run(tokac, source, expected_error=None, check_only=True):
         raise RuntimeError(source + " emitted invalid shadow JSON") from error
     require(payload.get("schema") == "toka.internal.call-transfer-shadow",
             source + " emitted the wrong schema")
-    require(payload.get("version") == 2, source + " emitted the wrong version")
+    require(payload.get("version") == 3, source + " emitted the wrong version")
     require(payload.get("status") == "audit-only",
             source + " did not identify audit-only output")
     records = payload.get("records")
@@ -55,7 +55,7 @@ def run(tokac, source, expected_error=None, check_only=True):
         "place_eligibility", "drop", "execution_boundary",
         "source_root_id", "source_path", "source_identity",
         "referent_path", "referent_identity", "dependency_paths",
-        "cleanup_mask", "formal_ceded", "formal_init",
+        "cleanup_mask", "formal_ceded", "formal_init", "actual_init",
         "legacy_caller_rule_applied", "legacy_cede_exempt",
         "legacy_missing_cede", "async", "location", "contract_location",
     }
@@ -70,6 +70,8 @@ def run(tokac, source, expected_error=None, check_only=True):
         require(record["cleanup_mask"] is None or
                 isinstance(record["cleanup_mask"], int),
                 source + " cleanup mask has an invalid representation")
+        require(isinstance(record["actual_init"], bool),
+                source + " actual init spelling is not boolean")
         if record["value_category"] in ("Place", "InitStorage"):
             require(record["source_root_id"] > 0 and
                     bool(record["source_identity"]),
@@ -81,6 +83,27 @@ def run(tokac, source, expected_error=None, check_only=True):
         require(encoded not in seen, source + " emitted duplicate records")
         seen.add(encoded)
     return records
+
+
+def require_shadow_parity(tokac, source, expected_error=None):
+    normal = subprocess.run(
+        [str(tokac), "--check-only", source], cwd=ROOT,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30,
+    )
+    shadow = subprocess.run(
+        [str(tokac), "--call-transfer-shadow=json", "--check-only", source],
+        cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, timeout=30,
+    )
+    require(normal.returncode == shadow.returncode,
+            source + " shadow mode changed the exit status")
+    require(normal.stderr == shadow.stderr,
+            source + " shadow mode changed diagnostics")
+    require(not normal.stdout, source + " changed normal stdout")
+    json.loads(shadow.stdout)
+    if expected_error:
+        require(expected_error in normal.stderr,
+                source + " missed " + expected_error)
 
 
 def find(records, source_file, **expected):
@@ -257,6 +280,17 @@ def main():
         source="KeepLive", legacy_caller_rule_applied=False,
     ))
 
+    source = "tests/semantics/call_transfer_shadow_m1/dynamic_trait_isolation.tk"
+    require_shadow_parity(tokac, source)
+    records = run(tokac, source)
+    receipts.append(find(
+        records, source, callee="Sink::take",
+        route="dynamic-trait-method", parameter="value",
+        spelling="explicit", transfer="MoveOwned",
+        source="InvalidatePlace", source_path="value",
+        formal_ceded=True,
+    ))
+
     source = "tests/semantics/call_transfer_shadow_m1/rvalue_and_unknown.tk"
     records = run(tokac, source, expected_error="E0402")
     receipts.append(find(
@@ -285,6 +319,15 @@ def main():
         dependency="RawUnsafe", source_path="",
     ))
 
+    source = "tests/semantics/call_transfer_shadow_m1/postfix_rvalue.tk"
+    records = run(tokac, source)
+    receipts.append(find(
+        records, source, callee="consume", location_line=7,
+        spelling="explicit", value_category="Temporary",
+        transfer="ConsumeTemporary", source="NoSourcePlace",
+        source_path="",
+    ))
+
     source = "tests/semantics/call_transfer_shadow_m1/execution_boundaries.tk"
     records = run(tokac, source)
     receipts.append(find(
@@ -303,12 +346,38 @@ def main():
         location_line=17, execution_boundary="ThreadHandoff",
     ))
 
+    source = "tests/semantics/call_transfer_shadow_m1/boundary_identity.tk"
+    require_shadow_parity(tokac, source, expected_error="E0476")
+    records = run(tokac, source, expected_error="E0476")
+    receipts.append(find(
+        records, source, callee="thread_spawn", location_line=8,
+        execution_boundary="None",
+    ))
+    receipts.append(find(
+        records, source, callee="spawn", location_line=9,
+        execution_boundary="ThreadHandoff",
+    ))
+
     source = "tests/pass/g16_init_parameter_test.tk"
     records = run(tokac, source)
     receipts.append(find(
         records, source, callee="initialize", route="ordinary",
         parameter="out", value_category="InitStorage",
-        transfer="InitStorage", formal_init=True, formal_index=1,
+        transfer="InitStorage", formal_init=True, actual_init=True,
+        formal_index=1,
+    ))
+
+    source = "tests/semantics/call_transfer_shadow_m1/init_spelling_mismatch.tk"
+    records = run(tokac, source, expected_error="E04622")
+    receipts.append(find(
+        records, source, callee="initialize", location_line=8,
+        formal_init=True, actual_init=False,
+        value_category="Indeterminate", transfer="Reject",
+    ))
+    receipts.append(find(
+        records, source, callee="observe", location_line=10,
+        formal_init=False, actual_init=True,
+        value_category="Place", transfer="CopyValue",
     ))
 
     source = "tests/semantics/call_transfer_shadow_m1/borrowed_view_paths.tk"
@@ -319,6 +388,59 @@ def main():
         source="InvalidatePlace", dependency="Borrowed", source_path="view",
         dependency_paths=["owner.buf"],
     ))
+
+    source = "tests/semantics/call_transfer_shadow_m1/borrowed_projection_paths.tk"
+    records = run(tokac, source)
+    receipts.append(find(
+        records, source, callee="consume", location_line=13,
+        source_path="borrowed.value", referent_path="holder.value",
+        referent_identity="holder.value", dependency="Borrowed",
+    ))
+
+    source = "tests/semantics/call_transfer_shadow_m1/miss_outcome_carriers.tk"
+    records = run(tokac, source)
+    receipts.append(find(
+        records, source, callee="observe", location_line=34,
+        transfer="BorrowCapture", source="KeepLive",
+        dependency="Unclassified", drop="SourceRetainsLiability",
+        source_path="token",
+    ))
+    receipts.append(find(
+        records, source, callee="consume_number", location_line=37,
+        transfer="CopyValue", source="InvalidatePlace",
+        dependency="None", drop="NoLiability", source_path="number",
+    ))
+    receipts.append(find(
+        records, source, callee="consume_borrow", location_line=41,
+        transfer="CopyIdentity", source="InvalidatePlace",
+        dependency="Borrowed", drop="NoLiability", source_path="borrowed",
+    ))
+
+    source = "tests/pass/g09_sync_condvar.tk"
+    records = run(tokac, source)
+    receipts.append(find(
+        records, source, callee="wait_cond", location_line=27,
+        source_path="lock",
+    ))
+    require(sum(1 for record in records
+                if record["callee"] == "wait_cond" and
+                record["location"]["file"].endswith(source) and
+                record["location"]["line"] == 27) == 1,
+            "closure capture precompute emitted a speculative plan")
+
+    source = "tests/semantics/call_transfer_shadow_m1/closure_callable_replay.tk"
+    records = run(tokac, source)
+    observed = find(
+        records, source, callee="observe", location_line=15,
+        source_path="value",
+    )
+    callable_record = find(
+        records, source, callee="consumer", route="callable",
+        location_line=16, source_path="value",
+    )
+    require(observed["source_root_id"] == callable_record["source_root_id"],
+            "callable replay retained a precompute-scope source identity")
+    receipts.extend((observed, callable_record))
 
     source = "tests/semantics/call_transfer_shadow_m1/multi_argument.tk"
     records = run(tokac, source)
@@ -429,7 +551,7 @@ def main():
 
     print(json.dumps({
         "schema": "toka.rc9-m1-call-transfer-shadow-audit",
-        "version": 2,
+        "version": 3,
         "result": "pass",
         "cases": len(receipts),
         "normal_cases": len(normal_cases),

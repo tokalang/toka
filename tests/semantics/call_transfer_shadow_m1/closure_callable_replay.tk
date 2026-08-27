@@ -1,0 +1,19 @@
+shape Consumer()
+
+impl Consumer@Callable {
+    fn call(self, value: i32) -> i32 {
+        return value
+    }
+}
+
+fn observe(value: i32) {}
+
+fn main() -> i32 {
+    auto consumer = Consumer()
+    auto value = 7:i32
+    auto invoke = { =>
+        observe(value)
+        return consumer(value)
+    }:fn() -> i32
+    return invoke() - 7:i32
+}

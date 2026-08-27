@@ -1,0 +1,43 @@
+import core/traits::{@Encap}
+
+shape Token(id: i32)
+
+impl Token@Encap {
+    fn drop(self#) {}
+}
+
+fn make_token() -> Token | miss {
+    return Token(id = 7:i32)
+}
+
+fn find_number(value: i32) -> i32 | miss {
+    return value
+}
+
+fn find_borrow(value: i32) -> &i32 | miss
+effects: return <- value {
+    return &value
+}
+
+fn observe(value: Token | miss) {}
+
+fn consume_number(cede value: i32 | miss) {
+    auto used = cede value
+}
+
+fn consume_borrow(cede value: i32 | miss) {
+    auto used = cede value
+}
+
+fn main() -> i32 {
+    auto token = make_token()
+    observe(token)
+
+    auto number = find_number(3:i32)
+    consume_number(cede number)
+
+    auto source = 5:i32
+    auto &borrowed = find_borrow(source)
+    consume_borrow(cede borrowed)
+    return 0
+}

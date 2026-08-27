@@ -4281,14 +4281,19 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                       : resolveType(
                                             Sema::synthesizePhysicalTypeObject(
                                                 param));
-                auto argTy = checkExpr(Met->Args[i].get(), expectedTy);
+                // Dynamic-trait dispatch does not otherwise evaluate its
+                // arguments in this legacy route.  Shadow collection must
+                // therefore query already-known syntax/scope facts instead
+                // of calling checkExpr and committing ownership state.
+                auto argTy = queryShadowCallArgumentType(Met->Args[i].get(),
+                                                         expectedTy);
                 const bool legacyCedeExempt =
                     param.IsCeded && canImplicitlyPassToCede(argTy);
                 recordShadowCallTransfer(
                     Met, Met->ShadowArgumentTransfers,
                     static_cast<unsigned>(i + 1),
                     static_cast<unsigned>(i + 2), Met->Args[i].get(), argTy,
-                    expectedTy, param.IsCeded, param.IsInit, false,
+                    expectedTy, param.IsCeded, param.IsInit, false, false,
                     legacyCedeExempt,
                     CallTransferRoute::DynamicTraitMethod,
                     traitName + "::" + Met->Method, param.Name, param.Loc,
@@ -4718,8 +4723,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                       Met, Met->ShadowArgumentTransfers,
                       static_cast<unsigned>(i + 1),
                       static_cast<unsigned>(i + 2), Met->Args[i].get(), argTy,
-                      expectedParamTy, param.IsCeded, param.IsInit, true,
-                      legacyCedeExempt, CallTransferRoute::Method,
+                      expectedParamTy, param.IsCeded, param.IsInit, false,
+                      true, legacyCedeExempt, CallTransferRoute::Method,
                       FD->Name.empty() ? Met->Method : FD->Name, param.Name,
                       param.Loc, FD->Effect == EffectKind::Async);
                   auto *callerCede =

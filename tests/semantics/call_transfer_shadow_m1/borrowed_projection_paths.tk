@@ -1,0 +1,15 @@
+import core/string::{string}
+
+shape Holder(value: str)
+
+fn consume(value: str) {
+    auto used = value.len()
+}
+
+fn main() -> i32 {
+    auto owner = string::from("projection")
+    auto holder = Holder(value = owner.as_str())
+    auto &borrowed = &holder
+    consume(borrowed.value)
+    return 0
+}

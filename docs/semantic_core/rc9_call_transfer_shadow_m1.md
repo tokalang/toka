@@ -1,9 +1,8 @@
 # RC9 M1 Call Transfer Shadow
 
-**Status:** M1a.1 shadow route, value-category, and carrier qualification
-implemented; isolation qualified. Exact-place/dependency admission and atomic
-commit are not implemented. Non-normative and not an activation of the
-signature-driven call-transfer ADR.
+**Status:** M1a.2 shadow isolation and base-carrier qualification implemented.
+Exact-place/dependency admission and atomic commit are not implemented.
+Non-normative and not an activation of the signature-driven call-transfer ADR.
 
 **Baseline:** `a3de6d4787f22f2b003949e62bf9aa1c83b40d17`.
 
@@ -25,15 +24,17 @@ tokac --call-transfer-shadow=json --check-only source.tk
 The command emits the internal, audit-only schema:
 
 ```text
-toka.internal.call-transfer-shadow / version 2
+toka.internal.call-transfer-shadow / version 3
 ```
 
 It is not cede obligation evidence v2 and has no public compatibility promise.
 It exists to qualify the planner before any behavior or public evidence change.
 It cannot be combined with another JSON, semantic, or evaluation output mode.
-Version 2 replaces the incomplete M1a prototype schema and adds structured
-source/referent identity, stable indices, value category, drop disposition,
-execution boundary, dependency paths, and cleanup-mask capacity.
+Version 3 replaces the M1a.1 schema. It retains structured source/referent
+identity, stable indices, value category, drop disposition, dependency paths,
+and cleanup-mask capacity, and adds actual `init` spelling. Postfix value
+operations, `T | miss` payloads, and thread boundaries now use qualified
+semantic facts rather than syntax/name shortcuts.
 
 ## Recorded dimensions
 
@@ -45,6 +46,7 @@ route             ordinary | static | method | callable | extern
 argument/formal   stable one-based original indices
 value_category    Place | Temporary | InitStorage | Indeterminate
 spelling          implicit | explicit
+init spelling     formal_init and actual_init are independent facts
 transfer          BorrowCapture | CopyValue | CopyIdentity
                   | TransferShared | MoveOwned | ConsumeTemporary | Reject
 source            KeepLive | InvalidatePlace | NoSourcePlace | NoStateChange
@@ -67,7 +69,7 @@ when an AST call is cloned and its resolved formal is reset.
 
 ## Deliberate M1 limitations
 
-- `PendingValidation` is not permission to move. M1a.1 does not yet share the
+- `PendingValidation` is not permission to move. M1a.2 does not yet share the
   whole/partial exact-place eligibility checker with calls.
 - A shape, smart pointer, array, or dyn callable whose complete dependency
   closure has not been routed into the planner is `Unclassified`, not
@@ -78,6 +80,10 @@ when an AST call is cloned and its resolved formal is reset.
   transaction.
 - CodeGen continues to use `CedeExpr` and the existing aggregate transfer
   paths. It never reads `ShadowArgumentTransfers`.
+- Existing RC8 thread-safety diagnostics still use their source-spelling
+  classifier. M1a.2 records declaration-identity boundary facts but does not
+  switch those diagnostics; a user same-named function therefore retains its
+  historical diagnostic until a later admitted replacement.
 - Consuming callable receivers remain outside argument planning and retain
   their existing `cede callable()` contract.
 - Cede obligation evidence v1 is unchanged.
@@ -93,9 +99,13 @@ when an AST call is cloned and its resolved formal is reset.
   `dyn fn`, dynamic-trait method, generic, and extern routes;
 - legacy missing-`cede` facts without behavior changes;
 - shared-handle transfer classification;
-- async `.start`, nested non-boundary calls, and thread handoff annotation;
-- init storage, unknown actuals, unary/cast/address temporaries, exact source
-  identity, borrowed-view dependency roots, and multi-argument indices;
+- audit/normal diagnostic parity for dynamic-trait calls and suppression of
+  closure capture-precompute records and AST call lowering;
+- async `.start`, nested non-boundary calls, and resolved-declaration thread
+  handoff annotation, including aliases and a user same-named function;
+- init formal/actual spelling, unknown actuals, unary/cast/address/postfix
+  temporaries, exact source identity, borrowed-view and projected referent
+  paths, recursive `T | miss` carriers, and multi-argument indices;
 - source/source-less plan parity;
 - forced check-only single-document JSON and fail-closed output conflicts;
 - four normal-mode diagnostic/success receipts; and
@@ -106,7 +116,7 @@ The script emits a compact receipt named
 
 ## Next admission step
 
-M1a.1 does not authorize the caller-spelling behavior flip. The next step is to
+M1a.2 does not authorize the caller-spelling behavior flip. The next step is to
 replace `PendingValidation` and `Unclassified` with shared exact-place and
 dependency decisions, then prepare all argument plans before atomically
 committing any PAL, `PlaceState`, or drop-liability change.

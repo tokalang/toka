@@ -102,8 +102,9 @@ bool CallTransferShadowRecord::operator<(
              ValueCategory, Spelling, Transfer, Source, Dependency,
              PlaceEligibility, Drop, ExecutionBoundary, SourceRootID,
              SourcePath, SourceIdentity, ReferentPath, ReferentIdentity,
-             DependencyPaths, HasCleanupMask, CleanupMask, FormalCeded, FormalInit,
-             LegacyCallerRuleApplied, LegacyCedeExempt, LegacyMissingCede,
+             DependencyPaths, HasCleanupMask, CleanupMask, FormalCeded,
+             FormalInit, ActualInit, LegacyCallerRuleApplied,
+             LegacyCedeExempt, LegacyMissingCede,
              Async, Location, ContractLocation) <
          std::tie(
              rhs.Callee, rhs.Route, rhs.Parameter, rhs.ArgumentIndex,
@@ -112,8 +113,8 @@ bool CallTransferShadowRecord::operator<(
              rhs.ExecutionBoundary, rhs.SourceRootID, rhs.SourcePath,
              rhs.SourceIdentity, rhs.ReferentPath, rhs.ReferentIdentity,
              rhs.DependencyPaths, rhs.HasCleanupMask, rhs.CleanupMask,
-             rhs.FormalCeded,
-             rhs.FormalInit, rhs.LegacyCallerRuleApplied,
+             rhs.FormalCeded, rhs.FormalInit, rhs.ActualInit,
+             rhs.LegacyCallerRuleApplied,
              rhs.LegacyCedeExempt, rhs.LegacyMissingCede, rhs.Async,
              rhs.Location, rhs.ContractLocation);
 }
@@ -134,7 +135,7 @@ bool CallTransferShadowRecord::operator==(
          DependencyPaths == rhs.DependencyPaths &&
          HasCleanupMask == rhs.HasCleanupMask &&
          CleanupMask == rhs.CleanupMask && FormalCeded == rhs.FormalCeded &&
-         FormalInit == rhs.FormalInit &&
+         FormalInit == rhs.FormalInit && ActualInit == rhs.ActualInit &&
          LegacyCallerRuleApplied == rhs.LegacyCallerRuleApplied &&
          LegacyCedeExempt == rhs.LegacyCedeExempt &&
          LegacyMissingCede == rhs.LegacyMissingCede && Async == rhs.Async &&
@@ -332,7 +333,7 @@ void SemanticEvidence::recordCallTransferShadow(
     std::string sourcePath, std::string sourceIdentity,
     std::string referentPath, std::string referentIdentity,
     std::vector<std::string> dependencyPaths, bool hasCleanupMask,
-    uint64_t cleanupMask, bool formalCeded, bool formalInit,
+    uint64_t cleanupMask, bool formalCeded, bool formalInit, bool actualInit,
     bool legacyCallerRuleApplied, bool legacyCedeExempt,
     bool legacyMissingCede, bool async, SourceLocation location,
     SourceLocation contractLocation) {
@@ -346,8 +347,8 @@ void SemanticEvidence::recordCallTransferShadow(
        std::move(executionBoundary), sourceRootID, std::move(sourcePath),
        std::move(sourceIdentity), std::move(referentPath),
        std::move(referentIdentity), std::move(dependencyPaths), hasCleanupMask,
-       cleanupMask, formalCeded, formalInit, legacyCallerRuleApplied,
-       legacyCedeExempt,
+       cleanupMask, formalCeded, formalInit, actualInit,
+       legacyCallerRuleApplied, legacyCedeExempt,
        legacyMissingCede, async,
        resolveLocation(location), resolveLocation(contractLocation)});
 }
@@ -358,7 +359,7 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
       std::unique(CallTransferShadows.begin(), CallTransferShadows.end()),
       CallTransferShadows.end());
   out << "{\"schema\":\"toka.internal.call-transfer-shadow\","
-         "\"version\":2,\"status\":\"audit-only\",\"records\":[";
+         "\"version\":3,\"status\":\"audit-only\",\"records\":[";
   for (size_t i = 0; i < CallTransferShadows.size(); ++i) {
     if (i != 0)
       out << ',';
@@ -402,6 +403,7 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << ",\"formal_ceded\":"
         << (record.FormalCeded ? "true" : "false")
         << ",\"formal_init\":" << (record.FormalInit ? "true" : "false")
+        << ",\"actual_init\":" << (record.ActualInit ? "true" : "false")
         << ",\"legacy_caller_rule_applied\":"
         << (record.LegacyCallerRuleApplied ? "true" : "false")
         << ",\"legacy_cede_exempt\":"

@@ -156,6 +156,7 @@ struct CallTransferShadowRecord {
   uint64_t CleanupMask = 0;
   bool FormalCeded = false;
   bool FormalInit = false;
+  bool ActualInit = false;
   bool LegacyCallerRuleApplied = false;
   bool LegacyCedeExempt = false;
   bool LegacyMissingCede = false;
@@ -250,7 +251,7 @@ public:
       std::string referentPath, std::string referentIdentity,
       std::vector<std::string> dependencyPaths, bool hasCleanupMask,
       uint64_t cleanupMask, bool formalCeded, bool formalInit,
-      bool legacyCallerRuleApplied, bool legacyCedeExempt,
+      bool actualInit, bool legacyCallerRuleApplied, bool legacyCedeExempt,
       bool legacyMissingCede, bool async, SourceLocation location,
       SourceLocation contractLocation = {});
   static void dumpCallTransferShadowJSON(std::ostream &out);

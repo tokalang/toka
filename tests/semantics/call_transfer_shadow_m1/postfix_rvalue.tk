@@ -1,0 +1,9 @@
+fn consume(cede value: i32) {
+    auto used = cede value
+}
+
+fn main() -> i32 {
+    auto value# = 1:i32
+    consume(cede value++)
+    return 0
+}

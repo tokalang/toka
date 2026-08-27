@@ -41,9 +41,11 @@ The audit-only
 [`RC9 M1 Call Transfer Shadow`](semantic_core/rc9_call_transfer_shadow_m1.md)
 records resolved-formal plans without changing that active behavior. Its
 `PendingValidation` and `Unclassified` facts are implementation work, not
-transfer authority. M1a.1 qualifies route coverage, value categories, and the
-plan carrier; exact-place/dependency admission must still replace those pending
-facts before atomic-commit work begins.
+transfer authority. M1a.2 qualifies shadow isolation, route/value-category
+coverage, and the base plan carrier, including recursive outcome payloads,
+actual init spelling, projected referents, and declaration-identity execution
+boundaries. Exact-place/dependency admission must still replace pending facts
+before atomic-commit implementation begins.
 
 ## RC8 CodeGen call-site ledger
 

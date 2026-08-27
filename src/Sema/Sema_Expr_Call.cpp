@@ -38,24 +38,39 @@ struct CallArgPALFact {
   Expr *Node = nullptr;
 };
 
-static bool isExecutionBoundaryCalleeName(std::string Name) {
-  size_t scopePos = Name.rfind("::");
-  if (scopePos != std::string::npos)
-    Name = Name.substr(scopePos + 2);
-  size_t genericPos = Name.find('<');
-  if (genericPos != std::string::npos)
-    Name = Name.substr(0, genericPos);
-  return Name == "thread_spawn";
+static bool isShadowTransparentPostfix(TokenType op) {
+  return op == TokenType::TokenWrite || op == TokenType::TokenNull ||
+         op == TokenType::TokenNone;
 }
 
-static bool isOwnedStateThreadCalleeName(std::string Name) {
-  size_t scopePos = Name.rfind("::");
+static std::shared_ptr<Type>
+shadowCarrierPayload(std::shared_ptr<Type> type) {
+  while (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(type))
+    type = outcome->PayloadType;
+  return type;
+}
+
+// Legacy thread-safety checks still key off the source spelling.  M1a.2 does
+// not change those diagnostics; only shadow boundary facts use resolved
+// declaration identity.
+static bool isExecutionBoundaryCalleeName(std::string name) {
+  size_t scopePos = name.rfind("::");
   if (scopePos != std::string::npos)
-    Name = Name.substr(scopePos + 2);
-  size_t genericPos = Name.find('<');
+    name = name.substr(scopePos + 2);
+  size_t genericPos = name.find('<');
   if (genericPos != std::string::npos)
-    Name = Name.substr(0, genericPos);
-  return Name == "thread_spawn_with_state";
+    name = name.substr(0, genericPos);
+  return name == "thread_spawn";
+}
+
+static bool isOwnedStateThreadCalleeName(std::string name) {
+  size_t scopePos = name.rfind("::");
+  if (scopePos != std::string::npos)
+    name = name.substr(scopePos + 2);
+  size_t genericPos = name.find('<');
+  if (genericPos != std::string::npos)
+    name = name.substr(0, genericPos);
+  return name == "thread_spawn_with_state";
 }
 
 static ClosureExpr *findClosureExpr(Expr *E) {
@@ -122,7 +137,8 @@ CallValueCategory Sema::classifyShadowCallValueCategory(
   while (source) {
     if (auto *cede = dynamic_cast<CedeExpr *>(source)) {
       source = cede->Value.get();
-    } else if (auto *postfix = dynamic_cast<PostfixExpr *>(source)) {
+    } else if (auto *postfix = dynamic_cast<PostfixExpr *>(source);
+               postfix && isShadowTransparentPostfix(postfix->Op)) {
       source = postfix->LHS.get();
     } else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source)) {
       source = unsafe->Expression.get();
@@ -178,12 +194,103 @@ CallValueCategory Sema::classifyShadowCallValueCategory(
   return CallValueCategory::Place;
 }
 
+std::shared_ptr<Type> Sema::queryShadowCallArgumentType(
+    Expr *argument, const std::shared_ptr<Type> &destinationType) {
+  Expr *source = argument;
+  while (source) {
+    if (source->ResolvedType && !source->ResolvedType->isUnknown())
+      return resolveType(source->ResolvedType, false);
+    if (auto *cede = dynamic_cast<CedeExpr *>(source)) {
+      source = cede->Value.get();
+    } else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source)) {
+      source = unsafe->Expression.get();
+    } else if (auto *postfix = dynamic_cast<PostfixExpr *>(source);
+               postfix && isShadowTransparentPostfix(postfix->Op)) {
+      source = postfix->LHS.get();
+    } else {
+      break;
+    }
+  }
+  if (!source)
+    return toka::Type::fromString("unknown");
+
+  if (auto *variable = dynamic_cast<VariableExpr *>(source)) {
+    SymbolInfo *info = nullptr;
+    std::string actualName = variable->Name;
+    if (CurrentScope && CurrentScope->findVariableWithDeref(
+                            variable->Name, info, actualName) &&
+        info && info->TypeObj)
+      return resolveType(info->TypeObj, false);
+    return toka::Type::fromString("unknown");
+  }
+  if (auto *number = dynamic_cast<NumberExpr *>(source)) {
+    if (destinationType &&
+        (destinationType->isInteger() || destinationType->isAddrType() ||
+         destinationType->isOAddrType()))
+      return resolveType(destinationType, false);
+    if (number->Value > 9223372036854775807ULL)
+      return toka::Type::fromString("u64");
+    if (number->Value > 2147483647)
+      return toka::Type::fromString("i64");
+    return toka::Type::fromString("i32");
+  }
+  if (dynamic_cast<FloatExpr *>(source)) {
+    if (destinationType && destinationType->isFloatingPoint())
+      return resolveType(destinationType, false);
+    return toka::Type::fromString("f64");
+  }
+  if (dynamic_cast<BoolExpr *>(source))
+    return toka::Type::fromString("bool");
+  if (dynamic_cast<CharLiteralExpr *>(source)) {
+    if (destinationType && destinationType->isInteger())
+      return resolveType(destinationType, false);
+    return toka::Type::fromString("char");
+  }
+  if (dynamic_cast<ViewStringExpr *>(source))
+    return resolveType(toka::Type::fromString("str"), false);
+  if (dynamic_cast<StringExpr *>(source))
+    return resolveType(destinationType ? destinationType
+                                       : toka::Type::fromString("cstr"),
+                       false);
+  if (dynamic_cast<NullExpr *>(source))
+    return toka::Type::fromString("null");
+  return toka::Type::fromString("unknown");
+}
+
+CallExecutionBoundary
+Sema::classifyShadowExecutionBoundary(FunctionDecl *function) const {
+  if (!function)
+    return CallExecutionBoundary::None;
+  FunctionDecl *identity = function;
+  while (identity->TemplateOrigin)
+    identity = identity->TemplateOrigin;
+
+  ModuleScope *owner = nullptr;
+  auto declarationOwner = DeclarationLexicalScopes.find(identity);
+  if (declarationOwner != DeclarationLexicalScopes.end())
+    owner = declarationOwner->second;
+  if (!owner) {
+    auto instanceOwner = InstantiationLexicalScopes.find(function);
+    if (instanceOwner != InstantiationLexicalScopes.end())
+      owner = instanceOwner->second;
+  }
+  if (!owner || !owner->IsTrustedSystemModule ||
+      !owner->ShadowCoordinateKnown ||
+      owner->ShadowLogicalModulePath != "std/thread")
+    return CallExecutionBoundary::None;
+  if (identity->Name == "thread_spawn" ||
+      identity->Name == "thread_spawn_with_state")
+    return CallExecutionBoundary::ThreadHandoff;
+  return CallExecutionBoundary::None;
+}
+
 CallTransferPlan Sema::buildShadowCallTransferPlan(
     ASTNode *callSite, Expr *argument,
     const std::shared_ptr<Type> &argumentType,
     const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
-    bool formalIsInit, bool legacyCallerRuleApplied, bool legacyCedeExempt,
-    CallTransferRoute route, bool isAsync, const std::string &callee,
+    bool formalIsInit, bool actualIsInit, bool legacyCallerRuleApplied,
+    bool legacyCedeExempt, CallTransferRoute route, bool isAsync,
+    CallExecutionBoundary executionBoundary,
     unsigned argumentIndex, unsigned formalIndex) {
   CallTransferPlan plan;
   plan.ArgumentIndex = argumentIndex;
@@ -191,6 +298,7 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
   plan.Route = route;
   plan.FormalIsCeded = formalIsCeded;
   plan.FormalIsInit = formalIsInit;
+  plan.ActualIsInit = actualIsInit;
   plan.ExplicitCede = dynamic_cast<CedeExpr *>(argument) != nullptr;
   plan.LegacyCallerRuleApplied = legacyCallerRuleApplied;
   plan.LegacyCedeExempt = formalIsCeded && legacyCedeExempt;
@@ -199,8 +307,9 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
   plan.IsAsync = isAsync;
 
   const bool startBoundary = callSite && callSite == m_StartBoundaryRoot;
-  const bool threadBoundary = isExecutionBoundaryCalleeName(callee) ||
-                              isOwnedStateThreadCalleeName(callee);
+  const bool threadBoundary =
+      executionBoundary == CallExecutionBoundary::ThreadHandoff ||
+      executionBoundary == CallExecutionBoundary::StartAndThreadHandoff;
   if (startBoundary && threadBoundary)
     plan.ExecutionBoundary = CallExecutionBoundary::StartAndThreadHandoff;
   else if (startBoundary)
@@ -222,8 +331,13 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
     if (sourceInfo) {
       plan.DependencyPaths.assign(sourceInfo->LifeDependencySet.begin(),
                                   sourceInfo->LifeDependencySet.end());
-      if (sourceInfo->BorrowedPath)
-        plan.ReferentPath = canonicalizeAccessPath(sourceInfo->BorrowedPath);
+      if (sourceInfo->BorrowedPath) {
+        AccessPath referent = canonicalizeAccessPath(sourceInfo->BorrowedPath);
+        referent.Projections.insert(referent.Projections.end(),
+                                    plan.SourcePlace.Projections.begin(),
+                                    plan.SourcePlace.Projections.end());
+        plan.ReferentPath = canonicalizeAccessPath(referent);
+      }
     }
   }
 
@@ -248,19 +362,29 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
     return plan;
   }
 
-  std::string soul = Type::stripMorphology(type->getSoulName());
+  auto carrierPayload = shadowCarrierPayload(type);
+  if (!carrierPayload || carrierPayload->isUnknown()) {
+    plan.Transfer = CallTransferDisposition::Reject;
+    plan.Source = CallSourceDisposition::NoStateChange;
+    plan.Dependency = CallDependencyDisposition::Indeterminate;
+    plan.PlaceEligibility = CallPlaceEligibility::Reject;
+    plan.Drop = CallDropDisposition::NoStateChange;
+    return plan;
+  }
+
+  std::string soul = Type::stripMorphology(carrierPayload->getSoulName());
   if (size_t scope = soul.rfind("::"); scope != std::string::npos)
     soul = soul.substr(scope + 2);
   const bool borrowedView =
-      type->isReference() || soul == "str" || soul == "bytes" ||
+      carrierPayload->isReference() || soul == "str" || soul == "bytes" ||
       soul == "cstr" || soul == "ViewStrSplitIterator" ||
       soul == "ViewStrLinesIterator";
-  if (type->isRawPointer())
+  if (carrierPayload->isRawPointer())
     plan.Dependency = CallDependencyDisposition::RawUnsafe;
   else if (borrowedView)
     plan.Dependency = CallDependencyDisposition::Borrowed;
-  else if (type->isShape() || type->isSmartPointer() || type->isArray() ||
-           type->isDynFn())
+  else if (carrierPayload->isShape() || carrierPayload->isSmartPointer() ||
+           carrierPayload->isArray() || carrierPayload->isDynFn())
     plan.Dependency = CallDependencyDisposition::Unclassified;
   else
     plan.Dependency = CallDependencyDisposition::None;
@@ -288,14 +412,18 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
       return plan;
     }
     auto formal = destinationType ? resolveType(destinationType, false) : type;
-    if (formal && (formal->isShape() || formal->isSmartPointer() ||
-                   formal->isArray())) {
+    auto formalPayload = shadowCarrierPayload(formal);
+    if (carriesLiability ||
+        (formalPayload &&
+         (formalPayload->isShape() || formalPayload->isSmartPointer() ||
+          formalPayload->isArray()))) {
       plan.Transfer = CallTransferDisposition::BorrowCapture;
       plan.Drop = carriesLiability
                       ? CallDropDisposition::SourceRetainsLiability
                       : CallDropDisposition::NoLiability;
-    } else if (type->isRawPointer() || type->isReference() ||
-               type->isFunction() || type->isDynFn()) {
+    } else if (carrierPayload->isRawPointer() ||
+               carrierPayload->isReference() ||
+               carrierPayload->isFunction() || carrierPayload->isDynFn()) {
       plan.Transfer = CallTransferDisposition::CopyIdentity;
       plan.Drop = CallDropDisposition::NoLiability;
     } else {
@@ -317,20 +445,20 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
     return plan;
   }
 
-  if (borrowedView || type->isRawPointer() || type->isFunction() ||
-      type->isDynFn()) {
+  if (borrowedView || carrierPayload->isRawPointer() ||
+      carrierPayload->isFunction() || carrierPayload->isDynFn()) {
     plan.Transfer = CallTransferDisposition::CopyIdentity;
     plan.Source = plan.ExplicitCede
                       ? CallSourceDisposition::InvalidatePlace
                       : CallSourceDisposition::KeepLive;
     plan.Drop = CallDropDisposition::NoLiability;
-  } else if (proveSlice4CopyType(type)) {
+  } else if (proveSlice4CopyType(carrierPayload)) {
     plan.Transfer = CallTransferDisposition::CopyValue;
     plan.Source = plan.ExplicitCede
                       ? CallSourceDisposition::InvalidatePlace
                       : CallSourceDisposition::KeepLive;
     plan.Drop = CallDropDisposition::NoLiability;
-  } else if (type->isSharedPtr()) {
+  } else if (carrierPayload->isSharedPtr()) {
     plan.Transfer = CallTransferDisposition::TransferShared;
     plan.Source = CallSourceDisposition::InvalidatePlace;
     plan.Drop = CallDropDisposition::DestinationAssumesLiability;
@@ -353,15 +481,18 @@ void Sema::recordShadowCallTransfer(
     unsigned argumentIndex, unsigned formalIndex, Expr *argument,
     const std::shared_ptr<Type> &argumentType,
     const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
-    bool formalIsInit, bool legacyCallerRuleApplied, bool legacyCedeExempt,
-    CallTransferRoute route, const std::string &callee,
-    const std::string &parameter, SourceLocation parameterLoc, bool isAsync) {
-  if (!SemanticEvidence::isCallTransferShadowEnabled())
+    bool formalIsInit, bool actualIsInit, bool legacyCallerRuleApplied,
+    bool legacyCedeExempt, CallTransferRoute route,
+    const std::string &callee, const std::string &parameter,
+    SourceLocation parameterLoc, bool isAsync,
+    CallExecutionBoundary executionBoundary) {
+  if (!SemanticEvidence::isCallTransferShadowEnabled() ||
+      m_IsPrecomputingCaptures)
     return;
   CallTransferPlan plan = buildShadowCallTransferPlan(
       callSite, argument, argumentType, destinationType, formalIsCeded,
-      formalIsInit, legacyCallerRuleApplied, legacyCedeExempt, route, isAsync,
-      callee, argumentIndex, formalIndex);
+      formalIsInit, actualIsInit, legacyCallerRuleApplied, legacyCedeExempt,
+      route, isAsync, executionBoundary, argumentIndex, formalIndex);
   auto existing = std::find_if(
       plans.begin(), plans.end(), [&](const CallTransferPlan &candidate) {
         return candidate.ArgumentIndex == argumentIndex &&
@@ -387,7 +518,7 @@ void Sema::recordShadowCallTransfer(
       plan.SourcePlace.toDebugString(), plan.ReferentPath.toLegacyString(),
       plan.ReferentPath.toDebugString(), plan.DependencyPaths,
       plan.HasCleanupMask, plan.CleanupMask, plan.FormalIsCeded,
-      plan.FormalIsInit,
+      plan.FormalIsInit, plan.ActualIsInit,
       plan.LegacyCallerRuleApplied, plan.LegacyCedeExempt,
       plan.LegacyMissingCede, plan.IsAsync,
       argument ? argument->Loc : SourceLocation{}, parameterLoc);
@@ -907,8 +1038,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         recordShadowCallTransfer(
             Call, Call->ShadowArgumentTransfers,
             static_cast<unsigned>(argumentIndex + 1), formalIndex, argument,
-            argumentType, destinationType, param.IsCeded, param.IsInit, true,
-            isExempt, route, CallName, param.Name, param.Loc, isAsync);
+            argumentType, destinationType, param.IsCeded, param.IsInit,
+            Call->isInitArgument(argumentIndex), true, isExempt, route,
+            CallName, param.Name, param.Loc, isAsync);
         if (!param.IsCeded)
           return;
 
@@ -1714,12 +1846,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 }
              }
           }
-          Call->ResolvedFn = invokeFn;
+          if (!m_IsPrecomputingCaptures) {
+            Call->ResolvedFn = invokeFn;
 
-          auto varE = std::make_unique<VariableExpr>(CallName);
-          varE->IsValueMutable = required == CallableReceiverMode::Mutable;
-          varE->ResolvedType = sym.TypeObj;
-          Call->Args.insert(Call->Args.begin(), std::move(varE));
+            auto varE = std::make_unique<VariableExpr>(CallName);
+            varE->IsValueMutable =
+                required == CallableReceiverMode::Mutable;
+            varE->ResolvedType = sym.TypeObj;
+            Call->Args.insert(Call->Args.begin(), std::move(varE));
+          }
 
           if (required == CallableReceiverMode::Consuming) {
             CurrentScope->markMoved(CallName, Call->Loc);
@@ -1840,8 +1975,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 Call, Call->ShadowArgumentTransfers,
                 static_cast<unsigned>(i + 1),
                 static_cast<unsigned>(i + 1), Call->Args[i].get(), argTy,
-                expectedTy, expectedTy && expectedTy->IsCede, false, false,
-                legacyCedeExempt, CallTransferRoute::IndirectFunction,
+                expectedTy, expectedTy && expectedTy->IsCede, false,
+                Call->isInitArgument(i), false, legacyCedeExempt,
+                CallTransferRoute::IndirectFunction,
                 CallName, "arg" + std::to_string(i + 1), SourceLocation{},
                 false);
             AccessCapability declaredCapability =
@@ -1905,8 +2041,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 Call, Call->ShadowArgumentTransfers,
                 static_cast<unsigned>(i + 1),
                 static_cast<unsigned>(i + 1), Call->Args[i].get(), argTy,
-                expectedTy, expectedTy && expectedTy->IsCede, false, false,
-                legacyCedeExempt, CallTransferRoute::IndirectDynFunction,
+                expectedTy, expectedTy && expectedTy->IsCede, false,
+                Call->isInitArgument(i), false, legacyCedeExempt,
+                CallTransferRoute::IndirectDynFunction,
                 CallName, "arg" + std::to_string(i + 1), SourceLocation{},
                 false);
             AccessCapability declaredCapability =
@@ -3058,8 +3195,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           Call, Call->ShadowArgumentTransfers,
           static_cast<unsigned>(i + 1), static_cast<unsigned>(i + 1),
           Call->Args[i].get(), argType, paramType, isCededParam, formalIsInit,
-          true, legacyCedeExempt, shadowRoute, CallName, shadowParamName,
-          cedeParamLoc, calleeIsAsync);
+          Call->isInitArgument(i), true, legacyCedeExempt, shadowRoute,
+          CallName, shadowParamName, cedeParamLoc, calleeIsAsync,
+          classifyShadowExecutionBoundary(Fn));
     }
 
     if (paramIsValueMutable && !paramIsHatted && !isCededParam &&

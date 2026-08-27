@@ -1,0 +1,11 @@
+import std/thread::{thread_spawn as spawn}
+
+fn thread_spawn(value: i32) -> i32 {
+    return value
+}
+
+fn main() -> i32 {
+    auto ordinary = thread_spawn(1:i32)
+    auto handle# = spawn<i32>({ => return cede 0:i32 })
+    return 0
+}

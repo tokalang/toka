@@ -1,0 +1,27 @@
+import core/string::{string}
+
+trait @Sink {
+    fn take(self, cede value: string) -> usize
+}
+
+shape StringSink()
+
+impl StringSink@Sink {
+    fn take(self, cede value: string) -> usize {
+        auto owned = cede value
+        return owned.len()
+    }
+}
+
+fn invoke(sink: dyn @Sink, value: string) -> usize {
+    auto length = sink.take(cede value)
+    // The legacy dynamic-trait route does not yet commit argument ownership.
+    // Shadow collection must observe that route without changing this result.
+    return length + value.len()
+}
+
+fn main() -> i32 {
+    auto sink = StringSink()
+    auto value = string::from("shadow")
+    return invoke(sink, value) as i32 - 12:i32
+}

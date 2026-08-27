@@ -1,0 +1,12 @@
+fn initialize(init out: i32) {
+    init out = 1:i32
+}
+
+fn observe(value: i32) {}
+
+fn main() -> i32 {
+    initialize(1:i32)
+    auto value = 2:i32
+    observe(init value)
+    return 0
+}
