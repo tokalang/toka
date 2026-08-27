@@ -313,13 +313,15 @@ The journal contains logical actions, not LLVM lowering:
 ```text
 InvalidateWhole(place)
 InvalidateProjection(place, cleanup mask)
-KeepLive(place)
 InstallBorrow(source, referent, capability)
 TransferDropLiability(source, destination)
 RetainSharedLiability(source, destination)
 RecordDependency(destination, roots)
-PublishResolvedCall(call id, validated plan)
+StageResolvedCall(call id, validated plan)
 ```
+
+`KeepLive` is a validated plan fact, not a journal action, because it changes
+no state.
 
 All PAL, place, drop, dependency, diagnostics, evidence, and semantic-model
 writes go through the transaction. Direct mutation of parent scopes, global
@@ -576,6 +578,8 @@ no transaction type or production Sema/Evidence/CodeGen include.
 
 ### M1b.0b — transaction lifecycle and synthetic state
 
+- Follow the separately reviewed
+  [`M1b.0b Synthetic Transaction Contract`](rc9_m1b_0b_synthetic_transaction_contract.md).
 - Implement the frozen move-only lifecycle and root-only atomic publication
   against synthetic state, not live Sema.
 - Implement a source-backed `TransactionalStateManifest` registry/digest and

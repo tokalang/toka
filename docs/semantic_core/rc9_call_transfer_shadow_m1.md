@@ -123,4 +123,6 @@ semantic identities, immutable facts, discardable transactions, and a
 `SemanticModel`; it then replaces `PendingValidation` and `Unclassified` in a
 qualified subset before any ownership commit implementation begins. Current
 implementation is limited to the M1b.0a opaque identities and empty model; the
-transaction lifecycle requires its separate M1b.0b review and synthetic gates.
+transaction lifecycle requires the separate
+[`M1b.0b Synthetic Transaction Contract`](rc9_m1b_0b_synthetic_transaction_contract.md)
+review and synthetic gates.
