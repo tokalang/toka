@@ -1,12 +1,11 @@
 # RC9 M1b.0b Synthetic Transaction Contract
 
-**Design status:** M1b.0b-D.2 accepted for the strictly BUILD_TESTING-only
-synthetic reference implementation.
+**Design status:** M1b.0b-D.2 proposed for independent review.
 
-**Implementation status:** Synthetic reference implemented and locally
-qualified; independent post-implementation acceptance pending. No
-Sema/PAL/Evidence/CodeGen/CLI wiring, behavior flag, TKI change, ABI change, or
-M1b.1 consumption is admitted.
+**Implementation status:** Not implemented and not admitted by this document.
+No transaction/journal class, identity builder, Sema/PAL/Evidence/CodeGen/CLI
+wiring, behavior flag, TKI change, or ABI change is authorized until this
+contract is accepted.
 
 **Baseline:** `2ac9b726f858da010151cc894c321ce709ae84d0`.
 
@@ -776,38 +775,8 @@ The M1b.0b review receipt must include all of the following.
 
 ## Admission decision
 
-Independent D.2 review authorized only the `BUILD_TESTING`-only synthetic
-M1b.0b reference slice. That implementation is complete and awaits its required
-post-implementation acceptance. It does not admit M1b.1 Sema consumption,
+This document alone admits no implementation. After independent review it may
+authorize the `BUILD_TESTING`-only synthetic M1b.0b reference slice. Passing
+that slice admits another review; it does not admit M1b.1 Sema consumption,
 ownership commit, CodeGen consumption, Evidence v2, or the caller-spelling
 behavior change.
-
-## Local implementation receipt
-
-The implementation adds two unlinked `BUILD_TESTING` targets:
-
-```text
-toka_synthetic_transfer_contract
-toka_synthetic_semantic_transaction
-```
-
-They cover controlled strong identities, tagged destinations, transfer-edge
-and pending-outcome validation, every action phase/kind, nested action-ID
-uniqueness, loan/cleanup region terminals, lifecycle/stale/double operations,
-manifest/model digests, branch topology and semilattice laws, revision
-collision/reference closure, rejected output, and every named fault family.
-
-Local qualification at the implementation revision passed:
-
-- full build;
-- CTest 20/20;
-- M1a Shadow v3: 41 receipts plus four normal cases;
-- Cede Evidence v1 ABI gate;
-- public JSON CLI: 17/17;
-- Pass: 451/451;
-- Fail: 473/473; and
-- Conformance: 308/308.
-
-Production source, `toka_frontend`, CLI/LSP, Sema/PAL, CodeGen, Evidence, and
-hosted targets do not include or link the synthetic transaction/journal
-support. The production `SemanticModel` remains empty and immutable.
