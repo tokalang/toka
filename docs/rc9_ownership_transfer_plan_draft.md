@@ -47,17 +47,14 @@ actual init spelling, projected referents, and declaration-identity execution
 boundaries. Exact-place/dependency admission must still replace pending facts
 before atomic-commit implementation begins.
 
-The accepted internal implementation architecture is
-[`RC9 M1b Transactional Semantic Planning`](semantic_core/rc9_m1b_transactional_semantic_planning_design.md).
-It deliberately does not promote M1a's mutable AST vectors. Production plans
-live in an immutable `SemanticModel`, and all candidate/speculative work is
-isolated in a discardable analysis transaction.
+The current proposed implementation architecture is
+[`RC9 M1b-D.3 Ordinary Direct-Call Vertical Slice`](semantic_core/rc9_m1b_d3_direct_call_vertical_slice.md).
+It deliberately does not promote M1a's mutable AST vectors and does not build a
+standalone synthetic semantic engine.
 
-M1b-D.1 admits, and the current implementation contains, only the no-behavior
-M1b.0a identity/model scaffold. The transaction lifecycle API remains a
-separately reviewed M1b.0b slice; no
-ownership commit or planner wiring is admitted by that scaffold.
-The proposed review contract is
+The current implementation contains only the no-behavior M1b.0a identity/model
+scaffold. No ownership commit or planner wiring is admitted. The superseded
+synthetic contract remains as the failed-experiment record:
 [`RC9 M1b.0b Synthetic Transaction Contract`](semantic_core/rc9_m1b_0b_synthetic_transaction_contract.md).
 
 ## RC8 CodeGen call-site ledger

@@ -116,13 +116,9 @@ The script emits a compact receipt named
 
 ## Next admission step
 
-M1a.2 does not authorize the caller-spelling behavior flip. The accepted
-[`M1b Transactional Semantic Planning Design`](rc9_m1b_transactional_semantic_planning_design.md)
-does not promote these AST vectors into commit authority. M1b first introduces
-semantic identities, immutable facts, discardable transactions, and a
-`SemanticModel`; it then replaces `PendingValidation` and `Unclassified` in a
-qualified subset before any ownership commit implementation begins. Current
-implementation is limited to the M1b.0a opaque identities and empty model; the
-transaction lifecycle requires the separate
-[`M1b.0b Synthetic Transaction Contract`](rc9_m1b_0b_synthetic_transaction_contract.md)
-review and synthetic gates.
+M1a.2 does not authorize the caller-spelling behavior flip. The proposed
+[`M1b-D.3 Ordinary Direct-Call Vertical Slice`](rc9_m1b_d3_direct_call_vertical_slice.md)
+does not promote these AST vectors into commit authority or build a standalone
+synthetic transaction engine. Current implementation remains limited to the
+M1b.0a opaque identities and empty model. The next code slice, if independently
+accepted, must exercise one real ordinary direct-call Shadow path.

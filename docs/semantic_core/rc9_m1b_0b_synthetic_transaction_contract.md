@@ -1,11 +1,14 @@
 # RC9 M1b.0b Synthetic Transaction Contract
 
-**Design status:** M1b.0b-D.2 proposed for independent review.
+**Design status:** Superseded / non-authorizing. Retained as the historical
+contract for a rejected synthetic-reference route.
 
-**Implementation status:** Not implemented and not admitted by this document.
-No transaction/journal class, identity builder, Sema/PAL/Evidence/CodeGen/CLI
-wiring, behavior flag, TKI change, or ABI change is authorized until this
-contract is accepted.
+**Implementation status:** The attempted implementation in `c5e5a5c1` failed
+post-implementation acceptance and was reverted by `19a94dbf`. No
+transaction/journal class or semantic authority is active from this contract.
+
+**Superseded by:**
+[`M1b-D.3 Ordinary Direct-Call Vertical Slice`](rc9_m1b_d3_direct_call_vertical_slice.md).
 
 **Baseline:** `2ac9b726f858da010151cc894c321ce709ae84d0`.
 
@@ -775,8 +778,8 @@ The M1b.0b review receipt must include all of the following.
 
 ## Admission decision
 
-This document alone admits no implementation. After independent review it may
-authorize the `BUILD_TESTING`-only synthetic M1b.0b reference slice. Passing
-that slice admits another review; it does not admit M1b.1 Sema consumption,
-ownership commit, CodeGen consumption, Evidence v2, or the caller-spelling
-behavior change.
+The synthetic-reference admission described here is withdrawn. This document
+is non-authorizing and cannot be used to justify M1b.0b, M1b.1, Sema
+consumption, ownership commit, CodeGen consumption, Evidence v2, or the
+caller-spelling behavior change. D.3 is the only current implementation review
+surface.

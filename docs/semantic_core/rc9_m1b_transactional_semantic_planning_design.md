@@ -1,16 +1,19 @@
 # RC9 M1b Transactional Semantic Planning Design
 
-**Design status:** M1b-D.1 accepted.
+**Design status:** Historical invariant record. Its standalone synthetic
+transaction/journal implementation route is superseded by M1b-D.3.
 
 **Implementation admission:** M1b.0a opaque identities and an empty immutable
-`SemanticModel` are admitted. M1b.0b transaction lifecycle/journal APIs require
-a separate implementation review against this D.1 contract. All Sema wiring
-remains blocked until its state-manifest and synthetic lifecycle gates pass.
-No semantic behavior, PAL state, CodeGen path, evidence contract, TKI format,
-or ABI is changed by this design.
+`SemanticModel` remain admitted. No standalone transaction/journal
+implementation is admitted. The next implementation direction is governed by
+[`M1b-D.3`](rc9_m1b_d3_direct_call_vertical_slice.md).
 
 **Implementation status:** M1b.0a scaffold implemented and unit-qualified.
 M1b.0b and all semantic consumers remain unimplemented.
+
+All standalone M1b.0b implementation-sequence and synthetic-qualification
+sections below are retained only as historical rationale and are
+non-authorizing. D.3 governs current work.
 
 **Design baseline:**
 `20410f4cbe6615a3c4a662fd6d64def0e956de0a`.
