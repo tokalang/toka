@@ -128,6 +128,7 @@ void printHelp() {
       << "  --explain[=json] <code>         Explain a diagnostic code\n"
       << "  --semantic-evidence=json        Emit public semantic evidence v1\n"
       << "  --cede-obligations=json         Emit cede obligation evidence v1\n"
+      << "  --call-transfer-shadow=json     Emit audit-only RC9 call transfer plans\n"
       << "  --capabilities=json             Emit H/P call capability pilot v1\n"
       << "  --todo-goals=json               Emit typed-todo goals v1\n"
       << "  --conditional-facts=json        Emit typed-todo conditional facts v1\n"
@@ -152,13 +153,17 @@ bool parseUnsignedArgument(const char *option, const char *value,
 
 class SemanticEvidenceDumpGuard {
 public:
-  SemanticEvidenceDumpGuard(bool &cedeObligations, bool &capabilities,
-                            bool &todoGoals, bool &conditionalFacts)
-      : CedeObligations(cedeObligations), Capabilities(capabilities),
+  SemanticEvidenceDumpGuard(bool &callTransferShadow, bool &cedeObligations,
+                            bool &capabilities, bool &todoGoals,
+                            bool &conditionalFacts)
+      : CallTransferShadow(callTransferShadow),
+        CedeObligations(cedeObligations), Capabilities(capabilities),
         TodoGoals(todoGoals), ConditionalFacts(conditionalFacts) {}
   ~SemanticEvidenceDumpGuard() {
     if (toka::SemanticEvidence::isEnabled()) {
-      if (ConditionalFacts)
+      if (CallTransferShadow)
+        toka::SemanticEvidence::dumpCallTransferShadowJSON(std::cout);
+      else if (ConditionalFacts)
         toka::SemanticEvidence::dumpConditionalFactsJSON(std::cout);
       else if (TodoGoals)
         toka::SemanticEvidence::dumpTodoGoalsJSON(std::cout);
@@ -172,6 +177,7 @@ public:
   }
 
 private:
+  bool &CallTransferShadow;
   bool &CedeObligations;
   bool &Capabilities;
   bool &TodoGoals;
@@ -750,6 +756,7 @@ int main(int argc, char **argv) {
   bool dumpHandleSurfaceStats = false;
   bool dumpSemanticEvidence = false;
   bool dumpCedeObligations = false;
+  bool dumpCallTransferShadow = false;
   bool dumpCapabilities = false;
   bool dumpTodoGoals = false;
   bool dumpConditionalFacts = false;
@@ -773,10 +780,9 @@ int main(int argc, char **argv) {
   bool experimentalNoCapture = false;
   bool experimentalReadOnly = false;
   bool machineFailureDiagnostics = false;
-  SemanticEvidenceDumpGuard semanticEvidenceGuard(dumpCedeObligations,
-                                                   dumpCapabilities,
-                                                   dumpTodoGoals,
-                                                   dumpConditionalFacts);
+  SemanticEvidenceDumpGuard semanticEvidenceGuard(
+      dumpCallTransferShadow, dumpCedeObligations, dumpCapabilities,
+      dumpTodoGoals, dumpConditionalFacts);
   StructuredDiagnosticsDumpGuard structuredDiagnosticsGuard(
       structuredDiagnostics);
   MachineFailureDiagnosticsDumpGuard machineFailureDiagnosticsGuard(
@@ -880,6 +886,8 @@ int main(int argc, char **argv) {
       dumpSemanticEvidence = true;
     } else if (arg == "--cede-obligations=json") {
       dumpCedeObligations = true;
+    } else if (arg == "--call-transfer-shadow=json") {
+      dumpCallTransferShadow = true;
     } else if (arg == "--capabilities=json") {
       dumpCapabilities = true;
     } else if (arg == "--todo-goals=json") {
@@ -1035,6 +1043,18 @@ int main(int argc, char **argv) {
       compileOnly && emitInterface && configuredBuildDir &&
       configuredBuildDir[0] != '\0';
 
+  if (dumpCallTransferShadow &&
+      (structuredDiagnostics || g_JsonDiagnostics || dumpDependencies ||
+       dumpAssignmentStats || dumpHandleSurfaceStats || dumpSemanticEvidence ||
+       dumpCedeObligations || dumpCapabilities || dumpTodoGoals ||
+       dumpConditionalFacts || dumpMemorySummaries || dumpMemoryContracts ||
+       dumpEncapSlice1Facts || dumpSemanticIndex || dumpSemanticContext ||
+       !semanticQuery.empty() || runTopologyEval || !explainCode.empty())) {
+    llvm::errs() << "--call-transfer-shadow=json cannot be combined with "
+                    "another JSON, semantic, or evaluation output mode\n";
+    return 1;
+  }
+
   if (structuredDiagnostics &&
       (g_JsonDiagnostics || dumpDependencies || dumpAssignmentStats ||
        dumpHandleSurfaceStats || dumpSemanticEvidence || dumpCedeObligations || dumpCapabilities || dumpTodoGoals || dumpConditionalFacts || dumpMemorySummaries ||
@@ -1127,8 +1147,9 @@ int main(int argc, char **argv) {
     return 1;
   }
   toka::SemanticEvidence::enable(dumpSemanticEvidence || dumpCedeObligations ||
-                                 dumpCapabilities || dumpTodoGoals ||
-                                 dumpConditionalFacts);
+                                 dumpCallTransferShadow || dumpCapabilities ||
+                                 dumpTodoGoals || dumpConditionalFacts);
+  toka::SemanticEvidence::enableCallTransferShadow(dumpCallTransferShadow);
 
   if (!explainCode.empty()) {
     auto explanation = toka::DiagnosticEngine::explain(explainCode);

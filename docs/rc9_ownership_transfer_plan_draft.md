@@ -37,6 +37,12 @@ cede evidence v1 remain the active historical contract while implementation
 is incomplete. EXP-LIN-01 remains a confirmed RC8 specification/implementation
 divergence and will be marked `Superseded by RC9 ADR` only at activation.
 
+The audit-only
+[`RC9 M1 Call Transfer Shadow`](semantic_core/rc9_call_transfer_shadow_m1.md)
+records resolved-formal plans without changing that active behavior. Its
+`PendingValidation` and `Unclassified` facts are implementation work, not
+transfer authority.
+
 ## RC8 CodeGen call-site ledger
 
 The RC8 baseline has ten calls to `suppressDropForMove()` (excluding its

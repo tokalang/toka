@@ -706,6 +706,17 @@ private:
   bool diagnosePlaceAliasOwnershipTransfer(ASTNode *Site, Expr *Source);
   AggregateTransferKind qualifyAggregateTransfer(
       Expr *Source, const std::shared_ptr<Type> &DestinationType);
+  CallTransferPlan buildShadowCallTransferPlan(
+      Expr *Argument, const std::shared_ptr<Type> &ArgumentType,
+      const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
+      bool LegacyCedeExempt, CallTransferRoute Route, bool IsAsync);
+  void recordShadowCallTransfer(
+      std::vector<CallTransferPlan> &Plans, size_t Index, Expr *Argument,
+      const std::shared_ptr<Type> &ArgumentType,
+      const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
+      bool LegacyCedeExempt, CallTransferRoute Route,
+      const std::string &Callee, const std::string &Parameter,
+      SourceLocation ParameterLoc, bool IsAsync);
   bool returnTypeHasMember(FunctionDecl *Function,
                            const std::string &Member);
   std::string getDependencyPathString(Expr *E);

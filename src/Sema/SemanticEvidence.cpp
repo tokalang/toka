@@ -9,8 +9,10 @@
 namespace toka {
 
 bool SemanticEvidence::Enabled = false;
+bool SemanticEvidence::CallTransferShadowEnabled = false;
 std::vector<SemanticDecisionRecord> SemanticEvidence::Records;
 std::vector<CedeObligationRecord> SemanticEvidence::CedeObligations;
+std::vector<CallTransferShadowRecord> SemanticEvidence::CallTransferShadows;
 std::vector<CapabilityCallRecord> SemanticEvidence::CapabilityCalls;
 std::vector<TodoGoalRecord> SemanticEvidence::TodoGoals;
 std::vector<ConditionalFactRecord> SemanticEvidence::ConditionalFacts;
@@ -93,6 +95,34 @@ bool CedeObligationRecord::operator==(const CedeObligationRecord &rhs) const {
          Location == rhs.Location && ContractLocation == rhs.ContractLocation;
 }
 
+bool CallTransferShadowRecord::operator<(
+    const CallTransferShadowRecord &rhs) const {
+  return std::tie(Callee, Route, Parameter, ArgumentIndex, Spelling, Transfer,
+                  Source, Dependency, PlaceEligibility, SourcePath, FormalCeded,
+                  LegacyCedeExempt, LegacyMissingCede, Async, StartBoundary,
+                  Location, ContractLocation) <
+         std::tie(rhs.Callee, rhs.Route, rhs.Parameter, rhs.ArgumentIndex,
+                  rhs.Spelling, rhs.Transfer, rhs.Source, rhs.Dependency,
+                  rhs.PlaceEligibility, rhs.SourcePath, rhs.FormalCeded,
+                  rhs.LegacyCedeExempt,
+                  rhs.LegacyMissingCede, rhs.Async, rhs.StartBoundary,
+                  rhs.Location, rhs.ContractLocation);
+}
+
+bool CallTransferShadowRecord::operator==(
+    const CallTransferShadowRecord &rhs) const {
+  return Callee == rhs.Callee && Route == rhs.Route &&
+         Parameter == rhs.Parameter && ArgumentIndex == rhs.ArgumentIndex &&
+         Spelling == rhs.Spelling && Transfer == rhs.Transfer &&
+         Source == rhs.Source && Dependency == rhs.Dependency &&
+         PlaceEligibility == rhs.PlaceEligibility &&
+         SourcePath == rhs.SourcePath && FormalCeded == rhs.FormalCeded &&
+         LegacyCedeExempt == rhs.LegacyCedeExempt &&
+         LegacyMissingCede == rhs.LegacyMissingCede && Async == rhs.Async &&
+         StartBoundary == rhs.StartBoundary && Location == rhs.Location &&
+         ContractLocation == rhs.ContractLocation;
+}
+
 bool CapabilityCallRecord::operator<(const CapabilityCallRecord &rhs) const {
   return std::tie(Callee, Parameter, Subject, DeclaredHandleRebindable,
                   DeclaredPayloadWritable, InferredHandleRebindable,
@@ -161,14 +191,24 @@ bool ConditionalFactRecord::operator==(
 
 void SemanticEvidence::enable(bool value) {
   Enabled = value;
+  CallTransferShadowEnabled = false;
   reset();
 }
 
 bool SemanticEvidence::isEnabled() { return Enabled; }
 
+void SemanticEvidence::enableCallTransferShadow(bool value) {
+  CallTransferShadowEnabled = value;
+}
+
+bool SemanticEvidence::isCallTransferShadowEnabled() {
+  return CallTransferShadowEnabled;
+}
+
 void SemanticEvidence::reset() {
   Records.clear();
   CedeObligations.clear();
+  CallTransferShadows.clear();
   CapabilityCalls.clear();
   TodoGoals.clear();
   ConditionalFacts.clear();
@@ -257,6 +297,64 @@ void SemanticEvidence::dumpCedeObligationsJSON(std::ostream &out) {
         << "\",\"subject\":\"" << escapeJSON(record.Subject)
         << "\",\"origin\":\"" << escapeJSON(record.Origin)
         << "\",\"location\":";
+    dumpLocation(out, record.Location);
+    out << ",\"contract_location\":";
+    dumpLocation(out, record.ContractLocation);
+    out << '}';
+  }
+  out << "]}\n";
+}
+
+void SemanticEvidence::recordCallTransferShadow(
+    std::string callee, std::string route, std::string parameter,
+    unsigned argumentIndex, std::string spelling, std::string transfer,
+    std::string source, std::string dependency, std::string placeEligibility,
+    std::string sourcePath, bool formalCeded, bool legacyCedeExempt,
+    bool legacyMissingCede, bool async, bool startBoundary,
+    SourceLocation location, SourceLocation contractLocation) {
+  if (!Enabled || !CallTransferShadowEnabled)
+    return;
+  CallTransferShadows.push_back(
+      {std::move(callee), std::move(route), std::move(parameter), argumentIndex,
+       std::move(spelling), std::move(transfer), std::move(source),
+       std::move(dependency), std::move(placeEligibility),
+       std::move(sourcePath), formalCeded, legacyCedeExempt,
+       legacyMissingCede, async, startBoundary,
+       resolveLocation(location), resolveLocation(contractLocation)});
+}
+
+void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
+  std::sort(CallTransferShadows.begin(), CallTransferShadows.end());
+  CallTransferShadows.erase(
+      std::unique(CallTransferShadows.begin(), CallTransferShadows.end()),
+      CallTransferShadows.end());
+  out << "{\"schema\":\"toka.internal.call-transfer-shadow\","
+         "\"version\":1,\"status\":\"audit-only\",\"records\":[";
+  for (size_t i = 0; i < CallTransferShadows.size(); ++i) {
+    if (i != 0)
+      out << ',';
+    const auto &record = CallTransferShadows[i];
+    out << "{\"callee\":\"" << escapeJSON(record.Callee)
+        << "\",\"route\":\"" << escapeJSON(record.Route)
+        << "\",\"parameter\":\"" << escapeJSON(record.Parameter)
+        << "\",\"argument_index\":" << record.ArgumentIndex
+        << ",\"spelling\":\"" << escapeJSON(record.Spelling)
+        << "\",\"transfer\":\"" << escapeJSON(record.Transfer)
+        << "\",\"source\":\"" << escapeJSON(record.Source)
+        << "\",\"dependency\":\"" << escapeJSON(record.Dependency)
+        << "\",\"place_eligibility\":\""
+        << escapeJSON(record.PlaceEligibility)
+        << "\",\"source_path\":\"" << escapeJSON(record.SourcePath)
+        << "\",\"formal_ceded\":"
+        << (record.FormalCeded ? "true" : "false")
+        << ",\"legacy_cede_exempt\":"
+        << (record.LegacyCedeExempt ? "true" : "false")
+        << ",\"legacy_missing_cede\":"
+        << (record.LegacyMissingCede ? "true" : "false")
+        << ",\"async\":" << (record.Async ? "true" : "false")
+        << ",\"start_boundary\":"
+        << (record.StartBoundary ? "true" : "false")
+        << ",\"location\":";
     dumpLocation(out, record.Location);
     out << ",\"contract_location\":";
     dumpLocation(out, record.ContractLocation);

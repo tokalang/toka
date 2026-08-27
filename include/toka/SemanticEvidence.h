@@ -132,6 +132,29 @@ struct CedeObligationRecord {
   bool operator==(const CedeObligationRecord &rhs) const;
 };
 
+struct CallTransferShadowRecord {
+  std::string Callee;
+  std::string Route;
+  std::string Parameter;
+  unsigned ArgumentIndex = 0;
+  std::string Spelling;
+  std::string Transfer;
+  std::string Source;
+  std::string Dependency;
+  std::string PlaceEligibility;
+  std::string SourcePath;
+  bool FormalCeded = false;
+  bool LegacyCedeExempt = false;
+  bool LegacyMissingCede = false;
+  bool Async = false;
+  bool StartBoundary = false;
+  SemanticEvidenceLocation Location;
+  SemanticEvidenceLocation ContractLocation;
+
+  bool operator<(const CallTransferShadowRecord &rhs) const;
+  bool operator==(const CallTransferShadowRecord &rhs) const;
+};
+
 struct CapabilityCallRecord {
   std::string Callee;
   std::string Parameter;
@@ -189,6 +212,8 @@ public:
 
   static void enable(bool value);
   static bool isEnabled();
+  static void enableCallTransferShadow(bool value);
+  static bool isCallTransferShadowEnabled();
   static void reset();
   static void record(SemanticRuleID rule, SemanticOperation operation,
                      SemanticDecision decision, SemanticReason reason,
@@ -203,6 +228,14 @@ public:
                                    SourceLocation contractLocation = {});
   static void dumpJSON(std::ostream &out);
   static void dumpCedeObligationsJSON(std::ostream &out);
+  static void recordCallTransferShadow(
+      std::string callee, std::string route, std::string parameter,
+      unsigned argumentIndex, std::string spelling, std::string transfer,
+      std::string source, std::string dependency, std::string placeEligibility,
+      std::string sourcePath, bool formalCeded, bool legacyCedeExempt,
+      bool legacyMissingCede, bool async, bool startBoundary,
+      SourceLocation location, SourceLocation contractLocation = {});
+  static void dumpCallTransferShadowJSON(std::ostream &out);
   static void recordCapabilityCall(
       std::string callee, std::string parameter, std::string subject,
       bool declaredHandleRebindable, bool declaredPayloadWritable,
@@ -226,8 +259,10 @@ public:
 
 private:
   static bool Enabled;
+  static bool CallTransferShadowEnabled;
   static std::vector<SemanticDecisionRecord> Records;
   static std::vector<CedeObligationRecord> CedeObligations;
+  static std::vector<CallTransferShadowRecord> CallTransferShadows;
   static std::vector<CapabilityCallRecord> CapabilityCalls;
   static std::vector<TodoGoalRecord> TodoGoals;
   static std::vector<ConditionalFactRecord> ConditionalFacts;

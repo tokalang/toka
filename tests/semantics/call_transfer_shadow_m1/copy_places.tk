@@ -1,0 +1,12 @@
+fn consume(cede value: i32) -> i32 {
+    auto moved = cede value
+    return moved
+}
+
+fn main() -> i32 {
+    auto plain = 40:i32
+    auto first = consume(plain)
+    auto second = consume(2:i32)
+    assert(plain == 40:i32, "implicit CopyValue must keep the source live")
+    return first + second - 42:i32
+}

@@ -4686,8 +4686,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 projectOwnedStringView(Met->Args[i], argTy, expectedParamTy);
 
+                bool legacyCedeExempt = false;
                 if (i < expectedArgs) {
                   const auto &param = FD->Args[i + 1];
+                  legacyCedeExempt =
+                      param.IsCeded && canImplicitlyPassToCede(argTy);
+                  recordShadowCallTransfer(
+                      Met->ShadowArgumentTransfers, i, Met->Args[i].get(),
+                      argTy, expectedParamTy, param.IsCeded,
+                      legacyCedeExempt, CallTransferRoute::Method,
+                      FD->Name.empty() ? Met->Method : FD->Name, param.Name,
+                      param.Loc, FD->Effect == EffectKind::Async);
                   auto *callerCede =
                       dynamic_cast<CedeExpr *>(Met->Args[i].get());
                   if (!param.IsCeded && callerCede &&
@@ -4747,7 +4756,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 if (expectedParamTy) {
                     if (FD->Args[i + 1].IsCeded) {
                         bool isCallerCeded = dynamic_cast<CedeExpr*>(Met->Args[i].get()) != nullptr;
-                        bool isPrimitive = canImplicitlyPassToCede(argTy);
+                        bool isPrimitive = legacyCedeExempt;
                         if (!isCallerCeded && !isPrimitive) {
                             error(Met->Args[i].get(), DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_C);
                             if (FD->Args[i + 1].Loc.isValid())

@@ -44,6 +44,130 @@ enum class AggregateTransferKind {
   CopyIdentity,
 };
 
+// Audit-only RC9 M1 shadow plan for a resolved call argument. Normal Sema,
+// PAL, diagnostics, and CodeGen continue to use the RC8 paths until the
+// signature-driven call-transfer ADR activation gates pass.
+enum class CallTransferRoute {
+  Ordinary,
+  Static,
+  Method,
+  Callable,
+  Extern,
+};
+
+enum class CallTransferDisposition {
+  Unplanned,
+  BorrowCapture,
+  CopyValue,
+  CopyIdentity,
+  TransferShared,
+  MoveOwned,
+  ConsumeTemporary,
+  Reject,
+};
+
+enum class CallSourceDisposition {
+  Unplanned,
+  KeepLive,
+  InvalidatePlace,
+  NoSourcePlace,
+  NoStateChange,
+};
+
+enum class CallDependencyDisposition {
+  Unclassified,
+  None,
+  Borrowed,
+  RawUnsafe,
+  Indeterminate,
+};
+
+enum class CallPlaceEligibility {
+  Unclassified,
+  NotApplicable,
+  PendingValidation,
+  Eligible,
+  Reject,
+};
+
+struct CallTransferPlan {
+  CallTransferRoute Route = CallTransferRoute::Ordinary;
+  CallTransferDisposition Transfer = CallTransferDisposition::Unplanned;
+  CallSourceDisposition Source = CallSourceDisposition::Unplanned;
+  CallDependencyDisposition Dependency =
+      CallDependencyDisposition::Unclassified;
+  CallPlaceEligibility PlaceEligibility =
+      CallPlaceEligibility::Unclassified;
+  bool FormalIsCeded = false;
+  bool ExplicitCede = false;
+  bool LegacyCedeExempt = false;
+  bool LegacyMissingCede = false;
+  bool IsAsync = false;
+  bool IsStartBoundary = false;
+  std::string SourcePath;
+};
+
+inline const char *callTransferRouteName(CallTransferRoute route) {
+  switch (route) {
+  case CallTransferRoute::Ordinary: return "ordinary";
+  case CallTransferRoute::Static: return "static";
+  case CallTransferRoute::Method: return "method";
+  case CallTransferRoute::Callable: return "callable";
+  case CallTransferRoute::Extern: return "extern";
+  }
+  return "ordinary";
+}
+
+inline const char *callTransferDispositionName(
+    CallTransferDisposition disposition) {
+  switch (disposition) {
+  case CallTransferDisposition::Unplanned: return "Unplanned";
+  case CallTransferDisposition::BorrowCapture: return "BorrowCapture";
+  case CallTransferDisposition::CopyValue: return "CopyValue";
+  case CallTransferDisposition::CopyIdentity: return "CopyIdentity";
+  case CallTransferDisposition::TransferShared: return "TransferShared";
+  case CallTransferDisposition::MoveOwned: return "MoveOwned";
+  case CallTransferDisposition::ConsumeTemporary: return "ConsumeTemporary";
+  case CallTransferDisposition::Reject: return "Reject";
+  }
+  return "Unplanned";
+}
+
+inline const char *callSourceDispositionName(
+    CallSourceDisposition disposition) {
+  switch (disposition) {
+  case CallSourceDisposition::Unplanned: return "Unplanned";
+  case CallSourceDisposition::KeepLive: return "KeepLive";
+  case CallSourceDisposition::InvalidatePlace: return "InvalidatePlace";
+  case CallSourceDisposition::NoSourcePlace: return "NoSourcePlace";
+  case CallSourceDisposition::NoStateChange: return "NoStateChange";
+  }
+  return "Unplanned";
+}
+
+inline const char *callDependencyDispositionName(
+    CallDependencyDisposition disposition) {
+  switch (disposition) {
+  case CallDependencyDisposition::Unclassified: return "Unclassified";
+  case CallDependencyDisposition::None: return "None";
+  case CallDependencyDisposition::Borrowed: return "Borrowed";
+  case CallDependencyDisposition::RawUnsafe: return "RawUnsafe";
+  case CallDependencyDisposition::Indeterminate: return "Indeterminate";
+  }
+  return "Unclassified";
+}
+
+inline const char *callPlaceEligibilityName(CallPlaceEligibility eligibility) {
+  switch (eligibility) {
+  case CallPlaceEligibility::Unclassified: return "Unclassified";
+  case CallPlaceEligibility::NotApplicable: return "NotApplicable";
+  case CallPlaceEligibility::PendingValidation: return "PendingValidation";
+  case CallPlaceEligibility::Eligible: return "Eligible";
+  case CallPlaceEligibility::Reject: return "Reject";
+  }
+  return "Unclassified";
+}
+
 enum class MorphologyConstraintKind {
   SoulOnly,
   BorrowExtendable,
@@ -772,6 +896,7 @@ public:
   std::string OriginalCallee;
   std::vector<std::unique_ptr<Expr>> Args;
   std::vector<AggregateTransferKind> ArgumentTransfers;
+  std::vector<CallTransferPlan> ShadowArgumentTransfers;
   // Parallel to Args: an init argument denotes storage, never an rvalue.
   std::vector<bool> IsInitArgument;
   std::vector<std::string> GenericArgs; // [NEW]
@@ -825,6 +950,7 @@ public:
     n->IsIsomorphicCopy = IsIsomorphicCopy;
     n->CallableReceiver = CallableReceiver;
     n->ArgumentTransfers = ArgumentTransfers;
+    n->ShadowArgumentTransfers = ShadowArgumentTransfers;
     return n;
   }
 };
@@ -834,6 +960,7 @@ public:
   std::unique_ptr<Expr> Object;
   std::string Method;
   std::vector<std::unique_ptr<Expr>> Args;
+  std::vector<CallTransferPlan> ShadowArgumentTransfers;
   bool IsCompilerInternal = false; // Compiler-synthesized calls may bypass visibility.
   bool ObjectIsPrechecked = false; // Synthesized wrapper reuses receiver Sema
   bool IsIntrinsicCopyDup = false; // @Copy supplies the intrinsic @Dup operation.
@@ -853,6 +980,7 @@ public:
     n->ObjectIsPrechecked = ObjectIsPrechecked;
     n->IsIntrinsicCopyDup = IsIntrinsicCopyDup;
     n->ResolvedFn = nullptr;
+    n->ShadowArgumentTransfers = ShadowArgumentTransfers;
     return n;
   }
 };

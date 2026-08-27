@@ -115,6 +115,140 @@ static bool isMayZeroRawCedeDestination(const std::shared_ptr<Type> &type) {
   return type->isRawPointer() && type->IsNullable;
 }
 
+CallTransferPlan Sema::buildShadowCallTransferPlan(
+    Expr *argument, const std::shared_ptr<Type> &argumentType,
+    const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
+    bool legacyCedeExempt, CallTransferRoute route, bool isAsync) {
+  CallTransferPlan plan;
+  plan.Route = route;
+  plan.FormalIsCeded = formalIsCeded;
+  plan.ExplicitCede = dynamic_cast<CedeExpr *>(argument) != nullptr;
+  plan.LegacyCedeExempt = formalIsCeded && legacyCedeExempt;
+  plan.LegacyMissingCede =
+      formalIsCeded && !plan.ExplicitCede && !plan.LegacyCedeExempt;
+  plan.IsAsync = isAsync;
+  plan.IsStartBoundary = m_IsStartingTask;
+
+  Expr *source = argument;
+  if (auto *cede = dynamic_cast<CedeExpr *>(source))
+    source = cede->Value.get();
+  AccessPath sourcePath =
+      canonicalizeAccessPath(makeAccessPath(source));
+  const bool hasSourcePlace = static_cast<bool>(sourcePath);
+  if (hasSourcePlace)
+    plan.SourcePath = sourcePath.toLegacyString();
+
+  auto type = argumentType ? resolveType(argumentType, false) : nullptr;
+  if ((!type || type->isUnknown() || type->isNullType()) && destinationType)
+    type = resolveType(destinationType, false);
+  if (!type || type->isUnknown()) {
+    plan.Transfer = CallTransferDisposition::Reject;
+    plan.Source = CallSourceDisposition::NoStateChange;
+    plan.Dependency = CallDependencyDisposition::Indeterminate;
+    plan.PlaceEligibility = CallPlaceEligibility::NotApplicable;
+    return plan;
+  }
+
+  std::string soul = Type::stripMorphology(type->getSoulName());
+  if (size_t scope = soul.rfind("::"); scope != std::string::npos)
+    soul = soul.substr(scope + 2);
+  const bool borrowedView =
+      type->isReference() || soul == "str" || soul == "bytes" ||
+      soul == "cstr" || soul == "ViewStrSplitIterator" ||
+      soul == "ViewStrLinesIterator";
+  if (type->isRawPointer())
+    plan.Dependency = CallDependencyDisposition::RawUnsafe;
+  else if (borrowedView)
+    plan.Dependency = CallDependencyDisposition::Borrowed;
+  else if (type->isShape() || type->isSmartPointer() || type->isArray() ||
+           type->isDynFn())
+    plan.Dependency = CallDependencyDisposition::Unclassified;
+  else
+    plan.Dependency = CallDependencyDisposition::None;
+
+  if (!formalIsCeded) {
+    if (plan.ExplicitCede) {
+      plan.Transfer = CallTransferDisposition::Reject;
+      plan.Source = CallSourceDisposition::NoStateChange;
+      plan.PlaceEligibility = CallPlaceEligibility::NotApplicable;
+      return plan;
+    }
+    auto formal = destinationType ? resolveType(destinationType, false) : type;
+    if (formal && (formal->isShape() || formal->isSmartPointer() ||
+                   formal->isArray())) {
+      plan.Transfer = CallTransferDisposition::BorrowCapture;
+    } else if (type->isRawPointer() || type->isReference() ||
+               type->isFunction() || type->isDynFn()) {
+      plan.Transfer = CallTransferDisposition::CopyIdentity;
+    } else {
+      plan.Transfer = CallTransferDisposition::CopyValue;
+    }
+    plan.Source = CallSourceDisposition::KeepLive;
+    plan.PlaceEligibility = CallPlaceEligibility::NotApplicable;
+    return plan;
+  }
+
+  if (!hasSourcePlace) {
+    plan.Transfer = CallTransferDisposition::ConsumeTemporary;
+    plan.Source = CallSourceDisposition::NoSourcePlace;
+    plan.PlaceEligibility = CallPlaceEligibility::NotApplicable;
+    return plan;
+  }
+
+  if (borrowedView || type->isRawPointer() || type->isFunction() ||
+      type->isDynFn()) {
+    plan.Transfer = CallTransferDisposition::CopyIdentity;
+    plan.Source = plan.ExplicitCede
+                      ? CallSourceDisposition::InvalidatePlace
+                      : CallSourceDisposition::KeepLive;
+  } else if (proveSlice4CopyType(type)) {
+    plan.Transfer = CallTransferDisposition::CopyValue;
+    plan.Source = plan.ExplicitCede
+                      ? CallSourceDisposition::InvalidatePlace
+                      : CallSourceDisposition::KeepLive;
+  } else if (type->isSharedPtr()) {
+    plan.Transfer = CallTransferDisposition::TransferShared;
+    plan.Source = CallSourceDisposition::InvalidatePlace;
+  } else {
+    plan.Transfer = CallTransferDisposition::MoveOwned;
+    plan.Source = CallSourceDisposition::InvalidatePlace;
+  }
+  plan.PlaceEligibility =
+      plan.Source == CallSourceDisposition::InvalidatePlace
+          ? CallPlaceEligibility::PendingValidation
+          : CallPlaceEligibility::NotApplicable;
+  return plan;
+}
+
+void Sema::recordShadowCallTransfer(
+    std::vector<CallTransferPlan> &plans, size_t index, Expr *argument,
+    const std::shared_ptr<Type> &argumentType,
+    const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
+    bool legacyCedeExempt, CallTransferRoute route,
+    const std::string &callee, const std::string &parameter,
+    SourceLocation parameterLoc, bool isAsync) {
+  if (!SemanticEvidence::isCallTransferShadowEnabled())
+    return;
+  if (plans.size() <= index)
+    plans.resize(index + 1);
+  plans[index] = buildShadowCallTransferPlan(
+      argument, argumentType, destinationType, formalIsCeded,
+      legacyCedeExempt, route, isAsync);
+  const auto &plan = plans[index];
+  SemanticEvidence::recordCallTransferShadow(
+      callee, callTransferRouteName(plan.Route), parameter,
+      static_cast<unsigned>(index + 1),
+      plan.ExplicitCede ? "explicit" : "implicit",
+      callTransferDispositionName(plan.Transfer),
+      callSourceDispositionName(plan.Source),
+      callDependencyDispositionName(plan.Dependency),
+      callPlaceEligibilityName(plan.PlaceEligibility), plan.SourcePath,
+      plan.FormalIsCeded,
+      plan.LegacyCedeExempt, plan.LegacyMissingCede, plan.IsAsync,
+      plan.IsStartBoundary, argument ? argument->Loc : SourceLocation{},
+      parameterLoc);
+}
+
 void Sema::validateAtomicOrderingArguments(
     const FunctionDecl *Fn,
     const std::vector<std::unique_ptr<Expr>> &Arguments,
@@ -619,9 +753,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   // so keep the nullable guard and explicit-transfer checks here rather than
   // letting those alternate routes weaken a declared `cede` parameter.
   auto checkCedeArgument =
-      [&](Expr *argument, const FunctionDecl::Arg &param,
+      [&](size_t argumentIndex, Expr *argument,
+          const FunctionDecl::Arg &param,
           const std::shared_ptr<Type> &argumentType,
-          const std::shared_ptr<Type> &destinationType) {
+          const std::shared_ptr<Type> &destinationType,
+          CallTransferRoute route, bool isAsync) {
+        const bool isExempt =
+            param.IsCeded && canImplicitlyPassToCede(argumentType);
+        recordShadowCallTransfer(
+            Call->ShadowArgumentTransfers, argumentIndex, argument,
+            argumentType, destinationType, param.IsCeded, isExempt, route,
+            CallName, param.Name, param.Loc, isAsync);
         if (!param.IsCeded)
           return;
 
@@ -632,7 +774,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 DiagID::ERR_SEMA_CEDE_MAY_ZERO_RAW_REQUIRES_GUARD);
         }
 
-        const bool isExempt = canImplicitlyPassToCede(argumentType);
         if (!callerCeded && !isExempt) {
           error(argument,
                 DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2);
@@ -754,7 +895,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           m_AllowPermissionSuffix = oldAllowPermissionSuffix;
           if (MetAST && i < MetAST->Args.size()) {
             const auto &param = MetAST->Args[i];
-            checkCedeArgument(Call->Args[i].get(), param, argTy, expectedTy);
+            checkCedeArgument(
+                i, Call->Args[i].get(), param, argTy, expectedTy,
+                CallTransferRoute::Static,
+                MetAST && MetAST->Effect == EffectKind::Async);
             AccessCapability declaredCapability =
                 getAccessCapability(Call->Args[i].get(), true);
             AccessCapability argCapability =
@@ -869,8 +1013,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 if (MetAST && i < MetAST->Args.size()) {
                   const auto &param = MetAST->Args[i];
-                  checkCedeArgument(Call->Args[i].get(), param, argTy,
-                                    expectedTy);
+                  checkCedeArgument(
+                      i, Call->Args[i].get(), param, argTy, expectedTy,
+                      CallTransferRoute::Static,
+                      MetAST && MetAST->Effect == EffectKind::Async);
                   AccessCapability declaredCapability =
                       getAccessCapability(Call->Args[i].get(), true);
                   AccessCapability argCapability =
@@ -1380,8 +1526,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     invokeFn->Args[i + 1].IsCeded);
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 const auto &param = invokeFn->Args[i + 1];
-                checkCedeArgument(Call->Args[i].get(), param, argTy,
-                                  expectedTy);
+                checkCedeArgument(
+                    i, Call->Args[i].get(), param, argTy, expectedTy,
+                    CallTransferRoute::Callable,
+                    invokeFn->Effect == EffectKind::Async);
                 AccessCapability declaredCapability =
                     getAccessCapability(Call->Args[i].get(), true);
                 AccessCapability argCapability =
@@ -2691,9 +2839,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       checkStartBoundaryArgument(Call->Args[i].get(), argType, isCededParam,
                                  isCallerCeded, paramName, cedeParamLoc);
     }
+    const bool legacyCedeExempt =
+        isCededParam && canImplicitlyPassToCede(argType);
     bool isCedeParamImplicitlyExempt = false;
     if (isCededParam) {
-         bool isCedeExempt = canImplicitlyPassToCede(argType);
+         bool isCedeExempt = legacyCedeExempt;
          isCedeParamImplicitlyExempt = isCedeExempt && !isCallerCeded;
          if (!isCallerCeded && !isCedeExempt) {
             error(Call->Args[i].get(), DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2);
@@ -2723,6 +2873,20 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
              subject, Fn && i < Fn->Args.size() ? Fn->Args[i].Name : subject,
              getLoc(Call->Args[i].get()), cedeParamLoc);
     }
+    std::string shadowParamName = "arg" + std::to_string(i + 1);
+    if (Fn && i < Fn->Args.size())
+      shadowParamName = Fn->Args[i].Name;
+    else if (Ext && i < Ext->Args.size())
+      shadowParamName = Ext->Args[i].Name;
+    CallTransferRoute shadowRoute = CallTransferRoute::Callable;
+    if (Ext)
+      shadowRoute = CallTransferRoute::Extern;
+    else if (Fn)
+      shadowRoute = CallTransferRoute::Ordinary;
+    recordShadowCallTransfer(
+        Call->ShadowArgumentTransfers, i, Call->Args[i].get(), argType,
+        paramType, isCededParam, legacyCedeExempt, shadowRoute, CallName,
+        shadowParamName, cedeParamLoc, calleeIsAsync);
 
     if (paramIsValueMutable && !paramIsHatted && !isCededParam &&
         isReadOnlyBorrowViewArgument(Call->Args[i].get())) {

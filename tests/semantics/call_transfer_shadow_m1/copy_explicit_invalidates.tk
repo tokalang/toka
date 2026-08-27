@@ -1,0 +1,11 @@
+// EXPECT_ERROR: E0438
+fn consume(cede value: i32) -> i32 {
+    auto moved = cede value
+    return moved
+}
+
+fn main() -> i32 {
+    auto plain = 41:i32
+    auto moved = consume(cede plain)
+    return moved + plain
+}
