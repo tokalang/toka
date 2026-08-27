@@ -154,6 +154,12 @@ share this sequence:
 7. CodeGen executes the committed plan and fails closed if a liability-bearing
    edge has no plan.
 
+The accepted compiler architecture for satisfying this sequence is
+[`RC9 M1b Transactional Semantic Planning`](rc9_m1b_transactional_semantic_planning_design.md).
+M1a shadow vectors are audit prototypes, not commit authority. The production
+plan is published through an immutable semantic side table only after a
+discardable whole-call transaction validates successfully.
+
 The plan records logical behavior, not LLVM ABI or a required physical
 lowering. Equivalent implementations may use different slots, masks, loads,
 or calling conventions while preserving the same observable source state and

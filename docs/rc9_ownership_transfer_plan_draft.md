@@ -47,6 +47,12 @@ actual init spelling, projected referents, and declaration-identity execution
 boundaries. Exact-place/dependency admission must still replace pending facts
 before atomic-commit implementation begins.
 
+The accepted internal implementation architecture is
+[`RC9 M1b Transactional Semantic Planning`](semantic_core/rc9_m1b_transactional_semantic_planning_design.md).
+It deliberately does not promote M1a's mutable AST vectors. Production plans
+live in an immutable `SemanticModel`, and all candidate/speculative work is
+isolated in a discardable analysis transaction.
+
 ## RC8 CodeGen call-site ledger
 
 The RC8 baseline has ten calls to `suppressDropForMove()` (excluding its

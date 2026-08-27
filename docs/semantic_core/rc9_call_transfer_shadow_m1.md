@@ -116,7 +116,9 @@ The script emits a compact receipt named
 
 ## Next admission step
 
-M1a.2 does not authorize the caller-spelling behavior flip. The next step is to
-replace `PendingValidation` and `Unclassified` with shared exact-place and
-dependency decisions, then prepare all argument plans before atomically
-committing any PAL, `PlaceState`, or drop-liability change.
+M1a.2 does not authorize the caller-spelling behavior flip. The accepted
+[`M1b Transactional Semantic Planning Design`](rc9_m1b_transactional_semantic_planning_design.md)
+does not promote these AST vectors into commit authority. M1b first introduces
+semantic identities, immutable facts, discardable transactions, and a
+`SemanticModel`; it then replaces `PendingValidation` and `Unclassified` in a
+qualified subset before any ownership commit implementation begins.
