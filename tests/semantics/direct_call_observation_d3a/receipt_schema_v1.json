@@ -1,0 +1,85 @@
+{
+  "top_level": [
+    "schema",
+    "version",
+    "status",
+    "integrity",
+    "considered_call_count",
+    "factory_invocation_count",
+    "gate_exclusions",
+    "envelopes"
+  ],
+  "gate_exclusions": [
+    "WrongRoute",
+    "NonSameLexical",
+    "CandidateProbeOrSpeculativeContext",
+    "NonFinalSemanticTraversal",
+    "NestedObservationContext"
+  ],
+  "envelope": ["factory_record", "comparison"],
+  "comparison": [
+    "pre_fact_capture_unchanged",
+    "post_cache_and_factory_unchanged",
+    "differing_sentinel_fields"
+  ],
+  "factory_record_common": [
+    "call_site",
+    "callee",
+    "route",
+    "callee_identity",
+    "formal",
+    "admission",
+    "reason",
+    "legacy_outcome",
+    "prospective_outcome",
+    "transfer_edges",
+    "evaluation_delta",
+    "boundary_delta",
+    "finalization_delta",
+    "semantic_model_patch",
+    "region_witness"
+  ],
+  "factory_record_admitted": [
+    "call_site_id",
+    "resolved_callee_kind"
+  ],
+  "location": ["file", "line", "column"],
+  "formal": ["name", "identity", "type", "contract_location"],
+  "legacy_outcome": ["status", "diagnostic_codes", "spelling"],
+  "prospective_outcome": ["status"],
+  "edge": [
+    "edge_id",
+    "argument_plan_id",
+    "formal_id",
+    "destination_id",
+    "source_place",
+    "type_proof",
+    "value_category",
+    "transfer_mode",
+    "source_disposition",
+    "boundary_access",
+    "dependency",
+    "liability_source",
+    "liability_target",
+    "spelling"
+  ],
+  "liability": ["kind", "subject"],
+  "subject": ["kind", "key"],
+  "delta": ["lane", "entries"],
+  "delta_entry": [
+    "edge_id",
+    "state_domain",
+    "subject_identity",
+    "expected_before",
+    "result_after",
+    "provenance"
+  ],
+  "patch_entry": ["identity", "payload"],
+  "region_witness": [
+    "call_region",
+    "full_expression_region",
+    "origin",
+    "subject",
+    "terminal"
+  ]
+}

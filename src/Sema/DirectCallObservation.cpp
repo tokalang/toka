@@ -30,18 +30,19 @@ bool equalPre(const D3PreLegacyDirectCallFacts &lhs,
               const D3PreLegacyDirectCallFacts &rhs) {
   return std::tie(lhs.IdentityOrigin, lhs.CallWitness, lhs.CalleeWitness,
                   lhs.FormalWitness, lhs.SourceWitness, lhs.DestinationWitness,
-                  lhs.CalleeName, lhs.FormalName, lhs.FormalType,
-                  lhs.SourceSpelling, lhs.SourceStateBefore, lhs.PALStateBefore,
-                  lhs.ActualCategory, lhs.CoreFactsComplete, lhs.FormalCeded,
-                  lhs.ExplicitCede, lhs.Generic, lhs.VariadicOrDefault,
-                  lhs.MultipleArguments, lhs.InitOrOutcome,
-                  lhs.AsyncOrExecutionBoundary,
+                  lhs.CallerBindingOwnerWitness, lhs.CalleeName, lhs.FormalName,
+                  lhs.FormalType, lhs.SourceSpelling, lhs.SourceStateBefore,
+                  lhs.PALStateBefore, lhs.ActualCategory, lhs.CoreFactsComplete,
+                  lhs.FormalCeded, lhs.ExplicitCede, lhs.Generic,
+                  lhs.VariadicOrDefault, lhs.MultipleArguments,
+                  lhs.InitOrOutcome, lhs.AsyncOrExecutionBoundary,
                   lhs.ReturnDependencyOrRegionEscape, lhs.NestedObservation,
                   lhs.SourcePlaceAlias) ==
              std::tie(rhs.IdentityOrigin, rhs.CallWitness, rhs.CalleeWitness,
                       rhs.FormalWitness, rhs.SourceWitness,
-                      rhs.DestinationWitness, rhs.CalleeName, rhs.FormalName,
-                      rhs.FormalType, rhs.SourceSpelling, rhs.SourceStateBefore,
+                      rhs.DestinationWitness, rhs.CallerBindingOwnerWitness,
+                      rhs.CalleeName, rhs.FormalName, rhs.FormalType,
+                      rhs.SourceSpelling, rhs.SourceStateBefore,
                       rhs.PALStateBefore, rhs.ActualCategory,
                       rhs.CoreFactsComplete, rhs.FormalCeded, rhs.ExplicitCede,
                       rhs.Generic, rhs.VariadicOrDefault, rhs.MultipleArguments,
@@ -55,13 +56,17 @@ bool equalPre(const D3PreLegacyDirectCallFacts &lhs,
 bool equalPost(const D3PostLegacyDirectCallFacts &lhs,
                const D3PostLegacyDirectCallFacts &rhs) {
   return std::tie(lhs.ActualType, lhs.LegacyDiagnosticCodes, lhs.TypeCategory,
-                  lhs.CopyProof, lhs.LegacySucceeded, lhs.LegacyTypeMismatch,
-                  lhs.AdmissionFactsComplete, lhs.WholePlaceEligible,
-                  lhs.LiabilityComplete, lhs.RegionFactsComplete) ==
+                  lhs.CopyProof, lhs.OwnershipProof, lhs.BoundaryAccess,
+                  lhs.SourceLiability, lhs.CleanupWitness, lhs.LegacySucceeded,
+                  lhs.LegacyTypeMismatch, lhs.AdmissionFactsComplete,
+                  lhs.WholePlaceEligible, lhs.LiabilityComplete,
+                  lhs.RegionFactsComplete) ==
          std::tie(rhs.ActualType, rhs.LegacyDiagnosticCodes, rhs.TypeCategory,
-                  rhs.CopyProof, rhs.LegacySucceeded, rhs.LegacyTypeMismatch,
-                  rhs.AdmissionFactsComplete, rhs.WholePlaceEligible,
-                  rhs.LiabilityComplete, rhs.RegionFactsComplete);
+                  rhs.CopyProof, rhs.OwnershipProof, rhs.BoundaryAccess,
+                  rhs.SourceLiability, rhs.CleanupWitness, rhs.LegacySucceeded,
+                  rhs.LegacyTypeMismatch, rhs.AdmissionFactsComplete,
+                  rhs.WholePlaceEligible, rhs.LiabilityComplete,
+                  rhs.RegionFactsComplete);
 }
 
 } // namespace
@@ -236,6 +241,115 @@ const char *toString(D3DeltaLane value) {
   return "Evaluation";
 }
 
+const char *toString(D3OwnershipProof value) {
+  switch (value) {
+  case D3OwnershipProof::Trivial:
+    return "Trivial";
+  case D3OwnershipProof::Borrowed:
+    return "Borrowed";
+  case D3OwnershipProof::Owned:
+    return "Owned";
+  case D3OwnershipProof::Shared:
+    return "Shared";
+  case D3OwnershipProof::Indeterminate:
+    return "Indeterminate";
+  }
+  return "Indeterminate";
+}
+
+const char *toString(D3BoundaryAccess value) {
+  switch (value) {
+  case D3BoundaryAccess::None:
+    return "None";
+  case D3BoundaryAccess::SharedBorrow:
+    return "SharedBorrow";
+  case D3BoundaryAccess::Invalidation:
+    return "Invalidation";
+  case D3BoundaryAccess::Unsupported:
+    return "Unsupported";
+  }
+  return "Unsupported";
+}
+
+const char *toString(D3DependencyRelation value) {
+  switch (value) {
+  case D3DependencyRelation::None:
+    return "None";
+  case D3DependencyRelation::BorrowedCallRegion:
+    return "BorrowedCallRegion";
+  }
+  return "None";
+}
+
+const char *toString(D3SubjectKind value) {
+  switch (value) {
+  case D3SubjectKind::SourcePlace:
+    return "SourcePlace";
+  case D3SubjectKind::Destination:
+    return "Destination";
+  case D3SubjectKind::Loan:
+    return "Loan";
+  case D3SubjectKind::Cleanup:
+    return "Cleanup";
+  }
+  return "SourcePlace";
+}
+
+const char *toString(D3LiabilityKind value) {
+  switch (value) {
+  case D3LiabilityKind::NoLiability:
+    return "NoLiability";
+  case D3LiabilityKind::SourcePlaceCleanup:
+    return "SourcePlaceCleanup";
+  case D3LiabilityKind::TemporaryCleanup:
+    return "TemporaryCleanup";
+  case D3LiabilityKind::SourceRetained:
+    return "SourceRetained";
+  case D3LiabilityKind::DestinationCleanup:
+    return "DestinationCleanup";
+  }
+  return "NoLiability";
+}
+
+size_t D3SubjectIdentity::hashValue() const noexcept {
+  return combine(static_cast<size_t>(Kind), std::hash<std::string>{}(Key));
+}
+
+D3LiabilityFact D3LiabilityFact::noLiability() { return {}; }
+
+D3LiabilityFact D3LiabilityFact::sourcePlace(std::string key) {
+  D3LiabilityFact fact;
+  fact.Kind = D3LiabilityKind::SourcePlaceCleanup;
+  fact.Subject = D3SubjectIdentity::cleanup(std::move(key));
+  return fact;
+}
+
+D3LiabilityFact D3LiabilityFact::temporary(std::string key) {
+  D3LiabilityFact fact;
+  fact.Kind = D3LiabilityKind::TemporaryCleanup;
+  fact.Subject = D3SubjectIdentity::cleanup(std::move(key));
+  return fact;
+}
+
+D3LiabilityFact D3LiabilityFact::sourceRetained(std::string key) {
+  D3LiabilityFact fact;
+  fact.Kind = D3LiabilityKind::SourceRetained;
+  fact.Subject = D3SubjectIdentity::cleanup(std::move(key));
+  return fact;
+}
+
+D3LiabilityFact D3LiabilityFact::destination(std::string key) {
+  D3LiabilityFact fact;
+  fact.Kind = D3LiabilityKind::DestinationCleanup;
+  fact.Subject = D3SubjectIdentity::destination(std::move(key));
+  return fact;
+}
+
+size_t D3LiabilityFact::hashValue() const noexcept {
+  size_t seed = static_cast<size_t>(Kind);
+  return Subject ? combine(seed, Subject->hashValue()) : seed;
+}
+
 size_t D3ValidatedTransferEdge::hashValue() const noexcept {
   size_t seed = Id.hashValue();
   seed = combine(seed, ArgumentPlan.hashValue());
@@ -247,9 +361,10 @@ size_t D3ValidatedTransferEdge::hashValue() const noexcept {
   seed = hashText(seed, ValueCategory);
   seed = hashEnum(seed, Transfer);
   seed = hashEnum(seed, Source);
-  seed = hashText(seed, Dependency);
-  seed = hashText(seed, LiabilitySource);
-  seed = hashText(seed, LiabilityTarget);
+  seed = hashEnum(seed, BoundaryAccess);
+  seed = hashEnum(seed, Dependency);
+  seed = combine(seed, LiabilitySource.hashValue());
+  seed = combine(seed, LiabilityTarget.hashValue());
   return combine(seed, ExplicitCede ? 1U : 0U);
 }
 
@@ -257,18 +372,18 @@ bool operator==(const D3ValidatedTransferEdge &lhs,
                 const D3ValidatedTransferEdge &rhs) {
   return std::tie(lhs.Id, lhs.ArgumentPlan, lhs.Formal, lhs.Destination,
                   lhs.SourcePlace, lhs.TypeProof, lhs.ValueCategory,
-                  lhs.Transfer, lhs.Source, lhs.Dependency, lhs.LiabilitySource,
-                  lhs.LiabilityTarget, lhs.ExplicitCede) ==
+                  lhs.Transfer, lhs.Source, lhs.BoundaryAccess, lhs.Dependency,
+                  lhs.LiabilitySource, lhs.LiabilityTarget, lhs.ExplicitCede) ==
          std::tie(rhs.Id, rhs.ArgumentPlan, rhs.Formal, rhs.Destination,
                   rhs.SourcePlace, rhs.TypeProof, rhs.ValueCategory,
-                  rhs.Transfer, rhs.Source, rhs.Dependency, rhs.LiabilitySource,
-                  rhs.LiabilityTarget, rhs.ExplicitCede);
+                  rhs.Transfer, rhs.Source, rhs.BoundaryAccess, rhs.Dependency,
+                  rhs.LiabilitySource, rhs.LiabilityTarget, rhs.ExplicitCede);
 }
 
 size_t D3DeltaEntry::hashValue() const noexcept {
   size_t seed = Edge.hashValue();
   seed = hashEnum(seed, Domain);
-  seed = hashText(seed, SubjectIdentity);
+  seed = combine(seed, SubjectIdentity.hashValue());
   seed = hashText(seed, ExpectedBefore);
   seed = hashText(seed, ResultAfter);
   return hashText(seed, Provenance);
@@ -343,7 +458,7 @@ size_t D3MinimalRegionWitness::hashValue() const noexcept {
   size_t seed = CallRegion.hashValue();
   seed = combine(seed, FullExpressionRegion.hashValue());
   seed = hashText(seed, Origin);
-  seed = hashText(seed, Subject);
+  seed = combine(seed, Subject.hashValue());
   return hashText(seed, Terminal);
 }
 
@@ -455,6 +570,9 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
   if (post.TypeCategory == D3TypeCategory::Unsupported)
     return exclude(std::move(input),
                    D3ExclusionReason::UnsupportedTypeCategory);
+  if (pre.FormalCeded && post.TypeCategory == D3TypeCategory::BorrowedAggregate)
+    return exclude(std::move(input),
+                   D3ExclusionReason::UnsupportedTypeCategory);
 
   if (!pre.FormalCeded) {
     if (post.TypeCategory == D3TypeCategory::Scalar)
@@ -471,6 +589,21 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
     return reject(std::move(input),
                   D3CallValidationError::IndeterminateOwnership);
   if (pre.ActualCategory == D3ActualCategory::Indeterminate)
+    return reject(std::move(input),
+                  D3CallValidationError::IncompleteObservationFacts);
+  if (!post.LegacySucceeded) {
+    const bool onlySupersededSpelling =
+        !post.LegacyDiagnosticCodes.empty() &&
+        std::all_of(post.LegacyDiagnosticCodes.begin(),
+                    post.LegacyDiagnosticCodes.end(),
+                    [](const std::string &code) { return code == "E04570"; });
+    if (!onlySupersededSpelling)
+      return reject(std::move(input),
+                    D3CallValidationError::IncompleteObservationFacts);
+  }
+  if (post.OwnershipProof == D3OwnershipProof::Indeterminate ||
+      post.BoundaryAccess == D3BoundaryAccess::Unsupported ||
+      !post.SourceLiability.valid())
     return reject(std::move(input),
                   D3CallValidationError::IncompleteObservationFacts);
   if (!post.AdmissionFactsComplete || !post.LiabilityComplete ||
@@ -504,11 +637,26 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
     }
   }
 
+  if (transfer == D3TransferMode::BorrowCapture &&
+      post.BoundaryAccess != D3BoundaryAccess::SharedBorrow)
+    return reject(std::move(input),
+                  D3CallValidationError::InvalidWholePlaceAdmission);
+  if (source == D3SourceDisposition::InvalidateWhole &&
+      post.BoundaryAccess != D3BoundaryAccess::Invalidation)
+    return reject(std::move(input),
+                  D3CallValidationError::InvalidWholePlaceAdmission);
+  if (pre.ActualCategory == D3ActualCategory::WholeTemporary &&
+      post.BoundaryAccess != D3BoundaryAccess::None)
+    return reject(std::move(input),
+                  D3CallValidationError::IncompleteObservationFacts);
+
   auto callId = SemanticIdentityBuilder::semanticNode(pre.IdentityOrigin,
                                                       pre.CallWitness);
   auto declarationId = SemanticIdentityBuilder::declaration(pre.IdentityOrigin,
                                                             pre.CalleeWitness);
-  if (!callId || !declarationId)
+  auto callerOwnerId = SemanticIdentityBuilder::declaration(
+      pre.IdentityOrigin, pre.CallerBindingOwnerWitness);
+  if (!callId || !declarationId || !callerOwnerId)
     return reject(std::move(input),
                   D3CallValidationError::IncompleteObservationFacts);
   auto formalId =
@@ -530,36 +678,36 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
   edge.ArgumentPlan = planId.value();
   edge.Formal = formalId.value();
   edge.Destination = destinationId.value();
-  edge.TypeProof =
-      std::string(toString(post.TypeCategory)) + "/" + toString(post.CopyProof);
+  edge.TypeProof = std::string(toString(post.TypeCategory)) + "/" +
+                   toString(post.CopyProof) + "/" +
+                   toString(post.OwnershipProof);
   edge.ValueCategory = toString(pre.ActualCategory);
   edge.Transfer = transfer;
   edge.Source = source;
-  edge.Dependency = post.TypeCategory == D3TypeCategory::BorrowedAggregate
-                        ? "Borrowed(call-region)"
-                        : "None";
+  edge.BoundaryAccess = post.BoundaryAccess;
+  edge.Dependency = transfer == D3TransferMode::BorrowCapture
+                        ? D3DependencyRelation::BorrowedCallRegion
+                        : D3DependencyRelation::None;
   edge.ExplicitCede = pre.ExplicitCede;
   if (pre.ActualCategory == D3ActualCategory::WholePlace) {
-    auto rootId = SemanticIdentityBuilder::rootSymbol(declarationId.value(),
+    auto rootId = SemanticIdentityBuilder::rootSymbol(callerOwnerId.value(),
                                                       pre.SourceWitness);
     if (!rootId)
       return reject(std::move(input),
                     D3CallValidationError::IncompleteObservationFacts);
     edge.SourcePlace = PlaceId(rootId.value());
   }
-  if (transfer == D3TransferMode::MoveOwned ||
-      transfer == D3TransferMode::ConsumeTemporary) {
-    edge.LiabilitySource = pre.SourceWitness;
-    edge.LiabilityTarget = destinationId.value().canonicalKey();
-  } else if (transfer == D3TransferMode::CopyValue) {
-    edge.LiabilitySource = source == D3SourceDisposition::KeepLive
-                               ? pre.SourceWitness
-                               : "NoLiability";
-    edge.LiabilityTarget = "NoLiability";
-  } else {
-    edge.LiabilitySource = pre.SourceWitness;
-    edge.LiabilityTarget = "SourceRetainsLiability";
-  }
+  edge.LiabilitySource = post.SourceLiability;
+  if ((transfer == D3TransferMode::MoveOwned ||
+       transfer == D3TransferMode::ConsumeTemporary) &&
+      post.OwnershipProof == D3OwnershipProof::Owned)
+    edge.LiabilityTarget =
+        D3LiabilityFact::destination(destinationId.value().canonicalKey());
+  else if (transfer == D3TransferMode::BorrowCapture &&
+           post.SourceLiability.kind() != D3LiabilityKind::NoLiability)
+    edge.LiabilitySource = D3LiabilityFact::sourceRetained(post.CleanupWitness);
+  else
+    edge.LiabilityTarget = D3LiabilityFact::noLiability();
 
   D3ValidatedCall validated;
   validated.CallSite = callId.value();
@@ -569,7 +717,7 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
   validated.Boundary.Lane = D3DeltaLane::Boundary;
   validated.Finalization.Lane = D3DeltaLane::Finalization;
 
-  auto makeEntry = [&](D3StateDomain domain, std::string subject,
+  auto makeEntry = [&](D3StateDomain domain, D3SubjectIdentity subject,
                        std::string before, std::string after,
                        std::string provenance) {
     D3DeltaEntry entry;
@@ -584,28 +732,34 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
 
   if (pre.ActualCategory == D3ActualCategory::WholeTemporary) {
     validated.Evaluation.Entries.push_back(
-        makeEntry(D3StateDomain::Evaluation, pre.SourceWitness, "Absent",
+        makeEntry(D3StateDomain::Evaluation,
+                  D3SubjectIdentity::cleanup(post.CleanupWitness), "Absent",
                   "Materialized", "legacy-expression-evaluation"));
   }
   if (source == D3SourceDisposition::InvalidateWhole) {
     validated.Boundary.Entries.push_back(
-        makeEntry(D3StateDomain::PlaceState, pre.SourceWitness, "Live", "Moved",
-                  "validated-transfer-edge"));
+        makeEntry(D3StateDomain::PlaceState,
+                  D3SubjectIdentity::sourcePlace(pre.SourceWitness), "Live",
+                  "Moved", "validated-transfer-edge"));
   } else if (transfer == D3TransferMode::BorrowCapture) {
-    validated.Boundary.Entries.push_back(
-        makeEntry(D3StateDomain::PAL, pre.SourceWitness, pre.PALStateBefore,
-                  "BorrowedShared", "validated-transfer-edge"));
-    validated.Finalization.Entries.push_back(
-        makeEntry(D3StateDomain::PAL, pre.SourceWitness, "BorrowedShared",
-                  "Free", "call-region-terminal"));
-  }
-  if (transfer == D3TransferMode::MoveOwned) {
     validated.Boundary.Entries.push_back(makeEntry(
-        D3StateDomain::CleanupLiability, pre.SourceWitness, "SourceOwner",
-        "FormalDestinationOwner", "validated-transfer-edge"));
-  } else if (transfer == D3TransferMode::ConsumeTemporary) {
+        D3StateDomain::PAL, D3SubjectIdentity::loan(pre.SourceWitness),
+        pre.PALStateBefore, "BorrowedShared", "validated-transfer-edge"));
+    validated.Finalization.Entries.push_back(makeEntry(
+        D3StateDomain::PAL, D3SubjectIdentity::loan(pre.SourceWitness),
+        "BorrowedShared", "Free", "call-region-terminal"));
+  }
+  if (transfer == D3TransferMode::MoveOwned &&
+      post.SourceLiability.kind() == D3LiabilityKind::SourcePlaceCleanup) {
+    validated.Boundary.Entries.push_back(
+        makeEntry(D3StateDomain::CleanupLiability,
+                  D3SubjectIdentity::cleanup(post.CleanupWitness), "Armed",
+                  "TransferredToDestination", "validated-transfer-edge"));
+  } else if (transfer == D3TransferMode::ConsumeTemporary &&
+             post.SourceLiability.kind() == D3LiabilityKind::TemporaryCleanup) {
     validated.Finalization.Entries.push_back(
-        makeEntry(D3StateDomain::CleanupLiability, pre.SourceWitness, "Armed",
+        makeEntry(D3StateDomain::CleanupLiability,
+                  D3SubjectIdentity::cleanup(post.CleanupWitness), "Armed",
                   "DisarmedToDestination", "full-expression-terminal"));
   }
 
@@ -618,11 +772,18 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
   validated.RegionWitness.CallRegion = callRegion.value();
   validated.RegionWitness.FullExpressionRegion = fullExpressionRegion.value();
   validated.RegionWitness.Origin = pre.CallWitness;
-  validated.RegionWitness.Subject = pre.SourceWitness;
+  validated.RegionWitness.Subject =
+      transfer == D3TransferMode::BorrowCapture
+          ? D3SubjectIdentity::loan(pre.SourceWitness)
+          : (pre.ActualCategory == D3ActualCategory::WholeTemporary
+                 ? D3SubjectIdentity::cleanup(post.CleanupWitness)
+                 : D3SubjectIdentity::sourcePlace(pre.SourceWitness));
   validated.RegionWitness.Terminal =
       transfer == D3TransferMode::BorrowCapture
           ? "EndBoundaryLoan"
-          : (transfer == D3TransferMode::ConsumeTemporary
+          : (transfer == D3TransferMode::ConsumeTemporary &&
+                     post.SourceLiability.kind() ==
+                         D3LiabilityKind::TemporaryCleanup
                  ? "DisarmTemporaryCleanup"
                  : "NoLocalRegionObligation");
 
@@ -631,7 +792,8 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
     for (const auto &entry : delta.entries()) {
       const std::string witness = std::string(toString(delta.lane())) + ":" +
                                   toString(entry.stateDomain()) + ":" +
-                                  entry.subjectIdentity();
+                                  toString(entry.subjectIdentity().kind()) +
+                                  ":" + entry.subjectIdentity().key();
       auto patchId = SemanticIdentityBuilder::patchEntry(edge.Id, witness);
       if (!patchId)
         return false;

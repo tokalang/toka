@@ -574,13 +574,10 @@ private:
   bool proveSlice4Copy(const ShapeDecl *Shape);
   bool proveSlice4CopyType(std::shared_ptr<toka::Type> Type);
   D3CopyProof lookupD3CopyProof(const std::shared_ptr<toka::Type> &Type) const;
-  D3CopyProof lookupD3CopyProofImpl(
-      const std::shared_ptr<toka::Type> &Type,
-      std::set<const ShapeDecl *> &Visiting) const;
-  D3CopyProof lookupD3ShapeCopyProof(
-      const ShapeDecl *Shape, std::set<const ShapeDecl *> &Visiting) const;
   D3TypeCategory
   classifyD3TypeCategory(const std::shared_ptr<toka::Type> &Type) const;
+  D3OwnershipProof
+  lookupD3OwnershipProof(const std::shared_ptr<toka::Type> &Type) const;
   D3ObservationSentinel captureD3ObservationSentinel(
       CallExpr *Call, Expr *Actual) const;
   D3SourceLocation makeD3SourceLocation(SourceLocation Location) const;
@@ -638,6 +635,7 @@ private:
   bool m_IsStartingTask = false; // Enforce the strict detached-task boundary.
   const Expr *m_StartBoundaryRoot = nullptr;
   D3ObservationSession *m_D3ObservationSession = nullptr;
+  unsigned m_D3SpeculativeCallDepth = 0;
 
   bool m_AllowPermissionSuffix = false; // [NEW] Track explicit method call context
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity

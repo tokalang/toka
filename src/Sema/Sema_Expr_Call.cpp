@@ -39,6 +39,17 @@ struct CallArgPALFact {
   Expr *Node = nullptr;
 };
 
+class D3SpeculativeCallScope final {
+public:
+  explicit D3SpeculativeCallScope(unsigned &depth) : Depth(depth) { ++Depth; }
+  D3SpeculativeCallScope(const D3SpeculativeCallScope &) = delete;
+  D3SpeculativeCallScope &operator=(const D3SpeculativeCallScope &) = delete;
+  ~D3SpeculativeCallScope() { --Depth; }
+
+private:
+  unsigned &Depth;
+};
+
 static bool isShadowTransparentPostfix(TokenType op) {
   return op == TokenType::TokenWrite || op == TokenType::TokenNull ||
          op == TokenType::TokenNone;
@@ -126,26 +137,168 @@ static Expr *d3UnwrapSourceExpr(Expr *expression) {
   return source;
 }
 
-static CallExpr *d3FindNestedCall(Expr *expression) {
-  Expr *source = expression;
-  while (source) {
-    if (auto *cede = dynamic_cast<CedeExpr *>(source))
-      source = cede->Value.get();
-    else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source))
-      source = unsafe->Expression.get();
-    else if (auto *pass = dynamic_cast<PassExpr *>(source))
-      source = pass->Value.get();
-    else if (auto *cast = dynamic_cast<CastExpr *>(source))
-      source = cast->Expression.get();
-    else if (auto *unary = dynamic_cast<UnaryExpr *>(source))
-      source = unary->RHS.get();
-    else if (auto *postfix = dynamic_cast<PostfixExpr *>(source);
-             postfix && isShadowTransparentPostfix(postfix->Op))
-      source = postfix->LHS.get();
-    else
-      break;
+static VariableExpr *d3WholePlaceVariable(Expr *source) {
+  if (auto *variable = dynamic_cast<VariableExpr *>(source))
+    return variable;
+  auto *unary = dynamic_cast<UnaryExpr *>(source);
+  if (!unary || (unary->Op != TokenType::Caret &&
+                 unary->Op != TokenType::Tilde &&
+                 unary->Op != TokenType::Star &&
+                 unary->Op != TokenType::MorphicIdentity))
+    return nullptr;
+  return dynamic_cast<VariableExpr *>(unary->RHS.get());
+}
+
+static bool d3ExpressionContainsEvaluatedCall(const Expr *expression);
+
+static bool d3StatementContainsEvaluatedCall(const Stmt *statement) {
+  if (!statement)
+    return false;
+  if (auto *block = dynamic_cast<const BlockStmt *>(statement)) {
+    return std::any_of(block->Statements.begin(), block->Statements.end(),
+                       [](const auto &child) {
+                         return d3StatementContainsEvaluatedCall(child.get());
+                       });
   }
-  return dynamic_cast<CallExpr *>(source);
+  if (auto *init = dynamic_cast<const InitBlockStmt *>(statement))
+    return d3StatementContainsEvaluatedCall(init->Body.get());
+  if (auto *result = dynamic_cast<const ReturnStmt *>(statement))
+    return d3ExpressionContainsEvaluatedCall(result->ReturnValue.get());
+  if (auto *expr = dynamic_cast<const ExprStmt *>(statement))
+    return d3ExpressionContainsEvaluatedCall(expr->Expression.get());
+  if (auto *deleted = dynamic_cast<const DeleteStmt *>(statement))
+    return d3ExpressionContainsEvaluatedCall(deleted->Expression.get());
+  if (auto *unsafe = dynamic_cast<const UnsafeStmt *>(statement))
+    return d3StatementContainsEvaluatedCall(unsafe->Statement.get());
+  if (auto *freed = dynamic_cast<const FreeStmt *>(statement))
+    return d3ExpressionContainsEvaluatedCall(freed->Expression.get()) ||
+           d3ExpressionContainsEvaluatedCall(freed->Count.get());
+  if (auto *decl = dynamic_cast<const VariableDecl *>(statement))
+    return d3ExpressionContainsEvaluatedCall(decl->Init.get());
+  if (auto *decl = dynamic_cast<const DestructuringDecl *>(statement))
+    return d3ExpressionContainsEvaluatedCall(decl->Init.get());
+  if (auto *guard = dynamic_cast<const GuardBindStmt *>(statement))
+    return d3ExpressionContainsEvaluatedCall(guard->Target.get()) ||
+           d3StatementContainsEvaluatedCall(guard->ElseBody.get());
+  return false;
+}
+
+static bool d3ExpressionContainsEvaluatedCall(const Expr *expression) {
+  if (!expression)
+    return false;
+  if (auto *call = dynamic_cast<const CallExpr *>(expression)) {
+    if (call->ResolvedFn || call->ResolvedExtern || !call->ResolvedShape)
+      return true;
+    return std::any_of(call->Args.begin(), call->Args.end(),
+                       [](const auto &argument) {
+                         return d3ExpressionContainsEvaluatedCall(
+                             argument.get());
+                       });
+  }
+  if (dynamic_cast<const MethodCallExpr *>(expression))
+    return true;
+  if (auto *binary = dynamic_cast<const BinaryExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(binary->LHS.get()) ||
+           d3ExpressionContainsEvaluatedCall(binary->RHS.get());
+  if (auto *member = dynamic_cast<const MemberExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(member->Object.get());
+  if (auto *index = dynamic_cast<const ArrayIndexExpr *>(expression)) {
+    if (d3ExpressionContainsEvaluatedCall(index->Array.get()))
+      return true;
+    return std::any_of(index->Indices.begin(), index->Indices.end(),
+                       [](const auto &value) {
+                         return d3ExpressionContainsEvaluatedCall(value.get());
+                       });
+  }
+  if (auto *value = dynamic_cast<const DereferenceExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Expression.get());
+  if (auto *value = dynamic_cast<const AddressOfExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Expression.get());
+  if (auto *value = dynamic_cast<const UnaryExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->RHS.get());
+  if (auto *value = dynamic_cast<const PostfixExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->LHS.get());
+  if (auto *value = dynamic_cast<const UnwrapPropagationExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Base.get());
+  if (auto *value = dynamic_cast<const CastExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Expression.get());
+  if (auto *value = dynamic_cast<const UnsafeExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Expression.get());
+  if (auto *value = dynamic_cast<const AwaitExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Expression.get());
+  if (auto *value = dynamic_cast<const WaitExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Expression.get());
+  if (auto *value = dynamic_cast<const StartExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Expression.get());
+  if (auto *value = dynamic_cast<const CedeExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Value.get());
+  if (auto *value = dynamic_cast<const PassExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Value.get());
+  if (auto *value = dynamic_cast<const SpreadExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Base.get());
+  if (auto *value = dynamic_cast<const ElisionExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Target.get());
+  if (auto *value = dynamic_cast<const BreakExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(value->Value.get());
+  if (auto *array = dynamic_cast<const ArrayExpr *>(expression))
+    return std::any_of(array->Elements.begin(), array->Elements.end(),
+                       [](const auto &element) {
+                         return d3ExpressionContainsEvaluatedCall(element.get());
+                       });
+  if (auto *array = dynamic_cast<const RepeatedArrayExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(array->Value.get()) ||
+           d3ExpressionContainsEvaluatedCall(array->Count.get());
+  if (auto *record = dynamic_cast<const AnonymousRecordExpr *>(expression))
+    return std::any_of(record->Fields.begin(), record->Fields.end(),
+                       [](const auto &field) {
+                         return d3ExpressionContainsEvaluatedCall(
+                             field.second.get());
+                       });
+  if (auto *record = dynamic_cast<const InitStructExpr *>(expression))
+    return std::any_of(record->Members.begin(), record->Members.end(),
+                       [](const auto &field) {
+                         return d3ExpressionContainsEvaluatedCall(
+                             field.second.get());
+                       });
+  if (auto *allocation = dynamic_cast<const AllocExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(allocation->Initializer.get()) ||
+           d3ExpressionContainsEvaluatedCall(allocation->ArraySize.get());
+  if (auto *allocation = dynamic_cast<const NewExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(allocation->Initializer.get()) ||
+           d3ExpressionContainsEvaluatedCall(allocation->ArraySize.get());
+  if (auto *array = dynamic_cast<const ArrayInitExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(array->Initializer.get()) ||
+           d3ExpressionContainsEvaluatedCall(array->ArraySize.get());
+  if (auto *conditional = dynamic_cast<const IfExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(conditional->Condition.get()) ||
+           d3StatementContainsEvaluatedCall(conditional->Then.get()) ||
+           d3StatementContainsEvaluatedCall(conditional->Else.get());
+  if (auto *guard = dynamic_cast<const GuardExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(guard->Condition.get()) ||
+           d3StatementContainsEvaluatedCall(guard->Then.get()) ||
+           d3StatementContainsEvaluatedCall(guard->Else.get());
+  if (auto *loop = dynamic_cast<const LoopExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(loop->Condition.get()) ||
+           d3StatementContainsEvaluatedCall(loop->Body.get());
+  if (auto *loop = dynamic_cast<const ForExpr *>(expression))
+    return d3ExpressionContainsEvaluatedCall(loop->Collection.get()) ||
+           d3StatementContainsEvaluatedCall(loop->Body.get()) ||
+           d3StatementContainsEvaluatedCall(loop->ElseBody.get());
+  if (auto *match = dynamic_cast<const MatchExpr *>(expression)) {
+    if (d3ExpressionContainsEvaluatedCall(match->Target.get()))
+      return true;
+    return std::any_of(match->Arms.begin(), match->Arms.end(),
+                       [](const auto &arm) {
+                         return d3ExpressionContainsEvaluatedCall(
+                                    arm->Guard.get()) ||
+                                d3StatementContainsEvaluatedCall(
+                                    arm->Body.get());
+                       });
+  }
+  // A closure body is deferred and is not part of evaluating the literal.
+  if (dynamic_cast<const ClosureExpr *>(expression))
+    return false;
+  return false;
 }
 
 static std::string d3PlaceStateName(PlaceStateFact fact) {
@@ -361,58 +514,8 @@ D3SourceLocation Sema::makeD3SourceLocation(SourceLocation location) const {
   return result;
 }
 
-D3CopyProof Sema::lookupD3ShapeCopyProof(
-    const ShapeDecl *shape, std::set<const ShapeDecl *> &visiting) const {
-  if (!shape || !shape->GenericParams.empty())
-    return D3CopyProof::Indeterminate;
-  if (!visiting.insert(shape).second)
-    return D3CopyProof::Indeterminate;
-  if (shape->HasExplicitDrop ||
-      (Slice2PolicyMap.count(shape) != 0 &&
-       Slice4CopyRequests.count(shape) == 0)) {
-    visiting.erase(shape);
-    return D3CopyProof::ProvenNonCopy;
-  }
-
-  bool indeterminate = false;
-  auto combineMember = [&](const ShapeMember &member) {
-    if (!member.ResolvedType) {
-      indeterminate = true;
-      return true;
-    }
-    D3CopyProof proof = lookupD3CopyProofImpl(member.ResolvedType, visiting);
-    if (proof == D3CopyProof::ProvenNonCopy)
-      return false;
-    if (proof == D3CopyProof::Indeterminate)
-      indeterminate = true;
-    return true;
-  };
-  for (const auto &member : shape->Members) {
-    if (shape->Kind != ShapeKind::Enum && !combineMember(member)) {
-      visiting.erase(shape);
-      return D3CopyProof::ProvenNonCopy;
-    }
-    for (const auto &submember : member.SubMembers) {
-      if (!combineMember(submember)) {
-        visiting.erase(shape);
-        return D3CopyProof::ProvenNonCopy;
-      }
-    }
-  }
-  visiting.erase(shape);
-  return indeterminate ? D3CopyProof::Indeterminate
-                       : D3CopyProof::ProvenCopy;
-}
-
 D3CopyProof
 Sema::lookupD3CopyProof(const std::shared_ptr<toka::Type> &type) const {
-  std::set<const ShapeDecl *> visiting;
-  return lookupD3CopyProofImpl(type, visiting);
-}
-
-D3CopyProof Sema::lookupD3CopyProofImpl(
-    const std::shared_ptr<toka::Type> &type,
-    std::set<const ShapeDecl *> &visiting) const {
   if (!type || type->isUnknown())
     return D3CopyProof::Indeterminate;
   if (type->isUniquePtr() || type->isSharedPtr())
@@ -422,13 +525,21 @@ D3CopyProof Sema::lookupD3CopyProofImpl(
       type->isBoolean() || type->isInteger() || type->isFloatingPoint())
     return D3CopyProof::ProvenCopy;
   if (type->isArray())
-    return lookupD3CopyProofImpl(type->getArrayElementType(), visiting);
+    return D3CopyProof::Indeterminate;
   if (!type->isShape())
     return D3CopyProof::Indeterminate;
   auto shapeType = std::dynamic_pointer_cast<ShapeType>(type);
   if (!shapeType || !shapeType->Decl)
     return D3CopyProof::Indeterminate;
-  return lookupD3ShapeCopyProof(shapeType->Decl, visiting);
+  auto proof = Slice4CopyProofs.find(shapeType->Decl);
+  if (proof == Slice4CopyProofs.end())
+    return D3CopyProof::Indeterminate;
+  switch (proof->second) {
+  case Slice1CopyProof::Unknown: return D3CopyProof::Indeterminate;
+  case Slice1CopyProof::ProvenCopy: return D3CopyProof::ProvenCopy;
+  case Slice1CopyProof::ProvenNonCopy: return D3CopyProof::ProvenNonCopy;
+  }
+  return D3CopyProof::Indeterminate;
 }
 
 D3TypeCategory Sema::classifyD3TypeCategory(
@@ -460,6 +571,46 @@ D3TypeCategory Sema::classifyD3TypeCategory(
   return D3TypeCategory::Unsupported;
 }
 
+D3OwnershipProof Sema::lookupD3OwnershipProof(
+    const std::shared_ptr<toka::Type> &type) const {
+  if (!type || type->isUnknown())
+    return D3OwnershipProof::Indeterminate;
+  if (type->isRawPointer() || type->isReference() || type->isSlice())
+    return D3OwnershipProof::Borrowed;
+  if (type->isSharedPtr())
+    return D3OwnershipProof::Shared;
+  if (type->isUniquePtr())
+    return D3OwnershipProof::Owned;
+  if (type->isArray())
+    return lookupD3OwnershipProof(type->getArrayElementType());
+  if (!type->isShape())
+    return D3OwnershipProof::Trivial;
+
+  std::string soul = Type::stripMorphology(type->getSoulName());
+  if (size_t scope = soul.rfind("::"); scope != std::string::npos)
+    soul = soul.substr(scope + 2);
+  if (soul == "str" || soul == "bytes" || soul == "cstr" ||
+      soul == "ViewStrSplitIterator" || soul == "ViewStrLinesIterator")
+    return D3OwnershipProof::Borrowed;
+  if (soul == "string" || soul == "Bytes")
+    return D3OwnershipProof::Owned;
+
+  auto shapeType = std::dynamic_pointer_cast<ShapeType>(type);
+  if (!shapeType || !shapeType->Decl)
+    return D3OwnershipProof::Indeterminate;
+  const ShapeDecl *shape = shapeType->Decl;
+  if (shape->HasExplicitDrop || !shape->MangledDestructorName.empty())
+    return D3OwnershipProof::Owned;
+  auto properties = m_ShapeProps.find(shape->Name);
+  if (properties == m_ShapeProps.end() && !shape->CodegenName.empty())
+    properties = m_ShapeProps.find(shape->CodegenName);
+  if (properties != m_ShapeProps.end() &&
+      properties->second.Status == ShapeAnalysisStatus::Analyzed)
+    return properties->second.HasDrop ? D3OwnershipProof::Owned
+                                      : D3OwnershipProof::Trivial;
+  return D3OwnershipProof::Indeterminate;
+}
+
 D3ObservationSentinel Sema::captureD3ObservationSentinel(
     CallExpr *call, Expr *actual) const {
   D3ObservationSentinel sentinel;
@@ -475,7 +626,7 @@ D3ObservationSentinel Sema::captureD3ObservationSentinel(
                                      : "";
 
   Expr *source = d3UnwrapSourceExpr(actual);
-  if (auto *variable = dynamic_cast<VariableExpr *>(source)) {
+  if (auto *variable = d3WholePlaceVariable(source)) {
     SymbolInfo *info = nullptr;
     std::string actualName = variable->Name;
     if (CurrentScope && CurrentScope->findVariableWithDeref(
@@ -882,6 +1033,8 @@ void Sema::validateAtomicOrderingArguments(
 // Stage 5c: Object-Oriented Call Expression Check
 std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
+  const size_t d3CallDiagnosticStart =
+      m_D3ObservationSession ? DiagnosticEngine::records().size() : 0;
   std::string CallName = Call->Callee;
   std::string OriginalName = CallName;
 
@@ -1695,6 +1848,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   }
 
   auto functionAcceptsCall = [&](FunctionDecl *Candidate) -> bool {
+    D3SpeculativeCallScope speculativeScope(m_D3SpeculativeCallDepth);
     d3CandidateProbeObserved = true;
     if (!Candidate) {
       return false;
@@ -3044,6 +3198,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       gateExclusion = D3GateExclusionReason::NestedObservationContext;
     } else if (m_IsPrecomputingCaptures) {
       gateExclusion = D3GateExclusionReason::NonFinalSemanticTraversal;
+    } else if (m_D3SpeculativeCallDepth != 0) {
+      gateExclusion =
+          D3GateExclusionReason::CandidateProbeOrSpeculativeContext;
     } else if (!Fn || Ext || !Fn->Loc.isValid()) {
       gateExclusion = D3GateExclusionReason::WrongRoute;
     } else if (d3CandidateProbeObserved ||
@@ -3054,7 +3211,21 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     } else {
       auto owner = DeclarationLexicalScopes.find(Fn);
       ModuleScope *lexical = lexicalModuleForCall();
-      if (owner == DeclarationLexicalScopes.end() || !owner->second ||
+      FunctionDecl *overloadIdentity = Fn->TemplateOrigin
+                                           ? Fn->TemplateOrigin
+                                           : Fn;
+      bool hasMultipleOverloads = false;
+      if (owner != DeclarationLexicalScopes.end() && owner->second) {
+        auto overloads =
+            owner->second->FunctionOverloads.find(overloadIdentity->Name);
+        hasMultipleOverloads =
+            overloads != owner->second->FunctionOverloads.end() &&
+            overloads->second.size() != 1;
+      }
+      if (hasMultipleOverloads) {
+        gateExclusion =
+            D3GateExclusionReason::CandidateProbeOrSpeculativeContext;
+      } else if (owner == DeclarationLexicalScopes.end() || !owner->second ||
           owner->second != lexical || !CurrentModule ||
           CurrentModule->IsInterface) {
         gateExclusion = D3GateExclusionReason::NonSameLexical;
@@ -3086,6 +3257,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       input.Pre.IdentityOrigin = callLocation.File;
       input.Pre.CallWitness = witness(callLocation, CallName);
       input.Pre.CalleeWitness = witness(functionLocation, Fn->Name);
+      if (CurrentFunction) {
+        input.Pre.CallerBindingOwnerWitness = witness(
+            makeD3SourceLocation(CurrentFunction->Loc), CurrentFunction->Name);
+      }
       input.Pre.CalleeName = Fn->Name;
       input.Pre.CallLocation = callLocation;
       input.Pre.MultipleArguments =
@@ -3124,7 +3299,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       input.Pre.ExplicitCede = dynamic_cast<CedeExpr *>(actual) != nullptr;
       Expr *source = d3UnwrapSourceExpr(actual);
       input.Pre.SourceSpelling = source ? source->toString() : "<none>";
-      if (auto *variable = dynamic_cast<VariableExpr *>(source)) {
+      if (auto *variable = d3WholePlaceVariable(source)) {
         input.Pre.ActualCategory = D3ActualCategory::WholePlace;
         SymbolInfo *info = nullptr;
         std::string actualName = variable->Name;
@@ -3155,7 +3330,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           !input.Pre.CalleeWitness.empty() &&
           (input.Pre.MultipleArguments ||
            (!input.Pre.FormalWitness.empty() &&
-            !input.Pre.SourceWitness.empty()));
+            !input.Pre.SourceWitness.empty() &&
+            !input.Pre.CallerBindingOwnerWitness.empty()));
 
       D3ObservationSentinel d3PreCaptureAfter =
           captureD3ObservationSentinel(Call, actual);
@@ -3163,7 +3339,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           d3PreCaptureBefore, d3PreCaptureAfter);
       d3PreCaptureUnchanged = d3PreCaptureDifferences.empty();
       d3ObservationInput = std::move(input);
-      d3DiagnosticStart = DiagnosticEngine::records().size();
+      d3DiagnosticStart = d3CallDiagnosticStart;
       d3ObservationScope.emplace(m_D3ObservationSession);
     }
   }
@@ -3683,7 +3859,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
   }
 
-  if (d3ObservationInput) {
+  auto finalizeD3Observation = [&]() {
+    if (!d3ObservationInput)
+      return;
     Expr *actual = Call->Args.empty() ? nullptr : Call->Args.front().get();
     D3ObservationSentinel d3PostBefore =
         captureD3ObservationSentinel(Call, actual);
@@ -3693,7 +3871,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       d3LegacyArgumentType = actual->ResolvedType;
     if (!d3LegacyArgumentType) {
       Expr *source = d3UnwrapSourceExpr(actual);
-      if (auto *variable = dynamic_cast<VariableExpr *>(source)) {
+      if (auto *variable = d3WholePlaceVariable(source)) {
         SymbolInfo *info = nullptr;
         std::string actualName = variable->Name;
         if (CurrentScope->findVariableWithDeref(variable->Name, info,
@@ -3703,9 +3881,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
     }
 
-    input.Pre.NestedObservation = false;
-    if (CallExpr *nested = d3FindNestedCall(actual))
-      input.Pre.NestedObservation = nested != Call && nested->ResolvedFn;
+    input.Pre.NestedObservation =
+        d3ExpressionContainsEvaluatedCall(actual);
     input.Post.ActualType =
         d3LegacyArgumentType
             ? d3LegacyArgumentType->canonicalIdentity()
@@ -3713,6 +3890,47 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     input.Post.TypeCategory =
         classifyD3TypeCategory(d3LegacyArgumentType);
     input.Post.CopyProof = lookupD3CopyProof(d3LegacyArgumentType);
+    input.Post.OwnershipProof =
+        lookupD3OwnershipProof(d3LegacyArgumentType);
+    input.Post.BoundaryAccess = D3BoundaryAccess::None;
+    if (input.Pre.ActualCategory == D3ActualCategory::WholePlace) {
+      if (callArgPALFacts.size() != 1) {
+        input.Post.BoundaryAccess = D3BoundaryAccess::Unsupported;
+      } else {
+        switch (callArgPALFacts.front().Access) {
+        case PALOperationClass::SharedPayloadBorrow:
+        case PALOperationClass::HandleViewBorrow:
+          input.Post.BoundaryAccess = D3BoundaryAccess::SharedBorrow;
+          break;
+        case PALOperationClass::Invalidation:
+          input.Post.BoundaryAccess = D3BoundaryAccess::Invalidation;
+          break;
+        case PALOperationClass::PayloadWrite:
+        case PALOperationClass::ExclusivePayloadBorrow:
+        case PALOperationClass::HandleRebind:
+        case PALOperationClass::ExclusiveMutation:
+          input.Post.BoundaryAccess = D3BoundaryAccess::Unsupported;
+          break;
+        }
+      }
+    }
+    input.Post.CleanupWitness = input.Pre.SourceWitness + ":cleanup";
+    switch (input.Post.OwnershipProof) {
+    case D3OwnershipProof::Owned:
+      input.Post.SourceLiability =
+          input.Pre.ActualCategory == D3ActualCategory::WholeTemporary
+              ? D3LiabilityFact::temporary(input.Post.CleanupWitness)
+              : D3LiabilityFact::sourcePlace(input.Post.CleanupWitness);
+      break;
+    case D3OwnershipProof::Trivial:
+    case D3OwnershipProof::Borrowed:
+      input.Post.SourceLiability = D3LiabilityFact::noLiability();
+      break;
+    case D3OwnershipProof::Shared:
+    case D3OwnershipProof::Indeterminate:
+      input.Post.SourceLiability = D3LiabilityFact::noLiability();
+      break;
+    }
     input.Post.LegacyTypeMismatch = d3LegacyTypeMismatch;
     input.Post.LegacySucceeded = true;
     const auto &diagnostics = DiagnosticEngine::records();
@@ -3729,10 +3947,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         input.Pre.SourceStateBefore == "Live" &&
         input.Pre.PALStateBefore == "Free" && !input.Pre.SourcePlaceAlias;
     input.Post.LiabilityComplete =
-        input.Post.TypeCategory != D3TypeCategory::Indeterminate &&
-        input.Post.TypeCategory != D3TypeCategory::Unsupported;
+        input.Post.OwnershipProof != D3OwnershipProof::Indeterminate &&
+        input.Post.SourceLiability.valid();
     input.Post.RegionFactsComplete =
-        !input.Pre.ReturnDependencyOrRegionEscape;
+        !input.Pre.ReturnDependencyOrRegionEscape &&
+        input.Post.BoundaryAccess != D3BoundaryAccess::Unsupported;
 
     m_D3ObservationSession->noteFactoryInvocation();
     D3FactoryObservationRecord factoryRecord =
@@ -3742,8 +3961,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     std::vector<std::string> postDifferences =
         differingD3SentinelFields(d3PostBefore, d3PostAfter);
 
-    D3ObservationEnvelope envelope;
-    envelope.FactoryRecord = std::move(factoryRecord);
+    D3ObservationEnvelope envelope(std::move(factoryRecord));
     envelope.PreFactCaptureUnchanged = d3PreCaptureUnchanged;
     envelope.PostCacheAndFactoryUnchanged = postDifferences.empty();
     for (const auto &field : d3PreCaptureDifferences)
@@ -3752,7 +3970,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       envelope.DifferingSentinelFields.push_back("post." + field);
     m_D3ObservationSession->append(std::move(envelope));
     d3ObservationScope.reset();
-  }
+  };
 
   // Trusted atomic wrappers preserve Ordering as a runtime enum value, but a
   // direct enum literal can be rejected here with a stable source diagnostic.
@@ -3973,6 +4191,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         }
       }
   }
+
+  finalizeD3Observation();
 
   if (isAsync) {
     return resolveType(std::make_shared<ShapeType>(

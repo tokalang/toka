@@ -2,9 +2,20 @@
 
 #include "toka/DirectCallObservationAudit.h"
 #include <sstream>
+#include <type_traits>
 #include <unordered_set>
 
 using namespace toka;
+
+bool g_JsonDiagnostics = false;
+
+static_assert(!std::is_default_constructible_v<D3ValidatedTransferEdge>);
+static_assert(!std::is_default_constructible_v<D3DeltaEntry>);
+static_assert(!std::is_default_constructible_v<D3DomainDelta>);
+static_assert(!std::is_default_constructible_v<D3SemanticModelPatch>);
+static_assert(!std::is_default_constructible_v<D3MinimalRegionWitness>);
+static_assert(!std::is_default_constructible_v<D3ValidatedCall>);
+static_assert(!std::is_default_constructible_v<D3FactoryObservationRecord>);
 
 #define CHECK(condition)                                                       \
   do {                                                                         \
@@ -24,6 +35,7 @@ static D3CallObservationInput baseInput() {
   input.Pre.FormalWitness = "arg:1:value";
   input.Pre.SourceWitness = "10:5:value";
   input.Pre.DestinationWitness = "formal:1";
+  input.Pre.CallerBindingOwnerWitness = "8:1:main";
   input.Pre.CalleeName = "consume";
   input.Pre.FormalName = "value";
   input.Pre.FormalType = "Resource";
@@ -38,6 +50,11 @@ static D3CallObservationInput baseInput() {
   input.Post.ActualType = "Resource";
   input.Post.TypeCategory = D3TypeCategory::Aggregate;
   input.Post.CopyProof = D3CopyProof::ProvenNonCopy;
+  input.Post.OwnershipProof = D3OwnershipProof::Owned;
+  input.Post.BoundaryAccess = D3BoundaryAccess::Invalidation;
+  input.Post.CleanupWitness = "10:5:value:cleanup";
+  input.Post.SourceLiability =
+      D3LiabilityFact::sourcePlace(input.Post.CleanupWitness);
   input.Post.LegacySucceeded = true;
   input.Post.AdmissionFactsComplete = true;
   input.Post.WholePlaceEligible = true;
@@ -85,17 +102,45 @@ int main() {
   CHECK(nonCopy.validatedCall()->transferEdges()[0].liabilitySource() ==
         explicitNonCopy.validatedCall()->transferEdges()[0].liabilitySource());
 
+  auto supersededSpellingInput = baseInput();
+  supersededSpellingInput.Post.LegacySucceeded = false;
+  supersededSpellingInput.Post.LegacyDiagnosticCodes = {"E04570"};
+  CHECK(hasTransfer(
+      DirectCallObservationFactory::observe(supersededSpellingInput),
+      D3TransferMode::MoveOwned, D3SourceDisposition::InvalidateWhole));
+
+  auto unrelatedLegacyFailureInput = baseInput();
+  unrelatedLegacyFailureInput.Post.LegacySucceeded = false;
+  unrelatedLegacyFailureInput.Post.LegacyDiagnosticCodes = {"E09999"};
+  CHECK(isRejected(
+      DirectCallObservationFactory::observe(unrelatedLegacyFailureInput),
+      D3CallValidationError::IncompleteObservationFacts));
+
+  auto otherCalleeInput = baseInput();
+  otherCalleeInput.Pre.CalleeWitness = "3:1:consume_other";
+  otherCalleeInput.Pre.CalleeName = "consume_other";
+  otherCalleeInput.Pre.FormalWitness = "3:20:value";
+  otherCalleeInput.Pre.DestinationWitness = "formal:1:other";
+  auto otherCallee = DirectCallObservationFactory::observe(otherCalleeInput);
+  CHECK(otherCallee.validatedCall());
+  CHECK(nonCopy.validatedCall()->transferEdges()[0].sourcePlace() ==
+        otherCallee.validatedCall()->transferEdges()[0].sourcePlace());
+
   auto copyBareInput = baseInput();
   copyBareInput.Pre.FormalType = "i32";
   copyBareInput.Post.ActualType = "i32";
   copyBareInput.Post.TypeCategory = D3TypeCategory::Scalar;
   copyBareInput.Post.CopyProof = D3CopyProof::ProvenCopy;
+  copyBareInput.Post.OwnershipProof = D3OwnershipProof::Trivial;
+  copyBareInput.Post.BoundaryAccess = D3BoundaryAccess::SharedBorrow;
+  copyBareInput.Post.SourceLiability = D3LiabilityFact::noLiability();
   auto copyBare = DirectCallObservationFactory::observe(copyBareInput);
   CHECK(hasTransfer(copyBare, D3TransferMode::CopyValue,
                     D3SourceDisposition::KeepLive));
 
   auto copyExplicitInput = copyBareInput;
   copyExplicitInput.Pre.ExplicitCede = true;
+  copyExplicitInput.Post.BoundaryAccess = D3BoundaryAccess::Invalidation;
   auto copyExplicit = DirectCallObservationFactory::observe(copyExplicitInput);
   CHECK(hasTransfer(copyExplicit, D3TransferMode::CopyValue,
                     D3SourceDisposition::InvalidateWhole));
@@ -105,14 +150,19 @@ int main() {
   temporaryInput.Pre.SourceWitness = "temporary:Resource";
   temporaryInput.Post.WholePlaceEligible = false;
   temporaryInput.Post.CopyProof = D3CopyProof::Indeterminate;
+  temporaryInput.Post.BoundaryAccess = D3BoundaryAccess::None;
+  temporaryInput.Post.SourceLiability =
+      D3LiabilityFact::temporary("temporary:Resource:cleanup");
+  temporaryInput.Post.CleanupWitness = "temporary:Resource:cleanup";
   auto temporary = DirectCallObservationFactory::observe(temporaryInput);
   CHECK(hasTransfer(temporary, D3TransferMode::ConsumeTemporary,
                     D3SourceDisposition::NoSourcePlace));
 
   auto borrowedInput = baseInput();
   borrowedInput.Pre.FormalCeded = false;
-  borrowedInput.Post.TypeCategory = D3TypeCategory::BorrowedAggregate;
+  borrowedInput.Post.TypeCategory = D3TypeCategory::Aggregate;
   borrowedInput.Post.CopyProof = D3CopyProof::Indeterminate;
+  borrowedInput.Post.BoundaryAccess = D3BoundaryAccess::SharedBorrow;
   auto borrowed = DirectCallObservationFactory::observe(borrowedInput);
   CHECK(hasTransfer(borrowed, D3TransferMode::BorrowCapture,
                     D3SourceDisposition::KeepLive));
@@ -121,6 +171,13 @@ int main() {
   borrowedExplicitInput.Pre.ExplicitCede = true;
   CHECK(isRejected(DirectCallObservationFactory::observe(borrowedExplicitInput),
                    D3CallValidationError::BorrowedFormalExplicitCede));
+
+  auto cededBorrowedInput = baseInput();
+  cededBorrowedInput.Post.TypeCategory = D3TypeCategory::BorrowedAggregate;
+  cededBorrowedInput.Post.OwnershipProof = D3OwnershipProof::Borrowed;
+  cededBorrowedInput.Post.SourceLiability = D3LiabilityFact::noLiability();
+  CHECK(isExcluded(DirectCallObservationFactory::observe(cededBorrowedInput),
+                   D3ExclusionReason::UnsupportedTypeCategory));
 
   auto scalarInput = copyBareInput;
   scalarInput.Pre.FormalCeded = false;
@@ -240,6 +297,9 @@ int main() {
 
   auto otherSourceInput = temporaryInput;
   otherSourceInput.Pre.SourceWitness = "temporary:OtherResource";
+  otherSourceInput.Post.CleanupWitness = "temporary:OtherResource:cleanup";
+  otherSourceInput.Post.SourceLiability =
+      D3LiabilityFact::temporary(otherSourceInput.Post.CleanupWitness);
   auto otherSource = DirectCallObservationFactory::observe(otherSourceInput);
   std::unordered_set<D3MinimalRegionWitness,
                      ConstantHash<D3MinimalRegionWitness>>

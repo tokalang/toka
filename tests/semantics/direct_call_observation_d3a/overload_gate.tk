@@ -1,0 +1,11 @@
+fn choose(value: i32) -> i32 {
+    return value
+}
+
+fn choose(value: bool) -> i32 {
+    return 0:i32
+}
+
+fn main() -> i32 {
+    return choose(false)
+}

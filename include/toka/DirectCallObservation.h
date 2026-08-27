@@ -93,6 +93,41 @@ enum class D3DeltaLane : uint8_t {
   Finalization,
 };
 
+enum class D3OwnershipProof : uint8_t {
+  Trivial,
+  Borrowed,
+  Owned,
+  Shared,
+  Indeterminate,
+};
+
+enum class D3BoundaryAccess : uint8_t {
+  None,
+  SharedBorrow,
+  Invalidation,
+  Unsupported,
+};
+
+enum class D3DependencyRelation : uint8_t {
+  None,
+  BorrowedCallRegion,
+};
+
+enum class D3SubjectKind : uint8_t {
+  SourcePlace,
+  Destination,
+  Loan,
+  Cleanup,
+};
+
+enum class D3LiabilityKind : uint8_t {
+  NoLiability,
+  SourcePlaceCleanup,
+  TemporaryCleanup,
+  SourceRetained,
+  DestinationCleanup,
+};
+
 enum class D3PatchBuildError : uint8_t {
   None,
   InvalidIdentity,
@@ -109,6 +144,67 @@ const char *toString(D3TransferMode value);
 const char *toString(D3SourceDisposition value);
 const char *toString(D3StateDomain value);
 const char *toString(D3DeltaLane value);
+const char *toString(D3OwnershipProof value);
+const char *toString(D3BoundaryAccess value);
+const char *toString(D3DependencyRelation value);
+const char *toString(D3SubjectKind value);
+const char *toString(D3LiabilityKind value);
+
+class D3SubjectIdentity final {
+public:
+  static D3SubjectIdentity sourcePlace(std::string key) {
+    return D3SubjectIdentity(D3SubjectKind::SourcePlace, std::move(key));
+  }
+  static D3SubjectIdentity destination(std::string key) {
+    return D3SubjectIdentity(D3SubjectKind::Destination, std::move(key));
+  }
+  static D3SubjectIdentity loan(std::string key) {
+    return D3SubjectIdentity(D3SubjectKind::Loan, std::move(key));
+  }
+  static D3SubjectIdentity cleanup(std::string key) {
+    return D3SubjectIdentity(D3SubjectKind::Cleanup, std::move(key));
+  }
+
+  bool valid() const { return !Key.empty(); }
+  D3SubjectKind kind() const { return Kind; }
+  const std::string &key() const { return Key; }
+  size_t hashValue() const noexcept;
+  friend bool operator==(const D3SubjectIdentity &lhs,
+                         const D3SubjectIdentity &rhs) {
+    return lhs.Kind == rhs.Kind && lhs.Key == rhs.Key;
+  }
+
+private:
+  D3SubjectKind Kind;
+  std::string Key;
+  D3SubjectIdentity(D3SubjectKind kind, std::string key)
+      : Kind(kind), Key(std::move(key)) {}
+};
+
+class D3LiabilityFact final {
+public:
+  static D3LiabilityFact noLiability();
+  static D3LiabilityFact sourcePlace(std::string key);
+  static D3LiabilityFact temporary(std::string key);
+  static D3LiabilityFact sourceRetained(std::string key);
+  static D3LiabilityFact destination(std::string key);
+
+  D3LiabilityKind kind() const { return Kind; }
+  const std::optional<D3SubjectIdentity> &subject() const { return Subject; }
+  bool valid() const {
+    return Kind == D3LiabilityKind::NoLiability ||
+           (Subject && Subject->valid());
+  }
+  size_t hashValue() const noexcept;
+  friend bool operator==(const D3LiabilityFact &lhs,
+                         const D3LiabilityFact &rhs) {
+    return lhs.Kind == rhs.Kind && lhs.Subject == rhs.Subject;
+  }
+
+private:
+  D3LiabilityKind Kind = D3LiabilityKind::NoLiability;
+  std::optional<D3SubjectIdentity> Subject;
+};
 
 struct D3SourceLocation {
   std::string File;
@@ -131,6 +227,7 @@ struct D3PreLegacyDirectCallFacts {
   std::string FormalWitness;
   std::string SourceWitness;
   std::string DestinationWitness;
+  std::string CallerBindingOwnerWitness;
   std::string CalleeName;
   std::string FormalName;
   std::string FormalType;
@@ -158,6 +255,10 @@ struct D3PostLegacyDirectCallFacts {
   std::vector<std::string> LegacyDiagnosticCodes;
   D3TypeCategory TypeCategory = D3TypeCategory::Indeterminate;
   D3CopyProof CopyProof = D3CopyProof::Indeterminate;
+  D3OwnershipProof OwnershipProof = D3OwnershipProof::Indeterminate;
+  D3BoundaryAccess BoundaryAccess = D3BoundaryAccess::Unsupported;
+  D3LiabilityFact SourceLiability = D3LiabilityFact::noLiability();
+  std::string CleanupWitness;
   bool LegacySucceeded = false;
   bool LegacyTypeMismatch = false;
   bool AdmissionFactsComplete = false;
@@ -173,6 +274,11 @@ struct D3CallObservationInput {
 
 class D3ValidatedTransferEdge final {
 public:
+  D3ValidatedTransferEdge(const D3ValidatedTransferEdge &) = default;
+  D3ValidatedTransferEdge(D3ValidatedTransferEdge &&) noexcept = default;
+  D3ValidatedTransferEdge &operator=(const D3ValidatedTransferEdge &) = default;
+  D3ValidatedTransferEdge &
+  operator=(D3ValidatedTransferEdge &&) noexcept = default;
   const TransferEdgeId &id() const { return Id; }
   const ArgumentPlanId &argumentPlanId() const { return ArgumentPlan; }
   const FormalId &formalId() const { return Formal; }
@@ -182,9 +288,10 @@ public:
   const std::string &valueCategory() const { return ValueCategory; }
   D3TransferMode transferMode() const { return Transfer; }
   D3SourceDisposition sourceDisposition() const { return Source; }
-  const std::string &dependency() const { return Dependency; }
-  const std::string &liabilitySource() const { return LiabilitySource; }
-  const std::string &liabilityTarget() const { return LiabilityTarget; }
+  D3BoundaryAccess boundaryAccess() const { return BoundaryAccess; }
+  D3DependencyRelation dependency() const { return Dependency; }
+  const D3LiabilityFact &liabilitySource() const { return LiabilitySource; }
+  const D3LiabilityFact &liabilityTarget() const { return LiabilityTarget; }
   bool explicitCede() const { return ExplicitCede; }
 
   size_t hashValue() const noexcept;
@@ -193,6 +300,7 @@ public:
 
 private:
   friend class DirectCallObservationFactory;
+  D3ValidatedTransferEdge() = default;
   TransferEdgeId Id;
   ArgumentPlanId ArgumentPlan;
   FormalId Formal;
@@ -202,17 +310,22 @@ private:
   std::string ValueCategory;
   D3TransferMode Transfer = D3TransferMode::BorrowCapture;
   D3SourceDisposition Source = D3SourceDisposition::KeepLive;
-  std::string Dependency;
-  std::string LiabilitySource;
-  std::string LiabilityTarget;
+  D3BoundaryAccess BoundaryAccess = D3BoundaryAccess::Unsupported;
+  D3DependencyRelation Dependency = D3DependencyRelation::None;
+  D3LiabilityFact LiabilitySource = D3LiabilityFact::noLiability();
+  D3LiabilityFact LiabilityTarget = D3LiabilityFact::noLiability();
   bool ExplicitCede = false;
 };
 
 class D3DeltaEntry final {
 public:
+  D3DeltaEntry(const D3DeltaEntry &) = default;
+  D3DeltaEntry(D3DeltaEntry &&) noexcept = default;
+  D3DeltaEntry &operator=(const D3DeltaEntry &) = default;
+  D3DeltaEntry &operator=(D3DeltaEntry &&) noexcept = default;
   const TransferEdgeId &edgeId() const { return Edge; }
   D3StateDomain stateDomain() const { return Domain; }
-  const std::string &subjectIdentity() const { return SubjectIdentity; }
+  const D3SubjectIdentity &subjectIdentity() const { return SubjectIdentity; }
   const std::string &expectedBefore() const { return ExpectedBefore; }
   const std::string &resultAfter() const { return ResultAfter; }
   const std::string &provenance() const { return Provenance; }
@@ -222,9 +335,10 @@ public:
 
 private:
   friend class DirectCallObservationFactory;
+  D3DeltaEntry() = default;
   TransferEdgeId Edge;
   D3StateDomain Domain = D3StateDomain::Evaluation;
-  std::string SubjectIdentity;
+  D3SubjectIdentity SubjectIdentity = D3SubjectIdentity::sourcePlace("");
   std::string ExpectedBefore;
   std::string ResultAfter;
   std::string Provenance;
@@ -232,6 +346,10 @@ private:
 
 class D3DomainDelta final {
 public:
+  D3DomainDelta(const D3DomainDelta &) = default;
+  D3DomainDelta(D3DomainDelta &&) noexcept = default;
+  D3DomainDelta &operator=(const D3DomainDelta &) = default;
+  D3DomainDelta &operator=(D3DomainDelta &&) noexcept = default;
   D3DeltaLane lane() const { return Lane; }
   const std::vector<D3DeltaEntry> &entries() const { return Entries; }
   size_t hashValue() const noexcept;
@@ -239,6 +357,8 @@ public:
 
 private:
   friend class DirectCallObservationFactory;
+  friend class D3ValidatedCall;
+  D3DomainDelta() = default;
   D3DeltaLane Lane = D3DeltaLane::Evaluation;
   std::vector<D3DeltaEntry> Entries;
 };
@@ -252,6 +372,10 @@ struct D3PatchBuildResult;
 
 class D3SemanticModelPatch final {
 public:
+  D3SemanticModelPatch(const D3SemanticModelPatch &) = default;
+  D3SemanticModelPatch(D3SemanticModelPatch &&) noexcept = default;
+  D3SemanticModelPatch &operator=(const D3SemanticModelPatch &) = default;
+  D3SemanticModelPatch &operator=(D3SemanticModelPatch &&) noexcept = default;
   const std::vector<D3PatchEntrySeed> &entries() const { return Entries; }
   size_t hashValue() const noexcept;
   friend bool operator==(const D3SemanticModelPatch &lhs,
@@ -259,8 +383,10 @@ public:
 
 private:
   friend struct D3PatchBuildResult;
+  friend class D3ValidatedCall;
   friend D3PatchBuildResult
   buildD3SemanticModelPatch(std::vector<D3PatchEntrySeed> entries);
+  D3SemanticModelPatch() = default;
   std::vector<D3PatchEntrySeed> Entries;
 };
 
@@ -275,10 +401,15 @@ buildD3SemanticModelPatch(std::vector<D3PatchEntrySeed> entries);
 
 class D3MinimalRegionWitness final {
 public:
+  D3MinimalRegionWitness(const D3MinimalRegionWitness &) = default;
+  D3MinimalRegionWitness(D3MinimalRegionWitness &&) noexcept = default;
+  D3MinimalRegionWitness &operator=(const D3MinimalRegionWitness &) = default;
+  D3MinimalRegionWitness &
+  operator=(D3MinimalRegionWitness &&) noexcept = default;
   const RegionId &callRegion() const { return CallRegion; }
   const RegionId &fullExpressionRegion() const { return FullExpressionRegion; }
   const std::string &origin() const { return Origin; }
-  const std::string &subject() const { return Subject; }
+  const D3SubjectIdentity &subject() const { return Subject; }
   const std::string &terminal() const { return Terminal; }
   size_t hashValue() const noexcept;
   friend bool operator==(const D3MinimalRegionWitness &lhs,
@@ -286,15 +417,21 @@ public:
 
 private:
   friend class DirectCallObservationFactory;
+  friend class D3ValidatedCall;
+  D3MinimalRegionWitness() = default;
   RegionId CallRegion;
   RegionId FullExpressionRegion;
   std::string Origin;
-  std::string Subject;
+  D3SubjectIdentity Subject = D3SubjectIdentity::sourcePlace("");
   std::string Terminal;
 };
 
 class D3ValidatedCall final {
 public:
+  D3ValidatedCall(const D3ValidatedCall &) = default;
+  D3ValidatedCall(D3ValidatedCall &&) noexcept = default;
+  D3ValidatedCall &operator=(const D3ValidatedCall &) = default;
+  D3ValidatedCall &operator=(D3ValidatedCall &&) noexcept = default;
   const SemanticNodeId &callSiteId() const { return CallSite; }
   const ResolvedCalleeId &calleeId() const { return Callee; }
   const std::vector<D3ValidatedTransferEdge> &transferEdges() const {
@@ -311,6 +448,7 @@ public:
 
 private:
   friend class DirectCallObservationFactory;
+  D3ValidatedCall() = default;
   SemanticNodeId CallSite;
   ResolvedCalleeId Callee;
   std::vector<D3ValidatedTransferEdge> TransferEdges;
@@ -323,6 +461,12 @@ private:
 
 class D3FactoryObservationRecord final {
 public:
+  D3FactoryObservationRecord(const D3FactoryObservationRecord &) = default;
+  D3FactoryObservationRecord(D3FactoryObservationRecord &&) noexcept = default;
+  D3FactoryObservationRecord &
+  operator=(const D3FactoryObservationRecord &) = default;
+  D3FactoryObservationRecord &
+  operator=(D3FactoryObservationRecord &&) noexcept = default;
   D3AdmissionKind admission() const { return Admission; }
   const std::optional<D3ExclusionReason> &exclusionReason() const {
     return ExclusionReason;
@@ -340,6 +484,7 @@ public:
 
 private:
   friend class DirectCallObservationFactory;
+  D3FactoryObservationRecord() = default;
   D3AdmissionKind Admission = D3AdmissionKind::Rejected;
   std::optional<D3ExclusionReason> ExclusionReason;
   std::optional<D3CallValidationError> ValidationError;

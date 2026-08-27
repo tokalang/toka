@@ -1,0 +1,20 @@
+import core/traits::{@Encap}
+
+shape Resource(value: i32)
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn inspect_a(value: Resource) -> i32 {
+    return value.value
+}
+
+fn inspect_b(value: Resource) -> i32 {
+    return value.value
+}
+
+fn main() -> i32 {
+    auto resource = Resource(value = 21:i32)
+    return inspect_a(resource) + inspect_b(resource) - 42:i32
+}

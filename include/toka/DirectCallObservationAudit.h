@@ -65,6 +65,8 @@ differingD3SentinelFields(const D3ObservationSentinel &before,
                           const D3ObservationSentinel &after);
 
 struct D3ObservationEnvelope {
+  explicit D3ObservationEnvelope(D3FactoryObservationRecord record)
+      : FactoryRecord(std::move(record)) {}
   D3FactoryObservationRecord FactoryRecord;
   bool PreFactCaptureUnchanged = false;
   bool PostCacheAndFactoryUnchanged = false;

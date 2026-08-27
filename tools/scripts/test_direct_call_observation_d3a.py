@@ -15,6 +15,14 @@ ORDER_B = ROOT / "tests/semantics/direct_call_observation_d3a/copy_order_b.tk"
 DYNAMIC = ROOT / "tests/semantics/call_transfer_shadow_m1/dynamic_trait_method.tk"
 CALLABLE = ROOT / "tests/semantics/call_transfer_shadow_m1/closure_callable_replay.tk"
 BOUNDARY = ROOT / "tests/semantics/call_transfer_shadow_m1/boundary_identity.tk"
+OVERLOAD = ROOT / "tests/semantics/direct_call_observation_d3a/overload_gate.tk"
+NESTED = ROOT / "tests/semantics/direct_call_observation_d3a/nested_complex.tk"
+STABLE_PLACE = ROOT / "tests/semantics/direct_call_observation_d3a/stable_place.tk"
+UNIQUE_PLACE = ROOT / "tests/semantics/direct_call_observation_d3a/unique_place.tk"
+PROBE = ROOT / "tests/semantics/direct_call_observation_d3a/probe_consumer.tk"
+ASYNC_DANGLING = ROOT / "tests/fail/async_dangling_expression_contexts.tk"
+CEDE_BORROW_CONFLICT = ROOT / "tests/conformance/diagnostics/cede_unique_parameter_borrow_conflict.tk"
+SCHEMA_PATH = ROOT / "tests/semantics/direct_call_observation_d3a/receipt_schema_v1.json"
 FLAG = "--m1b-d3-direct-call-observation=json"
 
 
@@ -27,10 +35,69 @@ def run(command):
     return subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
 
 
-def audit(tokac, source, with_check_only=True):
+def require_exact_keys(value, expected, context):
+    require(set(value) == set(expected),
+            f"{context} keys changed: {sorted(value)}")
+
+
+def validate_schema(payload):
+    schema = json.loads(SCHEMA_PATH.read_text())
+    require_exact_keys(payload, schema["top_level"], "top-level receipt")
+    require_exact_keys(payload["gate_exclusions"], schema["gate_exclusions"],
+                       "gate exclusions")
+    for envelope in payload["envelopes"]:
+        require_exact_keys(envelope, schema["envelope"], "envelope")
+        require_exact_keys(envelope["comparison"], schema["comparison"],
+                           "comparison")
+        record = envelope["factory_record"]
+        expected_record = list(schema["factory_record_common"])
+        if record["admission"] == "Admitted":
+            expected_record += schema["factory_record_admitted"]
+        require_exact_keys(record, expected_record, "factory record")
+        require_exact_keys(record["call_site"], schema["location"],
+                           "call location")
+        require_exact_keys(record["formal"], schema["formal"], "formal")
+        require_exact_keys(record["formal"]["contract_location"],
+                           schema["location"], "formal contract location")
+        require_exact_keys(record["legacy_outcome"], schema["legacy_outcome"],
+                           "legacy outcome")
+        require_exact_keys(record["prospective_outcome"],
+                           schema["prospective_outcome"],
+                           "prospective outcome")
+        for planned in record["transfer_edges"]:
+            require_exact_keys(planned, schema["edge"], "transfer edge")
+            for name in ("liability_source", "liability_target"):
+                liability = planned[name]
+                require_exact_keys(liability, schema["liability"], name)
+                if liability["subject"] is not None:
+                    require_exact_keys(liability["subject"], schema["subject"],
+                                       name + " subject")
+        for name in ("evaluation_delta", "boundary_delta",
+                     "finalization_delta"):
+            delta = record[name]
+            if delta is None:
+                continue
+            require_exact_keys(delta, schema["delta"], name)
+            for entry in delta["entries"]:
+                require_exact_keys(entry, schema["delta_entry"],
+                                   name + " entry")
+                require_exact_keys(entry["subject_identity"],
+                                   schema["subject"],
+                                   name + " subject identity")
+        for patch in record["semantic_model_patch"]:
+            require_exact_keys(patch, schema["patch_entry"], "patch entry")
+        if record["region_witness"] is not None:
+            require_exact_keys(record["region_witness"],
+                               schema["region_witness"], "region witness")
+            require_exact_keys(record["region_witness"]["subject"],
+                               schema["subject"], "region subject")
+
+
+def audit(tokac, source, with_check_only=True, extra_args=()):
     command = [str(tokac), FLAG]
     if with_check_only:
         command.append("--check-only")
+    command.extend(extra_args)
     command.append(str(source))
     result = run(command)
     try:
@@ -45,6 +112,7 @@ def audit(tokac, source, with_check_only=True):
             f"{source} changed the D.3 protocol version/status")
     require(payload.get("integrity") is True,
             f"{source} failed a D.3 sentinel or count check")
+    validate_schema(payload)
     count = payload.get("considered_call_count")
     invocations = payload.get("factory_invocation_count")
     envelopes = payload.get("envelopes")
@@ -80,9 +148,9 @@ def edge(record):
     return record["transfer_edges"][0]
 
 
-def require_parity(tokac, source):
-    normal = run([str(tokac), "--check-only", str(source)])
-    observed, payload = audit(tokac, source)
+def require_parity(tokac, source, extra_args=()):
+    normal = run([str(tokac), "--check-only", *extra_args, str(source)])
+    observed, payload = audit(tokac, source, extra_args=extra_args)
     require(normal.returncode == observed.returncode,
             f"{source} D.3 mode changed the exit status")
     require(normal.stderr == observed.stderr,
@@ -191,6 +259,11 @@ def main():
             "Shadow implicit move hid the frozen legacy caller rule")
     require(matrix_payload["gate_exclusions"]["NestedObservationContext"] >= 1,
             "nested inner direct call invoked the factory")
+    inspect_edge = edge(record_at(records, 35, "inspect"))
+    require(inspect_edge["dependency"] == "BorrowedCallRegion" and
+            inspect_edge["boundary_access"] == "SharedBorrow" and
+            inspect_edge["liability_source"]["kind"] == "SourceRetained",
+            "BorrowCapture edge contradicts its loan/liability deltas")
 
     order_a_first, order_a_payload = audit(tokac, ORDER_A)
     order_a_second, order_a_payload_second = audit(tokac, ORDER_A)
@@ -200,9 +273,71 @@ def main():
             "cold/repeated Copy observation changed its receipt")
     require(copy_facts(order_a_payload, ORDER_A) ==
             copy_facts(order_b_payload, ORDER_B) == {
-                "consume_pair": ("Aggregate/ProvenCopy", "CopyValue", "KeepLive"),
-                "consume_i32": ("Scalar/ProvenCopy", "CopyValue", "KeepLive"),
+                "consume_pair": ("Aggregate/ProvenCopy/Trivial", "CopyValue", "KeepLive"),
+                "consume_i32": ("Scalar/ProvenCopy/Trivial", "CopyValue", "KeepLive"),
             }, "Copy proof depends on call order or cache warmth")
+
+    _, _, overload_payload = require_parity(tokac, OVERLOAD)
+    require(not source_records(overload_payload, OVERLOAD) and
+            overload_payload["gate_exclusions"][
+                "CandidateProbeOrSpeculativeContext"] >= 1,
+            "same-lexical overload bypassed the considered-call gate")
+
+    _, _, nested_payload = require_parity(tokac, NESTED)
+    nested_records = source_records(nested_payload, NESTED)
+    require(len(nested_records) == 1 and
+            nested_records[0]["callee"] == "consume_i32" and
+            nested_records[0]["admission"] == "NotInSlice" and
+            nested_records[0]["reason"] == "NestedObservation" and
+            nested_payload["gate_exclusions"]["NestedObservationContext"] >= 1,
+            "nested binary call produced an admitted edge or inner receipt")
+
+    _, _, stable_payload = require_parity(tokac, STABLE_PLACE)
+    stable_records = source_records(stable_payload, STABLE_PLACE)
+    stable_edges = [edge(record) for record in stable_records
+                    if record["callee"] in ("inspect_a", "inspect_b")]
+    require(len(stable_edges) == 2 and
+            stable_edges[0]["source_place"] == stable_edges[1]["source_place"],
+            "source PlaceId depends on the destination callee")
+
+    _, _, unique_payload = require_parity(tokac, UNIQUE_PLACE)
+    unique_records = source_records(unique_payload, UNIQUE_PLACE)
+    unique_edge = edge(record_at(unique_records, 10, "consume"))
+    require(unique_edge["value_category"] == "WholePlace" and
+            unique_edge["transfer_mode"] == "MoveOwned" and
+            unique_edge["source_disposition"] == "InvalidateWhole",
+            "cede ^local_source was classified as a temporary")
+
+    probe_args = ("-I", str(PROBE.parent))
+    _, _, probe_payload = require_parity(tokac, PROBE, probe_args)
+    probe_records = source_records(probe_payload, PROBE)
+    require(len(probe_records) == 1 and probe_records[0]["callee"] == "inner" and
+            probe_payload["gate_exclusions"][
+                "CandidateProbeOrSpeculativeContext"] >= 1,
+            "candidate probe emitted a speculative inner receipt")
+
+    async_normal, _, async_payload = require_parity(tokac, ASYNC_DANGLING)
+    require(async_normal.returncode == 1 and "E0702" in async_normal.stderr,
+            "async dangling fixture lost its legacy error")
+    async_records = source_records(async_payload, ASYNC_DANGLING)
+    fetch_records = [record for record in async_records
+                     if record["callee"] == "fetch"]
+    require(len(fetch_records) == 1 and
+            fetch_records[0]["legacy_outcome"]["status"] == "rejected" and
+            "E0702" in fetch_records[0]["legacy_outcome"]["diagnostic_codes"],
+            "receipt was emitted before complete async legacy checking")
+
+    borrow_normal, _, borrow_payload = require_parity(tokac,
+                                                       CEDE_BORROW_CONFLICT)
+    require(borrow_normal.returncode == 1,
+            "borrow-conflict fixture unexpectedly passed")
+    borrow_records = source_records(borrow_payload, CEDE_BORROW_CONFLICT)
+    consume_records = [record for record in borrow_records
+                       if record["callee"] == "consume"]
+    require(len(consume_records) == 1 and
+            consume_records[0]["admission"] == "Rejected" and
+            consume_records[0]["transfer_edges"] == [],
+            "non-spelling legacy rejection produced an admitted edge")
 
     _, _, dynamic_payload = require_parity(tokac, DYNAMIC)
     dynamic_records = source_records(dynamic_payload, DYNAMIC)

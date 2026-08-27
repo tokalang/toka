@@ -1884,14 +1884,18 @@ void Sema::validateSlice4CopyAndDup(Module &M) {
       }
       continue;
     }
+    // Publish one canonical non-generic Copy proof before body checking.
+    // Later observation paths are read-only consumers of this established
+    // fact; cache warmth or call order must not create a second proof route.
+    const bool canonicalCopyProof = proveSlice4Copy(shape.get());
     if (copyRequest != Slice4CopyRequests.end()) {
-      if (!Slice2PolicyMap.count(shape.get()) || !proveSlice4Copy(shape.get())) {
+      if (!Slice2PolicyMap.count(shape.get()) || !canonicalCopyProof) {
         DiagnosticEngine::report(copyRequest->second->Loc, DiagID::ERR_GENERIC_SEMA,
                                  "@Copy requires a trivial governed shape whose complete field graph is Copy");
         HasError = true;
       }
     }
-    if (dup != Slice4DupProviders.end() && proveSlice4Copy(shape.get())) {
+    if (dup != Slice4DupProviders.end() && canonicalCopyProof) {
       DiagnosticEngine::report(dup->second->Loc, DiagID::ERR_GENERIC_SEMA,
                                "a user @Dup implementation overlaps the intrinsic Dup witness of @Copy");
       HasError = true;

@@ -232,7 +232,13 @@ SemanticEvidenceAuditState SemanticEvidence::auditState() {
           CallTransferShadows.size(),
           CapabilityCalls.size(),
           TodoGoals.size(),
-          ConditionalFacts.size()};
+          ConditionalFacts.size(),
+          Records,
+          CedeObligations,
+          CallTransferShadows,
+          CapabilityCalls,
+          TodoGoals,
+          ConditionalFacts};
 }
 
 void SemanticEvidence::reset() {

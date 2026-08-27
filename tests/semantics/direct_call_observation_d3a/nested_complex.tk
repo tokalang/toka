@@ -1,0 +1,12 @@
+fn make_i32() -> i32 {
+    return 41:i32
+}
+
+fn consume_i32(cede value: i32) -> i32 {
+    auto moved = cede value
+    return moved
+}
+
+fn main() -> i32 {
+    return consume_i32(make_i32() + 1:i32) - 42:i32
+}

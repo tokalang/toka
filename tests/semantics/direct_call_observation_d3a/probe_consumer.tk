@@ -1,0 +1,9 @@
+import probe_provider::{select}
+
+fn inner() -> i32 {
+    return 42:i32
+}
+
+fn main() -> i32 {
+    return select(inner()) - 42:i32
+}

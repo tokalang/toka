@@ -229,6 +229,12 @@ struct SemanticEvidenceAuditState {
   size_t CapabilityCount = 0;
   size_t TodoGoalCount = 0;
   size_t ConditionalFactCount = 0;
+  std::vector<SemanticDecisionRecord> Decisions;
+  std::vector<CedeObligationRecord> CedeObligations;
+  std::vector<CallTransferShadowRecord> CallTransferShadows;
+  std::vector<CapabilityCallRecord> Capabilities;
+  std::vector<TodoGoalRecord> TodoGoals;
+  std::vector<ConditionalFactRecord> ConditionalFacts;
 
   bool operator==(const SemanticEvidenceAuditState &rhs) const {
     return Enabled == rhs.Enabled &&
@@ -238,7 +244,12 @@ struct SemanticEvidenceAuditState {
            CallTransferShadowCount == rhs.CallTransferShadowCount &&
            CapabilityCount == rhs.CapabilityCount &&
            TodoGoalCount == rhs.TodoGoalCount &&
-           ConditionalFactCount == rhs.ConditionalFactCount;
+           ConditionalFactCount == rhs.ConditionalFactCount &&
+           Decisions == rhs.Decisions &&
+           CedeObligations == rhs.CedeObligations &&
+           CallTransferShadows == rhs.CallTransferShadows &&
+           Capabilities == rhs.Capabilities && TodoGoals == rhs.TodoGoals &&
+           ConditionalFacts == rhs.ConditionalFacts;
   }
   bool operator!=(const SemanticEvidenceAuditState &rhs) const {
     return !(*this == rhs);

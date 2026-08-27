@@ -73,6 +73,25 @@ void dumpLocation(std::ostream &out, const D3SourceLocation &location) {
       << '}';
 }
 
+void dumpSubject(std::ostream &out, const D3SubjectIdentity &subject) {
+  out << "{\"kind\":";
+  dumpString(out, toString(subject.kind()));
+  out << ",\"key\":";
+  dumpString(out, subject.key());
+  out << '}';
+}
+
+void dumpLiability(std::ostream &out, const D3LiabilityFact &liability) {
+  out << "{\"kind\":";
+  dumpString(out, toString(liability.kind()));
+  out << ",\"subject\":";
+  if (liability.subject())
+    dumpSubject(out, *liability.subject());
+  else
+    out << "null";
+  out << '}';
+}
+
 void dumpDelta(std::ostream &out, const D3DomainDelta &delta) {
   out << "{\"lane\":";
   dumpString(out, toString(delta.lane()));
@@ -86,7 +105,7 @@ void dumpDelta(std::ostream &out, const D3DomainDelta &delta) {
     out << ",\"state_domain\":";
     dumpString(out, toString(entry.stateDomain()));
     out << ",\"subject_identity\":";
-    dumpString(out, entry.subjectIdentity());
+    dumpSubject(out, entry.subjectIdentity());
     out << ",\"expected_before\":";
     dumpString(out, entry.expectedBefore());
     out << ",\"result_after\":";
@@ -105,6 +124,7 @@ void dumpFactoryRecord(std::ostream &out,
   dumpLocation(out, input.Pre.CallLocation);
   out << ",\"callee\":";
   dumpString(out, input.Pre.CalleeName);
+  out << ",\"route\":\"ordinary-direct\"";
   out << ",\"callee_identity\":";
   dumpString(out, input.Pre.CalleeWitness);
   out << ",\"formal\":{\"name\":";
@@ -113,6 +133,8 @@ void dumpFactoryRecord(std::ostream &out,
   dumpString(out, input.Pre.FormalWitness);
   out << ",\"type\":";
   dumpString(out, input.Pre.FormalType);
+  out << ",\"contract_location\":";
+  dumpLocation(out, input.Pre.FormalLocation);
   out << "},\"admission\":";
   dumpString(out, toString(record.admission()));
   out << ",\"reason\":";
@@ -174,12 +196,14 @@ void dumpFactoryRecord(std::ostream &out,
     dumpString(out, toString(edge.transferMode()));
     out << ",\"source_disposition\":";
     dumpString(out, toString(edge.sourceDisposition()));
+    out << ",\"boundary_access\":";
+    dumpString(out, toString(edge.boundaryAccess()));
     out << ",\"dependency\":";
-    dumpString(out, edge.dependency());
+    dumpString(out, toString(edge.dependency()));
     out << ",\"liability_source\":";
-    dumpString(out, edge.liabilitySource());
+    dumpLiability(out, edge.liabilitySource());
     out << ",\"liability_target\":";
-    dumpString(out, edge.liabilityTarget());
+    dumpLiability(out, edge.liabilityTarget());
     out << ",\"spelling\":";
     dumpString(out, edge.explicitCede() ? "explicit" : "implicit");
     out << '}';
@@ -209,7 +233,7 @@ void dumpFactoryRecord(std::ostream &out,
   out << ",\"origin\":";
   dumpString(out, region.origin());
   out << ",\"subject\":";
-  dumpString(out, region.subject());
+  dumpSubject(out, region.subject());
   out << ",\"terminal\":";
   dumpString(out, region.terminal());
   out << "}}";
