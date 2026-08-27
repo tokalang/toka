@@ -70,10 +70,12 @@ The edge is the only transfer authority. Source disposition remains independent
 from transfer mode, so Copy bare/explicit forms cannot be conflated.
 
 Edges and deltas have private construction. A controlled
-`ValidatedCallFactory` returns `Expected<ValidatedCall, CallValidationError>`
-only after validating the whole direct call. Invalid parents, types, places,
-regions, destinations, liability relations, or incomplete facts return an
-error; no factory converts them into a nonempty valid identity/result.
+`ValidatedCallFactory::create()` is used only by the admitted branch and returns
+`Expected<ValidatedCall, CallValidationError>` after validating the whole
+direct call. Invalid parents, types, places, regions, destinations, liability
+relations, or incomplete facts return an error; no factory converts them into
+a nonempty valid identity/result. The outer `DirectCallObservationFactory`
+owns the total three-state admission decision.
 
 Complete structural equality is semantic authority. Digests may accelerate
 caches or diagnostics but never establish edge, call, patch, or revision
@@ -93,10 +95,40 @@ kind, depth, and arbitrary `outlives` declarations are not public inputs. Any
 borrow escape, result dependency, region transfer, or lifetime extension is
 `NotInSlice`.
 
+Copy classification is captured only through:
+
+```text
+lookupCopyProof(Type) const
+    -> ProvenCopy | ProvenNonCopy | Indeterminate
+```
+
+The lookup reads an already established proof for the concrete type and never
+inserts or updates `Slice4CopyProofs`, `Slice4CopyProofInProgress`,
+`CopyProofMap`, or another cache. Cache miss is `Indeterminate` and therefore a
+fail-closed D.3 rejection. The observation path must not call
+`proveSlice4CopyType()` or any proof-producing API.
+
 ## Immutable domain deltas
 
 Delta is not another spelling of journal. No delta exposes public setters,
 append operations, generic payload variants, or arbitrary action composition.
+
+Every immutable delta contains private factory-created entries of this exact
+shape:
+
+```text
+DeltaEntry
+    TransferEdgeId
+    StateDomain
+    typed subject identity
+    expected-before fact
+    result-after fact
+    provenance / admission reason
+```
+
+These fields belong to the delta entry itself. The receipt serializes them
+directly and may not reconstruct provenance or before/after state from other
+objects.
 
 ### EvaluationDelta
 
@@ -144,20 +176,49 @@ region-witness factory is the sole authority for the non-escaping call and
 full-expression regions in scope. A caller cannot manufacture region
 kind/depth or an outlives claim beside an opaque ID.
 
+### Pure factory translation unit
+
+The observation DTOs, `DirectCallObservationFactory`, and admitted-path
+`ValidatedCallFactory` live in an independent pure translation unit. That
+unit:
+
+- accepts immutable value DTOs only;
+- does not include or hold `Sema`, AST declarations/expressions,
+  `DiagnosticEngine`, `SemanticEvidence`, PAL checker objects, or mutable
+  compiler caches;
+- contains no global/static recorder, memoization, environment/CLI access, or
+  callback into semantic analysis; and
+- returns one immutable `FactoryObservationRecord`, containing the total
+  `SliceAdmissionResult` and its receipt fields, by value.
+
+Integration code alone translates real compiler facts into DTOs. Build gates
+lock the pure TU's include/dependency boundary.
+
 ## Pure direct-call observation
 
 The first slice has no child transaction, adopt, discard, rollback, snapshot
 swap, or independently implemented lifecycle API. It observes the existing
 legacy call path without rechecking the expression.
 
+The integration point is restricted to the final ordinary semantic traversal
+of a same-lexical direct function call. The selected declaration must come from
+lexical lookup without `functionAcceptsCall()`, overload/candidate acceptance,
+generic deduction, closure capture precompute, or any other speculative probe.
+If the implementation cannot prove these conditions before the first argument
+check for that AST occurrence, D.3 is not invoked.
+
 The sequence is fixed:
 
 ```text
-1. capture PreLegacyDirectCallFacts read-only before argument checking
-2. run the existing legacy argument check exactly once
-3. capture LegacyCallOutcome and resolved AST/type caches
-4. capture AfterLegacyObservationBaseline
-5. run pure DirectCallObservationFactory and compare state afterward
+1. capture PreCaptureSentinel A0
+2. capture PreLegacyDirectCallFacts read-only
+3. capture A1 and require A0 == A1 field-by-field
+4. run the existing legacy argument check exactly once
+5. capture PostObservationSentinel B0
+6. capture LegacyCallOutcome/resolved caches with const-only Copy lookup
+7. run pure DirectCallObservationFactory and obtain record by value
+8. capture B1 and require B0 == B1 field-by-field
+9. audit driver adds comparison envelope and buffers it locally
 ```
 
 `PreLegacyDirectCallFacts` contains the selected declaration/formal, source
@@ -170,11 +231,35 @@ factory consumes pre-legacy facts plus cached post-check results; it never calls
 `checkExpr`, performs a second AST walk, or attempts to replay the legacy
 effects.
 
-`DirectCallObservationFactory` returns the three-state slice result and the
-mandatory internal receipt. It has no reference granting mutation of Sema,
-scope, PAL, AST, diagnostics, Evidence, cleanup, or compiler caches.
+`DirectCallObservationFactory` returns a `FactoryObservationRecord` containing
+the three-state slice result and mandatory internal receipt fields. It has no
+reference granting mutation of Sema, scope, PAL, AST, diagnostics, Evidence,
+cleanup, or compiler caches.
 
 ## Central slice admission
+
+Before the factory, one integration gate defines the considered set:
+
+```text
+D3ConsideredCallGateResult
+    Considered
+    Excluded(D3GateExclusionReason)
+
+D3GateExclusionReason
+    WrongRoute
+    NonSameLexical
+    CandidateProbeOrSpeculativeContext
+    NonFinalSemanticTraversal
+    NestedObservationContext
+```
+
+Calls rejected by this integration gate produce no D.3 record. Qualification
+asserts `factory_invocation_count == 0` for each gate reason.
+
+The gate result and its exclusion reason are closed enums. In particular, an
+outer considered call whose actual syntax contains a nested call may later
+produce `NotInSlice(NestedObservation)`, while the inner traversal is rejected
+by `NestedObservationContext` and never invokes the factory.
 
 One pure, centralized predicate returns:
 
@@ -185,25 +270,27 @@ SliceAdmissionResult
     Rejected(CallValidationError)
 ```
 
-No route-local caller may bypass or widen this predicate.
+No route-local caller may bypass or widen this predicate. The sum is total for
+every immutable DTO accepted by the gate; there is no optional, fallthrough,
+or unclassified result.
 
 `Admitted` requires all of the following:
 
-- source-backed, non-overloaded ordinary direct `FunctionDecl`;
+- a call already accepted by `D3ConsideredCallGate`;
 - non-generic, non-variadic, synchronous function with no default argument,
   init/outcome contract, execution-boundary behavior, or return dependency;
 - exactly one formal and one already legacy-evaluated actual;
 - no nested D.3 observation within that actual;
-- either a whole local place or a whole temporary (no projection);
-- concrete owned non-Copy, proven Copy, or borrowed aggregate classification;
+- exactly one of these shapes:
+  - `cede` formal plus supported whole local place or whole temporary; or
+  - non-`cede` aggregate formal plus bare whole local place;
+- concrete owned non-Copy, proven Copy, or borrowed-aggregate classification;
   and
 - complete whole-place admission/liability facts required by the matrix.
 
-`D3ExclusionReason` is exhaustive and includes at least:
+`D3ExclusionReason` is a closed enum:
 
 ```text
-WrongRoute
-Overloaded
 Generic
 VariadicOrDefault
 MultipleArguments
@@ -212,21 +299,41 @@ AsyncOrExecutionBoundary
 ReturnDependencyOrRegionEscape
 NestedObservation
 Projection
-SourceHidden
 SharedIdentity
 RawOrReferenceIdentity
 FunctionOrDynIdentity
+NonCedeScalar
+NonCedeAggregateTemporary
 UnsupportedTypeCategory
 ```
 
 Excluded calls emit `NotInSlice(reason)` and no prospective edge/delta. They
 continue only through the legacy path.
 
-`Rejected` is reserved for calls that otherwise meet the slice shape but
-violate its semantic contract, including borrowed formal plus explicit `cede`
-(`E04640`), indeterminate Copy/ownership proof, or invalid/missing whole-place
-admission. Rejection is a prospective D.3 result only; existing legacy
-diagnostics/outcome remain authoritative in this Shadow slice.
+`CallValidationError` is also a closed enum:
+
+```text
+LegacyTypeMismatch
+BorrowedFormalExplicitCede       E04640
+IndeterminateCopyProof
+IndeterminateOwnership
+InvalidWholePlaceAdmission
+IncompleteObservationFacts
+```
+
+Admission precedence is fixed:
+
+1. incomplete post-check facts or legacy type mismatch return `Rejected`;
+2. closed exclusion categories return `NotInSlice`;
+3. non-`cede` aggregate + explicit `cede` returns
+   `Rejected(BorrowedFormalExplicitCede)`;
+4. supported non-`cede` aggregate place or `cede` place/temporary proceeds to
+   proof/admission validation; and
+5. indeterminate proof or invalid whole-place admission returns `Rejected`.
+
+Every enumerator in the gate, exclusion, and error enums requires a fixture and
+an exhaustive switch without `default`. Rejection is prospective only;
+existing legacy diagnostics/outcome remain authoritative in this Shadow slice.
 
 ## First matrix
 
@@ -236,6 +343,8 @@ It must plan these actual/formal matrices using real Sema facts:
 | --- | --- | --- |
 | borrowed aggregate formal + place | `BorrowCapture` | `KeepLive` |
 | borrowed formal + explicit `cede` | reject (`E04640`) | no delta |
+| non-`cede` scalar place | `NotInSlice(NonCedeScalar)` | no delta |
+| non-`cede` aggregate temporary | `NotInSlice(NonCedeAggregateTemporary)` | no delta |
 | `cede` + exact proven non-Copy whole place, bare/explicit | `MoveOwned` | `InvalidateWhole` |
 | `cede` + proven Copy place, bare | `CopyValue` | `KeepLive` |
 | `cede` + proven Copy whole place, explicit | `CopyValue` | `InvalidateWhole` |
@@ -249,16 +358,20 @@ move planning is Shadow evidence only and cannot invalidate the caller.
 
 Pre-legacy capture runs after ordinary direct-call resolution selects the
 concrete declaration/formal but before the existing argument checker mutates
-call-boundary ownership state. The legacy checker then runs exactly once in its
+or resolves any actual expression. This is the exact same-lexical common-path
+program point immediately before its first argument-check call. A traversal
+that has already checked, contextually typed, or probed any actual is rejected
+by `D3ConsideredCallGate`. The legacy checker then runs exactly once in its
 current position.
 
 The pure D.3 factory runs only after legacy checking has populated the actual's
 resolved type/cache and legacy outcome. Immediately before and after that pure
-factory, the implementation compares the complete observation-state inventory
-defined below.
+post-check extraction and factory call, the implementation compares the narrow
+`PostObservationSentinel` defined below.
 
-Nested actual calls, source-hidden declarations, and other excluded forms are
-classified `NotInSlice` without recursively invoking D.3.
+An outer considered call with nested actual syntax is
+`NotInSlice(NestedObservation)` without recursively invoking D.3. Source-hidden
+declarations and routes outside the considered set produce no D.3 record.
 
 ## Mandatory D.3 observation receipt
 
@@ -276,13 +389,30 @@ tokac --m1b-d3-direct-call-observation=json --check-only source.tk
 
 It is mandatory qualification output, not an optional extension of M1a v3 and
 not public Evidence. Its dedicated internal audit mode is check-only, mutually
-exclusive with every other JSON/evaluation output mode, and emits one
-deterministically ordered record for every considered call site.
+exclusive with every other JSON/evaluation output mode.
 
-The factory returns each immutable receipt record by value to an audit-driver
-local buffer. It does not write a Sema field, global/static recorder,
-`SemanticEvidence`, AST node, or semantic model. The returned record is the only
-intentional output excluded from the parent-state equality comparison.
+The considered set is exactly the final same-lexical ordinary-direct common-
+path calls accepted by `D3ConsideredCallGate`. Static/method/callable/indirect/
+dynamic-trait/extern, cross-module/source-hidden, candidate probe, closure
+precompute, and other speculative traversals produce no D.3 record and must
+prove `factory_invocation_count == 0` in their fixtures.
+
+The factory returns each immutable `FactoryObservationRecord` by value. It does
+not write a Sema field, global/static recorder, `SemanticEvidence`, AST node,
+or semantic model. After the factory returns, the audit driver performs
+sentinel comparison and creates the outer envelope:
+
+```text
+ObservationEnvelope
+    factory record
+    comparison
+        pre_fact_capture_unchanged
+        post_cache_and_factory_unchanged
+        differing sentinel fields[]
+```
+
+The driver stores envelopes only in a command-local output buffer. Factory
+records do not contain or predict comparison results.
 
 Each record contains at least:
 
@@ -299,7 +429,6 @@ BoundaryDelta records
 FinalizationDelta records
 top-level SemanticModelPatch entries
 minimal call/full-expression region witness
-observation-state comparison result
 ```
 
 Every delta record carries:
@@ -318,55 +447,90 @@ provenance/admission reason
 and no adopted state. The receipt always records both legacy and prospective
 outcomes so disagreement is visible rather than silently normalized.
 
+Only `Admitted` records carry edge, delta, model-patch, or minimal-region
+authority. Those collections are empty for `NotInSlice` and `Rejected`.
+
+The top-level JSON document records schema/version, considered-call count,
+factory-invocation count, and deterministically ordered envelopes. It is the
+only stdout output; LLVM IR or a second JSON document is forbidden. The command
+requires `considered_call_count == factory_invocation_count == envelopes.count`.
+For a compilation containing only gate-excluded calls, all three are zero. The
+exit code and stderr diagnostics match the same legacy `--check-only`
+compilation without D.3 observation, including legacy failures. Output-mode
+conflicts reject before installing the output guard, exit nonzero with one
+usage diagnostic on stderr, and emit nothing on stdout. Sentinel comparison
+failure is reported in the JSON envelope and fails the qualification consumer;
+it does not replace or alter the legacy compilation exit status.
+
 The minimal region witness is factory-produced from real call facts and records
 only call/full-expression region identity, origin, loan/cleanup subject, and
 required terminal. It exposes no public region kind/depth/outlives constructor.
 
 ## Observation-state equality
 
-The purity gate compares state captured immediately after legacy checking but
-before the D.3 factory with state immediately after receipt construction. It is
-not a before/after comparison of the legacy checker itself.
+Purity is checked by two narrow, slice-specific sentinels. They are local audit
+DTOs, not semantic-model records, a general Sema snapshot API, or a rollback
+mechanism.
 
-The comparison is structural and covers this explicit inventory:
+`PreCaptureSentinel` is captured as A0 and A1 around only
+`PreLegacyDirectCallFacts` extraction. It contains:
 
-- call/actual AST node identity, argument vector identity/order/count,
-  `ResolvedFn`/extern/shape selection, resolved types, callable receiver,
-  aggregate transfers, init flags, and all Shadow vectors;
-- every visible scope/symbol identity, type, permission/capability, init mask,
-  exact-place fact, moved/use/mutated flags, move origin, borrowed path, and
-  lifetime/member dependency set;
-- complete PAL state, conflicts, loans/borrows, payload ceilings, and
-  path-restriction facts;
-- place/cleanup/drop-liability and temporary/lifetime facts touched by call
-  checking;
-- current function/effect/expected-type/cede/permission/context flags and
-  last dependency/field-dependency results;
-- diagnostics, notes, warnings/dedup state, public Evidence v1 records,
-  conditional/todo/capability/Shadow evidence buffers, and error status;
-- function/shape/generic/trait/lookup/reachability caches and instantiated
-  declaration collections; and
-- committed semantic-model/index contents and source-origin identities.
+- structural fingerprints of the relevant call and actual AST nodes, including
+  the argument vector and resolved fields already present at A0;
+- the selected formal plus source symbol, whole-place, permission, init/move,
+  cleanup/liability, and dependency facts read by the extraction;
+- the PAL facts for that source root/whole place;
+- diagnostic/error, Evidence v1, and Shadow-buffer structural counters and
+  entries visible to this call; and
+- entry-count plus referenced-type entries for the Copy-proof and
+  dependency/capability caches consulted by the extraction.
 
-Each family reports structural equality and any differing field. A combined
-digest may be emitted as a convenience, but digest equality never substitutes
-for this inventory or grants semantic authority.
+`PostObservationSentinel` is captured as B0 and B1 around only cached
+post-check fact extraction, const-only Copy lookup, and the pure factory. It
+contains the same relevant source/PAL/diagnostic/Evidence/cache fields plus the
+call/actual resolved type and selected-declaration fields produced by the one
+legacy check. It deliberately excludes the audit driver's command-local output
+buffer, which is written only after B1 comparison.
+
+Both comparisons are structural and field-by-field. A failure names every
+differing sentinel field in the outer envelope. A digest may be printed only
+as a debugging convenience and never substitutes for field comparison. The
+sentinel capture helpers themselves are const/read-only and cannot populate a
+cache.
+
+This internal check is intentionally narrow. Full-process preservation is
+qualified separately with zero-, one-, and repeated-observation executions:
+public CLI behavior with the D.3 flag absent remains byte-for-byte unchanged,
+and internal audit executions preserve the underlying legacy diagnostics,
+Evidence v1, and exit behavior apart from their dedicated receipt stdout.
 
 ## Exclusions
 
-The first slice excludes:
+The following routes are outside `D3ConsideredCallGate` and produce no record:
 
 - static/method/callable/indirect/dynamic-trait/extern routes;
-- overloaded or source-hidden ordinary calls;
-- generic deduction or instantiation;
+- cross-module/source-hidden ordinary calls;
+- overload/candidate probes, generic-deduction probes, closure precompute, and
+  other speculative or non-final traversals.
+
+Within a considered call, the first slice returns a closed `NotInSlice` reason
+for:
+
+- a generic declaration/instance that reaches the gate without a probe;
 - default, variadic, synthetic, and `init` arguments;
+- multiple arguments;
 - outcome-governed calls;
 - nested D.3 observation;
 - shared/raw/reference/function/dyn identity categories;
+- non-`cede` scalar places and non-`cede` aggregate temporaries;
+- unsupported type categories;
 - every projected source place;
 - async, `.start`, thread handoff, or execution-boundary escape;
 - borrowed/dependency-bearing result escape, region transfer, or temporary
-  lifetime extension;
+  lifetime extension.
+
+The entire D.3 slice also excludes, without defining an admission result for:
+
 - branch/loop join;
 - CodeGen consumption;
 - public Evidence v2 or lint/LSP work; and
@@ -386,21 +550,30 @@ Before this slice can be called complete, one revision must prove:
    public arbitrary construction;
 3. invalid/incomplete identity/fact input returns `Expected` error and cannot
    produce a valid edge, delta, region witness, or receipt authority;
-4. the mandatory version-1 D.3 protocol records every
+4. every closed gate/exclusion/error enumerator has a fixture and an exhaustive
+   switch with no `default`; gate exclusions prove factory invocation count
+   zero, while the mandatory version-1 protocol records every considered
    Admitted/NotInSlice/Rejected path with legacy/prospective outcomes, complete
-   edge/delta provenance, expected-before/result-after, and exclusion reason;
-5. zero/one/repeated observations pass every field of the explicit
-   after-legacy state inventory and preserve normal diagnostics, Evidence v1,
-   AST, identities, PAL/place/cleanup state, caches, and compiler output;
+   edge/delta provenance, expected-before/result-after, and exact reason;
+5. A0/A1 and B0/B1 pass every structural field of their narrow sentinels, and
+   zero/one/repeated-observation CLI parity preserves normal diagnostics,
+   Evidence v1, output, and exit behavior;
 6. implicit/explicit non-Copy forms have equal transfer/liability plans while
    Copy forms preserve their required source-disposition difference;
 7. temporary cleanup and borrowed call-region loan witnesses are complete for
    the slice, terminate locally, and are not reconstructed by CodeGen;
-8. source-hidden, projected, nested, shared/raw/reference/function/dyn, and all
-   other excluded forms deterministically return their exact NotInSlice reason;
+8. projected, nested, shared/raw/reference/function/dyn, and all other
+   considered-but-excluded forms return their exact `NotInSlice` reason;
 9. M1a Shadow, Evidence v1, public JSON CLI, CTest, conformance, pass, and fail
    gates remain green; and
-10. no excluded route silently falls back to D.3 authority.
+10. source-hidden/cross-module, wrong-route, candidate/speculative, non-final,
+    and nested-inner traversals produce no record and invoke the factory zero
+    times;
+11. Copy proof access is const-only and a miss rejects fail-closed without
+    changing any proof cache; and
+12. the pure factory translation unit passes dependency/include gates and has
+    no Sema, AST, diagnostic, Evidence, PAL-object, mutable-cache, callback, or
+    global/static state access.
 
 ## Admission decision
 
