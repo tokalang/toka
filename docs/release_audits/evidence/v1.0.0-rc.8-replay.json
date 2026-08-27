@@ -1,0 +1,67 @@
+{
+  "archive_assets": {
+    "linux-arm64": "898fee0fe23cc1381d4ea32d3ce551c0bcb747409bb609236fc2742d6aa7d159",
+    "linux-x64": "ef202a2989f94d156588201683e7dae7bea618aa01652cddb824eb9a9f9115fb",
+    "macos-arm64": "46854684877ecd1819a1b0478a425ecb620daf4b717590befa440d3cd3e841d7",
+    "macos-x64": "fafe2fc1e7367c5509cbb965b31f0a0d09056fbb75e0b876082645e7ae863820"
+  },
+  "candidate_revision": "997713f4828b43a5b82aa3363d99a37e9e6f2417",
+  "draft_release_database_id": 377366846,
+  "intel_replay": {
+    "archive_sha256": "fafe2fc1e7367c5509cbb965b31f0a0d09056fbb75e0b876082645e7ae863820",
+    "failed_draft_download_run_id": 33032477442,
+    "qualification_run_id": 32997707636,
+    "receipt_sha256": "0d78bef8b46a6aa8f5ad7538bbf5f48a9658a9f780b8af575caca81bdb5b6f4d",
+    "result": "pass",
+    "run_id": 33033346880,
+    "target": "macos-x64"
+  },
+  "local_replays": [
+    {
+      "contract": [
+        "release-package-smoke:18",
+        "doctor",
+        "new-run",
+        "path-dependency-online-offline-lock",
+        "semantic-preview-v1",
+        "unicode-registry-archive-only-offline-lock"
+      ],
+      "executor": "local-docker-linux-amd64",
+      "result": "pass",
+      "target": "linux-x64"
+    },
+    {
+      "contract": [
+        "release-package-smoke:18",
+        "doctor",
+        "new-run",
+        "path-dependency-online-offline-lock",
+        "semantic-preview-v1",
+        "unicode-registry-archive-only-offline-lock"
+      ],
+      "executor": "local-docker-linux-arm64",
+      "result": "pass",
+      "target": "linux-arm64"
+    },
+    {
+      "contract": [
+        "release-package-smoke:18",
+        "doctor",
+        "new-run",
+        "path-dependency-online-offline-lock",
+        "semantic-preview-v1",
+        "unicode-registry-archive-only-offline-lock"
+      ],
+      "executor": "local-native-macos-arm64",
+      "result": "pass",
+      "target": "macos-arm64"
+    }
+  ],
+  "qualification_run_id": 32997707636,
+  "qualification_summary_sha256": "02e6aab0f5376d429006df4a63a3a1bc3432b4add92687caaecd7f29cd7ab5fb",
+  "result": "pass",
+  "schema": "toka.rc8-clean-replay-receipt",
+  "sha256sums_sha256": "1ac41b2f68dd3e7e33dcb3dd459fa8ed18ab1caf503a1a4597d8b2f261465cdc",
+  "version": 1,
+  "version_label": "v1.0.0-rc.8"
+}
