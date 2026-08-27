@@ -1,9 +1,13 @@
 # RC9 M1b Transactional Semantic Planning Design
 
-**Design status:** Accepted for M1b implementation.
+**Design status:** M1b-D.1 accepted.
 
-**Implementation status:** Not implemented. No semantic behavior, PAL state,
-CodeGen path, evidence contract, TKI format, or ABI is changed by this design.
+**Implementation admission:** M1b.0a opaque identities and an empty immutable
+`SemanticModel` are admitted. M1b.0b transaction lifecycle/journal APIs require
+a separate implementation review against this D.1 contract. All Sema wiring
+remains blocked until its state-manifest and synthetic lifecycle gates pass.
+No semantic behavior, PAL state, CodeGen path, evidence contract, TKI format,
+or ABI is changed by this design.
 
 **Design baseline:**
 `20410f4cbe6615a3c4a662fd6d64def0e956de0a`.
@@ -38,7 +42,7 @@ resolve candidates
     -> select resolved formal/declaration identities
     -> plan the receiver and all arguments in one call transaction
     -> validate type, place, PAL, dependency, boundary, and liability facts
-    -> commit the validated journal once into the parent transaction
+    -> adopt the validated child once into the parent transaction
     -> publish the final SemanticModel after Sema succeeds
     -> execute validated plans in CodeGen
 ```
@@ -46,7 +50,9 @@ resolve candidates
 `prepare` and `validate` are pure relative to their parent/global semantic
 state. They may update a transaction-local working state so later arguments
 observe earlier arguments in the language's evaluation order. A rejected or
-discarded transaction has no externally observable semantic effect.
+discarded transaction has no externally observable semantic-state effect;
+selected rejection output is published only through the separate immutable
+result defined below.
 
 ## Why M1a is not the production carrier
 
@@ -79,11 +85,45 @@ The `SemanticModel` is scoped to one compilation revision, so IDs need not be
 stable across independent compiler invocations. Deterministic evidence uses
 source/declaration coordinates rather than serializing session-local IDs.
 
+M1b uses structural identity construction rather than a probe-visible global
+allocator:
+
+- parsed nodes are assigned deterministically from compilation-unit identity,
+  source-origin identity, expansion path, and structural ordinal before Sema
+  candidate probing;
+- a monomorphized clone derives its node IDs from template origin, canonical
+  substitution identity, clone-local structural path, and ordinal; and
+- a synthetic node derives its ID from its owning semantic node,
+  `SyntheticRole`, and role-local ordinal.
+
+Discarding or reordering probes therefore cannot consume an ID. Transaction-
+local allocation followed by remapping is not part of M1b. A legacy global
+node counter may coexist during migration, but it is not a `SemanticNodeId`
+source and must not enter the new `SemanticModel`.
+
+Identity equality is equality of the canonical structural key. A digest or
+hash may accelerate lookup but cannot be the sole collision-blind authority;
+containers must resolve collisions against the complete canonical key.
+
 ### Resolved declaration identity
 
-Every selected callee is represented by a `ResolvedCalleeId` whose declaration
-owner includes resolver-proven crate/module coordinates. Generic instances
-retain their template-origin identity and concrete substitution.
+Every selected callee is represented by a tagged `ResolvedCalleeId`:
+
+```text
+ResolvedCalleeId
+    DirectDeclaration(DeclarationId)
+    GenericInstance(TemplateDeclarationId, SubstitutionId)
+    TraitSlot(TraitDeclarationId, MethodSlotId, SubstitutionId?)
+    IndirectFunction(CallableContractId)
+    IndirectDynFunction(CallableContractId)
+    ExternDeclaration(DeclarationId)
+    LangItem(LangItemId, DeclarationId)
+```
+
+Declaration owners include resolver-proven crate/module coordinates. Generic
+instances retain their template-origin identity and canonical concrete
+substitution. Indirect `fn`/`dyn fn` calls identify a resolved callable
+contract rather than inventing a concrete declaration.
 
 Execution boundaries are declaration facts, such as
 `ExecutionBoundaryKind::ThreadHandoff`, attached through trusted resolver or
@@ -201,10 +241,69 @@ AnalysisTransaction
 
 The transaction supports:
 
-- `fork()` from the same immutable snapshot;
-- `adopt(child)` after validation;
+- `fork(StructuralForkKey)` from the same immutable snapshot;
+- `validate()` after preparation;
+- `adopt(child)` into a still-open parent;
 - `discard()` with zero parent/global mutation; and
-- `commit()` once into its parent.
+- root-only `commit()` into the published semantic state.
+
+### Lifecycle state machine
+
+Transactions are move-only. Each live transaction has a structurally derived
+`TransactionId`, optional `ParentTransactionId`, `BaseEpoch`, current `Epoch`,
+and one state:
+
+```text
+Open -> Validated -> Adopted       child consumed by its parent
+Open -> Validated -> Committed     root publication only
+Open -------------> Discarded
+Open -> Validated -> Discarded
+```
+
+The operations are frozen as follows:
+
+- `fork(StructuralForkKey)` is valid only on an `Open` parent. It creates an
+  `Open` child whose parent identity and base epoch equal the parent's current
+  identity/epoch. Its transaction identity derives from parent identity plus
+  the caller-supplied deterministic candidate/node/role key; it consumes no
+  global counter.
+- `validate()` is valid only from `Open`. Success moves to `Validated`;
+  rejection returns a separate rejected result and the transaction must be
+  discarded after extracting its buffered diagnostics/rejection Evidence.
+- `adopt(child)` is valid only when the parent is `Open`, the child is
+  `Validated`, the child names that exact parent, and the child's `BaseEpoch`
+  equals the parent's current `Epoch`. It consumes the child, changes the child
+  to `Adopted`, changes no published/global state, and advances the still-open
+  parent's epoch exactly once.
+- `commit()` is valid only for a parentless root in `Validated`. It changes the
+  root to `Committed` and publishes exactly once. A child can never commit.
+- `discard()` is valid only from `Open` or `Validated` and moves to
+  `Discarded`. It publishes nothing.
+
+Any mutation of a parent's transaction-local working state or adoption of a
+different child advances its epoch. A child whose base epoch is stale cannot
+be rebased or partially adopted; it fails closed and must be discarded.
+
+`Adopted`, `Committed`, and `Discarded` are terminal. A second adopt, commit,
+discard, validate, or journal write returns an internal
+`TransactionError::LifecycleViolation`; debug builds additionally assert.
+Such violations are compiler failures, never recoverable source diagnostics or
+silent no-ops. Destruction of an unconsumed `Open`/`Validated` transaction
+performs a fail-safe discard; moved-from handles expose no operations.
+
+### Atomic adoption and publication
+
+`adopt` and root `commit` may validate/prebuild a complete immutable successor
+state before their lifecycle transition. Allocation, hashing, remapping, or
+other fallible work happens during that prebuild. If it fails, the parent and
+published transactional state remain byte-for-byte unchanged, subject only to
+the manifest's separately proven pure-cache exception.
+
+The final adoption/publication action is a no-throw immutable-state pointer
+swap (or an equivalently no-throw mechanism). It cannot replay a journal into
+live state entry by entry. Root publication swaps the complete
+`PublishedSemanticState`; no diagnostic, Evidence, semantic-index, model, PAL,
+or place-state consumer can observe a prefix.
 
 The journal contains logical actions, not LLVM lowering:
 
@@ -227,16 +326,50 @@ from a probe is forbidden.
 The only probe-global writes allowed are pure deterministic interning or
 memoization entries satisfying the cache rule above.
 
+### TransactionalStateManifest
+
+M1b.0b must implement a source-backed `TransactionalStateManifest`. Every
+mutable semantic subsystem registers exactly one ownership class below and a
+digest provider. Adding mutable Sema state without a manifest entry is a test
+failure.
+
+| State family | Required ownership during prepare/probe |
+| --- | --- |
+| lexical scopes, symbol definitions, resolved bindings | immutable base snapshot plus transaction-local scope/model patch |
+| init masks, moved/used/mutated facts, exact-place facts, payload ceilings | transaction working state plus ordered journal delta |
+| PAL borrows/conflicts and `PlaceState` | transaction working state plus ordered journal delta |
+| source/referent/dependency roots and lifetime/member dependencies | immutable facts plus transaction-local model/dependency patch |
+| capture summaries, effect state, reachability and handle-grammar reachability | explicit returned summary or transaction-local patch; never parent mutation |
+| generic/trait instances, substitutions and candidate declarations | candidate-local model patch; publish only through final adoption |
+| resolved callees/types, implicit conversions, default arguments and callable receivers | `SemanticModelPatch`/lowering recipe; source AST mutation forbidden |
+| synthetic/default arguments and compiler-created nodes | structurally identified transaction-local lowering recipe/model patch |
+| diagnostics, notes, warnings and warning-dedup state | immutable dedup snapshot plus transaction-local diagnostic buffer |
+| Evidence, todo/conditional facts and semantic index | transaction-local buffers/model patch |
+| semantic IDs and source origins | structural deterministic construction; no probe-visible allocator |
+| type/declaration interning caches | pure deterministic cache only; otherwise transaction-local patch |
+| generic/lookup/layout convenience caches | classified individually as pure or transaction-local; unclassified cache writes forbidden |
+| CodeGen state, emitted IR and ABI lowering state | unavailable during Sema transactions |
+
+The manifest digest covers the parent and published forms of every row,
+including empty/nonempty buffers, ID/cache state, and warning/evidence dedup.
+`discard()` and failed/stale lifecycle operations must preserve that complete
+digest. Pure-cache entries may be excluded from byte equality only after a
+separate test proves output, identity, and candidate-order invariance with the
+cache cold, warm, and differently populated.
+
 ### Diagnostics on rejection
 
 Candidate-local diagnostics remain buffered. Rejected overload candidates are
 discarded. After resolution either the selected candidate's diagnostics or a
 deterministically ranked no-viable-candidate diagnostic is published.
 
-A rejected selected call may publish diagnostics, but it commits no ownership,
-PAL, place, dependency, drop-liability, or semantic-model change. Error
-recovery facts, if needed, live in a separate non-authoritative recovery
-result.
+A rejected selected call may publish an immutable `RejectedAnalysisResult`
+containing its selected diagnostics and rejection-only Evidence after the
+semantic transaction is discarded. That output publication is separate from
+`adopt`/`commit` and is atomic as a complete buffer. It commits no ownership,
+PAL, place, dependency, drop-liability, or authoritative semantic-model
+change. Other error-recovery facts, if needed, live in the same explicitly
+non-authoritative result.
 
 ### Nested and speculative analysis
 
@@ -255,6 +388,63 @@ result.
 
 Synthetic callable receivers become a lowering recipe in the validated call,
 not an insertion into the source argument vector during preparation.
+
+### Selected-candidate handoff
+
+Candidate selection returns one move-only `SelectedCandidate`:
+
+```text
+SelectedCandidate
+    CandidateTransaction          original child, still Open
+    ResolvedCalleeId
+    ResolvedFormalFacts[]
+    CandidateRelativeExprFacts[]
+    NestedValidatedCalls[]
+    GenericAndModelPatch
+```
+
+The selected child continues directly into whole-call planning and validation.
+Its contextual facts, nested-call effects, generic patch, identities, and
+diagnostic buffer are moved neither into a new child nor into the parent at
+selection time. Reanalysis and replay are forbidden. Rejected siblings are
+discarded. After whole-call success the same child transitions to `Validated`
+and is adopted exactly once; on failure it is discarded after diagnostics are
+extracted.
+
+Candidate viability/type ranking runs while sibling transactions remain
+`Open`; it does not invoke the lifecycle `validate()` transition. Only the
+selected child performs whole-call validation and transitions once from
+`Open` to `Validated`.
+
+### Evaluation effects versus boundary actions
+
+The candidate transaction maintains two logical lanes:
+
+```text
+EvaluationJournal
+    effects intrinsic to evaluating each actual in source order
+    (nested validated calls, value-producing mutation, temporary/lifetime work)
+
+BoundaryIntents
+    actions introduced by the selected formal/receiver boundary
+    (move/copy/borrow, source invalidation, dependency handoff, drop liability)
+```
+
+Actual expressions are prepared in source order, and their evaluation effects
+advance only the candidate transaction's working state. Outer-call formal
+boundary intents do not invalidate or borrow their source place while later
+actuals are being prepared. Whole-call validation considers all boundary
+intents, expression accesses, receiver aliases, and the final evaluation
+working state together; conflicts reject the call independent of partial
+parent mutation.
+
+A nested call is itself validated and adopted into the candidate transaction
+as an evaluation effect, so its already-complete source transition is visible
+to later outer arguments. After whole-call validation the ordered journal
+contains source-order evaluation effects followed by the admitted outer call
+boundary transition. This separation is mandatory; an implementation may not
+model an outer formal move by eagerly mutating global or candidate working
+place state during argument preparation.
 
 ## Whole-call planning
 
@@ -363,12 +553,29 @@ only from committed `ValidatedCall` records after all activation gates pass.
 
 ## Implementation sequence
 
-### M1b.0 — identities, facts, and empty side tables
+### M1b.0a — opaque identities and empty model
 
-- Add internal `SemanticNodeId`, `ResolvedCalleeId`, `PlaceId`, `ExprFacts`,
-  `TypeProperties`, transaction, journal, and `SemanticModel` types.
-- Add no planner consumer and no behavior flag.
-- Prove an empty transaction commit/discard is observationally inert.
+- Add strongly typed, opaque semantic/declaration/substitution/contract/place
+  identity value types and the tagged `ResolvedCalleeId`.
+- Add an empty immutable `SemanticModel` shell with no allocator, builder,
+  patch, transaction, planner consumer, CLI, Sema, Evidence, or CodeGen wiring.
+- Provide equality/order/hash/value-type tests and prove distinct identity
+  domains cannot be implicitly substituted.
+- Keep structural ID construction policy in this design; 0a exposes no global
+  counter or probe-visible allocation API.
+
+M1b.0a is the only implementation slice admitted by this D.1 commit.
+
+### M1b.0b — transaction lifecycle and synthetic state
+
+- Implement the frozen move-only lifecycle and root-only atomic publication
+  against synthetic state, not live Sema.
+- Implement a source-backed `TransactionalStateManifest` registry/digest and
+  immutable successor-state swap.
+- Add no call planner, ownership commit, behavior flag, CLI, Sema, Evidence,
+  or CodeGen wiring.
+- Require a separate review before implementation and another qualification
+  review before M1b.1 may consume the API.
 
 ### M1b.1 — transactional probe infrastructure
 
@@ -402,13 +609,39 @@ only from committed `ValidatedCall` records after all activation gates pass.
 
 ### M1b.5 — commit and CodeGen consumption
 
-- Enable semantic commit only after M1b.0 through M1b.4 qualification.
+- Enable semantic commit only after M1b.0a, M1b.0b, and M1b.1 through M1b.4
+  qualification.
 - Make CodeGen consume validated plans and fail closed on missing liability
   plans.
 - Retire M1a AST vectors after parity receipts.
 
 Evidence v2, the implicit-call-move lint, and the ADR behavior flip remain
 later activation work. They are not bundled into the first commit slice.
+
+## M1b.0b synthetic qualification gates
+
+Before any live Sema subsystem can consume the transaction API, synthetic
+tests must prove:
+
+1. nonempty child discard leaves parent, root publication, model, IDs, caches,
+   diagnostics, Evidence, and manifest digest unchanged;
+2. nonempty child adopt transfers its complete patch exactly once;
+3. nested validated children adopt bottom-up without exposing an intermediate
+   published state;
+4. stale child adoption, wrong-parent adoption, child commit, double adopt,
+   double commit, double discard, and writes after a terminal state fail
+   closed;
+5. a diagnostics/Evidence-only rejected result can publish selected
+   diagnostics separately while its semantic transaction is discarded;
+6. fork/probe/discard order produces identical structural identities and
+   final model digest;
+7. injected failure during successor-state construction changes no lifecycle
+   state or digest; and
+8. the final immutable-state swap is exercised as a no-throw publication with
+   no observable journal prefix.
+
+An empty transaction test is retained as a smoke test but is not qualification
+for M1b.0b.
 
 ## Admission gates before any ownership commit
 
@@ -478,7 +711,7 @@ provide source-level PAL or exactly-once drop proof.
 - No new Toka syntax, hat, or runtime ownership operation.
 - No widening of current exact partial-move eligibility.
 - No physical ABI or LLVM lowering freeze.
-- No TKI version change in M1b.0 or M1b.1.
+- No TKI version change in M1b.0a, M1b.0b, or M1b.1.
 - No change to `E04570`, callee `E0474`, explicit return/capture/local
   destructive reads, or consuming callable receiver syntax before activation.
 - No claim that transaction infrastructure alone activates the accepted ADR.

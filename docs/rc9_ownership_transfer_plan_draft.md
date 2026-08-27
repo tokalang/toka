@@ -53,6 +53,10 @@ It deliberately does not promote M1a's mutable AST vectors. Production plans
 live in an immutable `SemanticModel`, and all candidate/speculative work is
 isolated in a discardable analysis transaction.
 
+M1b-D.1 admits only the no-behavior M1b.0a identity/model scaffold. The
+transaction lifecycle API remains a separately reviewed M1b.0b slice; no
+ownership commit or planner wiring is admitted by that scaffold.
+
 ## RC8 CodeGen call-site ledger
 
 The RC8 baseline has ten calls to `suppressDropForMove()` (excluding its
