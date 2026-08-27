@@ -13,6 +13,7 @@
 // limitations under the License.
 #pragma once
 
+#include "toka/AccessPath.h"
 #include "toka/BindingPermission.h"
 #include "toka/PlaceState.h"
 #include "toka/Token.h"
@@ -52,11 +53,15 @@ enum class CallTransferRoute {
   Static,
   Method,
   Callable,
+  IndirectFunction,
+  IndirectDynFunction,
+  DynamicTraitMethod,
   Extern,
 };
 
 enum class CallTransferDisposition {
   Unplanned,
+  InitStorage,
   BorrowCapture,
   CopyValue,
   CopyIdentity,
@@ -64,6 +69,14 @@ enum class CallTransferDisposition {
   MoveOwned,
   ConsumeTemporary,
   Reject,
+};
+
+enum class CallValueCategory {
+  Unclassified,
+  Place,
+  Temporary,
+  InitStorage,
+  Indeterminate,
 };
 
 enum class CallSourceDisposition {
@@ -90,21 +103,48 @@ enum class CallPlaceEligibility {
   Reject,
 };
 
+enum class CallDropDisposition {
+  Unclassified,
+  SourceRetainsLiability,
+  DestinationAssumesLiability,
+  SharedLiabilityIncremented,
+  NoLiability,
+  NoStateChange,
+  PendingValidation,
+};
+
+enum class CallExecutionBoundary {
+  None,
+  StartHandoff,
+  ThreadHandoff,
+  StartAndThreadHandoff,
+};
+
 struct CallTransferPlan {
+  unsigned ArgumentIndex = 0;
+  unsigned FormalIndex = 0;
   CallTransferRoute Route = CallTransferRoute::Ordinary;
+  CallValueCategory ValueCategory = CallValueCategory::Unclassified;
   CallTransferDisposition Transfer = CallTransferDisposition::Unplanned;
   CallSourceDisposition Source = CallSourceDisposition::Unplanned;
   CallDependencyDisposition Dependency =
       CallDependencyDisposition::Unclassified;
   CallPlaceEligibility PlaceEligibility =
       CallPlaceEligibility::Unclassified;
+  CallDropDisposition Drop = CallDropDisposition::Unclassified;
+  CallExecutionBoundary ExecutionBoundary = CallExecutionBoundary::None;
   bool FormalIsCeded = false;
+  bool FormalIsInit = false;
   bool ExplicitCede = false;
+  bool LegacyCallerRuleApplied = false;
   bool LegacyCedeExempt = false;
   bool LegacyMissingCede = false;
   bool IsAsync = false;
-  bool IsStartBoundary = false;
-  std::string SourcePath;
+  bool HasCleanupMask = false;
+  uint64_t CleanupMask = 0;
+  AccessPath SourcePlace;
+  AccessPath ReferentPath;
+  std::vector<std::string> DependencyPaths;
 };
 
 inline const char *callTransferRouteName(CallTransferRoute route) {
@@ -113,15 +153,30 @@ inline const char *callTransferRouteName(CallTransferRoute route) {
   case CallTransferRoute::Static: return "static";
   case CallTransferRoute::Method: return "method";
   case CallTransferRoute::Callable: return "callable";
+  case CallTransferRoute::IndirectFunction: return "indirect-fn";
+  case CallTransferRoute::IndirectDynFunction: return "indirect-dyn-fn";
+  case CallTransferRoute::DynamicTraitMethod: return "dynamic-trait-method";
   case CallTransferRoute::Extern: return "extern";
   }
   return "ordinary";
+}
+
+inline const char *callValueCategoryName(CallValueCategory category) {
+  switch (category) {
+  case CallValueCategory::Unclassified: return "Unclassified";
+  case CallValueCategory::Place: return "Place";
+  case CallValueCategory::Temporary: return "Temporary";
+  case CallValueCategory::InitStorage: return "InitStorage";
+  case CallValueCategory::Indeterminate: return "Indeterminate";
+  }
+  return "Unclassified";
 }
 
 inline const char *callTransferDispositionName(
     CallTransferDisposition disposition) {
   switch (disposition) {
   case CallTransferDisposition::Unplanned: return "Unplanned";
+  case CallTransferDisposition::InitStorage: return "InitStorage";
   case CallTransferDisposition::BorrowCapture: return "BorrowCapture";
   case CallTransferDisposition::CopyValue: return "CopyValue";
   case CallTransferDisposition::CopyIdentity: return "CopyIdentity";
@@ -166,6 +221,33 @@ inline const char *callPlaceEligibilityName(CallPlaceEligibility eligibility) {
   case CallPlaceEligibility::Reject: return "Reject";
   }
   return "Unclassified";
+}
+
+inline const char *callDropDispositionName(CallDropDisposition disposition) {
+  switch (disposition) {
+  case CallDropDisposition::Unclassified: return "Unclassified";
+  case CallDropDisposition::SourceRetainsLiability:
+    return "SourceRetainsLiability";
+  case CallDropDisposition::DestinationAssumesLiability:
+    return "DestinationAssumesLiability";
+  case CallDropDisposition::SharedLiabilityIncremented:
+    return "SharedLiabilityIncremented";
+  case CallDropDisposition::NoLiability: return "NoLiability";
+  case CallDropDisposition::NoStateChange: return "NoStateChange";
+  case CallDropDisposition::PendingValidation: return "PendingValidation";
+  }
+  return "Unclassified";
+}
+
+inline const char *callExecutionBoundaryName(CallExecutionBoundary boundary) {
+  switch (boundary) {
+  case CallExecutionBoundary::None: return "None";
+  case CallExecutionBoundary::StartHandoff: return "StartHandoff";
+  case CallExecutionBoundary::ThreadHandoff: return "ThreadHandoff";
+  case CallExecutionBoundary::StartAndThreadHandoff:
+    return "StartAndThreadHandoff";
+  }
+  return "None";
 }
 
 enum class MorphologyConstraintKind {
@@ -896,6 +978,8 @@ public:
   std::string OriginalCallee;
   std::vector<std::unique_ptr<Expr>> Args;
   std::vector<AggregateTransferKind> ArgumentTransfers;
+  // Shadow plans retain original user/formal indices and are not parallel to
+  // Args; callable lowering may insert a synthetic receiver into Args.
   std::vector<CallTransferPlan> ShadowArgumentTransfers;
   // Parallel to Args: an init argument denotes storage, never an rvalue.
   std::vector<bool> IsInitArgument;
@@ -950,7 +1034,6 @@ public:
     n->IsIsomorphicCopy = IsIsomorphicCopy;
     n->CallableReceiver = CallableReceiver;
     n->ArgumentTransfers = ArgumentTransfers;
-    n->ShadowArgumentTransfers = ShadowArgumentTransfers;
     return n;
   }
 };
@@ -960,6 +1043,8 @@ public:
   std::unique_ptr<Expr> Object;
   std::string Method;
   std::vector<std::unique_ptr<Expr>> Args;
+  // Audit-only resolved plans are intentionally not cloned with a reset
+  // ResolvedFn.
   std::vector<CallTransferPlan> ShadowArgumentTransfers;
   bool IsCompilerInternal = false; // Compiler-synthesized calls may bypass visibility.
   bool ObjectIsPrechecked = false; // Synthesized wrapper reuses receiver Sema
@@ -980,7 +1065,6 @@ public:
     n->ObjectIsPrechecked = ObjectIsPrechecked;
     n->IsIntrinsicCopyDup = IsIntrinsicCopyDup;
     n->ResolvedFn = nullptr;
-    n->ShadowArgumentTransfers = ShadowArgumentTransfers;
     return n;
   }
 };

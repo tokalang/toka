@@ -1029,6 +1029,8 @@ int main(int argc, char **argv) {
     }
   }
 
+  if (dumpCallTransferShadow)
+    checkOnly = true;
   if (compileOnly) {
     emitInterface = true;
   }
@@ -1052,6 +1054,8 @@ int main(int argc, char **argv) {
        !semanticQuery.empty() || runTopologyEval || !explainCode.empty())) {
     llvm::errs() << "--call-transfer-shadow=json cannot be combined with "
                     "another JSON, semantic, or evaluation output mode\n";
+    structuredDiagnostics = false;
+    dumpCallTransferShadow = false;
     return 1;
   }
 

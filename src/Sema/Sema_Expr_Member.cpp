@@ -42,6 +42,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   const bool startSyntax = Memb->Member == "start";
   const bool savedConsumingEffect = m_IsConsumingEffect;
   const bool savedStartingTask = m_IsStartingTask;
+  const Expr *savedStartBoundaryRoot = m_StartBoundaryRoot;
   if (startSyntax) {
     m_IsConsumingEffect = true;
     m_IsStartingTask = true;
@@ -118,12 +119,15 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   bool savedMemberBase = m_IsMemberBase;
   m_IsMemberBase = true;
   Memb->Object = foldGenericConstant(std::move(Memb->Object)); // [Phase 2]
+  if (startSyntax)
+    m_StartBoundaryRoot = Memb->Object.get();
   objTypeObj = checkExpr(Memb->Object.get());
   m_IsMemberBase = savedMemberBase;
   m_DisableSoulCollapse = savedDisable;
   m_InIntermediatePath = oldIntermediate;
   m_IsConsumingEffect = savedConsumingEffect;
   m_IsStartingTask = savedStartingTask;
+  m_StartBoundaryRoot = savedStartBoundaryRoot;
 
   if (!m_InLHS && !m_InIntermediatePath && !path.empty()) {
     AccessPath memberPath = makeAccessPath(Memb);

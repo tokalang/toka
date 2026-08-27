@@ -220,6 +220,10 @@ Adding or removing it from a public formal is a source-breaking API change.
 Overload resolution must not distinguish otherwise identical candidates only
 by their `cede` bit.
 
+Parameter ownership flow is invariant: `fn(cede T)` and `fn(T)` are not
+implicitly substitutable in either direction, including function values,
+`dyn fn`, trait methods, and source-hidden interfaces.
+
 This ADR freezes the decision direction for RC9. It does not freeze a physical
 ABI, mandate a TKI version bump, or claim implementation qualification before
 the activation gates pass.

@@ -1,0 +1,20 @@
+trait @Transform {
+    fn apply(self, value: i32) -> i32
+}
+
+shape Increment(delta: i32)
+
+impl Increment@Transform {
+    fn apply(self, value: i32) -> i32 {
+        return value + self.delta
+    }
+}
+
+fn invoke(transform: dyn @Transform, value: i32) -> i32 {
+    return transform.apply(value)
+}
+
+fn main() -> i32 {
+    auto increment = Increment(delta = 1:i32)
+    return invoke(increment, 41:i32) - 42:i32
+}

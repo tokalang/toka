@@ -1,0 +1,14 @@
+// EXPECT_ERROR: E0402
+fn consume(cede value: i32) -> i32 {
+    auto moved = cede value
+    return moved
+}
+
+fn main() -> i32 {
+    auto x = 7:i32
+    auto unary_value = consume(cede -x)
+    auto y = 8:i32
+    auto cast_value = consume(cede (y as i32))
+    auto unknown_value = consume(missing)
+    return unary_value + cast_value + unknown_value
+}

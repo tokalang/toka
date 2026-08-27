@@ -1,0 +1,19 @@
+import core/traits::{@Encap}
+
+shape Resource(value: i32)
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn combine(cede first: Resource, cede second: Resource) -> i32 {
+    auto owned_first = cede first
+    auto owned_second = cede second
+    return owned_first.value + owned_second.value
+}
+
+fn main() -> i32 {
+    auto first = Resource(value = 20:i32)
+    auto second = Resource(value = 22:i32)
+    return combine(cede first, cede second) - 42:i32
+}

@@ -620,6 +620,7 @@ private:
   // the less specific PAL invalidation conflict for the same alias.
   bool m_SuppressRejectedAliasInvalidation = false;
   bool m_IsStartingTask = false; // Enforce the strict detached-task boundary.
+  const Expr *m_StartBoundaryRoot = nullptr;
 
   bool m_AllowPermissionSuffix = false; // [NEW] Track explicit method call context
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
@@ -706,16 +707,24 @@ private:
   bool diagnosePlaceAliasOwnershipTransfer(ASTNode *Site, Expr *Source);
   AggregateTransferKind qualifyAggregateTransfer(
       Expr *Source, const std::shared_ptr<Type> &DestinationType);
+  CallValueCategory classifyShadowCallValueCategory(
+      Expr *Argument, AccessPath &SourcePlace);
   CallTransferPlan buildShadowCallTransferPlan(
-      Expr *Argument, const std::shared_ptr<Type> &ArgumentType,
-      const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
-      bool LegacyCedeExempt, CallTransferRoute Route, bool IsAsync);
-  void recordShadowCallTransfer(
-      std::vector<CallTransferPlan> &Plans, size_t Index, Expr *Argument,
+      ASTNode *CallSite, Expr *Argument,
       const std::shared_ptr<Type> &ArgumentType,
       const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
-      bool LegacyCedeExempt, CallTransferRoute Route,
-      const std::string &Callee, const std::string &Parameter,
+      bool FormalIsInit, bool LegacyCallerRuleApplied,
+      bool LegacyCedeExempt, CallTransferRoute Route, bool IsAsync,
+      const std::string &Callee, unsigned ArgumentIndex,
+      unsigned FormalIndex);
+  void recordShadowCallTransfer(
+      ASTNode *CallSite, std::vector<CallTransferPlan> &Plans,
+      unsigned ArgumentIndex, unsigned FormalIndex, Expr *Argument,
+      const std::shared_ptr<Type> &ArgumentType,
+      const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
+      bool FormalIsInit, bool LegacyCallerRuleApplied,
+      bool LegacyCedeExempt, CallTransferRoute Route, const std::string &Callee,
+      const std::string &Parameter,
       SourceLocation ParameterLoc, bool IsAsync);
   bool returnTypeHasMember(FunctionDecl *Function,
                            const std::string &Member);

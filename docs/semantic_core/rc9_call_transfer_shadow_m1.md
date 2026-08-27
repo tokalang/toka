@@ -1,7 +1,9 @@
 # RC9 M1 Call Transfer Shadow
 
-**Status:** Audit-only implementation foundation. Non-normative and not an
-activation of the signature-driven call-transfer ADR.
+**Status:** M1a.1 shadow route, value-category, and carrier qualification
+implemented; isolation qualified. Exact-place/dependency admission and atomic
+commit are not implemented. Non-normative and not an activation of the
+signature-driven call-transfer ADR.
 
 **Baseline:** `a3de6d4787f22f2b003949e62bf9aa1c83b40d17`.
 
@@ -23,12 +25,15 @@ tokac --call-transfer-shadow=json --check-only source.tk
 The command emits the internal, audit-only schema:
 
 ```text
-toka.internal.call-transfer-shadow / version 1
+toka.internal.call-transfer-shadow / version 2
 ```
 
 It is not cede obligation evidence v2 and has no public compatibility promise.
 It exists to qualify the planner before any behavior or public evidence change.
 It cannot be combined with another JSON, semantic, or evaluation output mode.
+Version 2 replaces the incomplete M1a prototype schema and adds structured
+source/referent identity, stable indices, value category, drop disposition,
+execution boundary, dependency paths, and cleanup-mask capacity.
 
 ## Recorded dimensions
 
@@ -36,25 +41,38 @@ Each record is created after a call route resolves its formal parameter:
 
 ```text
 route             ordinary | static | method | callable | extern
+                  | indirect-fn | indirect-dyn-fn | dynamic-trait-method
+argument/formal   stable one-based original indices
+value_category    Place | Temporary | InitStorage | Indeterminate
 spelling          implicit | explicit
 transfer          BorrowCapture | CopyValue | CopyIdentity
                   | TransferShared | MoveOwned | ConsumeTemporary | Reject
 source            KeepLive | InvalidatePlace | NoSourcePlace | NoStateChange
 dependency        None | Borrowed | RawUnsafe | Indeterminate | Unclassified
 place_eligibility NotApplicable | PendingValidation | Eligible | Reject
+drop               SourceRetainsLiability | DestinationAssumesLiability
+                   | NoLiability | NoStateChange | PendingValidation
+execution_boundary None | StartHandoff | ThreadHandoff
+                   | StartAndThreadHandoff
+source_identity    structured AccessPath plus display path
+referent/deps      PAL referent and lifetime dependency paths
+cleanup_mask       null until an admitted partial cleanup plan exists
 legacy            cede exemption and missing-explicit-cede facts
-boundary          async and .start/thread handoff facts
+effect             async fact
 ```
 
-`argument_index` is one-based. `source_path` is the canonicalized legacy path
-display for an addressable source.
+`argument_index` and `formal_index` are one-based and remain stable when
+`@Callable` lowering inserts a synthetic receiver. Shadow plans are discarded
+when an AST call is cloned and its resolved formal is reset.
 
 ## Deliberate M1 limitations
 
-- `PendingValidation` is not permission to move. M1 does not yet share the
+- `PendingValidation` is not permission to move. M1a.1 does not yet share the
   whole/partial exact-place eligibility checker with calls.
-- A shape whose nested dependency closure has not been routed into the planner
-  is `Unclassified`, not dependency-free.
+- A shape, smart pointer, array, or dyn callable whose complete dependency
+  closure has not been routed into the planner is `Unclassified`, not
+  dependency-free. Direct borrowed-view dependency paths are recorded
+  separately from the source binding and PAL referent.
 - The plan is produced per argument after the legacy checker has visited the
   expression. It is not yet the ADR's all-arguments prepare/validate/commit
   transaction.
@@ -66,14 +84,21 @@ display for an addressable source.
 
 ## Qualification
 
-`tools/scripts/test_call_transfer_shadow_m1.py` checks:
+`tools/scripts/test_call_transfer_shadow_m1.py`, registered as
+`toka_call_transfer_shadow_m1` in CTest, checks:
 
 - named Copy place preservation and explicit invalidation;
 - whole temporary consumption;
-- ordinary, static, method, callable, generic, and extern routes;
+- ordinary, static, method, callable protocol, indirect `fn`, indirect
+  `dyn fn`, dynamic-trait method, generic, and extern routes;
 - legacy missing-`cede` facts without behavior changes;
 - shared-handle transfer classification;
-- async `.start` boundary annotation; and
+- async `.start`, nested non-boundary calls, and thread handoff annotation;
+- init storage, unknown actuals, unary/cast/address temporaries, exact source
+  identity, borrowed-view dependency roots, and multi-argument indices;
+- source/source-less plan parity;
+- forced check-only single-document JSON and fail-closed output conflicts;
+- four normal-mode diagnostic/success receipts; and
 - non-`cede` formal rejection with no source-state commit.
 
 The script emits a compact receipt named
@@ -81,7 +106,7 @@ The script emits a compact receipt named
 
 ## Next admission step
 
-M1 does not authorize the caller-spelling behavior flip. The next step is to
+M1a.1 does not authorize the caller-spelling behavior flip. The next step is to
 replace `PendingValidation` and `Unclassified` with shared exact-place and
 dependency decisions, then prepare all argument plans before atomically
 committing any PAL, `PlaceState`, or drop-liability change.

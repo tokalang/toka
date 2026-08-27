@@ -4272,6 +4272,29 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                       "trait " + traitName, getModuleName(CurrentModule));
               }
             }
+            if (SemanticEvidence::isCallTransferShadowEnabled()) {
+              const size_t formalArgs = M->Args.empty() ? 0 : M->Args.size() - 1;
+              for (size_t i = 0; i < Met->Args.size() && i < formalArgs; ++i) {
+                const auto &param = M->Args[i + 1];
+                auto expectedTy = param.ResolvedType
+                                      ? param.ResolvedType
+                                      : resolveType(
+                                            Sema::synthesizePhysicalTypeObject(
+                                                param));
+                auto argTy = checkExpr(Met->Args[i].get(), expectedTy);
+                const bool legacyCedeExempt =
+                    param.IsCeded && canImplicitlyPassToCede(argTy);
+                recordShadowCallTransfer(
+                    Met, Met->ShadowArgumentTransfers,
+                    static_cast<unsigned>(i + 1),
+                    static_cast<unsigned>(i + 2), Met->Args[i].get(), argTy,
+                    expectedTy, param.IsCeded, param.IsInit, false,
+                    legacyCedeExempt,
+                    CallTransferRoute::DynamicTraitMethod,
+                    traitName + "::" + Met->Method, param.Name, param.Loc,
+                    M->Effect == EffectKind::Async);
+              }
+            }
             return toka::Type::fromString(M->ReturnType);
           }
         }
@@ -4692,8 +4715,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   legacyCedeExempt =
                       param.IsCeded && canImplicitlyPassToCede(argTy);
                   recordShadowCallTransfer(
-                      Met->ShadowArgumentTransfers, i, Met->Args[i].get(),
-                      argTy, expectedParamTy, param.IsCeded,
+                      Met, Met->ShadowArgumentTransfers,
+                      static_cast<unsigned>(i + 1),
+                      static_cast<unsigned>(i + 2), Met->Args[i].get(), argTy,
+                      expectedParamTy, param.IsCeded, param.IsInit, true,
                       legacyCedeExempt, CallTransferRoute::Method,
                       FD->Name.empty() ? Met->Method : FD->Name, param.Name,
                       param.Loc, FD->Effect == EffectKind::Async);
@@ -5063,11 +5088,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   } else if (auto *St = dynamic_cast<StartExpr *>(E)) {
     bool old = m_IsConsumingEffect;
     bool oldStartingTask = m_IsStartingTask;
+    const Expr *oldStartBoundaryRoot = m_StartBoundaryRoot;
     m_IsConsumingEffect = true;
     m_IsStartingTask = true;
+    m_StartBoundaryRoot = St->Expression.get();
     auto res = checkExpr(St->Expression.get());
     m_IsConsumingEffect = old;
     m_IsStartingTask = oldStartingTask;
+    m_StartBoundaryRoot = oldStartBoundaryRoot;
     for (const auto &dep : m_LastLifeDependencies) {
       DiagnosticEngine::report(
           getLoc(St), DiagID::ERR_SEMA_START_BOUNDARY_DEPENDENCY, dep);

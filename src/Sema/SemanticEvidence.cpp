@@ -97,30 +97,48 @@ bool CedeObligationRecord::operator==(const CedeObligationRecord &rhs) const {
 
 bool CallTransferShadowRecord::operator<(
     const CallTransferShadowRecord &rhs) const {
-  return std::tie(Callee, Route, Parameter, ArgumentIndex, Spelling, Transfer,
-                  Source, Dependency, PlaceEligibility, SourcePath, FormalCeded,
-                  LegacyCedeExempt, LegacyMissingCede, Async, StartBoundary,
-                  Location, ContractLocation) <
-         std::tie(rhs.Callee, rhs.Route, rhs.Parameter, rhs.ArgumentIndex,
-                  rhs.Spelling, rhs.Transfer, rhs.Source, rhs.Dependency,
-                  rhs.PlaceEligibility, rhs.SourcePath, rhs.FormalCeded,
-                  rhs.LegacyCedeExempt,
-                  rhs.LegacyMissingCede, rhs.Async, rhs.StartBoundary,
-                  rhs.Location, rhs.ContractLocation);
+  return std::tie(
+             Callee, Route, Parameter, ArgumentIndex, FormalIndex,
+             ValueCategory, Spelling, Transfer, Source, Dependency,
+             PlaceEligibility, Drop, ExecutionBoundary, SourceRootID,
+             SourcePath, SourceIdentity, ReferentPath, ReferentIdentity,
+             DependencyPaths, HasCleanupMask, CleanupMask, FormalCeded, FormalInit,
+             LegacyCallerRuleApplied, LegacyCedeExempt, LegacyMissingCede,
+             Async, Location, ContractLocation) <
+         std::tie(
+             rhs.Callee, rhs.Route, rhs.Parameter, rhs.ArgumentIndex,
+             rhs.FormalIndex, rhs.ValueCategory, rhs.Spelling, rhs.Transfer,
+             rhs.Source, rhs.Dependency, rhs.PlaceEligibility, rhs.Drop,
+             rhs.ExecutionBoundary, rhs.SourceRootID, rhs.SourcePath,
+             rhs.SourceIdentity, rhs.ReferentPath, rhs.ReferentIdentity,
+             rhs.DependencyPaths, rhs.HasCleanupMask, rhs.CleanupMask,
+             rhs.FormalCeded,
+             rhs.FormalInit, rhs.LegacyCallerRuleApplied,
+             rhs.LegacyCedeExempt, rhs.LegacyMissingCede, rhs.Async,
+             rhs.Location, rhs.ContractLocation);
 }
 
 bool CallTransferShadowRecord::operator==(
     const CallTransferShadowRecord &rhs) const {
   return Callee == rhs.Callee && Route == rhs.Route &&
          Parameter == rhs.Parameter && ArgumentIndex == rhs.ArgumentIndex &&
+         FormalIndex == rhs.FormalIndex && ValueCategory == rhs.ValueCategory &&
          Spelling == rhs.Spelling && Transfer == rhs.Transfer &&
          Source == rhs.Source && Dependency == rhs.Dependency &&
-         PlaceEligibility == rhs.PlaceEligibility &&
-         SourcePath == rhs.SourcePath && FormalCeded == rhs.FormalCeded &&
+         PlaceEligibility == rhs.PlaceEligibility && Drop == rhs.Drop &&
+         ExecutionBoundary == rhs.ExecutionBoundary &&
+         SourceRootID == rhs.SourceRootID && SourcePath == rhs.SourcePath &&
+         SourceIdentity == rhs.SourceIdentity &&
+         ReferentPath == rhs.ReferentPath &&
+         ReferentIdentity == rhs.ReferentIdentity &&
+         DependencyPaths == rhs.DependencyPaths &&
+         HasCleanupMask == rhs.HasCleanupMask &&
+         CleanupMask == rhs.CleanupMask && FormalCeded == rhs.FormalCeded &&
+         FormalInit == rhs.FormalInit &&
+         LegacyCallerRuleApplied == rhs.LegacyCallerRuleApplied &&
          LegacyCedeExempt == rhs.LegacyCedeExempt &&
          LegacyMissingCede == rhs.LegacyMissingCede && Async == rhs.Async &&
-         StartBoundary == rhs.StartBoundary && Location == rhs.Location &&
-         ContractLocation == rhs.ContractLocation;
+         Location == rhs.Location && ContractLocation == rhs.ContractLocation;
 }
 
 bool CapabilityCallRecord::operator<(const CapabilityCallRecord &rhs) const {
@@ -307,19 +325,30 @@ void SemanticEvidence::dumpCedeObligationsJSON(std::ostream &out) {
 
 void SemanticEvidence::recordCallTransferShadow(
     std::string callee, std::string route, std::string parameter,
-    unsigned argumentIndex, std::string spelling, std::string transfer,
-    std::string source, std::string dependency, std::string placeEligibility,
-    std::string sourcePath, bool formalCeded, bool legacyCedeExempt,
-    bool legacyMissingCede, bool async, bool startBoundary,
-    SourceLocation location, SourceLocation contractLocation) {
+    unsigned argumentIndex, unsigned formalIndex, std::string valueCategory,
+    std::string spelling, std::string transfer, std::string source,
+    std::string dependency, std::string placeEligibility, std::string drop,
+    std::string executionBoundary, uint64_t sourceRootID,
+    std::string sourcePath, std::string sourceIdentity,
+    std::string referentPath, std::string referentIdentity,
+    std::vector<std::string> dependencyPaths, bool hasCleanupMask,
+    uint64_t cleanupMask, bool formalCeded, bool formalInit,
+    bool legacyCallerRuleApplied, bool legacyCedeExempt,
+    bool legacyMissingCede, bool async, SourceLocation location,
+    SourceLocation contractLocation) {
   if (!Enabled || !CallTransferShadowEnabled)
     return;
   CallTransferShadows.push_back(
       {std::move(callee), std::move(route), std::move(parameter), argumentIndex,
-       std::move(spelling), std::move(transfer), std::move(source),
-       std::move(dependency), std::move(placeEligibility),
-       std::move(sourcePath), formalCeded, legacyCedeExempt,
-       legacyMissingCede, async, startBoundary,
+       formalIndex, std::move(valueCategory), std::move(spelling),
+       std::move(transfer), std::move(source), std::move(dependency),
+       std::move(placeEligibility), std::move(drop),
+       std::move(executionBoundary), sourceRootID, std::move(sourcePath),
+       std::move(sourceIdentity), std::move(referentPath),
+       std::move(referentIdentity), std::move(dependencyPaths), hasCleanupMask,
+       cleanupMask, formalCeded, formalInit, legacyCallerRuleApplied,
+       legacyCedeExempt,
+       legacyMissingCede, async,
        resolveLocation(location), resolveLocation(contractLocation)});
 }
 
@@ -329,7 +358,7 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
       std::unique(CallTransferShadows.begin(), CallTransferShadows.end()),
       CallTransferShadows.end());
   out << "{\"schema\":\"toka.internal.call-transfer-shadow\","
-         "\"version\":1,\"status\":\"audit-only\",\"records\":[";
+         "\"version\":2,\"status\":\"audit-only\",\"records\":[";
   for (size_t i = 0; i < CallTransferShadows.size(); ++i) {
     if (i != 0)
       out << ',';
@@ -338,22 +367,48 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << "\",\"route\":\"" << escapeJSON(record.Route)
         << "\",\"parameter\":\"" << escapeJSON(record.Parameter)
         << "\",\"argument_index\":" << record.ArgumentIndex
-        << ",\"spelling\":\"" << escapeJSON(record.Spelling)
+        << ",\"formal_index\":" << record.FormalIndex
+        << ",\"value_category\":\""
+        << escapeJSON(record.ValueCategory)
+        << "\",\"spelling\":\"" << escapeJSON(record.Spelling)
         << "\",\"transfer\":\"" << escapeJSON(record.Transfer)
         << "\",\"source\":\"" << escapeJSON(record.Source)
         << "\",\"dependency\":\"" << escapeJSON(record.Dependency)
         << "\",\"place_eligibility\":\""
         << escapeJSON(record.PlaceEligibility)
-        << "\",\"source_path\":\"" << escapeJSON(record.SourcePath)
-        << "\",\"formal_ceded\":"
+        << "\",\"drop\":\"" << escapeJSON(record.Drop)
+        << "\",\"execution_boundary\":\""
+        << escapeJSON(record.ExecutionBoundary)
+        << "\",\"source_root_id\":" << record.SourceRootID
+        << ",\"source_path\":\"" << escapeJSON(record.SourcePath)
+        << "\",\"source_identity\":\""
+        << escapeJSON(record.SourceIdentity)
+        << "\",\"referent_path\":\"" << escapeJSON(record.ReferentPath)
+        << "\",\"referent_identity\":\""
+        << escapeJSON(record.ReferentIdentity)
+        << "\",\"dependency_paths\":[";
+    for (size_t dependency = 0; dependency < record.DependencyPaths.size();
+         ++dependency) {
+      if (dependency != 0)
+        out << ',';
+      out << "\"" << escapeJSON(record.DependencyPaths[dependency]) << "\"";
+    }
+    out << "],\"cleanup_mask\":";
+    if (record.HasCleanupMask)
+      out << record.CleanupMask;
+    else
+      out << "null";
+    out
+        << ",\"formal_ceded\":"
         << (record.FormalCeded ? "true" : "false")
+        << ",\"formal_init\":" << (record.FormalInit ? "true" : "false")
+        << ",\"legacy_caller_rule_applied\":"
+        << (record.LegacyCallerRuleApplied ? "true" : "false")
         << ",\"legacy_cede_exempt\":"
         << (record.LegacyCedeExempt ? "true" : "false")
         << ",\"legacy_missing_cede\":"
         << (record.LegacyMissingCede ? "true" : "false")
         << ",\"async\":" << (record.Async ? "true" : "false")
-        << ",\"start_boundary\":"
-        << (record.StartBoundary ? "true" : "false")
         << ",\"location\":";
     dumpLocation(out, record.Location);
     out << ",\"contract_location\":";

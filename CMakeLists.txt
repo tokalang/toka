@@ -206,6 +206,13 @@ if(BUILD_TESTING)
     target_link_libraries(toka_semantic_dependency_closure PRIVATE toka_frontend)
     target_link_libraries(toka_nominal_shape_id PRIVATE toka_frontend)
     target_link_libraries(toka_handle_grammar_classifier PRIVATE toka_frontend)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME toka_call_transfer_shadow_m1
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_call_transfer_shadow_m1.py
+                --build-dir ${CMAKE_BINARY_DIR})
+    endif()
 endif()
 
 # Build the native runtime and the user-facing tools into one SDK layout.  The

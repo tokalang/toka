@@ -137,17 +137,29 @@ struct CallTransferShadowRecord {
   std::string Route;
   std::string Parameter;
   unsigned ArgumentIndex = 0;
+  unsigned FormalIndex = 0;
+  std::string ValueCategory;
   std::string Spelling;
   std::string Transfer;
   std::string Source;
   std::string Dependency;
   std::string PlaceEligibility;
+  std::string Drop;
+  std::string ExecutionBoundary;
+  uint64_t SourceRootID = 0;
   std::string SourcePath;
+  std::string SourceIdentity;
+  std::string ReferentPath;
+  std::string ReferentIdentity;
+  std::vector<std::string> DependencyPaths;
+  bool HasCleanupMask = false;
+  uint64_t CleanupMask = 0;
   bool FormalCeded = false;
+  bool FormalInit = false;
+  bool LegacyCallerRuleApplied = false;
   bool LegacyCedeExempt = false;
   bool LegacyMissingCede = false;
   bool Async = false;
-  bool StartBoundary = false;
   SemanticEvidenceLocation Location;
   SemanticEvidenceLocation ContractLocation;
 
@@ -230,11 +242,17 @@ public:
   static void dumpCedeObligationsJSON(std::ostream &out);
   static void recordCallTransferShadow(
       std::string callee, std::string route, std::string parameter,
-      unsigned argumentIndex, std::string spelling, std::string transfer,
-      std::string source, std::string dependency, std::string placeEligibility,
-      std::string sourcePath, bool formalCeded, bool legacyCedeExempt,
-      bool legacyMissingCede, bool async, bool startBoundary,
-      SourceLocation location, SourceLocation contractLocation = {});
+      unsigned argumentIndex, unsigned formalIndex, std::string valueCategory,
+      std::string spelling, std::string transfer, std::string source,
+      std::string dependency, std::string placeEligibility, std::string drop,
+      std::string executionBoundary, uint64_t sourceRootID,
+      std::string sourcePath, std::string sourceIdentity,
+      std::string referentPath, std::string referentIdentity,
+      std::vector<std::string> dependencyPaths, bool hasCleanupMask,
+      uint64_t cleanupMask, bool formalCeded, bool formalInit,
+      bool legacyCallerRuleApplied, bool legacyCedeExempt,
+      bool legacyMissingCede, bool async, SourceLocation location,
+      SourceLocation contractLocation = {});
   static void dumpCallTransferShadowJSON(std::ostream &out);
   static void recordCapabilityCall(
       std::string callee, std::string parameter, std::string subject,

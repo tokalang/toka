@@ -1,0 +1,21 @@
+import core/traits::{@Encap}
+
+shape Payload(value: i32)
+
+impl Payload@Encap {
+    fn drop(self#) {}
+}
+
+fn wrap(value: i32) -> Payload {
+    return Payload(value = value)
+}
+
+fn consume_async(cede payload: Payload) -> async i32 {
+    auto owned = cede payload
+    return owned.value
+}
+
+fn main() -> i32 {
+    consume_async(cede wrap(7:i32)).start
+    return 0
+}
