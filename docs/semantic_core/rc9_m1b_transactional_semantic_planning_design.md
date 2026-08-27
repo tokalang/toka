@@ -9,6 +9,9 @@ remains blocked until its state-manifest and synthetic lifecycle gates pass.
 No semantic behavior, PAL state, CodeGen path, evidence contract, TKI format,
 or ABI is changed by this design.
 
+**Implementation status:** M1b.0a scaffold implemented and unit-qualified.
+M1b.0b and all semantic consumers remain unimplemented.
+
 **Design baseline:**
 `20410f4cbe6615a3c4a662fd6d64def0e956de0a`.
 
@@ -565,6 +568,11 @@ only from committed `ValidatedCall` records after all activation gates pass.
   counter or probe-visible allocation API.
 
 M1b.0a is the only implementation slice admitted by this D.1 commit.
+
+The `toka_semantic_model_scaffold` CTest target locks strong domain separation,
+full-key equality/order/hash behavior, all `ResolvedCalleeId` tags, structured
+place projection values, and the zero-field/zero-entry model. The scaffold has
+no transaction type or production Sema/Evidence/CodeGen include.
 
 ### M1b.0b — transaction lifecycle and synthetic state
 

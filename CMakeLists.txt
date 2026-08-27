@@ -162,6 +162,8 @@ if(BUILD_TESTING)
         tests/NominalShapeId.cpp)
     add_executable(toka_handle_grammar_classifier
         tests/HandleGrammarClassifierTest.cpp)
+    add_executable(toka_semantic_model_scaffold
+        tests/SemanticModelScaffold.cpp)
     target_include_directories(toka_typesyntax_canonicalization PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_canonical_declaration_witness PRIVATE
@@ -177,6 +179,8 @@ if(BUILD_TESTING)
     target_include_directories(toka_nominal_shape_id PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_handle_grammar_classifier PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(toka_semantic_model_scaffold PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     add_test(NAME toka_typesyntax_canonicalization
         COMMAND toka_typesyntax_canonicalization)
@@ -194,6 +198,8 @@ if(BUILD_TESTING)
         COMMAND toka_nominal_shape_id)
     add_test(NAME toka_handle_grammar_classifier
         COMMAND toka_handle_grammar_classifier)
+    add_test(NAME toka_semantic_model_scaffold
+        COMMAND toka_semantic_model_scaffold)
 endif()
 
 add_subdirectory(src)
