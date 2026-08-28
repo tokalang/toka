@@ -90,6 +90,158 @@ static bool isRejected(const D3FactoryObservationRecord &record,
 }
 
 int main() {
+  LegacyCedePolicyInput policy;
+  policy.TypeCategory = D3TypeCategory::Aggregate;
+  policy.CanonicalSoul = "SlabID";
+  policy.DropFact = LegacyCedeDropFact::HasDrop;
+  CHECK(classifyLegacyCedeRequirement(policy) ==
+        LegacyCedeRequirement::ImplicitExempt);
+  policy.CanonicalSoul = "Resource";
+  CHECK(classifyLegacyCedeRequirement(policy) ==
+        LegacyCedeRequirement::ExplicitRequired);
+  const char *explicitLegacyNames[] = {
+      "str", "bytes", "cstr", "ViewStrSplitIterator",
+      "ViewStrLinesIterator", "string", "TimerHeap"};
+  for (const char *name : explicitLegacyNames) {
+    policy.CanonicalSoul = name;
+    policy.DropFact = LegacyCedeDropFact::Indeterminate;
+    CHECK(classifyLegacyCedeRequirement(policy) ==
+          LegacyCedeRequirement::ExplicitRequired);
+  }
+  policy.CanonicalSoul = "Pair";
+  policy.DropFact = LegacyCedeDropFact::NoDrop;
+  CHECK(classifyLegacyCedeRequirement(policy) ==
+        LegacyCedeRequirement::ImplicitExempt);
+  policy.DropFact = LegacyCedeDropFact::Indeterminate;
+  CHECK(classifyLegacyCedeRequirement(policy) ==
+        LegacyCedeRequirement::Indeterminate);
+
+  auto preparedFacts = [] {
+    D5ResolvedPlanningFacts facts;
+    facts.Pre = baseInput().Pre;
+    facts.ActualType = "Resource";
+    facts.FormalType = "Resource";
+    facts.TypeCategory = D3TypeCategory::Aggregate;
+    facts.CopyProof = D3CopyProof::ProvenNonCopy;
+    facts.OwnershipProof = D3OwnershipProof::Owned;
+    facts.LegacyRequirement = LegacyCedeRequirement::ExplicitRequired;
+    facts.SourceInitMask = 1;
+    facts.SourceCleanupAuthority = true;
+    return facts;
+  };
+  auto preparedNonCopy = PreparedCallFactory::prepare(preparedFacts());
+  CHECK(preparedNonCopy.admission() == D3AdmissionKind::Admitted);
+  CHECK(preparedNonCopy.preparedCall());
+  CHECK(preparedNonCopy.preparedCall()->transferEdges()[0].transferMode() ==
+        D3TransferMode::MoveOwned);
+  auto preparedExplicitFacts = preparedFacts();
+  preparedExplicitFacts.Pre.ExplicitCede = true;
+  auto preparedExplicit =
+      PreparedCallFactory::prepare(preparedExplicitFacts);
+  CHECK(preparedExplicit.admission() == D3AdmissionKind::Admitted);
+  auto slabFacts = preparedFacts();
+  slabFacts.LegacyRequirement = LegacyCedeRequirement::ImplicitExempt;
+  auto preparedSlab = PreparedCallFactory::prepare(slabFacts);
+  CHECK(preparedSlab.admission() == D3AdmissionKind::NotInSlice);
+  CHECK(preparedSlab.exclusionReason() ==
+        D5PreparationExclusionReason::CededNonCopyLegacyExempt);
+  auto noDropManagedFacts = slabFacts;
+  noDropManagedFacts.OwnershipProof = D3OwnershipProof::Trivial;
+  noDropManagedFacts.SourceCleanupAuthority = false;
+  CHECK(PreparedCallFactory::prepare(noDropManagedFacts).admission() ==
+        D3AdmissionKind::NotInSlice);
+  auto indeterminatePolicyFacts = preparedFacts();
+  indeterminatePolicyFacts.LegacyRequirement =
+      LegacyCedeRequirement::Indeterminate;
+  CHECK(PreparedCallFactory::prepare(indeterminatePolicyFacts)
+            .preparationError() ==
+        D5PreparationError::IndeterminateLegacyCedeRequirement);
+
+  struct D5ExclusionFixture {
+    D5PreparationExclusionReason Reason;
+    void (*Mutate)(D5ResolvedPlanningFacts &);
+  };
+  const D5ExclusionFixture d5Exclusions[] = {
+      {D5PreparationExclusionReason::ArityOrDefault,
+       [](auto &v) { v.Pre.MultipleArguments = true; }},
+      {D5PreparationExclusionReason::GenericOrContextual,
+       [](auto &v) { v.Pre.Generic = true; }},
+      {D5PreparationExclusionReason::InitOrOutcome,
+       [](auto &v) { v.Pre.InitOrOutcome = true; }},
+      {D5PreparationExclusionReason::AsyncOrExecutionBoundary,
+       [](auto &v) { v.Pre.AsyncOrExecutionBoundary = true; }},
+      {D5PreparationExclusionReason::ReturnDependencyOrRegionEscape,
+       [](auto &v) { v.Pre.ReturnDependencyOrRegionEscape = true; }},
+      {D5PreparationExclusionReason::ProjectionOrTemporary,
+       [](auto &v) { v.Pre.ActualCategory = D3ActualCategory::Projection; }},
+      {D5PreparationExclusionReason::NonLocalPlace,
+       [](auto &v) { v.Pre.SourceIsLocalPlace = false; }},
+      {D5PreparationExclusionReason::SharedRawReferenceOrCallable,
+       [](auto &v) { v.TypeCategory = D3TypeCategory::SharedIdentity; }},
+      {D5PreparationExclusionReason::DependencyBearingActual,
+       [](auto &v) { v.DependencyBearingActual = true; }},
+      {D5PreparationExclusionReason::TypeRequiresContextOrConversion,
+       [](auto &v) { v.ActualType = "Other"; }},
+      {D5PreparationExclusionReason::CededNonCopyLegacyExempt,
+       [](auto &v) {
+         v.LegacyRequirement = LegacyCedeRequirement::ImplicitExempt;
+       }},
+  };
+  for (const auto &fixture : d5Exclusions) {
+    auto facts = preparedFacts();
+    fixture.Mutate(facts);
+    auto result = PreparedCallFactory::prepare(std::move(facts));
+    CHECK(result.admission() == D3AdmissionKind::NotInSlice);
+    CHECK(result.exclusionReason() == fixture.Reason);
+    CHECK(!result.preparedCall());
+  }
+
+  struct D5ErrorFixture {
+    D5PreparationError Error;
+    void (*Mutate)(D5ResolvedPlanningFacts &);
+  };
+  const D5ErrorFixture d5Errors[] = {
+      {D5PreparationError::InvalidIdentity,
+       [](auto &v) { v.Pre.CoreFactsComplete = false; }},
+      {D5PreparationError::IncompatibleType,
+       [](auto &v) { v.TypesCompatible = false; }},
+      {D5PreparationError::IndeterminateCopyProof,
+       [](auto &v) { v.CopyProof = D3CopyProof::Indeterminate; }},
+      {D5PreparationError::IndeterminateOwnership,
+       [](auto &v) { v.OwnershipProof = D3OwnershipProof::Indeterminate; }},
+      {D5PreparationError::IndeterminateLegacyCedeRequirement,
+       [](auto &v) {
+         v.LegacyRequirement = LegacyCedeRequirement::Indeterminate;
+       }},
+      {D5PreparationError::InconsistentLegacyCedeRequirement,
+       [](auto &v) {
+         v.CopyProof = D3CopyProof::ProvenCopy;
+         v.OwnershipProof = D3OwnershipProof::Trivial;
+         v.SourceCleanupAuthority = false;
+         v.LegacyRequirement = LegacyCedeRequirement::ExplicitRequired;
+       }},
+      {D5PreparationError::InvalidWholePlaceAdmission,
+       [](auto &v) { v.Pre.SourceStateBefore = "Moved"; }},
+      {D5PreparationError::IncompleteLiability,
+       [](auto &v) { v.SourceCleanupAuthority = false; }},
+      {D5PreparationError::IncompleteRegion,
+       [](auto &v) { v.RegionAuthorityComplete = false; }},
+      {D5PreparationError::ConflictingPreparedPlan,
+       [](auto &v) {
+         v.Pre.FormalCeded = false;
+         v.LegacyRequirement.reset();
+         v.CopyProof = D3CopyProof::ProvenCopy;
+       }},
+  };
+  for (const auto &fixture : d5Errors) {
+    auto facts = preparedFacts();
+    fixture.Mutate(facts);
+    auto result = PreparedCallFactory::prepare(std::move(facts));
+    CHECK(result.admission() == D3AdmissionKind::Rejected);
+    CHECK(result.preparationError() == fixture.Error);
+    CHECK(!result.preparedCall());
+  }
+
   auto nonCopy = DirectCallObservationFactory::observe(baseInput());
   CHECK(hasTransfer(nonCopy, D3TransferMode::MoveOwned,
                     D3SourceDisposition::InvalidateWhole));

@@ -135,6 +135,8 @@ void printHelp() {
       << "                                  Emit Shadow-only D.3 direct-call observations\n"
       << "  --m1b-d4a-pure-nominal-overload-probe=json\n"
       << "                                  Emit internal D.4a pure overload qualification\n"
+      << "  --m1b-d5a-prepared-call-parity=json\n"
+      << "                                  Emit internal D.5a prepared-call parity\n"
       << "  --capabilities=json             Emit H/P call capability pilot v1\n"
       << "  --todo-goals=json               Emit typed-todo goals v1\n"
       << "  --conditional-facts=json        Emit typed-todo conditional facts v1\n"
@@ -216,6 +218,21 @@ public:
 private:
   bool &Enabled;
   toka::D4ProbeAuditSession &Session;
+};
+
+class D5PreparedCallDumpGuard {
+public:
+  D5PreparedCallDumpGuard(bool &enabled,
+                          toka::D5PreparedCallAuditSession &session)
+      : Enabled(enabled), Session(session) {}
+  ~D5PreparedCallDumpGuard() {
+    if (Enabled)
+      Session.dumpJSON(std::cout);
+  }
+
+private:
+  bool &Enabled;
+  toka::D5PreparedCallAuditSession &Session;
 };
 
 class HandleGrammarAuditFlushGuard {
@@ -798,6 +815,11 @@ int main(int argc, char **argv) {
   bool forceLegacyD4Probe = false;
   bool reverseD4ProbeSchedule = false;
   std::optional<toka::D4ProbeInfrastructureError> injectedD4ProbeError;
+  bool dumpD5PreparedCall = false;
+  bool emitD5PreparedCall = false;
+  bool enableD5PreparedCallShadow = false;
+  std::optional<toka::D5InfrastructureError> injectedD5PreparedCallError;
+  std::optional<toka::D5ParityError> injectedD5ParityError;
   bool dumpCapabilities = false;
   bool dumpTodoGoals = false;
   bool dumpConditionalFacts = false;
@@ -826,6 +848,9 @@ int main(int argc, char **argv) {
                                              d3ObservationSession);
   toka::D4ProbeAuditSession d4ProbeAuditSession;
   D4ProbeDumpGuard d4ProbeGuard(emitD4PureNominalProbe, d4ProbeAuditSession);
+  toka::D5PreparedCallAuditSession d5PreparedCallSession;
+  D5PreparedCallDumpGuard d5PreparedCallGuard(emitD5PreparedCall,
+                                               d5PreparedCallSession);
   SemanticEvidenceDumpGuard semanticEvidenceGuard(
       dumpCallTransferShadow, dumpCedeObligations, dumpCapabilities,
       dumpTodoGoals, dumpConditionalFacts);
@@ -947,6 +972,24 @@ int main(int argc, char **argv) {
           arg.substr(std::string("--m1b-d4a-inject-error=").size()));
       if (!injectedD4ProbeError) {
         llvm::errs() << "invalid D.4a infrastructure error injection\n";
+        return 1;
+      }
+    } else if (arg == "--m1b-d5a-prepared-call-parity=json") {
+      dumpD5PreparedCall = true;
+    } else if (arg == "--m1b-d5a-shadow") {
+      enableD5PreparedCallShadow = true;
+    } else if (arg.rfind("--m1b-d5a-inject-error=", 0) == 0) {
+      injectedD5PreparedCallError = toka::parseD5InfrastructureError(
+          arg.substr(std::string("--m1b-d5a-inject-error=").size()));
+      if (!injectedD5PreparedCallError) {
+        llvm::errs() << "invalid D.5a infrastructure error injection\n";
+        return 1;
+      }
+    } else if (arg.rfind("--m1b-d5a-inject-parity=", 0) == 0) {
+      injectedD5ParityError = toka::parseD5ParityError(
+          arg.substr(std::string("--m1b-d5a-inject-parity=").size()));
+      if (!injectedD5ParityError) {
+        llvm::errs() << "invalid D.5a parity injection\n";
         return 1;
       }
     } else if (arg == "--capabilities=json") {
@@ -1096,6 +1139,8 @@ int main(int argc, char **argv) {
     checkOnly = true;
   if (dumpD4PureNominalProbe)
     checkOnly = true;
+  if (dumpD5PreparedCall)
+    checkOnly = true;
   if (compileOnly) {
     emitInterface = true;
   }
@@ -1120,6 +1165,33 @@ int main(int argc, char **argv) {
        reverseD4ProbeSchedule)) {
     llvm::errs() << "--m1b-d4a-inject-error requires the D.4a JSON mode "
                     "without force-legacy or reverse-schedule\n";
+    return 1;
+  }
+
+  if (dumpD5PreparedCall &&
+      (structuredDiagnostics || g_JsonDiagnostics || dumpDependencies ||
+       dumpAssignmentStats || dumpHandleSurfaceStats || dumpSemanticEvidence ||
+       dumpCedeObligations || dumpCallTransferShadow ||
+       dumpD3DirectCallObservation || dumpD4PureNominalProbe ||
+       dumpCapabilities || dumpTodoGoals || dumpConditionalFacts ||
+       dumpMemorySummaries || dumpMemoryContracts || dumpEncapSlice1Facts ||
+       dumpSemanticIndex || dumpSemanticContext || !semanticQuery.empty() ||
+       runTopologyEval || !explainCode.empty())) {
+    llvm::errs() << "--m1b-d5a-prepared-call-parity=json cannot be combined "
+                    "with another JSON, semantic, or evaluation output mode\n";
+    structuredDiagnostics = false;
+    dumpD5PreparedCall = false;
+    return 1;
+  }
+  if (injectedD5PreparedCallError &&
+      (!dumpD5PreparedCall || enableD5PreparedCallShadow)) {
+    llvm::errs() << "--m1b-d5a-inject-error requires the D.5a JSON mode\n";
+    return 1;
+  }
+  if (injectedD5ParityError &&
+      (!dumpD5PreparedCall || enableD5PreparedCallShadow ||
+       injectedD5PreparedCallError)) {
+    llvm::errs() << "--m1b-d5a-inject-parity requires the D.5a JSON mode\n";
     return 1;
   }
 
@@ -1262,6 +1334,11 @@ int main(int argc, char **argv) {
   }
   emitD3DirectCallObservation = dumpD3DirectCallObservation;
   emitD4PureNominalProbe = dumpD4PureNominalProbe;
+  emitD5PreparedCall = dumpD5PreparedCall;
+  d5PreparedCallSession.setInjectedInfrastructureError(
+      injectedD5PreparedCallError);
+  d5PreparedCallSession.setInjectedParityError(injectedD5ParityError);
+  d5PreparedCallSession.setStrictQualification(dumpD5PreparedCall);
   d4ProbeAuditSession.setForceLegacy(forceLegacyD4Probe);
   d4ProbeAuditSession.setReverseSchedule(reverseD4ProbeSchedule);
   d4ProbeAuditSession.setInjectedInfrastructureError(injectedD4ProbeError);
@@ -1561,10 +1638,17 @@ int main(int argc, char **argv) {
   toka::Sema sema;
   sema.setBorrowCheckEnabled(!disableBorrowCheck);
   sema.setDirectCallObservationSession(
-      dumpD3DirectCallObservation ? &d3ObservationSession : nullptr);
+      (dumpD3DirectCallObservation || dumpD5PreparedCall ||
+       enableD5PreparedCallShadow)
+          ? &d3ObservationSession
+          : nullptr);
   sema.setPureNominalProbeAuditSession(
       (dumpD4PureNominalProbe || forceLegacyD4Probe) ? &d4ProbeAuditSession
                                                      : nullptr);
+  sema.setPreparedCallAuditSession(
+      (dumpD5PreparedCall || enableD5PreparedCallShadow)
+          ? &d5PreparedCallSession
+          : nullptr);
 
   // Pass 1: Declare all global symbols across all modules to build the global module map
   for (const auto &ast : astModules) {

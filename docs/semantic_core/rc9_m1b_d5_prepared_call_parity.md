@@ -3,8 +3,9 @@
 **Design status:** Accepted for bounded M1b.1a implementation after the
 internal bounded audit at `b4e99d38a6783e69c4b9ef3fcf47a2f8217c2faf`.
 
-**Implementation status:** Not implemented. This document authorizes neither
-live ownership commit nor caller-spelling activation.
+**Implementation status:** D.5a implemented / bounded post-implementation
+acceptance pending. The implementation remains Shadow-only and authorizes
+neither live ownership commit nor caller-spelling activation.
 
 **Qualified inputs:** D.3a post-legacy direct-call observation at `0235a35c`,
 D.4a pure direct-nominal overload query at `5197e2e4`, and EXP-LIN-02 at
@@ -368,6 +369,7 @@ considered_call_count
 pre_factory_invocation_count
 post_oracle_invocation_count
 prepared_count
+gate_excluded_count_by_reason
 excluded_count_by_reason
 rejected_count_by_reason
 parity_failure_count_by_reason
@@ -384,12 +386,15 @@ receipts[]
     same_call_structural_parity
     differing_plan_fields[]
     authority_projection
-    cross_fixture_allowed_differences[]
     pre_factory_parent_unchanged
     post_factory_parent_unchanged
     pre_differing_parent_fields[]
     post_differing_parent_fields[]
 ```
+
+Cross-fixture allowed differences are computed by the qualification runner from
+two complete `authority_projection` values. They are not asserted by either
+single-call compiler receipt.
 
 Every reason has an exhaustive switch and a real fixture. Implementation may
 not add a generic `Unsupported` escape hatch or silently remap a D.3a reason.
@@ -425,8 +430,10 @@ Implementation acceptance requires:
 7. cold/warm cache state and fixture scheduling do not change admission or plan;
    the shared legacy-policy classifier is order-independent and returns
    `Indeterminate` rather than populating a missing fact;
-   every current named RC8 exception is parity-tested through both the legacy
-   adapter and the D.5a witness path without a duplicated expected-policy table;
+   every named RC8 case reachable in the admitted subset is parity-tested
+   through both the legacy adapter and D.5a witness path; excluded named cases
+   remain locked by pure-classifier and existing legacy regression fixtures,
+   without a duplicated implementation policy table;
 8. every closed exclusion/error has a real gate; factory-invalid cases fail
    closed with no plan;
 9. equal digest with unequal full identity/plan remains unequal;

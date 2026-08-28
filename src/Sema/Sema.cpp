@@ -5999,23 +5999,24 @@ bool Sema::canImplicitlyPassToCede(std::shared_ptr<toka::Type> Ty) {
       return false; // 没找到该闭包定义，安全起见不豁免
     }
 
-    // 内置/标准库中的有资源类型不予豁免，强制 cede
-    if (resolved == "str" || resolved == "bytes" || resolved == "cstr" ||
-        resolved == "ViewStrSplitIterator" || resolved == "ViewStrLinesIterator" ||
-        resolved == "string" || resolved == "TimerHeap") {
-      return false;
-    }
+    std::string soul = Type::stripMorphology(resolved);
+    if (size_t scope = soul.rfind("::"); scope != std::string::npos)
+      soul = soul.substr(scope + 2);
+    LegacyCedePolicyInput policyInput;
+    policyInput.TypeCategory = classifyD3TypeCategory(Ty);
+    policyInput.CanonicalSoul = soul;
 
-    if (resolved == "SlabID") {
-      return true; // 豁免 SlabID
-    }
+    // Named RC8 policy is owned by the shared pure classifier.  A named result
+    // needs no drop query, preserving the legacy SlabID/resource precedence.
+    auto requirement = classifyLegacyCedeRequirement(policyInput);
+    if (requirement != LegacyCedeRequirement::Indeterminate)
+      return requirement == LegacyCedeRequirement::ImplicitExempt;
 
-    // 其它的 Shape 检查是否包含显式 drop
-    if (hasDrop(sName) || hasDrop(resolved)) {
-      return false;
-    }
-
-    return true; // 默认无 drop 的 Shape 豁免
+    policyInput.DropFact = hasDrop(sName) || hasDrop(resolved)
+                               ? LegacyCedeDropFact::HasDrop
+                               : LegacyCedeDropFact::NoDrop;
+    requirement = classifyLegacyCedeRequirement(policyInput);
+    return requirement == LegacyCedeRequirement::ImplicitExempt;
   }
 
   return false;
