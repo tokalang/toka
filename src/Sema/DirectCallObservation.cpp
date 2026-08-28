@@ -590,6 +590,9 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
     if (pre.ExplicitCede)
       return reject(std::move(input),
                     D3CallValidationError::BorrowedFormalExplicitCede);
+    if (post.TypeCategory == D3TypeCategory::OwnedIdentity)
+      return exclude(std::move(input),
+                     D3ExclusionReason::UnsupportedTypeCategory);
   }
 
   if (post.TypeCategory == D3TypeCategory::Indeterminate)
@@ -609,6 +612,12 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
       (post.TypeCategory == D3TypeCategory::OwnedIdentity &&
        post.OwnershipProof == D3OwnershipProof::Owned);
   if (!typeMatchesOwnership)
+    return reject(std::move(input),
+                  D3CallValidationError::IncompleteObservationFacts);
+  if ((post.TypeCategory == D3TypeCategory::Scalar &&
+       post.CopyProof == D3CopyProof::ProvenNonCopy) ||
+      (post.TypeCategory == D3TypeCategory::OwnedIdentity &&
+       post.CopyProof == D3CopyProof::ProvenCopy))
     return reject(std::move(input),
                   D3CallValidationError::IncompleteObservationFacts);
   const auto sourceLiabilityKind = post.SourceLiability.kind();
@@ -696,6 +705,11 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
                   D3CallValidationError::InvalidWholePlaceAdmission);
   if (source == D3SourceDisposition::InvalidateWhole &&
       post.BoundaryAccess != D3BoundaryAccess::Invalidation)
+    return reject(std::move(input),
+                  D3CallValidationError::InvalidWholePlaceAdmission);
+  if (transfer == D3TransferMode::CopyValue &&
+      source == D3SourceDisposition::KeepLive &&
+      post.BoundaryAccess != D3BoundaryAccess::SharedBorrow)
     return reject(std::move(input),
                   D3CallValidationError::InvalidWholePlaceAdmission);
   if (pre.ActualCategory == D3ActualCategory::WholeTemporary &&

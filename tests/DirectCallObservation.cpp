@@ -164,6 +164,19 @@ int main() {
   auto copyBare = DirectCallObservationFactory::observe(copyBareInput);
   CHECK(hasTransfer(copyBare, D3TransferMode::CopyValue,
                     D3SourceDisposition::KeepLive));
+  auto copyBareWithoutBorrow = copyBareInput;
+  copyBareWithoutBorrow.Post.BoundaryAccess = D3BoundaryAccess::None;
+  CHECK(isRejected(DirectCallObservationFactory::observe(copyBareWithoutBorrow),
+                   D3CallValidationError::InvalidWholePlaceAdmission));
+  auto copyBareWithInvalidation = copyBareInput;
+  copyBareWithInvalidation.Post.BoundaryAccess = D3BoundaryAccess::Invalidation;
+  CHECK(isRejected(
+      DirectCallObservationFactory::observe(copyBareWithInvalidation),
+      D3CallValidationError::InvalidWholePlaceAdmission));
+  auto scalarNonCopy = copyBareInput;
+  scalarNonCopy.Post.CopyProof = D3CopyProof::ProvenNonCopy;
+  CHECK(isRejected(DirectCallObservationFactory::observe(scalarNonCopy),
+                   D3CallValidationError::IncompleteObservationFacts));
 
   auto copyExplicitInput = copyBareInput;
   copyExplicitInput.Pre.ExplicitCede = true;
@@ -220,6 +233,21 @@ int main() {
   cededBorrowedInput.Post.OwnershipProof = D3OwnershipProof::Borrowed;
   cededBorrowedInput.Post.SourceLiability = D3LiabilityFact::noLiability();
   CHECK(isExcluded(DirectCallObservationFactory::observe(cededBorrowedInput),
+                   D3ExclusionReason::UnsupportedTypeCategory));
+
+  auto ownedIdentityInput = baseInput();
+  ownedIdentityInput.Post.TypeCategory = D3TypeCategory::OwnedIdentity;
+  CHECK(hasTransfer(DirectCallObservationFactory::observe(ownedIdentityInput),
+                    D3TransferMode::MoveOwned,
+                    D3SourceDisposition::InvalidateWhole));
+  auto ownedIdentityCopy = ownedIdentityInput;
+  ownedIdentityCopy.Post.CopyProof = D3CopyProof::ProvenCopy;
+  CHECK(isRejected(DirectCallObservationFactory::observe(ownedIdentityCopy),
+                   D3CallValidationError::IncompleteObservationFacts));
+  auto borrowedOwnedIdentity = ownedIdentityInput;
+  borrowedOwnedIdentity.Pre.FormalCeded = false;
+  borrowedOwnedIdentity.Post.BoundaryAccess = D3BoundaryAccess::SharedBorrow;
+  CHECK(isExcluded(DirectCallObservationFactory::observe(borrowedOwnedIdentity),
                    D3ExclusionReason::UnsupportedTypeCategory));
 
   auto nonLocalInput = baseInput();

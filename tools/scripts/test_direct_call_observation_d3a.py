@@ -23,6 +23,7 @@ UNIQUE_PLACE = ROOT / "tests/semantics/direct_call_observation_d3a/unique_place.
 PROBE = ROOT / "tests/semantics/direct_call_observation_d3a/probe_consumer.tk"
 GENERIC_PROBE = ROOT / "tests/semantics/direct_call_observation_d3a/generic_probe.tk"
 GLOBAL_PLACE = ROOT / "tests/semantics/direct_call_observation_d3a/global_place.tk"
+NONCEDE_UNIQUE = ROOT / "tests/semantics/direct_call_observation_d3a/noncede_unique.tk"
 ASYNC_DANGLING = ROOT / "tests/fail/async_dangling_expression_contexts.tk"
 CEDE_BORROW_CONFLICT = ROOT / "tests/conformance/diagnostics/cede_unique_parameter_borrow_conflict.tk"
 SCHEMA_PATH = ROOT / "tests/semantics/direct_call_observation_d3a/receipt_schema_v1.json"
@@ -342,6 +343,15 @@ def main():
                 record["reason"] == "NonLocalPlace" and
                 record["transfer_edges"] == [] for record in global_inspects),
             "module-global binding was admitted as a whole local place")
+
+    _, _, noncede_unique_payload = require_parity(tokac, NONCEDE_UNIQUE)
+    noncede_unique_records = source_records(noncede_unique_payload,
+                                             NONCEDE_UNIQUE)
+    unique_borrow = record_at(noncede_unique_records, 9, "inspect_unique")
+    require(unique_borrow["admission"] == "NotInSlice" and
+            unique_borrow["reason"] == "UnsupportedTypeCategory" and
+            unique_borrow["transfer_edges"] == [],
+            "non-cede OwnedIdentity silently expanded the D.3a slice")
 
     async_normal, _, async_payload = require_parity(tokac, ASYNC_DANGLING)
     require(async_normal.returncode == 1 and "E0702" in async_normal.stderr,

@@ -1,0 +1,10 @@
+shape Cell(value: i32)
+
+fn inspect_unique(^cell: Cell) -> i32 {
+    return cell.value
+}
+
+fn main() -> i32 {
+    auto ^owner = new Cell(value = 42:i32)
+    return inspect_unique(^owner) - 42:i32
+}
