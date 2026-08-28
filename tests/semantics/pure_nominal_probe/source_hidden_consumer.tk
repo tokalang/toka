@@ -1,0 +1,6 @@
+import source_hidden_provider::{Model, source_hidden_probe}
+
+fn main() -> i32 {
+    auto value = Model(value = 1:i32)
+    return source_hidden_probe(value)
+}

@@ -1,0 +1,47 @@
+import exclusion_provider::{Model, Other, Dep, arity_probe, actual_non_nominal_probe, formal_non_nominal_probe, attribute_probe, generic_probe, handle_probe, contract_probe, dependency_probe, nonlocal_probe, single_probe}
+
+auto global_model = Model(value = 1:i32)
+
+fn local_probe(value: Model) -> i32 { return 1:i32 }
+fn local_probe(value: Other) -> i32 { return 2:i32 }
+
+fn relay(value: Model) -> Model <- value { return value }
+
+fn main() -> i32 {
+    auto local_value = Model(value = 1:i32)
+    auto local_result = local_probe(local_value)
+
+    auto arity_value = Model(value = 2:i32)
+    auto arity_result = arity_probe(arity_value)
+
+    auto text = "view"
+    auto actual_result = actual_non_nominal_probe(text)
+
+    auto formal_value = Model(value = 3:i32)
+    auto formal_result = formal_non_nominal_probe(formal_value)
+
+    auto attribute_value = Model(value = 4:i32)
+    auto attribute_result = attribute_probe(attribute_value)
+
+    auto generic_value = Model(value = 5:i32)
+    auto generic_result = generic_probe<Model>(generic_value)
+
+    auto handle_value = Model(value = 6:i32)
+    auto handle_result = handle_probe(handle_value)
+
+    auto contract_value = Model(value = 7:i32)
+    auto contract_result = contract_probe(contract_value)
+
+    auto root = 8:i32
+    auto dependent = Dep(&root = &root)
+    auto dependency_result = dependency_probe(dependent)
+
+    auto nonlocal_result = nonlocal_probe(global_model)
+
+    auto single_value = Model(value = 9:i32)
+    auto single_result = single_probe(single_value)
+
+    return local_result + arity_result + actual_result + formal_result +
+           attribute_result + generic_result + handle_result +
+           dependency_result + nonlocal_result + single_result
+}

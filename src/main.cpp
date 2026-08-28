@@ -59,6 +59,7 @@
 #include <cctype>
 #include <set>
 #include <list>
+#include <optional>
 #include <sstream>
 #include <vector>
 
@@ -796,6 +797,7 @@ int main(int argc, char **argv) {
   bool emitD4PureNominalProbe = false;
   bool forceLegacyD4Probe = false;
   bool reverseD4ProbeSchedule = false;
+  std::optional<toka::D4ProbeInfrastructureError> injectedD4ProbeError;
   bool dumpCapabilities = false;
   bool dumpTodoGoals = false;
   bool dumpConditionalFacts = false;
@@ -940,6 +942,13 @@ int main(int argc, char **argv) {
       forceLegacyD4Probe = true;
     } else if (arg == "--m1b-d4a-reverse-schedule") {
       reverseD4ProbeSchedule = true;
+    } else if (arg.rfind("--m1b-d4a-inject-error=", 0) == 0) {
+      injectedD4ProbeError = toka::parseD4ProbeInfrastructureError(
+          arg.substr(std::string("--m1b-d4a-inject-error=").size()));
+      if (!injectedD4ProbeError) {
+        llvm::errs() << "invalid D.4a infrastructure error injection\n";
+        return 1;
+      }
     } else if (arg == "--capabilities=json") {
       dumpCapabilities = true;
     } else if (arg == "--todo-goals=json") {
@@ -1106,6 +1115,13 @@ int main(int argc, char **argv) {
                     "--m1b-d4a-pure-nominal-overload-probe=json\n";
     return 1;
   }
+  if (injectedD4ProbeError &&
+      (!dumpD4PureNominalProbe || forceLegacyD4Probe ||
+       reverseD4ProbeSchedule)) {
+    llvm::errs() << "--m1b-d4a-inject-error requires the D.4a JSON mode "
+                    "without force-legacy or reverse-schedule\n";
+    return 1;
+  }
 
   if (dumpD4PureNominalProbe &&
       (structuredDiagnostics || g_JsonDiagnostics || dumpDependencies ||
@@ -1248,6 +1264,7 @@ int main(int argc, char **argv) {
   emitD4PureNominalProbe = dumpD4PureNominalProbe;
   d4ProbeAuditSession.setForceLegacy(forceLegacyD4Probe);
   d4ProbeAuditSession.setReverseSchedule(reverseD4ProbeSchedule);
+  d4ProbeAuditSession.setInjectedInfrastructureError(injectedD4ProbeError);
   toka::SemanticEvidence::enable(dumpSemanticEvidence || dumpCedeObligations ||
                                  dumpCallTransferShadow || dumpCapabilities ||
                                  dumpTodoGoals || dumpConditionalFacts);

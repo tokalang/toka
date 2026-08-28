@@ -1,0 +1,6 @@
+import non_source_backed_provider::{Model, non_source_probe}
+
+fn main() -> i32 {
+    auto value = Model(value = 1:i32)
+    return non_source_probe(value)
+}

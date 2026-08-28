@@ -136,6 +136,22 @@ int main() {
   ordinalMapping[1].LegacyOrdinal = 2;
   CHECK(validateD4FrozenMapping(ordinalMapping, std::nullopt, nullptr) ==
         D4ProbeInfrastructureError::NonContiguousLegacyOrdinal);
+  auto duplicateOrdinalMapping = mapping;
+  duplicateOrdinalMapping[1].LegacyOrdinal = 0;
+  CHECK(validateD4FrozenMapping(duplicateOrdinalMapping, std::nullopt,
+                               nullptr) ==
+        D4ProbeInfrastructureError::DuplicateLegacyOrdinal);
+
+  const D4ProbeInfrastructureError infrastructureErrors[] = {
+      D4ProbeInfrastructureError::InvalidCallSiteIdentity,
+      D4ProbeInfrastructureError::InvalidNominalShapeId,
+      D4ProbeInfrastructureError::DuplicateCandidateIdentity,
+      D4ProbeInfrastructureError::DuplicateLegacyOrdinal,
+      D4ProbeInfrastructureError::NonContiguousLegacyOrdinal,
+      D4ProbeInfrastructureError::MalformedBatch};
+  for (auto error : infrastructureErrors)
+    CHECK(parseD4ProbeInfrastructureError(toString(error)) == error);
+  CHECK(!parseD4ProbeInfrastructureError("UnknownFailure"));
 
   const D4ProbeExclusionReason exclusions[] = {
       D4ProbeExclusionReason::WrongRoute,

@@ -1,0 +1,14 @@
+// @meta compiler_version: any
+// @meta format_version: 3
+// @meta target_triple: any
+// @meta source_hash: any
+// @meta identity_schema_version: 2
+// @meta place_yield_abi_schema: 1
+// @meta logical_module_path: unbound
+// @meta resolver_binding_digest: unbound
+
+pub shape Model(value: i32)
+pub shape Other(value: i32)
+
+pub fn source_hidden_probe(value: Model) -> i32
+pub fn source_hidden_probe(value: Other) -> i32

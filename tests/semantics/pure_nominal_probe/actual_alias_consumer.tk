@@ -1,0 +1,6 @@
+import actual_alias_provider::{AliasModel, choose_actual_alias}
+
+fn main() -> i32 {
+    auto value = AliasModel(value = 42:i32)
+    return choose_actual_alias(value) - 42:i32
+}

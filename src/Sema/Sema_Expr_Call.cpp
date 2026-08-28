@@ -1947,15 +1947,85 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   auto pickModuleFunction = [&](ModuleScope *Target, const std::string &Name,
                                 FunctionDecl *Fallback) -> FunctionDecl * {
-    auto auditExclusion = [&](D4ProbeExclusionReason reason) {
-      if (!m_D4ProbeAuditSession)
-        return;
+    auto captureParent = [&]() {
+      D4ProbeParentSentinel sentinel;
+      sentinel.NextNodeSerial = ASTNode::NextNodeSerial;
+      sentinel.NextSymbolId = Scope::NextSymbolID;
+      sentinel.DiagnosticErrorCount = DiagnosticEngine::ErrorCount;
+      sentinel.DiagnosticRecordCount = DiagnosticEngine::records().size();
+      sentinel.Evidence = SemanticEvidence::auditState();
+      sentinel.CallResolvedFunction =
+          reinterpret_cast<uintptr_t>(Call->ResolvedFn);
+      if (!Call->Args.empty() && Call->Args[0]) {
+        sentinel.ActualResolvedType =
+            reinterpret_cast<uintptr_t>(Call->Args[0]->ResolvedType.get());
+        if (auto *variable =
+                dynamic_cast<VariableExpr *>(Call->Args[0].get())) {
+          SymbolInfo *info = nullptr;
+          Scope *scope = nullptr;
+          std::string actualName;
+          if (CurrentScope->findVariableWithDerefScope(
+                  variable->Name, info, actualName, scope) &&
+              info) {
+            sentinel.SourceSymbolId = info->SymbolID;
+            sentinel.SourceBinding = reinterpret_cast<uintptr_t>(info);
+            sentinel.SourceAST = reinterpret_cast<uintptr_t>(info->ASTPtr);
+            sentinel.SourceInitMask = info->InitMask;
+            sentinel.SourceMoved = info->Moved;
+            sentinel.SourceUsed = info->HasBeenUsed;
+            sentinel.SourceMutated = info->HasBeenMutated;
+            sentinel.SourcePlaceState = d3PlaceStateName(info->placeFact());
+            sentinel.SourceBorrowedPath = info->BorrowedPath.toDebugString();
+            sentinel.SourceDependencies.assign(info->LifeDependencySet.begin(),
+                                               info->LifeDependencySet.end());
+            AccessPath path;
+            path.RootID = info->SymbolID;
+            path.RootName = actualName;
+            path.RootLoc = info->DeclLoc;
+            sentinel.SourcePALState =
+                d3PALStateName(PALCheckerState.getState(path));
+          }
+        }
+      }
+      sentinel.CopyProofCount = Slice4CopyProofs.size();
+      sentinel.CopyFactCount = CopyProofMap.size();
+      sentinel.InstantiationCount = InstantiationCache.size();
+      sentinel.GenericShapeCount = GenericShapeCache.size();
+      if (m_D3ObservationSession) {
+        sentinel.D3ConsideredCount =
+            m_D3ObservationSession->consideredCallCount();
+        sentinel.D3FactoryCount =
+            m_D3ObservationSession->factoryInvocationCount();
+      }
+      return sentinel;
+    };
+
+    const D4ProbeParentSentinel parentBefore = captureParent();
+    auto makeAuditRecord = [&]() {
       auto location = makeD3SourceLocation(Call->Loc);
       D4ProbeAuditRecord record;
       record.Location = {location.File, location.Line, location.Column};
       record.Callee = Name;
+      const auto parentAfter = captureParent();
+      record.ParentUnchanged = parentBefore == parentAfter;
+      record.DifferingParentFields =
+          differingD4ProbeParentFields(parentBefore, parentAfter);
+      return record;
+    };
+    auto auditExclusion = [&](D4ProbeExclusionReason reason) {
+      if (!m_D4ProbeAuditSession)
+        return;
+      D4ProbeAuditRecord record = makeAuditRecord();
       record.Exclusion = reason;
       m_D4ProbeAuditSession->append(std::move(record));
+    };
+    auto infrastructureFailure = [&](D4ProbeInfrastructureError failure,
+                                     const std::string &message) {
+      if (m_D4ProbeAuditSession)
+        m_D4ProbeAuditSession->appendInfrastructureFailure(
+            failure, makeAuditRecord());
+      error(Call, DiagID::ERR_GENERIC_SEMA, message);
+      return static_cast<FunctionDecl *>(nullptr);
     };
     if (!Target) {
       auditExclusion(D4ProbeExclusionReason::WrongRoute);
@@ -2046,9 +2116,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
     std::shared_ptr<ShapeType> actualShape;
     if (!exclusion) {
-      if (sourceInfo->TypeObj && (sourceInfo->TypeObj->isBoolean() ||
-                                  sourceInfo->TypeObj->isInteger() ||
-                                  sourceInfo->TypeObj->isFloatingPoint())) {
+      const std::string actualSoul =
+          sourceInfo->TypeObj
+              ? Type::stripMorphology(sourceInfo->TypeObj->getSoulName())
+              : "";
+      if (actualSoul == "str" || actualSoul == "bytes" ||
+          actualSoul.rfind("__Toka_Anon_Rec_", 0) == 0) {
+        exclusion = D4ProbeExclusionReason::NonDirectNominalActual;
+      } else if (sourceInfo->TypeObj &&
+                 (sourceInfo->TypeObj->isBoolean() ||
+                  sourceInfo->TypeObj->isInteger() ||
+                  sourceInfo->TypeObj->isFloatingPoint())) {
         exclusion = D4ProbeExclusionReason::PrimitiveOrAlias;
       } else {
         actualShape = std::dynamic_pointer_cast<ShapeType>(sourceInfo->TypeObj);
@@ -2077,8 +2155,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             continue;
           const std::string sourceType = Type::stripMorphology(parameter.Type);
           directSyntax = !TypeAliasMap.count(sourceType) &&
-                         (sourceType == actualShape->Decl->Name ||
-                          sourceType == actualShape->Decl->CodegenName);
+                         sourceType == actualShape->Decl->Name;
           break;
         }
       } else if (sourceInfo->ASTPtr) {
@@ -2088,18 +2165,35 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               Type::stripMorphology(variable->TypeName);
           if (variable->DeclaredTypeSyntax) {
             directSyntax = !TypeAliasMap.count(sourceType) &&
-                           (sourceType == actualShape->Decl->Name ||
-                            sourceType == actualShape->Decl->CodegenName);
+                           sourceType == actualShape->Decl->Name;
           } else if (auto *constructor =
                          dynamic_cast<CallExpr *>(variable->Init.get())) {
-            directSyntax = constructor->ResolvedShape == actualShape->Decl;
+            const std::string sourceType =
+                Type::stripMorphology(constructor->OriginalCallee);
+            if (sourceType.find("::") != std::string::npos) {
+              exclusion = D4ProbeExclusionReason::VariantOrRefinedNominal;
+            } else {
+              directSyntax =
+                  constructor->ResolvedShape == actualShape->Decl &&
+                  constructor->OriginalCallee == constructor->Callee &&
+                  !TypeAliasMap.count(sourceType) &&
+                  sourceType == actualShape->Decl->Name;
+            }
           } else if (auto *constructor =
                          dynamic_cast<InitStructExpr *>(variable->Init.get())) {
-            directSyntax = constructor->ShapeName == actualShape->Decl->Name;
+            const std::string sourceType =
+                Type::stripMorphology(constructor->OriginalShapeName);
+            if (sourceType.find("::") != std::string::npos) {
+              exclusion = D4ProbeExclusionReason::VariantOrRefinedNominal;
+            } else {
+              directSyntax = !TypeAliasMap.count(sourceType) &&
+                             sourceType == constructor->ShapeName &&
+                             sourceType == actualShape->Decl->Name;
+            }
           }
         }
       }
-      if (!directSyntax)
+      if (!exclusion && !directSyntax)
         exclusion = D4ProbeExclusionReason::PrimitiveOrAlias;
     }
 
@@ -2123,9 +2217,23 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     if (!exclusion) {
       for (size_t ordinal = 0; ordinal < it->second.size(); ++ordinal) {
         FunctionDecl *candidate = it->second[ordinal];
-        if (!candidate || !candidate->Body ||
-            !candidate->GenericParams.empty()) {
+        if (!candidate) {
+          exclusion = D4ProbeExclusionReason::SourceHiddenOrIncomplete;
+          break;
+        }
+        const auto candidateLocation = makeD3SourceLocation(candidate->Loc);
+        if (candidateLocation.File.size() >= 4 &&
+            candidateLocation.File.compare(candidateLocation.File.size() - 4,
+                                           4, ".tki") == 0) {
+          exclusion = D4ProbeExclusionReason::SourceHiddenOrIncomplete;
+          break;
+        }
+        if (!candidate->Body) {
           exclusion = D4ProbeExclusionReason::NonSourceBacked;
+          break;
+        }
+        if (!candidate->GenericParams.empty()) {
+          exclusion = D4ProbeExclusionReason::GenericOrContextual;
           break;
         }
         if (candidate->Args.size() != 1 || candidate->IsVariadic ||
@@ -2134,11 +2242,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           break;
         }
         const auto &formal = candidate->Args[0];
+        if (formal.HadRejectedTypeSideMorphology || formal.IsValueMutable ||
+            formal.IsValueNullable || formal.IsValueBlocked) {
+          exclusion = D4ProbeExclusionReason::AttributesOrConversion;
+          break;
+        }
         if (formal.IsCeded || formal.IsInit || formal.IsRawPointer ||
             formal.IsUnique || formal.IsShared || formal.IsReference ||
-            formal.IsRebindable || formal.IsValueMutable ||
-            formal.IsPointerNullable || formal.IsValueNullable ||
-            formal.IsRebindBlocked || formal.IsValueBlocked ||
+            formal.IsRebindable || formal.IsPointerNullable ||
+            formal.IsRebindBlocked ||
             formal.IsMorphicExempt) {
           exclusion = D4ProbeExclusionReason::HandleOrPermission;
           break;
@@ -2152,6 +2264,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         }
         if (formal.Type.find("::") != std::string::npos) {
           exclusion = D4ProbeExclusionReason::VariantOrRefinedNominal;
+          break;
+        }
+        const std::string formalSoul =
+            formal.ResolvedType
+                ? Type::stripMorphology(formal.ResolvedType->getSoulName())
+                : "";
+        if (formalSoul == "str" || formalSoul == "bytes" ||
+            formalSoul.rfind("__Toka_Anon_Rec_", 0) == 0) {
+          exclusion = D4ProbeExclusionReason::NonDirectNominalFormal;
           break;
         }
         if (formal.ResolvedType && (formal.ResolvedType->isBoolean() ||
@@ -2181,19 +2302,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         }
         const std::string formalSourceType = Type::stripMorphology(formal.Type);
         if (TypeAliasMap.count(formalSourceType) ||
-            (formalSourceType != formalShape->Decl->Name &&
-             formalSourceType != formalShape->Decl->CodegenName)) {
+            formalSourceType != formalShape->Decl->Name) {
           exclusion = D4ProbeExclusionReason::PrimitiveOrAlias;
           break;
         }
         auto declaration = declarationIdentity(candidate);
         if (!declaration || candidateMapping.count(*declaration)) {
-          if (m_D4ProbeAuditSession)
-            m_D4ProbeAuditSession->noteInfrastructureError(
-                D4ProbeInfrastructureError::DuplicateCandidateIdentity);
-          error(Call, DiagID::ERR_GENERIC_SEMA,
-                "internal D.4a candidate identity failure");
-          return nullptr;
+          return infrastructureFailure(
+              D4ProbeInfrastructureError::DuplicateCandidateIdentity,
+              "internal D.4a candidate identity failure");
         }
         candidateMapping[*declaration] = candidate;
         frozenMapping.push_back(
@@ -2210,14 +2327,35 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     auto fallbackIdentity = declarationIdentity(Fallback);
+    const auto injectedError =
+        m_D4ProbeAuditSession
+            ? m_D4ProbeAuditSession->injectedInfrastructureError()
+            : std::nullopt;
+    if (injectedError && pureCandidates.size() >= 2) {
+      switch (*injectedError) {
+      case D4ProbeInfrastructureError::DuplicateCandidateIdentity:
+        frozenMapping[1].Declaration = frozenMapping[0].Declaration;
+        break;
+      case D4ProbeInfrastructureError::DuplicateLegacyOrdinal:
+        frozenMapping[1].LegacyOrdinal = frozenMapping[0].LegacyOrdinal;
+        break;
+      case D4ProbeInfrastructureError::NonContiguousLegacyOrdinal:
+        frozenMapping[1].LegacyOrdinal =
+            static_cast<unsigned>(frozenMapping.size());
+        break;
+      case D4ProbeInfrastructureError::MalformedBatch:
+        fallbackIdentity = DeclarationId{};
+        break;
+      case D4ProbeInfrastructureError::InvalidCallSiteIdentity:
+      case D4ProbeInfrastructureError::InvalidNominalShapeId:
+        break;
+      }
+    }
     auto mappingError =
         validateD4FrozenMapping(frozenMapping, fallbackIdentity, Fallback);
     if (mappingError) {
-      if (m_D4ProbeAuditSession)
-        m_D4ProbeAuditSession->noteInfrastructureError(*mappingError);
-      error(Call, DiagID::ERR_GENERIC_SEMA,
-            "internal D.4a fallback mapping failure");
-      return nullptr;
+      return infrastructureFailure(*mappingError,
+                                   "internal D.4a fallback mapping failure");
     }
 
     auto callLocation = makeD3SourceLocation(Call->Loc);
@@ -2226,64 +2364,32 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                std::to_string(callLocation.Column) + ":" +
                                Name);
     if (!callIdentity) {
-      if (m_D4ProbeAuditSession)
-        m_D4ProbeAuditSession->noteInfrastructureError(
-            D4ProbeInfrastructureError::InvalidCallSiteIdentity);
-      error(Call, DiagID::ERR_GENERIC_SEMA,
-            "internal D.4a call identity failure");
-      return nullptr;
+      return infrastructureFailure(
+          D4ProbeInfrastructureError::InvalidCallSiteIdentity,
+          "internal D.4a call identity failure");
     }
 
-    auto captureParent = [&]() {
-      D4ProbeParentSentinel sentinel;
-      sentinel.NextNodeSerial = ASTNode::NextNodeSerial;
-      sentinel.DiagnosticErrorCount = DiagnosticEngine::ErrorCount;
-      sentinel.DiagnosticRecordCount = DiagnosticEngine::records().size();
-      sentinel.Evidence = SemanticEvidence::auditState();
-      sentinel.SourceSymbolId = sourceInfo->SymbolID;
-      sentinel.SourceInitMask = sourceInfo->InitMask;
-      sentinel.SourceMoved = sourceInfo->Moved;
-      sentinel.SourceUsed = sourceInfo->HasBeenUsed;
-      sentinel.SourceMutated = sourceInfo->HasBeenMutated;
-      sentinel.SourcePlaceState = d3PlaceStateName(sourceInfo->placeFact());
-      sentinel.SourcePALState =
-          d3PALStateName(PALCheckerState.getState(sourcePath));
-      sentinel.CallResolvedFunction =
-          reinterpret_cast<uintptr_t>(Call->ResolvedFn);
-      sentinel.ActualResolvedType =
-          reinterpret_cast<uintptr_t>(Call->Args[0]->ResolvedType.get());
-      sentinel.CopyProofCount = Slice4CopyProofs.size();
-      sentinel.CopyFactCount = CopyProofMap.size();
-      sentinel.InstantiationCount = InstantiationCache.size();
-      sentinel.GenericShapeCount = GenericShapeCache.size();
-      if (m_D3ObservationSession) {
-        sentinel.D3ConsideredCount =
-            m_D3ObservationSession->consideredCallCount();
-        sentinel.D3FactoryCount =
-            m_D3ObservationSession->factoryInvocationCount();
-      }
-      return sentinel;
-    };
-
-    const auto before = captureParent();
+    SemanticNodeId pureCallIdentity = callIdentity.value();
+    std::optional<NominalShapeId> pureActualNominal =
+        *actualShape->Decl->NominalId;
+    if (injectedError == D4ProbeInfrastructureError::InvalidCallSiteIdentity)
+      pureCallIdentity = SemanticNodeId{};
+    else if (injectedError ==
+             D4ProbeInfrastructureError::InvalidNominalShapeId)
+      pureActualNominal.reset();
     auto pure = PureNominalOverloadProbe::run(
-        D4PureNominalProbeInput(callIdentity.value(),
-                                *actualShape->Decl->NominalId,
+        D4PureNominalProbeInput(pureCallIdentity, pureActualNominal,
                                 std::move(pureCandidates)),
         m_D4ProbeAuditSession && m_D4ProbeAuditSession->reverseSchedule()
             ? D4ProbeSchedule::ReverseForTesting
             : D4ProbeSchedule::LegacyOrder);
-    const auto after = captureParent();
     if (!pure) {
-      if (m_D4ProbeAuditSession)
-        m_D4ProbeAuditSession->noteInfrastructureError(*pure.Error);
-      error(Call, DiagID::ERR_GENERIC_SEMA,
-            std::string("internal D.4a pure probe failure: ") +
-                toString(*pure.Error));
-      return nullptr;
+      return infrastructureFailure(
+          *pure.Error, std::string("internal D.4a pure probe failure: ") +
+                           toString(*pure.Error));
     }
 
-    D4ProbeAuditRecord auditRecord;
+    D4ProbeAuditRecord auditRecord = makeAuditRecord();
     auditRecord.Location = {callLocation.File, callLocation.Line,
                             callLocation.Column};
     auditRecord.Callee = Name;
@@ -2300,20 +2406,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                : "",
            result.Compatible});
     }
-    auditRecord.ParentUnchanged = before == after;
-    auditRecord.DifferingParentFields =
-        differingD4ProbeParentFields(before, after);
-
     FunctionDecl *pureSelected = nullptr;
     if (pure.Result->selectedDeclaration()) {
       auto mapped = candidateMapping.find(*pure.Result->selectedDeclaration());
       if (mapped == candidateMapping.end()) {
-        if (m_D4ProbeAuditSession)
-          m_D4ProbeAuditSession->noteInfrastructureError(
-              D4ProbeInfrastructureError::MalformedBatch);
-        error(Call, DiagID::ERR_GENERIC_SEMA,
-              "internal D.4a selected declaration mapping failure");
-        return nullptr;
+        return infrastructureFailure(
+            D4ProbeInfrastructureError::MalformedBatch,
+            "internal D.4a selected declaration mapping failure");
       }
       pureSelected = mapped->second;
       auditRecord.SelectedDeclarationIdentity =

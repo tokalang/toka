@@ -911,13 +911,17 @@ public:
 class InitStructExpr : public Expr {
 public:
   std::string ShapeName;
+  // Source spelling retained across alias resolution and generic elaboration.
+  // Semantic consumers must not infer direct-nominal provenance from the
+  // rewritten ShapeName alone.
+  std::string OriginalShapeName;
   std::vector<std::pair<std::string, std::unique_ptr<Expr>>> Members;
   std::vector<AggregateTransferKind> MemberTransfers;
   std::vector<std::string> CededBases;
   InitStructExpr(
       const std::string &name,
       std::vector<std::pair<std::string, std::unique_ptr<Expr>>> members)
-      : ShapeName(name), Members(std::move(members)) {}
+      : ShapeName(name), OriginalShapeName(name), Members(std::move(members)) {}
 
   std::string toString() const override { return "Init(" + ShapeName + ")"; }
   std::unique_ptr<ASTNode> clone() const override {
@@ -926,6 +930,7 @@ public:
       members.emplace_back(p.first, cloneNode(p.second));
     }
     auto n = std::make_unique<InitStructExpr>(ShapeName, std::move(members));
+    n->OriginalShapeName = OriginalShapeName;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     n->CededBases = CededBases;

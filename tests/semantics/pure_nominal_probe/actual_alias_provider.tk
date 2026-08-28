@@ -1,0 +1,12 @@
+pub shape Model(value: i32)
+pub shape Other(value: i32)
+
+pub alias AliasModel = Model
+
+pub fn choose_actual_alias(value: Model) -> i32 {
+    return value.value
+}
+
+pub fn choose_actual_alias(value: Other) -> i32 {
+    return value.value
+}

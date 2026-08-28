@@ -38,6 +38,9 @@ Every condition below is required:
 - no primitive, alias, anonymous/structural type, attribute normalization,
   implicit conversion, generic parameter/instance, handle morphology,
   contextual typing, or incomplete type;
+- inferred constructor bindings retain and validate their original source
+  callee/shape spelling; a resolved underlying shape cannot erase weak-alias
+  provenance;
 - no `cede`, `init`, default, variadic, writable/rebindable, outcome,
   execution-boundary, or return-dependency contract;
 - no active PAL conflict, moved/uninit state, place alias, dependency escape,
@@ -178,6 +181,13 @@ MalformedBatch
 
 Infrastructure error fails closed: no legacy fallback, one internal compiler
 diagnostic, nonzero exit, and no parent-state change.
+
+The internal qualification CLI may inject one closed infrastructure error only
+after a real admitted source call reaches the corresponding frozen-batch or
+pure-factory boundary. Injection cannot manufacture an exclusion or bypass
+admission. Each injected run records a failed batch whose parent comparison is
+captured before mapping, identity construction, and factory invocation, and is
+completed before emitting the required internal diagnostic.
 
 ## Integration behavior
 

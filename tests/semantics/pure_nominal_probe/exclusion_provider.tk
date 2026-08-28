@@ -1,0 +1,36 @@
+pub shape Model(value: i32)
+pub shape Other(value: i32)
+pub shape Dep(&root: i32)
+pub shape DepOther(&root: i32)
+
+pub fn arity_probe(value: Model, tag: i32) -> i32 { return tag }
+pub fn arity_probe(value: Other, tag: i32) -> i32 { return tag }
+
+pub fn actual_non_nominal_probe(value: Model) -> i32 { return 1:i32 }
+pub fn actual_non_nominal_probe(value: Other) -> i32 { return 2:i32 }
+
+pub fn formal_non_nominal_probe(value: str) -> i32 { return 1:i32 }
+pub fn formal_non_nominal_probe(value: bytes) -> i32 { return 2:i32 }
+
+pub fn attribute_probe(value#: Model) -> i32 { return 1:i32 }
+pub fn attribute_probe(value: Other) -> i32 { return 2:i32 }
+
+pub fn generic_probe(value: Model) -> i32 { return 1:i32 }
+pub fn generic_probe(value: Other) -> i32 { return 2:i32 }
+
+pub fn handle_probe(cede value: Model) -> i32 {
+    auto moved = cede value
+    return moved.value
+}
+pub fn handle_probe(value: Other) -> i32 { return 2:i32 }
+
+pub fn contract_probe(value: Model) -> async i32 { return 1:i32 }
+pub fn contract_probe(value: Other) -> async i32 { return 2:i32 }
+
+pub fn dependency_probe(value: Dep) -> i32 { return 1:i32 }
+pub fn dependency_probe(value: DepOther) -> i32 { return 2:i32 }
+
+pub fn nonlocal_probe(value: Model) -> i32 { return 1:i32 }
+pub fn nonlocal_probe(value: Other) -> i32 { return 2:i32 }
+
+pub fn single_probe(value: Model) -> i32 { return value.value }

@@ -88,6 +88,22 @@ const char *toString(D4ProbeExclusionReason value) {
 }
 
 std::optional<D4ProbeInfrastructureError>
+parseD4ProbeInfrastructureError(const std::string &value) {
+  static const D4ProbeInfrastructureError Values[] = {
+      D4ProbeInfrastructureError::InvalidCallSiteIdentity,
+      D4ProbeInfrastructureError::InvalidNominalShapeId,
+      D4ProbeInfrastructureError::DuplicateCandidateIdentity,
+      D4ProbeInfrastructureError::DuplicateLegacyOrdinal,
+      D4ProbeInfrastructureError::NonContiguousLegacyOrdinal,
+      D4ProbeInfrastructureError::MalformedBatch};
+  for (auto candidate : Values) {
+    if (value == toString(candidate))
+      return candidate;
+  }
+  return std::nullopt;
+}
+
+std::optional<D4ProbeInfrastructureError>
 validateD4FrozenMapping(const std::vector<D4FrozenMappingEntry> &entries,
                         std::optional<DeclarationId> fallbackIdentity,
                         const void *fallbackPointer) {
@@ -95,6 +111,7 @@ validateD4FrozenMapping(const std::vector<D4FrozenMappingEntry> &entries,
     return D4ProbeInfrastructureError::MalformedBatch;
   std::set<DeclarationId> identities;
   std::set<const void *> pointers;
+  std::set<unsigned> ordinals;
   bool fallbackFound = !fallbackIdentity && !fallbackPointer;
   for (size_t index = 0; index < entries.size(); ++index) {
     const auto &entry = entries[index];
@@ -104,6 +121,8 @@ validateD4FrozenMapping(const std::vector<D4FrozenMappingEntry> &entries,
       return D4ProbeInfrastructureError::DuplicateCandidateIdentity;
     if (!pointers.insert(entry.DeclarationPointer).second)
       return D4ProbeInfrastructureError::DuplicateCandidateIdentity;
+    if (!ordinals.insert(entry.LegacyOrdinal).second)
+      return D4ProbeInfrastructureError::DuplicateLegacyOrdinal;
     if (entry.LegacyOrdinal != index)
       return D4ProbeInfrastructureError::NonContiguousLegacyOrdinal;
     if (fallbackIdentity && fallbackPointer &&
@@ -121,18 +140,22 @@ validateD4FrozenMapping(const std::vector<D4FrozenMappingEntry> &entries,
 bool operator==(const D4ProbeParentSentinel &lhs,
                 const D4ProbeParentSentinel &rhs) {
   return std::tie(lhs.NextNodeSerial, lhs.DiagnosticErrorCount,
-                  lhs.DiagnosticRecordCount, lhs.SourceSymbolId,
+                  lhs.NextSymbolId, lhs.DiagnosticRecordCount,
+                  lhs.SourceSymbolId, lhs.SourceBinding, lhs.SourceAST,
                   lhs.SourceInitMask, lhs.SourceMoved, lhs.SourceUsed,
                   lhs.SourceMutated, lhs.SourcePlaceState, lhs.SourcePALState,
+                  lhs.SourceBorrowedPath, lhs.SourceDependencies,
                   lhs.CallResolvedFunction, lhs.ActualResolvedType,
                   lhs.CopyProofCount, lhs.CopyFactCount, lhs.InstantiationCount,
                   lhs.GenericShapeCount, lhs.D3ConsideredCount,
                   lhs.D3FactoryCount) ==
              std::tie(rhs.NextNodeSerial, rhs.DiagnosticErrorCount,
-                      rhs.DiagnosticRecordCount, rhs.SourceSymbolId,
+                      rhs.NextSymbolId, rhs.DiagnosticRecordCount,
+                      rhs.SourceSymbolId, rhs.SourceBinding, rhs.SourceAST,
                       rhs.SourceInitMask, rhs.SourceMoved, rhs.SourceUsed,
                       rhs.SourceMutated, rhs.SourcePlaceState,
-                      rhs.SourcePALState, rhs.CallResolvedFunction,
+                      rhs.SourcePALState, rhs.SourceBorrowedPath,
+                      rhs.SourceDependencies, rhs.CallResolvedFunction,
                       rhs.ActualResolvedType, rhs.CopyProofCount,
                       rhs.CopyFactCount, rhs.InstantiationCount,
                       rhs.GenericShapeCount, rhs.D3ConsideredCount,
@@ -150,16 +173,21 @@ differingD4ProbeParentFields(const D4ProbeParentSentinel &before,
       result.push_back(name);                                                  \
   } while (false)
   D4_COMPARE(NextNodeSerial, "next_node_serial");
+  D4_COMPARE(NextSymbolId, "next_symbol_id");
   D4_COMPARE(DiagnosticErrorCount, "diagnostic_error_count");
   D4_COMPARE(DiagnosticRecordCount, "diagnostic_record_count");
   D4_COMPARE(Evidence, "evidence");
   D4_COMPARE(SourceSymbolId, "source_symbol_id");
+  D4_COMPARE(SourceBinding, "source_binding");
+  D4_COMPARE(SourceAST, "source_ast");
   D4_COMPARE(SourceInitMask, "source_init_mask");
   D4_COMPARE(SourceMoved, "source_moved");
   D4_COMPARE(SourceUsed, "source_used");
   D4_COMPARE(SourceMutated, "source_mutated");
   D4_COMPARE(SourcePlaceState, "source_place_state");
   D4_COMPARE(SourcePALState, "source_pal_state");
+  D4_COMPARE(SourceBorrowedPath, "source_borrowed_path");
+  D4_COMPARE(SourceDependencies, "source_dependencies");
   D4_COMPARE(CallResolvedFunction, "call_resolved_function");
   D4_COMPARE(ActualResolvedType, "actual_resolved_type");
   D4_COMPARE(CopyProofCount, "copy_proof_count");
@@ -189,6 +217,13 @@ size_t D4ProbeAuditSession::append(D4ProbeAuditRecord record,
   return index;
 }
 
+void D4ProbeAuditSession::appendInfrastructureFailure(
+    D4ProbeInfrastructureError error, D4ProbeAuditRecord record) {
+  ++AttemptedBatchCount;
+  ++InfrastructureErrors[error];
+  Records.push_back(std::move(record));
+}
+
 void D4ProbeAuditSession::noteFinalLegacyCheck(const void *callKey) {
   auto found = PendingFinalChecks.find(callKey);
   if (found == PendingFinalChecks.end())
@@ -204,11 +239,6 @@ void D4ProbeAuditSession::setForcedLegacySelection(
   Records[recordIndex].ForcedLegacySelectedDeclarationIdentity =
       std::move(declaration);
   Records[recordIndex].CandidateDiagnosticCount = diagnosticCount;
-}
-
-void D4ProbeAuditSession::noteInfrastructureError(
-    D4ProbeInfrastructureError error) {
-  ++InfrastructureErrors[error];
 }
 
 void D4ProbeAuditSession::dumpJSON(std::ostream &out) const {

@@ -16,10 +16,15 @@ ZERO = FIXTURES / "zero_consumer.tk"
 PRIMITIVE = FIXTURES / "primitive_consumer.tk"
 VARIANT = FIXTURES / "variant_consumer.tk"
 ALIAS = FIXTURES / "alias_consumer.tk"
+ACTUAL_ALIAS = FIXTURES / "actual_alias_consumer.tk"
+EXCLUSIONS = FIXTURES / "exclusion_consumer.tk"
+NON_SOURCE_BACKED = FIXTURES / "non_source_backed_consumer.tk"
+SOURCE_HIDDEN = FIXTURES / "source_hidden_consumer.tk"
 SCHEMA = FIXTURES / "receipt_schema_v1.json"
 FLAG = "--m1b-d4a-pure-nominal-overload-probe=json"
 FORCE = "--m1b-d4a-force-legacy"
 REVERSE = "--m1b-d4a-reverse-schedule"
+INJECT_ERROR = "--m1b-d4a-inject-error="
 
 
 def require(condition, message):
@@ -94,6 +99,22 @@ def require_parity(tokac, source, extra=()):
     return normal, observed, payload
 
 
+def require_exclusion(tokac, source, callee, reason, extra):
+    _, _, payload = require_parity(tokac, source, extra)
+    batches = source_batches(payload, source, callee)
+    require(len(batches) == 1,
+            f"{source}:{callee} did not produce one exclusion receipt")
+    batch = batches[0]
+    require(batch["exclusion"] == reason and batch["candidates"] == [] and
+            batch["disposition"] is None and
+            batch["parent_unchanged"] is True and
+            batch["differing_parent_fields"] == [] and
+            payload["pure_batch_count"] == 0 and
+            payload["excluded_count_by_reason"][reason] >= 1,
+            f"{source}:{callee} did not close {reason}")
+    return payload
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True)
@@ -157,26 +178,69 @@ def main():
             zero["final_legacy_check_count"] == 1,
             "zero-compatible fallback is not closed")
 
-    _, _, primitive_payload = require_parity(tokac, PRIMITIVE, include)
-    primitive = source_batches(primitive_payload, PRIMITIVE, "choose")
-    require(len(primitive) == 1 and
-            primitive[0]["exclusion"] == "PrimitiveOrAlias" and
-            primitive[0]["candidates"] == [],
-            "primitive overload entered the pure factory")
+    exclusion_cases = (
+        (EXCLUSIONS, "local_probe", "WrongRoute"),
+        (NON_SOURCE_BACKED, "non_source_probe", "NonSourceBacked"),
+        (EXCLUSIONS, "single_probe", "NotOverloaded"),
+        (EXCLUSIONS, "arity_probe", "ArityOrDefault"),
+        (EXCLUSIONS, "nonlocal_probe", "NonLocalOrNonLivePlace"),
+        (EXCLUSIONS, "actual_non_nominal_probe",
+         "NonDirectNominalActual"),
+        (EXCLUSIONS, "formal_non_nominal_probe",
+         "NonDirectNominalFormal"),
+        (VARIANT, "choose", "VariantOrRefinedNominal"),
+        (PRIMITIVE, "choose", "PrimitiveOrAlias"),
+        (EXCLUSIONS, "attribute_probe", "AttributesOrConversion"),
+        (EXCLUSIONS, "generic_probe", "GenericOrContextual"),
+        (EXCLUSIONS, "handle_probe", "HandleOrPermission"),
+        (EXCLUSIONS, "contract_probe", "ContractUnsupported"),
+        (EXCLUSIONS, "dependency_probe", "PALOrDependencyConflict"),
+        (SOURCE_HIDDEN, "source_hidden_probe", "SourceHiddenOrIncomplete"),
+    )
+    exclusion_payloads = {}
+    for source, callee, reason in exclusion_cases:
+        key = source.resolve()
+        if key not in exclusion_payloads:
+            _, _, exclusion_payloads[key] = require_parity(
+                tokac, source, include)
+        payload = exclusion_payloads[key]
+        batches = source_batches(payload, source, callee)
+        require(len(batches) == 1 and
+                batches[0]["exclusion"] == reason and
+                batches[0]["candidates"] == [] and
+                batches[0]["disposition"] is None and
+                batches[0]["parent_unchanged"] is True and
+                batches[0]["differing_parent_fields"] == [] and
+                payload["pure_batch_count"] == 0 and
+                payload["excluded_count_by_reason"][reason] >= 1,
+                f"{source}:{callee} did not close {reason}")
 
-    _, _, variant_payload = require_parity(tokac, VARIANT, include)
-    variant = source_batches(variant_payload, VARIANT, "choose")
-    require(len(variant) == 1 and
-            variant[0]["exclusion"] == "VariantOrRefinedNominal" and
-            variant[0]["candidates"] == [],
-            "suffix-bearing nominal entered the pure factory")
+    require_exclusion(tokac, ALIAS, "choose", "PrimitiveOrAlias", include)
+    require_exclusion(tokac, ACTUAL_ALIAS, "choose_actual_alias",
+                      "PrimitiveOrAlias", include)
 
-    _, _, alias_payload = require_parity(tokac, ALIAS, include)
-    alias = source_batches(alias_payload, ALIAS, "choose")
-    require(len(alias) == 1 and
-            alias[0]["exclusion"] == "PrimitiveOrAlias" and
-            alias[0]["candidates"] == [],
-            "alias-derived nominal entered the pure factory")
+    infrastructure_errors = (
+        "InvalidCallSiteIdentity",
+        "InvalidNominalShapeId",
+        "DuplicateCandidateIdentity",
+        "DuplicateLegacyOrdinal",
+        "NonContiguousLegacyOrdinal",
+        "MalformedBatch",
+    )
+    for injected in infrastructure_errors:
+        result, payload = audit(
+            tokac, UNIQUE, extra=(*include, INJECT_ERROR + injected))
+        failures = source_batches(payload, UNIQUE, "choose")
+        require(result.returncode != 0 and
+                "internal D.4a" in result.stderr and
+                payload["pure_batch_count"] == 0 and
+                payload["infrastructure_error_count"] == 1 and
+                payload["infrastructure_error_count_by_reason"][injected] == 1 and
+                len(failures) == 1 and
+                failures[0]["disposition"] is None and
+                failures[0]["parent_unchanged"] is True and
+                failures[0]["differing_parent_fields"] == [],
+                f"{injected} did not fail closed with preserved parent state")
 
     d3 = run([str(tokac), "--m1b-d3-direct-call-observation=json",
               "--check-only", *include, str(UNIQUE)])

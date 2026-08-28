@@ -35,6 +35,8 @@ enum class D4ProbeExclusionReason : uint8_t {
 };
 
 const char *toString(D4ProbeExclusionReason value);
+std::optional<D4ProbeInfrastructureError>
+parseD4ProbeInfrastructureError(const std::string &value);
 
 struct D4ProbeLocation {
   std::string File;
@@ -62,16 +64,21 @@ validateD4FrozenMapping(const std::vector<D4FrozenMappingEntry> &entries,
 
 struct D4ProbeParentSentinel {
   uint32_t NextNodeSerial = 0;
+  uint64_t NextSymbolId = 0;
   int DiagnosticErrorCount = 0;
   size_t DiagnosticRecordCount = 0;
   SemanticEvidenceAuditState Evidence;
   uint64_t SourceSymbolId = 0;
+  uintptr_t SourceBinding = 0;
+  uintptr_t SourceAST = 0;
   uint64_t SourceInitMask = 0;
   bool SourceMoved = false;
   bool SourceUsed = false;
   bool SourceMutated = false;
   std::string SourcePlaceState;
   std::string SourcePALState;
+  std::string SourceBorrowedPath;
+  std::vector<std::string> SourceDependencies;
   uintptr_t CallResolvedFunction = 0;
   uintptr_t ActualResolvedType = 0;
   size_t CopyProofCount = 0;
@@ -113,12 +120,21 @@ public:
   void setForceLegacy(bool value) { ForceLegacy = value; }
   bool reverseSchedule() const { return ReverseSchedule; }
   void setReverseSchedule(bool value) { ReverseSchedule = value; }
+  void setInjectedInfrastructureError(
+      std::optional<D4ProbeInfrastructureError> value) {
+    InjectedInfrastructureError = value;
+  }
+  std::optional<D4ProbeInfrastructureError>
+  injectedInfrastructureError() const {
+    return InjectedInfrastructureError;
+  }
   size_t append(D4ProbeAuditRecord record, const void *callKey = nullptr);
+  void appendInfrastructureFailure(D4ProbeInfrastructureError error,
+                                   D4ProbeAuditRecord record);
   void noteFinalLegacyCheck(const void *callKey);
   void setForcedLegacySelection(size_t recordIndex,
                                 std::optional<std::string> declaration,
                                 size_t diagnosticCount);
-  void noteInfrastructureError(D4ProbeInfrastructureError error);
   size_t attemptedBatchCount() const { return AttemptedBatchCount; }
   size_t pureBatchCount() const { return PureBatchCount; }
   void dumpJSON(std::ostream &out) const;
@@ -126,6 +142,7 @@ public:
 private:
   bool ForceLegacy = false;
   bool ReverseSchedule = false;
+  std::optional<D4ProbeInfrastructureError> InjectedInfrastructureError;
   size_t AttemptedBatchCount = 0;
   size_t PureBatchCount = 0;
   std::map<D4ProbeExclusionReason, size_t> ExcludedCounts;

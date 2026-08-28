@@ -1,0 +1,5 @@
+pub shape Model(value: i32)
+pub shape Other(value: i32)
+
+pub fn non_source_probe(value: Model) -> i32
+pub fn non_source_probe(value: Other) -> i32
