@@ -146,16 +146,15 @@ classifyLegacyCedeRequirement(LegacyCedePolicyInput) const
 
 LegacyCedePolicyInput
     resolved concrete type identity/category
-    resolved soul name
-    frozen named-policy case
-        None | ImplicitExempt | ExplicitRequired
+    resolved canonical soul name
     frozen drop fact
         HasDrop | NoDrop | Indeterminate
 ```
 
-The named-policy case is the single representation of current RC8 exceptions,
-including `SlabID` and the forced-explicit resource/view list. It must not be
-redeclared independently in D.5a. For this subset,
+The pure classifier owns the single closed RC8 named-policy table, including
+`SlabID` and the forced-explicit resource/view list. No caller can supply or
+override a named-policy result, and the table must not be redeclared in
+integration or D.5a. For this subset,
 `canImplicitlyPassToCede()` becomes an adapter over the same classifier, so
 legacy checking and D.5a cannot disagree while both receive identical input.
 Closure recursion and other excluded legacy categories remain on their current
@@ -425,6 +424,8 @@ Implementation acceptance requires:
 7. cold/warm cache state and fixture scheduling do not change admission or plan;
    the shared legacy-policy classifier is order-independent and returns
    `Indeterminate` rather than populating a missing fact;
+   every current named RC8 exception is parity-tested through both the legacy
+   adapter and the D.5a witness path without a duplicated expected-policy table;
 8. every closed exclusion/error has a real gate; factory-invalid cases fail
    closed with no plan;
 9. equal digest with unequal full identity/plan remains unequal;
