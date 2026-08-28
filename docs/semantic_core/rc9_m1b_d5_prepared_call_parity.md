@@ -92,7 +92,8 @@ Every D.5a condition is required:
   identity with no conversion or contextual typing;
 - Copy and ownership proofs are already present in read-only qualified stores;
 - every admitted `cede + ProvenNonCopy` row also has
-  `OwnershipProof=Owned`; `ProvenNonCopy + Trivial` is outside D.5a;
+  `OwnershipProof=Owned` and a stable
+  `LegacyCedeRequirement=ExplicitRequired` witness;
 - no proof-producing query or cache insertion is required;
 - no shared/raw/reference/function/dyn identity, dependency-bearing view,
   return dependency, region escape, outcome, `init`, default, variadic,
@@ -101,24 +102,80 @@ Every D.5a condition is required:
 
 The admitted matrix is deliberately small:
 
-| Selected formal and whole local actual | Prepared transfer | Prepared source |
-| --- | --- | --- |
-| non-`cede` plain aggregate, bare | `BorrowCapture` | `KeepLive` |
-| `cede` proven non-Copy, proven Owned aggregate, bare | `MoveOwned` | `InvalidateWhole` |
-| `cede` proven non-Copy, proven Owned aggregate, explicit | `MoveOwned` | `InvalidateWhole` |
-| `cede` proven Copy, proven Trivial aggregate, bare | `CopyValue` | `KeepLive` |
-| `cede` proven Copy, proven Trivial aggregate, explicit | `CopyValue` | `InvalidateWhole` |
+| Selected formal and whole local actual | Legacy cede requirement | Prepared transfer | Prepared source |
+| --- | --- | --- | --- |
+| non-`cede` plain aggregate, bare | absent/not applicable | `BorrowCapture` | `KeepLive` |
+| `cede` proven non-Copy, proven Owned aggregate, bare | `ExplicitRequired` | `MoveOwned` | `InvalidateWhole` |
+| `cede` proven non-Copy, proven Owned aggregate, explicit | `ExplicitRequired` | `MoveOwned` | `InvalidateWhole` |
+| `cede` proven Copy, proven Trivial aggregate, bare | `ImplicitExempt` | `CopyValue` | `KeepLive` |
+| `cede` proven Copy, proven Trivial aggregate, explicit | `ImplicitExempt` | `CopyValue` | `InvalidateWhole` |
 
 The admitted bare non-Copy/Owned row still receives legacy `E04570`. D.5a
 records that its prospective authority is otherwise equivalent to the explicit
 row; it does not suppress the diagnostic or invalidate the source.
 
-`ProvenNonCopy + Trivial` does not imply the legacy caller policy requires
-explicit `cede`: a managed no-drop aggregate may still be exempt under RC8.
-D.5a therefore returns `NotInSlice(CededNonCopyTrivial)` before preparation for
-that combination. The insertion point must not call
-`canImplicitlyPassToCede()` or another legacy helper that can resolve, cache,
-or mutate facts.
+Neither `ProvenNonCopy` nor `OwnershipProof=Owned` implies the RC8 caller policy
+requires explicit `cede`. `SlabID`, for example, is non-Copy and has drop but is
+a named legacy exemption. The shared pure core therefore returns
+`NotInSlice(CededNonCopyLegacyExempt)` for an implicit-exempt non-Copy formal,
+regardless of bare/explicit spelling. `Indeterminate` rejects fail-closed. The
+insertion point must not call the current resolving `canImplicitlyPassToCede()`
+implementation or another helper that can populate semantic state.
+
+## Legacy caller-policy witness
+
+Legacy spelling policy is an independent compatibility axis:
+
+```text
+LegacyCedeRequirement
+    ExplicitRequired
+    ImplicitExempt
+    Indeterminate
+```
+
+It is not derived from Copy, ownership, drop liability, or the prospective
+transfer plan. It predicts only whether unmodified RC8 checking requires caller
+spelling for this already-selected `cede` formal.
+
+D.5a implementation must extract one shared pure classifier from the existing
+RC8 helper for the admitted, already-resolved, non-closure aggregate subset:
+
+```text
+classifyLegacyCedeRequirement(LegacyCedePolicyInput) const
+    -> LegacyCedeRequirement
+
+LegacyCedePolicyInput
+    resolved concrete type identity/category
+    resolved soul name
+    frozen named-policy case
+        None | ImplicitExempt | ExplicitRequired
+    frozen drop fact
+        HasDrop | NoDrop | Indeterminate
+```
+
+The named-policy case is the single representation of current RC8 exceptions,
+including `SlabID` and the forced-explicit resource/view list. It must not be
+redeclared independently in D.5a. For this subset,
+`canImplicitlyPassToCede()` becomes an adapter over the same classifier, so
+legacy checking and D.5a cannot disagree while both receive identical input.
+Closure recursion and other excluded legacy categories remain on their current
+path and cannot enter D.5a.
+
+Classifier input is built only from already-resolved type and frozen shape/drop
+facts. It cannot call `resolveType()`, `hasDrop()`, `checkExpr()`, a
+proof-producing query, or mutate/cache a policy result. Cold or incomplete
+input returns `Indeterminate`. This witness is Shadow compatibility evidence;
+it grants no transfer, invalidation, cleanup, or future language authority.
+
+Legacy outcome validation is exact:
+
+- `ExplicitRequired + bare` must produce exactly legacy `E04570` and preserve
+  the pre-call source state;
+- `ExplicitRequired + explicit` must not produce `E04570` and follows the
+  existing explicit destructive-read path;
+- `ImplicitExempt` must not produce `E04570` for either spelling; and
+- any different observed diagnostic/boundary result is
+  `Rejected(LegacyOutcomeMismatch)`, never an adjusted policy witness.
 
 ## Stable pre-legacy facts
 
@@ -136,6 +193,7 @@ ResolvedPlanningFacts
     TypeCategory
     CopyProof = ProvenCopy | ProvenNonCopy
     OwnershipProof = Trivial | Owned
+    LegacyCedeRequirement? (present only for selected cede formal)
     exact whole-place authority and raw PAL state
     raw dependency facts
     SourceCleanupAuthority = None | ExistingSourcePlace(PlaceId, init mask)
@@ -206,6 +264,7 @@ hashes or display strings. Same-call parity compares:
 - call, callee, formal, argument-plan, edge, source-place, destination, region,
   cleanup, and patch identities;
 - transfer mode, source disposition, spelling, Copy/ownership proof;
+- the optional legacy cede-requirement witness;
 - PAL/dependency/boundary facts and cleanup liability;
 - every Boundary and Finalization delta entry; and
 - the complete SemanticModelPatch.
@@ -234,8 +293,8 @@ allowed-difference relation:
   PlaceState/PAL delta and patch payloads derived from that disposition may
   differ;
 - transfer mode, Copy/ownership proof, destination, dependency, cleanup
-  liability, region recipe, and every non-source delta/patch fact must remain
-  equal in both comparisons.
+  liability, legacy cede requirement, region recipe, and every non-source
+  delta/patch fact must remain equal in both comparisons.
 
 The allowed-difference matcher is typed and exhaustive. It cannot erase fields,
 compare display strings, or accept an unclassified difference.
@@ -264,13 +323,15 @@ D5PreparationExclusionReason
     SharedRawReferenceOrCallable
     DependencyBearingActual
     TypeRequiresContextOrConversion
-    CededNonCopyTrivial
+    CededNonCopyLegacyExempt
 
 D5PreparationError
     InvalidIdentity
     IncompatibleType
     IndeterminateCopyProof
     IndeterminateOwnership
+    IndeterminateLegacyCedeRequirement
+    InconsistentLegacyCedeRequirement
     InvalidWholePlaceAdmission
     IncompleteLiability
     IncompleteRegion
@@ -314,6 +375,7 @@ infrastructure_error_count_by_reason
 receipts[]
     call/formal/source locations and typed identities
     pre-legacy planning facts
+    legacy_cede_requirement?
     prepared admission/reason
     prepared plan?
     legacy diagnostic codes
@@ -341,11 +403,13 @@ Implementation acceptance requires:
 2. each same-call pre/post pair is strictly structurally equal; cross-fixture
    bare/explicit comparisons pass only the frozen role-normalized
    allowed-difference relation;
-3. the admitted bare non-Copy/Owned call still emits exactly legacy `E04570`,
-   while a real `cede + ProvenNonCopy + Trivial` fixture is
-   `NotInSlice(CededNonCopyTrivial)` and preserves its legacy exemption;
+3. the admitted bare non-Copy/Owned/ExplicitRequired call still emits exactly
+   legacy `E04570`; real managed no-drop and `SlabID` fixtures are
+   `NotInSlice(CededNonCopyLegacyExempt)`, preserve their legacy exemption, and
+   produce no `PreparedCall`;
 4. pre/post call, formal, actual type/proof, source identity, dependency,
-   cleanup, region, and plan facts are structurally equal for admitted calls;
+   cleanup, legacy requirement, region, and plan facts are structurally equal
+   for admitted calls;
    successful legacy calls must match the selected prepared source/boundary
    disposition; the bare non-Copy/Owned spelling-only failure must instead
    preserve the pre-call source state because its prospective plan is not
@@ -359,6 +423,8 @@ Implementation acceptance requires:
    diagnostics, Evidence v1, D.3a receipt, and exit status are byte-identical
    with D.5a disabled;
 7. cold/warm cache state and fixture scheduling do not change admission or plan;
+   the shared legacy-policy classifier is order-independent and returns
+   `Indeterminate` rather than populating a missing fact;
 8. every closed exclusion/error has a real gate; factory-invalid cases fail
    closed with no plan;
 9. equal digest with unequal full identity/plan remains unequal;
