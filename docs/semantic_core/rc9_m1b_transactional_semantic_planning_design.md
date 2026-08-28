@@ -624,7 +624,7 @@ no transaction type or production Sema/Evidence/CodeGen include.
 ### M1b.1 — transactional probe infrastructure
 
 - Enter through the separately reviewed real-path contract
-  [`M1b-D.4 Pure Ordinary Overload Probe`](rc9_m1b_d4_pure_call_probe.md).
+  [`M1b-D.4a Pure Direct-Nominal Overload Probe`](rc9_m1b_d4_pure_call_probe.md).
 - Route diagnostics, internal facts, PAL/place deltas, and semantic-model
   patches through a transaction for call preparation. Public Evidence v1 stays
   on the legacy path.

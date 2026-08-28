@@ -1,278 +1,335 @@
-# RC9 M1b-D.4 Pure Ordinary Overload Probe
+# RC9 M1b-D.4a Pure Direct-Nominal Overload Probe
 
-**Design status:** Proposed for independent review.
+**Design status:** Proposed for one bounded implementation-authorization
+review.
 
-**Implementation status:** Not implemented. M1b.1a is not authorized until
-this contract passes review.
+**Implementation status:** Not implemented. The next review is governed by the
+closed review boundary in this document.
 
 **Qualified baseline:** D.3a ordinary direct-call Shadow observation at
 `0235a35cd3f60f4be0ab225dfae7abe5a6eea4fb`.
 
 ## Decision
 
-The first M1b.1 slice does not need a transaction child.
+D.4a replaces one unnecessary live overload-candidate traversal with an atomic
+pure query.
 
-For its deliberately narrow input, candidate selection depends only on facts
-already established before the call:
+The admitted actual and every admitted formal are already-resolved direct
+nominal shapes. Their compatibility authority is `NominalShapeId`. The pure
+factory performs only full `NominalShapeId` equality and unique-match
+classification.
 
-- the resolver-owned overload set;
-- each selected declaration and resolved formal type; and
-- one concrete whole-local binding type.
+D.4a introduces no AST clone, primitive classifier, alias resolution,
+conversion, contextual typing, transaction child, Scope/PAL copy, diagnostic
+sink, rollback, journal, adopt, commit, or model publication.
 
-Running `checkExpr()` against the source AST during candidate selection is
-therefore unnecessary. It is also the cause of speculative AST, Scope, PAL,
-diagnostic, Evidence, cache, and node-serial mutation.
+## Closed admission
 
-M1b.1a replaces that live candidate traversal with one pure value query. It
-introduces no AST clone, probe-local node identity, Scope/PAL copy, diagnostic
-sink, rollback, child lifecycle, journal, adopt, commit, or model publication.
+Every condition below is required:
 
-Contextual expressions that genuinely require semantic evaluation remain for
-a later reviewed transaction slice.
-
-## Scope
-
-The pure probe admits only:
-
-- a source-backed ordinary direct call with at least two resolver-selected
-  overload candidates;
-- non-generic, non-variadic, synchronous candidates;
-- exactly one explicit, non-default formal on every candidate and one actual;
-- no `cede`, `init`, writable/rebindable, raw/reference/managed-handle, outcome,
+- source-backed ordinary direct call;
+- resolver-owned overload vector containing at least two declarations;
+- exactly one actual and exactly one explicit formal on every candidate;
+- actual is a bare whole function-local place in `Live` state;
+- actual type is a direct resolved nominal shape with a valid
+  `NominalShapeId`;
+- every formal type is a direct resolved nominal shape with a valid
+  `NominalShapeId`;
+- no primitive, alias, anonymous/structural type, attribute normalization,
+  implicit conversion, generic parameter/instance, handle morphology,
+  contextual typing, or incomplete type;
+- no `cede`, `init`, default, variadic, writable/rebindable, outcome,
   execution-boundary, or return-dependency contract;
-- one bare whole function-local place actual;
-- a concrete actual type already established on its `SymbolInfo`;
-- concrete formal types already established before the probe; and
-- actual and formal types in the exact-identity domain: plain primitives or
-  resolved nominal values with no alias/coercion/structural conversion; and
-- no active moved/uninit state, PAL conflict, place alias, dependency escape,
-  or capability mismatch.
+- no active PAL conflict, moved/uninit state, place alias, dependency escape,
+  or capability mismatch;
+- candidate declaration identities are unique; and
+- legacy ordinals are unique, contiguous `[0, candidate_count)`, and reproduce
+  the resolver vector order exactly.
 
-Literals, temporaries, projections, closures, nested calls, explicit `cede`,
-permission-bearing formals/actuals, generic calls, methods, callables, externs,
-async calls, `.start`, thread handoff, globals, captures, source-hidden
-declarations, weak/strong aliases, anonymous records, function/dyn coercions,
-`never`, and incomplete types are not admitted.
+Any failed condition is excluded before pure factory invocation.
 
-This scope is intentionally smaller than D.3a. Its purpose is to remove one
-unnecessary speculative traversal, not to plan ownership.
+## Closed exclusion result
 
-## Immutable input
-
-Integration constructs this value without checking or cloning the actual:
+Integration returns one closed reason for every excluded attempt:
 
 ```text
-PureOverloadProbeInput
+ProbeExclusionReason
+    WrongRoute
+    NonSourceBacked
+    NotOverloaded
+    ArityOrDefault
+    NonLocalOrNonLivePlace
+    NonDirectNominalActual
+    NonDirectNominalFormal
+    PrimitiveOrAlias
+    AttributesOrConversion
+    GenericOrContextual
+    HandleOrPermission
+    ContractUnsupported
+    PALOrDependencyConflict
+    SourceHiddenOrIncomplete
+```
+
+Every enumerator requires a real fixture and an exhaustive switch without
+`default`. Exclusion produces no pure batch and no candidate result.
+
+## Frozen integration batch
+
+Integration first freezes one resolver-owned value:
+
+```text
+FrozenOverloadBatch
     CallSiteId
-    LegacyFallbackDeclarationId
+    Candidates[]                    resolver vector order
+        DeclarationId
+        FunctionDecl*               integration-only read-only mapping
+        LegacyOrdinal
+        DirectNominalFormalFact
+            NominalShapeId
+    LegacyFallback
+        FunctionDecl*?
+        DeclarationId?
     Actual
         RootSymbolId
-        TypeIdentity
-        PlaceState = Live
-        IsWholeFunctionLocal = true
-        HasPALConflict = false
-        HasDependencies = false
-        PlainCapabilities = true
+        DirectNominalActualFact
+            NominalShapeId
+```
+
+`FunctionDecl*` never enters the pure DTO. It exists only in this frozen
+integration batch so a returned declaration identity can be mapped back to the
+same resolver vector.
+
+Before factory invocation, integration validates:
+
+- every candidate ID maps to exactly one element of this vector;
+- every ordinal equals its vector index;
+- no ID or ordinal is duplicated;
+- fallback is absent or maps to exactly one element of this same vector; and
+- call, actual, formal, and fallback identities are structurally valid.
+
+An invalid frozen batch is an infrastructure error, not an exclusion and not a
+legacy fallback.
+
+## Pure input and result
+
+The independent pure translation unit receives no fallback:
+
+```text
+PureNominalProbeInput
+    CallSiteId
+    ActualNominalShapeId
     Candidates[]
         DeclarationId
         LegacyOrdinal
-        FormalTypeIdentity
-        ArityAndContractFacts
+        FormalNominalShapeId
 ```
 
-Every identity is built through the controlled structural identity builders.
-Candidate input order is the current resolver's legacy order. A digest is not
-identity and has no selection authority.
-
-Input construction returns:
+It returns:
 
 ```text
-Expected<PureOverloadProbeInput, ProbeInputError>
-```
+Expected<NominalProbeBatchResult, ProbeInfrastructureError>
 
-`ProbeInputError` is closed:
-
-```text
-InvalidCallSiteIdentity
-InvalidFallbackIdentity
-InvalidCandidateSet
-NonConcreteTypeIdentity
-```
-
-An ordinary unsupported shape is `NotInSlice` before the pure factory is
-called. A malformed supposedly admitted fact is `ProbeInputError` and fails
-closed; it may not silently enter the pure path.
-
-## Pure result
-
-The independent pure translation unit returns:
-
-```text
-Expected<OverloadProbeBatchResult, ProbeInfrastructureError>
-
-OverloadProbeBatchResult
+NominalProbeBatchResult
     Disposition
         UniqueCompatible(DeclarationId)
         LegacyRequired(LegacyReason)
-    LegacyFallbackDeclarationId
     Candidates[]
         DeclarationId
         LegacyOrdinal
         Compatible
 ```
 
-`LegacyReason` is closed:
+`Compatible` is exactly:
 
 ```text
-ZeroCompatible
-MultipleCompatible
+ActualNominalShapeId == FormalNominalShapeId
 ```
+
+Equality is complete structural `NominalShapeId` equality. Hashes may optimize
+lookup but never establish equality. Equal hash with unequal complete identity
+remains incompatible.
+
+Exactly one compatible candidate yields `UniqueCompatible`. Zero or multiple
+yield:
+
+```text
+LegacyReason
+    ZeroCompatible
+    MultipleCompatible
+```
+
+The pure factory does not inspect or select the integration fallback.
 
 `ProbeInfrastructureError` is closed:
 
 ```text
-InvalidIdentity
+InvalidCallSiteIdentity
+InvalidNominalShapeId
 DuplicateCandidateIdentity
 DuplicateLegacyOrdinal
+NonContiguousLegacyOrdinal
 MalformedBatch
 ```
 
-The factory contains no Sema, AST, Scope, PAL, diagnostics, Evidence, cache,
-environment, CLI, callback, or global/static mutable state.
-
-## Compatibility rule
-
-For every admitted candidate, `Compatible` is exactly:
-
-```text
-formal arity is one
-AND actual/formal identities are concrete
-AND FormalTypeIdentity == ActualTypeIdentity
-```
-
-All other compatibility dimensions are excluded by admission rather than
-reimplemented in the factory. The admitted exact-identity domain must prove
-that identity equality is equivalent to the current legacy
-`isTypeCompatible(formal, actual)` result. Unknown types cannot mean
-compatible; they are an input error or `NotInSlice` before factory invocation.
-
-The factory evaluates every candidate once in legacy ordinal order. Exactly
-one compatible candidate yields `UniqueCompatible`. Zero or multiple yield
-`LegacyRequired`; no fallback declaration is selected by the pure factory.
+Infrastructure error fails closed: no legacy fallback, one internal compiler
+diagnostic, nonzero exit, and no parent-state change.
 
 ## Integration behavior
 
-For `UniqueCompatible`:
+For `UniqueCompatible(id)`:
 
-1. Select the returned declaration.
-2. Run the existing final legacy call check exactly once on the source actual.
-3. Let that final traversal remain the only producer of diagnostics, Evidence
-   v1, PAL/place changes, D.3a observation, and CodeGen input.
+1. Resolve `id` only through the same frozen integration vector.
+2. Select that declaration.
+3. Run the existing final source legacy check exactly once.
+4. Let that final check remain the only producer of diagnostics, Evidence v1,
+   PAL/place changes, D.3a observation, and CodeGen input.
 
-For `LegacyRequired`:
+For `LegacyRequired(reason)`:
 
-1. Increment a command-local, qualification-visible fallback counter with the
-   exact closed reason.
-2. Run the current named legacy overload-probe path unchanged.
+1. Record the exact closed reason in command-local qualification state.
+2. Invoke the named current legacy overload path with the unchanged resolver
+   vector and integration-owned fallback.
 
-Fallback is therefore explicit and semantically classified, not silent. It is
-allowed only for a well-formed but unselected result. A
-`ProbeInfrastructureError` never falls back to a partial or live candidate set;
-it fails compilation with one internal compiler diagnostic and publishes no
-candidate result.
+The pure result cannot replace, manufacture, or import a fallback from another
+batch.
 
-Because the admitted pure path is statically limited to diagnostic-free
-candidate checks, removing those checks changes no public diagnostic bytes.
-The final legacy check still reports any actual call error once. Fixtures must
-prove this premise; if a candidate diagnostic is observed for an admitted
-shape, admission is wrong and the implementation fails qualification.
+## Required equivalence theorem
+
+For the closed admitted input only, qualification must prove:
+
+```text
+NominalShapeId(actual) == NominalShapeId(formal)
+iff
+legacy isTypeCompatible(formal, actual)
+```
+
+The theorem is tested with direct nominal declarations from the same module,
+different modules, same spelling/different nominal owner, and equal nominal
+identity reached through the resolver. A counterexample inside this exact
+domain blocks D.4a.
+
+Primitive widening, aliases, coercions, anonymous records, attributes,
+generics, handles, and contextual typing are outside the theorem and outside
+D.4a.
 
 ## Parent preservation
 
-The pure path reads the source call, actual, Scope, PAL, diagnostics, Evidence,
-and type facts through const queries only. Before and after each batch,
-qualification structurally compares:
+Input construction and the pure factory use const queries only. Before and
+after each attempted batch, qualification structurally compares:
 
-- source call/actual AST and global `ASTNode::NextNodeSerial`;
-- the visible Scope chain and exact source binding;
-- parent PAL and transient loans;
+- source call/actual AST and `ASTNode::NextNodeSerial`;
+- visible Scope chain and exact source binding;
+- PAL and transient loans;
 - diagnostics and complete Evidence buffers;
 - D.3a considered/factory/envelope state;
 - semantic identities/builders; and
-- relevant type/declaration/cache inventories.
+- relevant resolver/type/declaration/cache inventories.
 
-There is no state to discard or restore. Probe order is tested in original,
-reverse-input, and repeated-batch executions; the selected declaration and all
-parent fields must remain identical.
+There is no child state to discard or restore.
 
 ## Qualification protocol
 
-One BUILD_TESTING/internal receipt records:
+The BUILD_TESTING/internal protocol is exact and separately versioned:
 
 ```text
-schema = toka.internal.m1b-d4-pure-overload-probe
+schema = toka.internal.m1b-d4a-pure-nominal-overload-probe
 version = 1
 attempted_batch_count
 pure_batch_count
+excluded_count_by_reason
 legacy_required_count_by_reason
 infrastructure_error_count
 batches[]
     call site
-    candidate declaration identities + legacy ordinals
+    candidate declaration IDs + complete NominalShapeIds + legacy ordinals
     compatible bits
     disposition
-    selected declaration identity?
+    selected declaration ID?
+    forced_legacy_selected_declaration_id?
+    candidate_diagnostic_count
+    final_legacy_check_count
     parent comparison fields
 ```
 
-It is command-local, emits no public Evidence, and is mutually exclusive with
-other JSON/evaluation modes. The factory returns records by value; the audit
-driver appends them only after parent comparison.
+All exclusion, legacy-reason, and infrastructure-error enums have
+exact schema values, exhaustive switches, and at least one fixture.
+
+## Pure-versus-forced-legacy gate
+
+Under `BUILD_TESTING`, every pure-admitted fixture runs two isolated compiler
+executions over the same source and same frozen candidate identities:
+
+- pure selection path; and
+- forced current legacy candidate path.
+
+The comparison requires:
+
+- identical selected declaration identity;
+- candidate diagnostics count is zero on the admitted legacy path;
+- final source legacy check count is exactly one on both paths;
+- identical final diagnostics, stderr, exit status, Evidence v1, D.3a final
+  receipt, and ordinary output; and
+- identical parent-state structural fields.
+
+Scheduling-order tests reverse only the evaluation schedule of an immutable
+copy of the same candidate vector. They do not reorder source declarations or
+change declaration/ordinal identities.
 
 ## Qualification matrix
 
-M1b.1a requires real compiler fixtures for:
+D.4a requires real fixtures for:
 
-- two plain-value candidates with exactly one compatible local type;
-- primitive and nominal exact-identity parity against the legacy compatibility
-  query;
-- three candidates and reversed declaration order with the same selected
-  declaration;
-- repeated pure batches with stable identity and output;
-- zero-compatible and multiple-compatible classified legacy fallback;
-- each syntactic/type/permission/lifetime exclusion with pure factory count
-  zero, including aliases, anonymous records, coercions, and incomplete types;
-- infrastructure-error fail-closed behavior with no live fallback;
-- global node serial, source AST, Scope/PAL, diagnostics, Evidence v1, D.3a,
-  exit status, and ordinary output parity; and
-- proof that the pure TU has no forbidden compiler or mutable-global
-  dependency.
+- two direct nominal candidates with exactly one compatible local actual;
+- three direct nominal candidates with one compatible actual;
+- same spelling with different nominal owner;
+- zero-compatible and multiple-compatible legacy fallback;
+- original, reverse-schedule, and repeated pure evaluation;
+- every closed exclusion reason with pure factory count zero;
+- duplicate/missing/foreign candidate and fallback mappings;
+- full-key identity/hash-collision behavior;
+- forced-legacy equivalence and exact final-check counts; and
+- each closed infrastructure error with fail-closed parent preservation.
 
-The baseline overload fixture must additionally prove that legacy candidate
-checks are diagnostic-free for the admitted shape. This is an admission theorem,
-not an assumption hidden in implementation.
+The pure translation unit must have no Sema, AST, Scope, PAL, diagnostic,
+Evidence, cache, environment, CLI, callback, CodeGen, SemanticModel
+publication, or mutable-global dependency.
 
 ## Exit criteria
 
-M1b.1a is complete only when:
+D.4a is complete only when:
 
-- the admitted overload path performs no live candidate `checkExpr()` call;
-- one unique compatible candidate is selected from immutable facts;
-- unsupported/zero/multiple cases use an explicit classified legacy fallback;
-- infrastructure failure fails closed without fallback;
-- the final source actual is checked exactly once;
-- all parent-preservation and parity gates pass; and
-- the implementation receives independent post-implementation acceptance.
+- the admitted nominal overload path performs no live candidate `checkExpr()`;
+- pure and forced-legacy paths select the same declaration;
+- unique/zero/multiple classification and same-vector mapping are exact;
+- final source legacy checking occurs exactly once;
+- closed exclusion/error gates are exhaustive;
+- all parent-preservation and public parity gates pass; and
+- implementation receives bounded post-implementation acceptance.
+
+## Bounded review rule
+
+The next review may block D.4a only with a reproducible counterexample that
+satisfies every closed admission condition above and demonstrates one of:
+
+1. nominal identity equality differs from legacy nominal compatibility;
+2. frozen candidate/fallback mapping is incorrect;
+3. unique/zero/multiple classification is incorrect;
+4. the pure query changes parent state;
+5. pure and forced-legacy selection, diagnostics, or final-check count differ;
+6. a closed exclusion/infrastructure error gate is not exhaustive.
+
+Primitive widening, aliases, attributes, conversions, contextual typing,
+transactions, diagnostic replay, generics, other routes, and ownership
+activation are explicitly out of scope and cannot reject D.4a.
+
+If the bounded review produces no such counterexample, D.4a is authorized for
+implementation. New scope requires a later design slice rather than reopening
+this contract.
 
 ## Non-authorization
 
-This contract does not authorize a transaction kernel, AST probe cloning,
-generic deduction isolation, closure precompute migration, contextual literal
-or temporary probing, ownership planning/adopt/commit, SemanticModel
+D.4a does not authorize primitive or alias overload queries, contextual
+evaluation, transaction infrastructure, generic deduction isolation, closure
+precompute migration, ownership planning/adopt/commit, SemanticModel
 publication, CodeGen consumption, Evidence v2, route convergence, `E04570`
 removal, or caller-spelling activation.
-
-A later slice may introduce a discardable child only when an admitted
-contextual expression cannot be decided from immutable facts. That design must
-solve node identity, complete Sema state ownership, and diagnostic policy at
-that time rather than prepaying those costs here.
