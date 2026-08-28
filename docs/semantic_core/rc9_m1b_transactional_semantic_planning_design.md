@@ -624,16 +624,18 @@ no transaction type or production Sema/Evidence/CodeGen include.
 ### M1b.1 — transactional probe infrastructure
 
 - Enter through the separately reviewed real-path contract
-  [`M1b-D.4 Discard-Only Ordinary Call Probe`](rc9_m1b_d4_discard_only_call_probe.md).
+  [`M1b-D.4 Pure Ordinary Overload Probe`](rc9_m1b_d4_pure_call_probe.md).
 - Route diagnostics, internal facts, PAL/place deltas, and semantic-model
   patches through a transaction for call preparation. Public Evidence v1 stays
   on the legacy path.
-- Move closure precompute and candidate probing to discardable children.
+- Move contextual closure precompute and candidate probing to discardable
+  children only where an immutable pure query is insufficient.
 - Do not activate call ownership changes.
 
-The D.4 entry slice is narrower than full M1b.1: it isolates one admitted
-ordinary overload probe with a discard-only child and publishes no semantic
-model patch. Later M1b.1 work remains separately review-gated.
+The D.4 entry slice is narrower than full M1b.1: it removes one unnecessary
+ordinary overload traversal through an immutable pure query and publishes no
+semantic model patch. It intentionally introduces no transaction child;
+contextual probes remain separately review-gated.
 
 ### M1b.2 — unified type and exact-place queries
 
