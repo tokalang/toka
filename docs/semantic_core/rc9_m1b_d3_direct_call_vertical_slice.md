@@ -1,12 +1,10 @@
 # RC9 M1b-D.3 Ordinary Direct-Call Vertical Slice
 
-**Design status:** Accepted for D.3a implementation / Shadow-only.
+**Design status:** Accepted for D.3a / Shadow-only scope frozen.
 
-**Implementation status:** D.3a implemented / post-implementation acceptance
-rejected. The implementation remains a Shadow experiment while route,
-canonical-proof, edge-authority, and receipt qualification gaps are corrected.
-M1b.1, ownership commit, CodeGen consumption, Evidence v2, and caller-spelling
-activation remain unauthorized.
+**Implementation status:** D.3a post-implementation accepted / Shadow-only
+qualified. M1b.1, ownership commit, CodeGen consumption, Evidence v2, and
+caller-spelling activation remain unauthorized.
 
 **Baseline:** `19a94dbf4ac36a21c068ba32fdf5aaa8ae6c483c`.
 
@@ -582,8 +580,6 @@ Before this slice can be called complete, one revision must prove:
 
 ## Admission decision
 
-The implementation remains limited to the ordinary direct-call Shadow slice
-above, but post-implementation acceptance is rejected until the corrective
-qualification slice receives independent review. This status does not
-authorize M1b.1, semantic adopt/commit, CodeGen consumption, Evidence v2,
-branch join, or caller-spelling activation.
+Post-implementation acceptance covers only the ordinary direct-call Shadow
+slice above. It does not authorize M1b.1, semantic adopt/commit, CodeGen
+consumption, Evidence v2, branch join, or caller-spelling activation.
