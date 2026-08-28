@@ -1,0 +1,14 @@
+pub shape Msg(
+    Text(i32) |
+    Quit
+)
+
+pub shape Other(value: i32)
+
+pub fn choose(value: Msg::Text) -> i32 {
+    return 1:i32
+}
+
+pub fn choose(value: Other) -> i32 {
+    return 2:i32
+}

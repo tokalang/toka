@@ -30,6 +30,8 @@ set(toka_frontend_sources
     Sema/SemanticEvidence.cpp
     Sema/DirectCallObservation.cpp
     Sema/DirectCallObservationAudit.cpp
+    Sema/PureNominalOverloadProbe.cpp
+    Sema/PureNominalOverloadProbeAudit.cpp
     Sema/SemanticIndex.cpp
     Sema/MemorySummary.cpp
     Sema/MemoryEvidence.cpp

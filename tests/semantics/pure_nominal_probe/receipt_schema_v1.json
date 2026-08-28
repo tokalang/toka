@@ -1,0 +1,61 @@
+{
+  "top_level": [
+    "schema",
+    "version",
+    "evaluation_schedule",
+    "attempted_batch_count",
+    "pure_batch_count",
+    "excluded_count_by_reason",
+    "legacy_required_count_by_reason",
+    "infrastructure_error_count",
+    "infrastructure_error_count_by_reason",
+    "batches"
+  ],
+  "exclusion_reasons": [
+    "WrongRoute",
+    "NonSourceBacked",
+    "NotOverloaded",
+    "ArityOrDefault",
+    "NonLocalOrNonLivePlace",
+    "NonDirectNominalActual",
+    "NonDirectNominalFormal",
+    "VariantOrRefinedNominal",
+    "PrimitiveOrAlias",
+    "AttributesOrConversion",
+    "GenericOrContextual",
+    "HandleOrPermission",
+    "ContractUnsupported",
+    "PALOrDependencyConflict",
+    "SourceHiddenOrIncomplete"
+  ],
+  "legacy_reasons": ["ZeroCompatible", "MultipleCompatible"],
+  "infrastructure_errors": [
+    "InvalidCallSiteIdentity",
+    "InvalidNominalShapeId",
+    "DuplicateCandidateIdentity",
+    "DuplicateLegacyOrdinal",
+    "NonContiguousLegacyOrdinal",
+    "MalformedBatch"
+  ],
+  "batch": [
+    "call_site",
+    "callee",
+    "exclusion",
+    "candidates",
+    "disposition",
+    "legacy_reason",
+    "selected_declaration_id",
+    "forced_legacy_selected_declaration_id",
+    "candidate_diagnostic_count",
+    "final_legacy_check_count",
+    "parent_unchanged",
+    "differing_parent_fields"
+  ],
+  "location": ["file", "line", "column"],
+  "candidate": [
+    "declaration_id",
+    "legacy_ordinal",
+    "formal_nominal_id",
+    "compatible"
+  ]
+}

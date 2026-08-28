@@ -17,6 +17,7 @@
 #include "toka/AccessPath.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/DirectCallObservationAudit.h"
+#include "toka/PureNominalOverloadProbeAudit.h"
 #include "toka/PlaceState.h"
 #include "toka/Type.h"
 #include "toka/PAL_Checker.h"
@@ -357,6 +358,10 @@ public:
     m_D3ObservationSession = session;
   }
 
+  void setPureNominalProbeAuditSession(D4ProbeAuditSession *session) {
+    m_D4ProbeAuditSession = session;
+  }
+
   bool hasErrors() const { return HasError; }
 
   const std::map<std::string, std::shared_ptr<toka::Type>>& getParenthesizedRecordTypes() const {
@@ -635,6 +640,7 @@ private:
   bool m_IsStartingTask = false; // Enforce the strict detached-task boundary.
   const Expr *m_StartBoundaryRoot = nullptr;
   D3ObservationSession *m_D3ObservationSession = nullptr;
+  D4ProbeAuditSession *m_D4ProbeAuditSession = nullptr;
   unsigned m_D3SpeculativeCallDepth = 0;
 
   bool m_AllowPermissionSuffix = false; // [NEW] Track explicit method call context

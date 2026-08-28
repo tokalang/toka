@@ -1,0 +1,7 @@
+pub fn choose(value: i32) -> i32 {
+    return value
+}
+
+pub fn choose(value: i64) -> i32 {
+    return value as i32
+}

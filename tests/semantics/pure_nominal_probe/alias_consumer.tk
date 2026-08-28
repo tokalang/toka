@@ -1,0 +1,10 @@
+import alias_provider::{Model, Other, AliasModel, choose}
+
+fn dispatch(value: Model) -> i32 {
+    return choose(value)
+}
+
+fn main() -> i32 {
+    auto model = Model(value = 42:i32)
+    return dispatch(model) - 42:i32
+}

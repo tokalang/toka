@@ -1,0 +1,12 @@
+import unique_provider::{Model, Other, Third, choose}
+
+shape Unknown(value: i32)
+
+fn dispatch(value: Unknown) -> i32 {
+    return choose(value)
+}
+
+fn main() -> i32 {
+    auto value = Unknown(value = 42:i32)
+    return dispatch(value)
+}

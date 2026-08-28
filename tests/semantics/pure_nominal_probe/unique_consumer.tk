@@ -1,0 +1,10 @@
+import unique_provider::{Model, Other, Third, choose}
+
+fn dispatch(value: Model) -> i32 {
+    return choose(value)
+}
+
+fn main() -> i32 {
+    auto model = Model(value = 42:i32)
+    return dispatch(model) - 1:i32
+}

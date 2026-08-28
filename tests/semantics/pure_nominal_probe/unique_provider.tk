@@ -1,0 +1,15 @@
+pub shape Model(value: i32)
+pub shape Other(value: i32)
+pub shape Third(value: i32)
+
+pub fn choose(value: Model) -> i32 {
+    return 1:i32
+}
+
+pub fn choose(value: Other) -> i32 {
+    return 2:i32
+}
+
+pub fn choose(value: Third) -> i32 {
+    return 3:i32
+}

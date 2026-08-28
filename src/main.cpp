@@ -132,6 +132,8 @@ void printHelp() {
       << "  --call-transfer-shadow=json     Emit audit-only RC9 call transfer plans\n"
       << "  --m1b-d3-direct-call-observation=json\n"
       << "                                  Emit Shadow-only D.3 direct-call observations\n"
+      << "  --m1b-d4a-pure-nominal-overload-probe=json\n"
+      << "                                  Emit internal D.4a pure overload qualification\n"
       << "  --capabilities=json             Emit H/P call capability pilot v1\n"
       << "  --todo-goals=json               Emit typed-todo goals v1\n"
       << "  --conditional-facts=json        Emit typed-todo conditional facts v1\n"
@@ -199,6 +201,20 @@ public:
 private:
   bool &Enabled;
   toka::D3ObservationSession &Session;
+};
+
+class D4ProbeDumpGuard {
+public:
+  D4ProbeDumpGuard(bool &enabled, toka::D4ProbeAuditSession &session)
+      : Enabled(enabled), Session(session) {}
+  ~D4ProbeDumpGuard() {
+    if (Enabled)
+      Session.dumpJSON(std::cout);
+  }
+
+private:
+  bool &Enabled;
+  toka::D4ProbeAuditSession &Session;
 };
 
 class HandleGrammarAuditFlushGuard {
@@ -776,6 +792,10 @@ int main(int argc, char **argv) {
   bool dumpCallTransferShadow = false;
   bool dumpD3DirectCallObservation = false;
   bool emitD3DirectCallObservation = false;
+  bool dumpD4PureNominalProbe = false;
+  bool emitD4PureNominalProbe = false;
+  bool forceLegacyD4Probe = false;
+  bool reverseD4ProbeSchedule = false;
   bool dumpCapabilities = false;
   bool dumpTodoGoals = false;
   bool dumpConditionalFacts = false;
@@ -802,6 +822,8 @@ int main(int argc, char **argv) {
   toka::D3ObservationSession d3ObservationSession;
   D3ObservationDumpGuard d3ObservationGuard(emitD3DirectCallObservation,
                                              d3ObservationSession);
+  toka::D4ProbeAuditSession d4ProbeAuditSession;
+  D4ProbeDumpGuard d4ProbeGuard(emitD4PureNominalProbe, d4ProbeAuditSession);
   SemanticEvidenceDumpGuard semanticEvidenceGuard(
       dumpCallTransferShadow, dumpCedeObligations, dumpCapabilities,
       dumpTodoGoals, dumpConditionalFacts);
@@ -912,6 +934,12 @@ int main(int argc, char **argv) {
       dumpCallTransferShadow = true;
     } else if (arg == "--m1b-d3-direct-call-observation=json") {
       dumpD3DirectCallObservation = true;
+    } else if (arg == "--m1b-d4a-pure-nominal-overload-probe=json") {
+      dumpD4PureNominalProbe = true;
+    } else if (arg == "--m1b-d4a-force-legacy") {
+      forceLegacyD4Probe = true;
+    } else if (arg == "--m1b-d4a-reverse-schedule") {
+      reverseD4ProbeSchedule = true;
     } else if (arg == "--capabilities=json") {
       dumpCapabilities = true;
     } else if (arg == "--todo-goals=json") {
@@ -1057,6 +1085,8 @@ int main(int argc, char **argv) {
     checkOnly = true;
   if (dumpD3DirectCallObservation)
     checkOnly = true;
+  if (dumpD4PureNominalProbe)
+    checkOnly = true;
   if (compileOnly) {
     emitInterface = true;
   }
@@ -1070,6 +1100,28 @@ int main(int argc, char **argv) {
   bool emitTrustedMemoryEvidence =
       compileOnly && emitInterface && configuredBuildDir &&
       configuredBuildDir[0] != '\0';
+
+  if (reverseD4ProbeSchedule && !dumpD4PureNominalProbe) {
+    llvm::errs() << "--m1b-d4a-reverse-schedule requires "
+                    "--m1b-d4a-pure-nominal-overload-probe=json\n";
+    return 1;
+  }
+
+  if (dumpD4PureNominalProbe &&
+      (structuredDiagnostics || g_JsonDiagnostics || dumpDependencies ||
+       dumpAssignmentStats || dumpHandleSurfaceStats || dumpSemanticEvidence ||
+       dumpCedeObligations || dumpCallTransferShadow ||
+       dumpD3DirectCallObservation || dumpCapabilities || dumpTodoGoals ||
+       dumpConditionalFacts || dumpMemorySummaries || dumpMemoryContracts ||
+       dumpEncapSlice1Facts || dumpSemanticIndex || dumpSemanticContext ||
+       !semanticQuery.empty() || runTopologyEval || !explainCode.empty())) {
+    llvm::errs()
+        << "--m1b-d4a-pure-nominal-overload-probe=json cannot be combined "
+           "with another JSON, semantic, or evaluation output mode\n";
+    structuredDiagnostics = false;
+    dumpD4PureNominalProbe = false;
+    return 1;
+  }
 
   if (dumpD3DirectCallObservation &&
       (structuredDiagnostics || g_JsonDiagnostics || dumpDependencies ||
@@ -1193,6 +1245,9 @@ int main(int argc, char **argv) {
     return 1;
   }
   emitD3DirectCallObservation = dumpD3DirectCallObservation;
+  emitD4PureNominalProbe = dumpD4PureNominalProbe;
+  d4ProbeAuditSession.setForceLegacy(forceLegacyD4Probe);
+  d4ProbeAuditSession.setReverseSchedule(reverseD4ProbeSchedule);
   toka::SemanticEvidence::enable(dumpSemanticEvidence || dumpCedeObligations ||
                                  dumpCallTransferShadow || dumpCapabilities ||
                                  dumpTodoGoals || dumpConditionalFacts);
@@ -1490,6 +1545,9 @@ int main(int argc, char **argv) {
   sema.setBorrowCheckEnabled(!disableBorrowCheck);
   sema.setDirectCallObservationSession(
       dumpD3DirectCallObservation ? &d3ObservationSession : nullptr);
+  sema.setPureNominalProbeAuditSession(
+      (dumpD4PureNominalProbe || forceLegacyD4Probe) ? &d4ProbeAuditSession
+                                                     : nullptr);
 
   // Pass 1: Declare all global symbols across all modules to build the global module map
   for (const auto &ast : astModules) {

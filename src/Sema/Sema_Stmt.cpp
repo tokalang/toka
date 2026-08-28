@@ -2159,6 +2159,7 @@ void Sema::checkStmt(Stmt *S) {
     }
 
     Info.IsDeclaredVariable = true;
+    Info.ASTPtr = Var;
     Info.installPartialMovePlan(admittedPartialMovePlan(Info));
     Var->PartialMove = Info.partialMovePlan();
     initializeProjectionFacts(Info);

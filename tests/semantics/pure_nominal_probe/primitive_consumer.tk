@@ -1,0 +1,9 @@
+import primitive_provider::{choose}
+
+fn dispatch(value: i32) -> i32 {
+    return choose(value)
+}
+
+fn main() -> i32 {
+    return dispatch(42:i32) - 42:i32
+}

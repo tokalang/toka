@@ -1,0 +1,12 @@
+pub shape Model(value: i32)
+pub shape Other(value: i32)
+
+pub alias AliasModel = Model
+
+pub fn choose(value: AliasModel) -> i32 {
+    return value.value
+}
+
+pub fn choose(value: Other) -> i32 {
+    return value.value
+}

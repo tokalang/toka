@@ -166,6 +166,8 @@ if(BUILD_TESTING)
         tests/SemanticModelScaffold.cpp)
     add_executable(toka_direct_call_observation
         tests/DirectCallObservation.cpp)
+    add_executable(toka_pure_nominal_overload_probe
+        tests/PureNominalOverloadProbe.cpp)
     target_include_directories(toka_typesyntax_canonicalization PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_canonical_declaration_witness PRIVATE
@@ -185,6 +187,8 @@ if(BUILD_TESTING)
     target_include_directories(toka_semantic_model_scaffold PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_direct_call_observation PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(toka_pure_nominal_overload_probe PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     add_test(NAME toka_typesyntax_canonicalization
         COMMAND toka_typesyntax_canonicalization)
@@ -206,6 +210,8 @@ if(BUILD_TESTING)
         COMMAND toka_semantic_model_scaffold)
     add_test(NAME toka_direct_call_observation
         COMMAND toka_direct_call_observation)
+    add_test(NAME toka_pure_nominal_overload_probe
+        COMMAND toka_pure_nominal_overload_probe)
 endif()
 
 add_subdirectory(src)
@@ -219,6 +225,7 @@ if(BUILD_TESTING)
     target_link_libraries(toka_nominal_shape_id PRIVATE toka_frontend)
     target_link_libraries(toka_handle_grammar_classifier PRIVATE toka_frontend)
     target_link_libraries(toka_direct_call_observation PRIVATE toka_frontend)
+    target_link_libraries(toka_pure_nominal_overload_probe PRIVATE toka_frontend)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(NAME toka_call_transfer_shadow_m1
@@ -228,6 +235,10 @@ if(BUILD_TESTING)
         add_test(NAME toka_direct_call_observation_d3a
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_direct_call_observation_d3a.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_pure_nominal_overload_probe_d4a
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_pure_nominal_overload_probe_d4a.py
                 --build-dir ${CMAKE_BINARY_DIR})
     endif()
 endif()

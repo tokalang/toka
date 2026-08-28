@@ -1,10 +1,10 @@
 # RC9 M1b-D.4a Pure Direct-Nominal Overload Probe
 
-**Design status:** Proposed for one bounded implementation-authorization
-review.
+**Design status:** Accepted for D.4a implementation / bounded scope frozen.
 
-**Implementation status:** Not implemented. The next review is governed by the
-closed review boundary in this document.
+**Implementation status:** D.4a implemented / bounded post-implementation
+acceptance pending. The next review is governed by the closed review boundary
+in this document.
 
 **Qualified baseline:** D.3a ordinary direct-call Shadow observation at
 `0235a35cd3f60f4be0ab225dfae7abe5a6eea4fb`.
@@ -243,11 +243,13 @@ The BUILD_TESTING/internal protocol is exact and separately versioned:
 ```text
 schema = toka.internal.m1b-d4a-pure-nominal-overload-probe
 version = 1
+evaluation_schedule = legacy-order | reverse-for-testing
 attempted_batch_count
 pure_batch_count
 excluded_count_by_reason
 legacy_required_count_by_reason
 infrastructure_error_count
+infrastructure_error_count_by_reason
 batches[]
     call site
     candidate declaration IDs + complete NominalShapeIds + legacy ordinals
@@ -317,9 +319,10 @@ D.4a is complete only when:
 - all parent-preservation and public parity gates pass; and
 - implementation receives bounded post-implementation acceptance.
 
-## Bounded review rule
+## Bounded post-implementation review rule
 
-The next review may block D.4a only with a reproducible counterexample that
+The post-implementation review may block D.4a only with a reproducible
+counterexample that
 satisfies every closed admission condition above and demonstrates one of:
 
 1. nominal identity equality differs from legacy nominal compatibility;
@@ -333,9 +336,9 @@ Primitive widening, aliases, attributes, conversions, contextual typing,
 transactions, diagnostic replay, generics, other routes, and ownership
 activation are explicitly out of scope and cannot reject D.4a.
 
-If the bounded review produces no such counterexample, D.4a is authorized for
-implementation. New scope requires a later design slice rather than reopening
-this contract.
+If the bounded review produces no such counterexample, D.4a receives
+post-implementation acceptance. New scope requires a later design slice rather
+than reopening this contract.
 
 ## Non-authorization
 

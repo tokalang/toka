@@ -1,0 +1,10 @@
+import variant_provider::{Msg, Other, choose}
+
+fn dispatch() -> i32 {
+    auto value = Msg::Text(42:i32)
+    return choose(value)
+}
+
+fn main() -> i32 {
+    return dispatch() - 1:i32
+}
