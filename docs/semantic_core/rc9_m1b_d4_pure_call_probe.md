@@ -32,9 +32,9 @@ Every condition below is required:
 - exactly one actual and exactly one explicit formal on every candidate;
 - actual is a bare whole function-local place in `Live` state;
 - actual type is a direct resolved nominal shape with a valid
-  `NominalShapeId`;
+  `NominalShapeId` and empty `ShapeType::VariantSuffix`;
 - every formal type is a direct resolved nominal shape with a valid
-  `NominalShapeId`;
+  `NominalShapeId` and empty `ShapeType::VariantSuffix`;
 - no primitive, alias, anonymous/structural type, attribute normalization,
   implicit conversion, generic parameter/instance, handle morphology,
   contextual typing, or incomplete type;
@@ -61,6 +61,7 @@ ProbeExclusionReason
     NonLocalOrNonLivePlace
     NonDirectNominalActual
     NonDirectNominalFormal
+    VariantOrRefinedNominal
     PrimitiveOrAlias
     AttributesOrConversion
     GenericOrContextual
@@ -86,6 +87,7 @@ FrozenOverloadBatch
         LegacyOrdinal
         DirectNominalFormalFact
             NominalShapeId
+            HasEmptyVariantSuffix = true
     LegacyFallback
         FunctionDecl*?
         DeclarationId?
@@ -93,6 +95,7 @@ FrozenOverloadBatch
         RootSymbolId
         DirectNominalActualFact
             NominalShapeId
+            HasEmptyVariantSuffix = true
 ```
 
 `FunctionDecl*` never enters the pure DTO. It exists only in this frozen
@@ -105,7 +108,9 @@ Before factory invocation, integration validates:
 - every ordinal equals its vector index;
 - no ID or ordinal is duplicated;
 - fallback is absent or maps to exactly one element of this same vector; and
-- call, actual, formal, and fallback identities are structurally valid.
+- call, actual, formal, and fallback identities are structurally valid; and
+- actual and every formal retain an empty `VariantSuffix` at the same frozen
+  integration point.
 
 An invalid frozen batch is an infrastructure error, not an exclusion and not a
 legacy fallback.
@@ -203,6 +208,10 @@ iff
 legacy isTypeCompatible(formal, actual)
 ```
 
+Both sides of this theorem require empty actual/formal `VariantSuffix`.
+Suffix-bearing or otherwise refined nominal views are excluded before pure DTO
+construction; suffix is not added to `NominalShapeId`.
+
 The theorem is tested with direct nominal declarations from the same module,
 different modules, same spelling/different nominal owner, and equal nominal
 identity reached through the resolver. A counterexample inside this exact
@@ -282,6 +291,8 @@ D.4a requires real fixtures for:
 - two direct nominal candidates with exactly one compatible local actual;
 - three direct nominal candidates with one compatible actual;
 - same spelling with different nominal owner;
+- the same nominal declaration with empty versus nonempty `VariantSuffix`,
+  producing `VariantOrRefinedNominal` and pure factory count zero;
 - zero-compatible and multiple-compatible legacy fallback;
 - original, reverse-schedule, and repeated pure evaluation;
 - every closed exclusion reason with pure factory count zero;
@@ -328,8 +339,9 @@ this contract.
 
 ## Non-authorization
 
-D.4a does not authorize primitive or alias overload queries, contextual
-evaluation, transaction infrastructure, generic deduction isolation, closure
-precompute migration, ownership planning/adopt/commit, SemanticModel
-publication, CodeGen consumption, Evidence v2, route convergence, `E04570`
-removal, or caller-spelling activation.
+D.4a does not authorize suffix-bearing/refined nominal, primitive, or alias
+overload queries, contextual evaluation, transaction infrastructure, generic
+deduction isolation, closure precompute migration, ownership
+planning/adopt/commit, SemanticModel publication, CodeGen consumption,
+Evidence v2, route convergence, `E04570` removal, or caller-spelling
+activation.
