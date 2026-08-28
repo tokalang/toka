@@ -1,6 +1,6 @@
 # RC9 M1b.2a Authority-First Semantic Facts
 
-**Design status:** Proposed / independent design review required.
+**Design status:** Accepted for bounded implementation.
 
 **Implementation status:** Not implemented.
 
