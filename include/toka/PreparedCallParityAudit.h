@@ -16,11 +16,9 @@ namespace toka {
 
 enum class D5GateExclusionReason : uint8_t {
   WrongRoute,
-  NonSameLexical,
   OverloadOrCandidateProbe,
   SpeculativeOrNonFinalTraversal,
   NestedPreparation,
-  ExistingCallDiagnostic,
 };
 
 enum class D5ParityError : uint8_t {
@@ -79,6 +77,8 @@ struct D5PreparedCallReceipt {
   std::string FormalType;
   std::string SourceStateBefore;
   std::string PALStateBefore;
+  std::string SourceStateAfter;
+  std::string PALStateAfter;
   uint64_t SourceInitMask = 0;
   bool DependencyBearingActual = false;
   std::optional<LegacyCedeRequirement> LegacyRequirement;

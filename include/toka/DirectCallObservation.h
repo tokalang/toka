@@ -170,7 +170,6 @@ enum class D5PreparationExclusionReason : uint8_t {
 
 enum class D5PreparationError : uint8_t {
   InvalidIdentity,
-  IncompatibleType,
   IndeterminateCopyProof,
   IndeterminateOwnership,
   IndeterminateLegacyCedeRequirement,
@@ -527,10 +526,7 @@ struct D5ResolvedPlanningFacts {
   D3OwnershipProof OwnershipProof = D3OwnershipProof::Indeterminate;
   std::optional<LegacyCedeRequirement> LegacyRequirement;
   uint64_t SourceInitMask = 0;
-  bool SourceCleanupAuthority = false;
   bool DependencyBearingActual = false;
-  bool TypesCompatible = true;
-  bool RegionAuthorityComplete = true;
 };
 
 class D5PreparedCallResult final {
@@ -560,6 +556,10 @@ class PreparedCallFactory final {
 public:
   static D5PreparedCallResult prepare(D5ResolvedPlanningFacts facts);
 };
+
+bool validateD5PreparedResultShape(D3AdmissionKind admission, bool hasPlan,
+                                   size_t edgeCount,
+                                   size_t evaluationEntryCount);
 
 class D3FactoryObservationRecord final {
 public:

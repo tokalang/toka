@@ -112,16 +112,12 @@ const char *toString(D5GateExclusionReason value) {
   switch (value) {
   case D5GateExclusionReason::WrongRoute:
     return "WrongRoute";
-  case D5GateExclusionReason::NonSameLexical:
-    return "NonSameLexical";
   case D5GateExclusionReason::OverloadOrCandidateProbe:
     return "OverloadOrCandidateProbe";
   case D5GateExclusionReason::SpeculativeOrNonFinalTraversal:
     return "SpeculativeOrNonFinalTraversal";
   case D5GateExclusionReason::NestedPreparation:
     return "NestedPreparation";
-  case D5GateExclusionReason::ExistingCallDiagnostic:
-    return "ExistingCallDiagnostic";
   }
   return "WrongRoute";
 }
@@ -267,11 +263,9 @@ void D5PreparedCallAuditSession::append(D5PreparedCallReceipt receipt) {
 void D5PreparedCallAuditSession::dumpJSON(std::ostream &out) const {
   static const D5GateExclusionReason GateReasons[] = {
       D5GateExclusionReason::WrongRoute,
-      D5GateExclusionReason::NonSameLexical,
       D5GateExclusionReason::OverloadOrCandidateProbe,
       D5GateExclusionReason::SpeculativeOrNonFinalTraversal,
-      D5GateExclusionReason::NestedPreparation,
-      D5GateExclusionReason::ExistingCallDiagnostic};
+      D5GateExclusionReason::NestedPreparation};
   static const D5PreparationExclusionReason Exclusions[] = {
       D5PreparationExclusionReason::ArityOrDefault,
       D5PreparationExclusionReason::GenericOrContextual,
@@ -286,7 +280,6 @@ void D5PreparedCallAuditSession::dumpJSON(std::ostream &out) const {
       D5PreparationExclusionReason::CededNonCopyLegacyExempt};
   static const D5PreparationError Errors[] = {
       D5PreparationError::InvalidIdentity,
-      D5PreparationError::IncompatibleType,
       D5PreparationError::IndeterminateCopyProof,
       D5PreparationError::IndeterminateOwnership,
       D5PreparationError::IndeterminateLegacyCedeRequirement,
@@ -347,6 +340,10 @@ void D5PreparedCallAuditSession::dumpJSON(std::ostream &out) const {
     stringJSON(out, receipt.SourceStateBefore);
     out << ",\"pal_state_before\":";
     stringJSON(out, receipt.PALStateBefore);
+    out << ",\"source_state_after\":";
+    stringJSON(out, receipt.SourceStateAfter);
+    out << ",\"pal_state_after\":";
+    stringJSON(out, receipt.PALStateAfter);
     out << ",\"source_init_mask\":" << receipt.SourceInitMask
         << ",\"dependency_bearing_actual\":"
         << (receipt.DependencyBearingActual ? "true" : "false");
