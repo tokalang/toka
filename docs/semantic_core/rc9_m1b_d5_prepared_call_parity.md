@@ -1,6 +1,7 @@
 # RC9 M1b-D.5a Pre-Legacy Prepared-Call Parity
 
-**Design status:** Proposed for one bounded M1b.1a implementation review.
+**Design status:** Accepted for bounded M1b.1a implementation after the
+internal bounded audit at `b4e99d38a6783e69c4b9ef3fcf47a2f8217c2faf`.
 
 **Implementation status:** Not implemented. This document authorizes neither
 live ownership commit nor caller-spelling activation.
