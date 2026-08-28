@@ -136,59 +136,6 @@ enum class D3PatchBuildError : uint8_t {
   ConflictingPayload,
 };
 
-enum class LegacyCedeRequirement : uint8_t {
-  ExplicitRequired,
-  ImplicitExempt,
-  Indeterminate,
-};
-
-enum class LegacyCedeDropFact : uint8_t {
-  HasDrop,
-  NoDrop,
-  Indeterminate,
-};
-
-struct LegacyCedePolicyInput {
-  D3TypeCategory TypeCategory = D3TypeCategory::Indeterminate;
-  std::string CanonicalSoul;
-  LegacyCedeDropFact DropFact = LegacyCedeDropFact::Indeterminate;
-};
-
-enum class D5PreparationExclusionReason : uint8_t {
-  ArityOrDefault,
-  GenericOrContextual,
-  InitOrOutcome,
-  AsyncOrExecutionBoundary,
-  ReturnDependencyOrRegionEscape,
-  ProjectionOrTemporary,
-  NonLocalPlace,
-  SharedRawReferenceOrCallable,
-  DependencyBearingActual,
-  TypeRequiresContextOrConversion,
-  CededNonCopyLegacyExempt,
-};
-
-enum class D5PreparationError : uint8_t {
-  InvalidIdentity,
-  IncompatibleType,
-  IndeterminateCopyProof,
-  IndeterminateOwnership,
-  IndeterminateLegacyCedeRequirement,
-  InconsistentLegacyCedeRequirement,
-  InvalidWholePlaceAdmission,
-  IncompleteLiability,
-  IncompleteRegion,
-  ConflictingPreparedPlan,
-};
-
-const char *toString(LegacyCedeRequirement value);
-const char *toString(LegacyCedeDropFact value);
-const char *toString(D5PreparationExclusionReason value);
-const char *toString(D5PreparationError value);
-
-LegacyCedeRequirement
-classifyLegacyCedeRequirement(const LegacyCedePolicyInput &input);
-
 const char *toString(D3AdmissionKind value);
 const char *toString(D3ExclusionReason value);
 const char *toString(D3CallValidationError value);
@@ -516,49 +463,6 @@ private:
   D3DomainDelta Finalization;
   D3SemanticModelPatch ModelPatch;
   D3MinimalRegionWitness RegionWitness;
-};
-
-struct D5ResolvedPlanningFacts {
-  D3PreLegacyDirectCallFacts Pre;
-  std::string ActualType;
-  std::string FormalType;
-  D3TypeCategory TypeCategory = D3TypeCategory::Indeterminate;
-  D3CopyProof CopyProof = D3CopyProof::Indeterminate;
-  D3OwnershipProof OwnershipProof = D3OwnershipProof::Indeterminate;
-  std::optional<LegacyCedeRequirement> LegacyRequirement;
-  uint64_t SourceInitMask = 0;
-  bool SourceCleanupAuthority = false;
-  bool DependencyBearingActual = false;
-  bool TypesCompatible = true;
-  bool RegionAuthorityComplete = true;
-};
-
-class D5PreparedCallResult final {
-public:
-  D3AdmissionKind admission() const { return Admission; }
-  const std::optional<D5PreparationExclusionReason> &exclusionReason() const {
-    return ExclusionReason;
-  }
-  const std::optional<D5PreparationError> &preparationError() const {
-    return PreparationError;
-  }
-  const std::optional<D3ValidatedCall> &preparedCall() const {
-    return PreparedCall;
-  }
-  const D5ResolvedPlanningFacts &facts() const { return Facts; }
-
-private:
-  friend class PreparedCallFactory;
-  D3AdmissionKind Admission = D3AdmissionKind::Rejected;
-  std::optional<D5PreparationExclusionReason> ExclusionReason;
-  std::optional<D5PreparationError> PreparationError;
-  std::optional<D3ValidatedCall> PreparedCall;
-  D5ResolvedPlanningFacts Facts;
-};
-
-class PreparedCallFactory final {
-public:
-  static D5PreparedCallResult prepare(D5ResolvedPlanningFacts facts);
 };
 
 class D3FactoryObservationRecord final {

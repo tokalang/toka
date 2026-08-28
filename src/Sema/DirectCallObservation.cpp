@@ -69,46 +69,6 @@ bool equalPost(const D3PostLegacyDirectCallFacts &lhs,
                   rhs.RegionFactsComplete);
 }
 
-struct ProspectiveTransfer {
-  D3TransferMode Transfer = D3TransferMode::BorrowCapture;
-  D3SourceDisposition Source = D3SourceDisposition::KeepLive;
-  D3BoundaryAccess Boundary = D3BoundaryAccess::SharedBorrow;
-};
-
-ProspectiveTransfer classifyProspectiveTransfer(
-    const D3PreLegacyDirectCallFacts &pre, D3CopyProof copyProof) {
-  ProspectiveTransfer result;
-  if (!pre.FormalCeded)
-    return result;
-  if (pre.ActualCategory == D3ActualCategory::WholeTemporary) {
-    result.Transfer = D3TransferMode::ConsumeTemporary;
-    result.Source = D3SourceDisposition::NoSourcePlace;
-    result.Boundary = D3BoundaryAccess::None;
-  } else if (copyProof == D3CopyProof::ProvenCopy) {
-    result.Transfer = D3TransferMode::CopyValue;
-    result.Source = pre.ExplicitCede
-                        ? D3SourceDisposition::InvalidateWhole
-                        : D3SourceDisposition::KeepLive;
-    result.Boundary = pre.ExplicitCede ? D3BoundaryAccess::Invalidation
-                                      : D3BoundaryAccess::SharedBorrow;
-  } else {
-    result.Transfer = D3TransferMode::MoveOwned;
-    result.Source = D3SourceDisposition::InvalidateWhole;
-    result.Boundary = D3BoundaryAccess::Invalidation;
-  }
-  return result;
-}
-
-D3LiabilityFact deriveSourceLiability(
-    const D3PreLegacyDirectCallFacts &pre, D3OwnershipProof ownership,
-    const std::string &cleanupWitness) {
-  if (ownership != D3OwnershipProof::Owned)
-    return D3LiabilityFact::noLiability();
-  return pre.ActualCategory == D3ActualCategory::WholeTemporary
-             ? D3LiabilityFact::temporary(cleanupWitness)
-             : D3LiabilityFact::sourcePlace(cleanupWitness);
-}
-
 } // namespace
 
 const char *toString(D3AdmissionKind value) {
@@ -353,111 +313,6 @@ const char *toString(D3LiabilityKind value) {
     return "DestinationCleanup";
   }
   return "NoLiability";
-}
-
-const char *toString(LegacyCedeRequirement value) {
-  switch (value) {
-  case LegacyCedeRequirement::ExplicitRequired:
-    return "ExplicitRequired";
-  case LegacyCedeRequirement::ImplicitExempt:
-    return "ImplicitExempt";
-  case LegacyCedeRequirement::Indeterminate:
-    return "Indeterminate";
-  }
-  return "Indeterminate";
-}
-
-const char *toString(LegacyCedeDropFact value) {
-  switch (value) {
-  case LegacyCedeDropFact::HasDrop:
-    return "HasDrop";
-  case LegacyCedeDropFact::NoDrop:
-    return "NoDrop";
-  case LegacyCedeDropFact::Indeterminate:
-    return "Indeterminate";
-  }
-  return "Indeterminate";
-}
-
-const char *toString(D5PreparationExclusionReason value) {
-  switch (value) {
-  case D5PreparationExclusionReason::ArityOrDefault:
-    return "ArityOrDefault";
-  case D5PreparationExclusionReason::GenericOrContextual:
-    return "GenericOrContextual";
-  case D5PreparationExclusionReason::InitOrOutcome:
-    return "InitOrOutcome";
-  case D5PreparationExclusionReason::AsyncOrExecutionBoundary:
-    return "AsyncOrExecutionBoundary";
-  case D5PreparationExclusionReason::ReturnDependencyOrRegionEscape:
-    return "ReturnDependencyOrRegionEscape";
-  case D5PreparationExclusionReason::ProjectionOrTemporary:
-    return "ProjectionOrTemporary";
-  case D5PreparationExclusionReason::NonLocalPlace:
-    return "NonLocalPlace";
-  case D5PreparationExclusionReason::SharedRawReferenceOrCallable:
-    return "SharedRawReferenceOrCallable";
-  case D5PreparationExclusionReason::DependencyBearingActual:
-    return "DependencyBearingActual";
-  case D5PreparationExclusionReason::TypeRequiresContextOrConversion:
-    return "TypeRequiresContextOrConversion";
-  case D5PreparationExclusionReason::CededNonCopyLegacyExempt:
-    return "CededNonCopyLegacyExempt";
-  }
-  return "TypeRequiresContextOrConversion";
-}
-
-const char *toString(D5PreparationError value) {
-  switch (value) {
-  case D5PreparationError::InvalidIdentity:
-    return "InvalidIdentity";
-  case D5PreparationError::IncompatibleType:
-    return "IncompatibleType";
-  case D5PreparationError::IndeterminateCopyProof:
-    return "IndeterminateCopyProof";
-  case D5PreparationError::IndeterminateOwnership:
-    return "IndeterminateOwnership";
-  case D5PreparationError::IndeterminateLegacyCedeRequirement:
-    return "IndeterminateLegacyCedeRequirement";
-  case D5PreparationError::InconsistentLegacyCedeRequirement:
-    return "InconsistentLegacyCedeRequirement";
-  case D5PreparationError::InvalidWholePlaceAdmission:
-    return "InvalidWholePlaceAdmission";
-  case D5PreparationError::IncompleteLiability:
-    return "IncompleteLiability";
-  case D5PreparationError::IncompleteRegion:
-    return "IncompleteRegion";
-  case D5PreparationError::ConflictingPreparedPlan:
-    return "ConflictingPreparedPlan";
-  }
-  return "ConflictingPreparedPlan";
-}
-
-LegacyCedeRequirement
-classifyLegacyCedeRequirement(const LegacyCedePolicyInput &input) {
-  if (input.TypeCategory == D3TypeCategory::Indeterminate ||
-      input.CanonicalSoul.empty())
-    return LegacyCedeRequirement::Indeterminate;
-
-  if (input.TypeCategory == D3TypeCategory::Scalar ||
-      input.TypeCategory == D3TypeCategory::RawOrReferenceIdentity ||
-      input.TypeCategory == D3TypeCategory::FunctionOrDynIdentity)
-    return LegacyCedeRequirement::ImplicitExempt;
-
-  if (input.CanonicalSoul == "str" || input.CanonicalSoul == "bytes" ||
-      input.CanonicalSoul == "cstr" ||
-      input.CanonicalSoul == "ViewStrSplitIterator" ||
-      input.CanonicalSoul == "ViewStrLinesIterator" ||
-      input.CanonicalSoul == "string" || input.CanonicalSoul == "TimerHeap")
-    return LegacyCedeRequirement::ExplicitRequired;
-  if (input.CanonicalSoul == "SlabID")
-    return LegacyCedeRequirement::ImplicitExempt;
-
-  if (input.DropFact == LegacyCedeDropFact::HasDrop)
-    return LegacyCedeRequirement::ExplicitRequired;
-  if (input.DropFact == LegacyCedeDropFact::NoDrop)
-    return LegacyCedeRequirement::ImplicitExempt;
-  return LegacyCedeRequirement::Indeterminate;
 }
 
 size_t D3SubjectIdentity::hashValue() const noexcept {
@@ -771,12 +626,27 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
       post.SourceLiability.subject()->kind() == D3SubjectKind::Cleanup &&
       !post.CleanupWitness.empty() &&
       post.SourceLiability.subject()->key() == post.CleanupWitness;
-  const auto expectedSourceLiability = deriveSourceLiability(
-      pre, post.OwnershipProof, post.CleanupWitness);
-  const bool liabilityMatchesOwnership =
-      post.SourceLiability == expectedSourceLiability &&
-      (post.OwnershipProof != D3OwnershipProof::Owned ||
-       sourceLiabilityHasMatchingCleanup);
+  bool liabilityMatchesOwnership = false;
+  switch (post.OwnershipProof) {
+  case D3OwnershipProof::Owned:
+    liabilityMatchesOwnership =
+        pre.ActualCategory == D3ActualCategory::WholeTemporary
+            ? sourceLiabilityKind == D3LiabilityKind::TemporaryCleanup &&
+                  sourceLiabilityHasMatchingCleanup
+            : sourceLiabilityKind == D3LiabilityKind::SourcePlaceCleanup &&
+                  sourceLiabilityHasMatchingCleanup;
+    break;
+  case D3OwnershipProof::Trivial:
+  case D3OwnershipProof::Borrowed:
+    liabilityMatchesOwnership =
+        sourceLiabilityKind == D3LiabilityKind::NoLiability &&
+        !post.SourceLiability.subject();
+    break;
+  case D3OwnershipProof::Shared:
+  case D3OwnershipProof::Indeterminate:
+    liabilityMatchesOwnership = false;
+    break;
+  }
   if (!liabilityMatchesOwnership ||
       (post.CopyProof == D3CopyProof::ProvenCopy &&
        (post.OwnershipProof != D3OwnershipProof::Trivial ||
@@ -808,21 +678,44 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
     return reject(std::move(input),
                   D3CallValidationError::InvalidWholePlaceAdmission);
 
-  if (pre.FormalCeded &&
-      pre.ActualCategory != D3ActualCategory::WholeTemporary &&
-      post.CopyProof == D3CopyProof::Indeterminate)
-    return reject(std::move(input),
-                  D3CallValidationError::IndeterminateCopyProof);
-  const auto prospective = classifyProspectiveTransfer(pre, post.CopyProof);
-  const auto transfer = prospective.Transfer;
-  const auto source = prospective.Source;
+  D3TransferMode transfer = D3TransferMode::BorrowCapture;
+  D3SourceDisposition source = D3SourceDisposition::KeepLive;
+  if (pre.FormalCeded) {
+    if (pre.ActualCategory == D3ActualCategory::WholeTemporary) {
+      transfer = D3TransferMode::ConsumeTemporary;
+      source = D3SourceDisposition::NoSourcePlace;
+    } else {
+      if (post.CopyProof == D3CopyProof::Indeterminate)
+        return reject(std::move(input),
+                      D3CallValidationError::IndeterminateCopyProof);
+      if (post.CopyProof == D3CopyProof::ProvenCopy) {
+        transfer = D3TransferMode::CopyValue;
+        source = pre.ExplicitCede ? D3SourceDisposition::InvalidateWhole
+                                  : D3SourceDisposition::KeepLive;
+      } else {
+        transfer = D3TransferMode::MoveOwned;
+        source = D3SourceDisposition::InvalidateWhole;
+      }
+    }
+  }
 
-  if (post.BoundaryAccess != prospective.Boundary)
-    return reject(
-        std::move(input),
-        pre.ActualCategory == D3ActualCategory::WholeTemporary
-            ? D3CallValidationError::IncompleteObservationFacts
-            : D3CallValidationError::InvalidWholePlaceAdmission);
+  if (transfer == D3TransferMode::BorrowCapture &&
+      post.BoundaryAccess != D3BoundaryAccess::SharedBorrow)
+    return reject(std::move(input),
+                  D3CallValidationError::InvalidWholePlaceAdmission);
+  if (source == D3SourceDisposition::InvalidateWhole &&
+      post.BoundaryAccess != D3BoundaryAccess::Invalidation)
+    return reject(std::move(input),
+                  D3CallValidationError::InvalidWholePlaceAdmission);
+  if (transfer == D3TransferMode::CopyValue &&
+      source == D3SourceDisposition::KeepLive &&
+      post.BoundaryAccess != D3BoundaryAccess::SharedBorrow)
+    return reject(std::move(input),
+                  D3CallValidationError::InvalidWholePlaceAdmission);
+  if (pre.ActualCategory == D3ActualCategory::WholeTemporary &&
+      post.BoundaryAccess != D3BoundaryAccess::None)
+    return reject(std::move(input),
+                  D3CallValidationError::IncompleteObservationFacts);
 
   auto callId = SemanticIdentityBuilder::semanticNode(pre.IdentityOrigin,
                                                       pre.CallWitness);
@@ -997,118 +890,6 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
   record.ValidationError.reset();
   record.ValidatedCall = std::move(validated);
   return record;
-}
-
-D5PreparedCallResult
-PreparedCallFactory::prepare(D5ResolvedPlanningFacts facts) {
-  D5PreparedCallResult result;
-  result.Facts = facts;
-  auto exclude = [&](D5PreparationExclusionReason reason) {
-    result.Admission = D3AdmissionKind::NotInSlice;
-    result.ExclusionReason = reason;
-    return result;
-  };
-  auto reject = [&](D5PreparationError error) {
-    result.Admission = D3AdmissionKind::Rejected;
-    result.PreparationError = error;
-    return result;
-  };
-
-  const auto &pre = facts.Pre;
-  if (!pre.CoreFactsComplete)
-    return reject(D5PreparationError::InvalidIdentity);
-  if (pre.MultipleArguments || pre.VariadicOrDefault)
-    return exclude(D5PreparationExclusionReason::ArityOrDefault);
-  if (pre.Generic || pre.NestedObservation)
-    return exclude(D5PreparationExclusionReason::GenericOrContextual);
-  if (pre.InitOrOutcome)
-    return exclude(D5PreparationExclusionReason::InitOrOutcome);
-  if (pre.AsyncOrExecutionBoundary)
-    return exclude(D5PreparationExclusionReason::AsyncOrExecutionBoundary);
-  if (pre.ReturnDependencyOrRegionEscape)
-    return exclude(
-        D5PreparationExclusionReason::ReturnDependencyOrRegionEscape);
-  if (pre.ActualCategory != D3ActualCategory::WholePlace)
-    return exclude(D5PreparationExclusionReason::ProjectionOrTemporary);
-  if (!pre.SourceIsLocalPlace)
-    return exclude(D5PreparationExclusionReason::NonLocalPlace);
-  if (facts.DependencyBearingActual)
-    return exclude(D5PreparationExclusionReason::DependencyBearingActual);
-  if (pre.SourcePlaceAlias || pre.SourceStateBefore != "Live" ||
-      pre.PALStateBefore != "Free")
-    return reject(D5PreparationError::InvalidWholePlaceAdmission);
-  if (facts.ActualType.empty() || facts.FormalType.empty() ||
-      facts.ActualType != facts.FormalType)
-    return exclude(
-        D5PreparationExclusionReason::TypeRequiresContextOrConversion);
-  if (!facts.TypesCompatible)
-    return reject(D5PreparationError::IncompatibleType);
-  if (facts.TypeCategory == D3TypeCategory::SharedIdentity ||
-      facts.TypeCategory == D3TypeCategory::RawOrReferenceIdentity ||
-      facts.TypeCategory == D3TypeCategory::FunctionOrDynIdentity)
-    return exclude(
-        D5PreparationExclusionReason::SharedRawReferenceOrCallable);
-  if (facts.TypeCategory != D3TypeCategory::Aggregate)
-    return exclude(
-        D5PreparationExclusionReason::TypeRequiresContextOrConversion);
-  if (facts.CopyProof == D3CopyProof::Indeterminate)
-    return reject(D5PreparationError::IndeterminateCopyProof);
-  if (facts.OwnershipProof == D3OwnershipProof::Indeterminate)
-    return reject(D5PreparationError::IndeterminateOwnership);
-
-  if (pre.FormalCeded) {
-    if (!facts.LegacyRequirement ||
-        *facts.LegacyRequirement == LegacyCedeRequirement::Indeterminate)
-      return reject(D5PreparationError::IndeterminateLegacyCedeRequirement);
-    if (facts.CopyProof == D3CopyProof::ProvenNonCopy) {
-      if (*facts.LegacyRequirement == LegacyCedeRequirement::ImplicitExempt)
-        return exclude(
-            D5PreparationExclusionReason::CededNonCopyLegacyExempt);
-      if (facts.OwnershipProof != D3OwnershipProof::Owned)
-        return reject(D5PreparationError::InconsistentLegacyCedeRequirement);
-    } else if (facts.OwnershipProof != D3OwnershipProof::Trivial ||
-               *facts.LegacyRequirement !=
-                   LegacyCedeRequirement::ImplicitExempt) {
-      return reject(D5PreparationError::InconsistentLegacyCedeRequirement);
-    }
-  } else if (facts.LegacyRequirement) {
-    return reject(D5PreparationError::InconsistentLegacyCedeRequirement);
-  }
-
-  if (facts.OwnershipProof == D3OwnershipProof::Owned &&
-      !facts.SourceCleanupAuthority)
-    return reject(D5PreparationError::IncompleteLiability);
-  if (!facts.RegionAuthorityComplete)
-    return reject(D5PreparationError::IncompleteRegion);
-
-  D3CallObservationInput input;
-  input.Pre = pre;
-  input.Post.ActualType = facts.ActualType;
-  input.Post.TypeCategory = facts.TypeCategory;
-  input.Post.CopyProof = facts.CopyProof;
-  input.Post.OwnershipProof = facts.OwnershipProof;
-  const auto prospective = classifyProspectiveTransfer(pre, facts.CopyProof);
-  input.Post.BoundaryAccess = prospective.Boundary;
-  input.Post.CleanupWitness = pre.SourceWitness + ":cleanup";
-  input.Post.SourceLiability = deriveSourceLiability(
-      pre, facts.OwnershipProof, input.Post.CleanupWitness);
-  input.Post.LegacySucceeded = true;
-  input.Post.LegacyTypeMismatch = false;
-  input.Post.AdmissionFactsComplete = true;
-  input.Post.WholePlaceEligible = true;
-  input.Post.LiabilityComplete = true;
-  input.Post.RegionFactsComplete = true;
-
-  auto prepared = DirectCallObservationFactory::observe(std::move(input));
-  if (prepared.admission() != D3AdmissionKind::Admitted ||
-      !prepared.validatedCall())
-    return reject(D5PreparationError::ConflictingPreparedPlan);
-  if (!prepared.validatedCall()->evaluationDelta().entries().empty())
-    return reject(D5PreparationError::ConflictingPreparedPlan);
-
-  result.Admission = D3AdmissionKind::Admitted;
-  result.PreparedCall = *prepared.validatedCall();
-  return result;
 }
 
 } // namespace toka

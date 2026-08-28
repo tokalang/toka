@@ -18,7 +18,6 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/DirectCallObservationAudit.h"
 #include "toka/PureNominalOverloadProbeAudit.h"
-#include "toka/PreparedCallParityAudit.h"
 #include "toka/PlaceState.h"
 #include "toka/Type.h"
 #include "toka/PAL_Checker.h"
@@ -363,10 +362,6 @@ public:
     m_D4ProbeAuditSession = session;
   }
 
-  void setPreparedCallAuditSession(D5PreparedCallAuditSession *session) {
-    m_D5PreparedCallSession = session;
-  }
-
   bool hasErrors() const { return HasError; }
 
   const std::map<std::string, std::shared_ptr<toka::Type>>& getParenthesizedRecordTypes() const {
@@ -646,7 +641,6 @@ private:
   const Expr *m_StartBoundaryRoot = nullptr;
   D3ObservationSession *m_D3ObservationSession = nullptr;
   D4ProbeAuditSession *m_D4ProbeAuditSession = nullptr;
-  D5PreparedCallAuditSession *m_D5PreparedCallSession = nullptr;
   unsigned m_D3SpeculativeCallDepth = 0;
 
   bool m_AllowPermissionSuffix = false; // [NEW] Track explicit method call context

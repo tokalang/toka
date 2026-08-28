@@ -3668,11 +3668,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   std::optional<D3CallObservationInput> d3ObservationInput;
   std::optional<D3ObservationScope> d3ObservationScope;
-  std::optional<D5PreparedCallResult> d5PreparedCall;
-  D3ObservationSentinel d5PreFactoryBefore;
-  bool d5PreFactoryUnchanged = false;
-  std::vector<std::string> d5PreFactoryDifferences;
-  size_t d5FinalLegacyCheckCount = 0;
   D3ObservationSentinel d3PreCaptureBefore;
   bool d3PreCaptureUnchanged = false;
   std::vector<std::string> d3PreCaptureDifferences;
@@ -3730,30 +3725,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
     if (gateExclusion) {
       m_D3ObservationSession->noteGateExclusion(*gateExclusion);
-      if (m_D5PreparedCallSession) {
-        switch (*gateExclusion) {
-        case D3GateExclusionReason::WrongRoute:
-          m_D5PreparedCallSession->noteGateExclusion(
-              D5GateExclusionReason::WrongRoute);
-          break;
-        case D3GateExclusionReason::NonSameLexical:
-          m_D5PreparedCallSession->noteGateExclusion(
-              D5GateExclusionReason::NonSameLexical);
-          break;
-        case D3GateExclusionReason::CandidateProbeOrSpeculativeContext:
-          m_D5PreparedCallSession->noteGateExclusion(
-              D5GateExclusionReason::OverloadOrCandidateProbe);
-          break;
-        case D3GateExclusionReason::NonFinalSemanticTraversal:
-          m_D5PreparedCallSession->noteGateExclusion(
-              D5GateExclusionReason::SpeculativeOrNonFinalTraversal);
-          break;
-        case D3GateExclusionReason::NestedObservationContext:
-          m_D5PreparedCallSession->noteGateExclusion(
-              D5GateExclusionReason::NestedPreparation);
-          break;
-        }
-      }
     } else {
       Expr *actual = Call->Args.empty() ? nullptr : Call->Args.front().get();
       d3PreCaptureBefore = captureD3ObservationSentinel(Call, actual);
@@ -3850,143 +3821,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
       D3ObservationSentinel d3PreCaptureAfter =
           captureD3ObservationSentinel(Call, actual);
-      d3PreCaptureDifferences =
-          differingD3SentinelFields(d3PreCaptureBefore, d3PreCaptureAfter);
+      d3PreCaptureDifferences = differingD3SentinelFields(
+          d3PreCaptureBefore, d3PreCaptureAfter);
       d3PreCaptureUnchanged = d3PreCaptureDifferences.empty();
       d3ObservationInput = std::move(input);
       d3DiagnosticStart = d3CallDiagnosticStart;
-      if (m_D5PreparedCallSession) {
-        if (DiagnosticEngine::records().size() != d3CallDiagnosticStart) {
-          m_D5PreparedCallSession->noteGateExclusion(
-              D5GateExclusionReason::ExistingCallDiagnostic);
-        } else {
-          d5PreFactoryBefore = captureD3ObservationSentinel(Call, actual);
-          D5ResolvedPlanningFacts facts;
-          facts.Pre = d3ObservationInput->Pre;
-          Expr *source = d3UnwrapSourceExpr(actual);
-          SymbolInfo *sourceInfo = nullptr;
-          std::string sourceName;
-          if (auto *variable = d3WholePlaceVariable(source)) {
-            sourceName = variable->Name;
-            CurrentScope->findVariableWithDeref(variable->Name, sourceInfo,
-                                                sourceName);
-          }
-          auto actualType = sourceInfo ? sourceInfo->TypeObj : nullptr;
-          auto formalType = !ParamTypes.empty() ? ParamTypes.front() : nullptr;
-          facts.ActualType = actualType ? actualType->canonicalIdentity() : "";
-          facts.FormalType = formalType ? formalType->canonicalIdentity() : "";
-          facts.TypeCategory = classifyD3TypeCategory(actualType);
-          facts.CopyProof = lookupD3CopyProof(actualType);
-          facts.OwnershipProof = lookupD3OwnershipProof(actualType);
-          facts.SourceInitMask = sourceInfo ? sourceInfo->InitMask : 0;
-          facts.SourceCleanupAuthority =
-              sourceInfo && facts.OwnershipProof == D3OwnershipProof::Owned;
-          facts.DependencyBearingActual =
-              sourceInfo && (!sourceInfo->LifeDependencySet.empty() ||
-                             sourceInfo->BorrowedPath);
-          if (facts.Pre.FormalCeded) {
-            LegacyCedePolicyInput policy;
-            policy.TypeCategory = facts.TypeCategory;
-            if (actualType) {
-              policy.CanonicalSoul =
-                  Type::stripMorphology(actualType->getSoulName());
-              if (size_t scope = policy.CanonicalSoul.rfind("::");
-                  scope != std::string::npos)
-                policy.CanonicalSoul = policy.CanonicalSoul.substr(scope + 2);
-            }
-            if (auto shape = std::dynamic_pointer_cast<ShapeType>(actualType);
-                shape && shape->Decl) {
-              if (shape->Decl->HasExplicitDrop ||
-                  !shape->Decl->MangledDestructorName.empty()) {
-                policy.DropFact = LegacyCedeDropFact::HasDrop;
-              } else {
-                auto properties = m_ShapeProps.find(shape->Decl->Name);
-                if (properties == m_ShapeProps.end() &&
-                    !shape->Decl->CodegenName.empty())
-                  properties = m_ShapeProps.find(shape->Decl->CodegenName);
-                if (properties != m_ShapeProps.end() &&
-                    properties->second.Status == ShapeAnalysisStatus::Analyzed)
-                  policy.DropFact = properties->second.HasDrop
-                                        ? LegacyCedeDropFact::HasDrop
-                                        : LegacyCedeDropFact::NoDrop;
-              }
-            }
-            facts.LegacyRequirement = classifyLegacyCedeRequirement(policy);
-          }
-          m_D5PreparedCallSession->notePreFactoryInvocation();
-          d5PreparedCall = PreparedCallFactory::prepare(std::move(facts));
-          auto after = captureD3ObservationSentinel(Call, actual);
-          d5PreFactoryDifferences =
-              differingD3SentinelFields(d5PreFactoryBefore, after);
-          d5PreFactoryUnchanged = d5PreFactoryDifferences.empty();
-          auto injected =
-              d5PreparedCall->admission() == D3AdmissionKind::Admitted
-                  ? m_D5PreparedCallSession->takeInjectedInfrastructureError()
-                  : std::nullopt;
-          if (injected &&
-              d5PreparedCall->admission() == D3AdmissionKind::Admitted) {
-            if (*injected == D5InfrastructureError::InvalidCallSiteIdentity ||
-                *injected == D5InfrastructureError::InvalidCalleeIdentity ||
-                *injected ==
-                    D5InfrastructureError::InvalidFormalOrDestinationIdentity ||
-                *injected ==
-                    D5InfrastructureError::InvalidSourcePlaceIdentity) {
-              auto malformed = d5PreparedCall->facts();
-              switch (*injected) {
-              case D5InfrastructureError::InvalidCallSiteIdentity:
-                malformed.Pre.CallWitness.clear();
-                break;
-              case D5InfrastructureError::InvalidCalleeIdentity:
-                malformed.Pre.CalleeWitness.clear();
-                break;
-              case D5InfrastructureError::InvalidFormalOrDestinationIdentity:
-                malformed.Pre.FormalWitness.clear();
-                malformed.Pre.DestinationWitness.clear();
-                break;
-              case D5InfrastructureError::InvalidSourcePlaceIdentity:
-                malformed.Pre.SourceWitness.clear();
-                break;
-              case D5InfrastructureError::ConflictingPatchPayload:
-              case D5InfrastructureError::MalformedPreparedResult:
-                break;
-              }
-              m_D5PreparedCallSession->notePreFactoryInvocation();
-              d5PreparedCall =
-                  PreparedCallFactory::prepare(std::move(malformed));
-            }
-            auto faultAfter = captureD3ObservationSentinel(Call, actual);
-            d5PreFactoryDifferences =
-                differingD3SentinelFields(d5PreFactoryBefore, faultAfter);
-            d5PreFactoryUnchanged = d5PreFactoryDifferences.empty();
-            D5PreparedCallReceipt failure;
-            failure.Location = d3ObservationInput->Pre.CallLocation;
-            failure.Callee = d3ObservationInput->Pre.CalleeName;
-            failure.FormalIdentity = d3ObservationInput->Pre.FormalWitness;
-            failure.SourceIdentity = d3ObservationInput->Pre.SourceWitness;
-            failure.ActualType = d5PreparedCall->facts().ActualType;
-            failure.FormalType = d5PreparedCall->facts().FormalType;
-            failure.SourceStateBefore =
-                d3ObservationInput->Pre.SourceStateBefore;
-            failure.PALStateBefore = d3ObservationInput->Pre.PALStateBefore;
-            failure.SourceInitMask = d5PreparedCall->facts().SourceInitMask;
-            failure.DependencyBearingActual =
-                d5PreparedCall->facts().DependencyBearingActual;
-            failure.LegacyRequirement =
-                d5PreparedCall->facts().LegacyRequirement;
-            failure.PreAdmission = D3AdmissionKind::Rejected;
-            failure.InfrastructureError = *injected;
-            failure.PreFactoryParentUnchanged = d5PreFactoryUnchanged;
-            failure.PostFactoryParentUnchanged = d5PreFactoryUnchanged;
-            failure.PreDifferingParentFields = d5PreFactoryDifferences;
-            failure.PostDifferingParentFields = d5PreFactoryDifferences;
-            m_D5PreparedCallSession->append(std::move(failure));
-            error(Call, DiagID::ERR_GENERIC_SEMA,
-                  std::string("internal D.5a prepared-call failure: ") +
-                      toString(*injected));
-            return toka::Type::fromString("unknown");
-          }
-        }
-      }
       d3ObservationScope.emplace(m_D3ObservationSession);
     }
   }
@@ -3994,8 +3833,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   for (size_t i = 0; i < Call->Args.size(); ++i) {
     if (i == 0 && m_D4ProbeAuditSession)
       m_D4ProbeAuditSession->noteFinalLegacyCheck(Call);
-    if (i == 0 && d5PreparedCall)
-      ++d5FinalLegacyCheckCount;
     Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
 
     auto paramType = (i < ParamTypes.size()) ? ParamTypes[i] : nullptr;
@@ -4007,18 +3844,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
     // [NEW] Top-Down Closure Type Injection
     if (paramType) {
-      auto canonicalParam = resolveType(paramType, false);
-      if (canonicalParam && canonicalParam->typeKind == toka::Type::Function) {
-        if (auto clo = dynamic_cast<ClosureExpr *>(Call->Args[i].get())) {
-          auto fnTy =
-              std::static_pointer_cast<toka::FunctionType>(canonicalParam);
-          clo->InjectedParamTypes = fnTy->ParamTypes;
-          if ((clo->ReturnType.empty() || clo->ReturnType == "unknown") &&
-              fnTy->ReturnType) {
-            clo->ReturnType = fnTy->ReturnType->toString();
+       auto canonicalParam = resolveType(paramType, false);
+       if (canonicalParam && canonicalParam->typeKind == toka::Type::Function) {
+          if (auto clo = dynamic_cast<ClosureExpr*>(Call->Args[i].get())) {
+             auto fnTy = std::static_pointer_cast<toka::FunctionType>(canonicalParam);
+             clo->InjectedParamTypes = fnTy->ParamTypes;
+             if ((clo->ReturnType.empty() || clo->ReturnType == "unknown") && fnTy->ReturnType) {
+                 clo->ReturnType = fnTy->ReturnType->toString();
+              }
           }
-        }
-      }
+       }
     }
 
     std::shared_ptr<toka::Type> argType;
@@ -4613,102 +4448,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         captureD3ObservationSentinel(Call, actual);
     std::vector<std::string> postDifferences =
         differingD3SentinelFields(d3PostBefore, d3PostAfter);
-
-    if (d5PreparedCall && m_D5PreparedCallSession) {
-      m_D5PreparedCallSession->notePostOracleInvocation();
-      D5PreparedCallReceipt receipt;
-      receipt.Location = factoryRecord.input().Pre.CallLocation;
-      receipt.Callee = factoryRecord.input().Pre.CalleeName;
-      receipt.FormalIdentity = factoryRecord.input().Pre.FormalWitness;
-      receipt.SourceIdentity = factoryRecord.input().Pre.SourceWitness;
-      receipt.ActualType = d5PreparedCall->facts().ActualType;
-      receipt.FormalType = d5PreparedCall->facts().FormalType;
-      receipt.SourceStateBefore =
-          factoryRecord.input().Pre.SourceStateBefore;
-      receipt.PALStateBefore = factoryRecord.input().Pre.PALStateBefore;
-      receipt.SourceInitMask = d5PreparedCall->facts().SourceInitMask;
-      receipt.DependencyBearingActual =
-          d5PreparedCall->facts().DependencyBearingActual;
-      receipt.LegacyRequirement =
-          d5PreparedCall->facts().LegacyRequirement;
-      receipt.PreAdmission = d5PreparedCall->admission();
-      receipt.PostAdmission = factoryRecord.admission();
-      receipt.PreparationExclusion = d5PreparedCall->exclusionReason();
-      receipt.PreparationError = d5PreparedCall->preparationError();
-      receipt.LegacyDiagnosticCodes = factoryRecord.input().Post.LegacyDiagnosticCodes;
-      receipt.FinalLegacyCheckCount = d5FinalLegacyCheckCount;
-      receipt.PreFactoryParentUnchanged = d5PreFactoryUnchanged;
-      receipt.PreDifferingParentFields = d5PreFactoryDifferences;
-      receipt.PostFactoryParentUnchanged = postDifferences.empty();
-      receipt.PostDifferingParentFields = postDifferences;
-
-      if (d5PreparedCall->preparedCall())
-        receipt.PrePlan =
-            summarizeD5PreparedCall(*d5PreparedCall->preparedCall());
-      if (factoryRecord.validatedCall())
-        receipt.PostPlan =
-            summarizeD5PreparedCall(*factoryRecord.validatedCall());
-
-      if (d5PreparedCall->admission() == D3AdmissionKind::Admitted) {
-        const bool factsMatch =
-            d5PreparedCall->facts().ActualType ==
-                factoryRecord.input().Post.ActualType &&
-            d5PreparedCall->facts().FormalType ==
-                factoryRecord.input().Pre.FormalType;
-        if (!factsMatch) {
-          receipt.ParityError = D5ParityError::PrePostFactMismatch;
-        } else if (d5FinalLegacyCheckCount != 1) {
-          receipt.ParityError = D5ParityError::LegacyCheckCountMismatch;
-        } else if (!factoryRecord.validatedCall() ||
-                   !d5PreparedCall->preparedCall() ||
-                   !(*d5PreparedCall->preparedCall() ==
-                     *factoryRecord.validatedCall())) {
-          receipt.ParityError = D5ParityError::PreparedPlanMismatch;
-        } else if (!factoryRecord.validatedCall()
-                        ->evaluationDelta()
-                        .entries()
-                        .empty()) {
-          receipt.ParityError = D5ParityError::NonEmptyEvaluationDelta;
-        } else {
-          bool legacyMatches = true;
-          const auto &codes = receipt.LegacyDiagnosticCodes;
-          if (receipt.LegacyRequirement ==
-              LegacyCedeRequirement::ExplicitRequired) {
-            if (factoryRecord.input().Pre.ExplicitCede) {
-              legacyMatches = std::find(codes.begin(), codes.end(),
-                                        "E04570") == codes.end();
-            } else {
-              legacyMatches = codes.size() == 1 && codes.front() == "E04570";
-            }
-          } else if (receipt.LegacyRequirement ==
-                     LegacyCedeRequirement::ImplicitExempt) {
-            legacyMatches = std::find(codes.begin(), codes.end(),
-                                      "E04570") == codes.end();
-          } else if (!factoryRecord.input().Pre.FormalCeded) {
-            legacyMatches = codes.empty();
-          }
-          if (!legacyMatches)
-            receipt.ParityError = D5ParityError::LegacyOutcomeMismatch;
-        }
-        receipt.SameCallStructuralParity = !receipt.ParityError;
-      }
-      if (d5PreparedCall->admission() == D3AdmissionKind::Admitted) {
-        if (auto injected =
-                m_D5PreparedCallSession->takeInjectedParityError()) {
-          receipt.ParityError = *injected;
-          receipt.SameCallStructuralParity = false;
-        }
-      }
-      const auto terminalParityError =
-          m_D5PreparedCallSession->strictQualification()
-              ? receipt.ParityError
-              : std::nullopt;
-      m_D5PreparedCallSession->append(std::move(receipt));
-      if (terminalParityError)
-        error(Call, DiagID::ERR_GENERIC_SEMA,
-              std::string("internal D.5a parity failure: ") +
-                  toString(*terminalParityError));
-    }
 
     D3ObservationEnvelope envelope(std::move(factoryRecord));
     envelope.PreFactCaptureUnchanged = d3PreCaptureUnchanged;
