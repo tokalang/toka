@@ -47,6 +47,7 @@ static D3CallObservationInput baseInput() {
   input.Pre.ActualCategory = D3ActualCategory::WholePlace;
   input.Pre.CoreFactsComplete = true;
   input.Pre.FormalCeded = true;
+  input.Pre.SourceIsLocalPlace = true;
   input.Post.ActualType = "Resource";
   input.Post.TypeCategory = D3TypeCategory::Aggregate;
   input.Post.CopyProof = D3CopyProof::ProvenNonCopy;
@@ -116,6 +117,32 @@ int main() {
       DirectCallObservationFactory::observe(unrelatedLegacyFailureInput),
       D3CallValidationError::IncompleteObservationFacts));
 
+  auto ownedWithoutLiability = baseInput();
+  ownedWithoutLiability.Post.SourceLiability = D3LiabilityFact::noLiability();
+  CHECK(isRejected(DirectCallObservationFactory::observe(ownedWithoutLiability),
+                   D3CallValidationError::IncompleteObservationFacts));
+
+  auto copyWithCleanup = baseInput();
+  copyWithCleanup.Post.CopyProof = D3CopyProof::ProvenCopy;
+  copyWithCleanup.Post.OwnershipProof = D3OwnershipProof::Trivial;
+  CHECK(isRejected(DirectCallObservationFactory::observe(copyWithCleanup),
+                   D3CallValidationError::IncompleteObservationFacts));
+
+  auto temporaryWithPlaceCleanup = baseInput();
+  temporaryWithPlaceCleanup.Pre.ActualCategory =
+      D3ActualCategory::WholeTemporary;
+  temporaryWithPlaceCleanup.Post.BoundaryAccess = D3BoundaryAccess::None;
+  temporaryWithPlaceCleanup.Post.WholePlaceEligible = false;
+  CHECK(isRejected(
+      DirectCallObservationFactory::observe(temporaryWithPlaceCleanup),
+      D3CallValidationError::IncompleteObservationFacts));
+
+  auto moveWithoutInvalidation = baseInput();
+  moveWithoutInvalidation.Post.BoundaryAccess = D3BoundaryAccess::SharedBorrow;
+  CHECK(
+      isRejected(DirectCallObservationFactory::observe(moveWithoutInvalidation),
+                 D3CallValidationError::InvalidWholePlaceAdmission));
+
   auto otherCalleeInput = baseInput();
   otherCalleeInput.Pre.CalleeWitness = "3:1:consume_other";
   otherCalleeInput.Pre.CalleeName = "consume_other";
@@ -144,6 +171,12 @@ int main() {
   auto copyExplicit = DirectCallObservationFactory::observe(copyExplicitInput);
   CHECK(hasTransfer(copyExplicit, D3TransferMode::CopyValue,
                     D3SourceDisposition::InvalidateWhole));
+  auto copyExplicitWithoutInvalidation = copyExplicitInput;
+  copyExplicitWithoutInvalidation.Post.BoundaryAccess =
+      D3BoundaryAccess::SharedBorrow;
+  CHECK(isRejected(
+      DirectCallObservationFactory::observe(copyExplicitWithoutInvalidation),
+      D3CallValidationError::InvalidWholePlaceAdmission));
 
   auto temporaryInput = baseInput();
   temporaryInput.Pre.ActualCategory = D3ActualCategory::WholeTemporary;
@@ -157,6 +190,10 @@ int main() {
   auto temporary = DirectCallObservationFactory::observe(temporaryInput);
   CHECK(hasTransfer(temporary, D3TransferMode::ConsumeTemporary,
                     D3SourceDisposition::NoSourcePlace));
+  auto temporaryWithBoundary = temporaryInput;
+  temporaryWithBoundary.Post.BoundaryAccess = D3BoundaryAccess::Invalidation;
+  CHECK(isRejected(DirectCallObservationFactory::observe(temporaryWithBoundary),
+                   D3CallValidationError::IncompleteObservationFacts));
 
   auto borrowedInput = baseInput();
   borrowedInput.Pre.FormalCeded = false;
@@ -166,6 +203,12 @@ int main() {
   auto borrowed = DirectCallObservationFactory::observe(borrowedInput);
   CHECK(hasTransfer(borrowed, D3TransferMode::BorrowCapture,
                     D3SourceDisposition::KeepLive));
+  auto borrowWithoutSharedAccess = borrowedInput;
+  borrowWithoutSharedAccess.Post.BoundaryAccess =
+      D3BoundaryAccess::Invalidation;
+  CHECK(isRejected(
+      DirectCallObservationFactory::observe(borrowWithoutSharedAccess),
+      D3CallValidationError::InvalidWholePlaceAdmission));
 
   auto borrowedExplicitInput = borrowedInput;
   borrowedExplicitInput.Pre.ExplicitCede = true;
@@ -178,6 +221,11 @@ int main() {
   cededBorrowedInput.Post.SourceLiability = D3LiabilityFact::noLiability();
   CHECK(isExcluded(DirectCallObservationFactory::observe(cededBorrowedInput),
                    D3ExclusionReason::UnsupportedTypeCategory));
+
+  auto nonLocalInput = baseInput();
+  nonLocalInput.Pre.SourceIsLocalPlace = false;
+  CHECK(isExcluded(DirectCallObservationFactory::observe(nonLocalInput),
+                   D3ExclusionReason::NonLocalPlace));
 
   auto scalarInput = copyBareInput;
   scalarInput.Pre.FormalCeded = false;
@@ -238,6 +286,8 @@ int main() {
        [](auto &v) { v.Pre.NestedObservation = true; }},
       {D3ExclusionReason::Projection,
        [](auto &v) { v.Pre.ActualCategory = D3ActualCategory::Projection; }},
+      {D3ExclusionReason::NonLocalPlace,
+       [](auto &v) { v.Pre.SourceIsLocalPlace = false; }},
       {D3ExclusionReason::SharedIdentity,
        [](auto &v) { v.Post.TypeCategory = D3TypeCategory::SharedIdentity; }},
       {D3ExclusionReason::RawOrReferenceIdentity,

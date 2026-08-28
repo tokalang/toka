@@ -302,6 +302,7 @@ AsyncOrExecutionBoundary
 ReturnDependencyOrRegionEscape
 NestedObservation
 Projection
+NonLocalPlace
 SharedIdentity
 RawOrReferenceIdentity
 FunctionOrDynIdentity
@@ -526,6 +527,7 @@ for:
 - nested D.3 observation;
 - shared/raw/reference/function/dyn identity categories;
 - non-`cede` scalar places and non-`cede` aggregate temporaries;
+- module-global or otherwise nonlocal source places;
 - unsupported type categories;
 - every projected source place;
 - async, `.start`, thread handoff, or execution-boundary escape;

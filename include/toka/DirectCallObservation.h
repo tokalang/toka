@@ -23,6 +23,7 @@ enum class D3ExclusionReason : uint8_t {
   ReturnDependencyOrRegionEscape,
   NestedObservation,
   Projection,
+  NonLocalPlace,
   SharedIdentity,
   RawOrReferenceIdentity,
   FunctionOrDynIdentity,
@@ -117,6 +118,7 @@ enum class D3SubjectKind : uint8_t {
   SourcePlace,
   Destination,
   Loan,
+  Temporary,
   Cleanup,
 };
 
@@ -160,6 +162,9 @@ public:
   }
   static D3SubjectIdentity loan(std::string key) {
     return D3SubjectIdentity(D3SubjectKind::Loan, std::move(key));
+  }
+  static D3SubjectIdentity temporary(std::string key) {
+    return D3SubjectIdentity(D3SubjectKind::Temporary, std::move(key));
   }
   static D3SubjectIdentity cleanup(std::string key) {
     return D3SubjectIdentity(D3SubjectKind::Cleanup, std::move(key));
@@ -248,6 +253,7 @@ struct D3PreLegacyDirectCallFacts {
   bool ReturnDependencyOrRegionEscape = false;
   bool NestedObservation = false;
   bool SourcePlaceAlias = false;
+  bool SourceIsLocalPlace = false;
 };
 
 struct D3PostLegacyDirectCallFacts {

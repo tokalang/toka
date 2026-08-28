@@ -15,11 +15,14 @@ ORDER_B = ROOT / "tests/semantics/direct_call_observation_d3a/copy_order_b.tk"
 DYNAMIC = ROOT / "tests/semantics/call_transfer_shadow_m1/dynamic_trait_method.tk"
 CALLABLE = ROOT / "tests/semantics/call_transfer_shadow_m1/closure_callable_replay.tk"
 BOUNDARY = ROOT / "tests/semantics/call_transfer_shadow_m1/boundary_identity.tk"
+COPY_PLACES = ROOT / "tests/semantics/call_transfer_shadow_m1/copy_places.tk"
 OVERLOAD = ROOT / "tests/semantics/direct_call_observation_d3a/overload_gate.tk"
 NESTED = ROOT / "tests/semantics/direct_call_observation_d3a/nested_complex.tk"
 STABLE_PLACE = ROOT / "tests/semantics/direct_call_observation_d3a/stable_place.tk"
 UNIQUE_PLACE = ROOT / "tests/semantics/direct_call_observation_d3a/unique_place.tk"
 PROBE = ROOT / "tests/semantics/direct_call_observation_d3a/probe_consumer.tk"
+GENERIC_PROBE = ROOT / "tests/semantics/direct_call_observation_d3a/generic_probe.tk"
+GLOBAL_PLACE = ROOT / "tests/semantics/direct_call_observation_d3a/global_place.tk"
 ASYNC_DANGLING = ROOT / "tests/fail/async_dangling_expression_contexts.tk"
 CEDE_BORROW_CONFLICT = ROOT / "tests/conformance/diagnostics/cede_unique_parameter_borrow_conflict.tk"
 SCHEMA_PATH = ROOT / "tests/semantics/direct_call_observation_d3a/receipt_schema_v1.json"
@@ -277,6 +280,15 @@ def main():
                 "consume_i32": ("Scalar/ProvenCopy/Trivial", "CopyValue", "KeepLive"),
             }, "Copy proof depends on call order or cache warmth")
 
+    _, _, copy_places_payload = require_parity(tokac, COPY_PLACES)
+    copy_place_records = source_records(copy_places_payload, COPY_PLACES)
+    scalar_temporary = record_at(copy_place_records, 28, "consume")
+    require(edge(scalar_temporary)["liability_source"]["kind"] ==
+            "NoLiability" and
+            scalar_temporary["evaluation_delta"]["entries"][0]
+            ["subject_identity"]["kind"] == "Temporary",
+            "trivial temporary was mislabeled as a cleanup obligation")
+
     _, _, overload_payload = require_parity(tokac, OVERLOAD)
     require(not source_records(overload_payload, OVERLOAD) and
             overload_payload["gate_exclusions"][
@@ -315,6 +327,21 @@ def main():
             probe_payload["gate_exclusions"][
                 "CandidateProbeOrSpeculativeContext"] >= 1,
             "candidate probe emitted a speculative inner receipt")
+
+    _, _, generic_payload = require_parity(tokac, GENERIC_PROBE)
+    require(not source_records(generic_payload, GENERIC_PROBE) and
+            generic_payload["gate_exclusions"][
+                "CandidateProbeOrSpeculativeContext"] >= 1,
+            "generic deduction or instantiation emitted a speculative receipt")
+
+    _, _, global_payload = require_parity(tokac, GLOBAL_PLACE)
+    global_inspects = [record for record in source_records(
+        global_payload, GLOBAL_PLACE) if record["callee"] == "inspect"]
+    require(len(global_inspects) == 2 and
+            all(record["admission"] == "NotInSlice" and
+                record["reason"] == "NonLocalPlace" and
+                record["transfer_edges"] == [] for record in global_inspects),
+            "module-global binding was admitted as a whole local place")
 
     async_normal, _, async_payload = require_parity(tokac, ASYNC_DANGLING)
     require(async_normal.returncode == 1 and "E0702" in async_normal.stderr,
@@ -357,8 +384,10 @@ def main():
     require(not any(record["call_site"]["line"] == 9
                     for record in boundary_records),
             "cross-module imported call entered the D.3 factory")
-    require(boundary_payload["gate_exclusions"]["NonSameLexical"] >= 1,
-            "cross-module exclusion was not observed")
+    require(boundary_payload["gate_exclusions"]["NonSameLexical"] +
+            boundary_payload["gate_exclusions"][
+                "CandidateProbeOrSpeculativeContext"] >= 1,
+            "cross-module/generic exclusion was not observed")
 
     for conflicting in ("--diagnostics-json", "--cede-obligations=json",
                         "--call-transfer-shadow=json"):

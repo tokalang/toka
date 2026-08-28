@@ -37,7 +37,7 @@ bool equalPre(const D3PreLegacyDirectCallFacts &lhs,
                   lhs.VariadicOrDefault, lhs.MultipleArguments,
                   lhs.InitOrOutcome, lhs.AsyncOrExecutionBoundary,
                   lhs.ReturnDependencyOrRegionEscape, lhs.NestedObservation,
-                  lhs.SourcePlaceAlias) ==
+                  lhs.SourcePlaceAlias, lhs.SourceIsLocalPlace) ==
              std::tie(rhs.IdentityOrigin, rhs.CallWitness, rhs.CalleeWitness,
                       rhs.FormalWitness, rhs.SourceWitness,
                       rhs.DestinationWitness, rhs.CallerBindingOwnerWitness,
@@ -48,7 +48,7 @@ bool equalPre(const D3PreLegacyDirectCallFacts &lhs,
                       rhs.Generic, rhs.VariadicOrDefault, rhs.MultipleArguments,
                       rhs.InitOrOutcome, rhs.AsyncOrExecutionBoundary,
                       rhs.ReturnDependencyOrRegionEscape, rhs.NestedObservation,
-                      rhs.SourcePlaceAlias) &&
+                      rhs.SourcePlaceAlias, rhs.SourceIsLocalPlace) &&
          equalLocation(lhs.CallLocation, rhs.CallLocation) &&
          equalLocation(lhs.FormalLocation, rhs.FormalLocation);
 }
@@ -101,6 +101,8 @@ const char *toString(D3ExclusionReason value) {
     return "NestedObservation";
   case D3ExclusionReason::Projection:
     return "Projection";
+  case D3ExclusionReason::NonLocalPlace:
+    return "NonLocalPlace";
   case D3ExclusionReason::SharedIdentity:
     return "SharedIdentity";
   case D3ExclusionReason::RawOrReferenceIdentity:
@@ -289,6 +291,8 @@ const char *toString(D3SubjectKind value) {
     return "Destination";
   case D3SubjectKind::Loan:
     return "Loan";
+  case D3SubjectKind::Temporary:
+    return "Temporary";
   case D3SubjectKind::Cleanup:
     return "Cleanup";
   }
@@ -561,6 +565,9 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
     return exclude(std::move(input), D3ExclusionReason::NestedObservation);
   if (pre.ActualCategory == D3ActualCategory::Projection)
     return exclude(std::move(input), D3ExclusionReason::Projection);
+  if (pre.ActualCategory == D3ActualCategory::WholePlace &&
+      !pre.SourceIsLocalPlace)
+    return exclude(std::move(input), D3ExclusionReason::NonLocalPlace);
   if (post.TypeCategory == D3TypeCategory::SharedIdentity)
     return exclude(std::move(input), D3ExclusionReason::SharedIdentity);
   if (post.TypeCategory == D3TypeCategory::RawOrReferenceIdentity)
@@ -589,6 +596,52 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
     return reject(std::move(input),
                   D3CallValidationError::IndeterminateOwnership);
   if (pre.ActualCategory == D3ActualCategory::Indeterminate)
+    return reject(std::move(input),
+                  D3CallValidationError::IncompleteObservationFacts);
+  const bool typeMatchesOwnership =
+      (post.TypeCategory == D3TypeCategory::Scalar &&
+       post.OwnershipProof == D3OwnershipProof::Trivial) ||
+      (post.TypeCategory == D3TypeCategory::Aggregate &&
+       (post.OwnershipProof == D3OwnershipProof::Trivial ||
+        post.OwnershipProof == D3OwnershipProof::Owned)) ||
+      (post.TypeCategory == D3TypeCategory::BorrowedAggregate &&
+       post.OwnershipProof == D3OwnershipProof::Borrowed) ||
+      (post.TypeCategory == D3TypeCategory::OwnedIdentity &&
+       post.OwnershipProof == D3OwnershipProof::Owned);
+  if (!typeMatchesOwnership)
+    return reject(std::move(input),
+                  D3CallValidationError::IncompleteObservationFacts);
+  const auto sourceLiabilityKind = post.SourceLiability.kind();
+  const bool sourceLiabilityHasMatchingCleanup =
+      post.SourceLiability.subject() &&
+      post.SourceLiability.subject()->kind() == D3SubjectKind::Cleanup &&
+      !post.CleanupWitness.empty() &&
+      post.SourceLiability.subject()->key() == post.CleanupWitness;
+  bool liabilityMatchesOwnership = false;
+  switch (post.OwnershipProof) {
+  case D3OwnershipProof::Owned:
+    liabilityMatchesOwnership =
+        pre.ActualCategory == D3ActualCategory::WholeTemporary
+            ? sourceLiabilityKind == D3LiabilityKind::TemporaryCleanup &&
+                  sourceLiabilityHasMatchingCleanup
+            : sourceLiabilityKind == D3LiabilityKind::SourcePlaceCleanup &&
+                  sourceLiabilityHasMatchingCleanup;
+    break;
+  case D3OwnershipProof::Trivial:
+  case D3OwnershipProof::Borrowed:
+    liabilityMatchesOwnership =
+        sourceLiabilityKind == D3LiabilityKind::NoLiability &&
+        !post.SourceLiability.subject();
+    break;
+  case D3OwnershipProof::Shared:
+  case D3OwnershipProof::Indeterminate:
+    liabilityMatchesOwnership = false;
+    break;
+  }
+  if (!liabilityMatchesOwnership ||
+      (post.CopyProof == D3CopyProof::ProvenCopy &&
+       (post.OwnershipProof != D3OwnershipProof::Trivial ||
+        sourceLiabilityKind != D3LiabilityKind::NoLiability)))
     return reject(std::move(input),
                   D3CallValidationError::IncompleteObservationFacts);
   if (!post.LegacySucceeded) {
@@ -733,7 +786,7 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
   if (pre.ActualCategory == D3ActualCategory::WholeTemporary) {
     validated.Evaluation.Entries.push_back(
         makeEntry(D3StateDomain::Evaluation,
-                  D3SubjectIdentity::cleanup(post.CleanupWitness), "Absent",
+                  D3SubjectIdentity::temporary(pre.SourceWitness), "Absent",
                   "Materialized", "legacy-expression-evaluation"));
   }
   if (source == D3SourceDisposition::InvalidateWhole) {
@@ -776,7 +829,10 @@ DirectCallObservationFactory::observe(D3CallObservationInput input) {
       transfer == D3TransferMode::BorrowCapture
           ? D3SubjectIdentity::loan(pre.SourceWitness)
           : (pre.ActualCategory == D3ActualCategory::WholeTemporary
-                 ? D3SubjectIdentity::cleanup(post.CleanupWitness)
+                 ? (post.SourceLiability.kind() ==
+                            D3LiabilityKind::TemporaryCleanup
+                        ? D3SubjectIdentity::cleanup(post.CleanupWitness)
+                        : D3SubjectIdentity::temporary(pre.SourceWitness))
                  : D3SubjectIdentity::sourcePlace(pre.SourceWitness));
   validated.RegionWitness.Terminal =
       transfer == D3TransferMode::BorrowCapture

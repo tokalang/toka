@@ -2512,6 +2512,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   // [NEW] Generic Instantiation
   if (Fn && !Fn->GenericParams.empty()) {
+    D3SpeculativeCallScope genericSpeculativeScope(m_D3SpeculativeCallDepth);
     std::vector<std::shared_ptr<toka::Type>> TypeArgs;
     bool deductionFailed = false;
 
@@ -3302,14 +3303,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (auto *variable = d3WholePlaceVariable(source)) {
         input.Pre.ActualCategory = D3ActualCategory::WholePlace;
         SymbolInfo *info = nullptr;
+        Scope *sourceScope = nullptr;
         std::string actualName = variable->Name;
-        if (CurrentScope->findVariableWithDeref(variable->Name, info,
-                                                actualName) &&
+        if (CurrentScope->findVariableWithDerefScope(
+                variable->Name, info, actualName, sourceScope) &&
             info) {
           auto declarationLocation = makeD3SourceLocation(info->DeclLoc);
           input.Pre.SourceWitness =
               witness(declarationLocation, actualName);
           input.Pre.SourcePlaceAlias = info->IsPlaceAlias;
+          input.Pre.SourceIsLocalPlace =
+              info->IsDeclaredVariable && sourceScope && sourceScope->Depth > 0;
         }
       } else if (dynamic_cast<MemberExpr *>(source) ||
                  dynamic_cast<ArrayIndexExpr *>(source) ||

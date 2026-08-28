@@ -1,0 +1,19 @@
+shape Value(raw: i32)
+
+auto global_value = Value(raw = 21:i32)
+
+fn inspect(value: Value) -> i32 {
+    return value.raw
+}
+
+fn first() -> i32 {
+    return inspect(global_value)
+}
+
+fn second() -> i32 {
+    return inspect(global_value)
+}
+
+fn main() -> i32 {
+    return first() + second() - 42:i32
+}
