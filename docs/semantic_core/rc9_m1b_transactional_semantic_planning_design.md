@@ -625,14 +625,14 @@ no transaction type or production Sema/Evidence/CodeGen include.
 
 - D.4a removed one live overload traversal with an immutable pure query and is
   accepted, but it did not authorize a transaction kernel or ownership change.
-- Enter the first actual planning step through
-  [`M1b-D.5a Pre-Legacy Prepared-Call Parity`](rc9_m1b_d5_prepared_call_parity.md).
-  It splits the qualified D.3a pure factory into pre-legacy preparation and
-  legacy-outcome finalization, then proves full structural parity on one real
-  same-lexical whole-place slice.
-- D.5a introduces no child transaction. Contextual closure/candidate isolation
-  remains unimplemented and must be justified by a later real route only when
-  an immutable query cannot express that route.
+- The attempted
+  [`M1b-D.5a Pre-Legacy Prepared-Call Parity`](rc9_m1b_d5_prepared_call_parity.md)
+  implementation was reverted. It depended on cleanup and enclosing
+  full-expression facts that Sema did not own, so it is non-authorizing and
+  must not be revived before M1b.2a qualification.
+- Contextual closure/candidate isolation remains unimplemented and must be
+  justified by a later real route only when an immutable query cannot express
+  that route.
 - Public Evidence v1 and all production ownership behavior remain on the
   legacy path. Do not activate call ownership changes.
 
@@ -643,6 +643,10 @@ contextual probes remain separately review-gated.
 
 ### M1b.2 — unified type and exact-place queries
 
+- Begin with the separately reviewed
+  [`M1b.2a Authority-First Semantic Facts`](rc9_m1b_2a_authority_first_facts.md).
+  M1b.2a creates no transfer plan; it first establishes typed, Sema-owned
+  full-expression, exact-place, source-cleanup, and raw legacy-policy facts.
 - Replace call-planner Copy/ownership/dependency/drop classification with
   `TypeProperties`.
 - Share exact-place admission and cleanup-mask facts with existing qualified

@@ -1,10 +1,23 @@
 # RC9 M1b-D.5a Pre-Legacy Prepared-Call Parity
 
-**Design status:** Accepted for bounded M1b.1a implementation after the
-internal bounded audit at `b4e99d38a6783e69c4b9ef3fcf47a2f8217c2faf`.
+**Design status:** Historical bounded design / blocked as an implementation
+route. Superseded by M1b.2a authority-first work.
 
-**Implementation status:** Not implemented. This document authorizes neither
-live ownership commit nor caller-spelling activation.
+**Implementation status:** Blocked / implementation reverted. The failed
+implementation and corrective experiment remain in Git history at `4103afd8`
+and `870d49b4`; they were reverted by `13ea5e43` and `0ce8971e` respectively.
+This document authorizes neither reimplementation nor semantic activation.
+
+**Blocking result:** current Sema has no enclosing full-expression identity and
+no Sema-owned cleanup/liability authority. The attempted implementation derived
+regions per call, synthesized cleanup witnesses from strings, trusted
+caller-supplied policy/outcome facts, and used lossy projections/fault
+injection. Repairing those defects inside D.5a would duplicate CodeGen/lifecycle
+authority and effectively implement M1b.2 out of order.
+
+The retained design below is historical input only. A later prepared-call
+slice must consume independently qualified M1b.2a facts rather than reviving
+the reverted route.
 
 **Qualified inputs:** D.3a post-legacy direct-call observation at `0235a35c`,
 D.4a pure direct-nominal overload query at `5197e2e4`, and EXP-LIN-02 at
