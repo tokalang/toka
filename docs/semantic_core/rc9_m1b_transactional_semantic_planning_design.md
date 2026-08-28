@@ -621,16 +621,20 @@ no transaction type or production Sema/Evidence/CodeGen include.
 - Require a separate review before implementation and another qualification
   review before M1b.1 may consume the API.
 
-### M1b.1 — transactional probe infrastructure
+### M1b.1 — call-preparation probe infrastructure
 
-- Enter through the separately reviewed real-path contract
-  [`M1b-D.4a Pure Direct-Nominal Overload Probe`](rc9_m1b_d4_pure_call_probe.md).
-- Route diagnostics, internal facts, PAL/place deltas, and semantic-model
-  patches through a transaction for call preparation. Public Evidence v1 stays
-  on the legacy path.
-- Move contextual closure precompute and candidate probing to discardable
-  children only where an immutable pure query is insufficient.
-- Do not activate call ownership changes.
+- D.4a removed one live overload traversal with an immutable pure query and is
+  accepted, but it did not authorize a transaction kernel or ownership change.
+- Enter the first actual planning step through
+  [`M1b-D.5a Pre-Legacy Prepared-Call Parity`](rc9_m1b_d5_prepared_call_parity.md).
+  It splits the qualified D.3a pure factory into pre-legacy preparation and
+  legacy-outcome finalization, then proves full structural parity on one real
+  same-lexical whole-place slice.
+- D.5a introduces no child transaction. Contextual closure/candidate isolation
+  remains unimplemented and must be justified by a later real route only when
+  an immutable query cannot express that route.
+- Public Evidence v1 and all production ownership behavior remain on the
+  legacy path. Do not activate call ownership changes.
 
 The D.4 entry slice is narrower than full M1b.1: it removes one unnecessary
 ordinary overload traversal through an immutable pure query and publishes no
