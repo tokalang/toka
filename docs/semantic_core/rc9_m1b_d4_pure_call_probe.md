@@ -3,8 +3,10 @@
 **Design status:** Accepted for D.4a implementation / bounded scope frozen.
 
 **Implementation status:** D.4a implemented / bounded post-implementation
-acceptance pending. The next review is governed by the closed review boundary
-in this document.
+accepted at `a38a6f55e606f76b903fd9debeaeea9617e611d2`.
+
+This acceptance closes D.4a only. It does not authorize M1b.1 or expand any
+scope listed under Non-authorization.
 
 **Qualified baseline:** D.3a ordinary direct-call Shadow observation at
 `0235a35cd3f60f4be0ab225dfae7abe5a6eea4fb`.
