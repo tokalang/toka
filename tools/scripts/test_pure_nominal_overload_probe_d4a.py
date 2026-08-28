@@ -232,12 +232,17 @@ def main():
             tokac, UNIQUE, extra=(*include, INJECT_ERROR + injected))
         failures = source_batches(payload, UNIQUE, "choose")
         require(result.returncode != 0 and
+                result.stderr.count("error[") == 1 and
+                "error[E0406]" in result.stderr and
                 "internal D.4a" in result.stderr and
+                "E04571" not in result.stderr and
                 payload["pure_batch_count"] == 0 and
                 payload["infrastructure_error_count"] == 1 and
                 payload["infrastructure_error_count_by_reason"][injected] == 1 and
                 len(failures) == 1 and
                 failures[0]["disposition"] is None and
+                failures[0]["forced_legacy_selected_declaration_id"] is None and
+                failures[0]["final_legacy_check_count"] == 0 and
                 failures[0]["parent_unchanged"] is True and
                 failures[0]["differing_parent_fields"] == [],
                 f"{injected} did not fail closed with preserved parent state")

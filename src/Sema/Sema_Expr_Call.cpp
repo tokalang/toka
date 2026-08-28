@@ -1945,6 +1945,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     return accepts;
   };
 
+  bool d4InfrastructureFailed = false;
   auto pickModuleFunction = [&](ModuleScope *Target, const std::string &Name,
                                 FunctionDecl *Fallback) -> FunctionDecl * {
     auto captureParent = [&]() {
@@ -2021,6 +2022,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     };
     auto infrastructureFailure = [&](D4ProbeInfrastructureError failure,
                                      const std::string &message) {
+      d4InfrastructureFailed = true;
       if (m_D4ProbeAuditSession)
         m_D4ProbeAuditSession->appendInfrastructureFailure(
             failure, makeAuditRecord());
@@ -2501,9 +2503,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
       if (modSpec.ReferencedModule) {
         ModuleScope *target = (ModuleScope *)modSpec.ReferencedModule;
-        if (target->Functions.count(FuncName))
+        if (target->Functions.count(FuncName)) {
           Fn = pickModuleFunction(target, FuncName, target->Functions[FuncName]);
-        else if (target->Externs.count(FuncName))
+          if (d4InfrastructureFailed)
+            return toka::Type::fromString("unknown");
+        } else if (target->Externs.count(FuncName))
           Ext = target->Externs[FuncName];
         else if (target->Shapes.count(FuncName))
           Sh = target->Shapes[FuncName];
@@ -2594,6 +2598,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       auto *symFn = static_cast<FunctionDecl *>(sym.ASTPtr);
       Fn = pickModuleFunction((ModuleScope *)sym.ReferencedModule, symFn->Name,
                               symFn);
+      if (d4InfrastructureFailed)
+        return toka::Type::fromString("unknown");
     } else if (sym.TypeObj && sym.TypeObj->toString() == "extern" &&
                sym.ASTPtr) {
       Ext = static_cast<ExternDecl *>(sym.ASTPtr);

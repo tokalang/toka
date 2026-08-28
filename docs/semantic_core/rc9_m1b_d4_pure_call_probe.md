@@ -181,6 +181,9 @@ MalformedBatch
 
 Infrastructure error fails closed: no legacy fallback, one internal compiler
 diagnostic, nonzero exit, and no parent-state change.
+The integration marks the current call resolution terminal before emitting that
+diagnostic; every caller of the overload probe must return `unknown`
+immediately, before lexical fallback or final argument checking.
 
 The internal qualification CLI may inject one closed infrastructure error only
 after a real admitted source call reaches the corresponding frozen-batch or
