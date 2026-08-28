@@ -91,6 +91,8 @@ Every D.5a condition is required:
 - pre-legacy actual type and selected formal type have a direct compatible
   identity with no conversion or contextual typing;
 - Copy and ownership proofs are already present in read-only qualified stores;
+- every admitted `cede + ProvenNonCopy` row also has
+  `OwnershipProof=Owned`; `ProvenNonCopy + Trivial` is outside D.5a;
 - no proof-producing query or cache insertion is required;
 - no shared/raw/reference/function/dyn identity, dependency-bearing view,
   return dependency, region escape, outcome, `init`, default, variadic,
@@ -102,14 +104,21 @@ The admitted matrix is deliberately small:
 | Selected formal and whole local actual | Prepared transfer | Prepared source |
 | --- | --- | --- |
 | non-`cede` plain aggregate, bare | `BorrowCapture` | `KeepLive` |
-| `cede` proven non-Copy aggregate, bare | `MoveOwned` | `InvalidateWhole` |
-| `cede` proven non-Copy aggregate, explicit | `MoveOwned` | `InvalidateWhole` |
-| `cede` proven Copy aggregate, bare | `CopyValue` | `KeepLive` |
-| `cede` proven Copy aggregate, explicit | `CopyValue` | `InvalidateWhole` |
+| `cede` proven non-Copy, proven Owned aggregate, bare | `MoveOwned` | `InvalidateWhole` |
+| `cede` proven non-Copy, proven Owned aggregate, explicit | `MoveOwned` | `InvalidateWhole` |
+| `cede` proven Copy, proven Trivial aggregate, bare | `CopyValue` | `KeepLive` |
+| `cede` proven Copy, proven Trivial aggregate, explicit | `CopyValue` | `InvalidateWhole` |
 
-The bare non-Copy row still receives legacy `E04570`. D.5a records that the
-prospective plan is otherwise identical to the explicit row; it does not
-suppress the diagnostic or invalidate the source.
+The admitted bare non-Copy/Owned row still receives legacy `E04570`. D.5a
+records that its prospective authority is otherwise equivalent to the explicit
+row; it does not suppress the diagnostic or invalidate the source.
+
+`ProvenNonCopy + Trivial` does not imply the legacy caller policy requires
+explicit `cede`: a managed no-drop aggregate may still be exempt under RC8.
+D.5a therefore returns `NotInSlice(CededNonCopyTrivial)` before preparation for
+that combination. The insertion point must not call
+`canImplicitlyPassToCede()` or another legacy helper that can resolve, cache,
+or mutate facts.
 
 ## Stable pre-legacy facts
 
@@ -127,10 +136,27 @@ ResolvedPlanningFacts
     TypeCategory
     CopyProof = ProvenCopy | ProvenNonCopy
     OwnershipProof = Trivial | Owned
-    BoundaryAccess
-    typed cleanup-liability source
-    destination and minimal non-escaping region witnesses
+    exact whole-place authority and raw PAL state
+    raw dependency facts
+    SourceCleanupAuthority = None | ExistingSourcePlace(PlaceId, init mask)
+    structural destination anchor
+    call/full-expression region anchors
+
+LegacyCallOutcome
+    observed actual/formal canonical type identities and proofs
+    observed PAL operation / boundary access
+    source PlaceState and PAL state after legacy
+    observed cleanup/drop-mask state after legacy
+    diagnostic codes and final-check count
 ```
+
+`BoundaryAccess`, liability transfer/retention, region witnesses, deltas, and
+SemanticModelPatch are outputs of the shared pure core. They are never supplied
+as asserted pre-planned facts. `SourceCleanupAuthority` contains only the
+existing source PlaceId and init mask; the factory derives the cleanup subject
+identity and every liability transition. Likewise region anchors identify real
+lexical/full-expression origins but cannot assert a region kind or outlives
+relation.
 
 The queries are the already-qualified const D.3a queries. A cold/missing Copy,
 ownership, type, cleanup, identity, or region fact returns a closed preparation
@@ -140,11 +166,11 @@ formal to fill a missing actual fact.
 
 Pre-legacy and post-legacy actual/formal canonical identities and read-only
 proofs must be equal. Any elaboration, coercion, contextual type change, AST
-replacement, argument insertion, or source-place identity change makes the
-call `NotInSlice`; it cannot be treated as parity. The post oracle deliberately
-retains the immutable pre-legacy PlaceState/PAL snapshot: explicit legacy
-`cede` is allowed to perform its existing source invalidation and is checked as
-the observed outcome, not mistaken for preparation impurity.
+replacement, argument insertion, or source-place identity change produces
+`Rejected(PrePostFactMismatch)` with no parity-accepted plan. The post oracle
+deliberately retains the immutable pre-legacy PlaceState/PAL snapshot: explicit
+legacy `cede` is allowed to perform its existing source invalidation and is
+checked as the observed outcome, not mistaken for preparation impurity.
 
 ## Integration sequence
 
@@ -157,10 +183,12 @@ The real call path is fixed:
 4. run PreparedCallFactory once
 5. capture A1 and require A0 == A1 field-by-field
 6. run the unchanged legacy argument check exactly once
-7. recapture post-legacy resolved type/proof facts, run the same pure core once
-   with the immutable pre-legacy boundary facts, and finalize D.3a
-8. compare PreparedCall with the D.3a validated call structurally
-9. append one command-local qualification receipt
+7. capture structural sentinel B0
+8. recapture post-legacy resolved type/proof and LegacyCallOutcome facts, run
+   the same pure core once with the immutable pre-legacy boundary facts,
+   finalize D.3a, perform strict same-call parity, and build the receipt by value
+9. capture B1 and require B0 == B1 field-by-field
+10. append the completed receipt to command-local qualification state
 ```
 
 There is no fallback from preparation failure to a partial prepared plan.
@@ -169,9 +197,11 @@ not change normal diagnostics or control flow; the legacy path still runs once.
 An internal infrastructure failure terminates only the dedicated qualification
 mode and follows the already-qualified D.4a exact-one-diagnostic policy.
 
-## Structural parity
+## Same-call parity and cross-fixture equivalence
 
-Parity uses full typed equality, never hashes or display strings. It compares:
+For one AST call, the pre-legacy prepared plan and post-legacy oracle use the
+same identities and spelling. They require strict full typed equality, never
+hashes or display strings. Same-call parity compares:
 
 - call, callee, formal, argument-plan, edge, source-place, destination, region,
   cleanup, and patch identities;
@@ -183,6 +213,32 @@ Parity uses full typed equality, never hashes or display strings. It compares:
 The post-legacy record may additionally carry the legacy outcome and its empty
 whole-place EvaluationDelta. Those wrapper facts are not part of the prepared
 plan and cannot alter it.
+
+Bare/explicit fixtures are different calls and must not use this strict
+equality. Cross-fixture comparison first maps concrete identities to structural
+roles:
+
+```text
+Call, Callee, Formal0, ArgumentPlan0, Edge0, Source0, Destination0,
+SourceCleanup0, DestinationCleanup0, CallRegion, FullExpressionRegion
+```
+
+It then compares a `TransferAuthorityProjection` with a closed
+allowed-difference relation:
+
+- non-Copy/Owned bare versus explicit: after role normalization, only
+  `spelling` may differ;
+- Copy/Trivial bare versus explicit: `spelling`, source disposition
+  (`KeepLive`/`InvalidateWhole`), boundary access
+  (`SharedBorrow`/`Invalidation`), and exactly the source-related
+  PlaceState/PAL delta and patch payloads derived from that disposition may
+  differ;
+- transfer mode, Copy/ownership proof, destination, dependency, cleanup
+  liability, region recipe, and every non-source delta/patch fact must remain
+  equal in both comparisons.
+
+The allowed-difference matcher is typed and exhaustive. It cannot erase fields,
+compare display strings, or accept an unclassified difference.
 
 ## Closed result and receipt
 
@@ -208,6 +264,7 @@ D5PreparationExclusionReason
     SharedRawReferenceOrCallable
     DependencyBearingActual
     TypeRequiresContextOrConversion
+    CededNonCopyTrivial
 
 D5PreparationError
     InvalidIdentity
@@ -235,10 +292,11 @@ D5InfrastructureError
     MalformedPreparedResult
 ```
 
-Gate exclusion invokes the pure factory zero times. `NotInSlice` is a complete
-structural result without a plan. `Rejected` and infrastructure failure produce
-no plan; only the dedicated qualification mode may emit one terminal internal
-diagnostic for an injected infrastructure failure.
+Gate exclusion invokes the pure factory zero times. A preparation `NotInSlice`
+or `Rejected` result has no plan. A parity rejection may retain the two Shadow
+plans only for structural diff reporting, but exposes no parity-accepted plan
+or semantic authority. Only the dedicated qualification mode may emit one
+terminal internal diagnostic for an injected infrastructure failure.
 
 The internal protocol is separately versioned:
 
@@ -261,10 +319,14 @@ receipts[]
     legacy diagnostic codes
     final legacy check count
     post-legacy D.3a admission
-    structural_parity
+    same_call_structural_parity
     differing_plan_fields[]
+    authority_projection
+    cross_fixture_allowed_differences[]
     pre_factory_parent_unchanged
-    differing_parent_fields[]
+    post_factory_parent_unchanged
+    pre_differing_parent_fields[]
+    post_differing_parent_fields[]
 ```
 
 Every reason has an exhaustive switch and a real fixture. Implementation may
@@ -276,17 +338,23 @@ Implementation acceptance requires:
 
 1. all five admitted rows use real source calls and invoke the prepare factory
    once before legacy and the same pure core once as a post-legacy oracle;
-2. bare/explicit non-Copy plans are structurally equal, while Copy plans differ
-   only in spelling and source disposition;
-3. the bare non-Copy call still emits exactly the legacy `E04570` and performs
-   no prospective invalidation;
+2. each same-call pre/post pair is strictly structurally equal; cross-fixture
+   bare/explicit comparisons pass only the frozen role-normalized
+   allowed-difference relation;
+3. the admitted bare non-Copy/Owned call still emits exactly legacy `E04570`,
+   while a real `cede + ProvenNonCopy + Trivial` fixture is
+   `NotInSlice(CededNonCopyTrivial)` and preserves its legacy exemption;
 4. pre/post call, formal, actual type/proof, source identity, dependency,
    cleanup, region, and plan facts are structurally equal for admitted calls;
-   legacy PlaceState/PAL changes must instead match the selected prepared
-   source/boundary disposition;
-5. A0/A1 proves preparation and receipt construction mutate no AST, Scope,
-   PlaceState, PAL, diagnostics, Evidence, proof cache, identity allocator, or
-   semantic-model state;
+   successful legacy calls must match the selected prepared source/boundary
+   disposition; the bare non-Copy/Owned spelling-only failure must instead
+   preserve the pre-call source state because its prospective plan is not
+   committed;
+5. A0/A1 proves pre preparation is pure; B0/B1 separately proves post fact
+   capture, oracle preparation, parity comparison, and receipt construction
+   mutate no AST, Scope, PlaceState, PAL, diagnostics, Evidence, proof cache,
+   identity allocator, or semantic-model state; receipt append occurs only
+   after B1;
 6. legacy evaluation/final checking occurs exactly once and normal output,
    diagnostics, Evidence v1, D.3a receipt, and exit status are byte-identical
    with D.5a disabled;
