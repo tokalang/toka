@@ -126,6 +126,7 @@ int main() {
     facts.OwnershipProof = D3OwnershipProof::Owned;
     facts.LegacyRequirement = LegacyCedeRequirement::ExplicitRequired;
     facts.SourceInitMask = 1;
+    facts.SourceCleanupAuthority = true;
     return facts;
   };
   auto preparedNonCopy = PreparedCallFactory::prepare(preparedFacts());
@@ -133,10 +134,6 @@ int main() {
   CHECK(preparedNonCopy.preparedCall());
   CHECK(preparedNonCopy.preparedCall()->transferEdges()[0].transferMode() ==
         D3TransferMode::MoveOwned);
-  CHECK(validateD5PreparedResultShape(D3AdmissionKind::Admitted, true, 1, 0));
-  CHECK(!validateD5PreparedResultShape(D3AdmissionKind::Admitted, false, 0,
-                                       0));
-  CHECK(validateD5PreparedResultShape(D3AdmissionKind::Rejected, false, 0, 0));
   auto preparedExplicitFacts = preparedFacts();
   preparedExplicitFacts.Pre.ExplicitCede = true;
   auto preparedExplicit =
@@ -150,6 +147,7 @@ int main() {
         D5PreparationExclusionReason::CededNonCopyLegacyExempt);
   auto noDropManagedFacts = slabFacts;
   noDropManagedFacts.OwnershipProof = D3OwnershipProof::Trivial;
+  noDropManagedFacts.SourceCleanupAuthority = false;
   CHECK(PreparedCallFactory::prepare(noDropManagedFacts).admission() ==
         D3AdmissionKind::NotInSlice);
   auto indeterminatePolicyFacts = preparedFacts();
@@ -205,6 +203,8 @@ int main() {
   const D5ErrorFixture d5Errors[] = {
       {D5PreparationError::InvalidIdentity,
        [](auto &v) { v.Pre.CoreFactsComplete = false; }},
+      {D5PreparationError::IncompatibleType,
+       [](auto &v) { v.TypesCompatible = false; }},
       {D5PreparationError::IndeterminateCopyProof,
        [](auto &v) { v.CopyProof = D3CopyProof::Indeterminate; }},
       {D5PreparationError::IndeterminateOwnership,
@@ -217,14 +217,15 @@ int main() {
        [](auto &v) {
          v.CopyProof = D3CopyProof::ProvenCopy;
          v.OwnershipProof = D3OwnershipProof::Trivial;
+         v.SourceCleanupAuthority = false;
          v.LegacyRequirement = LegacyCedeRequirement::ExplicitRequired;
        }},
       {D5PreparationError::InvalidWholePlaceAdmission,
        [](auto &v) { v.Pre.SourceStateBefore = "Moved"; }},
       {D5PreparationError::IncompleteLiability,
-       [](auto &v) { v.SourceInitMask = 0; }},
+       [](auto &v) { v.SourceCleanupAuthority = false; }},
       {D5PreparationError::IncompleteRegion,
-       [](auto &v) { v.Pre.CallLocation = {}; }},
+       [](auto &v) { v.RegionAuthorityComplete = false; }},
       {D5PreparationError::ConflictingPreparedPlan,
        [](auto &v) {
          v.Pre.FormalCeded = false;

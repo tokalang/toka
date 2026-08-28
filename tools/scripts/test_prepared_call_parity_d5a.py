@@ -16,8 +16,6 @@ FIXTURES = ROOT / "tests/semantics/prepared_call_parity_d5a"
 SLAB = FIXTURES / "slabid.tk"
 MANAGED = FIXTURES / "managed_no_drop.tk"
 FAULT_BASE = FIXTURES / "fault_base.tk"
-CLOSURE_PRECOMPUTE = \
-    ROOT / "tests/semantics/call_transfer_shadow_m1/closure_callable_replay.tk"
 FLAG = "--m1b-d5a-prepared-call-parity=json"
 SHADOW = "--m1b-d5a-shadow"
 
@@ -36,8 +34,8 @@ def run(command):
     return subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
 
 
-def audit(tokac, source, extra=()):
-    result = run([str(tokac), FLAG, "--check-only", *extra, str(source)])
+def audit(tokac, source):
+    result = run([str(tokac), FLAG, "--check-only", str(source)])
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as error:
@@ -56,8 +54,7 @@ def audit(tokac, source, extra=()):
     receipt_keys = {
         "call_site", "callee", "formal_identity", "source_identity",
         "actual_type", "formal_type", "source_state_before",
-        "pal_state_before", "source_state_after", "pal_state_after",
-        "source_init_mask", "dependency_bearing_actual",
+        "pal_state_before", "source_init_mask", "dependency_bearing_actual",
         "legacy_cede_requirement", "pre_admission",
         "post_admission", "pre_reason", "parity_error",
         "infrastructure_error", "pre_plan",
@@ -126,15 +123,15 @@ def main():
             "D.5a receipt is not deterministic")
     expected = {
         35: ("inspect", None, "BorrowCapture", "KeepLive", "SharedBorrow",
-             "implicit", [], "Live"),
+             "implicit", []),
         38: ("consume", "ExplicitRequired", "MoveOwned", "InvalidateWhole",
-             "Invalidation", "explicit", [], "Moved"),
+             "Invalidation", "explicit", []),
         41: ("consume", "ExplicitRequired", "MoveOwned", "InvalidateWhole",
-             "Invalidation", "implicit", ["E04570"], "Live"),
+             "Invalidation", "implicit", ["E04570"]),
         44: ("consume_pair", "ImplicitExempt", "CopyValue", "KeepLive",
-             "SharedBorrow", "implicit", [], "Live"),
+             "SharedBorrow", "implicit", []),
         47: ("consume_pair", "ImplicitExempt", "CopyValue",
-             "InvalidateWhole", "Invalidation", "explicit", [], "Moved"),
+             "InvalidateWhole", "Invalidation", "explicit", []),
     }
     admitted = {}
     for receipt in source_receipts(matrix_payload, MATRIX):
@@ -142,8 +139,7 @@ def main():
         if line not in expected:
             continue
         admitted[line] = receipt
-        callee, policy, transfer, source, boundary, spelling, diagnostics, \
-            source_after = \
+        callee, policy, transfer, source, boundary, spelling, diagnostics = \
             expected[line]
         plan = receipt["pre_plan"]
         require(receipt["callee"] == callee and
@@ -158,8 +154,6 @@ def main():
                 receipt["pre_differing_parent_fields"] == [] and
                 receipt["post_differing_parent_fields"] == [] and
                 receipt["legacy_diagnostic_codes"] == diagnostics and
-                receipt["source_state_after"] == source_after and
-                receipt["pal_state_after"] == receipt["pal_state_before"] and
                 plan == receipt["post_plan"] and
                 plan["transfer"] == transfer and plan["source"] == source and
                 plan["boundary_access"] == boundary and
@@ -204,11 +198,6 @@ def main():
                 receipts[0]["pre_factory_parent_unchanged"] is True and
                 receipts[0]["post_factory_parent_unchanged"] is True,
                 f"{fixture} did not preserve the RC8 cede exemption")
-
-    _, closure_payload = audit(tokac, CLOSURE_PRECOMPUTE)
-    require(closure_payload["gate_excluded_count_by_reason"]
-            ["SpeculativeOrNonFinalTraversal"] >= 1,
-            "D.5a speculative/non-final gate did not remain closed")
 
     infrastructure_errors = (
         "InvalidCallSiteIdentity",

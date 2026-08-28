@@ -197,7 +197,7 @@ ResolvedPlanningFacts
     LegacyCedeRequirement? (present only for selected cede formal)
     exact whole-place authority and raw PAL state
     raw dependency facts
-    source InitMask from the existing place ledger
+    SourceCleanupAuthority = None | ExistingSourcePlace(PlaceId, init mask)
     structural destination anchor
     call/full-expression region anchors
 
@@ -211,10 +211,9 @@ LegacyCallOutcome
 
 `BoundaryAccess`, liability transfer/retention, region witnesses, deltas, and
 SemanticModelPatch are outputs of the shared pure core. They are never supplied
-as asserted pre-planned facts. The existing source PlaceId and InitMask are the
-only cleanup inputs; for `OwnershipProof=Owned`, a zero mask is
-`IncompleteLiability`. The factory derives the cleanup subject identity and
-every liability transition. Likewise region anchors identify real
+as asserted pre-planned facts. `SourceCleanupAuthority` contains only the
+existing source PlaceId and init mask; the factory derives the cleanup subject
+identity and every liability transition. Likewise region anchors identify real
 lexical/full-expression origins but cannot assert a region kind or outlives
 relation.
 
@@ -308,9 +307,11 @@ The gate and factory reasons are frozen:
 ```text
 D5GateExclusionReason
     WrongRoute
+    NonSameLexical
     OverloadOrCandidateProbe
     SpeculativeOrNonFinalTraversal
     NestedPreparation
+    ExistingCallDiagnostic
 
 D5PreparationExclusionReason
     ArityOrDefault
@@ -327,6 +328,7 @@ D5PreparationExclusionReason
 
 D5PreparationError
     InvalidIdentity
+    IncompatibleType
     IndeterminateCopyProof
     IndeterminateOwnership
     IndeterminateLegacyCedeRequirement

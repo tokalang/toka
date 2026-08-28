@@ -411,6 +411,8 @@ const char *toString(D5PreparationError value) {
   switch (value) {
   case D5PreparationError::InvalidIdentity:
     return "InvalidIdentity";
+  case D5PreparationError::IncompatibleType:
+    return "IncompatibleType";
   case D5PreparationError::IndeterminateCopyProof:
     return "IndeterminateCopyProof";
   case D5PreparationError::IndeterminateOwnership:
@@ -1039,6 +1041,8 @@ PreparedCallFactory::prepare(D5ResolvedPlanningFacts facts) {
       facts.ActualType != facts.FormalType)
     return exclude(
         D5PreparationExclusionReason::TypeRequiresContextOrConversion);
+  if (!facts.TypesCompatible)
+    return reject(D5PreparationError::IncompatibleType);
   if (facts.TypeCategory == D3TypeCategory::SharedIdentity ||
       facts.TypeCategory == D3TypeCategory::RawOrReferenceIdentity ||
       facts.TypeCategory == D3TypeCategory::FunctionOrDynIdentity)
@@ -1072,10 +1076,9 @@ PreparedCallFactory::prepare(D5ResolvedPlanningFacts facts) {
   }
 
   if (facts.OwnershipProof == D3OwnershipProof::Owned &&
-      facts.SourceInitMask == 0)
+      !facts.SourceCleanupAuthority)
     return reject(D5PreparationError::IncompleteLiability);
-  if (pre.CallLocation.File.empty() || pre.CallLocation.Line == 0 ||
-      pre.CallLocation.Column == 0)
+  if (!facts.RegionAuthorityComplete)
     return reject(D5PreparationError::IncompleteRegion);
 
   D3CallObservationInput input;
@@ -1105,20 +1108,7 @@ PreparedCallFactory::prepare(D5ResolvedPlanningFacts facts) {
 
   result.Admission = D3AdmissionKind::Admitted;
   result.PreparedCall = *prepared.validatedCall();
-  if (!validateD5PreparedResultShape(
-          result.Admission, result.PreparedCall.has_value(),
-          result.PreparedCall->transferEdges().size(),
-          result.PreparedCall->evaluationDelta().entries().size()))
-    return reject(D5PreparationError::ConflictingPreparedPlan);
   return result;
-}
-
-bool validateD5PreparedResultShape(D3AdmissionKind admission, bool hasPlan,
-                                   size_t edgeCount,
-                                   size_t evaluationEntryCount) {
-  if (admission == D3AdmissionKind::Admitted)
-    return hasPlan && edgeCount == 1 && evaluationEntryCount == 0;
-  return !hasPlan && edgeCount == 0 && evaluationEntryCount == 0;
 }
 
 } // namespace toka

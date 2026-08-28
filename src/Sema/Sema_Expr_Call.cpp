@@ -3738,7 +3738,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           break;
         case D3GateExclusionReason::NonSameLexical:
           m_D5PreparedCallSession->noteGateExclusion(
-              D5GateExclusionReason::WrongRoute);
+              D5GateExclusionReason::NonSameLexical);
           break;
         case D3GateExclusionReason::CandidateProbeOrSpeculativeContext:
           m_D5PreparedCallSession->noteGateExclusion(
@@ -3856,143 +3856,135 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       d3ObservationInput = std::move(input);
       d3DiagnosticStart = d3CallDiagnosticStart;
       if (m_D5PreparedCallSession) {
-        d5PreFactoryBefore = captureD3ObservationSentinel(Call, actual);
-        D5ResolvedPlanningFacts facts;
-        facts.Pre = d3ObservationInput->Pre;
-        Expr *source = d3UnwrapSourceExpr(actual);
-        SymbolInfo *sourceInfo = nullptr;
-        std::string sourceName;
-        if (auto *variable = d3WholePlaceVariable(source)) {
-          sourceName = variable->Name;
-          CurrentScope->findVariableWithDeref(variable->Name, sourceInfo,
-                                              sourceName);
-        }
-        auto actualType = sourceInfo ? sourceInfo->TypeObj : nullptr;
-        auto formalType = !ParamTypes.empty() ? ParamTypes.front() : nullptr;
-        facts.ActualType = actualType ? actualType->canonicalIdentity() : "";
-        facts.FormalType = formalType ? formalType->canonicalIdentity() : "";
-        facts.TypeCategory = classifyD3TypeCategory(actualType);
-        facts.CopyProof = lookupD3CopyProof(actualType);
-        facts.OwnershipProof = lookupD3OwnershipProof(actualType);
-        facts.SourceInitMask = sourceInfo ? sourceInfo->InitMask : 0;
-        facts.DependencyBearingActual =
-            sourceInfo && (!sourceInfo->LifeDependencySet.empty() ||
-                           sourceInfo->BorrowedPath);
-        if (facts.Pre.FormalCeded) {
-          LegacyCedePolicyInput policy;
-          policy.TypeCategory = facts.TypeCategory;
-          if (actualType) {
-            policy.CanonicalSoul =
-                Type::stripMorphology(actualType->getSoulName());
-            if (size_t scope = policy.CanonicalSoul.rfind("::");
-                scope != std::string::npos)
-              policy.CanonicalSoul = policy.CanonicalSoul.substr(scope + 2);
+        if (DiagnosticEngine::records().size() != d3CallDiagnosticStart) {
+          m_D5PreparedCallSession->noteGateExclusion(
+              D5GateExclusionReason::ExistingCallDiagnostic);
+        } else {
+          d5PreFactoryBefore = captureD3ObservationSentinel(Call, actual);
+          D5ResolvedPlanningFacts facts;
+          facts.Pre = d3ObservationInput->Pre;
+          Expr *source = d3UnwrapSourceExpr(actual);
+          SymbolInfo *sourceInfo = nullptr;
+          std::string sourceName;
+          if (auto *variable = d3WholePlaceVariable(source)) {
+            sourceName = variable->Name;
+            CurrentScope->findVariableWithDeref(variable->Name, sourceInfo,
+                                                sourceName);
           }
-          if (auto shape = std::dynamic_pointer_cast<ShapeType>(actualType);
-              shape && shape->Decl) {
-            if (shape->Decl->HasExplicitDrop ||
-                !shape->Decl->MangledDestructorName.empty()) {
-              policy.DropFact = LegacyCedeDropFact::HasDrop;
-            } else {
-              auto properties = m_ShapeProps.find(shape->Decl->Name);
-              if (properties == m_ShapeProps.end() &&
-                  !shape->Decl->CodegenName.empty())
-                properties = m_ShapeProps.find(shape->Decl->CodegenName);
-              if (properties != m_ShapeProps.end() &&
-                  properties->second.Status == ShapeAnalysisStatus::Analyzed)
-                policy.DropFact = properties->second.HasDrop
-                                      ? LegacyCedeDropFact::HasDrop
-                                      : LegacyCedeDropFact::NoDrop;
+          auto actualType = sourceInfo ? sourceInfo->TypeObj : nullptr;
+          auto formalType = !ParamTypes.empty() ? ParamTypes.front() : nullptr;
+          facts.ActualType = actualType ? actualType->canonicalIdentity() : "";
+          facts.FormalType = formalType ? formalType->canonicalIdentity() : "";
+          facts.TypeCategory = classifyD3TypeCategory(actualType);
+          facts.CopyProof = lookupD3CopyProof(actualType);
+          facts.OwnershipProof = lookupD3OwnershipProof(actualType);
+          facts.SourceInitMask = sourceInfo ? sourceInfo->InitMask : 0;
+          facts.SourceCleanupAuthority =
+              sourceInfo && facts.OwnershipProof == D3OwnershipProof::Owned;
+          facts.DependencyBearingActual =
+              sourceInfo && (!sourceInfo->LifeDependencySet.empty() ||
+                             sourceInfo->BorrowedPath);
+          if (facts.Pre.FormalCeded) {
+            LegacyCedePolicyInput policy;
+            policy.TypeCategory = facts.TypeCategory;
+            if (actualType) {
+              policy.CanonicalSoul =
+                  Type::stripMorphology(actualType->getSoulName());
+              if (size_t scope = policy.CanonicalSoul.rfind("::");
+                  scope != std::string::npos)
+                policy.CanonicalSoul = policy.CanonicalSoul.substr(scope + 2);
             }
-          }
-          facts.LegacyRequirement = classifyLegacyCedeRequirement(policy);
-        }
-        m_D5PreparedCallSession->notePreFactoryInvocation();
-        d5PreparedCall = PreparedCallFactory::prepare(std::move(facts));
-        auto after = captureD3ObservationSentinel(Call, actual);
-        d5PreFactoryDifferences =
-            differingD3SentinelFields(d5PreFactoryBefore, after);
-        d5PreFactoryUnchanged = d5PreFactoryDifferences.empty();
-        auto injected =
-            d5PreparedCall->admission() == D3AdmissionKind::Admitted
-                ? m_D5PreparedCallSession->takeInjectedInfrastructureError()
-                : std::nullopt;
-        if (injected &&
-            d5PreparedCall->admission() == D3AdmissionKind::Admitted) {
-          if (*injected == D5InfrastructureError::InvalidCallSiteIdentity ||
-              *injected == D5InfrastructureError::InvalidCalleeIdentity ||
-              *injected ==
-                  D5InfrastructureError::InvalidFormalOrDestinationIdentity ||
-              *injected == D5InfrastructureError::InvalidSourcePlaceIdentity) {
-            auto malformed = d5PreparedCall->facts();
-            switch (*injected) {
-            case D5InfrastructureError::InvalidCallSiteIdentity:
-              malformed.Pre.CallWitness.clear();
-              break;
-            case D5InfrastructureError::InvalidCalleeIdentity:
-              malformed.Pre.CalleeWitness.clear();
-              break;
-            case D5InfrastructureError::InvalidFormalOrDestinationIdentity:
-              malformed.Pre.FormalWitness.clear();
-              malformed.Pre.DestinationWitness.clear();
-              break;
-            case D5InfrastructureError::InvalidSourcePlaceIdentity:
-              malformed.Pre.SourceWitness.clear();
-              break;
-            case D5InfrastructureError::ConflictingPatchPayload:
-            case D5InfrastructureError::MalformedPreparedResult:
-              break;
+            if (auto shape = std::dynamic_pointer_cast<ShapeType>(actualType);
+                shape && shape->Decl) {
+              if (shape->Decl->HasExplicitDrop ||
+                  !shape->Decl->MangledDestructorName.empty()) {
+                policy.DropFact = LegacyCedeDropFact::HasDrop;
+              } else {
+                auto properties = m_ShapeProps.find(shape->Decl->Name);
+                if (properties == m_ShapeProps.end() &&
+                    !shape->Decl->CodegenName.empty())
+                  properties = m_ShapeProps.find(shape->Decl->CodegenName);
+                if (properties != m_ShapeProps.end() &&
+                    properties->second.Status == ShapeAnalysisStatus::Analyzed)
+                  policy.DropFact = properties->second.HasDrop
+                                        ? LegacyCedeDropFact::HasDrop
+                                        : LegacyCedeDropFact::NoDrop;
+              }
             }
-            m_D5PreparedCallSession->notePreFactoryInvocation();
-            d5PreparedCall = PreparedCallFactory::prepare(std::move(malformed));
+            facts.LegacyRequirement = classifyLegacyCedeRequirement(policy);
           }
-          if (*injected == D5InfrastructureError::ConflictingPatchPayload &&
-              d5PreparedCall->preparedCall() &&
-              !d5PreparedCall->preparedCall()->transferEdges().empty()) {
-            auto patchIdentity = SemanticIdentityBuilder::patchEntry(
-                d5PreparedCall->preparedCall()->transferEdges().front().id(),
-                "d5a-injected-collision");
-            if (patchIdentity) {
-              auto collision = buildD3SemanticModelPatch(
-                  {{patchIdentity.value(), "first"},
-                   {patchIdentity.value(), "second"}});
-              if (collision)
-                injected = D5InfrastructureError::MalformedPreparedResult;
-            }
-          } else if (*injected ==
-                     D5InfrastructureError::MalformedPreparedResult) {
-            if (validateD5PreparedResultShape(D3AdmissionKind::Admitted, false,
-                                              0, 0))
-              injected = D5InfrastructureError::ConflictingPatchPayload;
-          }
-          auto faultAfter = captureD3ObservationSentinel(Call, actual);
+          m_D5PreparedCallSession->notePreFactoryInvocation();
+          d5PreparedCall = PreparedCallFactory::prepare(std::move(facts));
+          auto after = captureD3ObservationSentinel(Call, actual);
           d5PreFactoryDifferences =
-              differingD3SentinelFields(d5PreFactoryBefore, faultAfter);
+              differingD3SentinelFields(d5PreFactoryBefore, after);
           d5PreFactoryUnchanged = d5PreFactoryDifferences.empty();
-          D5PreparedCallReceipt failure;
-          failure.Location = d3ObservationInput->Pre.CallLocation;
-          failure.Callee = d3ObservationInput->Pre.CalleeName;
-          failure.FormalIdentity = d3ObservationInput->Pre.FormalWitness;
-          failure.SourceIdentity = d3ObservationInput->Pre.SourceWitness;
-          failure.ActualType = d5PreparedCall->facts().ActualType;
-          failure.FormalType = d5PreparedCall->facts().FormalType;
-          failure.SourceStateBefore = d3ObservationInput->Pre.SourceStateBefore;
-          failure.PALStateBefore = d3ObservationInput->Pre.PALStateBefore;
-          failure.SourceInitMask = d5PreparedCall->facts().SourceInitMask;
-          failure.DependencyBearingActual =
-              d5PreparedCall->facts().DependencyBearingActual;
-          failure.LegacyRequirement = d5PreparedCall->facts().LegacyRequirement;
-          failure.PreAdmission = D3AdmissionKind::Rejected;
-          failure.InfrastructureError = *injected;
-          failure.PreFactoryParentUnchanged = d5PreFactoryUnchanged;
-          failure.PostFactoryParentUnchanged = d5PreFactoryUnchanged;
-          failure.PreDifferingParentFields = d5PreFactoryDifferences;
-          failure.PostDifferingParentFields = d5PreFactoryDifferences;
-          m_D5PreparedCallSession->append(std::move(failure));
-          error(Call, DiagID::ERR_GENERIC_SEMA,
-                std::string("internal D.5a prepared-call failure: ") +
-                    toString(*injected));
-          return toka::Type::fromString("unknown");
+          auto injected =
+              d5PreparedCall->admission() == D3AdmissionKind::Admitted
+                  ? m_D5PreparedCallSession->takeInjectedInfrastructureError()
+                  : std::nullopt;
+          if (injected &&
+              d5PreparedCall->admission() == D3AdmissionKind::Admitted) {
+            if (*injected == D5InfrastructureError::InvalidCallSiteIdentity ||
+                *injected == D5InfrastructureError::InvalidCalleeIdentity ||
+                *injected ==
+                    D5InfrastructureError::InvalidFormalOrDestinationIdentity ||
+                *injected ==
+                    D5InfrastructureError::InvalidSourcePlaceIdentity) {
+              auto malformed = d5PreparedCall->facts();
+              switch (*injected) {
+              case D5InfrastructureError::InvalidCallSiteIdentity:
+                malformed.Pre.CallWitness.clear();
+                break;
+              case D5InfrastructureError::InvalidCalleeIdentity:
+                malformed.Pre.CalleeWitness.clear();
+                break;
+              case D5InfrastructureError::InvalidFormalOrDestinationIdentity:
+                malformed.Pre.FormalWitness.clear();
+                malformed.Pre.DestinationWitness.clear();
+                break;
+              case D5InfrastructureError::InvalidSourcePlaceIdentity:
+                malformed.Pre.SourceWitness.clear();
+                break;
+              case D5InfrastructureError::ConflictingPatchPayload:
+              case D5InfrastructureError::MalformedPreparedResult:
+                break;
+              }
+              m_D5PreparedCallSession->notePreFactoryInvocation();
+              d5PreparedCall =
+                  PreparedCallFactory::prepare(std::move(malformed));
+            }
+            auto faultAfter = captureD3ObservationSentinel(Call, actual);
+            d5PreFactoryDifferences =
+                differingD3SentinelFields(d5PreFactoryBefore, faultAfter);
+            d5PreFactoryUnchanged = d5PreFactoryDifferences.empty();
+            D5PreparedCallReceipt failure;
+            failure.Location = d3ObservationInput->Pre.CallLocation;
+            failure.Callee = d3ObservationInput->Pre.CalleeName;
+            failure.FormalIdentity = d3ObservationInput->Pre.FormalWitness;
+            failure.SourceIdentity = d3ObservationInput->Pre.SourceWitness;
+            failure.ActualType = d5PreparedCall->facts().ActualType;
+            failure.FormalType = d5PreparedCall->facts().FormalType;
+            failure.SourceStateBefore =
+                d3ObservationInput->Pre.SourceStateBefore;
+            failure.PALStateBefore = d3ObservationInput->Pre.PALStateBefore;
+            failure.SourceInitMask = d5PreparedCall->facts().SourceInitMask;
+            failure.DependencyBearingActual =
+                d5PreparedCall->facts().DependencyBearingActual;
+            failure.LegacyRequirement =
+                d5PreparedCall->facts().LegacyRequirement;
+            failure.PreAdmission = D3AdmissionKind::Rejected;
+            failure.InfrastructureError = *injected;
+            failure.PreFactoryParentUnchanged = d5PreFactoryUnchanged;
+            failure.PostFactoryParentUnchanged = d5PreFactoryUnchanged;
+            failure.PreDifferingParentFields = d5PreFactoryDifferences;
+            failure.PostDifferingParentFields = d5PreFactoryDifferences;
+            m_D5PreparedCallSession->append(std::move(failure));
+            error(Call, DiagID::ERR_GENERIC_SEMA,
+                  std::string("internal D.5a prepared-call failure: ") +
+                      toString(*injected));
+            return toka::Type::fromString("unknown");
+          }
         }
       }
       d3ObservationScope.emplace(m_D3ObservationSession);
@@ -4634,8 +4626,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       receipt.SourceStateBefore =
           factoryRecord.input().Pre.SourceStateBefore;
       receipt.PALStateBefore = factoryRecord.input().Pre.PALStateBefore;
-      receipt.SourceStateAfter = d3PostBefore.SourcePlaceState;
-      receipt.PALStateAfter = d3PostBefore.PALState;
       receipt.SourceInitMask = d5PreparedCall->facts().SourceInitMask;
       receipt.DependencyBearingActual =
           d5PreparedCall->facts().DependencyBearingActual;
@@ -4649,6 +4639,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       receipt.FinalLegacyCheckCount = d5FinalLegacyCheckCount;
       receipt.PreFactoryParentUnchanged = d5PreFactoryUnchanged;
       receipt.PreDifferingParentFields = d5PreFactoryDifferences;
+      receipt.PostFactoryParentUnchanged = postDifferences.empty();
+      receipt.PostDifferingParentFields = postDifferences;
 
       if (d5PreparedCall->preparedCall())
         receipt.PrePlan =
@@ -4697,25 +4689,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           }
           if (!legacyMatches)
             receipt.ParityError = D5ParityError::LegacyOutcomeMismatch;
-          if (!receipt.ParityError && receipt.PrePlan) {
-            const bool spellingOnlyFailure =
-                receipt.LegacyRequirement ==
-                    LegacyCedeRequirement::ExplicitRequired &&
-                !factoryRecord.input().Pre.ExplicitCede &&
-                receipt.LegacyDiagnosticCodes.size() == 1 &&
-                receipt.LegacyDiagnosticCodes.front() == "E04570";
-            const bool shouldInvalidate =
-                receipt.PrePlan->Source == "InvalidateWhole" &&
-                !spellingOnlyFailure;
-            const std::string expectedState =
-                shouldInvalidate ? "Moved"
-                                 : factoryRecord.input().Pre.SourceStateBefore;
-            if (receipt.SourceStateAfter != expectedState)
-              receipt.ParityError = D5ParityError::LegacyOutcomeMismatch;
-            if (!receipt.ParityError &&
-                receipt.PALStateAfter != receipt.PALStateBefore)
-              receipt.ParityError = D5ParityError::LegacyOutcomeMismatch;
-          }
         }
         receipt.SameCallStructuralParity = !receipt.ParityError;
       }
@@ -4726,11 +4699,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           receipt.SameCallStructuralParity = false;
         }
       }
-      auto d5PostAfter = captureD3ObservationSentinel(Call, actual);
-      receipt.PostDifferingParentFields =
-          differingD3SentinelFields(d3PostBefore, d5PostAfter);
-      receipt.PostFactoryParentUnchanged =
-          receipt.PostDifferingParentFields.empty();
       const auto terminalParityError =
           m_D5PreparedCallSession->strictQualification()
               ? receipt.ParityError
