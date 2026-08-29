@@ -1,0 +1,13 @@
+import core/string::{string}
+
+fn consume(cede value: str) -> usize {
+    auto moved = cede value
+    return moved.len
+}
+
+fn main() -> i32 {
+    auto owned = string::from("view")
+    auto view = owned.as_str()
+    auto length = consume(view)
+    return length as i32
+}

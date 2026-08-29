@@ -2,9 +2,12 @@
 
 **Decision status:** Accepted for RC9.
 
-**Implementation status:** Not implemented. The RC8 caller-explicit policy
-remains active until every activation gate in this ADR passes at one qualified
-revision.
+**Implementation status:** Partially implemented behind
+`--experimental-signature-driven-cede`. The first behavior-changing slice is
+limited to a source-backed, same-lexical ordinary direct call with one resolved
+formal and one whole local or whole temporary actual. The RC8 caller-explicit
+policy remains the default until every activation gate in this ADR passes at
+one qualified revision.
 
 **Baseline:** `v1.0.0-rc.8` /
 `997713f4828b43a5b82aa3363d99a37e9e6f2417`.
@@ -214,7 +217,13 @@ satisfies all of the following:
   move, async cancellation, and cleanup suites pass; and
 - the full RC9 cold and hosted qualification gates pass.
 
-Until then, `E04570` and the existing explicit-caller policy remain active.
+Until then, `E04570` and the existing explicit-caller policy remain active by
+default. The experimental direct-call slice may replace `E04570` only inside
+its closed admission domain. It elaborates a bare proven-non-Copy transfer to
+the existing `CedeExpr` invalidation and CodeGen drop-suppression path; a bare
+proven-Copy place stays live, and all excluded routes retain their legacy
+diagnostic. Pre-activation Evidence v1 modes reject combination with this
+experimental behavior rather than misreport caller spelling.
 
 ## Compatibility
 

@@ -136,6 +136,8 @@ void printHelp() {
       << "  --m1b-d4a-pure-nominal-overload-probe=json\n"
       << "                                  Emit internal D.4a pure overload qualification\n"
       << "  --m1b-2a-authority-facts=json  Emit internal M1b.2a authority facts\n"
+      << "  --experimental-signature-driven-cede\n"
+      << "                                  Enable the bounded ordinary direct-call cede slice\n"
       << "  --capabilities=json             Emit H/P call capability pilot v1\n"
       << "  --todo-goals=json               Emit typed-todo goals v1\n"
       << "  --conditional-facts=json        Emit typed-todo conditional facts v1\n"
@@ -817,6 +819,7 @@ int main(int argc, char **argv) {
   bool dumpAuthorityFacts = false;
   bool emitAuthorityFacts = false;
   bool enableAuthorityFactsShadow = false;
+  bool experimentalSignatureDrivenCede = false;
   std::optional<toka::AuthorityFaultPoint> authorityFaultPoint;
   std::string authorityFaultSource;
   bool dumpCapabilities = false;
@@ -977,6 +980,8 @@ int main(int argc, char **argv) {
       dumpAuthorityFacts = true;
     } else if (arg == "--m1b-2a-shadow") {
       enableAuthorityFactsShadow = true;
+    } else if (arg == "--experimental-signature-driven-cede") {
+      experimentalSignatureDrivenCede = true;
     } else if (arg.rfind("--m1b-2a-inject-fault=", 0) == 0) {
       authorityFaultPoint = toka::parseAuthorityFaultPoint(
           arg.substr(std::string("--m1b-2a-inject-fault=").size()));
@@ -1172,6 +1177,13 @@ int main(int argc, char **argv) {
   }
   if (!authorityFaultSource.empty() && !authorityFaultPoint) {
     llvm::errs() << "--m1b-2a-fault-source requires a fault point\n";
+    return 1;
+  }
+  if (experimentalSignatureDrivenCede &&
+      (dumpSemanticEvidence || dumpCedeObligations || dumpCallTransferShadow ||
+       dumpD3DirectCallObservation || dumpAuthorityFacts)) {
+    llvm::errs() << "--experimental-signature-driven-cede cannot be combined "
+                    "with pre-activation ownership evidence modes\n";
     return 1;
   }
 
@@ -1640,6 +1652,8 @@ int main(int argc, char **argv) {
       (dumpAuthorityFacts || enableAuthorityFactsShadow)
           ? &authorityFactsSession
           : nullptr);
+  sema.setSignatureDrivenDirectCallCedeEnabled(
+      experimentalSignatureDrivenCede);
 
   // Pass 1: Declare all global symbols across all modules to build the global module map
   for (const auto &ast : astModules) {

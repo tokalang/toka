@@ -367,6 +367,10 @@ public:
     m_AuthorityFactsSession = session;
   }
 
+  void setSignatureDrivenDirectCallCedeEnabled(bool enabled) {
+    m_EnableSignatureDrivenDirectCallCede = enabled;
+  }
+
   bool hasErrors() const { return HasError; }
 
   const std::map<std::string, std::shared_ptr<toka::Type>>& getParenthesizedRecordTypes() const {
@@ -647,6 +651,7 @@ private:
   D3ObservationSession *m_D3ObservationSession = nullptr;
   D4ProbeAuditSession *m_D4ProbeAuditSession = nullptr;
   AuthorityFactsAuditSession *m_AuthorityFactsSession = nullptr;
+  bool m_EnableSignatureDrivenDirectCallCede = false;
   unsigned m_D3SpeculativeCallDepth = 0;
 
   struct AuthorityFullExpressionContext {

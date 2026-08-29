@@ -1166,12 +1166,17 @@ public:
 class CedeExpr : public Expr {
 public:
   std::unique_ptr<Expr> Value;
+  // True only when Sema elaborates a bare argument after a resolved `cede`
+  // formal selects an ownership transfer.  The lowering is identical to an
+  // explicit cede expression, while tooling can still recover caller spelling.
+  bool IsImplicitCallTransfer = false;
   CedeExpr(std::unique_ptr<Expr> val) : Value(std::move(val)) {}
   std::string toString() const override {
     return "Cede(" + (Value ? Value->toString() : "none") + ")";
   }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<CedeExpr>(cloneNode(Value));
+    n->IsImplicitCallTransfer = IsImplicitCallTransfer;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

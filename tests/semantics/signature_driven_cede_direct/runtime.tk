@@ -1,0 +1,36 @@
+import core/traits::{@Encap}
+
+shape Cell(value: i32)
+shape Pair(left: i32, right: i32)
+shape Resource(value: i32)
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn consume_unique(cede ^cell: Cell) -> i32 {
+    auto ^owned = cede ^cell
+    return owned.value
+}
+
+fn consume_pair(cede value: Pair) -> i32 {
+    auto moved = cede value
+    return moved.left + moved.right
+}
+
+fn consume_resource(cede value: Resource) -> i32 {
+    auto moved = cede value
+    return moved.value
+}
+
+fn main() -> i32 {
+    auto ^source = new Cell(value = 37:i32)
+    auto unique_value = consume_unique(^source)
+
+    auto pair = Pair(left = 2:i32, right = 3:i32)
+    auto pair_value = consume_pair(pair)
+    auto pair_still_live = pair.left + pair.right
+
+    auto temporary_value = consume_resource(Resource(value = 11:i32))
+    return unique_value + pair_value + pair_still_live + temporary_value - 58:i32
+}

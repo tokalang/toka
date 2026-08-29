@@ -251,6 +251,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_authority_facts_m1b2a.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_signature_driven_cede_direct
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_signature_driven_cede_direct.py
+                --build-dir ${CMAKE_BINARY_DIR})
     endif()
 endif()
 

@@ -1,0 +1,16 @@
+import core/traits::{@Encap}
+
+shape Token(value: i32)
+
+impl Token@Encap {}
+
+fn consume(cede value: Token) -> i32 {
+    auto moved = cede value
+    return moved.value
+}
+
+fn main() -> i32 {
+    auto token = Token(value = 4:i32)
+    auto value = consume(token)
+    return value + token.value - 8:i32
+}
