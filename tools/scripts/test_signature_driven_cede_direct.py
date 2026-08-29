@@ -76,7 +76,6 @@ def main():
             "implicit transfer bypassed an active PAL loan")
 
     for fixture, diagnostic in (("projection_out_of_slice.tk", "E04570"),
-                                ("method_out_of_slice.tk", "E04509"),
                                 ("borrowed_view_out_of_slice.tk", "E04570")):
         excluded = run([str(tokac), FLAG, "--check-only",
                         str(FIXTURES / fixture)])

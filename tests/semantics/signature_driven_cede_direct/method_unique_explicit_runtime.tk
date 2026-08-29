@@ -2,7 +2,7 @@ shape Cell(value: i32)
 shape Consumer()
 
 impl Consumer {
-    fn consume(self, cede ^cell: Cell) -> i32 {
+    fn take(self, cede ^cell: Cell) -> i32 {
         auto ^owned = cede ^cell
         return owned.value
     }
@@ -10,6 +10,6 @@ impl Consumer {
 
 fn main() -> i32 {
     auto consumer = Consumer()
-    auto ^source = new Cell(value = 1:i32)
-    return consumer.consume(^source)
+    auto ^source = new Cell(value = 23:i32)
+    return consumer.take(cede ^source) - 23:i32
 }

@@ -3,11 +3,14 @@
 **Decision status:** Accepted for RC9.
 
 **Implementation status:** Partially implemented behind
-`--experimental-signature-driven-cede`. The first behavior-changing slice is
-limited to a source-backed, same-lexical ordinary direct call with one resolved
-formal and one whole local or whole temporary actual. The RC8 caller-explicit
-policy remains the default until every activation gate in this ADR passes at
-one qualified revision.
+`--experimental-signature-driven-cede`. Qualified behavior-changing slices now
+cover source-backed, same-lexical ordinary direct calls and static calls with
+one resolved formal, plus the equivalent single-argument method route. Whole
+locals and whole temporaries are admitted. Method `cede ^T` now uses the same
+moved-handle value ABI as ordinary/static calls; both its explicit legacy form
+and implicit experimental form have native runtime qualification. The RC8
+caller-explicit policy remains the default until every activation gate in this
+ADR passes at one qualified revision.
 
 **Baseline:** `v1.0.0-rc.8` /
 `997713f4828b43a5b82aa3363d99a37e9e6f2417`.
@@ -217,13 +220,14 @@ satisfies all of the following:
   move, async cancellation, and cleanup suites pass; and
 - the full RC9 cold and hosted qualification gates pass.
 
-Until then, `E04570` and the existing explicit-caller policy remain active by
-default. The experimental direct-call slice may replace `E04570` only inside
-its closed admission domain. It elaborates a bare proven-non-Copy transfer to
-the existing `CedeExpr` invalidation and CodeGen drop-suppression path; a bare
-proven-Copy place stays live, and all excluded routes retain their legacy
-diagnostic. Pre-activation Evidence v1 modes reject combination with this
-experimental behavior rather than misreport caller spelling.
+Until then, `E04570`/`E04509` and the existing explicit-caller policy remain
+active by default. The experimental direct/method/static slices may replace
+those diagnostics only inside their closed admission domains. They elaborate a
+bare proven-non-Copy transfer to the existing `CedeExpr` invalidation and
+CodeGen drop-suppression path; a bare proven-Copy place stays live, and all
+excluded routes retain their legacy diagnostic. Pre-activation Evidence v1
+modes reject combination with this experimental behavior rather than
+misreport caller spelling.
 
 ## Compatibility
 

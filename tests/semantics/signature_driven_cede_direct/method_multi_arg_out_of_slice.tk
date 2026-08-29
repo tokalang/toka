@@ -1,0 +1,21 @@
+import core/traits::{@Encap}
+
+shape Resource(value: i32)
+shape Consumer()
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+impl Consumer {
+    fn take(self, cede value: Resource, extra: i32) -> i32 {
+        auto owned = cede value
+        return owned.value + extra
+    }
+}
+
+fn main() -> i32 {
+    auto consumer = Consumer()
+    auto source = Resource(value = 1:i32)
+    return consumer.take(source, 0:i32)
+}

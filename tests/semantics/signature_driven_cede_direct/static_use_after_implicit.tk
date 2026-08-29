@@ -1,0 +1,15 @@
+shape Cell(value: i32)
+shape Consumer()
+
+impl Consumer {
+    fn take(cede ^cell: Cell) -> i32 {
+        auto ^owned = cede ^cell
+        return owned.value
+    }
+}
+
+fn main() -> i32 {
+    auto ^source = new Cell(value = 1:i32)
+    auto value = Consumer::take(^source)
+    return value + source.value
+}

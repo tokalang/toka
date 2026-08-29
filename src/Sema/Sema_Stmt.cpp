@@ -2168,7 +2168,7 @@ void Sema::checkStmt(Stmt *S) {
 
     Info.IsDeclaredVariable = true;
     Info.ASTPtr = Var;
-    if ((m_AuthorityFactsSession || m_EnableSignatureDrivenDirectCallCede) &&
+    if ((m_AuthorityFactsSession || m_EnableSignatureDrivenCallCede) &&
         CurrentFunction)
       m_LocalVariableOwners[Var] = CurrentFunction;
     Info.installPartialMovePlan(admittedPartialMovePlan(Info));

@@ -367,8 +367,8 @@ public:
     m_AuthorityFactsSession = session;
   }
 
-  void setSignatureDrivenDirectCallCedeEnabled(bool enabled) {
-    m_EnableSignatureDrivenDirectCallCede = enabled;
+  void setSignatureDrivenCallCedeEnabled(bool enabled) {
+    m_EnableSignatureDrivenCallCede = enabled;
   }
 
   bool hasErrors() const { return HasError; }
@@ -588,6 +588,10 @@ private:
   bool proveSlice4Copy(const ShapeDecl *Shape);
   bool proveSlice4CopyType(std::shared_ptr<toka::Type> Type);
   D3CopyProof lookupD3CopyProof(const std::shared_ptr<toka::Type> &Type) const;
+  bool elaborateSignatureDrivenCedeArgument(
+      std::unique_ptr<Expr> &Argument,
+      const std::shared_ptr<toka::Type> &ArgumentType,
+      const std::shared_ptr<toka::Type> &FormalType);
   D3TypeCategory
   classifyD3TypeCategory(const std::shared_ptr<toka::Type> &Type) const;
   D3OwnershipProof
@@ -651,7 +655,7 @@ private:
   D3ObservationSession *m_D3ObservationSession = nullptr;
   D4ProbeAuditSession *m_D4ProbeAuditSession = nullptr;
   AuthorityFactsAuditSession *m_AuthorityFactsSession = nullptr;
-  bool m_EnableSignatureDrivenDirectCallCede = false;
+  bool m_EnableSignatureDrivenCallCede = false;
   unsigned m_D3SpeculativeCallDepth = 0;
 
   struct AuthorityFullExpressionContext {

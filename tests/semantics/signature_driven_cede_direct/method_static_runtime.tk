@@ -1,0 +1,57 @@
+import core/traits::{@Encap}
+
+shape Cell(value: i32)
+shape Pair(left: i32, right: i32)
+shape Resource(value: i32)
+shape Consumer()
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+impl Consumer {
+    fn take_unique(self, cede ^cell: Cell) -> i32 {
+        auto ^owned = cede ^cell
+        return owned.value
+    }
+
+    fn take(self, cede value: Resource) -> i32 {
+        auto owned = cede value
+        return owned.value
+    }
+
+    fn copy_pair(self, cede value: Pair) -> i32 {
+        auto moved = cede value
+        return moved.left + moved.right
+    }
+
+    fn take_temporary(self, cede value: Resource) -> i32 {
+        auto moved = cede value
+        return moved.value
+    }
+
+    fn static_take(cede ^cell: Cell) -> i32 {
+        auto ^owned = cede ^cell
+        return owned.value
+    }
+}
+
+fn main() -> i32 {
+    auto consumer = Consumer()
+    auto ^method_unique_source = new Cell(value = 13:i32)
+    auto method_unique_value = consumer.take_unique(^method_unique_source)
+
+    auto method_source = Resource(value = 17:i32)
+    auto method_value = consumer.take(method_source)
+
+    auto ^static_source = new Cell(value = 19:i32)
+    auto static_value = Consumer::static_take(^static_source)
+
+    auto pair = Pair(left = 2:i32, right = 3:i32)
+    auto copied = consumer.copy_pair(pair)
+    auto pair_still_live = pair.left + pair.right
+
+    auto temporary = consumer.take_temporary(Resource(value = 7:i32))
+    return method_unique_value + method_value + static_value + copied +
+           pair_still_live + temporary - 66:i32
+}

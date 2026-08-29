@@ -137,7 +137,7 @@ void printHelp() {
       << "                                  Emit internal D.4a pure overload qualification\n"
       << "  --m1b-2a-authority-facts=json  Emit internal M1b.2a authority facts\n"
       << "  --experimental-signature-driven-cede\n"
-      << "                                  Enable the bounded ordinary direct-call cede slice\n"
+      << "                                  Enable bounded direct/method/static cede slices\n"
       << "  --capabilities=json             Emit H/P call capability pilot v1\n"
       << "  --todo-goals=json               Emit typed-todo goals v1\n"
       << "  --conditional-facts=json        Emit typed-todo conditional facts v1\n"
@@ -1652,8 +1652,7 @@ int main(int argc, char **argv) {
       (dumpAuthorityFacts || enableAuthorityFactsShadow)
           ? &authorityFactsSession
           : nullptr);
-  sema.setSignatureDrivenDirectCallCedeEnabled(
-      experimentalSignatureDrivenCede);
+  sema.setSignatureDrivenCallCedeEnabled(experimentalSignatureDrivenCede);
 
   // Pass 1: Declare all global symbols across all modules to build the global module map
   for (const auto &ast : astModules) {

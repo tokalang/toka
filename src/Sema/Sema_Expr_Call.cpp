@@ -542,6 +542,79 @@ Sema::lookupD3CopyProof(const std::shared_ptr<toka::Type> &type) const {
   return D3CopyProof::Indeterminate;
 }
 
+bool Sema::elaborateSignatureDrivenCedeArgument(
+    std::unique_ptr<Expr> &argument,
+    const std::shared_ptr<toka::Type> &argumentType,
+    const std::shared_ptr<toka::Type> &formalType) {
+  if (!m_EnableSignatureDrivenCallCede || !argument || !argumentType ||
+      !formalType || dynamic_cast<CedeExpr *>(argument.get()) ||
+      argumentType->isUnknown() || !formalType->equals(*argumentType))
+    return false;
+
+  const D3TypeCategory category = classifyD3TypeCategory(argumentType);
+  if ((category != D3TypeCategory::Aggregate &&
+       category != D3TypeCategory::OwnedIdentity) ||
+      lookupD3CopyProof(argumentType) != D3CopyProof::ProvenNonCopy)
+    return false;
+
+  Expr *source = d3UnwrapSourceExpr(argument.get());
+  auto *variable = d3WholePlaceVariable(source);
+  bool admitted = false;
+  bool invalidate = false;
+  std::string actualName;
+  AccessPath sourcePath;
+
+  if (variable) {
+    SymbolInfo *sourceInfo = nullptr;
+    Scope *sourceScope = nullptr;
+    actualName = variable->Name;
+    auto *declaration = static_cast<VariableDecl *>(nullptr);
+    if (CurrentScope->findVariableWithDerefScope(
+            variable->Name, sourceInfo, actualName, sourceScope) &&
+        sourceInfo && sourceScope && sourceScope->Depth > 0 &&
+        sourceInfo->IsDeclaredVariable && !sourceInfo->IsFunctionParameter &&
+        !sourceInfo->IsPlaceAlias &&
+        hasExactlyPlaceState(sourceInfo->placeFact(), PlaceState::Live) &&
+        sourceInfo->ASTPtr &&
+        (declaration = dynamic_cast<VariableDecl *>(
+             static_cast<ASTNode *>(sourceInfo->ASTPtr))) &&
+        m_LocalVariableOwners.count(declaration) &&
+        m_LocalVariableOwners[declaration] == CurrentFunction) {
+      sourcePath = canonicalizeAccessPath(makeAccessPath(source));
+      admitted = static_cast<bool>(sourcePath);
+      invalidate = admitted;
+    }
+  } else if (source && !dynamic_cast<MemberExpr *>(source) &&
+             !dynamic_cast<ArrayIndexExpr *>(source) &&
+             !dynamic_cast<DereferenceExpr *>(source) &&
+             !makeAccessPath(source) &&
+             !d3ExpressionContainsEvaluatedCall(source)) {
+    admitted = true;
+  }
+
+  if (!admitted)
+    return false;
+
+  if (invalidate) {
+    if (auto conflict = PALCheckerState.verifyInvalidation(sourcePath)) {
+      error(argument.get(), DiagID::ERR_MOVE_BORROWED,
+            conflict->displayPath());
+      recordPALConflict(argument.get(), PALOperationClass::Invalidation,
+                        sourcePath, *conflict);
+    } else {
+      CurrentScope->markMoved(actualName, getLoc(argument.get()));
+      PALCheckerState.markMoved(sourcePath);
+    }
+  }
+
+  auto implicit = std::make_unique<CedeExpr>(std::move(argument));
+  implicit->Loc = implicit->Value->Loc;
+  implicit->ResolvedType = argumentType;
+  implicit->IsImplicitCallTransfer = true;
+  argument = std::move(implicit);
+  return true;
+}
+
 D3TypeCategory Sema::classifyD3TypeCategory(
     const std::shared_ptr<toka::Type> &type) const {
   if (!type || type->isUnknown())
@@ -1835,6 +1908,34 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           const std::shared_ptr<Type> &argumentType,
           const std::shared_ptr<Type> &destinationType,
           unsigned formalIndex, CallTransferRoute route, bool isAsync) {
+        if (route == CallTransferRoute::Static && param.IsCeded &&
+            m_EnableSignatureDrivenCallCede && Call->ResolvedFn &&
+            Call->Args.size() == 1 && Call->ResolvedFn->Args.size() == 1 &&
+            argumentIndex == 0 && formalIndex == 1 &&
+            !Call->ResolvedFn->IsVariadic &&
+            !Call->ResolvedFn->TemplateOrigin &&
+            Call->ResolvedFn->GenericParams.empty() &&
+            Call->GenericArgs.empty() &&
+            Call->ResolvedFn->Effect == EffectKind::None &&
+            !Call->ResolvedFn->ResolvedOutcomeTransition &&
+            Call->ResolvedFn->LifeDependencies.empty() &&
+            Call->ResolvedFn->MemberDependencies.empty() &&
+            !Call->ResolvedFn->Args.front().DefaultValue &&
+            !Call->ResolvedFn->Args.front().IsInit &&
+            !Call->ResolvedFn->Args.front().IsRebindable &&
+            !Call->ResolvedFn->Args.front().IsValueMutable &&
+            !Call->isInitArgument(0) && !m_IsPrecomputingCaptures &&
+            m_D3SpeculativeCallDepth == 0 && CurrentModule &&
+            !CurrentModule->IsInterface) {
+          auto owner = DeclarationLexicalScopes.find(Call->ResolvedFn);
+          ModuleScope *lexical = getLexicalModule(Call->Loc);
+          if (owner != DeclarationLexicalScopes.end() && owner->second &&
+              lexical && owner->second == lexical) {
+            elaborateSignatureDrivenCedeArgument(
+                Call->Args[argumentIndex], argumentType, destinationType);
+            argument = Call->Args[argumentIndex].get();
+          }
+        }
         const bool isExempt =
             param.IsCeded && canImplicitlyPassToCede(argumentType);
         recordShadowCallTransfer(
@@ -4021,13 +4122,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   std::vector<CallArgPALFact> callArgPALFacts;
   std::vector<SymbolInfo *> completedInitPlaces;
   bool signatureDrivenDirectSlice = false;
-  if (m_EnableSignatureDrivenDirectCallCede && Fn && !Ext &&
+  if (m_EnableSignatureDrivenCallCede && Fn && !Ext &&
       Fn->Loc.isValid() && Call->Args.size() == 1 && Fn->Args.size() == 1 &&
       providedCount == 1 && !Fn->IsVariadic && !Fn->TemplateOrigin &&
       Fn->GenericParams.empty() && Call->GenericArgs.empty() &&
       Fn->Effect == EffectKind::None && !Fn->ResolvedOutcomeTransition &&
       Fn->LifeDependencies.empty() && Fn->MemberDependencies.empty() &&
       !Fn->Args.front().DefaultValue && !Fn->Args.front().IsInit &&
+      !Fn->Args.front().IsRebindable && !Fn->Args.front().IsValueMutable &&
       !Call->isInitArgument(0) && !m_IsPrecomputingCaptures &&
       m_D3SpeculativeCallDepth == 0 && !d3CandidateProbeObserved &&
       std::none_of(precheckedArgTypes.begin(), precheckedArgTypes.end(),
@@ -4336,70 +4438,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     // whole temporary to the existing CedeExpr semantics.  This reuses the
     // established PAL/place invalidation and CodeGen drop suppression paths;
     // it does not create a second transfer engine.
-    if (signatureDrivenDirectSlice && i == 0 && Fn->Args[0].IsCeded &&
-        !dynamic_cast<CedeExpr *>(Call->Args[i].get()) && argType && paramType &&
-        !argType->isUnknown() && paramType->equals(*argType) &&
-        (classifyD3TypeCategory(argType) == D3TypeCategory::Aggregate ||
-         classifyD3TypeCategory(argType) == D3TypeCategory::OwnedIdentity) &&
-        lookupD3CopyProof(argType) == D3CopyProof::ProvenNonCopy) {
-      Expr *source = d3UnwrapSourceExpr(Call->Args[i].get());
-      auto *variable = d3WholePlaceVariable(source);
-      bool admitted = false;
-      bool invalidate = false;
-      std::string actualName;
-      AccessPath sourcePath;
-
-      if (variable) {
-        SymbolInfo *sourceInfo = nullptr;
-        Scope *sourceScope = nullptr;
-        actualName = variable->Name;
-        auto *declaration = static_cast<VariableDecl *>(nullptr);
-        if (CurrentScope->findVariableWithDerefScope(
-                variable->Name, sourceInfo, actualName, sourceScope) &&
-            sourceInfo && sourceScope && sourceScope->Depth > 0 &&
-            sourceInfo->IsDeclaredVariable && !sourceInfo->IsFunctionParameter &&
-            !sourceInfo->IsPlaceAlias &&
-            hasExactlyPlaceState(sourceInfo->placeFact(), PlaceState::Live) &&
-            sourceInfo->ASTPtr &&
-            (declaration = dynamic_cast<VariableDecl *>(
-                 static_cast<ASTNode *>(sourceInfo->ASTPtr))) &&
-            m_LocalVariableOwners.count(declaration) &&
-            m_LocalVariableOwners[declaration] == CurrentFunction) {
-          sourcePath = canonicalizeAccessPath(makeAccessPath(source));
-          admitted = static_cast<bool>(sourcePath);
-          invalidate = admitted;
-        }
-      } else if (source && !dynamic_cast<MemberExpr *>(source) &&
-                 !dynamic_cast<ArrayIndexExpr *>(source) &&
-                 !dynamic_cast<DereferenceExpr *>(source) &&
-                 !makeAccessPath(source) &&
-                 !d3ExpressionContainsEvaluatedCall(source)) {
-        // A constructor/literal aggregate is already an unbound temporary.
-        admitted = true;
-      }
-
-      if (admitted) {
-        if (invalidate) {
-          if (auto conflict = PALCheckerState.verifyInvalidation(sourcePath)) {
-            error(Call->Args[i].get(), DiagID::ERR_MOVE_BORROWED,
-                  conflict->displayPath());
-            recordPALConflict(Call->Args[i].get(),
-                              PALOperationClass::Invalidation, sourcePath,
-                              *conflict);
-          } else {
-            CurrentScope->markMoved(actualName, getLoc(Call->Args[i].get()));
-            PALCheckerState.markMoved(sourcePath);
-          }
-        }
-
-        auto implicit =
-            std::make_unique<CedeExpr>(std::move(Call->Args[i]));
-        implicit->Loc = implicit->Value->Loc;
-        implicit->ResolvedType = argType;
-        implicit->IsImplicitCallTransfer = true;
-        Call->Args[i] = std::move(implicit);
-      }
-    }
+    if (signatureDrivenDirectSlice && i == 0 && Fn->Args[0].IsCeded)
+      elaborateSignatureDrivenCedeArgument(Call->Args[i], argType, paramType);
 
     if (isOwnedStateThreadCalleeName(OriginalName) && i == 1) {
       ClosureExpr *entryClosure = findClosureExpr(Call->Args[i].get());

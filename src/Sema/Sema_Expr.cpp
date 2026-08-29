@@ -4677,6 +4677,23 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         // [FIX] Typecheck Method Arguments
         if (FD) {
             size_t expectedArgs = FD->Args.size() - 1; // exclude self
+            bool signatureDrivenMethodSlice = false;
+            if (m_EnableSignatureDrivenCallCede && Met->Args.size() == 1 &&
+                FD->Args.size() == 2 && !FD->Args[0].IsCeded &&
+                !FD->IsVariadic && !FD->TemplateOrigin &&
+                FD->GenericParams.empty() && FD->Effect == EffectKind::None &&
+                !FD->ResolvedOutcomeTransition && FD->LifeDependencies.empty() &&
+                FD->MemberDependencies.empty() &&
+                !FD->Args[1].DefaultValue && !FD->Args[1].IsInit &&
+                !FD->Args[1].IsRebindable && !FD->Args[1].IsValueMutable &&
+                !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0 &&
+                CurrentModule && !CurrentModule->IsInterface) {
+              auto owner = DeclarationLexicalScopes.find(FD);
+              ModuleScope *lexical = getLexicalModule(Met->Loc);
+              signatureDrivenMethodSlice =
+                  owner != DeclarationLexicalScopes.end() && owner->second &&
+                  lexical && owner->second == lexical;
+            }
             if (Met->Args.size() != expectedArgs && !FD->IsVariadic) {
                 // If variadic, handle appropriately
                 if (Met->Args.size() < expectedArgs) {
@@ -4713,6 +4730,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 m_BorrowingSelectedHandle = oldBorrowingSelectedHandle;
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 projectOwnedStringView(Met->Args[i], argTy, expectedParamTy);
+
+                if (signatureDrivenMethodSlice && i == 0 &&
+                    FD->Args[1].IsCeded) {
+                  elaborateSignatureDrivenCedeArgument(
+                      Met->Args[i], argTy, expectedParamTy);
+                }
 
                 bool legacyCedeExempt = false;
                 if (i < expectedArgs) {

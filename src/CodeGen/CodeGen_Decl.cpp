@@ -282,7 +282,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       // [Fix] Enable Capture for Unique Pointers
       bool needsCapture =
           (isDirectValue && (isAggregate || arg.IsValueMutable)) ||
-          arg.IsRebindable || arg.IsUnique || arg.IsShared;
+          arg.IsRebindable || (arg.IsUnique && !arg.IsCeded) || arg.IsShared;
 
       // An init formal is an explicit out-place ABI: it aliases caller-owned
       // storage even for scalars, and never transfers cleanup ownership.
@@ -529,7 +529,8 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     bool isDirectValue = !typeObj->isPointer() && !typeObj->isReference();
     bool needsCapture =
         (isDirectValue && (isAggregate || argDecl.IsValueMutable)) ||
-        argDecl.IsRebindable || argDecl.IsUnique || argDecl.IsShared;
+        argDecl.IsRebindable ||
+        (argDecl.IsUnique && !argDecl.IsCeded) || argDecl.IsShared;
 
     const bool isMorphicParameter =
         argDecl.IsMorphicExempt ||
@@ -3002,6 +3003,10 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         argIsPointerLike = argIsPointerLike || arg.ResolvedType->isPointer() ||
                            arg.ResolvedType->isReference();
       }
+      const bool consumesUnique =
+          arg.IsCeded &&
+          (arg.IsUnique ||
+           (arg.ResolvedType && arg.ResolvedType->isUniquePtr()));
 
       // [NEW] Lifetime dependencies check
       for (const auto &dep : fd->LifeDependencies) {
@@ -3012,7 +3017,8 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
       }
 
       // Capture by Struct/Array value types, or explicit Mutable Value types
-      if (!isCaptured && !arg.IsRawPointer && !arg.IsReference) {
+      if (!isCaptured && !arg.IsRawPointer && !arg.IsReference &&
+          !consumesUnique) {
         if (arg.IsValueMutable) {
           isCaptured = true;
         } else {
@@ -3023,7 +3029,8 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
       }
 
       // [Fix] Unique/Shared/Rebindable/Reference Pointers MUST be passed by Reference (Capture)
-      if (arg.IsReference || arg.IsUnique || arg.IsShared || arg.IsRebindable) {
+      if (arg.IsReference || (arg.IsUnique && !consumesUnique) ||
+          arg.IsShared || arg.IsRebindable) {
         isCaptured = true;
       }
     }

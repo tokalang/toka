@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Qualify bounded method/static signature-driven cede routes."""
+
+import argparse
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+FIXTURES = ROOT / "tests/semantics/signature_driven_cede_direct"
+FLAG = "--experimental-signature-driven-cede"
+
+
+def run(command):
+    return subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
+
+
+def require(condition, message):
+    if not condition:
+        raise RuntimeError(message)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--build-dir", required=True)
+    args = parser.parse_args()
+    tokac = pathlib.Path(args.build_dir).resolve() / "bin/tokac"
+    require(tokac.exists(), f"missing compiler: {tokac}")
+
+    runtime = FIXTURES / "method_static_runtime.tk"
+    legacy = run([str(tokac), "--check-only", str(runtime)])
+    require(legacy.returncode != 0 and
+            ("E04509" in legacy.stderr or "E04570" in legacy.stderr),
+            "legacy method/static caller-explicit baseline changed")
+
+    enabled = run([str(tokac), FLAG, "--check-only", str(runtime)])
+    require(enabled.returncode == 0 and "E04509" not in enabled.stderr and
+            "E04570" not in enabled.stderr,
+            "bounded method/static routes did not type-check")
+
+    with tempfile.TemporaryDirectory(prefix="toka-cede-method-static-") as temp:
+        executable = pathlib.Path(temp) / "runtime"
+        compiled = run([str(tokac), FLAG, str(runtime), "-o", str(executable)])
+        require(compiled.returncode == 0,
+                "method/static slice failed CodeGen/link")
+        executed = run([str(executable)])
+        require(executed.returncode == 0,
+                f"method/static runtime failed: {executed.returncode}")
+
+        explicit_executable = pathlib.Path(temp) / "explicit-unique"
+        explicit_source = FIXTURES / "method_unique_explicit_runtime.tk"
+        explicit_compiled = run([str(tokac), str(explicit_source), "-o",
+                                 str(explicit_executable)])
+        require(explicit_compiled.returncode == 0,
+                "explicit unique method route failed CodeGen/link")
+        explicit_executed = run([str(explicit_executable)])
+        require(explicit_executed.returncode == 0,
+                "explicit unique method route failed at runtime")
+
+    for fixture in ("method_use_after_implicit.tk",
+                    "static_use_after_implicit.tk"):
+        moved = run([str(tokac), FLAG, "--check-only",
+                     str(FIXTURES / fixture)])
+        require(moved.returncode != 0 and "E0438" in moved.stderr and
+                "E04509" not in moved.stderr and "E04570" not in moved.stderr,
+                f"implicit route did not invalidate its source: {fixture}")
+
+    for fixture in ("method_multi_arg_out_of_slice.tk",):
+        excluded = run([str(tokac), FLAG, "--check-only",
+                        str(FIXTURES / fixture)])
+        require(excluded.returncode != 0 and "E04509" in excluded.stderr,
+                f"out-of-slice method was activated: {fixture}")
+
+    print("Signature-driven method/static cede tests PASSED")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as error:
+        print(f"Signature-driven method/static cede tests FAILED: {error}",
+              file=sys.stderr)
+        sys.exit(1)
