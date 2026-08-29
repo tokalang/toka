@@ -1,0 +1,17 @@
+import core/traits::{@Encap}
+
+shape Token(id: i32)
+
+impl Token@Encap {
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto callback = { token =>
+        auto owned = cede token
+        return owned.id
+    }:dyn fn(cede Token) -> i32
+    auto source = Token(id = 1:i32)
+    auto value = callback(source)
+    return value + source.id
+}

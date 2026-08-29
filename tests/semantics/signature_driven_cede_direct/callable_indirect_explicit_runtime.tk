@@ -1,0 +1,37 @@
+import core/traits::{@Callable}
+
+shape Cell(value: i32)
+shape Token(^cell: Cell)
+shape Consumer()
+
+impl Consumer@Callable {
+    fn call(self, cede token: Token) -> i32 {
+        auto owned = cede token
+        return owned.cell.value
+    }
+}
+
+fn main() -> i32 {
+    auto consumer = Consumer()
+    auto ^callable_cell = new Cell(value = 7:i32)
+    auto callable_source = Token(^cell = ^callable_cell)
+    auto callable_value = consumer(cede callable_source)
+
+    auto callback = { token =>
+        auto owned = cede token
+        return owned.cell.value
+    }:fn(cede Token) -> i32
+    auto ^fn_cell = new Cell(value = 11:i32)
+    auto fn_source = Token(^cell = ^fn_cell)
+    auto fn_value = callback(cede fn_source)
+
+    auto dyn_callback = { token =>
+        auto owned = cede token
+        return owned.cell.value
+    }:dyn fn(cede Token) -> i32
+    auto ^dyn_cell = new Cell(value = 13:i32)
+    auto dyn_source = Token(^cell = ^dyn_cell)
+    auto dyn_value = dyn_callback(cede dyn_source)
+
+    return callable_value + fn_value + dyn_value - 31:i32
+}

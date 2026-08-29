@@ -6,7 +6,11 @@
 `--experimental-signature-driven-cede`. Qualified behavior-changing slices now
 cover source-backed, same-lexical ordinary direct calls and static calls with
 one resolved formal, plus the equivalent single-argument method route. Whole
-locals and whole temporaries are admitted. Method `cede ^T` now uses the same
+locals and whole temporaries are admitted. The same bounded behavior now covers
+source-backed user `@Callable` values, including qualified unique places, and
+local indirect `fn`/`dyn fn` values with one aggregate cede parameter. Indirect
+unique closure parameters remain outside this slice because closure ascription
+does not yet preserve that parameter morphology. Method `cede ^T` uses the same
 moved-handle value ABI as ordinary/static calls; both its explicit legacy form
 and implicit experimental form have native runtime qualification. The RC8
 caller-explicit policy remains the default until every activation gate in this
@@ -228,6 +232,12 @@ CodeGen drop-suppression path; a bare proven-Copy place stays live, and all
 excluded routes retain their legacy diagnostic. Pre-activation Evidence v1
 modes reject combination with this experimental behavior rather than
 misreport caller spelling.
+
+The indirect `fn`/`dyn fn` implementation previously accepted a bare
+non-exempt argument to a cede-qualified function type without invalidating its
+source. That was neither the frozen RC8 rule nor the accepted RC9 rule. It now
+fails with `E04570` in default mode and performs the qualified implicit transfer
+in experimental mode.
 
 ## Compatibility
 

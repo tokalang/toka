@@ -1,0 +1,22 @@
+import core/traits::{@Callable, @Encap}
+
+shape Token(id: i32)
+shape Consumer()
+
+impl Token@Encap {
+    fn drop(self#) {}
+}
+
+impl Consumer@Callable {
+    fn call(self, cede token: Token) -> i32 {
+        auto owned = cede token
+        return owned.id
+    }
+}
+
+fn main() -> i32 {
+    auto consumer = Consumer()
+    auto source = Token(id = 1:i32)
+    auto value = consumer(source)
+    return value + source.id
+}

@@ -1,0 +1,37 @@
+import core/traits::{@Callable}
+
+shape Pair(left: i32, right: i32)
+shape CopyConsumer()
+
+impl CopyConsumer@Callable {
+    fn call(self, cede value: Pair) -> i32 {
+        auto moved = cede value
+        return moved.left + moved.right
+    }
+}
+
+fn main() -> i32 {
+    auto consumer = CopyConsumer()
+    auto callable_pair = Pair(left = 1:i32, right = 2:i32)
+    auto callable_value = consumer(callable_pair)
+    auto callable_live = callable_pair.left + callable_pair.right
+
+    auto callback = { value =>
+        auto moved = cede value
+        return moved.left + moved.right
+    }:fn(cede Pair) -> i32
+    auto fn_pair = Pair(left = 3:i32, right = 4:i32)
+    auto fn_value = callback(fn_pair)
+    auto fn_live = fn_pair.left + fn_pair.right
+
+    auto dyn_callback = { value =>
+        auto moved = cede value
+        return moved.left + moved.right
+    }:dyn fn(cede Pair) -> i32
+    auto dyn_pair = Pair(left = 5:i32, right = 6:i32)
+    auto dyn_value = dyn_callback(dyn_pair)
+    auto dyn_live = dyn_pair.left + dyn_pair.right
+
+    return callable_value + callable_live + fn_value + fn_live + dyn_value +
+           dyn_live - 42:i32
+}

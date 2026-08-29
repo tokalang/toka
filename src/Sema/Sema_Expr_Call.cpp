@@ -548,7 +548,45 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
     const std::shared_ptr<toka::Type> &formalType) {
   if (!m_EnableSignatureDrivenCallCede || !argument || !argumentType ||
       !formalType || dynamic_cast<CedeExpr *>(argument.get()) ||
-      argumentType->isUnknown() || !formalType->equals(*argumentType))
+      argumentType->isUnknown())
+    return false;
+
+  auto sameTransferValueType = [&]() {
+    if (formalType->equals(*argumentType))
+      return true;
+    if (!formalType->IsCede || argumentType->IsCede ||
+        formalType->typeKind != argumentType->typeKind ||
+        formalType->IsWritable != argumentType->IsWritable ||
+        formalType->IsNullable != argumentType->IsNullable ||
+        formalType->IsBlocked != argumentType->IsBlocked)
+      return false;
+    if (auto formalShape = std::dynamic_pointer_cast<ShapeType>(formalType)) {
+      auto argumentShape = std::dynamic_pointer_cast<ShapeType>(argumentType);
+      if (!argumentShape || !formalShape->Decl ||
+          formalShape->Decl != argumentShape->Decl ||
+          formalShape->VariantSuffix != argumentShape->VariantSuffix ||
+          formalShape->GenericArgs.size() != argumentShape->GenericArgs.size())
+        return false;
+      for (size_t index = 0; index < formalShape->GenericArgs.size(); ++index) {
+        const auto &formalArgument = formalShape->GenericArgs[index];
+        const auto &actualArgument = argumentShape->GenericArgs[index];
+        if (!formalArgument || !actualArgument ||
+            formalArgument->canonicalIdentity() !=
+                actualArgument->canonicalIdentity())
+          return false;
+      }
+      return true;
+    }
+    if (formalType->isUniquePtr()) {
+      auto formalPointee = formalType->getPointeeType();
+      auto argumentPointee = argumentType->getPointeeType();
+      return formalPointee && argumentPointee &&
+             formalPointee->canonicalIdentity() ==
+                 argumentPointee->canonicalIdentity();
+    }
+    return false;
+  };
+  if (!sameTransferValueType())
     return false;
 
   const D3TypeCategory category = classifyD3TypeCategory(argumentType);
@@ -3171,6 +3209,31 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                             : DiagID::ERR_BORROW_MUT,
                   conflict->displayPath());
           }
+
+          bool signatureDrivenCallableSlice = false;
+          if (m_EnableSignatureDrivenCallCede &&
+              required == CallableReceiverMode::Shared &&
+              !invokeFn->IsClosureInvoke && Call->Args.size() == 1 &&
+              invokeFn->Args.size() == 2 && !invokeFn->IsVariadic &&
+              !invokeFn->TemplateOrigin && invokeFn->GenericParams.empty() &&
+              Call->GenericArgs.empty() && invokeFn->Effect == EffectKind::None &&
+              !invokeFn->ResolvedOutcomeTransition &&
+              invokeFn->LifeDependencies.empty() &&
+              invokeFn->MemberDependencies.empty() &&
+              !invokeFn->Args[0].IsCeded &&
+              !invokeFn->Args[0].IsValueMutable &&
+              !invokeFn->Args[1].DefaultValue &&
+              !invokeFn->Args[1].IsInit &&
+              !invokeFn->Args[1].IsRebindable &&
+              !invokeFn->Args[1].IsValueMutable &&
+              !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0 &&
+              CurrentModule && !CurrentModule->IsInterface) {
+            auto owner = DeclarationLexicalScopes.find(invokeFn);
+            ModuleScope *lexical = getLexicalModule(Call->Loc);
+            signatureDrivenCallableSlice =
+                owner != DeclarationLexicalScopes.end() && owner->second &&
+                lexical && owner->second == lexical;
+          }
           
           if (Call->Args.size() != invokeFn->Args.size() - 1) {
              error(Call, DiagID::ERR_SEMA_CLOSURE_EXPECTS_ARGUMENTS_BUT_GOT, std::to_string(invokeFn->Args.size() - 1), std::to_string(Call->Args.size()));
@@ -3191,6 +3254,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     invokeFn->Args[i + 1].IsCeded);
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 const auto &param = invokeFn->Args[i + 1];
+                if (signatureDrivenCallableSlice && i == 0 && param.IsCeded)
+                  elaborateSignatureDrivenCedeArgument(
+                      Call->Args[i], argTy, expectedTy);
                 checkCedeArgument(
                     i, Call->Args[i].get(), param, argTy, expectedTy,
                     static_cast<unsigned>(i + 2), CallTransferRoute::Callable,
@@ -3339,6 +3405,49 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       Fn = instance->second;
   }
 
+  auto checkIndirectCedeArgument =
+      [&](size_t argumentIndex, const std::shared_ptr<Type> &argumentType,
+          const std::shared_ptr<Type> &expectedType) {
+        if (!expectedType || !expectedType->IsCede)
+          return;
+
+        const bool routeEligible =
+            m_EnableSignatureDrivenCallCede && Call->Args.size() == 1 &&
+            argumentIndex == 0 && symPtr && sym.TypeObj &&
+            !m_IsPrecomputingCaptures &&
+            m_D3SpeculativeCallDepth == 0 && CurrentModule &&
+            !CurrentModule->IsInterface;
+        if (routeEligible)
+          elaborateSignatureDrivenCedeArgument(
+              Call->Args[argumentIndex], argumentType, expectedType);
+
+        const bool callerCeded =
+            dynamic_cast<CedeExpr *>(Call->Args[argumentIndex].get()) != nullptr;
+        const bool exempt = canImplicitlyPassToCede(argumentType);
+        if (!callerCeded && !exempt)
+          error(Call->Args[argumentIndex].get(),
+                DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2);
+
+        const std::string subject =
+            getPathString(Call->Args[argumentIndex].get());
+        recordDecision(
+            Call->Args[argumentIndex].get(), SemanticRuleID::OwnCede001,
+            SemanticOperation::CedeObligation,
+            (!callerCeded && !exempt) ? SemanticDecision::Reject
+                                      : SemanticDecision::Allow,
+            (!callerCeded && !exempt) ? SemanticReason::MissingExplicitCede
+                                      : SemanticReason::CedeConsumed,
+            subject, "arg" + std::to_string(argumentIndex + 1));
+        SemanticEvidence::recordCedeObligation(
+            CedeObligationStage::CallerTransfer,
+            (!callerCeded && !exempt) ? CedeObligationStatus::Violated
+                                      : CedeObligationStatus::Fulfilled,
+            (!callerCeded && !exempt) ? SemanticReason::MissingExplicitCede
+                                      : SemanticReason::CedeConsumed,
+            subject, "arg" + std::to_string(argumentIndex + 1),
+            getLoc(Call->Args[argumentIndex].get()), SourceLocation{});
+      };
+
   if (!Fn && !Ext && !Sh) {
     if (sym.TypeObj && sym.TypeObj->typeKind == toka::Type::Function) {
       auto fnTy = std::dynamic_pointer_cast<toka::FunctionType>(sym.TypeObj);
@@ -3356,6 +3465,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 expectedTy && expectedTy->isUniquePtr(),
                 expectedTy && expectedTy->IsCede);
             m_AllowPermissionSuffix = oldAllowPermissionSuffix;
+            checkIndirectCedeArgument(i, argTy, expectedTy);
             const bool legacyCedeExempt =
                 expectedTy && expectedTy->IsCede &&
                 canImplicitlyPassToCede(argTy);
@@ -3422,6 +3532,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 expectedTy && expectedTy->isUniquePtr(),
                 expectedTy && expectedTy->IsCede);
             m_AllowPermissionSuffix = oldAllowPermissionSuffix;
+            checkIndirectCedeArgument(i, argTy, expectedTy);
             const bool legacyCedeExempt =
                 expectedTy && expectedTy->IsCede &&
                 canImplicitlyPassToCede(argTy);

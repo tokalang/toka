@@ -1,0 +1,14 @@
+shape Cell(value: i32)
+shape Token(^cell: Cell)
+
+fn main() -> i32 {
+    auto callback = { token =>
+        auto owned = cede token
+        return owned.cell.value
+    }:dyn fn(cede Token) -> i32
+    auto ^cell = new Cell(value = 37:i32)
+    auto source = Token(^cell = ^cell)
+    auto first = callback(source)
+    auto second = callback(Token(^cell = new Cell(value = 5:i32)))
+    return first + second - 42:i32
+}

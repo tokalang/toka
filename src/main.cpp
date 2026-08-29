@@ -137,7 +137,7 @@ void printHelp() {
       << "                                  Emit internal D.4a pure overload qualification\n"
       << "  --m1b-2a-authority-facts=json  Emit internal M1b.2a authority facts\n"
       << "  --experimental-signature-driven-cede\n"
-      << "                                  Enable bounded direct/method/static cede slices\n"
+      << "                                  Enable bounded signature-driven call slices\n"
       << "  --capabilities=json             Emit H/P call capability pilot v1\n"
       << "  --todo-goals=json               Emit typed-todo goals v1\n"
       << "  --conditional-facts=json        Emit typed-todo conditional facts v1\n"
