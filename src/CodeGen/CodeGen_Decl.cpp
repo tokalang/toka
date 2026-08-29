@@ -1675,6 +1675,8 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
                  if (isDynFn) {
                      std::string dropName = "Encap_" + shp->Name + "_drop";
                      llvm::Function *dropFn = m_Module->getFunction(dropName);
+                     if (!dropFn)
+                         dropFn = getOrCreateDropCascadeHelper(shp->Name);
                      llvm::Value *opaqueDrop = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(m_Context));
                      if (dropFn) {
                          opaqueDrop = m_Builder.CreatePointerCast(dropFn, llvm::PointerType::getUnqual(m_Context));
@@ -1701,6 +1703,43 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
 
     error(var, DiagID::ERR_CODEGEN_INTERNAL_ERROR_TYPE_MISMATCH_IN_VARIAB, s1, s2);
     return nullptr;
+  }
+
+  // A legal destructive read of an erased `fn` binding transfers ownership
+  // of the same concrete environment. Carry its lowering identity to the new
+  // binding so a later consuming fn-to-dyn coercion can still heap-promote it.
+  // Bare copies deliberately do not inherit owning environment metadata.
+  if (!closureEnvAddr && sourceInitExpr) {
+    const Expr *transferSource = sourceInitExpr;
+    while (auto *cast = dynamic_cast<const CastExpr *>(transferSource))
+      transferSource = cast->Expression.get();
+    if (auto *cede = dynamic_cast<const CedeExpr *>(transferSource)) {
+      transferSource = cede->Value.get();
+      while (auto *cast = dynamic_cast<const CastExpr *>(transferSource))
+        transferSource = cast->Expression.get();
+      if (auto *sourceVariable =
+              dynamic_cast<const VariableExpr *>(transferSource)) {
+        const std::string sourceName =
+            Type::stripMorphology(sourceVariable->Name);
+        auto sourceSymbol = m_Symbols.find(sourceName);
+        if (sourceSymbol != m_Symbols.end() &&
+            sourceSymbol->second.ClosureEnvAddr &&
+            sourceSymbol->second.ClosureEnvType &&
+            !sourceSymbol->second.ClosureEnvTypeName.empty()) {
+          closureEnvAddr = sourceSymbol->second.ClosureEnvAddr;
+          closureEnvType = sourceSymbol->second.ClosureEnvType;
+          closureEnvTypeName = sourceSymbol->second.ClosureEnvTypeName;
+        }
+      }
+    }
+  }
+
+  if (closureEnvAddr && closureEnvType && !closureEnvTypeName.empty() &&
+      m_Symbols.count(varName)) {
+    auto &closureSymbol = m_Symbols[varName];
+    closureSymbol.ClosureEnvAddr = closureEnvAddr;
+    closureSymbol.ClosureEnvType = closureEnvType;
+    closureSymbol.ClosureEnvTypeName = closureEnvTypeName;
   }
 
   if (initVal && alloca) {
@@ -1759,6 +1798,8 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
                   std::dynamic_pointer_cast<MissOutcomeType>(candidate))
             return typeNeedsDrop(outcome->PayloadType);
           if (candidate->isSharedPtr() || candidate->isUniquePtr())
+            return true;
+          if (candidate->isDynFn())
             return true;
           if (candidate->isRawPointer() || candidate->isReference())
             return false;

@@ -82,6 +82,13 @@ struct TokaSymbol {
   std::shared_ptr<Type> soulTypeObj; // The new Type Object source of truth
   bool hasDrop = false;
   std::string dropFunc = "";
+  // A source-level `fn` closure keeps its concrete environment out of the
+  // erased two-word callable value.  Retain the lowering identity so a
+  // consuming fn-to-dyn coercion can move that environment to owned heap
+  // storage and attach the compiler-generated drop cascade.
+  llvm::Value *ClosureEnvAddr = nullptr;
+  llvm::Type *ClosureEnvType = nullptr;
+  std::string ClosureEnvTypeName;
 };
 
 struct PhysEntity {

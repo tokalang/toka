@@ -1,0 +1,20 @@
+import core/traits::{@Callable, @Encap}
+
+shape Token(value: i32)
+impl Token@Encap { fn drop(self#) {} }
+shape Runner()
+
+impl Runner@Callable {
+    fn call(self, cede left: Token, cede right: Token) -> async i32 {
+        auto moved_left = cede left
+        auto moved_right = cede right
+        return moved_left.value + moved_right.value
+    }
+}
+
+fn main() -> i32 {
+    auto runner = Runner()
+    auto token = Token(value = 1:i32)
+    auto task = runner(token, token).start
+    return token.value
+}

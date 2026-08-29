@@ -554,6 +554,21 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
   auto sameTransferValueType = [&]() {
     if (formalType->equals(*argumentType))
       return true;
+    if (formalType->isDynFn() && argumentType->isFunction()) {
+      auto formalFn = std::static_pointer_cast<DynFnType>(formalType);
+      auto argumentFn = std::static_pointer_cast<FunctionType>(argumentType);
+      if (static_cast<int>(argumentFn->ReceiverMode) >
+              static_cast<int>(formalFn->ReceiverMode) ||
+          formalFn->ParamTypes.size() != argumentFn->ParamTypes.size() ||
+          !isTypeCompatible(formalFn->ReturnType, argumentFn->ReturnType))
+        return false;
+      for (size_t index = 0; index < formalFn->ParamTypes.size(); ++index) {
+        if (!isTypeCompatible(formalFn->ParamTypes[index],
+                              argumentFn->ParamTypes[index]))
+          return false;
+      }
+      return true;
+    }
     if (!formalType->IsCede || argumentType->IsCede ||
         formalType->typeKind != argumentType->typeKind ||
         formalType->IsWritable != argumentType->IsWritable ||
@@ -590,9 +605,34 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
     return false;
 
   const D3TypeCategory category = classifyD3TypeCategory(argumentType);
-  if ((category != D3TypeCategory::Aggregate &&
-       category != D3TypeCategory::OwnedIdentity) ||
-      lookupD3CopyProof(argumentType) != D3CopyProof::ProvenNonCopy)
+  auto owningClosurePlace = [&]() {
+    if (!argumentType->isFunction() && !argumentType->isDynFn())
+      return false;
+    auto *variable = d3WholePlaceVariable(d3UnwrapSourceExpr(argument.get()));
+    if (!variable)
+      return false;
+    SymbolInfo *info = nullptr;
+    std::string actualName = variable->Name;
+    if (!CurrentScope->findVariableWithDeref(variable->Name, info,
+                                             actualName) ||
+        !info || !info->HasClosureBoundarySummary)
+      return false;
+    for (const auto &capture : info->ClosureExplicitCaptures) {
+      SymbolInfo *captureInfo = nullptr;
+      std::string captureName = capture;
+      if (!CurrentScope->findVariableWithDeref(capture, captureInfo,
+                                               captureName) ||
+          !captureInfo || !captureInfo->TypeObj ||
+          lookupD3CopyProof(captureInfo->TypeObj) !=
+              D3CopyProof::ProvenCopy)
+        return true;
+    }
+    return false;
+  }();
+  if (!owningClosurePlace &&
+      ((category != D3TypeCategory::Aggregate &&
+        category != D3TypeCategory::OwnedIdentity) ||
+       lookupD3CopyProof(argumentType) != D3CopyProof::ProvenNonCopy))
     return false;
 
   Expr *source = d3UnwrapSourceExpr(argument.get());
@@ -2013,26 +2053,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           const std::shared_ptr<Type> &destinationType,
           unsigned formalIndex, CallTransferRoute route, bool isAsync,
           bool plannedImplicit) {
-        if (route == CallTransferRoute::Static && param.IsCeded &&
-            m_EnableSignatureDrivenCallCede && Call->ResolvedFn &&
-            Call->Args.size() == 1 && Call->ResolvedFn->Args.size() == 1 &&
-            argumentIndex == 0 && formalIndex == 1 &&
-            !Call->ResolvedFn->IsVariadic &&
-            Call->ResolvedFn->Effect == EffectKind::None &&
-            !Call->ResolvedFn->ResolvedOutcomeTransition &&
-            Call->ResolvedFn->LifeDependencies.empty() &&
-            Call->ResolvedFn->MemberDependencies.empty() &&
-            !Call->ResolvedFn->Args.front().DefaultValue &&
-            !Call->ResolvedFn->Args.front().IsInit &&
-            !Call->ResolvedFn->Args.front().IsRebindable &&
-            !Call->ResolvedFn->Args.front().IsValueMutable &&
-            !Call->isInitArgument(0) && !m_IsPrecomputingCaptures &&
-            m_D3SpeculativeCallDepth == 0 && CurrentModule &&
-            !CurrentModule->IsInterface) {
-          elaborateSignatureDrivenCedeArgument(
-              Call->Args[argumentIndex], argumentType, destinationType);
-          argument = Call->Args[argumentIndex].get();
-        }
         const bool isExempt =
             param.IsCeded && canImplicitlyPassToCede(argumentType);
         recordShadowCallTransfer(
@@ -2155,8 +2175,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         bool signatureStaticSlice =
             m_EnableSignatureDrivenCallCede && MetAST &&
             Call->Args.size() == MetAST->Args.size() &&
-            Call->Args.size() > 1 && !MetAST->IsVariadic &&
-            MetAST->Effect == EffectKind::None &&
+            !Call->Args.empty() && !MetAST->IsVariadic &&
+            (MetAST->Effect == EffectKind::None ||
+             MetAST->Effect == EffectKind::Async) &&
             !MetAST->ResolvedOutcomeTransition &&
             MetAST->LifeDependencies.empty() &&
             MetAST->MemberDependencies.empty() &&
@@ -2172,7 +2193,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                   nullptr
                                       ? false
                                       : true;
-                         });
+                         }) &&
+            std::none_of(Call->IsInitArgument.begin(),
+                         Call->IsInitArgument.end(),
+                         [](bool value) { return value; }) &&
+            !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0 &&
+            CurrentModule && !CurrentModule->IsInterface;
         struct PendingStaticCede {
           size_t Index = 0;
           std::shared_ptr<Type> ArgumentType;
@@ -2254,7 +2280,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               i < MetAST->Args.size()) {
             checkStartBoundaryArgument(
                 Call->Args[i].get(), argTy, MetAST->Args[i].IsCeded,
-                dynamic_cast<CedeExpr *>(Call->Args[i].get()) != nullptr,
+                dynamic_cast<CedeExpr *>(Call->Args[i].get()) != nullptr ||
+                    (i < plannedStaticCede.size() && plannedStaticCede[i]),
                 MetAST->Args[i].Name);
           }
           if (expectedTy && !isTypeCompatible(expectedTy, argTy)) {
@@ -2333,107 +2360,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               instantiateGenericImpl(ImplTemplate, ShapeName, genericArgs,
                                      staticShape);
             }
-            // Retry lookup
+            // Re-enter the one authoritative static-call path after lazy
+            // instantiation. No argument has been checked yet, so this does
+            // not replay evaluation or semantic state; it only avoids a
+            // second, weaker copy of static argument planning.
             if (MethodMap.count(methodKey) &&
                 MethodMap[methodKey].count(VariantName)) {
-              FunctionDecl *MetAST = nullptr;
-              if (MethodDecls.count(methodKey) &&
-                  MethodDecls[methodKey].count(VariantName)) {
-                  MetAST = MethodDecls[methodKey][VariantName];
-              }
-              Call->ResolvedFn = MetAST;
-              if (MetAST) {
-                std::string fnId = !MetAST->CodegenName.empty() ? MetAST->CodegenName : MetAST->Name;
-                markHandleGrammarFunctionReachable(fnId);
-              }
-
-              for (size_t i = 0; i < Call->Args.size(); ++i) {
-                Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
-                std::shared_ptr<toka::Type> expectedTy = nullptr;
-                if (MetAST && i < MetAST->Args.size()) {
-                    expectedTy = MetAST->Args[i].ResolvedType;
-                    if (!expectedTy) {
-                      std::string tyStr = MetAST->Args[i].Type;
-                      if (MetAST->Args[i].IsRawPointer) tyStr = "*" + tyStr;
-                      else if (MetAST->Args[i].IsUnique) tyStr = "^" + tyStr;
-                      else if (MetAST->Args[i].IsShared) tyStr = "~" + tyStr;
-                      else if (MetAST->Args[i].IsReference) tyStr = "&" + tyStr;
-                      expectedTy = resolveType(toka::Type::fromString(tyStr), false);
-                    }
-                }
-                bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
-                m_AllowPermissionSuffix =
-                    hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
-                auto argTy = checkArgumentWithHandleCapture(
-                    Call->Args[i].get(), expectedTy,
-                    MetAST && i < MetAST->Args.size() &&
-                        MetAST->Args[i].IsUnique,
-                    MetAST && i < MetAST->Args.size() &&
-                        MetAST->Args[i].IsCeded);
-                m_AllowPermissionSuffix = oldAllowPermissionSuffix;
-                if (MetAST && i < MetAST->Args.size()) {
-                  const auto &param = MetAST->Args[i];
-                  checkCedeArgument(
-                      i, Call->Args[i].get(), param, argTy, expectedTy,
-                      static_cast<unsigned>(i + 1), CallTransferRoute::Static,
-                      MetAST && MetAST->Effect == EffectKind::Async, false);
-                  AccessCapability declaredCapability =
-                      getAccessCapability(Call->Args[i].get(), true);
-                  AccessCapability argCapability =
-                      getAccessCapability(Call->Args[i].get());
-                  AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
-                  const bool paramIsHatted =
-                      param.IsRawPointer || param.IsUnique || param.IsShared ||
-                      param.IsReference;
-                  const bool lacksHandleCapability =
-                      paramIsHatted && param.IsRebindable &&
-                      (!declaredCapability.HandleRebindable ||
-                       !argCapability.HandleRebindable ||
-                       !argIntent.HandleRebind);
-                  const bool lacksPayloadCapability =
-                      param.IsValueMutable &&
-                      !isIndependentCedeTransfer(Call->Args[i].get(), param) &&
-                      (!declaredCapability.PayloadWritable ||
-                       !argCapability.PayloadWritable ||
-                       !argIntent.PayloadWrite);
-                  if (lacksHandleCapability || lacksPayloadCapability) {
-                    error(Call->Args[i].get(),
-                          DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
-                          std::to_string(i + 1),
-                          expectedTy ? expectedTy->getSoulName()
-                                     : "capable argument",
-                          argTy ? argTy->getSoulName() : "unknown");
-                  }
-                  validateCallArgumentMutSigil(Call->Args[i].get(),
-                                               param.IsValueMutable, param.Name,
-                                               param.Loc, Call->Loc, i);
-                }
-                if (MetAST && MetAST->Effect == EffectKind::Async &&
-                    i < MetAST->Args.size()) {
-                  checkStartBoundaryArgument(
-                      Call->Args[i].get(), argTy, MetAST->Args[i].IsCeded,
-                      dynamic_cast<CedeExpr *>(Call->Args[i].get()) != nullptr,
-                      MetAST->Args[i].Name);
-                }
-                if (expectedTy && !isTypeCompatible(expectedTy, argTy)) {
-                    DiagnosticEngine::report(getLoc(Call->Args[i].get()), DiagID::ERR_TYPE_MISMATCH,
-                                             "Argument " + std::to_string(i + 1) + " (actual: " + argTy->getSoulName() + ")", expectedTy->getSoulName(), argTy->getSoulName());
-                    HasError = true;
-                }
-              }
-              auto resolvedRet =
-                  MetAST && MetAST->ResolvedReturnType
-                      ? resolveType(MetAST->ResolvedReturnType)
-                      : resolveType(toka::Type::fromString(
-                            MethodMap[methodKey][VariantName]));
-              
-              // [FIX] Check if Static Method is async and wrap in TaskHandle
-              if (MetAST && MetAST->Effect == EffectKind::Async) {
-                  return resolveType(std::make_shared<ShapeType>(
-                      "TaskHandle",
-                      std::vector<std::shared_ptr<toka::Type>>{resolvedRet}));
-              }
-              return resolvedRet;
+              Call->ResolvedFn = nullptr;
+              Call->Callee = RawPrefix + "::" + VariantName;
+              return checkCallExpr(Call);
             }
           }
         }
@@ -3368,7 +3303,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               required == CallableReceiverMode::Shared &&
               !invokeFn->IsClosureInvoke &&
               Call->Args.size() == callableArgumentCount &&
-              !invokeFn->IsVariadic && invokeFn->Effect == EffectKind::None &&
+              !invokeFn->IsVariadic &&
+              (invokeFn->Effect == EffectKind::None ||
+               invokeFn->Effect == EffectKind::Async) &&
               !invokeFn->ResolvedOutcomeTransition &&
               invokeFn->LifeDependencies.empty() &&
               invokeFn->MemberDependencies.empty() &&
@@ -3432,6 +3369,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     static_cast<unsigned>(i + 2), CallTransferRoute::Callable,
                     invokeFn->Effect == EffectKind::Async,
                     i < plannedCallableCede.size() && plannedCallableCede[i]);
+                if (invokeFn->Effect == EffectKind::Async) {
+                  checkStartBoundaryArgument(
+                      Call->Args[i].get(), argTy, param.IsCeded,
+                      dynamic_cast<CedeExpr *>(Call->Args[i].get()) != nullptr ||
+                          (i < plannedCallableCede.size() &&
+                           plannedCallableCede[i]),
+                      param.Name, param.Loc);
+                }
                 AccessCapability declaredCapability =
                     getAccessCapability(Call->Args[i].get(), true);
                 AccessCapability argCapability =
@@ -3532,9 +3477,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             }
           }
 
-          return invokeFn->ResolvedReturnType
-                     ? invokeFn->ResolvedReturnType
-                     : toka::Type::fromString(MethodMap[shapeName]["call"]);
+          auto callableReturn =
+              invokeFn->ResolvedReturnType
+                  ? invokeFn->ResolvedReturnType
+                  : toka::Type::fromString(MethodMap[shapeName]["call"]);
+          if (invokeFn->Effect == EffectKind::Async) {
+            return resolveType(std::make_shared<ShapeType>(
+                "TaskHandle",
+                std::vector<std::shared_ptr<toka::Type>>{callableReturn}));
+          }
+          return callableReturn;
         }
       }
 
@@ -4774,13 +4726,25 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     // [NEW] Top-Down Closure Type Injection
     if (paramType) {
        auto canonicalParam = resolveType(paramType, false);
-       if (canonicalParam && canonicalParam->typeKind == toka::Type::Function) {
+       if (canonicalParam &&
+           (canonicalParam->typeKind == toka::Type::Function ||
+            canonicalParam->typeKind == toka::Type::DynFn)) {
           if (auto clo = dynamic_cast<ClosureExpr*>(Call->Args[i].get())) {
-             auto fnTy = std::static_pointer_cast<toka::FunctionType>(canonicalParam);
-             clo->InjectedParamTypes = fnTy->ParamTypes;
-             if ((clo->ReturnType.empty() || clo->ReturnType == "unknown") && fnTy->ReturnType) {
-                 clo->ReturnType = fnTy->ReturnType->toString();
-              }
+             std::vector<std::shared_ptr<Type>> injectedParameters;
+             std::shared_ptr<Type> injectedReturn;
+             if (canonicalParam->isDynFn()) {
+               auto fnTy = std::static_pointer_cast<toka::DynFnType>(canonicalParam);
+               injectedParameters = fnTy->ParamTypes;
+               injectedReturn = fnTy->ReturnType;
+             } else {
+               auto fnTy = std::static_pointer_cast<toka::FunctionType>(canonicalParam);
+               injectedParameters = fnTy->ParamTypes;
+               injectedReturn = fnTy->ReturnType;
+             }
+             clo->InjectedParamTypes = std::move(injectedParameters);
+             if ((clo->ReturnType.empty() || clo->ReturnType == "unknown") && injectedReturn) {
+                 clo->ReturnType = injectedReturn->toString();
+             }
           }
        }
     }
@@ -5160,8 +5124,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
     bool legacyCedeExempt =
         isCededParam && canImplicitlyPassToCede(argType);
-    if (m_EnableSignatureDrivenCallCede && isCededParam &&
-        isOwningClosureArgument(Call->Args[i].get()))
+    if (isCededParam && isOwningClosureArgument(Call->Args[i].get()))
       legacyCedeExempt = false;
     bool isCedeParamImplicitlyExempt = false;
     if (isCededParam) {
@@ -5289,8 +5252,36 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       diagnosedNull = true;
     }
 
+    bool consumingFunctionToDyn = false;
+    if (isCededParam && paramType && argType &&
+        paramType->isDynFn() && argType->isFunction()) {
+      Expr *coercionSource = d3UnwrapSourceExpr(Call->Args[i].get());
+      auto *coercionVariable = d3WholePlaceVariable(coercionSource);
+      SymbolInfo *coercionInfo = nullptr;
+      std::string coercionName =
+          coercionVariable ? coercionVariable->Name : std::string();
+      if (coercionVariable &&
+          CurrentScope->findVariableWithDeref(coercionVariable->Name,
+                                              coercionInfo, coercionName) &&
+          coercionInfo && coercionInfo->HasClosureBoundarySummary) {
+        auto targetFn = std::static_pointer_cast<DynFnType>(paramType);
+        auto sourceFn = std::static_pointer_cast<FunctionType>(argType);
+        consumingFunctionToDyn =
+            static_cast<int>(sourceFn->ReceiverMode) <=
+                static_cast<int>(targetFn->ReceiverMode) &&
+            sourceFn->ParamTypes.size() == targetFn->ParamTypes.size() &&
+            isTypeCompatible(targetFn->ReturnType, sourceFn->ReturnType);
+        for (size_t index = 0;
+             consumingFunctionToDyn && index < targetFn->ParamTypes.size();
+             ++index) {
+          consumingFunctionToDyn =
+              isTypeCompatible(targetFn->ParamTypes[index],
+                               sourceFn->ParamTypes[index]);
+        }
+      }
+    }
     const bool legacyTypeMismatch =
-        morphologyValid && !diagnosedNull &&
+        morphologyValid && !diagnosedNull && !consumingFunctionToDyn &&
         !isTypeCompatible(paramType, argType);
     if (d3ObservationInput && i == 0)
       d3LegacyTypeMismatch = legacyTypeMismatch;

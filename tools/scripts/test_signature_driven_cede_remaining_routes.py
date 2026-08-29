@@ -72,7 +72,9 @@ def main():
                         "partial_array_runtime.tk",
                         "method_multi_runtime.tk",
                         "callable_multi_runtime.tk",
-                        "static_multi_runtime.tk"):
+                        "static_multi_runtime.tk",
+                        "async_alternate_runtime.tk",
+                        "lazy_generic_static_runtime.tk"):
             source = FIXTURES / fixture
             legacy = run([str(tokac), "--check-only", str(source)])
             require(legacy.returncode != 0,
@@ -88,7 +90,11 @@ def main():
                 ("partial_array_use_after_implicit.tk", "E0410"),
                 ("method_multi_alias_atomic.tk", "E0475"),
                 ("callable_multi_alias_atomic.tk", "E0475"),
-                ("static_multi_alias_atomic.tk", "E0475")):
+                ("static_multi_alias_atomic.tk", "E0475"),
+                ("async_method_alias_atomic.tk", "E0475"),
+                ("async_static_alias_atomic.tk", "E0475"),
+                ("async_callable_alias_atomic.tk", "E0475"),
+                ("lazy_generic_static_alias_atomic.tk", "E0475")):
             rejected = run([str(tokac), FLAG, "--check-only",
                             str(FIXTURES / fixture)])
             require(rejected.returncode != 0 and
@@ -164,16 +170,24 @@ def main():
                 "source-hidden transfer did not invalidate source")
 
         for fixture in ("thread_closure_runtime.tk",
+                        "thread_closure_forward_runtime.tk",
                         "thread_closure_use_after_implicit.tk"):
             legacy_closure = run([str(tokac), "--check-only",
                                   str(FIXTURES / fixture)])
-            require(legacy_closure.returncode == 0,
-                    "legacy closure compatibility changed")
-            rejected = run([str(tokac), FLAG, "--check-only",
-                            str(FIXTURES / fixture)])
-            require(rejected.returncode != 0 and
-                    "E04570" in rejected.stderr,
-                    "experimental owning closure handoff was silently copied")
+            require(legacy_closure.returncode != 0 and
+                    "E04570" in legacy_closure.stderr,
+                    "legacy owning closure boundary accepted a bare move")
+        compile_and_run(tokac, FIXTURES / "thread_closure_runtime.tk",
+                        temp_path / "thread-closure", (FLAG,))
+        compile_and_run(tokac, FIXTURES / "thread_closure_forward_runtime.tk",
+                        temp_path / "thread-closure-forward", (FLAG,))
+        moved_closure = run(
+            [str(tokac), FLAG, "--check-only",
+             str(FIXTURES / "thread_closure_use_after_implicit.tk")])
+        require(moved_closure.returncode != 0 and
+                "E0438" in moved_closure.stderr and
+                "E04570" not in moved_closure.stderr,
+                "signature-driven closure handoff did not invalidate source")
 
     print("Signature-driven remaining-route tests PASSED")
     return 0

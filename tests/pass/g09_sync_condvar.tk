@@ -33,7 +33,7 @@ pub fn main() -> i32 {
         return cede 0
     }:fn#() -> cede i32
     
-    auto t# = thread_spawn<i32>(consumer)
+    auto t# = thread_spawn<i32>(cede consumer)
     
     // Producer
     yield_now() // Allow consumer to run and hit sleep

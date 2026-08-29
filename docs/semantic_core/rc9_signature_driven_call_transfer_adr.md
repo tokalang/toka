@@ -9,15 +9,19 @@ includes ordinary/static/method/dynamic-trait calls, user `@Callable`, indirect
 async/`.start`, unique externs, direct-field/fixed-index partial transfer, and
 all-bare atomic batches for ordinary/method/static/callable/dynamic/extern
 routes. Whole locals, cede parameters, and whole temporaries are admitted. The
-RC8 caller-explicit policy remains the default until the remaining thread
-closure runtime gate passes.
+RC8 caller-explicit policy remains the default until a separate activation
+decision changes the public contract.
 
 Resolved generic functions/methods and source-hidden `.tki` declarations now
 use the same final-call elaboration. Qualified async calls and `.start`, async
 multi-argument handoff, unique extern parameters, and
 `thread_spawn_with_state` owned state have native runtime qualification.
-In experimental mode, capturing callable values passed to plain `thread_spawn`
-fail closed with `E04570` instead of using the legacy Copy exemption.
+Plain `thread_spawn` now transports an owning `dyn fn` environment through the
+same qualified state-box path. A consuming source `fn` is heap-promoted with a
+compiler-generated capture drop cascade; proven-Copy captures may copy, while
+an owning bare closure remains caller-explicit outside experimental mode.
+Async method/static/callable batches and lazy generic-static calls also reuse
+the same final elaboration path.
 
 Qualified all-bare multi-argument routes first check every actual and all
 pairwise PAL relations, then elaborate all non-Copy transfers together. A type,
@@ -215,15 +219,12 @@ The implicit-call-move compiler lint is available through
 implicit invalidating place moves, not Copy or temporary consumption. LSP
 inlay hints remain optional follow-on tooling and are not a safety proof.
 
-Default activation is now blocked by two bounded gaps. First, plain
-`thread_spawn` uses a raw closure trampoline that frees its environment shell
-without proving exactly-once cleanup of non-Copy captures; experimental mode
-therefore keeps such named capturing closures on explicit `cede`, while
-`thread_spawn_with_state` is fully qualified. Second, async alternate methods,
-callables, and lazy generic-static multi-argument routes have not yet received
-the same batch qualification. Dynamic-trait aggregate ABI, indirect unique
-closure morphology, direct-field/fixed-index partial transfer, and synchronous
-ordinary/method/static/callable/dynamic/extern batching are qualified.
+No known route-specific activation gap remains in the bounded implementation.
+Plain `thread_spawn` owning capture cleanup, async alternate method/static/
+callable batching, and lazy generic-static routing now have native runtime and
+atomic-rejection coverage. The feature remains behind its experimental flag
+until the public default-switch decision and the remaining cross-target release
+qualification are made; this paragraph is not itself an activation.
 
 ## Activation gates
 
@@ -231,7 +232,8 @@ This decision becomes the active 1.x call contract only when one revision
 satisfies all of the following:
 
 - ordinary, static, method, generic, callable, extern, async, `.start`, and
-  thread handoff paths consume one Sema-owned plan;
+  thread handoff paths consume one selected-formal plus Sema-elaborated-AST
+  authority;
 - rejected multi-argument calls prove zero partial state mutation;
 - implicit whole-place moves and every admitted exact partial place have
   source and source-less use-after-move, borrow-conflict, and exactly-once drop
@@ -240,8 +242,9 @@ satisfies all of the following:
   places and whole temporaries;
 - proven Copy bare/explicit source-disposition differences are test-locked;
 - dependency-bearing and raw execution-boundary cases remain rejected;
-- source and `.tki` builds produce the same plan;
-- CodeGen rejects a liability-bearing call without a plan;
+- source and `.tki` builds produce the same elaborated transfer facts;
+- CodeGen rejects a liability-bearing call without the required elaboration
+  and cleanup authority;
 - cede obligation evidence v2 and the implicit-call-move lint are available;
 - all existing callee-consumption, cede-return, callable-receiver, partial-
   move, async cancellation, and cleanup suites pass; and

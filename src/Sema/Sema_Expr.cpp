@@ -4290,7 +4290,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               }
               const bool signatureDynamicSlice =
                   Met->Args.size() == expectedArgs &&
-                  !M->IsVariadic && M->Effect == EffectKind::None &&
+                  !M->IsVariadic &&
+                  (M->Effect == EffectKind::None ||
+                   M->Effect == EffectKind::Async) &&
                   !M->ResolvedOutcomeTransition && M->LifeDependencies.empty() &&
                   M->MemberDependencies.empty() && dynamicFormalsEligible &&
                   std::none_of(Met->Args.begin(), Met->Args.end(),
@@ -4371,6 +4373,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                       subject, param.Name, getLoc(Met->Args[i].get()),
                       param.Loc, evidenceV2.Spelling, evidenceV2.Transfer,
                       evidenceV2.Source);
+                }
+                if (M->Effect == EffectKind::Async) {
+                  checkStartBoundaryArgument(
+                      Met->Args[i].get(), argTy, param.IsCeded,
+                      callerCede != nullptr ||
+                          (i < plannedDynamicCede.size() &&
+                           plannedDynamicCede[i]),
+                      param.Name, param.Loc);
                 }
                 if (!isTypeCompatible(expectedTy, argTy))
                   error(Met->Args[i].get(),
@@ -4826,8 +4836,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               }
             }
             if (m_EnableSignatureDrivenCallCede &&
-                Met->Args.size() == expectedArgs && !FD->Args[0].IsCeded &&
-                !FD->IsVariadic && FD->Effect == EffectKind::None &&
+                Met->Args.size() == expectedArgs &&
+                !FD->IsVariadic &&
+                (FD->Effect == EffectKind::None ||
+                 FD->Effect == EffectKind::Async) &&
                 !FD->ResolvedOutcomeTransition && FD->LifeDependencies.empty() &&
                 FD->MemberDependencies.empty() && signatureMethodFormalsEligible &&
                 std::none_of(Met->Args.begin(), Met->Args.end(),
@@ -4966,7 +4978,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 if (FD->Effect == EffectKind::Async && i < expectedArgs) {
                   checkStartBoundaryArgument(
                       Met->Args[i].get(), argTy, FD->Args[i + 1].IsCeded,
-                      dynamic_cast<CedeExpr *>(Met->Args[i].get()) != nullptr,
+                      dynamic_cast<CedeExpr *>(Met->Args[i].get()) != nullptr ||
+                          (i < plannedMethodCede.size() &&
+                           plannedMethodCede[i]),
                       FD->Args[i + 1].Name, FD->Args[i + 1].Loc);
                 }
                 

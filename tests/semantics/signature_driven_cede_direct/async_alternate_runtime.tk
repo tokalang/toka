@@ -1,0 +1,59 @@
+import core/traits::{@Callable, @Encap}
+import std/task::{block_on}
+
+auto g_drops# = 0:i32
+
+shape Token(value: i32)
+
+impl Token@Encap {
+    fn drop(self#) {
+        g_drops += 1:i32
+    }
+}
+
+shape Runner()
+
+impl Runner {
+    fn method(cede self, cede left: Token, cede right: Token) -> async i32 {
+        auto owned_self = cede self
+        auto moved_left = cede left
+        auto moved_right = cede right
+        return moved_left.value + moved_right.value
+    }
+
+    fn static(cede left: Token, cede right: Token) -> async i32 {
+        auto moved_left = cede left
+        auto moved_right = cede right
+        return moved_left.value + moved_right.value
+    }
+}
+
+impl Runner@Callable {
+    fn call(self, cede left: Token, cede right: Token) -> async i32 {
+        auto moved_left = cede left
+        auto moved_right = cede right
+        return moved_left.value + moved_right.value
+    }
+}
+
+fn main() -> i32 {
+    auto method_left = Token(value = 3:i32)
+    auto method_right = Token(value = 5:i32)
+    auto method_task = Runner()#.method(method_left, method_right).start
+    if block_on<i32>(method_task) != 8:i32 { return 1:i32 }
+    if g_drops != 2:i32 { return 2:i32 }
+
+    auto static_left = Token(value = 7:i32)
+    auto static_right = Token(value = 11:i32)
+    auto static_task = Runner::static(static_left, static_right).start
+    if block_on<i32>(static_task) != 18:i32 { return 3:i32 }
+    if g_drops != 4:i32 { return 4:i32 }
+
+    auto callable_left = Token(value = 13:i32)
+    auto callable_right = Token(value = 17:i32)
+    auto runner = Runner()
+    auto callable_task = runner(callable_left, callable_right).start
+    if block_on<i32>(callable_task) != 30:i32 { return 5:i32 }
+    if g_drops != 6:i32 { return 6:i32 }
+    return 0:i32
+}

@@ -1,0 +1,26 @@
+import core/traits::{@Encap}
+
+auto g_drops# = 0:i32
+
+shape Token(value: i32)
+impl Token@Encap {
+    fn drop(self#) { g_drops += 1:i32 }
+}
+
+shape GenericRunner<'T>()
+
+impl<'T> GenericRunner<'T> {
+    fn combine(cede left: T, cede right: T) -> i32 {
+        auto moved_left = cede left
+        auto moved_right = cede right
+        return 0:i32
+    }
+}
+
+fn main() -> i32 {
+    auto left = Token(value = 3:i32)
+    auto right = Token(value = 5:i32)
+    if GenericRunner<Token>::combine(left, right) != 0:i32 { return 1:i32 }
+    if g_drops != 2:i32 { return 2:i32 }
+    return 0:i32
+}

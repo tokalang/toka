@@ -472,7 +472,10 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
   const bool enteredActive = m_ActiveDropCascadeTypes.insert(typeName).second;
   
   // [NEW] Dynamic Closure (dyn fn) Drop Logic
-  if (typeName.find("dyn fn(") == 0) {
+  if (typeName.rfind("dyn fn(", 0) == 0 ||
+      typeName.rfind("dyn fn#(", 0) == 0 ||
+      typeName.rfind("cede dyn fn(", 0) == 0 ||
+      typeName.rfind("cede dyn fn#(", 0) == 0) {
       llvm::Type* envTy = llvm::PointerType::getUnqual(m_Context);
       llvm::StructType* fatTy = llvm::StructType::get(envTy, envTy, envTy);
       llvm::Value* fatPtr = m_Builder.CreateLoad(fatTy, ptrAddr);
@@ -498,6 +501,8 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
       
       m_Builder.CreateBr(endBB);
       m_Builder.SetInsertPoint(endBB);
+      if (enteredActive)
+        m_ActiveDropCascadeTypes.erase(typeName);
       return;
   }
   
@@ -666,6 +671,7 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
             memberDropType &&
             (memberDropType->isArray() ||
              memberDropType->isMissOutcome() ||
+             memberDropType->isDynFn() ||
              memberDropType->isUniquePtr() || memberDropType->isSharedPtr() ||
              (memberSoul && m_Shapes.count(memberSoul->getSoulName())));
 
@@ -726,6 +732,7 @@ void CodeGen::emitDropCascadeWithMask(llvm::Value *ptrAddr,
         memberDropType &&
         (memberDropType->isArray() ||
          memberDropType->isMissOutcome() ||
+         memberDropType->isDynFn() ||
          (memberSoul && m_Shapes.count(memberSoul->getSoulName())));
     if (!memberNeedsDrop && !m_Shapes.count(memberType))
       continue;

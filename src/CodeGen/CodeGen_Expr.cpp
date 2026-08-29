@@ -6074,7 +6074,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
         bool expectsFunction = false;
         if (funcDecl && i < funcDecl->Args.size()) {
            auto resTy = funcDecl->Args[i].ResolvedType;
-           if (resTy && resTy->typeKind == toka::Type::Function) expectsFunction = true;
+           if (resTy && (resTy->typeKind == toka::Type::Function ||
+                         resTy->typeKind == toka::Type::DynFn))
+             expectsFunction = true;
            else if (funcDecl->Args[i].Type.find("fn(") == 0) expectsFunction = true;
         }
         
@@ -6148,6 +6150,8 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
            if (isDynFn) {
                std::string dropName = "Encap_" + shp->Name + "_drop";
                llvm::Function *dropFn = m_Module->getFunction(dropName);
+               if (!dropFn)
+                   dropFn = getOrCreateDropCascadeHelper(shp->Name);
                llvm::Value *opaqueDrop = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(m_Context));
                if (dropFn) {
                    opaqueDrop = m_Builder.CreatePointerCast(dropFn, llvm::PointerType::getUnqual(m_Context));
@@ -6159,6 +6163,85 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
            llvm::AllocaInst *fatPtrAlloc = createEntryBlockAlloca(fatPtrTy, nullptr, "fat_ptr_alloc");
            m_Builder.CreateStore(fatPtr, fatPtrAlloc);
            val = fatPtrAlloc;
+        }
+      }
+    }
+
+    // A source-level `fn` value erases its concrete capture layout and keeps
+    // the environment in caller-owned storage.  A consuming `dyn fn` formal
+    // is the explicit ownership boundary: move the retained concrete
+    // environment to heap storage and attach its generated drop cascade.
+    // Sema admits this coercion only for an explicit/implicit consuming read
+    // or for a closure whose captures are all proven Copy.
+    if (funcDecl && i < funcDecl->Args.size() &&
+        funcDecl->Args[i].ResolvedType &&
+        funcDecl->Args[i].ResolvedType->isDynFn()) {
+      const Expr *source = cededArg ? cededSource : call->Args[i].get();
+      auto *variable = dynamic_cast<const VariableExpr *>(source);
+      if (variable && source->ResolvedType && source->ResolvedType->isFunction()) {
+        const std::string name =
+            toka::Type::stripMorphology(variable->Name);
+        auto symbol = m_Symbols.find(name);
+        if (symbol == m_Symbols.end() || !symbol->second.ClosureEnvAddr ||
+            !symbol->second.ClosureEnvType ||
+            symbol->second.ClosureEnvTypeName.empty()) {
+          error(call->Args[i].get(),
+                DiagID::ERR_CODEGEN_INTERNAL_ERROR_TYPE_MISMATCH_IN_VARIAB,
+                "fn with retained closure environment", "opaque fn");
+          return nullptr;
+        } else {
+          llvm::Type *sourceFatType = getLLVMType(source->ResolvedType);
+          llvm::Type *targetFatType =
+              getLLVMType(funcDecl->Args[i].ResolvedType);
+          auto *sourceStruct = llvm::dyn_cast<llvm::StructType>(sourceFatType);
+          auto *targetStruct = llvm::dyn_cast<llvm::StructType>(targetFatType);
+          if (!sourceStruct || sourceStruct->getNumElements() != 2 ||
+              !targetStruct || targetStruct->getNumElements() != 3) {
+            error(call->Args[i].get(),
+                  DiagID::ERR_CODEGEN_INTERNAL_ERROR_TYPE_MISMATCH_IN_VARIAB,
+                  "consuming fn", "dyn fn");
+            return nullptr;
+          }
+
+          llvm::Value *sourceFat = m_Builder.CreateLoad(
+              sourceStruct, symbol->second.allocaPtr, "owned.fn.source");
+          llvm::Value *sourceEnv =
+              m_Builder.CreateExtractValue(sourceFat, 0, "owned.fn.env");
+          llvm::Value *sourceInvoke =
+              m_Builder.CreateExtractValue(sourceFat, 1, "owned.fn.invoke");
+
+          llvm::Function *mallocFn = m_Module->getFunction("malloc");
+          if (!mallocFn) {
+            mallocFn = llvm::Function::Create(
+                llvm::FunctionType::get(m_Builder.getPtrTy(),
+                                        {getIntPtrTy()}, false),
+                llvm::Function::ExternalLinkage, "malloc", m_Module.get());
+          }
+          const uint64_t environmentSize =
+              m_Module->getDataLayout().getTypeAllocSize(
+                  symbol->second.ClosureEnvType);
+          llvm::Value *ownedEnv = m_Builder.CreateCall(
+              mallocFn,
+              {llvm::ConstantInt::get(getIntPtrTy(), environmentSize)},
+              "owned.fn.heap.env");
+          llvm::Value *environmentValue = m_Builder.CreateLoad(
+              symbol->second.ClosureEnvType, sourceEnv,
+              "owned.fn.environment");
+          m_Builder.CreateStore(environmentValue, ownedEnv);
+
+          llvm::Function *dropFn = getOrCreateDropCascadeHelper(
+              symbol->second.ClosureEnvTypeName);
+          llvm::Value *ownedFat = llvm::UndefValue::get(targetStruct);
+          ownedFat = m_Builder.CreateInsertValue(ownedFat, ownedEnv, 0);
+          ownedFat =
+              m_Builder.CreateInsertValue(ownedFat, sourceInvoke, 1);
+          ownedFat = m_Builder.CreateInsertValue(
+              ownedFat,
+              m_Builder.CreatePointerCast(dropFn, m_Builder.getPtrTy()), 2);
+          llvm::AllocaInst *ownedFatAddress = createEntryBlockAlloca(
+              targetStruct, nullptr, "owned.fn.fat");
+          m_Builder.CreateStore(ownedFat, ownedFatAddress);
+          val = ownedFatAddress;
         }
       }
     }
