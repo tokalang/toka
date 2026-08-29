@@ -665,7 +665,7 @@ private:
   D3ObservationSession *m_D3ObservationSession = nullptr;
   D4ProbeAuditSession *m_D4ProbeAuditSession = nullptr;
   AuthorityFactsAuditSession *m_AuthorityFactsSession = nullptr;
-  bool m_EnableSignatureDrivenCallCede = false;
+  bool m_EnableSignatureDrivenCallCede = true;
   bool m_WarnImplicitCallMove = false;
   unsigned m_D3SpeculativeCallDepth = 0;
 

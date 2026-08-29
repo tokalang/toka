@@ -147,8 +147,8 @@ through `FZ-4`.
   including private helpers.
 - Hidden borrow capture across thread/task boundaries and `.start` with
   borrowed, raw, or dependency-bearing state.
-- Shape/resource transfer across `.start` without both a `cede` parameter and
-  an explicit `cede` call argument.
+- Shape/resource transfer across `.start` without a resolved `cede` parameter;
+  caller spelling is optional under the RC9 signature-driven rule.
 - Dynamic trait objects with generic methods, non-receiver `Self`, associated
   types without a supported binding model, or more than one facet.
 

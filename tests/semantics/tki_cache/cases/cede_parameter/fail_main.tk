@@ -1,7 +1,8 @@
-// EXPECT_ERROR: E04570
+// EXPECT_ERROR: E0438
 import ./lib::{Payload, consume}
 
 fn main() -> i32 {
     auto payload = Payload(val = 1)
-    return consume(payload)
+    auto result = consume(payload)
+    return payload.val + result
 }

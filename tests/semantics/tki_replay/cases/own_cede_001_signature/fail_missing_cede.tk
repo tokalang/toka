@@ -3,6 +3,6 @@ import ./lib::{Payload, consume_payload}
 
 fn main() -> i32 {
     auto p = Payload::new(42)
-    auto v = consume_payload(p) // EXPECT_ERROR: E04570
-    return v
+    auto v = consume_payload(p)
+    return p.val + v // EXPECT_ERROR: E0438
 }

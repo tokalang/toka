@@ -15,5 +15,5 @@ impl Token {
 
 fn main() -> i32 {
     auto source = Token(id = 3)
-    return Token::consume(source)
+    return Token::consume(source) - 3:i32
 }

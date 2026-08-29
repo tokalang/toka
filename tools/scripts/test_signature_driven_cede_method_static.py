@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify bounded method/static signature-driven cede routes."""
+"""Qualify default method/static signature-driven cede routes."""
 
 import argparse
 import pathlib
@@ -30,19 +30,19 @@ def main():
     require(tokac.exists(), f"missing compiler: {tokac}")
 
     runtime = FIXTURES / "method_static_runtime.tk"
-    legacy = run([str(tokac), "--check-only", str(runtime)])
-    require(legacy.returncode != 0 and
-            ("E04509" in legacy.stderr or "E04570" in legacy.stderr),
-            "legacy method/static caller-explicit baseline changed")
+    default = run([str(tokac), "--check-only", str(runtime)])
+    require(default.returncode == 0 and "E04509" not in default.stderr and
+            "E04570" not in default.stderr,
+            "default method/static routes did not type-check")
 
     enabled = run([str(tokac), FLAG, "--check-only", str(runtime)])
     require(enabled.returncode == 0 and "E04509" not in enabled.stderr and
             "E04570" not in enabled.stderr,
-            "bounded method/static routes did not type-check")
+            "deprecated compatibility flag changed default behavior")
 
     with tempfile.TemporaryDirectory(prefix="toka-cede-method-static-") as temp:
         executable = pathlib.Path(temp) / "runtime"
-        compiled = run([str(tokac), FLAG, str(runtime), "-o", str(executable)])
+        compiled = run([str(tokac), str(runtime), "-o", str(executable)])
         require(compiled.returncode == 0,
                 "method/static slice failed CodeGen/link")
         executed = run([str(executable)])
@@ -61,13 +61,13 @@ def main():
 
     for fixture in ("method_use_after_implicit.tk",
                     "static_use_after_implicit.tk"):
-        moved = run([str(tokac), FLAG, "--check-only",
+        moved = run([str(tokac), "--check-only",
                      str(FIXTURES / fixture)])
         require(moved.returncode != 0 and "E0438" in moved.stderr and
                 "E04509" not in moved.stderr and "E04570" not in moved.stderr,
                 f"implicit route did not invalidate its source: {fixture}")
 
-    multi = run([str(tokac), FLAG, "--check-only",
+    multi = run([str(tokac), "--check-only",
                  str(FIXTURES / "method_multi_arg_out_of_slice.tk")])
     require(multi.returncode == 0 and "E04509" not in multi.stderr,
             "qualified multi-argument method remained out of slice")

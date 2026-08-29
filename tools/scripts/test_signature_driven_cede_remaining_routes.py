@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify generic, TKI, extern, async, and thread-state cede routes."""
+"""Qualify default generic, TKI, extern, async, and thread cede routes."""
 
 import argparse
 import os
@@ -43,23 +43,21 @@ def main():
     with tempfile.TemporaryDirectory(prefix="toka-cede-remaining-") as temp:
         temp_path = pathlib.Path(temp)
 
-        for fixture, legacy_code in (("generic_runtime.tk", "E04570"),
-                                     ("generic_method_runtime.tk", "E04509"),
-                                     ("async_runtime.tk", "E04570"),
-                                     ("thread_state_runtime.tk", "E04570")):
+        for fixture in ("generic_runtime.tk", "generic_method_runtime.tk",
+                        "async_runtime.tk", "thread_state_runtime.tk"):
             source = FIXTURES / fixture
-            legacy = run([str(tokac), "--check-only", str(source)])
-            require(legacy.returncode != 0 and legacy_code in legacy.stderr,
-                    f"legacy boundary missing for {fixture}")
+            default = run([str(tokac), "--check-only", str(source)])
+            require(default.returncode == 0,
+                    f"default route rejected {fixture}: {default.stderr}")
             enabled = run([str(tokac), FLAG, "--check-only", str(source)])
             require(enabled.returncode == 0,
-                    f"experimental route rejected {fixture}: {enabled.stderr}")
+                    f"compatibility flag changed {fixture}: {enabled.stderr}")
             compile_and_run(tokac, source, temp_path / fixture.removesuffix(".tk"),
-                            (FLAG,))
+                            ())
 
         for fixture in ("generic_use_after_implicit.tk",
                         "async_use_after_implicit.tk"):
-            moved = run([str(tokac), FLAG, "--check-only",
+            moved = run([str(tokac), "--check-only",
                          str(FIXTURES / fixture)])
             require(moved.returncode != 0 and "E0438" in moved.stderr and
                     "E04570" not in moved.stderr,
@@ -76,11 +74,8 @@ def main():
                         "async_alternate_runtime.tk",
                         "lazy_generic_static_runtime.tk"):
             source = FIXTURES / fixture
-            legacy = run([str(tokac), "--check-only", str(source)])
-            require(legacy.returncode != 0,
-                    f"legacy boundary unexpectedly accepted {fixture}")
             compile_and_run(tokac, source,
-                            temp_path / fixture.removesuffix(".tk"), (FLAG,))
+                            temp_path / fixture.removesuffix(".tk"), ())
 
         for fixture, diagnostic in (
                 ("dynamic_trait_use_after_implicit.tk", "E0438"),
@@ -95,7 +90,7 @@ def main():
                 ("async_static_alias_atomic.tk", "E0475"),
                 ("async_callable_alias_atomic.tk", "E0475"),
                 ("lazy_generic_static_alias_atomic.tk", "E0475")):
-            rejected = run([str(tokac), FLAG, "--check-only",
+            rejected = run([str(tokac), "--check-only",
                             str(FIXTURES / fixture)])
             require(rejected.returncode != 0 and
                     diagnostic in rejected.stderr,
@@ -110,23 +105,19 @@ def main():
                       "-o", str(native_object)])
         require(native.returncode == 0, "failed to compile extern fixture")
         extern_source = FIXTURES / "extern_runtime.tk"
-        legacy_extern = run([str(tokac), "--check-only", str(extern_source)])
-        require(legacy_extern.returncode != 0 and
-                "E04570" in legacy_extern.stderr,
-                "legacy extern boundary changed")
         compile_and_run(tokac, extern_source, temp_path / "extern-implicit",
-                        (FLAG, str(native_object)))
+                        (str(native_object),))
         compile_and_run(tokac, FIXTURES / "extern_explicit_runtime.tk",
                         temp_path / "extern-explicit", (str(native_object),))
-        extern_moved = run([str(tokac), FLAG, "--check-only",
+        extern_moved = run([str(tokac), "--check-only",
                             str(FIXTURES / "extern_use_after_implicit.tk")])
         require(extern_moved.returncode != 0 and
                 "E0438" in extern_moved.stderr,
                 "extern implicit move did not invalidate source")
         compile_and_run(tokac, FIXTURES / "extern_multi_runtime.tk",
                         temp_path / "extern-multi",
-                        (FLAG, str(native_object)))
-        extern_alias = run([str(tokac), FLAG, "--check-only",
+                        (str(native_object),))
+        extern_alias = run([str(tokac), "--check-only",
                             str(FIXTURES / "extern_multi_alias_atomic.tk")])
         require(extern_alias.returncode != 0 and
                 "E0475" in extern_alias.stderr and
@@ -142,7 +133,7 @@ def main():
                 (temp_path / "tki_provider.tki").is_file(),
                 "failed to build TKI provider")
 
-        source_consumer = run([str(tokac), FLAG, "tki_consumer.tk",
+        source_consumer = run([str(tokac), "tki_consumer.tk",
                                "tki_provider.o", "-o", "source-consumer"],
                               temp_path)
         require(source_consumer.returncode == 0,
@@ -152,37 +143,24 @@ def main():
 
         (temp_path / "tki_provider.tk").rename(
             temp_path / "tki_provider.tk.source-hidden")
-        hidden_legacy = run([str(tokac), "--check-only", "tki_consumer.tk"],
-                            temp_path)
-        require(hidden_legacy.returncode != 0 and
-                "E04570" in hidden_legacy.stderr,
-                "source-hidden legacy boundary changed")
-        hidden = run([str(tokac), FLAG, "tki_consumer.tk", "tki_provider.o",
+        hidden = run([str(tokac), "tki_consumer.tk", "tki_provider.o",
                       "-o", "hidden-consumer"], temp_path)
         require(hidden.returncode == 0,
                 "source-hidden signature-driven consumer failed")
         require(run([str(temp_path / "hidden-consumer")], temp_path).returncode == 0,
                 "source-hidden consumer runtime failed")
-        hidden_moved = run([str(tokac), FLAG, "--check-only",
+        hidden_moved = run([str(tokac), "--check-only",
                             "tki_use_after_implicit.tk"], temp_path)
         require(hidden_moved.returncode != 0 and
                 "E0438" in hidden_moved.stderr,
                 "source-hidden transfer did not invalidate source")
 
-        for fixture in ("thread_closure_runtime.tk",
-                        "thread_closure_forward_runtime.tk",
-                        "thread_closure_use_after_implicit.tk"):
-            legacy_closure = run([str(tokac), "--check-only",
-                                  str(FIXTURES / fixture)])
-            require(legacy_closure.returncode != 0 and
-                    "E04570" in legacy_closure.stderr,
-                    "legacy owning closure boundary accepted a bare move")
         compile_and_run(tokac, FIXTURES / "thread_closure_runtime.tk",
-                        temp_path / "thread-closure", (FLAG,))
+                        temp_path / "thread-closure", ())
         compile_and_run(tokac, FIXTURES / "thread_closure_forward_runtime.tk",
-                        temp_path / "thread-closure-forward", (FLAG,))
+                        temp_path / "thread-closure-forward", ())
         moved_closure = run(
-            [str(tokac), FLAG, "--check-only",
+            [str(tokac), "--check-only",
              str(FIXTURES / "thread_closure_use_after_implicit.tk")])
         require(moved_closure.returncode != 0 and
                 "E0438" in moved_closure.stderr and

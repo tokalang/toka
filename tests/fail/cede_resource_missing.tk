@@ -3,7 +3,6 @@ import std/vec::{Vec}
 pub fn main() -> i32 {
     auto v_str# = Vec<string>::new()
     auto s1 = string::from("hello")
-    // Error: s1 is a resource type (string) and must be explicitly cede-passed
     v_str#.push(s1)
-    return 0
+    return s1.len() as i32
 }

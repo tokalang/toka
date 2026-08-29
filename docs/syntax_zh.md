@@ -218,7 +218,8 @@ return ^next             // 返回 unique 值；next 失效
 
 move 语义来自值上下文，而不是 `^source` 单独承担的含义。把 `^source` 传给
 普通 `^param` 仍然是逻辑上的 handle 捕获，不会 move。参数若声明为
-`cede ^param`，则仍是显式消费契约：调用方写 `cede ^source`，被调函数可以用
+`cede ^param`，则仍是消费契约：resolved 形参会移动合格的裸实参或显式
+`cede ^source`，被调函数可以用
 `auto ^owned = ^param` 或 `return ^param` 这样的直接 unique move 履行契约。
 
 `#` 的位置有语义差异。`^#p`、`*#p`、`~#p`、`&#p` 表示 handle identity 可重绑定；`^p#`、`*p#`、`~p#`、`&p#` 里的 `#` 仍在绑定名 / payload 侧，不授予 handle 重绑定权限。两种权限都需要时，两个位置都要写，例如 `^#p#`。
@@ -271,7 +272,7 @@ fn keep(cede r: Resource) -> Resource {
 }
 ```
 
-如果参数声明为 `cede`，调用方必须以 `cede` 传入，函数体也必须显式完成这条资源转移：消费、转发、存储、返回，或以其他方式结束资源路径。单纯读取 payload 不满足这条契约；未声明为 `cede` 的参数也不能在函数体内被 `cede`。
+如果参数声明为 `cede`，合格的裸实参或显式 `cede` 实参都会转移给它，具名源路径随后失效。函数体仍必须显式完成这条资源转移：消费、转发、存储、返回，或以其他方式结束资源路径。单纯读取 payload 不满足这条契约；未声明为 `cede` 的参数也不能在函数体内被 `cede`。
 
 默认参数受到支持。调用方选择默认值时，调用参数列表需要包含 `..`。
 
@@ -327,7 +328,7 @@ Toka 1.0 也不支持 `&view: i32 <- owner` 这类 shape 内部成员依赖声�
 Execution boundary 比普通局部调用更严格。对 Toka 1.0 来说，thread / task
 handoff 不能携带隐藏的借用状态：传给 `thread_spawn` 的闭包不能隐式捕获外层变量，
 `.start` 也遵守同一规则。started task 可以按值接收不携带借用的标量；shape 或资源
-必须同时通过 `cede` 参数和调用点显式 `cede` 转移。即使 shape 可复制，`.start`
+必须通过 `cede` 参数转移；调用点 `cede` 可以省略。即使 shape 可复制，`.start`
 也不会隐式复制，因为普通对象参数仍是逻辑原地捕获。引用、`str`、`bytes`、raw
 pointer 以及携带 PAL dependency 的 task 都不能跨过 `.start`。`fn f(x: str) ->
 async str <- x` 这类 async 返回依赖仍然只是普通签名依赖，并不授权 detached task
@@ -348,7 +349,7 @@ PAL 扩展到 raw pointer；raw pointer 仍属于显式 unsafe / FFI 边界。
 
 稳定契约遵循四条核心规则：
 1. **独占所有权是唯一的（Unique ownership is exclusive）：** `^` 资源在任意时刻只能由一个有效 handle 拥有。
-2. **转移是显式的（Transfer is explicit）：** 所有权交接必须在语法上可见。unique handle 进入 unique 值上下文时直接 move（`auto ^to = ^from`、`return ^from`）并省略 `cede`；值上下文与带帽源共同构成显式转移语法。`cede` 继续用于声明了 cede 的参数/捕获边界，且相应转移义务必须被履行。
+2. **转移权限是显式的（Transfer authority is explicit）：** 局部赋值、返回和 capture 的所有权交接仍必须在语法上可见；函数调用由 resolved `cede` 形参构成显式所有权边界，因此调用点 `cede` 可以省略。unique handle 进入 unique 值上下文时直接 move（`auto ^to = ^from`、`return ^from`）并省略 `cede`；所有 callee 转移义务仍必须被履行。
 3. **借用有效性受保护（Borrow validity is protected）：** 在活跃借用存在时，任何可能使该借用失效的操作（如 move、`cede`、drop、handle 重绑定或底层重新分配等）都将被拒绝。
 4. **独占修改需要独占权限（Exclusive mutation requires exclusive permission）：** 可变/独占借用与其他重叠的活跃借用冲突。普通不可变借用的设计含义是该借用视图本身只读，而不是对原路径可达的全部存储作出全局冻结承诺。普通 payload 写入、独占修改与失效性操作会被分开分类。
 

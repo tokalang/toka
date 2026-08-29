@@ -2,15 +2,15 @@
 
 **Decision status:** Accepted for RC9.
 
-**Implementation status:** Activation candidate behind
-`--experimental-signature-driven-cede`. Qualified behavior-changing coverage
+**Implementation status:** Activated by default for RC9. The deprecated
+`--experimental-signature-driven-cede` spelling remains an accepted no-op for
+build-script compatibility. Qualified behavior-changing coverage
 includes ordinary/static/method/dynamic-trait calls, user `@Callable`, indirect
 `fn`/`dyn fn` including unique parameters, generic and source-hidden calls,
 async/`.start`, unique externs, direct-field/fixed-index partial transfer, and
 all-bare atomic batches for ordinary/method/static/callable/dynamic/extern
 routes. Whole locals, cede parameters, and whole temporaries are admitted. The
-RC8 caller-explicit policy remains the default until a separate activation
-decision changes the public contract.
+RC8 caller-explicit policy is superseded by this ADR for RC9.
 
 Resolved generic functions/methods and source-hidden `.tki` declarations now
 use the same final-call elaboration. Qualified async calls and `.start`, async
@@ -19,7 +19,7 @@ multi-argument handoff, unique extern parameters, and
 Plain `thread_spawn` now transports an owning `dyn fn` environment through the
 same qualified state-box path. A consuming source `fn` is heap-promoted with a
 compiler-generated capture drop cascade; proven-Copy captures may copy, while
-an owning bare closure remains caller-explicit outside experimental mode.
+an owning bare closure transfers by its resolved formal under the RC9 default.
 Async method/static/callable batches and lazy generic-static calls also reuse
 the same final elaboration path.
 
@@ -222,9 +222,10 @@ inlay hints remain optional follow-on tooling and are not a safety proof.
 No known route-specific activation gap remains in the bounded implementation.
 Plain `thread_spawn` owning capture cleanup, async alternate method/static/
 callable batching, and lazy generic-static routing now have native runtime and
-atomic-rejection coverage. The feature remains behind its experimental flag
-until the public default-switch decision and the remaining cross-target release
-qualification are made; this paragraph is not itself an activation.
+atomic-rejection coverage. The language default now uses the qualified
+signature-driven behavior. Frozen RC8 Evidence v1 and the M1a/D.3/M1b.2a audit
+modes retain an isolated legacy replay profile so their historical records do
+not silently change meaning.
 
 ## Activation gates
 
@@ -250,26 +251,26 @@ satisfies all of the following:
   move, async cancellation, and cleanup suites pass; and
 - the full RC9 cold and hosted qualification gates pass.
 
-Until then, `E04570`/`E04509` and the existing explicit-caller policy remain
-active by default. The experimental direct/method/static slices may replace
-those diagnostics only inside their closed admission domains. They elaborate a
+`E04570`/`E04509` no longer enforce caller spelling inside the qualified
+signature-driven domains. Those domains elaborate a
 bare proven-non-Copy transfer to the existing `CedeExpr` invalidation and
 CodeGen drop-suppression path; a bare proven-Copy place stays live, and all
-excluded routes retain their legacy diagnostic. Pre-activation Evidence v1
-modes reject combination with this experimental behavior rather than
-misreport caller spelling.
+excluded shapes remain fail-closed. Evidence v1 and historical audit modes run
+their frozen legacy replay profile rather than misreport caller spelling.
 
 The indirect `fn`/`dyn fn` implementation previously accepted a bare
 non-exempt argument to a cede-qualified function type without invalidating its
 source. That was neither the frozen RC8 rule nor the accepted RC9 rule. It now
-fails with `E04570` in default mode and performs the qualified implicit transfer
-in experimental mode.
+performs the qualified implicit transfer and invalidates the admitted source.
 
 ## Compatibility
 
 Argument-level `cede` accepted by this matrix remains source-compatible. A
 project that requires visible ownership handoff may enforce the implicit-call-
 move lint without changing the core language.
+
+The former `--experimental-signature-driven-cede` option is a deprecated no-op
+and may be removed in a later toolchain release.
 
 The `cede` bit is part of function, method, callable, and interface contracts.
 Adding or removing it from a public formal is a source-breaking API change.

@@ -1322,22 +1322,18 @@
       "description": "A direct unique move cannot invalidate a source with an active borrow"
     },
     {
-      "id": "diag_static_cede_parameter_requires_explicit_transfer_01",
+      "id": "ownership_static_cede_parameter_signature_transfer_01",
       "path": "diagnostics/static_cede_parameter_requires_explicit_transfer.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04570",
-      "expected_span_line": 18,
+      "type": "run",
       "timeout_seconds": 10,
-      "description": "A static consuming method requires explicit cede for a resource argument"
+      "description": "A static consuming formal transfers a bare resource argument"
     },
     {
-      "id": "diag_callable_cede_parameter_requires_explicit_transfer_01",
+      "id": "ownership_callable_cede_parameter_signature_transfer_01",
       "path": "diagnostics/callable_cede_parameter_requires_explicit_transfer.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04570",
-      "expected_span_line": 20,
+      "type": "run",
       "timeout_seconds": 10,
-      "description": "A consuming callable requires explicit cede for a resource argument"
+      "description": "A consuming callable formal transfers a bare resource argument"
     },
     {
       "id": "diag_cede_unique_preserves_blocked_field_01",

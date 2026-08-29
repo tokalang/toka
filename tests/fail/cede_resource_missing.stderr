@@ -1,10 +1,10 @@
-error[E04509]: Argument must be explicitly passed with 'cede' because the method consumes it
- --> tests/fail/cede_resource_missing.tk:7:17
+error[E0438]: Use of moved value: 's1'
+ --> tests/fail/cede_resource_missing.tk:7:12
    |
- 7 |     v_str#.push(s1)
+ 7 |     return s1.len() as i32
+   |            ^
+note: value moved here
+ --> tests/fail/cede_resource_missing.tk:6:17
+   |
+ 6 |     v_str#.push(s1)
    |                 ^
-note: cede parameter declared here
- --> lib/std/vec.tk:189:29
-     |
- 189 |     pub fn push(self#, cede 'val: T) {
-     |                             ^

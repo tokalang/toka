@@ -16,5 +16,5 @@ Callee-consumption and return-transfer records retain their v1 meaning and use
 authoritative. Consumers must reject unknown versions. The normative schema is
 [`toka.cede-obligation-evidence.v2.schema.json`](../schemas/toka.cede-obligation-evidence.v2.schema.json).
 
-V1 remains available through `--cede-obligations=json` and is not changed by
-this protocol.
+V1 remains available through `--cede-obligations=json` as a frozen RC8 legacy
+replay profile and is not changed by this protocol.

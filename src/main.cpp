@@ -129,7 +129,7 @@ void printHelp() {
       << "                                  Emit local object-bound Outcome attestations into .tki.tsm\n"
       << "  --explain[=json] <code>         Explain a diagnostic code\n"
       << "  --semantic-evidence=json        Emit public semantic evidence v1\n"
-      << "  --cede-obligations=json         Emit cede obligation evidence v1\n"
+      << "  --cede-obligations=json         Emit frozen RC8 cede evidence v1 replay\n"
       << "  --cede-obligations=v2           Emit signature-driven cede evidence v2\n"
       << "  --call-transfer-shadow=json     Emit audit-only RC9 call transfer plans\n"
       << "  --m1b-d3-direct-call-observation=json\n"
@@ -138,7 +138,7 @@ void printHelp() {
       << "                                  Emit internal D.4a pure overload qualification\n"
       << "  --m1b-2a-authority-facts=json  Emit internal M1b.2a authority facts\n"
       << "  --experimental-signature-driven-cede\n"
-      << "                                  Enable bounded signature-driven call slices\n"
+      << "                                  Deprecated compatibility no-op; behavior is the default\n"
       << "  --warn-implicit-call-move       Warn when a call implicitly invalidates a place\n"
       << "  --capabilities=json             Emit H/P call capability pilot v1\n"
       << "  --todo-goals=json               Emit typed-todo goals v1\n"
@@ -827,7 +827,6 @@ int main(int argc, char **argv) {
   bool dumpAuthorityFacts = false;
   bool emitAuthorityFacts = false;
   bool enableAuthorityFactsShadow = false;
-  bool experimentalSignatureDrivenCede = false;
   bool warnImplicitCallMove = false;
   std::optional<toka::AuthorityFaultPoint> authorityFaultPoint;
   std::string authorityFaultSource;
@@ -994,7 +993,7 @@ int main(int argc, char **argv) {
     } else if (arg == "--m1b-2a-shadow") {
       enableAuthorityFactsShadow = true;
     } else if (arg == "--experimental-signature-driven-cede") {
-      experimentalSignatureDrivenCede = true;
+      // Accepted for source/build-script compatibility after RC9 activation.
     } else if (arg == "--warn-implicit-call-move") {
       warnImplicitCallMove = true;
     } else if (arg.rfind("--m1b-2a-inject-fault=", 0) == 0) {
@@ -1194,16 +1193,6 @@ int main(int argc, char **argv) {
     llvm::errs() << "--m1b-2a-fault-source requires a fault point\n";
     return 1;
   }
-  if (experimentalSignatureDrivenCede &&
-      (dumpSemanticEvidence ||
-       (dumpCedeObligations && !dumpCedeObligationsV2) ||
-       dumpCallTransferShadow ||
-       dumpD3DirectCallObservation || dumpAuthorityFacts)) {
-    llvm::errs() << "--experimental-signature-driven-cede cannot be combined "
-                    "with pre-activation ownership evidence modes\n";
-    return 1;
-  }
-
   if (dumpAuthorityFacts &&
       (structuredDiagnostics || g_JsonDiagnostics || dumpDependencies ||
        dumpAssignmentStats || dumpHandleSurfaceStats || dumpSemanticEvidence ||
@@ -1669,7 +1658,14 @@ int main(int argc, char **argv) {
       (dumpAuthorityFacts || enableAuthorityFactsShadow)
           ? &authorityFactsSession
           : nullptr);
-  sema.setSignatureDrivenCallCedeEnabled(experimentalSignatureDrivenCede);
+  // Frozen RC8 audit protocols remain historical replay profiles. They must
+  // not silently reinterpret Evidence v1 or the M1a/D.3/M1b.2a records after
+  // signature-driven call transfer becomes the ordinary language default.
+  const bool legacyCedeAuditProfile =
+      (dumpCedeObligations && !dumpCedeObligationsV2) ||
+      dumpCallTransferShadow || dumpD3DirectCallObservation ||
+      dumpAuthorityFacts || enableAuthorityFactsShadow;
+  sema.setSignatureDrivenCallCedeEnabled(!legacyCedeAuditProfile);
   sema.setWarnImplicitCallMove(warnImplicitCallMove);
 
   // Pass 1: Declare all global symbols across all modules to build the global module map

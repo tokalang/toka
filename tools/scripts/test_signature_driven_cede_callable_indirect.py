@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify bounded callable and indirect signature-driven cede routes."""
+"""Qualify default callable and indirect signature-driven cede routes."""
 
 import argparse
 import pathlib
@@ -35,16 +35,16 @@ def main():
         temp_path = pathlib.Path(temp)
         for fixture in runtime_fixtures:
             source = FIXTURES / fixture
-            legacy = run([str(tokac), "--check-only", str(source)])
-            require(legacy.returncode != 0 and "E04570" in legacy.stderr,
-                    f"legacy caller-explicit boundary missing: {fixture}")
+            default = run([str(tokac), "--check-only", str(source)])
+            require(default.returncode == 0 and "E04570" not in default.stderr,
+                    f"default route did not type-check: {fixture}")
 
             enabled = run([str(tokac), FLAG, "--check-only", str(source)])
             require(enabled.returncode == 0 and "E04570" not in enabled.stderr,
-                    f"signature-driven route did not type-check: {fixture}")
+                    f"compatibility flag changed route: {fixture}")
 
             executable = temp_path / fixture.removesuffix(".tk")
-            compiled = run([str(tokac), FLAG, str(source), "-o",
+            compiled = run([str(tokac), str(source), "-o",
                             str(executable)])
             require(compiled.returncode == 0,
                     f"route failed CodeGen/link: {fixture}")
@@ -64,7 +64,7 @@ def main():
 
         copy_source = FIXTURES / "callable_indirect_copy_runtime.tk"
         copy_executable = temp_path / "copy"
-        copy_compiled = run([str(tokac), FLAG, str(copy_source), "-o",
+        copy_compiled = run([str(tokac), str(copy_source), "-o",
                              str(copy_executable)])
         require(copy_compiled.returncode == 0,
                 "Copy callable/indirect forms failed CodeGen/link")
@@ -74,7 +74,7 @@ def main():
 
         unique_source = FIXTURES / "callable_unique_runtime.tk"
         unique_executable = temp_path / "unique"
-        unique_compiled = run([str(tokac), FLAG, str(unique_source), "-o",
+        unique_compiled = run([str(tokac), str(unique_source), "-o",
                                str(unique_executable)])
         require(unique_compiled.returncode == 0,
                 "unique callable form failed CodeGen/link")
@@ -85,13 +85,13 @@ def main():
     for fixture in ("callable_use_after_implicit.tk",
                     "indirect_fn_use_after_implicit.tk",
                     "indirect_dyn_use_after_implicit.tk"):
-        moved = run([str(tokac), FLAG, "--check-only",
+        moved = run([str(tokac), "--check-only",
                      str(FIXTURES / fixture)])
         require(moved.returncode != 0 and "E0438" in moved.stderr and
                 "E04570" not in moved.stderr,
                 f"implicit route did not invalidate its source: {fixture}")
 
-    excluded = run([str(tokac), FLAG, "--check-only",
+    excluded = run([str(tokac), "--check-only",
                     str(FIXTURES / "indirect_multi_arg_out_of_slice.tk")])
     require(excluded.returncode != 0 and "E04570" in excluded.stderr,
             "multi-argument indirect call escaped the bounded slice")

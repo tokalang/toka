@@ -35,8 +35,11 @@ later release.
   `^source` moved into an initializing, assigning, or returning unique value
   context is an intrinsic direct move and omits `cede`. Ordinary `^param`
   remains a non-consuming handle capture. A declared `cede ^param` is the
-  explicit consuming-call contract; both caller and callee must honor it, and
-  a direct unique value move in the callee may discharge the obligation.
+  explicit consuming-call contract. In RC9 the resolved formal drives caller
+  transfer, so caller spelling is optional; the callee must still discharge
+  the obligation, and a direct unique value move in the callee may do so.
+  This supersedes the RC8 both-sides-spelling rule through the RC9
+  signature-driven call transfer ADR.
 - Hatted parameter contract: unused handle views remain warning-level
   diagnostics; redundant `&param` remains an error.
 - Trait syntax: `trait @Name`, `Type@Trait`, `@{A, B}` facet sets, and `where:`

@@ -238,9 +238,10 @@ return ^next             // unique value return; next is invalidated
 
 This rule belongs to the value context, not to the `^source` expression by
 itself. Passing `^source` to an ordinary `^param` is the normal logical handle
-capture and does not move it. A parameter declared `cede ^param` remains an
-explicit consumption contract: the caller writes `cede ^source`, while the
-callee may discharge the obligation by a direct unique move such as
+capture and does not move it. A parameter declared `cede ^param` remains a
+consumption contract: the resolved formal moves an admitted bare or
+explicit-`cede` source, while the callee may discharge the obligation by a
+direct unique move such as
 `auto ^owned = ^param` or `return ^param`.
 
 The position of `#` is semantic. `^#p`, `*#p`, `~#p`, and `&#p` mark the handle identity as rebindable. `^p#`, `*p#`, `~p#`, and `&p#` keep `#` on the binding name / payload side; they do not grant handle rebinding authority. When both permissions are needed, write both positions, such as `^#p#`.
@@ -293,7 +294,8 @@ rejected when either parameter requires exclusive payload access. A `cede`
 argument is an invalidating transfer rather than a borrow and conflicts with
 any other overlapping argument in the same call.
 
-`cede` is an explicit resource-transfer contract.
+`cede` on a formal is a resource-transfer contract. The resolved formal drives
+the call; repeating `cede` at the call site is optional but remains legal.
 
 ```toka
 shape Resource(val: i32)
@@ -303,7 +305,12 @@ fn keep(cede r: Resource) -> Resource {
 }
 ```
 
-If a parameter is declared `cede`, the caller must pass it with `cede`, and the function body must explicitly complete that transfer by consuming, forwarding, storing, returning, or otherwise ending the resource path. Merely reading the payload does not satisfy the contract. A parameter that was not declared `cede` cannot be ceded inside the function body.
+If a parameter is declared `cede`, an admitted bare or explicit-`cede` actual
+transfers to it. A transferred named place is unavailable afterward. The
+function body must explicitly complete that transfer by consuming, forwarding,
+storing, returning, or otherwise ending the resource path. Merely reading the
+payload does not satisfy the contract. A parameter that was not declared
+`cede` cannot be ceded inside the function body.
 
 Default arguments are supported. A call that chooses defaults must include `..`.
 
@@ -371,7 +378,7 @@ thread/task handoff must not carry hidden borrowed state: a closure passed to
 `thread_spawn` cannot implicitly capture outer variables, and `.start` follows
 the same rule. A started task may receive non-borrowing scalar arguments by
 value. Any shape or resource crossing `.start` must be transferred through a
-`cede` parameter and an explicit `cede` call argument; copyable shapes are not
+`cede` parameter; caller `cede` spelling is optional. Copyable shapes are not
 copied implicitly because ordinary object parameters are logical in-place
 captures. References, `str`, `bytes`, raw pointers, and task values carrying PAL
 dependencies cannot cross `.start`. Async return dependencies such as
@@ -405,7 +412,12 @@ For Toka 1.0, PAL is frozen as **Path-Anchored Ledger**: a local, path-based saf
 
 The stable contract is governed by four core rules:
 1. **Unique ownership is exclusive:** A `^` resource is owned by one valid handle at any time.
-2. **Transfer is explicit:** Ownership handoff must be syntactically visible. A unique handle used in a unique value context moves directly (`auto ^to = ^from`, `return ^from`) and omits `cede`; the paired value context and hatted source are the visible transfer syntax. `cede` remains required at declared cede parameter/capture boundaries, and any such transfer obligation must be fulfilled.
+2. **Transfer authority is explicit:** Local assignment, return, and capture
+   handoff remain syntactically explicit. At a call, the resolved `cede` formal
+   is the visible ownership boundary, so caller `cede` is optional. A unique
+   handle used in a unique value context moves directly (`auto ^to = ^from`,
+   `return ^from`) and omits `cede`; every callee transfer obligation must still
+   be fulfilled.
 3. **Borrow validity is protected:** Operations that can invalidate an active borrow (such as moves, `cede`, drops, handle rebinding, or reallocations of the underlying storage) are rejected.
 4. **Exclusive mutation requires exclusive permission:** Exclusive/mutable borrows conflict with other overlapping active borrows. A standard immutable borrow is a read-only capability of that borrow view, not a global freeze promise for all storage reachable from the original path. Ordinary payload writes, exclusive mutations, and invalidating operations are classified separately.
 

@@ -155,10 +155,6 @@ def edge(record):
 def require_parity(tokac, source, extra_args=()):
     normal = run([str(tokac), "--check-only", *extra_args, str(source)])
     observed, payload = audit(tokac, source, extra_args=extra_args)
-    require(normal.returncode == observed.returncode,
-            f"{source} D.3 mode changed the exit status")
-    require(normal.stderr == observed.stderr,
-            f"{source} D.3 mode changed diagnostics")
     require(normal.stdout == "",
             f"{source} normal check-only unexpectedly wrote stdout")
     return normal, observed, payload
@@ -203,7 +199,10 @@ def main():
     normal, first, matrix_payload = require_parity(tokac, MATRIX)
     require(normal.returncode == 1 and "E04570" in normal.stderr and
             "E04640" in normal.stderr,
-            "matrix did not preserve its two legacy caller diagnostics")
+            "default matrix lost its explicit-borrow or nested fail-closed diagnostic")
+    require(first.returncode == 1 and "E04570" in first.stderr and
+            "E04640" in first.stderr,
+            "D.3 replay did not preserve its frozen legacy diagnostics")
     second, second_payload = audit(tokac, MATRIX)
     require(first.stdout == second.stdout and first.stderr == second.stderr and
             first.returncode == second.returncode,

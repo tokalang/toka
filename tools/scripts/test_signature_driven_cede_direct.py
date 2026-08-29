@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify the first behavior-changing signature-driven cede slice."""
+"""Qualify default signature-driven direct-call cede behavior."""
 
 import argparse
 import pathlib
@@ -30,18 +30,18 @@ def main():
     require(tokac.exists(), f"missing compiler: {tokac}")
 
     runtime = FIXTURES / "runtime.tk"
-    legacy = run([str(tokac), "--check-only", str(runtime)])
-    require(legacy.returncode != 0 and "E04570" in legacy.stderr,
-            "legacy caller-explicit baseline changed")
+    default = run([str(tokac), "--check-only", str(runtime)])
+    require(default.returncode == 0 and "E04570" not in default.stderr,
+            "default signature-driven call did not type-check")
 
     enabled = run([str(tokac), FLAG, "--check-only", str(runtime)])
     require(enabled.returncode == 0 and "E04570" not in enabled.stderr,
-            "bounded signature-driven call did not type-check")
+            "deprecated compatibility flag changed default behavior")
 
     with tempfile.TemporaryDirectory(prefix="toka-cede-direct-") as temp:
         executable = pathlib.Path(temp) / "runtime"
-        compiled = run([str(tokac), FLAG, str(runtime), "-o", str(executable)])
-        require(compiled.returncode == 0, "bounded slice failed CodeGen/link")
+        compiled = run([str(tokac), str(runtime), "-o", str(executable)])
+        require(compiled.returncode == 0, "default path failed CodeGen/link")
         executed = run([str(executable)])
         require(executed.returncode == 0,
                 f"bounded slice runtime failed: {executed.returncode}")
@@ -53,11 +53,7 @@ def main():
             "implicit whole-place move did not invalidate its source")
 
     legacy_exempt_source = FIXTURES / "legacy_exempt_noncopy_moves.tk"
-    legacy_exempt = run([str(tokac), "--check-only",
-                         str(legacy_exempt_source)])
-    require(legacy_exempt.returncode == 0,
-            "legacy no-drop capsule exemption baseline changed")
-    signature_exempt = run([str(tokac), FLAG, "--check-only",
+    signature_exempt = run([str(tokac), "--check-only",
                             str(legacy_exempt_source)])
     require(signature_exempt.returncode != 0 and
             "E0438" in signature_exempt.stderr and
@@ -86,11 +82,10 @@ def main():
         require(excluded.returncode != 0 and diagnostic in excluded.stderr,
                 f"out-of-slice route was activated: {fixture}")
 
-    evidence = run([str(tokac), FLAG, "--cede-obligations=json",
+    evidence = run([str(tokac), "--cede-obligations=json",
                     "--check-only", str(runtime)])
-    require(evidence.returncode != 0 and evidence.stdout == "" and
-            "pre-activation ownership evidence" in evidence.stderr,
-            "Evidence v1 was allowed to misreport implicit caller spelling")
+    require(evidence.returncode != 0 and "E04570" in evidence.stderr,
+            "Evidence v1 did not retain its frozen legacy replay profile")
 
     print("Signature-driven ordinary direct-call cede tests PASSED")
     return 0

@@ -14,7 +14,6 @@ pub fn consume_payload(cede p: Payload) -> i32 {
 
 pub fn main() -> i32 {
     auto p = Payload(val=42)
-    // Error: consume_payload requires cede, but we pass p normally
     auto v = consume_payload(p)
-    return 0
+    return p.val + v
 }

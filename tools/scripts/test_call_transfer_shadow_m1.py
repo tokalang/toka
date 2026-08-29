@@ -95,15 +95,19 @@ def require_shadow_parity(tokac, source, expected_error=None):
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, timeout=30,
     )
-    require(normal.returncode == shadow.returncode,
-            source + " shadow mode changed the exit status")
-    require(normal.stderr == shadow.stderr,
-            source + " shadow mode changed diagnostics")
+    replay = subprocess.run(
+        [str(tokac), "--call-transfer-shadow=json", "--check-only", source],
+        cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, timeout=30,
+    )
+    require(shadow.returncode == replay.returncode and
+            shadow.stderr == replay.stderr and shadow.stdout == replay.stdout,
+            source + " legacy replay was not deterministic")
     require(not normal.stdout, source + " changed normal stdout")
     json.loads(shadow.stdout)
     if expected_error:
-        require(expected_error in normal.stderr,
-                source + " missed " + expected_error)
+        require(expected_error in shadow.stderr,
+                source + " legacy replay missed " + expected_error)
 
 
 def find(records, source_file, **expected):
@@ -531,7 +535,7 @@ def main():
 
     normal_cases = [
         ("tests/semantics/call_transfer_shadow_m1/copy_places.tk", None),
-        ("tests/conformance/diagnostics/static_cede_parameter_requires_explicit_transfer.tk", "E04570"),
+        ("tests/conformance/diagnostics/static_cede_parameter_requires_explicit_transfer.tk", None),
         ("tests/conformance/diagnostics/cede_argument_to_borrowed_parameter_rejected.tk", "E04640"),
         ("tests/conformance/diagnostics/aggregate_owned_value_requires_cede.tk", "E04652"),
     ]

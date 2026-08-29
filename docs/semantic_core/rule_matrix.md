@@ -238,19 +238,22 @@ Primary references:
   source/TKI gates are missing at current HEAD; see
   `permission_flow_two_mode_rfc.md` `OWN-FLOW-01`.
 
-### OWN-CEDE-001: `cede` parameters are explicit transfer obligations
+### OWN-CEDE-001: `cede` formals are signature-driven transfer obligations
 
-- Status: Core guarantee
-- Source form: `fn f(cede r: R)`, call `f(cede r)`, body consumes `r`
+- Status: Core guarantee; RC9 caller-spelling revision active
+- Source form: `fn f(cede r: R)`, call `f(r)` or `f(cede r)`, body consumes `r`
 - Operation class: `CedeObligation`, `OwnershipTransfer`
-- Decision: callers must explicitly pass `cede`; callees must consume, forward,
-  store, return, or otherwise complete the obligation. For a unique cede
+- Decision: the resolved `cede` formal transfers an admitted actual whether or
+  not the caller repeats `cede`. Explicit caller spelling remains legal.
+  Callees must consume, forward, store, return, or otherwise complete the
+  obligation. For a unique cede
   parameter, an intrinsic value move (`auto ^owned = ^param` or
   `return ^param`) completes the obligation without a redundant inner `cede`.
   Any existing-destination
   transfer also inherits `OWN-MOVE-001`'s canonical-disjointness precondition.
 - Rationale: declared transfer is both permission and obligation.
-- Primary diagnostics: `E0473`, `E0474`, `E04509`, `E04570`
+- Primary diagnostics: `E0473`, `E0474`, `E0438`, `E0475`; `E04509` and
+  `E04570` remain only for fail-closed excluded shapes and frozen RC8 replay
 - Implementation areas: `src/Sema/Sema_Expr_Call.cpp`,
   `src/Sema/Sema_Stmt.cpp`, `src/Sema/Sema_Type.cpp`
 - Positive tests: `tests/pass/g03_test_cede.tk`,
@@ -433,7 +436,7 @@ Primary references:
 - Decision: closures crossing a thread/task boundary must use explicit
   `[cede ...]` or `[copy ...]` capture for state that crosses the boundary.
   `.start` accepts only non-borrowing scalars or values transferred through a
-  `cede` parameter and explicit `cede` call argument. It rejects PAL
+  resolved `cede` parameter; caller spelling is optional. It rejects PAL
   dependencies and does not implicitly copy ordinary shapes.
 - Rationale: detached execution must not retain undeclared borrowed state.
 - Primary diagnostics: `E04582`, `E04583`, `E04584`

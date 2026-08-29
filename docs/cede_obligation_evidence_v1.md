@@ -7,6 +7,13 @@ Diagnostics remain on standard error; the compiler exit status remains the
 authoritative success result.  The frozen schema is
 [`schemas/toka.cede-obligation-evidence.v1.schema.json`](../schemas/toka.cede-obligation-evidence.v1.schema.json).
 
+After RC9 signature-driven call transfer activation, this option is an
+explicit historical replay profile: it retains the RC8 caller-spelling rule
+and may produce `E04570`/`MissingExplicitCede` for a call accepted by ordinary
+RC9 compilation. Use `--cede-obligations=v2` to inspect the active language
+semantics. The replay profile prevents the frozen v1 fields from silently
+changing meaning.
+
 ```json
 {
   "schema": "toka.cede-obligation-evidence",

@@ -17,5 +17,5 @@ impl Consumer@Callable {
 fn main() -> i32 {
     auto consumer = Consumer()
     auto source = Token(id = 3)
-    return consumer(source)
+    return consumer(source) - 3:i32
 }

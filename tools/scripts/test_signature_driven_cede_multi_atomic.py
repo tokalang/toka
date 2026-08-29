@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify atomic multi-argument signature-driven cede admission."""
+"""Qualify default atomic multi-argument signature-driven cede admission."""
 
 import argparse
 import pathlib
@@ -30,23 +30,23 @@ def main():
     require(tokac.exists(), f"missing compiler: {tokac}")
 
     runtime = FIXTURES / "multi_runtime.tk"
-    legacy = run([str(tokac), "--check-only", str(runtime)])
-    require(legacy.returncode != 0 and "E04570" in legacy.stderr,
-            "legacy multi-argument caller-explicit baseline changed")
+    default = run([str(tokac), "--check-only", str(runtime)])
+    require(default.returncode == 0 and "E04570" not in default.stderr,
+            "default atomic multi-argument call did not type-check")
     enabled = run([str(tokac), FLAG, "--check-only", str(runtime)])
     require(enabled.returncode == 0 and "E04570" not in enabled.stderr,
-            "atomic multi-argument call did not type-check")
+            "deprecated compatibility flag changed default behavior")
 
     with tempfile.TemporaryDirectory(prefix="toka-cede-multi-") as temp:
         executable = pathlib.Path(temp) / "runtime"
-        compiled = run([str(tokac), FLAG, str(runtime), "-o", str(executable)])
+        compiled = run([str(tokac), str(runtime), "-o", str(executable)])
         require(compiled.returncode == 0,
                 "atomic multi-argument call failed CodeGen/link")
         executed = run([str(executable)])
         require(executed.returncode == 0,
                 "atomic multi-argument call failed at runtime")
 
-    moved = run([str(tokac), FLAG, "--check-only",
+    moved = run([str(tokac), "--check-only",
                  str(FIXTURES / "multi_use_after_implicit.tk")])
     require(moved.returncode != 0 and "E0438" in moved.stderr and
             "E04570" not in moved.stderr,
@@ -59,7 +59,7 @@ def main():
         ("multi_ineligible_failure_atomic.tk", "E04570"),
     )
     for fixture, diagnostic in failures:
-        failed = run([str(tokac), FLAG, "--check-only",
+        failed = run([str(tokac), "--check-only",
                       str(FIXTURES / fixture)])
         require(failed.returncode != 0 and diagnostic in failed.stderr,
                 f"missing expected failure for {fixture}")

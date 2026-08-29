@@ -74,8 +74,8 @@ auto &shared = &metrics
 record(shared)
 ```
 
-An ordinary parameter is a payload view, not an ownership transfer. The caller
-may keep using it unless the signature and call explicitly say `cede`.
+An ordinary parameter is a payload view, not an ownership transfer. A resolved
+`cede` formal transfers an admitted argument even when caller spelling is bare.
 
 ## Shape construction and deconstruction punning
 
@@ -134,8 +134,8 @@ for alias &value in refs {
 ## Explicit ownership transfer
 
 `cede` marks a real ownership handoff. When a signature accepts `cede value`,
-the caller must call `fn(cede value)` and the body must consume, forward, store,
-or return it. For an owned vector that needs mutation, first bind the ceded
+the caller may use `fn(value)` or `fn(cede value)`; the body must consume,
+forward, store, or return it. For an owned vector that needs mutation, first bind the ceded
 payload as mutable, then return it with `cede`.
 
 ```toka
@@ -145,7 +145,7 @@ fn append_one(cede values: Vec<i32>) -> Vec<i32> {
     return cede owned
 }
 
-auto owned# = append_one(cede values)
+auto owned# = append_one(values)
 ```
 
 Preserve a supplied `cede` boundary; do not remove it to address an unrelated
