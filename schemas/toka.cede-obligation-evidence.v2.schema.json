@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://toka-lang.org/schemas/toka.cede-obligation-evidence.v2.schema.json",
+  "title": "Toka Cede Obligation Evidence v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "records"],
+  "properties": {
+    "schema": { "const": "toka.cede-obligation-evidence" },
+    "version": { "const": 2 },
+    "records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/record" }
+    }
+  },
+  "$defs": {
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "column"],
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 },
+        "column": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "status", "reason", "subject", "origin",
+                   "spelling", "transfer", "source", "location",
+                   "contract_location"],
+      "properties": {
+        "stage": { "enum": ["caller-transfer", "callee-consumption", "return-transfer"] },
+        "status": { "enum": ["fulfilled", "violated"] },
+        "reason": { "enum": ["MissingExplicitCede", "UnconsumedCede", "CedeConsumed", "MissingCedeReturn"] },
+        "subject": { "type": "string" },
+        "origin": { "type": "string" },
+        "spelling": { "type": ["string", "null"], "enum": ["implicit", "explicit", null] },
+        "transfer": { "type": ["string", "null"], "enum": ["CopyValue", "CopyIdentity", "TransferShared", "MoveOwned", "ConsumeTemporary", "Indeterminate", null] },
+        "source": { "type": ["string", "null"], "enum": ["KeepLive", "InvalidatePlace", "NoSourcePlace", "Indeterminate", null] },
+        "location": { "$ref": "#/$defs/location" },
+        "contract_location": { "$ref": "#/$defs/location" }
+      }
+    }
+  }
+}

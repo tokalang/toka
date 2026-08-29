@@ -130,6 +130,7 @@ void printHelp() {
       << "  --explain[=json] <code>         Explain a diagnostic code\n"
       << "  --semantic-evidence=json        Emit public semantic evidence v1\n"
       << "  --cede-obligations=json         Emit cede obligation evidence v1\n"
+      << "  --cede-obligations=v2           Emit signature-driven cede evidence v2\n"
       << "  --call-transfer-shadow=json     Emit audit-only RC9 call transfer plans\n"
       << "  --m1b-d3-direct-call-observation=json\n"
       << "                                  Emit Shadow-only D.3 direct-call observations\n"
@@ -138,6 +139,7 @@ void printHelp() {
       << "  --m1b-2a-authority-facts=json  Emit internal M1b.2a authority facts\n"
       << "  --experimental-signature-driven-cede\n"
       << "                                  Enable bounded signature-driven call slices\n"
+      << "  --warn-implicit-call-move       Warn when a call implicitly invalidates a place\n"
       << "  --capabilities=json             Emit H/P call capability pilot v1\n"
       << "  --todo-goals=json               Emit typed-todo goals v1\n"
       << "  --conditional-facts=json        Emit typed-todo conditional facts v1\n"
@@ -163,10 +165,12 @@ bool parseUnsignedArgument(const char *option, const char *value,
 class SemanticEvidenceDumpGuard {
 public:
   SemanticEvidenceDumpGuard(bool &callTransferShadow, bool &cedeObligations,
-                            bool &capabilities, bool &todoGoals,
+                            bool &cedeObligationsV2, bool &capabilities,
+                            bool &todoGoals,
                             bool &conditionalFacts)
       : CallTransferShadow(callTransferShadow),
-        CedeObligations(cedeObligations), Capabilities(capabilities),
+        CedeObligations(cedeObligations),
+        CedeObligationsV2(cedeObligationsV2), Capabilities(capabilities),
         TodoGoals(todoGoals), ConditionalFacts(conditionalFacts) {}
   ~SemanticEvidenceDumpGuard() {
     if (toka::SemanticEvidence::isEnabled()) {
@@ -179,7 +183,9 @@ public:
       else if (Capabilities)
         toka::SemanticEvidence::dumpCapabilityCallsJSON(std::cout);
       else if (CedeObligations)
-        toka::SemanticEvidence::dumpCedeObligationsJSON(std::cout);
+        CedeObligationsV2
+            ? toka::SemanticEvidence::dumpCedeObligationsV2JSON(std::cout)
+            : toka::SemanticEvidence::dumpCedeObligationsJSON(std::cout);
       else
         toka::SemanticEvidence::dumpJSON(std::cout);
     }
@@ -188,6 +194,7 @@ public:
 private:
   bool &CallTransferShadow;
   bool &CedeObligations;
+  bool &CedeObligationsV2;
   bool &Capabilities;
   bool &TodoGoals;
   bool &ConditionalFacts;
@@ -808,6 +815,7 @@ int main(int argc, char **argv) {
   bool dumpHandleSurfaceStats = false;
   bool dumpSemanticEvidence = false;
   bool dumpCedeObligations = false;
+  bool dumpCedeObligationsV2 = false;
   bool dumpCallTransferShadow = false;
   bool dumpD3DirectCallObservation = false;
   bool emitD3DirectCallObservation = false;
@@ -820,6 +828,7 @@ int main(int argc, char **argv) {
   bool emitAuthorityFacts = false;
   bool enableAuthorityFactsShadow = false;
   bool experimentalSignatureDrivenCede = false;
+  bool warnImplicitCallMove = false;
   std::optional<toka::AuthorityFaultPoint> authorityFaultPoint;
   std::string authorityFaultSource;
   bool dumpCapabilities = false;
@@ -854,7 +863,8 @@ int main(int argc, char **argv) {
   AuthorityFactsDumpGuard authorityFactsGuard(emitAuthorityFacts,
                                                authorityFactsSession);
   SemanticEvidenceDumpGuard semanticEvidenceGuard(
-      dumpCallTransferShadow, dumpCedeObligations, dumpCapabilities,
+      dumpCallTransferShadow, dumpCedeObligations, dumpCedeObligationsV2,
+      dumpCapabilities,
       dumpTodoGoals, dumpConditionalFacts);
   StructuredDiagnosticsDumpGuard structuredDiagnosticsGuard(
       structuredDiagnostics);
@@ -959,6 +969,9 @@ int main(int argc, char **argv) {
       dumpSemanticEvidence = true;
     } else if (arg == "--cede-obligations=json") {
       dumpCedeObligations = true;
+    } else if (arg == "--cede-obligations=v2") {
+      dumpCedeObligations = true;
+      dumpCedeObligationsV2 = true;
     } else if (arg == "--call-transfer-shadow=json") {
       dumpCallTransferShadow = true;
     } else if (arg == "--m1b-d3-direct-call-observation=json") {
@@ -982,6 +995,8 @@ int main(int argc, char **argv) {
       enableAuthorityFactsShadow = true;
     } else if (arg == "--experimental-signature-driven-cede") {
       experimentalSignatureDrivenCede = true;
+    } else if (arg == "--warn-implicit-call-move") {
+      warnImplicitCallMove = true;
     } else if (arg.rfind("--m1b-2a-inject-fault=", 0) == 0) {
       authorityFaultPoint = toka::parseAuthorityFaultPoint(
           arg.substr(std::string("--m1b-2a-inject-fault=").size()));
@@ -1180,7 +1195,9 @@ int main(int argc, char **argv) {
     return 1;
   }
   if (experimentalSignatureDrivenCede &&
-      (dumpSemanticEvidence || dumpCedeObligations || dumpCallTransferShadow ||
+      (dumpSemanticEvidence ||
+       (dumpCedeObligations && !dumpCedeObligationsV2) ||
+       dumpCallTransferShadow ||
        dumpD3DirectCallObservation || dumpAuthorityFacts)) {
     llvm::errs() << "--experimental-signature-driven-cede cannot be combined "
                     "with pre-activation ownership evidence modes\n";
@@ -1653,6 +1670,7 @@ int main(int argc, char **argv) {
           ? &authorityFactsSession
           : nullptr);
   sema.setSignatureDrivenCallCedeEnabled(experimentalSignatureDrivenCede);
+  sema.setWarnImplicitCallMove(warnImplicitCallMove);
 
   // Pass 1: Declare all global symbols across all modules to build the global module map
   for (const auto &ast : astModules) {

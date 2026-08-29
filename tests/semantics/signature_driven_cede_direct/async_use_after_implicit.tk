@@ -1,0 +1,18 @@
+import core/traits::{@Encap}
+
+shape Token(value: i32)
+
+impl Token@Encap {
+    fn drop(self#) {}
+}
+
+fn consume_async(cede token: Token) -> async i32 {
+    auto owned = cede token
+    return owned.value
+}
+
+fn main() -> i32 {
+    auto source = Token(value = 1:i32)
+    auto task = consume_async(source).start
+    return source.value
+}

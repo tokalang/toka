@@ -1,0 +1,7 @@
+import ./tki_provider::{Token, sink}
+
+fn main() -> i32 {
+    auto source = Token::new(41:i32)
+    auto result = sink(source)
+    return result + source.value
+}

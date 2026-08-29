@@ -5899,7 +5899,11 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       }
     } else if (extDecl && i < extDecl->Args.size()) {
       const auto &arg = extDecl->Args[i];
-      if (!arg.IsRawPointer) {
+      const bool consumesUnique =
+          arg.IsCeded &&
+          (arg.IsUnique ||
+           (arg.ResolvedType && arg.ResolvedType->isUniquePtr()));
+      if (!arg.IsRawPointer && !consumesUnique) {
         llvm::Type *logicalTy = resolveType(arg.Type, false);
         if (logicalTy && (logicalTy->isStructTy() || logicalTy->isArrayTy()))
           isCaptured = true;

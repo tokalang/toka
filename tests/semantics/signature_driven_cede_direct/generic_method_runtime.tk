@@ -1,0 +1,21 @@
+import core/traits::{@Encap}
+
+shape Token(value: i32)
+shape Consumer<T>()
+
+impl Token@Encap {
+    fn drop(self#) {}
+}
+
+impl<T> Consumer<T> {
+    fn take(self, cede value: T) -> i32 {
+        auto moved = cede value
+        return 1:i32
+    }
+}
+
+fn main() -> i32 {
+    auto consumer = Consumer<Token>()
+    auto source = Token(value = 1:i32)
+    return consumer.take(source) - 1:i32
+}

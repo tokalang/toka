@@ -1,0 +1,8 @@
+shape Cell(value: i32)
+
+extern fn toka_take_cell(cede ^cell: Cell) -> i32
+
+fn main() -> i32 {
+    auto ^source = new Cell(value = 47:i32)
+    return toka_take_cell(cede ^source) - 47:i32
+}

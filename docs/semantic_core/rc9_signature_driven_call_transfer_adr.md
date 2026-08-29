@@ -16,6 +16,13 @@ and implicit experimental form have native runtime qualification. The RC8
 caller-explicit policy remains the default until every activation gate in this
 ADR passes at one qualified revision.
 
+Resolved generic functions/methods and source-hidden `.tki` declarations now
+use the same final-call elaboration. Qualified async calls and `.start`, async
+multi-argument handoff, unique extern parameters, and
+`thread_spawn_with_state` owned state have native runtime qualification.
+In experimental mode, capturing callable values passed to plain `thread_spawn`
+fail closed with `E04570` instead of using the legacy Copy exemption.
+
 Ordinary same-lexical direct calls also have a bounded all-bare
 multi-argument slice. Sema first checks every actual and all pairwise PAL
 relations, then elaborates all qualified non-Copy transfers together. A type,
@@ -188,9 +195,9 @@ drop liability.
 
 [`toka.cede-obligation-evidence` v1](../cede_obligation_evidence_v1.md) is
 frozen with an explicit-spelling caller contract. Its meaning must not change
-silently. RC9 must introduce a separately versioned v2 surface before
-activating this decision. At minimum each caller record must represent these
-independent facts:
+silently. RC9 therefore provides the separately versioned
+[`cede obligation evidence v2`](../cede_obligation_evidence_v2.md) through
+`--cede-obligations=v2`. Each caller record represents these independent facts:
 
 ```text
 spelling = implicit | explicit
@@ -199,16 +206,21 @@ transfer = BorrowCapture | CopyValue | CopyIdentity
 source   = KeepLive | InvalidatePlace(path) | NoSourcePlace
 ```
 
-It must also retain the selected formal's contract location and the callee-
-consumption and return-transfer stages. The v2 schema, command migration, and
-consumer compatibility policy require their own checked artifact; v1 consumers
-must continue to reject unknown versions rather than guess.
+It also retains the selected formal's contract location and the callee-
+consumption and return-transfer stages. V1 remains available through
+`--cede-obligations=json`; consumers must continue to reject unknown versions
+rather than guess.
 
-The implicit-call-move compiler lint is new work and is required before the
-behavior flip. Its default is `allow`, and it may be promoted by project
-policy. LSP inlay hints are useful follow-on tooling but are not an existing
-capability and are not a safety proof. Any later inlay implementation must be
-derived from the committed Sema plan rather than reclassifying source text.
+The implicit-call-move compiler lint is available through
+`--warn-implicit-call-move`. Its default remains `allow`, and it reports only
+implicit invalidating place moves, not Copy or temporary consumption. LSP
+inlay hints remain optional follow-on tooling and are not a safety proof.
+
+Default activation remains blocked by four concrete gaps: dynamic-trait method
+lowering does not yet share the typed argument ABI, indirect unique closure
+ascription does not preserve parameter morphology, implicit partial-projection
+transfer is not qualified, and all-bare atomic batching has not yet been
+extended from ordinary direct calls to every alternate route.
 
 ## Activation gates
 

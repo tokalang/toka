@@ -338,6 +338,7 @@ DIAG(WARN_UNUSED_IMPORT,          Warning, "W0403", "Import '{}' is declared but
 DIAG(WARN_UNUSED_RESULT,          Warning, "W0406", "Discarded Result type '{}'; errors should be explicitly handled")
 DIAG(WARN_HATTED_PARAM_HANDLE_UNUSED, Warning, "W0407", "Parameter '{}' declares a handle morphology but its handle view is never used")
 DIAG(WARN_CALL_ARG_MISSING_MUTABLE_SIGIL, Warning, "W0408", "Call argument '{}' for mutable parameter '{}' should be explicitly marked with '#' (e.g. '{}{}')")
+DIAG(WARN_IMPLICIT_CALL_MOVE, Warning, "W0409", "Call implicitly moves '{}'; write 'cede' at the argument site if visible transfer is required by project policy")
 DIAG(WARN_UNREACHABLE_CODE,       Structural, "S0401", "Unreachable code detected after unconditional return")
 DIAG(WARN_NON_PROGRESS_LOOP,      Structural, "S0402", "Potential non-progress loop condition: variable '{}' is never mutated inside the loop body")
 

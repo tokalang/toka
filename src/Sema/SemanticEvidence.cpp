@@ -83,15 +83,18 @@ bool SemanticDecisionRecord::operator==(
 }
 
 bool CedeObligationRecord::operator<(const CedeObligationRecord &rhs) const {
-  return std::tie(Stage, Status, Reason, Subject, Origin, Location,
-                  ContractLocation) <
+  return std::tie(Stage, Status, Reason, Subject, Origin, Spelling, Transfer,
+                  SourceDisposition, Location, ContractLocation) <
          std::tie(rhs.Stage, rhs.Status, rhs.Reason, rhs.Subject, rhs.Origin,
+                  rhs.Spelling, rhs.Transfer, rhs.SourceDisposition,
                   rhs.Location, rhs.ContractLocation);
 }
 
 bool CedeObligationRecord::operator==(const CedeObligationRecord &rhs) const {
   return Stage == rhs.Stage && Status == rhs.Status && Reason == rhs.Reason &&
          Subject == rhs.Subject && Origin == rhs.Origin &&
+         Spelling == rhs.Spelling && Transfer == rhs.Transfer &&
+         SourceDisposition == rhs.SourceDisposition &&
          Location == rhs.Location && ContractLocation == rhs.ContractLocation;
 }
 
@@ -266,12 +269,16 @@ void SemanticEvidence::record(SemanticRuleID rule,
 void SemanticEvidence::recordCedeObligation(
     CedeObligationStage stage, CedeObligationStatus status,
     SemanticReason reason, std::string subject, std::string origin,
-    SourceLocation location, SourceLocation contractLocation) {
+    SourceLocation location, SourceLocation contractLocation,
+    std::string spelling, std::string transfer,
+    std::string sourceDisposition) {
   if (!Enabled)
     return;
   CedeObligations.push_back(
       {stage, status, reason, std::move(subject), std::move(origin),
-       resolveLocation(location), resolveLocation(contractLocation)});
+       std::move(spelling), std::move(transfer),
+       std::move(sourceDisposition), resolveLocation(location),
+       resolveLocation(contractLocation)});
 }
 
 void SemanticEvidence::dumpJSON(std::ostream &out) {
@@ -333,6 +340,38 @@ void SemanticEvidence::dumpCedeObligationsJSON(std::ostream &out) {
         << "\",\"subject\":\"" << escapeJSON(record.Subject)
         << "\",\"origin\":\"" << escapeJSON(record.Origin)
         << "\",\"location\":";
+    dumpLocation(out, record.Location);
+    out << ",\"contract_location\":";
+    dumpLocation(out, record.ContractLocation);
+    out << '}';
+  }
+  out << "]}\n";
+}
+
+void SemanticEvidence::dumpCedeObligationsV2JSON(std::ostream &out) {
+  std::sort(CedeObligations.begin(), CedeObligations.end());
+  CedeObligations.erase(
+      std::unique(CedeObligations.begin(), CedeObligations.end()),
+      CedeObligations.end());
+  out << "{\"schema\":\"toka.cede-obligation-evidence\",\"version\":2,\"records\":[";
+  for (size_t i = 0; i < CedeObligations.size(); ++i) {
+    if (i != 0)
+      out << ',';
+    const auto &record = CedeObligations[i];
+    out << "{\"stage\":\"" << cedeStageName(record.Stage)
+        << "\",\"status\":\"" << cedeStatusName(record.Status)
+        << "\",\"reason\":\"" << toString(record.Reason)
+        << "\",\"subject\":\"" << escapeJSON(record.Subject)
+        << "\",\"origin\":\"" << escapeJSON(record.Origin) << "\"";
+    if (record.Stage == CedeObligationStage::CallerTransfer) {
+      out << ",\"spelling\":\"" << escapeJSON(record.Spelling)
+          << "\",\"transfer\":\"" << escapeJSON(record.Transfer)
+          << "\",\"source\":\""
+          << escapeJSON(record.SourceDisposition) << "\"";
+    } else {
+      out << ",\"spelling\":null,\"transfer\":null,\"source\":null";
+    }
+    out << ",\"location\":";
     dumpLocation(out, record.Location);
     out << ",\"contract_location\":";
     dumpLocation(out, record.ContractLocation);

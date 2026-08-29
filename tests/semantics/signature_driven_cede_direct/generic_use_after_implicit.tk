@@ -1,0 +1,18 @@
+import core/traits::{@Encap}
+
+shape Token(value: i32)
+
+impl Token@Encap {
+    fn drop(self#) {}
+}
+
+fn sink<T>(cede value: T) -> i32 {
+    auto moved = cede value
+    return 1:i32
+}
+
+fn main() -> i32 {
+    auto source = Token(value = 1:i32)
+    auto result = sink<Token>(source)
+    return result + source.value
+}

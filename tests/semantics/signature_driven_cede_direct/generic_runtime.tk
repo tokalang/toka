@@ -1,0 +1,13 @@
+shape Cell(value: i32)
+shape Token(^cell: Cell)
+
+fn sink<T>(cede value: T) -> i32 {
+    auto moved = cede value
+    return 1:i32
+}
+
+fn main() -> i32 {
+    auto ^cell = new Cell(value = 1:i32)
+    auto source = Token(^cell = ^cell)
+    return sink<Token>(source) - 1:i32
+}

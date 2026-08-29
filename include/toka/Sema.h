@@ -370,6 +370,9 @@ public:
   void setSignatureDrivenCallCedeEnabled(bool enabled) {
     m_EnableSignatureDrivenCallCede = enabled;
   }
+  void setWarnImplicitCallMove(bool enabled) {
+    m_WarnImplicitCallMove = enabled;
+  }
 
   bool hasErrors() const { return HasError; }
 
@@ -592,6 +595,13 @@ private:
       std::unique_ptr<Expr> &Argument,
       const std::shared_ptr<toka::Type> &ArgumentType,
       const std::shared_ptr<toka::Type> &FormalType, bool Commit = true);
+  struct CedeEvidenceV2Facts {
+    std::string Spelling;
+    std::string Transfer;
+    std::string Source;
+  };
+  CedeEvidenceV2Facts classifyCedeEvidenceV2(
+      Expr *Argument, const std::shared_ptr<toka::Type> &ArgumentType);
   D3TypeCategory
   classifyD3TypeCategory(const std::shared_ptr<toka::Type> &Type) const;
   D3OwnershipProof
@@ -656,6 +666,7 @@ private:
   D4ProbeAuditSession *m_D4ProbeAuditSession = nullptr;
   AuthorityFactsAuditSession *m_AuthorityFactsSession = nullptr;
   bool m_EnableSignatureDrivenCallCede = false;
+  bool m_WarnImplicitCallMove = false;
   unsigned m_D3SpeculativeCallDepth = 0;
 
   struct AuthorityFullExpressionContext {

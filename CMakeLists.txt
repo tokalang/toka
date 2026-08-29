@@ -267,6 +267,14 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_signature_driven_cede_multi_atomic.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_signature_driven_cede_remaining_routes
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_signature_driven_cede_remaining_routes.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_cede_obligation_evidence_v2
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_cede_obligation_evidence_v2.py
+                --build-dir ${CMAKE_BINARY_DIR})
     endif()
 endif()
 

@@ -126,6 +126,9 @@ struct CedeObligationRecord {
   SemanticReason Reason = SemanticReason::CedeConsumed;
   std::string Subject;
   std::string Origin;
+  std::string Spelling;
+  std::string Transfer;
+  std::string SourceDisposition;
   SemanticEvidenceLocation Location;
   SemanticEvidenceLocation ContractLocation;
 
@@ -276,9 +279,13 @@ public:
                                    SemanticReason reason,
                                    std::string subject, std::string origin,
                                    SourceLocation location,
-                                   SourceLocation contractLocation = {});
+                                   SourceLocation contractLocation = {},
+                                   std::string spelling = {},
+                                   std::string transfer = {},
+                                   std::string sourceDisposition = {});
   static void dumpJSON(std::ostream &out);
   static void dumpCedeObligationsJSON(std::ostream &out);
+  static void dumpCedeObligationsV2JSON(std::ostream &out);
   static void recordCallTransferShadow(
       std::string callee, std::string route, std::string parameter,
       unsigned argumentIndex, unsigned formalIndex, std::string valueCategory,

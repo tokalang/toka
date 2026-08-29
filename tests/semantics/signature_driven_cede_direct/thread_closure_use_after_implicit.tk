@@ -1,0 +1,18 @@
+import core/traits::{@Encap}
+import std/thread::{thread_spawn}
+
+shape Token(value: i32)
+
+impl Token@Encap {
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto token = Token(value = 17:i32)
+    auto worker = { [cede token] =>
+        auto result = token.value
+        return cede result
+    }:fn() -> cede i32
+    auto handle# = thread_spawn<i32>(worker)
+    return worker()
+}

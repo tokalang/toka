@@ -1,0 +1,20 @@
+import core/traits::{@Encap}
+
+pub shape Token(value: i32)
+
+impl Token@Encap {
+    pub value
+
+    fn drop(self#) {}
+}
+
+impl Token {
+    pub fn new(value: i32) -> Token {
+        return Token(value = value)
+    }
+}
+
+pub fn sink(cede value: Token) -> i32 {
+    auto moved = cede value
+    return moved.value
+}

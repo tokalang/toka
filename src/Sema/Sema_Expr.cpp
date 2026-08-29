@@ -4680,20 +4680,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             bool signatureDrivenMethodSlice = false;
             if (m_EnableSignatureDrivenCallCede && Met->Args.size() == 1 &&
                 FD->Args.size() == 2 && !FD->Args[0].IsCeded &&
-                !FD->IsVariadic && !FD->TemplateOrigin &&
-                FD->GenericParams.empty() && FD->Effect == EffectKind::None &&
+                !FD->IsVariadic && FD->Effect == EffectKind::None &&
                 !FD->ResolvedOutcomeTransition && FD->LifeDependencies.empty() &&
                 FD->MemberDependencies.empty() &&
                 !FD->Args[1].DefaultValue && !FD->Args[1].IsInit &&
                 !FD->Args[1].IsRebindable && !FD->Args[1].IsValueMutable &&
                 !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0 &&
-                CurrentModule && !CurrentModule->IsInterface) {
-              auto owner = DeclarationLexicalScopes.find(FD);
-              ModuleScope *lexical = getLexicalModule(Met->Loc);
-              signatureDrivenMethodSlice =
-                  owner != DeclarationLexicalScopes.end() && owner->second &&
-                  lexical && owner->second == lexical;
-            }
+                CurrentModule && !CurrentModule->IsInterface)
+              signatureDrivenMethodSlice = true;
             if (Met->Args.size() != expectedArgs && !FD->IsVariadic) {
                 // If variadic, handle appropriately
                 if (Met->Args.size() < expectedArgs) {
@@ -4828,6 +4822,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                 : SemanticReason::CedeConsumed,
                             getPathString(Met->Args[i].get()),
                             FD->Args[i + 1].Name, FD->Args[i + 1].Loc);
+                        const auto evidenceV2 = classifyCedeEvidenceV2(
+                            Met->Args[i].get(), argTy);
                         SemanticEvidence::recordCedeObligation(
                             CedeObligationStage::CallerTransfer,
                             (!isCallerCeded && !isPrimitive)
@@ -4838,7 +4834,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                 : SemanticReason::CedeConsumed,
                             getPathString(Met->Args[i].get()),
                             FD->Args[i + 1].Name, getLoc(Met->Args[i].get()),
-                            FD->Args[i + 1].Loc);
+                            FD->Args[i + 1].Loc, evidenceV2.Spelling,
+                            evidenceV2.Transfer, evidenceV2.Source);
                     }
 
                     if (!isTypeCompatible(expectedParamTy, argTy)) {
