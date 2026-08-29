@@ -1,0 +1,7 @@
+import core/string::{string}
+fn inspect(value: string) -> usize { return value.len() }
+
+fn main() -> i32 {
+    auto value = string::from("abc")
+    return inspect(value) as i32 - 3:i32
+}

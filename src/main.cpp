@@ -135,6 +135,7 @@ void printHelp() {
       << "                                  Emit Shadow-only D.3 direct-call observations\n"
       << "  --m1b-d4a-pure-nominal-overload-probe=json\n"
       << "                                  Emit internal D.4a pure overload qualification\n"
+      << "  --m1b-2a-authority-facts=json  Emit internal M1b.2a authority facts\n"
       << "  --capabilities=json             Emit H/P call capability pilot v1\n"
       << "  --todo-goals=json               Emit typed-todo goals v1\n"
       << "  --conditional-facts=json        Emit typed-todo conditional facts v1\n"
@@ -216,6 +217,21 @@ public:
 private:
   bool &Enabled;
   toka::D4ProbeAuditSession &Session;
+};
+
+class AuthorityFactsDumpGuard {
+public:
+  AuthorityFactsDumpGuard(bool &enabled,
+                          toka::AuthorityFactsAuditSession &session)
+      : Enabled(enabled), Session(session) {}
+  ~AuthorityFactsDumpGuard() {
+    if (Enabled)
+      Session.dumpJSON(std::cout);
+  }
+
+private:
+  bool &Enabled;
+  toka::AuthorityFactsAuditSession &Session;
 };
 
 class HandleGrammarAuditFlushGuard {
@@ -798,6 +814,11 @@ int main(int argc, char **argv) {
   bool forceLegacyD4Probe = false;
   bool reverseD4ProbeSchedule = false;
   std::optional<toka::D4ProbeInfrastructureError> injectedD4ProbeError;
+  bool dumpAuthorityFacts = false;
+  bool emitAuthorityFacts = false;
+  bool enableAuthorityFactsShadow = false;
+  std::optional<toka::AuthorityFaultPoint> authorityFaultPoint;
+  std::string authorityFaultSource;
   bool dumpCapabilities = false;
   bool dumpTodoGoals = false;
   bool dumpConditionalFacts = false;
@@ -826,6 +847,9 @@ int main(int argc, char **argv) {
                                              d3ObservationSession);
   toka::D4ProbeAuditSession d4ProbeAuditSession;
   D4ProbeDumpGuard d4ProbeGuard(emitD4PureNominalProbe, d4ProbeAuditSession);
+  toka::AuthorityFactsAuditSession authorityFactsSession;
+  AuthorityFactsDumpGuard authorityFactsGuard(emitAuthorityFacts,
+                                               authorityFactsSession);
   SemanticEvidenceDumpGuard semanticEvidenceGuard(
       dumpCallTransferShadow, dumpCedeObligations, dumpCapabilities,
       dumpTodoGoals, dumpConditionalFacts);
@@ -949,6 +973,23 @@ int main(int argc, char **argv) {
         llvm::errs() << "invalid D.4a infrastructure error injection\n";
         return 1;
       }
+    } else if (arg == "--m1b-2a-authority-facts=json") {
+      dumpAuthorityFacts = true;
+    } else if (arg == "--m1b-2a-shadow") {
+      enableAuthorityFactsShadow = true;
+    } else if (arg.rfind("--m1b-2a-inject-fault=", 0) == 0) {
+      authorityFaultPoint = toka::parseAuthorityFaultPoint(
+          arg.substr(std::string("--m1b-2a-inject-fault=").size()));
+      if (!authorityFaultPoint) {
+        llvm::errs() << "invalid M1b.2a fault point\n";
+        return 1;
+      }
+    } else if (arg == "--m1b-2a-fault-source") {
+      if (i + 1 >= argc || std::string(argv[i + 1]).empty()) {
+        llvm::errs() << "--m1b-2a-fault-source requires a file suffix\n";
+        return 1;
+      }
+      authorityFaultSource = argv[++i];
     } else if (arg == "--capabilities=json") {
       dumpCapabilities = true;
     } else if (arg == "--todo-goals=json") {
@@ -1096,6 +1137,8 @@ int main(int argc, char **argv) {
     checkOnly = true;
   if (dumpD4PureNominalProbe)
     checkOnly = true;
+  if (dumpAuthorityFacts)
+    checkOnly = true;
   if (compileOnly) {
     emitInterface = true;
   }
@@ -1120,6 +1163,31 @@ int main(int argc, char **argv) {
        reverseD4ProbeSchedule)) {
     llvm::errs() << "--m1b-d4a-inject-error requires the D.4a JSON mode "
                     "without force-legacy or reverse-schedule\n";
+    return 1;
+  }
+  if (authorityFaultPoint &&
+      (!dumpAuthorityFacts || enableAuthorityFactsShadow)) {
+    llvm::errs() << "--m1b-2a-inject-fault requires the authority JSON mode\n";
+    return 1;
+  }
+  if (!authorityFaultSource.empty() && !authorityFaultPoint) {
+    llvm::errs() << "--m1b-2a-fault-source requires a fault point\n";
+    return 1;
+  }
+
+  if (dumpAuthorityFacts &&
+      (structuredDiagnostics || g_JsonDiagnostics || dumpDependencies ||
+       dumpAssignmentStats || dumpHandleSurfaceStats || dumpSemanticEvidence ||
+       dumpCedeObligations || dumpCallTransferShadow ||
+       dumpD3DirectCallObservation || dumpD4PureNominalProbe ||
+       dumpCapabilities || dumpTodoGoals || dumpConditionalFacts ||
+       dumpMemorySummaries || dumpMemoryContracts || dumpEncapSlice1Facts ||
+       dumpSemanticIndex || dumpSemanticContext || !semanticQuery.empty() ||
+       runTopologyEval || !explainCode.empty())) {
+    llvm::errs() << "--m1b-2a-authority-facts=json cannot be combined with "
+                    "another JSON, semantic, or evaluation output mode\n";
+    structuredDiagnostics = false;
+    dumpAuthorityFacts = false;
     return 1;
   }
 
@@ -1262,6 +1330,9 @@ int main(int argc, char **argv) {
   }
   emitD3DirectCallObservation = dumpD3DirectCallObservation;
   emitD4PureNominalProbe = dumpD4PureNominalProbe;
+  emitAuthorityFacts = dumpAuthorityFacts;
+  authorityFactsSession.setFaultPoint(authorityFaultPoint);
+  authorityFactsSession.setFaultSourceSuffix(authorityFaultSource);
   d4ProbeAuditSession.setForceLegacy(forceLegacyD4Probe);
   d4ProbeAuditSession.setReverseSchedule(reverseD4ProbeSchedule);
   d4ProbeAuditSession.setInjectedInfrastructureError(injectedD4ProbeError);
@@ -1565,6 +1636,10 @@ int main(int argc, char **argv) {
   sema.setPureNominalProbeAuditSession(
       (dumpD4PureNominalProbe || forceLegacyD4Probe) ? &d4ProbeAuditSession
                                                      : nullptr);
+  sema.setAuthorityFactsAuditSession(
+      (dumpAuthorityFacts || enableAuthorityFactsShadow)
+          ? &authorityFactsSession
+          : nullptr);
 
   // Pass 1: Declare all global symbols across all modules to build the global module map
   for (const auto &ast : astModules) {

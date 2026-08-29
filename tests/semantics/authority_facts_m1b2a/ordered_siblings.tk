@@ -1,0 +1,18 @@
+import core/traits::{@Encap}
+
+shape Resource(value: i32)
+impl Resource@Encap { fn drop(self#) {} }
+
+fn consume(cede value: Resource) -> i32 {
+    auto moved = cede value
+    return moved.value
+}
+
+fn inspect(value: Resource) -> i32 { return value.value }
+
+fn main() -> i32 {
+    auto resource = Resource(value = 42:i32)
+    // Binary checking currently evaluates the RHS before the LHS. The facts
+    // must preserve that real traversal order rather than assume source order.
+    return inspect(resource) + consume(cede resource) - 84:i32
+}

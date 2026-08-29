@@ -2,7 +2,9 @@
 
 **Design status:** Accepted for bounded implementation.
 
-**Implementation status:** Not implemented.
+**Implementation status:** M1b.2a implemented / bounded post-implementation
+acceptance pending. The implementation is authority-only and activates no
+transfer or ownership behavior.
 
 **Predecessor result:** D.5a implementation at `4103afd8` plus corrective
 `870d49b4` was rejected and reverted. M1b.2a exists to establish the semantic
@@ -290,6 +292,8 @@ AuthorityIndeterminateReason
     CleanupClassConflict
     MissingLegacyDropFact
     ZeroOrAmbiguousInitMask
+    PlaceNotLive
+    PlaceNotLive
     IncompleteOwnerOrDeclarationIdentity
 
 AuthorityBuildError

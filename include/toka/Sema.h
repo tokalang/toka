@@ -17,6 +17,7 @@
 #include "toka/AccessPath.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/DirectCallObservationAudit.h"
+#include "toka/AuthorityFactsAudit.h"
 #include "toka/PureNominalOverloadProbeAudit.h"
 #include "toka/PlaceState.h"
 #include "toka/Type.h"
@@ -362,6 +363,10 @@ public:
     m_D4ProbeAuditSession = session;
   }
 
+  void setAuthorityFactsAuditSession(AuthorityFactsAuditSession *session) {
+    m_AuthorityFactsSession = session;
+  }
+
   bool hasErrors() const { return HasError; }
 
   const std::map<std::string, std::shared_ptr<toka::Type>>& getParenthesizedRecordTypes() const {
@@ -641,7 +646,30 @@ private:
   const Expr *m_StartBoundaryRoot = nullptr;
   D3ObservationSession *m_D3ObservationSession = nullptr;
   D4ProbeAuditSession *m_D4ProbeAuditSession = nullptr;
+  AuthorityFactsAuditSession *m_AuthorityFactsSession = nullptr;
   unsigned m_D3SpeculativeCallDepth = 0;
+
+  struct AuthorityFullExpressionContext {
+    Expr *Root = nullptr;
+    SemanticNodeId RootNode;
+    FullExpressionId Identity;
+    bool BuildParentUnchanged = false;
+    std::vector<std::string> BuildDifferences;
+  };
+  std::optional<AuthorityFullExpressionContext> m_AuthorityFullExpression;
+  CleanupClassStore m_AuthorityCleanupClassStore;
+  std::map<const VariableDecl *, const FunctionDecl *> m_LocalVariableOwners;
+
+  std::optional<AuthorityFullExpressionContext>
+  beginAuthorityFullExpression(Expr *root);
+  void restoreAuthorityFullExpression(
+      std::optional<AuthorityFullExpressionContext> previous);
+  CleanupClassStore buildAuthorityCleanupClassStore();
+  void observeAuthorityFacts(Expr *actual);
+  AuthorityParentSentinel
+  captureAuthorityParentSentinel(Expr *actual = nullptr) const;
+  std::optional<ConcreteTypeId>
+  authorityConcreteTypeId(const std::shared_ptr<Type> &type) const;
 
   bool m_AllowPermissionSuffix = false; // [NEW] Track explicit method call context
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity

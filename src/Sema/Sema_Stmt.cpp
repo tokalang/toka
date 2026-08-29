@@ -644,7 +644,10 @@ void Sema::checkStmt(Stmt *S) {
       m_SuppressRejectedAliasInvalidation = rejectedAliasReturn;
       m_ControlFlowStack.push_back(
           {"", CurrentFunctionReturnType, nullptr, false, true});
+      auto authorityContext =
+          beginAuthorityFullExpression(Ret->ReturnValue.get());
       auto RetTypeObj = checkExpr(Ret->ReturnValue.get(), returnExpectation);
+      restoreAuthorityFullExpression(std::move(authorityContext));
       m_SuppressRejectedAliasInvalidation = oldSuppressAliasInvalidation;
       ExprTypeObj = RetTypeObj;
       ExprType = RetTypeObj->toString();
@@ -1389,7 +1392,10 @@ void Sema::checkStmt(Stmt *S) {
     // Standalone expressions are NOT receivers
     m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, false});
     ExprS->Expression = foldGenericConstant(std::move(ExprS->Expression));
+    auto authorityContext =
+        beginAuthorityFullExpression(ExprS->Expression.get());
     auto exprType = checkExpr(ExprS->Expression.get());
+    restoreAuthorityFullExpression(std::move(authorityContext));
     m_ControlFlowStack.pop_back();
 
     if (exprType) {
@@ -1486,7 +1492,9 @@ void Sema::checkStmt(Stmt *S) {
       bool oldSuppressAliasInvalidation =
           m_SuppressRejectedAliasInvalidation;
       m_SuppressRejectedAliasInvalidation = rejectedAliasInit;
+      auto authorityContext = beginAuthorityFullExpression(Var->Init.get());
       InitTypeObj = checkExpr(Var->Init.get(), declTargetTy);
+      restoreAuthorityFullExpression(std::move(authorityContext));
       m_SuppressRejectedAliasInvalidation = oldSuppressAliasInvalidation;
       m_IsConsumingEffect = oldConsuming;
       m_ExpectedWritability = oldExpectedWritability;
@@ -2160,6 +2168,8 @@ void Sema::checkStmt(Stmt *S) {
 
     Info.IsDeclaredVariable = true;
     Info.ASTPtr = Var;
+    if (m_AuthorityFactsSession && CurrentFunction)
+      m_LocalVariableOwners[Var] = CurrentFunction;
     Info.installPartialMovePlan(admittedPartialMovePlan(Info));
     Var->PartialMove = Info.partialMovePlan();
     initializeProjectionFacts(Info);

@@ -7,9 +7,13 @@
 #include <unordered_set>
 #include <vector>
 
+using toka::AuthorityObservationId;
 using toka::CallableContractId;
+using toka::CleanupId;
+using toka::ConcreteTypeId;
 using toka::DeclarationId;
 using toka::FieldId;
+using toka::FullExpressionId;
 using toka::LangItemId;
 using toka::MethodSlotId;
 using toka::PlaceId;
@@ -17,9 +21,9 @@ using toka::PlaceProjection;
 using toka::ResolvedCalleeId;
 using toka::ResolvedCalleeKind;
 using toka::RootSymbolId;
-using toka::SemanticModel;
 using toka::SemanticIdentityBuilder;
 using toka::SemanticIdentityError;
+using toka::SemanticModel;
 using toka::SemanticNodeId;
 using toka::SubstitutionId;
 
@@ -33,6 +37,9 @@ static_assert(!std::is_convertible_v<SemanticNodeId, DeclarationId>);
 static_assert(!std::is_convertible_v<DeclarationId, SemanticNodeId>);
 static_assert(!std::is_constructible_v<SemanticNodeId, DeclarationId>);
 static_assert(!std::is_constructible_v<RootSymbolId, FieldId>);
+static_assert(!std::is_convertible_v<FullExpressionId, SemanticNodeId>);
+static_assert(!std::is_convertible_v<AuthorityObservationId, FullExpressionId>);
+static_assert(!std::is_convertible_v<ConcreteTypeId, CleanupId>);
 static_assert(std::is_empty_v<SemanticModel>);
 
 int main() {
@@ -58,18 +65,25 @@ int main() {
   nodes.insert(otherNode);
   CHECK(nodes.size() == 2);
 
+  const auto fullExpression = SemanticIdentityBuilder::fullExpression(node);
+  const auto observation = SemanticIdentityBuilder::authorityObservation(
+      fullExpression.value(), otherNode.canonicalKey());
+  const auto concreteType =
+      SemanticIdentityBuilder::concreteType("unit:types", "nominal:Model");
+  CHECK(fullExpression && observation && concreteType);
+
   const auto declarationResult = SemanticIdentityBuilder::declaration(
       "crate:std;module:thread", "fn:spawn");
-  const auto traitResult = SemanticIdentityBuilder::declaration(
-      "crate:core", "trait:Callable");
+  const auto traitResult =
+      SemanticIdentityBuilder::declaration("crate:core", "trait:Callable");
   CHECK(declarationResult && traitResult);
   const auto declaration = declarationResult.value();
   const auto trait = traitResult.value();
   const auto substitutionResult =
       SemanticIdentityBuilder::substitution(declaration, "T=i32");
   const auto slotResult = SemanticIdentityBuilder::methodSlot(trait, "call");
-  const auto contractResult = SemanticIdentityBuilder::callableContract(
-      "crate:core", "fn(i32)->i32");
+  const auto contractResult =
+      SemanticIdentityBuilder::callableContract("crate:core", "fn(i32)->i32");
   const auto langItemResult =
       SemanticIdentityBuilder::langItem("crate:core", "thread_handoff");
   CHECK(substitutionResult && slotResult && contractResult && langItemResult);
@@ -143,11 +157,12 @@ int main() {
   std::unordered_set<PlaceId> places = {whole, projected, sameProjected,
                                         dynamic};
   CHECK(places.size() == 3);
+  const auto cleanup =
+      SemanticIdentityBuilder::cleanup(root, concreteType.value());
+  CHECK(cleanup && cleanup.value().valid());
 
-  const auto emptyOrigin =
-      SemanticIdentityBuilder::semanticNode("", "node:1");
-  const auto emptyWitness =
-      SemanticIdentityBuilder::semanticNode("unit:a", "");
+  const auto emptyOrigin = SemanticIdentityBuilder::semanticNode("", "node:1");
+  const auto emptyWitness = SemanticIdentityBuilder::semanticNode("unit:a", "");
   const auto invalidParent =
       SemanticIdentityBuilder::rootSymbol(DeclarationId{}, "binding:value");
   CHECK(!emptyOrigin &&

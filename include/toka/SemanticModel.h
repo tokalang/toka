@@ -30,6 +30,11 @@ struct TransferEdge;
 struct Destination;
 struct Region;
 struct PatchEntry;
+struct FullExpression;
+struct AuthorityObservation;
+struct ConcreteType;
+struct Cleanup;
+struct AuthorityRevision;
 } // namespace semantic_identity_domain
 
 class SemanticIdentityBuilder;
@@ -87,6 +92,15 @@ using TransferEdgeId = SemanticIdentity<semantic_identity_domain::TransferEdge>;
 using DestinationId = SemanticIdentity<semantic_identity_domain::Destination>;
 using RegionId = SemanticIdentity<semantic_identity_domain::Region>;
 using PatchEntryId = SemanticIdentity<semantic_identity_domain::PatchEntry>;
+using FullExpressionId =
+    SemanticIdentity<semantic_identity_domain::FullExpression>;
+using AuthorityObservationId =
+    SemanticIdentity<semantic_identity_domain::AuthorityObservation>;
+using ConcreteTypeId =
+    SemanticIdentity<semantic_identity_domain::ConcreteType>;
+using CleanupId = SemanticIdentity<semantic_identity_domain::Cleanup>;
+using AuthorityRevisionId =
+    SemanticIdentity<semantic_identity_domain::AuthorityRevision>;
 
 enum class SemanticIdentityError : uint8_t {
   None,
@@ -197,6 +211,35 @@ public:
   patchEntry(const TransferEdgeId &parent, std::string witness) {
     return buildWithParent<PatchEntryId>("patch-entry", parent,
                                          std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<FullExpressionId>
+  fullExpression(const SemanticNodeId &root) {
+    return buildWithParent<FullExpressionId>("full-expression", root, "root");
+  }
+
+  static SemanticIdentityBuildResult<AuthorityObservationId>
+  authorityObservation(const FullExpressionId &parent, std::string witness) {
+    return buildWithParent<AuthorityObservationId>(
+        "authority-observation", parent, std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<ConcreteTypeId>
+  concreteType(std::string origin, std::string witness) {
+    return build<ConcreteTypeId>("concrete-type", std::move(origin),
+                                 std::move(witness));
+  }
+
+  static SemanticIdentityBuildResult<CleanupId>
+  cleanup(const RootSymbolId &parent, const ConcreteTypeId &type) {
+    return buildWithParent<CleanupId>("cleanup", parent,
+                                      type.canonicalKey());
+  }
+
+  static SemanticIdentityBuildResult<AuthorityRevisionId>
+  authorityRevision(std::string origin, std::string witness) {
+    return build<AuthorityRevisionId>("authority-revision", std::move(origin),
+                                      std::move(witness));
   }
 
 private:

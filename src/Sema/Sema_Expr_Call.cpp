@@ -689,14 +689,409 @@ D3ObservationSentinel Sema::captureD3ObservationSentinel(
   return sentinel;
 }
 
+AuthorityParentSentinel
+Sema::captureAuthorityParentSentinel(Expr *actual) const {
+  AuthorityParentSentinel sentinel;
+  sentinel.NextNodeSerial = ASTNode::NextNodeSerial;
+  sentinel.NextSymbolID = Scope::NextSymbolID;
+  sentinel.DiagnosticErrorCount = DiagnosticEngine::ErrorCount;
+  sentinel.DiagnosticRecordCount = DiagnosticEngine::records().size();
+  sentinel.Evidence = SemanticEvidence::auditState();
+  sentinel.CopyProofCount = Slice4CopyProofs.size();
+  for (const auto &entry : Slice4CopyProofs) {
+    const std::string identity =
+        entry.first && entry.first->NominalId
+            ? entry.first->NominalId->canonical()
+            : (entry.first ? entry.first->Name : "<null>");
+    sentinel.CopyProofFacts.push_back(
+        identity + ":" + std::to_string(static_cast<int>(entry.second)));
+  }
+  for (const auto &entry : CopyProofMap)
+    sentinel.CopyProofFacts.push_back(
+        "legacy:" + entry.first + ":" +
+        std::to_string(static_cast<int>(entry.second)));
+  std::sort(sentinel.CopyProofFacts.begin(), sentinel.CopyProofFacts.end());
+  sentinel.ShapePropertyCount = m_ShapeProps.size();
+  for (const auto &entry : m_ShapeProps) {
+    const auto &fact = entry.second;
+    sentinel.ShapePropertyFacts.push_back(
+        entry.first + ":" + std::to_string(static_cast<int>(fact.Status)) +
+        ":" + (fact.HasDrop ? "1" : "0") + (fact.HasManualDrop ? "1" : "0") +
+        (fact.HasRawPtr ? "1" : "0") + (fact.IsSend ? "1" : "0") +
+        (fact.IsSync ? "1" : "0"));
+  }
+  sentinel.CleanupClassCount = m_AuthorityCleanupClassStore.size();
+  for (const auto &entry : m_AuthorityCleanupClassStore.entries())
+    sentinel.CleanupClassFacts.push_back(
+        entry.Type.canonicalKey() + ":" + toString(entry.Kind) + ":" +
+        toString(entry.Reason) + ":" + toString(entry.Source));
+  if (m_AuthorityFullExpression)
+    sentinel.FullExpressionIdentity =
+        m_AuthorityFullExpression->Identity.canonicalKey();
+
+  Expr *source = d3UnwrapSourceExpr(actual);
+  if (auto *variable = d3WholePlaceVariable(source)) {
+    SymbolInfo *info = nullptr;
+    std::string name = variable->Name;
+    if (CurrentScope &&
+        CurrentScope->findVariableWithDeref(variable->Name, info, name) &&
+        info) {
+      sentinel.SourceSymbolID = info->SymbolID;
+      sentinel.SourcePlaceState = d3PlaceStateName(info->placeFact());
+      sentinel.SourceInitMask = info->InitMask;
+    }
+  }
+  return sentinel;
+}
+
+void Sema::observeAuthorityFacts(Expr *actual) {
+  if (!m_AuthorityFactsSession)
+    return;
+  AuthorityObservationReceipt receipt;
+  auto location = makeD3SourceLocation(actual ? actual->Loc : SourceLocation{});
+  receipt.File = location.File;
+  receipt.Line = location.Line;
+  receipt.Column = location.Column;
+
+  if (!m_AuthorityFullExpression || !actual || !actual->Loc.isValid()) {
+    m_AuthorityFactsSession->noteExclusion(
+        AuthorityExclusionReason::UnsupportedFullExpressionRoot,
+        std::move(receipt));
+    return;
+  }
+  if (m_IsPrecomputingCaptures || m_D3SpeculativeCallDepth != 0) {
+    m_AuthorityFactsSession->noteExclusion(
+        AuthorityExclusionReason::NonFinalOrSpeculativeTraversal,
+        std::move(receipt));
+    return;
+  }
+
+  auto buildBefore = captureAuthorityParentSentinel(actual);
+  auto completeBuildComparison = [&]() {
+    auto after = captureAuthorityParentSentinel(actual);
+    receipt.BuildDifferences = m_AuthorityFullExpression->BuildDifferences;
+    auto local = differingAuthorityParentFields(buildBefore, after);
+    receipt.BuildDifferences.insert(receipt.BuildDifferences.end(),
+                                    local.begin(), local.end());
+    std::sort(receipt.BuildDifferences.begin(), receipt.BuildDifferences.end());
+    receipt.BuildDifferences.erase(std::unique(receipt.BuildDifferences.begin(),
+                                               receipt.BuildDifferences.end()),
+                                   receipt.BuildDifferences.end());
+    receipt.BuildParentUnchanged = receipt.BuildDifferences.empty();
+  };
+  auto failFault = [&](AuthorityFaultPoint point) {
+    if (!m_AuthorityFactsSession->takeFaultPoint(point, receipt.File))
+      return false;
+    completeBuildComparison();
+    receipt.PublishParentUnchanged = true;
+    receipt.RevisionSizeBefore =
+        m_AuthorityFactsSession->revision()
+            ? m_AuthorityFactsSession->revision()->size()
+            : 0;
+    receipt.RevisionSizeAfter = receipt.RevisionSizeBefore;
+    m_AuthorityFactsSession->noteError(AuthorityBuildError::MalformedRevision,
+                                       std::move(receipt));
+    error(actual, DiagID::ERR_GENERIC_SEMA,
+          std::string("internal M1b.2a fault: ") + toString(point));
+    return true;
+  };
+
+  std::string observationKind = "expression";
+  if (dynamic_cast<CedeExpr *>(actual))
+    observationKind = "cede";
+  else if (dynamic_cast<VariableExpr *>(actual))
+    observationKind = "variable";
+  else if (dynamic_cast<CallExpr *>(actual))
+    observationKind = "call";
+  else if (dynamic_cast<MemberExpr *>(actual))
+    observationKind = "member";
+  const std::string observationWitness = std::to_string(location.Line) + ":" +
+                                         std::to_string(location.Column) + ":" +
+                                         observationKind;
+  auto observationNode =
+      SemanticIdentityBuilder::semanticNode(location.File, observationWitness);
+  if (!observationNode) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteError(
+        AuthorityBuildError::InvalidObservationIdentity, std::move(receipt));
+    return;
+  }
+  auto observation = SemanticIdentityBuilder::authorityObservation(
+      m_AuthorityFullExpression->Identity,
+      observationNode.value().canonicalKey());
+  if (!observation) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteError(
+        AuthorityBuildError::InvalidObservationIdentity, std::move(receipt));
+    return;
+  }
+  receipt.FullExpression = m_AuthorityFullExpression->Identity;
+  receipt.Observation = observation.value();
+  if (failFault(AuthorityFaultPoint::AfterObservationIdentity))
+    return;
+
+  Expr *source = d3UnwrapSourceExpr(actual);
+  auto *variable = d3WholePlaceVariable(source);
+  if (!variable) {
+    completeBuildComparison();
+    const bool projection = dynamic_cast<MemberExpr *>(source) ||
+                            dynamic_cast<ArrayIndexExpr *>(source) ||
+                            dynamic_cast<DereferenceExpr *>(source);
+    m_AuthorityFactsSession->noteExclusion(
+        projection ? AuthorityExclusionReason::PlaceAliasOrProjection
+                   : AuthorityExclusionReason::TemporaryOrMissingBinding,
+        std::move(receipt));
+    return;
+  }
+
+  SymbolInfo *info = nullptr;
+  Scope *sourceScope = nullptr;
+  std::string actualName = variable->Name;
+  if (!CurrentScope->findVariableWithDerefScope(variable->Name, info,
+                                                actualName, sourceScope) ||
+      !info || !sourceScope) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteExclusion(
+        AuthorityExclusionReason::TemporaryOrMissingBinding,
+        std::move(receipt));
+    return;
+  }
+  if (sourceScope->Depth == 0) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteExclusion(
+        AuthorityExclusionReason::GlobalOrSourceHiddenBinding,
+        std::move(receipt));
+    return;
+  }
+  if (info->IsPlaceAlias) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteExclusion(
+        AuthorityExclusionReason::PlaceAliasOrProjection, std::move(receipt));
+    return;
+  }
+  if (!hasExactlyPlaceState(info->placeFact(), PlaceState::Never) &&
+      !hasExactlyPlaceState(info->placeFact(), PlaceState::Live) &&
+      !hasExactlyPlaceState(info->placeFact(), PlaceState::Moved)) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteExclusion(
+        AuthorityExclusionReason::UnsupportedPartialState, std::move(receipt));
+    return;
+  }
+
+  auto *declaration =
+      info->ASTPtr
+          ? dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(info->ASTPtr))
+          : nullptr;
+  auto owner = declaration ? m_LocalVariableOwners.find(declaration)
+                           : m_LocalVariableOwners.end();
+  if (!declaration || owner == m_LocalVariableOwners.end() ||
+      owner->second != CurrentFunction || declaration->ExpansionContext != 0) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteExclusion(
+        AuthorityExclusionReason::CapturedOrGeneratedBinding,
+        std::move(receipt));
+    return;
+  }
+  if (!CurrentFunction || CurrentFunction->TemplateOrigin ||
+      !CurrentFunction->GenericParams.empty() ||
+      CurrentFunction->ExpansionContext != 0) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteExclusion(
+        AuthorityExclusionReason::GenericOrASTClone, std::move(receipt));
+    return;
+  }
+  auto sourceShape =
+      std::dynamic_pointer_cast<ShapeType>(info->TypeObj->getSoulType());
+  if (!sourceShape || !sourceShape->Decl) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteExclusion(
+        AuthorityExclusionReason::UnsupportedTypeCategory, std::move(receipt));
+    return;
+  }
+  if (!sourceShape->GenericArgs.empty() ||
+      !sourceShape->Decl->GenericParams.empty() ||
+      sourceShape->Decl->InstantiationTemplate) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteExclusion(
+        AuthorityExclusionReason::GenericOrASTClone, std::move(receipt));
+    return;
+  }
+  if (sourceShape->Decl->Loc.isValid()) {
+    const auto sourceFile =
+        DiagnosticEngine::SrcMgr->getFullSourceLoc(sourceShape->Decl->Loc)
+            .FileName;
+    const std::string sourcePath = sourceFile ? sourceFile : "";
+    if (sourcePath.size() >= 4 &&
+        sourcePath.compare(sourcePath.size() - 4, 4, ".tki") == 0) {
+      completeBuildComparison();
+      m_AuthorityFactsSession->noteExclusion(
+          AuthorityExclusionReason::GlobalOrSourceHiddenBinding,
+          std::move(receipt));
+      return;
+    }
+  }
+
+  auto ownerLocation = makeD3SourceLocation(CurrentFunction->Loc);
+  auto declarationLocation = makeD3SourceLocation(declaration->Loc);
+  auto ownerId = SemanticIdentityBuilder::declaration(
+      ownerLocation.File, std::to_string(ownerLocation.Line) + ":" +
+                              std::to_string(ownerLocation.Column) + ":" +
+                              CurrentFunction->Name);
+  auto declarationId = SemanticIdentityBuilder::declaration(
+      declarationLocation.File, std::to_string(declarationLocation.Line) + ":" +
+                                    std::to_string(declarationLocation.Column) +
+                                    ":" + declaration->Name);
+  if (!ownerId || !declarationId) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteIndeterminate(
+        AuthorityIndeterminateReason::IncompleteOwnerOrDeclarationIdentity,
+        std::move(receipt));
+    return;
+  }
+  auto root = SemanticIdentityBuilder::rootSymbol(
+      ownerId.value(), declarationId.value().canonicalKey());
+  auto typeId = authorityConcreteTypeId(info->TypeObj);
+  if (!root || !typeId) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteIndeterminate(
+        typeId
+            ? AuthorityIndeterminateReason::IncompleteOwnerOrDeclarationIdentity
+            : AuthorityIndeterminateReason::MissingConcreteTypeId,
+        std::move(receipt));
+    return;
+  }
+
+  SymbolInfo *reverseInfo = nullptr;
+  std::string reverseName;
+  if (!CurrentScope->findSymbolByID(info->SymbolID, reverseInfo,
+                                    &reverseName) ||
+      reverseInfo != info || reverseInfo->ASTPtr != declaration ||
+      reverseName != actualName ||
+      &reverseInfo->ExactPlace != &info->ExactPlace ||
+      m_LocalVariableOwners[declaration] != CurrentFunction) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteError(
+        AuthorityBuildError::StaleSymbolLookupWitness, std::move(receipt));
+    return;
+  }
+  if (failFault(AuthorityFaultPoint::AfterPlaceReverseLookup))
+    return;
+
+  AuthorityPlaceFact place;
+  place.Place = PlaceId(root.value());
+  place.Lookup.SymbolID = info->SymbolID;
+  place.Declaration = declarationId.value();
+  place.Owner = ownerId.value();
+  place.State =
+      hasExactlyPlaceState(info->placeFact(), PlaceState::Never)
+          ? PlaceState::Never
+          : (hasExactlyPlaceState(info->placeFact(), PlaceState::Moved)
+                 ? PlaceState::Moved
+                 : PlaceState::Live);
+  place.InitMask = info->InitMask;
+  place.Type = *typeId;
+
+  const CleanupClassFact *cleanupClass =
+      m_AuthorityCleanupClassStore.lookup(*typeId);
+  if (failFault(AuthorityFaultPoint::AfterCleanupClassLookup))
+    return;
+  if (!cleanupClass) {
+    completeBuildComparison();
+    m_AuthorityFactsSession->noteIndeterminate(
+        AuthorityIndeterminateReason::MissingCleanupClass, std::move(receipt));
+    return;
+  }
+
+  SourceCleanupFact cleanup;
+  if (cleanupClass->Kind == CleanupClassKind::Indeterminate) {
+    cleanup = SourceCleanupFact::indeterminate(
+        AuthorityIndeterminateReason::CleanupClassColdOrIncomplete);
+  } else if (cleanupClass->Kind == CleanupClassKind::NoCleanup) {
+    cleanup = SourceCleanupFact::noCleanup(place.Place, place.Type);
+  } else if (place.State != PlaceState::Live) {
+    cleanup = SourceCleanupFact::indeterminate(
+        AuthorityIndeterminateReason::PlaceNotLive);
+  } else if (place.InitMask == 0) {
+    cleanup = SourceCleanupFact::indeterminate(
+        AuthorityIndeterminateReason::ZeroOrAmbiguousInitMask);
+  } else {
+    auto cleanupId =
+        SemanticIdentityBuilder::cleanup(place.Place.root(), place.Type);
+    if (!cleanupId) {
+      completeBuildComparison();
+      m_AuthorityFactsSession->noteError(
+          AuthorityBuildError::DanglingCrossReference, std::move(receipt));
+      return;
+    }
+    cleanup = SourceCleanupFact::armed(cleanupId.value(), place.Place,
+                                       place.Type, place.InitMask);
+  }
+  if (failFault(AuthorityFaultPoint::AfterCleanupFactBuild))
+    return;
+
+  std::optional<RawLegacyCedePolicyInput> policy;
+  auto shape =
+      std::dynamic_pointer_cast<ShapeType>(info->TypeObj->getSoulType());
+  if (shape) {
+    std::string soul = Type::stripMorphology(shape->Name);
+    if (size_t scope = soul.rfind("::"); scope != std::string::npos)
+      soul = soul.substr(scope + 2);
+    const bool borrowed = soul == "str" || soul == "bytes" || soul == "cstr" ||
+                          soul == "ViewStrSplitIterator" ||
+                          soul == "ViewStrLinesIterator";
+    LegacyPolicyDropFact drop = LegacyPolicyDropFact::Indeterminate;
+    if (cleanupClass->Kind == CleanupClassKind::OwnedWholeCleanup)
+      drop = LegacyPolicyDropFact::HasDrop;
+    else if (cleanupClass->Kind == CleanupClassKind::NoCleanup)
+      drop = LegacyPolicyDropFact::NoDrop;
+    policy.emplace(place.Type, soul,
+                   borrowed ? LegacyPolicyTypeCategory::BorrowedView
+                            : LegacyPolicyTypeCategory::Shape,
+                   drop);
+  }
+
+  AuthorityFactRecord record;
+  record.Key.FullExpressionRootNode = m_AuthorityFullExpression->RootNode;
+  record.Key.FullExpression = m_AuthorityFullExpression->Identity;
+  record.Key.ObservationNode = observationNode.value();
+  record.Key.Observation = observation.value();
+  record.Place = place;
+  record.Cleanup = cleanup;
+  record.LegacyPolicy = std::move(policy);
+  completeBuildComparison();
+  receipt.Record = record;
+  receipt.RevisionSizeBefore = m_AuthorityFactsSession->revision()
+                                   ? m_AuthorityFactsSession->revision()->size()
+                                   : 0;
+  auto publishBefore = captureAuthorityParentSentinel(actual);
+  auto publishError =
+      m_AuthorityFactsSession->publishRecord(record, receipt.File);
+  auto publishAfter = captureAuthorityParentSentinel(actual);
+  receipt.PublishDifferences =
+      differingAuthorityParentFields(publishBefore, publishAfter);
+  receipt.PublishParentUnchanged = receipt.PublishDifferences.empty();
+  receipt.RevisionSizeAfter = m_AuthorityFactsSession->revision()
+                                  ? m_AuthorityFactsSession->revision()->size()
+                                  : 0;
+  if (publishError != AuthorityBuildError::None) {
+    receipt.Record.reset();
+    m_AuthorityFactsSession->noteError(publishError, std::move(receipt));
+    if (publishError == AuthorityBuildError::MalformedRevision)
+      error(actual, DiagID::ERR_GENERIC_SEMA,
+            "internal M1b.2a revision publication failure");
+    return;
+  }
+  m_AuthorityFactsSession->appendReceipt(std::move(receipt));
+}
+
 CallTransferPlan Sema::buildShadowCallTransferPlan(
     ASTNode *callSite, Expr *argument,
     const std::shared_ptr<Type> &argumentType,
     const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
     bool formalIsInit, bool actualIsInit, bool legacyCallerRuleApplied,
     bool legacyCedeExempt, CallTransferRoute route, bool isAsync,
-    CallExecutionBoundary executionBoundary,
-    unsigned argumentIndex, unsigned formalIndex) {
+    CallExecutionBoundary executionBoundary, unsigned argumentIndex,
+    unsigned formalIndex) {
   CallTransferPlan plan;
   plan.ArgumentIndex = argumentIndex;
   plan.FormalIndex = formalIndex;
@@ -3831,6 +4226,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   }
 
   for (size_t i = 0; i < Call->Args.size(); ++i) {
+    if (m_AuthorityFactsSession)
+      observeAuthorityFacts(Call->Args[i].get());
     if (i == 0 && m_D4ProbeAuditSession)
       m_D4ProbeAuditSession->noteFinalLegacyCheck(Call);
     Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]

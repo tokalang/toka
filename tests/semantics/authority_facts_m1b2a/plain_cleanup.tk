@@ -1,0 +1,7 @@
+shape Pair(left: i32, right: i32)
+fn inspect(value: Pair) -> i32 { return value.left + value.right }
+
+fn main() -> i32 {
+    auto value = Pair(left = 1:i32, right = 2:i32)
+    return inspect(value) - 3:i32
+}

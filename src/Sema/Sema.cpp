@@ -2802,6 +2802,31 @@ bool Sema::checkModule(Module &M) {
   registerGlobals(M);
   // 2. Shape Analysis Pass (Safety Enforcement)
   analyzeShapes(M);
+  if (m_AuthorityFactsSession) {
+    auto storeBuildBefore = captureAuthorityParentSentinel();
+    auto candidateStore = buildAuthorityCleanupClassStore();
+    auto storeBuildAfter = captureAuthorityParentSentinel();
+    auto storeBuildDifferences = differingAuthorityParentFields(
+        storeBuildBefore, storeBuildAfter);
+    auto storePublishBefore = captureAuthorityParentSentinel();
+    m_AuthorityCleanupClassStore = std::move(candidateStore);
+    m_AuthorityFactsSession->setCleanupStore(m_AuthorityCleanupClassStore);
+    auto storePublishAfter = captureAuthorityParentSentinel();
+    auto storePublishDifferences = differingAuthorityParentFields(
+        storePublishBefore, storePublishAfter);
+    storePublishDifferences.erase(
+        std::remove(storePublishDifferences.begin(),
+                    storePublishDifferences.end(), "cleanup_class_count"),
+        storePublishDifferences.end());
+    storePublishDifferences.erase(
+        std::remove(storePublishDifferences.begin(),
+                    storePublishDifferences.end(), "cleanup_class_facts"),
+        storePublishDifferences.end());
+    m_AuthorityFactsSession->setCleanupStoreQualification(
+        storeBuildDifferences.empty(), storePublishDifferences.empty(),
+        std::move(storeBuildDifferences),
+        std::move(storePublishDifferences));
+  }
 
   // 2b. Check function bodies (reordered)
 
@@ -2881,9 +2906,283 @@ bool Sema::checkModule(Module &M) {
   return !HasError;
 }
 
+std::optional<Sema::AuthorityFullExpressionContext>
+Sema::beginAuthorityFullExpression(Expr *root) {
+  auto previous = m_AuthorityFullExpression;
+  if (!m_AuthorityFactsSession || !root || !root->Loc.isValid()) {
+    m_AuthorityFullExpression.reset();
+    return previous;
+  }
+  auto before = captureAuthorityParentSentinel();
+  auto fullLoc = DiagnosticEngine::SrcMgr->getFullSourceLoc(root->Loc);
+  std::string kind = "expr";
+  if (dynamic_cast<CallExpr *>(root))
+    kind = "call";
+  else if (dynamic_cast<BinaryExpr *>(root))
+    kind = "binary";
+  else if (dynamic_cast<VariableExpr *>(root))
+    kind = "variable";
+  else if (dynamic_cast<InitStructExpr *>(root))
+    kind = "init-struct";
+  else if (dynamic_cast<ClosureExpr *>(root))
+    kind = "closure";
+  const std::string witness = std::to_string(fullLoc.Line) + ":" +
+                              std::to_string(fullLoc.Column) + ":" + kind;
+  auto rootNode =
+      SemanticIdentityBuilder::semanticNode(fullLoc.FileName, witness);
+  if (!rootNode) {
+    m_AuthorityFullExpression.reset();
+    return previous;
+  }
+  auto expression = SemanticIdentityBuilder::fullExpression(rootNode.value());
+  if (!expression) {
+    m_AuthorityFullExpression.reset();
+    return previous;
+  }
+  auto after = captureAuthorityParentSentinel();
+  auto differences = differingAuthorityParentFields(before, after);
+  if (m_AuthorityFactsSession->takeFaultPoint(
+          AuthorityFaultPoint::AfterFullExpressionIdentity, fullLoc.FileName)) {
+    AuthorityObservationReceipt receipt;
+    receipt.File = fullLoc.FileName;
+    receipt.Line = fullLoc.Line;
+    receipt.Column = fullLoc.Column;
+    receipt.FullExpression = expression.value();
+    receipt.BuildDifferences = differences;
+    receipt.BuildParentUnchanged = differences.empty();
+    receipt.PublishParentUnchanged = true;
+    receipt.RevisionSizeBefore =
+        m_AuthorityFactsSession->revision()
+            ? m_AuthorityFactsSession->revision()->size()
+            : 0;
+    receipt.RevisionSizeAfter = receipt.RevisionSizeBefore;
+    m_AuthorityFactsSession->noteError(AuthorityBuildError::MalformedRevision,
+                                       std::move(receipt));
+    error(root, DiagID::ERR_GENERIC_SEMA,
+          "internal M1b.2a full-expression fault");
+    m_AuthorityFullExpression.reset();
+    return previous;
+  }
+  m_AuthorityFullExpression = AuthorityFullExpressionContext{
+      root, rootNode.value(), expression.value(), differences.empty(),
+      std::move(differences)};
+  return previous;
+}
+
+void Sema::restoreAuthorityFullExpression(
+    std::optional<AuthorityFullExpressionContext> previous) {
+  m_AuthorityFullExpression = std::move(previous);
+}
+
+std::optional<ConcreteTypeId>
+Sema::authorityConcreteTypeId(const std::shared_ptr<Type> &type) const {
+  if (!type || type->isUnknown())
+    return std::nullopt;
+  auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
+  if (!shape || !shape->Decl || !shape->Decl->NominalId ||
+      !shape->GenericArgs.empty())
+    return std::nullopt;
+  std::string origin;
+  if (shape->Decl->Loc.isValid())
+    origin =
+        DiagnosticEngine::SrcMgr->getFullSourceLoc(shape->Decl->Loc).FileName;
+  if (origin.empty())
+    return std::nullopt;
+  auto identity = SemanticIdentityBuilder::concreteType(
+      origin, shape->Decl->NominalId->canonical());
+  return identity ? std::optional<ConcreteTypeId>(identity.value())
+                  : std::nullopt;
+}
+
+CleanupClassStore Sema::buildAuthorityCleanupClassStore() {
+  std::vector<CleanupClassFact> entries;
+  std::set<const ShapeDecl *> emitted;
+  std::set<const ShapeDecl *> visiting;
+  std::map<const ShapeDecl *, CleanupClassFact> memo;
+
+  std::function<CleanupClassFact(ShapeDecl *)> classify =
+      [&](ShapeDecl *shape) -> CleanupClassFact {
+    if (auto found = memo.find(shape); found != memo.end())
+      return found->second;
+    CleanupClassFact fact;
+    if (!shape)
+      return fact;
+    auto shapeType = std::make_shared<ShapeType>(shape->Name);
+    shapeType->resolve(shape);
+    auto typeId = authorityConcreteTypeId(shapeType);
+    if (!typeId) {
+      fact.Kind = CleanupClassKind::Indeterminate;
+      fact.Reason = CleanupClassIndeterminateReason::MissingConcreteTypeGraph;
+      fact.Source = CleanupClassSource::Incomplete;
+      return fact;
+    }
+    fact.Type = *typeId;
+    if (shape->Loc.isValid()) {
+      const std::string source =
+          DiagnosticEngine::SrcMgr->getFullSourceLoc(shape->Loc).FileName;
+      if (source.size() >= 4 &&
+          source.compare(source.size() - 4, 4, ".tki") == 0) {
+        fact.Kind = CleanupClassKind::Indeterminate;
+        fact.Reason = CleanupClassIndeterminateReason::GenericOrSourceHidden;
+        fact.Source = CleanupClassSource::Incomplete;
+        memo[shape] = fact;
+        return fact;
+      }
+    }
+    std::string name = Type::stripMorphology(shape->Name);
+    if (size_t scope = name.rfind("::"); scope != std::string::npos)
+      name = name.substr(scope + 2);
+    if (name == "str" || name == "bytes" || name == "cstr" ||
+        name == "ViewStrSplitIterator" || name == "ViewStrLinesIterator") {
+      fact.Kind = CleanupClassKind::NoCleanup;
+      fact.Reason = CleanupClassIndeterminateReason::None;
+      fact.Source = CleanupClassSource::BorrowedView;
+    } else if (name == "string" || name == "Bytes") {
+      fact.Kind = CleanupClassKind::OwnedWholeCleanup;
+      fact.Reason = CleanupClassIndeterminateReason::None;
+      fact.Source = CleanupClassSource::BuiltinOwnedBuffer;
+    } else {
+      bool hasEncapDrop = shape->HasExplicitDrop;
+      if (auto genericImpls = GenericImplMap.find(shape->Name);
+          !hasEncapDrop && genericImpls != GenericImplMap.end()) {
+        for (auto *impl : genericImpls->second) {
+          if (!impl || getTraitFamilyName(impl->TraitName) != "Encap")
+            continue;
+          for (const auto &method : impl->Methods)
+            if (method->Name == "drop")
+              hasEncapDrop = true;
+          if (hasEncapDrop)
+            break;
+        }
+      }
+      if (hasEncapDrop) {
+        fact.Kind = CleanupClassKind::OwnedWholeCleanup;
+        fact.Reason = CleanupClassIndeterminateReason::None;
+        fact.Source = CleanupClassSource::ExplicitEncapDrop;
+      } else if (!shape->GenericParams.empty()) {
+        fact.Kind = CleanupClassKind::Indeterminate;
+        fact.Reason = CleanupClassIndeterminateReason::GenericOrSourceHidden;
+        fact.Source = CleanupClassSource::Incomplete;
+      } else if (!visiting.insert(shape).second) {
+        fact.Kind = CleanupClassKind::Indeterminate;
+        fact.Reason = CleanupClassIndeterminateReason::RecursiveCycle;
+        fact.Source = CleanupClassSource::Incomplete;
+      } else {
+        bool owned = false;
+        bool incomplete = false;
+        for (const auto &member : shape->Members) {
+          if (member.IsUnique || member.IsShared) {
+            owned = true;
+            break;
+          }
+          auto memberType = member.ResolvedType;
+          if (!memberType) {
+            std::string base = Type::stripMorphology(member.Type);
+            base.erase(std::remove_if(
+                           base.begin(), base.end(),
+                           [](unsigned char ch) { return std::isspace(ch); }),
+                       base.end());
+            if (size_t lt = base.find('<'); lt != std::string::npos)
+              base = base.substr(0, lt);
+            if (size_t scope = base.rfind("::"); scope != std::string::npos)
+              base = base.substr(scope + 2);
+            auto declaration = ShapeMap.find(base);
+            if (declaration == ShapeMap.end()) {
+              declaration = std::find_if(
+                  ShapeMap.begin(), ShapeMap.end(), [&](const auto &entry) {
+                    return entry.second && entry.second->Name == base;
+                  });
+            }
+            if (declaration == ShapeMap.end()) {
+              incomplete = true;
+              continue;
+            }
+            auto nested = classify(declaration->second);
+            if (nested.Kind == CleanupClassKind::OwnedWholeCleanup) {
+              owned = true;
+              break;
+            }
+            if (nested.Kind == CleanupClassKind::Indeterminate)
+              incomplete = true;
+            continue;
+          }
+          if (memberType->isUniquePtr() || memberType->isSharedPtr()) {
+            owned = true;
+            break;
+          }
+          auto memberShape =
+              std::dynamic_pointer_cast<ShapeType>(memberType->getSoulType());
+          if (!memberShape)
+            continue;
+          std::string base = Type::stripMorphology(memberShape->Name);
+          base.erase(
+              std::remove_if(base.begin(), base.end(),
+                             [](unsigned char ch) { return std::isspace(ch); }),
+              base.end());
+          if (size_t lt = base.find('<'); lt != std::string::npos)
+            base = base.substr(0, lt);
+          if (size_t scope = base.rfind("::"); scope != std::string::npos)
+            base = base.substr(scope + 2);
+          ShapeDecl *memberDeclaration =
+              memberShape->Decl && memberShape->Decl->InstantiationTemplate
+                  ? memberShape->Decl->InstantiationTemplate
+                  : memberShape->Decl;
+          if (!memberDeclaration) {
+            auto declaration = ShapeMap.find(base);
+            if (declaration == ShapeMap.end()) {
+              declaration = std::find_if(
+                  ShapeMap.begin(), ShapeMap.end(), [&](const auto &entry) {
+                    return entry.second && entry.second->Name == base;
+                  });
+            }
+            if (declaration != ShapeMap.end())
+              memberDeclaration = declaration->second;
+          }
+          if (!memberDeclaration) {
+            incomplete = true;
+            continue;
+          }
+          auto nested = classify(memberDeclaration);
+          if (nested.Kind == CleanupClassKind::OwnedWholeCleanup) {
+            owned = true;
+            break;
+          }
+          if (nested.Kind == CleanupClassKind::Indeterminate)
+            incomplete = true;
+        }
+        visiting.erase(shape);
+        if (owned) {
+          fact.Kind = CleanupClassKind::OwnedWholeCleanup;
+          fact.Reason = CleanupClassIndeterminateReason::None;
+          fact.Source = CleanupClassSource::StructuralOwnedField;
+        } else if (incomplete) {
+          fact.Kind = CleanupClassKind::Indeterminate;
+          fact.Reason = CleanupClassIndeterminateReason::ColdAnalysis;
+          fact.Source = CleanupClassSource::Incomplete;
+        } else {
+          fact.Kind = CleanupClassKind::NoCleanup;
+          fact.Reason = CleanupClassIndeterminateReason::None;
+          fact.Source = CleanupClassSource::ProvenNoCleanup;
+        }
+      }
+    }
+    memo[shape] = fact;
+    return fact;
+  };
+
+  for (const auto &entry : ShapeMap) {
+    if (entry.second && emitted.insert(entry.second).second) {
+      auto fact = classify(entry.second);
+      if (fact.Type.valid())
+        entries.push_back(std::move(fact));
+    }
+  }
+  auto built = CleanupClassStore::build(std::move(entries));
+  return built.second == CleanupClassStoreError::None ? std::move(built.first)
+                                                      : CleanupClassStore{};
+}
+
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
-
-
 
 void Sema::enterScope() { 
   CurrentScope = new Scope(CurrentScope); 
@@ -5999,23 +6298,34 @@ bool Sema::canImplicitlyPassToCede(std::shared_ptr<toka::Type> Ty) {
       return false; // 没找到该闭包定义，安全起见不豁免
     }
 
-    // 内置/标准库中的有资源类型不予豁免，强制 cede
-    if (resolved == "str" || resolved == "bytes" || resolved == "cstr" ||
-        resolved == "ViewStrSplitIterator" || resolved == "ViewStrLinesIterator" ||
-        resolved == "string" || resolved == "TimerHeap") {
-      return false;
+    auto typeId = authorityConcreteTypeId(Ty);
+    if (!typeId) {
+      auto fallback = SemanticIdentityBuilder::concreteType(
+          "legacy-policy", Ty->canonicalIdentity());
+      if (fallback) typeId = fallback.value();
     }
+    if (!typeId) return false;
+    std::string soul = Type::stripMorphology(resolved);
+    if (size_t scope = soul.rfind("::"); scope != std::string::npos)
+      soul = soul.substr(scope + 2);
+    const bool borrowed =
+        soul == "str" || soul == "bytes" || soul == "cstr" ||
+        soul == "ViewStrSplitIterator" || soul == "ViewStrLinesIterator";
+    RawLegacyCedePolicyInput raw(
+        *typeId, soul,
+        borrowed ? LegacyPolicyTypeCategory::BorrowedView
+                 : LegacyPolicyTypeCategory::Shape,
+        LegacyPolicyDropFact::Indeterminate);
+    auto requirement = classifyLegacyCedeRequirement(raw);
+    if (requirement != LegacyCedeRequirement::Indeterminate)
+      return requirement == LegacyCedeRequirement::ImplicitExempt;
 
-    if (resolved == "SlabID") {
-      return true; // 豁免 SlabID
-    }
-
-    // 其它的 Shape 检查是否包含显式 drop
-    if (hasDrop(sName) || hasDrop(resolved)) {
-      return false;
-    }
-
-    return true; // 默认无 drop 的 Shape 豁免
+    raw = RawLegacyCedePolicyInput(
+        *typeId, soul, LegacyPolicyTypeCategory::Shape,
+        hasDrop(sName) || hasDrop(resolved) ? LegacyPolicyDropFact::HasDrop
+                                            : LegacyPolicyDropFact::NoDrop);
+    requirement = classifyLegacyCedeRequirement(raw);
+    return requirement == LegacyCedeRequirement::ImplicitExempt;
   }
 
   return false;

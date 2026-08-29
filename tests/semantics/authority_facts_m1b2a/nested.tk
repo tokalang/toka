@@ -1,0 +1,8 @@
+shape Pair(left: i32, right: i32)
+fn inner(value: Pair) -> i32 { return value.left + value.right }
+fn outer(value: i32) -> i32 { return value }
+
+fn main() -> i32 {
+    auto value = Pair(left = 1:i32, right = 2:i32)
+    return outer(inner(value)) - 3:i32
+}

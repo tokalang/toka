@@ -1,0 +1,7 @@
+import std/bytes::{Bytes}
+fn inspect(value: Bytes) -> usize { return value.len() }
+
+fn main() -> i32 {
+    auto value = Bytes::new()
+    return inspect(value) as i32
+}
