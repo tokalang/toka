@@ -1,0 +1,23 @@
+shape Cell(value: i32)
+shape Token(^cell: Cell)
+shape Pair(left: i32, right: i32)
+
+fn combine(cede left: Token, cede right: Token, cede pair: Pair,
+           extra: i32) -> i32 {
+    auto moved_left = cede left
+    auto moved_right = cede right
+    auto copied_pair = cede pair
+    return moved_left.cell.value + moved_right.cell.value +
+           copied_pair.left + copied_pair.right + extra
+}
+
+fn main() -> i32 {
+    auto ^left_cell = new Cell(value = 7:i32)
+    auto left = Token(^cell = ^left_cell)
+    auto ^right_cell = new Cell(value = 11:i32)
+    auto right = Token(^cell = ^right_cell)
+    auto pair = Pair(left = 2:i32, right = 3:i32)
+    auto result = combine(left, right, pair, 5:i32)
+    auto pair_still_live = pair.left + pair.right
+    return result + pair_still_live - 33:i32
+}

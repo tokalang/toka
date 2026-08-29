@@ -263,6 +263,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_signature_driven_cede_callable_indirect.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_signature_driven_cede_multi_atomic
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_signature_driven_cede_multi_atomic.py
+                --build-dir ${CMAKE_BINARY_DIR})
     endif()
 endif()
 

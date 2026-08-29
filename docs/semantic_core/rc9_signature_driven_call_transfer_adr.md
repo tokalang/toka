@@ -16,6 +16,14 @@ and implicit experimental form have native runtime qualification. The RC8
 caller-explicit policy remains the default until every activation gate in this
 ADR passes at one qualified revision.
 
+Ordinary same-lexical direct calls also have a bounded all-bare
+multi-argument slice. Sema first checks every actual and all pairwise PAL
+relations, then elaborates all qualified non-Copy transfers together. A type,
+borrow, alias, or place-admission failure leaves every planned source live.
+Calls containing explicit argument-level `cede`, mutable/rebindable formals,
+defaults, `init`, generic, async, outcome, or dependency contracts remain
+outside this multi-argument slice.
+
 **Baseline:** `v1.0.0-rc.8` /
 `997713f4828b43a5b82aa3363d99a37e9e6f2417`.
 

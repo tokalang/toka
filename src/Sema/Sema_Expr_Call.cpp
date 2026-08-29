@@ -545,7 +545,7 @@ Sema::lookupD3CopyProof(const std::shared_ptr<toka::Type> &type) const {
 bool Sema::elaborateSignatureDrivenCedeArgument(
     std::unique_ptr<Expr> &argument,
     const std::shared_ptr<toka::Type> &argumentType,
-    const std::shared_ptr<toka::Type> &formalType) {
+    const std::shared_ptr<toka::Type> &formalType, bool commit) {
   if (!m_EnableSignatureDrivenCallCede || !argument || !argumentType ||
       !formalType || dynamic_cast<CedeExpr *>(argument.get()) ||
       argumentType->isUnknown())
@@ -632,6 +632,9 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
 
   if (!admitted)
     return false;
+
+  if (!commit)
+    return true;
 
   if (invalidate) {
     if (auto conflict = PALCheckerState.verifyInvalidation(sourcePath)) {
@@ -4234,14 +4237,25 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   std::vector<SymbolInfo *> completedInitPlaces;
   bool signatureDrivenDirectSlice = false;
   if (m_EnableSignatureDrivenCallCede && Fn && !Ext &&
-      Fn->Loc.isValid() && Call->Args.size() == 1 && Fn->Args.size() == 1 &&
-      providedCount == 1 && !Fn->IsVariadic && !Fn->TemplateOrigin &&
+      Fn->Loc.isValid() && !Call->Args.empty() &&
+      Call->Args.size() == Fn->Args.size() &&
+      providedCount == Call->Args.size() && !Fn->IsVariadic &&
+      !Fn->TemplateOrigin &&
       Fn->GenericParams.empty() && Call->GenericArgs.empty() &&
       Fn->Effect == EffectKind::None && !Fn->ResolvedOutcomeTransition &&
       Fn->LifeDependencies.empty() && Fn->MemberDependencies.empty() &&
-      !Fn->Args.front().DefaultValue && !Fn->Args.front().IsInit &&
-      !Fn->Args.front().IsRebindable && !Fn->Args.front().IsValueMutable &&
-      !Call->isInitArgument(0) && !m_IsPrecomputingCaptures &&
+      std::all_of(Fn->Args.begin(), Fn->Args.end(),
+                  [](const FunctionDecl::Arg &arg) {
+                    return !arg.DefaultValue && !arg.IsInit &&
+                           !arg.IsRebindable && !arg.IsValueMutable;
+                  }) &&
+      std::none_of(Call->Args.begin(), Call->Args.end(),
+                   [](const auto &arg) {
+                     return dynamic_cast<CedeExpr *>(arg.get()) != nullptr;
+                   }) &&
+      std::none_of(Call->IsInitArgument.begin(), Call->IsInitArgument.end(),
+                   [](bool value) { return value; }) &&
+      !m_IsPrecomputingCaptures &&
       m_D3SpeculativeCallDepth == 0 && !d3CandidateProbeObserved &&
       std::none_of(precheckedArgTypes.begin(), precheckedArgTypes.end(),
                    [](const auto &type) { return type != nullptr; })) {
@@ -4259,6 +4273,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         owner->second == lexical && hasSingleDeclaration && CurrentModule &&
         !CurrentModule->IsInterface;
   }
+  struct PendingSignatureCede {
+    size_t ArgumentIndex = 0;
+    std::shared_ptr<Type> ArgumentType;
+    std::shared_ptr<Type> FormalType;
+  };
+  std::vector<PendingSignatureCede> pendingSignatureCedes;
+  std::vector<bool> plannedSignatureCede(Call->Args.size(), false);
+  const size_t signatureCedeDiagnosticStart =
+      DiagnosticEngine::records().size();
   auto isReadOnlyBorrowViewArgument = [&](Expr *expr) -> bool {
     if (!expr)
       return false;
@@ -4544,13 +4567,19 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     if (d3ObservationInput && i == 0)
       d3LegacyArgumentType = argType;
 
-    // Bounded RC9 activation slice: once an ordinary direct call has one
-    // resolved `cede` formal, elaborate a bare proven-non-Copy whole local or
-    // whole temporary to the existing CedeExpr semantics.  This reuses the
-    // established PAL/place invalidation and CodeGen drop suppression paths;
-    // it does not create a second transfer engine.
-    if (signatureDrivenDirectSlice && i == 0 && Fn->Args[0].IsCeded)
-      elaborateSignatureDrivenCedeArgument(Call->Args[i], argType, paramType);
+    // Bounded RC9 activation slice. A single argument can commit immediately;
+    // multi-argument calls first collect pure qualifications and commit only
+    // after every argument and cross-argument PAL relation succeeds.
+    if (signatureDrivenDirectSlice && i < Fn->Args.size() &&
+        Fn->Args[i].IsCeded) {
+      if (Call->Args.size() == 1) {
+        elaborateSignatureDrivenCedeArgument(Call->Args[i], argType, paramType);
+      } else if (elaborateSignatureDrivenCedeArgument(
+                     Call->Args[i], argType, paramType, false)) {
+        plannedSignatureCede[i] = true;
+        pendingSignatureCedes.push_back({i, argType, paramType});
+      }
+    }
 
     if (isOwnedStateThreadCalleeName(OriginalName) && i == 1) {
       ClosureExpr *entryClosure = findClosureExpr(Call->Args[i].get());
@@ -4730,7 +4759,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     // mutable call parameter.  Callee requirements must be a subset of the
     // caller path's declared capabilities.
     bool isCallerCeded =
-        dynamic_cast<CedeExpr *>(Call->Args[i].get()) != nullptr;
+        dynamic_cast<CedeExpr *>(Call->Args[i].get()) != nullptr ||
+        (i < plannedSignatureCede.size() && plannedSignatureCede[i]);
     auto *callerCede =
         dynamic_cast<CedeExpr *>(Call->Args[i].get());
     const bool cedeMovesExistingPlace =
@@ -5167,6 +5197,39 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       recordPALDecision(rhs.Node, SemanticRuleID::PALCall001, rhs.Access,
                         rhs.Path, lhsOrigin, SemanticDecision::Reject,
                         SemanticReason::OverlappingExclusiveAccess, true);
+    }
+  }
+
+  if (!pendingSignatureCedes.empty()) {
+    const auto &records = DiagnosticEngine::records();
+    const bool callHasError =
+        std::any_of(records.begin() +
+                        std::min(signatureCedeDiagnosticStart, records.size()),
+                    records.end(), [](const auto &record) {
+                      return record.Level == DiagLevel::Error;
+                    });
+    if (!callHasError) {
+      const bool preflightStillValid =
+          std::all_of(pendingSignatureCedes.begin(),
+                      pendingSignatureCedes.end(), [&](const auto &pending) {
+                        return elaborateSignatureDrivenCedeArgument(
+                            Call->Args[pending.ArgumentIndex],
+                            pending.ArgumentType, pending.FormalType, false);
+                      });
+      if (!preflightStillValid) {
+        error(Call, DiagID::ERR_GENERIC_SEMA,
+              "signature-driven cede batch changed during validation");
+      } else {
+        for (const auto &pending : pendingSignatureCedes) {
+          if (!elaborateSignatureDrivenCedeArgument(
+                  Call->Args[pending.ArgumentIndex], pending.ArgumentType,
+                  pending.FormalType)) {
+            error(Call, DiagID::ERR_GENERIC_SEMA,
+                  "signature-driven cede batch commit failed");
+            break;
+          }
+        }
+      }
     }
   }
   

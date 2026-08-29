@@ -1,0 +1,20 @@
+import core/traits::{@Encap}
+
+shape Resource(value: i32)
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn combine(cede left: Resource, cede right: Resource) -> i32 {
+    auto moved_left = cede left
+    auto moved_right = cede right
+    return moved_left.value + moved_right.value
+}
+
+fn main() -> i32 {
+    auto left = Resource(value = 1:i32)
+    auto right = Resource(value = 2:i32)
+    auto result = combine(left, right)
+    return result + left.value
+}

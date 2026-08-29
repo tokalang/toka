@@ -591,7 +591,7 @@ private:
   bool elaborateSignatureDrivenCedeArgument(
       std::unique_ptr<Expr> &Argument,
       const std::shared_ptr<toka::Type> &ArgumentType,
-      const std::shared_ptr<toka::Type> &FormalType);
+      const std::shared_ptr<toka::Type> &FormalType, bool Commit = true);
   D3TypeCategory
   classifyD3TypeCategory(const std::shared_ptr<toka::Type> &Type) const;
   D3OwnershipProof
