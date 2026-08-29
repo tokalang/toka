@@ -197,9 +197,9 @@ def main():
     require(tokac.exists(), f"missing compiler: {tokac}")
 
     normal, first, matrix_payload = require_parity(tokac, MATRIX)
-    require(normal.returncode == 1 and "E04570" in normal.stderr and
+    require(normal.returncode == 1 and "E04570" not in normal.stderr and
             "E04640" in normal.stderr,
-            "default matrix lost its explicit-borrow or nested fail-closed diagnostic")
+            "default matrix did not activate nested temporary transfer")
     require(first.returncode == 1 and "E04570" in first.stderr and
             "E04640" in first.stderr,
             "D.3 replay did not preserve its frozen legacy diagnostics")

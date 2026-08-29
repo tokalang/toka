@@ -91,10 +91,19 @@ def main():
                 "E04570" not in moved.stderr,
                 f"implicit route did not invalidate its source: {fixture}")
 
-    excluded = run([str(tokac), "--check-only",
-                    str(FIXTURES / "indirect_multi_arg_out_of_slice.tk")])
-    require(excluded.returncode != 0 and "E04570" in excluded.stderr,
-            "multi-argument indirect call escaped the bounded slice")
+    with tempfile.TemporaryDirectory(prefix="toka-cede-indirect-multi-") as temp:
+        for fixture in ("indirect_multi_arg_out_of_slice.tk",
+                        "indirect_dyn_multi_runtime.tk"):
+            source = FIXTURES / fixture
+            checked = run([str(tokac), "--check-only", str(source)])
+            require(checked.returncode == 0,
+                    f"multi-argument indirect call remained out of slice: {fixture}")
+            executable = pathlib.Path(temp) / fixture.removesuffix(".tk")
+            compiled = run([str(tokac), str(source), "-o", str(executable)])
+            require(compiled.returncode == 0,
+                    f"multi-argument indirect call failed CodeGen: {fixture}")
+            require(run([str(executable)]).returncode == 0,
+                    f"multi-argument indirect runtime failed: {fixture}")
 
     print("Signature-driven callable/indirect cede tests PASSED")
     return 0

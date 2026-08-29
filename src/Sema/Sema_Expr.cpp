@@ -4337,7 +4337,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 auto *callerCede =
                     dynamic_cast<CedeExpr *>(Met->Args[i].get());
                 const bool cedeExempt =
-                    param.IsCeded && canImplicitlyPassToCede(argTy);
+                    param.IsCeded &&
+                    (canImplicitlyPassToCede(argTy) ||
+                     canPreserveBareSignatureCede(argTy));
                 const bool callerCeded =
                     callerCede != nullptr ||
                     (i < plannedDynamicCede.size() && plannedDynamicCede[i]);
@@ -4917,7 +4919,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 if (i < expectedArgs) {
                   const auto &param = FD->Args[i + 1];
                   legacyCedeExempt =
-                      param.IsCeded && canImplicitlyPassToCede(argTy);
+                      param.IsCeded &&
+                      (canImplicitlyPassToCede(argTy) ||
+                       canPreserveBareSignatureCede(argTy));
                   recordShadowCallTransfer(
                       Met, Met->ShadowArgumentTransfers,
                       static_cast<unsigned>(i + 1),

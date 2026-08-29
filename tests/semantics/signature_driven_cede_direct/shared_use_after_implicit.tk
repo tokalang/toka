@@ -1,0 +1,12 @@
+shape Cell(value: i32)
+
+fn consume(cede ~cell: Cell) -> i32 {
+    auto ~owned = cede ~cell
+    return owned.value
+}
+
+fn main() -> i32 {
+    auto ~source = new Cell(value = 9:i32)
+    auto result = consume(~source)
+    return source.value + result
+}

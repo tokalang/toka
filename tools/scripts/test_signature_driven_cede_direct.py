@@ -71,16 +71,36 @@ def main():
             "E04570" not in borrowed.stderr,
             "implicit transfer bypassed an active PAL loan")
 
+    shared = FIXTURES / "shared_runtime.tk"
+    with tempfile.TemporaryDirectory(prefix="toka-cede-shared-") as temp:
+        executable = pathlib.Path(temp) / "shared"
+        compiled = run([str(tokac), str(shared), "-o", str(executable)])
+        require(compiled.returncode == 0,
+                "bare shared transfer failed CodeGen/link")
+        require(run([str(executable)]).returncode == 0,
+                "bare shared transfer failed at runtime")
+    shared_moved = run([str(tokac), "--check-only",
+                        str(FIXTURES / "shared_use_after_implicit.tk")])
+    require(shared_moved.returncode != 0 and
+            "E0438" in shared_moved.stderr,
+            "bare shared transfer did not invalidate its source")
+
     projection = run([str(tokac), FLAG, "--check-only",
                       str(FIXTURES / "projection_out_of_slice.tk")])
     require(projection.returncode == 0 and "E04570" not in projection.stderr,
             "qualified direct-field projection remained out of slice")
 
-    for fixture, diagnostic in (("borrowed_view_out_of_slice.tk", "E04570"),):
-        excluded = run([str(tokac), FLAG, "--check-only",
-                        str(FIXTURES / fixture)])
-        require(excluded.returncode != 0 and diagnostic in excluded.stderr,
-                f"out-of-slice route was activated: {fixture}")
+    borrowed_view = FIXTURES / "borrowed_view_out_of_slice.tk"
+    borrowed_check = run([str(tokac), "--check-only", str(borrowed_view)])
+    require(borrowed_check.returncode == 0,
+            "borrowed CopyIdentity call remained fail-closed")
+    with tempfile.TemporaryDirectory(prefix="toka-cede-view-") as temp:
+        executable = pathlib.Path(temp) / "borrowed-view"
+        compiled = run([str(tokac), str(borrowed_view), "-o", str(executable)])
+        require(compiled.returncode == 0,
+                "borrowed CopyIdentity call failed CodeGen/link")
+        require(run([str(executable)]).returncode == 0,
+                "borrowed CopyIdentity call failed at runtime")
 
     evidence = run([str(tokac), "--cede-obligations=json",
                     "--check-only", str(runtime)])

@@ -326,6 +326,9 @@ private:
   PhysEntity genExprImpl(const Expr *expr);
   void registerFullExpressionTemporary(llvm::Value *address,
                                        std::shared_ptr<Type> type);
+  bool typeCarriesCleanupLiability(const std::shared_ptr<Type> &type,
+                                   std::set<std::string> *active = nullptr);
+  bool isCallTransferSourcePlace(const Expr *expr) const;
   void emitFullExpressionTemporaryDrops(bool clear = true);
   llvm::Constant *genConstant(const Expr *expr,
                               llvm::Type *targetType = nullptr);

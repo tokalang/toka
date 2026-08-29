@@ -575,3 +575,4 @@ DIAG(ERR_CODEGEN_CANNOT_DETERMINE_SIZE_OF_INCOMPLETE_TY, Error, "E0757", "Cannot
 DIAG(ERR_CODEGEN_COMPILE_TIME_FIELD_ITERATION_VARIABLES, Error, "E0758", "Compile-time field iteration variables cannot be used contextually where runtime values are expected (must be folded statically).")
 DIAG(ERR_CODEGEN_EXTERN_SIGNATURE_CONFLICT, Error, "E0759", "Conflicting extern declarations for '{}': existing LLVM type '{}', requested '{}'")
 DIAG(ERR_CODEGEN_ILLEGAL_HANDLE_GRAMMAR, Error, "E0760", "Internal CodeGen invariant violation: illegal Handle Grammar type '{}' reached LLVM lowering")
+DIAG(ERR_CODEGEN_MISSING_CALL_TRANSFER_ELABORATION, Error, "E0761", "Internal CodeGen invariant violation: cede argument {} for '{}' carries cleanup liability without validated transfer elaboration")

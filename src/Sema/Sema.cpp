@@ -6331,6 +6331,12 @@ bool Sema::canImplicitlyPassToCede(std::shared_ptr<toka::Type> Ty) {
   return false;
 }
 
+bool Sema::canPreserveBareSignatureCede(
+    std::shared_ptr<toka::Type> Ty) {
+  return m_EnableSignatureDrivenCallCede && Ty &&
+         Ty->valueOwnership(this) == ValueOwnership::BorrowedView;
+}
+
 bool Sema::isStartBoundaryScalar(std::shared_ptr<toka::Type> Ty) const {
   if (!Ty || Ty->typeKind != toka::Type::Primitive)
     return false;

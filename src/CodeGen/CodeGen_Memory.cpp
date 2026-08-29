@@ -398,6 +398,83 @@ void CodeGen::emitDropForType(llvm::Value *ptrAddr,
   emitDropCascade(ptrAddr, type->getSoulName());
 }
 
+bool CodeGen::typeCarriesCleanupLiability(
+    const std::shared_ptr<Type> &type, std::set<std::string> *active) {
+  if (!type)
+    return true;
+  if (type->isUniquePtr() || type->isSharedPtr() || type->isDynFn())
+    return true;
+  if (type->isRawPointer() || type->isReference() || type->isFunction() ||
+      type->isBoolean() || type->isInteger() || type->isFloatingPoint() ||
+      type->isUnit() || type->isVoid())
+    return false;
+  if (type->isArray())
+    return typeCarriesCleanupLiability(type->getArrayElementType(), active);
+  if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(type))
+    return typeCarriesCleanupLiability(outcome->PayloadType, active);
+  auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
+  if (!shape)
+    return false;
+  const std::string name = shape->Decl
+                               ? (shape->Decl->CodegenName.empty()
+                                      ? shape->Decl->Name
+                                      : shape->Decl->CodegenName)
+                               : shape->Name;
+  if (name == "str" || name == "bytes" || name == "cstr" ||
+      name == "ViewStrSplitIterator" || name == "ViewStrLinesIterator")
+    return false;
+  if (name == "string" || name == "Bytes")
+    return true;
+  if (!shape->Decl)
+    return true;
+  std::set<std::string> localActive;
+  if (!active)
+    active = &localActive;
+  if (!active->insert(name).second)
+    return false;
+  if (shape->Decl->HasExplicitDrop) {
+    active->erase(name);
+    return true;
+  }
+  for (const auto &member : shape->Decl->Members) {
+    if (member.ResolvedType &&
+        typeCarriesCleanupLiability(member.ResolvedType, active)) {
+      active->erase(name);
+      return true;
+    }
+  }
+  active->erase(name);
+  return false;
+}
+
+bool CodeGen::isCallTransferSourcePlace(const Expr *expr) const {
+  while (expr) {
+    if (auto *cede = dynamic_cast<const CedeExpr *>(expr))
+      expr = cede->Value.get();
+    else if (auto *cast = dynamic_cast<const CastExpr *>(expr))
+      expr = cast->Expression.get();
+    else if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr);
+             postfix &&
+             (postfix->Op == TokenType::TokenWrite ||
+              postfix->Op == TokenType::TokenNull ||
+              postfix->Op == TokenType::TokenNone))
+      expr = postfix->LHS.get();
+    else if (auto *unary = dynamic_cast<const UnaryExpr *>(expr);
+             unary &&
+             (unary->Op == TokenType::Caret ||
+              unary->Op == TokenType::Tilde ||
+              unary->Op == TokenType::Star ||
+              unary->Op == TokenType::MorphicIdentity))
+      expr = unary->RHS.get();
+    else
+      break;
+  }
+  return dynamic_cast<const VariableExpr *>(expr) ||
+         dynamic_cast<const MemberExpr *>(expr) ||
+         dynamic_cast<const ArrayIndexExpr *>(expr) ||
+         dynamic_cast<const DereferenceExpr *>(expr);
+}
+
 void CodeGen::emitDropForTypeWithMask(
     llvm::Value *ptrAddr, const std::shared_ptr<Type> &type,
     llvm::Value *dropMaskAddr) {

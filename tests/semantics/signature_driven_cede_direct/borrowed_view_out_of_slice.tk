@@ -9,5 +9,5 @@ fn main() -> i32 {
     auto owned = string::from("view")
     auto view = owned.as_str()
     auto length = consume(view)
-    return length as i32
+    return (length as i32) - 4:i32
 }

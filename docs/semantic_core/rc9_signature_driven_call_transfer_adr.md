@@ -23,6 +23,14 @@ an owning bare closure transfers by its resolved formal under the RC9 default.
 Async method/static/callable batches and lazy generic-static calls also reuse
 the same final elaboration path.
 
+Post-activation closure additionally qualifies multi-argument indirect
+`fn`/`dyn fn`, borrowed-view `CopyIdentity + KeepLive`, and mixed
+explicit/bare ordinary-call rejection. Explicit invalidations are preflighted
+before evaluation and rejected calls restore their Sema/PAL snapshot. CodeGen
+diagnostic `E0761` independently rejects a cleanup-liable named argument that
+reaches lowering without the required `CedeExpr` elaboration; Copy, borrowed
+identity, and source-less temporary cases remain valid without that wrapper.
+
 Qualified all-bare multi-argument routes first check every actual and all
 pairwise PAL relations, then elaborate all non-Copy transfers together. A type,
 borrow, alias, or place-admission failure leaves every planned source live.
@@ -249,7 +257,9 @@ satisfies all of the following:
 - cede obligation evidence v2 and the implicit-call-move lint are available;
 - all existing callee-consumption, cede-return, callable-receiver, partial-
   move, async cancellation, and cleanup suites pass; and
-- the full RC9 cold and hosted qualification gates pass.
+- local cold builds and the supported target qualification selected for the
+  release pass. A four-target hosted report is optional release-pipeline
+  evidence, not a semantic activation prerequisite.
 
 `E04570`/`E04509` no longer enforce caller spelling inside the qualified
 signature-driven domains. Those domains elaborate a

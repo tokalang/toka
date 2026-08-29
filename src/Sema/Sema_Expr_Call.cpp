@@ -604,6 +604,25 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
   if (!sameTransferValueType())
     return false;
 
+  Expr *source = d3UnwrapSourceExpr(argument.get());
+  const bool wholeTemporary =
+      source && !dynamic_cast<MemberExpr *>(source) &&
+      !dynamic_cast<ArrayIndexExpr *>(source) &&
+      !dynamic_cast<DereferenceExpr *>(source) && !makeAccessPath(source);
+  const ValueOwnership temporaryOwnership = argumentType->valueOwnership(this);
+  if (wholeTemporary &&
+      (temporaryOwnership == ValueOwnership::Owned ||
+       temporaryOwnership == ValueOwnership::SharedHandle)) {
+    if (!commit)
+      return true;
+    auto implicit = std::make_unique<CedeExpr>(std::move(argument));
+    implicit->Loc = implicit->Value->Loc;
+    implicit->ResolvedType = argumentType;
+    implicit->IsImplicitCallTransfer = true;
+    argument = std::move(implicit);
+    return true;
+  }
+
   const D3TypeCategory category = classifyD3TypeCategory(argumentType);
   auto owningClosurePlace = [&]() {
     if (!argumentType->isFunction() && !argumentType->isDynFn())
@@ -631,11 +650,11 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
   }();
   if (!owningClosurePlace &&
       ((category != D3TypeCategory::Aggregate &&
-        category != D3TypeCategory::OwnedIdentity) ||
+        category != D3TypeCategory::OwnedIdentity &&
+        category != D3TypeCategory::SharedIdentity) ||
        lookupD3CopyProof(argumentType) != D3CopyProof::ProvenNonCopy))
     return false;
 
-  Expr *source = d3UnwrapSourceExpr(argument.get());
   const bool projection = dynamic_cast<MemberExpr *>(source) ||
                           dynamic_cast<ArrayIndexExpr *>(source);
   if (projection) {
@@ -685,12 +704,6 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
         invalidate = admitted;
       }
     }
-  } else if (source && !dynamic_cast<MemberExpr *>(source) &&
-             !dynamic_cast<ArrayIndexExpr *>(source) &&
-             !dynamic_cast<DereferenceExpr *>(source) &&
-             !makeAccessPath(source) &&
-             !d3ExpressionContainsEvaluatedCall(source)) {
-    admitted = true;
   }
 
   if (!admitted)
@@ -2054,7 +2067,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           unsigned formalIndex, CallTransferRoute route, bool isAsync,
           bool plannedImplicit) {
         const bool isExempt =
-            param.IsCeded && canImplicitlyPassToCede(argumentType);
+            param.IsCeded &&
+            (canImplicitlyPassToCede(argumentType) ||
+             canPreserveBareSignatureCede(argumentType));
         recordShadowCallTransfer(
             Call, Call->ShadowArgumentTransfers,
             static_cast<unsigned>(argumentIndex + 1), formalIndex, argument,
@@ -3569,23 +3584,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   auto checkIndirectCedeArgument =
       [&](size_t argumentIndex, const std::shared_ptr<Type> &argumentType,
-          const std::shared_ptr<Type> &expectedType) {
+          const std::shared_ptr<Type> &expectedType, bool plannedImplicit) {
         if (!expectedType || !expectedType->IsCede)
           return;
 
-        const bool routeEligible =
-            m_EnableSignatureDrivenCallCede && Call->Args.size() == 1 &&
-            argumentIndex == 0 && symPtr && sym.TypeObj &&
-            !m_IsPrecomputingCaptures &&
-            m_D3SpeculativeCallDepth == 0 && CurrentModule &&
-            !CurrentModule->IsInterface;
-        if (routeEligible)
-          elaborateSignatureDrivenCedeArgument(
-              Call->Args[argumentIndex], argumentType, expectedType);
-
         const bool callerCeded =
-            dynamic_cast<CedeExpr *>(Call->Args[argumentIndex].get()) != nullptr;
-        const bool exempt = canImplicitlyPassToCede(argumentType);
+            dynamic_cast<CedeExpr *>(Call->Args[argumentIndex].get()) !=
+                nullptr ||
+            plannedImplicit;
+        const bool exempt = canImplicitlyPassToCede(argumentType) ||
+                            canPreserveBareSignatureCede(argumentType);
         if (!callerCeded && !exempt)
           error(Call->Args[argumentIndex].get(),
                 DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2);
@@ -3613,141 +3621,158 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             evidenceV2.Spelling, evidenceV2.Transfer, evidenceV2.Source);
       };
 
+  auto checkIndirectCall =
+      [&](const std::vector<std::shared_ptr<Type>> &parameterTypes,
+          const std::shared_ptr<Type> &returnType,
+          CallTransferRoute route) -> std::shared_ptr<Type> {
+    if (Call->Args.size() != parameterTypes.size()) {
+      error(Call, DiagID::ERR_SEMA_CLOSURE_EXPECTS_ARGUMENTS_BUT_GOT,
+            std::to_string(parameterTypes.size()),
+            std::to_string(Call->Args.size()));
+      return resolveType(returnType, false);
+    }
+
+    const bool signatureIndirectSlice =
+        m_EnableSignatureDrivenCallCede && !Call->Args.empty() && symPtr &&
+        sym.TypeObj && !m_IsPrecomputingCaptures &&
+        m_D3SpeculativeCallDepth == 0 && CurrentModule &&
+        !CurrentModule->IsInterface &&
+        std::none_of(Call->Args.begin(), Call->Args.end(),
+                     [](const auto &argument) {
+                       return dynamic_cast<CedeExpr *>(argument.get()) !=
+                              nullptr;
+                     });
+    struct PendingIndirectCede {
+      size_t Index = 0;
+      std::shared_ptr<Type> ArgumentType;
+      std::shared_ptr<Type> FormalType;
+    };
+    std::vector<PendingIndirectCede> pending;
+    std::vector<bool> planned(Call->Args.size(), false);
+    std::vector<std::pair<AccessPath, size_t>> paths;
+    const size_t diagnosticStart = DiagnosticEngine::records().size();
+
+    for (size_t i = 0; i < Call->Args.size(); ++i) {
+      Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
+      auto expectedTy = resolveType(parameterTypes[i], false);
+      bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
+      m_AllowPermissionSuffix =
+          hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
+      auto argTy = checkArgumentWithHandleCapture(
+          Call->Args[i].get(), expectedTy,
+          expectedTy && expectedTy->isUniquePtr(),
+          expectedTy && expectedTy->IsCede);
+      m_AllowPermissionSuffix = oldAllowPermissionSuffix;
+
+      if (signatureIndirectSlice && expectedTy && expectedTy->IsCede &&
+          elaborateSignatureDrivenCedeArgument(
+              Call->Args[i], argTy, expectedTy, false)) {
+        planned[i] = true;
+        pending.push_back({i, argTy, expectedTy});
+      }
+      AccessPath path =
+          canonicalizeAccessPath(makeAccessPath(Call->Args[i].get()));
+      if (path)
+        paths.push_back({path, i});
+
+      checkIndirectCedeArgument(i, argTy, expectedTy, planned[i]);
+      const bool cedeExempt =
+          expectedTy && expectedTy->IsCede &&
+          (canImplicitlyPassToCede(argTy) ||
+           canPreserveBareSignatureCede(argTy));
+      recordShadowCallTransfer(
+          Call, Call->ShadowArgumentTransfers,
+          static_cast<unsigned>(i + 1), static_cast<unsigned>(i + 1),
+          Call->Args[i].get(), argTy, expectedTy,
+          expectedTy && expectedTy->IsCede, false, Call->isInitArgument(i),
+          false, cedeExempt, route, CallName,
+          "arg" + std::to_string(i + 1), SourceLocation{}, false);
+
+      AccessCapability declaredCapability =
+          getAccessCapability(Call->Args[i].get(), true);
+      AccessCapability argCapability =
+          getAccessCapability(Call->Args[i].get());
+      AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
+      const bool paramIsHatted =
+          expectedTy->isPointer() || expectedTy->isSmartPointer() ||
+          expectedTy->isReference();
+      const bool paramNeedsPayload =
+          paramIsHatted
+              ? (expectedTy->getPointeeType() &&
+                 expectedTy->getPointeeType()->IsWritable)
+              : expectedTy->IsWritable;
+      const bool lacksHandleCapability =
+          paramIsHatted && expectedTy->IsWritable &&
+          (!declaredCapability.HandleRebindable ||
+           !argCapability.HandleRebindable || !argIntent.HandleRebind);
+      const bool lacksPayloadCapability =
+          paramNeedsPayload &&
+          (!declaredCapability.PayloadWritable ||
+           !argCapability.PayloadWritable || !argIntent.PayloadWrite);
+      if (lacksHandleCapability || lacksPayloadCapability) {
+        error(Call->Args[i].get(),
+              DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
+              std::to_string(i + 1), expectedTy->getSoulName(),
+              argTy->getSoulName());
+      }
+      validateCallArgumentMutSigil(Call->Args[i].get(), paramNeedsPayload, "",
+                                   SourceLocation(), Call->Loc, i);
+      if (!isTypeCompatible(parameterTypes[i], argTy)) {
+        DiagnosticEngine::report(
+            getLoc(Call->Args[i].get()), DiagID::ERR_TYPE_MISMATCH,
+            "Argument " + std::to_string(i + 1),
+            parameterTypes[i]->getSoulName(), argTy->getSoulName());
+        HasError = true;
+      }
+    }
+
+    for (size_t left = 0; left < paths.size(); ++left) {
+      for (size_t right = left + 1; right < paths.size(); ++right) {
+        const auto &[leftPath, leftIndex] = paths[left];
+        const auto &[rightPath, rightIndex] = paths[right];
+        if (!PALCheckerState.pathsOverlap(leftPath, rightPath) ||
+            (!planned[leftIndex] && !planned[rightIndex]))
+          continue;
+        error(Call->Args[rightIndex].get(),
+              DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
+              rightPath.toLegacyString(), leftPath.toLegacyString());
+      }
+    }
+    for (const auto &entry : pending) {
+      AccessPath path = canonicalizeAccessPath(
+          makeAccessPath(Call->Args[entry.Index].get()));
+      if (path) {
+        if (auto conflict = PALCheckerState.verifyInvalidation(path))
+          error(Call->Args[entry.Index].get(), DiagID::ERR_MOVE_BORROWED,
+                conflict->displayPath());
+      }
+    }
+    if (!pending.empty()) {
+      const auto &records = DiagnosticEngine::records();
+      const bool hasError =
+          std::any_of(records.begin() +
+                          std::min(diagnosticStart, records.size()),
+                      records.end(), [](const auto &record) {
+                        return record.Level == DiagLevel::Error;
+                      });
+      if (!hasError) {
+        for (const auto &entry : pending)
+          elaborateSignatureDrivenCedeArgument(
+              Call->Args[entry.Index], entry.ArgumentType, entry.FormalType);
+      }
+    }
+    return resolveType(returnType, false);
+  };
+
   if (!Fn && !Ext && !Sh) {
     if (sym.TypeObj && sym.TypeObj->typeKind == toka::Type::Function) {
       auto fnTy = std::dynamic_pointer_cast<toka::FunctionType>(sym.TypeObj);
-      if (Call->Args.size() != fnTy->ParamTypes.size()) {
-         error(Call, DiagID::ERR_SEMA_CLOSURE_EXPECTS_ARGUMENTS_BUT_GOT, std::to_string(fnTy->ParamTypes.size()), std::to_string(Call->Args.size()));
-      } else {
-          for (size_t i = 0; i < Call->Args.size(); ++i) {
-            Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
-            auto expectedTy = resolveType(fnTy->ParamTypes[i], false);
-            bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
-            m_AllowPermissionSuffix =
-                hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
-            auto argTy = checkArgumentWithHandleCapture(
-                Call->Args[i].get(), expectedTy,
-                expectedTy && expectedTy->isUniquePtr(),
-                expectedTy && expectedTy->IsCede);
-            m_AllowPermissionSuffix = oldAllowPermissionSuffix;
-            checkIndirectCedeArgument(i, argTy, expectedTy);
-            const bool legacyCedeExempt =
-                expectedTy && expectedTy->IsCede &&
-                canImplicitlyPassToCede(argTy);
-            recordShadowCallTransfer(
-                Call, Call->ShadowArgumentTransfers,
-                static_cast<unsigned>(i + 1),
-                static_cast<unsigned>(i + 1), Call->Args[i].get(), argTy,
-                expectedTy, expectedTy && expectedTy->IsCede, false,
-                Call->isInitArgument(i), false, legacyCedeExempt,
-                CallTransferRoute::IndirectFunction,
-                CallName, "arg" + std::to_string(i + 1), SourceLocation{},
-                false);
-            AccessCapability declaredCapability =
-                getAccessCapability(Call->Args[i].get(), true);
-            AccessCapability argCapability =
-                getAccessCapability(Call->Args[i].get());
-            AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
-            const bool paramIsHatted =
-                expectedTy->isPointer() || expectedTy->isSmartPointer() ||
-                expectedTy->isReference();
-            const bool paramNeedsPayload =
-                paramIsHatted
-                    ? (expectedTy->getPointeeType() &&
-                       expectedTy->getPointeeType()->IsWritable)
-                    : expectedTy->IsWritable;
-            const bool lacksHandleCapability =
-                paramIsHatted && expectedTy->IsWritable &&
-                (!declaredCapability.HandleRebindable ||
-                 !argCapability.HandleRebindable ||
-                 !argIntent.HandleRebind);
-            const bool lacksPayloadCapability =
-                paramNeedsPayload &&
-                (!declaredCapability.PayloadWritable ||
-                 !argCapability.PayloadWritable || !argIntent.PayloadWrite);
-            if (lacksHandleCapability || lacksPayloadCapability) {
-                error(Call->Args[i].get(),
-                      DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
-                      std::to_string(i + 1), expectedTy->getSoulName(),
-                      argTy->getSoulName());
-            }
-            validateCallArgumentMutSigil(Call->Args[i].get(), paramNeedsPayload,
-                                         "", SourceLocation(), Call->Loc, i);
-            if (!isTypeCompatible(fnTy->ParamTypes[i], argTy)) {
-                DiagnosticEngine::report(getLoc(Call->Args[i].get()), DiagID::ERR_TYPE_MISMATCH,
-                                         "Argument " + std::to_string(i + 1), fnTy->ParamTypes[i]->getSoulName(), argTy->getSoulName());
-                HasError = true;
-            }
-         }
-      }
-      return resolveType(fnTy->ReturnType, false);
+      return checkIndirectCall(fnTy->ParamTypes, fnTy->ReturnType,
+                               CallTransferRoute::IndirectFunction);
     } else if (sym.TypeObj && sym.TypeObj->typeKind == toka::Type::DynFn) {
       auto fnTy = std::dynamic_pointer_cast<toka::DynFnType>(sym.TypeObj);
-      if (Call->Args.size() != fnTy->ParamTypes.size()) {
-         error(Call, DiagID::ERR_SEMA_CLOSURE_EXPECTS_ARGUMENTS_BUT_GOT, std::to_string(fnTy->ParamTypes.size()), std::to_string(Call->Args.size()));
-      } else {
-         for (size_t i = 0; i < Call->Args.size(); ++i) {
-            Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
-            auto expectedTy = resolveType(fnTy->ParamTypes[i], false);
-            bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
-            m_AllowPermissionSuffix =
-                hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
-            auto argTy = checkArgumentWithHandleCapture(
-                Call->Args[i].get(), expectedTy,
-                expectedTy && expectedTy->isUniquePtr(),
-                expectedTy && expectedTy->IsCede);
-            m_AllowPermissionSuffix = oldAllowPermissionSuffix;
-            checkIndirectCedeArgument(i, argTy, expectedTy);
-            const bool legacyCedeExempt =
-                expectedTy && expectedTy->IsCede &&
-                canImplicitlyPassToCede(argTy);
-            recordShadowCallTransfer(
-                Call, Call->ShadowArgumentTransfers,
-                static_cast<unsigned>(i + 1),
-                static_cast<unsigned>(i + 1), Call->Args[i].get(), argTy,
-                expectedTy, expectedTy && expectedTy->IsCede, false,
-                Call->isInitArgument(i), false, legacyCedeExempt,
-                CallTransferRoute::IndirectDynFunction,
-                CallName, "arg" + std::to_string(i + 1), SourceLocation{},
-                false);
-            AccessCapability declaredCapability =
-                getAccessCapability(Call->Args[i].get(), true);
-            AccessCapability argCapability =
-                getAccessCapability(Call->Args[i].get());
-            AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
-            const bool paramIsHatted =
-                expectedTy->isPointer() || expectedTy->isSmartPointer() ||
-                expectedTy->isReference();
-            const bool paramNeedsPayload =
-                paramIsHatted
-                    ? (expectedTy->getPointeeType() &&
-                       expectedTy->getPointeeType()->IsWritable)
-                    : expectedTy->IsWritable;
-            const bool lacksHandleCapability =
-                paramIsHatted && expectedTy->IsWritable &&
-                (!declaredCapability.HandleRebindable ||
-                 !argCapability.HandleRebindable ||
-                 !argIntent.HandleRebind);
-            const bool lacksPayloadCapability =
-                paramNeedsPayload &&
-                (!declaredCapability.PayloadWritable ||
-                 !argCapability.PayloadWritable || !argIntent.PayloadWrite);
-            if (lacksHandleCapability || lacksPayloadCapability) {
-                error(Call->Args[i].get(),
-                      DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
-                      std::to_string(i + 1), expectedTy->getSoulName(),
-                      argTy->getSoulName());
-            }
-            validateCallArgumentMutSigil(Call->Args[i].get(), paramNeedsPayload,
-                                         "", SourceLocation(), Call->Loc, i);
-            if (!isTypeCompatible(fnTy->ParamTypes[i], argTy)) {
-                DiagnosticEngine::report(getLoc(Call->Args[i].get()), DiagID::ERR_TYPE_MISMATCH,
-                                         "Argument " + std::to_string(i + 1), fnTy->ParamTypes[i]->getSoulName(), argTy->getSoulName());
-                HasError = true;
-            }
-         }
-      }
-      return resolveType(fnTy->ReturnType, false);
+      return checkIndirectCall(fnTy->ParamTypes, fnTy->ReturnType,
+                               CallTransferRoute::IndirectDynFunction);
     }
 
     if (CallName != "unknown") {
@@ -4709,6 +4734,71 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
   }
 
+  std::optional<AnalysisState> explicitMultiArgumentState;
+  size_t explicitMultiDiagnosticStart = 0;
+  const bool hasExplicitMultiTransfer =
+      m_EnableSignatureDrivenCallCede && Call->Args.size() > 1 &&
+      std::any_of(Call->Args.begin(), Call->Args.end(), [](const auto &arg) {
+        return dynamic_cast<CedeExpr *>(arg.get()) != nullptr;
+      });
+  if (hasExplicitMultiTransfer) {
+    explicitMultiArgumentState = captureAnalysisState();
+    explicitMultiDiagnosticStart = DiagnosticEngine::records().size();
+    std::vector<AccessPath> paths(Call->Args.size());
+    std::vector<bool> invalidates(Call->Args.size(), false);
+    for (size_t index = 0; index < Call->Args.size(); ++index) {
+      paths[index] =
+          canonicalizeAccessPath(makeAccessPath(Call->Args[index].get()));
+      const bool formalCeded =
+          (Fn && index < Fn->Args.size() && Fn->Args[index].IsCeded) ||
+          (Ext && index < Ext->Args.size() && Ext->Args[index].IsCeded);
+      invalidates[index] =
+          formalCeded &&
+          dynamic_cast<CedeExpr *>(Call->Args[index].get()) != nullptr;
+      if (invalidates[index]) {
+        const std::string subject = getPathString(Call->Args[index].get());
+        const std::string parameter =
+            Fn && index < Fn->Args.size()
+                ? Fn->Args[index].Name
+                : (Ext && index < Ext->Args.size()
+                       ? Ext->Args[index].Name
+                       : "arg" + std::to_string(index + 1));
+        recordDecision(Call->Args[index].get(), SemanticRuleID::OwnCede001,
+                       SemanticOperation::CedeObligation,
+                       SemanticDecision::Allow, SemanticReason::CedeConsumed,
+                       subject, parameter);
+      }
+    }
+    for (size_t left = 0; left < paths.size(); ++left) {
+      for (size_t right = left + 1; right < paths.size(); ++right) {
+        if (!paths[left] || !paths[right] ||
+            (!invalidates[left] && !invalidates[right]) ||
+            !PALCheckerState.pathsOverlap(paths[left], paths[right]))
+          continue;
+        error(Call->Args[right].get(),
+              DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
+              paths[right].toLegacyString(), paths[left].toLegacyString());
+        PALConflict origin{paths[left], PathState::Free,
+                           getLoc(Call->Args[left].get())};
+        recordPALDecision(
+            Call->Args[right].get(), SemanticRuleID::PALCall001,
+            invalidates[right] ? PALOperationClass::Invalidation
+                               : PALOperationClass::SharedPayloadBorrow,
+            paths[right], origin, SemanticDecision::Reject,
+            SemanticReason::OverlappingExclusiveAccess, true);
+      }
+    }
+    const auto &records = DiagnosticEngine::records();
+    const bool preflightFailed =
+        std::any_of(records.begin() +
+                        std::min(explicitMultiDiagnosticStart, records.size()),
+                    records.end(), [](const auto &record) {
+                      return record.Level == DiagLevel::Error;
+                    });
+    if (preflightFailed)
+      return ReturnType;
+  }
+
   for (size_t i = 0; i < Call->Args.size(); ++i) {
     if (m_AuthorityFactsSession)
       observeAuthorityFacts(Call->Args[i].get());
@@ -5123,7 +5213,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                  isCallerCeded, paramName, cedeParamLoc);
     }
     bool legacyCedeExempt =
-        isCededParam && canImplicitlyPassToCede(argType);
+        isCededParam &&
+        (canImplicitlyPassToCede(argType) ||
+         canPreserveBareSignatureCede(argType));
     if (isCededParam && isOwningClosureArgument(Call->Args[i].get()))
       legacyCedeExempt = false;
     bool isCedeParamImplicitlyExempt = false;
@@ -5296,6 +5388,19 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         Call->Args[i]->ResolvedType = paramType;
       }
     }
+  }
+
+  if (explicitMultiArgumentState) {
+    const auto &records = DiagnosticEngine::records();
+    const bool rejected =
+        std::any_of(records.begin() +
+                        std::min(explicitMultiDiagnosticStart, records.size()),
+                    records.end(), [](const auto &record) {
+                      return record.Level == DiagLevel::Error;
+                    });
+    if (rejected)
+      mergeAnalysisStates({*explicitMultiArgumentState},
+                          explicitMultiArgumentState->PAL);
   }
 
   auto finalizeD3Observation = [&]() {

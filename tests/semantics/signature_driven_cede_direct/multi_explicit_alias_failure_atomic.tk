@@ -1,0 +1,15 @@
+import core/traits::{@Encap}
+
+shape Resource(value: i32)
+impl Resource@Encap { fn drop(self#) {} }
+
+fn consume_and_read(cede moved: Resource, borrowed: Resource) -> i32 {
+    auto owned = cede moved
+    return owned.value + borrowed.value
+}
+
+fn main() -> i32 {
+    auto source = Resource(value = 1:i32)
+    auto ignored = consume_and_read(cede source, source)
+    return source.value + ignored
+}

@@ -57,6 +57,8 @@ def main():
         ("multi_alias_failure_atomic.tk", "E0475"),
         ("multi_borrow_failure_atomic.tk", "E0475"),
         ("multi_ineligible_failure_atomic.tk", "E04570"),
+        ("multi_explicit_alias_failure_atomic.tk", "E0475"),
+        ("multi_explicit_type_failure_atomic.tk", "E04571"),
     )
     for fixture, diagnostic in failures:
         failed = run([str(tokac), "--check-only",

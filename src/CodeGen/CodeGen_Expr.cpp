@@ -5620,6 +5620,17 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                 argVals.push_back(envPtr);
                 
                 for (size_t i = 0; i < call->Args.size(); ++i) {
+                    if (i < paramTypes.size() && paramTypes[i] &&
+                        paramTypes[i]->IsCede &&
+                        !dynamic_cast<const CedeExpr *>(call->Args[i].get()) &&
+                        isCallTransferSourcePlace(call->Args[i].get()) &&
+                        typeCarriesCleanupLiability(
+                            call->Args[i]->ResolvedType)) {
+                      error(call->Args[i].get(),
+                            DiagID::ERR_CODEGEN_MISSING_CALL_TRANSFER_ELABORATION,
+                            std::to_string(i + 1), call->Callee);
+                      return nullptr;
+                    }
                     llvm::Value *av = genExpr(call->Args[i].get()).load(m_Builder);
                     llvm::Type *expectedTy = getLLVMType(paramTypes[i]);
                     
@@ -5807,6 +5818,18 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   for (size_t i = 0; i < call->Args.size(); ++i) {
     const auto *cededArg =
         dynamic_cast<const CedeExpr *>(call->Args[i].get());
+    const bool formalCeded =
+        (funcDecl && i < funcDecl->Args.size() &&
+         funcDecl->Args[i].IsCeded) ||
+        (extDecl && i < extDecl->Args.size() && extDecl->Args[i].IsCeded);
+    if (formalCeded && !cededArg &&
+        isCallTransferSourcePlace(call->Args[i].get()) &&
+        typeCarriesCleanupLiability(call->Args[i]->ResolvedType)) {
+      error(call->Args[i].get(),
+            DiagID::ERR_CODEGEN_MISSING_CALL_TRANSFER_ELABORATION,
+            std::to_string(i + 1), call->Callee);
+      return nullptr;
+    }
     bool isRef = false;
     bool isInit = false;
     if (funcDecl && i < funcDecl->Args.size()) {

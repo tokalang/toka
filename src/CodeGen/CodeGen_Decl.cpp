@@ -2772,13 +2772,22 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
 
         for (size_t index = 0; index < expr->Args.size(); ++index) {
           const auto &arg = expr->Args[index];
-          llvm::Value *av = genExpr(arg.get()).load(m_Builder);
-          if (!av)
-            return nullptr;
           const FunctionDecl::Arg *formal =
               methodDecl && index + 1 < methodDecl->Args.size()
                   ? &methodDecl->Args[index + 1]
                   : nullptr;
+          if (formal && formal->IsCeded &&
+              !dynamic_cast<const CedeExpr *>(arg.get()) &&
+              isCallTransferSourcePlace(arg.get()) &&
+              typeCarriesCleanupLiability(arg->ResolvedType)) {
+            error(arg.get(),
+                  DiagID::ERR_CODEGEN_MISSING_CALL_TRANSFER_ELABORATION,
+                  std::to_string(index + 1), expr->Method);
+            return nullptr;
+          }
+          llvm::Value *av = genExpr(arg.get()).load(m_Builder);
+          if (!av)
+            return nullptr;
           auto formalType =
               formal
                   ? (formal->ResolvedType
@@ -3068,6 +3077,15 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     bool isCaptured = false;
     size_t targetArgIdx = isStatic ? i : (i + 1);
     size_t llvmArgIdx = targetArgIdx + (isSRet ? 1 : 0);
+    if (fd && targetArgIdx < fd->Args.size() &&
+        fd->Args[targetArgIdx].IsCeded && !cededArg &&
+        isCallTransferSourcePlace(expr->Args[i].get()) &&
+        typeCarriesCleanupLiability(expr->Args[i]->ResolvedType)) {
+      error(expr->Args[i].get(),
+            DiagID::ERR_CODEGEN_MISSING_CALL_TRANSFER_ELABORATION,
+            std::to_string(i + 1), expr->Method);
+      return nullptr;
+    }
     // Arg i maps to fd->Args[targetArgIdx]
     if (fd && targetArgIdx < fd->Args.size()) {
       const auto &arg = fd->Args[targetArgIdx];

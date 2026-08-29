@@ -383,6 +383,7 @@ public:
   // [NEW] Trait  // Concurrency type bounds
   bool hasDrop(const std::string &shapeName);
   bool canImplicitlyPassToCede(std::shared_ptr<toka::Type> Ty);
+  bool canPreserveBareSignatureCede(std::shared_ptr<toka::Type> Ty);
   bool isStartBoundaryScalar(std::shared_ptr<toka::Type> Ty) const;
   void checkStartBoundaryArgument(ASTNode *Node,
                                   std::shared_ptr<toka::Type> Ty,
