@@ -1,0 +1,23 @@
+import core/traits::{@Encap}
+
+shape Resource(value: i32)
+shape Consumer()
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+impl Consumer {
+    fn combine(self, cede left: Resource, cede right: Resource) -> i32 {
+        auto moved_left = cede left
+        auto moved_right = cede right
+        return moved_left.value + moved_right.value
+    }
+}
+
+fn main() -> i32 {
+    auto consumer = Consumer()
+    auto source = Resource(value = 1:i32)
+    auto ignored = consumer.combine(source, source)
+    return source.value
+}

@@ -75,8 +75,12 @@ def main():
             "E04570" not in borrowed.stderr,
             "implicit transfer bypassed an active PAL loan")
 
-    for fixture, diagnostic in (("projection_out_of_slice.tk", "E04570"),
-                                ("borrowed_view_out_of_slice.tk", "E04570")):
+    projection = run([str(tokac), FLAG, "--check-only",
+                      str(FIXTURES / "projection_out_of_slice.tk")])
+    require(projection.returncode == 0 and "E04570" not in projection.stderr,
+            "qualified direct-field projection remained out of slice")
+
+    for fixture, diagnostic in (("borrowed_view_out_of_slice.tk", "E04570"),):
         excluded = run([str(tokac), FLAG, "--check-only",
                         str(FIXTURES / fixture)])
         require(excluded.returncode != 0 and diagnostic in excluded.stderr,

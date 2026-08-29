@@ -67,11 +67,10 @@ def main():
                 "E04509" not in moved.stderr and "E04570" not in moved.stderr,
                 f"implicit route did not invalidate its source: {fixture}")
 
-    for fixture in ("method_multi_arg_out_of_slice.tk",):
-        excluded = run([str(tokac), FLAG, "--check-only",
-                        str(FIXTURES / fixture)])
-        require(excluded.returncode != 0 and "E04509" in excluded.stderr,
-                f"out-of-slice method was activated: {fixture}")
+    multi = run([str(tokac), FLAG, "--check-only",
+                 str(FIXTURES / "method_multi_arg_out_of_slice.tk")])
+    require(multi.returncode == 0 and "E04509" not in multi.stderr,
+            "qualified multi-argument method remained out of slice")
 
     print("Signature-driven method/static cede tests PASSED")
     return 0

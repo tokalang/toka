@@ -1,0 +1,18 @@
+import core/traits::{@Encap}
+
+shape Token(value: i32)
+
+impl Token@Encap {
+    fn drop(self#) {}
+}
+
+fn consume(cede value: Token) -> i32 {
+    auto moved = cede value
+    return moved.value
+}
+
+fn main() -> i32 {
+    auto values = [Token(value = 7:i32); 2]:[Token; 2]
+    auto first = consume(values[0])
+    return first + values[0].value
+}

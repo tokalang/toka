@@ -1,0 +1,27 @@
+shape Cell(value: i32)
+shape Resource(^cell: Cell)
+shape Consumer()
+
+trait @Sink {
+    fn combine(self, cede left: Resource, cede right: Resource) -> i32
+}
+
+impl Consumer@Sink {
+    fn combine(self, cede left: Resource, cede right: Resource) -> i32 {
+        auto moved_left = cede left
+        auto moved_right = cede right
+        return moved_left.cell.value + moved_right.cell.value
+    }
+}
+
+fn invoke(sink: dyn @Sink, cede left: Resource,
+          cede right: Resource) -> i32 {
+    return sink.combine(left, right)
+}
+
+fn main() -> i32 {
+    auto sink = Consumer()
+    auto left = Resource(^cell = new Cell(value = 7:i32))
+    auto right = Resource(^cell = new Cell(value = 11:i32))
+    return invoke(sink, left, right) - 18:i32
+}

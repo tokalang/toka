@@ -1,0 +1,9 @@
+shape Cell(value: i32)
+
+extern fn toka_take_two_cells(cede ^left: Cell, cede ^right: Cell) -> i32
+
+fn main() -> i32 {
+    auto ^left = new Cell(value = 7:i32)
+    auto ^right = new Cell(value = 11:i32)
+    return toka_take_two_cells(^left, ^right) - 18:i32
+}

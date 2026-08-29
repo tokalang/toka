@@ -1,0 +1,18 @@
+shape Cell(value: i32)
+shape Resource(^cell: Cell)
+shape Consumer()
+
+impl Consumer {
+    fn combine(self, cede left: Resource, cede right: Resource) -> i32 {
+        auto moved_left = cede left
+        auto moved_right = cede right
+        return moved_left.cell.value + moved_right.cell.value
+    }
+}
+
+fn main() -> i32 {
+    auto consumer = Consumer()
+    auto left = Resource(^cell = new Cell(value = 7:i32))
+    auto right = Resource(^cell = new Cell(value = 11:i32))
+    return consumer.combine(left, right) - 18:i32
+}

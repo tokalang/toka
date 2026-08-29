@@ -4272,6 +4272,144 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                       "trait " + traitName, getModuleName(CurrentModule));
               }
             }
+            if (m_EnableSignatureDrivenCallCede) {
+              const size_t expectedArgs = M->Args.empty() ? 0 : M->Args.size() - 1;
+              if (Met->Args.size() != expectedArgs && !M->IsVariadic)
+                error(Met,
+                      DiagID::ERR_SEMA_METHOD_EXPECTS_AT_LEAST_ARGUMENTS_GOT,
+                      Met->Method, std::to_string(expectedArgs),
+                      std::to_string(Met->Args.size()));
+              bool dynamicFormalsEligible = expectedArgs > 0;
+              for (size_t index = 1; index < M->Args.size(); ++index) {
+                const auto &formal = M->Args[index];
+                if (formal.DefaultValue || formal.IsInit ||
+                    formal.IsRebindable || formal.IsValueMutable) {
+                  dynamicFormalsEligible = false;
+                  break;
+                }
+              }
+              const bool signatureDynamicSlice =
+                  Met->Args.size() == expectedArgs &&
+                  !M->IsVariadic && M->Effect == EffectKind::None &&
+                  !M->ResolvedOutcomeTransition && M->LifeDependencies.empty() &&
+                  M->MemberDependencies.empty() && dynamicFormalsEligible &&
+                  std::none_of(Met->Args.begin(), Met->Args.end(),
+                               [](const auto &argument) {
+                                 return dynamic_cast<CedeExpr *>(argument.get()) !=
+                                        nullptr;
+                               }) &&
+                  !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0;
+              struct PendingDynamicCede {
+                size_t Index = 0;
+                std::shared_ptr<Type> ArgumentType;
+                std::shared_ptr<Type> FormalType;
+              };
+              std::vector<PendingDynamicCede> pendingDynamicCedes;
+              std::vector<bool> plannedDynamicCede(Met->Args.size(), false);
+              std::vector<std::pair<AccessPath, size_t>> dynamicArgumentPaths;
+              const size_t dynamicDiagnosticStart =
+                  DiagnosticEngine::records().size();
+              for (size_t i = 0; i < Met->Args.size() && i < expectedArgs; ++i) {
+                Met->Args[i] = foldGenericConstant(std::move(Met->Args[i]));
+                const auto &param = M->Args[i + 1];
+                auto expectedTy =
+                    param.ResolvedType
+                        ? param.ResolvedType
+                        : resolveType(Sema::synthesizePhysicalTypeObject(param));
+                auto argTy = checkExpr(Met->Args[i].get(), expectedTy);
+                projectOwnedStringView(Met->Args[i], argTy, expectedTy);
+                if (signatureDynamicSlice && param.IsCeded) {
+                  if (Met->Args.size() == 1) {
+                    elaborateSignatureDrivenCedeArgument(Met->Args[i], argTy,
+                                                         expectedTy);
+                  } else if (elaborateSignatureDrivenCedeArgument(
+                                 Met->Args[i], argTy, expectedTy, false)) {
+                    plannedDynamicCede[i] = true;
+                    pendingDynamicCedes.push_back({i, argTy, expectedTy});
+                  }
+                }
+                AccessPath dynamicArgPath =
+                    canonicalizeAccessPath(makeAccessPath(Met->Args[i].get()));
+                if (dynamicArgPath)
+                  dynamicArgumentPaths.push_back({dynamicArgPath, i});
+                auto *callerCede =
+                    dynamic_cast<CedeExpr *>(Met->Args[i].get());
+                const bool cedeExempt =
+                    param.IsCeded && canImplicitlyPassToCede(argTy);
+                const bool callerCeded =
+                    callerCede != nullptr ||
+                    (i < plannedDynamicCede.size() && plannedDynamicCede[i]);
+                if (param.IsCeded && !callerCeded && !cedeExempt) {
+                  error(Met->Args[i].get(),
+                        DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_C);
+                  if (param.Loc.isValid())
+                    DiagnosticEngine::report(param.Loc, DiagID::NOTE_GENERIC,
+                                             "cede parameter declared here");
+                }
+                if (param.IsCeded) {
+                  const std::string subject =
+                      getPathString(Met->Args[i].get());
+                  const auto evidenceV2 =
+                      classifyCedeEvidenceV2(Met->Args[i].get(), argTy);
+                  recordDecision(
+                      Met->Args[i].get(), SemanticRuleID::OwnCede001,
+                      SemanticOperation::CedeObligation,
+                      (!callerCeded && !cedeExempt) ? SemanticDecision::Reject
+                                                   : SemanticDecision::Allow,
+                      (!callerCeded && !cedeExempt)
+                          ? SemanticReason::MissingExplicitCede
+                          : SemanticReason::CedeConsumed,
+                      subject, param.Name, param.Loc);
+                  SemanticEvidence::recordCedeObligation(
+                      CedeObligationStage::CallerTransfer,
+                      (!callerCeded && !cedeExempt)
+                          ? CedeObligationStatus::Violated
+                          : CedeObligationStatus::Fulfilled,
+                      (!callerCeded && !cedeExempt)
+                          ? SemanticReason::MissingExplicitCede
+                          : SemanticReason::CedeConsumed,
+                      subject, param.Name, getLoc(Met->Args[i].get()),
+                      param.Loc, evidenceV2.Spelling, evidenceV2.Transfer,
+                      evidenceV2.Source);
+                }
+                if (!isTypeCompatible(expectedTy, argTy))
+                  error(Met->Args[i].get(),
+                        DiagID::ERR_SEMA_TYPE_MISMATCH_IN_METHOD_ARGUMENT_EXPECTED,
+                        std::to_string(i + 1), expectedTy->toString(),
+                        argTy->toString());
+              }
+              for (size_t left = 0; left < dynamicArgumentPaths.size(); ++left) {
+                for (size_t right = left + 1;
+                     right < dynamicArgumentPaths.size(); ++right) {
+                  const auto &[leftPath, leftIndex] = dynamicArgumentPaths[left];
+                  const auto &[rightPath, rightIndex] =
+                      dynamicArgumentPaths[right];
+                  if (!PALCheckerState.pathsOverlap(leftPath, rightPath) ||
+                      (!plannedDynamicCede[leftIndex] &&
+                       !plannedDynamicCede[rightIndex]))
+                    continue;
+                  error(Met->Args[rightIndex].get(),
+                        DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
+                        rightPath.toLegacyString(), leftPath.toLegacyString());
+                }
+              }
+              if (!pendingDynamicCedes.empty()) {
+                const auto &records = DiagnosticEngine::records();
+                const bool dynamicHasError =
+                    std::any_of(records.begin() +
+                                    std::min(dynamicDiagnosticStart,
+                                             records.size()),
+                                records.end(), [](const auto &record) {
+                                  return record.Level == DiagLevel::Error;
+                                });
+                if (!dynamicHasError) {
+                  for (const auto &pending : pendingDynamicCedes)
+                    elaborateSignatureDrivenCedeArgument(
+                        Met->Args[pending.Index], pending.ArgumentType,
+                        pending.FormalType);
+                }
+              }
+            }
             if (SemanticEvidence::isCallTransferShadowEnabled()) {
               const size_t formalArgs = M->Args.empty() ? 0 : M->Args.size() - 1;
               for (size_t i = 0; i < Met->Args.size() && i < formalArgs; ++i) {
@@ -4678,16 +4816,38 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (FD) {
             size_t expectedArgs = FD->Args.size() - 1; // exclude self
             bool signatureDrivenMethodSlice = false;
-            if (m_EnableSignatureDrivenCallCede && Met->Args.size() == 1 &&
-                FD->Args.size() == 2 && !FD->Args[0].IsCeded &&
+            bool signatureMethodFormalsEligible = expectedArgs > 0;
+            for (size_t index = 1; index < FD->Args.size(); ++index) {
+              const auto &formal = FD->Args[index];
+              if (formal.DefaultValue || formal.IsInit || formal.IsRebindable ||
+                  formal.IsValueMutable) {
+                signatureMethodFormalsEligible = false;
+                break;
+              }
+            }
+            if (m_EnableSignatureDrivenCallCede &&
+                Met->Args.size() == expectedArgs && !FD->Args[0].IsCeded &&
                 !FD->IsVariadic && FD->Effect == EffectKind::None &&
                 !FD->ResolvedOutcomeTransition && FD->LifeDependencies.empty() &&
-                FD->MemberDependencies.empty() &&
-                !FD->Args[1].DefaultValue && !FD->Args[1].IsInit &&
-                !FD->Args[1].IsRebindable && !FD->Args[1].IsValueMutable &&
+                FD->MemberDependencies.empty() && signatureMethodFormalsEligible &&
+                std::none_of(Met->Args.begin(), Met->Args.end(),
+                             [](const auto &argument) {
+                               return dynamic_cast<CedeExpr *>(argument.get()) !=
+                                      nullptr;
+                             }) &&
                 !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0 &&
                 CurrentModule && !CurrentModule->IsInterface)
               signatureDrivenMethodSlice = true;
+            struct PendingMethodCede {
+              size_t Index = 0;
+              std::shared_ptr<Type> ArgumentType;
+              std::shared_ptr<Type> FormalType;
+            };
+            std::vector<PendingMethodCede> pendingMethodCedes;
+            std::vector<bool> plannedMethodCede(Met->Args.size(), false);
+            std::vector<std::pair<AccessPath, size_t>> methodArgumentPaths;
+            const size_t methodDiagnosticStart =
+                DiagnosticEngine::records().size();
             if (Met->Args.size() != expectedArgs && !FD->IsVariadic) {
                 // If variadic, handle appropriately
                 if (Met->Args.size() < expectedArgs) {
@@ -4725,11 +4885,21 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 projectOwnedStringView(Met->Args[i], argTy, expectedParamTy);
 
-                if (signatureDrivenMethodSlice && i == 0 &&
-                    FD->Args[1].IsCeded) {
-                  elaborateSignatureDrivenCedeArgument(
-                      Met->Args[i], argTy, expectedParamTy);
+                if (signatureDrivenMethodSlice && i < expectedArgs &&
+                    FD->Args[i + 1].IsCeded) {
+                  if (Met->Args.size() == 1) {
+                    elaborateSignatureDrivenCedeArgument(
+                        Met->Args[i], argTy, expectedParamTy);
+                  } else if (elaborateSignatureDrivenCedeArgument(
+                                 Met->Args[i], argTy, expectedParamTy, false)) {
+                    plannedMethodCede[i] = true;
+                    pendingMethodCedes.push_back({i, argTy, expectedParamTy});
+                  }
                 }
+                AccessPath methodArgPath =
+                    canonicalizeAccessPath(makeAccessPath(Met->Args[i].get()));
+                if (methodArgPath)
+                  methodArgumentPaths.push_back({methodArgPath, i});
 
                 bool legacyCedeExempt = false;
                 if (i < expectedArgs) {
@@ -4802,7 +4972,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 
                 if (expectedParamTy) {
                     if (FD->Args[i + 1].IsCeded) {
-                        bool isCallerCeded = dynamic_cast<CedeExpr*>(Met->Args[i].get()) != nullptr;
+                        bool isCallerCeded =
+                            dynamic_cast<CedeExpr *>(Met->Args[i].get()) != nullptr ||
+                            (i < plannedMethodCede.size() &&
+                             plannedMethodCede[i]);
                         bool isPrimitive = legacyCedeExempt;
                         if (!isCallerCeded && !isPrimitive) {
                             error(Met->Args[i].get(), DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_C);
@@ -4847,6 +5020,45 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                         }
                     }
                 }
+            }
+            for (size_t left = 0; left < methodArgumentPaths.size(); ++left) {
+              for (size_t right = left + 1; right < methodArgumentPaths.size();
+                   ++right) {
+                const auto &[leftPath, leftIndex] = methodArgumentPaths[left];
+                const auto &[rightPath, rightIndex] = methodArgumentPaths[right];
+                if (!PALCheckerState.pathsOverlap(leftPath, rightPath) ||
+                    (!plannedMethodCede[leftIndex] &&
+                     !plannedMethodCede[rightIndex]))
+                  continue;
+                error(Met->Args[rightIndex].get(),
+                      DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
+                      rightPath.toLegacyString(), leftPath.toLegacyString());
+              }
+            }
+            for (const auto &pending : pendingMethodCedes) {
+              AccessPath path = canonicalizeAccessPath(
+                  makeAccessPath(Met->Args[pending.Index].get()));
+              if (path) {
+                if (auto conflict = PALCheckerState.verifyInvalidation(path))
+                  error(Met->Args[pending.Index].get(),
+                        DiagID::ERR_MOVE_BORROWED,
+                        conflict->displayPath());
+              }
+            }
+            if (!pendingMethodCedes.empty()) {
+              const auto &records = DiagnosticEngine::records();
+              const bool methodHasError =
+                  std::any_of(records.begin() +
+                                  std::min(methodDiagnosticStart, records.size()),
+                              records.end(), [](const auto &record) {
+                                return record.Level == DiagLevel::Error;
+                              });
+              if (!methodHasError) {
+                for (const auto &pending : pendingMethodCedes)
+                  elaborateSignatureDrivenCedeArgument(
+                      Met->Args[pending.Index], pending.ArgumentType,
+                      pending.FormalType);
+              }
             }
         } else {
             // Unresolved method definition context (e.g. core/std method called locally but not parsed as FD).

@@ -1,0 +1,17 @@
+shape Cell(value: i32)
+shape Resource(^cell: Cell)
+shape Holder(item: Resource, marker: i32)
+
+fn consume(cede value: Resource) -> i32 {
+    auto moved = cede value
+    return moved.cell.value
+}
+
+fn main() -> i32 {
+    auto holder = Holder(
+        item = Resource(^cell = new Cell(value = 17:i32)),
+        marker = 5:i32
+    )
+    auto value = consume(holder.item)
+    return value + holder.marker - 22:i32
+}

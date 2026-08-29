@@ -2,19 +2,15 @@
 
 **Decision status:** Accepted for RC9.
 
-**Implementation status:** Partially implemented behind
-`--experimental-signature-driven-cede`. Qualified behavior-changing slices now
-cover source-backed, same-lexical ordinary direct calls and static calls with
-one resolved formal, plus the equivalent single-argument method route. Whole
-locals and whole temporaries are admitted. The same bounded behavior now covers
-source-backed user `@Callable` values, including qualified unique places, and
-local indirect `fn`/`dyn fn` values with one aggregate cede parameter. Indirect
-unique closure parameters remain outside this slice because closure ascription
-does not yet preserve that parameter morphology. Method `cede ^T` uses the same
-moved-handle value ABI as ordinary/static calls; both its explicit legacy form
-and implicit experimental form have native runtime qualification. The RC8
-caller-explicit policy remains the default until every activation gate in this
-ADR passes at one qualified revision.
+**Implementation status:** Activation candidate behind
+`--experimental-signature-driven-cede`. Qualified behavior-changing coverage
+includes ordinary/static/method/dynamic-trait calls, user `@Callable`, indirect
+`fn`/`dyn fn` including unique parameters, generic and source-hidden calls,
+async/`.start`, unique externs, direct-field/fixed-index partial transfer, and
+all-bare atomic batches for ordinary/method/static/callable/dynamic/extern
+routes. Whole locals, cede parameters, and whole temporaries are admitted. The
+RC8 caller-explicit policy remains the default until the remaining thread
+closure runtime gate passes.
 
 Resolved generic functions/methods and source-hidden `.tki` declarations now
 use the same final-call elaboration. Qualified async calls and `.start`, async
@@ -23,13 +19,12 @@ multi-argument handoff, unique extern parameters, and
 In experimental mode, capturing callable values passed to plain `thread_spawn`
 fail closed with `E04570` instead of using the legacy Copy exemption.
 
-Ordinary same-lexical direct calls also have a bounded all-bare
-multi-argument slice. Sema first checks every actual and all pairwise PAL
-relations, then elaborates all qualified non-Copy transfers together. A type,
+Qualified all-bare multi-argument routes first check every actual and all
+pairwise PAL relations, then elaborate all non-Copy transfers together. A type,
 borrow, alias, or place-admission failure leaves every planned source live.
 Calls containing explicit argument-level `cede`, mutable/rebindable formals,
-defaults, `init`, generic, async, outcome, or dependency contracts remain
-outside this multi-argument slice.
+defaults, `init`, outcome, or unresolved dependency contracts remain outside
+atomic implicit batching.
 
 **Baseline:** `v1.0.0-rc.8` /
 `997713f4828b43a5b82aa3363d99a37e9e6f2417`.
@@ -179,17 +174,21 @@ share this sequence:
 7. CodeGen executes the committed plan and fails closed if a liability-bearing
    edge has no plan.
 
-The current proposed implementation architecture for satisfying this sequence
-is
-[`RC9 M1b-D.3 Ordinary Direct-Call Vertical Slice`](rc9_m1b_d3_direct_call_vertical_slice.md).
-It retains the atomicity and immutable-plan requirements while rejecting the
-standalone synthetic semantic engine. M1a shadow vectors remain audit
-prototypes, not commit authority.
+The RC9 implementation deliberately uses no standalone transaction or transfer
+engine. Its single authority is the selected resolved formal plus the
+Sema-elaborated argument AST:
 
-The plan records logical behavior, not LLVM ABI or a required physical
-lowering. Equivalent implementations may use different slots, masks, loads,
-or calling conventions while preserving the same observable source state and
-drop liability.
+- implicit non-Copy moves and temporary consumption become a `CedeExpr` marked
+  `IsImplicitCallTransfer`;
+- implicit Copy keeps the original expression and source place live;
+- multi-argument routes retain only command-local pending qualifications until
+  all type/PAL checks pass, then elaborate the whole batch; and
+- CodeGen executes the elaborated AST through the same drop-suppression and
+  partial-move paths as explicit `cede`.
+
+Evidence v2 reads this elaborated result and the frozen Copy proof. M1a/D.3 and
+M1b.2a outputs remain non-authorizing audit artifacts and are not activation
+prerequisites.
 
 ## Evidence and tooling
 
@@ -216,11 +215,15 @@ The implicit-call-move compiler lint is available through
 implicit invalidating place moves, not Copy or temporary consumption. LSP
 inlay hints remain optional follow-on tooling and are not a safety proof.
 
-Default activation remains blocked by four concrete gaps: dynamic-trait method
-lowering does not yet share the typed argument ABI, indirect unique closure
-ascription does not preserve parameter morphology, implicit partial-projection
-transfer is not qualified, and all-bare atomic batching has not yet been
-extended from ordinary direct calls to every alternate route.
+Default activation is now blocked by two bounded gaps. First, plain
+`thread_spawn` uses a raw closure trampoline that frees its environment shell
+without proving exactly-once cleanup of non-Copy captures; experimental mode
+therefore keeps such named capturing closures on explicit `cede`, while
+`thread_spawn_with_state` is fully qualified. Second, async alternate methods,
+callables, and lazy generic-static multi-argument routes have not yet received
+the same batch qualification. Dynamic-trait aggregate ABI, indirect unique
+closure morphology, direct-field/fixed-index partial transfer, and synchronous
+ordinary/method/static/callable/dynamic/extern batching are qualified.
 
 ## Activation gates
 

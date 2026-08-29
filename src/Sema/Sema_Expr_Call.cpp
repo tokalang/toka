@@ -596,6 +596,24 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
     return false;
 
   Expr *source = d3UnwrapSourceExpr(argument.get());
+  const bool projection = dynamic_cast<MemberExpr *>(source) ||
+                          dynamic_cast<ArrayIndexExpr *>(source);
+  if (projection) {
+    if (!commit)
+      return false;
+    auto implicit = std::make_unique<CedeExpr>(std::move(argument));
+    implicit->Loc = implicit->Value->Loc;
+    implicit->IsImplicitCallTransfer = true;
+    auto resolved = checkExpr(implicit.get(), formalType);
+    implicit->ResolvedType = resolved ? resolved : argumentType;
+    if (m_WarnImplicitCallMove) {
+      std::string subject = getPathString(implicit.get());
+      DiagnosticEngine::report(implicit->Loc,
+                               DiagID::WARN_IMPLICIT_CALL_MOVE, subject);
+    }
+    argument = std::move(implicit);
+    return true;
+  }
   auto *variable = d3WholePlaceVariable(source);
   bool admitted = false;
   bool invalidate = false;
@@ -1993,7 +2011,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           const FunctionDecl::Arg &param,
           const std::shared_ptr<Type> &argumentType,
           const std::shared_ptr<Type> &destinationType,
-          unsigned formalIndex, CallTransferRoute route, bool isAsync) {
+          unsigned formalIndex, CallTransferRoute route, bool isAsync,
+          bool plannedImplicit) {
         if (route == CallTransferRoute::Static && param.IsCeded &&
             m_EnableSignatureDrivenCallCede && Call->ResolvedFn &&
             Call->Args.size() == 1 && Call->ResolvedFn->Args.size() == 1 &&
@@ -2025,7 +2044,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         if (!param.IsCeded)
           return;
 
-        const bool callerCeded = dynamic_cast<CedeExpr *>(argument) != nullptr;
+        const bool callerCeded =
+            dynamic_cast<CedeExpr *>(argument) != nullptr || plannedImplicit;
         if (callerCeded && isMayZeroRawCedeSource(argument) &&
             !isMayZeroRawCedeDestination(destinationType)) {
           error(argument,
@@ -2132,6 +2152,36 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             }
         }
 
+        bool signatureStaticSlice =
+            m_EnableSignatureDrivenCallCede && MetAST &&
+            Call->Args.size() == MetAST->Args.size() &&
+            Call->Args.size() > 1 && !MetAST->IsVariadic &&
+            MetAST->Effect == EffectKind::None &&
+            !MetAST->ResolvedOutcomeTransition &&
+            MetAST->LifeDependencies.empty() &&
+            MetAST->MemberDependencies.empty() &&
+            std::all_of(MetAST->Args.begin(), MetAST->Args.end(),
+                        [](const FunctionDecl::Arg &formal) {
+                          return !formal.DefaultValue && !formal.IsInit &&
+                                 !formal.IsRebindable &&
+                                 !formal.IsValueMutable;
+                        }) &&
+            std::none_of(Call->Args.begin(), Call->Args.end(),
+                         [](const auto &argument) {
+                           return dynamic_cast<CedeExpr *>(argument.get()) ==
+                                  nullptr
+                                      ? false
+                                      : true;
+                         });
+        struct PendingStaticCede {
+          size_t Index = 0;
+          std::shared_ptr<Type> ArgumentType;
+          std::shared_ptr<Type> FormalType;
+        };
+        std::vector<PendingStaticCede> pendingStaticCedes;
+        std::vector<bool> plannedStaticCede(Call->Args.size(), false);
+        std::vector<std::pair<AccessPath, size_t>> staticArgumentPaths;
+        const size_t staticDiagnosticStart = DiagnosticEngine::records().size();
         for (size_t i = 0; i < Call->Args.size(); ++i) {
           Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
           std::shared_ptr<toka::Type> expectedTy = nullptr;
@@ -2156,10 +2206,21 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           m_AllowPermissionSuffix = oldAllowPermissionSuffix;
           if (MetAST && i < MetAST->Args.size()) {
             const auto &param = MetAST->Args[i];
+            if (signatureStaticSlice && param.IsCeded &&
+                elaborateSignatureDrivenCedeArgument(
+                    Call->Args[i], argTy, expectedTy, false)) {
+              plannedStaticCede[i] = true;
+              pendingStaticCedes.push_back({i, argTy, expectedTy});
+            }
+            AccessPath staticArgPath =
+                canonicalizeAccessPath(makeAccessPath(Call->Args[i].get()));
+            if (staticArgPath)
+              staticArgumentPaths.push_back({staticArgPath, i});
             checkCedeArgument(
                 i, Call->Args[i].get(), param, argTy, expectedTy,
                 static_cast<unsigned>(i + 1), CallTransferRoute::Static,
-                MetAST && MetAST->Effect == EffectKind::Async);
+                MetAST && MetAST->Effect == EffectKind::Async,
+                i < plannedStaticCede.size() && plannedStaticCede[i]);
             AccessCapability declaredCapability =
                 getAccessCapability(Call->Args[i].get(), true);
             AccessCapability argCapability =
@@ -2200,6 +2261,44 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               DiagnosticEngine::report(getLoc(Call->Args[i].get()), DiagID::ERR_TYPE_MISMATCH,
                                        "Argument " + std::to_string(i + 1) + " (actual: " + argTy->getSoulName() + ")", expectedTy->getSoulName(), argTy->getSoulName());
               HasError = true;
+          }
+        }
+        for (size_t left = 0; left < staticArgumentPaths.size(); ++left) {
+          for (size_t right = left + 1; right < staticArgumentPaths.size();
+               ++right) {
+            const auto &[leftPath, leftIndex] = staticArgumentPaths[left];
+            const auto &[rightPath, rightIndex] = staticArgumentPaths[right];
+            if (!PALCheckerState.pathsOverlap(leftPath, rightPath) ||
+                (!plannedStaticCede[leftIndex] &&
+                 !plannedStaticCede[rightIndex]))
+              continue;
+            error(Call->Args[rightIndex].get(),
+                  DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
+                  rightPath.toLegacyString(), leftPath.toLegacyString());
+          }
+        }
+        for (const auto &pending : pendingStaticCedes) {
+          AccessPath path = canonicalizeAccessPath(
+              makeAccessPath(Call->Args[pending.Index].get()));
+          if (path) {
+            if (auto conflict = PALCheckerState.verifyInvalidation(path))
+              error(Call->Args[pending.Index].get(), DiagID::ERR_MOVE_BORROWED,
+                    conflict->displayPath());
+          }
+        }
+        if (!pendingStaticCedes.empty()) {
+          const auto &records = DiagnosticEngine::records();
+          const bool staticHasError =
+              std::any_of(records.begin() +
+                              std::min(staticDiagnosticStart, records.size()),
+                          records.end(), [](const auto &record) {
+                            return record.Level == DiagLevel::Error;
+                          });
+          if (!staticHasError) {
+            for (const auto &pending : pendingStaticCedes)
+              elaborateSignatureDrivenCedeArgument(
+                  Call->Args[pending.Index], pending.ArgumentType,
+                  pending.FormalType);
           }
         }
         auto resolvedRet =
@@ -2277,7 +2376,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                   checkCedeArgument(
                       i, Call->Args[i].get(), param, argTy, expectedTy,
                       static_cast<unsigned>(i + 1), CallTransferRoute::Static,
-                      MetAST && MetAST->Effect == EffectKind::Async);
+                      MetAST && MetAST->Effect == EffectKind::Async, false);
                   AccessCapability declaredCapability =
                       getAccessCapability(Call->Args[i].get(), true);
                   AccessCapability argCapability =
@@ -3254,29 +3353,46 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           }
 
           bool signatureDrivenCallableSlice = false;
+          const size_t callableArgumentCount =
+              invokeFn->Args.empty() ? 0 : invokeFn->Args.size() - 1;
+          bool callableFormalsEligible = callableArgumentCount > 0;
+          for (size_t index = 1; index < invokeFn->Args.size(); ++index) {
+            const auto &formal = invokeFn->Args[index];
+            if (formal.DefaultValue || formal.IsInit || formal.IsRebindable ||
+                formal.IsValueMutable) {
+              callableFormalsEligible = false;
+              break;
+            }
+          }
           if (m_EnableSignatureDrivenCallCede &&
               required == CallableReceiverMode::Shared &&
-              !invokeFn->IsClosureInvoke && Call->Args.size() == 1 &&
-              invokeFn->Args.size() == 2 && !invokeFn->IsVariadic &&
-              !invokeFn->TemplateOrigin && invokeFn->GenericParams.empty() &&
-              Call->GenericArgs.empty() && invokeFn->Effect == EffectKind::None &&
+              !invokeFn->IsClosureInvoke &&
+              Call->Args.size() == callableArgumentCount &&
+              !invokeFn->IsVariadic && invokeFn->Effect == EffectKind::None &&
               !invokeFn->ResolvedOutcomeTransition &&
               invokeFn->LifeDependencies.empty() &&
               invokeFn->MemberDependencies.empty() &&
               !invokeFn->Args[0].IsCeded &&
               !invokeFn->Args[0].IsValueMutable &&
-              !invokeFn->Args[1].DefaultValue &&
-              !invokeFn->Args[1].IsInit &&
-              !invokeFn->Args[1].IsRebindable &&
-              !invokeFn->Args[1].IsValueMutable &&
+              callableFormalsEligible &&
+              std::none_of(Call->Args.begin(), Call->Args.end(),
+                           [](const auto &argument) {
+                             return dynamic_cast<CedeExpr *>(argument.get()) !=
+                                    nullptr;
+                           }) &&
               !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0 &&
-              CurrentModule && !CurrentModule->IsInterface) {
-            auto owner = DeclarationLexicalScopes.find(invokeFn);
-            ModuleScope *lexical = getLexicalModule(Call->Loc);
-            signatureDrivenCallableSlice =
-                owner != DeclarationLexicalScopes.end() && owner->second &&
-                lexical && owner->second == lexical;
-          }
+              CurrentModule && !CurrentModule->IsInterface)
+            signatureDrivenCallableSlice = true;
+          struct PendingCallableCede {
+            size_t Index = 0;
+            std::shared_ptr<Type> ArgumentType;
+            std::shared_ptr<Type> FormalType;
+          };
+          std::vector<PendingCallableCede> pendingCallableCedes;
+          std::vector<bool> plannedCallableCede(Call->Args.size(), false);
+          std::vector<std::pair<AccessPath, size_t>> callableArgumentPaths;
+          const size_t callableDiagnosticStart =
+              DiagnosticEngine::records().size();
           
           if (Call->Args.size() != invokeFn->Args.size() - 1) {
              error(Call, DiagID::ERR_SEMA_CLOSURE_EXPECTS_ARGUMENTS_BUT_GOT, std::to_string(invokeFn->Args.size() - 1), std::to_string(Call->Args.size()));
@@ -3297,13 +3413,25 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     invokeFn->Args[i + 1].IsCeded);
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 const auto &param = invokeFn->Args[i + 1];
-                if (signatureDrivenCallableSlice && i == 0 && param.IsCeded)
-                  elaborateSignatureDrivenCedeArgument(
-                      Call->Args[i], argTy, expectedTy);
+                if (signatureDrivenCallableSlice && param.IsCeded) {
+                  if (Call->Args.size() == 1) {
+                    elaborateSignatureDrivenCedeArgument(
+                        Call->Args[i], argTy, expectedTy);
+                  } else if (elaborateSignatureDrivenCedeArgument(
+                                 Call->Args[i], argTy, expectedTy, false)) {
+                    plannedCallableCede[i] = true;
+                    pendingCallableCedes.push_back({i, argTy, expectedTy});
+                  }
+                }
+                AccessPath callableArgPath =
+                    canonicalizeAccessPath(makeAccessPath(Call->Args[i].get()));
+                if (callableArgPath)
+                  callableArgumentPaths.push_back({callableArgPath, i});
                 checkCedeArgument(
                     i, Call->Args[i].get(), param, argTy, expectedTy,
                     static_cast<unsigned>(i + 2), CallTransferRoute::Callable,
-                    invokeFn->Effect == EffectKind::Async);
+                    invokeFn->Effect == EffectKind::Async,
+                    i < plannedCallableCede.size() && plannedCallableCede[i]);
                 AccessCapability declaredCapability =
                     getAccessCapability(Call->Args[i].get(), true);
                 AccessCapability argCapability =
@@ -3342,6 +3470,45 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     }
                 }
              }
+          }
+          for (size_t left = 0; left < callableArgumentPaths.size(); ++left) {
+            for (size_t right = left + 1; right < callableArgumentPaths.size();
+                 ++right) {
+              const auto &[leftPath, leftIndex] = callableArgumentPaths[left];
+              const auto &[rightPath, rightIndex] = callableArgumentPaths[right];
+              if (!PALCheckerState.pathsOverlap(leftPath, rightPath) ||
+                  (!plannedCallableCede[leftIndex] &&
+                   !plannedCallableCede[rightIndex]))
+                continue;
+              error(Call->Args[rightIndex].get(),
+                    DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
+                    rightPath.toLegacyString(), leftPath.toLegacyString());
+            }
+          }
+          for (const auto &pending : pendingCallableCedes) {
+            AccessPath path = canonicalizeAccessPath(
+                makeAccessPath(Call->Args[pending.Index].get()));
+            if (path) {
+              if (auto conflict = PALCheckerState.verifyInvalidation(path))
+                error(Call->Args[pending.Index].get(),
+                      DiagID::ERR_MOVE_BORROWED,
+                      conflict->displayPath());
+            }
+          }
+          if (!pendingCallableCedes.empty()) {
+            const auto &records = DiagnosticEngine::records();
+            const bool callableHasError =
+                std::any_of(records.begin() +
+                                std::min(callableDiagnosticStart, records.size()),
+                            records.end(), [](const auto &record) {
+                              return record.Level == DiagLevel::Error;
+                            });
+            if (!callableHasError) {
+              for (const auto &pending : pendingCallableCedes)
+                elaborateSignatureDrivenCedeArgument(
+                    Call->Args[pending.Index], pending.ArgumentType,
+                    pending.FormalType);
+            }
           }
           if (!m_IsPrecomputingCaptures) {
             Call->ResolvedFn = invokeFn;
@@ -4311,13 +4478,26 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       m_D3SpeculativeCallDepth == 0 && CurrentModule &&
       !CurrentModule->IsInterface)
     signatureDrivenDirectSlice = true;
+  bool signatureExternFormalsEligible = Ext && !Ext->Args.empty();
+  if (signatureExternFormalsEligible) {
+    for (const auto &formal : Ext->Args) {
+      if (formal.DefaultValue || formal.IsRebindable || formal.IsValueMutable) {
+        signatureExternFormalsEligible = false;
+        break;
+      }
+    }
+  }
   if (m_EnableSignatureDrivenCallCede && Ext && !Fn &&
-      Call->Args.size() == 1 && Ext->Args.size() == 1 &&
-      providedCount == 1 && !Ext->IsVariadic &&
-      Ext->Effect == EffectKind::None &&
-      !Ext->Args[0].DefaultValue && Ext->Args[0].IsCeded &&
-      !Ext->Args[0].IsRebindable && !Ext->Args[0].IsValueMutable &&
-      !Call->isInitArgument(0) && !m_IsPrecomputingCaptures &&
+      Call->Args.size() == Ext->Args.size() &&
+      providedCount == Call->Args.size() && !Ext->IsVariadic &&
+      Ext->Effect == EffectKind::None && signatureExternFormalsEligible &&
+      std::none_of(Call->Args.begin(), Call->Args.end(),
+                   [](const auto &argument) {
+                     return dynamic_cast<CedeExpr *>(argument.get()) != nullptr;
+                   }) &&
+      std::none_of(Call->IsInitArgument.begin(), Call->IsInitArgument.end(),
+                   [](bool value) { return value; }) &&
+      !m_IsPrecomputingCaptures &&
       m_D3SpeculativeCallDepth == 0 && CurrentModule &&
       !CurrentModule->IsInterface)
     signatureDrivenExternSlice = true;
@@ -4670,8 +4850,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         pendingSignatureCedes.push_back({i, argType, paramType});
       }
     }
-    if (signatureDrivenExternSlice && i == 0)
-      elaborateSignatureDrivenCedeArgument(Call->Args[i], argType, paramType);
+    if (signatureDrivenExternSlice && i < Ext->Args.size() &&
+        Ext->Args[i].IsCeded) {
+      if (Call->Args.size() == 1) {
+        elaborateSignatureDrivenCedeArgument(Call->Args[i], argType, paramType);
+      } else if (elaborateSignatureDrivenCedeArgument(
+                     Call->Args[i], argType, paramType, false)) {
+        plannedSignatureCede[i] = true;
+        pendingSignatureCedes.push_back({i, argType, paramType});
+      }
+    }
 
     if (isOwnedStateThreadCalleeName(OriginalName) && i == 1) {
       ClosureExpr *entryClosure = findClosureExpr(Call->Args[i].get());

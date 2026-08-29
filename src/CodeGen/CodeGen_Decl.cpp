@@ -2729,8 +2729,41 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         args.push_back(dataPtr); // i8* passed to opaque ptr
         argTypes.push_back(llvm::PointerType::getUnqual(m_Context));
 
-        for (auto &arg : expr->Args) {
+        for (size_t index = 0; index < expr->Args.size(); ++index) {
+          const auto &arg = expr->Args[index];
           llvm::Value *av = genExpr(arg.get()).load(m_Builder);
+          if (!av)
+            return nullptr;
+          const FunctionDecl::Arg *formal =
+              methodDecl && index + 1 < methodDecl->Args.size()
+                  ? &methodDecl->Args[index + 1]
+                  : nullptr;
+          auto formalType =
+              formal
+                  ? (formal->ResolvedType
+                         ? formal->ResolvedType
+                         : lowerTypeSyntax(formal->TypeSyntax, formal->Type))
+                  : nullptr;
+          llvm::Type *logicalType = formalType ? getLLVMType(formalType) : nullptr;
+          const bool aggregateCapture =
+              formal && logicalType &&
+              (logicalType->isStructTy() || logicalType->isArrayTy()) &&
+              !formal->IsRawPointer && !formal->IsReference &&
+              !formal->IsUnique && !formal->IsShared;
+          if (aggregateCapture) {
+            llvm::Value *address = nullptr;
+            if (!formal->IsCeded)
+              address = genAddr(arg.get());
+            if (!address) {
+              auto *temporary = createEntryBlockAlloca(
+                  av->getType(), nullptr, "dyn.arg.tmp");
+              m_Builder.CreateStore(av, temporary);
+              address = temporary;
+              if (!formal->IsCeded && arg->ResolvedType)
+                registerFullExpressionTemporary(temporary, arg->ResolvedType);
+            }
+            av = address;
+          }
           args.push_back(av);
           argTypes.push_back(av->getType());
         }

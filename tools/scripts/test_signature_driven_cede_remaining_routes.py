@@ -65,6 +65,39 @@ def main():
                     "E04570" not in moved.stderr,
                     f"route did not invalidate source: {fixture}")
 
+        for fixture in ("dynamic_trait_runtime.tk",
+                        "dynamic_trait_multi_runtime.tk",
+                        "indirect_unique_runtime.tk",
+                        "partial_field_runtime.tk",
+                        "partial_array_runtime.tk",
+                        "method_multi_runtime.tk",
+                        "callable_multi_runtime.tk",
+                        "static_multi_runtime.tk"):
+            source = FIXTURES / fixture
+            legacy = run([str(tokac), "--check-only", str(source)])
+            require(legacy.returncode != 0,
+                    f"legacy boundary unexpectedly accepted {fixture}")
+            compile_and_run(tokac, source,
+                            temp_path / fixture.removesuffix(".tk"), (FLAG,))
+
+        for fixture, diagnostic in (
+                ("dynamic_trait_use_after_implicit.tk", "E0438"),
+                ("dynamic_trait_multi_alias_atomic.tk", "E0475"),
+                ("indirect_unique_use_after_implicit.tk", "E0438"),
+                ("partial_field_use_after_implicit.tk", "E0410"),
+                ("partial_array_use_after_implicit.tk", "E0410"),
+                ("method_multi_alias_atomic.tk", "E0475"),
+                ("callable_multi_alias_atomic.tk", "E0475"),
+                ("static_multi_alias_atomic.tk", "E0475")):
+            rejected = run([str(tokac), FLAG, "--check-only",
+                            str(FIXTURES / fixture)])
+            require(rejected.returncode != 0 and
+                    diagnostic in rejected.stderr,
+                    f"missing final-route diagnostic for {fixture}")
+            if diagnostic == "E0475" and not fixture.startswith("dynamic_trait"):
+                require("E0438" not in rejected.stderr,
+                        f"alternate route partially invalidated {fixture}")
+
         c_compiler = os.environ.get("CC", "cc")
         native_object = temp_path / "extern_take.o"
         native = run([c_compiler, "-c", str(FIXTURES / "extern_take.c"),
@@ -84,6 +117,15 @@ def main():
         require(extern_moved.returncode != 0 and
                 "E0438" in extern_moved.stderr,
                 "extern implicit move did not invalidate source")
+        compile_and_run(tokac, FIXTURES / "extern_multi_runtime.tk",
+                        temp_path / "extern-multi",
+                        (FLAG, str(native_object)))
+        extern_alias = run([str(tokac), FLAG, "--check-only",
+                            str(FIXTURES / "extern_multi_alias_atomic.tk")])
+        require(extern_alias.returncode != 0 and
+                "E0475" in extern_alias.stderr and
+                "E0438" not in extern_alias.stderr,
+                "extern multi-argument failure was not atomic")
 
         for name in ("tki_provider.tk", "tki_consumer.tk",
                      "tki_use_after_implicit.tk"):

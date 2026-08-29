@@ -1,0 +1,31 @@
+import core/string::{string}
+import core/traits::{@Encap}
+
+shape Token(value: string)
+shape Consumer()
+
+impl Token@Encap {
+    fn drop(self#) {}
+}
+
+trait @Sink {
+    fn take(self, cede value: Token) -> usize
+}
+
+impl Consumer@Sink {
+    fn take(self, cede value: Token) -> usize {
+        auto owned = cede value
+        return owned.value.len()
+    }
+}
+
+fn invoke(sink: dyn @Sink, cede value: Token) -> usize {
+    auto length = sink.take(value)
+    return length + value.value.len()
+}
+
+fn main() -> i32 {
+    auto sink = Consumer()
+    auto source = Token(value = string::from("dynamic"))
+    return invoke(sink, source) as i32
+}
