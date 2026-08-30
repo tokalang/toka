@@ -828,6 +828,9 @@ int main(int argc, char **argv) {
   bool emitAuthorityFacts = false;
   bool enableAuthorityFactsShadow = false;
   bool warnImplicitCallMove = false;
+#ifdef TOKA_BUILD_TESTING
+  bool injectMissingCallTransferElaboration = false;
+#endif
   std::optional<toka::AuthorityFaultPoint> authorityFaultPoint;
   std::string authorityFaultSource;
   bool dumpCapabilities = false;
@@ -994,6 +997,10 @@ int main(int argc, char **argv) {
       enableAuthorityFactsShadow = true;
     } else if (arg == "--experimental-signature-driven-cede") {
       // Accepted for source/build-script compatibility after RC9 activation.
+#ifdef TOKA_BUILD_TESTING
+    } else if (arg == "--m1b-inject-missing-call-transfer-elaboration") {
+      injectMissingCallTransferElaboration = true;
+#endif
     } else if (arg == "--warn-implicit-call-move") {
       warnImplicitCallMove = true;
     } else if (arg.rfind("--m1b-2a-inject-fault=", 0) == 0) {
@@ -1667,6 +1674,10 @@ int main(int argc, char **argv) {
       dumpAuthorityFacts || enableAuthorityFactsShadow;
   sema.setSignatureDrivenCallCedeEnabled(!legacyCedeAuditProfile);
   sema.setWarnImplicitCallMove(warnImplicitCallMove);
+#ifdef TOKA_BUILD_TESTING
+  sema.setMissingCallTransferFaultInjection(
+      injectMissingCallTransferElaboration);
+#endif
 
   // Pass 1: Declare all global symbols across all modules to build the global module map
   for (const auto &ast : astModules) {

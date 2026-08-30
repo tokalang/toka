@@ -6337,6 +6337,20 @@ bool Sema::canPreserveBareSignatureCede(
          Ty->valueOwnership(this) == ValueOwnership::BorrowedView;
 }
 
+bool Sema::consumeMissingCallTransferFault(ASTNode *node) {
+  if (!m_InjectMissingCallTransferElaboration ||
+      m_MissingCallTransferFaultConsumed || !node || !node->Loc.isValid() ||
+      !DiagnosticEngine::SrcMgr)
+    return false;
+  const auto location = DiagnosticEngine::SrcMgr->getFullSourceLoc(node->Loc);
+  if (!location.isValid() ||
+      std::string(location.FileName).find("codegen_missing_call_transfer.tk") ==
+          std::string::npos)
+    return false;
+  m_MissingCallTransferFaultConsumed = true;
+  return true;
+}
+
 bool Sema::isStartBoundaryScalar(std::shared_ptr<toka::Type> Ty) const {
   if (!Ty || Ty->typeKind != toka::Type::Primitive)
     return false;

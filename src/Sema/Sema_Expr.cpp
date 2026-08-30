@@ -715,6 +715,33 @@ Sema::AnalysisState Sema::captureAnalysisState() {
   return state;
 }
 
+Sema::CallArgumentRollbackGuard::CallArgumentRollbackGuard(
+    Sema &owner, const std::vector<std::unique_ptr<Expr>> &args)
+    : Owner(owner) {
+  const bool hasExplicitMultiTransfer =
+      Owner.m_EnableSignatureDrivenCallCede && args.size() > 1 &&
+      std::any_of(args.begin(), args.end(), [](const auto &argument) {
+        return dynamic_cast<CedeExpr *>(argument.get()) != nullptr;
+      });
+  if (!hasExplicitMultiTransfer)
+    return;
+  Base = Owner.captureAnalysisState();
+  DiagnosticStart = DiagnosticEngine::records().size();
+}
+
+Sema::CallArgumentRollbackGuard::~CallArgumentRollbackGuard() {
+  if (!Base)
+    return;
+  const auto &records = DiagnosticEngine::records();
+  const bool rejected =
+      std::any_of(records.begin() + std::min(DiagnosticStart, records.size()),
+                  records.end(), [](const auto &record) {
+                    return record.Level == DiagLevel::Error;
+                  });
+  if (rejected)
+    Owner.mergeAnalysisStates({*Base}, Base->PAL);
+}
+
 void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
                                const PALChecker &palBase) {
   if (states.empty())
@@ -4222,6 +4249,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     return std::make_shared<toka::RawPointerType>(baseTypeObj);
   } else if (auto *Met = dynamic_cast<MethodCallExpr *>(E)) {
+    CallArgumentRollbackGuard methodCallRollback(*this, Met->Args);
     bool oldAllow = m_AllowPermissionSuffix;
     m_AllowPermissionSuffix = true; // [NEW] Grant suffix allowance for explicit method call objects
     auto ObjTypeObj = Met->ObjectIsPrechecked && Met->Object->ResolvedType
@@ -4295,11 +4323,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                    M->Effect == EffectKind::Async) &&
                   !M->ResolvedOutcomeTransition && M->LifeDependencies.empty() &&
                   M->MemberDependencies.empty() && dynamicFormalsEligible &&
-                  std::none_of(Met->Args.begin(), Met->Args.end(),
-                               [](const auto &argument) {
-                                 return dynamic_cast<CedeExpr *>(argument.get()) !=
-                                        nullptr;
-                               }) &&
                   !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0;
               struct PendingDynamicCede {
                 size_t Index = 0;
@@ -4311,6 +4334,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               std::vector<std::pair<AccessPath, size_t>> dynamicArgumentPaths;
               const size_t dynamicDiagnosticStart =
                   DiagnosticEngine::records().size();
+              std::vector<bool> dynamicFormals(Met->Args.size(), false);
+              std::vector<std::string> dynamicNames(Met->Args.size());
+              for (size_t index = 0; index < Met->Args.size() &&
+                                     index + 1 < M->Args.size();
+                   ++index) {
+                dynamicFormals[index] = M->Args[index + 1].IsCeded;
+                dynamicNames[index] = M->Args[index + 1].Name;
+              }
+              if (!preflightExplicitCallCedeAliases(
+                      Met->Args, dynamicFormals, dynamicNames))
+                return toka::Type::fromString("unknown");
               for (size_t i = 0; i < Met->Args.size() && i < expectedArgs; ++i) {
                 Met->Args[i] = foldGenericConstant(std::move(Met->Args[i]));
                 const auto &param = M->Args[i + 1];
@@ -4844,11 +4878,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                  FD->Effect == EffectKind::Async) &&
                 !FD->ResolvedOutcomeTransition && FD->LifeDependencies.empty() &&
                 FD->MemberDependencies.empty() && signatureMethodFormalsEligible &&
-                std::none_of(Met->Args.begin(), Met->Args.end(),
-                             [](const auto &argument) {
-                               return dynamic_cast<CedeExpr *>(argument.get()) !=
-                                      nullptr;
-                             }) &&
                 !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0 &&
                 CurrentModule && !CurrentModule->IsInterface)
               signatureDrivenMethodSlice = true;
@@ -4862,6 +4891,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             std::vector<std::pair<AccessPath, size_t>> methodArgumentPaths;
             const size_t methodDiagnosticStart =
                 DiagnosticEngine::records().size();
+            std::vector<bool> methodFormals(Met->Args.size(), false);
+            std::vector<std::string> methodNames(Met->Args.size());
+            for (size_t index = 0; index < Met->Args.size() &&
+                                   index + 1 < FD->Args.size();
+                 ++index) {
+              methodFormals[index] = FD->Args[index + 1].IsCeded;
+              methodNames[index] = FD->Args[index + 1].Name;
+            }
+            if (!preflightExplicitCallCedeAliases(Met->Args, methodFormals,
+                                                  methodNames))
+              return toka::Type::fromString("unknown");
             if (Met->Args.size() != expectedArgs && !FD->IsVariadic) {
                 // If variadic, handle appropriately
                 if (Met->Args.size() < expectedArgs) {

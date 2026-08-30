@@ -542,6 +542,54 @@ Sema::lookupD3CopyProof(const std::shared_ptr<toka::Type> &type) const {
   return D3CopyProof::Indeterminate;
 }
 
+bool Sema::preflightExplicitCallCedeAliases(
+    const std::vector<std::unique_ptr<Expr>> &args,
+    const std::vector<bool> &formalCeded,
+    const std::vector<std::string> &formalNames) {
+  if (!m_EnableSignatureDrivenCallCede || args.size() <= 1)
+    return true;
+  std::vector<AccessPath> paths(args.size());
+  std::vector<bool> invalidates(args.size(), false);
+  for (size_t index = 0; index < args.size(); ++index) {
+    paths[index] = canonicalizeAccessPath(makeAccessPath(args[index].get()));
+    invalidates[index] =
+        index < formalCeded.size() && formalCeded[index] &&
+        dynamic_cast<CedeExpr *>(args[index].get()) != nullptr;
+    if (!invalidates[index])
+      continue;
+    const std::string subject = getPathString(args[index].get());
+    const std::string parameter =
+        index < formalNames.size() && !formalNames[index].empty()
+            ? formalNames[index]
+            : "arg" + std::to_string(index + 1);
+    recordDecision(args[index].get(), SemanticRuleID::OwnCede001,
+                   SemanticOperation::CedeObligation,
+                   SemanticDecision::Allow, SemanticReason::CedeConsumed,
+                   subject, parameter);
+  }
+  bool valid = true;
+  for (size_t left = 0; left < paths.size(); ++left) {
+    for (size_t right = left + 1; right < paths.size(); ++right) {
+      if (!paths[left] || !paths[right] ||
+          (!invalidates[left] && !invalidates[right]) ||
+          !PALCheckerState.pathsOverlap(paths[left], paths[right]))
+        continue;
+      valid = false;
+      error(args[right].get(), DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
+            paths[right].toLegacyString(), paths[left].toLegacyString());
+      PALConflict origin{paths[left], PathState::Free,
+                         getLoc(args[left].get())};
+      recordPALDecision(
+          args[right].get(), SemanticRuleID::PALCall001,
+          invalidates[right] ? PALOperationClass::Invalidation
+                             : PALOperationClass::SharedPayloadBorrow,
+          paths[right], origin, SemanticDecision::Reject,
+          SemanticReason::OverlappingExclusiveAccess, true);
+    }
+  }
+  return valid;
+}
+
 bool Sema::elaborateSignatureDrivenCedeArgument(
     std::unique_ptr<Expr> &argument,
     const std::shared_ptr<toka::Type> &argumentType,
@@ -619,6 +667,8 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
     implicit->Loc = implicit->Value->Loc;
     implicit->ResolvedType = argumentType;
     implicit->IsImplicitCallTransfer = true;
+    implicit->IsFaultInjectedMissingCallTransfer =
+        consumeMissingCallTransferFault(implicit->Value.get());
     argument = std::move(implicit);
     return true;
   }
@@ -663,6 +713,8 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
     auto implicit = std::make_unique<CedeExpr>(std::move(argument));
     implicit->Loc = implicit->Value->Loc;
     implicit->IsImplicitCallTransfer = true;
+    implicit->IsFaultInjectedMissingCallTransfer =
+        consumeMissingCallTransferFault(implicit->Value.get());
     auto resolved = checkExpr(implicit.get(), formalType);
     implicit->ResolvedType = resolved ? resolved : argumentType;
     if (m_WarnImplicitCallMove) {
@@ -735,6 +787,8 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
   implicit->Loc = implicit->Value->Loc;
   implicit->ResolvedType = argumentType;
   implicit->IsImplicitCallTransfer = true;
+  implicit->IsFaultInjectedMissingCallTransfer =
+      consumeMissingCallTransferFault(implicit->Value.get());
   argument = std::move(implicit);
   return true;
 }
@@ -2202,13 +2256,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                  !formal.IsRebindable &&
                                  !formal.IsValueMutable;
                         }) &&
-            std::none_of(Call->Args.begin(), Call->Args.end(),
-                         [](const auto &argument) {
-                           return dynamic_cast<CedeExpr *>(argument.get()) ==
-                                  nullptr
-                                      ? false
-                                      : true;
-                         }) &&
             std::none_of(Call->IsInitArgument.begin(),
                          Call->IsInitArgument.end(),
                          [](bool value) { return value; }) &&
@@ -2223,6 +2270,18 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         std::vector<bool> plannedStaticCede(Call->Args.size(), false);
         std::vector<std::pair<AccessPath, size_t>> staticArgumentPaths;
         const size_t staticDiagnosticStart = DiagnosticEngine::records().size();
+        CallArgumentRollbackGuard staticRollback(*this, Call->Args);
+        std::vector<bool> staticFormals(Call->Args.size(), false);
+        std::vector<std::string> staticNames(Call->Args.size());
+        for (size_t index = 0; MetAST && index < Call->Args.size() &&
+                               index < MetAST->Args.size();
+             ++index) {
+          staticFormals[index] = MetAST->Args[index].IsCeded;
+          staticNames[index] = MetAST->Args[index].Name;
+        }
+        if (!preflightExplicitCallCedeAliases(Call->Args, staticFormals,
+                                              staticNames))
+          return toka::Type::fromString("unknown");
         for (size_t i = 0; i < Call->Args.size(); ++i) {
           Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
           std::shared_ptr<toka::Type> expectedTy = nullptr;
@@ -3327,11 +3386,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               !invokeFn->Args[0].IsCeded &&
               !invokeFn->Args[0].IsValueMutable &&
               callableFormalsEligible &&
-              std::none_of(Call->Args.begin(), Call->Args.end(),
-                           [](const auto &argument) {
-                             return dynamic_cast<CedeExpr *>(argument.get()) !=
-                                    nullptr;
-                           }) &&
               !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0 &&
               CurrentModule && !CurrentModule->IsInterface)
             signatureDrivenCallableSlice = true;
@@ -3345,6 +3399,18 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           std::vector<std::pair<AccessPath, size_t>> callableArgumentPaths;
           const size_t callableDiagnosticStart =
               DiagnosticEngine::records().size();
+          CallArgumentRollbackGuard callableRollback(*this, Call->Args);
+          std::vector<bool> callableFormals(Call->Args.size(), false);
+          std::vector<std::string> callableNames(Call->Args.size());
+          for (size_t index = 0; index < Call->Args.size() &&
+                                 index + 1 < invokeFn->Args.size();
+               ++index) {
+            callableFormals[index] = invokeFn->Args[index + 1].IsCeded;
+            callableNames[index] = invokeFn->Args[index + 1].Name;
+          }
+          if (!preflightExplicitCallCedeAliases(
+                  Call->Args, callableFormals, callableNames))
+            return toka::Type::fromString("unknown");
           
           if (Call->Args.size() != invokeFn->Args.size() - 1) {
              error(Call, DiagID::ERR_SEMA_CLOSURE_EXPECTS_ARGUMENTS_BUT_GOT, std::to_string(invokeFn->Args.size() - 1), std::to_string(Call->Args.size()));
@@ -3632,16 +3698,23 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       return resolveType(returnType, false);
     }
 
+    CallArgumentRollbackGuard explicitRollback(*this, Call->Args);
+    std::vector<bool> formalCeded(parameterTypes.size(), false);
+    std::vector<std::string> formalNames(parameterTypes.size());
+    for (size_t index = 0; index < parameterTypes.size(); ++index) {
+      formalCeded[index] = parameterTypes[index] &&
+                           parameterTypes[index]->IsCede;
+      formalNames[index] = "arg" + std::to_string(index + 1);
+    }
+    if (!preflightExplicitCallCedeAliases(Call->Args, formalCeded,
+                                          formalNames))
+      return resolveType(returnType, false);
+
     const bool signatureIndirectSlice =
         m_EnableSignatureDrivenCallCede && !Call->Args.empty() && symPtr &&
         sym.TypeObj && !m_IsPrecomputingCaptures &&
         m_D3SpeculativeCallDepth == 0 && CurrentModule &&
-        !CurrentModule->IsInterface &&
-        std::none_of(Call->Args.begin(), Call->Args.end(),
-                     [](const auto &argument) {
-                       return dynamic_cast<CedeExpr *>(argument.get()) !=
-                              nullptr;
-                     });
+        !CurrentModule->IsInterface;
     struct PendingIndirectCede {
       size_t Index = 0;
       std::shared_ptr<Type> ArgumentType;
@@ -4734,70 +4807,20 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
   }
 
-  std::optional<AnalysisState> explicitMultiArgumentState;
-  size_t explicitMultiDiagnosticStart = 0;
-  const bool hasExplicitMultiTransfer =
-      m_EnableSignatureDrivenCallCede && Call->Args.size() > 1 &&
-      std::any_of(Call->Args.begin(), Call->Args.end(), [](const auto &arg) {
-        return dynamic_cast<CedeExpr *>(arg.get()) != nullptr;
-      });
-  if (hasExplicitMultiTransfer) {
-    explicitMultiArgumentState = captureAnalysisState();
-    explicitMultiDiagnosticStart = DiagnosticEngine::records().size();
-    std::vector<AccessPath> paths(Call->Args.size());
-    std::vector<bool> invalidates(Call->Args.size(), false);
-    for (size_t index = 0; index < Call->Args.size(); ++index) {
-      paths[index] =
-          canonicalizeAccessPath(makeAccessPath(Call->Args[index].get()));
-      const bool formalCeded =
-          (Fn && index < Fn->Args.size() && Fn->Args[index].IsCeded) ||
-          (Ext && index < Ext->Args.size() && Ext->Args[index].IsCeded);
-      invalidates[index] =
-          formalCeded &&
-          dynamic_cast<CedeExpr *>(Call->Args[index].get()) != nullptr;
-      if (invalidates[index]) {
-        const std::string subject = getPathString(Call->Args[index].get());
-        const std::string parameter =
-            Fn && index < Fn->Args.size()
-                ? Fn->Args[index].Name
-                : (Ext && index < Ext->Args.size()
-                       ? Ext->Args[index].Name
-                       : "arg" + std::to_string(index + 1));
-        recordDecision(Call->Args[index].get(), SemanticRuleID::OwnCede001,
-                       SemanticOperation::CedeObligation,
-                       SemanticDecision::Allow, SemanticReason::CedeConsumed,
-                       subject, parameter);
-      }
+  CallArgumentRollbackGuard explicitRollback(*this, Call->Args);
+  std::vector<bool> formalCeded(Call->Args.size(), false);
+  std::vector<std::string> formalNames(Call->Args.size());
+  for (size_t index = 0; index < Call->Args.size(); ++index) {
+    if (Fn && index < Fn->Args.size()) {
+      formalCeded[index] = Fn->Args[index].IsCeded;
+      formalNames[index] = Fn->Args[index].Name;
+    } else if (Ext && index < Ext->Args.size()) {
+      formalCeded[index] = Ext->Args[index].IsCeded;
+      formalNames[index] = Ext->Args[index].Name;
     }
-    for (size_t left = 0; left < paths.size(); ++left) {
-      for (size_t right = left + 1; right < paths.size(); ++right) {
-        if (!paths[left] || !paths[right] ||
-            (!invalidates[left] && !invalidates[right]) ||
-            !PALCheckerState.pathsOverlap(paths[left], paths[right]))
-          continue;
-        error(Call->Args[right].get(),
-              DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
-              paths[right].toLegacyString(), paths[left].toLegacyString());
-        PALConflict origin{paths[left], PathState::Free,
-                           getLoc(Call->Args[left].get())};
-        recordPALDecision(
-            Call->Args[right].get(), SemanticRuleID::PALCall001,
-            invalidates[right] ? PALOperationClass::Invalidation
-                               : PALOperationClass::SharedPayloadBorrow,
-            paths[right], origin, SemanticDecision::Reject,
-            SemanticReason::OverlappingExclusiveAccess, true);
-      }
-    }
-    const auto &records = DiagnosticEngine::records();
-    const bool preflightFailed =
-        std::any_of(records.begin() +
-                        std::min(explicitMultiDiagnosticStart, records.size()),
-                    records.end(), [](const auto &record) {
-                      return record.Level == DiagLevel::Error;
-                    });
-    if (preflightFailed)
-      return ReturnType;
   }
+  if (!preflightExplicitCallCedeAliases(Call->Args, formalCeded, formalNames))
+    return ReturnType;
 
   for (size_t i = 0; i < Call->Args.size(); ++i) {
     if (m_AuthorityFactsSession)
@@ -5388,19 +5411,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         Call->Args[i]->ResolvedType = paramType;
       }
     }
-  }
-
-  if (explicitMultiArgumentState) {
-    const auto &records = DiagnosticEngine::records();
-    const bool rejected =
-        std::any_of(records.begin() +
-                        std::min(explicitMultiDiagnosticStart, records.size()),
-                    records.end(), [](const auto &record) {
-                      return record.Level == DiagLevel::Error;
-                    });
-    if (rejected)
-      mergeAnalysisStates({*explicitMultiArgumentState},
-                          explicitMultiArgumentState->PAL);
   }
 
   auto finalizeD3Observation = [&]() {

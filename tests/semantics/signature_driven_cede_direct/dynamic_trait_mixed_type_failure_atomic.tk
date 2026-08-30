@@ -1,0 +1,26 @@
+import core/traits::{@Encap}
+shape Resource(value: i32)
+impl Resource@Encap { fn drop(self#) {} }
+shape Consumer()
+
+trait @Sink {
+    fn consume(self, cede moved: Resource, count: i32) -> i32
+}
+
+impl Consumer@Sink {
+    fn consume(self, cede moved: Resource, count: i32) -> i32 {
+        auto owned = cede moved
+        return owned.value + count
+    }
+}
+
+fn probe(sink: dyn @Sink) -> i32 {
+    auto source = Resource(value = 1:i32)
+    auto ignored = sink.consume(cede source, "wrong")
+    return source.value + ignored
+}
+
+fn main() -> i32 {
+    auto sink = Consumer()
+    return probe(sink)
+}

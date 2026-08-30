@@ -25,11 +25,14 @@ the same final elaboration path.
 
 Post-activation closure additionally qualifies multi-argument indirect
 `fn`/`dyn fn`, borrowed-view `CopyIdentity + KeepLive`, and mixed
-explicit/bare ordinary-call rejection. Explicit invalidations are preflighted
-before evaluation and rejected calls restore their Sema/PAL snapshot. CodeGen
+explicit/bare rejection across ordinary/extern, indirect, static, callable,
+method, and dynamic-trait routes. Explicit invalidations are preflighted before
+evaluation and rejected calls restore their Sema/PAL snapshot. CodeGen
 diagnostic `E0761` independently rejects a cleanup-liable named argument that
 reaches lowering without the required `CedeExpr` elaboration; Copy, borrowed
 identity, and source-less temporary cases remain valid without that wrapper.
+A `BUILD_TESTING`-only Sema fault removes that validated elaboration and proves
+the CodeGen rejection produces no executable artifact.
 
 Qualified all-bare multi-argument routes first check every actual and all
 pairwise PAL relations, then elaborate all non-Copy transfers together. A type,

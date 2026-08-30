@@ -475,6 +475,11 @@ bool CodeGen::isCallTransferSourcePlace(const Expr *expr) const {
          dynamic_cast<const DereferenceExpr *>(expr);
 }
 
+bool CodeGen::hasValidatedCallTransferElaboration(const Expr *expr) const {
+  const auto *cede = dynamic_cast<const CedeExpr *>(expr);
+  return cede && !cede->IsFaultInjectedMissingCallTransfer;
+}
+
 void CodeGen::emitDropForTypeWithMask(
     llvm::Value *ptrAddr, const std::shared_ptr<Type> &type,
     llvm::Value *dropMaskAddr) {

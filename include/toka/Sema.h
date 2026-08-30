@@ -373,6 +373,10 @@ public:
   void setWarnImplicitCallMove(bool enabled) {
     m_WarnImplicitCallMove = enabled;
   }
+  void setMissingCallTransferFaultInjection(bool enabled) {
+    m_InjectMissingCallTransferElaboration = enabled;
+    m_MissingCallTransferFaultConsumed = false;
+  }
 
   bool hasErrors() const { return HasError; }
 
@@ -668,6 +672,8 @@ private:
   AuthorityFactsAuditSession *m_AuthorityFactsSession = nullptr;
   bool m_EnableSignatureDrivenCallCede = true;
   bool m_WarnImplicitCallMove = false;
+  bool m_InjectMissingCallTransferElaboration = false;
+  bool m_MissingCallTransferFaultConsumed = false;
   unsigned m_D3SpeculativeCallDepth = 0;
 
   struct AuthorityFullExpressionContext {
@@ -709,6 +715,27 @@ private:
     std::set<AccessPath> PayloadFlowRestrictedPaths;
     PALChecker PAL;
   };
+
+  class CallArgumentRollbackGuard {
+  public:
+    CallArgumentRollbackGuard(Sema &owner,
+                              const std::vector<std::unique_ptr<Expr>> &args);
+    CallArgumentRollbackGuard(const CallArgumentRollbackGuard &) = delete;
+    CallArgumentRollbackGuard &
+    operator=(const CallArgumentRollbackGuard &) = delete;
+    ~CallArgumentRollbackGuard();
+
+  private:
+    Sema &Owner;
+    std::optional<AnalysisState> Base;
+    size_t DiagnosticStart = 0;
+  };
+
+  bool preflightExplicitCallCedeAliases(
+      const std::vector<std::unique_ptr<Expr>> &args,
+      const std::vector<bool> &formalCeded,
+      const std::vector<std::string> &formalNames = {});
+  bool consumeMissingCallTransferFault(ASTNode *node);
 
   struct ControlFlowInfo {
     std::string Label;

@@ -99,6 +99,16 @@ def main():
                 require("E0438" not in rejected.stderr,
                         f"alternate route partially invalidated {fixture}")
 
+        for fixture in ("method_mixed_type_failure_atomic.tk",
+                        "static_mixed_type_failure_atomic.tk",
+                        "callable_mixed_type_failure_atomic.tk",
+                        "dynamic_trait_mixed_type_failure_atomic.tk"):
+            rejected = run([str(tokac), "--check-only",
+                            str(FIXTURES / fixture)])
+            require(rejected.returncode != 0 and
+                    "E0438" not in rejected.stderr,
+                    f"mixed alternate route partially moved source: {fixture}")
+
         c_compiler = os.environ.get("CC", "cc")
         native_object = temp_path / "extern_take.o"
         native = run([c_compiler, "-c", str(FIXTURES / "extern_take.c"),

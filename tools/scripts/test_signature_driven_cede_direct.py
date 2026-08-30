@@ -107,6 +107,18 @@ def main():
     require(evidence.returncode != 0 and "E04570" in evidence.stderr,
             "Evidence v1 did not retain its frozen legacy replay profile")
 
+    with tempfile.TemporaryDirectory(prefix="toka-cede-codegen-fault-") as temp:
+        executable = pathlib.Path(temp) / "must-not-exist"
+        injected = run([
+            str(tokac), "--m1b-inject-missing-call-transfer-elaboration",
+            str(FIXTURES / "codegen_missing_call_transfer.tk"),
+            "-o", str(executable),
+        ])
+        require(injected.returncode != 0 and "E0761" in injected.stderr,
+                "CodeGen did not independently reject missing elaboration")
+        require(not executable.exists(),
+                "CodeGen fault emitted an executable despite E0761")
+
     print("Signature-driven ordinary direct-call cede tests PASSED")
     return 0
 

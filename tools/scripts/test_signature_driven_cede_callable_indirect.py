@@ -105,6 +105,12 @@ def main():
             require(run([str(executable)]).returncode == 0,
                     f"multi-argument indirect runtime failed: {fixture}")
 
+    for fixture in ("indirect_mixed_type_failure_atomic.tk",
+                    "indirect_dyn_mixed_type_failure_atomic.tk"):
+        rejected = run([str(tokac), "--check-only", str(FIXTURES / fixture)])
+        require(rejected.returncode != 0 and "E0438" not in rejected.stderr,
+                f"mixed indirect rejection partially moved source: {fixture}")
+
     print("Signature-driven callable/indirect cede tests PASSED")
     return 0
 

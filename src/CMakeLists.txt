@@ -54,6 +54,10 @@ add_executable(tokac
     CodeGen/CodeGen_Decl.cpp
 )
 
+if(BUILD_TESTING)
+    target_compile_definitions(tokac PRIVATE TOKA_BUILD_TESTING=1)
+endif()
+
 # Link against LLVM libraries
 set(llvm_components Core Passes Analysis Coroutines MC MCDisassembler Target AsmPrinter AsmParser Option Object BinaryFormat TargetParser Demangle BitReader BitWriter LTO WindowsDriver WindowsManifest ProfileData LibDriver ${LLVM_TARGETS_TO_BUILD} Support)
 if(WIN32 AND TARGET LLVM)

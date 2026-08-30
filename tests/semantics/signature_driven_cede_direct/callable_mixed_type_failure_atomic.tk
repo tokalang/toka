@@ -1,0 +1,18 @@
+import core/traits::{@Callable, @Encap}
+shape Resource(value: i32)
+impl Resource@Encap { fn drop(self#) {} }
+shape Consumer()
+
+impl Consumer@Callable {
+    fn call(self, cede moved: Resource, count: i32) -> i32 {
+        auto owned = cede moved
+        return owned.value + count
+    }
+}
+
+fn main() -> i32 {
+    auto consumer = Consumer()
+    auto source = Resource(value = 1:i32)
+    auto ignored = consumer(cede source, "wrong")
+    return source.value + ignored
+}

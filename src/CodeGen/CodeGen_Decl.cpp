@@ -2777,7 +2777,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
                   ? &methodDecl->Args[index + 1]
                   : nullptr;
           if (formal && formal->IsCeded &&
-              !dynamic_cast<const CedeExpr *>(arg.get()) &&
+              !hasValidatedCallTransferElaboration(arg.get()) &&
               isCallTransferSourcePlace(arg.get()) &&
               typeCarriesCleanupLiability(arg->ResolvedType)) {
             error(arg.get(),
@@ -3078,7 +3078,8 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     size_t targetArgIdx = isStatic ? i : (i + 1);
     size_t llvmArgIdx = targetArgIdx + (isSRet ? 1 : 0);
     if (fd && targetArgIdx < fd->Args.size() &&
-        fd->Args[targetArgIdx].IsCeded && !cededArg &&
+        fd->Args[targetArgIdx].IsCeded &&
+        !hasValidatedCallTransferElaboration(expr->Args[i].get()) &&
         isCallTransferSourcePlace(expr->Args[i].get()) &&
         typeCarriesCleanupLiability(expr->Args[i]->ResolvedType)) {
       error(expr->Args[i].get(),

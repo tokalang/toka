@@ -5622,7 +5622,8 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                 for (size_t i = 0; i < call->Args.size(); ++i) {
                     if (i < paramTypes.size() && paramTypes[i] &&
                         paramTypes[i]->IsCede &&
-                        !dynamic_cast<const CedeExpr *>(call->Args[i].get()) &&
+                        !hasValidatedCallTransferElaboration(
+                            call->Args[i].get()) &&
                         isCallTransferSourcePlace(call->Args[i].get()) &&
                         typeCarriesCleanupLiability(
                             call->Args[i]->ResolvedType)) {
@@ -5822,7 +5823,8 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
         (funcDecl && i < funcDecl->Args.size() &&
          funcDecl->Args[i].IsCeded) ||
         (extDecl && i < extDecl->Args.size() && extDecl->Args[i].IsCeded);
-    if (formalCeded && !cededArg &&
+    if (formalCeded &&
+        !hasValidatedCallTransferElaboration(call->Args[i].get()) &&
         isCallTransferSourcePlace(call->Args[i].get()) &&
         typeCarriesCleanupLiability(call->Args[i]->ResolvedType)) {
       error(call->Args[i].get(),
