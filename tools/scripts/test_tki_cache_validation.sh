@@ -129,8 +129,10 @@ EOF
 "$TOKAC_ABS" -c "$TEST_DIR/lib.tk" -o "$TEST_DIR/lib.o"
 rm -f "$TEST_DIR/lib.tk"
 
-# Modify lib.tki to have mismatched compiler version
-cat "$TEST_DIR/lib.tki" | sed 's/compiler_version: .*/compiler_version: 99.9.9/' > "$TEST_DIR/temp.tki"
+# Rewrite the interface to the RC8 key. RC9 must not reuse an interface whose
+# call-transfer semantics were produced by the previous compiler epoch.
+sed 's/compiler_version: .*/compiler_version: 0.9.9-14/' \
+    "$TEST_DIR/lib.tki" > "$TEST_DIR/temp.tki"
 mv "$TEST_DIR/temp.tki" "$TEST_DIR/lib.tki"
 
 if "$TOKAC_ABS" "$TEST_DIR/main.tk" "$TEST_DIR/lib.o" -o "$TEST_DIR/main_app_4" 2> "$TEST_DIR/err4.txt"; then
@@ -144,8 +146,8 @@ if ! grep -q "Incompatible or stale interface file" "$TEST_DIR/err4.txt"; then
 fi
 echo "PASS: Test 4"
 
-# 4b. A pre-PlaceIterator 0.9.9-14 interface lacks the independent place-yield
-# ABI schema and must fail closed without renaming unrelated nominal types.
+# 4b. A format-3 interface that lacks the independent place-yield ABI schema
+# must fail closed without renaming unrelated nominal types.
 echo "Test 4b: Missing PlaceIterator ABI schema rejection"
 cat << 'EOF' > "$TEST_DIR/lib.tk"
 pub fn get_num() -> i32 {

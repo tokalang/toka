@@ -224,7 +224,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--version", default="v1.0.0-rc.8")
+    parser.add_argument("--version", default="v1.0.0-rc.9")
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")
