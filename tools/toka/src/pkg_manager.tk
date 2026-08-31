@@ -184,35 +184,34 @@ pub fn cmd_publish() -> i32 {
     archive#.push_str("-")
     archive#.push_str(version.as_str())
     archive#.push_str(".tar.gz")
-    auto tar# = Command::new(string::from("tar"))
-    tar#.arg(string::from("-czf"))
-    tar#.arg(cede archive.clone())
-    tar#.arg(string::from("package.tk"))
+    auto archive_builder# = package_command(string::from("build-archive"))
+    archive_builder#.arg(cede archive.clone())
+    archive_builder#.arg(string::from("package.tk"))
     if exists(string::from("src")) {
-        tar#.arg(string::from("src"))
+        archive_builder#.arg(string::from("src"))
     }
     if exists(string::from("lib")) {
-        tar#.arg(string::from("lib"))
+        archive_builder#.arg(string::from("lib"))
     }
     if exists(string::from("native")) {
-        tar#.arg(string::from("native"))
+        archive_builder#.arg(string::from("native"))
     }
     if exists(string::from("test")) {
-        tar#.arg(string::from("test"))
+        archive_builder#.arg(string::from("test"))
     }
     if exists(string::from("tests")) {
-        tar#.arg(string::from("tests"))
+        archive_builder#.arg(string::from("tests"))
     }
     if exists(string::from("build.tk")) {
-        tar#.arg(string::from("build.tk"))
+        archive_builder#.arg(string::from("build.tk"))
     }
     if exists(string::from("README.md")) {
-        tar#.arg(string::from("README.md"))
+        archive_builder#.arg(string::from("README.md"))
     }
     if exists(string::from("LICENSE")) {
-        tar#.arg(string::from("LICENSE"))
+        archive_builder#.arg(string::from("LICENSE"))
     }
-    if tar#.status() != 0 {
+    if archive_builder#.status() != 0 {
         println("Error: Failed to create tar archive")
         return 1
     }

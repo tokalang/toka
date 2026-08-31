@@ -5,15 +5,17 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import gzip
 import hashlib
 import json
 import ntpath
 import os
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import urllib.parse
 import urllib.error
@@ -37,6 +39,97 @@ DEFAULT_REGISTRY_URL = "https://pkg.tokalang.dev"
 
 class PackageError(RuntimeError):
     pass
+
+
+def build_deterministic_archive(output: Path, inputs: list[str]) -> None:
+    root = Path.cwd().resolve()
+    if output.is_absolute() or ".." in output.parts:
+        raise PackageError("archive output must be a workspace-relative path")
+    lexical_output = root / output
+    if lexical_output.is_symlink():
+        raise PackageError("archive output cannot be a symbolic link")
+    output = lexical_output.resolve()
+    try:
+        output.relative_to(root)
+    except ValueError as error:
+        raise PackageError("archive output escapes the workspace") from error
+    if not output.parent.is_dir():
+        raise PackageError("archive output directory does not exist: " + str(output.parent))
+
+    members: dict[str, Path] = {}
+    for raw in inputs:
+        relative_input = Path(raw)
+        if relative_input.is_absolute() or ".." in relative_input.parts:
+            raise PackageError("archive input must be a workspace-relative path: " + raw)
+        lexical_source = root / relative_input
+        if lexical_source.is_symlink():
+            raise PackageError("archive input cannot be a symbolic link: " + raw)
+        source = lexical_source.resolve()
+        try:
+            source.relative_to(root)
+        except ValueError as error:
+            raise PackageError("archive input escapes the workspace: " + raw) from error
+        if source == output:
+            raise PackageError("archive output cannot also be an input")
+        if source.is_file():
+            candidates = [source]
+        elif source.is_dir():
+            descendants = sorted(source.rglob("*"))
+            candidates = [path for path in descendants if path.is_file()]
+            symbolic = [path for path in descendants if path.is_symlink()]
+            if symbolic:
+                raise PackageError(
+                    "archive input contains a symbolic link: "
+                    + symbolic[0].relative_to(root).as_posix()
+                )
+            unsupported = [
+                path for path in descendants
+                if not path.is_file() and not path.is_dir()
+            ]
+            if unsupported:
+                raise PackageError(
+                    "archive input contains a non-regular member: "
+                    + unsupported[0].relative_to(root).as_posix()
+                )
+        else:
+            raise PackageError("archive input does not exist or is not regular: " + raw)
+
+        for candidate in candidates:
+            relative = candidate.relative_to(root).as_posix()
+            parts = PurePosixPath(relative).parts
+            if not parts or relative.startswith("/") or ".." in parts:
+                raise PackageError("unsafe archive member: " + relative)
+            previous = members.get(relative)
+            if previous is not None and previous != candidate:
+                raise PackageError("duplicate archive member: " + relative)
+            members[relative] = candidate
+
+    if not members:
+        raise PackageError("archive has no input files")
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix="." + output.name + ".", suffix=".tmp", dir=output.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        with temporary.open("wb") as raw_output:
+            with gzip.GzipFile(filename="", mode="wb", fileobj=raw_output, mtime=0) as compressed:
+                with tarfile.open(fileobj=compressed, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+                    for relative, source in sorted(members.items()):
+                        info = tarfile.TarInfo(relative)
+                        info.size = source.stat().st_size
+                        info.mode = 0o755 if source.stat().st_mode & 0o111 else 0o644
+                        info.mtime = 0
+                        info.uid = 0
+                        info.gid = 0
+                        info.uname = ""
+                        info.gname = ""
+                        with source.open("rb") as member:
+                            archive.addfile(info, member)
+        os.replace(temporary, output)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True)
@@ -1210,6 +1303,10 @@ def main() -> int:
     extract.add_argument("archive")
     extract.add_argument("destination")
 
+    archive = subparsers.add_parser("build-archive")
+    archive.add_argument("output")
+    archive.add_argument("inputs", nargs="+")
+
     remove = subparsers.add_parser("remove")
     remove.add_argument("alias")
     remove.add_argument("--manifest", default="package.tk")
@@ -1243,6 +1340,8 @@ def main() -> int:
             print(tree_sha256(Path(args.path)))
         elif args.command == "safe-extract":
             safe_extract(Path(args.archive), Path(args.destination))
+        elif args.command == "build-archive":
+            build_deterministic_archive(Path(args.output), args.inputs)
         elif args.command == "remove":
             manifest = Path(args.manifest)
             original = manifest.read_bytes()

@@ -761,8 +761,27 @@ def test_toka_publish_and_consume(root: Path, toka: Path) -> None:
         )
         archive_path = producer / "replica-1.0.0.tar.gz"
         assert archive_path.is_file()
+        first_archive = archive_path.read_bytes()
         with tarfile.open(archive_path, "r:gz") as archive:
             assert {"README.md", "LICENSE", "tests/qualification.tk"}.issubset(archive.getnames())
+            for member in archive.getmembers():
+                assert member.isfile()
+                assert (member.uid, member.gid, member.uname, member.gname, member.mtime) == (
+                    0, 0, "", "", 0,
+                )
+
+        os.utime(producer / "README.md", (12345, 12345))
+        repackaged = subprocess.run(
+            [str(toka), "publish"], cwd=producer, env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        if repackaged.returncode != 0:
+            raise AssertionError(
+                "deterministic package rebuild failed:\nstdout:\n%s\nstderr:\n%s" % (
+                    repackaged.stdout, repackaged.stderr,
+                )
+            )
+        assert archive_path.read_bytes() == first_archive
 
         environment["TOKA_REGISTRY_URL"] = registry_url
         environment["TOKA_REGISTRY_PUBLISH_TOKEN"] = "test-token"
