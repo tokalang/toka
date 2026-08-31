@@ -25,7 +25,7 @@ fn main() -> i32 {
 
     // Mutation targets `scene.root` which is a prefix of `scene.root.left` currently locked by `my_left`. 
     // EXPECT: error[E0442]: Cannot mutably borrow immutable entity 'scene.root'
-    scene.root = newRoot 
+    scene.root = cede newRoot
 
     return my_left.val
 }

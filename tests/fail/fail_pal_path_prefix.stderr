@@ -1,7 +1,7 @@
 error[E0442]: Cannot mutably borrow immutable entity 'scene.root.left'
  --> tests/fail/fail_pal_path_prefix.tk:28:16
     |
- 28 |     scene.root = newRoot 
+ 28 |     scene.root = cede newRoot
     |                ^
 note: conflicting borrow originates here
  --> tests/fail/fail_pal_path_prefix.tk:20:21

@@ -7,7 +7,7 @@ fn test() -> Result<string, string> {
     auto v = r!
     // EXPECT: use of moved variable
     auto z = r
-    return Result<string, string>::Ok(v)
+    return Result<string, string>::Ok(cede v)
 }
 
 pub fn main() -> i32 { 
