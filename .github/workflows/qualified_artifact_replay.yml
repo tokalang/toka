@@ -1,0 +1,148 @@
+name: Qualified macOS x64 Artifact Replay
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing canonical RC tag
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact commit peeled from the annotated RC tag
+        required: true
+        type: string
+      qualification_run_id:
+        description: Successful tagged four-target Release Qualification run id
+        required: true
+        type: string
+      archive_sha256:
+        description: SHA-256 recorded for the macOS x64 draft asset
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  replay:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Bind replay to candidate and qualification run
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$QUALIFICATION_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          git rev-parse "refs/tags/$TAG_NAME^{tag}" >/dev/null
+          test "$(git rev-parse "refs/tags/$TAG_NAME^{commit}")" = \
+            "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          run_api="repos/$GITHUB_REPOSITORY/actions/runs/$QUALIFICATION_RUN_ID"
+          test "$(gh api "$run_api" --jq .status)" = completed
+          test "$(gh api "$run_api" --jq .conclusion)" = success
+          test "$(gh api "$run_api" --jq .head_sha)" = "$CANDIDATE_SHA"
+
+      - name: Install SDK host dependencies
+        run: brew install lld@20 zstd openssl@3
+
+      - name: Download qualified macOS x64 archive
+        uses: actions/download-artifact@v4
+        with:
+          name: release-archive-macos-x64
+          path: qualified-assets
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.qualification_run_id }}
+
+      - name: Verify and replay qualified archive from a clean extraction
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+          ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        run: |
+          set -euo pipefail
+          archive="$GITHUB_WORKSPACE/qualified-assets/toka-$TAG_NAME-macos-x64.tar.gz"
+          test -f "$archive"
+          actual_sha256=$(shasum -a 256 "$archive" | awk '{print $1}')
+          test "$actual_sha256" = "$ARCHIVE_SHA256"
+
+          work_dir="$(mktemp -d)"
+          trap 'rm -rf "$work_dir"' EXIT
+          tar -xzf "$archive" -C "$work_dir"
+          sdk="$work_dir/toka-$TAG_NAME-macos-x64"
+          export PATH="$sdk/bin:$PATH"
+          export TOKA_LIB="$sdk/lib"
+
+          toka doctor
+          cd "$work_dir"
+          toka new smoke
+          cd smoke
+          toka run
+
+          mkdir ../local_dep
+          printf '%s\n' \
+            'pub const PACKAGE = (name = "dependency", version = "1.0.0", dependencies = ())' \
+            > ../local_dep/package.tk
+          mkdir -p ../local_dep/lib/dependency
+          printf '%s\n' 'pub fn value() -> i32 { return 1 }' \
+            > ../local_dep/lib/dependency/mod.tk
+          toka add ../local_dep
+          toka fetch
+          cp package.lock ../local-online.lock
+          rm -rf target .toka
+          rm -f .toka_build_exe
+          TOKA_OFFLINE=1 toka fetch
+          cmp package.lock ../local-online.lock
+          toka run
+
+          cd ..
+          printf '%s\n' 'pub fn value() -> i32 { return 1 }' > base.tk
+          printf '%s\n' \
+            'pub fn value(value#: i32) -> i32 {' \
+            '    value = value + 1' \
+            '    return value' \
+            '}' > candidate.tk
+          (
+            cd "$sdk/bin"
+            ./toka preview --base "$work_dir/base.tk" \
+              --candidate "$work_dir/candidate.tk"
+          ) > preview.json
+          python3 -c 'import json; d=json.load(open("preview.json")); assert d["schema"] == "toka.semantic-diff-preview" and d["version"] == 1'
+
+          mkdir registry
+          cd registry
+          toka new registry_smoke
+          cd registry_smoke
+          toka add unicode
+          toka fetch
+          cp package.lock ../registry-online.lock
+          rm -rf target .toka/packages .toka/build
+          rm -f .toka_build_exe
+          test "$(find .toka -type f | wc -l | tr -d ' ')" = 1
+          TOKA_OFFLINE=1 toka fetch
+          cmp package.lock ../registry-online.lock
+
+          receipt="$GITHUB_WORKSPACE/qualified-artifact-replay-receipt.json"
+          python3 -c \
+            'import json,os; print(json.dumps({"archive_sha256":os.environ["ARCHIVE_SHA256"],"candidate_revision":os.environ["CANDIDATE_SHA"],"qualification_run_id":int(os.environ["QUALIFICATION_RUN_ID"]),"result":"pass","schema":"toka.qualified-artifact-replay","target":"macos-x64","version":1,"version_label":os.environ["TAG_NAME"]},sort_keys=True,separators=(",",":")))' \
+            > "$receipt"
+
+      - name: Upload replay receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualified-artifact-replay-${{ inputs.tag_name }}-macos-x64
+          path: qualified-artifact-replay-receipt.json
+          if-no-files-found: error
