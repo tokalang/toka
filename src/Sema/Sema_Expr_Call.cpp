@@ -2486,6 +2486,26 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     Call->Args.size(), AggregateTransferKind::Unqualified);
               Call->ArgumentTransfers[i] =
                   qualifyAggregateTransfer(Arg.get(), payloadType);
+              if (payloadType)
+                payloadType = resolveType(payloadType, false);
+              const bool payloadReceivesOwnedValue =
+                  (payloadType && payloadType->requiresExplicitOwnershipTransfer(this)) ||
+                  (Arg->ResolvedType && Arg->ResolvedType->requiresExplicitOwnershipTransfer(this));
+              if (payloadReceivesOwnedValue &&
+                  !dynamic_cast<CedeExpr *>(Arg.get()) &&
+                  Call->ArgumentTransfers[i] != AggregateTransferKind::MoveOwned) {
+                Expr *directSource = Arg.get();
+                while (auto *cast = dynamic_cast<CastExpr *>(directSource))
+                  directSource = cast->Expression.get();
+                const bool isOwnedLValueSource =
+                    static_cast<bool>(makeAccessPath(directSource));
+                if (isOwnedLValueSource) {
+                  const std::string sourceName = ownershipSourceLabel(directSource);
+                  error(Arg.get(),
+                        DiagID::ERR_SEMA_FIELD_INITIALIZER_MUST_BE_EXPLICITLY_CEDED,
+                        VariantName, sourceName, sourceName);
+                }
+              }
               if (!m_LastBorrowSource.empty())
                 m_LastLifeDependencies.insert(m_LastBorrowSource);
             }

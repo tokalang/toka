@@ -138,6 +138,10 @@ llvm::Value *CodeGen::genReturnStmt(const ReturnStmt *ret) {
         moveTarget = pe->LHS.get();
       } else if (auto *ue = dynamic_cast<const UnaryExpr *>(moveTarget)) {
         moveTarget = ue->RHS.get();
+      } else if (auto *ce = dynamic_cast<const CedeExpr *>(moveTarget)) {
+        moveTarget = ce->Value.get();
+      } else if (auto *cast = dynamic_cast<const CastExpr *>(moveTarget)) {
+        moveTarget = cast->Expression.get();
       } else {
         break;
       }
@@ -938,7 +942,11 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
     baseShapeName = baseShapeName.substr(0, baseShapeName.find('<'));
   }
 
-  if (!usesSourceAddr && gbs->Target && gbs->Target->ExtendLifetime && !m_ScopeStack.empty()) {
+  bool transfersOwnership =
+      dynamic_cast<const CedeExpr *>(gbs->Target.get()) != nullptr;
+
+  if (!transfersOwnership && !usesSourceAddr && gbs->Target &&
+      gbs->Target->ExtendLifetime && !m_ScopeStack.empty()) {
       bool hasDrop = false;
       if (!baseShapeName.empty() && m_Shapes.count(baseShapeName)) {
           hasDrop = true;
@@ -997,7 +1005,7 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
   // Actually, wait, if ExtendLifetime is false, then we MUST drop it.
   
   if (!baseShapeName.empty() && m_Shapes.count(baseShapeName)) {
-      if (!usesSourceAddr && (!gbs->Target || !gbs->Target->ExtendLifetime)) {
+      if (!usesSourceAddr && (transfersOwnership || !gbs->Target || !gbs->Target->ExtendLifetime)) {
           emitDropCascade(targetAddr, targetTypeStr);
       }
   }
@@ -1024,7 +1032,8 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
               "enum_ref_payload");
           genPatternBinding(gbs->Pat->SubPatterns[0].get(), payloadRef,
                             llvm::PointerType::getUnqual(m_Context),
-                            variant->SubMembers[0].ResolvedType);
+                            variant->SubMembers[0].ResolvedType,
+                            transfersOwnership);
           return nullptr;
       }
       if (variant->Type == "void" && gbs->Pat->SubPatterns.size() == 1 &&
@@ -1064,7 +1073,7 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
             // as `MutexLock { handle, data }` into a fabricated pointer.
             genPatternBinding(gbs->Pat->SubPatterns[0].get(), payloadAddr,
                               getLLVMType(payloadTypeObj),
-                              payloadTypeObj);
+                              payloadTypeObj, transfersOwnership);
           } else {
             // A reference-valued payload stores the referent address in the
             // enum storage; only that case loads the slot itself.
@@ -1073,7 +1082,7 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
                 "enum_ref_payload");
             genPatternBinding(gbs->Pat->SubPatterns[0].get(), payloadRef,
                               llvm::PointerType::getUnqual(m_Context),
-                              payloadTypeObj);
+                              payloadTypeObj, transfersOwnership);
           }
           return nullptr;
       }
@@ -1094,32 +1103,83 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
       
       if (payloadLayoutType) {
           llvm::Value *variantAddr = m_Builder.CreateBitCast(payloadAddr, llvm::PointerType::getUnqual(m_Context), "variant_addr");
+          size_t elisionIndex = -1;
+          size_t elisionCount = 0;
           for (size_t i = 0; i < gbs->Pat->SubPatterns.size(); ++i) {
-              if (fieldTypes.empty() && i > 0) break;
-              if (!fieldTypes.empty() && i >= fieldTypes.size()) break;
+              if (gbs->Pat->SubPatterns[i]->PatternKind ==
+                  MatchArm::Pattern::Elision) {
+                  elisionIndex = i;
+                  elisionCount++;
+              }
+          }
+          size_t expectedSize = fieldTypes.empty() ? 1 : fieldTypes.size();
+          size_t elidedCount = elisionCount == 1
+                                    ? expectedSize -
+                                          (gbs->Pat->SubPatterns.size() - 1)
+                                    : 0;
+          for (size_t i = 0; i < gbs->Pat->SubPatterns.size(); ++i) {
+              if (gbs->Pat->SubPatterns[i]->PatternKind ==
+                  MatchArm::Pattern::Elision) {
+                  if (transfersOwnership) {
+                      for (size_t memberIndex = i;
+                           memberIndex < i + elidedCount &&
+                           memberIndex < expectedSize;
+                           ++memberIndex) {
+                          llvm::Value *fieldAddr = variantAddr;
+                          llvm::Type *fieldTy = payloadLayoutType;
+                          if (!fieldTypes.empty()) {
+                              fieldAddr = m_Builder.CreateStructGEP(
+                                  payloadLayoutType, variantAddr, memberIndex);
+                              fieldTy = fieldTypes[memberIndex];
+                          }
+                          std::shared_ptr<Type> subTypeObj = nullptr;
+                          if (variant->SubMembers.size() > memberIndex)
+                              subTypeObj = variant->SubMembers[memberIndex]
+                                               .ResolvedType;
+                          else
+                              subTypeObj = variant->ResolvedType;
+                          registerPatternResidualCleanup(
+                              fieldAddr, fieldTy, subTypeObj);
+                      }
+                  }
+                  continue;
+              }
+
+              size_t memberIndex = i;
+              if (elisionCount == 1)
+                  memberIndex = i < elisionIndex
+                                    ? i
+                                    : i + elidedCount - 1;
+              if (memberIndex >= expectedSize) break;
 
               llvm::Value *fieldAddr = variantAddr;
               llvm::Type *fieldTy = payloadLayoutType;
 
               if (!fieldTypes.empty()) {
-                  fieldAddr = m_Builder.CreateStructGEP(payloadLayoutType, variantAddr, i);
-                  fieldTy = fieldTypes[i];
+                  fieldAddr = m_Builder.CreateStructGEP(payloadLayoutType, variantAddr, memberIndex);
+                  fieldTy = fieldTypes[memberIndex];
               }
 
               std::shared_ptr<Type> subTypeObj = nullptr;
-              if (variant->SubMembers.size() > i && variant->SubMembers[i].ResolvedType) {
-                  subTypeObj = variant->SubMembers[i].ResolvedType;
+              if (variant->SubMembers.size() > memberIndex && variant->SubMembers[memberIndex].ResolvedType) {
+                  subTypeObj = variant->SubMembers[memberIndex].ResolvedType;
               } else if (variant->ResolvedType) {
                   subTypeObj = variant->ResolvedType;
               }
-              genPatternBinding(gbs->Pat->SubPatterns[i].get(), fieldAddr, fieldTy, subTypeObj);
+              genPatternBinding(gbs->Pat->SubPatterns[i].get(), fieldAddr,
+                                fieldTy, subTypeObj, transfersOwnership);
           }
       }
   } else if (!variant && gbs->Pat->PatternKind == MatchArm::Pattern::Variable) {
-      genPatternBinding(gbs->Pat.get(), targetAddr, targetType, gbs->Target->ResolvedType);
-  } else if (!variant && gbs->Pat->PatternKind == MatchArm::Pattern::Decons) {
+      bool transfersOwnership =
+          dynamic_cast<const CedeExpr *>(gbs->Target.get()) != nullptr;
       genPatternBinding(gbs->Pat.get(), targetAddr, targetType,
-                        gbs->Target->ResolvedType);
+                        gbs->Target->ResolvedType, transfersOwnership);
+  } else if (!variant && gbs->Pat->PatternKind == MatchArm::Pattern::Decons) {
+      bool transfersOwnership =
+          dynamic_cast<const CedeExpr *>(gbs->Target.get()) != nullptr;
+      genPatternBinding(gbs->Pat.get(), targetAddr, targetType,
+                        gbs->Target->ResolvedType, transfersOwnership);
   }
   
   return nullptr;

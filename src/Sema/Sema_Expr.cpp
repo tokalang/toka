@@ -5821,7 +5821,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
       }
       checkPattern(arm->Pat.get(), targetType, targetCapability, targetPath,
-                   targetAccessPath);
+                   targetAccessPath, me->TransfersPayloadOwnership);
       if (arm->Guard) {
         auto guardTypeObj = checkExpr(arm->Guard.get());
         if (!arm->Guard->ResolvedType->isBoolean()) {

@@ -2658,6 +2658,149 @@
       "expected_span_line": 10,
       "timeout_seconds": 10,
       "description": "Returning a borrow originating from a local lock guard must fail"
+    },
+    {
+      "id": "diag_aggregate_owned_assignment_requires_cede_01",
+      "path": "diagnostics/aggregate_owned_assignment_requires_cede.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04652",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "Assigning an owning aggregate local requires explicit cede transfer"
+    },
+    {
+      "id": "diag_aggregate_owned_assignment_index_requires_cede_01",
+      "path": "diagnostics/aggregate_owned_assignment_index_requires_cede.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04641",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "Assigning an owning container index projection requires explicit cede transfer"
+    },
+    {
+      "id": "diag_aggregate_owned_assignment_use_after_cede_01",
+      "path": "diagnostics/aggregate_owned_assignment_use_after_cede.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0438",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "An owning aggregate local is unavailable after explicit cede assignment"
+    },
+    {
+      "id": "diag_enum_variant_result_owned_requires_cede_01",
+      "path": "diagnostics/enum_variant_result_owned_requires_cede.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04607",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "Constructing Result variant with an owning local requires explicit cede"
+    },
+    {
+      "id": "diag_enum_variant_option_owned_requires_cede_01",
+      "path": "diagnostics/enum_variant_option_owned_requires_cede.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04607",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "Constructing Option variant with an owning local requires explicit cede"
+    },
+    {
+      "id": "ownership_aggregate_owned_assignment_cede_exactly_once_01",
+      "path": "ownership/aggregate_owned_assignment_cede_exactly_once.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "An explicitly ceded aggregate assignment has exactly one cleanup owner"
+    },
+    {
+      "id": "ownership_enum_variant_owned_value_cede_exactly_once_01",
+      "path": "ownership/enum_variant_owned_value_cede_exactly_once.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "An explicitly ceded enum variant payload has exactly one cleanup owner"
+    },
+    {
+      "id": "ownership_enum_variant_rvalue_clean_drop_01",
+      "path": "ownership/enum_variant_rvalue_clean_drop.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A fresh rvalue enum variant payload drops cleanly exactly once"
+    },
+    {
+      "id": "async_await_cancellation_clean_drop_01",
+      "path": "async/async_await_cancellation_clean_drop.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A canceled task unwinding across .await? drops in-flight local resources cleanly"
+    },
+    {
+      "id": "ownership_result_generic_method_unwrap_cede_drop_01",
+      "path": "ownership/result_generic_method_unwrap_cede_drop.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Result generic methods unwrap and unwrap_err clear source drop flag and drop payload once"
+    },
+    {
+      "id": "async_result_unwrap_frame_drop_flag_01",
+      "path": "async/async_result_unwrap_frame_drop_flag.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Result unwrap in async coroutine clears frame drop flag across suspension points"
+    },
+    {
+      "id": "diag_pattern_borrowed_binder_cannot_cede_01",
+      "path": "diagnostics/pattern_borrowed_binder_cannot_cede.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04646",
+      "expected_span_line": 13,
+      "timeout_seconds": 10,
+      "description": "Attempting to cede a borrowed pattern binding alias is rejected"
+    },
+    {
+      "id": "ownership_pattern_ceded_binder_single_owner_drop_01",
+      "path": "ownership/pattern_ceded_binder_single_owner_drop.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A ceded pattern match binding transfers ownership cleanly and drops exactly once"
+    },
+    {
+      "id": "diag_pattern_borrowed_binder_cannot_return_owned_01",
+      "path": "diagnostics/pattern_borrowed_binder_cannot_return_owned.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04646",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "Attempting to return a borrowed pattern binding alias for an owned type is rejected"
+    },
+    {
+      "id": "ownership_pattern_ceded_binder_return_owned_drop_01",
+      "path": "ownership/pattern_ceded_binder_return_owned_drop.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Returning a ceded pattern binding moves ownership cleanly and drops exactly once"
+    },
+    {
+      "id": "guard_ceded_mismatch_else_drop_01",
+      "path": "ownership/guard_ceded_mismatch_else_drop.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A ceded guard expression mismatch entering else branch drops the active variant payload cleanly"
+    },
+    {
+      "id": "match_ceded_wildcard_unbound_drop_01",
+      "path": "ownership/match_ceded_wildcard_unbound_drop.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A ceded match expression entering a wildcard or unbound branch drops the active variant payload cleanly"
     }
   ]
 }

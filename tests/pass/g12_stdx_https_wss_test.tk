@@ -28,7 +28,7 @@ fn write_stream_async(stream#: AsyncStream, cede bytes: Vec<u8>) -> async Result
         auto failure# = written.unwrap_err()
         auto message = failure.message.clone()
         auto _returned = failure#.take_buffer()
-        return Result<(), string>::Err(message)
+        return Result<(), string>::Err(cede message)
     }
     auto completed# = written.unwrap()
     auto complete = completed.complete
@@ -161,24 +161,24 @@ fn async_wss_server_task(cede listener: TcpListener) -> async Result<(), string>
     }
     auto async_s# = tls_res.unwrap()
 
-    auto ws_conn_res = ws_accept_stream_async(async_s).await
+    auto ws_conn_res = ws_accept_stream_async(async_s#).await
     if ws_conn_res.is_err() {
         auto err_msg = ws_conn_res.unwrap_err()
-        return Result<(), string>::Err(err_msg)
+        return Result<(), string>::Err(cede err_msg)
     }
     auto ws_conn# = ws_conn_res.unwrap()
 
     auto msg_res = ws_conn#.read_text_async().await
     if msg_res.is_err() {
         auto err_msg = msg_res.unwrap_err()
-        return Result<(), string>::Err(err_msg)
+        return Result<(), string>::Err(cede err_msg)
     }
     auto text_str = msg_res.unwrap()
 
     auto echo_w = ws_conn#.write_text_async(text_str.as_str()).await
     if echo_w.is_err() {
         auto err_msg = echo_w.unwrap_err()
-        return Result<(), string>::Err(err_msg)
+        return Result<(), string>::Err(cede err_msg)
     }
 
     sleep_async(100:u64).await
@@ -196,20 +196,20 @@ fn async_wss_client_task(port: u16) -> async Result<(), string> {
     auto ws_res = ws_connect_insecure_url_async(url_str, addr).await
     if ws_res.is_err() {
         auto err_msg = ws_res.unwrap_err()
-        return Result<(), string>::Err(err_msg)
+        return Result<(), string>::Err(cede err_msg)
     }
 
     auto ws_conn# = ws_res.unwrap()
     auto send_w = ws_conn#.write_text_async("Hello OpenSSL WSS!").await
     if send_w.is_err() {
         auto err_msg = send_w.unwrap_err()
-        return Result<(), string>::Err(err_msg)
+        return Result<(), string>::Err(cede err_msg)
     }
 
     auto echo_msg = ws_conn#.read_text_async().await
     if echo_msg.is_err() {
         auto err_msg = echo_msg.unwrap_err()
-        return Result<(), string>::Err(err_msg)
+        return Result<(), string>::Err(cede err_msg)
     }
     auto msg = echo_msg.unwrap()
     if !msg.as_str().equals("Hello OpenSSL WSS!") {
@@ -424,7 +424,7 @@ fn async_trusted_ca_client_task(port: u16) -> async Result<(), string> {
     }
 
     // Connect with verify_peer = true, supplying the server's CA certificate file!
-    auto tls_res = TlsStream::connect_with_ca_file_async(tcp_stream, string::from("localhost"), string::from("tmp/g12_wss_cert_v1.crt")).await
+    auto tls_res = TlsStream::connect_with_ca_file_async(tcp_stream#, string::from("localhost"), string::from("tmp/g12_wss_cert_v1.crt")).await
     if tls_res.is_err() {
         return Result<(), string>::Err(tls_res.unwrap_err())
     }
@@ -432,7 +432,7 @@ fn async_trusted_ca_client_task(port: u16) -> async Result<(), string> {
     auto async_s# = tls_res.unwrap()
     auto req_str = string::from("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
     auto request# = bytes_from_string(req_str.as_str())
-    auto w = write_stream_async(async_s, cede request).await
+    auto w = write_stream_async(async_s#, cede request).await
     if w.is_err() {
         return Result<(), string>::Err(w.unwrap_err())
     }

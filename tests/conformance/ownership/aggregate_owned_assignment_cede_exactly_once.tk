@@ -1,0 +1,30 @@
+import core/string::{string}
+
+auto g_drop_count# = 0
+
+shape Payload(name: string)
+impl Payload@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+shape Wrapper(payload: Payload)
+
+fn main() -> i32 {
+    {
+        auto first = Wrapper(payload = Payload(name = string::from("first")))
+        auto second# = Wrapper(payload = Payload(name = string::from("second")))
+        second = cede first
+        if g_drop_count != 1 {
+            return 1
+        }
+        if !second.payload.name.as_str().equals("first") {
+            return 2
+        }
+    }
+    if g_drop_count != 2 {
+        return 3
+    }
+    return 0
+}

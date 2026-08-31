@@ -1,0 +1,14 @@
+import core/string::{string}
+
+shape Resource(name: string, id: i32)
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto first = Resource(name = string::from("first"), id = 1:i32)
+    auto second# = Resource(name = string::from("second"), id = 2:i32)
+    second = cede first
+    auto read = first.id
+    return 0
+}

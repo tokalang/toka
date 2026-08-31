@@ -1,0 +1,147 @@
+import core/string::{string}
+
+auto g_drop_count# = 0
+
+shape Resource(name: string)
+impl Resource@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+shape Choice(
+    Left(Resource) = 1 |
+    Right(Resource) = 2
+)
+
+shape Bundle(
+    Pair(Resource, Resource) = 1 |
+    Empty = 0
+)
+
+fn test_match_wildcard() -> i32 {
+    g_drop_count = 0
+    {
+        auto choice = Choice::Right(Resource(name = string::from("hello")))
+        match cede choice {
+            auto Choice::Left('val) => return 1
+            _ => {
+                // choice was Right(Resource) and was ceded.
+                // Entering the wildcard branch drops the Right(Resource) payload.
+                if g_drop_count != 1 { return 20 }
+            }
+        }
+        if g_drop_count != 1 { return 21 }
+    }
+    if g_drop_count != 1 { return 22 }
+    return 0
+}
+
+fn test_variant_payload_wildcard() -> i32 {
+    g_drop_count = 0
+    auto choice = Choice::Right(Resource(name = string::from("variant_wildcard")))
+    match cede choice {
+        auto Choice::Right(_) => {}
+        _ => return 30
+    }
+    if g_drop_count != 1 { return 31 }
+    return 0
+}
+
+fn test_reference_binder_lifetime() -> i32 {
+    g_drop_count = 0
+    auto choice = Choice::Right(Resource(name = string::from("borrowed")))
+    match cede choice {
+        auto Choice::Right(&payload) => {
+            if g_drop_count != 0 { return 40 }
+            if !payload.name.as_str().equals("borrowed") { return 41 }
+        }
+        _ => return 42
+    }
+    if g_drop_count != 1 { return 43 }
+    return 0
+}
+
+fn test_partial_payload_cleanup() -> i32 {
+    g_drop_count = 0
+    auto bundle = Bundle::Pair(
+        Resource(name = string::from("owned")),
+        Resource(name = string::from("residual"))
+    )
+    match cede bundle {
+        auto Bundle::Pair('owned, _) => {
+            if g_drop_count != 0 { return 50 }
+            if !'owned.name.as_str().equals("owned") { return 51 }
+        }
+        _ => return 52
+    }
+    if g_drop_count != 2 { return 53 }
+    return 0
+}
+
+fn test_elided_payload_cleanup() -> i32 {
+    g_drop_count = 0
+    auto bundle = Bundle::Pair(
+        Resource(name = string::from("owned")),
+        Resource(name = string::from("elided"))
+    )
+    match cede bundle {
+        auto Bundle::Pair('owned, ..) => {
+            if g_drop_count != 0 { return 60 }
+            if !'owned.name.as_str().equals("owned") { return 61 }
+        }
+        _ => return 62
+    }
+    if g_drop_count != 2 { return 63 }
+    return 0
+}
+
+fn return_from_reference_arm() -> i32 {
+    auto choice = Choice::Right(Resource(name = string::from("early_return")))
+    match cede choice {
+        auto Choice::Right(&payload) => {
+            if !payload.name.as_str().equals("early_return") { return 70 }
+            return 0
+        }
+        _ => return 71
+    }
+}
+
+fn test_reference_binder_early_return() -> i32 {
+    g_drop_count = 0
+    auto result = return_from_reference_arm()
+    if result != 0 { return result }
+    if g_drop_count != 1 { return 72 }
+    return 0
+}
+
+fn test_or_pattern_reference_cleanup() -> i32 {
+    g_drop_count = 0
+    auto choice = Choice::Right(Resource(name = string::from("or_pattern")))
+    match cede choice {
+        auto Choice::Left(&payload) | auto Choice::Right(&payload) => {
+            if g_drop_count != 0 { return 80 }
+            if !payload.name.as_str().equals("or_pattern") { return 81 }
+        }
+    }
+    if g_drop_count != 1 { return 82 }
+    return 0
+}
+
+fn main() -> i32 {
+    auto r1 = test_match_wildcard()
+    if r1 != 0 { return r1 }
+    auto r2 = test_variant_payload_wildcard()
+    if r2 != 0 { return r2 }
+    auto r3 = test_reference_binder_lifetime()
+    if r3 != 0 { return r3 }
+    auto r4 = test_partial_payload_cleanup()
+    if r4 != 0 { return r4 }
+    auto r5 = test_elided_payload_cleanup()
+    if r5 != 0 { return r5 }
+    auto r6 = test_reference_binder_early_return()
+    if r6 != 0 { return r6 }
+    auto r7 = test_or_pattern_reference_cleanup()
+    if r7 != 0 { return r7 }
+    return 0
+}

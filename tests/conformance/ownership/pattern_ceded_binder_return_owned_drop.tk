@@ -1,0 +1,45 @@
+import core/string::{string}
+import core/option::{Option}
+
+auto g_drop_count# = 0
+
+shape Resource(name: string)
+impl Resource@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+fn test_match_return() -> Resource {
+    auto opt = Option<Resource>::Some(Resource(name = string::from("match_res")))
+    match cede opt {
+        auto Option<Resource>::Some('val) => return 'val
+        auto Option<Resource>::None => return Resource(name = string::from("fallback"))
+    }
+}
+
+fn test_guard_return() -> Resource {
+    auto opt = Option<Resource>::Some(Resource(name = string::from("guard_res")))
+    guard auto Option<Resource>::Some('val) = cede opt else {
+        return Resource(name = string::from("fallback"))
+    }
+    return 'val
+}
+
+fn main() -> i32 {
+    {
+        auto r1 = test_match_return()
+        if g_drop_count != 0 { return 1 }
+        if !r1.name.as_str().equals("match_res") { return 2 }
+    }
+    if g_drop_count != 1 { return 3 }
+
+    {
+        auto r2 = test_guard_return()
+        if g_drop_count != 1 { return 4 }
+        if !r2.name.as_str().equals("guard_res") { return 5 }
+    }
+    if g_drop_count != 2 { return 6 }
+
+    return 0
+}

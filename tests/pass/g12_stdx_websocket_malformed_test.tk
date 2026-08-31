@@ -23,7 +23,7 @@ fn write_tcp_async(stream#: TcpStream, cede bytes: Vec<u8>) -> async Result<(), 
         auto failure# = written.unwrap_err()
         auto message = failure.message.clone()
         auto _returned = failure#.take_buffer()
-        return Result<(), string>::Err(message)
+        return Result<(), string>::Err(cede message)
     }
     auto completed# = written.unwrap()
     auto complete = completed.complete
@@ -40,7 +40,7 @@ fn write_stream_async(stream#: AsyncStream, cede bytes: Vec<u8>) -> async Result
         auto failure# = written.unwrap_err()
         auto message = failure.message.clone()
         auto _returned = failure#.take_buffer()
-        return Result<(), string>::Err(message)
+        return Result<(), string>::Err(cede message)
     }
     auto completed# = written.unwrap()
     auto complete = completed.complete
@@ -56,14 +56,14 @@ fn run_t1_server(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto listener# = TcpListener::bind(addr)
     auto stream# = listener#.accept_async().await
-    auto ws_res = ws_accept_async(stream).await
+    auto ws_res = ws_accept_async(stream#).await
     if ws_res.is_err() {
         auto err = ws_res.unwrap_err()
         if err.as_view().index_of_str("Upgrade header MUST contain exact token").is_some() {
             println("[Test 1/10 PASSED] Correctly rejected substring Upgrade header 'wrong_proto'!")
             return Result<(), string>::Ok(())
         }
-        return Result<(), string>::Err(err)
+        return Result<(), string>::Err(cede err)
     }
     return Result<(), string>::Err(string::from("Accepted invalid Upgrade header"))
 }
@@ -74,7 +74,7 @@ fn run_t1_client(port: u16) -> async Result<(), string> {
     auto stream# = TcpStream::connect_async(addr).await
     auto req# = string::from("GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: wrong_proto\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
     auto request# = bytes_from_string(req.as_str())
-    return write_tcp_async(stream, cede request).await
+    return write_tcp_async(stream#, cede request).await
 }
 
 // Test 2: Fragmented Control Frame (FIN=0 Ping) Rejection
@@ -82,7 +82,7 @@ fn run_t2_server(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto listener# = TcpListener::bind(addr)
     auto stream# = listener#.accept_async().await
-    auto ws_res = ws_accept_async(stream).await
+    auto ws_res = ws_accept_async(stream#).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
     }
@@ -94,7 +94,7 @@ fn run_t2_server(port: u16) -> async Result<(), string> {
             println("[Test 2/10 PASSED] Correctly rejected fragmented FIN=0 control frame!")
             return Result<(), string>::Ok(())
         }
-        return Result<(), string>::Err(err)
+        return Result<(), string>::Err(cede err)
     }
     return Result<(), string>::Err(string::from("Accepted FIN=0 control frame"))
 }
@@ -125,7 +125,7 @@ fn run_t3_server(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto listener# = TcpListener::bind(addr)
     auto stream# = listener#.accept_async().await
-    auto ws_res = ws_accept_async(stream).await
+    auto ws_res = ws_accept_async(stream#).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
     }
@@ -137,7 +137,7 @@ fn run_t3_server(port: u16) -> async Result<(), string> {
             println("[Test 3/10 PASSED] Correctly rejected RSV1=1 frame!")
             return Result<(), string>::Ok(())
         }
-        return Result<(), string>::Err(err)
+        return Result<(), string>::Err(cede err)
     }
     return Result<(), string>::Err(string::from("Accepted RSV1=1 frame"))
 }
@@ -168,7 +168,7 @@ fn run_t4_server(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto listener# = TcpListener::bind(addr)
     auto stream# = listener#.accept_async().await
-    auto ws_res = ws_accept_async(stream).await
+    auto ws_res = ws_accept_async(stream#).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
     }
@@ -180,7 +180,7 @@ fn run_t4_server(port: u16) -> async Result<(), string> {
             println("[Test 4/10 PASSED] Correctly rejected Close frame with len=1!")
             return Result<(), string>::Ok(())
         }
-        return Result<(), string>::Err(err)
+        return Result<(), string>::Err(cede err)
     }
     return Result<(), string>::Err(string::from("Accepted Close frame with len=1"))
 }
@@ -212,14 +212,14 @@ fn run_t5_server(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto listener# = TcpListener::bind(addr)
     auto stream# = listener#.accept_async().await
-    auto ws_res = ws_accept_async(stream).await
+    auto ws_res = ws_accept_async(stream#).await
     if ws_res.is_err() {
         auto err = ws_res.unwrap_err()
         if err.as_view().index_of_str("Upgrade header MUST contain exact token").is_some() {
             println("[Test 5/10 PASSED] Correctly rejected substring header 'not-websocket'!")
             return Result<(), string>::Ok(())
         }
-        return Result<(), string>::Err(err)
+        return Result<(), string>::Err(cede err)
     }
     return Result<(), string>::Err(string::from("Accepted substring header 'not-websocket'"))
 }
@@ -230,7 +230,7 @@ fn run_t5_client(port: u16) -> async Result<(), string> {
     auto stream# = TcpStream::connect_async(addr).await
     auto req# = string::from("GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: not-websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
     auto request# = bytes_from_string(req.as_str())
-    return write_tcp_async(stream, cede request).await
+    return write_tcp_async(stream#, cede request).await
 }
 
 // Test 6: Non-Minimal Extended Payload Length Rejection (126 encoding for 2-byte payload)
@@ -238,7 +238,7 @@ fn run_t6_server(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto listener# = TcpListener::bind(addr)
     auto stream# = listener#.accept_async().await
-    auto ws_res = ws_accept_async(stream).await
+    auto ws_res = ws_accept_async(stream#).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
     }
@@ -250,7 +250,7 @@ fn run_t6_server(port: u16) -> async Result<(), string> {
             println("[Test 6/10 PASSED] Correctly rejected non-minimal length encoding for 16-bit payload!")
             return Result<(), string>::Ok(())
         }
-        return Result<(), string>::Err(err)
+        return Result<(), string>::Err(cede err)
     }
     return Result<(), string>::Err(string::from("Accepted non-minimal length encoding"))
 }
@@ -285,7 +285,7 @@ fn run_t7_server(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto listener# = TcpListener::bind(addr)
     auto stream# = listener#.accept_async().await
-    auto ws_res = ws_accept_async(stream).await
+    auto ws_res = ws_accept_async(stream#).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
     }
@@ -297,7 +297,7 @@ fn run_t7_server(port: u16) -> async Result<(), string> {
             println("[Test 7/10 PASSED] Correctly rejected invalid UTF-8 text frame!")
             return Result<(), string>::Ok(())
         }
-        return Result<(), string>::Err(err)
+        return Result<(), string>::Err(cede err)
     }
     return Result<(), string>::Err(string::from("Accepted invalid UTF-8 text frame"))
 }
@@ -330,14 +330,14 @@ fn run_t8_server(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto listener# = TcpListener::bind(addr)
     auto stream# = listener#.accept_async().await
-    auto ws_res = ws_accept_async(stream).await
+    auto ws_res = ws_accept_async(stream#).await
     if ws_res.is_err() {
         auto err = ws_res.unwrap_err()
         if err.as_view().index_of_str("Sec-WebSocket-Key MUST be valid 16-byte Base64 key").is_some() {
             println("[Test 8/10 PASSED] Correctly rejected invalid Base64 Sec-WebSocket-Key!")
             return Result<(), string>::Ok(())
         }
-        return Result<(), string>::Err(err)
+        return Result<(), string>::Err(cede err)
     }
     return Result<(), string>::Err(string::from("Accepted invalid Base64 key"))
 }
@@ -348,7 +348,7 @@ fn run_t8_client(port: u16) -> async Result<(), string> {
     auto stream# = TcpStream::connect_async(addr).await
     auto req# = string::from("GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ!!\r\nSec-WebSocket-Version: 13\r\n\r\n")
     auto request# = bytes_from_string(req.as_str())
-    return write_tcp_async(stream, cede request).await
+    return write_tcp_async(stream#, cede request).await
 }
 
 // Test 9: Multi-Frame Fragmented UTF-8 Validation (Split multi-byte character '¢' C2 A2 across 2 fragments)
@@ -356,7 +356,7 @@ fn run_t9_server(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto listener# = TcpListener::bind(addr)
     auto stream# = listener#.accept_async().await
-    auto ws_res = ws_accept_async(stream).await
+    auto ws_res = ws_accept_async(stream#).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
     }
@@ -420,7 +420,7 @@ fn run_t10_server(port: u16) -> async Result<(), string> {
             println("[Test 10/10 PASSED] Correctly rejected invalid status line 'HTTP/1.1 101 Bad'!")
             return Result<(), string>::Ok(())
         }
-        return Result<(), string>::Err(err)
+        return Result<(), string>::Err(cede err)
     }
     return Result<(), string>::Err(string::from("Accepted invalid status line 'HTTP/1.1 101 Bad'"))
 }
@@ -431,7 +431,7 @@ fn run_t10_client(port: u16) -> async Result<(), string> {
     auto stream# = listener#.accept_async().await
     auto resp# = string::from("HTTP/1.1 101 Bad\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n")
     auto response# = bytes_from_string(resp.as_str())
-    return write_tcp_async(stream, cede response).await
+    return write_tcp_async(stream#, cede response).await
 }
 
 fn main_async() -> async i32 {

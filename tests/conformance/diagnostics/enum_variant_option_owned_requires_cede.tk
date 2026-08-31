@@ -1,0 +1,17 @@
+import core/string::{string}
+import core/option::{Option}
+
+shape Resource(name: string)
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn make_opt() -> Option<Resource> {
+    auto res = Resource(name = string::from("item"))
+    return Option<Resource>::Some(res)
+}
+
+fn main() -> i32 {
+    auto opt = make_opt()
+    return 0
+}

@@ -2542,6 +2542,11 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
                             layout->getElementType(1), outcome->PayloadType,
                             expr->TransfersPayloadOwnership);
         }
+      } else if (isCeded && bindsPayload && outcome->PayloadType) {
+        llvm::Value *payloadAddr =
+            m_Builder.CreateStructGEP(layout, targetAddr, 1,
+                                      "miss.payload.addr");
+        emitDropCascade(payloadAddr, outcome->PayloadType->toString());
       }
       if (arm) {
         m_CFStack.push_back(
@@ -2775,6 +2780,11 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
 
           if (!variant->IsUnitVariant &&
               (!variant->SubMembers.empty() || !variant->Type.empty())) {
+            if (subPat->SubPatterns.empty()) {
+              if (isCeded && !baseShapeName.empty() && m_Shapes.count(baseShapeName)) {
+                emitDropCascade(targetAddr, shapeName);
+              }
+            } else {
             llvm::Value *payloadAddr =
                 m_Builder.CreateStructGEP(targetType, targetAddr, 1);
 
@@ -2872,6 +2882,28 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
 
               for (size_t i = 0; i < subPat->SubPatterns.size(); ++i) {
                 if (subPat->SubPatterns[i]->PatternKind == MatchArm::Pattern::Elision) {
+                  if (expr->TransfersPayloadOwnership) {
+                    for (size_t memberIndex = i;
+                         memberIndex < i + elidedCount &&
+                         memberIndex < expectedSize;
+                         ++memberIndex) {
+                      llvm::Value *fieldAddr = variantAddr;
+                      llvm::Type *fieldTy = payloadLayoutType;
+                      if (!fieldTypes.empty()) {
+                        fieldAddr = m_Builder.CreateStructGEP(
+                            payloadLayoutType, variantAddr, memberIndex);
+                        fieldTy = fieldTypes[memberIndex];
+                      }
+                      std::shared_ptr<Type> subTypeObj = nullptr;
+                      if (variant->SubMembers.size() > memberIndex)
+                        subTypeObj =
+                            variant->SubMembers[memberIndex].ResolvedType;
+                      else
+                        subTypeObj = variant->ResolvedType;
+                      registerPatternResidualCleanup(fieldAddr, fieldTy,
+                                                     subTypeObj);
+                    }
+                  }
                   continue;
                 }
 
@@ -2905,6 +2937,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
                                   fieldTy, subTypeObj,
                                   expr->TransfersPayloadOwnership);
               }
+            }
             }
             }
           }
@@ -2958,6 +2991,10 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
           genPatternBinding(arm->Pat.get(), targetAddr, targetType,
                             expr->Target->ResolvedType,
                             expr->TransfersPayloadOwnership);
+        } else if (isCeded) {
+          if (!baseShapeName.empty() && m_Shapes.count(baseShapeName)) {
+            emitDropCascade(targetAddr, shapeName);
+          }
         }
 
         m_CFStack.push_back(
@@ -3489,6 +3526,11 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
       // 3. ARM Body
       m_Builder.SetInsertPoint(armBB);
       m_ScopeStack.push_back({});
+      if (isCeded && arm->Pat->PatternKind == MatchArm::Pattern::Wildcard) {
+        if (!baseShapeName.empty() && m_Shapes.count(baseShapeName)) {
+          emitDropCascade(targetAddr, shapeName);
+        }
+      }
       genPatternBinding(arm->Pat.get(), targetAddr, targetType,
                         expr->Target->ResolvedType,
                         expr->TransfersPayloadOwnership);
@@ -4331,12 +4373,65 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
   return m_Builder.CreateLoad(m_Builder.getInt32Ty(), resultAddr, "for_result");
 }
 
+void CodeGen::registerPatternResidualCleanup(
+    llvm::Value *sourceAddr, llvm::Type *storageType,
+    std::shared_ptr<Type> type) {
+  if (!sourceAddr || !storageType || !type || m_ScopeStack.empty() ||
+      !typeCarriesCleanupLiability(type)) {
+    return;
+  }
+
+  const std::string name =
+      ".pattern_residual_" + std::to_string(m_PatternResidualId++);
+  llvm::AllocaInst *storage =
+      createEntryBlockAlloca(storageType, nullptr, name);
+  llvm::AllocaInst *liveFlag = createEntryBlockAlloca(
+      llvm::Type::getInt1Ty(m_Context), nullptr, name + ".drop.live");
+  llvm::BasicBlock *entry = &liveFlag->getFunction()->getEntryBlock();
+  llvm::IRBuilder<> entryBuilder(entry, std::next(liveFlag->getIterator()));
+  entryBuilder.CreateStore(llvm::ConstantInt::getFalse(m_Context), liveFlag);
+
+  llvm::Value *value =
+      m_Builder.CreateLoad(storageType, sourceAddr, name + ".value");
+  m_Builder.CreateStore(value, storage);
+  m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context), liveFlag);
+
+  auto soul = type->getSoulType();
+  VariableScopeInfo info;
+  info.Name = name;
+  info.Alloca = storage;
+  info.AllocType = storageType;
+  info.IsUniquePointer = type->isUniquePtr();
+  info.IsShared = type->isSharedPtr();
+  info.HasDrop = true;
+  info.SoulName = soul ? soul->getSoulName() : type->getSoulName();
+  info.DropType = type;
+  info.DropFlag = liveFlag;
+  m_ScopeStack.back().push_back(info);
+}
+
 void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
                                 llvm::Value *targetAddr, llvm::Type *targetType,
                                 std::shared_ptr<Type> targetTypeObj,
                                 bool transfersOwnership) {
   if (targetType && targetType->isVoidTy())
     return;
+
+  const bool isExistingBinding =
+      pat->PatternKind == MatchArm::Pattern::Variable &&
+      pat->Binding == MatchArm::Pattern::BindingOrigin::Existing;
+  const bool isResidualLeaf =
+      transfersOwnership &&
+      (pat->PatternKind == MatchArm::Pattern::Wildcard ||
+       pat->PatternKind == MatchArm::Pattern::Literal ||
+       pat->PatternKind == MatchArm::Pattern::Range || isExistingBinding ||
+       (pat->PatternKind == MatchArm::Pattern::Variable &&
+        pat->IsReference));
+  if (isResidualLeaf) {
+    registerPatternResidualCleanup(targetAddr, targetType, targetTypeObj);
+    if (pat->PatternKind != MatchArm::Pattern::Variable || isExistingBinding)
+      return;
+  }
 
   if (pat->PatternKind == MatchArm::Pattern::Variable) {
     if (pat->Binding == MatchArm::Pattern::BindingOrigin::Existing)
@@ -4494,6 +4589,9 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
     }
 
     bool canDrop = !pat->IsReference && (!isRaw || isUnique || isShared);
+    if (!transfersOwnership && !isShared) {
+      canDrop = false;
+    }
     if (!canDrop) {
       hasDrop = false;
       dropFunc = "";
@@ -4598,8 +4696,31 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
             size_t elidedCount = (elisionCount == 1) ? (expectedSize - (pat->SubPatterns.size() - 1)) : 0;
 
             for (size_t i = 0; i < pat->SubPatterns.size(); ++i) {
-              if (pat->SubPatterns[i]->PatternKind == MatchArm::Pattern::Elision) continue;
-              if (pat->SubPatterns[i]->PatternKind == MatchArm::Pattern::Wildcard) continue;
+              if (pat->SubPatterns[i]->PatternKind == MatchArm::Pattern::Elision) {
+                if (transfersOwnership) {
+                  for (size_t memberIndex = i;
+                       memberIndex < i + elidedCount &&
+                       memberIndex < expectedSize;
+                       ++memberIndex) {
+                    llvm::Value *fieldAddr = variantAddr;
+                    llvm::Type *fieldTy = payloadLayoutType;
+                    if (!fieldTypes.empty()) {
+                      fieldAddr = m_Builder.CreateStructGEP(
+                          payloadLayoutType, variantAddr, memberIndex);
+                      fieldTy = fieldTypes[memberIndex];
+                    }
+                    std::shared_ptr<Type> subTypeObj = nullptr;
+                    if (variant->SubMembers.size() > memberIndex)
+                      subTypeObj =
+                          variant->SubMembers[memberIndex].ResolvedType;
+                    else
+                      subTypeObj = variant->ResolvedType;
+                    registerPatternResidualCleanup(fieldAddr, fieldTy,
+                                                   subTypeObj);
+                  }
+                }
+                continue;
+              }
 
               size_t memberIndex = i;
               if (elisionCount == 1) {
@@ -4651,11 +4772,27 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
 
         for (size_t i = 0; i < pat->SubPatterns.size(); ++i) {
           if (pat->SubPatterns[i]->PatternKind == MatchArm::Pattern::Elision) {
-            continue;
-          }
-
-          // Skip wildcard ignoring fields
-          if (pat->SubPatterns[i]->PatternKind == MatchArm::Pattern::Wildcard) {
+            if (transfersOwnership) {
+              for (size_t memberIndex = i;
+                   memberIndex < i + elidedCount &&
+                   memberIndex < expectedSize;
+                   ++memberIndex) {
+                llvm::Value *fieldAddr = m_Builder.CreateStructGEP(
+                    st, targetAddr, memberIndex);
+                std::shared_ptr<Type> subTypeObj = nullptr;
+                if (targetTypeObj && targetTypeObj->isShape()) {
+                  auto stType =
+                      std::static_pointer_cast<ShapeType>(targetTypeObj);
+                  if (stType->Decl &&
+                      stType->Decl->Members.size() > memberIndex) {
+                    subTypeObj =
+                        stType->Decl->Members[memberIndex].ResolvedType;
+                  }
+                }
+                registerPatternResidualCleanup(
+                    fieldAddr, st->getElementType(memberIndex), subTypeObj);
+              }
+            }
             continue;
           }
 
@@ -8413,13 +8550,6 @@ PhysEntity CodeGen::genTaskStart(const Expr *E) {
         startFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_start", m_Module.get());
     }
     m_Builder.CreateCall(startFn, {tcbPtr});
-    
-    llvm::Function *spawnFn = m_Module->getFunction("__toka_spawn");
-    if (!spawnFn) {
-        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
-        spawnFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__toka_spawn", m_Module.get());
-    }
-    m_Builder.CreateCall(spawnFn, {tcbPtr});
     
     return handleEnt;
 }

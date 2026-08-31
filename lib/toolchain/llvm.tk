@@ -299,7 +299,7 @@ impl LLVMModule {
             auto *live_err = raw_addr as *char
             auto err_msg = string::from_cstr(*live_err)
             toka_llvm_dispose_string(*live_err)
-            return Result<(), string>::Err(err_msg)
+            return Result<(), string>::Err(cede err_msg)
         }
     }
 }

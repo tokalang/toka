@@ -565,7 +565,7 @@ impl HttpServerConnection {
             auto failure# = written.unwrap_err()
             auto message = failure.message.clone()
             auto _buffer = failure#.take_buffer()
-            return Result<(), string>::Err(message)
+            return Result<(), string>::Err(cede message)
         }
         auto completed# = written.unwrap()
         auto complete = completed.complete

@@ -1,0 +1,28 @@
+import core/string::{string}
+import core/option::{Option}
+
+auto g_drop_count# = 0
+
+shape Resource(name: string)
+impl Resource@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+fn main() -> i32 {
+    {
+        auto opt = Option<Resource>::Some(Resource(name = string::from("hello")))
+        match cede opt {
+            auto Option<Resource>::Some('val) => {
+                auto stolen = cede 'val
+                if g_drop_count != 0 { return 1 }
+                if !stolen.name.as_str().equals("hello") { return 2 }
+            }
+            auto Option<Resource>::None => return 3
+        }
+        if g_drop_count != 1 { return 4 }
+    }
+    if g_drop_count != 1 { return 5 }
+    return 0
+}

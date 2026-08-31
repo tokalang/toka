@@ -1297,6 +1297,55 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       }
     }
 
+    if (Bin->Op == "=" && !dynamic_cast<CedeExpr *>(Bin->RHS.get()) &&
+        rhsType && rhsType->requiresExplicitOwnershipTransfer(this)) {
+      Expr *directSource = Bin->RHS.get();
+      while (true) {
+        if (auto *cast = dynamic_cast<CastExpr *>(directSource)) {
+          directSource = cast->Expression.get();
+        } else if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(directSource)) {
+          directSource = unsafeExpr->Expression.get();
+        } else {
+          break;
+        }
+      }
+      if (auto *sourceVar = dynamic_cast<VariableExpr *>(directSource);
+          sourceVar && makeAccessPath(directSource)) {
+        SymbolInfo *sourceInfo = nullptr;
+        std::string actualName;
+        const bool sourceAlreadyMoved =
+            CurrentScope->findVariableWithDeref(
+                sourceVar->Name, sourceInfo, actualName) &&
+            sourceInfo &&
+            hasPlaceState(sourceInfo->placeFact(), PlaceState::Moved);
+        auto sourceType = sourceInfo ? sourceInfo->TypeObj : nullptr;
+        if (sourceType)
+          sourceType = resolveType(sourceType, false);
+        const bool sourceOwnsAggregate =
+            sourceType && sourceType->requiresExplicitOwnershipTransfer(this);
+        if (!sourceAlreadyMoved && sourceOwnsAggregate) {
+          std::string sourcePath = getPathString(directSource);
+          if (sourcePath.empty())
+            sourcePath = directSource->toString();
+          std::string targetName = Bin->LHS ? getPathString(Bin->LHS.get()) : "target";
+          if (targetName.empty() && Bin->LHS)
+            targetName = Bin->LHS->toString();
+          error(Bin->RHS.get(),
+                DiagID::ERR_SEMA_OWNED_VALUE_BINDING_REQUIRES_CEDE,
+                targetName, sourcePath, sourcePath);
+        }
+      } else if ((dynamic_cast<MemberExpr *>(directSource) ||
+                  dynamic_cast<ArrayIndexExpr *>(directSource)) &&
+                 makeAccessPath(directSource)) {
+        std::string targetName = Bin->LHS ? getPathString(Bin->LHS.get()) : "target";
+        if (targetName.empty() && Bin->LHS)
+          targetName = Bin->LHS->toString();
+        error(Bin->RHS.get(),
+              DiagID::ERR_SEMA_OWNED_PROJECTION_BINDING_REQUIRES_CEDE,
+              targetName, directSource->toString(), directSource->toString());
+      }
+    }
+
     // Rebinding an existing indirect binding preserves its declaration but
     // replaces the direct source that limits its effective payload authority.
     // A shared/reference/raw RHS therefore installs its one-hop ceiling on

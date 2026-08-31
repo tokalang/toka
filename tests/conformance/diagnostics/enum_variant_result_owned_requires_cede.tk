@@ -1,0 +1,17 @@
+import core/string::{string}
+import core/result::{Result}
+
+shape Resource(name: string)
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn make_err() -> Result<i32, Resource> {
+    auto err = Resource(name = string::from("failed"))
+    return Result<i32, Resource>::Err(err)
+}
+
+fn main() -> i32 {
+    auto res = make_err()
+    return 0
+}

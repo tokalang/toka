@@ -1,0 +1,13 @@
+import core/string::{string}
+
+shape Resource(name: string)
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto owners = [Resource(name = string::from("first")), Resource(name = string::from("second"))]:[Resource; 2]
+    auto second# = Resource(name = string::from("third"))
+    second = owners[0]
+    return 0
+}

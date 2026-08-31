@@ -950,7 +950,8 @@ private:
   void checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     AccessCapability SourceCapability,
                     const std::string &TargetPath = "",
-                    const AccessPath &TargetAccessPath = {});
+                    const AccessPath &TargetAccessPath = {},
+                    bool TransfersOwnership = true);
 
   // Decoupled Initialization Helpers
   std::shared_ptr<toka::Type> checkShapeInit(InitStructExpr *Init);

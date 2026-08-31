@@ -303,7 +303,7 @@ impl Parser {
                 if opt_def.is_none() {
                     auto err_msg# = string::from("unknown option: --")
                     err_msg#.push_str(key.as_str())
-                    return Result<ParsedArgs, string>::Err(err_msg)
+                    return Result<ParsedArgs, string>::Err(cede err_msg)
                 }
                 auto def = opt_def.unwrap()
 
@@ -327,7 +327,7 @@ impl Parser {
                                 auto err_msg# = string::from("option --")
                                 err_msg#.push_str(key.as_str())
                                 err_msg#.push_str(" requires a value")
-                                return Result<ParsedArgs, string>::Err(err_msg)
+                                return Result<ParsedArgs, string>::Err(cede err_msg)
                             }
                             arg_idx = arg_idx + 1
                             val_str = owned_args.borrow(arg_idx).clone()
@@ -336,7 +336,7 @@ impl Parser {
                         if parse_res.is_err() {
                             auto err_msg# = string::from("invalid integer value for --")
                             err_msg#.push_str(key.as_str())
-                            return Result<ParsedArgs, string>::Err(err_msg)
+                            return Result<ParsedArgs, string>::Err(cede err_msg)
                         }
                         parsed.values#.insert(cede def.name.clone(), FlagValue::Int(parse_res.unwrap()))
                     }
@@ -347,7 +347,7 @@ impl Parser {
                                 auto err_msg# = string::from("option --")
                                 err_msg#.push_str(key.as_str())
                                 err_msg#.push_str(" requires a value")
-                                return Result<ParsedArgs, string>::Err(err_msg)
+                                return Result<ParsedArgs, string>::Err(cede err_msg)
                             }
                             arg_idx = arg_idx + 1
                             val_str = owned_args.borrow(arg_idx).clone()
@@ -356,7 +356,7 @@ impl Parser {
                         if parse_res.is_err() {
                             auto err_msg# = string::from("invalid float value for --")
                             err_msg#.push_str(key.as_str())
-                            return Result<ParsedArgs, string>::Err(err_msg)
+                            return Result<ParsedArgs, string>::Err(cede err_msg)
                         }
                         parsed.values#.insert(cede def.name.clone(), FlagValue::Float(parse_res.unwrap()))
                     }
@@ -366,7 +366,7 @@ impl Parser {
                                 auto err_msg# = string::from("option --")
                                 err_msg#.push_str(key.as_str())
                                 err_msg#.push_str(" requires a value")
-                                return Result<ParsedArgs, string>::Err(err_msg)
+                                return Result<ParsedArgs, string>::Err(cede err_msg)
                             }
                             arg_idx = arg_idx + 1
                             val_str = owned_args.borrow(arg_idx).clone()
@@ -401,7 +401,7 @@ impl Parser {
                     if opt_def.is_none() {
                         auto err_msg# = string::from("unknown short option: -")
                         err_msg#.push_char(c)
-                        return Result<ParsedArgs, string>::Err(err_msg)
+                        return Result<ParsedArgs, string>::Err(cede err_msg)
                     }
                     auto def = opt_def.unwrap()
                     
@@ -424,14 +424,14 @@ impl Parser {
                             if c_idx != short_block.len() - 1:usize {
                                 auto err_msg# = string::from("short option requiring value must be last in group: -")
                                 err_msg#.push_str(short_block.as_str())
-                                return Result<ParsedArgs, string>::Err(err_msg)
+                                return Result<ParsedArgs, string>::Err(cede err_msg)
                             }
                             if !has_val {
                                 if arg_idx + 1 >= owned_args.len() {
                                     auto err_msg# = string::from("option -")
                                     err_msg#.push_char(c)
                                     err_msg#.push_str(" requires a value")
-                                    return Result<ParsedArgs, string>::Err(err_msg)
+                                    return Result<ParsedArgs, string>::Err(cede err_msg)
                                 }
                                 arg_idx = arg_idx + 1
                                 val_str = owned_args.borrow(arg_idx).clone()
@@ -441,7 +441,7 @@ impl Parser {
                             if parse_res.is_err() {
                                 auto err_msg# = string::from("invalid integer value for -")
                                 err_msg#.push_char(c)
-                                return Result<ParsedArgs, string>::Err(err_msg)
+                                return Result<ParsedArgs, string>::Err(cede err_msg)
                             }
                             parsed.values#.insert(cede def.name.clone(), FlagValue::Int(parse_res.unwrap()))
                         }
@@ -450,14 +450,14 @@ impl Parser {
                             if c_idx != short_block.len() - 1 {
                                 auto err_msg# = string::from("short option requiring value must be last in group: -")
                                 err_msg#.push_str(short_block.as_str())
-                                return Result<ParsedArgs, string>::Err(err_msg)
+                                return Result<ParsedArgs, string>::Err(cede err_msg)
                             }
                             if !has_val {
                                 if arg_idx + 1 >= owned_args.len() {
                                     auto err_msg# = string::from("option -")
                                     err_msg#.push_char(c)
                                     err_msg#.push_str(" requires a value")
-                                    return Result<ParsedArgs, string>::Err(err_msg)
+                                    return Result<ParsedArgs, string>::Err(cede err_msg)
                                 }
                                 arg_idx = arg_idx + 1
                                 val_str = owned_args.borrow(arg_idx).clone()
@@ -467,7 +467,7 @@ impl Parser {
                             if parse_res.is_err() {
                                 auto err_msg# = string::from("invalid float value for -")
                                 err_msg#.push_char(c)
-                                return Result<ParsedArgs, string>::Err(err_msg)
+                                return Result<ParsedArgs, string>::Err(cede err_msg)
                             }
                             parsed.values#.insert(cede def.name.clone(), FlagValue::Float(parse_res.unwrap()))
                         }
@@ -475,14 +475,14 @@ impl Parser {
                             if c_idx != short_block.len() - 1:usize {
                                 auto err_msg# = string::from("short option requiring value must be last in group: -")
                                 err_msg#.push_str(short_block.as_str())
-                                return Result<ParsedArgs, string>::Err(err_msg)
+                                return Result<ParsedArgs, string>::Err(cede err_msg)
                             }
                             if !has_val {
                                 if arg_idx + 1 >= owned_args.len() {
                                     auto err_msg# = string::from("option -")
                                     err_msg#.push_char(c)
                                     err_msg#.push_str(" requires a value")
-                                    return Result<ParsedArgs, string>::Err(err_msg)
+                                    return Result<ParsedArgs, string>::Err(cede err_msg)
                                 }
                                 arg_idx = arg_idx + 1
                                 val_str = owned_args.borrow(arg_idx).clone()

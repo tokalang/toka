@@ -23,7 +23,7 @@ fn write_stream_async(stream#: AsyncStream, cede bytes: Vec<u8>) -> async Result
         auto failure# = written.unwrap_err()
         auto message = failure.message.clone()
         auto _returned = failure#.take_buffer()
-        return Result<(), string>::Err(message)
+        return Result<(), string>::Err(cede message)
     }
     auto completed# = written.unwrap()
     auto complete = completed.complete
@@ -41,7 +41,7 @@ fn read_stream_async(stream#: AsyncStream, max_len: usize) -> async Result<Vec<u
         auto failure# = read.unwrap_err()
         auto message = failure.message.clone()
         auto _returned = failure#.take_buffer()
-        return Result<Vec<u8>, string>::Err(message)
+        return Result<Vec<u8>, string>::Err(cede message)
     }
     auto received# = read.unwrap()
     return Result<Vec<u8>, string>::Ok(cede received#.take_buffer())
@@ -113,12 +113,12 @@ fn async_tls_client_task(port: u16) -> async Result<(), string> {
 
     auto req = string::from("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
     auto request# = bytes_from_string(req.as_str())
-    auto w = write_stream_async(tls_stream, cede request).await
+    auto w = write_stream_async(tls_stream#, cede request).await
     if w.is_err() {
         return Result<(), string>::Err(string::from("Write request failed"))
     }
 
-    auto r = read_stream_async(tls_stream, 256:usize).await
+    auto r = read_stream_async(tls_stream#, 256:usize).await
     if r.is_err() {
         return Result<(), string>::Err(r.unwrap_err())
     }

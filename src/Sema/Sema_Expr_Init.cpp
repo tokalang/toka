@@ -163,7 +163,8 @@ restrictPatternCapability(AccessCapability capability,
 void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                         AccessCapability SourceCapability,
                         const std::string &TargetPath,
-                        const AccessPath &TargetAccessPath) {
+                        const AccessPath &TargetAccessPath,
+                        bool TransfersOwnership) {
   if (!Pat)
     return;
 
@@ -181,7 +182,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                    outcome->PayloadType
                        ? outcome->PayloadType->toString()
                        : "unknown",
-                   SourceCapability, TargetPath, TargetAccessPath);
+                   SourceCapability, TargetPath, TargetAccessPath,
+                   TransfersOwnership);
       return;
     }
     DiagnosticEngine::report(getLoc(Pat),
@@ -209,8 +211,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       error(Pat, DiagID::ERR_SEMA_INVALID_RANGE_PATTERN_STRUCTURE);
       break;
     }
-    checkPattern(Pat->SubPatterns[0].get(), TargetType, SourceCapability, TargetPath);
-    checkPattern(Pat->SubPatterns[1].get(), TargetType, SourceCapability, TargetPath);
+    checkPattern(Pat->SubPatterns[0].get(), TargetType, SourceCapability, TargetPath, {}, TransfersOwnership);
+    checkPattern(Pat->SubPatterns[1].get(), TargetType, SourceCapability, TargetPath, {}, TransfersOwnership);
 
     std::string resolvedT = resolveType(T, true);
     auto targetObj = toka::Type::fromString(resolvedT);
@@ -286,7 +288,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     
     for (auto &sub : Pat->SubPatterns) {
       CurrentScope = new Scope(originalScope);
-      checkPattern(sub.get(), TargetType, SourceCapability, TargetPath);
+      checkPattern(sub.get(), TargetType, SourceCapability, TargetPath, {}, TransfersOwnership);
       branchSymbols.push_back(CurrentScope->Symbols);
       Scope* temp = CurrentScope;
       CurrentScope = originalScope;
@@ -514,20 +516,26 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       Info.HasPayloadFlowCeiling = true;
     }
 
-    if (Pat->IsReference && !TargetPath.empty()) {
+    if (!TransfersOwnership || (Pat->IsReference && !TargetPath.empty())) {
       const std::string dependencyPath =
           TargetAccessPath ? TargetAccessPath.toLegacyString() : TargetPath;
-      Info.BorrowedFrom = dependencyPath;
-      Info.BorrowedPath = TargetAccessPath
-                              ? TargetAccessPath
-                              : canonicalizeAccessPath(makeAccessPath(TargetPath));
-      Info.LifeDependencySet.insert(dependencyPath);
+      if (!dependencyPath.empty()) {
+        Info.BorrowedFrom = dependencyPath;
+        Info.BorrowedPath = TargetAccessPath
+                                ? TargetAccessPath
+                                : canonicalizeAccessPath(makeAccessPath(TargetPath));
+        Info.LifeDependencySet.insert(dependencyPath);
 
-      // Also inherit any transitive dependencies if the target path is a known symbol
-      SymbolInfo *targetInfo = nullptr;
-      if (CurrentScope->findSymbol(dependencyPath, targetInfo)) {
-        Info.LifeDependencySet.insert(targetInfo->LifeDependencySet.begin(),
-                                      targetInfo->LifeDependencySet.end());
+        // Also inherit any transitive dependencies if the target path is a known symbol
+        SymbolInfo *targetInfo = nullptr;
+        if (CurrentScope->findSymbol(dependencyPath, targetInfo)) {
+          Info.LifeDependencySet.insert(targetInfo->LifeDependencySet.begin(),
+                                        targetInfo->LifeDependencySet.end());
+        }
+      }
+
+      if (!TransfersOwnership) {
+        Info.IsPlaceAlias = true;
       }
 
       // A direct match/guard reference binder is an active lexical borrow.
@@ -557,7 +565,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     initializeProjectionFacts(Info);
 
     CurrentScope->define(Pat->Name, Info);
-    if (Pat->IsReference && TargetAccessPath)
+    if ((Pat->IsReference || !TransfersOwnership) && TargetAccessPath)
       PALCheckerState.commitTransient(TargetAccessPath);
     break;
   }
@@ -858,7 +866,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
               }
               checkPattern(Pat->SubPatterns[i].get(),
                            getPhysicalTypeName(SD->Members[memberIndex]),
-                           SourceCapability, memberPath, memberAccessPath);
+                           SourceCapability, memberPath, memberAccessPath,
+                           TransfersOwnership);
             }
           }
         }
@@ -906,7 +915,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
                       if (i == elisionIndex) continue;
                       size_t memberIndex = (i < elisionIndex) ? i : (i + elidedFields - 1);
-                      checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(foundMemb->SubMembers[memberIndex]), SourceCapability, TargetPath, TargetAccessPath);
+                      checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(foundMemb->SubMembers[memberIndex]), SourceCapability, TargetPath, TargetAccessPath, TransfersOwnership);
                     }
                   }
                 } else {
@@ -918,7 +927,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                   } else {
                     for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
                       checkPattern(Pat->SubPatterns[i].get(),
-                                   getPhysicalTypeName(foundMemb->SubMembers[i]), SourceCapability, TargetPath, TargetAccessPath);
+                                   getPhysicalTypeName(foundMemb->SubMembers[i]), SourceCapability, TargetPath, TargetAccessPath, TransfersOwnership);
                     }
                   }
                 }
@@ -946,7 +955,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     HasError = true;
                   } else {
                     checkPattern(Pat->SubPatterns[0].get(), foundMemb->Type,
-                                 SourceCapability, TargetPath, TargetAccessPath);
+                                 SourceCapability, TargetPath, TargetAccessPath,
+                                 TransfersOwnership);
                   }
                 }
               }

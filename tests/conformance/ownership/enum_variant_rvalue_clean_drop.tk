@@ -1,0 +1,31 @@
+import core/string::{string}
+import core/result::{Result}
+import core/option::{Option}
+
+auto g_drop_count# = 0
+
+shape Resource(name: string)
+impl Resource@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+fn make_resource(name: str) -> Resource {
+    return Resource(name = string::from(name))
+}
+
+fn main() -> i32 {
+    {
+        auto res = Result<i32, Resource>::Err(make_resource("error"))
+        if res.is_ok() { return 1 }
+        if g_drop_count != 0 { return 2 }
+        auto opt = Option<Resource>::Some(make_resource("value"))
+        if opt.is_none() { return 3 }
+        if g_drop_count != 0 { return 4 }
+    }
+    if g_drop_count != 2 {
+        return 5
+    }
+    return 0
+}

@@ -248,6 +248,7 @@ private:
     llvm::Value *DropMask = nullptr;
   };
   std::vector<std::vector<VariableScopeInfo>> m_ScopeStack;
+  unsigned m_PatternResidualId = 0;
   struct FullExpressionTemporary {
     llvm::Value *Address = nullptr;
     std::shared_ptr<Type> TypeObj;
@@ -265,6 +266,9 @@ private:
   llvm::Value *getInitLiveFlag(const VariableExpr *place);
   void suppressDropForPartialMove(const MemberExpr *member);
   void suppressDropForPartialMove(const ArrayIndexExpr *index);
+  void registerPatternResidualCleanup(llvm::Value *sourceAddr,
+                                      llvm::Type *storageType,
+                                      std::shared_ptr<Type> type);
   void restoreDropForMemberAssignment(const MemberExpr *member);
   void restoreDropForIndexAssignment(const ArrayIndexExpr *index);
   int getDirectMemberDropIndex(const VariableScopeInfo &entry,

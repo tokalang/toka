@@ -1,0 +1,80 @@
+import core/string::{string}
+
+auto g_drop_count# = 0
+
+shape Resource(name: string)
+impl Resource@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+shape Choice(
+    Left(Resource) = 1 |
+    Right(Resource) = 2
+)
+
+shape Bundle(
+    Pair(Resource, Resource) = 1 |
+    Empty = 0
+)
+
+fn test_guard_choice_mismatch() -> i32 {
+    g_drop_count = 0
+    {
+        auto choice = Choice::Right(Resource(name = string::from("hello")))
+        guard auto Choice::Left('val) = cede choice else {
+            // choice was Right(Resource) and was ceded.
+            // On mismatch entering else, the Right(Resource) payload is dropped.
+            if g_drop_count != 1 { return 20 }
+            return 0
+        }
+        return 1
+    }
+}
+
+fn guard_reference_success() -> i32 {
+    auto choice = Choice::Left(Resource(name = string::from("borrowed")))
+    guard auto Choice::Left(&payload) = cede choice else { return 30 }
+    if g_drop_count != 0 { return 31 }
+    if !payload.name.as_str().equals("borrowed") { return 32 }
+    return 0
+}
+
+fn test_guard_reference_success() -> i32 {
+    g_drop_count = 0
+    auto result = guard_reference_success()
+    if result != 0 { return result }
+    if g_drop_count != 1 { return 33 }
+    return 0
+}
+
+fn guard_partial_success() -> i32 {
+    auto bundle = Bundle::Pair(
+        Resource(name = string::from("owned")),
+        Resource(name = string::from("residual"))
+    )
+    guard auto Bundle::Pair('owned, _) = cede bundle else { return 40 }
+    if g_drop_count != 0 { return 41 }
+    if !'owned.name.as_str().equals("owned") { return 42 }
+    return 0
+}
+
+fn test_guard_partial_success() -> i32 {
+    g_drop_count = 0
+    auto result = guard_partial_success()
+    if result != 0 { return result }
+    if g_drop_count != 2 { return 43 }
+    return 0
+}
+
+fn main() -> i32 {
+    auto r1 = test_guard_choice_mismatch()
+    if r1 != 0 { return r1 }
+    if g_drop_count != 1 { return 21 }
+    auto r2 = test_guard_reference_success()
+    if r2 != 0 { return r2 }
+    auto r3 = test_guard_partial_success()
+    if r3 != 0 { return r3 }
+    return 0
+}

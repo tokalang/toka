@@ -630,14 +630,18 @@ void Sema::checkStmt(Stmt *S) {
       auto resolvedReturnExpectation = resolveType(returnExpectation);
       bool rejectedAliasReturn = false;
       if (resolvedReturnExpectation &&
-          resolvedReturnExpectation->isUniquePtr()) {
+          (resolvedReturnExpectation->isUniquePtr() ||
+           resolvedReturnExpectation->requiresExplicitOwnershipTransfer(this))) {
         Expr *transferSource = Ret->ReturnValue.get();
         while (auto *cast = dynamic_cast<CastExpr *>(transferSource))
           transferSource = cast->Expression.get();
+        while (auto *cede = dynamic_cast<CedeExpr *>(transferSource))
+          transferSource = cede->Value.get();
         if (auto *unary = dynamic_cast<UnaryExpr *>(transferSource);
             unary && unary->Op == TokenType::Caret)
-          rejectedAliasReturn = diagnosePlaceAliasOwnershipTransfer(
-              Ret->ReturnValue.get(), unary->RHS.get());
+          transferSource = unary->RHS.get();
+        rejectedAliasReturn = diagnosePlaceAliasOwnershipTransfer(
+            Ret->ReturnValue.get(), transferSource);
       }
       bool oldSuppressAliasInvalidation =
           m_SuppressRejectedAliasInvalidation;
@@ -2581,9 +2585,11 @@ void Sema::checkStmt(Stmt *S) {
     AccessCapability targetCapability = targetFlow.DirectCapability;
     if (targetFlow.Kind == PermissionFlowKind::Shared)
       targetCapability.PayloadFlowRestricted = true;
+    bool transfersOwnership =
+        dynamic_cast<CedeExpr *>(GuardBind->Target.get()) != nullptr;
     // Check Pattern and bind variables into CurrentScope
     checkPattern(GuardBind->Pat.get(), targetType, targetCapability,
-                 targetPath, targetAccessPath);
+                 targetPath, targetAccessPath, transfersOwnership);
 
     bool isReceiver = false;
     if (!m_ControlFlowStack.empty()) {

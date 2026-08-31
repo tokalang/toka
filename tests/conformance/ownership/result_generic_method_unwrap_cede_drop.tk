@@ -1,0 +1,41 @@
+import core/string::{string}
+import core/result::{Result}
+
+auto g_drop_count# = 0
+
+shape Resource(name: string)
+impl Resource@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+fn test_unwrap_ok() -> i32 {
+    auto res = Result<Resource, string>::Ok(Resource(name = string::from("ok_val")))
+    if !res.is_ok() { return 1 }
+    auto val = res.unwrap()
+    if g_drop_count != 0 { return 2 }
+    if !val.name.as_str().equals("ok_val") { return 3 }
+    return 0
+}
+
+fn test_unwrap_err() -> i32 {
+    auto res = Result<string, Resource>::Err(Resource(name = string::from("err_val")))
+    if !res.is_err() { return 1 }
+    auto err = res.unwrap_err()
+    if g_drop_count != 1 { return 2 }
+    if !err.name.as_str().equals("err_val") { return 3 }
+    return 0
+}
+
+fn main() -> i32 {
+    auto r1 = test_unwrap_ok()
+    if r1 != 0 { return 10 + r1 }
+    if g_drop_count != 1 { return 20 }
+
+    auto r2 = test_unwrap_err()
+    if r2 != 0 { return 30 + r2 }
+    if g_drop_count != 2 { return 40 }
+
+    return 0
+}
