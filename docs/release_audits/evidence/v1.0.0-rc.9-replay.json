@@ -60,7 +60,12 @@
     }
   ],
   "promotion": {
-    "result": "pending"
+    "public_manifest_sha256": "df7792a086fe91752bca55ee1f6a290d0d8ef119f653c2092a7f8f61fe48e79e",
+    "public_manifest_unauthenticated_download": "pass",
+    "public_url": "https://github.com/tokalang/toka/releases/tag/v1.0.0-rc.9",
+    "published_at": "2026-08-31T01:21:07Z",
+    "result": "pass",
+    "run_id": 33347305902
   },
   "qualification_run_id": 33316236499,
   "qualification_summary_sha256": "0eecb37459e6dbcd7df6b81318a0c02d5c91a46ffec79ff1bff0f7a19150816d",

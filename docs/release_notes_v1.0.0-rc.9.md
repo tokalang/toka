@@ -1,5 +1,7 @@
 # Toka v1.0.0-rc.9 Release Candidate Notes
 
+**Status:** Published as a GitHub pre-release at `2026-08-31T01:21:07Z`.
+
 These notes describe the intended RC9 contents. They are not qualification or
 publication evidence. Candidate identity, hosted jobs, asset digests, replay
 receipts, and release state belong in the
