@@ -16,6 +16,7 @@ WORKFLOW = ROOT / ".github/workflows/release.yml"
 PROMOTION = ROOT / ".github/workflows/promote_release.yml"
 INTEL_REPLAY = ROOT / ".github/workflows/rc8_macos_x64_draft_replay.yml"
 INTEL_REPLAY_V2 = ROOT / ".github/workflows/rc8_macos_x64_qualified_artifact_replay.yml"
+RC9_INTEL_REPLAY = ROOT / ".github/workflows/rc9_macos_x64_qualified_artifact_replay.yml"
 QUALIFICATION = ROOT / "tools/scripts/verify_release_qualification.py"
 ASSETS = ROOT / "tools/scripts/verify_release_assets.py"
 RELEASE_GATE = ROOT / "tools/scripts/release_gate.py"
@@ -199,6 +200,7 @@ def main():
     promotion = PROMOTION.read_text(encoding="utf-8")
     intel_replay = INTEL_REPLAY.read_text(encoding="utf-8")
     intel_replay_v2 = INTEL_REPLAY_V2.read_text(encoding="utf-8")
+    rc9_intel_replay = RC9_INTEL_REPLAY.read_text(encoding="utf-8")
     release_gate = RELEASE_GATE.read_text(encoding="utf-8")
     handle_audit = HANDLE_AUDIT.read_text(encoding="utf-8")
     gate = job_block(text, "release-gate", "qualification-summary")
@@ -236,6 +238,25 @@ def main():
             "rc8-macos-x64-qualified-artifact-replay" in intel_replay_v2 and
             "softprops/action-gh-release" not in intel_replay_v2,
             "RC8 qualified-artifact Intel replay is not fail-closed/read-only")
+    require("macos-15-intel" in rc9_intel_replay and
+            "actions: read" in rc9_intel_replay and
+            "contents: read" in rc9_intel_replay and
+            "contents: write" not in rc9_intel_replay and
+            "qualification_run_id:" in rc9_intel_replay and
+            "archive_sha256:" in rc9_intel_replay and
+            "release-archive-macos-x64" in rc9_intel_replay and
+            "actions/download-artifact@v4" in rc9_intel_replay and
+            "github-token:" in rc9_intel_replay and
+            "run-id:" in rc9_intel_replay and
+            "gh release download" not in rc9_intel_replay and
+            "shasum -a 256" in rc9_intel_replay and
+            "refs/tags/v1.0.0-rc.9^{commit}" in rc9_intel_replay and
+            "toka doctor" in rc9_intel_replay and
+            "TOKA_OFFLINE=1 toka fetch" in rc9_intel_replay and
+            "toka preview" in rc9_intel_replay and
+            "rc9-macos-x64-qualified-artifact-replay" in rc9_intel_replay and
+            "softprops/action-gh-release" not in rc9_intel_replay,
+            "RC9 qualified-artifact Intel replay is not fail-closed/read-only")
     require('["python3", "tools/run_conformance.py", "--build-dir", build_dir]' in
             handle_audit,
             "Handle audit does not bind Conformance to its configured cold build")
