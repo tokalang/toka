@@ -1,0 +1,72 @@
+{
+  "archive_assets": {
+    "linux-arm64": "d274c3e9184f3657057faabe5767360c3dcbb2950d70b40bf1885f3c0a0070cf",
+    "linux-x64": "432b27087a89d2519e1a50726ed31f6556e4ed130e3d91c2315713c1cd099097",
+    "macos-arm64": "d13622ffad63db32479db78095bf66b96b4976c0d15aa6c30257e676d66f64ac",
+    "macos-x64": "71bb5b41bb30be0f71264b0e297ad8e419f16c52593fce704757ea2982b86752"
+  },
+  "candidate_revision": "7a02b373d57656ea3a6bc924e0db201c190f4607",
+  "draft_release_database_id": 379319949,
+  "intel_replay": {
+    "archive_sha256": "71bb5b41bb30be0f71264b0e297ad8e419f16c52593fce704757ea2982b86752",
+    "qualification_run_id": 33316236499,
+    "receipt_sha256": "414624ca92533aacc71337801e4d46b7a63ad71192d4279a3c66572aae624603",
+    "result": "pass",
+    "run_id": 33346609916,
+    "target": "macos-x64"
+  },
+  "local_replays": [
+    {
+      "archive_sha256": "432b27087a89d2519e1a50726ed31f6556e4ed130e3d91c2315713c1cd099097",
+      "contract": [
+        "doctor",
+        "new-run",
+        "path-dependency-online-offline-lock",
+        "semantic-preview-v1",
+        "unicode-registry-archive-only-offline-lock"
+      ],
+      "executor": "local-docker-linux-amd64",
+      "receipt_sha256": "fb131b624842515a0264c05f29c89ab6999d12f78cf260d6db294fdda64fe660",
+      "result": "pass",
+      "target": "linux-x64"
+    },
+    {
+      "archive_sha256": "d274c3e9184f3657057faabe5767360c3dcbb2950d70b40bf1885f3c0a0070cf",
+      "contract": [
+        "doctor",
+        "new-run",
+        "path-dependency-online-offline-lock",
+        "semantic-preview-v1",
+        "unicode-registry-archive-only-offline-lock"
+      ],
+      "executor": "local-docker-linux-arm64",
+      "receipt_sha256": "af82380e83371de244d44e26cb5fbe342dcbf4b544d25524df592651626594ec",
+      "result": "pass",
+      "target": "linux-arm64"
+    },
+    {
+      "archive_sha256": "d13622ffad63db32479db78095bf66b96b4976c0d15aa6c30257e676d66f64ac",
+      "contract": [
+        "doctor",
+        "new-run",
+        "path-dependency-online-offline-lock",
+        "semantic-preview-v1",
+        "unicode-registry-archive-only-offline-lock"
+      ],
+      "executor": "local-native-macos-arm64",
+      "receipt_sha256": "4d6080a5687666d44f69c47489162eae9db072f1491e88b8405486621cfbfd69",
+      "result": "pass",
+      "target": "macos-arm64"
+    }
+  ],
+  "promotion": {
+    "result": "pending"
+  },
+  "qualification_run_id": 33316236499,
+  "qualification_summary_sha256": "0eecb37459e6dbcd7df6b81318a0c02d5c91a46ffec79ff1bff0f7a19150816d",
+  "result": "pass",
+  "schema": "toka.rc9-clean-replay-receipt",
+  "sha256sums_sha256": "df7792a086fe91752bca55ee1f6a290d0d8ef119f653c2092a7f8f61fe48e79e",
+  "version": 1,
+  "version_label": "v1.0.0-rc.9"
+}
