@@ -65,8 +65,20 @@ for a repeatable install:
 
 ```bash
 curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.10
+export PATH="$HOME/.toka/bin:$PATH"
+export TOKA_LIB="$HOME/.toka/lib"
 toka doctor
 ```
+
+The prebuilt SDK still uses host tools for project orchestration and native
+linking. It requires Python 3.10+ and a C linker. On Ubuntu/Debian, install the
+complete runtime prerequisites with:
+
+```bash
+sudo apt-get install clang lld python3 pkg-config libssl-dev
+```
+
+`toka doctor` checks these runtime requirements before declaring the SDK ready.
 
 Before replacing the tag, check the
 [GitHub releases page](https://github.com/tokalang/toka/releases). The bare
@@ -83,12 +95,6 @@ cmake -S . -B build
 cmake --build build
 export PATH="$PWD/build/bin:$PATH"
 export TOKA_LIB="$PWD/lib"
-```
-
-Check the installed SDK:
-
-```bash
-toka doctor
 ```
 
 Create a project and add [TokaKV](https://github.com/tokalang/tokakv), the

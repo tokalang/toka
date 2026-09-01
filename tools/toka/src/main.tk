@@ -57,6 +57,15 @@ fn check_is_windows() -> bool {
     return sys::path_sep() == 92:char
 }
 
+fn check_is_linux() -> bool {
+    auto uname# = Command::new(string::from("uname"))
+    uname#.arg(string::from("-s"))
+    auto result = uname#.output()
+    if result.is_err() { return false }
+    auto output = result.unwrap()
+    return output.status.success() && output.stdout.trim().eq(string::from("Linux"))
+}
+
 fn shell_quote(s: string) -> string {
     if check_is_windows() {
         auto res# = string::from("\"")
@@ -706,6 +715,41 @@ fn cmd_run(use_forge: bool) -> i32 {
     }
 }
 
+fn append_locked_project_context(command#: Command) -> i32 {
+    // Windows remains a source-build dogfood path without a published SDK.
+    if check_is_windows() { return 0 }
+
+    if exists(string::from("package.lock")) {
+        auto fetch_result = cmd_fetch_quiet()
+        if fetch_result != 0 { return fetch_result }
+    }
+
+    auto pkg_mappings = build_pkg_mappings()
+    auto pkg_node_mappings = build_pkg_node_mappings()
+    auto workspace_node = build_workspace_node()
+    if !workspace_node.is_empty() {
+        command#.arg(string::from("--workspace-node"))
+        command#.arg(cede workspace_node.clone())
+        command#.arg(string::from("--workspace-root"))
+        command#.arg(env::current_dir())
+    }
+
+    auto pkg_index# = 0:usize
+    loop pkg_index < pkg_mappings.len() {
+        command#.arg(string::from("--pkg"))
+        command#.arg(cede pkg_mappings.borrow(pkg_index).clone())
+        pkg_index += 1:usize
+    }
+
+    auto node_index# = 0:usize
+    loop node_index < pkg_node_mappings.len() {
+        command#.arg(string::from("--pkg-node"))
+        command#.arg(cede pkg_node_mappings.borrow(node_index).clone())
+        node_index += 1:usize
+    }
+    return 0
+}
+
 fn cmd_check(argc: i32, shift: i32) -> i32 {
     if argc < 3 + shift {
         println("Error: 'toka check' requires at least one source file.")
@@ -715,6 +759,7 @@ fn cmd_check(argc: i32, shift: i32) -> i32 {
     command#.arg(string::from("--check-only"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
+    if append_locked_project_context(command#) != 0 { return 1 }
     auto idx# = 2 + shift
     loop idx < argc {
         auto arg = env::get_arg(idx)
@@ -758,6 +803,7 @@ fn cmd_context(argc: i32, shift: i32) -> i32 {
     command#.arg(string::from("--semantic-context=json"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
+    if append_locked_project_context(command#) != 0 { return 1 }
     auto idx# = 2 + shift
     loop idx < argc {
         auto arg = env::get_arg(idx)
@@ -776,8 +822,10 @@ fn cmd_evidence(argc: i32, shift: i32) -> i32 {
     }
     auto command# = Command::new(detect_tokac_path())
     command#.arg(string::from("--semantic-evidence=json"))
+    command#.arg(string::from("--check-only"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
+    if append_locked_project_context(command#) != 0 { return 1 }
     auto idx# = 2 + shift
     loop idx < argc {
         auto arg = env::get_arg(idx)
@@ -798,6 +846,7 @@ fn cmd_cede_obligations(argc: i32, shift: i32) -> i32 {
     command#.arg(string::from("--cede-obligations=json"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
+    if append_locked_project_context(command#) != 0 { return 1 }
     auto idx# = 2 + shift
     loop idx < argc {
         auto arg = env::get_arg(idx)
@@ -818,6 +867,7 @@ fn cmd_capabilities(argc: i32, shift: i32) -> i32 {
     command#.arg(string::from("--capabilities=json"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
+    if append_locked_project_context(command#) != 0 { return 1 }
     auto idx# = 2 + shift
     loop idx < argc {
         auto arg = env::get_arg(idx)
@@ -838,6 +888,7 @@ fn cmd_hole_goals(argc: i32, shift: i32) -> i32 {
     command#.arg(string::from("--todo-goals=json"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
+    if append_locked_project_context(command#) != 0 { return 1 }
     auto idx# = 2 + shift
     loop idx < argc {
         auto arg = env::get_arg(idx)
@@ -858,6 +909,7 @@ fn cmd_conditional_facts(argc: i32, shift: i32) -> i32 {
     command#.arg(string::from("--conditional-facts=json"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
+    if append_locked_project_context(command#) != 0 { return 1 }
     auto idx# = 2 + shift
     loop idx < argc {
         auto arg = env::get_arg(idx)
@@ -878,6 +930,7 @@ fn cmd_index(argc: i32, shift: i32) -> i32 {
     command#.arg(string::from("--semantic-index=json"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
+    if append_locked_project_context(command#) != 0 { return 1 }
     auto idx# = 2 + shift
     loop idx < argc {
         auto arg = env::get_arg(idx)
@@ -916,6 +969,7 @@ fn cmd_query(argc: i32, shift: i32) -> i32 {
     command#.arg(env::get_arg(2 + shift))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
+    if append_locked_project_context(command#) != 0 { return 1 }
     auto idx# = 3 + shift
     loop idx < argc {
         auto arg = env::get_arg(idx)
@@ -1101,6 +1155,42 @@ fn cmd_doctor() -> i32 {
     } else {
         println("  [FAIL] incomplete standard library: {}", lib_path)
         failures += 1
+    }
+
+    auto helper# = Command::new(string::from("python3"))
+    helper#.arg(build_driver.clone())
+    helper#.arg(string::from("--doctor"))
+    auto helper_result = helper#.try_status()
+    if helper_result.is_ok() {
+        auto helper_status = helper_result.unwrap()
+        if helper_status.success() {
+            println("  [ OK ] Python 3.10+ build helper")
+        } else {
+            println("  [FAIL] Python 3.10+ cannot execute the SDK build helper: {}", build_driver)
+            failures += 1
+        }
+    } else {
+        println("  [FAIL] Python 3.10+ was not found; install python3 before using add/build/run")
+        failures += 1
+    }
+
+    if check_is_linux() {
+        auto openssl# = Command::new(string::from("pkg-config"))
+        openssl#.arg(string::from("--exists"))
+        openssl#.arg(string::from("openssl"))
+        auto openssl_result = openssl#.try_status()
+        if openssl_result.is_ok() {
+            auto openssl_status = openssl_result.unwrap()
+            if openssl_status.success() {
+                println("  [ OK ] OpenSSL linker inputs")
+            } else {
+                println("  [FAIL] OpenSSL development/linker inputs were not found; install pkg-config and libssl-dev")
+                failures += 1
+            }
+        } else {
+            println("  [FAIL] OpenSSL development/linker inputs were not found; install pkg-config and libssl-dev")
+            failures += 1
+        }
     }
 
     auto formatter# = Command::new(detect_tokafmt_path())
