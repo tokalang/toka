@@ -10,11 +10,11 @@ with one useful capability rather than a wholesale compatibility claim.
 
 ## 1. Prove the SDK before editing
 
-Install a stable SDK normally. After `v1.0.0-rc.7` is published, test that
-release candidate with its exact tag:
+Install the current public-preview SDK with its exact tag. For RC10, verify the
+SDK before editing:
 
 ```sh
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.7
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.10
 toka doctor
 toka search regex
 ```

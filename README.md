@@ -1,8 +1,12 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Quick Start](#quick-start) | [Public Preview Status](docs/release_notes_v1.0.0-rc.9.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Quick Start](#quick-start) | [RC10 Public Preview](docs/release_notes_v1.0.0-rc.10.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
-# Toka Programming Language
+# Toka systems programming language
 
 **Toka is a no-GC systems programming language built around predictable resource costs, static safety, and AI-verifiable semantics. It makes real systems boundaries explicit for both programmers and tools.**
+
+The canonical project name is **Toka systems programming language**, maintained
+at `tokalang/toka`. It is unrelated to the historical Toka Forth projects,
+Tokelang, and other similarly named Toka or Toke projects.
 
 Deterministic cleanup · PAL static checks · explicit `cede` transfer · versioned JSON semantic protocols
 
@@ -60,7 +64,7 @@ Toka is currently a public preview. Use an exact published release candidate
 for a repeatable install:
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.9
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.10
 toka doctor
 ```
 
@@ -87,14 +91,42 @@ Check the installed SDK:
 toka doctor
 ```
 
-Create a project, resolve the first public package, and run it:
+Create a project and add [TokaKV](https://github.com/tokalang/tokakv), the
+official embedded key-value engine:
 
 ```bash
-toka new hello_toka
-cd hello_toka
-toka add regex
+toka new tokakv_hello
+cd tokakv_hello
+toka add tokakv
+```
+
+Replace `src/main.tk` with this complete example:
+
+```toka
+import std/io::{println}
+import official/tokakv::{TokaKvEngine}
+
+fn main() -> i32 {
+    auto db = TokaKvEngine::open(string::from("hello.tokakv")).unwrap()
+    db.put(string::from("language"), string::from("Toka")).unwrap()
+
+    auto value = db.get(string::from("language")).unwrap().unwrap()
+    println("{}", value)
+
+    db.close().unwrap()
+    return 0
+}
+```
+
+Then run it:
+
+```bash
 toka run
 ```
+
+The expected final output is `Toka`. This flow was verified from a clean RC10
+SDK against the public `tokakv` package. The example uses `unwrap()` to stay
+compact; production code should handle storage and I/O errors explicitly.
 
 The resolver uses `https://pkg.tokalang.dev` by default and verifies the
 catalog-recorded SHA-256 before extracting an archive. Set `TOKA_REGISTRY_URL`
@@ -226,18 +258,46 @@ documented in [AI tooling](docs/ai_tooling.md). The protocols are explanation
 and verification interfaces, not a promise that any particular model will
 write correct code without review.
 
-## Current Status
+## RC10 Status And Boundaries
 
-Toka is under active development. The repository currently contains:
+Toka `v1.0.0-rc.10` is a published **Public Preview** release candidate, not a
+stable 1.0 compatibility promise. The 1.0 language semantics are frozen during
+this stabilization phase: current work is documentation, ecosystem adoption,
+qualification, and bug fixing rather than new language features.
+
+| Platform | RC10 status |
+| :--- | :--- |
+| Linux x86_64 | Published Tier 1 SDK archive |
+| Linux aarch64 | Published Tier 1 SDK archive |
+| macOS x86_64 | Published Tier 1 SDK archive |
+| macOS aarch64 / Apple Silicon | Published Tier 1 SDK archive |
+| Windows / MSYS2 | Source-build and dogfood path; no RC10 SDK archive |
+| WSL2 / WASI | Available or experimental; not a 1.0 blocking release target |
+
+Known boundaries:
+
+- RC10 is a prerelease; source, package, and interface compatibility may still
+  change before stable 1.0.
+- The language is not yet self-hosted, and the package ecosystem is young.
+- RC10 may print `W0408` warnings from SDK build modules during a successful
+  `toka run`; warnings are not build failures.
+- TokaKV is an embedded, single-process preview engine. Its current compaction
+  scope is L0-to-L1; deeper levels, distributed replication, and a Redis
+  protocol server are not included.
+
+The repository currently contains:
 
 - A C++ compiler frontend with an LLVM 20 backend.
 - Semantic analysis for mutability, moves, borrows, null access, resource safety, morphic generics, and related diagnostics.
 - A standard library with core containers and system-level modules.
 - The `toka` project manager / build tool, `tokafmt`, and `tokalsp`.
 - Incremental build metadata and TKI interface cache validation.
-- Linux and macOS as the supported 1.0 release platforms. Windows/MSYS2, WSL2, and WASI remain available or experimental and do not block 1.0.
+- Linux and macOS as the supported 1.0 release platforms.
 
-The language is not yet self-hosted. The ecosystem is young. The immediate engineering priority is closing and verifying the 1.0 language, compiler, same-version interface, and core runtime contracts. Windows parity and eventual self-hosting remain later work.
+The immediate priority is to make the frozen RC10 surface easier to evaluate:
+clear documentation, reproducible examples, ecosystem proof such as TokaKV,
+and release qualification. Windows parity and eventual self-hosting remain
+later work.
 
 ## Is Toka A Good Fit?
 
@@ -305,6 +365,6 @@ If you reference the design of the Toka language, including its explicit Hat-Sou
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 1.0.0-rc.9 candidate}
+  note         = {Version 1.0.0-rc.10 public preview}
 }
 ```

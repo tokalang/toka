@@ -1,8 +1,12 @@
-[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [快速开始](#快速开始) | [Public Preview 状态](docs/release_notes_v1.0.0-rc.9.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
+[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [快速开始](#快速开始) | [RC10 Public Preview](docs/release_notes_v1.0.0-rc.10.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
 
-# Toka 编程语言
+# Toka systems programming language（Toka 系统编程语言）
 
 **Toka 是一门以无 GC、可预测的资源成本、静态安全和面向 AI 的可验证语义为设计底线的系统编程语言；它让真实系统边界同时对程序员和工具保持显式。**
+
+本项目统一使用名称 **Toka systems programming language**，官方仓库为
+`tokalang/toka`。它与历史上的 Toka Forth、Tokelang，以及其他同名或近似命名的
+Toka / Toke 项目无关。
 
 确定性清理 · PAL 静态检查 · 显式 `cede` 转移 · 带版本的 JSON 语义协议
 
@@ -56,7 +60,7 @@ Toka 当前处于 Public Preview。为获得可复现的安装，请使用一个
 release candidate：
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.9
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.10
 toka doctor
 ```
 
@@ -82,14 +86,41 @@ export TOKA_LIB="$PWD/lib"
 toka doctor
 ```
 
-创建项目、解析第一个公开包并运行它：
+创建项目，并加入官方嵌入式键值存储引擎
+[TokaKV](https://github.com/tokalang/tokakv)：
 
 ```bash
-toka new hello_toka
-cd hello_toka
-toka add regex
+toka new tokakv_hello
+cd tokakv_hello
+toka add tokakv
+```
+
+用下面的完整示例替换 `src/main.tk`：
+
+```toka
+import std/io::{println}
+import official/tokakv::{TokaKvEngine}
+
+fn main() -> i32 {
+    auto db = TokaKvEngine::open(string::from("hello.tokakv")).unwrap()
+    db.put(string::from("language"), string::from("Toka")).unwrap()
+
+    auto value = db.get(string::from("language")).unwrap().unwrap()
+    println("{}", value)
+
+    db.close().unwrap()
+    return 0
+}
+```
+
+然后运行：
+
+```bash
 toka run
 ```
+
+最终输出应为 `Toka`。这条流程已经使用干净的 RC10 SDK 和公开 `tokakv` 包
+完成验证。示例为保持紧凑使用了 `unwrap()`；生产代码应显式处理存储和 I/O 错误。
 
 若目标是用 AI 协助复刻生态库，请从 [AI 包复刻指南](AGENTS-USER.md) 开始；
 它说明了受支持的包发布路径，以及每次编辑后应运行的编译器检查。
@@ -208,18 +239,41 @@ toka capabilities --json main.tk
 
 机器可读诊断、语义证据与有界上下文见 [AI tooling](docs/ai_tooling.md)。这些协议是解释与验证接口，不承诺任何特定模型无需审查就能正确编写代码。
 
-## 当前状态
+## RC10 状态与已知边界
 
-Toka 仍处于积极开发中。当前仓库包含：
+Toka `v1.0.0-rc.10` 是已经发布的 **Public Preview** release candidate，
+不是稳定 1.0 兼容性承诺。在当前稳定化阶段，1.0 语言语义已冻结；工作重点是
+文档、生态采用、资格验证和缺陷修复，不再增加语言新特性。
+
+| 平台 | RC10 状态 |
+| :--- | :--- |
+| Linux x86_64 | 已发布 Tier 1 SDK archive |
+| Linux aarch64 | 已发布 Tier 1 SDK archive |
+| macOS x86_64 | 已发布 Tier 1 SDK archive |
+| macOS aarch64 / Apple Silicon | 已发布 Tier 1 SDK archive |
+| Windows / MSYS2 | 源码构建与 dogfood 路径；没有 RC10 SDK archive |
+| WSL2 / WASI | 可用或实验性路径；不是 1.0 阻塞发布目标 |
+
+已知边界：
+
+- RC10 是 prerelease；源码、包和接口兼容性在稳定 1.0 前仍可能变化。
+- 语言尚未自举，包生态仍然年轻。
+- RC10 在成功执行 `toka run` 时可能输出来自 SDK 构建模块的 `W0408` warning；
+  warning 不等于构建失败。
+- TokaKV 当前是单进程嵌入式 preview 引擎，compaction 范围为 L0-to-L1；
+  尚不包含更深层级、分布式复制或 Redis 协议服务端。
+
+当前仓库包含：
 
 - 基于 C++ 的编译器前端与 LLVM 20 后端。
 - 面向可变性、move、借用、空访问、资源安全、morphic 泛型等规则的语义分析和诊断。
 - 包含核心容器与系统级模块的标准库。
 - `toka` 项目管理器 / 构建工具、`tokafmt`、`tokalsp`。
 - 增量构建元数据与 TKI interface cache 校验。
-- Linux 与 macOS 是主要开发路径，Windows / MSYS2 支持正在推进。
+- Linux 与 macOS 是受支持的 1.0 发布平台。
 
-Toka 还没有自举。生态仍然年轻。近期最重要的工程工作仍然是编译器加固、标准库稳定、Windows parity，以及最终自举。
+当前优先事项是让冻结后的 RC10 表面更容易评估：清晰文档、可复现示例、
+TokaKV 这样的生态证明，以及发布资格验证。Windows parity 与最终自举仍属于后续工作。
 
 ## Toka 适合你吗？
 
@@ -286,6 +340,6 @@ Toka 受 C / C++ 的表示控制和确定性资源管理启发，也受 Rust 的
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 1.0.0-rc.9 candidate}
+  note         = {Version 1.0.0-rc.10 public preview}
 }
 ```
