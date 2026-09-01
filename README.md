@@ -192,6 +192,41 @@ Most mainstream systems languages combine three concerns in different ways:
 
 Toka's bet is that **access representation deserves its own source-level dimension**. Instead of hiding pointer identity, ownership, sharing, borrowing, nullability, mutability, and transfer intent behind one overloaded variable notation, Toka gives these concepts small orthogonal markers and lets the compiler enforce the resulting contracts.
 
+## Why Toka When Rust Already Exists?
+
+Rust demonstrated that a practical systems language can provide strong memory
+safety without making garbage collection the default. Toka builds on that
+achievement rather than treating Rust as a failed design or positioning itself
+as a drop-in replacement.
+
+The two languages explore different ways of distributing systems-programming
+complexity. Rust provides a general lifetime and trait system capable of
+expressing advanced borrowing patterns. Toka instead favors local path-based
+inference, narrower cross-boundary dependency contracts, and conservative
+rejection when PAL cannot establish safety locally.
+
+| Area | Rust | Toka |
+| :--- | :--- | :--- |
+| Borrow relationships | Lifetimes are often inferred or elided; named lifetime parameters express relationships that cannot be omitted | PAL infers local relationships; escaping borrowed values use path-oriented `<-` / `effects:` contracts rather than named lifetime variables |
+| Safety tradeoff | Can express highly general borrowing patterns, sometimes with substantial type-level complexity | Intentionally accepts fewer difficult borrowing patterns in exchange for a smaller ordinary source surface |
+| Access representation | References, raw pointers, and owning pointer types are distinct types and commonly participate in dereference coercion | Payload operations and handle identity are separate source-level dimensions expressed through hat morphology |
+| Ownership transfer | Moves follow Rust's ownership, type, and value-context rules | Transfer is governed by owning morphology and declaration contracts such as `cede`; a resolved `cede` formal is an ownership boundary even when caller-side `cede` spelling is omitted |
+| Async address stability | `Pin` provides the low-level address-stability contract used by futures, while ordinary async code often hides it | PAL state remains active across suspension and ordinary source has no `Pin` construct; shape-internal self-reference is not supported in Toka 1.0 |
+| Machine tooling | JSON diagnostics, Cargo metadata, rust-analyzer, and a mature tools ecosystem | Additional domain-specific protocols expose PAL decisions, transfer obligations, capabilities, and lifecycle contracts, but these interfaces and their ecosystem are much younger |
+| Maturity | Stable language, large ecosystem, extensive production experience, and established formal and certification work | Public Preview, young ecosystem, evolving implementation, and substantially less production evidence |
+
+Toka does not claim that lifetime relationships, address stability, aliasing, or
+resource transfer can be made free. Its design moves some of that burden into
+local compiler analysis, expresses some of it through different contracts, and
+rejects some patterns that Rust can represent.
+
+Toka may be worth evaluating when compact ownership-oriented source, explicit
+payload/handle separation, predictable no-GC resource behavior, or
+machine-readable semantic evidence are primary requirements. Rust remains the
+stronger default when ecosystem breadth, long-term stability, certification,
+platform coverage, or proven production deployment matters more than
+experimenting with a different language model.
+
 ## Core Ideas
 
 ### Explicit Resource Semantics
