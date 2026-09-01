@@ -12,10 +12,10 @@ For a released macOS or Linux SDK, install a stable release with:
 curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-After `v1.0.0-rc.7` is published, use its explicit tag:
+Use the explicit RC10 public-preview tag for a repeatable install:
 
 ```sh
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.7
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.10
 ```
 
 To build from this repository, install CMake, a C++17 compiler, and LLVM/LLD

@@ -1,10 +1,12 @@
 # Toka v1.0.0-rc.10 Release Candidate Notes
 
-**Status:** Candidate awaiting hosted qualification and protected promotion.
+**Status:** Published public prerelease on 2026-08-31.
 
-These notes describe the intended RC10 contents. They are not qualification or
-publication evidence. Candidate identity, hosted jobs, asset digests, replay
-receipts, and final release state belong in the RC10 qualification audit.
+RC10 is available from the
+[GitHub release](https://github.com/tokalang/toka/releases/tag/v1.0.0-rc.10)
+with SDK archives for Linux x86_64, Linux aarch64, macOS x86_64, and macOS
+aarch64. It remains a Public Preview release candidate, not a stable 1.0
+compatibility promise.
 
 ## Ownership and cleanup correctness
 
@@ -53,8 +55,7 @@ RC10 keeps `.tki` format `3` and place-yield ABI schema `1`, but advances the
 compiler-interface compatibility key to `0.9.9-16`. RC9 `.tki`, object,
 semantic-manifest, and semantic-cache artifacts must be discarded and rebuilt.
 
-After publication, install RC10 explicitly rather than relying on the stable
-release selector:
+Install RC10 explicitly rather than relying on the stable release selector:
 
 ```sh
 curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.10
