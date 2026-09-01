@@ -61,8 +61,19 @@ release candidate：
 
 ```bash
 curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.10
+export PATH="$HOME/.toka/bin:$PATH"
+export TOKA_LIB="$HOME/.toka/lib"
 toka doctor
 ```
+
+预构建 SDK 在项目编排和原生链接阶段仍会使用宿主工具，需要 Python 3.10+
+和 C linker。Ubuntu / Debian 可一次安装完整运行依赖：
+
+```bash
+sudo apt-get install clang lld python3 pkg-config libssl-dev
+```
+
+`toka doctor` 会先检查这些运行条件，再报告 SDK ready。
 
 更换 tag 前，请先检查 [GitHub Releases 页面](https://github.com/tokalang/toka/releases)。
 不带参数的安装脚本会遵循 GitHub 的稳定版 Latest 选择器，因此不建议将其作为
@@ -78,12 +89,6 @@ cmake -S . -B build
 cmake --build build
 export PATH="$PWD/build/bin:$PATH"
 export TOKA_LIB="$PWD/lib"
-```
-
-检查 SDK：
-
-```bash
-toka doctor
 ```
 
 创建项目，并加入官方嵌入式键值存储引擎

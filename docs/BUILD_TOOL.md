@@ -16,6 +16,16 @@ Use the explicit RC10 public-preview tag for a repeatable install:
 
 ```sh
 curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.10
+export PATH="$HOME/.toka/bin:$PATH"
+export TOKA_LIB="$HOME/.toka/lib"
+toka doctor
+```
+
+Prebuilt SDK runtime prerequisites are Python 3.10+, a native C linker, and
+OpenSSL link inputs. On Ubuntu/Debian:
+
+```sh
+sudo apt-get install clang lld python3 pkg-config libssl-dev
 ```
 
 To build from this repository, install CMake, a C++17 compiler, and LLVM/LLD
@@ -29,8 +39,9 @@ export TOKA_LIB="$PWD/lib"
 toka doctor
 ```
 
-`toka doctor` is the supported first diagnostic. It verifies that the
-compiler, standard library, formatter, and native linker can be found.
+`toka doctor` is the supported first diagnostic. It verifies the compiler,
+standard library, formatter, Python build helper, native linker, and Linux
+OpenSSL link inputs.
 
 ## Start a project
 

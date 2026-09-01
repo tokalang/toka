@@ -150,6 +150,24 @@ def main():
         # caller uses TOKA_LIB to build the source-tree toolchain.
         env.pop("TOKA_LIB", None)
         run([installed_toka, "doctor"], temp_root, env=env)
+        # Project-aware semantic commands currently target published SDK hosts.
+        if sys.platform != "win32":
+            incompatible_python = temp_root / "incompatible-python"
+            incompatible_python.mkdir()
+            fake_python = incompatible_python / "python3"
+            fake_python.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            fake_python.chmod(0o755)
+            bad_python_env = env.copy()
+            bad_python_env["PATH"] = (
+                str(incompatible_python) + os.pathsep + bad_python_env.get("PATH", "")
+            )
+            failed_doctor = run(
+                [installed_toka, "doctor"], temp_root,
+                env=bad_python_env, expected=1,
+            )
+            require("Python 3.10+" in failed_doctor.stdout,
+                    "toka doctor did not reject an incompatible Python helper")
+            checks.append("doctor-python-runtime-contract")
 
         direct = temp_root / "direct.tk"
         direct.write_text("fn main() -> i32 { return 0 }\n", encoding="utf-8")
@@ -177,7 +195,7 @@ def main():
         output = run([installed_toka, "run"], temp_root / "smoke", env=env)
         require("Hello, Toka!" in output.stdout, "installed toka project did not run")
 
-        dependency = temp_root / "local_dependency"
+        dependency = temp_root / "dependency"
         dependency_module = dependency / "lib" / "dependency" / "mod.tk"
         dependency_module.parent.mkdir(parents=True)
         (dependency / "package.tk").write_text(
@@ -192,6 +210,27 @@ def main():
         offline_env = env.copy()
         offline_env["TOKA_OFFLINE"] = "1"
         run([installed_toka, "fetch"], smoke, env=offline_env)
+        if sys.platform != "win32":
+            smoke_source = smoke / "src/main.tk"
+            smoke_source.write_text(
+                "import dependency::{value}\n"
+                "fn main() -> i32 { return value() - 1 }\n",
+                encoding="utf-8",
+            )
+            project_check = run(
+                [installed_toka, "check", "--json", "src/main.tk"], smoke, env=env,
+            )
+            project_check_doc = json.loads(project_check.stdout)
+            require(project_check_doc.get("schema") == "toka.diagnostics" and
+                    project_check_doc.get("success") is True,
+                    "toka check did not resolve the locked project dependency")
+            project_evidence = run(
+                [installed_toka, "evidence", "--json", "src/main.tk"], smoke, env=env,
+            )
+            project_evidence_doc = json.loads(project_evidence.stdout)
+            require(project_evidence_doc.get("schema") == "toka.semantic-evidence",
+                    "toka evidence did not emit JSON for a locked project dependency")
+            checks.extend(("project-aware-check", "project-aware-evidence"))
 
         absolute_project = temp_root / "absolute_smoke"
         run([installed_toka, "new", absolute_project], temp_root, env=env)

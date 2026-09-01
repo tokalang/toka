@@ -517,6 +517,9 @@ def generate_rebuild_plan(current_graph: dict, old_manifest: dict) -> dict:
     return plan
 
 def main():
+    if sys.argv[1:] == ["--doctor"]:
+        return
+
     parser = argparse.ArgumentParser(description="Toka Incremental Build Manager (Distributed Compile & Link)")
     parser.add_argument('entry_files', nargs='+', help='Entry file paths')
     parser.add_argument('--manifest', '-m', default='.toka/build/manifest.json', help='Manifest store path')
