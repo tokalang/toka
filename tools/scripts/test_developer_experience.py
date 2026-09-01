@@ -74,9 +74,27 @@ def main():
     require(required_fields.issubset(records[0]), "tokac JSON diagnostic schema is incomplete")
     checks.append("tokac-json-diagnostics")
 
+    sdk_build_check = run(
+        [tokac, "--check-only", "-I", root / "lib", root / "lib/build.tk"], root,
+    )
+    require("W0408" not in sdk_build_check.stdout + sdk_build_check.stderr,
+            "SDK build module emits mutable-call warning noise")
+    user_warning = run(
+        [tokac, "--check-only", "-I", root / "lib",
+         root / "tests/warn/call_arg_missing_mutable_sigil.tk"], root,
+    )
+    require("W0408" in user_warning.stdout + user_warning.stderr,
+            "user-source mutable-call warning disappeared")
+    checks.extend(("sdk-build-warning-clean", "user-w0408-visible"))
+
     tokac_version = release_version(run([tokac, "--version"], root).stdout, "tokac")
     toka_help = run([toka, "--help"], root).stdout
     require("Usage: toka" in toka_help, "toka help is incomplete")
+    require("add <package-or-url>" in toka_help, "toka help hides Registry package names")
+    add_help = run([toka, "add", "--help"], root).stdout
+    require("Usage: toka add <package-or-url>" in add_help and
+            "toka add tokakv" in add_help,
+            "toka add help does not explain the Registry workflow")
     require("Toka " + tokac_version in toka_help,
             "toka help version does not agree with tokac")
     toka_version = release_version(run([toka, "--version"], root).stdout, "toka")
@@ -90,7 +108,7 @@ def main():
     require({tokac_version, toka_version, tokafmt_version, tokalsp_version} == {tokac_version},
             "SDK binaries do not agree on the release version")
     run([tokalsp, "--not-a-real-option"], root, expected=1)
-    checks.extend(("toka-help", "toka-unknown-command", "tokafmt-cli",
+    checks.extend(("toka-help", "toka-add-help", "toka-unknown-command", "tokafmt-cli",
                    "tokalsp-cli", "sdk-version-agreement"))
 
     with tempfile.TemporaryDirectory(prefix="toka-developer-experience-") as temp:
@@ -168,6 +186,16 @@ def main():
             require("Python 3.10+" in failed_doctor.stdout,
                     "toka doctor did not reject an incompatible Python helper")
             checks.append("doctor-python-runtime-contract")
+            missing_python_project = temp_root / "missing_python_project"
+            run([installed_toka, "new", missing_python_project], temp_root, env=env)
+            failed_add = run(
+                [installed_toka, "add", "missing-python-probe"],
+                missing_python_project, env=bad_python_env, expected=1,
+            )
+            require("Python 3 package helper" in failed_add.stdout and
+                    "toka doctor" in failed_add.stdout,
+                    "toka add hid the package-helper launch failure")
+            checks.append("package-helper-launch-diagnostic")
 
         direct = temp_root / "direct.tk"
         direct.write_text("fn main() -> i32 { return 0 }\n", encoding="utf-8")

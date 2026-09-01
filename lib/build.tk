@@ -42,17 +42,17 @@ fn json_write_string(s: str, buf#: string) {
 }
 fn outputs_to_json(outputs: ModuleOutputs, buf#: string) -> string {
     buf#.push_str("{\"interface\":")
-    json_write_string(outputs.interface, buf)
+    json_write_string(outputs.interface, buf#)
     buf#.push_str(",\"object\":")
-    json_write_string(outputs.object, buf)
+    json_write_string(outputs.object, buf#)
     buf#.push_str(",\"executable\":")
-    json_write_string(outputs.executable, buf)
+    json_write_string(outputs.executable, buf#)
     buf#.push_str("}")
     return buf
 }
 impl ModuleOutputs@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return __deserialize_nested_shape<ModuleOutputs>(self, json)
+        return __deserialize_nested_shape<ModuleOutputs>(self#, json)
     }
 }
 
@@ -103,30 +103,30 @@ impl ModuleSnapshot {
 
 fn snapshot_to_json(snapshot: ModuleSnapshot, buf#: string) -> string {
     buf#.push_str("{\"kind\":")
-    json_write_string(snapshot.kind, buf)
+    json_write_string(snapshot.kind, buf#)
     buf#.push_str(",\"fallback_triggered\":")
     if snapshot.fallback_triggered { buf#.push_str("true") } else { buf#.push_str("false") }
     buf#.push_str(",\"cache_status\":")
-    json_write_string(snapshot.cache_status, buf)
+    json_write_string(snapshot.cache_status, buf#)
     buf#.push_str(",\"cache_status_reason\":")
-    json_write_string(snapshot.cache_status_reason, buf)
+    json_write_string(snapshot.cache_status_reason, buf#)
     buf#.push_str(",\"target_triple\":")
-    json_write_string(snapshot.target_triple, buf)
+    json_write_string(snapshot.target_triple, buf#)
     buf#.push_str(",\"compiler_version\":")
-    json_write_string(snapshot.compiler_version, buf)
+    json_write_string(snapshot.compiler_version, buf#)
     buf#.push_str(",\"interface_version\":")
-    json_write_string(snapshot.interface_version, buf)
+    json_write_string(snapshot.interface_version, buf#)
     buf#.push_str(",\"source_hash\":")
-    json_write_string(snapshot.source_hash, buf)
+    json_write_string(snapshot.source_hash, buf#)
     buf#.push_str(",\"content_hash\":")
-    json_write_string(snapshot.content_hash, buf)
+    json_write_string(snapshot.content_hash, buf#)
     buf#.push_str(",\"outputs\":")
-    buf = outputs_to_json(snapshot.outputs.clone(), buf)
+    buf = outputs_to_json(snapshot.outputs.clone(), buf#)
     buf#.push_str(",\"dependencies\":[")
     auto i# = 0:usize
     loop i < snapshot.dependencies.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string(snapshot.dependencies.borrow(i).as_str(), buf)
+        json_write_string(snapshot.dependencies.borrow(i).as_str(), buf#)
         i += 1
     }
     buf#.push_str("]}")
@@ -135,7 +135,7 @@ fn snapshot_to_json(snapshot: ModuleSnapshot, buf#: string) -> string {
 
 impl ModuleSnapshot@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return __deserialize_nested_shape<ModuleSnapshot>(self, json)
+        return __deserialize_nested_shape<ModuleSnapshot>(self#, json)
     }
 }
 
@@ -179,12 +179,12 @@ impl DependencyManifest {
 
 fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
     buf#.push_str("{\"manifest_version\":")
-    json_write_string(manifest.manifest_version, buf)
+    json_write_string(manifest.manifest_version, buf#)
     buf#.push_str(",\"roots\":[")
     auto i# = 0:usize
     loop i < manifest.roots.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string(manifest.roots.borrow(i).as_str(), buf)
+        json_write_string(manifest.roots.borrow(i).as_str(), buf#)
         i += 1
     }
     buf#.push_str("],\"modules\":{")
@@ -197,10 +197,10 @@ fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
         if !first { buf#.push_str(",") }
         first = false
         auto &key = entry.key()
-        json_write_string(key, buf)
+        json_write_string(key, buf#)
         buf#.push_str(":")
         auto &val = entry.val()
-        buf = snapshot_to_json(val.clone(), buf)
+        buf = snapshot_to_json(val.clone(), buf#)
     }
     buf#.push_str("}}")
     return buf
@@ -208,7 +208,7 @@ fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
 
 impl DependencyManifest@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return __deserialize_nested_shape<DependencyManifest>(self, json)
+        return __deserialize_nested_shape<DependencyManifest>(self#, json)
     }
 }
 
@@ -241,12 +241,12 @@ impl RebuildModuleInfo {
 fn info_to_json(info: RebuildModuleInfo) -> string {
     auto buf# = string::from("")
     buf#.push_str("{\"reason\":")
-    json_write_string(info.reason, buf)
+    json_write_string(info.reason, buf#)
     buf#.push_str(",\"dirty_deps\":[")
     auto i# = 0:usize
     loop i < info.dirty_deps.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string(info.dirty_deps.borrow(i).as_str(), buf)
+        json_write_string(info.dirty_deps.borrow(i).as_str(), buf#)
         i += 1
     }
     buf#.push_str("]}")
@@ -255,7 +255,7 @@ fn info_to_json(info: RebuildModuleInfo) -> string {
 
 impl RebuildModuleInfo@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return __deserialize_nested_shape<RebuildModuleInfo>(self, json)
+        return __deserialize_nested_shape<RebuildModuleInfo>(self#, json)
     }
 }
 
@@ -300,12 +300,12 @@ impl RebuildPlan {
 fn plan_to_json('plan: RebuildPlan) -> string {
     auto buf# = string::from("")
     buf#.push_str("{\"status\":")
-    json_write_string('plan.status, buf)
+    json_write_string('plan.status, buf#)
     buf#.push_str(",\"dirty_roots\":[")
     auto i# = 0:usize
     loop i < 'plan.dirty_roots.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string('plan.dirty_roots.borrow(i).as_str(), buf)
+        json_write_string('plan.dirty_roots.borrow(i).as_str(), buf#)
         i += 1
     }
     buf#.push_str("],\"dirty_modules\":{")
@@ -318,7 +318,7 @@ fn plan_to_json('plan: RebuildPlan) -> string {
         if !first { buf#.push_str(",") }
         first = false
         auto &key = entry.key()
-        json_write_string(key, buf)
+        json_write_string(key, buf#)
         buf#.push_str(":")
         auto &val = entry.val()
         auto info_str = info_to_json(val)
@@ -330,7 +330,7 @@ fn plan_to_json('plan: RebuildPlan) -> string {
 
 impl RebuildPlan@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return __deserialize_nested_shape<RebuildPlan>(self, json)
+        return __deserialize_nested_shape<RebuildPlan>(self#, json)
     }
 }
 
@@ -453,7 +453,7 @@ fn collect_submodule_output_updates('graph: DependencyManifest, build_dir: strin
 
 fn populate_submodule_outputs('graph#: DependencyManifest, build_dir: string) {
     auto updates# = HashMap<string, ModuleSnapshot>::new()
-    collect_submodule_output_updates('graph, build_dir, updates)
+    collect_submodule_output_updates('graph, build_dir, updates#)
 
     auto updates_iter# = updates.iter()
     loop {
@@ -709,7 +709,7 @@ fn generate_rebuild_plan(
         auto &m_path_ref = entry.key()
         auto m_path = m_path_ref.clone()
         
-        auto res = check_dirty_recursive(m_path.clone(), current_graph, dirty_map, memo, visiting)
+        auto res = check_dirty_recursive(m_path.clone(), current_graph, dirty_map, memo#, visiting#)
         if res.is_dirty {
             plan.status = cede string::from("dirty")
             

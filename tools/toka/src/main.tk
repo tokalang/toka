@@ -33,7 +33,7 @@ fn print_help() {
     println("  query        Run a compiler semantic query (definition, references, rename)")
     println("  test         Preview: experimental source-tree test scanner")
     println("  doc          Generate API documentation")
-    println("  add <url>    Add a package dependency")
+    println("  add <package-or-url>  Add a Registry package or URL dependency")
     println("  rm <pkg>     Remove a package dependency")
     println("  up           Update package dependencies")
     println("  fetch        Fetch dependencies (Implicit in build)")
@@ -47,6 +47,15 @@ fn print_help() {
     println("  -V, --version  Show version information")
     println("  -v, --verbose  Enable verbose compiler output")
     println("  -f, --forge    Enable forge multi-threaded parallel incremental build engine")
+}
+
+fn print_add_help() {
+    println("Usage: toka add <package-or-url>")
+    println("")
+    println("Add a package from the verified Registry by name, for example:")
+    println("  toka add tokakv")
+    println("")
+    println("A direct package URL or local path is also accepted.")
 }
 
 fn manager_release_version() -> string {
@@ -1287,10 +1296,15 @@ fn main() -> i32 {
     
     if cmd.eq(string::from("add")) {
         if argc < 3 + shift {
-             println("Error: 'toka add' requires a package URL.")
+             println("Error: 'toka add' requires a package name, URL, or local path.")
+             println("Run 'toka add --help' for examples.")
              return 1
         }
         auto url = env::get_arg(2 + shift)
+        if url.eq(string::from("--help")) || url.eq(string::from("-h")) {
+            print_add_help()
+            return 0
+        }
         return cmd_add(url)
     }
     

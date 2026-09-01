@@ -12,10 +12,10 @@ For a released macOS or Linux SDK, install a stable release with:
 curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-Use the explicit RC10 public-preview tag for a repeatable install:
+Use the explicit RC11 public-preview tag for a repeatable install:
 
 ```sh
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.10
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.11
 export PATH="$HOME/.toka/bin:$PATH"
 export TOKA_LIB="$HOME/.toka/lib"
 toka doctor

@@ -50,7 +50,17 @@ pub fn cmd_fetch() -> i32 {
             command#.arg(string::from("--offline"))
         }
     }
-    return command#.status()
+    auto result = command#.try_status()
+    if result.is_err() {
+        println("error: could not launch Python 3 package helper: {}", helper)
+        println("install Python 3.10+ and run 'toka doctor'")
+        return 1
+    }
+    auto status = result.unwrap()
+    if !status.success() {
+        println("error: Python 3 package helper failed with exit code {}; run 'toka doctor'", status.legacy_code())
+    }
+    return status.legacy_code()
 }
 
 pub fn cmd_fetch_quiet() -> i32 {
