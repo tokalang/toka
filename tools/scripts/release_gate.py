@@ -279,7 +279,10 @@ def main():
     env["CORES"] = env.get("CORES", str(max(1, os.cpu_count() or 1)))
 
     asan_dir = work_dir / "asan-build"
-    audit_timeout = "30"
+    # Hosted Linux arm64 can take longer to compile the slab corpus under
+    # ASan/UBSan. Keep the wider budget target-specific so other release gates
+    # retain the tighter timeout.
+    audit_timeout = "60" if args.target == "linux-arm64" else "30"
     archive = build_dir / ("toka-%s-%s-%s.tar.gz" % (args.version, os_name, arch))
     toka_command = [
         env["TOKAC"], "-I", "lib", "-I", str(build_dir / "generated"),
