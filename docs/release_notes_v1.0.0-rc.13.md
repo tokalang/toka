@@ -29,6 +29,11 @@ in force.
   values such as `Vec<i32>`. The previous check-success/CodeGen-internal-error
   split is covered by compile, link, runtime, move-state, and explicit-spelling
   regressions ([#50](https://github.com/tokalang/toka/issues/50)).
+- A redundant `unwrap()` on a non-nullable intermediate value is now rejected
+  during semantic checking instead of being silently accepted and failing in
+  CodeGen. Valid nested Result/Option method chains and split-statement forms
+  remain supported and are covered by check, CodeGen, and runtime regressions
+  ([#52](https://github.com/tokalang/toka/issues/52)).
 - JSON semantic commands remain JSON-only even when LLVM IR would otherwise be
   emitted, preserving machine-readable agent workflows.
 

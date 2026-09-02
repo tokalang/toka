@@ -1,0 +1,18 @@
+import core/result::{Result}
+
+shape Lookup (value: i32)
+
+impl Lookup {
+    pub fn into_value(self) -> Result<i32, i32> {
+        return Result<i32, i32>::Ok(self.value)
+    }
+}
+
+fn acquire() -> Result<Lookup, i32> {
+    return Result<Lookup, i32>::Ok(Lookup(value = 42))
+}
+
+fn main() -> i32 {
+    auto value = acquire().unwrap().into_value().unwrap()
+    return value - 42
+}

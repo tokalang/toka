@@ -5367,10 +5367,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_IsUnsetInitCall = true;
       return ObjTypeObj;
     }
-    if (Met->Method == "unwrap") {
-      if (!ObjTypeObj->IsNullable) {
-        // Warning or Silent
-      }
+    if (Met->Method == "unwrap" && ObjTypeObj && ObjTypeObj->IsNullable) {
       return ObjTypeObj->withAttributes(ObjTypeObj->IsWritable, false);
     }
 
