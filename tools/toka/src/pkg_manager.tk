@@ -65,7 +65,11 @@ pub fn cmd_fetch() -> i32 {
 
 pub fn cmd_fetch_quiet() -> i32 {
     auto helper = package_helper_path()
-    if helper.is_empty() { return 1 }
+    if helper.is_empty() {
+        println("error: package helper not found under the active SDK library root")
+        println("set TOKA_LIB explicitly or run 'toka doctor'")
+        return 1
+    }
     auto command# = package_command(string::from("fetch"))
     unsafe {
         auto offline = libc_getenv(c"TOKA_OFFLINE") as Addr
@@ -74,7 +78,11 @@ pub fn cmd_fetch_quiet() -> i32 {
         }
     }
     auto result = command#.output()
-    if result.is_err() { return 1 }
+    if result.is_err() {
+        println("error: could not launch Python 3 package helper: {}", helper)
+        println("install Python 3.10+ and run 'toka doctor'")
+        return 1
+    }
     auto output = result.unwrap()
     if !output.status.success() && !output.stderr.is_empty() {
         println("{}", output.stderr)

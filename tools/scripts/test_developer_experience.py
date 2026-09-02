@@ -223,6 +223,25 @@ def main():
         output = run([installed_toka, "run"], temp_root / "smoke", env=env)
         require("Hello, Toka!" in output.stdout, "installed toka project did not run")
 
+        # Mirror the release archive layout and invoke the manager by PATH name,
+        # so argv[0] is `toka` rather than an absolute path. This is the normal
+        # relocatable CLI path and must not require an explicit TOKA_LIB.
+        relocated_sdk = temp_root / "relocated-sdk"
+        shutil.copytree(installed_bin, relocated_sdk / "bin")
+        shutil.copytree(prefix / "share/toka/lib", relocated_sdk / "lib")
+        relocated_env = env.copy()
+        relocated_env["PATH"] = (
+            str(relocated_sdk / "bin") + os.pathsep + env.get("PATH", "")
+        )
+        relocated_env.pop("TOKA_LIB", None)
+        run(["toka", "doctor"], temp_root, env=relocated_env)
+        relocated_project = temp_root / "relocated-smoke"
+        run(["toka", "new", relocated_project], temp_root, env=relocated_env)
+        relocated_output = run(["toka", "run"], relocated_project, env=relocated_env)
+        require("Hello, Toka!" in relocated_output.stdout,
+                "PATH-invoked relocated SDK required an explicit TOKA_LIB")
+        checks.append("relocatable-path-invocation")
+
         dependency = temp_root / "dependency"
         dependency_module = dependency / "lib" / "dependency" / "mod.tk"
         dependency_module.parent.mkdir(parents=True)

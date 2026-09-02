@@ -134,6 +134,34 @@ fn get_dirname(path: string) -> string {
     return string::from(".")
 }
 
+fn resolve_manager_executable_path() -> string {
+    auto arg0 = env::get_arg(0)
+    if arg0.is_empty() || arg0.contains("/") || arg0.contains("\\") {
+        return arg0
+    }
+
+    auto path_value = env::var(string::from("PATH"))
+    if path_value.is_none() { return arg0 }
+    auto separator# = ':' as i32
+    if check_is_windows() { separator = ';' as i32 }
+    auto entries# = path_value.unwrap().split(separator)
+    loop !entries.is_done() {
+        auto entry = entries#.next()
+        if entry.is_empty() { continue }
+        auto candidate# = entry.clone()
+        if !candidate.ends_with("/") && !candidate.ends_with("\\") {
+            if check_is_windows() {
+                candidate#.push_str("\\")
+            } else {
+                candidate#.push_str("/")
+            }
+        }
+        candidate#.push_str(arg0.as_str())
+        if exists(candidate.clone()) { return candidate }
+    }
+    return arg0
+}
+
 fn detect_default_lib_path() -> string {
     unsafe {
         auto toka_lib = libc_getenv(c"TOKA_LIB") as Addr
@@ -142,7 +170,7 @@ fn detect_default_lib_path() -> string {
         }
     }
     
-    auto exe_path = env::get_arg(0)
+    auto exe_path = resolve_manager_executable_path()
     if !exe_path.is_empty() {
         auto exe_dir = get_dirname(exe_path)
         
@@ -188,7 +216,7 @@ fn detect_default_lib_path() -> string {
 }
 
 fn detect_tokafmt_path() -> string {
-    auto exe_path = env::get_arg(0)
+    auto exe_path = resolve_manager_executable_path()
     if !exe_path.is_empty() {
         auto exe_dir = get_dirname(exe_path)
         auto candidate# = exe_dir.clone()
@@ -205,7 +233,7 @@ fn detect_tokafmt_path() -> string {
 }
 
 fn detect_tokac_path() -> string {
-    auto exe_path = env::get_arg(0)
+    auto exe_path = resolve_manager_executable_path()
     if !exe_path.is_empty() {
         auto exe_dir = get_dirname(exe_path)
         auto candidate# = exe_dir.clone()
@@ -222,7 +250,7 @@ fn detect_tokac_path() -> string {
 }
 
 fn detect_semantic_preview_path() -> string {
-    auto exe_path = env::get_arg(0)
+    auto exe_path = resolve_manager_executable_path()
     if !exe_path.is_empty() {
         auto exe_dir = get_dirname(exe_path)
         auto build_dir = get_dirname(exe_dir)
