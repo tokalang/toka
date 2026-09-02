@@ -54,6 +54,13 @@ Toka combines several mechanisms toward that goal. The design tries to keep ever
 
 The hat syntax is one consequence of this design, not the goal itself. It exists because Toka needs a compact, consistent way to distinguish payload operations from handle operations.
 
+**Design-lineage note.** Toka's hat syntax was developed independently; related
+mechanisms in C, Cforall, and Alusus are acknowledged as precedents. Toka does
+not claim the individual glyphs, multi-level references, or explicit handle
+selection as inventions. Its design focus is the integration of hat forms with
+payload/handle selection, ownership, borrowing, rebinding, and resource
+contracts. See [Design lineage and evidence](docs/design_lineage.md).
+
 Toka therefore explores a position between C, Rust, Go, and Zig: close to the machine, statically disciplined, and designed to keep everyday systems code readable without turning important systems boundaries into convention.
 
 **Paper:** [Toka: A Systems Programming Language with Explicit Resource Semantics (arXiv:2606.01974)](https://arxiv.org/abs/2606.01974)
