@@ -234,10 +234,13 @@ def main():
             str(relocated_sdk / "bin") + os.pathsep + env.get("PATH", "")
         )
         relocated_env.pop("TOKA_LIB", None)
-        run(["toka", "doctor"], temp_root, env=relocated_env)
+        relocated_manager = "toka" + suffix
+        run([relocated_manager, "doctor"], temp_root, env=relocated_env)
         relocated_project = temp_root / "relocated-smoke"
-        run(["toka", "new", relocated_project], temp_root, env=relocated_env)
-        relocated_output = run(["toka", "run"], relocated_project, env=relocated_env)
+        run([relocated_manager, "new", relocated_project], temp_root, env=relocated_env)
+        relocated_output = run(
+            [relocated_manager, "run"], relocated_project, env=relocated_env,
+        )
         require("Hello, Toka!" in relocated_output.stdout,
                 "PATH-invoked relocated SDK required an explicit TOKA_LIB")
         checks.append("relocatable-path-invocation")
