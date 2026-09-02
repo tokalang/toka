@@ -314,6 +314,10 @@ def main():
     require("name: release-archive-${{ matrix.name }}" in gate and
             "startsWith(github.ref, 'refs/tags/v')" in gate,
             "only a successful tag gate may upload release archives")
+    require("Upload unpublished candidate archive" in gate and
+            "github.event_name == 'workflow_dispatch'" in gate and
+            "candidate-archive-${{ matrix.name }}" in gate,
+            "manual qualification does not retain unpublished candidate archives")
     require("needs: release-gate" in summary and "if: always()" in summary,
             "qualification summary must inspect all matrix evidence")
     require("verify_release_qualification.py" in summary and
