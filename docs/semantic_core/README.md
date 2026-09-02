@@ -86,6 +86,11 @@ change current language behavior or implementation status.
   fixed-array constant-index design matrix. A legacy mask slice exists, but
   conformance to the proposed PlaceState Core and the separate async bridge
   remains gated; this is not a general projection guarantee.
+- `explicit_call_boundary_cede_rfc.md` proposes restoring caller-visible
+  `cede` for every call that invalidates an existing source place, while
+  retaining proven-Copy `KeepLive`, narrowly proven source-less temporary
+  consumption, symbolic generic requirements, whole-call atomic planning, and
+  CodeGen fail-closed checks. It is review-only and authorizes no implementation.
 - `place_state_permission_flow_current_head_audit.md` records the current
   targeted PlaceState/permission/partial-`cede` reconciliation, including the
   bounded `E04632` fail-closed repair and the remaining projection-state gap.
