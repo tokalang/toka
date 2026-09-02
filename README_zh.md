@@ -1,4 +1,4 @@
-[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [快速开始](#快速开始) | [RC11 Public Preview](docs/release_notes_v1.0.0-rc.11.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
+[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [快速开始](#快速开始) | [RC12 Public Preview](docs/release_notes_v1.0.0-rc.12.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
 
 # Toka systems programming language（Toka 系统编程语言）
 
@@ -66,7 +66,7 @@ Toka 当前处于 Public Preview。为获得可复现的安装，请使用一个
 release candidate：
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.11
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.12
 export PATH="$HOME/.toka/bin:$PATH"
 export TOKA_LIB="$HOME/.toka/lib"
 toka doctor
@@ -278,24 +278,24 @@ toka capabilities --json main.tk
 
 机器可读诊断、语义证据与有界上下文见 [AI tooling](docs/ai_tooling.md)。这些协议是解释与验证接口，不承诺任何特定模型无需审查就能正确编写代码。
 
-## RC11 状态与已知边界
+## RC12 状态与已知边界
 
-Toka `v1.0.0-rc.11` 是已经发布的 **Public Preview** release candidate，
+Toka `v1.0.0-rc.12` 是已经发布的 **Public Preview** release candidate，
 不是稳定 1.0 兼容性承诺。在当前稳定化阶段，1.0 语言语义已冻结；工作重点是
 文档、生态采用、资格验证和缺陷修复，不再增加语言新特性。
 
-| 平台 | RC11 状态 |
+| 平台 | RC12 状态 |
 | :--- | :--- |
 | Linux x86_64 | 已发布 Tier 1 SDK archive |
 | Linux aarch64 | 已发布 Tier 1 SDK archive |
 | macOS x86_64 | 已发布 Tier 1 SDK archive |
 | macOS aarch64 / Apple Silicon | 已发布 Tier 1 SDK archive |
-| Windows / MSYS2 | 源码构建与 dogfood 路径；没有 RC11 SDK archive |
+| Windows / MSYS2 | 源码构建与 dogfood 路径；没有 RC12 SDK archive |
 | WSL2 / WASI | 可用或实验性路径；不是 1.0 阻塞发布目标 |
 
 已知边界：
 
-- RC11 是 prerelease；源码、包和接口兼容性在稳定 1.0 前仍可能变化。
+- RC12 是 prerelease；源码、包和接口兼容性在稳定 1.0 前仍可能变化。
 - 语言尚未自举，包生态仍然年轻。
 - TokaKV 当前是单进程嵌入式 preview 引擎，compaction 范围为 L0-to-L1；
   尚不包含更深层级、分布式复制或 Redis 协议服务端。
@@ -309,7 +309,7 @@ Toka `v1.0.0-rc.11` 是已经发布的 **Public Preview** release candidate，
 - 增量构建元数据与 TKI interface cache 校验。
 - Linux 与 macOS 是受支持的 1.0 发布平台。
 
-当前优先事项是让冻结后的 RC11 表面更容易评估：清晰文档、可复现示例、
+当前优先事项是让冻结后的 RC12 表面更容易评估：清晰文档、可复现示例、
 TokaKV 这样的生态证明，以及发布资格验证。Windows parity 与最终自举仍属于后续工作。
 
 ## Toka 适合你吗？
@@ -377,6 +377,6 @@ Toka 受 C / C++ 的表示控制和确定性资源管理启发，也受 Rust 的
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 1.0.0-rc.11 public preview}
+  note         = {Version 1.0.0-rc.12 public preview}
 }
 ```

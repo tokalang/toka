@@ -10,11 +10,11 @@ with one useful capability rather than a wholesale compatibility claim.
 
 ## 1. Prove the SDK before editing
 
-Install the current public-preview SDK with its exact tag. For RC11, verify the
+Install the current public-preview SDK with its exact tag. For RC12, verify the
 SDK before editing:
 
 ```sh
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.11
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.12
 toka doctor
 toka search regex
 ```
