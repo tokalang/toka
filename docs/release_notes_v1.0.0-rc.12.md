@@ -2,6 +2,15 @@
 
 **Status:** Published public prerelease on 2026-09-02.
 
+**Post-publication qualification:** **Not accepted for the Week 3
+release-quality gate.** Ten independent AI-agent black-box replays completed
+the functional path, but 8/10 fresh-shell relocation probes still lost the SDK
+library root. The corrected lifetime/real-PATH fix and JSON-only semantic
+command fixes are on `main`; the implicit-cede Sema/CodeGen consistency issue
+[#50](https://github.com/tokalang/toka/issues/50) remains open. RC12 is an
+immutable failed candidate, not evidence that RC10/RC11 are superseded. See the
+[public replay report](https://github.com/tokalang/tokakv/blob/main/docs/week3-independent-agent-dogfood.md#rc12-same-protocol-replay).
+
 RC12 is available from the
 [GitHub release](https://github.com/tokalang/toka/releases/tag/v1.0.0-rc.12)
 with SDK archives for Linux x86_64, Linux aarch64, macOS x86_64, and macOS
