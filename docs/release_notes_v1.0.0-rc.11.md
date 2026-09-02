@@ -1,6 +1,11 @@
 # Toka v1.0.0-rc.11 Release Candidate Notes
 
-**Status:** Candidate awaiting hosted qualification and protected promotion.
+**Status:** Published public prerelease on 2026-09-02.
+
+RC11 is available from the
+[GitHub release](https://github.com/tokalang/toka/releases/tag/v1.0.0-rc.11)
+with SDK archives for Linux x86_64, Linux aarch64, macOS x86_64, and macOS
+aarch64.
 
 RC11 is a product-quality repair candidate for the Public Preview. It is based
 on ten independent AI-agent black-box trials of the published RC10 SDK and the
