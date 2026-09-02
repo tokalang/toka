@@ -11,11 +11,12 @@ import sys
 import tempfile
 
 
-def run(command, cwd, env=None, expected=0):
+def run(command, cwd, env=None, expected=0, executable=None):
     result = subprocess.run(
         [str(part) for part in command],
         cwd=str(cwd),
         env=env,
+        executable=str(executable) if executable is not None else None,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         encoding="utf-8",
@@ -235,11 +236,15 @@ def main():
         )
         relocated_env.pop("TOKA_LIB", None)
         relocated_manager = "toka" + suffix
-        run([relocated_manager, "doctor"], temp_root, env=relocated_env)
+        relocated_executable = relocated_sdk / "bin" / relocated_manager
+        run([relocated_manager, "doctor"], temp_root, env=relocated_env,
+            executable=relocated_executable)
         relocated_project = temp_root / "relocated-smoke"
-        run([relocated_manager, "new", relocated_project], temp_root, env=relocated_env)
+        run([relocated_manager, "new", relocated_project], temp_root,
+            env=relocated_env, executable=relocated_executable)
         relocated_output = run(
             [relocated_manager, "run"], relocated_project, env=relocated_env,
+            executable=relocated_executable,
         )
         require("Hello, Toka!" in relocated_output.stdout,
                 "PATH-invoked relocated SDK required an explicit TOKA_LIB")
