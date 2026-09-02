@@ -237,14 +237,15 @@ def main():
         relocated_env.pop("TOKA_LIB", None)
         relocated_manager = "toka" + suffix
         relocated_executable = relocated_sdk / "bin" / relocated_manager
+        relocation_launcher = relocated_executable if sys.platform == "win32" else None
         run([relocated_manager, "doctor"], temp_root, env=relocated_env,
-            executable=relocated_executable)
+            executable=relocation_launcher)
         relocated_project = temp_root / "relocated-smoke"
         run([relocated_manager, "new", relocated_project], temp_root,
-            env=relocated_env, executable=relocated_executable)
+            env=relocated_env, executable=relocation_launcher)
         relocated_output = run(
             [relocated_manager, "run"], relocated_project, env=relocated_env,
-            executable=relocated_executable,
+            executable=relocation_launcher,
         )
         require("Hello, Toka!" in relocated_output.stdout,
                 "PATH-invoked relocated SDK required an explicit TOKA_LIB")
@@ -285,7 +286,22 @@ def main():
             project_evidence_doc = json.loads(project_evidence.stdout)
             require(project_evidence_doc.get("schema") == "toka.semantic-evidence",
                     "toka evidence did not emit JSON for a locked project dependency")
-            checks.extend(("project-aware-check", "project-aware-evidence"))
+            project_capabilities = run(
+                [installed_toka, "capabilities", "--json", "src/main.tk"],
+                smoke, env=env,
+            )
+            project_capabilities_doc = json.loads(project_capabilities.stdout)
+            require(project_capabilities_doc.get("schema") == "toka.capability-pilot",
+                    "toka capabilities mixed non-JSON output into stdout")
+            project_cede = run(
+                [installed_toka, "cede-obligations", "--json", "src/main.tk"],
+                smoke, env=env,
+            )
+            project_cede_doc = json.loads(project_cede.stdout)
+            require(project_cede_doc.get("schema") == "toka.cede-obligation-evidence",
+                    "toka cede-obligations mixed non-JSON output into stdout")
+            checks.extend(("project-aware-check", "project-aware-evidence",
+                           "capabilities-json-only", "cede-obligations-json-only"))
 
         absolute_project = temp_root / "absolute_smoke"
         run([installed_toka, "new", absolute_project], temp_root, env=env)

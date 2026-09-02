@@ -142,9 +142,10 @@ fn resolve_manager_executable_path() -> string {
 
     auto path_value = env::var(string::from("PATH"))
     if path_value.is_none() { return arg0 }
+    auto path_text = path_value.unwrap()
     auto separator# = ':' as i32
     if check_is_windows() { separator = ';' as i32 }
-    auto entries# = path_value.unwrap().split(separator)
+    auto entries# = path_text.split(separator)
     loop !entries.is_done() {
         auto entry = entries#.next()
         if entry.is_empty() { continue }
@@ -881,6 +882,7 @@ fn cmd_cede_obligations(argc: i32, shift: i32) -> i32 {
     }
     auto command# = Command::new(detect_tokac_path())
     command#.arg(string::from("--cede-obligations=json"))
+    command#.arg(string::from("--check-only"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
     if append_locked_project_context(command#) != 0 { return 1 }
@@ -902,6 +904,7 @@ fn cmd_capabilities(argc: i32, shift: i32) -> i32 {
     }
     auto command# = Command::new(detect_tokac_path())
     command#.arg(string::from("--capabilities=json"))
+    command#.arg(string::from("--check-only"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
     if append_locked_project_context(command#) != 0 { return 1 }
