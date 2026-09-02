@@ -617,9 +617,8 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
       }
       return true;
     }
-    if (!formalType->IsCede || argumentType->IsCede ||
-        formalType->typeKind != argumentType->typeKind ||
-        formalType->IsWritable != argumentType->IsWritable ||
+    if (argumentType->IsCede || formalType->typeKind != argumentType->typeKind ||
+        (formalType->IsWritable && !argumentType->IsWritable) ||
         formalType->IsNullable != argumentType->IsNullable ||
         formalType->IsBlocked != argumentType->IsBlocked)
       return false;
@@ -674,6 +673,12 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
   }
 
   const D3TypeCategory category = classifyD3TypeCategory(argumentType);
+  D3CopyProof copyProof = lookupD3CopyProof(argumentType);
+  if (copyProof == D3CopyProof::Indeterminate && argumentType->isShape()) {
+    copyProof = proveSlice4CopyType(argumentType)
+                    ? D3CopyProof::ProvenCopy
+                    : D3CopyProof::ProvenNonCopy;
+  }
   auto owningClosurePlace = [&]() {
     if (!argumentType->isFunction() && !argumentType->isDynFn())
       return false;
@@ -702,7 +707,7 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
       ((category != D3TypeCategory::Aggregate &&
         category != D3TypeCategory::OwnedIdentity &&
         category != D3TypeCategory::SharedIdentity) ||
-       lookupD3CopyProof(argumentType) != D3CopyProof::ProvenNonCopy))
+       copyProof != D3CopyProof::ProvenNonCopy))
     return false;
 
   const bool projection = dynamic_cast<MemberExpr *>(source) ||

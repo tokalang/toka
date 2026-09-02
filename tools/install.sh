@@ -51,6 +51,7 @@ esac
 
 TARBALL="toka-${VERSION}-${OS}-${ARCH}.tar.gz"
 DOWNLOAD_URL="https://github.com/tokalang/toka/releases/download/${VERSION}/${TARBALL}"
+CHECKSUM_URL="https://github.com/tokalang/toka/releases/download/${VERSION}/SHA256SUMS"
 
 TOKA_DIR="$HOME/.toka"
 TMP_DIR=$(mktemp -d)
@@ -69,6 +70,34 @@ trap cleanup EXIT HUP INT TERM
 echo "Downloading $TARBALL from $DOWNLOAD_URL..."
 curl --fail --location --retry 3 --silent --show-error \
   -o "${TMP_DIR}/${TARBALL}" "$DOWNLOAD_URL"
+
+echo "Verifying SHA-256..."
+curl --fail --location --retry 3 --silent --show-error \
+  -o "${TMP_DIR}/SHA256SUMS" "$CHECKSUM_URL"
+EXPECTED_SHA256=$(awk -v file="$TARBALL" '$2 == file { print $1 }' \
+  "${TMP_DIR}/SHA256SUMS")
+case "$EXPECTED_SHA256" in
+  ""|*[!0-9a-fA-F]*)
+    echo "SHA256SUMS has no valid entry for $TARBALL. Installation failed."
+    exit 1
+    ;;
+esac
+if [ "${#EXPECTED_SHA256}" -ne 64 ]; then
+  echo "SHA256SUMS has an invalid digest for $TARBALL. Installation failed."
+  exit 1
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL_SHA256=$(sha256sum "${TMP_DIR}/${TARBALL}" | awk '{ print $1 }')
+elif command -v shasum >/dev/null 2>&1; then
+  ACTUAL_SHA256=$(shasum -a 256 "${TMP_DIR}/${TARBALL}" | awk '{ print $1 }')
+else
+  echo "No SHA-256 tool found (sha256sum or shasum). Installation failed."
+  exit 1
+fi
+if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+  echo "SHA-256 mismatch for $TARBALL. Installation failed."
+  exit 1
+fi
 
 # Extract and validate before touching an existing installation.
 echo "Extracting and validating..."

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import ast
 import json
 import os
 from pathlib import Path
@@ -56,6 +57,14 @@ def main():
     tokafmt = build_dir / "bin" / ("tokafmt" + suffix)
     tokalsp = build_dir / "bin" / ("tokalsp" + suffix)
     checks = []
+
+    build_helper_source = (root / "tools/scripts/toka_build.py").read_text(
+        encoding="utf-8",
+    )
+    ast.parse(build_helper_source, filename="toka_build.py", feature_version=(3, 9))
+    require("Toka SDK build helper requires Python 3.10+" in build_helper_source,
+            "package helper cannot fail cleanly on Python 3.9")
+    checks.append("package-helper-python39-parse")
 
     require(tokac.is_file() and toka.is_file() and tokafmt.is_file() and
             tokalsp.is_file(), "SDK binaries are missing")
@@ -302,15 +311,27 @@ def main():
                     "toka cede-obligations mixed non-JSON output into stdout")
             checks.extend(("project-aware-check", "project-aware-evidence",
                            "capabilities-json-only", "cede-obligations-json-only"))
+            project_run_file = run(
+                [installed_toka, "run", "src/main.tk"], smoke, env=env,
+            )
+            checks.append("project-aware-run-file")
 
         absolute_project = temp_root / "absolute_smoke"
         run([installed_toka, "new", absolute_project], temp_root, env=env)
+        new_project_check = run(
+            [installed_toka, "check", "--json", "src/main.tk"],
+            absolute_project, env=env,
+        )
+        new_project_check_doc = json.loads(new_project_check.stdout)
+        require(new_project_check_doc.get("diagnostics") == [],
+                "toka new project is not warning-clean")
         output = run([installed_toka, "run"], absolute_project, env=env)
         require("Hello, Toka!" in output.stdout,
                 "installed toka absolute-path project did not run")
         checks.extend(("cmake-install", "toka-doctor", "installed-compile-run",
                        "tokac-dwarf-metadata", "installed-new-run",
                        "installed-package-helper-discovery",
+                       "installed-new-warning-clean",
                        "installed-new-absolute-path-run"))
 
     print(json.dumps({

@@ -12,6 +12,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/scripts"))
 from release_gate import parse_counts
+from classify_ci_changes import requires_heavy
 WORKFLOW = ROOT / ".github/workflows/release.yml"
 PROMOTION = ROOT / ".github/workflows/promote_release.yml"
 INTEL_REPLAY = ROOT / ".github/workflows/rc8_macos_x64_draft_replay.yml"
@@ -21,6 +22,7 @@ QUALIFICATION = ROOT / "tools/scripts/verify_release_qualification.py"
 ASSETS = ROOT / "tools/scripts/verify_release_assets.py"
 RELEASE_GATE = ROOT / "tools/scripts/release_gate.py"
 HANDLE_AUDIT = ROOT / "tools/scripts/audit_handle_grammar.py"
+INSTALLER = ROOT / "tools/install.sh"
 ACTIVE_CANDIDATE = "v1.0.0-rc.9"
 ACTIVE_RELEASE_NOTES = ROOT / ("docs/release_notes_%s.md" % ACTIVE_CANDIDATE)
 TARGETS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64")
@@ -197,6 +199,11 @@ def main():
     }, "release gate did not separate pass and Conformance evidence")
 
     text = WORKFLOW.read_text(encoding="utf-8")
+    installer = INSTALLER.read_text(encoding="utf-8")
+    pull_request_gate = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    windows_gate = (ROOT / ".github/workflows/windows-dogfood.yml").read_text(
+        encoding="utf-8",
+    )
     promotion = PROMOTION.read_text(encoding="utf-8")
     intel_replay = INTEL_REPLAY.read_text(encoding="utf-8")
     intel_replay_v2 = INTEL_REPLAY_V2.read_text(encoding="utf-8")
@@ -279,6 +286,22 @@ def main():
                     workflow_name + " workflow interpolates context into shell")
     require("canonical RC tag" in text and "canonical RC tag" in promotion,
             "release workflows do not validate canonical RC tag names")
+    require("SHA256SUMS" in installer and "EXPECTED_SHA256" in installer and
+            "ACTUAL_SHA256" in installer and
+            ("sha256sum" in installer and "shasum" in installer),
+            "installer does not fail closed on the published archive checksum")
+    require(not requires_heavy(("README.md", "docs/installation.md")) and
+            requires_heavy(("README.md", "src/Sema/Sema.cpp")) and
+            requires_heavy(()),
+            "CI change classifier does not fail closed")
+    require("documentation-only:" in pull_request_gate and
+            "compiler-and-sdk:" in pull_request_gate and
+            "pr-gate:" in pull_request_gate and
+            "needs.change-scope.outputs.heavy" in pull_request_gate,
+            "pull-request CI does not route documentation away from platform builds")
+    require("change-scope:" in windows_gate and "windows-gate:" in windows_gate and
+            "needs.change-scope.outputs.heavy" in windows_gate,
+            "Windows CI does not skip documentation-only changes safely")
     require(ACTIVE_RELEASE_NOTES.is_file(),
             "active candidate is missing tag-release notes: " + str(ACTIVE_RELEASE_NOTES))
     require("softprops/action-gh-release" not in gate,

@@ -10,8 +10,29 @@ on:
     - cron: "17 3 * * 1"
 
 jobs:
+  change-scope:
+    name: Classify change scope
+    runs-on: ubuntu-22.04
+    outputs:
+      heavy: ${{ steps.scope.outputs.heavy }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decide whether Windows qualification is required
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          python3 tools/scripts/classify_ci_changes.py \
+            --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+
   sdk-dogfood:
     name: Windows/MSYS2 SDK path
+    needs: change-scope
+    if: needs.change-scope.outputs.heavy == 'true'
     runs-on: windows-latest
     defaults:
       run:
@@ -63,3 +84,22 @@ jobs:
             build/windows-dogfood.json
             build/toka-restricted-cancellation-windows.json
           if-no-files-found: warn
+
+  windows-gate:
+    name: Windows gate result
+    if: always()
+    needs: [change-scope, sdk-dogfood]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Require Windows only for compiler and SDK changes
+        env:
+          SCOPE_RESULT: ${{ needs.change-scope.result }}
+          HEAVY: ${{ needs.change-scope.outputs.heavy }}
+          WINDOWS_RESULT: ${{ needs.sdk-dogfood.result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          if [ "$HEAVY" = true ]; then
+            test "$WINDOWS_RESULT" = success
+          else
+            test "$WINDOWS_RESULT" = skipped
+          fi

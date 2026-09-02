@@ -8,6 +8,7 @@ import shlex
 import hashlib
 import shutil
 from pathlib import Path
+from typing import Optional
 
 def fnv1a_64(data: bytes) -> str:
     # FNV-1a 64-bit algorithm matching ModuleResolver.cpp
@@ -90,7 +91,7 @@ def filter_args_for_submodule(args_list: list) -> list:
     return res
 
 
-def package_helper_path() -> Path | None:
+def package_helper_path() -> Optional[Path]:
     candidates: list[Path] = []
     toka_lib = os.environ.get("TOKA_LIB")
     if toka_lib:
@@ -518,6 +519,9 @@ def generate_rebuild_plan(current_graph: dict, old_manifest: dict) -> dict:
 
 def main():
     if sys.argv[1:] == ["--doctor"]:
+        if sys.version_info < (3, 10):
+            sys.stderr.write("Toka SDK build helper requires Python 3.10+\n")
+            raise SystemExit(1)
         return
 
     parser = argparse.ArgumentParser(description="Toka Incremental Build Manager (Distributed Compile & Link)")

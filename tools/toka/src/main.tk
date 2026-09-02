@@ -376,7 +376,7 @@ fn cmd_new(name: string, is_lib: bool) -> i32 {
         create_dir(src_dir.clone())
         
         src_dir#.push_str("/main.tk")
-        write_string(src_dir, "import std/io::{println, File}\nimport std/fs::{read_to_string}\n\nfn main() -> i32 {\n    println(\"Hello, Toka!\")\n    return 0\n}\n")
+        write_string(src_dir, "import std/io::{println}\n\nfn main() -> i32 {\n    println(\"Hello, Toka!\")\n    return 0\n}\n")
         
         generate_project_files(project_name, name.clone(), is_lib)
         println("Created new Toka project: {}", name)
@@ -413,7 +413,7 @@ fn cmd_init(is_lib: bool) -> i32 {
         if !exists(string::from("src")) {
             create_dir(string::from("src"))
         }
-        write_string(string::from("src/main.tk"), "import std/io::{println, File}\nimport std/fs::{read_to_string}\n\nfn main() -> i32 {\n    println(\"Hello, Toka!\")\n    return 0\n}\n")
+        write_string(string::from("src/main.tk"), "import std/io::{println}\n\nfn main() -> i32 {\n    println(\"Hello, Toka!\")\n    return 0\n}\n")
     }
     
     generate_project_files(name, string::from(""), is_lib)
@@ -649,37 +649,38 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
 }
 
 fn cmd_run_single(file: string) -> i32 {
-    unsafe {
-        auto cmd# = string::from("")
-        auto tokac_path = detect_tokac_path()
-        cmd#.push_str(tokac_path.as_str())
-        cmd#.push_str(" ")
-        auto default_lib = detect_default_lib_path()
-        cmd#.push_str("-I ")
-        cmd#.push_str(default_lib.as_str())
-        cmd#.push_str(" ")
-        
-        auto is_windows = check_is_windows()
-        
-        cmd#.push_str(file.as_str())
-        if is_windows {
-            cmd#.push_str(" -o .toka_single_exe.exe -O3 && .toka_single_exe.exe")
-        } else {
-            cmd#.push_str(" -o .toka_single_exe -O3 && ./.toka_single_exe")
-        }
+    auto is_windows = check_is_windows()
+    auto executable# = string::from(".toka_single_exe")
+    if is_windows { executable#.push_str(".exe") }
 
-        auto res = libc_system(cmd.c_str())
-        if res != 0 {
-            println("\x1b[1;31m       Error\x1b[0m executing {}", file)
-        }
-        if is_windows {
-            remove_file(string::from(".toka_single_exe.exe"))
-        } else {
-            remove_file(string::from(".toka_single_exe"))
-        }
-        if res != 0 { return 1 }
-        return 0
+    auto compile# = Command::new(detect_tokac_path())
+    compile#.arg(string::from("-I"))
+    compile#.arg(detect_default_lib_path())
+    if append_locked_project_context(compile#) != 0 { return 1 }
+    compile#.arg(file)
+    compile#.arg(string::from("-o"))
+    compile#.arg(executable.clone())
+    compile#.arg(string::from("-O3"))
+    if compile#.status() != 0 {
+        println("\x1b[1;31m       Error\x1b[0m compiling {}", file)
+        remove_file(executable)
+        return 1
     }
+
+    auto run_path# = string::from("./")
+    run_path#.push_str(executable.as_str())
+    auto run# = Command::new(run_path)
+    auto run_result = run#.try_status()
+    remove_file(executable)
+    if run_result.is_err() {
+        println("\x1b[1;31m       Error\x1b[0m launching {}", file)
+        return 1
+    }
+    auto status = run_result.unwrap()
+    if !status.success() {
+        println("\x1b[1;31m       Error\x1b[0m executing {}", file)
+    }
+    return status.legacy_code()
 }
 
 fn find_newest_executable(dir_path: string) -> string {

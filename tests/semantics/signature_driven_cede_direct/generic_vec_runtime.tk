@@ -1,0 +1,20 @@
+import std/vec::{Vec}
+
+fn append_one(cede values: Vec<i32>) -> Vec<i32> {
+    auto owned# = cede values
+    owned#.push(7)
+    return cede owned
+}
+
+fn main() -> i32 {
+    auto implicit# = Vec<i32>::new()
+    implicit#.push(5)
+    auto implicit_result = append_one(implicit)
+    if implicit_result.len() != 2:usize { return 1 }
+
+    auto explicit# = Vec<i32>::new()
+    explicit#.push(9)
+    auto explicit_result = append_one(cede explicit)
+    if explicit_result.len() != 2:usize { return 2 }
+    return 0
+}

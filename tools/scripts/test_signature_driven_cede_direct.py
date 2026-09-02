@@ -46,6 +46,18 @@ def main():
         require(executed.returncode == 0,
                 f"bounded slice runtime failed: {executed.returncode}")
 
+    generic_vec = FIXTURES / "generic_vec_runtime.tk"
+    generic_vec_check = run([str(tokac), "--check-only", str(generic_vec)])
+    require(generic_vec_check.returncode == 0,
+            "generic Vec implicit cede did not type-check")
+    with tempfile.TemporaryDirectory(prefix="toka-cede-generic-vec-") as temp:
+        executable = pathlib.Path(temp) / "generic-vec"
+        compiled = run([str(tokac), str(generic_vec), "-o", str(executable)])
+        require(compiled.returncode == 0 and "E0761" not in compiled.stderr,
+                "generic Vec implicit cede failed CodeGen/link")
+        require(run([str(executable)]).returncode == 0,
+                "generic Vec implicit/explicit cede runtime failed")
+
     moved = run([str(tokac), FLAG, "--check-only",
                  str(FIXTURES / "use_after_implicit.tk")])
     require(moved.returncode != 0 and "E0438" in moved.stderr and

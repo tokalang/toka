@@ -11,8 +11,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  change-scope:
+    name: Classify change scope
+    runs-on: ubuntu-22.04
+    outputs:
+      heavy: ${{ steps.scope.outputs.heavy }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decide whether platform qualification is required
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          python3 tools/scripts/classify_ci_changes.py \
+            --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+
+  documentation-only:
+    name: Documentation-only gate
+    needs: change-scope
+    if: needs.change-scope.outputs.heavy == 'false'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check documentation diff hygiene
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: git diff --check "$BASE_SHA" "$HEAD_SHA"
+
   compiler-and-sdk:
     name: Compiler and SDK (${{ matrix.name }})
+    needs: change-scope
+    if: needs.change-scope.outputs.heavy == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -115,3 +151,23 @@ jobs:
           tools/scripts/test_tki_cache_validation.sh
           tools/scripts/test_semantic_replay.sh
           tools/scripts/test_mixed_core_cache.sh
+
+  pr-gate:
+    name: Pull request gate result
+    if: always()
+    needs: [change-scope, documentation-only, compiler-and-sdk]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Require the selected gate
+        env:
+          SCOPE_RESULT: ${{ needs.change-scope.result }}
+          HEAVY: ${{ needs.change-scope.outputs.heavy }}
+          DOCS_RESULT: ${{ needs.documentation-only.result }}
+          SDK_RESULT: ${{ needs.compiler-and-sdk.result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          if [ "$HEAVY" = true ]; then
+            test "$SDK_RESULT" = success
+          else
+            test "$DOCS_RESULT" = success
+          fi

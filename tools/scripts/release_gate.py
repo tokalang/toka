@@ -330,6 +330,7 @@ def main():
             [sys.executable, "tools/scripts/test_developer_experience.py",
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_release_workflow.py"],
+            [sys.executable, "tools/scripts/test_installer_checksum.py"],
             [sys.executable, "tools/scripts/test_local_release_prequalification.py"],
             [sys.executable, "tools/scripts/test_ai_tooling.py",
              "--build-dir", str(build_dir)],
