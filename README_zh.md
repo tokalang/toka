@@ -50,6 +50,12 @@ Toka 组合了几类机制来接近这个目标。设计上，它试图让日常
 
 帽子语法只是这套设计的结果之一，不是设计目的本身。它存在，是因为 Toka 需要一种紧凑且一致的方式区分 payload 操作和 handle 操作。
 
+**设计谱系说明。** Toka 的帽子语法系独立设计；本项目同时承认 C、Cforall
+和 Alusus 中的相关机制属于既有先例。Toka 不主张这些字符、多层引用或显式
+handle 选择由本项目首创；其设计重点是将帽子形态与 payload/handle 选择、
+所有权、借用、重绑定和资源契约整合。详见
+[设计谱系与证据](docs/design_lineage.md)。
+
 因此，Toka 探索的位置介于 C、Rust、Go、Zig 之间：接近机器层，强调静态纪律，同时让日常系统代码保持可读，而不是把重要的系统边界退回约定。
 
 **论文：** [Toka: A Systems Programming Language with Explicit Resource Semantics (arXiv:2606.01974)](https://arxiv.org/abs/2606.01974)
