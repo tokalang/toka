@@ -1,6 +1,11 @@
 # Toka v1.0.0-rc.12 Release Candidate Notes
 
-**Status:** Candidate awaiting hosted qualification and protected promotion.
+**Status:** Published public prerelease on 2026-09-02.
+
+RC12 is available from the
+[GitHub release](https://github.com/tokalang/toka/releases/tag/v1.0.0-rc.12)
+with SDK archives for Linux x86_64, Linux aarch64, macOS x86_64, and macOS
+aarch64.
 
 RC12 is a single-P1 developer-experience repair candidate. Ten independent
 AI-agent black-box trials showed that RC11 passed installation, TokaKV WAL
