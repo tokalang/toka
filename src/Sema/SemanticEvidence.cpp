@@ -102,21 +102,28 @@ bool ExplicitCedeStage0ShadowRecord::operator<(
     const ExplicitCedeStage0ShadowRecord &rhs) const {
   return std::tie(
              PlanOrigin, SyntaxPurpose, SurfaceSpelling, SourceCategory,
-             ActualType, FormalType, FormalContract, FormalMorphology,
+             ExactPath, ReferentRoot, ReferentPath, DependencyRoots,
+             Dependency, DependencyFactsComplete, ActualType, FormalType,
+             FormalContract, FormalMorphology,
              FormalCapabilitiesComplete, FormalHandleRebindable,
              FormalPayloadWritable, ActualCapabilitiesComplete,
              ActualHandleRebindable, ActualPayloadWritable, Ownership,
-             CopyProof, Eligibility, Outcome, Rejection, ValueProduction,
+             CopyProof, Eligibility, TemporaryEligibility, TypeCompatibility,
+             EligibilityContext, ObligationBefore, Outcome, Rejection, ValueProduction,
              Source, Destination, Drop, ObligationAction, ObligationAfter,
              SourceView, Reachability, SemanticRoot) <
          std::tie(
              rhs.PlanOrigin, rhs.SyntaxPurpose, rhs.SurfaceSpelling,
-             rhs.SourceCategory, rhs.ActualType, rhs.FormalType,
+             rhs.SourceCategory, rhs.ExactPath, rhs.ReferentRoot,
+             rhs.ReferentPath, rhs.DependencyRoots, rhs.Dependency,
+             rhs.DependencyFactsComplete, rhs.ActualType, rhs.FormalType,
              rhs.FormalContract, rhs.FormalMorphology,
              rhs.FormalCapabilitiesComplete, rhs.FormalHandleRebindable,
              rhs.FormalPayloadWritable, rhs.ActualCapabilitiesComplete,
              rhs.ActualHandleRebindable, rhs.ActualPayloadWritable,
-             rhs.Ownership, rhs.CopyProof, rhs.Eligibility, rhs.Outcome,
+             rhs.Ownership, rhs.CopyProof, rhs.Eligibility,
+             rhs.TemporaryEligibility, rhs.TypeCompatibility,
+             rhs.EligibilityContext, rhs.ObligationBefore, rhs.Outcome,
              rhs.Rejection, rhs.ValueProduction, rhs.Source, rhs.Destination,
              rhs.Drop, rhs.ObligationAction, rhs.ObligationAfter,
              rhs.SourceView, rhs.Reachability, rhs.SemanticRoot);
@@ -505,7 +512,23 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << escapeJSON(record.Stage0.SurfaceSpelling)
         << "\",\"source_category\":\""
         << escapeJSON(record.Stage0.SourceCategory)
-        << "\",\"actual_type\":\"" << escapeJSON(record.Stage0.ActualType)
+        << "\",\"exact_path\":\"" << escapeJSON(record.Stage0.ExactPath)
+        << "\",\"referent_root\":\""
+        << escapeJSON(record.Stage0.ReferentRoot)
+        << "\",\"referent_path\":\""
+        << escapeJSON(record.Stage0.ReferentPath)
+        << "\",\"dependency_roots\":[";
+    for (size_t dependency = 0;
+         dependency < record.Stage0.DependencyRoots.size(); ++dependency) {
+      if (dependency != 0)
+        out << ',';
+      out << "\"" << escapeJSON(record.Stage0.DependencyRoots[dependency])
+          << "\"";
+    }
+    out << "],\"dependency\":\"" << escapeJSON(record.Stage0.Dependency)
+        << "\",\"dependency_complete\":"
+        << (record.Stage0.DependencyFactsComplete ? "true" : "false")
+        << ",\"actual_type\":\"" << escapeJSON(record.Stage0.ActualType)
         << "\",\"formal_type\":\"" << escapeJSON(record.Stage0.FormalType)
         << "\",\"formal_contract\":\""
         << escapeJSON(record.Stage0.FormalContract)
@@ -526,7 +549,15 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << "},\"ownership\":\"" << escapeJSON(record.Stage0.Ownership)
         << "\",\"copy_proof\":\"" << escapeJSON(record.Stage0.CopyProof)
         << "\",\"eligibility\":\""
-        << escapeJSON(record.Stage0.Eligibility) << "\",\"outcome\":\""
+        << escapeJSON(record.Stage0.Eligibility)
+        << "\",\"temporary_eligibility\":\""
+        << escapeJSON(record.Stage0.TemporaryEligibility)
+        << "\",\"type_compatibility\":\""
+        << escapeJSON(record.Stage0.TypeCompatibility)
+        << "\",\"eligibility_context\":\""
+        << escapeJSON(record.Stage0.EligibilityContext)
+        << "\",\"obligation_before\":\""
+        << escapeJSON(record.Stage0.ObligationBefore) << "\",\"outcome\":\""
         << escapeJSON(record.Stage0.Outcome) << "\",\"rejection\":\""
         << escapeJSON(record.Stage0.Rejection)
         << "\",\"value_production\":\""

@@ -141,6 +141,12 @@ struct ExplicitCedeStage0ShadowRecord {
   std::string SyntaxPurpose;
   std::string SurfaceSpelling;
   std::string SourceCategory;
+  std::string ExactPath;
+  std::string ReferentRoot;
+  std::string ReferentPath;
+  std::vector<std::string> DependencyRoots;
+  std::string Dependency;
+  bool DependencyFactsComplete = false;
   std::string ActualType;
   std::string FormalType;
   std::string FormalContract;
@@ -154,6 +160,10 @@ struct ExplicitCedeStage0ShadowRecord {
   std::string Ownership;
   std::string CopyProof;
   std::string Eligibility;
+  std::string TemporaryEligibility;
+  std::string TypeCompatibility;
+  std::string EligibilityContext;
+  std::string ObligationBefore;
   std::string Outcome;
   std::string Rejection;
   std::string ValueProduction;

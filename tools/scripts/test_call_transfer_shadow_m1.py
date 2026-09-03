@@ -62,9 +62,13 @@ def run(tokac, source, expected_error=None, check_only=True):
     }
     stage0_required = {
         "plan_origin", "syntax_purpose", "surface_spelling",
-        "source_category", "actual_type", "formal_type",
+        "source_category", "exact_path", "referent_root", "referent_path",
+        "dependency_roots", "dependency", "dependency_complete",
+        "actual_type", "formal_type",
         "formal_contract", "formal_morphology", "formal_capabilities",
         "actual_capabilities", "ownership", "copy_proof", "eligibility",
+        "temporary_eligibility", "type_compatibility",
+        "eligibility_context", "obligation_before",
         "outcome", "rejection", "value_production", "source",
         "destination", "drop", "obligation_action", "obligation_after",
         "source_view", "reachability", "semantic_root",
@@ -89,6 +93,9 @@ def run(tokac, source, expected_error=None, check_only=True):
         require(set(stage0["formal_capabilities"]) == capability_fields and
                 set(stage0["actual_capabilities"]) == capability_fields,
                 source + " emitted incomplete Stage-0 capability facts")
+        require(isinstance(stage0["dependency_roots"], list) and
+                isinstance(stage0["dependency_complete"], bool),
+                source + " emitted invalid Stage-0 dependency facts")
         require(bool(stage0["actual_type"]) or
                 (stage0["outcome"] == "Rejected" and
                  stage0["rejection"] == "IncompleteFacts"),

@@ -66,13 +66,21 @@ cleanup_mask       null until an admitted partial cleanup plan exists
 legacy            cede exemption and missing-explicit-cede facts
 effect             async fact
 stage0             outcome/rejection, independent value/source/destination/
-                   drop/obligation dimensions, exact SourceView and
-                   reachability, deterministic semantic root when proven
+                   drop/obligation dimensions, actual/formal type and
+                   morphology, H/P capability facts, exact SourceView/path,
+                   typed referent/dependency roots, type/temporary/route
+                   eligibility, reachability, and deterministic semantic root
+                   when proven
 ```
 
 Every Stage-0 rejection carries `source=NoStateChange`. A place whose stable
 declaration coordinate cannot yet be recovered rejects `IncompleteFacts`
 rather than falling back to the legacy process-local `source_root_id`.
+The pure planner also constructs receiver-plus-arguments whole-call results
+with pairwise invalidation-alias rejection and a single `CommitAllowed` bit.
+The current Sema shadow integration remains per-argument; whole-call Sema
+publication and receiver observation are still pending and no AST vector is
+commit authority.
 
 `argument_index` and `formal_index` are one-based and remain stable when
 `@Callable` lowering inserts a synthetic receiver. Shadow plans are discarded

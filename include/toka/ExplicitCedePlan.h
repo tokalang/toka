@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace toka {
 
@@ -15,6 +16,8 @@ enum class TransferPlanRejection : uint8_t {
   None,
   IncompleteFacts,
   ClosedWorldCombination,
+  ContradictoryFacts,
+  TypeIncompatible,
   RouteIneligible,
   ExplicitCedeRequiresSource,
   ExplicitCedeToOrdinaryFormal,
@@ -28,6 +31,8 @@ enum class TransferPlanRejection : uint8_t {
   TemporaryTransferIneligible,
   InvalidIntrinsicUniqueMove,
   RedundantIntrinsicUniqueCede,
+  WholeCallItemRejected,
+  WholeCallAliasConflict,
 };
 
 enum class TransferPlanOrigin : uint8_t { UserSource, CompilerSynthetic };
@@ -96,6 +101,23 @@ enum class TransferEligibility : uint8_t {
   Ineligible,
   Indeterminate,
 };
+enum class TransferTemporaryEligibility : uint8_t {
+  Eligible,
+  Ineligible,
+  Indeterminate,
+};
+enum class TransferTypeCompatibility : uint8_t {
+  Compatible,
+  Incompatible,
+  Indeterminate,
+};
+enum class TransferDependencyKind : uint8_t {
+  None,
+  Borrowed,
+  RawUnsafe,
+  Structural,
+  Indeterminate,
+};
 enum class TransferReachability : uint8_t {
   RootAndDependentViews,
   ExactSubtree,
@@ -123,6 +145,7 @@ enum class TransferSourceDisposition : uint8_t {
 enum class TransferDropDisposition : uint8_t {
   None,
   SourceRetainsLiability,
+  CalleeAssumesLiability,
   DestinationAssumesLiability,
   StatementEndAssumesLiability,
   SharedLiabilityIncremented,
@@ -153,6 +176,8 @@ struct ExplicitCedePreparedFacts {
   std::string ActualTypeKey;
   std::string FormalTypeKey;
   std::optional<PlaceId> SourcePlace;
+  std::optional<PlaceId> ReferentPlace;
+  std::vector<RootSymbolId> DependencyRoots;
   std::optional<RootSymbolId> ObligationRoot;
   TransferPlanOrigin Origin = TransferPlanOrigin::UserSource;
   CedeSyntaxPurpose SyntaxPurpose = CedeSyntaxPurpose::None;
@@ -167,9 +192,14 @@ struct ExplicitCedePreparedFacts {
   TransferAccessCapabilities ActualCapabilities;
   TransferDestination Destination = TransferDestination::Indeterminate;
   TransferEligibility Eligibility = TransferEligibility::Indeterminate;
+  TransferTemporaryEligibility TemporaryEligibility =
+      TransferTemporaryEligibility::Indeterminate;
+  TransferTypeCompatibility TypeCompatibility =
+      TransferTypeCompatibility::Indeterminate;
+  TransferDependencyKind Dependency = TransferDependencyKind::Indeterminate;
   TransferReachability Reachability = TransferReachability::Indeterminate;
   TransferObligationState ObligationBefore = TransferObligationState::None;
-  bool WholeOwnedTemporaryEligible = false;
+  bool DependencyFactsComplete = false;
   bool ActiveDerivedBorrow = false;
   bool BorrowStateComplete = false;
   bool SourceTransferAuthorized = false;
@@ -198,11 +228,31 @@ struct ExplicitCedePlan {
   }
 };
 
+struct ExplicitCedeWholeCallFacts {
+  std::optional<ExplicitCedePreparedFacts> Receiver;
+  std::vector<ExplicitCedePreparedFacts> Arguments;
+};
+
+struct ExplicitCedeWholeCallPlan {
+  TransferPlanOutcome Outcome = TransferPlanOutcome::Rejected;
+  TransferPlanRejection Rejection =
+      TransferPlanRejection::WholeCallItemRejected;
+  std::optional<ExplicitCedePlan> Receiver;
+  std::vector<ExplicitCedePlan> Arguments;
+  bool CommitAllowed = false;
+
+  bool admitted() const noexcept {
+    return Outcome == TransferPlanOutcome::Admitted;
+  }
+};
+
 // Pure Stage-0 classifier. It neither reads nor mutates AST, PAL, PlaceState,
 // diagnostics, caches, TKI, Evidence, or CodeGen state. Every combination not
 // explicitly admitted returns a closed-world rejection.
 ExplicitCedePlan
 prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts);
+ExplicitCedeWholeCallPlan
+prepareExplicitCedeWholeCallPlan(const ExplicitCedeWholeCallFacts &facts);
 
 const char *toString(TransferPlanRejection value);
 const char *toString(TransferPlanOutcome value);
@@ -223,5 +273,8 @@ const char *toString(TransferCopyProof value);
 const char *toString(TransferFormalContract value);
 const char *toString(TransferFormalMorphology value);
 const char *toString(TransferEligibility value);
+const char *toString(TransferTemporaryEligibility value);
+const char *toString(TransferTypeCompatibility value);
+const char *toString(TransferDependencyKind value);
 
 } // namespace toka

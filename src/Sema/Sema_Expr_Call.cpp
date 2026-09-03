@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleGrammarAudit.h"
+#include "toka/MemberAccess.h"
 #include "toka/Parser.h"
 #include "toka/PathUtils.h"
 #include "toka/SemanticEvidence.h"
@@ -1725,9 +1726,17 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
           : TransferPlanOrigin::CompilerSynthetic;
 
   SymbolInfo *sourceInfo = nullptr;
+  Scope *sourceScope = nullptr;
+  std::string actualSourceName;
   if (legacyShadowPlan.SourcePlace.RootID != 0)
     CurrentScope->findSymbolByID(legacyShadowPlan.SourcePlace.RootID,
                                  sourceInfo);
+  if (!legacyShadowPlan.SourcePlace.RootName.empty())
+    CurrentScope->findVariableWithDerefScope(
+        legacyShadowPlan.SourcePlace.RootName, sourceInfo, actualSourceName,
+        sourceScope);
+  const bool sourceIsLocal = sourceInfo && sourceInfo->IsDeclaredVariable &&
+                             sourceScope && sourceScope->Depth > 0;
   AccessPath identityPath = legacyShadowPlan.SourcePlace;
   if (!identityPath.RootLoc.isValid() && sourceInfo)
     identityPath.RootLoc = sourceInfo->DeclLoc;
@@ -1746,6 +1755,60 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
   }
   facts.SourcePlace = stage0PlaceIdentity(identityPath, moduleOrigin);
 
+  auto stableIdentityFor = [&](AccessPath path) -> std::optional<PlaceId> {
+    if (!path)
+      return std::nullopt;
+    if (!path.RootLoc.isValid() && !path.RootName.empty())
+      path.RootLoc = findPathDeclaration(path.RootName);
+    std::string origin;
+    if (path.RootLoc.isValid()) {
+      if (ModuleScope *module = getLexicalModule(path.RootLoc);
+          module && !module->ShadowCrateId.empty() &&
+          !module->ShadowLogicalModulePath.empty()) {
+        origin = "crate:" + module->ShadowCrateId +
+                 ";module:" + module->ShadowLogicalModulePath;
+      }
+      if (origin.empty())
+        origin = stage0FallbackModuleOrigin(path.RootLoc);
+    }
+    return stage0PlaceIdentity(path, origin);
+  };
+  facts.ReferentPlace = stableIdentityFor(legacyShadowPlan.ReferentPath);
+  bool dependencyRootsComplete = true;
+  for (const auto &dependencyPath : legacyShadowPlan.DependencyPaths) {
+    auto dependency = stableIdentityFor(makeAccessPath(dependencyPath));
+    if (!dependency) {
+      dependencyRootsComplete = false;
+      continue;
+    }
+    facts.DependencyRoots.push_back(dependency->root());
+  }
+  switch (legacyShadowPlan.Dependency) {
+  case CallDependencyDisposition::None:
+    facts.Dependency = TransferDependencyKind::None;
+    facts.ReferentPlace.reset();
+    facts.DependencyFactsComplete = true;
+    break;
+  case CallDependencyDisposition::Borrowed:
+    facts.Dependency = TransferDependencyKind::Borrowed;
+    facts.DependencyFactsComplete =
+        facts.ReferentPlace && !facts.DependencyRoots.empty() &&
+        dependencyRootsComplete;
+    break;
+  case CallDependencyDisposition::RawUnsafe:
+    facts.Dependency = TransferDependencyKind::RawUnsafe;
+    facts.DependencyFactsComplete = true;
+    break;
+  case CallDependencyDisposition::Unclassified:
+    facts.Dependency = TransferDependencyKind::Structural;
+    facts.DependencyFactsComplete = false;
+    break;
+  case CallDependencyDisposition::Indeterminate:
+    facts.Dependency = TransferDependencyKind::Indeterminate;
+    facts.DependencyFactsComplete = false;
+    break;
+  }
+
   Expr *surface = stage0SurfaceSource(argument);
   if (dynamic_cast<AddressOfExpr *>(surface)) {
     facts.SourceView = TransferSourceView::ReferenceConstruction;
@@ -1756,6 +1819,8 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
       facts.SourceView = TransferSourceView::SharedHandle;
     else if (unary->Op == TokenType::Star)
       facts.SourceView = TransferSourceView::RawHandle;
+    else if (unary->Op == TokenType::Ampersand)
+      facts.SourceView = TransferSourceView::ReferenceConstruction;
     else
       facts.SourceView = TransferSourceView::Indeterminate;
   } else if (sourceInfo && (sourceInfo->IsUnique() || sourceInfo->IsShared())) {
@@ -1810,6 +1875,23 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
     facts.CopyProof = proveSlice4CopyType(actualPayload)
                           ? TransferCopyProof::ProvenCopy
                           : TransferCopyProof::ProvenNonCopy;
+  if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace) {
+    facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+  } else if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
+    facts.TemporaryEligibility =
+        facts.Ownership == TransferOwnershipKind::OwnedValue ||
+                facts.Ownership == TransferOwnershipKind::UniqueOwner ||
+                facts.Ownership == TransferOwnershipKind::SharedOwner ||
+                facts.Ownership == TransferOwnershipKind::OwnedCallable
+            ? TransferTemporaryEligibility::Eligible
+            : TransferTemporaryEligibility::Ineligible;
+  }
+  facts.TypeCompatibility =
+      actual && formal && !actual->isUnknown() && !formal->isUnknown()
+          ? (isTypeCompatible(formal, actual)
+                 ? TransferTypeCompatibility::Compatible
+                 : TransferTypeCompatibility::Incompatible)
+          : TransferTypeCompatibility::Indeterminate;
 
   if (legacyShadowPlan.FormalIsInit) {
     facts.FormalContract = TransferFormalContract::None;
@@ -1841,11 +1923,36 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
     facts.Eligibility = TransferEligibility::Eligible;
   } else if (!facts.SourcePlace || !sourceInfo) {
     facts.Eligibility = TransferEligibility::Indeterminate;
-  } else if (sourceInfo->IsPlaceAlias ||
-             !legacyShadowPlan.SourcePlace.Projections.empty()) {
+  } else if (!sourceIsLocal || sourceInfo->IsPlaceAlias) {
     facts.Eligibility = TransferEligibility::Ineligible;
-  } else {
+  } else if (legacyShadowPlan.SourcePlace.Projections.empty()) {
     facts.Eligibility = TransferEligibility::Eligible;
+  } else {
+    facts.Eligibility = TransferEligibility::Ineligible;
+    const auto &projections = legacyShadowPlan.SourcePlace.Projections;
+    if (projections.size() == 1 && sourceInfo->partialMovePlan().isAdmitted()) {
+      const auto &projection = projections.front();
+      if (projection.Kind == AccessProjectionKind::ConstantIndex &&
+          sourceInfo->partialMovePlan().admits(
+              PartialMoveProjectionKind::FixedArrayElement,
+              projection.Index)) {
+        facts.Eligibility = TransferEligibility::Eligible;
+      } else if (projection.Kind == AccessProjectionKind::Field &&
+                 sourceInfo->TypeObj && sourceInfo->TypeObj->isShape()) {
+        auto shape = std::dynamic_pointer_cast<ShapeType>(sourceInfo->TypeObj);
+        if (shape && shape->Decl) {
+          for (size_t index = 0; index < shape->Decl->Members.size(); ++index) {
+            if (stripMemberAccessMarkers(shape->Decl->Members[index].Name) ==
+                    stripMemberAccessMarkers(projection.Name) &&
+                sourceInfo->partialMovePlan().admits(
+                    PartialMoveProjectionKind::DirectField, index)) {
+              facts.Eligibility = TransferEligibility::Eligible;
+              break;
+            }
+          }
+        }
+      }
+    }
   }
 
   if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
@@ -1867,7 +1974,7 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
           .has_value();
   facts.SourceTransferAuthorityComplete = sourceInfo != nullptr;
   facts.SourceTransferAuthorized =
-      sourceInfo && !sourceInfo->IsPlaceAlias &&
+      sourceIsLocal && sourceInfo && !sourceInfo->IsPlaceAlias &&
       (!sourceInfo->IsFunctionParameter || sourceInfo->IsCeded);
   if (sourceInfo && sourceInfo->IsCeded && facts.SourcePlace) {
     facts.ObligationBefore = TransferObligationState::Outstanding;
@@ -1880,9 +1987,6 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
     facts.CarriesDropLiability = ownership == ValueOwnership::Owned ||
                                  ownership == ValueOwnership::SharedHandle;
   }
-  facts.WholeOwnedTemporaryEligible =
-      facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
-      facts.CarriesDropLiability;
   return prepareExplicitCedePlan(facts);
 }
 
@@ -1926,6 +2030,16 @@ void Sema::recordShadowCallTransfer(
   stage0Record.SyntaxPurpose = toString(stage0.Prepared.SyntaxPurpose);
   stage0Record.SurfaceSpelling = toString(stage0.Prepared.SurfaceSpelling);
   stage0Record.SourceCategory = toString(stage0.Prepared.SourceCategory);
+  stage0Record.ExactPath = plan.SourcePlace.toDebugString();
+  stage0Record.ReferentPath = plan.ReferentPath.toDebugString();
+  if (stage0.Prepared.ReferentPlace)
+    stage0Record.ReferentRoot =
+        stage0.Prepared.ReferentPlace->root().canonicalKey();
+  for (const auto &root : stage0.Prepared.DependencyRoots)
+    stage0Record.DependencyRoots.push_back(root.canonicalKey());
+  stage0Record.Dependency = toString(stage0.Prepared.Dependency);
+  stage0Record.DependencyFactsComplete =
+      stage0.Prepared.DependencyFactsComplete;
   stage0Record.ActualType = stage0.Prepared.ActualTypeKey;
   stage0Record.FormalType = stage0.Prepared.FormalTypeKey;
   stage0Record.FormalContract = toString(stage0.Prepared.FormalContract);
@@ -1945,6 +2059,13 @@ void Sema::recordShadowCallTransfer(
   stage0Record.Ownership = toString(stage0.Prepared.Ownership);
   stage0Record.CopyProof = toString(stage0.Prepared.CopyProof);
   stage0Record.Eligibility = toString(stage0.Prepared.Eligibility);
+  stage0Record.TemporaryEligibility =
+      toString(stage0.Prepared.TemporaryEligibility);
+  stage0Record.TypeCompatibility =
+      toString(stage0.Prepared.TypeCompatibility);
+  stage0Record.EligibilityContext = toString(stage0.Prepared.Destination);
+  stage0Record.ObligationBefore =
+      toString(stage0.Prepared.ObligationBefore);
   stage0Record.Outcome = toString(stage0.Outcome);
   stage0Record.Rejection = toString(stage0.Rejection);
   stage0Record.ValueProduction = toString(stage0.ValueProduction);
