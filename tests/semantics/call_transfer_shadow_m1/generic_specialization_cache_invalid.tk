@@ -1,0 +1,17 @@
+fn first_inner() -> i32 {
+    return 20:i32
+}
+
+fn second_inner() -> i32 {
+    return 22:i32
+}
+
+fn generic_bad<T>(value: T) -> T {
+    return true
+}
+
+fn main() -> i32 {
+    auto first = generic_bad(first_inner())
+    auto second = generic_bad(second_inner())
+    return first + second
+}

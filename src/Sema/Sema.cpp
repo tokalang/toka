@@ -6512,14 +6512,14 @@ bool Sema::isShapeSync(const std::string &shapeName) {
   return true;
 }
 
-FunctionDecl *Sema::instantiateGenericFunction(
+Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     FunctionDecl *Template,
     const std::vector<std::shared_ptr<toka::Type>> &Args, CallExpr *CallSite) {
 
   if (Template->GenericParams.size() != Args.size()) {
     DiagnosticEngine::report(getLoc(CallSite), DiagID::NOTE_GENERIC, Template->Name, Template->GenericParams.size(), Args.size());
     HasError = true;
-    return nullptr;
+    return {nullptr, GenericSpecializationValidationState::Invalid};
   }
 
   if (Template->IsTrustedAtomicIntrinsic && !Args.empty()) {
@@ -6531,7 +6531,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
                      : static_cast<ASTNode *>(Template),
             DiagID::ERR_ATOMIC_INTRINSIC_TYPE_DOMAIN, Template->Name,
             valueType ? valueType->toString() : "unknown", expectedDomain);
-      return nullptr;
+      return {nullptr, GenericSpecializationValidationState::Invalid};
     }
   }
 
@@ -6540,7 +6540,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
     if (!checkMorphologyBounds(
             CallSite ? getLoc(CallSite) : Template->Loc,
             Template->GenericParams[i], Args[i], false)) {
-      return nullptr;
+      return {nullptr, GenericSpecializationValidationState::Invalid};
     }
     if (!Template->GenericParams[i].TraitBounds.empty()) {
       auto bounds = substituteTraitBounds(
@@ -6550,7 +6550,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
                             Template->GenericParams[i].Name, 
                             bounds,
                             Args[i], false, Template->Loc)) {
-        return nullptr;
+        return {nullptr, GenericSpecializationValidationState::Invalid};
       }
     }
   }
@@ -6576,13 +6576,15 @@ FunctionDecl *Sema::instantiateGenericFunction(
   if (RecursionDepth > 100) {
     DiagnosticEngine::report(getLoc(CallSite), DiagID::NOTE_GENERIC, Template->Name);
     HasError = true;
-    return nullptr;
+    return {nullptr, GenericSpecializationValidationState::Invalid};
   }
 
   // Check Cache
-  if (InstantiationCache.count(cacheKey)) {
-    return InstantiationCache[cacheKey];
-  }
+  if (auto cached = InstantiationCache.find(cacheKey);
+      cached != InstantiationCache.end())
+    return {cached->second.Instance, cached->second.Validation};
+
+  const size_t validationDiagnosticStart = DiagnosticEngine::records().size();
 
   // Instantiate
   RecursionDepth++;
@@ -7097,9 +7099,18 @@ FunctionDecl *Sema::instantiateGenericFunction(
   exitScope();
   RecursionDepth--;
 
-  InstantiationCache[cacheKey] = Instance;
-  InstantiationCache[mangledName] = Instance;
-  return Instance;
+  const auto &validationDiagnostics = DiagnosticEngine::records();
+  const bool validationFailed = std::any_of(
+      validationDiagnostics.begin() +
+          std::min(validationDiagnosticStart, validationDiagnostics.size()),
+      validationDiagnostics.end(),
+      [](const auto &record) { return record.Level == DiagLevel::Error; });
+  const auto validation = validationFailed
+                              ? GenericSpecializationValidationState::Invalid
+                              : GenericSpecializationValidationState::Valid;
+  InstantiationCache[cacheKey] = {Instance, validation};
+  InstantiationCache[mangledName] = {Instance, validation};
+  return {Instance, validation};
 }
 
 Sema::ModuleScope *Sema::getModule(const std::string &Path) {

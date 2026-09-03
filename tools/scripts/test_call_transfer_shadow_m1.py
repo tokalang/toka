@@ -1266,6 +1266,43 @@ def main():
                     for transaction in TRANSACTIONS[source]),
             source + " leaked generic-body calls across monomorphizations")
 
+    source = ("tests/semantics/call_transfer_shadow_m1/"
+              "generic_specialization_cache_invalid.tk")
+    require_shadow_parity(tokac, source, expected_error="E0408")
+    run(tokac, source, expected_error="E0408")
+    invalid_calls = [
+        find_transaction(source, callee="generic_bad", route="ordinary",
+                         location_line=line)
+        for line in (14, 15)]
+    require(all(transaction["outcome"] == "Rejected" and
+                transaction["rejection"] == "WholeCallValidationFailed" and
+                not transaction["commit_allowed"]
+                for transaction in invalid_calls) and
+            not any(transaction["callee"] in
+                    ("first_inner", "second_inner") and
+                    transaction["location"]["file"].endswith(source)
+                    for transaction in TRANSACTIONS[source]),
+            source + " forgot invalid specialization state on cache hit")
+
+    source = ("tests/semantics/call_transfer_shadow_m1/"
+              "generic_specialization_cache_valid.tk")
+    require_shadow_parity(tokac, source)
+    run(tokac, source)
+    valid_calls = [
+        find_transaction(source, callee="generic_good", route="ordinary",
+                         location_line=line)
+        for line in (14, 15)]
+    valid_children = [
+        find_transaction(source, callee=callee, route="ordinary",
+                         location_line=line)
+        for callee, line in (("first_inner", 14), ("second_inner", 15))]
+    require(all(transaction["commit_allowed"]
+                for transaction in valid_calls + valid_children) and
+            all(child["snapshot_revision"] ==
+                parent["snapshot_revision"] + 1
+                for parent, child in zip(valid_calls, valid_children)),
+            source + " lost a real argument evaluation on valid cache hit")
+
     replay_case = ROOT / "tests/semantics/tki_replay/cases/own_cede_003_generic_methods"
     with tempfile.TemporaryDirectory(prefix="toka-call-transfer-shadow-") as temp:
         work = Path(temp)

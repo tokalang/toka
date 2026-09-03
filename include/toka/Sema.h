@@ -437,7 +437,22 @@ private:
   // Value: Vector of Pointers to the Template ImplDecls (owned by Module)
   std::map<std::string, std::vector<ImplDecl *>> GenericImplMap;
 
-  std::map<std::string, FunctionDecl *> InstantiationCache;
+  enum class GenericSpecializationValidationState {
+    Unchecked,
+    Valid,
+    Invalid,
+  };
+  struct GenericSpecializationCacheEntry {
+    FunctionDecl *Instance = nullptr;
+    GenericSpecializationValidationState Validation =
+        GenericSpecializationValidationState::Unchecked;
+  };
+  struct GenericFunctionInstantiationResult {
+    FunctionDecl *Instance = nullptr;
+    GenericSpecializationValidationState Validation =
+        GenericSpecializationValidationState::Unchecked;
+  };
+  std::map<std::string, GenericSpecializationCacheEntry> InstantiationCache;
   std::map<std::string, std::shared_ptr<toka::Type>> GenericShapeCache;
   int RecursionDepth = 0;
 
@@ -862,6 +877,7 @@ private:
   };
   std::map<const ASTNode *, Stage0PendingTransaction>
       m_Stage0PendingTransactions;
+  std::set<const ASTNode *> m_Stage0InvalidGenericSpecializationCalls;
   bool isStage0CallTransferObservationAllowed() const {
     return m_D3SpeculativeCallDepth == 0 ||
            (!m_Stage0FinalGenericArgumentPermitDepths.empty() &&
@@ -1108,7 +1124,7 @@ private:
   std::shared_ptr<toka::Type>
   instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape);
 
-  FunctionDecl *instantiateGenericFunction(
+  GenericFunctionInstantiationResult instantiateGenericFunction(
       FunctionDecl *Template,
       const std::vector<std::shared_ptr<toka::Type>> &Args, CallExpr *CallSite);
 

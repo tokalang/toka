@@ -146,6 +146,16 @@ failure leaves the ordinary parent transaction rejected by final validation.
 This observation-only distinction does not alter the normal signature-driven
 path or the frozen D3 and authority-facts profiles.
 
+Each cached function specialization persistently records `Unchecked`, `Valid`,
+or `Invalid` validation state beside its instance. A cache hit reuses that
+state: lack of a repeated diagnostic is never treated as proof of validity.
+`Invalid` and defensive `Unchecked` results roll back the current argument
+journal and force the parent audit transaction through the existing
+`WholeCallValidationFailed` path without re-emitting a normal diagnostic.
+Valid cache hits retain each independently evaluated argument journal once.
+Journal rollback does not rewind the monotonic snapshot revision, so discarded
+candidate edges may currently leave harmless numbering gaps.
+
 Argument indices are one-based. Method/callable receiver roles are separate;
 an indirect callable receiver has no declaration-side formal and therefore
 uses formal index zero and fails closed. Shadow plans are discarded when an
@@ -201,6 +211,8 @@ are not part of the Stage-0 call-transaction contract.
   inspection;
 - argument-journal rollback after generic-body semantic failure and isolation
   of body calls across multiple monomorphizations;
+- persistent invalid-specialization rejection across cache hits, plus a valid
+  cache-hit control proving both real argument evaluations publish once;
 - async `.start`, nested non-boundary calls, and resolved-declaration thread
   handoff annotation, including aliases and a user same-named function;
 - init formal/actual spelling, unknown actuals, unary/cast/address/postfix

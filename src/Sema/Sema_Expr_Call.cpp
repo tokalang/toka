@@ -2447,18 +2447,21 @@ Sema::Stage0TransactionFinalizer::~Stage0TransactionFinalizer() {
 }
 
 void Sema::finalizeExplicitCedeStage0Transaction(ASTNode *callSite) {
+  const bool invalidGenericSpecialization =
+      m_Stage0InvalidGenericSpecializationCalls.erase(callSite) != 0;
   auto pending = m_Stage0PendingTransactions.find(callSite);
   if (pending == m_Stage0PendingTransactions.end())
     return;
   auto transaction = std::move(pending->second);
   m_Stage0PendingTransactions.erase(pending);
   const auto &diagnostics = DiagnosticEngine::records();
-  const bool validationFailed = std::any_of(
-      diagnostics.begin() +
-          std::min(transaction.DiagnosticStart, diagnostics.size()),
-      diagnostics.end(), [](const auto &record) {
-        return record.Level == DiagLevel::Error;
-      });
+  const bool validationFailed =
+      invalidGenericSpecialization ||
+      std::any_of(diagnostics.begin() +
+                      std::min(transaction.DiagnosticStart, diagnostics.size()),
+                  diagnostics.end(), [](const auto &record) {
+                    return record.Level == DiagLevel::Error;
+                  });
   transaction.Record.ValidationComplete =
       transaction.RouteValidationComplete;
   transaction.Record.CommitAllowed =
@@ -5188,7 +5191,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   if (!Fn && !Ext && !Sh) {
     auto instance = InstantiationCache.find(CallName);
     if (instance != InstantiationCache.end())
-      Fn = instance->second;
+      Fn = instance->second.Instance;
   }
 
   auto checkIndirectCedeArgument =
@@ -5681,7 +5684,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     if (!deductionFailed) {
       const size_t instantiationDiagnosticStart =
           DiagnosticEngine::records().size();
-      Fn = instantiateGenericFunction(Fn, TypeArgs, Call);
+      const auto instantiation = instantiateGenericFunction(Fn, TypeArgs, Call);
+      Fn = instantiation.Instance;
       if (!Fn) {
         genericArgumentJournal.rollback();
         recordGenericResolutionRejection("GenericInstantiationFailed");
@@ -5701,10 +5705,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       // otherwise CodeGen will attempt to call the generic template
       // name
       Call->Callee = Fn->Name;
-      if (instantiationReportedError)
+      const bool specializationValidated =
+          instantiation.Validation ==
+          GenericSpecializationValidationState::Valid;
+      if (!specializationValidated || instantiationReportedError) {
         genericArgumentJournal.rollback();
-      else
+        if (SemanticEvidence::isCallTransferShadowEnabled() &&
+            stage0CallEntrySnapshot)
+          m_Stage0InvalidGenericSpecializationCalls.insert(Call);
+      } else {
         genericArgumentJournal.commit();
+      }
     } else {
       HasError = true;
       genericArgumentJournal.rollback();
