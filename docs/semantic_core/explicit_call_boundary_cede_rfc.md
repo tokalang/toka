@@ -1,9 +1,15 @@
 # RFC: Explicit `cede` Source Semantics and Call Boundaries
 
-**Status:** Revisions requested. Fourth-round acceptance candidate. This document
-authorizes no implementation, source migration, interface-key change, CI run,
-merge, tag, or release. Work may begin only after an explicit review changes
-this status to an accepted implementation boundary.
+**Status:** Accepted for staged implementation.
+
+**Accepted revision:** `cb1fe7c0440ff6ded54381e5ff7e2d4db7cb75af`.
+
+**Authorized scope:** Stage 0 only. Stages 1–3, source migration, behavior
+activation, interface-key change, release CI, merge, tag, and release remain
+unauthorized until Stage 0 passes its acceptance boundary and receives a new
+explicit authorization.
+
+**Acceptance date:** 2026-09-03.
 
 **Target:** Toka 1.0 source-transfer and call-boundary ownership semantics, if
 accepted.
@@ -250,7 +256,7 @@ The semantic model must keep these facts separate:
 
 ```text
 CedeSyntaxPurpose
-    SourceInvalidation
+    None | SourceInvalidation
 
 SourceCategory
     NamedSourcePlace | NoSourcePlace | Indeterminate
@@ -1258,6 +1264,9 @@ The estimate is for one engineer after RFC acceptance.
   reachability closure, route eligibility, `OwnershipKind`, Copy, referent,
   destination, Drop liability, `PlanOutcome`, formal resolved type/morphology/
   H-P requirements, stable root identity, and obligation facts;
+- encode identity and `NoSourcePlace` combinations as a closed-world matrix:
+  every combination not explicitly admitted by this RFC is a fail-closed
+  rejected prepared plan, never a default or inferred transfer;
 - build one transaction-local receiver-plus-arguments prepared plan before any
   source or obligation mutation;
 - make owner invalidation close over dependent payload/member/index views and
@@ -1532,64 +1541,66 @@ Implementation must stop and return to RFC review if any of these occur:
 
 ## 16. Review checklist
 
-The reviewer must explicitly decide each item before implementation:
+The accepting review explicitly approved every item below for the staged
+implementation boundary:
 
-- [ ] accept the call-boundary constitutional rule;
-- [ ] accept exact written `TransferOrigin` plus reviewed `InvalidateRegion`
+- [x] accept the call-boundary constitutional rule;
+- [x] accept exact written `TransferOrigin` plus reviewed `InvalidateRegion`
       for both Copy and NonCopy values;
-- [ ] accept payload/handle spellings as views over one ownership root:
+- [x] accept payload/handle spellings as views over one ownership root:
       `cede ^buf` invalidates the owner and dependent reachability, while
       `cede buf` cannot transfer or discard it;
-- [ ] accept that active derived payload/member/index borrows block owner-root
+- [x] accept that active derived payload/member/index borrows block owner-root
       invalidation;
-- [ ] accept strict handshake: ordinary formal + explicit `cede` rejects, and
+- [x] accept strict handshake: ordinary formal + explicit `cede` rejects, and
       `cede` formal + bare named actual rejects;
-- [ ] accept user `cede` as source invalidation only: bare `NoSourcePlace`
+- [x] accept user `cede` as source invalidation only: bare `NoSourcePlace`
       values use compiler transfer plans and explicit `cede` on them rejects in
       every destination;
-- [ ] accept separate Copy-rvalue and whole-owned-temporary NoSourcePlace rows;
-- [ ] accept `resource.dup()` only when it proves an independent eligible
+- [x] accept separate Copy-rvalue and whole-owned-temporary NoSourcePlace rows;
+- [x] accept `resource.dup()` only when it proves an independent eligible
       temporary;
-- [ ] accept ownership/identity classification before Copy classification;
-- [ ] accept generic caller spelling independent of Copy proof, with all
+- [x] accept ownership/identity classification before Copy classification;
+- [x] accept generic caller spelling independent of Copy proof, with all
       lowering facts resolved before CodeGen;
-- [ ] accept standalone `cede value` for direct values and `cede ^owner` for
+- [x] accept standalone `cede value` for direct values and `cede ^owner` for
       unique owner handles, with exactly-once terminal cleanup;
-- [ ] accept that `self` completely reuses ordinary parameter morphology,
+- [x] accept that `self` completely reuses ordinary parameter morphology,
       permissions, admission/rejection, `cede`, trait, TKI, Evidence, and
       CodeGen rules;
-- [ ] accept rejection of `cede &parameter` and `cede &self` until an
+- [x] accept rejection of `cede &parameter` and `cede &self` until an
       unambiguous reference-binding selector exists;
-- [ ] accept `(cede value).method()` for `cede self` and
+- [x] accept `(cede value).method()` for `cede self` and
       `(cede ^owner).method()` for `cede ^self`, with exact handshake;
-- [ ] accept general `InvokeExpr(CalleeExpr, Args)` and the semantic distinction
+- [x] accept general `InvokeExpr(CalleeExpr, Args)` and the semantic distinction
       between consuming `(cede callable)(args)` and rejected
       `cede callable(args)`;
-- [ ] accept precedence-driven exporter grouping rather than semantic reliance
+- [x] accept precedence-driven exporter grouping rather than semantic reliance
       on `HasParens`;
-- [ ] accept Stage-0 unified plan-first atomic commit and destination-complete
+- [x] accept Stage-0 unified plan-first atomic commit and destination-complete
       CodeGen fail-closed protection;
-- [ ] accept independent plan outcome, value production, transfer origin,
+- [x] accept independent plan outcome, value production, transfer origin,
       source, destination, Drop, and obligation dimensions;
-- [ ] accept obligation before/action/after as independent from payload and
+- [x] accept obligation before/action/after as independent from payload and
       source disposition;
-- [ ] accept Evidence v3 standalone/rejected representation, provider-only TKI
+- [x] accept Evidence v3 standalone/rejected representation, provider-only TKI
       declarations, caller-local source planning, historical-only v2 replay,
       and an interface-key bump on activation;
-- [ ] accept deletion of `-> cede T`/`dyn fn(...) -> cede T`, the complete
+- [x] accept deletion of `-> cede T`/`dyn fn(...) -> cede T`, the complete
       return source matrix, removal of the old E0464 meaning, and preservation
       of parameter/consuming-callable cede;
-- [ ] accept stable semantic Evidence root coordinates rather than process-local
+- [x] accept stable semantic Evidence root coordinates rather than process-local
       symbol IDs, plus complete formal type/morphology/H-P facts;
-- [ ] accept independent eligibility for argument, receiver, standalone,
+- [x] accept independent eligibility for argument, receiver, standalone,
       return, assignment/init, aggregate, match, and closure-capture routes;
-- [ ] accept the fixture migration categories and reject bulk warning-to-fail
+- [x] accept the fixture migration categories and reject bulk warning-to-fail
       conversion;
-- [ ] accept retention of temporary plans, PAL, destination-complete
+- [x] accept retention of temporary plans, PAL, destination-complete
       fail-closed checks, and explicit atomic batching;
-- [ ] accept deletion before the final candidate SHA and complete requalification
+- [x] accept deletion before the final candidate SHA and complete requalification
       after every cleanup change; and
-- [ ] accept the 38–61 person-day / 8–12 week implementation budget.
+- [x] accept the 38–61 person-day / 8–12 week implementation budget.
 
-Until every required item is reviewed, this RFC remains Revisions requested and
-current compiler behavior remains unchanged.
+Only Stage 0 is authorized by this acceptance. Completion of Stage 0 does not
+authorize Stage 1 behavior changes; it must return for acceptance evidence,
+re-estimation, and an explicit next-stage decision.
