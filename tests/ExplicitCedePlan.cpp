@@ -26,6 +26,15 @@ PlaceId otherPlace() {
   return PlaceId(root.value());
 }
 
+PlaceId fieldPlace(const std::string &name) {
+  auto declaration = SemanticIdentityBuilder::declaration("module:m", "fn:f");
+  auto root = SemanticIdentityBuilder::rootSymbol(declaration.value(),
+                                                  "binding:value;direct");
+  auto field =
+      SemanticIdentityBuilder::field(declaration.value(), "field:" + name);
+  return PlaceId(root.value(), {PlaceProjection::field(field.value())});
+}
+
 ExplicitCedePreparedFacts baseCall() {
   ExplicitCedePreparedFacts facts;
   facts.ActualTypeKey = "type:Resource";
@@ -40,6 +49,7 @@ ExplicitCedePreparedFacts baseCall() {
   facts.FormalCapabilities.Complete = true;
   facts.ActualCapabilities.Complete = true;
   facts.Destination = TransferDestination::CalleeParameter;
+  facts.EligibilityContext = TransferEligibilityContext::Argument;
   facts.Eligibility = TransferEligibility::Eligible;
   facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
   facts.TypeCompatibility = TransferTypeCompatibility::Compatible;
@@ -177,6 +187,37 @@ int main() {
   for (auto destination : noSourceCedeDestinations) {
     auto rejected = temporary;
     rejected.Destination = destination;
+    switch (destination) {
+    case TransferDestination::CalleeParameter:
+      rejected.EligibilityContext = TransferEligibilityContext::Argument;
+      break;
+    case TransferDestination::Receiver:
+      rejected.EligibilityContext = TransferEligibilityContext::Receiver;
+      break;
+    case TransferDestination::Assignment:
+      rejected.EligibilityContext = TransferEligibilityContext::Assignment;
+      break;
+    case TransferDestination::Initialization:
+      rejected.EligibilityContext = TransferEligibilityContext::Initialization;
+      break;
+    case TransferDestination::Return:
+      rejected.EligibilityContext = TransferEligibilityContext::Return;
+      break;
+    case TransferDestination::AggregateMember:
+      rejected.EligibilityContext = TransferEligibilityContext::AggregateMember;
+      break;
+    case TransferDestination::MatchBinding:
+      rejected.EligibilityContext = TransferEligibilityContext::MatchBinding;
+      break;
+    case TransferDestination::ClosureCapture:
+      rejected.EligibilityContext = TransferEligibilityContext::ClosureCapture;
+      break;
+    case TransferDestination::StatementEndDiscard:
+      rejected.EligibilityContext = TransferEligibilityContext::Standalone;
+      break;
+    case TransferDestination::Indeterminate:
+      break;
+    }
     if (destination != TransferDestination::CalleeParameter &&
         destination != TransferDestination::Receiver) {
       rejected.FormalTypeKey.clear();
@@ -239,6 +280,7 @@ int main() {
   returned.FormalMorphology = TransferFormalMorphology::None;
   returned.FormalCapabilities = {};
   returned.Destination = TransferDestination::Return;
+  returned.EligibilityContext = TransferEligibilityContext::Return;
   returned.ObligationBefore = TransferObligationState::Outstanding;
   returned.ObligationRoot = returned.SourcePlace->root();
   auto returnPlan = prepareExplicitCedePlan(returned);
@@ -256,6 +298,7 @@ int main() {
   unrelatedTemporary.FormalMorphology = TransferFormalMorphology::None;
   unrelatedTemporary.FormalCapabilities = {};
   unrelatedTemporary.Destination = TransferDestination::Return;
+  unrelatedTemporary.EligibilityContext = TransferEligibilityContext::Return;
   unrelatedTemporary.ObligationBefore = TransferObligationState::Outstanding;
   auto otherDeclaration =
       SemanticIdentityBuilder::declaration("module:m", "fn:f");
@@ -264,9 +307,19 @@ int main() {
                                           "binding:other;direct")
           .value();
   auto wrongReturn = prepareExplicitCedePlan(unrelatedTemporary);
-  CHECK(wrongReturn.admitted());
-  CHECK(wrongReturn.ObligationAction == TransferObligationAction::Preserve);
-  CHECK(wrongReturn.ObligationAfter == TransferObligationState::Outstanding);
+  CHECK(!wrongReturn.admitted());
+  CHECK(wrongReturn.Rejection == TransferPlanRejection::ContradictoryFacts);
+
+  auto partialReturn = returned;
+  partialReturn.SourcePlace = fieldPlace("left");
+  auto partialReturnPlan = prepareExplicitCedePlan(partialReturn);
+  CHECK(partialReturnPlan.admitted());
+  CHECK(partialReturnPlan.Source ==
+        TransferSourceDisposition::InvalidateSubtree);
+  CHECK(partialReturnPlan.ObligationAction ==
+        TransferObligationAction::Preserve);
+  CHECK(partialReturnPlan.ObligationAfter ==
+        TransferObligationState::Outstanding);
 
   auto copyReturn = copy;
   copyReturn.SurfaceSpelling = TransferSurfaceSpelling::Bare;
@@ -276,6 +329,7 @@ int main() {
   copyReturn.FormalMorphology = TransferFormalMorphology::None;
   copyReturn.FormalCapabilities = {};
   copyReturn.Destination = TransferDestination::Return;
+  copyReturn.EligibilityContext = TransferEligibilityContext::Return;
   auto keptCopy = prepareExplicitCedePlan(copyReturn);
   CHECK(keptCopy.admitted());
   CHECK(keptCopy.ValueProduction == TransferValueProduction::CopyValue);
@@ -293,8 +347,7 @@ int main() {
   obligatedOrdinaryCopy.SurfaceSpelling = TransferSurfaceSpelling::Bare;
   obligatedOrdinaryCopy.SyntaxPurpose = CedeSyntaxPurpose::None;
   obligatedOrdinaryCopy.FormalContract = TransferFormalContract::Ordinary;
-  obligatedOrdinaryCopy.ObligationBefore =
-      TransferObligationState::Outstanding;
+  obligatedOrdinaryCopy.ObligationBefore = TransferObligationState::Outstanding;
   obligatedOrdinaryCopy.ObligationRoot =
       obligatedOrdinaryCopy.SourcePlace->root();
   auto ordinaryCopyPlan = prepareExplicitCedePlan(obligatedOrdinaryCopy);
@@ -304,8 +357,7 @@ int main() {
         TransferObligationAction::Preserve);
 
   auto mismatchedTemporary = copyTemporary;
-  mismatchedTemporary.FormalMorphology =
-      TransferFormalMorphology::UniqueHandle;
+  mismatchedTemporary.FormalMorphology = TransferFormalMorphology::UniqueHandle;
   CHECK(prepareExplicitCedePlan(mismatchedTemporary).Rejection ==
         TransferPlanRejection::SourceViewMismatch);
 
@@ -327,6 +379,7 @@ int main() {
   intrinsic.FormalMorphology = TransferFormalMorphology::None;
   intrinsic.FormalCapabilities = {};
   intrinsic.Destination = TransferDestination::Return;
+  intrinsic.EligibilityContext = TransferEligibilityContext::Return;
   intrinsic.ActiveDerivedBorrow = false;
   auto uniqueReturn = prepareExplicitCedePlan(intrinsic);
   CHECK(uniqueReturn.admitted());
@@ -375,6 +428,27 @@ int main() {
   CHECK(prepareExplicitCedePlan(contradictory).Rejection ==
         TransferPlanRejection::ContradictoryFacts);
 
+  auto dehatted = named;
+  dehatted.Ownership = TransferOwnershipKind::UniqueOwner;
+  dehatted.CopyProof = TransferCopyProof::ProvenNonCopy;
+  CHECK(prepareExplicitCedePlan(dehatted).Rejection ==
+        TransferPlanRejection::ContradictoryFacts);
+
+  auto dependentTemporary = baseCall();
+  dependentTemporary.Origin = TransferPlanOrigin::CompilerSynthetic;
+  dependentTemporary.SurfaceSpelling = TransferSurfaceSpelling::Bare;
+  dependentTemporary.SyntaxPurpose = CedeSyntaxPurpose::None;
+  dependentTemporary.SourceCategory = TransferSourceCategory::NoSourcePlace;
+  dependentTemporary.SourcePlace.reset();
+  dependentTemporary.Reachability = TransferReachability::None;
+  dependentTemporary.TemporaryEligibility =
+      TransferTemporaryEligibility::Eligible;
+  dependentTemporary.Dependency = TransferDependencyKind::Borrowed;
+  dependentTemporary.ReferentPlace = rootPlace();
+  dependentTemporary.DependencyRoots = {rootPlace().root()};
+  CHECK(prepareExplicitCedePlan(dependentTemporary).Rejection ==
+        TransferPlanRejection::ContradictoryFacts);
+
   auto incompatible = named;
   incompatible.TypeCompatibility = TransferTypeCompatibility::Incompatible;
   CHECK(prepareExplicitCedePlan(incompatible).Rejection ==
@@ -382,6 +456,7 @@ int main() {
 
   auto receiver = named;
   receiver.Destination = TransferDestination::Receiver;
+  receiver.EligibilityContext = TransferEligibilityContext::Receiver;
   auto argument = named;
   argument.SourcePlace = otherPlace();
   ExplicitCedeWholeCallFacts wholeFacts;
@@ -407,8 +482,62 @@ int main() {
   CHECK(!laterReject.admitted());
   CHECK(!laterReject.CommitAllowed);
   CHECK(laterReject.Receiver && laterReject.Receiver->admitted());
-  CHECK(laterReject.Rejection ==
-        TransferPlanRejection::WholeCallItemRejected);
+  CHECK(laterReject.Rejection == TransferPlanRejection::WholeCallItemRejected);
+
+  ExplicitCedeWholeCallFacts wrongReceiverSlot;
+  wrongReceiverSlot.Receiver = argument;
+  CHECK(prepareExplicitCedeWholeCallPlan(wrongReceiverSlot).Rejection ==
+        TransferPlanRejection::WholeCallDestinationMismatch);
+
+  auto receiverInArgumentSlot = receiver;
+  ExplicitCedeWholeCallFacts wrongArgumentSlot;
+  wrongArgumentSlot.Arguments = {receiverInArgumentSlot};
+  CHECK(prepareExplicitCedeWholeCallPlan(wrongArgumentSlot).Rejection ==
+        TransferPlanRejection::WholeCallDestinationMismatch);
+
+  auto invalidatingRoot = named;
+  auto readingRoot = named;
+  readingRoot.SurfaceSpelling = TransferSurfaceSpelling::Bare;
+  readingRoot.SyntaxPurpose = CedeSyntaxPurpose::None;
+  readingRoot.FormalContract = TransferFormalContract::Ordinary;
+  ExplicitCedeWholeCallFacts invalidateAndRead;
+  invalidateAndRead.Arguments = {invalidatingRoot, readingRoot};
+  CHECK(prepareExplicitCedeWholeCallPlan(invalidateAndRead).Rejection ==
+        TransferPlanRejection::WholeCallAliasConflict);
+
+  auto borrowSameRoot = ordinaryReference;
+  borrowSameRoot.Destination = TransferDestination::CalleeParameter;
+  borrowSameRoot.EligibilityContext = TransferEligibilityContext::Argument;
+  borrowSameRoot.ReferentPlace = rootPlace();
+  borrowSameRoot.DependencyRoots = {rootPlace().root()};
+  ExplicitCedeWholeCallFacts invalidateAndBorrow;
+  invalidateAndBorrow.Arguments = {invalidatingRoot, borrowSameRoot};
+  CHECK(prepareExplicitCedeWholeCallPlan(invalidateAndBorrow).Rejection ==
+        TransferPlanRejection::WholeCallAliasConflict);
+
+  auto left = named;
+  left.SourcePlace = fieldPlace("left");
+  auto right = named;
+  right.SourcePlace = fieldPlace("right");
+  ExplicitCedeWholeCallFacts siblingFields;
+  siblingFields.Arguments = {left, right};
+  auto siblingPlan = prepareExplicitCedeWholeCallPlan(siblingFields);
+  CHECK(siblingPlan.admitted());
+  CHECK(siblingPlan.CommitAllowed);
+
+  ExplicitCedeWholeCallFacts rootAndField;
+  rootAndField.Arguments = {named, left};
+  CHECK(prepareExplicitCedeWholeCallPlan(rootAndField).Rejection ==
+        TransferPlanRejection::WholeCallAliasConflict);
+
+  left.Destination = TransferDestination::Receiver;
+  left.EligibilityContext = TransferEligibilityContext::Receiver;
+  ExplicitCedeWholeCallFacts receiverSibling;
+  receiverSibling.Receiver = left;
+  receiverSibling.Arguments = {right};
+  auto receiverSiblingPlan = prepareExplicitCedeWholeCallPlan(receiverSibling);
+  CHECK(receiverSiblingPlan.admitted());
+  CHECK(receiverSiblingPlan.CommitAllowed);
 
   return 0;
 }

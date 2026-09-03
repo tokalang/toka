@@ -33,6 +33,7 @@ enum class TransferPlanRejection : uint8_t {
   RedundantIntrinsicUniqueCede,
   WholeCallItemRejected,
   WholeCallAliasConflict,
+  WholeCallDestinationMismatch,
 };
 
 enum class TransferPlanOrigin : uint8_t { UserSource, CompilerSynthetic };
@@ -99,6 +100,18 @@ enum class TransferDestination : uint8_t {
 enum class TransferEligibility : uint8_t {
   Eligible,
   Ineligible,
+  Indeterminate,
+};
+enum class TransferEligibilityContext : uint8_t {
+  Argument,
+  Receiver,
+  Assignment,
+  Initialization,
+  Return,
+  AggregateMember,
+  MatchBinding,
+  ClosureCapture,
+  Standalone,
   Indeterminate,
 };
 enum class TransferTemporaryEligibility : uint8_t {
@@ -192,6 +205,8 @@ struct ExplicitCedePreparedFacts {
   TransferAccessCapabilities ActualCapabilities;
   TransferDestination Destination = TransferDestination::Indeterminate;
   TransferEligibility Eligibility = TransferEligibility::Indeterminate;
+  TransferEligibilityContext EligibilityContext =
+      TransferEligibilityContext::Indeterminate;
   TransferTemporaryEligibility TemporaryEligibility =
       TransferTemporaryEligibility::Indeterminate;
   TransferTypeCompatibility TypeCompatibility =
@@ -273,8 +288,10 @@ const char *toString(TransferCopyProof value);
 const char *toString(TransferFormalContract value);
 const char *toString(TransferFormalMorphology value);
 const char *toString(TransferEligibility value);
+const char *toString(TransferEligibilityContext value);
 const char *toString(TransferTemporaryEligibility value);
 const char *toString(TransferTypeCompatibility value);
 const char *toString(TransferDependencyKind value);
+std::string semanticPlaceKey(const PlaceId &place);
 
 } // namespace toka

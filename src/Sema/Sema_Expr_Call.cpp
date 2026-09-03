@@ -1712,6 +1712,10 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
   facts.Destination = legacyShadowPlan.FormalIsInit
                           ? TransferDestination::Initialization
                           : TransferDestination::CalleeParameter;
+  facts.EligibilityContext =
+      legacyShadowPlan.FormalIsInit
+          ? TransferEligibilityContext::Initialization
+          : TransferEligibilityContext::Argument;
   facts.SourceCategory =
       legacyShadowPlan.ValueCategory == CallValueCategory::Place ||
               legacyShadowPlan.ValueCategory == CallValueCategory::InitStorage
@@ -1842,6 +1846,23 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
       facts.SourceView = TransferSourceView::DirectValue;
   }
 
+  Expr *borrowTarget = nullptr;
+  if (auto *address = dynamic_cast<AddressOfExpr *>(surface))
+    borrowTarget = address->Expression.get();
+  else if (auto *unary = dynamic_cast<UnaryExpr *>(surface);
+           unary && unary->Op == TokenType::Ampersand)
+    borrowTarget = unary->RHS.get();
+  if (borrowTarget) {
+    AccessPath referent = canonicalizeAccessPath(makeAccessPath(borrowTarget));
+    facts.ReferentPlace = stableIdentityFor(referent);
+    facts.DependencyRoots.clear();
+    if (facts.ReferentPlace)
+      facts.DependencyRoots.push_back(facts.ReferentPlace->root());
+    facts.Dependency = TransferDependencyKind::Borrowed;
+    facts.DependencyFactsComplete =
+        facts.ReferentPlace && !facts.DependencyRoots.empty();
+  }
+
   if (facts.SourceView == TransferSourceView::UniqueHandle)
     facts.Ownership = TransferOwnershipKind::UniqueOwner;
   else if (facts.SourceView == TransferSourceView::SharedHandle)
@@ -1879,10 +1900,13 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
     facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
   } else if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
     facts.TemporaryEligibility =
-        facts.Ownership == TransferOwnershipKind::OwnedValue ||
-                facts.Ownership == TransferOwnershipKind::UniqueOwner ||
-                facts.Ownership == TransferOwnershipKind::SharedOwner ||
-                facts.Ownership == TransferOwnershipKind::OwnedCallable
+        facts.DependencyFactsComplete &&
+                facts.Dependency == TransferDependencyKind::None &&
+                !facts.ReferentPlace && facts.DependencyRoots.empty() &&
+                (facts.Ownership == TransferOwnershipKind::OwnedValue ||
+                 facts.Ownership == TransferOwnershipKind::UniqueOwner ||
+                 facts.Ownership == TransferOwnershipKind::SharedOwner ||
+                 facts.Ownership == TransferOwnershipKind::OwnedCallable)
             ? TransferTemporaryEligibility::Eligible
             : TransferTemporaryEligibility::Ineligible;
   }
@@ -2030,8 +2054,11 @@ void Sema::recordShadowCallTransfer(
   stage0Record.SyntaxPurpose = toString(stage0.Prepared.SyntaxPurpose);
   stage0Record.SurfaceSpelling = toString(stage0.Prepared.SurfaceSpelling);
   stage0Record.SourceCategory = toString(stage0.Prepared.SourceCategory);
-  stage0Record.ExactPath = plan.SourcePlace.toDebugString();
-  stage0Record.ReferentPath = plan.ReferentPath.toDebugString();
+  if (stage0.Prepared.SourcePlace)
+    stage0Record.ExactPath = semanticPlaceKey(*stage0.Prepared.SourcePlace);
+  if (stage0.Prepared.ReferentPlace)
+    stage0Record.ReferentPath =
+        semanticPlaceKey(*stage0.Prepared.ReferentPlace);
   if (stage0.Prepared.ReferentPlace)
     stage0Record.ReferentRoot =
         stage0.Prepared.ReferentPlace->root().canonicalKey();
@@ -2063,7 +2090,8 @@ void Sema::recordShadowCallTransfer(
       toString(stage0.Prepared.TemporaryEligibility);
   stage0Record.TypeCompatibility =
       toString(stage0.Prepared.TypeCompatibility);
-  stage0Record.EligibilityContext = toString(stage0.Prepared.Destination);
+  stage0Record.EligibilityContext =
+      toString(stage0.Prepared.EligibilityContext);
   stage0Record.ObligationBefore =
       toString(stage0.Prepared.ObligationBefore);
   stage0Record.Outcome = toString(stage0.Outcome);

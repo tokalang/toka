@@ -1,0 +1,14 @@
+shape Cell(value: i32)
+
+fn borrow_identity<'T>('value: T) -> &'T
+where:
+    'T: morphology borrow_extendable
+effects: return <- 'value {
+    return &'value
+}
+
+fn main() -> i32 {
+    auto value = Cell(value = 7)
+    auto &view = borrow_identity(&value)
+    return view.value - 7:i32
+}

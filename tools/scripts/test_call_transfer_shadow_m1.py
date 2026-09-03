@@ -4,6 +4,7 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -11,6 +12,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
+os.environ.setdefault("TOKA_LIB", str(ROOT / "lib"))
 
 
 def require(condition, message):
@@ -410,6 +412,24 @@ def main():
         transfer="ConsumeTemporary", source="NoSourcePlace",
         dependency="RawUnsafe", source_path="",
     ))
+
+    source = "tests/semantics/call_transfer_shadow_m1/borrow_construction_facts.tk"
+    records = run(tokac, source)
+    record = find(
+        records, source, callee="borrow_identity", route="ordinary",
+        parameter="'value", value_category="Temporary",
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Admitted", rejection="None",
+                   value_production="CopyIdentity", source="NoSourcePlace",
+                   source_view="ReferenceConstruction",
+                   temporary_eligibility="Ineligible")
+    require(record["stage0"]["dependency"] == "Borrowed" and
+            record["stage0"]["dependency_complete"] and
+            bool(record["stage0"]["referent_root"]) and
+            bool(record["stage0"]["referent_path"]) and
+            len(record["stage0"]["dependency_roots"]) == 1,
+            source + " did not derive fresh borrow referent/dependency facts")
 
     source = "tests/semantics/call_transfer_shadow_m1/postfix_rvalue.tk"
     records = run(tokac, source)
