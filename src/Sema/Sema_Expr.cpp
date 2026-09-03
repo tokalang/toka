@@ -4249,11 +4249,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     return std::make_shared<toka::RawPointerType>(baseTypeObj);
   } else if (auto *Met = dynamic_cast<MethodCallExpr *>(E)) {
+    Stage0TransactionFinalizer stage0TransactionFinalizer(*this, Met);
     CallArgumentRollbackGuard methodCallRollback(*this, Met->Args);
     std::shared_ptr<Type> stage0PreMutationReceiverType;
     std::optional<ExplicitCedePreparedFacts> stage0PreMutationReceiverFacts;
+    std::optional<Stage0CallSnapshot> stage0PreMutationCallSnapshot;
     if (SemanticEvidence::isCallTransferShadowEnabled() &&
         !m_IsPrecomputingCaptures) {
+      stage0PreMutationCallSnapshot = captureStage0CallSnapshot();
+      captureStage0CallArgumentFacts(Met, Met->Args,
+                                     CallTransferRoute::Method,
+                                     *stage0PreMutationCallSnapshot);
       stage0PreMutationReceiverType =
           queryShadowCallArgumentType(Met->Object.get(), nullptr);
       auto receiverLegacy = buildShadowCallTransferPlan(
@@ -4261,7 +4267,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           false, false, false, false, false, CallTransferRoute::Method, false,
           CallExecutionBoundary::None, 0, 1);
       stage0PreMutationReceiverFacts = buildExplicitCedeStage0ActualFacts(
-          Met->Object.get(), stage0PreMutationReceiverType, receiverLegacy);
+          Met->Object.get(), stage0PreMutationReceiverType, receiverLegacy,
+          &stage0PreMutationCallSnapshot->State,
+          stage0PreMutationCallSnapshot->Revision);
     }
     bool oldAllow = m_AllowPermissionSuffix;
     m_AllowPermissionSuffix = true; // [NEW] Grant suffix allowance for explicit method call objects
@@ -4396,7 +4404,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     Met, traitName + "::" + Met->Method,
                     CallTransferRoute::DynamicTraitMethod,
                     std::move(receiverInput),
-                    std::move(transactionArguments));
+                    std::move(transactionArguments),
+                    &*stage0PreMutationCallSnapshot,
+                    static_cast<unsigned>(expectedArgs),
+                    static_cast<unsigned>(Met->Args.size()),
+                    Met->Args.size() == expectedArgs);
               }
               if (!preflightExplicitCallCedeAliases(
                       Met->Args, dynamicFormals, dynamicNames))
@@ -4555,7 +4567,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     Met, traitName + "::" + Met->Method,
                     CallTransferRoute::DynamicTraitMethod,
                     std::move(receiverInput),
-                    std::move(transactionArguments));
+                    std::move(transactionArguments),
+                    &*stage0PreMutationCallSnapshot,
+                    static_cast<unsigned>(formalArgs),
+                    static_cast<unsigned>(Met->Args.size()),
+                    Met->Args.size() == formalArgs);
               }
               for (size_t i = 0; i < Met->Args.size() && i < formalArgs; ++i) {
                 const auto &param = M->Args[i + 1];
@@ -4768,7 +4784,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           recordExplicitCedeStage0Transaction(
               Met, FD->Name.empty() ? Met->Method : FD->Name,
               CallTransferRoute::Method, std::move(receiverInput),
-              std::move(transactionArguments));
+              std::move(transactionArguments),
+              &*stage0PreMutationCallSnapshot,
+              static_cast<unsigned>(FD->Args.size() - 1),
+              static_cast<unsigned>(Met->Args.size()),
+              Met->Args.size() == FD->Args.size() - 1);
         }
 
         // [Rule] Enforce Explicit Mutability for Method Calls

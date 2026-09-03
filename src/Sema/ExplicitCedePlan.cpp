@@ -246,12 +246,15 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
   if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace) {
     if (!facts.SourcePlace || !facts.SourcePlace->valid() ||
         facts.Reachability == TransferReachability::None ||
-        facts.TemporaryEligibility != TransferTemporaryEligibility::Ineligible)
+        facts.TemporaryEligibility !=
+            TransferTemporaryEligibility::Ineligible ||
+        facts.SourceLiveness == TransferSourceLiveness::None)
       return false;
   } else if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
     if (facts.SourcePlace || facts.Reachability != TransferReachability::None ||
         facts.ObligationBefore != TransferObligationState::None ||
         facts.ObligationRoot ||
+        facts.SourceLiveness != TransferSourceLiveness::None ||
         facts.TemporaryEligibility ==
             TransferTemporaryEligibility::Indeterminate)
       return false;
@@ -467,9 +470,15 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
       facts.Dependency == TransferDependencyKind::Indeterminate ||
       !facts.DependencyFactsComplete || !facts.ActualCapabilities.Complete ||
       !facts.BorrowStateComplete || !facts.DropLiabilityComplete ||
+      facts.SnapshotRevision == 0 || !facts.SourceLivenessComplete ||
+      !facts.InitMaskComplete || !facts.CleanupMaskComplete ||
+      !facts.LiabilityIdentityComplete || !facts.ObligationFactsComplete ||
       (facts.ObligationBefore == TransferObligationState::Outstanding &&
        (!facts.ObligationRoot || !facts.ObligationRoot->valid())))
     return reject(TransferPlanRejection::IncompleteFacts, facts);
+  if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
+      facts.SourceLiveness != TransferSourceLiveness::Live)
+    return reject(TransferPlanRejection::SourceNotLive, facts);
   if (callBoundary &&
       (facts.FormalTypeKey.empty() ||
        facts.FormalContract == TransferFormalContract::None ||
@@ -648,6 +657,10 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
 ExplicitCedeWholeCallPlan
 prepareExplicitCedeWholeCallPlan(const ExplicitCedeWholeCallFacts &facts) {
   ExplicitCedeWholeCallPlan result;
+  const bool arityIncomplete =
+      !facts.ArityComplete ||
+      facts.ExpectedArgumentCount != facts.ActualArgumentCount ||
+      facts.Arguments.size() != facts.ActualArgumentCount;
   if (facts.Receiver &&
       facts.Receiver->Destination != TransferDestination::Receiver) {
     result.Rejection = TransferPlanRejection::WholeCallDestinationMismatch;
@@ -665,6 +678,11 @@ prepareExplicitCedeWholeCallPlan(const ExplicitCedeWholeCallFacts &facts) {
   result.Arguments.reserve(facts.Arguments.size());
   for (const auto &argument : facts.Arguments)
     result.Arguments.push_back(prepareExplicitCedePlan(argument));
+
+  if (arityIncomplete) {
+    result.Rejection = TransferPlanRejection::WholeCallArityIncomplete;
+    return result;
+  }
 
   if ((result.Receiver && !result.Receiver->admitted()) ||
       std::any_of(
@@ -770,10 +788,16 @@ const char *toString(TransferPlanRejection value) {
     return "WholeCallAliasConflict";
   case TransferPlanRejection::WholeCallDestinationMismatch:
     return "WholeCallDestinationMismatch";
+  case TransferPlanRejection::WholeCallArityIncomplete:
+    return "WholeCallArityIncomplete";
+  case TransferPlanRejection::WholeCallValidationFailed:
+    return "WholeCallValidationFailed";
   case TransferPlanRejection::OwnershipContractMismatch:
     return "OwnershipContractMismatch";
   case TransferPlanRejection::ProjectedHandleRequiresSubroot:
     return "ProjectedHandleRequiresSubroot";
+  case TransferPlanRejection::SourceNotLive:
+    return "SourceNotLive";
   }
   return "ClosedWorldCombination";
 }
@@ -894,6 +918,24 @@ const char *toString(TransferObligationState value) {
     return "Discharged";
   }
   return "None";
+}
+
+const char *toString(TransferSourceLiveness value) {
+  switch (value) {
+  case TransferSourceLiveness::None:
+    return "None";
+  case TransferSourceLiveness::Live:
+    return "Live";
+  case TransferSourceLiveness::Moved:
+    return "Moved";
+  case TransferSourceLiveness::Uninitialized:
+    return "Uninitialized";
+  case TransferSourceLiveness::PartiallyLive:
+    return "PartiallyLive";
+  case TransferSourceLiveness::Indeterminate:
+    return "Indeterminate";
+  }
+  return "Indeterminate";
 }
 
 const char *toString(TransferSourceView value) {

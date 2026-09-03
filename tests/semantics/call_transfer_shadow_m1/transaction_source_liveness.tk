@@ -1,0 +1,19 @@
+fn consume(cede value: i32) -> i32 {
+    auto moved = cede value
+    return moved
+}
+
+fn moved_source() -> i32 {
+    auto value = 7:i32
+    auto first = consume(cede value)
+    return first + consume(cede value)
+}
+
+fn uninitialized_source() -> i32 {
+    auto value = uninit:i32
+    return consume(cede value)
+}
+
+fn main() -> i32 {
+    return moved_source() + uninitialized_source()
+}

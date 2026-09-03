@@ -1,0 +1,7 @@
+fn combine(first: i32, second: i32) -> i32 {
+    return first + second
+}
+
+fn main() -> i32 {
+    return combine(1)
+}

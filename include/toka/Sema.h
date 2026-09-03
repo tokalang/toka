@@ -675,6 +675,7 @@ private:
   bool m_InjectMissingCallTransferElaboration = false;
   bool m_MissingCallTransferFaultConsumed = false;
   unsigned m_D3SpeculativeCallDepth = 0;
+  uint64_t m_Stage0CallSnapshotRevision = 0;
 
   struct AuthorityFullExpressionContext {
     Expr *Root = nullptr;
@@ -825,7 +826,9 @@ private:
       TransferFormalDeclarationFacts FormalDeclaration);
   ExplicitCedePreparedFacts buildExplicitCedeStage0ActualFacts(
       Expr *Argument, const std::shared_ptr<Type> &ArgumentType,
-      const CallTransferPlan &LegacyShadowPlan);
+      const CallTransferPlan &LegacyShadowPlan,
+      const AnalysisState *SnapshotState = nullptr,
+      uint64_t SnapshotRevision = 0);
   TransferCopyProof queryExplicitCedeStage0CopyProof(
       const std::shared_ptr<Type> &Type);
   ExplicitCedePlan completeExplicitCedeStage0CallPlan(
@@ -846,10 +849,48 @@ private:
     unsigned ArgumentIndex = 0;
     unsigned FormalIndex = 0;
   };
+  struct Stage0CallSnapshot {
+    uint64_t Revision = 0;
+    size_t DiagnosticStart = 0;
+    AnalysisState State;
+    std::vector<std::optional<ExplicitCedePreparedFacts>> ArgumentFacts;
+    std::vector<std::shared_ptr<Type>> ArgumentTypes;
+  };
+  struct Stage0PendingTransaction {
+    ExplicitCedeStage0TransactionRecord Record;
+    ExplicitCedeWholeCallPlan Plan;
+    size_t DiagnosticStart = 0;
+  };
+  std::map<const ASTNode *, Stage0PendingTransaction>
+      m_Stage0PendingTransactions;
+  class Stage0TransactionFinalizer {
+  public:
+    Stage0TransactionFinalizer(Sema &Owner, ASTNode *CallSite)
+        : Owner(Owner), CallSite(CallSite) {}
+    Stage0TransactionFinalizer(const Stage0TransactionFinalizer &) = delete;
+    ~Stage0TransactionFinalizer();
+
+  private:
+    Sema &Owner;
+    ASTNode *CallSite = nullptr;
+  };
+  Stage0CallSnapshot captureStage0CallSnapshot();
+  void captureStage0CallArgumentFacts(
+      ASTNode *CallSite, const std::vector<std::unique_ptr<Expr>> &Arguments,
+      CallTransferRoute Route, Stage0CallSnapshot &Snapshot);
+  void finalizeExplicitCedeStage0Transaction(ASTNode *CallSite);
   void recordExplicitCedeStage0Transaction(
       ASTNode *CallSite, const std::string &Callee, CallTransferRoute Route,
       std::optional<Stage0CallTransactionItemInput> Receiver,
-      std::vector<Stage0CallTransactionItemInput> Arguments);
+      std::vector<Stage0CallTransactionItemInput> Arguments,
+      const Stage0CallSnapshot *Snapshot = nullptr,
+      unsigned ExpectedArgumentCount = 0, unsigned ActualArgumentCount = 0,
+      bool ArityComplete = true);
+  void recordExplicitCedeStage0DirectTransaction(
+      CallExpr *Call, const std::string &Callee, FunctionDecl *Function,
+      ExternDecl *External,
+      const std::vector<std::shared_ptr<Type>> &ParameterTypes,
+      const Stage0CallSnapshot *Snapshot, bool ArityComplete);
   TransferFormalDeclarationFacts buildStage0FormalDeclarationFacts(
       const FunctionDecl::Arg *Formal);
   TransferFormalDeclarationFacts buildStage0FormalDeclarationFacts(

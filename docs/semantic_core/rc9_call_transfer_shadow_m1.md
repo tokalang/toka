@@ -6,10 +6,11 @@ Non-normative and not an activation of the signature-driven call-transfer ADR.
 
 **Baseline:** `a3de6d4787f22f2b003949e62bf9aa1c83b40d17`.
 
-M1 records a resolved-formal call plan beside the existing RC8 call semantics.
+M1 records an Accepted-RFC call plan beside the current normal call semantics.
 Normal Sema, PAL, diagnostics, cede obligation evidence v1, and CodeGen do not
-consume this plan. In particular, `E04570` remains active and an implicit
-owning call does not mutate source state.
+consume this plan. Call-transfer shadow inherits normal signature-driven call
+behavior exactly; it does not switch the compiler to the frozen RC8 profile.
+Historical cede-obligation v1, D3, and authority-facts profiles remain frozen.
 
 Shadow computation itself is enabled only by the audit command. Ordinary
 compilation and every existing evidence mode do not run the planner or populate
@@ -33,8 +34,9 @@ It cannot be combined with another JSON, semantic, or evaluation output mode.
 Version 5 retains the version-4 argument records and adds audit-only whole-call
 transactions prepared before legacy ownership mutation. Each transaction has
 receiver/argument slots, per-item outcome/source/drop/obligation dimensions,
-one aggregate outcome, and a `commit_allowed` observation bit. That bit is
-never consumed by Sema or CodeGen. Version 4 added the nested audit-only Stage-0
+`local_plan_admitted`, final validation state, and a `commit_allowed`
+observation bit. That bit is published only after legacy call validation and
+is never consumed by Sema or CodeGen. Version 4 added the nested audit-only Stage-0
 plan produced by the Accepted explicit-cede pure classifier. The legacy fields
 remain the behavior oracle; Stage 0 neither changes diagnostics nor grants
 CodeGen authority. Version 3 originally replaced the M1a.1 schema and retains
@@ -51,7 +53,7 @@ Each record is created after a call route resolves its formal parameter:
 ```text
 route             ordinary | static | method | callable | extern
                   | indirect-fn | indirect-dyn-fn | dynamic-trait-method
-argument/formal   stable one-based original indices
+argument/formal   stable original indices; receiver is a distinct role
 value_category    Place | Temporary | InitStorage | Indeterminate
 spelling          implicit | explicit
 init spelling     formal_init and actual_init are independent facts
@@ -76,7 +78,9 @@ stage0             outcome/rejection, independent value/source/destination/
                    eligibility, reachability, and deterministic semantic root
                    when proven
 transaction        receiver-plus-arguments item plans, aggregate outcome,
-                   rejection, and non-authoritative commit observation
+                   arity, shared source/PAL snapshot revision, liveness,
+                   init/cleanup/liability, local-plan result, final validation,
+                   and non-authoritative commit observation
 ```
 
 Stage-0 obligation evidence has separate source and destination actions. A
@@ -99,17 +103,22 @@ Stage-0 provider without changing the legacy `proveSlice4CopyType()` policy.
 Every Stage-0 rejection carries `source=NoStateChange`. A place whose stable
 declaration coordinate cannot yet be recovered rejects `IncompleteFacts`
 rather than falling back to the legacy process-local `source_root_id`.
-The Sema audit path now snapshots receiver facts before legacy receiver
-checking, prepares every selected argument before legacy per-item checking,
+The Sema audit path now captures one immutable source/PAL revision before
+receiver checking, generic deduction, or argument checking, then prepares
+receiver and every selected argument from that shared revision,
 and submits the receiver and arguments to the pure whole-call planner as one
 transaction. Pairwise invalidation/read/referent/dependency conflicts reject
-the aggregate with `commit_allowed=false`. Legacy checking then runs unchanged;
-neither the transaction nor the older per-argument shadow records are commit
-authority.
+the aggregate with `commit_allowed=false`. Moved, uninitialized, and partially
+cleaned places carry their exact liveness and cleanup mask and cannot be
+admitted as live sources. Arity and unmatched slots are explicit. Legacy
+checking then runs unchanged; only after it finishes may a locally admitted
+plan report `commit_allowed=true`. Neither the transaction nor the older
+per-argument shadow records are commit authority.
 
-`argument_index` and `formal_index` are one-based and remain stable when
-`@Callable` lowering inserts a synthetic receiver. Shadow plans are discarded
-when an AST call is cloned and its resolved formal is reset.
+Argument indices are one-based. Method/callable receiver roles are separate;
+an indirect callable receiver has no declaration-side formal and therefore
+uses formal index zero and fails closed. Shadow plans are discarded when an
+AST call is cloned and its resolved formal is reset.
 
 ## Deliberate M1 limitations
 
@@ -139,10 +148,12 @@ when an AST call is cloned and its resolved formal is reset.
 - whole temporary consumption;
 - ordinary, static, method, callable protocol, indirect `fn`, indirect
   `dyn fn`, dynamic-trait method, generic, and extern routes;
-- legacy missing-`cede` facts without behavior changes;
+- current normal implicit-transfer receipts plus independent future
+  `MissingCedeForNamedSource` local-plan rejection;
 - shared-handle transfer classification;
-- audit/normal diagnostic parity for dynamic-trait calls and suppression of
-  closure capture-precompute records and AST call lowering;
+- exact audit/normal return-code and stderr parity, including dynamic-trait,
+  argument-alias, and all three former shadow-only `E04570` cases;
+- suppression of speculative/capture-precompute transactions;
 - async `.start`, nested non-boundary calls, and resolved-declaration thread
   handoff annotation, including aliases and a user same-named function;
 - init formal/actual spelling, unknown actuals, unary/cast/address/postfix
@@ -153,6 +164,11 @@ when an AST call is cloned and its resolved formal is reset.
 - four normal-mode diagnostic/success receipts;
 - non-`cede` formal rejection with no source-state commit;
 - receiver-versus-argument and argument-versus-argument atomic alias rejection;
+- one shared receiver/argument source-and-PAL revision, moved/uninitialized/
+  partial-cleanup rejection, explicit arity, and unmatched-slot evidence;
+- locally admitted calls rejected by final execution-boundary validation;
+- method, callable, and indirect callable receivers, including consuming
+  callable spelling and member/index receiver facts;
 - typed declaration provenance, source-hidden fail-closed transactions, and
   route-specific transaction outcome/source/drop/obligation assertions; and
 - hermetic external-build CTest execution through an injected source

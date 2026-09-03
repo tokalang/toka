@@ -34,8 +34,11 @@ enum class TransferPlanRejection : uint8_t {
   WholeCallItemRejected,
   WholeCallAliasConflict,
   WholeCallDestinationMismatch,
+  WholeCallArityIncomplete,
+  WholeCallValidationFailed,
   OwnershipContractMismatch,
   ProjectedHandleRequiresSubroot,
+  SourceNotLive,
 };
 
 enum class TransferPlanOrigin : uint8_t { UserSource, CompilerSynthetic };
@@ -205,6 +208,14 @@ enum class TransferObligationState : uint8_t {
   Outstanding,
   Discharged,
 };
+enum class TransferSourceLiveness : uint8_t {
+  None,
+  Live,
+  Moved,
+  Uninitialized,
+  PartiallyLive,
+  Indeterminate,
+};
 enum class TransferObligationAction : uint8_t {
   None,
   TransferToCallee,
@@ -263,6 +274,16 @@ struct ExplicitCedePreparedFacts {
   TransferDependencyKind Dependency = TransferDependencyKind::Indeterminate;
   TransferReachability Reachability = TransferReachability::Indeterminate;
   TransferObligationState ObligationBefore = TransferObligationState::None;
+  TransferSourceLiveness SourceLiveness = TransferSourceLiveness::Indeterminate;
+  uint64_t SnapshotRevision = 0;
+  uint64_t InitMask = 0;
+  uint64_t CleanupMask = 0;
+  std::string LiabilityIdentity;
+  bool SourceLivenessComplete = false;
+  bool InitMaskComplete = false;
+  bool CleanupMaskComplete = false;
+  bool LiabilityIdentityComplete = false;
+  bool ObligationFactsComplete = false;
   bool DependencyFactsComplete = false;
   bool ActiveDerivedBorrow = false;
   bool BorrowStateComplete = false;
@@ -299,6 +320,9 @@ struct ExplicitCedePlan {
 struct ExplicitCedeWholeCallFacts {
   std::optional<ExplicitCedePreparedFacts> Receiver;
   std::vector<ExplicitCedePreparedFacts> Arguments;
+  unsigned ExpectedArgumentCount = 0;
+  unsigned ActualArgumentCount = 0;
+  bool ArityComplete = true;
 };
 
 struct ExplicitCedeWholeCallPlan {
@@ -330,6 +354,7 @@ const char *toString(TransferDestination value);
 const char *toString(TransferDropDisposition value);
 const char *toString(TransferObligationAction value);
 const char *toString(TransferObligationState value);
+const char *toString(TransferSourceLiveness value);
 const char *toString(TransferSourceView value);
 const char *toString(TransferReachability value);
 const char *toString(TransferPlanOrigin value);

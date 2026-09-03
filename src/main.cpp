@@ -1664,7 +1664,7 @@ int main(int argc, char **argv) {
   // signature-driven call transfer becomes the ordinary language default.
   const bool legacyCedeAuditProfile =
       (dumpCedeObligations && !dumpCedeObligationsV2) ||
-      dumpCallTransferShadow || dumpD3DirectCallObservation ||
+      dumpD3DirectCallObservation ||
       dumpAuthorityFacts || enableAuthorityFactsShadow;
   sema.setSignatureDrivenCallCedeEnabled(!legacyCedeAuditProfile);
   sema.setWarnImplicitCallMove(warnImplicitCallMove);

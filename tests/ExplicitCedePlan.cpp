@@ -65,6 +65,16 @@ ExplicitCedePreparedFacts baseCall() {
   facts.Dependency = TransferDependencyKind::None;
   facts.DependencyFactsComplete = true;
   facts.Reachability = TransferReachability::ExactSubtree;
+  facts.SourceLiveness = TransferSourceLiveness::Live;
+  facts.SnapshotRevision = 1;
+  facts.InitMask = ~0ULL;
+  facts.CleanupMask = ~0ULL;
+  facts.LiabilityIdentity = rootPlace().root().canonicalKey();
+  facts.SourceLivenessComplete = true;
+  facts.InitMaskComplete = true;
+  facts.CleanupMaskComplete = true;
+  facts.LiabilityIdentityComplete = true;
+  facts.ObligationFactsComplete = true;
   facts.BorrowStateComplete = true;
   facts.SourceTransferAuthorized = true;
   facts.SourceTransferAuthorityComplete = true;
@@ -90,6 +100,15 @@ int main() {
   CHECK(moved.admitted());
   CHECK(moved.ValueProduction == TransferValueProduction::MoveOwned);
   CHECK(moved.Source == TransferSourceDisposition::InvalidateSubtree);
+
+  for (auto state :
+       {TransferSourceLiveness::Moved, TransferSourceLiveness::Uninitialized,
+        TransferSourceLiveness::PartiallyLive}) {
+    auto unavailable = named;
+    unavailable.SourceLiveness = state;
+    CHECK(prepareExplicitCedePlan(unavailable).Rejection ==
+          TransferPlanRejection::SourceNotLive);
+  }
   CHECK(moved.Drop == TransferDropDisposition::CalleeAssumesLiability);
   CHECK(moved.TransferOrigin == named.SourcePlace);
   CHECK(moved.ObligationAction == TransferObligationAction::None);
@@ -173,6 +192,7 @@ int main() {
   temporary.Origin = TransferPlanOrigin::CompilerSynthetic;
   temporary.SourceCategory = TransferSourceCategory::NoSourcePlace;
   temporary.SourcePlace.reset();
+  temporary.SourceLiveness = TransferSourceLiveness::None;
   temporary.Reachability = TransferReachability::None;
   temporary.TemporaryEligibility = TransferTemporaryEligibility::Eligible;
   temporary.SourceTransferAuthorized = false;
@@ -300,6 +320,7 @@ int main() {
   reference.CopyProof = TransferCopyProof::ProvenCopy;
   reference.SourceCategory = TransferSourceCategory::NoSourcePlace;
   reference.SourcePlace.reset();
+  reference.SourceLiveness = TransferSourceLiveness::None;
   reference.Reachability = TransferReachability::None;
   reference.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
   reference.ReferentPlace = rootPlace();
@@ -673,6 +694,7 @@ int main() {
   dependentTemporary.SyntaxPurpose = CedeSyntaxPurpose::None;
   dependentTemporary.SourceCategory = TransferSourceCategory::NoSourcePlace;
   dependentTemporary.SourcePlace.reset();
+  dependentTemporary.SourceLiveness = TransferSourceLiveness::None;
   dependentTemporary.Reachability = TransferReachability::None;
   dependentTemporary.TemporaryEligibility =
       TransferTemporaryEligibility::Eligible;
@@ -695,11 +717,19 @@ int main() {
   ExplicitCedeWholeCallFacts wholeFacts;
   wholeFacts.Receiver = receiver;
   wholeFacts.Arguments = {argument};
+  wholeFacts.ExpectedArgumentCount = 1;
+  wholeFacts.ActualArgumentCount = 1;
   auto whole = prepareExplicitCedeWholeCallPlan(wholeFacts);
   CHECK(whole.admitted());
   CHECK(whole.CommitAllowed);
   CHECK(whole.Receiver && whole.Receiver->admitted());
   CHECK(whole.Arguments.size() == 1 && whole.Arguments[0].admitted());
+
+  auto arityIncomplete = wholeFacts;
+  arityIncomplete.ExpectedArgumentCount = 2;
+  arityIncomplete.ArityComplete = false;
+  CHECK(prepareExplicitCedeWholeCallPlan(arityIncomplete).Rejection ==
+        TransferPlanRejection::WholeCallArityIncomplete);
 
   wholeFacts.Arguments[0].SourcePlace = receiver.SourcePlace;
   auto aliasConflict = prepareExplicitCedeWholeCallPlan(wholeFacts);
@@ -725,6 +755,8 @@ int main() {
   auto receiverInArgumentSlot = receiver;
   ExplicitCedeWholeCallFacts wrongArgumentSlot;
   wrongArgumentSlot.Arguments = {receiverInArgumentSlot};
+  wrongArgumentSlot.ExpectedArgumentCount = 1;
+  wrongArgumentSlot.ActualArgumentCount = 1;
   CHECK(prepareExplicitCedeWholeCallPlan(wrongArgumentSlot).Rejection ==
         TransferPlanRejection::WholeCallDestinationMismatch);
 
@@ -736,6 +768,8 @@ int main() {
   readingRoot.FormalTransferClass = TransferFormalTransferClass::BorrowCapture;
   ExplicitCedeWholeCallFacts invalidateAndRead;
   invalidateAndRead.Arguments = {invalidatingRoot, readingRoot};
+  invalidateAndRead.ExpectedArgumentCount = 2;
+  invalidateAndRead.ActualArgumentCount = 2;
   CHECK(prepareExplicitCedeWholeCallPlan(invalidateAndRead).Rejection ==
         TransferPlanRejection::WholeCallAliasConflict);
 
@@ -746,6 +780,8 @@ int main() {
   borrowSameRoot.DependencyRoots = {rootPlace().root()};
   ExplicitCedeWholeCallFacts invalidateAndBorrow;
   invalidateAndBorrow.Arguments = {invalidatingRoot, borrowSameRoot};
+  invalidateAndBorrow.ExpectedArgumentCount = 2;
+  invalidateAndBorrow.ActualArgumentCount = 2;
   CHECK(prepareExplicitCedeWholeCallPlan(invalidateAndBorrow).Rejection ==
         TransferPlanRejection::WholeCallAliasConflict);
 
@@ -755,12 +791,16 @@ int main() {
   right.SourcePlace = fieldPlace("right");
   ExplicitCedeWholeCallFacts siblingFields;
   siblingFields.Arguments = {left, right};
+  siblingFields.ExpectedArgumentCount = 2;
+  siblingFields.ActualArgumentCount = 2;
   auto siblingPlan = prepareExplicitCedeWholeCallPlan(siblingFields);
   CHECK(siblingPlan.admitted());
   CHECK(siblingPlan.CommitAllowed);
 
   ExplicitCedeWholeCallFacts rootAndField;
   rootAndField.Arguments = {named, left};
+  rootAndField.ExpectedArgumentCount = 2;
+  rootAndField.ActualArgumentCount = 2;
   CHECK(prepareExplicitCedeWholeCallPlan(rootAndField).Rejection ==
         TransferPlanRejection::WholeCallAliasConflict);
 
@@ -769,6 +809,8 @@ int main() {
   ExplicitCedeWholeCallFacts receiverSibling;
   receiverSibling.Receiver = left;
   receiverSibling.Arguments = {right};
+  receiverSibling.ExpectedArgumentCount = 1;
+  receiverSibling.ActualArgumentCount = 1;
   auto receiverSiblingPlan = prepareExplicitCedeWholeCallPlan(receiverSibling);
   CHECK(receiverSiblingPlan.admitted());
   CHECK(receiverSiblingPlan.CommitAllowed);
@@ -783,6 +825,8 @@ int main() {
         TransferPlanRejection::ProjectedHandleRequiresSubroot);
   ExplicitCedeWholeCallFacts projectedRootVsSibling;
   projectedRootVsSibling.Arguments = {projectedRootInvalidator, right};
+  projectedRootVsSibling.ExpectedArgumentCount = 2;
+  projectedRootVsSibling.ActualArgumentCount = 2;
   CHECK(prepareExplicitCedeWholeCallPlan(projectedRootVsSibling).Rejection ==
         TransferPlanRejection::WholeCallItemRejected);
 
@@ -790,6 +834,8 @@ int main() {
   wholeOwnerInvalidator.ActiveDerivedBorrow = false;
   ExplicitCedeWholeCallFacts wholeOwnerVsField;
   wholeOwnerVsField.Arguments = {wholeOwnerInvalidator, right};
+  wholeOwnerVsField.ExpectedArgumentCount = 2;
+  wholeOwnerVsField.ActualArgumentCount = 2;
   CHECK(prepareExplicitCedeWholeCallPlan(wholeOwnerVsField).Rejection ==
         TransferPlanRejection::WholeCallAliasConflict);
 
@@ -801,6 +847,8 @@ int main() {
   leftArgument.EligibilityContext = TransferEligibilityContext::Argument;
   ExplicitCedeWholeCallFacts subtreeVsSiblingBorrow;
   subtreeVsSiblingBorrow.Arguments = {leftArgument, borrowRight};
+  subtreeVsSiblingBorrow.ExpectedArgumentCount = 2;
+  subtreeVsSiblingBorrow.ActualArgumentCount = 2;
   auto subtreeBorrowPlan =
       prepareExplicitCedeWholeCallPlan(subtreeVsSiblingBorrow);
   CHECK(subtreeBorrowPlan.admitted());

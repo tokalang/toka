@@ -196,15 +196,23 @@ bool CallTransferShadowRecord::operator==(
 
 bool ExplicitCedeStage0TransactionItemRecord::operator<(
     const ExplicitCedeStage0TransactionItemRecord &rhs) const {
-  return std::tie(Role, Index, ActualType, FormalType, FormalContract, Outcome,
-                  Rejection, ExactPath, SourceView, ValueProduction, Source,
-                  Destination, Drop,
+  return std::tie(Role, Index, FormalIndex, ActualType, FormalType,
+                  FormalContract, Outcome, Rejection, ExactPath, ReferentPath,
+                  DependencyRoots, SourceView, SurfaceSpelling, CopyProof, Eligibility,
+                  ObligationBefore, Reachability, SourceLiveness, HasInitMask,
+                  InitMask, HasCleanupMask, CleanupMask, LiabilityIdentity,
+                  ValueProduction, Source, Destination, Drop,
                   SourceObligationAction, SourceObligationAfter,
                   DestinationObligationAction, DestinationObligationAfter) <
-         std::tie(rhs.Role, rhs.Index, rhs.ActualType, rhs.FormalType,
-                  rhs.FormalContract, rhs.Outcome, rhs.Rejection,
-                  rhs.ExactPath, rhs.SourceView, rhs.ValueProduction,
-                  rhs.Source, rhs.Destination, rhs.Drop,
+         std::tie(rhs.Role, rhs.Index, rhs.FormalIndex, rhs.ActualType,
+                  rhs.FormalType, rhs.FormalContract, rhs.Outcome,
+                  rhs.Rejection, rhs.ExactPath, rhs.ReferentPath,
+                  rhs.DependencyRoots, rhs.SourceView, rhs.SurfaceSpelling,
+                  rhs.CopyProof,
+                  rhs.Eligibility, rhs.ObligationBefore, rhs.Reachability,
+                  rhs.SourceLiveness, rhs.HasInitMask, rhs.InitMask,
+                  rhs.HasCleanupMask, rhs.CleanupMask, rhs.LiabilityIdentity,
+                  rhs.ValueProduction, rhs.Source, rhs.Destination, rhs.Drop,
                   rhs.SourceObligationAction, rhs.SourceObligationAfter,
                   rhs.DestinationObligationAction,
                   rhs.DestinationObligationAfter);
@@ -217,12 +225,19 @@ bool ExplicitCedeStage0TransactionItemRecord::operator==(
 
 bool ExplicitCedeStage0TransactionRecord::operator<(
     const ExplicitCedeStage0TransactionRecord &rhs) const {
-  return std::tie(Callee, Route, Outcome, Rejection, CommitAllowed,
-                  PreparedBeforeLegacyMutation, HasReceiver, ArgumentCount,
+  return std::tie(Callee, Route, Outcome, Rejection, LocalPlanAdmitted,
+                  CommitAllowed, ArityComplete, ValidationComplete,
+                  PreparedBeforeLegacyMutation, HasReceiver, SnapshotRevision,
+                  PALRevision,
+                  ExpectedArgumentCount, ActualArgumentCount, ArgumentCount,
                   Items, Location) <
          std::tie(rhs.Callee, rhs.Route, rhs.Outcome, rhs.Rejection,
-                  rhs.CommitAllowed, rhs.PreparedBeforeLegacyMutation,
-                  rhs.HasReceiver, rhs.ArgumentCount, rhs.Items,
+                  rhs.LocalPlanAdmitted, rhs.CommitAllowed,
+                  rhs.ArityComplete, rhs.ValidationComplete,
+                  rhs.PreparedBeforeLegacyMutation, rhs.HasReceiver,
+                  rhs.SnapshotRevision, rhs.PALRevision,
+                  rhs.ExpectedArgumentCount,
+                  rhs.ActualArgumentCount, rhs.ArgumentCount, rhs.Items,
                   rhs.Location);
 }
 
@@ -669,12 +684,24 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << "\",\"route\":\"" << escapeJSON(transaction.Route)
         << "\",\"outcome\":\"" << escapeJSON(transaction.Outcome)
         << "\",\"rejection\":\"" << escapeJSON(transaction.Rejection)
-        << "\",\"commit_allowed\":"
+        << "\",\"local_plan_admitted\":"
+        << (transaction.LocalPlanAdmitted ? "true" : "false")
+        << ",\"commit_allowed\":"
         << (transaction.CommitAllowed ? "true" : "false")
+        << ",\"arity_complete\":"
+        << (transaction.ArityComplete ? "true" : "false")
+        << ",\"validation_complete\":"
+        << (transaction.ValidationComplete ? "true" : "false")
         << ",\"prepared_before_legacy_mutation\":"
         << (transaction.PreparedBeforeLegacyMutation ? "true" : "false")
         << ",\"has_receiver\":"
         << (transaction.HasReceiver ? "true" : "false")
+        << ",\"snapshot_revision\":" << transaction.SnapshotRevision
+        << ",\"pal_revision\":" << transaction.PALRevision
+        << ",\"expected_argument_count\":"
+        << transaction.ExpectedArgumentCount
+        << ",\"actual_argument_count\":"
+        << transaction.ActualArgumentCount
         << ",\"argument_count\":" << transaction.ArgumentCount
         << ",\"items\":[";
     for (size_t itemIndex = 0; itemIndex < transaction.Items.size();
@@ -683,15 +710,43 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         out << ',';
       const auto &item = transaction.Items[itemIndex];
       out << "{\"role\":\"" << escapeJSON(item.Role)
-          << "\",\"index\":" << item.Index << ",\"actual_type\":\""
+          << "\",\"index\":" << item.Index << ",\"formal_index\":"
+          << item.FormalIndex << ",\"actual_type\":\""
           << escapeJSON(item.ActualType) << "\",\"formal_type\":\""
           << escapeJSON(item.FormalType)
           << "\",\"formal_contract\":\""
           << escapeJSON(item.FormalContract) << "\",\"outcome\":\""
           << escapeJSON(item.Outcome) << "\",\"rejection\":\""
           << escapeJSON(item.Rejection) << "\",\"exact_path\":\""
-          << escapeJSON(item.ExactPath) << "\",\"source_view\":\""
-          << escapeJSON(item.SourceView)
+          << escapeJSON(item.ExactPath) << "\",\"referent_path\":\""
+          << escapeJSON(item.ReferentPath) << "\",\"dependency_roots\":[";
+      for (size_t dependency = 0; dependency < item.DependencyRoots.size();
+           ++dependency) {
+        if (dependency != 0)
+          out << ',';
+        out << "\"" << escapeJSON(item.DependencyRoots[dependency]) << "\"";
+      }
+      out << "],\"source_view\":\"" << escapeJSON(item.SourceView)
+          << "\",\"surface_spelling\":\""
+          << escapeJSON(item.SurfaceSpelling)
+          << "\",\"copy_proof\":\"" << escapeJSON(item.CopyProof)
+          << "\",\"eligibility\":\"" << escapeJSON(item.Eligibility)
+          << "\",\"obligation_before\":\""
+          << escapeJSON(item.ObligationBefore)
+          << "\",\"reachability\":\"" << escapeJSON(item.Reachability)
+          << "\",\"source_liveness\":\""
+          << escapeJSON(item.SourceLiveness) << "\",\"init_mask\":";
+      if (item.HasInitMask)
+        out << item.InitMask;
+      else
+        out << "null";
+      out << ",\"cleanup_mask\":";
+      if (item.HasCleanupMask)
+        out << item.CleanupMask;
+      else
+        out << "null";
+      out << ",\"liability_identity\":\""
+          << escapeJSON(item.LiabilityIdentity)
           << "\",\"value_production\":\""
           << escapeJSON(item.ValueProduction) << "\",\"source\":\""
           << escapeJSON(item.Source) << "\",\"destination\":\""
