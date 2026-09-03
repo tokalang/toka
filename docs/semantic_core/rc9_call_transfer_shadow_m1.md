@@ -73,6 +73,12 @@ stage0             outcome/rejection, independent value/source/destination/
                    when proven
 ```
 
+Stage-0 obligation evidence has separate source and destination actions. A
+partial source can therefore preserve an outstanding caller-root obligation
+while independently creating an outstanding callee obligation. Formal
+ownership and transfer class are also separate from payload Copy proof, so
+borrowed/raw/callable identity classification remains identity-first.
+
 Every Stage-0 rejection carries `source=NoStateChange`. A place whose stable
 declaration coordinate cannot yet be recovered rejects `IncompleteFacts`
 rather than falling back to the legacy process-local `source_root_id`.

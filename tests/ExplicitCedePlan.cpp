@@ -3,13 +3,16 @@
 #include "toka/ExplicitCedePlan.h"
 
 #include <array>
+#include <iostream>
 
 using namespace toka;
 
 #define CHECK(condition)                                                       \
   do {                                                                         \
-    if (!(condition))                                                          \
+    if (!(condition)) {                                                        \
+      std::cerr << "CHECK failed at line " << __LINE__ << '\n';                \
       return __LINE__;                                                         \
+    }                                                                          \
   } while (false)
 
 PlaceId rootPlace() {
@@ -46,6 +49,8 @@ ExplicitCedePreparedFacts baseCall() {
   facts.CopyProof = TransferCopyProof::ProvenNonCopy;
   facts.FormalContract = TransferFormalContract::Cede;
   facts.FormalMorphology = TransferFormalMorphology::DirectValue;
+  facts.FormalOwnership = TransferFormalOwnershipKind::Owning;
+  facts.FormalTransferClass = TransferFormalTransferClass::ValueTransfer;
   facts.FormalCapabilities.Complete = true;
   facts.ActualCapabilities.Complete = true;
   facts.Destination = TransferDestination::CalleeParameter;
@@ -83,8 +88,12 @@ int main() {
   CHECK(moved.Source == TransferSourceDisposition::InvalidateSubtree);
   CHECK(moved.Drop == TransferDropDisposition::CalleeAssumesLiability);
   CHECK(moved.TransferOrigin == named.SourcePlace);
-  CHECK(moved.ObligationAction == TransferObligationAction::CreateForCallee);
-  CHECK(moved.ObligationAfter == TransferObligationState::Outstanding);
+  CHECK(moved.ObligationAction == TransferObligationAction::None);
+  CHECK(moved.ObligationAfter == TransferObligationState::None);
+  CHECK(moved.DestinationObligationAction ==
+        TransferDestinationObligationAction::CreateOutstanding);
+  CHECK(moved.DestinationObligationAfter ==
+        TransferObligationState::Outstanding);
 
   auto copy = named;
   copy.Ownership = TransferOwnershipKind::PlainValue;
@@ -98,6 +107,7 @@ int main() {
   auto shared = named;
   shared.SourceView = TransferSourceView::SharedHandle;
   shared.FormalMorphology = TransferFormalMorphology::SharedHandle;
+  shared.FormalTransferClass = TransferFormalTransferClass::OwnershipTransfer;
   shared.Ownership = TransferOwnershipKind::SharedOwner;
   shared.Reachability = TransferReachability::BindingAndDependentViews;
   auto sharedPlan = prepareExplicitCedePlan(shared);
@@ -108,6 +118,8 @@ int main() {
   auto raw = copy;
   raw.SourceView = TransferSourceView::RawHandle;
   raw.FormalMorphology = TransferFormalMorphology::RawHandle;
+  raw.FormalOwnership = TransferFormalOwnershipKind::RawIdentity;
+  raw.FormalTransferClass = TransferFormalTransferClass::IdentityTransfer;
   raw.Ownership = TransferOwnershipKind::RawIdentity;
   raw.Dependency = TransferDependencyKind::RawUnsafe;
   raw.Reachability = TransferReachability::BindingAndDependentViews;
@@ -118,6 +130,7 @@ int main() {
 
   auto ordinary = named;
   ordinary.FormalContract = TransferFormalContract::Ordinary;
+  ordinary.FormalTransferClass = TransferFormalTransferClass::BorrowCapture;
   CHECK(prepareExplicitCedePlan(ordinary).Rejection ==
         TransferPlanRejection::ExplicitCedeToOrdinaryFormal);
 
@@ -152,6 +165,8 @@ int main() {
   CHECK(consumed.admitted());
   CHECK(consumed.ValueProduction == TransferValueProduction::ConsumeTemporary);
   CHECK(consumed.Source == TransferSourceDisposition::NoSourcePlace);
+  CHECK(consumed.DestinationObligationAction ==
+        TransferDestinationObligationAction::CreateOutstanding);
 
   auto ineligibleTemporary = temporary;
   ineligibleTemporary.TemporaryEligibility =
@@ -223,6 +238,8 @@ int main() {
       rejected.FormalTypeKey.clear();
       rejected.FormalContract = TransferFormalContract::None;
       rejected.FormalMorphology = TransferFormalMorphology::None;
+      rejected.FormalOwnership = TransferFormalOwnershipKind::None;
+      rejected.FormalTransferClass = TransferFormalTransferClass::None;
       rejected.FormalCapabilities = {};
     }
     CHECK(prepareExplicitCedePlan(rejected).Rejection ==
@@ -232,6 +249,7 @@ int main() {
   auto owner = named;
   owner.SourceView = TransferSourceView::UniqueHandle;
   owner.FormalMorphology = TransferFormalMorphology::UniqueHandle;
+  owner.FormalTransferClass = TransferFormalTransferClass::OwnershipTransfer;
   owner.Ownership = TransferOwnershipKind::UniqueOwner;
   owner.Reachability = TransferReachability::RootAndDependentViews;
   auto ownerMove = prepareExplicitCedePlan(owner);
@@ -250,6 +268,8 @@ int main() {
   auto reference = named;
   reference.SourceView = TransferSourceView::ReferenceConstruction;
   reference.FormalMorphology = TransferFormalMorphology::Reference;
+  reference.FormalOwnership = TransferFormalOwnershipKind::Borrowed;
+  reference.FormalTransferClass = TransferFormalTransferClass::IdentityTransfer;
   reference.Ownership = TransferOwnershipKind::BorrowedView;
   reference.CopyProof = TransferCopyProof::ProvenCopy;
   reference.SourceCategory = TransferSourceCategory::NoSourcePlace;
@@ -274,10 +294,38 @@ int main() {
   CHECK(borrowConstruction.ValueProduction ==
         TransferValueProduction::CopyIdentity);
 
+  auto borrowedDirect = ordinary;
+  borrowedDirect.SurfaceSpelling = TransferSurfaceSpelling::Bare;
+  borrowedDirect.SyntaxPurpose = CedeSyntaxPurpose::None;
+  borrowedDirect.SourceView = TransferSourceView::DirectValue;
+  borrowedDirect.Ownership = TransferOwnershipKind::BorrowedView;
+  borrowedDirect.CopyProof = TransferCopyProof::ProvenNonCopy;
+  borrowedDirect.FormalOwnership = TransferFormalOwnershipKind::Borrowed;
+  borrowedDirect.FormalTransferClass =
+      TransferFormalTransferClass::IdentityTransfer;
+  borrowedDirect.Dependency = TransferDependencyKind::Borrowed;
+  borrowedDirect.ReferentPlace = rootPlace();
+  borrowedDirect.DependencyRoots = {rootPlace().root()};
+  auto borrowedDirectPlan = prepareExplicitCedePlan(borrowedDirect);
+  CHECK(borrowedDirectPlan.admitted());
+  CHECK(borrowedDirectPlan.ValueProduction ==
+        TransferValueProduction::CopyIdentity);
+
+  auto borrowedToOwning = named;
+  borrowedToOwning.Ownership = TransferOwnershipKind::BorrowedView;
+  borrowedToOwning.CopyProof = TransferCopyProof::ProvenCopy;
+  borrowedToOwning.Dependency = TransferDependencyKind::Borrowed;
+  borrowedToOwning.ReferentPlace = rootPlace();
+  borrowedToOwning.DependencyRoots = {rootPlace().root()};
+  CHECK(prepareExplicitCedePlan(borrowedToOwning).Rejection ==
+        TransferPlanRejection::OwnershipContractMismatch);
+
   auto returned = named;
   returned.FormalTypeKey.clear();
   returned.FormalContract = TransferFormalContract::None;
   returned.FormalMorphology = TransferFormalMorphology::None;
+  returned.FormalOwnership = TransferFormalOwnershipKind::None;
+  returned.FormalTransferClass = TransferFormalTransferClass::None;
   returned.FormalCapabilities = {};
   returned.Destination = TransferDestination::Return;
   returned.EligibilityContext = TransferEligibilityContext::Return;
@@ -296,6 +344,8 @@ int main() {
   unrelatedTemporary.FormalTypeKey.clear();
   unrelatedTemporary.FormalContract = TransferFormalContract::None;
   unrelatedTemporary.FormalMorphology = TransferFormalMorphology::None;
+  unrelatedTemporary.FormalOwnership = TransferFormalOwnershipKind::None;
+  unrelatedTemporary.FormalTransferClass = TransferFormalTransferClass::None;
   unrelatedTemporary.FormalCapabilities = {};
   unrelatedTemporary.Destination = TransferDestination::Return;
   unrelatedTemporary.EligibilityContext = TransferEligibilityContext::Return;
@@ -321,12 +371,42 @@ int main() {
   CHECK(partialReturnPlan.ObligationAfter ==
         TransferObligationState::Outstanding);
 
+  auto partialCall = named;
+  partialCall.SourcePlace = fieldPlace("left");
+  partialCall.ObligationBefore = TransferObligationState::Outstanding;
+  partialCall.ObligationRoot = rootPlace().root();
+  auto partialCallPlan = prepareExplicitCedePlan(partialCall);
+  CHECK(partialCallPlan.admitted());
+  CHECK(partialCallPlan.ObligationAction == TransferObligationAction::Preserve);
+  CHECK(partialCallPlan.ObligationAfter ==
+        TransferObligationState::Outstanding);
+  CHECK(partialCallPlan.DestinationObligationAction ==
+        TransferDestinationObligationAction::CreateOutstanding);
+  CHECK(partialCallPlan.DestinationObligationAfter ==
+        TransferObligationState::Outstanding);
+
+  auto wholeObligatedCall = named;
+  wholeObligatedCall.ObligationBefore = TransferObligationState::Outstanding;
+  wholeObligatedCall.ObligationRoot = rootPlace().root();
+  auto wholeObligatedPlan = prepareExplicitCedePlan(wholeObligatedCall);
+  CHECK(wholeObligatedPlan.admitted());
+  CHECK(wholeObligatedPlan.ObligationAction ==
+        TransferObligationAction::TransferToCallee);
+  CHECK(wholeObligatedPlan.ObligationAfter ==
+        TransferObligationState::Discharged);
+  CHECK(wholeObligatedPlan.DestinationObligationAction ==
+        TransferDestinationObligationAction::ReceiveTransferred);
+  CHECK(wholeObligatedPlan.DestinationObligationAfter ==
+        TransferObligationState::Outstanding);
+
   auto copyReturn = copy;
   copyReturn.SurfaceSpelling = TransferSurfaceSpelling::Bare;
   copyReturn.SyntaxPurpose = CedeSyntaxPurpose::None;
   copyReturn.FormalTypeKey.clear();
   copyReturn.FormalContract = TransferFormalContract::None;
   copyReturn.FormalMorphology = TransferFormalMorphology::None;
+  copyReturn.FormalOwnership = TransferFormalOwnershipKind::None;
+  copyReturn.FormalTransferClass = TransferFormalTransferClass::None;
   copyReturn.FormalCapabilities = {};
   copyReturn.Destination = TransferDestination::Return;
   copyReturn.EligibilityContext = TransferEligibilityContext::Return;
@@ -347,6 +427,8 @@ int main() {
   obligatedOrdinaryCopy.SurfaceSpelling = TransferSurfaceSpelling::Bare;
   obligatedOrdinaryCopy.SyntaxPurpose = CedeSyntaxPurpose::None;
   obligatedOrdinaryCopy.FormalContract = TransferFormalContract::Ordinary;
+  obligatedOrdinaryCopy.FormalTransferClass =
+      TransferFormalTransferClass::BorrowCapture;
   obligatedOrdinaryCopy.ObligationBefore = TransferObligationState::Outstanding;
   obligatedOrdinaryCopy.ObligationRoot =
       obligatedOrdinaryCopy.SourcePlace->root();
@@ -365,6 +447,9 @@ int main() {
   rawTemporary.SourceView = TransferSourceView::RawHandle;
   rawTemporary.Ownership = TransferOwnershipKind::RawIdentity;
   rawTemporary.FormalMorphology = TransferFormalMorphology::RawHandle;
+  rawTemporary.FormalOwnership = TransferFormalOwnershipKind::RawIdentity;
+  rawTemporary.FormalTransferClass =
+      TransferFormalTransferClass::IdentityTransfer;
   rawTemporary.Dependency = TransferDependencyKind::RawUnsafe;
   auto rawTemporaryPlan = prepareExplicitCedePlan(rawTemporary);
   CHECK(rawTemporaryPlan.admitted());
@@ -377,6 +462,8 @@ int main() {
   intrinsic.FormalTypeKey.clear();
   intrinsic.FormalContract = TransferFormalContract::None;
   intrinsic.FormalMorphology = TransferFormalMorphology::None;
+  intrinsic.FormalOwnership = TransferFormalOwnershipKind::None;
+  intrinsic.FormalTransferClass = TransferFormalTransferClass::None;
   intrinsic.FormalCapabilities = {};
   intrinsic.Destination = TransferDestination::Return;
   intrinsic.EligibilityContext = TransferEligibilityContext::Return;
@@ -538,6 +625,30 @@ int main() {
   auto receiverSiblingPlan = prepareExplicitCedeWholeCallPlan(receiverSibling);
   CHECK(receiverSiblingPlan.admitted());
   CHECK(receiverSiblingPlan.CommitAllowed);
+
+  auto projectedRootInvalidator = owner;
+  projectedRootInvalidator.SourcePlace = fieldPlace("left");
+  projectedRootInvalidator.ActiveDerivedBorrow = false;
+  projectedRootInvalidator.Destination = TransferDestination::CalleeParameter;
+  projectedRootInvalidator.EligibilityContext =
+      TransferEligibilityContext::Argument;
+  ExplicitCedeWholeCallFacts projectedRootVsSibling;
+  projectedRootVsSibling.Arguments = {projectedRootInvalidator, right};
+  CHECK(prepareExplicitCedeWholeCallPlan(projectedRootVsSibling).Rejection ==
+        TransferPlanRejection::WholeCallAliasConflict);
+
+  auto borrowRight = ordinaryReference;
+  borrowRight.ReferentPlace = fieldPlace("right");
+  borrowRight.DependencyRoots = {rootPlace().root()};
+  auto leftArgument = left;
+  leftArgument.Destination = TransferDestination::CalleeParameter;
+  leftArgument.EligibilityContext = TransferEligibilityContext::Argument;
+  ExplicitCedeWholeCallFacts subtreeVsSiblingBorrow;
+  subtreeVsSiblingBorrow.Arguments = {leftArgument, borrowRight};
+  auto subtreeBorrowPlan =
+      prepareExplicitCedeWholeCallPlan(subtreeVsSiblingBorrow);
+  CHECK(subtreeBorrowPlan.admitted());
+  CHECK(subtreeBorrowPlan.CommitAllowed);
 
   return 0;
 }

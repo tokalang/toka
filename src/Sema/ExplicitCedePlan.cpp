@@ -94,10 +94,7 @@ TransferObligationAction
 obligationAction(const ExplicitCedePreparedFacts &facts,
                  TransferSourceDisposition source) {
   if (facts.ObligationBefore != TransferObligationState::Outstanding)
-    return isCallBoundary(facts.Destination) &&
-                   facts.FormalContract == TransferFormalContract::Cede
-               ? TransferObligationAction::CreateForCallee
-               : TransferObligationAction::None;
+    return TransferObligationAction::None;
   const bool invalidatesSource =
       source == TransferSourceDisposition::InvalidateRoot ||
       source == TransferSourceDisposition::InvalidateSubtree ||
@@ -118,6 +115,17 @@ obligationAction(const ExplicitCedePreparedFacts &facts,
   if (facts.Destination == TransferDestination::StatementEndDiscard)
     return TransferObligationAction::DischargeToStatementDiscard;
   return TransferObligationAction::DischargeToStorage;
+}
+
+TransferDestinationObligationAction
+destinationObligationAction(const ExplicitCedePreparedFacts &facts,
+                            TransferObligationAction sourceAction) {
+  if (!isCallBoundary(facts.Destination) ||
+      facts.FormalContract != TransferFormalContract::Cede)
+    return TransferDestinationObligationAction::None;
+  return sourceAction == TransferObligationAction::TransferToCallee
+             ? TransferDestinationObligationAction::ReceiveTransferred
+             : TransferDestinationObligationAction::CreateOutstanding;
 }
 
 bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
@@ -187,8 +195,7 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
             facts.CopyProof == TransferCopyProof::ProvenCopy) ||
            (facts.Ownership == TransferOwnershipKind::OwnedValue &&
             facts.CopyProof == TransferCopyProof::ProvenNonCopy) ||
-           (facts.Ownership == TransferOwnershipKind::BorrowedView &&
-            facts.CopyProof == TransferCopyProof::ProvenCopy);
+           facts.Ownership == TransferOwnershipKind::BorrowedView;
   case TransferSourceView::DereferencedOwningPayload:
     return facts.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
            facts.Reachability == TransferReachability::ExactSubtree &&
@@ -209,18 +216,15 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
             facts.Reachability == TransferReachability::None);
   case TransferSourceView::RawHandle:
     return facts.Ownership == TransferOwnershipKind::RawIdentity &&
-           facts.CopyProof == TransferCopyProof::ProvenCopy &&
            (facts.Reachability ==
                 TransferReachability::BindingAndDependentViews ||
             facts.Reachability == TransferReachability::None);
   case TransferSourceView::ReferenceConstruction:
     return facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
            facts.Ownership == TransferOwnershipKind::BorrowedView &&
-           facts.CopyProof == TransferCopyProof::ProvenCopy &&
            facts.Reachability == TransferReachability::None;
   case TransferSourceView::CallableIdentity:
-    return ((facts.Ownership == TransferOwnershipKind::CallableIdentity &&
-             facts.CopyProof == TransferCopyProof::ProvenCopy) ||
+    return ((facts.Ownership == TransferOwnershipKind::CallableIdentity) ||
             (facts.Ownership == TransferOwnershipKind::OwnedCallable &&
              facts.CopyProof == TransferCopyProof::ProvenNonCopy)) &&
            (facts.Reachability ==
@@ -258,6 +262,27 @@ bool placesMayOverlap(const PlaceId &left, const PlaceId &right) {
   return true;
 }
 
+bool invalidationRegionConflictsWithPlace(const ExplicitCedePlan &invalidator,
+                                          const PlaceId &place) {
+  if (!invalidator.TransferOrigin)
+    return true;
+  const PlaceId &origin = *invalidator.TransferOrigin;
+  switch (invalidator.Source) {
+  case TransferSourceDisposition::InvalidateRoot:
+    return origin.root() == place.root();
+  case TransferSourceDisposition::InvalidateSubtree:
+    return placesMayOverlap(origin, place);
+  case TransferSourceDisposition::InvalidateBinding:
+    return origin.projections().empty() ? origin.root() == place.root()
+                                        : placesMayOverlap(origin, place);
+  case TransferSourceDisposition::NoStateChange:
+  case TransferSourceDisposition::KeepLive:
+  case TransferSourceDisposition::NoSourcePlace:
+    return false;
+  }
+  return true;
+}
+
 ExplicitCedePlan admit(const ExplicitCedePreparedFacts &facts,
                        TransferValueProduction production,
                        TransferSourceDisposition source,
@@ -271,11 +296,10 @@ ExplicitCedePlan admit(const ExplicitCedePreparedFacts &facts,
   plan.Destination = facts.Destination;
   plan.Drop = drop;
   plan.ObligationAction = obligationAction(facts, source);
+  plan.DestinationObligationAction =
+      destinationObligationAction(facts, plan.ObligationAction);
   switch (plan.ObligationAction) {
-  case TransferObligationAction::CreateForCallee:
   case TransferObligationAction::TransferToCallee:
-    plan.ObligationAfter = TransferObligationState::Outstanding;
-    break;
   case TransferObligationAction::DischargeToReturn:
   case TransferObligationAction::DischargeToStorage:
   case TransferObligationAction::DischargeToStatementDiscard:
@@ -286,6 +310,11 @@ ExplicitCedePlan admit(const ExplicitCedePreparedFacts &facts,
     plan.ObligationAfter = facts.ObligationBefore;
     break;
   }
+  plan.DestinationObligationAfter =
+      plan.DestinationObligationAction ==
+              TransferDestinationObligationAction::None
+          ? TransferObligationState::None
+          : TransferObligationState::Outstanding;
   plan.TransferOrigin = facts.SourcePlace;
   plan.TransferOriginView = facts.SourceView;
   plan.Reachability = facts.Reachability;
@@ -314,6 +343,14 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
                     facts);
     if (!morphologyMatches(facts.SourceView, facts.FormalMorphology))
       return reject(TransferPlanRejection::SourceViewMismatch, facts);
+    if ((facts.FormalTransferClass ==
+             TransferFormalTransferClass::OwnershipTransfer ||
+         facts.FormalTransferClass ==
+             TransferFormalTransferClass::ValueTransfer) &&
+        (facts.Ownership == TransferOwnershipKind::BorrowedView ||
+         facts.Ownership == TransferOwnershipKind::RawIdentity ||
+         facts.Ownership == TransferOwnershipKind::CallableIdentity))
+      return reject(TransferPlanRejection::OwnershipContractMismatch, facts);
     if (facts.SurfaceSpelling == TransferSurfaceSpelling::ExplicitCede &&
         facts.FormalContract == TransferFormalContract::Ordinary)
       return reject(TransferPlanRejection::ExplicitCedeToOrdinaryFormal, facts);
@@ -349,10 +386,24 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
        facts.FormalContract == TransferFormalContract::None ||
        facts.FormalMorphology == TransferFormalMorphology::None ||
        facts.FormalMorphology == TransferFormalMorphology::Indeterminate ||
+       facts.FormalOwnership == TransferFormalOwnershipKind::None ||
+       facts.FormalOwnership == TransferFormalOwnershipKind::Indeterminate ||
+       facts.FormalTransferClass == TransferFormalTransferClass::None ||
+       facts.FormalTransferClass ==
+           TransferFormalTransferClass::Indeterminate ||
        !facts.FormalCapabilities.Complete))
     return reject(TransferPlanRejection::IncompleteFacts, facts);
   if (facts.TypeCompatibility == TransferTypeCompatibility::Incompatible)
     return reject(TransferPlanRejection::TypeIncompatible, facts);
+  if (callBoundary &&
+      (facts.FormalTransferClass ==
+           TransferFormalTransferClass::OwnershipTransfer ||
+       facts.FormalTransferClass ==
+           TransferFormalTransferClass::ValueTransfer) &&
+      (facts.Ownership == TransferOwnershipKind::BorrowedView ||
+       facts.Ownership == TransferOwnershipKind::RawIdentity ||
+       facts.Ownership == TransferOwnershipKind::CallableIdentity))
+    return reject(TransferPlanRejection::OwnershipContractMismatch, facts);
   if (callBoundary &&
       facts.SourceView == TransferSourceView::ReferenceConstruction &&
       facts.FormalContract == TransferFormalContract::Cede)
@@ -541,15 +592,28 @@ prepareExplicitCedeWholeCallPlan(const ExplicitCedeWholeCallFacts &facts) {
       const auto &invalidated = *items[invalidator]->TransferOrigin;
       const auto &prepared = items[other]->Prepared;
       bool conflict = prepared.SourcePlace &&
-                      placesMayOverlap(invalidated, *prepared.SourcePlace);
+                      invalidationRegionConflictsWithPlace(
+                          *items[invalidator], *prepared.SourcePlace);
       conflict =
           conflict || (prepared.ReferentPlace &&
-                       placesMayOverlap(invalidated, *prepared.ReferentPlace));
-      conflict = conflict || std::any_of(prepared.DependencyRoots.begin(),
-                                         prepared.DependencyRoots.end(),
-                                         [&](const RootSymbolId &root) {
-                                           return root == invalidated.root();
-                                         });
+                       invalidationRegionConflictsWithPlace(
+                           *items[invalidator], *prepared.ReferentPlace));
+      conflict =
+          conflict ||
+          std::any_of(prepared.DependencyRoots.begin(),
+                      prepared.DependencyRoots.end(),
+                      [&](const RootSymbolId &root) {
+                        if (root != invalidated.root())
+                          return false;
+                        if (items[invalidator]->Source ==
+                            TransferSourceDisposition::InvalidateRoot)
+                          return true;
+                        if (prepared.ReferentPlace &&
+                            prepared.ReferentPlace->root() == root)
+                          return invalidationRegionConflictsWithPlace(
+                              *items[invalidator], *prepared.ReferentPlace);
+                        return true;
+                      });
       if (conflict) {
         result.Rejection = TransferPlanRejection::WholeCallAliasConflict;
         return result;
@@ -606,6 +670,8 @@ const char *toString(TransferPlanRejection value) {
     return "WholeCallAliasConflict";
   case TransferPlanRejection::WholeCallDestinationMismatch:
     return "WholeCallDestinationMismatch";
+  case TransferPlanRejection::OwnershipContractMismatch:
+    return "OwnershipContractMismatch";
   }
   return "ClosedWorldCombination";
 }
@@ -702,8 +768,6 @@ const char *toString(TransferObligationAction value) {
   switch (value) {
   case TransferObligationAction::None:
     return "None";
-  case TransferObligationAction::CreateForCallee:
-    return "CreateForCallee";
   case TransferObligationAction::TransferToCallee:
     return "TransferToCallee";
   case TransferObligationAction::DischargeToReturn:
@@ -872,6 +936,46 @@ const char *toString(TransferFormalMorphology value) {
   return "Indeterminate";
 }
 
+const char *toString(TransferFormalOwnershipKind value) {
+  switch (value) {
+  case TransferFormalOwnershipKind::None:
+    return "None";
+  case TransferFormalOwnershipKind::PlainValue:
+    return "PlainValue";
+  case TransferFormalOwnershipKind::Owning:
+    return "Owning";
+  case TransferFormalOwnershipKind::Borrowed:
+    return "Borrowed";
+  case TransferFormalOwnershipKind::RawIdentity:
+    return "RawIdentity";
+  case TransferFormalOwnershipKind::CallableIdentity:
+    return "CallableIdentity";
+  case TransferFormalOwnershipKind::Indeterminate:
+    return "Indeterminate";
+  }
+  return "Indeterminate";
+}
+
+const char *toString(TransferFormalTransferClass value) {
+  switch (value) {
+  case TransferFormalTransferClass::None:
+    return "None";
+  case TransferFormalTransferClass::BorrowCapture:
+    return "BorrowCapture";
+  case TransferFormalTransferClass::ValueTransfer:
+    return "ValueTransfer";
+  case TransferFormalTransferClass::OwnershipTransfer:
+    return "OwnershipTransfer";
+  case TransferFormalTransferClass::IdentityTransfer:
+    return "IdentityTransfer";
+  case TransferFormalTransferClass::CallableTransfer:
+    return "CallableTransfer";
+  case TransferFormalTransferClass::Indeterminate:
+    return "Indeterminate";
+  }
+  return "Indeterminate";
+}
+
 const char *toString(TransferEligibility value) {
   switch (value) {
   case TransferEligibility::Eligible:
@@ -948,6 +1052,18 @@ const char *toString(TransferDependencyKind value) {
     return "Indeterminate";
   }
   return "Indeterminate";
+}
+
+const char *toString(TransferDestinationObligationAction value) {
+  switch (value) {
+  case TransferDestinationObligationAction::None:
+    return "None";
+  case TransferDestinationObligationAction::CreateOutstanding:
+    return "CreateOutstanding";
+  case TransferDestinationObligationAction::ReceiveTransferred:
+    return "ReceiveTransferred";
+  }
+  return "None";
 }
 
 std::string semanticPlaceKey(const PlaceId &place) {

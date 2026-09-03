@@ -34,6 +34,7 @@ enum class TransferPlanRejection : uint8_t {
   WholeCallItemRejected,
   WholeCallAliasConflict,
   WholeCallDestinationMismatch,
+  OwnershipContractMismatch,
 };
 
 enum class TransferPlanOrigin : uint8_t { UserSource, CompilerSynthetic };
@@ -83,6 +84,24 @@ enum class TransferFormalMorphology : uint8_t {
   RawHandle,
   Reference,
   Callable,
+  Indeterminate,
+};
+enum class TransferFormalOwnershipKind : uint8_t {
+  None,
+  PlainValue,
+  Owning,
+  Borrowed,
+  RawIdentity,
+  CallableIdentity,
+  Indeterminate,
+};
+enum class TransferFormalTransferClass : uint8_t {
+  None,
+  BorrowCapture,
+  ValueTransfer,
+  OwnershipTransfer,
+  IdentityTransfer,
+  CallableTransfer,
   Indeterminate,
 };
 enum class TransferDestination : uint8_t {
@@ -171,12 +190,16 @@ enum class TransferObligationState : uint8_t {
 };
 enum class TransferObligationAction : uint8_t {
   None,
-  CreateForCallee,
   TransferToCallee,
   DischargeToReturn,
   DischargeToStorage,
   DischargeToStatementDiscard,
   Preserve,
+};
+enum class TransferDestinationObligationAction : uint8_t {
+  None,
+  CreateOutstanding,
+  ReceiveTransferred,
 };
 
 struct TransferAccessCapabilities {
@@ -201,6 +224,10 @@ struct ExplicitCedePreparedFacts {
   TransferCopyProof CopyProof = TransferCopyProof::Indeterminate;
   TransferFormalContract FormalContract = TransferFormalContract::None;
   TransferFormalMorphology FormalMorphology = TransferFormalMorphology::None;
+  TransferFormalOwnershipKind FormalOwnership =
+      TransferFormalOwnershipKind::None;
+  TransferFormalTransferClass FormalTransferClass =
+      TransferFormalTransferClass::None;
   TransferAccessCapabilities FormalCapabilities;
   TransferAccessCapabilities ActualCapabilities;
   TransferDestination Destination = TransferDestination::Indeterminate;
@@ -234,6 +261,10 @@ struct ExplicitCedePlan {
   TransferDropDisposition Drop = TransferDropDisposition::None;
   TransferObligationAction ObligationAction = TransferObligationAction::None;
   TransferObligationState ObligationAfter = TransferObligationState::None;
+  TransferDestinationObligationAction DestinationObligationAction =
+      TransferDestinationObligationAction::None;
+  TransferObligationState DestinationObligationAfter =
+      TransferObligationState::None;
   std::optional<PlaceId> TransferOrigin;
   TransferSourceView TransferOriginView = TransferSourceView::Indeterminate;
   TransferReachability Reachability = TransferReachability::Indeterminate;
@@ -287,11 +318,14 @@ const char *toString(TransferOwnershipKind value);
 const char *toString(TransferCopyProof value);
 const char *toString(TransferFormalContract value);
 const char *toString(TransferFormalMorphology value);
+const char *toString(TransferFormalOwnershipKind value);
+const char *toString(TransferFormalTransferClass value);
 const char *toString(TransferEligibility value);
 const char *toString(TransferEligibilityContext value);
 const char *toString(TransferTemporaryEligibility value);
 const char *toString(TransferTypeCompatibility value);
 const char *toString(TransferDependencyKind value);
+const char *toString(TransferDestinationObligationAction value);
 std::string semanticPlaceKey(const PlaceId &place);
 
 } // namespace toka

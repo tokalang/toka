@@ -1920,11 +1920,54 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
   if (legacyShadowPlan.FormalIsInit) {
     facts.FormalContract = TransferFormalContract::None;
     facts.FormalMorphology = TransferFormalMorphology::None;
+    facts.FormalOwnership = TransferFormalOwnershipKind::None;
+    facts.FormalTransferClass = TransferFormalTransferClass::None;
   } else {
     facts.FormalContract = formalIsCeded ? TransferFormalContract::Cede
                                          : TransferFormalContract::Ordinary;
     facts.FormalMorphology = stage0Morphology(formal);
     if (formal && !formal->isUnknown()) {
+      if (formal->isRawPointer())
+        facts.FormalOwnership = TransferFormalOwnershipKind::RawIdentity;
+      else if (formal->isReference())
+        facts.FormalOwnership = TransferFormalOwnershipKind::Borrowed;
+      else if (formal->isFunction() || formal->isDynFn())
+        facts.FormalOwnership =
+            TransferFormalOwnershipKind::CallableIdentity;
+      else {
+        switch (formal->valueOwnership(this)) {
+        case ValueOwnership::Trivial:
+          facts.FormalOwnership = TransferFormalOwnershipKind::PlainValue;
+          break;
+        case ValueOwnership::BorrowedView:
+          facts.FormalOwnership = TransferFormalOwnershipKind::Borrowed;
+          break;
+        case ValueOwnership::SharedHandle:
+        case ValueOwnership::Owned:
+          facts.FormalOwnership = TransferFormalOwnershipKind::Owning;
+          break;
+        }
+      }
+      if (facts.FormalMorphology == TransferFormalMorphology::RawHandle ||
+          facts.FormalMorphology == TransferFormalMorphology::Reference)
+        facts.FormalTransferClass =
+            TransferFormalTransferClass::IdentityTransfer;
+      else if (facts.FormalMorphology ==
+               TransferFormalMorphology::Callable)
+        facts.FormalTransferClass =
+            TransferFormalTransferClass::CallableTransfer;
+      else if (!formalIsCeded)
+        facts.FormalTransferClass =
+            TransferFormalTransferClass::BorrowCapture;
+      else if (facts.FormalMorphology ==
+                   TransferFormalMorphology::UniqueHandle ||
+               facts.FormalMorphology ==
+                   TransferFormalMorphology::SharedHandle)
+        facts.FormalTransferClass =
+            TransferFormalTransferClass::OwnershipTransfer;
+      else
+        facts.FormalTransferClass =
+            TransferFormalTransferClass::ValueTransfer;
       facts.FormalCapabilities.Complete = true;
       const bool hatted = formal->isPointer() || formal->isSmartPointer() ||
                           formal->isReference();
@@ -2071,6 +2114,9 @@ void Sema::recordShadowCallTransfer(
   stage0Record.FormalType = stage0.Prepared.FormalTypeKey;
   stage0Record.FormalContract = toString(stage0.Prepared.FormalContract);
   stage0Record.FormalMorphology = toString(stage0.Prepared.FormalMorphology);
+  stage0Record.FormalOwnership = toString(stage0.Prepared.FormalOwnership);
+  stage0Record.FormalTransferClass =
+      toString(stage0.Prepared.FormalTransferClass);
   stage0Record.FormalCapabilitiesComplete =
       stage0.Prepared.FormalCapabilities.Complete;
   stage0Record.FormalHandleRebindable =
@@ -2102,6 +2148,10 @@ void Sema::recordShadowCallTransfer(
   stage0Record.Drop = toString(stage0.Drop);
   stage0Record.ObligationAction = toString(stage0.ObligationAction);
   stage0Record.ObligationAfter = toString(stage0.ObligationAfter);
+  stage0Record.DestinationObligationAction =
+      toString(stage0.DestinationObligationAction);
+  stage0Record.DestinationObligationAfter =
+      toString(stage0.DestinationObligationAfter);
   stage0Record.SourceView = toString(stage0.TransferOriginView);
   stage0Record.Reachability = toString(stage0.Reachability);
   stage0Record.SemanticRoot = stage0Root;

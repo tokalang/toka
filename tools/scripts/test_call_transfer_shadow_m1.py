@@ -12,7 +12,8 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
-os.environ.setdefault("TOKA_LIB", str(ROOT / "lib"))
+if not os.environ.get("TOKA_LIB"):
+    os.environ["TOKA_LIB"] = str(ROOT / "lib")
 
 
 def require(condition, message):
@@ -67,12 +68,15 @@ def run(tokac, source, expected_error=None, check_only=True):
         "source_category", "exact_path", "referent_root", "referent_path",
         "dependency_roots", "dependency", "dependency_complete",
         "actual_type", "formal_type",
-        "formal_contract", "formal_morphology", "formal_capabilities",
+        "formal_contract", "formal_morphology", "formal_ownership",
+        "formal_transfer_class", "formal_capabilities",
         "actual_capabilities", "ownership", "copy_proof", "eligibility",
         "temporary_eligibility", "type_compatibility",
         "eligibility_context", "obligation_before",
         "outcome", "rejection", "value_production", "source",
-        "destination", "drop", "obligation_action", "obligation_after",
+        "destination", "drop", "source_obligation_action",
+        "source_obligation_after",
+        "destination_obligation_action", "destination_obligation_after",
         "source_view", "reachability", "semantic_root",
     }
     seen = set()
@@ -423,7 +427,9 @@ def main():
     require_stage0(record, source, outcome="Admitted", rejection="None",
                    value_production="CopyIdentity", source="NoSourcePlace",
                    source_view="ReferenceConstruction",
-                   temporary_eligibility="Ineligible")
+                   temporary_eligibility="Ineligible",
+                   formal_ownership="Borrowed",
+                   formal_transfer_class="IdentityTransfer")
     require(record["stage0"]["dependency"] == "Borrowed" and
             record["stage0"]["dependency_complete"] and
             bool(record["stage0"]["referent_root"]) and

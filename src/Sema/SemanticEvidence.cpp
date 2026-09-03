@@ -104,13 +104,15 @@ bool ExplicitCedeStage0ShadowRecord::operator<(
              PlanOrigin, SyntaxPurpose, SurfaceSpelling, SourceCategory,
              ExactPath, ReferentRoot, ReferentPath, DependencyRoots,
              Dependency, DependencyFactsComplete, ActualType, FormalType,
-             FormalContract, FormalMorphology,
+             FormalContract, FormalMorphology, FormalOwnership,
+             FormalTransferClass,
              FormalCapabilitiesComplete, FormalHandleRebindable,
              FormalPayloadWritable, ActualCapabilitiesComplete,
              ActualHandleRebindable, ActualPayloadWritable, Ownership,
              CopyProof, Eligibility, TemporaryEligibility, TypeCompatibility,
              EligibilityContext, ObligationBefore, Outcome, Rejection, ValueProduction,
              Source, Destination, Drop, ObligationAction, ObligationAfter,
+             DestinationObligationAction, DestinationObligationAfter,
              SourceView, Reachability, SemanticRoot) <
          std::tie(
              rhs.PlanOrigin, rhs.SyntaxPurpose, rhs.SurfaceSpelling,
@@ -118,6 +120,7 @@ bool ExplicitCedeStage0ShadowRecord::operator<(
              rhs.ReferentPath, rhs.DependencyRoots, rhs.Dependency,
              rhs.DependencyFactsComplete, rhs.ActualType, rhs.FormalType,
              rhs.FormalContract, rhs.FormalMorphology,
+             rhs.FormalOwnership, rhs.FormalTransferClass,
              rhs.FormalCapabilitiesComplete, rhs.FormalHandleRebindable,
              rhs.FormalPayloadWritable, rhs.ActualCapabilitiesComplete,
              rhs.ActualHandleRebindable, rhs.ActualPayloadWritable,
@@ -126,6 +129,8 @@ bool ExplicitCedeStage0ShadowRecord::operator<(
              rhs.EligibilityContext, rhs.ObligationBefore, rhs.Outcome,
              rhs.Rejection, rhs.ValueProduction, rhs.Source, rhs.Destination,
              rhs.Drop, rhs.ObligationAction, rhs.ObligationAfter,
+             rhs.DestinationObligationAction,
+             rhs.DestinationObligationAfter,
              rhs.SourceView, rhs.Reachability, rhs.SemanticRoot);
 }
 
@@ -534,6 +539,10 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << escapeJSON(record.Stage0.FormalContract)
         << "\",\"formal_morphology\":\""
         << escapeJSON(record.Stage0.FormalMorphology)
+        << "\",\"formal_ownership\":\""
+        << escapeJSON(record.Stage0.FormalOwnership)
+        << "\",\"formal_transfer_class\":\""
+        << escapeJSON(record.Stage0.FormalTransferClass)
         << "\",\"formal_capabilities\":{\"complete\":"
         << (record.Stage0.FormalCapabilitiesComplete ? "true" : "false")
         << ",\"handle_rebind\":"
@@ -564,10 +573,15 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << escapeJSON(record.Stage0.ValueProduction) << "\",\"source\":\""
         << escapeJSON(record.Stage0.Source) << "\",\"destination\":\""
         << escapeJSON(record.Stage0.Destination) << "\",\"drop\":\""
-        << escapeJSON(record.Stage0.Drop) << "\",\"obligation_action\":\""
+        << escapeJSON(record.Stage0.Drop)
+        << "\",\"source_obligation_action\":\""
         << escapeJSON(record.Stage0.ObligationAction)
-        << "\",\"obligation_after\":\""
+        << "\",\"source_obligation_after\":\""
         << escapeJSON(record.Stage0.ObligationAfter)
+        << "\",\"destination_obligation_action\":\""
+        << escapeJSON(record.Stage0.DestinationObligationAction)
+        << "\",\"destination_obligation_after\":\""
+        << escapeJSON(record.Stage0.DestinationObligationAfter)
         << "\",\"source_view\":\"" << escapeJSON(record.Stage0.SourceView)
         << "\",\"reachability\":\""
         << escapeJSON(record.Stage0.Reachability)
