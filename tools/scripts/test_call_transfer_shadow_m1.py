@@ -1074,6 +1074,10 @@ def main():
                 transaction["validation_complete"] and
                 transaction["expected_argument_count"] == expected_count and
                 transaction["actual_argument_count"] == actual_count and
+                transaction["argument_count"] ==
+                min(expected_count, actual_count) and
+                all(item["role"] in ("receiver", "argument")
+                    for item in transaction["items"]) and
                 transaction["has_receiver"],
                 source + " indirect arity failure omitted transaction facts")
 
@@ -1225,6 +1229,12 @@ def main():
     require(not MISSING_PRE_MUTATION,
             "qualified routes emitted records without pre-mutation "
             "transactions: " + repr(MISSING_PRE_MUTATION[:5]))
+    method_source = (ROOT / "src/Sema/Sema_Expr.cpp").read_text()
+    snapshot_gate = method_source[method_source.index(
+        "stage0PreMutationCallSnapshot"):
+        method_source.index("stage0PreMutationCallSnapshot") + 500]
+    require("m_D3SpeculativeCallDepth == 0" in snapshot_gate,
+            "speculative method probes can allocate public snapshot revisions")
     expected_transaction_routes = {
         "ordinary", "static", "method", "callable", "extern",
         "indirect-fn", "indirect-dyn-fn", "dynamic-trait-method",

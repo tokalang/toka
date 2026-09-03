@@ -121,6 +121,11 @@ Caller callable spelling and the selected receiver contract are frozen as
 separate entry facts, including indirect `fn`/`dyn fn` calls. Same-typed owned
 temporaries use a deterministic cleanup identity containing the logical module,
 call coordinate, receiver/argument role, slot index, and expression coordinate.
+This is a source-transfer-edge identity: it is unique between roles and slots
+of one logical source call, while generic monomorphizations of that same edge
+intentionally share it. It is not a globally unique runtime-instance identity.
+Any future cross-instantiation cleanup correlation must introduce a separate
+instantiation key rather than silently widening this identity's meaning.
 Post-legacy receipts may only reuse a pending pre-mutation item; speculative or
 missing-pending paths cannot synthesize a post-state Stage-0 plan.
 
@@ -128,6 +133,13 @@ Argument indices are one-based. Method/callable receiver roles are separate;
 an indirect callable receiver has no declaration-side formal and therefore
 uses formal index zero and fails closed. Shadow plans are discarded when an
 AST call is cloned and its resolved formal is reset.
+
+Version 5 deliberately represents indirect arity failure with
+`expected_argument_count`, `actual_argument_count`, collected item count, and
+`arity_complete=false`; it does not synthesize fake missing-formal or
+extra-actual item plans. These counts are sufficient for fail-closed authority.
+Per-unmatched-slot forensic records require a later audit-schema revision and
+are not part of the Stage-0 call-transaction contract.
 
 ## Deliberate M1 limitations
 
