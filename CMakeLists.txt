@@ -164,6 +164,8 @@ if(BUILD_TESTING)
         tests/HandleGrammarClassifierTest.cpp)
     add_executable(toka_semantic_model_scaffold
         tests/SemanticModelScaffold.cpp)
+    add_executable(toka_explicit_cede_plan
+        tests/ExplicitCedePlan.cpp)
     add_executable(toka_direct_call_observation
         tests/DirectCallObservation.cpp)
     add_executable(toka_authority_facts
@@ -187,6 +189,8 @@ if(BUILD_TESTING)
     target_include_directories(toka_handle_grammar_classifier PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_semantic_model_scaffold PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(toka_explicit_cede_plan PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_direct_call_observation PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
@@ -212,6 +216,8 @@ if(BUILD_TESTING)
         COMMAND toka_handle_grammar_classifier)
     add_test(NAME toka_semantic_model_scaffold
         COMMAND toka_semantic_model_scaffold)
+    add_test(NAME toka_explicit_cede_plan
+        COMMAND toka_explicit_cede_plan)
     add_test(NAME toka_direct_call_observation
         COMMAND toka_direct_call_observation)
     add_test(NAME toka_authority_facts
@@ -230,6 +236,7 @@ if(BUILD_TESTING)
     target_link_libraries(toka_semantic_dependency_closure PRIVATE toka_frontend)
     target_link_libraries(toka_nominal_shape_id PRIVATE toka_frontend)
     target_link_libraries(toka_handle_grammar_classifier PRIVATE toka_frontend)
+    target_link_libraries(toka_explicit_cede_plan PRIVATE toka_frontend)
     target_link_libraries(toka_direct_call_observation PRIVATE toka_frontend)
     target_link_libraries(toka_authority_facts PRIVATE toka_frontend)
     target_link_libraries(toka_pure_nominal_overload_probe PRIVATE toka_frontend)

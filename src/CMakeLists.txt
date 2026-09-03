@@ -32,6 +32,7 @@ set(toka_frontend_sources
     Sema/DirectCallObservationAudit.cpp
     Sema/AuthorityFacts.cpp
     Sema/AuthorityFactsAudit.cpp
+    Sema/ExplicitCedePlan.cpp
     Sema/PureNominalOverloadProbe.cpp
     Sema/PureNominalOverloadProbeAudit.cpp
     Sema/SemanticIndex.cpp
