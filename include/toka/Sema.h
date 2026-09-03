@@ -818,6 +818,10 @@ private:
       bool LegacyCedeExempt, CallTransferRoute Route, bool IsAsync,
       CallExecutionBoundary ExecutionBoundary, unsigned ArgumentIndex,
       unsigned FormalIndex);
+  ExplicitCedePlan buildExplicitCedeStage0CallPlan(
+      Expr *Argument, const std::shared_ptr<Type> &ArgumentType,
+      const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
+      const CallTransferPlan &LegacyShadowPlan);
   void recordShadowCallTransfer(
       ASTNode *CallSite, std::vector<CallTransferPlan> &Plans,
       unsigned ArgumentIndex, unsigned FormalIndex, Expr *Argument,

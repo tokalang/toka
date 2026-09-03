@@ -136,6 +136,40 @@ struct CedeObligationRecord {
   bool operator==(const CedeObligationRecord &rhs) const;
 };
 
+struct ExplicitCedeStage0ShadowRecord {
+  std::string PlanOrigin;
+  std::string SyntaxPurpose;
+  std::string SurfaceSpelling;
+  std::string SourceCategory;
+  std::string ActualType;
+  std::string FormalType;
+  std::string FormalContract;
+  std::string FormalMorphology;
+  bool FormalCapabilitiesComplete = false;
+  bool FormalHandleRebindable = false;
+  bool FormalPayloadWritable = false;
+  bool ActualCapabilitiesComplete = false;
+  bool ActualHandleRebindable = false;
+  bool ActualPayloadWritable = false;
+  std::string Ownership;
+  std::string CopyProof;
+  std::string Eligibility;
+  std::string Outcome;
+  std::string Rejection;
+  std::string ValueProduction;
+  std::string Source;
+  std::string Destination;
+  std::string Drop;
+  std::string ObligationAction;
+  std::string ObligationAfter;
+  std::string SourceView;
+  std::string Reachability;
+  std::string SemanticRoot;
+
+  bool operator<(const ExplicitCedeStage0ShadowRecord &rhs) const;
+  bool operator==(const ExplicitCedeStage0ShadowRecord &rhs) const;
+};
+
 struct CallTransferShadowRecord {
   std::string Callee;
   std::string Route;
@@ -165,6 +199,7 @@ struct CallTransferShadowRecord {
   bool LegacyCedeExempt = false;
   bool LegacyMissingCede = false;
   bool Async = false;
+  ExplicitCedeStage0ShadowRecord Stage0;
   SemanticEvidenceLocation Location;
   SemanticEvidenceLocation ContractLocation;
 
@@ -297,7 +332,8 @@ public:
       std::vector<std::string> dependencyPaths, bool hasCleanupMask,
       uint64_t cleanupMask, bool formalCeded, bool formalInit,
       bool actualInit, bool legacyCallerRuleApplied, bool legacyCedeExempt,
-      bool legacyMissingCede, bool async, SourceLocation location,
+      bool legacyMissingCede, bool async,
+      ExplicitCedeStage0ShadowRecord stage0, SourceLocation location,
       SourceLocation contractLocation = {});
   static void dumpCallTransferShadowJSON(std::ostream &out);
   static void recordCapabilityCall(

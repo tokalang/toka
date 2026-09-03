@@ -24,13 +24,17 @@ tokac --call-transfer-shadow=json --check-only source.tk
 The command emits the internal, audit-only schema:
 
 ```text
-toka.internal.call-transfer-shadow / version 3
+toka.internal.call-transfer-shadow / version 4
 ```
 
 It is not cede obligation evidence v2 and has no public compatibility promise.
 It exists to qualify the planner before any behavior or public evidence change.
 It cannot be combined with another JSON, semantic, or evaluation output mode.
-Version 3 replaces the M1a.1 schema. It retains structured source/referent
+Version 4 retains the version-3 RC9 fields and adds a nested audit-only Stage-0
+plan produced by the Accepted explicit-cede pure classifier. The legacy fields
+remain the behavior oracle; Stage 0 neither changes diagnostics nor grants
+CodeGen authority. Version 3 originally replaced the M1a.1 schema and retains
+structured source/referent
 identity, stable indices, value category, drop disposition, dependency paths,
 and cleanup-mask capacity, and adds actual `init` spelling. Postfix value
 operations, `T | miss` payloads, and thread boundaries now use qualified
@@ -61,7 +65,14 @@ referent/deps      PAL referent and lifetime dependency paths
 cleanup_mask       null until an admitted partial cleanup plan exists
 legacy            cede exemption and missing-explicit-cede facts
 effect             async fact
+stage0             outcome/rejection, independent value/source/destination/
+                   drop/obligation dimensions, exact SourceView and
+                   reachability, deterministic semantic root when proven
 ```
+
+Every Stage-0 rejection carries `source=NoStateChange`. A place whose stable
+declaration coordinate cannot yet be recovered rejects `IncompleteFacts`
+rather than falling back to the legacy process-local `source_root_id`.
 
 `argument_index` and `formal_index` are one-based and remain stable when
 `@Callable` lowering inserts a synthetic receiver. Shadow plans are discarded

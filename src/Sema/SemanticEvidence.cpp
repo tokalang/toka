@@ -98,6 +98,35 @@ bool CedeObligationRecord::operator==(const CedeObligationRecord &rhs) const {
          Location == rhs.Location && ContractLocation == rhs.ContractLocation;
 }
 
+bool ExplicitCedeStage0ShadowRecord::operator<(
+    const ExplicitCedeStage0ShadowRecord &rhs) const {
+  return std::tie(
+             PlanOrigin, SyntaxPurpose, SurfaceSpelling, SourceCategory,
+             ActualType, FormalType, FormalContract, FormalMorphology,
+             FormalCapabilitiesComplete, FormalHandleRebindable,
+             FormalPayloadWritable, ActualCapabilitiesComplete,
+             ActualHandleRebindable, ActualPayloadWritable, Ownership,
+             CopyProof, Eligibility, Outcome, Rejection, ValueProduction,
+             Source, Destination, Drop, ObligationAction, ObligationAfter,
+             SourceView, Reachability, SemanticRoot) <
+         std::tie(
+             rhs.PlanOrigin, rhs.SyntaxPurpose, rhs.SurfaceSpelling,
+             rhs.SourceCategory, rhs.ActualType, rhs.FormalType,
+             rhs.FormalContract, rhs.FormalMorphology,
+             rhs.FormalCapabilitiesComplete, rhs.FormalHandleRebindable,
+             rhs.FormalPayloadWritable, rhs.ActualCapabilitiesComplete,
+             rhs.ActualHandleRebindable, rhs.ActualPayloadWritable,
+             rhs.Ownership, rhs.CopyProof, rhs.Eligibility, rhs.Outcome,
+             rhs.Rejection, rhs.ValueProduction, rhs.Source, rhs.Destination,
+             rhs.Drop, rhs.ObligationAction, rhs.ObligationAfter,
+             rhs.SourceView, rhs.Reachability, rhs.SemanticRoot);
+}
+
+bool ExplicitCedeStage0ShadowRecord::operator==(
+    const ExplicitCedeStage0ShadowRecord &rhs) const {
+  return !(*this < rhs) && !(rhs < *this);
+}
+
 bool CallTransferShadowRecord::operator<(
     const CallTransferShadowRecord &rhs) const {
   return std::tie(
@@ -108,7 +137,7 @@ bool CallTransferShadowRecord::operator<(
              DependencyPaths, HasCleanupMask, CleanupMask, FormalCeded,
              FormalInit, ActualInit, LegacyCallerRuleApplied,
              LegacyCedeExempt, LegacyMissingCede,
-             Async, Location, ContractLocation) <
+             Async, Stage0, Location, ContractLocation) <
          std::tie(
              rhs.Callee, rhs.Route, rhs.Parameter, rhs.ArgumentIndex,
              rhs.FormalIndex, rhs.ValueCategory, rhs.Spelling, rhs.Transfer,
@@ -119,7 +148,7 @@ bool CallTransferShadowRecord::operator<(
              rhs.FormalCeded, rhs.FormalInit, rhs.ActualInit,
              rhs.LegacyCallerRuleApplied,
              rhs.LegacyCedeExempt, rhs.LegacyMissingCede, rhs.Async,
-             rhs.Location, rhs.ContractLocation);
+             rhs.Stage0, rhs.Location, rhs.ContractLocation);
 }
 
 bool CallTransferShadowRecord::operator==(
@@ -142,6 +171,7 @@ bool CallTransferShadowRecord::operator==(
          LegacyCallerRuleApplied == rhs.LegacyCallerRuleApplied &&
          LegacyCedeExempt == rhs.LegacyCedeExempt &&
          LegacyMissingCede == rhs.LegacyMissingCede && Async == rhs.Async &&
+         Stage0 == rhs.Stage0 &&
          Location == rhs.Location && ContractLocation == rhs.ContractLocation;
 }
 
@@ -391,7 +421,8 @@ void SemanticEvidence::recordCallTransferShadow(
     std::vector<std::string> dependencyPaths, bool hasCleanupMask,
     uint64_t cleanupMask, bool formalCeded, bool formalInit, bool actualInit,
     bool legacyCallerRuleApplied, bool legacyCedeExempt,
-    bool legacyMissingCede, bool async, SourceLocation location,
+    bool legacyMissingCede, bool async,
+    ExplicitCedeStage0ShadowRecord stage0, SourceLocation location,
     SourceLocation contractLocation) {
   if (!Enabled || !CallTransferShadowEnabled)
     return;
@@ -405,7 +436,7 @@ void SemanticEvidence::recordCallTransferShadow(
        std::move(referentIdentity), std::move(dependencyPaths), hasCleanupMask,
        cleanupMask, formalCeded, formalInit, actualInit,
        legacyCallerRuleApplied, legacyCedeExempt,
-       legacyMissingCede, async,
+       legacyMissingCede, async, std::move(stage0),
        resolveLocation(location), resolveLocation(contractLocation)});
 }
 
@@ -415,7 +446,7 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
       std::unique(CallTransferShadows.begin(), CallTransferShadows.end()),
       CallTransferShadows.end());
   out << "{\"schema\":\"toka.internal.call-transfer-shadow\","
-         "\"version\":3,\"status\":\"audit-only\",\"records\":[";
+         "\"version\":4,\"status\":\"audit-only\",\"records\":[";
   for (size_t i = 0; i < CallTransferShadows.size(); ++i) {
     if (i != 0)
       out << ',';
@@ -467,6 +498,50 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << ",\"legacy_missing_cede\":"
         << (record.LegacyMissingCede ? "true" : "false")
         << ",\"async\":" << (record.Async ? "true" : "false")
+        << ",\"stage0\":{\"plan_origin\":\""
+        << escapeJSON(record.Stage0.PlanOrigin) << "\",\"syntax_purpose\":\""
+        << escapeJSON(record.Stage0.SyntaxPurpose)
+        << "\",\"surface_spelling\":\""
+        << escapeJSON(record.Stage0.SurfaceSpelling)
+        << "\",\"source_category\":\""
+        << escapeJSON(record.Stage0.SourceCategory)
+        << "\",\"actual_type\":\"" << escapeJSON(record.Stage0.ActualType)
+        << "\",\"formal_type\":\"" << escapeJSON(record.Stage0.FormalType)
+        << "\",\"formal_contract\":\""
+        << escapeJSON(record.Stage0.FormalContract)
+        << "\",\"formal_morphology\":\""
+        << escapeJSON(record.Stage0.FormalMorphology)
+        << "\",\"formal_capabilities\":{\"complete\":"
+        << (record.Stage0.FormalCapabilitiesComplete ? "true" : "false")
+        << ",\"handle_rebind\":"
+        << (record.Stage0.FormalHandleRebindable ? "true" : "false")
+        << ",\"payload_write\":"
+        << (record.Stage0.FormalPayloadWritable ? "true" : "false")
+        << "},\"actual_capabilities\":{\"complete\":"
+        << (record.Stage0.ActualCapabilitiesComplete ? "true" : "false")
+        << ",\"handle_rebind\":"
+        << (record.Stage0.ActualHandleRebindable ? "true" : "false")
+        << ",\"payload_write\":"
+        << (record.Stage0.ActualPayloadWritable ? "true" : "false")
+        << "},\"ownership\":\"" << escapeJSON(record.Stage0.Ownership)
+        << "\",\"copy_proof\":\"" << escapeJSON(record.Stage0.CopyProof)
+        << "\",\"eligibility\":\""
+        << escapeJSON(record.Stage0.Eligibility) << "\",\"outcome\":\""
+        << escapeJSON(record.Stage0.Outcome) << "\",\"rejection\":\""
+        << escapeJSON(record.Stage0.Rejection)
+        << "\",\"value_production\":\""
+        << escapeJSON(record.Stage0.ValueProduction) << "\",\"source\":\""
+        << escapeJSON(record.Stage0.Source) << "\",\"destination\":\""
+        << escapeJSON(record.Stage0.Destination) << "\",\"drop\":\""
+        << escapeJSON(record.Stage0.Drop) << "\",\"obligation_action\":\""
+        << escapeJSON(record.Stage0.ObligationAction)
+        << "\",\"obligation_after\":\""
+        << escapeJSON(record.Stage0.ObligationAfter)
+        << "\",\"source_view\":\"" << escapeJSON(record.Stage0.SourceView)
+        << "\",\"reachability\":\""
+        << escapeJSON(record.Stage0.Reachability)
+        << "\",\"semantic_root\":\""
+        << escapeJSON(record.Stage0.SemanticRoot) << "\"}"
         << ",\"location\":";
     dumpLocation(out, record.Location);
     out << ",\"contract_location\":";

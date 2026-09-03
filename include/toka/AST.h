@@ -20,6 +20,7 @@
 #include "toka/TypeSyntax.h"
 #include "toka/Type.h" // Added for ResolvedType
 #include "toka/ComptimeValue.h"
+#include "toka/ExplicitCedePlan.h"
 #include "toka/MemorySummary.h"
 #include "toka/NominalShapeId.h"
 #include <algorithm>
@@ -146,6 +147,7 @@ struct CallTransferPlan {
   AccessPath SourcePlace;
   AccessPath ReferentPath;
   std::vector<std::string> DependencyPaths;
+  std::optional<ExplicitCedePlan> Stage0Plan;
 };
 
 inline const char *callTransferRouteName(CallTransferRoute route) {

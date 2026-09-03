@@ -62,6 +62,131 @@ shadowCarrierPayload(std::shared_ptr<Type> type) {
   return type;
 }
 
+static std::optional<PlaceId>
+stage0PlaceIdentity(const AccessPath &path, const std::string &moduleOrigin) {
+  if (!path || !path.RootLoc.isValid() || moduleOrigin.empty() ||
+      !DiagnosticEngine::SrcMgr)
+    return std::nullopt;
+  const auto rootLocation =
+      DiagnosticEngine::SrcMgr->getFullSourceLoc(path.RootLoc);
+  if (!rootLocation.isValid())
+    return std::nullopt;
+  const std::string coordinate = std::to_string(rootLocation.Line) + ":" +
+                                 std::to_string(rootLocation.Column);
+  auto declaration = SemanticIdentityBuilder::declaration(
+      moduleOrigin, "lexical-binding-owner:" + coordinate);
+  if (!declaration)
+    return std::nullopt;
+  auto root = SemanticIdentityBuilder::rootSymbol(
+      declaration.value(), "binding:" + path.RootName);
+  if (!root)
+    return std::nullopt;
+
+  std::vector<PlaceProjection> projections;
+  projections.reserve(path.Projections.size());
+  for (const auto &projection : path.Projections) {
+    switch (projection.Kind) {
+    case AccessProjectionKind::Field: {
+      auto field = SemanticIdentityBuilder::field(
+          declaration.value(), "field:" + projection.Name);
+      if (!field)
+        return std::nullopt;
+      projections.push_back(PlaceProjection::field(field.value()));
+      break;
+    }
+    case AccessProjectionKind::ConstantIndex:
+      projections.push_back(
+          PlaceProjection::constantIndex(projection.Index));
+      break;
+    case AccessProjectionKind::DynamicIndex: {
+      if (!projection.Loc.isValid())
+        return std::nullopt;
+      const auto location =
+          DiagnosticEngine::SrcMgr->getFullSourceLoc(projection.Loc);
+      if (!location.isValid())
+        return std::nullopt;
+      auto expression = SemanticIdentityBuilder::semanticNode(
+          moduleOrigin, std::to_string(location.Line) + ":" +
+                            std::to_string(location.Column) +
+                            ":dynamic-index");
+      if (!expression)
+        return std::nullopt;
+      projections.push_back(
+          PlaceProjection::dynamicIndex(expression.value()));
+      break;
+    }
+    case AccessProjectionKind::Dereference:
+      projections.push_back(PlaceProjection::dereference());
+      break;
+    case AccessProjectionKind::Unknown:
+      projections.push_back(PlaceProjection::unknown());
+      break;
+    }
+  }
+  PlaceId result(root.value(), std::move(projections));
+  return result.valid() ? std::optional<PlaceId>(std::move(result))
+                        : std::nullopt;
+}
+
+static std::string stage0FallbackModuleOrigin(SourceLocation location) {
+  if (!location.isValid() || !DiagnosticEngine::SrcMgr)
+    return {};
+  const auto full = DiagnosticEngine::SrcMgr->getFullSourceLoc(location);
+  if (!full.isValid())
+    return {};
+  std::string path = PathUtils::normalize(full.FileName);
+  const size_t tests = path.find("/tests/");
+  if (tests != std::string::npos || path.rfind("tests/", 0) == 0) {
+    std::string logical = tests != std::string::npos
+                              ? "tests/" + path.substr(tests + 7)
+                              : path;
+    return "crate:workspace;module:" +
+           PathUtils::stripTokaModuleExtension(std::move(logical));
+  }
+  const size_t lib = path.find("/lib/");
+  if (lib != std::string::npos || path.rfind("lib/", 0) == 0) {
+    std::string logical =
+        lib != std::string::npos ? path.substr(lib + 5) : path.substr(4);
+    return "crate:sdk;module:" +
+           PathUtils::stripTokaModuleExtension(std::move(logical));
+  }
+  return {};
+}
+
+static Expr *stage0SurfaceSource(Expr *expression) {
+  Expr *source = expression;
+  while (source) {
+    if (auto *cede = dynamic_cast<CedeExpr *>(source))
+      source = cede->Value.get();
+    else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source))
+      source = unsafe->Expression.get();
+    else if (auto *postfix = dynamic_cast<PostfixExpr *>(source);
+             postfix && isShadowTransparentPostfix(postfix->Op))
+      source = postfix->LHS.get();
+    else
+      break;
+  }
+  return source;
+}
+
+static TransferFormalMorphology
+stage0Morphology(const std::shared_ptr<Type> &type) {
+  auto payload = shadowCarrierPayload(type);
+  if (!payload || payload->isUnknown())
+    return TransferFormalMorphology::Indeterminate;
+  if (payload->isUniquePtr())
+    return TransferFormalMorphology::UniqueHandle;
+  if (payload->isSharedPtr())
+    return TransferFormalMorphology::SharedHandle;
+  if (payload->isRawPointer())
+    return TransferFormalMorphology::RawHandle;
+  if (payload->isReference())
+    return TransferFormalMorphology::Reference;
+  if (payload->isFunction() || payload->isDynFn())
+    return TransferFormalMorphology::Callable;
+  return TransferFormalMorphology::DirectValue;
+}
+
 // Legacy thread-safety checks still key off the source spelling.  M1a.2 does
 // not change those diagnostics; only shadow boundary facts use resolved
 // declaration identity.
@@ -1565,6 +1690,202 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
   return plan;
 }
 
+ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
+    Expr *argument, const std::shared_ptr<Type> &argumentType,
+    const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
+    const CallTransferPlan &legacyShadowPlan) {
+  ExplicitCedePreparedFacts facts;
+  auto actual = argumentType ? resolveType(argumentType, false) : nullptr;
+  auto formal = destinationType ? resolveType(destinationType, false) : nullptr;
+  auto actualPayload = shadowCarrierPayload(actual);
+  facts.ActualTypeKey =
+      actual && !actual->isUnknown() ? actual->toString() : std::string{};
+  facts.FormalTypeKey =
+      formal && !formal->isUnknown() ? formal->toString() : std::string{};
+  facts.SurfaceSpelling = legacyShadowPlan.ExplicitCede
+                              ? TransferSurfaceSpelling::ExplicitCede
+                              : TransferSurfaceSpelling::Bare;
+  facts.SyntaxPurpose = legacyShadowPlan.ExplicitCede
+                            ? CedeSyntaxPurpose::SourceInvalidation
+                            : CedeSyntaxPurpose::None;
+  facts.Destination = legacyShadowPlan.FormalIsInit
+                          ? TransferDestination::Initialization
+                          : TransferDestination::CalleeParameter;
+  facts.SourceCategory =
+      legacyShadowPlan.ValueCategory == CallValueCategory::Place ||
+              legacyShadowPlan.ValueCategory == CallValueCategory::InitStorage
+          ? TransferSourceCategory::NamedSourcePlace
+          : (legacyShadowPlan.ValueCategory == CallValueCategory::Temporary
+                 ? TransferSourceCategory::NoSourcePlace
+                 : TransferSourceCategory::Indeterminate);
+  facts.Origin =
+      legacyShadowPlan.ExplicitCede ||
+              facts.SourceCategory != TransferSourceCategory::NoSourcePlace
+          ? TransferPlanOrigin::UserSource
+          : TransferPlanOrigin::CompilerSynthetic;
+
+  SymbolInfo *sourceInfo = nullptr;
+  if (legacyShadowPlan.SourcePlace.RootID != 0)
+    CurrentScope->findSymbolByID(legacyShadowPlan.SourcePlace.RootID,
+                                 sourceInfo);
+  AccessPath identityPath = legacyShadowPlan.SourcePlace;
+  if (!identityPath.RootLoc.isValid() && sourceInfo)
+    identityPath.RootLoc = sourceInfo->DeclLoc;
+  if (!identityPath.RootLoc.isValid() && !identityPath.RootName.empty())
+    identityPath.RootLoc = findPathDeclaration(identityPath.RootName);
+  std::string moduleOrigin;
+  if (identityPath.RootLoc.isValid()) {
+    if (ModuleScope *module = getLexicalModule(identityPath.RootLoc);
+        module && !module->ShadowCrateId.empty() &&
+        !module->ShadowLogicalModulePath.empty()) {
+      moduleOrigin = "crate:" + module->ShadowCrateId +
+                     ";module:" + module->ShadowLogicalModulePath;
+    }
+    if (moduleOrigin.empty())
+      moduleOrigin = stage0FallbackModuleOrigin(identityPath.RootLoc);
+  }
+  facts.SourcePlace = stage0PlaceIdentity(identityPath, moduleOrigin);
+
+  Expr *surface = stage0SurfaceSource(argument);
+  if (dynamic_cast<AddressOfExpr *>(surface)) {
+    facts.SourceView = TransferSourceView::ReferenceConstruction;
+  } else if (auto *unary = dynamic_cast<UnaryExpr *>(surface)) {
+    if (unary->Op == TokenType::Caret)
+      facts.SourceView = TransferSourceView::UniqueHandle;
+    else if (unary->Op == TokenType::Tilde)
+      facts.SourceView = TransferSourceView::SharedHandle;
+    else if (unary->Op == TokenType::Star)
+      facts.SourceView = TransferSourceView::RawHandle;
+    else
+      facts.SourceView = TransferSourceView::Indeterminate;
+  } else if (sourceInfo && (sourceInfo->IsUnique() || sourceInfo->IsShared())) {
+    facts.SourceView = TransferSourceView::DereferencedOwningPayload;
+  } else if (actualPayload &&
+             (actualPayload->isFunction() || actualPayload->isDynFn())) {
+    facts.SourceView = TransferSourceView::CallableIdentity;
+  } else if (facts.SourceCategory != TransferSourceCategory::Indeterminate) {
+    const auto morphology = stage0Morphology(actual);
+    if (morphology == TransferFormalMorphology::UniqueHandle)
+      facts.SourceView = TransferSourceView::UniqueHandle;
+    else if (morphology == TransferFormalMorphology::SharedHandle)
+      facts.SourceView = TransferSourceView::SharedHandle;
+    else if (morphology == TransferFormalMorphology::RawHandle)
+      facts.SourceView = TransferSourceView::RawHandle;
+    else if (morphology == TransferFormalMorphology::Reference)
+      facts.SourceView = TransferSourceView::ReferenceConstruction;
+    else
+      facts.SourceView = TransferSourceView::DirectValue;
+  }
+
+  if (facts.SourceView == TransferSourceView::UniqueHandle)
+    facts.Ownership = TransferOwnershipKind::UniqueOwner;
+  else if (facts.SourceView == TransferSourceView::SharedHandle)
+    facts.Ownership = TransferOwnershipKind::SharedOwner;
+  else if (facts.SourceView == TransferSourceView::RawHandle)
+    facts.Ownership = TransferOwnershipKind::RawIdentity;
+  else if (facts.SourceView == TransferSourceView::ReferenceConstruction)
+    facts.Ownership = TransferOwnershipKind::BorrowedView;
+  else if (facts.SourceView == TransferSourceView::CallableIdentity)
+    facts.Ownership = actual && actual->IsCede
+                          ? TransferOwnershipKind::OwnedCallable
+                          : TransferOwnershipKind::CallableIdentity;
+  else if (actual) {
+    switch (actual->valueOwnership(this)) {
+    case ValueOwnership::Trivial:
+      facts.Ownership = TransferOwnershipKind::PlainValue;
+      break;
+    case ValueOwnership::BorrowedView:
+      facts.Ownership = TransferOwnershipKind::BorrowedView;
+      break;
+    case ValueOwnership::SharedHandle:
+      facts.Ownership = TransferOwnershipKind::SharedOwner;
+      break;
+    case ValueOwnership::Owned:
+      facts.Ownership = TransferOwnershipKind::OwnedValue;
+      break;
+    }
+  }
+
+  if (actualPayload && !actualPayload->isUnknown())
+    facts.CopyProof = proveSlice4CopyType(actualPayload)
+                          ? TransferCopyProof::ProvenCopy
+                          : TransferCopyProof::ProvenNonCopy;
+
+  if (legacyShadowPlan.FormalIsInit) {
+    facts.FormalContract = TransferFormalContract::None;
+    facts.FormalMorphology = TransferFormalMorphology::None;
+  } else {
+    facts.FormalContract = formalIsCeded ? TransferFormalContract::Cede
+                                         : TransferFormalContract::Ordinary;
+    facts.FormalMorphology = stage0Morphology(formal);
+    if (formal && !formal->isUnknown()) {
+      facts.FormalCapabilities.Complete = true;
+      const bool hatted = formal->isPointer() || formal->isSmartPointer() ||
+                          formal->isReference();
+      facts.FormalCapabilities.HandleRebindable = hatted && formal->IsWritable;
+      auto formalPayload = hatted ? formal->getPointeeType() : formal;
+      facts.FormalCapabilities.PayloadWritable =
+          formalPayload && formalPayload->IsWritable;
+    }
+  }
+
+  const AccessCapability actualCapability = getAccessCapability(argument, true);
+  facts.ActualCapabilities.Complete = argument != nullptr;
+  facts.ActualCapabilities.HandleRebindable =
+      actualCapability.HandleRebindable;
+  facts.ActualCapabilities.PayloadWritable = actualCapability.PayloadWritable;
+
+  if (facts.SourceCategory == TransferSourceCategory::Indeterminate) {
+    facts.Eligibility = TransferEligibility::Indeterminate;
+  } else if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
+    facts.Eligibility = TransferEligibility::Eligible;
+  } else if (!facts.SourcePlace || !sourceInfo) {
+    facts.Eligibility = TransferEligibility::Indeterminate;
+  } else if (sourceInfo->IsPlaceAlias ||
+             !legacyShadowPlan.SourcePlace.Projections.empty()) {
+    facts.Eligibility = TransferEligibility::Ineligible;
+  } else {
+    facts.Eligibility = TransferEligibility::Eligible;
+  }
+
+  if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
+    facts.Reachability = TransferReachability::None;
+  } else if (facts.SourceView == TransferSourceView::UniqueHandle) {
+    facts.Reachability = TransferReachability::RootAndDependentViews;
+  } else if (facts.SourceView == TransferSourceView::SharedHandle ||
+             facts.SourceView == TransferSourceView::RawHandle ||
+             facts.SourceView == TransferSourceView::CallableIdentity) {
+    facts.Reachability = TransferReachability::BindingAndDependentViews;
+  } else {
+    facts.Reachability = TransferReachability::ExactSubtree;
+  }
+
+  facts.BorrowStateComplete = true;
+  facts.ActiveDerivedBorrow =
+      legacyShadowPlan.SourcePlace &&
+      PALCheckerState.verifyInvalidation(legacyShadowPlan.SourcePlace)
+          .has_value();
+  facts.SourceTransferAuthorityComplete = sourceInfo != nullptr;
+  facts.SourceTransferAuthorized =
+      sourceInfo && !sourceInfo->IsPlaceAlias &&
+      (!sourceInfo->IsFunctionParameter || sourceInfo->IsCeded);
+  if (sourceInfo && sourceInfo->IsCeded && facts.SourcePlace) {
+    facts.ObligationBefore = TransferObligationState::Outstanding;
+    facts.ObligationRoot = facts.SourcePlace->root();
+  }
+
+  facts.DropLiabilityComplete = actual != nullptr && !actual->isUnknown();
+  if (facts.DropLiabilityComplete) {
+    const auto ownership = actual->valueOwnership(this);
+    facts.CarriesDropLiability = ownership == ValueOwnership::Owned ||
+                                 ownership == ValueOwnership::SharedHandle;
+  }
+  facts.WholeOwnedTemporaryEligible =
+      facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
+      facts.CarriesDropLiability;
+  return prepareExplicitCedePlan(facts);
+}
+
 void Sema::recordShadowCallTransfer(
     ASTNode *callSite, std::vector<CallTransferPlan> &plans,
     unsigned argumentIndex, unsigned formalIndex, Expr *argument,
@@ -1582,6 +1903,8 @@ void Sema::recordShadowCallTransfer(
       callSite, argument, argumentType, destinationType, formalIsCeded,
       formalIsInit, actualIsInit, legacyCallerRuleApplied, legacyCedeExempt,
       route, isAsync, executionBoundary, argumentIndex, formalIndex);
+  plan.Stage0Plan = buildExplicitCedeStage0CallPlan(
+      argument, argumentType, destinationType, formalIsCeded, plan);
   auto existing = std::find_if(
       plans.begin(), plans.end(), [&](const CallTransferPlan &candidate) {
         return candidate.ArgumentIndex == argumentIndex &&
@@ -1593,6 +1916,46 @@ void Sema::recordShadowCallTransfer(
   else
     *existing = plan;
 
+  const ExplicitCedePlan &stage0 = *plan.Stage0Plan;
+  const std::string stage0Root =
+      stage0.TransferOrigin
+          ? stage0.TransferOrigin->root().canonicalKey()
+          : std::string{};
+  ExplicitCedeStage0ShadowRecord stage0Record;
+  stage0Record.PlanOrigin = toString(stage0.Prepared.Origin);
+  stage0Record.SyntaxPurpose = toString(stage0.Prepared.SyntaxPurpose);
+  stage0Record.SurfaceSpelling = toString(stage0.Prepared.SurfaceSpelling);
+  stage0Record.SourceCategory = toString(stage0.Prepared.SourceCategory);
+  stage0Record.ActualType = stage0.Prepared.ActualTypeKey;
+  stage0Record.FormalType = stage0.Prepared.FormalTypeKey;
+  stage0Record.FormalContract = toString(stage0.Prepared.FormalContract);
+  stage0Record.FormalMorphology = toString(stage0.Prepared.FormalMorphology);
+  stage0Record.FormalCapabilitiesComplete =
+      stage0.Prepared.FormalCapabilities.Complete;
+  stage0Record.FormalHandleRebindable =
+      stage0.Prepared.FormalCapabilities.HandleRebindable;
+  stage0Record.FormalPayloadWritable =
+      stage0.Prepared.FormalCapabilities.PayloadWritable;
+  stage0Record.ActualCapabilitiesComplete =
+      stage0.Prepared.ActualCapabilities.Complete;
+  stage0Record.ActualHandleRebindable =
+      stage0.Prepared.ActualCapabilities.HandleRebindable;
+  stage0Record.ActualPayloadWritable =
+      stage0.Prepared.ActualCapabilities.PayloadWritable;
+  stage0Record.Ownership = toString(stage0.Prepared.Ownership);
+  stage0Record.CopyProof = toString(stage0.Prepared.CopyProof);
+  stage0Record.Eligibility = toString(stage0.Prepared.Eligibility);
+  stage0Record.Outcome = toString(stage0.Outcome);
+  stage0Record.Rejection = toString(stage0.Rejection);
+  stage0Record.ValueProduction = toString(stage0.ValueProduction);
+  stage0Record.Source = toString(stage0.Source);
+  stage0Record.Destination = toString(stage0.Destination);
+  stage0Record.Drop = toString(stage0.Drop);
+  stage0Record.ObligationAction = toString(stage0.ObligationAction);
+  stage0Record.ObligationAfter = toString(stage0.ObligationAfter);
+  stage0Record.SourceView = toString(stage0.TransferOriginView);
+  stage0Record.Reachability = toString(stage0.Reachability);
+  stage0Record.SemanticRoot = stage0Root;
   SemanticEvidence::recordCallTransferShadow(
       callee, callTransferRouteName(plan.Route), parameter, argumentIndex,
       formalIndex, callValueCategoryName(plan.ValueCategory),
@@ -1609,7 +1972,7 @@ void Sema::recordShadowCallTransfer(
       plan.HasCleanupMask, plan.CleanupMask, plan.FormalIsCeded,
       plan.FormalIsInit, plan.ActualIsInit,
       plan.LegacyCallerRuleApplied, plan.LegacyCedeExempt,
-      plan.LegacyMissingCede, plan.IsAsync,
+      plan.LegacyMissingCede, plan.IsAsync, std::move(stage0Record),
       argument ? argument->Loc : SourceLocation{}, parameterLoc);
 }
 

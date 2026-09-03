@@ -44,7 +44,7 @@ def run(tokac, source, expected_error=None, check_only=True):
         raise RuntimeError(source + " emitted invalid shadow JSON") from error
     require(payload.get("schema") == "toka.internal.call-transfer-shadow",
             source + " emitted the wrong schema")
-    require(payload.get("version") == 3, source + " emitted the wrong version")
+    require(payload.get("version") == 4, source + " emitted the wrong version")
     require(payload.get("status") == "audit-only",
             source + " did not identify audit-only output")
     records = payload.get("records")
@@ -58,6 +58,16 @@ def run(tokac, source, expected_error=None, check_only=True):
         "cleanup_mask", "formal_ceded", "formal_init", "actual_init",
         "legacy_caller_rule_applied", "legacy_cede_exempt",
         "legacy_missing_cede", "async", "location", "contract_location",
+        "stage0",
+    }
+    stage0_required = {
+        "plan_origin", "syntax_purpose", "surface_spelling",
+        "source_category", "actual_type", "formal_type",
+        "formal_contract", "formal_morphology", "formal_capabilities",
+        "actual_capabilities", "ownership", "copy_proof", "eligibility",
+        "outcome", "rejection", "value_production", "source",
+        "destination", "drop", "obligation_action", "obligation_after",
+        "source_view", "reachability", "semantic_root",
     }
     seen = set()
     for record in records:
@@ -72,13 +82,53 @@ def run(tokac, source, expected_error=None, check_only=True):
                 source + " cleanup mask has an invalid representation")
         require(isinstance(record["actual_init"], bool),
                 source + " actual init spelling is not boolean")
+        stage0 = record["stage0"]
+        require(isinstance(stage0, dict) and set(stage0) == stage0_required,
+                source + " emitted an incomplete Stage-0 plan")
+        capability_fields = {"complete", "handle_rebind", "payload_write"}
+        require(set(stage0["formal_capabilities"]) == capability_fields and
+                set(stage0["actual_capabilities"]) == capability_fields,
+                source + " emitted incomplete Stage-0 capability facts")
+        require(bool(stage0["actual_type"]) or
+                (stage0["outcome"] == "Rejected" and
+                 stage0["rejection"] == "IncompleteFacts"),
+                source + " omitted Stage-0 actual resolved type without "
+                "rejecting incomplete facts")
+        if not record["formal_init"]:
+            require(bool(stage0["formal_type"]) and
+                    stage0["formal_morphology"] not in
+                    ("None", "Indeterminate") and
+                    stage0["formal_capabilities"]["complete"],
+                    source + " omitted Stage-0 formal morphology facts")
+        require(stage0["outcome"] in ("Admitted", "Rejected"),
+                source + " emitted an invalid Stage-0 outcome")
+        if stage0["outcome"] == "Rejected":
+            require(stage0["rejection"] != "None" and
+                    stage0["source"] == "NoStateChange",
+                    source + " rejected Stage-0 plan could change state")
+        else:
+            require(stage0["rejection"] == "None",
+                    source + " admitted Stage-0 plan retained rejection")
         if record["value_category"] in ("Place", "InitStorage"):
             require(record["source_root_id"] > 0 and
                     bool(record["source_identity"]),
                     source + " place plan omitted structured source identity")
+            require(bool(stage0["semantic_root"]) or
+                    (stage0["outcome"] == "Rejected" and
+                     stage0["rejection"] == "IncompleteFacts"),
+                    source + " Stage-0 place invented authority without a "
+                    "stable root or failed to reject incomplete facts")
+            if stage0["semantic_root"]:
+                require("crate:" in stage0["semantic_root"] and
+                        "/private/tmp/" not in stage0["semantic_root"] and
+                        str(ROOT) not in stage0["semantic_root"],
+                        source + " Stage-0 root contains a physical/worktree "
+                        "path instead of a logical module coordinate")
         if record["value_category"] in ("Temporary", "Indeterminate"):
             require(record["source_root_id"] == 0,
                     source + " non-place plan retained a source root")
+            require(not stage0["semantic_root"],
+                    source + " Stage-0 non-place invented a semantic root")
         encoded = json.dumps(record, sort_keys=True, separators=(",", ":"))
         require(encoded not in seen, source + " emitted duplicate records")
         seen.add(encoded)
@@ -126,6 +176,14 @@ def find(records, source_file, **expected):
     return matches[0]
 
 
+def require_stage0(record, source_file, **expected):
+    stage0 = record["stage0"]
+    for key, value in expected.items():
+        require(stage0.get(key) == value,
+                "%s expected Stage-0 %s=%r, got %r"
+                % (source_file, key, value, stage0.get(key)))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", default="build")
@@ -144,56 +202,75 @@ def main():
             "call transfer shadow output is not deterministic")
     require(records == run(tokac, source, check_only=False),
             "shadow mode without --check-only changed output")
-    receipts.append(find(
+    record = find(
         records, source, callee="consume", route="ordinary",
         parameter="value", spelling="implicit", transfer="CopyValue",
         source="KeepLive", source_path="plain", value_category="Place",
         drop="NoLiability", formal_ceded=True, formal_index=1,
         legacy_caller_rule_applied=True,
         legacy_cede_exempt=True, legacy_missing_cede=False,
-    ))
-    receipts.append(find(
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Rejected",
+                   rejection="MissingCedeForNamedSource",
+                   source="NoStateChange")
+    record = find(
         records, source, callee="consume", route="ordinary",
         parameter="value", spelling="implicit", transfer="ConsumeTemporary",
         source="NoSourcePlace", source_path="", value_category="Temporary",
         drop="NoLiability", formal_ceded=True,
         legacy_cede_exempt=True, legacy_missing_cede=False,
-    ))
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Admitted", rejection="None",
+                   value_production="CopyValue", source="NoSourcePlace")
     receipts.append(find(
         records, source, callee="consume_pair", route="ordinary",
         parameter="value", spelling="implicit", transfer="CopyValue",
         source="KeepLive", source_path="pair", value_category="Place",
         formal_ceded=True, legacy_cede_exempt=True,
     ))
-    receipts.append(find(
+    record = find(
         records, source, callee="consume_resource", route="ordinary",
         parameter="value", spelling="explicit",
         transfer="ConsumeTemporary", source="NoSourcePlace",
         value_category="Temporary", drop="DestinationAssumesLiability",
         formal_ceded=True,
-    ))
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Rejected",
+                   rejection="ExplicitCedeRequiresSource",
+                   source="NoStateChange")
 
     source = "tests/semantics/call_transfer_shadow_m1/copy_explicit_invalidates.tk"
     records = run(tokac, source, expected_error="E0438")
-    receipts.append(find(
+    record = find(
         records, source, callee="consume", route="ordinary",
         parameter="value", spelling="explicit", transfer="CopyValue",
         source="InvalidatePlace", source_path="plain", value_category="Place",
         formal_ceded=True,
         legacy_cede_exempt=True, legacy_missing_cede=False,
         place_eligibility="PendingValidation",
-    ))
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Admitted", rejection="None",
+                   value_production="CopyValue",
+                   source="InvalidateSubtree")
 
     source = "tests/conformance/diagnostics/static_cede_parameter_requires_explicit_transfer.tk"
     records = run(tokac, source, expected_error="E04570")
-    receipts.append(find(
+    record = find(
         records, source, callee="Token::consume", route="static",
         parameter="token", spelling="implicit", transfer="MoveOwned",
         source="InvalidatePlace", source_path="source", formal_ceded=True,
         legacy_cede_exempt=False, legacy_missing_cede=True,
         legacy_caller_rule_applied=True,
         place_eligibility="PendingValidation",
-    ))
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Rejected",
+                   rejection="MissingCedeForNamedSource",
+                   source="NoStateChange")
 
     source = "tests/conformance/diagnostics/callable_cede_parameter_requires_explicit_transfer.tk"
     records = run(tokac, source, expected_error="E04570")
@@ -234,12 +311,16 @@ def main():
 
     source = "tests/conformance/diagnostics/cede_argument_to_borrowed_parameter_rejected.tk"
     records = run(tokac, source, expected_error="E04640")
-    receipts.append(find(
+    record = find(
         records, source, callee="borrow", route="ordinary",
         parameter="value", spelling="explicit", transfer="Reject",
         source="NoStateChange", source_path="value", formal_ceded=False,
         place_eligibility="NotApplicable", drop="NoStateChange",
-    ))
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Rejected",
+                   rejection="ExplicitCedeToOrdinaryFormal",
+                   source="NoStateChange")
 
     source = "tests/pass/g03_unsafe_null_privilege.tk"
     records = run(tokac, source)
@@ -555,7 +636,7 @@ def main():
 
     print(json.dumps({
         "schema": "toka.rc9-m1-call-transfer-shadow-audit",
-        "version": 3,
+        "version": 4,
         "result": "pass",
         "cases": len(receipts),
         "normal_cases": len(normal_cases),
