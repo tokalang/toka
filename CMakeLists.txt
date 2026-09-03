@@ -286,6 +286,20 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_method_chain_consistency.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        set(_toka_compiler_driven_tests
+            toka_call_transfer_shadow_m1
+            toka_direct_call_observation_d3a
+            toka_pure_nominal_overload_probe_d4a
+            toka_authority_facts_m1b2a
+            toka_signature_driven_cede_direct
+            toka_signature_driven_cede_method_static
+            toka_signature_driven_cede_callable_indirect
+            toka_signature_driven_cede_multi_atomic
+            toka_signature_driven_cede_remaining_routes
+            toka_cede_obligation_evidence_v2
+            toka_method_chain_consistency)
+        set_tests_properties(${_toka_compiler_driven_tests} PROPERTIES
+            ENVIRONMENT "TOKA_LIB=${CMAKE_SOURCE_DIR}/lib")
     endif()
 endif()
 

@@ -13,6 +13,8 @@ bool SemanticEvidence::CallTransferShadowEnabled = false;
 std::vector<SemanticDecisionRecord> SemanticEvidence::Records;
 std::vector<CedeObligationRecord> SemanticEvidence::CedeObligations;
 std::vector<CallTransferShadowRecord> SemanticEvidence::CallTransferShadows;
+std::vector<ExplicitCedeStage0TransactionRecord>
+    SemanticEvidence::ExplicitCedeStage0Transactions;
 std::vector<CapabilityCallRecord> SemanticEvidence::CapabilityCalls;
 std::vector<TodoGoalRecord> SemanticEvidence::TodoGoals;
 std::vector<ConditionalFactRecord> SemanticEvidence::ConditionalFacts;
@@ -192,6 +194,43 @@ bool CallTransferShadowRecord::operator==(
          Location == rhs.Location && ContractLocation == rhs.ContractLocation;
 }
 
+bool ExplicitCedeStage0TransactionItemRecord::operator<(
+    const ExplicitCedeStage0TransactionItemRecord &rhs) const {
+  return std::tie(Role, Index, ActualType, FormalType, FormalContract, Outcome,
+                  Rejection, ExactPath, SourceView, ValueProduction, Source,
+                  Destination, Drop,
+                  SourceObligationAction, SourceObligationAfter,
+                  DestinationObligationAction, DestinationObligationAfter) <
+         std::tie(rhs.Role, rhs.Index, rhs.ActualType, rhs.FormalType,
+                  rhs.FormalContract, rhs.Outcome, rhs.Rejection,
+                  rhs.ExactPath, rhs.SourceView, rhs.ValueProduction,
+                  rhs.Source, rhs.Destination, rhs.Drop,
+                  rhs.SourceObligationAction, rhs.SourceObligationAfter,
+                  rhs.DestinationObligationAction,
+                  rhs.DestinationObligationAfter);
+}
+
+bool ExplicitCedeStage0TransactionItemRecord::operator==(
+    const ExplicitCedeStage0TransactionItemRecord &rhs) const {
+  return !(*this < rhs) && !(rhs < *this);
+}
+
+bool ExplicitCedeStage0TransactionRecord::operator<(
+    const ExplicitCedeStage0TransactionRecord &rhs) const {
+  return std::tie(Callee, Route, Outcome, Rejection, CommitAllowed,
+                  PreparedBeforeLegacyMutation, HasReceiver, ArgumentCount,
+                  Items, Location) <
+         std::tie(rhs.Callee, rhs.Route, rhs.Outcome, rhs.Rejection,
+                  rhs.CommitAllowed, rhs.PreparedBeforeLegacyMutation,
+                  rhs.HasReceiver, rhs.ArgumentCount, rhs.Items,
+                  rhs.Location);
+}
+
+bool ExplicitCedeStage0TransactionRecord::operator==(
+    const ExplicitCedeStage0TransactionRecord &rhs) const {
+  return !(*this < rhs) && !(rhs < *this);
+}
+
 bool CapabilityCallRecord::operator<(const CapabilityCallRecord &rhs) const {
   return std::tie(Callee, Parameter, Subject, DeclaredHandleRebindable,
                   DeclaredPayloadWritable, InferredHandleRebindable,
@@ -280,12 +319,14 @@ SemanticEvidenceAuditState SemanticEvidence::auditState() {
           Records.size(),
           CedeObligations.size(),
           CallTransferShadows.size(),
+          ExplicitCedeStage0Transactions.size(),
           CapabilityCalls.size(),
           TodoGoals.size(),
           ConditionalFacts.size(),
           Records,
           CedeObligations,
           CallTransferShadows,
+          ExplicitCedeStage0Transactions,
           CapabilityCalls,
           TodoGoals,
           ConditionalFacts};
@@ -295,6 +336,7 @@ void SemanticEvidence::reset() {
   Records.clear();
   CedeObligations.clear();
   CallTransferShadows.clear();
+  ExplicitCedeStage0Transactions.clear();
   CapabilityCalls.clear();
   TodoGoals.clear();
   ConditionalFacts.clear();
@@ -454,7 +496,15 @@ void SemanticEvidence::recordCallTransferShadow(
        cleanupMask, formalCeded, formalInit, actualInit,
        legacyCallerRuleApplied, legacyCedeExempt,
        legacyMissingCede, async, std::move(stage0),
-       resolveLocation(location), resolveLocation(contractLocation)});
+      resolveLocation(location), resolveLocation(contractLocation)});
+}
+
+void SemanticEvidence::recordExplicitCedeStage0Transaction(
+    ExplicitCedeStage0TransactionRecord record, SourceLocation location) {
+  if (!Enabled || !CallTransferShadowEnabled)
+    return;
+  record.Location = resolveLocation(location);
+  ExplicitCedeStage0Transactions.push_back(std::move(record));
 }
 
 void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
@@ -462,8 +512,14 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
   CallTransferShadows.erase(
       std::unique(CallTransferShadows.begin(), CallTransferShadows.end()),
       CallTransferShadows.end());
+  std::sort(ExplicitCedeStage0Transactions.begin(),
+            ExplicitCedeStage0Transactions.end());
+  ExplicitCedeStage0Transactions.erase(
+      std::unique(ExplicitCedeStage0Transactions.begin(),
+                  ExplicitCedeStage0Transactions.end()),
+      ExplicitCedeStage0Transactions.end());
   out << "{\"schema\":\"toka.internal.call-transfer-shadow\","
-         "\"version\":4,\"status\":\"audit-only\",\"records\":[";
+         "\"version\":5,\"status\":\"audit-only\",\"records\":[";
   for (size_t i = 0; i < CallTransferShadows.size(); ++i) {
     if (i != 0)
       out << ',';
@@ -602,6 +658,56 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
     dumpLocation(out, record.Location);
     out << ",\"contract_location\":";
     dumpLocation(out, record.ContractLocation);
+    out << '}';
+  }
+  out << "],\"transactions\":[";
+  for (size_t i = 0; i < ExplicitCedeStage0Transactions.size(); ++i) {
+    if (i != 0)
+      out << ',';
+    const auto &transaction = ExplicitCedeStage0Transactions[i];
+    out << "{\"callee\":\"" << escapeJSON(transaction.Callee)
+        << "\",\"route\":\"" << escapeJSON(transaction.Route)
+        << "\",\"outcome\":\"" << escapeJSON(transaction.Outcome)
+        << "\",\"rejection\":\"" << escapeJSON(transaction.Rejection)
+        << "\",\"commit_allowed\":"
+        << (transaction.CommitAllowed ? "true" : "false")
+        << ",\"prepared_before_legacy_mutation\":"
+        << (transaction.PreparedBeforeLegacyMutation ? "true" : "false")
+        << ",\"has_receiver\":"
+        << (transaction.HasReceiver ? "true" : "false")
+        << ",\"argument_count\":" << transaction.ArgumentCount
+        << ",\"items\":[";
+    for (size_t itemIndex = 0; itemIndex < transaction.Items.size();
+         ++itemIndex) {
+      if (itemIndex != 0)
+        out << ',';
+      const auto &item = transaction.Items[itemIndex];
+      out << "{\"role\":\"" << escapeJSON(item.Role)
+          << "\",\"index\":" << item.Index << ",\"actual_type\":\""
+          << escapeJSON(item.ActualType) << "\",\"formal_type\":\""
+          << escapeJSON(item.FormalType)
+          << "\",\"formal_contract\":\""
+          << escapeJSON(item.FormalContract) << "\",\"outcome\":\""
+          << escapeJSON(item.Outcome) << "\",\"rejection\":\""
+          << escapeJSON(item.Rejection) << "\",\"exact_path\":\""
+          << escapeJSON(item.ExactPath) << "\",\"source_view\":\""
+          << escapeJSON(item.SourceView)
+          << "\",\"value_production\":\""
+          << escapeJSON(item.ValueProduction) << "\",\"source\":\""
+          << escapeJSON(item.Source) << "\",\"destination\":\""
+          << escapeJSON(item.Destination) << "\",\"drop\":\""
+          << escapeJSON(item.Drop)
+          << "\",\"source_obligation_action\":\""
+          << escapeJSON(item.SourceObligationAction)
+          << "\",\"source_obligation_after\":\""
+          << escapeJSON(item.SourceObligationAfter)
+          << "\",\"destination_obligation_action\":\""
+          << escapeJSON(item.DestinationObligationAction)
+          << "\",\"destination_obligation_after\":\""
+          << escapeJSON(item.DestinationObligationAfter) << "\"}";
+    }
+    out << "],\"location\":";
+    dumpLocation(out, transaction.Location);
     out << '}';
   }
   out << "]}\n";

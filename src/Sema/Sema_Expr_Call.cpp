@@ -1691,32 +1691,20 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
   return plan;
 }
 
-ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
+ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
     Expr *argument, const std::shared_ptr<Type> &argumentType,
-    const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
-    const CallTransferPlan &legacyShadowPlan,
-    TransferFormalDeclarationFacts formalDeclaration) {
+    const CallTransferPlan &legacyShadowPlan) {
   ExplicitCedePreparedFacts facts;
   auto actual = argumentType ? resolveType(argumentType, false) : nullptr;
-  auto formal = destinationType ? resolveType(destinationType, false) : nullptr;
   auto actualPayload = shadowCarrierPayload(actual);
   facts.ActualTypeKey =
       actual && !actual->isUnknown() ? actual->toString() : std::string{};
-  facts.FormalTypeKey =
-      formal && !formal->isUnknown() ? formal->toString() : std::string{};
   facts.SurfaceSpelling = legacyShadowPlan.ExplicitCede
                               ? TransferSurfaceSpelling::ExplicitCede
                               : TransferSurfaceSpelling::Bare;
   facts.SyntaxPurpose = legacyShadowPlan.ExplicitCede
                             ? CedeSyntaxPurpose::SourceInvalidation
                             : CedeSyntaxPurpose::None;
-  facts.Destination = legacyShadowPlan.FormalIsInit
-                          ? TransferDestination::Initialization
-                          : TransferDestination::CalleeParameter;
-  facts.EligibilityContext =
-      legacyShadowPlan.FormalIsInit
-          ? TransferEligibilityContext::Initialization
-          : TransferEligibilityContext::Argument;
   facts.SourceCategory =
       legacyShadowPlan.ValueCategory == CallValueCategory::Place ||
               legacyShadowPlan.ValueCategory == CallValueCategory::InitStorage
@@ -1900,10 +1888,7 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
     }
   }
 
-  if (actualPayload && !actualPayload->isUnknown())
-    facts.CopyProof = proveSlice4CopyType(actualPayload)
-                          ? TransferCopyProof::ProvenCopy
-                          : TransferCopyProof::ProvenNonCopy;
+  facts.CopyProof = queryExplicitCedeStage0CopyProof(actualPayload);
   if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace) {
     facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
   } else if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
@@ -1918,6 +1903,129 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
             ? TransferTemporaryEligibility::Eligible
             : TransferTemporaryEligibility::Ineligible;
   }
+  const AccessCapability actualCapability = getAccessCapability(argument, true);
+  facts.ActualCapabilities.Complete = argument != nullptr;
+  facts.ActualCapabilities.HandleRebindable =
+      actualCapability.HandleRebindable;
+  facts.ActualCapabilities.PayloadWritable = actualCapability.PayloadWritable;
+
+  if (facts.SourceCategory == TransferSourceCategory::Indeterminate) {
+    facts.Eligibility = TransferEligibility::Indeterminate;
+  } else if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
+    facts.Eligibility = TransferEligibility::Eligible;
+  } else if (!facts.SourcePlace || !sourceInfo) {
+    facts.Eligibility = TransferEligibility::Indeterminate;
+  } else if (!sourceIsLocal || sourceInfo->IsPlaceAlias) {
+    facts.Eligibility = TransferEligibility::Ineligible;
+  } else if (identityPath.Projections.empty()) {
+    facts.Eligibility = TransferEligibility::Eligible;
+  } else {
+    facts.Eligibility = TransferEligibility::Ineligible;
+    const auto &projections = identityPath.Projections;
+    if (projections.size() == 1 && sourceInfo->partialMovePlan().isAdmitted()) {
+      const auto &projection = projections.front();
+      if (projection.Kind == AccessProjectionKind::ConstantIndex &&
+          sourceInfo->partialMovePlan().admits(
+              PartialMoveProjectionKind::FixedArrayElement,
+              projection.Index)) {
+        facts.Eligibility = TransferEligibility::Eligible;
+      } else if (projection.Kind == AccessProjectionKind::Field &&
+                 sourceInfo->TypeObj && sourceInfo->TypeObj->isShape()) {
+        auto shape = std::dynamic_pointer_cast<ShapeType>(sourceInfo->TypeObj);
+        if (shape && shape->Decl) {
+          for (size_t index = 0; index < shape->Decl->Members.size(); ++index) {
+            if (stripMemberAccessMarkers(shape->Decl->Members[index].Name) ==
+                    stripMemberAccessMarkers(projection.Name) &&
+                sourceInfo->partialMovePlan().admits(
+                    PartialMoveProjectionKind::DirectField, index)) {
+              facts.Eligibility = TransferEligibility::Eligible;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
+    facts.Reachability = TransferReachability::None;
+  } else if (facts.SourceView == TransferSourceView::UniqueHandle) {
+    facts.Reachability = TransferReachability::RootAndDependentViews;
+  } else if (facts.SourceView == TransferSourceView::SharedHandle ||
+             facts.SourceView == TransferSourceView::RawHandle ||
+             facts.SourceView == TransferSourceView::CallableIdentity) {
+    facts.Reachability = TransferReachability::BindingAndDependentViews;
+  } else {
+    facts.Reachability = TransferReachability::ExactSubtree;
+  }
+
+  facts.BorrowStateComplete = true;
+  auto palSnapshot = PALCheckerState.snapshot();
+  facts.ActiveDerivedBorrow =
+      identityPath && palSnapshot.verifyInvalidation(identityPath).has_value();
+  facts.SourceTransferAuthorityComplete = sourceInfo != nullptr;
+  facts.SourceTransferAuthorized =
+      sourceIsLocal && sourceInfo && !sourceInfo->IsPlaceAlias &&
+      (!sourceInfo->IsFunctionParameter || sourceInfo->IsCeded);
+  if (sourceInfo && sourceInfo->IsCeded && facts.SourcePlace) {
+    facts.ObligationBefore = TransferObligationState::Outstanding;
+    facts.ObligationRoot = facts.SourcePlace->root();
+  }
+
+  facts.DropLiabilityComplete = actual != nullptr && !actual->isUnknown();
+  if (facts.DropLiabilityComplete) {
+    const auto ownership = actual->valueOwnership(this);
+    facts.CarriesDropLiability = ownership == ValueOwnership::Owned ||
+                                 ownership == ValueOwnership::SharedHandle;
+  }
+  return facts;
+}
+
+TransferCopyProof Sema::queryExplicitCedeStage0CopyProof(
+    const std::shared_ptr<Type> &type) {
+  if (!type || type->isUnknown())
+    return TransferCopyProof::Indeterminate;
+  if (type->isUniquePtr() || type->isSharedPtr())
+    return TransferCopyProof::ProvenNonCopy;
+  if (type->isRawPointer() || type->isReference() || type->isFunction() ||
+      type->isDynFn() || type->isVoid() || type->isBoolean() ||
+      type->isInteger() || type->isFloatingPoint() || type->isAddrType() ||
+      type->isOAddrType())
+    return TransferCopyProof::ProvenCopy;
+  if (type->isArray())
+    return queryExplicitCedeStage0CopyProof(type->getArrayElementType());
+  if (!type->isShape())
+    return TransferCopyProof::ProvenNonCopy;
+  auto shapeType = std::dynamic_pointer_cast<ShapeType>(type);
+  const ShapeDecl *shape = shapeType ? shapeType->Decl : nullptr;
+  if (!shape) {
+    auto found = ShapeMap.find(type->getSoulName());
+    if (found != ShapeMap.end())
+      shape = found->second;
+  }
+  if (!shape)
+    return TransferCopyProof::Indeterminate;
+  auto proof = Slice4CopyProofs.find(shape);
+  if (proof == Slice4CopyProofs.end() ||
+      proof->second == Slice1CopyProof::Unknown)
+    return TransferCopyProof::Indeterminate;
+  return proof->second == Slice1CopyProof::ProvenCopy
+             ? TransferCopyProof::ProvenCopy
+             : TransferCopyProof::ProvenNonCopy;
+}
+
+ExplicitCedePlan Sema::completeExplicitCedeStage0CallPlan(
+    ExplicitCedePreparedFacts facts,
+    const std::shared_ptr<Type> &argumentType,
+    const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
+    bool formalIsInit, TransferFormalDeclarationFacts formalDeclaration,
+    TransferDestination destination, TransferEligibilityContext context) {
+  auto actual = argumentType ? resolveType(argumentType, false) : nullptr;
+  auto formal = destinationType ? resolveType(destinationType, false) : nullptr;
+  facts.FormalTypeKey =
+      formal && !formal->isUnknown() ? formal->toString() : std::string{};
+  facts.Destination = destination;
+  facts.EligibilityContext = context;
   facts.TypeCompatibility =
       actual && formal && !actual->isUnknown() && !formal->isUnknown()
           ? (isTypeCompatible(formal, actual)
@@ -1925,7 +2033,7 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
                  : TransferTypeCompatibility::Incompatible)
           : TransferTypeCompatibility::Indeterminate;
 
-  if (legacyShadowPlan.FormalIsInit) {
+  if (formalIsInit) {
     facts.FormalContract = TransferFormalContract::None;
     facts.DeclaredFormalMorphology = TransferFormalMorphology::None;
     facts.FormalMorphology = TransferFormalMorphology::None;
@@ -2003,83 +2111,25 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
           formalPayload && formalPayload->IsWritable;
     }
   }
-
-  const AccessCapability actualCapability = getAccessCapability(argument, true);
-  facts.ActualCapabilities.Complete = argument != nullptr;
-  facts.ActualCapabilities.HandleRebindable =
-      actualCapability.HandleRebindable;
-  facts.ActualCapabilities.PayloadWritable = actualCapability.PayloadWritable;
-
-  if (facts.SourceCategory == TransferSourceCategory::Indeterminate) {
-    facts.Eligibility = TransferEligibility::Indeterminate;
-  } else if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
-    facts.Eligibility = TransferEligibility::Eligible;
-  } else if (!facts.SourcePlace || !sourceInfo) {
-    facts.Eligibility = TransferEligibility::Indeterminate;
-  } else if (!sourceIsLocal || sourceInfo->IsPlaceAlias) {
-    facts.Eligibility = TransferEligibility::Ineligible;
-  } else if (identityPath.Projections.empty()) {
-    facts.Eligibility = TransferEligibility::Eligible;
-  } else {
-    facts.Eligibility = TransferEligibility::Ineligible;
-    const auto &projections = identityPath.Projections;
-    if (projections.size() == 1 && sourceInfo->partialMovePlan().isAdmitted()) {
-      const auto &projection = projections.front();
-      if (projection.Kind == AccessProjectionKind::ConstantIndex &&
-          sourceInfo->partialMovePlan().admits(
-              PartialMoveProjectionKind::FixedArrayElement,
-              projection.Index)) {
-        facts.Eligibility = TransferEligibility::Eligible;
-      } else if (projection.Kind == AccessProjectionKind::Field &&
-                 sourceInfo->TypeObj && sourceInfo->TypeObj->isShape()) {
-        auto shape = std::dynamic_pointer_cast<ShapeType>(sourceInfo->TypeObj);
-        if (shape && shape->Decl) {
-          for (size_t index = 0; index < shape->Decl->Members.size(); ++index) {
-            if (stripMemberAccessMarkers(shape->Decl->Members[index].Name) ==
-                    stripMemberAccessMarkers(projection.Name) &&
-                sourceInfo->partialMovePlan().admits(
-                    PartialMoveProjectionKind::DirectField, index)) {
-              facts.Eligibility = TransferEligibility::Eligible;
-              break;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
-    facts.Reachability = TransferReachability::None;
-  } else if (facts.SourceView == TransferSourceView::UniqueHandle) {
-    facts.Reachability = TransferReachability::RootAndDependentViews;
-  } else if (facts.SourceView == TransferSourceView::SharedHandle ||
-             facts.SourceView == TransferSourceView::RawHandle ||
-             facts.SourceView == TransferSourceView::CallableIdentity) {
-    facts.Reachability = TransferReachability::BindingAndDependentViews;
-  } else {
-    facts.Reachability = TransferReachability::ExactSubtree;
-  }
-
-  facts.BorrowStateComplete = true;
-  facts.ActiveDerivedBorrow =
-      identityPath &&
-      PALCheckerState.verifyInvalidation(identityPath).has_value();
-  facts.SourceTransferAuthorityComplete = sourceInfo != nullptr;
-  facts.SourceTransferAuthorized =
-      sourceIsLocal && sourceInfo && !sourceInfo->IsPlaceAlias &&
-      (!sourceInfo->IsFunctionParameter || sourceInfo->IsCeded);
-  if (sourceInfo && sourceInfo->IsCeded && facts.SourcePlace) {
-    facts.ObligationBefore = TransferObligationState::Outstanding;
-    facts.ObligationRoot = facts.SourcePlace->root();
-  }
-
-  facts.DropLiabilityComplete = actual != nullptr && !actual->isUnknown();
-  if (facts.DropLiabilityComplete) {
-    const auto ownership = actual->valueOwnership(this);
-    facts.CarriesDropLiability = ownership == ValueOwnership::Owned ||
-                                 ownership == ValueOwnership::SharedHandle;
-  }
   return prepareExplicitCedePlan(facts);
+}
+
+ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
+    Expr *argument, const std::shared_ptr<Type> &argumentType,
+    const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
+    const CallTransferPlan &legacyShadowPlan,
+    TransferFormalDeclarationFacts formalDeclaration) {
+  auto facts = buildExplicitCedeStage0ActualFacts(
+      argument, argumentType, legacyShadowPlan);
+  const bool formalIsInit = legacyShadowPlan.FormalIsInit;
+  return completeExplicitCedeStage0CallPlan(
+      std::move(facts), argumentType, destinationType, formalIsCeded,
+      formalIsInit,
+      formalDeclaration,
+      formalIsInit ? TransferDestination::Initialization
+                   : TransferDestination::CalleeParameter,
+      formalIsInit ? TransferEligibilityContext::Initialization
+                   : TransferEligibilityContext::Argument);
 }
 
 TransferFormalDeclarationFacts Sema::buildStage0FormalDeclarationFacts(
@@ -2138,6 +2188,100 @@ TransferFormalDeclarationFacts Sema::buildStage0FormalDeclarationFacts(
       facts.Complete ? TransferFormalContractOrigin::ConcreteDeclaration
                      : TransferFormalContractOrigin::Indeterminate;
   return facts;
+}
+
+void Sema::recordExplicitCedeStage0Transaction(
+    ASTNode *callSite, const std::string &callee, CallTransferRoute route,
+    std::optional<Stage0CallTransactionItemInput> receiver,
+    std::vector<Stage0CallTransactionItemInput> arguments) {
+  if (!SemanticEvidence::isCallTransferShadowEnabled() ||
+      m_IsPrecomputingCaptures)
+    return;
+
+  auto prepareItem = [&](Stage0CallTransactionItemInput &input,
+                         TransferDestination destination,
+                         TransferEligibilityContext context) {
+    if (!input.ArgumentType)
+      input.ArgumentType =
+          queryShadowCallArgumentType(input.Argument, input.FormalType);
+    if (!input.PreparedActual) {
+      auto legacy = buildShadowCallTransferPlan(
+          callSite, input.Argument, input.ArgumentType, input.FormalType,
+          input.FormalIsCeded, input.FormalIsInit, input.ActualIsInit, false,
+          false, route, false, CallExecutionBoundary::None,
+          input.ArgumentIndex, input.FormalIndex);
+      input.PreparedActual = buildExplicitCedeStage0ActualFacts(
+          input.Argument, input.ArgumentType, legacy);
+    }
+    return completeExplicitCedeStage0CallPlan(
+        *input.PreparedActual, input.ArgumentType, input.FormalType,
+        input.FormalIsCeded, input.FormalIsInit, input.FormalDeclaration,
+        destination, context);
+  };
+
+  ExplicitCedeWholeCallFacts wholeFacts;
+  if (receiver)
+    wholeFacts.Receiver =
+        prepareItem(*receiver, TransferDestination::Receiver,
+                    TransferEligibilityContext::Receiver)
+            .Prepared;
+  wholeFacts.Arguments.reserve(arguments.size());
+  for (auto &argument : arguments) {
+    const bool initialization = argument.FormalIsInit;
+    wholeFacts.Arguments.push_back(
+        prepareItem(argument,
+                    initialization ? TransferDestination::Initialization
+                                   : TransferDestination::CalleeParameter,
+                    initialization ? TransferEligibilityContext::Initialization
+                                   : TransferEligibilityContext::Argument)
+            .Prepared);
+  }
+  const auto transaction = prepareExplicitCedeWholeCallPlan(wholeFacts);
+
+  auto makeItemRecord = [](const ExplicitCedePlan &plan, std::string role,
+                           unsigned index) {
+    ExplicitCedeStage0TransactionItemRecord record;
+    record.Role = std::move(role);
+    record.Index = index;
+    record.ActualType = plan.Prepared.ActualTypeKey;
+    record.FormalType = plan.Prepared.FormalTypeKey;
+    record.FormalContract = toString(plan.Prepared.FormalContract);
+    record.Outcome = toString(plan.Outcome);
+    record.Rejection = toString(plan.Rejection);
+    if (plan.TransferOrigin)
+      record.ExactPath = semanticPlaceKey(*plan.TransferOrigin);
+    record.SourceView = toString(plan.TransferOriginView);
+    record.ValueProduction = toString(plan.ValueProduction);
+    record.Source = toString(plan.Source);
+    record.Destination = toString(plan.Destination);
+    record.Drop = toString(plan.Drop);
+    record.SourceObligationAction = toString(plan.ObligationAction);
+    record.SourceObligationAfter = toString(plan.ObligationAfter);
+    record.DestinationObligationAction =
+        toString(plan.DestinationObligationAction);
+    record.DestinationObligationAfter =
+        toString(plan.DestinationObligationAfter);
+    return record;
+  };
+
+  ExplicitCedeStage0TransactionRecord record;
+  record.Callee = callee;
+  record.Route = callTransferRouteName(route);
+  record.Outcome = toString(transaction.Outcome);
+  record.Rejection = toString(transaction.Rejection);
+  record.CommitAllowed = transaction.CommitAllowed;
+  record.PreparedBeforeLegacyMutation = true;
+  record.HasReceiver = transaction.Receiver.has_value();
+  record.ArgumentCount = static_cast<unsigned>(transaction.Arguments.size());
+  if (transaction.Receiver)
+    record.Items.push_back(
+        makeItemRecord(*transaction.Receiver, "receiver", 0));
+  for (size_t index = 0; index < transaction.Arguments.size(); ++index)
+    record.Items.push_back(makeItemRecord(
+        transaction.Arguments[index], "argument",
+        static_cast<unsigned>(index + 1)));
+  SemanticEvidence::recordExplicitCedeStage0Transaction(
+      std::move(record), getLoc(callSite));
 }
 
 void Sema::recordShadowCallTransfer(
@@ -2938,6 +3082,32 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
              ++index) {
           staticFormals[index] = MetAST->Args[index].IsCeded;
           staticNames[index] = MetAST->Args[index].Name;
+        }
+        if (SemanticEvidence::isCallTransferShadowEnabled() && MetAST) {
+          std::vector<Stage0CallTransactionItemInput> transactionArguments;
+          for (size_t index = 0; index < Call->Args.size() &&
+                                 index < MetAST->Args.size();
+               ++index) {
+            Stage0CallTransactionItemInput input;
+            input.Argument = Call->Args[index].get();
+            input.FormalType = MetAST->Args[index].ResolvedType
+                                   ? MetAST->Args[index].ResolvedType
+                                   : resolveType(
+                                         Sema::synthesizePhysicalTypeObject(
+                                             MetAST->Args[index]),
+                                         false);
+            input.FormalIsCeded = MetAST->Args[index].IsCeded;
+            input.FormalIsInit = MetAST->Args[index].IsInit;
+            input.ActualIsInit = Call->isInitArgument(index);
+            input.FormalDeclaration =
+                buildStage0FormalDeclarationFacts(&MetAST->Args[index]);
+            input.ArgumentIndex = static_cast<unsigned>(index + 1);
+            input.FormalIndex = static_cast<unsigned>(index + 1);
+            transactionArguments.push_back(std::move(input));
+          }
+          recordExplicitCedeStage0Transaction(
+              Call, CallName, CallTransferRoute::Static, std::nullopt,
+              std::move(transactionArguments));
         }
         if (!preflightExplicitCallCedeAliases(Call->Args, staticFormals,
                                               staticNames))
@@ -3987,6 +4157,23 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           return toka::Type::fromString("unknown");
         } else if (hasCall && isCallable) {
           FunctionDecl *invokeFn = MethodDecls[shapeName]["call"];
+          std::unique_ptr<VariableExpr> stage0CallableReceiverExpression;
+          std::optional<ExplicitCedePreparedFacts>
+              stage0CallableReceiverFacts;
+          if (SemanticEvidence::isCallTransferShadowEnabled()) {
+            stage0CallableReceiverExpression =
+                std::make_unique<VariableExpr>(CallName);
+            stage0CallableReceiverExpression->Loc = Call->Loc;
+            stage0CallableReceiverExpression->ResolvedType = sym.TypeObj;
+            auto receiverLegacy = buildShadowCallTransferPlan(
+                Call, stage0CallableReceiverExpression.get(), sym.TypeObj,
+                nullptr, false, false, false, false, false,
+                CallTransferRoute::Callable, false,
+                CallExecutionBoundary::None, 0, 1);
+            stage0CallableReceiverFacts = buildExplicitCedeStage0ActualFacts(
+                stage0CallableReceiverExpression.get(), sym.TypeObj,
+                receiverLegacy);
+          }
           if (Call->ResolvedFn == invokeFn &&
               Call->Args.size() == invokeFn->Args.size()) {
             return invokeFn->ResolvedReturnType
@@ -4087,6 +4274,46 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                ++index) {
             callableFormals[index] = invokeFn->Args[index + 1].IsCeded;
             callableNames[index] = invokeFn->Args[index + 1].Name;
+          }
+          if (SemanticEvidence::isCallTransferShadowEnabled()) {
+            Stage0CallTransactionItemInput receiverInput;
+            receiverInput.Argument = stage0CallableReceiverExpression.get();
+            receiverInput.ArgumentType = sym.TypeObj;
+            receiverInput.PreparedActual = stage0CallableReceiverFacts;
+            receiverInput.FormalType = invokeFn->Args[0].ResolvedType
+                                           ? invokeFn->Args[0].ResolvedType
+                                           : resolveType(
+                                                 Sema::synthesizePhysicalTypeObject(
+                                                     invokeFn->Args[0]),
+                                                 false);
+            receiverInput.FormalIsCeded = invokeFn->Args[0].IsCeded;
+            receiverInput.FormalDeclaration =
+                buildStage0FormalDeclarationFacts(&invokeFn->Args[0]);
+            receiverInput.FormalIndex = 1;
+            std::vector<Stage0CallTransactionItemInput> transactionArguments;
+            for (size_t index = 0; index < Call->Args.size() &&
+                                   index + 1 < invokeFn->Args.size();
+                 ++index) {
+              Stage0CallTransactionItemInput input;
+              input.Argument = Call->Args[index].get();
+              input.FormalType = invokeFn->Args[index + 1].ResolvedType
+                                     ? invokeFn->Args[index + 1].ResolvedType
+                                     : resolveType(
+                                           Sema::synthesizePhysicalTypeObject(
+                                               invokeFn->Args[index + 1]),
+                                           false);
+              input.FormalIsCeded = invokeFn->Args[index + 1].IsCeded;
+              input.FormalIsInit = invokeFn->Args[index + 1].IsInit;
+              input.ActualIsInit = Call->isInitArgument(index);
+              input.FormalDeclaration = buildStage0FormalDeclarationFacts(
+                  &invokeFn->Args[index + 1]);
+              input.ArgumentIndex = static_cast<unsigned>(index + 1);
+              input.FormalIndex = static_cast<unsigned>(index + 2);
+              transactionArguments.push_back(std::move(input));
+            }
+            recordExplicitCedeStage0Transaction(
+                Call, CallName, CallTransferRoute::Callable,
+                std::move(receiverInput), std::move(transactionArguments));
           }
           if (!preflightExplicitCallCedeAliases(
                   Call->Args, callableFormals, callableNames))
@@ -4386,6 +4613,24 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                            parameterTypes[index]->IsCede;
       formalNames[index] = "arg" + std::to_string(index + 1);
     }
+    if (SemanticEvidence::isCallTransferShadowEnabled()) {
+      std::vector<Stage0CallTransactionItemInput> transactionArguments;
+      transactionArguments.reserve(Call->Args.size());
+      for (size_t index = 0; index < Call->Args.size(); ++index) {
+        Stage0CallTransactionItemInput input;
+        input.Argument = Call->Args[index].get();
+        input.FormalType = parameterTypes[index];
+        input.FormalIsCeded = formalCeded[index];
+        input.ActualIsInit = Call->isInitArgument(index);
+        input.ArgumentIndex = static_cast<unsigned>(index + 1);
+        input.FormalIndex = static_cast<unsigned>(index + 1);
+        transactionArguments.push_back(std::move(input));
+      }
+      recordExplicitCedeStage0Transaction(
+          Call, CallName, route, std::nullopt,
+          std::move(transactionArguments));
+    }
+
     if (!preflightExplicitCallCedeAliases(Call->Args, formalCeded,
                                           formalNames))
       return resolveType(returnType, false);
@@ -5499,6 +5744,38 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       formalNames[index] = Ext->Args[index].Name;
     }
   }
+  if (SemanticEvidence::isCallTransferShadowEnabled()) {
+    std::vector<Stage0CallTransactionItemInput> transactionArguments;
+    for (size_t index = 0; index < Call->Args.size() &&
+                           index < ParamTypes.size();
+         ++index) {
+      Stage0CallTransactionItemInput input;
+      input.Argument = Call->Args[index].get();
+      input.FormalType = ParamTypes[index];
+      input.ActualIsInit = Call->isInitArgument(index);
+      input.ArgumentIndex = static_cast<unsigned>(index + 1);
+      input.FormalIndex = static_cast<unsigned>(index + 1);
+      if (Fn && index < Fn->Args.size()) {
+        input.FormalIsCeded = Fn->Args[index].IsCeded;
+        input.FormalIsInit = Fn->Args[index].IsInit;
+        input.FormalDeclaration =
+            buildStage0FormalDeclarationFacts(&Fn->Args[index]);
+      } else if (Ext && index < Ext->Args.size()) {
+        input.FormalIsCeded = Ext->Args[index].IsCeded;
+        input.FormalDeclaration =
+            buildStage0FormalDeclarationFacts(&Ext->Args[index]);
+      }
+      transactionArguments.push_back(std::move(input));
+    }
+    const CallTransferRoute transactionRoute =
+        Ext ? CallTransferRoute::Extern
+            : (Fn ? CallTransferRoute::Ordinary
+                  : CallTransferRoute::Callable);
+    recordExplicitCedeStage0Transaction(
+        Call, CallName, transactionRoute, std::nullopt,
+        std::move(transactionArguments));
+  }
+
   if (!preflightExplicitCallCedeAliases(Call->Args, formalCeded, formalNames))
     return ReturnType;
 

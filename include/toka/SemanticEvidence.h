@@ -224,6 +224,45 @@ struct CallTransferShadowRecord {
   bool operator==(const CallTransferShadowRecord &rhs) const;
 };
 
+struct ExplicitCedeStage0TransactionItemRecord {
+  std::string Role;
+  unsigned Index = 0;
+  std::string ActualType;
+  std::string FormalType;
+  std::string FormalContract;
+  std::string Outcome;
+  std::string Rejection;
+  std::string ExactPath;
+  std::string SourceView;
+  std::string ValueProduction;
+  std::string Source;
+  std::string Destination;
+  std::string Drop;
+  std::string SourceObligationAction;
+  std::string SourceObligationAfter;
+  std::string DestinationObligationAction;
+  std::string DestinationObligationAfter;
+
+  bool operator<(const ExplicitCedeStage0TransactionItemRecord &rhs) const;
+  bool operator==(const ExplicitCedeStage0TransactionItemRecord &rhs) const;
+};
+
+struct ExplicitCedeStage0TransactionRecord {
+  std::string Callee;
+  std::string Route;
+  std::string Outcome;
+  std::string Rejection;
+  bool CommitAllowed = false;
+  bool PreparedBeforeLegacyMutation = false;
+  bool HasReceiver = false;
+  unsigned ArgumentCount = 0;
+  std::vector<ExplicitCedeStage0TransactionItemRecord> Items;
+  SemanticEvidenceLocation Location;
+
+  bool operator<(const ExplicitCedeStage0TransactionRecord &rhs) const;
+  bool operator==(const ExplicitCedeStage0TransactionRecord &rhs) const;
+};
+
 struct CapabilityCallRecord {
   std::string Callee;
   std::string Parameter;
@@ -281,12 +320,15 @@ struct SemanticEvidenceAuditState {
   size_t DecisionCount = 0;
   size_t CedeObligationCount = 0;
   size_t CallTransferShadowCount = 0;
+  size_t ExplicitCedeStage0TransactionCount = 0;
   size_t CapabilityCount = 0;
   size_t TodoGoalCount = 0;
   size_t ConditionalFactCount = 0;
   std::vector<SemanticDecisionRecord> Decisions;
   std::vector<CedeObligationRecord> CedeObligations;
   std::vector<CallTransferShadowRecord> CallTransferShadows;
+  std::vector<ExplicitCedeStage0TransactionRecord>
+      ExplicitCedeStage0Transactions;
   std::vector<CapabilityCallRecord> Capabilities;
   std::vector<TodoGoalRecord> TodoGoals;
   std::vector<ConditionalFactRecord> ConditionalFacts;
@@ -297,12 +339,16 @@ struct SemanticEvidenceAuditState {
            DecisionCount == rhs.DecisionCount &&
            CedeObligationCount == rhs.CedeObligationCount &&
            CallTransferShadowCount == rhs.CallTransferShadowCount &&
+           ExplicitCedeStage0TransactionCount ==
+               rhs.ExplicitCedeStage0TransactionCount &&
            CapabilityCount == rhs.CapabilityCount &&
            TodoGoalCount == rhs.TodoGoalCount &&
            ConditionalFactCount == rhs.ConditionalFactCount &&
            Decisions == rhs.Decisions &&
            CedeObligations == rhs.CedeObligations &&
            CallTransferShadows == rhs.CallTransferShadows &&
+           ExplicitCedeStage0Transactions ==
+               rhs.ExplicitCedeStage0Transactions &&
            Capabilities == rhs.Capabilities && TodoGoals == rhs.TodoGoals &&
            ConditionalFacts == rhs.ConditionalFacts;
   }
@@ -353,6 +399,8 @@ public:
       ExplicitCedeStage0ShadowRecord stage0, SourceLocation location,
       SourceLocation contractLocation = {});
   static void dumpCallTransferShadowJSON(std::ostream &out);
+  static void recordExplicitCedeStage0Transaction(
+      ExplicitCedeStage0TransactionRecord record, SourceLocation location);
   static void recordCapabilityCall(
       std::string callee, std::string parameter, std::string subject,
       bool declaredHandleRebindable, bool declaredPayloadWritable,
@@ -380,6 +428,8 @@ private:
   static std::vector<SemanticDecisionRecord> Records;
   static std::vector<CedeObligationRecord> CedeObligations;
   static std::vector<CallTransferShadowRecord> CallTransferShadows;
+  static std::vector<ExplicitCedeStage0TransactionRecord>
+      ExplicitCedeStage0Transactions;
   static std::vector<CapabilityCallRecord> CapabilityCalls;
   static std::vector<TodoGoalRecord> TodoGoals;
   static std::vector<ConditionalFactRecord> ConditionalFacts;

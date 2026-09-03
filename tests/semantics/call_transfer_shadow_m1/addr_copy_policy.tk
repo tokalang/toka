@@ -1,0 +1,19 @@
+import core/types::{Addr, OAddr}
+
+fn consume_addr(cede value: Addr) -> Addr {
+    auto moved = cede value
+    return moved
+}
+
+fn consume_oaddr(cede value: OAddr) -> OAddr {
+    auto moved = cede value
+    return moved
+}
+
+fn main() -> i32 {
+    auto addr = 10:Addr
+    auto oaddr = 20:OAddr
+    auto first = consume_addr(cede addr)
+    auto second = consume_oaddr(cede oaddr)
+    return (first + second) as i32 - 30:i32
+}

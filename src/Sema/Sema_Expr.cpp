@@ -4250,6 +4250,19 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     return std::make_shared<toka::RawPointerType>(baseTypeObj);
   } else if (auto *Met = dynamic_cast<MethodCallExpr *>(E)) {
     CallArgumentRollbackGuard methodCallRollback(*this, Met->Args);
+    std::shared_ptr<Type> stage0PreMutationReceiverType;
+    std::optional<ExplicitCedePreparedFacts> stage0PreMutationReceiverFacts;
+    if (SemanticEvidence::isCallTransferShadowEnabled() &&
+        !m_IsPrecomputingCaptures) {
+      stage0PreMutationReceiverType =
+          queryShadowCallArgumentType(Met->Object.get(), nullptr);
+      auto receiverLegacy = buildShadowCallTransferPlan(
+          Met, Met->Object.get(), stage0PreMutationReceiverType, nullptr,
+          false, false, false, false, false, CallTransferRoute::Method, false,
+          CallExecutionBoundary::None, 0, 1);
+      stage0PreMutationReceiverFacts = buildExplicitCedeStage0ActualFacts(
+          Met->Object.get(), stage0PreMutationReceiverType, receiverLegacy);
+    }
     bool oldAllow = m_AllowPermissionSuffix;
     m_AllowPermissionSuffix = true; // [NEW] Grant suffix allowance for explicit method call objects
     auto ObjTypeObj = Met->ObjectIsPrechecked && Met->Object->ResolvedType
@@ -4341,6 +4354,49 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                    ++index) {
                 dynamicFormals[index] = M->Args[index + 1].IsCeded;
                 dynamicNames[index] = M->Args[index + 1].Name;
+              }
+              if (SemanticEvidence::isCallTransferShadowEnabled() &&
+                  !M->Args.empty()) {
+                Stage0CallTransactionItemInput receiverInput;
+                receiverInput.Argument = Met->Object.get();
+                receiverInput.ArgumentType = stage0PreMutationReceiverType;
+                receiverInput.PreparedActual = stage0PreMutationReceiverFacts;
+                receiverInput.FormalType =
+                    M->Args[0].ResolvedType
+                        ? M->Args[0].ResolvedType
+                        : resolveType(Sema::synthesizePhysicalTypeObject(
+                                          M->Args[0]),
+                                      false);
+                receiverInput.FormalIsCeded = M->Args[0].IsCeded;
+                receiverInput.FormalDeclaration =
+                    buildStage0FormalDeclarationFacts(&M->Args[0]);
+                receiverInput.FormalIndex = 1;
+                std::vector<Stage0CallTransactionItemInput>
+                    transactionArguments;
+                for (size_t index = 0; index < Met->Args.size() &&
+                                       index + 1 < M->Args.size();
+                     ++index) {
+                  Stage0CallTransactionItemInput input;
+                  input.Argument = Met->Args[index].get();
+                  input.FormalType =
+                      M->Args[index + 1].ResolvedType
+                          ? M->Args[index + 1].ResolvedType
+                          : resolveType(Sema::synthesizePhysicalTypeObject(
+                                            M->Args[index + 1]),
+                                        false);
+                  input.FormalIsCeded = M->Args[index + 1].IsCeded;
+                  input.FormalIsInit = M->Args[index + 1].IsInit;
+                  input.FormalDeclaration = buildStage0FormalDeclarationFacts(
+                      &M->Args[index + 1]);
+                  input.ArgumentIndex = static_cast<unsigned>(index + 1);
+                  input.FormalIndex = static_cast<unsigned>(index + 2);
+                  transactionArguments.push_back(std::move(input));
+                }
+                recordExplicitCedeStage0Transaction(
+                    Met, traitName + "::" + Met->Method,
+                    CallTransferRoute::DynamicTraitMethod,
+                    std::move(receiverInput),
+                    std::move(transactionArguments));
               }
               if (!preflightExplicitCallCedeAliases(
                       Met->Args, dynamicFormals, dynamicNames))
@@ -4458,6 +4514,49 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             }
             if (SemanticEvidence::isCallTransferShadowEnabled()) {
               const size_t formalArgs = M->Args.empty() ? 0 : M->Args.size() - 1;
+              if (!m_EnableSignatureDrivenCallCede && !M->Args.empty()) {
+                Stage0CallTransactionItemInput receiverInput;
+                receiverInput.Argument = Met->Object.get();
+                receiverInput.ArgumentType = stage0PreMutationReceiverType;
+                receiverInput.PreparedActual = stage0PreMutationReceiverFacts;
+                receiverInput.FormalType =
+                    M->Args[0].ResolvedType
+                        ? M->Args[0].ResolvedType
+                        : resolveType(Sema::synthesizePhysicalTypeObject(
+                                          M->Args[0]),
+                                      false);
+                receiverInput.FormalIsCeded = M->Args[0].IsCeded;
+                receiverInput.FormalDeclaration =
+                    buildStage0FormalDeclarationFacts(&M->Args[0]);
+                receiverInput.FormalIndex = 1;
+                std::vector<Stage0CallTransactionItemInput>
+                    transactionArguments;
+                for (size_t index = 0; index < Met->Args.size() &&
+                                       index < formalArgs;
+                     ++index) {
+                  const auto &param = M->Args[index + 1];
+                  Stage0CallTransactionItemInput input;
+                  input.Argument = Met->Args[index].get();
+                  input.FormalType =
+                      param.ResolvedType
+                          ? param.ResolvedType
+                          : resolveType(
+                                Sema::synthesizePhysicalTypeObject(param),
+                                false);
+                  input.FormalIsCeded = param.IsCeded;
+                  input.FormalIsInit = param.IsInit;
+                  input.FormalDeclaration =
+                      buildStage0FormalDeclarationFacts(&param);
+                  input.ArgumentIndex = static_cast<unsigned>(index + 1);
+                  input.FormalIndex = static_cast<unsigned>(index + 2);
+                  transactionArguments.push_back(std::move(input));
+                }
+                recordExplicitCedeStage0Transaction(
+                    Met, traitName + "::" + Met->Method,
+                    CallTransferRoute::DynamicTraitMethod,
+                    std::move(receiverInput),
+                    std::move(transactionArguments));
+              }
               for (size_t i = 0; i < Met->Args.size() && i < formalArgs; ++i) {
                 const auto &param = M->Args[i + 1];
                 auto expectedTy = param.ResolvedType
@@ -4629,6 +4728,47 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             error(Met, DiagID::ERR_METHOD_PRIVATE, Met->Method, soulType,
                   getModuleName(CurrentModule));
           }
+        }
+
+        if (SemanticEvidence::isCallTransferShadowEnabled() &&
+            !FD->Args.empty()) {
+          Stage0CallTransactionItemInput receiverInput;
+          receiverInput.Argument = Met->Object.get();
+          receiverInput.ArgumentType = stage0PreMutationReceiverType;
+          receiverInput.PreparedActual = stage0PreMutationReceiverFacts;
+          receiverInput.FormalType =
+              FD->Args[0].ResolvedType
+                  ? FD->Args[0].ResolvedType
+                  : resolveType(
+                        Sema::synthesizePhysicalTypeObject(FD->Args[0]), false);
+          receiverInput.FormalIsCeded = FD->Args[0].IsCeded;
+          receiverInput.FormalDeclaration =
+              buildStage0FormalDeclarationFacts(&FD->Args[0]);
+          receiverInput.FormalIndex = 1;
+          std::vector<Stage0CallTransactionItemInput> transactionArguments;
+          for (size_t index = 0; index < Met->Args.size() &&
+                                 index + 1 < FD->Args.size();
+               ++index) {
+            Stage0CallTransactionItemInput input;
+            input.Argument = Met->Args[index].get();
+            input.FormalType =
+                FD->Args[index + 1].ResolvedType
+                    ? FD->Args[index + 1].ResolvedType
+                    : resolveType(Sema::synthesizePhysicalTypeObject(
+                                      FD->Args[index + 1]),
+                                  false);
+            input.FormalIsCeded = FD->Args[index + 1].IsCeded;
+            input.FormalIsInit = FD->Args[index + 1].IsInit;
+            input.FormalDeclaration =
+                buildStage0FormalDeclarationFacts(&FD->Args[index + 1]);
+            input.ArgumentIndex = static_cast<unsigned>(index + 1);
+            input.FormalIndex = static_cast<unsigned>(index + 2);
+            transactionArguments.push_back(std::move(input));
+          }
+          recordExplicitCedeStage0Transaction(
+              Met, FD->Name.empty() ? Met->Method : FD->Name,
+              CallTransferRoute::Method, std::move(receiverInput),
+              std::move(transactionArguments));
         }
 
         // [Rule] Enforce Explicit Mutability for Method Calls

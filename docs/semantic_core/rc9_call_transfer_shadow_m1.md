@@ -1,7 +1,7 @@
 # RC9 M1 Call Transfer Shadow
 
-**Status:** M1a.2 shadow isolation and base-carrier qualification implemented.
-Exact-place/dependency admission and atomic commit are not implemented.
+**Status:** Stage-0 audit-only receiver-plus-arguments transaction implemented.
+The transaction has no commit authority and cannot change public behavior.
 Non-normative and not an activation of the signature-driven call-transfer ADR.
 
 **Baseline:** `a3de6d4787f22f2b003949e62bf9aa1c83b40d17`.
@@ -24,13 +24,17 @@ tokac --call-transfer-shadow=json --check-only source.tk
 The command emits the internal, audit-only schema:
 
 ```text
-toka.internal.call-transfer-shadow / version 4
+toka.internal.call-transfer-shadow / version 5
 ```
 
 It is not cede obligation evidence v2 and has no public compatibility promise.
 It exists to qualify the planner before any behavior or public evidence change.
 It cannot be combined with another JSON, semantic, or evaluation output mode.
-Version 4 retains the version-3 RC9 fields and adds a nested audit-only Stage-0
+Version 5 retains the version-4 argument records and adds audit-only whole-call
+transactions prepared before legacy ownership mutation. Each transaction has
+receiver/argument slots, per-item outcome/source/drop/obligation dimensions,
+one aggregate outcome, and a `commit_allowed` observation bit. That bit is
+never consumed by Sema or CodeGen. Version 4 added the nested audit-only Stage-0
 plan produced by the Accepted explicit-cede pure classifier. The legacy fields
 remain the behavior oracle; Stage 0 neither changes diagnostics nor grants
 CodeGen authority. Version 3 originally replaced the M1a.1 schema and retains
@@ -71,6 +75,8 @@ stage0             outcome/rejection, independent value/source/destination/
                    typed referent/dependency roots, type/temporary/route
                    eligibility, reachability, and deterministic semantic root
                    when proven
+transaction        receiver-plus-arguments item plans, aggregate outcome,
+                   rejection, and non-authoritative commit observation
 ```
 
 Stage-0 obligation evidence has separate source and destination actions. A
@@ -86,15 +92,20 @@ ownership subroots exist, a projected unique-handle source rejects
 Raw `*` selector syntax is removed from the typed place projections before
 whole-source obligation coverage is decided; it cannot masquerade as a partial
 dereference move.
+The transaction queries PAL through a snapshot and reads only already-proven
+shape Copy facts. `Addr` and `OAddr` are frozen as scalar Copy facts inside the
+Stage-0 provider without changing the legacy `proveSlice4CopyType()` policy.
 
 Every Stage-0 rejection carries `source=NoStateChange`. A place whose stable
 declaration coordinate cannot yet be recovered rejects `IncompleteFacts`
 rather than falling back to the legacy process-local `source_root_id`.
-The pure planner also constructs receiver-plus-arguments whole-call results
-with pairwise invalidation-alias rejection and a single `CommitAllowed` bit.
-The current Sema shadow integration remains per-argument; whole-call Sema
-publication and receiver observation are still pending and no AST vector is
-commit authority.
+The Sema audit path now snapshots receiver facts before legacy receiver
+checking, prepares every selected argument before legacy per-item checking,
+and submits the receiver and arguments to the pure whole-call planner as one
+transaction. Pairwise invalidation/read/referent/dependency conflicts reject
+the aggregate with `commit_allowed=false`. Legacy checking then runs unchanged;
+neither the transaction nor the older per-argument shadow records are commit
+authority.
 
 `argument_index` and `formal_index` are one-based and remain stable when
 `@Callable` lowering inserts a synthetic receiver. Shadow plans are discarded
@@ -102,23 +113,21 @@ when an AST call is cloned and its resolved formal is reset.
 
 ## Deliberate M1 limitations
 
-- `PendingValidation` is not permission to move. M1a.2 does not yet share the
+- `PendingValidation` is not permission to move. The audit does not replace the
   whole/partial exact-place eligibility checker with calls.
 - A shape, smart pointer, array, or dyn callable whose complete dependency
   closure has not been routed into the planner is `Unclassified`, not
   dependency-free. Direct borrowed-view dependency paths are recorded
   separately from the source binding and PAL referent.
-- The plan is produced per argument after the legacy checker has visited the
-  expression. It is not yet the ADR's all-arguments prepare/validate/commit
-  transaction.
 - CodeGen continues to use `CedeExpr` and the existing aggregate transfer
   paths. It never reads `ShadowArgumentTransfers`.
 - Existing RC8 thread-safety diagnostics still use their source-spelling
   classifier. M1a.2 records declaration-identity boundary facts but does not
   switch those diagnostics; a user same-named function therefore retains its
   historical diagnostic until a later admitted replacement.
-- Consuming callable receivers remain outside argument planning and retain
-  their existing `cede callable()` contract.
+- Callable, method, and dynamic-trait receiver slots are present in the audit
+  transaction. The accepted `InvokeExpr` spelling and callable behavior change
+  remain outside Stage 0.
 - Cede obligation evidence v1 is unchanged.
 
 ## Qualification
@@ -141,17 +150,20 @@ when an AST call is cloned and its resolved formal is reset.
   paths, recursive `T | miss` carriers, and multi-argument indices;
 - source/source-less plan parity;
 - forced check-only single-document JSON and fail-closed output conflicts;
-- four normal-mode diagnostic/success receipts; and
-- non-`cede` formal rejection with no source-state commit.
+- four normal-mode diagnostic/success receipts;
+- non-`cede` formal rejection with no source-state commit;
+- receiver-versus-argument and argument-versus-argument atomic alias rejection;
+- typed declaration provenance, source-hidden fail-closed transactions, and
+  route-specific transaction outcome/source/drop/obligation assertions; and
+- hermetic external-build CTest execution through an injected source
+  `TOKA_LIB`.
 
 The script emits a compact receipt named
 `toka.rc9-m1-call-transfer-shadow-audit`.
 
 ## Next admission step
 
-M1a.2 does not authorize the caller-spelling behavior flip. The proposed
-[`M1b-D.3 Ordinary Direct-Call Vertical Slice`](rc9_m1b_d3_direct_call_vertical_slice.md)
-does not promote these AST vectors into commit authority or build a standalone
-synthetic transaction engine. Current implementation remains limited to the
-M1b.0a opaque identities and empty model. The next code slice, if independently
-accepted, must exercise one real ordinary direct-call Shadow path.
+Stage 0 does not authorize the caller-spelling behavior flip. Non-call
+destinations, CodeGen authority, interface-key changes, and Stage 1 remain
+outside this milestone and require separate authorization after transaction
+review.

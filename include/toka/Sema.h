@@ -823,6 +823,33 @@ private:
       const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
       const CallTransferPlan &LegacyShadowPlan,
       TransferFormalDeclarationFacts FormalDeclaration);
+  ExplicitCedePreparedFacts buildExplicitCedeStage0ActualFacts(
+      Expr *Argument, const std::shared_ptr<Type> &ArgumentType,
+      const CallTransferPlan &LegacyShadowPlan);
+  TransferCopyProof queryExplicitCedeStage0CopyProof(
+      const std::shared_ptr<Type> &Type);
+  ExplicitCedePlan completeExplicitCedeStage0CallPlan(
+      ExplicitCedePreparedFacts Facts,
+      const std::shared_ptr<Type> &ArgumentType,
+      const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
+      bool FormalIsInit, TransferFormalDeclarationFacts FormalDeclaration,
+      TransferDestination Destination, TransferEligibilityContext Context);
+  struct Stage0CallTransactionItemInput {
+    Expr *Argument = nullptr;
+    std::shared_ptr<Type> ArgumentType;
+    std::shared_ptr<Type> FormalType;
+    TransferFormalDeclarationFacts FormalDeclaration;
+    std::optional<ExplicitCedePreparedFacts> PreparedActual;
+    bool FormalIsCeded = false;
+    bool FormalIsInit = false;
+    bool ActualIsInit = false;
+    unsigned ArgumentIndex = 0;
+    unsigned FormalIndex = 0;
+  };
+  void recordExplicitCedeStage0Transaction(
+      ASTNode *CallSite, const std::string &Callee, CallTransferRoute Route,
+      std::optional<Stage0CallTransactionItemInput> Receiver,
+      std::vector<Stage0CallTransactionItemInput> Arguments);
   TransferFormalDeclarationFacts buildStage0FormalDeclarationFacts(
       const FunctionDecl::Arg *Formal);
   TransferFormalDeclarationFacts buildStage0FormalDeclarationFacts(

@@ -1,0 +1,9 @@
+fn combine(cede first: i32, second: i32) -> i32 {
+    auto moved = cede first
+    return moved + second
+}
+
+fn main() -> i32 {
+    auto value = 7:i32
+    return combine(cede value, value) - 14:i32
+}

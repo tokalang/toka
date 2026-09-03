@@ -12,6 +12,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
+TRANSACTIONS = {}
 if not os.environ.get("TOKA_LIB"):
     os.environ["TOKA_LIB"] = str(ROOT / "lib")
 
@@ -47,11 +48,14 @@ def run(tokac, source, expected_error=None, check_only=True):
         raise RuntimeError(source + " emitted invalid shadow JSON") from error
     require(payload.get("schema") == "toka.internal.call-transfer-shadow",
             source + " emitted the wrong schema")
-    require(payload.get("version") == 4, source + " emitted the wrong version")
+    require(payload.get("version") == 5, source + " emitted the wrong version")
     require(payload.get("status") == "audit-only",
             source + " did not identify audit-only output")
     records = payload.get("records")
     require(isinstance(records, list), source + " omitted records")
+    transactions = payload.get("transactions")
+    require(isinstance(transactions, list), source + " omitted transactions")
+    TRANSACTIONS[source] = transactions
     required = {
         "callee", "route", "parameter", "argument_index", "formal_index",
         "value_category", "spelling", "transfer", "source", "dependency",
@@ -162,6 +166,38 @@ def run(tokac, source, expected_error=None, check_only=True):
         encoded = json.dumps(record, sort_keys=True, separators=(",", ":"))
         require(encoded not in seen, source + " emitted duplicate records")
         seen.add(encoded)
+    transaction_fields = {
+        "callee", "route", "outcome", "rejection", "commit_allowed",
+        "prepared_before_legacy_mutation", "has_receiver",
+        "argument_count", "items", "location",
+    }
+    transaction_item_fields = {
+        "role", "index", "actual_type", "formal_type", "formal_contract",
+        "outcome", "rejection", "exact_path",
+        "source_view", "value_production", "source", "destination",
+        "drop", "source_obligation_action", "source_obligation_after",
+        "destination_obligation_action", "destination_obligation_after",
+    }
+    for transaction in transactions:
+        require(set(transaction) == transaction_fields,
+                source + " emitted an incomplete Stage-0 transaction")
+        require(transaction["prepared_before_legacy_mutation"],
+                source + " emitted a post-mutation Stage-0 transaction")
+        require(len(transaction["items"]) ==
+                transaction["argument_count"] +
+                (1 if transaction["has_receiver"] else 0),
+                source + " transaction item count does not match its slots")
+        require(transaction["commit_allowed"] ==
+                (transaction["outcome"] == "Admitted"),
+                source + " transaction commit bit disagrees with outcome")
+        for item in transaction["items"]:
+            require(set(item) == transaction_item_fields,
+                    source + " emitted an incomplete transaction item")
+            require(item["role"] in ("receiver", "argument"),
+                    source + " emitted an unknown transaction role")
+            if item["outcome"] == "Rejected":
+                require(item["source"] == "NoStateChange",
+                        source + " rejected transaction item changes state")
     return records
 
 
@@ -212,6 +248,23 @@ def require_stage0(record, source_file, **expected):
         require(stage0.get(key) == value,
                 "%s expected Stage-0 %s=%r, got %r"
                 % (source_file, key, value, stage0.get(key)))
+
+
+def find_transaction(source_file, **expected):
+    matches = []
+    for transaction in TRANSACTIONS.get(source_file, []):
+        location = transaction.get("location", {}).get("file", "")
+        if not location.endswith(source_file):
+            continue
+        if all((transaction.get("location", {}).get("line")
+                if key == "location_line" else transaction.get(key)) == value
+               for key, value in expected.items()):
+            matches.append(transaction)
+    require(len(matches) == 1,
+            "%s expected one transaction %s, found %d"
+            % (source_file, json.dumps(expected, sort_keys=True),
+               len(matches)))
+    return matches[0]
 
 
 def main():
@@ -286,6 +339,36 @@ def main():
     require_stage0(record, source, outcome="Admitted", rejection="None",
                    value_production="CopyValue",
                    source="InvalidateSubtree")
+    transaction = find_transaction(
+        source, callee="consume", route="ordinary", location_line=9,
+    )
+    require(transaction["outcome"] == "Admitted" and
+            transaction["rejection"] == "None" and
+            transaction["commit_allowed"] and
+            transaction["argument_count"] == 1 and
+            transaction["items"][0]["value_production"] == "CopyValue" and
+            transaction["items"][0]["source"] == "InvalidateSubtree" and
+            transaction["items"][0]["drop"] == "NoLiability" and
+            transaction["items"][0]["destination_obligation_action"] ==
+            "CreateOutstanding",
+            source + " admitted transaction lost transfer dimensions")
+
+    source = "tests/semantics/call_transfer_shadow_m1/addr_copy_policy.tk"
+    records = run(tokac, source)
+    addr_record = find(
+        records, source, callee="consume_addr", route="ordinary",
+        parameter="value", location_line=16,
+    )
+    oaddr_record = find(
+        records, source, callee="consume_oaddr", route="ordinary",
+        parameter="value", location_line=17,
+    )
+    receipts.extend((addr_record, oaddr_record))
+    for record in (addr_record, oaddr_record):
+        require_stage0(record, source, outcome="Admitted",
+                       rejection="None", value_production="CopyValue",
+                       ownership="PlainValue", copy_proof="ProvenCopy",
+                       source="InvalidateSubtree")
 
     source = "tests/conformance/diagnostics/static_cede_parameter_requires_explicit_transfer.tk"
     records = run(tokac, source, expected_error="E04570")
@@ -301,6 +384,17 @@ def main():
     require_stage0(record, source, outcome="Rejected",
                    rejection="MissingCedeForNamedSource",
                    source="NoStateChange")
+    transaction = find_transaction(
+        source, callee="Token::consume", route="static",
+    )
+    require(transaction["outcome"] == "Rejected" and
+            transaction["rejection"] == "WholeCallItemRejected" and
+            not transaction["has_receiver"] and
+            transaction["argument_count"] == 1 and
+            transaction["items"][0]["rejection"] ==
+            "MissingCedeForNamedSource" and
+            transaction["items"][0]["source"] == "NoStateChange",
+            source + " static transaction did not preserve item rejection")
 
     source = "tests/conformance/diagnostics/callable_cede_parameter_requires_explicit_transfer.tk"
     records = run(tokac, source, expected_error="E04570")
@@ -310,6 +404,19 @@ def main():
         source="InvalidatePlace", source_path="source", formal_ceded=True,
         formal_index=2, legacy_cede_exempt=False, legacy_missing_cede=True,
     ))
+    transaction = find_transaction(
+        source, callee="consumer", route="callable",
+    )
+    require(transaction["outcome"] == "Rejected" and
+            transaction["rejection"] == "WholeCallItemRejected" and
+            transaction["has_receiver"] and
+            transaction["argument_count"] == 1 and
+            [item["role"] for item in transaction["items"]] ==
+            ["receiver", "argument"] and
+            transaction["items"][1]["rejection"] ==
+            "MissingCedeForNamedSource" and
+            transaction["items"][1]["source"] == "NoStateChange",
+            source + " callable transaction lost its formal rejection")
 
     source = "tests/conformance/diagnostics/cede_shared_projection_cannot_supply_method_payload_parameter.tk"
     records = run(tokac, source, expected_error="E04510")
@@ -359,6 +466,15 @@ def main():
         parameter="ptr", spelling="implicit", transfer="CopyIdentity",
         source="KeepLive", dependency="RawUnsafe", formal_ceded=False,
     ))
+    transaction = find_transaction(
+        source, callee="libc_free", route="extern", location_line=12,
+    )
+    require(transaction["outcome"] == "Rejected" and
+            transaction["rejection"] == "WholeCallItemRejected" and
+            not transaction["has_receiver"] and
+            transaction["items"][0]["outcome"] == "Rejected" and
+            transaction["items"][0]["source"] == "NoStateChange",
+            source + " extern transaction did not fail closed")
 
     source = "tests/pass/g08_dyn_closure.tk"
     records = run(tokac, source)
@@ -368,6 +484,14 @@ def main():
         value_category="Place", transfer="CopyValue", source="KeepLive",
         legacy_caller_rule_applied=False,
     ))
+    transaction = find_transaction(
+        source, callee="cb", route="indirect-dyn-fn", location_line=28,
+    )
+    require(transaction["outcome"] == "Rejected" and
+            transaction["rejection"] == "WholeCallItemRejected" and
+            transaction["items"][0]["rejection"] == "IncompleteFacts" and
+            transaction["items"][0]["source"] == "NoStateChange",
+            source + " indirect dyn transaction inferred declaration facts")
     receipts.append(find(
         records, source, callee="libc_printf", route="extern",
         location_line=38, argument_index=1, formal_index=1,
@@ -385,6 +509,15 @@ def main():
         parameter="arg1", value_category="Temporary", transfer="CopyValue",
         source="KeepLive", legacy_caller_rule_applied=False,
     ))
+    transaction = find_transaction(
+        source, callee="nested_callback", route="indirect-fn",
+        location_line=54,
+    )
+    require(transaction["outcome"] == "Rejected" and
+            transaction["rejection"] == "WholeCallItemRejected" and
+            transaction["items"][0]["rejection"] == "IncompleteFacts" and
+            transaction["items"][0]["source"] == "NoStateChange",
+            source + " indirect fn transaction inferred declaration facts")
 
     source = "tests/semantics/call_transfer_shadow_m1/dynamic_trait_method.tk"
     records = run(tokac, source)
@@ -394,6 +527,18 @@ def main():
         formal_index=2, value_category="Place", transfer="CopyValue",
         source="KeepLive", legacy_caller_rule_applied=False,
     ))
+    transaction = find_transaction(
+        source, callee="Transform::apply", route="dynamic-trait-method",
+        location_line=14,
+    )
+    require(transaction["has_receiver"] and
+            transaction["argument_count"] == 1 and
+            [item["role"] for item in transaction["items"]] ==
+            ["receiver", "argument"] and
+            transaction["items"][1]["destination"] == "CalleeParameter" and
+            transaction["items"][1]["source"] == "KeepLive" and
+            transaction["items"][1]["drop"] == "NoLiability",
+            source + " dynamic transaction lost receiver/argument roles")
 
     source = "tests/semantics/call_transfer_shadow_m1/dynamic_trait_isolation.tk"
     require_shadow_parity(tokac, source)
@@ -691,6 +836,38 @@ def main():
         transfer="MoveOwned", source_path="second",
     ))
 
+    source = "tests/semantics/call_transfer_shadow_m1/transaction_argument_alias.tk"
+    require_shadow_parity(tokac, source, expected_error="E0438")
+    run(tokac, source, expected_error="E0438")
+    transaction = find_transaction(
+        source, callee="combine", route="ordinary", location_line=8,
+    )
+    require(transaction["outcome"] == "Rejected" and
+            transaction["rejection"] == "WholeCallAliasConflict" and
+            not transaction["commit_allowed"] and
+            not transaction["has_receiver"] and
+            transaction["argument_count"] == 2 and
+            [item["source"] for item in transaction["items"]] ==
+            ["InvalidateSubtree", "KeepLive"],
+            source + " did not reject invalidation-vs-read atomically")
+
+    source = "tests/semantics/call_transfer_shadow_m1/transaction_receiver_alias.tk"
+    require_shadow_parity(tokac, source, expected_error="E0438")
+    run(tokac, source, expected_error="E0438")
+    transaction = find_transaction(
+        source, callee="combine", route="method", location_line=10,
+    )
+    require(transaction["outcome"] == "Rejected" and
+            transaction["rejection"] == "WholeCallAliasConflict" and
+            not transaction["commit_allowed"] and
+            transaction["has_receiver"] and
+            transaction["argument_count"] == 1 and
+            [item["role"] for item in transaction["items"]] ==
+            ["receiver", "argument"] and
+            [item["source"] for item in transaction["items"]] ==
+            ["InvalidateSubtree", "KeepLive"],
+            source + " did not reject receiver-vs-argument atomically")
+
     replay_case = ROOT / "tests/semantics/tki_replay/cases/own_cede_003_generic_methods"
     with tempfile.TemporaryDirectory(prefix="toka-call-transfer-shadow-") as temp:
         work = Path(temp)
@@ -785,11 +962,39 @@ def main():
             require(normal.returncode == 0,
                     normal_source + " changed normal success behavior")
 
+    all_transactions = [transaction
+                        for transactions in TRANSACTIONS.values()
+                        for transaction in transactions]
+    expected_transaction_routes = {
+        "ordinary", "static", "method", "callable", "extern",
+        "indirect-fn", "indirect-dyn-fn", "dynamic-trait-method",
+    }
+    transaction_routes = {transaction["route"]
+                          for transaction in all_transactions}
+    require(expected_transaction_routes <= transaction_routes,
+            "Stage-0 transaction coverage missed routes: " +
+            ", ".join(sorted(expected_transaction_routes -
+                             transaction_routes)))
+    for transaction in all_transactions:
+        if transaction["route"] in (
+                "method", "callable", "dynamic-trait-method"):
+            require(transaction["has_receiver"],
+                    transaction["route"] +
+                    " transaction omitted its receiver slot")
+        if (transaction["route"] in ("indirect-fn", "indirect-dyn-fn") and
+                transaction["argument_count"] > 0):
+            require(transaction["outcome"] == "Rejected" and
+                    transaction["rejection"] == "WholeCallItemRejected" and
+                    not transaction["commit_allowed"],
+                    transaction["route"] +
+                    " transaction inferred source-hidden authority")
+
     print(json.dumps({
         "schema": "toka.rc9-m1-call-transfer-shadow-audit",
-        "version": 4,
+        "version": 5,
         "result": "pass",
         "cases": len(receipts),
+        "transactions": len(all_transactions),
         "normal_cases": len(normal_cases),
         "routes": sorted({record["route"] for record in receipts}),
     }, sort_keys=True, separators=(",", ":")))
