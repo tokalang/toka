@@ -53,10 +53,11 @@ private:
 
 class Stage0FinalGenericArgumentScope final {
 public:
-  Stage0FinalGenericArgumentScope(unsigned &depth, bool enabled)
-      : Depth(depth), Enabled(enabled) {
+  Stage0FinalGenericArgumentScope(std::vector<unsigned> &permitDepths,
+                                  unsigned speculativeDepth, bool enabled)
+      : PermitDepths(permitDepths), Enabled(enabled) {
     if (Enabled)
-      ++Depth;
+      PermitDepths.push_back(speculativeDepth);
   }
   Stage0FinalGenericArgumentScope(const Stage0FinalGenericArgumentScope &) =
       delete;
@@ -64,11 +65,11 @@ public:
   operator=(const Stage0FinalGenericArgumentScope &) = delete;
   ~Stage0FinalGenericArgumentScope() {
     if (Enabled)
-      --Depth;
+      PermitDepths.pop_back();
   }
 
 private:
-  unsigned &Depth;
+  std::vector<unsigned> &PermitDepths;
   bool Enabled = false;
 };
 
@@ -5427,13 +5428,18 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         static_cast<unsigned>(Fn->Args.size());
     const bool publishFinalGenericArgumentTransactions =
         SemanticEvidence::isCallTransferShadowEnabled() &&
-        stage0CallEntrySnapshot.has_value() &&
-        m_Stage0FinalGenericArgumentDepth == 0;
-    Stage0FinalGenericArgumentScope finalGenericArgumentScope(
-        m_Stage0FinalGenericArgumentDepth,
-        publishFinalGenericArgumentTransactions);
+        stage0CallEntrySnapshot.has_value();
     Stage0CallTransferJournal genericArgumentJournal(
         publishFinalGenericArgumentTransactions);
+    auto recordGenericResolutionRejection = [&](const char *rejection) {
+      Stage0FinalGenericArgumentScope genericRejectionScope(
+          m_Stage0FinalGenericArgumentPermitDepths, m_D3SpeculativeCallDepth,
+          publishFinalGenericArgumentTransactions);
+      recordExplicitCedeStage0GenericResolutionRejection(
+          Call, CallName,
+          stage0CallEntrySnapshot ? &*stage0CallEntrySnapshot : nullptr,
+          genericExpectedArgumentCount, rejection);
+    };
     std::vector<std::shared_ptr<toka::Type>> TypeArgs;
     bool deductionFailed = false;
 
@@ -5443,10 +5449,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         DiagnosticEngine::report(getLoc(Call), DiagID::NOTE_GENERIC, Fn->Name, Fn->GenericParams.size(), Call->GenericArgs.size());
         HasError = true;
         genericArgumentJournal.rollback();
-        recordExplicitCedeStage0GenericResolutionRejection(
-            Call, CallName,
-            stage0CallEntrySnapshot ? &*stage0CallEntrySnapshot : nullptr,
-            genericExpectedArgumentCount, "GenericTypeArgumentCountMismatch");
+        recordGenericResolutionRejection("GenericTypeArgumentCountMismatch");
         return toka::Type::fromString("unknown");
       }
       for (size_t i = 0; i < Call->GenericArgs.size(); ++i) {
@@ -5471,6 +5474,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
     } else {
       // Type Deduction
+      Stage0FinalGenericArgumentScope finalGenericArgumentScope(
+          m_Stage0FinalGenericArgumentPermitDepths, m_D3SpeculativeCallDepth,
+          publishFinalGenericArgumentTransactions);
       std::map<std::string, std::shared_ptr<toka::Type>> Deduced;
 
       for (size_t i = 0; i < Call->Args.size() && i < Fn->Args.size(); ++i) {
@@ -5673,28 +5679,36 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     if (!deductionFailed) {
+      const size_t instantiationDiagnosticStart =
+          DiagnosticEngine::records().size();
       Fn = instantiateGenericFunction(Fn, TypeArgs, Call);
       if (!Fn) {
         genericArgumentJournal.rollback();
-        recordExplicitCedeStage0GenericResolutionRejection(
-            Call, CallName,
-            stage0CallEntrySnapshot ? &*stage0CallEntrySnapshot : nullptr,
-            genericExpectedArgumentCount, "GenericInstantiationFailed");
+        recordGenericResolutionRejection("GenericInstantiationFailed");
         return toka::Type::fromString("unknown");
       }
+
+      const auto &instantiationDiagnostics = DiagnosticEngine::records();
+      const bool instantiationReportedError =
+          std::any_of(instantiationDiagnostics.begin() +
+                          std::min(instantiationDiagnosticStart,
+                                   instantiationDiagnostics.size()),
+                      instantiationDiagnostics.end(), [](const auto &record) {
+                        return record.Level == DiagLevel::Error;
+                      });
 
       // [FIX] Update the Call AST to point to the mangled instance name
       // otherwise CodeGen will attempt to call the generic template
       // name
       Call->Callee = Fn->Name;
-      genericArgumentJournal.commit();
+      if (instantiationReportedError)
+        genericArgumentJournal.rollback();
+      else
+        genericArgumentJournal.commit();
     } else {
       HasError = true;
       genericArgumentJournal.rollback();
-      recordExplicitCedeStage0GenericResolutionRejection(
-          Call, CallName,
-          stage0CallEntrySnapshot ? &*stage0CallEntrySnapshot : nullptr,
-          genericExpectedArgumentCount, "GenericDeductionFailed");
+      recordGenericResolutionRejection("GenericDeductionFailed");
       return toka::Type::fromString("unknown");
     }
   }

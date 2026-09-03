@@ -1146,6 +1146,27 @@ def main():
                 " did not publish exactly one final nested transaction")
 
     source = ("tests/semantics/call_transfer_shadow_m1/"
+              "generic_nested_generic_calls.tk")
+    require_shadow_parity(tokac, source)
+    run(tokac, source)
+    outer = find_transaction(
+        source, callee="generic_outer", route="ordinary", location_line=14)
+    middle = find_transaction(
+        source, callee="generic_middle", route="ordinary", location_line=14)
+    inner = find_transaction(
+        source, callee="inner", route="ordinary", location_line=14)
+    require(middle["snapshot_revision"] ==
+            outer["snapshot_revision"] + 1 and
+            inner["snapshot_revision"] ==
+            middle["snapshot_revision"] + 1 and
+            all(transaction["commit_allowed"]
+                for transaction in (outer, middle, inner)) and
+            sum(1 for transaction in TRANSACTIONS[source]
+                if transaction["callee"] == "inner" and
+                transaction["location"]["file"].endswith(source)) == 1,
+            source + " did not nest exact-depth generic permits")
+
+    source = ("tests/semantics/call_transfer_shadow_m1/"
               "generic_nested_deduction_failure.tk")
     require_shadow_parity(tokac, source, expected_error="E04554")
     run(tokac, source, expected_error="E04554")
@@ -1189,18 +1210,23 @@ def main():
         run(tokac, source, extra=include)
         outer = find_transaction(
             source, callee="generic_outer", route="ordinary",
-            location_line=8)
+            location_line=12)
+        selected = find_transaction(
+            source, callee="choose", route="ordinary", location_line=12)
         inner = find_transaction(
-            source, callee="choose", route="ordinary", location_line=8)
-        require(inner["snapshot_revision"] ==
+            source, callee="inner", route="ordinary", location_line=12)
+        require(selected["snapshot_revision"] ==
                 outer["snapshot_revision"] + 1 and
-                outer["commit_allowed"] and inner["commit_allowed"] and
+                inner["snapshot_revision"] ==
+                selected["snapshot_revision"] + 1 and
+                outer["commit_allowed"] and
+                selected["commit_allowed"] and inner["commit_allowed"] and
                 sum(1 for transaction in TRANSACTIONS[source]
-                    if transaction["callee"] == "choose" and
+                    if transaction["callee"] == "inner" and
                     transaction["location"]["file"].endswith(source) and
-                    transaction["location"]["line"] == 8) == 1,
-                source + " lost or duplicated its selected nested overload")
-        overload_transactions.append((outer, inner))
+                    transaction["location"]["line"] == 12) == 1,
+                source + " leaked a candidate-probe nested transaction")
+        overload_transactions.append((outer, selected, inner))
     require(all((left["outcome"], left["rejection"],
                  left["commit_allowed"], left["argument_count"]) ==
                 (right["outcome"], right["rejection"],
@@ -1209,6 +1235,36 @@ def main():
                                        overload_transactions[1])),
             "reversing overload candidate declaration order changed the "
             "selected nested transaction")
+
+    source = ("tests/semantics/call_transfer_shadow_m1/"
+              "generic_body_semantic_failure.tk")
+    require_shadow_parity(tokac, source, expected_error="E0408")
+    run(tokac, source, expected_error="E0408")
+    failed_parent = find_transaction(
+        source, callee="generic_bad", route="ordinary", location_line=10)
+    require(failed_parent["outcome"] == "Rejected" and
+            failed_parent["rejection"] == "WholeCallValidationFailed" and
+            not failed_parent["commit_allowed"] and
+            not any(transaction["callee"] == "inner" and
+                    transaction["location"]["file"].endswith(source)
+                    for transaction in TRANSACTIONS[source]),
+            source + " committed a child journal after body Sema failure")
+
+    source = ("tests/semantics/call_transfer_shadow_m1/"
+              "generic_body_call_isolation.tk")
+    require_shadow_parity(tokac, source)
+    run(tokac, source)
+    instantiated_calls = [
+        transaction for transaction in TRANSACTIONS[source]
+        if transaction["callee"] == "generic_body" and
+        transaction["location"]["file"].endswith(source)]
+    require(len(instantiated_calls) == 2 and
+            all(transaction["commit_allowed"]
+                for transaction in instantiated_calls) and
+            not any(transaction["callee"] == "body_call" and
+                    transaction["location"]["file"].endswith(source)
+                    for transaction in TRANSACTIONS[source]),
+            source + " leaked generic-body calls across monomorphizations")
 
     replay_case = ROOT / "tests/semantics/tki_replay/cases/own_cede_003_generic_methods"
     with tempfile.TemporaryDirectory(prefix="toka-call-transfer-shadow-") as temp:

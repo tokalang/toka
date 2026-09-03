@@ -675,7 +675,7 @@ private:
   bool m_InjectMissingCallTransferElaboration = false;
   bool m_MissingCallTransferFaultConsumed = false;
   unsigned m_D3SpeculativeCallDepth = 0;
-  unsigned m_Stage0FinalGenericArgumentDepth = 0;
+  std::vector<unsigned> m_Stage0FinalGenericArgumentPermitDepths;
   uint64_t m_Stage0CallSnapshotRevision = 0;
 
   struct AuthorityFullExpressionContext {
@@ -864,7 +864,9 @@ private:
       m_Stage0PendingTransactions;
   bool isStage0CallTransferObservationAllowed() const {
     return m_D3SpeculativeCallDepth == 0 ||
-           m_Stage0FinalGenericArgumentDepth != 0;
+           (!m_Stage0FinalGenericArgumentPermitDepths.empty() &&
+            m_Stage0FinalGenericArgumentPermitDepths.back() ==
+                m_D3SpeculativeCallDepth);
   }
   class Stage0TransactionFinalizer {
   public:

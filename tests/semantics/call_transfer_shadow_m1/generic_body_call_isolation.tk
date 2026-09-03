@@ -1,0 +1,18 @@
+fn body_call(value: i32) -> i32 {
+    return value
+}
+
+fn generic_body<T>(value: T) -> T {
+    auto observed = body_call(1:i32)
+    assert(observed == 1:i32, "body call")
+    return value
+}
+
+fn main() -> i32 {
+    auto first = generic_body(41:i32)
+    auto second = generic_body(true)
+    if second {
+        return first - 41:i32
+    }
+    return 1:i32
+}

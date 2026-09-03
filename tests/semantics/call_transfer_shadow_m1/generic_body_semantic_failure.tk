@@ -1,0 +1,11 @@
+fn inner() -> i32 {
+    return 42:i32
+}
+
+fn generic_bad<T>(value: T) -> T {
+    return true
+}
+
+fn main() -> i32 {
+    return generic_bad(inner())
+}

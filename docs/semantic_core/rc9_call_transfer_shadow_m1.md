@@ -132,13 +132,19 @@ missing-pending paths cannot synthesize a post-state Stage-0 plan.
 Generic overload candidate probes remain suppressed exactly as before. Once a
 generic declaration is selected, its single real argument evaluation is
 different: nested ordinary, method, and consuming calls publish their own
-pre-mutation transactions into a candidate-local call-transfer journal. A
-successful instantiation retains that journal exactly once and the later
-`precheckedArgTypes` path does not re-evaluate the expressions. Deduction or
-instantiation failure discards the journal before publishing one fail-closed
-outer generic-resolution transaction with no items and
-`commit_allowed=false`. This observation-only distinction does not alter the
-normal signature-driven path or the frozen D3 and authority-facts profiles.
+pre-mutation transactions into a candidate-local call-transfer journal. The
+permit is bound to the exact speculative depth of that selected evaluation;
+deeper overload probes remain suppressed, while a selected nested generic call
+opens its own exact-depth permit. The permit ends before generic body
+instantiation, so body calls cannot masquerade as argument edges or duplicate
+across monomorphizations. A successful, error-free instantiation retains the
+argument journal exactly once and the later `precheckedArgTypes` path does not
+re-evaluate the expressions. Deduction, null instantiation, or an instantiation
+error delta discards the journal. Resolution failures publish one fail-closed
+outer transaction with no items and `commit_allowed=false`; a body semantic
+failure leaves the ordinary parent transaction rejected by final validation.
+This observation-only distinction does not alter the normal signature-driven
+path or the frozen D3 and authority-facts profiles.
 
 Argument indices are one-based. Method/callable receiver roles are separate;
 an indirect callable receiver has no declaration-side formal and therefore
@@ -189,8 +195,12 @@ are not part of the Stage-0 call-transaction contract.
 - exactly-once nested ordinary/method/consuming transactions during final
   generic argument evaluation, candidate-local rollback on deduction failure,
   and fail-closed generic-resolution envelopes;
-- stable selected nested-call transactions when overload declaration order is
-  reversed, using dynamic receipts rather than C++ source-string inspection;
+- exact-depth suppression for `generic_outer(overloaded(inner()))`, stable
+  selected nested-call transactions when overload declaration order is
+  reversed, and dynamic revision/receipt checks rather than C++ source-string
+  inspection;
+- argument-journal rollback after generic-body semantic failure and isolation
+  of body calls across multiple monomorphizations;
 - async `.start`, nested non-boundary calls, and resolved-declaration thread
   handoff annotation, including aliases and a user same-named function;
 - init formal/actual spelling, unknown actuals, unary/cast/address/postfix

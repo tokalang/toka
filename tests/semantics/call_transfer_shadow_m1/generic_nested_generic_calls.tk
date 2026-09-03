@@ -1,0 +1,15 @@
+fn inner() -> i32 {
+    return 42:i32
+}
+
+fn generic_middle<T>(value: T) -> T {
+    return value
+}
+
+fn generic_outer<T>(value: T) -> T {
+    return value
+}
+
+fn main() -> i32 {
+    return generic_outer(generic_middle(inner()) as i32) - 42:i32
+}
