@@ -2,7 +2,9 @@
 
 #pragma once
 
+#include "toka/SemanticModel.h"
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace toka {
@@ -150,9 +152,8 @@ struct TransferAccessCapabilities {
 struct ExplicitCedePreparedFacts {
   std::string ActualTypeKey;
   std::string FormalTypeKey;
-  std::string SemanticRootKey;
-  std::string ExactPath;
-  std::string ObligationRootKey;
+  std::optional<PlaceId> SourcePlace;
+  std::optional<RootSymbolId> ObligationRoot;
   TransferPlanOrigin Origin = TransferPlanOrigin::UserSource;
   CedeSyntaxPurpose SyntaxPurpose = CedeSyntaxPurpose::None;
   TransferSurfaceSpelling SurfaceSpelling = TransferSurfaceSpelling::Bare;
@@ -170,11 +171,15 @@ struct ExplicitCedePreparedFacts {
   TransferObligationState ObligationBefore = TransferObligationState::None;
   bool WholeOwnedTemporaryEligible = false;
   bool ActiveDerivedBorrow = false;
+  bool BorrowStateComplete = false;
   bool SourceTransferAuthorized = false;
+  bool SourceTransferAuthorityComplete = false;
   bool CarriesDropLiability = false;
+  bool DropLiabilityComplete = false;
 };
 
 struct ExplicitCedePlan {
+  ExplicitCedePreparedFacts Prepared;
   TransferPlanOutcome Outcome = TransferPlanOutcome::Rejected;
   TransferPlanRejection Rejection =
       TransferPlanRejection::ClosedWorldCombination;
@@ -184,8 +189,7 @@ struct ExplicitCedePlan {
   TransferDropDisposition Drop = TransferDropDisposition::None;
   TransferObligationAction ObligationAction = TransferObligationAction::None;
   TransferObligationState ObligationAfter = TransferObligationState::None;
-  std::string SemanticRootKey;
-  std::string ExactPath;
+  std::optional<PlaceId> TransferOrigin;
   TransferSourceView TransferOriginView = TransferSourceView::Indeterminate;
   TransferReachability Reachability = TransferReachability::Indeterminate;
 
@@ -201,5 +205,23 @@ ExplicitCedePlan
 prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts);
 
 const char *toString(TransferPlanRejection value);
+const char *toString(TransferPlanOutcome value);
+const char *toString(TransferValueProduction value);
+const char *toString(TransferSourceDisposition value);
+const char *toString(TransferDestination value);
+const char *toString(TransferDropDisposition value);
+const char *toString(TransferObligationAction value);
+const char *toString(TransferObligationState value);
+const char *toString(TransferSourceView value);
+const char *toString(TransferReachability value);
+const char *toString(TransferPlanOrigin value);
+const char *toString(CedeSyntaxPurpose value);
+const char *toString(TransferSurfaceSpelling value);
+const char *toString(TransferSourceCategory value);
+const char *toString(TransferOwnershipKind value);
+const char *toString(TransferCopyProof value);
+const char *toString(TransferFormalContract value);
+const char *toString(TransferFormalMorphology value);
+const char *toString(TransferEligibility value);
 
 } // namespace toka
