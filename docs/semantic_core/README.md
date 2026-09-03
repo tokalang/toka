@@ -88,10 +88,13 @@ change current language behavior or implementation status.
   remains gated; this is not a general projection guarantee.
 - `explicit_call_boundary_cede_rfc.md` proposes restoring caller-visible
   `cede` as a strict call-contract handshake and destructive read for every
-  named Copy or non-Copy source, while source-less values remain bare. It also
-  preserves temporary consumption, obligation tracking, identity-before-Copy
-  classification, whole-call atomic planning, and CodeGen fail-closed checks.
-  It is review-only and authorizes no implementation.
+  admitted named source, while source-less values remain bare. It unifies
+  ownership-root/SourceView liveness and parameter/receiver morphology, adds
+  expression-call planning, and deletes function-result `cede` in favor of a
+  source-side return matrix. It also preserves temporary consumption,
+  obligation tracking, identity-before-Copy classification, unified atomic
+  planning, and destination-complete CodeGen fail-closed checks. It is
+  review-only and authorizes no implementation.
 - `place_state_permission_flow_current_head_audit.md` records the current
   targeted PlaceState/permission/partial-`cede` reconciliation, including the
   bounded `E04632` fail-closed repair and the remaining projection-state gap.

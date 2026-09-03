@@ -1,11 +1,12 @@
-# RFC: Explicit `cede` at Call Boundaries
+# RFC: Explicit `cede` Source Semantics and Call Boundaries
 
-**Status:** Revisions requested. Third-round acceptance candidate. This document
+**Status:** Revisions requested. Fourth-round acceptance candidate. This document
 authorizes no implementation, source migration, interface-key change, CI run,
 merge, tag, or release. Work may begin only after an explicit review changes
 this status to an accepted implementation boundary.
 
-**Target:** Toka 1.0 call-boundary ownership semantics, if accepted.
+**Target:** Toka 1.0 source-transfer and call-boundary ownership semantics, if
+accepted.
 
 **Draft baseline:** `3d32808a9f34e1fdf9c4c36dac9facc5284a0ac2`.
 
@@ -13,6 +14,9 @@ this status to an accepted implementation boundary.
 caller-spelling portion of
 [`RC9 Signature-Driven Call Transfer ADR`](rc9_signature_driven_call_transfer_adr.md)
 and revises [`OWN-CEDE-001`](rule_matrix.md#own-cede-001-cede-formals-are-signature-driven-transfer-obligations).
+On activation it also deletes the result-qualifier rule
+[`OWN-CEDE-002`](rule_matrix.md#own-cede-002-cede-return-types-require-explicit-transfer-at-return-sites)
+and replaces it with the source-side return matrix in Section 5.
 Those documents remain the historical and currently implemented contract until
 all acceptance gates in this RFC pass.
 
@@ -30,10 +34,18 @@ The revised proposed Toka 1.0 rules are:
 > `cede`. An eligible expression with `NoSourcePlace` is passed bare; its value
 > is consumed or copied without a caller place to invalidate.
 
+> User-written `cede` has exactly one purpose: source invalidation. It therefore
+> requires an admitted existing source. A destination contract never makes
+> `cede NoSourcePlace` valid, and function result types do not carry `cede`.
+
 The shorter design slogan is:
 
 > **Named source: write `cede`, source becomes unavailable. No source place:
 > pass bare.**
+
+For returns, the corresponding slogan is:
+
+> **`return` describes the destination; `cede` describes the source.**
 
 The visible handshake introduced here is intentionally a call-boundary rule;
 the exact-source and liveness-region invariants of `CedeExpr` are language-wide.
@@ -205,16 +217,41 @@ subtree rather than an unrelated ancestor. For a shared owner, transferring
 one handle invalidates that source binding and its derived views but does not
 claim that other independent shared owners or the allocation are dead.
 
+Evidence identifies an ownership root with a deterministic semantic
+declaration coordinate, not an in-process `SymbolID`, pointer, or allocation
+counter. The v3 identity is derived from a versioned tuple equivalent to:
+
+```text
+SemanticRootId = (
+    canonical module key,
+    enclosing declaration semantic key,
+    lexical binding declaration coordinate,
+    binding name and morphology
+)
+```
+
+The exact serialization is frozen with the Evidence schema. It must be stable
+for the same source, independent of compilation order, process, target, and
+source-backed versus imported-provider resolution. `NoSourcePlace` has no
+fabricated root ID; compiler temporaries use deterministic AST coordinates only
+inside their separate transfer-plan evidence.
+
 ### 3.2 `NoSourcePlace`
 
 `NoSourcePlace` is a value-producing expression with no caller place whose
 availability can be changed. It says nothing by itself about ownership, Copy,
-referent identity, dependencies, or cleanup. The absence of
-`makeAccessPath()` is necessary but not sufficient evidence for this category.
+referent identity, dependencies, or cleanup. `makeAccessPath()` is not its
+classifier: a borrow construction such as `&value` may carry a referent path
+while still having no independently invalidatable source binding. Source
+category must be derived from explicit binding/place identity, expression
+role, referent/dependency facts, and route context together.
 
 The semantic model must keep these facts separate:
 
 ```text
+CedeSyntaxPurpose
+    SourceInvalidation
+
 SourceCategory
     NamedSourcePlace | NoSourcePlace | Indeterminate
 
@@ -250,22 +287,26 @@ temporary merely because it has `NoSourcePlace`.
 ### 3.3 `WholeOwnedTemporary`
 
 A `WholeOwnedTemporary` is the admitted `NoSourcePlace` subset whose complete
-payload and cleanup liability can be transferred to the selected `cede`
-formal. It may use an internal synthetic `CedeExpr` or an equivalent validated
-transfer plan. That representation is compiler authority, not implicit caller
-place invalidation.
+payload and cleanup liability can be transferred to an admitted destination,
+including a selected `cede` formal or return. It uses a validated
+compiler-internal temporary transfer plan, not a user-semantic `CedeExpr`. The
+plan may share lowering machinery with cede but has no explicit `cede` spelling
+and grants no implicit source-place invalidation.
 
 Passing `resource.dup()` bare is valid only when `dup()` produces a complete,
 independently owned, dependency-free `NoSourcePlace` result. The original
 `resource` stays live; the new temporary is consumed. Conceptually:
 
-```toka
-auto <compiler-temporary> = resource.dup()
-consume(cede <compiler-temporary>)
+```text
+CompilerTemporaryTransferPlan(
+    value = resource.dup(),
+    source = NoSourcePlace,
+    destination = CalleeParameter
+)
 ```
 
-The source language omits the impossible-to-name `cede` because the compiler
-temporary cannot be used after the call.
+The source language contains no synthetic `cede`; the compiler temporary cannot
+be named or used after the call.
 
 ### 3.4 Copy proof
 
@@ -320,12 +361,14 @@ fn outer<T>(cede value: T) {
 }
 ```
 
-The exact-view rule is a `CedeExpr` axiom, not a call-only convention. The same
+The exact-view rule is a user-written `CedeExpr` axiom, not a call-only
+convention. The same
 `TransferOrigin`, `InvalidateRegion`, obligation, and no-re-hatting rules apply
 when `CedeExpr` feeds an argument, receiver, standalone statement, return,
 assignment, initialization, aggregate member, match binding, or closure
 capture. A route may impose stricter eligibility, but it may not reinterpret
-the source view.
+the source view. Compiler-synthetic temporary transfer has no `CedeExpr` source
+role and is authorized only by its separate validated `NoSourcePlace` plan.
 
 ### 3.6 Proposed semantic rule identities
 
@@ -341,6 +384,7 @@ if the RFC is accepted and qualified.
 | `OWN-CALL-ATOMIC-001` | Core guarantee | `OwnershipTransfer`, `Invalidation` | receiver and all arguments prepare and validate together, then commit once or not at all |
 | `OWN-CEDE-VIEW-001` | Core guarantee | `SourceView`, `Invalidation` | every `CedeExpr` route preserves the written view, shares ownership-root liveness, and forbids implicit de-hatting/re-hatting |
 | `OWN-RECEIVER-MORPH-001` | Core guarantee | `Receiver`, `InterfaceReplay` | `self` reuses ordinary parameter morphology, permissions, `cede`, trait, and TKI rules |
+| `OWN-RETURN-SOURCE-001` | Core guarantee | `Return`, `OwnershipTransfer`, `Invalidation` | return type describes the result; a named source uses its required visible transfer, a `NoSourcePlace` result is returned bare, and function results cannot be `cede`-qualified |
 
 The shared compiler inputs are the selected formal, caller spelling, ownership
 root, exact path/view, reachability closure, referent, eligibility context,
@@ -367,12 +411,13 @@ ordinary formal or view mismatch rejects that expression before invalidation.
 | `cede` formal + `ProvenNonCopy` owning/shared matching `NamedSourcePlace` | explicit `cede` | `MoveOwned` or `TransferShared` | `InvalidateRegion(root, path, closure)` | allow; exact written view is the transfer origin; callee obligation becomes `Outstanding` |
 | `cede` formal + `ProvenCopy` value matching `NamedSourcePlace` | explicit `cede` | `CopyValue` | `InvalidateRegion(root, path, closure)` | allow; exact written view is the transfer origin; callee obligation becomes `Outstanding` |
 | matching `cede ~formal` + named shared handle | explicit `cede ~source` | `TransferShared` | invalidate that binding and dependent views | allow; transfer one shared-owner token, without claiming allocation death |
-| matching `cede &formal`/`cede *formal` + named identity | explicit matching hatted `cede` | `CopyIdentity` or reviewed identity transfer | invalidate that binding and dependent views | allow under lifetime/raw rules; never acquire or destroy referent ownership |
+| matching `cede *formal` + named raw identity | explicit matching hatted `cede` | `CopyIdentity` or reviewed identity transfer | invalidate that binding and dependent views | allow under raw rules; never acquire or destroy referent ownership |
+| `cede &formal` or `cede &self` | any | none | no state change | reject: `&expression` constructs a borrow rather than selecting an existing reference binding |
 | handle `cede` formal + payload-view actual, or payload `cede` formal + handle-view actual | bare or explicit | none | no state change | reject view mismatch; never infer or erase a hat |
 | explicit `cede` of a dereferenced payload reached through an owning handle | explicit `cede` | none | no state change | reject; transfer/discard the owning handle explicitly instead |
 | `cede` formal + admitted non-Copy `WholeOwnedTemporary` | bare | `ConsumeTemporary` | `NoSourcePlace` | allow; callee assumes cleanup and obligation |
 | `cede` formal + `ProvenCopy + NoSourcePlace` value | bare | `CopyValue` | `NoSourcePlace` | allow; callee obligation becomes `Outstanding` |
-| any formal + `NoSourcePlace` expression | explicit `cede` | none | `NoSourcePlace` | reject: `cede` requires an existing source place |
+| any formal + `NoSourcePlace` expression | explicit `cede` | none | `NoStateChange` | reject: `cede` requires an existing source place |
 | owning `cede` formal + borrowed/raw identity | bare or explicit | none | no state change | reject; use the corresponding hatted borrow/identity `cede` contract |
 | any route + unresolved source/ownership/Copy/liability fact | bare or explicit | none | no committed change | reject fail-closed before CodeGen |
 
@@ -528,9 +573,10 @@ For Copy, the physical payload may be produced with `CopyValue`, but the source
 place still becomes unavailable and no destructor is required. For an owned or
 shared resource, the statement performs the corresponding destructor/release.
 Standalone `cede ~shared` releases that source's one shared-owner token;
-`cede &view` or `cede *ptr` invalidates and ends that binding identity without
-destroying the referent. Their capability, dependency, borrow, and raw-safety
-rules remain in force.
+`cede *ptr` invalidates and ends that raw binding identity without destroying
+the referent. `cede &view` rejects because `&view` constructs a borrow temporary
+rather than selecting an independently invalidatable reference binding. The
+remaining capability, dependency, borrow, and raw-safety rules stay in force.
 For an admitted partial place, it must use the same exact-place and cleanup-mask
 plan as every other partial `cede`.
 
@@ -543,7 +589,83 @@ Copy, obligation, PAL, partial-place, TKI/evidence, and fail-closed coverage as
 call-boundary transfer. A negative `cede payload` fixture must prove that the
 compiler does not silently destroy a hidden owner handle.
 
-## 5. Generic decision
+## 5. Return source semantics and generic forwarding
+
+### 5.1 Delete function-result `cede`
+
+Function result syntax describes result type, morphology, effects, and
+dependencies. It does not describe where the callee obtained the result.
+Accordingly, this RFC deletes result-side `cede` rather than reinterpreting it:
+
+```text
+fn(A) -> cede T      becomes invalid; migrate source to fn(A) -> T
+dyn fn(A) -> cede T  becomes invalid; migrate source to dyn fn(A) -> T
+```
+
+This is a source and function-type identity change, not a permanent parser
+alias. After activation the old spelling receives a focused migration
+diagnostic and does not enter the type system. These distinct forms remain:
+
+```text
+fn(cede A) -> T  // consuming parameter contract
+cede fn(A) -> T  // consuming callable source/receiver contract
+```
+
+Return source semantics are:
+
+| Return expression | Value production | Source disposition | Result |
+| --- | --- | --- | --- |
+| `return named_copy` | `CopyValue` | `KeepLive` until ordinary scope exit | allow |
+| `return cede named_copy` | `CopyValue` | `InvalidateRegion` | allow; explicit destructive read |
+| `return named_noncopy` | none | `NoStateChange` | reject; named non-Copy source requires visible transfer |
+| `return cede named_noncopy` | `MoveOwned` | `InvalidateRegion` | allow; destination assumes cleanup liability |
+| `return temporary()` | `ConsumeTemporary` or `CopyValue` | `NoSourcePlace` | allow; result/caller assumes any cleanup liability |
+| `return cede temporary()` | none | `NoStateChange` | reject; no source exists to invalidate |
+| `return ^owner` | intrinsic unique move | invalidate owner root and dependent views | allow; `^` is already the visible unique-transfer operator |
+| `return cede ^owner` | none | `NoStateChange` | reject as redundant; unique return has the single canonical spelling `return ^owner` |
+| `return ~shared` / `return cede ~shared` | shared copy or shared-token transfer | keep live or invalidate the selected shared binding | apply the same explicit-source distinction |
+| borrowed/raw return | identity flow | dependency/PAL/raw decision | decided by result morphology, dependencies, and safety rules |
+
+A `cede` parameter still carries an `Outstanding` obligation. Returning that
+exact parameter through an admitted destructive read may discharge or transfer
+the obligation even when substitution proves its payload Copy:
+
+```toka
+fn forward<T>(cede value: T) -> T {
+    return cede value
+}
+```
+
+Returning an unrelated temporary does not discharge another parameter's
+obligation:
+
+```toka
+fn wrong<T>(cede value: T) -> T {
+    return make<T>() // E0474 remains for value
+}
+```
+
+An ordinary owning parameter remains a capture/borrow contract. Writing
+`return cede parameter` cannot manufacture transfer authority that its formal
+did not grant. A generic bare `return value` must prove Copy or another
+non-invalidating flow; `return cede value` instead requires an admitted exact
+source and chooses `CopyValue`, `MoveOwned`, `TransferShared`, or identity
+transfer only after substitution.
+
+`OWN-CEDE-002` is deleted on activation and replaced by
+`OWN-RETURN-SOURCE-001`. The current `E0464`/`MissingCedeReturn` meaning is
+removed. Separate diagnostics cover an illegal result qualifier, a bare named
+non-Copy source, explicit `cede NoSourcePlace`, redundant `return cede ^owner`,
+and missing source-transfer authority.
+
+The implementation must not delete a global `Type::IsCede` bit mechanically if
+that storage also represents parameter `cede` or consuming callable state. It
+must first split those roles into structured parameter contract, callable
+source contract, and result type fields; only the result-side field/identity is
+removed. TKI and function-type equality cease storing or comparing return
+cede-ness, and the compiler-interface key changes.
+
+### 5.2 Generic decision
 
 Generic caller spelling depends on source category and the selected formal,
 not on Copy proof:
@@ -589,12 +711,19 @@ fn consume(cede ^self)        // equivalent: fn consume(cede ^value: Self)
 fn consume(cede ^self#)       // unique owner plus payload-write permission
 ```
 
-Other handle morphologies and H/P permission combinations follow the ordinary
-parameter grammar rather than a receiver-only table. A `cede &self` or
-`cede *self` contract may transfer and invalidate that binding identity when
-the corresponding ordinary parameter contract is valid, but it never acquires
+Other admitted handle morphologies and H/P permission combinations follow the
+ordinary parameter grammar rather than a receiver-only table. A `cede *self`
+contract may transfer and invalidate that raw binding identity when the
+corresponding ordinary parameter contract is valid, but it never acquires
 ownership of the referent. A `cede ~self` transfers one shared-owner binding;
 it does not assert that other shared owners or the allocation are dead.
+
+`&expression` is different: it is target-aware borrow construction, not an
+unambiguous selector for an existing reference binding. This RFC therefore
+rejects both `cede &parameter` and `cede &self`. Ordinary `&parameter` and
+`&self` borrow contracts remain available. A future explicit reference-binding
+identity selector may enable cede for both parameters and receivers together,
+but receiver syntax may not invent that authority alone.
 
 This is a prospective Parser extension. The current declaration Parser rejects
 hatted `self`; activation explicitly authorizes changing Parser, method
@@ -634,7 +763,8 @@ The receiver matrix therefore becomes:
 | ordinary `self`/morphology | explicit `cede` | — | reject contract mismatch; no state change |
 | `cede self` | direct-value named source | `(cede value).method()` | produce value and invalidate its liveness region |
 | `cede ^self` | unique-owner named source | `(cede ^owner).method()` | move owner, invalidate root and dependent views, create/transfer obligation |
-| `cede ~self`, `cede &self`, or `cede *self` | corresponding matching handle identity | same explicit hatted `cede` grouping | invalidate that source binding under its shared/borrow/raw contract; never amplify referent ownership |
+| `cede ~self` or `cede *self` | corresponding matching handle identity | same explicit hatted `cede` grouping | invalidate that source binding under its shared/raw contract; never amplify referent ownership |
+| `cede &self` | any expression | — | reject: `&` constructs a borrow and is not an existing reference-binding selector |
 | any `cede` receiver | bare matching named source | — | reject: visible `cede` required |
 | any receiver | wrong payload/handle morphology | — | reject: never infer, add, erase, or replace a hat |
 | admitted source-less receiver | eligible matching temporary | bare expression | copy/consume without caller source invalidation |
@@ -684,12 +814,15 @@ adapted internally, but they must converge on the same selected-formal,
 whole-call planner, TKI, Evidence, and CodeGen contract; string-only callee
 identity cannot be the final authority for expression invocation.
 
-`cede callable(arguments)` continues to mean `CedeExpr(InvokeExpr(...))`, so it
-cedes the result. `(cede callable)(arguments)` means
-`InvokeExpr(CedeExpr(callable), ...)`, so it cedes the callable source. Parser,
-cloning, and exporters must preserve this AST distinction and regenerate the
-required parentheses by precedence. Signature inference may not reinterpret
-one spelling as the other.
+`cede callable(arguments)` parses as `CedeExpr(InvokeExpr(...))`, while
+`(cede callable)(arguments)` parses as
+`InvokeExpr(CedeExpr(callable), ...)`. Parser, cloning, and exporters must
+preserve this AST distinction and regenerate the required parentheses by
+precedence. Semantically, the first form rejects because an invocation result
+is `NoSourcePlace`; no destination can turn it into source invalidation. The
+second form is admitted only when `callable` is an exact existing source and
+the consuming-callable contract matches. Signature inference may not
+reinterpret one spelling as the other.
 
 Bare source-less callable temporaries remain eligible only when ownership,
 environment, dependencies, and cleanup are proven. Async receivers, partial
@@ -712,7 +845,7 @@ routes use the same dimensions under their own `EligibilityContext`.
 The proposed semantic pipeline is:
 
 ```text
-resolve callable and selected formals
+resolve destination and, when applicable, callable and selected formals
     -> prepare receiver and argument facts without global mutation
     -> derive spelling/source/ownership/copy/obligation/dependency facts
     -> plan every payload, source, obligation, and cleanup transition
@@ -725,10 +858,13 @@ resolve callable and selected formals
 
 ### 7.1 Required prepared facts
 
-At minimum, every receiver and argument contributes:
+At minimum, every planned source/value flow contributes:
 
 ```text
-ResolvedType
+ActualResolvedType
+FormalResolvedType?
+FormalMorphology = DirectValue | Handle(hat-kind) | Indeterminate
+FormalAccessCapabilities
 SourceCategory = NamedSourcePlace | NoSourcePlace | Indeterminate
 OwnershipRoot?
 ExactAccessPath?
@@ -743,7 +879,9 @@ WholeOwnedTemporaryEligibility
 CedeObligationBefore = None | Outstanding | Discharged
 DropLiability
 AccessCapabilities
-CallerSpelling = Bare | ExplicitCede
+SurfaceSpelling = Bare | ExplicitCede | IntrinsicUniqueMove
+CedeSyntaxPurpose = None | SourceInvalidation
+PlanOrigin = UserSource | CompilerSynthetic
 EligibilityContext
 PlaceEligibility(EligibilityContext)
 SelectedFormalContract = None | Ordinary | Cede
@@ -817,7 +955,7 @@ mean rejection.
    infer, add, remove, or replace a hat.
 11. Nested candidate/overload/generic probes discard all prepared state when
    not selected.
-12. Source-backed and source-less calls produce the same final plan.
+12. Source-backed and source-less resolution produce the same final plan.
 13. Every non-call `CedeExpr` route uses the same exact-view and liveness-region
     invariants even when its destination and eligibility differ.
 
@@ -843,8 +981,8 @@ the evidence and requires the full gate again.
 ### 8.2 Retain
 
 - `ConsumeTemporary` planning and Drop-liability handoff;
-- an internal synthesized `CedeExpr` for temporaries, or an equivalent
-  structured transfer plan;
+- a structured compiler-synthetic temporary transfer plan distinct from
+  user-semantic `CedeExpr`;
 - Copy and identity classification;
 - obligation before/after classification and generic lowering requirements;
 - PAL and pairwise multi-argument validation;
@@ -852,9 +990,19 @@ the evidence and requires the full gate again.
 - partial-place lifecycle eligibility and cleanup-mask correspondence;
 - async, extern, indirect `fn`/`dyn fn`, `@Callable`, dynamic-trait, static,
   generic, TKI, and execution-boundary routing;
-- CodeGen `E0761` fail-closed protection; and
-- fault injection proving that a missing validated liability plan emits no
-  executable artifact.
+- CodeGen fail-closed protection for every `CedeExpr` destination; and
+- destination-specific fault injection proving that a missing or mismatched
+  validated plan emits no executable artifact.
+
+Every admitted user `CedeExpr` must carry one Sema-validated plan whose root,
+exact path, source view, syntax purpose, value production, destination, source
+disposition, Drop disposition, and obligation transition match the CodeGen
+request. CodeGen may not reconstruct source authority from the expression or
+type. A missing, stale, destination-mismatched, or otherwise inconsistent plan
+fails closed before artifact emission. Argument/receiver may retain `E0761`;
+return, assignment, initialization, aggregate, match, closure capture, and
+standalone routes may use separately reviewed diagnostics, but none may fall
+back to best-effort lowering.
 
 The implementation must not delete all implicit AST representation merely
 because implicit named-place invalidation is removed.
@@ -878,11 +1026,15 @@ because implicit named-place invalidation is removed.
   path and the ownership root that would become unavailable.
 - Explicit `cede` on `NoSourcePlace` requires a diagnostic explaining that
   there is no source place to invalidate.
+- Function-result `cede` syntax receives a migration diagnostic to remove only
+  that qualifier; it is not entered into function-type identity.
+- Bare named non-Copy return, redundant `return cede ^owner`, and return from a
+  source lacking transfer authority receive distinct source-side diagnostics.
 - An unresolved plan requires a fail-closed diagnostic naming the missing
   source/ownership/Copy/identity/liability fact.
 
-Callee-side `E0474`, return-side explicit `cede`, partial-move diagnostics, PAL
-diagnostics, and `E0761` remain independent.
+Callee-side `E0474`, source-side return transfer, partial-move diagnostics, PAL
+diagnostics, and fail-closed CodeGen diagnostics remain independent.
 
 ### 9.2 Fixes
 
@@ -902,6 +1054,13 @@ or `(cede ^owner).method()` for a unique owner source, never
 `cede value.method()` and never a de-hatted spelling.
 Alias, borrow, partial-place, generic-indeterminate, and multi-argument failures
 must not offer a speculative automatic rewrite.
+
+Return migration may mechanically rewrite a parsed result type
+`-> cede T` to `-> T` while preserving the complete result morphology, effects,
+and dependencies. A bare named non-Copy return receives `return cede source`
+only after exact-source and transfer-authority proof. Redundant
+`return cede ^owner` is fixed to `return ^owner`. No fix may turn a temporary
+return into `return cede temporary()`.
 
 ### 9.3 W0409 transition
 
@@ -929,6 +1088,12 @@ At draft baseline, `tests/semantics/signature_driven_cede_direct` contains:
 The number 74 is a warning count, not a test count. No bulk conversion of 74
 tests is authorized.
 
+The tracked `.tk` baseline also contains 75 `-> cede` occurrences across 44
+files. Production-library use is limited to five function/callable result
+occurrences in `lib/std/thread.tk`; the remaining migration is concentrated in
+tests and fixtures. These are source-migration counts, not evidence of an ABI
+change. The census must be regenerated immediately before implementation.
+
 Fixture migration must preserve each test's independent purpose:
 
 | Fixture class | Required migration |
@@ -942,12 +1107,15 @@ Fixture migration must preserve each test's independent purpose:
 | runtime fixture whose purpose is transfer/drop behavior | add explicit `cede` only at named invalidating calls; keep runtime qualification |
 | multi-argument alias/borrow/atomic fixture | add explicit `cede` to intended transfer arguments and continue proving all-or-nothing failure |
 | mixed runtime plus use-after-move fixture | split or locally rewrite; do not turn the entire file into compile-fail |
-| E0761 fault-injection fixture | retain missing-plan CodeGen fail-closed purpose |
+| argument/receiver E0761 fixture | retain missing-plan CodeGen fail-closed purpose |
+| return/assignment/init/aggregate/match/capture/standalone fault fixture | inject missing and mismatched validated plans per destination and require no artifact |
 | TKI/source-less fixture | retain source/TKI plan parity purpose |
 | Evidence fixture | update schema expectations without discarding caller/callee/return stages |
 | hatted `self` declaration/call | cover Parser, trait conformance, source/TKI resolution, H/P permissions, mismatch rejection, runtime, and exporter round-trip |
 | callable-expression invocation | distinguish `(cede callable)(args)` from `cede callable(args)` across Parser, clone, exporter, TKI, Sema, and CodeGen |
 | non-call `CedeExpr` route | independently cover return, assignment/init, aggregate, match, closure capture, and standalone eligibility without source-view reinterpretation |
+| old function-result `cede` syntax | migrate `fn`/`dyn fn` result spelling to unqualified result type while preserving parameter/callable cede; reject old syntax after activation |
+| return source matrix | cover Copy keep/invalidate, named NonCopy reject/move, temporary bare/rejected cede, intrinsic unique move/redundant cede, shared, borrowed/raw, generic, and obligation cases |
 | async/extern/callable/dynamic/static/generic route | retain route-specific runtime and atomicity coverage |
 
 A repository-wide W0409 plus resolved-`cede`-formal/source-category census must
@@ -968,12 +1136,18 @@ reviewed separately named protocol) that can express:
 boundary_kind  = argument | receiver | standalone | return
                  | assignment | initialization | aggregate
                  | match_binding | closure_capture
-caller_spelling = bare | explicit
+plan_origin    = user_source | compiler_synthetic
+surface_spelling = bare | explicit_cede | intrinsic_unique_move
 spelling_reason = ordinary | formal_required | source_less_exempt
                   | explicit_transfer | standalone_discard
 selected_formal = none | ordinary | cede
+actual_resolved_type = type
+formal_resolved_type = type | none | indeterminate
+formal_morphology = direct_value | handle(hat_kind) | none | indeterminate
+formal_access_capabilities = capability_set | none | indeterminate
+cede_syntax_purpose = none | source_invalidation
 source_category = named_source_place | no_source_place | indeterminate
-ownership_root  = local(root_id) | none | indeterminate
+ownership_root  = semantic_root_id | none | indeterminate
 exact_path      = path | none | indeterminate
 source_view     = direct_value_place
                   | dereferenced_payload_place(hat_kind)
@@ -1008,7 +1182,7 @@ obligation_after = none | outstanding | discharged
 commit          = not_committed | prepared | committed
 ```
 
-Caller spelling, callee consumption, and return transfer remain distinct
+Surface spelling, callee consumption, and return transfer remain distinct
 stages. Evidence must retain the exact written source path and source view; it
 may not normalize `buf` and `^buf` into one source. It must distinguish
 `CopyValue + InvalidateRegion` from ordinary
@@ -1021,6 +1195,19 @@ uses `plan_outcome = rejected(reason)`, `source = no_state_change`, and
 authority-bearing fact. Evidence may describe rejection but may not grant
 semantic authority.
 
+`formal_resolved_type`, complete formal morphology/view, and formal H/P
+requirements are mandatory for an admitted argument or receiver plan; a cede
+bit alone cannot prove `cede self` versus `cede ^self`. `ownership_root` uses
+the stable v3 semantic coordinate defined in Section 3.1 and never emits a
+process-local `SymbolID`. Compiler-synthetic temporary records keep
+`surface_spelling = bare`, `cede_syntax_purpose = none`, and identify their
+authority through `plan_origin = compiler_synthetic`.
+
+Return evidence records `selected_formal = none`,
+`destination = return`, source category, value production, transfer origin,
+source disposition, Drop handoff, and obligation action. There is no
+return-cede qualifier field in v3.
+
 ### 11.2 TKI and source-less replay
 
 Provider TKI preserves declaration-side facts only:
@@ -1029,7 +1216,8 @@ Provider TKI preserves declaration-side facts only:
 - formal H/P capability requirements;
 - declared Copy/ownership/identity/generic constraints;
 - the callee-side obligation contract;
-- dependency/member/effect/execution-boundary contracts; and
+- dependency/member/effect/execution-boundary contracts;
+- result type/morphology without a return-cede bit; and
 - type, trait, callable, and ABI facts already required for resolution.
 
 Provider TKI must not serialize caller-local exact paths, ownership-root IDs,
@@ -1052,6 +1240,12 @@ wire representation changes, its format/schema version must also change. Old
 cache entries must reject rather than replay RC9 caller-spelling semantics
 under the new compiler.
 
+The key also fences function-type identity after
+`fn(A) -> cede T`/`dyn fn(A) -> cede T` are removed. Old TKI carrying a result
+cede bit rejects; it is not silently normalized during current-protocol replay.
+Source migration deletes only the result qualifier and leaves parameter cede
+and consuming-callable contracts intact.
+
 No physical ABI change is implied solely by the spelling rule.
 
 ## 12. Staged implementation plan and estimate
@@ -1062,7 +1256,8 @@ The estimate is for one engineer after RFC acceptance.
 
 - freeze ownership root, exact path, `SourceCategory`, `SourceView`,
   reachability closure, route eligibility, `OwnershipKind`, Copy, referent,
-  destination, Drop liability, `PlanOutcome`, and obligation facts;
+  destination, Drop liability, `PlanOutcome`, formal resolved type/morphology/
+  H-P requirements, stable root identity, and obligation facts;
 - build one transaction-local receiver-plus-arguments prepared plan before any
   source or obligation mutation;
 - make owner invalidation close over dependent payload/member/index views and
@@ -1075,6 +1270,8 @@ The estimate is for one engineer after RFC acceptance.
 - give return, assignment/init, aggregate, match, and closure-capture
   `CedeExpr` routes the same exact-view/liveness invariants with independent
   route eligibility;
+- require a destination-matching Sema validated plan for every admitted
+  `CedeExpr`, with fail-closed CodeGen and no artifact on missing/mismatch;
 - publish audit/shadow parity without changing accepted source behavior;
 - give receiver and arguments equal validated-plan/E0761 fail-closed coverage;
 - prove candidate/overload/generic rejection discards the complete transaction;
@@ -1084,13 +1281,23 @@ The estimate is for one engineer after RFC acceptance.
 No caller-spelling behavior changes before Stage 0 demonstrates source-backed,
 source-hidden, and CodeGen plan parity.
 
-### Stage 1: parameters, Copy, generic, and identity — 6–10 person-days
+### Stage 1: parameters, returns, Copy, generic, and identity — 9–15 person-days
 
 - require `cede` for every named actual selected by a `cede` formal,
   independent of Copy proof;
 - retain `E04640` for explicit `cede` supplied to an ordinary formal;
 - implement `CopyValue + InvalidateRegion` for explicit Copy sources;
 - distinguish Copy NoSourcePlace rvalues from owned temporary consumption;
+- make user `CedeExpr` source-only, replace synthetic temporary `CedeExpr` with
+  an internal transfer plan, and reject explicit `cede NoSourcePlace` in every
+  destination;
+- land the return source planner in audit/shadow mode before removing old
+  checks; then activate the complete Copy/NonCopy/temporary/unique/shared/
+  borrow/raw/generic/obligation matrix;
+- split overloaded `Type::IsCede` roles, reject result-side `cede`, remove the
+  old `E0464` meaning, and preserve parameter/callable cede contracts;
+- migrate all 75 tracked result-side occurrences across 44 `.tk` files in the
+  same behavior revision, including five `lib/std/thread.tk` occurrences;
 - make ownership/identity classification precede Copy classification;
 - preserve exact hats in diagnostics and machine-applicable fixes;
 - prohibit `cede` of dereferenced owning payloads and prohibit source-view
@@ -1111,6 +1318,8 @@ source-hidden, and CodeGen plan parity.
   declaration/call morphology matching;
 - require explicit `cede` for every named receiver selected by a `cede self`
   morphology, including Copy and identity handles;
+- reject `cede &self` and `cede &parameter` uniformly until an explicit
+  reference-binding identity selector exists;
 - require the hatted form when receiver transfer invalidates a unique owner
   handle, and reject the de-hatted payload substitute;
 - reject explicit receiver cede for ordinary `self` methods before mutation;
@@ -1130,6 +1339,8 @@ source-hidden, and CodeGen plan parity.
 - activate Evidence v3 and isolate v2 as explicit historical replay;
 - restrict provider TKI to declaration-side contracts, compute caller root,
   path/view/category/eligibility locally, and update the interface key;
+- remove return cede-ness from TKI/function-type identity, reject old TKI, and
+  qualify the complete tracked-source migration;
 - complete source, TKI, async, extern, callable, generic, and CodeGen fault
   matrices;
 - migrate examples/tools/packages and update user/AI documentation;
@@ -1142,14 +1353,15 @@ source-hidden, and CodeGen plan parity.
 ### Total
 
 ```text
-10–16 + 6–10 + 10–16 + 9–14 = 35–56 person-days
+10–16 + 9–15 + 10–16 + 9–14 = 38–61 person-days
 ```
 
-Expected single-engineer schedule: approximately 7–11 weeks. Removing source
+Expected single-engineer schedule: approximately 8–12 weeks. Removing source
 compatibility work does not remove the obligation-aware generic model,
 unified transaction, full receiver morphology, callable-expression AST,
-TKI/Evidence work, or final qualification cost. This remains a bounded semantic
-migration, not a compiler rewrite.
+return-source and function-type migration, TKI/Evidence work, or final
+qualification cost. This remains a bounded semantic migration, not a compiler
+rewrite.
 
 ## 13. Activation gates
 
@@ -1161,7 +1373,7 @@ the active Toka 1.0 contract:
    routes use the same matrix;
 2. every named actual selected by a `cede` formal requires visible caller
    `cede`, independent of Copy proof;
-3. every accepted `CedeExpr`, including Copy, records the exact written
+3. every accepted user-written `CedeExpr`, including Copy, records the exact written
    transfer origin and invalidates its reviewed liveness region;
 4. payload and handle spellings are views over one ownership root: after
    `cede ^buf`, `buf`, its members, and indexes reachable only through that
@@ -1171,11 +1383,13 @@ the active Toka 1.0 contract:
 6. `cede buf` cannot be inferred or lowered as `cede ^buf`; argument, receiver,
    standalone, return, assignment/init, aggregate, match, closure capture,
    TKI, Evidence, and CodeGen routes preserve the exact-view axiom;
-7. every bare admitted source-less actual is proven `NoSourcePlace`; Copy
+7. every bare admitted source-less flow is proven `NoSourcePlace`; Copy
    rvalues use `CopyValue + NoSourcePlace`, while owned temporaries transfer
-   cleanup exactly once;
-8. explicit `cede` on `NoSourcePlace` rejects, and borrowed/raw/dependency-
-   bearing expressions do not enter the owned temporary exemption;
+   cleanup exactly once through a compiler transfer plan distinct from
+   `CedeExpr`;
+8. explicit user `cede` on `NoSourcePlace` rejects in every destination, and
+   borrowed/raw/dependency-bearing expressions do not enter the owned
+   temporary exemption;
 9. an explicit `cede` actual supplied to an ordinary formal rejects with no
    state change;
 10. standalone `cede place` invalidates Copy and non-Copy direct-value sources,
@@ -1188,37 +1402,57 @@ the active Toka 1.0 contract:
     interpretation;
 12. `cede self` matches only a direct-value receiver and `cede ^self` matches
     only `(cede ^owner)`; no receiver-specific morphology inference exists;
-13. general `InvokeExpr(CalleeExpr, Args)` or its reviewed equivalent preserves
+13. `cede &self` and `cede &parameter` reject uniformly because `&expression`
+    is borrow construction rather than an existing reference-binding selector;
+14. general `InvokeExpr(CalleeExpr, Args)` or its reviewed equivalent preserves
     the distinction between `(cede callable)(args)` and
     `cede callable(args)` across Parser, clone, TKI, exporter, and CodeGen;
-14. exporters regenerate required receiver/invocation parentheses from AST
+    the former may consume a named callable source, while the latter rejects as
+    `cede NoSourcePlace`;
+15. exporters regenerate required receiver/invocation parentheses from AST
     precedence and never depend on `HasParens` for semantic correctness;
-15. each partial source is admitted independently for argument, receiver,
+16. each partial source is admitted independently for argument, receiver,
     standalone, return, assignment/init, aggregate, match, and closure-capture
     contexts;
-16. generic lowering requirements resolve before acceptance and CodeGen, while
+17. function and callable result grammar rejects `-> cede T`; function-type
+    identity and current TKI contain no return-cede qualifier, while parameter
+    and consuming-callable cede remain distinct;
+18. the complete return matrix distinguishes Copy keep/invalidate, named
+    NonCopy rejection/move, bare temporary, rejected `cede` temporary,
+    canonical intrinsic unique return, shared transfer, and borrowed/raw flow;
+19. a returned admitted source may discharge its own outstanding parameter
+    obligation, while an unrelated temporary cannot discharge it and an
+    ordinary owning parameter cannot gain transfer authority from return;
+20. generic lowering requirements resolve before acceptance and CodeGen, while
     caller spelling remains source-category/formal driven;
-17. receiver and all arguments validate and commit atomically;
-18. rejected plans use `PlanOutcome = Rejected(reason)` and
+21. receiver and all arguments validate and commit atomically;
+22. rejected plans use `PlanOutcome = Rejected(reason)` and
     `SourceDisposition = NoStateChange`, preserving PlaceState, PAL,
     obligation state, cleanup masks, and Drop liability;
-19. value production, source disposition, destination, Drop disposition, and
+23. value production, source disposition, destination, Drop disposition, and
     obligation transition remain independent plan dimensions;
-20. explicit multi-argument alias/borrow conflicts retain their original
+24. Evidence v3 represents standalone/rejected/return plans without fake
+    formals or transfer kinds, records actual/formal type, formal morphology
+    and H/P requirements, and uses deterministic semantic root identity;
+25. provider TKI contains only declaration-side contracts, including full
+    parameter/receiver morphology and unqualified result morphology; every
+    caller root, path/view/category, eligibility, PAL, and plan fact is computed
+    locally;
+26. every admitted `CedeExpr` destination carries a matching Sema validated
+    root/path/view/purpose/destination plan; missing or inconsistent argument,
+    receiver, return, assignment/init, aggregate, match, capture, or standalone
+    plans fail closed in CodeGen with no artifact, proven by destination-specific
+    fault injection;
+27. explicit multi-argument alias/borrow conflicts retain their original
     independent diagnostic and atomicity purpose;
-21. Evidence v3 represents standalone/rejected plans without fake formals or
-    transfer kinds and records root/path/view/closure plus obligation facts;
-22. provider TKI contains only declaration-side contracts; every caller root,
-    path/view/category, eligibility, PAL, and plan fact is computed locally;
-23. argument and receiver E0761 fault injection still fails closed with no
-    artifact;
-24. the complete pass/fail/warn, conformance, TKI, async, sanitizer, package,
+28. the complete pass/fail/warn, conformance, TKI, async, sanitizer, package,
     developer-experience, and release gates pass;
-25. obsolete implicit invalidation/batching paths are deleted before freezing
+29. obsolete implicit invalidation/batching and return-cede paths are deleted
+    before freezing
     the candidate SHA;
-26. four published-target artifacts from that exact final SHA pass clean
+30. four published-target artifacts from that exact final SHA pass clean
     relocation and packaged replay; and
-27. independent human/agent dogfood finds no P0/P1 caller-spelling,
+31. independent human/agent dogfood finds no P0/P1 caller-spelling,
     diagnostic, cleanup, root/view, or route-parity defect.
 
 ## 14. Non-goals
@@ -1233,6 +1467,8 @@ This RFC does not:
   machinery;
 - generalize partial moves or place calculus;
 - add user-visible lifetime syntax;
+- introduce `@must_use`, a linear-result type, or any caller obligation through
+  function-result `cede`;
 - weaken PAL, H/P capability, async boundary, raw/unsafe, or dependency rules;
 - make every transfer in the language use the `cede` keyword;
 - delete temporary transfer planning or CodeGen liability checks;
@@ -1252,12 +1488,26 @@ Implementation must stop and return to RFC review if any of these occur:
 - an accepted explicit `cede` leaves a Copy source available;
 - an ordinary formal accepts explicit `cede`, or a cede formal accepts a bare
   named actual;
+- any user-written `cede NoSourcePlace` is admitted because of its destination,
+  or a compiler temporary gains authority through a synthetic user-semantic
+  `CedeExpr`;
+- function-result `cede` survives in grammar, function-type identity, current
+  TKI, or Evidence after activation, or parameter/callable cede is accidentally
+  removed with the overloaded storage;
+- old return enforcement is removed before the complete return source planner
+  proves that bare named NonCopy values cannot become implicit moves;
+- `return cede ^owner` is accepted instead of the single intrinsic spelling
+  `return ^owner`;
+- an unrelated return temporary discharges another parameter's outstanding
+  obligation, or an ordinary captured parameter gains transfer authority;
 - any route treats `cede buf` as transfer or destruction of `^buf`, erases a
   required hat, or silently manufactures owner identity from a payload view;
 - owner invalidation leaves any solely derived payload/member/index view live,
   or commits while an overlapping derived borrow remains active;
 - receiver morphology differs from ordinary parameter morphology, or trait/TKI
   replay loses a receiver hat or H/P permission;
+- `cede &parameter` or `cede &self` is accepted without a separately reviewed
+  unambiguous reference-binding identity selector;
 - Parser, clone, exporter, or CodeGen conflates `(cede callable)(args)` with
   `cede callable(args)`, or relies on `HasParens` for semantic grouping;
 - a standalone destination is encoded as value production, rejection is
@@ -1267,6 +1517,11 @@ Implementation must stop and return to RFC review if any of these occur:
   PAL, eligibility, or plan facts;
 - eligibility proven for one `CedeExpr` route is reused by another route
   without its independent proof;
+- any admitted `CedeExpr` destination reaches CodeGen without a matching
+  Sema-validated root/path/view/purpose/destination plan, or missing-plan
+  failure still emits an artifact;
+- Evidence emits a process-local root identifier or omits the selected formal's
+  resolved type, morphology/view, or H/P requirements;
 - a `NoSourcePlace` expression is treated as an invalidatable source, or an
   owned temporary loses/double-owns cleanup;
 - temporary cleanup responsibility cannot be transferred without reintroducing
@@ -1289,7 +1544,9 @@ The reviewer must explicitly decide each item before implementation:
       invalidation;
 - [ ] accept strict handshake: ordinary formal + explicit `cede` rejects, and
       `cede` formal + bare named actual rejects;
-- [ ] accept bare `NoSourcePlace` values and reject explicit `cede` on them;
+- [ ] accept user `cede` as source invalidation only: bare `NoSourcePlace`
+      values use compiler transfer plans and explicit `cede` on them rejects in
+      every destination;
 - [ ] accept separate Copy-rvalue and whole-owned-temporary NoSourcePlace rows;
 - [ ] accept `resource.dup()` only when it proves an independent eligible
       temporary;
@@ -1299,15 +1556,19 @@ The reviewer must explicitly decide each item before implementation:
 - [ ] accept standalone `cede value` for direct values and `cede ^owner` for
       unique owner handles, with exactly-once terminal cleanup;
 - [ ] accept that `self` completely reuses ordinary parameter morphology,
-      permissions, `cede`, trait, TKI, Evidence, and CodeGen rules;
+      permissions, admission/rejection, `cede`, trait, TKI, Evidence, and
+      CodeGen rules;
+- [ ] accept rejection of `cede &parameter` and `cede &self` until an
+      unambiguous reference-binding selector exists;
 - [ ] accept `(cede value).method()` for `cede self` and
       `(cede ^owner).method()` for `cede ^self`, with exact handshake;
 - [ ] accept general `InvokeExpr(CalleeExpr, Args)` and the semantic distinction
-      between `(cede callable)(args)` and `cede callable(args)`;
+      between consuming `(cede callable)(args)` and rejected
+      `cede callable(args)`;
 - [ ] accept precedence-driven exporter grouping rather than semantic reliance
       on `HasParens`;
-- [ ] accept Stage-0 receiver-plus-arguments plan-first atomic commit and
-      receiver-level E0761;
+- [ ] accept Stage-0 unified plan-first atomic commit and destination-complete
+      CodeGen fail-closed protection;
 - [ ] accept independent plan outcome, value production, transfer origin,
       source, destination, Drop, and obligation dimensions;
 - [ ] accept obligation before/action/after as independent from payload and
@@ -1315,15 +1576,20 @@ The reviewer must explicitly decide each item before implementation:
 - [ ] accept Evidence v3 standalone/rejected representation, provider-only TKI
       declarations, caller-local source planning, historical-only v2 replay,
       and an interface-key bump on activation;
+- [ ] accept deletion of `-> cede T`/`dyn fn(...) -> cede T`, the complete
+      return source matrix, removal of the old E0464 meaning, and preservation
+      of parameter/consuming-callable cede;
+- [ ] accept stable semantic Evidence root coordinates rather than process-local
+      symbol IDs, plus complete formal type/morphology/H-P facts;
 - [ ] accept independent eligibility for argument, receiver, standalone,
       return, assignment/init, aggregate, match, and closure-capture routes;
 - [ ] accept the fixture migration categories and reject bulk warning-to-fail
       conversion;
-- [ ] accept retention of temporary plans, PAL, E0761, and explicit atomic
-      batching;
+- [ ] accept retention of temporary plans, PAL, destination-complete
+      fail-closed checks, and explicit atomic batching;
 - [ ] accept deletion before the final candidate SHA and complete requalification
       after every cleanup change; and
-- [ ] accept the 35–56 person-day / 7–11 week implementation budget.
+- [ ] accept the 38–61 person-day / 8–12 week implementation budget.
 
 Until every required item is reviewed, this RFC remains Revisions requested and
 current compiler behavior remains unchanged.
