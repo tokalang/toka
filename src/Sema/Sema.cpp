@@ -3234,6 +3234,53 @@ void Sema::declareGlobals(Module &M) {
         declaredTypeParameters.insert(parameter.Name.substr(1));
     }
   };
+  auto addExactTypeParameters = [](std::set<std::string> &names,
+                                   const std::vector<GenericParam> &params) {
+    for (const auto &parameter : params) {
+      if (parameter.IsConst)
+        continue;
+      names.insert(parameter.Name);
+      if (!parameter.Name.empty() && parameter.Name.front() == '\'')
+        names.insert(parameter.Name.substr(1));
+    }
+  };
+  auto annotateStage0FormalDeclarations =
+      [&](FunctionDecl &function,
+          const std::vector<GenericParam> *enclosingParameters) {
+        std::set<std::string> exactGenericNames;
+        if (enclosingParameters)
+          addExactTypeParameters(exactGenericNames, *enclosingParameters);
+        addExactTypeParameters(exactGenericNames, function.GenericParams);
+        for (auto &argument : function.Args) {
+          argument.Stage0DeclarationProvenanceComplete =
+              argument.TypeSyntax != nullptr;
+          argument.Stage0GenericValueRole = false;
+          argument.Stage0MorphicGenericRole = false;
+          if (!argument.Stage0DeclarationProvenanceComplete ||
+              argument.IsRawPointer || argument.IsUnique ||
+              argument.IsShared || argument.IsReference ||
+              argument.TypeSyntax->NodeKind != TypeSyntax::Kind::Named)
+            continue;
+          const bool namesGeneric =
+              exactGenericNames.count(argument.TypeSyntax->Text) != 0;
+          argument.Stage0MorphicGenericRole =
+              namesGeneric && argument.IsMorphicExempt;
+          argument.Stage0GenericValueRole =
+              namesGeneric && !argument.IsMorphicExempt;
+        }
+      };
+  if (SemanticEvidence::isCallTransferShadowEnabled()) {
+    for (auto &function : M.Functions)
+      annotateStage0FormalDeclarations(*function, nullptr);
+    for (auto &trait : M.Traits) {
+      for (auto &method : trait->Methods)
+        annotateStage0FormalDeclarations(*method, &trait->GenericParams);
+    }
+    for (auto &impl : M.Impls) {
+      for (auto &method : impl->Methods)
+        annotateStage0FormalDeclarations(*method, &impl->GenericParams);
+    }
+  }
   for (const auto &function : M.Functions)
     rememberTypeParameters(function->GenericParams);
   for (const auto &shape : M.Shapes)

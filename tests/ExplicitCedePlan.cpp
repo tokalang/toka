@@ -48,11 +48,13 @@ ExplicitCedePreparedFacts baseCall() {
   facts.Ownership = TransferOwnershipKind::OwnedValue;
   facts.CopyProof = TransferCopyProof::ProvenNonCopy;
   facts.FormalContract = TransferFormalContract::Cede;
+  facts.DeclaredFormalMorphology = TransferFormalMorphology::DirectValue;
   facts.FormalMorphology = TransferFormalMorphology::DirectValue;
   facts.FormalOwnership = TransferFormalOwnershipKind::Owning;
   facts.FormalTransferClass = TransferFormalTransferClass::ValueTransfer;
   facts.FormalContractOrigin =
       TransferFormalContractOrigin::ConcreteDeclaration;
+  facts.FormalDeclarationFactsComplete = true;
   facts.FormalCapabilities.Complete = true;
   facts.ActualCapabilities.Complete = true;
   facts.Destination = TransferDestination::CalleeParameter;
@@ -108,6 +110,7 @@ int main() {
 
   auto shared = named;
   shared.SourceView = TransferSourceView::SharedHandle;
+  shared.DeclaredFormalMorphology = TransferFormalMorphology::SharedHandle;
   shared.FormalMorphology = TransferFormalMorphology::SharedHandle;
   shared.FormalTransferClass = TransferFormalTransferClass::OwnershipTransfer;
   shared.Ownership = TransferOwnershipKind::SharedOwner;
@@ -119,6 +122,7 @@ int main() {
 
   auto raw = copy;
   raw.SourceView = TransferSourceView::RawHandle;
+  raw.DeclaredFormalMorphology = TransferFormalMorphology::RawHandle;
   raw.FormalMorphology = TransferFormalMorphology::RawHandle;
   raw.FormalOwnership = TransferFormalOwnershipKind::RawIdentity;
   raw.FormalTransferClass = TransferFormalTransferClass::IdentityTransfer;
@@ -145,6 +149,7 @@ int main() {
         TransferPlanRejection::ExplicitCedeToOrdinaryFormal);
 
   auto mismatched = named;
+  mismatched.DeclaredFormalMorphology = TransferFormalMorphology::UniqueHandle;
   mismatched.FormalMorphology = TransferFormalMorphology::UniqueHandle;
   CHECK(prepareExplicitCedePlan(mismatched).Rejection ==
         TransferPlanRejection::SourceViewMismatch);
@@ -247,10 +252,12 @@ int main() {
         destination != TransferDestination::Receiver) {
       rejected.FormalTypeKey.clear();
       rejected.FormalContract = TransferFormalContract::None;
+      rejected.DeclaredFormalMorphology = TransferFormalMorphology::None;
       rejected.FormalMorphology = TransferFormalMorphology::None;
       rejected.FormalOwnership = TransferFormalOwnershipKind::None;
       rejected.FormalTransferClass = TransferFormalTransferClass::None;
       rejected.FormalContractOrigin = TransferFormalContractOrigin::None;
+      rejected.FormalDeclarationFactsComplete = true;
       rejected.FormalCapabilities = {};
     }
     CHECK(prepareExplicitCedePlan(rejected).Rejection ==
@@ -259,6 +266,7 @@ int main() {
 
   auto owner = named;
   owner.SourceView = TransferSourceView::UniqueHandle;
+  owner.DeclaredFormalMorphology = TransferFormalMorphology::UniqueHandle;
   owner.FormalMorphology = TransferFormalMorphology::UniqueHandle;
   owner.FormalTransferClass = TransferFormalTransferClass::OwnershipTransfer;
   owner.Ownership = TransferOwnershipKind::UniqueOwner;
@@ -266,6 +274,12 @@ int main() {
   auto ownerMove = prepareExplicitCedePlan(owner);
   CHECK(ownerMove.admitted());
   CHECK(ownerMove.Source == TransferSourceDisposition::InvalidateRoot);
+
+  auto concreteMorphologyMismatch = owner;
+  concreteMorphologyMismatch.DeclaredFormalMorphology =
+      TransferFormalMorphology::DirectValue;
+  CHECK(prepareExplicitCedePlan(concreteMorphologyMismatch).Rejection ==
+        TransferPlanRejection::ContradictoryFacts);
 
   owner.ActiveDerivedBorrow = true;
   CHECK(prepareExplicitCedePlan(owner).Rejection ==
@@ -278,6 +292,7 @@ int main() {
 
   auto reference = named;
   reference.SourceView = TransferSourceView::ReferenceConstruction;
+  reference.DeclaredFormalMorphology = TransferFormalMorphology::Reference;
   reference.FormalMorphology = TransferFormalMorphology::Reference;
   reference.FormalOwnership = TransferFormalOwnershipKind::Borrowed;
   reference.FormalTransferClass = TransferFormalTransferClass::IdentityTransfer;
@@ -304,6 +319,13 @@ int main() {
   CHECK(borrowConstruction.admitted());
   CHECK(borrowConstruction.ValueProduction ==
         TransferValueProduction::CopyIdentity);
+
+  auto morphicBorrowConstruction = ordinaryReference;
+  morphicBorrowConstruction.DeclaredFormalMorphology =
+      TransferFormalMorphology::Morphic;
+  morphicBorrowConstruction.FormalContractOrigin =
+      TransferFormalContractOrigin::MorphicGenericDeclaration;
+  CHECK(prepareExplicitCedePlan(morphicBorrowConstruction).admitted());
 
   auto borrowedDirect = ordinary;
   borrowedDirect.SurfaceSpelling = TransferSurfaceSpelling::Bare;
@@ -356,13 +378,82 @@ int main() {
   CHECK(prepareExplicitCedePlan(contradictoryFormal).Rejection ==
         TransferPlanRejection::ContradictoryFacts);
 
+  auto rawOwnershipMasqueradingAsValue = borrowedDirect;
+  rawOwnershipMasqueradingAsValue.FormalOwnership =
+      TransferFormalOwnershipKind::RawIdentity;
+  rawOwnershipMasqueradingAsValue.FormalTransferClass =
+      TransferFormalTransferClass::BorrowCapture;
+  CHECK(prepareExplicitCedePlan(rawOwnershipMasqueradingAsValue).Rejection ==
+        TransferPlanRejection::ContradictoryFacts);
+
+  auto callableOwnershipMasqueradingAsValue = borrowedDirect;
+  callableOwnershipMasqueradingAsValue.FormalOwnership =
+      TransferFormalOwnershipKind::CallableIdentity;
+  callableOwnershipMasqueradingAsValue.FormalTransferClass =
+      TransferFormalTransferClass::BorrowCapture;
+  CHECK(
+      prepareExplicitCedePlan(callableOwnershipMasqueradingAsValue).Rejection ==
+      TransferPlanRejection::ContradictoryFacts);
+
+  auto genericRaw = named;
+  genericRaw.SourceView = TransferSourceView::RawHandle;
+  genericRaw.Ownership = TransferOwnershipKind::RawIdentity;
+  genericRaw.CopyProof = TransferCopyProof::ProvenCopy;
+  genericRaw.Reachability = TransferReachability::BindingAndDependentViews;
+  genericRaw.DeclaredFormalMorphology = TransferFormalMorphology::DirectValue;
+  genericRaw.FormalMorphology = TransferFormalMorphology::RawHandle;
+  genericRaw.FormalOwnership = TransferFormalOwnershipKind::RawIdentity;
+  genericRaw.FormalContractOrigin =
+      TransferFormalContractOrigin::GenericValueDeclaration;
+  genericRaw.FormalTransferClass =
+      TransferFormalTransferClass::IdentityTransfer;
+  CHECK(prepareExplicitCedePlan(genericRaw).Rejection ==
+        TransferPlanRejection::ContradictoryFacts);
+  genericRaw.FormalTransferClass = TransferFormalTransferClass::ValueTransfer;
+  CHECK(prepareExplicitCedePlan(genericRaw).Rejection ==
+        TransferPlanRejection::OwnershipContractMismatch);
+
+  auto genericUnique = named;
+  genericUnique.SourceView = TransferSourceView::UniqueHandle;
+  genericUnique.Ownership = TransferOwnershipKind::UniqueOwner;
+  genericUnique.CopyProof = TransferCopyProof::ProvenNonCopy;
+  genericUnique.Reachability = TransferReachability::RootAndDependentViews;
+  genericUnique.DeclaredFormalMorphology =
+      TransferFormalMorphology::DirectValue;
+  genericUnique.FormalMorphology = TransferFormalMorphology::UniqueHandle;
+  genericUnique.FormalOwnership = TransferFormalOwnershipKind::Owning;
+  genericUnique.FormalContractOrigin =
+      TransferFormalContractOrigin::GenericValueDeclaration;
+  genericUnique.FormalTransferClass =
+      TransferFormalTransferClass::OwnershipTransfer;
+  CHECK(prepareExplicitCedePlan(genericUnique).Rejection ==
+        TransferPlanRejection::ContradictoryFacts);
+  genericUnique.FormalTransferClass =
+      TransferFormalTransferClass::ValueTransfer;
+  CHECK(prepareExplicitCedePlan(genericUnique).admitted());
+
+  auto hiddenDeclaration = named;
+  hiddenDeclaration.DeclaredFormalMorphology =
+      TransferFormalMorphology::Indeterminate;
+  hiddenDeclaration.FormalContractOrigin =
+      TransferFormalContractOrigin::Indeterminate;
+  hiddenDeclaration.FormalDeclarationFactsComplete = false;
+  CHECK(prepareExplicitCedePlan(hiddenDeclaration).Rejection ==
+        TransferPlanRejection::IncompleteFacts);
+  auto incompleteDeclarationProof = named;
+  incompleteDeclarationProof.FormalDeclarationFactsComplete = false;
+  CHECK(prepareExplicitCedePlan(incompleteDeclarationProof).Rejection ==
+        TransferPlanRejection::IncompleteFacts);
+
   auto returned = named;
   returned.FormalTypeKey.clear();
   returned.FormalContract = TransferFormalContract::None;
+  returned.DeclaredFormalMorphology = TransferFormalMorphology::None;
   returned.FormalMorphology = TransferFormalMorphology::None;
   returned.FormalOwnership = TransferFormalOwnershipKind::None;
   returned.FormalTransferClass = TransferFormalTransferClass::None;
   returned.FormalContractOrigin = TransferFormalContractOrigin::None;
+  returned.FormalDeclarationFactsComplete = true;
   returned.FormalCapabilities = {};
   returned.Destination = TransferDestination::Return;
   returned.EligibilityContext = TransferEligibilityContext::Return;
@@ -380,10 +471,12 @@ int main() {
   unrelatedTemporary.Origin = TransferPlanOrigin::CompilerSynthetic;
   unrelatedTemporary.FormalTypeKey.clear();
   unrelatedTemporary.FormalContract = TransferFormalContract::None;
+  unrelatedTemporary.DeclaredFormalMorphology = TransferFormalMorphology::None;
   unrelatedTemporary.FormalMorphology = TransferFormalMorphology::None;
   unrelatedTemporary.FormalOwnership = TransferFormalOwnershipKind::None;
   unrelatedTemporary.FormalTransferClass = TransferFormalTransferClass::None;
   unrelatedTemporary.FormalContractOrigin = TransferFormalContractOrigin::None;
+  unrelatedTemporary.FormalDeclarationFactsComplete = true;
   unrelatedTemporary.FormalCapabilities = {};
   unrelatedTemporary.Destination = TransferDestination::Return;
   unrelatedTemporary.EligibilityContext = TransferEligibilityContext::Return;
@@ -442,10 +535,12 @@ int main() {
   copyReturn.SyntaxPurpose = CedeSyntaxPurpose::None;
   copyReturn.FormalTypeKey.clear();
   copyReturn.FormalContract = TransferFormalContract::None;
+  copyReturn.DeclaredFormalMorphology = TransferFormalMorphology::None;
   copyReturn.FormalMorphology = TransferFormalMorphology::None;
   copyReturn.FormalOwnership = TransferFormalOwnershipKind::None;
   copyReturn.FormalTransferClass = TransferFormalTransferClass::None;
   copyReturn.FormalContractOrigin = TransferFormalContractOrigin::None;
+  copyReturn.FormalDeclarationFactsComplete = true;
   copyReturn.FormalCapabilities = {};
   copyReturn.Destination = TransferDestination::Return;
   copyReturn.EligibilityContext = TransferEligibilityContext::Return;
@@ -478,6 +573,8 @@ int main() {
         TransferObligationAction::Preserve);
 
   auto mismatchedTemporary = copyTemporary;
+  mismatchedTemporary.DeclaredFormalMorphology =
+      TransferFormalMorphology::UniqueHandle;
   mismatchedTemporary.FormalMorphology = TransferFormalMorphology::UniqueHandle;
   CHECK(prepareExplicitCedePlan(mismatchedTemporary).Rejection ==
         TransferPlanRejection::SourceViewMismatch);
@@ -485,6 +582,7 @@ int main() {
   auto rawTemporary = copyTemporary;
   rawTemporary.SourceView = TransferSourceView::RawHandle;
   rawTemporary.Ownership = TransferOwnershipKind::RawIdentity;
+  rawTemporary.DeclaredFormalMorphology = TransferFormalMorphology::RawHandle;
   rawTemporary.FormalMorphology = TransferFormalMorphology::RawHandle;
   rawTemporary.FormalOwnership = TransferFormalOwnershipKind::RawIdentity;
   rawTemporary.FormalTransferClass =
@@ -500,10 +598,12 @@ int main() {
   intrinsic.SyntaxPurpose = CedeSyntaxPurpose::None;
   intrinsic.FormalTypeKey.clear();
   intrinsic.FormalContract = TransferFormalContract::None;
+  intrinsic.DeclaredFormalMorphology = TransferFormalMorphology::None;
   intrinsic.FormalMorphology = TransferFormalMorphology::None;
   intrinsic.FormalOwnership = TransferFormalOwnershipKind::None;
   intrinsic.FormalTransferClass = TransferFormalTransferClass::None;
   intrinsic.FormalContractOrigin = TransferFormalContractOrigin::None;
+  intrinsic.FormalDeclarationFactsComplete = true;
   intrinsic.FormalCapabilities = {};
   intrinsic.Destination = TransferDestination::Return;
   intrinsic.EligibilityContext = TransferEligibilityContext::Return;
@@ -633,8 +733,7 @@ int main() {
   readingRoot.SurfaceSpelling = TransferSurfaceSpelling::Bare;
   readingRoot.SyntaxPurpose = CedeSyntaxPurpose::None;
   readingRoot.FormalContract = TransferFormalContract::Ordinary;
-  readingRoot.FormalTransferClass =
-      TransferFormalTransferClass::BorrowCapture;
+  readingRoot.FormalTransferClass = TransferFormalTransferClass::BorrowCapture;
   ExplicitCedeWholeCallFacts invalidateAndRead;
   invalidateAndRead.Arguments = {invalidatingRoot, readingRoot};
   CHECK(prepareExplicitCedeWholeCallPlan(invalidateAndRead).Rejection ==

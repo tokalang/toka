@@ -104,8 +104,10 @@ bool ExplicitCedeStage0ShadowRecord::operator<(
              PlanOrigin, SyntaxPurpose, SurfaceSpelling, SourceCategory,
              ExactPath, ReferentRoot, ReferentPath, DependencyRoots,
              Dependency, DependencyFactsComplete, ActualType, FormalType,
-             FormalContract, FormalMorphology, FormalOwnership,
+             FormalContract, DeclaredFormalMorphology, FormalMorphology,
+             FormalOwnership,
              FormalTransferClass, FormalContractOrigin,
+             FormalDeclarationFactsComplete,
              FormalCapabilitiesComplete, FormalHandleRebindable,
              FormalPayloadWritable, ActualCapabilitiesComplete,
              ActualHandleRebindable, ActualPayloadWritable, Ownership,
@@ -119,9 +121,11 @@ bool ExplicitCedeStage0ShadowRecord::operator<(
              rhs.SourceCategory, rhs.ExactPath, rhs.ReferentRoot,
              rhs.ReferentPath, rhs.DependencyRoots, rhs.Dependency,
              rhs.DependencyFactsComplete, rhs.ActualType, rhs.FormalType,
-             rhs.FormalContract, rhs.FormalMorphology,
+             rhs.FormalContract, rhs.DeclaredFormalMorphology,
+             rhs.FormalMorphology,
              rhs.FormalOwnership, rhs.FormalTransferClass,
              rhs.FormalContractOrigin,
+             rhs.FormalDeclarationFactsComplete,
              rhs.FormalCapabilitiesComplete, rhs.FormalHandleRebindable,
              rhs.FormalPayloadWritable, rhs.ActualCapabilitiesComplete,
              rhs.ActualHandleRebindable, rhs.ActualPayloadWritable,
@@ -538,6 +542,8 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << "\",\"formal_type\":\"" << escapeJSON(record.Stage0.FormalType)
         << "\",\"formal_contract\":\""
         << escapeJSON(record.Stage0.FormalContract)
+        << "\",\"declared_formal_morphology\":\""
+        << escapeJSON(record.Stage0.DeclaredFormalMorphology)
         << "\",\"formal_morphology\":\""
         << escapeJSON(record.Stage0.FormalMorphology)
         << "\",\"formal_ownership\":\""
@@ -546,7 +552,9 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << escapeJSON(record.Stage0.FormalTransferClass)
         << "\",\"formal_contract_origin\":\""
         << escapeJSON(record.Stage0.FormalContractOrigin)
-        << "\",\"formal_capabilities\":{\"complete\":"
+        << "\",\"formal_declaration_complete\":"
+        << (record.Stage0.FormalDeclarationFactsComplete ? "true" : "false")
+        << ",\"formal_capabilities\":{\"complete\":"
         << (record.Stage0.FormalCapabilitiesComplete ? "true" : "false")
         << ",\"handle_rebind\":"
         << (record.Stage0.FormalHandleRebindable ? "true" : "false")

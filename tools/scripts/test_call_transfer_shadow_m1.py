@@ -68,8 +68,10 @@ def run(tokac, source, expected_error=None, check_only=True):
         "source_category", "exact_path", "referent_root", "referent_path",
         "dependency_roots", "dependency", "dependency_complete",
         "actual_type", "formal_type",
-        "formal_contract", "formal_morphology", "formal_ownership",
+        "formal_contract", "declared_formal_morphology",
+        "formal_morphology", "formal_ownership",
         "formal_transfer_class", "formal_contract_origin",
+        "formal_declaration_complete",
         "formal_capabilities",
         "actual_capabilities", "ownership", "copy_proof", "eligibility",
         "temporary_eligibility", "type_compatibility",
@@ -108,14 +110,26 @@ def run(tokac, source, expected_error=None, check_only=True):
                  stage0["rejection"] == "IncompleteFacts"),
                 source + " omitted Stage-0 actual resolved type without "
                 "rejecting incomplete facts")
-        if not record["formal_init"]:
+        declaration_hidden = record["route"] in ("indirect-fn", "indirect-dyn-fn")
+        if not record["formal_init"] and not declaration_hidden:
             require(bool(stage0["formal_type"]) and
+                    stage0["declared_formal_morphology"] not in
+                    ("None", "Indeterminate") and
                     stage0["formal_morphology"] not in
                     ("None", "Indeterminate") and
                     stage0["formal_contract_origin"] not in
                     ("None", "Indeterminate") and
+                    stage0["formal_declaration_complete"] and
                     stage0["formal_capabilities"]["complete"],
                     source + " omitted Stage-0 formal morphology facts")
+        if declaration_hidden:
+            require(stage0["declared_formal_morphology"] == "Indeterminate" and
+                    stage0["formal_contract_origin"] == "Indeterminate" and
+                    not stage0["formal_declaration_complete"] and
+                    stage0["outcome"] == "Rejected" and
+                    stage0["rejection"] == "IncompleteFacts",
+                    source + " inferred a declaration contract for an "
+                    "indirect/source-hidden call")
         require(stage0["outcome"] in ("Admitted", "Rejected"),
                 source + " emitted an invalid Stage-0 outcome")
         if stage0["outcome"] == "Rejected":
@@ -438,6 +452,20 @@ def main():
     require("/dereference" not in record["stage0"]["exact_path"],
             source + " retained selector syntax as a place projection")
 
+    source = "tests/semantics/call_transfer_shadow_m1/raw_selector_borrow_conflict.tk"
+    records = run(tokac, source, expected_error="E0440")
+    record = find(
+        records, source, callee="consume_raw", route="ordinary",
+        parameter="value", location_line=8, value_category="Place",
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Rejected",
+                   rejection="ActiveDerivedBorrow",
+                   source="NoStateChange", source_view="RawHandle")
+    require(bool(record["stage0"]["exact_path"]) and
+            "/dereference" not in record["stage0"]["exact_path"],
+            source + " queried PAL with an unnormalized raw selector path")
+
     source = "tests/semantics/call_transfer_shadow_m1/borrow_construction_facts.tk"
     records = run(tokac, source)
     record = find(
@@ -450,7 +478,9 @@ def main():
                    source_view="ReferenceConstruction",
                    temporary_eligibility="Ineligible",
                    formal_ownership="Borrowed",
-                   formal_transfer_class="IdentityTransfer")
+                   formal_transfer_class="IdentityTransfer",
+                   declared_formal_morphology="Morphic",
+                   formal_contract_origin="MorphicGenericDeclaration")
     require(record["stage0"]["dependency"] == "Borrowed" and
             record["stage0"]["dependency_complete"] and
             bool(record["stage0"]["referent_root"]) and
@@ -546,6 +576,54 @@ def main():
                    formal_contract_origin="GenericValueDeclaration",
                    formal_transfer_class="ValueTransfer",
                    formal_ownership="Borrowed")
+
+    source = "tests/semantics/call_transfer_shadow_m1/concrete_alias_contract_origin.tk"
+    records = run(tokac, source)
+    record = find(
+        records, source, callee="consume_alias", route="ordinary",
+        parameter="value", value_category="Place",
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Admitted", rejection="None",
+                   declared_formal_morphology="DirectValue",
+                   formal_morphology="DirectValue",
+                   formal_contract_origin="ConcreteDeclaration",
+                   formal_transfer_class="IdentityTransfer")
+
+    source = "tests/semantics/call_transfer_shadow_m1/generic_morphology_contract_origin.tk"
+    records = run(tokac, source)
+    generic_raw = find(
+        records, source, callee="consume_generic", route="ordinary",
+        location_line=9,
+    )
+    receipts.append(generic_raw)
+    require_stage0(generic_raw, source, outcome="Rejected",
+                   rejection="OwnershipContractMismatch",
+                   declared_formal_morphology="DirectValue",
+                   formal_morphology="RawHandle",
+                   formal_contract_origin="GenericValueDeclaration",
+                   formal_transfer_class="ValueTransfer")
+    generic_unique = find(
+        records, source, callee="consume_generic", route="ordinary",
+        location_line=13,
+    )
+    receipts.append(generic_unique)
+    require_stage0(generic_unique, source,
+                   declared_formal_morphology="DirectValue",
+                   formal_morphology="UniqueHandle",
+                   formal_contract_origin="GenericValueDeclaration",
+                   formal_transfer_class="ValueTransfer")
+    generic_callable = find(
+        records, source, callee="consume_generic", route="ordinary",
+        location_line=17,
+    )
+    receipts.append(generic_callable)
+    require_stage0(generic_callable, source, outcome="Rejected",
+                   rejection="OwnershipContractMismatch",
+                   declared_formal_morphology="DirectValue",
+                   formal_morphology="Callable",
+                   formal_contract_origin="GenericValueDeclaration",
+                   formal_transfer_class="ValueTransfer")
 
     source = "tests/semantics/call_transfer_shadow_m1/borrowed_projection_paths.tk"
     records = run(tokac, source)

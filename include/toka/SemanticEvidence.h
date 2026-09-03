@@ -150,10 +150,12 @@ struct ExplicitCedeStage0ShadowRecord {
   std::string ActualType;
   std::string FormalType;
   std::string FormalContract;
+  std::string DeclaredFormalMorphology;
   std::string FormalMorphology;
   std::string FormalOwnership;
   std::string FormalTransferClass;
   std::string FormalContractOrigin;
+  bool FormalDeclarationFactsComplete = false;
   bool FormalCapabilitiesComplete = false;
   bool FormalHandleRebindable = false;
   bool FormalPayloadWritable = false;

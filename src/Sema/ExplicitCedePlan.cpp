@@ -41,6 +41,7 @@ bool morphologyMatches(TransferSourceView source,
     return source == TransferSourceView::CallableIdentity;
   case TransferFormalMorphology::Reference:
     return source == TransferSourceView::ReferenceConstruction;
+  case TransferFormalMorphology::Morphic:
   case TransferFormalMorphology::None:
   case TransferFormalMorphology::Indeterminate:
     return false;
@@ -153,65 +154,91 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
     return false;
   if (isCallBoundary(facts.Destination)) {
     bool formalTupleValid = false;
-    switch (facts.FormalMorphology) {
-    case TransferFormalMorphology::DirectValue:
+    if (facts.FormalContractOrigin ==
+        TransferFormalContractOrigin::GenericValueDeclaration) {
+      const bool resolvedTupleValid =
+          (facts.FormalMorphology == TransferFormalMorphology::DirectValue &&
+           (facts.FormalOwnership == TransferFormalOwnershipKind::PlainValue ||
+            facts.FormalOwnership == TransferFormalOwnershipKind::Owning ||
+            facts.FormalOwnership == TransferFormalOwnershipKind::Borrowed)) ||
+          ((facts.FormalMorphology == TransferFormalMorphology::UniqueHandle ||
+            facts.FormalMorphology == TransferFormalMorphology::SharedHandle) &&
+           facts.FormalOwnership == TransferFormalOwnershipKind::Owning) ||
+          (facts.FormalMorphology == TransferFormalMorphology::RawHandle &&
+           facts.FormalOwnership == TransferFormalOwnershipKind::RawIdentity) ||
+          (facts.FormalMorphology == TransferFormalMorphology::Reference &&
+           facts.FormalOwnership == TransferFormalOwnershipKind::Borrowed) ||
+          (facts.FormalMorphology == TransferFormalMorphology::Callable &&
+           facts.FormalOwnership ==
+               TransferFormalOwnershipKind::CallableIdentity);
       formalTupleValid =
-          facts.FormalContract == TransferFormalContract::Ordinary
-              ? ((facts.FormalOwnership ==
-                      TransferFormalOwnershipKind::Borrowed &&
-                  facts.FormalTransferClass ==
-                      TransferFormalTransferClass::IdentityTransfer) ||
-                 (facts.FormalOwnership !=
-                      TransferFormalOwnershipKind::Borrowed &&
-                  facts.FormalTransferClass ==
-                      TransferFormalTransferClass::BorrowCapture))
-              : ((facts.FormalOwnership ==
-                      TransferFormalOwnershipKind::Borrowed &&
-                  ((facts.FormalContractOrigin ==
-                        TransferFormalContractOrigin::ConcreteDeclaration &&
-                    facts.FormalTransferClass ==
-                        TransferFormalTransferClass::IdentityTransfer) ||
-                   (facts.FormalContractOrigin ==
-                        TransferFormalContractOrigin::GenericValueDeclaration &&
-                    facts.FormalTransferClass ==
-                        TransferFormalTransferClass::ValueTransfer))) ||
-                 ((facts.FormalOwnership ==
-                       TransferFormalOwnershipKind::PlainValue ||
-                   facts.FormalOwnership ==
-                       TransferFormalOwnershipKind::Owning) &&
-                  facts.FormalTransferClass ==
-                      TransferFormalTransferClass::ValueTransfer));
-      break;
-    case TransferFormalMorphology::UniqueHandle:
-    case TransferFormalMorphology::SharedHandle:
-      formalTupleValid =
-          facts.FormalOwnership == TransferFormalOwnershipKind::Owning &&
+          facts.DeclaredFormalMorphology ==
+              TransferFormalMorphology::DirectValue &&
+          resolvedTupleValid &&
           facts.FormalTransferClass ==
               (facts.FormalContract == TransferFormalContract::Cede
-                   ? TransferFormalTransferClass::OwnershipTransfer
+                   ? TransferFormalTransferClass::ValueTransfer
                    : TransferFormalTransferClass::BorrowCapture);
-      break;
-    case TransferFormalMorphology::RawHandle:
-      formalTupleValid =
-          facts.FormalOwnership == TransferFormalOwnershipKind::RawIdentity &&
-          facts.FormalTransferClass ==
-              TransferFormalTransferClass::IdentityTransfer;
-      break;
-    case TransferFormalMorphology::Reference:
-      formalTupleValid =
-          facts.FormalOwnership == TransferFormalOwnershipKind::Borrowed &&
-          facts.FormalTransferClass ==
-              TransferFormalTransferClass::IdentityTransfer;
-      break;
-    case TransferFormalMorphology::Callable:
-      formalTupleValid = facts.FormalOwnership ==
-                             TransferFormalOwnershipKind::CallableIdentity &&
-                         facts.FormalTransferClass ==
-                             TransferFormalTransferClass::CallableTransfer;
-      break;
-    case TransferFormalMorphology::None:
-    case TransferFormalMorphology::Indeterminate:
-      break;
+    } else if (facts.FormalContractOrigin ==
+                   TransferFormalContractOrigin::ConcreteDeclaration ||
+               facts.FormalContractOrigin ==
+                   TransferFormalContractOrigin::MorphicGenericDeclaration) {
+      const bool declaredMorphologyMatches =
+          facts.FormalContractOrigin ==
+                  TransferFormalContractOrigin::ConcreteDeclaration
+              ? facts.DeclaredFormalMorphology == facts.FormalMorphology
+              : facts.DeclaredFormalMorphology ==
+                    TransferFormalMorphology::Morphic;
+      if (!declaredMorphologyMatches)
+        return false;
+      switch (facts.FormalMorphology) {
+      case TransferFormalMorphology::DirectValue:
+        if (facts.FormalOwnership == TransferFormalOwnershipKind::Borrowed) {
+          formalTupleValid = facts.FormalTransferClass ==
+                             TransferFormalTransferClass::IdentityTransfer;
+        } else if (facts.FormalOwnership ==
+                       TransferFormalOwnershipKind::PlainValue ||
+                   facts.FormalOwnership ==
+                       TransferFormalOwnershipKind::Owning) {
+          formalTupleValid =
+              facts.FormalTransferClass ==
+              (facts.FormalContract == TransferFormalContract::Cede
+                   ? TransferFormalTransferClass::ValueTransfer
+                   : TransferFormalTransferClass::BorrowCapture);
+        }
+        break;
+      case TransferFormalMorphology::UniqueHandle:
+      case TransferFormalMorphology::SharedHandle:
+        formalTupleValid =
+            facts.FormalOwnership == TransferFormalOwnershipKind::Owning &&
+            facts.FormalTransferClass ==
+                (facts.FormalContract == TransferFormalContract::Cede
+                     ? TransferFormalTransferClass::OwnershipTransfer
+                     : TransferFormalTransferClass::BorrowCapture);
+        break;
+      case TransferFormalMorphology::RawHandle:
+        formalTupleValid =
+            facts.FormalOwnership == TransferFormalOwnershipKind::RawIdentity &&
+            facts.FormalTransferClass ==
+                TransferFormalTransferClass::IdentityTransfer;
+        break;
+      case TransferFormalMorphology::Reference:
+        formalTupleValid =
+            facts.FormalOwnership == TransferFormalOwnershipKind::Borrowed &&
+            facts.FormalTransferClass ==
+                TransferFormalTransferClass::IdentityTransfer;
+        break;
+      case TransferFormalMorphology::Callable:
+        formalTupleValid = facts.FormalOwnership ==
+                               TransferFormalOwnershipKind::CallableIdentity &&
+                           facts.FormalTransferClass ==
+                               TransferFormalTransferClass::CallableTransfer;
+        break;
+      case TransferFormalMorphology::Morphic:
+      case TransferFormalMorphology::None:
+      case TransferFormalMorphology::Indeterminate:
+        break;
+      }
     }
     if (!formalTupleValid)
       return false;
@@ -443,14 +470,12 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
       (facts.ObligationBefore == TransferObligationState::Outstanding &&
        (!facts.ObligationRoot || !facts.ObligationRoot->valid())))
     return reject(TransferPlanRejection::IncompleteFacts, facts);
-  if (!factsAreConsistent(facts))
-    return reject(TransferPlanRejection::ContradictoryFacts, facts);
-  if (facts.Eligibility == TransferEligibility::Ineligible)
-    return reject(TransferPlanRejection::RouteIneligible, facts);
-
   if (callBoundary &&
       (facts.FormalTypeKey.empty() ||
        facts.FormalContract == TransferFormalContract::None ||
+       facts.DeclaredFormalMorphology == TransferFormalMorphology::None ||
+       facts.DeclaredFormalMorphology ==
+           TransferFormalMorphology::Indeterminate ||
        facts.FormalMorphology == TransferFormalMorphology::None ||
        facts.FormalMorphology == TransferFormalMorphology::Indeterminate ||
        facts.FormalOwnership == TransferFormalOwnershipKind::None ||
@@ -461,8 +486,13 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
        facts.FormalContractOrigin == TransferFormalContractOrigin::None ||
        facts.FormalContractOrigin ==
            TransferFormalContractOrigin::Indeterminate ||
+       !facts.FormalDeclarationFactsComplete ||
        !facts.FormalCapabilities.Complete))
     return reject(TransferPlanRejection::IncompleteFacts, facts);
+  if (!factsAreConsistent(facts))
+    return reject(TransferPlanRejection::ContradictoryFacts, facts);
+  if (facts.Eligibility == TransferEligibility::Ineligible)
+    return reject(TransferPlanRejection::RouteIneligible, facts);
   if (facts.TypeCompatibility == TransferTypeCompatibility::Incompatible)
     return reject(TransferPlanRejection::TypeIncompatible, facts);
   if (callBoundary &&
@@ -1002,6 +1032,8 @@ const char *toString(TransferFormalMorphology value) {
     return "Reference";
   case TransferFormalMorphology::Callable:
     return "Callable";
+  case TransferFormalMorphology::Morphic:
+    return "Morphic";
   case TransferFormalMorphology::Indeterminate:
     return "Indeterminate";
   }
@@ -1056,6 +1088,8 @@ const char *toString(TransferFormalContractOrigin value) {
     return "ConcreteDeclaration";
   case TransferFormalContractOrigin::GenericValueDeclaration:
     return "GenericValueDeclaration";
+  case TransferFormalContractOrigin::MorphicGenericDeclaration:
+    return "MorphicGenericDeclaration";
   case TransferFormalContractOrigin::Indeterminate:
     return "Indeterminate";
   }

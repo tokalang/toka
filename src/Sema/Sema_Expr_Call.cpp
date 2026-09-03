@@ -1695,15 +1695,11 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
     Expr *argument, const std::shared_ptr<Type> &argumentType,
     const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
     const CallTransferPlan &legacyShadowPlan,
-    const std::string &formalDeclaredType) {
+    TransferFormalDeclarationFacts formalDeclaration) {
   ExplicitCedePreparedFacts facts;
   auto actual = argumentType ? resolveType(argumentType, false) : nullptr;
   auto formal = destinationType ? resolveType(destinationType, false) : nullptr;
   auto actualPayload = shadowCarrierPayload(actual);
-  const bool genericValueDeclaration =
-      formal && !formalDeclaredType.empty() &&
-      Type::stripMorphology(formalDeclaredType) !=
-          Type::stripMorphology(formal->getSoulName());
   facts.ActualTypeKey =
       actual && !actual->isUnknown() ? actual->toString() : std::string{};
   facts.FormalTypeKey =
@@ -1931,18 +1927,19 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
 
   if (legacyShadowPlan.FormalIsInit) {
     facts.FormalContract = TransferFormalContract::None;
+    facts.DeclaredFormalMorphology = TransferFormalMorphology::None;
     facts.FormalMorphology = TransferFormalMorphology::None;
     facts.FormalOwnership = TransferFormalOwnershipKind::None;
     facts.FormalTransferClass = TransferFormalTransferClass::None;
     facts.FormalContractOrigin = TransferFormalContractOrigin::None;
+    facts.FormalDeclarationFactsComplete = true;
   } else {
     facts.FormalContract = formalIsCeded ? TransferFormalContract::Cede
                                          : TransferFormalContract::Ordinary;
+    facts.DeclaredFormalMorphology = formalDeclaration.DeclaredMorphology;
     facts.FormalMorphology = stage0Morphology(formal);
-    facts.FormalContractOrigin =
-        genericValueDeclaration
-            ? TransferFormalContractOrigin::GenericValueDeclaration
-            : TransferFormalContractOrigin::ConcreteDeclaration;
+    facts.FormalContractOrigin = formalDeclaration.ContractOrigin;
+    facts.FormalDeclarationFactsComplete = formalDeclaration.Complete;
     if (formal && !formal->isUnknown()) {
       if (formal->isRawPointer())
         facts.FormalOwnership = TransferFormalOwnershipKind::RawIdentity;
@@ -1965,8 +1962,14 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
           break;
         }
       }
-      if (facts.FormalMorphology == TransferFormalMorphology::RawHandle ||
-          facts.FormalMorphology == TransferFormalMorphology::Reference)
+      if (facts.FormalContractOrigin ==
+          TransferFormalContractOrigin::GenericValueDeclaration)
+        facts.FormalTransferClass =
+            formalIsCeded ? TransferFormalTransferClass::ValueTransfer
+                          : TransferFormalTransferClass::BorrowCapture;
+      else if (facts.FormalMorphology ==
+                   TransferFormalMorphology::RawHandle ||
+               facts.FormalMorphology == TransferFormalMorphology::Reference)
         facts.FormalTransferClass =
             TransferFormalTransferClass::IdentityTransfer;
       else if (facts.FormalMorphology ==
@@ -1976,8 +1979,7 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
       else if (facts.FormalMorphology ==
                    TransferFormalMorphology::DirectValue &&
                facts.FormalOwnership ==
-                   TransferFormalOwnershipKind::Borrowed &&
-               !genericValueDeclaration)
+                   TransferFormalOwnershipKind::Borrowed)
         facts.FormalTransferClass =
             TransferFormalTransferClass::IdentityTransfer;
       else if (!formalIsCeded)
@@ -2060,9 +2062,8 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
 
   facts.BorrowStateComplete = true;
   facts.ActiveDerivedBorrow =
-      legacyShadowPlan.SourcePlace &&
-      PALCheckerState.verifyInvalidation(legacyShadowPlan.SourcePlace)
-          .has_value();
+      identityPath &&
+      PALCheckerState.verifyInvalidation(identityPath).has_value();
   facts.SourceTransferAuthorityComplete = sourceInfo != nullptr;
   facts.SourceTransferAuthorized =
       sourceIsLocal && sourceInfo && !sourceInfo->IsPlaceAlias &&
@@ -2081,6 +2082,64 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
   return prepareExplicitCedePlan(facts);
 }
 
+TransferFormalDeclarationFacts Sema::buildStage0FormalDeclarationFacts(
+    const FunctionDecl::Arg *formal) {
+  TransferFormalDeclarationFacts facts;
+  if (!SemanticEvidence::isCallTransferShadowEnabled() ||
+      m_IsPrecomputingCaptures)
+    return facts;
+  if (!formal || !formal->Stage0DeclarationProvenanceComplete)
+    return facts;
+  facts.Complete = true;
+  facts.ContractOrigin =
+      formal->Stage0GenericValueRole
+          ? TransferFormalContractOrigin::GenericValueDeclaration
+          : (formal->Stage0MorphicGenericRole
+                 ? TransferFormalContractOrigin::MorphicGenericDeclaration
+                 : TransferFormalContractOrigin::ConcreteDeclaration);
+  if (formal->Stage0GenericValueRole) {
+    facts.DeclaredMorphology = TransferFormalMorphology::DirectValue;
+    return facts;
+  }
+  if (formal->Stage0MorphicGenericRole) {
+    facts.DeclaredMorphology = TransferFormalMorphology::Morphic;
+    return facts;
+  }
+  auto declaredType =
+      formal->ResolvedType
+          ? resolveType(formal->ResolvedType, false)
+          : resolveType(Sema::synthesizePhysicalTypeObject(*formal, false),
+                        false);
+  facts.DeclaredMorphology = stage0Morphology(declaredType);
+  facts.Complete = facts.DeclaredMorphology !=
+                   TransferFormalMorphology::Indeterminate;
+  if (!facts.Complete)
+    facts.ContractOrigin = TransferFormalContractOrigin::Indeterminate;
+  return facts;
+}
+
+TransferFormalDeclarationFacts Sema::buildStage0FormalDeclarationFacts(
+    const ExternDecl::Arg *formal) {
+  TransferFormalDeclarationFacts facts;
+  if (!SemanticEvidence::isCallTransferShadowEnabled() ||
+      m_IsPrecomputingCaptures)
+    return facts;
+  if (!formal || !formal->TypeSyntax)
+    return facts;
+  auto declaredType =
+      formal->ResolvedType
+          ? resolveType(formal->ResolvedType, false)
+          : resolveType(Sema::synthesizePhysicalTypeObject(*formal, false),
+                        false);
+  facts.DeclaredMorphology = stage0Morphology(declaredType);
+  facts.Complete = facts.DeclaredMorphology !=
+                   TransferFormalMorphology::Indeterminate;
+  facts.ContractOrigin =
+      facts.Complete ? TransferFormalContractOrigin::ConcreteDeclaration
+                     : TransferFormalContractOrigin::Indeterminate;
+  return facts;
+}
+
 void Sema::recordShadowCallTransfer(
     ASTNode *callSite, std::vector<CallTransferPlan> &plans,
     unsigned argumentIndex, unsigned formalIndex, Expr *argument,
@@ -2090,7 +2149,8 @@ void Sema::recordShadowCallTransfer(
     bool legacyCedeExempt, CallTransferRoute route,
     const std::string &callee, const std::string &parameter,
     SourceLocation parameterLoc, bool isAsync,
-    CallExecutionBoundary executionBoundary, std::string formalDeclaredType) {
+    CallExecutionBoundary executionBoundary,
+    TransferFormalDeclarationFacts formalDeclaration) {
   if (!SemanticEvidence::isCallTransferShadowEnabled() ||
       m_IsPrecomputingCaptures)
     return;
@@ -2100,7 +2160,7 @@ void Sema::recordShadowCallTransfer(
       route, isAsync, executionBoundary, argumentIndex, formalIndex);
   plan.Stage0Plan = buildExplicitCedeStage0CallPlan(
       argument, argumentType, destinationType, formalIsCeded, plan,
-      formalDeclaredType);
+      formalDeclaration);
   auto existing = std::find_if(
       plans.begin(), plans.end(), [&](const CallTransferPlan &candidate) {
         return candidate.ArgumentIndex == argumentIndex &&
@@ -2138,12 +2198,16 @@ void Sema::recordShadowCallTransfer(
   stage0Record.ActualType = stage0.Prepared.ActualTypeKey;
   stage0Record.FormalType = stage0.Prepared.FormalTypeKey;
   stage0Record.FormalContract = toString(stage0.Prepared.FormalContract);
+  stage0Record.DeclaredFormalMorphology =
+      toString(stage0.Prepared.DeclaredFormalMorphology);
   stage0Record.FormalMorphology = toString(stage0.Prepared.FormalMorphology);
   stage0Record.FormalOwnership = toString(stage0.Prepared.FormalOwnership);
   stage0Record.FormalTransferClass =
       toString(stage0.Prepared.FormalTransferClass);
   stage0Record.FormalContractOrigin =
       toString(stage0.Prepared.FormalContractOrigin);
+  stage0Record.FormalDeclarationFactsComplete =
+      stage0.Prepared.FormalDeclarationFactsComplete;
   stage0Record.FormalCapabilitiesComplete =
       stage0.Prepared.FormalCapabilities.Complete;
   stage0Record.FormalHandleRebindable =
@@ -2724,7 +2788,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             argumentType, destinationType, param.IsCeded, param.IsInit,
             Call->isInitArgument(argumentIndex), true, isExempt, route,
             CallName, param.Name, param.Loc, isAsync,
-            CallExecutionBoundary::None, param.Type);
+            CallExecutionBoundary::None,
+            buildStage0FormalDeclarationFacts(&param));
         if (!param.IsCeded)
           return;
 
@@ -5912,12 +5977,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           Call->isInitArgument(i), true, legacyCedeExempt, shadowRoute,
           CallName, shadowParamName, cedeParamLoc, calleeIsAsync,
           classifyShadowExecutionBoundary(Fn),
-          Fn && Fn->TemplateOrigin && i < Fn->TemplateOrigin->Args.size()
-              ? Fn->TemplateOrigin->Args[i].Type
-              : (Fn && i < Fn->Args.size()
-                     ? Fn->Args[i].Type
-                     : (Ext && i < Ext->Args.size() ? Ext->Args[i].Type
-                                                    : std::string{})));
+          Fn && i < Fn->Args.size()
+              ? buildStage0FormalDeclarationFacts(&Fn->Args[i])
+              : (Ext && i < Ext->Args.size()
+                     ? buildStage0FormalDeclarationFacts(&Ext->Args[i])
+                     : TransferFormalDeclarationFacts{}));
     }
 
     if (paramIsValueMutable && !paramIsHatted && !isCededParam &&

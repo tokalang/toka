@@ -85,6 +85,7 @@ enum class TransferFormalMorphology : uint8_t {
   RawHandle,
   Reference,
   Callable,
+  Morphic,
   Indeterminate,
 };
 enum class TransferFormalOwnershipKind : uint8_t {
@@ -109,7 +110,16 @@ enum class TransferFormalContractOrigin : uint8_t {
   None,
   ConcreteDeclaration,
   GenericValueDeclaration,
+  MorphicGenericDeclaration,
   Indeterminate,
+};
+
+struct TransferFormalDeclarationFacts {
+  TransferFormalMorphology DeclaredMorphology =
+      TransferFormalMorphology::Indeterminate;
+  TransferFormalContractOrigin ContractOrigin =
+      TransferFormalContractOrigin::Indeterminate;
+  bool Complete = false;
 };
 enum class TransferDestination : uint8_t {
   CalleeParameter,
@@ -230,6 +240,8 @@ struct ExplicitCedePreparedFacts {
   TransferOwnershipKind Ownership = TransferOwnershipKind::Indeterminate;
   TransferCopyProof CopyProof = TransferCopyProof::Indeterminate;
   TransferFormalContract FormalContract = TransferFormalContract::None;
+  TransferFormalMorphology DeclaredFormalMorphology =
+      TransferFormalMorphology::None;
   TransferFormalMorphology FormalMorphology = TransferFormalMorphology::None;
   TransferFormalOwnershipKind FormalOwnership =
       TransferFormalOwnershipKind::None;
@@ -237,6 +249,7 @@ struct ExplicitCedePreparedFacts {
       TransferFormalTransferClass::None;
   TransferFormalContractOrigin FormalContractOrigin =
       TransferFormalContractOrigin::None;
+  bool FormalDeclarationFactsComplete = false;
   TransferAccessCapabilities FormalCapabilities;
   TransferAccessCapabilities ActualCapabilities;
   TransferDestination Destination = TransferDestination::Indeterminate;

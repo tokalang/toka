@@ -2149,6 +2149,13 @@ public:
     // The callee constructs caller-owned storage supplied as `init place`.
     bool IsInit = false;
     bool HadRejectedTypeSideMorphology = false;
+    // Audit-only declaration provenance for the explicit-cede Stage-0
+    // planner.  This is derived from the declaration's typed syntax and its
+    // exact generic binder set before any substitution, then preserved by
+    // cloning.  It has no authority over normal Sema or CodeGen.
+    bool Stage0GenericValueRole = false;
+    bool Stage0MorphicGenericRole = false;
+    bool Stage0DeclarationProvenanceComplete = false;
     BindingPermission Permission;
 
     std::shared_ptr<toka::Type> ResolvedType;
@@ -2174,6 +2181,10 @@ public:
       a.IsCeded = IsCeded;
       a.IsInit = IsInit;
       a.HadRejectedTypeSideMorphology = HadRejectedTypeSideMorphology;
+      a.Stage0GenericValueRole = Stage0GenericValueRole;
+      a.Stage0MorphicGenericRole = Stage0MorphicGenericRole;
+      a.Stage0DeclarationProvenanceComplete =
+          Stage0DeclarationProvenanceComplete;
       a.Permission = Permission;
       a.ResolvedType = ResolvedType;
       a.DefaultValue = cloneNode(DefaultValue);

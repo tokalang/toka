@@ -1,0 +1,27 @@
+shape Cell(value: i32)
+
+fn consume_generic<T>(cede value: T) -> i32 {
+    auto moved = cede value
+    return 0
+}
+
+fn relay_raw(cede *value: i32) -> i32 {
+    return consume_generic<*i32>(cede *value)
+}
+
+fn relay_unique(cede ^value: Cell) -> i32 {
+    return consume_generic<^Cell>(cede ^value)
+}
+
+fn relay_callable(cede callback: fn(i32) -> i32) -> i32 {
+    return consume_generic<fn(i32) -> i32>(cede callback)
+}
+
+fn main() -> i32 {
+    auto value# = 9:i32
+    auto raw_result = relay_raw(cede *value)
+    auto ^cell = new Cell(value = 1)
+    auto callback = { value => value }:fn(i32) -> i32
+    return raw_result + relay_unique(cede ^cell) +
+           relay_callable(cede callback)
+}

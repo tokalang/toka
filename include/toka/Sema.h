@@ -822,7 +822,11 @@ private:
       Expr *Argument, const std::shared_ptr<Type> &ArgumentType,
       const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
       const CallTransferPlan &LegacyShadowPlan,
-      const std::string &FormalDeclaredType);
+      TransferFormalDeclarationFacts FormalDeclaration);
+  TransferFormalDeclarationFacts buildStage0FormalDeclarationFacts(
+      const FunctionDecl::Arg *Formal);
+  TransferFormalDeclarationFacts buildStage0FormalDeclarationFacts(
+      const ExternDecl::Arg *Formal);
   void recordShadowCallTransfer(
       ASTNode *CallSite, std::vector<CallTransferPlan> &Plans,
       unsigned ArgumentIndex, unsigned FormalIndex, Expr *Argument,
@@ -833,7 +837,7 @@ private:
       const std::string &Parameter,
       SourceLocation ParameterLoc, bool IsAsync,
       CallExecutionBoundary ExecutionBoundary = CallExecutionBoundary::None,
-      std::string FormalDeclaredType = {});
+      TransferFormalDeclarationFacts FormalDeclaration = {});
   bool returnTypeHasMember(FunctionDecl *Function,
                            const std::string &Member);
   std::string getDependencyPathString(Expr *E);

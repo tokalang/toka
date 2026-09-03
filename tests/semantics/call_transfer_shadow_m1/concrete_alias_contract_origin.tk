@@ -1,0 +1,14 @@
+import core/string::{string}
+
+alias View = str
+
+fn consume_alias(cede value: View) -> usize {
+    auto moved = cede value
+    return moved.len()
+}
+
+fn main() -> i32 {
+    auto owner = string::from("view")
+    auto view = owner.as_str()
+    return consume_alias(cede view) as i32 - 4:i32
+}
