@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -1302,6 +1303,116 @@ def main():
                 parent["snapshot_revision"] + 1
                 for parent, child in zip(valid_calls, valid_children)),
             source + " lost a real argument evaluation on valid cache hit")
+
+    source = ("tests/semantics/call_transfer_shadow_m1/"
+              "generic_validation_transitive_invalid.tk")
+    require_shadow_parity(tokac, source, expected_error="E0408")
+    run(tokac, source, expected_error="E0408")
+    invalid_chain = [
+        find_transaction(source, callee=callee, route="ordinary",
+                         location_line=line)
+        for callee, line in (("generic_bad", 19),
+                             ("generic_wrapper2", 20),
+                             ("generic_wrapper", 21),
+                             ("generic_wrapper2", 22))]
+    require(all(transaction["outcome"] == "Rejected" and
+                transaction["rejection"] == "WholeCallValidationFailed" and
+                not transaction["commit_allowed"]
+                for transaction in invalid_chain) and
+            not any(transaction["callee"] in
+                    ("first_inner", "second_inner", "third_inner",
+                     "fourth_inner") and
+                    transaction["location"]["file"].endswith(source)
+                    for transaction in TRANSACTIONS[source]),
+            source + " did not propagate invalid validation dependencies")
+
+    source = ("tests/semantics/call_transfer_shadow_m1/"
+              "generic_validation_transitive_valid.tk")
+    require_shadow_parity(tokac, source)
+    run(tokac, source)
+    valid_chain = [
+        find_transaction(source, callee="generic_wrapper2", route="ordinary",
+                         location_line=line)
+        for line in (17, 18)]
+    valid_chain_children = [
+        find_transaction(source, callee=callee, route="ordinary",
+                         location_line=line)
+        for callee, line in (("first_inner", 17), ("second_inner", 18))]
+    require(all(transaction["commit_allowed"]
+                for transaction in valid_chain + valid_chain_children),
+            source + " rejected a valid specialization dependency chain")
+
+    source = ("tests/semantics/call_transfer_shadow_m1/"
+              "generic_validation_recursion.tk")
+    require_shadow_parity(tokac, source, expected_error="E0406")
+    run(tokac, source, expected_error="E0406")
+    recursive = find_transaction(
+        source, callee="recursive", route="ordinary", location_line=8)
+    require(recursive["outcome"] == "Rejected" and
+            recursive["rejection"] == "WholeCallValidationFailed" and
+            not recursive["commit_allowed"] and
+            not any(transaction["callee"] == "inner" and
+                    transaction["location"]["file"].endswith(source)
+                    for transaction in TRANSACTIONS[source]),
+            source + " did not fail closed on Unchecked recursion")
+
+    with tempfile.TemporaryDirectory(
+            prefix="toka-call-transfer-mangled-cache-") as temp:
+        mangled_source = Path(temp) / "mangled_lookup.tk"
+        mangled_source.write_text(
+            "fn inner() -> i32 { return 42:i32 }\n\n\n"
+            "fn generic_bad<T>(value: T) -> T {\n"
+            "    return generic_bad(value)\n"
+            "}\n\n"
+            "fn main() -> i32 {\n"
+            "    return generic_bad(inner())\n"
+            "}\n")
+        recursion_probe = subprocess.run(
+            [str(tokac), "--check-only", str(mangled_source)], cwd=ROOT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            timeout=30)
+        require(recursion_probe.returncode != 0 and
+                "recursive generic specialization is not supported:" in
+                recursion_probe.stderr,
+                "mangled cache probe did not expose its concrete alias")
+        match = re.search(
+            r"recursive generic specialization is not supported: "
+            r"([A-Za-z0-9_]+)", recursion_probe.stderr)
+        require(match is not None,
+                "mangled cache probe emitted no reusable alias")
+        mangled_name = match.group(1)
+
+        mangled_source.write_text(
+            "fn first_inner() -> i32 { return 20:i32 }\n"
+            "fn second_inner() -> i32 { return 22:i32 }\n\n"
+            "fn generic_bad<T>(value: T) -> T {\n"
+            "    return true\n"
+            "}\n\n"
+            "fn main() -> i32 {\n"
+            "    auto prime = generic_bad(first_inner())\n"
+            "    auto cached = " + mangled_name + "(second_inner())\n"
+            "    return prime + cached\n"
+            "}\n")
+        source = str(mangled_source)
+        require_shadow_parity(tokac, source, expected_error="E0408")
+        run(tokac, source, expected_error="E0408")
+        source_call = find_transaction(
+            source, callee="generic_bad", route="ordinary", location_line=9)
+        mangled_call = find_transaction(
+            source, callee=mangled_name, route="ordinary", location_line=10)
+        mangled_fixture_transactions = [
+            transaction for transaction in TRANSACTIONS[source]
+            if transaction["location"]["file"].endswith(source)]
+        require(not source_call["commit_allowed"] and
+                not mangled_call["commit_allowed"] and
+                source_call["rejection"] == "WholeCallValidationFailed" and
+                mangled_call["rejection"] == "WholeCallValidationFailed" and
+                not any(transaction["callee"] in
+                        ("first_inner", "second_inner") and
+                        transaction["location"]["file"].endswith(source)
+                        for transaction in TRANSACTIONS[source]),
+                "mangled cache alias discarded specialization validity: " +
+                json.dumps(mangled_fixture_transactions, sort_keys=True))
 
     replay_case = ROOT / "tests/semantics/tki_replay/cases/own_cede_003_generic_methods"
     with tempfile.TemporaryDirectory(prefix="toka-call-transfer-shadow-") as temp:

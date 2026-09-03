@@ -1,0 +1,9 @@
+fn inner() -> i32 { return 42:i32 }
+
+fn recursive<T>(value: T) -> T {
+    return recursive(value)
+}
+
+fn main() -> i32 {
+    return recursive(inner())
+}

@@ -1,0 +1,24 @@
+fn first_inner() -> i32 { return 10:i32 }
+fn second_inner() -> i32 { return 11:i32 }
+fn third_inner() -> i32 { return 12:i32 }
+fn fourth_inner() -> i32 { return 13:i32 }
+
+fn generic_bad<T>(value: T) -> T {
+    return true
+}
+
+fn generic_wrapper<T>(value: T) -> T {
+    return generic_bad(value)
+}
+
+fn generic_wrapper2<T>(value: T) -> T {
+    return generic_wrapper(value)
+}
+
+fn main() -> i32 {
+    auto prime = generic_bad(first_inner())
+    auto deep = generic_wrapper2(second_inner())
+    auto wrapped_hit = generic_wrapper(third_inner())
+    auto deep_hit = generic_wrapper2(fourth_inner())
+    return prime + deep + wrapped_hit + deep_hit
+}

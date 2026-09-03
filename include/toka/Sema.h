@@ -452,7 +452,12 @@ private:
     GenericSpecializationValidationState Validation =
         GenericSpecializationValidationState::Unchecked;
   };
-  std::map<std::string, GenericSpecializationCacheEntry> InstantiationCache;
+  struct GenericValidationFrame {
+    bool HasInvalidDependency = false;
+  };
+  std::map<std::string, std::shared_ptr<GenericSpecializationCacheEntry>>
+      InstantiationCache;
+  std::vector<GenericValidationFrame> m_GenericValidationFrames;
   std::map<std::string, std::shared_ptr<toka::Type>> GenericShapeCache;
   int RecursionDepth = 0;
 
@@ -890,10 +895,17 @@ private:
         : Owner(Owner), CallSite(CallSite) {}
     Stage0TransactionFinalizer(const Stage0TransactionFinalizer &) = delete;
     ~Stage0TransactionFinalizer();
+    void armInvalidSpecializationJournal() {
+      if (!InvalidSpecializationJournal)
+        InvalidSpecializationJournal =
+            SemanticEvidence::checkpointCallTransferJournal();
+    }
 
   private:
     Sema &Owner;
     ASTNode *CallSite = nullptr;
+    std::optional<SemanticEvidence::CallTransferJournalCheckpoint>
+        InvalidSpecializationJournal;
   };
   Stage0CallSnapshot captureStage0CallSnapshot();
   void captureStage0CallArgumentFacts(

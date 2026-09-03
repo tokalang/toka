@@ -6581,8 +6581,27 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
 
   // Check Cache
   if (auto cached = InstantiationCache.find(cacheKey);
-      cached != InstantiationCache.end())
-    return {cached->second.Instance, cached->second.Validation};
+      cached != InstantiationCache.end()) {
+    auto entry = cached->second;
+    const auto validation =
+        entry ? entry->Validation
+              : GenericSpecializationValidationState::Unchecked;
+    if (validation != GenericSpecializationValidationState::Valid &&
+        !m_GenericValidationFrames.empty())
+      m_GenericValidationFrames.back().HasInvalidDependency = true;
+    if (!entry ||
+        validation == GenericSpecializationValidationState::Unchecked) {
+      if (entry)
+        entry->Validation = GenericSpecializationValidationState::Invalid;
+      error(CallSite ? static_cast<ASTNode *>(CallSite)
+                     : static_cast<ASTNode *>(Template),
+            DiagID::ERR_GENERIC_SEMA,
+            "recursive generic specialization is not supported: " +
+                mangledName);
+      return {nullptr, GenericSpecializationValidationState::Invalid};
+    }
+    return {entry->Instance, validation};
+  }
 
   const size_t validationDiagnosticStart = DiagnosticEngine::records().size();
 
@@ -7089,27 +7108,41 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
   for (const auto &arg : Args)
     recordInstantiationType(Instance, resolveType(arg));
 
+  auto cacheEntry = std::make_shared<GenericSpecializationCacheEntry>();
+  cacheEntry->Instance = Instance;
+  cacheEntry->Validation = GenericSpecializationValidationState::Unchecked;
+  InstantiationCache[cacheKey] = cacheEntry;
+  InstantiationCache[mangledName] = cacheEntry;
+
   // [NEW] Inject Const Generic Variables into Body
   // Removed dirty hack (VariableDecl injection).
   // Const values are now handled by SymbolInfo resolution in CodeGen.
 
   // 4. Semantic Check (Recursion)
+  m_GenericValidationFrames.push_back({});
   checkFunction(Instance);
+  const bool invalidDependency =
+      m_GenericValidationFrames.back().HasInvalidDependency;
+  m_GenericValidationFrames.pop_back();
 
   exitScope();
   RecursionDepth--;
 
   const auto &validationDiagnostics = DiagnosticEngine::records();
-  const bool validationFailed = std::any_of(
-      validationDiagnostics.begin() +
-          std::min(validationDiagnosticStart, validationDiagnostics.size()),
-      validationDiagnostics.end(),
-      [](const auto &record) { return record.Level == DiagLevel::Error; });
+  const bool validationFailed =
+      invalidDependency ||
+      std::any_of(
+          validationDiagnostics.begin() +
+              std::min(validationDiagnosticStart, validationDiagnostics.size()),
+          validationDiagnostics.end(),
+          [](const auto &record) { return record.Level == DiagLevel::Error; });
   const auto validation = validationFailed
                               ? GenericSpecializationValidationState::Invalid
                               : GenericSpecializationValidationState::Valid;
-  InstantiationCache[cacheKey] = {Instance, validation};
-  InstantiationCache[mangledName] = {Instance, validation};
+  cacheEntry->Validation = validation;
+  if (validation != GenericSpecializationValidationState::Valid &&
+      !m_GenericValidationFrames.empty())
+    m_GenericValidationFrames.back().HasInvalidDependency = true;
   return {Instance, validation};
 }
 

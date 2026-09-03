@@ -1,0 +1,20 @@
+fn first_inner() -> i32 { return 20:i32 }
+fn second_inner() -> i32 { return 22:i32 }
+
+fn generic_good<T>(value: T) -> T {
+    return value
+}
+
+fn generic_wrapper<T>(value: T) -> T {
+    return generic_good(value)
+}
+
+fn generic_wrapper2<T>(value: T) -> T {
+    return generic_wrapper(value)
+}
+
+fn main() -> i32 {
+    auto first = generic_wrapper2(first_inner())
+    auto second = generic_wrapper2(second_inner())
+    return first + second - 42:i32
+}

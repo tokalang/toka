@@ -147,12 +147,20 @@ This observation-only distinction does not alter the normal signature-driven
 path or the frozen D3 and authority-facts profiles.
 
 Each cached function specialization persistently records `Unchecked`, `Valid`,
-or `Invalid` validation state beside its instance. A cache hit reuses that
-state: lack of a repeated diagnostic is never treated as proof of validity.
-`Invalid` and defensive `Unchecked` results roll back the current argument
-journal and force the parent audit transaction through the existing
-`WholeCallValidationFailed` path without re-emitting a normal diagnostic.
-Valid cache hits retain each independently evaluated argument journal once.
+or `Invalid` validation state beside its instance. Canonical and mangled keys
+point to one shared cache entry, and every lookup returns its complete instance
+plus validation state. The entry is registered as `Unchecked` before body
+checking. Recursive lookup of that in-progress state reports one deterministic
+fail-closed diagnostic instead of re-entering instantiation.
+
+A shadow-independent generic-validation frame records invalid or unchecked
+specialization dependencies while a body is checked. Final validity is the
+closure of the body diagnostic delta and that dependency bit, so invalidity
+propagates through wrappers and wrapper cache hits without re-emitting the
+original diagnostic. `Invalid` and defensive `Unchecked` results roll back the
+current argument journal and force the parent audit transaction through the
+existing `WholeCallValidationFailed` path. Valid cache hits retain each
+independently evaluated argument journal once.
 Journal rollback does not rewind the monotonic snapshot revision, so discarded
 candidate edges may currently leave harmless numbering gaps.
 
@@ -213,6 +221,8 @@ are not part of the Stage-0 call-transaction contract.
   of body calls across multiple monomorphizations;
 - persistent invalid-specialization rejection across cache hits, plus a valid
   cache-hit control proving both real argument evaluations publish once;
+- transitive invalid/valid wrapper chains, shared mangled-key lookup, and
+  deterministic fail-closed recursive-specialization coverage;
 - async `.start`, nested non-boundary calls, and resolved-declaration thread
   handoff annotation, including aliases and a user same-named function;
 - init formal/actual spelling, unknown actuals, unary/cast/address/postfix

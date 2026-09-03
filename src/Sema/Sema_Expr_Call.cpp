@@ -2443,6 +2443,9 @@ void Sema::captureStage0CallArgumentFacts(
 }
 
 Sema::Stage0TransactionFinalizer::~Stage0TransactionFinalizer() {
+  if (InvalidSpecializationJournal)
+    SemanticEvidence::rollbackCallTransferJournal(
+        *InvalidSpecializationJournal);
   Owner.finalizeExplicitCedeStage0Transaction(CallSite);
 }
 
@@ -5190,8 +5193,30 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   // unselected module symbols into the current namespace.
   if (!Fn && !Ext && !Sh) {
     auto instance = InstantiationCache.find(CallName);
-    if (instance != InstantiationCache.end())
-      Fn = instance->second.Instance;
+    if (instance != InstantiationCache.end()) {
+      const auto entry = instance->second;
+      const auto validation =
+          entry ? entry->Validation
+                : GenericSpecializationValidationState::Unchecked;
+      if (validation != GenericSpecializationValidationState::Valid) {
+        if (!m_GenericValidationFrames.empty())
+          m_GenericValidationFrames.back().HasInvalidDependency = true;
+        if (SemanticEvidence::isCallTransferShadowEnabled() &&
+            stage0CallEntrySnapshot) {
+          m_Stage0InvalidGenericSpecializationCalls.insert(Call);
+          stage0TransactionFinalizer.armInvalidSpecializationJournal();
+        }
+      }
+      if (!entry ||
+          validation == GenericSpecializationValidationState::Unchecked) {
+        if (entry)
+          entry->Validation = GenericSpecializationValidationState::Invalid;
+        error(Call, DiagID::ERR_GENERIC_SEMA,
+              "recursive generic specialization is not supported: " + CallName);
+        return toka::Type::fromString("unknown");
+      }
+      Fn = entry->Instance;
+    }
   }
 
   auto checkIndirectCedeArgument =
