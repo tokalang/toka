@@ -20,9 +20,10 @@ all acceptance gates in this RFC pass.
 
 The revised proposed Toka 1.0 rules are:
 
-> `cede place` is a destructive read of an existing source place and always
-> makes that source place unavailable. Copy changes how the outgoing value is
-> produced; it does not cancel invalidation.
+> `cede place` is a destructive read of the exact source place written after
+> `cede` and always makes that source place unavailable. Payload and handle
+> views are distinct source places: hats are semantic, not decorative. Copy
+> changes how the outgoing value is produced; it does not cancel invalidation.
 
 > A selected `cede` formal requires every existing source-place actual to spell
 > `cede`. An eligible expression with `NoSourcePlace` is passed bare; its value
@@ -42,7 +43,14 @@ visible operators and contracts.
 Call boundaries are strict contract handshakes. A non-`cede` formal rejects an
 explicit `cede` actual with `E04640` and commits no state change. A caller that
 intends to end a value after one final ordinary call writes the two operations
-explicitly, for example `inspect(value)` followed by `drop(cede value)`.
+explicitly, for example `inspect(value)` followed by the standalone expression
+statement `cede value`.
+
+For a unique binding such as `auto ^buf = new BigBuffer()`, however, `buf` is
+the payload view and `^buf` is the unique owning-handle place. Transferring or
+discarding that owner must therefore spell `cede ^buf`. The spelling
+`cede buf` must never be documented, fixed, planned, or lowered as destruction
+of `^buf`; it names the wrong source layer.
 
 The RFC restores caller-visible ownership loss without deleting the internal
 planning required for temporary cleanup transfer, Copy lowering, obligation
@@ -53,8 +61,10 @@ CodeGen.
 
 Writing code:
 
-> **A `cede` formal receives a named source as `cede source`; a temporary,
-> literal, or other proven `NoSourcePlace` expression is passed bare.**
+> **A `cede` formal receives a named source as `cede source`; preserve the
+> source's payload/handle spelling, so a unique owner is `cede ^source`. A
+> temporary, literal, or other proven `NoSourcePlace` expression is passed
+> bare.**
 
 Reading code:
 
@@ -62,21 +72,32 @@ Reading code:
 > unavailable. If an accepted call passes `source` bare, that call does not
 > invalidate the source.**
 
+Here, “exact” includes hats: `cede ^buf` invalidates `^buf`, while an occurrence
+of bare `buf` remains a payload operation.
+
 The second statement is about PlaceState availability. It does not promise
 that a mutable parameter leaves the payload unchanged, or that independent PAL
 and lifetime restrictions disappear after the call. Other visible language
 operations such as `result!`, direct unique transfer, return transfer, and
-explicit drop retain their own invalidation rules.
+standalone `cede` discard retain their own invalidation rules.
 
 Examples:
 
 ```toka
+// Ordinary by-value source.
 consume(cede resource)       // hand over the named source; resource dies here
 consume(resource.dup())      // hand over an independent temporary; resource lives
 consume(Resource::new())     // source-less owned temporary
 consume(42)                  // source-less Copy value
 inspect(resource)            // ordinary handshake; this call keeps the place live
 inspect(cede resource)       // E04640; mismatch commits no invalidation
+cede resource                // explicit terminal discard at this statement
+
+// Unique-owned handle source.
+auto ^buf = new BigBuffer()
+process(buf)                  // ordinary payload access; ^buf remains live
+cede ^buf                     // discard the owner handle; release BigBuffer once
+// cede buf                   // not owner destruction: buf is the payload view
 ```
 
 ## 2. Motivation
@@ -115,6 +136,25 @@ It does not widen partial-transfer eligibility. Dynamic/container indexes,
 unsupported nested projections, aliases, nonlocal places, custom-drop partial
 aggregates, and any place without the existing lifecycle proof remain rejected.
 
+The written view is part of exact-place identity. In particular:
+
+- `value` names the payload/value place of an ordinary binding;
+- for `auto ^buf = new BigBuffer()`, `buf` names the dereferenced payload view
+  while `^buf` names the unique owner-handle place;
+- `&view`, `*ptr`, and `~shared` likewise name their corresponding handle
+  identities, subject to their independent ownership, capability, lifetime,
+  and identity contracts; and
+- a field or projection retains both its exact path and its selected
+  payload/handle layer.
+
+Consequently `cede ^buf` may invalidate the unique owner handle. `cede buf`
+does not mean “find an owning handle behind this payload and destroy it.” It is
+rejected for a payload view reached through an owning handle: moving that
+referent out would leave the owner and its Drop liability incoherent. No
+implicit dereference, re-hatting, or owner discovery may change the source
+selected by an explicit `cede`. Ordinary direct-value bindings remain eligible
+as `cede value`.
+
 ### 3.2 `NoSourcePlace`
 
 `NoSourcePlace` is a value-producing expression with no caller place whose
@@ -128,8 +168,14 @@ The semantic model must keep these facts separate:
 SourceCategory
     NamedSourcePlace | NoSourcePlace | Indeterminate
 
+SourceView
+    DirectValuePlace
+    | DereferencedPayloadPlace(hat-kind)
+    | HandlePlace(hat-kind)
+    | Indeterminate
+
 OwnershipKind
-    PlainValue | OwnedValue | SharedOwner
+    PlainValue | OwnedValue | UniqueOwnerHandle | SharedOwner
     | BorrowedView | RawIdentity
     | CallableIdentity | OwnedCallable
     | Indeterminate
@@ -185,6 +231,10 @@ cede noncopy_place  = MoveOwned + InvalidatePlace(noncopy_place)
 Both source places become unavailable. A bare Copy read outside a required
 `cede` position remains an ordinary `CopyValue + KeepLive` operation.
 
+These equations assume that `copy_place` and `noncopy_place` are already the
+exact admitted source views. They do not authorize lowering `cede buf` as
+`InvalidatePlace(^buf)`.
+
 ### 3.5 Cede obligation
 
 Call-boundary spelling and callee completion are related but distinct facts:
@@ -234,17 +284,21 @@ allocated by this draft.
 ## 4. Proposed normative matrix
 
 The selected formal determines whether the callee receives a cede obligation.
-The presence of a source place determines caller spelling. An explicit
-`CedeExpr` accepted by the selected call contract always invalidates its
-source. An ordinary formal rejects that expression before invalidation.
+The presence of a source place determines caller spelling. The actual's exact
+payload/handle view must also match the selected formal. An explicit `CedeExpr`
+accepted by the selected call contract always invalidates exactly its written
+source. An ordinary formal or view mismatch rejects that expression before
+invalidation.
 
 | Selected formal and actual | Caller spelling | Transfer disposition | Source disposition | Proposed result |
 | --- | --- | --- | --- | --- |
 | non-`cede` formal + place/value | bare | `BorrowCapture` or ordinary value flow | `KeepLive` | allow under existing rules |
 | non-`cede` formal + any actual | explicit `cede` | none | no state change | reject with `E04640`; callee did not accept ownership/obligation |
-| `cede` formal + any transferable `NamedSourcePlace` | bare | none | no state change | reject; caller must write `cede`, independent of Copy proof |
-| `cede` formal + `ProvenNonCopy` owning/shared `NamedSourcePlace` | explicit `cede` | `MoveOwned` or `TransferShared` | `InvalidatePlace(exact path)` | allow; callee obligation becomes `Outstanding` |
-| `cede` formal + `ProvenCopy` value `NamedSourcePlace` | explicit `cede` | `CopyValue` | `InvalidatePlace(exact path)` | allow; callee obligation becomes `Outstanding` |
+| `cede` formal + any transferable matching `NamedSourcePlace` | bare | none | no state change | reject; caller must write `cede`, independent of Copy proof |
+| `cede` formal + `ProvenNonCopy` owning/shared matching `NamedSourcePlace` | explicit `cede` | `MoveOwned` or `TransferShared` | `InvalidatePlace(exact path and view)` | allow; callee obligation becomes `Outstanding` |
+| `cede` formal + `ProvenCopy` value matching `NamedSourcePlace` | explicit `cede` | `CopyValue` | `InvalidatePlace(exact path and view)` | allow; callee obligation becomes `Outstanding` |
+| handle `cede` formal + payload-view actual, or payload `cede` formal + handle-view actual | bare or explicit | none | no state change | reject view mismatch; never infer or erase a hat |
+| explicit `cede` of a dereferenced payload reached through an owning handle | explicit `cede` | none | no state change | reject; transfer/discard the owning handle explicitly instead |
 | `cede` formal + admitted non-Copy `WholeOwnedTemporary` | bare | `ConsumeTemporary` | `NoSourcePlace` | allow; callee assumes cleanup and obligation |
 | `cede` formal + `ProvenCopy + NoSourcePlace` value | bare | `CopyValue` | `NoSourcePlace` | allow; callee obligation becomes `Outstanding` |
 | any formal + `NoSourcePlace` expression | explicit `cede` | none | `NoSourcePlace` | reject: `cede` requires an existing source place |
@@ -257,7 +311,7 @@ At a call boundary, caller and callee must agree. A named actual spells `cede`
 only when the selected formal is `cede`. The source result is then invariant:
 
 ```text
-cede NamedSourcePlace => InvalidatePlace(exact path)
+cede NamedSourcePlace => InvalidatePlace(exact path and written view)
 ```
 
 For example:
@@ -277,8 +331,24 @@ writes both contracts:
 
 ```toka
 inspect(resource)
-drop(cede resource)
+cede resource
 ```
+
+The same handshake preserves handle morphology:
+
+```toka
+fn inspect(data: BigBuffer) {}
+fn consume(cede ^owner: BigBuffer) {}
+
+auto ^buf = new BigBuffer()
+inspect(buf)            // payload contract; ^buf remains the owner
+consume(cede ^buf)      // handle contract; ^buf becomes unavailable
+// consume(cede buf)    // error: payload view cannot satisfy cede ^owner
+```
+
+If no callee should receive the owner, `cede ^buf` is the terminal-discard
+form. Neither call resolution nor standalone discard may reinterpret
+`cede buf` as `cede ^buf`.
 
 This prevents a call such as `log_task(cede task)` from silently discarding a
 task merely because the caller mistook a borrow API for an ownership-taking
@@ -346,6 +416,55 @@ ownership of a referent or bypasses dependency/PAL rules. An owning `cede`
 formal must reject borrowed/raw actuals and require an appropriate separate
 contract.
 
+### 4.4 Standalone `cede` discard
+
+Toka needs no separate user-facing `drop(value)` function to end a named
+source. The existing expression grammar already parses:
+
+```toka
+cede value
+```
+
+as:
+
+```text
+ExprStmt(CedeExpr(VariableExpr(value)))
+```
+
+There is no new `CedeStmt`. The proposed frozen semantics are:
+
+```toka
+auto ^buf = new BigBuffer()
+process(buf)
+cede ^buf // exact unique owner-handle discard
+```
+
+1. prepare and validate the exact source, Copy/ownership class, PAL state,
+   obligation state, and Drop liability;
+2. reject `NoSourcePlace`, a payload/handle view mismatch, unsupported
+   projection, active-borrow conflict, or indeterminate liability before
+   mutation;
+3. atomically invalidate the source place and produce one anonymous value;
+4. because no destination receives it, the statement/full-expression assumes
+   its cleanup liability;
+5. discharge any carried cede obligation to this terminal discard sink; and
+6. drop the produced value exactly once at statement completion.
+
+For Copy, the physical payload may be produced with `CopyValue`, but the source
+place still becomes unavailable and no destructor is required. For an owned or
+shared resource, the statement performs the corresponding destructor/release.
+For an admitted partial place, it must use the same exact-place and cleanup-mask
+plan as every other partial `cede`.
+
+The current compiler already has the Parser/AST shape and expression-statement
+drop path. `tests/conformance/ownership/unused_owned_result_lifecycle.tk`
+records an existing exactly-once resource-drop example. RFC activation must
+retain that behavior and add an explicit `cede ^owner` statement fixture while
+bringing both value and handle forms under the same validated semantic plan,
+Copy, obligation, PAL, partial-place, TKI/evidence, and fail-closed coverage as
+call-boundary transfer. A negative `cede payload` fixture must prove that the
+compiler does not silently destroy a hidden owner handle.
+
 ## 5. Generic decision
 
 Generic caller spelling depends on source category and the selected formal,
@@ -377,11 +496,22 @@ resolve every fact or reject fail-closed.
 ## 6. Consuming receiver syntax
 
 For a method whose selected receiver formal is `cede self`, every admitted
-named receiver uses:
+ordinary direct-value receiver uses:
 
 ```toka
 (cede value).consume()
 ```
+
+For a method whose selected receiver is the unique owner-handle view, the same
+rule preserves the hat:
+
+```toka
+(cede ^owner).consume()
+```
+
+The compiler must not accept `(cede owner).consume()` as a substitute for that
+form merely because bare `owner.method()` would normally dereference the handle
+for payload method lookup.
 
 No Parser change is required. The current Parser produces:
 
@@ -391,27 +521,35 @@ MethodCallExpr(
 )
 ```
 
+The hatted form retains the handle operator inside the `CedeExpr` (conceptually
+`CedeExpr(UnaryExpr(Caret, VariableExpr(owner)))`). Sema must preserve that
+distinction through method lookup and transfer planning.
+
 There is no `ParenExpr`. Grouping parentheses are removed, and the retained
 expression records `HasParens`. The method suffix then wraps that expression as
 the `MethodCallExpr::Object`. Transfer authority comes from the `CedeExpr`, not
 from `HasParens`; the parentheses provide the required source grouping.
 
-The receiver matrix mirrors ordinary arguments:
+The receiver matrix mirrors ordinary arguments and preserves source view:
 
 | Receiver | Spelling | Proposed result |
 | --- | --- | --- |
 | any admitted named receiver selected by `cede self` | `value.consume()` | reject; visible receiver `cede` required regardless of Copy proof |
-| named non-Copy receiver selected by `cede self` | `(cede value).consume()` | `MoveOwned/TransferShared + InvalidatePlace`; transfer/create obligation |
-| named Copy receiver selected by `cede self` | `(cede value).consume()` | `CopyValue + InvalidatePlace`; transfer/create obligation |
+| named direct-value non-Copy receiver selected by `cede self` | `(cede value).consume()` | `MoveOwned/TransferShared + InvalidatePlace`; transfer/create obligation |
+| named direct-value Copy receiver selected by `cede self` | `(cede value).consume()` | `CopyValue + InvalidatePlace`; transfer/create obligation |
+| named unique owner selected by an owning-handle receiver contract | `(cede ^owner).consume()` | `MoveOwned + InvalidatePlace(exact handle)`; transfer/create obligation |
+| named unique owner selected by an owning-handle receiver contract | `(cede owner).consume()` | reject; dereferenced payload is not the owner source |
 | admitted `WholeOwnedTemporary` selected by `cede self` | `make_value().consume()` | `ConsumeTemporary`; no caller place to invalidate |
 | `ProvenCopy + NoSourcePlace` receiver selected by `cede self` | `make_copy().consume()` | `CopyValue + NoSourcePlace`; create obligation |
 | any `NoSourcePlace` receiver | `(cede make_value()).consume()` | reject: no source place exists to invalidate |
 | borrowed/raw/dependency-bearing receiver | either | preserve/reject under identity, capability, dependency, and PAL rules; no temporary exemption |
 
 An ordinary `self` method rejects `(cede value).method()` because it did not
-accept a consuming receiver contract. A caller that wants one final ordinary
-method call followed by destruction writes `value.method()` and then an
-explicit owning/drop sink.
+accept a consuming receiver contract. An ordinary non-consuming handle method
+likewise rejects `(cede ^owner).method()`. A caller that wants one final method
+call followed by destruction writes `value.method()` and then `cede value` for
+an ordinary direct value, or `owner.method()` and then `cede ^owner` for a
+unique owner handle.
 
 Consuming callable receivers use the same grouping rule:
 
@@ -435,6 +573,9 @@ PAL and PlaceState before final method selection and argument validation. The
 new contract requires one receiver-plus-arguments transaction, including
 contract-mismatch rejection before any `cede` mutation.
 
+Standalone `cede` uses the same prepared source/obligation/liability facts but
+has a statement-end discard destination rather than a selected callee.
+
 The proposed semantic pipeline is:
 
 ```text
@@ -457,6 +598,8 @@ At minimum, every receiver and argument contributes:
 ResolvedType
 SourceCategory = NamedSourcePlace | NoSourcePlace | Indeterminate
 SourcePlace?
+SourceView = DirectValuePlace | DereferencedPayloadPlace(hat-kind)
+             | HandlePlace(hat-kind) | Indeterminate
 ReferentPlace?
 DependencyRoots[]
 CopyProof = ProvenCopy | ProvenNonCopy | Indeterminate
@@ -478,19 +621,21 @@ side table, but the logical plan must preserve these independent dimensions:
 TransferDisposition
     BorrowCapture | CopyValue | CopyIdentity
     | MoveOwned | TransferShared | ConsumeTemporary
+    | DiscardAtStatementEnd
 
 SourceDisposition
-    KeepLive | InvalidatePlace(exact path) | NoSourcePlace
+    KeepLive | InvalidatePlace(exact path, exact view) | NoSourcePlace
 
 DropDisposition
     SourceRetainsLiability | CalleeAssumesLiability
     | DestinationAssumesLiability
+    | StatementEndAssumesLiability
     | SharedLiabilityIncremented | NoLiability
 
 ObligationDisposition
     None | CreateForCallee | TransferToCallee
     | DischargeToReturn | DischargeToStorage
-    | DischargeToDropSink | Preserve | Reject
+    | DischargeToStatementDiscard | Preserve | Reject
 
 CedeObligationAfter
     None | Outstanding | Discharged
@@ -512,9 +657,11 @@ Spelling is an input to plan admission, not a transfer disposition.
    and cleanup state; no rejected call may discharge an obligation.
 8. A non-`cede` formal receiving an explicit `cede` rejects before source,
    obligation, or cleanup mutation.
-9. Nested candidate/overload/generic probes discard all prepared state when
+9. A payload/handle view mismatch rejects before mutation; validation cannot
+   infer, add, remove, or replace a hat.
+10. Nested candidate/overload/generic probes discard all prepared state when
    not selected.
-10. Source-backed and source-less calls produce the same final plan.
+11. Source-backed and source-less calls produce the same final plan.
 
 Existing rollback guards may participate, but rollback after observable
 mutation is not a substitute for a plan-first authority boundary when a pure
@@ -578,11 +725,16 @@ A machine-applicable insertion of `cede` is allowed only when the compiler has
 already proved:
 
 - one exact source place;
+- the exact payload/handle source view and required formal view;
 - the selected formal is `cede`;
 - the syntax can be rewritten without precedence ambiguity; and
 - no multi-argument or receiver grouping judgment is hidden by the fix.
 
-Receiver fixes must produce `(cede value).method()`, not `cede value.method()`.
+The fix must preserve hats rather than reconstruct a payload name: a unique
+formal receiving `^source` is fixed to `cede ^source`, never `cede source`.
+Receiver fixes must produce `(cede value).method()` for a direct-value source
+or `(cede ^owner).method()` for a unique owner source, never
+`cede value.method()` and never a de-hatted spelling.
 Alias, borrow, partial-place, generic-indeterminate, and multi-argument failures
 must not offer a speculative automatic rewrite.
 
@@ -648,7 +800,10 @@ caller_spelling = bare | explicit
 spelling_reason = ordinary | formal_required | source_less_exempt
 selected_formal = ordinary | cede
 source_category = named_source_place | no_source_place | indeterminate
-ownership_kind  = plain_value | owned_value | shared_owner
+source_view     = direct_value_place
+                  | dereferenced_payload_place(hat_kind)
+                  | handle_place(hat_kind) | indeterminate
+ownership_kind  = plain_value | owned_value | unique_owner_handle | shared_owner
                   | borrowed_view | raw_identity
                   | callable_identity | owned_callable | indeterminate
 copy_proof      = proven_copy | proven_noncopy | indeterminate
@@ -659,13 +814,15 @@ source          = keep_live | invalidate_place(path) | no_source_place
 obligation_before = none | outstanding | discharged
 obligation_action = none | create_for_callee | transfer_to_callee
                     | discharge_to_return | discharge_to_storage
-                    | discharge_to_drop_sink | preserve | reject
+                    | discharge_to_statement_discard | preserve | reject
 obligation_after = none | outstanding | discharged
 commit          = rejected | planned | committed
 ```
 
 Caller spelling, callee consumption, and return transfer remain distinct
-stages. Evidence must distinguish `CopyValue + InvalidatePlace` from ordinary
+stages. Evidence must retain the exact written source path and source view; it
+may not normalize `buf` and `^buf` into one source. It must distinguish
+`CopyValue + InvalidatePlace` from ordinary
 `CopyValue + KeepLive`, and `ConsumeTemporary + NoSourcePlace` from
 `CopyValue + NoSourcePlace`. It may describe a rejected unresolved plan but may
 not grant semantic authority.
@@ -675,8 +832,8 @@ not grant semantic authority.
 TKI replay must preserve or recompute:
 
 - formal `cede` bits and consuming receiver mode;
-- source category, ownership/identity class, Copy bounds/proofs, and generic
-  lowering requirements;
+- source category, exact payload/handle view, ownership/identity class, Copy
+  bounds/proofs, and generic lowering requirements;
 - obligation before/action/after for formals and forwarded parameters;
 - dependency/member contracts;
 - exact source-category requirements needed at the call site; and
@@ -702,11 +859,15 @@ The estimate is for one engineer after RFC acceptance.
 
 ### Stage 0: obligation-aware whole-call planner — 8–14 person-days
 
-- freeze `SourceCategory`, `OwnershipKind`, Copy, referent, temporary
-  eligibility, Drop liability, and obligation before/after facts;
+- freeze `SourceCategory`, `SourceView`, `OwnershipKind`, Copy, referent,
+  temporary eligibility, Drop liability, and obligation before/after facts;
 - build one transaction-local receiver-plus-arguments prepared plan before any
   source or obligation mutation;
 - reject ordinary-formal/explicit-`cede` mismatches before destructive reads;
+- reject payload/handle-view mismatches before destructive reads and prohibit
+  implicit de-hatting, re-hatting, or owner discovery;
+- bring standalone `ExprStmt(CedeExpr)` discard under the same prepared
+  source/obligation/liability model;
 - publish audit/shadow parity without changing accepted source behavior;
 - give receiver and arguments equal validated-plan/E0761 fail-closed coverage;
 - prove candidate/overload/generic rejection discards the complete transaction;
@@ -724,13 +885,19 @@ source-hidden, and CodeGen plan parity.
 - implement `CopyValue + InvalidatePlace` for explicit Copy sources;
 - distinguish Copy NoSourcePlace rvalues from owned temporary consumption;
 - make ownership/identity classification precede Copy classification;
+- preserve exact hats in diagnostics and machine-applicable fixes;
+- qualify standalone Copy, owned/shared, obligation-bearing, borrowed-conflict,
+  partial-place, and indeterminate `cede` statements;
 - migrate direct/static/generic/extern/indirect/async argument routes; and
 - classify the 80-fixture migration rather than bulk-editing warnings.
 
 ### Stage 2: method and callable receivers — 5–8 person-days
 
-- accept `(cede value).method()` through the existing Parser AST;
+- accept `(cede value).method()` and `(cede ^owner).method()` through the
+  existing Parser expression shapes;
 - require it for every named receiver selected by `cede self`, including Copy;
+- require the hatted form when receiver transfer invalidates a unique owner
+  handle, and reject the de-hatted payload substitute;
 - reject explicit receiver cede for ordinary `self` methods before mutation;
 - accept `(cede callable)(args)` as the unambiguous consuming callable form;
 - preserve proven source-less receiver/callable temporary rows;
@@ -775,35 +942,44 @@ the active Toka 1.0 contract:
 2. every named actual selected by a `cede` formal requires visible caller
    `cede`, independent of Copy proof;
 3. every accepted `cede NamedSourcePlace`, including Copy, transitions that
-   exact source to unavailable;
-4. every bare admitted source-less actual is proven `NoSourcePlace`; Copy
+   exact source path and written payload/handle view to unavailable;
+4. `cede ^buf` targets the unique owner handle, while `cede buf` cannot be
+   inferred or lowered as owner transfer/discard; argument, receiver,
+   standalone, TKI, Evidence, and CodeGen routes preserve the distinction;
+5. every bare admitted source-less actual is proven `NoSourcePlace`; Copy
    rvalues use `CopyValue + NoSourcePlace`, while owned temporaries transfer
    cleanup exactly once;
-5. explicit `cede` on `NoSourcePlace` rejects, and borrowed/raw/dependency-
+6. explicit `cede` on `NoSourcePlace` rejects, and borrowed/raw/dependency-
    bearing expressions do not enter the owned temporary exemption;
-6. an explicit `cede` actual supplied to an ordinary formal rejects with no
+7. an explicit `cede` actual supplied to an ordinary formal rejects with no
    state change;
-7. generic lowering requirements resolve before acceptance and CodeGen, while
+8. standalone `cede place` invalidates Copy and non-Copy direct-value sources,
+   and standalone `cede ^owner` invalidates the unique owner handle; either
+   discharges an outstanding obligation when present and drops/releases its
+   result exactly once at statement completion; `cede NoSourcePlace` and a
+   dereferenced owning payload reject;
+9. generic lowering requirements resolve before acceptance and CodeGen, while
    caller spelling remains source-category/formal driven;
-8. receiver and all arguments validate and commit atomically;
-9. rejected calls preserve PlaceState, PAL, obligation state, cleanup masks,
+10. receiver and all arguments validate and commit atomically;
+11. rejected calls preserve PlaceState, PAL, obligation state, cleanup masks,
    and drop liability;
-10. explicit multi-argument alias/borrow conflicts retain their original
+12. explicit multi-argument alias/borrow conflicts retain their original
    independent diagnostic and atomicity purpose;
-11. valid `(cede value).method()`, `(cede callable)(args)`, and source-less
-    consuming receiver cases have
+13. valid `(cede value).method()`, `(cede ^owner).method()`,
+    `(cede callable)(args)`, and source-less consuming receiver cases have
     source, TKI, runtime, and exactly-once-drop coverage;
-12. Evidence v3 records obligation before/action/after and source/TKI outputs
+14. Evidence v3 records exact source view plus obligation before/action/after,
+    and source/TKI outputs
     agree; v2 is isolated as historical replay;
-13. argument and receiver E0761 fault injection still fails closed with no
+15. argument and receiver E0761 fault injection still fails closed with no
     artifact;
-14. the complete pass/fail/warn, conformance, TKI, async, sanitizer, package,
+16. the complete pass/fail/warn, conformance, TKI, async, sanitizer, package,
     developer-experience, and release gates pass;
-15. obsolete implicit invalidation/batching paths are deleted before freezing
+17. obsolete implicit invalidation/batching paths are deleted before freezing
     the candidate SHA;
-16. four published-target artifacts from that exact final SHA pass clean
+18. four published-target artifacts from that exact final SHA pass clean
     relocation and packaged replay; and
-17. independent human/agent dogfood finds no P0/P1 caller-spelling,
+19. independent human/agent dogfood finds no P0/P1 caller-spelling,
     diagnostic, cleanup, or route-parity defect.
 
 ## 14. Non-goals
@@ -811,6 +987,10 @@ the active Toka 1.0 contract:
 This RFC does not:
 
 - add `ParenExpr` or require a Parser redesign;
+- add a separate `CedeStmt` AST node or require a user-facing `drop(value)`
+  function; standalone discard remains `ExprStmt(CedeExpr)`;
+- remove compiler/runtime destructor, release, cleanup-mask, or Drop-liability
+  machinery;
 - generalize partial moves or place calculus;
 - add user-visible lifetime syntax;
 - weaken PAL, H/P capability, async boundary, raw/unsafe, or dependency rules;
@@ -832,6 +1012,8 @@ Implementation must stop and return to RFC review if any of these occur:
 - an accepted explicit `cede` leaves a Copy source available;
 - an ordinary formal accepts explicit `cede`, or a cede formal accepts a bare
   named actual;
+- any route treats `cede buf` as transfer or destruction of `^buf`, erases a
+  required hat, or silently manufactures owner identity from a payload view;
 - a `NoSourcePlace` expression is treated as an invalidatable source, or an
   owned temporary loses/double-owns cleanup;
 - temporary cleanup responsibility cannot be transferred without reintroducing
@@ -847,6 +1029,8 @@ The reviewer must explicitly decide each item before implementation:
 - [ ] accept the call-boundary constitutional rule;
 - [ ] accept `cede NamedSourcePlace => InvalidatePlace` for both Copy and
       NonCopy values;
+- [ ] accept hats as part of exact source identity: `cede ^buf` invalidates the
+      unique owner handle, while `cede buf` cannot transfer or discard it;
 - [ ] accept strict handshake: ordinary formal + explicit `cede` rejects, and
       `cede` formal + bare named actual rejects;
 - [ ] accept bare `NoSourcePlace` values and reject explicit `cede` on them;
@@ -856,8 +1040,11 @@ The reviewer must explicitly decide each item before implementation:
 - [ ] accept ownership/identity classification before Copy classification;
 - [ ] accept generic caller spelling independent of Copy proof, with all
       lowering facts resolved before CodeGen;
-- [ ] accept `(cede value).method()` and `(cede callable)(args)` as consuming
-      named-receiver forms;
+- [ ] accept standalone `cede value` for direct values and `cede ^owner` for
+      unique owner handles, with exactly-once terminal cleanup;
+- [ ] accept `(cede value).method()`, `(cede ^owner).method()`, and
+      `(cede callable)(args)` as their respective consuming named-receiver
+      forms;
 - [ ] accept Stage-0 receiver-plus-arguments plan-first atomic commit and
       receiver-level E0761;
 - [ ] accept obligation before/action/after as independent from payload and
