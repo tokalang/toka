@@ -151,6 +151,71 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
        facts.Destination == TransferDestination::StatementEndDiscard);
   if (!contextMatchesDestination)
     return false;
+  if (isCallBoundary(facts.Destination)) {
+    bool formalTupleValid = false;
+    switch (facts.FormalMorphology) {
+    case TransferFormalMorphology::DirectValue:
+      formalTupleValid =
+          facts.FormalContract == TransferFormalContract::Ordinary
+              ? ((facts.FormalOwnership ==
+                      TransferFormalOwnershipKind::Borrowed &&
+                  facts.FormalTransferClass ==
+                      TransferFormalTransferClass::IdentityTransfer) ||
+                 (facts.FormalOwnership !=
+                      TransferFormalOwnershipKind::Borrowed &&
+                  facts.FormalTransferClass ==
+                      TransferFormalTransferClass::BorrowCapture))
+              : ((facts.FormalOwnership ==
+                      TransferFormalOwnershipKind::Borrowed &&
+                  ((facts.FormalContractOrigin ==
+                        TransferFormalContractOrigin::ConcreteDeclaration &&
+                    facts.FormalTransferClass ==
+                        TransferFormalTransferClass::IdentityTransfer) ||
+                   (facts.FormalContractOrigin ==
+                        TransferFormalContractOrigin::GenericValueDeclaration &&
+                    facts.FormalTransferClass ==
+                        TransferFormalTransferClass::ValueTransfer))) ||
+                 ((facts.FormalOwnership ==
+                       TransferFormalOwnershipKind::PlainValue ||
+                   facts.FormalOwnership ==
+                       TransferFormalOwnershipKind::Owning) &&
+                  facts.FormalTransferClass ==
+                      TransferFormalTransferClass::ValueTransfer));
+      break;
+    case TransferFormalMorphology::UniqueHandle:
+    case TransferFormalMorphology::SharedHandle:
+      formalTupleValid =
+          facts.FormalOwnership == TransferFormalOwnershipKind::Owning &&
+          facts.FormalTransferClass ==
+              (facts.FormalContract == TransferFormalContract::Cede
+                   ? TransferFormalTransferClass::OwnershipTransfer
+                   : TransferFormalTransferClass::BorrowCapture);
+      break;
+    case TransferFormalMorphology::RawHandle:
+      formalTupleValid =
+          facts.FormalOwnership == TransferFormalOwnershipKind::RawIdentity &&
+          facts.FormalTransferClass ==
+              TransferFormalTransferClass::IdentityTransfer;
+      break;
+    case TransferFormalMorphology::Reference:
+      formalTupleValid =
+          facts.FormalOwnership == TransferFormalOwnershipKind::Borrowed &&
+          facts.FormalTransferClass ==
+              TransferFormalTransferClass::IdentityTransfer;
+      break;
+    case TransferFormalMorphology::Callable:
+      formalTupleValid = facts.FormalOwnership ==
+                             TransferFormalOwnershipKind::CallableIdentity &&
+                         facts.FormalTransferClass ==
+                             TransferFormalTransferClass::CallableTransfer;
+      break;
+    case TransferFormalMorphology::None:
+    case TransferFormalMorphology::Indeterminate:
+      break;
+    }
+    if (!formalTupleValid)
+      return false;
+  }
   if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace) {
     if (!facts.SourcePlace || !facts.SourcePlace->valid() ||
         facts.Reachability == TransferReachability::None ||
@@ -191,16 +256,14 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
     if (facts.Reachability != TransferReachability::ExactSubtree &&
         facts.Reachability != TransferReachability::None)
       return false;
-    return (facts.Ownership == TransferOwnershipKind::PlainValue &&
-            facts.CopyProof == TransferCopyProof::ProvenCopy) ||
+    return facts.Ownership == TransferOwnershipKind::PlainValue ||
            (facts.Ownership == TransferOwnershipKind::OwnedValue &&
             facts.CopyProof == TransferCopyProof::ProvenNonCopy) ||
            facts.Ownership == TransferOwnershipKind::BorrowedView;
   case TransferSourceView::DereferencedOwningPayload:
     return facts.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
            facts.Reachability == TransferReachability::ExactSubtree &&
-           ((facts.Ownership == TransferOwnershipKind::PlainValue &&
-             facts.CopyProof == TransferCopyProof::ProvenCopy) ||
+           (facts.Ownership == TransferOwnershipKind::PlainValue ||
             (facts.Ownership == TransferOwnershipKind::OwnedValue &&
              facts.CopyProof == TransferCopyProof::ProvenNonCopy));
   case TransferSourceView::UniqueHandle:
@@ -333,6 +396,10 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
   if (facts.SurfaceSpelling == TransferSurfaceSpelling::ExplicitCede &&
       facts.SourceCategory == TransferSourceCategory::NoSourcePlace)
     return reject(TransferPlanRejection::ExplicitCedeRequiresSource, facts);
+  if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
+      facts.SourceView == TransferSourceView::UniqueHandle &&
+      facts.SourcePlace && !facts.SourcePlace->projections().empty())
+    return reject(TransferPlanRejection::ProjectedHandleRequiresSubroot, facts);
   if (callBoundary && facts.FormalContract != TransferFormalContract::None &&
       facts.FormalMorphology != TransferFormalMorphology::None &&
       facts.FormalMorphology != TransferFormalMorphology::Indeterminate &&
@@ -391,6 +458,9 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
        facts.FormalTransferClass == TransferFormalTransferClass::None ||
        facts.FormalTransferClass ==
            TransferFormalTransferClass::Indeterminate ||
+       facts.FormalContractOrigin == TransferFormalContractOrigin::None ||
+       facts.FormalContractOrigin ==
+           TransferFormalContractOrigin::Indeterminate ||
        !facts.FormalCapabilities.Complete))
     return reject(TransferPlanRejection::IncompleteFacts, facts);
   if (facts.TypeCompatibility == TransferTypeCompatibility::Incompatible)
@@ -672,6 +742,8 @@ const char *toString(TransferPlanRejection value) {
     return "WholeCallDestinationMismatch";
   case TransferPlanRejection::OwnershipContractMismatch:
     return "OwnershipContractMismatch";
+  case TransferPlanRejection::ProjectedHandleRequiresSubroot:
+    return "ProjectedHandleRequiresSubroot";
   }
   return "ClosedWorldCombination";
 }
@@ -971,6 +1043,20 @@ const char *toString(TransferFormalTransferClass value) {
   case TransferFormalTransferClass::CallableTransfer:
     return "CallableTransfer";
   case TransferFormalTransferClass::Indeterminate:
+    return "Indeterminate";
+  }
+  return "Indeterminate";
+}
+
+const char *toString(TransferFormalContractOrigin value) {
+  switch (value) {
+  case TransferFormalContractOrigin::None:
+    return "None";
+  case TransferFormalContractOrigin::ConcreteDeclaration:
+    return "ConcreteDeclaration";
+  case TransferFormalContractOrigin::GenericValueDeclaration:
+    return "GenericValueDeclaration";
+  case TransferFormalContractOrigin::Indeterminate:
     return "Indeterminate";
   }
   return "Indeterminate";

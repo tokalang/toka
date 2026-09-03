@@ -1,0 +1,13 @@
+fn consume_raw(cede *value: i32) -> i32 {
+    auto *owned = cede *value
+    return owned
+}
+
+fn relay(cede *value: i32) -> i32 {
+    return consume_raw(cede *value)
+}
+
+fn main() -> i32 {
+    auto value# = 9:i32
+    return relay(cede *value) - 9:i32
+}

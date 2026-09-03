@@ -69,7 +69,8 @@ def run(tokac, source, expected_error=None, check_only=True):
         "dependency_roots", "dependency", "dependency_complete",
         "actual_type", "formal_type",
         "formal_contract", "formal_morphology", "formal_ownership",
-        "formal_transfer_class", "formal_capabilities",
+        "formal_transfer_class", "formal_contract_origin",
+        "formal_capabilities",
         "actual_capabilities", "ownership", "copy_proof", "eligibility",
         "temporary_eligibility", "type_compatibility",
         "eligibility_context", "obligation_before",
@@ -110,6 +111,8 @@ def run(tokac, source, expected_error=None, check_only=True):
         if not record["formal_init"]:
             require(bool(stage0["formal_type"]) and
                     stage0["formal_morphology"] not in
+                    ("None", "Indeterminate") and
+                    stage0["formal_contract_origin"] not in
                     ("None", "Indeterminate") and
                     stage0["formal_capabilities"]["complete"],
                     source + " omitted Stage-0 formal morphology facts")
@@ -417,6 +420,24 @@ def main():
         dependency="RawUnsafe", source_path="",
     ))
 
+    source = "tests/semantics/call_transfer_shadow_m1/raw_selector_obligation.tk"
+    records = run(tokac, source)
+    record = find(
+        records, source, callee="consume_raw", route="ordinary",
+        parameter="value", value_category="Place",
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Admitted", rejection="None",
+                   value_production="CopyIdentity",
+                   source="InvalidateBinding", source_view="RawHandle",
+                   obligation_before="Outstanding",
+                   source_obligation_action="TransferToCallee",
+                   source_obligation_after="Discharged",
+                   destination_obligation_action="ReceiveTransferred",
+                   destination_obligation_after="Outstanding")
+    require("/dereference" not in record["stage0"]["exact_path"],
+            source + " retained selector syntax as a place projection")
+
     source = "tests/semantics/call_transfer_shadow_m1/borrow_construction_facts.tk"
     records = run(tokac, source)
     record = find(
@@ -500,12 +521,31 @@ def main():
 
     source = "tests/semantics/call_transfer_shadow_m1/borrowed_view_paths.tk"
     records = run(tokac, source)
-    receipts.append(find(
+    record = find(
         records, source, callee="consume_view", route="ordinary",
         parameter="value", value_category="Place", transfer="CopyIdentity",
         source="InvalidatePlace", dependency="Borrowed", source_path="view",
         dependency_paths=["owner.buf"],
-    ))
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Admitted", rejection="None",
+                   value_production="CopyIdentity",
+                   formal_ownership="Borrowed",
+                   formal_transfer_class="IdentityTransfer",
+                   formal_contract_origin="ConcreteDeclaration")
+
+    source = "tests/semantics/call_transfer_shadow_m1/generic_borrowed_contract_origin.tk"
+    records = run(tokac, source)
+    record = find(
+        records, source, callee="consume_generic", route="ordinary",
+        parameter="value", value_category="Place",
+    )
+    receipts.append(record)
+    require_stage0(record, source, outcome="Rejected",
+                   rejection="OwnershipContractMismatch",
+                   formal_contract_origin="GenericValueDeclaration",
+                   formal_transfer_class="ValueTransfer",
+                   formal_ownership="Borrowed")
 
     source = "tests/semantics/call_transfer_shadow_m1/borrowed_projection_paths.tk"
     records = run(tokac, source)

@@ -4481,7 +4481,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     legacyCedeExempt,
                     CallTransferRoute::DynamicTraitMethod,
                     traitName + "::" + Met->Method, param.Name, param.Loc,
-                    M->Effect == EffectKind::Async);
+                    M->Effect == EffectKind::Async,
+                    CallExecutionBoundary::None, param.Type);
               }
             }
             return toka::Type::fromString(M->ReturnType);
@@ -4969,7 +4970,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                       expectedParamTy, param.IsCeded, param.IsInit, false,
                       true, legacyCedeExempt, CallTransferRoute::Method,
                       FD->Name.empty() ? Met->Method : FD->Name, param.Name,
-                      param.Loc, FD->Effect == EffectKind::Async);
+                      param.Loc, FD->Effect == EffectKind::Async,
+                      CallExecutionBoundary::None, param.Type);
                   auto *callerCede =
                       dynamic_cast<CedeExpr *>(Met->Args[i].get());
                   if (!param.IsCeded && callerCede &&

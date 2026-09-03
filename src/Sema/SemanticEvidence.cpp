@@ -105,7 +105,7 @@ bool ExplicitCedeStage0ShadowRecord::operator<(
              ExactPath, ReferentRoot, ReferentPath, DependencyRoots,
              Dependency, DependencyFactsComplete, ActualType, FormalType,
              FormalContract, FormalMorphology, FormalOwnership,
-             FormalTransferClass,
+             FormalTransferClass, FormalContractOrigin,
              FormalCapabilitiesComplete, FormalHandleRebindable,
              FormalPayloadWritable, ActualCapabilitiesComplete,
              ActualHandleRebindable, ActualPayloadWritable, Ownership,
@@ -121,6 +121,7 @@ bool ExplicitCedeStage0ShadowRecord::operator<(
              rhs.DependencyFactsComplete, rhs.ActualType, rhs.FormalType,
              rhs.FormalContract, rhs.FormalMorphology,
              rhs.FormalOwnership, rhs.FormalTransferClass,
+             rhs.FormalContractOrigin,
              rhs.FormalCapabilitiesComplete, rhs.FormalHandleRebindable,
              rhs.FormalPayloadWritable, rhs.ActualCapabilitiesComplete,
              rhs.ActualHandleRebindable, rhs.ActualPayloadWritable,
@@ -543,6 +544,8 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << escapeJSON(record.Stage0.FormalOwnership)
         << "\",\"formal_transfer_class\":\""
         << escapeJSON(record.Stage0.FormalTransferClass)
+        << "\",\"formal_contract_origin\":\""
+        << escapeJSON(record.Stage0.FormalContractOrigin)
         << "\",\"formal_capabilities\":{\"complete\":"
         << (record.Stage0.FormalCapabilitiesComplete ? "true" : "false")
         << ",\"handle_rebind\":"

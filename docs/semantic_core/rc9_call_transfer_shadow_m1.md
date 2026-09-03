@@ -78,6 +78,14 @@ partial source can therefore preserve an outstanding caller-root obligation
 while independently creating an outstanding callee obligation. Formal
 ownership and transfer class are also separate from payload Copy proof, so
 borrowed/raw/callable identity classification remains identity-first.
+The formal record retains concrete versus generic-value declaration origin;
+instantiating a generic value contract with a borrowed payload therefore does
+not silently turn it into a concrete borrowed-identity contract. Until typed
+ownership subroots exist, a projected unique-handle source rejects
+`ProjectedHandleRequiresSubroot` rather than invalidating its lexical root.
+Raw `*` selector syntax is removed from the typed place projections before
+whole-source obligation coverage is decided; it cannot masquerade as a partial
+dereference move.
 
 Every Stage-0 rejection carries `source=NoStateChange`. A place whose stable
 declaration coordinate cannot yet be recovered rejects `IncompleteFacts`

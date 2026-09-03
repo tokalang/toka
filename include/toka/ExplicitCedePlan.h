@@ -35,6 +35,7 @@ enum class TransferPlanRejection : uint8_t {
   WholeCallAliasConflict,
   WholeCallDestinationMismatch,
   OwnershipContractMismatch,
+  ProjectedHandleRequiresSubroot,
 };
 
 enum class TransferPlanOrigin : uint8_t { UserSource, CompilerSynthetic };
@@ -102,6 +103,12 @@ enum class TransferFormalTransferClass : uint8_t {
   OwnershipTransfer,
   IdentityTransfer,
   CallableTransfer,
+  Indeterminate,
+};
+enum class TransferFormalContractOrigin : uint8_t {
+  None,
+  ConcreteDeclaration,
+  GenericValueDeclaration,
   Indeterminate,
 };
 enum class TransferDestination : uint8_t {
@@ -228,6 +235,8 @@ struct ExplicitCedePreparedFacts {
       TransferFormalOwnershipKind::None;
   TransferFormalTransferClass FormalTransferClass =
       TransferFormalTransferClass::None;
+  TransferFormalContractOrigin FormalContractOrigin =
+      TransferFormalContractOrigin::None;
   TransferAccessCapabilities FormalCapabilities;
   TransferAccessCapabilities ActualCapabilities;
   TransferDestination Destination = TransferDestination::Indeterminate;
@@ -320,6 +329,7 @@ const char *toString(TransferFormalContract value);
 const char *toString(TransferFormalMorphology value);
 const char *toString(TransferFormalOwnershipKind value);
 const char *toString(TransferFormalTransferClass value);
+const char *toString(TransferFormalContractOrigin value);
 const char *toString(TransferEligibility value);
 const char *toString(TransferEligibilityContext value);
 const char *toString(TransferTemporaryEligibility value);

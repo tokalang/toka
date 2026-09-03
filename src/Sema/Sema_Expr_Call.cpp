@@ -1694,11 +1694,16 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
 ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
     Expr *argument, const std::shared_ptr<Type> &argumentType,
     const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
-    const CallTransferPlan &legacyShadowPlan) {
+    const CallTransferPlan &legacyShadowPlan,
+    const std::string &formalDeclaredType) {
   ExplicitCedePreparedFacts facts;
   auto actual = argumentType ? resolveType(argumentType, false) : nullptr;
   auto formal = destinationType ? resolveType(destinationType, false) : nullptr;
   auto actualPayload = shadowCarrierPayload(actual);
+  const bool genericValueDeclaration =
+      formal && !formalDeclaredType.empty() &&
+      Type::stripMorphology(formalDeclaredType) !=
+          Type::stripMorphology(formal->getSoulName());
   facts.ActualTypeKey =
       actual && !actual->isUnknown() ? actual->toString() : std::string{};
   facts.FormalTypeKey =
@@ -1845,6 +1850,13 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
     else
       facts.SourceView = TransferSourceView::DirectValue;
   }
+  if (facts.SourceView == TransferSourceView::RawHandle &&
+      !identityPath.Projections.empty() &&
+      identityPath.Projections.back().Kind ==
+          AccessProjectionKind::Dereference) {
+    identityPath.Projections.pop_back();
+    facts.SourcePlace = stage0PlaceIdentity(identityPath, moduleOrigin);
+  }
 
   Expr *borrowTarget = nullptr;
   if (auto *address = dynamic_cast<AddressOfExpr *>(surface))
@@ -1922,10 +1934,15 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
     facts.FormalMorphology = TransferFormalMorphology::None;
     facts.FormalOwnership = TransferFormalOwnershipKind::None;
     facts.FormalTransferClass = TransferFormalTransferClass::None;
+    facts.FormalContractOrigin = TransferFormalContractOrigin::None;
   } else {
     facts.FormalContract = formalIsCeded ? TransferFormalContract::Cede
                                          : TransferFormalContract::Ordinary;
     facts.FormalMorphology = stage0Morphology(formal);
+    facts.FormalContractOrigin =
+        genericValueDeclaration
+            ? TransferFormalContractOrigin::GenericValueDeclaration
+            : TransferFormalContractOrigin::ConcreteDeclaration;
     if (formal && !formal->isUnknown()) {
       if (formal->isRawPointer())
         facts.FormalOwnership = TransferFormalOwnershipKind::RawIdentity;
@@ -1956,6 +1973,13 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
                TransferFormalMorphology::Callable)
         facts.FormalTransferClass =
             TransferFormalTransferClass::CallableTransfer;
+      else if (facts.FormalMorphology ==
+                   TransferFormalMorphology::DirectValue &&
+               facts.FormalOwnership ==
+                   TransferFormalOwnershipKind::Borrowed &&
+               !genericValueDeclaration)
+        facts.FormalTransferClass =
+            TransferFormalTransferClass::IdentityTransfer;
       else if (!formalIsCeded)
         facts.FormalTransferClass =
             TransferFormalTransferClass::BorrowCapture;
@@ -1992,11 +2016,11 @@ ExplicitCedePlan Sema::buildExplicitCedeStage0CallPlan(
     facts.Eligibility = TransferEligibility::Indeterminate;
   } else if (!sourceIsLocal || sourceInfo->IsPlaceAlias) {
     facts.Eligibility = TransferEligibility::Ineligible;
-  } else if (legacyShadowPlan.SourcePlace.Projections.empty()) {
+  } else if (identityPath.Projections.empty()) {
     facts.Eligibility = TransferEligibility::Eligible;
   } else {
     facts.Eligibility = TransferEligibility::Ineligible;
-    const auto &projections = legacyShadowPlan.SourcePlace.Projections;
+    const auto &projections = identityPath.Projections;
     if (projections.size() == 1 && sourceInfo->partialMovePlan().isAdmitted()) {
       const auto &projection = projections.front();
       if (projection.Kind == AccessProjectionKind::ConstantIndex &&
@@ -2066,7 +2090,7 @@ void Sema::recordShadowCallTransfer(
     bool legacyCedeExempt, CallTransferRoute route,
     const std::string &callee, const std::string &parameter,
     SourceLocation parameterLoc, bool isAsync,
-    CallExecutionBoundary executionBoundary) {
+    CallExecutionBoundary executionBoundary, std::string formalDeclaredType) {
   if (!SemanticEvidence::isCallTransferShadowEnabled() ||
       m_IsPrecomputingCaptures)
     return;
@@ -2075,7 +2099,8 @@ void Sema::recordShadowCallTransfer(
       formalIsInit, actualIsInit, legacyCallerRuleApplied, legacyCedeExempt,
       route, isAsync, executionBoundary, argumentIndex, formalIndex);
   plan.Stage0Plan = buildExplicitCedeStage0CallPlan(
-      argument, argumentType, destinationType, formalIsCeded, plan);
+      argument, argumentType, destinationType, formalIsCeded, plan,
+      formalDeclaredType);
   auto existing = std::find_if(
       plans.begin(), plans.end(), [&](const CallTransferPlan &candidate) {
         return candidate.ArgumentIndex == argumentIndex &&
@@ -2117,6 +2142,8 @@ void Sema::recordShadowCallTransfer(
   stage0Record.FormalOwnership = toString(stage0.Prepared.FormalOwnership);
   stage0Record.FormalTransferClass =
       toString(stage0.Prepared.FormalTransferClass);
+  stage0Record.FormalContractOrigin =
+      toString(stage0.Prepared.FormalContractOrigin);
   stage0Record.FormalCapabilitiesComplete =
       stage0.Prepared.FormalCapabilities.Complete;
   stage0Record.FormalHandleRebindable =
@@ -2696,7 +2723,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             static_cast<unsigned>(argumentIndex + 1), formalIndex, argument,
             argumentType, destinationType, param.IsCeded, param.IsInit,
             Call->isInitArgument(argumentIndex), true, isExempt, route,
-            CallName, param.Name, param.Loc, isAsync);
+            CallName, param.Name, param.Loc, isAsync,
+            CallExecutionBoundary::None, param.Type);
         if (!param.IsCeded)
           return;
 
@@ -5883,7 +5911,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           Call->Args[i].get(), argType, paramType, isCededParam, formalIsInit,
           Call->isInitArgument(i), true, legacyCedeExempt, shadowRoute,
           CallName, shadowParamName, cedeParamLoc, calleeIsAsync,
-          classifyShadowExecutionBoundary(Fn));
+          classifyShadowExecutionBoundary(Fn),
+          Fn && Fn->TemplateOrigin && i < Fn->TemplateOrigin->Args.size()
+              ? Fn->TemplateOrigin->Args[i].Type
+              : (Fn && i < Fn->Args.size()
+                     ? Fn->Args[i].Type
+                     : (Ext && i < Ext->Args.size() ? Ext->Args[i].Type
+                                                    : std::string{})));
     }
 
     if (paramIsValueMutable && !paramIsHatted && !isCededParam &&

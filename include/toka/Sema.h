@@ -821,7 +821,8 @@ private:
   ExplicitCedePlan buildExplicitCedeStage0CallPlan(
       Expr *Argument, const std::shared_ptr<Type> &ArgumentType,
       const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
-      const CallTransferPlan &LegacyShadowPlan);
+      const CallTransferPlan &LegacyShadowPlan,
+      const std::string &FormalDeclaredType);
   void recordShadowCallTransfer(
       ASTNode *CallSite, std::vector<CallTransferPlan> &Plans,
       unsigned ArgumentIndex, unsigned FormalIndex, Expr *Argument,
@@ -831,7 +832,8 @@ private:
       bool LegacyCedeExempt, CallTransferRoute Route, const std::string &Callee,
       const std::string &Parameter,
       SourceLocation ParameterLoc, bool IsAsync,
-      CallExecutionBoundary ExecutionBoundary = CallExecutionBoundary::None);
+      CallExecutionBoundary ExecutionBoundary = CallExecutionBoundary::None,
+      std::string FormalDeclaredType = {});
   bool returnTypeHasMember(FunctionDecl *Function,
                            const std::string &Member);
   std::string getDependencyPathString(Expr *E);
