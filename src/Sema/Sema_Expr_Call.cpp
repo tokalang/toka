@@ -2443,9 +2443,6 @@ void Sema::captureStage0CallArgumentFacts(
 }
 
 Sema::Stage0TransactionFinalizer::~Stage0TransactionFinalizer() {
-  if (InvalidSpecializationJournal)
-    SemanticEvidence::rollbackCallTransferJournal(
-        *InvalidSpecializationJournal);
   Owner.finalizeExplicitCedeStage0Transaction(CallSite);
 }
 
@@ -3130,6 +3127,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   const size_t d3CallDiagnosticStart =
       m_D3ObservationSession ? DiagnosticEngine::records().size() : 0;
+  bool rollbackInvalidSpecializationDescendants = false;
   std::string CallName = Call->Callee;
   std::string OriginalName = CallName;
 
@@ -5204,7 +5202,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         if (SemanticEvidence::isCallTransferShadowEnabled() &&
             stage0CallEntrySnapshot) {
           m_Stage0InvalidGenericSpecializationCalls.insert(Call);
-          stage0TransactionFinalizer.armInvalidSpecializationJournal();
+          rollbackInvalidSpecializationDescendants = true;
         }
       }
       if (!entry ||
@@ -5270,6 +5268,28 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           formalReceiverMode,
           stage0CallEntrySnapshot ? &*stage0CallEntrySnapshot : nullptr,
           false);
+      for (size_t index = 0;
+           index < Call->Args.size() && index < parameterTypes.size();
+           ++index) {
+        const auto argumentType =
+            stage0CallEntrySnapshot &&
+                    index < stage0CallEntrySnapshot->ArgumentTypes.size()
+                ? stage0CallEntrySnapshot->ArgumentTypes[index]
+                : queryShadowCallArgumentType(Call->Args[index].get(),
+                                              parameterTypes[index]);
+        const bool formalCeded =
+            parameterTypes[index] && parameterTypes[index]->IsCede;
+        const bool cedeExempt =
+            formalCeded && (canImplicitlyPassToCede(argumentType) ||
+                            canPreserveBareSignatureCede(argumentType));
+        recordShadowCallTransfer(
+            Call, Call->ShadowArgumentTransfers,
+            static_cast<unsigned>(index + 1), static_cast<unsigned>(index + 1),
+            Call->Args[index].get(), argumentType, parameterTypes[index],
+            formalCeded, false, Call->isInitArgument(index), false, cedeExempt,
+            route, CallName, "arg" + std::to_string(index + 1),
+            SourceLocation{}, false);
+      }
       error(Call, DiagID::ERR_SEMA_CLOSURE_EXPECTS_ARGUMENTS_BUT_GOT,
             std::to_string(parameterTypes.size()),
             std::to_string(Call->Args.size()));
@@ -6055,6 +6075,53 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   funcType =
       std::make_shared<toka::FunctionType>(ParamTypes, ReturnType, IsVariadic);
 
+  auto recordEarlyDirectReceipts = [&]() {
+    if (!SemanticEvidence::isCallTransferShadowEnabled())
+      return;
+    for (size_t index = 0;
+         index < Call->Args.size() && index < ParamTypes.size(); ++index) {
+      const auto argumentType =
+          stage0CallEntrySnapshot &&
+                  index < stage0CallEntrySnapshot->ArgumentTypes.size()
+              ? stage0CallEntrySnapshot->ArgumentTypes[index]
+              : queryShadowCallArgumentType(Call->Args[index].get(),
+                                            ParamTypes[index]);
+      const bool formalCeded =
+          (Fn && index < Fn->Args.size() && Fn->Args[index].IsCeded) ||
+          (Ext && index < Ext->Args.size() && Ext->Args[index].IsCeded);
+      const bool formalInit =
+          Fn && index < Fn->Args.size() && Fn->Args[index].IsInit;
+      const bool cedeExempt =
+          formalCeded && (canImplicitlyPassToCede(argumentType) ||
+                          canPreserveBareSignatureCede(argumentType));
+      const std::string parameter =
+          Fn && index < Fn->Args.size()
+              ? Fn->Args[index].Name
+              : (Ext && index < Ext->Args.size()
+                     ? Ext->Args[index].Name
+                     : "arg" + std::to_string(index + 1));
+      const SourceLocation parameterLoc =
+          Fn && index < Fn->Args.size()
+              ? Fn->Args[index].Loc
+              : (Ext && index < Ext->Args.size() ? Ext->Args[index].Loc
+                                                 : SourceLocation{});
+      recordShadowCallTransfer(
+          Call, Call->ShadowArgumentTransfers, static_cast<unsigned>(index + 1),
+          static_cast<unsigned>(index + 1), Call->Args[index].get(),
+          argumentType, ParamTypes[index], formalCeded, formalInit,
+          Call->isInitArgument(index), true, cedeExempt,
+          Ext ? CallTransferRoute::Extern : CallTransferRoute::Ordinary,
+          CallName, parameter, parameterLoc,
+          Fn && Fn->Effect == EffectKind::Async,
+          classifyShadowExecutionBoundary(Fn),
+          Fn && index < Fn->Args.size()
+              ? buildStage0FormalDeclarationFacts(&Fn->Args[index])
+              : (Ext && index < Ext->Args.size()
+                     ? buildStage0FormalDeclarationFacts(&Ext->Args[index])
+                     : TransferFormalDeclarationFacts{}));
+    }
+  };
+
   // 6. Argument Matching and Default Argument Injection
   bool hasFunctionElision = false;
   if (!Call->Args.empty()) {
@@ -6123,6 +6190,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               Call, CallName, Fn, Ext, ParamTypes,
               stage0CallEntrySnapshot ? &*stage0CallEntrySnapshot : nullptr,
               false);
+          recordEarlyDirectReceipts();
           error(Call, DiagID::ERR_SEMA_ARGUMENT_COUNT_MISMATCH_FOR_EXPECTED_GOT, CallName, std::to_string(paramCount), std::to_string(providedCount));
           markExplicitCedeStage0RouteValidationComplete(Call);
           return ReturnType;
@@ -6133,6 +6201,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     recordExplicitCedeStage0DirectTransaction(
         Call, CallName, Fn, Ext, ParamTypes,
         stage0CallEntrySnapshot ? &*stage0CallEntrySnapshot : nullptr, false);
+    recordEarlyDirectReceipts();
     error(Call, DiagID::ERR_SEMA_ARGUMENT_COUNT_MISMATCH_FOR_EXPECTED_GOT, CallName, std::to_string(paramCount), std::to_string(providedCount));
     markExplicitCedeStage0RouteValidationComplete(Call);
     return ReturnType;
@@ -6473,6 +6542,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   }
 
   if (!preflightExplicitCallCedeAliases(Call->Args, formalCeded, formalNames)) {
+    recordEarlyDirectReceipts();
     markExplicitCedeStage0RouteValidationComplete(Call);
     return ReturnType;
   }
@@ -6516,6 +6586,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           }
        }
     }
+
+    std::optional<SemanticEvidence::CallTransferJournalCheckpoint>
+        descendantJournal;
+    if (rollbackInvalidSpecializationDescendants)
+      descendantJournal = SemanticEvidence::checkpointCallTransferJournal();
 
     std::shared_ptr<toka::Type> argType;
     if (isInitParam && isInitArgument) {
@@ -6565,6 +6640,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       m_AllowPermissionSuffix = oldAllowPermissionSuffix;
       m_ExpectedCedeTransfer = oldExpectedCedeTransfer;
     }
+    if (descendantJournal)
+      SemanticEvidence::rollbackCallTransferJournal(*descendantJournal);
     projectOwnedStringView(Call->Args[i], argType, paramType);
     if (d3ObservationInput && i == 0)
       d3LegacyArgumentType = argType;

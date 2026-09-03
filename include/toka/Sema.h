@@ -895,17 +895,10 @@ private:
         : Owner(Owner), CallSite(CallSite) {}
     Stage0TransactionFinalizer(const Stage0TransactionFinalizer &) = delete;
     ~Stage0TransactionFinalizer();
-    void armInvalidSpecializationJournal() {
-      if (!InvalidSpecializationJournal)
-        InvalidSpecializationJournal =
-            SemanticEvidence::checkpointCallTransferJournal();
-    }
 
   private:
     Sema &Owner;
     ASTNode *CallSite = nullptr;
-    std::optional<SemanticEvidence::CallTransferJournalCheckpoint>
-        InvalidSpecializationJournal;
   };
   Stage0CallSnapshot captureStage0CallSnapshot();
   void captureStage0CallArgumentFacts(

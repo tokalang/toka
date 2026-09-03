@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TRANSACTIONS = {}
 PARITY_CASES = set()
 MISSING_PRE_MUTATION = []
+TRANSACTION_RECORD_GAPS = []
 if not os.environ.get("TOKA_LIB"):
     os.environ["TOKA_LIB"] = str(ROOT / "lib")
 
@@ -255,6 +256,58 @@ def run(tokac, source, expected_error=None, check_only=True, extra=()):
             if item["outcome"] == "Rejected":
                 require(item["source"] == "NoStateChange",
                         source + " rejected transaction item changes state")
+
+    def evidence_key(callee, route, location, index, formal_index):
+        return (callee, route, location.get("file", ""),
+                location.get("line", 0), index, formal_index)
+
+    records_by_item = {}
+    for record in records:
+        if not record["location"]["file"].endswith(source):
+            continue
+        key = evidence_key(
+            record["callee"], record["route"], record["location"],
+            record["argument_index"], record["formal_index"])
+        records_by_item.setdefault(key, []).append(record)
+
+    transaction_items_by_record = {}
+    shared_stage0_fields = (
+        "actual_type", "formal_type", "formal_contract", "outcome",
+        "rejection", "exact_path", "referent_path", "dependency_roots",
+        "source_view", "surface_spelling", "copy_proof", "eligibility",
+        "obligation_before", "reachability", "value_production", "source",
+        "destination", "drop", "source_obligation_action",
+        "source_obligation_after", "destination_obligation_action",
+        "destination_obligation_after",
+    )
+    for transaction in transactions:
+        if not transaction["location"]["file"].endswith(source):
+            continue
+        for item in transaction["items"]:
+            if item["role"] != "argument":
+                continue
+            key = evidence_key(
+                transaction["callee"], transaction["route"],
+                transaction["location"], item["index"],
+                item["formal_index"])
+            matches = records_by_item.get(key, [])
+            if len(matches) != 1:
+                TRANSACTION_RECORD_GAPS.append((source, key, len(matches)))
+                continue
+            stage0 = matches[0]["stage0"]
+            for field in shared_stage0_fields:
+                require(item[field] == stage0[field],
+                        source + " transaction/record Stage-0 %s differs: %r"
+                        % (field, key))
+            transaction_items_by_record.setdefault(key, []).append(item)
+
+    for key, matching_records in records_by_item.items():
+        require(len(matching_records) == 1,
+                source + " emitted duplicate argument records: %r" % (key,))
+        matches = transaction_items_by_record.get(key, [])
+        require(len(matches) == 1,
+                source + " argument record has %d matching transaction items: %r"
+                % (len(matches), key))
     return records
 
 
@@ -1395,11 +1448,14 @@ def main():
             "}\n")
         source = str(mangled_source)
         require_shadow_parity(tokac, source, expected_error="E0408")
-        run(tokac, source, expected_error="E0408")
+        mangled_records = run(tokac, source, expected_error="E0408")
         source_call = find_transaction(
             source, callee="generic_bad", route="ordinary", location_line=9)
         mangled_call = find_transaction(
             source, callee=mangled_name, route="ordinary", location_line=10)
+        mangled_record = find(
+            mangled_records, source, callee=mangled_name, route="ordinary",
+            location_line=10, argument_index=1, formal_index=1)
         mangled_fixture_transactions = [
             transaction for transaction in TRANSACTIONS[source]
             if transaction["location"]["file"].endswith(source)]
@@ -1407,12 +1463,18 @@ def main():
                 not mangled_call["commit_allowed"] and
                 source_call["rejection"] == "WholeCallValidationFailed" and
                 mangled_call["rejection"] == "WholeCallValidationFailed" and
+                mangled_record["stage0"]["outcome"] == "Admitted" and
                 not any(transaction["callee"] in
                         ("first_inner", "second_inner") and
                         transaction["location"]["file"].endswith(source)
                         for transaction in TRANSACTIONS[source]),
                 "mangled cache alias discarded specialization validity: " +
                 json.dumps(mangled_fixture_transactions, sort_keys=True))
+        require(not any(record["callee"] in
+                        ("first_inner", "second_inner") and
+                        record["location"]["file"].endswith(source)
+                        for record in mangled_records),
+                "mangled cache alias retained a nested child record")
 
     replay_case = ROOT / "tests/semantics/tki_replay/cases/own_cede_003_generic_methods"
     with tempfile.TemporaryDirectory(prefix="toka-call-transfer-shadow-") as temp:
@@ -1540,6 +1602,9 @@ def main():
     require(not MISSING_PRE_MUTATION,
             "qualified routes emitted records without pre-mutation "
             "transactions: " + repr(MISSING_PRE_MUTATION[:5]))
+    require(not TRANSACTION_RECORD_GAPS,
+            "transaction/record correspondence gaps: " +
+            repr(TRANSACTION_RECORD_GAPS))
     expected_transaction_routes = {
         "ordinary", "static", "method", "callable", "extern",
         "indirect-fn", "indirect-dyn-fn", "dynamic-trait-method",

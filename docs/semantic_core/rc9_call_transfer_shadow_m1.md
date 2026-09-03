@@ -164,6 +164,16 @@ independently evaluated argument journal once.
 Journal rollback does not rewind the monotonic snapshot revision, so discarded
 candidate edges may currently leave harmless numbering gaps.
 
+An invalid mangled-cache call checkpoints each argument evaluation
+independently. Descendant call evidence is rolled back before the existing
+parent `recordShadowCallTransfer()` path publishes that argument, so neither
+the parent receipt nor an earlier argument can be erased. Arity and alias
+preflight exits publish their selected-formal receipts directly from the same
+pre-mutation pending plan; they never reconstruct a Stage-0 plan from
+post-state. For every qualified source call, each transaction argument item
+has exactly one matching record by callee, source line, route, argument index,
+and formal index, and all shared Stage-0 plan fields must be identical.
+
 Argument indices are one-based. Method/callable receiver roles are separate;
 an indirect callable receiver has no declaration-side formal and therefore
 uses formal index zero and fails closed. Shadow plans are discarded when an
@@ -223,6 +233,9 @@ are not part of the Stage-0 call-transaction contract.
   cache-hit control proving both real argument evaluations publish once;
 - transitive invalid/valid wrapper chains, shared mangled-key lookup, and
   deterministic fail-closed recursive-specialization coverage;
+- descendant-only invalid-mangled rollback, preservation of its parent
+  argument receipt, and transaction/record one-to-one Stage-0 parity,
+  including alias and arity early exits;
 - async `.start`, nested non-boundary calls, and resolved-declaration thread
   handoff annotation, including aliases and a user same-named function;
 - init formal/actual spelling, unknown actuals, unary/cast/address/postfix
