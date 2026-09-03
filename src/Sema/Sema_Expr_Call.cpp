@@ -51,6 +51,54 @@ private:
   unsigned &Depth;
 };
 
+class Stage0FinalGenericArgumentScope final {
+public:
+  Stage0FinalGenericArgumentScope(unsigned &depth, bool enabled)
+      : Depth(depth), Enabled(enabled) {
+    if (Enabled)
+      ++Depth;
+  }
+  Stage0FinalGenericArgumentScope(const Stage0FinalGenericArgumentScope &) =
+      delete;
+  Stage0FinalGenericArgumentScope &
+  operator=(const Stage0FinalGenericArgumentScope &) = delete;
+  ~Stage0FinalGenericArgumentScope() {
+    if (Enabled)
+      --Depth;
+  }
+
+private:
+  unsigned &Depth;
+  bool Enabled = false;
+};
+
+class Stage0CallTransferJournal final {
+public:
+  explicit Stage0CallTransferJournal(bool enabled) : Enabled(enabled) {
+    if (Enabled)
+      Checkpoint = SemanticEvidence::checkpointCallTransferJournal();
+  }
+  Stage0CallTransferJournal(const Stage0CallTransferJournal &) = delete;
+  Stage0CallTransferJournal &
+  operator=(const Stage0CallTransferJournal &) = delete;
+  ~Stage0CallTransferJournal() {
+    if (Enabled && !Finished)
+      SemanticEvidence::rollbackCallTransferJournal(Checkpoint);
+  }
+
+  void commit() { Finished = true; }
+  void rollback() {
+    if (Enabled && !Finished)
+      SemanticEvidence::rollbackCallTransferJournal(Checkpoint);
+    Finished = true;
+  }
+
+private:
+  bool Enabled = false;
+  bool Finished = false;
+  SemanticEvidence::CallTransferJournalCheckpoint Checkpoint;
+};
+
 static bool isShadowTransparentPostfix(TokenType op) {
   return op == TokenType::TokenWrite || op == TokenType::TokenNull ||
          op == TokenType::TokenNone;
@@ -2441,6 +2489,40 @@ void Sema::markExplicitCedeStage0RouteValidationComplete(ASTNode *callSite) {
     pending->second.RouteValidationComplete = true;
 }
 
+void Sema::recordExplicitCedeStage0GenericResolutionRejection(
+    CallExpr *call, const std::string &callee,
+    const Stage0CallSnapshot *snapshot, unsigned expectedArgumentCount,
+    const char *rejection) {
+  if (!SemanticEvidence::isCallTransferShadowEnabled() ||
+      m_IsPrecomputingCaptures || !isStage0CallTransferObservationAllowed() ||
+      !call || !snapshot)
+    return;
+
+  ExplicitCedeStage0TransactionRecord record;
+  record.Callee = callee;
+  record.Route = callTransferRouteName(CallTransferRoute::Ordinary);
+  record.Outcome = "Rejected";
+  record.Rejection = rejection;
+  record.LocalPlanAdmitted = false;
+  record.CommitAllowed = false;
+  record.ArityComplete = call->Args.size() == expectedArgumentCount;
+  record.ValidationComplete = false;
+  record.PreparedBeforeLegacyMutation = snapshot->Revision != 0;
+  record.HasReceiver = false;
+  record.SnapshotRevision = snapshot->Revision;
+  record.PALRevision = snapshot->Revision;
+  record.ExpectedArgumentCount = expectedArgumentCount;
+  record.ActualArgumentCount = static_cast<unsigned>(call->Args.size());
+  record.ArgumentCount = 0;
+
+  ExplicitCedeWholeCallPlan rejectedPlan;
+  rejectedPlan.Outcome = TransferPlanOutcome::Rejected;
+  rejectedPlan.Rejection = TransferPlanRejection::IncompleteFacts;
+  m_Stage0PendingTransactions[call] = {
+      std::move(record), std::move(rejectedPlan), snapshot->DiagnosticStart,
+      true, snapshot->Revision != 0};
+}
+
 TransferFormalDeclarationFacts Sema::buildStage0FormalDeclarationFacts(
     const FunctionDecl::Arg *formal) {
   TransferFormalDeclarationFacts facts;
@@ -2507,7 +2589,7 @@ void Sema::recordExplicitCedeStage0Transaction(
     unsigned expectedArgumentCount, unsigned actualArgumentCount,
     bool arityComplete) {
   if (!SemanticEvidence::isCallTransferShadowEnabled() ||
-      m_IsPrecomputingCaptures || m_D3SpeculativeCallDepth != 0)
+      m_IsPrecomputingCaptures || !isStage0CallTransferObservationAllowed())
     return;
 
   std::optional<Stage0CallSnapshot> ownedSnapshot;
@@ -2792,7 +2874,7 @@ void Sema::recordShadowCallTransfer(
     CallExecutionBoundary executionBoundary,
     TransferFormalDeclarationFacts formalDeclaration) {
   if (!SemanticEvidence::isCallTransferShadowEnabled() ||
-      m_IsPrecomputingCaptures || m_D3SpeculativeCallDepth != 0)
+      m_IsPrecomputingCaptures || !isStage0CallTransferObservationAllowed())
     return;
   auto pendingTransaction = m_Stage0PendingTransactions.find(callSite);
   CallTransferPlan plan = buildShadowCallTransferPlan(
@@ -3031,7 +3113,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   Stage0TransactionFinalizer stage0TransactionFinalizer(*this, Call);
   std::optional<Stage0CallSnapshot> stage0CallEntrySnapshot;
   if (SemanticEvidence::isCallTransferShadowEnabled() &&
-      !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0) {
+      !m_IsPrecomputingCaptures && isStage0CallTransferObservationAllowed()) {
     stage0CallEntrySnapshot = captureStage0CallSnapshot();
     stage0CallEntrySnapshot->CallerReceiverMode = Call->CallableReceiver;
     captureStage0CallArgumentFacts(Call, Call->Args,
@@ -5341,6 +5423,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   // [NEW] Generic Instantiation
   if (Fn && !Fn->GenericParams.empty()) {
     D3SpeculativeCallScope genericSpeculativeScope(m_D3SpeculativeCallDepth);
+    const unsigned genericExpectedArgumentCount =
+        static_cast<unsigned>(Fn->Args.size());
+    const bool publishFinalGenericArgumentTransactions =
+        SemanticEvidence::isCallTransferShadowEnabled() &&
+        stage0CallEntrySnapshot.has_value() &&
+        m_Stage0FinalGenericArgumentDepth == 0;
+    Stage0FinalGenericArgumentScope finalGenericArgumentScope(
+        m_Stage0FinalGenericArgumentDepth,
+        publishFinalGenericArgumentTransactions);
+    Stage0CallTransferJournal genericArgumentJournal(
+        publishFinalGenericArgumentTransactions);
     std::vector<std::shared_ptr<toka::Type>> TypeArgs;
     bool deductionFailed = false;
 
@@ -5349,6 +5442,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (Call->GenericArgs.size() != Fn->GenericParams.size()) {
         DiagnosticEngine::report(getLoc(Call), DiagID::NOTE_GENERIC, Fn->Name, Fn->GenericParams.size(), Call->GenericArgs.size());
         HasError = true;
+        genericArgumentJournal.rollback();
+        recordExplicitCedeStage0GenericResolutionRejection(
+            Call, CallName,
+            stage0CallEntrySnapshot ? &*stage0CallEntrySnapshot : nullptr,
+            genericExpectedArgumentCount, "GenericTypeArgumentCountMismatch");
         return toka::Type::fromString("unknown");
       }
       for (size_t i = 0; i < Call->GenericArgs.size(); ++i) {
@@ -5576,15 +5674,27 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
     if (!deductionFailed) {
       Fn = instantiateGenericFunction(Fn, TypeArgs, Call);
-      if (!Fn)
+      if (!Fn) {
+        genericArgumentJournal.rollback();
+        recordExplicitCedeStage0GenericResolutionRejection(
+            Call, CallName,
+            stage0CallEntrySnapshot ? &*stage0CallEntrySnapshot : nullptr,
+            genericExpectedArgumentCount, "GenericInstantiationFailed");
         return toka::Type::fromString("unknown");
+      }
 
       // [FIX] Update the Call AST to point to the mangled instance name
       // otherwise CodeGen will attempt to call the generic template
       // name
       Call->Callee = Fn->Name;
+      genericArgumentJournal.commit();
     } else {
       HasError = true;
+      genericArgumentJournal.rollback();
+      recordExplicitCedeStage0GenericResolutionRejection(
+          Call, CallName,
+          stage0CallEntrySnapshot ? &*stage0CallEntrySnapshot : nullptr,
+          genericExpectedArgumentCount, "GenericDeductionFailed");
       return toka::Type::fromString("unknown");
     }
   }

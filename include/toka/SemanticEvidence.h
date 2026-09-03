@@ -382,10 +382,18 @@ class SemanticEvidence {
 public:
   static constexpr unsigned SchemaVersion = 1;
 
+  struct CallTransferJournalCheckpoint {
+    size_t ShadowCount = 0;
+    size_t TransactionCount = 0;
+  };
+
   static void enable(bool value);
   static bool isEnabled();
   static void enableCallTransferShadow(bool value);
   static bool isCallTransferShadowEnabled();
+  static CallTransferJournalCheckpoint checkpointCallTransferJournal();
+  static void
+  rollbackCallTransferJournal(CallTransferJournalCheckpoint checkpoint);
   static SemanticEvidenceAuditState auditState();
   static void reset();
   static void record(SemanticRuleID rule, SemanticOperation operation,

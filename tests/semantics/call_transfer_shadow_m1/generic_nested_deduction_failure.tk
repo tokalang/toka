@@ -1,0 +1,12 @@
+fn ordinary_inner(value: i32) -> i32 {
+    return value
+}
+
+fn require_same<T>(first: T, second: T) -> T {
+    return first
+}
+
+fn main() -> i32 {
+    auto value = require_same(ordinary_inner(42:i32), true)
+    return value
+}

@@ -328,6 +328,19 @@ bool SemanticEvidence::isCallTransferShadowEnabled() {
   return CallTransferShadowEnabled;
 }
 
+SemanticEvidence::CallTransferJournalCheckpoint
+SemanticEvidence::checkpointCallTransferJournal() {
+  return {CallTransferShadows.size(), ExplicitCedeStage0Transactions.size()};
+}
+
+void SemanticEvidence::rollbackCallTransferJournal(
+    CallTransferJournalCheckpoint checkpoint) {
+  if (checkpoint.ShadowCount < CallTransferShadows.size())
+    CallTransferShadows.resize(checkpoint.ShadowCount);
+  if (checkpoint.TransactionCount < ExplicitCedeStage0Transactions.size())
+    ExplicitCedeStage0Transactions.resize(checkpoint.TransactionCount);
+}
+
 SemanticEvidenceAuditState SemanticEvidence::auditState() {
   return {Enabled,
           CallTransferShadowEnabled,

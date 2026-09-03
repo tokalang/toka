@@ -1,0 +1,9 @@
+import generic_nested_overload_forward_provider::{Selected, choose}
+
+fn generic_outer<T>(value: T) -> T {
+    return value
+}
+
+fn main() -> i32 {
+    return generic_outer(choose(Selected(value = 42:i32))) - 42:i32
+}

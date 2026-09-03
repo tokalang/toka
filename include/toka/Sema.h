@@ -675,6 +675,7 @@ private:
   bool m_InjectMissingCallTransferElaboration = false;
   bool m_MissingCallTransferFaultConsumed = false;
   unsigned m_D3SpeculativeCallDepth = 0;
+  unsigned m_Stage0FinalGenericArgumentDepth = 0;
   uint64_t m_Stage0CallSnapshotRevision = 0;
 
   struct AuthorityFullExpressionContext {
@@ -861,6 +862,10 @@ private:
   };
   std::map<const ASTNode *, Stage0PendingTransaction>
       m_Stage0PendingTransactions;
+  bool isStage0CallTransferObservationAllowed() const {
+    return m_D3SpeculativeCallDepth == 0 ||
+           m_Stage0FinalGenericArgumentDepth != 0;
+  }
   class Stage0TransactionFinalizer {
   public:
     Stage0TransactionFinalizer(Sema &Owner, ASTNode *CallSite)
@@ -878,6 +883,10 @@ private:
       CallTransferRoute Route, Stage0CallSnapshot &Snapshot);
   void finalizeExplicitCedeStage0Transaction(ASTNode *CallSite);
   void markExplicitCedeStage0RouteValidationComplete(ASTNode *CallSite);
+  void recordExplicitCedeStage0GenericResolutionRejection(
+      CallExpr *Call, const std::string &Callee,
+      const Stage0CallSnapshot *Snapshot, unsigned ExpectedArgumentCount,
+      const char *Rejection);
   void recordExplicitCedeStage0Transaction(
       ASTNode *CallSite, const std::string &Callee, CallTransferRoute Route,
       std::optional<Stage0CallTransactionItemInput> Receiver,

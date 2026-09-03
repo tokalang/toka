@@ -4255,7 +4255,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::optional<ExplicitCedePreparedFacts> stage0PreMutationReceiverFacts;
     std::optional<Stage0CallSnapshot> stage0PreMutationCallSnapshot;
     if (SemanticEvidence::isCallTransferShadowEnabled() &&
-        !m_IsPrecomputingCaptures && m_D3SpeculativeCallDepth == 0) {
+        !m_IsPrecomputingCaptures && isStage0CallTransferObservationAllowed()) {
       stage0PreMutationCallSnapshot = captureStage0CallSnapshot();
       captureStage0CallArgumentFacts(Met, Met->Args,
                                      CallTransferRoute::Method,

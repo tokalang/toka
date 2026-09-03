@@ -1,0 +1,7 @@
+fn generic_outer<T>(value: T) -> T {
+    return value
+}
+
+fn main() -> i32 {
+    return generic_outer<i32, bool>(42:i32)
+}

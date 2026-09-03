@@ -1,0 +1,29 @@
+shape Probe(value: i32)
+shape Resource(value: i32)
+
+impl Probe {
+    fn read(self) -> i32 {
+        return self.value
+    }
+}
+
+fn ordinary_inner(value: i32) -> i32 {
+    return value
+}
+
+fn consuming_inner(cede value: Resource) -> i32 {
+    auto moved = cede value
+    return moved.value
+}
+
+fn generic_outer<T>(value: T) -> T {
+    return value
+}
+
+fn main() -> i32 {
+    auto resource = Resource(value = 12:i32)
+    auto ordinary = generic_outer(ordinary_inner(10:i32))
+    auto method = generic_outer(Probe(value = 11:i32).read())
+    auto consuming = generic_outer(consuming_inner(cede resource))
+    return ordinary + method + consuming - 33:i32
+}

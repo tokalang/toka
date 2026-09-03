@@ -1,0 +1,10 @@
+pub shape Selected(value: i32)
+pub shape Other(value: i32)
+
+pub fn choose(value: Selected) -> i32 {
+    return value.value
+}
+
+pub fn choose(value: Other) -> i32 {
+    return 0:i32
+}

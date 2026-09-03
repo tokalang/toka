@@ -129,6 +129,17 @@ instantiation key rather than silently widening this identity's meaning.
 Post-legacy receipts may only reuse a pending pre-mutation item; speculative or
 missing-pending paths cannot synthesize a post-state Stage-0 plan.
 
+Generic overload candidate probes remain suppressed exactly as before. Once a
+generic declaration is selected, its single real argument evaluation is
+different: nested ordinary, method, and consuming calls publish their own
+pre-mutation transactions into a candidate-local call-transfer journal. A
+successful instantiation retains that journal exactly once and the later
+`precheckedArgTypes` path does not re-evaluate the expressions. Deduction or
+instantiation failure discards the journal before publishing one fail-closed
+outer generic-resolution transaction with no items and
+`commit_allowed=false`. This observation-only distinction does not alter the
+normal signature-driven path or the frozen D3 and authority-facts profiles.
+
 Argument indices are one-based. Method/callable receiver roles are separate;
 an indirect callable receiver has no declaration-side formal and therefore
 uses formal index zero and fails closed. Shadow plans are discarded when an
@@ -175,6 +186,11 @@ are not part of the Stage-0 call-transaction contract.
 - exact audit/normal return-code and stderr parity, including dynamic-trait,
   argument-alias, and all three former shadow-only `E04570` cases;
 - suppression of speculative/capture-precompute transactions;
+- exactly-once nested ordinary/method/consuming transactions during final
+  generic argument evaluation, candidate-local rollback on deduction failure,
+  and fail-closed generic-resolution envelopes;
+- stable selected nested-call transactions when overload declaration order is
+  reversed, using dynamic receipts rather than C++ source-string inspection;
 - async `.start`, nested non-boundary calls, and resolved-declaration thread
   handoff annotation, including aliases and a user same-named function;
 - init formal/actual spelling, unknown actuals, unary/cast/address/postfix

@@ -24,10 +24,11 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
-def run(tokac, source, expected_error=None, check_only=True):
+def run(tokac, source, expected_error=None, check_only=True, extra=()):
     command = [str(tokac), "--call-transfer-shadow=json"]
     if check_only:
         command.append("--check-only")
+    command.extend(extra)
     command.append(source)
     process = subprocess.run(
         command,
@@ -202,9 +203,17 @@ def run(tokac, source, expected_error=None, check_only=True):
                 source + " transaction omitted its shared snapshot revision")
         require(transaction["pal_revision"] == transaction["snapshot_revision"],
                 source + " transaction mixed PAL and source revisions")
+        generic_resolution_rejection = (
+            transaction["outcome"] == "Rejected" and
+            transaction["rejection"].startswith("Generic") and
+            not transaction["local_plan_admitted"] and
+            not transaction["commit_allowed"] and
+            transaction["argument_count"] == 0 and
+            not transaction["items"])
         if transaction["actual_argument_count"] != transaction["argument_count"]:
-            require(not transaction["arity_complete"] and
-                    not transaction["commit_allowed"],
+            require(generic_resolution_rejection or
+                    (not transaction["arity_complete"] and
+                     not transaction["commit_allowed"]),
                     source + " transaction silently omitted an actual slot")
         require(len(transaction["items"]) ==
                 transaction["argument_count"] +
@@ -248,19 +257,21 @@ def run(tokac, source, expected_error=None, check_only=True):
     return records
 
 
-def require_shadow_parity(tokac, source, expected_error=None):
+def require_shadow_parity(tokac, source, expected_error=None, extra=()):
     PARITY_CASES.add(source)
     normal = subprocess.run(
-        [str(tokac), "--check-only", source], cwd=ROOT,
+        [str(tokac), "--check-only", *extra, source], cwd=ROOT,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30,
     )
     shadow = subprocess.run(
-        [str(tokac), "--call-transfer-shadow=json", "--check-only", source],
+        [str(tokac), "--call-transfer-shadow=json", "--check-only", *extra,
+         source],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, timeout=30,
     )
     replay = subprocess.run(
-        [str(tokac), "--call-transfer-shadow=json", "--check-only", source],
+        [str(tokac), "--call-transfer-shadow=json", "--check-only", *extra,
+         source],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, timeout=30,
     )
@@ -1103,6 +1114,102 @@ def main():
             },
             source + " indirect receiver collapsed caller/formal handshake")
 
+    source = "tests/semantics/call_transfer_shadow_m1/generic_nested_calls.tk"
+    require_shadow_parity(tokac, source)
+    records = run(tokac, source)
+    receipts.extend((
+        find(records, source, callee="ordinary_inner", route="ordinary",
+             location_line=25),
+        find(records, source, callee="consuming_inner", route="ordinary",
+             location_line=27),
+    ))
+    nested_cases = (
+        (25, "ordinary_inner", "ordinary"),
+        (26, "read", "method"),
+        (27, "consuming_inner", "ordinary"),
+    )
+    for line, callee, route in nested_cases:
+        outer = find_transaction(
+            source, callee="generic_outer", route="ordinary",
+            location_line=line)
+        inner = find_transaction(
+            source, callee=callee, route=route, location_line=line)
+        require(inner["snapshot_revision"] ==
+                outer["snapshot_revision"] + 1 and
+                outer["commit_allowed"] and inner["commit_allowed"] and
+                sum(1 for transaction in TRANSACTIONS[source]
+                    if transaction["callee"] == callee and
+                    transaction["route"] == route and
+                    transaction["location"]["file"].endswith(source) and
+                    transaction["location"]["line"] == line) == 1,
+                source + ":" + str(line) +
+                " did not publish exactly one final nested transaction")
+
+    source = ("tests/semantics/call_transfer_shadow_m1/"
+              "generic_nested_deduction_failure.tk")
+    require_shadow_parity(tokac, source, expected_error="E04554")
+    run(tokac, source, expected_error="E04554")
+    rejection = find_transaction(
+        source, callee="require_same", route="ordinary", location_line=10)
+    require(rejection["outcome"] == "Rejected" and
+            rejection["rejection"] == "GenericDeductionFailed" and
+            not rejection["local_plan_admitted"] and
+            not rejection["commit_allowed"] and
+            rejection["validation_complete"] and
+            rejection["argument_count"] == 0 and
+            rejection["items"] == [] and
+            not any(transaction["callee"] == "ordinary_inner" and
+                    transaction["location"]["file"].endswith(source)
+                    for transaction in TRANSACTIONS[source]),
+            source + " leaked a discarded candidate-local nested journal")
+
+    source = ("tests/semantics/call_transfer_shadow_m1/"
+              "generic_type_argument_count_failure.tk")
+    require_shadow_parity(tokac, source, expected_error="[FAILED]")
+    run(tokac, source, expected_error="[FAILED]")
+    rejection = find_transaction(
+        source, callee="generic_outer", route="ordinary", location_line=6)
+    require(rejection["outcome"] == "Rejected" and
+            rejection["rejection"] ==
+            "GenericTypeArgumentCountMismatch" and
+            not rejection["local_plan_admitted"] and
+            not rejection["commit_allowed"] and
+            rejection["validation_complete"] and
+            rejection["argument_count"] == 0 and
+            rejection["items"] == [],
+            source + " omitted its generic-resolution rejection envelope")
+
+    fixture_dir = ROOT / "tests/semantics/call_transfer_shadow_m1"
+    overload_transactions = []
+    for ordering in ("forward", "reverse"):
+        source = ("tests/semantics/call_transfer_shadow_m1/"
+                  "generic_nested_overload_" + ordering + ".tk")
+        include = ("-I", str(fixture_dir))
+        require_shadow_parity(tokac, source, extra=include)
+        run(tokac, source, extra=include)
+        outer = find_transaction(
+            source, callee="generic_outer", route="ordinary",
+            location_line=8)
+        inner = find_transaction(
+            source, callee="choose", route="ordinary", location_line=8)
+        require(inner["snapshot_revision"] ==
+                outer["snapshot_revision"] + 1 and
+                outer["commit_allowed"] and inner["commit_allowed"] and
+                sum(1 for transaction in TRANSACTIONS[source]
+                    if transaction["callee"] == "choose" and
+                    transaction["location"]["file"].endswith(source) and
+                    transaction["location"]["line"] == 8) == 1,
+                source + " lost or duplicated its selected nested overload")
+        overload_transactions.append((outer, inner))
+    require(all((left["outcome"], left["rejection"],
+                 left["commit_allowed"], left["argument_count"]) ==
+                (right["outcome"], right["rejection"],
+                 right["commit_allowed"], right["argument_count"])
+                for left, right in zip(overload_transactions[0],
+                                       overload_transactions[1])),
+            "reversing overload candidate declaration order changed the "
+            "selected nested transaction")
+
     replay_case = ROOT / "tests/semantics/tki_replay/cases/own_cede_003_generic_methods"
     with tempfile.TemporaryDirectory(prefix="toka-call-transfer-shadow-") as temp:
         work = Path(temp)
@@ -1229,12 +1336,6 @@ def main():
     require(not MISSING_PRE_MUTATION,
             "qualified routes emitted records without pre-mutation "
             "transactions: " + repr(MISSING_PRE_MUTATION[:5]))
-    method_source = (ROOT / "src/Sema/Sema_Expr.cpp").read_text()
-    snapshot_gate = method_source[method_source.index(
-        "stage0PreMutationCallSnapshot"):
-        method_source.index("stage0PreMutationCallSnapshot") + 500]
-    require("m_D3SpeculativeCallDepth == 0" in snapshot_gate,
-            "speculative method probes can allocate public snapshot revisions")
     expected_transaction_routes = {
         "ordinary", "static", "method", "callable", "extern",
         "indirect-fn", "indirect-dyn-fn", "dynamic-trait-method",
