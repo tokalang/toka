@@ -819,11 +819,6 @@ private:
       bool LegacyCedeExempt, CallTransferRoute Route, bool IsAsync,
       CallExecutionBoundary ExecutionBoundary, unsigned ArgumentIndex,
       unsigned FormalIndex);
-  ExplicitCedePlan buildExplicitCedeStage0CallPlan(
-      Expr *Argument, const std::shared_ptr<Type> &ArgumentType,
-      const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
-      const CallTransferPlan &LegacyShadowPlan,
-      TransferFormalDeclarationFacts FormalDeclaration);
   ExplicitCedePreparedFacts buildExplicitCedeStage0ActualFacts(
       Expr *Argument, const std::shared_ptr<Type> &ArgumentType,
       const CallTransferPlan &LegacyShadowPlan,
@@ -855,11 +850,14 @@ private:
     AnalysisState State;
     std::vector<std::optional<ExplicitCedePreparedFacts>> ArgumentFacts;
     std::vector<std::shared_ptr<Type>> ArgumentTypes;
+    CallableReceiverMode CallerReceiverMode = CallableReceiverMode::Shared;
   };
   struct Stage0PendingTransaction {
     ExplicitCedeStage0TransactionRecord Record;
     ExplicitCedeWholeCallPlan Plan;
     size_t DiagnosticStart = 0;
+    bool RouteValidationComplete = false;
+    bool SameSnapshotRevision = false;
   };
   std::map<const ASTNode *, Stage0PendingTransaction>
       m_Stage0PendingTransactions;
@@ -879,6 +877,7 @@ private:
       ASTNode *CallSite, const std::vector<std::unique_ptr<Expr>> &Arguments,
       CallTransferRoute Route, Stage0CallSnapshot &Snapshot);
   void finalizeExplicitCedeStage0Transaction(ASTNode *CallSite);
+  void markExplicitCedeStage0RouteValidationComplete(ASTNode *CallSite);
   void recordExplicitCedeStage0Transaction(
       ASTNode *CallSite, const std::string &Callee, CallTransferRoute Route,
       std::optional<Stage0CallTransactionItemInput> Receiver,
@@ -890,6 +889,12 @@ private:
       CallExpr *Call, const std::string &Callee, FunctionDecl *Function,
       ExternDecl *External,
       const std::vector<std::shared_ptr<Type>> &ParameterTypes,
+      const Stage0CallSnapshot *Snapshot, bool ArityComplete);
+  void recordExplicitCedeStage0IndirectTransaction(
+      CallExpr *Call, const std::string &Callee, CallTransferRoute Route,
+      const std::vector<std::shared_ptr<Type>> &ParameterTypes,
+      const std::shared_ptr<Type> &CallableType,
+      CallableReceiverMode FormalReceiverMode,
       const Stage0CallSnapshot *Snapshot, bool ArityComplete);
   TransferFormalDeclarationFacts buildStage0FormalDeclarationFacts(
       const FunctionDecl::Arg *Formal);

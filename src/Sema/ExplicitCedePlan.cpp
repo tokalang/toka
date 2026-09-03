@@ -792,6 +792,10 @@ const char *toString(TransferPlanRejection value) {
     return "WholeCallArityIncomplete";
   case TransferPlanRejection::WholeCallValidationFailed:
     return "WholeCallValidationFailed";
+  case TransferPlanRejection::WholeCallValidationIncomplete:
+    return "WholeCallValidationIncomplete";
+  case TransferPlanRejection::MissingPreMutationTransaction:
+    return "MissingPreMutationTransaction";
   case TransferPlanRejection::OwnershipContractMismatch:
     return "OwnershipContractMismatch";
   case TransferPlanRejection::ProjectedHandleRequiresSubroot:

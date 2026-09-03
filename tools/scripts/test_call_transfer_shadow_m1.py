@@ -14,6 +14,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 TRANSACTIONS = {}
 PARITY_CASES = set()
+MISSING_PRE_MUTATION = []
 if not os.environ.get("TOKA_LIB"):
     os.environ["TOKA_LIB"] = str(ROOT / "lib")
 
@@ -112,9 +113,16 @@ def run(tokac, source, expected_error=None, check_only=True):
                 source + " emitted invalid Stage-0 dependency facts")
         require(bool(stage0["actual_type"]) or
                 (stage0["outcome"] == "Rejected" and
-                 stage0["rejection"] == "IncompleteFacts"),
+                 stage0["rejection"] in
+                 ("IncompleteFacts", "MissingPreMutationTransaction")),
                 source + " omitted Stage-0 actual resolved type without "
                 "rejecting incomplete facts")
+        if stage0["rejection"] == "MissingPreMutationTransaction":
+            require(stage0["outcome"] == "Rejected" and
+                    stage0["source"] == "NoStateChange",
+                    source + " missing pre-mutation plan did not fail closed")
+            MISSING_PRE_MUTATION.append((source, record["callee"],
+                                         record["location"]["line"]))
         declaration_hidden = record["route"] in ("indirect-fn", "indirect-dyn-fn")
         if not record["formal_init"] and not declaration_hidden:
             require(bool(stage0["formal_type"]) and
@@ -208,6 +216,9 @@ def run(tokac, source, expected_error=None, check_only=True):
                 (transaction["local_plan_admitted"] and
                  transaction["arity_complete"] and
                  transaction["validation_complete"] and
+                 transaction["prepared_before_legacy_mutation"] and
+                 transaction["pal_revision"] ==
+                 transaction["snapshot_revision"] and
                  transaction["outcome"] == "Admitted"),
                 source + " transaction commit bit disagrees with outcome")
         for item in transaction["items"]:
@@ -1025,6 +1036,69 @@ def main():
                 item["outcome"] == "Admitted",
                 source + " member/index receiver lost pre-mutation facts")
 
+    source = "tests/semantics/call_transfer_shadow_m1/transaction_temporary_liability.tk"
+    require_shadow_parity(tokac, source)
+    run(tokac, source)
+    transaction = find_transaction(
+        source, callee="consume_pair", route="ordinary", location_line=16,
+    )
+    liability_ids = [item["liability_identity"]
+                     for item in transaction["items"]]
+    require(transaction["commit_allowed"] and
+            all(item["value_production"] == "ConsumeTemporary"
+                for item in transaction["items"]) and
+            all(item["drop"] == "CalleeAssumesLiability"
+                for item in transaction["items"]) and
+            len(liability_ids) == 2 and all(liability_ids) and
+            len(set(liability_ids)) == 2 and
+            all("crate:workspace;module:" in identity and
+                "/private/tmp/" not in identity
+                for identity in liability_ids),
+            source + " temporary cleanup identities collided or were unstable")
+
+    for source, route, expected_count, actual_count in (
+        ("tests/semantics/call_transfer_shadow_m1/transaction_indirect_fn_arity.tk",
+         "indirect-fn", 2, 1),
+        ("tests/semantics/call_transfer_shadow_m1/transaction_indirect_dyn_arity.tk",
+         "indirect-dyn-fn", 2, 3),
+    ):
+        require_shadow_parity(tokac, source, expected_error="E04553")
+        run(tokac, source, expected_error="E04553")
+        transaction = find_transaction(
+            source, callee="callback", route=route, location_line=3,
+        )
+        require(transaction["outcome"] == "Rejected" and
+                transaction["rejection"] == "WholeCallArityIncomplete" and
+                not transaction["commit_allowed"] and
+                not transaction["arity_complete"] and
+                transaction["validation_complete"] and
+                transaction["expected_argument_count"] == expected_count and
+                transaction["actual_argument_count"] == actual_count and
+                transaction["has_receiver"],
+                source + " indirect arity failure omitted transaction facts")
+
+    source = "tests/semantics/call_transfer_shadow_m1/transaction_indirect_receiver_handshake.tk"
+    require_shadow_parity(tokac, source, expected_error="E04591")
+    run(tokac, source, expected_error="E04591")
+    handshake = {}
+    for callee, line in (("ordinary_bare", 3), ("ordinary_explicit", 6),
+                         ("consuming_bare", 9),
+                         ("consuming_explicit", 12)):
+        transaction = find_transaction(
+            source, callee=callee, route="indirect-fn", location_line=line,
+        )
+        handshake[callee] = (
+            transaction["items"][0]["surface_spelling"],
+            transaction["items"][0]["formal_contract"],
+        )
+    require(handshake == {
+                "ordinary_bare": ("Bare", "Ordinary"),
+                "ordinary_explicit": ("ExplicitCede", "Ordinary"),
+                "consuming_bare": ("Bare", "Cede"),
+                "consuming_explicit": ("ExplicitCede", "Cede"),
+            },
+            source + " indirect receiver collapsed caller/formal handshake")
+
     replay_case = ROOT / "tests/semantics/tki_replay/cases/own_cede_003_generic_methods"
     with tempfile.TemporaryDirectory(prefix="toka-call-transfer-shadow-") as temp:
         work = Path(temp)
@@ -1148,6 +1222,9 @@ def main():
     all_transactions = [transaction
                         for transactions in TRANSACTIONS.values()
                         for transaction in transactions]
+    require(not MISSING_PRE_MUTATION,
+            "qualified routes emitted records without pre-mutation "
+            "transactions: " + repr(MISSING_PRE_MUTATION[:5]))
     expected_transaction_routes = {
         "ordinary", "static", "method", "callable", "extern",
         "indirect-fn", "indirect-dyn-fn", "dynamic-trait-method",
@@ -1166,7 +1243,8 @@ def main():
                     transaction["route"] +
                     " transaction omitted its receiver slot")
         if (transaction["route"] in ("indirect-fn", "indirect-dyn-fn") and
-                transaction["argument_count"] > 0):
+                transaction["argument_count"] > 0 and
+                transaction["arity_complete"]):
             require(transaction["outcome"] == "Rejected" and
                     transaction["rejection"] == "WholeCallItemRejected" and
                     not transaction["commit_allowed"],

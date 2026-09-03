@@ -1,0 +1,15 @@
+fn main() -> i32 {
+    auto ordinary_bare = { => 1 }:fn() -> i32
+    auto first = ordinary_bare()
+
+    auto ordinary_explicit = { => 2 }:fn() -> i32
+    auto second = cede ordinary_explicit()
+
+    auto consuming_bare = { => 3 }:cede fn() -> i32
+    auto third = consuming_bare()
+
+    auto consuming_explicit = { => 4 }:cede fn() -> i32
+    auto fourth = cede consuming_explicit()
+
+    return first + second + third + fourth - 10:i32
+}

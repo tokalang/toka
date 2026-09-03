@@ -112,8 +112,17 @@ the aggregate with `commit_allowed=false`. Moved, uninitialized, and partially
 cleaned places carry their exact liveness and cleanup mask and cannot be
 admitted as live sources. Arity and unmatched slots are explicit. Legacy
 checking then runs unchanged; only after it finishes may a locally admitted
-plan report `commit_allowed=true`. Neither the transaction nor the older
+plan report `commit_allowed=true`. The final conjunction also requires an
+explicit route-completion marker, pre-mutation preparation, and one shared
+snapshot revision. Neither the transaction nor the older
 per-argument shadow records are commit authority.
+
+Caller callable spelling and the selected receiver contract are frozen as
+separate entry facts, including indirect `fn`/`dyn fn` calls. Same-typed owned
+temporaries use a deterministic cleanup identity containing the logical module,
+call coordinate, receiver/argument role, slot index, and expression coordinate.
+Post-legacy receipts may only reuse a pending pre-mutation item; speculative or
+missing-pending paths cannot synthesize a post-state Stage-0 plan.
 
 Argument indices are one-based. Method/callable receiver roles are separate;
 an indirect callable receiver has no declaration-side formal and therefore
@@ -167,8 +176,12 @@ AST call is cloned and its resolved formal is reset.
 - one shared receiver/argument source-and-PAL revision, moved/uninitialized/
   partial-cleanup rejection, explicit arity, and unmatched-slot evidence;
 - locally admitted calls rejected by final execution-boundary validation;
+- explicit route completion and pre-state/same-revision final commit gates;
 - method, callable, and indirect callable receivers, including consuming
   callable spelling and member/index receiver facts;
+- the four indirect caller/formal receiver handshake combinations;
+- distinct deterministic liability identities for two same-typed temporaries;
+- indirect `fn` and `dyn fn` too-few/too-many arity transactions;
 - typed declaration provenance, source-hidden fail-closed transactions, and
   route-specific transaction outcome/source/drop/obligation assertions; and
 - hermetic external-build CTest execution through an injected source

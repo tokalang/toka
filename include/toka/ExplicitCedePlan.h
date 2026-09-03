@@ -36,6 +36,8 @@ enum class TransferPlanRejection : uint8_t {
   WholeCallDestinationMismatch,
   WholeCallArityIncomplete,
   WholeCallValidationFailed,
+  WholeCallValidationIncomplete,
+  MissingPreMutationTransaction,
   OwnershipContractMismatch,
   ProjectedHandleRequiresSubroot,
   SourceNotLive,

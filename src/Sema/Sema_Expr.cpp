@@ -4411,8 +4411,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     Met->Args.size() == expectedArgs);
               }
               if (!preflightExplicitCallCedeAliases(
-                      Met->Args, dynamicFormals, dynamicNames))
+                      Met->Args, dynamicFormals, dynamicNames)) {
+                markExplicitCedeStage0RouteValidationComplete(Met);
                 return toka::Type::fromString("unknown");
+              }
               for (size_t i = 0; i < Met->Args.size() && i < expectedArgs; ++i) {
                 Met->Args[i] = foldGenericConstant(std::move(Met->Args[i]));
                 const auto &param = M->Args[i + 1];
@@ -4601,6 +4603,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     buildStage0FormalDeclarationFacts(&param));
               }
             }
+            markExplicitCedeStage0RouteValidationComplete(Met);
             return toka::Type::fromString(M->ReturnType);
           }
         }
@@ -5062,8 +5065,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               methodNames[index] = FD->Args[index + 1].Name;
             }
             if (!preflightExplicitCallCedeAliases(Met->Args, methodFormals,
-                                                  methodNames))
+                                                  methodNames)) {
+              markExplicitCedeStage0RouteValidationComplete(Met);
               return toka::Type::fromString("unknown");
+            }
             if (Met->Args.size() != expectedArgs && !FD->IsVariadic) {
                 // If variadic, handle appropriately
                 if (Met->Args.size() < expectedArgs) {
@@ -5455,6 +5460,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
 
         if (FD && FD->Effect == EffectKind::Async) {
+            markExplicitCedeStage0RouteValidationComplete(Met);
             return resolveType(std::make_shared<ShapeType>(
                 "TaskHandle",
                 std::vector<std::shared_ptr<toka::Type>>{retType}));
@@ -5462,8 +5468,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (containsInternalPlaceOutcome(retType)) {
           error(Met, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
                 retType ? retType->toString() : "__PlaceOutcome");
+          markExplicitCedeStage0RouteValidationComplete(Met);
           return toka::Type::fromString("unknown");
         }
+        markExplicitCedeStage0RouteValidationComplete(Met);
         return retType;
       }
     }
