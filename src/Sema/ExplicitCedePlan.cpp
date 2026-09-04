@@ -426,6 +426,9 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
   if (facts.SurfaceSpelling == TransferSurfaceSpelling::ExplicitCede &&
       facts.SourceCategory == TransferSourceCategory::NoSourcePlace)
     return reject(TransferPlanRejection::ExplicitCedeRequiresSource, facts);
+  if (facts.SurfaceSpelling == TransferSurfaceSpelling::ExplicitCede &&
+      facts.SourceView == TransferSourceView::DereferencedOwningPayload)
+    return reject(TransferPlanRejection::DereferencedOwningPayload, facts);
   if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
       facts.SourceView == TransferSourceView::UniqueHandle &&
       facts.SourcePlace && !facts.SourcePlace->projections().empty())
@@ -542,8 +545,6 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
         facts.Reachability == TransferReachability::None ||
         facts.Reachability == TransferReachability::Indeterminate)
       return reject(TransferPlanRejection::IncompleteFacts, facts);
-    if (facts.SourceView == TransferSourceView::DereferencedOwningPayload)
-      return reject(TransferPlanRejection::DereferencedOwningPayload, facts);
     if (facts.Destination == TransferDestination::Return &&
         facts.SourceView == TransferSourceView::UniqueHandle)
       return reject(TransferPlanRejection::RedundantIntrinsicUniqueCede, facts);

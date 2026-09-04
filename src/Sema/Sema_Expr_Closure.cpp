@@ -439,7 +439,8 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
         
         bool isExplicit = false;
         CaptureMode explicitMode = CaptureMode::ImplicitBorrow;
-        
+        std::string explicitCaptureSpelling;
+
         for (auto& cap : Clo->ExplicitCaptures) {
            std::string rawName = cap.Name;
            while(!rawName.empty() && (rawName[0]=='~' || rawName[0]=='^' || rawName[0]=='*' || rawName[0]=='&' || rawName[0]=='?' || rawName[0]=='#')) {
@@ -448,6 +449,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
            if (rawName == varName || cap.Name == "*") {
               isExplicit = true;
               explicitMode = cap.Mode;
+              explicitCaptureSpelling = cap.Name;
               break;
            }
         }
@@ -502,6 +504,37 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
             (explicitMode == CaptureMode::ExplicitCede ||
              explicitMode == CaptureMode::ExplicitCopy ||
              explicitMode == CaptureMode::ExplicitDup)) {
+          if (explicitMode == CaptureMode::ExplicitCede) {
+            auto variable = std::make_unique<VariableExpr>(varName);
+            variable->Loc = Clo->Loc;
+            variable->ResolvedType = infoPtr->TypeObj;
+            std::unique_ptr<Expr> source = std::move(variable);
+            if (!explicitCaptureSpelling.empty()) {
+              std::optional<TokenType> selector;
+              if (explicitCaptureSpelling[0] == '^')
+                selector = TokenType::Caret;
+              else if (explicitCaptureSpelling[0] == '~')
+                selector = TokenType::Tilde;
+              else if (explicitCaptureSpelling[0] == '*')
+                selector = TokenType::Star;
+              else if (explicitCaptureSpelling[0] == '&')
+                selector = TokenType::Ampersand;
+              if (selector) {
+                auto selected =
+                    std::make_unique<UnaryExpr>(*selector, std::move(source));
+                selected->Loc = Clo->Loc;
+                selected->ResolvedType = infoPtr->TypeObj;
+                source = std::move(selected);
+              }
+            }
+            auto ceded = std::make_unique<CedeExpr>(std::move(source));
+            ceded->Loc = Clo->Loc;
+            ceded->ResolvedType = infoPtr->TypeObj;
+            recordExplicitCedeStage0NonCallPlan(
+                Clo, ceded.get(), infoPtr->TypeObj,
+                TransferDestination::ClosureCapture,
+                TransferEligibilityContext::ClosureCapture, "closure_capture");
+          }
             if (explicitMode == CaptureMode::ExplicitCopy) {
                 // Copy capture uses the same structural proof as every other
                 // copy operation.

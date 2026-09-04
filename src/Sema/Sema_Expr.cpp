@@ -5867,6 +5867,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     return toka::Type::fromString("[i32; 0]");
   } else if (auto *me = dynamic_cast<MatchExpr *>(E)) {
+    recordExplicitCedeStage0NonCallPlan(
+        me, me->Target.get(), nullptr, TransferDestination::MatchBinding,
+        TransferEligibilityContext::MatchBinding, "match_binding");
     auto targetTypeObj = checkExpr(me->Target.get());
     me->TransfersPayloadOwnership =
         dynamic_cast<CedeExpr *>(me->Target.get()) != nullptr;

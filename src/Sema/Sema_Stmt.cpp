@@ -628,6 +628,10 @@ void Sema::checkStmt(Stmt *S) {
                                                     : toka::Type::fromString(
                                                           CurrentFunctionReturnType);
       auto resolvedReturnExpectation = resolveType(returnExpectation);
+      recordExplicitCedeStage0NonCallPlan(
+          Ret, Ret->ReturnValue.get(), resolvedReturnExpectation,
+          TransferDestination::Return, TransferEligibilityContext::Return,
+          "return");
       bool rejectedAliasReturn = false;
       if (resolvedReturnExpectation &&
           (resolvedReturnExpectation->isUniquePtr() ||
@@ -1396,6 +1400,11 @@ void Sema::checkStmt(Stmt *S) {
     // Standalone expressions are NOT receivers
     m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, false});
     ExprS->Expression = foldGenericConstant(std::move(ExprS->Expression));
+    if (dynamic_cast<CedeExpr *>(ExprS->Expression.get()))
+      recordExplicitCedeStage0NonCallPlan(
+          ExprS, ExprS->Expression.get(), nullptr,
+          TransferDestination::StatementEndDiscard,
+          TransferEligibilityContext::Standalone, "standalone");
     auto authorityContext =
         beginAuthorityFullExpression(ExprS->Expression.get());
     auto exprType = checkExpr(ExprS->Expression.get());
@@ -1475,7 +1484,11 @@ void Sema::checkStmt(Stmt *S) {
            }
         }
       }
-      
+      recordExplicitCedeStage0NonCallPlan(
+          Var, Var->Init.get(), declTargetTy,
+          TransferDestination::Initialization,
+          TransferEligibilityContext::Initialization, "initialization");
+
       bool oldExpectedWritability = m_ExpectedWritability;
       if (Var->IsReference) {
           m_ExpectedWritability = Var->IsValueMutable;

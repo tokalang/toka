@@ -853,6 +853,10 @@ private:
       const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
       bool FormalIsInit, TransferFormalDeclarationFacts FormalDeclaration,
       TransferDestination Destination, TransferEligibilityContext Context);
+  void recordExplicitCedeStage0NonCallPlan(
+      ASTNode *Site, Expr *Value, const std::shared_ptr<Type> &DestinationType,
+      TransferDestination Destination, TransferEligibilityContext Context,
+      const std::string &Boundary);
   struct Stage0CallTransactionItemInput {
     Expr *Argument = nullptr;
     std::shared_ptr<Type> ArgumentType;

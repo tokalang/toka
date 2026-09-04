@@ -219,6 +219,12 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   // [Toka 1.3] Evaluation Order: Check RHS first to avoid LHS
   // borrows/moves blocking RHS usage (e.g. &#cursor = cursor.&next)
   Bin->RHS = foldGenericConstant(std::move(Bin->RHS));
+  if (Bin->Op == "=") {
+    auto destinationType = queryShadowCallArgumentType(Bin->LHS.get(), nullptr);
+    recordExplicitCedeStage0NonCallPlan(
+        Bin, Bin->RHS.get(), destinationType, TransferDestination::Assignment,
+        TransferEligibilityContext::Assignment, "assignment");
+  }
 
   // A source-invalidating cede or direct unique transfer into existing storage
   // must establish canonical disjointness before either side is checked:

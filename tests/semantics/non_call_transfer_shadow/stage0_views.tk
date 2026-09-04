@@ -1,0 +1,22 @@
+shape Cell(value: i32)
+
+fn forward(cede ^cell: Cell) -> ^Cell {
+    return ^cell
+}
+
+fn redundant(cede ^cell: Cell) -> ^Cell {
+    return cede ^cell
+}
+
+fn payload_only(cede ^cell: Cell) -> Cell {
+    return cede cell
+}
+
+fn main() -> i32 {
+    auto ^discard = new Cell(value = 1:i32)
+    cede ^discard
+
+    auto ^source = new Cell(value = 42:i32)
+    auto ^result = forward(cede ^source)
+    return result.value - 42:i32
+}

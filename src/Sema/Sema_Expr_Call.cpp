@@ -2064,6 +2064,37 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
   }
 
   facts.CopyProof = queryExplicitCedeStage0CopyProof(actualPayload);
+  std::set<const ShapeDecl *> dependencyProofStack;
+  std::function<bool(const std::shared_ptr<Type> &)> isDependencyFree =
+      [&](const std::shared_ptr<Type> &candidate) -> bool {
+    auto resolved = candidate ? resolveType(candidate, false) : nullptr;
+    if (!resolved || resolved->isUnknown() || resolved->isRawPointer() ||
+        resolved->isReference() || resolved->isFunction() ||
+        resolved->isDynFn())
+      return false;
+    if (resolved->isUniquePtr() || resolved->isSharedPtr())
+      return isDependencyFree(resolved->getPointeeType());
+    if (resolved->isArray())
+      return isDependencyFree(resolved->getArrayElementType());
+    if (!resolved->isShape())
+      return true;
+    auto shape = std::dynamic_pointer_cast<ShapeType>(resolved->getSoulType());
+    ShapeDecl *declaration = shape ? shape->Decl : nullptr;
+    if (!declaration) {
+      auto found = ShapeMap.find(resolved->getSoulName());
+      if (found != ShapeMap.end())
+        declaration = found->second;
+    }
+    if (!declaration || !dependencyProofStack.insert(declaration).second)
+      return false;
+    const bool result =
+        std::all_of(declaration->Members.begin(), declaration->Members.end(),
+                    [&](const ShapeMember &member) {
+                      return isDependencyFree(Sema::getPhysicalType(member));
+                    });
+    dependencyProofStack.erase(declaration);
+    return result;
+  };
   if (facts.Dependency == TransferDependencyKind::Structural &&
       facts.SourceView == TransferSourceView::DereferencedOwningPayload &&
       facts.ReferentPlace) {
@@ -2073,6 +2104,11 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
   } else if (facts.Dependency == TransferDependencyKind::Structural &&
              facts.CopyProof == TransferCopyProof::ProvenCopy &&
              facts.DependencyRoots.empty()) {
+    facts.Dependency = TransferDependencyKind::None;
+    facts.ReferentPlace.reset();
+    facts.DependencyFactsComplete = true;
+  } else if (facts.Dependency == TransferDependencyKind::Structural &&
+             facts.DependencyRoots.empty() && isDependencyFree(actualPayload)) {
     facts.Dependency = TransferDependencyKind::None;
     facts.ReferentPlace.reset();
     facts.DependencyFactsComplete = true;
@@ -2323,6 +2359,9 @@ ExplicitCedePlan Sema::completeExplicitCedeStage0CallPlan(
     TransferDestination destination, TransferEligibilityContext context) {
   auto actual = argumentType ? resolveType(argumentType, false) : nullptr;
   auto formal = destinationType ? resolveType(destinationType, false) : nullptr;
+  const bool callBoundary =
+      destination == TransferDestination::CalleeParameter ||
+      destination == TransferDestination::Receiver;
   facts.FormalTypeKey =
       formal && !formal->isUnknown() ? formal->toString() : std::string{};
   facts.Destination = destination;
@@ -2332,9 +2371,11 @@ ExplicitCedePlan Sema::completeExplicitCedeStage0CallPlan(
           ? (isTypeCompatible(formal, actual)
                  ? TransferTypeCompatibility::Compatible
                  : TransferTypeCompatibility::Incompatible)
-          : TransferTypeCompatibility::Indeterminate;
+          : (!callBoundary && actual && !actual->isUnknown()
+                 ? TransferTypeCompatibility::Compatible
+                 : TransferTypeCompatibility::Indeterminate);
 
-  if (formalIsInit) {
+  if (!callBoundary || formalIsInit) {
     facts.FormalContract = TransferFormalContract::None;
     facts.DeclaredFormalMorphology = TransferFormalMorphology::None;
     facts.FormalMorphology = TransferFormalMorphology::None;
@@ -2413,6 +2454,111 @@ ExplicitCedePlan Sema::completeExplicitCedeStage0CallPlan(
     }
   }
   return prepareExplicitCedePlan(facts);
+}
+
+void Sema::recordExplicitCedeStage0NonCallPlan(
+    ASTNode *site, Expr *value, const std::shared_ptr<Type> &destinationType,
+    TransferDestination destination, TransferEligibilityContext context,
+    const std::string &boundary) {
+  if (!SemanticEvidence::isNonCallTransferShadowEnabled() ||
+      m_IsPrecomputingCaptures || !site || !value)
+    return;
+
+  auto snapshot = captureStage0CallSnapshot();
+  auto actualType = queryShadowCallArgumentType(value, destinationType);
+  auto legacy = buildShadowCallTransferPlan(
+      site, value, actualType, destinationType, false, false, false, false,
+      false, CallTransferRoute::Ordinary, false, CallExecutionBoundary::None, 0,
+      0);
+  auto facts = buildExplicitCedeStage0ActualFacts(
+      value, actualType, legacy, &snapshot.State, snapshot.Revision);
+  Expr *surface = stage0SurfaceSource(value);
+  if (!legacy.ExplicitCede) {
+    if (auto *unary = dynamic_cast<UnaryExpr *>(surface);
+        unary && unary->Op == TokenType::Caret &&
+        (destination == TransferDestination::Return ||
+         destination == TransferDestination::Assignment ||
+         destination == TransferDestination::Initialization)) {
+      facts.SurfaceSpelling = TransferSurfaceSpelling::IntrinsicUniqueMove;
+      facts.SyntaxPurpose = CedeSyntaxPurpose::None;
+      facts.Origin = TransferPlanOrigin::UserSource;
+    }
+  }
+  if (facts.CarriesDropLiability &&
+      facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
+    const SourceLocation recordLocation =
+        site->Loc.isValid() ? site->Loc : value->Loc;
+    const auto full =
+        DiagnosticEngine::SrcMgr
+            ? DiagnosticEngine::SrcMgr->getFullSourceLoc(recordLocation)
+            : FullSourceLoc{};
+    std::string moduleOrigin;
+    if (ModuleScope *module = getLexicalModule(recordLocation);
+        module && !module->ShadowCrateId.empty() &&
+        !module->ShadowLogicalModulePath.empty())
+      moduleOrigin = "crate:" + module->ShadowCrateId +
+                     ";module:" + module->ShadowLogicalModulePath;
+    if (moduleOrigin.empty())
+      moduleOrigin = stage0FallbackModuleOrigin(recordLocation);
+    if (full.isValid() && !moduleOrigin.empty()) {
+      facts.LiabilityIdentity = "temporary-liability:non-call:v1;" +
+                                moduleOrigin + ";boundary:" + boundary +
+                                ";site:" + std::to_string(full.Line) + ":" +
+                                std::to_string(full.Column);
+      facts.LiabilityIdentityComplete = true;
+    }
+  }
+  auto plan = completeExplicitCedeStage0CallPlan(std::move(facts), actualType,
+                                                 destinationType, false, true,
+                                                 {}, destination, context);
+
+  ExplicitCedeStage0TransactionItemRecord item;
+  item.Role = boundary;
+  item.ActualType = plan.Prepared.ActualTypeKey;
+  item.FormalType = plan.Prepared.FormalTypeKey;
+  item.FormalContract = toString(plan.Prepared.FormalContract);
+  item.Outcome = toString(plan.Outcome);
+  item.Rejection = toString(plan.Rejection);
+  if (plan.TransferOrigin)
+    item.ExactPath = semanticPlaceKey(*plan.TransferOrigin);
+  if (plan.Prepared.ReferentPlace)
+    item.ReferentPath = semanticPlaceKey(*plan.Prepared.ReferentPlace);
+  for (const auto &root : plan.Prepared.DependencyRoots)
+    item.DependencyRoots.push_back(root.canonicalKey());
+  item.SourceView = toString(plan.TransferOriginView);
+  item.SurfaceSpelling = toString(plan.Prepared.SurfaceSpelling);
+  item.CopyProof = toString(plan.Prepared.CopyProof);
+  item.Eligibility = toString(plan.Prepared.Eligibility);
+  item.ObligationBefore = toString(plan.Prepared.ObligationBefore);
+  item.Reachability = toString(plan.Reachability);
+  item.SourceLiveness = toString(plan.Prepared.SourceLiveness);
+  item.HasInitMask = plan.Prepared.InitMaskComplete;
+  item.InitMask = plan.Prepared.InitMask;
+  item.HasCleanupMask = plan.Prepared.CleanupMaskComplete;
+  item.CleanupMask = plan.Prepared.CleanupMask;
+  item.LiabilityIdentity = plan.Prepared.LiabilityIdentity;
+  item.ValueProduction = toString(plan.ValueProduction);
+  item.Source = toString(plan.Source);
+  item.Destination = toString(plan.Destination);
+  item.Drop = toString(plan.Drop);
+  item.SourceObligationAction = toString(plan.ObligationAction);
+  item.SourceObligationAfter = toString(plan.ObligationAfter);
+  item.DestinationObligationAction = toString(plan.DestinationObligationAction);
+  item.DestinationObligationAfter = toString(plan.DestinationObligationAfter);
+
+  ExplicitCedeStage0NonCallRecord record;
+  record.Boundary = boundary;
+  record.PlanOrigin = toString(plan.Prepared.Origin);
+  record.SyntaxPurpose = toString(plan.Prepared.SyntaxPurpose);
+  record.SourceCategory = toString(plan.Prepared.SourceCategory);
+  record.Dependency = toString(plan.Prepared.Dependency);
+  record.TypeCompatibility = toString(plan.Prepared.TypeCompatibility);
+  record.EligibilityContext = toString(plan.Prepared.EligibilityContext);
+  record.PreparedBeforeLegacyMutation = snapshot.Revision != 0;
+  record.SnapshotRevision = snapshot.Revision;
+  record.Plan = std::move(item);
+  SemanticEvidence::recordExplicitCedeStage0NonCall(
+      std::move(record), site->Loc.isValid() ? site->Loc : value->Loc);
 }
 
 Sema::Stage0CallSnapshot Sema::captureStage0CallSnapshot() {

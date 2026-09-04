@@ -83,6 +83,23 @@ ExplicitCedePreparedFacts baseCall() {
   return facts;
 }
 
+ExplicitCedePreparedFacts nonCall(ExplicitCedePreparedFacts facts,
+                                  TransferDestination destination,
+                                  TransferEligibilityContext context) {
+  facts.FormalTypeKey.clear();
+  facts.FormalContract = TransferFormalContract::None;
+  facts.DeclaredFormalMorphology = TransferFormalMorphology::None;
+  facts.FormalMorphology = TransferFormalMorphology::None;
+  facts.FormalOwnership = TransferFormalOwnershipKind::None;
+  facts.FormalTransferClass = TransferFormalTransferClass::None;
+  facts.FormalContractOrigin = TransferFormalContractOrigin::None;
+  facts.FormalDeclarationFactsComplete = true;
+  facts.FormalCapabilities = {};
+  facts.Destination = destination;
+  facts.EligibilityContext = context;
+  return facts;
+}
+
 int main() {
   CHECK(rootPlace() == rootPlace());
   CHECK(rootPlace().root().canonicalKey().find("binding:value;direct") !=
@@ -126,6 +143,54 @@ int main() {
   CHECK(copied.admitted());
   CHECK(copied.ValueProduction == TransferValueProduction::CopyValue);
   CHECK(copied.Source == TransferSourceDisposition::InvalidateSubtree);
+
+  const std::array<std::pair<TransferDestination, TransferEligibilityContext>,
+                   7>
+      nonCallRoutes = {{
+          {TransferDestination::StatementEndDiscard,
+           TransferEligibilityContext::Standalone},
+          {TransferDestination::Return, TransferEligibilityContext::Return},
+          {TransferDestination::Assignment,
+           TransferEligibilityContext::Assignment},
+          {TransferDestination::Initialization,
+           TransferEligibilityContext::Initialization},
+          {TransferDestination::AggregateMember,
+           TransferEligibilityContext::AggregateMember},
+          {TransferDestination::MatchBinding,
+           TransferEligibilityContext::MatchBinding},
+          {TransferDestination::ClosureCapture,
+           TransferEligibilityContext::ClosureCapture},
+      }};
+  for (const auto &[destination, context] : nonCallRoutes) {
+    auto explicitNamed = nonCall(named, destination, context);
+    explicitNamed.ObligationBefore = TransferObligationState::Outstanding;
+    explicitNamed.ObligationRoot = explicitNamed.SourcePlace->root();
+    auto plan = prepareExplicitCedePlan(explicitNamed);
+    CHECK(plan.admitted());
+    CHECK(plan.Destination == destination);
+    CHECK(plan.ValueProduction == TransferValueProduction::MoveOwned);
+    CHECK(plan.Source == TransferSourceDisposition::InvalidateSubtree);
+    CHECK(plan.Drop ==
+          (destination == TransferDestination::StatementEndDiscard
+               ? TransferDropDisposition::StatementEndAssumesLiability
+               : TransferDropDisposition::DestinationAssumesLiability));
+    CHECK(plan.ObligationAction ==
+          (destination == TransferDestination::Return
+               ? TransferObligationAction::DischargeToReturn
+           : destination == TransferDestination::StatementEndDiscard
+               ? TransferObligationAction::DischargeToStatementDiscard
+               : TransferObligationAction::DischargeToStorage));
+    CHECK(plan.ObligationAfter == TransferObligationState::Discharged);
+
+    auto bareCopy = nonCall(copy, destination, context);
+    bareCopy.SurfaceSpelling = TransferSurfaceSpelling::Bare;
+    bareCopy.SyntaxPurpose = CedeSyntaxPurpose::None;
+    auto barePlan = prepareExplicitCedePlan(bareCopy);
+    CHECK(barePlan.admitted());
+    CHECK(barePlan.ValueProduction == TransferValueProduction::CopyValue);
+    CHECK(barePlan.Source == TransferSourceDisposition::KeepLive);
+    CHECK(barePlan.Drop == TransferDropDisposition::NoLiability);
+  }
 
   auto shared = named;
   shared.SourceView = TransferSourceView::SharedHandle;

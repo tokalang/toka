@@ -1,0 +1,10 @@
+fn temporary_return() -> i32 {
+    return cede 1:i32
+}
+
+fn main() -> i32 {
+    auto value = 2:i32
+    cede value
+    cede value
+    return temporary_return() - 1:i32
+}

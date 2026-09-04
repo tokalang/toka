@@ -1337,6 +1337,10 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     }
     bool oldSuppressAliasInvalidation = m_SuppressRejectedAliasInvalidation;
     m_SuppressRejectedAliasInvalidation = rejectedAliasField;
+    recordExplicitCedeStage0NonCallPlan(
+        Init, pair.second.get(), memberTypeObj,
+        TransferDestination::AggregateMember,
+        TransferEligibilityContext::AggregateMember, "aggregate");
     std::shared_ptr<toka::Type> exprTypeObj =
         checkExpr(pair.second.get(), memberTypeObj);
     Init->MemberTransfers[i] =
@@ -1623,6 +1627,10 @@ Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
       checkStrictMorphology(Init, expectedMorph, providedMorph, pDefMember->Name);
     }
 
+    recordExplicitCedeStage0NonCallPlan(
+        Init, pair.second.get(), memberTypeObj,
+        TransferDestination::AggregateMember,
+        TransferEligibilityContext::AggregateMember, "aggregate");
     std::shared_ptr<toka::Type> exprTypeObj =
         checkExpr(pair.second.get(), memberTypeObj);
     Init->MemberTransfers.assign(Init->Members.size(),

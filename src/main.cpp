@@ -115,28 +115,40 @@ void printHelp() {
       << "  --emit-obj                      Emit native object code\n"
       << "  --emit-llvm                     Emit LLVM IR\n"
       << "  --emit-interface                Emit a TKI interface\n"
-      << "  --encap-slice1-facts=json       Dump audit-only @Encap Slice 1 facts\n"
+      << "  --encap-slice1-facts=json       Dump audit-only @Encap Slice 1 "
+         "facts\n"
       << "  --link-search <path>            Add a native library search path\n"
       << "  --link-lib <name>               Link a native library by name\n"
-      << "  --link-framework <name>         Link a macOS system framework by name\n"
+      << "  --link-framework <name>         Link a macOS system framework by "
+         "name\n"
       << "  --check-json                    Emit JSON Lines diagnostics\n"
       << "  --diagnostics-json              Emit structured diagnostics JSON\n"
       << "  --check-only                    Stop after semantic checking\n"
-      << "  --validate-semantic-manifests   Fail-closed validation of admitted source-less TKI sidecars\n"
+      << "  --validate-semantic-manifests   Fail-closed validation of admitted "
+         "source-less TKI sidecars\n"
       << "  --validate-semantic-manifest-attestations\n"
-      << "                                  Validate bodyless Outcome providers against local object attestations\n"
+      << "                                  Validate bodyless Outcome "
+         "providers against local object attestations\n"
       << "  --semantic-manifest-provenance-dir <dir>\n"
-      << "                                  Emit local object-bound Outcome attestations into .tki.tsm\n"
+      << "                                  Emit local object-bound Outcome "
+         "attestations into .tki.tsm\n"
       << "  --explain[=json] <code>         Explain a diagnostic code\n"
       << "  --semantic-evidence=json        Emit public semantic evidence v1\n"
-      << "  --cede-obligations=json         Emit frozen RC8 cede evidence v1 replay\n"
-      << "  --cede-obligations=v2           Emit signature-driven cede evidence v2\n"
+      << "  --cede-obligations=json         Emit frozen RC8 cede evidence v1 "
+         "replay\n"
+      << "  --cede-obligations=v2           Emit signature-driven cede "
+         "evidence v2\n"
+      << "  --non-call-transfer-shadow=json Emit audit-only Stage-0 non-call "
+         "plans\n"
       << "  --experimental-signature-driven-cede\n"
-      << "                                  Deprecated compatibility no-op; behavior is the default\n"
-      << "  --warn-implicit-call-move       Warn when a call implicitly invalidates a place\n"
+      << "                                  Deprecated compatibility no-op; "
+         "behavior is the default\n"
+      << "  --warn-implicit-call-move       Warn when a call implicitly "
+         "invalidates a place\n"
       << "  --capabilities=json             Emit H/P call capability pilot v1\n"
       << "  --todo-goals=json               Emit typed-todo goals v1\n"
-      << "  --conditional-facts=json        Emit typed-todo conditional facts v1\n"
+      << "  --conditional-facts=json        Emit typed-todo conditional facts "
+         "v1\n"
       << "  --semantic-index=json           Emit the compiler semantic index\n"
       << "  --semantic-context=json         Emit bounded semantic context\n"
       << "  --semantic-query <kind>         Query the semantic index\n"
@@ -158,18 +170,21 @@ bool parseUnsignedArgument(const char *option, const char *value,
 
 class SemanticEvidenceDumpGuard {
 public:
-  SemanticEvidenceDumpGuard(bool &callTransferShadow, bool &cedeObligations,
+  SemanticEvidenceDumpGuard(bool &callTransferShadow,
+                            bool &nonCallTransferShadow, bool &cedeObligations,
                             bool &cedeObligationsV2, bool &capabilities,
-                            bool &todoGoals,
-                            bool &conditionalFacts)
+                            bool &todoGoals, bool &conditionalFacts)
       : CallTransferShadow(callTransferShadow),
-        CedeObligations(cedeObligations),
-        CedeObligationsV2(cedeObligationsV2), Capabilities(capabilities),
-        TodoGoals(todoGoals), ConditionalFacts(conditionalFacts) {}
+        NonCallTransferShadow(nonCallTransferShadow),
+        CedeObligations(cedeObligations), CedeObligationsV2(cedeObligationsV2),
+        Capabilities(capabilities), TodoGoals(todoGoals),
+        ConditionalFacts(conditionalFacts) {}
   ~SemanticEvidenceDumpGuard() {
     if (toka::SemanticEvidence::isEnabled()) {
       if (CallTransferShadow)
         toka::SemanticEvidence::dumpCallTransferShadowJSON(std::cout);
+      else if (NonCallTransferShadow)
+        toka::SemanticEvidence::dumpExplicitCedeStage0NonCallJSON(std::cout);
       else if (ConditionalFacts)
         toka::SemanticEvidence::dumpConditionalFactsJSON(std::cout);
       else if (TodoGoals)
@@ -187,6 +202,7 @@ public:
 
 private:
   bool &CallTransferShadow;
+  bool &NonCallTransferShadow;
   bool &CedeObligations;
   bool &CedeObligationsV2;
   bool &Capabilities;
@@ -811,6 +827,7 @@ int main(int argc, char **argv) {
   bool dumpCedeObligations = false;
   bool dumpCedeObligationsV2 = false;
   bool dumpCallTransferShadow = false;
+  bool dumpNonCallTransferShadow = false;
   bool dumpD3DirectCallObservation = false;
   bool emitD3DirectCallObservation = false;
   bool dumpD4PureNominalProbe = false;
@@ -859,9 +876,9 @@ int main(int argc, char **argv) {
   AuthorityFactsDumpGuard authorityFactsGuard(emitAuthorityFacts,
                                                authorityFactsSession);
   SemanticEvidenceDumpGuard semanticEvidenceGuard(
-      dumpCallTransferShadow, dumpCedeObligations, dumpCedeObligationsV2,
-      dumpCapabilities,
-      dumpTodoGoals, dumpConditionalFacts);
+      dumpCallTransferShadow, dumpNonCallTransferShadow, dumpCedeObligations,
+      dumpCedeObligationsV2, dumpCapabilities, dumpTodoGoals,
+      dumpConditionalFacts);
   StructuredDiagnosticsDumpGuard structuredDiagnosticsGuard(
       structuredDiagnostics);
   MachineFailureDiagnosticsDumpGuard machineFailureDiagnosticsGuard(
@@ -970,6 +987,8 @@ int main(int argc, char **argv) {
       dumpCedeObligationsV2 = true;
     } else if (arg == "--call-transfer-shadow=json") {
       dumpCallTransferShadow = true;
+    } else if (arg == "--non-call-transfer-shadow=json") {
+      dumpNonCallTransferShadow = true;
     } else if (arg == "--m1b-d3-direct-call-observation=json") {
       dumpD3DirectCallObservation = true;
     } else if (arg == "--m1b-d4a-pure-nominal-overload-probe=json") {
@@ -1153,6 +1172,8 @@ int main(int argc, char **argv) {
 
   if (dumpCallTransferShadow)
     checkOnly = true;
+  if (dumpNonCallTransferShadow)
+    checkOnly = true;
   if (dumpD3DirectCallObservation)
     checkOnly = true;
   if (dumpD4PureNominalProbe)
@@ -1256,6 +1277,22 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  if (dumpNonCallTransferShadow &&
+      (structuredDiagnostics || g_JsonDiagnostics || dumpDependencies ||
+       dumpAssignmentStats || dumpHandleSurfaceStats || dumpSemanticEvidence ||
+       dumpCedeObligations || dumpCallTransferShadow ||
+       dumpD3DirectCallObservation || dumpD4PureNominalProbe ||
+       dumpAuthorityFacts || dumpCapabilities || dumpTodoGoals ||
+       dumpConditionalFacts || dumpMemorySummaries || dumpMemoryContracts ||
+       dumpEncapSlice1Facts || dumpSemanticIndex || dumpSemanticContext ||
+       !semanticQuery.empty() || runTopologyEval || !explainCode.empty())) {
+    llvm::errs() << "--non-call-transfer-shadow=json cannot be combined with "
+                    "another JSON, semantic, or evaluation output mode\n";
+    structuredDiagnostics = false;
+    dumpNonCallTransferShadow = false;
+    return 1;
+  }
+
   if (structuredDiagnostics &&
       (g_JsonDiagnostics || dumpDependencies || dumpAssignmentStats ||
        dumpHandleSurfaceStats || dumpSemanticEvidence || dumpCedeObligations || dumpCapabilities || dumpTodoGoals || dumpConditionalFacts || dumpMemorySummaries ||
@@ -1355,10 +1392,13 @@ int main(int argc, char **argv) {
   d4ProbeAuditSession.setForceLegacy(forceLegacyD4Probe);
   d4ProbeAuditSession.setReverseSchedule(reverseD4ProbeSchedule);
   d4ProbeAuditSession.setInjectedInfrastructureError(injectedD4ProbeError);
-  toka::SemanticEvidence::enable(dumpSemanticEvidence || dumpCedeObligations ||
-                                 dumpCallTransferShadow || dumpCapabilities ||
-                                 dumpTodoGoals || dumpConditionalFacts);
+  toka::SemanticEvidence::enable(
+      dumpSemanticEvidence || dumpCedeObligations || dumpCallTransferShadow ||
+      dumpNonCallTransferShadow || dumpCapabilities || dumpTodoGoals ||
+      dumpConditionalFacts);
   toka::SemanticEvidence::enableCallTransferShadow(dumpCallTransferShadow);
+  toka::SemanticEvidence::enableNonCallTransferShadow(
+      dumpNonCallTransferShadow);
 
   if (!explainCode.empty()) {
     auto explanation = toka::DiagnosticEngine::explain(explainCode);

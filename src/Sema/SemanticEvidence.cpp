@@ -10,11 +10,14 @@ namespace toka {
 
 bool SemanticEvidence::Enabled = false;
 bool SemanticEvidence::CallTransferShadowEnabled = false;
+bool SemanticEvidence::NonCallTransferShadowEnabled = false;
 std::vector<SemanticDecisionRecord> SemanticEvidence::Records;
 std::vector<CedeObligationRecord> SemanticEvidence::CedeObligations;
 std::vector<CallTransferShadowRecord> SemanticEvidence::CallTransferShadows;
 std::vector<ExplicitCedeStage0TransactionRecord>
     SemanticEvidence::ExplicitCedeStage0Transactions;
+std::vector<ExplicitCedeStage0NonCallRecord>
+    SemanticEvidence::ExplicitCedeStage0NonCalls;
 std::vector<CapabilityCallRecord> SemanticEvidence::CapabilityCalls;
 std::vector<TodoGoalRecord> SemanticEvidence::TodoGoals;
 std::vector<ConditionalFactRecord> SemanticEvidence::ConditionalFacts;
@@ -246,6 +249,23 @@ bool ExplicitCedeStage0TransactionRecord::operator==(
   return !(*this < rhs) && !(rhs < *this);
 }
 
+bool ExplicitCedeStage0NonCallRecord::operator<(
+    const ExplicitCedeStage0NonCallRecord &rhs) const {
+  return std::tie(Boundary, PlanOrigin, SyntaxPurpose, SourceCategory,
+                  Dependency, TypeCompatibility, EligibilityContext,
+                  PreparedBeforeLegacyMutation, SnapshotRevision, Plan,
+                  Location) <
+         std::tie(rhs.Boundary, rhs.PlanOrigin, rhs.SyntaxPurpose,
+                  rhs.SourceCategory, rhs.Dependency, rhs.TypeCompatibility,
+                  rhs.EligibilityContext, rhs.PreparedBeforeLegacyMutation,
+                  rhs.SnapshotRevision, rhs.Plan, rhs.Location);
+}
+
+bool ExplicitCedeStage0NonCallRecord::operator==(
+    const ExplicitCedeStage0NonCallRecord &rhs) const {
+  return !(*this < rhs) && !(rhs < *this);
+}
+
 bool CapabilityCallRecord::operator<(const CapabilityCallRecord &rhs) const {
   return std::tie(Callee, Parameter, Subject, DeclaredHandleRebindable,
                   DeclaredPayloadWritable, InferredHandleRebindable,
@@ -328,6 +348,14 @@ bool SemanticEvidence::isCallTransferShadowEnabled() {
   return CallTransferShadowEnabled;
 }
 
+void SemanticEvidence::enableNonCallTransferShadow(bool value) {
+  NonCallTransferShadowEnabled = value;
+}
+
+bool SemanticEvidence::isNonCallTransferShadowEnabled() {
+  return NonCallTransferShadowEnabled;
+}
+
 SemanticEvidence::CallTransferJournalCheckpoint
 SemanticEvidence::checkpointCallTransferJournal() {
   return {CallTransferShadows.size(), ExplicitCedeStage0Transactions.size()};
@@ -344,10 +372,12 @@ void SemanticEvidence::rollbackCallTransferJournal(
 SemanticEvidenceAuditState SemanticEvidence::auditState() {
   return {Enabled,
           CallTransferShadowEnabled,
+          NonCallTransferShadowEnabled,
           Records.size(),
           CedeObligations.size(),
           CallTransferShadows.size(),
           ExplicitCedeStage0Transactions.size(),
+          ExplicitCedeStage0NonCalls.size(),
           CapabilityCalls.size(),
           TodoGoals.size(),
           ConditionalFacts.size(),
@@ -355,6 +385,7 @@ SemanticEvidenceAuditState SemanticEvidence::auditState() {
           CedeObligations,
           CallTransferShadows,
           ExplicitCedeStage0Transactions,
+          ExplicitCedeStage0NonCalls,
           CapabilityCalls,
           TodoGoals,
           ConditionalFacts};
@@ -365,6 +396,7 @@ void SemanticEvidence::reset() {
   CedeObligations.clear();
   CallTransferShadows.clear();
   ExplicitCedeStage0Transactions.clear();
+  ExplicitCedeStage0NonCalls.clear();
   CapabilityCalls.clear();
   TodoGoals.clear();
   ConditionalFacts.clear();
@@ -533,6 +565,14 @@ void SemanticEvidence::recordExplicitCedeStage0Transaction(
     return;
   record.Location = resolveLocation(location);
   ExplicitCedeStage0Transactions.push_back(std::move(record));
+}
+
+void SemanticEvidence::recordExplicitCedeStage0NonCall(
+    ExplicitCedeStage0NonCallRecord record, SourceLocation location) {
+  if (!Enabled || !NonCallTransferShadowEnabled)
+    return;
+  record.Location = resolveLocation(location);
+  ExplicitCedeStage0NonCalls.push_back(std::move(record));
 }
 
 void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
@@ -776,6 +816,82 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
     }
     out << "],\"location\":";
     dumpLocation(out, transaction.Location);
+    out << '}';
+  }
+  out << "]}\n";
+}
+
+void SemanticEvidence::dumpExplicitCedeStage0NonCallJSON(std::ostream &out) {
+  std::sort(ExplicitCedeStage0NonCalls.begin(),
+            ExplicitCedeStage0NonCalls.end());
+  ExplicitCedeStage0NonCalls.erase(
+      std::unique(ExplicitCedeStage0NonCalls.begin(),
+                  ExplicitCedeStage0NonCalls.end()),
+      ExplicitCedeStage0NonCalls.end());
+  out << "{\"schema\":\"toka.internal.non-call-transfer-shadow\","
+         "\"version\":1,\"status\":\"audit-only\",\"records\":[";
+  for (size_t index = 0; index < ExplicitCedeStage0NonCalls.size(); ++index) {
+    if (index != 0)
+      out << ',';
+    const auto &record = ExplicitCedeStage0NonCalls[index];
+    const auto &plan = record.Plan;
+    out << "{\"boundary\":\"" << escapeJSON(record.Boundary)
+        << "\",\"plan_origin\":\"" << escapeJSON(record.PlanOrigin)
+        << "\",\"syntax_purpose\":\"" << escapeJSON(record.SyntaxPurpose)
+        << "\",\"source_category\":\"" << escapeJSON(record.SourceCategory)
+        << "\",\"dependency\":\"" << escapeJSON(record.Dependency)
+        << "\",\"type_compatibility\":\""
+        << escapeJSON(record.TypeCompatibility)
+        << "\",\"eligibility_context\":\""
+        << escapeJSON(record.EligibilityContext)
+        << "\",\"prepared_before_legacy_mutation\":"
+        << (record.PreparedBeforeLegacyMutation ? "true" : "false")
+        << ",\"snapshot_revision\":" << record.SnapshotRevision
+        << ",\"plan\":{\"actual_type\":\"" << escapeJSON(plan.ActualType)
+        << "\",\"formal_type\":\"" << escapeJSON(plan.FormalType)
+        << "\",\"formal_contract\":\"" << escapeJSON(plan.FormalContract)
+        << "\",\"outcome\":\"" << escapeJSON(plan.Outcome)
+        << "\",\"rejection\":\"" << escapeJSON(plan.Rejection)
+        << "\",\"exact_path\":\"" << escapeJSON(plan.ExactPath)
+        << "\",\"referent_path\":\"" << escapeJSON(plan.ReferentPath)
+        << "\",\"dependency_roots\":[";
+    for (size_t dependency = 0; dependency < plan.DependencyRoots.size();
+         ++dependency) {
+      if (dependency != 0)
+        out << ',';
+      out << "\"" << escapeJSON(plan.DependencyRoots[dependency]) << "\"";
+    }
+    out << "],\"source_view\":\"" << escapeJSON(plan.SourceView)
+        << "\",\"surface_spelling\":\"" << escapeJSON(plan.SurfaceSpelling)
+        << "\",\"copy_proof\":\"" << escapeJSON(plan.CopyProof)
+        << "\",\"eligibility\":\"" << escapeJSON(plan.Eligibility)
+        << "\",\"obligation_before\":\"" << escapeJSON(plan.ObligationBefore)
+        << "\",\"reachability\":\"" << escapeJSON(plan.Reachability)
+        << "\",\"source_liveness\":\"" << escapeJSON(plan.SourceLiveness)
+        << "\",\"init_mask\":";
+    if (plan.HasInitMask)
+      out << plan.InitMask;
+    else
+      out << "null";
+    out << ",\"cleanup_mask\":";
+    if (plan.HasCleanupMask)
+      out << plan.CleanupMask;
+    else
+      out << "null";
+    out << ",\"liability_identity\":\"" << escapeJSON(plan.LiabilityIdentity)
+        << "\",\"value_production\":\"" << escapeJSON(plan.ValueProduction)
+        << "\",\"source\":\"" << escapeJSON(plan.Source)
+        << "\",\"destination\":\"" << escapeJSON(plan.Destination)
+        << "\",\"drop\":\"" << escapeJSON(plan.Drop)
+        << "\",\"source_obligation_action\":\""
+        << escapeJSON(plan.SourceObligationAction)
+        << "\",\"source_obligation_after\":\""
+        << escapeJSON(plan.SourceObligationAfter)
+        << "\",\"destination_obligation_action\":\""
+        << escapeJSON(plan.DestinationObligationAction)
+        << "\",\"destination_obligation_after\":\""
+        << escapeJSON(plan.DestinationObligationAfter) << "\"},\"location\":";
+    dumpLocation(out, record.Location);
     out << '}';
   }
   out << "]}\n";

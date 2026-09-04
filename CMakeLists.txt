@@ -246,6 +246,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_call_transfer_shadow_m1.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_non_call_transfer_shadow_stage0
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_non_call_transfer_shadow_stage0.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_direct_call_observation_d3a
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_direct_call_observation_d3a.py
@@ -288,6 +292,7 @@ if(BUILD_TESTING)
                 --build-dir ${CMAKE_BINARY_DIR})
         set(_toka_compiler_driven_tests
             toka_call_transfer_shadow_m1
+            toka_non_call_transfer_shadow_stage0
             toka_direct_call_observation_d3a
             toka_pure_nominal_overload_probe_d4a
             toka_authority_facts_m1b2a
