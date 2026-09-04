@@ -1,0 +1,7 @@
+import ./rejected_overload_initialization_provider::{Selected, choose}
+
+fn main() -> i32 {
+    auto selected = Selected(value = 7:i32)
+    auto result = choose(selected)
+    return result.value - 7:i32
+}

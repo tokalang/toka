@@ -1,0 +1,6 @@
+shape Holder(values: [i32; 2])
+
+fn main() -> i32 {
+    Holder(values = [1, 2])
+    return 0:i32
+}

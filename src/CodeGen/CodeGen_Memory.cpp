@@ -522,11 +522,16 @@ bool CodeGen::validateStage0CodeGenAuthority(
                         injectMismatch ||
                         (site && site->Stage0CodeGenAuthorityRequired) ||
                         (authority && authority->RequiresAuthority);
-  if (!required)
-    return true;
   if (injectMissing || injectMismatch)
     m_Stage0AuthorityFaultConsumed = true;
-  if (!authority || injectMissing) {
+  if (!authority) {
+    if (!required)
+      return true;
+    error(site, DiagID::ERR_CODEGEN,
+          "Stage-0 CodeGen authority missing plan for '" + boundary + "'");
+    return false;
+  }
+  if (injectMissing) {
     error(site, DiagID::ERR_CODEGEN,
           "Stage-0 CodeGen authority missing plan for '" + boundary + "'");
     return false;

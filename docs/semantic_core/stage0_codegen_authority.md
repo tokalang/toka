@@ -46,6 +46,11 @@ rejects and emits no artifact when any required carrier is:
 - transaction/group incomplete; or
 - attached to an unqualified generic specialization.
 
+Carrier presence and carrier requirement are separate. If a carrier exists,
+CodeGen always validates it, including bare expressions whose frozen plan is
+rejected. `RequiresAuthority` only decides whether an absent carrier is an
+error; it can never bypass an attached `SemaValidated=false` plan.
+
 The gate reads the frozen Sema plan only. It does not call type resolution,
 PAL, ownership classification, Drop analysis, source-place discovery, or
 obligation planning. After admission, the existing legacy lowering still
@@ -62,11 +67,13 @@ all seven non-call destinations, and generic-body qualification. It performs
 missing-plan and mismatch injection for each of the 16 boundaries and verifies
 that no object or executable is produced. It also proves:
 
-- admitted direct/static/method/callable/extern routes produce runnable or
+- admitted non-call, direct-generic, and extern call edges produce runnable or
   linkable artifacts;
 - all admitted non-call destinations preserve runtime behavior;
 - Sema-rejected payload, indirect, dynamic-trait, and overload plans cannot
   produce artifacts;
+- imported-overload initialization and array-aggregate bare rejected carriers
+  fail without fault injection while normal compilation still emits objects;
 - selected direct generic bodies require completed qualification; and
 - normal compilation output and diagnostics remain unchanged.
 

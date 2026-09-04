@@ -1,0 +1,13 @@
+fn leaf(value: i32) -> i32 {
+    return value
+}
+
+fn generic_body<T>(value: T) -> T {
+    auto marker = leaf(1:i32)
+    return value
+}
+
+fn main() -> i32 {
+    generic_body(42:i32)
+    return 0:i32
+}

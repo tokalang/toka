@@ -12,14 +12,19 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests/semantics/codegen_authority/lib/core"
 ALL_ROUTES = FIXTURES / "pass_all_routes.tk"
+NONCALL_ROUTES = FIXTURES / "pass_noncall_routes.tk"
 CALL_ROUTES = FIXTURES / "pass_call_routes.tk"
 EXTERN_ROUTE = FIXTURES / "pass_extern_route.tk"
+EXTERN_EDGE = FIXTURES / "pass_extern_edge.tk"
 GENERIC_BODY = FIXTURES / "pass_generic_body.tk"
+GENERIC_BODY_EDGE = FIXTURES / "pass_generic_body_edge.tk"
 GENERIC_CANDIDATE = FIXTURES / "pass_generic_candidate_warm.tk"
 REJECTED = FIXTURES / "rejected_plan.tk"
 DYNAMIC_TRAIT = FIXTURES / "pass_dynamic_trait_route.tk"
 REJECTED_INDIRECT_FN = FIXTURES / "rejected_indirect_fn_route.tk"
 REJECTED_INDIRECT_DYN_FN = FIXTURES / "rejected_indirect_dyn_fn_route.tk"
+REJECTED_OVERLOAD_INIT = FIXTURES / "rejected_overload_initialization.tk"
+REJECTED_ARRAY_GROUP = FIXTURES / "rejected_array_aggregate.tk"
 
 if not os.environ.get("TOKA_LIB"):
     os.environ["TOKA_LIB"] = str(ROOT / "lib")
@@ -55,10 +60,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix="toka-stage0-codegen-") as temp:
         work = Path(temp)
         for name, source, link in (
-                ("all", ALL_ROUTES, True),
-                ("calls", CALL_ROUTES, True),
-                ("generic", GENERIC_BODY, True),
-                ("extern", EXTERN_ROUTE, False)):
+                ("noncall", NONCALL_ROUTES, True),
+                ("generic", GENERIC_BODY_EDGE, True),
+                ("extern", EXTERN_EDGE, False)):
             normal_output = work / (name + "-normal")
             authority_output = work / (name + "-authority")
             if not link:
@@ -86,18 +90,18 @@ def main():
             "call:method": CALL_ROUTES,
             "call:static": CALL_ROUTES,
             "call:callable": CALL_ROUTES,
-            "call:extern": EXTERN_ROUTE,
+            "call:extern": EXTERN_EDGE,
             "call:dynamic-trait-method": DYNAMIC_TRAIT,
             "call:indirect-fn": REJECTED_INDIRECT_FN,
             "call:indirect-dyn-fn": REJECTED_INDIRECT_DYN_FN,
-            "return": ALL_ROUTES,
-            "standalone": ALL_ROUTES,
-            "assignment": ALL_ROUTES,
-            "initialization": ALL_ROUTES,
-            "aggregate": ALL_ROUTES,
-            "match_binding": ALL_ROUTES,
-            "closure_capture": ALL_ROUTES,
-            "generic-body": GENERIC_BODY,
+            "return": NONCALL_ROUTES,
+            "standalone": NONCALL_ROUTES,
+            "assignment": NONCALL_ROUTES,
+            "initialization": NONCALL_ROUTES,
+            "aggregate": NONCALL_ROUTES,
+            "match_binding": NONCALL_ROUTES,
+            "closure_capture": NONCALL_ROUTES,
+            "generic-body": GENERIC_BODY_EDGE,
         }
         for target, source in targets.items():
             for kind in ("missing", "mismatch"):
@@ -111,9 +115,20 @@ def main():
                         not output.exists(),
                         kind + " fault did not fail closed for " + target)
 
-        for index, source in enumerate(
-                (REJECTED, REJECTED_INDIRECT_FN, REJECTED_INDIRECT_DYN_FN,
-                 DYNAMIC_TRAIT, GENERIC_CANDIDATE)):
+        rejected_cases = (
+            (REJECTED, None),
+            (REJECTED_INDIRECT_FN, None),
+            (REJECTED_INDIRECT_DYN_FN, None),
+            (DYNAMIC_TRAIT, None),
+            (GENERIC_CANDIDATE, None),
+            (REJECTED_OVERLOAD_INIT, "initialization"),
+            (REJECTED_ARRAY_GROUP, "aggregate"),
+            (ALL_ROUTES, None),
+            (CALL_ROUTES, None),
+            (GENERIC_BODY, None),
+            (EXTERN_ROUTE, None),
+        )
+        for index, (source, expected_boundary) in enumerate(rejected_cases):
             rejected_normal = work / ("rejected-normal-" + str(index) + ".o")
             rejected_authority = work / (
                 "rejected-authority-" + str(index) + ".o")
@@ -124,6 +139,9 @@ def main():
                     "rejected-plan fixture no longer reflects normal behavior")
             require(rejected.returncode != 0 and
                     "Stage-0 CodeGen authority rejected" in rejected.stderr and
+                    (expected_boundary is None or
+                     ("for '" + expected_boundary + "'") in
+                     rejected.stderr) and
                     not rejected_authority.exists(),
                     "CodeGen accepted a Sema-rejected plan")
 
