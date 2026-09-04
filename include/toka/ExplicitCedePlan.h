@@ -381,6 +381,7 @@ ExplicitCedeWholeCallPlan
 prepareExplicitCedeWholeCallPlan(const ExplicitCedeWholeCallFacts &facts);
 ExplicitCedeNonCallGroupPlan
 prepareExplicitCedeNonCallGroupPlan(const ExplicitCedeNonCallGroupFacts &facts);
+bool requiresStage0CodeGenAuthority(const ExplicitCedePlan &plan);
 
 const char *toString(TransferPlanRejection value);
 const char *toString(TransferPlanOutcome value);

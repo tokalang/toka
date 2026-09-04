@@ -253,6 +253,30 @@ inline const char *callExecutionBoundaryName(CallExecutionBoundary boundary) {
   return "None";
 }
 
+enum class Stage0CodeGenAuthorityKind {
+  None,
+  CallTransaction,
+  NonCallItem,
+  NonCallGroup,
+};
+
+// Sema-owned authority attached to the exact AST edge consumed by CodeGen.
+// CodeGen may validate and execute this carrier, but must never reconstruct
+// ownership, Drop, source-place, or obligation facts on its own.
+struct Stage0CodeGenAuthority {
+  Stage0CodeGenAuthorityKind Kind = Stage0CodeGenAuthorityKind::None;
+  bool RequiresAuthority = false;
+  bool SemaValidated = false;
+  bool Complete = false;
+  bool DestinationMatching = false;
+  uint64_t SnapshotRevision = 0;
+  std::string Route;
+  TransferDestination Destination = TransferDestination::Indeterminate;
+  std::optional<ExplicitCedePlan> ItemPlan;
+  std::optional<ExplicitCedeWholeCallPlan> CallPlan;
+  std::vector<ExplicitCedePlan> GroupPlans;
+};
+
 enum class MorphologyConstraintKind {
   SoulOnly,
   BorrowExtendable,
@@ -291,6 +315,8 @@ public:
   SourceLocation Loc;
   uint32_t NodeSerial;
   uint32_t ExpansionContext;
+  bool Stage0CodeGenAuthorityRequired = false;
+  std::optional<Stage0CodeGenAuthority> Stage0Authority;
 
   ASTNode() {
     NodeSerial = NextNodeSerial++;
@@ -2264,6 +2290,9 @@ public:
   bool HasSemanticManifestAttestationCandidate = false;
   std::vector<GenericParam> GenericParams; // [NEW] e.g. <T>
   FunctionDecl *TemplateOrigin = nullptr;  // Tooling identity for an instance.
+  bool Stage0BodyQualificationRequired = false;
+  bool Stage0BodyQualificationComplete = false;
+  std::string Stage0BodySpecializationIdentity;
 
   FunctionDecl(bool isPub, const std::string &name, std::vector<Arg> args,
                std::unique_ptr<BlockStmt> body, const std::string &retType,

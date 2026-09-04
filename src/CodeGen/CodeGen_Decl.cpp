@@ -174,6 +174,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     ~FnGuard() { Target = Old; }
   } fnGuard(m_CurrentFunction, func);
 
+  if (!declOnly && func->Body && !validateStage0SpecializationAuthority(func))
+    return nullptr;
+
   if (handleGrammarAuditEnabled() && func) {
     markHandleGrammarFunctionCodeGenLowered(func->Name);
     if (!func->CodegenName.empty() && func->CodegenName != func->Name) {
@@ -1186,6 +1189,17 @@ void CodeGen::genAsyncMainEntrypoint(llvm::Function *asyncMain,
 
 llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
   std::string varName = Type::stripMorphology(var->Name);
+  if (var->Init) {
+    const auto *unique = dynamic_cast<const UnaryExpr *>(var->Init.get());
+    const bool syntacticTransfer =
+        dynamic_cast<const CedeExpr *>(var->Init.get()) != nullptr ||
+        (unique && unique->Op == TokenType::Caret);
+    if (!validateStage0CodeGenAuthority(var,
+                                        Stage0CodeGenAuthorityKind::NonCallItem,
+                                        TransferDestination::Initialization,
+                                        "initialization", syntacticTransfer))
+      return nullptr;
+  }
   size_t scopeBeforeInit = 0;
 
   llvm::Value *initVal = nullptr;
@@ -2622,6 +2636,14 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
 }
 
 PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
+  const std::string authorityRoute =
+      expr->Stage0Authority && !expr->Stage0Authority->Route.empty()
+          ? expr->Stage0Authority->Route
+          : "method";
+  if (!validateStage0CodeGenAuthority(
+          expr, Stage0CodeGenAuthorityKind::CallTransaction,
+          TransferDestination::Indeterminate, "call:" + authorityRoute, true))
+    return {};
   if (expr->IsIntrinsicCopyDup) {
     PhysEntity source = genExpr(expr->Object.get());
     llvm::Value *value = source.load(m_Builder);

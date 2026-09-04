@@ -379,6 +379,7 @@ struct SemanticEvidenceAuditState {
   bool Enabled = false;
   bool CallTransferShadowEnabled = false;
   bool GenericBodyCallQualificationEnabled = false;
+  bool CodeGenAuthorityEnabled = false;
   bool NonCallTransferShadowEnabled = false;
   size_t DecisionCount = 0;
   size_t CedeObligationCount = 0;
@@ -403,6 +404,7 @@ struct SemanticEvidenceAuditState {
            CallTransferShadowEnabled == rhs.CallTransferShadowEnabled &&
            GenericBodyCallQualificationEnabled ==
                rhs.GenericBodyCallQualificationEnabled &&
+           CodeGenAuthorityEnabled == rhs.CodeGenAuthorityEnabled &&
            NonCallTransferShadowEnabled == rhs.NonCallTransferShadowEnabled &&
            DecisionCount == rhs.DecisionCount &&
            CedeObligationCount == rhs.CedeObligationCount &&
@@ -449,6 +451,8 @@ public:
   static bool isCallTransferShadowEnabled();
   static void enableGenericBodyCallQualification(bool value);
   static bool isGenericBodyCallQualificationEnabled();
+  static void enableCodeGenAuthority(bool value);
+  static bool isCodeGenAuthorityEnabled();
   static void rollbackGenericBodyCallQualification(
       const std::string &specializationIdentity);
   static void recordGenericBodyCallQualificationDependency(
@@ -530,6 +534,7 @@ private:
   static bool Enabled;
   static bool CallTransferShadowEnabled;
   static bool GenericBodyCallQualificationEnabled;
+  static bool CodeGenAuthorityEnabled;
   static bool NonCallTransferShadowEnabled;
   static std::vector<SemanticDecisionRecord> Records;
   static std::vector<CedeObligationRecord> CedeObligations;

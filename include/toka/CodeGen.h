@@ -129,6 +129,10 @@ public:
   void generate(const Module &ast);
   void finalizeGlobals();
   void enableDebugInfo(const std::string &sourcePath, bool optimized);
+  void enableStage0CodeGenAuthority(const std::string &fault = {}) {
+    m_Stage0CodeGenAuthorityEnabled = true;
+    m_Stage0AuthorityFault = fault;
+  }
   void finalizeDebugInfo();
   bool hasErrors() const { return m_ErrorCount > 0; }
   void print(llvm::raw_ostream &os);
@@ -140,6 +144,15 @@ public:
 
 private:
   int m_ErrorCount = 0;
+  bool m_Stage0CodeGenAuthorityEnabled = false;
+  bool m_Stage0AuthorityFaultConsumed = false;
+  std::string m_Stage0AuthorityFault;
+  bool validateStage0CodeGenAuthority(const ASTNode *site,
+                                      Stage0CodeGenAuthorityKind expectedKind,
+                                      TransferDestination expectedDestination,
+                                      const std::string &boundary,
+                                      bool syntacticallyRequired);
+  bool validateStage0SpecializationAuthority(const ASTNode *site);
   void markMemoryEvent(llvm::Instruction *instruction, const char *event);
   template <typename... Args>
   void error(const ASTNode *node, DiagID id, Args &&...args) {

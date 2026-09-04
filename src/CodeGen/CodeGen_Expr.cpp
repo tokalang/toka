@@ -868,6 +868,17 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
 
   const BinaryExpr *bin = expr;
 
+  if (bin->Op == "=") {
+    const auto *unique = dynamic_cast<const UnaryExpr *>(bin->RHS.get());
+    const bool syntacticTransfer =
+        dynamic_cast<const CedeExpr *>(bin->RHS.get()) != nullptr ||
+        (unique && unique->Op == TokenType::Caret);
+    if (!validateStage0CodeGenAuthority(
+            bin, Stage0CodeGenAuthorityKind::NonCallItem,
+            TransferDestination::Assignment, "assignment", syntacticTransfer))
+      return {};
+  }
+
   if (bin->IsInitStatePredicate) {
     auto *target = dynamic_cast<const VariableExpr *>(bin->LHS.get());
     llvm::Value *isLive = getInitLiveFlag(target);
@@ -2325,6 +2336,11 @@ llvm::Value *CodeGen::genNullCheck(llvm::Value *val, const ASTNode *node,
 }
 
 PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
+  if (!validateStage0CodeGenAuthority(
+          expr, Stage0CodeGenAuthorityKind::NonCallItem,
+          TransferDestination::MatchBinding, "match_binding",
+          dynamic_cast<const CedeExpr *>(expr->Target.get()) != nullptr))
+    return {};
   // [New] Match expressions create their own temporary scope
   m_ScopeStack.push_back({});
 
@@ -4858,6 +4874,16 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
 }
 
 PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
+  if (!call->ResolvedShape) {
+    const std::string authorityRoute =
+        call->Stage0Authority && !call->Stage0Authority->Route.empty()
+            ? call->Stage0Authority->Route
+            : "unknown";
+    if (!validateStage0CodeGenAuthority(
+            call, Stage0CodeGenAuthorityKind::CallTransaction,
+            TransferDestination::Indeterminate, "call:" + authorityRoute, true))
+      return {};
+  }
   if (call->Callee == "__place_end" || call->Callee == "__place_hit") {
     llvm::Type *carrierTy = getLLVMType(call->ResolvedType);
     auto *carrierStruct = llvm::dyn_cast_or_null<llvm::StructType>(carrierTy);
@@ -7407,6 +7433,14 @@ PhysEntity CodeGen::genUnsafeExpr(const UnsafeExpr *ue) {
 }
 
 PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
+  const bool syntacticTransfer = std::any_of(
+      init->Members.begin(), init->Members.end(), [](const auto &member) {
+        return dynamic_cast<const CedeExpr *>(member.second.get()) != nullptr;
+      });
+  if (!validateStage0CodeGenAuthority(
+          init, Stage0CodeGenAuthorityKind::NonCallGroup,
+          TransferDestination::AggregateMember, "aggregate", syntacticTransfer))
+    return {};
   std::string shapeName = init->ShapeName;
   if (init->ResolvedType && init->ResolvedType->isShape()) {
     auto shapeType = std::dynamic_pointer_cast<ShapeType>(init->ResolvedType);
@@ -7939,6 +7973,16 @@ PhysEntity CodeGen::genRepeatedArrayExpr(const RepeatedArrayExpr *expr) {
 }
 
 PhysEntity CodeGen::genClosureExpr(const ClosureExpr *expr) {
+  const bool syntacticTransfer =
+      std::any_of(expr->ExplicitCaptures.begin(), expr->ExplicitCaptures.end(),
+                  [](const auto &capture) {
+                    return capture.Mode == CaptureMode::ExplicitCede;
+                  });
+  if (!validateStage0CodeGenAuthority(expr,
+                                      Stage0CodeGenAuthorityKind::NonCallGroup,
+                                      TransferDestination::ClosureCapture,
+                                      "closure_capture", syntacticTransfer))
+    return {};
   auto shapeType = std::dynamic_pointer_cast<toka::ShapeType>(expr->ResolvedType);
   if (!shapeType || !shapeType->Decl) {
       if (expr->ResolvedType && expr->ResolvedType->isReference()) {

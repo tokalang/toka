@@ -143,6 +143,8 @@ void printHelp() {
       << "  --generic-body-call-qualification=json\n"
       << "                                  Emit specialization-scoped "
          "generic-body call audit\n"
+      << "  --stage0-codegen-authority      Enforce audit-only Sema plan "
+         "authority in CodeGen\n"
       << "  --experimental-signature-driven-cede\n"
       << "                                  Deprecated compatibility no-op; "
          "behavior is the default\n"
@@ -175,17 +177,21 @@ class SemanticEvidenceDumpGuard {
 public:
   SemanticEvidenceDumpGuard(bool &callTransferShadow,
                             bool &genericBodyCallQualification,
-                            bool &nonCallTransferShadow, bool &cedeObligations,
-                            bool &cedeObligationsV2, bool &capabilities,
-                            bool &todoGoals, bool &conditionalFacts)
+                            bool &codeGenAuthority, bool &nonCallTransferShadow,
+                            bool &cedeObligations, bool &cedeObligationsV2,
+                            bool &capabilities, bool &todoGoals,
+                            bool &conditionalFacts)
       : CallTransferShadow(callTransferShadow),
         GenericBodyCallQualification(genericBodyCallQualification),
+        CodeGenAuthority(codeGenAuthority),
         NonCallTransferShadow(nonCallTransferShadow),
         CedeObligations(cedeObligations), CedeObligationsV2(cedeObligationsV2),
         Capabilities(capabilities), TodoGoals(todoGoals),
         ConditionalFacts(conditionalFacts) {}
   ~SemanticEvidenceDumpGuard() {
     if (toka::SemanticEvidence::isEnabled()) {
+      if (CodeGenAuthority)
+        return;
       if (CallTransferShadow || GenericBodyCallQualification)
         toka::SemanticEvidence::dumpCallTransferShadowJSON(std::cout);
       else if (NonCallTransferShadow)
@@ -208,6 +214,7 @@ public:
 private:
   bool &CallTransferShadow;
   bool &GenericBodyCallQualification;
+  bool &CodeGenAuthority;
   bool &NonCallTransferShadow;
   bool &CedeObligations;
   bool &CedeObligationsV2;
@@ -834,6 +841,8 @@ int main(int argc, char **argv) {
   bool dumpCedeObligationsV2 = false;
   bool dumpCallTransferShadow = false;
   bool dumpGenericBodyCallQualification = false;
+  bool stage0CodeGenAuthority = false;
+  std::string stage0CodeGenAuthorityFault;
   bool dumpNonCallTransferShadow = false;
   bool dumpD3DirectCallObservation = false;
   bool emitD3DirectCallObservation = false;
@@ -884,8 +893,9 @@ int main(int argc, char **argv) {
                                                authorityFactsSession);
   SemanticEvidenceDumpGuard semanticEvidenceGuard(
       dumpCallTransferShadow, dumpGenericBodyCallQualification,
-      dumpNonCallTransferShadow, dumpCedeObligations, dumpCedeObligationsV2,
-      dumpCapabilities, dumpTodoGoals, dumpConditionalFacts);
+      stage0CodeGenAuthority, dumpNonCallTransferShadow, dumpCedeObligations,
+      dumpCedeObligationsV2, dumpCapabilities, dumpTodoGoals,
+      dumpConditionalFacts);
   StructuredDiagnosticsDumpGuard structuredDiagnosticsGuard(
       structuredDiagnostics);
   MachineFailureDiagnosticsDumpGuard machineFailureDiagnosticsGuard(
@@ -1008,6 +1018,14 @@ int main(int argc, char **argv) {
       }
       dumpGenericBodyCallQualification = true;
       dumpCallTransferShadow = true;
+    } else if (arg == "--stage0-codegen-authority") {
+      stage0CodeGenAuthority = true;
+#ifdef TOKA_BUILD_TESTING
+    } else if (arg.rfind("--stage0-codegen-fault=", 0) == 0) {
+      stage0CodeGenAuthority = true;
+      stage0CodeGenAuthorityFault =
+          arg.substr(std::string("--stage0-codegen-fault=").size());
+#endif
     } else if (arg == "--non-call-transfer-shadow=json") {
       dumpNonCallTransferShadow = true;
     } else if (arg == "--m1b-d3-direct-call-observation=json") {
@@ -1236,6 +1254,20 @@ int main(int argc, char **argv) {
     llvm::errs() << "--m1b-2a-fault-source requires a fault point\n";
     return 1;
   }
+  if (stage0CodeGenAuthority &&
+      (checkOnly || structuredDiagnostics || g_JsonDiagnostics ||
+       dumpDependencies || dumpAssignmentStats || dumpHandleSurfaceStats ||
+       dumpSemanticEvidence || dumpCedeObligations || dumpCallTransferShadow ||
+       dumpNonCallTransferShadow || dumpD3DirectCallObservation ||
+       dumpD4PureNominalProbe || dumpAuthorityFacts || dumpCapabilities ||
+       dumpTodoGoals || dumpConditionalFacts || dumpMemorySummaries ||
+       dumpMemoryContracts || dumpEncapSlice1Facts || dumpSemanticIndex ||
+       dumpSemanticContext || !semanticQuery.empty() || runTopologyEval ||
+       !explainCode.empty())) {
+    llvm::errs() << "--stage0-codegen-authority requires artifact emission "
+                    "and cannot be combined with another audit/output mode\n";
+    return 1;
+  }
   if (dumpAuthorityFacts &&
       (structuredDiagnostics || g_JsonDiagnostics || dumpDependencies ||
        dumpAssignmentStats || dumpHandleSurfaceStats || dumpSemanticEvidence ||
@@ -1416,12 +1448,14 @@ int main(int argc, char **argv) {
   toka::SemanticEvidence::enable(
       dumpSemanticEvidence || dumpCedeObligations || dumpCallTransferShadow ||
       dumpNonCallTransferShadow || dumpCapabilities || dumpTodoGoals ||
-      dumpConditionalFacts);
-  toka::SemanticEvidence::enableCallTransferShadow(dumpCallTransferShadow);
+      dumpConditionalFacts || stage0CodeGenAuthority);
+  toka::SemanticEvidence::enableCallTransferShadow(dumpCallTransferShadow ||
+                                                   stage0CodeGenAuthority);
   toka::SemanticEvidence::enableGenericBodyCallQualification(
-      dumpGenericBodyCallQualification);
+      dumpGenericBodyCallQualification || stage0CodeGenAuthority);
+  toka::SemanticEvidence::enableCodeGenAuthority(stage0CodeGenAuthority);
   toka::SemanticEvidence::enableNonCallTransferShadow(
-      dumpNonCallTransferShadow);
+      dumpNonCallTransferShadow || stage0CodeGenAuthority);
 
   if (!explainCode.empty()) {
     auto explanation = toka::DiagnosticEngine::explain(explainCode);
@@ -1964,6 +1998,8 @@ int main(int argc, char **argv) {
   if (verboseMode) fprintf(stderr, "Instantiating CodeGen for module: %s\n", argv[1]);
   fflush(stderr);
   toka::CodeGen codegen(context, argv[1]);
+  if (stage0CodeGenAuthority)
+    codegen.enableStage0CodeGenAuthority(stage0CodeGenAuthorityFault);
   codegen.importParenthesizedRecordTypes(sema.getParenthesizedRecordTypes());
   if (verboseMode) fprintf(stderr, "CodeGen instantiated.\n");
   fflush(stderr);

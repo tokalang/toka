@@ -24,6 +24,16 @@
 namespace toka {
 
 llvm::Value *CodeGen::genReturnStmt(const ReturnStmt *ret) {
+  const bool syntacticTransfer =
+      ret->ReturnValue &&
+      (dynamic_cast<const CedeExpr *>(ret->ReturnValue.get()) != nullptr ||
+       (dynamic_cast<const UnaryExpr *>(ret->ReturnValue.get()) &&
+        static_cast<const UnaryExpr *>(ret->ReturnValue.get())->Op ==
+            TokenType::Caret));
+  if (!validateStage0CodeGenAuthority(
+          ret, Stage0CodeGenAuthorityKind::NonCallItem,
+          TransferDestination::Return, "return", syntacticTransfer))
+    return nullptr;
   llvm::Value *retVal = nullptr;
   const bool returnsMiss =
       ret->OutcomeKind == ReturnStmt::MissOutcomeKind::Miss;
@@ -259,6 +269,8 @@ llvm::Value *CodeGen::genBlockStmt(const BlockStmt *bs) {
   llvm::Value *lastVal = nullptr;
   for (const auto &s : bs->Statements) {
     lastVal = genStmt(s.get());
+    if (hasErrors())
+      break;
     // Liveness check: stop if terminator was generated
     if (m_Builder.GetInsertBlock() &&
         m_Builder.GetInsertBlock()->getTerminator())
@@ -838,6 +850,11 @@ llvm::Value *CodeGen::genUnsafeStmt(const UnsafeStmt *us) {
 }
 
 llvm::Value *CodeGen::genExprStmt(const ExprStmt *es) {
+  if (!validateStage0CodeGenAuthority(
+          es, Stage0CodeGenAuthorityKind::NonCallItem,
+          TransferDestination::StatementEndDiscard, "standalone",
+          dynamic_cast<const CedeExpr *>(es->Expression.get()) != nullptr))
+    return nullptr;
   PhysEntity result = genExpr(es->Expression.get());
   llvm::Value *value = result.load(m_Builder);
 

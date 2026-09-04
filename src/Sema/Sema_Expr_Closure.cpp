@@ -474,6 +474,24 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
       groupFacts.Items.push_back(plan.Prepared);
     }
     auto group = prepareExplicitCedeNonCallGroupPlan(groupFacts);
+    if (SemanticEvidence::isCodeGenAuthorityEnabled()) {
+      Stage0CodeGenAuthority authority;
+      authority.Kind = Stage0CodeGenAuthorityKind::NonCallGroup;
+      authority.RequiresAuthority =
+          std::any_of(group.Items.begin(), group.Items.end(),
+                      requiresStage0CodeGenAuthority);
+      authority.SemaValidated = group.admitted();
+      authority.Complete = true;
+      authority.DestinationMatching = std::all_of(
+          group.Items.begin(), group.Items.end(), [](const auto &p) {
+            return p.Destination == TransferDestination::ClosureCapture;
+          });
+      authority.SnapshotRevision = snapshot.Revision;
+      authority.Destination = TransferDestination::ClosureCapture;
+      authority.GroupPlans = group.Items;
+      Clo->Stage0CodeGenAuthorityRequired = authority.RequiresAuthority;
+      Clo->Stage0Authority = std::move(authority);
+    }
     SemanticEvidence::finalizeExplicitCedeStage0NonCallGroup(
         groupToken, toString(group.Outcome), toString(group.Rejection),
         group.admitted());

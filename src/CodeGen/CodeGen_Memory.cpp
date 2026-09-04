@@ -480,6 +480,109 @@ bool CodeGen::hasValidatedCallTransferElaboration(const Expr *expr) const {
   return cede && !cede->IsFaultInjectedMissingCallTransfer;
 }
 
+bool CodeGen::validateStage0SpecializationAuthority(const ASTNode *site) {
+  if (!m_Stage0CodeGenAuthorityEnabled || !m_CurrentFunction ||
+      !m_CurrentFunction->Stage0BodyQualificationRequired)
+    return true;
+  const bool injectMissing = !m_Stage0AuthorityFaultConsumed &&
+                             m_Stage0AuthorityFault == "missing:generic-body";
+  const bool injectMismatch = !m_Stage0AuthorityFaultConsumed &&
+                              m_Stage0AuthorityFault == "mismatch:generic-body";
+  if (injectMissing || injectMismatch)
+    m_Stage0AuthorityFaultConsumed = true;
+  if (!injectMissing && !injectMismatch &&
+      m_CurrentFunction->Stage0BodyQualificationComplete &&
+      !m_CurrentFunction->Stage0BodySpecializationIdentity.empty())
+    return true;
+  error(site, DiagID::ERR_CODEGEN,
+        "Stage-0 CodeGen authority rejected unqualified generic "
+        "specialization '" +
+            m_CurrentFunction->Name + "'");
+  return false;
+}
+
+bool CodeGen::validateStage0CodeGenAuthority(
+    const ASTNode *site, Stage0CodeGenAuthorityKind expectedKind,
+    TransferDestination expectedDestination, const std::string &boundary,
+    bool syntacticallyRequired) {
+  if (!m_Stage0CodeGenAuthorityEnabled)
+    return true;
+  if (!validateStage0SpecializationAuthority(site))
+    return false;
+
+  const Stage0CodeGenAuthority *authority =
+      site && site->Stage0Authority ? &*site->Stage0Authority : nullptr;
+  const std::string missingFault = "missing:" + boundary;
+  const std::string mismatchFault = "mismatch:" + boundary;
+  const bool injectMissing =
+      !m_Stage0AuthorityFaultConsumed && m_Stage0AuthorityFault == missingFault;
+  const bool injectMismatch = !m_Stage0AuthorityFaultConsumed &&
+                              m_Stage0AuthorityFault == mismatchFault;
+  const bool required = syntacticallyRequired || injectMissing ||
+                        injectMismatch ||
+                        (site && site->Stage0CodeGenAuthorityRequired) ||
+                        (authority && authority->RequiresAuthority);
+  if (!required)
+    return true;
+  if (injectMissing || injectMismatch)
+    m_Stage0AuthorityFaultConsumed = true;
+  if (!authority || injectMissing) {
+    error(site, DiagID::ERR_CODEGEN,
+          "Stage-0 CodeGen authority missing plan for '" + boundary + "'");
+    return false;
+  }
+  if (injectMismatch || authority->Kind != expectedKind ||
+      !authority->DestinationMatching || !authority->Complete ||
+      !authority->SemaValidated) {
+    error(site, DiagID::ERR_CODEGEN,
+          "Stage-0 CodeGen authority rejected incomplete or mismatched plan "
+          "for '" +
+              boundary + "'");
+    return false;
+  }
+
+  if (expectedKind == Stage0CodeGenAuthorityKind::CallTransaction) {
+    if (!authority->CallPlan || !authority->CallPlan->admitted() ||
+        !authority->CallPlan->CommitAllowed || authority->Route.empty() ||
+        (expectedDestination != TransferDestination::Indeterminate &&
+         authority->Destination != expectedDestination)) {
+      error(site, DiagID::ERR_CODEGEN,
+            "Stage-0 CodeGen authority rejected call transaction for '" +
+                boundary + "'");
+      return false;
+    }
+    return true;
+  }
+
+  auto destinationMatches = [&](const ExplicitCedePlan &plan) {
+    return plan.admitted() && plan.Destination == expectedDestination;
+  };
+  if (expectedKind == Stage0CodeGenAuthorityKind::NonCallItem) {
+    if (!authority->ItemPlan || !destinationMatches(*authority->ItemPlan)) {
+      error(site, DiagID::ERR_CODEGEN,
+            "Stage-0 CodeGen authority rejected item plan for '" + boundary +
+                "'");
+      return false;
+    }
+    return true;
+  }
+  if (expectedKind == Stage0CodeGenAuthorityKind::NonCallGroup) {
+    if (authority->GroupPlans.empty() ||
+        !std::all_of(authority->GroupPlans.begin(), authority->GroupPlans.end(),
+                     destinationMatches)) {
+      error(site, DiagID::ERR_CODEGEN,
+            "Stage-0 CodeGen authority rejected group plan for '" + boundary +
+                "'");
+      return false;
+    }
+    return true;
+  }
+  error(site, DiagID::ERR_CODEGEN,
+        "Stage-0 CodeGen authority has no admitted plan for '" + boundary +
+            "'");
+  return false;
+}
+
 void CodeGen::emitDropForTypeWithMask(
     llvm::Value *ptrAddr, const std::shared_ptr<Type> &type,
     llvm::Value *dropMaskAddr) {

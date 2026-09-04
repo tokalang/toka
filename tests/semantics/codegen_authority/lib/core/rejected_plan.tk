@@ -1,0 +1,11 @@
+shape Cell(value: i32)
+
+fn payload_only(cede ^cell: Cell) -> Cell {
+    return cede cell
+}
+
+fn main() -> i32 {
+    auto ^owner = new Cell(value = 7:i32)
+    auto value = payload_only(cede ^owner)
+    return value.value - 7:i32
+}

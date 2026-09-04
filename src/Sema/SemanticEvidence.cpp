@@ -12,6 +12,7 @@ namespace toka {
 bool SemanticEvidence::Enabled = false;
 bool SemanticEvidence::CallTransferShadowEnabled = false;
 bool SemanticEvidence::GenericBodyCallQualificationEnabled = false;
+bool SemanticEvidence::CodeGenAuthorityEnabled = false;
 bool SemanticEvidence::NonCallTransferShadowEnabled = false;
 std::vector<SemanticDecisionRecord> SemanticEvidence::Records;
 std::vector<CedeObligationRecord> SemanticEvidence::CedeObligations;
@@ -366,6 +367,7 @@ void SemanticEvidence::enable(bool value) {
   Enabled = value;
   CallTransferShadowEnabled = false;
   GenericBodyCallQualificationEnabled = false;
+  CodeGenAuthorityEnabled = false;
   reset();
 }
 
@@ -385,6 +387,14 @@ void SemanticEvidence::enableGenericBodyCallQualification(bool value) {
 
 bool SemanticEvidence::isGenericBodyCallQualificationEnabled() {
   return GenericBodyCallQualificationEnabled;
+}
+
+void SemanticEvidence::enableCodeGenAuthority(bool value) {
+  CodeGenAuthorityEnabled = value;
+}
+
+bool SemanticEvidence::isCodeGenAuthorityEnabled() {
+  return CodeGenAuthorityEnabled;
 }
 
 void SemanticEvidence::rollbackGenericBodyCallQualification(
@@ -508,6 +518,7 @@ SemanticEvidenceAuditState SemanticEvidence::auditState() {
   return {Enabled,
           CallTransferShadowEnabled,
           GenericBodyCallQualificationEnabled,
+          CodeGenAuthorityEnabled,
           NonCallTransferShadowEnabled,
           Records.size(),
           CedeObligations.size(),

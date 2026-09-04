@@ -7225,6 +7225,10 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
   cacheEntry->Validation = GenericSpecializationValidationState::Unchecked;
   cacheEntry->BodyQualification = GenericBodyQualificationState::Unseen;
   cacheEntry->SpecializationIdentity = std::move(semanticInstantiation);
+  Instance->Stage0BodyQualificationRequired =
+      SemanticEvidence::isCodeGenAuthorityEnabled();
+  Instance->Stage0BodySpecializationIdentity =
+      cacheEntry->SpecializationIdentity;
   InstantiationCache[cacheKey] = cacheEntry;
   InstantiationCache[mangledName] = cacheEntry;
 
@@ -7296,6 +7300,9 @@ void Sema::promoteStage0GenericBodyQualification(
     (void)key;
     if (cached && promotedSet.count(cached->SpecializationIdentity))
       cached->BodyQualification = GenericBodyQualificationState::Complete;
+    if (cached && cached->Instance &&
+        promotedSet.count(cached->SpecializationIdentity))
+      cached->Instance->Stage0BodyQualificationComplete = true;
   }
 }
 

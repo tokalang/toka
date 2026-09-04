@@ -1,0 +1,6 @@
+extern fn authority_external(cede value: i32) -> i32
+
+fn main() -> i32 {
+    auto value = 1:i32
+    return authority_external(cede value)
+}

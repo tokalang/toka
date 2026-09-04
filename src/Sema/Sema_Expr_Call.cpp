@@ -3097,6 +3097,21 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   auto plan = completeExplicitCedeStage0CallPlan(
       std::move(facts), actualType, destinationType, false, true, {},
       destination, context, true);
+  if (SemanticEvidence::isCodeGenAuthorityEnabled() && groupIdentity.empty()) {
+    Stage0CodeGenAuthority authority;
+    authority.Kind = Stage0CodeGenAuthorityKind::NonCallItem;
+    authority.RequiresAuthority = requiresStage0CodeGenAuthority(plan);
+    authority.SemaValidated = plan.admitted();
+    authority.Complete = true;
+    authority.DestinationMatching = plan.Destination == destination;
+    authority.SnapshotRevision = providedSnapshot->Revision;
+    authority.Destination = destination;
+    authority.ItemPlan = plan;
+    site->Stage0CodeGenAuthorityRequired = authority.RequiresAuthority;
+    value->Stage0CodeGenAuthorityRequired = authority.RequiresAuthority;
+    site->Stage0Authority = authority;
+    value->Stage0Authority = std::move(authority);
+  }
 
   ExplicitCedeStage0TransactionItemRecord item;
   item.Role = boundary;
@@ -3245,6 +3260,69 @@ void Sema::finalizeExplicitCedeStage0Transaction(ASTNode *callSite) {
   } else if (validationFailed && transaction.Record.LocalPlanAdmitted) {
     transaction.Record.Outcome = "Rejected";
     transaction.Record.Rejection = "WholeCallValidationFailed";
+  }
+  if (SemanticEvidence::isCodeGenAuthorityEnabled() && callSite) {
+    Stage0CodeGenAuthority authority;
+    authority.Kind = Stage0CodeGenAuthorityKind::CallTransaction;
+    authority.RequiresAuthority =
+        (transaction.Plan.Receiver &&
+         requiresStage0CodeGenAuthority(*transaction.Plan.Receiver)) ||
+        std::any_of(transaction.Plan.Arguments.begin(),
+                    transaction.Plan.Arguments.end(),
+                    requiresStage0CodeGenAuthority);
+    authority.SemaValidated = transaction.Record.CommitAllowed;
+    authority.Complete = transaction.Record.ArityComplete &&
+                         transaction.Record.ValidationComplete &&
+                         transaction.Record.PreparedBeforeLegacyMutation &&
+                         transaction.SameSnapshotRevision;
+    authority.DestinationMatching =
+        (!transaction.Plan.Receiver || transaction.Plan.Receiver->Destination ==
+                                           TransferDestination::Receiver) &&
+        std::all_of(
+            transaction.Plan.Arguments.begin(),
+            transaction.Plan.Arguments.end(), [](const auto &plan) {
+              return plan.Destination == TransferDestination::CalleeParameter ||
+                     plan.Destination == TransferDestination::Initialization;
+            });
+    authority.SnapshotRevision = transaction.Record.SnapshotRevision;
+    authority.Route = transaction.Record.Route;
+    authority.CallPlan = transaction.Plan;
+    callSite->Stage0CodeGenAuthorityRequired = authority.RequiresAuthority;
+    callSite->Stage0Authority = authority;
+
+    auto attachItem = [&](Expr *edge, const ExplicitCedePlan &plan) {
+      if (!edge)
+        return;
+      Stage0CodeGenAuthority item;
+      item.Kind = Stage0CodeGenAuthorityKind::NonCallItem;
+      item.RequiresAuthority = requiresStage0CodeGenAuthority(plan);
+      item.SemaValidated = plan.admitted() && authority.SemaValidated;
+      item.Complete = authority.Complete;
+      item.DestinationMatching =
+          plan.Destination == TransferDestination::Receiver ||
+          plan.Destination == TransferDestination::CalleeParameter ||
+          plan.Destination == TransferDestination::Initialization;
+      item.SnapshotRevision = authority.SnapshotRevision;
+      item.Route = authority.Route;
+      item.Destination = plan.Destination;
+      item.ItemPlan = plan;
+      edge->Stage0CodeGenAuthorityRequired = item.RequiresAuthority;
+      edge->Stage0Authority = std::move(item);
+    };
+    if (auto *method = dynamic_cast<MethodCallExpr *>(callSite)) {
+      if (transaction.Plan.Receiver)
+        attachItem(method->Object.get(), *transaction.Plan.Receiver);
+      for (size_t index = 0; index < method->Args.size() &&
+                             index < transaction.Plan.Arguments.size();
+           ++index)
+        attachItem(method->Args[index].get(),
+                   transaction.Plan.Arguments[index]);
+    } else if (auto *call = dynamic_cast<CallExpr *>(callSite)) {
+      for (size_t index = 0; index < call->Args.size() &&
+                             index < transaction.Plan.Arguments.size();
+           ++index)
+        attachItem(call->Args[index].get(), transaction.Plan.Arguments[index]);
+    }
   }
   SemanticEvidence::recordExplicitCedeStage0Transaction(
       std::move(transaction.Record), getLoc(callSite));

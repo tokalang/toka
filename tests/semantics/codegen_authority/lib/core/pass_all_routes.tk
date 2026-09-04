@@ -1,0 +1,35 @@
+shape Box(value: i32)
+
+trait @Callable {
+    type Output
+}
+
+fn return_value(cede value: i32) -> i32 {
+    return cede value
+}
+
+fn main() -> i32 {
+    auto discard = 1:i32
+    cede discard
+
+    auto assignment_source = 2:i32
+    auto assignment_target# = 0:i32
+    assignment_target = cede assignment_source
+
+    auto initialization_source = 3:i32
+    auto initialized = cede initialization_source
+
+    auto aggregate_source = 4:i32
+    auto boxed = Box(value = cede aggregate_source)
+
+    auto match_source = 5:i32
+    auto matched = match cede match_source {
+        auto value => pass value
+    }
+
+    auto capture_source = 6:i32
+    auto callback = { [cede capture_source] => capture_source }:fn() -> i32
+
+    auto returned = return_value(cede initialized)
+    return assignment_target + boxed.value + matched + returned - 14:i32
+}

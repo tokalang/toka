@@ -1299,6 +1299,24 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
       groupFacts.Items.push_back(plan.Prepared);
     }
     auto group = prepareExplicitCedeNonCallGroupPlan(groupFacts);
+    if (SemanticEvidence::isCodeGenAuthorityEnabled()) {
+      Stage0CodeGenAuthority authority;
+      authority.Kind = Stage0CodeGenAuthorityKind::NonCallGroup;
+      authority.RequiresAuthority =
+          std::any_of(group.Items.begin(), group.Items.end(),
+                      requiresStage0CodeGenAuthority);
+      authority.SemaValidated = group.admitted();
+      authority.Complete = true;
+      authority.DestinationMatching = std::all_of(
+          group.Items.begin(), group.Items.end(), [](const auto &p) {
+            return p.Destination == TransferDestination::AggregateMember;
+          });
+      authority.SnapshotRevision = snapshot.Revision;
+      authority.Destination = TransferDestination::AggregateMember;
+      authority.GroupPlans = group.Items;
+      Init->Stage0CodeGenAuthorityRequired = authority.RequiresAuthority;
+      Init->Stage0Authority = std::move(authority);
+    }
     SemanticEvidence::finalizeExplicitCedeStage0NonCallGroup(
         groupToken, toString(group.Outcome), toString(group.Rejection),
         group.admitted());

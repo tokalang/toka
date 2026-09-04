@@ -1384,4 +1384,22 @@ std::string semanticPlaceKey(const PlaceId &place) {
   return key;
 }
 
+bool requiresStage0CodeGenAuthority(const ExplicitCedePlan &plan) {
+  return plan.Prepared.SurfaceSpelling ==
+             TransferSurfaceSpelling::ExplicitCede ||
+         plan.Prepared.SurfaceSpelling ==
+             TransferSurfaceSpelling::IntrinsicUniqueMove ||
+         plan.ValueProduction == TransferValueProduction::MoveOwned ||
+         plan.ValueProduction == TransferValueProduction::TransferShared ||
+         plan.ValueProduction == TransferValueProduction::ConsumeTemporary ||
+         plan.Source == TransferSourceDisposition::InvalidateRoot ||
+         plan.Source == TransferSourceDisposition::InvalidateSubtree ||
+         plan.Source == TransferSourceDisposition::InvalidateBinding ||
+         plan.Drop == TransferDropDisposition::DestinationAssumesLiability ||
+         plan.Drop == TransferDropDisposition::SharedLiabilityIncremented ||
+         plan.ObligationAction != TransferObligationAction::None ||
+         plan.DestinationObligationAction !=
+             TransferDestinationObligationAction::None;
+}
+
 } // namespace toka

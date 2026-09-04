@@ -1,0 +1,8 @@
+trait @Callable {
+    type Output
+}
+
+fn main() -> i32 {
+    auto callback = { value => value }:fn(i32) -> i32
+    return callback(42:i32) - 42:i32
+}

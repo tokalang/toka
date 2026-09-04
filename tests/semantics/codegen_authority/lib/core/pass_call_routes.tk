@@ -1,0 +1,36 @@
+trait @Callable {
+    type Output
+}
+
+shape Worker(value: i32)
+shape Consumer()
+
+impl Worker {
+    fn method(self, cede value: i32) -> i32 {
+        return self.value + cede value
+    }
+
+    fn static(cede value: i32) -> i32 {
+        return cede value
+    }
+}
+
+impl Consumer@Callable {
+    fn call(self, cede value: i32) -> i32 {
+        return cede value
+    }
+}
+
+fn ordinary(cede value: i32) -> i32 {
+    return cede value
+}
+
+fn main() -> i32 {
+    auto one = 1:i32
+    auto two = 2:i32
+    auto three = 3:i32
+    auto four = 4:i32
+    auto consumer = Consumer()
+    return ordinary(cede one) + Worker(value = 10:i32).method(cede two) +
+           Worker::static(cede three) + consumer(cede four) - 20:i32
+}
