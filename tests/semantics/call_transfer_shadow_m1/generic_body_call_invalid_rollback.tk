@@ -1,0 +1,12 @@
+fn body_call(value: i32) -> i32 {
+    return value
+}
+
+fn generic_bad<T>(value: T) -> T {
+    auto observed = body_call(1:i32)
+    return true
+}
+
+fn main() -> i32 {
+    return generic_bad(42:i32)
+}

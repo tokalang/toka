@@ -697,6 +697,7 @@ private:
   bool m_MissingCallTransferFaultConsumed = false;
   unsigned m_D3SpeculativeCallDepth = 0;
   std::vector<unsigned> m_Stage0FinalGenericArgumentPermitDepths;
+  std::vector<unsigned> m_Stage0GenericBodyQualificationPermitDepths;
   uint64_t m_Stage0CallSnapshotRevision = 0;
 
   struct AuthorityFullExpressionContext {
@@ -907,6 +908,9 @@ private:
     return m_D3SpeculativeCallDepth == 0 ||
            (!m_Stage0FinalGenericArgumentPermitDepths.empty() &&
             m_Stage0FinalGenericArgumentPermitDepths.back() ==
+                m_D3SpeculativeCallDepth) ||
+           (!m_Stage0GenericBodyQualificationPermitDepths.empty() &&
+            m_Stage0GenericBodyQualificationPermitDepths.back() ==
                 m_D3SpeculativeCallDepth);
   }
   class Stage0TransactionFinalizer {
@@ -1151,7 +1155,8 @@ private:
 
   GenericFunctionInstantiationResult instantiateGenericFunction(
       FunctionDecl *Template,
-      const std::vector<std::shared_ptr<toka::Type>> &Args, CallExpr *CallSite);
+      const std::vector<std::shared_ptr<toka::Type>> &Args, CallExpr *CallSite,
+      bool QualifyStage0BodyCalls = false);
 
   // [NEW] Helper to substitute GenericConst variables with NumberExpr
   std::unique_ptr<Expr> foldGenericConstant(std::unique_ptr<Expr> E);

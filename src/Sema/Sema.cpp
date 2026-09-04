@@ -6514,7 +6514,8 @@ bool Sema::isShapeSync(const std::string &shapeName) {
 
 Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     FunctionDecl *Template,
-    const std::vector<std::shared_ptr<toka::Type>> &Args, CallExpr *CallSite) {
+    const std::vector<std::shared_ptr<toka::Type>> &Args, CallExpr *CallSite,
+    bool qualifyStage0BodyCalls) {
 
   if (Template->GenericParams.size() != Args.size()) {
     DiagnosticEngine::report(getLoc(CallSite), DiagID::NOTE_GENERIC, Template->Name, Template->GenericParams.size(), Args.size());
@@ -7124,12 +7125,78 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
         ";declaration:" + std::to_string(templateLocation.Line) + ":" +
         std::to_string(templateLocation.Column);
   semanticInstantiation += ";arguments:";
+  std::function<std::string(const std::shared_ptr<toka::Type> &)>
+      stableInstantiationType =
+          [&](const std::shared_ptr<toka::Type> &type) -> std::string {
+    if (!type)
+      return "indeterminate";
+    std::string canonical;
+    if (canonicalOutcomeTypeIdentity(type, canonical))
+      return canonical;
+    std::string result = "toka-stage0-instantiation-type-v1;";
+    appendCanonicalOutcomeTypeAttributes(result, *type);
+    appendCanonicalIdentityField(
+        result, "kind", std::to_string(static_cast<unsigned>(type->typeKind)));
+    auto appendChild = [&](const std::string &name,
+                           const std::shared_ptr<toka::Type> &child) {
+      appendCanonicalIdentityField(result, name,
+                                   stableInstantiationType(child));
+    };
+    if (auto pointer = std::dynamic_pointer_cast<toka::PointerType>(type)) {
+      appendChild("pointee", pointer->PointeeType);
+    } else if (auto array = std::dynamic_pointer_cast<toka::ArrayType>(type)) {
+      appendCanonicalIdentityField(result, "extent",
+                                   std::to_string(array->Size));
+      appendCanonicalIdentityField(result, "symbolic-extent",
+                                   array->SymbolicSize);
+      appendChild("element", array->ElementType);
+    } else if (auto slice = std::dynamic_pointer_cast<toka::SliceType>(type)) {
+      appendChild("element", slice->ElementType);
+    } else if (auto shape = std::dynamic_pointer_cast<toka::ShapeType>(type)) {
+      appendCanonicalIdentityField(
+          result, "definition",
+          shape->Decl ? canonicalOutcomeShapeIdentity(shape->Decl)
+                      : "unresolved:" + shape->Name);
+      appendCanonicalIdentityField(result, "variant", shape->VariantSuffix);
+      for (size_t index = 0; index < shape->GenericArgs.size(); ++index)
+        appendChild("argument-" + std::to_string(index),
+                    shape->GenericArgs[index]);
+    } else if (auto function =
+                   std::dynamic_pointer_cast<toka::FunctionType>(type)) {
+      appendCanonicalIdentityField(
+          result, "receiver",
+          std::to_string(static_cast<unsigned>(function->ReceiverMode)));
+      appendCanonicalIdentityField(result, "variadic",
+                                   function->IsVariadic ? "1" : "0");
+      for (size_t index = 0; index < function->ParamTypes.size(); ++index)
+        appendChild("parameter-" + std::to_string(index),
+                    function->ParamTypes[index]);
+      appendChild("return", function->ReturnType);
+    } else if (auto function =
+                   std::dynamic_pointer_cast<toka::DynFnType>(type)) {
+      appendCanonicalIdentityField(
+          result, "receiver",
+          std::to_string(static_cast<unsigned>(function->ReceiverMode)));
+      for (size_t index = 0; index < function->ParamTypes.size(); ++index)
+        appendChild("parameter-" + std::to_string(index),
+                    function->ParamTypes[index]);
+      appendChild("return", function->ReturnType);
+    } else if (auto outcome =
+                   std::dynamic_pointer_cast<toka::MissOutcomeType>(type)) {
+      appendChild("payload", outcome->PayloadType);
+    } else if (auto uninit =
+                   std::dynamic_pointer_cast<toka::UninitType>(type)) {
+      appendChild("inner", uninit->InnerType);
+    } else {
+      appendCanonicalIdentityField(result, "spelling", type->toString());
+    }
+    return result;
+  };
   for (size_t index = 0; index < Args.size(); ++index) {
     if (index != 0)
       semanticInstantiation += ",";
     auto argument = resolveType(Args[index], false);
-    semanticInstantiation +=
-        argument ? argument->canonicalIdentity() : "indeterminate";
+    semanticInstantiation += stableInstantiationType(argument);
   }
   InstantiationSemanticKeys[Instance] = std::move(semanticInstantiation);
 
@@ -7145,7 +7212,12 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
 
   // 4. Semantic Check (Recursion)
   m_GenericValidationFrames.push_back({});
+  if (qualifyStage0BodyCalls)
+    m_Stage0GenericBodyQualificationPermitDepths.push_back(
+        m_D3SpeculativeCallDepth);
   checkFunction(Instance);
+  if (qualifyStage0BodyCalls)
+    m_Stage0GenericBodyQualificationPermitDepths.pop_back();
   const bool invalidDependency =
       m_GenericValidationFrames.back().HasInvalidDependency;
   m_GenericValidationFrames.pop_back();
@@ -7165,6 +7237,16 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
                               ? GenericSpecializationValidationState::Invalid
                               : GenericSpecializationValidationState::Valid;
   cacheEntry->Validation = validation;
+  if (qualifyStage0BodyCalls) {
+    auto identity = InstantiationSemanticKeys.find(Instance);
+    if (identity != InstantiationSemanticKeys.end()) {
+      if (validation == GenericSpecializationValidationState::Valid)
+        SemanticEvidence::recordGenericBodyCallQualification(identity->second);
+      else
+        SemanticEvidence::rollbackGenericBodyCallQualification(
+            identity->second);
+    }
+  }
   if (validation != GenericSpecializationValidationState::Valid &&
       !m_GenericValidationFrames.empty())
     m_GenericValidationFrames.back().HasInvalidDependency = true;

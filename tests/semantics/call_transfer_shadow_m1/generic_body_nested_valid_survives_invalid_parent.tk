@@ -1,0 +1,20 @@
+fn leaf(value: i32) -> i32 {
+    return value
+}
+
+fn inner<T>(value: T) -> T {
+    auto marker = 1:i32
+    auto observed = leaf(marker)
+    return value
+}
+
+fn outer_bad<T>(value: T) -> T {
+    auto nested = inner<T>(value)
+    return true
+}
+
+fn main() -> i32 {
+    auto rejected = outer_bad(41:i32)
+    auto admitted = inner(42:i32)
+    return admitted - 42:i32
+}

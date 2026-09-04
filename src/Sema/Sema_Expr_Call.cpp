@@ -2288,6 +2288,11 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
       moduleOrigin = stage0FallbackModuleOrigin(identityPath.RootLoc);
     if (moduleOrigin.empty() && readOnlyTypes)
       moduleOrigin = "crate:external;module:source";
+    if (!readOnlyTypes && CurrentFunction) {
+      auto specialization = InstantiationSemanticKeys.find(CurrentFunction);
+      if (specialization != InstantiationSemanticKeys.end())
+        moduleOrigin = specialization->second;
+    }
   }
   facts.SourcePlace = stage0PlaceIdentity(identityPath, moduleOrigin);
 
@@ -2308,6 +2313,11 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
         origin = stage0FallbackModuleOrigin(path.RootLoc);
       if (origin.empty() && readOnlyTypes)
         origin = "crate:external;module:source";
+      if (!readOnlyTypes && CurrentFunction) {
+        auto specialization = InstantiationSemanticKeys.find(CurrentFunction);
+        if (specialization != InstantiationSemanticKeys.end())
+          origin = specialization->second;
+      }
     }
     return stage0PlaceIdentity(path, origin);
   };
@@ -3257,6 +3267,12 @@ void Sema::recordExplicitCedeStage0GenericResolutionRejection(
 
   ExplicitCedeStage0TransactionRecord record;
   record.Callee = callee;
+  if (SemanticEvidence::isGenericBodyCallQualificationEnabled() &&
+      CurrentFunction) {
+    auto specialization = InstantiationSemanticKeys.find(CurrentFunction);
+    if (specialization != InstantiationSemanticKeys.end())
+      record.SpecializationIdentity = specialization->second;
+  }
   record.Route = callTransferRouteName(CallTransferRoute::Ordinary);
   record.Outcome = "Rejected";
   record.Rejection = rejection;
@@ -3368,6 +3384,12 @@ void Sema::recordExplicitCedeStage0Transaction(
       }
       if (moduleOrigin.empty())
         moduleOrigin = stage0FallbackModuleOrigin(callLocation);
+    }
+    if (SemanticEvidence::isGenericBodyCallQualificationEnabled() &&
+        CurrentFunction) {
+      auto specialization = InstantiationSemanticKeys.find(CurrentFunction);
+      if (specialization != InstantiationSemanticKeys.end())
+        moduleOrigin = specialization->second;
     }
     if (moduleOrigin.empty() || !DiagnosticEngine::SrcMgr)
       return std::string{};
@@ -3499,6 +3521,12 @@ void Sema::recordExplicitCedeStage0Transaction(
 
   ExplicitCedeStage0TransactionRecord record;
   record.Callee = callee;
+  if (SemanticEvidence::isGenericBodyCallQualificationEnabled() &&
+      CurrentFunction) {
+    auto specialization = InstantiationSemanticKeys.find(CurrentFunction);
+    if (specialization != InstantiationSemanticKeys.end())
+      record.SpecializationIdentity = specialization->second;
+  }
   record.Route = callTransferRouteName(route);
   record.Outcome = toString(transaction.Outcome);
   record.Rejection = toString(transaction.Rejection);
@@ -3743,9 +3771,17 @@ void Sema::recordShadowCallTransfer(
   stage0Record.SourceView = toString(stage0.TransferOriginView);
   stage0Record.Reachability = toString(stage0.Reachability);
   stage0Record.SemanticRoot = stage0Root;
+  std::string specializationIdentity;
+  if (SemanticEvidence::isGenericBodyCallQualificationEnabled() &&
+      CurrentFunction) {
+    auto specialization = InstantiationSemanticKeys.find(CurrentFunction);
+    if (specialization != InstantiationSemanticKeys.end())
+      specializationIdentity = specialization->second;
+  }
   SemanticEvidence::recordCallTransferShadow(
-      callee, callTransferRouteName(plan.Route), parameter, argumentIndex,
-      formalIndex, callValueCategoryName(plan.ValueCategory),
+      callee, std::move(specializationIdentity),
+      callTransferRouteName(plan.Route), parameter, argumentIndex, formalIndex,
+      callValueCategoryName(plan.ValueCategory),
       plan.ExplicitCede ? "explicit" : "implicit",
       callTransferDispositionName(plan.Transfer),
       callSourceDispositionName(plan.Source),
@@ -3757,10 +3793,10 @@ void Sema::recordShadowCallTransfer(
       plan.SourcePlace.toDebugString(), plan.ReferentPath.toLegacyString(),
       plan.ReferentPath.toDebugString(), plan.DependencyPaths,
       plan.HasCleanupMask, plan.CleanupMask, plan.FormalIsCeded,
-      plan.FormalIsInit, plan.ActualIsInit,
-      plan.LegacyCallerRuleApplied, plan.LegacyCedeExempt,
-      plan.LegacyMissingCede, plan.IsAsync, std::move(stage0Record),
-      argument ? argument->Loc : SourceLocation{}, parameterLoc);
+      plan.FormalIsInit, plan.ActualIsInit, plan.LegacyCallerRuleApplied,
+      plan.LegacyCedeExempt, plan.LegacyMissingCede, plan.IsAsync,
+      std::move(stage0Record), argument ? argument->Loc : SourceLocation{},
+      parameterLoc);
 }
 
 void Sema::validateAtomicOrderingArguments(
@@ -6486,7 +6522,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     if (!deductionFailed) {
       const size_t instantiationDiagnosticStart =
           DiagnosticEngine::records().size();
-      const auto instantiation = instantiateGenericFunction(Fn, TypeArgs, Call);
+      const auto instantiation = instantiateGenericFunction(
+          Fn, TypeArgs, Call,
+          publishFinalGenericArgumentTransactions &&
+              SemanticEvidence::isGenericBodyCallQualificationEnabled());
       Fn = instantiation.Instance;
       if (!Fn) {
         genericArgumentJournal.rollback();

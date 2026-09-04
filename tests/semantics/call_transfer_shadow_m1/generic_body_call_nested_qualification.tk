@@ -1,0 +1,22 @@
+fn leaf(value: i32) -> i32 {
+    return value
+}
+
+fn inner<T>(value: T) -> T {
+    auto marker = 1:i32
+    auto observed = leaf(marker)
+    return value
+}
+
+fn outer<T>(value: T) -> T {
+    return inner<T>(value)
+}
+
+fn main() -> i32 {
+    auto first = outer(41:i32)
+    auto second = outer(true)
+    if second {
+        return first - 41:i32
+    }
+    return 1:i32
+}

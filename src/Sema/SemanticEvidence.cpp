@@ -10,12 +10,18 @@ namespace toka {
 
 bool SemanticEvidence::Enabled = false;
 bool SemanticEvidence::CallTransferShadowEnabled = false;
+bool SemanticEvidence::GenericBodyCallQualificationEnabled = false;
 bool SemanticEvidence::NonCallTransferShadowEnabled = false;
 std::vector<SemanticDecisionRecord> SemanticEvidence::Records;
 std::vector<CedeObligationRecord> SemanticEvidence::CedeObligations;
 std::vector<CallTransferShadowRecord> SemanticEvidence::CallTransferShadows;
+std::vector<CallTransferShadowRecord>
+    SemanticEvidence::GenericBodyCallTransferShadows;
 std::vector<ExplicitCedeStage0TransactionRecord>
     SemanticEvidence::ExplicitCedeStage0Transactions;
+std::vector<ExplicitCedeStage0TransactionRecord>
+    SemanticEvidence::GenericBodyExplicitCedeStage0Transactions;
+std::set<std::string> SemanticEvidence::GenericBodyQualifiedSpecializations;
 std::vector<ExplicitCedeStage0NonCallRecord>
     SemanticEvidence::ExplicitCedeStage0NonCalls;
 std::vector<CapabilityCallRecord> SemanticEvidence::CapabilityCalls;
@@ -151,35 +157,36 @@ bool ExplicitCedeStage0ShadowRecord::operator==(
 
 bool CallTransferShadowRecord::operator<(
     const CallTransferShadowRecord &rhs) const {
-  return std::tie(
-             Callee, Route, Parameter, ArgumentIndex, FormalIndex,
-             ValueCategory, Spelling, Transfer, Source, Dependency,
-             PlaceEligibility, Drop, ExecutionBoundary, SourceRootID,
-             SourcePath, SourceIdentity, ReferentPath, ReferentIdentity,
-             DependencyPaths, HasCleanupMask, CleanupMask, FormalCeded,
-             FormalInit, ActualInit, LegacyCallerRuleApplied,
-             LegacyCedeExempt, LegacyMissingCede,
-             Async, Stage0, Location, ContractLocation) <
-         std::tie(
-             rhs.Callee, rhs.Route, rhs.Parameter, rhs.ArgumentIndex,
-             rhs.FormalIndex, rhs.ValueCategory, rhs.Spelling, rhs.Transfer,
-             rhs.Source, rhs.Dependency, rhs.PlaceEligibility, rhs.Drop,
-             rhs.ExecutionBoundary, rhs.SourceRootID, rhs.SourcePath,
-             rhs.SourceIdentity, rhs.ReferentPath, rhs.ReferentIdentity,
-             rhs.DependencyPaths, rhs.HasCleanupMask, rhs.CleanupMask,
-             rhs.FormalCeded, rhs.FormalInit, rhs.ActualInit,
-             rhs.LegacyCallerRuleApplied,
-             rhs.LegacyCedeExempt, rhs.LegacyMissingCede, rhs.Async,
-             rhs.Stage0, rhs.Location, rhs.ContractLocation);
+  return std::tie(Callee, SpecializationIdentity, Route, Parameter,
+                  ArgumentIndex, FormalIndex, ValueCategory, Spelling, Transfer,
+                  Source, Dependency, PlaceEligibility, Drop, ExecutionBoundary,
+                  SourceRootID, SourcePath, SourceIdentity, ReferentPath,
+                  ReferentIdentity, DependencyPaths, HasCleanupMask,
+                  CleanupMask, FormalCeded, FormalInit, ActualInit,
+                  LegacyCallerRuleApplied, LegacyCedeExempt, LegacyMissingCede,
+                  Async, Stage0, Location, ContractLocation) <
+         std::tie(rhs.Callee, rhs.SpecializationIdentity, rhs.Route,
+                  rhs.Parameter, rhs.ArgumentIndex, rhs.FormalIndex,
+                  rhs.ValueCategory, rhs.Spelling, rhs.Transfer, rhs.Source,
+                  rhs.Dependency, rhs.PlaceEligibility, rhs.Drop,
+                  rhs.ExecutionBoundary, rhs.SourceRootID, rhs.SourcePath,
+                  rhs.SourceIdentity, rhs.ReferentPath, rhs.ReferentIdentity,
+                  rhs.DependencyPaths, rhs.HasCleanupMask, rhs.CleanupMask,
+                  rhs.FormalCeded, rhs.FormalInit, rhs.ActualInit,
+                  rhs.LegacyCallerRuleApplied, rhs.LegacyCedeExempt,
+                  rhs.LegacyMissingCede, rhs.Async, rhs.Stage0, rhs.Location,
+                  rhs.ContractLocation);
 }
 
 bool CallTransferShadowRecord::operator==(
     const CallTransferShadowRecord &rhs) const {
-  return Callee == rhs.Callee && Route == rhs.Route &&
-         Parameter == rhs.Parameter && ArgumentIndex == rhs.ArgumentIndex &&
-         FormalIndex == rhs.FormalIndex && ValueCategory == rhs.ValueCategory &&
-         Spelling == rhs.Spelling && Transfer == rhs.Transfer &&
-         Source == rhs.Source && Dependency == rhs.Dependency &&
+  return Callee == rhs.Callee &&
+         SpecializationIdentity == rhs.SpecializationIdentity &&
+         Route == rhs.Route && Parameter == rhs.Parameter &&
+         ArgumentIndex == rhs.ArgumentIndex && FormalIndex == rhs.FormalIndex &&
+         ValueCategory == rhs.ValueCategory && Spelling == rhs.Spelling &&
+         Transfer == rhs.Transfer && Source == rhs.Source &&
+         Dependency == rhs.Dependency &&
          PlaceEligibility == rhs.PlaceEligibility && Drop == rhs.Drop &&
          ExecutionBoundary == rhs.ExecutionBoundary &&
          SourceRootID == rhs.SourceRootID && SourcePath == rhs.SourcePath &&
@@ -193,8 +200,8 @@ bool CallTransferShadowRecord::operator==(
          LegacyCallerRuleApplied == rhs.LegacyCallerRuleApplied &&
          LegacyCedeExempt == rhs.LegacyCedeExempt &&
          LegacyMissingCede == rhs.LegacyMissingCede && Async == rhs.Async &&
-         Stage0 == rhs.Stage0 &&
-         Location == rhs.Location && ContractLocation == rhs.ContractLocation;
+         Stage0 == rhs.Stage0 && Location == rhs.Location &&
+         ContractLocation == rhs.ContractLocation;
 }
 
 bool ExplicitCedeStage0TransactionItemRecord::operator<(
@@ -228,20 +235,18 @@ bool ExplicitCedeStage0TransactionItemRecord::operator==(
 
 bool ExplicitCedeStage0TransactionRecord::operator<(
     const ExplicitCedeStage0TransactionRecord &rhs) const {
-  return std::tie(Callee, Route, Outcome, Rejection, LocalPlanAdmitted,
-                  CommitAllowed, ArityComplete, ValidationComplete,
-                  PreparedBeforeLegacyMutation, HasReceiver, SnapshotRevision,
-                  PALRevision,
-                  ExpectedArgumentCount, ActualArgumentCount, ArgumentCount,
-                  Items, Location) <
-         std::tie(rhs.Callee, rhs.Route, rhs.Outcome, rhs.Rejection,
-                  rhs.LocalPlanAdmitted, rhs.CommitAllowed,
-                  rhs.ArityComplete, rhs.ValidationComplete,
+  return std::tie(Callee, SpecializationIdentity, Route, Outcome, Rejection,
+                  LocalPlanAdmitted, CommitAllowed, ArityComplete,
+                  ValidationComplete, PreparedBeforeLegacyMutation, HasReceiver,
+                  SnapshotRevision, PALRevision, ExpectedArgumentCount,
+                  ActualArgumentCount, ArgumentCount, Items, Location) <
+         std::tie(rhs.Callee, rhs.SpecializationIdentity, rhs.Route,
+                  rhs.Outcome, rhs.Rejection, rhs.LocalPlanAdmitted,
+                  rhs.CommitAllowed, rhs.ArityComplete, rhs.ValidationComplete,
                   rhs.PreparedBeforeLegacyMutation, rhs.HasReceiver,
                   rhs.SnapshotRevision, rhs.PALRevision,
-                  rhs.ExpectedArgumentCount,
-                  rhs.ActualArgumentCount, rhs.ArgumentCount, rhs.Items,
-                  rhs.Location);
+                  rhs.ExpectedArgumentCount, rhs.ActualArgumentCount,
+                  rhs.ArgumentCount, rhs.Items, rhs.Location);
 }
 
 bool ExplicitCedeStage0TransactionRecord::operator==(
@@ -353,6 +358,7 @@ bool ConditionalFactRecord::operator==(
 void SemanticEvidence::enable(bool value) {
   Enabled = value;
   CallTransferShadowEnabled = false;
+  GenericBodyCallQualificationEnabled = false;
   reset();
 }
 
@@ -364,6 +370,44 @@ void SemanticEvidence::enableCallTransferShadow(bool value) {
 
 bool SemanticEvidence::isCallTransferShadowEnabled() {
   return CallTransferShadowEnabled;
+}
+
+void SemanticEvidence::enableGenericBodyCallQualification(bool value) {
+  GenericBodyCallQualificationEnabled = value;
+}
+
+bool SemanticEvidence::isGenericBodyCallQualificationEnabled() {
+  return GenericBodyCallQualificationEnabled;
+}
+
+void SemanticEvidence::rollbackGenericBodyCallQualification(
+    const std::string &specializationIdentity) {
+  if (specializationIdentity.empty())
+    return;
+  GenericBodyCallTransferShadows.erase(
+      std::remove_if(GenericBodyCallTransferShadows.begin(),
+                     GenericBodyCallTransferShadows.end(),
+                     [&](const auto &record) {
+                       return record.SpecializationIdentity ==
+                              specializationIdentity;
+                     }),
+      GenericBodyCallTransferShadows.end());
+  GenericBodyExplicitCedeStage0Transactions.erase(
+      std::remove_if(GenericBodyExplicitCedeStage0Transactions.begin(),
+                     GenericBodyExplicitCedeStage0Transactions.end(),
+                     [&](const auto &record) {
+                       return record.SpecializationIdentity ==
+                              specializationIdentity;
+                     }),
+      GenericBodyExplicitCedeStage0Transactions.end());
+  GenericBodyQualifiedSpecializations.erase(specializationIdentity);
+}
+
+void SemanticEvidence::recordGenericBodyCallQualification(
+    const std::string &specializationIdentity) {
+  if (Enabled && GenericBodyCallQualificationEnabled &&
+      !specializationIdentity.empty())
+    GenericBodyQualifiedSpecializations.insert(specializationIdentity);
 }
 
 void SemanticEvidence::enableNonCallTransferShadow(bool value) {
@@ -393,6 +437,7 @@ void SemanticEvidence::rollbackCallTransferJournal(
 SemanticEvidenceAuditState SemanticEvidence::auditState() {
   return {Enabled,
           CallTransferShadowEnabled,
+          GenericBodyCallQualificationEnabled,
           NonCallTransferShadowEnabled,
           Records.size(),
           CedeObligations.size(),
@@ -416,7 +461,10 @@ void SemanticEvidence::reset() {
   Records.clear();
   CedeObligations.clear();
   CallTransferShadows.clear();
+  GenericBodyCallTransferShadows.clear();
   ExplicitCedeStage0Transactions.clear();
+  GenericBodyExplicitCedeStage0Transactions.clear();
+  GenericBodyQualifiedSpecializations.clear();
   ExplicitCedeStage0NonCalls.clear();
   CapabilityCalls.clear();
   TodoGoals.clear();
@@ -551,33 +599,57 @@ void SemanticEvidence::dumpCedeObligationsV2JSON(std::ostream &out) {
 }
 
 void SemanticEvidence::recordCallTransferShadow(
-    std::string callee, std::string route, std::string parameter,
-    unsigned argumentIndex, unsigned formalIndex, std::string valueCategory,
-    std::string spelling, std::string transfer, std::string source,
-    std::string dependency, std::string placeEligibility, std::string drop,
-    std::string executionBoundary, uint64_t sourceRootID,
+    std::string callee, std::string specializationIdentity, std::string route,
+    std::string parameter, unsigned argumentIndex, unsigned formalIndex,
+    std::string valueCategory, std::string spelling, std::string transfer,
+    std::string source, std::string dependency, std::string placeEligibility,
+    std::string drop, std::string executionBoundary, uint64_t sourceRootID,
     std::string sourcePath, std::string sourceIdentity,
     std::string referentPath, std::string referentIdentity,
     std::vector<std::string> dependencyPaths, bool hasCleanupMask,
     uint64_t cleanupMask, bool formalCeded, bool formalInit, bool actualInit,
-    bool legacyCallerRuleApplied, bool legacyCedeExempt,
-    bool legacyMissingCede, bool async,
-    ExplicitCedeStage0ShadowRecord stage0, SourceLocation location,
+    bool legacyCallerRuleApplied, bool legacyCedeExempt, bool legacyMissingCede,
+    bool async, ExplicitCedeStage0ShadowRecord stage0, SourceLocation location,
     SourceLocation contractLocation) {
   if (!Enabled || !CallTransferShadowEnabled)
     return;
-  CallTransferShadows.push_back(
-      {std::move(callee), std::move(route), std::move(parameter), argumentIndex,
-       formalIndex, std::move(valueCategory), std::move(spelling),
-       std::move(transfer), std::move(source), std::move(dependency),
-       std::move(placeEligibility), std::move(drop),
-       std::move(executionBoundary), sourceRootID, std::move(sourcePath),
-       std::move(sourceIdentity), std::move(referentPath),
-       std::move(referentIdentity), std::move(dependencyPaths), hasCleanupMask,
-       cleanupMask, formalCeded, formalInit, actualInit,
-       legacyCallerRuleApplied, legacyCedeExempt,
-       legacyMissingCede, async, std::move(stage0),
-      resolveLocation(location), resolveLocation(contractLocation)});
+  CallTransferShadowRecord record{std::move(callee),
+                                  std::move(specializationIdentity),
+                                  std::move(route),
+                                  std::move(parameter),
+                                  argumentIndex,
+                                  formalIndex,
+                                  std::move(valueCategory),
+                                  std::move(spelling),
+                                  std::move(transfer),
+                                  std::move(source),
+                                  std::move(dependency),
+                                  std::move(placeEligibility),
+                                  std::move(drop),
+                                  std::move(executionBoundary),
+                                  sourceRootID,
+                                  std::move(sourcePath),
+                                  std::move(sourceIdentity),
+                                  std::move(referentPath),
+                                  std::move(referentIdentity),
+                                  std::move(dependencyPaths),
+                                  hasCleanupMask,
+                                  cleanupMask,
+                                  formalCeded,
+                                  formalInit,
+                                  actualInit,
+                                  legacyCallerRuleApplied,
+                                  legacyCedeExempt,
+                                  legacyMissingCede,
+                                  async,
+                                  std::move(stage0),
+                                  resolveLocation(location),
+                                  resolveLocation(contractLocation)};
+  if (GenericBodyCallQualificationEnabled &&
+      !record.SpecializationIdentity.empty())
+    GenericBodyCallTransferShadows.push_back(std::move(record));
+  else
+    CallTransferShadows.push_back(std::move(record));
 }
 
 void SemanticEvidence::recordExplicitCedeStage0Transaction(
@@ -585,7 +657,11 @@ void SemanticEvidence::recordExplicitCedeStage0Transaction(
   if (!Enabled || !CallTransferShadowEnabled)
     return;
   record.Location = resolveLocation(location);
-  ExplicitCedeStage0Transactions.push_back(std::move(record));
+  if (GenericBodyCallQualificationEnabled &&
+      !record.SpecializationIdentity.empty())
+    GenericBodyExplicitCedeStage0Transactions.push_back(std::move(record));
+  else
+    ExplicitCedeStage0Transactions.push_back(std::move(record));
 }
 
 void SemanticEvidence::recordExplicitCedeStage0NonCall(
@@ -625,6 +701,17 @@ void SemanticEvidence::finalizeExplicitCedeStage0NonCallGroup(
 }
 
 void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
+  if (GenericBodyCallQualificationEnabled) {
+    CallTransferShadows.insert(CallTransferShadows.end(),
+                               GenericBodyCallTransferShadows.begin(),
+                               GenericBodyCallTransferShadows.end());
+    ExplicitCedeStage0Transactions.insert(
+        ExplicitCedeStage0Transactions.end(),
+        GenericBodyExplicitCedeStage0Transactions.begin(),
+        GenericBodyExplicitCedeStage0Transactions.end());
+    GenericBodyCallTransferShadows.clear();
+    GenericBodyExplicitCedeStage0Transactions.clear();
+  }
   std::sort(CallTransferShadows.begin(), CallTransferShadows.end());
   CallTransferShadows.erase(
       std::unique(CallTransferShadows.begin(), CallTransferShadows.end()),
@@ -635,35 +722,39 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
       std::unique(ExplicitCedeStage0Transactions.begin(),
                   ExplicitCedeStage0Transactions.end()),
       ExplicitCedeStage0Transactions.end());
-  out << "{\"schema\":\"toka.internal.call-transfer-shadow\","
-         "\"version\":5,\"status\":\"audit-only\",\"records\":[";
+  const bool genericBodyQualification = GenericBodyCallQualificationEnabled;
+  out << "{\"schema\":\""
+      << (genericBodyQualification
+              ? "toka.internal.generic-body-call-qualification"
+              : "toka.internal.call-transfer-shadow")
+      << "\",\"version\":" << (genericBodyQualification ? 1 : 5)
+      << ",\"status\":\"audit-only\",\"records\":[";
   for (size_t i = 0; i < CallTransferShadows.size(); ++i) {
     if (i != 0)
       out << ',';
     const auto &record = CallTransferShadows[i];
-    out << "{\"callee\":\"" << escapeJSON(record.Callee)
-        << "\",\"route\":\"" << escapeJSON(record.Route)
-        << "\",\"parameter\":\"" << escapeJSON(record.Parameter)
+    out << "{\"callee\":\"" << escapeJSON(record.Callee) << "\"";
+    if (genericBodyQualification)
+      out << ",\"specialization_identity\":\""
+          << escapeJSON(record.SpecializationIdentity) << "\"";
+    out << ",\"route\":\"" << escapeJSON(record.Route) << "\",\"parameter\":\""
+        << escapeJSON(record.Parameter)
         << "\",\"argument_index\":" << record.ArgumentIndex
         << ",\"formal_index\":" << record.FormalIndex
-        << ",\"value_category\":\""
-        << escapeJSON(record.ValueCategory)
+        << ",\"value_category\":\"" << escapeJSON(record.ValueCategory)
         << "\",\"spelling\":\"" << escapeJSON(record.Spelling)
         << "\",\"transfer\":\"" << escapeJSON(record.Transfer)
         << "\",\"source\":\"" << escapeJSON(record.Source)
         << "\",\"dependency\":\"" << escapeJSON(record.Dependency)
-        << "\",\"place_eligibility\":\""
-        << escapeJSON(record.PlaceEligibility)
+        << "\",\"place_eligibility\":\"" << escapeJSON(record.PlaceEligibility)
         << "\",\"drop\":\"" << escapeJSON(record.Drop)
         << "\",\"execution_boundary\":\""
         << escapeJSON(record.ExecutionBoundary)
         << "\",\"source_root_id\":" << record.SourceRootID
         << ",\"source_path\":\"" << escapeJSON(record.SourcePath)
-        << "\",\"source_identity\":\""
-        << escapeJSON(record.SourceIdentity)
+        << "\",\"source_identity\":\"" << escapeJSON(record.SourceIdentity)
         << "\",\"referent_path\":\"" << escapeJSON(record.ReferentPath)
-        << "\",\"referent_identity\":\""
-        << escapeJSON(record.ReferentIdentity)
+        << "\",\"referent_identity\":\"" << escapeJSON(record.ReferentIdentity)
         << "\",\"dependency_paths\":[";
     for (size_t dependency = 0; dependency < record.DependencyPaths.size();
          ++dependency) {
@@ -782,8 +873,11 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
     if (i != 0)
       out << ',';
     const auto &transaction = ExplicitCedeStage0Transactions[i];
-    out << "{\"callee\":\"" << escapeJSON(transaction.Callee)
-        << "\",\"route\":\"" << escapeJSON(transaction.Route)
+    out << "{\"callee\":\"" << escapeJSON(transaction.Callee) << "\"";
+    if (genericBodyQualification)
+      out << ",\"specialization_identity\":\""
+          << escapeJSON(transaction.SpecializationIdentity) << "\"";
+    out << ",\"route\":\"" << escapeJSON(transaction.Route)
         << "\",\"outcome\":\"" << escapeJSON(transaction.Outcome)
         << "\",\"rejection\":\"" << escapeJSON(transaction.Rejection)
         << "\",\"local_plan_admitted\":"
@@ -796,14 +890,11 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
         << (transaction.ValidationComplete ? "true" : "false")
         << ",\"prepared_before_legacy_mutation\":"
         << (transaction.PreparedBeforeLegacyMutation ? "true" : "false")
-        << ",\"has_receiver\":"
-        << (transaction.HasReceiver ? "true" : "false")
+        << ",\"has_receiver\":" << (transaction.HasReceiver ? "true" : "false")
         << ",\"snapshot_revision\":" << transaction.SnapshotRevision
         << ",\"pal_revision\":" << transaction.PALRevision
-        << ",\"expected_argument_count\":"
-        << transaction.ExpectedArgumentCount
-        << ",\"actual_argument_count\":"
-        << transaction.ActualArgumentCount
+        << ",\"expected_argument_count\":" << transaction.ExpectedArgumentCount
+        << ",\"actual_argument_count\":" << transaction.ActualArgumentCount
         << ",\"argument_count\":" << transaction.ArgumentCount
         << ",\"items\":[";
     for (size_t itemIndex = 0; itemIndex < transaction.Items.size();
@@ -867,7 +958,31 @@ void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
     dumpLocation(out, transaction.Location);
     out << '}';
   }
-  out << "]}\n";
+  out << ']';
+  if (genericBodyQualification) {
+    out << ",\"specializations\":[";
+    size_t specializationIndex = 0;
+    for (const auto &identity : GenericBodyQualifiedSpecializations) {
+      if (specializationIndex++ != 0)
+        out << ',';
+      const auto receiptCount =
+          std::count_if(CallTransferShadows.begin(), CallTransferShadows.end(),
+                        [&](const auto &record) {
+                          return record.SpecializationIdentity == identity;
+                        });
+      const auto transactionCount = std::count_if(
+          ExplicitCedeStage0Transactions.begin(),
+          ExplicitCedeStage0Transactions.end(), [&](const auto &record) {
+            return record.SpecializationIdentity == identity;
+          });
+      out << "{\"specialization_identity\":\"" << escapeJSON(identity)
+          << "\",\"validation\":\"Valid\",\"qualification_complete\":true"
+          << ",\"receipt_count\":" << receiptCount
+          << ",\"transaction_count\":" << transactionCount << '}';
+    }
+    out << ']';
+  }
+  out << "}\n";
 }
 
 void SemanticEvidence::dumpExplicitCedeStage0NonCallJSON(std::ostream &out) {

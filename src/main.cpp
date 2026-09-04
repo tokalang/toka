@@ -140,6 +140,9 @@ void printHelp() {
          "evidence v2\n"
       << "  --non-call-transfer-shadow=json Emit audit-only Stage-0 non-call "
          "plans\n"
+      << "  --generic-body-call-qualification=json\n"
+      << "                                  Emit specialization-scoped "
+         "generic-body call audit\n"
       << "  --experimental-signature-driven-cede\n"
       << "                                  Deprecated compatibility no-op; "
          "behavior is the default\n"
@@ -171,17 +174,19 @@ bool parseUnsignedArgument(const char *option, const char *value,
 class SemanticEvidenceDumpGuard {
 public:
   SemanticEvidenceDumpGuard(bool &callTransferShadow,
+                            bool &genericBodyCallQualification,
                             bool &nonCallTransferShadow, bool &cedeObligations,
                             bool &cedeObligationsV2, bool &capabilities,
                             bool &todoGoals, bool &conditionalFacts)
       : CallTransferShadow(callTransferShadow),
+        GenericBodyCallQualification(genericBodyCallQualification),
         NonCallTransferShadow(nonCallTransferShadow),
         CedeObligations(cedeObligations), CedeObligationsV2(cedeObligationsV2),
         Capabilities(capabilities), TodoGoals(todoGoals),
         ConditionalFacts(conditionalFacts) {}
   ~SemanticEvidenceDumpGuard() {
     if (toka::SemanticEvidence::isEnabled()) {
-      if (CallTransferShadow)
+      if (CallTransferShadow || GenericBodyCallQualification)
         toka::SemanticEvidence::dumpCallTransferShadowJSON(std::cout);
       else if (NonCallTransferShadow)
         toka::SemanticEvidence::dumpExplicitCedeStage0NonCallJSON(std::cout);
@@ -202,6 +207,7 @@ public:
 
 private:
   bool &CallTransferShadow;
+  bool &GenericBodyCallQualification;
   bool &NonCallTransferShadow;
   bool &CedeObligations;
   bool &CedeObligationsV2;
@@ -827,6 +833,7 @@ int main(int argc, char **argv) {
   bool dumpCedeObligations = false;
   bool dumpCedeObligationsV2 = false;
   bool dumpCallTransferShadow = false;
+  bool dumpGenericBodyCallQualification = false;
   bool dumpNonCallTransferShadow = false;
   bool dumpD3DirectCallObservation = false;
   bool emitD3DirectCallObservation = false;
@@ -876,9 +883,9 @@ int main(int argc, char **argv) {
   AuthorityFactsDumpGuard authorityFactsGuard(emitAuthorityFacts,
                                                authorityFactsSession);
   SemanticEvidenceDumpGuard semanticEvidenceGuard(
-      dumpCallTransferShadow, dumpNonCallTransferShadow, dumpCedeObligations,
-      dumpCedeObligationsV2, dumpCapabilities, dumpTodoGoals,
-      dumpConditionalFacts);
+      dumpCallTransferShadow, dumpGenericBodyCallQualification,
+      dumpNonCallTransferShadow, dumpCedeObligations, dumpCedeObligationsV2,
+      dumpCapabilities, dumpTodoGoals, dumpConditionalFacts);
   StructuredDiagnosticsDumpGuard structuredDiagnosticsGuard(
       structuredDiagnostics);
   MachineFailureDiagnosticsDumpGuard machineFailureDiagnosticsGuard(
@@ -986,6 +993,20 @@ int main(int argc, char **argv) {
       dumpCedeObligations = true;
       dumpCedeObligationsV2 = true;
     } else if (arg == "--call-transfer-shadow=json") {
+      if (dumpGenericBodyCallQualification) {
+        llvm::errs() << "--call-transfer-shadow=json cannot be combined with "
+                        "--generic-body-call-qualification=json\n";
+        return 1;
+      }
+      dumpCallTransferShadow = true;
+    } else if (arg == "--generic-body-call-qualification=json") {
+      if (dumpCallTransferShadow) {
+        llvm::errs()
+            << "--generic-body-call-qualification=json cannot be combined "
+               "with --call-transfer-shadow=json\n";
+        return 1;
+      }
+      dumpGenericBodyCallQualification = true;
       dumpCallTransferShadow = true;
     } else if (arg == "--non-call-transfer-shadow=json") {
       dumpNonCallTransferShadow = true;
@@ -1397,6 +1418,8 @@ int main(int argc, char **argv) {
       dumpNonCallTransferShadow || dumpCapabilities || dumpTodoGoals ||
       dumpConditionalFacts);
   toka::SemanticEvidence::enableCallTransferShadow(dumpCallTransferShadow);
+  toka::SemanticEvidence::enableGenericBodyCallQualification(
+      dumpGenericBodyCallQualification);
   toka::SemanticEvidence::enableNonCallTransferShadow(
       dumpNonCallTransferShadow);
 

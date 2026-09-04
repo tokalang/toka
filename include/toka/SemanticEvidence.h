@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iosfwd>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -189,6 +190,7 @@ struct ExplicitCedeStage0ShadowRecord {
 
 struct CallTransferShadowRecord {
   std::string Callee;
+  std::string SpecializationIdentity;
   std::string Route;
   std::string Parameter;
   unsigned ArgumentIndex = 0;
@@ -263,6 +265,7 @@ struct ExplicitCedeStage0TransactionItemRecord {
 
 struct ExplicitCedeStage0TransactionRecord {
   std::string Callee;
+  std::string SpecializationIdentity;
   std::string Route;
   std::string Outcome;
   std::string Rejection;
@@ -374,6 +377,7 @@ struct ConditionalFactRecord {
 struct SemanticEvidenceAuditState {
   bool Enabled = false;
   bool CallTransferShadowEnabled = false;
+  bool GenericBodyCallQualificationEnabled = false;
   bool NonCallTransferShadowEnabled = false;
   size_t DecisionCount = 0;
   size_t CedeObligationCount = 0;
@@ -396,6 +400,8 @@ struct SemanticEvidenceAuditState {
   bool operator==(const SemanticEvidenceAuditState &rhs) const {
     return Enabled == rhs.Enabled &&
            CallTransferShadowEnabled == rhs.CallTransferShadowEnabled &&
+           GenericBodyCallQualificationEnabled ==
+               rhs.GenericBodyCallQualificationEnabled &&
            NonCallTransferShadowEnabled == rhs.NonCallTransferShadowEnabled &&
            DecisionCount == rhs.DecisionCount &&
            CedeObligationCount == rhs.CedeObligationCount &&
@@ -440,6 +446,12 @@ public:
   static bool isEnabled();
   static void enableCallTransferShadow(bool value);
   static bool isCallTransferShadowEnabled();
+  static void enableGenericBodyCallQualification(bool value);
+  static bool isGenericBodyCallQualificationEnabled();
+  static void rollbackGenericBodyCallQualification(
+      const std::string &specializationIdentity);
+  static void
+  recordGenericBodyCallQualification(const std::string &specializationIdentity);
   static void enableNonCallTransferShadow(bool value);
   static bool isNonCallTransferShadowEnabled();
   static CallTransferJournalCheckpoint checkpointCallTransferJournal();
@@ -465,19 +477,18 @@ public:
   static void dumpCedeObligationsJSON(std::ostream &out);
   static void dumpCedeObligationsV2JSON(std::ostream &out);
   static void recordCallTransferShadow(
-      std::string callee, std::string route, std::string parameter,
-      unsigned argumentIndex, unsigned formalIndex, std::string valueCategory,
-      std::string spelling, std::string transfer, std::string source,
-      std::string dependency, std::string placeEligibility, std::string drop,
-      std::string executionBoundary, uint64_t sourceRootID,
+      std::string callee, std::string specializationIdentity, std::string route,
+      std::string parameter, unsigned argumentIndex, unsigned formalIndex,
+      std::string valueCategory, std::string spelling, std::string transfer,
+      std::string source, std::string dependency, std::string placeEligibility,
+      std::string drop, std::string executionBoundary, uint64_t sourceRootID,
       std::string sourcePath, std::string sourceIdentity,
       std::string referentPath, std::string referentIdentity,
       std::vector<std::string> dependencyPaths, bool hasCleanupMask,
-      uint64_t cleanupMask, bool formalCeded, bool formalInit,
-      bool actualInit, bool legacyCallerRuleApplied, bool legacyCedeExempt,
-      bool legacyMissingCede, bool async,
-      ExplicitCedeStage0ShadowRecord stage0, SourceLocation location,
-      SourceLocation contractLocation = {});
+      uint64_t cleanupMask, bool formalCeded, bool formalInit, bool actualInit,
+      bool legacyCallerRuleApplied, bool legacyCedeExempt,
+      bool legacyMissingCede, bool async, ExplicitCedeStage0ShadowRecord stage0,
+      SourceLocation location, SourceLocation contractLocation = {});
   static void dumpCallTransferShadowJSON(std::ostream &out);
   static void recordExplicitCedeStage0Transaction(
       ExplicitCedeStage0TransactionRecord record, SourceLocation location);
@@ -515,12 +526,17 @@ public:
 private:
   static bool Enabled;
   static bool CallTransferShadowEnabled;
+  static bool GenericBodyCallQualificationEnabled;
   static bool NonCallTransferShadowEnabled;
   static std::vector<SemanticDecisionRecord> Records;
   static std::vector<CedeObligationRecord> CedeObligations;
   static std::vector<CallTransferShadowRecord> CallTransferShadows;
+  static std::vector<CallTransferShadowRecord> GenericBodyCallTransferShadows;
   static std::vector<ExplicitCedeStage0TransactionRecord>
       ExplicitCedeStage0Transactions;
+  static std::vector<ExplicitCedeStage0TransactionRecord>
+      GenericBodyExplicitCedeStage0Transactions;
+  static std::set<std::string> GenericBodyQualifiedSpecializations;
   static std::vector<ExplicitCedeStage0NonCallRecord>
       ExplicitCedeStage0NonCalls;
   static std::vector<CapabilityCallRecord> CapabilityCalls;

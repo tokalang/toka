@@ -1,0 +1,36 @@
+shape Probe(value: i32)
+shape Resource(value: i32)
+
+impl Probe {
+    fn read(self) -> i32 {
+        return self.value
+    }
+}
+
+fn ordinary_body(value: i32) -> i32 {
+    return value
+}
+
+fn consuming_body(cede ^value: Resource) -> i32 {
+    auto ^moved = cede ^value
+    return moved.value
+}
+
+fn generic_body<T>(value: T) -> T {
+    auto marker = 1:i32
+    auto ordinary = ordinary_body(marker)
+    auto method = Probe(value = 2:i32).read()
+    auto ^resource = new Resource(value = 3:i32)
+    auto consumed = consuming_body(cede ^resource)
+    return value
+}
+
+fn main() -> i32 {
+    auto first = generic_body(41:i32)
+    auto second = generic_body(true)
+    auto cached = generic_body(41:i32)
+    if second {
+        return first + cached - 82:i32
+    }
+    return 1:i32
+}
