@@ -1565,8 +1565,8 @@ impl HttpClient {
         return HttpClient(timeout_ms = timeout_ms)
     }
 
-    pub fn execute_stream_async(self, req: HttpRequest, addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponseStream, string> {
-        auto conn_res# = TcpStream::connect_async_timeout(addr, self.timeout_ms).await
+    pub fn execute_stream_async(self, req: HttpRequest, cede addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponseStream, string> {
+        auto conn_res# = TcpStream::connect_async_timeout(cede addr, self.timeout_ms).await
         if conn_res.is_err() {
             return Result<HttpResponseStream, string>::Err(conn_res.unwrap_err())
         }
@@ -1597,11 +1597,11 @@ impl HttpClient {
         if url.port > 0:u16 {
             conn_addr = SocketAddrV4::new(default_addr.ip, url.port)
         }
-        return self.execute_stream_async(req, conn_addr, url.is_tls(), url.host).await
+        return self.execute_stream_async(req, cede conn_addr, url.is_tls(), url.host).await
     }
 
-    pub fn execute_insecure_stream_async(self, req: HttpRequest, addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponseStream, string> {
-        auto conn_res# = TcpStream::connect_async_timeout(addr, self.timeout_ms).await
+    pub fn execute_insecure_stream_async(self, req: HttpRequest, cede addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponseStream, string> {
+        auto conn_res# = TcpStream::connect_async_timeout(cede addr, self.timeout_ms).await
         if conn_res.is_err() {
             return Result<HttpResponseStream, string>::Err(conn_res.unwrap_err())
         }
@@ -1805,8 +1805,8 @@ impl HttpClient {
         ))
     }
 
-    pub fn execute_async(self, req: HttpRequest, addr: SocketAddrV4) -> async Result<HttpResponse, string> {
-        auto s_res# = self.execute_stream_async(req, addr, false, string::from("")).await
+    pub fn execute_async(self, req: HttpRequest, cede addr: SocketAddrV4) -> async Result<HttpResponse, string> {
+        auto s_res# = self.execute_stream_async(req, cede addr, false, string::from("")).await
         if s_res.is_err() {
             return Result<HttpResponse, string>::Err(s_res.unwrap_err())
         }
@@ -1861,7 +1861,7 @@ impl HttpClient {
         if u.port > 0:u16 {
             conn_addr = SocketAddrV4::new(default_addr.ip, u.port)
         }
-        auto s_res# = self.execute_stream_async(req, conn_addr, u.is_tls(), u.host).await
+        auto s_res# = self.execute_stream_async(req, cede conn_addr, u.is_tls(), u.host).await
         if s_res.is_err() {
             return Result<HttpResponse, string>::Err(s_res.unwrap_err())
         }
@@ -1916,7 +1916,7 @@ impl HttpClient {
         if u.port > 0:u16 {
             conn_addr = SocketAddrV4::new(default_addr.ip, u.port)
         }
-        auto s_res# = self.execute_insecure_stream_async(req, conn_addr, u.is_tls(), u.host).await
+        auto s_res# = self.execute_insecure_stream_async(req, cede conn_addr, u.is_tls(), u.host).await
         if s_res.is_err() {
             return Result<HttpResponse, string>::Err(s_res.unwrap_err())
         }

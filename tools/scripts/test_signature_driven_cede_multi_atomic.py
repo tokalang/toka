@@ -2,6 +2,7 @@
 """Qualify default atomic multi-argument signature-driven cede admission."""
 
 import argparse
+import os
 import pathlib
 import subprocess
 import sys
@@ -11,6 +12,7 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests/semantics/signature_driven_cede_direct"
 FLAG = "--experimental-signature-driven-cede"
+os.environ["TOKA_STAGE1_LEGACY_REPLAY"] = "1"
 
 
 def run(command):

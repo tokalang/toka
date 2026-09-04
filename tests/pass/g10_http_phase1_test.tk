@@ -33,13 +33,13 @@ fn string_from_bytes(buffer: Vec<u8>) -> string {
 
 fn test_async_client(local_port: u16) -> async i32 {
     unsafe {
-        auto client_addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), local_port)
-        auto stream# = TcpStream::connect_async(client_addr).await
+        auto client_ip = Ipv4Addr::new(127, 0, 0, 1)
+        auto stream# = TcpStream::connect_async(SocketAddrV4::new(client_ip, local_port)).await
         auto retries# = 0
         loop !stream.is_valid() {
             if retries > 100 { return 1 }
             sleep_async(10).await
-            stream = TcpStream::connect_async(client_addr).await
+            stream = TcpStream::connect_async(SocketAddrV4::new(client_ip, local_port)).await
             retries = retries + 1
         }
 

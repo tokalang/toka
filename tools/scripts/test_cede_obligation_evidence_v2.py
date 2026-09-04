@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -11,6 +12,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "tests/semantics/signature_driven_cede_direct/runtime.tk"
 FLAG = "--experimental-signature-driven-cede"
+os.environ["TOKA_STAGE1_LEGACY_REPLAY"] = "1"
 
 
 def run(command):

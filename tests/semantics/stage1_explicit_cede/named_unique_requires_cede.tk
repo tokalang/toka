@@ -1,0 +1,11 @@
+shape Resource(value: i32)
+
+fn consume(cede ^value: Resource) -> i32 {
+    auto ^owned = cede ^value
+    return owned.value
+}
+
+fn main() -> i32 {
+    auto ^value = new Resource(value = 7:i32)
+    return consume(^value)
+}

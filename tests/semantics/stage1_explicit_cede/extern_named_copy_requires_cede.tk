@@ -1,0 +1,6 @@
+extern fn consume_external(cede value: i32) -> i32
+
+fn main() -> i32 {
+    auto value = 7:i32
+    return consume_external(value)
+}

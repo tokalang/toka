@@ -8,7 +8,7 @@ shape SharedWork(
 
 pub fn main() -> i32 {
     auto init_work = SharedWork(finished_count = 0)
-    auto ~data = Mutex<SharedWork>::make(init_work)
+    auto ~data = Mutex<SharedWork>::make(cede init_work)
     auto ~wg# = WaitGroup::make()
     
     wg#.add(3)

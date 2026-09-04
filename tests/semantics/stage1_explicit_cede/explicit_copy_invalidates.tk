@@ -1,0 +1,9 @@
+fn consume(cede value: i32) -> i32 {
+    return cede value
+}
+
+fn main() -> i32 {
+    auto value = 7:i32
+    auto moved = consume(cede value)
+    return moved + value
+}

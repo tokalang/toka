@@ -3,12 +3,14 @@
 
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import sys
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+os.environ["TOKA_STAGE1_LEGACY_REPLAY"] = "1"
 MATRIX = ROOT / "tests/semantics/direct_call_observation_d3a/matrix.tk"
 ORDER_A = ROOT / "tests/semantics/direct_call_observation_d3a/copy_order_a.tk"
 ORDER_B = ROOT / "tests/semantics/direct_call_observation_d3a/copy_order_b.tk"

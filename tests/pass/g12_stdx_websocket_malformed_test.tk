@@ -71,7 +71,7 @@ fn run_t1_server(port: u16) -> async Result<(), string> {
 fn run_t1_client(port: u16) -> async Result<(), string> {
     sleep_async(50).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto stream# = TcpStream::connect_async(addr).await
+    auto stream# = TcpStream::connect_async(cede addr).await
     auto req# = string::from("GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: wrong_proto\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
     auto request# = bytes_from_string(req.as_str())
     return write_tcp_async(stream#, cede request).await
@@ -102,7 +102,7 @@ fn run_t2_server(port: u16) -> async Result<(), string> {
 fn run_t2_client(port: u16) -> async Result<(), string> {
     sleep_async(50).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto stream# = TcpStream::connect_async(addr).await
+    auto stream# = TcpStream::connect_async(cede addr).await
     auto ws_res = ws_connect_async(stream, string::from("127.0.0.1"), string::from("/ws")).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
@@ -145,7 +145,7 @@ fn run_t3_server(port: u16) -> async Result<(), string> {
 fn run_t3_client(port: u16) -> async Result<(), string> {
     sleep_async(50).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto stream# = TcpStream::connect_async(addr).await
+    auto stream# = TcpStream::connect_async(cede addr).await
     auto ws_res = ws_connect_async(stream, string::from("127.0.0.1"), string::from("/ws")).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
@@ -188,7 +188,7 @@ fn run_t4_server(port: u16) -> async Result<(), string> {
 fn run_t4_client(port: u16) -> async Result<(), string> {
     sleep_async(50).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto stream# = TcpStream::connect_async(addr).await
+    auto stream# = TcpStream::connect_async(cede addr).await
     auto ws_res = ws_connect_async(stream, string::from("127.0.0.1"), string::from("/ws")).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
@@ -227,7 +227,7 @@ fn run_t5_server(port: u16) -> async Result<(), string> {
 fn run_t5_client(port: u16) -> async Result<(), string> {
     sleep_async(50).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto stream# = TcpStream::connect_async(addr).await
+    auto stream# = TcpStream::connect_async(cede addr).await
     auto req# = string::from("GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: not-websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
     auto request# = bytes_from_string(req.as_str())
     return write_tcp_async(stream#, cede request).await
@@ -258,7 +258,7 @@ fn run_t6_server(port: u16) -> async Result<(), string> {
 fn run_t6_client(port: u16) -> async Result<(), string> {
     sleep_async(50).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto stream# = TcpStream::connect_async(addr).await
+    auto stream# = TcpStream::connect_async(cede addr).await
     auto ws_res = ws_connect_async(stream, string::from("127.0.0.1"), string::from("/ws")).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
@@ -305,7 +305,7 @@ fn run_t7_server(port: u16) -> async Result<(), string> {
 fn run_t7_client(port: u16) -> async Result<(), string> {
     sleep_async(50).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto stream# = TcpStream::connect_async(addr).await
+    auto stream# = TcpStream::connect_async(cede addr).await
     auto ws_res = ws_connect_async(stream, string::from("127.0.0.1"), string::from("/ws")).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
@@ -345,7 +345,7 @@ fn run_t8_server(port: u16) -> async Result<(), string> {
 fn run_t8_client(port: u16) -> async Result<(), string> {
     sleep_async(50).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto stream# = TcpStream::connect_async(addr).await
+    auto stream# = TcpStream::connect_async(cede addr).await
     auto req# = string::from("GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ!!\r\nSec-WebSocket-Version: 13\r\n\r\n")
     auto request# = bytes_from_string(req.as_str())
     return write_tcp_async(stream#, cede request).await
@@ -375,7 +375,7 @@ fn run_t9_server(port: u16) -> async Result<(), string> {
 fn run_t9_client(port: u16) -> async Result<(), string> {
     sleep_async(50).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto stream# = TcpStream::connect_async(addr).await
+    auto stream# = TcpStream::connect_async(cede addr).await
     auto ws_res = ws_connect_async(stream, string::from("127.0.0.1"), string::from("/ws")).await
     if ws_res.is_err() {
         return Result<(), string>::Err(ws_res.unwrap_err())
@@ -412,7 +412,7 @@ fn run_t9_client(port: u16) -> async Result<(), string> {
 fn run_t10_server(port: u16) -> async Result<(), string> {
     sleep_async(50).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto stream# = TcpStream::connect_async(addr).await
+    auto stream# = TcpStream::connect_async(cede addr).await
     auto res = ws_connect_async(stream, string::from("127.0.0.1"), string::from("/ws")).await
     if res.is_err() {
         auto err = res.unwrap_err()

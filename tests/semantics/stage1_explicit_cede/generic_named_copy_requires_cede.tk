@@ -1,0 +1,8 @@
+fn relay<T>(cede value: T) -> T {
+    return cede value
+}
+
+fn main() -> i32 {
+    auto value = 7:i32
+    return relay(value)
+}

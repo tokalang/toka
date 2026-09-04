@@ -14,7 +14,7 @@ pub fn main() -> i32 {
     }:fn() -> cede string
     
     // Spawn a thread and explicitly capture `target` by moving it (cede) into the thread!
-    auto handle# = thread_spawn<string>(f)
+    auto handle# = thread_spawn<string>(cede f)
 
     //println("target = {}", target) //error: use of moved value: `target`
 

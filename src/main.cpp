@@ -857,6 +857,9 @@ int main(int argc, char **argv) {
   bool warnImplicitCallMove = false;
 #ifdef TOKA_BUILD_TESTING
   bool injectMissingCallTransferElaboration = false;
+  bool stage1LegacyOrdinaryCede =
+      std::getenv("TOKA_STAGE1_LEGACY_REPLAY") &&
+      std::string(std::getenv("TOKA_STAGE1_LEGACY_REPLAY")) == "1";
 #endif
   std::optional<toka::AuthorityFaultPoint> authorityFaultPoint;
   std::string authorityFaultSource;
@@ -1025,6 +1028,8 @@ int main(int argc, char **argv) {
       stage0CodeGenAuthority = true;
       stage0CodeGenAuthorityFault =
           arg.substr(std::string("--stage0-codegen-fault=").size());
+    } else if (arg == "--stage1-legacy-ordinary-cede") {
+      stage1LegacyOrdinaryCede = true;
 #endif
     } else if (arg == "--non-call-transfer-shadow=json") {
       dumpNonCallTransferShadow = true;
@@ -1764,6 +1769,11 @@ int main(int argc, char **argv) {
       dumpD3DirectCallObservation ||
       dumpAuthorityFacts || enableAuthorityFactsShadow;
   sema.setSignatureDrivenCallCedeEnabled(!legacyCedeAuditProfile);
+  bool enableStage1ExplicitCallerCede = !legacyCedeAuditProfile;
+#ifdef TOKA_BUILD_TESTING
+  enableStage1ExplicitCallerCede &= !stage1LegacyOrdinaryCede;
+#endif
+  sema.setStage1ExplicitCallerCedeEnabled(enableStage1ExplicitCallerCede);
   sema.setWarnImplicitCallMove(warnImplicitCallMove);
 #ifdef TOKA_BUILD_TESTING
   sema.setMissingCallTransferFaultInjection(

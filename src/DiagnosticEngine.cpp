@@ -117,6 +117,8 @@ void DiagnosticEngine::capture(DiagLoc loc, DiagID id, DiagLevel level,
     DiagnosticSpan editSpan{loc.File, loc.Line, loc.Col + loc.Length, 0, ""};
     record.Fixes.push_back(
         {"Add mutable argument sigil '#'", {{std::move(editSpan), "#"}}});
+  } else if (id == DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2) {
+    addFix("Pass the named source with 'cede'", 0, "cede ");
   } else if (id == DiagID::ERR_SEMA_CALL_ARG_UNEXPECTED_MUTABLE_SIGIL) {
     if (loc.Length > 0) {
       DiagnosticSpan editSpan{loc.File, loc.Line, loc.Col, loc.Length, ""};

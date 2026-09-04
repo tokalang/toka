@@ -1227,7 +1227,8 @@ bool Sema::preflightExplicitCallCedeAliases(
 bool Sema::elaborateSignatureDrivenCedeArgument(
     std::unique_ptr<Expr> &argument,
     const std::shared_ptr<toka::Type> &argumentType,
-    const std::shared_ptr<toka::Type> &formalType, bool commit) {
+    const std::shared_ptr<toka::Type> &formalType, bool commit,
+    bool requireExplicitNamedSource) {
   if (!m_EnableSignatureDrivenCallCede || !argument || !argumentType ||
       !formalType || dynamic_cast<CedeExpr *>(argument.get()) ||
       argumentType->isUnknown())
@@ -1286,6 +1287,9 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
     return false;
 
   Expr *source = d3UnwrapSourceExpr(argument.get());
+  if (m_EnableStage1ExplicitCallerCede && requireExplicitNamedSource &&
+      canonicalizeAccessPath(makeAccessPath(source)))
+    return false;
   const bool wholeTemporary =
       source && !dynamic_cast<MemberExpr *>(source) &&
       !dynamic_cast<ArrayIndexExpr *>(source) &&
@@ -4395,16 +4399,18 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   // so keep the nullable guard and explicit-transfer checks here rather than
   // letting those alternate routes weaken a declared `cede` parameter.
   auto checkCedeArgument =
-      [&](size_t argumentIndex, Expr *argument,
-          const FunctionDecl::Arg &param,
+      [&](size_t argumentIndex, Expr *argument, const FunctionDecl::Arg &param,
           const std::shared_ptr<Type> &argumentType,
-          const std::shared_ptr<Type> &destinationType,
-          unsigned formalIndex, CallTransferRoute route, bool isAsync,
-          bool plannedImplicit) {
-        const bool isExempt =
-            param.IsCeded &&
-            (canImplicitlyPassToCede(argumentType) ||
-             canPreserveBareSignatureCede(argumentType));
+          const std::shared_ptr<Type> &destinationType, unsigned formalIndex,
+          CallTransferRoute route, bool isAsync, bool plannedImplicit) {
+        const bool namedStage1Source =
+            m_EnableStage1ExplicitCallerCede &&
+            route == CallTransferRoute::Static && !plannedImplicit &&
+            dynamic_cast<CedeExpr *>(argument) == nullptr &&
+            canonicalizeAccessPath(makeAccessPath(argument));
+        const bool isExempt = param.IsCeded && !namedStage1Source &&
+                              (canImplicitlyPassToCede(argumentType) ||
+                               canPreserveBareSignatureCede(argumentType));
         recordShadowCallTransfer(
             Call, Call->ShadowArgumentTransfers,
             static_cast<unsigned>(argumentIndex + 1), formalIndex, argument,
@@ -4623,8 +4629,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           if (MetAST && i < MetAST->Args.size()) {
             const auto &param = MetAST->Args[i];
             if (signatureStaticSlice && param.IsCeded &&
-                elaborateSignatureDrivenCedeArgument(
-                    Call->Args[i], argTy, expectedTy, false)) {
+                elaborateSignatureDrivenCedeArgument(Call->Args[i], argTy,
+                                                     expectedTy, false, true)) {
               plannedStaticCede[i] = true;
               pendingStaticCedes.push_back({i, argTy, expectedTy});
             }
@@ -4715,7 +4721,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             for (const auto &pending : pendingStaticCedes)
               elaborateSignatureDrivenCedeArgument(
                   Call->Args[pending.Index], pending.ArgumentType,
-                  pending.FormalType);
+                  pending.FormalType, true, true);
           }
         }
         auto resolvedRet =
@@ -6985,7 +6991,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
   }
 
-  // Generic Function/Extern Matching
+  // Generic function/extern matching is this Stage-1 ordinary-parameter
+  // slice. Static calls were handled above; callable and indirect routes
+  // returned through their dedicated paths and remain outside this slice.
+  const bool stage1OrdinaryParameterRoute = Fn || Ext;
   funcType =
       std::make_shared<toka::FunctionType>(ParamTypes, ReturnType, IsVariadic);
 
@@ -7566,9 +7575,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     if (signatureDrivenDirectSlice && i < Fn->Args.size() &&
         Fn->Args[i].IsCeded) {
       if (Call->Args.size() == 1) {
-        elaborateSignatureDrivenCedeArgument(Call->Args[i], argType, paramType);
-      } else if (elaborateSignatureDrivenCedeArgument(
-                     Call->Args[i], argType, paramType, false)) {
+        elaborateSignatureDrivenCedeArgument(Call->Args[i], argType, paramType,
+                                             true, true);
+      } else if (elaborateSignatureDrivenCedeArgument(Call->Args[i], argType,
+                                                      paramType, false, true)) {
         plannedSignatureCede[i] = true;
         pendingSignatureCedes.push_back({i, argType, paramType});
       }
@@ -7576,9 +7586,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     if (signatureDrivenExternSlice && i < Ext->Args.size() &&
         Ext->Args[i].IsCeded) {
       if (Call->Args.size() == 1) {
-        elaborateSignatureDrivenCedeArgument(Call->Args[i], argType, paramType);
-      } else if (elaborateSignatureDrivenCedeArgument(
-                     Call->Args[i], argType, paramType, false)) {
+        elaborateSignatureDrivenCedeArgument(Call->Args[i], argType, paramType,
+                                             true, true);
+      } else if (elaborateSignatureDrivenCedeArgument(Call->Args[i], argType,
+                                                      paramType, false, true)) {
         plannedSignatureCede[i] = true;
         pendingSignatureCedes.push_back({i, argType, paramType});
       }
@@ -7885,6 +7896,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         isCededParam &&
         (canImplicitlyPassToCede(argType) ||
          canPreserveBareSignatureCede(argType));
+    if (m_EnableStage1ExplicitCallerCede && stage1OrdinaryParameterRoute &&
+        isCededParam && !isCallerCeded &&
+        canonicalizeAccessPath(makeAccessPath(Call->Args[i].get())))
+      legacyCedeExempt = false;
     if (isCededParam && isOwningClosureArgument(Call->Args[i].get()))
       legacyCedeExempt = false;
     bool isCedeParamImplicitlyExempt = false;
@@ -8252,13 +8267,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                       return record.Level == DiagLevel::Error;
                     });
     if (!callHasError) {
-      const bool preflightStillValid =
-          std::all_of(pendingSignatureCedes.begin(),
-                      pendingSignatureCedes.end(), [&](const auto &pending) {
-                        return elaborateSignatureDrivenCedeArgument(
-                            Call->Args[pending.ArgumentIndex],
-                            pending.ArgumentType, pending.FormalType, false);
-                      });
+      const bool preflightStillValid = std::all_of(
+          pendingSignatureCedes.begin(), pendingSignatureCedes.end(),
+          [&](const auto &pending) {
+            return elaborateSignatureDrivenCedeArgument(
+                Call->Args[pending.ArgumentIndex], pending.ArgumentType,
+                pending.FormalType, false, true);
+          });
       if (!preflightStillValid) {
         error(Call, DiagID::ERR_GENERIC_SEMA,
               "signature-driven cede batch changed during validation");
@@ -8266,7 +8281,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         for (const auto &pending : pendingSignatureCedes) {
           if (!elaborateSignatureDrivenCedeArgument(
                   Call->Args[pending.ArgumentIndex], pending.ArgumentType,
-                  pending.FormalType)) {
+                  pending.FormalType, true, true)) {
             error(Call, DiagID::ERR_GENERIC_SEMA,
                   "signature-driven cede batch commit failed");
             break;

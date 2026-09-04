@@ -60,7 +60,7 @@ pub fn async_context_server(cede listener: TcpListener) -> async i32 {
 pub fn async_context_client(port: u16) -> async i32 {
     sleep_async(20).await;
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
-    auto stream# = TcpStream::connect_async(addr).await;
+    auto stream# = TcpStream::connect_async(cede addr).await;
     assert(stream.is_valid(), "Client connect_async failed");
 
     // Sleep 250ms before writing data so that server's timeout (100ms) and context cancel (50ms) both trigger first

@@ -97,7 +97,7 @@ fn async_tls_client_task(port: u16) -> async Result<(), string> {
     sleep_async(50:u64).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     println("[TlsClient] Connecting to 127.0.0.1...")
-    auto tcp_stream# = TcpStream::connect_async(addr).await
+    auto tcp_stream# = TcpStream::connect_async(cede addr).await
     if !tcp_stream.is_valid() {
         return Result<(), string>::Err(string::from("TCP connect failed"))
     }

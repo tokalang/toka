@@ -31,17 +31,17 @@ pub fn async_socket_server(cede listener: TcpListener) -> async i32 {
 
 pub fn async_socket_client(port: u16) -> async i32 {
     sleep_async(50).await;
-    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
+    auto ip = Ipv4Addr::new(127, 0, 0, 1);
 
     // Exercise connect_async over real OS Reactor WaitTokenization
-    auto stream# = TcpStream::connect_async(addr).await;
+    auto stream# = TcpStream::connect_async(SocketAddrV4::new(ip, port)).await;
     auto retries# = 0;
     loop !stream.is_valid() {
         if retries > 50 {
             assert(false, "Client connect timeout");
         }
         sleep_async(50).await;
-        stream = TcpStream::connect_async(addr).await;
+        stream = TcpStream::connect_async(SocketAddrV4::new(ip, port)).await;
         retries = retries + 1;
     }
     assert(stream.is_valid(), "Client connect_async failed");

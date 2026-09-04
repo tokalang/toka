@@ -145,7 +145,7 @@ fn async_http_client_test(port: u16) -> async i32 {
     )
 
     println("[Client] Executing HTTP request...")
-    auto s_res# = client.execute_stream_async(req, addr, false, string::from("")).await
+    auto s_res# = client.execute_stream_async(req, cede addr, false, string::from("")).await
     if s_res.is_err() {
         auto err_str = s_res.unwrap_err()
         println("[Client] Stream request failed: {}", err_str.as_str())
@@ -247,7 +247,7 @@ fn async_http_chunked_client(port: u16) -> async i32 {
         body = string::from("")
     )
     println("[Chunked Client] Executing request...")
-    auto s_res# = client.execute_stream_async(req, addr, false, string::from("")).await
+    auto s_res# = client.execute_stream_async(req, cede addr, false, string::from("")).await
     if s_res.is_err() {
         println("[Chunked Client] execute_stream_async failed: {}", s_res.unwrap_err().as_str())
         return 1
@@ -317,7 +317,7 @@ fn test_headermap_clone_independence() {
 fn async_connect_timeout_test() -> async i32 {
     // Attempt connecting to a non-listening local port with a 10ms timeout
     auto unreachable_addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 59999:u16)
-    auto conn_res = TcpStream::connect_async_timeout(unreachable_addr, 10).await
+    auto conn_res = TcpStream::connect_async_timeout(cede unreachable_addr, 10).await
     assert(conn_res.is_err(), "connect_async_timeout on non-listening port must fail or time out")
     println("[Test] TcpStream::connect_async_timeout PASSED!")
     return 0

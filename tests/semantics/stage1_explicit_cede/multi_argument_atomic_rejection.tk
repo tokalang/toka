@@ -1,0 +1,16 @@
+fn combine(cede left: i32, cede right: i32) -> i32 {
+    auto lhs = cede left
+    auto rhs = cede right
+    return lhs + rhs
+}
+
+fn inspect(value: i32) -> i32 {
+    return value
+}
+
+fn main() -> i32 {
+    auto first = 1:i32
+    auto second = 2:i32
+    auto result = combine(cede first, second)
+    return inspect(first) + inspect(second) + result
+}

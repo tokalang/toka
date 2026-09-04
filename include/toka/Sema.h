@@ -370,6 +370,9 @@ public:
   void setSignatureDrivenCallCedeEnabled(bool enabled) {
     m_EnableSignatureDrivenCallCede = enabled;
   }
+  void setStage1ExplicitCallerCedeEnabled(bool enabled) {
+    m_EnableStage1ExplicitCallerCede = enabled;
+  }
   void setWarnImplicitCallMove(bool enabled) {
     m_WarnImplicitCallMove = enabled;
   }
@@ -630,7 +633,8 @@ private:
   bool elaborateSignatureDrivenCedeArgument(
       std::unique_ptr<Expr> &Argument,
       const std::shared_ptr<toka::Type> &ArgumentType,
-      const std::shared_ptr<toka::Type> &FormalType, bool Commit = true);
+      const std::shared_ptr<toka::Type> &FormalType, bool Commit = true,
+      bool RequireExplicitNamedSource = false);
   struct CedeEvidenceV2Facts {
     std::string Spelling;
     std::string Transfer;
@@ -703,6 +707,7 @@ private:
   D4ProbeAuditSession *m_D4ProbeAuditSession = nullptr;
   AuthorityFactsAuditSession *m_AuthorityFactsSession = nullptr;
   bool m_EnableSignatureDrivenCallCede = true;
+  bool m_EnableStage1ExplicitCallerCede = true;
   bool m_WarnImplicitCallMove = false;
   bool m_InjectMissingCallTransferElaboration = false;
   bool m_MissingCallTransferFaultConsumed = false;

@@ -8,7 +8,7 @@ shape SharedData(
 
 pub fn main() -> i32 {
     auto init_val = SharedData(counter = 0)
-    auto ~state = Mutex<SharedData>::make(init_val)
+    auto ~state = Mutex<SharedData>::make(cede init_val)
     auto ~once# = Once::make()
 
     auto ~state1 = ~state

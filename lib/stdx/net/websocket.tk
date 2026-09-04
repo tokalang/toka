@@ -576,7 +576,7 @@ pub fn ws_connect_url_async(url_str: string, default_addr: SocketAddrV4) -> asyn
     if u.port > 0:u16 {
         conn_addr = SocketAddrV4::new(default_addr.ip, u.port)
     }
-    auto tcp_res# = TcpStream::connect_async_timeout(conn_addr, 10000).await
+    auto tcp_res# = TcpStream::connect_async_timeout(cede conn_addr, 10000).await
     if tcp_res.is_err() {
         return Result<WsConnection, string>::Err(tcp_res.unwrap_err())
     }
@@ -597,7 +597,7 @@ pub fn ws_connect_insecure_url_async(url_str: string, default_addr: SocketAddrV4
     if u.port > 0:u16 {
         conn_addr = SocketAddrV4::new(default_addr.ip, u.port)
     }
-    auto tcp_res# = TcpStream::connect_async_timeout(conn_addr, 10000).await
+    auto tcp_res# = TcpStream::connect_async_timeout(cede conn_addr, 10000).await
     if tcp_res.is_err() {
         return Result<WsConnection, string>::Err(tcp_res.unwrap_err())
     }

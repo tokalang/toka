@@ -1,0 +1,26 @@
+shape Resource(value: i32)
+
+impl Resource {
+    fn drop(self#) {}
+}
+
+fn inspect(value: i32) -> i32 {
+    return value
+}
+
+fn consume_copy(cede value: i32) -> i32 {
+    return cede value
+}
+
+fn consume_resource(cede value: Resource) -> i32 {
+    auto moved = cede value
+    return moved.value
+}
+
+fn main() -> i32 {
+    auto number = 7:i32
+    auto observed = inspect(number)
+    auto literal = consume_copy(1:i32)
+    auto temporary = consume_resource(Resource(value = 2:i32))
+    return observed + number + literal + temporary - 17:i32
+}

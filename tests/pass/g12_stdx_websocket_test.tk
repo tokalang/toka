@@ -94,7 +94,7 @@ fn run_websocket_client(port: u16) -> async i32 {
 
     println("[WsClient] Starting WebSocket client task...")
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto stream# = TcpStream::connect_async(addr).await
+    auto stream# = TcpStream::connect_async(cede addr).await
     if !stream.is_valid() {
         println("[WsClient] Connect failed!")
         return 1

@@ -13,6 +13,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
+STAGE1_LEGACY = "--stage1-legacy-ordinary-cede"
 TRANSACTIONS = {}
 PARITY_CASES = set()
 MISSING_PRE_MUTATION = []
@@ -27,7 +28,7 @@ def require(condition, message):
 
 
 def run(tokac, source, expected_error=None, check_only=True, extra=()):
-    command = [str(tokac), "--call-transfer-shadow=json"]
+    command = [str(tokac), STAGE1_LEGACY, "--call-transfer-shadow=json"]
     if check_only:
         command.append("--check-only")
     command.extend(extra)
@@ -314,17 +315,17 @@ def run(tokac, source, expected_error=None, check_only=True, extra=()):
 def require_shadow_parity(tokac, source, expected_error=None, extra=()):
     PARITY_CASES.add(source)
     normal = subprocess.run(
-        [str(tokac), "--check-only", *extra, source], cwd=ROOT,
+        [str(tokac), STAGE1_LEGACY, "--check-only", *extra, source], cwd=ROOT,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30,
     )
     shadow = subprocess.run(
-        [str(tokac), "--call-transfer-shadow=json", "--check-only", *extra,
+        [str(tokac), STAGE1_LEGACY, "--call-transfer-shadow=json", "--check-only", *extra,
          source],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, timeout=30,
     )
     replay = subprocess.run(
-        [str(tokac), "--call-transfer-shadow=json", "--check-only", *extra,
+        [str(tokac), STAGE1_LEGACY, "--call-transfer-shadow=json", "--check-only", *extra,
          source],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, timeout=30,
@@ -1421,7 +1422,7 @@ def main():
             "    return generic_bad(inner())\n"
             "}\n")
         recursion_probe = subprocess.run(
-            [str(tokac), "--check-only", str(mangled_source)], cwd=ROOT,
+            [str(tokac), STAGE1_LEGACY, "--check-only", str(mangled_source)], cwd=ROOT,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             timeout=30)
         require(recursion_probe.returncode != 0 and
@@ -1482,7 +1483,7 @@ def main():
         for name in ("lib.tk", "fail_generic_missing_cede.tk"):
             shutil.copy2(replay_case / name, work / name)
         provider = subprocess.run(
-            [str(tokac), "-c", work / "lib.tk", "-o", work / "lib.o"],
+            [str(tokac), STAGE1_LEGACY, "-c", work / "lib.tk", "-o", work / "lib.o"],
             cwd=work, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, timeout=30,
         )
@@ -1491,12 +1492,12 @@ def main():
 
         def replay_record():
             normal = subprocess.run(
-                [str(tokac), work / "fail_generic_missing_cede.tk"],
+                [str(tokac), STAGE1_LEGACY, work / "fail_generic_missing_cede.tk"],
                 cwd=work, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, timeout=30,
             )
             shadow = subprocess.run(
-                [str(tokac), "--call-transfer-shadow=json",
+                [str(tokac), STAGE1_LEGACY, "--call-transfer-shadow=json",
                  work / "fail_generic_missing_cede.tk"],
                 cwd=work, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, timeout=30,
@@ -1545,7 +1546,7 @@ def main():
         receipts.append(hidden_record)
 
     mixed = subprocess.run(
-        [str(tokac), "--call-transfer-shadow=json",
+        [str(tokac), STAGE1_LEGACY, "--call-transfer-shadow=json",
          "--cede-obligations=json", "--check-only", source],
         cwd=ROOT,
         stdout=subprocess.PIPE,
@@ -1561,7 +1562,7 @@ def main():
             "mixed shadow/evidence output missed its diagnostic")
 
     diagnostics_mixed = subprocess.run(
-        [str(tokac), "--call-transfer-shadow=json", "--diagnostics-json",
+        [str(tokac), STAGE1_LEGACY, "--call-transfer-shadow=json", "--diagnostics-json",
          source],
         cwd=ROOT,
         stdout=subprocess.PIPE,
@@ -1584,7 +1585,7 @@ def main():
     ]
     for normal_source, expected_error in normal_cases:
         normal = subprocess.run(
-            [str(tokac), "--check-only", normal_source], cwd=ROOT,
+            [str(tokac), STAGE1_LEGACY, "--check-only", normal_source], cwd=ROOT,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             timeout=30,
         )

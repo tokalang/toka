@@ -3,12 +3,14 @@
 
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import sys
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+os.environ["TOKA_STAGE1_LEGACY_REPLAY"] = "1"
 FIXTURES = ROOT / "tests/semantics/authority_facts_m1b2a"
 STABLE = ROOT / "tests/semantics/direct_call_observation_d3a/stable_place.tk"
 ORDERED = FIXTURES / "ordered_siblings.tk"

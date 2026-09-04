@@ -85,16 +85,15 @@ fn async_client_runner(port: u16) -> async i32 {
         // Connect and send HTTP GET using connect_async
         auto ip = Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8)
         auto addr = SocketAddrV4::new(ip, port)
-        
         println("[Client] Connecting to Async Server...")
-        auto stream# = TcpStream::connect_async(addr).await
+        auto stream# = TcpStream::connect_async(SocketAddrV4::new(ip, port)).await
         auto retries# = 0
         loop !stream.is_valid() {
             if retries > 100 {
                 assert(false, "Client connect timeout after 10s")
             }
             sleep_async(100).await
-            stream = TcpStream::connect_async(addr).await
+            stream = TcpStream::connect_async(SocketAddrV4::new(ip, port)).await
             retries = retries + 1
         }
         

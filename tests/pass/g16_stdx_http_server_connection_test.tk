@@ -23,7 +23,7 @@ fn client(port: u16) -> async i32 {
     assert(headers#.insert(string::from("Host"), string::from("127.0.0.1")).is_ok(), "host header")
     auto request = HttpRequest(method = HttpMethod::POST, path = string::from("/notes"), version = string::from("HTTP/1.1"), headers = cede headers, body = string::from("hello"))
     auto address = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto response = HttpClient::new(2000:i32).execute_async(request, address).await
+    auto response = HttpClient::new(2000:i32).execute_async(request, cede address).await
     assert(response.is_ok(), "client response")
     assert(response.unwrap().body.as_str().equals("stored"), "response body")
     return 0
