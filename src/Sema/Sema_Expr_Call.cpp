@@ -4006,6 +4006,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   bool rollbackInvalidSpecializationDescendants = false;
   std::string CallName = Call->Callee;
   std::string OriginalName = CallName;
+  // A mangled cache alias has no GenericParams left. Capture before lookup so
+  // its persistent validation state can reject the real argument transaction.
+  std::optional<CallArgumentRollbackGuard> directArgumentRollback;
+  if (InstantiationCache.find(CallName) != InstantiationCache.end())
+    directArgumentRollback.emplace(*this, Call->Args, true);
 
   struct EffectRestorer {
       bool &ref;
@@ -6075,6 +6080,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           entry ? entry->Validation
                 : GenericSpecializationValidationState::Unchecked;
       if (validation != GenericSpecializationValidationState::Valid) {
+        if (directArgumentRollback)
+          directArgumentRollback->reject();
         if (!m_GenericValidationFrames.empty())
           m_GenericValidationFrames.back().HasInvalidDependency = true;
         if (SemanticEvidence::isCallTransferShadowEnabled() &&
@@ -6116,6 +6123,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         if (promoteQualification &&
             entry->BodyQualification !=
                 GenericBodyQualificationState::Complete) {
+          if (directArgumentRollback)
+            directArgumentRollback->reject();
           m_Stage0InvalidGenericSpecializationCalls.insert(Call);
           rollbackInvalidSpecializationDescendants = true;
         }
@@ -6369,9 +6378,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     return toka::Type::fromString("unknown");
   }
 
-  const bool isGenericDirectCall = Fn && !Fn->GenericParams.empty();
-  CallArgumentRollbackGuard explicitRollback(*this, Call->Args,
-                                             isGenericDirectCall);
+  const bool isGenericDirectCall =
+      Fn && (!Fn->GenericParams.empty() || Fn->TemplateOrigin);
+  if (!directArgumentRollback)
+    directArgumentRollback.emplace(*this, Call->Args, isGenericDirectCall);
 
   // 5. Synthesize FunctionType
   // ParamTypes, ReturnType
@@ -6418,7 +6428,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (Call->GenericArgs.size() != Fn->GenericParams.size()) {
         DiagnosticEngine::report(getLoc(Call), DiagID::NOTE_GENERIC, Fn->Name, Fn->GenericParams.size(), Call->GenericArgs.size());
         HasError = true;
-        explicitRollback.reject();
+        directArgumentRollback->reject();
         genericArgumentJournal.rollback();
         recordGenericResolutionRejection("GenericTypeArgumentCountMismatch");
         return toka::Type::fromString("unknown");
@@ -6657,7 +6667,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           promoteGenericBodyQualification);
       Fn = instantiation.Instance;
       if (!Fn) {
-        explicitRollback.reject();
+        directArgumentRollback->reject();
         genericArgumentJournal.rollback();
         recordGenericResolutionRejection("GenericInstantiationFailed");
         return toka::Type::fromString("unknown");
@@ -6685,7 +6695,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               GenericBodyQualificationState::Complete;
       if (!specializationValidated || instantiationReportedError ||
           !bodyQualificationComplete) {
-        explicitRollback.reject();
+        directArgumentRollback->reject();
         genericArgumentJournal.rollback();
         if (SemanticEvidence::isCallTransferShadowEnabled() &&
             stage0CallEntrySnapshot)
@@ -6695,7 +6705,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
     } else {
       HasError = true;
-      explicitRollback.reject();
+      directArgumentRollback->reject();
       genericArgumentJournal.rollback();
       recordGenericResolutionRejection("GenericDeductionFailed");
       return toka::Type::fromString("unknown");

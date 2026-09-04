@@ -36,6 +36,9 @@ Generic deduction and specialization validation are part of the same argument
 transaction. A deduction conflict, invalid specialization, or incomplete body
 qualification restores the pre-call `AnalysisState`; rejected calls cannot
 leave an explicit argument moved or uninitialized.
+The same rollback applies to compiler-generated `TemplateOrigin` instances:
+an `Invalid`/`Unchecked` mangled cache hit, or an incomplete required body
+qualification, rejects independently of whether audit evidence is enabled.
 
 Transparent evaluation wrappers do not erase source identity. For example,
 `consume(unsafe value)` still names `value` and therefore requires explicit

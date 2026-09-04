@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -105,6 +106,49 @@ def main():
             "E0438" not in instantiation.stderr and
             "E0410" not in instantiation.stderr,
             "generic instantiation rejection leaked argument source state")
+
+    with tempfile.TemporaryDirectory(
+            prefix="toka-stage1-invalid-cache-alias-") as temp:
+        source = Path(temp) / "invalid_cache_alias.tk"
+        source.write_text(
+            "fn generic_bad<T>(cede value: T) -> T {\n"
+            "    return generic_bad(cede value)\n"
+            "}\n\n"
+            "fn main() -> i32 {\n"
+            "    auto value = 1:i32\n"
+            "    return generic_bad(cede value)\n"
+            "}\n", encoding="utf-8")
+        probe = subprocess.run(
+            [str(tokac), "--check-only", str(source)], cwd=ROOT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            timeout=30)
+        match = re.search(
+            r"recursive generic specialization is not supported: "
+            r"([A-Za-z0-9_]+)", probe.stderr)
+        require(probe.returncode != 0 and match is not None,
+                "could not discover the compiler-generated cache alias")
+        mangled = match.group(1)
+        source.write_text(
+            "fn generic_bad<T>(cede value: T) -> T {\n"
+            "    auto consumed = cede value\n"
+            "    return true\n"
+            "}\n\n"
+            "fn main() -> i32 {\n"
+            "    auto first = 1:i32\n"
+            "    auto second = 2:i32\n"
+            "    auto prime = generic_bad(cede first)\n"
+            f"    auto cached = {mangled}(cede second)\n"
+            "    return first + second + prime + cached\n"
+            "}\n", encoding="utf-8")
+        cached = subprocess.run(
+            [str(tokac), "--check-only", str(source)], cwd=ROOT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            timeout=30)
+        require(cached.returncode != 0 and
+                cached.stderr.count("error[E0408]") == 1 and
+                "E0438" not in cached.stderr and
+                "E0410" not in cached.stderr,
+                "invalid mangled cache hit leaked argument source state")
 
     unsafe_wrapped = check(tokac, "unsafe_wrapper_requires_cede.tk")
     require(unsafe_wrapped.returncode != 0 and
