@@ -1,0 +1,16 @@
+shape Resource(value: i32)
+
+impl Resource {
+    fn drop(self#) {}
+}
+
+fn require_same<T>(cede first: T, second: T) -> i32 {
+    auto consumed = cede first
+    return second as i32 + consumed as i32
+}
+
+fn main() -> i32 {
+    auto resource = Resource(value = 7:i32)
+    auto rejected = require_same(cede resource, true)
+    return resource.value + rejected
+}

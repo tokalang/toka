@@ -32,6 +32,15 @@ whole call is rejected before any argument source is invalidated. The frozen
 Stage 0 transaction records this as `MissingCedeForNamedSource`,
 `NoStateChange`, and `commit_allowed=false`.
 
+Generic deduction and specialization validation are part of the same argument
+transaction. A deduction conflict, invalid specialization, or incomplete body
+qualification restores the pre-call `AnalysisState`; rejected calls cannot
+leave an explicit argument moved or uninitialized.
+
+Transparent evaluation wrappers do not erase source identity. For example,
+`consume(unsafe value)` still names `value` and therefore requires explicit
+`cede`; `consume(cede unsafe value)` performs the destructive read.
+
 `E04570` carries a machine-applicable insertion of `cede ` at the exact actual
 expression, preserving any payload or handle spelling that follows it.
 

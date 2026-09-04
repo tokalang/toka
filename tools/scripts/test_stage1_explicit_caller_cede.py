@@ -90,6 +90,33 @@ def main():
             "E0474" not in multi.stderr,
             "multi-argument rejection mutated a source before commit")
 
+    deduction = check(
+        tokac, "generic_deduction_rejection_restores_source.tk")
+    require(deduction.returncode != 0 and
+            deduction.stderr.count("error[E04554]") == 1 and
+            "E0438" not in deduction.stderr and
+            "E0410" not in deduction.stderr,
+            "generic deduction rejection leaked argument source state")
+
+    instantiation = check(
+        tokac, "generic_instantiation_rejection_restores_source.tk")
+    require(instantiation.returncode != 0 and
+            "error[E0408]" in instantiation.stderr and
+            "E0438" not in instantiation.stderr and
+            "E0410" not in instantiation.stderr,
+            "generic instantiation rejection leaked argument source state")
+
+    unsafe_wrapped = check(tokac, "unsafe_wrapper_requires_cede.tk")
+    require(unsafe_wrapped.returncode != 0 and
+            unsafe_wrapped.stderr.count("error[E04570]") == 4 and
+            "E0438" not in unsafe_wrapped.stderr and
+            "E0410" not in unsafe_wrapped.stderr,
+            "unsafe wrapper bypassed or mutated a named source")
+
+    unsafe_explicit = check(tokac, "unsafe_wrapper_explicit_cede.tk")
+    require(unsafe_explicit.returncode == 0 and not unsafe_explicit.stderr,
+            "explicit cede through an unsafe wrapper was rejected")
+
     explicit = check(tokac, "explicit_copy_invalidates.tk")
     require(explicit.returncode != 0 and "error[E0438]" in explicit.stderr,
             "explicit cede of Copy did not invalidate its source")
@@ -133,6 +160,32 @@ def main():
     legacy = check(tokac, source, "--stage1-legacy-ordinary-cede")
     require(legacy.returncode == 0,
             "explicit historical replay flag no longer preserves v5 fixture")
+
+    unsafe_shadow = check(
+        tokac, "unsafe_wrapper_requires_cede.tk",
+        "--call-transfer-shadow=json")
+    require(unsafe_wrapped.returncode == unsafe_shadow.returncode and
+            unsafe_wrapped.stderr == unsafe_shadow.stderr,
+            "unsafe wrapper shadow changed activated diagnostics")
+    unsafe_payload = json.loads(unsafe_shadow.stdout)
+    unsafe_transactions = [
+        transaction for transaction in unsafe_payload["transactions"]
+        if transaction["location"]["file"].endswith(
+            "unsafe_wrapper_requires_cede.tk") and
+        transaction["items"]
+    ]
+    unsafe_rejections = [
+        item for transaction in unsafe_transactions
+        for item in transaction["items"]
+        if item["rejection"] == "MissingCedeForNamedSource" and
+        item["source"] == "NoStateChange"
+    ]
+    require(len(unsafe_rejections) == 4 and
+            all(not transaction["commit_allowed"]
+                for transaction in unsafe_transactions
+                if any(item in unsafe_rejections
+                       for item in transaction["items"])),
+            "unsafe wrapper diagnostics diverged from frozen Stage-0 plans")
 
     print("stage1 explicit caller cede: pass")
 

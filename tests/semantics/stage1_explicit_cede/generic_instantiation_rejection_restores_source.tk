@@ -1,0 +1,16 @@
+shape Resource(value: i32)
+
+impl Resource {
+    fn drop(self#) {}
+}
+
+fn generic_bad<T>(cede value: T) -> T {
+    auto consumed = cede value
+    return true
+}
+
+fn main() -> i32 {
+    auto resource = Resource(value = 7:i32)
+    auto rejected = generic_bad(cede resource)
+    return resource.value + rejected.value
+}

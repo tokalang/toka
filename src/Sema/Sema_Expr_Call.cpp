@@ -1288,7 +1288,7 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
 
   Expr *source = d3UnwrapSourceExpr(argument.get());
   if (m_EnableStage1ExplicitCallerCede && requireExplicitNamedSource &&
-      canonicalizeAccessPath(makeAccessPath(source)))
+      isStage1NamedSource(argument.get()))
     return false;
   const bool wholeTemporary =
       source && !dynamic_cast<MemberExpr *>(source) &&
@@ -1434,6 +1434,11 @@ bool Sema::elaborateSignatureDrivenCedeArgument(
       consumeMissingCallTransferFault(implicit->Value.get());
   argument = std::move(implicit);
   return true;
+}
+
+bool Sema::isStage1NamedSource(Expr *argument) {
+  Expr *source = d3UnwrapSourceExpr(argument);
+  return source && canonicalizeAccessPath(makeAccessPath(source));
 }
 
 Sema::CedeEvidenceV2Facts Sema::classifyCedeEvidenceV2(
@@ -4407,7 +4412,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             m_EnableStage1ExplicitCallerCede &&
             route == CallTransferRoute::Static && !plannedImplicit &&
             dynamic_cast<CedeExpr *>(argument) == nullptr &&
-            canonicalizeAccessPath(makeAccessPath(argument));
+            isStage1NamedSource(argument);
         const bool isExempt = param.IsCeded && !namedStage1Source &&
                               (canImplicitlyPassToCede(argumentType) ||
                                canPreserveBareSignatureCede(argumentType));
@@ -6364,6 +6369,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     return toka::Type::fromString("unknown");
   }
 
+  const bool isGenericDirectCall = Fn && !Fn->GenericParams.empty();
+  CallArgumentRollbackGuard explicitRollback(*this, Call->Args,
+                                             isGenericDirectCall);
+
   // 5. Synthesize FunctionType
   // ParamTypes, ReturnType
   std::vector<std::shared_ptr<toka::Type>> ParamTypes;
@@ -6409,6 +6418,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (Call->GenericArgs.size() != Fn->GenericParams.size()) {
         DiagnosticEngine::report(getLoc(Call), DiagID::NOTE_GENERIC, Fn->Name, Fn->GenericParams.size(), Call->GenericArgs.size());
         HasError = true;
+        explicitRollback.reject();
         genericArgumentJournal.rollback();
         recordGenericResolutionRejection("GenericTypeArgumentCountMismatch");
         return toka::Type::fromString("unknown");
@@ -6647,6 +6657,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           promoteGenericBodyQualification);
       Fn = instantiation.Instance;
       if (!Fn) {
+        explicitRollback.reject();
         genericArgumentJournal.rollback();
         recordGenericResolutionRejection("GenericInstantiationFailed");
         return toka::Type::fromString("unknown");
@@ -6674,6 +6685,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               GenericBodyQualificationState::Complete;
       if (!specializationValidated || instantiationReportedError ||
           !bodyQualificationComplete) {
+        explicitRollback.reject();
         genericArgumentJournal.rollback();
         if (SemanticEvidence::isCallTransferShadowEnabled() &&
             stage0CallEntrySnapshot)
@@ -6683,6 +6695,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
     } else {
       HasError = true;
+      explicitRollback.reject();
       genericArgumentJournal.rollback();
       recordGenericResolutionRejection("GenericDeductionFailed");
       return toka::Type::fromString("unknown");
@@ -7444,7 +7457,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
   }
 
-  CallArgumentRollbackGuard explicitRollback(*this, Call->Args);
   std::vector<bool> formalCeded(Call->Args.size(), false);
   std::vector<std::string> formalNames(Call->Args.size());
   for (size_t index = 0; index < Call->Args.size(); ++index) {
@@ -7898,7 +7910,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
          canPreserveBareSignatureCede(argType));
     if (m_EnableStage1ExplicitCallerCede && stage1OrdinaryParameterRoute &&
         isCededParam && !isCallerCeded &&
-        canonicalizeAccessPath(makeAccessPath(Call->Args[i].get())))
+        isStage1NamedSource(Call->Args[i].get()))
       legacyCedeExempt = false;
     if (isCededParam && isOwningClosureArgument(Call->Args[i].get()))
       legacyCedeExempt = false;

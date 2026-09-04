@@ -1,0 +1,29 @@
+fn direct_take(cede value: i32) -> i32 {
+    return cede value
+}
+
+fn generic_take<T>(cede value: T) -> T {
+    return cede value
+}
+
+shape Ops()
+
+impl Ops {
+    fn take(cede value: i32) -> i32 {
+        return cede value
+    }
+}
+
+extern fn external_take(cede value: i32) -> i32
+
+fn main() -> i32 {
+    auto a = 1:i32
+    auto b = 2:i32
+    auto c = 3:i32
+    auto d = 4:i32
+    direct_take(unsafe a)
+    generic_take(unsafe b)
+    Ops::take(unsafe c)
+    external_take(unsafe d)
+    return a + b + c + d - 10:i32
+}

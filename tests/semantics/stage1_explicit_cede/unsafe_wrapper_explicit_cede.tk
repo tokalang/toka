@@ -1,0 +1,10 @@
+fn direct_take(cede value: i32) -> i32 {
+    return cede value
+}
+
+fn main() -> i32 {
+    auto value = 7:i32
+    auto moved = direct_take(cede unsafe value)
+    auto literal = direct_take(unsafe 1:i32)
+    return moved + literal - 8:i32
+}

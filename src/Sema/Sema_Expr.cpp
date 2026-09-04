@@ -716,17 +716,24 @@ Sema::AnalysisState Sema::captureAnalysisState() {
 }
 
 Sema::CallArgumentRollbackGuard::CallArgumentRollbackGuard(
-    Sema &owner, const std::vector<std::unique_ptr<Expr>> &args)
+    Sema &owner, const std::vector<std::unique_ptr<Expr>> &args,
+    bool forceCapture)
     : Owner(owner) {
   const bool hasExplicitMultiTransfer =
       Owner.m_EnableSignatureDrivenCallCede && args.size() > 1 &&
       std::any_of(args.begin(), args.end(), [](const auto &argument) {
         return dynamic_cast<CedeExpr *>(argument.get()) != nullptr;
       });
-  if (!hasExplicitMultiTransfer)
+  if (!forceCapture && !hasExplicitMultiTransfer)
     return;
   Base = Owner.captureAnalysisState();
   DiagnosticStart = DiagnosticEngine::records().size();
+}
+
+void Sema::CallArgumentRollbackGuard::reject() {
+  Rejected = true;
+  if (Base)
+    Owner.mergeAnalysisStates({*Base}, Base->PAL);
 }
 
 Sema::CallArgumentRollbackGuard::~CallArgumentRollbackGuard() {
@@ -738,7 +745,7 @@ Sema::CallArgumentRollbackGuard::~CallArgumentRollbackGuard() {
                   records.end(), [](const auto &record) {
                     return record.Level == DiagLevel::Error;
                   });
-  if (rejected)
+  if (Rejected || rejected)
     Owner.mergeAnalysisStates({*Base}, Base->PAL);
 }
 

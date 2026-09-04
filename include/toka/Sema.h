@@ -635,6 +635,7 @@ private:
       const std::shared_ptr<toka::Type> &ArgumentType,
       const std::shared_ptr<toka::Type> &FormalType, bool Commit = true,
       bool RequireExplicitNamedSource = false);
+  bool isStage1NamedSource(Expr *Argument);
   struct CedeEvidenceV2Facts {
     std::string Spelling;
     std::string Transfer;
@@ -760,16 +761,19 @@ private:
   class CallArgumentRollbackGuard {
   public:
     CallArgumentRollbackGuard(Sema &owner,
-                              const std::vector<std::unique_ptr<Expr>> &args);
+                              const std::vector<std::unique_ptr<Expr>> &args,
+                              bool forceCapture = false);
     CallArgumentRollbackGuard(const CallArgumentRollbackGuard &) = delete;
     CallArgumentRollbackGuard &
     operator=(const CallArgumentRollbackGuard &) = delete;
+    void reject();
     ~CallArgumentRollbackGuard();
 
   private:
     Sema &Owner;
     std::optional<AnalysisState> Base;
     size_t DiagnosticStart = 0;
+    bool Rejected = false;
   };
 
   bool preflightExplicitCallCedeAliases(
