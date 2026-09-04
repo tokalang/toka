@@ -71,6 +71,20 @@ def main():
             "E0438" not in multi.stderr and "E0410" not in multi.stderr,
             "rejected method call changed an argument source")
 
+    receiver_rollback = check(
+        tokac, "rejected_parameter_restores_receiver.tk")
+    require(receiver_rollback.returncode != 0 and
+            receiver_rollback.stderr.count("error[E04509]") == 1 and
+            "E0438" not in receiver_rollback.stderr and
+            "E0410" not in receiver_rollback.stderr,
+            "rejected method parameter leaked receiver invalidation")
+    receiver_shadow = check(
+        tokac, "rejected_parameter_restores_receiver.tk",
+        "--call-transfer-shadow=json")
+    require(receiver_rollback.returncode == receiver_shadow.returncode and
+            receiver_rollback.stderr == receiver_shadow.stderr,
+            "receiver rollback shadow changed activated diagnostics")
+
     generic_rejection = check(
         tokac, "generic_rejection_restores_source.tk")
     require(generic_rejection.returncode != 0 and

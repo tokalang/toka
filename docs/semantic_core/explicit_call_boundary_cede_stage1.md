@@ -87,6 +87,10 @@ Method argument groups retain the same pre-mutation snapshot and atomic
 rollback guarantee as direct calls. `unsafe` and transparent postfix wrappers
 do not hide a named source. The method diagnostic carries the same exact
 machine-applicable `cede ` insertion as the direct-call diagnostic.
+For a legacy consuming receiver, that snapshot is established before receiver
+invalidation: if a concrete parameter later rejects the call, both receiver
+and argument state return to the pre-call snapshot without changing the
+accepted receiver spelling.
 
 Dynamic-trait dispatch, indirect function values, callable expressions, and
 all receiver morphology/spelling work remain outside this slice.

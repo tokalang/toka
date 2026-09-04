@@ -4716,7 +4716,25 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         FunctionDecl *FD = dupProvider ? dupProvider
                                        : MethodDecls[soulType][Met->Method];
         Met->ResolvedFn = FD;
-        
+        auto isStage1ConcreteMethodParameter =
+            [](const FunctionDecl::Arg &arg) {
+              return arg.Stage0DeclarationProvenanceComplete &&
+                     !arg.Stage0GenericValueRole &&
+                     !arg.Stage0MorphicGenericRole;
+            };
+        const bool hasStage1CedeParameter =
+            m_EnableStage1ExplicitCallerCede &&
+            std::any_of(FD->Args.begin() + std::min<size_t>(1, FD->Args.size()),
+                        FD->Args.end(), [&](const FunctionDecl::Arg &arg) {
+                          return arg.IsCeded &&
+                                 isStage1ConcreteMethodParameter(arg);
+                        });
+        // The receiver's legacy consuming path runs before argument
+        // diagnostics. Keep both edges in one rejection transaction without
+        // changing the accepted receiver spelling.
+        CallArgumentRollbackGuard methodParameterRollback(
+            *this, Met->Args, hasStage1CedeParameter);
+
         // [Effect] Concurrency Check for Method Call
         if (FD->Effect != EffectKind::None && !m_IsConsumingEffect && !m_IsPrecomputingCaptures) {
           error(Met, DiagID::ERR_DANGLING_EFFECT, Met->Method);
@@ -5116,9 +5134,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
                 const bool stage1ExplicitMethodParameter =
                     i < expectedArgs && m_EnableStage1ExplicitCallerCede &&
-                    FD->Args[i + 1].Stage0DeclarationProvenanceComplete &&
-                    !FD->Args[i + 1].Stage0GenericValueRole &&
-                    !FD->Args[i + 1].Stage0MorphicGenericRole;
+                    isStage1ConcreteMethodParameter(FD->Args[i + 1]);
                 if (signatureDrivenMethodSlice && i < expectedArgs &&
                     FD->Args[i + 1].IsCeded) {
                   if (Met->Args.size() == 1) {

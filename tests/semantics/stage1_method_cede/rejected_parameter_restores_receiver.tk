@@ -1,0 +1,21 @@
+shape Resource(value: i32)
+
+impl Resource {
+    fn drop(self#) {}
+
+    fn consume(cede self, cede amount: i32) -> i32 {
+        auto owned = cede self
+        return owned.value + cede amount
+    }
+}
+
+fn inspect(value: Resource) -> i32 {
+    return value.value
+}
+
+fn main() -> i32 {
+    auto resource = Resource(value = 7:i32)
+    auto amount = 1:i32
+    auto rejected = resource.consume(amount)
+    return inspect(resource) + amount + rejected
+}
