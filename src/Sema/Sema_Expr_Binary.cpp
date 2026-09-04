@@ -223,7 +223,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     auto destinationType = queryShadowCallArgumentType(Bin->LHS.get(), nullptr);
     recordExplicitCedeStage0NonCallPlan(
         Bin, Bin->RHS.get(), destinationType, TransferDestination::Assignment,
-        TransferEligibilityContext::Assignment, "assignment");
+        TransferEligibilityContext::Assignment, "assignment", Bin->LHS.get());
   }
 
   // A source-invalidating cede or direct unique transfer into existing storage

@@ -420,6 +420,61 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
     if (!name.empty() && name != "*")
       m_AccessedVariables.insert(name);
   }
+  if (SemanticEvidence::isNonCallTransferShadowEnabled() &&
+      !m_IsPrecomputingCaptures) {
+    auto snapshot = captureStage0CallSnapshot();
+    const std::string groupIdentity =
+        makeExplicitCedeStage0NonCallGroupIdentity(Clo, "closure_capture");
+    ExplicitCedeNonCallGroupFacts groupFacts;
+    groupFacts.Destination = TransferDestination::ClosureCapture;
+    for (size_t index = 0; index < Clo->ExplicitCaptures.size(); ++index) {
+      const auto &capture = Clo->ExplicitCaptures[index];
+      if (capture.Mode != CaptureMode::ExplicitCede || capture.Name == "*")
+        continue;
+      const std::string name = Type::stripMorphology(capture.Name);
+      SymbolInfo *sourceInfo = nullptr;
+      std::string actualName;
+      if (!CurrentScope->findVariableWithDeref(name, sourceInfo, actualName) ||
+          !sourceInfo)
+        continue;
+      auto variable = std::make_unique<VariableExpr>(name);
+      variable->Loc = capture.Loc;
+      variable->ResolvedType = sourceInfo->TypeObj;
+      std::unique_ptr<Expr> source = std::move(variable);
+      if (!capture.Name.empty()) {
+        std::optional<TokenType> selector;
+        if (capture.Name[0] == '^')
+          selector = TokenType::Caret;
+        else if (capture.Name[0] == '~')
+          selector = TokenType::Tilde;
+        else if (capture.Name[0] == '*')
+          selector = TokenType::Star;
+        else if (capture.Name[0] == '&')
+          selector = TokenType::Ampersand;
+        if (selector) {
+          auto selected =
+              std::make_unique<UnaryExpr>(*selector, std::move(source));
+          selected->Loc = capture.Loc;
+          selected->ResolvedType = sourceInfo->TypeObj;
+          source = std::move(selected);
+        }
+      }
+      auto ceded = std::make_unique<CedeExpr>(std::move(source));
+      ceded->Loc = capture.Loc;
+      ceded->ResolvedType = sourceInfo->TypeObj;
+      auto plan = recordExplicitCedeStage0NonCallPlan(
+          Clo, ceded.get(), sourceInfo->TypeObj,
+          TransferDestination::ClosureCapture,
+          TransferEligibilityContext::ClosureCapture, "closure_capture",
+          nullptr, &snapshot, groupIdentity, capture.Name,
+          static_cast<unsigned>(index));
+      groupFacts.Items.push_back(plan.Prepared);
+    }
+    auto group = prepareExplicitCedeNonCallGroupPlan(groupFacts);
+    SemanticEvidence::finalizeExplicitCedeStage0NonCallGroup(
+        groupIdentity, toString(group.Outcome), toString(group.Rejection),
+        group.admitted());
+  }
   for (const auto& varName : m_AccessedVariables) {
      SymbolInfo *infoPtr = nullptr;
      std::string actualName;
@@ -439,7 +494,6 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
         
         bool isExplicit = false;
         CaptureMode explicitMode = CaptureMode::ImplicitBorrow;
-        std::string explicitCaptureSpelling;
 
         for (auto& cap : Clo->ExplicitCaptures) {
            std::string rawName = cap.Name;
@@ -449,7 +503,6 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
            if (rawName == varName || cap.Name == "*") {
               isExplicit = true;
               explicitMode = cap.Mode;
-              explicitCaptureSpelling = cap.Name;
               break;
            }
         }
@@ -499,122 +552,90 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
 
         ShapeMember sm;
         sm.Name = varName;
-        
-        if (isExplicit &&
-            (explicitMode == CaptureMode::ExplicitCede ||
-             explicitMode == CaptureMode::ExplicitCopy ||
-             explicitMode == CaptureMode::ExplicitDup)) {
-          if (explicitMode == CaptureMode::ExplicitCede) {
-            auto variable = std::make_unique<VariableExpr>(varName);
-            variable->Loc = Clo->Loc;
-            variable->ResolvedType = infoPtr->TypeObj;
-            std::unique_ptr<Expr> source = std::move(variable);
-            if (!explicitCaptureSpelling.empty()) {
-              std::optional<TokenType> selector;
-              if (explicitCaptureSpelling[0] == '^')
-                selector = TokenType::Caret;
-              else if (explicitCaptureSpelling[0] == '~')
-                selector = TokenType::Tilde;
-              else if (explicitCaptureSpelling[0] == '*')
-                selector = TokenType::Star;
-              else if (explicitCaptureSpelling[0] == '&')
-                selector = TokenType::Ampersand;
-              if (selector) {
-                auto selected =
-                    std::make_unique<UnaryExpr>(*selector, std::move(source));
-                selected->Loc = Clo->Loc;
-                selected->ResolvedType = infoPtr->TypeObj;
-                source = std::move(selected);
+
+        if (isExplicit && (explicitMode == CaptureMode::ExplicitCede ||
+                           explicitMode == CaptureMode::ExplicitCopy ||
+                           explicitMode == CaptureMode::ExplicitDup)) {
+          if (explicitMode == CaptureMode::ExplicitCopy) {
+            // Copy capture uses the same structural proof as every other
+            // copy operation.
+            bool isResourceCapture = !proveSlice4CopyType(infoPtr->TypeObj);
+            if (isResourceCapture) {
+              error(Clo, DiagID::ERR_SEMA_CLOSURE_COPY_CAPTURE_RESOURCE,
+                    varName, infoPtr->TypeObj->toString(), varName);
+              SourceLocation originLoc = infoPtr->DeclLoc;
+              recordDecision(Clo, SemanticRuleID::OwnResource001,
+                             SemanticOperation::ResourceCopy,
+                             SemanticDecision::Reject,
+                             SemanticReason::ResourceCopyForbidden, varName,
+                             infoPtr->TypeObj->toString(), originLoc);
+              if (originLoc.isValid())
+                DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                         "resource value declared here");
+              continue;
+            }
+          }
+          if (explicitMode == CaptureMode::ExplicitDup) {
+            bool hasDup = false;
+            if (infoPtr->TypeObj) {
+              hasDup = proveSlice4CopyType(infoPtr->TypeObj);
+              if (!hasDup && infoPtr->TypeObj->isShape()) {
+                std::string soul = toka::Type::stripMorphology(
+                    infoPtr->TypeObj->getSoulName());
+                auto shape = ShapeMap.find(soul);
+                hasDup = shape != ShapeMap.end() &&
+                         Slice4DupProviders.count(shape->second);
               }
             }
-            auto ceded = std::make_unique<CedeExpr>(std::move(source));
-            ceded->Loc = Clo->Loc;
-            ceded->ResolvedType = infoPtr->TypeObj;
-            recordExplicitCedeStage0NonCallPlan(
-                Clo, ceded.get(), infoPtr->TypeObj,
-                TransferDestination::ClosureCapture,
-                TransferEligibilityContext::ClosureCapture, "closure_capture");
+            if (!hasDup) {
+              DiagnosticEngine::report(
+                  Clo->Loc, DiagID::ERR_GENERIC_SEMA,
+                  "[dup ...] capture requires a proven @Copy type or an "
+                  "explicit @Dup provider");
+              HasError = true;
+              continue;
+            }
           }
-            if (explicitMode == CaptureMode::ExplicitCopy) {
-                // Copy capture uses the same structural proof as every other
-                // copy operation.
-                bool isResourceCapture = !proveSlice4CopyType(infoPtr->TypeObj);
-                if (isResourceCapture) {
-                    error(Clo, DiagID::ERR_SEMA_CLOSURE_COPY_CAPTURE_RESOURCE,
-                          varName, infoPtr->TypeObj->toString(), varName);
-                    SourceLocation originLoc = infoPtr->DeclLoc;
-                    recordDecision(
-                        Clo, SemanticRuleID::OwnResource001,
-                        SemanticOperation::ResourceCopy,
-                        SemanticDecision::Reject,
-                        SemanticReason::ResourceCopyForbidden, varName,
-                        infoPtr->TypeObj->toString(), originLoc);
-                    if (originLoc.isValid())
-                      DiagnosticEngine::report(
-                          originLoc, DiagID::NOTE_GENERIC,
-                          "resource value declared here");
-                    continue;
-                }
-            }
-            if (explicitMode == CaptureMode::ExplicitDup) {
-                bool hasDup = false;
-                if (infoPtr->TypeObj) {
-                    hasDup = proveSlice4CopyType(infoPtr->TypeObj);
-                    if (!hasDup && infoPtr->TypeObj->isShape()) {
-                        std::string soul = toka::Type::stripMorphology(
-                            infoPtr->TypeObj->getSoulName());
-                        auto shape = ShapeMap.find(soul);
-                        hasDup = shape != ShapeMap.end() &&
-                                 Slice4DupProviders.count(shape->second);
-                    }
-                }
-                if (!hasDup) {
-                    DiagnosticEngine::report(
-                        Clo->Loc, DiagID::ERR_GENERIC_SEMA,
-                        "[dup ...] capture requires a proven @Copy type or an explicit @Dup provider");
-                    HasError = true;
-                    continue;
-                }
-            }
-            sm.Type = infoPtr->TypeObj->toString(); 
-            sm.ResolvedType = infoPtr->TypeObj; // [Fix] Pre-resolve
-            // An explicit capture is a new binding, but it carries the
-            // captured declaration's authority and any direct-flow ceiling.
-            // The capture-list sigils select the transfer; they cannot erase
-            // a real payload capability and force later body checks to treat
-            // a writable captured field as read-only.
-            SymbolInfo captureInfo = *infoPtr;
-            captureInfo.SymbolID = 0;
-            captureInfo.Moved = false;
-            captureInfo.MoveLoc = SourceLocation{};
-            captureInfo.IsFunctionParameter = false;
-            captureInfo.IsDeclaredVariable = true;
-            captureInfo.TypeObj = sm.ResolvedType;
-            captureBindings[sm.Name] = std::move(captureInfo);
-            if (explicitMode == CaptureMode::ExplicitCede) {
-                // Mark original variable as Consumed/Moved in the parent scope!
-                CurrentScope->Parent->markMoved(varName, Clo->Loc);
-            }
+          sm.Type = infoPtr->TypeObj->toString();
+          sm.ResolvedType = infoPtr->TypeObj; // [Fix] Pre-resolve
+          // An explicit capture is a new binding, but it carries the
+          // captured declaration's authority and any direct-flow ceiling.
+          // The capture-list sigils select the transfer; they cannot erase
+          // a real payload capability and force later body checks to treat
+          // a writable captured field as read-only.
+          SymbolInfo captureInfo = *infoPtr;
+          captureInfo.SymbolID = 0;
+          captureInfo.Moved = false;
+          captureInfo.MoveLoc = SourceLocation{};
+          captureInfo.IsFunctionParameter = false;
+          captureInfo.IsDeclaredVariable = true;
+          captureInfo.TypeObj = sm.ResolvedType;
+          captureBindings[sm.Name] = std::move(captureInfo);
+          if (explicitMode == CaptureMode::ExplicitCede) {
+            // Mark original variable as Consumed/Moved in the parent scope!
+            CurrentScope->Parent->markMoved(varName, Clo->Loc);
+          }
         } else {
-            // Implicit capture means Borrow (Reference).  It is a new view,
-            // not a new authority root: retain the directly captured payload
-            // capability and its existing flow ceiling, but never retain
-            // handle rebinding permission.
-            sm.Type = "&" + infoPtr->TypeObj->toString();
-            sm.ResolvedType = std::make_shared<toka::ReferenceType>(infoPtr->TypeObj); // [Fix] Pre-resolve reference
+          // Implicit capture means Borrow (Reference).  It is a new view,
+          // not a new authority root: retain the directly captured payload
+          // capability and its existing flow ceiling, but never retain
+          // handle rebinding permission.
+          sm.Type = "&" + infoPtr->TypeObj->toString();
+          sm.ResolvedType = std::make_shared<toka::ReferenceType>(
+              infoPtr->TypeObj); // [Fix] Pre-resolve reference
 
-            SymbolInfo captureInfo = *infoPtr;
-            captureInfo.SymbolID = 0;
-            captureInfo.Moved = false;
-            captureInfo.MoveLoc = SourceLocation{};
-            captureInfo.IsFunctionParameter = false;
-            captureInfo.IsDeclaredVariable = true;
-            captureInfo.Permission.Morphology = BindingMorphology::Reference;
-            captureInfo.Permission.IdentityRebindable = false;
-            captureInfo.Permission.IdentityMayBeZero = false;
-            captureInfo.Permission.IdentityBlocked = false;
-            captureInfo.TypeObj = sm.ResolvedType;
-            captureBindings[sm.Name] = std::move(captureInfo);
+          SymbolInfo captureInfo = *infoPtr;
+          captureInfo.SymbolID = 0;
+          captureInfo.Moved = false;
+          captureInfo.MoveLoc = SourceLocation{};
+          captureInfo.IsFunctionParameter = false;
+          captureInfo.IsDeclaredVariable = true;
+          captureInfo.Permission.Morphology = BindingMorphology::Reference;
+          captureInfo.Permission.IdentityRebindable = false;
+          captureInfo.Permission.IdentityMayBeZero = false;
+          captureInfo.Permission.IdentityBlocked = false;
+          captureInfo.TypeObj = sm.ResolvedType;
+          captureBindings[sm.Name] = std::move(captureInfo);
         }
 
         members.push_back(sm);

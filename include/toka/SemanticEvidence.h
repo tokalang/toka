@@ -286,12 +286,21 @@ struct ExplicitCedeStage0TransactionRecord {
 
 struct ExplicitCedeStage0NonCallRecord {
   std::string Boundary;
+  std::string GroupIdentity;
+  std::string Edge;
+  unsigned EdgeIndex = 0;
+  std::string GroupOutcome;
+  std::string GroupRejection;
+  bool GroupPlanAdmitted = false;
   std::string PlanOrigin;
   std::string SyntaxPurpose;
   std::string SourceCategory;
   std::string Dependency;
   std::string TypeCompatibility;
   std::string EligibilityContext;
+  std::string DestinationExactPath;
+  std::string DestinationView;
+  std::string DestinationReachability;
   bool PreparedBeforeLegacyMutation = false;
   uint64_t SnapshotRevision = 0;
   ExplicitCedeStage0TransactionItemRecord Plan;
@@ -409,6 +418,7 @@ public:
   struct CallTransferJournalCheckpoint {
     size_t ShadowCount = 0;
     size_t TransactionCount = 0;
+    size_t NonCallCount = 0;
   };
 
   static void enable(bool value);
@@ -459,6 +469,10 @@ public:
   static void
   recordExplicitCedeStage0NonCall(ExplicitCedeStage0NonCallRecord record,
                                   SourceLocation location);
+  static void
+  finalizeExplicitCedeStage0NonCallGroup(const std::string &groupIdentity,
+                                         std::string outcome,
+                                         std::string rejection, bool admitted);
   static void dumpExplicitCedeStage0NonCallJSON(std::ostream &out);
   static void recordCapabilityCall(
       std::string callee, std::string parameter, std::string subject,

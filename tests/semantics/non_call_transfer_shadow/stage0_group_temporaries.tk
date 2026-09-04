@@ -1,0 +1,16 @@
+import core/traits::{@Encap}
+
+shape Resource(value: i32)
+shape Pair(left: Resource, right: Resource)
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto pair = Pair(
+        left = Resource(value = 20:i32),
+        right = Resource(value = 22:i32)
+    )
+    return pair.left.value + pair.right.value - 42:i32
+}

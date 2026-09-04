@@ -830,6 +830,8 @@ private:
       Expr *Argument, AccessPath &SourcePlace);
   std::shared_ptr<Type> queryShadowCallArgumentType(
       Expr *Argument, const std::shared_ptr<Type> &DestinationType);
+  std::shared_ptr<Type> queryExplicitCedeStage0NonCallType(
+      Expr *Value, const std::shared_ptr<Type> &DestinationType);
   CallExecutionBoundary
   classifyShadowExecutionBoundary(FunctionDecl *Function) const;
   CallTransferPlan buildShadowCallTransferPlan(
@@ -847,16 +849,23 @@ private:
       uint64_t SnapshotRevision = 0);
   TransferCopyProof queryExplicitCedeStage0CopyProof(
       const std::shared_ptr<Type> &Type);
+  struct Stage0CallSnapshot;
   ExplicitCedePlan completeExplicitCedeStage0CallPlan(
       ExplicitCedePreparedFacts Facts,
       const std::shared_ptr<Type> &ArgumentType,
       const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
       bool FormalIsInit, TransferFormalDeclarationFacts FormalDeclaration,
       TransferDestination Destination, TransferEligibilityContext Context);
-  void recordExplicitCedeStage0NonCallPlan(
+  ExplicitCedePlan recordExplicitCedeStage0NonCallPlan(
       ASTNode *Site, Expr *Value, const std::shared_ptr<Type> &DestinationType,
       TransferDestination Destination, TransferEligibilityContext Context,
-      const std::string &Boundary);
+      const std::string &Boundary, Expr *DestinationValue = nullptr,
+      const Stage0CallSnapshot *ProvidedSnapshot = nullptr,
+      const std::string &GroupIdentity = {}, const std::string &Edge = {},
+      unsigned EdgeIndex = 0);
+  std::string
+  makeExplicitCedeStage0NonCallGroupIdentity(ASTNode *Site,
+                                             const std::string &Boundary);
   struct Stage0CallTransactionItemInput {
     Expr *Argument = nullptr;
     std::shared_ptr<Type> ArgumentType;

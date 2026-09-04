@@ -152,6 +152,14 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
        facts.Destination == TransferDestination::StatementEndDiscard);
   if (!contextMatchesDestination)
     return false;
+  if (facts.Destination == TransferDestination::Assignment) {
+    if (!facts.DestinationFactsComplete || !facts.DestinationPlace ||
+        !facts.DestinationPlace->valid() ||
+        facts.DestinationView == TransferSourceView::Indeterminate ||
+        facts.DestinationReachability == TransferReachability::Indeterminate ||
+        facts.DestinationReachability == TransferReachability::None)
+      return false;
+  }
   if (isCallBoundary(facts.Destination)) {
     bool formalTupleValid = false;
     if (facts.FormalContractOrigin ==
@@ -476,6 +484,8 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
       facts.SnapshotRevision == 0 || !facts.SourceLivenessComplete ||
       !facts.InitMaskComplete || !facts.CleanupMaskComplete ||
       !facts.LiabilityIdentityComplete || !facts.ObligationFactsComplete ||
+      (facts.Destination == TransferDestination::Assignment &&
+       !facts.DestinationFactsComplete) ||
       (facts.ObligationBefore == TransferObligationState::Outstanding &&
        (!facts.ObligationRoot || !facts.ObligationRoot->valid())))
     return reject(TransferPlanRejection::IncompleteFacts, facts);
@@ -566,6 +576,14 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
     if (production == TransferValueProduction::None ||
         source == TransferSourceDisposition::NoStateChange)
       return reject(TransferPlanRejection::ClosedWorldCombination, facts);
+    ExplicitCedePlan sourceRegion;
+    sourceRegion.TransferOrigin = facts.SourcePlace;
+    sourceRegion.Source = source;
+    if (facts.Destination == TransferDestination::Assignment &&
+        facts.DestinationPlace &&
+        invalidationRegionConflictsWithPlace(sourceRegion,
+                                             *facts.DestinationPlace))
+      return reject(TransferPlanRejection::DestinationOverlap, facts);
     return admit(facts, production, source, destinationDrop(facts));
   }
 
@@ -584,6 +602,14 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
          facts.Destination != TransferDestination::Assignment &&
          facts.Destination != TransferDestination::Initialization))
       return reject(TransferPlanRejection::InvalidIntrinsicUniqueMove, facts);
+    ExplicitCedePlan sourceRegion;
+    sourceRegion.TransferOrigin = facts.SourcePlace;
+    sourceRegion.Source = TransferSourceDisposition::InvalidateRoot;
+    if (facts.Destination == TransferDestination::Assignment &&
+        facts.DestinationPlace &&
+        invalidationRegionConflictsWithPlace(sourceRegion,
+                                             *facts.DestinationPlace))
+      return reject(TransferPlanRejection::DestinationOverlap, facts);
     return admit(facts, TransferValueProduction::MoveOwned,
                  TransferSourceDisposition::InvalidateRoot,
                  destinationDrop(facts));
@@ -745,6 +771,53 @@ prepareExplicitCedeWholeCallPlan(const ExplicitCedeWholeCallFacts &facts) {
   return result;
 }
 
+ExplicitCedeNonCallGroupPlan prepareExplicitCedeNonCallGroupPlan(
+    const ExplicitCedeNonCallGroupFacts &facts) {
+  ExplicitCedeNonCallGroupPlan result;
+  result.Items.reserve(facts.Items.size());
+  for (const auto &item : facts.Items) {
+    if (item.Destination != facts.Destination) {
+      result.Rejection = TransferPlanRejection::NonCallGroupDestinationMismatch;
+      return result;
+    }
+    result.Items.push_back(prepareExplicitCedePlan(item));
+  }
+  if (std::any_of(
+          result.Items.begin(), result.Items.end(),
+          [](const ExplicitCedePlan &plan) { return !plan.admitted(); })) {
+    result.Rejection = TransferPlanRejection::NonCallGroupItemRejected;
+    return result;
+  }
+  for (size_t invalidator = 0; invalidator < result.Items.size();
+       ++invalidator) {
+    if (!invalidates(result.Items[invalidator]))
+      continue;
+    for (size_t other = 0; other < result.Items.size(); ++other) {
+      if (invalidator == other)
+        continue;
+      const auto &otherFacts = result.Items[other].Prepared;
+      if ((otherFacts.SourcePlace &&
+           invalidationRegionConflictsWithPlace(result.Items[invalidator],
+                                                *otherFacts.SourcePlace)) ||
+          (otherFacts.ReferentPlace &&
+           invalidationRegionConflictsWithPlace(result.Items[invalidator],
+                                                *otherFacts.ReferentPlace)) ||
+          std::any_of(
+              otherFacts.DependencyRoots.begin(),
+              otherFacts.DependencyRoots.end(), [&](const RootSymbolId &root) {
+                return result.Items[invalidator].TransferOrigin &&
+                       result.Items[invalidator].TransferOrigin->root() == root;
+              })) {
+        result.Rejection = TransferPlanRejection::NonCallGroupAliasConflict;
+        return result;
+      }
+    }
+  }
+  result.Outcome = TransferPlanOutcome::Admitted;
+  result.Rejection = TransferPlanRejection::None;
+  return result;
+}
+
 const char *toString(TransferPlanRejection value) {
   switch (value) {
   case TransferPlanRejection::None:
@@ -795,6 +868,14 @@ const char *toString(TransferPlanRejection value) {
     return "WholeCallValidationFailed";
   case TransferPlanRejection::WholeCallValidationIncomplete:
     return "WholeCallValidationIncomplete";
+  case TransferPlanRejection::DestinationOverlap:
+    return "DestinationOverlap";
+  case TransferPlanRejection::NonCallGroupItemRejected:
+    return "NonCallGroupItemRejected";
+  case TransferPlanRejection::NonCallGroupAliasConflict:
+    return "NonCallGroupAliasConflict";
+  case TransferPlanRejection::NonCallGroupDestinationMismatch:
+    return "NonCallGroupDestinationMismatch";
   case TransferPlanRejection::MissingPreMutationTransaction:
     return "MissingPreMutationTransaction";
   case TransferPlanRejection::OwnershipContractMismatch:

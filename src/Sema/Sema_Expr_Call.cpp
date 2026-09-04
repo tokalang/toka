@@ -771,6 +771,69 @@ std::shared_ptr<Type> Sema::queryShadowCallArgumentType(
   return toka::Type::fromString("unknown");
 }
 
+std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
+    Expr *value, const std::shared_ptr<Type> &destinationType) {
+  Expr *source = value;
+  while (source) {
+    if (auto *cede = dynamic_cast<CedeExpr *>(source))
+      source = cede->Value.get();
+    else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source))
+      source = unsafe->Expression.get();
+    else if (auto *postfix = dynamic_cast<PostfixExpr *>(source);
+             postfix && isShadowTransparentPostfix(postfix->Op))
+      source = postfix->LHS.get();
+    else
+      break;
+  }
+  if (!source)
+    return toka::Type::fromString("unknown");
+  if (auto *cast = dynamic_cast<CastExpr *>(source))
+    return resolveType(cast->TargetTypeSyntax
+                           ? Type::fromSyntax(cast->TargetTypeSyntax)
+                           : Type::fromString(cast->TargetType),
+                       false);
+  if (auto *allocation = dynamic_cast<NewExpr *>(source)) {
+    auto payload = resolveType(allocation->TypeSyntax
+                                   ? Type::fromSyntax(allocation->TypeSyntax)
+                                   : Type::fromString(allocation->Type),
+                               false);
+    if (!payload || payload->isUnknown())
+      return toka::Type::fromString("unknown");
+    if (allocation->ArraySize)
+      payload = std::make_shared<SliceType>(payload);
+    return std::make_shared<UniquePointerType>(payload);
+  }
+  if (auto *binary = dynamic_cast<BinaryExpr *>(source)) {
+    if (binary->Op == "==" || binary->Op == "!=" || binary->Op == "<" ||
+        binary->Op == "<=" || binary->Op == ">" || binary->Op == ">=" ||
+        binary->Op == "&&" || binary->Op == "||" || binary->Op == "is")
+      return toka::Type::fromString("bool");
+    auto left =
+        queryExplicitCedeStage0NonCallType(binary->LHS.get(), destinationType);
+    auto right = queryExplicitCedeStage0NonCallType(binary->RHS.get(), left);
+    if (left && right && !left->isUnknown() && !right->isUnknown()) {
+      if (left->equals(*right) || isTypeCompatible(left, right))
+        return resolveType(left, false);
+      if (isTypeCompatible(right, left))
+        return resolveType(right, false);
+    }
+    return toka::Type::fromString("unknown");
+  }
+  if (auto *variable = dynamic_cast<VariableExpr *>(source)) {
+    SymbolInfo *info = nullptr;
+    std::string actualName;
+    if (CurrentScope &&
+        CurrentScope->findVariableWithDeref(variable->Name, info, actualName) &&
+        info && info->TypeObj) {
+      auto type = resolveType(info->TypeObj, false);
+      if (type && (type->isUniquePtr() || type->isSharedPtr()))
+        return resolveType(type->getPointeeType(), false);
+      return type;
+    }
+  }
+  return queryShadowCallArgumentType(value, destinationType);
+}
+
 CallExecutionBoundary
 Sema::classifyShadowExecutionBoundary(FunctionDecl *function) const {
   if (!function)
@@ -2368,7 +2431,9 @@ ExplicitCedePlan Sema::completeExplicitCedeStage0CallPlan(
   facts.EligibilityContext = context;
   facts.TypeCompatibility =
       actual && formal && !actual->isUnknown() && !formal->isUnknown()
-          ? (isTypeCompatible(formal, actual)
+          ? (isTypeCompatible(formal, actual) ||
+                     (!callBoundary && formal->typeKind == actual->typeKind &&
+                      formal->getSoulName() == actual->getSoulName())
                  ? TransferTypeCompatibility::Compatible
                  : TransferTypeCompatibility::Incompatible)
           : (!callBoundary && actual && !actual->isUnknown()
@@ -2456,25 +2521,125 @@ ExplicitCedePlan Sema::completeExplicitCedeStage0CallPlan(
   return prepareExplicitCedePlan(facts);
 }
 
-void Sema::recordExplicitCedeStage0NonCallPlan(
+std::string
+Sema::makeExplicitCedeStage0NonCallGroupIdentity(ASTNode *site,
+                                                 const std::string &boundary) {
+  if (!site)
+    return {};
+  const auto full = DiagnosticEngine::SrcMgr
+                        ? DiagnosticEngine::SrcMgr->getFullSourceLoc(site->Loc)
+                        : FullSourceLoc{};
+  std::string moduleOrigin;
+  if (ModuleScope *module = getLexicalModule(site->Loc);
+      module && !module->ShadowCrateId.empty() &&
+      !module->ShadowLogicalModulePath.empty())
+    moduleOrigin = "crate:" + module->ShadowCrateId +
+                   ";module:" + module->ShadowLogicalModulePath;
+  if (moduleOrigin.empty())
+    moduleOrigin = stage0FallbackModuleOrigin(site->Loc);
+  if (!full.isValid() || moduleOrigin.empty())
+    return {};
+  return "non-call-group:v1;" + moduleOrigin + ";boundary:" + boundary +
+         ";site:" + std::to_string(full.Line) + ":" +
+         std::to_string(full.Column);
+}
+
+ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
     ASTNode *site, Expr *value, const std::shared_ptr<Type> &destinationType,
     TransferDestination destination, TransferEligibilityContext context,
-    const std::string &boundary) {
+    const std::string &boundary, Expr *destinationValue,
+    const Stage0CallSnapshot *providedSnapshot,
+    const std::string &groupIdentity, const std::string &edge,
+    unsigned edgeIndex) {
   if (!SemanticEvidence::isNonCallTransferShadowEnabled() ||
       m_IsPrecomputingCaptures || !site || !value)
-    return;
+    return {};
 
-  auto snapshot = captureStage0CallSnapshot();
-  auto actualType = queryShadowCallArgumentType(value, destinationType);
+  std::optional<Stage0CallSnapshot> ownedSnapshot;
+  if (!providedSnapshot) {
+    ownedSnapshot = captureStage0CallSnapshot();
+    providedSnapshot = &*ownedSnapshot;
+  }
+  auto actualType = queryExplicitCedeStage0NonCallType(value, destinationType);
+  bool explicitCede = false;
+  Expr *exactValue = value;
+  while (exactValue) {
+    if (auto *cede = dynamic_cast<CedeExpr *>(exactValue)) {
+      explicitCede = true;
+      exactValue = cede->Value.get();
+    } else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(exactValue)) {
+      exactValue = unsafe->Expression.get();
+    } else if (auto *postfix = dynamic_cast<PostfixExpr *>(exactValue);
+               postfix && isShadowTransparentPostfix(postfix->Op)) {
+      exactValue = postfix->LHS.get();
+    } else if (auto *cast = dynamic_cast<CastExpr *>(exactValue)) {
+      exactValue = cast->Expression.get();
+    } else {
+      break;
+    }
+  }
   auto legacy = buildShadowCallTransferPlan(
-      site, value, actualType, destinationType, false, false, false, false,
-      false, CallTransferRoute::Ordinary, false, CallExecutionBoundary::None, 0,
-      0);
+      site, exactValue ? exactValue : value, actualType, destinationType, false,
+      false, false, false, false, CallTransferRoute::Ordinary, false,
+      CallExecutionBoundary::None, 0, 0);
+  legacy.ExplicitCede = explicitCede;
   auto facts = buildExplicitCedeStage0ActualFacts(
-      value, actualType, legacy, &snapshot.State, snapshot.Revision);
-  Expr *surface = stage0SurfaceSource(value);
+      exactValue ? exactValue : value, actualType, legacy,
+      &providedSnapshot->State, providedSnapshot->Revision);
+  if (destination == TransferDestination::Assignment && destinationValue) {
+    AccessPath destinationPath =
+        canonicalizeAccessPath(makeAccessPath(destinationValue));
+    if (destinationPath && !destinationPath.RootLoc.isValid())
+      destinationPath.RootLoc = findPathDeclaration(destinationPath.RootName);
+    std::string destinationModuleOrigin;
+    if (destinationPath.RootLoc.isValid()) {
+      if (ModuleScope *module = getLexicalModule(destinationPath.RootLoc);
+          module && !module->ShadowCrateId.empty() &&
+          !module->ShadowLogicalModulePath.empty())
+        destinationModuleOrigin = "crate:" + module->ShadowCrateId +
+                                  ";module:" + module->ShadowLogicalModulePath;
+      if (destinationModuleOrigin.empty())
+        destinationModuleOrigin =
+            stage0FallbackModuleOrigin(destinationPath.RootLoc);
+    }
+    facts.DestinationPlace =
+        stage0PlaceIdentity(destinationPath, destinationModuleOrigin);
+    Expr *destinationSurface = stage0SurfaceSource(destinationValue);
+    if (auto *unary = dynamic_cast<UnaryExpr *>(destinationSurface)) {
+      if (unary->Op == TokenType::Caret)
+        facts.DestinationView = TransferSourceView::UniqueHandle;
+      else if (unary->Op == TokenType::Tilde)
+        facts.DestinationView = TransferSourceView::SharedHandle;
+      else if (unary->Op == TokenType::Star)
+        facts.DestinationView = TransferSourceView::RawHandle;
+      else if (unary->Op == TokenType::Ampersand)
+        facts.DestinationView = TransferSourceView::ReferenceConstruction;
+    } else {
+      const auto resolvedDestination =
+          destinationType ? resolveType(destinationType, false) : nullptr;
+      if (resolvedDestination && resolvedDestination->isUniquePtr())
+        facts.DestinationView = TransferSourceView::DereferencedOwningPayload;
+      else if (resolvedDestination && resolvedDestination->isSharedPtr())
+        facts.DestinationView = TransferSourceView::DereferencedOwningPayload;
+      else
+        facts.DestinationView = TransferSourceView::DirectValue;
+    }
+    if (facts.DestinationView == TransferSourceView::UniqueHandle)
+      facts.DestinationReachability =
+          TransferReachability::RootAndDependentViews;
+    else if (facts.DestinationView == TransferSourceView::SharedHandle ||
+             facts.DestinationView == TransferSourceView::RawHandle)
+      facts.DestinationReachability =
+          TransferReachability::BindingAndDependentViews;
+    else
+      facts.DestinationReachability = TransferReachability::ExactSubtree;
+    facts.DestinationFactsComplete =
+        facts.DestinationPlace.has_value() &&
+        facts.DestinationView != TransferSourceView::Indeterminate;
+  }
+  Expr *exactSurface = exactValue ? exactValue : value;
   if (!legacy.ExplicitCede) {
-    if (auto *unary = dynamic_cast<UnaryExpr *>(surface);
+    if (auto *unary = dynamic_cast<UnaryExpr *>(exactSurface);
         unary && unary->Op == TokenType::Caret &&
         (destination == TransferDestination::Return ||
          destination == TransferDestination::Assignment ||
@@ -2484,27 +2649,45 @@ void Sema::recordExplicitCedeStage0NonCallPlan(
       facts.Origin = TransferPlanOrigin::UserSource;
     }
   }
+  const SourceLocation recordLocation =
+      site->Loc.isValid() ? site->Loc : value->Loc;
+  const auto siteFull =
+      DiagnosticEngine::SrcMgr
+          ? DiagnosticEngine::SrcMgr->getFullSourceLoc(recordLocation)
+          : FullSourceLoc{};
+  const auto valueFull =
+      DiagnosticEngine::SrcMgr
+          ? DiagnosticEngine::SrcMgr->getFullSourceLoc(value->Loc)
+          : FullSourceLoc{};
+  std::string moduleOrigin;
+  if (ModuleScope *module = getLexicalModule(recordLocation);
+      module && !module->ShadowCrateId.empty() &&
+      !module->ShadowLogicalModulePath.empty())
+    moduleOrigin = "crate:" + module->ShadowCrateId +
+                   ";module:" + module->ShadowLogicalModulePath;
+  if (moduleOrigin.empty())
+    moduleOrigin = stage0FallbackModuleOrigin(recordLocation);
+  std::string resolvedGroupIdentity = groupIdentity;
+  if (resolvedGroupIdentity.empty())
+    resolvedGroupIdentity =
+        makeExplicitCedeStage0NonCallGroupIdentity(site, boundary);
+  if (resolvedGroupIdentity.empty() && siteFull.isValid() &&
+      !moduleOrigin.empty())
+    resolvedGroupIdentity = "non-call-group:v1;" + moduleOrigin +
+                            ";boundary:" + boundary +
+                            ";site:" + std::to_string(siteFull.Line) + ":" +
+                            std::to_string(siteFull.Column);
+  const std::string resolvedEdge = edge.empty() ? boundary : edge;
   if (facts.CarriesDropLiability &&
       facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
-    const SourceLocation recordLocation =
-        site->Loc.isValid() ? site->Loc : value->Loc;
-    const auto full =
-        DiagnosticEngine::SrcMgr
-            ? DiagnosticEngine::SrcMgr->getFullSourceLoc(recordLocation)
-            : FullSourceLoc{};
-    std::string moduleOrigin;
-    if (ModuleScope *module = getLexicalModule(recordLocation);
-        module && !module->ShadowCrateId.empty() &&
-        !module->ShadowLogicalModulePath.empty())
-      moduleOrigin = "crate:" + module->ShadowCrateId +
-                     ";module:" + module->ShadowLogicalModulePath;
-    if (moduleOrigin.empty())
-      moduleOrigin = stage0FallbackModuleOrigin(recordLocation);
-    if (full.isValid() && !moduleOrigin.empty()) {
-      facts.LiabilityIdentity = "temporary-liability:non-call:v1;" +
-                                moduleOrigin + ";boundary:" + boundary +
-                                ";site:" + std::to_string(full.Line) + ":" +
-                                std::to_string(full.Column);
+    if (siteFull.isValid() && valueFull.isValid() && !moduleOrigin.empty()) {
+      facts.LiabilityIdentity =
+          "temporary-liability:non-call:v1;" + moduleOrigin +
+          ";boundary:" + boundary + ";site:" + std::to_string(siteFull.Line) +
+          ":" + std::to_string(siteFull.Column) + ";edge:" + resolvedEdge +
+          ";index:" + std::to_string(edgeIndex) +
+          ";expr:" + std::to_string(valueFull.Line) + ":" +
+          std::to_string(valueFull.Column);
       facts.LiabilityIdentityComplete = true;
     }
   }
@@ -2548,17 +2731,30 @@ void Sema::recordExplicitCedeStage0NonCallPlan(
 
   ExplicitCedeStage0NonCallRecord record;
   record.Boundary = boundary;
+  record.GroupIdentity = resolvedGroupIdentity;
+  record.Edge = resolvedEdge;
+  record.EdgeIndex = edgeIndex;
+  record.GroupOutcome = toString(plan.Outcome);
+  record.GroupRejection = toString(plan.Rejection);
+  record.GroupPlanAdmitted = plan.admitted();
   record.PlanOrigin = toString(plan.Prepared.Origin);
   record.SyntaxPurpose = toString(plan.Prepared.SyntaxPurpose);
   record.SourceCategory = toString(plan.Prepared.SourceCategory);
   record.Dependency = toString(plan.Prepared.Dependency);
   record.TypeCompatibility = toString(plan.Prepared.TypeCompatibility);
   record.EligibilityContext = toString(plan.Prepared.EligibilityContext);
-  record.PreparedBeforeLegacyMutation = snapshot.Revision != 0;
-  record.SnapshotRevision = snapshot.Revision;
+  if (plan.Prepared.DestinationPlace)
+    record.DestinationExactPath =
+        semanticPlaceKey(*plan.Prepared.DestinationPlace);
+  record.DestinationView = toString(plan.Prepared.DestinationView);
+  record.DestinationReachability =
+      toString(plan.Prepared.DestinationReachability);
+  record.PreparedBeforeLegacyMutation = providedSnapshot->Revision != 0;
+  record.SnapshotRevision = providedSnapshot->Revision;
   record.Plan = std::move(item);
   SemanticEvidence::recordExplicitCedeStage0NonCall(
       std::move(record), site->Loc.isValid() ? site->Loc : value->Loc);
+  return plan;
 }
 
 Sema::Stage0CallSnapshot Sema::captureStage0CallSnapshot() {
@@ -5623,8 +5819,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     const bool publishFinalGenericArgumentTransactions =
         SemanticEvidence::isCallTransferShadowEnabled() &&
         stage0CallEntrySnapshot.has_value();
+    const bool journalSelectedGenericEvidence =
+        publishFinalGenericArgumentTransactions ||
+        (SemanticEvidence::isNonCallTransferShadowEnabled() &&
+         m_D3SpeculativeCallDepth == 1);
     Stage0CallTransferJournal genericArgumentJournal(
-        publishFinalGenericArgumentTransactions);
+        journalSelectedGenericEvidence);
     auto recordGenericResolutionRejection = [&](const char *rejection) {
       Stage0FinalGenericArgumentScope genericRejectionScope(
           m_Stage0FinalGenericArgumentPermitDepths, m_D3SpeculativeCallDepth,

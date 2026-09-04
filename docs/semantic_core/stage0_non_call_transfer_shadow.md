@@ -44,11 +44,37 @@ cleanup, obligation, PAL, and source-authority facts to the frozen pure
 planner. Non-call routes carry `FormalContract=None`; a destination type is a
 type-compatibility fact, not a callee contract.
 
+Assignment additionally prepares the destination `PlaceId`, exact view, and
+reachability region from the same snapshot. An invalidating source is compared
+with that destination before admission; self, ancestor, and descendant overlap
+rejects as `DestinationOverlap + NoStateChange`.
+
 `^owner` is classified as `IntrinsicUniqueMove` only for return, assignment,
 and initialization. User-written `cede` remains source invalidation.
 `NoSourcePlace` flows remain compiler-synthetic. A drop-bearing temporary uses
 a deterministic non-call liability identity based on logical module,
-destination, and semantic source coordinate, never a physical worktree path.
+destination, group site, edge/member name, stable slot, and temporary
+expression coordinate, never a physical worktree path.
+
+Aggregate members and explicit closure captures are prepared as whole groups
+before any member/capture legacy check. Every item shares one snapshot and
+group identity. The pure group planner validates every local plan and then
+checks pairwise source/referent/dependency overlap. A duplicate source leaves
+both local items `Live` while the group rejects atomically with
+`NonCallGroupAliasConflict`; sequential legacy mutation is never treated as a
+planner fact.
+
+The non-call-only preflight elaborator resolves literals, variables with
+hat-off payload access, calls, methods, constructors, `new`, common binary
+expressions, and transparent cede/unsafe/postfix/ascription wrappers without
+running `checkExpr`. Exact source identity is computed after transparent
+wrappers are removed, while an ascription still supplies the produced type.
+This keeps `cede payload` distinct from `cede ^owner` and keeps
+`return ^owner:^T` an intrinsic unique move.
+
+The generic candidate journal includes non-call records. A failed or cached
+invalid specialization rolls its body records back with its other prepared
+evidence; lack of a repeated diagnostic cannot publish a stale non-call plan.
 
 ## Qualification boundary
 
@@ -58,6 +84,11 @@ each destination. `tests/ExplicitCedePlan.cpp` independently checks all seven
 non-call destination/context pairs, statement-end versus destination Drop
 liability, storage/return/discard obligation discharge, bare Copy preservation,
 and cross-route explicit-`cede NoSourcePlace` rejection.
+The dynamic gate additionally covers assignment self-overlap, unique
+handle/payload view separation, two drop-bearing aggregate temporaries with
+distinct cleanup identities, aggregate/capture duplicate-source group
+rejection, common read-only preflight expressions and wrappers, moved sources,
+and invalid generic-body journal rollback.
 
 The command records plans only. It does not commit source invalidation or
 liability transitions and is not a destination-matching CodeGen plan. Missing

@@ -1264,6 +1264,42 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
   bool hasInvalidMember = false;
   Init->MemberTransfers.assign(Init->Members.size(),
                                AggregateTransferKind::Unqualified);
+  if (SemanticEvidence::isNonCallTransferShadowEnabled() &&
+      !m_IsPrecomputingCaptures) {
+    auto snapshot = captureStage0CallSnapshot();
+    const std::string groupIdentity =
+        makeExplicitCedeStage0NonCallGroupIdentity(Init, "aggregate");
+    ExplicitCedeNonCallGroupFacts groupFacts;
+    groupFacts.Destination = TransferDestination::AggregateMember;
+    for (size_t index = 0; index < Init->Members.size(); ++index) {
+      auto &member = Init->Members[index];
+      if (member.first == "..")
+        continue;
+      const ShapeMember *definition = nullptr;
+      for (const auto &candidate : SD->Members) {
+        if (toka::Type::stripMorphology(candidate.Name) ==
+            toka::Type::stripMorphology(member.first)) {
+          definition = &candidate;
+          break;
+        }
+      }
+      std::shared_ptr<Type> memberType;
+      if (definition)
+        memberType = definition->ResolvedType
+                         ? definition->ResolvedType
+                         : toka::Type::fromString(definition->Type);
+      auto plan = recordExplicitCedeStage0NonCallPlan(
+          Init, member.second.get(), memberType,
+          TransferDestination::AggregateMember,
+          TransferEligibilityContext::AggregateMember, "aggregate", nullptr,
+          &snapshot, groupIdentity, member.first, static_cast<unsigned>(index));
+      groupFacts.Items.push_back(plan.Prepared);
+    }
+    auto group = prepareExplicitCedeNonCallGroupPlan(groupFacts);
+    SemanticEvidence::finalizeExplicitCedeStage0NonCallGroup(
+        groupIdentity, toString(group.Outcome), toString(group.Rejection),
+        group.admitted());
+  }
   for (size_t i = 0; i < Init->Members.size(); ++i) {
     auto &pair = Init->Members[i];
     if (pair.first == "..") {
@@ -1337,10 +1373,6 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     }
     bool oldSuppressAliasInvalidation = m_SuppressRejectedAliasInvalidation;
     m_SuppressRejectedAliasInvalidation = rejectedAliasField;
-    recordExplicitCedeStage0NonCallPlan(
-        Init, pair.second.get(), memberTypeObj,
-        TransferDestination::AggregateMember,
-        TransferEligibilityContext::AggregateMember, "aggregate");
     std::shared_ptr<toka::Type> exprTypeObj =
         checkExpr(pair.second.get(), memberTypeObj);
     Init->MemberTransfers[i] =

@@ -97,6 +97,12 @@ ExplicitCedePreparedFacts nonCall(ExplicitCedePreparedFacts facts,
   facts.FormalCapabilities = {};
   facts.Destination = destination;
   facts.EligibilityContext = context;
+  if (destination == TransferDestination::Assignment) {
+    facts.DestinationPlace = otherPlace();
+    facts.DestinationView = TransferSourceView::DirectValue;
+    facts.DestinationReachability = TransferReachability::ExactSubtree;
+    facts.DestinationFactsComplete = true;
+  }
   return facts;
 }
 
@@ -191,6 +197,46 @@ int main() {
     CHECK(barePlan.Source == TransferSourceDisposition::KeepLive);
     CHECK(barePlan.Drop == TransferDropDisposition::NoLiability);
   }
+
+  auto overlappingAssignment = nonCall(named, TransferDestination::Assignment,
+                                       TransferEligibilityContext::Assignment);
+  overlappingAssignment.DestinationPlace = overlappingAssignment.SourcePlace;
+  CHECK(prepareExplicitCedePlan(overlappingAssignment).Rejection ==
+        TransferPlanRejection::DestinationOverlap);
+  auto overlappingCopy = overlappingAssignment;
+  overlappingCopy.Ownership = TransferOwnershipKind::PlainValue;
+  overlappingCopy.CopyProof = TransferCopyProof::ProvenCopy;
+  overlappingCopy.CarriesDropLiability = false;
+  CHECK(prepareExplicitCedePlan(overlappingCopy).Rejection ==
+        TransferPlanRejection::DestinationOverlap);
+  overlappingCopy.SurfaceSpelling = TransferSurfaceSpelling::Bare;
+  overlappingCopy.SyntaxPurpose = CedeSyntaxPurpose::None;
+  auto ordinarySelfAssignment = prepareExplicitCedePlan(overlappingCopy);
+  CHECK(ordinarySelfAssignment.admitted());
+  CHECK(ordinarySelfAssignment.Source == TransferSourceDisposition::KeepLive);
+
+  ExplicitCedeNonCallGroupFacts aggregateAliasGroup;
+  aggregateAliasGroup.Destination = TransferDestination::AggregateMember;
+  aggregateAliasGroup.Items = {
+      nonCall(named, TransferDestination::AggregateMember,
+              TransferEligibilityContext::AggregateMember),
+      nonCall(named, TransferDestination::AggregateMember,
+              TransferEligibilityContext::AggregateMember),
+  };
+  auto aggregateAliasPlan =
+      prepareExplicitCedeNonCallGroupPlan(aggregateAliasGroup);
+  CHECK(!aggregateAliasPlan.admitted());
+  CHECK(aggregateAliasPlan.Rejection ==
+        TransferPlanRejection::NonCallGroupAliasConflict);
+  CHECK(aggregateAliasPlan.Items.size() == 2);
+  CHECK(aggregateAliasPlan.Items[0].Prepared.SourceLiveness ==
+        TransferSourceLiveness::Live);
+  CHECK(aggregateAliasPlan.Items[1].Prepared.SourceLiveness ==
+        TransferSourceLiveness::Live);
+  auto mismatchedGroup = aggregateAliasGroup;
+  mismatchedGroup.Items[1].Destination = TransferDestination::ClosureCapture;
+  CHECK(prepareExplicitCedeNonCallGroupPlan(mismatchedGroup).Rejection ==
+        TransferPlanRejection::NonCallGroupDestinationMismatch);
 
   auto shared = named;
   shared.SourceView = TransferSourceView::SharedHandle;

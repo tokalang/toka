@@ -37,6 +37,10 @@ enum class TransferPlanRejection : uint8_t {
   WholeCallArityIncomplete,
   WholeCallValidationFailed,
   WholeCallValidationIncomplete,
+  DestinationOverlap,
+  NonCallGroupItemRejected,
+  NonCallGroupAliasConflict,
+  NonCallGroupDestinationMismatch,
   MissingPreMutationTransaction,
   OwnershipContractMismatch,
   ProjectedHandleRequiresSubroot,
@@ -242,6 +246,7 @@ struct ExplicitCedePreparedFacts {
   std::string ActualTypeKey;
   std::string FormalTypeKey;
   std::optional<PlaceId> SourcePlace;
+  std::optional<PlaceId> DestinationPlace;
   std::optional<PlaceId> ReferentPlace;
   std::vector<RootSymbolId> DependencyRoots;
   std::optional<RootSymbolId> ObligationRoot;
@@ -250,6 +255,7 @@ struct ExplicitCedePreparedFacts {
   TransferSurfaceSpelling SurfaceSpelling = TransferSurfaceSpelling::Bare;
   TransferSourceCategory SourceCategory = TransferSourceCategory::Indeterminate;
   TransferSourceView SourceView = TransferSourceView::Indeterminate;
+  TransferSourceView DestinationView = TransferSourceView::Indeterminate;
   TransferOwnershipKind Ownership = TransferOwnershipKind::Indeterminate;
   TransferCopyProof CopyProof = TransferCopyProof::Indeterminate;
   TransferFormalContract FormalContract = TransferFormalContract::None;
@@ -275,6 +281,8 @@ struct ExplicitCedePreparedFacts {
       TransferTypeCompatibility::Indeterminate;
   TransferDependencyKind Dependency = TransferDependencyKind::Indeterminate;
   TransferReachability Reachability = TransferReachability::Indeterminate;
+  TransferReachability DestinationReachability =
+      TransferReachability::Indeterminate;
   TransferObligationState ObligationBefore = TransferObligationState::None;
   TransferSourceLiveness SourceLiveness = TransferSourceLiveness::Indeterminate;
   uint64_t SnapshotRevision = 0;
@@ -291,6 +299,7 @@ struct ExplicitCedePreparedFacts {
   bool BorrowStateComplete = false;
   bool SourceTransferAuthorized = false;
   bool SourceTransferAuthorityComplete = false;
+  bool DestinationFactsComplete = false;
   bool CarriesDropLiability = false;
   bool DropLiabilityComplete = false;
 };
@@ -340,6 +349,22 @@ struct ExplicitCedeWholeCallPlan {
   }
 };
 
+struct ExplicitCedeNonCallGroupFacts {
+  TransferDestination Destination = TransferDestination::Indeterminate;
+  std::vector<ExplicitCedePreparedFacts> Items;
+};
+
+struct ExplicitCedeNonCallGroupPlan {
+  TransferPlanOutcome Outcome = TransferPlanOutcome::Rejected;
+  TransferPlanRejection Rejection =
+      TransferPlanRejection::NonCallGroupItemRejected;
+  std::vector<ExplicitCedePlan> Items;
+
+  bool admitted() const noexcept {
+    return Outcome == TransferPlanOutcome::Admitted;
+  }
+};
+
 // Pure Stage-0 classifier. It neither reads nor mutates AST, PAL, PlaceState,
 // diagnostics, caches, TKI, Evidence, or CodeGen state. Every combination not
 // explicitly admitted returns a closed-world rejection.
@@ -347,6 +372,8 @@ ExplicitCedePlan
 prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts);
 ExplicitCedeWholeCallPlan
 prepareExplicitCedeWholeCallPlan(const ExplicitCedeWholeCallFacts &facts);
+ExplicitCedeNonCallGroupPlan
+prepareExplicitCedeNonCallGroupPlan(const ExplicitCedeNonCallGroupFacts &facts);
 
 const char *toString(TransferPlanRejection value);
 const char *toString(TransferPlanOutcome value);

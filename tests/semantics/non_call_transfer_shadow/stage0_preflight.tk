@@ -1,0 +1,20 @@
+shape Cell(value: i32)
+
+fn ascribed(cede value: i32) -> i32 {
+    return cede value:i32
+}
+
+fn unique_ascribed(cede ^value: Cell) -> ^Cell {
+    return ^value:^Cell
+}
+
+fn main() -> i32 {
+    auto a = 1:i32
+    auto b = 2:i32
+    auto sum = a + b
+    auto ^#target = new Cell(value = 0:i32)
+    ^target = new Cell(value = 3:i32)
+    auto ^source = new Cell(value = 4:i32)
+    auto ^returned = unique_ascribed(cede ^source)
+    return ascribed(cede sum) + target.value + returned.value - 10:i32
+}

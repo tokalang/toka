@@ -251,13 +251,18 @@ bool ExplicitCedeStage0TransactionRecord::operator==(
 
 bool ExplicitCedeStage0NonCallRecord::operator<(
     const ExplicitCedeStage0NonCallRecord &rhs) const {
-  return std::tie(Boundary, PlanOrigin, SyntaxPurpose, SourceCategory,
-                  Dependency, TypeCompatibility, EligibilityContext,
-                  PreparedBeforeLegacyMutation, SnapshotRevision, Plan,
-                  Location) <
-         std::tie(rhs.Boundary, rhs.PlanOrigin, rhs.SyntaxPurpose,
-                  rhs.SourceCategory, rhs.Dependency, rhs.TypeCompatibility,
-                  rhs.EligibilityContext, rhs.PreparedBeforeLegacyMutation,
+  return std::tie(Boundary, GroupIdentity, Edge, EdgeIndex, GroupOutcome,
+                  GroupRejection, GroupPlanAdmitted, PlanOrigin, SyntaxPurpose,
+                  SourceCategory, Dependency, TypeCompatibility,
+                  EligibilityContext, DestinationExactPath, DestinationView,
+                  DestinationReachability, PreparedBeforeLegacyMutation,
+                  SnapshotRevision, Plan, Location) <
+         std::tie(rhs.Boundary, rhs.GroupIdentity, rhs.Edge, rhs.EdgeIndex,
+                  rhs.GroupOutcome, rhs.GroupRejection, rhs.GroupPlanAdmitted,
+                  rhs.PlanOrigin, rhs.SyntaxPurpose, rhs.SourceCategory,
+                  rhs.Dependency, rhs.TypeCompatibility, rhs.EligibilityContext,
+                  rhs.DestinationExactPath, rhs.DestinationView,
+                  rhs.DestinationReachability, rhs.PreparedBeforeLegacyMutation,
                   rhs.SnapshotRevision, rhs.Plan, rhs.Location);
 }
 
@@ -358,7 +363,8 @@ bool SemanticEvidence::isNonCallTransferShadowEnabled() {
 
 SemanticEvidence::CallTransferJournalCheckpoint
 SemanticEvidence::checkpointCallTransferJournal() {
-  return {CallTransferShadows.size(), ExplicitCedeStage0Transactions.size()};
+  return {CallTransferShadows.size(), ExplicitCedeStage0Transactions.size(),
+          ExplicitCedeStage0NonCalls.size()};
 }
 
 void SemanticEvidence::rollbackCallTransferJournal(
@@ -367,6 +373,8 @@ void SemanticEvidence::rollbackCallTransferJournal(
     CallTransferShadows.resize(checkpoint.ShadowCount);
   if (checkpoint.TransactionCount < ExplicitCedeStage0Transactions.size())
     ExplicitCedeStage0Transactions.resize(checkpoint.TransactionCount);
+  if (checkpoint.NonCallCount < ExplicitCedeStage0NonCalls.size())
+    ExplicitCedeStage0NonCalls.resize(checkpoint.NonCallCount);
 }
 
 SemanticEvidenceAuditState SemanticEvidence::auditState() {
@@ -573,6 +581,20 @@ void SemanticEvidence::recordExplicitCedeStage0NonCall(
     return;
   record.Location = resolveLocation(location);
   ExplicitCedeStage0NonCalls.push_back(std::move(record));
+}
+
+void SemanticEvidence::finalizeExplicitCedeStage0NonCallGroup(
+    const std::string &groupIdentity, std::string outcome,
+    std::string rejection, bool admitted) {
+  if (!Enabled || !NonCallTransferShadowEnabled)
+    return;
+  for (auto &record : ExplicitCedeStage0NonCalls) {
+    if (record.GroupIdentity != groupIdentity)
+      continue;
+    record.GroupOutcome = outcome;
+    record.GroupRejection = rejection;
+    record.GroupPlanAdmitted = admitted;
+  }
 }
 
 void SemanticEvidence::dumpCallTransferShadowJSON(std::ostream &out) {
@@ -836,7 +858,13 @@ void SemanticEvidence::dumpExplicitCedeStage0NonCallJSON(std::ostream &out) {
     const auto &record = ExplicitCedeStage0NonCalls[index];
     const auto &plan = record.Plan;
     out << "{\"boundary\":\"" << escapeJSON(record.Boundary)
-        << "\",\"plan_origin\":\"" << escapeJSON(record.PlanOrigin)
+        << "\",\"group_identity\":\"" << escapeJSON(record.GroupIdentity)
+        << "\",\"edge\":\"" << escapeJSON(record.Edge)
+        << "\",\"edge_index\":" << record.EdgeIndex << ",\"group_outcome\":\""
+        << escapeJSON(record.GroupOutcome) << "\",\"group_rejection\":\""
+        << escapeJSON(record.GroupRejection) << "\",\"group_plan_admitted\":"
+        << (record.GroupPlanAdmitted ? "true" : "false")
+        << ",\"plan_origin\":\"" << escapeJSON(record.PlanOrigin)
         << "\",\"syntax_purpose\":\"" << escapeJSON(record.SyntaxPurpose)
         << "\",\"source_category\":\"" << escapeJSON(record.SourceCategory)
         << "\",\"dependency\":\"" << escapeJSON(record.Dependency)
@@ -844,6 +872,11 @@ void SemanticEvidence::dumpExplicitCedeStage0NonCallJSON(std::ostream &out) {
         << escapeJSON(record.TypeCompatibility)
         << "\",\"eligibility_context\":\""
         << escapeJSON(record.EligibilityContext)
+        << "\",\"destination_exact_path\":\""
+        << escapeJSON(record.DestinationExactPath)
+        << "\",\"destination_view\":\"" << escapeJSON(record.DestinationView)
+        << "\",\"destination_reachability\":\""
+        << escapeJSON(record.DestinationReachability)
         << "\",\"prepared_before_legacy_mutation\":"
         << (record.PreparedBeforeLegacyMutation ? "true" : "false")
         << ",\"snapshot_revision\":" << record.SnapshotRevision
