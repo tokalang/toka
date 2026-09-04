@@ -1,0 +1,29 @@
+shape Resource(value: i32)
+
+impl Resource {
+    fn drop(self#) {}
+
+    fn relay(cede self) -> Resource {
+        return cede self
+    }
+
+    fn consume(cede self, cede amount: i32) -> i32 {
+        auto owned = cede self
+        return owned.value + cede amount
+    }
+}
+
+fn forward(cede value: Resource) -> Resource {
+    return cede value
+}
+
+fn inspect(value: Resource) -> i32 {
+    return value.value
+}
+
+fn main() -> i32 {
+    auto source = Resource(value = 7:i32)
+    auto amount = 1:i32
+    auto rejected = forward(cede source).relay().consume(amount)
+    return inspect(source) + amount + rejected
+}

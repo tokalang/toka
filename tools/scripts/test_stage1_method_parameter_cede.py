@@ -85,6 +85,16 @@ def main():
             receiver_rollback.stderr == receiver_shadow.stderr,
             "receiver rollback shadow changed activated diagnostics")
 
+    for name in (
+            "rejected_expression_receiver_restores_source.tk",
+            "rejected_nested_receiver_restores_source.tk"):
+        rejected_receiver = check(tokac, name)
+        require(rejected_receiver.returncode != 0 and
+                rejected_receiver.stderr.count("error[E04509]") == 1 and
+                "E0438" not in rejected_receiver.stderr and
+                "E0410" not in rejected_receiver.stderr,
+                name + " evaluated receiver outside the rejection snapshot")
+
     generic_rejection = check(
         tokac, "generic_rejection_restores_source.tk")
     require(generic_rejection.returncode != 0 and

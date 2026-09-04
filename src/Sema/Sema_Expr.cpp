@@ -4257,7 +4257,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     return std::make_shared<toka::RawPointerType>(baseTypeObj);
   } else if (auto *Met = dynamic_cast<MethodCallExpr *>(E)) {
     Stage0TransactionFinalizer stage0TransactionFinalizer(*this, Met);
-    CallArgumentRollbackGuard methodCallRollback(*this, Met->Args);
+    // Receiver evaluation is part of the method call transaction. It can
+    // itself contain successful consuming calls whose state must be restored
+    // if the outer method is later rejected by arity, type, or cede checks.
+    CallArgumentRollbackGuard methodCallRollback(*this, Met->Args, true);
     std::shared_ptr<Type> stage0PreMutationReceiverType;
     std::optional<ExplicitCedePreparedFacts> stage0PreMutationReceiverFacts;
     std::optional<Stage0CallSnapshot> stage0PreMutationCallSnapshot;
@@ -4722,19 +4725,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                      !arg.Stage0GenericValueRole &&
                      !arg.Stage0MorphicGenericRole;
             };
-        const bool hasStage1CedeParameter =
-            m_EnableStage1ExplicitCallerCede &&
-            std::any_of(FD->Args.begin() + std::min<size_t>(1, FD->Args.size()),
-                        FD->Args.end(), [&](const FunctionDecl::Arg &arg) {
-                          return arg.IsCeded &&
-                                 isStage1ConcreteMethodParameter(arg);
-                        });
-        // The receiver's legacy consuming path runs before argument
-        // diagnostics. Keep both edges in one rejection transaction without
-        // changing the accepted receiver spelling.
-        CallArgumentRollbackGuard methodParameterRollback(
-            *this, Met->Args, hasStage1CedeParameter);
-
         // [Effect] Concurrency Check for Method Call
         if (FD->Effect != EffectKind::None && !m_IsConsumingEffect && !m_IsPrecomputingCaptures) {
           error(Met, DiagID::ERR_DANGLING_EFFECT, Met->Method);
