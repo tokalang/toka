@@ -25,6 +25,9 @@ NESTED_SURVIVES = (
 RECURSIVE = (
     "tests/semantics/call_transfer_shadow_m1/"
     "generic_validation_recursion.tk")
+CANDIDATE_WARM = (
+    "tests/semantics/call_transfer_shadow_m1/"
+    "generic_body_candidate_warm_{}.tk")
 
 if not os.environ.get("TOKA_LIB"):
     os.environ["TOKA_LIB"] = str(ROOT / "lib")
@@ -127,6 +130,21 @@ def main():
             all(summary["qualification_complete"]
                 for summary in valid["specializations"]),
             VALID + " omitted a specialization completion marker")
+
+    warmed_identities = []
+    for ordering in ("forward", "reverse"):
+        source = CANDIDATE_WARM.format(ordering)
+        warmed = qualification_payload(tokac, source)
+        leaf = body_transactions(warmed, source, "leaf")
+        require(len(leaf) == 1 and leaf[0]["commit_allowed"] and
+                len(warmed["specializations"]) == 1 and
+                warmed["specializations"][0]["qualification_complete"] and
+                warmed["specializations"][0]["specialization_identity"] ==
+                leaf[0]["specialization_identity"],
+                source + " did not promote candidate-prepared body evidence")
+        warmed_identities.append(leaf[0]["specialization_identity"])
+    require(warmed_identities[0] == warmed_identities[1],
+            "overload declaration order changed warmed specialization identity")
 
     argument_records = [
         record for record in valid["records"]

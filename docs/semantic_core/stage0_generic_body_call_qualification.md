@@ -40,7 +40,12 @@ opens its own exact-depth body permit.
 All body receipts and transactions remain inside the selected generic
 qualification store, separate from call-site argument journals:
 
-- `Valid` specialization: publish once;
+- cache state is `Unseen | Prepared | Complete | Invalid`;
+- candidate-probe instantiation: prepare specialization-private evidence but
+  do not publish it;
+- subsequent selected `Valid` cache hit: promote that exact pending evidence
+  without checking the body again;
+- selected `Valid` specialization: publish once;
 - valid cache hit: do not recheck or republish the body;
 - `Invalid` or `Unchecked`: roll back all body receipts and transactions;
 - invalid dependency: propagate failure through the existing generic
@@ -50,6 +55,10 @@ Rollback removes records by exact specialization identity, not by one global
 vector checkpoint. Consequently an invalid outer specialization cannot erase
 a valid nested specialization that was already checked and cached, while all
 calls belonging to the invalid outer body still disappear.
+Parent-to-child qualification dependencies are retained privately, so
+promoting a selected parent promotes the already-prepared transitive body
+closure. Pending evidence reachable only from an unselected candidate is never
+serialized.
 
 The specialization identity contains the logical template owner, declaration
 coordinate, and recursively encoded semantic type arguments. Nominal type
@@ -66,6 +75,8 @@ are scoped by the same specialization identity.
 - stable and distinct specialization/source identities without physical
   paths;
 - nested generic-body qualification;
+- imported overload candidate prewarming in both declaration orders, followed
+  by exactly-once promotion on the selected cache hit;
 - complete rollback after a body semantic error; and
 - unchanged normal diagnostics and unchanged call-transfer v5 isolation.
 

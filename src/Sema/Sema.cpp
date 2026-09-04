@@ -6515,7 +6515,15 @@ bool Sema::isShapeSync(const std::string &shapeName) {
 Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     FunctionDecl *Template,
     const std::vector<std::shared_ptr<toka::Type>> &Args, CallExpr *CallSite,
-    bool qualifyStage0BodyCalls) {
+    bool prepareStage0BodyCalls, bool promoteStage0BodyCalls) {
+
+  std::string qualificationParentIdentity;
+  if (prepareStage0BodyCalls && CurrentFunction &&
+      !m_Stage0GenericBodyQualificationPromotionScopes.empty()) {
+    auto parent = InstantiationSemanticKeys.find(CurrentFunction);
+    if (parent != InstantiationSemanticKeys.end())
+      qualificationParentIdentity = parent->second;
+  }
 
   if (Template->GenericParams.size() != Args.size()) {
     DiagnosticEngine::report(getLoc(CallSite), DiagID::NOTE_GENERIC, Template->Name, Template->GenericParams.size(), Args.size());
@@ -6592,8 +6600,12 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
       m_GenericValidationFrames.back().HasInvalidDependency = true;
     if (!entry ||
         validation == GenericSpecializationValidationState::Unchecked) {
-      if (entry)
+      if (entry) {
         entry->Validation = GenericSpecializationValidationState::Invalid;
+        entry->BodyQualification = GenericBodyQualificationState::Invalid;
+        SemanticEvidence::rollbackGenericBodyCallQualification(
+            entry->SpecializationIdentity);
+      }
       error(CallSite ? static_cast<ASTNode *>(CallSite)
                      : static_cast<ASTNode *>(Template),
             DiagID::ERR_GENERIC_SEMA,
@@ -6601,7 +6613,15 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
                 mangledName);
       return {nullptr, GenericSpecializationValidationState::Invalid};
     }
-    return {entry->Instance, validation};
+    if (prepareStage0BodyCalls &&
+        validation == GenericSpecializationValidationState::Valid) {
+      SemanticEvidence::recordGenericBodyCallQualificationDependency(
+          qualificationParentIdentity, entry->SpecializationIdentity);
+      if (promoteStage0BodyCalls &&
+          entry->BodyQualification == GenericBodyQualificationState::Prepared)
+        promoteStage0GenericBodyQualification(entry);
+    }
+    return {entry->Instance, validation, entry->BodyQualification};
   }
 
   const size_t validationDiagnosticStart = DiagnosticEngine::records().size();
@@ -7198,11 +7218,13 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     auto argument = resolveType(Args[index], false);
     semanticInstantiation += stableInstantiationType(argument);
   }
-  InstantiationSemanticKeys[Instance] = std::move(semanticInstantiation);
+  InstantiationSemanticKeys[Instance] = semanticInstantiation;
 
   auto cacheEntry = std::make_shared<GenericSpecializationCacheEntry>();
   cacheEntry->Instance = Instance;
   cacheEntry->Validation = GenericSpecializationValidationState::Unchecked;
+  cacheEntry->BodyQualification = GenericBodyQualificationState::Unseen;
+  cacheEntry->SpecializationIdentity = std::move(semanticInstantiation);
   InstantiationCache[cacheKey] = cacheEntry;
   InstantiationCache[mangledName] = cacheEntry;
 
@@ -7212,12 +7234,17 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
 
   // 4. Semantic Check (Recursion)
   m_GenericValidationFrames.push_back({});
-  if (qualifyStage0BodyCalls)
+  if (prepareStage0BodyCalls) {
     m_Stage0GenericBodyQualificationPermitDepths.push_back(
         m_D3SpeculativeCallDepth);
+    m_Stage0GenericBodyQualificationPromotionScopes.push_back(
+        promoteStage0BodyCalls);
+  }
   checkFunction(Instance);
-  if (qualifyStage0BodyCalls)
+  if (prepareStage0BodyCalls) {
+    m_Stage0GenericBodyQualificationPromotionScopes.pop_back();
     m_Stage0GenericBodyQualificationPermitDepths.pop_back();
+  }
   const bool invalidDependency =
       m_GenericValidationFrames.back().HasInvalidDependency;
   m_GenericValidationFrames.pop_back();
@@ -7237,20 +7264,39 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
                               ? GenericSpecializationValidationState::Invalid
                               : GenericSpecializationValidationState::Valid;
   cacheEntry->Validation = validation;
-  if (qualifyStage0BodyCalls) {
-    auto identity = InstantiationSemanticKeys.find(Instance);
-    if (identity != InstantiationSemanticKeys.end()) {
-      if (validation == GenericSpecializationValidationState::Valid)
-        SemanticEvidence::recordGenericBodyCallQualification(identity->second);
-      else
-        SemanticEvidence::rollbackGenericBodyCallQualification(
-            identity->second);
+  if (prepareStage0BodyCalls) {
+    if (validation == GenericSpecializationValidationState::Valid) {
+      cacheEntry->BodyQualification = GenericBodyQualificationState::Prepared;
+      SemanticEvidence::recordGenericBodyCallQualificationDependency(
+          qualificationParentIdentity, cacheEntry->SpecializationIdentity);
+      if (promoteStage0BodyCalls)
+        promoteStage0GenericBodyQualification(cacheEntry);
+    } else {
+      cacheEntry->BodyQualification = GenericBodyQualificationState::Invalid;
+      SemanticEvidence::rollbackGenericBodyCallQualification(
+          cacheEntry->SpecializationIdentity);
     }
   }
   if (validation != GenericSpecializationValidationState::Valid &&
       !m_GenericValidationFrames.empty())
     m_GenericValidationFrames.back().HasInvalidDependency = true;
-  return {Instance, validation};
+  return {Instance, validation, cacheEntry->BodyQualification};
+}
+
+void Sema::promoteStage0GenericBodyQualification(
+    const std::shared_ptr<GenericSpecializationCacheEntry> &entry) {
+  if (!entry || entry->SpecializationIdentity.empty())
+    return;
+  const auto promoted = SemanticEvidence::promoteGenericBodyCallQualification(
+      entry->SpecializationIdentity);
+  if (promoted.empty())
+    return;
+  const std::set<std::string> promotedSet(promoted.begin(), promoted.end());
+  for (auto &[key, cached] : InstantiationCache) {
+    (void)key;
+    if (cached && promotedSet.count(cached->SpecializationIdentity))
+      cached->BodyQualification = GenericBodyQualificationState::Complete;
+  }
 }
 
 Sema::ModuleScope *Sema::getModule(const std::string &Path) {

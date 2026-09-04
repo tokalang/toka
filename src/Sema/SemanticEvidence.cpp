@@ -3,6 +3,7 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/SourceManager.h"
 #include <algorithm>
+#include <functional>
 #include <ostream>
 #include <tuple>
 
@@ -17,11 +18,17 @@ std::vector<CedeObligationRecord> SemanticEvidence::CedeObligations;
 std::vector<CallTransferShadowRecord> SemanticEvidence::CallTransferShadows;
 std::vector<CallTransferShadowRecord>
     SemanticEvidence::GenericBodyCallTransferShadows;
+std::vector<CallTransferShadowRecord>
+    SemanticEvidence::PendingGenericBodyCallTransferShadows;
 std::vector<ExplicitCedeStage0TransactionRecord>
     SemanticEvidence::ExplicitCedeStage0Transactions;
 std::vector<ExplicitCedeStage0TransactionRecord>
     SemanticEvidence::GenericBodyExplicitCedeStage0Transactions;
+std::vector<ExplicitCedeStage0TransactionRecord>
+    SemanticEvidence::PendingGenericBodyExplicitCedeStage0Transactions;
 std::set<std::string> SemanticEvidence::GenericBodyQualifiedSpecializations;
+std::map<std::string, std::set<std::string>>
+    SemanticEvidence::GenericBodyQualificationDependencies;
 std::vector<ExplicitCedeStage0NonCallRecord>
     SemanticEvidence::ExplicitCedeStage0NonCalls;
 std::vector<CapabilityCallRecord> SemanticEvidence::CapabilityCalls;
@@ -400,14 +407,77 @@ void SemanticEvidence::rollbackGenericBodyCallQualification(
                               specializationIdentity;
                      }),
       GenericBodyExplicitCedeStage0Transactions.end());
+  PendingGenericBodyCallTransferShadows.erase(
+      std::remove_if(PendingGenericBodyCallTransferShadows.begin(),
+                     PendingGenericBodyCallTransferShadows.end(),
+                     [&](const auto &record) {
+                       return record.SpecializationIdentity ==
+                              specializationIdentity;
+                     }),
+      PendingGenericBodyCallTransferShadows.end());
+  PendingGenericBodyExplicitCedeStage0Transactions.erase(
+      std::remove_if(PendingGenericBodyExplicitCedeStage0Transactions.begin(),
+                     PendingGenericBodyExplicitCedeStage0Transactions.end(),
+                     [&](const auto &record) {
+                       return record.SpecializationIdentity ==
+                              specializationIdentity;
+                     }),
+      PendingGenericBodyExplicitCedeStage0Transactions.end());
   GenericBodyQualifiedSpecializations.erase(specializationIdentity);
+  GenericBodyQualificationDependencies.erase(specializationIdentity);
 }
 
-void SemanticEvidence::recordGenericBodyCallQualification(
+void SemanticEvidence::recordGenericBodyCallQualificationDependency(
+    const std::string &parentIdentity, const std::string &childIdentity) {
+  if (!Enabled || !GenericBodyCallQualificationEnabled ||
+      parentIdentity.empty() || childIdentity.empty() ||
+      parentIdentity == childIdentity)
+    return;
+  GenericBodyQualificationDependencies[parentIdentity].insert(childIdentity);
+}
+
+std::vector<std::string> SemanticEvidence::promoteGenericBodyCallQualification(
     const std::string &specializationIdentity) {
-  if (Enabled && GenericBodyCallQualificationEnabled &&
-      !specializationIdentity.empty())
-    GenericBodyQualifiedSpecializations.insert(specializationIdentity);
+  if (!Enabled || !GenericBodyCallQualificationEnabled ||
+      specializationIdentity.empty())
+    return {};
+  std::set<std::string> visited;
+  std::vector<std::string> promoted;
+  std::function<void(const std::string &)> promote =
+      [&](const std::string &identity) {
+        if (!visited.insert(identity).second)
+          return;
+        auto dependencies = GenericBodyQualificationDependencies.find(identity);
+        if (dependencies != GenericBodyQualificationDependencies.end())
+          for (const auto &dependency : dependencies->second)
+            promote(dependency);
+        for (auto iterator = PendingGenericBodyCallTransferShadows.begin();
+             iterator != PendingGenericBodyCallTransferShadows.end();) {
+          if (iterator->SpecializationIdentity != identity) {
+            ++iterator;
+            continue;
+          }
+          GenericBodyCallTransferShadows.push_back(std::move(*iterator));
+          iterator = PendingGenericBodyCallTransferShadows.erase(iterator);
+        }
+        for (auto iterator =
+                 PendingGenericBodyExplicitCedeStage0Transactions.begin();
+             iterator !=
+             PendingGenericBodyExplicitCedeStage0Transactions.end();) {
+          if (iterator->SpecializationIdentity != identity) {
+            ++iterator;
+            continue;
+          }
+          GenericBodyExplicitCedeStage0Transactions.push_back(
+              std::move(*iterator));
+          iterator =
+              PendingGenericBodyExplicitCedeStage0Transactions.erase(iterator);
+        }
+        GenericBodyQualifiedSpecializations.insert(identity);
+        promoted.push_back(identity);
+      };
+  promote(specializationIdentity);
+  return promoted;
 }
 
 void SemanticEvidence::enableNonCallTransferShadow(bool value) {
@@ -462,9 +532,12 @@ void SemanticEvidence::reset() {
   CedeObligations.clear();
   CallTransferShadows.clear();
   GenericBodyCallTransferShadows.clear();
+  PendingGenericBodyCallTransferShadows.clear();
   ExplicitCedeStage0Transactions.clear();
   GenericBodyExplicitCedeStage0Transactions.clear();
+  PendingGenericBodyExplicitCedeStage0Transactions.clear();
   GenericBodyQualifiedSpecializations.clear();
+  GenericBodyQualificationDependencies.clear();
   ExplicitCedeStage0NonCalls.clear();
   CapabilityCalls.clear();
   TodoGoals.clear();
@@ -647,7 +720,7 @@ void SemanticEvidence::recordCallTransferShadow(
                                   resolveLocation(contractLocation)};
   if (GenericBodyCallQualificationEnabled &&
       !record.SpecializationIdentity.empty())
-    GenericBodyCallTransferShadows.push_back(std::move(record));
+    PendingGenericBodyCallTransferShadows.push_back(std::move(record));
   else
     CallTransferShadows.push_back(std::move(record));
 }
@@ -659,7 +732,8 @@ void SemanticEvidence::recordExplicitCedeStage0Transaction(
   record.Location = resolveLocation(location);
   if (GenericBodyCallQualificationEnabled &&
       !record.SpecializationIdentity.empty())
-    GenericBodyExplicitCedeStage0Transactions.push_back(std::move(record));
+    PendingGenericBodyExplicitCedeStage0Transactions.push_back(
+        std::move(record));
   else
     ExplicitCedeStage0Transactions.push_back(std::move(record));
 }

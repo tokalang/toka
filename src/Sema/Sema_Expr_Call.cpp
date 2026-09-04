@@ -5996,11 +5996,40 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
       if (!entry ||
           validation == GenericSpecializationValidationState::Unchecked) {
-        if (entry)
+        if (entry) {
           entry->Validation = GenericSpecializationValidationState::Invalid;
+          entry->BodyQualification = GenericBodyQualificationState::Invalid;
+          SemanticEvidence::rollbackGenericBodyCallQualification(
+              entry->SpecializationIdentity);
+        }
         error(Call, DiagID::ERR_GENERIC_SEMA,
               "recursive generic specialization is not supported: " + CallName);
         return toka::Type::fromString("unknown");
+      }
+      if (validation == GenericSpecializationValidationState::Valid &&
+          SemanticEvidence::isGenericBodyCallQualificationEnabled()) {
+        std::string parentIdentity;
+        if (CurrentFunction &&
+            !m_Stage0GenericBodyQualificationPromotionScopes.empty()) {
+          auto parent = InstantiationSemanticKeys.find(CurrentFunction);
+          if (parent != InstantiationSemanticKeys.end())
+            parentIdentity = parent->second;
+        }
+        SemanticEvidence::recordGenericBodyCallQualificationDependency(
+            parentIdentity, entry->SpecializationIdentity);
+        const bool promoteQualification =
+            stage0CallEntrySnapshot.has_value() &&
+            (m_Stage0GenericBodyQualificationPromotionScopes.empty() ||
+             m_Stage0GenericBodyQualificationPromotionScopes.back());
+        if (promoteQualification &&
+            entry->BodyQualification == GenericBodyQualificationState::Prepared)
+          promoteStage0GenericBodyQualification(entry);
+        if (promoteQualification &&
+            entry->BodyQualification !=
+                GenericBodyQualificationState::Complete) {
+          m_Stage0InvalidGenericSpecializationCalls.insert(Call);
+          rollbackInvalidSpecializationDescendants = true;
+        }
       }
       Fn = entry->Instance;
     }
@@ -6266,6 +6295,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     const bool publishFinalGenericArgumentTransactions =
         SemanticEvidence::isCallTransferShadowEnabled() &&
         stage0CallEntrySnapshot.has_value();
+    const bool prepareGenericBodyQualification =
+        SemanticEvidence::isGenericBodyCallQualificationEnabled();
+    const bool promoteGenericBodyQualification =
+        prepareGenericBodyQualification &&
+        publishFinalGenericArgumentTransactions &&
+        (m_Stage0GenericBodyQualificationPromotionScopes.empty() ||
+         m_Stage0GenericBodyQualificationPromotionScopes.back());
     const bool journalSelectedGenericEvidence =
         publishFinalGenericArgumentTransactions ||
         (SemanticEvidence::isNonCallTransferShadowEnabled() &&
@@ -6523,9 +6559,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       const size_t instantiationDiagnosticStart =
           DiagnosticEngine::records().size();
       const auto instantiation = instantiateGenericFunction(
-          Fn, TypeArgs, Call,
-          publishFinalGenericArgumentTransactions &&
-              SemanticEvidence::isGenericBodyCallQualificationEnabled());
+          Fn, TypeArgs, Call, prepareGenericBodyQualification,
+          promoteGenericBodyQualification);
       Fn = instantiation.Instance;
       if (!Fn) {
         genericArgumentJournal.rollback();
@@ -6549,7 +6584,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       const bool specializationValidated =
           instantiation.Validation ==
           GenericSpecializationValidationState::Valid;
-      if (!specializationValidated || instantiationReportedError) {
+      const bool bodyQualificationComplete =
+          !promoteGenericBodyQualification ||
+          instantiation.BodyQualification ==
+              GenericBodyQualificationState::Complete;
+      if (!specializationValidated || instantiationReportedError ||
+          !bodyQualificationComplete) {
         genericArgumentJournal.rollback();
         if (SemanticEvidence::isCallTransferShadowEnabled() &&
             stage0CallEntrySnapshot)

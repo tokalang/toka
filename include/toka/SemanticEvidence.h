@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iosfwd>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -450,8 +451,10 @@ public:
   static bool isGenericBodyCallQualificationEnabled();
   static void rollbackGenericBodyCallQualification(
       const std::string &specializationIdentity);
-  static void
-  recordGenericBodyCallQualification(const std::string &specializationIdentity);
+  static void recordGenericBodyCallQualificationDependency(
+      const std::string &parentIdentity, const std::string &childIdentity);
+  static std::vector<std::string> promoteGenericBodyCallQualification(
+      const std::string &specializationIdentity);
   static void enableNonCallTransferShadow(bool value);
   static bool isNonCallTransferShadowEnabled();
   static CallTransferJournalCheckpoint checkpointCallTransferJournal();
@@ -532,11 +535,17 @@ private:
   static std::vector<CedeObligationRecord> CedeObligations;
   static std::vector<CallTransferShadowRecord> CallTransferShadows;
   static std::vector<CallTransferShadowRecord> GenericBodyCallTransferShadows;
+  static std::vector<CallTransferShadowRecord>
+      PendingGenericBodyCallTransferShadows;
   static std::vector<ExplicitCedeStage0TransactionRecord>
       ExplicitCedeStage0Transactions;
   static std::vector<ExplicitCedeStage0TransactionRecord>
       GenericBodyExplicitCedeStage0Transactions;
+  static std::vector<ExplicitCedeStage0TransactionRecord>
+      PendingGenericBodyExplicitCedeStage0Transactions;
   static std::set<std::string> GenericBodyQualifiedSpecializations;
+  static std::map<std::string, std::set<std::string>>
+      GenericBodyQualificationDependencies;
   static std::vector<ExplicitCedeStage0NonCallRecord>
       ExplicitCedeStage0NonCalls;
   static std::vector<CapabilityCallRecord> CapabilityCalls;

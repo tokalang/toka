@@ -442,15 +442,26 @@ private:
     Valid,
     Invalid,
   };
+  enum class GenericBodyQualificationState {
+    Unseen,
+    Prepared,
+    Complete,
+    Invalid,
+  };
   struct GenericSpecializationCacheEntry {
     FunctionDecl *Instance = nullptr;
     GenericSpecializationValidationState Validation =
         GenericSpecializationValidationState::Unchecked;
+    GenericBodyQualificationState BodyQualification =
+        GenericBodyQualificationState::Unseen;
+    std::string SpecializationIdentity;
   };
   struct GenericFunctionInstantiationResult {
     FunctionDecl *Instance = nullptr;
     GenericSpecializationValidationState Validation =
         GenericSpecializationValidationState::Unchecked;
+    GenericBodyQualificationState BodyQualification =
+        GenericBodyQualificationState::Unseen;
   };
   struct GenericValidationFrame {
     bool HasInvalidDependency = false;
@@ -698,6 +709,7 @@ private:
   unsigned m_D3SpeculativeCallDepth = 0;
   std::vector<unsigned> m_Stage0FinalGenericArgumentPermitDepths;
   std::vector<unsigned> m_Stage0GenericBodyQualificationPermitDepths;
+  std::vector<bool> m_Stage0GenericBodyQualificationPromotionScopes;
   uint64_t m_Stage0CallSnapshotRevision = 0;
 
   struct AuthorityFullExpressionContext {
@@ -1156,7 +1168,9 @@ private:
   GenericFunctionInstantiationResult instantiateGenericFunction(
       FunctionDecl *Template,
       const std::vector<std::shared_ptr<toka::Type>> &Args, CallExpr *CallSite,
-      bool QualifyStage0BodyCalls = false);
+      bool PrepareStage0BodyCalls = false, bool PromoteStage0BodyCalls = false);
+  void promoteStage0GenericBodyQualification(
+      const std::shared_ptr<GenericSpecializationCacheEntry> &Entry);
 
   // [NEW] Helper to substitute GenericConst variables with NumberExpr
   std::unique_ptr<Expr> foldGenericConstant(std::unique_ptr<Expr> E);
