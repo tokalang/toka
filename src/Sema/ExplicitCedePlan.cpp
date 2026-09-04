@@ -160,6 +160,15 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
         facts.DestinationReachability == TransferReachability::None)
       return false;
   }
+  const bool hasTypedNonCallDestination =
+      !isCallBoundary(facts.Destination) && !facts.FormalTypeKey.empty();
+  if (hasTypedNonCallDestination &&
+      (!facts.DestinationFactsComplete ||
+       facts.DestinationMorphology == TransferFormalMorphology::Indeterminate ||
+       !facts.DestinationCapabilities.Complete ||
+       !facts.DestinationFlowCeiling.Complete ||
+       !facts.SourceFlowCeiling.Complete))
+    return false;
   if (isCallBoundary(facts.Destination)) {
     bool formalTupleValid = false;
     if (facts.FormalContractOrigin ==
@@ -467,6 +476,18 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
         facts.FormalContract == TransferFormalContract::Cede)
       return reject(TransferPlanRejection::MissingCedeForNamedSource, facts);
   }
+  if (!callBoundary && !facts.FormalTypeKey.empty() &&
+      facts.DestinationCapabilities.Complete &&
+      facts.DestinationFlowCeiling.Complete &&
+      facts.SourceFlowCeiling.Complete &&
+      facts.DestinationMorphology != TransferFormalMorphology::DirectValue &&
+      ((facts.DestinationCapabilities.HandleRebindable &&
+        (!facts.DestinationFlowCeiling.HandleRebindable ||
+         !facts.SourceFlowCeiling.HandleRebindable)) ||
+       (facts.DestinationCapabilities.PayloadWritable &&
+        (!facts.DestinationFlowCeiling.PayloadWritable ||
+         !facts.SourceFlowCeiling.PayloadWritable))))
+    return reject(TransferPlanRejection::AccessCapabilityMismatch, facts);
   if (facts.ActualTypeKey.empty() ||
       facts.Destination == TransferDestination::Indeterminate ||
       facts.SourceCategory == TransferSourceCategory::Indeterminate ||
@@ -492,6 +513,18 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
   if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
       facts.SourceLiveness != TransferSourceLiveness::Live)
     return reject(TransferPlanRejection::SourceNotLive, facts);
+  if (facts.Destination == TransferDestination::Assignment &&
+      facts.DestinationPlace && facts.SourcePlace &&
+      (facts.SurfaceSpelling == TransferSurfaceSpelling::ExplicitCede ||
+       facts.SurfaceSpelling == TransferSurfaceSpelling::IntrinsicUniqueMove)) {
+    ExplicitCedePlan sourceRegion;
+    sourceRegion.TransferOrigin = facts.SourcePlace;
+    sourceRegion.Source = invalidationFor(facts.Reachability);
+    if (sourceRegion.Source != TransferSourceDisposition::NoStateChange &&
+        invalidationRegionConflictsWithPlace(sourceRegion,
+                                             *facts.DestinationPlace))
+      return reject(TransferPlanRejection::DestinationOverlap, facts);
+  }
   if (callBoundary &&
       (facts.FormalTypeKey.empty() ||
        facts.FormalContract == TransferFormalContract::None ||
@@ -774,6 +807,15 @@ prepareExplicitCedeWholeCallPlan(const ExplicitCedeWholeCallFacts &facts) {
 ExplicitCedeNonCallGroupPlan prepareExplicitCedeNonCallGroupPlan(
     const ExplicitCedeNonCallGroupFacts &facts) {
   ExplicitCedeNonCallGroupPlan result;
+  if (facts.ExpectedSnapshotRevision == 0 ||
+      std::any_of(facts.Items.begin(), facts.Items.end(),
+                  [&](const ExplicitCedePreparedFacts &item) {
+                    return item.SnapshotRevision !=
+                           facts.ExpectedSnapshotRevision;
+                  })) {
+    result.Rejection = TransferPlanRejection::NonCallGroupSnapshotMismatch;
+    return result;
+  }
   result.Items.reserve(facts.Items.size());
   for (const auto &item : facts.Items) {
     if (item.Destination != facts.Destination) {
@@ -876,6 +918,8 @@ const char *toString(TransferPlanRejection value) {
     return "NonCallGroupAliasConflict";
   case TransferPlanRejection::NonCallGroupDestinationMismatch:
     return "NonCallGroupDestinationMismatch";
+  case TransferPlanRejection::NonCallGroupSnapshotMismatch:
+    return "NonCallGroupSnapshotMismatch";
   case TransferPlanRejection::MissingPreMutationTransaction:
     return "MissingPreMutationTransaction";
   case TransferPlanRejection::OwnershipContractMismatch:

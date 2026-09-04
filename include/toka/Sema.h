@@ -659,6 +659,7 @@ private:
   std::map<const FunctionDecl *, ModuleScope *> InstantiationLexicalScopes;
   std::map<const FunctionDecl *, std::set<std::string>>
       InstantiationTypeNames;
+  std::map<const FunctionDecl *, std::string> InstantiationSemanticKeys;
 
   ModuleScope *getModule(const std::string &Path);
   std::string getModuleName(Module *M);
@@ -832,6 +833,11 @@ private:
       Expr *Argument, const std::shared_ptr<Type> &DestinationType);
   std::shared_ptr<Type> queryExplicitCedeStage0NonCallType(
       Expr *Value, const std::shared_ptr<Type> &DestinationType);
+  std::shared_ptr<Type>
+  resolveExplicitCedeStage0TypeReadOnly(const std::shared_ptr<Type> &Type);
+  AccessCapability queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *Value);
+  std::optional<ValueOwnership>
+  queryExplicitCedeStage0OwnershipReadOnly(const std::shared_ptr<Type> &Type);
   CallExecutionBoundary
   classifyShadowExecutionBoundary(FunctionDecl *Function) const;
   CallTransferPlan buildShadowCallTransferPlan(
@@ -841,12 +847,12 @@ private:
       bool FormalIsInit, bool ActualIsInit, bool LegacyCallerRuleApplied,
       bool LegacyCedeExempt, CallTransferRoute Route, bool IsAsync,
       CallExecutionBoundary ExecutionBoundary, unsigned ArgumentIndex,
-      unsigned FormalIndex);
+      unsigned FormalIndex, bool ReadOnlyTypes = false);
   ExplicitCedePreparedFacts buildExplicitCedeStage0ActualFacts(
       Expr *Argument, const std::shared_ptr<Type> &ArgumentType,
       const CallTransferPlan &LegacyShadowPlan,
       const AnalysisState *SnapshotState = nullptr,
-      uint64_t SnapshotRevision = 0);
+      uint64_t SnapshotRevision = 0, bool ReadOnlyTypes = false);
   TransferCopyProof queryExplicitCedeStage0CopyProof(
       const std::shared_ptr<Type> &Type);
   struct Stage0CallSnapshot;
@@ -855,7 +861,8 @@ private:
       const std::shared_ptr<Type> &ArgumentType,
       const std::shared_ptr<Type> &DestinationType, bool FormalIsCeded,
       bool FormalIsInit, TransferFormalDeclarationFacts FormalDeclaration,
-      TransferDestination Destination, TransferEligibilityContext Context);
+      TransferDestination Destination, TransferEligibilityContext Context,
+      bool ReadOnlyTypes = false);
   ExplicitCedePlan recordExplicitCedeStage0NonCallPlan(
       ASTNode *Site, Expr *Value, const std::shared_ptr<Type> &DestinationType,
       TransferDestination Destination, TransferEligibilityContext Context,

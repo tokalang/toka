@@ -49,6 +49,12 @@ reachability region from the same snapshot. An invalidating source is compared
 with that destination before admission; self, ancestor, and descendant overlap
 rejects as `DestinationOverlap + NoStateChange`.
 
+Typed destinations also carry morphology, H/P requirements, destination flow
+ceiling, and source flow ceiling independently of `FormalContract`. Matching
+soul/kind is only type compatibility; it cannot authorize permission
+amplification. A readonly shared source flowing to a payload-writable shared
+destination therefore rejects before legacy `E04573` without changing state.
+
 `^owner` is classified as `IntrinsicUniqueMove` only for return, assignment,
 and initialization. User-written `cede` remains source invalidation.
 `NoSourcePlace` flows remain compiler-synthetic. A drop-bearing temporary uses
@@ -63,18 +69,34 @@ checks pairwise source/referent/dependency overlap. A duplicate source leaves
 both local items `Live` while the group rejects atomically with
 `NonCallGroupAliasConflict`; sequential legacy mutation is never treated as a
 planner fact.
+The pure API also requires a nonzero expected snapshot revision and rejects any
+mixed-revision item set. Group finalization uses a record-range token captured
+for that exact preparation; it never scans or rewrites historical records by a
+shared string key.
 
 The non-call-only preflight elaborator resolves literals, variables with
-hat-off payload access, calls, methods, constructors, `new`, common binary
-expressions, and transparent cede/unsafe/postfix/ascription wrappers without
-running `checkExpr`. Exact source identity is computed after transparent
-wrappers are removed, while an ascription still supplies the produced type.
-This keeps `cede payload` distinct from `cede ^owner` and keeps
-`return ^owner:^T` an intrinsic unique move.
+hat-off payload access, unambiguous non-generic direct calls, constructors,
+`new`, common binary expressions, and transparent
+cede/unsafe/postfix/ascription wrappers without running `checkExpr`. Exact
+source identity is computed after transparent wrappers are removed, while an
+ascription still supplies the produced type. This keeps `cede payload`
+distinct from `cede ^owner` and keeps `return ^owner:^T` an intrinsic unique
+move. Rejected for-alias captures retain a stable alias identity and never
+receive transfer authority.
 
 The generic candidate journal includes non-call records. A failed or cached
 invalid specialization rolls its body records back with its other prepared
 evidence; lack of a repeated diagnostic cannot publish a stale non-call plan.
+Group and liability identities include a logical lexical-owner/specialization
+key. Canonical type identities distinguish monomorphizations without embedding
+physical paths. Plain external source receives a deterministic nonempty
+external-source owner; an empty identity is never finalizable as admitted.
+
+Preflight type resolution uses read-only AST, symbol, declaration, and type
+objects. It does not invoke the mutating general `resolveType()` path. Generic
+or overloaded calls, indirect/function-value calls, array literals, and other
+unproved composite expressions remain explicit `IncompleteFacts +
+NoStateChange` cases for this freeze rather than receiving guessed authority.
 
 ## Qualification boundary
 
@@ -88,7 +110,10 @@ The dynamic gate additionally covers assignment self-overlap, unique
 handle/payload view separation, two drop-bearing aggregate temporaries with
 distinct cleanup identities, aggregate/capture duplicate-source group
 rejection, common read-only preflight expressions and wrappers, moved sources,
-and invalid generic-body journal rollback.
+invalid generic-body journal rollback, shared-permission amplification across
+assignment/init/aggregate/return/capture, cross-monomorphization identity, and
+plain external-source identity. It also checks that a rejected for-alias
+capture has a nonempty exact path while preserving normal/shadow diagnostics.
 
 The command records plans only. It does not commit source invalidation or
 liability transitions and is not a destination-matching CodeGen plan. Missing

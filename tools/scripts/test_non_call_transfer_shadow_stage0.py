@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,6 +24,11 @@ PREFLIGHT = "tests/semantics/non_call_transfer_shadow/stage0_preflight.tk"
 INVALID_GENERIC = (
     "tests/semantics/call_transfer_shadow_m1/"
     "generic_body_semantic_failure.tk")
+PERMISSION_ROOT = "tests/semantics/tki_replay/cases/permission_002_shared_flow/"
+GENERIC_GROUP = (
+    "tests/semantics/non_call_transfer_shadow/stage0_generic_group_identity.tk")
+FOR_ALIAS_CAPTURE = (
+    "tests/semantics/non_call_transfer_shadow/stage0_for_alias_capture.tk")
 
 if not os.environ.get("TOKA_LIB"):
     os.environ["TOKA_LIB"] = str(ROOT / "lib")
@@ -86,7 +92,9 @@ def main():
         "plan_origin", "syntax_purpose", "source_category",
         "dependency", "type_compatibility", "eligibility_context",
         "destination_exact_path", "destination_view",
-        "destination_reachability",
+        "destination_reachability", "destination_morphology",
+        "destination_capabilities", "destination_flow_ceiling",
+        "source_flow_ceiling",
         "prepared_before_legacy_mutation", "snapshot_revision", "plan",
         "location",
     }
@@ -107,6 +115,13 @@ def main():
         require(record["prepared_before_legacy_mutation"] and
                 record["snapshot_revision"] > 0,
                 "non-call record was not prepared from an entry snapshot")
+        capability_fields = {"complete", "handle_rebind", "payload_write"}
+        require(set(record["destination_capabilities"]) ==
+                capability_fields and
+                set(record["destination_flow_ceiling"]) ==
+                capability_fields and
+                set(record["source_flow_ceiling"]) == capability_fields,
+                "non-call capability tuple changed")
         if record["plan"]["outcome"] == "Rejected":
             require(record["plan"]["source"] == "NoStateChange",
                     "rejected non-call plan can change source state")
@@ -376,6 +391,104 @@ def main():
                     record["location"]["line"] == 6
                     for record in invalid_payload["records"]),
             "invalid generic specialization leaked a non-call body record")
+
+    permission_cases = (
+        ("fail_cede_shared_existing_lhs_payload_write.tk", "assignment", 7,
+         "AccessCapabilityMismatch"),
+        ("fail_readonly_field_fresh_binding.tk", "initialization", 7,
+         "AccessCapabilityMismatch"),
+        ("fail_readonly_field_payload_return.tk", "return", 5,
+         "AccessCapabilityMismatch"),
+        ("fail_shared_field_from_readonly.tk", "aggregate", 6,
+         "AccessCapabilityMismatch"),
+        ("fail_closure_capture_readonly_field.tk", "closure_capture", 8,
+         None),
+    )
+    for name, boundary, line, expected_rejection in permission_cases:
+        source = PERMISSION_ROOT + name
+        normal = invoke(tokac, False, source)
+        shadow = invoke(tokac, True, source)
+        require(normal.returncode == shadow.returncode and
+                normal.stderr == shadow.stderr and normal.returncode != 0 and
+                "E04573" in normal.stderr,
+                source + " permission shadow changed normal diagnostics")
+        permission_payload = json.loads(shadow.stdout)
+        matches = [
+            record for record in permission_payload["records"]
+            if record["location"]["file"].endswith(name) and
+            record["boundary"] == boundary and
+            record["location"]["line"] == line]
+        require(len(matches) == 1 and
+                matches[0]["plan"]["outcome"] == "Rejected" and
+                matches[0]["plan"]["source"] == "NoStateChange" and
+                not matches[0]["group_plan_admitted"] and
+                matches[0]["destination_capabilities"]["complete"] and
+                matches[0]["source_flow_ceiling"]["complete"] and
+                (expected_rejection is None or
+                 matches[0]["plan"]["rejection"] == expected_rejection),
+                source + " received permission-amplifying authority")
+
+    generic_normal = invoke(tokac, False, GENERIC_GROUP)
+    generic_shadow = invoke(tokac, True, GENERIC_GROUP)
+    require(generic_normal.returncode == generic_shadow.returncode and
+            generic_normal.stderr == generic_shadow.stderr and
+            generic_normal.returncode == 0,
+            "generic group identity shadow changed normal behavior")
+    generic_payload = json.loads(generic_shadow.stdout)
+    generic_records = [
+        record for record in generic_payload["records"]
+        if record["location"]["file"].endswith(GENERIC_GROUP) and
+        record["boundary"] == "aggregate" and
+        record["edge"] in ("left", "right")]
+    require(len(generic_records) == 4 and
+            len({record["group_identity"]
+                 for record in generic_records}) == 2 and
+            len({record["plan"]["liability_identity"]
+                 for record in generic_records}) == 4 and
+            all(record["group_identity"] and
+                "/private/tmp/" not in record["group_identity"] and
+                record["group_plan_admitted"]
+                for record in generic_records),
+            "generic monomorphizations reused group/liability identity")
+
+    with tempfile.TemporaryDirectory(
+            prefix="toka-non-call-external-source-") as temp:
+        external_source = Path(temp) / "plain.tk"
+        external_source.write_text(
+            "fn main() -> i32 {\n"
+            "    auto value = 1:i32\n"
+            "    cede value\n"
+            "    return 0\n"
+            "}\n")
+        external = invoke(tokac, True, str(external_source))
+        require(external.returncode == 0, external.stderr)
+        external_payload = json.loads(external.stdout)
+        standalone = [record for record in external_payload["records"]
+                      if record["boundary"] == "standalone" and
+                      record["location"]["file"].endswith("plain.tk")]
+        require(len(standalone) == 1 and standalone[0]["group_identity"] and
+                "/private/" not in standalone[0]["group_identity"] and
+                standalone[0]["group_plan_admitted"],
+                "plain external source produced an empty/physical group id: " +
+                repr(standalone))
+
+    alias_normal = invoke(tokac, False, FOR_ALIAS_CAPTURE)
+    alias_shadow = invoke(tokac, True, FOR_ALIAS_CAPTURE)
+    require(alias_normal.returncode == alias_shadow.returncode and
+            alias_normal.stderr == alias_shadow.stderr and
+            alias_normal.returncode != 0 and "E04647" in alias_normal.stderr,
+            "for-alias capture shadow changed normal diagnostics")
+    alias_payload = json.loads(alias_shadow.stdout)
+    alias_records = [
+        record for record in alias_payload["records"]
+        if record["location"]["file"].endswith(FOR_ALIAS_CAPTURE) and
+        record["boundary"] == "closure_capture" and record["edge"] == "^x"]
+    require(len(alias_records) == 1 and
+            alias_records[0]["plan"]["exact_path"] and
+            alias_records[0]["plan"]["outcome"] == "Rejected" and
+            alias_records[0]["plan"]["source"] == "NoStateChange" and
+            not alias_records[0]["group_plan_admitted"],
+            "for-alias capture lacks a stable fail-closed source identity")
 
     mixed = subprocess.run(
         [str(tokac), "--non-call-transfer-shadow=json",

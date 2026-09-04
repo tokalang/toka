@@ -41,6 +41,7 @@ enum class TransferPlanRejection : uint8_t {
   NonCallGroupItemRejected,
   NonCallGroupAliasConflict,
   NonCallGroupDestinationMismatch,
+  NonCallGroupSnapshotMismatch,
   MissingPreMutationTransaction,
   OwnershipContractMismatch,
   ProjectedHandleRequiresSubroot,
@@ -256,6 +257,8 @@ struct ExplicitCedePreparedFacts {
   TransferSourceCategory SourceCategory = TransferSourceCategory::Indeterminate;
   TransferSourceView SourceView = TransferSourceView::Indeterminate;
   TransferSourceView DestinationView = TransferSourceView::Indeterminate;
+  TransferFormalMorphology DestinationMorphology =
+      TransferFormalMorphology::None;
   TransferOwnershipKind Ownership = TransferOwnershipKind::Indeterminate;
   TransferCopyProof CopyProof = TransferCopyProof::Indeterminate;
   TransferFormalContract FormalContract = TransferFormalContract::None;
@@ -271,6 +274,9 @@ struct ExplicitCedePreparedFacts {
   bool FormalDeclarationFactsComplete = false;
   TransferAccessCapabilities FormalCapabilities;
   TransferAccessCapabilities ActualCapabilities;
+  TransferAccessCapabilities DestinationCapabilities;
+  TransferAccessCapabilities DestinationFlowCeiling;
+  TransferAccessCapabilities SourceFlowCeiling;
   TransferDestination Destination = TransferDestination::Indeterminate;
   TransferEligibility Eligibility = TransferEligibility::Indeterminate;
   TransferEligibilityContext EligibilityContext =
@@ -351,6 +357,7 @@ struct ExplicitCedeWholeCallPlan {
 
 struct ExplicitCedeNonCallGroupFacts {
   TransferDestination Destination = TransferDestination::Indeterminate;
+  uint64_t ExpectedSnapshotRevision = 0;
   std::vector<ExplicitCedePreparedFacts> Items;
 };
 

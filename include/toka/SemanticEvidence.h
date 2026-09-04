@@ -301,6 +301,16 @@ struct ExplicitCedeStage0NonCallRecord {
   std::string DestinationExactPath;
   std::string DestinationView;
   std::string DestinationReachability;
+  std::string DestinationMorphology;
+  bool DestinationCapabilitiesComplete = false;
+  bool DestinationHandleRebindable = false;
+  bool DestinationPayloadWritable = false;
+  bool DestinationFlowCeilingComplete = false;
+  bool DestinationFlowHandleRebindable = false;
+  bool DestinationFlowPayloadWritable = false;
+  bool SourceFlowCeilingComplete = false;
+  bool SourceFlowHandleRebindable = false;
+  bool SourceFlowPayloadWritable = false;
   bool PreparedBeforeLegacyMutation = false;
   uint64_t SnapshotRevision = 0;
   ExplicitCedeStage0TransactionItemRecord Plan;
@@ -420,6 +430,11 @@ public:
     size_t TransactionCount = 0;
     size_t NonCallCount = 0;
   };
+  struct NonCallGroupToken {
+    size_t Begin = 0;
+    std::string Identity;
+    bool Valid = false;
+  };
 
   static void enable(bool value);
   static bool isEnabled();
@@ -469,8 +484,10 @@ public:
   static void
   recordExplicitCedeStage0NonCall(ExplicitCedeStage0NonCallRecord record,
                                   SourceLocation location);
+  static NonCallGroupToken
+  beginExplicitCedeStage0NonCallGroup(const std::string &groupIdentity);
   static void
-  finalizeExplicitCedeStage0NonCallGroup(const std::string &groupIdentity,
+  finalizeExplicitCedeStage0NonCallGroup(const NonCallGroupToken &token,
                                          std::string outcome,
                                          std::string rejection, bool admitted);
   static void dumpExplicitCedeStage0NonCallJSON(std::ostream &out);

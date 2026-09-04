@@ -7107,6 +7107,31 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     DeclarationLexicalScopes[Instance] = definition->second;
   for (const auto &arg : Args)
     recordInstantiationType(Instance, resolveType(arg));
+  std::string semanticOwner = "crate:external;module:source";
+  if (ModuleScope *module = getLexicalModule(Template->Loc);
+      module && !module->ShadowCrateId.empty() &&
+      !module->ShadowLogicalModulePath.empty())
+    semanticOwner = "crate:" + module->ShadowCrateId +
+                    ";module:" + module->ShadowLogicalModulePath;
+  auto templateLocation =
+      DiagnosticEngine::SrcMgr
+          ? DiagnosticEngine::SrcMgr->getFullSourceLoc(Template->Loc)
+          : FullSourceLoc{};
+  std::string semanticInstantiation =
+      semanticOwner + ";template:" + Template->Name;
+  if (templateLocation.isValid())
+    semanticInstantiation +=
+        ";declaration:" + std::to_string(templateLocation.Line) + ":" +
+        std::to_string(templateLocation.Column);
+  semanticInstantiation += ";arguments:";
+  for (size_t index = 0; index < Args.size(); ++index) {
+    if (index != 0)
+      semanticInstantiation += ",";
+    auto argument = resolveType(Args[index], false);
+    semanticInstantiation +=
+        argument ? argument->canonicalIdentity() : "indeterminate";
+  }
+  InstantiationSemanticKeys[Instance] = std::move(semanticInstantiation);
 
   auto cacheEntry = std::make_shared<GenericSpecializationCacheEntry>();
   cacheEntry->Instance = Instance;

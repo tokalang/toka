@@ -1484,8 +1484,31 @@ void Sema::checkStmt(Stmt *S) {
            }
         }
       }
+      auto stage0DestinationType = declTargetTy;
+      if (!stage0DestinationType && (Var->IsRawPointer || Var->IsUnique ||
+                                     Var->IsShared || Var->IsReference)) {
+        auto sourceType =
+            queryExplicitCedeStage0NonCallType(Var->Init.get(), nullptr);
+        if (sourceType && !sourceType->isUnknown()) {
+          std::string spelling;
+          if (Var->IsRawPointer)
+            spelling = "*";
+          else if (Var->IsUnique)
+            spelling = "^";
+          else if (Var->IsShared)
+            spelling = "~";
+          else
+            spelling = "&";
+          if (Var->IsRebindable)
+            spelling += "#";
+          spelling += Type::stripMorphology(sourceType->toString());
+          if (Var->IsValueMutable)
+            spelling += "#";
+          stage0DestinationType = Type::fromString(spelling);
+        }
+      }
       recordExplicitCedeStage0NonCallPlan(
-          Var, Var->Init.get(), declTargetTy,
+          Var, Var->Init.get(), stage0DestinationType,
           TransferDestination::Initialization,
           TransferEligibilityContext::Initialization, "initialization");
 

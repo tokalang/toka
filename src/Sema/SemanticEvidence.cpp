@@ -251,19 +251,32 @@ bool ExplicitCedeStage0TransactionRecord::operator==(
 
 bool ExplicitCedeStage0NonCallRecord::operator<(
     const ExplicitCedeStage0NonCallRecord &rhs) const {
-  return std::tie(Boundary, GroupIdentity, Edge, EdgeIndex, GroupOutcome,
-                  GroupRejection, GroupPlanAdmitted, PlanOrigin, SyntaxPurpose,
-                  SourceCategory, Dependency, TypeCompatibility,
-                  EligibilityContext, DestinationExactPath, DestinationView,
-                  DestinationReachability, PreparedBeforeLegacyMutation,
-                  SnapshotRevision, Plan, Location) <
-         std::tie(rhs.Boundary, rhs.GroupIdentity, rhs.Edge, rhs.EdgeIndex,
-                  rhs.GroupOutcome, rhs.GroupRejection, rhs.GroupPlanAdmitted,
-                  rhs.PlanOrigin, rhs.SyntaxPurpose, rhs.SourceCategory,
-                  rhs.Dependency, rhs.TypeCompatibility, rhs.EligibilityContext,
-                  rhs.DestinationExactPath, rhs.DestinationView,
-                  rhs.DestinationReachability, rhs.PreparedBeforeLegacyMutation,
-                  rhs.SnapshotRevision, rhs.Plan, rhs.Location);
+  return std::tie(
+             Boundary, GroupIdentity, Edge, EdgeIndex, GroupOutcome,
+             GroupRejection, GroupPlanAdmitted, PlanOrigin, SyntaxPurpose,
+             SourceCategory, Dependency, TypeCompatibility, EligibilityContext,
+             DestinationExactPath, DestinationView, DestinationReachability,
+             DestinationMorphology, DestinationCapabilitiesComplete,
+             DestinationHandleRebindable, DestinationPayloadWritable,
+             DestinationFlowCeilingComplete, DestinationFlowHandleRebindable,
+             DestinationFlowPayloadWritable, SourceFlowCeilingComplete,
+             SourceFlowHandleRebindable, SourceFlowPayloadWritable,
+             PreparedBeforeLegacyMutation, SnapshotRevision, Plan, Location) <
+         std::tie(
+             rhs.Boundary, rhs.GroupIdentity, rhs.Edge, rhs.EdgeIndex,
+             rhs.GroupOutcome, rhs.GroupRejection, rhs.GroupPlanAdmitted,
+             rhs.PlanOrigin, rhs.SyntaxPurpose, rhs.SourceCategory,
+             rhs.Dependency, rhs.TypeCompatibility, rhs.EligibilityContext,
+             rhs.DestinationExactPath, rhs.DestinationView,
+             rhs.DestinationReachability, rhs.DestinationMorphology,
+             rhs.DestinationCapabilitiesComplete,
+             rhs.DestinationHandleRebindable, rhs.DestinationPayloadWritable,
+             rhs.DestinationFlowCeilingComplete,
+             rhs.DestinationFlowHandleRebindable,
+             rhs.DestinationFlowPayloadWritable, rhs.SourceFlowCeilingComplete,
+             rhs.SourceFlowHandleRebindable, rhs.SourceFlowPayloadWritable,
+             rhs.PreparedBeforeLegacyMutation, rhs.SnapshotRevision, rhs.Plan,
+             rhs.Location);
 }
 
 bool ExplicitCedeStage0NonCallRecord::operator==(
@@ -583,14 +596,28 @@ void SemanticEvidence::recordExplicitCedeStage0NonCall(
   ExplicitCedeStage0NonCalls.push_back(std::move(record));
 }
 
+SemanticEvidence::NonCallGroupToken
+SemanticEvidence::beginExplicitCedeStage0NonCallGroup(
+    const std::string &groupIdentity) {
+  return {ExplicitCedeStage0NonCalls.size(), groupIdentity,
+          !groupIdentity.empty()};
+}
+
 void SemanticEvidence::finalizeExplicitCedeStage0NonCallGroup(
-    const std::string &groupIdentity, std::string outcome,
-    std::string rejection, bool admitted) {
+    const NonCallGroupToken &token, std::string outcome, std::string rejection,
+    bool admitted) {
   if (!Enabled || !NonCallTransferShadowEnabled)
     return;
-  for (auto &record : ExplicitCedeStage0NonCalls) {
-    if (record.GroupIdentity != groupIdentity)
+  const size_t begin = std::min(token.Begin, ExplicitCedeStage0NonCalls.size());
+  for (size_t index = begin; index < ExplicitCedeStage0NonCalls.size();
+       ++index) {
+    auto &record = ExplicitCedeStage0NonCalls[index];
+    if (!token.Valid || record.GroupIdentity != token.Identity) {
+      record.GroupOutcome = "Rejected";
+      record.GroupRejection = "IncompleteFacts";
+      record.GroupPlanAdmitted = false;
       continue;
+    }
     record.GroupOutcome = outcome;
     record.GroupRejection = rejection;
     record.GroupPlanAdmitted = admitted;
@@ -877,7 +904,27 @@ void SemanticEvidence::dumpExplicitCedeStage0NonCallJSON(std::ostream &out) {
         << "\",\"destination_view\":\"" << escapeJSON(record.DestinationView)
         << "\",\"destination_reachability\":\""
         << escapeJSON(record.DestinationReachability)
-        << "\",\"prepared_before_legacy_mutation\":"
+        << "\",\"destination_morphology\":\""
+        << escapeJSON(record.DestinationMorphology)
+        << "\",\"destination_capabilities\":{\"complete\":"
+        << (record.DestinationCapabilitiesComplete ? "true" : "false")
+        << ",\"handle_rebind\":"
+        << (record.DestinationHandleRebindable ? "true" : "false")
+        << ",\"payload_write\":"
+        << (record.DestinationPayloadWritable ? "true" : "false")
+        << "},\"destination_flow_ceiling\":{\"complete\":"
+        << (record.DestinationFlowCeilingComplete ? "true" : "false")
+        << ",\"handle_rebind\":"
+        << (record.DestinationFlowHandleRebindable ? "true" : "false")
+        << ",\"payload_write\":"
+        << (record.DestinationFlowPayloadWritable ? "true" : "false")
+        << "},\"source_flow_ceiling\":{\"complete\":"
+        << (record.SourceFlowCeilingComplete ? "true" : "false")
+        << ",\"handle_rebind\":"
+        << (record.SourceFlowHandleRebindable ? "true" : "false")
+        << ",\"payload_write\":"
+        << (record.SourceFlowPayloadWritable ? "true" : "false")
+        << "},\"prepared_before_legacy_mutation\":"
         << (record.PreparedBeforeLegacyMutation ? "true" : "false")
         << ",\"snapshot_revision\":" << record.SnapshotRevision
         << ",\"plan\":{\"actual_type\":\"" << escapeJSON(plan.ActualType)

@@ -788,15 +788,13 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
   if (!source)
     return toka::Type::fromString("unknown");
   if (auto *cast = dynamic_cast<CastExpr *>(source))
-    return resolveType(cast->TargetTypeSyntax
-                           ? Type::fromSyntax(cast->TargetTypeSyntax)
-                           : Type::fromString(cast->TargetType),
-                       false);
+    return resolveExplicitCedeStage0TypeReadOnly(
+        cast->TargetTypeSyntax ? Type::fromSyntax(cast->TargetTypeSyntax)
+                               : Type::fromString(cast->TargetType));
   if (auto *allocation = dynamic_cast<NewExpr *>(source)) {
-    auto payload = resolveType(allocation->TypeSyntax
-                                   ? Type::fromSyntax(allocation->TypeSyntax)
-                                   : Type::fromString(allocation->Type),
-                               false);
+    auto payload = resolveExplicitCedeStage0TypeReadOnly(
+        allocation->TypeSyntax ? Type::fromSyntax(allocation->TypeSyntax)
+                               : Type::fromString(allocation->Type));
     if (!payload || payload->isUnknown())
       return toka::Type::fromString("unknown");
     if (allocation->ArraySize)
@@ -811,12 +809,10 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
     auto left =
         queryExplicitCedeStage0NonCallType(binary->LHS.get(), destinationType);
     auto right = queryExplicitCedeStage0NonCallType(binary->RHS.get(), left);
-    if (left && right && !left->isUnknown() && !right->isUnknown()) {
-      if (left->equals(*right) || isTypeCompatible(left, right))
-        return resolveType(left, false);
-      if (isTypeCompatible(right, left))
-        return resolveType(right, false);
-    }
+    if (left && right && !left->isUnknown() && !right->isUnknown() &&
+        (left->equals(*right) || (left->typeKind == right->typeKind &&
+                                  left->getSoulName() == right->getSoulName())))
+      return left;
     return toka::Type::fromString("unknown");
   }
   if (auto *variable = dynamic_cast<VariableExpr *>(source)) {
@@ -825,13 +821,299 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
     if (CurrentScope &&
         CurrentScope->findVariableWithDeref(variable->Name, info, actualName) &&
         info && info->TypeObj) {
-      auto type = resolveType(info->TypeObj, false);
+      auto type = resolveExplicitCedeStage0TypeReadOnly(info->TypeObj);
       if (type && (type->isUniquePtr() || type->isSharedPtr()))
-        return resolveType(type->getPointeeType(), false);
+        return resolveExplicitCedeStage0TypeReadOnly(type->getPointeeType());
       return type;
     }
   }
-  return queryShadowCallArgumentType(value, destinationType);
+  if (auto *member = dynamic_cast<MemberExpr *>(source)) {
+    auto objectType =
+        queryExplicitCedeStage0NonCallType(member->Object.get(), nullptr);
+    auto resolvedObject = resolveExplicitCedeStage0TypeReadOnly(objectType);
+    auto shape = std::dynamic_pointer_cast<ShapeType>(
+        resolvedObject ? resolvedObject->getSoulType() : nullptr);
+    ShapeDecl *declaration = shape ? shape->Decl : nullptr;
+    if (!declaration && resolvedObject) {
+      auto found = ShapeMap.find(resolvedObject->getSoulName());
+      if (found != ShapeMap.end())
+        declaration = found->second;
+    }
+    if (!declaration)
+      return toka::Type::fromString("unknown");
+    const MemberAccessIntent access = parseMemberAccess(member->Member);
+    for (const auto &field : declaration->Members) {
+      if (Type::stripMorphology(field.Name) != access.MemberName)
+        continue;
+      return resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(field));
+    }
+    return toka::Type::fromString("unknown");
+  }
+  if (auto *unary = dynamic_cast<UnaryExpr *>(source)) {
+    if (unary->Op == TokenType::Ampersand) {
+      auto referent =
+          queryExplicitCedeStage0NonCallType(unary->RHS.get(), nullptr);
+      return referent ? std::make_shared<ReferenceType>(referent)
+                      : toka::Type::fromString("unknown");
+    }
+    AccessPath path = canonicalizeAccessPath(makeAccessPath(unary->RHS.get()));
+    SymbolInfo *info = nullptr;
+    if (path.RootID != 0)
+      CurrentScope->findSymbolByID(path.RootID, info);
+    if (info && info->TypeObj)
+      return resolveExplicitCedeStage0TypeReadOnly(info->TypeObj);
+    return toka::Type::fromString("unknown");
+  }
+  if (auto *init = dynamic_cast<InitStructExpr *>(source))
+    return resolveExplicitCedeStage0TypeReadOnly(
+        Type::fromString(init->ShapeName));
+  if (auto *call = dynamic_cast<CallExpr *>(source)) {
+    if (call->ResolvedFn && call->ResolvedFn->ResolvedReturnType)
+      return resolveExplicitCedeStage0TypeReadOnly(
+          call->ResolvedFn->ResolvedReturnType);
+    if (call->ResolvedExtern)
+      return resolveExplicitCedeStage0TypeReadOnly(
+          call->ResolvedExtern->ReturnTypeSyntax
+              ? Type::fromSyntax(call->ResolvedExtern->ReturnTypeSyntax)
+              : Type::fromString(call->ResolvedExtern->ReturnType));
+    SymbolInfo *callee = nullptr;
+    std::string actualName;
+    if (CurrentScope &&
+        CurrentScope->findVariableWithDeref(call->Callee, callee, actualName) &&
+        callee && callee->ASTPtr && callee->TypeObj &&
+        callee->TypeObj->toString() == "fn") {
+      auto *function = static_cast<FunctionDecl *>(callee->ASTPtr);
+      if (function->ResolvedReturnType)
+        return resolveExplicitCedeStage0TypeReadOnly(
+            function->ResolvedReturnType);
+    }
+    FunctionDecl *selected = nullptr;
+    for (auto *candidate : GlobalFunctions) {
+      if (!candidate || candidate->Name != call->Callee ||
+          !candidate->GenericParams.empty())
+        continue;
+      if (selected)
+        return toka::Type::fromString("unknown");
+      selected = candidate;
+    }
+    if (selected && selected->ResolvedReturnType)
+      return resolveExplicitCedeStage0TypeReadOnly(
+          selected->ResolvedReturnType);
+    return toka::Type::fromString("unknown");
+  }
+  if (source->ResolvedType && !source->ResolvedType->isUnknown())
+    return resolveExplicitCedeStage0TypeReadOnly(source->ResolvedType);
+  if (auto *number = dynamic_cast<NumberExpr *>(source)) {
+    if (destinationType && destinationType->isInteger())
+      return destinationType;
+    return Type::fromString(number->Value > 2147483647 ? "i64" : "i32");
+  }
+  if (dynamic_cast<BoolExpr *>(source))
+    return Type::fromString("bool");
+  if (dynamic_cast<FloatExpr *>(source))
+    return destinationType && destinationType->isFloatingPoint()
+               ? destinationType
+               : Type::fromString("f64");
+  if (dynamic_cast<CharLiteralExpr *>(source))
+    return Type::fromString("char");
+  if (dynamic_cast<ViewStringExpr *>(source))
+    return resolveExplicitCedeStage0TypeReadOnly(Type::fromString("str"));
+  return toka::Type::fromString("unknown");
+}
+
+std::shared_ptr<Type>
+Sema::resolveExplicitCedeStage0TypeReadOnly(const std::shared_ptr<Type> &type) {
+  if (!type)
+    return nullptr;
+  if (auto pointer = std::dynamic_pointer_cast<PointerType>(type)) {
+    auto pointee =
+        resolveExplicitCedeStage0TypeReadOnly(pointer->getPointeeType());
+    if (!pointee)
+      return nullptr;
+    auto result =
+        std::dynamic_pointer_cast<PointerType>(pointer->withAttributes(
+            pointer->IsWritable, pointer->IsNullable, pointer->IsBlocked));
+    result->PointeeType = pointee;
+    return result;
+  }
+  if (auto array = std::dynamic_pointer_cast<ArrayType>(type)) {
+    auto element = resolveExplicitCedeStage0TypeReadOnly(array->ElementType);
+    if (!element)
+      return nullptr;
+    return std::make_shared<ArrayType>(element, array->Size,
+                                       array->SymbolicSize);
+  }
+  if (auto shape = std::dynamic_pointer_cast<ShapeType>(type)) {
+    if (shape->Decl)
+      return shape;
+    if (!shape->GenericArgs.empty())
+      return nullptr;
+    auto alias = TypeAliasMap.find(shape->Name);
+    if (alias != TypeAliasMap.end() && alias->second.GenericParams.empty())
+      return alias->second.TargetSyntax
+                 ? Type::fromSyntax(alias->second.TargetSyntax)
+                 : Type::fromString(alias->second.Target);
+    auto declaration = ShapeMap.find(shape->Name);
+    if (declaration == ShapeMap.end())
+      return nullptr;
+    auto result = std::make_shared<ShapeType>(shape->Name);
+    result->resolve(declaration->second);
+    return result->withAttributes(shape->IsWritable, shape->IsNullable,
+                                  shape->IsBlocked);
+  }
+  if (type->isUnknown())
+    return nullptr;
+  return type;
+}
+
+AccessCapability
+Sema::queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *value) {
+  if (!value)
+    return {};
+  auto applyFlowCeiling = [&](AccessCapability capability) {
+    const AccessPath path = canonicalizeAccessPath(makeAccessPath(value));
+    if (path && m_PayloadFlowRestrictedPaths.count(path)) {
+      capability.PayloadWritable = false;
+      capability.PayloadFlowRestricted = true;
+    }
+    return capability;
+  };
+  if (auto *cast = dynamic_cast<CastExpr *>(value))
+    return queryExplicitCedeStage0AccessCapabilityReadOnly(
+        cast->Expression.get());
+  if (auto *cede = dynamic_cast<CedeExpr *>(value))
+    return queryExplicitCedeStage0AccessCapabilityReadOnly(cede->Value.get());
+  if (auto *address = dynamic_cast<AddressOfExpr *>(value))
+    return queryExplicitCedeStage0AccessCapabilityReadOnly(
+        address->Expression.get());
+  if (auto *postfix = dynamic_cast<PostfixExpr *>(value))
+    return queryExplicitCedeStage0AccessCapabilityReadOnly(postfix->LHS.get());
+  if (auto *unary = dynamic_cast<UnaryExpr *>(value))
+    return queryExplicitCedeStage0AccessCapabilityReadOnly(unary->RHS.get());
+  if (auto *variable = dynamic_cast<VariableExpr *>(value)) {
+    SymbolInfo *info = nullptr;
+    std::string actualName = variable->Name;
+    if (CurrentScope &&
+        CurrentScope->findVariableWithDeref(variable->Name, info, actualName) &&
+        info) {
+      const bool rawPayload =
+          m_InUnsafeContext && info->TypeObj && info->TypeObj->isRawPointer();
+      return applyFlowCeiling({info->IsSoulMutable() || rawPayload,
+                               info->Permission.IdentityRebindable, false});
+    }
+    return {};
+  }
+  if (auto *member = dynamic_cast<MemberExpr *>(value)) {
+    auto base =
+        queryExplicitCedeStage0AccessCapabilityReadOnly(member->Object.get());
+    auto objectType = member->Object ? member->Object->ResolvedType : nullptr;
+    if (!objectType)
+      objectType =
+          queryExplicitCedeStage0NonCallType(member->Object.get(), nullptr);
+    auto resolvedObject = resolveExplicitCedeStage0TypeReadOnly(
+        objectType ? objectType->getSoulType() : nullptr);
+    auto shape = std::dynamic_pointer_cast<ShapeType>(resolvedObject);
+    ShapeDecl *declaration = shape ? shape->Decl : nullptr;
+    if (!declaration && resolvedObject) {
+      auto found = ShapeMap.find(resolvedObject->getSoulName());
+      if (found != ShapeMap.end())
+        declaration = found->second;
+    }
+    if (!declaration)
+      return applyFlowCeiling(
+          {base.PayloadWritable, false, base.PayloadFlowRestricted});
+    const MemberAccessIntent access = parseMemberAccess(member->Member);
+    for (const auto &field : declaration->Members) {
+      if (Type::stripMorphology(field.Name) != access.MemberName)
+        continue;
+      auto fieldType = Type::fromString(synthesizePhysicalType(field));
+      const bool insulated =
+          fieldType && (fieldType->isPointer() || fieldType->isSmartPointer() ||
+                        fieldType->isReference());
+      const bool declaredPayload =
+          field.IsValueMutable || field.Permission.SoulWritable;
+      const bool blockedPayload =
+          field.IsValueBlocked || field.Permission.SoulBlocked;
+      const bool startsRestricted = insulated && !declaredPayload;
+      return applyFlowCeiling(
+          {!base.PayloadFlowRestricted && !blockedPayload &&
+               (declaredPayload || (!insulated && base.PayloadWritable)),
+           field.IsRebindable && !field.IsRebindBlocked,
+           base.PayloadFlowRestricted || startsRestricted});
+    }
+    return applyFlowCeiling(
+        {base.PayloadWritable, false, base.PayloadFlowRestricted});
+  }
+  if (auto *index = dynamic_cast<ArrayIndexExpr *>(value)) {
+    auto base =
+        queryExplicitCedeStage0AccessCapabilityReadOnly(index->Array.get());
+    auto arrayType = index->Array ? index->Array->ResolvedType : nullptr;
+    auto storage = resolveExplicitCedeStage0TypeReadOnly(arrayType);
+    if (storage && storage->isRawPointer())
+      storage = storage->getPointeeType();
+    auto element = storage && storage->isArray()
+                       ? storage->getArrayElementType()
+                       : nullptr;
+    const bool indirect =
+        element && (element->isPointer() || element->isSmartPointer() ||
+                    element->isReference());
+    if (indirect) {
+      auto soul = element->getPointeeType();
+      return applyFlowCeiling(
+          {base.PayloadWritable && soul && soul->IsWritable,
+           m_InUnsafeContext && arrayType && arrayType->isRawPointer(),
+           base.PayloadFlowRestricted});
+    }
+    return applyFlowCeiling(
+        {base.PayloadWritable, false, base.PayloadFlowRestricted});
+  }
+  auto type = resolveExplicitCedeStage0TypeReadOnly(value->ResolvedType);
+  if (type &&
+      (type->isPointer() || type->isSmartPointer() || type->isReference())) {
+    auto pointee = type->getPointeeType();
+    return applyFlowCeiling({pointee && pointee->IsWritable, false, false});
+  }
+  return applyFlowCeiling({true, false, false});
+}
+
+std::optional<ValueOwnership> Sema::queryExplicitCedeStage0OwnershipReadOnly(
+    const std::shared_ptr<Type> &type) {
+  auto resolved = resolveExplicitCedeStage0TypeReadOnly(type);
+  if (!resolved || resolved->isUnknown())
+    return std::nullopt;
+  if (resolved->isRawPointer() || resolved->isReference() ||
+      resolved->isSlice())
+    return ValueOwnership::BorrowedView;
+  if (resolved->isSharedPtr())
+    return ValueOwnership::SharedHandle;
+  if (resolved->isUniquePtr())
+    return ValueOwnership::Owned;
+  if (resolved->isArray()) {
+    auto element = queryExplicitCedeStage0OwnershipReadOnly(
+        resolved->getArrayElementType());
+    if (!element)
+      return std::nullopt;
+    return *element == ValueOwnership::Owned ||
+                   *element == ValueOwnership::SharedHandle
+               ? ValueOwnership::Owned
+               : ValueOwnership::Trivial;
+  }
+  if (!resolved->isShape())
+    return ValueOwnership::Trivial;
+  const std::string soul = Type::stripMorphology(resolved->getSoulName());
+  if (soul == "str" || soul == "bytes" || soul == "cstr" ||
+      soul == "ViewStrSplitIterator" || soul == "ViewStrLinesIterator")
+    return ValueOwnership::BorrowedView;
+  if (soul == "SlabID" || soul == "TimerHeap")
+    return ValueOwnership::Trivial;
+  if (soul == "string" || soul == "Bytes")
+    return ValueOwnership::Owned;
+  auto properties = m_ShapeProps.find(soul);
+  if (properties == m_ShapeProps.end() ||
+      properties->second.Status != ShapeAnalysisStatus::Analyzed)
+    return std::nullopt;
+  return properties->second.HasDrop ? ValueOwnership::Owned
+                                    : ValueOwnership::Trivial;
 }
 
 CallExecutionBoundary
@@ -1740,7 +2022,7 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
     bool formalIsInit, bool actualIsInit, bool legacyCallerRuleApplied,
     bool legacyCedeExempt, CallTransferRoute route, bool isAsync,
     CallExecutionBoundary executionBoundary, unsigned argumentIndex,
-    unsigned formalIndex) {
+    unsigned formalIndex, bool readOnlyTypes) {
   CallTransferPlan plan;
   plan.ArgumentIndex = argumentIndex;
   plan.FormalIndex = formalIndex;
@@ -1799,9 +2081,15 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
     return plan;
   }
 
-  auto type = argumentType ? resolveType(argumentType, false) : nullptr;
+  auto type =
+      argumentType
+          ? (readOnlyTypes ? resolveExplicitCedeStage0TypeReadOnly(argumentType)
+                           : resolveType(argumentType, false))
+          : nullptr;
   if (type && type->isNullType() && destinationType)
-    type = resolveType(destinationType, false);
+    type = readOnlyTypes
+               ? resolveExplicitCedeStage0TypeReadOnly(destinationType)
+               : resolveType(destinationType, false);
   if (!type || type->isUnknown()) {
     plan.Transfer = CallTransferDisposition::Reject;
     plan.Source = CallSourceDisposition::NoStateChange;
@@ -1838,9 +2126,19 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
   else
     plan.Dependency = CallDependencyDisposition::None;
 
-  const ValueOwnership ownership = type->valueOwnership(this);
-  const bool carriesLiability = ownership == ValueOwnership::Owned ||
-                                ownership == ValueOwnership::SharedHandle;
+  const std::optional<ValueOwnership> ownership =
+      readOnlyTypes ? queryExplicitCedeStage0OwnershipReadOnly(type)
+                    : std::optional<ValueOwnership>(type->valueOwnership(this));
+  if (!ownership) {
+    plan.Transfer = CallTransferDisposition::Reject;
+    plan.Source = CallSourceDisposition::NoStateChange;
+    plan.Dependency = CallDependencyDisposition::Indeterminate;
+    plan.PlaceEligibility = CallPlaceEligibility::Reject;
+    plan.Drop = CallDropDisposition::NoStateChange;
+    return plan;
+  }
+  const bool carriesLiability = *ownership == ValueOwnership::Owned ||
+                                *ownership == ValueOwnership::SharedHandle;
 
   if (formalIsInit) {
     plan.Transfer = CallTransferDisposition::InitStorage;
@@ -1860,7 +2158,12 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
       plan.Drop = CallDropDisposition::NoStateChange;
       return plan;
     }
-    auto formal = destinationType ? resolveType(destinationType, false) : type;
+    auto formal =
+        destinationType
+            ? (readOnlyTypes
+                   ? resolveExplicitCedeStage0TypeReadOnly(destinationType)
+                   : resolveType(destinationType, false))
+            : type;
     auto formalPayload = shadowCarrierPayload(formal);
     if (carriesLiability ||
         (formalPayload &&
@@ -1901,7 +2204,9 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
                       ? CallSourceDisposition::InvalidatePlace
                       : CallSourceDisposition::KeepLive;
     plan.Drop = CallDropDisposition::NoLiability;
-  } else if (proveSlice4CopyType(carrierPayload)) {
+  } else if (readOnlyTypes ? queryExplicitCedeStage0CopyProof(carrierPayload) ==
+                                 TransferCopyProof::ProvenCopy
+                           : proveSlice4CopyType(carrierPayload)) {
     plan.Transfer = CallTransferDisposition::CopyValue;
     plan.Source = plan.ExplicitCede
                       ? CallSourceDisposition::InvalidatePlace
@@ -1928,10 +2233,15 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
 ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
     Expr *argument, const std::shared_ptr<Type> &argumentType,
     const CallTransferPlan &legacyShadowPlan,
-    const AnalysisState *snapshotState, uint64_t snapshotRevision) {
+    const AnalysisState *snapshotState, uint64_t snapshotRevision,
+    bool readOnlyTypes) {
   ExplicitCedePreparedFacts facts;
   facts.SnapshotRevision = snapshotRevision;
-  auto actual = argumentType ? resolveType(argumentType, false) : nullptr;
+  auto actual =
+      argumentType
+          ? (readOnlyTypes ? resolveExplicitCedeStage0TypeReadOnly(argumentType)
+                           : resolveType(argumentType, false))
+          : nullptr;
   auto actualPayload = shadowCarrierPayload(actual);
   facts.ActualTypeKey =
       actual && !actual->isUnknown() ? actual->toString() : std::string{};
@@ -1969,6 +2279,9 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
   AccessPath identityPath = legacyShadowPlan.SourcePlace;
   if (!identityPath.RootLoc.isValid() && sourceInfo)
     identityPath.RootLoc = sourceInfo->DeclLoc;
+  if (!identityPath.RootLoc.isValid() && readOnlyTypes && sourceInfo &&
+      sourceInfo->IsPlaceAlias && argument && argument->Loc.isValid())
+    identityPath.RootLoc = argument->Loc;
   if (!identityPath.RootLoc.isValid() && !identityPath.RootName.empty())
     identityPath.RootLoc = findPathDeclaration(identityPath.RootName);
   std::string moduleOrigin;
@@ -1981,6 +2294,8 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
     }
     if (moduleOrigin.empty())
       moduleOrigin = stage0FallbackModuleOrigin(identityPath.RootLoc);
+    if (moduleOrigin.empty() && readOnlyTypes)
+      moduleOrigin = "crate:external;module:source";
   }
   facts.SourcePlace = stage0PlaceIdentity(identityPath, moduleOrigin);
 
@@ -1999,6 +2314,8 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
       }
       if (origin.empty())
         origin = stage0FallbackModuleOrigin(path.RootLoc);
+      if (origin.empty() && readOnlyTypes)
+        origin = "crate:external;module:source";
     }
     return stage0PlaceIdentity(path, origin);
   };
@@ -2097,6 +2414,13 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
         facts.ReferentPlace && !facts.DependencyRoots.empty();
   }
 
+  const std::optional<ValueOwnership> actualOwnership =
+      actual
+          ? (readOnlyTypes
+                 ? queryExplicitCedeStage0OwnershipReadOnly(actual)
+                 : std::optional<ValueOwnership>(actual->valueOwnership(this)))
+          : std::nullopt;
+
   if (facts.SourceView == TransferSourceView::UniqueHandle)
     facts.Ownership = TransferOwnershipKind::UniqueOwner;
   else if (facts.SourceView == TransferSourceView::SharedHandle)
@@ -2109,8 +2433,8 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
     facts.Ownership = actual && actual->IsCede
                           ? TransferOwnershipKind::OwnedCallable
                           : TransferOwnershipKind::CallableIdentity;
-  else if (actual) {
-    switch (actual->valueOwnership(this)) {
+  else if (actualOwnership) {
+    switch (*actualOwnership) {
     case ValueOwnership::Trivial:
       facts.Ownership = TransferOwnershipKind::PlainValue;
       break;
@@ -2130,7 +2454,11 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
   std::set<const ShapeDecl *> dependencyProofStack;
   std::function<bool(const std::shared_ptr<Type> &)> isDependencyFree =
       [&](const std::shared_ptr<Type> &candidate) -> bool {
-    auto resolved = candidate ? resolveType(candidate, false) : nullptr;
+    auto resolved =
+        candidate
+            ? (readOnlyTypes ? resolveExplicitCedeStage0TypeReadOnly(candidate)
+                             : resolveType(candidate, false))
+            : nullptr;
     if (!resolved || resolved->isUnknown() || resolved->isRawPointer() ||
         resolved->isReference() || resolved->isFunction() ||
         resolved->isDynFn())
@@ -2217,7 +2545,9 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
             ? TransferTemporaryEligibility::Eligible
             : TransferTemporaryEligibility::Ineligible;
   }
-  const AccessCapability actualCapability = getAccessCapability(argument, true);
+  const AccessCapability actualCapability =
+      readOnlyTypes ? queryExplicitCedeStage0AccessCapabilityReadOnly(argument)
+                    : getAccessCapability(argument, true);
   facts.ActualCapabilities.Complete = argument != nullptr;
   facts.ActualCapabilities.HandleRebindable =
       actualCapability.HandleRebindable;
@@ -2366,11 +2696,11 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
     facts.ObligationFactsComplete = true;
   }
 
-  facts.DropLiabilityComplete = actual != nullptr && !actual->isUnknown();
+  facts.DropLiabilityComplete = actualOwnership.has_value();
   if (facts.DropLiabilityComplete) {
-    const auto ownership = actual->valueOwnership(this);
-    facts.CarriesDropLiability = ownership == ValueOwnership::Owned ||
-                                 ownership == ValueOwnership::SharedHandle;
+    facts.CarriesDropLiability =
+        *actualOwnership == ValueOwnership::Owned ||
+        *actualOwnership == ValueOwnership::SharedHandle;
   }
   if (!facts.CarriesDropLiability) {
     facts.LiabilityIdentityComplete = facts.DropLiabilityComplete;
@@ -2415,13 +2745,22 @@ TransferCopyProof Sema::queryExplicitCedeStage0CopyProof(
 }
 
 ExplicitCedePlan Sema::completeExplicitCedeStage0CallPlan(
-    ExplicitCedePreparedFacts facts,
-    const std::shared_ptr<Type> &argumentType,
+    ExplicitCedePreparedFacts facts, const std::shared_ptr<Type> &argumentType,
     const std::shared_ptr<Type> &destinationType, bool formalIsCeded,
     bool formalIsInit, TransferFormalDeclarationFacts formalDeclaration,
-    TransferDestination destination, TransferEligibilityContext context) {
-  auto actual = argumentType ? resolveType(argumentType, false) : nullptr;
-  auto formal = destinationType ? resolveType(destinationType, false) : nullptr;
+    TransferDestination destination, TransferEligibilityContext context,
+    bool readOnlyTypes) {
+  auto actual =
+      argumentType
+          ? (readOnlyTypes ? resolveExplicitCedeStage0TypeReadOnly(argumentType)
+                           : resolveType(argumentType, false))
+          : nullptr;
+  auto formal =
+      destinationType
+          ? (readOnlyTypes
+                 ? resolveExplicitCedeStage0TypeReadOnly(destinationType)
+                 : resolveType(destinationType, false))
+          : nullptr;
   const bool callBoundary =
       destination == TransferDestination::CalleeParameter ||
       destination == TransferDestination::Receiver;
@@ -2429,9 +2768,17 @@ ExplicitCedePlan Sema::completeExplicitCedeStage0CallPlan(
       formal && !formal->isUnknown() ? formal->toString() : std::string{};
   facts.Destination = destination;
   facts.EligibilityContext = context;
+  const bool exactReadOnlyCompatibility =
+      readOnlyTypes && actual && formal && !actual->isUnknown() &&
+      !formal->isUnknown() &&
+      (formal->equals(*actual) ||
+       (stage0Morphology(formal) == stage0Morphology(actual) &&
+        Type::stripMorphology(formal->toString()) ==
+            Type::stripMorphology(actual->toString())));
   facts.TypeCompatibility =
       actual && formal && !actual->isUnknown() && !formal->isUnknown()
-          ? (isTypeCompatible(formal, actual) ||
+          ? ((readOnlyTypes ? exactReadOnlyCompatibility
+                            : isTypeCompatible(formal, actual)) ||
                      (!callBoundary && formal->typeKind == actual->typeKind &&
                       formal->getSoulName() == actual->getSoulName())
                  ? TransferTypeCompatibility::Compatible
@@ -2536,10 +2883,29 @@ Sema::makeExplicitCedeStage0NonCallGroupIdentity(ASTNode *site,
     moduleOrigin = "crate:" + module->ShadowCrateId +
                    ";module:" + module->ShadowLogicalModulePath;
   if (moduleOrigin.empty())
-    moduleOrigin = stage0FallbackModuleOrigin(site->Loc);
+    moduleOrigin = "crate:external;module:source";
   if (!full.isValid() || moduleOrigin.empty())
     return {};
-  return "non-call-group:v1;" + moduleOrigin + ";boundary:" + boundary +
+  std::string lexicalOwner = moduleOrigin + ";owner:module";
+  if (CurrentFunction) {
+    if (auto instance = InstantiationSemanticKeys.find(CurrentFunction);
+        instance != InstantiationSemanticKeys.end()) {
+      lexicalOwner = instance->second;
+    } else {
+      FunctionDecl *sourceFunction = CurrentFunction->TemplateOrigin
+                                         ? CurrentFunction->TemplateOrigin
+                                         : CurrentFunction;
+      auto ownerLocation =
+          DiagnosticEngine::SrcMgr
+              ? DiagnosticEngine::SrcMgr->getFullSourceLoc(sourceFunction->Loc)
+              : FullSourceLoc{};
+      lexicalOwner = moduleOrigin + ";function:" + sourceFunction->Name;
+      if (ownerLocation.isValid())
+        lexicalOwner += ";declaration:" + std::to_string(ownerLocation.Line) +
+                        ":" + std::to_string(ownerLocation.Column);
+    }
+  }
+  return "non-call-group:v2;" + lexicalOwner + ";boundary:" + boundary +
          ";site:" + std::to_string(full.Line) + ":" +
          std::to_string(full.Column);
 }
@@ -2581,11 +2947,50 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   auto legacy = buildShadowCallTransferPlan(
       site, exactValue ? exactValue : value, actualType, destinationType, false,
       false, false, false, false, CallTransferRoute::Ordinary, false,
-      CallExecutionBoundary::None, 0, 0);
+      CallExecutionBoundary::None, 0, 0, true);
   legacy.ExplicitCede = explicitCede;
   auto facts = buildExplicitCedeStage0ActualFacts(
       exactValue ? exactValue : value, actualType, legacy,
-      &providedSnapshot->State, providedSnapshot->Revision);
+      &providedSnapshot->State, providedSnapshot->Revision, true);
+  facts.SourceFlowCeiling = facts.ActualCapabilities;
+  if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
+    facts.SourceFlowCeiling.Complete = true;
+    facts.SourceFlowCeiling.HandleRebindable = true;
+    facts.SourceFlowCeiling.PayloadWritable = true;
+  }
+  const auto resolvedDestination =
+      destinationType ? resolveExplicitCedeStage0TypeReadOnly(destinationType)
+                      : nullptr;
+  if (resolvedDestination && !resolvedDestination->isUnknown()) {
+    facts.DestinationMorphology = stage0Morphology(resolvedDestination);
+    facts.DestinationCapabilities.Complete = true;
+    const bool hatted = resolvedDestination->isPointer() ||
+                        resolvedDestination->isSmartPointer() ||
+                        resolvedDestination->isReference();
+    facts.DestinationCapabilities.HandleRebindable =
+        hatted && resolvedDestination->IsWritable;
+    auto payload =
+        hatted ? resolvedDestination->getPointeeType() : resolvedDestination;
+    facts.DestinationCapabilities.PayloadWritable =
+        payload && payload->IsWritable;
+    facts.DestinationFlowCeiling.Complete = true;
+    if (destinationValue) {
+      const auto capability =
+          queryExplicitCedeStage0AccessCapabilityReadOnly(destinationValue);
+      facts.DestinationFlowCeiling.HandleRebindable =
+          capability.HandleRebindable;
+      facts.DestinationFlowCeiling.PayloadWritable = capability.PayloadWritable;
+    } else {
+      facts.DestinationFlowCeiling = facts.DestinationCapabilities;
+    }
+    facts.DestinationFactsComplete =
+        facts.DestinationMorphology != TransferFormalMorphology::Indeterminate;
+  } else {
+    facts.DestinationMorphology = TransferFormalMorphology::None;
+    facts.DestinationCapabilities.Complete = true;
+    facts.DestinationFlowCeiling.Complete = true;
+    facts.DestinationFactsComplete = true;
+  }
   if (destination == TransferDestination::Assignment && destinationValue) {
     AccessPath destinationPath =
         canonicalizeAccessPath(makeAccessPath(destinationValue));
@@ -2615,8 +3020,6 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       else if (unary->Op == TokenType::Ampersand)
         facts.DestinationView = TransferSourceView::ReferenceConstruction;
     } else {
-      const auto resolvedDestination =
-          destinationType ? resolveType(destinationType, false) : nullptr;
       if (resolvedDestination && resolvedDestination->isUniquePtr())
         facts.DestinationView = TransferSourceView::DereferencedOwningPayload;
       else if (resolvedDestination && resolvedDestination->isSharedPtr())
@@ -2667,33 +3070,31 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
                    ";module:" + module->ShadowLogicalModulePath;
   if (moduleOrigin.empty())
     moduleOrigin = stage0FallbackModuleOrigin(recordLocation);
+  if (moduleOrigin.empty())
+    moduleOrigin = "crate:external;module:source";
   std::string resolvedGroupIdentity = groupIdentity;
   if (resolvedGroupIdentity.empty())
-    resolvedGroupIdentity =
-        makeExplicitCedeStage0NonCallGroupIdentity(site, boundary);
-  if (resolvedGroupIdentity.empty() && siteFull.isValid() &&
-      !moduleOrigin.empty())
-    resolvedGroupIdentity = "non-call-group:v1;" + moduleOrigin +
-                            ";boundary:" + boundary +
-                            ";site:" + std::to_string(siteFull.Line) + ":" +
-                            std::to_string(siteFull.Column);
+    resolvedGroupIdentity = makeExplicitCedeStage0NonCallGroupIdentity(
+        site->Loc.isValid() ? site : static_cast<ASTNode *>(value), boundary);
+  // An empty evidence identity cannot be finalized without conflating unrelated
+  // groups.  Keep the local item fail-closed as well as refusing a group token.
+  if (resolvedGroupIdentity.empty())
+    facts.SourceLivenessComplete = false;
   const std::string resolvedEdge = edge.empty() ? boundary : edge;
   if (facts.CarriesDropLiability &&
       facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
     if (siteFull.isValid() && valueFull.isValid() && !moduleOrigin.empty()) {
       facts.LiabilityIdentity =
-          "temporary-liability:non-call:v1;" + moduleOrigin +
-          ";boundary:" + boundary + ";site:" + std::to_string(siteFull.Line) +
-          ":" + std::to_string(siteFull.Column) + ";edge:" + resolvedEdge +
-          ";index:" + std::to_string(edgeIndex) +
+          "temporary-liability:non-call:v2;group:" + resolvedGroupIdentity +
+          ";edge:" + resolvedEdge + ";index:" + std::to_string(edgeIndex) +
           ";expr:" + std::to_string(valueFull.Line) + ":" +
           std::to_string(valueFull.Column);
       facts.LiabilityIdentityComplete = true;
     }
   }
-  auto plan = completeExplicitCedeStage0CallPlan(std::move(facts), actualType,
-                                                 destinationType, false, true,
-                                                 {}, destination, context);
+  auto plan = completeExplicitCedeStage0CallPlan(
+      std::move(facts), actualType, destinationType, false, true, {},
+      destination, context, true);
 
   ExplicitCedeStage0TransactionItemRecord item;
   item.Role = boundary;
@@ -2749,6 +3150,24 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   record.DestinationView = toString(plan.Prepared.DestinationView);
   record.DestinationReachability =
       toString(plan.Prepared.DestinationReachability);
+  record.DestinationMorphology = toString(plan.Prepared.DestinationMorphology);
+  record.DestinationCapabilitiesComplete =
+      plan.Prepared.DestinationCapabilities.Complete;
+  record.DestinationHandleRebindable =
+      plan.Prepared.DestinationCapabilities.HandleRebindable;
+  record.DestinationPayloadWritable =
+      plan.Prepared.DestinationCapabilities.PayloadWritable;
+  record.DestinationFlowCeilingComplete =
+      plan.Prepared.DestinationFlowCeiling.Complete;
+  record.DestinationFlowHandleRebindable =
+      plan.Prepared.DestinationFlowCeiling.HandleRebindable;
+  record.DestinationFlowPayloadWritable =
+      plan.Prepared.DestinationFlowCeiling.PayloadWritable;
+  record.SourceFlowCeilingComplete = plan.Prepared.SourceFlowCeiling.Complete;
+  record.SourceFlowHandleRebindable =
+      plan.Prepared.SourceFlowCeiling.HandleRebindable;
+  record.SourceFlowPayloadWritable =
+      plan.Prepared.SourceFlowCeiling.PayloadWritable;
   record.PreparedBeforeLegacyMutation = providedSnapshot->Revision != 0;
   record.SnapshotRevision = providedSnapshot->Revision;
   record.Plan = std::move(item);

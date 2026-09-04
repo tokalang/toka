@@ -215,8 +215,26 @@ int main() {
   CHECK(ordinarySelfAssignment.admitted());
   CHECK(ordinarySelfAssignment.Source == TransferSourceDisposition::KeepLive);
 
+  auto permissionAmplification = nonCall(named, TransferDestination::Return,
+                                         TransferEligibilityContext::Return);
+  permissionAmplification.SourceView = TransferSourceView::SharedHandle;
+  permissionAmplification.Ownership = TransferOwnershipKind::SharedOwner;
+  permissionAmplification.CopyProof = TransferCopyProof::ProvenNonCopy;
+  permissionAmplification.Reachability =
+      TransferReachability::BindingAndDependentViews;
+  permissionAmplification.FormalTypeKey = "~#Cell";
+  permissionAmplification.DestinationMorphology =
+      TransferFormalMorphology::SharedHandle;
+  permissionAmplification.DestinationCapabilities = {false, true, true};
+  permissionAmplification.DestinationFlowCeiling = {true, true, true};
+  permissionAmplification.SourceFlowCeiling = {true, false, true};
+  permissionAmplification.DestinationFactsComplete = true;
+  CHECK(prepareExplicitCedePlan(permissionAmplification).Rejection ==
+        TransferPlanRejection::AccessCapabilityMismatch);
+
   ExplicitCedeNonCallGroupFacts aggregateAliasGroup;
   aggregateAliasGroup.Destination = TransferDestination::AggregateMember;
+  aggregateAliasGroup.ExpectedSnapshotRevision = 1;
   aggregateAliasGroup.Items = {
       nonCall(named, TransferDestination::AggregateMember,
               TransferEligibilityContext::AggregateMember),
@@ -237,6 +255,10 @@ int main() {
   mismatchedGroup.Items[1].Destination = TransferDestination::ClosureCapture;
   CHECK(prepareExplicitCedeNonCallGroupPlan(mismatchedGroup).Rejection ==
         TransferPlanRejection::NonCallGroupDestinationMismatch);
+  auto mixedRevisionGroup = aggregateAliasGroup;
+  mixedRevisionGroup.Items[1].SnapshotRevision = 2;
+  CHECK(prepareExplicitCedeNonCallGroupPlan(mixedRevisionGroup).Rejection ==
+        TransferPlanRejection::NonCallGroupSnapshotMismatch);
 
   auto shared = named;
   shared.SourceView = TransferSourceView::SharedHandle;

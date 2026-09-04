@@ -425,8 +425,11 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
     auto snapshot = captureStage0CallSnapshot();
     const std::string groupIdentity =
         makeExplicitCedeStage0NonCallGroupIdentity(Clo, "closure_capture");
+    const auto groupToken =
+        SemanticEvidence::beginExplicitCedeStage0NonCallGroup(groupIdentity);
     ExplicitCedeNonCallGroupFacts groupFacts;
     groupFacts.Destination = TransferDestination::ClosureCapture;
+    groupFacts.ExpectedSnapshotRevision = snapshot.Revision;
     for (size_t index = 0; index < Clo->ExplicitCaptures.size(); ++index) {
       const auto &capture = Clo->ExplicitCaptures[index];
       if (capture.Mode != CaptureMode::ExplicitCede || capture.Name == "*")
@@ -472,7 +475,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
     }
     auto group = prepareExplicitCedeNonCallGroupPlan(groupFacts);
     SemanticEvidence::finalizeExplicitCedeStage0NonCallGroup(
-        groupIdentity, toString(group.Outcome), toString(group.Rejection),
+        groupToken, toString(group.Outcome), toString(group.Rejection),
         group.admitted());
   }
   for (const auto& varName : m_AccessedVariables) {

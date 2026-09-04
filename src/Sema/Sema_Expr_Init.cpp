@@ -1269,8 +1269,11 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     auto snapshot = captureStage0CallSnapshot();
     const std::string groupIdentity =
         makeExplicitCedeStage0NonCallGroupIdentity(Init, "aggregate");
+    const auto groupToken =
+        SemanticEvidence::beginExplicitCedeStage0NonCallGroup(groupIdentity);
     ExplicitCedeNonCallGroupFacts groupFacts;
     groupFacts.Destination = TransferDestination::AggregateMember;
+    groupFacts.ExpectedSnapshotRevision = snapshot.Revision;
     for (size_t index = 0; index < Init->Members.size(); ++index) {
       auto &member = Init->Members[index];
       if (member.first == "..")
@@ -1297,7 +1300,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     }
     auto group = prepareExplicitCedeNonCallGroupPlan(groupFacts);
     SemanticEvidence::finalizeExplicitCedeStage0NonCallGroup(
-        groupIdentity, toString(group.Outcome), toString(group.Rejection),
+        groupToken, toString(group.Outcome), toString(group.Rejection),
         group.admitted());
   }
   for (size_t i = 0; i < Init->Members.size(); ++i) {
