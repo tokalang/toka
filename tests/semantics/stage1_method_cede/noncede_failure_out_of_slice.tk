@@ -1,0 +1,20 @@
+shape Resource(value: i32)
+
+impl Resource {
+    fn drop(self#) {}
+
+    fn inspect(cede self, amount: i32) -> i32 {
+        auto owned = cede self
+        return owned.value + amount
+    }
+}
+
+fn read(value: Resource) -> i32 {
+    return value.value
+}
+
+fn main() -> i32 {
+    auto resource = Resource(value = 7:i32)
+    auto rejected = resource.inspect(true)
+    return read(resource) + rejected
+}

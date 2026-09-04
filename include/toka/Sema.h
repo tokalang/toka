@@ -762,10 +762,12 @@ private:
   public:
     CallArgumentRollbackGuard(Sema &owner,
                               const std::vector<std::unique_ptr<Expr>> &args,
-                              bool forceCapture = false);
+                              bool forceCapture = false,
+                              bool initiallyArmed = true);
     CallArgumentRollbackGuard(const CallArgumentRollbackGuard &) = delete;
     CallArgumentRollbackGuard &
     operator=(const CallArgumentRollbackGuard &) = delete;
+    void arm() { Armed = true; }
     void reject();
     ~CallArgumentRollbackGuard();
 
@@ -773,6 +775,7 @@ private:
     Sema &Owner;
     std::optional<AnalysisState> Base;
     size_t DiagnosticStart = 0;
+    bool Armed = true;
     bool Rejected = false;
   };
 

@@ -717,13 +717,14 @@ Sema::AnalysisState Sema::captureAnalysisState() {
 
 Sema::CallArgumentRollbackGuard::CallArgumentRollbackGuard(
     Sema &owner, const std::vector<std::unique_ptr<Expr>> &args,
-    bool forceCapture)
-    : Owner(owner) {
+    bool forceCapture, bool initiallyArmed)
+    : Owner(owner), Armed(initiallyArmed) {
   const bool hasExplicitTransfer =
       Owner.m_EnableSignatureDrivenCallCede &&
       std::any_of(args.begin(), args.end(), [](const auto &argument) {
         return dynamic_cast<CedeExpr *>(argument.get()) != nullptr;
       });
+  Armed = Armed || hasExplicitTransfer;
   if (!forceCapture && !hasExplicitTransfer)
     return;
   Base = Owner.captureAnalysisState();
@@ -731,13 +732,14 @@ Sema::CallArgumentRollbackGuard::CallArgumentRollbackGuard(
 }
 
 void Sema::CallArgumentRollbackGuard::reject() {
+  Armed = true;
   Rejected = true;
   if (Base)
     Owner.mergeAnalysisStates({*Base}, Base->PAL);
 }
 
 Sema::CallArgumentRollbackGuard::~CallArgumentRollbackGuard() {
-  if (!Base)
+  if (!Base || !Armed)
     return;
   const auto &records = DiagnosticEngine::records();
   const bool rejected =
@@ -4260,7 +4262,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // Receiver evaluation is part of the method call transaction. It can
     // itself contain successful consuming calls whose state must be restored
     // if the outer method is later rejected by arity, type, or cede checks.
-    CallArgumentRollbackGuard methodCallRollback(*this, Met->Args, true);
+    CallArgumentRollbackGuard methodCallRollback(*this, Met->Args, true, false);
     std::shared_ptr<Type> stage0PreMutationReceiverType;
     std::optional<ExplicitCedePreparedFacts> stage0PreMutationReceiverFacts;
     std::optional<Stage0CallSnapshot> stage0PreMutationCallSnapshot;
@@ -4725,6 +4727,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                      !arg.Stage0GenericValueRole &&
                      !arg.Stage0MorphicGenericRole;
             };
+        const bool hasStage1CedeParameter =
+            m_EnableStage1ExplicitCallerCede &&
+            std::any_of(FD->Args.begin() + std::min<size_t>(1, FD->Args.size()),
+                        FD->Args.end(), [&](const FunctionDecl::Arg &arg) {
+                          return arg.IsCeded &&
+                                 isStage1ConcreteMethodParameter(arg);
+                        });
+        if (hasStage1CedeParameter)
+          methodCallRollback.arm();
+
         // [Effect] Concurrency Check for Method Call
         if (FD->Effect != EffectKind::None && !m_IsConsumingEffect && !m_IsPrecomputingCaptures) {
           error(Met, DiagID::ERR_DANGLING_EFFECT, Met->Method);

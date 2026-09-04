@@ -101,7 +101,14 @@ def main():
             "error[E04510]" in generic_rejection.stderr and
             "E0438" not in generic_rejection.stderr and
             "E0410" not in generic_rejection.stderr,
-            "rejected generic method leaked argument source state")
+            "explicit generic method rejection lost atomic rollback")
+
+    ordinary_out_of_slice = check(
+        tokac, "noncede_failure_out_of_slice.tk")
+    require(ordinary_out_of_slice.returncode != 0 and
+            "error[E04510]" in ordinary_out_of_slice.stderr and
+            "error[E0438]" in ordinary_out_of_slice.stderr,
+            "ordinary non-cede failure was pulled into Stage-1 rollback")
 
     unsafe_bare = check(tokac, "unsafe_wrapper_requires_cede.tk")
     require(unsafe_bare.returncode != 0 and

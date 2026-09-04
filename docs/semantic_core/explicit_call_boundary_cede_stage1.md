@@ -92,6 +92,11 @@ evaluation and invalidation. If a concrete parameter later rejects the call,
 transfers performed by an expression or nested method receiver, the final
 receiver, and all arguments return to the pre-call snapshot without changing
 the accepted receiver spelling.
+The snapshot is initially disarmed unless an argument already contains an
+explicit transfer, preserving the pre-existing atomic-call guarantee. It is
+also armed after method resolution proves that this slice contains a concrete
+`cede` formal. Other ordinary, generic/morphic, dynamic-trait, and
+historical-replay failures retain their pre-slice state and diagnostics.
 
 Dynamic-trait dispatch, indirect function values, callable expressions, and
 all receiver morphology/spelling work remain outside this slice.
