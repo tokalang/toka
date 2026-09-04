@@ -719,12 +719,12 @@ Sema::CallArgumentRollbackGuard::CallArgumentRollbackGuard(
     Sema &owner, const std::vector<std::unique_ptr<Expr>> &args,
     bool forceCapture)
     : Owner(owner) {
-  const bool hasExplicitMultiTransfer =
-      Owner.m_EnableSignatureDrivenCallCede && args.size() > 1 &&
+  const bool hasExplicitTransfer =
+      Owner.m_EnableSignatureDrivenCallCede &&
       std::any_of(args.begin(), args.end(), [](const auto &argument) {
         return dynamic_cast<CedeExpr *>(argument.get()) != nullptr;
       });
-  if (!forceCapture && !hasExplicitMultiTransfer)
+  if (!forceCapture && !hasExplicitTransfer)
     return;
   Base = Owner.captureAnalysisState();
   DiagnosticStart = DiagnosticEngine::records().size();
@@ -5057,6 +5057,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               size_t Index = 0;
               std::shared_ptr<Type> ArgumentType;
               std::shared_ptr<Type> FormalType;
+              bool RequireExplicitNamedSource = false;
             };
             std::vector<PendingMethodCede> pendingMethodCedes;
             std::vector<bool> plannedMethodCede(Met->Args.size(), false);
@@ -5113,15 +5114,24 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 projectOwnedStringView(Met->Args[i], argTy, expectedParamTy);
 
+                const bool stage1ExplicitMethodParameter =
+                    i < expectedArgs && m_EnableStage1ExplicitCallerCede &&
+                    FD->Args[i + 1].Stage0DeclarationProvenanceComplete &&
+                    !FD->Args[i + 1].Stage0GenericValueRole &&
+                    !FD->Args[i + 1].Stage0MorphicGenericRole;
                 if (signatureDrivenMethodSlice && i < expectedArgs &&
                     FD->Args[i + 1].IsCeded) {
                   if (Met->Args.size() == 1) {
                     elaborateSignatureDrivenCedeArgument(
-                        Met->Args[i], argTy, expectedParamTy);
+                        Met->Args[i], argTy, expectedParamTy, true,
+                        stage1ExplicitMethodParameter);
                   } else if (elaborateSignatureDrivenCedeArgument(
-                                 Met->Args[i], argTy, expectedParamTy, false)) {
+                                 Met->Args[i], argTy, expectedParamTy, false,
+                                 stage1ExplicitMethodParameter)) {
                     plannedMethodCede[i] = true;
-                    pendingMethodCedes.push_back({i, argTy, expectedParamTy});
+                    pendingMethodCedes.push_back(
+                        {i, argTy, expectedParamTy,
+                         stage1ExplicitMethodParameter});
                   }
                 }
                 AccessPath methodArgPath =
@@ -5136,6 +5146,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                       param.IsCeded &&
                       (canImplicitlyPassToCede(argTy) ||
                        canPreserveBareSignatureCede(argTy));
+                  if (stage1ExplicitMethodParameter && param.IsCeded &&
+                      dynamic_cast<CedeExpr *>(Met->Args[i].get()) == nullptr &&
+                      isStage1NamedSource(Met->Args[i].get()))
+                    legacyCedeExempt = false;
                   recordShadowCallTransfer(
                       Met, Met->ShadowArgumentTransfers,
                       static_cast<unsigned>(i + 1),
@@ -5291,7 +5305,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 for (const auto &pending : pendingMethodCedes)
                   elaborateSignatureDrivenCedeArgument(
                       Met->Args[pending.Index], pending.ArgumentType,
-                      pending.FormalType);
+                      pending.FormalType, true,
+                      pending.RequireExplicitNamedSource);
               }
             }
         } else {

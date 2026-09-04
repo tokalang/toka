@@ -1,0 +1,13 @@
+shape Sink()
+
+impl Sink {
+    fn consume_async(self, cede value: i32) -> async i32 {
+        return cede value
+    }
+}
+
+fn main() -> async i32 {
+    auto sink = Sink()
+    auto value = 7:i32
+    return sink.consume_async(value).await
+}

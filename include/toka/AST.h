@@ -2175,10 +2175,9 @@ public:
     // The callee constructs caller-owned storage supplied as `init place`.
     bool IsInit = false;
     bool HadRejectedTypeSideMorphology = false;
-    // Audit-only declaration provenance for the explicit-cede Stage-0
-    // planner.  This is derived from the declaration's typed syntax and its
-    // exact generic binder set before any substitution, then preserved by
-    // cloning.  It has no authority over normal Sema or CodeGen.
+    // Declaration provenance for explicit-cede planning and staged
+    // activation. It is derived from typed syntax and the exact generic
+    // binder set before substitution, then preserved by cloning.
     bool Stage0GenericValueRole = false;
     bool Stage0MorphicGenericRole = false;
     bool Stage0DeclarationProvenanceComplete = false;

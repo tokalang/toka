@@ -61,3 +61,32 @@ This slice does not change Parser syntax, TKI, ABI, the compiler-interface key,
 return semantics, receiver semantics, callable-expression syntax, or the
 frozen Stage 0 evidence schemas. It also does not remove the legacy lowering
 path; that cleanup remains Stage 3 work after behavior qualification.
+
+## Instance-method parameter slice
+
+**Status:** implementation slice; pending acceptance.
+
+The next route slice applies the same named-source handshake to concrete
+parameters of a source-resolved instance method. Generic-value and morphic
+method parameters remain outside this slice because borrowed/raw generic
+substitutions still use the accepted Stage 0 conservative boundary. The
+receiver is not part of the method's argument vector and remains governed by
+the pre-existing receiver rules. In particular, this slice does not require a
+new caller spelling for a `cede self` receiver.
+
+```toka
+auto sink = Sink()
+auto value = 42
+
+sink.consume(value)       // E04509: named method argument requires `cede`
+sink.consume(cede value)  // accepted; value becomes unavailable
+sink.consume(42)          // accepted NoSourcePlace value
+```
+
+Method argument groups retain the same pre-mutation snapshot and atomic
+rollback guarantee as direct calls. `unsafe` and transparent postfix wrappers
+do not hide a named source. The method diagnostic carries the same exact
+machine-applicable `cede ` insertion as the direct-call diagnostic.
+
+Dynamic-trait dispatch, indirect function values, callable expressions, and
+all receiver morphology/spelling work remain outside this slice.

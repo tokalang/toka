@@ -1,0 +1,31 @@
+shape Resource(value: i32)
+
+impl Resource {
+    fn drop(self#) {}
+}
+
+shape Sink()
+
+impl Sink {
+    fn inspect(self, value: i32) -> i32 {
+        return value
+    }
+
+    fn consume_copy(self, cede value: i32) -> i32 {
+        return cede value
+    }
+
+    fn consume_resource(self, cede value: Resource) -> i32 {
+        auto moved = cede value
+        return moved.value
+    }
+}
+
+fn main() -> i32 {
+    auto sink = Sink()
+    auto number = 7:i32
+    auto observed = sink.inspect(number)
+    auto literal = sink.consume_copy(1:i32)
+    auto temporary = sink.consume_resource(Resource(value = 2:i32))
+    return observed + number + literal + temporary - 17:i32
+}

@@ -3269,17 +3269,15 @@ void Sema::declareGlobals(Module &M) {
               namesGeneric && !argument.IsMorphicExempt;
         }
       };
-  if (SemanticEvidence::isCallTransferShadowEnabled()) {
-    for (auto &function : M.Functions)
-      annotateStage0FormalDeclarations(*function, nullptr);
-    for (auto &trait : M.Traits) {
-      for (auto &method : trait->Methods)
-        annotateStage0FormalDeclarations(*method, &trait->GenericParams);
-    }
-    for (auto &impl : M.Impls) {
-      for (auto &method : impl->Methods)
-        annotateStage0FormalDeclarations(*method, &impl->GenericParams);
-    }
+  for (auto &function : M.Functions)
+    annotateStage0FormalDeclarations(*function, nullptr);
+  for (auto &trait : M.Traits) {
+    for (auto &method : trait->Methods)
+      annotateStage0FormalDeclarations(*method, &trait->GenericParams);
+  }
+  for (auto &impl : M.Impls) {
+    for (auto &method : impl->Methods)
+      annotateStage0FormalDeclarations(*method, &impl->GenericParams);
   }
   for (const auto &function : M.Functions)
     rememberTypeParameters(function->GenericParams);

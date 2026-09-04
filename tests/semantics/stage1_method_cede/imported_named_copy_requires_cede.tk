@@ -1,0 +1,7 @@
+import ./method_provider::{Sink}
+
+fn main() -> i32 {
+    auto sink = Sink()
+    auto value = 7:i32
+    return sink.consume(value)
+}

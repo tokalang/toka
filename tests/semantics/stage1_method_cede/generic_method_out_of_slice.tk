@@ -1,0 +1,13 @@
+shape Sink()
+
+impl Sink {
+    fn consume<T>(self, cede value: T) -> T {
+        return cede value
+    }
+}
+
+fn main() -> i32 {
+    auto sink = Sink()
+    auto value = 7:i32
+    return sink.consume(value) - 7:i32
+}
