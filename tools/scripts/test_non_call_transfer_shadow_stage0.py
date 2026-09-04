@@ -29,6 +29,8 @@ GENERIC_GROUP = (
     "tests/semantics/non_call_transfer_shadow/stage0_generic_group_identity.tk")
 FOR_ALIAS_CAPTURE = (
     "tests/semantics/non_call_transfer_shadow/stage0_for_alias_capture.tk")
+OVERLOAD_RESOURCE = (
+    "tests/semantics/non_call_transfer_shadow/stage0_overload_resource_{}.tk")
 
 if not os.environ.get("TOKA_LIB"):
     os.environ["TOKA_LIB"] = str(ROOT / "lib")
@@ -489,6 +491,31 @@ def main():
             alias_records[0]["plan"]["source"] == "NoStateChange" and
             not alias_records[0]["group_plan_admitted"],
             "for-alias capture lacks a stable fail-closed source identity")
+
+    for ordering in ("forward", "reverse"):
+        source = OVERLOAD_RESOURCE.format(ordering)
+        overload_normal = invoke(tokac, False, source)
+        overload_shadow = invoke(tokac, True, source)
+        require(overload_normal.returncode == overload_shadow.returncode and
+                overload_normal.stderr == overload_shadow.stderr and
+                overload_normal.returncode == 0,
+                source + " overload shadow changed normal behavior")
+        overload_payload = json.loads(overload_shadow.stdout)
+        result_records = [
+            record for record in overload_payload["records"]
+            if record["location"]["file"].endswith(source) and
+            record["boundary"] == "initialization" and
+            record["location"]["line"] == 5]
+        require(len(result_records) == 1 and
+                result_records[0]["plan"]["actual_type"] == "" and
+                result_records[0]["plan"]["outcome"] == "Rejected" and
+                result_records[0]["plan"]["rejection"] ==
+                "IncompleteFacts" and
+                result_records[0]["plan"]["value_production"] == "None" and
+                result_records[0]["plan"]["source"] == "NoStateChange" and
+                result_records[0]["plan"]["drop"] == "None" and
+                not result_records[0]["group_plan_admitted"],
+                source + " guessed an overload return/drop classification")
 
     mixed = subprocess.run(
         [str(tokac), "--non-call-transfer-shadow=json",

@@ -219,8 +219,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   // [Toka 1.3] Evaluation Order: Check RHS first to avoid LHS
   // borrows/moves blocking RHS usage (e.g. &#cursor = cursor.&next)
   Bin->RHS = foldGenericConstant(std::move(Bin->RHS));
-  if (Bin->Op == "=") {
-    auto destinationType = queryShadowCallArgumentType(Bin->LHS.get(), nullptr);
+  if (Bin->Op == "=" && SemanticEvidence::isNonCallTransferShadowEnabled()) {
+    auto destinationType =
+        queryExplicitCedeStage0NonCallType(Bin->LHS.get(), nullptr);
     recordExplicitCedeStage0NonCallPlan(
         Bin, Bin->RHS.get(), destinationType, TransferDestination::Assignment,
         TransferEligibilityContext::Assignment, "assignment", Bin->LHS.get());

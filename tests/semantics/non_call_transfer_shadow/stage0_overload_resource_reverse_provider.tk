@@ -1,0 +1,16 @@
+pub shape Resource(value: i32)
+
+impl Resource {
+    fn drop(self#) {}
+}
+
+pub shape Selected(value: i32)
+pub shape Other(value: i32)
+
+pub fn choose(value: Other) -> i32 {
+    return value.value
+}
+
+pub fn choose(value: Selected) -> Resource {
+    return Resource(value = value.value)
+}

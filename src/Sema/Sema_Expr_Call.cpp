@@ -876,23 +876,15 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
           call->ResolvedExtern->ReturnTypeSyntax
               ? Type::fromSyntax(call->ResolvedExtern->ReturnTypeSyntax)
               : Type::fromString(call->ResolvedExtern->ReturnType));
-    SymbolInfo *callee = nullptr;
-    std::string actualName;
-    if (CurrentScope &&
-        CurrentScope->findVariableWithDeref(call->Callee, callee, actualName) &&
-        callee && callee->ASTPtr && callee->TypeObj &&
-        callee->TypeObj->toString() == "fn") {
-      auto *function = static_cast<FunctionDecl *>(callee->ASTPtr);
-      if (function->ResolvedReturnType)
-        return resolveExplicitCedeStage0TypeReadOnly(
-            function->ResolvedReturnType);
-    }
+    // Before normal overload resolution has selected a declaration, a symbol
+    // entry may name only one member of a visible overload set.  It is not a
+    // proof of the call's return type.  Admit only a unique, non-generic direct
+    // declaration; overloads, generics and callable values remain fail-closed.
     FunctionDecl *selected = nullptr;
     for (auto *candidate : GlobalFunctions) {
-      if (!candidate || candidate->Name != call->Callee ||
-          !candidate->GenericParams.empty())
+      if (!candidate || candidate->Name != call->Callee)
         continue;
-      if (selected)
+      if (!candidate->GenericParams.empty() || selected)
         return toka::Type::fromString("unknown");
       selected = candidate;
     }

@@ -97,6 +97,9 @@ objects. It does not invoke the mutating general `resolveType()` path. Generic
 or overloaded calls, indirect/function-value calls, array literals, and other
 unproved composite expressions remain explicit `IncompleteFacts +
 NoStateChange` cases for this freeze rather than receiving guessed authority.
+Before normal call resolution has selected `ResolvedFn`, a symbol-table entry
+is never treated as proof of one overload's return type: only a unique,
+non-generic direct declaration is eligible for read-only inference.
 
 ## Qualification boundary
 
@@ -114,6 +117,9 @@ invalid generic-body journal rollback, shared-permission amplification across
 assignment/init/aggregate/return/capture, cross-monomorphization identity, and
 plain external-source identity. It also checks that a rejected for-alias
 capture has a nonempty exact path while preserving normal/shadow diagnostics.
+Imported nominal overloads are tested in both declaration orders; the
+initialization result must stay `IncompleteFacts + NoStateChange` and must not
+guess either Copy production or Drop liability.
 
 The command records plans only. It does not commit source invalidation or
 liability transitions and is not a destination-matching CodeGen plan. Missing
