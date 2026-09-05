@@ -5111,8 +5111,14 @@ void Sema::populateCallableParameterOrigins(
                 ->ParamTypes.size();
   auto classified =
       classifyCallableParameterOrigins(syntax, declarationGenericNames);
-  if (!classified.second || classified.first.size() != parameterCount)
+  if (!classified.second || classified.first.size() != parameterCount) {
+    if (syntax) {
+      symbol.CallableParameterOrigins.assign(
+          parameterCount, CallableParameterProvenance::Indeterminate);
+      symbol.CallableParameterOriginsComplete = true;
+    }
     return;
+  }
   symbol.CallableParameterOrigins = std::move(classified.first);
   symbol.CallableParameterOriginsComplete = true;
 }

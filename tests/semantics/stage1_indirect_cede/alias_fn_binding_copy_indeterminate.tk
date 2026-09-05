@@ -1,0 +1,14 @@
+alias Callback = fn(cede i32) -> i32
+
+fn invoke(callback: Callback) -> i32 {
+    auto first = 3:i32
+    auto first_result = callback(first)
+    auto local = callback
+    auto second = 4:i32
+    return first_result + local(second)
+}
+
+fn main() -> i32 {
+    auto callback = { value => cede value }:fn(cede i32) -> i32
+    return invoke(callback) - 7:i32
+}

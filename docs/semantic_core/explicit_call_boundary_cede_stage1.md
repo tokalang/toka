@@ -174,4 +174,6 @@ trait/impl binder remains generic after materialization. Both function and
 dynamic-function forms use the same declaration-side classification.
 An inferred local binding copied directly from a callable binding inherits the
 same classification; copying a binding cannot silently turn generic or
-indeterminate provenance into a concrete contract.
+indeterminate provenance into a concrete contract. A callable type alias whose
+declaration carrier cannot prove the underlying parameter origins therefore
+propagates explicit `Indeterminate` slots through inferred binding copies.

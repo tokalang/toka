@@ -2168,17 +2168,23 @@ void Sema::checkStmt(Stmt *S) {
       Info.CallableReceiver = getCallableReceiverMode(*Info.TypeObj);
     if (Info.TypeObj &&
         (Info.TypeObj->isFunction() || Info.TypeObj->isDynFn())) {
-      TypeSyntaxPtr callableDeclarationSyntax = Var->DeclaredTypeSyntax;
+      TypeSyntaxPtr callableDeclarationSyntax =
+          inferredType ? TypeSyntaxPtr{} : Var->DeclaredTypeSyntax;
+      bool hasOwnCallableDeclaration = callableDeclarationSyntax != nullptr;
       Expr *initializer = Var->Init.get();
       while (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(initializer))
         initializer = unsafeExpr->Expression.get();
       if (auto *ascription = dynamic_cast<CastExpr *>(initializer);
-          ascription && ascription->Kind == CastKind::Ascription)
+          ascription && ascription->Kind == CastKind::Ascription) {
         callableDeclarationSyntax = ascription->TargetTypeSyntax;
-      populateCallableParameterOrigins(
-          Info, callableDeclarationSyntax,
-          callableDeclarationGenericNames(CurrentFunction));
-      if (inferredType && !Info.CallableParameterOriginsComplete) {
+        hasOwnCallableDeclaration = callableDeclarationSyntax != nullptr;
+      }
+      if (hasOwnCallableDeclaration) {
+        populateCallableParameterOrigins(
+            Info, callableDeclarationSyntax,
+            callableDeclarationGenericNames(CurrentFunction));
+      }
+      if (inferredType && !hasOwnCallableDeclaration) {
         Expr *source = initializer;
         while (source) {
           if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(source)) {

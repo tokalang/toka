@@ -125,7 +125,9 @@ def main():
             "generic_impl_fn_binding_copy_out_of_slice.tk",
             "generic_impl_dyn_binding_copy_out_of_slice.tk",
             "generic_caller_generic_fn_out_of_slice.tk",
-            "generic_caller_generic_dyn_out_of_slice.tk"):
+            "generic_caller_generic_dyn_out_of_slice.tk",
+            "alias_fn_binding_copy_indeterminate.tk",
+            "alias_dyn_binding_copy_indeterminate.tk"):
         generic_impl = check(tokac, name)
         require(generic_impl.returncode == 0 and
                 "E04570" not in generic_impl.stderr,
