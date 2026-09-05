@@ -1,0 +1,29 @@
+import core/traits::{@Encap}
+
+auto drops# = 0:i32
+
+shape Token(value: i32)
+
+impl Token@Encap {
+    fn drop(self#) {
+        drops += 1:i32
+    }
+}
+
+shape Holder(callback: cede dyn fn() -> i32)
+
+fn main() -> i32 {
+    {
+        auto token = Token(value = 5:i32)
+        auto once = { [cede token] =>
+            auto owned = cede token
+            return owned.value
+        }:cede dyn fn() -> i32
+        auto holder = Holder(callback = cede once)
+        auto moved = cede holder.callback
+        auto result = cede moved()
+        if result != 5:i32 { return 1:i32 }
+    }
+    if drops != 1:i32 { return 2:i32 }
+    return 0:i32
+}

@@ -1,0 +1,15 @@
+shape Token(value: i32)
+
+fn invoke_shared(callback: dyn fn() -> i32) -> i32 {
+    return callback()
+}
+
+fn main() -> i32 {
+    auto token = Token(value = 5:i32)
+    auto once = { [cede token] =>
+        auto owned = cede token
+        return owned.value
+    }:cede dyn fn() -> i32
+    auto moved = cede once
+    return invoke_shared(moved)
+}

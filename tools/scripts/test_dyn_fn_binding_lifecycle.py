@@ -35,6 +35,7 @@ def main():
             FIXTURES / "projected_copy_exact_once.tk",
             FIXTURES / "binding_transfer_exact_once.tk",
             FIXTURES / "consuming_transfer_exact_once.tk",
+            FIXTURES / "consuming_projection_transfer_exact_once.tk",
             INDIRECT_FIXTURES / "alias_dyn_binding_copy_indeterminate.tk",
             INDIRECT_FIXTURES / "alias_fn_binding_copy_indeterminate.tk",
         )
@@ -67,6 +68,21 @@ def main():
                 rejected.stderr.count("error[E04653]") == 1 and
                 not artifact.exists(),
                 source + " copied a consuming dynamic environment")
+
+    rejected_modes = {
+        "consuming_transfer_requires_cede.tk": "error[E04591]",
+        "consuming_transfer_forwarding_rejected.tk": "error[E04571]",
+    }
+    for source, diagnostic in rejected_modes.items():
+        rejected = subprocess.run(
+            [str(tokac), "--check-only", str(FIXTURES / source)], cwd=ROOT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            timeout=30)
+        require(rejected.returncode != 0 and
+                rejected.stderr.count(diagnostic) == 1 and
+                "E0438" not in rejected.stderr and
+                "E0410" not in rejected.stderr,
+                source + " lost its consuming callable mode")
 
     with tempfile.TemporaryDirectory(prefix="toka-dyn-fn-interface-") as temp:
         work = Path(temp)

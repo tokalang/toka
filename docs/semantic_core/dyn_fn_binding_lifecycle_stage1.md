@@ -18,6 +18,11 @@ projection copies are rejected with `E04653`; only `cede` may transfer that
 handle. Reference counting is not permission to invoke the same consuming
 environment twice.
 
+Every transfer also preserves the consuming mode in the actual `DynFnType`,
+not only in symbol metadata. This applies to direct variables and projected
+fields, so subsequent invocation and parameter compatibility cannot reinterpret
+a transferred consuming callable as an ordinary shared callable.
+
 Scope cleanup releases one owner. Only the final release runs the environment
 drop cascade and frees the allocation. The regression gate covers multiple
 binding copies with a captured resource and a destructive binding transfer;

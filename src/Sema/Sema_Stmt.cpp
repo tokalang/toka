@@ -2231,13 +2231,34 @@ void Sema::checkStmt(Stmt *S) {
       const bool copiesNamedEnvironment =
           source && source->ResolvedType && source->ResolvedType->isDynFn() &&
           makeAccessPath(source) && !destructive;
+      std::shared_ptr<Type> sourceCallableType =
+          source && source->ResolvedType && source->ResolvedType->isDynFn()
+              ? source->ResolvedType
+              : nullptr;
       if (auto *sourceVariable = dynamic_cast<VariableExpr *>(source)) {
         SymbolInfo *sourceInfo = nullptr;
         std::string sourceName;
         if (CurrentScope->findVariableWithDeref(sourceVariable->Name,
                                                 sourceInfo, sourceName) &&
-            sourceInfo)
+            sourceInfo) {
           Info.CallableReceiver = sourceInfo->CallableReceiver;
+          if (sourceInfo->TypeObj && sourceInfo->TypeObj->isDynFn())
+            sourceCallableType = sourceInfo->TypeObj;
+        }
+      } else if (sourceCallableType) {
+        Info.CallableReceiver = getCallableReceiverMode(*sourceCallableType);
+      }
+      if (sourceCallableType &&
+          Info.CallableReceiver == CallableReceiverMode::Consuming) {
+        auto preserved = std::dynamic_pointer_cast<DynFnType>(
+            sourceCallableType->withAttributes(Info.TypeObj->IsWritable,
+                                               Info.TypeObj->IsNullable,
+                                               Info.TypeObj->IsBlocked));
+        if (preserved) {
+          preserved->ReceiverMode = CallableReceiverMode::Consuming;
+          Info.TypeObj = preserved;
+          Var->ResolvedType = preserved;
+        }
       }
       if (copiesNamedEnvironment &&
           Info.CallableReceiver == CallableReceiverMode::Consuming) {
