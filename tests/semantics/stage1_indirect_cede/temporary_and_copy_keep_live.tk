@@ -1,0 +1,28 @@
+import core/traits::{@Encap}
+
+auto drops# = 0:i32
+
+shape Resource(value: i32)
+
+impl Resource@Encap {
+    fn drop(self#) {
+        drops += 1:i32
+    }
+}
+
+fn main() -> i32 {
+    auto inspect = { value => value }:fn(i32) -> i32
+    auto consume = { value =>
+        auto owned = cede value
+        return owned.value
+    }:fn(cede Resource) -> i32
+    auto consume_dynamic = { value =>
+        auto owned = cede value
+        return owned.value
+    }:dyn fn(cede Resource) -> i32
+    auto number = 7:i32
+    auto observed = inspect(number)
+    auto first = consume(Resource(value = 1:i32))
+    auto second = consume_dynamic(Resource(value = 2:i32))
+    return observed + number + first + second + drops - 19:i32
+}

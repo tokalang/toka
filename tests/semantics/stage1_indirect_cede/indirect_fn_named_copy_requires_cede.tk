@@ -1,0 +1,5 @@
+fn main() -> i32 {
+    auto callback = { value => cede value }:fn(cede i32) -> i32
+    auto value = 7:i32
+    return callback(value)
+}

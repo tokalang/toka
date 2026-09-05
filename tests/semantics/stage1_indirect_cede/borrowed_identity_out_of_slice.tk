@@ -1,0 +1,5 @@
+fn main() -> i32 {
+    auto callback = { value => value }:fn(cede &i32) -> i32
+    auto source = 7:i32
+    return callback(&source) - 7:i32
+}

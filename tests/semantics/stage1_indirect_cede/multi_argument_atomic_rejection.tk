@@ -1,0 +1,12 @@
+fn inspect(value: i32) -> i32 {
+    return value
+}
+
+fn main() -> i32 {
+    auto callback = { left, right => cede left + cede right }:
+        fn(cede i32, cede i32) -> i32
+    auto first = 1:i32
+    auto second = 2:i32
+    auto rejected = callback(cede first, second)
+    return inspect(first) + inspect(second) + rejected
+}

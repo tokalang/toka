@@ -2,6 +2,7 @@
 """Qualify default callable and indirect signature-driven cede routes."""
 
 import argparse
+import os
 import pathlib
 import subprocess
 import sys
@@ -9,6 +10,7 @@ import tempfile
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+os.environ["TOKA_STAGE1_LEGACY_REPLAY"] = "1"
 FIXTURES = ROOT / "tests/semantics/signature_driven_cede_direct"
 FLAG = "--experimental-signature-driven-cede"
 

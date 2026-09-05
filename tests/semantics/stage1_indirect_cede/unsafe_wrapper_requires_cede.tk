@@ -1,0 +1,9 @@
+fn main() -> i32 {
+    auto callback = { value => cede value }:fn(cede i32) -> i32
+    auto dynamic = { value => cede value }:dyn fn(cede i32) -> i32
+    auto first = 3:i32
+    auto second = 4:i32
+    callback(unsafe first)
+    dynamic(unsafe second)
+    return first + second - 7:i32
+}

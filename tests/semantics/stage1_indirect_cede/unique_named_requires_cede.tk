@@ -1,0 +1,8 @@
+shape Cell(value: i32)
+
+fn main() -> i32 {
+    auto callback = { cell => cede ^cell }:fn(cede ^Cell) -> cede ^Cell
+    auto ^source = new Cell(value = 7:i32)
+    auto ^result = cede callback(^source)
+    return result.value
+}

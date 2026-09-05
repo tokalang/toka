@@ -6135,7 +6135,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   auto checkIndirectCedeArgument =
       [&](size_t argumentIndex, const std::shared_ptr<Type> &argumentType,
-          const std::shared_ptr<Type> &expectedType, bool plannedImplicit) {
+          const std::shared_ptr<Type> &expectedType, bool plannedImplicit,
+          bool requireExplicitNamedSource) {
         if (!expectedType || !expectedType->IsCede)
           return;
 
@@ -6143,8 +6144,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             dynamic_cast<CedeExpr *>(Call->Args[argumentIndex].get()) !=
                 nullptr ||
             plannedImplicit;
-        const bool exempt = canImplicitlyPassToCede(argumentType) ||
-                            canPreserveBareSignatureCede(argumentType);
+        const bool namedStage1Source =
+            requireExplicitNamedSource && !callerCeded &&
+            isStage1NamedSource(Call->Args[argumentIndex].get());
+        const bool exempt =
+            !namedStage1Source && (canImplicitlyPassToCede(argumentType) ||
+                                   canPreserveBareSignatureCede(argumentType));
         if (!callerCeded && !exempt)
           error(Call->Args[argumentIndex].get(),
                 DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2);
@@ -6241,6 +6246,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       size_t Index = 0;
       std::shared_ptr<Type> ArgumentType;
       std::shared_ptr<Type> FormalType;
+      bool RequireExplicitNamedSource = false;
     };
     std::vector<PendingIndirectCede> pending;
     std::vector<bool> planned(Call->Args.size(), false);
@@ -6259,22 +6265,38 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           expectedTy && expectedTy->IsCede);
       m_AllowPermissionSuffix = oldAllowPermissionSuffix;
 
+      const auto stage1IndirectOwnership =
+          queryExplicitCedeStage0OwnershipReadOnly(expectedTy);
+      const bool stage1ExplicitIndirectParameter =
+          m_EnableStage1ExplicitCallerCede && expectedTy &&
+          expectedTy->IsCede && !expectedTy->isUnknown() &&
+          !expectedTy->isFunction() && !expectedTy->isDynFn() &&
+          stage1IndirectOwnership &&
+          *stage1IndirectOwnership != ValueOwnership::BorrowedView;
+
       if (signatureIndirectSlice && expectedTy && expectedTy->IsCede &&
           elaborateSignatureDrivenCedeArgument(
-              Call->Args[i], argTy, expectedTy, false)) {
+              Call->Args[i], argTy, expectedTy, false,
+              stage1ExplicitIndirectParameter)) {
         planned[i] = true;
-        pending.push_back({i, argTy, expectedTy});
+        pending.push_back(
+            {i, argTy, expectedTy, stage1ExplicitIndirectParameter});
       }
       AccessPath path =
           canonicalizeAccessPath(makeAccessPath(Call->Args[i].get()));
       if (path)
         paths.push_back({path, i});
 
-      checkIndirectCedeArgument(i, argTy, expectedTy, planned[i]);
-      const bool cedeExempt =
-          expectedTy && expectedTy->IsCede &&
-          (canImplicitlyPassToCede(argTy) ||
-           canPreserveBareSignatureCede(argTy));
+      checkIndirectCedeArgument(i, argTy, expectedTy, planned[i],
+                                stage1ExplicitIndirectParameter);
+      const bool namedStage1Source =
+          stage1ExplicitIndirectParameter && expectedTy && expectedTy->IsCede &&
+          dynamic_cast<CedeExpr *>(Call->Args[i].get()) == nullptr &&
+          isStage1NamedSource(Call->Args[i].get());
+      const bool cedeExempt = expectedTy && expectedTy->IsCede &&
+                              !namedStage1Source &&
+                              (canImplicitlyPassToCede(argTy) ||
+                               canPreserveBareSignatureCede(argTy));
       recordShadowCallTransfer(
           Call, Call->ShadowArgumentTransfers,
           static_cast<unsigned>(i + 1), static_cast<unsigned>(i + 1),
@@ -6353,7 +6375,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (!hasError) {
         for (const auto &entry : pending)
           elaborateSignatureDrivenCedeArgument(
-              Call->Args[entry.Index], entry.ArgumentType, entry.FormalType);
+              Call->Args[entry.Index], entry.ArgumentType, entry.FormalType,
+              true, entry.RequireExplicitNamedSource);
       }
     }
     markExplicitCedeStage0RouteValidationComplete(Call);

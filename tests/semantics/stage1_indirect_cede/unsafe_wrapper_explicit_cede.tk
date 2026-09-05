@@ -1,0 +1,10 @@
+fn main() -> i32 {
+    auto callback = { value => cede value }:fn(cede i32) -> i32
+    auto dynamic = { value => cede value }:dyn fn(cede i32) -> i32
+    auto first = 3:i32
+    auto second = 4:i32
+    auto moved_first = callback(cede unsafe first)
+    auto moved_second = dynamic(cede unsafe second)
+    auto temporary = callback(unsafe 1:i32)
+    return moved_first + moved_second + temporary - 8:i32
+}

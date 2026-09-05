@@ -125,3 +125,30 @@ Generic-value and morphic trait parameters remain outside this slice. Dynamic
 receiver spelling and morphology are unchanged, as are indirect function and
 callable-expression routes. No Parser, TKI, ABI, interface-key, or evidence
 schema change is introduced.
+
+## Indirect function parameter slice
+
+**Status:** implementation slice; pending acceptance.
+
+Resolved `fn` and `dyn fn` values now enforce explicit caller spelling for
+their concrete `cede` parameters:
+
+```toka
+auto callback = { value => cede value }:fn(cede i32) -> i32
+auto value = 42
+
+callback(value)       // E04570
+callback(cede value)  // accepted; value becomes unavailable
+callback(1)           // accepted NoSourcePlace value
+```
+
+The rule covers direct values and exact unique-handle spelling, transparent
+`unsafe` wrappers, multi-argument atomic rejection, and source-hidden function
+types reconstructed from TKI. `fn` and `dyn fn` share the same parameter
+policy. Ordinary Copy parameters remain `KeepLive`, while complete owned
+temporaries transfer cleanup liability and are destroyed exactly once.
+
+The callable binding remains an ordinary receiver in this slice. Consuming a
+callable expression, general `InvokeExpr`, generic/morphic or indeterminate
+formal provenance, and receiver spelling remain outside this activation. No
+Parser, TKI, ABI, interface-key, or evidence schema change is introduced.
