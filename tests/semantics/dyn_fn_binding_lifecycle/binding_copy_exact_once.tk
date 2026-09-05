@@ -1,0 +1,33 @@
+import core/traits::{@Encap}
+
+auto drops# = 0:i32
+
+shape Token(value: i32)
+
+impl Token@Encap {
+    fn drop(self#) {
+        drops += 1:i32
+    }
+}
+
+alias Callback = dyn fn(cede i32) -> i32
+
+fn invoke(callback: Callback, value: i32) -> i32 {
+    auto first = callback
+    auto second = first
+    return second(value)
+}
+
+fn main() -> i32 {
+    {
+        auto token = Token(value = 5:i32)
+        auto callback = { [cede token] value =>
+            auto consumed = cede value
+            return consumed + token.value
+        }:dyn fn(cede i32) -> i32
+        if invoke(callback, 7:i32) != 12:i32 { return 1:i32 }
+        if drops != 0:i32 { return 2:i32 }
+    }
+    if drops != 1:i32 { return 3:i32 }
+    return 0:i32
+}

@@ -41,6 +41,12 @@ enum class CallableParameterProvenance : uint8_t {
   GenericOrMorphic,
 };
 
+enum class DynFnEnvironmentDisposition : uint8_t {
+  None,
+  Retain,
+  Transfer,
+};
+
 // Sema-qualified ownership behavior for a value inserted into aggregate
 // storage.  The disposition belongs to the insertion edge, not to the source
 // binding: CodeGen must never infer it from a morphic name.
@@ -1749,6 +1755,10 @@ public:
   // Elaborated by Sema for the bounded partial-cede slice.  This is not
   // source syntax and is deliberately recomputed for source-less TKI bodies.
   PartialMovePlan PartialMove;
+  // Sema-owned lifetime action for the erased closure environment. CodeGen
+  // executes this disposition and never reconstructs copy-vs-transfer intent.
+  DynFnEnvironmentDisposition DynFnEnvironment =
+      DynFnEnvironmentDisposition::None;
 
   VariableDecl(const std::string &name, std::unique_ptr<Expr> init)
       : Name(name), Init(std::move(init)) {}
@@ -1773,6 +1783,7 @@ public:
     n->IsValueNullable = IsValueNullable;
     n->IsRebindBlocked = IsRebindBlocked;
     n->PartialMove = PartialMove;
+    n->DynFnEnvironment = DynFnEnvironment;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

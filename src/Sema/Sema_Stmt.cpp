@@ -2211,6 +2211,30 @@ void Sema::checkStmt(Stmt *S) {
         }
       }
     }
+    if (Info.TypeObj && Info.TypeObj->isDynFn() && Var->Init) {
+      Expr *source = Var->Init.get();
+      bool destructive = false;
+      while (source) {
+        if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(source)) {
+          source = unsafeExpr->Expression.get();
+        } else if (auto *cast = dynamic_cast<CastExpr *>(source)) {
+          source = cast->Expression.get();
+        } else if (auto *cede = dynamic_cast<CedeExpr *>(source)) {
+          destructive = true;
+          source = cede->Value.get();
+        } else if (auto *postfix = dynamic_cast<PostfixExpr *>(source)) {
+          source = postfix->LHS.get();
+        } else {
+          break;
+        }
+      }
+      const auto *sourceVariable = dynamic_cast<VariableExpr *>(source);
+      Var->DynFnEnvironment = sourceVariable && sourceVariable->ResolvedType &&
+                                      sourceVariable->ResolvedType->isDynFn() &&
+                                      !destructive
+                                  ? DynFnEnvironmentDisposition::Retain
+                                  : DynFnEnvironmentDisposition::Transfer;
+    }
     if (auto *closure = dynamic_cast<ClosureExpr *>(Var->Init.get())) {
       if (!Info.TypeObj ||
           (!Info.TypeObj->isFunction() && !Info.TypeObj->isDynFn()))

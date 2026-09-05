@@ -5817,11 +5817,8 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                 if (call->CallableReceiver ==
                     CallableReceiverMode::Consuming) {
                   suppressDropForMove(calleeName);
-                  if (isDynFn) {
-                    llvm::Function *freeFn = m_Module->getFunction("free");
-                    if (freeFn)
-                      m_Builder.CreateCall(freeFn, envPtr);
-                  }
+                  if (isDynFn)
+                    emitDynFnRelease(fatVal, false);
                 }
                 if (isSRet) {
                     ci->addParamAttr(0, llvm::Attribute::get(m_Context, llvm::Attribute::StructRet, getLLVMType(returnType)));
@@ -6278,35 +6275,24 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
            llvm::Type *envTy = val->getType();
            llvm::Value *envPtrAddr;
-           
+
            if (isDynFn) {
-               // Heap Allocation for `dyn fn`
-               llvm::Type *objTy = getLLVMType(call->Args[i]->ResolvedType);
-               
-               llvm::Function *mallocFn = m_Module->getFunction("malloc");
-               if (!mallocFn) {
-                   mallocFn = llvm::Function::Create(llvm::FunctionType::get(m_Builder.getPtrTy(), {getIntPtrTy()}, false), llvm::Function::ExternalLinkage, "malloc", m_Module.get());
-               }
-               uint64_t size = m_Module->getDataLayout().getTypeAllocSize(objTy);
-               llvm::Value *heapMem = m_Builder.CreateCall(mallocFn, {llvm::ConstantInt::get(getIntPtrTy(), size)});
-               envPtrAddr = m_Builder.CreatePointerCast(heapMem, llvm::PointerType::getUnqual(m_Context));
-               
-               if (envTy->isPointerTy()) {
-                   llvm::Value *loadedEnv = m_Builder.CreateLoad(objTy, val);
-                   m_Builder.CreateStore(loadedEnv, envPtrAddr);
-               } else {
-                   m_Builder.CreateStore(val, envPtrAddr);
-               }
+             llvm::Type *objTy = getLLVMType(call->Args[i]->ResolvedType);
+             llvm::Value *environmentValue =
+                 envTy->isPointerTy() ? m_Builder.CreateLoad(objTy, val) : val;
+             envPtrAddr =
+                 emitDynFnEnvironmentAllocation(objTy, environmentValue);
            } else {
-               // Stack Allocation for `fn`
-               if (envTy->isPointerTy()) {
-                   envPtrAddr = val;
-               } else {
-                   envPtrAddr = createEntryBlockAlloca(envTy, nullptr, "closure_env_alloc");
-                   m_Builder.CreateStore(val, envPtrAddr);
-               }
+             // Stack Allocation for `fn`
+             if (envTy->isPointerTy()) {
+               envPtrAddr = val;
+             } else {
+               envPtrAddr =
+                   createEntryBlockAlloca(envTy, nullptr, "closure_env_alloc");
+               m_Builder.CreateStore(val, envPtrAddr);
+             }
            }
-           
+
            llvm::Value *opaqueEnv = m_Builder.CreatePointerCast(envPtrAddr, llvm::PointerType::getUnqual(m_Context));
            
            std::string invokeName = shp->Name + "___invoke";
@@ -6398,24 +6384,11 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
           llvm::Value *sourceInvoke =
               m_Builder.CreateExtractValue(sourceFat, 1, "owned.fn.invoke");
 
-          llvm::Function *mallocFn = m_Module->getFunction("malloc");
-          if (!mallocFn) {
-            mallocFn = llvm::Function::Create(
-                llvm::FunctionType::get(m_Builder.getPtrTy(),
-                                        {getIntPtrTy()}, false),
-                llvm::Function::ExternalLinkage, "malloc", m_Module.get());
-          }
-          const uint64_t environmentSize =
-              m_Module->getDataLayout().getTypeAllocSize(
-                  symbol->second.ClosureEnvType);
-          llvm::Value *ownedEnv = m_Builder.CreateCall(
-              mallocFn,
-              {llvm::ConstantInt::get(getIntPtrTy(), environmentSize)},
-              "owned.fn.heap.env");
           llvm::Value *environmentValue = m_Builder.CreateLoad(
               symbol->second.ClosureEnvType, sourceEnv,
               "owned.fn.environment");
-          m_Builder.CreateStore(environmentValue, ownedEnv);
+          llvm::Value *ownedEnv = emitDynFnEnvironmentAllocation(
+              symbol->second.ClosureEnvType, environmentValue);
 
           llvm::Function *dropFn = getOrCreateDropCascadeHelper(
               symbol->second.ClosureEnvTypeName);

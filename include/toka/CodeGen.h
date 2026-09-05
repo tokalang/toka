@@ -301,6 +301,10 @@ private:
                              const TokaSymbol &sym);
   void emitAcquire(llvm::Value *sharedHandle, std::shared_ptr<Type> pointeeType);
   void emitRelease(llvm::Value *sharedHandle, const TokaSymbol &sym, std::shared_ptr<Type> pointeeType);
+  llvm::Value *emitDynFnEnvironmentAllocation(llvm::Type *environmentType,
+                                              llvm::Value *environmentValue);
+  void emitDynFnRetain(llvm::Value *fatHandle);
+  void emitDynFnRelease(llvm::Value *fatHandle, bool dropEnvironment);
 
   llvm::Type *resolveType(const std::string &baseType, bool hasPointer);
   std::shared_ptr<Type> lowerTypeSyntax(const TypeSyntaxPtr &syntax,

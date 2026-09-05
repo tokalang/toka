@@ -1645,36 +1645,26 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
              closureEnvType = getLLVMType(sourceInitExpr->ResolvedType);
              closureEnvTypeName = shp->Name;
              llvm::Value *envPtrAddr;
-             
+
              if (isDynFn) {
-                 // Heap Allocation for `dyn fn`
-                 llvm::Type *objTy = getLLVMType(sourceInitExpr->ResolvedType);
-                 
-                  llvm::Function *mallocFn = m_Module->getFunction("malloc");
-                  if (!mallocFn) {
-                      mallocFn = llvm::Function::Create(llvm::FunctionType::get(m_Builder.getPtrTy(), {getIntPtrTy()}, false), llvm::Function::ExternalLinkage, "malloc", m_Module.get());
-                  }
-                  uint64_t size = m_Module->getDataLayout().getTypeAllocSize(objTy);
-                  llvm::Value *heapMem = m_Builder.CreateCall(mallocFn, {llvm::ConstantInt::get(getIntPtrTy(), size)});
-                  envPtrAddr = m_Builder.CreatePointerCast(heapMem, llvm::PointerType::getUnqual(m_Context));
-                 
-                 if (envTy->isPointerTy()) {
-                     llvm::Value *loadedEnv = m_Builder.CreateLoad(objTy, initVal);
-                     m_Builder.CreateStore(loadedEnv, envPtrAddr);
-                 } else {
-                     m_Builder.CreateStore(initVal, envPtrAddr);
-                 }
+               llvm::Type *objTy = getLLVMType(sourceInitExpr->ResolvedType);
+               llvm::Value *environmentValue =
+                   envTy->isPointerTy() ? m_Builder.CreateLoad(objTy, initVal)
+                                        : initVal;
+               envPtrAddr =
+                   emitDynFnEnvironmentAllocation(objTy, environmentValue);
              } else {
-                 // Stack Allocation for `fn`
-                 if (envTy->isPointerTy()) {
-                     envPtrAddr = initVal;
-                 } else {
-                     envPtrAddr = createEntryBlockAlloca(envTy, nullptr, "closure_env_alloc");
-                     m_Builder.CreateStore(initVal, envPtrAddr);
-                 }
-                 closureEnvAddr = envPtrAddr;
+               // Stack Allocation for `fn`
+               if (envTy->isPointerTy()) {
+                 envPtrAddr = initVal;
+               } else {
+                 envPtrAddr = createEntryBlockAlloca(envTy, nullptr,
+                                                     "closure_env_alloc");
+                 m_Builder.CreateStore(initVal, envPtrAddr);
+               }
+               closureEnvAddr = envPtrAddr;
              }
-             
+
              llvm::Value *opaqueEnv = m_Builder.CreatePointerCast(envPtrAddr, llvm::PointerType::getUnqual(m_Context));
              
              std::string invokeName = shp->Name + "___invoke";
@@ -1718,6 +1708,9 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
     error(var, DiagID::ERR_CODEGEN_INTERNAL_ERROR_TYPE_MISMATCH_IN_VARIAB, s1, s2);
     return nullptr;
   }
+
+  if (initVal && var->DynFnEnvironment == DynFnEnvironmentDisposition::Retain)
+    emitDynFnRetain(initVal);
 
   // A legal destructive read of an erased `fn` binding transfers ownership
   // of the same concrete environment. Carry its lowering identity to the new
