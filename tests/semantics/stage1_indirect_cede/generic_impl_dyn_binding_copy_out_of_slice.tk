@@ -1,0 +1,14 @@
+shape Box<T>()
+
+impl<T> Box<T> {
+    fn invoke(self, callback: dyn fn(cede T) -> T, value: T) -> T {
+        auto local = callback
+        return local(value)
+    }
+}
+
+fn main() -> i32 {
+    auto box = Box<i32>()
+    auto callback = { value => cede value }:dyn fn(cede i32) -> i32
+    return box.invoke(callback, 7:i32) - 7:i32
+}

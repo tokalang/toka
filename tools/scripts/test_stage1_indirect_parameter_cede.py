@@ -122,6 +122,8 @@ def main():
     for name in (
             "generic_impl_fn_formal_out_of_slice.tk",
             "generic_impl_dyn_formal_out_of_slice.tk",
+            "generic_impl_fn_binding_copy_out_of_slice.tk",
+            "generic_impl_dyn_binding_copy_out_of_slice.tk",
             "generic_caller_generic_fn_out_of_slice.tk",
             "generic_caller_generic_dyn_out_of_slice.tk"):
         generic_impl = check(tokac, name)

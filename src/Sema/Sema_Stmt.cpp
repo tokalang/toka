@@ -2178,6 +2178,32 @@ void Sema::checkStmt(Stmt *S) {
       populateCallableParameterOrigins(
           Info, callableDeclarationSyntax,
           callableDeclarationGenericNames(CurrentFunction));
+      if (inferredType && !Info.CallableParameterOriginsComplete) {
+        Expr *source = initializer;
+        while (source) {
+          if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(source)) {
+            source = unsafeExpr->Expression.get();
+          } else if (auto *cede = dynamic_cast<CedeExpr *>(source)) {
+            source = cede->Value.get();
+          } else if (auto *cast = dynamic_cast<CastExpr *>(source);
+                     cast && cast->Kind != CastKind::Ascription) {
+            source = cast->Expression.get();
+          } else {
+            break;
+          }
+        }
+        if (auto *sourceVariable = dynamic_cast<VariableExpr *>(source)) {
+          SymbolInfo *sourceInfo = nullptr;
+          std::string sourceName;
+          if (CurrentScope->findVariableWithDeref(sourceVariable->Name,
+                                                  sourceInfo, sourceName) &&
+              sourceInfo && sourceInfo->CallableParameterOriginsComplete) {
+            Info.CallableParameterOrigins =
+                sourceInfo->CallableParameterOrigins;
+            Info.CallableParameterOriginsComplete = true;
+          }
+        }
+      }
     }
     if (auto *closure = dynamic_cast<ClosureExpr *>(Var->Init.get())) {
       if (!Info.TypeObj ||
