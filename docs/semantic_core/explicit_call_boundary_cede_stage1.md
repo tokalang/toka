@@ -152,3 +152,17 @@ The callable binding remains an ordinary receiver in this slice. Consuming a
 callable expression, general `InvokeExpr`, generic/morphic or indeterminate
 formal provenance, and receiver spelling remain outside this activation. No
 Parser, TKI, ABI, interface-key, or evidence schema change is introduced.
+
+Indirect-call state is captured before a callable binding can be consumed and
+before any argument expression is evaluated. The guard is armed only when the
+resolved signature contains an admitted Stage 1 parameter (or when an explicit
+argument transfer already requires the historical atomic-call guarantee).
+Consequently, a rejected outer call rolls back transfers performed by nested
+arguments and by `cede callback(...)`.
+
+For function-typed parameters, the binding symbol also carries a per-parameter
+declaration origin derived from the unspecialized `TypeSyntax`. Substitution
+does not turn `fn(cede T)` into a source-written concrete `fn(cede i32)`:
+generic/morphic origins remain excluded after monomorphization. Missing alias
+or declaration provenance fails closed rather than being inferred from the
+resolved payload type.

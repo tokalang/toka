@@ -5211,8 +5211,45 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
   enterScope(); // Function scope
 
+  const FunctionDecl *declarationFunction =
+      Fn->TemplateOrigin ? Fn->TemplateOrigin : Fn;
+  std::set<std::string> declarationGenericNames;
+  for (const auto &parameter : declarationFunction->GenericParams) {
+    if (parameter.IsConst)
+      continue;
+    declarationGenericNames.insert(parameter.Name);
+    if (!parameter.Name.empty() && parameter.Name.front() == '\'')
+      declarationGenericNames.insert(parameter.Name.substr(1));
+  }
+  auto syntaxMentionsDeclarationGeneric =
+      [&](auto &&self, const TypeSyntaxPtr &syntax) -> bool {
+    if (!syntax)
+      return false;
+    if (syntax->NodeKind == TypeSyntax::Kind::Named &&
+        declarationGenericNames.count(syntax->Text))
+      return true;
+    if (self(self, syntax->Subject) || self(self, syntax->Result))
+      return true;
+    for (const auto &argument : syntax->Arguments) {
+      if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type &&
+          self(self, argument.Type))
+        return true;
+    }
+    for (const auto &element : syntax->Elements) {
+      if (self(self, element))
+        return true;
+    }
+    for (const auto &field : syntax->Fields) {
+      if (self(self, field.Type))
+        return true;
+    }
+    return false;
+  };
+
   // Register arguments
-  for (auto &Arg : Fn->Args) {
+  for (size_t argumentIndex = 0; argumentIndex < Fn->Args.size();
+       ++argumentIndex) {
+    auto &Arg = Fn->Args[argumentIndex];
     debugCheckBindingPermission(Arg);
     debugCheckBindingTypeString("function argument", Arg.Name, Arg.Type,
                                 Arg.Permission, Fn->Loc);
@@ -5238,6 +5275,35 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
       // Assign to AST Node for CodeGen
       Arg.ResolvedType = Info.TypeObj;
+    }
+
+    if (Info.TypeObj &&
+        (Info.TypeObj->isFunction() || Info.TypeObj->isDynFn()) &&
+        argumentIndex < declarationFunction->Args.size()) {
+      const auto &declaredArgument = declarationFunction->Args[argumentIndex];
+      TypeSyntaxPtr callableSyntax = declaredArgument.TypeSyntax;
+      while (callableSyntax &&
+             callableSyntax->NodeKind == TypeSyntax::Kind::Morphology)
+        callableSyntax = callableSyntax->Subject;
+      const size_t parameterCount =
+          Info.TypeObj->isFunction()
+              ? std::static_pointer_cast<FunctionType>(Info.TypeObj)
+                    ->ParamTypes.size()
+              : std::static_pointer_cast<DynFnType>(Info.TypeObj)
+                    ->ParamTypes.size();
+      if (callableSyntax &&
+          callableSyntax->NodeKind == TypeSyntax::Kind::Function &&
+          callableSyntax->Elements.size() == parameterCount) {
+        Info.CallableParameterOriginsComplete = true;
+        Info.CallableParameterOrigins.reserve(parameterCount);
+        for (const auto &parameterSyntax : callableSyntax->Elements) {
+          Info.CallableParameterOrigins.push_back(
+              syntaxMentionsDeclarationGeneric(syntaxMentionsDeclarationGeneric,
+                                               parameterSyntax)
+                  ? CallableParameterProvenance::GenericOrMorphic
+                  : CallableParameterProvenance::Concrete);
+        }
+      }
     }
 
     if (Arg.ResolvedType) {
@@ -5324,7 +5390,6 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       Info.IsMorphicExempt = true;
     }
     CurrentScope->define(Arg.Name, Info);
-
   }
 
   populateOutcomeTransitionIdentities(Fn);

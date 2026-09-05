@@ -717,10 +717,10 @@ Sema::AnalysisState Sema::captureAnalysisState() {
 
 Sema::CallArgumentRollbackGuard::CallArgumentRollbackGuard(
     Sema &owner, const std::vector<std::unique_ptr<Expr>> &args,
-    bool forceCapture, bool initiallyArmed)
+    bool forceCapture, bool initiallyArmed, bool armForExplicitTransfers)
     : Owner(owner), Armed(initiallyArmed) {
   const bool hasExplicitTransfer =
-      Owner.m_EnableSignatureDrivenCallCede &&
+      armForExplicitTransfers && Owner.m_EnableSignatureDrivenCallCede &&
       std::any_of(args.begin(), args.end(), [](const auto &argument) {
         return dynamic_cast<CedeExpr *>(argument.get()) != nullptr;
       });

@@ -83,9 +83,33 @@ def main():
             "E0438" not in multi.stderr and "E0410" not in multi.stderr,
             "rejected indirect call changed an argument source")
 
+    for name in (
+            "nested_fn_rejection_restores_source.tk",
+            "nested_dyn_rejection_restores_source.tk"):
+        nested = check(tokac, name)
+        require(nested.returncode != 0 and
+                nested.stderr.count("error[E04570]") == 1 and
+                "E0438" not in nested.stderr and
+                "E0410" not in nested.stderr,
+                name + " leaked a nested argument transfer")
+
+    receiver = check(
+        tokac, "rejected_parameter_restores_callable_receiver.tk")
+    require(receiver.returncode != 0 and
+            receiver.stderr.count("error[E04570]") == 1 and
+            "E0438" not in receiver.stderr and
+            "E0410" not in receiver.stderr,
+            "indirect rejection leaked callable receiver consumption")
+
     borrowed = check(tokac, "borrowed_identity_out_of_slice.tk")
     require("E04570" not in borrowed.stderr,
             "borrowed identity was pulled into indirect value activation")
+    for name in (
+            "generic_fn_formal_out_of_slice.tk",
+            "generic_dyn_formal_out_of_slice.tk"):
+        generic = check(tokac, name)
+        require(generic.returncode == 0 and "E04570" not in generic.stderr,
+                name + " lost declaration-side generic provenance")
 
     positive = check(tokac, "temporary_and_copy_keep_live.tk")
     require(positive.returncode == 0 and not positive.stderr,

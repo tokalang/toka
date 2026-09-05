@@ -4006,6 +4006,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   bool rollbackInvalidSpecializationDescendants = false;
   std::string CallName = Call->Callee;
   std::string OriginalName = CallName;
+  std::optional<CallArgumentRollbackGuard> indirectCallRollback;
   // A mangled cache alias has no GenericParams left. Capture before lookup so
   // its persistent validation state can reject the real argument transaction.
   std::optional<CallArgumentRollbackGuard> directArgumentRollback;
@@ -5644,6 +5645,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       Ext = static_cast<ExternDecl *>(sym.ASTPtr);
     }
 
+    if (!Fn && !Ext && !Sh && sym.TypeObj &&
+        (sym.TypeObj->isFunction() || sym.TypeObj->isDynFn()))
+      indirectCallRollback.emplace(*this, Call->Args, true, false, false);
+
     // Formal callable invocation. Closures and user-defined callable values
     // share the same receiver-permission path.
     if (!Fn && !Ext && !Sh && sym.TypeObj) {
@@ -6183,6 +6188,31 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           CallTransferRoute route) -> std::shared_ptr<Type> {
     const CallableReceiverMode formalReceiverMode =
         symPtr ? symPtr->CallableReceiver : getCallableReceiverMode(*sym.TypeObj);
+    auto isStage1ConcreteIndirectParameter =
+        [&](size_t index, const std::shared_ptr<Type> &formalType) -> bool {
+      auto expected = resolveType(formalType, false);
+      const auto ownership = queryExplicitCedeStage0OwnershipReadOnly(expected);
+      if (!m_EnableStage1ExplicitCallerCede || !expected || !expected->IsCede ||
+          expected->isUnknown() || expected->isFunction() ||
+          expected->isDynFn() || !ownership ||
+          *ownership == ValueOwnership::BorrowedView)
+        return false;
+      if (symPtr && symPtr->IsFunctionParameter) {
+        return symPtr->CallableParameterOriginsComplete &&
+               index < symPtr->CallableParameterOrigins.size() &&
+               symPtr->CallableParameterOrigins[index] ==
+                   CallableParameterProvenance::Concrete;
+      }
+      return !CurrentFunction || !CurrentFunction->TemplateOrigin;
+    };
+    bool hasStage1CedeParameter = false;
+    for (size_t index = 0; index < parameterTypes.size(); ++index)
+      hasStage1CedeParameter =
+          hasStage1CedeParameter ||
+          isStage1ConcreteIndirectParameter(index, parameterTypes[index]);
+    if (hasStage1CedeParameter && indirectCallRollback)
+      indirectCallRollback->arm();
+
     if (Call->Args.size() != parameterTypes.size()) {
       recordExplicitCedeStage0IndirectTransaction(
           Call, CallName, route, parameterTypes, sym.TypeObj,
@@ -6265,14 +6295,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           expectedTy && expectedTy->IsCede);
       m_AllowPermissionSuffix = oldAllowPermissionSuffix;
 
-      const auto stage1IndirectOwnership =
-          queryExplicitCedeStage0OwnershipReadOnly(expectedTy);
       const bool stage1ExplicitIndirectParameter =
-          m_EnableStage1ExplicitCallerCede && expectedTy &&
-          expectedTy->IsCede && !expectedTy->isUnknown() &&
-          !expectedTy->isFunction() && !expectedTy->isDynFn() &&
-          stage1IndirectOwnership &&
-          *stage1IndirectOwnership != ValueOwnership::BorrowedView;
+          isStage1ConcreteIndirectParameter(i, expectedTy);
 
       if (signatureIndirectSlice && expectedTy && expectedTy->IsCede &&
           elaborateSignatureDrivenCedeArgument(

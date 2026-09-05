@@ -1,0 +1,26 @@
+import core/traits::{@Encap}
+
+shape Resource(value: i32)
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn forward(cede value: Resource) -> Resource {
+    return cede value
+}
+
+fn inspect(value: Resource) -> i32 {
+    return value.value
+}
+
+fn main() -> i32 {
+    auto callback = { resource, amount =>
+        auto owned = cede resource
+        return owned.value + cede amount
+    }:fn(cede Resource, cede i32) -> i32
+    auto source = Resource(value = 7:i32)
+    auto amount = 1:i32
+    auto rejected = callback(forward(cede source), amount)
+    return inspect(source) + amount + rejected
+}

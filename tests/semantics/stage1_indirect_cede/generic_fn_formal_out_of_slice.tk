@@ -1,0 +1,8 @@
+fn invoke<T>(callback: fn(cede T) -> T, value: T) -> T {
+    return callback(value)
+}
+
+fn main() -> i32 {
+    auto callback = { value => cede value }:fn(cede i32) -> i32
+    return invoke<i32>(callback, 7:i32) - 7:i32
+}

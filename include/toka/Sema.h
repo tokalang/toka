@@ -34,6 +34,12 @@
 
 namespace toka {
 
+enum class CallableParameterProvenance : uint8_t {
+  Indeterminate,
+  Concrete,
+  GenericOrMorphic,
+};
+
 struct SymbolInfo {
   // New Type Object (Source of Truth)
   std::shared_ptr<toka::Type> TypeObj;
@@ -95,6 +101,12 @@ struct SymbolInfo {
   std::set<std::string> ClosureImplicitCaptures;
   std::set<std::string> ClosureNonSendCaptures;
   std::set<std::string> ClosureNonSyncCopyCaptures;
+
+  // Declaration-side callable parameter origin. This survives generic
+  // substitution through the binding symbol so resolved i32 cannot masquerade
+  // as a source-written concrete formal that was originally T.
+  std::vector<CallableParameterProvenance> CallableParameterOrigins;
+  bool CallableParameterOriginsComplete = false;
 
   void *ReferencedModule = nullptr; // Pointer to ModuleScope (opaque here)
 
@@ -763,7 +775,8 @@ private:
     CallArgumentRollbackGuard(Sema &owner,
                               const std::vector<std::unique_ptr<Expr>> &args,
                               bool forceCapture = false,
-                              bool initiallyArmed = true);
+                              bool initiallyArmed = true,
+                              bool armForExplicitTransfers = true);
     CallArgumentRollbackGuard(const CallArgumentRollbackGuard &) = delete;
     CallArgumentRollbackGuard &
     operator=(const CallArgumentRollbackGuard &) = delete;
