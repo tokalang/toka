@@ -1,0 +1,9 @@
+fn make() -> dyn fn(i32) -> i32 {
+    return { value => value + 1:i32 }:dyn fn(i32) -> i32
+}
+
+fn main() -> i32 {
+    auto callback = make()
+    auto copied = callback
+    return copied(41:i32) - 42:i32
+}

@@ -27,6 +27,57 @@ extern bool verboseMode;
 
 namespace toka {
 
+llvm::Value *
+CodeGen::emitDynFnClosureValue(const Expr *closureExpression,
+                               llvm::Value *environmentValue,
+                               const std::shared_ptr<Type> &targetType) {
+  if (!closureExpression || !environmentValue || !targetType ||
+      !targetType->isDynFn() || !closureExpression->ResolvedType ||
+      !closureExpression->ResolvedType->isShape())
+    return nullptr;
+  auto closureShape =
+      std::static_pointer_cast<ShapeType>(closureExpression->ResolvedType);
+  if (closureShape->Name.rfind("__Closure_", 0) != 0)
+    return nullptr;
+
+  llvm::Type *environmentType = getLLVMType(closureExpression->ResolvedType);
+  if (!environmentType)
+    return nullptr;
+  llvm::Value *storedEnvironment =
+      environmentValue->getType()->isPointerTy()
+          ? m_Builder.CreateLoad(environmentType, environmentValue)
+          : environmentValue;
+  llvm::Value *environment =
+      emitDynFnEnvironmentAllocation(environmentType, storedEnvironment);
+  if (!environment)
+    return nullptr;
+
+  const std::string invokeName = closureShape->Name + "___invoke";
+  llvm::Function *invoke = m_Module->getFunction(invokeName);
+  if (!invoke) {
+    error(closureExpression,
+          DiagID::ERR_CODEGEN_CLOSURE_INVOKE_FUNCTION_NOT_GENERATED,
+          invokeName);
+    return nullptr;
+  }
+  llvm::Function *drop =
+      m_Module->getFunction("Encap_" + closureShape->Name + "_drop");
+  if (!drop)
+    drop = getOrCreateDropCascadeHelper(closureShape->Name);
+
+  auto *fatType = llvm::dyn_cast<llvm::StructType>(getLLVMType(targetType));
+  if (!fatType || fatType->getNumElements() != 3)
+    return nullptr;
+  llvm::Value *fat = llvm::UndefValue::get(fatType);
+  fat = m_Builder.CreateInsertValue(
+      fat, m_Builder.CreatePointerCast(environment, m_Builder.getPtrTy()), 0);
+  fat = m_Builder.CreateInsertValue(
+      fat, m_Builder.CreatePointerCast(invoke, m_Builder.getPtrTy()), 1);
+  fat = m_Builder.CreateInsertValue(
+      fat, m_Builder.CreatePointerCast(drop, m_Builder.getPtrTy()), 2);
+  return fat;
+}
+
 static const MemberExpr *getTerminalAssignmentMember(const Expr *expr) {
   if (!expr)
     return nullptr;

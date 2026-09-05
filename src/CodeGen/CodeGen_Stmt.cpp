@@ -42,7 +42,27 @@ llvm::Value *CodeGen::genReturnStmt(const ReturnStmt *ret) {
   const bool forwardsOutcome =
       ret->OutcomeKind == ReturnStmt::MissOutcomeKind::Forward;
   if (ret->ReturnValue && !returnsMiss) {
-    retVal = genExpr(ret->ReturnValue.get()).load(m_Builder);
+    std::shared_ptr<Type> declaredReturnType =
+        m_CurrentFunction ? m_CurrentFunction->ResolvedReturnType : nullptr;
+    const Expr *returnSource = ret->ReturnValue.get();
+    while (returnSource) {
+      if (auto *cast = dynamic_cast<const CastExpr *>(returnSource)) {
+        returnSource = cast->Expression.get();
+      } else if (auto *unsafeExpr =
+                     dynamic_cast<const UnsafeExpr *>(returnSource)) {
+        returnSource = unsafeExpr->Expression.get();
+      } else {
+        break;
+      }
+    }
+    if (declaredReturnType && declaredReturnType->isDynFn() && returnSource &&
+        returnSource->ResolvedType && returnSource->ResolvedType->isShape()) {
+      llvm::Value *environment = genExpr(returnSource).load(m_Builder);
+      retVal =
+          emitDynFnClosureValue(returnSource, environment, declaredReturnType);
+    } else {
+      retVal = genExpr(ret->ReturnValue.get()).load(m_Builder);
+    }
     if (!retVal) {
     }
 

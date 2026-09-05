@@ -1,0 +1,9 @@
+fn make() -> dyn fn(i32) -> i32 {
+    auto callback = { value => value + 1:i32 }:dyn fn(i32) -> i32
+    return cede callback
+}
+
+fn main() -> i32 {
+    auto callback = make()
+    return callback(41:i32) - 42:i32
+}

@@ -303,6 +303,9 @@ private:
   void emitRelease(llvm::Value *sharedHandle, const TokaSymbol &sym, std::shared_ptr<Type> pointeeType);
   llvm::Value *emitDynFnEnvironmentAllocation(llvm::Type *environmentType,
                                               llvm::Value *environmentValue);
+  llvm::Value *emitDynFnClosureValue(const Expr *closureExpression,
+                                     llvm::Value *environmentValue,
+                                     const std::shared_ptr<Type> &targetType);
   void emitDynFnRetain(llvm::Value *fatHandle);
   void emitDynFnRelease(llvm::Value *fatHandle, bool dropEnvironment);
 
