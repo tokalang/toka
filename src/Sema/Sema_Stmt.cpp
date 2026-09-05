@@ -2228,12 +2228,31 @@ void Sema::checkStmt(Stmt *S) {
           break;
         }
       }
-      const auto *sourceVariable = dynamic_cast<VariableExpr *>(source);
-      Var->DynFnEnvironment = sourceVariable && sourceVariable->ResolvedType &&
-                                      sourceVariable->ResolvedType->isDynFn() &&
-                                      !destructive
-                                  ? DynFnEnvironmentDisposition::Retain
-                                  : DynFnEnvironmentDisposition::Transfer;
+      const bool copiesNamedEnvironment =
+          source && source->ResolvedType && source->ResolvedType->isDynFn() &&
+          makeAccessPath(source) && !destructive;
+      if (auto *sourceVariable = dynamic_cast<VariableExpr *>(source)) {
+        SymbolInfo *sourceInfo = nullptr;
+        std::string sourceName;
+        if (CurrentScope->findVariableWithDeref(sourceVariable->Name,
+                                                sourceInfo, sourceName) &&
+            sourceInfo)
+          Info.CallableReceiver = sourceInfo->CallableReceiver;
+      }
+      if (copiesNamedEnvironment &&
+          Info.CallableReceiver == CallableReceiverMode::Consuming) {
+        std::string sourceName = getPathString(source);
+        if (sourceName.empty())
+          sourceName = source->toString();
+        error(Var->Init.get(),
+              DiagID::ERR_SEMA_CONSUMING_DYN_FN_COPY_REQUIRES_CEDE, sourceName,
+              sourceName);
+        Var->DynFnEnvironment = DynFnEnvironmentDisposition::None;
+      } else {
+        Var->DynFnEnvironment = copiesNamedEnvironment
+                                    ? DynFnEnvironmentDisposition::Retain
+                                    : DynFnEnvironmentDisposition::Transfer;
+      }
     }
     if (auto *closure = dynamic_cast<ClosureExpr *>(Var->Init.get())) {
       if (!Info.TypeObj ||

@@ -13,6 +13,11 @@ Sema classifies each dynamic-function initialization as `Retain` or
 executes that disposition. It does not reconstruct copy intent from source
 syntax.
 
+A consuming `dyn fn` remains a linear environment owner. Bare binding or
+projection copies are rejected with `E04653`; only `cede` may transfer that
+handle. Reference counting is not permission to invoke the same consuming
+environment twice.
+
 Scope cleanup releases one owner. Only the final release runs the environment
 drop cascade and frees the allocation. The regression gate covers multiple
 binding copies with a captured resource and a destructive binding transfer;
@@ -23,3 +28,12 @@ TKI syntax, caller-side `cede` diagnostics, or receiver spelling. It does
 change the cross-object environment-allocation convention, so the compiler
 interface key advances from `0.9.9-16` to `0.9.9-17`; older TKI/object pairs
 must not be silently mixed with the refcounted environment contract.
+
+## Return/source follow-up gate
+
+Directly returning a constructed `dyn fn` expression is a separately observed
+release blocker: the current return lowering can produce an uninitialized
+carrier and `SIGSEGV`, while binding the callable locally and returning
+`cede callback` works. The return/source activation slice must add this exact
+runtime comparison before changing return semantics. It is recorded here but
+is not repaired by this binding-lifecycle slice.

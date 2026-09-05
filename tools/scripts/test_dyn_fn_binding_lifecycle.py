@@ -32,7 +32,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix="toka-dyn-fn-lifecycle-") as temp:
         cases = (
             FIXTURES / "binding_copy_exact_once.tk",
+            FIXTURES / "projected_copy_exact_once.tk",
             FIXTURES / "binding_transfer_exact_once.tk",
+            FIXTURES / "consuming_transfer_exact_once.tk",
             INDIRECT_FIXTURES / "alias_dyn_binding_copy_indeterminate.tk",
             INDIRECT_FIXTURES / "alias_fn_binding_copy_indeterminate.tk",
         )
@@ -50,6 +52,21 @@ def main():
                     source.name +
                     " did not release its environment exactly once: " +
                     ran.stderr)
+
+    for source in (
+            "consuming_binding_copy_rejected.tk",
+            "consuming_projection_copy_rejected.tk"):
+        artifact = Path(tempfile.gettempdir()) / source.removesuffix(".tk")
+        if artifact.exists():
+            artifact.unlink()
+        rejected = subprocess.run(
+            [str(tokac), str(FIXTURES / source), "-o", str(artifact)],
+            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, timeout=30)
+        require(rejected.returncode != 0 and
+                rejected.stderr.count("error[E04653]") == 1 and
+                not artifact.exists(),
+                source + " copied a consuming dynamic environment")
 
     with tempfile.TemporaryDirectory(prefix="toka-dyn-fn-interface-") as temp:
         work = Path(temp)

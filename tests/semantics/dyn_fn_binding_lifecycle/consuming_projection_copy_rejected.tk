@@ -1,0 +1,13 @@
+shape Token(value: i32)
+shape Holder(callback: cede dyn fn() -> i32)
+
+fn main() -> i32 {
+    auto token = Token(value = 5:i32)
+    auto once = { [cede token] =>
+        auto owned = cede token
+        return owned.value
+    }:cede dyn fn() -> i32
+    auto holder = Holder(callback = cede once)
+    auto copied = holder.callback
+    return cede copied()
+}
