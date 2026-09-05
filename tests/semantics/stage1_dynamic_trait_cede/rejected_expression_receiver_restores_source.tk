@@ -1,0 +1,26 @@
+trait @Sink {
+    fn take(self, cede value: i32) -> i32
+}
+
+shape IntSink(id: i32)
+
+impl IntSink@Sink {
+    fn take(self, cede value: i32) -> i32 {
+        return self.id + cede value
+    }
+}
+
+fn forward(cede sink: IntSink) -> dyn @Sink {
+    return cede sink
+}
+
+fn inspect(value: IntSink) -> i32 {
+    return value.id
+}
+
+fn main() -> i32 {
+    auto source = IntSink(id = 7:i32)
+    auto amount = 1:i32
+    auto rejected = forward(cede source).take(amount)
+    return inspect(source) + amount + rejected
+}

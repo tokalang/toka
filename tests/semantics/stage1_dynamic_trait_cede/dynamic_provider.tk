@@ -1,0 +1,11 @@
+pub trait @Sink {
+    fn take(self, cede value: i32) -> i32
+}
+
+pub shape IntSink()
+
+impl IntSink@Sink {
+    fn take(self, cede value: i32) -> i32 {
+        return cede value
+    }
+}

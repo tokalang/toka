@@ -1,0 +1,22 @@
+trait @Sink {
+    fn take(self, cede value: i32) -> i32
+}
+
+shape IntSink()
+
+impl IntSink@Sink {
+    fn take(self, cede value: i32) -> i32 {
+        return cede value
+    }
+}
+
+fn invoke(sink: dyn @Sink) -> i32 {
+    auto value = 7:i32
+    auto moved = sink.take(cede value)
+    return moved + value
+}
+
+fn main() -> i32 {
+    auto sink = IntSink()
+    return invoke(sink)
+}

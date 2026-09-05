@@ -1,0 +1,11 @@
+import ./dynamic_provider::{@Sink, IntSink}
+
+fn invoke(sink: dyn @Sink) -> i32 {
+    auto value = 7:i32
+    return sink.take(value)
+}
+
+fn main() -> i32 {
+    auto sink = IntSink()
+    return invoke(sink)
+}

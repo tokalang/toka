@@ -4263,6 +4263,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // itself contain successful consuming calls whose state must be restored
     // if the outer method is later rejected by arity, type, or cede checks.
     CallArgumentRollbackGuard methodCallRollback(*this, Met->Args, true, false);
+    auto isStage1ConcreteMethodParameter = [](const FunctionDecl::Arg &arg) {
+      return arg.Stage0DeclarationProvenanceComplete &&
+             !arg.Stage0GenericValueRole && !arg.Stage0MorphicGenericRole;
+    };
     std::shared_ptr<Type> stage0PreMutationReceiverType;
     std::optional<ExplicitCedePreparedFacts> stage0PreMutationReceiverFacts;
     std::optional<Stage0CallSnapshot> stage0PreMutationCallSnapshot;
@@ -4310,6 +4314,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           return toka::Type::fromString("unknown");
         for (auto &M : TD->Methods) {
           if (M->Name == Met->Method) {
+            const bool hasStage1CedeParameter =
+                m_EnableStage1ExplicitCallerCede &&
+                std::any_of(M->Args.begin() +
+                                std::min<size_t>(1, M->Args.size()),
+                            M->Args.end(), [&](const FunctionDecl::Arg &arg) {
+                              return arg.IsCeded &&
+                                     isStage1ConcreteMethodParameter(arg);
+                            });
+            if (hasStage1CedeParameter)
+              methodCallRollback.arm();
             if (!M->IsPub) {
               bool sameModule = false;
               if (CurrentModule) {
@@ -4361,6 +4375,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 size_t Index = 0;
                 std::shared_ptr<Type> ArgumentType;
                 std::shared_ptr<Type> FormalType;
+                bool RequireExplicitNamedSource = false;
               };
               std::vector<PendingDynamicCede> pendingDynamicCedes;
               std::vector<bool> plannedDynamicCede(Met->Args.size(), false);
@@ -4436,14 +4451,20 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                         : resolveType(Sema::synthesizePhysicalTypeObject(param));
                 auto argTy = checkExpr(Met->Args[i].get(), expectedTy);
                 projectOwnedStringView(Met->Args[i], argTy, expectedTy);
+                const bool stage1ExplicitDynamicParameter =
+                    m_EnableStage1ExplicitCallerCede &&
+                    isStage1ConcreteMethodParameter(param);
                 if (signatureDynamicSlice && param.IsCeded) {
                   if (Met->Args.size() == 1) {
-                    elaborateSignatureDrivenCedeArgument(Met->Args[i], argTy,
-                                                         expectedTy);
+                    elaborateSignatureDrivenCedeArgument(
+                        Met->Args[i], argTy, expectedTy, true,
+                        stage1ExplicitDynamicParameter);
                   } else if (elaborateSignatureDrivenCedeArgument(
-                                 Met->Args[i], argTy, expectedTy, false)) {
+                                 Met->Args[i], argTy, expectedTy, false,
+                                 stage1ExplicitDynamicParameter)) {
                     plannedDynamicCede[i] = true;
-                    pendingDynamicCedes.push_back({i, argTy, expectedTy});
+                    pendingDynamicCedes.push_back(
+                        {i, argTy, expectedTy, stage1ExplicitDynamicParameter});
                   }
                 }
                 AccessPath dynamicArgPath =
@@ -4452,10 +4473,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   dynamicArgumentPaths.push_back({dynamicArgPath, i});
                 auto *callerCede =
                     dynamic_cast<CedeExpr *>(Met->Args[i].get());
-                const bool cedeExempt =
-                    param.IsCeded &&
-                    (canImplicitlyPassToCede(argTy) ||
-                     canPreserveBareSignatureCede(argTy));
+                const bool namedStage1Source =
+                    stage1ExplicitDynamicParameter && param.IsCeded &&
+                    callerCede == nullptr &&
+                    isStage1NamedSource(Met->Args[i].get());
+                const bool cedeExempt = param.IsCeded && !namedStage1Source &&
+                                        (canImplicitlyPassToCede(argTy) ||
+                                         canPreserveBareSignatureCede(argTy));
                 const bool callerCeded =
                     callerCede != nullptr ||
                     (i < plannedDynamicCede.size() && plannedDynamicCede[i]);
@@ -4534,7 +4558,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   for (const auto &pending : pendingDynamicCedes)
                     elaborateSignatureDrivenCedeArgument(
                         Met->Args[pending.Index], pending.ArgumentType,
-                        pending.FormalType);
+                        pending.FormalType, true,
+                        pending.RequireExplicitNamedSource);
                 }
               }
             }
@@ -4721,12 +4746,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         FunctionDecl *FD = dupProvider ? dupProvider
                                        : MethodDecls[soulType][Met->Method];
         Met->ResolvedFn = FD;
-        auto isStage1ConcreteMethodParameter =
-            [](const FunctionDecl::Arg &arg) {
-              return arg.Stage0DeclarationProvenanceComplete &&
-                     !arg.Stage0GenericValueRole &&
-                     !arg.Stage0MorphicGenericRole;
-            };
         const bool hasStage1CedeParameter =
             m_EnableStage1ExplicitCallerCede &&
             std::any_of(FD->Args.begin() + std::min<size_t>(1, FD->Args.size()),

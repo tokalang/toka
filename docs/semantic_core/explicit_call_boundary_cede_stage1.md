@@ -100,3 +100,28 @@ historical-replay failures retain their pre-slice state and diagnostics.
 
 Dynamic-trait dispatch, indirect function values, callable expressions, and
 all receiver morphology/spelling work remain outside this slice.
+
+## Dynamic-trait parameter slice
+
+**Status:** implementation slice; pending acceptance.
+
+Concrete parameters selected through `dyn @Trait` dispatch now use the same
+caller handshake and transaction rules:
+
+```toka
+fn invoke(sink: dyn @Sink) -> i32 {
+    auto value = 42
+    return sink.take(value)       // E04509
+    // return sink.take(cede value)  // accepted; value becomes unavailable
+}
+```
+
+The method-call snapshot remains captured before receiver evaluation and is
+armed when the selected trait declaration proves a concrete `cede` formal.
+This includes expression receivers whose evaluation transfers another source.
+Explicit argument transfers retain their pre-existing atomic rollback rule.
+
+Generic-value and morphic trait parameters remain outside this slice. Dynamic
+receiver spelling and morphology are unchanged, as are indirect function and
+callable-expression routes. No Parser, TKI, ABI, interface-key, or evidence
+schema change is introduced.
