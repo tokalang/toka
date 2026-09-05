@@ -1,0 +1,8 @@
+fn run<T>(value: T) -> T {
+    auto callback = { item => cede item }:fn(cede T) -> T
+    return callback(value)
+}
+
+fn main() -> i32 {
+    return run<i32>(7:i32) - 7:i32
+}

@@ -2166,6 +2166,19 @@ void Sema::checkStmt(Stmt *S) {
     Var->ResolvedType = Info.TypeObj;
     if (Info.TypeObj && (Info.TypeObj->isFunction() || Info.TypeObj->isDynFn()))
       Info.CallableReceiver = getCallableReceiverMode(*Info.TypeObj);
+    if (Info.TypeObj &&
+        (Info.TypeObj->isFunction() || Info.TypeObj->isDynFn())) {
+      TypeSyntaxPtr callableDeclarationSyntax = Var->DeclaredTypeSyntax;
+      Expr *initializer = Var->Init.get();
+      while (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(initializer))
+        initializer = unsafeExpr->Expression.get();
+      if (auto *ascription = dynamic_cast<CastExpr *>(initializer);
+          ascription && ascription->Kind == CastKind::Ascription)
+        callableDeclarationSyntax = ascription->TargetTypeSyntax;
+      populateCallableParameterOrigins(
+          Info, callableDeclarationSyntax,
+          callableDeclarationGenericNames(CurrentFunction));
+    }
     if (auto *closure = dynamic_cast<ClosureExpr *>(Var->Init.get())) {
       if (!Info.TypeObj ||
           (!Info.TypeObj->isFunction() && !Info.TypeObj->isDynFn()))

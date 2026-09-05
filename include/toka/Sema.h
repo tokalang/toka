@@ -34,12 +34,6 @@
 
 namespace toka {
 
-enum class CallableParameterProvenance : uint8_t {
-  Indeterminate,
-  Concrete,
-  GenericOrMorphic,
-};
-
 struct SymbolInfo {
   // New Type Object (Source of Truth)
   std::shared_ptr<toka::Type> TypeObj;
@@ -796,6 +790,11 @@ private:
       const std::vector<std::unique_ptr<Expr>> &args,
       const std::vector<bool> &formalCeded,
       const std::vector<std::string> &formalNames = {});
+  std::set<std::string>
+  callableDeclarationGenericNames(const FunctionDecl *function) const;
+  void populateCallableParameterOrigins(
+      SymbolInfo &symbol, const TypeSyntaxPtr &syntax,
+      const std::set<std::string> &declarationGenericNames) const;
   bool consumeMissingCallTransferFault(ASTNode *node);
 
   struct ControlFlowInfo {

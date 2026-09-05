@@ -35,6 +35,12 @@ namespace toka {
 class ASTNode;
 class FunctionDecl;
 
+enum class CallableParameterProvenance : uint8_t {
+  Indeterminate,
+  Concrete,
+  GenericOrMorphic,
+};
+
 // Sema-qualified ownership behavior for a value inserted into aggregate
 // storage.  The disposition belongs to the insertion edge, not to the source
 // binding: CodeGen must never infer it from a morphic name.
@@ -2181,6 +2187,8 @@ public:
     bool Stage0GenericValueRole = false;
     bool Stage0MorphicGenericRole = false;
     bool Stage0DeclarationProvenanceComplete = false;
+    std::vector<CallableParameterProvenance> CallableParameterOrigins;
+    bool CallableParameterOriginsComplete = false;
     BindingPermission Permission;
 
     std::shared_ptr<toka::Type> ResolvedType;
@@ -2210,6 +2218,8 @@ public:
       a.Stage0MorphicGenericRole = Stage0MorphicGenericRole;
       a.Stage0DeclarationProvenanceComplete =
           Stage0DeclarationProvenanceComplete;
+      a.CallableParameterOrigins = CallableParameterOrigins;
+      a.CallableParameterOriginsComplete = CallableParameterOriginsComplete;
       a.Permission = Permission;
       a.ResolvedType = ResolvedType;
       a.DefaultValue = cloneNode(DefaultValue);
@@ -2292,6 +2302,10 @@ public:
   bool Stage0BodyQualificationRequired = false;
   bool Stage0BodyQualificationComplete = false;
   std::string Stage0BodySpecializationIdentity;
+  // Exact generic type binders supplied by the enclosing trait/impl.  This is
+  // declaration provenance, not a resolved-type property, and is preserved on
+  // materialized methods after those binders have been substituted.
+  std::set<std::string> Stage0EnclosingGenericTypeNames;
 
   FunctionDecl(bool isPub, const std::string &name, std::vector<Arg> args,
                std::unique_ptr<BlockStmt> body, const std::string &retType,
@@ -2367,6 +2381,7 @@ public:
     n->IsTrustedAtomicIntrinsic = IsTrustedAtomicIntrinsic;
     n->ClosureReceiver = ClosureReceiver;
     n->TemplateOrigin = TemplateOrigin;
+    n->Stage0EnclosingGenericTypeNames = Stage0EnclosingGenericTypeNames;
     n->Loc = Loc;
     n->ResolvedReturnType = ResolvedReturnType;
     // FunctionDecl is NOT an Expr, does not have ResolvedType?

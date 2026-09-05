@@ -3184,6 +3184,52 @@ CleanupClassStore Sema::buildAuthorityCleanupClassStore() {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+static std::pair<std::vector<CallableParameterProvenance>, bool>
+classifyCallableParameterOrigins(
+    const TypeSyntaxPtr &syntax,
+    const std::set<std::string> &declarationGenericNames) {
+  TypeSyntaxPtr callableSyntax = syntax;
+  while (callableSyntax &&
+         callableSyntax->NodeKind == TypeSyntax::Kind::Morphology)
+    callableSyntax = callableSyntax->Subject;
+  if (!callableSyntax || callableSyntax->NodeKind != TypeSyntax::Kind::Function)
+    return {{}, false};
+
+  auto mentionsGeneric = [&](auto &&self,
+                             const TypeSyntaxPtr &candidate) -> bool {
+    if (!candidate)
+      return false;
+    if (candidate->NodeKind == TypeSyntax::Kind::Named &&
+        declarationGenericNames.count(candidate->Text))
+      return true;
+    if (self(self, candidate->Subject) || self(self, candidate->Result))
+      return true;
+    for (const auto &argument : candidate->Arguments) {
+      if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type &&
+          self(self, argument.Type))
+        return true;
+    }
+    for (const auto &element : candidate->Elements) {
+      if (self(self, element))
+        return true;
+    }
+    for (const auto &field : candidate->Fields) {
+      if (self(self, field.Type))
+        return true;
+    }
+    return false;
+  };
+
+  std::vector<CallableParameterProvenance> origins;
+  origins.reserve(callableSyntax->Elements.size());
+  for (const auto &parameterSyntax : callableSyntax->Elements) {
+    origins.push_back(mentionsGeneric(mentionsGeneric, parameterSyntax)
+                          ? CallableParameterProvenance::GenericOrMorphic
+                          : CallableParameterProvenance::Concrete);
+  }
+  return {std::move(origins), true};
+}
+
 void Sema::enterScope() { 
   CurrentScope = new Scope(CurrentScope); 
   PALCheckerState.pushScope();
@@ -3250,23 +3296,29 @@ void Sema::declareGlobals(Module &M) {
         std::set<std::string> exactGenericNames;
         if (enclosingParameters)
           addExactTypeParameters(exactGenericNames, *enclosingParameters);
+        function.Stage0EnclosingGenericTypeNames = exactGenericNames;
         addExactTypeParameters(exactGenericNames, function.GenericParams);
         for (auto &argument : function.Args) {
           argument.Stage0DeclarationProvenanceComplete =
               argument.TypeSyntax != nullptr;
           argument.Stage0GenericValueRole = false;
           argument.Stage0MorphicGenericRole = false;
-          if (!argument.Stage0DeclarationProvenanceComplete ||
-              argument.IsRawPointer || argument.IsUnique ||
-              argument.IsShared || argument.IsReference ||
-              argument.TypeSyntax->NodeKind != TypeSyntax::Kind::Named)
-            continue;
-          const bool namesGeneric =
-              exactGenericNames.count(argument.TypeSyntax->Text) != 0;
-          argument.Stage0MorphicGenericRole =
-              namesGeneric && argument.IsMorphicExempt;
-          argument.Stage0GenericValueRole =
-              namesGeneric && !argument.IsMorphicExempt;
+          auto callableOrigins = classifyCallableParameterOrigins(
+              argument.TypeSyntax, exactGenericNames);
+          argument.CallableParameterOrigins = std::move(callableOrigins.first);
+          argument.CallableParameterOriginsComplete = callableOrigins.second;
+
+          if (argument.Stage0DeclarationProvenanceComplete &&
+              !argument.IsRawPointer && !argument.IsUnique &&
+              !argument.IsShared && !argument.IsReference &&
+              argument.TypeSyntax->NodeKind == TypeSyntax::Kind::Named) {
+            const bool namesGeneric =
+                exactGenericNames.count(argument.TypeSyntax->Text) != 0;
+            argument.Stage0MorphicGenericRole =
+                namesGeneric && argument.IsMorphicExempt;
+            argument.Stage0GenericValueRole =
+                namesGeneric && !argument.IsMorphicExempt;
+          }
         }
       };
   for (auto &function : M.Functions)
@@ -5021,6 +5073,50 @@ void Sema::validateGenericSignatureTypeNames(
     validateNames(Sema::synthesizePhysicalTypeObject(argument, false));
 }
 
+std::set<std::string>
+Sema::callableDeclarationGenericNames(const FunctionDecl *function) const {
+  std::set<std::string> names;
+  if (!function)
+    return names;
+  const FunctionDecl *declaration =
+      function->TemplateOrigin ? function->TemplateOrigin : function;
+  names.insert(declaration->Stage0EnclosingGenericTypeNames.begin(),
+               declaration->Stage0EnclosingGenericTypeNames.end());
+  names.insert(function->Stage0EnclosingGenericTypeNames.begin(),
+               function->Stage0EnclosingGenericTypeNames.end());
+  for (const auto &parameter : declaration->GenericParams) {
+    if (parameter.IsConst)
+      continue;
+    names.insert(parameter.Name);
+    if (!parameter.Name.empty() && parameter.Name.front() == '\'')
+      names.insert(parameter.Name.substr(1));
+  }
+  return names;
+}
+
+void Sema::populateCallableParameterOrigins(
+    SymbolInfo &symbol, const TypeSyntaxPtr &syntax,
+    const std::set<std::string> &declarationGenericNames) const {
+  symbol.CallableParameterOrigins.clear();
+  symbol.CallableParameterOriginsComplete = false;
+  if (!symbol.TypeObj ||
+      (!symbol.TypeObj->isFunction() && !symbol.TypeObj->isDynFn()))
+    return;
+
+  const size_t parameterCount =
+      symbol.TypeObj->isFunction()
+          ? std::static_pointer_cast<FunctionType>(symbol.TypeObj)
+                ->ParamTypes.size()
+          : std::static_pointer_cast<DynFnType>(symbol.TypeObj)
+                ->ParamTypes.size();
+  auto classified =
+      classifyCallableParameterOrigins(syntax, declarationGenericNames);
+  if (!classified.second || classified.first.size() != parameterCount)
+    return;
+  symbol.CallableParameterOrigins = std::move(classified.first);
+  symbol.CallableParameterOriginsComplete = true;
+}
+
 void Sema::checkFunction(FunctionDecl *Fn) {
   // Generic templates do not execute a body check until instantiation, but
   // their signatures must still reject unknown names at the declaration
@@ -5213,38 +5309,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
   const FunctionDecl *declarationFunction =
       Fn->TemplateOrigin ? Fn->TemplateOrigin : Fn;
-  std::set<std::string> declarationGenericNames;
-  for (const auto &parameter : declarationFunction->GenericParams) {
-    if (parameter.IsConst)
-      continue;
-    declarationGenericNames.insert(parameter.Name);
-    if (!parameter.Name.empty() && parameter.Name.front() == '\'')
-      declarationGenericNames.insert(parameter.Name.substr(1));
-  }
-  auto syntaxMentionsDeclarationGeneric =
-      [&](auto &&self, const TypeSyntaxPtr &syntax) -> bool {
-    if (!syntax)
-      return false;
-    if (syntax->NodeKind == TypeSyntax::Kind::Named &&
-        declarationGenericNames.count(syntax->Text))
-      return true;
-    if (self(self, syntax->Subject) || self(self, syntax->Result))
-      return true;
-    for (const auto &argument : syntax->Arguments) {
-      if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type &&
-          self(self, argument.Type))
-        return true;
-    }
-    for (const auto &element : syntax->Elements) {
-      if (self(self, element))
-        return true;
-    }
-    for (const auto &field : syntax->Fields) {
-      if (self(self, field.Type))
-        return true;
-    }
-    return false;
-  };
+  const auto declarationGenericNames = callableDeclarationGenericNames(Fn);
 
   // Register arguments
   for (size_t argumentIndex = 0; argumentIndex < Fn->Args.size();
@@ -5277,32 +5342,24 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       Arg.ResolvedType = Info.TypeObj;
     }
 
-    if (Info.TypeObj &&
-        (Info.TypeObj->isFunction() || Info.TypeObj->isDynFn()) &&
-        argumentIndex < declarationFunction->Args.size()) {
+    if (argumentIndex < declarationFunction->Args.size()) {
       const auto &declaredArgument = declarationFunction->Args[argumentIndex];
-      TypeSyntaxPtr callableSyntax = declaredArgument.TypeSyntax;
-      while (callableSyntax &&
-             callableSyntax->NodeKind == TypeSyntax::Kind::Morphology)
-        callableSyntax = callableSyntax->Subject;
       const size_t parameterCount =
-          Info.TypeObj->isFunction()
+          Info.TypeObj && Info.TypeObj->isFunction()
               ? std::static_pointer_cast<FunctionType>(Info.TypeObj)
                     ->ParamTypes.size()
-              : std::static_pointer_cast<DynFnType>(Info.TypeObj)
-                    ->ParamTypes.size();
-      if (callableSyntax &&
-          callableSyntax->NodeKind == TypeSyntax::Kind::Function &&
-          callableSyntax->Elements.size() == parameterCount) {
+          : Info.TypeObj && Info.TypeObj->isDynFn()
+              ? std::static_pointer_cast<DynFnType>(Info.TypeObj)
+                    ->ParamTypes.size()
+              : 0;
+      if (declaredArgument.CallableParameterOriginsComplete &&
+          declaredArgument.CallableParameterOrigins.size() == parameterCount) {
+        Info.CallableParameterOrigins =
+            declaredArgument.CallableParameterOrigins;
         Info.CallableParameterOriginsComplete = true;
-        Info.CallableParameterOrigins.reserve(parameterCount);
-        for (const auto &parameterSyntax : callableSyntax->Elements) {
-          Info.CallableParameterOrigins.push_back(
-              syntaxMentionsDeclarationGeneric(syntaxMentionsDeclarationGeneric,
-                                               parameterSyntax)
-                  ? CallableParameterProvenance::GenericOrMorphic
-                  : CallableParameterProvenance::Concrete);
-        }
+      } else {
+        populateCallableParameterOrigins(Info, declaredArgument.TypeSyntax,
+                                         declarationGenericNames);
       }
     }
 

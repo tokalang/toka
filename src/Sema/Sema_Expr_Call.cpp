@@ -6203,6 +6203,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                symPtr->CallableParameterOrigins[index] ==
                    CallableParameterProvenance::Concrete;
       }
+      if (symPtr && symPtr->CallableParameterOriginsComplete) {
+        return index < symPtr->CallableParameterOrigins.size() &&
+               symPtr->CallableParameterOrigins[index] ==
+                   CallableParameterProvenance::Concrete;
+      }
       return !CurrentFunction || !CurrentFunction->TemplateOrigin;
     };
     bool hasStage1CedeParameter = false;

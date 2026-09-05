@@ -110,6 +110,24 @@ def main():
         generic = check(tokac, name)
         require(generic.returncode == 0 and "E04570" not in generic.stderr,
                 name + " lost declaration-side generic provenance")
+    for name in (
+            "generic_caller_concrete_fn_activates.tk",
+            "generic_caller_concrete_dyn_activates.tk"):
+        concrete = check(tokac, name)
+        require(concrete.returncode != 0 and
+                concrete.stderr.count("error[E04570]") == 1 and
+                "E0438" not in concrete.stderr and
+                "E0410" not in concrete.stderr,
+                name + " inherited provenance from its generic caller")
+    for name in (
+            "generic_impl_fn_formal_out_of_slice.tk",
+            "generic_impl_dyn_formal_out_of_slice.tk",
+            "generic_caller_generic_fn_out_of_slice.tk",
+            "generic_caller_generic_dyn_out_of_slice.tk"):
+        generic_impl = check(tokac, name)
+        require(generic_impl.returncode == 0 and
+                "E04570" not in generic_impl.stderr,
+                name + " lost enclosing impl provenance")
 
     positive = check(tokac, "temporary_and_copy_keep_live.tk")
     require(positive.returncode == 0 and not positive.stderr,

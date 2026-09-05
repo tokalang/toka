@@ -166,3 +166,9 @@ does not turn `fn(cede T)` into a source-written concrete `fn(cede i32)`:
 generic/morphic origins remain excluded after monomorphization. Missing alias
 or declaration provenance fails closed rather than being inferred from the
 resolved payload type.
+
+The generic context belongs to the callable declaration, not to its caller. A
+locally ascribed concrete `fn(cede i32)` remains concrete inside a generic
+function. Conversely, a callable parameter that names an enclosing generic
+trait/impl binder remains generic after materialization. Both function and
+dynamic-function forms use the same declaration-side classification.

@@ -1,0 +1,9 @@
+fn run<T>(seed: T) -> i32 {
+    auto callback = { value => cede value }:dyn fn(cede i32) -> i32
+    auto amount = 7:i32
+    return callback(amount)
+}
+
+fn main() -> i32 {
+    return run<i32>(0:i32)
+}
