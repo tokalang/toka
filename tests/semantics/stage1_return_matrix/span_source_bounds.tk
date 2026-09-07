@@ -1,0 +1,21 @@
+import stdx/trace/span::{Span}
+
+fn main() -> i32 {
+    auto source = "abcdef"
+    auto base = source.raw_ptr() as usize
+    auto view = Span::new((base + 2:usize) as Addr, 3:usize).to_str(source)
+    if !view.equals("cde") { return 1 }
+    auto actual = view.raw_ptr() as usize
+    if actual != base + 2:usize { return 2 }
+    if !Span::invalid().to_str(source).is_empty() { return 3 }
+    if !Span::new((base - 1:usize) as Addr, 1:usize).to_str(source).is_empty() { return 4 }
+    if !Span::new((base + 6:usize) as Addr, 1:usize).to_str(source).is_empty() { return 5 }
+    if !Span::new((base + 4:usize) as Addr, 3:usize).to_str(source).is_empty() { return 6 }
+    if !Span::new(base as Addr, 0:usize).to_str(source).is_empty() { return 7 }
+    if !Span::new(base as Addr, 0xffffffffffffffff:usize).to_str(source).is_empty() { return 8 }
+    if !Span::new(0xffffffffffffffff:Addr, 1:usize).to_str(source).is_empty() { return 9 }
+    if !Span::new(base as Addr, 1:usize).to_str("").is_empty() { return 10 }
+    auto full = Span::new(base as Addr, 6:usize).to_str(source)
+    if !full.equals(source) { return 11 }
+    return 0
+}

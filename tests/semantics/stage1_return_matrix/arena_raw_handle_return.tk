@@ -1,0 +1,16 @@
+import std/arena::{Arena, alloc_type}
+import core/types::{Addr, ADDR0}
+
+fn allocate(arena#: Arena) -> nul *i32 {
+    auto nul *result = alloc_type<i32>(arena#)
+    return *result
+}
+
+fn main() -> i32 {
+    auto arena# = Arena::new_with_capacity(64:usize)
+    auto nul *result = allocate(arena#)
+    auto address = *result as Addr
+    if address == ADDR0 { return 1 }
+    arena#.release()
+    return 0
+}

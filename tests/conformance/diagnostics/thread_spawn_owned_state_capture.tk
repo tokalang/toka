@@ -8,8 +8,8 @@ fn main() -> i32 {
     auto _handle = thread_spawn_with_state<State, i32>(
         cede state,
         { [cede extra] worker_state =>
-            return cede worker_state.value + extra
-        }:fn(State) -> cede i32
+            return worker_state.value + extra
+        }:fn(State) -> i32
     )
     return 0
 }

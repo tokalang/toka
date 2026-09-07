@@ -39,7 +39,7 @@ fn lower_ascii(input: str) -> string {
         output#.push_byte_raw(byte)
         index = index + 1:usize
     }
-    return output
+    return cede output
 }
 
 fn is_scheme(input: str) -> bool {

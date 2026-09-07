@@ -20,7 +20,7 @@ pub fn yield_now() {
 /// A spawned thread consumes its callback and invokes it exactly once.  The
 /// callback may require mutable access to its captured environment, but the
 /// binding that transfers it does not itself require payload write authority.
-pub alias ThreadClosure<'T> = dyn fn#() -> cede 'T
+pub alias ThreadClosure<'T> = dyn fn#() -> 'T
 
 shape ThreadEnvReclaimer(ptr#: Addr)
 
@@ -35,7 +35,7 @@ impl ThreadEnvReclaimer@Encap {
 
 shape ThreadStateBox<'S, 'T>(
     'state: S,
-    entry: fn('S) -> cede 'T,
+    entry: fn('S) -> 'T,
     reclaimer: ThreadEnvReclaimer
 )
 shape StateTrampBox(f: cede fn#() -> Addr)
@@ -45,10 +45,10 @@ shape StateTrampBox(f: cede fn#() -> Addr)
 /// Note: To capture variables from the environment safely across threads,
 /// use the `[cede ...]` capture list in the closure to consume variables
 /// by value (move semantics).
-pub fn thread_spawn<'T: @Send>(cede f: cede dyn fn#() -> cede 'T) -> JoinHandle<'T> {
+pub fn thread_spawn<'T: @Send>(cede f: cede dyn fn#() -> 'T) -> JoinHandle<'T> {
     auto entry = { closure# =>
-        return cede closure#()
-    }:fn(ThreadClosure<'T>) -> cede 'T
+        return closure#()
+    }:fn(ThreadClosure<'T>) -> 'T
     return thread_spawn_with_state<ThreadClosure<'T>, 'T>(
         cede f,
         entry
@@ -60,7 +60,7 @@ pub fn thread_spawn<'T: @Send>(cede f: cede dyn fn#() -> cede 'T) -> JoinHandle<
 /// and is dropped exactly once after the entry function completes.
 pub fn thread_spawn_with_state<'S: @Send, 'T: @Send>(
     cede 'state: S,
-    entry: fn('S) -> cede 'T
+    entry: fn('S) -> 'T
 ) -> JoinHandle<'T> {
     unsafe {
         auto box_addr = sys_alloc_thread_env(sizeof(ThreadStateBox<'S, 'T>) as usize)

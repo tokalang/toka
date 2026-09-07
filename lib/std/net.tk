@@ -85,37 +85,43 @@ pub fn net_tls_close(*handle: void) {
 // Owner-carrying async buffer results. The buffer is returned on every path;
 // the adapter never consumes it implicitly on timeout, cancellation, or error.
 pub shape AsyncReadResult (
-    buffer: Vec<u8>,
+    buffer#: Vec<u8>,
     bytes_read: usize,
     eof: bool
 )
 
 impl AsyncReadResult {
     pub fn take_buffer(cede self) -> Vec<u8> {
-        return cede self.buffer
+        auto result = self.buffer#.take()
+        cede self
+        return cede result
     }
 }
 
 pub shape AsyncWriteResult (
-    buffer: Vec<u8>,
+    buffer#: Vec<u8>,
     bytes_written: usize,
     complete: bool
 )
 
 impl AsyncWriteResult {
     pub fn take_buffer(cede self) -> Vec<u8> {
-        return cede self.buffer
+        auto result = self.buffer#.take()
+        cede self
+        return cede result
     }
 }
 
 pub shape AsyncIoError (
-    buffer: Vec<u8>,
+    buffer#: Vec<u8>,
     message: string
 )
 
 impl AsyncIoError {
     pub fn take_buffer(cede self) -> Vec<u8> {
-        return cede self.buffer
+        auto result = self.buffer#.take()
+        cede self
+        return cede result
     }
 }
 
@@ -299,7 +305,7 @@ impl TcpStream {
         )
         self.fd = -1
         self.closed = true
-        return s
+        return cede s
     }
 
     pub fn try_connect(addr: SocketAddrV4) -> Result<TcpStream, IoError> {
@@ -330,7 +336,7 @@ impl TcpStream {
     pub fn connect(addr: SocketAddrV4) -> TcpStream {
         auto connected = TcpStream::try_connect(addr)
         match cede connected {
-            auto Result<TcpStream, IoError>::Ok('stream) => return 'stream
+            auto Result<TcpStream, IoError>::Ok('stream) => return cede 'stream
             _ => return TcpStream(fd=-1, closed=true)
         }
     }
@@ -359,7 +365,7 @@ impl TcpStream {
                 raw_fd = -1
                 fd_box[0] = -1
                 libc_free(*p_free as *void)
-                return ret
+                return cede ret
             }
 
             auto errno = sysnet::get_errno_impl()
@@ -403,7 +409,7 @@ impl TcpStream {
             raw_fd = -1
             fd_box[0] = -1
             libc_free(*p_free as *void)
-            return ret
+            return cede ret
         }
     }
 
@@ -485,7 +491,8 @@ impl TcpStream {
         if self.closed || self.fd < 0 {
             return Result<usize, string>::Err(string::from("Stream closed"))
         }
-        return net_async_write_fd(self.fd, *buf, len).await
+        auto result = net_async_write_fd(self.fd, *buf, len).await
+        return cede result
     }
 
     // Owner-based adapter. The Vec is held by the coroutine frame while the
@@ -527,7 +534,8 @@ impl TcpStream {
     pub fn write_string_async(self#, s: string) -> async Result<usize, string> {
         auto len = s.len()
         auto *ptr = s.c_str() as *u8
-        return self#.write_async(*ptr, len).await
+        auto result = self#.write_async(*ptr, len).await
+        return cede result
     }
 
     pub fn write_view(self#, v: str) -> Result<usize, string> {
@@ -537,14 +545,16 @@ impl TcpStream {
 
     pub fn write_view_async(self#, v: str) -> async Result<usize, string> {
         auto *ptr = v.raw_ptr() as *u8
-        return self#.write_async(*ptr, v.len()).await
+        auto result = self#.write_async(*ptr, v.len()).await
+        return cede result
     }
 
     pub fn read_async(self#, *buf: u8, len: usize) -> async Result<usize, string> {
         if self.closed || self.fd < 0 {
             return Result<usize, string>::Err(string::from("Stream closed"))
         }
-        return net_async_read_fd(self.fd, *buf, len).await
+        auto result = net_async_read_fd(self.fd, *buf, len).await
+        return cede result
     }
 
     // Owner-based adapter. The returned Vec length is the initialized byte
@@ -615,9 +625,11 @@ impl TcpStream {
             return Result<usize, string>::Err(string::from("Stream closed"))
         }
         if timeout_ms > 0 {
-            return net_async_read_timeout_fd(self.fd, *buf, len, timeout_ms).await
+            auto result = net_async_read_timeout_fd(self.fd, *buf, len, timeout_ms).await
+            return cede result
         }
-        return net_async_read_fd(self.fd, *buf, len).await
+        auto result = net_async_read_fd(self.fd, *buf, len).await
+        return cede result
     }
 
     // TLS FFI adapter. The raw handle/buffer arguments are intentionally kept
@@ -774,9 +786,11 @@ impl TcpStream {
             return Result<usize, string>::Err(string::from("Stream closed"))
         }
         if timeout_ms > 0 {
-            return net_async_write_timeout_fd(self.fd, *buf, len, timeout_ms).await
+            auto result = net_async_write_timeout_fd(self.fd, *buf, len, timeout_ms).await
+            return cede result
         }
-        return self#.write_all_async(*buf, len).await
+        auto result = self#.write_all_async(*buf, len).await
+        return cede result
     }
 
     pub fn tls_write_all_async(self#, *handle: void, *buf: u8, len: usize, timeout_ms: i32) -> async Result<(), string> {
@@ -931,7 +945,7 @@ impl TlsSession {
         auto session = TlsSession(*handle = self.*handle)
         auto nul *null_handle# = null:nul *void
         self.*handle = *null_handle
-        return session
+        return cede session
     }
 
     pub fn close(self#) {
@@ -962,14 +976,16 @@ impl TlsSession {
         if !self#.is_valid() {
             return Result<(), string>::Err(string::from("TLS session is closed"))
         }
-        return tcp#.tls_connect_async(self.live_handle(), timeout_ms).await
+        auto result = tcp#.tls_connect_async(self.live_handle(), timeout_ms).await
+        return cede result
     }
 
     pub fn accept_async(self#, tcp#: TcpStream, timeout_ms: i32) -> async Result<(), string> {
         if !self#.is_valid() {
             return Result<(), string>::Err(string::from("TLS session is closed"))
         }
-        return tcp#.tls_accept_async(self.live_handle(), timeout_ms).await
+        auto result = tcp#.tls_accept_async(self.live_handle(), timeout_ms).await
+        return cede result
     }
 
     // Compatibility-only pointer entry points remain on TcpStream. New stdx
@@ -978,14 +994,16 @@ impl TlsSession {
         if !self#.is_valid() {
             return Result<usize, string>::Err(string::from("TLS session is closed"))
         }
-        return tcp#.tls_read_async(self.live_handle(), *buf, len, timeout_ms).await
+        auto result = tcp#.tls_read_async(self.live_handle(), *buf, len, timeout_ms).await
+        return cede result
     }
 
     pub fn write_all_async(self#, tcp#: TcpStream, *buf: u8, len: usize, timeout_ms: i32) -> async Result<(), string> {
         if !self#.is_valid() {
             return Result<(), string>::Err(string::from("TLS session is closed"))
         }
-        return tcp#.tls_write_all_async(self.live_handle(), *buf, len, timeout_ms).await
+        auto result = tcp#.tls_write_all_async(self.live_handle(), *buf, len, timeout_ms).await
+        return cede result
     }
 
     // The Vec is retained by the coroutine frame while the TLS reactor waits
@@ -1155,7 +1173,8 @@ impl TcpListener {
         if self.closed || self.fd < 0 {
             return Result<TcpStream, string>::Err(string::from("Listener closed"))
         }
-        return net_async_accept_context_fd(self.fd, canceler).await
+        auto result = net_async_accept_context_fd(self.fd, canceler).await
+        return cede result
     }
 
     pub fn is_valid(self) -> bool {
@@ -1322,28 +1341,32 @@ pub fn net_async_read(stream: TcpStream, *buf: u8, len: usize) -> async Result<u
     if stream.closed || stream.fd < 0 {
         return Result<usize, string>::Err(string::from("Stream closed"))
     }
-    return net_async_read_fd(stream.fd, *buf, len).await
+    auto result = net_async_read_fd(stream.fd, *buf, len).await
+    return cede result
 }
 
 pub fn net_async_read_timeout(stream: TcpStream, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
     if stream.closed || stream.fd < 0 {
         return Result<usize, string>::Err(string::from("Stream closed"))
     }
-    return net_async_read_timeout_fd(stream.fd, *buf, len, timeout_ms).await
+    auto result = net_async_read_timeout_fd(stream.fd, *buf, len, timeout_ms).await
+    return cede result
 }
 
 pub fn net_async_read_context(stream: TcpStream, *buf: u8, len: usize, canceler: Canceler) -> async Result<usize, string> {
     if stream.closed || stream.fd < 0 {
         return Result<usize, string>::Err(string::from("Stream closed"))
     }
-    return net_async_read_context_fd(stream.fd, *buf, len, canceler).await
+    auto result = net_async_read_context_fd(stream.fd, *buf, len, canceler).await
+    return cede result
 }
 
 pub fn net_async_write(stream: TcpStream, *buf: u8, len: usize) -> async Result<usize, string> {
     if stream.closed || stream.fd < 0 {
         return Result<usize, string>::Err(string::from("Stream closed"))
     }
-    return net_async_write_fd(stream.fd, *buf, len).await
+    auto result = net_async_write_fd(stream.fd, *buf, len).await
+    return cede result
 }
 
 pub fn net_async_accept(listener: TcpListener) -> async TcpStream {
@@ -1396,7 +1419,7 @@ pub fn net_async_read_fd(fd: i32, *buf: u8, len: usize) -> async Result<usize, s
             }
         }
     }
-    return ret
+    return cede ret
 }
 
 pub fn net_async_read_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
@@ -1461,7 +1484,7 @@ pub fn net_async_read_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32)
             }
         }
     }
-    return ret
+    return cede ret
 }
 
 fn register_async_reactor_read_context(coro: Addr, fd: i32, canceler: Canceler, *out_io_id: u32, *out_io_gen: u32, *out_ctx_id: u32, *out_ctx_gen: u32) -> bool {
@@ -1555,7 +1578,7 @@ pub fn net_async_read_context_fd(fd: i32, *buf: u8, len: usize, canceler: Cancel
             }
         }
     }
-    return ret
+    return cede ret
 }
 
 impl TcpListener {
@@ -1669,7 +1692,7 @@ pub fn net_async_accept_context_fd(listener_fd: i32, canceler: Canceler) -> asyn
             }
         }
     }
-    return ret
+    return cede ret
 }
 
 pub fn net_async_write_fd(fd: i32, *buf: u8, len: usize) -> async Result<usize, string> {
@@ -1713,7 +1736,7 @@ pub fn net_async_write_fd(fd: i32, *buf: u8, len: usize) -> async Result<usize, 
             }
         }
     }
-    return ret
+    return cede ret
 }
 
 pub fn net_async_write_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
@@ -1776,7 +1799,7 @@ pub fn net_async_write_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32
             }
         }
     }
-    return ret
+    return cede ret
 }
 
 impl TcpStream@Reader {

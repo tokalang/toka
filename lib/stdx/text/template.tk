@@ -137,7 +137,7 @@ impl TemplateContext {
                 auto res = f_ptr(arg.as_str())
                 auto _discard_arg = cede arg
                 auto _discard_name = cede name
-                return res
+                return cede res
             }
             i = i + 1:usize
         }
@@ -377,7 +377,7 @@ fn eval_action(action: str, ctx#: TemplateContext, tag_line: usize, tag_col: usi
         return eval_conditional_block(cond_expr.as_str(), ctx, tag_line, tag_col)
     }
     auto eval_res = eval_expression(action, ctx, tag_line, tag_col)
-    return eval_res
+    return cede eval_res
 }
 
 fn eval_conditional_block(cond_expr: str, ctx#: TemplateContext, line_no: usize, col_no: usize) -> Result<string, TemplateError> {

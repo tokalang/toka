@@ -42,7 +42,7 @@ fn copy_range(input: str, start: usize, end: usize) -> string {
         output#.push_byte_raw(input.byte_at(index) as u8)
         index = index + 1:usize
     }
-    return output
+    return cede output
 }
 
 fn trimmed(input: str) -> string {

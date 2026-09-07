@@ -14,7 +14,7 @@
 import std/io::println
 
 fn test_relay(x: i32) -> i32 {
-    return for auto i in [1] {
+    auto result = for auto i in [1] {
         pass match x {
             10 => { pass 100 }
             _  => { pass 200 }
@@ -22,6 +22,7 @@ fn test_relay(x: i32) -> i32 {
     } or {
         pass -1
     }
+    return result
 }
 
 fn main() -> i32 {

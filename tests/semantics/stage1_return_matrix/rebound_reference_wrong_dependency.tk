@@ -1,0 +1,6 @@
+fn escaped(first: str, second: str) -> &str <- first {
+    auto &#reference# = &first
+    &reference = &second
+    return &reference
+}
+fn main() -> i32 { return 0 }

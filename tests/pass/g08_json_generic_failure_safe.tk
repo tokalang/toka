@@ -13,9 +13,11 @@ shape StrictRes (
 impl StrictRes@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         if json.starts_with("FAIL") {
-            return JsonRes::Err("Explicit parse failure")
+            auto failure = JsonRes::Err("Explicit parse failure")
+            return cede failure
         }
-        return self.id#.parse_json(json)
+        auto parsed = self.id#.parse_json(json)
+        return cede parsed
     }
 }
 impl StrictRes@Encap {

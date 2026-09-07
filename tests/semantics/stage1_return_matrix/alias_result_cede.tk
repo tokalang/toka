@@ -1,0 +1,5 @@
+alias Callback = fn() -> cede i32
+fn main() -> i32 {
+    auto callback = { => 7:i32 }:Callback
+    return callback() - 7
+}

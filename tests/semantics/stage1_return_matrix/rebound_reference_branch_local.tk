@@ -1,0 +1,7 @@
+fn escaped(input: str, choose: bool) -> &str <- input {
+    auto &#reference# = &input
+    auto view = "local descriptor"
+    if choose { &reference = &view }
+    return &reference
+}
+fn main() -> i32 { return 0 }

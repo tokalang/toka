@@ -208,6 +208,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     }
     return toka::Type::fromString("bool");
   }
+  if (isAssign && m_EnableStage1ExplicitCallerCede)
+    invalidateReturnSourceProof(Bin->LHS.get(), false);
+
   // Normal assignment preserves RHS-first analysis because the RHS can carry
   // a borrow or transfer.  A todo carries neither, so it is the one case
   // where we may first inspect the LHS solely to supply its complete target
@@ -324,6 +327,16 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
 
   if (rhsIsTodo)
     rhsType = checkExpr(Bin->RHS.get(), lhsType);
+
+  if (isAssign && m_EnableStage1ExplicitCallerCede && rhsType) {
+    auto ownership = queryExplicitCedeStage0OwnershipReadOnly(rhsType);
+    if (ownership && *ownership == ValueOwnership::BorrowedView) {
+      std::vector<AccessPath> roots;
+      std::vector<SourceLocation> storage;
+      if (!collectActualReturnReferents(Bin->RHS.get(), roots, &storage))
+        invalidateReturnSourceProof(Bin->LHS.get());
+    }
+  }
 
   if (isAssign && lhsType && lhsType->IsWritable && !rhsBorrowSource.empty()) {
       if (!PALCheckerState.upgradeBorrow(
@@ -1227,6 +1240,22 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         // OK
       } else {
         error(Bin, DiagID::ERR_TYPE_MISMATCH, RHS + " (ref)", LHS);
+      }
+      if (m_EnableStage1ExplicitCallerCede && !HasError && !targetObjName.empty() &&
+          makeAccessPath(Bin->LHS.get()).Projections.empty()) {
+        SymbolInfo *binding = nullptr;
+        std::string name;
+        if (CurrentScope->findVariableWithDeref(targetObjName, binding, name) &&
+            binding && binding->TypeObj && binding->TypeObj->isReference()) {
+          std::vector<AccessPath> targets;
+          if (!rhsType->isReference() ||
+              !collectActualReturnReferents(Bin->RHS.get(), targets))
+            targets.clear();
+          binding->LifeDependencySet.clear();
+          for (const auto &target : targets)
+            binding->LifeDependencySet.insert(target.toLegacyString());
+          binding->CurrentReferenceTargets = std::move(targets);
+        }
       }
       updateHandleFlowCeiling();
       return lhsType;

@@ -12,9 +12,9 @@ fn main() -> i32 {
 
     auto sender = cede mailbox.sender
     auto worker = { [cede sender] =>
-        if sender#.post(cede 41:i32).is_err() { return cede 2:i32 }
-        return cede 0:i32
-    }:fn#() -> cede i32
+        if sender#.post(cede 41:i32).is_err() { return 2:i32 }
+        return 0:i32
+    }:fn#() -> i32
     auto worker# = thread_spawn<i32>(cede worker)
     auto worker_result = worker#.join()
     match cede worker_result {

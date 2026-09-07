@@ -162,6 +162,6 @@ impl PrometheusRegistry {
             out#.push_str("\n")
             index += 1
         }
-        return out
+        return cede out
     }
 }

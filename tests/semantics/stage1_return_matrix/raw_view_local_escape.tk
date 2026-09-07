@@ -1,0 +1,8 @@
+import std/bytes::{bytes_from_array}
+
+fn invalid() -> bytes {
+    auto local = [1, 2]:[u8; 2]
+    return bytes_from_array<2>(local)
+}
+
+fn main() -> i32 { return 0 }

@@ -2,11 +2,13 @@ import std/task
 import std/task::{block_on, __toka_spawn_blocking}
 
 fn fetch() -> async str {
-    return "hello"
+    auto result = "hello":str
+    return result
 }
 
 fn read_config() -> wait str {
-    return "config"
+    auto result = "config":str
+    return result
 }
 
 fn pure_caller() {

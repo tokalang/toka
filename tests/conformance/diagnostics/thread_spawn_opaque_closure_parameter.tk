@@ -1,6 +1,6 @@
 import std/thread::thread_spawn
 
-fn launch(cede f: cede fn#() -> cede i32) {
+fn launch(cede f: cede fn#() -> i32) {
     auto handle# = thread_spawn<i32>(cede f)
 }
 

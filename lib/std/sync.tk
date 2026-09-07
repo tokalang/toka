@@ -42,10 +42,11 @@ impl<'T: @Send> Mutex<'T> {
             auto env = sys_alloc_thread_env(sizeof('T) as usize)
             auto *p# = (env as *['T])
             p[0] = cede data
-            return new Mutex<'T>(
+            auto ^mutex = new Mutex<'T>(
                 handle = sys_mutex_create(),
                 data_ptr = env
             )
+            return ^mutex
         }
     }
 
@@ -332,9 +333,10 @@ impl<'T: @Send> CondVar<'T> {
     }
 
     pub fn make() -> ^CondVar<'T> {
-        return new CondVar<'T>(
+        auto ^condition = new CondVar<'T>(
             handle = sys_cond_create()
         )
+        return ^condition
     }
 
     pub fn wait_cond(self, lock: MutexLock<'T>) {

@@ -4,7 +4,7 @@ fn main() -> i32 {
     auto token = Token(id = 7)
     auto take = { [cede token] =>
         return cede token
-    }:cede fn() -> cede Token
+    }:cede fn() -> Token
     auto result = take() // EXPECT: error[E04591]
     return result.id
 }

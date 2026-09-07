@@ -12,8 +12,8 @@ impl UnitMethodProbe {
 fn record() {
 }
 
-fn identity<'T>('value: T) -> 'T {
-    return 'value
+fn identity<'T>(cede 'value: T) -> 'T {
+    return cede 'value
 }
 
 fn stop() -> never {
@@ -36,8 +36,8 @@ fn panic_path(valid: bool) -> i32 {
 
 fn main() -> i32 {
     auto completed = record()
-    auto _typed_unit = identity<()>(completed)
     auto marker = UnitMarker(value = completed)
+    auto _typed_unit = identity<()>(cede completed)
     auto probe = UnitMethodProbe(value = 0)
     auto _completed_method = probe.finish()
     identity<i32>(choose(true) + panic_path(true))

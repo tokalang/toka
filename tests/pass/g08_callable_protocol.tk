@@ -76,7 +76,7 @@ fn main() -> i32 {
         auto second = Token(id = 9)
         auto take = { [cede first, cede second] =>
             return cede first
-        }:cede fn() -> cede Token
+        }:cede fn() -> Token
         auto result = cede take()
         if result.id != 7 { return 4 }
         if g_drops != 1 { return 5 }

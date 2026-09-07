@@ -1,0 +1,8 @@
+fn select(first: str, second: str) -> &str <- second {
+    auto &#reference# = &first
+    &reference = &second
+    auto &saved = &reference
+    &reference = &first
+    return &saved
+}
+fn main() -> i32 { return 0 }

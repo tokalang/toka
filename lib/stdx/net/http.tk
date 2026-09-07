@@ -885,7 +885,7 @@ pub fn parse_chunk_size(chunk_line: str) -> Result<usize, string> {
         }
         auto d_res = parse_hex_digit(b)
         if d_res.is_err() {
-            return d_res
+            return cede d_res
         }
         acc = acc * 16:usize + d_res.unwrap()
         idx = idx + 1
@@ -1252,7 +1252,8 @@ impl HttpResponseStream {
         }
 
         if !self.is_chunked {
-            return self#.read_non_chunked_into_async(cede owned, max_len, timeout_ms).await
+            auto awaited_result_1255 = self#.read_non_chunked_into_async(cede owned, max_len, timeout_ms).await
+            return cede awaited_result_1255
         }
 
         auto copied_bytes# = 0:usize
@@ -1578,10 +1579,12 @@ impl HttpClient {
                 return Result<HttpResponseStream, string>::Err(tls_res.unwrap_err())
             }
             auto stream# = tls_res.unwrap()
-            return self.execute_on_stream_async(req, cede stream).await
+            auto awaited_result_1581 = self.execute_on_stream_async(req, cede stream).await
+            return cede awaited_result_1581
         }
         auto stream# = AsyncStream::from_tcp(tcp_stream#.take())
-        return self.execute_on_stream_async(req, cede stream).await
+        auto awaited_result_1584 = self.execute_on_stream_async(req, cede stream).await
+        return cede awaited_result_1584
     }
 
     // URL parsing selects connection address, TLS, and Host; callers retain
@@ -1597,7 +1600,8 @@ impl HttpClient {
         if url.port > 0:u16 {
             conn_addr = SocketAddrV4::new(default_addr.ip, url.port)
         }
-        return self.execute_stream_async(req, cede conn_addr, url.is_tls(), url.host).await
+        auto awaited_result_1600 = self.execute_stream_async(req, cede conn_addr, url.is_tls(), url.host).await
+        return cede awaited_result_1600
     }
 
     pub fn execute_insecure_stream_async(self, req: HttpRequest, cede addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponseStream, string> {
@@ -1613,10 +1617,12 @@ impl HttpClient {
                 return Result<HttpResponseStream, string>::Err(tls_res.unwrap_err())
             }
             auto stream# = tls_res.unwrap()
-            return self.execute_on_stream_async(req, cede stream).await
+            auto awaited_result_1616 = self.execute_on_stream_async(req, cede stream).await
+            return cede awaited_result_1616
         }
         auto stream# = AsyncStream::from_tcp(tcp_stream#.take())
-        return self.execute_on_stream_async(req, cede stream).await
+        auto awaited_result_1619 = self.execute_on_stream_async(req, cede stream).await
+        return cede awaited_result_1619
     }
 
     pub fn execute_on_stream_async(self, req: HttpRequest, cede stream#: AsyncStream) -> async Result<HttpResponseStream, string> {

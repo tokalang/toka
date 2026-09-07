@@ -73,6 +73,11 @@ TransferValueProduction productionFor(const ExplicitCedePreparedFacts &facts) {
     return TransferValueProduction::CopyIdentity;
   if (facts.CopyProof == TransferCopyProof::ProvenCopy)
     return TransferValueProduction::CopyValue;
+  if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
+      facts.SourceView == TransferSourceView::DirectValue &&
+      facts.Ownership == TransferOwnershipKind::PlainValue &&
+      facts.CopyProof == TransferCopyProof::ProvenNonCopy)
+    return TransferValueProduction::MoveOwned;
   if (facts.Ownership == TransferOwnershipKind::OwnedValue ||
       facts.Ownership == TransferOwnershipKind::UniqueOwner ||
       facts.Ownership == TransferOwnershipKind::OwnedCallable)
@@ -280,6 +285,17 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
     if (!root.valid())
       return false;
   }
+  for (const auto &storage : facts.StaticStorageOrigins) {
+    if (!storage.valid()) return false;
+  }
+  if (!facts.StaticStorageOrigins.empty() &&
+      (facts.Dependency != TransferDependencyKind::None ||
+       (facts.Ownership != TransferOwnershipKind::BorrowedView &&
+        facts.Ownership != TransferOwnershipKind::PlainValue) ||
+       !facts.DependencyFactsComplete || !facts.DependencyRoots.empty() ||
+       facts.ReferentPlace || facts.CarriesDropLiability ||
+       facts.TemporaryEligibility == TransferTemporaryEligibility::Eligible))
+    return false;
   if (facts.Dependency == TransferDependencyKind::None &&
       (!facts.DependencyRoots.empty() || facts.ReferentPlace))
     return false;
@@ -287,12 +303,42 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
       (!facts.ReferentPlace || !facts.ReferentPlace->valid() ||
        facts.DependencyRoots.empty()))
     return false;
+  if (facts.DestinationDependencyAccepted &&
+      (facts.Destination != TransferDestination::Return ||
+       facts.SourceCategory != TransferSourceCategory::NoSourcePlace ||
+       facts.Dependency == TransferDependencyKind::None ||
+       facts.Dependency == TransferDependencyKind::Indeterminate ||
+       !facts.DependencyFactsComplete))
+    return false;
+  if (facts.StructuredBorrowedTemporary &&
+      (facts.Destination != TransferDestination::Return ||
+       facts.SourceCategory != TransferSourceCategory::NoSourcePlace ||
+       facts.SourceView != TransferSourceView::DirectValue ||
+       facts.Dependency != TransferDependencyKind::Borrowed ||
+       !facts.DependencyFactsComplete || !facts.ReferentPlace ||
+       facts.DependencyRoots.empty() ||
+       facts.StructuredReferentPlaces.empty() ||
+       facts.Ownership != TransferOwnershipKind::PlainValue ||
+       facts.CopyProof != TransferCopyProof::ProvenNonCopy ||
+       !facts.DestinationDependencyAccepted || facts.CarriesDropLiability))
+    return false;
+  if (facts.StructuredBorrowedTemporary) {
+    for (const auto &referent : facts.StructuredReferentPlaces) {
+      if (!referent.valid() ||
+          std::find(facts.DependencyRoots.begin(),
+                    facts.DependencyRoots.end(), referent.root()) ==
+              facts.DependencyRoots.end())
+        return false;
+    }
+  }
   if (facts.TemporaryEligibility == TransferTemporaryEligibility::Eligible &&
       (facts.SourceCategory != TransferSourceCategory::NoSourcePlace ||
        facts.Dependency != TransferDependencyKind::None ||
        !facts.DependencyFactsComplete || facts.ReferentPlace ||
        !facts.DependencyRoots.empty() ||
        (facts.Ownership != TransferOwnershipKind::OwnedValue &&
+        !(facts.Ownership == TransferOwnershipKind::PlainValue &&
+          facts.CopyProof == TransferCopyProof::ProvenNonCopy) &&
         facts.Ownership != TransferOwnershipKind::UniqueOwner &&
         facts.Ownership != TransferOwnershipKind::SharedOwner &&
         facts.Ownership != TransferOwnershipKind::OwnedCallable)))
@@ -546,7 +592,14 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
     return reject(TransferPlanRejection::IncompleteFacts, facts);
   if (!factsAreConsistent(facts))
     return reject(TransferPlanRejection::ContradictoryFacts, facts);
-  if (facts.Eligibility == TransferEligibility::Ineligible)
+  const bool nonInvalidatingNamedRead =
+      facts.SurfaceSpelling == TransferSurfaceSpelling::Bare &&
+      facts.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
+      (facts.CopyProof == TransferCopyProof::ProvenCopy ||
+       productionFor(facts) == TransferValueProduction::CopyIdentity ||
+       facts.Ownership == TransferOwnershipKind::SharedOwner);
+  if (facts.Eligibility == TransferEligibility::Ineligible &&
+      !nonInvalidatingNamedRead)
     return reject(TransferPlanRejection::RouteIneligible, facts);
   if (facts.TypeCompatibility == TransferTypeCompatibility::Incompatible)
     return reject(TransferPlanRejection::TypeIncompatible, facts);
@@ -589,7 +642,8 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
         facts.Reachability == TransferReachability::Indeterminate)
       return reject(TransferPlanRejection::IncompleteFacts, facts);
     if (facts.Destination == TransferDestination::Return &&
-        facts.SourceView == TransferSourceView::UniqueHandle)
+        facts.SourceView == TransferSourceView::UniqueHandle &&
+        !facts.MorphicSource)
       return reject(TransferPlanRejection::RedundantIntrinsicUniqueCede, facts);
     if (facts.ActiveDerivedBorrow)
       return reject(TransferPlanRejection::ActiveDerivedBorrow, facts);
@@ -668,6 +722,31 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
     }
     if (callBoundary && facts.FormalContract != TransferFormalContract::Cede)
       return reject(TransferPlanRejection::ClosedWorldCombination, facts);
+    if (facts.Destination == TransferDestination::Return &&
+        productionFor(facts) == TransferValueProduction::CopyIdentity &&
+        facts.DependencyFactsComplete)
+      return admit(facts, TransferValueProduction::CopyIdentity,
+                   TransferSourceDisposition::NoSourcePlace,
+                   TransferDropDisposition::NoLiability);
+    if (facts.Destination == TransferDestination::Return &&
+        facts.DestinationDependencyAccepted) {
+      if (facts.StructuredBorrowedTemporary)
+        return admit(facts, TransferValueProduction::BorrowCapture,
+                     TransferSourceDisposition::NoSourcePlace,
+                     TransferDropDisposition::NoLiability);
+      const auto classified = productionFor(facts);
+      if (classified == TransferValueProduction::None)
+        return reject(TransferPlanRejection::ClosedWorldCombination, facts);
+      const auto production =
+          classified == TransferValueProduction::CopyIdentity
+              ? classified
+              : (facts.CopyProof == TransferCopyProof::ProvenCopy
+                     ? TransferValueProduction::CopyValue
+                     : TransferValueProduction::ConsumeTemporary);
+      return admit(facts, production,
+                   TransferSourceDisposition::NoSourcePlace,
+                   destinationDrop(facts));
+    }
     if (facts.TemporaryEligibility != TransferTemporaryEligibility::Eligible &&
         facts.CopyProof != TransferCopyProof::ProvenCopy)
       return reject(TransferPlanRejection::TemporaryTransferIneligible, facts);
@@ -707,6 +786,15 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
                      ? TransferDropDisposition::SourceRetainsLiability
                      : TransferDropDisposition::NoLiability);
   }
+  if (facts.SourceView == TransferSourceView::SharedHandle &&
+      facts.Ownership == TransferOwnershipKind::SharedOwner)
+    return admit(facts, TransferValueProduction::TransferShared,
+                 TransferSourceDisposition::KeepLive,
+                 TransferDropDisposition::SharedLiabilityIncremented);
+  if (productionFor(facts) == TransferValueProduction::CopyIdentity)
+    return admit(facts, TransferValueProduction::CopyIdentity,
+                 TransferSourceDisposition::KeepLive,
+                 TransferDropDisposition::NoLiability);
   if (facts.CopyProof == TransferCopyProof::ProvenCopy)
     return admit(facts, TransferValueProduction::CopyValue,
                  TransferSourceDisposition::KeepLive,

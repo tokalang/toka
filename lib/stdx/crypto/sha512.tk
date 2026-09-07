@@ -37,10 +37,22 @@ fn rotr(value: u64, amount: u64) -> u64 {
 
 fn ch(x: u64, y: u64, z: u64) -> u64 { return (x & y) ^ ((~ x) & z) }
 fn maj(x: u64, y: u64, z: u64) -> u64 { return (x & y) ^ (x & z) ^ (y & z) }
-fn ep0(x: u64) -> u64 { return rotr(x, 28) ^ rotr(x, 34) ^ rotr(x, 39) }
-fn ep1(x: u64) -> u64 { return rotr(x, 14) ^ rotr(x, 18) ^ rotr(x, 41) }
-fn sig0(x: u64) -> u64 { return rotr(x, 1) ^ rotr(x, 8) ^ (x >> 7) }
-fn sig1(x: u64) -> u64 { return rotr(x, 19) ^ rotr(x, 61) ^ (x >> 6) }
+fn ep0(x: u64) -> u64 {
+    auto result = rotr(x, 28) ^ rotr(x, 34) ^ rotr(x, 39)
+    return result
+}
+fn ep1(x: u64) -> u64 {
+    auto result = rotr(x, 14) ^ rotr(x, 18) ^ rotr(x, 41)
+    return result
+}
+fn sig0(x: u64) -> u64 {
+    auto result = rotr(x, 1) ^ rotr(x, 8) ^ (x >> 7)
+    return result
+}
+fn sig1(x: u64) -> u64 {
+    auto result = rotr(x, 19) ^ rotr(x, 61) ^ (x >> 6)
+    return result
+}
 
 impl Sha512 {
     fn process_block(self#) {

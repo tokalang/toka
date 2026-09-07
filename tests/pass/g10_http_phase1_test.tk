@@ -28,7 +28,7 @@ fn string_from_bytes(buffer: Vec<u8>) -> string {
         text#.push_byte_raw(buffer.get(index))
         index = index + 1:usize
     }
-    return text
+    return cede text
 }
 
 fn test_async_client(local_port: u16) -> async i32 {
@@ -79,22 +79,22 @@ fn run_async_e2e_test() -> async i32 {
         auto server_thread# = thread_spawn<i32>(cede { [cede listener] =>
             unsafe {
                 auto s# = listener#.accept()
-                if !s.is_valid() { return cede 1 }
+                if !s.is_valid() { return 1 }
 
                 auto buf = [0 as char; 256]:[char; 256]
                 auto *buf_ptr# = &buf[0] as *u8
                 auto r_res = s#.read(*buf_ptr, 256)
-                if r_res.is_err() { return cede 1 }
+                if r_res.is_err() { return 1 }
 
                 auto req_str = string::from_with_len(&buf[0] as *char, r_res.unwrap() as i32)
-                if !req_str.starts_with("GET /strict") { return cede 1 }
+                if !req_str.starts_with("GET /strict") { return 1 }
 
                 auto out_resp = HttpResponse::ok(string::from("Verified Strict Async Response"))
                 auto out_str = out_resp.to_string()
                 auto w_res = s#.write_string(out_str)
-                if w_res.is_err() { return cede 1 }
+                if w_res.is_err() { return 1 }
 
-                return cede 0
+                return 0
             }
         })
 

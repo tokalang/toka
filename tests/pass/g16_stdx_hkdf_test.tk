@@ -10,7 +10,7 @@ fn sequence(length: usize, first: u8) -> Vec<u8> {
         values#.push(first + index as u8)
         index = index + 1:usize
     }
-    return values
+    return cede values
 }
 
 fn repeated(length: usize, value: u8) -> Vec<u8> {
@@ -20,7 +20,7 @@ fn repeated(length: usize, value: u8) -> Vec<u8> {
         values#.push(value)
         index = index + 1:usize
     }
-    return values
+    return cede values
 }
 
 fn main() -> i32 {

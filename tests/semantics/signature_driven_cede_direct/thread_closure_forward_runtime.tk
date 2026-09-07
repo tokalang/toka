@@ -13,7 +13,7 @@ fn main() -> i32 {
     auto worker = { [cede token] =>
         auto result = token.value
         return cede result
-    }:fn() -> cede i32
+    }:fn() -> i32
     auto forwarded = cede worker
     auto handle# = thread_spawn<i32>(forwarded)
     auto result = handle#.join()

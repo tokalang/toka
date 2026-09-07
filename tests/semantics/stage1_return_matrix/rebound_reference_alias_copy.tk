@@ -1,0 +1,13 @@
+fn select(first: str, second: str) -> &str <- second {
+    auto &#reference# = &first
+    &reference = &second
+    auto &saved = &reference
+    return &saved
+}
+fn main() -> i32 {
+    auto first = "first"
+    auto second = "second"
+    auto &selected = select(first, second)
+    if !selected.equals(second) { return 1 }
+    return 0
+}

@@ -3,8 +3,8 @@ import std/thread::thread_spawn
 fn main() -> i32 {
     auto *p = unsafe alloc i32(7)
     auto f = { [cede p] =>
-        return cede 0
-    }:fn() -> cede i32
+        return 0
+    }:fn() -> i32
     auto handle# = thread_spawn<i32>(cede f)
     return 0
 }

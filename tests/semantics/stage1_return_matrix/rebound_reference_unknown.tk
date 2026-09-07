@@ -1,0 +1,6 @@
+fn escaped(input: str, address: Addr) -> &str <- input {
+    auto &#reference# = &input
+    unsafe { &reference = (address as *str) as &str }
+    return &reference
+}
+fn main() -> i32 { return 0 }

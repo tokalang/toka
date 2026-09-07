@@ -1,0 +1,9 @@
+import core/traits::{@Encap}
+shape Token(value: i32)
+impl Token@Encap { fn drop(self#) {} }
+fn make() -> Token { return Token(value = 7:i32) }
+fn forward() -> Token { return cede make() }
+fn main() -> i32 {
+    auto token = forward()
+    return token.value - 7
+}

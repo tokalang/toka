@@ -69,8 +69,8 @@ fn test_cross_thread_concurrency() {
             assert(s.write_count >= 0, "write_count must be non-negative")
             i = i + 1
         }
-        return cede 0
-    }:fn() -> cede i32
+        return 0
+    }:fn() -> i32
 
     auto r2_fn = { [cede t2_rw] =>
         auto ~local = ~t2_rw
@@ -81,8 +81,8 @@ fn test_cross_thread_concurrency() {
             assert(s.write_count >= 0, "write_count must be non-negative")
             i = i + 1
         }
-        return cede 0
-    }:fn() -> cede i32
+        return 0
+    }:fn() -> i32
 
     // 1 writer thread
     auto w_fn = { [cede t3_rw] =>
@@ -94,8 +94,8 @@ fn test_cross_thread_concurrency() {
             ws.write_count = ws.write_count + 1
             i = i + 1
         }
-        return cede 0
-    }:fn() -> cede i32
+        return 0
+    }:fn() -> i32
 
     auto r_th1# = thread_spawn<i32>(cede r1_fn)
     auto r_th2# = thread_spawn<i32>(cede r2_fn)

@@ -44,7 +44,7 @@ pub fn encode(input: bytes) -> string {
         }
         index = index + 1:usize
     }
-    return encoded
+    return cede encoded
 }
 
 pub fn decode(input: str) -> Result<Vec<u8>, DecodeError> {

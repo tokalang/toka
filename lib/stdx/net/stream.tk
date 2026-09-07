@@ -49,7 +49,7 @@ impl AsyncStream {
             tls = self.tls#.take()
         )
         self.is_tls = false
-        return stream
+        return cede stream
     }
 
     // The preferred protocol API. Its buffer owner survives suspension and is
@@ -57,17 +57,21 @@ impl AsyncStream {
     pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
         auto owned# = cede owner
         if !self.is_tls {
-            return self.raw_tcp#.read_into_async(cede owned, max_len, timeout_ms).await
+            auto awaited_result_60 = self.raw_tcp#.read_into_async(cede owned, max_len, timeout_ms).await
+            return cede awaited_result_60
         }
-        return self.tls#.read_into_async(self.raw_tcp, cede owned, max_len, timeout_ms).await
+        auto awaited_result_62 = self.tls#.read_into_async(self.raw_tcp, cede owned, max_len, timeout_ms).await
+        return cede awaited_result_62
     }
 
     pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
         auto owned# = cede owner
         if !self.is_tls {
-            return self.raw_tcp#.write_from_async(cede owned, timeout_ms).await
+            auto awaited_result_68 = self.raw_tcp#.write_from_async(cede owned, timeout_ms).await
+            return cede awaited_result_68
         }
-        return self.tls#.write_from_async(self.raw_tcp, cede owned, timeout_ms).await
+        auto awaited_result_70 = self.tls#.write_from_async(self.raw_tcp, cede owned, timeout_ms).await
+        return cede awaited_result_70
     }
 
     pub fn close(self#) {

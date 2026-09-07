@@ -14,7 +14,7 @@ impl CleanupToken@Encap {
 }
 
 impl CleanupToken {
-    pub fn forward(cede self) -> cede Self {
+    pub fn forward(cede self) -> Self {
         return cede self
     }
 }

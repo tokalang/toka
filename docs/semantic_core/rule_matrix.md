@@ -263,31 +263,39 @@ Primary references:
   `tests/fail/cede_non_cede_parameter.tk`,
   `tests/fail/cede_param_double_unwrap.tk`,
   `tests/fail/cede_resource_missing.tk`
-- Interface replay requirements: parameter cede-ness and return cede-ness must
-  be preserved in `.tki`.
+- Interface replay requirements: parameter cede-ness must be preserved in
+  `.tki`; result-side `cede` is no longer a function-result qualifier.
 - Replay tests: `tests/semantics/tki_replay/cases/own_cede_001_signature` and
   `tests/semantics/tki_replay/cases/own_cede_003_generic_methods` cover plain,
   generic, and method cede signatures.
 - Coverage closure: none known for frozen cede parameter obligations.
 
-### OWN-CEDE-002: `cede` return types require explicit transfer at return sites
+### OWN-RETURN-SOURCE-001: return destinations preserve explicit source transitions
 
-- Status: Core guarantee
-- Source form: `fn make() -> cede R { return cede r }`
-- Operation class: `CedeObligation`, `OwnershipTransfer`
-- Decision: a function with a cede return must return through explicit `cede`.
-- Rationale: ownership transfer across the function boundary must be visible.
-- Primary diagnostics: `E0464`
+- Status: Core guarantee; Stage 1 return/source behavior slice Accepted
+  (2026-09-07). This does not imply completion of all Stage 1 or release
+  qualification.
+- Source form: `fn make() -> R { return cede value }`
+- Operation class: `OwnershipTransfer`, `CopyValue`, `CopyIdentity`
+- Decision: `return` describes the destination and `cede` describes a named
+  source invalidation. Named NonCopy values require `return cede value`;
+  named Copy values may return bare with `KeepLive`; complete source-less
+  temporaries return bare; unique owners use canonical `return ^owner`.
+- Rejections: `return cede temporary()` has no source to invalidate, and
+  `return cede ^owner` is redundant. Unknown source, dependency, capability,
+  or Drop facts fail closed.
+- Rationale: callers need result type/morphology and dependency facts, not the
+  callee's internal source history. Source death remains visible exactly where
+  it occurs.
+- Primary diagnostics: `E04654`–`E04659`; legacy `E0464` is retired.
 - Implementation areas: `src/Sema/Sema_Stmt.cpp`,
-  `src/AST/TKIExporter.cpp`
-- Positive tests: `tests/pass/g09_thread_example.tk`,
-  `tests/pass/g08_sync_mpsc_bounded.tk`
-- Negative tests: `tests/fail/expect_cede_return.tk`
-- Interface replay requirements: return type cede marker must survive `.tki`.
-- Replay tests: `tests/semantics/tki_replay/cases/own_cede_002_return` covers
-  valid binding, double consumption, and use after transfer through source and
-  source-less imports.
-- Coverage closure: none known for frozen cede returns.
+  `src/Sema/Sema_Expr_Call.cpp`, `src/Sema/ExplicitCedePlan.cpp`
+- Positive and negative tests:
+  `tests/semantics/stage1_return_matrix/` and
+  `tools/scripts/test_stage1_return_matrix.py`.
+- Interface replay requirements: `.tki` must preserve result morphology and
+  dependency routes, but must not encode result-side cede-ness. Protocol
+  cleanup and the interface-key change remain a later staged step.
 
 ### OWN-RESOURCE-001: Resource values cannot be silently copied
 

@@ -1,17 +1,20 @@
 fn read_config() -> wait str {
-    return "config"
+    auto result = "config":str
+    return result
 }
 
 fn fetch() -> async str {
     // Should trigger an error.
     read_config()
-    return "hello"
+    auto result = "hello":str
+    return result
 }
 
 fn fetch2() -> async str {
     // Should trigger an error
     "hello".wait
-    return "hello"
+    auto result = "hello":str
+    return result
 }
 
 fn main() -> i32 {

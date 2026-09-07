@@ -20,7 +20,7 @@ fn handle_request(req#: HttpRequest) -> HttpResponse {
     
     if is_get && is_home {
         auto res = HttpResponse::html(string::from("<h1>Welcome to Toka HTTP Framework</h1>"))
-        return res
+        return cede res
     }
     
     return HttpResponse::not_found()

@@ -813,6 +813,11 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
         (left->equals(*right) || (left->typeKind == right->typeKind &&
                                   left->getSoulName() == right->getSoulName())))
       return left;
+    if (destinationType && right && !right->isUnknown() &&
+        (destinationType->equals(*right) ||
+         (destinationType->typeKind == right->typeKind &&
+          destinationType->getSoulName() == right->getSoulName())))
+      return resolveExplicitCedeStage0TypeReadOnly(destinationType);
     return toka::Type::fromString("unknown");
   }
   if (auto *variable = dynamic_cast<VariableExpr *>(source)) {
@@ -822,7 +827,17 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
         CurrentScope->findVariableWithDeref(variable->Name, info, actualName) &&
         info && info->TypeObj) {
       auto type = resolveExplicitCedeStage0TypeReadOnly(info->TypeObj);
-      if (type && (type->isUniquePtr() || type->isSharedPtr()))
+      // A morphic binding (for example a match payload named `'value`)
+      // denotes the binding's resolved morphology itself.  Unlike an ordinary
+      // un-hatted owner spelling, it must not be silently de-hatted into the
+      // payload view during read-only preflight.
+      const bool preservesResolvedMorphology =
+          variable->IsMorphicExempt || info->IsMorphicExempt;
+      if (type && (type->isUniquePtr() || type->isSharedPtr()) &&
+          !preservesResolvedMorphology)
+        return resolveExplicitCedeStage0TypeReadOnly(type->getPointeeType());
+      if (type && type->isReference() &&
+          (!destinationType || !destinationType->isReference()))
         return resolveExplicitCedeStage0TypeReadOnly(type->getPointeeType());
       return type;
     }
@@ -849,8 +864,29 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
     }
     return toka::Type::fromString("unknown");
   }
+  if (auto *address = dynamic_cast<AddressOfExpr *>(source)) {
+    auto referent = queryExplicitCedeStage0NonCallType(
+        address->Expression.get(), nullptr);
+    if (destinationType && destinationType->isReference() &&
+        canonicalizeAccessPath(makeAccessPath(address->Expression.get())))
+      return resolveExplicitCedeStage0TypeReadOnly(destinationType);
+    return referent && !referent->isUnknown()
+               ? std::make_shared<ReferenceType>(referent)
+               : toka::Type::fromString("unknown");
+  }
   if (auto *unary = dynamic_cast<UnaryExpr *>(source)) {
+    if (unary->Op == TokenType::Minus)
+      return queryExplicitCedeStage0NonCallType(unary->RHS.get(),
+                                                destinationType);
+    if (unary->Op == TokenType::Bang)
+      return Type::fromString("bool");
+    if (unary->Op == TokenType::Star && destinationType &&
+        destinationType->isRawPointer())
+      return resolveExplicitCedeStage0TypeReadOnly(destinationType);
     if (unary->Op == TokenType::Ampersand) {
+      if (destinationType && destinationType->isReference() &&
+          canonicalizeAccessPath(makeAccessPath(unary->RHS.get())))
+        return resolveExplicitCedeStage0TypeReadOnly(destinationType);
       auto referent =
           queryExplicitCedeStage0NonCallType(unary->RHS.get(), nullptr);
       return referent ? std::make_shared<ReferenceType>(referent)
@@ -862,6 +898,19 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
       CurrentScope->findSymbolByID(path.RootID, info);
     if (info && info->TypeObj)
       return resolveExplicitCedeStage0TypeReadOnly(info->TypeObj);
+    return toka::Type::fromString("unknown");
+  }
+  if (auto *index = dynamic_cast<ArrayIndexExpr *>(source)) {
+    auto storage = queryExplicitCedeStage0NonCallType(index->Array.get(),
+                                                      nullptr);
+    storage = resolveExplicitCedeStage0TypeReadOnly(storage);
+    if (storage && (storage->isPointer() || storage->isSmartPointer() ||
+                    storage->isReference()))
+      storage = resolveExplicitCedeStage0TypeReadOnly(
+          storage->getPointeeType());
+    if (storage && (storage->isArray() || storage->isSlice()))
+      return resolveExplicitCedeStage0TypeReadOnly(
+          storage->getArrayElementType());
     return toka::Type::fromString("unknown");
   }
   if (auto *init = dynamic_cast<InitStructExpr *>(source))
@@ -876,6 +925,14 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
           call->ResolvedExtern->ReturnTypeSyntax
               ? Type::fromSyntax(call->ResolvedExtern->ReturnTypeSyntax)
               : Type::fromString(call->ResolvedExtern->ReturnType));
+    if (auto external = ExternMap.find(call->Callee);
+        external != ExternMap.end() && external->second) {
+      auto *declaration = external->second;
+      return resolveExplicitCedeStage0TypeReadOnly(
+          declaration->ReturnTypeSyntax
+              ? Type::fromSyntax(declaration->ReturnTypeSyntax)
+              : Type::fromString(declaration->ReturnType));
+    }
     // Before normal overload resolution has selected a declaration, a symbol
     // entry may name only one member of a visible overload set.  It is not a
     // proof of the call's return type.  Admit only a unique, non-generic direct
@@ -910,7 +967,46 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
     return Type::fromString("char");
   if (dynamic_cast<ViewStringExpr *>(source))
     return resolveExplicitCedeStage0TypeReadOnly(Type::fromString("str"));
+  if (dynamic_cast<StringExpr *>(source))
+    return resolveExplicitCedeStage0TypeReadOnly(
+        destinationType ? destinationType : Type::fromString("cstr"));
   return toka::Type::fromString("unknown");
+}
+
+bool Sema::isConsumingCallableInvocation(const CallExpr *call) {
+  if (!call || !CurrentScope)
+    return false;
+  SymbolInfo *binding = nullptr;
+  std::string name;
+  const auto &spelling = call->OriginalCallee.empty() ? call->Callee
+                                                    : call->OriginalCallee;
+  if (!CurrentScope->findVariableWithDeref(spelling, binding, name) ||
+      !binding || !binding->TypeObj ||
+      binding->TypeObj->toString() == "fn" ||
+      binding->TypeObj->toString() == "extern")
+    return false;
+  auto type = resolveExplicitCedeStage0TypeReadOnly(binding->TypeObj);
+  if (!type)
+    return false;
+  if (type->isFunction() || type->isDynFn())
+    return getCallableReceiverMode(*type) == CallableReceiverMode::Consuming;
+  if (auto shape = std::dynamic_pointer_cast<ShapeType>(type)) {
+    const std::string shapeName = shape->Decl
+        ? (shape->Decl->CodegenName.empty() ? shape->Decl->Name
+                                          : shape->Decl->CodegenName)
+        : shape->getSoulName();
+    auto methods = MethodDecls.find(shapeName);
+    if (!ImplMap.count(shapeName + "@Callable") || methods == MethodDecls.end())
+      return false;
+    auto callMethod = methods->second.find("call");
+    if (callMethod == methods->second.end() || !callMethod->second)
+      return false;
+    const auto *formal = callMethod->second;
+    return formal->IsClosureInvoke
+        ? formal->ClosureReceiver == CallableReceiverMode::Consuming
+        : !formal->Args.empty() && formal->Args.front().IsCeded;
+  }
+  return false;
 }
 
 std::shared_ptr<Type>
@@ -941,10 +1037,16 @@ Sema::resolveExplicitCedeStage0TypeReadOnly(const std::shared_ptr<Type> &type) {
     if (!shape->GenericArgs.empty())
       return nullptr;
     auto alias = TypeAliasMap.find(shape->Name);
-    if (alias != TypeAliasMap.end() && alias->second.GenericParams.empty())
-      return alias->second.TargetSyntax
-                 ? Type::fromSyntax(alias->second.TargetSyntax)
-                 : Type::fromString(alias->second.Target);
+    if (alias != TypeAliasMap.end() && alias->second.GenericParams.empty()) {
+      auto target = alias->second.TargetSyntax
+                        ? Type::fromSyntax(alias->second.TargetSyntax)
+                        : Type::fromString(alias->second.Target);
+      auto resolvedTarget = resolveExplicitCedeStage0TypeReadOnly(target);
+      return resolvedTarget
+                 ? resolvedTarget->withAttributes(
+                       shape->IsWritable, shape->IsNullable, shape->IsBlocked)
+                 : nullptr;
+    }
     auto declaration = ShapeMap.find(shape->Name);
     if (declaration == ShapeMap.end())
       return nullptr;
@@ -1100,12 +1202,85 @@ std::optional<ValueOwnership> Sema::queryExplicitCedeStage0OwnershipReadOnly(
     return ValueOwnership::Trivial;
   if (soul == "string" || soul == "Bytes")
     return ValueOwnership::Owned;
-  auto properties = m_ShapeProps.find(soul);
-  if (properties == m_ShapeProps.end() ||
-      properties->second.Status != ShapeAnalysisStatus::Analyzed)
+  auto shapeType = std::dynamic_pointer_cast<ShapeType>(resolved);
+  ShapeDecl *shape = shapeType ? shapeType->Decl : nullptr;
+  if (shape) {
+    std::map<std::string, std::shared_ptr<Type>> substitutions;
+    for (size_t index = 0;
+         index < shape->GenericParams.size() &&
+         index < shapeType->GenericArgs.size();
+         ++index) {
+      substitutions[shape->GenericParams[index].Name] =
+          shapeType->GenericArgs[index];
+    }
+    bool ownsMember = shape->HasExplicitDrop;
+    auto inspectMember = [&](const ShapeMember &member) {
+      auto memberType = Sema::getPhysicalType(member);
+      if (memberType && !substitutions.empty())
+        memberType = memberType->substitute(substitutions);
+      auto ownership = queryExplicitCedeStage0OwnershipReadOnly(memberType);
+      if (!ownership)
+        return false;
+      ownsMember |= *ownership == ValueOwnership::Owned ||
+                    *ownership == ValueOwnership::SharedHandle;
+      return true;
+    };
+    bool structuralFactsComplete = true;
+    for (const auto &member : shape->Members) {
+      if (shape->Kind != ShapeKind::Enum && !inspectMember(member))
+        structuralFactsComplete = false;
+      for (const auto &submember : member.SubMembers) {
+        if (!inspectMember(submember))
+          structuralFactsComplete = false;
+      }
+    }
+    if (structuralFactsComplete)
+      return ownsMember ? ValueOwnership::Owned : ValueOwnership::Trivial;
+  }
+
+  std::optional<bool> analyzedHasDrop;
+  bool propertyConflict = false;
+  auto considerProperties = [&](const std::string &key,
+                                const ShapeDecl *expectedDeclaration) {
+    if (key.empty() || !expectedDeclaration)
+      return;
+    auto registered = ShapeMap.find(key);
+    if (registered == ShapeMap.end() ||
+        registered->second != expectedDeclaration)
+      return;
+    auto properties = m_ShapeProps.find(key);
+    if (properties == m_ShapeProps.end() ||
+        properties->second.Status != ShapeAnalysisStatus::Analyzed)
+      return;
+    if (analyzedHasDrop &&
+        *analyzedHasDrop != properties->second.HasDrop) {
+      propertyConflict = true;
+      return;
+    }
+    analyzedHasDrop = properties->second.HasDrop;
+  };
+  considerProperties(soul, shape);
+  if (shape)
+    considerProperties(shape->Name, shape);
+
+  if (shape && shape->InstantiationTemplate) {
+    const ShapeDecl *templateShape = shape->InstantiationTemplate;
+    auto recipe = Slice4CopyRecipes.find(templateShape);
+    const bool argumentIndependentNoDrop =
+        recipe != Slice4CopyRecipes.end() &&
+        recipe->second.Kind == Slice4CopyRecipeKind::Always;
+    if (argumentIndependentNoDrop) {
+      auto properties = m_ShapeProps.find(templateShape->Name);
+      if (properties != m_ShapeProps.end() &&
+          properties->second.Status == ShapeAnalysisStatus::Analyzed &&
+          !properties->second.HasDrop)
+        considerProperties(templateShape->Name, templateShape);
+    }
+  }
+
+  if (propertyConflict || !analyzedHasDrop)
     return std::nullopt;
-  return properties->second.HasDrop ? ValueOwnership::Owned
-                                    : ValueOwnership::Trivial;
+  return *analyzedHasDrop ? ValueOwnership::Owned : ValueOwnership::Trivial;
 }
 
 CallExecutionBoundary
@@ -2113,11 +2288,12 @@ CallTransferPlan Sema::buildShadowCallTransferPlan(
   std::string soul = Type::stripMorphology(carrierPayload->getSoulName());
   if (size_t scope = soul.rfind("::"); scope != std::string::npos)
     soul = soul.substr(scope + 2);
+  const bool rawView = soul == "cstr";
   const bool borrowedView =
       carrierPayload->isReference() || soul == "str" || soul == "bytes" ||
-      soul == "cstr" || soul == "ViewStrSplitIterator" ||
+      soul == "ViewStrSplitIterator" ||
       soul == "ViewStrLinesIterator";
-  if (carrierPayload->isRawPointer())
+  if (carrierPayload->isRawPointer() || rawView)
     plan.Dependency = CallDependencyDisposition::RawUnsafe;
   else if (borrowedView)
     plan.Dependency = CallDependencyDisposition::Borrowed;
@@ -2235,7 +2411,7 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
     Expr *argument, const std::shared_ptr<Type> &argumentType,
     const CallTransferPlan &legacyShadowPlan,
     const AnalysisState *snapshotState, uint64_t snapshotRevision,
-    bool readOnlyTypes) {
+    bool readOnlyTypes, bool usePreparedReturnReferent) {
   ExplicitCedePreparedFacts facts;
   facts.SnapshotRevision = snapshotRevision;
   auto actual =
@@ -2277,9 +2453,16 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
         sourceScope);
   const bool sourceIsLocal = sourceInfo && sourceInfo->IsDeclaredVariable &&
                              sourceScope && sourceScope->Depth > 0;
+  const bool sourceCarriesCedeContract =
+      (sourceInfo && sourceInfo->IsCeded) || (actual && actual->IsCede);
+  const bool sourceHasTransferBinding =
+      sourceIsLocal || sourceCarriesCedeContract;
   AccessPath identityPath = legacyShadowPlan.SourcePlace;
   if (!identityPath.RootLoc.isValid() && sourceInfo)
     identityPath.RootLoc = sourceInfo->DeclLoc;
+  if (!identityPath.RootLoc.isValid() && sourceInfo && sourceInfo->ASTPtr)
+    identityPath.RootLoc =
+        static_cast<ASTNode *>(sourceInfo->ASTPtr)->Loc;
   if (!identityPath.RootLoc.isValid() && readOnlyTypes && sourceInfo &&
       sourceInfo->IsPlaceAlias && argument && argument->Loc.isValid())
     identityPath.RootLoc = argument->Loc;
@@ -2340,10 +2523,24 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
     }
     facts.DependencyRoots.push_back(dependency->root());
   }
+  if (sourceInfo && !sourceInfo->LifeDependencySet.empty()) {
+    for (const auto &dependencyPath : sourceInfo->LifeDependencySet) {
+      auto dependency = stableIdentityFor(makeAccessPath(dependencyPath));
+      if (!dependency) {
+        dependencyRootsComplete = false;
+        continue;
+      }
+      const auto root = dependency->root();
+      if (std::find(facts.DependencyRoots.begin(), facts.DependencyRoots.end(),
+                    root) == facts.DependencyRoots.end())
+        facts.DependencyRoots.push_back(root);
+    }
+  }
   switch (legacyShadowPlan.Dependency) {
   case CallDependencyDisposition::None:
     facts.Dependency = TransferDependencyKind::None;
     facts.ReferentPlace.reset();
+    facts.DependencyRoots.clear();
     facts.DependencyFactsComplete = true;
     break;
   case CallDependencyDisposition::Borrowed:
@@ -2369,6 +2566,9 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
   }
 
   Expr *surface = stage0SurfaceSource(argument);
+  facts.MorphicSource =
+      (surface && surface->IsMorphicExempt) ||
+      (sourceInfo && sourceInfo->IsMorphicExempt);
   if (dynamic_cast<AddressOfExpr *>(surface)) {
     facts.SourceView = TransferSourceView::ReferenceConstruction;
   } else if (auto *unary = dynamic_cast<UnaryExpr *>(surface)) {
@@ -2382,7 +2582,9 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
       facts.SourceView = TransferSourceView::ReferenceConstruction;
     else
       facts.SourceView = TransferSourceView::Indeterminate;
-  } else if (sourceInfo && (sourceInfo->IsUnique() || sourceInfo->IsShared())) {
+  } else if (sourceInfo && (sourceInfo->IsUnique() || sourceInfo->IsShared()) &&
+             !(surface && surface->IsMorphicExempt) &&
+             !sourceInfo->IsMorphicExempt) {
     facts.SourceView = TransferSourceView::DereferencedOwningPayload;
   } else if (actualPayload &&
              (actualPayload->isFunction() || actualPayload->isDynFn())) {
@@ -2396,7 +2598,10 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
     else if (morphology == TransferFormalMorphology::RawHandle)
       facts.SourceView = TransferSourceView::RawHandle;
     else if (morphology == TransferFormalMorphology::Reference)
-      facts.SourceView = TransferSourceView::ReferenceConstruction;
+      facts.SourceView =
+          facts.SourceCategory == TransferSourceCategory::NoSourcePlace
+              ? TransferSourceView::ReferenceConstruction
+              : TransferSourceView::DirectValue;
     else
       facts.SourceView = TransferSourceView::DirectValue;
   }
@@ -2415,14 +2620,24 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
            unary && unary->Op == TokenType::Ampersand)
     borrowTarget = unary->RHS.get();
   if (borrowTarget) {
-    AccessPath referent = canonicalizeAccessPath(makeAccessPath(borrowTarget));
+    // The return collector can already have resolved a checked reference
+    // initializer to its target storage. Do not replace it with the local
+    // alias slot. Other destinations keep their frozen fact-provider path.
+    const bool preparedReturnTarget =
+        usePreparedReturnReferent && legacyShadowPlan.ReferentPath;
+    AccessPath referent = preparedReturnTarget
+        ? legacyShadowPlan.ReferentPath
+        : canonicalizeAccessPath(makeAccessPath(borrowTarget));
     facts.ReferentPlace = stableIdentityFor(referent);
-    facts.DependencyRoots.clear();
-    if (facts.ReferentPlace)
-      facts.DependencyRoots.push_back(facts.ReferentPlace->root());
+    if (!preparedReturnTarget) {
+      facts.DependencyRoots.clear();
+      if (facts.ReferentPlace)
+        facts.DependencyRoots.push_back(facts.ReferentPlace->root());
+    }
     facts.Dependency = TransferDependencyKind::Borrowed;
     facts.DependencyFactsComplete =
-        facts.ReferentPlace && !facts.DependencyRoots.empty();
+        facts.ReferentPlace && !facts.DependencyRoots.empty() &&
+        (!preparedReturnTarget || dependencyRootsComplete);
   }
 
   const std::optional<ValueOwnership> actualOwnership =
@@ -2462,6 +2677,12 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
   }
 
   facts.CopyProof = queryExplicitCedeStage0CopyProof(actualPayload);
+  if (facts.CopyProof == TransferCopyProof::Indeterminate &&
+      (facts.Ownership == TransferOwnershipKind::OwnedValue ||
+       facts.Ownership == TransferOwnershipKind::UniqueOwner ||
+       facts.Ownership == TransferOwnershipKind::SharedOwner ||
+       facts.Ownership == TransferOwnershipKind::OwnedCallable))
+    facts.CopyProof = TransferCopyProof::ProvenNonCopy;
   std::set<const ShapeDecl *> dependencyProofStack;
   std::function<bool(const std::shared_ptr<Type> &)> isDependencyFree =
       [&](const std::shared_ptr<Type> &candidate) -> bool {
@@ -2503,6 +2724,9 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
     if (facts.DependencyRoots.empty())
       facts.DependencyRoots.push_back(facts.ReferentPlace->root());
     facts.DependencyFactsComplete = true;
+  } else if (facts.Dependency == TransferDependencyKind::Structural &&
+             !facts.DependencyRoots.empty()) {
+    facts.DependencyFactsComplete = dependencyRootsComplete;
   } else if (facts.Dependency == TransferDependencyKind::Structural &&
              facts.CopyProof == TransferCopyProof::ProvenCopy &&
              facts.DependencyRoots.empty()) {
@@ -2550,6 +2774,8 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
                 facts.Dependency == TransferDependencyKind::None &&
                 !facts.ReferentPlace && facts.DependencyRoots.empty() &&
                 (facts.Ownership == TransferOwnershipKind::OwnedValue ||
+                 (facts.Ownership == TransferOwnershipKind::PlainValue &&
+                  facts.CopyProof == TransferCopyProof::ProvenNonCopy) ||
                  facts.Ownership == TransferOwnershipKind::UniqueOwner ||
                  facts.Ownership == TransferOwnershipKind::SharedOwner ||
                  facts.Ownership == TransferOwnershipKind::OwnedCallable)
@@ -2570,7 +2796,7 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
     facts.Eligibility = TransferEligibility::Eligible;
   } else if (!facts.SourcePlace || !sourceInfo) {
     facts.Eligibility = TransferEligibility::Indeterminate;
-  } else if (!sourceIsLocal || sourceInfo->IsPlaceAlias) {
+  } else if (!sourceHasTransferBinding || sourceInfo->IsPlaceAlias) {
     facts.Eligibility = TransferEligibility::Ineligible;
   } else if (identityPath.Projections.empty()) {
     facts.Eligibility = TransferEligibility::Eligible;
@@ -2662,6 +2888,11 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
           }
         }
       }
+      // A missing projection ledger entry means this root has never been
+      // partially moved; inherit the root fact.  It must not make a harmless
+      // Copy/identity read of `self.field` indeterminate.
+      if (sourceFact.empty())
+        sourceFact = exact->second.whole();
       facts.SourceLiveness = classifyPlaceFact(sourceFact);
       facts.SourceLivenessComplete =
           facts.SourceLiveness != TransferSourceLiveness::Indeterminate;
@@ -2693,9 +2924,9 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
       identityPath && palSnapshot.verifyInvalidation(identityPath).has_value();
   facts.SourceTransferAuthorityComplete = sourceInfo != nullptr;
   facts.SourceTransferAuthorized =
-      sourceIsLocal && sourceInfo && !sourceInfo->IsPlaceAlias &&
-      (!sourceInfo->IsFunctionParameter || sourceInfo->IsCeded);
-  if (sourceInfo && sourceInfo->IsCeded && facts.SourcePlace &&
+      sourceHasTransferBinding && sourceInfo && !sourceInfo->IsPlaceAlias &&
+      (!sourceInfo->IsFunctionParameter || sourceCarriesCedeContract);
+  if (sourceInfo && sourceCarriesCedeContract && facts.SourcePlace &&
       facts.ObligationFactsComplete) {
     facts.ObligationBefore =
         facts.SourceLiveness == TransferSourceLiveness::Live
@@ -2746,13 +2977,72 @@ TransferCopyProof Sema::queryExplicitCedeStage0CopyProof(
   }
   if (!shape)
     return TransferCopyProof::Indeterminate;
+  if (!shape->HasExplicitDrop && !shape->Members.empty() &&
+      std::all_of(shape->Members.begin(), shape->Members.end(),
+                  [](const ShapeMember &member) {
+                    return member.IsUnitVariant;
+                  }))
+    return TransferCopyProof::ProvenCopy;
+  if (shapeType && shapeType->Name.rfind("__Toka_Anon_Rec_", 0) == 0) {
+    bool sawIndeterminate = false;
+    for (const auto &member : shape->Members) {
+      const auto memberProof = queryExplicitCedeStage0CopyProof(
+          resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(member)));
+      if (memberProof == TransferCopyProof::ProvenNonCopy)
+        return TransferCopyProof::ProvenNonCopy;
+      sawIndeterminate |=
+          memberProof == TransferCopyProof::Indeterminate;
+    }
+    return sawIndeterminate ? TransferCopyProof::Indeterminate
+                            : TransferCopyProof::ProvenCopy;
+  }
   auto proof = Slice4CopyProofs.find(shape);
-  if (proof == Slice4CopyProofs.end() ||
-      proof->second == Slice1CopyProof::Unknown)
+  if (proof != Slice4CopyProofs.end() &&
+      proof->second != Slice1CopyProof::Unknown)
+    return proof->second == Slice1CopyProof::ProvenCopy
+               ? TransferCopyProof::ProvenCopy
+               : TransferCopyProof::ProvenNonCopy;
+
+  const ShapeDecl *recipeShape =
+      shape->InstantiationTemplate ? shape->InstantiationTemplate : shape;
+  auto recipe = Slice4CopyRecipes.find(recipeShape);
+  if (recipe == Slice4CopyRecipes.end())
     return TransferCopyProof::Indeterminate;
-  return proof->second == Slice1CopyProof::ProvenCopy
-             ? TransferCopyProof::ProvenCopy
-             : TransferCopyProof::ProvenNonCopy;
+  if (recipe->second.Kind == Slice4CopyRecipeKind::Never)
+    return TransferCopyProof::ProvenNonCopy;
+  if (recipe->second.Kind == Slice4CopyRecipeKind::Always)
+    return TransferCopyProof::ProvenCopy;
+  if (recipe->second.Kind != Slice4CopyRecipeKind::All)
+    return TransferCopyProof::Indeterminate;
+
+  const auto &arguments =
+      shapeType && !shapeType->GenericArgs.empty()
+          ? shapeType->GenericArgs
+          : shape->InstantiationArgs;
+  if (arguments.size() != recipeShape->GenericParams.size())
+    return TransferCopyProof::Indeterminate;
+  auto normalized = [](std::string name) {
+    if (!name.empty() && name.front() == '\'')
+      name.erase(name.begin());
+    return name;
+  };
+  bool sawIndeterminate = false;
+  for (const auto &requirement : recipe->second.Requirements) {
+    size_t index = 0;
+    while (index < recipeShape->GenericParams.size() &&
+           normalized(recipeShape->GenericParams[index].Name) !=
+               normalized(requirement))
+      ++index;
+    if (index == recipeShape->GenericParams.size())
+      return TransferCopyProof::Indeterminate;
+    const auto argumentProof =
+        queryExplicitCedeStage0CopyProof(arguments[index]);
+    if (argumentProof == TransferCopyProof::ProvenNonCopy)
+      return TransferCopyProof::ProvenNonCopy;
+    sawIndeterminate |= argumentProof == TransferCopyProof::Indeterminate;
+  }
+  return sawIndeterminate ? TransferCopyProof::Indeterminate
+                          : TransferCopyProof::ProvenCopy;
 }
 
 ExplicitCedePlan Sema::completeExplicitCedeStage0CallPlan(
@@ -2775,6 +3065,60 @@ ExplicitCedePlan Sema::completeExplicitCedeStage0CallPlan(
   const bool callBoundary =
       destination == TransferDestination::CalleeParameter ||
       destination == TransferDestination::Receiver;
+  auto canonicalReadOnlyScalar = [](const std::shared_ptr<Type> &candidate) {
+    auto primitive = std::dynamic_pointer_cast<PrimitiveType>(candidate);
+    if (!primitive)
+      return candidate ? candidate->toString() : std::string{};
+    bool target32 = false;
+    if (!Parser::TargetTriple.empty()) {
+      const std::string &triple = Parser::TargetTriple;
+      target32 = triple.find("wasm32") != std::string::npos ||
+                 triple.find("i386") != std::string::npos ||
+                 triple.find("i686") != std::string::npos ||
+                 (triple.find("arm") != std::string::npos &&
+                  triple.find("64") == std::string::npos &&
+                  triple.find("armv8") == std::string::npos);
+    }
+    if (primitive->Name == "usize" || primitive->Name == "Addr" ||
+        primitive->Name == "OAddr")
+      return target32 ? std::string("u32") : std::string("u64");
+    if (primitive->Name == "isize")
+      return target32 ? std::string("i32") : std::string("i64");
+    if (primitive->Name == "byte")
+      return std::string("u8");
+    return primitive->Name;
+  };
+  auto readOnlyAnonymousRecordCompatible = [&](const std::shared_ptr<Type> &target,
+                                                const std::shared_ptr<Type> &source) {
+    auto targetShape = std::dynamic_pointer_cast<ShapeType>(target);
+    auto sourceShape = std::dynamic_pointer_cast<ShapeType>(source);
+    if (!targetShape || !sourceShape || !targetShape->Decl ||
+        !sourceShape->Decl ||
+        targetShape->Name.rfind("__Toka_Anon_Rec_", 0) != 0 ||
+        sourceShape->Name.rfind("__Toka_Anon_Rec_", 0) != 0 ||
+        targetShape->Decl->Members.size() !=
+            sourceShape->Decl->Members.size())
+      return false;
+    for (size_t index = 0; index < targetShape->Decl->Members.size(); ++index) {
+      const auto &targetMember = targetShape->Decl->Members[index];
+      const auto &sourceMember = sourceShape->Decl->Members[index];
+      if (Type::stripMorphology(targetMember.Name) !=
+          Type::stripMorphology(sourceMember.Name))
+        return false;
+      auto targetType = resolveExplicitCedeStage0TypeReadOnly(
+          Sema::getPhysicalType(targetMember));
+      auto sourceType = resolveExplicitCedeStage0TypeReadOnly(
+          Sema::getPhysicalType(sourceMember));
+      if (!targetType || !sourceType || targetType->isUnknown() ||
+          sourceType->isUnknown() ||
+          (!targetType->equals(*sourceType) &&
+           (stage0Morphology(targetType) != stage0Morphology(sourceType) ||
+            Type::stripMorphology(targetType->toString()) !=
+                Type::stripMorphology(sourceType->toString()))))
+        return false;
+    }
+    return true;
+  };
   facts.FormalTypeKey =
       formal && !formal->isUnknown() ? formal->toString() : std::string{};
   facts.Destination = destination;
@@ -2783,6 +3127,8 @@ ExplicitCedePlan Sema::completeExplicitCedeStage0CallPlan(
       readOnlyTypes && actual && formal && !actual->isUnknown() &&
       !formal->isUnknown() &&
       (formal->equals(*actual) ||
+       canonicalReadOnlyScalar(formal) == canonicalReadOnlyScalar(actual) ||
+       readOnlyAnonymousRecordCompatible(formal, actual) ||
        (stage0Morphology(formal) == stage0Morphology(actual) &&
         Type::stripMorphology(formal->toString()) ==
             Type::stripMorphology(actual->toString())));
@@ -2921,16 +3267,377 @@ Sema::makeExplicitCedeStage0NonCallGroupIdentity(ASTNode *site,
          std::to_string(full.Column);
 }
 
+void Sema::invalidateReturnSourceProof(Expr *expression, bool unknown) {
+  while (expression) {
+    if (auto *cast = dynamic_cast<CastExpr *>(expression))
+      expression = cast->Expression.get();
+    else if (auto *address = dynamic_cast<AddressOfExpr *>(expression))
+      expression = address->Expression.get();
+    else if (auto *unary = dynamic_cast<UnaryExpr *>(expression))
+      expression = unary->RHS.get();
+    else
+      break;
+  }
+  const auto directPath = makeAccessPath(expression);
+  SymbolInfo *directBinding = nullptr;
+  if (unknown && directPath.RootID &&
+      CurrentScope->findSymbolByID(directPath.RootID, directBinding) &&
+      directBinding && directBinding->TypeObj && directBinding->TypeObj->isReference())
+    directBinding->CurrentReferenceTargets = std::vector<AccessPath>{};
+  auto path = canonicalizeAccessPath(makeAccessPath(expression));
+  if (path.RootID) m_ReturnSourceInvalidatedRoots.insert(path.RootID);
+  if (path.RootID && unknown) m_ReturnSourceUnknownRoots.insert(path.RootID);
+  SymbolInfo *binding = nullptr;
+  std::string name;
+  if (path && CurrentScope->findVariableWithDeref(path.RootName, binding, name) &&
+      binding) {
+    m_ReturnSourceInvalidatedRoots.insert(binding->SymbolID);
+    if (unknown) m_ReturnSourceUnknownRoots.insert(binding->SymbolID);
+    if (binding->BorrowedPath.RootID)
+      m_ReturnSourceInvalidatedRoots.insert(binding->BorrowedPath.RootID);
+    if (binding->BorrowedPath.RootID && unknown)
+      m_ReturnSourceUnknownRoots.insert(binding->BorrowedPath.RootID);
+  }
+}
+
+bool Sema::collectActualReturnReferents(
+    Expr *expression, std::vector<AccessPath> &paths,
+    std::vector<SourceLocation> *staticStorage,
+    std::vector<AccessPath> *addressedStorage,
+    bool *usedCurrentReference) {
+  if (usedCurrentReference) *usedCurrentReference = false;
+  std::set<uint64_t> visiting;
+  std::vector<AccessPath> preparedPaths;
+  std::vector<SourceLocation> preparedStatic;
+  std::vector<AccessPath> preparedStorage;
+  std::set<uint64_t> visitingStorage;
+  std::function<bool(Expr *, std::vector<AccessPath> &)> visit;
+  std::function<bool(Expr *, std::vector<AccessPath> &)> storageOrigin =
+      [&](Expr *value, std::vector<AccessPath> &result) {
+    while (value) {
+      if (auto *cast = dynamic_cast<CastExpr *>(value))
+        value = cast->Expression.get();
+      else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(value))
+        value = unsafe->Expression.get();
+      else
+        break;
+    }
+    auto direct = makeAccessPath(value);
+    SymbolInfo *current = nullptr;
+    if (direct.RootID) CurrentScope->findSymbolByID(direct.RootID, current);
+    if (current && current->CurrentReferenceTargets) {
+      if (usedCurrentReference) *usedCurrentReference = true;
+      if (current->CurrentReferenceTargets->empty()) return false;
+      for (auto target : *current->CurrentReferenceTargets) {
+        target.Projections.insert(target.Projections.end(), direct.Projections.begin(),
+                                  direct.Projections.end());
+        result.push_back(target);
+        preparedStorage.push_back(target);
+      }
+      return true;
+    }
+    auto path = canonicalizeAccessPath(direct);
+    if (!path || !path.RootID || !path.RootLoc.isValid()) return false;
+    SymbolInfo *binding = nullptr;
+    CurrentScope->findSymbolByID(path.RootID, binding);
+    if (binding && binding->CurrentReferenceTargets) {
+      if (usedCurrentReference) *usedCurrentReference = true;
+      if (binding->CurrentReferenceTargets->empty()) return false;
+      for (auto target : *binding->CurrentReferenceTargets) {
+        target.Projections.insert(target.Projections.end(), path.Projections.begin(),
+                                  path.Projections.end());
+        result.push_back(target);
+        preparedStorage.push_back(target);
+      }
+      return true;
+    }
+    auto *declaration = binding && binding->ASTPtr
+        ? dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(binding->ASTPtr))
+        : nullptr;
+    if (binding && binding->TypeObj && binding->TypeObj->isReference() &&
+        !binding->IsFunctionParameter && declaration && declaration->Init &&
+        declaration->Init->ResolvedType && declaration->Init->ResolvedType->isReference()) {
+      // The soul of a reference binding denotes its already checked target,
+      // not the local slot holding the reference. Follow only a reference
+      // initializer here; an ordinary view initializer remains content, not
+      // a proof of descriptor-storage lifetime.
+      if (!visitingStorage.insert(binding->SymbolID).second) return false;
+      const size_t storageStart = preparedStorage.size();
+      std::vector<AccessPath> targets;
+      const bool complete = visit(declaration->Init.get(), targets);
+      visitingStorage.erase(binding->SymbolID);
+      if (!complete || targets.empty()) return false;
+      for (size_t index = storageStart; index < preparedStorage.size(); ++index)
+        preparedStorage[index].Projections.insert(
+            preparedStorage[index].Projections.end(),
+            path.Projections.begin(), path.Projections.end());
+      for (auto &target : targets) {
+        target.Projections.insert(target.Projections.end(),
+                                  path.Projections.begin(), path.Projections.end());
+        result.push_back(canonicalizeAccessPath(target));
+      }
+      return true;
+    }
+    // An address denotes this place's storage, not the storage referenced by
+    // its value. In particular, &view cannot inherit its literal's lifetime.
+    result.push_back(path);
+    preparedStorage.push_back(path);
+    return true;
+  };
+  visit = [&](Expr *value, std::vector<AccessPath> &result) -> bool {
+    if (!value) return false;
+    if (dynamic_cast<ViewStringExpr *>(value) || dynamic_cast<StringExpr *>(value)) {
+      if (!value->Loc.isValid()) return false;
+      preparedStatic.push_back(value->Loc);
+      return true;
+    }
+    if (auto *cast = dynamic_cast<CastExpr *>(value))
+      return visit(cast->Expression.get(), result);
+    if (auto *unsafe = dynamic_cast<UnsafeExpr *>(value))
+      return visit(unsafe->Expression.get(), result);
+    if (auto *cede = dynamic_cast<CedeExpr *>(value))
+      return visit(cede->Value.get(), result);
+    if (auto *address = dynamic_cast<AddressOfExpr *>(value))
+      return storageOrigin(address->Expression.get(), result);
+    if (auto *unary = dynamic_cast<UnaryExpr *>(value);
+        unary && unary->Op == TokenType::Ampersand)
+      return storageOrigin(unary->RHS.get(), result);
+    if (auto *unary = dynamic_cast<UnaryExpr *>(value);
+        unary && unary->Op == TokenType::Star)
+      return visit(unary->RHS.get(), result);
+    auto *method = dynamic_cast<MethodCallExpr *>(value);
+    auto *call = dynamic_cast<CallExpr *>(value);
+    if (auto *init = dynamic_cast<InitStructExpr *>(value)) {
+      auto shape = std::dynamic_pointer_cast<ShapeType>(init->ResolvedType);
+      if (!shape || !shape->Decl) return false;
+      bool borrowed = false;
+      for (const auto &field : shape->Decl->Members) {
+        auto type = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(field));
+        if (!type) return false;
+        auto ownership = queryExplicitCedeStage0OwnershipReadOnly(type);
+        if (!ownership) return false;
+        if (type->isRawPointer() || *ownership != ValueOwnership::BorrowedView)
+          continue;
+        borrowed = true;
+        auto fieldName = Type::stripMorphology(field.Name);
+        auto initializer = std::find_if(init->Members.begin(), init->Members.end(),
+            [&](const auto &entry) {
+              return Type::stripMorphology(entry.first) == fieldName;
+            });
+        Expr *source = initializer == init->Members.end()
+            ? field.DefaultValue.get() : initializer->second.get();
+        if (!visit(source, result)) return false;
+      }
+      return borrowed;
+    }
+    if (method && !method->ResolvedFn && method->Method == "unwrap" &&
+        method->Args.empty() && method->ResolvedType &&
+        method->ResolvedType->isRawPointer() && !method->ResolvedType->IsNullable &&
+        method->Object && method->Object->ResolvedType &&
+        method->Object->ResolvedType->isRawPointer() &&
+        method->Object->ResolvedType->IsNullable)
+      return visit(method->Object.get(), result);
+    if (method || call) {
+      auto *formal = method ? method->ResolvedFn : call->ResolvedFn;
+      if (!formal) return false;
+      auto dependencies = formal->LifeDependencies;
+      for (const auto &field : formal->MemberDependencies)
+        dependencies.insert(dependencies.end(), field.second.begin(), field.second.end());
+      if (dependencies.empty()) return false;
+      for (const auto &dependency : dependencies) {
+        auto formalPath = makeAccessPath(dependency);
+        Expr *argument = nullptr;
+        bool transfersValue = false;
+        for (size_t index = 0; index < formal->Args.size(); ++index) {
+          if (Type::stripMorphology(formal->Args[index].Name) !=
+              Type::stripMorphology(formalPath.RootName)) continue;
+          transfersValue = formal->Args[index].IsCeded;
+          if (method && index == 0) argument = method->Object.get();
+          else if (method && index - 1 < method->Args.size())
+            argument = method->Args[index - 1].get();
+          else if (call && index < call->Args.size())
+            argument = call->Args[index].get();
+        }
+        std::vector<AccessPath> roots;
+        const size_t storageStart = preparedStorage.size();
+        auto returnedType = method ? method->ResolvedType : call->ResolvedType;
+        // A consuming formal forwards dependencies carried by its value
+        // (for example Option<&T>::unwrap), not the dying container slot.
+        if (returnedType && returnedType->isReference() && !transfersValue) {
+          if (!storageOrigin(argument, roots)) return false;
+        } else {
+          bool carriedReference = false;
+          if (returnedType && returnedType->isReference() && transfersValue) {
+            const auto source = canonicalizeAccessPath(makeAccessPath(argument));
+            SymbolInfo *binding = nullptr;
+            if (source.RootID) CurrentScope->findSymbolByID(source.RootID, binding);
+            if (binding && m_ReturnSourceUnknownRoots.count(binding->SymbolID))
+              return false;
+            if (binding && !binding->LifeDependencySet.empty()) {
+              // These are the checked referents carried by the consumed
+              // value. Their storage cannot be replaced by their contents
+              // (Option<&str> must not turn &view into static characters).
+              for (const auto &dependency : binding->LifeDependencySet) {
+                auto target = canonicalizeAccessPath(makeAccessPath(dependency));
+                if (!target || !target.RootID || !target.RootLoc.isValid() ||
+                    target.RootID == source.RootID)
+                  return false;
+                roots.push_back(target);
+                preparedStorage.push_back(target);
+              }
+              carriedReference = true;
+            }
+          }
+          if (!carriedReference && !visit(argument, roots)) return false;
+        }
+        for (size_t index = storageStart; index < preparedStorage.size(); ++index)
+          preparedStorage[index].Projections.insert(
+              preparedStorage[index].Projections.end(),
+              formalPath.Projections.begin(), formalPath.Projections.end());
+        for (auto &path : roots) {
+          path.Projections.insert(path.Projections.end(),
+                                  formalPath.Projections.begin(), formalPath.Projections.end());
+          result.push_back(canonicalizeAccessPath(path));
+        }
+      }
+      return true;
+    }
+    auto direct = makeAccessPath(value);
+    SymbolInfo *current = nullptr;
+    if (direct.RootID) CurrentScope->findSymbolByID(direct.RootID, current);
+    auto path = canonicalizeAccessPath(direct);
+    if ((!current || !current->CurrentReferenceTargets) && path.RootID) {
+      CurrentScope->findSymbolByID(path.RootID, current);
+      direct = path;
+    }
+    if (current && current->CurrentReferenceTargets) {
+      if (usedCurrentReference) *usedCurrentReference = true;
+      if (current->CurrentReferenceTargets->empty()) return false;
+      if (current->CurrentReferenceTargets->size() > 1) {
+        for (auto target : *current->CurrentReferenceTargets) {
+          target.Projections.insert(target.Projections.end(), direct.Projections.begin(),
+                                    direct.Projections.end());
+          result.push_back(target);
+        }
+        return true;
+      }
+      path = current->CurrentReferenceTargets->front();
+      path.Projections.insert(path.Projections.end(), direct.Projections.begin(),
+                              direct.Projections.end());
+    }
+    if (!path) return false;
+    SymbolInfo *binding = nullptr;
+    Scope *scope = nullptr;
+    std::string name;
+    if (!CurrentScope->findVariableWithDerefScope(path.RootName, binding, name, scope) ||
+        !binding || !binding->TypeObj)
+      return false;
+    const bool invalidated = m_ReturnSourceInvalidatedRoots.count(binding->SymbolID);
+    const auto bindingOwnership = queryExplicitCedeStage0OwnershipReadOnly(binding->TypeObj);
+    bool borrowedBinding = bindingOwnership &&
+        *bindingOwnership == ValueOwnership::BorrowedView;
+    if (auto shape = std::dynamic_pointer_cast<ShapeType>(binding->TypeObj);
+        shape && shape->Decl) {
+      for (const auto &field : shape->Decl->Members) {
+        auto type = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(field));
+        auto ownership = queryExplicitCedeStage0OwnershipReadOnly(type);
+        borrowedBinding |= type && !type->isRawPointer() && ownership &&
+                           *ownership == ValueOwnership::BorrowedView;
+      }
+    }
+    auto *declaration = binding->ASTPtr
+        ? dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(binding->ASTPtr))
+        : nullptr;
+    // Only a checked local initializer can prove static storage. Globals,
+    // type names and absence of dependency metadata are never witnesses.
+    if (!invalidated && declaration && declaration->Init && declaration->Init->ResolvedType &&
+        !binding->IsFunctionParameter && scope && scope->Depth > 0 &&
+        visiting.insert(binding->SymbolID).second) {
+      std::vector<AccessPath> roots;
+      const size_t previousStaticCount = preparedStatic.size();
+      const size_t previousStorageCount = preparedStorage.size();
+      if (visit(declaration->Init.get(), roots) &&
+          ((preparedStatic.size() > previousStaticCount && roots.empty()) ||
+           (!roots.empty() && (borrowedBinding || binding->TypeObj->isRawPointer() ||
+                              binding->TypeObj->isAddrType() ||
+                              binding->TypeObj->isOAddrType())))) {
+        for (auto &root : roots) {
+          root.Projections.insert(root.Projections.end(), path.Projections.begin(),
+                                  path.Projections.end());
+          result.push_back(canonicalizeAccessPath(root));
+        }
+        visiting.erase(binding->SymbolID);
+        return true;
+      }
+      preparedStatic.resize(previousStaticCount);
+      preparedStorage.resize(previousStorageCount);
+      visiting.erase(binding->SymbolID);
+    }
+    // A numeric address or an untraced local raw pointer supplies no lifetime
+    // proof. A formal raw identity remains a symbolic boundary input, never a
+    // static-storage witness or independent owner.
+    if (binding->TypeObj->isAddrType() || binding->TypeObj->isOAddrType() ||
+        (binding->TypeObj->isRawPointer() && !binding->IsFunctionParameter))
+      return false;
+    AccessPath origin = binding->BorrowedPath;
+    if (!origin && !binding->BorrowedFrom.empty())
+      origin = makeAccessPath(binding->BorrowedFrom);
+    if (origin) {
+      if (m_ReturnSourceUnknownRoots.count(binding->SymbolID)) return false;
+      origin.Projections.insert(origin.Projections.end(), path.Projections.begin(),
+                                path.Projections.end());
+      path = canonicalizeAccessPath(origin);
+    } else if (borrowedBinding && !binding->LifeDependencySet.empty()) {
+      if (m_ReturnSourceUnknownRoots.count(binding->SymbolID)) return false;
+      for (const auto &dependency : binding->LifeDependencySet) {
+        auto dependentPath = makeAccessPath(dependency);
+        if (!dependentPath || dependentPath.RootID == binding->SymbolID) continue;
+        result.push_back(canonicalizeAccessPath(dependentPath));
+      }
+      if (!result.empty()) return true;
+    }
+    result.push_back(path);
+    return true;
+  };
+  if (!visit(expression, preparedPaths)) return false;
+  paths.insert(paths.end(), preparedPaths.begin(), preparedPaths.end());
+  if (staticStorage)
+    staticStorage->insert(staticStorage->end(), preparedStatic.begin(), preparedStatic.end());
+  if (addressedStorage)
+    addressedStorage->insert(addressedStorage->end(), preparedStorage.begin(), preparedStorage.end());
+  return true;
+}
+
 ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
     ASTNode *site, Expr *value, const std::shared_ptr<Type> &destinationType,
     TransferDestination destination, TransferEligibilityContext context,
     const std::string &boundary, Expr *destinationValue,
     const Stage0CallSnapshot *providedSnapshot,
     const std::string &groupIdentity, const std::string &edge,
-    unsigned edgeIndex) {
-  if (!SemanticEvidence::isNonCallTransferShadowEnabled() ||
+    unsigned edgeIndex, bool deferBareIncompleteEvidence,
+    bool normalSemaValidated) {
+  const bool returnBehaviorPlan =
+      destination == TransferDestination::Return &&
+      m_EnableStage1ExplicitCallerCede;
+  if ((!SemanticEvidence::isNonCallTransferShadowEnabled() &&
+       !returnBehaviorPlan) ||
       m_IsPrecomputingCaptures || !site || !value)
     return {};
+
+  std::vector<std::string> declaredReturnDependencies;
+  if (destination == TransferDestination::Return && CurrentFunction) {
+    declaredReturnDependencies = CurrentFunction->LifeDependencies;
+    for (const auto &[_, dependencies] : CurrentFunction->MemberDependencies)
+      declaredReturnDependencies.insert(declaredReturnDependencies.end(),
+                                        dependencies.begin(),
+                                        dependencies.end());
+    std::sort(declaredReturnDependencies.begin(),
+              declaredReturnDependencies.end());
+    declaredReturnDependencies.erase(
+        std::unique(declaredReturnDependencies.begin(),
+                    declaredReturnDependencies.end()),
+        declaredReturnDependencies.end());
+  }
 
   std::optional<Stage0CallSnapshot> ownedSnapshot;
   if (!providedSnapshot) {
@@ -2939,10 +3646,18 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   }
   auto actualType = queryExplicitCedeStage0NonCallType(value, destinationType);
   bool explicitCede = false;
+  bool structuredBorrowedTemporary = false;
+  bool structuredCopyTemporary = false;
+  std::vector<AccessPath> structuredBorrowedReferents;
   Expr *exactValue = value;
   while (exactValue) {
     if (auto *cede = dynamic_cast<CedeExpr *>(exactValue)) {
-      explicitCede = true;
+      // `cede callable(args)` consumes the callable receiver; the value
+      // delivered to this non-call destination is still the call result, a
+      // source-less temporary.  Do not reinterpret that receiver spelling as
+      // `return cede <result>`.
+      explicitCede = !isConsumingCallableInvocation(
+          dynamic_cast<CallExpr *>(cede->Value.get()));
       exactValue = cede->Value.get();
     } else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(exactValue)) {
       exactValue = unsafe->Expression.get();
@@ -2955,19 +3670,433 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       break;
     }
   }
+  if (auto *record = dynamic_cast<AnonymousRecordExpr *>(exactValue)) {
+    bool fieldsComplete = !record->Fields.empty();
+    for (const auto &field : record->Fields) {
+      Expr *fieldValue = field.second.get();
+      while (fieldValue) {
+        if (auto *cast = dynamic_cast<CastExpr *>(fieldValue))
+          fieldValue = cast->Expression.get();
+        else if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(fieldValue))
+          fieldValue = unsafeExpr->Expression.get();
+        else
+          break;
+      }
+      Expr *referent = nullptr;
+      if (auto *address = dynamic_cast<AddressOfExpr *>(fieldValue))
+        referent = address->Expression.get();
+      else if (auto *unary = dynamic_cast<UnaryExpr *>(fieldValue);
+               unary && unary->Op == TokenType::Ampersand)
+        referent = unary->RHS.get();
+      if (referent) {
+        AccessPath path = canonicalizeAccessPath(makeAccessPath(referent));
+        if (!path)
+          fieldsComplete = false;
+        else {
+          if (!path.RootLoc.isValid())
+            path.RootLoc = findPathDeclaration(path.RootName);
+          if (!path.RootLoc.isValid())
+            fieldsComplete = false;
+          else
+            structuredBorrowedReferents.push_back(std::move(path));
+        }
+        continue;
+      }
+      auto fieldType = queryExplicitCedeStage0NonCallType(fieldValue, nullptr);
+      auto fieldOwnership = queryExplicitCedeStage0OwnershipReadOnly(fieldType);
+      if (fieldType && (fieldType->isReference() ||
+          (fieldOwnership && *fieldOwnership == ValueOwnership::BorrowedView))) {
+        std::vector<AccessPath> origins;
+        if (!collectActualReturnReferents(fieldValue, origins) || origins.empty())
+          fieldsComplete = false;
+        else
+          structuredBorrowedReferents.insert(structuredBorrowedReferents.end(),
+                                             origins.begin(), origins.end());
+        continue;
+      }
+      if (!fieldType || fieldType->isUnknown() ||
+          queryExplicitCedeStage0CopyProof(fieldType) !=
+              TransferCopyProof::ProvenCopy)
+        fieldsComplete = false;
+    }
+    structuredBorrowedTemporary =
+        fieldsComplete && !structuredBorrowedReferents.empty();
+    structuredCopyTemporary =
+        fieldsComplete && structuredBorrowedReferents.empty();
+  }
+  const auto contextualDestination =
+      destination == TransferDestination::Return && destinationType
+          ? resolveExplicitCedeStage0TypeReadOnly(destinationType)
+          : nullptr;
+  const bool contextualReturnTemporary =
+      dynamic_cast<NewExpr *>(exactValue) != nullptr ||
+      dynamic_cast<CallExpr *>(exactValue) != nullptr ||
+      dynamic_cast<MethodCallExpr *>(exactValue) != nullptr ||
+      dynamic_cast<InitStructExpr *>(exactValue) != nullptr ||
+      dynamic_cast<ArrayExpr *>(exactValue) != nullptr ||
+      dynamic_cast<RepeatedArrayExpr *>(exactValue) != nullptr ||
+      dynamic_cast<ArrayInitExpr *>(exactValue) != nullptr ||
+      dynamic_cast<ClosureExpr *>(exactValue) != nullptr ||
+      dynamic_cast<AnonymousRecordExpr *>(exactValue) != nullptr ||
+      (dynamic_cast<MemberExpr *>(exactValue) &&
+       static_cast<MemberExpr *>(exactValue)->IsStatic);
+  if ((!actualType || actualType->isUnknown()) && contextualDestination &&
+      !contextualDestination->isUnknown() && contextualReturnTemporary) {
+    // The return contract supplies the contextual result type.  This does not
+    // bypass normal expression checking below: a mismatched overload or
+    // callable result still diagnoses the call and suppresses CodeGen.
+    actualType = contextualDestination;
+  }
   auto legacy = buildShadowCallTransferPlan(
       site, exactValue ? exactValue : value, actualType, destinationType, false,
       false, false, false, false, CallTransferRoute::Ordinary, false,
       CallExecutionBoundary::None, 0, 0, true);
+  if (structuredBorrowedTemporary) {
+    legacy.ValueCategory = CallValueCategory::Temporary;
+    legacy.SourcePlace = {};
+    legacy.Dependency = CallDependencyDisposition::Borrowed;
+    legacy.ReferentPath = structuredBorrowedReferents.front();
+    legacy.DependencyPaths.clear();
+    for (const auto &referent : structuredBorrowedReferents)
+      legacy.DependencyPaths.push_back(referent.toLegacyString());
+  }
+  if (legacy.ValueCategory == CallValueCategory::Place &&
+      (!legacy.SourcePlace || !legacy.SourcePlace.RootLoc.isValid())) {
+    if (auto *variable = dynamic_cast<VariableExpr *>(exactValue)) {
+      SymbolInfo *info = nullptr;
+      Scope *scope = nullptr;
+      std::string actualName;
+      if (CurrentScope->findVariableWithDerefScope(
+              variable->Name, info, actualName, scope) &&
+          info) {
+        AccessPath recovered;
+        recovered.RootID = info->SymbolID;
+        recovered.RootName = actualName;
+        recovered.RootLoc = info->DeclLoc.isValid() ? info->DeclLoc
+                                                    : variable->Loc;
+        legacy.SourcePlace = canonicalizeAccessPath(recovered);
+        if (info->IsPlaceAlias) {
+          if (info->BorrowedPath)
+            legacy.ReferentPath =
+                canonicalizeAccessPath(info->BorrowedPath);
+          else if (!info->BorrowedFrom.empty())
+            legacy.ReferentPath = canonicalizeAccessPath(
+                makeAccessPath(info->BorrowedFrom));
+          if (legacy.ReferentPath) {
+            legacy.Dependency = CallDependencyDisposition::Borrowed;
+            legacy.DependencyPaths.assign(info->LifeDependencySet.begin(),
+                                          info->LifeDependencySet.end());
+            if (legacy.DependencyPaths.empty() &&
+                !legacy.ReferentPath.RootName.empty())
+              legacy.DependencyPaths.push_back(
+                  legacy.ReferentPath.RootName);
+          }
+        }
+      }
+    }
+  }
+  if (legacy.ValueCategory == CallValueCategory::Place) {
+    SymbolInfo *aliasInfo = nullptr;
+    std::string aliasName;
+    if (legacy.SourcePlace.RootID != 0)
+      CurrentScope->findSymbolByID(legacy.SourcePlace.RootID, aliasInfo,
+                                   &aliasName);
+    if (!aliasInfo && !legacy.SourcePlace.RootName.empty())
+      CurrentScope->findVariableWithDeref(legacy.SourcePlace.RootName,
+                                          aliasInfo, aliasName);
+    if (aliasInfo && aliasInfo->IsPlaceAlias &&
+        (aliasInfo->BorrowedPath || !aliasInfo->BorrowedFrom.empty())) {
+      AccessPath referent = aliasInfo->BorrowedPath
+                                ? aliasInfo->BorrowedPath
+                                : makeAccessPath(aliasInfo->BorrowedFrom);
+      if (!referent.RootLoc.isValid() && !referent.RootName.empty()) {
+        SymbolInfo *referentInfo = nullptr;
+        std::string referentName;
+        if (CurrentScope->findVariableWithDeref(
+                referent.RootName, referentInfo, referentName) &&
+            referentInfo) {
+          referent.RootID = referentInfo->SymbolID;
+          referent.RootLoc = referentInfo->DeclLoc;
+          if (!referent.RootLoc.isValid() && referentInfo->ASTPtr)
+            referent.RootLoc =
+                static_cast<ASTNode *>(referentInfo->ASTPtr)->Loc;
+        }
+      }
+      legacy.ReferentPath = canonicalizeAccessPath(referent);
+      if (legacy.ReferentPath) {
+        legacy.Dependency = CallDependencyDisposition::Borrowed;
+        legacy.DependencyPaths.assign(aliasInfo->LifeDependencySet.begin(),
+                                      aliasInfo->LifeDependencySet.end());
+        if (legacy.DependencyPaths.empty())
+          legacy.DependencyPaths.push_back(
+              legacy.ReferentPath.toLegacyString());
+      }
+    }
+  }
+  if (auto *unary = dynamic_cast<UnaryExpr *>(exactValue);
+      unary && (unary->Op == TokenType::Minus ||
+                unary->Op == TokenType::Bang)) {
+    legacy.ValueCategory = CallValueCategory::Temporary;
+    legacy.SourcePlace = {};
+  }
+  if (auto *member = dynamic_cast<MemberExpr *>(exactValue);
+      member && member->IsStatic && contextualReturnTemporary) {
+    // Enum unit variants and associated constants have no runtime source
+    // place to invalidate at the return boundary.
+    legacy.ValueCategory = CallValueCategory::Temporary;
+    legacy.SourcePlace = {};
+  }
+  if (legacy.ValueCategory == CallValueCategory::Temporary &&
+      legacy.Dependency == CallDependencyDisposition::Indeterminate &&
+      actualType && !actualType->isUnknown()) {
+    auto payload = shadowCarrierPayload(actualType);
+    std::string soul = payload ? Type::stripMorphology(payload->getSoulName())
+                               : std::string{};
+    if (payload && payload->isRawPointer())
+      legacy.Dependency = CallDependencyDisposition::RawUnsafe;
+    else if (payload &&
+             (payload->isReference() || soul == "str" || soul == "bytes" ||
+              soul == "cstr" || soul == "ViewStrSplitIterator" ||
+              soul == "ViewStrLinesIterator"))
+      legacy.Dependency = CallDependencyDisposition::Borrowed;
+    else if (payload &&
+             (payload->isShape() || payload->isSmartPointer() ||
+              payload->isArray() || payload->isDynFn()))
+      legacy.Dependency = CallDependencyDisposition::Unclassified;
+    else if (payload)
+      legacy.Dependency = CallDependencyDisposition::None;
+  }
+  // A declaration's dependency list is only a ceiling.  A resolved call with
+  // one return dependency can identify its actual referent by substituting
+  // the selected formal with the caller's corresponding argument.  Never
+  // synthesize an actual path from the enclosing return declaration.
+  if (returnBehaviorPlan && normalSemaValidated &&
+      dynamic_cast<ViewStringExpr *>(exactValue) &&
+      legacy.ValueCategory == CallValueCategory::Temporary &&
+      legacy.Dependency == CallDependencyDisposition::Borrowed &&
+      !legacy.SourcePlace && !legacy.ReferentPath &&
+      legacy.DependencyPaths.empty()) {
+    // This exact AST node denotes static literal storage, so it has no local
+    // or parameter dependency.  Do not invent one from the declaration.
+    legacy.Dependency = CallDependencyDisposition::None;
+  }
+  if (destination == TransferDestination::Return &&
+      legacy.ValueCategory == CallValueCategory::Temporary) {
+    if (auto *init = dynamic_cast<InitStructExpr *>(exactValue)) {
+      auto shapeType = std::dynamic_pointer_cast<ShapeType>(actualType);
+      ShapeDecl *shape = shapeType ? shapeType->Decl : nullptr;
+      std::vector<AccessPath> actualPaths;
+      bool complete = shape != nullptr;
+      if (shape) for (const auto &initializer : init->Members) {
+        const auto &name = initializer.first;
+        const auto &expression = initializer.second;
+        auto field = std::find_if(shape->Members.begin(), shape->Members.end(),
+            [&](const ShapeMember &member) {
+              return Type::stripMorphology(member.Name) ==
+                     Type::stripMorphology(name);
+            });
+        if (field == shape->Members.end()) { complete = false; continue; }
+        auto fieldType = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(*field));
+        if (fieldType && fieldType->isRawPointer()) continue;
+        auto ownership = queryExplicitCedeStage0OwnershipReadOnly(fieldType);
+        if (!ownership) { complete = false; continue; }
+        if (*ownership != ValueOwnership::BorrowedView) continue;
+        if (!collectActualReturnReferents(expression.get(), actualPaths)) complete = false;
+      }
+      if (complete && !actualPaths.empty()) {
+        legacy.DependencyPaths.clear();
+        for (const auto &path : actualPaths)
+          legacy.DependencyPaths.push_back(path.toLegacyString());
+        if (legacy.Dependency == CallDependencyDisposition::Borrowed)
+          legacy.ReferentPath = actualPaths.front();
+      }
+    }
+  }
+  if (destination == TransferDestination::Return &&
+      legacy.ValueCategory == CallValueCategory::Temporary &&
+      legacy.Dependency == CallDependencyDisposition::Borrowed) {
+    std::vector<AccessPath> actualPaths;
+    auto *address = dynamic_cast<UnaryExpr *>(exactValue);
+    const bool referenceConstruction =
+        dynamic_cast<AddressOfExpr *>(exactValue) ||
+        (address && address->Op == TokenType::Ampersand);
+    if ((dynamic_cast<CallExpr *>(exactValue) ||
+         dynamic_cast<MethodCallExpr *>(exactValue) || referenceConstruction) &&
+        collectActualReturnReferents(exactValue, actualPaths) && !actualPaths.empty()) {
+      legacy.ReferentPath = actualPaths.front();
+      legacy.DependencyPaths.clear();
+      for (const auto &path : actualPaths)
+        legacy.DependencyPaths.push_back(path.toLegacyString());
+    }
+  }
   legacy.ExplicitCede = explicitCede;
   auto facts = buildExplicitCedeStage0ActualFacts(
       exactValue ? exactValue : value, actualType, legacy,
-      &providedSnapshot->State, providedSnapshot->Revision, true);
+      &providedSnapshot->State, providedSnapshot->Revision, true,
+      destination == TransferDestination::Return);
+  if (returnBehaviorPlan &&
+      (normalSemaValidated || facts.SourceCategory == TransferSourceCategory::NamedSourcePlace)) {
+    std::vector<AccessPath> dynamicOrigins;
+    std::vector<SourceLocation> staticOrigins;
+    if (collectActualReturnReferents(exactValue, dynamicOrigins, &staticOrigins) &&
+        dynamicOrigins.empty() && !staticOrigins.empty() &&
+        !facts.CarriesDropLiability &&
+        (facts.Ownership == TransferOwnershipKind::BorrowedView ||
+         facts.Ownership == TransferOwnershipKind::PlainValue)) {
+      for (const auto &location : staticOrigins) {
+        const auto source = DiagnosticEngine::SrcMgr->getFullSourceLoc(location);
+        auto *module = getLexicalModule(location);
+        std::string origin = module && !module->ShadowLogicalModulePath.empty()
+            ? "crate:" + module->ShadowCrateId + ";module:" + module->ShadowLogicalModulePath
+            : stage0FallbackModuleOrigin(location);
+        if (origin.empty()) origin = "crate:external;module:source";
+        auto identity = SemanticIdentityBuilder::semanticNode(origin,
+            "static-literal:" + std::to_string(source.Line) + ":" + std::to_string(source.Column));
+        if (identity) facts.StaticStorageOrigins.push_back(identity.value());
+      }
+      if (facts.StaticStorageOrigins.size() == staticOrigins.size()) {
+        facts.Dependency = TransferDependencyKind::None;
+        facts.DependencyFactsComplete = true;
+        facts.DependencyRoots.clear();
+        facts.ReferentPlace.reset();
+        // Static borrowed storage does not make an owning temporary eligible.
+        facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+      }
+    }
+    if (legacy.SourcePlace.RootID &&
+        m_ReturnSourceUnknownRoots.count(legacy.SourcePlace.RootID) &&
+        (facts.Dependency == TransferDependencyKind::Borrowed ||
+         facts.Dependency == TransferDependencyKind::Structural))
+      facts.DependencyFactsComplete = false;
+  }
+  if (structuredCopyTemporary && returnBehaviorPlan && normalSemaValidated) {
+    // Normal Sema has already validated every field and the contextual return
+    // type.  A source-less anonymous record whose fields are all proven Copy
+    // is itself a Copy temporary; no source place or Drop liability is
+    // transferred.
+    facts.SourceCategory = TransferSourceCategory::NoSourcePlace;
+    facts.SourcePlace.reset();
+    facts.SourceView = TransferSourceView::DirectValue;
+    facts.Ownership = TransferOwnershipKind::PlainValue;
+    facts.CopyProof = TransferCopyProof::ProvenCopy;
+    facts.Dependency = TransferDependencyKind::None;
+    facts.ReferentPlace.reset();
+    facts.DependencyRoots.clear();
+    facts.DependencyFactsComplete = true;
+    facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+    facts.CarriesDropLiability = false;
+    facts.DropLiabilityComplete = true;
+    facts.LiabilityIdentity.clear();
+    facts.LiabilityIdentityComplete = true;
+  }
+  if (structuredBorrowedTemporary) {
+    for (const auto &referent : structuredBorrowedReferents) {
+      std::string origin;
+      if (ModuleScope *module = getLexicalModule(referent.RootLoc);
+          module && !module->ShadowCrateId.empty() &&
+          !module->ShadowLogicalModulePath.empty())
+        origin = "crate:" + module->ShadowCrateId +
+                 ";module:" + module->ShadowLogicalModulePath;
+      if (origin.empty())
+        origin = stage0FallbackModuleOrigin(referent.RootLoc);
+      if (origin.empty())
+        origin = "crate:external;module:source";
+      if (auto identity = stage0PlaceIdentity(referent, origin))
+        facts.StructuredReferentPlaces.push_back(*identity);
+    }
+    if (returnBehaviorPlan && normalSemaValidated) {
+      facts.SourceView = TransferSourceView::DirectValue;
+      facts.Ownership = TransferOwnershipKind::PlainValue;
+      facts.CopyProof = TransferCopyProof::ProvenNonCopy;
+      facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+      facts.CarriesDropLiability = false;
+      facts.DropLiabilityComplete = true;
+      facts.LiabilityIdentity.clear();
+      facts.LiabilityIdentityComplete = true;
+    } else if (returnBehaviorPlan) {
+      // Reference fields are Copy identities individually, but the record's
+      // escape authority depends on exact per-field referents and the return
+      // contract.  Keep the preflight non-authoritative until normal Sema has
+      // validated that dependency mapping.
+      facts.CopyProof = TransferCopyProof::Indeterminate;
+      facts.DependencyFactsComplete = false;
+    }
+  }
+  if (legacy.Dependency == CallDependencyDisposition::Unclassified &&
+      legacy.DependencyPaths.empty() &&
+      facts.Ownership == TransferOwnershipKind::OwnedValue) {
+    // An owning value with no expression or binding dependency owns its
+    // internal storage (for example `string`'s raw buffer).  Raw storage inside
+    // an owning aggregate is not by itself a borrow dependency.
+    facts.Dependency = TransferDependencyKind::None;
+    facts.ReferentPlace.reset();
+    facts.DependencyRoots.clear();
+    facts.DependencyFactsComplete = true;
+    if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace)
+      facts.TemporaryEligibility = TransferTemporaryEligibility::Eligible;
+  }
+  if ((facts.Ownership == TransferOwnershipKind::UniqueOwner ||
+       facts.Ownership == TransferOwnershipKind::SharedOwner) &&
+      facts.Dependency == TransferDependencyKind::Structural &&
+      facts.SourcePlace && facts.ReferentPlace &&
+      facts.DependencyRoots.empty() &&
+      *facts.SourcePlace == *facts.ReferentPlace) {
+    // A handle binding is not borrowed from itself.  Some legacy binding
+    // metadata records the freshly constructed owner as its own provenance;
+    // when there is no external dependency root, that is ownership of the
+    // payload, not a lifetime edge.
+    facts.Dependency = TransferDependencyKind::None;
+    facts.ReferentPlace.reset();
+    facts.DependencyFactsComplete = true;
+  }
+  if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
+    if (auto *unary = dynamic_cast<UnaryExpr *>(exactValue);
+        unary && (unary->Op == TokenType::Minus ||
+                  unary->Op == TokenType::Bang))
+      facts.SourceView = TransferSourceView::DirectValue;
+  }
+  if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
+      facts.SurfaceSpelling == TransferSurfaceSpelling::Bare &&
+      facts.SourcePlace &&
+      facts.Eligibility == TransferEligibility::Indeterminate &&
+      (facts.CopyProof == TransferCopyProof::ProvenCopy ||
+       facts.Ownership == TransferOwnershipKind::BorrowedView ||
+       facts.Ownership == TransferOwnershipKind::RawIdentity ||
+       facts.Ownership == TransferOwnershipKind::CallableIdentity))
+    facts.Eligibility = TransferEligibility::Ineligible;
+  if (destination == TransferDestination::Return && CurrentFunction &&
+      facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
+      facts.Dependency != TransferDependencyKind::None &&
+      facts.Dependency != TransferDependencyKind::Indeterminate &&
+      facts.DependencyFactsComplete && !legacy.DependencyPaths.empty()) {
+    facts.DestinationDependencyAccepted = std::all_of(
+        legacy.DependencyPaths.begin(), legacy.DependencyPaths.end(),
+        [&](const std::string &dependency) {
+          const std::string root = Type::stripMorphology(dependency);
+          return std::any_of(
+              declaredReturnDependencies.begin(),
+              declaredReturnDependencies.end(),
+              [&](const std::string &allowed) {
+                const auto ceiling = Type::stripMorphology(allowed);
+                return ceiling == root || root.rfind(ceiling + ".", 0) == 0;
+              });
+        });
+  }
+  facts.StructuredBorrowedTemporary =
+      structuredBorrowedTemporary &&
+      facts.StructuredReferentPlaces.size() ==
+          structuredBorrowedReferents.size() &&
+      facts.DependencyFactsComplete &&
+      facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
+      facts.Dependency == TransferDependencyKind::Borrowed &&
+      facts.Ownership == TransferOwnershipKind::PlainValue &&
+      facts.CopyProof == TransferCopyProof::ProvenNonCopy &&
+      !facts.CarriesDropLiability && facts.DestinationDependencyAccepted;
   facts.SourceFlowCeiling = facts.ActualCapabilities;
   if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
     facts.SourceFlowCeiling.Complete = true;
     facts.SourceFlowCeiling.HandleRebindable = true;
-    facts.SourceFlowCeiling.PayloadWritable = true;
+    facts.SourceFlowCeiling.PayloadWritable = facts.StaticStorageOrigins.empty();
   }
   const auto resolvedDestination =
       destinationType ? resolveExplicitCedeStage0TypeReadOnly(destinationType)
@@ -3103,9 +4232,25 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       facts.LiabilityIdentityComplete = true;
     }
   }
+  if (returnBehaviorPlan) {
+    bool usedCurrentReference = false;
+    std::vector<AccessPath> currentOrigins;
+    if (!collectActualReturnReferents(exactValue, currentOrigins, nullptr, nullptr,
+                                     &usedCurrentReference) && usedCurrentReference) {
+      facts.DependencyFactsComplete = false;
+      facts.SourceLivenessComplete = false;
+    }
+  }
   auto plan = completeExplicitCedeStage0CallPlan(
       std::move(facts), actualType, destinationType, false, true, {},
       destination, context, true);
+  if (deferBareIncompleteEvidence &&
+      plan.Rejection == TransferPlanRejection::IncompleteFacts &&
+      plan.Prepared.SurfaceSpelling == TransferSurfaceSpelling::Bare &&
+      (!plan.Prepared.SourcePlace ||
+       plan.Prepared.SourceCategory ==
+           TransferSourceCategory::NoSourcePlace))
+    return plan;
   if (SemanticEvidence::isCodeGenAuthorityEnabled() && groupIdentity.empty()) {
     Stage0CodeGenAuthority authority;
     authority.Kind = Stage0CodeGenAuthorityKind::NonCallItem;
@@ -3157,6 +4302,8 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   item.DestinationObligationAfter = toString(plan.DestinationObligationAfter);
 
   ExplicitCedeStage0NonCallRecord record;
+  for (const auto &storage : plan.Prepared.StaticStorageOrigins)
+    record.StaticStorageOrigins.push_back(storage.canonicalKey());
   record.Boundary = boundary;
   record.GroupIdentity = resolvedGroupIdentity;
   record.Edge = resolvedEdge;
@@ -3995,7 +5142,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   if (SemanticEvidence::isCallTransferShadowEnabled() &&
       !m_IsPrecomputingCaptures && isStage0CallTransferObservationAllowed()) {
     stage0CallEntrySnapshot = captureStage0CallSnapshot();
-    stage0CallEntrySnapshot->CallerReceiverMode = Call->CallableReceiver;
+    stage0CallEntrySnapshot->CallerReceiverMode =
+        m_AuditCedeWrappedCalls.count(Call)
+            ? CallableReceiverMode::Consuming : Call->CallableReceiver;
     captureStage0CallArgumentFacts(Call, Call->Args,
                                    CallTransferRoute::Ordinary,
                                    *stage0CallEntrySnapshot);

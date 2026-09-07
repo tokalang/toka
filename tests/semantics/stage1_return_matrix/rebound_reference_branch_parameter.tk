@@ -1,0 +1,24 @@
+fn select(first: str, second: str, choose: bool) -> &str <- second {
+    auto &#reference# = &first
+    if choose { &reference = &second } else { &reference = &second }
+    return &reference
+}
+fn preserved(input: str, choose: bool) -> &str <- input {
+    auto &#reference# = &input
+    auto view = "local descriptor"
+    if choose {
+        &reference = &view
+        return &input
+    }
+    return &reference
+}
+fn main() -> i32 {
+    auto first = "first"
+    auto second = "second"
+    auto &a = select(first, second, true)
+    auto &b = select(first, second, false)
+    if !a.equals(second) || !b.equals(second) { return 1 }
+    auto &c = preserved(first, false)
+    if !c.equals(first) { return 2 }
+    return 0
+}

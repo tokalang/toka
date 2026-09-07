@@ -1,0 +1,6 @@
+fn invalid() -> &[char]# {
+    auto literal = "static"
+    unsafe { return literal.&buf as *[char] as &[char]# }
+}
+
+fn main() -> i32 { return 0 }

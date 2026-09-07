@@ -289,6 +289,7 @@ struct ExplicitCedeStage0TransactionRecord {
 };
 
 struct ExplicitCedeStage0NonCallRecord {
+  std::vector<std::string> StaticStorageOrigins;
   std::string Boundary;
   std::string GroupIdentity;
   std::string Edge;

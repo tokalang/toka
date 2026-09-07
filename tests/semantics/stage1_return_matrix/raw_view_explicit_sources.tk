@@ -1,0 +1,51 @@
+import std/bytes::{bytes_from_array, bytes_from_vec, Bytes}
+import std/vec::{Vec}
+
+fn selected(data: [u8; 4]) -> bytes <- data {
+    unsafe {
+        return bytes(&buf = &(data[1]) as *[byte] as &[byte], len = 2:usize)
+    }
+}
+
+fn replacement(data: [u8; 4]) -> bytes <- data {
+    auto initial = "".as_bytes()
+    cede initial
+    unsafe {
+        return bytes(&buf = &(data[2]) as *[byte] as &[byte], len = 1:usize)
+    }
+}
+
+fn main() -> i32 {
+    auto data = [10, 20, 30, 40]:[u8; 4]
+    auto view = selected(data)
+    auto replaced = replacement(data)
+    auto array_view = bytes_from_array<4>(data)
+    unsafe {
+        auto base = &(data[1]) as Addr
+        auto view_address = view.raw_ptr() as Addr
+        if view_address != base { return 1 }
+        auto third = &(data[2]) as Addr
+        auto replaced_address = replaced.raw_ptr() as Addr
+        if replaced_address != third { return 2 }
+    }
+    if view.at(0:usize).unwrap() != 20:byte { return 3 }
+    if replaced.at(0:usize).unwrap() != 30:byte { return 4 }
+    if array_view.len() != 4:usize { return 5 }
+    auto values# = Vec<u8>::new()
+    values#.push(55:u8)
+    values#.push(66:u8)
+    {
+        auto vec_view = bytes_from_vec(values)
+        auto base = values.unsafe_as_raw() as Addr
+        auto view_address = vec_view.raw_ptr() as Addr
+        if view_address != base { return 6 }
+        if vec_view.at(1:usize).unwrap() != 66:byte { return 7 }
+    }
+    auto owned = Bytes::from_vec(cede values)
+    auto owned_view = owned.as_slice()
+    auto base = owned.unsafe_raw_ptr() as Addr
+    auto view_address = owned_view.raw_ptr() as Addr
+    if view_address != base { return 8 }
+    if owned_view.len() != 2:usize { return 9 }
+    return 0
+}

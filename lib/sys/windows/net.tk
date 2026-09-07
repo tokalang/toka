@@ -43,7 +43,7 @@ pub fn net_setsockopt_reuse_impl(fd: i32) -> i32 {
         opt[0] = 1
         auto res = setsockopt(fd, 0xFFFF, 4, *opt as *void, 4)
         libc_free(*opt as *void)
-        return res
+        return cede res
     }
 }
 
@@ -84,7 +84,7 @@ pub fn net_bind_impl(fd: i32, ip: u32, port: u16) -> i32 {
         auto res = toka_rt_bind_with_diag(fd, ip, port, &err as *i32, *sockaddr_buf as *u8)
         toka_set_errno_impl(err)
         libc_free(*sockaddr_buf as *void)
-        return res
+        return cede res
     }
 }
 
@@ -106,7 +106,7 @@ pub fn net_listen_impl(fd: i32) -> i32 {
         auto err# = 0:i32
         auto res = toka_rt_listen_with_diag(fd, 128:i32, &err as *i32)
         toka_set_errno_impl(err)
-        return res
+        return cede res
     }
 }
 
@@ -117,7 +117,7 @@ pub fn net_connect_impl(fd: i32, ip: u32, port: u16) -> i32 {
         auto err# = 0:i32
         auto res = toka_rt_connect_with_diag(fd, ip, port, &err as *i32)
         toka_set_errno_impl(err)
-        return res
+        return cede res
     }
 }
 
@@ -133,7 +133,7 @@ pub fn net_accept_impl(fd: i32) -> i32 {
 
         libc_free(*addr_len_ptr as *void)
         libc_free(*addr_buf)
-        return res
+        return cede res
     }
 }
 

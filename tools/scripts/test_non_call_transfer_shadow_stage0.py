@@ -42,7 +42,11 @@ def require(condition, message):
 
 
 def invoke(tokac, shadow, source=SOURCE):
-    command = [str(tokac)]
+    # This freezes the Stage-0 audit model independently of later Stage-1
+    # source diagnostics.  The shadow still records every non-call plan, while
+    # the historical replay flag prevents this gate from becoming a duplicate
+    # Stage-1 return-language test.
+    command = [str(tokac), "--stage1-legacy-ordinary-cede"]
     if shadow:
         command.append("--non-call-transfer-shadow=json")
     command.extend(("--check-only", source))

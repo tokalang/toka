@@ -31,7 +31,8 @@ impl TlsStream {
     }
 
     pub fn connect_with_verify_async(tcp_stream#: TcpStream, host: string, verify_peer: bool) -> async Result<AsyncStream, string> {
-        return TlsStream::connect_with_verify_async_timeout(tcp_stream#.take(), host, verify_peer, 10000).await
+        auto awaited_result_34 = TlsStream::connect_with_verify_async_timeout(tcp_stream#.take(), host, verify_peer, 10000).await
+        return cede awaited_result_34
     }
 
     pub fn connect_with_ca_file_async_timeout(tcp_stream#: TcpStream, host: string, ca_path: string,
@@ -60,15 +61,18 @@ impl TlsStream {
     }
 
     pub fn connect_with_ca_file_async(tcp_stream#: TcpStream, host: string, ca_path: string) -> async Result<AsyncStream, string> {
-        return TlsStream::connect_with_ca_file_async_timeout(tcp_stream#.take(), host, ca_path, 10000).await
+        auto awaited_result_63 = TlsStream::connect_with_ca_file_async_timeout(tcp_stream#.take(), host, ca_path, 10000).await
+        return cede awaited_result_63
     }
 
     pub fn connect_async(tcp_stream#: TcpStream, host: string) -> async Result<AsyncStream, string> {
-        return TlsStream::connect_with_verify_async(tcp_stream#.take(), host, true).await
+        auto awaited_result_67 = TlsStream::connect_with_verify_async(tcp_stream#.take(), host, true).await
+        return cede awaited_result_67
     }
 
     pub fn connect_insecure_async(tcp_stream#: TcpStream, host: string) -> async Result<AsyncStream, string> {
-        return TlsStream::connect_with_verify_async(tcp_stream#.take(), host, false).await
+        auto awaited_result_71 = TlsStream::connect_with_verify_async(tcp_stream#.take(), host, false).await
+        return cede awaited_result_71
     }
 
     pub fn accept_async(tcp_stream#: TcpStream) -> async Result<AsyncStream, string> {

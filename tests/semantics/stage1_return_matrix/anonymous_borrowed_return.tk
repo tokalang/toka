@@ -1,0 +1,16 @@
+fn pair(a: i32, b: i32) -> result: (left: &i32, right: &i32)
+effects:
+    result.left <- a
+    result.right <- b
+{
+    return (left = &a, right = &b)
+}
+
+fn main() -> i32 {
+    auto first = 3
+    auto second = 5
+    auto result = pair(first, second)
+    if result.left != 3 { return 1 }
+    if result.right != 5 { return 2 }
+    return 0
+}

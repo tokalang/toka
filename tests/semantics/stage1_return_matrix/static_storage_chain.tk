@@ -1,0 +1,14 @@
+fn relay(value: str) -> str <- value { return value }
+
+fn text() -> str {
+    auto first = "static text"
+    auto second = first.clone()
+    auto third = relay(second)
+    return third
+}
+
+fn main() -> i32 {
+    auto result = text()
+    if !result.equals("static text") { return 1 }
+    return 0
+}

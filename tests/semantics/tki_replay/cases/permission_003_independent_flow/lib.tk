@@ -2,7 +2,7 @@
 // EXPECT_TKI: pub fn consume(cede cell: Cell) -> i32
 // EXPECT_TKI: pub fn consume_static(cede cell: Cell) -> i32
 // EXPECT_TKI: pub fn take(cede self
-// EXPECT_TKI: pub fn take_mut(cede self#: Cell) -> cede Cell
+// EXPECT_TKI: pub fn take_mut(cede self#: Cell) -> Cell
 // EXPECT_TKI: pub fn take_mut_async(cede self#: Cell) -> async i32
 // EXPECT_TKI: pub fn mutate_unique_parameter(cede ^cell#: Cell) -> i32
 // EXPECT_TKI: pub fn mutate_async_unique_parameter(cede ^cell#: Cell) -> async i32
@@ -38,7 +38,7 @@ impl Cell {
         return owned.value
     }
 
-    pub fn take_mut(cede self#) -> cede Cell {
+    pub fn take_mut(cede self#) -> Cell {
         self.value = 13
         return cede self
     }

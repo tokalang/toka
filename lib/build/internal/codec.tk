@@ -3,7 +3,10 @@ import core/comptime::{reflect}
 
 pub fn __deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- json_str {
     auto res# = json_skip_whitespace(json_str)
-    if res.len() == 0 || res.byte_at(0) != 123 { return JsonRes::Err("Expected {") }
+    if res.len() == 0 || res.byte_at(0) != 123 {
+        auto failure = JsonRes::Err("Expected {")
+        return cede failure
+    }
     res = res.substr(1, res.len() - 1)
 
     auto first# = true
@@ -11,7 +14,10 @@ pub fn __deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- jso
         res = json_skip_whitespace(res)
         if res.len() > 0 && res.byte_at(0) == 125 { res = res.substr(1, res.len() - 1); break }
         if !first {
-            if res.len() == 0 || res.byte_at(0) != 44 { return JsonRes::Err("Expected ,") }
+            if res.len() == 0 || res.byte_at(0) != 44 {
+                auto failure = JsonRes::Err("Expected ,")
+                return cede failure
+            }
             res = res.substr(1, res.len() - 1)
         }
         first = false
@@ -19,7 +25,10 @@ pub fn __deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- jso
         auto key_view# = ""
         res = key_view#.parse_json(res)!
         res = json_skip_whitespace(res)
-        if res.len() == 0 || res.byte_at(0) != 58 { return JsonRes::Err("Expected :") }
+        if res.len() == 0 || res.byte_at(0) != 58 {
+            auto failure = JsonRes::Err("Expected :")
+            return cede failure
+        }
         res = res.substr(1, res.len() - 1)
         auto found# = false
         for auto f in reflect<'T>().fields {
@@ -33,7 +42,8 @@ pub fn __deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- jso
         }
         if !found { res = json_skip_value(res)! }
     }
-    return JsonRes::Ok(res)
+    auto result = JsonRes::Ok(res)
+    return cede result
 }
 
 pub fn __deserialize_shape<'T>(json_str: str) -> Result<'T, str> {

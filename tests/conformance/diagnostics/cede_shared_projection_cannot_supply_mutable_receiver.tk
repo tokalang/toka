@@ -2,7 +2,7 @@ shape Cell(value: i32)
 shape Holder(~cell: Cell)
 
 impl Cell {
-    fn overwrite(cede self#) -> cede Cell {
+    fn overwrite(cede self#) -> Cell {
         self.value = 2
         return cede self
     }

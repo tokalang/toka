@@ -1,0 +1,13 @@
+shape Token(lexeme: str)
+impl Token {
+    fn new(lexeme: str) -> Token <- lexeme {
+        auto result = Token(lexeme = lexeme)
+        return cede result
+    }
+}
+fn wrong() -> Token {
+    auto local = string::from("temporary storage")
+    auto result = Token::new(local.as_str())
+    return cede result
+}
+fn main() -> i32 { return 0 }

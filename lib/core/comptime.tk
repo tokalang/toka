@@ -31,7 +31,15 @@ pub shape FieldInfo(
 )
 
 impl FieldInfo {
-    pub fn clone(self) -> FieldInfo { return self }
+    pub fn clone(self) -> FieldInfo <- self {
+        auto result = FieldInfo(
+            name = self.name.clone(),
+            type_name = self.type_name.clone(),
+            offset = self.offset,
+            size = self.size
+        )
+        return cede result
+    }
 }
 
 // T

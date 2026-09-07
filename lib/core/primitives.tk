@@ -16,7 +16,7 @@ impl i32@PartialEq {
 // u32 Implementation
 impl u32@Hash {
     pub fn hash(self) -> u64 {
-        return self
+        return self as u64
     }
 }
 
@@ -29,7 +29,7 @@ impl u32@PartialEq {
 // i64 Implementation
 impl i64@Hash {
     pub fn hash(self) -> u64 {
-        return self
+        return self as u64
     }
 }
 
@@ -69,7 +69,7 @@ impl bool@PartialEq {
 // char Implementation
 impl char@Hash {
     pub fn hash(self) -> u64 {
-        return self
+        return self as u64
     }
 }
 

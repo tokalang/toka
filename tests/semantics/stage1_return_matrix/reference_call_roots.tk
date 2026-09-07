@@ -1,0 +1,5 @@
+fn borrow_second(a: i32, b: i32) -> &i32 <- b { return &b }
+fn outer(a: i32, b: i32) -> &i32 <- a | b {
+    return borrow_second(a, b)
+}
+fn main() -> i32 { return 0 }

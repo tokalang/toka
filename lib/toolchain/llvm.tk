@@ -279,7 +279,7 @@ impl LLVMModule {
         auto *c_str = toka_llvm_print_module_to_string(self.*handle)
         auto res = string::from_cstr(*c_str)
         toka_llvm_dispose_string(*c_str)
-        return res
+        return cede res
     }
 
     pub fn verify(self) -> Result<(), string> {

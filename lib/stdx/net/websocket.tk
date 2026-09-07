@@ -346,7 +346,8 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
 }
 
 pub fn ws_accept_async(tcp_stream#: TcpStream) -> async Result<WsConnection, string> {
-    return ws_accept_stream_async(AsyncStream::from_tcp(tcp_stream#.take())).await
+    auto awaited_result_349 = ws_accept_stream_async(AsyncStream::from_tcp(tcp_stream#.take())).await
+    return cede awaited_result_349
 }
 
 pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string) -> async Result<WsConnection, string> {
@@ -543,7 +544,8 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
 }
 
 pub fn ws_connect_async(tcp_stream#: TcpStream, host: string, path: string) -> async Result<WsConnection, string> {
-    return ws_connect_stream_async(AsyncStream::from_tcp(tcp_stream#.take()), host, path).await
+    auto awaited_result_546 = ws_connect_stream_async(AsyncStream::from_tcp(tcp_stream#.take()), host, path).await
+    return cede awaited_result_546
 }
 
 pub fn ws_connect_tls_async(tcp_stream#: TcpStream, host: string, path: string) -> async Result<WsConnection, string> {
@@ -553,7 +555,8 @@ pub fn ws_connect_tls_async(tcp_stream#: TcpStream, host: string, path: string) 
         return Result<WsConnection, string>::Err(cede err_msg)
     }
     auto stream# = tls_res.unwrap()
-    return ws_connect_stream_async(stream, host, path).await
+    auto awaited_result_556 = ws_connect_stream_async(stream, host, path).await
+    return cede awaited_result_556
 }
 
 pub fn ws_connect_tls_insecure_async(tcp_stream#: TcpStream, host: string, path: string) -> async Result<WsConnection, string> {
@@ -563,7 +566,8 @@ pub fn ws_connect_tls_insecure_async(tcp_stream#: TcpStream, host: string, path:
         return Result<WsConnection, string>::Err(cede err_msg)
     }
     auto stream# = tls_res.unwrap()
-    return ws_connect_stream_async(stream, host, path).await
+    auto awaited_result_566 = ws_connect_stream_async(stream, host, path).await
+    return cede awaited_result_566
 }
 
 pub fn ws_connect_url_async(url_str: string, default_addr: SocketAddrV4) -> async Result<WsConnection, string> {
@@ -582,9 +586,11 @@ pub fn ws_connect_url_async(url_str: string, default_addr: SocketAddrV4) -> asyn
     }
     auto tcp_stream# = (cede tcp_res).unwrap()
     if u.is_tls() {
-        return ws_connect_tls_async(tcp_stream#.take(), u.host, u.path).await
+        auto awaited_result_585 = ws_connect_tls_async(tcp_stream#.take(), u.host, u.path).await
+        return cede awaited_result_585
     }
-    return ws_connect_async(tcp_stream#.take(), u.host, u.path).await
+    auto awaited_result_587 = ws_connect_async(tcp_stream#.take(), u.host, u.path).await
+    return cede awaited_result_587
 }
 
 pub fn ws_connect_insecure_url_async(url_str: string, default_addr: SocketAddrV4) -> async Result<WsConnection, string> {
@@ -603,9 +609,11 @@ pub fn ws_connect_insecure_url_async(url_str: string, default_addr: SocketAddrV4
     }
     auto tcp_stream# = (cede tcp_res).unwrap()
     if u.is_tls() {
-        return ws_connect_tls_insecure_async(tcp_stream#.take(), u.host, u.path).await
+        auto awaited_result_606 = ws_connect_tls_insecure_async(tcp_stream#.take(), u.host, u.path).await
+        return cede awaited_result_606
     }
-    return ws_connect_async(tcp_stream#.take(), u.host, u.path).await
+    auto awaited_result_608 = ws_connect_async(tcp_stream#.take(), u.host, u.path).await
+    return cede awaited_result_608
 }
 
 impl WsConnection {
@@ -1047,7 +1055,8 @@ impl WsConnection {
 
     pub fn write_control_frame_async(self#, opcode: u8, cede payload: Vec<u8>) -> async Result<usize, string> {
         auto owned_payload = cede payload
-        return self#.write_control_frame_async_timeout(opcode, cede owned_payload, 10000).await
+        auto awaited_result_1050 = self#.write_control_frame_async_timeout(opcode, cede owned_payload, 10000).await
+        return cede awaited_result_1050
     }
 
     pub fn write_control_frame_async_timeout(self#, opcode: u8, cede payload: Vec<u8>, timeout_ms: i32) -> async Result<usize, string> {

@@ -40,7 +40,7 @@ fn decoded_string(cede values: Vec<u8>) -> string {
         output#.push_byte_raw(owned.get(index))
         index = index + 1:usize
     }
-    return output
+    return cede output
 }
 
 pub fn encode_component(input: str) -> string {
@@ -59,7 +59,7 @@ pub fn encode_component(input: str) -> string {
             index = index + 1:usize
         }
     }
-    return output
+    return cede output
 }
 
 pub fn decode_component(input: str) -> Result<string, string> {
@@ -138,5 +138,5 @@ pub fn format(fields: Vec<FormField>) -> string {
         output#.push_str(encode_component(field.value.as_str()).as_str())
         index = index + 1:usize
     }
-    return output
+    return cede output
 }

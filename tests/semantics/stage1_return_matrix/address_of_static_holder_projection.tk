@@ -1,0 +1,8 @@
+shape Holder(view: str)
+fn borrow_holder(holder: Holder) -> &Holder <- holder { return &holder }
+fn escaped() -> &str {
+    auto holder = Holder(view = "static bytes")
+    auto &reference = borrow_holder(holder)
+    return &(reference.view)
+}
+fn main() -> i32 { return 0 }

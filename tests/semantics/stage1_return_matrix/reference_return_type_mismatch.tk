@@ -1,0 +1,5 @@
+fn wrong_type(value: i32) -> &bool <- value {
+    return &value
+}
+
+fn main() -> i32 { return 0 }

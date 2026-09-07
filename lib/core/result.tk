@@ -21,7 +21,7 @@ impl<'T, 'E> Result<'T, 'E> {
 
     pub fn unwrap(cede self) -> 'T <- self {
         match cede self {
-            auto Result<'T, 'E>::Ok('val) => return 'val
+            auto Result<'T, 'E>::Ok('val) => return cede 'val
             _ => {
                 libc_exit(1)
                 unreachable
@@ -31,7 +31,7 @@ impl<'T, 'E> Result<'T, 'E> {
 
     pub fn unwrap_err(cede self) -> 'E <- self {
         match cede self {
-            auto Result<'T, 'E>::Err('e) => return 'e
+            auto Result<'T, 'E>::Err('e) => return cede 'e
             _ => {
                 libc_exit(1)
                 unreachable

@@ -1,0 +1,18 @@
+import std/vec::{Vec}
+
+fn first(values: Vec<i32>) -> i32 {
+    for alias value in values {
+        auto copied = value
+        if value != copied { return -1 }
+        return value
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(17)
+    if first(values) != 17 { return 1 }
+    if values.len() != 1:usize { return 2 }
+    return 0
+}

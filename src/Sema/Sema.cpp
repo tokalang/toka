@@ -1508,7 +1508,8 @@ void Sema::registerSlice4Impl(ImplDecl *impl) {
 bool Sema::proveSlice4CopyType(std::shared_ptr<toka::Type> type) {
   if (!type || type->isUnknown() || type->isUniquePtr() || type->isSharedPtr())
     return false;
-  if (type->isRawPointer() || type->isReference() || type->isFunction() ||
+  if (type->isAddrType() || type->isOAddrType() || type->isRawPointer() ||
+      type->isReference() || type->isFunction() ||
       type->isDynFn() || type->isVoid() || type->isBoolean() ||
       type->isInteger() || type->isFloatingPoint())
     return true;
@@ -1601,7 +1602,8 @@ Sema::deriveSlice4CopyRecipeType(std::shared_ptr<toka::Type> type,
     return dependent("unresolved field type");
   if (type->isUniquePtr() || type->isSharedPtr())
     return never("ownership-bearing field");
-  if (type->isRawPointer() || type->isReference() || type->isFunction() ||
+  if (type->isAddrType() || type->isOAddrType() || type->isRawPointer() ||
+      type->isReference() || type->isFunction() ||
       type->isDynFn() || type->isVoid() || type->isBoolean() ||
       type->isInteger() || type->isFloatingPoint())
     return always();
@@ -3418,6 +3420,9 @@ void Sema::declareGlobals(Module &M) {
   }
   // 2. Register Externs
   for (auto &Ext : M.Externs) {
+    validateResultCedeSyntax(Ext.get(), Ext->ReturnTypeSyntax, true);
+    for (const auto &argument : Ext->Args)
+      validateResultCedeSyntax(Ext.get(), argument.TypeSyntax);
     DeclarationLexicalScopes[Ext.get()] = &ms;
     // Foreign ABI results are never inferred.  Typed extern results remain
     // valid, while no-value ABI must say `-> void` explicitly.
@@ -3463,7 +3468,14 @@ void Sema::declareGlobals(Module &M) {
     if (St->Name == "__PlaceOutcome")
       error(St.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY, St->Name);
     SyntaxOrigin shapeOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
+    std::function<void(const ShapeMember &)> validateMemberResult =
+        [&](const ShapeMember &member) {
+          validateResultCedeSyntax(St.get(), member.TypeSyntax);
+          for (const auto &payload : member.SubMembers)
+            validateMemberResult(payload);
+        };
     for (const auto &mem : St->Members) {
+      validateMemberResult(mem);
       auto memTy = mem.TypeSyntax ? toka::Type::fromSyntax(mem.TypeSyntax) : toka::Type::fromString(mem.Type);
       if (containsInternalPlaceOutcome(memTy))
         error(St.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
@@ -3509,6 +3521,7 @@ void Sema::declareGlobals(Module &M) {
   }
   // 4. Register TypeAliases
   for (auto &Alias : M.TypeAliases) {
+    validateResultCedeSyntax(Alias.get(), Alias->TargetTypeSyntax);
     DeclarationLexicalScopes[Alias.get()] = &ms;
     if (Alias->Name == "__PlaceOutcome")
       error(Alias.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
@@ -3574,6 +3587,9 @@ void Sema::declareGlobals(Module &M) {
 
     std::string traitKey = "@" + Trait->Name;
     for (auto &Method : Trait->Methods) {
+      validateResultCedeSyntax(Method.get(), Method->ReturnTypeSyntax, true);
+      for (const auto &argument : Method->Args)
+        validateResultCedeSyntax(Method.get(), argument.TypeSyntax);
       DeclarationLexicalScopes[Method.get()] = &ms;
       SyntaxOrigin traitOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
       auto methodRetTy = Method->ReturnTypeSyntax ? toka::Type::fromSyntax(Method->ReturnTypeSyntax) : toka::Type::fromString(Method->ReturnType);
@@ -5123,7 +5139,62 @@ void Sema::populateCallableParameterOrigins(
   symbol.CallableParameterOriginsComplete = true;
 }
 
+bool Sema::validateResultCedeSyntax(ASTNode *site, const TypeSyntaxPtr &type,
+                                  bool isResult) {
+  auto hasRemovedResultCede = [&](auto &&self, const TypeSyntaxPtr &syntax,
+                                  bool resultPosition) -> bool {
+    if (!syntax)
+      return false;
+    if (resultPosition &&
+        syntax->NodeKind == TypeSyntax::Kind::Morphology &&
+        syntax->Text == "cede ") {
+      TypeSyntaxPtr subject = syntax->Subject;
+      while (subject && subject->NodeKind == TypeSyntax::Kind::Morphology &&
+             (subject->Text == "#" || subject->Text == "$"))
+        subject = subject->Subject;
+      if (!subject || subject->NodeKind != TypeSyntax::Kind::Function)
+        return true;
+    }
+    if (self(self, syntax->Subject, resultPosition))
+      return true;
+    if (syntax->NodeKind == TypeSyntax::Kind::Function) {
+      if (syntax->HasExplicitResult && self(self, syntax->Result, true))
+        return true;
+      for (const auto &argument : syntax->Arguments) {
+        if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type &&
+            self(self, argument.Type, false))
+          return true;
+      }
+      return false;
+    }
+    for (const auto &argument : syntax->Arguments) {
+      if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type &&
+          self(self, argument.Type, resultPosition))
+        return true;
+    }
+    for (const auto &element : syntax->Elements) {
+      if (self(self, element, resultPosition))
+        return true;
+    }
+    for (const auto &field : syntax->Fields) {
+      if (self(self, field.Type, resultPosition))
+        return true;
+    }
+    return false;
+  };
+  if (!hasRemovedResultCede(hasRemovedResultCede, type, isResult))
+    return true;
+  error(site, DiagID::ERR_SEMA_RESULT_CEDE_QUALIFIER_REMOVED);
+  return false;
+}
+
 void Sema::checkFunction(FunctionDecl *Fn) {
+  const size_t functionDiagnosticStart = DiagnosticEngine::records().size();
+  validateResultCedeSyntax(Fn, Fn->ReturnTypeSyntax, true);
+  for (const auto &argument : Fn->Args) {
+    validateResultCedeSyntax(Fn, argument.TypeSyntax);
+  }
+
   // Generic templates do not execute a body check until instantiation, but
   // their signatures must still reject unknown names at the declaration
   // point without resolving or instantiating later CodeGen state.
@@ -5497,6 +5568,19 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
     for (auto &Arg : Fn->Args) {
       if (!Arg.IsCeded)
+        continue;
+      // Do not cascade an obligation diagnostic from a call/return that has
+      // already been rejected and rolled back.  A clean function must still
+      // discharge every cede parameter; an already-invalid body has no
+      // committed transfer path to audit.
+      const auto &diagnostics = DiagnosticEngine::records();
+      const bool functionAlreadyRejected = std::any_of(
+          diagnostics.begin() +
+              std::min(functionDiagnosticStart, diagnostics.size()),
+          diagnostics.end(), [](const auto &record) {
+            return record.Level == DiagLevel::Error;
+          });
+      if (functionAlreadyRejected)
         continue;
 
       SymbolInfo *Info = nullptr;

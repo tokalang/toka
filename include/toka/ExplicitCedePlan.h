@@ -249,6 +249,7 @@ struct ExplicitCedePreparedFacts {
   std::optional<PlaceId> SourcePlace;
   std::optional<PlaceId> DestinationPlace;
   std::optional<PlaceId> ReferentPlace;
+  std::vector<PlaceId> StructuredReferentPlaces;
   std::vector<RootSymbolId> DependencyRoots;
   std::optional<RootSymbolId> ObligationRoot;
   TransferPlanOrigin Origin = TransferPlanOrigin::UserSource;
@@ -301,6 +302,18 @@ struct ExplicitCedePreparedFacts {
   bool LiabilityIdentityComplete = false;
   bool ObligationFactsComplete = false;
   bool DependencyFactsComplete = false;
+  // The return declaration has explicitly admitted every prepared dependency
+  // root.  This is distinct from whole-owned-temporary eligibility: a
+  // dependency-bearing temporary is checked, not silently exempted.
+  bool DestinationDependencyAccepted = false;
+  bool StructuredBorrowedTemporary = false;
+  // Exact literal storage witnesses, independent of dynamic dependency roots.
+  std::vector<SemanticNodeId> StaticStorageOrigins;
+  // The source spelling preserves a generic/morphic binding's resolved
+  // morphology (for example `'value`).  This lets one generic source-transfer
+  // spelling remain valid when the instantiation is a unique handle, without
+  // permitting redundant `cede ^owner` on an ordinary concrete owner.
+  bool MorphicSource = false;
   bool ActiveDerivedBorrow = false;
   bool BorrowStateComplete = false;
   bool SourceTransferAuthorized = false;

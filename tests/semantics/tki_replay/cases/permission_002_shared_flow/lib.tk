@@ -70,8 +70,8 @@ impl Cell {
         return self.value
     }
 
-    // EXPECT_TKI: pub fn consume_owned(cede self#: Cell) -> cede Cell
-    pub fn consume_owned(cede self#) -> cede Cell {
+    // EXPECT_TKI: pub fn consume_owned(cede self#: Cell) -> Cell
+    pub fn consume_owned(cede self#) -> Cell {
         self.value = 15
         return cede self
     }

@@ -1,0 +1,7 @@
+import core/option::{Option}
+fn escaped() -> &str {
+    auto view = "static bytes"
+    auto wrapped = Option<&str>::Some(&view)
+    return wrapped.unwrap()
+}
+fn main() -> i32 { return 0 }

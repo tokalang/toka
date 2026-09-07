@@ -37,7 +37,9 @@ def require(condition, message):
 
 def compile_source(tokac, source, output, authority=False, fault=None,
                    link=False):
-    command = [str(tokac)]
+    # CodeGen authority is qualified against the frozen Stage-0 carrier model;
+    # Stage-1 caller spelling is covered by its own gates.
+    command = [str(tokac), "--stage1-legacy-ordinary-cede"]
     if fault:
         command.append("--stage0-codegen-fault=" + fault)
     elif authority:
@@ -62,7 +64,9 @@ def main():
         for name, source, link in (
                 ("noncall", NONCALL_ROUTES, True),
                 ("generic", GENERIC_BODY_EDGE, True),
-                ("extern", EXTERN_EDGE, False)):
+                ("extern", EXTERN_EDGE, False),
+                ("generic-body-source", GENERIC_BODY, True),
+                ("extern-source", EXTERN_ROUTE, False)):
             normal_output = work / (name + "-normal")
             authority_output = work / (name + "-authority")
             if not link:
@@ -125,8 +129,6 @@ def main():
             (REJECTED_ARRAY_GROUP, "aggregate"),
             (ALL_ROUTES, None),
             (CALL_ROUTES, None),
-            (GENERIC_BODY, None),
-            (EXTERN_ROUTE, None),
         )
         for index, (source, expected_boundary) in enumerate(rejected_cases):
             rejected_normal = work / ("rejected-normal-" + str(index) + ".o")
@@ -146,7 +148,8 @@ def main():
                     "CodeGen accepted a Sema-rejected plan")
 
         conflict = subprocess.run(
-            [str(tokac), "--stage0-codegen-authority", "--check-only",
+            [str(tokac), "--stage1-legacy-ordinary-cede",
+             "--stage0-codegen-authority", "--check-only",
              str(ALL_ROUTES)], cwd=ROOT, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, timeout=30)
         require(conflict.returncode != 0 and not conflict.stdout and

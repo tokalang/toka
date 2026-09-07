@@ -17,7 +17,7 @@ pub fn __path_normalize(path: string) -> string {
         }
         i = i + 1:usize
     }
-    return res
+    return cede res
 }
 
 pub fn __path_canonicalize(p: string) -> string {
@@ -58,7 +58,7 @@ pub fn __path_canonicalize(p: string) -> string {
         res#.push_str(resolved_parts.borrow(i).as_str())
         i += 1
     }
-    return res
+    return cede res
 }
 
 fn u64_to_hex(val: u64) -> string {
@@ -73,7 +73,7 @@ fn u64_to_hex(val: u64) -> string {
         res#.push_char(hex_chars.byte_at(digit as usize))
         i = i + 1
     }
-    return res
+    return cede res
 }
 
 pub fn __calculate_fnv1a(str: string) -> string {

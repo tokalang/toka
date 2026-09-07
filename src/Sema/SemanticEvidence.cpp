@@ -265,7 +265,7 @@ bool ExplicitCedeStage0TransactionRecord::operator==(
 bool ExplicitCedeStage0NonCallRecord::operator<(
     const ExplicitCedeStage0NonCallRecord &rhs) const {
   return std::tie(
-             Boundary, GroupIdentity, Edge, EdgeIndex, GroupOutcome,
+             StaticStorageOrigins, Boundary, GroupIdentity, Edge, EdgeIndex, GroupOutcome,
              GroupRejection, GroupPlanAdmitted, PlanOrigin, SyntaxPurpose,
              SourceCategory, Dependency, TypeCompatibility, EligibilityContext,
              DestinationExactPath, DestinationView, DestinationReachability,
@@ -276,7 +276,7 @@ bool ExplicitCedeStage0NonCallRecord::operator<(
              SourceFlowHandleRebindable, SourceFlowPayloadWritable,
              PreparedBeforeLegacyMutation, SnapshotRevision, Plan, Location) <
          std::tie(
-             rhs.Boundary, rhs.GroupIdentity, rhs.Edge, rhs.EdgeIndex,
+             rhs.StaticStorageOrigins, rhs.Boundary, rhs.GroupIdentity, rhs.Edge, rhs.EdgeIndex,
              rhs.GroupOutcome, rhs.GroupRejection, rhs.GroupPlanAdmitted,
              rhs.PlanOrigin, rhs.SyntaxPurpose, rhs.SourceCategory,
              rhs.Dependency, rhs.TypeCompatibility, rhs.EligibilityContext,
@@ -1084,7 +1084,16 @@ void SemanticEvidence::dumpExplicitCedeStage0NonCallJSON(std::ostream &out) {
       out << ',';
     const auto &record = ExplicitCedeStage0NonCalls[index];
     const auto &plan = record.Plan;
-    out << "{\"boundary\":\"" << escapeJSON(record.Boundary)
+    out << '{';
+    if (!record.StaticStorageOrigins.empty()) {
+      out << "\"static_storage_origins\":[";
+      for (size_t storage = 0; storage < record.StaticStorageOrigins.size(); ++storage) {
+        if (storage) out << ',';
+        out << '\"' << escapeJSON(record.StaticStorageOrigins[storage]) << '\"';
+      }
+      out << "],";
+    }
+    out << "\"boundary\":\"" << escapeJSON(record.Boundary)
         << "\",\"group_identity\":\"" << escapeJSON(record.GroupIdentity)
         << "\",\"edge\":\"" << escapeJSON(record.Edge)
         << "\",\"edge_index\":" << record.EdgeIndex << ",\"group_outcome\":\""

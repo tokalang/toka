@@ -9,8 +9,8 @@ fn main() -> i32 {
     auto r_lock = rw.read_lock().unwrap()
     // Lock guards do not implement @Send; capturing via cede into thread_spawn closure must fail with E0477
     auto worker = { [cede r_lock] =>
-        return cede 0
-    }:fn() -> cede i32
+        return 0
+    }:fn() -> i32
     auto handle# = thread_spawn<i32>(cede worker)
     return 0
 }

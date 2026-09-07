@@ -35,7 +35,7 @@ impl<'T, 'E> Result<'T, 'E> {
     /// Unwrap the error or panic with a custom error message
     pub fn expect_err(cede self, *msg: char) -> 'E <- self {
         match cede self {
-            auto Result<'T, 'E>::Err('val) => return 'val
+            auto Result<'T, 'E>::Err('val) => return cede 'val
             _ => {
                 unsafe {
                     libc_printf(c"[Result] panic: %s\n", msg)

@@ -62,7 +62,7 @@ pub fn getcwd_impl() -> string {
         GetCurrentDirectoryW(len, *buf)
         auto res = from_utf16(*buf)
         libc_free(*buf as *void)
-        return res
+        return cede res
     }
 }
 

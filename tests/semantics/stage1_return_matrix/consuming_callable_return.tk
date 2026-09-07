@@ -1,0 +1,21 @@
+auto drops# = 0
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+
+fn invoke() -> i32 {
+    auto token = Token(value = 7)
+    auto callback = { [cede token] =>
+        auto owned = cede token
+        return owned.value
+    }:cede dyn fn() -> i32
+    return cede callback()
+}
+
+fn main() -> i32 {
+    if invoke() != 7 { return 1 }
+    if drops != 1 { return 2 }
+    return 0
+}

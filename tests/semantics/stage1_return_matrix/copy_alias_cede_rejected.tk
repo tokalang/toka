@@ -1,0 +1,14 @@
+import std/vec::{Vec}
+
+fn invalid(values: Vec<i32>) -> i32 {
+    for alias value in values {
+        return cede value
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    return invalid(values)
+}

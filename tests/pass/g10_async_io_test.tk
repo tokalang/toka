@@ -23,7 +23,7 @@ fn async_read(file_name: string) -> async string {
             res = content.unwrap()
         }
     }
-    return res
+    return cede res
 }
 
 fn handle_io() -> async i32 {

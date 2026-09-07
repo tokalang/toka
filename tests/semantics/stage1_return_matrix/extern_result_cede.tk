@@ -1,0 +1,2 @@
+extern fn external_value() -> cede i32
+fn main() -> i32 { return 0 }

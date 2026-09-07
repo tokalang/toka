@@ -1,9 +1,4 @@
-error[E0464]: Function returns 'cede cede Data', but return expression does not explicitly transfer ownership via 'return cede ...'
- --> tests/fail/expect_cede_return.tk:5:5
-   |
- 5 |     return d 
-   |     ^
-note: cede return declared here
+error[E04659]: Function result types cannot use the removed 'cede' qualifier; remove 'cede' from the result type
  --> tests/fail/expect_cede_return.tk:3:4
    |
  3 | fn produce_data() -> cede Data {

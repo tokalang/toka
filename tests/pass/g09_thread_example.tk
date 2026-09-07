@@ -11,7 +11,7 @@ pub fn main() -> i32 {
         text#.push_str(num_s.as_str())
         println("Thread 1 OK")
         return cede text
-    }:fn() -> cede string
+    }:fn() -> string
     
     // Spawn a thread and explicitly capture `target` by moving it (cede) into the thread!
     auto handle# = thread_spawn<string>(cede f)

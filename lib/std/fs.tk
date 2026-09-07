@@ -170,7 +170,7 @@ pub fn read_to_string(path: string) -> IoStringResult {
     auto s_res = f#.read_to_string()
     f#.close()
     
-    return s_res
+    return cede s_res
 }
 
 /**

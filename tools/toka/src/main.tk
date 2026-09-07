@@ -92,7 +92,7 @@ fn shell_quote(s: string) -> string {
             i = i + 1:usize
         }
         res#.push_str("\"")
-        return res
+        return cede res
     } else {
         auto res# = string::from("'")
         auto view = s.as_str()
@@ -109,7 +109,7 @@ fn shell_quote(s: string) -> string {
             i = i + 1:usize
         }
         res#.push_str("'")
-        return res
+        return cede res
     }
 }
 
@@ -137,11 +137,11 @@ fn get_dirname(path: string) -> string {
 fn resolve_manager_executable_path() -> string {
     auto arg0 = env::get_arg(0)
     if arg0.is_empty() || arg0.contains("/") || arg0.contains("\\") {
-        return arg0
+        return cede arg0
     }
 
     auto path_value = env::var(string::from("PATH"))
-    if path_value.is_none() { return arg0 }
+    if path_value.is_none() { return cede arg0 }
     auto path_text = path_value.unwrap()
     auto separator# = ':' as i32
     if check_is_windows() { separator = ';' as i32 }
@@ -158,9 +158,9 @@ fn resolve_manager_executable_path() -> string {
             }
         }
         candidate#.push_str(arg0.as_str())
-        if exists(candidate.clone()) { return candidate }
+        if exists(candidate.clone()) { return cede candidate }
     }
-    return arg0
+    return cede arg0
 }
 
 fn detect_default_lib_path() -> string {
@@ -179,13 +179,13 @@ fn detect_default_lib_path() -> string {
         auto candidate1# = parent_dir.clone()
         candidate1#.push_str("/share/toka/lib")
         if exists(candidate1.clone()) {
-            return candidate1
+            return cede candidate1
         }
 
         auto candidate_installed_lib# = parent_dir.clone()
         candidate_installed_lib#.push_str("/lib/toka")
         if exists(candidate_installed_lib.clone()) {
-            return candidate_installed_lib
+            return cede candidate_installed_lib
         }
         
         auto candidate2# = parent_dir.clone()
@@ -194,21 +194,21 @@ fn detect_default_lib_path() -> string {
             auto marker# = candidate2.clone()
             marker#.push_str("/core/prelude.tk")
             if exists(marker) {
-                return candidate2
+                return cede candidate2
             }
         }
 
         auto candidate3# = exe_dir.clone()
         candidate3#.push_str("/lib")
         if exists(candidate3.clone()) {
-            return candidate3
+            return cede candidate3
         }
     }
     
     if check_is_windows() {
         auto win_fallback = string::from("C:\\ProgramData\\toka\\lib")
         if exists(win_fallback.clone()) {
-            return win_fallback
+            return cede win_fallback
         }
         return string::from("lib")
     }
@@ -227,7 +227,7 @@ fn detect_tokafmt_path() -> string {
             candidate#.push_str("/tokafmt")
         }
         if exists(candidate.clone()) {
-            return candidate
+            return cede candidate
         }
     }
     return string::from("tokafmt")
@@ -244,7 +244,7 @@ fn detect_tokac_path() -> string {
             candidate#.push_str("/tokac")
         }
         if exists(candidate.clone()) {
-            return candidate
+            return cede candidate
         }
     }
     return string::from("tokac")
@@ -259,13 +259,13 @@ fn detect_semantic_preview_path() -> string {
         auto source_script# = source_root.clone()
         source_script#.push_str("/tools/scripts/semantic_diff_preview.py")
         if exists(source_script.clone()) {
-            return source_script
+            return cede source_script
         }
     }
     auto lib_path = detect_default_lib_path()
     auto installed_script# = lib_path.clone()
     installed_script#.push_str("/toolchain/semantic_diff_preview.py")
-    return installed_script
+    return cede installed_script
 }
 
 fn print_manager_version() {
@@ -292,7 +292,7 @@ fn get_basename(path: string) -> string {
         if result.is_empty() || result.as_str().contains_char(':' as char) {
             return string::from("toka_project")
         }
-        return result
+        return cede result
     }
     if path.is_empty() || path.as_str().contains_char(':' as char) {
         return string::from("toka_project")
@@ -714,7 +714,7 @@ fn find_newest_executable(dir_path: string) -> string {
         }
     }
     dir#.close()
-    return newest_file
+    return cede newest_file
 }
 
 fn cmd_run(use_forge: bool) -> i32 {

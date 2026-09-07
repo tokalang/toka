@@ -95,7 +95,8 @@ impl ViewStrSplitIterator {
 
     pub fn next(self#) -> Option<str> <- self {
         if self.finished {
-            return Option<str>::None
+            auto outcome = Option<str>::None
+            return cede outcome
         }
 
         // If separator is empty, return the whole remaining string and finish
@@ -103,11 +104,9 @@ impl ViewStrSplitIterator {
             self.finished = true
             auto remaining = self.len - self.pos
             unsafe {
-                auto b_addr = self.raw_ptr() as Addr
-                auto ptr_addr = b_addr + self.pos
-                auto ret = str(&buf = self.&buf, len = remaining)
-                copy_memory(&ret as Addr, &ptr_addr as Addr, 8)
-                return Option<str>::Some(ret)
+                auto ret = str(&buf = &(self.buf[self.pos]) as *[char] as &[char], len = remaining)
+                auto outcome = Option<str>::Some(ret)
+                return cede outcome
             }
         }
         
@@ -141,19 +140,15 @@ impl ViewStrSplitIterator {
                 auto segment_len = i - start
                 self.pos = i + self.sep.len
                 
-                auto b_addr = self.raw_ptr() as Addr
-                auto ptr_addr = b_addr + start
-                auto ret = str(&buf = self.&buf, len = segment_len)
-                copy_memory(&ret as Addr, &ptr_addr as Addr, 8)
-                return Option<str>::Some(ret)
+                auto ret = str(&buf = &(self.buf[start]) as *[char] as &[char], len = segment_len)
+                auto outcome = Option<str>::Some(ret)
+                return cede outcome
             } else {
                 self.finished = true
                 auto segment_len = self.len - start
-                auto b_addr = self.raw_ptr() as Addr
-                auto ptr_addr = b_addr + start
-                auto ret = str(&buf = self.&buf, len = segment_len)
-                copy_memory(&ret as Addr, &ptr_addr as Addr, 8)
-                return Option<str>::Some(ret)
+                auto ret = str(&buf = &(self.buf[start]) as *[char] as &[char], len = segment_len)
+                auto outcome = Option<str>::Some(ret)
+                return cede outcome
             }
         }
     }
@@ -178,17 +173,20 @@ impl ViewStrLinesIterator {
     pub fn next(self#) -> Option<str> <- self {
         auto line_opt = self.split_iter#.next()
         if line_opt.is_none() {
-            return Option<str>::None
+            auto outcome = Option<str>::None
+            return cede outcome
         }
         auto line = line_opt.unwrap()
         auto byte_len = line.byte_count()
         if byte_len > 0 {
             auto last_byte = line.as_bytes().at(byte_len - 1).unwrap()
             if last_byte == 13:byte { // '\r'
-                return Option<str>::Some(line.substr(0, byte_len - 1))
+                auto outcome = Option<str>::Some(line.substr(0, byte_len - 1))
+                return cede outcome
             }
         }
-        return Option<str>::Some(line)
+        auto outcome = Option<str>::Some(line)
+        return cede outcome
     }
 }
 
@@ -256,8 +254,7 @@ impl str {
         
         auto byte_len = iter.current_pos() - byte_start
         unsafe {
-            auto base_addr = &(self.buf[byte_start]) as Addr
-            return str(&buf = (base_addr as *[char]) as &[char], len = byte_len)
+            return str(&buf = &(self.buf[byte_start]) as *[char] as &[char], len = byte_len)
         }
     }
 
@@ -389,11 +386,7 @@ impl str {
 
     pub fn as_bytes(self) -> bytes <- self {
         unsafe {
-            auto cpy = self.clone()
-            auto empty = ""
-            auto ret = bytes(&buf = (empty.raw_ptr() as *[byte]) as &[byte], len = self.len)
-            copy_memory(&ret as Addr, &cpy as Addr, 16)
-            return ret
+            return bytes(&buf = self.&buf as &[byte], len = self.len)
         }
     }
 
@@ -548,11 +541,7 @@ impl str {
         }
         
         unsafe {
-            auto b_addr = self.raw_ptr() as Addr
-            auto ptr_addr = b_addr + pos
-            auto ret = str(&buf = self.&buf, len = actual_len)
-            copy_memory(&ret as Addr, &ptr_addr as Addr, 8)
-            return ret
+            return str(&buf = &(self.buf[pos]) as *[char] as &[char], len = actual_len)
         }
     }
 
@@ -580,11 +569,7 @@ impl str {
             if start == 0 { return self.clone() }
             if start == self.len { return str(&buf = self.&buf, len = 0) }
             
-            auto b_addr = self.raw_ptr() as Addr
-            auto ptr_addr = b_addr + start
-            auto ret = str(&buf = self.&buf, len = self.len - start)
-            copy_memory(&ret as Addr, &ptr_addr as Addr, 8)
-            return ret
+            return str(&buf = &(self.buf[start]) as *[char] as &[char], len = self.len - start)
         }
     }
 
@@ -762,17 +747,14 @@ impl bytes {
             if new_len == 0 {
                 return bytes(&buf = self.&buf, len = 0)
             }
-            auto base_addr = &(self.buf[start]) as Addr
-            auto empty = ""
-            auto ret = bytes(&buf = (empty.raw_ptr() as *[byte]) as &[byte], len = new_len)
-            copy_memory(&ret as Addr, &base_addr as Addr, 8)
-            return ret
+            return bytes(&buf = &(self.buf[start]) as *[byte] as &[byte], len = new_len)
         }
     }
 
     pub fn try_to_str(self) -> Result<str, UnicodeError> <- self {
         if self.len == 0 {
-            return Result<str, UnicodeError>::Ok("")
+            auto outcome = Result<str, UnicodeError>::Ok("")
+            return cede outcome
         }
         
         unsafe {
@@ -784,14 +766,14 @@ impl bytes {
                 if opt.is_none() { break }
                 if !opt.unwrap().valid {
                     auto bad_byte = self.buf[prev_pos]
-                    return Result<str, UnicodeError>::Err(UnicodeError(invalid_byte = bad_byte, position = prev_pos))
+                    auto outcome = Result<str, UnicodeError>::Err(UnicodeError(invalid_byte = bad_byte, position = prev_pos))
+                    return cede outcome
                 }
             }
             
-            auto cpy = self.clone()
-            auto ret = ""
-            copy_memory(&ret as Addr, &cpy as Addr, 16)
-            return Result<str, UnicodeError>::Ok(ret)
+            auto ret = str(&buf = self.&buf as &[char], len = self.len)
+            auto outcome = Result<str, UnicodeError>::Ok(ret)
+            return cede outcome
         }
     }
 

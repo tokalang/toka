@@ -15,7 +15,7 @@ fn package_helper_path() -> string {
     auto i# = 0:usize
     loop i < candidates.len() {
         auto candidate = candidates.borrow(i).clone()
-        if exists(candidate.clone()) { return candidate }
+        if exists(candidate.clone()) { return cede candidate }
         i += 1
     }
     auto toka_lib = env::var(string::from("TOKA_LIB"))
@@ -25,7 +25,7 @@ fn package_helper_path() -> string {
             candidate#.push_str("/")
         }
         candidate#.push_str("toolchain/toka_package.py")
-        if exists(candidate.clone()) { return candidate }
+        if exists(candidate.clone()) { return cede candidate }
     }
     return string::from("")
 }
@@ -34,7 +34,7 @@ fn package_command(action: string) -> Command {
     auto command# = Command::new(string::from("python3"))
     command#.arg(package_helper_path())
     command#.arg(cede action.clone())
-    return command
+    return cede command
 }
 
 pub fn cmd_fetch() -> i32 {
@@ -104,12 +104,12 @@ pub fn cmd_remove(package_alias: string) -> i32 {
 
 pub fn build_pkg_mappings() -> Vec<string> {
     auto mappings# = Vec<string>::new()
-    if !exists(string::from("package.lock")) { return mappings }
+    if !exists(string::from("package.lock")) { return cede mappings }
     auto command# = package_command(string::from("compiler-mappings"))
     auto result = command#.output()
-    if result.is_err() { return mappings }
+    if result.is_err() { return cede mappings }
     auto output = result.unwrap()
-    if !output.status.success() { return mappings }
+    if !output.status.success() { return cede mappings }
     auto lines# = output.stdout.split('\n' as i32)
     loop !lines.is_done() {
         auto line = lines#.next()
@@ -117,23 +117,23 @@ pub fn build_pkg_mappings() -> Vec<string> {
             mappings#.push(cede line.clone())
         }
     }
-    return mappings
+    return cede mappings
 }
 
 pub fn build_pkg_node_mappings() -> Vec<string> {
     auto mappings# = Vec<string>::new()
-    if !exists(string::from("package.lock")) { return mappings }
+    if !exists(string::from("package.lock")) { return cede mappings }
     auto command# = package_command(string::from("compiler-node-mappings"))
     auto result = command#.output()
-    if result.is_err() { return mappings }
+    if result.is_err() { return cede mappings }
     auto output = result.unwrap()
-    if !output.status.success() { return mappings }
+    if !output.status.success() { return cede mappings }
     auto lines# = output.stdout.split('\n' as i32)
     loop !lines.is_done() {
         auto line = lines#.next()
         if !line.is_empty() { mappings#.push(cede line.clone()) }
     }
-    return mappings
+    return cede mappings
 }
 
 pub fn build_workspace_node() -> string {

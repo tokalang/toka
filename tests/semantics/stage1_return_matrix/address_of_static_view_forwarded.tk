@@ -1,0 +1,6 @@
+fn borrow_view(view: str) -> &str <- view { return &view }
+fn escaped() -> &str {
+    auto view = "static bytes"
+    return borrow_view(view)
+}
+fn main() -> i32 { return 0 }

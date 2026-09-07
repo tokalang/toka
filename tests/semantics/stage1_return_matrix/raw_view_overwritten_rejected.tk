@@ -1,0 +1,12 @@
+import core/memory::{copy_memory}
+
+fn invalid(data: [u8; 1]) -> str <- data {
+    auto view = ""
+    unsafe {
+        auto address = &(data[0]) as Addr
+        copy_memory(&view as Addr, &address as Addr, 8:usize)
+    }
+    return view
+}
+
+fn main() -> i32 { return 0 }

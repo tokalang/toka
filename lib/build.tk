@@ -40,7 +40,7 @@ fn json_write_string(s: str, buf#: string) {
     buf#.push_str(s)
     buf#.push_str("\"")
 }
-fn outputs_to_json(outputs: ModuleOutputs, buf#: string) -> string {
+fn outputs_to_json(outputs: ModuleOutputs, cede buf#: string) -> string {
     buf#.push_str("{\"interface\":")
     json_write_string(outputs.interface, buf#)
     buf#.push_str(",\"object\":")
@@ -48,11 +48,12 @@ fn outputs_to_json(outputs: ModuleOutputs, buf#: string) -> string {
     buf#.push_str(",\"executable\":")
     json_write_string(outputs.executable, buf#)
     buf#.push_str("}")
-    return buf
+    return cede buf
 }
 impl ModuleOutputs@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return __deserialize_nested_shape<ModuleOutputs>(self#, json)
+        auto result = __deserialize_nested_shape<ModuleOutputs>(self#, json)
+        return cede result
     }
 }
 
@@ -101,7 +102,7 @@ impl ModuleSnapshot {
     }
 }
 
-fn snapshot_to_json(snapshot: ModuleSnapshot, buf#: string) -> string {
+fn snapshot_to_json(snapshot: ModuleSnapshot, cede buf#: string) -> string {
     buf#.push_str("{\"kind\":")
     json_write_string(snapshot.kind, buf#)
     buf#.push_str(",\"fallback_triggered\":")
@@ -121,7 +122,7 @@ fn snapshot_to_json(snapshot: ModuleSnapshot, buf#: string) -> string {
     buf#.push_str(",\"content_hash\":")
     json_write_string(snapshot.content_hash, buf#)
     buf#.push_str(",\"outputs\":")
-    buf = outputs_to_json(snapshot.outputs.clone(), buf#)
+    buf = outputs_to_json(snapshot.outputs.clone(), cede buf)
     buf#.push_str(",\"dependencies\":[")
     auto i# = 0:usize
     loop i < snapshot.dependencies.len() {
@@ -130,12 +131,13 @@ fn snapshot_to_json(snapshot: ModuleSnapshot, buf#: string) -> string {
         i += 1
     }
     buf#.push_str("]}")
-    return buf
+    return cede buf
 }
 
 impl ModuleSnapshot@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return __deserialize_nested_shape<ModuleSnapshot>(self#, json)
+        auto result = __deserialize_nested_shape<ModuleSnapshot>(self#, json)
+        return cede result
     }
 }
 
@@ -177,7 +179,7 @@ impl DependencyManifest {
     }
 }
 
-fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
+fn manifest_to_json(manifest: DependencyManifest, cede buf#: string) -> string {
     buf#.push_str("{\"manifest_version\":")
     json_write_string(manifest.manifest_version, buf#)
     buf#.push_str(",\"roots\":[")
@@ -200,15 +202,16 @@ fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
         json_write_string(key, buf#)
         buf#.push_str(":")
         auto &val = entry.val()
-        buf = snapshot_to_json(val.clone(), buf#)
+        buf = snapshot_to_json(val.clone(), cede buf)
     }
     buf#.push_str("}}")
-    return buf
+    return cede buf
 }
 
 impl DependencyManifest@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return __deserialize_nested_shape<DependencyManifest>(self#, json)
+        auto result = __deserialize_nested_shape<DependencyManifest>(self#, json)
+        return cede result
     }
 }
 
@@ -250,12 +253,13 @@ fn info_to_json(info: RebuildModuleInfo) -> string {
         i += 1
     }
     buf#.push_str("]}")
-    return buf
+    return cede buf
 }
 
 impl RebuildModuleInfo@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return __deserialize_nested_shape<RebuildModuleInfo>(self#, json)
+        auto result = __deserialize_nested_shape<RebuildModuleInfo>(self#, json)
+        return cede result
     }
 }
 
@@ -325,12 +329,13 @@ fn plan_to_json('plan: RebuildPlan) -> string {
         buf#.push_str(info_str)
     }
     buf#.push_str("}}")
-    return buf
+    return cede buf
 }
 
 impl RebuildPlan@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return __deserialize_nested_shape<RebuildPlan>(self#, json)
+        auto result = __deserialize_nested_shape<RebuildPlan>(self#, json)
+        return cede result
     }
 }
 
@@ -487,7 +492,7 @@ fn check_dirty_recursive(
     {
         auto memo_opt = memo.try_borrow(node)
         if memo_opt.is_none() == false {
-            return cede memo_opt.unwrap().clone()
+            return memo_opt.unwrap().clone()
         }
     }
 

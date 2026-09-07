@@ -1,0 +1,7 @@
+fn escaped(input: str) -> &str <- input {
+    auto &#reference# = &input
+    auto view = "local descriptor"
+    &reference = &view
+    return &reference
+}
+fn main() -> i32 { return 0 }

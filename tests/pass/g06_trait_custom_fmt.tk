@@ -11,7 +11,7 @@ impl Point@ToString {
         s#.push_str(", y=")
         s#.push_str(self.y.to_string().as_str())
         s#.push_str(")")
-        return s
+        return cede s
     }
 }
 
@@ -24,7 +24,7 @@ impl Point@ToFormat {
             s#.push_str(",\"y\":")
             s#.push_str(self.y.to_string().as_str())
             s#.push_str("}")
-            return s
+            return cede s
         }
         return self.to_string()
     }

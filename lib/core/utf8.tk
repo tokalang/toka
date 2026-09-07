@@ -35,7 +35,8 @@ impl Cursor@Encap {
 
 impl Cursor {
     pub fn clone(self) -> Cursor <- self {
-        return Cursor(&buf = self.&buf, len = self.len, pos = self.pos)
+        auto result = Cursor(&buf = self.&buf, len = self.len, pos = self.pos)
+        return cede result
     }
     pub fn current_pos(self) -> usize {
         return self.pos
@@ -114,26 +115,32 @@ impl Cursor {
     pub fn next(self#) -> Option<Char32> {
         auto decoded = self#.next_decoded()
         if decoded.is_none() {
-            return Option<Char32>::None
+            auto result = Option<Char32>::None
+            return cede result
         }
-        return Option<Char32>::Some(decoded.unwrap().cp)
+        auto result = Option<Char32>::Some(decoded.unwrap().cp)
+        return cede result
     }
 
     pub fn next_decoded(self#) -> Option<Utf8Char> {
         if self.pos >= self.len {
-            return Option<Utf8Char>::None
+            auto result = Option<Utf8Char>::None
+            return cede result
         }
         auto result = self.decode_char()
         self.pos += result.bytes
-        return Option<Utf8Char>::Some(result)
+        auto value = Option<Utf8Char>::Some(result)
+        return cede value
     }
 
     pub fn peek(self) -> Option<Char32> {
         if self.pos >= self.len {
-            return Option<Char32>::None
+            auto result = Option<Char32>::None
+            return cede result
         }
         auto result = self.decode_char()
-        return Option<Char32>::Some(result.cp)
+        auto value = Option<Char32>::Some(result.cp)
+        return cede value
     }
 
     pub fn rewind(self#, k: usize) {

@@ -32,12 +32,13 @@ pub shape Token (
 
 impl Token {
     pub fn new(kind: TokenKind, lexeme: str, line: i32, col: i32) -> Token <- lexeme {
-        return Token(
+        auto result = Token(
             kind = kind,
             lexeme = lexeme,
             line = line,
             col = col
         )
+        return cede result
     }
 }
 
@@ -50,12 +51,13 @@ pub shape Lexer (
 
 impl Lexer {
     pub fn new(source: str) -> Lexer <- source {
-        return Lexer(
+        auto result = Lexer(
             source = source,
             pos = 0,
             line = 1,
             col = 1
         )
+        return cede result
     }
 
     fn peek(self) -> char {
@@ -104,7 +106,8 @@ impl Lexer {
 
     pub fn next_token(self#) -> Token <- self {
         if self.is_eof() {
-            return Token::new(TokenKind::EOF(), _str_cast(""), self.line, self.col)
+            auto result = Token::new(TokenKind::EOF(), _str_cast(""), self.line, self.col)
+            return cede result
         }
 
         auto start_line = self.line
@@ -118,7 +121,8 @@ impl Lexer {
                 self#.advance()
             }
             auto ws = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::Whitespace(), ws, start_line, start_col)
+            auto result = Token::new(TokenKind::Whitespace(), ws, start_line, start_col)
+            return cede result
         }
 
         // Block Comments
@@ -135,7 +139,8 @@ impl Lexer {
                 self#.advance()
             }
             auto comm = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::Comment(), comm, start_line, start_col)
+            auto result = Token::new(TokenKind::Comment(), comm, start_line, start_col)
+            return cede result
         }
 
         // Line Comments
@@ -145,7 +150,8 @@ impl Lexer {
                 self#.advance()
             }
             auto comm = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::Comment(), comm, start_line, start_col)
+            auto result = Token::new(TokenKind::Comment(), comm, start_line, start_col)
+            return cede result
         }
 
         // Identifier or Keyword
@@ -161,7 +167,8 @@ impl Lexer {
             if ident.equals("fn") || ident.equals("return") || ident.equals("auto") || ident.equals("shape") || ident.equals("impl") {
                 kind = TokenKind::Keyword()
             }
-            return Token::new(kind, ident, start_line, start_col)
+            auto result = Token::new(kind, ident, start_line, start_col)
+            return cede result
         }
 
         // Number
@@ -179,7 +186,8 @@ impl Lexer {
                 }
             }
             auto num = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::Number(), num, start_line, start_col)
+            auto result = Token::new(TokenKind::Number(), num, start_line, start_col)
+            return cede result
         }
 
         // string Literal
@@ -196,7 +204,8 @@ impl Lexer {
                 self#.advance() // Consume closing quote
             }
             auto str_val = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::StringLit(), str_val, start_line, start_col)
+            auto result = Token::new(TokenKind::StringLit(), str_val, start_line, start_col)
+            return cede result
         }
         
         // Single Character Literal or Morphology
@@ -211,7 +220,8 @@ impl Lexer {
                 self#.advance()
             }
             auto str_val2 = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::CharLit(), str_val2, start_line, start_col)
+            auto result = Token::new(TokenKind::CharLit(), str_val2, start_line, start_col)
+            return cede result
         }
 
         // Delimiters
@@ -219,7 +229,8 @@ impl Lexer {
             auto start_idx = self.pos
             self#.advance()
             auto delim_str = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::Delimiter(), delim_str, start_line, start_col)
+            auto result = Token::new(TokenKind::Delimiter(), delim_str, start_line, start_col)
+            return cede result
         }
 
         // Operators & Morphology
@@ -243,7 +254,8 @@ impl Lexer {
             self#.advance()
         }
         auto op = self.source.substring(start_idx_op as usize, self.pos as usize)
-        return Token::new(TokenKind::Operator(), op, start_line, start_col)
+        auto result = Token::new(TokenKind::Operator(), op, start_line, start_col)
+        return cede result
     }
 }
 
@@ -259,13 +271,14 @@ pub shape Printer (
 
 impl Printer {
     pub fn new() -> Printer {
-        return Printer(
+        auto result = Printer(
             indent_level = 0,
             output = string::from(""),
             needs_indent = false,
             in_shape = false,
             paren_depth = 0
         )
+        return cede result
     }
 
     fn push_indent(self#) {
@@ -507,7 +520,7 @@ fn join_path(parent: string, child: string) -> string {
         result#.push_str("/")
     }
     result#.push_str(child.as_str())
-    return result
+    return cede result
 }
 
 fn format_file(path: string, write: bool, check: bool) -> i32 {

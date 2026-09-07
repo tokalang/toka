@@ -1,0 +1,10 @@
+fn invalid(a: i32) -> result: (left: &i32, right: &i32)
+effects:
+    result.left <- a
+    result.right <- a
+{
+    auto local = 9
+    return (left = &a, right = &local)
+}
+
+fn main() -> i32 { return 0 }

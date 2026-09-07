@@ -1,0 +1,11 @@
+shape Cell(value: i32)
+
+fn make() -> ^Cell {
+    auto ^cell = new Cell(value = 7:i32)
+    return cede ^cell
+}
+
+fn main() -> i32 {
+    auto ^cell = make()
+    return cell.value - 7:i32
+}

@@ -1,0 +1,5 @@
+fn escaped() -> &str {
+    auto view = "static bytes"
+    return &view
+}
+fn main() -> i32 { return 0 }

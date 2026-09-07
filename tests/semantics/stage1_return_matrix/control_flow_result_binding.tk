@@ -1,0 +1,35 @@
+auto g_drops# = 0
+
+shape Token(id: i32)
+
+impl Token@Encap {
+    pub id
+    fn drop(self#) { g_drops += 1 }
+}
+
+fn from_match(flag: bool) -> Token {
+    auto result = match flag {
+        true => pass Token(id = 7)
+        _ => pass Token(id = 9)
+    }
+    return cede result
+}
+
+fn from_for() -> i32 {
+    auto result = for auto value in [11] {
+        pass value
+    } or {
+        pass 13
+    }
+    return result
+}
+
+fn main() -> i32 {
+    {
+        auto first = from_match(true)
+        if first.id != 7 { return 1 }
+    }
+    if from_for() != 11 { return 2 }
+    if g_drops != 1 { return 3 }
+    return 0
+}

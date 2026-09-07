@@ -20,7 +20,7 @@ impl<'T> Option<'T> {
 
     pub fn unwrap(cede self) -> 'T <- self {
         match cede self {
-            auto Option<'T>::Some('val) => return 'val
+            auto Option<'T>::Some('val) => return cede 'val
             _ => {
                 libc_exit(1)
                 unreachable
@@ -28,10 +28,10 @@ impl<'T> Option<'T> {
         }
     }
 
-    pub fn unwrap_or(cede self, 'def_val: T) -> 'T <- self | 'def_val {
+    pub fn unwrap_or(cede self, cede 'def_val: T) -> 'T <- self | 'def_val {
         match cede self {    
-            auto Option<'T>::Some('val) => return 'val
-            _ => return 'def_val
+            auto Option<'T>::Some('val) => return cede 'val
+            _ => return cede 'def_val
         }
     }
 }

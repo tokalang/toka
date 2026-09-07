@@ -1,0 +1,7 @@
+fn invoke(callback: fn() -> cede i32) -> i32 {
+    return callback()
+}
+
+fn main() -> i32 {
+    return invoke({ => 7:i32 }:fn() -> i32) - 7:i32
+}

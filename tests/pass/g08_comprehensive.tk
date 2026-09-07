@@ -113,7 +113,7 @@ fn color_to_hex(c: Color) -> i32 {
     // ADT Pattern Matching with Destructuring
     // Note: Implicitly namespaced variants or explicit?
     // Using matches with 'Color::' prefix for clarity
-    return match c {
+    auto result = match c {
         Color::Red => pass 0xFF0000
         Color::Green => pass 0x00FF00
         Color::Blue => pass 0x0000FF
@@ -122,6 +122,7 @@ fn color_to_hex(c: Color) -> i32 {
             pass (r as i32) * 65536 + (g as i32) * 256 + (b as i32)
         }
     }
+    return result
 }
 
 // --- 6. Main Execution ---

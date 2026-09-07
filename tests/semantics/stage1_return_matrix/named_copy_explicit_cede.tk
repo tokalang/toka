@@ -1,0 +1,8 @@
+fn make() -> i32 {
+    auto value = 7:i32
+    return cede value
+}
+
+fn main() -> i32 {
+    return make() - 7:i32
+}

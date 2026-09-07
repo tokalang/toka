@@ -38,7 +38,7 @@ impl Arena {
      * Allocate aligned memory inside the arena chunk pool.
      * All allocations are automatically aligned to 8 bytes for 64-bit platforms.
      */
-    pub fn alloc_bytes(self#, size: usize) -> Addr {
+    pub fn alloc_bytes(self#, size: usize) -> Addr <- self {
         if size == 0:usize {
             return ADDR0
         }
@@ -141,7 +141,8 @@ impl Arena {
 pub fn alloc_type<'T>(arena#: Arena) -> nul *'T {
     auto size = sizeof('T)
     auto addr = arena#.alloc_bytes(size)
-    return addr as nul *'T
+    auto nul *result = addr as nul *'T
+    return *result
 }
 
 /**
@@ -150,7 +151,8 @@ pub fn alloc_type<'T>(arena#: Arena) -> nul *'T {
 pub fn alloc_array<'T>(arena#: Arena, count: usize) -> nul *'T {
     auto size = sizeof('T) * count
     auto addr = arena#.alloc_bytes(size)
-    return addr as nul *'T
+    auto nul *result = addr as nul *'T
+    return *result
 }
 
 /**
@@ -166,10 +168,7 @@ pub fn alloc_str(arena#: Arena, s: str) -> str <- arena | s {
     }
     unsafe {
         libc_memcpy(addr as *void, s.raw_ptr() as *void, s.len())
-        auto ret# = s.clone()
-        auto ptr_addr = addr
-        libc_memcpy(&ret as *void, &ptr_addr as *void, 8)
-        return ret
+        return str(&buf = (addr as *[char]) as &[char], len = s.len())
     }
 }
 

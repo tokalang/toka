@@ -187,7 +187,7 @@ impl<'T: @ToJson, 'E: @ToJson> Result<'T, 'E>@ToJson {
 pub fn to_json<'T: @ToJson>('obj: T) -> string {
     auto res# = string::from("")
     'obj.write_json(res#)
-    return res
+    return cede res
 }
 
 // --- FromJson Trait ---
@@ -204,7 +204,7 @@ pub fn json_skip_whitespace(json: str) -> str <- json {
             res = res.substr(1, res.len() - 1)
         } else { break }
     }
-    return res
+    return cede res
 }
 
 fn _str_cast(s: str) -> str <- s {
@@ -214,7 +214,10 @@ fn _str_cast(s: str) -> str <- s {
 impl i32@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         auto rem# = json_skip_whitespace(json)
-        if rem.len() == 0 { return JsonRes::Err("EOF") }
+        if rem.len() == 0 {
+            auto outcome_217 = JsonRes::Err("EOF")
+            return cede outcome_217
+        }
         auto i# = 0:usize
         auto neg# = false
         if rem.byte_at(0) == 45 { neg = true; i = 1 }
@@ -228,10 +231,14 @@ impl i32@FromJson {
                 i = i + 1
             } else { break }
         }
-        if !found { return JsonRes::Err("Invalid i32") }
+        if !found {
+            auto outcome_231 = JsonRes::Err("Invalid i32")
+            return cede outcome_231
+        }
         if neg { val = 0 - val }
         self = val
-        return JsonRes::Ok(rem.substr(i, rem.len() - i))
+        auto outcome_234 = JsonRes::Ok(rem.substr(i, rem.len() - i))
+        return cede outcome_234
     }
 }
 
@@ -240,23 +247,33 @@ impl bool@FromJson {
         auto rem = json_skip_whitespace(json)
         if rem.starts_with("true") {
             self = true
-            return JsonRes::Ok(rem.substr(4, rem.len() - 4))
+            auto outcome_243 = JsonRes::Ok(rem.substr(4, rem.len() - 4))
+            return cede outcome_243
         } else if rem.starts_with("false") {
             self = false
-            return JsonRes::Ok(rem.substr(5, rem.len() - 5))
+            auto outcome_246 = JsonRes::Ok(rem.substr(5, rem.len() - 5))
+            return cede outcome_246
         }
-        return JsonRes::Err("Invalid bool")
+        auto outcome_248 = JsonRes::Err("Invalid bool")
+        return cede outcome_248
     }
 }
 
 pub fn json_skip_value(json_in: str) -> JsonRes <- json_in {
-    return _json_skip_value(json_in, 0)
+    auto result = _json_skip_value(json_in, 0)
+    return cede result
 }
 
 fn _json_skip_value(json_in: str, depth: usize) -> JsonRes <- json_in {
-    if depth > 128 { return JsonRes::Err("Depth limit exceeded") }
+    if depth > 128 {
+        auto outcome_257 = JsonRes::Err("Depth limit exceeded")
+        return cede outcome_257
+    }
     auto json# = json_skip_whitespace(json_in)
-    if json.len() == 0 { return JsonRes::Err("Unexpected EOF") }
+    if json.len() == 0 {
+        auto outcome_259 = JsonRes::Err("Unexpected EOF")
+        return cede outcome_259
+    }
     
     auto c = json.byte_at(0)
     if c == 123 { // '{'
@@ -272,7 +289,8 @@ fn _json_skip_value(json_in: str, depth: usize) -> JsonRes <- json_in {
             if json.len() > 0 && json.byte_at(0) == 44 { json = json.substr(1, json.len() - 1) }
         }
         if json.len() > 0 { json = json.substr(1, json.len() - 1) }
-        return JsonRes::Ok(json)
+        auto outcome_275 = JsonRes::Ok(json)
+        return cede outcome_275
     } else if c == 91 { // '['
         json = json.substr(1, json.len() - 1)
         loop json.len() > 0 && json.byte_at(0) != 93 {
@@ -283,16 +301,21 @@ fn _json_skip_value(json_in: str, depth: usize) -> JsonRes <- json_in {
             if json.len() > 0 && json.byte_at(0) == 44 { json = json.substr(1, json.len() - 1) }
         }
         if json.len() > 0 { json = json.substr(1, json.len() - 1) }
-        return JsonRes::Ok(json)
+        auto outcome_286 = JsonRes::Ok(json)
+        return cede outcome_286
     } else if c == 34 { // '"'
         auto i# = 1:usize
         loop i < json.len() {
             auto ch = json.byte_at(i)
-            if ch == 34 { return JsonRes::Ok(json.substr(i + 1, json.len() - i - 1)) }
+            if ch == 34 {
+                auto outcome_291 = JsonRes::Ok(json.substr(i + 1, json.len() - i - 1))
+                return cede outcome_291
+            }
             if ch == 92 { i += 1 }
             i += 1
         }
-        return JsonRes::Err("Unterminated string")
+        auto outcome_295 = JsonRes::Err("Unterminated string")
+        return cede outcome_295
     } else {
         auto i# = 0:usize
         loop i < json.len() {
@@ -300,7 +323,8 @@ fn _json_skip_value(json_in: str, depth: usize) -> JsonRes <- json_in {
             if b == 32 || b == 10 || b == 13 || b == 9 || b == 44 || b == 125 || b == 93 { break }
             i += 1
         }
-        return JsonRes::Ok(json.substr(i, json.len() - i))
+        auto outcome_303 = JsonRes::Ok(json.substr(i, json.len() - i))
+        return cede outcome_303
     }
 }
 
@@ -344,7 +368,8 @@ impl f64@FromJson {
             if exp != 0.0 { result = result * math::pow(10.0, exp * exp_sign) }
         }
         self = sign * result
-        return JsonRes::Ok(skip_res)
+        auto outcome_347 = JsonRes::Ok(skip_res)
+        return cede outcome_347
     }
 }
 
@@ -383,7 +408,10 @@ fn json_push_utf8(str#: string, cp: u32) {
 impl string@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         auto rem = json_skip_whitespace(json)
-        if rem.len() == 0 || rem.byte_at(0) != 34 { return JsonRes::Err("Expected string") }
+        if rem.len() == 0 || rem.byte_at(0) != 34 {
+            auto outcome_386 = JsonRes::Err("Expected string")
+            return cede outcome_386
+        }
         auto i# = 1:usize
         auto closed# = false
         loop i < rem.len() {
@@ -392,7 +420,10 @@ impl string@FromJson {
             if c == 92 { i += 1 }
             i += 1
         }
-        if !closed { return JsonRes::Err("Unterminated string") }
+        if !closed {
+            auto outcome_395 = JsonRes::Err("Unterminated string")
+            return cede outcome_395
+        }
         auto new_str# = string::from("")
         auto j# = 1:usize
         loop j < i {
@@ -424,25 +455,31 @@ impl string@FromJson {
             j += 1
         }
         self = cede new_str
-        return JsonRes::Ok(rem.substr(i + 1, rem.len() - i - 1))
+        auto outcome_427 = JsonRes::Ok(rem.substr(i + 1, rem.len() - i - 1))
+        return cede outcome_427
     }
 }
 
 impl str@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         auto rem = json_skip_whitespace(json)
-        if rem.len() == 0 || rem.byte_at(0) != 34 { return JsonRes::Err("Expected string") }
+        if rem.len() == 0 || rem.byte_at(0) != 34 {
+            auto outcome_434 = JsonRes::Err("Expected string")
+            return cede outcome_434
+        }
         auto i# = 1:usize
         loop i < rem.len() {
             auto c = rem.byte_at(i)
             if c == 34 {
                 self = rem.substr(1, i - 1)
-                return JsonRes::Ok(rem.substr(i + 1, rem.len() - i - 1))
+                auto outcome_440 = JsonRes::Ok(rem.substr(i + 1, rem.len() - i - 1))
+                return cede outcome_440
             }
             if c == 92 { i += 1 }
             i += 1
         }
-        return JsonRes::Err("Unterminated string")
+        auto outcome_445 = JsonRes::Err("Unterminated string")
+        return cede outcome_445
     }
 }
 
@@ -451,7 +488,8 @@ impl<'T: @FromJson> Option<'T>@FromJson {
         auto rem# = json_skip_whitespace(json)
         if rem.starts_with("null") {
             self = Option<'T>::None
-            return JsonRes::Ok(rem.substr(4, rem.len() - 4))
+            auto outcome_454 = JsonRes::Ok(rem.substr(4, rem.len() - 4))
+            return cede outcome_454
         }
         
         unsafe {
@@ -464,11 +502,13 @@ impl<'T: @FromJson> Option<'T>@FromJson {
                     rem = rem.substr(consumed, rem.len() - consumed)
                     self = Option<'T>::Some(cede buf[0])
                     unsafe free [0] *buf
-                    return JsonRes::Ok(rem)
+                    auto outcome_467 = JsonRes::Ok(rem)
+                    return cede outcome_467
                 }
                 auto Result<str, str>::Err('e) => {
                     unsafe free [0] *buf
-                    return JsonRes::Err('e)
+                    auto outcome_471 = JsonRes::Err('e)
+                    return cede outcome_471
                 }
             }
         }
@@ -478,14 +518,20 @@ impl<'T: @FromJson> Option<'T>@FromJson {
 impl<'T: @FromJson, 'E: @FromJson> Result<'T, 'E>@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         auto rem# = json_skip_whitespace(json)
-        if rem.len() == 0 || rem.byte_at(0) != 123 { return JsonRes::Err("Expected { for Result") }
+        if rem.len() == 0 || rem.byte_at(0) != 123 {
+            auto outcome_481 = JsonRes::Err("Expected { for Result")
+            return cede outcome_481
+        }
         rem = rem.substr(1, rem.len() - 1)
         rem = json_skip_whitespace(rem)
         
         auto key# = string::new()
         rem = key#.parse_json(rem)!
         rem = json_skip_whitespace(rem)
-        if rem.len() == 0 || rem.byte_at(0) != 58 { return JsonRes::Err("Expected : for Result") }
+        if rem.len() == 0 || rem.byte_at(0) != 58 {
+            auto outcome_488 = JsonRes::Err("Expected : for Result")
+            return cede outcome_488
+        }
         rem = rem.substr(1, rem.len() - 1)
         
         unsafe {
@@ -502,7 +548,8 @@ impl<'T: @FromJson, 'E: @FromJson> Result<'T, 'E>@FromJson {
                     }
                     auto Result<str, str>::Err('e) => {
                         unsafe free [0] *buf
-                        return JsonRes::Err('e)
+                        auto outcome_505 = JsonRes::Err('e)
+                        return cede outcome_505
                     }
                 }
             } else if key.as_str().equals("Err") {
@@ -518,24 +565,33 @@ impl<'T: @FromJson, 'E: @FromJson> Result<'T, 'E>@FromJson {
                     }
                     auto Result<str, str>::Err('e) => {
                         unsafe free [0] *e_buf
-                        return JsonRes::Err('e)
+                        auto outcome_521 = JsonRes::Err('e)
+                        return cede outcome_521
                     }
                 }
             } else {
-                return JsonRes::Err("Invalid key for Result")
+                auto outcome_525 = JsonRes::Err("Invalid key for Result")
+                return cede outcome_525
             }
         }
         
         rem = json_skip_whitespace(rem)
-        if rem.len() == 0 || rem.byte_at(0) != 125 { return JsonRes::Err("Expected } for Result") }
-        return JsonRes::Ok(rem.substr(1, rem.len() - 1))
+        if rem.len() == 0 || rem.byte_at(0) != 125 {
+            auto outcome_530 = JsonRes::Err("Expected } for Result")
+            return cede outcome_530
+        }
+        auto outcome_531 = JsonRes::Ok(rem.substr(1, rem.len() - 1))
+        return cede outcome_531
     }
 }
 
 impl<'K: @FromJson, 'V: @FromJson> HashMap<'K, 'V>@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         auto res# = json_skip_whitespace(json)
-        if res.len() == 0 || res.byte_at(0) != 123 { return JsonRes::Err("Expected { for HashMap") }
+        if res.len() == 0 || res.byte_at(0) != 123 {
+            auto outcome_538 = JsonRes::Err("Expected { for HashMap")
+            return cede outcome_538
+        }
         res = res.substr(1, res.len() - 1)
         self = HashMap<'K, 'V>::new()
         auto first# = true
@@ -543,7 +599,10 @@ impl<'K: @FromJson, 'V: @FromJson> HashMap<'K, 'V>@FromJson {
             res = json_skip_whitespace(res)
             if res.len() > 0 && res.byte_at(0) == 125 { res = res.substr(1, res.len() - 1); break }
             if !first {
-                if res.len() == 0 || res.byte_at(0) != 44 { return JsonRes::Err("Expected ,") }
+                if res.len() == 0 || res.byte_at(0) != 44 {
+                    auto outcome_546 = JsonRes::Err("Expected ,")
+                    return cede outcome_546
+                }
                 res = res.substr(1, res.len() - 1)
                 res = json_skip_whitespace(res)
             }
@@ -561,7 +620,8 @@ impl<'K: @FromJson, 'V: @FromJson> HashMap<'K, 'V>@FromJson {
                         if res.len() == 0 || res.byte_at(0) != 58 {
                             auto _k = cede k_buf[0]
                             unsafe free [0] *k_buf
-                            return JsonRes::Err("Expected :")
+                            auto outcome_564 = JsonRes::Err("Expected :")
+                            return cede outcome_564
                         }
                         res = res.substr(1, res.len() - 1)
 
@@ -580,24 +640,30 @@ impl<'K: @FromJson, 'V: @FromJson> HashMap<'K, 'V>@FromJson {
                                 auto _k = cede k_buf[0]
                                 unsafe free [0] *k_buf
                                 unsafe free [0] *v_buf
-                                return JsonRes::Err('e)
+                                auto outcome_583 = JsonRes::Err('e)
+                                return cede outcome_583
                             }
                         }
                     }
                     auto Result<str, str>::Err('e) => {
                         unsafe free [0] *k_buf
-                        return JsonRes::Err('e)
+                        auto outcome_589 = JsonRes::Err('e)
+                        return cede outcome_589
                     }
                 }
             }
         }
-        return JsonRes::Ok(res)
+        auto outcome_594 = JsonRes::Ok(res)
+        return cede outcome_594
     }
 }
 impl<'T: @FromJson> Vec<'T>@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         auto res# = json_skip_whitespace(json)
-        if res.len() == 0 || res.byte_at(0) != 91 { return JsonRes::Err("Expected [") }
+        if res.len() == 0 || res.byte_at(0) != 91 {
+            auto outcome_600 = JsonRes::Err("Expected [")
+            return cede outcome_600
+        }
         res = res.substr(1, res.len() - 1)
         self = Vec<'T>::new()
         auto first# = true
@@ -605,7 +671,10 @@ impl<'T: @FromJson> Vec<'T>@FromJson {
             res = json_skip_whitespace(res)
             if res.len() > 0 && res.byte_at(0) == 93 { res = res.substr(1, res.len() - 1); break }
             if !first {
-                if res.len() == 0 || res.byte_at(0) != 44 { return JsonRes::Err("Expected ,") }
+                if res.len() == 0 || res.byte_at(0) != 44 {
+                    auto outcome_608 = JsonRes::Err("Expected ,")
+                    return cede outcome_608
+                }
                 res = res.substr(1, res.len() - 1)
                 res = json_skip_whitespace(res)
             }
@@ -623,18 +692,23 @@ impl<'T: @FromJson> Vec<'T>@FromJson {
                     }
                     auto Result<str, str>::Err('e) => {
                         unsafe free [0] *item_buf
-                        return JsonRes::Err('e)
+                        auto outcome_626 = JsonRes::Err('e)
+                        return cede outcome_626
                     }
                 }
             }
         }
-        return JsonRes::Ok(res)
+        auto outcome_631 = JsonRes::Ok(res)
+        return cede outcome_631
     }
 }
 
 pub fn deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- json_str {
     auto res# = json_skip_whitespace(json_str)
-    if res.len() == 0 || res.byte_at(0) != 123 { return JsonRes::Err("Expected {") }
+    if res.len() == 0 || res.byte_at(0) != 123 {
+        auto outcome_637 = JsonRes::Err("Expected {")
+        return cede outcome_637
+    }
     res = res.substr(1, res.len() - 1)
     
     auto first# = true
@@ -642,7 +716,10 @@ pub fn deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- json_
         res = json_skip_whitespace(res)
         if res.len() > 0 && res.byte_at(0) == 125 { res = res.substr(1, res.len() - 1); break }
         if !first {
-            if res.len() == 0 || res.byte_at(0) != 44 { return JsonRes::Err("Expected ,") }
+            if res.len() == 0 || res.byte_at(0) != 44 {
+                auto outcome_645 = JsonRes::Err("Expected ,")
+                return cede outcome_645
+            }
             res = res.substr(1, res.len() - 1)
         }
         first = false
@@ -650,7 +727,10 @@ pub fn deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- json_
         auto key_view# = ""
         res = key_view#.parse_json(res)!
         res = json_skip_whitespace(res)
-        if res.len() == 0 || res.byte_at(0) != 58 { return JsonRes::Err("Expected :") }
+        if res.len() == 0 || res.byte_at(0) != 58 {
+            auto outcome_653 = JsonRes::Err("Expected :")
+            return cede outcome_653
+        }
         res = res.substr(1, res.len() - 1)
         auto found# = false
         for auto f in reflect<'T>().fields {
@@ -664,12 +744,16 @@ pub fn deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- json_
         }
         if !found { res = json_skip_value(res)! }
     }
-    return JsonRes::Ok(res)
+    auto outcome_667 = JsonRes::Ok(res)
+    return cede outcome_667
 }
 
 pub fn deserialize_shape<'T>(json_str: str) -> Result<'T, str> {
     auto res# = json_skip_whitespace(json_str)
-    if res.len() == 0 || res.byte_at(0) != 123 { return Result<'T, str>::Err("Expected {") }
+    if res.len() == 0 || res.byte_at(0) != 123 {
+        auto outcome = Result<'T, str>::Err("Expected {")
+        return cede outcome
+    }
     res = res.substr(1, res.len() - 1)
     
     auto 'obj# = 'T(..)
@@ -678,7 +762,10 @@ pub fn deserialize_shape<'T>(json_str: str) -> Result<'T, str> {
         res = json_skip_whitespace(res)
         if res.len() > 0 && res.byte_at(0) == 125 { res = res.substr(1, res.len() - 1); break }
         if !first {
-            if res.len() == 0 || res.byte_at(0) != 44 { return Result<'T, str>::Err("Expected ,") }
+            if res.len() == 0 || res.byte_at(0) != 44 {
+                auto outcome = Result<'T, str>::Err("Expected ,")
+                return cede outcome
+            }
             res = res.substr(1, res.len() - 1)
         }
         first = false
@@ -686,7 +773,10 @@ pub fn deserialize_shape<'T>(json_str: str) -> Result<'T, str> {
         auto key_view# = ""
         res = key_view#.parse_json(res)!
         res = json_skip_whitespace(res)
-        if res.len() == 0 || res.byte_at(0) != 58 { return Result<'T, str>::Err("Expected :") }
+        if res.len() == 0 || res.byte_at(0) != 58 {
+            auto outcome = Result<'T, str>::Err("Expected :")
+            return cede outcome
+        }
         res = res.substr(1, res.len() - 1)
         auto found# = false
         for auto f in reflect<'T>().fields {
@@ -700,20 +790,28 @@ pub fn deserialize_shape<'T>(json_str: str) -> Result<'T, str> {
         }
         if !found { res = json_skip_value(res)! }
     }
-    return Result<'T, str>::Ok(cede 'obj)
+    auto outcome = Result<'T, str>::Ok(cede 'obj)
+    return cede outcome
 }
 
 impl JsonNode@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return self#.parse_json_internal(json, 0)
+        auto result = self#.parse_json_internal(json, 0)
+        return cede result
     }
 }
 
 impl JsonNode {
     pub fn parse_json_internal(self#, json_in: str, depth: usize) -> JsonRes <- json_in {
-        if depth > 128 { return JsonRes::Err("Depth limit exceeded") }
+        if depth > 128 {
+            auto outcome_714 = JsonRes::Err("Depth limit exceeded")
+            return cede outcome_714
+        }
         auto rem# = json_skip_whitespace(json_in)
-        if rem.len() == 0 { return JsonRes::Err("Unexpected EOF") }
+        if rem.len() == 0 {
+            auto outcome_716 = JsonRes::Err("Unexpected EOF")
+            return cede outcome_716
+        }
         
         auto c = rem.byte_at(0)
         if c == 123 { // '{'
@@ -724,7 +822,10 @@ impl JsonNode {
                 rem = json_skip_whitespace(rem)
                 if rem.len() > 0 && rem.byte_at(0) == 125 { rem = rem.substr(1, rem.len() - 1); break }
                 if !first {
-                    if rem.len() == 0 || rem.byte_at(0) != 44 { return JsonRes::Err("Expected ,") }
+                    if rem.len() == 0 || rem.byte_at(0) != 44 {
+                        auto outcome_727 = JsonRes::Err("Expected ,")
+                        return cede outcome_727
+                    }
                     rem = rem.substr(1, rem.len() - 1)
                     rem = json_skip_whitespace(rem)
                 }
@@ -732,14 +833,18 @@ impl JsonNode {
                 auto key# = string::from("")
                 rem = key#.parse_json(rem)!
                 rem = json_skip_whitespace(rem)
-                if rem.len() == 0 || rem.byte_at(0) != 58 { return JsonRes::Err("Expected :") }
+                if rem.len() == 0 || rem.byte_at(0) != 58 {
+                    auto outcome_735 = JsonRes::Err("Expected :")
+                    return cede outcome_735
+                }
                 rem = rem.substr(1, rem.len() - 1)
                 auto val# = JsonNode::NullNode(0):JsonNode
                 rem = val#.parse_json_internal(rem, depth + 1)!
                 map#.insert(cede key, cede val)
             }
             self = JsonNode::ObjectNode(cede map)
-            return JsonRes::Ok(rem)
+            auto outcome_742 = JsonRes::Ok(rem)
+            return cede outcome_742
         } else if c == 91 { // '['
             auto arr# = Vec<JsonNode>::new()
             rem = rem.substr(1, rem.len() - 1)
@@ -748,7 +853,10 @@ impl JsonNode {
                 rem = json_skip_whitespace(rem)
                 if rem.len() > 0 && rem.byte_at(0) == 93 { rem = rem.substr(1, rem.len() - 1); break }
                 if !first {
-                    if rem.len() == 0 || rem.byte_at(0) != 44 { return JsonRes::Err("Expected ,") }
+                    if rem.len() == 0 || rem.byte_at(0) != 44 {
+                        auto outcome_751 = JsonRes::Err("Expected ,")
+                        return cede outcome_751
+                    }
                     rem = rem.substr(1, rem.len() - 1)
                     rem = json_skip_whitespace(rem)
                 }
@@ -758,25 +866,30 @@ impl JsonNode {
                 arr#.push(cede val)
             }
             self = JsonNode::ArrayNode(cede arr)
-            return JsonRes::Ok(rem)
+            auto outcome_761 = JsonRes::Ok(rem)
+            return cede outcome_761
         } else if c == 34 { // '"'
             auto s# = string::from("")
             rem = s#.parse_json(rem)!
             self = JsonNode::StrNode(cede s)
-            return JsonRes::Ok(rem)
+            auto outcome_766 = JsonRes::Ok(rem)
+            return cede outcome_766
         } else if rem.starts_with("true") || rem.starts_with("false") {
             auto b# = false
             rem = b#.parse_json(rem)!
             self = JsonNode::BoolNode(b)
-            return JsonRes::Ok(rem)
+            auto outcome_771 = JsonRes::Ok(rem)
+            return cede outcome_771
         } else if rem.starts_with("null") {
             self = JsonNode::NullNode(0)
-            return JsonRes::Ok(rem.substr(4, rem.len() - 4))
+            auto outcome_774 = JsonRes::Ok(rem.substr(4, rem.len() - 4))
+            return cede outcome_774
         } else {
             auto f# = 0.0
             rem = f#.parse_json(rem)!
             self = JsonNode::NumNode(f)
-            return JsonRes::Ok(rem)
+            auto outcome_779 = JsonRes::Ok(rem)
+            return cede outcome_779
         }
     }
 }

@@ -76,6 +76,10 @@ struct SymbolInfo {
   // BorrowedFrom for legacy lifetime/dependency bookkeeping, which names the
   // root binding only and therefore cannot distinguish indexed projections.
   AccessPath BorrowedPath;
+  // Return/source provenance of the current reference value. Absence is an
+  // untracked declaration; an empty set is explicitly unknown, never permission
+  // to replay an old initializer. Kept separate from legacy PAL alias metadata.
+  std::optional<std::vector<AccessPath>> CurrentReferenceTargets;
   std::set<std::string> LifeDependencySet; // [NEW] Shadow Dependency Set
   std::map<std::string, std::set<std::string>> FieldDependencySet; // [NEW] Member-specific deps
 
@@ -715,6 +719,12 @@ private:
   AuthorityFactsAuditSession *m_AuthorityFactsSession = nullptr;
   bool m_EnableSignatureDrivenCallCede = true;
   bool m_EnableStage1ExplicitCallerCede = true;
+  // Audit-only spelling, separate from the executable callable contract.
+  std::set<const CallExpr *> m_AuditCedeWrappedCalls;
+  // Monotonic invalidation: an assignment or raw-address exposure prevents
+  // recovering a local's provenance from its original initializer.
+  std::set<uint64_t> m_ReturnSourceInvalidatedRoots;
+  std::set<uint64_t> m_ReturnSourceUnknownRoots;
   bool m_WarnImplicitCallMove = false;
   bool m_InjectMissingCallTransferElaboration = false;
   bool m_MissingCallTransferFaultConsumed = false;
@@ -756,6 +766,8 @@ private:
     // Editor-only incompleteness state.  It follows local value flow but
     // never grants an operation or substitutes for PAL.
     std::map<std::string, std::set<uint64_t>> ConditionalTodoIds;
+    std::map<std::string, std::pair<std::optional<std::vector<AccessPath>>,
+                                   std::set<std::string>>> ReferenceTargets;
     // Path-local shared-flow ceilings survive control-flow joins.  Presence
     // means that at least one reachable path has installed a direct source
     // whose payload is not writable; the conservative join keeps that
@@ -889,7 +901,8 @@ private:
       Expr *Argument, const std::shared_ptr<Type> &ArgumentType,
       const CallTransferPlan &LegacyShadowPlan,
       const AnalysisState *SnapshotState = nullptr,
-      uint64_t SnapshotRevision = 0, bool ReadOnlyTypes = false);
+      uint64_t SnapshotRevision = 0, bool ReadOnlyTypes = false,
+      bool UsePreparedReturnReferent = false);
   TransferCopyProof queryExplicitCedeStage0CopyProof(
       const std::shared_ptr<Type> &Type);
   struct Stage0CallSnapshot;
@@ -906,7 +919,8 @@ private:
       const std::string &Boundary, Expr *DestinationValue = nullptr,
       const Stage0CallSnapshot *ProvidedSnapshot = nullptr,
       const std::string &GroupIdentity = {}, const std::string &Edge = {},
-      unsigned EdgeIndex = 0);
+      unsigned EdgeIndex = 0, bool DeferBareIncompleteEvidence = false,
+      bool NormalSemaValidated = false);
   std::string
   makeExplicitCedeStage0NonCallGroupIdentity(ASTNode *Site,
                                              const std::string &Boundary);
@@ -1067,6 +1081,15 @@ private:
   bool isTypeNameVisible(const std::string &typeName, SourceLocation loc);
   bool validateTypeVisibilityInType(const std::string &typeName,
                                     SourceLocation loc);
+  bool validateResultCedeSyntax(ASTNode *site, const TypeSyntaxPtr &syntax,
+                                bool resultPosition = false);
+  bool isConsumingCallableInvocation(const CallExpr *call);
+  bool collectActualReturnReferents(Expr *expression,
+                                   std::vector<AccessPath> &paths,
+                                   std::vector<SourceLocation> *staticStorage = nullptr,
+                                   std::vector<AccessPath> *addressedStorage = nullptr,
+                                   bool *usedCurrentReference = nullptr);
+  void invalidateReturnSourceProof(Expr *expression, bool unknown = true);
   bool validateHandleGrammar(SourceLocation loc,
                              const std::shared_ptr<toka::Type> &type);
   bool containsInternalPlaceOutcome(

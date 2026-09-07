@@ -4,7 +4,6 @@
 
 import core/types::{usize, Addr, ADDR0}
 import core/str::{str}
-import sys/libc::{libc_memcpy}
 
 pub shape Span (
     start_addr: Addr,
@@ -53,18 +52,17 @@ impl Span {
         }
         auto s_addr = source.raw_ptr() as usize
         auto begin_addr = self.start_addr as usize
-        if begin_addr < s_addr || begin_addr >= s_addr + source.len() {
+        if begin_addr < s_addr {
             return source.substr(0:usize, 0:usize)
         }
-
-        unsafe {
-            auto ret# = source.clone()
-            auto ptr_addr = self.start_addr
-            libc_memcpy(&ret as *void, &ptr_addr as *void, 8)
-            auto len_val = self.length
-            libc_memcpy((&ret as Addr as usize + 8:usize) as *void, &len_val as *void, 8)
-            return ret
+        auto offset = begin_addr - s_addr
+        if offset >= source.len() {
+            return source.substr(0:usize, 0:usize)
         }
+        if self.length > source.len() - offset {
+            return source.substr(0:usize, 0:usize)
+        }
+        return source.substr(offset, self.length)
     }
 }
 
@@ -80,7 +78,8 @@ pub shape SourceMap (
 
 impl SourceMap {
     pub fn new(file_name: str, source: str) -> SourceMap <- file_name | source {
-        return SourceMap(file_name = file_name, source = source)
+        auto result = SourceMap(file_name = file_name, source = source)
+        return cede result
     }
 
     // Resolve a physical Span into a Location (line and column, 1-indexed)

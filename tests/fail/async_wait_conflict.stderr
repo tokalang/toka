@@ -1,15 +1,15 @@
 error[E0702]: Dangling effect call rejected: 'read_config' must be consumed by .await, .wait or .start
- --> tests/fail/async_wait_conflict.tk:7:5
+ --> tests/fail/async_wait_conflict.tk:8:5
    |
- 7 |     read_config()
+ 8 |     read_config()
    |     ^
 error[E04585]: '.wait' cannot be used inside an async function because it blocks the task executor; use '.await'
- --> tests/fail/async_wait_conflict.tk:13:13
+ --> tests/fail/async_wait_conflict.tk:15:13
     |
- 13 |     "hello".wait
+ 15 |     "hello".wait
     |             ^
 error[E04505]: Cannot wait on a non-TaskHandle type: str
- --> tests/fail/async_wait_conflict.tk:13:13
+ --> tests/fail/async_wait_conflict.tk:15:13
     |
- 13 |     "hello".wait
+ 15 |     "hello".wait
     |             ^

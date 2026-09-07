@@ -1,0 +1,7 @@
+fn echo(value: i32) -> i32 {
+    return value
+}
+
+fn main() -> i32 {
+    return echo(7:i32) - 7:i32
+}

@@ -5,8 +5,8 @@ fn main() -> i32 {
     auto mailbox# = host_mailbox<i32>()
     auto inbox = cede mailbox.inbox
     auto worker = { [cede inbox] =>
-        return cede 0:i32
-    }:fn() -> cede i32
+        return 0:i32
+    }:fn() -> i32
     auto handle# = thread_spawn<i32>(cede worker)
     handle#.detach()
     return 0:i32

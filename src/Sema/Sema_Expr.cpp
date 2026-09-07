@@ -704,12 +704,64 @@ static void restoreVisibleAnalysisState(
   }
 }
 
+using ReferenceTargets = std::map<std::string,
+    std::pair<std::optional<std::vector<AccessPath>>, std::set<std::string>>>;
+
+static ReferenceTargets captureVisibleReferenceTargets(Scope *scope) {
+  ReferenceTargets result;
+  std::set<std::string> seen;
+  for (auto *current = scope; current; current = current->Parent)
+    for (const auto &[name, info] : current->Symbols)
+      if (seen.insert(name).second && info.TypeObj && info.TypeObj->isReference())
+        result[name] = {info.CurrentReferenceTargets, info.LifeDependencySet};
+  return result;
+}
+
+static void restoreVisibleReferenceTargets(Scope *scope,
+                                           const ReferenceTargets &targets) {
+  std::set<std::string> seen;
+  for (auto *current = scope; current; current = current->Parent)
+    for (auto &[name, info] : current->Symbols) {
+      if (!seen.insert(name).second) continue;
+      auto found = targets.find(name);
+      if (found != targets.end()) {
+        if (info.CurrentReferenceTargets || found->second.first) {
+          info.CurrentReferenceTargets = found->second.first;
+          info.LifeDependencySet = found->second.second;
+        }
+      } else info.CurrentReferenceTargets.reset();
+    }
+}
+
+static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
+                                             const ReferenceTargets &b) {
+  ReferenceTargets result = a;
+  for (const auto &[name, _] : b) result.try_emplace(name);
+  for (auto &[name, entry] : result) {
+    auto left = a.find(name), right = b.find(name);
+    if (right != b.end())
+      entry.second.insert(right->second.second.begin(), right->second.second.end());
+    if (left != a.end() && right != b.end() &&
+        !left->second.first && !right->second.first) continue;
+    if (left == a.end() || right == b.end() || !left->second.first ||
+        !right->second.first || left->second.first->empty() || right->second.first->empty()) {
+      entry.first = std::vector<AccessPath>{}; // Unknown on any reachable path.
+      continue;
+    }
+    for (const auto &path : *right->second.first)
+      if (std::find(entry.first->begin(), entry.first->end(), path) == entry.first->end())
+        entry.first->push_back(path);
+  }
+  return result;
+}
+
 Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.InitMasks = captureVisibleInitMasks(CurrentScope);
   state.Moved = captureVisibleMoved(CurrentScope);
   state.ExactPlaces = captureVisibleExactPlaceFacts(CurrentScope);
   state.ConditionalTodoIds = captureVisibleConditionalTodoIds(CurrentScope);
+  state.ReferenceTargets = captureVisibleReferenceTargets(CurrentScope);
   state.PayloadFlowRestrictedPaths = m_PayloadFlowRestrictedPaths;
   state.PAL = PALCheckerState.snapshot();
   return state;
@@ -764,6 +816,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       states.front().ConditionalTodoIds;
   std::set<AccessPath> mergedPayloadFlowRestrictions =
       states.front().PayloadFlowRestrictedPaths;
+  auto mergedReferenceTargets = states.front().ReferenceTargets;
   PALChecker mergedPAL = states.front().PAL;
 
   for (size_t i = 1; i < states.size(); ++i) {
@@ -812,6 +865,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
     mergedPayloadFlowRestrictions.insert(
         state.PayloadFlowRestrictedPaths.begin(),
         state.PayloadFlowRestrictedPaths.end());
+    mergedReferenceTargets = joinReferenceTargets(mergedReferenceTargets,
+                                                  state.ReferenceTargets);
 
     PALCheckerState.restore(mergedPAL);
     PALCheckerState.mergeBranches(palBase, mergedPAL, true, state.PAL, true);
@@ -821,6 +876,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   restoreVisibleAnalysisState(CurrentScope, mergedMasks, mergedMoved,
                               mergedExactPlaces);
   restoreVisibleConditionalTodoIds(CurrentScope, mergedConditionalTodoIds);
+  restoreVisibleReferenceTargets(CurrentScope, mergedReferenceTargets);
   m_PayloadFlowRestrictedPaths = std::move(mergedPayloadFlowRestrictions);
   PALCheckerState.restore(mergedPAL);
 }
@@ -2162,6 +2218,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     return current;
   } else if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
+    if (!validateResultCedeSyntax(Cast, Cast->TargetTypeSyntax))
+      return toka::Type::fromString("unknown");
     validateTypeVisibilityInType(Cast->TargetType, getLoc(Cast));
     auto targetType = resolveType(
         Cast->TargetTypeSyntax
@@ -2171,6 +2229,21 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       error(Cast, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
             targetType->toString());
     validateHandleGrammar(getLoc(Cast), targetType);
+    if (m_EnableStage1ExplicitCallerCede && targetType &&
+        (targetType->isRawPointer() || targetType->isAddrType() || targetType->isOAddrType())) {
+      Expr *source = Cast->Expression.get();
+      while (auto *wrapper = dynamic_cast<CastExpr *>(source))
+        source = wrapper->Expression.get();
+      auto *unary = dynamic_cast<UnaryExpr *>(source);
+      auto path = makeAccessPath(source);
+      SymbolInfo *binding = nullptr;
+      std::string name;
+      if (path) CurrentScope->findVariableWithDeref(path.RootName, binding, name);
+      if (dynamic_cast<AddressOfExpr *>(source) ||
+          (unary && unary->Op == TokenType::Ampersand) ||
+          (binding && binding->TypeObj && binding->TypeObj->isReference()))
+        invalidateReturnSourceProof(source);
+    }
     validateDynTraitObjectSafetyInType(targetType, getLoc(Cast));
     if (Cast->Kind == CastKind::Implicit) {
       checkExpr(Cast->Expression.get(), targetType);
@@ -2584,6 +2657,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
+    auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
+
     if (narrowsInitState)
       applyInitStateNarrowing(PlaceState::Never);
     else if (narrowThen)
@@ -2594,6 +2669,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto movedThen = captureVisibleMoved(CurrentScope);
     auto exactPlacesThen = captureVisibleExactPlaceFacts(CurrentScope);
     auto conditionalThen = captureVisibleConditionalTodoIds(CurrentScope);
+    auto referencesThen = captureVisibleReferenceTargets(CurrentScope);
     auto palThen = PALCheckerState.snapshot();
 
     if (narrowsInitState)
@@ -2614,6 +2690,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
                                   exactPlacesBefore);
       restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
+      restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
       PALCheckerState.restore(palBefore);
 
       m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
@@ -2627,6 +2704,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       elseReturns = allPathsJump(ie->Else.get());
       auto masksElse = captureVisibleInitMasks(CurrentScope);
       auto conditionalElse = captureVisibleConditionalTodoIds(CurrentScope);
+      auto referencesElse = captureVisibleReferenceTargets(CurrentScope);
       auto exactPlacesElse = captureVisibleExactPlaceFacts(CurrentScope);
       auto palElse = PALCheckerState.snapshot();
       m_ControlFlowStack.pop_back();
@@ -2637,17 +2715,20 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
       // Intersection Rule
       if (thenReturns && elseReturns) {
+        restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
         // No reachable continuation; keep the incoming PAL state for any
         // subsequent dead-code diagnostics.
         restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
         PALCheckerState.restore(palBefore);
       } else if (thenReturns) {
+        restoreVisibleReferenceTargets(CurrentScope, referencesElse);
         // State is purely from Else branch.  Restore the editor-only state
         // explicitly because narrowing restoration may have replaced a full
         // SymbolInfo after the snapshot was taken.
         restoreVisibleConditionalTodoIds(CurrentScope, conditionalElse);
         PALCheckerState.restore(palElse);
       } else if (elseReturns) {
+        restoreVisibleReferenceTargets(CurrentScope, referencesThen);
         // State is purely from Then branch
         restoreVisibleAnalysisState(CurrentScope, masksThen, movedThen,
                                     exactPlacesThen);
@@ -2655,6 +2736,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         PALCheckerState.restore(palThen);
       } else {
         // Actual Intersection
+        restoreVisibleReferenceTargets(CurrentScope,
+            joinReferenceTargets(referencesThen, referencesElse));
         for (const auto &pair : masksBefore) {
           SymbolInfo *info = nullptr;
           if (!CurrentScope->findSymbol(pair.first, info) || !info)
@@ -2734,6 +2817,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           }
         }
       }
+      restoreVisibleReferenceTargets(CurrentScope, thenReturns
+          ? referencesBefore : joinReferenceTargets(referencesBefore, referencesThen));
       for (const auto &pair : conditionalBefore) {
         SymbolInfo *info = nullptr;
         if (!CurrentScope->findSymbol(pair.first, info) || !info)
@@ -2841,7 +2926,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     auto palBefore = PALCheckerState.snapshot();
 
+    auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
     auto restoreGuardEntryState = [&]() {
+      restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
       for (auto &pair : masksBefore) {
         CurrentScope->Symbols[pair.first].InitMask = pair.second;
       }
@@ -2938,6 +3025,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       palThen = PALCheckerState.snapshot();
     }
 
+    auto referencesThen = captureVisibleReferenceTargets(CurrentScope);
     restoreGuardEntryState();
     if (guard->Else) {
       enterScope();
@@ -2950,6 +3038,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       palElse = PALCheckerState.snapshot();
     }
 
+    auto referencesElse = guard->Else
+        ? captureVisibleReferenceTargets(CurrentScope) : referencesBefore;
     if (guard->Else) {
       if (thenJumps && elseJumps) {
         restoreGuardEntryState();
@@ -3020,6 +3110,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
+    restoreVisibleReferenceTargets(CurrentScope,
+        thenJumps ? (elseJumps ? referencesBefore : referencesElse)
+        : (elseJumps ? referencesThen : joinReferenceTargets(referencesThen, referencesElse)));
     return std::make_shared<UnitType>();
   } else if (auto *le = dynamic_cast<LoopExpr *>(E)) {
     if (le->Condition) {
@@ -3096,6 +3189,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
+    auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
 
     enterScope();
     CurrentScope->IsLoop = true;
@@ -3123,6 +3217,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     if (le->Condition) {
+      restoreVisibleReferenceTargets(CurrentScope, joinReferenceTargets(
+          referencesBefore, captureVisibleReferenceTargets(CurrentScope)));
       std::map<std::string, uint64_t> masksBody;
       std::map<std::string, bool> movedBody;
       std::map<std::string, ExactPlaceFacts> exactPlacesBody;
@@ -3481,6 +3577,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
+    auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
 
     // Array reference iteration has the same dynamic-element aliasing
     // property as a BorrowIterator.  The current element is not statically
@@ -3591,6 +3688,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto masksBody = captureVisibleInitMasks(CurrentScope);
     auto movedBody = captureVisibleMoved(CurrentScope);
     auto exactPlacesBody = captureVisibleExactPlaceFacts(CurrentScope);
+    auto referencesBody = captureVisibleReferenceTargets(CurrentScope);
     auto palBody = PALCheckerState.snapshot();
 
     std::string elseType = NoProducedValue;
@@ -3604,6 +3702,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
                                   exactPlacesBefore);
       PALCheckerState.restore(palBefore);
+      restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
 
       m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
       checkStmt(fe->ElseBody.get());
@@ -3617,6 +3716,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ControlFlowStack.pop_back();
     }
 
+    auto referencesElse = fe->ElseBody
+        ? captureVisibleReferenceTargets(CurrentScope) : referencesBefore;
+    restoreVisibleReferenceTargets(CurrentScope,
+        !bodyContinuesLoop ? (elseJumps ? referencesBefore : referencesElse)
+        : (elseJumps ? referencesBody : joinReferenceTargets(referencesBody, referencesElse)));
     if (fe->ElseBody) {
       if (!bodyContinuesLoop && elseJumps) {
         restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
@@ -3726,6 +3830,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         (bodyType != NoProducedValue) ? bodyType : elseType;
     return toka::Type::fromString(result == NoProducedValue ? "()" : result);
   } else if (auto *ce = dynamic_cast<CedeExpr *>(E)) {
+    // Preserve the caller's literal `cede` spelling in the frozen four-way
+    // audit handshake, including a rejected attempt on an ordinary callable.
+    // This does not set CallExpr::CallableReceiver or invalidate any source.
+    const auto *auditCall = SemanticEvidence::isCallTransferShadowEnabled()
+        ? dynamic_cast<CallExpr *>(ce->Value.get()) : nullptr;
+    struct AuditSpellingScope {
+      std::set<const CallExpr *> &calls;
+      const CallExpr *call;
+      ~AuditSpellingScope() { if (call) calls.erase(call); }
+    } auditSpellingScope{m_AuditCedeWrappedCalls, auditCall};
+    if (auditCall) m_AuditCedeWrappedCalls.insert(auditCall);
     if (auto *todo = dynamic_cast<TodoExpr *>(ce->Value.get())) {
       SemanticEvidence::recordTodoGoal(
           todo->TodoId, TodoGoalStatus::Unsupported, false, "", "", "",
@@ -3733,7 +3848,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       error(ce, DiagID::ERR_TYPED_TODO_UNSUPPORTED_CONTEXT);
       return toka::Type::fromString("unknown");
     }
-    if (auto *call = dynamic_cast<CallExpr *>(ce->Value.get()))
+    if (auto *call = dynamic_cast<CallExpr *>(ce->Value.get());
+        call && isConsumingCallableInvocation(call))
       call->CallableReceiver = CallableReceiverMode::Consuming;
     bool cedingPlaceAlias = false;
     std::shared_ptr<toka::Type> innerTy;
@@ -3755,6 +3871,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     if (!cedingPlaceAlias)
       innerTy = checkExpr(ce->Value.get());
+    if (ce->Value)
+      ce->IsMorphicExempt = ce->Value->IsMorphicExempt;
     bool canInvalidate = !cedingPlaceAlias;
     
     // [Fix] Enforce tracking move semantics and borrow check for `cede` expression universally.
@@ -6005,8 +6123,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::map<std::string, bool> mergedMoved;
     std::map<std::string, ExactPlaceFacts> mergedExactPlaces;
     PALChecker mergedPAL = palBefore;
+    auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
+    ReferenceTargets mergedReferences;
 
     auto restoreMatchEntryState = [&]() {
+      restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
       for (auto &pair : masksBefore) {
         CurrentScope->Symbols[pair.first].InitMask = pair.second;
       }
@@ -6086,6 +6207,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             mergedMoved[pair.first] = pair.second.Moved;
             mergedExactPlaces[pair.first] = pair.second.ExactPlace;
           }
+          mergedReferences = captureVisibleReferenceTargets(CurrentScope);
           mergedPAL = PALCheckerState.snapshot();
           hasReachableArm = true;
         } else {
@@ -6109,6 +6231,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           }
 
           PALChecker nextMerged = mergedPAL;
+          mergedReferences = joinReferenceTargets(mergedReferences,
+              captureVisibleReferenceTargets(CurrentScope));
           nextMerged.mergeBranches(palBefore, mergedPAL, true,
                                    PALCheckerState.snapshot(), true);
           mergedPAL = nextMerged;
@@ -6129,6 +6253,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     if (hasReachableArm) {
+      restoreVisibleReferenceTargets(CurrentScope, mergedReferences);
       for (auto &pair : CurrentScope->Symbols) {
         if (mergedMasks.count(pair.first))
           pair.second.InitMask = mergedMasks[pair.first];

@@ -26,12 +26,13 @@ impl<'R: @Reader> BufferedReader<'R> {
 
     pub fn make(reader: cede 'R) -> ^BufferedReader<'R> {
         auto init_buf = [0:u8; 4096]
-        return new BufferedReader<'R>(
+        auto ^result = new BufferedReader<'R>(
             reader = cede reader,
             buf = init_buf,
             pos = 0 as usize,
             cap = 0 as usize
         )
+        return ^result
     }
 
     pub fn read_bytes(self#, *out_buf: u8, len: usize) -> Result<usize, string> {
@@ -161,11 +162,12 @@ impl<'W: @Writer> BufferedWriter<'W> {
 
     pub fn make(writer: cede 'W) -> ^BufferedWriter<'W> {
         auto init_buf = [0:u8; 4096]
-        return new BufferedWriter<'W>(
+        auto ^result = new BufferedWriter<'W>(
             writer = cede writer,
             buf = init_buf,
             pos = 0 as usize
         )
+        return ^result
     }
 
     pub fn write_bytes(self#, *in_buf: u8, len: usize) -> Result<usize, string> {
@@ -346,7 +348,8 @@ impl AsyncBufferedReader {
     }
 
     pub fn read_line_async(self#, max_bytes: usize) -> async Result<string, string> {
-        return self#.read_until_async(10:u8, max_bytes).await
+        auto awaited_result_349 = self#.read_until_async(10:u8, max_bytes).await
+        return cede awaited_result_349
     }
 
     // Preferred async read API. The caller keeps ownership of the buffer even
@@ -383,7 +386,8 @@ impl AsyncBufferedReader {
             ))
         }
 
-        return self.stream#.read_into_async(cede owned, max_len, timeout_ms).await
+        auto awaited_result_386 = self.stream#.read_into_async(cede owned, max_len, timeout_ms).await
+        return cede awaited_result_386
     }
 
 }

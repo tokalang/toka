@@ -75,7 +75,7 @@ impl Uuid {
             output#.push_byte_raw(hex_digit(byte & 0x0f:u8))
             index = index + 1:usize
         }
-        return output
+        return cede output
     }
 
     pub fn version(self) -> u8 {

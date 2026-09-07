@@ -55,7 +55,7 @@ impl ParsedArgs {
         match self.values.try_borrow(name) {
             auto Option<&FlagValue>::Some(&val) => {
                 match val {
-                    auto FlagValue::Int(v) => return v
+                    auto FlagValue::Int(v) => return v + 0:i64
                     _ => return 0
                 }
             }
@@ -67,7 +67,7 @@ impl ParsedArgs {
         match self.values.try_borrow(name) {
             auto Option<&FlagValue>::Some(&val) => {
                 match val {
-                    auto FlagValue::Float(v) => return v
+                    auto FlagValue::Float(v) => return v + 0.0:f64
                     _ => return 0.0
                 }
             }
@@ -79,7 +79,7 @@ impl ParsedArgs {
         match self.values.try_borrow(name) {
             auto Option<&FlagValue>::Some(&val) => {
                 match val {
-                    auto FlagValue::Bool(v) => return v
+                    auto FlagValue::Bool(v) => return v == true
                     _ => return false
                 }
             }

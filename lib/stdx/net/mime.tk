@@ -70,7 +70,7 @@ fn copy_range(input: str, start: usize, end: usize) -> string {
         output#.push_byte_raw(input.byte_at(index) as u8)
         index = index + 1:usize
     }
-    return output
+    return cede output
 }
 
 fn lower_ascii(input: string) -> string {
@@ -84,7 +84,7 @@ fn lower_ascii(input: string) -> string {
         output#.push_byte_raw(byte)
         index = index + 1:usize
     }
-    return output
+    return cede output
 }
 
 fn has_param(params: Vec<MimeParam>, name: str) -> bool {
@@ -227,7 +227,7 @@ impl Mime {
         auto output# = string::from(self.type_name.as_str())
         output#.push_byte_raw('/' as u8)
         output#.push_str(self.subtype.as_str())
-        return output
+        return cede output
     }
 
     pub fn parameter(self, name: str) -> Option<string> {
@@ -270,6 +270,6 @@ impl Mime {
             }
             index = index + 1:usize
         }
-        return output
+        return cede output
     }
 }

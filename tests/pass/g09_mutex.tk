@@ -29,8 +29,8 @@ pub fn main() -> i32 {
         auto &mut_val2# = mut_guard2.borrow_mut()
         mut_val2 = mut_val2 + 20
         println("Worker thread changed data to: {}", mut_val2)
-        return cede 0
-    }:fn() -> cede i32
+        return 0
+    }:fn() -> i32
     auto handle# = thread_spawn<i32>(cede f)
     
     auto join_res = handle#.join()

@@ -34,19 +34,23 @@ fn maj(x: u32, y: u32, z: u32) -> u32 {
 }
 
 fn ep0(x: u32) -> u32 {
-    return rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22)
+    auto result = rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22)
+    return result
 }
 
 fn ep1(x: u32) -> u32 {
-    return rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25)
+    auto result = rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25)
+    return result
 }
 
 fn sig0(x: u32) -> u32 {
-    return rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3)
+    auto result = rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3)
+    return result
 }
 
 fn sig1(x: u32) -> u32 {
-    return rotr(x, 17) ^ rotr(x, 19) ^ (x >> 10)
+    auto result = rotr(x, 17) ^ rotr(x, 19) ^ (x >> 10)
+    return result
 }
 
 impl Sha256 {

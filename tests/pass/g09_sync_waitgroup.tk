@@ -29,7 +29,7 @@ pub fn main() -> i32 {
         println("Thread finished work piece")
         
         local_wg#.done()
-        return cede 0
+        return 0
     }
     auto task2 = { [cede data2, cede wg2] =>
         yield_now()
@@ -40,7 +40,7 @@ pub fn main() -> i32 {
         val.finished_count = val.finished_count + 1
         println("Thread finished work piece")
         local_wg#.done()
-        return cede 0
+        return 0
     }
     auto task3 = { [cede data3, cede wg3] =>
         yield_now()
@@ -51,7 +51,7 @@ pub fn main() -> i32 {
         val.finished_count = val.finished_count + 1
         println("Thread finished work piece")
         local_wg#.done()
-        return cede 0
+        return 0
     }
     
     auto t1# = thread_spawn<i32>(cede task1)

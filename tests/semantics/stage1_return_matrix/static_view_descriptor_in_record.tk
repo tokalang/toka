@@ -1,0 +1,7 @@
+shape References(&view: str)
+fn escaped() -> References {
+    auto view = "static bytes"
+    auto holder = References(&view = &view)
+    return cede holder
+}
+fn main() -> i32 { return 0 }

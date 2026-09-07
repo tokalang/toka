@@ -185,8 +185,8 @@ fn test_cross_thread_rwmutex() {
             yield_now()
             round = round + 1
         }
-        return cede 0
-    }:fn() -> cede i32
+        return 0
+    }:fn() -> i32
 
     auto r2_fn = { [cede rw2] =>
         auto ~local = ~rw2
@@ -201,8 +201,8 @@ fn test_cross_thread_rwmutex() {
             yield_now()
             round = round + 1
         }
-        return cede 0
-    }:fn() -> cede i32
+        return 0
+    }:fn() -> i32
 
     auto w_fn = { [cede rw_w] =>
         auto ~local = ~rw_w
@@ -217,8 +217,8 @@ fn test_cross_thread_rwmutex() {
             yield_now()
             round = round + 1
         }
-        return cede 0
-    }:fn() -> cede i32
+        return 0
+    }:fn() -> i32
 
     auto th1# = thread_spawn<i32>(cede r1_fn)
     auto th2# = thread_spawn<i32>(cede r2_fn)

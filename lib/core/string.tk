@@ -137,7 +137,7 @@ impl SplitIterator {
 }
 
 impl string@Delegate {
-    pub fn target(self) -> str {
+    pub fn target(self) -> str <- self {
         return self.as_str()
     }
 }
@@ -552,7 +552,7 @@ impl string {
                 i = i + 1
             }
         }
-        return res
+        return cede res
     }
 
     pub fn to_lower(self) -> string {
@@ -568,7 +568,7 @@ impl string {
                 i = i + 1
             }
         }
-        return res
+        return cede res
     }
 
     pub fn to_ascii_lowercase(self) -> string {
@@ -605,7 +605,7 @@ impl string {
                 i = i + 1
             }
         }
-        return res
+        return cede res
     }
 
     pub fn substring(self, start_idx: i32, end_idx: i32) -> string {
@@ -653,7 +653,7 @@ impl string {
                   }
              }
         }
-        return res
+        return cede res
     }
     
     pub fn repeat(self, n: i32) -> string {
@@ -664,7 +664,7 @@ impl string {
             res#.push_str(self.as_str())
             i = i + 1
         }
-        return res
+        return cede res
     }
     
     pub fn reverse(self) -> string {
@@ -678,7 +678,7 @@ impl string {
                 dest[i] = src[self.len - 1 - i]
                 i = i + 1
             }
-            return res
+            return cede res
         }
     }
 }
@@ -776,7 +776,7 @@ impl u64 {
              libc_snprintf(*buf, 32, c"%llu", self)
              auto s = string::from_cstr(*buf)
              libc_free(*buf as *void)
-             return s
+             return cede s
         }
     }
 }
@@ -815,7 +815,7 @@ impl char {
         unsafe {
             auto s# = string::from("")
             s#.push_char(self)
-            return s
+            return cede s
         }
     }
 }
@@ -954,7 +954,7 @@ impl bytes {
         auto res# = string::new()
         auto sz = self.size()
         if sz == 0 {
-            return res
+            return cede res
         }
         unsafe {
             auto *b = self.raw_ptr()
@@ -966,6 +966,6 @@ impl bytes {
                 res#.push_codepoint(opt.unwrap())
             }
         }
-        return res
+        return cede res
     }
 }

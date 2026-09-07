@@ -1,0 +1,29 @@
+shape Holder(view: str)
+fn value() -> str {
+    auto view = "static bytes"
+    return view
+}
+fn alias_value() -> str {
+    auto view = "static bytes"
+    auto &reference = &view
+    return reference
+}
+fn borrow_view(view: str) -> &str <- view { return &view }
+fn borrow_holder(holder: Holder) -> &Holder <- holder { return &holder }
+fn projected(holder: Holder) -> &str <- holder {
+    auto &reference = borrow_holder(holder)
+    return &(reference.view)
+}
+fn main() -> i32 {
+    auto view = value()
+    if !view.equals("static bytes") { return 1 }
+    if !alias_value().equals(view) { return 4 }
+    auto &reference = borrow_view(view)
+    if !reference.equals(view) { return 2 }
+    auto holder = Holder(view = view)
+    auto &held = borrow_holder(holder)
+    if !held.view.equals(view) { return 3 }
+    auto &field = projected(holder)
+    if !field.equals(view) { return 5 }
+    return 0
+}

@@ -153,7 +153,8 @@ impl<'T> Vec<'T> {
 
     pub fn remove(self#, index: usize) -> Option<'T> {
         if index >= self.len {
-            return Option<'T>::None
+            auto outcome = Option<'T>::None
+            return cede outcome
         }
         unsafe {
             auto ret = Option<'T>::Some(cede self.buf[index])
@@ -203,13 +204,15 @@ impl<'T> Vec<'T> {
     pub fn pop(self#) -> Option<'T> {
         unsafe {
             if self.len == 0 {
-                return Option<'T>::None
+                auto outcome = Option<'T>::None
+                return cede outcome
             }
             
             self.len -= 1
             // Copy out (move out since pop destroys it)
             auto 'val = cede self.buf[self.len]
-            return Option<'T>::Some(cede 'val)
+            auto outcome = Option<'T>::Some(cede 'val)
+            return cede outcome
         }
     }
 
@@ -423,7 +426,8 @@ impl<'T> VecIntoIterator<'T>@Iterator {
     // Vec iteration. A future storage-level drain cursor may optimize this
     // without changing the owned-iterator protocol.
     pub fn next(self#) -> Option<Item> {
-        return self.source#.remove(0)
+        auto outcome = self.source#.remove(0)
+        return cede outcome
     }
 }
 

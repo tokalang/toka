@@ -2,15 +2,15 @@ import std/io::{print, println}
 
 fn spark_char(val: i32) -> string {
     if val <= 0 {
-        return cede string::from(" ")
+        return string::from(" ")
     }
     if val <= 10 {
-        return cede string::from("▂")
+        return string::from("▂")
     }
     if val <= 20 {
-        return cede string::from("▃")
+        return string::from("▃")
     }
-    return cede string::from("█")
+    return string::from("█")
 }
 
 fn test_formatting() {

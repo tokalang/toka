@@ -10,7 +10,8 @@ pub shape SlabID (
 impl SlabID {
     pub fn new(index: usize, generation: usize) -> SlabID {
         auto raw_val = (index as u64) | ((generation as u64) << 32:u64)
-        return SlabID(raw = raw_val)
+        auto result = SlabID(raw = raw_val)
+        return cede result
     }
 
     pub fn index(self) -> usize {
@@ -24,7 +25,8 @@ impl SlabID {
 
 impl SlabID@Dup {
     pub fn dup(self) -> SlabID {
-        return self.clone()
+        auto result = self.clone()
+        return cede result
     }
 }
 
@@ -34,7 +36,8 @@ impl SlabID@Encap {
 
 impl SlabID {
     pub fn clone(self) -> SlabID {
-        return SlabID(raw = self.raw)
+        auto result = SlabID(raw = self.raw)
+        return cede result
     }
 }
 
@@ -127,7 +130,8 @@ impl<'T> Slab<'T> {
         }
         
         self.len = self.len + 1
-        return SlabID::new(idx, gen)
+        auto result = SlabID::new(idx, gen)
+        return cede result
     }
 
     pub fn remove(self#, id: SlabID) -> Option<'T> {

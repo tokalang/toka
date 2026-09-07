@@ -281,7 +281,7 @@ impl SourceFile {
             }
         }
         
-        return content
+        return cede content
     }
 }
 

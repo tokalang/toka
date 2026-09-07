@@ -773,6 +773,15 @@ int main() {
   CHECK(prepareExplicitCedePlan(redundantUnique).Rejection ==
         TransferPlanRejection::RedundantIntrinsicUniqueCede);
 
+  auto morphicUnique = redundantUnique;
+  morphicUnique.MorphicSource = true;
+  auto morphicUniqueReturn = prepareExplicitCedePlan(morphicUnique);
+  CHECK(morphicUniqueReturn.admitted());
+  CHECK(morphicUniqueReturn.ValueProduction ==
+        TransferValueProduction::MoveOwned);
+  CHECK(morphicUniqueReturn.Source ==
+        TransferSourceDisposition::InvalidateRoot);
+
   auto borrowedParameterReturn = returned;
   borrowedParameterReturn.SourceTransferAuthorized = false;
   CHECK(prepareExplicitCedePlan(borrowedParameterReturn).Rejection ==
@@ -818,8 +827,43 @@ int main() {
   auto plainNonCopy = named;
   plainNonCopy.Ownership = TransferOwnershipKind::PlainValue;
   plainNonCopy.CopyProof = TransferCopyProof::ProvenNonCopy;
-  CHECK(prepareExplicitCedePlan(plainNonCopy).Rejection ==
-        TransferPlanRejection::ClosedWorldCombination);
+  plainNonCopy.CarriesDropLiability = false;
+  plainNonCopy.ObligationBefore = TransferObligationState::Outstanding;
+  plainNonCopy.ObligationRoot = plainNonCopy.SourcePlace->root();
+  auto plainNonCopyPlan = prepareExplicitCedePlan(plainNonCopy);
+  CHECK(plainNonCopyPlan.admitted());
+  CHECK(plainNonCopyPlan.ValueProduction ==
+        TransferValueProduction::MoveOwned);
+  CHECK(plainNonCopyPlan.Source ==
+        TransferSourceDisposition::InvalidateSubtree);
+  CHECK(plainNonCopyPlan.Drop == TransferDropDisposition::NoLiability);
+  CHECK(plainNonCopyPlan.ObligationAction ==
+        TransferObligationAction::TransferToCallee);
+  CHECK(plainNonCopyPlan.ObligationAfter ==
+        TransferObligationState::Discharged);
+  CHECK(plainNonCopyPlan.DestinationObligationAction ==
+        TransferDestinationObligationAction::ReceiveTransferred);
+
+  auto barePlainNonCopy = plainNonCopy;
+  barePlainNonCopy.SurfaceSpelling = TransferSurfaceSpelling::Bare;
+  barePlainNonCopy.SyntaxPurpose = CedeSyntaxPurpose::None;
+  CHECK(prepareExplicitCedePlan(barePlainNonCopy).Rejection ==
+        TransferPlanRejection::MissingCedeForNamedSource);
+
+  auto unknownPlainNonCopy = plainNonCopy;
+  unknownPlainNonCopy.CopyProof = TransferCopyProof::Indeterminate;
+  CHECK(prepareExplicitCedePlan(unknownPlainNonCopy).Rejection ==
+        TransferPlanRejection::IncompleteFacts);
+
+  auto borrowedPlainNonCopy = plainNonCopy;
+  borrowedPlainNonCopy.ActiveDerivedBorrow = true;
+  CHECK(prepareExplicitCedePlan(borrowedPlainNonCopy).Rejection ==
+        TransferPlanRejection::ActiveDerivedBorrow);
+
+  auto unauthorizedPlainNonCopy = plainNonCopy;
+  unauthorizedPlainNonCopy.SourceTransferAuthorized = false;
+  CHECK(prepareExplicitCedePlan(unauthorizedPlainNonCopy).Rejection ==
+        TransferPlanRejection::SourceTransferUnauthorized);
 
   auto dependentTemporary = baseCall();
   dependentTemporary.Origin = TransferPlanOrigin::CompilerSynthetic;

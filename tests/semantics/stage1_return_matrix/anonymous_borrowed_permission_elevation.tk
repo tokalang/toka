@@ -1,0 +1,10 @@
+shape Holder(value: i32)
+
+fn invalid(~holder: Holder) -> result: (item: &i32#)
+effects:
+    result.item <- holder
+{
+    return (item = &(holder.value))
+}
+
+fn main() -> i32 { return 0 }

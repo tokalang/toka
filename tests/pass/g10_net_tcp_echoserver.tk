@@ -68,7 +68,7 @@ pub fn main() -> i32 {
     unsafe {
         // Spawn server thread
         auto server_thread# = thread_spawn<i32>({ => 
-            return cede run_server(49095:u16)
+            return run_server(49095:u16)
         })
         
         println("[Client] Connecting to 127.0.0.1:49095...")

@@ -39,7 +39,7 @@ pub fn encode(input: bytes) -> string {
         encoded#.push_byte_raw(hex_character(value & 15:u8))
         index = index + 1:usize
     }
-    return encoded
+    return cede encoded
 }
 
 pub fn encode_vec(cede input: Vec<u8>) -> string {

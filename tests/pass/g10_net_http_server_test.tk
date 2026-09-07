@@ -24,7 +24,7 @@ fn handle_request(req#: HttpRequest) -> HttpResponse {
     
     if is_get && is_home {
         auto res = HttpResponse::html(string::from("<h1>Welcome to Toka HTTP Framework</h1>"))
-        return res
+        return cede res
     }
     
     return HttpResponse::not_found()
@@ -45,20 +45,20 @@ pub fn main() -> i32 {
         auto server_thread# = thread_spawn<i32>(cede { [cede listener] =>
             unsafe {
                 auto s# = listener#.accept()
-                if !s.is_valid() { return cede 1 }
+                if !s.is_valid() { return 1 }
 
                 auto buf = [0 as char; 1024]:[char; 1024]
                 auto *buf_ptr# = &buf[0] as *u8
 
                 auto read_res = s#.read(*buf_ptr, 1024)
-                if read_res.is_err() { return cede 1 }
+                if read_res.is_err() { return 1 }
 
                 auto n = read_res.unwrap()
-                if n == 0:usize { return cede 0 }
+                if n == 0:usize { return 0 }
 
                 auto req_str = string::from_with_len(&buf[0] as *char, n as i32)
                 auto req_res = parse_http_request(req_str)
-                if req_res.is_err() { return cede 1 }
+                if req_res.is_err() { return 1 }
 
                 auto req# = req_res.unwrap()
                 auto resp# = handle_request(req)
@@ -66,9 +66,9 @@ pub fn main() -> i32 {
 
                 auto *ptr = resp_str.c_str() as *u8
                 auto w_res = s#.write(*ptr, resp_str.len() as usize)
-                if w_res.is_err() { return cede 1 }
+                if w_res.is_err() { return 1 }
 
-                return cede 0
+                return 0
             }
         })
         

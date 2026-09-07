@@ -1,0 +1,7 @@
+fn invalid(address: Addr) -> bytes <- address {
+    unsafe {
+        return bytes(&buf = (address as *[byte]) as &[byte], len = 1:usize)
+    }
+}
+
+fn main() -> i32 { return 0 }

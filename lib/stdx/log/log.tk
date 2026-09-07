@@ -49,7 +49,7 @@ impl Logger {
         }
         
         prefix#.push_str("\x1b[0m")
-        return prefix
+        return cede prefix
     }
 
     pub fn debug(self, msg: string) {

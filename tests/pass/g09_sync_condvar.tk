@@ -30,8 +30,8 @@ pub fn main() -> i32 {
         
         println("Consumer got value: {}", s_ptr.val)
         assert(s_ptr.val == 42, "Consumer expected value 42")
-        return cede 0
-    }:fn#() -> cede i32
+        return 0
+    }:fn#() -> i32
     
     auto t# = thread_spawn<i32>(cede consumer)
     

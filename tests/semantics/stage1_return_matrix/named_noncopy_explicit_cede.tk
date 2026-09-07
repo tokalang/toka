@@ -1,0 +1,25 @@
+import core/traits::{@Encap}
+
+auto drops# = 0:i32
+
+shape Token(value: i32)
+
+impl Token@Encap {
+    fn drop(self#) {
+        drops += 1:i32
+    }
+}
+
+fn make() -> Token {
+    auto token = Token(value = 7:i32)
+    return cede token
+}
+
+fn main() -> i32 {
+    {
+        auto token = make()
+        if token.value != 7:i32 { return 1:i32 }
+    }
+    if drops != 1:i32 { return 2:i32 }
+    return 0:i32
+}

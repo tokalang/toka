@@ -5,7 +5,7 @@ fn get_line(line: i32 = __LINE__) -> i32 { return line }
 
 fn get_file(f: str = __FILE__) -> str <- f { return f }
 
-fn get_loc(loc: SourceLoc = __LOC__) -> SourceLoc { return loc }
+fn get_loc(loc: SourceLoc = __LOC__) -> SourceLoc <- loc { auto result = SourceLoc(file = loc.file.clone(), line = loc.line); return cede result }
 
 fn test_val(x: i32 = 42) -> i32 { return x }
 

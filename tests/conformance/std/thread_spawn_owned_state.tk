@@ -12,19 +12,19 @@ impl Token@Encap {
     }
 }
 
-fn run_token(token: Token) -> cede i32 {
+fn run_token(token: Token) -> i32 {
     sleep_ms(10:u32)
     if !token.text.as_str().equals("owned-thread-state") {
-        return cede 7:i32
+        return 7:i32
     }
-    return cede 0:i32
+    return 0:i32
 }
 
 fn spawn_worker() -> JoinHandle<i32> {
     auto token = Token(text = string::from("owned-thread-state"))
     auto entry = { state =>
-        return cede run_token(state)
-    }:fn(Token) -> cede i32
+        return run_token(state)
+    }:fn(Token) -> i32
     return thread_spawn_with_state<Token, i32>(cede token, entry)
 }
 

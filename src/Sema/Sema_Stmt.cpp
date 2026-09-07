@@ -604,6 +604,19 @@ void Sema::checkStmt(Stmt *S) {
       HasError = true;
       return;
     }
+    std::optional<AnalysisState> returnRollbackState;
+    std::optional<Stage0CallSnapshot> returnPlanSnapshot;
+    std::optional<ExplicitCedePlan> returnSourcePlan;
+    const size_t returnDiagnosticStart = DiagnosticEngine::records().size();
+    const bool hadPriorSemanticError = std::any_of(
+        DiagnosticEngine::records().begin(),
+        DiagnosticEngine::records().end(), [](const auto &record) {
+          return record.Level == DiagLevel::Error;
+        });
+    if (m_EnableStage1ExplicitCallerCede) {
+      returnRollbackState = captureAnalysisState();
+      returnPlanSnapshot = captureStage0CallSnapshot();
+    }
     std::string ExprType = "()";
     std::shared_ptr<toka::Type> ExprTypeObj = toka::Type::fromString("()");
     auto functionOutcome = CurrentFunction
@@ -611,6 +624,7 @@ void Sema::checkStmt(Stmt *S) {
                                      CurrentFunction->ResolvedReturnType)
                                : nullptr;
     bool isMissReturn = false;
+    bool returnExpressionWasWholeOutcome = false;
     if (functionOutcome && Ret->ReturnValue) {
       if (auto *variable =
               dynamic_cast<VariableExpr *>(Ret->ReturnValue.get())) {
@@ -628,10 +642,12 @@ void Sema::checkStmt(Stmt *S) {
                                                     : toka::Type::fromString(
                                                           CurrentFunctionReturnType);
       auto resolvedReturnExpectation = resolveType(returnExpectation);
-      recordExplicitCedeStage0NonCallPlan(
+      returnSourcePlan = recordExplicitCedeStage0NonCallPlan(
           Ret, Ret->ReturnValue.get(), resolvedReturnExpectation,
           TransferDestination::Return, TransferEligibilityContext::Return,
-          "return");
+          "return", nullptr,
+          returnPlanSnapshot ? &*returnPlanSnapshot : nullptr, {}, {}, 0,
+          true);
       bool rejectedAliasReturn = false;
       if (resolvedReturnExpectation &&
           (resolvedReturnExpectation->isUniquePtr() ||
@@ -655,6 +671,8 @@ void Sema::checkStmt(Stmt *S) {
       auto authorityContext =
           beginAuthorityFullExpression(Ret->ReturnValue.get());
       auto RetTypeObj = checkExpr(Ret->ReturnValue.get(), returnExpectation);
+      returnExpressionWasWholeOutcome =
+          functionOutcome && RetTypeObj && RetTypeObj->isMissOutcome();
       restoreAuthorityFullExpression(std::move(authorityContext));
       m_SuppressRejectedAliasInvalidation = oldSuppressAliasInvalidation;
       ExprTypeObj = RetTypeObj;
@@ -818,8 +836,31 @@ void Sema::checkStmt(Stmt *S) {
            (!expectedRetObj || expectedRetObj->isUnknown() ||
             isBorrowLikeType(expectedRetObj) || isBorrowLikeType(ExprTypeObj)));
 
+      // A named record's already prepared structural dependencies must enter
+      // the existing lifetime checker even when legacy type inspection did
+      // not recognize its borrowed fields. This adds no source proof and
+      // does not classify any new type as borrowed.
+      if (m_EnableStage1ExplicitCallerCede && returnSourcePlan &&
+          returnSourcePlan->Prepared.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
+          returnSourcePlan->Prepared.SourceView == TransferSourceView::DirectValue &&
+          returnSourcePlan->Prepared.Ownership == TransferOwnershipKind::PlainValue &&
+          returnSourcePlan->Prepared.Dependency == TransferDependencyKind::Structural &&
+          returnSourcePlan->Prepared.DependencyFactsComplete &&
+          !returnSourcePlan->Prepared.DependencyRoots.empty())
+        isTrackedRet = true;
+
       if (isTrackedRet) {
           std::set<std::string> returnedDeps;
+          std::set<std::string> addressedStoragePaths;
+          std::vector<AccessPath> origins, storageOrigins;
+          bool usedCurrentReference = false;
+          const bool currentOriginsComplete = collectActualReturnReferents(
+              Ret->ReturnValue.get(), origins, nullptr, &storageOrigins,
+              &usedCurrentReference);
+          if (currentOriginsComplete) {
+            for (const auto &origin : storageOrigins)
+              addressedStoragePaths.insert(origin.toLegacyString());
+          }
 
           std::set<std::string> resolvingDependencyPaths;
           std::function<void(std::set<std::string> &, const std::string &)>
@@ -828,6 +869,10 @@ void Sema::checkStmt(Stmt *S) {
                                        const std::string &dep) {
             if (dep.empty())
               return;
+            if (addressedStoragePaths.count(dep)) {
+              out.insert(dep);
+              return;
+            }
             if (!resolvingDependencyPaths.insert(dep).second) {
               out.insert(dep);
               return;
@@ -842,6 +887,16 @@ void Sema::checkStmt(Stmt *S) {
             if (CurrentScope->findVariableWithDeref(baseName, depInfo,
                                                     actualName) &&
                 depInfo) {
+              VariableExpr source(actualName);
+              source.Loc = depInfo->DeclLoc;
+              std::vector<AccessPath> dynamicOrigins;
+              std::vector<SourceLocation> staticOrigins;
+              if (collectActualReturnReferents(&source, dynamicOrigins,
+                                                &staticOrigins) &&
+                  dynamicOrigins.empty() && !staticOrigins.empty()) {
+                resolvingDependencyPaths.erase(dep);
+                return;
+              }
               bool contributedDeps = false;
               if (!depInfo->BorrowedFrom.empty() &&
                   depInfo->BorrowedFrom != dep) {
@@ -875,51 +930,91 @@ void Sema::checkStmt(Stmt *S) {
             return path.toLegacyString();
           };
 
+          auto recordAddressDependency = [&](Expr *address, Expr *target,
+                                             std::set<std::string> &out) {
+            // Preserve the existing collector's supported path boundary;
+            // indexed/raw extraction routes retain their existing checks.
+            if (getPath(target).empty()) return;
+            std::vector<AccessPath> referents, storage;
+            if (collectActualReturnReferents(address, referents, nullptr, &storage)) {
+              for (const auto &path : storage)
+                addressedStoragePaths.insert(path.toLegacyString());
+              for (const auto &path : referents)
+                recordDependencyPathTo(out, path.toLegacyString());
+            } else {
+              // Unknown address provenance cannot inherit a value's static
+              // exemption. Retain the storage dependency for normal checks.
+              auto path = canonicalizeAccessPath(makeAccessPath(target));
+              if (path) out.insert(path.toLegacyString());
+            }
+          };
+
           // Helper to collect dependencies from the returned expression
+          bool collectingCedeSource = false;
           std::function<void(Expr *, std::set<std::string> &)> collectDepsInto =
               [&](Expr *E, std::set<std::string> &out) {
             if (!E)
               return;
+            if (auto *cede = dynamic_cast<CedeExpr *>(E);
+                m_EnableStage1ExplicitCallerCede && cede) {
+              const bool previous = collectingCedeSource;
+              collectingCedeSource = true;
+              collectDepsInto(cede->Value.get(), out);
+              collectingCedeSource = previous;
+              return;
+            }
+            if (auto *unsafe = dynamic_cast<UnsafeExpr *>(E);
+                m_EnableStage1ExplicitCallerCede && unsafe) {
+              collectDepsInto(unsafe->Expression.get(), out);
+              return;
+            }
 
             // Case 1: Taking address `&var` or `&var.field` via UnaryExpr
             if (auto *Addr = dynamic_cast<UnaryExpr *>(E)) {
               if (Addr->Op == TokenType::Ampersand) {
-                std::string path = getPath(Addr->RHS.get());
-                if (!path.empty()) {
-                    recordDependencyPathTo(out, path);
-                }
+                recordAddressDependency(Addr, Addr->RHS.get(), out);
               }
             }
             // Case 1b: AddressOfExpr Borrow (implicit/explicit borrow alignment)
             else if (auto *AddrOf = dynamic_cast<AddressOfExpr *>(E)) {
-                std::string path = getPath(AddrOf->Expression.get());
-                if (!path.empty()) {
-                    recordDependencyPathTo(out, path);
-                }
+                recordAddressDependency(AddrOf, AddrOf->Expression.get(), out);
             }
             // Case 2: Returning existing reference variable `x`
             else if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
               SymbolInfo info;
               if (CurrentScope->lookup(Var->Name, info)) {
                 if (!info.BorrowedFrom.empty()) {
-                  out.insert(info.BorrowedFrom);
+                  recordDependencyPathTo(out, info.BorrowedFrom);
                 }
-                out.insert(info.LifeDependencySet.begin(),
-                           info.LifeDependencySet.end());
+                for (const auto &dependency : info.LifeDependencySet)
+                  recordDependencyPathTo(out, dependency);
                 if (info.IsReference() || isBorrowLikeType(info.TypeObj)) {
-                  bool contributedDeps = false;
+                  bool contributedDeps = !info.LifeDependencySet.empty();
                   // It depends on whatever 'info' borrowed from
                   if (!info.BorrowedFrom.empty()) {
-                    out.insert(info.BorrowedFrom);
+                    recordDependencyPathTo(out, info.BorrowedFrom);
                     contributedDeps = true;
                   }
                   // Also merge its transitive dependencies if we track them
                   size_t depCountBefore = out.size();
-                  out.insert(info.LifeDependencySet.begin(),
-                             info.LifeDependencySet.end());
+                  for (const auto &dependency : info.LifeDependencySet)
+                    recordDependencyPathTo(out, dependency);
                   if (out.size() != depCountBefore)
                     contributedDeps = true;
-                  if (!contributedDeps && CurrentFunction) {
+                  auto ownership = collectingCedeSource
+                      ? queryExplicitCedeStage0OwnershipReadOnly(info.TypeObj)
+                      : std::optional<ValueOwnership>{};
+                  const bool transfersOwner = ownership &&
+                      (*ownership == ValueOwnership::Owned ||
+                       *ownership == ValueOwnership::SharedHandle);
+                  const bool transfersCallable = collectingCedeSource &&
+                      info.TypeObj && (info.TypeObj->isFunction() ||
+                                       info.TypeObj->isDynFn());
+                  // Keep every actual dependency above. Moving an owning
+                  // container/callable does not additionally borrow its old
+                  // binding; callable capture dependencies remain explicit.
+                  if (!contributedDeps && CurrentFunction && !transfersOwner &&
+                      !transfersCallable) {
                     std::string baseName = Var->Name;
                     size_t dotPos = baseName.find('.');
                     if (dotPos != std::string::npos)
@@ -954,6 +1049,13 @@ void Sema::checkStmt(Stmt *S) {
             }
             // Case 4: CallExpr
             else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
+                std::vector<AccessPath> actualOrigins;
+                std::vector<SourceLocation> staticOrigins;
+                if (collectActualReturnReferents(Call, actualOrigins, &staticOrigins)) {
+                  for (const auto &origin : actualOrigins)
+                    recordDependencyPathTo(out, origin.toLegacyString());
+                  return;
+                }
                 for (auto &Arg : Call->Args) {
                     collectDepsInto(Arg.get(), out);
                 }
@@ -1040,7 +1142,13 @@ void Sema::checkStmt(Stmt *S) {
           std::function<void(Expr *)> collectMemberDeps = [&](Expr *E) {
             if (!E)
               return;
-            if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
+            if (auto *cede = dynamic_cast<CedeExpr *>(E);
+                m_EnableStage1ExplicitCallerCede && cede) {
+              collectMemberDeps(cede->Value.get());
+            } else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(E);
+                       m_EnableStage1ExplicitCallerCede && unsafe) {
+              collectMemberDeps(unsafe->Expression.get());
+            } else if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
               collectMemberDeps(Cast->Expression.get());
             } else if (auto *Bin = dynamic_cast<BinaryExpr *>(E)) {
               if (Bin->Op == "=")
@@ -1286,49 +1394,31 @@ void Sema::checkStmt(Stmt *S) {
       HasError = true;
     }
 
-    // Strict Ownership/Morphology Check for Return
-    if (expectedRetObj && expectedRetObj->IsCede) {
-      if (Ret->ReturnValue && !dynamic_cast<CedeExpr*>(Ret->ReturnValue.get())) {
-        DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_EXPECTED_CEDE_RETURN, CurrentFunctionReturnType);
-        HasError = true;
-        SourceLocation originLoc = CurrentFunction ? CurrentFunction->Loc
-                                                   : SourceLocation{};
-        recordDecision(Ret, SemanticRuleID::OwnCede002,
-                       SemanticOperation::OwnershipTransfer,
-                       SemanticDecision::Reject,
-                       SemanticReason::MissingCedeReturn,
-                       CurrentFunctionReturnType,
-                       CurrentFunction ? CurrentFunction->Name : "",
-                       originLoc);
-        SemanticEvidence::recordCedeObligation(
-            CedeObligationStage::ReturnTransfer,
-            CedeObligationStatus::Violated, SemanticReason::MissingCedeReturn,
-            CurrentFunctionReturnType,
-            CurrentFunction ? CurrentFunction->Name : "", getLoc(Ret),
-            originLoc);
-        if (originLoc.isValid())
-          DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
-                                   "cede return declared here");
-      } else if (Ret->ReturnValue) {
-        if (isMayZeroRawCedeSource(Ret->ReturnValue.get()) &&
-            !isMayZeroRawCedeDestination(expectedRetObj)) {
-          error(Ret->ReturnValue.get(),
-                DiagID::ERR_SEMA_CEDE_MAY_ZERO_RAW_REQUIRES_GUARD);
-          HasError = true;
+    if (!m_InUnsafeContext) {
+      auto targetRecord = std::dynamic_pointer_cast<ShapeType>(expectedRetObj);
+      auto *recordValue =
+          dynamic_cast<AnonymousRecordExpr *>(Ret->ReturnValue.get());
+      if (targetRecord && targetRecord->Decl && recordValue &&
+          targetRecord->Name.rfind("__Toka_Anon_Rec_", 0) == 0) {
+        for (const auto &fieldValue : recordValue->Fields) {
+          const auto target = std::find_if(
+              targetRecord->Decl->Members.begin(),
+              targetRecord->Decl->Members.end(), [&](const ShapeMember &field) {
+                return Type::stripMorphology(field.Name) ==
+                       Type::stripMorphology(fieldValue.first);
+              });
+          if (target == targetRecord->Decl->Members.end())
+            continue;
+          auto targetType = resolveType(getPhysicalType(*target), false);
+          PermissionFlow fieldFlow = getPermissionFlow(fieldValue.second.get());
+          if (requiresPayloadWrite(targetType) &&
+              fieldFlow.Kind == PermissionFlowKind::Shared &&
+              !fieldFlow.DirectCapability.PayloadWritable) {
+            error(fieldValue.second.get(),
+                  DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+            HasError = true;
+          }
         }
-        recordDecision(Ret, SemanticRuleID::OwnCede002,
-                       SemanticOperation::OwnershipTransfer,
-                       SemanticDecision::Allow, SemanticReason::CedeConsumed,
-                       CurrentFunctionReturnType,
-                       CurrentFunction ? CurrentFunction->Name : "",
-                       CurrentFunction ? CurrentFunction->Loc
-                                       : SourceLocation{});
-        SemanticEvidence::recordCedeObligation(
-            CedeObligationStage::ReturnTransfer,
-            CedeObligationStatus::Fulfilled, SemanticReason::CedeConsumed,
-            CurrentFunctionReturnType,
-            CurrentFunction ? CurrentFunction->Name : "", getLoc(Ret),
-            CurrentFunction ? CurrentFunction->Loc : SourceLocation{});
       }
     }
 
@@ -1373,6 +1463,89 @@ void Sema::checkStmt(Stmt *S) {
           checkStrictMorphology(Ret, targetMorph, sourceMorph, "return value");
       }
     }
+    auto hasNewReturnError = [&]() {
+      const auto &records = DiagnosticEngine::records();
+      return std::any_of(
+          records.begin() + std::min(returnDiagnosticStart, records.size()),
+          records.end(), [](const auto &record) {
+            return record.Level == DiagLevel::Error;
+          });
+    };
+    const bool returnsWholeOutcome =
+        returnExpressionWasWholeOutcome;
+    const bool completesBarePreflight =
+        returnSourcePlan &&
+        returnSourcePlan->Rejection ==
+            TransferPlanRejection::IncompleteFacts &&
+        returnSourcePlan->Prepared.SurfaceSpelling ==
+            TransferSurfaceSpelling::Bare &&
+        (!returnSourcePlan->Prepared.SourcePlace ||
+         returnSourcePlan->Prepared.SourceCategory ==
+             TransferSourceCategory::NoSourcePlace);
+    if (returnSourcePlan && returnPlanSnapshot && !hasNewReturnError() &&
+        (completesBarePreflight || returnsWholeOutcome)) {
+      returnSourcePlan = recordExplicitCedeStage0NonCallPlan(
+          Ret, Ret->ReturnValue.get(),
+          returnsWholeOutcome ? expectedRetObj : expectedReturnValueObj,
+          TransferDestination::Return, TransferEligibilityContext::Return,
+          "return", nullptr, &*returnPlanSnapshot, {}, {}, 0, false, true);
+    }
+    const bool isUninstantiatedGenericReturn =
+        CurrentFunction && !CurrentFunction->GenericParams.empty() &&
+        !CurrentFunction->TemplateOrigin;
+    const bool isCompilerPlaceOutcomeReturn =
+        expectedRetObj && containsInternalPlaceOutcome(expectedRetObj);
+    const bool enforceReturnSourcePlan =
+        m_EnableStage1ExplicitCallerCede && returnSourcePlan &&
+        !hadPriorSemanticError &&
+        !isUninstantiatedGenericReturn &&
+        !isCompilerPlaceOutcomeReturn;
+    if (enforceReturnSourcePlan && !returnSourcePlan->admitted() &&
+        !hasNewReturnError()) {
+      Expr *source = Ret->ReturnValue.get();
+      while (source) {
+        if (auto *cede = dynamic_cast<CedeExpr *>(source))
+          source = cede->Value.get();
+        else if (auto *cast = dynamic_cast<CastExpr *>(source))
+          source = cast->Expression.get();
+        else if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(source))
+          source = unsafeExpr->Expression.get();
+        else
+          break;
+      }
+      std::string sourceName = source ? getPathString(source) : "";
+      if (sourceName.empty() && source)
+        sourceName = source->toString();
+      switch (returnSourcePlan->Rejection) {
+      case TransferPlanRejection::MissingCedeForNamedSource:
+        error(Ret->ReturnValue.get(),
+              DiagID::ERR_SEMA_RETURN_NAMED_SOURCE_REQUIRES_CEDE,
+              sourceName, sourceName);
+        break;
+      case TransferPlanRejection::ExplicitCedeRequiresSource:
+        error(Ret->ReturnValue.get(),
+              DiagID::ERR_SEMA_RETURN_CEDE_REQUIRES_SOURCE);
+        break;
+      case TransferPlanRejection::RedundantIntrinsicUniqueCede:
+        error(Ret->ReturnValue.get(),
+              DiagID::ERR_SEMA_RETURN_UNIQUE_CEDE_REDUNDANT, sourceName,
+              sourceName);
+        break;
+      case TransferPlanRejection::SourceTransferUnauthorized:
+        error(Ret->ReturnValue.get(),
+              DiagID::ERR_SEMA_RETURN_SOURCE_TRANSFER_UNAUTHORIZED,
+              sourceName);
+        break;
+      default:
+        error(Ret->ReturnValue.get(),
+              DiagID::ERR_SEMA_RETURN_PLAN_INCOMPLETE,
+              toString(returnSourcePlan->Rejection));
+        break;
+      }
+    }
+    if (returnRollbackState && enforceReturnSourcePlan &&
+        (!returnSourcePlan->admitted() || hasNewReturnError()))
+      mergeAnalysisStates({*returnRollbackState}, returnRollbackState->PAL);
     m_LastBorrowSource.clear();
     m_LastLifeDependencies.clear();
     m_LastFieldDependencies.clear();
@@ -1450,6 +1623,8 @@ void Sema::checkStmt(Stmt *S) {
       }
     }
 
+    if (!validateResultCedeSyntax(Var, Var->DeclaredTypeSyntax))
+      return;
     std::string InitType = "";
     std::shared_ptr<toka::Type> InitTypeObj = nullptr;
     m_LastBorrowSource.clear();
@@ -2064,6 +2239,71 @@ void Sema::checkStmt(Stmt *S) {
 
     m_LastBorrowSource = ""; // Clear for next var
 
+    // Retain the actual origins of a checked factory result with borrowed
+    // fields. Legacy expression checking may have cleared its transient
+    // dependency metadata; never reconstruct it from the enclosing return
+    // declaration or merely from the field's type.
+    if (m_EnableStage1ExplicitCallerCede && Var->Init && !HasError) {
+      Expr *producer = Var->Init.get();
+      while (producer) {
+        if (auto *cast = dynamic_cast<CastExpr *>(producer))
+          producer = cast->Expression.get();
+        else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(producer))
+          producer = unsafe->Expression.get();
+        else
+          break;
+      }
+      auto shape = std::dynamic_pointer_cast<ShapeType>(Info.TypeObj);
+      if ((dynamic_cast<CallExpr *>(producer) ||
+           dynamic_cast<MethodCallExpr *>(producer)) && shape && shape->Decl) {
+        bool hasBorrowedField = false;
+        for (const auto &field : shape->Decl->Members) {
+          auto type = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(field));
+          auto ownership = queryExplicitCedeStage0OwnershipReadOnly(type);
+          hasBorrowedField |= type && !type->isRawPointer() && ownership &&
+                              *ownership == ValueOwnership::BorrowedView;
+        }
+        std::vector<AccessPath> origins;
+        if (hasBorrowedField && collectActualReturnReferents(producer, origins)) {
+          for (const auto &origin : origins) {
+            const auto dependency = origin.toLegacyString();
+            Info.LifeDependencySet.insert(dependency);
+            depsToCommitAsBorrow.insert(dependency);
+          }
+        }
+      }
+    }
+
+    // Preserve actual borrowed-field origins of an initialized record.  The
+    // return planner must not later substitute the function's declared
+    // dependency ceiling for missing binding provenance.
+    if (auto *init = dynamic_cast<InitStructExpr *>(Var->Init.get());
+        init && Info.TypeObj && !HasError) {
+      auto shape = std::dynamic_pointer_cast<ShapeType>(Info.TypeObj);
+      if (shape && shape->Decl) {
+        for (const auto &initializer : init->Members) {
+          const auto fieldName = Type::stripMorphology(initializer.first);
+          auto field = std::find_if(shape->Decl->Members.begin(),
+              shape->Decl->Members.end(), [&](const ShapeMember &member) {
+                return Type::stripMorphology(member.Name) == fieldName;
+              });
+          if (field == shape->Decl->Members.end()) continue;
+          auto fieldType = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(*field));
+          if (!fieldType || fieldType->isRawPointer()) continue;
+          auto ownership = queryExplicitCedeStage0OwnershipReadOnly(fieldType);
+          if (!ownership || *ownership != ValueOwnership::BorrowedView) continue;
+          std::vector<AccessPath> origins;
+          if (!collectActualReturnReferents(initializer.second.get(), origins)) continue;
+          for (const auto &origin : origins) {
+            const auto dependency = origin.toLegacyString();
+            Info.FieldDependencySet[fieldName].insert(dependency);
+            Info.LifeDependencySet.insert(dependency);
+            depsToCommitAsBorrow.insert(dependency);
+          }
+        }
+      }
+    }
+
     if (Var->Init) {
       // Shared flow is checked only against the direct initializer.  Earlier
       // hops have already reduced that initializer's capability, so this
@@ -2317,6 +2557,16 @@ void Sema::checkStmt(Stmt *S) {
 
     Info.IsDeclaredVariable = true;
     Info.ASTPtr = Var;
+    if (m_EnableStage1ExplicitCallerCede && Info.TypeObj &&
+        Info.TypeObj->isReference()) {
+      std::vector<AccessPath> targets;
+      if (!Var->Init || HasError ||
+          !collectActualReturnReferents(Var->Init.get(), targets))
+        targets.clear();
+      for (const auto &target : targets)
+        Info.LifeDependencySet.insert(target.toLegacyString());
+      Info.CurrentReferenceTargets = std::move(targets);
+    }
     if ((m_AuthorityFactsSession || m_EnableSignatureDrivenCallCede) &&
         CurrentFunction)
       m_LocalVariableOwners[Var] = CurrentFunction;

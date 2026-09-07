@@ -27,52 +27,60 @@ import sys/libc::{
 
 /// ReadAt 成功结果（携带归还的 buffer 所有权）
 pub shape ReadAtResult (
-    buffer: Vec<u8>,
+    buffer#: Vec<u8>,
     bytes_read: usize,
     eof: bool
 )
 
 impl ReadAtResult {
     pub fn take_buffer(cede self) -> Vec<u8> {
-        return cede self.buffer
+        auto result = self.buffer#.take()
+        cede self
+        return cede result
     }
 }
 
 /// ReadAt 失败错误（原路归还 buffer 所有权）
 pub shape ReadAtError (
-    buffer: Vec<u8>,
+    buffer#: Vec<u8>,
     error: IoError
 )
 
 impl ReadAtError {
     pub fn take_buffer(cede self) -> Vec<u8> {
-        return cede self.buffer
+        auto result = self.buffer#.take()
+        cede self
+        return cede result
     }
 }
 
 /// WriteAt 成功结果
 pub shape WriteAtResult (
-    buffer: Vec<u8>,
+    buffer#: Vec<u8>,
     bytes_written: usize,
     complete: bool
 )
 
 impl WriteAtResult {
     pub fn take_buffer(cede self) -> Vec<u8> {
-        return cede self.buffer
+        auto result = self.buffer#.take()
+        cede self
+        return cede result
     }
 }
 
 /// WriteAt 失败错误（携带已写进度与归还的 buffer）
 pub shape WriteAtError (
-    buffer: Vec<u8>,
+    buffer#: Vec<u8>,
     bytes_written: usize,
     error: IoError
 )
 
 impl WriteAtError {
     pub fn take_buffer(cede self) -> Vec<u8> {
-        return cede self.buffer
+        auto result = self.buffer#.take()
+        cede self
+        return cede result
     }
 }
 

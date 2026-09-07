@@ -26,7 +26,8 @@ fn get_ref_count(~res: Resource) -> i32 {
     if *handle_ptr.ref_ptr is null {
         return 0
     }
-    return handle_ptr.ref_ptr
+    auto result = handle_ptr.ref_ptr
+    return result
 }
 
 fn main() -> i32 {
