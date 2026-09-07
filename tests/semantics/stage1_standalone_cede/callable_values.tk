@@ -1,0 +1,41 @@
+auto drops# = 0
+auto calls# = 0
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto token = Token(id = 1)
+        auto callback = { [cede token] => calls += 1; return token.id }:dyn fn() -> i32
+        auto other = callback
+        cede callback
+        if drops != 0 { return 1 }
+        if other() != 1 || calls != 1 { return 2 }
+        cede other
+        if drops != 1 { return 3 }
+        auto resource = Token(id = 2)
+        auto consuming = { [cede resource] =>
+            calls += 1
+            auto owned = cede resource
+            return owned.id
+        }:cede dyn fn() -> i32
+        cede consuming
+        if drops != 2 || calls != 1 { return 4 }
+        auto wrappedResource = Token(id = 3)
+        auto wrapped = { [cede wrappedResource] =>
+            calls += 1
+            auto owned = cede wrappedResource
+            return owned.id
+        }:cede dyn fn() -> i32
+        cede unsafe wrapped
+        if drops != 3 || calls != 1 { return 5 }
+        auto thin = { => 7 }:fn() -> i32
+        cede thin
+        auto thinOnce = { => 8 }:cede fn() -> i32
+        cede thinOnce
+    }
+    if drops != 3 || calls != 1 { return 6 }
+    return 0
+}

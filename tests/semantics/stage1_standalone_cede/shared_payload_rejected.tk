@@ -1,0 +1,6 @@
+shape Token(id: i32)
+fn main() -> i32 {
+    auto ~owner = new Token(id = 1)
+    cede owner
+    return owner.id
+}

@@ -531,6 +531,7 @@ DIAG(ERR_SEMA_RETURN_UNIQUE_CEDE_REDUNDANT, Error, "E04656", "Unique owner retur
 DIAG(ERR_SEMA_RETURN_SOURCE_TRANSFER_UNAUTHORIZED, Error, "E04657", "Return source '{}' is not authorized to transfer ownership from this binding")
 DIAG(ERR_SEMA_RETURN_PLAN_INCOMPLETE, Error, "E04658", "Cannot prove return-source transfer plan: {}")
 DIAG(ERR_SEMA_RESULT_CEDE_QUALIFIER_REMOVED, Error, "E04659", "Function result types cannot use the removed 'cede' qualifier; remove 'cede' from the result type")
+DIAG(ERR_SEMA_STANDALONE_CEDE_REJECTED, Error, "E04660", "Cannot discard source with standalone cede: {}")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

@@ -1,0 +1,7 @@
+shape Token(id: i32)
+fn forward(cede token: Token) -> Token { return cede token }
+fn main() -> i32 {
+    auto token = Token(id = 1)
+    cede forward(cede token)
+    return token.id
+}

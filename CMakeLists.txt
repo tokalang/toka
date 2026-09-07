@@ -282,6 +282,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_stage1_return_matrix.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_stage1_standalone_cede
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_stage1_standalone_cede.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_non_call_transfer_shadow_stage0
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_non_call_transfer_shadow_stage0.py
@@ -337,6 +341,7 @@ if(BUILD_TESTING)
             toka_dyn_fn_binding_lifecycle
             toka_stage1_return_source
             toka_stage1_return_matrix
+            toka_stage1_standalone_cede
             toka_non_call_transfer_shadow_stage0
             toka_direct_call_observation_d3a
             toka_pure_nominal_overload_probe_d4a

@@ -1,0 +1,26 @@
+auto drops# = 0
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto token = Token(id = 7)
+        auto callback = { [cede token] =>
+            auto owned = cede token
+            return owned.id
+        }:cede dyn fn() -> i32
+        cede callback()
+        if drops != 1 { return 1 }
+        auto returned = Token(id = 8)
+        auto producer = { [cede returned] =>
+            auto owned = cede returned
+            return cede owned
+        }:cede dyn fn() -> Token
+        cede producer()
+        if drops != 2 { return 2 }
+    }
+    if drops != 2 { return 3 }
+    return 0
+}

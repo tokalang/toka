@@ -1,0 +1,46 @@
+auto trace# = 0
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { trace = trace * 10 + self.id }
+}
+shape Plain(value: str)
+fn discard_plain(value: str) {
+    auto plain = Plain(value = value)
+    cede plain
+}
+fn discard(cede token: Token) { cede token }
+fn discard_copy(cede value: i32) { cede value }
+fn main() -> i32 {
+    {
+        auto value = 7
+        cede value
+        discard_plain("borrowed data, no Drop")
+        auto token = Token(id = 1)
+        cede token
+        if trace != 1 { return 1 }
+        auto ^owner = new Token(id = 2)
+        cede ^owner
+        if trace != 12 { return 2 }
+        auto ~shared = new Token(id = 3)
+        auto ~other = ~shared
+        cede ~shared
+        if trace != 12 || other.id != 3 { return 3 }
+        cede ~other
+        if trace != 123 { return 4 }
+        auto inner = Token(id = 4)
+        cede unsafe inner
+        if trace != 1234 { return 5 }
+        auto outer = Token(id = 5)
+        unsafe (cede outer)
+        if trace != 12345 { return 6 }
+        auto ascribed = Token(id = 6)
+        cede (ascribed:Token)
+        if trace != 123456 { return 7 }
+        discard(Token(id = 7))
+        discard_copy(9)
+        if trace != 1234567 { return 8 }
+    }
+    if trace != 1234567 { return 9 }
+    return 0
+}

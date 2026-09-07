@@ -1,0 +1,8 @@
+fn invalid(values: [i32; 2]) -> i32 {
+    for alias value in values {
+        cede value
+        if value == 1 { return value }
+    }
+    return 0
+}
+fn main() -> i32 { return 0 }

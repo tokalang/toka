@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    auto callback = { => 7 }:cede dyn fn() -> i32
+    cede callback
+    cede callback
+    return 0
+}

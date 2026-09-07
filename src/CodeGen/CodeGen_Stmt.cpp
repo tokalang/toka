@@ -870,10 +870,14 @@ llvm::Value *CodeGen::genUnsafeStmt(const UnsafeStmt *us) {
 }
 
 llvm::Value *CodeGen::genExprStmt(const ExprStmt *es) {
+  const auto *cede = dynamic_cast<const CedeExpr *>(es->Expression.get());
+  const auto *call = cede ? dynamic_cast<const CallExpr *>(cede->Value.get()) : nullptr;
+  const bool consumingInvocation = call &&
+      call->CallableReceiver == CallableReceiverMode::Consuming;
   if (!validateStage0CodeGenAuthority(
           es, Stage0CodeGenAuthorityKind::NonCallItem,
           TransferDestination::StatementEndDiscard, "standalone",
-          dynamic_cast<const CedeExpr *>(es->Expression.get()) != nullptr))
+          cede && !consumingInvocation))
     return nullptr;
   PhysEntity result = genExpr(es->Expression.get());
   llvm::Value *value = result.load(m_Builder);

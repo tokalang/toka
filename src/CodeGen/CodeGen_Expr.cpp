@@ -7300,15 +7300,34 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
   // Cede is a move semantic marker checked heavily in Sema. 
   // In LLVM IR, we evaluate it to the underlying value explicitly transferring ownership.
   if (ce->Value) {
-    const Expr *directSource = ce->Value.get();
-    while (auto *cast = dynamic_cast<const CastExpr *>(directSource))
-      directSource = cast->Expression.get();
+    const bool validatedStandalone = ce->Stage0Authority &&
+        ce->Stage0Authority->Kind == Stage0CodeGenAuthorityKind::NonCallItem &&
+        ce->Stage0Authority->Destination == TransferDestination::StatementEndDiscard &&
+        ce->Stage0Authority->SemaValidated && ce->Stage0Authority->Complete &&
+        ce->Stage0Authority->DestinationMatching &&
+        ce->Stage0Authority->ItemPlan && ce->Stage0Authority->ItemPlan->admitted();
+    auto directSourceOf = [&](const Expr *source) {
+      while (source) {
+        if (auto *cast = dynamic_cast<const CastExpr *>(source))
+          source = cast->Expression.get();
+        else if (auto *unsafe = dynamic_cast<const UnsafeExpr *>(source);
+                 validatedStandalone && unsafe)
+          source = unsafe->Expression.get();
+        else
+          break;
+      }
+      return source;
+    };
+    // Standalone Sema already proved the exact source and cleanup transfer.
+    // An unsafe evaluation wrapper must not hide that source from the same
+    // drop-suppression path used by an unwrapped cede.
+    const Expr *directSource = directSourceOf(ce->Value.get());
 
     const VariableExpr *ve = dynamic_cast<const VariableExpr *>(directSource);
     const UnaryExpr *ue = nullptr;
     if (!ve) {
       if ((ue = dynamic_cast<const UnaryExpr *>(directSource))) {
-        directSource = ue->RHS.get();
+        directSource = directSourceOf(ue->RHS.get());
         ve = dynamic_cast<const VariableExpr *>(directSource);
       } else if (auto *se = dynamic_cast<const SpreadExpr *>(directSource)) {
         ve = dynamic_cast<const VariableExpr *>(se->Base.get());

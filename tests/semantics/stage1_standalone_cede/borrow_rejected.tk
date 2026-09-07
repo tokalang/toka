@@ -1,0 +1,7 @@
+shape Token(id: i32)
+fn main() -> i32 {
+    auto token = Token(id = 1)
+    auto &borrowed = &token
+    cede token
+    return borrowed.id + token.id
+}

@@ -1573,15 +1573,73 @@ void Sema::checkStmt(Stmt *S) {
     // Standalone expressions are NOT receivers
     m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, false});
     ExprS->Expression = foldGenericConstant(std::move(ExprS->Expression));
-    if (dynamic_cast<CedeExpr *>(ExprS->Expression.get()))
-      recordExplicitCedeStage0NonCallPlan(
+    Expr *statementRoot = ExprS->Expression.get();
+    while (statementRoot) {
+      if (auto *unsafe = dynamic_cast<UnsafeExpr *>(statementRoot))
+        statementRoot = unsafe->Expression.get();
+      else if (auto *cast = dynamic_cast<CastExpr *>(statementRoot);
+               cast && cast->Kind == CastKind::Ascription)
+        statementRoot = cast->Expression.get();
+      else
+        break;
+    }
+    auto *standaloneCede = dynamic_cast<CedeExpr *>(statementRoot);
+    const bool consumingInvocation = standaloneCede &&
+        isConsumingCallableInvocation(dynamic_cast<CallExpr *>(standaloneCede->Value.get()));
+    const bool uninstantiatedGeneric = CurrentFunction &&
+        !CurrentFunction->GenericParams.empty() && !CurrentFunction->TemplateOrigin;
+    const bool activateStandalone = standaloneCede && !consumingInvocation &&
+        m_EnableStage1ExplicitCallerCede && !uninstantiatedGeneric &&
+        !m_IsPrecomputingCaptures;
+    std::optional<AnalysisState> standaloneBefore;
+    std::optional<ExplicitCedePlan> standalonePlan;
+    const size_t standaloneDiagnosticStart = DiagnosticEngine::records().size();
+    if (activateStandalone) standaloneBefore = captureAnalysisState();
+    if (standaloneCede && (!consumingInvocation || !m_EnableStage1ExplicitCallerCede)) {
+      standalonePlan = recordExplicitCedeStage0NonCallPlan(
           ExprS, ExprS->Expression.get(), nullptr,
           TransferDestination::StatementEndDiscard,
           TransferEligibilityContext::Standalone, "standalone");
+      if (activateStandalone && !standalonePlan->admitted()) {
+        error(standaloneCede, DiagID::ERR_SEMA_STANDALONE_CEDE_REJECTED,
+              toString(standalonePlan->Rejection));
+        // Nothing below this point (including a nested call) has been checked
+        // or allowed to invalidate the source of a rejected standalone cede.
+        m_ControlFlowStack.pop_back();
+        return;
+      }
+    }
     auto authorityContext =
         beginAuthorityFullExpression(ExprS->Expression.get());
     auto exprType = checkExpr(ExprS->Expression.get());
     restoreAuthorityFullExpression(std::move(authorityContext));
+    if (activateStandalone) {
+      const auto &diagnostics = DiagnosticEngine::records();
+      bool failed = std::any_of(
+          diagnostics.begin() + std::min(standaloneDiagnosticStart, diagnostics.size()),
+          diagnostics.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
+      if (!failed && (!exprType || exprType->isUnknown())) {
+        error(standaloneCede, DiagID::ERR_SEMA_STANDALONE_CEDE_REJECTED,
+              toString(TransferPlanRejection::IncompleteFacts));
+        failed = true;
+      }
+      if (failed) {
+        mergeAnalysisStates({*standaloneBefore}, standaloneBefore->PAL);
+        if (ExprS->Stage0Authority) ExprS->Stage0Authority->SemaValidated = false;
+      } else {
+        Stage0CodeGenAuthority authority;
+        authority.Kind = Stage0CodeGenAuthorityKind::NonCallItem;
+        authority.RequiresAuthority = requiresStage0CodeGenAuthority(*standalonePlan);
+        authority.SemaValidated = true;
+        authority.Complete = true;
+        authority.DestinationMatching = true;
+        authority.SnapshotRevision = standalonePlan->Prepared.SnapshotRevision;
+        authority.Destination = TransferDestination::StatementEndDiscard;
+        authority.ItemPlan = *standalonePlan;
+        ExprS->Stage0Authority = authority;
+        standaloneCede->Stage0Authority = std::move(authority);
+      }
+    }
     m_ControlFlowStack.pop_back();
 
     if (exprType) {

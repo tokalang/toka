@@ -1,0 +1,6 @@
+shape Token(id: i32)
+fn invalid(token: Token) -> i32 {
+    cede token
+    return token.id
+}
+fn main() -> i32 { return 0 }

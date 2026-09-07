@@ -1,0 +1,3 @@
+shape Token(id: i32)
+fn make() -> Token { return Token(id = 1) }
+fn main() -> i32 { cede make(); return 0 }

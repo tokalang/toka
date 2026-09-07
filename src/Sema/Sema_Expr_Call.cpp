@@ -3619,8 +3619,11 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   const bool returnBehaviorPlan =
       destination == TransferDestination::Return &&
       m_EnableStage1ExplicitCallerCede;
+  const bool standaloneBehaviorPlan =
+      destination == TransferDestination::StatementEndDiscard &&
+      m_EnableStage1ExplicitCallerCede;
   if ((!SemanticEvidence::isNonCallTransferShadowEnabled() &&
-       !returnBehaviorPlan) ||
+       !returnBehaviorPlan && !standaloneBehaviorPlan) ||
       m_IsPrecomputingCaptures || !site || !value)
     return {};
 
@@ -3646,12 +3649,19 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   }
   auto actualType = queryExplicitCedeStage0NonCallType(value, destinationType);
   bool explicitCede = false;
+  bool sawStandaloneCede = false;
+  bool nestedStandaloneCede = false;
   bool structuredBorrowedTemporary = false;
   bool structuredCopyTemporary = false;
   std::vector<AccessPath> structuredBorrowedReferents;
   Expr *exactValue = value;
   while (exactValue) {
     if (auto *cede = dynamic_cast<CedeExpr *>(exactValue)) {
+      if (standaloneBehaviorPlan && sawStandaloneCede) {
+        nestedStandaloneCede = true;
+        break;
+      }
+      sawStandaloneCede = true;
       // `cede callable(args)` consumes the callable receiver; the value
       // delivered to this non-call destination is still the call result, a
       // source-less temporary.  Do not reinterpret that receiver spelling as
@@ -3751,6 +3761,14 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       site, exactValue ? exactValue : value, actualType, destinationType, false,
       false, false, false, false, CallTransferRoute::Ordinary, false,
       CallExecutionBoundary::None, 0, 0, true);
+  if (nestedStandaloneCede) {
+    // The inner destructive read produces a value; the outer cede has no
+    // named source of its own. Do not flatten it back to the original place.
+    legacy.ValueCategory = CallValueCategory::Temporary;
+    legacy.SourcePlace = {};
+    legacy.ReferentPath = {};
+    legacy.DependencyPaths.clear();
+  }
   if (structuredBorrowedTemporary) {
     legacy.ValueCategory = CallValueCategory::Temporary;
     legacy.SourcePlace = {};
@@ -3934,6 +3952,27 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       exactValue ? exactValue : value, actualType, legacy,
       &providedSnapshot->State, providedSnapshot->Revision, true,
       destination == TransferDestination::Return);
+  if (standaloneBehaviorPlan && actualType &&
+      (actualType->isFunction() || actualType->isDynFn()) &&
+      facts.SourceView == TransferSourceView::CallableIdentity &&
+      facts.SourceCategory == TransferSourceCategory::NamedSourcePlace) {
+    // The callable's receiver contract survives discarding its binding. A
+    // consuming value is not Copy merely because it has a function carrier.
+    const bool consuming =
+        getCallableReceiverMode(*actualType) == CallableReceiverMode::Consuming;
+    facts.Ownership = consuming ? TransferOwnershipKind::OwnedCallable
+                               : TransferOwnershipKind::CallableIdentity;
+    facts.CopyProof = consuming ? TransferCopyProof::ProvenNonCopy
+                               : TransferCopyProof::ProvenCopy;
+    // A dyn carrier releases its environment owner at statement end, even
+    // for a non-consuming callable. Thin fn values have no such owner.
+    facts.CarriesDropLiability = actualType->isDynFn();
+    facts.DropLiabilityComplete = true;
+    if (facts.CarriesDropLiability && facts.SourcePlace) {
+      facts.LiabilityIdentity = facts.SourcePlace->root().canonicalKey();
+      facts.LiabilityIdentityComplete = true;
+    }
+  }
   if (returnBehaviorPlan &&
       (normalSemaValidated || facts.SourceCategory == TransferSourceCategory::NamedSourcePlace)) {
     std::vector<AccessPath> dynamicOrigins;
