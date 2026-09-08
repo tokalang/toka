@@ -4,12 +4,16 @@
 
 import argparse
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
+INTERFACE_VERSION = re.search(
+    r'#define TOKA_COMPILER_INTERFACE_VERSION "([^"]+)"',
+    (ROOT / "include/toka/InterfaceVersion.h").read_text()).group(1)
 FIXTURES = ROOT / "tests/semantics/dyn_fn_binding_lifecycle"
 INDIRECT_FIXTURES = ROOT / "tests/semantics/stage1_indirect_cede"
 
@@ -101,7 +105,7 @@ def main():
                 emitted.stderr)
         interface.write_text(
             interface.read_text(encoding="utf-8").replace(
-                "compiler_version: 0.9.9-17",
+                "compiler_version: " + INTERFACE_VERSION,
                 "compiler_version: 0.9.9-16"),
             encoding="utf-8")
         provider.unlink()
@@ -119,7 +123,7 @@ def main():
             text=True, timeout=30)
         require(rejected.returncode != 0 and
                 "Compiler version mismatch" in rejected.stderr and
-                "0.9.9-17" in rejected.stderr and
+                INTERFACE_VERSION in rejected.stderr and
                 "0.9.9-16" in rejected.stderr,
                 "old dyn-fn environment ABI was not rejected")
 

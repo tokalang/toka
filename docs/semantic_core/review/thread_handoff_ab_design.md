@@ -1,12 +1,27 @@
 # Thread A/B：环境交接与结果责任通道
 
 Date: 2026-09-08
-Status: Proposed — design authorized; implementation and ABI changes NOT authorized
+Status: Accepted for implementation — runtime and binding qualification still pending
+Accepted revision: fdb938dae1b147cd156cb5b8d8de70d2625e1442
+Acceptance date: 2026-09-08
 Checkpoint basis: `9efb492ebc5418ec3c3af57c397c6f3252fec62e` plus unaccepted binding worktree
 
 本稿只定义一个 native thread 的责任交接，不建立任务池、全局 registry、取消框架
 或通用 executor。不改 capture 布局、dyn-fn 引用计数算法、raw_take 准入或 raw 权限。
-下面的新增接口、句柄表示、错误策略和 compiler/runtime bridge 均等待设计接受。
+下面的新增接口、句柄表示、错误策略和 compiler/runtime bridge 已获设计接受。
+实现必须分别验证，设计接受不等于 runtime 或整个 binding 切片通过。
+
+### 接受时补充的实施硬边界
+
+1. 释放 W 必须是 trampoline 对控制块的最后一次访问；释放后不得读取状态、
+   发出带 control 指针的测试回调，或访问从 control 借出的成员。
+2. `move_out` 对合法 lease 不分配、不调用用户代码、不展开；领取结果后不能新增
+   可恢复失败。typed move 是原责任的无回调交接，不是自定义 move/clone。
+3. prepared/result lease 通过版本化私有 ABI 创建；NULL 是唯一 Empty 表示。
+   输出槽由 caller 提供并初始化为空，opaque 对象由 runtime 分配并释放，
+   具体入口与共享布局见 `lib/sys/toka_thread_handoff_v1.h`。
+4. 新 compiler 接口启用时同步拒绝旧 TKI/缓存/runtime 混用，不延迟到最终发布。
+   设计提交本身不改变接口键；独立 native 测试尚不构成 std/thread 的接口启用。
 
 ## 1. 选定方案及行为边界
 
@@ -141,7 +156,7 @@ native 失败只回滚**操作预约**，不回滚 worker 并发发生的 Ready/
 
 空句柄为 no-op；活句柄复用相同的 detach 算法，成功时按上述规则领取/交出 T 清理权。
 **提议：隐式 drop 的 detach 失败采用无分配 fatal 终止进程，且先释放内部锁。**
-这是显式设计选择，尚待批准：没有错误返回位置，也没有获准的 orphan owner。
+这是已接受的显式设计选择：没有错误返回位置，也没有获准的 orphan owner。
 不能静默漏掉控制块，不能无限重试，不能阻塞 join，也不增设 reaper/registry 隐藏责任。
 显式 detach/join 的 native 错误则始终返回并保留 handle。用户可处理/重试；若随后
 仍让失败句柄隐式销毁，适用上述 fatal 政策。mutex 损坏等 runtime 不变量失败同样
@@ -192,14 +207,18 @@ typedef struct TokaThreadControl TokaThreadControl;
 typedef struct TokaThreadPrepared TokaThreadPrepared; // owns EnvLease + static Ops
 typedef struct TokaThreadResultLease TokaThreadResultLease; // typed live result, not plain pointer
 
-int32_t toka_thread_start_v1(TokaThreadPrepared *inout, TokaThreadControl **out,
+int32_t toka_thread_prepare_v1(const TokaThreadEnvOpsV1 *ops, void *packet,
+                              TokaThreadPrepared **out);
+int32_t toka_thread_start_v1(TokaThreadPrepared **inout, TokaThreadControl **out,
                             int32_t *native_code);
-int32_t toka_thread_join_v1(TokaThreadControl **inout, const TokaResultOps *expected,
-                           TokaThreadResultLease *out, int32_t *native_code);
+int32_t toka_thread_join_v1(TokaThreadControl **inout, const TokaThreadResultOpsV1 *expected,
+                           TokaThreadResultLease **out, int32_t *native_code);
 int32_t toka_thread_detach_v1(TokaThreadControl **inout, int32_t *native_code);
 void toka_thread_drop_handle_v1(TokaThreadControl **inout);
-void toka_thread_dispose_prepared_v1(TokaThreadPrepared *inout);
-void toka_thread_drop_result_v1(TokaThreadResultLease *inout);
+void toka_thread_dispose_prepared_v1(TokaThreadPrepared **inout);
+void toka_thread_take_result_v1(TokaThreadResultLease **inout,
+                                const TokaThreadResultOpsV1 *expected, void *destination);
+void toka_thread_drop_result_v1(TokaThreadResultLease **inout);
 ```
 
 - start 的 out 入参须空；成功清空 prepared、转移 H 给 out；失败 out 仍空，prepared
@@ -221,9 +240,9 @@ void toka_thread_drop_result_v1(TokaThreadResultLease *inout);
 - 原 `sys_thread_spawn/join/detach` 低层入口不静默改变语义；std 改用上述新协议。
   `unwrap_fat_pointer` 不再承担 std thread 的环境证明。不用全局 registry 转换 id。
 
-新增 private runtime ABI、compiler-generated adapters 和公开 JoinHandle 合约都需
-实现授权。必须在后续接口键/发布资格切片处理混用旧模块的拒绝；本设计提交不 bump
-interface key，不修改 Parser/TKI/CodeGen/runtime。
+新增 private runtime ABI、compiler-generated adapters 和公开 JoinHandle 合约已获
+实施授权。按接受时补充的硬边界，新接口启用时就必须同时拒绝旧模块／缓存／runtime；
+不得等到后续发布。设计接受不代表实现资格，具体改动和测试按增量记录。
 
 ## 6. 故障与竞争矩阵（未来门禁，不是已通过结果）
 
@@ -260,5 +279,5 @@ interface key，不修改 Parser/TKI/CodeGen/runtime。
 本轮仅提交设计，不应用接口/句柄/ABI/同步实现，不改五个 string 方法或既有权限。
 需审查的实质决定是：mutex + 原生 join/detach；唯一 H/W 责任；typed 环境/结果
 adapter；返回 Result/ThreadError 与 opaque JoinHandle；隐式 detach 失败 fatal。
-只有这些决定 Accepted 后，才按 A bridge → B state/error channel → std 接线 →
+这些决定已经 Accepted，按共享 ABI 固定 → A/B 分别定向 → std 接线 →
 定向故障矩阵实施。候选收敛后再跑一轮集成，不新增通用线程框架。
