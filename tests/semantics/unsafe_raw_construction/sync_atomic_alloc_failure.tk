@@ -1,0 +1,11 @@
+// The directed runner injects NULL only at this helper's malloc call in
+// generated test IR. Production allocator and compiler are never replaced.
+import sys/sync::{sys_atomic_init_i32, sys_atomic_destroy_i32}
+fn main() -> i32 {
+    auto pointer = sys_atomic_init_i32(7)
+    if pointer != 0:Addr {
+        sys_atomic_destroy_i32(pointer)
+        return 1
+    }
+    return 0
+}

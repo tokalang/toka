@@ -1,0 +1,15 @@
+import sys/sync::{sys_atomic_init_i32, sys_atomic_load_i32,
+    sys_atomic_fetch_add_i32, sys_atomic_store_i32, sys_atomic_destroy_i32}
+
+fn main() -> i32 {
+    auto pointer = sys_atomic_init_i32(7)
+    if pointer == 0:Addr { return 1 }
+    if sys_atomic_load_i32(pointer) != 7 { return 2 }
+    if sys_atomic_fetch_add_i32(pointer, 3) != 7 { return 3 }
+    if sys_atomic_load_i32(pointer) != 10 { return 4 }
+    sys_atomic_store_i32(pointer, -2)
+    if sys_atomic_load_i32(pointer) != -2 { return 5 }
+    sys_atomic_destroy_i32(pointer)
+    sys_atomic_destroy_i32(0:Addr)
+    return 0
+}

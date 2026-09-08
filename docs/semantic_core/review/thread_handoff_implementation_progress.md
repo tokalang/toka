@@ -4,6 +4,10 @@ Date: 2026-09-08
 Status: Implementation checkpoint — NOT runtime/source/binding Accepted
 Design accepted: `fdb938dae1b147cd156cb5b8d8de70d2625e1442`
 
+后续三项核心修复及 sys/sync 门禁恢复见
+[增量复审记录](thread_handoff_core_increment_review.md)。下文数字保留为第一检查点
+的历史结果，不代表修复后的最新计数。
+
 ## 已实现与边界
 
 1. 接受时的四项硬边界已纳入设计。共享版本化 C 描述位于
