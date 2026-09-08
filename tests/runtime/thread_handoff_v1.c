@@ -21,6 +21,8 @@ static TokaThreadControl **reenter_handle;
 static TokaThreadPrepared **dispose_during_create;
 static void *constructed_storage;
 static atomic_int allocations, frees, attempts, invokes, env_drops, result_drops, moves;
+extern const TokaThreadResultOpsV1 *toka_test_equivalent_value_ops(void);
+extern unsigned toka_test_equivalent_thunk_calls(void);
 static pthread_t creator, destructor_thread;
 static _Thread_local int runtime_lock_depth;
 
@@ -317,6 +319,26 @@ static void native_failures(void) {
     }
 }
 
+static void equivalent_descriptors(void) {
+    const TokaThreadResultOpsV1 *other = toka_test_equivalent_value_ops();
+    assert(other != &value_ops && other->move_out != value_ops.move_out &&
+           other->drop_live != value_ops.drop_live);
+    for (int use_other = 1; use_other <= 3; ++use_other) {
+        reset(); worker_open = 1;
+        TokaThreadControl *handle = start();
+        TokaThreadResultLease *lease = NULL;
+        int32_t code;
+        assert(toka_thread_join_v1(&handle, use_other & 1 ? other : &value_ops,
+                                  &lease, &code) == TOKA_THREAD_OK_V1);
+        Value result = {0, NULL};
+        toka_thread_take_result_v1(&lease, use_other & 2 ? other : &value_ops, &result);
+        assert(!handle && !lease && result.value == 42 && result.resource);
+        assert(atomic_load(&moves) == 1 && toka_test_equivalent_thunk_calls() == 0);
+        drop_value(&result);
+        assert(atomic_load(&result_drops) == 1 && atomic_load(&env_drops) == 1);
+    }
+}
+
 static void zero_run(void *packet, void *storage) {
     assert(runtime_lock_depth == 0 && storage);
     free(packet);
@@ -471,12 +493,14 @@ static void fatal_case(int which) {
     _exit(99);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
     alarm(30); /* Deadlock watchdog, never used to schedule a passing test. */
+    if (argc == 2 && strcmp(argv[1], "--fatal-probe") == 0) fatal_case(0);
     toka_thread_require_compiler_0_9_9_18_v1();
     allocation_failures();
     success_paths();
     native_failures();
+    equivalent_descriptors();
     layout_cases();
     reset();
     for (int which = 0; which < 14; ++which) {
@@ -485,8 +509,8 @@ int main(void) {
         if (!child) fatal_case(which);
         int status;
         assert(waitpid(child, &status, 0) == child);
-        assert(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT);
+        assert(WIFEXITED(status) && WEXITSTATUS(status) == TOKA_THREAD_FATAL_EXIT_V1);
     }
-    puts("thread handoff v1: 28 lifetime/layout/failure schedules + 14 fatal descriptor/drop cases passed");
+    puts("thread handoff v1: 31 lifetime/layout/failure schedules (including cross-TU equivalent descriptors) + 14 fatal descriptor/drop cases passed");
     return 0;
 }

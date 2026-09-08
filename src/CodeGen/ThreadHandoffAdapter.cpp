@@ -57,6 +57,11 @@ bool validate(llvm::Module &module, const ThreadHandoffAdapterPlan &p,
       !pointer(p.CarrierType->getElementType(p.EnvironmentField)) ||
       !pointer(p.CarrierType->getElementType(p.InvokeField)))
     return reject("ThreadHandoffCarrierLayoutMismatch");
+  // This unactivated slice only qualifies naturally aligned packet/carrier
+  // storage. Packed fields would require explicit load and by-address callee
+  // alignment proofs; do not silently emit natural-alignment loads for them.
+  if (p.PacketType->isPacked() || p.CarrierType->isPacked())
+    return reject("ThreadHandoffPackedLayoutUnqualified");
   if (!p.ResultType || !p.ResultType->isSized() ||
       &p.ResultType->getContext() != &module.getContext() ||
       module.getDataLayout().getTypeAllocSize(p.ResultType).isScalable() ||

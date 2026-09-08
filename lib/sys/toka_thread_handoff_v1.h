@@ -13,6 +13,7 @@ extern "C" {
  * qualified revision), never silently combine this protocol with -17 TKI. */
 #define TOKA_THREAD_HANDOFF_VERSION_V1 UINT32_C(1)
 #define TOKA_THREAD_HANDOFF_ABI_V1 "toka-thread-handoff-v1/compiler-0.9.9-18"
+#define TOKA_THREAD_FATAL_EXIT_V1 134
 
 enum TokaThreadStatusV1 {
     TOKA_THREAD_OK_V1 = 0,
@@ -86,8 +87,9 @@ int32_t toka_thread_join_v1(TokaThreadControl **inout,
                            TokaThreadResultLease **out, int32_t *native_code);
 int32_t toka_thread_detach_v1(TokaThreadControl **inout, int32_t *native_code);
 
-/* Empty is a no-op. Detach failure during implicit drop: lock-free-of-state,
- * allocation-free fatal; no promise that process termination runs all Drops. */
+/* Empty is a no-op. Detach failure during implicit drop: outside the state
+ * lock, no allocation or I/O, immediate TOKA_THREAD_FATAL_EXIT_V1 termination;
+ * no promise that process termination runs all Drops. */
 void toka_thread_drop_handle_v1(TokaThreadControl **inout);
 
 /* Take validates expected type/alignment before relocation. Complete legal

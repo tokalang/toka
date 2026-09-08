@@ -40,11 +40,9 @@
 #endif
 
 static void fatal(void) {
-#if TOKA_THREAD_POSIX
-    static const char message[] = "fatal: invalid Toka thread handoff v1\n";
-    (void)write(STDERR_FILENO, message, sizeof(message) - 1);
-#endif
-    abort();
+    /* No diagnostic I/O, stdio flush, atexit or user signal handler. Even a
+     * full stderr pipe must not turn an unrecoverable failure into a wait. */
+    _Exit(TOKA_THREAD_FATAL_EXIT_V1);
 }
 
 static void require(int condition) { if (!condition) fatal(); }
@@ -64,9 +62,10 @@ static void match_result(const TokaThreadResultOpsV1 *actual,
     validate_result(expected);
     require(strcmp(actual->type_key, expected->type_key) == 0 &&
             actual->value_size == expected->value_size &&
-            actual->value_alignment == expected->value_alignment &&
-            actual->move_out == expected->move_out &&
-            actual->drop_live == expected->drop_live);
+            actual->value_alignment == expected->value_alignment);
+    /* Equivalent compiler descriptors may have distinct module-local thunks.
+     * The producer descriptor remains authoritative for execution; expected
+     * proves the requested complete type/ABI, not an executable address. */
 }
 
 static void validate_env(const TokaThreadEnvOpsV1 *ops) {

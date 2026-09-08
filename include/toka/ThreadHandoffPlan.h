@@ -52,6 +52,8 @@ struct ThreadHandoffAdapterPlan {
   std::string ResultTypeKey;
 
   // Compiler-lowered exact types/layout, never reconstructed by this emitter.
+  // This isolated slice rejects packed packet/carrier layouts until explicit
+  // field and by-address callee alignment are qualified.
   llvm::StructType *PacketType = nullptr;
   unsigned CarrierField = 0;
   llvm::StructType *CarrierType = nullptr;

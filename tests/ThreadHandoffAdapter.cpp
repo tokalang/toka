@@ -149,6 +149,16 @@ int main() {
   { auto bad = p; bad.ContractKey = std::string("key\0suffix", 10); CHECK(rejected(bad)); }
   { auto bad = p; bad.ResultTypeKey = std::string("type\0suffix", 11); CHECK(rejected(bad)); }
   { auto bad = p; bad.CarrierField = 8; CHECK(rejected(bad)); }
+  { auto bad = p;
+    bad.PacketType = llvm::StructType::get(context,
+        {llvm::Type::getInt8Ty(context), p.CarrierType, p.ResultType}, true);
+    bad.CarrierField = 1; bad.Arguments[0].PacketField = 2;
+    CHECK(rejected(bad)); CHECK(reason == "ThreadHandoffPackedLayoutUnqualified"); }
+  { auto bad = p;
+    auto *ptr = llvm::PointerType::getUnqual(context);
+    bad.CarrierType = llvm::StructType::get(context, {ptr, ptr, ptr}, true);
+    bad.PacketType = llvm::StructType::get(context, {bad.CarrierType, p.ResultType});
+    CHECK(rejected(bad)); CHECK(reason == "ThreadHandoffPackedLayoutUnqualified"); }
   { auto bad = p; bad.InvokeField = bad.EnvironmentField; CHECK(rejected(bad)); }
   { auto bad = p; bad.Arguments[0].PacketField = 0; CHECK(rejected(bad)); }
   { auto bad = p; bad.Arguments.push_back(bad.Arguments[0]); CHECK(rejected(bad)); }
