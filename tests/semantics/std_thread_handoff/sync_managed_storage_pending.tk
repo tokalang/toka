@@ -1,5 +1,5 @@
-// Positive target, not a permanent negative: guard morphology currently rejects
-// raw-of-managed T during whole generic impl validation, before runtime cleanup.
+// Required positive in toka_public_thread_sync_closeout, not an expected failure.
+// Includes the remaining-owner lifetime check for a morphic shared parameter.
 import std/sync::{Mutex, RwMutex}
 auto drops# = 0
 shape Token(value: i32)

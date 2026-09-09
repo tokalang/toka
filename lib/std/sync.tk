@@ -36,11 +36,11 @@ impl<'T: @Send> Mutex<'T> {
         return self.handle
     }
     
-    pub fn new(data: cede 'T) -> Mutex<'T> {
+    pub fn new(cede 'data: T) -> Mutex<'T> {
         unsafe {
             auto env = sys_alloc_thread_env(sizeof('T) as usize)
             auto *p# = sync_writable_storage<['T]>(env)
-            p[0] = cede data
+            p[0] = cede 'data
             return Mutex<'T>(
                 handle = sys_mutex_create(),
                 data_ptr = env
@@ -49,11 +49,11 @@ impl<'T: @Send> Mutex<'T> {
     }
     
     /// Directly allocates and initializes a new Mutex as a shared pointer (~Mutex)
-    pub fn make(data: cede 'T) -> ^Mutex<'T> {
+    pub fn make(cede 'data: T) -> ^Mutex<'T> {
         unsafe {
             auto env = sys_alloc_thread_env(sizeof('T) as usize)
             auto *p# = sync_writable_storage<['T]>(env)
-            p[0] = cede data
+            p[0] = cede 'data
             auto ^mutex = new Mutex<'T>(
                 handle = sys_mutex_create(),
                 data_ptr = env
@@ -62,11 +62,11 @@ impl<'T: @Send> Mutex<'T> {
         }
     }
 
-    pub fn make_shared(data: cede 'T) -> ~Mutex<'T> {
+    pub fn make_shared(cede 'data: T) -> ~Mutex<'T> {
         unsafe {
             auto env = sys_alloc_thread_env(sizeof('T) as usize)
             auto *p# = sync_writable_storage<['T]>(env)
-            p[0] = cede data
+            p[0] = cede 'data
             auto ~mutex = new Mutex<'T>(
                 handle = sys_mutex_create(),
                 data_ptr = env
@@ -87,12 +87,12 @@ impl<'T: @Send> Mutex<'T> {
             }
             
             auto temp_h = self.handle:Addr
-            auto *p# = sync_writable_storage<'T>(self.data_ptr)
+            auto *p# = sync_writable_storage<['T]>(self.data_ptr)
             auto nul *tok = null:nul *byte
             
             return Result<MutexLock<'T>, Error>::Ok(MutexLock<'T>(
                 handle = temp_h,
-                &data = *p,
+                &data = &'(p[0]),
                 *thread_token = *tok
             ))
         }
@@ -148,11 +148,11 @@ impl<'T> MutexLock<'T>@Encap {
 }
 
 impl<'T: @Send> MutexLock<'T> {
-    pub fn borrow_mut(self) -> &value#: T
+    pub fn borrow_mut(self) -> &'T#
     effects:
-        &value <- self
+        return <- self
     {
-        return &(self.data)
+        return self.&data
     }
 
 }
@@ -167,11 +167,11 @@ impl<'T: @{Send, Sync}> RwMutex<'T>@Sync {}
 impl<'T: @{Send, Sync}> RwMutex<'T>@Send {}
 
 impl<'T: @{Send, Sync}> RwMutex<'T> {
-    pub fn new(data: cede 'T) -> RwMutex<'T> {
+    pub fn new(cede 'data: T) -> RwMutex<'T> {
         unsafe {
             auto env = sys_alloc_thread_env(sizeof('T) as usize)
             auto *p# = sync_writable_storage<['T]>(env)
-            p[0] = cede data
+            p[0] = cede 'data
             return RwMutex<'T>(
                 handle = sys_rwlock_create(),
                 data_ptr = env
@@ -179,11 +179,11 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
         }
     }
 
-    pub fn make_shared(data: cede 'T) -> ~RwMutex<'T> {
+    pub fn make_shared(cede 'data: T) -> ~RwMutex<'T> {
         unsafe {
             auto env = sys_alloc_thread_env(sizeof('T) as usize)
             auto *p# = sync_writable_storage<['T]>(env)
-            p[0] = cede data
+            p[0] = cede 'data
             auto ~rwlock = new RwMutex<'T>(
                 handle = sys_rwlock_create(),
                 data_ptr = env
@@ -204,12 +204,12 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
             }
             
             auto temp_h = self.handle:Addr
-            auto *p = (self.data_ptr as *'T)
+            auto *p = (self.data_ptr as *['T])
             auto nul *tok = null:nul *byte
             
             return Result<RwReadLock<'T>, Error>::Ok(RwReadLock<'T>(
                 handle = temp_h,
-                &data = *p,
+                &data = &'(p[0]),
                 *thread_token = *tok
             ))
         }
@@ -227,12 +227,12 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
             }
             
             auto temp_h = self.handle:Addr
-            auto *p# = sync_writable_storage<'T>(self.data_ptr)
+            auto *p# = sync_writable_storage<['T]>(self.data_ptr)
             auto nul *tok = null:nul *byte
             
             return Result<RwWriteLock<'T>, Error>::Ok(RwWriteLock<'T>(
                 handle = temp_h,
-                &data = *p,
+                &data = &'(p[0]),
                 *thread_token = *tok
             ))
         }
@@ -287,11 +287,11 @@ impl<'T> RwReadLock<'T>@Encap {
 }
 
 impl<'T: @{Send, Sync}> RwReadLock<'T> {
-    pub fn borrow(self) -> &value: T
+    pub fn borrow(self) -> &'T
     effects:
-        &value <- self
+        return <- self
     {
-        return &(self.data)
+        return self.&data
     }
 
 }
@@ -314,11 +314,11 @@ impl<'T> RwWriteLock<'T>@Encap {
 }
 
 impl<'T: @{Send, Sync}> RwWriteLock<'T> {
-    pub fn borrow_mut(self) -> &value#: T
+    pub fn borrow_mut(self) -> &'T#
     effects:
-        &value <- self
+        return <- self
     {
-        return &(self.data)
+        return self.&data
     }
 
 }

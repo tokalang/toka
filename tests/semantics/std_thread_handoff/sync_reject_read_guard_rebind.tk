@@ -1,0 +1,12 @@
+import std/sync::RwMutex
+shape Token(value: i32)
+impl Token@Send {}
+impl Token@Sync {}
+shape WritableView<'T>(&'value#: T)
+fn main() -> i32 {
+    auto ^item = new Token(value = 7)
+    auto mutex = RwMutex<^Token>::new(cede ^item)
+    auto locked = mutex.read_lock().unwrap()
+    WritableView<^Token>(&value = locked.borrow())
+    return 0
+}

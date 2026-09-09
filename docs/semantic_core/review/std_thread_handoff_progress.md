@@ -10,6 +10,10 @@ Latest integration checkpoint:
 The chronological implementation notes below do not supersede that full-suite
 baseline or turn the thread/binding work into Accepted.
 
+Next limited increment:
+[managed guards and storage-contract review](thread_three_item_progress_2026_09_09.md).
+This remains WIP; its required shared/thread positives are failing, not skipped.
+
 The accepted private source subset is closed. This branch implements the public
 thread responsibility chain; no additional private probe entry is introduced.
 No previous freeze ref is moved. The unaccepted binding dependencies documented

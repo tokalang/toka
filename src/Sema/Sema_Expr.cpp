@@ -134,6 +134,38 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
   }
 
   if (auto *Unary = dynamic_cast<UnaryExpr *>(E)) {
+    // A reference to a selected raw-storage element handle addresses the
+    // slot, not the managed pointee. Its P is the slot's H. Preserve the
+    // complete inner type (including pointee permissions); never derive this
+    // capability merely from unsafe context or from the requested borrow.
+    auto *selected = dynamic_cast<UnaryExpr *>(Unary->RHS.get());
+    auto *index = selected && selected->Op == TokenType::MorphicIdentity
+                      ? dynamic_cast<ArrayIndexExpr *>(selected->RHS.get())
+                      : nullptr;
+    if (Unary->Op == TokenType::Ampersand && index && E->ResolvedType &&
+        E->ResolvedType->isReference() && index->ResolvedType &&
+        (index->ResolvedType->isUniquePtr() || index->ResolvedType->isSharedPtr())) {
+      std::shared_ptr<Type> storageType;
+      if (auto *variable = dynamic_cast<VariableExpr *>(index->Array.get())) {
+        SymbolInfo *binding = nullptr;
+        std::string name = variable->Name;
+        if (CurrentScope->findVariableWithDeref(variable->Name, binding, name) && binding)
+          storageType = binding->TypeObj;
+      } else if (index->Array) {
+        storageType = index->Array->ResolvedType;
+      }
+      auto storage = storageType && storageType->isRawPointer()
+                         ? storageType->getPointeeType() : nullptr;
+      auto inner = E->ResolvedType->getPointeeType();
+      if (storage && (storage->isArray() || storage->isSlice()) && inner &&
+          inner->equals(*index->ResolvedType)) {
+        auto source = getAccessCapability(index->Array.get(), declarationOnly);
+        return applyPathFlowCeiling(
+            {storage->IsWritable && source.PayloadWritable &&
+                 !source.PayloadFlowRestricted && inner->IsWritable,
+             false, source.PayloadFlowRestricted});
+      }
+    }
     // A hat chooses which existing handle is viewed; its # is an intent, not
     // a new grant.  The underlying declaration remains the authority.
     return getAccessCapability(Unary->RHS.get(), declarationOnly);

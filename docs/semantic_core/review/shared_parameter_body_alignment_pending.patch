@@ -1,0 +1,10 @@
+# NOT APPLIED. Auto-review rejected the CodeGen scope; explicit review required.
+# The signature emitter already forces shared types to pointer-to-carrier ABI.
+# This proposal only mirrors that existing decision in the body binder.
+# Zero-context diff; read-only applicability check uses --unidiff-zero --check.
+--- a/src/CodeGen/CodeGen_Decl.cpp
++++ b/src/CodeGen/CodeGen_Decl.cpp
+@@ -536 +536,2 @@
+-        (argDecl.IsUnique && !argDecl.IsCeded) || argDecl.IsShared;
++        (argDecl.IsUnique && !argDecl.IsCeded) || argDecl.IsShared ||
++        typeObj->isSharedPtr();

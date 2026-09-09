@@ -1,0 +1,12 @@
+import std/sync::Mutex
+shape Token(value: i32)
+impl Token@Encap { pub value }
+impl Token@Send {}
+fn main() -> i32 {
+    auto ^item = new Token(value = 7)
+    auto mutex = Mutex<^Token>::new(cede ^item)
+    auto locked = mutex.lock().unwrap()
+    auto &^value = locked.borrow_mut()
+    value.value = 8
+    return 0
+}
