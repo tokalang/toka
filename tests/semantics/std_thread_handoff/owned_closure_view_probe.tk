@@ -1,0 +1,15 @@
+import std/thread::thread_spawn
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) {}
+}
+impl Token@Send {}
+fn main() -> i32 {
+    auto token = Token(value = 1)
+    auto owned = { [cede token] => token.value }
+    auto view = owned:fn() -> i32
+    auto spawned = thread_spawn<i32>(cede owned)
+    auto value = view()
+    return value
+}

@@ -31,7 +31,7 @@ def main():
     compiler = Path(args.build_dir).resolve() / "bin/tokac"
     version = re.search(r'#define TOKA_COMPILER_INTERFACE_VERSION "([^"]+)"',
                        (ROOT / "include/toka/InterfaceVersion.h").read_text()).group(1)
-    require(version == "0.9.9-18", "ABI/compiler interface lockstep needs explicit migration")
+    require(version == "0.9.9-19", "ABI/compiler interface lockstep needs explicit migration")
     env = dict(os.environ, TOKA_LIB=str(ROOT / "lib"))
 
     with tempfile.TemporaryDirectory(prefix="toka-thread-version-") as directory:
@@ -50,14 +50,14 @@ def main():
         tki = work / "provider.tki"
         current = tki.read_text()
         require("compiler_version: " + version in current, "wrong emitted interface version")
-        stale = current.replace("compiler_version: " + version, "compiler_version: 0.9.9-17")
+        stale = current.replace("compiler_version: " + version, "compiler_version: 0.9.9-18")
         provider.unlink()
         tki.write_text(stale)
         for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
             output = work / ("rejected" + suffix)
             rejected = run("-I", work, flag, consumer, "-o", output)
             require(rejected.returncode == 1 and "Compiler version mismatch" in rejected.stderr and
-                    version in rejected.stderr and "0.9.9-17" in rejected.stderr and not output.exists(),
+                    version in rejected.stderr and "0.9.9-18" in rejected.stderr and not output.exists(),
                     "old source-hidden TKI acquired authority\n" + rejected.stderr)
 
         # Put an actual stale object/interface pair in the resolver-owned cache.
@@ -96,14 +96,14 @@ def main():
         cc = os.environ.get("CC", "clang")
         source = work / "requires_current.c"
         source.write_text('#include "toka_thread_handoff_v1.h"\n'
-                          'int main(void) { toka_thread_require_compiler_0_9_9_18_v1(); return 0; }\n')
+                          'int main(void) { toka_thread_require_compiler_0_9_9_19_v1(); return 0; }\n')
         legacy = work / "legacy.c"
-        legacy.write_text("void toka_thread_require_compiler_0_9_9_17_v1(void) {}\n")
+        legacy.write_text("void toka_thread_require_compiler_0_9_9_18_v1(void) {}\n")
         artifact = work / "old-runtime"
         linked = subprocess.run([cc, "-I", str(ROOT / "lib/sys"), str(source), str(legacy),
                                  "-o", str(artifact)], capture_output=True, text=True, timeout=30)
         require(linked.returncode != 0 and not artifact.exists() and
-                "toka_thread_require_compiler_0_9_9_18_v1" in linked.stderr,
+                "toka_thread_require_compiler_0_9_9_19_v1" in linked.stderr,
                 "old runtime unexpectedly linked\n" + linked.stderr)
     print("thread compatibility: 2 stale TKI no-artifact cases, stale cache source fallback/runtime, source-hidden cache rejection, old-runtime link rejection; no skips")
 

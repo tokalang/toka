@@ -1335,6 +1335,9 @@ Sema::lookupD3CopyProof(const std::shared_ptr<toka::Type> &type) const {
     return D3CopyProof::Indeterminate;
   if (type->isUniquePtr() || type->isSharedPtr())
     return D3CopyProof::ProvenNonCopy;
+  if ((type->isFunction() || type->isDynFn()) &&
+      getCallableReceiverMode(*type) == CallableReceiverMode::Consuming)
+    return D3CopyProof::ProvenNonCopy;
   if (type->isRawPointer() || type->isReference() || type->isFunction() ||
       type->isDynFn() || type->isVoid() || type->isUnit() ||
       type->isBoolean() || type->isInteger() || type->isFloatingPoint())
@@ -7891,8 +7894,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         if (required != CallableReceiverMode::Consuming &&
             Call->CallableReceiver == CallableReceiverMode::Consuming)
           Call->CallableReceiver = required;
-        if (required == CallableReceiverMode::Consuming)
-          CurrentScope->markMoved(CallName, Call->Loc);
+        if (required == CallableReceiverMode::Consuming) {
+          // A consuming invoke cannot manufacture ownership of an ordinary
+          // borrowed formal, including one instantiated from generic F.
+          // The receiver contract and the parameter's cede contract are
+          // independent; reject before changing the source's place state.
+          if (symPtr && symPtr->IsFunctionParameter && !symPtr->IsCeded)
+            error(Call, DiagID::ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER, CallName);
+          else
+            CurrentScope->markMoved(CallName, Call->Loc);
+        }
       }
     }
   }
@@ -8340,7 +8351,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
     if (!Call->GenericArgs.empty()) {
       // Explicit Instantiation
-      if (Call->GenericArgs.size() != Fn->GenericParams.size()) {
+      // The public thread intrinsic retains its actual callable type rather
+      // than coercing consuming/shared/mutable values through one facade.
+      // Only this resolved compiler boundary has an inferred carrier slot;
+      // ordinary generic function arity rules are unchanged.
+      const bool inferThreadCarrier = Fn->PublicThread == PublicThreadKind::Spawn &&
+          Fn->GenericParams.size() == 2 && Call->GenericArgs.size() == 1 &&
+          Fn->Args.size() == 1 && Call->Args.size() == 1;
+      if (Call->GenericArgs.size() != Fn->GenericParams.size() && !inferThreadCarrier) {
         DiagnosticEngine::report(getLoc(Call), DiagID::NOTE_GENERIC, Fn->Name, Fn->GenericParams.size(), Call->GenericArgs.size());
         HasError = true;
         directArgumentRollback->reject();
@@ -8367,6 +8385,23 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           }
           TypeArgs.push_back(resolveType(explicitType));
         }
+      }
+      if (inferThreadCarrier) {
+        Stage0FinalGenericArgumentScope finalArgumentScope(
+            m_Stage0FinalGenericArgumentPermitDepths, m_D3SpeculativeCallDepth,
+            publishFinalGenericArgumentTransactions);
+        const bool oldAllow = m_AllowPermissionSuffix;
+        m_AllowPermissionSuffix = hasExplicitCallArgumentWriteSigil(Call->Args[0].get());
+        // T supplies contextual return typing for a fresh nullary closure,
+        // not evidence that its body or lifetime is valid. Normal closure
+        // checking and the actual invoke/result checks still decide that.
+        if (auto *closure = findClosureExpr(Call->Args[0].get()); closure &&
+            (closure->ReturnType.empty() || closure->ReturnType == "unknown"))
+          closure->ReturnType = TypeArgs.front()->toString();
+        auto actual = checkArgumentWithHandleCapture(Call->Args[0].get(), nullptr, false, true);
+        m_AllowPermissionSuffix = oldAllow;
+        precheckedArgTypes[0] = actual;
+        TypeArgs.push_back(actual);
       }
     } else {
       // Type Deduction
@@ -9839,6 +9874,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       legacyCedeExempt = false;
     if (isCededParam && isOwningClosureArgument(Call->Args[i].get()))
       legacyCedeExempt = false;
+    // This compiler boundary separately qualifies the complete constructed
+    // environment. A genuine closure temporary has no source binding to
+    // invalidate; wrappers do not turn it into a named-source obligation.
+    // Dependency, mode, Send and cleanup checks still run in its producer.
+    if (Fn && Fn->PublicThread == PublicThreadKind::Spawn && isCededParam &&
+        !isStage1NamedSource(Call->Args[i].get()) && findClosureExpr(Call->Args[i].get()))
+      legacyCedeExempt = true;
     bool isCedeParamImplicitlyExempt = false;
     if (isCededParam) {
          bool isCedeExempt = legacyCedeExempt;

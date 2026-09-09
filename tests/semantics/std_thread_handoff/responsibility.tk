@@ -1,0 +1,81 @@
+import std/thread::thread_spawn
+extern fn thread_test_begin() -> i32
+extern fn thread_test_wait() -> void
+extern fn thread_test_release() -> void
+extern fn thread_test_finished() -> void
+extern fn thread_test_drop(kind: i32) -> void
+extern fn thread_test_count(kind: i32) -> i32
+shape Token(kind: i32)
+impl Token@Encap {
+    fn drop(self#) { unsafe { thread_test_drop(self.kind) } }
+}
+impl Token@Send {}
+fn count(kind: i32) -> i32 {
+    auto value = unsafe thread_test_count(kind)
+    return value
+}
+fn main() -> i32 {
+    auto mode = unsafe thread_test_begin()
+    auto input = Token(kind = 1)
+    auto callback = { [cede input] =>
+        auto owned = cede input
+        unsafe { thread_test_wait() }
+        return Token(kind = 2)
+    }:cede dyn fn() -> Token
+    if mode == 13 {
+        // An unclaimed spawn Result must clean up its contained handle.
+        thread_spawn<Token>(cede callback)
+        unsafe { thread_test_finished() }
+        if count(1) != 1 || count(2) != 1 { return 18 }
+        return 0
+    }
+    {
+        auto spawned = thread_spawn<Token>(cede callback)
+        if mode == 1 || mode == 9 || mode == 10 {
+            if spawned.is_ok() { return 1 }
+            auto error = spawned.unwrap_err()
+            if mode == 1 {
+                if error.kind != 2 || error.native_code == 0 { return 2 }
+            } else if error.kind != 1 || error.native_code != 0 { return 3 }
+            if count(1) != 1 || count(2) != 0 { return 4 }
+            return 0
+        }
+        if spawned.is_err() { return 5 }
+        auto handle# = spawned.unwrap()
+        if mode == 2 || mode == 11 {
+            auto failed = handle#.join()
+            if failed.is_ok() { return 6 }
+            auto error = failed.unwrap_err()
+            if error.kind != 3 || error.native_code == 0 { return 7 }
+            if count(2) != 0 { return 8 }
+        }
+        if mode == 3 || mode == 12 {
+            auto failed = handle#.detach()
+            if failed.is_ok() { return 9 }
+            auto error = failed.unwrap_err()
+            if error.kind != 4 || error.native_code == 0 { return 10 }
+            if count(2) != 0 { return 11 }
+            unsafe { thread_test_release() }
+        }
+        if mode == 4 || mode == 5 || mode == 12 {
+            auto detached = handle#.detach()
+            if detached.is_err() { return 12 }
+        } else if mode == 14 {
+            // An unclaimed join Result owns, and must destroy, its payload.
+            handle#.join()
+        } else if mode != 6 && mode != 7 && mode != 8 {
+            auto joined = handle#.join()
+            if joined.is_err() { return 13 }
+            auto result = joined.unwrap()
+            if count(2) != 0 { return 14 }
+            cede result
+            auto closed = handle#.detach()
+            if closed.is_ok() { return 15 }
+            if closed.unwrap_err().kind != 5 { return 16 }
+        }
+        // Modes 6/7 exercise implicit late/early drop. Mode 8 must fatal.
+    }
+    unsafe { thread_test_release(); thread_test_finished() }
+    if count(1) != 1 || count(2) != 1 { return 17 }
+    return 0
+}

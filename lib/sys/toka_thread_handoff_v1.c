@@ -88,7 +88,7 @@ struct TokaThreadResultLease {
     void *storage;
 };
 
-void toka_thread_require_compiler_0_9_9_18_v1(void) {}
+void toka_thread_require_compiler_0_9_9_19_v1(void) {}
 
 int32_t toka_thread_prepare_v1(const TokaThreadEnvOpsV1 *ops, void *packet,
                                TokaThreadPrepared **out) {

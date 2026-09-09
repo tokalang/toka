@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    auto once = { => 1 }:cede fn() -> i32
+    auto copied = { [copy once] => 0 }:dyn fn() -> i32
+    auto still_owned = cede once()
+    return still_owned
+}

@@ -1,0 +1,14 @@
+import std/thread::thread_spawn
+fn main() -> i32 {
+    auto counter# = 40:i32
+    auto spawned = thread_spawn<i32>({ [cede counter] =>
+        counter += 2
+        return counter
+    }:dyn fn#() -> i32)
+    if spawned.is_err() { return 1 }
+    auto handle# = spawned.unwrap()
+    auto result = handle#.join()
+    if result.is_err() { return 2 }
+    if result.unwrap() != 42 { return 3 }
+    return 0
+}

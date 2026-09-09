@@ -30,8 +30,10 @@ pub fn main() -> i32 {
         mut_val2 = mut_val2 + 20
         println("Worker thread changed data to: {}", mut_val2)
         return 0
-    }:fn() -> i32
-    auto handle# = thread_spawn<i32>(cede f)
+    }:dyn fn() -> i32
+    auto spawned = thread_spawn<i32>(cede f)
+    if spawned.is_err() { return 2 }
+    auto handle# = spawned.unwrap()
     
     auto join_res = handle#.join()
     join_res.unwrap()

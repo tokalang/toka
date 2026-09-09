@@ -4244,7 +4244,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     return toka::Type::fromString("()");
   } else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
-    return m_ThreadHandoffSourceProbe ? checkCallWithThreadHandoff(Call) : checkCallExpr(Call);
+    return checkCallWithThreadHandoff(Call);
   } else if (auto *awaitEx = dynamic_cast<AwaitExpr *>(E)) {
     if (!CurrentFunction || CurrentFunction->Effect != EffectKind::Async) {
       error(awaitEx,

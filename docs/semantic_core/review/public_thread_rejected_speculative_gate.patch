@@ -1,0 +1,21 @@
+# Rejected by automatic review; NOT APPLIED and NOT the proposed resolution.
+# Retained only to make the rejected scope concrete for human inspection.
+# Use the pending/validated design in public_thread_pending_plan_design.md
+# instead of treating this guard exception as approved.
+--- a/src/Sema/Sema_PublicThread.cpp
++++ b/src/Sema/Sema_PublicThread.cpp
+@@
+-  if (m_IsPrecomputingCaptures || m_D3SpeculativeCallDepth) return false;
++  if (m_IsPrecomputingCaptures) return false;
++  bool finalizedIntrinsicSignature = false;
+   if (fn->TemplateOrigin) {
+     auto cached = InstantiationCache.find(fn->Name);
+     if (cached == InstantiationCache.end() || !cached->second ||
+         cached->second->Instance != fn ||
+         cached->second->Validation != GenericSpecializationValidationState::Valid)
+       return reject("UnqualifiedSpecialization");
++    finalizedIntrinsicSignature = true;
+   }
++  const bool handleOperation = fn->PublicThread == PublicThreadKind::Join ||
++      fn->PublicThread == PublicThreadKind::Detach || fn->PublicThread == PublicThreadKind::Drop;
++  if (m_D3SpeculativeCallDepth && !(handleOperation && finalizedIntrinsicSignature)) return false;

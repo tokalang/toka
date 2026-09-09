@@ -34,9 +34,9 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="toka-real-thread-source-") as directory:
         work = Path(directory)
-        runtime = work / "thread.o"
+        runtime = work / "toka_rt_thread_source.o"
         subprocess.run([os.environ.get("CC", "clang"), "-std=c11", "-pthread", "-c",
-                        str(ROOT / "lib/sys/toka_thread_handoff_v1.c"), "-o", str(runtime)], check=True)
+                        str(ROOT / "lib/sys/toka_rt.c"), "-o", str(runtime)], check=True)
         positives = ("basic.tk", "results.tk", "temporary.tk", "spoof.tk",
                      "invoke_mode_control.tk", "result_drop_nominal.tk")
         for source in positives:
@@ -94,7 +94,11 @@ def main():
         require(unchecked.returncode == 1 and "FinalCheckedContextRequired" in unchecked.stderr,
                 "handoff qualified without the borrow checker")
         output = work / "without-new-runtime"
-        old = run("basic.tk", "-o", output)
+        legacy = work / "toka_rt_without_thread.o"
+        subprocess.run([os.environ.get("CC", "clang"), "-std=c11", "-pthread",
+                        "-DTOKA_RT_EXTERNAL_THREAD_HANDOFF=1", "-c",
+                        str(ROOT / "lib/sys/toka_rt.c"), "-o", str(legacy)], check=True)
+        old = run("basic.tk", legacy, "-o", output)
         require(old.returncode != 0 and not output.exists() and "toka_thread_" in old.stderr,
                 "source bridge linked without the new runtime\n" + old.stderr)
     print("thread source: 6 runtime/parity positives, 13 source rejection/rollback cases, 26 negative + 8 fault no-artifact checks, disabled/private, borrow-check and missing-runtime gates; no skips")

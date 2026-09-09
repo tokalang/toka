@@ -1,0 +1,12 @@
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) {}
+}
+fn main() -> i32 {
+    auto input = Token(value = 1)
+    auto once = { [cede input] => auto owned = cede input; return owned.value }:cede fn() -> i32
+    auto copied = once:fn() -> i32
+    auto first = cede once()
+    return first + copied()
+}

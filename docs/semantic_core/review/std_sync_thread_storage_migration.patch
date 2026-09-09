@@ -1,0 +1,55 @@
+# NOT APPLIED. Human approval required. Zero-context full-change diff (no unrelated whitespace edits).
+--- a/lib/std/sync.tk
++++ b/lib/std/sync.tk
+@@ -11,0 +12,1 @@
++import sys/libc::{libc_abort}
+@@ -12,0 +14,12 @@
++fn sync_writable_storage<'T>(address: Addr) -> *'T# {
++    auto nul *candidate# = unsafe (address as nul *'T#)
++    if *candidate is null {
++        unsafe { libc_abort() }
++        unreachable
++    } else {
++        auto verified = unsafe *candidate as Addr
++        return unsafe (verified as *'T#)
++    }
++}
++
++
+@@ -30,1 +43,1 @@
+-            auto *p# = (env as *['T])
++            auto *p# = sync_writable_storage<['T]>(env)
+@@ -43,1 +56,1 @@
+-            auto *p# = (env as *['T])
++            auto *p# = sync_writable_storage<['T]>(env)
+@@ -56,1 +69,1 @@
+-            auto *p# = (env as *['T])
++            auto *p# = sync_writable_storage<['T]>(env)
+@@ -78,1 +91,1 @@
+-            auto *p# = (self.data_ptr as *'T#)
++            auto *p# = sync_writable_storage<'T>(self.data_ptr)
+@@ -109,5 +122,2 @@
+-                auto *p# = (self.data_ptr as *['T])
+-                {
+-                    auto _ = Option<'T>::Some(cede p[0])
+-                }
+-                sys_free_thread_env(self.data_ptr)
++                auto *p# = sync_writable_storage<['T]>(self.data_ptr)
++                free[1] *p
+@@ -164,1 +174,1 @@
+-            auto *p# = (env as *['T])
++            auto *p# = sync_writable_storage<['T]>(env)
+@@ -176,1 +186,1 @@
+-            auto *p# = (env as *['T])
++            auto *p# = sync_writable_storage<['T]>(env)
+@@ -221,1 +231,1 @@
+-            auto *p# = (self.data_ptr as *'T#)
++            auto *p# = sync_writable_storage<'T>(self.data_ptr)
+@@ -251,5 +261,2 @@
+-                auto *p# = (self.data_ptr as *['T])
+-                {
+-                    auto _ = Option<'T>::Some(cede p[0])
+-                }
+-                sys_free_thread_env(self.data_ptr)
++                auto *p# = sync_writable_storage<['T]>(self.data_ptr)
++                free[1] *p

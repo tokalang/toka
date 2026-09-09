@@ -301,6 +301,11 @@ if(BUILD_TESTING)
                 COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_thread_handoff_source.py
                     --build-dir ${CMAKE_BINARY_DIR})
+            add_test(NAME toka_public_thread_responsibility_subset
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/scripts/test_std_thread_handoff.py
+                    --build-dir ${CMAKE_BINARY_DIR})
+            set_tests_properties(toka_public_thread_responsibility_subset PROPERTIES TIMEOUT 180)
         endif()
         add_test(NAME toka_negative_harness_termination
             COMMAND ${Python3_EXECUTABLE}
@@ -432,6 +437,8 @@ add_custom_command(
     COMMAND ${CMAKE_C_COMPILER} ${OPENSSL_CFLAGS} -c "${CMAKE_SOURCE_DIR}/lib/sys/toka_rt.c"
             -o "${TOKA_RUNTIME_OBJECT}"
     DEPENDS "${CMAKE_SOURCE_DIR}/lib/sys/toka_rt.c"
+            "${CMAKE_SOURCE_DIR}/lib/sys/toka_thread_handoff_v1.c"
+            "${CMAKE_SOURCE_DIR}/lib/sys/toka_thread_handoff_v1.h"
     VERBATIM
 )
 

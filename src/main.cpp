@@ -849,6 +849,7 @@ int main(int argc, char **argv) {
   std::string rawTakeFault;
   std::string unsafeRawConstructionFault;
   std::string threadHandoffSourceFault;
+  std::string publicThreadFault;
 #endif
   bool dumpNonCallTransferShadow = false;
   bool dumpD3DirectCallObservation = false;
@@ -1031,6 +1032,13 @@ int main(int argc, char **argv) {
     } else if (arg == "--stage0-codegen-authority") {
       stage0CodeGenAuthority = true;
 #ifdef TOKA_BUILD_TESTING
+    } else if (arg.rfind("--public-thread-fault=", 0) == 0) {
+      publicThreadFault = arg.substr(std::string("--public-thread-fault=").size());
+      if (publicThreadFault != "missing" && publicThreadFault != "site" &&
+          publicThreadFault != "incomplete" && publicThreadFault != "output" &&
+          publicThreadFault != "owner") {
+        llvm::errs() << "unknown public thread fault\n"; return 1;
+      }
     } else if (arg == "--thread-handoff-source-probe") {
       threadHandoffSourceProbe = true;
     } else if (arg.rfind("--thread-handoff-source-fault=", 0) == 0) {
@@ -1850,6 +1858,7 @@ int main(int argc, char **argv) {
   }
   if (profile.Enabled)
     profile.detail("sema_shape_sovereignty");
+  if (!sema.finalizePublicThreadPlans()) return 1;
   profile.mark("sema_check");
 
   if (validateSemanticManifests &&
@@ -2059,6 +2068,7 @@ int main(int argc, char **argv) {
   codegen.setRawTakeFault(rawTakeFault);
   codegen.setUnsafeRawConstructionFault(unsafeRawConstructionFault);
   codegen.setThreadHandoffSourceFault(threadHandoffSourceFault);
+  codegen.setPublicThreadFault(publicThreadFault);
 #endif
   if (!codegen.validateUnsafeRawConstructions(sema.getUnsafeRawConstructionSites())) return 1;
   if (stage0CodeGenAuthority)

@@ -27,8 +27,8 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
-def run(tokac, source, expected_error=None, check_only=True, extra=()):
-    command = [str(tokac), STAGE1_LEGACY, "--call-transfer-shadow=json"]
+def run(tokac, source, expected_error=None, check_only=True, extra=(), legacy=True):
+    command = [str(tokac), *([STAGE1_LEGACY] if legacy else []), "--call-transfer-shadow=json"]
     if check_only:
         command.append("--check-only")
     command.extend(extra)
@@ -312,20 +312,21 @@ def run(tokac, source, expected_error=None, check_only=True, extra=()):
     return records
 
 
-def require_shadow_parity(tokac, source, expected_error=None, extra=()):
+def require_shadow_parity(tokac, source, expected_error=None, extra=(), legacy=True):
     PARITY_CASES.add(source)
+    profile = [STAGE1_LEGACY] if legacy else []
     normal = subprocess.run(
-        [str(tokac), STAGE1_LEGACY, "--check-only", *extra, source], cwd=ROOT,
+        [str(tokac), *profile, "--check-only", *extra, source], cwd=ROOT,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30,
     )
     shadow = subprocess.run(
-        [str(tokac), STAGE1_LEGACY, "--call-transfer-shadow=json", "--check-only", *extra,
+        [str(tokac), *profile, "--call-transfer-shadow=json", "--check-only", *extra,
          source],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, timeout=30,
     )
     replay = subprocess.run(
-        [str(tokac), STAGE1_LEGACY, "--call-transfer-shadow=json", "--check-only", *extra,
+        [str(tokac), *profile, "--call-transfer-shadow=json", "--check-only", *extra,
          source],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, timeout=30,
@@ -811,7 +812,11 @@ def main():
     ))
 
     source = "tests/pass/g09_thread_example.tk"
-    records = run(tokac, source)
+    # This is a live SDK integration case, not a historical-language fixture.
+    # The v19 public thread producer requires current validated environment
+    # facts; keep every historical fixture on its original replay profile.
+    require_shadow_parity(tokac, source, legacy=False)
+    records = run(tokac, source, legacy=False)
     receipts.append(find(
         records, source, callee="thread_spawn", route="ordinary",
         location_line=17, execution_boundary="ThreadHandoff",

@@ -277,6 +277,19 @@ static ThreadProbeKind threadProbeDeclaration(const Module &module,
   return ThreadProbeKind::None;
 }
 
+static PublicThreadKind publicThreadDeclaration(const Module &module,
+                                                const FunctionDecl &function) {
+  if (!module.IsTrustedSystemModule || !module.ShadowCoordinateKnown ||
+      module.ShadowCoordinateOrigin != "toolchain" ||
+      module.ShadowLogicalModulePath != "std/thread") return PublicThreadKind::None;
+  if (function.Name == "thread_spawn") return PublicThreadKind::Spawn;
+  if (function.Name == "thread_spawn_with_state") return PublicThreadKind::SpawnState;
+  if (function.Name == "__thread_join") return PublicThreadKind::Join;
+  if (function.Name == "__thread_detach") return PublicThreadKind::Detach;
+  if (function.Name == "__thread_drop") return PublicThreadKind::Drop;
+  return PublicThreadKind::None;
+}
+
 static bool isAtomicWrapperDeclaration(const Module &module,
                                        const FunctionDecl &function) {
   static const std::set<std::string> Names = {
@@ -1523,9 +1536,10 @@ void Sema::registerSlice4Impl(ImplDecl *impl) {
 bool Sema::proveSlice4CopyType(std::shared_ptr<toka::Type> type) {
   if (!type || type->isUnknown() || type->isUniquePtr() || type->isSharedPtr())
     return false;
+  if (type->isFunction() || type->isDynFn())
+    return getCallableReceiverMode(*type) != CallableReceiverMode::Consuming;
   if (type->isAddrType() || type->isOAddrType() || type->isRawPointer() ||
-      type->isReference() || type->isFunction() ||
-      type->isDynFn() || type->isVoid() || type->isBoolean() ||
+      type->isReference() || type->isVoid() || type->isBoolean() ||
       type->isInteger() || type->isFloatingPoint())
     return true;
   if (type->isArray())
@@ -3398,6 +3412,11 @@ void Sema::declareGlobals(Module &M) {
   for (auto &Fn : M.Functions) {
     DeclarationLexicalScopes[Fn.get()] = &ms;
     Fn->ThreadProbe = threadProbeDeclaration(M, *Fn);
+    Fn->PublicThread = publicThreadDeclaration(M, *Fn);
+    if (Fn->PublicThread != PublicThreadKind::None &&
+        (!Fn->Body || Fn->Body->Statements.size() != 1 ||
+         !dynamic_cast<UnreachableStmt *>(Fn->Body->Statements[0].get())))
+      error(Fn.get(), DiagID::ERR_GENERIC_SEMA, "public thread intrinsic must have its exact declaration-only body");
     if (Fn->ThreadProbe != ThreadProbeKind::None && !m_ThreadHandoffSourceProbe)
       error(Fn.get(), DiagID::ERR_GENERIC_SEMA, "private thread probe requires --thread-handoff-source-probe");
     Fn->IsTrustedAtomicIntrinsic = Fn->IsTrustedAtomicIntrinsic ||
@@ -5741,6 +5760,10 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
     for (auto &Arg : Fn->Args) {
       if (!Arg.IsCeded)
+        continue;
+      // Trusted declaration-only thread boundaries discharge their input in
+      // the call-site sealed packet plan, not in this non-executable body.
+      if (Fn->PublicThread != PublicThreadKind::None)
         continue;
       // Do not cascade an obligation diagnostic from a call/return that has
       // already been rejected and rolled back.  A clean function must still

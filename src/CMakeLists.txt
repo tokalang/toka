@@ -16,6 +16,7 @@ set(toka_frontend_sources
     Sema/Sema_RawTake.cpp
     Sema/Sema_UnsafeRawConstruction.cpp
     Sema/Sema_ThreadHandoff.cpp
+    Sema/Sema_PublicThread.cpp
     Sema/Sema_Expr_Member.cpp
     Sema/Sema_Expr_Unary.cpp
     Sema/Sema_Expr_Binary.cpp
@@ -54,6 +55,7 @@ add_executable(tokac
     CodeGen/CodeGen.cpp
     CodeGen/CodeGen_RawTake.cpp
     CodeGen/CodeGen_ThreadHandoff.cpp
+    CodeGen/CodeGen_PublicThread.cpp
     CodeGen/ThreadHandoffAdapter.cpp
     CodeGen/CodeGen_Expr.cpp
     CodeGen/CodeGen_Stmt.cpp

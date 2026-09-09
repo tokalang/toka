@@ -60,6 +60,68 @@ full builds or a full regression run; no public source acceptance is claimed.
 5. Directed convergence, then one full build/CTest/PASS/FAIL round, root-cause
    classification, and a single public responsibility-chain candidate review.
 
-The legacy std/thread has not yet been replaced. Backend tests alone do not
-qualify public threads, binding, Stage 1, or a release. No full suite, push or PR
-is part of this intermediate checkpoint.
+## Public source WIP following the backend checkpoint
+
+The working implementation now replaces the library's old forged-environment /
+native-id path with compiler-qualified public boundaries, Result/ThreadError,
+an encapsulated two-word H/join-adapter handle, and join/detach/drop wrappers.
+The producer checks canonical defining-module identity, full environment and
+result facts, actual invoke mode and state/entry compatibility. The spawn
+carrier parameter is inferred independently of T to avoid stripping consuming
+mode through a single dynamic-function facade. Ordinary generic arity behavior
+is unchanged outside the resolved thread intrinsic.
+
+The SDK native object includes the versioned handoff component. Compiler and
+runtime compatibility markers are now 0.9.9-19 and reject old -18 interfaces,
+caches and runtime symbols. The private source gate explicitly constructs its
+complete runtime and a separate missing-handoff control; no new private entry
+has been added. Runtime algorithms and capture/refcount layouts are unchanged.
+
+This is NOT a complete public-thread candidate yet:
+
+- dynamic/state, owning closure records, consuming Unit (thin/dynamic), fresh
+  mutable construction and value/unique/shared/string results run successfully;
+- lexical-module helper lookup plus pending-handle recipes close the original
+  cached-method plan gap. Complete remains false in probes; promotion occurs
+  after Sema with checked wrapper body, valid specialization and exact edges;
+- repeated/borrowed erased thin environments and aliased mutable dynamic values
+  remain unqualified. No usage-flag uniqueness heuristic was introduced;
+- public error, lifetime, ignored-result and fault tests pass for this subset;
+- original caller and std/sync storage migrations are not complete.
+
+Automatic review rejected both usage-flag-based uniqueness and immediate
+speculative qualification exceptions. Neither patch was applied. The later
+pending/validated implementation gives no CodeGen authority to a probe and
+retains the actual toolchain-origin check. See
+[the proposed pending/validated and environment-identity resolution](public_thread_pending_plan_design.md)
+and the [unapplied rejected guard diff](public_thread_rejected_speculative_gate.patch).
+The current tool-level blocker is instead the proposed std/sync production
+storage cleanup migration; its rejected patch was not applied. See
+[the precise scope and unapplied diff](std_sync_thread_storage_migration.md).
+
+Directed checks during this WIP: testing and non-test Release tokac builds;
+production rejection of the fault option; public suite (8 strict parity fixtures,
+22 runtime runs plus a source-hidden provider TKI/object run, 10 source-negative
+and 10 fault no-artifact checks); adapter/private-source CTest 2/2; isolated
+runtime 31 schedules + 14 fatal cases and 2 stderr checks; old -18 interface,
+cache and runtime rejection; diff check. The migrated original thread/string
+example and owned-state return example run successfully. No full suite or
+public-thread/binding/release acceptance is claimed.
+
+Self-review also closed consuming borrowed-formal invocation (E0473) and
+consuming-callable Copy/explicit-copy-capture grants (E0606/E04581). The source
+gate preserves source liveness on rejection. These are contract fixes, not a
+receiver spelling change or an extension of capture/refcount mechanisms.
+
+Regression classification: generic-body, dyn-fn lifecycle and binding-transfer
+gates passed. The indirect unique fixture and return-reference-unknown fixture
+fail at the same earlier E04656/E04661 diagnostics on a fresh, clean 50e78d16
+build; these are unaccepted-base debt, not this patch's regressions. Their
+oracles were not changed. The call-shadow live SDK case was switched explicitly
+to current semantics with strict parity, while historical fixtures remain on
+their original profile; remaining live synchronization cases await API/storage
+migration. No full run, push, PR or movement of prior freeze refs occurred.
+
+Final directed rerun for this checkpoint: adapter, private source, and public
+responsibility CTest targets passed 3/3 in 63.36 seconds. This does not include
+the open std/sync integration cases or the two confirmed base-fixture debts.

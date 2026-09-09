@@ -164,7 +164,7 @@ static bool isOwnedUniqueReceiverRvalue(const Expr *expr) {
 llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
                                      const std::string &overrideName,
                                      bool declOnly) {
-  if (!func->GenericParams.empty())
+  if (!func->GenericParams.empty() || func->PublicThread != PublicThreadKind::None)
     return nullptr;
 
   struct FnGuard {

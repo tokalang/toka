@@ -11,18 +11,22 @@ pub fn main() -> i32 {
         text#.push_str(num_s.as_str())
         println("Thread 1 OK")
         return cede text
-    }:fn() -> string
+    }:dyn fn() -> string
     
     // Spawn a thread and explicitly capture `target` by moving it (cede) into the thread!
-    auto handle# = thread_spawn<string>(cede f)
+    auto spawned = thread_spawn<string>(cede f)
+    if spawned.is_err() { return 1 }
+    auto handle# = spawned.unwrap()
 
     //println("target = {}", target) //error: use of moved value: `target`
 
-    auto handle2# = thread_spawn<string>({ =>
+    auto spawned2 = thread_spawn<string>({ =>
         auto text = string::from("Hello from background thread!")
         println("Thread 2 OK")
         return cede text
     })
+    if spawned2.is_err() { return 2 }
+    auto handle2# = spawned2.unwrap()
     
     println("Main thread is waiting...")
     

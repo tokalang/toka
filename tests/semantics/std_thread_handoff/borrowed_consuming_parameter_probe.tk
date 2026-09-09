@@ -1,0 +1,16 @@
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) {}
+}
+fn consume_borrowed<F>(callback: F) -> i32 {
+    auto value = cede callback()
+    return value
+}
+fn main() -> i32 {
+    auto input = Token(value = 1)
+    auto once = { [cede input] => auto owned = cede input; return owned.value }:cede dyn fn() -> i32
+    auto first = consume_borrowed(once)
+    auto second = cede once()
+    return first + second
+}

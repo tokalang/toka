@@ -1,0 +1,32 @@
+import std/thread::{thread_spawn, thread_spawn_with_state}
+
+auto drops# = 0:i32
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+impl Token@Send {}
+
+fn main() -> i32 {
+    auto token = Token(value = 42)
+    auto callback = { [cede token] => token.value }:fn() -> i32
+    auto spawned = thread_spawn<i32>(cede callback)
+    if spawned.is_err() { return 1 }
+    auto handle# = spawned.unwrap()
+    auto result = handle#.join()
+    if result.is_err() { return 2 }
+    if result.unwrap() != 42 || drops != 1 { return 3 }
+    auto closed = handle#.join()
+    if closed.is_ok() { return 4 }
+    if closed.unwrap_err().kind != 5 { return 5 }
+    auto state = Token(value = 17)
+    auto entry = { state => state.value }:fn(Token) -> i32
+    auto state_spawned = thread_spawn_with_state<Token, i32>(cede state, entry)
+    if state_spawned.is_err() { return 6 }
+    auto state_handle# = state_spawned.unwrap()
+    auto state_result = state_handle#.join()
+    if state_result.is_err() { return 7 }
+    if state_result.unwrap() != 17 || drops != 2 { return 8 }
+    return 0
+}

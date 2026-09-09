@@ -1,0 +1,7 @@
+fn requires_copy<T: @Copy>(value: T) -> i32 { return 0 }
+fn main() -> i32 {
+    auto once = { => 1 }:cede fn() -> i32
+    auto result = requires_copy(once)
+    auto still_owned = cede once()
+    return result + still_owned
+}

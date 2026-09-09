@@ -29,10 +29,42 @@ bool explicitCede(Expr *expression) {
 std::shared_ptr<Type> Sema::checkCallWithThreadHandoff(CallExpr *call) {
   SymbolInfo *symbol = nullptr;
   std::string name;
-  if (!CurrentScope->findVariableWithDeref(call->Callee, symbol, name) || !symbol ||
-      !symbol->TypeObj || symbol->TypeObj->toString() != "fn" || !symbol->ASTPtr)
-    return checkCallExpr(call);
-  auto *function = static_cast<FunctionDecl *>(symbol->ASTPtr);
+  FunctionDecl *function = nullptr;
+  if (CurrentScope->findVariableWithDeref(call->Callee, symbol, name) && symbol &&
+      symbol->TypeObj && symbol->TypeObj->toString() == "fn" && symbol->ASTPtr)
+    function = dynamic_cast<FunctionDecl *>(static_cast<ASTNode *>(symbol->ASTPtr));
+  // Private library helpers are resolved through the declaration's lexical
+  // module, not necessarily through an imported local SymbolInfo. This lookup
+  // only selects the pre-call snapshot path; normal resolution below remains
+  // authoritative, and qualification checks its resolved declaration again.
+  if (!function && !symbol) {
+    ModuleScope *lexical = nullptr;
+    if (CurrentFunction) {
+      auto owner = DeclarationLexicalScopes.find(CurrentFunction);
+      if (owner != DeclarationLexicalScopes.end()) lexical = owner->second;
+    }
+    if (!lexical) lexical = getLexicalModule(call->Loc);
+    if (lexical) {
+      auto found = lexical->Functions.find(call->Callee);
+      if (found != lexical->Functions.end()) function = found->second;
+    }
+    if (!function) {
+      auto instance = InstantiationCache.find(call->Callee);
+      if (instance != InstantiationCache.end() && instance->second)
+        function = instance->second->Instance;
+    }
+  }
+  if (!function) return checkCallExpr(call);
+  if (function->PublicThread != PublicThreadKind::None) {
+    auto before = captureAnalysisState();
+    const size_t start = DiagnosticEngine::records().size();
+    CallArgumentRollbackGuard rollback(*this, call->Args, true);
+    auto result = checkCallExpr(call);
+    call->ResolvedType = result;
+    if (!qualifyPublicThread(call, before, start)) rollback.reject();
+    else m_LastInitMask = ~0ULL;
+    return result;
+  }
   if (function->ThreadProbe == ThreadProbeKind::None) return checkCallExpr(call);
   if (m_IsPrecomputingCaptures || m_D3SpeculativeCallDepth != 0 || !PALCheckerState.IsEnabled) {
     error(call, DiagID::ERR_GENERIC_SEMA, "thread handoff: FinalCheckedContextRequired");
@@ -46,8 +78,10 @@ std::shared_ptr<Type> Sema::checkCallWithThreadHandoff(CallExpr *call) {
   CallArgumentRollbackGuard rollback(*this, call->Args, true);
   call->ThreadHandoffSource.reset();
   call->ResolvedFn = function;
-  symbol->HasBeenUsed = true;
-  if (symbol->ImportingDecl) const_cast<ImportDecl *>(symbol->ImportingDecl)->HasBeenUsed = true;
+  if (symbol) {
+    symbol->HasBeenUsed = true;
+    if (symbol->ImportingDecl) const_cast<ImportDecl *>(symbol->ImportingDecl)->HasBeenUsed = true;
+  }
   if (call->Args.size() != 1 || call->GenericArgs.size() != 2 || call->isInitArgument(0)) {
     error(call, DiagID::ERR_GENERIC_SEMA, "thread handoff: InvalidProbeArity");
     rollback.reject(); return Type::fromString("unknown");

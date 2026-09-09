@@ -406,6 +406,7 @@ public:
 
   bool hasErrors() const { return HasError; }
   bool finalizeUnsafeRawConstructions();
+  bool finalizePublicThreadPlans();
   std::vector<const CastExpr *> getUnsafeRawConstructionSites() const;
 
   const std::map<std::string, std::shared_ptr<toka::Type>>& getParenthesizedRecordTypes() const {
@@ -1266,6 +1267,10 @@ private:
   void mergeFlowExits(FlowSummary &dst, const FlowSummary &src);
   AnalysisState captureAnalysisState();
   std::shared_ptr<Type> checkCallWithThreadHandoff(CallExpr *call);
+  bool qualifyPublicThread(CallExpr *call, const AnalysisState &before, size_t diagnosticStart);
+  bool inspectThreadValue(std::shared_ptr<Type> type, std::string &identity, bool &needsDrop);
+  const FunctionDecl *findThreadInvoke(Expr *argument);
+  std::map<const CallExpr *, std::shared_ptr<PublicThreadPlan>> m_PendingPublicHandlePlans;
   bool qualifyThreadHandoffSource(CallExpr *call, const AnalysisState &before,
                                    size_t diagnosticStart);
   void mergeAnalysisStates(const std::vector<AnalysisState> &states,

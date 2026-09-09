@@ -11,7 +11,7 @@
 
 namespace toka {
 namespace {
-constexpr const char *RequireSymbol = "toka_thread_require_compiler_0_9_9_18_v1";
+constexpr const char *RequireSymbol = "toka_thread_require_compiler_0_9_9_19_v1";
 bool pointer(llvm::Type *type) {
   return type && type->isPointerTy() && type->getPointerAddressSpace() == 0;
 }

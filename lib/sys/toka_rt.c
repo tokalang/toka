@@ -1,3 +1,18 @@
+// Preserve the platform extensions used by the rest of this runtime when the
+// POSIX handoff component sets its feature-test level before system headers.
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#define _DARWIN_C_SOURCE 1
+#endif
+#if defined(__linux__) && !defined(_DEFAULT_SOURCE)
+#define _DEFAULT_SOURCE 1
+#endif
+// The SDK remains one native runtime object. Tests which deliberately link a
+// separately instrumented handoff object can omit this translation-unit part;
+// a public thread artifact still requires the versioned strong ABI symbol.
+#ifndef TOKA_RT_EXTERNAL_THREAD_HANDOFF
+#include "toka_thread_handoff_v1.c"
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>

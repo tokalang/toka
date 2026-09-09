@@ -496,7 +496,7 @@ static void fatal_case(int which) {
 int main(int argc, char **argv) {
     alarm(30); /* Deadlock watchdog, never used to schedule a passing test. */
     if (argc == 2 && strcmp(argv[1], "--fatal-probe") == 0) fatal_case(0);
-    toka_thread_require_compiler_0_9_9_18_v1();
+    toka_thread_require_compiler_0_9_9_19_v1();
     allocation_failures();
     success_paths();
     native_failures();

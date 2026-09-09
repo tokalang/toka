@@ -1,7 +1,8 @@
 # 线程所有权与错误处理（新协议实施预览）
 
-新协议目前处于独立实现与验证阶段，**尚未接入 `std/thread`**。本文说明已接受的
-公共行为，不表示当前源码 API 已完成迁移。完整设计见
+新协议已在 `impl/std-thread-handoff-v1` 工作分支接入 `std/thread`，**尚未完成整个
+线程／binding 集成验收，不是已发布版本**。本文说明公共行为；旧调用点与同步库的
+迁移仍有未完成项。完整设计见
 [线程环境与结果责任通道](semantic_core/review/thread_handoff_ab_design.md)。
 
 ## join、detach 与句柄销毁
@@ -38,11 +39,16 @@ invoke 和用户析构均不持内部状态 mutex。`@Send` 检查不能替代�
 
 ## 接口变化
 
-设计将 spawn 改为 `Result<JoinHandle<T>, ThreadError>`，显式 detach 也返回 Result；
-JoinHandle 将持有不透明控制块责任，不再公开 native tid。错误描述使用不分配的
+工作分支的 spawn 返回 `Result<JoinHandle<T>, ThreadError>`，显式 detach 也返回 Result；
+JoinHandle 持有不透明控制块责任，不再公开 native tid。错误描述使用不分配的
 kind/native_code；错误消息的字符串格式化不参与责任交接。
 
 输入显式交出后，即使 spawn 失败也不会“复活”原变量；未启动环境在创建线程清理。
 新的 compiler/private runtime 协议使用版本门禁，不能混用旧 TKI／缓存／runtime。
 不支持绕过句柄直接对内部 pthread_t 重复 join/detach，或从 unsafe alias 制造第二个 owner。
 首批不提供 native cancellation、跨 C unwind 或动态卸载清理代码的资格承诺。
+
+当前定向验证覆盖拥有型闭包记录、动态环境、consuming callable、fresh mutable
+构造、state＋entry、Unit 与拥有型结果。已经擦除环境的借用型 `fn` 若缺少转移证明，
+以及可能共享环境的具名 mutable `dyn fn`，仍拒绝；不能用未使用标记猜测唯一性。
+调用点应保留完整闭包类型或明确使用拥有环境的表示，原功能成功目标不变。

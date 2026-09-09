@@ -48,7 +48,7 @@ int32_t testJoin(TokaThreadControl **handle, const TokaThreadResultOpsV1 *ops,
   return toka_thread_join_v1(handle, ops, lease, code);
 }
 void requireRuntime() {
-  toka_thread_require_compiler_0_9_9_18_v1();
+  toka_thread_require_compiler_0_9_9_19_v1();
   ++RuntimeRequirements;
 }
 
@@ -211,7 +211,7 @@ int main() {
   {
     auto *badRequire = llvm::Function::Create(llvm::FunctionType::get(
         llvm::Type::getInt32Ty(context), false), llvm::Function::ExternalLinkage,
-        "toka_thread_require_compiler_0_9_9_18_v1", *m);
+        "toka_thread_require_compiler_0_9_9_19_v1", *m);
     CHECK(rejected(p));
     badRequire->eraseFromParent();
   }
@@ -307,7 +307,7 @@ int main() {
   engine->addGlobalMapping(m->getFunction("test_repeatable_started"), reinterpret_cast<void *>(&repeatableCleanup));
   engine->addGlobalMapping(m->getFunction("test_consuming_started"), reinterpret_cast<void *>(&consumingCleanup));
   engine->addGlobalMapping(m->getFunction("test_result_drop"), reinterpret_cast<void *>(&resultDrop));
-  engine->addGlobalMapping(m->getFunction("toka_thread_require_compiler_0_9_9_18_v1"),
+  engine->addGlobalMapping(m->getFunction("toka_thread_require_compiler_0_9_9_19_v1"),
       reinterpret_cast<void *>(&requireRuntime));
   engine->addGlobalMapping(m->getFunction("toka_thread_prepare_v1"), reinterpret_cast<void *>(&testPrepare));
   engine->addGlobalMapping(m->getFunction("toka_thread_start_v1"), reinterpret_cast<void *>(&testStart));

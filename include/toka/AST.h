@@ -1078,6 +1078,7 @@ class ShapeDecl;
 class CallExpr : public Expr {
 public:
   std::shared_ptr<const ThreadHandoffSourcePlan> ThreadHandoffSource;
+  std::shared_ptr<const PublicThreadPlan> PublicThreadSource;
   std::string Callee;
   std::string OriginalCallee;
   std::vector<std::unique_ptr<Expr>> Args;
@@ -2361,6 +2362,7 @@ public:
   // core/intrinsics/atomic toolchain module.
   bool IsTrustedAtomicIntrinsic = false;
   ThreadProbeKind ThreadProbe = ThreadProbeKind::None;
+  PublicThreadKind PublicThread = PublicThreadKind::None;
   CallableReceiverMode ClosureReceiver = CallableReceiverMode::Shared;
   std::optional<OutcomeTransition> ResolvedOutcomeTransition;
   // Set only by the explicit P2 profile while its containing bodyless TKI is
@@ -2450,6 +2452,7 @@ public:
     n->IsClosureInvoke = IsClosureInvoke;
     n->IsTrustedAtomicIntrinsic = IsTrustedAtomicIntrinsic;
     n->ThreadProbe = ThreadProbe;
+    n->PublicThread = PublicThread;
     n->ClosureReceiver = ClosureReceiver;
     n->TemplateOrigin = TemplateOrigin;
     n->Stage0EnclosingGenericTypeNames = Stage0EnclosingGenericTypeNames;

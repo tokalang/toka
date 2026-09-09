@@ -9,10 +9,10 @@ extern "C" {
 #endif
 
 /* Shared private ABI. Compiler adapters and runtime must use this exact key.
- * Public compiler activation must use interface 0.9.9-18 (or a later explicitly
+ * Public compiler activation must use interface 0.9.9-19 (or a later explicitly
  * qualified revision), never silently combine this protocol with -17 TKI. */
 #define TOKA_THREAD_HANDOFF_VERSION_V1 UINT32_C(1)
-#define TOKA_THREAD_HANDOFF_ABI_V1 "toka-thread-handoff-v1/compiler-0.9.9-18"
+#define TOKA_THREAD_HANDOFF_ABI_V1 "toka-thread-handoff-v1/compiler-0.9.9-19"
 #define TOKA_THREAD_FATAL_EXIT_V1 134
 
 enum TokaThreadStatusV1 {
@@ -63,7 +63,7 @@ typedef struct TokaThreadEnvOpsV1 {
 } TokaThreadEnvOpsV1;
 
 /* Versioned strong symbol is also a link-time old-runtime rejection boundary. */
-void toka_thread_require_compiler_0_9_9_18_v1(void);
+void toka_thread_require_compiler_0_9_9_19_v1(void);
 
 /* All output slots must be nonnull and initially NULL. Opaque wrappers are
  * runtime-owned allocations: callers never sizeof/copy/free them themselves.

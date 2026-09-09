@@ -5029,6 +5029,9 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
 }
 
 PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
+  if (call->PublicThreadSource ||
+      (call->ResolvedFn && call->ResolvedFn->PublicThread != PublicThreadKind::None))
+    return genPublicThread(call);
   if (call->ResolvedFn && call->ResolvedFn->ThreadProbe != ThreadProbeKind::None)
     return genThreadHandoffProbe(call);
   if (!call->ResolvedShape) {
