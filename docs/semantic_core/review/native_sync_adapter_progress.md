@@ -1,5 +1,9 @@
 # Native sync private adapters — implementation checkpoint, not Accepted
 
+Subsequent source-plan WIP, required failing flow test, and remaining chain are
+tracked in [native_sync_factory_source_progress.md](native_sync_factory_source_progress.md).
+The figures below describe the `aaac3267` adapter checkpoint, not a full witness acceptance.
+
 Base: `636d29b6`. This implements the private operation bodies from the accepted
 first-batch contract. Public Mutex/RwMutex/CondVar wrappers are deliberately not
 switched over until exact witness qualification is connected.

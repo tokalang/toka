@@ -850,6 +850,7 @@ int main(int argc, char **argv) {
   std::string unsafeRawConstructionFault;
   std::string threadHandoffSourceFault;
   std::string publicThreadFault;
+  std::string nativeSyncFactoryFault;
 #endif
   bool dumpNonCallTransferShadow = false;
   bool dumpD3DirectCallObservation = false;
@@ -1032,6 +1033,14 @@ int main(int argc, char **argv) {
     } else if (arg == "--stage0-codegen-authority") {
       stage0CodeGenAuthority = true;
 #ifdef TOKA_BUILD_TESTING
+    } else if (arg.rfind("--native-sync-factory-fault=", 0) == 0) {
+      nativeSyncFactoryFault = arg.substr(std::string("--native-sync-factory-fault=").size());
+      if (nativeSyncFactoryFault != "missing" && nativeSyncFactoryFault != "site" &&
+          nativeSyncFactoryFault != "declaration" && nativeSyncFactoryFault != "input" &&
+          nativeSyncFactoryFault != "owner" && nativeSyncFactoryFault != "element" &&
+          nativeSyncFactoryFault != "kind" && nativeSyncFactoryFault != "incomplete") {
+        llvm::errs() << "unknown native sync factory fault\n"; return 1;
+      }
     } else if (arg.rfind("--public-thread-fault=", 0) == 0) {
       publicThreadFault = arg.substr(std::string("--public-thread-fault=").size());
       if (publicThreadFault != "missing" && publicThreadFault != "site" &&
@@ -1859,6 +1868,7 @@ int main(int argc, char **argv) {
   if (profile.Enabled)
     profile.detail("sema_shape_sovereignty");
   if (!sema.finalizePublicThreadPlans()) return 1;
+  if (!sema.finalizeNativeSyncFactoryPlans()) return 1;
   profile.mark("sema_check");
 
   if (validateSemanticManifests &&
@@ -2069,6 +2079,7 @@ int main(int argc, char **argv) {
   codegen.setUnsafeRawConstructionFault(unsafeRawConstructionFault);
   codegen.setThreadHandoffSourceFault(threadHandoffSourceFault);
   codegen.setPublicThreadFault(publicThreadFault);
+  codegen.setNativeSyncFactoryFault(nativeSyncFactoryFault);
 #endif
   if (!codegen.validateUnsafeRawConstructions(sema.getUnsafeRawConstructionSites())) return 1;
   if (stage0CodeGenAuthority)

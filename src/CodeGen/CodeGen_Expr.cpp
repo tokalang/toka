@@ -5028,7 +5028,66 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
   }
 }
 
+bool CodeGen::validateNativeSyncFactory(const CallExpr *call) {
+  auto p = call->NativeSyncFactorySource;
+#ifdef TOKA_BUILD_TESTING
+  if (m_NativeSyncFactoryFault == "missing") p.reset();
+  else if (p && !m_NativeSyncFactoryFault.empty()) {
+    auto changed = std::shared_ptr<NativeSyncFactoryPlan>(new NativeSyncFactoryPlan(*p));
+    if (m_NativeSyncFactoryFault == "site") changed->Site = nullptr;
+    if (m_NativeSyncFactoryFault == "declaration") changed->Declaration = nullptr;
+    if (m_NativeSyncFactoryFault == "owner") changed->OwnerDefinition = nullptr;
+    if (m_NativeSyncFactoryFault == "input") changed->Input = p->Input ? nullptr : call;
+    if (m_NativeSyncFactoryFault == "element") changed->ElementType.reset();
+    if (m_NativeSyncFactoryFault == "kind") changed->Kind = NativeSyncFactoryKind::None;
+    if (m_NativeSyncFactoryFault == "incomplete") changed->Validated = false;
+    p = std::move(changed);
+  }
+#endif
+  auto reject = [&](const char *why) {
+    error(call, DiagID::ERR_CODEGEN, std::string("native sync factory: ") + why);
+    return false;
+  };
+  if (!p || !p->Validated) return reject("MissingOrIncompletePlan");
+  if (p->Site != call || !p->OwnerDefinition || p->OwnerDefinition != m_CurrentFunction)
+    return reject("SiteOrDefinitionMismatch");
+  if (!call->ResolvedFn || p->Declaration != call->ResolvedFn ||
+      p->Kind == NativeSyncFactoryKind::None || p->Kind != call->ResolvedFn->NativeSyncFactory)
+    return reject("DeclarationMismatch");
+  if (!p->ElementType || !p->OwnerType || !call->ResolvedType ||
+      !p->OwnerType->equals(*call->ResolvedType)) return reject("TypeMismatch");
+  const auto *owner = dynamic_cast<const ShapeType *>(p->OwnerType.get());
+  if (!owner || !owner->Decl || !p->OwnerTemplate ||
+      owner->Decl->InstantiationTemplate != p->OwnerTemplate ||
+      owner->Decl->InstantiationArgs.size() != 1 ||
+      !owner->Decl->InstantiationArgs.front()->equals(*p->ElementType))
+    return reject("StorageIdentityMismatch");
+  const bool nativeOnly = p->Kind == NativeSyncFactoryKind::CondVar;
+  if (call->Args.size() != (nativeOnly ? 0u : 1u) ||
+      (nativeOnly ? p->Input != nullptr : p->Input != call->Args.front().get()))
+    return reject("InputEdgeMismatch");
+  if (!nativeOnly && (!p->Input->ResolvedType || !p->ElementType->equals(*p->Input->ResolvedType)))
+    return reject("InputMorphologyMismatch");
+  // This source adapter uses malloc, whose target reserve is only qualified
+  // for the existing 64-bit POSIX targets. Never guess an element stride or
+  // admit an over-aligned allocation on the basis of sizeof alone.
+  llvm::Triple target(m_Module->getTargetTriple());
+  if ((!target.isOSDarwin() && !target.isOSLinux()) ||
+      (target.getArch() != llvm::Triple::aarch64 && target.getArch() != llvm::Triple::x86_64))
+    return reject("UnqualifiedNativeTarget");
+  if (!nativeOnly) {
+    auto *element = getLLVMType(p->ElementType);
+    if (!element || !element->isSized() ||
+        m_Module->getDataLayout().getABITypeAlign(element).value() > 16)
+      return reject("UnqualifiedStorageLayout");
+  }
+  return true;
+}
+
 PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
+  if ((call->NativeSyncFactorySource ||
+       (call->ResolvedFn && call->ResolvedFn->NativeSyncFactory != NativeSyncFactoryKind::None)) &&
+      !validateNativeSyncFactory(call)) return {};
   if (call->PublicThreadSource ||
       (call->ResolvedFn && call->ResolvedFn->PublicThread != PublicThreadKind::None))
     return genPublicThread(call);

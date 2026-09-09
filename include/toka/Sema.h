@@ -412,6 +412,7 @@ public:
   bool hasErrors() const { return HasError; }
   bool finalizeUnsafeRawConstructions();
   bool finalizePublicThreadPlans();
+  bool finalizeNativeSyncFactoryPlans();
   std::vector<const CastExpr *> getUnsafeRawConstructionSites() const;
 
   const std::map<std::string, std::shared_ptr<toka::Type>>& getParenthesizedRecordTypes() const {
@@ -785,6 +786,8 @@ private:
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
   struct AnalysisState {
+    std::map<uint64_t, NativeSyncFactoryPtr> NativeSyncBindings;
+    std::set<NativeSyncFactoryPtr> InvalidNativeSyncOrigins;
     std::map<uint64_t, RawAddressSourcePtr> RawAddressBindings;
     std::map<uint64_t, CallableEnvironmentFacts> CallableEnvironments;
     std::map<std::string, uint64_t> InitMasks;
@@ -1003,6 +1006,13 @@ private:
     bool Completed = false;
   };
   std::map<uint64_t, CallableEnvironmentFacts> m_CallableEnvironments;
+  std::map<uint64_t, NativeSyncFactoryPtr> m_NativeSyncBindings;
+  std::set<NativeSyncFactoryPtr> m_InvalidNativeSyncOrigins;
+  std::vector<std::weak_ptr<NativeSyncFactoryPlan>> m_PendingNativeSyncFactories;
+  bool qualifyNativeSyncFactory(CallExpr *call, size_t diagnosticStart);
+  NativeSyncFactoryPtr collectNativeSyncFactoryOrigin(Expr *expression);
+  void recordNativeSyncBinding(const AccessPath &place, Expr *source,
+                               bool initialization = false);
   std::map<uint64_t, RawAddressSourcePtr> m_RawAddressBindings;
   struct RawAddressReturnSummary {
     bool Checking = false;

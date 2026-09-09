@@ -290,6 +290,17 @@ static PublicThreadKind publicThreadDeclaration(const Module &module,
   return PublicThreadKind::None;
 }
 
+static NativeSyncFactoryKind nativeSyncFactoryDeclaration(
+    const Module &module, const FunctionDecl &function) {
+  if (module.IsInterface || !module.IsTrustedSystemModule ||
+      !module.ShadowCoordinateKnown || module.ShadowCoordinateOrigin != "toolchain" ||
+      module.ShadowLogicalModulePath != "std/sync") return NativeSyncFactoryKind::None;
+  if (function.Name == "__sync_mutex_create") return NativeSyncFactoryKind::Mutex;
+  if (function.Name == "__sync_rw_create") return NativeSyncFactoryKind::RwMutex;
+  if (function.Name == "__sync_cond_create") return NativeSyncFactoryKind::CondVar;
+  return NativeSyncFactoryKind::None;
+}
+
 static bool isAtomicWrapperDeclaration(const Module &module,
                                        const FunctionDecl &function) {
   static const std::set<std::string> Names = {
@@ -3413,6 +3424,7 @@ void Sema::declareGlobals(Module &M) {
     DeclarationLexicalScopes[Fn.get()] = &ms;
     Fn->ThreadProbe = threadProbeDeclaration(M, *Fn);
     Fn->PublicThread = publicThreadDeclaration(M, *Fn);
+    Fn->NativeSyncFactory = nativeSyncFactoryDeclaration(M, *Fn);
     if (Fn->PublicThread != PublicThreadKind::None &&
         (!Fn->Body || Fn->Body->Statements.size() != 1 ||
          !dynamic_cast<UnreachableStmt *>(Fn->Body->Statements[0].get())))

@@ -233,6 +233,11 @@ if(BUILD_TESTING)
     target_link_libraries(toka_native_sync_closed_payload PRIVATE toka_frontend)
     target_include_directories(toka_native_sync_closed_payload PRIVATE ${CMAKE_SOURCE_DIR}/include)
     add_test(NAME toka_native_sync_closed_payload COMMAND toka_native_sync_closed_payload)
+    add_executable(toka_native_sync_factory_flow tests/NativeSyncFactoryFlow.cpp)
+    target_link_libraries(toka_native_sync_factory_flow PRIVATE toka_frontend)
+    target_include_directories(toka_native_sync_factory_flow PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    add_test(NAME toka_native_sync_factory_flow
+        COMMAND toka_native_sync_factory_flow ${CMAKE_SOURCE_DIR}/lib)
     target_link_libraries(toka_typesyntax_canonicalization PRIVATE toka_frontend)
     target_link_libraries(toka_canonical_declaration_witness PRIVATE toka_frontend)
     target_link_libraries(toka_semantic_manifest_envelope PRIVATE toka_frontend)
@@ -330,6 +335,11 @@ if(BUILD_TESTING)
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_native_sync_adapters.py
                     --build-dir ${CMAKE_BINARY_DIR})
             set_tests_properties(toka_native_sync_adapters PROPERTIES TIMEOUT 180)
+            add_test(NAME toka_native_sync_factory_plans
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/scripts/test_native_sync_factory_plans.py
+                    --build-dir ${CMAKE_BINARY_DIR})
+            set_tests_properties(toka_native_sync_factory_plans PROPERTIES TIMEOUT 180)
         endif()
         add_test(NAME toka_negative_harness_termination
             COMMAND ${Python3_EXECUTABLE}

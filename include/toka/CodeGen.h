@@ -141,6 +141,7 @@ public:
 #ifdef TOKA_BUILD_TESTING
   void setRawTakeFault(const std::string &fault) { m_RawTakeFault = fault; }
   void setPublicThreadFault(const std::string &fault) { m_PublicThreadFault = fault; }
+  void setNativeSyncFactoryFault(const std::string &fault) { m_NativeSyncFactoryFault = fault; }
 #endif
   bool hasErrors() const { return m_ErrorCount > 0; }
   bool validateUnsafeRawConstructions(const std::vector<const CastExpr *> &sites);
@@ -162,10 +163,12 @@ private:
   PhysEntity genRawTakeExpr(const RawTakeExpr *take);
   PhysEntity genThreadHandoffProbe(const CallExpr *call);
   PhysEntity genPublicThread(const CallExpr *call);
+  bool validateNativeSyncFactory(const CallExpr *call);
   std::string m_ThreadHandoffSourceFault;
   unsigned m_ThreadHandoffAdapterIndex = 0;
 #ifdef TOKA_BUILD_TESTING
   std::string m_PublicThreadFault;
+  std::string m_NativeSyncFactoryFault;
   std::string m_RawTakeFault;
   bool m_RawTakeFaultConsumed = false;
   std::string m_UnsafeRawConstructionFault;

@@ -1,0 +1,16 @@
+diff --git a/src/Sema/Sema_NativeSync.cpp b/src/Sema/Sema_NativeSync.cpp
+--- a/src/Sema/Sema_NativeSync.cpp
++++ b/src/Sema/Sema_NativeSync.cpp
+@@ -158,6 +158,11 @@ NativeSyncFactoryPtr Sema::collectNativeSyncFactoryOrigin(Expr *expression) {
+   // Do not infer ownership or accept raw/reference reinterpretations. A view
+   // selector/new-allocation transition needs its own admitted transfer edge.
+   if (!expression->ResolvedType || !result->OwnerType ||
+-      !result->OwnerType->equals(*expression->ResolvedType)) return {};
++      !result->OwnerType->withAttributes(expression->ResolvedType->IsWritable,
++          result->OwnerType->IsNullable, result->OwnerType->IsBlocked)
++          ->equals(*expression->ResolvedType)) return {};
++  // Only the already-checked view's top-level write qualifier may differ.
++  // This records storage identity, never grants that qualifier or changes the
++  // element's full morphology, nullable state or permission ceiling.
+   return result;
+ }

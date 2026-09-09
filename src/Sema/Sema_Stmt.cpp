@@ -2726,6 +2726,7 @@ void Sema::checkStmt(Stmt *S) {
     if (Var->Init) {
       auto path = makeAccessPath(Var->Name);
       recordRawAddressBinding(path, Var->Init.get());
+      if (!HasError) recordNativeSyncBinding(path, Var->Init.get(), true);
     }
     if (!Info.ConditionalTodoIds.empty()) {
       SemanticEvidence::recordConditionalFact(

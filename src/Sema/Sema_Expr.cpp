@@ -804,6 +804,8 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
 
 Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
+  state.NativeSyncBindings = m_NativeSyncBindings;
+  state.InvalidNativeSyncOrigins = m_InvalidNativeSyncOrigins;
   state.RawAddressBindings = m_RawAddressBindings;
   state.CallableEnvironments = m_CallableEnvironments;
   state.InitMasks = captureVisibleInitMasks(CurrentScope);
@@ -867,11 +869,21 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       states.front().PayloadFlowRestrictedPaths;
   auto mergedReferenceTargets = states.front().ReferenceTargets;
   auto callableEnvironments = states.front().CallableEnvironments;
+  auto nativeSyncBindings = states.front().NativeSyncBindings;
+  auto invalidNativeSyncOrigins = states.front().InvalidNativeSyncOrigins;
   auto rawAddressBindings = states.front().RawAddressBindings;
   PALChecker mergedPAL = states.front().PAL;
 
   for (size_t i = 1; i < states.size(); ++i) {
     const auto &state = states[i];
+    invalidNativeSyncOrigins.insert(state.InvalidNativeSyncOrigins.begin(),
+                                    state.InvalidNativeSyncOrigins.end());
+    for (auto it = nativeSyncBindings.begin(); it != nativeSyncBindings.end();) {
+      auto other = state.NativeSyncBindings.find(it->first);
+      if (other == state.NativeSyncBindings.end() || other->second != it->second)
+        it = nativeSyncBindings.erase(it);
+      else ++it;
+    }
     for (const auto &[id, source] : state.RawAddressBindings)
       rawAddressBindings[id] = mergeRawAddressSources(rawAddressBindings[id], source);
 
@@ -938,6 +950,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   restoreVisibleConditionalTodoIds(CurrentScope, mergedConditionalTodoIds);
   restoreVisibleReferenceTargets(CurrentScope, mergedReferenceTargets);
   m_CallableEnvironments = std::move(callableEnvironments);
+  m_NativeSyncBindings = std::move(nativeSyncBindings);
+  m_InvalidNativeSyncOrigins = std::move(invalidNativeSyncOrigins);
   m_RawAddressBindings = std::move(rawAddressBindings);
   m_PayloadFlowRestrictedPaths = std::move(mergedPayloadFlowRestrictions);
   PALCheckerState.restore(mergedPAL);
@@ -1160,6 +1174,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   const size_t expressionDiagnosticStart = DiagnosticEngine::records().size();
   E->RawAddressValueFacts.reset();
   E->RawAddressViewFacts.reset();
+  E->NativeSyncFactoryOrigin.reset();
   m_LastInitMask = ~0ULL; // Default to fully set
   auto T = checkExprImpl(E);
   std::set<std::string> taskDependencies;
@@ -1171,6 +1186,12 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     m_LastLifeDependencies.insert(taskDependencies.begin(),
                                   taskDependencies.end());
   E->ResolvedType = T;
+  const auto &expressionRecords = DiagnosticEngine::records();
+  const bool expressionSucceeded = std::none_of(
+      expressionRecords.begin() + std::min(expressionDiagnosticStart, expressionRecords.size()),
+      expressionRecords.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
+  if (expressionSucceeded)
+    E->NativeSyncFactoryOrigin = collectNativeSyncFactoryOrigin(E);
   E->RawAddressValueFacts = collectRawAddressSource(E, false);
   E->RawAddressViewFacts = collectRawAddressSource(E, true);
   if (auto *assignment = dynamic_cast<BinaryExpr *>(E);
@@ -1178,7 +1199,11 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     const auto &records = DiagnosticEngine::records();
     if (std::none_of(records.begin() + expressionDiagnosticStart, records.end(),
                      [](const auto &record) { return record.Level == DiagLevel::Error; }))
+    {
       recordRawAddressBinding(makeAccessPath(assignment->LHS.get()), assignment->RHS.get());
+      recordNativeSyncBinding(makeAccessPath(assignment->LHS.get()),
+                              assignment->Op == "=" ? assignment->RHS.get() : nullptr);
+    }
   }
 
   const auto *cast = dynamic_cast<CastExpr *>(E);

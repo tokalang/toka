@@ -55,6 +55,16 @@ std::shared_ptr<Type> Sema::checkCallWithThreadHandoff(CallExpr *call) {
     }
   }
   if (!function) return checkCallExpr(call);
+  if (function->NativeSyncFactory != NativeSyncFactoryKind::None) {
+    const size_t start = DiagnosticEngine::records().size();
+    CallArgumentRollbackGuard rollback(*this, call->Args, true);
+    call->NativeSyncFactorySource.reset();
+    auto result = checkCallExpr(call);
+    call->ResolvedType = result;
+    if (!qualifyNativeSyncFactory(call, start)) rollback.reject();
+    else m_LastInitMask = ~0ULL;
+    return result;
+  }
   if (function->PublicThread != PublicThreadKind::None) {
     auto before = captureAnalysisState();
     const size_t start = DiagnosticEngine::records().size();

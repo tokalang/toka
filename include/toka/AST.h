@@ -16,6 +16,7 @@
 #include "toka/AccessPath.h"
 #include "toka/UnsafeRawConstruction.h"
 #include "toka/ThreadHandoffSource.h"
+#include "toka/NativeSyncStorage.h"
 #include "toka/BindingPermission.h"
 #include "toka/PlaceState.h"
 #include "toka/Token.h"
@@ -383,6 +384,9 @@ public:
   std::shared_ptr<Type> ResolvedType;
   RawAddressSourcePtr RawAddressValueFacts;
   RawAddressSourcePtr RawAddressViewFacts;
+  // Checked expression value-flow provenance. clone() deliberately does not
+  // copy this: each instantiated body must elaborate its own source edge.
+  NativeSyncFactoryPtr NativeSyncFactoryOrigin;
   bool IsMorphicExempt = false; // [NEW] Track morphic exemption at expression level
   bool HasParens = false; // [NEW] Track explicit parentheses
   bool ExtendLifetime = false; // [NEW] Flag for Temporary Lifetime Extension
@@ -1079,6 +1083,7 @@ class CallExpr : public Expr {
 public:
   std::shared_ptr<const ThreadHandoffSourcePlan> ThreadHandoffSource;
   std::shared_ptr<const PublicThreadPlan> PublicThreadSource;
+  NativeSyncFactoryPtr NativeSyncFactorySource;
   std::string Callee;
   std::string OriginalCallee;
   std::vector<std::unique_ptr<Expr>> Args;
@@ -2363,6 +2368,7 @@ public:
   bool IsTrustedAtomicIntrinsic = false;
   ThreadProbeKind ThreadProbe = ThreadProbeKind::None;
   PublicThreadKind PublicThread = PublicThreadKind::None;
+  NativeSyncFactoryKind NativeSyncFactory = NativeSyncFactoryKind::None;
   CallableReceiverMode ClosureReceiver = CallableReceiverMode::Shared;
   std::optional<OutcomeTransition> ResolvedOutcomeTransition;
   // Set only by the explicit P2 profile while its containing bodyless TKI is
@@ -2453,6 +2459,7 @@ public:
     n->IsTrustedAtomicIntrinsic = IsTrustedAtomicIntrinsic;
     n->ThreadProbe = ThreadProbe;
     n->PublicThread = PublicThread;
+    n->NativeSyncFactory = NativeSyncFactory;
     n->ClosureReceiver = ClosureReceiver;
     n->TemplateOrigin = TemplateOrigin;
     n->Stage0EnclosingGenericTypeNames = Stage0EnclosingGenericTypeNames;

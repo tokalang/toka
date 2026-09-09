@@ -1,8 +1,10 @@
 # Minimal native sync storage contract — Accepted for implementation
 
 Status: user-accepted first-batch design; implementation in progress.
-Current implementation is limited to the read-only ClosedPayload prerequisite;
-factory/access/drop adapters and value/guard witnesses are not yet activated.
+Private factory/access/drop adapter bodies and the read-only ClosedPayload
+prerequisite are implemented. Factory source/CodeGen plans are WIP; complete
+value/guard witnesses and public-wrapper activation remain unfinished. See
+[the current source-plan checkpoint](native_sync_factory_source_progress.md).
 
 Scope: close the owned environment proof for Mutex/RwMutex and composed sync
 objects, without changing @Send, raw-pointer permissions, capture representation,
