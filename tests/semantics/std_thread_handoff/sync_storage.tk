@@ -1,0 +1,49 @@
+import std/sync::{Mutex, RwMutex}
+
+auto drops# = 0
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+impl Token@Send {}
+impl Token@Sync {}
+
+fn main() -> i32 {
+    {
+        auto mutex = Mutex<i32>::new(7)
+        {
+            auto locked = mutex.lock().unwrap()
+            auto &value# = locked.borrow_mut()
+            value = 9
+        }
+        auto locked = mutex.lock().unwrap()
+        auto &value = locked.borrow_mut()
+        if value != 9 { return 1 }
+    }
+    {
+        auto mutex = Mutex<Token>::new(Token(value = 11))
+        if drops != 0 { return 2 }
+    }
+    if drops != 1 { return 3 }
+    {
+        auto mutex = RwMutex<Token>::new(Token(value = 13))
+        if drops != 1 { return 4 }
+    }
+    if drops != 2 { return 5 }
+    {
+        auto ~owner = Mutex<Token>::make_shared(Token(value = 23))
+        {
+            auto ~other = ~owner
+            auto locked = other.lock().unwrap()
+            auto &value = locked.borrow_mut()
+            if value.value != 23 || drops != 2 { return 6 }
+        }
+        if drops != 2 { return 7 }
+        auto locked = owner.lock().unwrap()
+        auto &value = locked.borrow_mut()
+        if value.value != 23 { return 8 }
+    }
+    if drops != 3 { return 9 }
+    return 0
+}

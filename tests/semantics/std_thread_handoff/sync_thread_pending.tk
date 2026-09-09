@@ -1,0 +1,21 @@
+// Positive target: opaque native lock/data storage still lacks a qualified
+// environment dependency contract; @Send alone must not replace that proof.
+import std/sync::Mutex
+import std/thread::thread_spawn
+fn main() -> i32 {
+    auto ~mutex = Mutex<i32>::make_shared(7)
+    auto ~worker_mutex = ~mutex
+    auto callback = { [cede ~worker_mutex] =>
+        auto locked = worker_mutex.lock().unwrap()
+        auto &value# = locked.borrow_mut()
+        value = 9
+        return 0
+    }:dyn fn() -> i32
+    auto created = thread_spawn<i32>(cede callback)
+    auto handle# = created.unwrap()
+    auto result = handle#.join()
+    if result.unwrap() != 0 { return 1 }
+    auto locked = mutex.lock().unwrap()
+    auto &value = locked.borrow_mut()
+    return value - 9
+}

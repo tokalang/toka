@@ -306,6 +306,11 @@ if(BUILD_TESTING)
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_std_thread_handoff.py
                     --build-dir ${CMAKE_BINARY_DIR})
             set_tests_properties(toka_public_thread_responsibility_subset PROPERTIES TIMEOUT 180)
+            add_test(NAME toka_std_sync_storage_subset
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/scripts/test_std_sync_storage.py
+                    --build-dir ${CMAKE_BINARY_DIR})
+            set_tests_properties(toka_std_sync_storage_subset PROPERTIES TIMEOUT 90)
         endif()
         add_test(NAME toka_negative_harness_termination
             COMMAND ${Python3_EXECUTABLE}

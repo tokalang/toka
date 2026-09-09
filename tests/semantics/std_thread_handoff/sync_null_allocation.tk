@@ -1,0 +1,7 @@
+import std/sync::Mutex
+extern fn toka_sync_fail_next_allocation() -> void
+fn main() -> i32 {
+    unsafe { toka_sync_fail_next_allocation() }
+    auto mutex = Mutex<i32>::new(7)
+    return 99
+}

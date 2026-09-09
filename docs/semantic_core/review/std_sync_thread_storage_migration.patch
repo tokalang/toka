@@ -1,4 +1,5 @@
-# NOT APPLIED. Human approval required. Zero-context full-change diff (no unrelated whitespace edits).
+# Historical reviewed diff; explicitly authorized and implemented 2026-09-09.
+# Not an acceptance record. Zero-context full-change diff.
 --- a/lib/std/sync.tk
 +++ b/lib/std/sync.tk
 @@ -11,0 +12,1 @@

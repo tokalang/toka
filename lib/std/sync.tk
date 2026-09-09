@@ -9,6 +9,18 @@ import sys/thread::{sys_alloc_thread_env, sys_free_thread_env}
 import core/result::{Result}
 import core/option::{Option}
 import std/error::{Error}
+import sys/libc::{libc_abort}
+
+fn sync_writable_storage<'T>(address: Addr) -> *'T# {
+    auto nul *candidate# = unsafe (address as nul *'T#)
+    if *candidate is null {
+        unsafe { libc_abort() }
+        unreachable
+    } else {
+        auto verified = unsafe *candidate as Addr
+        return unsafe (verified as *'T#)
+    }
+}
 
 /// A mutual exclusion primitive useful for protecting shared data
 pub shape Mutex<'T: @Send>(
@@ -27,7 +39,7 @@ impl<'T: @Send> Mutex<'T> {
     pub fn new(data: cede 'T) -> Mutex<'T> {
         unsafe {
             auto env = sys_alloc_thread_env(sizeof('T) as usize)
-            auto *p# = (env as *['T])
+            auto *p# = sync_writable_storage<['T]>(env)
             p[0] = cede data
             return Mutex<'T>(
                 handle = sys_mutex_create(),
@@ -40,7 +52,7 @@ impl<'T: @Send> Mutex<'T> {
     pub fn make(data: cede 'T) -> ^Mutex<'T> {
         unsafe {
             auto env = sys_alloc_thread_env(sizeof('T) as usize)
-            auto *p# = (env as *['T])
+            auto *p# = sync_writable_storage<['T]>(env)
             p[0] = cede data
             auto ^mutex = new Mutex<'T>(
                 handle = sys_mutex_create(),
@@ -53,7 +65,7 @@ impl<'T: @Send> Mutex<'T> {
     pub fn make_shared(data: cede 'T) -> ~Mutex<'T> {
         unsafe {
             auto env = sys_alloc_thread_env(sizeof('T) as usize)
-            auto *p# = (env as *['T])
+            auto *p# = sync_writable_storage<['T]>(env)
             p[0] = cede data
             auto ~mutex = new Mutex<'T>(
                 handle = sys_mutex_create(),
@@ -75,7 +87,7 @@ impl<'T: @Send> Mutex<'T> {
             }
             
             auto temp_h = self.handle:Addr
-            auto *p# = (self.data_ptr as *'T#)
+            auto *p# = sync_writable_storage<'T>(self.data_ptr)
             auto nul *tok = null:nul *byte
             
             return Result<MutexLock<'T>, Error>::Ok(MutexLock<'T>(
@@ -106,11 +118,8 @@ impl<'T> Mutex<'T>@Encap {
     fn drop(self#) {
         unsafe {
             if self.data_ptr != 0:Addr {
-                auto *p# = (self.data_ptr as *['T])
-                {
-                    auto _ = Option<'T>::Some(cede p[0])
-                }
-                sys_free_thread_env(self.data_ptr)
+                auto *p# = sync_writable_storage<['T]>(self.data_ptr)
+                free[1] *p
                 self.data_ptr = 0:Addr
             }
             if self.handle != 0:Addr {
@@ -161,7 +170,7 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
     pub fn new(data: cede 'T) -> RwMutex<'T> {
         unsafe {
             auto env = sys_alloc_thread_env(sizeof('T) as usize)
-            auto *p# = (env as *['T])
+            auto *p# = sync_writable_storage<['T]>(env)
             p[0] = cede data
             return RwMutex<'T>(
                 handle = sys_rwlock_create(),
@@ -173,7 +182,7 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
     pub fn make_shared(data: cede 'T) -> ~RwMutex<'T> {
         unsafe {
             auto env = sys_alloc_thread_env(sizeof('T) as usize)
-            auto *p# = (env as *['T])
+            auto *p# = sync_writable_storage<['T]>(env)
             p[0] = cede data
             auto ~rwlock = new RwMutex<'T>(
                 handle = sys_rwlock_create(),
@@ -218,7 +227,7 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
             }
             
             auto temp_h = self.handle:Addr
-            auto *p# = (self.data_ptr as *'T#)
+            auto *p# = sync_writable_storage<'T>(self.data_ptr)
             auto nul *tok = null:nul *byte
             
             return Result<RwWriteLock<'T>, Error>::Ok(RwWriteLock<'T>(
@@ -248,11 +257,8 @@ impl<'T> RwMutex<'T>@Encap {
     fn drop(self#) {
         unsafe {
             if self.data_ptr != 0:Addr {
-                auto *p# = (self.data_ptr as *['T])
-                {
-                    auto _ = Option<'T>::Some(cede p[0])
-                }
-                sys_free_thread_env(self.data_ptr)
+                auto *p# = sync_writable_storage<['T]>(self.data_ptr)
+                free[1] *p
                 self.data_ptr = 0:Addr
             }
             if self.handle != 0:Addr {

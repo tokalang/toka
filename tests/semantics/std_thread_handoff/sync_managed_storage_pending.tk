@@ -1,0 +1,30 @@
+// Positive target, not a permanent negative: guard morphology currently rejects
+// raw-of-managed T during whole generic impl validation, before runtime cleanup.
+import std/sync::{Mutex, RwMutex}
+auto drops# = 0
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+impl Token@Send {}
+impl Token@Sync {}
+fn main() -> i32 {
+    {
+        auto ^item = new Token(value = 17)
+        auto mutex = Mutex<^Token>::new(cede ^item)
+        if drops != 0 { return 1 }
+    }
+    if drops != 1 { return 2 }
+    {
+        auto ~item = new Token(value = 19)
+        {
+            auto ~other = ~item
+            auto mutex = RwMutex<~Token>::new(cede ~other)
+            if drops != 1 { return 3 }
+        }
+        if drops != 1 || item.value != 19 { return 4 }
+    }
+    if drops != 2 { return 5 }
+    return 0
+}

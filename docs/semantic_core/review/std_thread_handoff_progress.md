@@ -5,6 +5,11 @@ Branch: `impl/std-thread-handoff-v1`
 Base: `07ff495b465df77e3e7d1f950388c3c75d5c3351`
 Status: implementation in progress — NOT a public-thread review candidate
 
+Latest integration checkpoint:
+[2026-09-09 sync migration and finite blocker inventory](std_thread_sync_closeout_2026_09_09.md).
+The chronological implementation notes below do not supersede that full-suite
+baseline or turn the thread/binding work into Accepted.
+
 The accepted private source subset is closed. This branch implements the public
 thread responsibility chain; no additional private probe entry is introduced.
 No previous freeze ref is moved. The unaccepted binding dependencies documented
@@ -95,9 +100,9 @@ pending/validated implementation gives no CodeGen authority to a probe and
 retains the actual toolchain-origin check. See
 [the proposed pending/validated and environment-identity resolution](public_thread_pending_plan_design.md)
 and the [unapplied rejected guard diff](public_thread_rejected_speculative_gate.patch).
-The current tool-level blocker is instead the proposed std/sync production
-storage cleanup migration; its rejected patch was not applied. See
-[the precise scope and unapplied diff](std_sync_thread_storage_migration.md).
+The subsequent explicit full-diff authorization allowed the std/sync production
+storage cleanup migration to be applied. See
+[its exact scope and remaining positive targets](std_sync_thread_storage_migration.md).
 
 Directed checks during this WIP: testing and non-test Release tokac builds;
 production rejection of the fault option; public suite (8 strict parity fixtures,

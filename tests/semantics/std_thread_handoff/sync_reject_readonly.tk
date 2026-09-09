@@ -1,0 +1,8 @@
+import std/sync::RwMutex
+fn main() -> i32 {
+    auto mutex = RwMutex<i32>::new(7)
+    auto locked = mutex.read_lock().unwrap()
+    auto &value = locked.borrow()
+    value = 8
+    return value
+}

@@ -1,0 +1,8 @@
+import std/sync::Mutex
+fn main() -> i32 {
+    auto mutex = Mutex<i32>::new(7)
+    auto locked = mutex.lock().unwrap()
+    cede mutex
+    auto &value = locked.borrow_mut()
+    return value
+}

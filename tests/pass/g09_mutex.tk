@@ -3,7 +3,7 @@ import std/thread::{thread_spawn, sleep_ms}
 import std/io::{println}
 
 pub fn main() -> i32 {
-    auto ~m = Mutex<i32>::make(0)
+    auto ~m = Mutex<i32>::make_shared(0)
     {
     
     // Test basic lock and unlock on the main thread
@@ -22,7 +22,7 @@ pub fn main() -> i32 {
     }
     
     auto ~thread_m = ~m
-    auto f = { [cede thread_m] =>
+    auto f = { [cede ~thread_m] =>
         sleep_ms(100:u32)
         auto ~local_m = ~thread_m
         auto mut_guard2 = local_m.lock().unwrap()
