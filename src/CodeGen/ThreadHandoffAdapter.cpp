@@ -70,11 +70,15 @@ bool validate(llvm::Module &module, const ThreadHandoffAdapterPlan &p,
       p.InvokeCallingConvention != llvm::CallingConv::C)
     return reject("ThreadHandoffInvokeIncomplete");
   unsigned head = p.ResultSRet ? 2 : 1;
+  if (p.ResultUnit && (p.ResultSRet || p.ResultHasDrop || p.DropResult ||
+                       !p.ResultType->isIntegerTy(8) ||
+                       !p.InvokeType->getReturnType()->isVoidTy()))
+    return reject("ThreadHandoffUnitABIMismatch");
   if (p.InvokeType->getNumParams() != head + p.Arguments.size() ||
       !pointer(p.InvokeType->getParamType(head - 1)) ||
       (p.ResultSRet && (!p.InvokeType->getReturnType()->isVoidTy() ||
                        !pointer(p.InvokeType->getParamType(0)))) ||
-      (!p.ResultSRet && p.InvokeType->getReturnType() != p.ResultType))
+      (!p.ResultSRet && !p.ResultUnit && p.InvokeType->getReturnType() != p.ResultType))
     return reject("ThreadHandoffInvokeTypeMismatch");
   std::vector<bool> used(p.PacketType->getNumElements(), false);
   used[p.CarrierField] = true;
@@ -121,7 +125,26 @@ bool emitThreadHandoffAdapters(llvm::Module &module,
       return false;
     }
   }
-  for (const char *suffix : {".run", ".unstarted", ".move", ".drop",
+  struct RuntimeSignature { const char *Name; unsigned Arity; bool Status; };
+  for (const auto &signature : {
+           RuntimeSignature{"toka_thread_prepare_v1", 3, true},
+           RuntimeSignature{"toka_thread_start_v1", 3, true},
+           RuntimeSignature{"toka_thread_dispose_prepared_v1", 1, false},
+           RuntimeSignature{"toka_thread_join_v1", 4, true},
+           RuntimeSignature{"toka_thread_take_result_v1", 3, false}}) {
+    auto *existing = module.getNamedValue(signature.Name);
+    if (!existing) continue;
+    auto *function = llvm::dyn_cast<llvm::Function>(existing);
+    bool valid = function && !function->isVarArg() &&
+        function->arg_size() == signature.Arity &&
+        function->getCallingConv() == llvm::CallingConv::C &&
+        (signature.Status ? function->getReturnType()->isIntegerTy(32)
+                          : function->getReturnType()->isVoidTy());
+    if (valid)
+      for (const auto &arg : function->args()) valid &= pointer(arg.getType());
+    if (!valid) { rejection = "ThreadHandoffRuntimeABIMismatch"; return false; }
+  }
+  for (const char *suffix : {".run", ".unstarted", ".move", ".drop", ".start_owned", ".join_owned",
                              ".result", ".environment", ".abi", ".type", ".contract"}) {
     if (prefix.empty() || module.getNamedValue(prefix + suffix)) {
       rejection = "ThreadHandoffSymbolCollision";
@@ -165,6 +188,8 @@ bool emitThreadHandoffAdapters(llvm::Module &module,
   call->setDoesNotThrow();
   if (p.ResultSRet)
     call->addParamAttr(0, llvm::Attribute::get(context, llvm::Attribute::StructRet, p.ResultType));
+  else if (p.ResultUnit)
+    builder.CreateStore(builder.getInt8(0), result);
   else
     builder.CreateStore(call, result);
   builder.CreateCall(p.DropStartedPacket, {packet});
@@ -214,6 +239,64 @@ bool emitThreadHandoffAdapters(llvm::Module &module,
        abi, contractKey, out.ResultOps, out.RunOnce, out.DropUnstarted});
   out.EnvOps = new llvm::GlobalVariable(module, envOpsType, true,
       llvm::GlobalValue::InternalLinkage, envConstant, prefix + ".environment");
+
+  auto runtime = [&](const char *name, llvm::Type *returnType, unsigned count) {
+    return module.getOrInsertFunction(name, llvm::FunctionType::get(returnType,
+        std::vector<llvm::Type *>(count, ptr), false));
+  };
+  auto makeStatusFunction = [&](const char *suffix) {
+    auto *function = llvm::Function::Create(llvm::FunctionType::get(builder.getInt32Ty(),
+        {ptr, ptr, ptr}, false), llvm::GlobalValue::InternalLinkage, prefix + suffix, module);
+    function->addFnAttr(llvm::Attribute::NoUnwind);
+    builder.SetInsertPoint(llvm::BasicBlock::Create(context, "entry", function));
+    builder.CreateCall(requireRuntime)->setDoesNotThrow();
+    builder.CreateStore(builder.getInt32(0), function->getArg(2));
+    return function;
+  };
+  // Output is an initially empty slot supplied by the typed public wrapper.
+  // Do not clear a potentially live caller slot to disguise an ABI violation.
+  // No ownership fact is reconstructed: packet cleanup is the validated one.
+  out.StartOwned = makeStatusFunction(".start_owned");
+  auto *prepared = builder.CreateAlloca(ptr, nullptr, "prepared");
+  builder.CreateStore(llvm::ConstantPointerNull::get(ptr), prepared);
+  auto *prepareStatus = builder.CreateCall(runtime("toka_thread_prepare_v1", builder.getInt32Ty(), 3),
+      {out.EnvOps, out.StartOwned->getArg(0), prepared});
+  auto *startBlock = llvm::BasicBlock::Create(context, "start", out.StartOwned);
+  auto *prepareFailed = llvm::BasicBlock::Create(context, "prepare.failed", out.StartOwned);
+  builder.CreateCondBr(builder.CreateICmpEQ(prepareStatus, builder.getInt32(TOKA_THREAD_OK_V1)),
+                      startBlock, prepareFailed);
+  builder.SetInsertPoint(prepareFailed);
+  builder.CreateCall(out.DropUnstarted, {out.StartOwned->getArg(0)});
+  builder.CreateRet(prepareStatus);
+  builder.SetInsertPoint(startBlock);
+  auto *startStatus = builder.CreateCall(runtime("toka_thread_start_v1", builder.getInt32Ty(), 3),
+      {prepared, out.StartOwned->getArg(1), out.StartOwned->getArg(2)});
+  auto *startFailed = llvm::BasicBlock::Create(context, "start.failed", out.StartOwned);
+  auto *started = llvm::BasicBlock::Create(context, "started", out.StartOwned);
+  builder.CreateCondBr(builder.CreateICmpEQ(startStatus, builder.getInt32(TOKA_THREAD_OK_V1)),
+                      started, startFailed);
+  builder.SetInsertPoint(startFailed);
+  builder.CreateCall(runtime("toka_thread_dispose_prepared_v1", voidTy, 1), {prepared});
+  builder.CreateRet(startStatus);
+  builder.SetInsertPoint(started);
+  // W may already be gone. Never inspect packet or control here.
+  builder.CreateRet(startStatus);
+
+  out.JoinOwned = makeStatusFunction(".join_owned");
+  auto *lease = builder.CreateAlloca(ptr, nullptr, "lease");
+  builder.CreateStore(llvm::ConstantPointerNull::get(ptr), lease);
+  auto *joinStatus = builder.CreateCall(runtime("toka_thread_join_v1", builder.getInt32Ty(), 4),
+      {out.JoinOwned->getArg(0), out.ResultOps, lease, out.JoinOwned->getArg(2)});
+  auto *take = llvm::BasicBlock::Create(context, "take", out.JoinOwned);
+  auto *joinFailed = llvm::BasicBlock::Create(context, "join.failed", out.JoinOwned);
+  builder.CreateCondBr(builder.CreateICmpEQ(joinStatus, builder.getInt32(TOKA_THREAD_OK_V1)),
+                      take, joinFailed);
+  builder.SetInsertPoint(joinFailed);
+  builder.CreateRet(joinStatus); // H and uninitialized destination are untouched.
+  builder.SetInsertPoint(take);
+  builder.CreateCall(runtime("toka_thread_take_result_v1", voidTy, 3),
+      {lease, out.ResultOps, out.JoinOwned->getArg(1)});
+  builder.CreateRet(joinStatus); // no recoverable operation after claiming T
   return true;
 }
 } // namespace toka

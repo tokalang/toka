@@ -291,6 +291,11 @@ if(BUILD_TESTING)
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_stage1_binding_transfer.py
                 --build-dir ${CMAKE_BINARY_DIR})
         if(UNIX)
+            add_test(NAME toka_thread_handoff_adapter
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/scripts/test_thread_handoff_adapter.py
+                    --llvm-config ${LLVM_TOOLS_BINARY_DIR}/llvm-config)
+            set_tests_properties(toka_thread_handoff_adapter PROPERTIES TIMEOUT 90)
             # Source qualification links the independently tested POSIX runtime.
             add_test(NAME toka_thread_handoff_source
                 COMMAND ${Python3_EXECUTABLE}

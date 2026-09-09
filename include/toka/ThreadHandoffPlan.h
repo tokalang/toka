@@ -63,6 +63,9 @@ struct ThreadHandoffAdapterPlan {
   unsigned InvokeCallingConvention = 0;
   llvm::Type *ResultType = nullptr;
   bool ResultSRet = false;
+  // Language Unit has canonical i8 storage, but invoke returns ABI void.
+  // This is not a general void-to-value coercion and never carries Drop.
+  bool ResultUnit = false;
   std::vector<ThreadAdapterArgument> Arguments;
 
   // Exact typed cleanup wrappers are supplied by existing CodeGen paths.
@@ -82,6 +85,11 @@ struct ThreadHandoffAdapterArtifacts {
   llvm::Function *DropLive = nullptr;
   llvm::GlobalVariable *ResultOps = nullptr;
   llvm::GlobalVariable *EnvOps = nullptr;
+  // Public-library bridge, not the private probe driver. Start consumes a
+  // complete packet on both success and error; join preserves H on error and
+  // moves into caller-provided uninitialized result storage only on success.
+  llvm::Function *StartOwned = nullptr; // i32(packet, Control **, i32 *native)
+  llvm::Function *JoinOwned = nullptr;  // i32(Control **, result storage, i32 *native)
 };
 
 // All validation happens before module mutation. Failure is an E0701 reason

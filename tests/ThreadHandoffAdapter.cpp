@@ -13,6 +13,9 @@
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <atomic>
+#include <thread>
+#include <cerrno>
 
 #define CHECK(condition) do { if (!(condition)) { \
   std::cerr << "CHECK failed at " << __LINE__ << ": " #condition "\n"; \
@@ -23,8 +26,27 @@ struct Carrier { void *Environment; void *Invoke; void *Drop; };
 struct Packet { Carrier Function; uint64_t Argument; };
 struct Environment { uint64_t Seed; unsigned *Drops; };
 struct Pair { uint64_t Left, Right; };
-unsigned Invokes = 0, Started = 0, Unstarted = 0, ResultDrops = 0, PacketFrees = 0;
+unsigned Invokes = 0, Started = 0, Unstarted = 0, ResultDrops = 0;
+std::atomic<unsigned> PacketFrees{0};
 unsigned RuntimeRequirements = 0;
+bool FailPrepare = false, FailStart = false, FailJoin = false, CleanupBeforeBridgeReturns = false;
+int32_t testPrepare(const TokaThreadEnvOpsV1 *ops, void *packet, TokaThreadPrepared **out) {
+  if (FailPrepare) return TOKA_THREAD_ALLOCATION_V1;
+  return toka_thread_prepare_v1(ops, packet, out);
+}
+int32_t testStart(TokaThreadPrepared **prepared, TokaThreadControl **handle, int32_t *code) {
+  if (FailStart) { *code = EAGAIN; return TOKA_THREAD_CREATE_V1; }
+  const unsigned freed = PacketFrees.load();
+  auto status = toka_thread_start_v1(prepared, handle, code);
+  if (CleanupBeforeBridgeReturns && status == TOKA_THREAD_OK_V1)
+    while (PacketFrees.load() == freed) std::this_thread::yield();
+  return status;
+}
+int32_t testJoin(TokaThreadControl **handle, const TokaThreadResultOpsV1 *ops,
+                TokaThreadResultLease **lease, int32_t *code) {
+  if (FailJoin) { *code = EDEADLK; return TOKA_THREAD_JOIN_V1; }
+  return toka_thread_join_v1(handle, ops, lease, code);
+}
 void requireRuntime() {
   toka_thread_require_compiler_0_9_9_18_v1();
   ++RuntimeRequirements;
@@ -34,6 +56,7 @@ uint64_t repeatable(void *environment, uint64_t argument) {
   ++Invokes;
   return static_cast<Environment *>(environment)->Seed + argument;
 }
+void unitInvoke(void *, uint64_t) { ++Invokes; }
 uint64_t consuming(void *environment, uint64_t argument) {
   auto *env = static_cast<Environment *>(environment);
   ++Invokes;
@@ -166,6 +189,18 @@ int main() {
   { auto bad = p; bad.DropStartedPacket = nullptr; CHECK(rejected(bad)); }
   { auto bad = p; bad.ResultHasDrop = true; CHECK(rejected(bad)); }
   { auto bad = p; bad.ResultSRet = true; CHECK(rejected(bad)); }
+  { auto bad = p; bad.ResultUnit = true; CHECK(rejected(bad)); }
+  {
+    auto unit = p;
+    unit.ResultUnit = true;
+    unit.ResultType = llvm::Type::getInt8Ty(context);
+    unit.InvokeType = llvm::FunctionType::get(llvm::Type::getVoidTy(context),
+        {llvm::PointerType::getUnqual(context), llvm::Type::getInt64Ty(context)}, false);
+    auto bad = unit; bad.ResultSRet = true; CHECK(rejected(bad));
+    bad = unit; bad.ResultHasDrop = true; CHECK(rejected(bad));
+    bad = unit; bad.ResultType = llvm::Type::getInt32Ty(context); CHECK(rejected(bad));
+    bad = unit; bad.ResultUnit = false; CHECK(rejected(bad));
+  }
   { auto bad = p; bad.InvokeCallingConvention = llvm::CallingConv::Fast; CHECK(rejected(bad)); }
   { auto bad = p; bad.Arguments[0].Passing = static_cast<toka::ThreadArgumentPassing>(99); CHECK(rejected(bad)); }
   { auto bad = p; bad.Mode = bad.StartedCleanupMode = static_cast<toka::ThreadCallableMode>(99); CHECK(rejected(bad)); }
@@ -180,6 +215,14 @@ int main() {
     CHECK(rejected(p));
     badRequire->eraseFromParent();
   }
+  for (const char *name : {"toka_thread_prepare_v1", "toka_thread_start_v1",
+                          "toka_thread_dispose_prepared_v1", "toka_thread_join_v1",
+                          "toka_thread_take_result_v1"}) {
+    auto *badRuntime = llvm::Function::Create(llvm::FunctionType::get(
+        llvm::Type::getInt32Ty(context), false), llvm::Function::ExternalLinkage, name, *m);
+    CHECK(rejected(p));
+    badRuntime->eraseFromParent();
+  }
 
   toka::ThreadHandoffAdapterArtifacts repeat;
   CHECK(toka::emitThreadHandoffAdapters(*m, p, p.Site, p.EnvironmentEdge, "repeat", repeat, reason));
@@ -187,6 +230,14 @@ int main() {
     for (auto &instruction : block)
       CHECK(!llvm::isa<llvm::CallBase>(instruction));
   CHECK(repeat.ResultOps->isConstant() && repeat.EnvOps->isConstant());
+  for (auto *wrapper : {repeat.StartOwned, repeat.JoinOwned}) {
+    CHECK(wrapper && wrapper->getReturnType()->isIntegerTy(32));
+    for (auto &block : *wrapper)
+      for (auto &instruction : block)
+        if (auto *call = llvm::dyn_cast<llvm::CallBase>(&instruction))
+          if (auto *callee = call->getCalledFunction())
+            CHECK(callee->getName() != "_Exit" && callee->getName() != "abort");
+  }
   auto *resultConstant = llvm::cast<llvm::ConstantStruct>(repeat.ResultOps->getInitializer());
   CHECK(llvm::cast<llvm::ConstantInt>(resultConstant->getOperand(1))->getZExtValue() == sizeof(TokaThreadResultOpsV1));
   auto *envConstant = llvm::cast<llvm::ConstantStruct>(repeat.EnvOps->getInitializer());
@@ -237,6 +288,20 @@ int main() {
   CHECK(pairArtifacts.MoveOut->size() == 1);
   for (auto &instruction : pairArtifacts.MoveOut->getEntryBlock())
     CHECK(!llvm::isa<llvm::CallBase>(instruction));
+  auto unit = aggregate;
+  unit.ResultUnit = true;
+  unit.ResultSRet = unit.ResultHasDrop = false;
+  unit.DropResult = nullptr;
+  unit.ResultType = llvm::Type::getInt8Ty(context);
+  unit.ResultTypeKey = "test-only/result:unit/abi:void/storage:i8";
+  unit.InvokeType = llvm::FunctionType::get(llvm::Type::getVoidTy(context),
+      {ptr, llvm::Type::getInt64Ty(context)}, false);
+  unit.Arguments[0].Passing = toka::ThreadArgumentPassing::Value;
+  toka::ThreadHandoffAdapterArtifacts unitArtifacts;
+  CHECK(toka::emitThreadHandoffAdapters(*m, unit, p.Site, p.EnvironmentEdge,
+      "unit", unitArtifacts, reason));
+  for (auto &instruction : unitArtifacts.MoveOut->getEntryBlock())
+    CHECK(!llvm::isa<llvm::CallBase>(instruction));
   CHECK(!llvm::verifyModule(*m, &llvm::errs()));
   engine->addGlobalMapping(m->getFunction("test_unstarted"), reinterpret_cast<void *>(&fullCleanup));
   engine->addGlobalMapping(m->getFunction("test_repeatable_started"), reinterpret_cast<void *>(&repeatableCleanup));
@@ -244,6 +309,11 @@ int main() {
   engine->addGlobalMapping(m->getFunction("test_result_drop"), reinterpret_cast<void *>(&resultDrop));
   engine->addGlobalMapping(m->getFunction("toka_thread_require_compiler_0_9_9_18_v1"),
       reinterpret_cast<void *>(&requireRuntime));
+  engine->addGlobalMapping(m->getFunction("toka_thread_prepare_v1"), reinterpret_cast<void *>(&testPrepare));
+  engine->addGlobalMapping(m->getFunction("toka_thread_start_v1"), reinterpret_cast<void *>(&testStart));
+  engine->addGlobalMapping(m->getFunction("toka_thread_join_v1"), reinterpret_cast<void *>(&testJoin));
+  engine->addGlobalMapping(m->getFunction("toka_thread_dispose_prepared_v1"), reinterpret_cast<void *>(&toka_thread_dispose_prepared_v1));
+  engine->addGlobalMapping(m->getFunction("toka_thread_take_result_v1"), reinterpret_cast<void *>(&toka_thread_take_result_v1));
   engine->finalizeObject();
   auto *repeatOps = reinterpret_cast<const TokaThreadEnvOpsV1 *>(engine->getPointerToGlobal(repeat.EnvOps));
   auto *consumeOps = reinterpret_cast<const TokaThreadEnvOpsV1 *>(engine->getPointerToGlobal(consume.EnvOps));
@@ -309,6 +379,73 @@ int main() {
   pairOps->result_ops->drop_live(&threadPair);
   CHECK(ResultDrops == 3);
 
+  auto *unitOps = reinterpret_cast<const TokaThreadEnvOpsV1 *>(engine->getPointerToGlobal(unitArtifacts.EnvOps));
+  CHECK(unitOps->result_ops->value_size == 1 && unitOps->result_ops->value_alignment == 1);
+  unsigned unitDrops = 0;
+  const unsigned beforeUnitInvokes = Invokes;
+  auto *unitPacket = new Packet{{new Environment{0, &unitDrops},
+      reinterpret_cast<void *>(&unitInvoke), nullptr}, 0};
+  CHECK(toka_thread_prepare_v1(unitOps, unitPacket, &prepared) == TOKA_THREAD_OK_V1);
+  CHECK(toka_thread_start_v1(&prepared, &handle, &native) == TOKA_THREAD_OK_V1);
+  CHECK(toka_thread_join_v1(&handle, unitOps->result_ops, &lease, &native) == TOKA_THREAD_OK_V1);
+  unsigned char unitValue = 0xff;
+  toka_thread_take_result_v1(&lease, unitOps->result_ops, &unitValue);
+  CHECK(!lease && unitValue == 0 && unitDrops == 1 && Invokes == beforeUnitInvokes + 1);
+  auto *discardUnitPacket = new Packet{{new Environment{0, &unitDrops},
+      reinterpret_cast<void *>(&unitInvoke), nullptr}, 0};
+  CHECK(toka_thread_prepare_v1(unitOps, discardUnitPacket, &prepared) == TOKA_THREAD_OK_V1);
+  CHECK(toka_thread_start_v1(&prepared, &handle, &native) == TOKA_THREAD_OK_V1);
+  CHECK(toka_thread_join_v1(&handle, unitOps->result_ops, &lease, &native) == TOKA_THREAD_OK_V1);
+  toka_thread_drop_result_v1(&lease);
+  CHECK(!lease && unitDrops == 2 && ResultDrops == 3 && PacketFrees == 8);
+
+  // The public bridge returns native errors, unlike the private fatal driver.
+  using StartOwned = int32_t (*)(void *, TokaThreadControl **, int32_t *);
+  using JoinOwned = int32_t (*)(TokaThreadControl **, void *, int32_t *);
+  auto startOwned = reinterpret_cast<StartOwned>(engine->getFunctionAddress("repeat.start_owned"));
+  auto joinOwned = reinterpret_cast<JoinOwned>(engine->getFunctionAddress("repeat.join_owned"));
+  CHECK(startOwned && joinOwned);
+  unsigned bridgeDrops = 0;
+  auto packetForBridge = [&] {
+    return new Packet{{new Environment{35, &bridgeDrops},
+        reinterpret_cast<void *>(&repeatable), nullptr}, 7};
+  };
+  FailPrepare = true; native = 999;
+  CHECK(startOwned(packetForBridge(), &handle, &native) == TOKA_THREAD_ALLOCATION_V1);
+  CHECK(!handle && native == 0 && bridgeDrops == 1);
+  FailPrepare = false; FailStart = true;
+  CHECK(startOwned(packetForBridge(), &handle, &native) == TOKA_THREAD_CREATE_V1);
+  CHECK(!handle && native == EAGAIN && bridgeDrops == 2);
+  FailStart = false; CleanupBeforeBridgeReturns = true;
+  CHECK(startOwned(packetForBridge(), &handle, &native) == TOKA_THREAD_OK_V1);
+  CHECK(handle && native == 0 && bridgeDrops == 3);
+  auto *retainedHandle = handle;
+  FailJoin = true; moved = 777;
+  CHECK(joinOwned(&handle, &moved, &native) == TOKA_THREAD_JOIN_V1);
+  CHECK(handle == retainedHandle && moved == 777 && native == EDEADLK);
+  FailJoin = false;
+  CHECK(joinOwned(&handle, &moved, &native) == TOKA_THREAD_OK_V1);
+  CHECK(!handle && native == 0 && moved == 42 && bridgeDrops == 3);
+  moved = 555;
+  CHECK(joinOwned(&handle, &moved, &native) == TOKA_THREAD_CLOSED_V1);
+  CHECK(!handle && native == 0 && moved == 555 && bridgeDrops == 3);
+  auto startConsuming = reinterpret_cast<StartOwned>(engine->getFunctionAddress("consume.start_owned"));
+  auto joinConsuming = reinterpret_cast<JoinOwned>(engine->getFunctionAddress("consume.join_owned"));
+  unsigned consumingBridgeDrops = 0;
+  auto consumingPacket = [&] {
+    return new Packet{{new Environment{40, &consumingBridgeDrops},
+        reinterpret_cast<void *>(&consuming), nullptr}, 2};
+  };
+  FailStart = true;
+  CHECK(startConsuming(consumingPacket(), &handle, &native) == TOKA_THREAD_CREATE_V1);
+  CHECK(!handle && native == EAGAIN && consumingBridgeDrops == 1);
+  FailStart = false;
+  CHECK(startConsuming(consumingPacket(), &handle, &native) == TOKA_THREAD_OK_V1);
+  CHECK(joinConsuming(&handle, &moved, &native) == TOKA_THREAD_OK_V1);
+  CHECK(!handle && moved == 42 && native == 0 && consumingBridgeDrops == 2);
+  consumeOps->result_ops->drop_live(&moved);
+  CHECK(ResultDrops == 4);
+
   // Cross-target descriptor sizes come from target DataLayout, not this host.
   llvm::Module target32("target32", context);
   target32.setDataLayout("e-p:32:32-i64:64-n8:16:32-S128");
@@ -322,5 +459,5 @@ int main() {
   CHECK(llvm::cast<llvm::ConstantInt>(e32->getOperand(1))->getZExtValue() == 28);
   CHECK(!llvm::verifyModule(target32, &llvm::errs()));
   std::cout << "thread adapter synthetic LLVM/JIT: " << faults
-            << " no-mutation rejection cases; repeatable/consuming/unstarted/result cleanup; sret/by-address; target32 descriptors; native runtime scalar/struct join+take\n";
+            << " no-mutation rejection cases; repeatable/consuming/unstarted/result cleanup; sret/by-address; target32 descriptors; native runtime scalar/struct/unit join+take/drop; public bridge injected prepare/start/join errors and retry\n";
 }
