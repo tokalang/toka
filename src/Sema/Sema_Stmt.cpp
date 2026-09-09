@@ -1654,7 +1654,13 @@ void Sema::checkStmt(Stmt *S) {
     }
     auto authorityContext =
         beginAuthorityFullExpression(ExprS->Expression.get());
-    auto exprType = checkExpr(ExprS->Expression.get());
+    // The admitted shared discard owns a carrier, not the enclosing function's
+    // result. An inherited scalar return context must not collapse that carrier
+    // to its pointee and send the pointee destructor a two-word handle slot.
+    const bool sharedDiscard = activateStandalone && standalonePlan &&
+        standalonePlan->Prepared.Ownership == TransferOwnershipKind::SharedOwner;
+    auto exprType = sharedDiscard ? checkExpr(ExprS->Expression.get(), nullptr)
+                                 : checkExpr(ExprS->Expression.get());
     restoreAuthorityFullExpression(std::move(authorityContext));
     if (activateStandalone) {
       const auto &diagnostics = DiagnosticEngine::records();

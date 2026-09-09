@@ -664,7 +664,10 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       finalStorage = alloca;
       isOwnedParam = true;
       storesMovedUniqueHandleDirectly = true;
-    } else if (argDecl.IsShared) {
+    } else if (argDecl.IsShared || typeObj->isSharedPtr()) {
+      // Every shared parameter uses the existing pointer-to-carrier ABI.
+      // A resolved morphic shared value has the same real carrier address
+      // as an explicitly hatted shared parameter, not a pointer wrapper.
       finalStorage = &arg;
       isOwnedParam = false;
     } else {
@@ -708,14 +711,18 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         argDecl.Type; // [Fix] Set legacy type string for Dynamic Dispatch
 
     // [HOTFIX] Exempt variables (like 'val) preserve their raw morphology!
-    if (!argName.empty() && argName[0] == '\'' && !argDecl.IsReference) {
+    if (!argName.empty() && argName[0] == '\'' && !argDecl.IsReference &&
+        !typeObj->isSharedPtr()) {
         sym.mode = AddressingMode::Direct;
         sym.indirectionLevel = 0;
         sym.morphology = Morphology::None;
         sym.soulType = getLLVMType(typeObj);
     }
 
-    if (needsCapture && !storesMovedUniqueHandleDirectly &&
+    // Shared storage is already the carrier: either the incoming address
+    // above, or the complete carrier copied into an async frame. Keep its
+    // shared projection metadata and do not add an address-wrapper layer.
+    if (needsCapture && !typeObj->isSharedPtr() && !storesMovedUniqueHandleDirectly &&
         !argDecl.IsInit) {
       sym.mode = AddressingMode::Pointer;
       // If captured, we add a level of indirection (ptr -> ptr*)
@@ -726,9 +733,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     sym.isRebindable = argDecl.IsRebindable;
     sym.isCallerHandleSlot =
         needsCapture && !storesMovedUniqueHandleDirectly &&
-        argDecl.IsRebindable && !argDecl.IsShared;
+        argDecl.IsRebindable && !argDecl.IsShared && !typeObj->isSharedPtr();
     sym.capturedHandleSlotNeedsLoad =
-        needsCapture && !storesMovedUniqueHandleDirectly &&
+        needsCapture && !typeObj->isSharedPtr() && !storesMovedUniqueHandleDirectly &&
         llvm::isa<llvm::AllocaInst>(finalStorage) &&
         (argDecl.IsUnique ||
          (typeObj && typeObj->isUniquePtr()) ||

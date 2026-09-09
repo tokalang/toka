@@ -18,6 +18,11 @@ The subsequent approved shared `needsCapture` edit and its independent runtime
 matrix are recorded in [shared reception validation](shared_parameter_alignment_validation.md).
 That one-line edit is implemented but does not yet close the shared body paths.
 
+The complete authorized reception repair is now
+[qualified by 23/23 and IR checks](shared_parameter_reception_complete.md).
+The earlier one-line-only failure report remains historical evidence, not the
+current shared-parameter result. Native storage is a separate implementation.
+
 The accepted private source subset is closed. This branch implements the public
 thread responsibility chain; no additional private probe entry is introduced.
 No previous freeze ref is moved. The unaccepted binding dependencies documented
