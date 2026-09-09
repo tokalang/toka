@@ -1,0 +1,18 @@
+auto evaluations# = 0
+shape Pair(first: i64, second: i64)
+impl Pair@Encap { pub first, second }
+fn next_index() -> i32 {
+    evaluations += 1
+    return 1
+}
+fn main() -> i32 {
+    auto *buffer# = unsafe alloc [2] Pair
+    unsafe {
+        buffer[0] = Pair(first = 10, second = 20)
+        buffer[1] = Pair(first = 30, second = 40)
+    }
+    auto result = unsafe raw_take buffer[next_index()]
+    unsafe free [1] *buffer
+    if evaluations != 1 || result.first != 30 || result.second != 40 { return 1 }
+    return 0
+}

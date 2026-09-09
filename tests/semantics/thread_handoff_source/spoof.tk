@@ -1,0 +1,12 @@
+// Same spelling in an ordinary module must not become a native intrinsic.
+fn __toka_thread_probe_run(cede callback: dyn fn() -> i32) -> i32 {
+    auto value = callback()
+    cede callback
+    return value + 100
+}
+fn main() -> i32 {
+    auto callback = { => 7 }:dyn fn() -> i32
+    auto value = __toka_thread_probe_run(cede callback)
+    if value != 107 { return 1 }
+    return 0
+}

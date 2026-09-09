@@ -1,0 +1,16 @@
+import core/intrinsics/thread_handoff_probe::{__toka_thread_probe_run}
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) {}
+}
+impl Token@Send {}
+fn main() -> i32 {
+    auto captured = Token(value = 7)
+    auto callback = { [cede captured] =>
+        auto value = cede captured
+        return value.value
+    }:cede dyn fn() -> i32
+    auto rejected = __toka_thread_probe_run<i32, dyn fn() -> i32>(cede callback)
+    return cede callback()
+}

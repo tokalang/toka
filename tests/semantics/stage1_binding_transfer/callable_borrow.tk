@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    auto value = 7
+    auto callback = { => value }:fn() -> i32
+    auto copied = callback
+    return copied() - 7
+}

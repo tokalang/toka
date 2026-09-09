@@ -1,0 +1,42 @@
+auto trace# = 0
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { trace = trace * 10 + self.id }
+}
+fn early() -> i32 {
+    auto *buffer# = unsafe alloc [2] Token
+    unsafe {
+        buffer[0] = Token(id = 5)
+        buffer[1] = Token(id = 6)
+    }
+    auto result = unsafe raw_take buffer[1]
+    unsafe free [1] *buffer
+    return 7
+}
+fn main() -> i32 {
+    {
+        auto *buffer# = unsafe alloc [3] Token
+        unsafe {
+            buffer[0] = Token(id = 1)
+            buffer[1] = Token(id = 2)
+            buffer[2] = Token(id = 3)
+        }
+        auto result = unsafe raw_take buffer[2]
+        unsafe free [2] *buffer
+        if trace != 12 || result.id != 3 { return 1 }
+    }
+    if trace != 123 { return 2 }
+    auto *single# = unsafe alloc [1] Token
+    unsafe { single[0] = Token(id = 4) }
+    unsafe raw_take single[0]
+    unsafe free [0] *single
+    if trace != 1234 { return 3 }
+    if early() != 7 || trace != 123456 { return 4 }
+    auto *projected# = unsafe alloc [1] Token
+    unsafe { projected[0] = Token(id = 7) }
+    (unsafe raw_take projected[0]).id
+    unsafe free [0] *projected
+    if trace != 1234567 { return 5 }
+    return 0
+}

@@ -1,0 +1,58 @@
+// Generic allocation only; raw_take itself is checked against concrete storage.
+fn allocate<'T>() -> *['T] {
+    auto *buffer = unsafe alloc [1] 'T
+    return *buffer
+}
+auto drops# = 0
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn unique_roundtrip(*buffer#: [^Token], cede ^value: Token) {
+    unsafe { ^buffer[0] = cede ^value }
+    auto ^result = unsafe raw_take buffer[0]
+    unsafe free [0] *buffer
+}
+fn shared_roundtrip(*buffer#: [~Token], cede ~value: Token) {
+    unsafe { ~buffer[0] = cede ~value }
+    auto ~result = unsafe raw_take buffer[0]
+    unsafe free [0] *buffer
+}
+fn unique_discard(*buffer#: [^Token], cede ^value: Token) {
+    unsafe { ^buffer[0] = cede ^value }
+    unsafe raw_take buffer[0]
+    unsafe free [0] *buffer
+}
+fn shared_discard(*buffer#: [~Token], cede ~value: Token) {
+    unsafe { ~buffer[0] = cede ~value }
+    unsafe raw_take buffer[0]
+    unsafe free [0] *buffer
+}
+fn main() -> i32 {
+    auto *unique_buffer# = allocate<^Token>()
+    auto ^unique_value = new Token(value = 11)
+    unique_roundtrip(*unique_buffer, cede ^unique_value)
+    if drops != 1 { return 1 }
+    {
+        auto *shared_buffer# = allocate<~Token>()
+        auto ~shared_value = new Token(value = 22)
+        auto ~other = ~shared_value
+        shared_roundtrip(*shared_buffer, cede ~shared_value)
+        if drops != 1 || other.value != 22 { return 2 }
+    }
+    if drops != 2 { return 3 }
+    auto *unique_discard_buffer# = allocate<^Token>()
+    auto ^unique_discard_value = new Token(value = 33)
+    unique_discard(*unique_discard_buffer, cede ^unique_discard_value)
+    if drops != 3 { return 4 }
+    {
+        auto *shared_discard_buffer# = allocate<~Token>()
+        auto ~shared_discard_value = new Token(value = 44)
+        auto ~other = ~shared_discard_value
+        shared_discard(*shared_discard_buffer, cede ~shared_discard_value)
+        if drops != 3 || other.value != 44 { return 5 }
+    }
+    if drops != 4 { return 6 }
+    return 0
+}

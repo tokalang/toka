@@ -1,0 +1,23 @@
+import core/option::{Option}
+auto drops# = 0
+shape Resource(id: i32)
+impl Resource@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto owner = Resource(id = 1)
+        {
+            Option<&Resource>::Some(&owner)
+        }
+        if drops != 0 || owner.id != 1 { return 1 }
+        {
+            auto *pointer = unsafe (&owner as *Resource)
+            Option<*Resource>::Some(*pointer)
+        }
+        if drops != 0 || owner.id != 1 { return 2 }
+    }
+    if drops != 1 { return 3 }
+    return 0
+}

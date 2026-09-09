@@ -1,0 +1,11 @@
+shape RawHolder(*address: i32)
+shape Mixed(view: str, nested: RawHolder)
+fn factory(view: str, *address: i32) -> Mixed <- view {
+    auto result = Mixed(view = view, nested = RawHolder(*address = *address))
+    return cede result
+}
+fn main() -> i32 {
+    auto value = 1
+    auto result = factory("static", &value as *i32)
+    return 0
+}

@@ -1,0 +1,9 @@
+alias Work = dyn fn#() -> i32
+fn main() -> i32 {
+    auto count# = 0:i32
+    auto callback# = { [cede count] => count += 1; return count }:Work
+    auto invoke = { callback# => callback#() }:fn(Work) -> i32
+    if invoke(callback) != 1 { return 1 }
+    if invoke(callback) != 2 { return 2 }
+    return 0
+}

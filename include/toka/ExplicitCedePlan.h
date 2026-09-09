@@ -4,6 +4,7 @@
 
 #include "toka/SemanticModel.h"
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -309,6 +310,10 @@ struct ExplicitCedePreparedFacts {
   bool StructuredBorrowedTemporary = false;
   // Exact literal storage witnesses, independent of dynamic dependency roots.
   std::vector<SemanticNodeId> StaticStorageOrigins;
+  std::string RawWriteAuthority;
+  // Empty field means a whole-result contract, not an invented field map.
+  std::map<std::string, std::vector<PlaceId>> ResultFieldReferents;
+  std::map<std::string, std::vector<SemanticNodeId>> ResultFieldStaticStorage;
   // The source spelling preserves a generic/morphic binding's resolved
   // morphology (for example `'value`).  This lets one generic source-transfer
   // spelling remain valid when the instantiation is a unique handle, without

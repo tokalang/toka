@@ -1,0 +1,8 @@
+import core/intrinsics/thread_handoff_probe::{__toka_thread_probe_run}
+fn main() -> i32 {
+    auto *pointer = unsafe alloc i32(7)
+    auto rejected = __toka_thread_probe_run<i32, dyn fn() -> i32>(
+        { [copy *pointer] => 7 }:dyn fn() -> i32)
+    unsafe free *pointer
+    return 0
+}

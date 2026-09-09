@@ -1,0 +1,13 @@
+shape Count(value: i32)
+shape Box<T>(value: T)
+shape Mixed(view: str, nested: Box<Count>)
+impl Mixed@Encap { pub view }
+fn factory(view: str) -> Mixed <- view {
+    auto result = Mixed(view = view, nested = Box<Count>(value = Count(value = 7)))
+    return cede result
+}
+fn main() -> i32 {
+    auto value = factory("static")
+    if !value.view.equals("static") { return 1 }
+    return 0
+}

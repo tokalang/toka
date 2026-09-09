@@ -17,6 +17,26 @@ import core/traits::{@Copy, @Dup, @Encap, @Iterable, @Iterator, @IntoIterable, @
 import sys/libc::*
 import core/option::{Option}
 
+// Private unsafe-container bridge. `storage[0..length]` is the caller-maintained
+// live prefix; raw_take does not prove that extent or maintain the remainder.
+// Prepare/check every operand before retiring the tail. Between the length
+// store and the take body there is no allocation, user call or suspension.
+fn vec_pop_raw_tail<'T>(nul *storage: ['T], length#: usize) -> Option<'T> {
+    if length == 0 {
+        auto outcome = Option<'T>::None
+        return cede outcome
+    }
+    if *storage is null {
+        unsafe { libc_abort() }
+        unreachable
+    } else {
+        auto tail = length - 1
+        length = tail
+        auto outcome = Option<'T>::Some(unsafe raw_take storage[tail])
+        return cede outcome
+    }
+}
+
 
 // Helper for mutable iteration
 shape Counter(val: usize)
@@ -202,18 +222,8 @@ impl<'T> Vec<'T> {
     
     // Pop element from end
     pub fn pop(self#) -> Option<'T> {
-        unsafe {
-            if self.len == 0 {
-                auto outcome = Option<'T>::None
-                return cede outcome
-            }
-            
-            self.len -= 1
-            // Copy out (move out since pop destroys it)
-            auto 'val = cede self.buf[self.len]
-            auto outcome = Option<'T>::Some(cede 'val)
-            return cede outcome
-        }
+        auto outcome = vec_pop_raw_tail<'T>(self.*buf, self.len#)
+        return cede outcome
     }
 
     /// Moves the backing allocation and all initialized elements into a new

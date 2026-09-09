@@ -96,6 +96,13 @@ def main():
 
         raw_output = result.stderr + result.stdout
         exit_code = result.returncode
+        # An expected diagnostic does not make a crashing compiler a passing
+        # negative test. Check termination before either matching or blessing.
+        if exit_code < 0 or (os.name == "nt" and exit_code >= 0x80000000):
+            print(f"Testing {test_name:<35} {RED}FAIL (Compiler Abnormal Exit: {exit_code}){NC}")
+            print(raw_output)
+            total_failed += 1
+            continue
 
         # --- Filter output to keep diagnostic relevance ---
         def strip_ansi(text):

@@ -1,0 +1,22 @@
+import core/string::{string}
+shape Pair(left: str, right: str)
+impl Pair@Encap { pub left, right }
+fn swapped(a: str, b: str) -> result: Pair
+effects:
+    result.left <- b
+    result.right <- a
+{
+    auto value = Pair(left = b, right = a)
+    return cede value
+}
+fn main() -> i32 {
+    auto first = string::from("first")
+    auto second = string::from("second")
+    auto dynamic = swapped(first.as_str(), second.as_str())
+    auto mixed = swapped(first.as_str(), "static")
+    if !dynamic.left.equals("second") { return 1 }
+    if !dynamic.right.equals("first") { return 2 }
+    if !mixed.left.equals("static") { return 3 }
+    if !mixed.right.equals("first") { return 4 }
+    return 0
+}

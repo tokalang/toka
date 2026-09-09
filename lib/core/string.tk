@@ -541,9 +541,10 @@ impl string {
 
     pub fn to_upper(self) -> string {
         auto res# = string::from_with_len(self.c_str(), self.len)
+        if res.len == 0 { return cede res }
         unsafe {
             auto i# = 0:usize
-            auto *b# = (res.c_str() as usize) as *[char]#
+            auto *b# = res.*buf.unwrap()
             loop i < res.len {
                 auto c = b[i]
                 if c >= 97:char && c <= 122:char {
@@ -557,9 +558,10 @@ impl string {
 
     pub fn to_lower(self) -> string {
         auto res# = string::from_with_len(self.c_str(), self.len)
+        if res.len == 0 { return cede res }
         unsafe {
             auto i# = 0:usize
-            auto *b# = (res.c_str() as usize) as *[char]#
+            auto *b# = res.*buf.unwrap()
             loop i < res.len {
                 auto c = b[i]
                 if c >= 65:char && c <= 90:char {
@@ -576,9 +578,10 @@ impl string {
     }
 
     pub fn to_ascii_lowercase_in_place(self#) {
+        if self.len == 0 { return }
         unsafe {
             auto i# = 0:usize
-            auto *b# = (self.c_str() as usize) as *[char]#
+            auto *b# = self.*buf.unwrap()
             loop i < self.len {
                 auto c = b[i]
                 if c >= 65:char && c <= 90:char {
@@ -595,9 +598,10 @@ impl string {
 
     pub fn replace(self, old_c: char, new_c: char) -> string {
         auto res# = string::from_with_len(self.c_str(), self.len)
+        if res.len == 0 { return cede res }
         unsafe {
             auto i# = 0:usize
-            auto *b# = (res.c_str() as usize) as *[char]#
+            auto *b# = res.*buf.unwrap()
             loop i < res.len {
                 if b[i] == old_c {
                     b[i] = new_c
@@ -672,7 +676,7 @@ impl string {
         unsafe {
             auto res# = string::from_with_len(self.c_str(), self.len)
             auto i# = 0:usize
-            auto *dest# = (res.c_str() as usize) as *[char]#
+            auto *dest# = res.*buf.unwrap()
             auto *src = self.*buf.unwrap()
             loop i < self.len {
                 dest[i] = src[self.len - 1 - i]

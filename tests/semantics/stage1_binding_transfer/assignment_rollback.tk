@@ -1,0 +1,12 @@
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) {}
+}
+fn forward(cede token: Token) -> Token { return cede token }
+fn main() -> i32 {
+    auto source = Token(id = 1)
+    auto target = Token(id = 2)
+    target = forward(cede source)
+    return source.id + target.id
+}

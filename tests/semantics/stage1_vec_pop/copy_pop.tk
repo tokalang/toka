@@ -1,0 +1,22 @@
+import std/vec::{Vec}
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    if values#.pop().is_some() { return 1 }
+    if values.len() != 0 { return 2 }
+    auto reserved# = Vec<i32>::with_capacity(4)
+    if reserved#.pop().is_some() || reserved.cap() != 4 || reserved.len() != 0 { return 8 }
+    values#.push(10)
+    auto one = values#.pop()
+    if values.len() != 0 || one.unwrap() != 10 { return 3 }
+    values#.push(20)
+    values#.push(30)
+    values#.push(40)
+    auto tail = values#.pop()
+    if tail.unwrap() != 40 || values.len() != 2 { return 4 }
+    auto next = values#.pop()
+    if next.unwrap() != 30 || values.len() != 1 { return 5 }
+    auto last = values#.pop()
+    if last.unwrap() != 20 || values.len() != 0 { return 6 }
+    if values#.pop().is_some() { return 7 }
+    return 0
+}

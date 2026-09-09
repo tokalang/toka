@@ -1,0 +1,587 @@
+{
+  "phase": "pre-crash-fix classification",
+  "checked": 473,
+  "ordinary_verifier_passed": 392,
+  "ordinary_verifier_failed": 81,
+  "unexpected_success": [],
+  "abnormal_exit": [
+    {
+      "file": "tests/fail/member_access_sema_prefix_fail.tk",
+      "returncode": -11,
+      "note": "Also reproduced on the standalone freeze in its own workspace. The old harness matched E0406 and incorrectly counted this crash as a pass."
+    }
+  ],
+  "failure_categories": {
+    "Snapshot Mismatch": 55,
+    "Legacy Match Failed": 26
+  },
+  "failures": [
+    {
+      "file": "tests/fail/alias_generic_test.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/assigned_for_no_pass.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/async_wait_conflict.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "tests/fail/async_wait_conflict.tk:2:27",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/borrow.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/borrow_field.tk",
+      "rc": 1,
+      "first_error": "E0461",
+      "site": "tests/fail/borrow_field.tk:17:17",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/btreemap_get_non_dup_resource.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/btreemap.tk:25:34",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/call_elision_escape.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/callable_consuming_without_cede.tk",
+      "rc": 1,
+      "first_error": "E04591",
+      "site": "tests/fail/callable_consuming_without_cede.tk:8:19",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/cede_param_double_unwrap.tk",
+      "rc": 1,
+      "first_error": "E0438",
+      "site": "tests/fail/cede_param_double_unwrap.tk:11:17",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/cede_param_missing.tk",
+      "rc": 1,
+      "first_error": "E04570",
+      "site": "tests/fail/cede_param_missing.tk:17:30",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/cede_resource_missing.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/closure_copy_capture_resource.tk",
+      "rc": 1,
+      "first_error": "E04581",
+      "site": "tests/fail/closure_copy_capture_resource.tk:13:14",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/contextual_numeric_literal_overflow.tk",
+      "rc": 1,
+      "first_error": "E04598",
+      "site": "tests/fail/contextual_numeric_literal_overflow.tk:5:24",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/destruct_morphology_fail.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/dyn_privacy.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/err.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/for_alias_blocks_source_mutation.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/for_alias_removes_morphology.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/for_alias_shape_field_ceiling.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": ":0:0",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/for_alias_shared_array_interior_sibling.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": ":0:0",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/formatted_text_excluded_1_0.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/guard_no_return.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/sys/sync.tk:120:29",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/hashmap_lookup_miss_borrow_escape.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/header_map_lookup_miss_blocks_insert.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/implicit_box.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/implicit_owned_projection_copy.tk",
+      "rc": 1,
+      "first_error": "E04641",
+      "site": "tests/fail/implicit_owned_projection_copy.tk:17:24",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/import_namespace.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/init_custom_drop_reference_full_write.tk",
+      "rc": 1,
+      "first_error": "E0410",
+      "site": "tests/fail/init_custom_drop_reference_full_write.tk:17:22",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/init_custom_drop_reference_sibling_read.tk",
+      "rc": 1,
+      "first_error": "E0410",
+      "site": "tests/fail/init_custom_drop_reference_sibling_read.tk:17:22",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/init_immutable_live_array_element_reassign_after_cede.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": ":0:0",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/init_immutable_maybe_moved_array_element_reassign.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": ":0:0",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/iterator_escape_local_source.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/iterator_mutate_source_in_loop.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/iterator_saved_cursor_mutate_source.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/match_exhaustive.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/match_guard_not_exhaustive.tk",
+      "rc": 1,
+      "first_error": "E0553",
+      "site": "tests/fail/match_guard_not_exhaustive.tk:8:17",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/match_non_enum_requires_wildcard.tk",
+      "rc": 1,
+      "first_error": "E0553",
+      "site": "tests/fail/match_non_enum_requires_wildcard.tk:3:18",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/match_or_pattern_binding_mismatch.tk",
+      "rc": 1,
+      "first_error": "E04528",
+      "site": "tests/fail/match_or_pattern_binding_mismatch.tk:9:14",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/match_or_pattern_not_exhaustive.tk",
+      "rc": 1,
+      "first_error": "E0553",
+      "site": "tests/fail/match_or_pattern_not_exhaustive.tk:9:17",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/match_variant_payload_not_exhaustive.tk",
+      "rc": 1,
+      "first_error": "E0553",
+      "site": "tests/fail/match_variant_payload_not_exhaustive.tk:8:18",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/morphic_constraint_violation.tk",
+      "rc": 1,
+      "first_error": "E0416",
+      "site": "tests/fail/morphic_constraint_violation.tk:8:19",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/morphology_raw_extendable_vec_borrowed.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/oaddr_cast_back.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/owned_lazy_iterator_consuming_callable.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/owned_lazy_iterator_mapper_reuse.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/owned_lazy_iterator_shared_next.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/owned_lazy_iterator_source_reuse.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/pal_branch_borrowed_field_escape.tk",
+      "rc": 1,
+      "first_error": "E0456",
+      "site": "tests/fail/pal_branch_borrowed_field_escape.tk:11:9",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/pal_member_mut_borrow_duplicate.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "tests/fail/pal_member_mut_borrow_duplicate.tk:9:18",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/pal_member_mut_borrow_payload_read.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "tests/fail/pal_member_mut_borrow_payload_read.tk:9:18",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/pal_member_mut_borrow_payload_write.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "tests/fail/pal_member_mut_borrow_payload_write.tk:9:18",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/pass_no_receiver.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/place_outcome_direct_call_forbidden.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/println_mismatch.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/projection_reference_hole_fill_rejected.tk",
+      "rc": 1,
+      "first_error": "E0410",
+      "site": "tests/fail/projection_reference_hole_fill_rejected.tk:18:22",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/readonly_member_ref_decl_upgrade_from_plain_cast.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "tests/fail/readonly_member_ref_decl_upgrade_from_plain_cast.tk:13:21",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/rebind_immutable_smart.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/ref_life_bound.tk",
+      "rc": 1,
+      "first_error": "E0456",
+      "site": "tests/fail/ref_life_bound.tk:20:9",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/return_ref.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/slab_lookup_miss_blocks_remove.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/slab_uaf_decons.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/smart_ptr_from_stack.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "tests/fail/smart_ptr_from_stack.tk:8:16",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/str_concat_plus.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "tests/fail/str_concat_plus.tk:2:21",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/str_index.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "tests/fail/str_index.tk:2:20",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/sync_borrow_outlives_lock.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/sys/sync.tk:120:29",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/sync_guard_non_send.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/sys/sync.tk:120:29",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/sync_lock_escape.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/sys/sync.tk:120:29",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/task_group_cancellation_post_1_0.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/sys/sync.tk:120:29",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/thread_spawn_copy_non_sync_capture.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/thread.tk:164:22",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/thread_spawn_implicit_capture_escape.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/thread.tk:164:22",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/thread_spawn_implicit_capture_nested_closure.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/thread.tk:164:22",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/thread_spawn_implicit_capture_via_assignment.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/thread.tk:164:22",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/thread_spawn_implicit_capture_via_binding.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/thread.tk:164:22",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/thread_spawn_non_send_capture.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/thread.tk:164:22",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/thread_spawn_opaque_closure_parameter.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/thread.tk:164:22",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/unique_value_local_move_noncede_parameter.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "tests/fail/unique_value_local_move_noncede_parameter.tk:5:19",
+      "verifier": "Legacy Match Failed"
+    },
+    {
+      "file": "tests/fail/unset_escape.tk",
+      "rc": 1,
+      "first_error": "E0410",
+      "site": "tests/fail/unset_escape.tk:6:18",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/unwrap_move.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/vec_at_non_dup_resource.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/vec_get_non_dup_resource.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    },
+    {
+      "file": "tests/fail/vec_get_opt_non_dup_resource.tk",
+      "rc": 1,
+      "first_error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "verifier": "Snapshot Mismatch"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+import core/intrinsics/thread_handoff_probe::{__toka_thread_probe_run}
+auto drops# = 0
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+impl Token@Send {}
+fn main() -> i32 {
+    auto first = Token(value = 7)
+    auto callback = { [cede first] => first.value }:dyn fn() -> i32
+    auto result = __toka_thread_probe_run<i32, dyn fn() -> i32>((cede callback):dyn fn() -> i32)
+    if result != 7 || drops != 1 { return 1 }
+    auto second = Token(value = 11)
+    auto once = { [cede second] =>
+        auto value = cede second
+        return value.value
+    }:cede dyn fn() -> i32
+    auto moved = cede once
+    auto again = cede moved
+    auto outcome = __toka_thread_probe_run<i32, cede dyn fn() -> i32>(
+        (cede again):cede dyn fn() -> i32)
+    if outcome != 11 || drops != 2 { return 2 }
+    return 0
+}

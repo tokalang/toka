@@ -1,0 +1,20 @@
+import core/option::{Option}
+auto drops# = 0
+shape Resource(id: i32)
+impl Resource@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto untouched = uninit:Option<^Resource>
+    }
+    if drops != 0 { return 1 }
+    {
+        auto pending = uninit:Option<^Resource>
+        auto ^owner = new Resource(id = 1)
+        init pending = Option<^Resource>::Some(cede ^owner)
+    }
+    if drops != 1 { return 2 }
+    return 0
+}

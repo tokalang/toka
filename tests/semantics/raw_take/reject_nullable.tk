@@ -1,0 +1,4 @@
+fn take(nul *buffer: [i32]) {
+    unsafe raw_take buffer[0]
+}
+fn main() -> i32 { return 0 }

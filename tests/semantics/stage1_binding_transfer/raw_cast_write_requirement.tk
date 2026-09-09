@@ -1,0 +1,10 @@
+fn main() -> i32 {
+    auto *storage# = unsafe alloc [1] i32
+    unsafe {
+        storage[0] = 42
+        auto address = *storage as Addr
+        auto *pointer# = address as *i32#
+    }
+    unsafe free [1] *storage
+    return 0
+}

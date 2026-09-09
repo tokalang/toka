@@ -1,0 +1,113 @@
+{
+  "passed": 14,
+  "total": 17,
+  "skipped": 0,
+  "results": [
+    {
+      "name": "copy_pop.tk/parity",
+      "passed": true,
+      "normal_rc": 0,
+      "shadow_rc": 0,
+      "stderr": ""
+    },
+    {
+      "name": "copy_pop.tk/runtime",
+      "passed": true,
+      "runtime_rc": 0,
+      "expected_rc": 0,
+      "stderr": ""
+    },
+    {
+      "name": "owned_pop.tk/parity",
+      "passed": true,
+      "normal_rc": 0,
+      "shadow_rc": 0,
+      "stderr": ""
+    },
+    {
+      "name": "owned_pop.tk/runtime",
+      "passed": true,
+      "runtime_rc": 0,
+      "expected_rc": 0,
+      "stderr": ""
+    },
+    {
+      "name": "plain_noncopy_pop.tk/parity",
+      "passed": true,
+      "normal_rc": 0,
+      "shadow_rc": 0,
+      "stderr": ""
+    },
+    {
+      "name": "plain_noncopy_pop.tk/runtime",
+      "passed": true,
+      "runtime_rc": 0,
+      "expected_rc": 0,
+      "stderr": ""
+    },
+    {
+      "name": "handle_pop.tk/parity",
+      "passed": true,
+      "normal_rc": 0,
+      "shadow_rc": 0,
+      "stderr": ""
+    },
+    {
+      "name": "handle_pop.tk/runtime",
+      "passed": false,
+      "runtime_rc": 100,
+      "expected_rc": 0,
+      "stderr": ""
+    },
+    {
+      "name": "unproven_string.tk/rejection",
+      "passed": true,
+      "stderr": "\u001b[1;31merror[E04662]\u001b[0m: Cannot raw_take element: ElementDependenciesUnproven\n --> lib/std/vec.tk:35:48\n    \u001b[1;34m|\u001b[0m\n 35 \u001b[1;34m|\u001b[0m         auto outcome = Option<'T>::Some(unsafe raw_take storage[tail])\n    \u001b[1;34m|\u001b[0m                                                \u001b[1;31m^\u001b[0m\n\n\u001b[1;31merror[E0402]\u001b[0m: Use of undeclared identifier 'outcome'\n --> lib/std/vec.tk:36:21\n    \u001b[1;34m|\u001b[0m\n 36 \u001b[1;34m|\u001b[0m         return cede outcome\n    \u001b[1;34m|\u001b[0m                     \u001b[1;31m^\u001b[0m\n\n\u001b[1;31merror[E0402]\u001b[0m: Use of undeclared identifier 'outcome'\n --> lib/std/vec.tk:226:21\n     \u001b[1;34m|\u001b[0m\n 226 \u001b[1;34m|\u001b[0m         return cede outcome\n     \u001b[1;34m|\u001b[0m                     \u001b[1;31m^\u001b[0m\n\n\u001b[1;31merror[E0402]\u001b[0m: Use of undeclared identifier 'values'\n --> /private/tmp/toka-explicit-cede-stage1-binding/tests/semantics/stage1_vec_pop/unproven_string.tk:4:19\n   \u001b[1;34m|\u001b[0m\n 4 \u001b[1;34m|\u001b[0m     auto result = values#.pop()\n   \u001b[1;34m|\u001b[0m                   \u001b[1;31m^\u001b[0m\n\n\u001b[1;31merror[E0417]\u001b[0m: Shape 'Unresolved(unknown)' has no member named 'pop'\n --> /private/tmp/toka-explicit-cede-stage1-binding/tests/semantics/stage1_vec_pop/unproven_string.tk:4:26\n   \u001b[1;34m|\u001b[0m\n 4 \u001b[1;34m|\u001b[0m     auto result = values#.pop()\n   \u001b[1;34m|\u001b[0m                          \u001b[1;31m^\u001b[0m\n\n\u001b[1;31m[FAILED]\u001b[0m Compilation aborted due to previous semantic errors.\n"
+    },
+    {
+      "name": "unproven_string.tk.o/no-artifact",
+      "passed": true,
+      "returncode": 1
+    },
+    {
+      "name": "unproven_string.tk.ll/no-artifact",
+      "passed": true,
+      "returncode": 1
+    },
+    {
+      "name": "unproven_borrowed.tk/rejection",
+      "passed": true,
+      "stderr": "\u001b[1;31merror[E04662]\u001b[0m: Cannot raw_take element: ElementDependenciesUnproven\n --> lib/std/vec.tk:35:48\n    \u001b[1;34m|\u001b[0m\n 35 \u001b[1;34m|\u001b[0m         auto outcome = Option<'T>::Some(unsafe raw_take storage[tail])\n    \u001b[1;34m|\u001b[0m                                                \u001b[1;31m^\u001b[0m\n\n\u001b[1;31merror[E0402]\u001b[0m: Use of undeclared identifier 'outcome'\n --> lib/std/vec.tk:36:21\n    \u001b[1;34m|\u001b[0m\n 36 \u001b[1;34m|\u001b[0m         return cede outcome\n    \u001b[1;34m|\u001b[0m                     \u001b[1;31m^\u001b[0m\n\n\u001b[1;31merror[E0402]\u001b[0m: Use of undeclared identifier 'outcome'\n --> lib/std/vec.tk:226:21\n     \u001b[1;34m|\u001b[0m\n 226 \u001b[1;34m|\u001b[0m         return cede outcome\n     \u001b[1;34m|\u001b[0m                     \u001b[1;31m^\u001b[0m\n\n\u001b[1;31merror[E0402]\u001b[0m: Use of undeclared identifier 'values'\n --> /private/tmp/toka-explicit-cede-stage1-binding/tests/semantics/stage1_vec_pop/unproven_borrowed.tk:4:19\n   \u001b[1;34m|\u001b[0m\n 4 \u001b[1;34m|\u001b[0m     auto result = values#.pop()\n   \u001b[1;34m|\u001b[0m                   \u001b[1;31m^\u001b[0m\n\n\u001b[1;31merror[E0417]\u001b[0m: Shape 'Unresolved(unknown)' has no member named 'pop'\n --> /private/tmp/toka-explicit-cede-stage1-binding/tests/semantics/stage1_vec_pop/unproven_borrowed.tk:4:26\n   \u001b[1;34m|\u001b[0m\n 4 \u001b[1;34m|\u001b[0m     auto result = values#.pop()\n   \u001b[1;34m|\u001b[0m                          \u001b[1;31m^\u001b[0m\n\n\u001b[1;31m[FAILED]\u001b[0m Compilation aborted due to previous semantic errors.\n"
+    },
+    {
+      "name": "unproven_borrowed.tk.o/no-artifact",
+      "passed": true,
+      "returncode": 1
+    },
+    {
+      "name": "unproven_borrowed.tk.ll/no-artifact",
+      "passed": true,
+      "returncode": 1
+    },
+    {
+      "name": "check/prepare -> length store -> non-unwinding take",
+      "passed": true
+    },
+    {
+      "name": "option_handle_cleanup_baseline.tk/independent-control",
+      "passed": false,
+      "compile_rc": 0,
+      "runtime_rc": 100,
+      "expected_rc": 0,
+      "stderr": ""
+    },
+    {
+      "name": "option_shared_cleanup_baseline.tk/independent-control",
+      "passed": false,
+      "compile_rc": 0,
+      "runtime_rc": 100,
+      "expected_rc": 0,
+      "stderr": ""
+    }
+  ]
+}

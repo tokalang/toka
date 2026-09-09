@@ -1,0 +1,11 @@
+import std/vec::{Vec}
+shape Plain(value: i64)
+impl Plain@Encap { pub value }
+fn main() -> i32 {
+    auto values# = Vec<Plain>::new()
+    values#.push(Plain(value = 42))
+    auto result = values#.pop()
+    auto value = result.unwrap()
+    if value.value != 42 || values.len() != 0 { return 1 }
+    return 0
+}

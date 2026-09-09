@@ -1,0 +1,42 @@
+import std/vec::{Vec}
+import core/option::{Option}
+auto trace# = 0
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { trace = trace * 10 + self.id }
+}
+fn handoff() -> Option<Token> {
+    auto values# = Vec<Token>::with_capacity(3)
+    values#.push(Token(id = 1))
+    values#.push(Token(id = 2))
+    values#.push(Token(id = 3))
+    auto result = values#.pop()
+    assert(values.len() == 2, "pop retires exactly one tail slot")
+    return cede result
+}
+fn early() -> i32 {
+    auto values# = Vec<Token>::with_capacity(2)
+    values#.push(Token(id = 6))
+    values#.push(Token(id = 7))
+    auto result = values#.pop()
+    return 0
+}
+fn main() -> i32 {
+    {
+        auto result = handoff()
+        if trace != 12 || !result.is_some() { return 1 }
+    }
+    if trace != 123 { return 2 }
+    {
+        auto values# = Vec<Token>::new()
+        if values#.pop().is_some() { return 3 }
+        values#.push(Token(id = 4))
+        values#.pop()
+        if trace != 1234 || values.len() != 0 { return 4 }
+        values#.push(Token(id = 5))
+    }
+    if trace != 12345 { return 5 }
+    if early() != 0 || trace != 1234576 { return 6 }
+    return 0
+}

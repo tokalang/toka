@@ -1,0 +1,9 @@
+fn make<T>(value: T) -> dyn fn() -> i32 {
+    return { => 7:i32 }:dyn fn() -> i32
+}
+fn main() -> i32 {
+    auto first = make(7:i32)
+    auto second = make(8:i32)
+    if first() != 7 || second() != 7 { return 1 }
+    return 0
+}

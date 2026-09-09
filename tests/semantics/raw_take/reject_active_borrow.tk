@@ -1,0 +1,8 @@
+fn rejected(*buffer: [i32]) {
+    unsafe {
+        auto &view = &buffer[0]
+        auto result = raw_take buffer[0]
+        auto copied = view
+    }
+}
+fn main() -> i32 { return 0 }

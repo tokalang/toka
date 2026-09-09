@@ -14,6 +14,8 @@
 #pragma once
 
 #include "toka/AccessPath.h"
+#include "toka/UnsafeRawConstruction.h"
+#include "toka/ThreadHandoffSource.h"
 #include "toka/BindingPermission.h"
 #include "toka/PlaceState.h"
 #include "toka/Token.h"
@@ -45,6 +47,13 @@ enum class DynFnEnvironmentDisposition : uint8_t {
   None,
   Retain,
   Transfer,
+};
+
+enum class CallableAssignmentDisposition : uint8_t {
+  Unvalidated,
+  ThinValue,
+  RetainDynamic,
+  TransferDynamic,
 };
 
 // Sema-qualified ownership behavior for a value inserted into aggregate
@@ -372,6 +381,8 @@ cloneVec(const std::vector<std::unique_ptr<T>> &vec) {
 class Expr : public ASTNode {
 public:
   std::shared_ptr<Type> ResolvedType;
+  RawAddressSourcePtr RawAddressValueFacts;
+  RawAddressSourcePtr RawAddressViewFacts;
   bool IsMorphicExempt = false; // [NEW] Track morphic exemption at expression level
   bool HasParens = false; // [NEW] Track explicit parentheses
   bool ExtendLifetime = false; // [NEW] Flag for Temporary Lifetime Extension
@@ -605,6 +616,9 @@ enum class AssignmentSemanticKind {
 
 class BinaryExpr : public Expr {
 public:
+  // Sema-only edge qualification; clones must be checked in their new scope.
+  CallableAssignmentDisposition CallableAssignment =
+      CallableAssignmentDisposition::Unvalidated;
   std::string Op;
   std::string OverloadedMethod; // [NEW] Syntactic sugar method dispatch
   // `init place = value` shares assignment lowering but carries a distinct
@@ -772,6 +786,9 @@ enum class CastKind {
 
 class CastExpr : public Expr {
 public:
+  RawAddressSourcePtr AddressSource;
+  std::shared_ptr<UnsafeRawConstructionPlan> RawConstruction;
+  bool RequiresRawConstruction = false;
   std::unique_ptr<Expr> Expression;
   std::string TargetType;
   TypeSyntaxPtr TargetTypeSyntax;
@@ -787,6 +804,7 @@ public:
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<CastExpr>(cloneNode(Expression), TargetType, Kind);
     n->TargetTypeSyntax = TargetTypeSyntax;
+    n->RequiresRawConstruction = RequiresRawConstruction;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;
@@ -861,6 +879,45 @@ public:
     n->RBracketLoc = RBracketLoc;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
+    return n;
+  }
+};
+
+// This is an unsafe source operation, distinct from the source-less result
+// passed to a surrounding destination planner. Clone never copies authority.
+struct RawElementTakePlan {
+  bool SemaValidated = false;
+  const ArrayIndexExpr *SlotEdge = nullptr;
+  const Expr *BaseEdge = nullptr;
+  const Expr *IndexEdge = nullptr;
+  std::shared_ptr<Type> StorageType;
+  std::shared_ptr<Type> ElementType;
+  std::shared_ptr<Type> IndexType;
+  TransferCopyProof CopyProof = TransferCopyProof::Indeterminate;
+  bool BaseKnownNonNull = false;
+  TransferDropDisposition ResultCleanup = TransferDropDisposition::None;
+  AccessPath SourceSlot;
+  std::string EdgeIdentity;
+  TransferValueProduction Production = TransferValueProduction::None;
+  bool CarriesDropLiability = false;
+  bool DependencyFree = false;
+  // These are contractual assumptions, NOT proven initialized-extent facts.
+  bool UnsafeCallerPreconditions = false;
+  bool CallerMaintainsRemainder = false;
+};
+
+class RawTakeExpr : public Expr {
+public:
+  std::unique_ptr<Expr> Slot;
+  std::optional<RawElementTakePlan> Plan;
+  explicit RawTakeExpr(std::unique_ptr<Expr> slot) : Slot(std::move(slot)) {}
+  std::string toString() const override {
+    return "raw_take " + (Slot ? Slot->toString() : "<missing>");
+  }
+  std::unique_ptr<ASTNode> clone() const override {
+    auto n = std::make_unique<RawTakeExpr>(cloneNode(Slot));
+    n->Loc = Loc;
+    n->HasParens = HasParens;
     return n;
   }
 };
@@ -1020,6 +1077,7 @@ class ShapeDecl;
 
 class CallExpr : public Expr {
 public:
+  std::shared_ptr<const ThreadHandoffSourcePlan> ThreadHandoffSource;
   std::string Callee;
   std::string OriginalCallee;
   std::vector<std::unique_ptr<Expr>> Args;
@@ -2302,6 +2360,7 @@ public:
   // Set by Sema only for declarations resolved from the trusted
   // core/intrinsics/atomic toolchain module.
   bool IsTrustedAtomicIntrinsic = false;
+  ThreadProbeKind ThreadProbe = ThreadProbeKind::None;
   CallableReceiverMode ClosureReceiver = CallableReceiverMode::Shared;
   std::optional<OutcomeTransition> ResolvedOutcomeTransition;
   // Set only by the explicit P2 profile while its containing bodyless TKI is
@@ -2390,6 +2449,7 @@ public:
     n->IsVariadic = IsVariadic;
     n->IsClosureInvoke = IsClosureInvoke;
     n->IsTrustedAtomicIntrinsic = IsTrustedAtomicIntrinsic;
+    n->ThreadProbe = ThreadProbe;
     n->ClosureReceiver = ClosureReceiver;
     n->TemplateOrigin = TemplateOrigin;
     n->Stage0EnclosingGenericTypeNames = Stage0EnclosingGenericTypeNames;

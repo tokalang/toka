@@ -1,0 +1,8 @@
+extern fn unknown_environment() -> dyn fn() -> i32
+fn inspect() -> i32 {
+    auto target# = { => 7 }:dyn fn() -> i32
+    target = unknown_environment()
+    auto copied = target
+    return copied()
+}
+fn main() -> i32 { return 0 }

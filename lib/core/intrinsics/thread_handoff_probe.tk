@@ -1,0 +1,8 @@
+// Private compiler-test driver, not std/thread or a public thread API.
+// Declaring the spelling elsewhere does not grant intrinsic authority.
+// F retains the actual callable receiver contract, including consuming mode.
+// The private intrinsic requires explicit <R, F> and checks both against source.
+pub fn __toka_thread_probe_run<R, F>(cede callback: F) -> R { unreachable }
+pub fn __toka_thread_probe_discard<R, F>(cede callback: F) { unreachable }
+// Execute but leave the completed result to the runtime's typed Drop path.
+pub fn __toka_thread_probe_run_drop<R, F>(cede callback: F) { unreachable }

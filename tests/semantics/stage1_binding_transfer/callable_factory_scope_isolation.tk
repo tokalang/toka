@@ -1,0 +1,9 @@
+fn main() -> i32 {
+    auto caller_only = 7
+    auto callback = later()
+    return 0
+}
+fn later() -> dyn fn() -> i32 {
+    auto value = caller_only
+    return { [copy value] => value }:dyn fn() -> i32
+}

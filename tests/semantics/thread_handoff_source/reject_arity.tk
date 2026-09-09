@@ -1,0 +1,6 @@
+import core/intrinsics/thread_handoff_probe::{__toka_thread_probe_run}
+fn main() -> i32 {
+    auto callback = { => 7 }:dyn fn() -> i32
+    auto rejected = __toka_thread_probe_run<i32, dyn fn() -> i32>(cede callback, 1)
+    return callback()
+}

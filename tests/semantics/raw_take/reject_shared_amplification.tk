@@ -1,0 +1,6 @@
+shape Token(value: i32)
+fn rejected(*buffer#: [~Token#], cede ~value: Token) {
+    unsafe { ~buffer[0] = cede ~value }
+    auto ~result# = unsafe raw_take buffer[0]
+}
+fn main() -> i32 { return 0 }

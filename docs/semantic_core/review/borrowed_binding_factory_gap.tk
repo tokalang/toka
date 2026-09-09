@@ -1,0 +1,16 @@
+// Expected legal source. Current binding fact provider loses the factory
+// result's actual borrowed-field origins; this is NOT a passing test/oracle.
+import core/string::{string}
+shape Holder(view: str)
+impl Holder {
+    fn new(view: str) -> Holder <- view {
+        auto result = Holder(view = view)
+        return cede result
+    }
+}
+fn main() -> i32 {
+    auto owner = string::from("owner")
+    auto direct = Holder(view = owner.as_str())
+    auto factory = Holder::new(owner.as_str())
+    return 0
+}

@@ -1,0 +1,5 @@
+fn replace(target#: dyn fn() -> i32, source: dyn fn() -> i32) -> i32 {
+    target = source
+    return target() + source()
+}
+fn main() -> i32 { return 0 }

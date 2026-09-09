@@ -1,0 +1,10 @@
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) {}
+}
+fn main() -> i32 {
+    auto target# = Token(id = 1)
+    target = cede target
+    return target.id
+}

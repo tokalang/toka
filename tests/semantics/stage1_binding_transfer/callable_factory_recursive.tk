@@ -1,0 +1,3 @@
+fn main() -> i32 { auto callback = first(); return 0 }
+fn first() -> dyn fn() -> i32 { return second() }
+fn second() -> dyn fn() -> i32 { return first() }

@@ -1,0 +1,10 @@
+shape Holder(view: str)
+fn factory(view: str) -> Holder <- view {
+    auto result = Holder(view = view)
+    return cede result
+}
+fn escaped() -> &Holder {
+    auto local = factory("static characters")
+    return &local
+}
+fn main() -> i32 { auto &result = escaped(); return 0 }

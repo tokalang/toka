@@ -85,8 +85,14 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
     return capability;
   };
 
-  if (auto *Cast = dynamic_cast<CastExpr *>(E))
+  if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
+    if (Cast->RawConstruction && Cast->RawConstruction->SemaValidated)
+      return applyPathFlowCeiling({true, false, false});
+    if (Cast->Kind == CastKind::Conversion && Cast->Expression->ResolvedType &&
+        Cast->Expression->ResolvedType->isAddrType() && Cast->ResolvedType && Cast->ResolvedType->isRawPointer())
+      return applyPathFlowCeiling({false, false, false});
     return getAccessCapability(Cast->Expression.get(), declarationOnly);
+  }
   if (auto *Cede = dynamic_cast<CedeExpr *>(E))
     return getAccessCapability(Cede->Value.get(), declarationOnly);
   if (auto *Addr = dynamic_cast<AddressOfExpr *>(E))
@@ -288,8 +294,15 @@ PermissionFlow Sema::getPermissionFlow(Expr *E) {
     }
     return flow;
   }
-  if (auto *Cast = dynamic_cast<CastExpr *>(E))
+  if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
+    if (Cast->RawConstruction && Cast->RawConstruction->SemaValidated) {
+      PermissionFlow flow;
+      flow.Kind = PermissionFlowKind::UnsafeRaw;
+      flow.DirectCapability = {true, false, false};
+      return flow;
+    }
     return getPermissionFlow(Cast->Expression.get());
+  }
   if (auto *Post = dynamic_cast<PostfixExpr *>(E))
     return getPermissionFlow(Post->LHS.get());
   if (auto *Member = dynamic_cast<MemberExpr *>(E)) {
@@ -712,7 +725,8 @@ static ReferenceTargets captureVisibleReferenceTargets(Scope *scope) {
   std::set<std::string> seen;
   for (auto *current = scope; current; current = current->Parent)
     for (const auto &[name, info] : current->Symbols)
-      if (seen.insert(name).second && info.TypeObj && info.TypeObj->isReference())
+      if (seen.insert(name).second && info.TypeObj &&
+          (info.TypeObj->isReference() || info.TypeObj->isFunction() || info.TypeObj->isDynFn()))
         result[name] = {info.CurrentReferenceTargets, info.LifeDependencySet};
   return result;
 }
@@ -725,7 +739,8 @@ static void restoreVisibleReferenceTargets(Scope *scope,
       if (!seen.insert(name).second) continue;
       auto found = targets.find(name);
       if (found != targets.end()) {
-        if (info.CurrentReferenceTargets || found->second.first) {
+        if (info.CurrentReferenceTargets || found->second.first ||
+            (info.TypeObj && (info.TypeObj->isFunction() || info.TypeObj->isDynFn()))) {
           info.CurrentReferenceTargets = found->second.first;
           info.LifeDependencySet = found->second.second;
         }
@@ -757,6 +772,8 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
 
 Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
+  state.RawAddressBindings = m_RawAddressBindings;
+  state.CallableEnvironments = m_CallableEnvironments;
   state.InitMasks = captureVisibleInitMasks(CurrentScope);
   state.Moved = captureVisibleMoved(CurrentScope);
   state.ExactPlaces = captureVisibleExactPlaceFacts(CurrentScope);
@@ -817,10 +834,14 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   std::set<AccessPath> mergedPayloadFlowRestrictions =
       states.front().PayloadFlowRestrictedPaths;
   auto mergedReferenceTargets = states.front().ReferenceTargets;
+  auto callableEnvironments = states.front().CallableEnvironments;
+  auto rawAddressBindings = states.front().RawAddressBindings;
   PALChecker mergedPAL = states.front().PAL;
 
   for (size_t i = 1; i < states.size(); ++i) {
     const auto &state = states[i];
+    for (const auto &[id, source] : state.RawAddressBindings)
+      rawAddressBindings[id] = mergeRawAddressSources(rawAddressBindings[id], source);
 
     for (const auto &pair : state.InitMasks) {
       if (!mergedMasks.count(pair.first))
@@ -867,6 +888,13 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
         state.PayloadFlowRestrictedPaths.end());
     mergedReferenceTargets = joinReferenceTargets(mergedReferenceTargets,
                                                   state.ReferenceTargets);
+    for (auto it = callableEnvironments.begin(); it != callableEnvironments.end();) {
+      auto other = state.CallableEnvironments.find(it->first);
+      if (other == state.CallableEnvironments.end() || !(it->second == other->second))
+        it = callableEnvironments.erase(it);
+      else
+        ++it;
+    }
 
     PALCheckerState.restore(mergedPAL);
     PALCheckerState.mergeBranches(palBase, mergedPAL, true, state.PAL, true);
@@ -877,6 +905,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
                               mergedExactPlaces);
   restoreVisibleConditionalTodoIds(CurrentScope, mergedConditionalTodoIds);
   restoreVisibleReferenceTargets(CurrentScope, mergedReferenceTargets);
+  m_CallableEnvironments = std::move(callableEnvironments);
+  m_RawAddressBindings = std::move(rawAddressBindings);
   m_PayloadFlowRestrictedPaths = std::move(mergedPayloadFlowRestrictions);
   PALCheckerState.restore(mergedPAL);
 }
@@ -1095,6 +1125,9 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   if (!E)
     return toka::Type::fromString("()");
   ActiveNodeRAII Active(E);
+  const size_t expressionDiagnosticStart = DiagnosticEngine::records().size();
+  E->RawAddressValueFacts.reset();
+  E->RawAddressViewFacts.reset();
   m_LastInitMask = ~0ULL; // Default to fully set
   auto T = checkExprImpl(E);
   std::set<std::string> taskDependencies;
@@ -1106,6 +1139,15 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     m_LastLifeDependencies.insert(taskDependencies.begin(),
                                   taskDependencies.end());
   E->ResolvedType = T;
+  E->RawAddressValueFacts = collectRawAddressSource(E, false);
+  E->RawAddressViewFacts = collectRawAddressSource(E, true);
+  if (auto *assignment = dynamic_cast<BinaryExpr *>(E);
+      assignment && (assignment->Op == "=" || assignment->Op == "+=" || assignment->Op == "-=")) {
+    const auto &records = DiagnosticEngine::records();
+    if (std::none_of(records.begin() + expressionDiagnosticStart, records.end(),
+                     [](const auto &record) { return record.Level == DiagLevel::Error; }))
+      recordRawAddressBinding(makeAccessPath(assignment->LHS.get()), assignment->RHS.get());
+  }
 
   const auto *cast = dynamic_cast<CastExpr *>(E);
   const bool isAscribedUninit =
@@ -1342,7 +1384,8 @@ Sema::MorphKind Sema::getSyntacticMorphology(Expr *E) {
   }
 
   // Safe Constructors (Exceptions)
-  if (dynamic_cast<CallExpr *>(E) || dynamic_cast<MethodCallExpr *>(E) ||
+  if (dynamic_cast<RawTakeExpr *>(E) ||
+      dynamic_cast<CallExpr *>(E) || dynamic_cast<MethodCallExpr *>(E) ||
       dynamic_cast<NewExpr *>(E) || dynamic_cast<AllocExpr *>(E) ||
       dynamic_cast<NullExpr *>(E) || dynamic_cast<UnsetExpr *>(E) ||
       dynamic_cast<StringExpr *>(E) ||
@@ -2218,6 +2261,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     return current;
   } else if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
+    const size_t castDiagnosticStart = DiagnosticEngine::records().size();
+    Cast->AddressSource.reset();
+    Cast->RawConstruction.reset();
+    Cast->RequiresRawConstruction = false;
     if (!validateResultCedeSyntax(Cast, Cast->TargetTypeSyntax))
       return toka::Type::fromString("unknown");
     validateTypeVisibilityInType(Cast->TargetType, getLoc(Cast));
@@ -2229,6 +2276,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       error(Cast, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
             targetType->toString());
     validateHandleGrammar(getLoc(Cast), targetType);
+    const std::vector<std::unique_ptr<Expr>> noCastArguments;
+    CallArgumentRollbackGuard rawConstructionRollback(*this, noCastArguments,
+        Cast->Kind == CastKind::Conversion && targetType && targetType->isRawPointer() &&
+        targetType->getPointeeType() && targetType->getPointeeType()->IsWritable,
+        false, false);
     if (m_EnableStage1ExplicitCallerCede && targetType &&
         (targetType->isRawPointer() || targetType->isAddrType() || targetType->isOAddrType())) {
       Expr *source = Cast->Expression.get();
@@ -2274,6 +2326,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto srcType = Cast->Kind == CastKind::Ascription
                        ? checkExpr(Cast->Expression.get(), targetType)
                        : checkExpr(Cast->Expression.get());
+    Cast->AddressSource = collectRawAddressSource(Cast->Expression.get());
+    if (srcType && srcType->isAddrType() && Cast->Kind == CastKind::Conversion &&
+        targetType && targetType->isRawPointer() && targetType->getPointeeType() &&
+        targetType->getPointeeType()->IsWritable)
+      rawConstructionRollback.arm();
 
     if (Cast->Kind == CastKind::Ascription) {
       if (dynamic_cast<UnsetExpr *>(Cast->Expression.get())) {
@@ -2493,6 +2550,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
+    prepareUnsafeRawConstruction(Cast, srcType, targetType, castDiagnosticStart);
     return targetType;
   } else if (auto *Bin = dynamic_cast<BinaryExpr *>(E)) {
     return checkBinaryExpr(Bin);
@@ -3914,6 +3972,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
             if (Info->IsFunctionParameter && !Info->IsCeded) {
                 error(ce, DiagID::ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER, Var->Name);
+                // Capture discovery has no active binding transaction to roll
+                // back this rejected operation. It must not simulate an
+                // invalidation that the real parameter contract forbids.
+                if (m_IsPrecomputingCaptures) canInvalidate = false;
             }
             if (canInvalidate)
               CurrentScope->markMoved(actualName, ce->Loc);
@@ -4182,7 +4244,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     return toka::Type::fromString("()");
   } else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
-    return checkCallExpr(Call);
+    return m_ThreadHandoffSourceProbe ? checkCallWithThreadHandoff(Call) : checkCallExpr(Call);
   } else if (auto *awaitEx = dynamic_cast<AwaitExpr *>(E)) {
     if (!CurrentFunction || CurrentFunction->Effect != EffectKind::Async) {
       error(awaitEx,
@@ -4336,11 +4398,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto writable = resolvedType->withAttributes(
         true, resolvedType->IsNullable, resolvedType->IsBlocked);
     return std::make_shared<toka::UniquePointerType>(writable);
+  } else if (auto *take = dynamic_cast<RawTakeExpr *>(E)) {
+    return checkRawTakeExpr(take);
   } else if (auto *UnsafeE = dynamic_cast<UnsafeExpr *>(E)) {
     bool oldUnsafe = m_InUnsafeContext;
     m_InUnsafeContext = true;
     auto typeObj = checkExpr(UnsafeE->Expression.get());
-    std::string type = typeObj->toString();
     m_InUnsafeContext = oldUnsafe;
     return typeObj;
   } else if (auto *AllocE = dynamic_cast<AllocExpr *>(E)) {

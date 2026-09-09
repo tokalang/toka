@@ -1,0 +1,7 @@
+fn rejected(flag: bool, fresh: Addr) {
+    auto value = 7:i32
+    auto address# = fresh
+    if flag { address = unsafe (&value as Addr) }
+    auto *writer# = unsafe (address as *i32#)
+}
+fn main() -> i32 { return 0 }

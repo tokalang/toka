@@ -1,0 +1,39 @@
+auto trace# = 0
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { trace = trace * 10 + self.id }
+}
+fn main() -> i32 {
+    {
+        auto first = Token(id = 1)
+        auto target# = { [cede first] => first.id }:dyn fn() -> i32
+        auto second = Token(id = 2)
+        auto source = { [cede second] => second.id }:dyn fn() -> i32
+        target = source
+        if trace != 1 || target() != 2 || source() != 2 { return 1 }
+        target = target
+        if trace != 1 || target() != 2 || source() != 2 { return 2 }
+        auto other = source
+        target = other
+        cede other
+        if trace != 1 || target() != 2 || source() != 2 { return 3 }
+        cede source
+        if trace != 1 || target() != 2 { return 4 }
+        cede target
+        if trace != 12 { return 5 }
+        auto third = Token(id = 3)
+        auto movingSource = { [cede third] => third.id }:dyn fn() -> i32
+        auto movingTarget# = movingSource
+        movingTarget = cede movingSource
+        if trace != 12 || movingTarget() != 3 { return 6 }
+        cede movingTarget
+        if trace != 123 { return 7 }
+        auto thin# = { => 4 }:fn() -> i32
+        auto thinSource = { => 5 }:fn() -> i32
+        thin = thinSource
+        if thin() != 5 || thinSource() != 5 { return 8 }
+    }
+    if trace != 123 { return 9 }
+    return 0
+}

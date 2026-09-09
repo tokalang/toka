@@ -1,0 +1,6 @@
+shape Holder(view: str)
+fn invoke(callback: fn(str) -> Holder, view: str) -> Holder <- view {
+    auto result = callback(view)
+    return cede result
+}
+fn main() -> i32 { return 0 }

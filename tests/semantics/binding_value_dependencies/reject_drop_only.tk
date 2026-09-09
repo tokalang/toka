@@ -1,0 +1,11 @@
+import std/vec::{Vec}
+shape ViewOwner(*data: i32)
+impl ViewOwner@Encap {
+    pub data
+    fn drop(self#) {}
+}
+fn main() -> i32 {
+    auto values# = Vec<ViewOwner>::new()
+    auto result = values#.pop()
+    return 0
+}

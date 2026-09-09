@@ -1,0 +1,49 @@
+import std/vec::{Vec}
+auto drops# = 0
+shape Cell(value: i32)
+impl Cell@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn allocate<'T>() -> *['T] {
+    auto *storage = unsafe alloc [2] 'T
+    return *storage
+}
+fn main() -> i32 {
+    {
+        // Initialize raw storage explicitly; do not use the independently
+        // unqualified consuming shared morphic-parameter ABI in Vec::push.
+        auto *storage# = allocate<^Cell>()
+        auto ^first = new Cell(value = 1)
+        auto ^last = new Cell(value = 2)
+        unsafe {
+            ^storage[0] = cede ^first
+            ^storage[1] = cede ^last
+        }
+        auto values# = Vec<^Cell>(*buf = *storage, len = 2, cap = 2)
+        {
+            auto result = values#.pop()
+            if !result.is_some() || values.len() != 1 || drops != 0 { return 1 }
+        }
+        if drops != 1 { return 100 + (drops as i32) }
+    }
+    if drops != 2 { return 3 }
+    {
+        auto *storage# = allocate<~Cell>()
+        auto ~first = new Cell(value = 3)
+        auto ~last = new Cell(value = 4)
+        auto ~other = ~last
+        unsafe {
+            ~storage[0] = cede ~first
+            ~storage[1] = cede ~last
+        }
+        {
+            auto values# = Vec<~Cell>(*buf = *storage, len = 2, cap = 2)
+            values#.pop()
+            if drops != 2 || values.len() != 1 { return 4 }
+        }
+        if drops != 3 || other.value != 4 { return 5 }
+    }
+    if drops != 4 { return 6 }
+    return 0
+}

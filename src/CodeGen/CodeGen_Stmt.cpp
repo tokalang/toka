@@ -900,6 +900,7 @@ llvm::Value *CodeGen::genExprStmt(const ExprStmt *es) {
   }
 
   const bool isOwnedRvalue =
+      dynamic_cast<const RawTakeExpr *>(root) ||
       dynamic_cast<const CedeExpr *>(root) ||
       dynamic_cast<const AwaitExpr *>(root) ||
       dynamic_cast<const CallExpr *>(root) ||

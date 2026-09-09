@@ -1,0 +1,5 @@
+fn main() -> i32 {
+    auto source = 7
+    auto target = cede source
+    return source
+}

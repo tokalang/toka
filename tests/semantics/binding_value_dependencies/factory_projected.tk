@@ -1,0 +1,21 @@
+import core/string::{string}
+shape Pair(left: str, right: str)
+impl Pair@Encap { pub left, right }
+shape Holder(view: str)
+impl Holder@Encap { pub view }
+fn left(pair: Pair) -> Holder
+effects: return <- pair.left {
+    auto result = Holder(view = pair.left)
+    return cede result
+}
+fn main() -> i32 {
+    auto first = string::from("first")
+    auto second = string::from("second")
+    auto pair = Pair(left = first.as_str(), right = second.as_str())
+    auto factory = left(pair)
+    auto static_pair = Pair(left = "static", right = second.as_str())
+    auto static_factory = left(static_pair)
+    if !factory.view.equals("first") { return 1 }
+    if !static_factory.view.equals("static") { return 2 }
+    return 0
+}

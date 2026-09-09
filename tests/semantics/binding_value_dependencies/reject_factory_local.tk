@@ -1,0 +1,12 @@
+import core/string::{string}
+shape Holder(view: str)
+fn factory(view: str) -> Holder <- view {
+    auto result = Holder(view = view)
+    return cede result
+}
+fn escaped() -> Holder {
+    auto local = string::from("local")
+    auto result = factory(local.as_str())
+    return cede result
+}
+fn main() -> i32 { auto result = escaped(); return 0 }

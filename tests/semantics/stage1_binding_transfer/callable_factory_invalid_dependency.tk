@@ -1,0 +1,10 @@
+fn main() -> i32 {
+    auto first = wrapper()
+    auto second = wrapper()
+    return 0
+}
+fn wrapper() -> dyn fn() -> i32 { return invalid() }
+fn invalid() -> dyn fn() -> i32 {
+    auto wrong = true:i32
+    return { => 7:i32 }:dyn fn() -> i32
+}

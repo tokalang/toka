@@ -1,0 +1,9 @@
+fn main() -> i32 { return wrapper(7:i32) - 7 }
+fn wrapper<T>(value: T) -> i32 {
+    auto callback = later()
+    return callback()
+}
+fn later() -> dyn fn() -> i32 {
+    auto marker = 7:i32
+    return { [copy marker] => marker }:dyn fn() -> i32
+}

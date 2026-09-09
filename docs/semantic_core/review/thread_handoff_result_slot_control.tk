@@ -1,0 +1,23 @@
+// Isolated result-slot control. This is not a native-thread qualification.
+auto drops# = 0
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+
+fn take_result(*storage#: [Token]) -> Token {
+    return unsafe raw_take storage[0]
+}
+
+fn main() -> i32 {
+    auto *storage# = unsafe alloc [1] Token
+    unsafe { storage[0] = Token(value = 17) }
+    {
+        auto result = take_result(*storage)
+        unsafe free [0] *storage
+        if result.value != 17 || drops != 0 { return 1 }
+    }
+    if drops != 1 { return 2 }
+    return 0
+}

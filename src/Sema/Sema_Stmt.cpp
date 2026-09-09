@@ -1482,8 +1482,11 @@ void Sema::checkStmt(Stmt *S) {
         (!returnSourcePlan->Prepared.SourcePlace ||
          returnSourcePlan->Prepared.SourceCategory ==
              TransferSourceCategory::NoSourcePlace);
+    const bool completesRawConstruction = returnSourcePlan &&
+        returnSourcePlan->Rejection == TransferPlanRejection::AccessCapabilityMismatch &&
+        hasQualifiedUnsafeRawConstruction(Ret->ReturnValue.get());
     if (returnSourcePlan && returnPlanSnapshot && !hasNewReturnError() &&
-        (completesBarePreflight || returnsWholeOutcome)) {
+        (completesBarePreflight || returnsWholeOutcome || completesRawConstruction)) {
       returnSourcePlan = recordExplicitCedeStage0NonCallPlan(
           Ret, Ret->ReturnValue.get(),
           returnsWholeOutcome ? expectedRetObj : expectedReturnValueObj,
@@ -1502,6 +1505,16 @@ void Sema::checkStmt(Stmt *S) {
         !isCompilerPlaceOutcomeReturn;
     if (enforceReturnSourcePlan && !returnSourcePlan->admitted() &&
         !hasNewReturnError()) {
+      if (returnSourcePlan->Rejection == TransferPlanRejection::AccessCapabilityMismatch) {
+        const auto &facts = returnSourcePlan->Prepared;
+        DiagnosticEngine::report(Ret->Loc, DiagID::NOTE_GENERIC,
+            "return capability facts: actual=" + facts.ActualTypeKey +
+            " P=" + std::to_string(facts.ActualCapabilities.PayloadWritable) +
+            "; destination=" + facts.FormalTypeKey +
+            " P=" + std::to_string(facts.DestinationCapabilities.PayloadWritable) +
+            "; source flow P=" + std::to_string(facts.SourceFlowCeiling.PayloadWritable) +
+            "; raw authority=" + facts.RawWriteAuthority);
+      }
       Expr *source = Ret->ReturnValue.get();
       while (source) {
         if (auto *cede = dynamic_cast<CedeExpr *>(source))
@@ -1543,9 +1556,39 @@ void Sema::checkStmt(Stmt *S) {
         break;
       }
     }
+    if (!m_CallableReturnFrames.empty() &&
+        m_CallableReturnFrames.back().Function == CurrentFunction &&
+        m_CallableReturnFrames.back().ClosureDepth == m_CallableReturnClosureDepth) {
+      if (!hasNewReturnError() && !prepareCallableReturnEnvironment(Ret->ReturnValue.get()))
+        error(Ret->ReturnValue.get(), DiagID::ERR_SEMA_RETURN_PLAN_INCOMPLETE,
+              "CallableReturnEnvironmentUnavailable");
+      auto &frame = m_CallableReturnFrames.back();
+      frame.SawReturn = true;
+      auto environment = collectStage1CallableEnvironment(Ret->ReturnValue.get());
+      frame.Facts.Complete &= environment.Complete && !hasNewReturnError() &&
+          (!enforceReturnSourcePlan || returnSourcePlan->admitted());
+      auto appendParameterOrigins = [&](const auto &origins, auto &destination) {
+        for (const auto &origin : origins) {
+          SymbolInfo *binding = nullptr;
+          if (!origin.RootID || !CurrentScope->findSymbolByID(origin.RootID, binding) ||
+              !binding || !binding->IsFunctionParameter ||
+              std::none_of(CurrentFunction->Args.begin(), CurrentFunction->Args.end(),
+                  [&](const auto &arg) { return Type::stripMorphology(arg.Name) ==
+                                               Type::stripMorphology(origin.RootName); })) {
+            frame.Facts.Complete = false;
+            continue;
+          }
+          if (std::find(destination.begin(), destination.end(), origin) == destination.end())
+            destination.push_back(origin);
+        }
+      };
+      appendParameterOrigins(environment.Referents, frame.Facts.Referents);
+      appendParameterOrigins(environment.LocalBounds, frame.Facts.LocalBounds);
+    }
     if (returnRollbackState && enforceReturnSourcePlan &&
         (!returnSourcePlan->admitted() || hasNewReturnError()))
       mergeAnalysisStates({*returnRollbackState}, returnRollbackState->PAL);
+    if (!hasNewReturnError()) recordRawAddressReturn(Ret);
     m_LastBorrowSource.clear();
     m_LastLifeDependencies.clear();
     m_LastFieldDependencies.clear();
@@ -1662,6 +1705,7 @@ void Sema::checkStmt(Stmt *S) {
     }
 
   } else if (auto *Var = dynamic_cast<VariableDecl *>(S)) {
+    Stage1BindingTransfer bindingTransfer(*this, Var, Var->Init != nullptr);
     recordHandleSurfaceVariableDecl(*Var);
     const bool inferredType = Var->TypeName.empty() || Var->TypeName == "auto";
 
@@ -1740,10 +1784,13 @@ void Sema::checkStmt(Stmt *S) {
           stage0DestinationType = Type::fromString(spelling);
         }
       }
-      recordExplicitCedeStage0NonCallPlan(
-          Var, Var->Init.get(), stage0DestinationType,
-          TransferDestination::Initialization,
-          TransferEligibilityContext::Initialization, "initialization");
+      if (bindingTransfer.enabled())
+        bindingTransfer.prepare(Var->Init.get(), stage0DestinationType);
+      else
+        recordExplicitCedeStage0NonCallPlan(
+            Var, Var->Init.get(), stage0DestinationType,
+            TransferDestination::Initialization,
+            TransferEligibilityContext::Initialization, "initialization");
 
       bool oldExpectedWritability = m_ExpectedWritability;
       if (Var->IsReference) {
@@ -1771,6 +1818,12 @@ void Sema::checkStmt(Stmt *S) {
       m_SuppressRejectedAliasInvalidation = oldSuppressAliasInvalidation;
       m_IsConsumingEffect = oldConsuming;
       m_ExpectedWritability = oldExpectedWritability;
+      if (!InitTypeObj) {
+        if (!HasError)
+          error(Var, DiagID::ERR_GENERIC_SEMA, "Initializer has no valid type");
+        m_ControlFlowStack.pop_back();
+        return;
+      }
       InitType = InitTypeObj->toString();
       if (auto *ascription = dynamic_cast<CastExpr *>(Var->Init.get());
           ascription && ascription->Kind == CastKind::Ascription) {
@@ -1903,6 +1956,26 @@ void Sema::checkStmt(Stmt *S) {
       DiagnosticEngine::report(getLoc(Var),
                                DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
       HasError = true;
+    }
+
+    // A qualified raw_take returns the complete stored morphology. For an
+    // inferred morphic binding, carry its resolved owner view into the normal
+    // binding machinery instead of stripping the hat into a payload local.
+    // This does not grant any permission absent from the binding declaration.
+    if (inferredType && Var->IsMorphicExempt && InitTypeObj) {
+      Expr *source = Var->Init.get();
+      while (auto *unsafe = dynamic_cast<UnsafeExpr *>(source))
+        source = unsafe->Expression.get();
+      auto *take = dynamic_cast<RawTakeExpr *>(source);
+      if (take && take->Plan && take->Plan->SemaValidated &&
+          (InitTypeObj->isUniquePtr() || InitTypeObj->isSharedPtr())) {
+        Var->IsUnique = InitTypeObj->isUniquePtr();
+        Var->IsShared = InitTypeObj->isSharedPtr();
+        Var->Permission = BindingPermission::fromLegacy(
+            Var->IsRawPointer, Var->IsUnique, Var->IsShared, Var->IsReference,
+            Var->IsRebindable, Var->IsPointerNullable, Var->IsRebindBlocked,
+            Var->IsValueMutable, Var->IsValueNullable, Var->IsValueBlocked, true);
+      }
     }
 
     // 4. If type not specified, infer from init
@@ -2322,11 +2395,18 @@ void Sema::checkStmt(Stmt *S) {
                               *ownership == ValueOwnership::BorrowedView;
         }
         std::vector<AccessPath> origins;
-        if (hasBorrowedField && collectActualReturnReferents(producer, origins)) {
+        std::map<std::string, ActualReturnFieldOrigins> fields;
+        if (hasBorrowedField && collectActualReturnReferents(
+                producer, origins, nullptr, nullptr, nullptr, &fields)) {
           for (const auto &origin : origins) {
             const auto dependency = origin.toLegacyString();
             Info.LifeDependencySet.insert(dependency);
             depsToCommitAsBorrow.insert(dependency);
+          }
+          for (const auto &[field, facts] : fields) {
+            if (field.empty()) continue; // A whole-result ceiling is not a field mapping.
+            for (const auto &origin : facts.Referents)
+              Info.FieldDependencySet[field].insert(origin.toLegacyString());
           }
         }
       }
@@ -2614,6 +2694,11 @@ void Sema::checkStmt(Stmt *S) {
     }
 
     Info.IsDeclaredVariable = true;
+    if (bindingTransfer.enabled() &&
+        !bindingTransfer.prepare(Var->Init.get(), Var->ResolvedType, nullptr, true, InitTypeObj)) {
+      m_ControlFlowStack.pop_back();
+      return;
+    }
     Info.ASTPtr = Var;
     if (m_EnableStage1ExplicitCallerCede && Info.TypeObj &&
         Info.TypeObj->isReference()) {
@@ -2632,6 +2717,10 @@ void Sema::checkStmt(Stmt *S) {
     Var->PartialMove = Info.partialMovePlan();
     initializeProjectionFacts(Info);
     CurrentScope->define(Var->Name, Info);
+    if (Var->Init) {
+      auto path = makeAccessPath(Var->Name);
+      recordRawAddressBinding(path, Var->Init.get());
+    }
     if (!Info.ConditionalTodoIds.empty()) {
       SemanticEvidence::recordConditionalFact(
           Var->Name, Info.TypeObj ? Info.TypeObj->toString() : Var->TypeName,
@@ -2721,6 +2810,7 @@ void Sema::checkStmt(Stmt *S) {
     if (Var->Init) {
       m_ControlFlowStack.pop_back();
     }
+    bindingTransfer.complete();
   } else if (auto *Destruct = dynamic_cast<DestructuringDecl *>(S)) {
     auto initType = checkExpr(Destruct->Init.get());
     PermissionFlow initFlow = getPermissionFlow(Destruct->Init.get());

@@ -1,0 +1,4 @@
+fn take(*buffer: [i32]) {
+    raw_take buffer[0]
+}
+fn main() -> i32 { return 0 }

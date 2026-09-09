@@ -282,6 +282,11 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   if (!Clo->SynthesizedShapeName.empty()) {
       return toka::Type::fromString(Clo->SynthesizedShapeName);
   }
+  struct ReturnSummaryClosureScope {
+    unsigned &Depth;
+    explicit ReturnSummaryClosureScope(unsigned &depth) : Depth(depth) { ++Depth; }
+    ~ReturnSummaryClosureScope() { --Depth; }
+  } summaryScope(m_CallableReturnClosureDepth);
 
   auto fullLoc = DiagnosticEngine::SrcMgr && Clo->Loc.isValid()
                      ? DiagnosticEngine::SrcMgr->getFullSourceLoc(Clo->Loc)
@@ -343,6 +348,9 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
           }
           if (i < Clo->Params.size()) {
             arg.Permission = Clo->Params[i].Permission;
+            // Receiver mode on an injected callable type is not binding
+            // permission. Preserve the actual parameter spelling (p#).
+            arg.IsValueMutable = arg.Permission.SoulWritable;
             arg.Loc = Clo->Params[i].Loc;
             arg.HadRejectedTypeSideMorphology = Clo->Params[i].HadRejectedTypeSideMorphology;
           }
@@ -390,6 +398,15 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
         p.ResolvedType, p.TypeSyntax, p.HadRejectedTypeSideMorphology);
     SymbolInfo info;
     info.TypeObj = p.ResolvedType;
+    info.IsFunctionParameter = true;
+    info.IsCeded = p.IsCeded;
+    info.Permission = p.Permission;
+    info.IsRebindable = p.IsRebindable;
+    info.IsDeclaredMutable = p.IsValueMutable;
+    info.IsMorphicExempt = p.IsMorphicExempt;
+    info.DeclLoc = p.Loc.isValid() ? p.Loc : Clo->Loc;
+    if (info.TypeObj && (info.TypeObj->isFunction() || info.TypeObj->isDynFn()))
+      info.CallableReceiver = getCallableReceiverMode(*info.TypeObj);
     CurrentScope->define(p.Name, info);
   }
 
@@ -409,6 +426,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   // Determine Captures
   std::vector<ShapeMember> members;
   std::map<std::string, SymbolInfo> captureBindings;
+  std::map<std::string, RawAddressSourcePtr> capturedRawSources;
   Clo->ImplicitCaptures.clear();
   Clo->BoundaryImplicitCaptures.clear();
   Clo->BoundaryNonSendCaptures.clear();
@@ -573,6 +591,9 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
 
         ShapeMember sm;
         sm.Name = varName;
+        VariableExpr rawSource(varName);
+        rawSource.Loc = infoPtr->DeclLoc;
+        capturedRawSources[varName] = collectRawAddressSource(&rawSource);
 
         if (isExplicit && (explicitMode == CaptureMode::ExplicitCede ||
                            explicitMode == CaptureMode::ExplicitCopy ||
@@ -743,6 +764,15 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   for (auto &arg : invokeFunc->Args) {
     SymbolInfo Info;
     Info.TypeObj = arg.ResolvedType ? arg.ResolvedType : toka::Type::fromString(arg.Type);
+    Info.IsFunctionParameter = true;
+    Info.IsCeded = arg.IsCeded;
+    Info.Permission = arg.Permission;
+    Info.IsRebindable = arg.IsRebindable;
+    Info.IsDeclaredMutable = arg.IsValueMutable;
+    Info.IsMorphicExempt = arg.IsMorphicExempt;
+    Info.DeclLoc = arg.Loc.isValid() ? arg.Loc : Clo->Loc;
+    if (Info.TypeObj && (Info.TypeObj->isFunction() || Info.TypeObj->isDynFn()))
+      Info.CallableReceiver = getCallableReceiverMode(*Info.TypeObj);
     CurrentScope->define(arg.Name, Info);
   }
   
@@ -759,6 +789,14 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
        // If it's a reference capture, the user writes `x`, but it's a reference under the hood. 
        // We want it to be considered as the exact physical type.
        CurrentScope->define(memb.Name, Info);
+       auto carried = capturedRawSources.find(memb.Name);
+       if (carried != capturedRawSources.end()) {
+         auto receiver = std::make_shared<RawAddressSource>();
+         receiver->Tag = RawAddressSource::Kind::ParameterValue;
+         receiver->Parameter = 0; // The invoke receiver carries the captured values.
+         m_RawAddressBindings[makeAccessPath(memb.Name).RootID] =
+             mergeRawAddressSources(carried->second, receiver);
+       }
      }
   }
 
@@ -768,8 +806,16 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
       FunctionDecl *savedFn = CurrentFunction;
       CurrentFunction = invokeFunc.get();
       CurrentFunctionReturnType = invokeRetType;
-
+      const auto rawDiagnosticStart = DiagnosticEngine::records().size();
+      auto &rawSummary = m_RawAddressReturns[invokeFunc.get()];
+      rawSummary.Checking = true;
+      rawSummary.ClosureDepth = m_CallableReturnClosureDepth;
       checkStmt(invokeFunc->Body.get());
+      rawSummary.Checking = false;
+      rawSummary.Checked = true;
+      const auto &rawDiagnostics = DiagnosticEngine::records();
+      rawSummary.Valid = std::none_of(rawDiagnostics.begin() + rawDiagnosticStart, rawDiagnostics.end(),
+          [](const auto &record) { return record.Level == DiagLevel::Error; });
 
       CurrentFunctionReturnType = savedRet;
       CurrentFunction = savedFn;

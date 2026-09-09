@@ -1,0 +1,5 @@
+fn inspect(*pointer: i32) -> i32 {
+    auto callback = { [copy *pointer] => 7 }:dyn fn() -> i32
+    return 0
+}
+fn main() -> i32 { return 0 }

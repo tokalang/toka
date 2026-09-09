@@ -1,0 +1,286 @@
+{
+  "returncode": 1,
+  "stderr": "\u001b[1;31merror[E04661]\u001b[0m: Cannot transfer source into binding: IncompleteFacts\n --> docs/semantic_core/review/borrowed_binding_factory_gap.tk:14:20\n    \u001b[1;34m|\u001b[0m\n 14 \u001b[1;34m|\u001b[0m     auto factory = Holder::new(owner.as_str())\n    \u001b[1;34m|\u001b[0m                    \u001b[1;31m^\u001b[0m\n\n\u001b[1;33mwarning[W0402]\u001b[0m: Variable 'direct' is declared but never read\n --> docs/semantic_core/review/borrowed_binding_factory_gap.tk:13:10\n    \u001b[1;34m|\u001b[0m\n 13 \u001b[1;34m|\u001b[0m     auto direct = Holder(view = owner.as_str())\n    \u001b[1;34m|\u001b[0m          \u001b[1;33m^\u001b[0m\n\n\u001b[1;31m[FAILED]\u001b[0m Compilation aborted due to previous semantic errors.\n",
+  "records": [
+    {
+      "boundary": "initialization",
+      "group_identity": "non-call-group:v2;crate:external;module:source;function:main;declaration:11:4;boundary:initialization;site:12:10",
+      "edge": "initialization",
+      "edge_index": 0,
+      "group_outcome": "Admitted",
+      "group_rejection": "None",
+      "group_plan_admitted": true,
+      "plan_origin": "CompilerSynthetic",
+      "syntax_purpose": "None",
+      "source_category": "NoSourcePlace",
+      "dependency": "None",
+      "type_compatibility": "Compatible",
+      "eligibility_context": "Initialization",
+      "destination_exact_path": "",
+      "destination_view": "Indeterminate",
+      "destination_reachability": "Indeterminate",
+      "destination_morphology": "DirectValue",
+      "destination_capabilities": {
+        "complete": true,
+        "handle_rebind": false,
+        "payload_write": false
+      },
+      "destination_flow_ceiling": {
+        "complete": true,
+        "handle_rebind": false,
+        "payload_write": false
+      },
+      "source_flow_ceiling": {
+        "complete": true,
+        "handle_rebind": true,
+        "payload_write": true
+      },
+      "prepared_before_legacy_mutation": true,
+      "snapshot_revision": 772,
+      "plan": {
+        "actual_type": "string",
+        "formal_type": "string",
+        "formal_contract": "None",
+        "outcome": "Admitted",
+        "rejection": "None",
+        "exact_path": "",
+        "referent_path": "",
+        "dependency_roots": [],
+        "source_view": "DirectValue",
+        "surface_spelling": "Bare",
+        "copy_proof": "ProvenNonCopy",
+        "eligibility": "Eligible",
+        "obligation_before": "None",
+        "reachability": "None",
+        "source_liveness": "None",
+        "init_mask": 0,
+        "cleanup_mask": 0,
+        "liability_identity": "temporary-liability:non-call:v2;group:non-call-group:v2;crate:external;module:source;function:main;declaration:11:4;boundary:initialization;site:12:10;edge:initialization;index:0;expr:12:18",
+        "value_production": "ConsumeTemporary",
+        "source": "NoSourcePlace",
+        "destination": "Initialization",
+        "drop": "DestinationAssumesLiability",
+        "source_obligation_action": "None",
+        "source_obligation_after": "None",
+        "destination_obligation_action": "None",
+        "destination_obligation_after": "None"
+      },
+      "location": {
+        "file": "docs/semantic_core/review/borrowed_binding_factory_gap.tk",
+        "line": 12,
+        "column": 10
+      }
+    },
+    {
+      "boundary": "initialization",
+      "group_identity": "non-call-group:v2;crate:external;module:source;function:main;declaration:11:4;boundary:initialization;site:13:10",
+      "edge": "initialization",
+      "edge_index": 0,
+      "group_outcome": "Admitted",
+      "group_rejection": "None",
+      "group_plan_admitted": true,
+      "plan_origin": "CompilerSynthetic",
+      "syntax_purpose": "None",
+      "source_category": "NoSourcePlace",
+      "dependency": "Structural",
+      "type_compatibility": "Compatible",
+      "eligibility_context": "Initialization",
+      "destination_exact_path": "",
+      "destination_view": "Indeterminate",
+      "destination_reachability": "Indeterminate",
+      "destination_morphology": "DirectValue",
+      "destination_capabilities": {
+        "complete": true,
+        "handle_rebind": false,
+        "payload_write": false
+      },
+      "destination_flow_ceiling": {
+        "complete": true,
+        "handle_rebind": false,
+        "payload_write": false
+      },
+      "source_flow_ceiling": {
+        "complete": true,
+        "handle_rebind": true,
+        "payload_write": true
+      },
+      "prepared_before_legacy_mutation": true,
+      "snapshot_revision": 773,
+      "plan": {
+        "actual_type": "Holder",
+        "formal_type": "Holder",
+        "formal_contract": "None",
+        "outcome": "Admitted",
+        "rejection": "None",
+        "exact_path": "",
+        "referent_path": "",
+        "dependency_roots": [
+          "toka.semantic-identity.v1;11:root-symbol;104:toka.semantic-identity.v1;11:declaration;28:crate:external;module:source;27:lexical-binding-owner:12:10;;13:binding:owner;"
+        ],
+        "source_view": "DirectValue",
+        "surface_spelling": "Bare",
+        "copy_proof": "ProvenNonCopy",
+        "eligibility": "Eligible",
+        "obligation_before": "None",
+        "reachability": "None",
+        "source_liveness": "None",
+        "init_mask": 0,
+        "cleanup_mask": 0,
+        "liability_identity": "",
+        "value_production": "ConsumeTemporary",
+        "source": "NoSourcePlace",
+        "destination": "Initialization",
+        "drop": "NoLiability",
+        "source_obligation_action": "None",
+        "source_obligation_after": "None",
+        "destination_obligation_action": "None",
+        "destination_obligation_after": "None"
+      },
+      "location": {
+        "file": "docs/semantic_core/review/borrowed_binding_factory_gap.tk",
+        "line": 13,
+        "column": 10
+      }
+    },
+    {
+      "boundary": "initialization",
+      "group_identity": "non-call-group:v2;crate:external;module:source;function:main;declaration:11:4;boundary:initialization;site:14:10",
+      "edge": "initialization",
+      "edge_index": 0,
+      "group_outcome": "Rejected",
+      "group_rejection": "IncompleteFacts",
+      "group_plan_admitted": false,
+      "plan_origin": "CompilerSynthetic",
+      "syntax_purpose": "None",
+      "source_category": "NoSourcePlace",
+      "dependency": "Structural",
+      "type_compatibility": "Compatible",
+      "eligibility_context": "Initialization",
+      "destination_exact_path": "",
+      "destination_view": "Indeterminate",
+      "destination_reachability": "Indeterminate",
+      "destination_morphology": "DirectValue",
+      "destination_capabilities": {
+        "complete": true,
+        "handle_rebind": false,
+        "payload_write": false
+      },
+      "destination_flow_ceiling": {
+        "complete": true,
+        "handle_rebind": false,
+        "payload_write": false
+      },
+      "source_flow_ceiling": {
+        "complete": true,
+        "handle_rebind": true,
+        "payload_write": true
+      },
+      "prepared_before_legacy_mutation": true,
+      "snapshot_revision": 775,
+      "plan": {
+        "actual_type": "Holder",
+        "formal_type": "Holder",
+        "formal_contract": "None",
+        "outcome": "Rejected",
+        "rejection": "IncompleteFacts",
+        "exact_path": "",
+        "referent_path": "",
+        "dependency_roots": [],
+        "source_view": "DirectValue",
+        "surface_spelling": "Bare",
+        "copy_proof": "ProvenNonCopy",
+        "eligibility": "Eligible",
+        "obligation_before": "None",
+        "reachability": "None",
+        "source_liveness": "None",
+        "init_mask": 0,
+        "cleanup_mask": 0,
+        "liability_identity": "",
+        "value_production": "None",
+        "source": "NoStateChange",
+        "destination": "Initialization",
+        "drop": "None",
+        "source_obligation_action": "None",
+        "source_obligation_after": "None",
+        "destination_obligation_action": "None",
+        "destination_obligation_after": "None"
+      },
+      "location": {
+        "file": "docs/semantic_core/review/borrowed_binding_factory_gap.tk",
+        "line": 14,
+        "column": 10
+      }
+    },
+    {
+      "boundary": "initialization",
+      "group_identity": "non-call-group:v2;crate:external;module:source;function:new;declaration:6:8;boundary:initialization;site:7:14",
+      "edge": "initialization",
+      "edge_index": 0,
+      "group_outcome": "Admitted",
+      "group_rejection": "None",
+      "group_plan_admitted": true,
+      "plan_origin": "CompilerSynthetic",
+      "syntax_purpose": "None",
+      "source_category": "NoSourcePlace",
+      "dependency": "Structural",
+      "type_compatibility": "Compatible",
+      "eligibility_context": "Initialization",
+      "destination_exact_path": "",
+      "destination_view": "Indeterminate",
+      "destination_reachability": "Indeterminate",
+      "destination_morphology": "DirectValue",
+      "destination_capabilities": {
+        "complete": true,
+        "handle_rebind": false,
+        "payload_write": false
+      },
+      "destination_flow_ceiling": {
+        "complete": true,
+        "handle_rebind": false,
+        "payload_write": false
+      },
+      "source_flow_ceiling": {
+        "complete": true,
+        "handle_rebind": true,
+        "payload_write": true
+      },
+      "prepared_before_legacy_mutation": true,
+      "snapshot_revision": 777,
+      "plan": {
+        "actual_type": "Holder",
+        "formal_type": "Holder",
+        "formal_contract": "None",
+        "outcome": "Admitted",
+        "rejection": "None",
+        "exact_path": "",
+        "referent_path": "",
+        "dependency_roots": [
+          "toka.semantic-identity.v1;11:root-symbol;103:toka.semantic-identity.v1;11:declaration;28:crate:external;module:source;26:lexical-binding-owner:6:12;;12:binding:view;"
+        ],
+        "source_view": "DirectValue",
+        "surface_spelling": "Bare",
+        "copy_proof": "ProvenNonCopy",
+        "eligibility": "Eligible",
+        "obligation_before": "None",
+        "reachability": "None",
+        "source_liveness": "None",
+        "init_mask": 0,
+        "cleanup_mask": 0,
+        "liability_identity": "",
+        "value_production": "ConsumeTemporary",
+        "source": "NoSourcePlace",
+        "destination": "Initialization",
+        "drop": "NoLiability",
+        "source_obligation_action": "None",
+        "source_obligation_after": "None",
+        "destination_obligation_action": "None",
+        "destination_obligation_after": "None"
+      },
+      "location": {
+        "file": "docs/semantic_core/review/borrowed_binding_factory_gap.tk",
+        "line": 7,
+        "column": 14
+      }
+    }
+  ]
+}

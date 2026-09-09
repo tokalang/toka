@@ -1,0 +1,5 @@
+fn convert(nul *input#: i32) {
+    auto address = unsafe *input as Addr
+    auto *writer# = unsafe (address as *i32#)
+}
+fn main() -> i32 { return 0 }

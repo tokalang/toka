@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    auto values# = [1, 2]
+    auto *buffer = unsafe (&values as *[i32])
+    unsafe raw_take buffer[0]
+    return 0
+}

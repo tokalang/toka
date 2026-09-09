@@ -1,0 +1,30 @@
+import core/intrinsics/thread_handoff_probe::{__toka_thread_probe_run, __toka_thread_probe_run_drop}
+auto drops# = 0
+// This is a user nominal type, not the unrelated runtime type with this short name.
+shape TimerHeap(value: i32)
+impl TimerHeap@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+impl TimerHeap@Send {}
+shape Holder(value: TimerHeap)
+impl Holder@Send {}
+shape Plain(value: i32)
+fn main() -> i32 {
+    {
+        auto factory = { => TimerHeap(value = 41) }:dyn fn() -> TimerHeap
+        auto value = __toka_thread_probe_run<TimerHeap, dyn fn() -> TimerHeap>(cede factory)
+        if value.value != 41 || drops != 0 { return 1 }
+    }
+    if drops != 1 { return 2 }
+    auto direct = { => TimerHeap(value = 43) }:dyn fn() -> TimerHeap
+    __toka_thread_probe_run_drop<TimerHeap, dyn fn() -> TimerHeap>(cede direct)
+    if drops != 2 { return 3 }
+    auto nested = { => Holder(value = TimerHeap(value = 47)) }:dyn fn() -> Holder
+    __toka_thread_probe_run_drop<Holder, dyn fn() -> Holder>(cede nested)
+    if drops != 3 { return 4 }
+    auto trivial = { => Plain(value = 53) }:dyn fn() -> Plain
+    __toka_thread_probe_run_drop<Plain, dyn fn() -> Plain>(cede trivial)
+    if drops != 3 { return 5 }
+    return 0
+}

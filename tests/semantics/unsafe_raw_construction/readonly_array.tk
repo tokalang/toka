@@ -1,0 +1,7 @@
+fn main() -> i32 {
+    auto value = 7:i32
+    auto address = unsafe (&value as Addr)
+    auto addresses = [address]
+    auto *writer# = unsafe (addresses[0] as *i32#)
+    return 0
+}

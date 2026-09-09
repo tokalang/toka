@@ -183,6 +183,10 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
 
   bool isAssign = (Bin->Op == "=" || Bin->Op == "+=" || Bin->Op == "-=" ||
                    Bin->Op == "*=" || Bin->Op == "/=" || Bin->Op == "%=");
+  const AccessPath bindingDestination = Bin->Op == "="
+      ? canonicalizeAccessPath(makeAccessPath(Bin->LHS.get())) : AccessPath{};
+  Stage1BindingTransfer bindingTransfer(*this, Bin,
+      Bin->Op == "=" && bindingDestination && bindingDestination.Projections.empty());
   if (Bin->Op == "is" && dynamic_cast<UnsetExpr *>(Bin->RHS.get())) {
     auto *target = dynamic_cast<VariableExpr *>(Bin->LHS.get());
     SymbolInfo *targetInfo = nullptr;
@@ -222,12 +226,16 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   // [Toka 1.3] Evaluation Order: Check RHS first to avoid LHS
   // borrows/moves blocking RHS usage (e.g. &#cursor = cursor.&next)
   Bin->RHS = foldGenericConstant(std::move(Bin->RHS));
-  if (Bin->Op == "=" && SemanticEvidence::isNonCallTransferShadowEnabled()) {
+  if (Bin->Op == "=" &&
+      (bindingTransfer.enabled() || SemanticEvidence::isNonCallTransferShadowEnabled())) {
     auto destinationType =
         queryExplicitCedeStage0NonCallType(Bin->LHS.get(), nullptr);
-    recordExplicitCedeStage0NonCallPlan(
-        Bin, Bin->RHS.get(), destinationType, TransferDestination::Assignment,
-        TransferEligibilityContext::Assignment, "assignment", Bin->LHS.get());
+    if (bindingTransfer.enabled())
+      bindingTransfer.prepare(Bin->RHS.get(), destinationType, Bin->LHS.get());
+    else
+      recordExplicitCedeStage0NonCallPlan(
+          Bin, Bin->RHS.get(), destinationType, TransferDestination::Assignment,
+          TransferEligibilityContext::Assignment, "assignment", Bin->LHS.get());
   }
 
   // A source-invalidating cede or direct unique transfer into existing storage
@@ -1258,6 +1266,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         }
       }
       updateHandleFlowCeiling();
+      if (bindingTransfer.prepare(Bin->RHS.get(), lhsType, Bin->LHS.get(), true, rhsType))
+        bindingTransfer.complete();
       return lhsType;
     }
 
@@ -1524,6 +1534,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       }
     }
 
+    if (bindingTransfer.prepare(Bin->RHS.get(), lhsType, Bin->LHS.get(), true, rhsType))
+      bindingTransfer.complete();
     return lhsType;
   }
 

@@ -1,0 +1,16 @@
+// Independent legacy ABI/lifecycle reproducer; NOT a passing raw_take test.
+// Both the binding candidate and frozen standalone compiler build this but
+// return 1 instead of the expected 0. It contains no raw_take operation.
+auto drops# = 0
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn consume<'T>(cede 'value: T) { cede 'value }
+fn main() -> i32 {
+    auto ~owner = new Token(value = 7)
+    consume<~Token>(cede ~owner)
+    if drops != 1 { return 1 }
+    return 0
+}

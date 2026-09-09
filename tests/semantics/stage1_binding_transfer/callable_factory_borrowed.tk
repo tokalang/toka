@@ -1,0 +1,20 @@
+import core/string::{string}
+fn factory(value: str) -> dyn fn() -> i32 <- value {
+    auto captured = value.clone()
+    return { [cede captured] => captured.len() as i32 }:dyn fn() -> i32
+}
+fn mixed(flag: bool, value: str) -> dyn fn() -> i32 <- value {
+    if flag { return { => 7:i32 }:dyn fn() -> i32 }
+    auto captured = value.clone()
+    return { [cede captured] => captured.len() as i32 }:dyn fn() -> i32
+}
+fn main() -> i32 {
+    auto owner = string::from("text")
+    auto number = owner.as_str()
+    auto callback = factory(number)
+    auto copied = callback
+    auto branch = mixed(false, number)
+    if copied() != 4 { return 1 }
+    if branch() != 4 { return 2 }
+    return 0
+}

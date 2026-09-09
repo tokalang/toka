@@ -1,0 +1,6 @@
+fn escape(callback: dyn fn() -> i32) -> dyn fn() -> i32 {
+    auto first = callback
+    auto copied = first
+    return cede copied
+}
+fn main() -> i32 { return 0 }

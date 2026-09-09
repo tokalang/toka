@@ -1,0 +1,6 @@
+import core/string::{string}
+shape Holder<T>(value: T)
+impl<T> Holder<T>@Encap { pub value }
+fn owned(*storage: [Holder<string>]) { unsafe raw_take storage[0] }
+fn borrowed(*storage: [Holder<str>]) { unsafe raw_take storage[0] }
+fn main() -> i32 { return 0 }

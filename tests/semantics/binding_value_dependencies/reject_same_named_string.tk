@@ -1,0 +1,3 @@
+import ./impostor::{string as OtherString}
+fn rejected(*storage: [OtherString]) { unsafe raw_take storage[0] }
+fn main() -> i32 { return 0 }

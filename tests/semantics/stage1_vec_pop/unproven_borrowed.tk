@@ -1,0 +1,6 @@
+import std/vec::{Vec}
+fn main() -> i32 {
+    auto values# = Vec<str>::new()
+    auto result = values#.pop()
+    return 0
+}

@@ -1,0 +1,10 @@
+shape Pair(left: str, right: str)
+fn wrong(a: str, b: str) -> result: Pair
+effects:
+    result.left <- a
+    result.right <- b
+{
+    auto value = Pair(left = b, right = a)
+    return cede value
+}
+fn main() -> i32 { auto result = wrong("first", "second"); return 0 }

@@ -1,0 +1,5 @@
+fn escaped() -> &str {
+    auto local = "static characters"
+    return &local
+}
+fn main() -> i32 { auto &result = escaped(); return 0 }

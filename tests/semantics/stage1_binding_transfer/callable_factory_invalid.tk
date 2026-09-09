@@ -1,0 +1,8 @@
+fn invalid() -> dyn fn() -> i32 {
+    auto wrong = true:i32
+    return { => 7:i32 }:dyn fn() -> i32
+}
+fn main() -> i32 {
+    auto callback = invalid()
+    return callback()
+}

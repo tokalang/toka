@@ -262,6 +262,21 @@ static bool isAtomicIntrinsicDeclaration(const Module &module,
   return isTrustedAtomicModule(module) && Names.count(function.Name) != 0;
 }
 
+static ThreadProbeKind threadProbeDeclaration(const Module &module,
+                                             const FunctionDecl &function) {
+  if (!module.IsTrustedSystemModule || !module.ShadowCoordinateKnown ||
+      module.ShadowCoordinateOrigin != "toolchain" ||
+      module.ShadowLogicalModulePath != "core/intrinsics/thread_handoff_probe")
+    return ThreadProbeKind::None;
+  if (function.Name == "__toka_thread_probe_run")
+    return ThreadProbeKind::Run;
+  if (function.Name == "__toka_thread_probe_discard")
+    return ThreadProbeKind::Discard;
+  if (function.Name == "__toka_thread_probe_run_drop")
+    return ThreadProbeKind::RunAndDrop;
+  return ThreadProbeKind::None;
+}
+
 static bool isAtomicWrapperDeclaration(const Module &module,
                                        const FunctionDecl &function) {
   static const std::set<std::string> Names = {
@@ -3368,6 +3383,7 @@ void Sema::declareGlobals(Module &M) {
     ModulePathAliases[toka::PathUtils::canonicalize(
         DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName)] = &ms;
   }
+  ms.SourceModule = &M;
   ms.Name = fileName;
   size_t lastSlash = ms.Name.find_last_of('/');
   if (lastSlash != std::string::npos) {
@@ -3381,6 +3397,9 @@ void Sema::declareGlobals(Module &M) {
   // 1. Register local Functions
   for (auto &Fn : M.Functions) {
     DeclarationLexicalScopes[Fn.get()] = &ms;
+    Fn->ThreadProbe = threadProbeDeclaration(M, *Fn);
+    if (Fn->ThreadProbe != ThreadProbeKind::None && !m_ThreadHandoffSourceProbe)
+      error(Fn.get(), DiagID::ERR_GENERIC_SEMA, "private thread probe requires --thread-handoff-source-probe");
     Fn->IsTrustedAtomicIntrinsic = Fn->IsTrustedAtomicIntrinsic ||
                                    isAtomicIntrinsicDeclaration(M, *Fn);
     if (isAtomicWrapperDeclaration(M, *Fn))
@@ -3810,6 +3829,7 @@ void Sema::registerGlobals(Module &M) {
     ModulePathAliases[toka::PathUtils::canonicalize(
         DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName)] = &ms;
   }
+  ms.SourceModule = &M;
   ms.Name = fileName;
   // Simple name extraction (e.g. std/io.tk -> io)
   size_t lastSlash = ms.Name.find_last_of('/');
@@ -5188,7 +5208,138 @@ bool Sema::validateResultCedeSyntax(ASTNode *site, const TypeSyntaxPtr &type,
   return false;
 }
 
+bool Sema::prepareCallableFactory(FunctionDecl *function) {
+  if (!function) return false;
+  const auto state = m_CallableFactoryStates.find(function);
+  if (state != m_CallableFactoryStates.end() && state->second != CallableFactoryState::Unprepared)
+    return state->second == CallableFactoryState::Valid &&
+           m_ValidatedCallableReturnEnvironments.count(function);
+  // Generic instances are prepared in their instantiation scope. Ordinary
+  // definitions are checked independently of their caller's candidate scope.
+  if (!function->Body || !function->GenericParams.empty() || function->TemplateOrigin ||
+      function->IsClosureInvoke ||
+      m_IsPrecomputingCaptures)
+    return false;
+  auto lexical = DeclarationLexicalScopes.find(function);
+  if (lexical == DeclarationLexicalScopes.end() || !lexical->second ||
+      !lexical->second->SourceModule) return false;
+
+  Scope globals;
+  globals.Depth = 1;
+  globals.Symbols = lexical->second->LexicalSymbols;
+  for (const auto &[name, type] : lexical->second->LexicalTypes)
+    globals.Symbols.emplace(name, type);
+  auto *savedScope = CurrentScope;
+  auto *savedModule = CurrentModule;
+  auto *savedCaptureScope = m_ClosureCaptureRootScope;
+  auto savedPAL = std::move(PALCheckerState);
+  auto savedEnvironments = std::move(m_CallableEnvironments);
+  auto savedRawAddresses = std::move(m_RawAddressBindings);
+  m_RawAddressBindings.clear();
+  auto savedNarrowing = std::move(m_NarrowedPaths);
+  auto savedFlow = std::move(m_PayloadFlowRestrictedPaths);
+  auto savedInvalidated = std::move(m_ReturnSourceInvalidatedRoots);
+  auto savedUnknown = std::move(m_ReturnSourceUnknownRoots);
+  auto savedControlFlow = std::move(m_ControlFlowStack);
+  auto savedInitContexts = std::move(m_InitBlockContexts);
+  auto savedAccessed = std::move(m_AccessedVariables);
+  auto savedAuthorityExpression = std::move(m_AuthorityFullExpression);
+  auto *savedInitPredicate = m_ExpectedInitStatePredicate;
+  auto *savedStartRoot = m_StartBoundaryRoot;
+  auto savedInitMask = m_LastInitMask;
+  auto savedSpeculativeDepth = m_D3SpeculativeCallDepth;
+  auto savedArgumentPermits = std::move(m_Stage0FinalGenericArgumentPermitDepths);
+  auto savedBodyPermits = std::move(m_Stage0GenericBodyQualificationPermitDepths);
+  auto savedBodyPromotions = std::move(m_Stage0GenericBodyQualificationPromotionScopes);
+  m_D3SpeculativeCallDepth = 0;
+  m_Stage0FinalGenericArgumentPermitDepths.clear();
+  m_Stage0GenericBodyQualificationPermitDepths.clear();
+  m_Stage0GenericBodyQualificationPromotionScopes.clear();
+  std::vector<std::pair<bool *, bool>> flags;
+  auto clearFlag = [&](bool &flag) { flags.emplace_back(&flag, flag); flag = false; };
+  clearFlag(m_InUnsafeContext);
+  clearFlag(m_InLHS);
+  clearFlag(m_IsUnsetInitCall);
+  clearFlag(m_DisableSoulCollapse);
+  clearFlag(m_BorrowingSelectedHandle);
+  clearFlag(m_InIntermediatePath);
+  clearFlag(m_IsAssignmentTarget);
+  clearFlag(m_DisableVisibilityCheck);
+  clearFlag(m_IsMemberBase);
+  clearFlag(m_IsConsumingEffect);
+  clearFlag(m_IsStartingTask);
+  clearFlag(m_SuppressRejectedAliasInvalidation);
+  clearFlag(m_AllowPermissionSuffix);
+  clearFlag(m_ExpectedWritability);
+  clearFlag(m_AllowUnsetUsage);
+  CurrentScope = &globals;
+  CurrentModule = lexical->second->SourceModule;
+  m_ClosureCaptureRootScope = nullptr;
+  m_ExpectedInitStatePredicate = nullptr;
+  m_StartBoundaryRoot = nullptr;
+  m_AuthorityFullExpression.reset();
+  m_LastInitMask = ~0ULL;
+  PALCheckerState = PALChecker{};
+  PALCheckerState.IsEnabled = savedPAL.IsEnabled;
+  struct Restore {
+    std::function<void()> Action;
+    ~Restore() { Action(); }
+  } restore{[&] {
+    CurrentScope = savedScope;
+    CurrentModule = savedModule;
+    m_ClosureCaptureRootScope = savedCaptureScope;
+    PALCheckerState = std::move(savedPAL);
+    m_CallableEnvironments = std::move(savedEnvironments);
+    m_RawAddressBindings = std::move(savedRawAddresses);
+    m_NarrowedPaths = std::move(savedNarrowing);
+    m_PayloadFlowRestrictedPaths = std::move(savedFlow);
+    m_ReturnSourceInvalidatedRoots = std::move(savedInvalidated);
+    m_ReturnSourceUnknownRoots = std::move(savedUnknown);
+    m_ControlFlowStack = std::move(savedControlFlow);
+    m_InitBlockContexts = std::move(savedInitContexts);
+    m_AccessedVariables = std::move(savedAccessed);
+    m_AuthorityFullExpression = std::move(savedAuthorityExpression);
+    m_ExpectedInitStatePredicate = savedInitPredicate;
+    m_StartBoundaryRoot = savedStartRoot;
+    m_LastInitMask = savedInitMask;
+    m_D3SpeculativeCallDepth = savedSpeculativeDepth;
+    m_Stage0FinalGenericArgumentPermitDepths = std::move(savedArgumentPermits);
+    m_Stage0GenericBodyQualificationPermitDepths = std::move(savedBodyPermits);
+    m_Stage0GenericBodyQualificationPromotionScopes = std::move(savedBodyPromotions);
+    for (const auto &[flag, value] : flags) *flag = value;
+  }};
+  auto journalStart = SemanticEvidence::checkpointCallTransferJournal();
+  checkFunction(function);
+  auto journal = SemanticEvidence::captureDefinitionJournal(journalStart);
+  if (!journal.Complete) {
+    m_CallableFactoryStates[function] = CallableFactoryState::Invalid;
+    m_ValidatedCallableReturnEnvironments.erase(function);
+  } else m_CallableFactoryBodyJournals[function] = std::move(journal);
+  return m_CallableFactoryStates[function] == CallableFactoryState::Valid;
+}
+
 void Sema::checkFunction(FunctionDecl *Fn) {
+  auto rawPrepared = m_RawAddressReturns.find(Fn);
+  if (m_RawAddressPreparedDefinitions.count(Fn) && rawPrepared != m_RawAddressReturns.end() &&
+      rawPrepared->second.Checked) {
+    auto journal = m_CallableFactoryBodyJournals.find(Fn);
+    if (journal != m_CallableFactoryBodyJournals.end())
+      SemanticEvidence::restoreDefinitionJournal(journal->second);
+    return;
+  }
+  // A factory prepared on demand has already had its real body checked.
+  // Neither the later module walk nor a cache hit may replay its mutations.
+  if (m_EnableStage1ExplicitCallerCede) {
+    auto prepared = m_CallableFactoryStates.find(Fn);
+    if (prepared != m_CallableFactoryStates.end() &&
+        (prepared->second == CallableFactoryState::Valid ||
+         prepared->second == CallableFactoryState::Invalid)) {
+      auto journal = m_CallableFactoryBodyJournals.find(Fn);
+      if (journal != m_CallableFactoryBodyJournals.end())
+        SemanticEvidence::restoreDefinitionJournal(journal->second);
+      return;
+    }
+  }
   const size_t functionDiagnosticStart = DiagnosticEngine::records().size();
   validateResultCedeSyntax(Fn, Fn->ReturnTypeSyntax, true);
   for (const auto &argument : Fn->Args) {
@@ -5255,6 +5406,9 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   }
 
   if (Fn->ResolvedReturnType) {
+    if (m_EnableStage1ExplicitCallerCede &&
+        (Fn->ResolvedReturnType->isFunction() || Fn->ResolvedReturnType->isDynFn()))
+      m_CallableFactoryStates[Fn] = CallableFactoryState::Preparing;
     validateHandleGrammar(getLoc(Fn), Fn->ResolvedReturnType);
     std::string fnId = !Fn->CodegenName.empty() ? Fn->CodegenName : Fn->Name;
     bool isGeneric = (Fn->TemplateOrigin != nullptr || (!Fn->CodegenName.empty() && Fn->CodegenName.find("_M_") != std::string::npos));
@@ -5531,8 +5685,27 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   // --- Sema: Safety Redline Boundaries ---
   checkUnsafePublicFunctionBoundary(Fn);
 
+  std::optional<CallableReturnEnvironmentFrame> callableReturnEnvironment;
+  const bool collectCallableReturn = m_EnableStage1ExplicitCallerCede &&
+      Fn->ResolvedReturnType && (Fn->ResolvedReturnType->isFunction() || Fn->ResolvedReturnType->isDynFn());
+  if (collectCallableReturn) m_ValidatedCallableReturnEnvironments.erase(Fn);
   if (Fn->Body) {
+    auto &rawSummary = m_RawAddressReturns[Fn];
+    rawSummary = {};
+    rawSummary.Checking = true;
+    rawSummary.ClosureDepth = m_CallableReturnClosureDepth;
+    if (collectCallableReturn) {
+      CallableReturnEnvironmentFrame frame;
+      frame.Function = Fn;
+      frame.ClosureDepth = m_CallableReturnClosureDepth;
+      frame.Facts.Complete = true;
+      m_CallableReturnFrames.push_back(std::move(frame));
+    }
     checkStmt(Fn->Body.get());
+    if (collectCallableReturn) {
+      callableReturnEnvironment = std::move(m_CallableReturnFrames.back());
+      m_CallableReturnFrames.pop_back();
+    }
 
     // Explicit returns check their own path at the return expression.  Only
     // a reachable normal fallthrough remains to be discharged here.
@@ -5682,6 +5855,25 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
   }
 
+  if (callableReturnEnvironment && callableReturnEnvironment->SawReturn &&
+      callableReturnEnvironment->Facts.Complete) {
+    const auto &records = DiagnosticEngine::records();
+    const bool valid = std::none_of(records.begin() + functionDiagnosticStart, records.end(),
+        [](const auto &record) { return record.Level == DiagLevel::Error; });
+    if (valid && !HasError)
+      m_ValidatedCallableReturnEnvironments[Fn] = std::move(callableReturnEnvironment->Facts);
+  }
+  if (collectCallableReturn)
+    m_CallableFactoryStates[Fn] = m_ValidatedCallableReturnEnvironments.count(Fn)
+        ? CallableFactoryState::Valid : CallableFactoryState::Invalid;
+  if (Fn->Body) {
+    auto &rawSummary = m_RawAddressReturns[Fn];
+    rawSummary.Checking = false;
+    rawSummary.Checked = true;
+    const auto &records = DiagnosticEngine::records();
+    rawSummary.Valid = std::none_of(records.begin() + functionDiagnosticStart, records.end(),
+        [](const auto &record) { return record.Level == DiagLevel::Error; });
+  }
   exitScope();
   m_OutcomePendingCalls = std::move(savedOutcomePendingCalls);
   CurrentFunctionReturnType = savedRet; // [FIX] Restore state
@@ -6808,6 +7000,9 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     if (validation != GenericSpecializationValidationState::Valid &&
         !m_GenericValidationFrames.empty())
       m_GenericValidationFrames.back().HasInvalidDependency = true;
+    if (validation != GenericSpecializationValidationState::Valid &&
+        !m_CallableReturnFrames.empty())
+      m_CallableReturnFrames.back().Facts.Complete = false;
     if (!entry ||
         validation == GenericSpecializationValidationState::Unchecked) {
       if (entry) {
@@ -7494,6 +7689,9 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
   if (validation != GenericSpecializationValidationState::Valid &&
       !m_GenericValidationFrames.empty())
     m_GenericValidationFrames.back().HasInvalidDependency = true;
+  if (validation != GenericSpecializationValidationState::Valid &&
+      !m_CallableReturnFrames.empty())
+    m_CallableReturnFrames.back().Facts.Complete = false;
   return {Instance, validation, cacheEntry->BodyQualification};
 }
 

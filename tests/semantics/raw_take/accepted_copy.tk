@@ -1,0 +1,7 @@
+fn main() -> i32 {
+    auto *buffer# = unsafe alloc [1] i32
+    unsafe { buffer[0] = 42 }
+    auto value = unsafe raw_take buffer[0]
+    unsafe free [0] *buffer
+    return value - 42
+}

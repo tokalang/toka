@@ -1,5 +1,5 @@
 import sys/thread::{sys_thread_spawn, sys_thread_join, sys_thread_detach, unwrap_fat_pointer, sys_alloc_thread_env, sys_free_thread_env}
-import sys/libc::{libc_usleep, libc_sched_yield}
+import sys/libc::{libc_usleep, libc_sched_yield, libc_abort}
 import std/error::{Error, __unused_dummy}
 
 /// Suspends the current thread for at least the specified number of milliseconds.
@@ -40,6 +40,19 @@ shape ThreadStateBox<'S, 'T>(
 )
 shape StateTrampBox(f: cede fn#() -> Addr)
 
+// Construct only a raw view. The allocation and its live contents remain the
+// caller's responsibility; this helper neither allocates nor owns storage.
+fn unsafe_thread_pointer<'T>(address: Addr) -> *'T# {
+    auto nul *candidate# = unsafe (address as nul *'T#)
+    if *candidate is null {
+        unsafe { libc_abort() }
+        unreachable
+    } else {
+        auto verified = unsafe *candidate as Addr
+        return unsafe (verified as *'T#)
+    }
+}
+
 /// Spawns a new OS thread, running the given closure.
 /// 
 /// Note: To capture variables from the environment safely across threads,
@@ -64,7 +77,7 @@ pub fn thread_spawn_with_state<'S: @Send, 'T: @Send>(
 ) -> JoinHandle<'T> {
     unsafe {
         auto box_addr = sys_alloc_thread_env(sizeof(ThreadStateBox<'S, 'T>) as usize)
-        auto *box_ptr# = (box_addr as *ThreadStateBox<'S, 'T>)
+        auto *box_ptr# = unsafe_thread_pointer<ThreadStateBox<'S, 'T>>(box_addr)
         box_ptr = ThreadStateBox<'S, 'T>(
             state = cede 'state,
             entry = entry,
@@ -75,17 +88,17 @@ pub fn thread_spawn_with_state<'S: @Send, 'T: @Send>(
         auto tramp_fn = { [cede captured_box] =>
             unsafe {
                 auto box = cede captured_box
-                auto *ret_ptr# = (sys_alloc_thread_env(sizeof('T) as usize) as *'T)
+                auto *ret_ptr# = unsafe_thread_pointer<'T>(sys_alloc_thread_env(sizeof('T) as usize))
                 auto entry = box.entry
                 ret_ptr = cede entry(box.state)
                 return (*ret_ptr) as Addr
             }
         }:cede fn#() -> Addr
 
-        auto *tramp_buf# = (sys_alloc_thread_env(sizeof(StateTrampBox) as usize) as *StateTrampBox)
+        auto *tramp_buf# = unsafe_thread_pointer<StateTrampBox>(sys_alloc_thread_env(sizeof(StateTrampBox) as usize))
         tramp_buf = StateTrampBox(f = cede tramp_fn)
         auto func_ptr_addr = unwrap_fat_pointer((*tramp_buf) as Addr)
-        auto *invoker_ptr# = (func_ptr_addr as *Addr)
+        auto *invoker_ptr = (func_ptr_addr as *Addr)
         auto real_invoker = invoker_ptr
 
         // `captured_box` is a payload capture, so its closure environment has
@@ -161,7 +174,7 @@ fn __dummy_unused_ref() {
             unwrap_fat_pointer(0:Addr)
             auto err = Error::new(0:i32, string::from("")):Error
             __unused_dummy()
-            auto _ = err
+            auto _ = cede err
         }
     }
 }

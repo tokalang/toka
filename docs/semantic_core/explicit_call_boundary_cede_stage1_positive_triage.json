@@ -1,0 +1,159 @@
+{
+  "mode": "check-only first-diagnostic screening; not a second full PASS execution",
+  "summary": {
+    "checked": 451,
+    "successful_check_only": 125,
+    "failed_check_only": 326,
+    "abnormal": []
+  },
+  "groups": [
+    {
+      "error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "message": "Cannot transfer source into binding: RouteIneligible",
+      "count": 258,
+      "samples": [
+        "tests/pass/g07_math_comprehensive.tk",
+        "tests/pass/g08_shared_rc.tk",
+        "tests/pass/g03_println.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "lib/sys/sync.tk:120:29",
+      "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+      "count": 28,
+      "samples": [
+        "tests/pass/g09_guard_bind_mutex.tk",
+        "tests/pass/g09_async_phase1_qualification_tests.tk",
+        "tests/pass/g09_atomic_stress.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "lib/stdx/serde/json.tk:529:35",
+      "message": "Cannot transfer source into binding: IncompleteFacts",
+      "count": 11,
+      "samples": [
+        "tests/pass/g10_build_hybrid_test.tk",
+        "tests/pass/g03_test_dynamic_json.tk",
+        "tests/pass/g16_service_telemetry_test.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "lib/sys/macos/net.tk:47:34",
+      "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+      "count": 9,
+      "samples": [
+        "tests/pass/g12_stdx_https_wss_test.tk",
+        "tests/pass/g04_test_std_net_udp.tk",
+        "tests/pass/g12_stdx_tls_test.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "<local-or-harness>",
+      "message": "Cannot transfer source into binding: IncompleteFacts",
+      "count": 7,
+      "samples": [
+        "tests/pass/g04_scratch_uninit.tk",
+        "tests/pass/g08_for_alias_shared_array_interior_mutability.tk",
+        "tests/pass/g08_for_alias_shared_array_permissions.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "<local-or-harness>",
+      "message": "Cannot transfer source into binding: TemporaryTransferIneligible",
+      "count": 3,
+      "samples": [
+        "tests/pass/g03_string_escape_r.tk",
+        "tests/pass/g03_default_args.tk",
+        "tests/pass/g04_raw_string_literals.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "lib/std/btreemap.tk:25:34",
+      "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+      "count": 2,
+      "samples": [
+        "tests/pass/g07_btree_set_test.tk",
+        "tests/pass/g07_container_get_dup_lifecycle.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "lib/std/ring.tk:52:29",
+      "message": "Cannot transfer source into binding: RouteIneligible",
+      "count": 1,
+      "samples": [
+        "tests/pass/g07_ring_test.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "<local-or-harness>",
+      "message": "Cannot transfer source into binding: ContradictoryFacts",
+      "count": 1,
+      "samples": [
+        "tests/pass/g03_bitwise.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "<local-or-harness>",
+      "message": "Cannot transfer source into binding: RouteIneligible",
+      "count": 1,
+      "samples": [
+        "tests/pass/g08_callable_protocol.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "<local-or-harness>",
+      "message": "Cannot transfer source into binding: TypeIncompatible",
+      "count": 1,
+      "samples": [
+        "tests/pass/g04_token_interior_mut.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "<local-or-harness>",
+      "message": "Cannot transfer source into binding: ProjectedHandleRequiresSubroot",
+      "count": 1,
+      "samples": [
+        "tests/pass/g08_generic_morphic.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "lib/std/path.tk:168:33",
+      "message": "Cannot transfer source into binding: ExplicitCedeRequiresSource",
+      "count": 1,
+      "samples": [
+        "tests/pass/g03_path.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "<local-or-harness>",
+      "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+      "count": 1,
+      "samples": [
+        "tests/pass/g07_test_panic.tk"
+      ]
+    },
+    {
+      "error": "E04661",
+      "site": "lib/std/vec.tk:213:25",
+      "message": "Cannot transfer source into binding: ProjectedHandleRequiresSubroot",
+      "count": 1,
+      "samples": [
+        "tests/pass/g08_for_alias_writable_vec_handles.tk"
+      ]
+    }
+  ]
+}

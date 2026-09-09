@@ -75,6 +75,7 @@ enum class TokenType {
   KwWait,
   KwChannel,
   KwCede,
+  KwRawTake,
   KwCopy,
   KwImport,
   KwPub,

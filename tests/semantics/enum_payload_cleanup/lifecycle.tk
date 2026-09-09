@@ -1,0 +1,48 @@
+import core/option::{Option}
+auto drops# = 0
+shape Resource(id: i32)
+impl Resource@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto empty_unique = Option<^Resource>::None
+        auto shared_none = Option<~Resource>::None
+        if empty_unique.is_some() || shared_none.is_some() { return 1 }
+    }
+    if drops != 0 { return 2 }
+    {
+        auto ^source = new Resource(id = 1)
+        auto first = Option<^Resource>::Some(cede ^source)
+        auto second = cede first
+        if !second.is_some() || drops != 0 { return 3 }
+    }
+    if drops != 1 { return 4 }
+    {
+        auto ~source = new Resource(id = 2)
+        auto ~other = ~source
+        {
+            auto first = Option<~Resource>::Some(cede ~source)
+            auto second = cede first
+            if !second.is_some() { return 5 }
+        }
+        if drops != 1 || other.id != 2 { return 6 }
+    }
+    if drops != 2 { return 7 }
+    {
+        auto ^source = new Resource(id = 3)
+        auto result = Option<^Resource>::Some(cede ^source)
+        auto ^taken = result.unwrap()
+        if drops != 2 || taken.id != 3 { return 8 }
+    }
+    if drops != 3 { return 9 }
+    {
+        auto ~source = new Resource(id = 4)
+        auto result = Option<~Resource>::Some(cede ~source)
+        auto ~taken = result.unwrap()
+        if drops != 3 || taken.id != 4 { return 10 }
+    }
+    if drops != 4 { return 11 }
+    return 0
+}

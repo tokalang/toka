@@ -1,0 +1,7 @@
+// Expected legal source. Static borrowed-field origin must be preserved,
+// not replaced by a declaration-dependency or an owning-type assumption.
+shape Holder(view: str)
+fn main() -> i32 {
+    auto value = Holder(view = "static")
+    return 0
+}

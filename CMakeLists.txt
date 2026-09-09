@@ -286,6 +286,45 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_stage1_standalone_cede.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_stage1_binding_transfer
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_stage1_binding_transfer.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        if(UNIX)
+            # Source qualification links the independently tested POSIX runtime.
+            add_test(NAME toka_thread_handoff_source
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/scripts/test_thread_handoff_source.py
+                    --build-dir ${CMAKE_BINARY_DIR})
+        endif()
+        add_test(NAME toka_negative_harness_termination
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_negative_harness_termination.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_raw_take_frontend
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_raw_take_frontend.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_unsafe_raw_construction
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_unsafe_raw_construction.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_string_buffer_migration
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_string_buffer_migration.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_stage1_vec_pop
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_stage1_vec_pop.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_enum_payload_cleanup
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_enum_payload_cleanup.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_binding_value_dependencies
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_binding_value_dependencies.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_non_call_transfer_shadow_stage0
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_non_call_transfer_shadow_stage0.py
@@ -342,6 +381,7 @@ if(BUILD_TESTING)
             toka_stage1_return_source
             toka_stage1_return_matrix
             toka_stage1_standalone_cede
+            toka_stage1_binding_transfer
             toka_non_call_transfer_shadow_stage0
             toka_direct_call_observation_d3a
             toka_pure_nominal_overload_probe_d4a

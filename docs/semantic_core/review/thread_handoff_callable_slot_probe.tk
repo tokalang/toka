@@ -1,0 +1,11 @@
+// Capability probe, not a permanent language restriction or an accepted test.
+// A future qualified implementation must prove the actual callable dependency.
+shape Token(value: i32)
+shape Reclaimer(address: Addr)
+shape HandoffProbe(state: Token, entry: fn(Token) -> i32, reclaimer: Reclaimer)
+
+fn take_box(*storage#: [HandoffProbe]) -> HandoffProbe {
+    return unsafe raw_take storage[0]
+}
+
+fn main() -> i32 { return 0 }

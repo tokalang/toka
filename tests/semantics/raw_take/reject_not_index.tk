@@ -1,0 +1,5 @@
+fn main() -> i32 {
+    auto value = 1
+    unsafe raw_take value
+    return 0
+}

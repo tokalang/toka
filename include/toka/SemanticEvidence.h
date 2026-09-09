@@ -289,7 +289,16 @@ struct ExplicitCedeStage0TransactionRecord {
 };
 
 struct ExplicitCedeStage0NonCallRecord {
+  // Internal primitive provenance, separate from the source-less result plan.
+  std::string RawTakeEdge;
+  std::string RawTakeSlot;
+  std::string RawTakeElement;
+  std::string RawTakeProduction;
+  bool RawTakeDrop = false;
   std::vector<std::string> StaticStorageOrigins;
+  std::string RawWriteAuthority;
+  std::map<std::string, std::vector<std::string>> ResultFieldReferents;
+  std::map<std::string, std::vector<std::string>> ResultFieldStaticStorage;
   std::string Boundary;
   std::string GroupIdentity;
   std::string Edge;
@@ -440,6 +449,14 @@ public:
     size_t TransactionCount = 0;
     size_t NonCallCount = 0;
   };
+  struct DefinitionJournal {
+    bool Complete = false;
+    std::vector<CallTransferShadowRecord> Shadows;
+    std::vector<ExplicitCedeStage0TransactionRecord> Transactions;
+    std::vector<ExplicitCedeStage0NonCallRecord> NonCalls;
+  };
+  static DefinitionJournal captureDefinitionJournal(CallTransferJournalCheckpoint checkpoint);
+  static void restoreDefinitionJournal(const DefinitionJournal &journal);
   struct NonCallGroupToken {
     size_t Begin = 0;
     std::string Identity;

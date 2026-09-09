@@ -573,6 +573,12 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     expr = parseContinue();
   } else if (match(TokenType::KwPass)) {
     expr = parsePass();
+  } else if (match(TokenType::KwRawTake)) {
+    Token tok = previous();
+    // Prefix operation over one postfix place, not a function-name intrinsic.
+    auto node = std::make_unique<RawTakeExpr>(parseExpr(100, allowTrailingClosure));
+    node->setLocation(tok, m_CurrentFile);
+    expr = std::move(node);
   } else if (match(TokenType::KwCede)) {
     Token tok = previous();
     auto val = parseExpr(0, allowTrailingClosure);
@@ -1656,6 +1662,7 @@ std::unique_ptr<Expr> Parser::parseClosureExpr() {
         param.Loc = paramLoc;
         param.Permission.HandleLayers = layers;
         param.Permission.syncProjections();
+        param.Permission.SoulWritable = name.HasWrite;
         expr->Params.push_back(param);
         expr->ArgNames.push_back(name.Text);
         if (!check(TokenType::FatArrow)) {

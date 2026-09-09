@@ -1,0 +1,7 @@
+fn main() -> i32 {
+    auto source = { => 7 }:cede dyn fn() -> i32
+    auto moved = cede source
+    auto invalid = cede source
+    cede moved
+    return 0
+}

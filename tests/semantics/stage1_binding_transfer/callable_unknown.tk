@@ -1,0 +1,6 @@
+extern fn unknown_environment() -> dyn fn() -> i32
+fn inspect() -> i32 {
+    auto copied = unknown_environment()
+    return 0
+}
+fn main() -> i32 { return 0 }

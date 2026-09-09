@@ -1,0 +1,11 @@
+fn main() -> i32 {
+    unsafe { auto callback = later() }
+    return 0
+}
+fn later() -> dyn fn() -> i32 {
+    auto *storage# = unsafe alloc [1] i32
+    unsafe { storage[0] = 7 }
+    auto value = raw_take storage[0]
+    unsafe free [0] *storage
+    return { [copy value] => value }:dyn fn() -> i32
+}

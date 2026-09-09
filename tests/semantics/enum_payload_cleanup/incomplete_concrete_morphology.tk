@@ -1,0 +1,11 @@
+// Sema currently loses root hats on this concrete declaration path. Do not
+// invent a layout or cleanup type; this path must fail closed until repaired.
+shape Resource(id: i32)
+impl Resource@Encap { pub id fn drop(self#) {} }
+shape Event(Both(^Resource, ~Resource) | Empty)
+fn main() -> i32 {
+    auto ^first = new Resource(id = 1)
+    auto ~second = new Resource(id = 2)
+    auto event = Event::Both(cede ^first, cede ~second)
+    return 0
+}

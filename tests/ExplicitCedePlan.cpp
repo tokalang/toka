@@ -350,6 +350,39 @@ int main() {
   CHECK(copiedTemporary.admitted());
   CHECK(copiedTemporary.ValueProduction == TransferValueProduction::CopyValue);
 
+  auto staticRecord = nonCall(copyTemporary, TransferDestination::Initialization,
+                             TransferEligibilityContext::Initialization);
+  staticRecord.CopyProof = TransferCopyProof::ProvenNonCopy;
+  auto literalStorage = SemanticIdentityBuilder::semanticNode("module:m", "literal:1:1").value();
+  staticRecord.StaticStorageOrigins = {literalStorage};
+  staticRecord.ResultFieldStaticStorage["view"] = {literalStorage};
+  auto staticRecordPlan = prepareExplicitCedePlan(staticRecord);
+  CHECK(staticRecordPlan.admitted());
+  CHECK(staticRecordPlan.ValueProduction == TransferValueProduction::BorrowCapture);
+  CHECK(staticRecordPlan.Source == TransferSourceDisposition::NoSourcePlace);
+  CHECK(staticRecordPlan.Drop == TransferDropDisposition::NoLiability);
+  CHECK(staticRecordPlan.Prepared.TemporaryEligibility == TransferTemporaryEligibility::Ineligible);
+  auto missingWitness = staticRecord;
+  missingWitness.StaticStorageOrigins.clear();
+  CHECK(!prepareExplicitCedePlan(missingWitness).admitted());
+  auto unknownStatic = staticRecord;
+  unknownStatic.DependencyFactsComplete = false;
+  CHECK(!prepareExplicitCedePlan(unknownStatic).admitted());
+  auto owningStatic = staticRecord;
+  owningStatic.CarriesDropLiability = true;
+  CHECK(!prepareExplicitCedePlan(owningStatic).admitted());
+  auto mixedRecord = staticRecord;
+  mixedRecord.Dependency = TransferDependencyKind::Structural;
+  mixedRecord.DependencyRoots = {rootPlace().root()};
+  mixedRecord.ResultFieldReferents["dynamic"] = {rootPlace()};
+  mixedRecord.DestinationDependencyAccepted = true;
+  auto mixedRecordPlan = prepareExplicitCedePlan(mixedRecord);
+  CHECK(mixedRecordPlan.admitted());
+  CHECK(mixedRecordPlan.Drop == TransferDropDisposition::NoLiability);
+  CHECK(mixedRecordPlan.Prepared.TemporaryEligibility == TransferTemporaryEligibility::Ineligible);
+  mixedRecord.ResultFieldReferents["dynamic"] = {otherPlace()};
+  CHECK(!prepareExplicitCedePlan(mixedRecord).admitted());
+
   temporary.SurfaceSpelling = TransferSurfaceSpelling::ExplicitCede;
   temporary.SyntaxPurpose = CedeSyntaxPurpose::SourceInvalidation;
   temporary.Origin = TransferPlanOrigin::UserSource;

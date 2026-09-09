@@ -1,0 +1,77 @@
+fn check_empty(value#: string) -> i32 {
+    auto upper = value.to_upper()
+    auto lower = value.to_lower()
+    auto replaced = value.replace(65:char, 90:char)
+    auto reversed = value.reverse()
+    if upper.as_str().byte_count() != 0 || lower.as_str().byte_count() != 0 { return 1 }
+    if replaced.as_str().byte_count() != 0 || reversed.as_str().byte_count() != 0 { return 2 }
+    auto capacity = value.cap
+    value#.to_ascii_lowercase_in_place()
+    if value.cap != capacity || value.as_str().byte_count() != 0 { return 3 }
+    return 0
+}
+
+fn main() -> i32 {
+    // Default storage is nullable; allocated empty storage is a separate path.
+    auto empty# = string(..)
+    if check_empty(empty#) != 0 { return 1 }
+    auto allocated# = string::new()
+    if check_empty(allocated#) != 0 { return 2 }
+
+    auto input# = string::from("@AZ[az{09-你好é")
+    auto upper = input.to_upper()
+    auto lower = input.to_lower()
+    auto replaced = input.replace(65:char, 88:char)
+    if !upper.as_str().equals("@AZ[AZ{09-你好é") { return 3 }
+    if !lower.as_str().equals("@az[az{09-你好é") { return 4 }
+    if !replaced.as_str().equals("@XZ[az{09-你好é") { return 5 }
+    if !input.as_str().equals("@AZ[az{09-你好é") { return 6 }
+    auto untouched = input.replace(126:char, 88:char)
+    auto same = input.replace(65:char, 65:char)
+    if !untouched.as_str().equals(input.as_str()) || !same.as_str().equals(input.as_str()) { return 7 }
+    auto old_capacity = input.cap
+    auto old_address = unsafe input.c_str() as Addr
+    input#.to_ascii_lowercase_in_place()
+    if !input.as_str().equals("@az[az{09-你好é") { return 8 }
+    if input.cap != old_capacity || (unsafe input.c_str() as Addr) != old_address { return 9 }
+    input#.to_ascii_lowercase_in_place()
+    if !input.as_str().equals("@az[az{09-你好é") { return 10 }
+
+    auto one = string::from("Q")
+    auto one_reversed = one.reverse()
+    if !one_reversed.as_str().equals("Q") { return 11 }
+    auto ascii = string::from("aB09!")
+    auto ascii_reversed = ascii.reverse()
+    if !ascii_reversed.as_str().equals("!90Ba") || !ascii.as_str().equals("aB09!") { return 12 }
+    auto unicode = string::from("Aé中Z")
+    auto reversed = unicode.reverse()
+    // reverse is deliberately byte-based, including for non-ASCII input.
+    unsafe {
+        auto *source = unicode.c_str() as *[char]
+        auto *result = reversed.c_str() as *[char]
+        auto count = unicode.as_str().byte_count()
+        if reversed.as_str().byte_count() != count { return 13 }
+        auto i# = 0:usize
+        loop i < count {
+            if result[i] != source[count - 1 - i] { return 14 }
+            i += 1
+        }
+        if result[count] != 0:char { return 15 }
+    }
+    if !unicode.as_str().equals("Aé中Z") { return 16 }
+
+    // Repeat independent allocation/cleanup scopes; no shared mutable result.
+    auto iteration# = 0
+    loop iteration < 64 {
+        auto value# = string::from("aZé")
+        auto a = value.to_upper()
+        auto b = value.to_lower()
+        auto c = value.replace(97:char, 120:char)
+        auto d = value.reverse()
+        value#.to_ascii_lowercase_in_place()
+        if !a.as_str().equals("AZé") || !b.as_str().equals("azé") { return 17 }
+        if !c.as_str().equals("xZé") || !value.as_str().equals("azé") { return 18 }
+        iteration += 1
+    }
+    return 0
+}

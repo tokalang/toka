@@ -1,0 +1,9 @@
+trait @Callable {
+    type Output
+}
+fn main() -> i32 {
+    auto target# = { => 7 }:dyn fn() -> i32
+    auto source = { => 8 }:dyn fn() -> i32
+    target = source
+    return 0
+}

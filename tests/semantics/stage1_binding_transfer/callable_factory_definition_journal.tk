@@ -1,0 +1,14 @@
+fn main() -> i32 {
+    auto rejected = bad(1:i32)
+    auto callback = later()
+    return 0
+}
+fn bad<T>(value: T) -> i32 {
+    auto callback = later()
+    return true
+}
+fn later() -> dyn fn() -> i32 {
+    auto marker = leaf()
+    return { [copy marker] => marker }:dyn fn() -> i32
+}
+fn leaf() -> i32 { return 7:i32 }

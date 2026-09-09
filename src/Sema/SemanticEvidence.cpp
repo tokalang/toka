@@ -265,7 +265,9 @@ bool ExplicitCedeStage0TransactionRecord::operator==(
 bool ExplicitCedeStage0NonCallRecord::operator<(
     const ExplicitCedeStage0NonCallRecord &rhs) const {
   return std::tie(
-             StaticStorageOrigins, Boundary, GroupIdentity, Edge, EdgeIndex, GroupOutcome,
+             RawTakeEdge, RawTakeSlot, RawTakeElement, RawTakeProduction, RawTakeDrop,
+             StaticStorageOrigins, RawWriteAuthority, ResultFieldReferents, ResultFieldStaticStorage,
+             Boundary, GroupIdentity, Edge, EdgeIndex, GroupOutcome,
              GroupRejection, GroupPlanAdmitted, PlanOrigin, SyntaxPurpose,
              SourceCategory, Dependency, TypeCompatibility, EligibilityContext,
              DestinationExactPath, DestinationView, DestinationReachability,
@@ -276,7 +278,9 @@ bool ExplicitCedeStage0NonCallRecord::operator<(
              SourceFlowHandleRebindable, SourceFlowPayloadWritable,
              PreparedBeforeLegacyMutation, SnapshotRevision, Plan, Location) <
          std::tie(
-             rhs.StaticStorageOrigins, rhs.Boundary, rhs.GroupIdentity, rhs.Edge, rhs.EdgeIndex,
+             rhs.RawTakeEdge, rhs.RawTakeSlot, rhs.RawTakeElement, rhs.RawTakeProduction, rhs.RawTakeDrop,
+             rhs.StaticStorageOrigins, rhs.RawWriteAuthority, rhs.ResultFieldReferents, rhs.ResultFieldStaticStorage,
+             rhs.Boundary, rhs.GroupIdentity, rhs.Edge, rhs.EdgeIndex,
              rhs.GroupOutcome, rhs.GroupRejection, rhs.GroupPlanAdmitted,
              rhs.PlanOrigin, rhs.SyntaxPurpose, rhs.SourceCategory,
              rhs.Dependency, rhs.TypeCompatibility, rhs.EligibilityContext,
@@ -512,6 +516,34 @@ void SemanticEvidence::rollbackCallTransferJournal(
     ExplicitCedeStage0Transactions.resize(checkpoint.TransactionCount);
   if (checkpoint.NonCallCount < ExplicitCedeStage0NonCalls.size())
     ExplicitCedeStage0NonCalls.resize(checkpoint.NonCallCount);
+}
+
+SemanticEvidence::DefinitionJournal SemanticEvidence::captureDefinitionJournal(
+    CallTransferJournalCheckpoint checkpoint) {
+  DefinitionJournal result;
+  if (checkpoint.ShadowCount > CallTransferShadows.size() ||
+      checkpoint.TransactionCount > ExplicitCedeStage0Transactions.size() ||
+      checkpoint.NonCallCount > ExplicitCedeStage0NonCalls.size()) return result;
+  result.Complete = true;
+  result.Shadows.assign(CallTransferShadows.begin() + checkpoint.ShadowCount, CallTransferShadows.end());
+  result.Transactions.assign(ExplicitCedeStage0Transactions.begin() + checkpoint.TransactionCount,
+                             ExplicitCedeStage0Transactions.end());
+  result.NonCalls.assign(ExplicitCedeStage0NonCalls.begin() + checkpoint.NonCallCount,
+                         ExplicitCedeStage0NonCalls.end());
+  return result;
+}
+
+void SemanticEvidence::restoreDefinitionJournal(const DefinitionJournal &journal) {
+  if (!journal.Complete) return;
+  auto restore = [](auto &destination, const auto &records) {
+    for (const auto &record : records)
+      if (std::none_of(destination.begin(), destination.end(), [&](const auto &existing) {
+            return !(existing < record) && !(record < existing);
+          })) destination.push_back(record);
+  };
+  restore(CallTransferShadows, journal.Shadows);
+  restore(ExplicitCedeStage0Transactions, journal.Transactions);
+  restore(ExplicitCedeStage0NonCalls, journal.NonCalls);
 }
 
 SemanticEvidenceAuditState SemanticEvidence::auditState() {
@@ -1085,6 +1117,18 @@ void SemanticEvidence::dumpExplicitCedeStage0NonCallJSON(std::ostream &out) {
     const auto &record = ExplicitCedeStage0NonCalls[index];
     const auto &plan = record.Plan;
     out << '{';
+    if (!record.RawTakeEdge.empty()) {
+      out << "\"raw_take\":{\"contract\":\"ExplicitUnsafeRawElementTake\","
+          << "\"initialization_basis\":\"UnsafeCallerPrecondition\","
+          << "\"slot_retirement\":\"UnsafeCallerPostcondition\","
+          << "\"remainder\":\"CallerMaintained\","
+          << "\"edge\":\"" << escapeJSON(record.RawTakeEdge)
+          << "\",\"source_slot\":\"" << escapeJSON(record.RawTakeSlot)
+          << "\",\"element_type\":\"" << escapeJSON(record.RawTakeElement)
+          << "\",\"value_production\":\"" << escapeJSON(record.RawTakeProduction)
+          << "\",\"carries_drop_liability\":" << (record.RawTakeDrop ? "true" : "false")
+          << "},";
+    }
     if (!record.StaticStorageOrigins.empty()) {
       out << "\"static_storage_origins\":[";
       for (size_t storage = 0; storage < record.StaticStorageOrigins.size(); ++storage) {
@@ -1093,6 +1137,26 @@ void SemanticEvidence::dumpExplicitCedeStage0NonCallJSON(std::ostream &out) {
       }
       out << "],";
     }
+    if (!record.RawWriteAuthority.empty())
+      out << "\"raw_write_authority\":\"" << escapeJSON(record.RawWriteAuthority) << "\",";
+    auto writeFieldOrigins = [&](const char *name, const auto &fields) {
+      if (fields.empty()) return;
+      out << '\"' << name << "\":{";
+      bool first = true;
+      for (const auto &[field, origins] : fields) {
+        if (!first) out << ',';
+        first = false;
+        out << '\"' << escapeJSON(field) << "\":[";
+        for (size_t index = 0; index < origins.size(); ++index) {
+          if (index) out << ',';
+          out << '\"' << escapeJSON(origins[index]) << '\"';
+        }
+        out << ']';
+      }
+      out << "},";
+    };
+    writeFieldOrigins("result_field_referents", record.ResultFieldReferents);
+    writeFieldOrigins("result_field_static_storage", record.ResultFieldStaticStorage);
     out << "\"boundary\":\"" << escapeJSON(record.Boundary)
         << "\",\"group_identity\":\"" << escapeJSON(record.GroupIdentity)
         << "\",\"edge\":\"" << escapeJSON(record.Edge)

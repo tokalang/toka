@@ -1,0 +1,12 @@
+import core/string::{string as Text}
+import std/vec::{Vec}
+shape Holder<T>(value: T)
+impl<T> Holder<T>@Encap { pub value }
+fn main() -> i32 {
+    auto values# = Vec<Holder<Text>>::new()
+    values#.push(Holder<Text>(value = Text::from("nested owner")))
+    auto popped = values#.pop()
+    auto held = popped.unwrap()
+    if !held.value.as_str().equals("nested owner") { return 1 }
+    return 0
+}

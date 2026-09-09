@@ -246,6 +246,8 @@ PhysEntity CodeGen::genExprImpl(const Expr *expr) {
     return genMemberExpr(e);
   if (auto e = dynamic_cast<const ArrayIndexExpr *>(expr))
     return genIndexExpr(e);
+  if (auto e = dynamic_cast<const RawTakeExpr *>(expr))
+    return genRawTakeExpr(e);
   if (auto e = dynamic_cast<const AllocExpr *>(expr))
     return genAllocExpr(e);
 

@@ -1,0 +1,39 @@
+import core/intrinsics/thread_handoff_probe::{__toka_thread_probe_run}
+auto drops# = 0
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+impl Token@Send {}
+impl Token@Sync {}
+fn main() -> i32 {
+    {
+        auto factory = { => Token(value = 41) }:dyn fn() -> Token
+        auto value = __toka_thread_probe_run<Token, dyn fn() -> Token>(cede factory)
+        if value.value != 41 || drops != 0 { return 1 }
+    }
+    if drops != 1 { return 2 }
+    {
+        auto factory = { => new Token(value = 43) }:dyn fn() -> ^Token
+        auto ^value = __toka_thread_probe_run<^Token, dyn fn() -> ^Token>(cede factory)
+        if value.value != 43 || drops != 1 { return 3 }
+    }
+    if drops != 2 { return 4 }
+    {
+        auto ~original = new Token(value = 47)
+        auto factory = { [cede ~original] =>
+            return cede ~original
+        }:cede dyn fn() -> ~Token
+        auto ~value = __toka_thread_probe_run<~Token, cede dyn fn() -> ~Token>(cede factory)
+        auto ~other = ~value
+        if value.value != 47 || other.value != 47 || drops != 2 { return 5 }
+    }
+    if drops != 3 { return 6 }
+    {
+        auto factory = { => string::from("thread-result") }:dyn fn() -> string
+        auto value = __toka_thread_probe_run<string, dyn fn() -> string>(cede factory)
+        if !value.as_str().equals("thread-result") { return 7 }
+    }
+    return 0
+}

@@ -1,0 +1,6 @@
+fn escaped() -> fn() -> i32 {
+    auto value = 7
+    auto callback = { => value }:fn() -> i32
+    return cede callback
+}
+fn main() -> i32 { return 0 }

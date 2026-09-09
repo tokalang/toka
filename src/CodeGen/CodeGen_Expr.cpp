@@ -489,6 +489,61 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     hasRebind = true;
   }
 
+  auto callableDisposition = assignmentSite
+      ? assignmentSite->CallableAssignment : CallableAssignmentDisposition::Unvalidated;
+  const bool callableBinding = variableTarget && lhsExpr->ResolvedType &&
+      (lhsExpr->ResolvedType->isFunction() || lhsExpr->ResolvedType->isDynFn());
+  if ((m_Stage1CallableAssignments && callableBinding) ||
+      callableDisposition != CallableAssignmentDisposition::Unvalidated) {
+    const auto *authority = assignmentSite && assignmentSite->Stage0Authority
+        ? &*assignmentSite->Stage0Authority : nullptr;
+    const auto *plan = authority && authority->ItemPlan ? &*authority->ItemPlan : nullptr;
+    const bool missingFault = !m_CallableAssignmentFaultConsumed &&
+        m_CallableAssignmentFault == "missing";
+    const bool mismatchFault = !m_CallableAssignmentFaultConsumed &&
+        m_CallableAssignmentFault == "mismatch";
+    if (missingFault || mismatchFault) m_CallableAssignmentFaultConsumed = true;
+    if (missingFault) callableDisposition = CallableAssignmentDisposition::Unvalidated;
+    if (mismatchFault) callableDisposition = callableDisposition == CallableAssignmentDisposition::RetainDynamic
+        ? CallableAssignmentDisposition::TransferDynamic : CallableAssignmentDisposition::RetainDynamic;
+    bool valid = callableBinding && symLHS && authority && plan &&
+        authority->Kind == Stage0CodeGenAuthorityKind::NonCallItem &&
+        authority->Destination == TransferDestination::Assignment &&
+        authority->SemaValidated && authority->Complete && authority->DestinationMatching &&
+        authority->SnapshotRevision != 0 &&
+        authority->SnapshotRevision == plan->Prepared.SnapshotRevision &&
+        plan->admitted() && plan->Destination == TransferDestination::Assignment;
+    if (valid) {
+      switch (callableDisposition) {
+      case CallableAssignmentDisposition::ThinValue:
+        valid = lhsExpr->ResolvedType->isFunction() &&
+                plan->Drop == TransferDropDisposition::NoLiability;
+        break;
+      case CallableAssignmentDisposition::RetainDynamic:
+        valid = lhsExpr->ResolvedType->isDynFn() &&
+                plan->Source == TransferSourceDisposition::KeepLive &&
+                plan->ValueProduction == TransferValueProduction::CopyIdentity &&
+                plan->Prepared.CopyProof == TransferCopyProof::ProvenCopy &&
+                plan->Drop == TransferDropDisposition::SharedLiabilityIncremented;
+        break;
+      case CallableAssignmentDisposition::TransferDynamic:
+        valid = lhsExpr->ResolvedType->isDynFn() &&
+                plan->Source != TransferSourceDisposition::KeepLive &&
+                plan->Source != TransferSourceDisposition::NoStateChange &&
+                plan->Drop == TransferDropDisposition::DestinationAssumesLiability;
+        break;
+      case CallableAssignmentDisposition::Unvalidated:
+        valid = false;
+        break;
+      }
+    }
+    if (!valid) {
+      error(assignmentSite, DiagID::ERR_CODEGEN,
+            "missing or inconsistent Sema callable assignment disposition");
+      return {};
+    }
+  }
+
   // 3. Resolve RHS Value
   llvm::Value *rhsVal = nullptr;
 
@@ -549,6 +604,12 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
 
   if (!rhsVal)
     return nullptr;
+
+  // Own the incoming environment before releasing the old target below.
+  // This ordering also covers self-copy and two aliases of one environment.
+  // Explicit transfers already hand off their existing owner and do not retain.
+  if (callableDisposition == CallableAssignmentDisposition::RetainDynamic)
+    emitDynFnRetain(rhsVal);
 
   // Sema has already classified ordinary assignments as either a handle
   // rebind or a payload write.
@@ -1908,9 +1969,52 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
   return nullptr;
 }
 
+bool CodeGen::validateUnsafeRawConstructions(const std::vector<const CastExpr *> &sites) {
+  bool valid = true;
+  for (const auto *cast : sites) {
+    auto plan = cast->RawConstruction;
+#ifdef TOKA_BUILD_TESTING
+    if (!m_UnsafeRawConstructionFaultConsumed && !m_UnsafeRawConstructionFault.empty()) {
+      m_UnsafeRawConstructionFaultConsumed = true;
+      if (m_UnsafeRawConstructionFault == "missing") plan.reset();
+      else if (plan) {
+        plan = std::make_shared<UnsafeRawConstructionPlan>(*plan);
+        if (m_UnsafeRawConstructionFault == "source") plan->SourceEdge = nullptr;
+        if (m_UnsafeRawConstructionFault == "target") plan->TargetType = "mismatched";
+        if (m_UnsafeRawConstructionFault == "rejected") plan->SemaValidated = false;
+        if (m_UnsafeRawConstructionFault == "incomplete") plan->RestrictionsComplete = false;
+        if (m_UnsafeRawConstructionFault == "authority") plan->Authority = RawWriteAuthority::None;
+        if (m_UnsafeRawConstructionFault == "nullable") plan->Nullable = !plan->Nullable;
+        if (m_UnsafeRawConstructionFault == "rejection") plan->Rejection = "Rejected";
+      }
+    }
+#endif
+    if (!plan || !plan->Prepared || !plan->SemaValidated || !plan->RestrictionsComplete || !plan->Rejection.empty() ||
+        plan->Authority != RawWriteAuthority::UnsafeCallerPrecondition || plan->Site != cast ||
+        plan->SourceEdge != cast->Expression.get() || cast->Kind != CastKind::Conversion ||
+        !cast->ResolvedType || !cast->Expression->ResolvedType ||
+        !cast->Expression->ResolvedType->isAddrType() || !cast->ResolvedType->isRawPointer() ||
+        !cast->ResolvedType->getPointeeType() || !cast->ResolvedType->getPointeeType()->IsWritable ||
+        plan->Nullable != cast->ResolvedType->IsNullable ||
+        plan->SourceType != cast->Expression->ResolvedType->toString() ||
+        plan->TargetType != cast->ResolvedType->toString()) {
+      DiagnosticEngine::report(cast->Loc, DiagID::ERR_CODEGEN,
+                               "missing, rejected or mismatched unsafe raw construction plan");
+      ++m_ErrorCount;
+      valid = false;
+    }
+  }
+  return valid;
+}
+
 PhysEntity CodeGen::genCastExpr(const CastExpr *cast) {
   if (!cast->Expression)
     return nullptr;
+  const bool rawWriteBoundary = cast->Kind == CastKind::Conversion && cast->ResolvedType &&
+      cast->ResolvedType->isRawPointer() && cast->ResolvedType->getPointeeType() &&
+      cast->ResolvedType->getPointeeType()->IsWritable && cast->Expression->ResolvedType &&
+      cast->Expression->ResolvedType->isAddrType();
+  if ((cast->RequiresRawConstruction || rawWriteBoundary) && !validateUnsafeRawConstructions({cast})) return nullptr;
 
   if (cast->Kind != CastKind::Conversion)
     return genExpr(cast->Expression.get());
@@ -4925,6 +5029,8 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
 }
 
 PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
+  if (call->ResolvedFn && call->ResolvedFn->ThreadProbe != ThreadProbeKind::None)
+    return genThreadHandoffProbe(call);
   if (!call->ResolvedShape) {
     const std::string authorityRoute =
         call->Stage0Authority && !call->Stage0Authority->Route.empty()

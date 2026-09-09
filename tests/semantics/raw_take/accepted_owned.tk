@@ -1,0 +1,17 @@
+auto drops# = 0
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    auto *buffer# = unsafe alloc [1] Token
+    unsafe { buffer[0] = Token(value = 42) }
+    {
+        auto value = unsafe raw_take buffer[0]
+        if value.value != 42 { return 1 }
+    }
+    unsafe free [0] *buffer
+    if drops != 1 { return 2 }
+    return 0
+}

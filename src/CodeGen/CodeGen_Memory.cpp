@@ -68,7 +68,8 @@ static bool isOwnedMemberBaseRvalue(const Expr *expr) {
     }
     break;
   }
-  return dynamic_cast<const CedeExpr *>(expr) ||
+  return dynamic_cast<const RawTakeExpr *>(expr) ||
+         dynamic_cast<const CedeExpr *>(expr) ||
          dynamic_cast<const CallExpr *>(expr) ||
          dynamic_cast<const MethodCallExpr *>(expr) ||
          dynamic_cast<const InitStructExpr *>(expr) ||
@@ -866,70 +867,58 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
           m_Builder.SetInsertPoint(caseBB);
           llvm::Value *payloadArrayPtr = m_Builder.CreateStructGEP(st, ptrAddr, 1, "drop_payload.gep");
 
-          std::vector<std::string> payloadTypes;
           std::vector<std::shared_ptr<Type>> payloadTypeObjs;
+          bool completePayload = true;
+          auto appendPayload = [&](const ShapeMember &payload) {
+              // A syntactic root hat must not have disappeared during Sema.
+              // This is only a consistency check, never a reconstructed type
+              // for dispatch or layout. Generic substitutions retain their
+              // resolved morphology; unresolved facts are not guessed here.
+              auto declared = payload.TypeSyntax ? Type::fromSyntax(payload.TypeSyntax) : nullptr;
+              if (declared && declared->isPointer() &&
+                  (!payload.ResolvedType ||
+                   declared->getMorphology() != payload.ResolvedType->getMorphology()))
+                  completePayload = false;
+              payloadTypeObjs.push_back(payload.ResolvedType);
+          };
           if (!variant.SubMembers.empty()) {
               for (const auto& f : variant.SubMembers) {
-                  std::string pt = f.Type;
-                  if (f.ResolvedType) pt = f.ResolvedType->toString();
-                  payloadTypes.push_back(pt);
-                  payloadTypeObjs.push_back(f.ResolvedType);
+                  appendPayload(f);
               }
-          } else {
-              std::string pt = variant.Type;
-              if (variant.ResolvedType) pt = variant.ResolvedType->toString();
-              if (pt != "void" && !pt.empty()) {
-                  payloadTypes.push_back(pt);
-                  payloadTypeObjs.push_back(variant.ResolvedType);
-              }
+          } else if (!variant.ResolvedType || !variant.ResolvedType->isVoid()) {
+              appendPayload(variant);
           }
 
-          if (!payloadTypes.empty()) {
-              llvm::Type *payloadLayoutType = nullptr;
+          if (!payloadTypeObjs.empty()) {
+              // Cleanup must consume the complete Sema-resolved morphology.
+              // In particular, ^/~ own resources while */& do not. Rebuilding
+              // a soul name or skipping every pointer silently loses owners.
               std::vector<llvm::Type*> fieldTypes;
-              if (!variant.SubMembers.empty()) {
-                  for (size_t k = 0; k < payloadTypes.size(); ++k) {
-                      if (payloadTypeObjs[k]) {
-                          fieldTypes.push_back(getLLVMType(payloadTypeObjs[k]));
-                      } else {
-                          fieldTypes.push_back(resolveType(payloadTypes[k], false));
-                      }
+              for (const auto &payloadType : payloadTypeObjs) {
+                  if (!payloadType || payloadType->isUnknown()) {
+                      completePayload = false;
+                      break;
                   }
-                  payloadLayoutType =
-                      llvm::StructType::get(m_Context, fieldTypes, false);
-              } else {
-                  if (payloadTypeObjs[0]) {
-                      payloadLayoutType = getLLVMType(payloadTypeObjs[0]);
-                  } else {
-                      payloadLayoutType = resolveType(payloadTypes[0], false);
+                  auto *fieldType = getLLVMType(payloadType);
+                  if (!fieldType || !fieldType->isSized() || fieldType->isVoidTy()) {
+                      completePayload = false;
+                      break;
                   }
+                  fieldTypes.push_back(fieldType);
               }
-
-              if (payloadLayoutType) {
+              if (!completePayload) {
+                  error(sh, DiagID::ERR_CODEGEN,
+                        "enum cleanup requires complete resolved payload types: " + typeName);
+              } else {
+                  llvm::Type *payloadLayoutType = !variant.SubMembers.empty()
+                      ? llvm::StructType::get(m_Context, fieldTypes, false)
+                      : fieldTypes.front();
                   llvm::Value *variantAddr = m_Builder.CreateBitCast(payloadArrayPtr, llvm::PointerType::getUnqual(m_Context), "drop_cast");
-                  for (size_t k = 0; k < payloadTypes.size(); ++k) {
-                      std::string memType = payloadTypes[k];
-                      bool isPointer = false;
-                      std::string rawType = memType;
-                      while (!rawType.empty() && rawType[0] == '(' && rawType.back() == ')') {
-                        rawType = rawType.substr(1, rawType.size() - 2);
-                      }
-                      if (!rawType.empty() && (rawType[0] == '*' || rawType[0] == '^' || rawType[0] == '~' || rawType[0] == '&' || rawType[0] == '#')) {
-                        isPointer = true;
-                      }
-                      if (!isPointer) {
-                        llvm::Value *fieldAddr = variantAddr;
-                        if (payloadTypes.size() > 1 || !variant.SubMembers.empty()) {
-                            fieldAddr = m_Builder.CreateStructGEP(payloadLayoutType, variantAddr, k, "drop_field_gep");
-                        }
-                        if (payloadTypeObjs[k]) {
-                          emitDropForType(fieldAddr, payloadTypeObjs[k]);
-                        } else {
-                          std::string cleanType = Type::stripMorphology(rawType);
-                          if (m_Shapes.count(cleanType))
-                            emitDropCascade(fieldAddr, cleanType);
-                        }
-                      }
+                  for (size_t k = 0; k < payloadTypeObjs.size(); ++k) {
+                      llvm::Value *fieldAddr = variantAddr;
+                      if (!variant.SubMembers.empty())
+                          fieldAddr = m_Builder.CreateStructGEP(payloadLayoutType, variantAddr, k, "drop_field_gep");
+                      emitDropForType(fieldAddr, payloadTypeObjs[k]);
                   }
               }
           }

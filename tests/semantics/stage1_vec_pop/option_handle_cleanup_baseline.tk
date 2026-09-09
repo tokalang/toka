@@ -1,0 +1,23 @@
+// Independent Option cleanup control: no Vec and no raw_take.
+import core/option::{Option}
+auto drops# = 0
+shape Cell(value: i32)
+impl Cell@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto ^owner = new Cell(value = 1)
+        auto result = Option<^Cell>::Some(cede ^owner)
+        if !result.is_some() { return 1 }
+    }
+    if drops != 1 { return 100 + (drops as i32) }
+    {
+        auto ~owner = new Cell(value = 2)
+        auto result = Option<~Cell>::Some(cede ~owner)
+        if !result.is_some() { return 2 }
+    }
+    if drops != 2 { return 200 + (drops as i32) }
+    return 0
+}

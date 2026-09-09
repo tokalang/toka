@@ -29,6 +29,42 @@ namespace toka {
 // Helper to get location
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+bool Sema::hasCanonicalOwningStringStorage(const std::shared_ptr<Type> &type) const {
+  // This is the existing compiler-owned string contract (not "has a Drop",
+  // or "has no recorded dependencies"). Bind it to the resolver's exact
+  // declaration; a same-spelled user type must take the structural path.
+  auto shape = std::dynamic_pointer_cast<ShapeType>(type);
+  auto *declaration = shape ? shape->Decl : nullptr;
+  if (!declaration || !shape->GenericArgs.empty() ||
+      !declaration->GenericParams.empty() || declaration->InstantiationTemplate ||
+      !declaration->NominalId)
+    return false;
+  auto found = DeclarationLexicalScopes.find(declaration);
+  const auto *module = found == DeclarationLexicalScopes.end() ? nullptr : found->second;
+  if (!module || !module->IsTrustedSystemModule || !module->ShadowCoordinateKnown ||
+      module->ShadowCrateId.empty() || module->ShadowLogicalModulePath != "core/string")
+    return false;
+  auto local = module->Shapes.find("string");
+  if (local == module->Shapes.end() || local->second != declaration ||
+      *declaration->NominalId != NominalShapeId::fromResolverCoordinate(
+          module->ShadowCrateId, "core/string", "string", 0))
+    return false;
+  // Reject cold/inconsistent declarations rather than guessing a native ABI.
+  // The representation check does not grant this role to other declarations.
+  if (!declaration->HasExplicitDrop || declaration->Members.size() != 3)
+    return false;
+  const auto &buffer = declaration->Members[0].ResolvedType;
+  const auto &length = declaration->Members[1].ResolvedType;
+  const auto &capacity = declaration->Members[2].ResolvedType;
+  if (!buffer || !buffer->isRawPointer() || !buffer->IsNullable ||
+      !buffer->getPointeeType() || !buffer->getPointeeType()->isSlice() ||
+      !buffer->getPointeeType()->getArrayElementType() ||
+      !buffer->getPointeeType()->getArrayElementType()->isInteger() ||
+      !length || !length->isInteger() || !capacity || !capacity->isInteger())
+    return false;
+  return true;
+}
+
 static bool isAnonymousRecord(const std::shared_ptr<toka::Type> &type) {
   if (!type) return false;
   auto shapeT = std::dynamic_pointer_cast<toka::ShapeType>(type);

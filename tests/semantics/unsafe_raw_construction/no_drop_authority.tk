@@ -1,0 +1,28 @@
+auto drops# = 0
+shape Resource(value#: i32)
+impl Resource@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto *storage# = unsafe alloc [1] Resource
+        auto address = unsafe *storage as Addr
+        unsafe (address as *Resource#)
+        unsafe free [0] *storage
+    }
+    if drops != 0 { return 1 }
+    {
+        auto *storage# = unsafe alloc [1] Resource
+        unsafe { storage[0] = Resource(value = 7) }
+        auto address = unsafe *storage as Addr
+        {
+            auto *writer# = unsafe (address as *Resource#)
+            unsafe { writer.value = 9 }
+        }
+        if drops != 0 { return 2 }
+        unsafe free [1] *storage
+    }
+    if drops != 1 { return 3 }
+    return 0
+}

@@ -133,8 +133,20 @@ public:
     m_Stage0CodeGenAuthorityEnabled = true;
     m_Stage0AuthorityFault = fault;
   }
+  void enableStage1CallableAssignments(bool enabled, const std::string &fault = {}) {
+    m_Stage1CallableAssignments = enabled;
+    m_CallableAssignmentFault = fault;
+  }
   void finalizeDebugInfo();
+#ifdef TOKA_BUILD_TESTING
+  void setRawTakeFault(const std::string &fault) { m_RawTakeFault = fault; }
+#endif
   bool hasErrors() const { return m_ErrorCount > 0; }
+  bool validateUnsafeRawConstructions(const std::vector<const CastExpr *> &sites);
+  void setThreadHandoffSourceFault(const std::string &fault) { m_ThreadHandoffSourceFault = fault; }
+#ifdef TOKA_BUILD_TESTING
+  void setUnsafeRawConstructionFault(const std::string &fault) { m_UnsafeRawConstructionFault = fault; }
+#endif
   void print(llvm::raw_ostream &os);
   llvm::Module *getModule() { return m_Module.get(); }
   void importParenthesizedRecordTypes(const std::map<std::string, std::shared_ptr<toka::Type>>& recordTypes) {
@@ -144,6 +156,19 @@ public:
 
 private:
   int m_ErrorCount = 0;
+  bool m_Stage1CallableAssignments = false;
+  std::string m_CallableAssignmentFault;
+  PhysEntity genRawTakeExpr(const RawTakeExpr *take);
+  PhysEntity genThreadHandoffProbe(const CallExpr *call);
+  std::string m_ThreadHandoffSourceFault;
+  unsigned m_ThreadHandoffAdapterIndex = 0;
+#ifdef TOKA_BUILD_TESTING
+  std::string m_RawTakeFault;
+  bool m_RawTakeFaultConsumed = false;
+  std::string m_UnsafeRawConstructionFault;
+  bool m_UnsafeRawConstructionFaultConsumed = false;
+#endif
+  bool m_CallableAssignmentFaultConsumed = false;
   bool m_Stage0CodeGenAuthorityEnabled = false;
   bool m_Stage0AuthorityFaultConsumed = false;
   std::string m_Stage0AuthorityFault;

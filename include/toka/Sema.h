@@ -34,6 +34,18 @@
 
 namespace toka {
 
+struct CallableEnvironmentFacts {
+  bool Complete = false;
+  std::vector<AccessPath> Referents;
+  // A checked parameter contract permits local value flow, not a claim about
+  // the hidden capture layout or an independently escaping environment.
+  std::vector<AccessPath> LocalBounds;
+  bool operator==(const CallableEnvironmentFacts &other) const {
+    return Complete == other.Complete && Referents == other.Referents &&
+           LocalBounds == other.LocalBounds;
+  }
+};
+
 struct SymbolInfo {
   // New Type Object (Source of Truth)
   std::shared_ptr<toka::Type> TypeObj;
@@ -383,6 +395,7 @@ public:
   void setStage1ExplicitCallerCedeEnabled(bool enabled) {
     m_EnableStage1ExplicitCallerCede = enabled;
   }
+  void setThreadHandoffSourceProbe(bool enabled) { m_ThreadHandoffSourceProbe = enabled; }
   void setWarnImplicitCallMove(bool enabled) {
     m_WarnImplicitCallMove = enabled;
   }
@@ -392,6 +405,8 @@ public:
   }
 
   bool hasErrors() const { return HasError; }
+  bool finalizeUnsafeRawConstructions();
+  std::vector<const CastExpr *> getUnsafeRawConstructionSites() const;
 
   const std::map<std::string, std::shared_ptr<toka::Type>>& getParenthesizedRecordTypes() const {
     return ParenthesizedRecordTypes;
@@ -419,6 +434,7 @@ public:
 
 private:
   // Shape Analysis Caches
+  bool m_ThreadHandoffSourceProbe = false;
   enum class ShapeAnalysisStatus {
     Unvisited,
     Visiting, // Cycle detection
@@ -550,6 +566,7 @@ private:
   std::set<std::string> m_AccessedVariables; // [CLOSURE] Track accessed variables
   PALChecker PALCheckerState; // [NEW] Path-Anchored Borrow Checker
   struct ModuleScope {
+    Module *SourceModule = nullptr;
     std::string Name;
     bool IsTrustedSystemModule = false;
     bool ShadowCoordinateKnown = false;
@@ -719,6 +736,8 @@ private:
   AuthorityFactsAuditSession *m_AuthorityFactsSession = nullptr;
   bool m_EnableSignatureDrivenCallCede = true;
   bool m_EnableStage1ExplicitCallerCede = true;
+  std::shared_ptr<Type> checkRawTakeExpr(RawTakeExpr *take);
+  bool hasCanonicalOwningStringStorage(const std::shared_ptr<Type> &type) const;
   // Audit-only spelling, separate from the executable callable contract.
   std::set<const CallExpr *> m_AuditCedeWrappedCalls;
   // Monotonic invalidation: an assignment or raw-address exposure prevents
@@ -760,6 +779,8 @@ private:
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
   struct AnalysisState {
+    std::map<uint64_t, RawAddressSourcePtr> RawAddressBindings;
+    std::map<uint64_t, CallableEnvironmentFacts> CallableEnvironments;
     std::map<std::string, uint64_t> InitMasks;
     std::map<std::string, bool> Moved;
     std::map<std::string, ExactPlaceFacts> ExactPlaces;
@@ -920,7 +941,9 @@ private:
       const Stage0CallSnapshot *ProvidedSnapshot = nullptr,
       const std::string &GroupIdentity = {}, const std::string &Edge = {},
       unsigned EdgeIndex = 0, bool DeferBareIncompleteEvidence = false,
-      bool NormalSemaValidated = false);
+      bool NormalSemaValidated = false,
+      std::shared_ptr<Type> ValidatedActualType = nullptr,
+      bool Publish = true);
   std::string
   makeExplicitCedeStage0NonCallGroupIdentity(ASTNode *Site,
                                              const std::string &Boundary);
@@ -951,6 +974,74 @@ private:
     bool RouteValidationComplete = false;
     bool SameSnapshotRevision = false;
   };
+  // Shared transaction for a single new binding or whole-binding replacement.
+  // Capture before RHS evaluation; no failed normal check may retain a move.
+  class Stage1BindingTransfer {
+  public:
+    Stage1BindingTransfer(Sema &owner, ASTNode *site, bool enabled);
+    ~Stage1BindingTransfer();
+    bool enabled() const { return Snapshot.has_value(); }
+    bool prepare(Expr *source, const std::shared_ptr<Type> &target,
+                 Expr *destination = nullptr, bool validated = false,
+                 std::shared_ptr<Type> actual = nullptr);
+    void complete() { Completed = true; }
+  private:
+    Sema &Owner;
+    ASTNode *Site;
+    std::optional<Stage0CallSnapshot> Snapshot;
+    std::optional<ExplicitCedePlan> Plan;
+    std::optional<CallableEnvironmentFacts> CallableFacts;
+    Expr *Destination = nullptr;
+    CallableAssignmentDisposition AssignmentDisposition =
+        CallableAssignmentDisposition::Unvalidated;
+    bool Completed = false;
+  };
+  std::map<uint64_t, CallableEnvironmentFacts> m_CallableEnvironments;
+  std::map<uint64_t, RawAddressSourcePtr> m_RawAddressBindings;
+  struct RawAddressReturnSummary {
+    bool Checking = false;
+    bool Checked = false;
+    bool Valid = false;
+    unsigned ClosureDepth = 0;
+    std::vector<RawAddressSourcePtr> Returns;
+  };
+  std::map<FunctionDecl *, RawAddressReturnSummary> m_RawAddressReturns;
+  std::set<FunctionDecl *> m_RawAddressPreparedDefinitions;
+  struct PendingUnsafeRawConstruction {
+    std::weak_ptr<UnsafeRawConstructionPlan> Plan;
+    RawAddressSourcePtr Source;
+    PALChecker PAL;
+  };
+  std::vector<PendingUnsafeRawConstruction> m_UnsafeRawConstructions;
+  RawAddressSourcePtr collectRawAddressSource(Expr *expression, bool view = true);
+  RawAddressSourcePtr rawStorageOrigin(Expr *expression, bool readOnly);
+  static RawAddressSourcePtr mergeRawAddressSources(RawAddressSourcePtr lhs, RawAddressSourcePtr rhs);
+  void recordRawAddressBinding(const AccessPath &place, Expr *source);
+  void recordRawAddressReturn(ReturnStmt *statement);
+  void prepareUnsafeRawConstruction(CastExpr *cast, const std::shared_ptr<Type> &sourceType,
+                                    const std::shared_ptr<Type> &targetType, size_t diagnosticStart);
+  struct ResolvedRawAddressFacts {
+    bool Complete = true, ReadOnly = false, MayBeNull = false, UnsafeConstruction = false;
+    std::vector<AccessPath> Origins;
+  };
+  ResolvedRawAddressFacts resolveRawAddressSource(RawAddressSourcePtr source);
+  bool checkConstructedRawFlow(Expr *source, const std::shared_ptr<Type> &target);
+  bool hasQualifiedUnsafeRawConstruction(Expr *source) const;
+  struct CallableReturnEnvironmentFrame {
+    FunctionDecl *Function = nullptr;
+    unsigned ClosureDepth = 0;
+    bool SawReturn = false;
+    CallableEnvironmentFacts Facts;
+  };
+  unsigned m_CallableReturnClosureDepth = 0;
+  std::vector<CallableReturnEnvironmentFrame> m_CallableReturnFrames;
+  std::map<FunctionDecl *, CallableEnvironmentFacts> m_ValidatedCallableReturnEnvironments;
+  enum class CallableFactoryState { Unprepared, Preparing, Valid, Invalid };
+  std::map<FunctionDecl *, CallableFactoryState> m_CallableFactoryStates;
+  std::map<FunctionDecl *, SemanticEvidence::DefinitionJournal> m_CallableFactoryBodyJournals;
+  bool prepareCallableReturnEnvironment(Expr *source);
+  bool prepareCallableFactory(FunctionDecl *function);
+  CallableEnvironmentFacts collectStage1CallableEnvironment(Expr *source);
   std::map<const ASTNode *, Stage0PendingTransaction>
       m_Stage0PendingTransactions;
   std::set<const ASTNode *> m_Stage0InvalidGenericSpecializationCalls;
@@ -1084,11 +1175,16 @@ private:
   bool validateResultCedeSyntax(ASTNode *site, const TypeSyntaxPtr &syntax,
                                 bool resultPosition = false);
   bool isConsumingCallableInvocation(const CallExpr *call);
+  struct ActualReturnFieldOrigins {
+    std::vector<AccessPath> Referents;
+    std::vector<SourceLocation> StaticStorage;
+  };
   bool collectActualReturnReferents(Expr *expression,
                                    std::vector<AccessPath> &paths,
                                    std::vector<SourceLocation> *staticStorage = nullptr,
                                    std::vector<AccessPath> *addressedStorage = nullptr,
-                                   bool *usedCurrentReference = nullptr);
+                                   bool *usedCurrentReference = nullptr,
+                                   std::map<std::string, ActualReturnFieldOrigins> *fields = nullptr);
   void invalidateReturnSourceProof(Expr *expression, bool unknown = true);
   bool validateHandleGrammar(SourceLocation loc,
                              const std::shared_ptr<toka::Type> &type);
@@ -1169,6 +1265,9 @@ private:
   FlowSummary summarizeFlowExpr(Expr *E);
   void mergeFlowExits(FlowSummary &dst, const FlowSummary &src);
   AnalysisState captureAnalysisState();
+  std::shared_ptr<Type> checkCallWithThreadHandoff(CallExpr *call);
+  bool qualifyThreadHandoffSource(CallExpr *call, const AnalysisState &before,
+                                   size_t diagnosticStart);
   void mergeAnalysisStates(const std::vector<AnalysisState> &states,
                            const PALChecker &palBase);
 

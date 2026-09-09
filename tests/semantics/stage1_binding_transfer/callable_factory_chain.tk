@@ -1,0 +1,8 @@
+fn main() -> i32 {
+    auto first = wrapper()
+    auto second = wrapper()
+    if first() != 7 || second() != 7 { return 1 }
+    return 0
+}
+fn wrapper() -> dyn fn() -> i32 { return leaf() }
+fn leaf() -> dyn fn() -> i32 { return { => 7:i32 }:dyn fn() -> i32 }

@@ -1,0 +1,9 @@
+shape AddressBox(address: Addr)
+impl AddressBox@Encap { pub address }
+fn main() -> i32 {
+    auto value = 7:i32
+    auto address = unsafe (&value as Addr)
+    auto boxed = AddressBox(address = address)
+    auto *writer# = unsafe (boxed.address as *i32#)
+    return 0
+}

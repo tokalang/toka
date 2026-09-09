@@ -1,0 +1,37 @@
+{
+  "scope": "four recorded Vec blocker samples; not all 259 sources and not a full PASS run",
+  "results": [
+    {
+      "source": "tests/pass/g07_math_comprehensive.tk",
+      "returncode": 0,
+      "abnormal": false,
+      "first_error": null,
+      "message": null,
+      "site": null
+    },
+    {
+      "source": "tests/pass/g08_shared_rc.tk",
+      "returncode": 0,
+      "abnormal": false,
+      "first_error": null,
+      "message": null,
+      "site": null
+    },
+    {
+      "source": "tests/pass/g03_println.tk",
+      "returncode": 0,
+      "abnormal": false,
+      "first_error": null,
+      "message": null,
+      "site": null
+    },
+    {
+      "source": "tests/pass/g08_for_alias_writable_vec_handles.tk",
+      "returncode": 1,
+      "abnormal": false,
+      "first_error": "E04661",
+      "message": "Cannot transfer source into binding: TypeIncompatible",
+      "site": "tests/pass/g08_for_alias_writable_vec_handles.tk:20:14"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+shape Token(value: i32)
+fn main() -> i32 {
+    auto source = Token(value = 7)
+    auto callback = invalid(cede source)
+    auto preserved = cede source
+    return 0
+}
+fn invalid(cede token: Token) -> dyn fn() -> i32 {
+    auto wrong = true:i32
+    return { [cede token] => token.value }:dyn fn() -> i32
+}

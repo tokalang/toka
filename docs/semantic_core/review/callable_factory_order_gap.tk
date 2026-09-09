@@ -1,0 +1,8 @@
+// Legal source-order control; now passes with on-demand validated summaries.
+fn main() -> i32 {
+    auto callback = later()
+    return callback() - 7:i32
+}
+fn later() -> dyn fn() -> i32 {
+    return { => 7:i32 }:dyn fn() -> i32
+}

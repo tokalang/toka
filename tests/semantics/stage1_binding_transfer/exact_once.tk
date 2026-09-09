@@ -1,0 +1,41 @@
+auto trace# = 0
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { trace = trace * 10 + self.id }
+}
+fn make(id: i32) -> Token { return Token(id = id) }
+fn main() -> i32 {
+    {
+        auto target# = Token(id = 1)
+        auto source = Token(id = 2)
+        target = cede source
+        if trace != 1 || target.id != 2 { return 1 }
+        target = make(3)
+        if trace != 12 || target.id != 3 { return 2 }
+        cede target
+        if trace != 123 { return 3 }
+        auto ^#destination = new Token(id = 4)
+        auto ^owner = new Token(id = 5)
+        ^#destination = cede ^owner
+        if trace != 1234 || destination.id != 5 { return 4 }
+        cede ^destination
+        if trace != 12345 { return 5 }
+        auto ~#sharedDestination = new Token(id = 6)
+        auto ~sharedSource = new Token(id = 7)
+        auto ~other = ~sharedSource
+        ~#sharedDestination = cede ~sharedSource
+        if trace != 123456 || other.id != 7 { return 6 }
+        cede ~sharedDestination
+        if trace != 123456 { return 7 }
+        cede ~other
+        if trace != 1234567 { return 8 }
+        auto original = 9
+        auto copied# = original
+        auto moved = cede original
+        copied = cede moved
+        if copied != 9 { return 9 }
+    }
+    if trace != 1234567 { return 10 }
+    return 0
+}

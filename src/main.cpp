@@ -843,6 +843,13 @@ int main(int argc, char **argv) {
   bool dumpGenericBodyCallQualification = false;
   bool stage0CodeGenAuthority = false;
   std::string stage0CodeGenAuthorityFault;
+  std::string callableAssignmentFault;
+  bool threadHandoffSourceProbe = false;
+#ifdef TOKA_BUILD_TESTING
+  std::string rawTakeFault;
+  std::string unsafeRawConstructionFault;
+  std::string threadHandoffSourceFault;
+#endif
   bool dumpNonCallTransferShadow = false;
   bool dumpD3DirectCallObservation = false;
   bool emitD3DirectCallObservation = false;
@@ -1024,10 +1031,42 @@ int main(int argc, char **argv) {
     } else if (arg == "--stage0-codegen-authority") {
       stage0CodeGenAuthority = true;
 #ifdef TOKA_BUILD_TESTING
+    } else if (arg == "--thread-handoff-source-probe") {
+      threadHandoffSourceProbe = true;
+    } else if (arg.rfind("--thread-handoff-source-fault=", 0) == 0) {
+      threadHandoffSourceProbe = true;
+      threadHandoffSourceFault = arg.substr(std::string("--thread-handoff-source-fault=").size());
+      if (threadHandoffSourceFault != "missing" && threadHandoffSourceFault != "source" &&
+          threadHandoffSourceFault != "result" && threadHandoffSourceFault != "cleanup") {
+        llvm::errs() << "unknown thread source fault\n"; return 1;
+      }
     } else if (arg.rfind("--stage0-codegen-fault=", 0) == 0) {
       stage0CodeGenAuthority = true;
       stage0CodeGenAuthorityFault =
           arg.substr(std::string("--stage0-codegen-fault=").size());
+    } else if (arg.rfind("--unsafe-raw-construction-fault=", 0) == 0) {
+      unsafeRawConstructionFault = arg.substr(std::string("--unsafe-raw-construction-fault=").size());
+      const std::set<std::string> faults = {"missing", "source", "target", "rejected", "incomplete", "authority", "nullable", "rejection"};
+      if (!faults.count(unsafeRawConstructionFault)) {
+        llvm::errs() << "unknown unsafe raw construction fault\n";
+        return 1;
+      }
+    } else if (arg.rfind("--raw-take-fault=", 0) == 0) {
+      rawTakeFault = arg.substr(std::string("--raw-take-fault=").size());
+      const std::set<std::string> faults = {
+          "missing", "rejected", "mismatch", "incomplete", "production-none",
+          "production-identity", "production-borrow", "production-temporary", "production-unknown",
+          "copy-proof", "drop", "storage-type", "index-type"};
+      if (!faults.count(rawTakeFault)) {
+        llvm::errs() << "unknown raw_take fault\n";
+        return 1;
+      }
+    } else if (arg.rfind("--stage1-callable-assignment-fault=", 0) == 0) {
+      callableAssignmentFault = arg.substr(std::string("--stage1-callable-assignment-fault=").size());
+      if (callableAssignmentFault != "missing" && callableAssignmentFault != "mismatch") {
+        llvm::errs() << "callable assignment fault must be missing or mismatch\n";
+        return 1;
+      }
     } else if (arg == "--stage1-legacy-ordinary-cede") {
       stage1LegacyOrdinaryCede = true;
 #endif
@@ -1751,6 +1790,7 @@ int main(int argc, char **argv) {
   if (verboseMode) llvm::errs() << "Parse Successful. Running Semantic Analysis...\n";
 
   toka::Sema sema;
+  sema.setThreadHandoffSourceProbe(threadHandoffSourceProbe);
   sema.setBorrowCheckEnabled(!disableBorrowCheck);
   sema.setDirectCallObservationSession(
       dumpD3DirectCallObservation ? &d3ObservationSession : nullptr);
@@ -1774,6 +1814,10 @@ int main(int argc, char **argv) {
   enableStage1ExplicitCallerCede &= !stage1LegacyOrdinaryCede;
 #endif
   sema.setStage1ExplicitCallerCedeEnabled(enableStage1ExplicitCallerCede);
+  if (!callableAssignmentFault.empty() && !enableStage1ExplicitCallerCede) {
+    llvm::errs() << "callable assignment fault requires Stage 1 semantics\n";
+    return 1;
+  }
   sema.setWarnImplicitCallMove(warnImplicitCallMove);
 #ifdef TOKA_BUILD_TESTING
   sema.setMissingCallTransferFaultInjection(
@@ -1795,6 +1839,8 @@ int main(int argc, char **argv) {
     if (profile.Enabled)
       profile.detail("sema_module:" + ast->ResolvedPath);
   }
+
+  if (!sema.finalizeUnsafeRawConstructions()) return 1;
 
   // Pass 3: Run global shape sovereignty checks once all modules are resolved
   sema.checkShapeSovereignty();
@@ -2008,6 +2054,13 @@ int main(int argc, char **argv) {
   if (verboseMode) fprintf(stderr, "Instantiating CodeGen for module: %s\n", argv[1]);
   fflush(stderr);
   toka::CodeGen codegen(context, argv[1]);
+  codegen.enableStage1CallableAssignments(enableStage1ExplicitCallerCede, callableAssignmentFault);
+#ifdef TOKA_BUILD_TESTING
+  codegen.setRawTakeFault(rawTakeFault);
+  codegen.setUnsafeRawConstructionFault(unsafeRawConstructionFault);
+  codegen.setThreadHandoffSourceFault(threadHandoffSourceFault);
+#endif
+  if (!codegen.validateUnsafeRawConstructions(sema.getUnsafeRawConstructionSites())) return 1;
   if (stage0CodeGenAuthority)
     codegen.enableStage0CodeGenAuthority(stage0CodeGenAuthorityFault);
   codegen.importParenthesizedRecordTypes(sema.getParenthesizedRecordTypes());

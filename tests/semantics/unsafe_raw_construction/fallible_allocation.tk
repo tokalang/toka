@@ -1,0 +1,14 @@
+import sys/thread::{sys_alloc_thread_env, sys_free_thread_env}
+fn main() -> i32 {
+    auto address = sys_alloc_thread_env(sizeof(i32) as usize)
+    auto nul *candidate# = unsafe (address as nul *[i32]#)
+    if *candidate is null { return 2 }
+    else {
+        unsafe {
+            candidate[0] = 42:i32
+            if candidate[0] != 42 { return 1 }
+        }
+    }
+    sys_free_thread_env(address)
+    return 0
+}

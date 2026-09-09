@@ -1,0 +1,8 @@
+import core/intrinsics/thread_handoff_probe::{__toka_thread_probe_run}
+fn main() -> i32 {
+    auto owner = string::from("borrowed")
+    auto view = owner.as_str()
+    auto callback = { [cede view] => view.byte_count() as i32 }:dyn fn() -> i32
+    auto rejected = __toka_thread_probe_run<i32, dyn fn() -> i32>(cede callback)
+    return callback()
+}

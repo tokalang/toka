@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    auto target# = { => 7 }:cede dyn fn() -> i32
+    target = cede target
+    cede target
+    return 0
+}

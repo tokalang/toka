@@ -1,0 +1,5 @@
+alias Work = dyn fn#() -> i32
+fn main() -> i32 {
+    auto invoke = { callback => callback#() }:fn(Work) -> i32
+    return 0
+}

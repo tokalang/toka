@@ -1,0 +1,40 @@
+import core/intrinsics/thread_handoff_probe::{__toka_thread_probe_run, __toka_thread_probe_discard}
+auto drops# = 0
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+impl Token@Send {}
+fn main() -> i32 {
+    auto first = Token(value = 17)
+    auto callback = { [cede first] => first.value }:dyn fn() -> i32
+    auto result = __toka_thread_probe_run<i32, dyn fn() -> i32>(cede callback)
+    if result != 17 || drops != 1 { return 1 }
+    auto second = Token(value = 23)
+    auto unused = { [cede second] => second.value }:dyn fn() -> i32
+    __toka_thread_probe_discard<i32, dyn fn() -> i32>(cede unused)
+    if drops != 2 { return 2 }
+    auto third = Token(value = 29)
+    auto once = { [cede third] =>
+        auto value = cede third
+        return value.value
+    }:cede dyn fn() -> i32
+    auto consumed = __toka_thread_probe_run<i32, cede dyn fn() -> i32>(cede once)
+    if consumed != 29 || drops != 3 { return 3 }
+    auto fourth = Token(value = 31)
+    auto canceled = { [cede fourth] =>
+        auto value = cede fourth
+        return value.value
+    }:cede dyn fn() -> i32
+    __toka_thread_probe_discard<i32, cede dyn fn() -> i32>(cede canceled)
+    if drops != 4 { return 4 }
+    auto fifth = Token(value = 53)
+    auto shared = { [cede fifth] => fifth.value }:dyn fn() -> i32
+    auto retained = shared
+    auto shared_result = __toka_thread_probe_run<i32, dyn fn() -> i32>(cede shared)
+    if shared_result != 53 || retained() != 53 || drops != 4 { return 5 }
+    cede retained
+    if drops != 5 { return 6 }
+    return 0
+}

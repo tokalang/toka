@@ -13,6 +13,9 @@ set(toka_frontend_sources
     Sema/Sema.cpp
     Sema/Sema_Type.cpp
     Sema/Sema_Expr.cpp
+    Sema/Sema_RawTake.cpp
+    Sema/Sema_UnsafeRawConstruction.cpp
+    Sema/Sema_ThreadHandoff.cpp
     Sema/Sema_Expr_Member.cpp
     Sema/Sema_Expr_Unary.cpp
     Sema/Sema_Expr_Binary.cpp
@@ -49,6 +52,9 @@ add_library(toka_frontend STATIC ${toka_frontend_sources})
 add_executable(tokac
     main.cpp
     CodeGen/CodeGen.cpp
+    CodeGen/CodeGen_RawTake.cpp
+    CodeGen/CodeGen_ThreadHandoff.cpp
+    CodeGen/ThreadHandoffAdapter.cpp
     CodeGen/CodeGen_Expr.cpp
     CodeGen/CodeGen_Stmt.cpp
     CodeGen/CodeGen_Memory.cpp
@@ -58,6 +64,7 @@ add_executable(tokac
 if(BUILD_TESTING)
     target_compile_definitions(tokac PRIVATE TOKA_BUILD_TESTING=1)
 endif()
+target_include_directories(tokac PRIVATE "${CMAKE_SOURCE_DIR}/lib/sys")
 
 # Link against LLVM libraries
 set(llvm_components Core Passes Analysis Coroutines MC MCDisassembler Target AsmPrinter AsmParser Option Object BinaryFormat TargetParser Demangle BitReader BitWriter LTO WindowsDriver WindowsManifest ProfileData LibDriver ${LLVM_TARGETS_TO_BUILD} Support)

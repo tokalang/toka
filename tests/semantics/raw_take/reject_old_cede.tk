@@ -1,0 +1,4 @@
+fn take(*buffer: [i32], index: i32) {
+    auto value = unsafe cede buffer[index]
+}
+fn main() -> i32 { return 0 }

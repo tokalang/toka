@@ -1,0 +1,19 @@
+import core/string::{string}
+import std/vec::{Vec}
+
+fn outlive_container() -> string {
+    auto values# = Vec<string>::new()
+    values#.push(string::from("remainder"))
+    values#.push(string::from("independent"))
+    auto tail = values#.pop()
+    auto result = tail.unwrap()
+    return cede result
+}
+
+fn main() -> i32 {
+    auto value# = outlive_container()
+    if !value.as_str().equals("independent") { return 1 }
+    value#.push_str("-owned")
+    if !value.as_str().equals("independent-owned") { return 2 }
+    return 0
+}

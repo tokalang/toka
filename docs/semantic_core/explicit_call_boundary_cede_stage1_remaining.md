@@ -11,8 +11,8 @@ the entire parameter matrix or the full explicit-cede RFC.
 | Identity parameters (borrow/reference/raw/callable contracts) | No unified Stage 1 acceptance. Existing identity behavior and frozen exclusions remain; do not infer owning-transfer authority from Copy or erasure. |
 | `@Callable` parameter routes | Separate remaining activation/qualification; preservation of consuming invocation is not acceptance of this parameter route. |
 | Return/source behavior | Accepted and frozen at `ba18bc14`; do not append features. |
-| Standalone `cede` | Accepted; frozen by the commit containing the standalone acceptance record. |
-| Initialization / whole-binding assignment | Authorized next shared-implementation slice: source invalidation, old-target cleanup, overlap rejection, failure rollback, and bare temporary transfer. Not yet implemented or Accepted. |
+| Standalone `cede` | Accepted and frozen at `9efb492e`. |
+| Initialization / whole-binding assignment | Shared implementation in progress on its independent branch. Basic directed checks exist; callable initialization facts and further qualification remain. Not Accepted. |
 | Aggregate | Stage 0 plans exist; Stage 1 activation remains a separate pending slice. |
 | Match binding / closure capture | Existing semantics and Stage 0 audit coverage remain; standalone work does not activate their complete Stage 1 matrix. |
 

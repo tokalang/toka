@@ -289,13 +289,26 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
     if (!storage.valid()) return false;
   }
   if (!facts.StaticStorageOrigins.empty() &&
-      (facts.Dependency != TransferDependencyKind::None ||
+      ((facts.Dependency != TransferDependencyKind::None &&
+        facts.Dependency != TransferDependencyKind::Structural &&
+        facts.Dependency != TransferDependencyKind::Borrowed) ||
        (facts.Ownership != TransferOwnershipKind::BorrowedView &&
         facts.Ownership != TransferOwnershipKind::PlainValue) ||
-       !facts.DependencyFactsComplete || !facts.DependencyRoots.empty() ||
-       facts.ReferentPlace || facts.CarriesDropLiability ||
+       !facts.DependencyFactsComplete || facts.CarriesDropLiability ||
        facts.TemporaryEligibility == TransferTemporaryEligibility::Eligible))
     return false;
+  for (const auto &[field, referents] : facts.ResultFieldReferents)
+    for (const auto &referent : referents)
+      if (!referent.valid() ||
+          std::find(facts.DependencyRoots.begin(), facts.DependencyRoots.end(),
+                    referent.root()) == facts.DependencyRoots.end())
+        return false;
+  for (const auto &[field, origins] : facts.ResultFieldStaticStorage)
+    for (const auto &origin : origins)
+      if (!origin.valid() ||
+          std::find(facts.StaticStorageOrigins.begin(), facts.StaticStorageOrigins.end(),
+                    origin) == facts.StaticStorageOrigins.end())
+        return false;
   if (facts.Dependency == TransferDependencyKind::None &&
       (!facts.DependencyRoots.empty() || facts.ReferentPlace))
     return false;
@@ -304,7 +317,9 @@ bool factsAreConsistent(const ExplicitCedePreparedFacts &facts) {
        facts.DependencyRoots.empty()))
     return false;
   if (facts.DestinationDependencyAccepted &&
-      (facts.Destination != TransferDestination::Return ||
+      ((facts.Destination != TransferDestination::Return &&
+        facts.Destination != TransferDestination::Initialization &&
+        facts.Destination != TransferDestination::Assignment) ||
        facts.SourceCategory != TransferSourceCategory::NoSourcePlace ||
        facts.Dependency == TransferDependencyKind::None ||
        facts.Dependency == TransferDependencyKind::Indeterminate ||
@@ -728,13 +743,42 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
       return admit(facts, TransferValueProduction::CopyIdentity,
                    TransferSourceDisposition::NoSourcePlace,
                    TransferDropDisposition::NoLiability);
-    if (facts.Destination == TransferDestination::Return &&
-        facts.DestinationDependencyAccepted) {
+    // Static borrowed record storage is a checked value construction, not an
+    // independently-owned temporary. Preserve the exact literal witnesses;
+    // there is no owner or cleanup liability to transfer.
+    if ((facts.Destination == TransferDestination::Initialization ||
+         facts.Destination == TransferDestination::Assignment) &&
+        facts.DependencyFactsComplete &&
+        facts.Dependency == TransferDependencyKind::None &&
+        !facts.StaticStorageOrigins.empty() && !facts.CarriesDropLiability) {
+      if (productionFor(facts) == TransferValueProduction::CopyIdentity)
+        return admit(facts, TransferValueProduction::CopyIdentity,
+                     TransferSourceDisposition::NoSourcePlace,
+                     TransferDropDisposition::NoLiability);
+      if (facts.SourceView == TransferSourceView::DirectValue &&
+          facts.Ownership == TransferOwnershipKind::PlainValue &&
+          facts.CopyProof == TransferCopyProof::ProvenNonCopy)
+        return admit(facts, TransferValueProduction::BorrowCapture,
+                     TransferSourceDisposition::NoSourcePlace,
+                     TransferDropDisposition::NoLiability);
+    }
+    if (facts.DestinationDependencyAccepted) {
       if (facts.StructuredBorrowedTemporary)
         return admit(facts, TransferValueProduction::BorrowCapture,
                      TransferSourceDisposition::NoSourcePlace,
                      TransferDropDisposition::NoLiability);
-      const auto classified = productionFor(facts);
+      // A checked local-storage construction may contain borrowed fields.
+      // This is neither a call's owning-temporary exemption nor a return rule;
+      // its real dependencies remain attached to the newly initialized value.
+      const bool plainStorageConstruction =
+          (facts.Destination == TransferDestination::Initialization ||
+           facts.Destination == TransferDestination::Assignment) &&
+          facts.SourceView == TransferSourceView::DirectValue &&
+          facts.Ownership == TransferOwnershipKind::PlainValue &&
+          facts.CopyProof == TransferCopyProof::ProvenNonCopy &&
+          !facts.CarriesDropLiability;
+      const auto classified = plainStorageConstruction
+          ? TransferValueProduction::MoveOwned : productionFor(facts);
       if (classified == TransferValueProduction::None)
         return reject(TransferPlanRejection::ClosedWorldCombination, facts);
       const auto production =
