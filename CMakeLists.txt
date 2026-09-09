@@ -325,6 +325,11 @@ if(BUILD_TESTING)
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_shared_parameter_abi.py
                     --build-dir ${CMAKE_BINARY_DIR})
             set_tests_properties(toka_shared_parameter_abi PROPERTIES TIMEOUT 180)
+            add_test(NAME toka_native_sync_adapters
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/scripts/test_native_sync_adapters.py
+                    --build-dir ${CMAKE_BINARY_DIR})
+            set_tests_properties(toka_native_sync_adapters PROPERTIES TIMEOUT 180)
         endif()
         add_test(NAME toka_negative_harness_termination
             COMMAND ${Python3_EXECUTABLE}
@@ -458,6 +463,7 @@ add_custom_command(
     DEPENDS "${CMAKE_SOURCE_DIR}/lib/sys/toka_rt.c"
             "${CMAKE_SOURCE_DIR}/lib/sys/toka_thread_handoff_v1.c"
             "${CMAKE_SOURCE_DIR}/lib/sys/toka_thread_handoff_v1.h"
+            "${CMAKE_SOURCE_DIR}/lib/sys/toka_native_sync_layout.h"
     VERBATIM
 )
 

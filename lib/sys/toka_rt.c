@@ -21,6 +21,7 @@
 #include <time.h>
 #include <signal.h>
 #include <string.h>
+#include "toka_native_sync_layout.h"
 #ifndef _WIN32
 #include <errno.h>
 #include <fcntl.h>

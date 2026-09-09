@@ -1,0 +1,136 @@
+// Appended to the exact SDK std/sync source by the private-adapter test.
+// No test entry is installed or made public in the production library.
+extern fn toka_sync_test_mode() -> i32
+extern fn toka_sync_test_kind() -> i32
+extern fn toka_sync_test_category() -> i32
+extern fn toka_sync_test_arm(category: i32) -> void
+extern fn toka_sync_test_drop() -> void
+extern fn toka_sync_test_done() -> i32
+shape AdapterToken(value: i32)
+impl AdapterToken@Encap {
+    fn drop(self#) {
+        assert(self.value == 7, "initialized payload value changed")
+        unsafe { toka_sync_test_drop() }
+    }
+}
+impl AdapterToken@Send {}
+impl AdapterToken@Sync {}
+
+fn adapter_scalar_values(kind: i32) {
+    if kind == 0 {
+        auto owner# = __sync_mutex_create<i32>(7)
+        {
+            auto held# = __sync_mutex_acquire<i32>(owner).unwrap()
+            {
+                auto &value# = held.borrow_mut()
+                assert(value == 7, "mutex slot value")
+                value = 11
+            }
+            __sync_mutex_release<i32>(held#)
+        }
+        {
+            auto held# = __sync_mutex_acquire<i32>(owner).unwrap()
+            {
+                auto &value = held.borrow_mut()
+                assert(value == 11, "mutex write not retained")
+            }
+            __sync_mutex_release<i32>(held#)
+        }
+        __sync_mutex_drop<i32>(owner#)
+    } else {
+        auto owner# = __sync_rw_create<i32>(7)
+        {
+            auto held# = __sync_rw_write<i32>(owner).unwrap()
+            {
+                auto &value# = held.borrow_mut()
+                assert(value == 7, "rw slot value")
+                value = 11
+            }
+            __sync_rw_write_release<i32>(held#)
+        }
+        {
+            auto held# = __sync_rw_read<i32>(owner).unwrap()
+            {
+                auto &value = held.borrow()
+                assert(value == 11, "rw write not retained")
+            }
+            __sync_rw_read_release<i32>(held#)
+        }
+        __sync_rw_drop<i32>(owner#)
+    }
+}
+
+fn adapter_run<'T: @{Send, Sync}>(cede 'data: T, kind: i32, mode: i32) {
+    if kind == 0 {
+        auto owner# = __sync_mutex_create<'T>(cede 'data)
+        if mode == 4 {
+            auto result = __sync_mutex_acquire<'T>(owner)
+            assert(result.is_err(), "acquire must report failure")
+        } else if mode != 6 {
+            auto result = __sync_mutex_acquire<'T>(owner)
+            auto held# = result.unwrap()
+            if mode >= 7 {
+                auto condition# = __sync_cond_create<'T>()
+                if mode == 7 { __sync_cond_wait<'T>(condition, held) }
+                if mode == 8 { __sync_cond_signal<'T>(condition) }
+                if mode == 9 { __sync_cond_broadcast<'T>(condition) }
+                __sync_cond_drop<'T>(condition#)
+            }
+            __sync_mutex_release<'T>(held#)
+        }
+        __sync_mutex_drop<'T>(owner#)
+    } else {
+        auto owner# = __sync_rw_create<'T>(cede 'data)
+        if mode == 4 {
+            auto result = __sync_rw_read<'T>(owner)
+            assert(result.is_err(), "read acquire must report failure")
+        } else if mode != 6 {
+            {
+                auto result = __sync_rw_read<'T>(owner)
+                auto held# = result.unwrap()
+                __sync_rw_read_release<'T>(held#)
+            }
+            {
+                auto result = __sync_rw_write<'T>(owner)
+                auto held# = result.unwrap()
+                __sync_rw_write_release<'T>(held#)
+            }
+        }
+        __sync_rw_drop<'T>(owner#)
+    }
+}
+
+fn main() -> i32 {
+    auto mode = unsafe toka_sync_test_mode()
+    auto kind = unsafe toka_sync_test_kind()
+    auto category = unsafe toka_sync_test_category()
+    if kind == 2 {
+        unsafe { toka_sync_test_arm(0) }
+        auto condition# = __sync_cond_create<i32>()
+        if mode != 9 { __sync_cond_signal<i32>(condition) }
+        __sync_cond_broadcast<i32>(condition)
+        __sync_cond_drop<i32>(condition#)
+    } else if mode == 10 {
+        unsafe { toka_sync_test_arm(0) }
+        adapter_scalar_values(kind)
+    } else if category == 0 {
+        unsafe { toka_sync_test_arm(category) }
+        adapter_run<i32>(7, kind, mode)
+    } else if category == 1 {
+        auto value = AdapterToken(value = 7)
+        unsafe { toka_sync_test_arm(category) }
+        adapter_run<AdapterToken>(cede value, kind, mode)
+    } else if category == 2 {
+        auto ^value = new AdapterToken(value = 7)
+        unsafe { toka_sync_test_arm(category) }
+        adapter_run<^AdapterToken>(cede ^value, kind, mode)
+    } else {
+        {
+            auto ~owner = new AdapterToken(value = 7)
+            auto ~other = ~owner
+            unsafe { toka_sync_test_arm(category) }
+            adapter_run<~AdapterToken>(cede ~other, kind, mode)
+        }
+    }
+    return unsafe toka_sync_test_done()
+}

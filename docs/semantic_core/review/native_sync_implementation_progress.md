@@ -1,5 +1,9 @@
 # Native sync implementation — not complete
 
+Latest: [private adapter and failure-cleanup checkpoint](native_sync_adapter_progress.md).
+The adapters now have directed runtime coverage, but witness publication remains
+unimplemented; the prerequisite-only notes below describe the earlier checkpoint.
+
 Shared reception is isolated in `71e1c025`; its 23 required checks and carrier IR
 assertions pass. This subsequent change starts the separately authorized storage
 contract and does not mix in caller migrations.

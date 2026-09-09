@@ -10,6 +10,206 @@ import core/result::{Result}
 import core/option::{Option}
 import std/error::{Error}
 import sys/libc::{libc_abort}
+import sys/libc::{
+    libc_malloc, libc_free,
+    libc_pthread_mutex_init, libc_pthread_mutex_destroy, libc_pthread_mutex_lock, libc_pthread_mutex_unlock,
+    libc_pthread_rwlock_init, libc_pthread_rwlock_destroy, libc_pthread_rwlock_rdlock, libc_pthread_rwlock_wrlock, libc_pthread_rwlock_unlock,
+    libc_pthread_cond_init, libc_pthread_cond_destroy, libc_pthread_cond_wait, libc_pthread_cond_signal, libc_pthread_cond_broadcast
+}
+extern fn libc__Exit(status: i32) -> void
+
+// Private implementation of the accepted storage contract. Public wrappers
+// remain on their existing path until exact witness publication is connected.
+fn __sync_fatal() -> never {
+    unsafe { libc__Exit(134) }
+    unreachable
+}
+
+// The exact value returns into the caller's full-expression cleanup. This
+// avoids a cloning aggregate wrapper and preserves the complete T morphology.
+fn __sync_dispose_input<'T>(cede 'data: T) -> 'T {
+    return cede 'data
+}
+
+// The reserves are checked against the native headers in
+// toka_native_sync_layout.h; they are not inferred from a Toka shape name.
+fn __sync_native_create(kind: i32) -> Addr {
+    if kind < 0 || kind > 2 { __sync_fatal() }
+    unsafe {
+        auto bytes# = 64:usize
+        if kind == 1 { bytes = 256:usize }
+        auto handle = libc_malloc(bytes) as Addr
+        if handle == 0:Addr { return 0:Addr }
+        auto status# = 0:i32
+        if kind == 0 { status = libc_pthread_mutex_init(handle, 0:Addr) }
+        else if kind == 1 { status = libc_pthread_rwlock_init(handle, 0:Addr) }
+        else { status = libc_pthread_cond_init(handle, 0:Addr) }
+        if status != 0 {
+            // Failed init never licenses native destroy.
+            libc_free(handle as *void)
+            return 0:Addr
+        }
+        return handle
+    }
+}
+
+fn __sync_native_drop(handle: Addr, kind: i32) {
+    if kind < 0 || kind > 2 { __sync_fatal() }
+    if handle == 0:Addr { return }
+    unsafe {
+        auto status# = 0:i32
+        if kind == 0 { status = libc_pthread_mutex_destroy(handle) }
+        else if kind == 1 { status = libc_pthread_rwlock_destroy(handle) }
+        else { status = libc_pthread_cond_destroy(handle) }
+        if status != 0 { __sync_fatal() }
+        // A failed destroy must not be followed by freeing the native object.
+        libc_free(handle as *void)
+    }
+}
+
+fn __sync_mutex_create<'T: @Send>(cede 'data: T) -> Mutex<'T> {
+    auto storage = sys_alloc_thread_env(sizeof('T) as usize)
+    if storage == 0:Addr {
+        __sync_dispose_input<'T>(cede 'data)
+        __sync_fatal()
+    }
+    auto native = __sync_native_create(0)
+    if native == 0:Addr {
+        __sync_dispose_input<'T>(cede 'data)
+        sys_free_thread_env(storage)
+        __sync_fatal()
+    }
+    unsafe {
+        auto *slot# = sync_writable_storage<['T]>(storage)
+        slot[0] = cede 'data
+    }
+    return Mutex<'T>(handle = native, data_ptr = storage)
+}
+
+fn __sync_rw_create<'T: @{Send, Sync}>(cede 'data: T) -> RwMutex<'T> {
+    auto storage = sys_alloc_thread_env(sizeof('T) as usize)
+    if storage == 0:Addr {
+        __sync_dispose_input<'T>(cede 'data)
+        __sync_fatal()
+    }
+    auto native = __sync_native_create(1)
+    if native == 0:Addr {
+        __sync_dispose_input<'T>(cede 'data)
+        sys_free_thread_env(storage)
+        __sync_fatal()
+    }
+    unsafe {
+        auto *slot# = sync_writable_storage<['T]>(storage)
+        slot[0] = cede 'data
+    }
+    return RwMutex<'T>(handle = native, data_ptr = storage)
+}
+
+fn __sync_mutex_drop<'T: @Send>(owner#: Mutex<'T>) {
+    if owner.data_ptr != 0:Addr {
+        unsafe {
+            auto *slot# = sync_writable_storage<['T]>(owner.data_ptr)
+            free[1] *slot
+        }
+        owner.data_ptr = 0:Addr
+    }
+    __sync_native_drop(owner.handle, 0)
+    owner.handle = 0:Addr
+}
+
+fn __sync_rw_drop<'T: @{Send, Sync}>(owner#: RwMutex<'T>) {
+    if owner.data_ptr != 0:Addr {
+        unsafe {
+            auto *slot# = sync_writable_storage<['T]>(owner.data_ptr)
+            free[1] *slot
+        }
+        owner.data_ptr = 0:Addr
+    }
+    __sync_native_drop(owner.handle, 1)
+    owner.handle = 0:Addr
+}
+
+fn __sync_mutex_acquire<'T: @Send>(owner: Mutex<'T>) -> Result<MutexLock<'T>, Error> <- owner {
+    auto status = unsafe libc_pthread_mutex_lock(owner.handle)
+    if status != 0 {
+        return Result<MutexLock<'T>, Error>::Err(Error::new(status, string::from("mutex lock failed")))
+    }
+    unsafe {
+        auto *slot# = sync_writable_storage<['T]>(owner.data_ptr)
+        auto nul *token = null:nul *byte
+        return Result<MutexLock<'T>, Error>::Ok(MutexLock<'T>(
+            handle = owner.handle, &data = &'(slot[0]), *thread_token = *token))
+    }
+}
+
+fn __sync_rw_read<'T: @{Send, Sync}>(owner: RwMutex<'T>) -> Result<RwReadLock<'T>, Error> <- owner {
+    auto status = unsafe libc_pthread_rwlock_rdlock(owner.handle)
+    if status != 0 {
+        return Result<RwReadLock<'T>, Error>::Err(Error::new(status, string::from("rwlock read failed")))
+    }
+    unsafe {
+        auto *slot = owner.data_ptr as *['T]
+        auto nul *token = null:nul *byte
+        return Result<RwReadLock<'T>, Error>::Ok(RwReadLock<'T>(
+            handle = owner.handle, &data = &'(slot[0]), *thread_token = *token))
+    }
+}
+
+fn __sync_rw_write<'T: @{Send, Sync}>(owner: RwMutex<'T>) -> Result<RwWriteLock<'T>, Error> <- owner {
+    auto status = unsafe libc_pthread_rwlock_wrlock(owner.handle)
+    if status != 0 {
+        return Result<RwWriteLock<'T>, Error>::Err(Error::new(status, string::from("rwlock write failed")))
+    }
+    unsafe {
+        auto *slot# = sync_writable_storage<['T]>(owner.data_ptr)
+        auto nul *token = null:nul *byte
+        return Result<RwWriteLock<'T>, Error>::Ok(RwWriteLock<'T>(
+            handle = owner.handle, &data = &'(slot[0]), *thread_token = *token))
+    }
+}
+
+fn __sync_mutex_release<'T: @Send>(held#: MutexLock<'T>) {
+    if held.handle != 0:Addr {
+        auto status = unsafe libc_pthread_mutex_unlock(held.handle)
+        if status != 0 { __sync_fatal() }
+        held.handle = 0:Addr
+    }
+}
+fn __sync_rw_read_release<'T: @{Send, Sync}>(held#: RwReadLock<'T>) {
+    if held.handle != 0:Addr {
+        auto status = unsafe libc_pthread_rwlock_unlock(held.handle)
+        if status != 0 { __sync_fatal() }
+        held.handle = 0:Addr
+    }
+}
+fn __sync_rw_write_release<'T: @{Send, Sync}>(held#: RwWriteLock<'T>) {
+    if held.handle != 0:Addr {
+        auto status = unsafe libc_pthread_rwlock_unlock(held.handle)
+        if status != 0 { __sync_fatal() }
+        held.handle = 0:Addr
+    }
+}
+fn __sync_cond_create<'T: @Send>() -> CondVar<'T> {
+    auto native = __sync_native_create(2)
+    if native == 0:Addr { __sync_fatal() }
+    return CondVar<'T>(handle = native)
+}
+fn __sync_cond_drop<'T: @Send>(owner#: CondVar<'T>) {
+    __sync_native_drop(owner.handle, 2)
+    owner.handle = 0:Addr
+}
+fn __sync_cond_wait<'T: @Send>(owner: CondVar<'T>, held: MutexLock<'T>) {
+    auto status = unsafe libc_pthread_cond_wait(owner.handle, held.handle)
+    if status != 0 { __sync_fatal() }
+}
+fn __sync_cond_signal<'T: @Send>(owner: CondVar<'T>) {
+    auto status = unsafe libc_pthread_cond_signal(owner.handle)
+    if status != 0 { __sync_fatal() }
+}
+fn __sync_cond_broadcast<'T: @Send>(owner: CondVar<'T>) {
+    auto status = unsafe libc_pthread_cond_broadcast(owner.handle)
+    if status != 0 { __sync_fatal() }
+}
 
 fn sync_writable_storage<'T>(address: Addr) -> *'T# {
     auto nul *candidate# = unsafe (address as nul *'T#)
