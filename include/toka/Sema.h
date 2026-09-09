@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #pragma once
+#include "toka/NativeSyncStorage.h"
 
 #include "toka/AST.h"
 #include "toka/AccessPath.h"
@@ -362,6 +363,10 @@ public:
   /// \brief Run semantic analysis on the module.
   /// \return true if success, false if errors found.
   bool checkModule(Module &M);
+  // Read-only, replacement-stable prerequisite; never infers a storage owner
+  // from @Send, a shape name, Drop presence or the current initializer.
+  NativeClosedPayloadResult
+  checkNativeSyncClosedPayload(const std::shared_ptr<Type> &type) const;
   
   /// \brief Declare all globals in a module for multi-pass resolution.
   void declareGlobals(Module &M);

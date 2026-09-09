@@ -1,4 +1,8 @@
-# Minimal native sync storage contract — design requested, not implemented
+# Minimal native sync storage contract — Accepted for implementation
+
+Status: user-accepted first-batch design; implementation in progress.
+Current implementation is limited to the read-only ClosedPayload prerequisite;
+factory/access/drop adapters and value/guard witnesses are not yet activated.
 
 Scope: close the owned environment proof for Mutex/RwMutex and composed sync
 objects, without changing @Send, raw-pointer permissions, capture representation,
@@ -43,8 +47,8 @@ performs the initialization before publishing the witness. Its storage-validity
 preconditions remain stated as unsafe implementation responsibility; they are
 not relabeled as whole-heap compiler initialization proofs.
 
-Public Mutex/RwMutex APIs stay unchanged. The following decisions are proposed
-for acceptance in this document; they are **not implementation authorization**.
+Public Mutex/RwMutex APIs stay unchanged. The following first-batch decisions
+have explicit implementation authorization; this is not implementation acceptance.
 There is no general user-implementable trait or annotation for this contract.
 
 ## Decision 1: private operations, identity and publication
@@ -244,6 +248,6 @@ dependency-update protocol; it cannot be slipped into ordinary fact propagation.
 - missing/mismatched witness, wrong storage/element/owner/cleanup, readonly view,
   PAL conflict, source-hidden missing contract: rejection with no artifact.
 
-This is the smallest proposed responsibility relation, not a general dynamic
-extent system and not implementation approval. It cannot cure the separately
-identified shared-parameter body/ABI disagreement.
+This is the accepted first-batch responsibility relation, not a general dynamic
+extent system. Runtime/production qualification is still required; acceptance
+of the design alone does not grant any source value a witness.

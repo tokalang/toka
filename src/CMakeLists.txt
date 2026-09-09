@@ -17,6 +17,7 @@ set(toka_frontend_sources
     Sema/Sema_UnsafeRawConstruction.cpp
     Sema/Sema_ThreadHandoff.cpp
     Sema/Sema_PublicThread.cpp
+    Sema/Sema_NativeSync.cpp
     Sema/Sema_Expr_Member.cpp
     Sema/Sema_Expr_Unary.cpp
     Sema/Sema_Expr_Binary.cpp
