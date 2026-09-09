@@ -1,0 +1,101 @@
+// Independent of locks, raw_take and thread handoff: exercise the parameter ABI.
+extern fn toka_shared_case() -> i32
+auto drops# = 0:i32
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+
+fn explicit_read(~value: Token) -> i32 { return value.value }
+fn generic_read<'T>('value: T) -> i32 { return 'value.value }
+fn explicit_take(cede ~value: Token) -> i32 {
+    auto ~owned = cede ~value
+    return owned.value
+}
+fn generic_take<'T>(cede 'value: T) -> i32 {
+    auto result = 'value.value
+    cede 'value
+    return result
+}
+fn generic_echo<'T>(cede 'value: T) -> 'T { return cede 'value }
+fn hatted_generic_read<T>(~value: T) -> i32 { return value.value }
+fn hatted_generic_take<T>(cede ~value: T) -> i32 {
+    auto ~owned = cede ~value
+    return owned.value
+}
+
+fn explicit_read_async(~value: Token) -> async i32 { return value.value }
+fn generic_read_async<'T>('value: T) -> async i32 { return 'value.value }
+fn explicit_take_async(cede ~value: Token) -> async i32 {
+    auto ~owned = cede ~value
+    return owned.value
+}
+fn generic_take_async<'T>(cede 'value: T) -> async i32 {
+    auto result = 'value.value
+    cede 'value
+    return result
+}
+fn hatted_generic_read_async<T>(~value: T) -> async i32 { return value.value }
+fn hatted_generic_take_async<T>(cede ~value: T) -> async i32 {
+    auto ~owned = cede ~value
+    return owned.value
+}
+
+fn main() -> async i32 {
+    auto which = unsafe toka_shared_case()
+    {
+        auto ~source = new Token(value = 42)
+        if which == 0 && explicit_read(~source) != 42 { return 1 }
+        if which == 1 && generic_read<~Token>(~source) != 42 { return 1 }
+        if drops != 0 || source.value != 42 { return 2 }
+        if which == 2 {
+            auto ~other = ~source
+            if explicit_take(cede ~other) != 42 || drops != 0 { return 3 }
+        }
+        if which == 3 {
+            auto ~other = ~source
+            if generic_take<~Token>(cede ~other) != 42 || drops != 0 { return 4 }
+        }
+        if which == 4 {
+            auto ~other = ~source
+            auto ~returned = generic_echo<~Token>(cede ~other)
+            if returned.value != 42 || drops != 0 { return 5 }
+        }
+        if which == 5 {
+            auto task = explicit_read_async(~source)
+            if task.await != 42 || drops != 0 { return 6 }
+        }
+        if which == 6 {
+            auto task = generic_read_async<~Token>(~source)
+            if task.await != 42 || drops != 0 { return 7 }
+        }
+        if which == 7 {
+            auto ~other = ~source
+            auto task = explicit_take_async(cede ~other).start
+            if task.await != 42 || drops != 0 { return 8 }
+        }
+        if which == 8 {
+            auto ~other = ~source
+            auto task = generic_take_async<~Token>(cede ~other).start
+            if task.await != 42 || drops != 0 { return 9 }
+        }
+        if which == 9 && hatted_generic_read<Token>(~source) != 42 { return 12 }
+        if which == 10 {
+            auto ~other = ~source
+            if hatted_generic_take<Token>(cede ~other) != 42 { return 13 }
+        }
+        if which == 11 {
+            auto task = hatted_generic_read_async<Token>(~source)
+            if task.await != 42 { return 14 }
+        }
+        if which == 12 {
+            auto ~other = ~source
+            auto task = hatted_generic_take_async<Token>(cede ~other).start
+            if task.await != 42 { return 15 }
+        }
+        if source.value != 42 || drops != 0 { return 10 }
+    }
+    if drops != 1 { return 11 }
+    return 0
+}

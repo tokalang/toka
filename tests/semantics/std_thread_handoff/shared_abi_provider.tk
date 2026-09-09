@@ -1,0 +1,9 @@
+pub shape Token(value: i32)
+auto drops# = 0:i32
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+pub fn drop_count() -> i32 { return drops }
+pub fn concrete_echo(cede ~value: Token) -> ~Token { return cede ~value }
+pub fn generic_echo<'T>(cede 'value: T) -> 'T { return cede 'value }

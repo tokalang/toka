@@ -533,7 +533,8 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     bool needsCapture =
         (isDirectValue && (isAggregate || argDecl.IsValueMutable)) ||
         argDecl.IsRebindable ||
-        (argDecl.IsUnique && !argDecl.IsCeded) || argDecl.IsShared;
+        (argDecl.IsUnique && !argDecl.IsCeded) || argDecl.IsShared ||
+        typeObj->isSharedPtr();
 
     const bool isMorphicParameter =
         argDecl.IsMorphicExempt ||

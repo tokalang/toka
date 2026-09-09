@@ -1,4 +1,5 @@
-# NOT APPLIED. Auto-review rejected the CodeGen scope; explicit review required.
+# Historical diff: applied after explicit user approval on 2026-09-09.
+# Validation remains failing; this is NOT an Accepted repair.
 # The signature emitter already forces shared types to pointer-to-carrier ABI.
 # This proposal only mirrors that existing decision in the body binder.
 # Zero-context diff; read-only applicability check uses --unidiff-zero --check.

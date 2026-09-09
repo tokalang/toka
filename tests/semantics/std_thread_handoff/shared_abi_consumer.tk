@@ -1,0 +1,21 @@
+import shared_abi_provider::{Token, drop_count, concrete_echo, generic_echo}
+extern fn toka_shared_case() -> i32
+fn main() -> i32 {
+    auto which = unsafe toka_shared_case()
+    {
+        auto ~owner = new Token(value = 42)
+        {
+            auto ~other = ~owner
+            if which == 0 {
+                auto ~returned = concrete_echo(cede ~other)
+                if returned.value != 42 { return 1 }
+            } else {
+                auto ~returned = generic_echo<~Token>(cede ~other)
+                if returned.value != 42 { return 2 }
+            }
+        }
+        if owner.value != 42 || drop_count() != 0 { return 3 }
+    }
+    if drop_count() != 1 { return 4 }
+    return 0
+}

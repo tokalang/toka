@@ -14,6 +14,10 @@ Next limited increment:
 [managed guards and storage-contract review](thread_three_item_progress_2026_09_09.md).
 This remains WIP; its required shared/thread positives are failing, not skipped.
 
+The subsequent approved shared `needsCapture` edit and its independent runtime
+matrix are recorded in [shared reception validation](shared_parameter_alignment_validation.md).
+That one-line edit is implemented but does not yet close the shared body paths.
+
 The accepted private source subset is closed. This branch implements the public
 thread responsibility chain; no additional private probe entry is introduced.
 No previous freeze ref is moved. The unaccepted binding dependencies documented
