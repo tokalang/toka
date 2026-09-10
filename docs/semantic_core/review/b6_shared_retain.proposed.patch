@@ -1,0 +1,11 @@
+diff --git a/src/CodeGen/CodeGen_Stmt.cpp b/src/CodeGen/CodeGen_Stmt.cpp
+--- a/src/CodeGen/CodeGen_Stmt.cpp
++++ b/src/CodeGen/CodeGen_Stmt.cpp
+@@ -380,1 +380,6 @@
+-    if (value && type && type->isSharedPtr())
++    // Match genVariableExpr: ordinary shared RValues already acquire;
++    // exact morphic transport still needs this Sema-requested acquire.
++    const bool variableAlreadyAcquired = !m_InLHS &&
++        !symbol->second.isMorphicValueTransport && variable->ResolvedType &&
++        variable->ResolvedType->isSharedPtr();
++    if (value && type && type->isSharedPtr() && !variableAlreadyAcquired)

@@ -1,0 +1,85 @@
+import std/hashmap::{HashMap, HashMapIterator}
+import std/vec::{Vec}
+auto drops# = 0:i32
+shape Cell(id: i32)
+impl Cell@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto map# = HashMap<i32, ^Cell>::new()
+        auto ^value = new Cell(id = 7)
+        map#.insert(1, cede ^value)
+        {
+            auto cursor# = map.iter()
+            auto result = cursor#.next_ref()
+            auto entry = result.unwrap()
+            auto &^view = entry.val()
+            if view.id != 7 || drops != 0 { return 1 }
+        }
+        if map.len() != 1 || drops != 0 { return 2 }
+        map#.clear()
+        if drops != 1 { return 3 }
+    }
+    {
+        auto ~value = new Cell(id = 8)
+        auto ~other = ~value
+        {
+            auto map# = HashMap<i32, ~Cell>::new()
+            map#.insert(2, cede ~value)
+            {
+                auto cursor# = map.iter()
+                auto result = cursor#.next_ref()
+                auto entry = result.unwrap()
+                auto &~view = entry.val()
+                if view.id != 8 || drops != 1 { return 4 }
+            }
+        }
+        if other.id != 8 || drops != 1 { return 5 }
+    }
+    if drops != 2 { return 6 }
+    {
+        auto ^key = new Cell(id = 9)
+        auto keys# = Vec<^Cell>::new()
+        keys#.push(cede ^key)
+        auto vals# = Vec<i32>::new()
+        vals#.push(10)
+        auto meta# = Vec<u8>::new()
+        meta#.push(1)
+        {
+            auto cursor# = unsafe HashMapIterator<^Cell, i32>(
+                &keys = (keys.*buf as &[^Cell]), &vals = (vals.*buf as &[i32]),
+                &meta = (meta.*buf as &[u8]), cap = 1, pos = 0)
+            auto result = cursor#.next_ref()
+            auto entry = result.unwrap()
+            auto &^view = entry.key()
+            if view.id != 9 || drops != 2 { return 7 }
+        }
+    }
+    if drops != 3 { return 8 }
+    {
+        auto ~key = new Cell(id = 11)
+        auto ~other = ~key
+        {
+            auto keys# = Vec<~Cell>::new()
+            keys#.push(cede ~key)
+            auto vals# = Vec<i32>::new()
+            vals#.push(12)
+            auto meta# = Vec<u8>::new()
+            meta#.push(1)
+            {
+                auto cursor# = unsafe HashMapIterator<~Cell, i32>(
+                    &keys = (keys.*buf as &[~Cell]), &vals = (vals.*buf as &[i32]),
+                    &meta = (meta.*buf as &[u8]), cap = 1, pos = 0)
+                auto result = cursor#.next_ref()
+                auto entry = result.unwrap()
+                auto &~view = entry.key()
+                if view.id != 11 || drops != 3 { return 9 }
+            }
+        }
+        if other.id != 11 || drops != 3 { return 10 }
+    }
+    if drops != 4 { return 11 }
+    return 0
+}

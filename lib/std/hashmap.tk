@@ -438,7 +438,11 @@ pub shape Entry<'K, 'V> (
     *'val: V
 )
 
-impl<'K, 'V> Entry<'K, 'V> {
+impl<'K, 'V> Entry<'K, 'V>
+where:
+    'K: morphology raw_extendable
+    'V: morphology raw_extendable
+{
     pub fn key(self) -> *'K { return self.*key } 
     pub fn val(self) -> *'V { return self.*val }
 }
@@ -488,7 +492,11 @@ impl<'K, 'V> HashMapIterator<'K, 'V> {
     }
 }
 
-impl<'K, 'V> HashMapIterator<'K, 'V>@Iterator {
+impl<'K, 'V> HashMapIterator<'K, 'V>@Iterator
+where:
+    'K: morphology raw_extendable
+    'V: morphology raw_extendable
+{
     type Item = Entry<'K, 'V>
 
     pub fn next(self#) -> Option<Item> {

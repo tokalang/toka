@@ -1,0 +1,5 @@
+import std/hashmap::{HashMapIterator}
+fn probe(cursor#: HashMapIterator<*i32, i32>) {
+    cursor#.next()
+}
+fn main() -> i32 { return 0 }

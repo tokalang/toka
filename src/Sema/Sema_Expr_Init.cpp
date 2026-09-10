@@ -35,12 +35,14 @@ AggregateTransferKind Sema::qualifyAggregateTransfer(
     return AggregateTransferKind::Unqualified;
 
   Expr *identity = source;
+  bool explicitTransfer = false;
   while (identity) {
     if (auto *cast = dynamic_cast<CastExpr *>(identity)) {
       identity = cast->Expression.get();
     } else if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(identity)) {
       identity = unsafeExpr->Expression.get();
     } else if (auto *cede = dynamic_cast<CedeExpr *>(identity)) {
+      explicitTransfer = true;
       identity = cede->Value.get();
     } else {
       break;
@@ -67,8 +69,14 @@ AggregateTransferKind Sema::qualifyAggregateTransfer(
   if (!concreteType || concreteType->isUnknown())
     return AggregateTransferKind::CopyValue;
 
-  if (concreteType->isSharedPtr())
+  if (concreteType->isSharedPtr()) {
+    // checkExpr has already validated/invalidated an explicit cede source.
+    // Preserve that transfer when a morphic shared value enters an aggregate;
+    // retaining here would leak an extra reference after the source retires.
+    if (explicitTransfer && hasPlaceState(sourceInfo->placeFact(), PlaceState::Moved))
+      return AggregateTransferKind::MoveOwned;
     return AggregateTransferKind::RetainShared;
+  }
   if (concreteType->isRawPointer() || concreteType->isReference())
     return AggregateTransferKind::CopyIdentity;
   if (!concreteType->requiresExplicitOwnershipTransfer(this))

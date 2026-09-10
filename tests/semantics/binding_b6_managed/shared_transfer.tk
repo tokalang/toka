@@ -1,0 +1,32 @@
+import core/option::{Option}
+auto drops# = 0:i32
+shape Cell(id: i32)
+impl Cell@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn make(id: i32) -> ~Cell {
+    auto ~value = new Cell(id = id)
+    return cede ~value
+}
+fn main() -> i32 {
+    {
+        auto 'value = make(7)
+        auto ~other = ~'value
+        {
+            auto moved = Option<~Cell>::Some(cede 'value)
+            if !moved.is_some() || drops != 0 { return 1 }
+        }
+        if other.id != 7 || drops != 0 { return 2 }
+    }
+    if drops != 1 { return 3 }
+    {
+        auto 'value = make(8)
+        {
+            auto moved = Option<~Cell>::Some(cede unsafe 'value)
+            if !moved.is_some() { return 4 }
+        }
+        if drops != 2 { return 5 }
+    }
+    return 0
+}
