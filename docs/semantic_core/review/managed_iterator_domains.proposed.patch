@@ -1,0 +1,17 @@
+diff --git a/lib/std/hashmap.tk b/lib/std/hashmap.tk
+--- a/lib/std/hashmap.tk
++++ b/lib/std/hashmap.tk
+@@ -441,1 +441,5 @@
+-impl<'K, 'V> Entry<'K, 'V> {
++impl<'K, 'V> Entry<'K, 'V>
++where:
++    'K: morphology raw_extendable,
++    'V: morphology raw_extendable
++{
+@@ -491,1 +495,5 @@
+-impl<'K, 'V> HashMapIterator<'K, 'V>@Iterator {
++impl<'K, 'V> HashMapIterator<'K, 'V>@Iterator
++where:
++    'K: morphology raw_extendable,
++    'V: morphology raw_extendable
++{

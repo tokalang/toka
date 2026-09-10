@@ -7648,12 +7648,29 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
         ce->Stage0Authority->SemaValidated && ce->Stage0Authority->Complete &&
         ce->Stage0Authority->DestinationMatching &&
         ce->Stage0Authority->ItemPlan && ce->Stage0Authority->ItemPlan->admitted();
+    const Expr *morphicSource = ce->Value.get();
+    while (morphicSource) {
+      if (auto *unsafe = dynamic_cast<const UnsafeExpr *>(morphicSource))
+        morphicSource = unsafe->Expression.get();
+      else if (auto *cast = dynamic_cast<const CastExpr *>(morphicSource);
+               cast && cast->Kind == CastKind::Ascription)
+        morphicSource = cast->Expression.get();
+      else break;
+    }
+    auto *morphicVariable = dynamic_cast<const VariableExpr *>(morphicSource);
+    const bool exactMorphicHandle = morphicVariable &&
+        (morphicVariable->IsMorphicExempt ||
+         (!morphicVariable->Name.empty() && morphicVariable->Name.front() == '\'')) &&
+        ce->ResolvedType &&
+        (ce->ResolvedType->isUniquePtr() || ce->ResolvedType->isSharedPtr()) &&
+        morphicVariable->ResolvedType &&
+        morphicVariable->ResolvedType->equals(*ce->ResolvedType);
     auto directSourceOf = [&](const Expr *source) {
       while (source) {
         if (auto *cast = dynamic_cast<const CastExpr *>(source))
           source = cast->Expression.get();
         else if (auto *unsafe = dynamic_cast<const UnsafeExpr *>(source);
-                 validatedStandalone && unsafe)
+                 (validatedStandalone || exactMorphicHandle) && unsafe)
           source = unsafe->Expression.get();
         else
           break;
@@ -7718,6 +7735,22 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
 
     llvm::Type *targetTy = ce->ResolvedType ? getLLVMType(ce->ResolvedType)
                                              : nullptr;
+
+    // A morphic variable denotes the complete instantiated value. For a
+    // unique handle, the ordinary variable expression peels to its payload;
+    // loading a pointer from that payload would transfer its first bytes.
+    // Reuse the existing handle-address path, with exactly the resolved type.
+    // Drop suppression above and Sema's transfer/borrow checks are unchanged.
+    if (ve && !ue &&
+        (ve->IsMorphicExempt || (!ve->Name.empty() && ve->Name.front() == '\'')) &&
+        ce->ResolvedType && ce->ResolvedType->isUniquePtr() &&
+        ve->ResolvedType && ve->ResolvedType->equals(*ce->ResolvedType)) {
+      llvm::Value *identityAddr = emitHandleAddr(ve);
+      if (!identityAddr) return {};
+      return PhysEntity(m_Builder.CreateLoad(targetTy, identityAddr,
+                                            "unique.cede_morphic"),
+                        ce->ResolvedType->toString(), targetTy, false);
+    }
 
     if ((dynamic_cast<const MemberExpr *>(directSource) ||
          dynamic_cast<const ArrayIndexExpr *>(directSource)) &&

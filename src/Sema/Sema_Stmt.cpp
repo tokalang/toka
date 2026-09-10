@@ -2229,6 +2229,24 @@ void Sema::checkStmt(Stmt *S) {
       }
     }
     
+    // Inferred morphic declarations already selected a full handle above.
+    // Keep the physical binding descriptor consistent with that selection;
+    // otherwise synthesizePhysicalTypeObject silently rebuilds only its soul.
+    // This is target typing, not transfer admission: the complete binding
+    // planner below still validates source, dependencies, PAL and permissions.
+    if (inferredType && Var->IsMorphicExempt && InitTypeObj &&
+        !Var->IsUnique && !Var->IsShared && !Var->IsReference &&
+        !Var->IsRawPointer &&
+        ((morph == "^" && InitTypeObj->isUniquePtr()) ||
+         (morph == "~" && InitTypeObj->isSharedPtr()))) {
+      Var->IsUnique = InitTypeObj->isUniquePtr();
+      Var->IsShared = InitTypeObj->isSharedPtr();
+      Var->Permission = BindingPermission::fromLegacy(
+          Var->IsRawPointer, Var->IsUnique, Var->IsShared, Var->IsReference,
+          Var->IsRebindable, Var->IsPointerNullable, Var->IsRebindBlocked,
+          Var->IsValueMutable, Var->IsValueNullable, Var->IsValueBlocked, true);
+    }
+
     if (baseType.size() > 1 && baseType[0] == '#') {
        baseType = baseType.substr(1);
     }
