@@ -5,7 +5,7 @@
 
 namespace toka {
 class Sema; class CodeGen; class Expr; class CallExpr; class FunctionDecl;
-class ShapeDecl; class Type;
+class ShapeDecl; class Type; class NewExpr; class VariableDecl;
 enum class NativeSyncFactoryKind : uint8_t { None, Mutex, RwMutex, CondVar };
 
 // This is the initialized factory edge, not a nominal-type exemption and not
@@ -49,6 +49,20 @@ class NativeSyncOwnerCandidate {
   std::shared_ptr<const NativeSyncOwnerCandidate> Parent;
 };
 using NativeSyncOwnerCandidatePtr = std::shared_ptr<const NativeSyncOwnerCandidate>;
+
+// Cleanup for allocation of the managed wrapper around an already prepared
+// native owner. This is not a general allocation/unwind protocol.
+class NativeSyncAllocationPlan {
+  friend class Sema;
+  friend class CodeGen;
+  NativeSyncAllocationPlan() = default;
+  const NewExpr *Allocation = nullptr;
+  const VariableDecl *Binding = nullptr;
+  const FunctionDecl *Definition = nullptr;
+  const Expr *PreparedOwner = nullptr;
+  std::shared_ptr<Type> OwnerType, ManagedType;
+  bool Complete = false;
+};
 
 // A type-level prerequisite only. Closed does NOT create an initialized slot,
 // native resource, owner/guard relation or thread-publication authority.

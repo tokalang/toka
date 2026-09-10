@@ -1186,6 +1186,19 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     return toka::Type::fromString("()");
   ActiveNodeRAII Active(E);
   const size_t expressionDiagnosticStart = DiagnosticEngine::records().size();
+  if (auto *allocation = dynamic_cast<NewExpr *>(E)) snapshotNativeSyncAllocation(allocation);
+  std::optional<AnalysisState> nativeAllocationRollback;
+  if (auto *assignment = dynamic_cast<BinaryExpr *>(E); assignment && assignment->Op == "=") {
+    auto path = canonicalizeAccessPath(makeAccessPath(assignment->LHS.get()));
+    SymbolInfo *target = nullptr;
+    if (path && path.Projections.empty() && CurrentScope->findSymbolByID(path.RootID, target) &&
+        target && target->ASTPtr) {
+      auto *decl = dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(target->ASTPtr));
+      auto *allocation = decl && decl->Init ? dynamic_cast<NewExpr *>(decl->Init.get()) : nullptr;
+      if (allocation && m_NativeSyncAllocationSnapshots.count(allocation))
+        nativeAllocationRollback = captureAnalysisState();
+    }
+  }
   E->RawAddressValueFacts.reset();
   E->RawAddressViewFacts.reset();
   E->NativeSyncFactoryOrigin.reset();
@@ -1222,6 +1235,15 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
                               assignment->Op == "=" ? assignment->RHS.get() : nullptr);
       recordNativeSyncOwnerRecipe(makeAccessPath(assignment->LHS.get()),
                                   assignment->Op == "=" ? assignment->RHS.get() : nullptr, false);
+    }
+  }
+  if (nativeAllocationRollback) {
+    const auto &records = DiagnosticEngine::records();
+    if (std::any_of(records.begin() + std::min(expressionDiagnosticStart, records.size()), records.end(),
+                     [](const auto &record) { return record.Level == DiagLevel::Error; })) {
+      mergeAnalysisStates({*nativeAllocationRollback}, nativeAllocationRollback->PAL);
+      E->NativeSyncFactoryOrigin.reset();
+      E->NativeSyncOwnerRecipe.reset();
     }
   }
 

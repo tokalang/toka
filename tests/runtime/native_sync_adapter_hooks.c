@@ -15,17 +15,21 @@ static int init_calls, destroy_calls, payload_frees, native_frees;
 static void *payload, *native, *last_allocation;
 static size_t last_size;
 static int *shared_count;
+static int public_owner, owner_frees, counter_frees;
+static void *owner_storage, *owner_counter;
 
 static int environment(const char *name) { const char *s = getenv(name); return s ? atoi(s) : 0; }
 int toka_sync_test_mode(void) { return environment("TOKA_SYNC_MODE"); }
 int toka_sync_test_kind(void) { return environment("TOKA_SYNC_KIND"); }
 int toka_sync_test_category(void) { return environment("TOKA_SYNC_CATEGORY"); }
+int toka_sync_test_public_owner(void) { return environment("TOKA_SYNC_PUBLIC_OWNER"); }
 static void terminate_test(int code) {
     syscall(SYS_exit, code);
     __builtin_unreachable();
 }
 void toka_sync_test_arm(int value) {
     mode = toka_sync_test_mode(); kind = toka_sync_test_kind(); category = value;
+    public_owner = environment("TOKA_SYNC_PUBLIC_OWNER");
     if (category == 3) {
         if (!last_allocation || last_size != sizeof(int) || *(int *)last_allocation != 2)
             terminate_test(151);
@@ -68,19 +72,25 @@ void *WRAP(malloc)(size_t size) {
             (kind == 0 && allocations == 2 && size < sizeof(pthread_mutex_t)) ||
             (kind == 1 && allocations == 2 && size < sizeof(pthread_rwlock_t)))
             terminate_test(154);
-        if ((mode == 1 && allocations == 1) || (mode == 2 && allocations == 2)) return NULL;
+        if ((mode == 1 && allocations == 1) || (mode == 2 && allocations == 2) ||
+            (public_owner && mode == 11 && allocations == 3) ||
+            (public_owner && mode == 12 && allocations == 4)) return NULL;
     }
     void *p = REAL(malloc)(size);
     if (!active) { last_allocation = p; last_size = size; }
     else if (allocations == 1 && kind == 2) native = p;
     else if (allocations == 1) payload = p;
     else if (allocations == 2) native = p;
+    else if (public_owner && allocations == 3) owner_storage = p;
+    else if (public_owner && allocations == 4) owner_counter = p;
     return p;
 }
 void WRAP(free)(void *p) {
     if (active && p) {
         if (p == payload) ++payload_frees;
         if (p == native) ++native_frees;
+        if (p == owner_storage) ++owner_frees;
+        if (p == owner_counter) ++counter_frees;
     }
     REAL(free)(p);
 }
@@ -92,7 +102,7 @@ static int fatal_state_ok(void) {
         if (mode == 6) return !native_frees && destroy_calls == 1;
         return (mode == 8 || mode == 9) && !native_frees && !destroy_calls;
     }
-    const int cleaned_input = mode <= 3 || mode == 6;
+    const int cleaned_input = mode <= 3 || mode == 6 || mode == 11 || mode == 12;
     const int expected_drops = category == 0 || category == 3 || !cleaned_input ? 0 : 1;
     if (drops != expected_drops) return 0;
     if (shared_count && *shared_count != (cleaned_input ? 1 : 2)) return 0;
@@ -100,10 +110,13 @@ static int fatal_state_ok(void) {
     if (mode == 2) return allocations == 2 && payload_frees == 1 && !native_frees && !init_calls && !destroy_calls;
     if (mode == 3) return allocations == 2 && payload_frees == 1 && native_frees == 1 && init_calls == 1 && !destroy_calls;
     if (mode == 6) return payload_frees == 1 && !native_frees && destroy_calls == 1;
+    if (public_owner && (mode == 11 || mode == 12))
+        return allocations == (mode == 11 ? 3 : 4) && payload_frees == 1 && native_frees == 1 &&
+               init_calls == 1 && destroy_calls == 1 && owner_frees == (mode == 12) && !counter_frees;
     return mode >= 5 && !payload_frees && !native_frees && !destroy_calls;
 }
 void WRAP(_Exit)(int code) {
-    const int cleaned_input = mode <= 3 || mode == 6;
+    const int cleaned_input = mode <= 3 || mode == 6 || mode == 11 || mode == 12;
     const int expected_drops = category == 0 || category == 3 || !cleaned_input ? 0 : 1;
     if (active && drops != expected_drops) terminate_test(160 + drops);
     if (active && shared_count && *shared_count != (cleaned_input ? 1 : 2))
@@ -113,6 +126,7 @@ void WRAP(_Exit)(int code) {
 int toka_sync_test_done(void) {
     int ok = (mode == 0 || mode == 4 || mode == 10) && payload_frees == (kind == 2 ? 0 : 1) && native_frees == 1 &&
              init_calls == 1 && destroy_calls == 1 && drops == (category == 0 ? 0 : 1);
+    if (public_owner) ok &= owner_frees == 1 && counter_frees == (public_owner == 2);
     active = 0;
     return ok ? 0 : 153;
 }

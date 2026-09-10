@@ -242,14 +242,16 @@ impl<'T: @Send> Mutex<'T> {
     
     /// Directly allocates and initializes a new Mutex as a shared pointer (~Mutex)
     pub fn make(cede 'data: T) -> ^Mutex<'T> {
-        auto ^mutex# = new Mutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)
-        mutex = __sync_mutex_create<'T>(cede 'data)
+        auto prepared = __sync_mutex_create<'T>(cede 'data)
+        auto ^mutex# = new Mutex<'T>(handle = 0:Addr#, data_ptr = 0:Addr#)
+        mutex = cede prepared
         return ^mutex
     }
 
     pub fn make_shared(cede 'data: T) -> ~Mutex<'T> {
-        auto ~mutex# = new Mutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)
-        mutex = __sync_mutex_create<'T>(cede 'data)
+        auto prepared = __sync_mutex_create<'T>(cede 'data)
+        auto ~mutex# = new Mutex<'T>(handle = 0:Addr#, data_ptr = 0:Addr#)
+        mutex = cede prepared
         return cede ~mutex
     }
     

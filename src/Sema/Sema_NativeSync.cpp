@@ -3,6 +3,103 @@
 #include <set>
 
 namespace toka {
+void Sema::snapshotNativeSyncAllocation(NewExpr *allocation) {
+  if (!allocation || !CurrentFunction || !CurrentFunction->ResolvedReturnType) return;
+  auto result = CurrentFunction->ResolvedReturnType;
+  if (!result->isUniquePtr() && !result->isSharedPtr()) return;
+  auto owner = std::dynamic_pointer_cast<ShapeType>(result->getPointeeType());
+  auto *module = getLexicalModule(CurrentFunction->Loc);
+  if (!owner || !owner->Decl || !module || !module->SourceModule ||
+      module->SourceModule->IsInterface || !module->IsTrustedSystemModule ||
+      !module->ShadowCoordinateKnown || module->ShadowLogicalModulePath != "std/sync") return;
+  bool nativeOwner = false;
+  for (const char *name : {"Mutex", "RwMutex", "CondVar"}) {
+    auto found = module->Shapes.find(name);
+    nativeOwner |= found != module->Shapes.end() &&
+        owner->Decl->InstantiationTemplate == found->second;
+  }
+  if (nativeOwner)
+    m_NativeSyncAllocationSnapshots[allocation] = {CurrentFunction, captureAnalysisState()};
+}
+
+bool Sema::prepareNativeSyncAllocation(const NewExpr *allocation, const VariableDecl *binding,
+                                     Expr *source, const NativeSyncOwnerCandidatePtr &recipe) {
+  auto fail = [&](const char *reason) {
+    error(source, DiagID::ERR_GENERIC_SEMA, std::string("native sync owner allocation: ") + reason);
+    return false;
+  };
+  if (!allocation || !binding || !recipe || !recipe->Factory) return fail("MissingOwnerRecipe");
+  auto snapshot = m_NativeSyncAllocationSnapshots.find(allocation);
+  if (snapshot == m_NativeSyncAllocationSnapshots.end() || snapshot->second.Definition != CurrentFunction)
+    return fail("MissingPreAllocationSnapshot");
+  auto *transfer = dynamic_cast<CedeExpr *>(source);
+  if (!transfer || !transfer->Value || !source->ResolvedType ||
+      !recipe->Factory->OwnerType || !source->ResolvedType->equals(*recipe->Factory->OwnerType))
+    return fail("PreparedOwnerTransferRequired");
+  auto path = canonicalizeAccessPath(makeAccessPath(transfer->Value.get()));
+  if (!path || !path.RootID || !path.Projections.empty()) return fail("WholePreparedOwnerRequired");
+  const auto &before = snapshot->second.State;
+  auto initialized = before.ExactPlaces.find(path.RootName);
+  auto prior = before.NativeSyncOwnerRecipes.find(path.RootID);
+  if (initialized == before.ExactPlaces.end() ||
+      !initialized->second.whole().isExactly(PlaceState::Live) ||
+      prior == before.NativeSyncOwnerRecipes.end() || prior->second != recipe)
+    return fail("PreparedOwnerNotLiveAtAllocation");
+  auto pal = before.PAL;
+  if (pal.verifyInvalidation(path)) return fail("PreparedOwnerBorrowConflict");
+  if (allocation->ArraySize || !allocation->Initializer || !allocation->Initializer->ResolvedType ||
+      !allocation->Initializer->ResolvedType->equals(*recipe->Factory->OwnerType))
+    return fail("OwnerAllocationTypeMismatch");
+  // The checked SDK wrapper allocates only an empty carrier. If allocation of
+  // its refcount then fails, freeing that carrier cannot discard a live native
+  // object: all native responsibility is still in the prepared source above.
+  std::map<std::string, Expr *> fields;
+  if (auto *init = dynamic_cast<InitStructExpr *>(allocation->Initializer.get())) {
+    for (auto &field : init->Members)
+      if (!fields.emplace(field.first, field.second.get()).second) return fail("DuplicateEmptyField");
+  } else if (auto *init = dynamic_cast<CallExpr *>(allocation->Initializer.get())) {
+    for (auto &arg : init->Args) {
+      auto *named = dynamic_cast<BinaryExpr *>(arg.get());
+      auto *name = named ? dynamic_cast<VariableExpr *>(named->LHS.get()) : nullptr;
+      if (!named || named->Op != "=" || !name || !fields.emplace(name->Name, named->RHS.get()).second)
+        return fail("NamedEmptyCarrierRequired");
+    }
+  } else return fail("EmptyCarrierConstructionRequired");
+  const bool nativeOnly = recipe->Factory->Kind == NativeSyncFactoryKind::CondVar;
+  if (fields.size() != (nativeOnly ? 1u : 2u)) return fail("EmptyCarrierSchemaMismatch");
+  for (auto &[name, expression] : fields) {
+    if ((name != "handle" && (nativeOnly || name != "data_ptr")) ||
+        !expression || !expression->ResolvedType || !expression->ResolvedType->isAddrType())
+      return fail("EmptyCarrierSchemaMismatch");
+    while (auto *cast = dynamic_cast<CastExpr *>(expression)) {
+      if (cast->Kind != CastKind::Ascription) {
+        error(source, DiagID::ERR_GENERIC_SEMA,
+              "native sync owner allocation: EmptyCarrierLiteralRequired: " + expression->toString());
+        return false;
+      }
+      expression = cast->Expression.get();
+    }
+    auto *zero = dynamic_cast<NumberExpr *>(expression);
+    if (!zero || zero->Value != 0) {
+      error(source, DiagID::ERR_GENERIC_SEMA,
+            "native sync owner allocation: EmptyCarrierLiteralRequired: " + expression->toString());
+      return false;
+    }
+  }
+  auto plan = std::shared_ptr<NativeSyncAllocationPlan>(new NativeSyncAllocationPlan);
+  plan->Allocation = allocation;
+  plan->Binding = binding;
+  plan->Definition = CurrentFunction;
+  plan->PreparedOwner = transfer->Value.get();
+  plan->OwnerType = source->ResolvedType;
+  plan->ManagedType = binding->ResolvedType;
+  auto *site = const_cast<NewExpr *>(allocation);
+  site->NativeSyncAllocationRequired = true;
+  site->NativeSyncAllocationSource = plan;
+  m_PendingNativeSyncAllocations.push_back(plan);
+  return true;
+}
+
 NativeSyncOwnerCandidatePtr Sema::collectNativeSyncOwnerRecipe(Expr *source) {
   if (!source || !source->ResolvedType) return {};
   NativeSyncOwnerCandidatePtr recipe;
@@ -81,6 +178,21 @@ void Sema::recordNativeSyncOwnerRecipe(const AccessPath &rawPlace, Expr *source,
   auto recipe = source ? source->NativeSyncOwnerRecipe : NativeSyncOwnerCandidatePtr{};
   SymbolInfo *binding = nullptr;
   if (!CurrentScope->findSymbolByID(place.RootID, binding) || !binding || !binding->TypeObj) return;
+  if (!recipe && !initialization &&
+      (binding->TypeObj->isUniquePtr() || binding->TypeObj->isSharedPtr())) {
+    auto *decl = binding->ASTPtr ? dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(binding->ASTPtr)) : nullptr;
+    auto *allocation = decl && decl->Init ? dynamic_cast<NewExpr *>(decl->Init.get()) : nullptr;
+    if (allocation && m_NativeSyncAllocationSnapshots.count(allocation)) {
+      // This exact private owner-initialization edge cannot silently fall
+      // back to an unchecked assignment if an earlier rejected specialization
+      // prevented preparation of its source recipe. The entry rollback also
+      // restores this failure, just like an explicitly rejected recipe.
+      error(source, DiagID::ERR_GENERIC_SEMA,
+            "native sync owner allocation: MissingPreparedOwnerRecipe");
+      m_NativeSyncOwnerRecipes[place.RootID].reset();
+      return;
+    }
+  }
   if (recipe && !initialization &&
       (binding->TypeObj->isUniquePtr() || binding->TypeObj->isSharedPtr())) {
     auto *decl = binding->ASTPtr ? dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(binding->ASTPtr)) : nullptr;
@@ -90,6 +202,16 @@ void Sema::recordNativeSyncOwnerRecipe(const AccessPath &rawPlace, Expr *source,
         !pointee->withAttributes(false, false)->equals(*source->ResolvedType->withAttributes(false, false)))
       recipe.reset();
     else {
+      if (!m_NativeSyncAllocationSnapshots.count(allocation)) {
+        // Ordinary user allocations stay on their existing local semantics;
+        // missing the private contract must not manufacture a native witness.
+        m_NativeSyncOwnerRecipes[place.RootID].reset();
+        return;
+      }
+      if (!prepareNativeSyncAllocation(allocation, decl, source, recipe)) {
+        m_NativeSyncOwnerRecipes[place.RootID].reset();
+        return;
+      }
       auto owned = std::shared_ptr<NativeSyncOwnerCandidate>(new NativeSyncOwnerCandidate(*recipe));
       owned->Parent = recipe;
       owned->Allocation = allocation;
@@ -214,6 +336,29 @@ bool Sema::qualifyNativeSyncFactory(CallExpr *call, size_t diagnosticStart) {
 
 bool Sema::finalizeNativeSyncFactoryPlans() {
   if (HasError || DiagnosticEngine::hasErrors()) return false;
+  for (auto &weak : m_PendingNativeSyncAllocations) {
+    auto pending = weak.lock();
+    if (!pending) continue;
+    const auto checked = m_RawAddressReturns.find(const_cast<FunctionDecl *>(pending->Definition));
+    const auto *owner = pending->OwnerType ? dynamic_cast<const ShapeType *>(pending->OwnerType.get()) : nullptr;
+    if (!pending->Allocation || !pending->Binding || !pending->Definition ||
+        pending->Allocation->NativeSyncAllocationSource != pending ||
+        !owner || !owner->Decl || !owner->Decl->HasExplicitDrop || owner->Decl->MangledDestructorName.empty() ||
+        checked == m_RawAddressReturns.end() || !checked->second.Checked || !checked->second.Valid) {
+      error(const_cast<NewExpr *>(pending->Allocation), DiagID::ERR_GENERIC_SEMA,
+            "native sync owner allocation: IncompleteDefinition");
+      return false;
+    }
+    if (pending->Definition->TemplateOrigin) {
+      auto cached = InstantiationCache.find(pending->Definition->Name);
+      if (cached == InstantiationCache.end() || !cached->second ||
+          cached->second->Validation != GenericSpecializationValidationState::Valid) return false;
+    }
+    auto sealed = std::shared_ptr<NativeSyncAllocationPlan>(new NativeSyncAllocationPlan(*pending));
+    sealed->Complete = true;
+    const_cast<NewExpr *>(pending->Allocation)->NativeSyncAllocationSource = std::move(sealed);
+  }
+  m_PendingNativeSyncAllocations.clear();
   for (const auto &weak : m_PendingNativeSyncFactories) {
     auto pending = weak.lock();
     if (!pending) continue; // discarded candidate AST; nothing to publish

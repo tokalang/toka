@@ -7821,6 +7821,70 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
   return m_Builder.CreateLoad(st, alloca);
 }
 
+bool CodeGen::guardNativeSyncAllocation(const NewExpr *site, llvm::Value *allocated,
+                                       llvm::Value *emptyOwner) {
+  auto p = site->NativeSyncAllocationSource;
+#ifdef TOKA_BUILD_TESTING
+  auto fault = m_NativeSyncAllocationFault;
+  if (fault.rfind("control:", 0) == 0) fault = emptyOwner ? fault.substr(8) : "";
+  if (fault == "missing") p.reset();
+  else if (p && !fault.empty()) {
+    auto faulted = std::shared_ptr<NativeSyncAllocationPlan>(new NativeSyncAllocationPlan(*p));
+    if (fault == "incomplete") faulted->Complete = false;
+    if (fault == "site") faulted->Allocation = nullptr;
+    if (fault == "binding") faulted->Binding = nullptr;
+    if (fault == "definition") faulted->Definition = nullptr;
+    if (fault == "input") faulted->PreparedOwner = nullptr;
+    if (fault == "type") faulted->OwnerType.reset();
+    p = std::move(faulted);
+  }
+#endif
+  auto reject = [&](const char *why) {
+    error(site, DiagID::ERR_CODEGEN, std::string("native sync allocation: ") + why);
+    return false;
+  };
+  if (!p || !p->Complete) return reject("MissingOrIncompletePlan");
+  if (p->Allocation != site || !p->Definition || p->Definition != m_CurrentFunction ||
+      !p->Binding || p->Binding->Init.get() != site) return reject("SiteMismatch");
+  if (!p->PreparedOwner || !p->PreparedOwner->ResolvedType || !p->OwnerType || !p->ManagedType ||
+      !p->Binding->ResolvedType || !p->ManagedType->equals(*p->Binding->ResolvedType) ||
+      !p->OwnerType->equals(*p->PreparedOwner->ResolvedType)) return reject("SourceTypeMismatch");
+  if ((!p->ManagedType->isUniquePtr() && !p->ManagedType->isSharedPtr()) ||
+      !p->ManagedType->getPointeeType() || !site->Initializer || !site->Initializer->ResolvedType ||
+      !p->ManagedType->getPointeeType()->withAttributes(false, false)
+          ->equals(*p->OwnerType->withAttributes(false, false)) ||
+      !p->OwnerType->equals(*site->Initializer->ResolvedType) || !allocated ||
+      !allocated->getType()->isPointerTy() ||
+      (emptyOwner && (!p->ManagedType->isSharedPtr() || !emptyOwner->getType()->isPointerTy())))
+    return reject("AllocationKindMismatch");
+  auto *ptr = m_Builder.getPtrTy();
+  auto *exitType = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getInt32Ty()}, false);
+  auto *freeType = llvm::FunctionType::get(m_Builder.getVoidTy(), {ptr}, false);
+  for (const auto &[name, type] : {std::pair<const char *, llvm::FunctionType *>{"_Exit", exitType},
+                                 {"free", freeType}}) {
+    if (auto *existing = m_Module->getNamedValue(name)) {
+      auto *function = llvm::dyn_cast<llvm::Function>(existing);
+      if (!function || function->getFunctionType() != type) return reject("RuntimeSignatureMismatch");
+    }
+  }
+  auto *inputAddress = genAddr(p->PreparedOwner);
+  if (!inputAddress) return reject("PreparedOwnerAddressMissing");
+  auto *fn = m_Builder.GetInsertBlock()->getParent();
+  auto *ready = llvm::BasicBlock::Create(m_Context, "native.alloc.ready", fn);
+  auto *failed = llvm::BasicBlock::Create(m_Context, "native.alloc.failed", fn);
+  m_Builder.CreateCondBr(m_Builder.CreateIsNotNull(allocated), ready, failed);
+  m_Builder.SetInsertPoint(failed);
+  // The refcount failed before this empty carrier became a shared owner.
+  // Free it directly; the live native resource is still in PreparedOwner.
+  if (emptyOwner) m_Builder.CreateCall(m_Module->getOrInsertFunction("free", freeType), {emptyOwner});
+  emitDropForType(inputAddress, p->OwnerType);
+  auto *fatal = m_Builder.CreateCall(m_Module->getOrInsertFunction("_Exit", exitType), {m_Builder.getInt32(134)});
+  fatal->setDoesNotReturn();
+  m_Builder.CreateUnreachable();
+  m_Builder.SetInsertPoint(ready);
+  return true;
+}
+
 PhysEntity CodeGen::genNewExpr(const NewExpr *newExpr) {
   llvm::Type *type = nullptr;
   if (newExpr->ResolvedType) {
@@ -7869,7 +7933,9 @@ PhysEntity CodeGen::genNewExpr(const NewExpr *newExpr) {
   llvm::CallInst *voidPtr =
       m_Builder.CreateCall(mallocFn, sizeVal, "new_alloc");
   markMemoryEvent(voidPtr, "allocate");
-  genNullCheck(voidPtr, newExpr, "allocation failed");
+  if (newExpr->NativeSyncAllocationRequired || newExpr->NativeSyncAllocationSource) {
+    if (!guardNativeSyncAllocation(newExpr, voidPtr)) return {};
+  } else genNullCheck(voidPtr, newExpr, "allocation failed");
 
   // In LLVM 17 with opaque pointers, we just use the pointer.
   // But we need to handle initialization.

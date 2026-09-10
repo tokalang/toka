@@ -1018,6 +1018,15 @@ private:
   NativeSyncOwnerCandidatePtr collectNativeSyncOwnerRecipe(Expr *source);
   void recordNativeSyncOwnerRecipe(const AccessPath &place, Expr *source, bool initialization);
   void recordNativeSyncOwnerReturn(ReturnStmt *statement);
+  struct NativeSyncAllocationSnapshot {
+    const FunctionDecl *Definition = nullptr;
+    AnalysisState State;
+  };
+  std::map<const NewExpr *, NativeSyncAllocationSnapshot> m_NativeSyncAllocationSnapshots;
+  std::vector<std::weak_ptr<NativeSyncAllocationPlan>> m_PendingNativeSyncAllocations;
+  void snapshotNativeSyncAllocation(NewExpr *allocation);
+  bool prepareNativeSyncAllocation(const NewExpr *allocation, const VariableDecl *binding,
+                                   Expr *source, const NativeSyncOwnerCandidatePtr &recipe);
   bool qualifyNativeSyncFactory(CallExpr *call, size_t diagnosticStart);
   NativeSyncFactoryPtr collectNativeSyncFactoryOrigin(Expr *expression);
   void recordNativeSyncBinding(const AccessPath &place, Expr *source,

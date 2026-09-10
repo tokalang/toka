@@ -1526,6 +1526,11 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
             llvm::Value *rcSize =
                 llvm::ConstantInt::get(getIntPtrTy(), 4);
             llvm::Value *refPtr = m_Builder.CreateCall(mallocFn, rcSize);
+            if (auto *nativeAllocation = dynamic_cast<const NewExpr *>(var->Init.get());
+                nativeAllocation && (nativeAllocation->NativeSyncAllocationRequired ||
+                                     nativeAllocation->NativeSyncAllocationSource)) {
+              if (!guardNativeSyncAllocation(nativeAllocation, refPtr, initVal)) return nullptr;
+            }
             refPtr = m_Builder.CreateBitCast(
                 refPtr, llvm::PointerType::getUnqual(m_Context));
             m_Builder.CreateStore(

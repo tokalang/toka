@@ -1,0 +1,52 @@
+import std/sync::Mutex
+extern fn toka_sync_test_category() -> i32
+extern fn toka_sync_test_arm(category: i32) -> void
+extern fn toka_sync_test_drop() -> void
+extern fn toka_sync_test_done() -> i32
+extern fn toka_sync_test_public_owner() -> i32
+
+shape OwnerToken(value: i32)
+impl OwnerToken@Encap {
+    fn drop(self#) {
+        assert(self.value == 7, "owner payload corrupted")
+        unsafe { toka_sync_test_drop() }
+    }
+}
+impl OwnerToken@Send {}
+impl OwnerToken@Sync {}
+
+fn run_owner<'T: @Send>(cede 'data: T, shared: bool) {
+    if shared {
+        auto ~owner = Mutex<'T>::make_shared(cede 'data)
+        auto ~other = ~owner
+        auto locked = other.lock().unwrap()
+    } else {
+        auto ^owner = Mutex<'T>::make(cede 'data)
+        auto locked = owner.lock().unwrap()
+    }
+}
+
+fn main() -> i32 {
+    auto category = unsafe toka_sync_test_category()
+    auto shared = (unsafe toka_sync_test_public_owner()) == 2
+    if category == 0 {
+        unsafe { toka_sync_test_arm(category) }
+        run_owner<i32>(7, shared)
+    } else if category == 1 {
+        auto token = OwnerToken(value = 7)
+        unsafe { toka_sync_test_arm(category) }
+        run_owner<OwnerToken>(cede token, shared)
+    } else if category == 2 {
+        auto ^token = new OwnerToken(value = 7)
+        unsafe { toka_sync_test_arm(category) }
+        run_owner<^OwnerToken>(cede ^token, shared)
+    } else {
+        {
+            auto ~token = new OwnerToken(value = 7)
+            auto ~other = ~token
+            unsafe { toka_sync_test_arm(category) }
+            run_owner<~OwnerToken>(cede ~other, shared)
+        }
+    }
+    return unsafe toka_sync_test_done()
+}

@@ -340,6 +340,11 @@ if(BUILD_TESTING)
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_native_sync_factory_plans.py
                     --build-dir ${CMAKE_BINARY_DIR})
             set_tests_properties(toka_native_sync_factory_plans PROPERTIES TIMEOUT 180)
+            add_test(NAME toka_native_sync_public_owner
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/scripts/test_native_sync_public_owner.py
+                    --build-dir ${CMAKE_BINARY_DIR})
+            set_tests_properties(toka_native_sync_public_owner PROPERTIES TIMEOUT 240)
         endif()
         add_test(NAME toka_negative_harness_termination
             COMMAND ${Python3_EXECUTABLE}

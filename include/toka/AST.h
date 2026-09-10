@@ -1208,6 +1208,8 @@ public:
 
 class NewExpr : public Expr {
 public:
+  bool NativeSyncAllocationRequired = false;
+  std::shared_ptr<const NativeSyncAllocationPlan> NativeSyncAllocationSource;
   std::string Type;
   TypeSyntaxPtr TypeSyntax;
   std::unique_ptr<Expr> Initializer;
