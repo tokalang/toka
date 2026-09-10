@@ -1,5 +1,9 @@
 # Native sync factory source plans — WIP, not Accepted
 
+Current integrated thread/sync work, including the in-progress public Mutex
+adapter switch, is tracked in [thread_sync_closeout_worklog.md](thread_sync_closeout_worklog.md).
+The checkpoint results below are historical; they are not a full delivery claim.
+
 Base: `aaac3267`. This checkpoint connects the three private creation calls to
 real Sema-produced, exact-edge CodeGen plans. It does **not** complete the native
 owner/storage witness, the thread environment proof, or the binding slice.

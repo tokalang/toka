@@ -1,5 +1,8 @@
 # Native sync private adapters — implementation checkpoint, not Accepted
 
+The later public Mutex integration is in progress; see
+[the fixed thread/sync delivery work log](thread_sync_closeout_worklog.md).
+
 Subsequent source-plan WIP, the direct-owner view repair, and remaining chain are
 tracked in [native_sync_factory_source_progress.md](native_sync_factory_source_progress.md).
 The figures below describe the `aaac3267` adapter checkpoint, not a full witness acceptance.

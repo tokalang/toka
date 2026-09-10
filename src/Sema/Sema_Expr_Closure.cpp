@@ -427,6 +427,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   std::vector<ShapeMember> members;
   std::map<std::string, SymbolInfo> captureBindings;
   std::map<std::string, RawAddressSourcePtr> capturedRawSources;
+  Clo->NativeSyncCaptureRecipes.clear();
   Clo->ImplicitCaptures.clear();
   Clo->BoundaryImplicitCaptures.clear();
   Clo->BoundaryNonSendCaptures.clear();
@@ -653,6 +654,10 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
           captureInfo.IsDeclaredVariable = true;
           captureInfo.TypeObj = sm.ResolvedType;
           captureBindings[sm.Name] = std::move(captureInfo);
+          auto nativeOwner = m_NativeSyncOwnerRecipes.find(infoPtr->SymbolID);
+          if (nativeOwner != m_NativeSyncOwnerRecipes.end() && nativeOwner->second &&
+              !m_InvalidNativeSyncOwnerRecipes.count(nativeOwner->second))
+            Clo->NativeSyncCaptureRecipes[sm.Name] = nativeOwner->second;
           if (explicitMode == CaptureMode::ExplicitCede) {
             // Mark original variable as Consumed/Moved in the parent scope!
             CurrentScope->Parent->markMoved(varName, Clo->Loc);
@@ -789,6 +794,9 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
        // If it's a reference capture, the user writes `x`, but it's a reference under the hood. 
        // We want it to be considered as the exact physical type.
        CurrentScope->define(memb.Name, Info);
+       auto nativeOwner = Clo->NativeSyncCaptureRecipes.find(memb.Name);
+       if (nativeOwner != Clo->NativeSyncCaptureRecipes.end())
+         m_NativeSyncOwnerRecipes[makeAccessPath(memb.Name).RootID] = nativeOwner->second;
        auto carried = capturedRawSources.find(memb.Name);
        if (carried != capturedRawSources.end()) {
          auto receiver = std::make_shared<RawAddressSource>();

@@ -237,65 +237,24 @@ impl<'T: @Send> Mutex<'T> {
     }
     
     pub fn new(cede 'data: T) -> Mutex<'T> {
-        unsafe {
-            auto env = sys_alloc_thread_env(sizeof('T) as usize)
-            auto *p# = sync_writable_storage<['T]>(env)
-            p[0] = cede 'data
-            return Mutex<'T>(
-                handle = sys_mutex_create(),
-                data_ptr = env
-            )
-        }
+        return __sync_mutex_create<'T>(cede 'data)
     }
     
     /// Directly allocates and initializes a new Mutex as a shared pointer (~Mutex)
     pub fn make(cede 'data: T) -> ^Mutex<'T> {
-        unsafe {
-            auto env = sys_alloc_thread_env(sizeof('T) as usize)
-            auto *p# = sync_writable_storage<['T]>(env)
-            p[0] = cede 'data
-            auto ^mutex = new Mutex<'T>(
-                handle = sys_mutex_create(),
-                data_ptr = env
-            )
-            return ^mutex
-        }
+        auto ^mutex# = new Mutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)
+        mutex = __sync_mutex_create<'T>(cede 'data)
+        return ^mutex
     }
 
     pub fn make_shared(cede 'data: T) -> ~Mutex<'T> {
-        unsafe {
-            auto env = sys_alloc_thread_env(sizeof('T) as usize)
-            auto *p# = sync_writable_storage<['T]>(env)
-            p[0] = cede 'data
-            auto ~mutex = new Mutex<'T>(
-                handle = sys_mutex_create(),
-                data_ptr = env
-            )
-            return cede ~mutex
-        }
+        auto ~mutex# = new Mutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)
+        mutex = __sync_mutex_create<'T>(cede 'data)
+        return cede ~mutex
     }
     
     pub fn lock(self) -> Result<MutexLock<'T>, Error> <- self {
-        unsafe {
-            auto rc = sys_mutex_lock(self.handle)
-            if rc != 0 {
-                auto msg# = string::from("mutex lock failed with error code: ")
-                auto rc_str = string::from_int(rc)
-                msg#.push_str(rc_str.as_str())
-                
-                return Result<MutexLock<'T>, Error>::Err(Error::new(rc, msg))
-            }
-            
-            auto temp_h = self.handle:Addr
-            auto *p# = sync_writable_storage<['T]>(self.data_ptr)
-            auto nul *tok = null:nul *byte
-            
-            return Result<MutexLock<'T>, Error>::Ok(MutexLock<'T>(
-                handle = temp_h,
-                &data = &'(p[0]),
-                *thread_token = *tok
-            ))
-        }
+        return __sync_mutex_acquire<'T>(self)
     }
     
     /// Unlocks the mutex implicitly yielding it to other waiting threads.
@@ -316,17 +275,7 @@ impl<'T: @Send> Mutex<'T> {
 
 impl<'T> Mutex<'T>@Encap {
     fn drop(self#) {
-        unsafe {
-            if self.data_ptr != 0:Addr {
-                auto *p# = sync_writable_storage<['T]>(self.data_ptr)
-                free[1] *p
-                self.data_ptr = 0:Addr
-            }
-            if self.handle != 0:Addr {
-                sys_mutex_destroy(self.handle)
-                self.handle = 0:Addr
-            }
-        }
+        __sync_mutex_drop<'T>(self#)
     }
 }
 
@@ -338,12 +287,7 @@ pub shape MutexLock<'T: @Send>(
 
 impl<'T> MutexLock<'T>@Encap {
     fn drop(self#) {
-        unsafe {
-            if self.handle != 0:Addr {
-                sys_mutex_unlock(self.handle)
-                self.handle = 0:Addr
-            }
-        }
+        __sync_mutex_release<'T>(self#)
     }
 }
 

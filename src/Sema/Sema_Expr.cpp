@@ -805,6 +805,8 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
 Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.NativeSyncBindings = m_NativeSyncBindings;
+  state.NativeSyncOwnerRecipes = m_NativeSyncOwnerRecipes;
+  state.InvalidNativeSyncOwnerRecipes = m_InvalidNativeSyncOwnerRecipes;
   state.InvalidNativeSyncOrigins = m_InvalidNativeSyncOrigins;
   state.RawAddressBindings = m_RawAddressBindings;
   state.CallableEnvironments = m_CallableEnvironments;
@@ -870,12 +872,22 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   auto mergedReferenceTargets = states.front().ReferenceTargets;
   auto callableEnvironments = states.front().CallableEnvironments;
   auto nativeSyncBindings = states.front().NativeSyncBindings;
+  auto nativeOwnerRecipes = states.front().NativeSyncOwnerRecipes;
+  auto invalidOwnerRecipes = states.front().InvalidNativeSyncOwnerRecipes;
   auto invalidNativeSyncOrigins = states.front().InvalidNativeSyncOrigins;
   auto rawAddressBindings = states.front().RawAddressBindings;
   PALChecker mergedPAL = states.front().PAL;
 
   for (size_t i = 1; i < states.size(); ++i) {
     const auto &state = states[i];
+    invalidOwnerRecipes.insert(state.InvalidNativeSyncOwnerRecipes.begin(),
+                               state.InvalidNativeSyncOwnerRecipes.end());
+    for (auto it = nativeOwnerRecipes.begin(); it != nativeOwnerRecipes.end();) {
+      auto other = state.NativeSyncOwnerRecipes.find(it->first);
+      if (other == state.NativeSyncOwnerRecipes.end() || other->second != it->second)
+        it = nativeOwnerRecipes.erase(it);
+      else ++it;
+    }
     invalidNativeSyncOrigins.insert(state.InvalidNativeSyncOrigins.begin(),
                                     state.InvalidNativeSyncOrigins.end());
     for (auto it = nativeSyncBindings.begin(); it != nativeSyncBindings.end();) {
@@ -951,6 +963,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   restoreVisibleReferenceTargets(CurrentScope, mergedReferenceTargets);
   m_CallableEnvironments = std::move(callableEnvironments);
   m_NativeSyncBindings = std::move(nativeSyncBindings);
+  m_NativeSyncOwnerRecipes = std::move(nativeOwnerRecipes);
+  m_InvalidNativeSyncOwnerRecipes = std::move(invalidOwnerRecipes);
   m_InvalidNativeSyncOrigins = std::move(invalidNativeSyncOrigins);
   m_RawAddressBindings = std::move(rawAddressBindings);
   m_PayloadFlowRestrictedPaths = std::move(mergedPayloadFlowRestrictions);
@@ -1175,6 +1189,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   E->RawAddressValueFacts.reset();
   E->RawAddressViewFacts.reset();
   E->NativeSyncFactoryOrigin.reset();
+  E->NativeSyncOwnerRecipe.reset();
   m_LastInitMask = ~0ULL; // Default to fully set
   auto T = checkExprImpl(E);
   std::set<std::string> taskDependencies;
@@ -1190,8 +1205,10 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   const bool expressionSucceeded = std::none_of(
       expressionRecords.begin() + std::min(expressionDiagnosticStart, expressionRecords.size()),
       expressionRecords.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
-  if (expressionSucceeded)
+  if (expressionSucceeded) {
     E->NativeSyncFactoryOrigin = collectNativeSyncFactoryOrigin(E);
+    E->NativeSyncOwnerRecipe = collectNativeSyncOwnerRecipe(E);
+  }
   E->RawAddressValueFacts = collectRawAddressSource(E, false);
   E->RawAddressViewFacts = collectRawAddressSource(E, true);
   if (auto *assignment = dynamic_cast<BinaryExpr *>(E);
@@ -1203,6 +1220,8 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       recordRawAddressBinding(makeAccessPath(assignment->LHS.get()), assignment->RHS.get());
       recordNativeSyncBinding(makeAccessPath(assignment->LHS.get()),
                               assignment->Op == "=" ? assignment->RHS.get() : nullptr);
+      recordNativeSyncOwnerRecipe(makeAccessPath(assignment->LHS.get()),
+                                  assignment->Op == "=" ? assignment->RHS.get() : nullptr, false);
     }
   }
 

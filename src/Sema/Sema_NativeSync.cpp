@@ -3,6 +3,114 @@
 #include <set>
 
 namespace toka {
+NativeSyncOwnerCandidatePtr Sema::collectNativeSyncOwnerRecipe(Expr *source) {
+  if (!source || !source->ResolvedType) return {};
+  NativeSyncOwnerCandidatePtr recipe;
+  FunctionDecl *callee = nullptr;
+  if (auto *call = dynamic_cast<CallExpr *>(source)) {
+    if (call->NativeSyncFactorySource) {
+      auto prepared = std::shared_ptr<NativeSyncOwnerCandidate>(new NativeSyncOwnerCandidate);
+      prepared->Factory = call->NativeSyncFactorySource;
+      prepared->OwnerEdge = source;
+      prepared->Provider = CurrentFunction;
+      prepared->ValueType = source->ResolvedType;
+      recipe = std::move(prepared);
+    } else callee = call->ResolvedFn;
+  } else if (auto *method = dynamic_cast<MethodCallExpr *>(source)) callee = method->ResolvedFn;
+  else if (auto *cede = dynamic_cast<CedeExpr *>(source)) recipe = cede->Value->NativeSyncOwnerRecipe;
+  else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source)) recipe = unsafe->Expression->NativeSyncOwnerRecipe;
+  else if (auto *ascription = dynamic_cast<CastExpr *>(source);
+           ascription && ascription->Kind == CastKind::Ascription)
+    recipe = ascription->Expression->NativeSyncOwnerRecipe;
+  else if (auto *postfix = dynamic_cast<PostfixExpr *>(source)) recipe = postfix->LHS->NativeSyncOwnerRecipe;
+  else if (auto *unary = dynamic_cast<UnaryExpr *>(source);
+           unary && (source->ResolvedType->isUniquePtr() || source->ResolvedType->isSharedPtr()))
+    recipe = unary->RHS->NativeSyncOwnerRecipe;
+  else if (dynamic_cast<VariableExpr *>(source)) {
+    auto path = canonicalizeAccessPath(makeAccessPath(source));
+    if (path && path.Projections.empty()) {
+      auto found = m_NativeSyncOwnerRecipes.find(path.RootID);
+      if (found != m_NativeSyncOwnerRecipes.end()) recipe = found->second;
+    }
+  }
+  if (callee) {
+    const auto returned = m_NativeSyncOwnerReturns.find(callee);
+    const auto checked = m_RawAddressReturns.find(callee);
+    if (returned == m_NativeSyncOwnerReturns.end() || returned->second.size() != 1 ||
+        !returned->second.front() || checked == m_RawAddressReturns.end() ||
+        !checked->second.Checked || !checked->second.Valid) return {};
+    if (callee->TemplateOrigin) {
+      auto cached = InstantiationCache.find(callee->Name);
+      if (cached == InstantiationCache.end() || !cached->second ||
+          cached->second->Instance != callee ||
+          cached->second->Validation != GenericSpecializationValidationState::Valid) return {};
+    }
+    auto returnedRecipe = returned->second.front();
+    if (m_InvalidNativeSyncOwnerRecipes.count(returnedRecipe) || !callee->ResolvedReturnType ||
+        !source->ResolvedType->equals(*callee->ResolvedReturnType)) return {};
+    auto rebased = std::shared_ptr<NativeSyncOwnerCandidate>(new NativeSyncOwnerCandidate(*returnedRecipe));
+    rebased->Parent = returnedRecipe;
+    rebased->OwnerEdge = source;
+    rebased->Provider = callee;
+    rebased->ValueType = source->ResolvedType;
+    recipe = std::move(rebased);
+  }
+  if (!recipe || !recipe->Factory || m_InvalidNativeSyncOwnerRecipes.count(recipe)) return {};
+  auto valueType = source->ResolvedType;
+  if (valueType->isUniquePtr() || valueType->isSharedPtr()) valueType = valueType->getPointeeType();
+  auto shape = std::dynamic_pointer_cast<ShapeType>(valueType);
+  const auto &factory = recipe->Factory;
+  if (!shape || !shape->Decl || !factory->OwnerTemplate || !factory->ElementType ||
+      shape->Decl->InstantiationTemplate != factory->OwnerTemplate ||
+      shape->Decl->InstantiationArgs.size() != 1 || !shape->Decl->InstantiationArgs[0] ||
+      !shape->Decl->InstantiationArgs[0]->equals(*factory->ElementType)) return {};
+  // Pending recipes are deliberately separate from NativeSyncFactoryOrigin.
+  // This path neither sets Validated nor supplies environment/CodeGen authority.
+  return recipe;
+}
+
+void Sema::recordNativeSyncOwnerRecipe(const AccessPath &rawPlace, Expr *source, bool initialization) {
+  auto place = canonicalizeAccessPath(rawPlace);
+  if (!place) return;
+  auto old = m_NativeSyncOwnerRecipes.find(place.RootID);
+  if (!place.Projections.empty()) {
+    if (old != m_NativeSyncOwnerRecipes.end() && old->second)
+      m_InvalidNativeSyncOwnerRecipes.insert(old->second);
+    return;
+  }
+  auto recipe = source ? source->NativeSyncOwnerRecipe : NativeSyncOwnerCandidatePtr{};
+  SymbolInfo *binding = nullptr;
+  if (!CurrentScope->findSymbolByID(place.RootID, binding) || !binding || !binding->TypeObj) return;
+  if (recipe && !initialization &&
+      (binding->TypeObj->isUniquePtr() || binding->TypeObj->isSharedPtr())) {
+    auto *decl = binding->ASTPtr ? dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(binding->ASTPtr)) : nullptr;
+    const auto allocation = decl && decl->Init ? dynamic_cast<NewExpr *>(decl->Init.get()) : nullptr;
+    auto pointee = binding->TypeObj->getPointeeType();
+    if (!allocation || allocation->ArraySize || !pointee || !source->ResolvedType ||
+        !pointee->withAttributes(false, false)->equals(*source->ResolvedType->withAttributes(false, false)))
+      recipe.reset();
+    else {
+      auto owned = std::shared_ptr<NativeSyncOwnerCandidate>(new NativeSyncOwnerCandidate(*recipe));
+      owned->Parent = recipe;
+      owned->Allocation = allocation;
+      owned->OwnerEdge = allocation;
+      owned->ValueType = binding->TypeObj;
+      owned->Provider = CurrentFunction;
+      recipe = std::move(owned);
+    }
+  }
+  m_NativeSyncOwnerRecipes[place.RootID] = std::move(recipe);
+}
+
+void Sema::recordNativeSyncOwnerReturn(ReturnStmt *statement) {
+  if (!CurrentFunction || !statement || !statement->ReturnValue) return;
+  auto recipe = statement->ReturnValue->NativeSyncOwnerRecipe;
+  if (recipe && m_InvalidNativeSyncOwnerRecipes.count(recipe)) recipe.reset();
+  // Keep every return, including unknown ones; a partial summary cannot be
+  // mistaken for a complete factory by silently dropping its other branches.
+  m_NativeSyncOwnerReturns[CurrentFunction].push_back(std::move(recipe));
+}
+
 bool Sema::qualifyNativeSyncFactory(CallExpr *call, size_t diagnosticStart) {
   call->NativeSyncFactorySource.reset();
   const auto &records = DiagnosticEngine::records();

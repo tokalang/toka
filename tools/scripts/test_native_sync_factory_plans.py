@@ -75,6 +75,21 @@ pub fn __factory_test() -> i32 {
         (library / "std/sync.tk").write_text(invalid)
         compile_case("invalid-parent", succeeds=False, diagnostic="E0408")
 
+        # Return-nominal preparation must not make genuine factory recursion
+        # admissible. Only metadata ordering changed, not Unchecked authority.
+        recursive_sdk = sdk.replace(
+            "fn __sync_mutex_create<'T: @Send>(cede 'data: T) -> Mutex<'T> {",
+            "fn __sync_mutex_create<'T: @Send>(cede 'data: T) -> Mutex<'T> {\n"
+            "    return __sync_mutex_create<'T>(cede 'data)")
+        (library / "std/sync.tk").write_text(recursive_sdk + '''
+pub fn __factory_test() -> i32 {
+    auto owner = __sync_mutex_create<i32>(7)
+    return 0
+}
+''')
+        compile_case("recursive-native-factory", succeeds=False,
+                     diagnostic="recursive generic specialization is not supported")
+
         # Origin continuity is not payload-write authority. These programs use
         # the same checked factory as the mutable positive above. The requested
         # owner-write contract must not be granted to a readonly view. Do not
@@ -129,7 +144,8 @@ fn main() -> i32 { return __sync_mutex_create(0) }
         compile_case("same-name-user", ["--native-sync-factory-fault=missing"])
         positive += 1
         print(f"native factory plans: {positive} source positives, {fault_count} E0701/no-artifact faults, "
-              "1 invalid-parent and 2 readonly rejections (strict shadow parity); no thread witness granted")
+              "invalid-parent/recursive-factory and 2 readonly rejections (strict shadow parity); "
+              "no thread witness granted")
 
 
 if __name__ == "__main__":

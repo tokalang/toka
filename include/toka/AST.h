@@ -387,6 +387,7 @@ public:
   // Checked expression value-flow provenance. clone() deliberately does not
   // copy this: each instantiated body must elaborate its own source edge.
   NativeSyncFactoryPtr NativeSyncFactoryOrigin;
+  NativeSyncOwnerCandidatePtr NativeSyncOwnerRecipe;
   bool IsMorphicExempt = false; // [NEW] Track morphic exemption at expression level
   bool HasParens = false; // [NEW] Track explicit parentheses
   bool ExtendLifetime = false; // [NEW] Flag for Temporary Lifetime Extension
@@ -2520,6 +2521,9 @@ public:
   std::vector<std::string> BoundaryImplicitCaptures;
   std::vector<std::string> BoundaryNonSendCaptures;
   std::vector<std::string> BoundaryNonSyncCopyCaptures;
+  // Exact checked explicit-capture value recipes, not a type-based lifetime
+  // exemption. Like other elaborated body facts these are not cloned.
+  std::map<std::string, NativeSyncOwnerCandidatePtr> NativeSyncCaptureRecipes;
   
   bool HasExplicitArgs = false;
   std::vector<ClosureParamSyntax> Params; // Structured closure parameters

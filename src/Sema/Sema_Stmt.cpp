@@ -1588,7 +1588,10 @@ void Sema::checkStmt(Stmt *S) {
     if (returnRollbackState && enforceReturnSourcePlan &&
         (!returnSourcePlan->admitted() || hasNewReturnError()))
       mergeAnalysisStates({*returnRollbackState}, returnRollbackState->PAL);
-    if (!hasNewReturnError()) recordRawAddressReturn(Ret);
+    if (!hasNewReturnError()) {
+      recordRawAddressReturn(Ret);
+      recordNativeSyncOwnerReturn(Ret);
+    }
     m_LastBorrowSource.clear();
     m_LastLifeDependencies.clear();
     m_LastFieldDependencies.clear();
@@ -2727,6 +2730,7 @@ void Sema::checkStmt(Stmt *S) {
       auto path = makeAccessPath(Var->Name);
       recordRawAddressBinding(path, Var->Init.get());
       if (!HasError) recordNativeSyncBinding(path, Var->Init.get(), true);
+      if (!HasError) recordNativeSyncOwnerRecipe(path, Var->Init.get(), true);
     }
     if (!Info.ConditionalTodoIds.empty()) {
       SemanticEvidence::recordConditionalFact(

@@ -786,6 +786,8 @@ private:
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
   struct AnalysisState {
+    std::map<uint64_t, NativeSyncOwnerCandidatePtr> NativeSyncOwnerRecipes;
+    std::set<NativeSyncOwnerCandidatePtr> InvalidNativeSyncOwnerRecipes;
     std::map<uint64_t, NativeSyncFactoryPtr> NativeSyncBindings;
     std::set<NativeSyncFactoryPtr> InvalidNativeSyncOrigins;
     std::map<uint64_t, RawAddressSourcePtr> RawAddressBindings;
@@ -1009,6 +1011,13 @@ private:
   std::map<uint64_t, NativeSyncFactoryPtr> m_NativeSyncBindings;
   std::set<NativeSyncFactoryPtr> m_InvalidNativeSyncOrigins;
   std::vector<std::weak_ptr<NativeSyncFactoryPlan>> m_PendingNativeSyncFactories;
+  std::set<std::string> m_NativeSyncReturnPreparation;
+  std::map<uint64_t, NativeSyncOwnerCandidatePtr> m_NativeSyncOwnerRecipes;
+  std::set<NativeSyncOwnerCandidatePtr> m_InvalidNativeSyncOwnerRecipes;
+  std::map<const FunctionDecl *, std::vector<NativeSyncOwnerCandidatePtr>> m_NativeSyncOwnerReturns;
+  NativeSyncOwnerCandidatePtr collectNativeSyncOwnerRecipe(Expr *source);
+  void recordNativeSyncOwnerRecipe(const AccessPath &place, Expr *source, bool initialization);
+  void recordNativeSyncOwnerReturn(ReturnStmt *statement);
   bool qualifyNativeSyncFactory(CallExpr *call, size_t diagnosticStart);
   NativeSyncFactoryPtr collectNativeSyncFactoryOrigin(Expr *expression);
   void recordNativeSyncBinding(const AccessPath &place, Expr *source,

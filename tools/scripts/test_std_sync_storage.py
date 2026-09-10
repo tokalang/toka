@@ -4,7 +4,6 @@ import argparse
 import os
 from pathlib import Path
 import platform
-import signal
 import subprocess
 import tempfile
 
@@ -46,7 +45,11 @@ def main():
                             "-pthread", "-lm", *wrap, "-o", str(binary)], check=True)
             runtime_env = dict(env, DYLD_INSERT_LIBRARIES=str(hooks)) if darwin else env
             result = subprocess.run([str(binary)], env=runtime_env, capture_output=True, timeout=10)
-            expected = -signal.SIGABRT if name == "sync_null_allocation.tk" else 0
+            # The reviewed private factory cleans partial construction then
+            # uses allocation-free/non-I/O _Exit(134), rather than the old
+            # unchecked-wrapper abort path. Only this migrated fatal oracle
+            # changes; ordinary positives and rejection reasons stay fixed.
+            expected = 134 if name == "sync_null_allocation.tk" else 0
             assert result.returncode == expected, (name, result.returncode, result.stderr)
         for name, reason in (("sync_reject_readonly.tk", "E04573"),
                              ("sync_reject_live_guard.tk", "ActiveDerivedBorrow")):
@@ -55,9 +58,9 @@ def main():
                 rejected = compile_source(name, flag, "-o", output)
                 assert rejected.returncode == 1 and reason in rejected.stderr, rejected.stderr
                 assert not output.exists(), name + " rejected artifact"
-    print("sync storage subset: scalar/resource/remaining shared lock owner runtime; null allocation abort; "
+    print("sync storage subset: scalar/resource/remaining shared lock owner runtime; null allocation fatal; "
           "2 strict parity cases; 4 readonly/live-guard no-artifact checks. "
-          "Direct unique/shared T remain unresolved positive targets, NOT qualified.")
+          "Complete native witness/thread qualification is a separate required gate.")
 
 
 if __name__ == "__main__":

@@ -34,6 +34,12 @@ pub fn __native_flow_test(flag: bool) {
     auto readonly = cede second
     __native_observe(readonly)
 }
+pub fn __native_shared_owner_test() {
+    auto ~mutex = Mutex<i32>::make_shared(7)
+    auto ~worker_mutex = ~mutex
+    __native_observe(worker_mutex)
+    ({ [cede ~worker_mutex] => return 0 }:dyn fn() -> i32)
+}
 )";
   SourceManager sources;
   DiagnosticEngine::init(sources);
@@ -126,6 +132,21 @@ pub fn __native_flow_test(flag: bool) {
   CHECK(writableType->canonicalIdentity() == viewIdentity && writableType->IsWritable);
   CHECK(owner->Decl == decl && decl->InstantiationArgs[0] == element);
   CHECK(element->canonicalIdentity() == elementIdentity);
+
+  FunctionDecl *sharedOwner = nullptr;
+  for (auto &module : modules)
+    for (auto &function : module->Functions)
+      if (function->Name == "__native_shared_owner_test") sharedOwner = function.get();
+  CHECK(sharedOwner && sharedOwner->Body && sharedOwner->Body->Statements.size() == 4);
+  auto *sharedBinding = dynamic_cast<VariableDecl *>(sharedOwner->Body->Statements[0].get());
+  auto *sharedCopy = dynamic_cast<VariableDecl *>(sharedOwner->Body->Statements[1].get());
+  CHECK(sharedBinding && sharedCopy && sharedBinding->Init->NativeSyncOwnerRecipe);
+  CHECK(sharedCopy->Init->NativeSyncOwnerRecipe == sharedBinding->Init->NativeSyncOwnerRecipe);
+  auto *captureStatement = dynamic_cast<ExprStmt *>(sharedOwner->Body->Statements[3].get());
+  auto *captureType = captureStatement ? dynamic_cast<CastExpr *>(captureStatement->Expression.get()) : nullptr;
+  auto *capture = captureType ? dynamic_cast<ClosureExpr *>(captureType->Expression.get()) : nullptr;
+  CHECK(capture && capture->NativeSyncCaptureRecipes.size() == 1);
+  CHECK(capture->NativeSyncCaptureRecipes.begin()->second == sharedBinding->Init->NativeSyncOwnerRecipe);
 
   // Real rejection path: the outer call checks a destructive argument before
   // rejecting a later type. The following read must see the same source edge,

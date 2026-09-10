@@ -5385,6 +5385,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     return;
   }
 
+  m_NativeSyncOwnerReturns.erase(Fn);
   ActiveNodeRAII Active(Fn);
 
   std::string savedRet =
@@ -7023,6 +7024,33 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     DiagnosticEngine::report(getLoc(CallSite), DiagID::NOTE_GENERIC, Template->Name);
     HasError = true;
     return {nullptr, GenericSpecializationValidationState::Invalid};
+  }
+
+  // A native storage factory returns the same owner whose public constructors
+  // call it. Resolving that owner eagerly checks its impls. Prepare the exact
+  // return nominal BEFORE installing this function's Unchecked body entry;
+  // otherwise metadata preparation is mistaken for recursive execution.
+  // This never admits an Unchecked cache hit: real body recursion still goes
+  // through the unchanged fail-closed cache branch below.
+  if (Template->NativeSyncFactory != NativeSyncFactoryKind::None &&
+      Args.size() == 1 && !m_NativeSyncReturnPreparation.count(cacheKey)) {
+    auto lexical = DeclarationLexicalScopes.find(Template);
+    if (lexical == DeclarationLexicalScopes.end() || !lexical->second)
+      return {nullptr, GenericSpecializationValidationState::Invalid};
+    const char *ownerName = Template->NativeSyncFactory == NativeSyncFactoryKind::Mutex ? "Mutex" :
+        Template->NativeSyncFactory == NativeSyncFactoryKind::RwMutex ? "RwMutex" : "CondVar";
+    auto owner = lexical->second->Shapes.find(ownerName);
+    if (owner == lexical->second->Shapes.end() || !owner->second)
+      return {nullptr, GenericSpecializationValidationState::Invalid};
+    m_NativeSyncReturnPreparation.insert(cacheKey);
+    struct PreparationScope {
+      std::set<std::string> &Active;
+      const std::string &Key;
+      ~PreparationScope() { Active.erase(Key); }
+    } preparation{m_NativeSyncReturnPreparation, cacheKey};
+    auto nominal = std::make_shared<ShapeType>(owner->second->Name, Args);
+    nominal->Decl = owner->second;
+    resolveType(nominal);
   }
 
   // Check Cache
