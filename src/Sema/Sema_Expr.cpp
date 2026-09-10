@@ -1209,6 +1209,25 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     return toka::Type::fromString("()");
   ActiveNodeRAII Active(E);
   const size_t expressionDiagnosticStart = DiagnosticEngine::records().size();
+  NativeSyncTemporaryGuardFrame nativeGuardFrame{CurrentFunction, {}};
+  auto *previousNativeGuardFrame = m_NativeSyncTemporaryGuards;
+  if (!previousNativeGuardFrame || previousNativeGuardFrame->Definition != CurrentFunction)
+    m_NativeSyncTemporaryGuards = &nativeGuardFrame;
+  struct RestoreNativeGuardFrame {
+    NativeSyncTemporaryGuardFrame *&Current;
+    NativeSyncTemporaryGuardFrame *Previous;
+    ~RestoreNativeGuardFrame() { Current = Previous; }
+  } restoreNativeGuardFrame{m_NativeSyncTemporaryGuards, previousNativeGuardFrame};
+  std::optional<AnalysisState> nativeUnlockEntry;
+  if (!m_NativeSyncGuards.empty() || !m_NativeSyncTemporaryGuards->Guards.empty()) {
+    auto *method = dynamic_cast<MethodCallExpr *>(E);
+    auto *call = dynamic_cast<CallExpr *>(E);
+    // This is only a cheap surface filter for a potential checkpoint. The
+    // resolved declaration/owner/guard check below alone arms its rollback.
+    if ((method && method->Method == "unlock") ||
+        (call && call->Callee.find("::unlock") != std::string::npos))
+      nativeUnlockEntry = captureAnalysisState();
+  }
   if (auto *allocation = dynamic_cast<NewExpr *>(E)) snapshotNativeSyncAllocation(allocation);
   std::optional<AnalysisState> nativeAllocationRollback;
   if (auto *assignment = dynamic_cast<BinaryExpr *>(E); assignment && assignment->Op == "=") {
@@ -1247,10 +1266,14 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       expressionRecords.begin() + std::min(expressionDiagnosticStart, expressionRecords.size()),
       expressionRecords.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
   if (expressionSucceeded) {
-    E->NativeSyncFactoryOrigin = collectNativeSyncFactoryOrigin(E);
-    E->NativeSyncOwnerRecipe = collectNativeSyncOwnerRecipe(E);
-    checkNativeSyncOwnerExposure(E);
-    collectNativeSyncGuardFlow(E);
+    if (rejectNativeSyncUnlock(E)) {
+      if (nativeUnlockEntry) mergeAnalysisStates({*nativeUnlockEntry}, nativeUnlockEntry->PAL);
+    } else {
+      E->NativeSyncFactoryOrigin = collectNativeSyncFactoryOrigin(E);
+      E->NativeSyncOwnerRecipe = collectNativeSyncOwnerRecipe(E);
+      checkNativeSyncOwnerExposure(E);
+      collectNativeSyncGuardFlow(E);
+    }
   }
   E->RawAddressValueFacts = collectRawAddressSource(E, false);
   E->RawAddressViewFacts = collectRawAddressSource(E, true);
@@ -1266,6 +1289,11 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       recordNativeSyncOwnerRecipe(makeAccessPath(assignment->LHS.get()),
                                   assignment->Op == "=" ? assignment->RHS.get() : nullptr, false);
       if (assignment->Op == "=") prepareNativeSyncReplacement(assignment);
+      if (assignment->Op == "=" && dynamic_cast<VariableExpr *>(assignment->LHS.get())) {
+        auto target = makeAccessPath(assignment->LHS.get());
+        if (m_NativeSyncGuards.count(target.RootID) || assignment->RHS->NativeSyncGuardOrigin)
+          recordNativeSyncGuardBinding(target, assignment->RHS.get());
+      }
     }
   }
   if (nativeAllocationRollback) {

@@ -57,6 +57,9 @@ void Sema::collectNativeSyncGuardFlow(Expr *expression) {
       origin->Access = origin->Writable ? origin->Owner->GuardAccess : origin->Owner->ReadGuardAccess;
       if (!origin->Access) return; // native-only operations produce no guard
       expression->NativeSyncGuardOrigin = std::move(origin);
+      if (m_NativeSyncTemporaryGuards && m_NativeSyncTemporaryGuards->Definition == CurrentFunction &&
+          !m_IsPrecomputingCaptures && isStage0CallTransferObservationAllowed())
+        m_NativeSyncTemporaryGuards->Guards.push_back(expression->NativeSyncGuardOrigin);
     } else if (auto origin = method->Object->NativeSyncGuardOrigin) {
       if (!nativeSyncOwnerLive(origin->Owner) || !nativeSyncDefinitionReady(method->ResolvedFn)) return;
       if (origin->Outcome && method->Method == "unwrap" && method->Args.empty()) {
@@ -99,7 +102,15 @@ void Sema::recordNativeSyncGuardBinding(const AccessPath &place, Expr *source) {
   if (!place || !place.Projections.empty() || !source) return;
   m_NativeSyncGuards.erase(place.RootID);
   m_NativeSyncSlots.erase(place.RootID);
-  if (source->NativeSyncGuardOrigin) m_NativeSyncGuards[place.RootID] = source->NativeSyncGuardOrigin;
+  if (source->NativeSyncGuardOrigin) {
+    m_NativeSyncGuards[place.RootID] = source->NativeSyncGuardOrigin;
+    if (m_NativeSyncTemporaryGuards && m_NativeSyncTemporaryGuards->Definition == CurrentFunction) {
+      auto &pending = m_NativeSyncTemporaryGuards->Guards;
+      pending.erase(std::remove_if(pending.begin(), pending.end(), [&](const auto &guard) {
+        return guard->AcquireSite == source->NativeSyncGuardOrigin->AcquireSite;
+      }), pending.end());
+    }
+  }
   if (source->NativeSyncSlotOrigin) m_NativeSyncSlots[place.RootID] = source->NativeSyncSlotOrigin;
 }
 
@@ -120,8 +131,10 @@ std::shared_ptr<Type> Sema::queryNativeSyncManagedSlotTarget(UnaryExpr *target) 
       (target->Op == TokenType::Caret ? !element->isUniquePtr() : !element->isSharedPtr())) return {};
   // Reference P authorizes replacing the complete slot. It does not authorize
   // modifying the managed pointee, nor reseating the reference binding itself.
-  const auto view = getAccessCapability(variable);
-  const bool writable = found->second->Writable && referenced->IsWritable && !view.PayloadFlowRestricted;
+  // PayloadFlowRestricted describes the value stored in this slot, not the
+  // guard/reference's right to replace that value. Keep that ceiling for P
+  // checks; deriving H from it would make a readonly shared value one-shot.
+  const bool writable = found->second->Writable && referenced->IsWritable;
   return element->withAttributes(writable, element->IsNullable, element->IsBlocked);
 }
 
@@ -396,6 +409,55 @@ NativeSyncOwnerWitnessPtr Sema::qualifyNativeSyncOwner(const NativeSyncOwnerCand
   if (!nativeSyncOwnerLive(witness)) return {};
   m_NativeSyncOwnerWitnesses[recipe] = witness;
   return witness;
+}
+
+bool Sema::rejectNativeSyncUnlock(Expr *expression) {
+  const FunctionDecl *callee = nullptr;
+  Expr *receiver = nullptr;
+  if (auto *method = dynamic_cast<MethodCallExpr *>(expression)) {
+    callee = method->ResolvedFn;
+    receiver = method->Object.get();
+  } else if (auto *call = dynamic_cast<CallExpr *>(expression); call && !call->Args.empty()) {
+    callee = call->ResolvedFn;
+    receiver = call->Args.front().get();
+  }
+  if (!callee || !receiver) return false;
+  auto recipe = receiver->NativeSyncOwnerRecipe;
+  if (!recipe) {
+    // An earlier exposure can revoke positive qualification without releasing
+    // the native lock. Retain its identity for this rejection-only check.
+    auto path = makeAccessPath(receiver);
+    auto found = m_NativeSyncOwnerRecipes.find(path.RootID);
+    if (path && path.Projections.empty() && found != m_NativeSyncOwnerRecipes.end()) recipe = found->second;
+  }
+  if (!recipe) return false;
+  auto conflicts = [&](const NativeSyncGuardOriginPtr &guard) {
+    if (!guard || !guard->Owner || guard->Owner->Kind != NativeSyncFactoryKind::Mutex ||
+        guard->Owner->Origin != recipe) return false;
+    auto owner = std::dynamic_pointer_cast<ShapeType>(guard->Owner->OwnerType);
+    if (!owner || !owner->Decl) return false;
+    auto methods = MethodDecls.find(owner->Decl->Name);
+    if (methods == MethodDecls.end()) methods = MethodDecls.find(owner->Decl->CodegenName);
+    if (methods == MethodDecls.end()) return false;
+    auto unlock = methods->second.find("unlock");
+    if (unlock == methods->second.end() || unlock->second != callee) return false;
+    // A live Result may still contain a guard; a moved or out-of-scope binding
+    // does not. Compare exact owner instances, not their common factory parent.
+    error(expression, DiagID::ERR_GENERIC_SEMA, "native sync unlock: ActiveGuardOwnsUnlock");
+    if (guard->AcquireSite)
+      DiagnosticEngine::report(guard->AcquireSite->Loc, DiagID::NOTE_GENERIC,
+                               "this owner's guard retains the unlock responsibility");
+    return true;
+  };
+  for (const auto &[id, guard] : m_NativeSyncGuards) {
+    SymbolInfo *binding = nullptr;
+    if (CurrentScope->findSymbolByID(id, binding) && binding &&
+        hasPlaceState(binding->placeFact(), PlaceState::Live) && conflicts(guard)) return true;
+  }
+  if (m_NativeSyncTemporaryGuards && m_NativeSyncTemporaryGuards->Definition == CurrentFunction)
+    for (const auto &guard : m_NativeSyncTemporaryGuards->Guards)
+      if (conflicts(guard)) return true;
+  return false;
 }
 
 void Sema::checkNativeSyncOwnerExposure(Expr *expression) {

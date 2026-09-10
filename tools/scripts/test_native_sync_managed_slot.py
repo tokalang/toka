@@ -92,6 +92,28 @@ if drops != 0 || source.value != 7 || slot.value != 7 { return 1 }
 return drops - 1
 }
 """)
+        repeat_start = """auto ~first = new Token(value = 4)
+auto ~mutex = Mutex<~Token>::make_shared(cede ~first)
+auto held = mutex.lock().unwrap()
+auto &~#slot = held.borrow_mut()
+auto ~incoming = new Token(value = 5)
+~slot = ~incoming
+"""
+        for name, extra in (("shared-once", ""), ("shared-twice", "~slot = ~incoming\n"),
+                            ("shared-branch-repeat", "if incoming.value == 5 { ~slot = ~incoming }\n~slot = ~incoming\n")):
+            cases[name] = materialize(name, "fn main() -> i32 {\n{\n" + repeat_start + extra +
+                "if drops != 1 || slot.value != 5 || incoming.value != 5 { return 1 }\n}\nreturn drops - 2\n}\n")
+        cases["shared-mixed-repeat"] = materialize("shared-mixed-repeat", "fn main() -> i32 {\n{\n" + repeat_start + """
+~slot = ~incoming
+auto ~next = new Token(value = 6)
+~slot = cede ~next
+if incoming.value != 5 || slot.value != 6 || drops != 1 { return 1 }
+~slot = ~incoming
+if incoming.value != 5 || slot.value != 5 || drops != 2 { return 2 }
+}
+return drops - 3
+}
+""")
         for hat in ("^", "~"):
             cases["thread-" + hat] = materialize("thread-" + ("unique" if hat == "^" else "shared"), """
 fn main() -> i32 {
@@ -138,6 +160,10 @@ return drops - 2
             "wrong-morphology": (START + "~slot = cede ^incoming" + READS, ("E0408", "E04572", "E04573")),
             "readonly-pointee": (START + "slot.value = 11" + READS, ("E04573", "E04572", "E0424")),
             "bad-rhs": (START + "^slot = require_number(cede ^incoming)" + READS, ("E0408", "E04509", "E04571")),
+            "repeat-readonly-pointee": (repeat_start + "~slot = ~incoming\nslot.value = 8\n"
+                "auto after_slot = slot.value\nauto after_source = incoming.value\nreturn 0\n", ("E04573",)),
+            "repeat-wrong-morphology": (repeat_start + "^slot = cede ~incoming\n"
+                "auto after_slot = slot.value\nauto after_source = incoming.value\nreturn 0\n", ("E0408", "E04572")),
         }
         for name, (body, reasons) in negatives.items():
             source = materialize(name, "fn require_number(cede amount: i32) -> ^Token {\ncede amount\nreturn new Token(value = 0) }\n"

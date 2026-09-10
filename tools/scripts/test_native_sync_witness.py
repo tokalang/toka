@@ -2,6 +2,7 @@
 """Native owner witness denial and exact-source lifecycle gates."""
 import argparse
 import os
+import platform
 from pathlib import Path
 import subprocess
 import tempfile
@@ -121,8 +122,83 @@ return 0
             rejected = compile_case(consumer, output, "-I", str(work), flag)
             assert rejected.returncode != 0 and "E04661" in rejected.stderr, rejected.stderr
             assert not output.exists(), output
+        # The guard owns unlock even if an attempted manual unlock would only
+        # invalidate provenance. Check exact owner identity, guard movement,
+        # Result ownership and rejection rollback, not a method-name ban.
+        owner = "auto ~mutex = Mutex<i32>::make_shared(7)\n"
+        held = "auto held = mutex.lock().unwrap()\n"
+        after = "\nheld.borrow_mut()\nmutex.lock()\nreturn 0\n"
+        unlock_denials = {
+            "direct": owner + held + "auto ignored = mutex.unlock()" + after,
+            "qualified-call": owner + held + "Mutex<i32>::unlock(mutex)" + after,
+            "shared-alias": owner + "auto ~other = ~mutex\n" + held + "other.unlock()" + after,
+            "moved-guard": owner + held + "auto moved = cede held\nmutex.unlock()\nmoved.borrow_mut()\nreturn 0\n",
+            "pending-result": owner + "auto pending = mutex.lock()\nmutex.unlock()\nreturn 0\n",
+            "exposed-owner": owner + held + "auto raw = mutex.get_handle()\nmutex.unlock()\nreturn 0\n",
+            "maybe-released": owner + held + "if flag { cede held }\nmutex.unlock()\nreturn 0\n",
+            "guard-rebound": owner + "auto ~other = Mutex<i32>::make_shared(8)\n"
+                "auto held# = other.lock().unwrap()\nheld = mutex.lock().unwrap()\nmutex.unlock()" + after,
+            "temporary-guard": owner + "observe_guard(mutex.lock().unwrap(), mutex.unlock())\nreturn 0\n",
+            "temporary-result": owner + "observe_result(mutex.lock(), mutex.unlock())\nreturn 0\n",
+        }
+        for name, body in unlock_denials.items():
+            source = work / ("unlock-" + name + ".tk")
+            source.write_text(before + "import std/sync::MutexLock\nimport std/error::Error\n"
+                              "fn observe_guard(held: MutexLock<i32>, ignored: Result<i32, Error>) {}\n"
+                              "fn observe_result(held: Result<MutexLock<i32>, Error>, ignored: Result<i32, Error>) {}\n"
+                              "fn test(flag: bool) -> i32 {\n" + body + "}\n"
+                              "fn main() -> i32 { return test(false) }\n")
+            normal = compile_case(source, work / (name + ".unused"), "--check-only")
+            shadow = compile_case(source, work / (name + ".unused"), "--check-only", "--non-call-transfer-shadow=json")
+            assert normal.returncode == shadow.returncode == 1 and normal.stderr == shadow.stderr, (name, normal.stderr, shadow.stderr)
+            assert "ActiveGuardOwnsUnlock" in normal.stderr, (name, normal.stderr)
+            assert "E0438" not in normal.stderr and "E0410" not in normal.stderr, (name, normal.stderr)
+            for mode, extension in (("-c", ".o"), ("--emit-llvm", ".ll")):
+                output = work / ("unlock-" + name + extension)
+                rejected = compile_case(source, output, mode)
+                assert rejected.returncode == 1 and "ActiveGuardOwnsUnlock" in rejected.stderr and not output.exists(), rejected.stderr
+
+        # Released/out-of-scope guard records must not become a blanket ban.
+        # These are check-only controls: they do NOT assert that unlocking an
+        # already-unlocked POSIX mutex is a valid runtime operation.
+        for name, body in {
+            "released": owner + held + "cede held\nmutex.unlock()\nreturn 0\n",
+            "scope-ended": owner + "{\n" + held + "}\nmutex.unlock()\nreturn 0\n",
+            "temporary-ended": owner + "mutex.lock().unwrap()\nmutex.unlock()\nreturn 0\n",
+            "different-owner": owner + "auto ~other = Mutex<i32>::make_shared(8)\n" + held + "other.unlock()\nreturn 0\n",
+        }.items():
+            source = work / ("unlock-control-" + name + ".tk")
+            source.write_text(before + "fn main() -> i32 {\n" + body + "}\n")
+            checked = compile_case(source, work / "unused", "--check-only")
+            assert checked.returncode == 0, (name, checked.stderr)
+
+        cc = os.environ.get("CC", "clang")
+        darwin = platform.system() == "Darwin"
+        runtime, hook = work / "unlock-runtime.o", work / ("unlock.dylib" if darwin else "unlock.o")
+        for src, output in ((ROOT / "lib/sys/toka_rt.c", runtime),
+                            (ROOT / "tests/runtime/native_sync_unlock_count.c", hook)):
+            subprocess.run([cc, "-std=c11", "-pthread", "-dynamiclib" if darwin and output == hook else "-c",
+                            str(src), "-o", str(output)], check=True, capture_output=True)
+        for name, body, count in (
+            ("single-unlock", owner + held, 1),
+            ("released-and-reacquired", owner + held + "cede held\nauto next = mutex.lock().unwrap()\n", 2),
+            ("temporary-and-reacquired", owner + "mutex.lock().unwrap()\nauto next = mutex.lock().unwrap()\n", 2),
+        ):
+            source = work / (name + ".tk")
+            source.write_text(before + "extern fn audit_unlock_count() -> i32\nfn test() {\n" + body + "}\n"
+                + f"fn main() -> i32 {{\ntest()\nreturn (unsafe audit_unlock_count()) - {count}\n}}\n")
+            obj, binary = work / (name + ".o"), work / name
+            built = compile_case(source, obj, "-c")
+            assert built.returncode == 0, built.stderr
+            subprocess.run([cc, str(obj), str(runtime), str(hook), "-pthread", "-lm",
+                            *([] if darwin else ["-Wl,--wrap=pthread_mutex_init", "-Wl,--wrap=pthread_mutex_unlock"]),
+                            "-o", str(binary)], check=True, capture_output=True)
+            ran = subprocess.run([str(binary)], env=dict(env, **({"DYLD_INSERT_LIBRARIES": str(hook)} if darwin else {})),
+                                 capture_output=True, text=True, timeout=10)
+            assert ran.returncode == 0, (name, ran.returncode, ran.stderr)
         print(f"native witness: {faults} no-artifact faults; {denials} source denials with strict parity; "
-              "source-hidden witness rejection")
+              f"source-hidden witness rejection; {len(unlock_denials)} unlock rejection/rollback cases; "
+              "4 check-only unlock controls; 3 counted unlock runtime controls")
 
 
 if __name__ == "__main__":

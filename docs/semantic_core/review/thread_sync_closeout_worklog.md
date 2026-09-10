@@ -14,6 +14,10 @@ part of this delivery. Intermediate commits are internal checkpoints only.
 
 ## Latest implementation — managed-slot directed matrix closed
 
+The review of `31843d5c` found two P1s; the candidate was not Accepted.
+The authorized follow-up is [guard/unlock and repeated shared-slot fixes](thread_sync_318_p1_fixes.md).
+That increment does not reopen the full baseline or expand the delivery scope.
+
 The full `^/~` slot replacement implementation and its directed matrix pass:
 5 runtime/parity programs, 7 rejection/rollback cases and 12 fault checks.
 The slot stores a complete handle, not its payload; old cleanup follows RHS

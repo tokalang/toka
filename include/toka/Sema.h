@@ -1020,6 +1020,12 @@ private:
   std::map<const ShapeDecl *, const FunctionDecl *> m_NativeSyncDropDeclarations;
   std::map<NativeSyncOwnerCandidatePtr, NativeSyncOwnerWitnessPtr> m_NativeSyncOwnerWitnesses;
   std::map<uint64_t, NativeSyncGuardOriginPtr> m_NativeSyncGuards, m_NativeSyncSlots;
+  struct NativeSyncTemporaryGuardFrame {
+    const FunctionDecl *Definition = nullptr;
+    std::vector<NativeSyncGuardOriginPtr> Guards;
+  };
+  // Rejection-only, full-expression-local facts; never ownership authority.
+  NativeSyncTemporaryGuardFrame *m_NativeSyncTemporaryGuards = nullptr;
   void collectNativeSyncGuardFlow(Expr *expression);
   void recordNativeSyncGuardBinding(const AccessPath &place, Expr *source);
   void prepareNativeSyncReplacement(BinaryExpr *assignment);
@@ -1029,6 +1035,7 @@ private:
   bool nativeSyncOwnerLive(const NativeSyncOwnerWitnessPtr &witness) const;
   bool nativeSyncDefinitionReady(const FunctionDecl *function) const;
   void checkNativeSyncOwnerExposure(Expr *expression);
+  bool rejectNativeSyncUnlock(Expr *expression);
   NativeSyncOwnerCandidatePtr collectNativeSyncOwnerRecipe(Expr *source);
   void recordNativeSyncOwnerRecipe(const AccessPath &place, Expr *source, bool initialization);
   void recordNativeSyncOwnerReturn(ReturnStmt *statement);

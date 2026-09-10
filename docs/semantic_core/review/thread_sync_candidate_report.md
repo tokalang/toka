@@ -1,5 +1,11 @@
 # Thread/sync integration candidate — ready for review, not Accepted
 
+Review update: `31843d5c` received Revisions requested for guard/unlock lifetime
+and repeated shared-slot replacement. The subsequent bounded fixes and directed
+revalidation are recorded in [the P1 follow-up](thread_sync_318_p1_fixes.md).
+The full-run numbers below are the historical 31843d5c candidate evidence; they
+have not been overwritten or represented as a new full run.
+
 Implementation/report are in this commit, based on `e90f360e`. The delivery
 boundary is unchanged: thread/sync integration, not all binding or the cede RFC.
 No push, PR, Actions, frozen-ref movement or interface/ABI change is included.
