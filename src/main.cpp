@@ -1046,9 +1046,11 @@ int main(int argc, char **argv) {
       }
     } else if (arg.rfind("--native-sync-allocation-fault=", 0) == 0) {
       nativeSyncAllocationFault = arg.substr(std::string("--native-sync-allocation-fault=").size());
-      const std::set<std::string> faults = {"missing", "incomplete", "site", "binding", "definition", "input", "type"};
-      const std::string faultName = nativeSyncAllocationFault.rfind("control:", 0) == 0
-          ? nativeSyncAllocationFault.substr(8) : nativeSyncAllocationFault;
+      const std::set<std::string> faults = {"missing", "incomplete", "site", "binding", "definition", "input", "type",
+          "fields", "field-index", "field-type", "field-witness"};
+      std::string faultName = nativeSyncAllocationFault;
+      if (faultName.rfind("composite:", 0) == 0) faultName = faultName.substr(10);
+      if (faultName.rfind("control:", 0) == 0) faultName = faultName.substr(8);
       if (!faults.count(faultName)) {
         llvm::errs() << "unknown native sync allocation fault\n"; return 1;
       }

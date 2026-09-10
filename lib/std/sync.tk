@@ -462,20 +462,21 @@ impl Once {
     }
 
     pub fn make() -> ^Once {
-        return new Once(
-            mutex = Mutex<bool>::new(false),
-            done = false
-        )
+        auto prepared = Once::new()
+        auto ^owner# = new Once(mutex = Mutex<bool>(handle = 0:Addr#, data_ptr = 0:Addr#), done = false)
+        owner = cede prepared
+        return ^owner
+    }
+
+    pub fn make_shared() -> ~Once# {
+        auto prepared = Once::new()
+        auto ~owner# = new Once(mutex = Mutex<bool>(handle = 0:Addr#, data_ptr = 0:Addr#), done = false)
+        owner = cede prepared
+        return cede ~owner
     }
 
     pub fn call(self#, f#: fn#()) {
-        auto lock = self.mutex#.lock().unwrap()
-        if self.done {
-            return
-        }
-        
-        f#()
-        self.done = true
+        __sync_once_call(self#, f#)
     }
 }
 
@@ -497,33 +498,62 @@ impl WaitGroup {
     }
 
     pub fn make() -> ^WaitGroup {
-        return new WaitGroup(
-            mutex = Mutex<i32>::new(0),
-            cond = CondVar<i32>::new()
-        )
+        auto prepared = WaitGroup::new()
+        auto ^owner# = new WaitGroup(mutex = Mutex<i32>(handle = 0:Addr#, data_ptr = 0:Addr#),
+                                    cond = CondVar<i32>(handle = 0:Addr#))
+        owner = cede prepared
+        return ^owner
+    }
+
+    pub fn make_shared() -> ~WaitGroup# {
+        auto prepared = WaitGroup::new()
+        auto ~owner# = new WaitGroup(mutex = Mutex<i32>(handle = 0:Addr#, data_ptr = 0:Addr#),
+                                    cond = CondVar<i32>(handle = 0:Addr#))
+        owner = cede prepared
+        return cede ~owner
     }
 
     pub fn add(self#, delta: i32) {
-        auto lock = self.mutex#.lock().unwrap()
-        auto &val# = lock.borrow_mut()
-        val = val + delta
-        if val <= 0 {
-            self.cond.notify_all()
-        }
+        __sync_waitgroup_add(self#, delta)
     }
 
     pub fn done(self#) {
-        self#.add(-1)
+        __sync_waitgroup_done(self#)
     }
 
     pub fn wait_all(self#) {
-        auto lock = self.mutex#.lock().unwrap()
-        auto &val = lock.borrow_mut()
-        loop {
-            if val <= 0 {
-                break
-            }
-            self.cond.wait_cond(lock)
+        __sync_waitgroup_wait(self#)
+    }
+}
+
+// Private composition operations. Their declaration identity, complete owner
+// field types and checked forwarding sites participate in the native witness;
+// a similarly named user method does not acquire this contract.
+fn __sync_once_call(owner#: Once, f#: fn#()) {
+    auto lock = owner.mutex#.lock().unwrap()
+    if owner.done { return }
+    f#()
+    owner.done = true
+}
+
+fn __sync_waitgroup_add(owner#: WaitGroup, delta: i32) {
+    auto lock = owner.mutex#.lock().unwrap()
+    auto &val# = lock.borrow_mut()
+    val = val + delta
+    if val <= 0 { owner.cond.notify_all() }
+}
+
+fn __sync_waitgroup_done(owner#: WaitGroup) {
+    __sync_waitgroup_add(owner#, -1)
+}
+
+fn __sync_waitgroup_wait(owner#: WaitGroup) {
+    auto lock = owner.mutex#.lock().unwrap()
+    loop {
+        {
+            auto &val = lock.borrow_mut()
+            if val <= 0 { break }
         }
+        owner.cond.wait_cond(lock)
     }
 }

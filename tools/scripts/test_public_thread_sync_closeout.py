@@ -31,7 +31,8 @@ def main():
 
         for name in ("sync_unique_guard.tk", "sync_managed_storage_pending.tk",
                      "sync_shared_guard.tk", "sync_thread_pending.tk", "captured_shared_receiver.tk",
-                     "sync_thread_resource_replace.tk", "sync_thread_rw.tk", "g09_sync_condvar.tk"):
+                     "sync_thread_resource_replace.tk", "sync_thread_rw.tk", "g09_sync_condvar.tk",
+                     "sync_composite_owner.tk", "g09_sync_waitgroup.tk", "g09_sync_once.tk"):
             normal = compile_source(name, "--check-only")
             shadow = compile_source(name, "--check-only", "--non-call-transfer-shadow=json")
             if normal.returncode != 0 or shadow.returncode != 0 or normal.stderr != shadow.stderr:

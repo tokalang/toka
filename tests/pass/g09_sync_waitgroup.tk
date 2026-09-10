@@ -8,8 +8,8 @@ shape SharedWork(
 
 pub fn main() -> i32 {
     auto init_work = SharedWork(finished_count = 0)
-    auto ~data = Mutex<SharedWork>::make(cede init_work)
-    auto ~wg# = WaitGroup::make()
+    auto ~data = Mutex<SharedWork>::make_shared(cede init_work)
+    auto ~wg# = WaitGroup::make_shared()
     
     wg#.add(3)
     
@@ -19,7 +19,7 @@ pub fn main() -> i32 {
     auto ~wg1# = ~wg
     auto ~wg2# = ~wg
     auto ~wg3# = ~wg
-    auto task1 = { [cede data1, cede wg1] =>
+    auto task1 = { [cede ~data1, cede ~wg1] =>
         yield_now()
         auto ~local_data = ~data1
         auto ~local_wg# = ~wg1
@@ -30,8 +30,8 @@ pub fn main() -> i32 {
         
         local_wg#.done()
         return 0
-    }
-    auto task2 = { [cede data2, cede wg2] =>
+    }:dyn fn() -> i32
+    auto task2 = { [cede ~data2, cede ~wg2] =>
         yield_now()
         auto ~local_data = ~data2
         auto ~local_wg# = ~wg2
@@ -41,8 +41,8 @@ pub fn main() -> i32 {
         println("Thread finished work piece")
         local_wg#.done()
         return 0
-    }
-    auto task3 = { [cede data3, cede wg3] =>
+    }:dyn fn() -> i32
+    auto task3 = { [cede ~data3, cede ~wg3] =>
         yield_now()
         auto ~local_data = ~data3
         auto ~local_wg# = ~wg3
@@ -52,11 +52,14 @@ pub fn main() -> i32 {
         println("Thread finished work piece")
         local_wg#.done()
         return 0
-    }
+    }:dyn fn() -> i32
     
-    auto t1# = thread_spawn<i32>(cede task1)
-    auto t2# = thread_spawn<i32>(cede task2)
-    auto t3# = thread_spawn<i32>(cede task3)
+    auto created1 = thread_spawn<i32>(cede task1)
+    auto created2 = thread_spawn<i32>(cede task2)
+    auto created3 = thread_spawn<i32>(cede task3)
+    auto t1# = created1.unwrap()
+    auto t2# = created2.unwrap()
+    auto t3# = created3.unwrap()
     
     println("Main thread waiting on WaitGroup...")
     wg#.wait_all()

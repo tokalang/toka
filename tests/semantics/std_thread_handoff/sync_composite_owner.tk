@@ -1,0 +1,30 @@
+import std/sync::{Once, WaitGroup}
+
+fn main() -> i32 {
+    {
+        auto ^once# = Once::make()
+        auto init# = { => return }:fn#()
+        once#.call(init#)
+        once#.call(init#)
+    }
+    {
+        auto ~once# = Once::make_shared()
+        auto ~other# = ~once
+        auto init# = { => return }:fn#()
+        other#.call(init#)
+    }
+    {
+        auto ^group# = WaitGroup::make()
+        group#.add(1)
+        group#.done()
+        group#.wait_all()
+    }
+    {
+        auto ~group# = WaitGroup::make_shared()
+        auto ~other# = ~group
+        other#.add(1)
+        other#.done()
+        group#.wait_all()
+    }
+    return 0
+}

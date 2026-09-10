@@ -3,6 +3,50 @@
 #include <set>
 
 namespace toka {
+namespace {
+bool nativeCompositePrimitive(const std::shared_ptr<Type> &type) {
+  return type && !type->IsNullable && !type->IsBlocked &&
+      (type->isBoolean() || type->isInteger() || type->isFloatingPoint());
+}
+
+bool nativeSameValueView(const std::shared_ptr<Type> &a, const std::shared_ptr<Type> &b) {
+  return a && b && a->withAttributes(b->IsWritable, a->IsNullable, a->IsBlocked)->equals(*b);
+}
+
+bool nativeInitializerFields(Expr *expression, std::map<std::string, Expr *> &fields) {
+  while (auto *cast = dynamic_cast<CastExpr *>(expression)) {
+    if (cast->Kind == CastKind::Conversion || !dynamic_cast<ShapeType *>(cast->ResolvedType.get()) ||
+        !nativeSameValueView(cast->Expression->ResolvedType, cast->ResolvedType)) return false;
+    expression = cast->Expression.get();
+  }
+  if (auto *init = dynamic_cast<InitStructExpr *>(expression)) {
+    for (auto &field : init->Members)
+      if (!fields.emplace(field.first, field.second.get()).second) return false;
+    return true;
+  }
+  auto *call = dynamic_cast<CallExpr *>(expression);
+  if (!call || !call->ResolvedShape) return false;
+  for (auto &arg : call->Args) {
+    auto *named = dynamic_cast<BinaryExpr *>(arg.get());
+    auto *name = named ? dynamic_cast<VariableExpr *>(named->LHS.get()) : nullptr;
+    if (!named || named->Op != "=" || !name || !fields.emplace(name->Name, named->RHS.get()).second)
+      return false;
+  }
+  return true;
+}
+
+bool nativeZeroLiteral(Expr *expression) {
+  while (auto *cast = dynamic_cast<CastExpr *>(expression)) {
+    if (cast->Kind != CastKind::Ascription &&
+        !(cast->Kind == CastKind::Implicit && nativeCompositePrimitive(cast->ResolvedType) &&
+          nativeSameValueView(cast->Expression->ResolvedType, cast->ResolvedType))) return false;
+    expression = cast->Expression.get();
+  }
+  if (auto *zero = dynamic_cast<NumberExpr *>(expression)) return zero->Value == 0;
+  if (auto *boolean = dynamic_cast<BoolExpr *>(expression)) return !boolean->Value;
+  return false;
+}
+}
 void Sema::collectNativeSyncGuardFlow(Expr *expression) {
   if (auto *method = dynamic_cast<MethodCallExpr *>(expression)) {
     if (method->NativeSyncAccess) {
@@ -72,18 +116,21 @@ void Sema::prepareNativeSyncReplacement(BinaryExpr *assignment) {
   assignment->NativeSyncReplacementRequired = true;
   assignment->NativeSyncReplacement.reset();
   auto guard = slot->second;
-  auto fail = [&] { error(assignment, DiagID::ERR_GENERIC_SEMA, "native sync replacement: IncompleteSlotPlan"); };
+  auto fail = [&](const char *reason) { error(assignment, DiagID::ERR_GENERIC_SEMA,
+      std::string("native sync replacement: ") + reason); };
   auto *authority = assignment->Stage0Authority ? &*assignment->Stage0Authority : nullptr;
   if (!guard || guard->Outcome || !guard->Writable || !nativeSyncOwnerLive(guard->Owner) ||
       !authority || !authority->SemaValidated || !authority->Complete || !authority->ItemPlan ||
       !authority->ItemPlan->admitted() || assignment->IsInitialization ||
       dynamic_cast<UnsetExpr *>(assignment->RHS.get()) || !assignment->RHS->ResolvedType) {
-    fail(); return;
+    fail("IncompleteSlotPlan"); return;
   }
   auto element = guard->Owner->ElementType;
   if (!element || !checkNativeSyncClosedPayload(element).closed() ||
       !element->withAttributes(false, false)->equals(*assignment->RHS->ResolvedType->withAttributes(false, false))) {
-    fail(); return;
+    error(assignment, DiagID::ERR_GENERIC_SEMA, "native sync replacement: ElementTypeMismatch: expected " +
+        (element ? element->toString() : "unknown") + ", got " + assignment->RHS->ResolvedType->toString());
+    return;
   }
   auto plan = std::shared_ptr<NativeSyncReplacementPlan>(new NativeSyncReplacementPlan);
   plan->Site = assignment;
@@ -111,17 +158,85 @@ bool Sema::nativeSyncOwnerLive(const NativeSyncOwnerWitnessPtr &witness) const {
     if (!seen.insert(node.get()).second || m_InvalidNativeSyncOwnerRecipes.count(node) ||
         !nativeSyncDefinitionReady(node->Provider)) return false;
   }
+  for (const auto &[name, child] : witness->Children)
+    if (!nativeSyncOwnerLive(child)) return false;
   return true;
 }
 
 NativeSyncOwnerWitnessPtr Sema::qualifyNativeSyncOwner(const NativeSyncOwnerCandidatePtr &recipe,
                                                      const std::shared_ptr<Type> &actualType) {
-  if (!recipe || !recipe->Factory || !actualType || !recipe->ValueType ||
+  if (!recipe || !actualType || !recipe->ValueType ||
       !actualType->equals(*recipe->ValueType) ||
       (!actualType->isSharedPtr() && !actualType->isUniquePtr() && !actualType->isShape())) return {};
   auto cached = m_NativeSyncOwnerWitnesses.find(recipe);
   if (cached != m_NativeSyncOwnerWitnesses.end())
     return nativeSyncOwnerLive(cached->second) ? cached->second : NativeSyncOwnerWitnessPtr{};
+  if (!recipe->Factory) {
+    // Composition is admitted from actual child instances, never a nominal
+    // exemption. First-batch primitive fields cannot carry hidden cleanup.
+    const bool managed = actualType->isUniquePtr() || actualType->isSharedPtr();
+    auto owner = std::dynamic_pointer_cast<ShapeType>(managed ? actualType->getPointeeType() : actualType);
+    if (!owner || !owner->Decl || owner->Decl->HasExplicitDrop || owner->Decl->Kind != ShapeKind::Struct ||
+        !owner->Decl->GenericParams.empty() || recipe->Children.empty()) return {};
+    auto *module = getLexicalModule(owner->Decl->Loc);
+    if (!module || !module->SourceModule || module->SourceModule->IsInterface ||
+        !module->IsTrustedSystemModule || !module->ShadowCoordinateKnown ||
+        module->ShadowLogicalModulePath != "std/sync") return {};
+    auto witness = std::shared_ptr<NativeSyncOwnerWitness>(new NativeSyncOwnerWitness);
+    witness->Origin = recipe; witness->ValueType = actualType; witness->OwnerType = owner;
+    witness->AllocationSite = dynamic_cast<const NewExpr *>(recipe->Allocation);
+    if (managed && (!witness->AllocationSite || !witness->AllocationSite->NativeSyncAllocationRequired ||
+        !witness->AllocationSite->NativeSyncAllocationSource ||
+        witness->AllocationSite->NativeSyncAllocationSource->CompositeDeclaration != owner->Decl ||
+        !nativeSyncDefinitionReady(witness->AllocationSite->NativeSyncAllocationSource->Definition))) return {};
+    for (const auto &field : owner->Decl->Members) {
+      if (!field.ResolvedType) return {};
+      auto child = recipe->Children.find(field.Name);
+      if (child == recipe->Children.end()) {
+        if (!nativeCompositePrimitive(getPhysicalType(field)) ||
+            !checkNativeSyncClosedPayload(getPhysicalType(field)).closed()) return {};
+        continue;
+      }
+      if (!child->second || !child->second->Factory ||
+          !nativeSameValueView(getPhysicalType(field), child->second->ValueType)) return {};
+      auto qualified = qualifyNativeSyncOwner(child->second, child->second->ValueType);
+      if (!qualified) return {};
+      witness->Children[field.Name] = std::move(qualified);
+    }
+    if (witness->Children.size() != recipe->Children.size()) return {};
+    // Only single-call forwarding to the exact source-owned private operation
+    // is exposed. The child witnesses above remain necessary independently.
+    auto methods = MethodDecls.find(owner->Decl->Name);
+    if (methods == MethodDecls.end()) return {};
+    for (const auto &[name, function] : methods->second) {
+      if (!nativeSyncDefinitionReady(function) || function->Args.empty() || function->Args[0].IsCeded ||
+          function->Effect != EffectKind::None || function->Body->Statements.size() != 1) continue;
+      auto *stmt = dynamic_cast<ExprStmt *>(function->Body->Statements.front().get());
+      auto *call = stmt ? dynamic_cast<CallExpr *>(stmt->Expression.get()) : nullptr;
+      if (!call || !nativeSyncDefinitionReady(call->ResolvedFn) ||
+          call->Args.size() != function->Args.size()) continue;
+      bool operation = false;
+      for (const char *helper : {"__sync_once_call", "__sync_waitgroup_add", "__sync_waitgroup_done", "__sync_waitgroup_wait"}) {
+        auto declared = module->Functions.find(helper);
+        operation |= declared != module->Functions.end() && declared->second == call->ResolvedFn;
+      }
+      if (!operation || call->ResolvedFn->Args.size() != function->Args.size() ||
+          !nativeSameValueView(call->ResolvedFn->Args.front().ResolvedType, owner)) continue;
+      bool exact = true;
+      for (size_t i = 0; i < call->Args.size(); ++i) {
+        Expr *argument = call->Args[i].get();
+        if (auto *postfix = dynamic_cast<PostfixExpr *>(argument)) argument = postfix->LHS.get();
+        auto *variable = dynamic_cast<VariableExpr *>(argument);
+        exact &= variable && variable->Name == function->Args[i].Name &&
+            !call->ResolvedFn->Args[i].IsCeded &&
+            nativeSameValueView(call->ResolvedFn->Args[i].ResolvedType, function->Args[i].ResolvedType);
+      }
+      if (exact) witness->CompositeOperations.push_back(function);
+    }
+    if (witness->CompositeOperations.empty() || !nativeSyncOwnerLive(witness)) return {};
+    m_NativeSyncOwnerWitnesses[recipe] = witness;
+    return witness;
+  }
   const auto &factory = recipe->Factory;
   const bool nativeOnly = factory->Kind == NativeSyncFactoryKind::CondVar;
   const bool rw = factory->Kind == NativeSyncFactoryKind::RwMutex;
@@ -250,12 +365,17 @@ void Sema::checkNativeSyncOwnerExposure(Expr *expression) {
   if (auto *member = dynamic_cast<MemberExpr *>(expression)) {
     invalidate(member->Object->NativeSyncOwnerRecipe);
   } else if (auto *method = dynamic_cast<MethodCallExpr *>(expression)) {
+    method->NativeSyncAccessRequired = false;
+    method->NativeSyncAccess.reset();
+    method->NativeSyncWaitGuard.reset();
     auto recipe = method->Object->NativeSyncOwnerRecipe;
     if (!recipe) return;
     auto type = recipe->ValueType;
     auto witness = qualifyNativeSyncOwner(recipe, type);
     const bool allowed = witness && (method->ResolvedFn == witness->Acquire || method->ResolvedFn == witness->ReadAcquire ||
-        method->ResolvedFn == witness->NotifyOne || method->ResolvedFn == witness->NotifyAll || method->ResolvedFn == witness->Wait);
+        method->ResolvedFn == witness->NotifyOne || method->ResolvedFn == witness->NotifyAll || method->ResolvedFn == witness->Wait ||
+        std::find(witness->CompositeOperations.begin(), witness->CompositeOperations.end(), method->ResolvedFn) !=
+            witness->CompositeOperations.end());
     if (!allowed) invalidate(recipe);
     else {
       if (method->ResolvedFn == witness->Wait) {
@@ -297,6 +417,24 @@ void Sema::snapshotNativeSyncAllocation(NewExpr *allocation) {
     nativeOwner |= found != module->Shapes.end() &&
         owner->Decl->InstantiationTemplate == found->second;
   }
+  // A snapshot alone grants nothing. Select composites by an actual complete
+  // local recipe, not by Once/WaitGroup spelling or a Drop-query fallback.
+  if (!nativeOwner && !owner->Decl->HasExplicitDrop) {
+    for (const auto &[id, recipe] : m_NativeSyncOwnerRecipes) {
+      SymbolInfo *symbol = nullptr;
+      const bool local = CurrentScope->findSymbolByID(id, symbol) && symbol && CurrentFunction->Body &&
+          std::any_of(CurrentFunction->Body->Statements.begin(), CurrentFunction->Body->Statements.end(),
+              [&](const auto &statement) {
+                return dynamic_cast<VariableDecl *>(statement.get()) && symbol->ASTPtr == statement.get();
+              });
+      if (local && recipe && !recipe->Children.empty() &&
+          !m_InvalidNativeSyncOwnerRecipes.count(recipe) &&
+          nativeSameValueView(recipe->ValueType, owner)) {
+        nativeOwner = true;
+        break;
+      }
+    }
+  }
   if (nativeOwner)
     m_NativeSyncAllocationSnapshots[allocation] = {CurrentFunction, captureAnalysisState()};
 }
@@ -307,13 +445,16 @@ bool Sema::prepareNativeSyncAllocation(const NewExpr *allocation, const Variable
     error(source, DiagID::ERR_GENERIC_SEMA, std::string("native sync owner allocation: ") + reason);
     return false;
   };
-  if (!allocation || !binding || !recipe || !recipe->Factory) return fail("MissingOwnerRecipe");
+  if (!allocation || !binding || !recipe || (!recipe->Factory && recipe->Children.empty()))
+    return fail("MissingOwnerRecipe");
+  const bool composite = !recipe->Factory;
+  auto ownerType = composite ? recipe->ValueType : recipe->Factory->OwnerType;
   auto snapshot = m_NativeSyncAllocationSnapshots.find(allocation);
   if (snapshot == m_NativeSyncAllocationSnapshots.end() || snapshot->second.Definition != CurrentFunction)
     return fail("MissingPreAllocationSnapshot");
   auto *transfer = dynamic_cast<CedeExpr *>(source);
   if (!transfer || !transfer->Value || !source->ResolvedType ||
-      !recipe->Factory->OwnerType || !source->ResolvedType->equals(*recipe->Factory->OwnerType))
+      !ownerType || !source->ResolvedType->equals(*ownerType))
     return fail("PreparedOwnerTransferRequired");
   auto path = canonicalizeAccessPath(makeAccessPath(transfer->Value.get()));
   if (!path || !path.RootID || !path.Projections.empty()) return fail("WholePreparedOwnerRequired");
@@ -327,7 +468,7 @@ bool Sema::prepareNativeSyncAllocation(const NewExpr *allocation, const Variable
   auto pal = before.PAL;
   if (pal.verifyInvalidation(path)) return fail("PreparedOwnerBorrowConflict");
   if (allocation->ArraySize || !allocation->Initializer || !allocation->Initializer->ResolvedType ||
-      !allocation->Initializer->ResolvedType->equals(*recipe->Factory->OwnerType))
+      !allocation->Initializer->ResolvedType->equals(*ownerType))
     return fail("OwnerAllocationTypeMismatch");
   // The checked SDK wrapper allocates only an empty carrier. If allocation of
   // its refcount then fails, freeing that carrier cannot discard a live native
@@ -344,9 +485,48 @@ bool Sema::prepareNativeSyncAllocation(const NewExpr *allocation, const Variable
         return fail("NamedEmptyCarrierRequired");
     }
   } else return fail("EmptyCarrierConstructionRequired");
-  const bool nativeOnly = recipe->Factory->Kind == NativeSyncFactoryKind::CondVar;
-  if (fields.size() != (nativeOnly ? 1u : 2u)) return fail("EmptyCarrierSchemaMismatch");
-  for (auto &[name, expression] : fields) {
+  auto plan = std::shared_ptr<NativeSyncAllocationPlan>(new NativeSyncAllocationPlan);
+  if (composite) {
+    auto owner = std::dynamic_pointer_cast<ShapeType>(ownerType);
+    if (!owner || !owner->Decl || owner->Decl->Kind != ShapeKind::Struct ||
+        owner->Decl->HasExplicitDrop || !owner->Decl->GenericParams.empty() ||
+        fields.size() != owner->Decl->Members.size()) return fail("UnqualifiedCompositeDeclaration");
+    plan->CompositeDeclaration = owner->Decl;
+    size_t nativeCount = 0;
+    for (size_t i = 0; i < owner->Decl->Members.size(); ++i) {
+      const auto &member = owner->Decl->Members[i];
+      auto type = getPhysicalType(member);
+      auto value = fields.find(member.Name);
+      if (!member.ResolvedType || value == fields.end() ||
+          !nativeSameValueView(type, value->second->ResolvedType)) return fail("CompositeFieldMismatch");
+      NativeSyncAllocationPlan::FieldCleanup field;
+      field.Index = i; field.Name = member.Name; field.Type = type; field.DeclaredType = member.ResolvedType;
+      auto child = recipe->Children.find(member.Name);
+      if (child != recipe->Children.end()) {
+        field.Recipe = child->second;
+        auto factory = field.Recipe ? field.Recipe->Factory : nullptr;
+        if (!factory || !nativeSameValueView(type, factory->OwnerType) ||
+            !nativeSameValueView(type, field.Recipe->ValueType) ||
+            m_InvalidNativeSyncOwnerRecipes.count(field.Recipe)) return fail("UnqualifiedNativeChild");
+        std::map<std::string, Expr *> empty;
+        if (!nativeInitializerFields(value->second, empty)) return fail("EmptyNativeChildRequired");
+        const bool cond = factory->Kind == NativeSyncFactoryKind::CondVar;
+        if (factory->Kind == NativeSyncFactoryKind::None || empty.size() != (cond ? 1u : 2u))
+          return fail("EmptyNativeChildSchemaMismatch");
+        for (const auto &[name, expression] : empty)
+          if ((name != "handle" && (cond || name != "data_ptr")) || !expression->ResolvedType ||
+              !expression->ResolvedType->isAddrType() || !nativeZeroLiteral(expression))
+            return fail("EmptyNativeChildRequired");
+        ++nativeCount;
+      } else if (!nativeCompositePrimitive(type) || !checkNativeSyncClosedPayload(type).closed() ||
+                 !nativeZeroLiteral(value->second)) return fail("ClosedPrimitiveFieldRequired");
+      plan->Fields.push_back(std::move(field));
+    }
+    if (nativeCount != recipe->Children.size()) return fail("UnmatchedNativeChild");
+  } else {
+    const bool nativeOnly = recipe->Factory->Kind == NativeSyncFactoryKind::CondVar;
+    if (fields.size() != (nativeOnly ? 1u : 2u)) return fail("EmptyCarrierSchemaMismatch");
+    for (auto &[name, expression] : fields) {
     if ((name != "handle" && (nativeOnly || name != "data_ptr")) ||
         !expression || !expression->ResolvedType || !expression->ResolvedType->isAddrType())
       return fail("EmptyCarrierSchemaMismatch");
@@ -364,8 +544,8 @@ bool Sema::prepareNativeSyncAllocation(const NewExpr *allocation, const Variable
             "native sync owner allocation: EmptyCarrierLiteralRequired: " + expression->toString());
       return false;
     }
+    }
   }
-  auto plan = std::shared_ptr<NativeSyncAllocationPlan>(new NativeSyncAllocationPlan);
   plan->Allocation = allocation;
   plan->Binding = binding;
   plan->Definition = CurrentFunction;
@@ -405,9 +585,21 @@ NativeSyncOwnerCandidatePtr Sema::collectNativeSyncOwnerRecipe(Expr *source) {
     for (const auto &field : aggregate->Decl->Members) {
       auto value = fields.find(field.Name);
       if (value == fields.end()) { complete = false; break; }
-      if (value->second->NativeSyncOwnerRecipe)
-        prepared->Children[field.Name] = value->second->NativeSyncOwnerRecipe;
-      else if (!checkNativeSyncClosedPayload(getPhysicalType(field)).closed()) { complete = false; break; }
+      // Normal aggregate validation may insert a no-op field-view cast after
+      // the initializer was checked. Preserve only its already validated exact
+      // direct shape identity; do not rerun Sema or grant cast permissions.
+      auto *actual = value->second;
+      while (auto *cast = dynamic_cast<CastExpr *>(actual)) {
+        if (cast->Kind == CastKind::Conversion || !cast->Expression->ResolvedType ||
+            !dynamic_cast<ShapeType *>(cast->ResolvedType.get()) ||
+            !nativeSameValueView(cast->Expression->ResolvedType, cast->ResolvedType)) break;
+        actual = cast->Expression.get();
+      }
+      if (actual->NativeSyncOwnerRecipe &&
+          nativeSameValueView(actual->NativeSyncOwnerRecipe->ValueType, getPhysicalType(field)))
+        prepared->Children[field.Name] = actual->NativeSyncOwnerRecipe;
+      else if (!nativeCompositePrimitive(getPhysicalType(field)) ||
+               !checkNativeSyncClosedPayload(getPhysicalType(field)).closed()) { complete = false; break; }
     }
     if (complete && !prepared->Children.empty()) return prepared;
   }
@@ -461,6 +653,7 @@ NativeSyncOwnerCandidatePtr Sema::collectNativeSyncOwnerRecipe(Expr *source) {
   }
   if (!recipe || m_InvalidNativeSyncOwnerRecipes.count(recipe)) return {};
   auto valueType = source->ResolvedType;
+  if (valueType->isReference()) valueType = valueType->getPointeeType();
   if (valueType->isUniquePtr() || valueType->isSharedPtr()) valueType = valueType->getPointeeType();
   auto shape = std::dynamic_pointer_cast<ShapeType>(valueType);
   if (!recipe->Factory) {
@@ -656,7 +849,11 @@ bool Sema::finalizeNativeSyncFactoryPlans() {
     const auto *owner = pending->OwnerType ? dynamic_cast<const ShapeType *>(pending->OwnerType.get()) : nullptr;
     if (!pending->Allocation || !pending->Binding || !pending->Definition ||
         pending->Allocation->NativeSyncAllocationSource != pending ||
-        !owner || !owner->Decl || !owner->Decl->HasExplicitDrop || owner->Decl->MangledDestructorName.empty() ||
+        !owner || !owner->Decl ||
+        (pending->CompositeDeclaration ?
+          (pending->CompositeDeclaration != owner->Decl || owner->Decl->HasExplicitDrop ||
+           pending->Fields.size() != owner->Decl->Members.size()) :
+          (!owner->Decl->HasExplicitDrop || owner->Decl->MangledDestructorName.empty())) ||
         checked == m_RawAddressReturns.end() || !checked->second.Checked || !checked->second.Valid) {
       error(const_cast<NewExpr *>(pending->Allocation), DiagID::ERR_GENERIC_SEMA,
             "native sync owner allocation: IncompleteDefinition");
@@ -668,6 +865,19 @@ bool Sema::finalizeNativeSyncFactoryPlans() {
           cached->second->Validation != GenericSpecializationValidationState::Valid) return false;
     }
     auto sealed = std::shared_ptr<NativeSyncAllocationPlan>(new NativeSyncAllocationPlan(*pending));
+    for (auto &field : sealed->Fields) {
+      if (field.Index >= owner->Decl->Members.size()) return false;
+      const auto &member = owner->Decl->Members[field.Index];
+      if (member.Name != field.Name || !field.Type || !field.Type->equals(*getPhysicalType(member))) return false;
+      if (field.Recipe) {
+        field.Witness = qualifyNativeSyncOwner(field.Recipe, field.Recipe->ValueType);
+        if (!field.Witness || !nativeSameValueView(field.Type, field.Witness->OwnerType)) {
+          error(const_cast<NewExpr *>(pending->Allocation), DiagID::ERR_GENERIC_SEMA,
+                "native sync owner allocation: UnqualifiedChildCleanup: " + field.Name);
+          return false;
+        }
+      } else if (!nativeCompositePrimitive(field.Type) || !checkNativeSyncClosedPayload(field.Type).closed()) return false;
+    }
     sealed->Complete = true;
     const_cast<NewExpr *>(pending->Allocation)->NativeSyncAllocationSource = std::move(sealed);
   }

@@ -427,6 +427,9 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   std::vector<ShapeMember> members;
   std::map<std::string, SymbolInfo> captureBindings;
   std::map<std::string, RawAddressSourcePtr> capturedRawSources;
+  // Borrowed local views retain access to the same owner inside this invoke.
+  // They are deliberately NOT owned capture recipes / thread-send evidence.
+  std::map<std::string, NativeSyncOwnerCandidatePtr> capturedNativeViews;
   Clo->NativeSyncCaptureRecipes.clear();
   Clo->ImplicitCaptures.clear();
   Clo->BoundaryImplicitCaptures.clear();
@@ -683,6 +686,10 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
           captureInfo.Permission.IdentityBlocked = false;
           captureInfo.TypeObj = sm.ResolvedType;
           captureBindings[sm.Name] = std::move(captureInfo);
+          auto native = m_NativeSyncOwnerRecipes.find(infoPtr->SymbolID);
+          if (native != m_NativeSyncOwnerRecipes.end() && native->second &&
+              !m_InvalidNativeSyncOwnerRecipes.count(native->second))
+            capturedNativeViews[sm.Name] = native->second;
         }
 
         members.push_back(sm);
@@ -797,6 +804,9 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
        auto nativeOwner = Clo->NativeSyncCaptureRecipes.find(memb.Name);
        if (nativeOwner != Clo->NativeSyncCaptureRecipes.end())
          m_NativeSyncOwnerRecipes[makeAccessPath(memb.Name).RootID] = nativeOwner->second;
+       auto borrowedNative = capturedNativeViews.find(memb.Name);
+       if (borrowedNative != capturedNativeViews.end())
+         m_NativeSyncOwnerRecipes[makeAccessPath(memb.Name).RootID] = borrowedNative->second;
        auto carried = capturedRawSources.find(memb.Name);
        if (carried != capturedRawSources.end()) {
          auto receiver = std::make_shared<RawAddressSource>();

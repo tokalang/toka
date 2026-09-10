@@ -5085,6 +5085,38 @@ bool CodeGen::validateNativeSyncOwner(const NativeSyncOwnerWitnessPtr &original,
     error(site, DiagID::ERR_CODEGEN, std::string("native sync owner: ") + why);
     return false;
   };
+  if (w && !w->Children.empty()) {
+    auto *owner = w->OwnerType ? dynamic_cast<ShapeType *>(w->OwnerType.get()) : nullptr;
+    if (!w->Origin || !w->ValueType || !w->Origin->ValueType ||
+        !w->ValueType->equals(*w->Origin->ValueType) || !owner || !owner->Decl ||
+        owner->Decl->HasExplicitDrop || owner->Decl->Kind != ShapeKind::Struct ||
+        w->FactorySite || w->OwnerDrop || w->Kind != NativeSyncFactoryKind::None ||
+        w->CompositeOperations.empty() || w->Children.size() != w->Origin->Children.size())
+      return reject("IncompleteCompositeWitness");
+    if (w->ValueType->isUniquePtr() || w->ValueType->isSharedPtr()) {
+      auto p = w->AllocationSite ? w->AllocationSite->NativeSyncAllocationSource : nullptr;
+      if (!p || !p->Complete || p->Allocation != w->AllocationSite ||
+          p->CompositeDeclaration != owner->Decl || p->Fields.size() != owner->Decl->Members.size())
+        return reject("UnqualifiedCompositeAllocation");
+    }
+    size_t children = 0;
+    for (const auto &field : owner->Decl->Members) {
+      auto child = w->Children.find(field.Name);
+      if (child != w->Children.end()) {
+        auto recipe = w->Origin->Children.find(field.Name);
+        if (!child->second || recipe == w->Origin->Children.end() || recipe->second != child->second->Origin ||
+            !validateNativeSyncOwner(child->second, site) || !field.ResolvedType ||
+            !field.ResolvedType->withAttributes(child->second->OwnerType->IsWritable,
+                field.ResolvedType->IsNullable, field.ResolvedType->IsBlocked)->equals(*child->second->OwnerType))
+          return reject("CompositeChildMismatch");
+        ++children;
+      } else if (!field.ResolvedType || field.ResolvedType->IsNullable || field.ResolvedType->IsBlocked ||
+                 !(field.ResolvedType->isInteger() || field.ResolvedType->isBoolean() || field.ResolvedType->isFloatingPoint()))
+        return reject("UnqualifiedCompositeField");
+    }
+    if (children != w->Children.size()) return reject("UnmatchedCompositeChild");
+    return true;
+  }
   if (!w || !w->Origin || !w->FactorySite || !w->ValueType ||
       !w->OwnerType || !w->ElementType || !w->OwnerDrop)
     return reject("IncompleteWitness");
@@ -7911,6 +7943,7 @@ bool CodeGen::guardNativeSyncAllocation(const NewExpr *site, llvm::Value *alloca
   auto p = site->NativeSyncAllocationSource;
 #ifdef TOKA_BUILD_TESTING
   auto fault = m_NativeSyncAllocationFault;
+  if (fault.rfind("composite:", 0) == 0) fault = p && p->CompositeDeclaration ? fault.substr(10) : "";
   if (fault.rfind("control:", 0) == 0) fault = emptyOwner ? fault.substr(8) : "";
   if (fault == "missing") p.reset();
   else if (p && !fault.empty()) {
@@ -7921,6 +7954,12 @@ bool CodeGen::guardNativeSyncAllocation(const NewExpr *site, llvm::Value *alloca
     if (fault == "definition") faulted->Definition = nullptr;
     if (fault == "input") faulted->PreparedOwner = nullptr;
     if (fault == "type") faulted->OwnerType.reset();
+    if (fault == "fields") faulted->Fields.clear();
+    if (!faulted->Fields.empty()) {
+      if (fault == "field-index") ++faulted->Fields.front().Index;
+      if (fault == "field-type") faulted->Fields.front().Type.reset();
+      if (fault == "field-witness") faulted->Fields.front().Witness.reset();
+    }
     p = std::move(faulted);
   }
 #endif
@@ -7942,6 +7981,32 @@ bool CodeGen::guardNativeSyncAllocation(const NewExpr *site, llvm::Value *alloca
       !allocated->getType()->isPointerTy() ||
       (emptyOwner && (!p->ManagedType->isSharedPtr() || !emptyOwner->getType()->isPointerTy())))
     return reject("AllocationKindMismatch");
+  llvm::StructType *compositeLayout = nullptr;
+  if (p->CompositeDeclaration) {
+    auto *owner = dynamic_cast<ShapeType *>(p->OwnerType.get());
+    if (!owner || owner->Decl != p->CompositeDeclaration || owner->Decl->HasExplicitDrop ||
+        p->Fields.size() != owner->Decl->Members.size() || p->Fields.empty())
+      return reject("CompositeDeclarationMismatch");
+    compositeLayout = llvm::dyn_cast_or_null<llvm::StructType>(getLLVMType(p->OwnerType));
+    if (!compositeLayout || compositeLayout->getNumElements() != p->Fields.size())
+      return reject("CompositeLayoutMismatch");
+    for (size_t i = 0; i < p->Fields.size(); ++i) {
+      const auto &field = p->Fields[i];
+      const auto &member = owner->Decl->Members[i];
+      if (field.Index != i || field.Name != member.Name || !field.Type || !member.ResolvedType ||
+          field.DeclaredType != member.ResolvedType ||
+          getLLVMType(field.Type) != compositeLayout->getElementType(i)) return reject("CompositeFieldMismatch");
+      if (field.Recipe) {
+        if (!field.Witness || field.Witness->Origin != field.Recipe ||
+            !validateNativeSyncOwner(field.Witness, site) || !field.Witness->OwnerType ||
+            !field.Type->withAttributes(field.Witness->OwnerType->IsWritable,
+                field.Type->IsNullable, field.Type->IsBlocked)->equals(*field.Witness->OwnerType))
+          return reject("CompositeChildCleanupMismatch");
+      } else if (field.Witness || field.Type->IsNullable || field.Type->IsBlocked ||
+                 !(field.Type->isBoolean() || field.Type->isInteger() || field.Type->isFloatingPoint()))
+        return reject("CompositePrimitiveMismatch");
+    }
+  } else if (!p->Fields.empty()) return reject("UnexpectedFieldCleanup");
   auto *ptr = m_Builder.getPtrTy();
   auto *exitType = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getInt32Ty()}, false);
   auto *freeType = llvm::FunctionType::get(m_Builder.getVoidTy(), {ptr}, false);
@@ -7962,7 +8027,13 @@ bool CodeGen::guardNativeSyncAllocation(const NewExpr *site, llvm::Value *alloca
   // The refcount failed before this empty carrier became a shared owner.
   // Free it directly; the live native resource is still in PreparedOwner.
   if (emptyOwner) m_Builder.CreateCall(m_Module->getOrInsertFunction("free", freeType), {emptyOwner});
-  emitDropForType(inputAddress, p->OwnerType);
+  if (compositeLayout) {
+    // Source remains wholly live on allocation failure. The target contains
+    // only empty native fields; never whole-drop then field-drop the source.
+    for (const auto &field : p->Fields)
+      if (field.Witness)
+        emitDropForType(m_Builder.CreateStructGEP(compositeLayout, inputAddress, field.Index), field.Type);
+  } else emitDropForType(inputAddress, p->OwnerType);
   auto *fatal = m_Builder.CreateCall(m_Module->getOrInsertFunction("_Exit", exitType), {m_Builder.getInt32(134)});
   fatal->setDoesNotReturn();
   m_Builder.CreateUnreachable();

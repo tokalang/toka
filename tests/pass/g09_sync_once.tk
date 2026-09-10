@@ -8,8 +8,8 @@ shape SharedData(
 
 pub fn main() -> i32 {
     auto init_val = SharedData(counter = 0)
-    auto ~state = Mutex<SharedData>::make(cede init_val)
-    auto ~once# = Once::make()
+    auto ~state = Mutex<SharedData>::make_shared(cede init_val)
+    auto ~once# = Once::make_shared()
 
     auto ~state1 = ~state
     auto ~state2 = ~state
@@ -17,49 +17,49 @@ pub fn main() -> i32 {
     auto ~once1# = ~once
     auto ~once2# = ~once
     auto ~once3# = ~once
-    auto init1# = { [cede state1] =>
+    auto task1 = { [cede ~once1, cede ~state1] =>
         auto ~local_state = ~state1
-        auto lock = local_state.lock().unwrap()
-        auto &val# = lock.borrow_mut()
-        val.counter = val.counter + 1
-        println("init_fn executed!")
-        return
-    }:fn#()
-    auto init2# = { [cede state2] =>
-        auto ~local_state = ~state2
-        auto lock = local_state.lock().unwrap()
-        auto &val# = lock.borrow_mut()
-        val.counter = val.counter + 1
-        println("init_fn executed!")
-        return
-    }:fn#()
-    auto init3# = { [cede state3] =>
-        auto ~local_state = ~state3
-        auto lock = local_state.lock().unwrap()
-        auto &val# = lock.borrow_mut()
-        val.counter = val.counter + 1
-        println("init_fn executed!")
-        return
-    }:fn#()
-    auto task1# = { [cede once1, cede init1] =>
         auto ~local_once# = ~once1
-        local_once#.call(init1#)
+        auto init# = { =>
+            auto lock = local_state.lock().unwrap()
+            auto &val# = lock.borrow_mut()
+            val.counter = val.counter + 1
+            println("init_fn executed!")
+        }:fn#()
+        local_once#.call(init#)
         return 0
-    }:fn#() -> i32
-    auto task2# = { [cede once2, cede init2] =>
+    }:dyn fn() -> i32
+    auto task2 = { [cede ~once2, cede ~state2] =>
+        auto ~local_state = ~state2
         auto ~local_once# = ~once2
-        local_once#.call(init2#)
+        auto init# = { =>
+            auto lock = local_state.lock().unwrap()
+            auto &val# = lock.borrow_mut()
+            val.counter = val.counter + 1
+            println("init_fn executed!")
+        }:fn#()
+        local_once#.call(init#)
         return 0
-    }:fn#() -> i32
-    auto task3# = { [cede once3, cede init3] =>
+    }:dyn fn() -> i32
+    auto task3 = { [cede ~once3, cede ~state3] =>
+        auto ~local_state = ~state3
         auto ~local_once# = ~once3
-        local_once#.call(init3#)
+        auto init# = { =>
+            auto lock = local_state.lock().unwrap()
+            auto &val# = lock.borrow_mut()
+            val.counter = val.counter + 1
+            println("init_fn executed!")
+        }:fn#()
+        local_once#.call(init#)
         return 0
-    }:fn#() -> i32
+    }:dyn fn() -> i32
     
-    auto t1# = thread_spawn<i32>(cede task1)
-    auto t2# = thread_spawn<i32>(cede task2)
-    auto t3# = thread_spawn<i32>(cede task3)
+    auto created1 = thread_spawn<i32>(cede task1)
+    auto created2 = thread_spawn<i32>(cede task2)
+    auto created3 = thread_spawn<i32>(cede task3)
+    auto t1# = created1.unwrap()
+    auto t2# = created2.unwrap()
+    auto t3# = created3.unwrap()
     
     t1#.join().unwrap()
     t2#.join().unwrap()

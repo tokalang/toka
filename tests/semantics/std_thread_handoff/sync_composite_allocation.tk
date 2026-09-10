@@ -1,0 +1,38 @@
+import std/sync::{Once, WaitGroup}
+extern fn toka_composite_arm() -> void
+extern fn toka_composite_kind() -> i32
+extern fn toka_composite_shared() -> i32
+extern fn toka_composite_done() -> i32
+
+fn main() -> i32 {
+    auto kind = unsafe toka_composite_kind()
+    auto shared = unsafe toka_composite_shared()
+    unsafe { toka_composite_arm() }
+    if kind == 0 {
+        if shared == 1 {
+            auto ~owner# = Once::make_shared()
+            auto ~other# = ~owner
+            auto init# = { => return }:fn#()
+            other#.call(init#)
+            owner#.call(init#)
+        } else {
+            auto ^owner# = Once::make()
+            auto init# = { => return }:fn#()
+            owner#.call(init#)
+        }
+    } else {
+        if shared == 1 {
+            auto ~owner# = WaitGroup::make_shared()
+            auto ~other# = ~owner
+            other#.add(1)
+            owner#.done()
+            other#.wait_all()
+        } else {
+            auto ^owner# = WaitGroup::make()
+            owner#.add(1)
+            owner#.done()
+            owner#.wait_all()
+        }
+    }
+    return unsafe toka_composite_done()
+}

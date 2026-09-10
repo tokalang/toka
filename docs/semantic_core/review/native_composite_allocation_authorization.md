@@ -1,12 +1,16 @@
 # Composite native-owner cleanup — approval boundary
 
+Status: **explicitly authorized for implementation by the user, 2026-09-10**.
+The five boundaries below are approved; the former approval blocker is closed.
+This is not implementation acceptance or thread/sync integration acceptance.
+
 This is an implementation-authorization question, not another RFC or acceptance
 request. The existing accepted storage design already requires Once/WaitGroup
 to compose field-specific native witnesses. Automatic review has nevertheless
 rejected applying their composite allocation/cleanup implementation twice.
 Neither rejected patch was applied, and no alternate tool was used to apply it.
 
-## Applied versus not applied
+## Historical state before the explicit authorization
 
 - Applied: non-authorizing aggregate recipes retain the actual initializer's
   child-native recipes and require closed non-native fields. These recipes do
@@ -53,4 +57,6 @@ name/fallback-based admission. That proposal was not applied.
 The revised proposal used the actual prepared local recipe and an exact
 native-field list instead of the name list/Drop fallback. Review still rejected
 it as a retry of composite owner admission without new explicit user approval.
-The implementation is therefore paused at this boundary, not worked around.
+The implementation was paused at that boundary, not worked around. The user's
+subsequent explicit authorization now permits implementation within all five
+constraints above; it does not authorize either earlier patch unchanged.

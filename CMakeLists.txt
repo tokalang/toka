@@ -345,6 +345,11 @@ if(BUILD_TESTING)
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_native_sync_public_owner.py
                     --build-dir ${CMAKE_BINARY_DIR})
             set_tests_properties(toka_native_sync_public_owner PROPERTIES TIMEOUT 240)
+            add_test(NAME toka_native_sync_composite
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/scripts/test_native_sync_composite.py
+                    --build-dir ${CMAKE_BINARY_DIR})
+            set_tests_properties(toka_native_sync_composite PROPERTIES TIMEOUT 180)
             add_test(NAME toka_native_sync_witness
                 COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_native_sync_witness.py

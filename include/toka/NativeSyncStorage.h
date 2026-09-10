@@ -106,6 +106,18 @@ class NativeSyncAllocationPlan {
   const FunctionDecl *Definition = nullptr;
   const Expr *PreparedOwner = nullptr;
   std::shared_ptr<Type> OwnerType, ManagedType;
+  struct FieldCleanup {
+    size_t Index = 0;
+    std::string Name;
+    std::shared_ptr<Type> Type;
+    std::shared_ptr<toka::Type> DeclaredType;
+    NativeSyncOwnerCandidatePtr Recipe;
+    NativeSyncOwnerWitnessPtr Witness;
+  };
+  const ShapeDecl *CompositeDeclaration = nullptr;
+  // All declaration fields are represented. Primitive fields have no recipe
+  // or cleanup; native fields require a separately sealed child witness.
+  std::vector<FieldCleanup> Fields;
   bool Complete = false;
 };
 

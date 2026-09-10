@@ -12,6 +12,63 @@ Delivery boundary fixed by the user on 2026-09-10:
 Unrelated network/container/binding debt and the rest of the cede RFC are not
 part of this delivery. Intermediate commits are internal checkpoints only.
 
+## Latest checkpoint — composite implementation authorized and connected
+
+The user explicitly approved all five composite allocation/cleanup boundaries.
+The earlier approval blocker is closed; the historical blocked notes below do
+not describe the current state. No new Accepted/freeze is claimed.
+
+- An actual prepared local composite selects the pre-allocation snapshot.
+  Its complete declaration/field types, source liveness and PAL are checked;
+  every native child needs its own existing factory/cleanup qualification.
+  Other admitted fields are closed primitives. Custom composite Drop, partial,
+  unknown, contradictory or nonempty native targets are rejected.
+- A sealed allocation plan records every field and the native child cleanup
+  witness. CodeGen validates declaration/layout/field correspondence and only
+  field-drops the live prepared source on allocation failure, freeing an empty
+  partial target separately. There is no whole-drop plus field-drop path.
+- Once/WaitGroup keep their unique `make()` APIs and now have explicit
+  `make_shared()` wrappers. The latter declare the mutable payload view used by
+  their existing methods; no implicit unique/shared conversion was introduced.
+  Their checked public methods forward to private source-owned composition
+  operations with exact owner/argument contracts. Field-specific native
+  witnesses remain necessary; a method/type name or @Send alone grants none.
+- The actual condvar, Once and WaitGroup examples use explicit shared factories,
+  complete capture spelling and the current spawn Result/JoinHandle API. Once
+  still makes three attempts and asserts exactly one initializer; WaitGroup
+  waits for all three workers, checks their result and joins them. The local
+  Once initializer borrows within its worker, never across the thread boundary.
+- Nested local borrowed native views retain their owner relation without
+  becoming owned environment evidence. Rechecking a method replaces its old
+  access plan, preventing stale speculative access carriers from surviving.
+  No capture layout, runtime ABI, refcount algorithm or language syntax changed.
+
+Verified so far: the public thread/sync runtime/parity/denial set passes
+**19/19, no skips**. Prepared-composite success/failure runs pass **10/10**
+(unique/shared Once and WaitGroup; outer allocation and shared-control-block
+failure). Composite-specific missing/mismatched field-plan tests pass **26/26**
+without object/IR artifacts. Existing public-owner and witness CTests pass.
+The nonempty native-child rejection also passes both object/IR checks with
+the prepared source restored (**2/2**, no E0438/E0410). The final composite
+CTest rerun passed in 34.45 seconds.
+These are directed results, not a fresh full PASS/FAIL or baseline comparison.
+
+The delivery remains open at **managed-slot replacement**, then the final
+relative-`eedd0bf0` verification. The required positive investigation fixture
+`tests/semantics/std_thread_handoff/sync_managed_slot_replace.tk` now diagnoses
+the exact mismatch: bare `slot` assignment has selected `Token#`, while the
+initialized element contract is `^Token`. It is not a successful handle
+replacement and has not been turned into a permanent negative. Existing
+`^/&` selector and morphic probes are also retained; no permission/type check
+was relaxed to make one of those spellings pass. The 19/19 set does not include
+or claim this still-open row.
+
+All remaining work is within the existing thread/sync delivery; unrelated
+network/container/binding debts stay outside. No push, PR, Actions or frozen-ref
+movement is part of this checkpoint.
+
+## Earlier checkpoints (historical)
+
 ## Current work
 
 - Public Mutex new/make/make_shared/lock/drop and guard drop now delegate to the
