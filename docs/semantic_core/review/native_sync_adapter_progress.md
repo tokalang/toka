@@ -1,6 +1,6 @@
 # Native sync private adapters — implementation checkpoint, not Accepted
 
-Subsequent source-plan WIP, required failing flow test, and remaining chain are
+Subsequent source-plan WIP, the direct-owner view repair, and remaining chain are
 tracked in [native_sync_factory_source_progress.md](native_sync_factory_source_progress.md).
 The figures below describe the `aaac3267` adapter checkpoint, not a full witness acceptance.
 

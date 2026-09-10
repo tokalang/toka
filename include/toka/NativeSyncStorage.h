@@ -26,6 +26,10 @@ class NativeSyncFactoryPlan {
   NativeSyncFactoryKind Kind = NativeSyncFactoryKind::None;
   bool Validated = false;
   bool ReplacementClosed = false;
+public:
+  // Read-only provenance comparison, not a permission or transfer grant.
+  // Only a sealed direct-owner factory plan can answer positively.
+  bool matchesOwnerView(const std::shared_ptr<Type> &view) const;
 };
 using NativeSyncFactoryPtr = std::shared_ptr<const NativeSyncFactoryPlan>;
 

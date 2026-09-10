@@ -4,6 +4,10 @@ Base: `aaac3267`. This checkpoint connects the three private creation calls to
 real Sema-produced, exact-edge CodeGen plans. It does **not** complete the native
 owner/storage witness, the thread environment proof, or the binding slice.
 
+2026-09-10 update (implementation authorized against `b94c471b`): the direct
+owner writable-view provenance gap is fixed with the bounded comparison below.
+This update is not acceptance of the complete witness chain.
+
 ## Implemented and tested
 
 - Resolver-trusted source `std/sync` declaration selection; exact selected
@@ -23,36 +27,48 @@ owner/storage witness, the thread environment proof, or the binding slice.
 - ClosedPayload remains a separate replacement prerequisite. Its result does
   not create a native witness and does not authorize a thread capture.
 
-Directed source tests: 5 positives (three factories, valid generic cache reuse,
-same-name untrusted function), 24 E0701/no-artifact fault checks, and one invalid
-generic-parent rejection. Existing adapters still pass all 76 runtime/failure
-cases; shared reception retains its 23-case/IR gate.
+Directed source tests: 6 positives (three factories, valid generic cache reuse,
+same-name untrusted function, readonly read), 24 E0701/no-artifact fault checks,
+one invalid generic-parent rejection, and 2 readonly-owner write-contract
+rejections with strict normal/shadow parity and no artifacts. Existing adapters
+retain all 76 runtime/failure cases; shared reception retains its 23-case/IR gate.
 
-Final directed CTest run: **5/6**, 43.12 seconds. The only failing target is the
-mandatory source-flow test below. Incremental compiler/test builds and
-`git diff --check` pass. No full suite or non-testing build was rerun.
+Historical `b94c471b` directed CTest result: **5/6**, 43.12 seconds, with the
+source-flow target failing. It was kept required, without xfail or oracle change.
 
-## Open mandatory source-flow test and rejected patch
+Current directed CTest result: **6/6**, 67.50 seconds (ClosedPayload, source
+flow, sync storage subset, shared reception, adapters, factory source/fault
+matrix). Incremental compiler/test builds and `git diff --check` pass. No full
+PASS/FAIL suite or non-testing build was rerun in this update.
+
+## Resolved direct-owner view gap
 
 `toka_native_sync_factory_flow` is a real ModuleResolver/Sema test against the
-actual SDK source. It intentionally remains a **failing required test**, not an
-xfail or an updated oracle. It checks exact move identity, distinct factory
-owners and branch-local storage mutation without executing corrupted storage.
+actual SDK source. Its original move, distinct-owner and branch invalidation
+assertions now pass, without executing corrupted storage. Additional assertions
+prove that a move to a readonly binding preserves the very same source edge,
+and a rejected consuming call restores the original relation without a leaked
+Moved/Uninitialized diagnostic.
 
-Current failure: the factory result is `Mutex_M_i32`, while the checked mutable
-binding view is `Mutex_M_i32#`. The strict full-type equality in
-`collectNativeSyncFactoryOrigin` loses the relation immediately. Therefore the
-subsequent move/branch assertions are not yet demonstrated; they are not claimed
-as passing merely because the state-map code exists.
+The factory result is `Mutex_M_i32`, while a checked mutable binding view is
+`Mutex_M_i32#`. `matchesOwnerView` compares a temporary clone using the current
+view's top-level IsWritable only. It requires a validated direct ShapeType,
+the exact owner template, and the complete matching instantiated element type.
+Nominal identity, nullable, blocked and all element morphology remain checked.
+Tests change candidate view types only and assert the real factory, expression,
+declaration and element type objects/identities remain unchanged. Raw/reference,
+unique/shared outer views, unresolved declarations, same-name other nominals,
+nullable/blocked differences and changed element permissions are rejected.
 
-The proposed top-level view comparison was rejected by automatic review and is
-**not applied**. The exact diff is saved in
+The previously rejected comparison received explicit full-diff implementation
+authorization on 2026-09-10 and is now applied, factored into the read-only plan
+query for direct testing. The original historical diff remains archived in
 [native_sync_view_origin_unapplied.patch](native_sync_view_origin_unapplied.patch).
-`git apply --check` succeeds; that check did not modify source. Review flagged
-the possibility of permitting writable/owner mismatches. The proposal clones a
-comparison type (`ShapeType::withAttributes`), not the AST's actual type, but it
-still changes provenance admission and requires confirmation of that boundary.
-No alternate edit/tool was used to bypass the rejection.
+Its filename describes its earlier status, not the current implementation.
+No permission/PAL/flow ceiling or CodeGen factory comparison was relaxed.
+The source permission negatives request a mutable owner formal from a readonly
+view and require E04571. They do not misclassify `handle#` field-local mutability
+as inherited owner permission or change that existing rule.
 
 An earlier proposal to simply remove the speculative-context guard was also
 rejected and not applied. The current safer deferred/unvalidated carrier path
@@ -60,8 +76,9 @@ preserves the publication barrier and passed the source/fault gates above.
 
 ## Remaining chain (not hidden by factory success)
 
-1. Close and test writable-view provenance, move/shared-copy continuity,
-   conservative joins, unknown mutation invalidation and rejection rollback.
+1. Extend the now-tested direct-owner flow to shared-copy continuity and the
+   remaining alias/unknown mutation paths. This patch does not claim those
+   additional paths merely because the direct-owner relation is preserved.
 2. Match guard acquisitions/discharge and exact slot/replacement plans to the
    same owner. Factory creation alone does not prove terminal cleanup or guard
    lifetime continuity.

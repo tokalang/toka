@@ -136,6 +136,19 @@ bool Sema::finalizeNativeSyncFactoryPlans() {
   return !HasError;
 }
 
+bool NativeSyncFactoryPlan::matchesOwnerView(const std::shared_ptr<Type> &view) const {
+  const auto *shape = view ? dynamic_cast<const ShapeType *>(view.get()) : nullptr;
+  if (!Validated || !OwnerType || !view ||
+      !dynamic_cast<const ShapeType *>(OwnerType.get()) ||
+      !shape || !shape->Decl || !OwnerTemplate || !ElementType ||
+      shape->Decl->InstantiationTemplate != OwnerTemplate ||
+      shape->Decl->InstantiationArgs.size() != 1 ||
+      !shape->Decl->InstantiationArgs[0] ||
+      !ElementType->equals(*shape->Decl->InstantiationArgs[0])) return false;
+  return OwnerType->withAttributes(view->IsWritable, OwnerType->IsNullable,
+                                    OwnerType->IsBlocked)->equals(*view);
+}
+
 NativeSyncFactoryPtr Sema::collectNativeSyncFactoryOrigin(Expr *expression) {
   if (!expression) return {};
   NativeSyncFactoryPtr result;
@@ -157,8 +170,10 @@ NativeSyncFactoryPtr Sema::collectNativeSyncFactoryOrigin(Expr *expression) {
   if (!result || !result->Validated || m_InvalidNativeSyncOrigins.count(result)) return {};
   // Do not infer ownership or accept raw/reference reinterpretations. A view
   // selector/new-allocation transition needs its own admitted transfer edge.
-  if (!expression->ResolvedType || !result->OwnerType ||
-      !result->OwnerType->equals(*expression->ResolvedType)) return {};
+  if (!result->matchesOwnerView(expression->ResolvedType)) return {};
+  // Only the already-checked view's top-level write qualifier may differ.
+  // This records storage identity, never grants that qualifier or changes the
+  // element's full morphology, nullable state or permission ceiling.
   return result;
 }
 

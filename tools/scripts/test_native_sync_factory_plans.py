@@ -75,6 +75,50 @@ pub fn __factory_test() -> i32 {
         (library / "std/sync.tk").write_text(invalid)
         compile_case("invalid-parent", succeeds=False, diagnostic="E0408")
 
+        # Origin continuity is not payload-write authority. These programs use
+        # the same checked factory as the mutable positive above. The requested
+        # owner-write contract must not be granted to a readonly view. Do not
+        # confuse explicitly writable `handle#` fields with inherited owner
+        # permission: field-local mutability is an existing independent rule.
+        readonly_cases = {
+            "readonly-local": '''
+fn __factory_write(owner#: Mutex<i32>) { owner.handle = 0:Addr }
+pub fn __factory_test() -> i32 {
+    auto owner = __sync_mutex_create<i32>(7)
+    __factory_write(owner#)
+    return 0
+}
+''',
+            "readonly-formal": '''
+fn __factory_write(owner#: Mutex<i32>) { owner.handle = 0:Addr }
+fn __factory_readonly(owner: Mutex<i32>) { __factory_write(owner#) }
+pub fn __factory_test() -> i32 {
+    auto owner# = __sync_mutex_create<i32>(7)
+    __factory_readonly(owner)
+    return 0
+}
+''',
+        }
+        for name, body in readonly_cases.items():
+            (library / "std/sync.tk").write_text(sdk + body)
+            normal = compile_case(name, succeeds=False, diagnostic="E04571")
+            shadow = compile_case(name + "-shadow", ["--non-call-transfer-shadow=json"],
+                                  succeeds=False, diagnostic="E04571")
+            if normal.returncode != shadow.returncode or normal.stderr != shadow.stderr:
+                raise AssertionError(name + ": normal/shadow diagnostic mismatch")
+            if "E0701" in normal.stderr:
+                raise AssertionError(name + ": permission must be rejected by Sema, not CodeGen")
+
+        (library / "std/sync.tk").write_text(sdk + '''
+pub fn __factory_test() -> i32 {
+    auto owner = __sync_mutex_create<i32>(7)
+    auto native = owner.handle
+    return 0
+}
+''')
+        compile_case("readonly-read")
+        positive += 1
+
         # Resolver trust matters: an ordinary source function with the same
         # spelling is not assigned a private contract (and a native-plan fault
         # therefore cannot affect it).
@@ -85,7 +129,7 @@ fn main() -> i32 { return __sync_mutex_create(0) }
         compile_case("same-name-user", ["--native-sync-factory-fault=missing"])
         positive += 1
         print(f"native factory plans: {positive} source positives, {fault_count} E0701/no-artifact faults, "
-              "1 invalid-parent rejection; no thread witness granted")
+              "1 invalid-parent and 2 readonly rejections (strict shadow parity); no thread witness granted")
 
 
 if __name__ == "__main__":
