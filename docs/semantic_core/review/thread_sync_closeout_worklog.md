@@ -1,4 +1,10 @@
-# Thread/sync closeout — internal work log, not an acceptance request
+# Thread/sync closeout — Accepted; historical work log
+
+**Closed at accepted revision `7ef33d9d73e6d604281aec5b116391e98e5592d5`.**
+The authoritative [acceptance/local-freeze record](thread_sync_acceptance.md)
+supersedes the WIP/candidate status statements below. This log is historical;
+no more implementation is to be appended to this slice. Remaining binding/RFC
+and release work is separate, not accepted by this closeout.
 
 Delivery boundary fixed by the user on 2026-09-10:
 

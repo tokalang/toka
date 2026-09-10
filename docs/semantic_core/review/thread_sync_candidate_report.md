@@ -1,4 +1,10 @@
-# Thread/sync integration candidate — ready for review, not Accepted
+# Thread/sync integration — Accepted; historical candidate evidence
+
+Final status: the agreed slice was accepted at
+`7ef33d9d73e6d604281aec5b116391e98e5592d5` and locally frozen. See the
+[authoritative acceptance record](thread_sync_acceptance.md) for scope and the
+distinction between the old full run and subsequent directed verification.
+The candidate chronology and measured results below are retained unchanged.
 
 Review update: `31843d5c` received Revisions requested for guard/unlock lifetime
 and repeated shared-slot replacement. The subsequent bounded fixes and directed
@@ -6,7 +12,7 @@ revalidation are recorded in [the P1 follow-up](thread_sync_318_p1_fixes.md).
 The full-run numbers below are the historical 31843d5c candidate evidence; they
 have not been overwritten or represented as a new full run.
 
-Implementation/report are in this commit, based on `e90f360e`. The delivery
+The original candidate implementation/report were recorded at `31843d5c`, based on `e90f360e`. The delivery
 boundary is unchanged: thread/sync integration, not all binding or the cede RFC.
 No push, PR, Actions, frozen-ref movement or interface/ABI change is included.
 
@@ -129,5 +135,7 @@ classification of remaining failed PASS cases; it neither reruns whole suites
 nor changes inputs/oracles. The original full-run regression remains visible
 in the JSON instead of being overwritten with the follow-up result.
 
-This candidate is submitted for independent review. It is not Accepted, a full
-Stage 1 completion claim, a whole-binding freeze, or release qualification.
+The original candidate was submitted for independent review and subsequently
+corrected. Acceptance of the final thread/sync revision is recorded separately;
+it is not a full Stage 1 completion claim, whole-binding freeze or release
+qualification.
