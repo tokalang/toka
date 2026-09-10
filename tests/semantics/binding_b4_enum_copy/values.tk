@@ -1,0 +1,52 @@
+auto drops# = 0:i32
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+shape NonCopy(value: i32)
+impl NonCopy@Encap { pub value }
+shape Packet<'T>(Empty | Value('T))
+shape Nested<'T>(Empty | Value(Option<'T>))
+shape Fixed<'T>(Empty | Value(['T; 2]))
+shape Multi<'T>(Empty | Pair(i32, 'T))
+shape Phantom<'T>(First | Second)
+
+fn main() -> i32 {
+    auto scalar = Result<i32, bool>::Ok(7)
+    auto copied = scalar
+    if !scalar.is_ok() || !copied.is_ok() { return 1 }
+    auto empty = Packet<Token>::Empty
+    auto pure = Packet<i32>::Value(9)
+    auto pure_copy = pure
+    auto phantom = Phantom<string>::First
+    auto phantom_copy = phantom
+    auto plain = Packet<NonCopy>::Value(NonCopy(value = 2))
+    auto plain_moved = cede plain
+    {
+        auto owner = Result<i32, string>::Err(string::from("owned"))
+        auto moved = cede owner
+        if !moved.is_err() { return 2 }
+    }
+    {
+        auto value = Packet<Token>::Value(Token(value = 3))
+        auto moved = cede value
+    }
+    if drops != 1 { return 3 }
+    {
+        auto value = Nested<Token>::Value(Option<Token>::Some(Token(value = 4)))
+        auto moved = cede value
+    }
+    if drops != 2 { return 4 }
+    {
+        auto values = Fixed<Token>::Value([Token(value = 5), Token(value = 6)])
+        auto moved = cede values
+    }
+    if drops != 4 { return 5 }
+    {
+        auto multiple = Multi<Token>::Pair(1, Token(value = 8))
+        auto moved = cede multiple
+    }
+    if drops != 5 { return 6 }
+    return 0
+}

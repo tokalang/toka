@@ -2762,6 +2762,33 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
       if (independentlyOwned) {
         for (const auto &member : shape->Members) {
           auto memberType = Sema::getPhysicalType(member);
+          if (memberType && (memberType->isFunction() || memberType->isDynFn()) &&
+              getCallableReceiverMode(*memberType) == CallableReceiverMode::Consuming) {
+            auto initializer = std::find_if(init->Members.begin(), init->Members.end(),
+                [&](const auto &field) { return Type::stripMorphology(field.first) ==
+                                               Type::stripMorphology(member.Name); });
+            auto *value = initializer == init->Members.end() ? nullptr
+                : dynamic_cast<VariableExpr *>(stage0SurfaceSource(initializer->second.get()));
+            SymbolInfo *binding = nullptr;
+            std::string name;
+            if (!value || !CurrentScope->findVariableWithDeref(value->Name, binding, name) ||
+                !binding || binding->IsPlaceAlias || binding->HasBeenMutated ||
+                !snapshotState || !binding->TypeObj || !binding->TypeObj->equals(*memberType)) {
+              independentlyOwned = false;
+              break;
+            }
+            // Consuming is NonCopy, not "unknown environment". Reuse the
+            // stable binding's entry-snapshot facts, never a Copy bit or a
+            // replacement environment observed after another field evaluated.
+            auto found = snapshotState->CallableEnvironments.find(binding->SymbolID);
+            if (found == snapshotState->CallableEnvironments.end() ||
+                !found->second.Complete || !found->second.Referents.empty() ||
+                !found->second.LocalBounds.empty() || !found->second.NativeOwners.empty()) {
+              independentlyOwned = false;
+              break;
+            }
+            continue;
+          }
           if (!memberType || memberType->isRawPointer() ||
               memberType->isReference() ||
               queryExplicitCedeStage0CopyProof(memberType) !=
@@ -2972,8 +2999,10 @@ TransferCopyProof Sema::queryExplicitCedeStage0CopyProof(
     return TransferCopyProof::Indeterminate;
   if (type->isUniquePtr() || type->isSharedPtr())
     return TransferCopyProof::ProvenNonCopy;
-  if (type->isRawPointer() || type->isReference() || type->isFunction() ||
-      type->isDynFn() || type->isVoid() || type->isBoolean() ||
+  if (type->isFunction() || type->isDynFn())
+    return getCallableReceiverMode(*type) == CallableReceiverMode::Consuming
+        ? TransferCopyProof::ProvenNonCopy : TransferCopyProof::ProvenCopy;
+  if (type->isRawPointer() || type->isReference() || type->isVoid() || type->isBoolean() ||
       type->isInteger() || type->isFloatingPoint() || type->isAddrType() ||
       type->isOAddrType())
     return TransferCopyProof::ProvenCopy;
@@ -4631,7 +4660,10 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   const bool validatedCallableBinding = bindingBehaviorPlan && normalSemaValidated &&
       actualType && (actualType->isFunction() || actualType->isDynFn());
   std::optional<CallableEnvironmentFacts> callableEnvironment;
-  if (validatedCallableBinding) {
+  const bool checkedStandaloneCallable = standaloneBehaviorPlan && actualType &&
+      (actualType->isFunction() || actualType->isDynFn()) &&
+      legacy.ValueCategory == CallValueCategory::Place;
+  if (validatedCallableBinding || checkedStandaloneCallable) {
     callableEnvironment = collectStage1CallableEnvironment(exactValue);
     legacy.ReferentPath = {};
     legacy.DependencyPaths.clear();

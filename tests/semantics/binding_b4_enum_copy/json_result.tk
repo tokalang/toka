@@ -1,0 +1,14 @@
+import stdx/serde/json::{@FromJson}
+
+fn main() -> i32 {
+    auto number# = Result<f64, string>::Ok(0.0)
+    auto parsed = number#.parse_json("{\"Ok\":3.5}")
+    if parsed.is_err() || !number.is_ok() { return 1 }
+    if number.unwrap() != 3.5 { return 2 }
+    auto error# = Result<f64, string>::Ok(0.0)
+    auto parsed_error = error#.parse_json("{\"Err\":\"message\"}")
+    if parsed_error.is_err() || !error.is_err() { return 3 }
+    auto message = error.unwrap_err()
+    if !message.as_str().equals("message") { return 4 }
+    return 0
+}

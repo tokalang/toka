@@ -165,7 +165,7 @@ impl Path {
         auto ext_idx = self.inner.find_char(46:char)
         if ext_idx != -1 {
             unsafe {
-                stem_path_str = cede string::from_with_len(self.inner.c_str(), ext_idx)
+                stem_path_str = string::from_with_len(self.inner.c_str(), ext_idx)
             }
         }
         

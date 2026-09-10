@@ -1,0 +1,12 @@
+shape Holder(callback: cede dyn fn() -> i32)
+fn escaped() -> Holder {
+    auto owner = string::from("borrowed")
+    auto view = owner.as_str()
+    auto once = { [cede view] =>
+        auto captured = cede view
+        return captured.len() as i32
+    }:cede dyn fn() -> i32
+    auto holder = Holder(callback = cede once)
+    return cede holder
+}
+fn main() -> i32 { return 0 }

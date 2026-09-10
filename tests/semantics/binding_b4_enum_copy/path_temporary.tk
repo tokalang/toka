@@ -1,0 +1,15 @@
+import std/path::{Path}
+fn main() -> i32 {
+    auto source = Path::new(string::from("/tmp/name.tk"))
+    auto replaced = source.with_extension(string::from("cpp"))
+    if !replaced.to_string().equals("/tmp/name.cpp") { return 1 }
+    auto removed = source.with_extension(string::from(""))
+    if !removed.to_string().equals("/tmp/name") { return 2 }
+    auto dotted = source.with_extension(string::from(".txt"))
+    if !dotted.to_string().equals("/tmp/name.txt") { return 3 }
+    if !source.to_string().equals("/tmp/name.tk") { return 4 }
+    auto bare = Path::new(string::from("name"))
+    auto added = bare.with_extension(string::from("tk"))
+    if !added.to_string().equals("name.tk") { return 5 }
+    return 0
+}

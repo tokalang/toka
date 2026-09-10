@@ -1642,9 +1642,11 @@ Sema::deriveSlice4CopyRecipeType(std::shared_ptr<toka::Type> type,
     return dependent("unresolved field type");
   if (type->isUniquePtr() || type->isSharedPtr())
     return never("ownership-bearing field");
+  if (type->isFunction() || type->isDynFn())
+    return getCallableReceiverMode(*type) == CallableReceiverMode::Consuming
+        ? never("consuming callable field") : always();
   if (type->isAddrType() || type->isOAddrType() || type->isRawPointer() ||
-      type->isReference() || type->isFunction() ||
-      type->isDynFn() || type->isVoid() || type->isBoolean() ||
+      type->isReference() || type->isVoid() || type->isBoolean() ||
       type->isInteger() || type->isFloatingPoint())
     return always();
   if (type->isArray())
@@ -1731,18 +1733,20 @@ Sema::Slice4CopyRecipe Sema::deriveSlice4CopyRecipe(const ShapeDecl *shape) {
                                    next.Requirements.end());
       }
     };
-    std::function<void(const ShapeMember &)> collect =
-        [&](const ShapeMember &member) {
-          if (shape->Kind != ShapeKind::Enum) {
+    std::function<void(const ShapeMember &, bool)> collect =
+        [&](const ShapeMember &member, bool variantShell) {
+          // Only the outer enum variant is a shell. Its payload fields are
+          // real values and must contribute their full types to the recipe.
+          if (!variantShell) {
             combine(deriveSlice4CopyRecipeType(
                 toka::Type::fromString(synthesizePhysicalType(member)),
                 shape));
           }
           for (const auto &submember : member.SubMembers)
-            collect(submember);
+            collect(submember, false);
         };
     for (const auto &member : shape->Members)
-      collect(member);
+      collect(member, shape->Kind == ShapeKind::Enum);
   }
   if (result.Kind == Slice4CopyRecipeKind::All) {
     std::sort(result.Requirements.begin(), result.Requirements.end());
