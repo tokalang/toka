@@ -1,0 +1,8 @@
+// Investigation only, outside B1's authorized return-rule scope.
+// Current compiler accepts this borrowed-view return from a local string.
+// No return rule has been modified or this observation declared safe.
+fn bad() -> str {
+    auto owner = string::from("local")
+    return owner.as_view()
+}
+fn main() -> i32 { return 0 }

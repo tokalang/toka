@@ -1,0 +1,27 @@
+auto drops# = 0:i32
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn provide(fail: bool) -> Result<Token, i32> {
+    if fail { return Result<Token, i32>::Err(9) }
+    return Result<Token, i32>::Ok(Token(id = 7))
+}
+fn initialize(fail: bool) -> Result<i32, i32> {
+    auto local = Token(id = 1)
+    auto value = provide(fail)!
+    return Result<i32, i32>::Ok(value.id + local.id)
+}
+fn replace(fail: bool) -> Result<i32, i32> {
+    auto target# = Token(id = 2)
+    target = provide(fail)!
+    return Result<i32, i32>::Ok(target.id)
+}
+fn main() -> i32 {
+    if initialize(false).unwrap() != 8 || drops != 2 { return 1 }
+    if initialize(true).unwrap_err() != 9 || drops != 3 { return 2 }
+    if replace(false).unwrap() != 7 || drops != 5 { return 3 }
+    if replace(true).unwrap_err() != 9 || drops != 6 { return 4 }
+    return 0
+}

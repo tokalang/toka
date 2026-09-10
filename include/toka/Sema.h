@@ -947,6 +947,10 @@ private:
       bool FormalIsInit, TransferFormalDeclarationFacts FormalDeclaration,
       TransferDestination Destination, TransferEligibilityContext Context,
       bool ReadOnlyTypes = false);
+  struct ActualReturnFieldOrigins {
+    std::vector<AccessPath> Referents;
+    std::vector<SourceLocation> StaticStorage;
+  };
   ExplicitCedePlan recordExplicitCedeStage0NonCallPlan(
       ASTNode *Site, Expr *Value, const std::shared_ptr<Type> &DestinationType,
       TransferDestination Destination, TransferEligibilityContext Context,
@@ -956,7 +960,8 @@ private:
       unsigned EdgeIndex = 0, bool DeferBareIncompleteEvidence = false,
       bool NormalSemaValidated = false,
       std::shared_ptr<Type> ValidatedActualType = nullptr,
-      bool Publish = true);
+      bool Publish = true,
+      const ActualReturnFieldOrigins *PropagatedOrigins = nullptr);
   std::string
   makeExplicitCedeStage0NonCallGroupIdentity(ASTNode *Site,
                                              const std::string &Boundary);
@@ -994,6 +999,7 @@ private:
     Stage1BindingTransfer(Sema &owner, ASTNode *site, bool enabled);
     ~Stage1BindingTransfer();
     bool enabled() const { return Snapshot.has_value(); }
+    const ActualReturnFieldOrigins *capturePropagationOrigins(Expr *source);
     bool prepare(Expr *source, const std::shared_ptr<Type> &target,
                  Expr *destination = nullptr, bool validated = false,
                  std::shared_ptr<Type> actual = nullptr);
@@ -1004,6 +1010,8 @@ private:
     std::optional<Stage0CallSnapshot> Snapshot;
     std::optional<ExplicitCedePlan> Plan;
     std::optional<CallableEnvironmentFacts> CallableFacts;
+    std::optional<ActualReturnFieldOrigins> PropagatedOrigins;
+    Expr *PropagationSource = nullptr;
     Expr *Destination = nullptr;
     CallableAssignmentDisposition AssignmentDisposition =
         CallableAssignmentDisposition::Unvalidated;
@@ -1230,10 +1238,6 @@ private:
   bool validateResultCedeSyntax(ASTNode *site, const TypeSyntaxPtr &syntax,
                                 bool resultPosition = false);
   bool isConsumingCallableInvocation(const CallExpr *call);
-  struct ActualReturnFieldOrigins {
-    std::vector<AccessPath> Referents;
-    std::vector<SourceLocation> StaticStorage;
-  };
   bool collectActualReturnReferents(Expr *expression,
                                    std::vector<AccessPath> &paths,
                                    std::vector<SourceLocation> *staticStorage = nullptr,
@@ -1241,6 +1245,10 @@ private:
                                    bool *usedCurrentReference = nullptr,
                                    std::map<std::string, ActualReturnFieldOrigins> *fields = nullptr);
   void invalidateReturnSourceProof(Expr *expression, bool unknown = true);
+  bool collectActualBindingReferents(Expr *expression,
+                                    std::vector<AccessPath> &paths,
+                                    std::vector<SourceLocation> *staticStorage = nullptr,
+                                    std::map<std::string, ActualReturnFieldOrigins> *fields = nullptr);
   bool validateHandleGrammar(SourceLocation loc,
                              const std::shared_ptr<toka::Type> &type);
   bool containsInternalPlaceOutcome(

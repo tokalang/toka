@@ -2,7 +2,8 @@
 import std/io::println
 
 fn main() -> i32 {
-    auto v = string::from("Chaining test").as_view()
+    auto owner = string::from("Chaining test")
+    auto v = owner.as_view()
     if v.len() != 13:usize {
         return 1
     }

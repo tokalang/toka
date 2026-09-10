@@ -303,6 +303,14 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_binding_b1_default_args.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_binding_b1_scalar_view
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_binding_b1_scalar_view.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_binding_b1_propagation
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_binding_b1_propagation.py
+                --build-dir ${CMAKE_BINARY_DIR})
         if(UNIX)
             add_test(NAME toka_thread_handoff_adapter
                 COMMAND ${Python3_EXECUTABLE}

@@ -11,7 +11,7 @@ qualification; B1 is one bounded part, not that entire release.
 ## Fixed B1 scope
 
 - Binding source classification for scalar unary operations (the existing
-  bitwise test's `~a` is typed i32 but classified SharedHandle).
+  bitwise test's `~ a` is typed i32 but classified SharedHandle).
 - Already checked ordinary/default-argument results: preserve actual generated
   source coordinates and reuse normal Sema facts, not guessed overload results.
 - Binding initialization/whole assignment from `result!`: preserve normal
@@ -51,7 +51,7 @@ candidate converges. No full suite is started just to rediscover known debt.
 
 ## Current checkpoint
 
-Only the generated SourceLoc literal-coordinate fix is applied to the compiler.
+The generated SourceLoc literal-coordinate fix is applied to the compiler.
 The original `g03_default_args.tk` passes actual runtime, strict normal/shadow
 parity and its final SourceLoc binding receipt through
 `tools/scripts/test_binding_b1_default_args.py`. No full suite was run.
@@ -61,17 +61,71 @@ tuple. The binding-local result-origin attempt also did not restore the
 propagated-view positive. Both ineffective experiments were removed; the shared
 return collector and its accepted behavior remain unchanged.
 
-Automatic execution review rejected the proposed ownership/eligibility
-correction and temporary-owner test migration. The complete remaining concrete
-diff is saved **unapplied** in [binding_b1_unapplied.diff.txt](binding_b1_unapplied.diff.txt).
-It requires explicit confirmation of those admission/lifetime changes, not a
-new generic capture or thread authorization. No alternate tool applied it.
+Automatic execution review initially rejected the ownership/eligibility
+correction and temporary-owner test migration. The historical unapplied diff
+is preserved in [binding_b1_unapplied.diff.txt](binding_b1_unapplied.diff.txt).
+The user subsequently explicitly approved both complete differences; they are
+now applied. This approval does not include Lexer/Parser/formatter changes or
+the earlier rejected global return-source collector change.
+
+`test_binding_b1_scalar_view.py` passes four runtime/parity positives, scalar
+plan assertions, owner cleanup IR, four negative parity pairs and eight
+object/IR no-artifact checks. The negatives include local descriptor reference
+escape and a view retained from an owning temporary. No full suite was run.
+
+An additional probe returning a `str` view of a local string (not `&str` to its
+descriptor) was accepted in current normal/shadow modes. It is preserved as
+`b1_view_return_probe.tk`, not counted as a passing rejection test. Its baseline
+status is not yet independently established; it is outside these two fixes
+and must not be reported as resolved or silently change the return rules.
 
 In legacy-mode IR for `g03_chain_static.tk`, `Encap_string_drop(sret.tmp)` occurs
 before the returned view is stored in `v`. The proposed named-owner migration
 keeps the owner alive explicitly; it does not invent temporary lifetime
 extension. The original immediate `.as_view().len()` chain is retained.
 
-`result!` remains an unresolved B1 data-flow task, not an accepted negative.
-The next implementation must reuse validated binding-side facts without
-reopening the global return-source model. B1 is not Accepted or ready to freeze.
+## Propagation integration increment (not Accepted)
+
+The `result!` minimal borrowed-view positive now succeeds. Two distinct losses
+were identified: the destination's initializer source was invalidated before
+RHS checking, and the later binding collector did not recognize the success
+value. Updating normal dependency metadata could then record the destination
+as its own source.
+
+For the supported resolved-call borrowed-value success path, a binding-local
+collector reuses the selected call's actual formal-to-actual mapping. Whole
+assignment captures those origins after successful RHS Sema and before target
+mutation, in the existing stack-local binding transaction (not a persistent
+AST cache). The same saved origins feed dependency updates and final planning.
+Normal lifetime, permission, overlap, rollback and final validation still run.
+Reference/raw success and missing selected declarations gain no new authority.
+The global return collector, return grammar and cleanup lowering are unchanged.
+
+Runtime tests cover view initialization, self-replacement, changing dependency
+from `a` to `b`, repeated replacement, and owned success/error cleanup during
+initialization/replacement. Evidence asserts the exact referent, not just
+successful compilation. Negative tests cover local escape, incorrect dependency
+ceilings, retained temporary views and rejected-assignment state rollback.
+
+`g07_test_json_serde.tk` no longer first fails at the `rem = ...!` assignment
+on JSON line 529. It now reports the raw-buffer element transfers at lines
+546/563 (`ContradictoryFacts`). These are not fixed or counted as restored PASS
+tests, and the excluded container scope is not added to B1.
+
+B1 still needs its remaining integration-test-purpose reconciliation and final
+bounded candidate verification. No whole-suite result or Accepted is claimed.
+
+Validation for this increment: incremental **Debug** compiler build passes;
+seven targeted CTest entries pass (`binding_b1_default_args`,
+`binding_b1_scalar_view`, `binding_b1_propagation`, `stage1_binding_transfer`,
+`binding_value_dependencies`, `stage1_standalone_cede`,
+`dyn_fn_binding_lifecycle`, all with the `toka_` prefix).
+The propagation rejection test checks the actual intended diagnostics:
+E0456 local lifetime, E0454 wrong dependency, E04661 temporary view, and E0408
+incompatible assignment with no leaked E0438/E0410. Parser errors cannot count
+as successful semantic negatives. Normal/shadow diagnostics match and rejected
+cases produce neither object nor IR. `git diff --check` passes.
+
+No full PASS/FAIL suite, Lexer/Parser/formatter change, return-rule change,
+thread implementation change, push or PR is included. The accepted thread tag,
+thread branch and RC13 ref remain unchanged.

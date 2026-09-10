@@ -1,0 +1,23 @@
+fn suffix(input: str) -> Result<str, str> <- input {
+    return Result<str, str>::Ok(input)
+}
+fn second(a: str, b: str) -> Result<str, str> <- b {
+    auto remaining# = a
+    remaining = suffix(b)!
+    remaining = suffix(remaining)!
+    return Result<str, str>::Ok(remaining)
+}
+fn initialized(input: str) -> Result<str, str> <- input {
+    auto value = suffix(input)!
+    return Result<str, str>::Ok(value)
+}
+fn main() -> i32 {
+    auto first = string::from("first")
+    auto second_owner = string::from("second")
+    auto result = second(first.as_str(), second_owner.as_str())
+    auto view = result.unwrap()
+    if !view.equals("second") { return 1 }
+    auto copied = initialized(second_owner.as_str())
+    if !copied.unwrap().equals("second") { return 2 }
+    return 0
+}

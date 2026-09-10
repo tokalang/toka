@@ -1,0 +1,22 @@
+auto drops# = 0:i32
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    auto a = 12:i32
+    auto inverse = ~ a
+    if inverse != -13 || a != 12 { return 1 }
+    auto bits = 0:u32
+    auto all_bits = ~ bits
+    if all_bits != 4294967295:u32 || bits != 0:u32 { return 2 }
+    {
+        auto ~owner = new Token(value = 7)
+        auto ~shared = ~owner
+        auto ~moved = cede ~shared
+        if owner.value != 7 || moved.value != 7 || drops != 0 { return 3 }
+    }
+    if drops != 1 { return 4 }
+    return 0
+}

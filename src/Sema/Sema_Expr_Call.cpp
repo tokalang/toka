@@ -3743,6 +3743,29 @@ bool Sema::collectActualReturnReferents(
   return true;
 }
 
+bool Sema::collectActualBindingReferents(
+    Expr *expression, std::vector<AccessPath> &paths,
+    std::vector<SourceLocation> *staticStorage,
+    std::map<std::string, ActualReturnFieldOrigins> *fields) {
+  auto *surface = stage0SurfaceSource(expression);
+  if (auto *unwrap = dynamic_cast<UnwrapPropagationExpr *>(surface)) {
+    // Only the normally checked success value is delivered to this binding.
+    // The selected call's mapped dependencies conservatively bound that value;
+    // they are not the enclosing function's declared dependency ceiling.
+    auto type = unwrap->ResolvedType;
+    if (!type || type->isReference() || type->isRawPointer() ||
+        queryExplicitCedeStage0OwnershipReadOnly(type) != ValueOwnership::BorrowedView)
+      return false;
+    auto *call = dynamic_cast<CallExpr *>(unwrap->Base.get());
+    auto *method = dynamic_cast<MethodCallExpr *>(unwrap->Base.get());
+    if ((!call || !call->ResolvedFn) && (!method || !method->ResolvedFn))
+      return false;
+    return collectActualReturnReferents(unwrap->Base.get(), paths, staticStorage);
+  }
+  return collectActualReturnReferents(expression, paths, staticStorage,
+                                     nullptr, nullptr, fields);
+}
+
 bool Sema::prepareCallableReturnEnvironment(Expr *source) {
   source = stage0SurfaceSource(source);
   while (auto *cast = dynamic_cast<CastExpr *>(source)) {
@@ -3955,6 +3978,21 @@ Sema::Stage1BindingTransfer::Stage1BindingTransfer(
     Snapshot = Owner.captureStage0CallSnapshot();
 }
 
+const Sema::ActualReturnFieldOrigins *
+Sema::Stage1BindingTransfer::capturePropagationOrigins(Expr *source) {
+  if (!Snapshot || !dynamic_cast<UnwrapPropagationExpr *>(source)) return nullptr;
+  const auto &diagnostics = DiagnosticEngine::records();
+  if (std::any_of(diagnostics.begin() + std::min(Snapshot->DiagnosticStart, diagnostics.size()),
+                  diagnostics.end(), [](const auto &record) { return record.Level == DiagLevel::Error; }))
+    return nullptr;
+  ActualReturnFieldOrigins origins;
+  if (!Owner.collectActualBindingReferents(source, origins.Referents, &origins.StaticStorage) ||
+      (origins.Referents.empty() && origins.StaticStorage.empty())) return nullptr;
+  PropagatedOrigins = std::move(origins);
+  PropagationSource = source;
+  return &*PropagatedOrigins;
+}
+
 bool Sema::Stage1BindingTransfer::prepare(
     Expr *source, const std::shared_ptr<Type> &target,
     Expr *destination, bool validated, std::shared_ptr<Type> actual) {
@@ -4044,7 +4082,8 @@ bool Sema::Stage1BindingTransfer::prepare(
         destination ? TransferDestination::Assignment : TransferDestination::Initialization,
         destination ? TransferEligibilityContext::Assignment : TransferEligibilityContext::Initialization,
         destination ? "assignment" : "initialization", destination, &*Snapshot,
-        {}, {}, 0, !validated, validated, std::move(actual), validated);
+        {}, {}, 0, !validated, validated, std::move(actual), validated,
+        validated && PropagatedOrigins && PropagationSource == source ? &*PropagatedOrigins : nullptr);
   }
   if (validated && !Plan->admitted()) {
     Owner.error(source, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
@@ -4150,7 +4189,8 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
     const Stage0CallSnapshot *providedSnapshot,
     const std::string &groupIdentity, const std::string &edge,
     unsigned edgeIndex, bool deferBareIncompleteEvidence,
-    bool normalSemaValidated, std::shared_ptr<Type> validatedActualType, bool publish) {
+    bool normalSemaValidated, std::shared_ptr<Type> validatedActualType, bool publish,
+    const ActualReturnFieldOrigins *propagatedOrigins) {
   const bool returnBehaviorPlan =
       destination == TransferDestination::Return &&
       m_EnableStage1ExplicitCallerCede;
@@ -4236,6 +4276,17 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       break;
     }
   }
+  auto bindingOrigins = [&](std::vector<AccessPath> &paths,
+                            std::vector<SourceLocation> *statics,
+                            std::map<std::string, ActualReturnFieldOrigins> *fields) {
+    if (bindingBehaviorPlan && normalSemaValidated && propagatedOrigins &&
+        dynamic_cast<UnwrapPropagationExpr *>(exactValue)) {
+      paths = propagatedOrigins->Referents;
+      if (statics) *statics = propagatedOrigins->StaticStorage;
+      return true;
+    }
+    return collectActualBindingReferents(exactValue, paths, statics, fields);
+  };
   if (auto *record = dynamic_cast<AnonymousRecordExpr *>(exactValue)) {
     bool fieldsComplete = !record->Fields.empty();
     for (const auto &field : record->Fields) {
@@ -4504,9 +4555,11 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
         (address && address->Op == TokenType::Ampersand);
     if ((dynamic_cast<CallExpr *>(exactValue) ||
          dynamic_cast<MethodCallExpr *>(exactValue) || referenceConstruction ||
-         (bindingBehaviorPlan && dynamic_cast<InitStructExpr *>(exactValue))) &&
-        collectActualReturnReferents(exactValue, actualPaths, nullptr, nullptr, nullptr,
-                                     bindingBehaviorPlan ? &actualFields : nullptr) &&
+         (bindingBehaviorPlan && (dynamic_cast<InitStructExpr *>(exactValue) ||
+                                 dynamic_cast<UnwrapPropagationExpr *>(exactValue)))) &&
+        (bindingBehaviorPlan
+             ? bindingOrigins(actualPaths, nullptr, &actualFields)
+             : collectActualReturnReferents(exactValue, actualPaths)) &&
         !actualPaths.empty()) {
       if (legacy.Dependency == CallDependencyDisposition::Borrowed)
         legacy.ReferentPath = actualPaths.front();
@@ -4541,6 +4594,16 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       exactValue ? exactValue : value, actualType, legacy,
       &providedSnapshot->State, providedSnapshot->Revision, true,
       destination == TransferDestination::Return || (bindingBehaviorPlan && normalSemaValidated));
+  if (bindingBehaviorPlan && normalSemaValidated && actualType && actualType->isInteger() &&
+      facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
+      queryExplicitCedeStage0OwnershipReadOnly(actualType) == ValueOwnership::Trivial &&
+      facts.CopyProof == TransferCopyProof::ProvenCopy && !facts.CarriesDropLiability) {
+    if (auto *unary = dynamic_cast<UnaryExpr *>(exactValue); unary && unary->Op == TokenType::Tilde) {
+      facts.SourceView = TransferSourceView::DirectValue;
+      facts.Ownership = TransferOwnershipKind::PlainValue;
+      facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+    }
+  }
   if (normalSemaValidated && actualType && actualType->isRawPointer()) {
     Expr *surface = value;
     while (surface) {
@@ -4598,8 +4661,9 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
     std::vector<AccessPath> dynamicOrigins;
     std::vector<SourceLocation> staticOrigins;
     std::map<std::string, ActualReturnFieldOrigins> fieldOrigins;
-    const bool originsComplete = collectActualReturnReferents(exactValue, dynamicOrigins, &staticOrigins,
-                                    nullptr, nullptr, bindingBehaviorPlan ? &fieldOrigins : nullptr);
+    const bool originsComplete = bindingBehaviorPlan
+        ? bindingOrigins(dynamicOrigins, &staticOrigins, &fieldOrigins)
+        : collectActualReturnReferents(exactValue, dynamicOrigins, &staticOrigins);
     if (bindingBehaviorPlan && normalSemaValidated && !originsComplete &&
         facts.Dependency == TransferDependencyKind::Structural)
       facts.DependencyFactsComplete = false;

@@ -1,0 +1,12 @@
+fn retained_view() -> usize {
+    auto owner = string::from("content stays live")
+    auto view = owner.as_view()
+    assert(view.equals("content stays live"), "view content changed")
+    auto length = view.len()
+    return length
+}
+fn main() -> i32 {
+    if retained_view() != 18:usize { return 1 }
+    if string::from("temporary").as_view().len() != 9:usize { return 2 }
+    return 0
+}

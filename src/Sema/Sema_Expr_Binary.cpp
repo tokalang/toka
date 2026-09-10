@@ -212,7 +212,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     }
     return toka::Type::fromString("bool");
   }
-  if (isAssign && m_EnableStage1ExplicitCallerCede)
+  // A propagation RHS may read the very view being replaced. Preserve its
+  // old source until normal RHS validation has produced immutable origins.
+  const bool propagationAssignment = isAssign && bindingTransfer.enabled() &&
+      dynamic_cast<UnwrapPropagationExpr *>(Bin->RHS.get());
+  if (isAssign && m_EnableStage1ExplicitCallerCede && !propagationAssignment)
     invalidateReturnSourceProof(Bin->LHS.get(), false);
 
   // Normal assignment preserves RHS-first analysis because the RHS can carry
@@ -306,7 +310,15 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   if (!rhsIsTodo && !getPathString(Bin->RHS.get()).empty()) {
       rhsBorrowSource = m_LastBorrowSource;
   }
-  const std::set<std::string> rhsLifeDependencies = m_LastLifeDependencies;
+  const auto *propagatedOrigins = propagationAssignment
+      ? bindingTransfer.capturePropagationOrigins(Bin->RHS.get()) : nullptr;
+  std::set<std::string> rhsLifeDependencies = m_LastLifeDependencies;
+  if (propagatedOrigins) {
+    rhsLifeDependencies.clear();
+    for (const auto &path : propagatedOrigins->Referents)
+      rhsLifeDependencies.insert(path.toLegacyString());
+  }
+  if (propagationAssignment) invalidateReturnSourceProof(Bin->LHS.get(), false);
 
   bool oldLHS = m_InLHS;
   m_InLHS = isAssign;
@@ -350,7 +362,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     if (ownership && *ownership == ValueOwnership::BorrowedView) {
       std::vector<AccessPath> roots;
       std::vector<SourceLocation> storage;
-      if (!collectActualReturnReferents(Bin->RHS.get(), roots, &storage))
+      if (!propagatedOrigins && !collectActualBindingReferents(Bin->RHS.get(), roots, &storage))
         invalidateReturnSourceProof(Bin->LHS.get());
     }
   }
@@ -1070,6 +1082,14 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
 
       if (targetInfo) {
         std::set<std::string> rhsDeps = rhsLifeDependencies;
+        if (propagatedOrigins && Bin->Op == "=" &&
+            dynamic_cast<VariableExpr *>(Bin->LHS.get())) {
+          // Replace the view's carried dependencies, not its source with the
+          // target's own binding name. Failed assignment restores the snapshot.
+          targetInfo->LifeDependencySet = rhsDeps;
+          targetInfo->BorrowedFrom.clear();
+          targetInfo->BorrowedPath = {};
+        }
         if (!rhsBorrowSource.empty())
           rhsDeps.insert(rhsBorrowSource);
         
