@@ -1,0 +1,37 @@
+This patch is saved for human review only. It is NOT APPLIED and must not be
+executed to bypass automatic review. It contains the precise remaining scalar
+classification correction and source-lifetime migration; no result! collector
+change, protocol change or debug output is included.
+
+--- a/src/Sema/Sema_Expr_Call.cpp
++++ b/src/Sema/Sema_Expr_Call.cpp
+@@ -4540,7 +4540,17 @@
+   auto facts = buildExplicitCedeStage0ActualFacts(
+       exactValue ? exactValue : value, actualType, legacy,
+       &providedSnapshot->State, providedSnapshot->Revision, true,
+       destination == TransferDestination::Return || (bindingBehaviorPlan && normalSemaValidated));
++  if (bindingBehaviorPlan && normalSemaValidated && actualType && actualType->isInteger() &&
++      facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
++      queryExplicitCedeStage0OwnershipReadOnly(actualType) == ValueOwnership::Trivial &&
++      facts.CopyProof == TransferCopyProof::ProvenCopy && !facts.CarriesDropLiability) {
++    if (auto *unary = dynamic_cast<UnaryExpr *>(exactValue); unary && unary->Op == TokenType::Tilde) {
++      facts.SourceView = TransferSourceView::DirectValue;
++      facts.Ownership = TransferOwnershipKind::PlainValue;
++      facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
++    }
++  }
+   if (normalSemaValidated && actualType && actualType->isRawPointer()) {
+     Expr *surface = value;
+     while (surface) {
+--- a/tests/pass/g03_chain_static.tk
++++ b/tests/pass/g03_chain_static.tk
+@@ -2,7 +2,8 @@
+ import std/io::println
+ 
+ fn main() -> i32 {
+-    auto v = string::from("Chaining test").as_view()
++    auto owner = string::from("Chaining test")
++    auto v = owner.as_view()
+     if v.len() != 13:usize {
+         return 1
+     }

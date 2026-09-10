@@ -9086,6 +9086,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 {"file", std::make_unique<ViewStringExpr>(fullloc.FileName)});
             fields.push_back(
                 {"line", std::make_unique<NumberExpr>(fullloc.Line)});
+            // These are already generated literal AST nodes. Preserve their
+            // call-site coordinates just like the enclosing injected value;
+            // do not alter their type, value or dependency classification.
+            for (auto &field : fields) field.second->Loc = Call->Loc;
             injected = std::make_unique<InitStructExpr>("SourceLoc",
                                                         std::move(fields));
           }

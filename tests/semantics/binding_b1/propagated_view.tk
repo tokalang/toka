@@ -1,0 +1,15 @@
+fn suffix(input: str) -> Result<str, str> <- input {
+    return Result<str, str>::Ok(input)
+}
+fn forward(input: str) -> Result<str, str> <- input {
+    auto remaining# = input
+    remaining = suffix(remaining)!
+    return Result<str, str>::Ok(remaining)
+}
+fn main() -> i32 {
+    auto owner = string::from("abcdef")
+    auto result = forward(owner.as_str())
+    auto view = result.unwrap()
+    if view.len() != 6:usize { return 1 }
+    return 0
+}
