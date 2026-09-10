@@ -1778,6 +1778,13 @@ void Sema::checkStmt(Stmt *S) {
         }
       }
       auto stage0DestinationType = declTargetTy;
+      if (stage0DestinationType && (Var->IsRawPointer || Var->IsUnique || Var->IsShared || Var->IsReference)) {
+        // A capture-discovery pass may already have filled TypeName with the
+        // inferred soul. The declared handle layers remain independent facts;
+        // do not mistake that cached soul for the physical binding target.
+        stage0DestinationType = resolveExplicitCedeStage0TypeReadOnly(
+            synthesizePhysicalTypeObject(Var->Permission, Var->DeclaredTypeSyntax, Var->TypeName));
+      }
       if (!stage0DestinationType && (Var->IsRawPointer || Var->IsUnique ||
                                      Var->IsShared || Var->IsReference)) {
         auto sourceType =

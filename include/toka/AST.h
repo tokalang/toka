@@ -1157,6 +1157,7 @@ class MethodCallExpr : public Expr {
 public:
   bool NativeSyncAccessRequired = false;
   NativeSyncOwnerWitnessPtr NativeSyncAccess;
+  NativeSyncGuardOriginPtr NativeSyncWaitGuard;
   std::unique_ptr<Expr> Object;
   std::string Method;
   std::vector<std::unique_ptr<Expr>> Args;

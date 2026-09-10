@@ -71,6 +71,40 @@ an internal regression checkpoint, not the integrated thread/sync candidate.
 unchanged.** This proves the first delivery scenario, not the full integration.
 No full suite, acceptance, push or PR has occurred.
 
+## RwMutex / CondVar continuation
+
+Public RwMutex factory/read/write/drop and CondVar factory/wait/notify/drop now
+delegate to the accepted private adapters. CondVar keeps its unique `make()`;
+an explicit `make_shared()` wrapper uses the same checked allocation protocol.
+The rejected unique-to-shared-promotion proposal was not applied (the current
+Stage 1 source language rejects that older spelling).
+
+Rw witnesses distinguish read and write acquisition/access/discharge, and read
+slots receive no replacement authority. CondVar witnesses describe native-only
+storage, not a fabricated payload. A witnessed wait requires the same-type
+live Mutex guard and no outstanding slot loan across the wait.
+
+The original `g09_sync_condvar.tk` is migrated to explicit handle capture,
+the current spawn Result API, and bounded borrow scopes around wait; it runs
+successfully. `sync_thread_rw.tk` also runs successfully. The closeout runner
+passes 16/16 checks. The owner failure matrix passes 77 runtime cases; the
+witness matrix passes 40 no-artifact faults and 8 strict-parity denials.
+The relevant CTest set passed 9/9 in 216.06 seconds. A subsequent targeted
+source-hidden provider TKI/object test also passed: a consumer without the
+native storage witness rejects with no artifact instead of trusting type-only
+interface metadata. No full-suite comparison was run at this checkpoint.
+
+A shared copy inside a closure exposed a preflight target bug: a capture probe
+had cached only the inferred soul in TypeName. The target now recomposes the
+unchanged binding-side morphology using the existing typed constructor. The
+actual shared copy is retained; no source example bypasses that path.
+
+Once/WaitGroup composite allocation cleanup is blocked by automatic review,
+not by a new language-design requirement. See the precise
+[implementation authorization boundary](native_composite_allocation_authorization.md).
+Their non-authorizing child recipes may be recorded, but no composite witness
+or cleanup grant has been enabled. No full suite or final candidate is claimed.
+
 ## Continue from the actual program, not another helper milestone
 
 The Mutex witness now combines the exact owner recipe with completed factory,

@@ -1039,7 +1039,8 @@ int main(int argc, char **argv) {
       nativeSyncWitnessFault = arg.substr(std::string("--native-sync-witness-fault=").size());
       const std::set<std::string> faults = {"missing", "origin", "factory", "allocation", "type", "element",
           "drop", "acquire", "guard-drop", "guard-access", "thread-list", "access-site",
-          "slot-missing", "slot-type", "slot-destination"};
+          "slot-missing", "slot-type", "slot-destination", "read-acquire", "read-drop", "read-access",
+          "notify", "wait-guard"};
       if (!faults.count(nativeSyncWitnessFault)) {
         llvm::errs() << "unknown native sync witness fault\n"; return 1;
       }

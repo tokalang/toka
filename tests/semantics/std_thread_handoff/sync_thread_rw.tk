@@ -1,0 +1,25 @@
+import std/sync::RwMutex
+import std/thread::thread_spawn
+fn main() -> i32 {
+    auto ~value = RwMutex<i32>::make_shared(7)
+    auto ~worker = ~value
+    auto callback = { [cede ~worker] =>
+        {
+            auto held = worker.read_lock().unwrap()
+            auto &slot = held.borrow()
+            if slot != 7 { return 1 }
+        }
+        {
+            auto held = worker.write_lock().unwrap()
+            auto &slot# = held.borrow_mut()
+            slot = 9
+        }
+        return 0
+    }:dyn fn() -> i32
+    auto created = thread_spawn<i32>(cede callback)
+    auto handle# = created.unwrap()
+    if handle#.join().unwrap() != 0 { return 2 }
+    auto held = value.read_lock().unwrap()
+    auto &slot = held.borrow()
+    return slot - 9
+}

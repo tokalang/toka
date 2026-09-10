@@ -73,12 +73,14 @@ void *WRAP(malloc)(size_t size) {
             (kind == 1 && allocations == 2 && size < sizeof(pthread_rwlock_t)))
             terminate_test(154);
         if ((mode == 1 && allocations == 1) || (mode == 2 && allocations == 2) ||
-            (public_owner && mode == 11 && allocations == 3) ||
-            (public_owner && mode == 12 && allocations == 4)) return NULL;
+            (public_owner && mode == 11 && allocations == (kind == 2 ? 2 : 3)) ||
+            (public_owner && mode == 12 && allocations == (kind == 2 ? 3 : 4))) return NULL;
     }
     void *p = REAL(malloc)(size);
     if (!active) { last_allocation = p; last_size = size; }
     else if (allocations == 1 && kind == 2) native = p;
+    else if (public_owner && kind == 2 && allocations == 2) owner_storage = p;
+    else if (public_owner && kind == 2 && allocations == 3) owner_counter = p;
     else if (allocations == 1) payload = p;
     else if (allocations == 2) native = p;
     else if (public_owner && allocations == 3) owner_storage = p;
@@ -97,6 +99,9 @@ void WRAP(free)(void *p) {
 static int fatal_state_ok(void) {
     if (kind == 2) {
         if (drops || payload_frees) return 0;
+        if (public_owner && (mode == 11 || mode == 12))
+            return allocations == (mode == 11 ? 2 : 3) && native_frees == 1 && init_calls == 1 &&
+                   destroy_calls == 1 && owner_frees == (mode == 12) && !counter_frees;
         if (mode == 1) return allocations == 1 && !native_frees && !init_calls && !destroy_calls;
         if (mode == 3) return native_frees == 1 && init_calls == 1 && !destroy_calls;
         if (mode == 6) return !native_frees && destroy_calls == 1;

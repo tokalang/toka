@@ -5074,6 +5074,10 @@ bool CodeGen::validateNativeSyncOwner(const NativeSyncOwnerWitnessPtr &original,
     if (fault == "acquire") changed->Acquire = nullptr;
     if (fault == "guard-drop") changed->GuardDrop = nullptr;
     if (fault == "guard-access") changed->GuardAccess = nullptr;
+    if (fault == "read-acquire") changed->ReadAcquire = nullptr;
+    if (fault == "read-drop") changed->ReadGuardDrop = nullptr;
+    if (fault == "read-access") changed->ReadGuardAccess = nullptr;
+    if (fault == "notify") changed->NotifyOne = nullptr;
     w = std::move(changed);
   }
 #endif
@@ -5081,21 +5085,30 @@ bool CodeGen::validateNativeSyncOwner(const NativeSyncOwnerWitnessPtr &original,
     error(site, DiagID::ERR_CODEGEN, std::string("native sync owner: ") + why);
     return false;
   };
-  if (!w || !w->Origin || !w->FactorySite || !w->AllocationSite || !w->ValueType ||
-      !w->OwnerType || !w->ElementType || !w->OwnerDrop || !w->Acquire || !w->GuardDrop || !w->GuardAccess)
+  if (!w || !w->Origin || !w->FactorySite || !w->ValueType ||
+      !w->OwnerType || !w->ElementType || !w->OwnerDrop)
     return reject("IncompleteWitness");
+  const bool nativeOnly = w->Kind == NativeSyncFactoryKind::CondVar;
+  const bool managed = w->ValueType->isUniquePtr() || w->ValueType->isSharedPtr();
+  if (w->Kind == NativeSyncFactoryKind::None ||
+      (nativeOnly ? (!w->NotifyOne || !w->NotifyAll || !w->Wait) :
+                     (!w->Acquire || !w->GuardDrop || !w->GuardAccess)) ||
+      (w->Kind == NativeSyncFactoryKind::RwMutex &&
+       (!w->ReadAcquire || !w->ReadGuardDrop || !w->ReadGuardAccess))) return reject("IncompleteOperations");
   auto factory = w->FactorySite->NativeSyncFactorySource;
-  auto allocation = w->AllocationSite->NativeSyncAllocationSource;
+  auto allocation = w->AllocationSite ? w->AllocationSite->NativeSyncAllocationSource : nullptr;
   if (!factory || !factory->Validated || factory->Site != w->FactorySite ||
-      factory->Declaration != w->FactorySite->ResolvedFn || !allocation || !allocation->Complete ||
-      allocation->Allocation != w->AllocationSite) return reject("UnqualifiedSourcePlans");
-  if (!factory->OwnerType || !factory->ElementType || !allocation->OwnerType ||
+      factory->Kind != w->Kind || factory->Declaration != w->FactorySite->ResolvedFn ||
+      (managed && (!allocation || !allocation->Complete || allocation->Allocation != w->AllocationSite)))
+    return reject("UnqualifiedSourcePlans");
+  if (!factory->OwnerType || !factory->ElementType ||
       !factory->OwnerType->equals(*w->OwnerType) || !factory->ElementType->equals(*w->ElementType) ||
-      !allocation->OwnerType->equals(*w->OwnerType) || !w->Origin->ValueType ||
+      (managed && (!allocation->OwnerType || !allocation->OwnerType->equals(*w->OwnerType))) || !w->Origin->ValueType ||
       !w->Origin->ValueType->equals(*w->ValueType)) return reject("SourceTypeMismatch");
   auto *owner = dynamic_cast<ShapeType *>(w->OwnerType.get());
   if (!owner || !owner->Decl || owner->Decl->MangledDestructorName != w->OwnerDrop->CodegenName ||
-      !w->OwnerDrop->Body || !w->Acquire->Body || !w->GuardDrop->Body || !w->GuardAccess->Body)
+      !w->OwnerDrop->Body ||
+      (!nativeOnly && (!w->Acquire->Body || !w->GuardDrop->Body || !w->GuardAccess->Body)))
     return reject("CleanupContractMismatch");
   return true;
 }

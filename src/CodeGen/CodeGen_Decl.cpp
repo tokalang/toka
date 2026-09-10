@@ -2648,10 +2648,25 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     if (m_NativeSyncWitnessFault == "access-site") access.reset();
 #endif
     if (!validateNativeSyncOwner(access, expr)) return {};
-    if (expr->ResolvedFn != expr->NativeSyncAccess->Acquire ||
+    const bool operation = expr->ResolvedFn == access->Acquire || expr->ResolvedFn == access->ReadAcquire ||
+        expr->ResolvedFn == access->NotifyOne || expr->ResolvedFn == access->NotifyAll || expr->ResolvedFn == access->Wait;
+    if (!operation ||
         expr->Object->NativeSyncOwnerRecipe != expr->NativeSyncAccess->Origin) {
       error(expr, DiagID::ERR_CODEGEN, "native sync access: OwnerOrOperationMismatch");
       return {};
+    }
+    if (expr->ResolvedFn == access->Wait) {
+      auto guard = expr->NativeSyncWaitGuard;
+#ifdef TOKA_BUILD_TESTING
+      if (m_NativeSyncWitnessFault == "wait-guard") guard.reset();
+#endif
+      if (!guard || guard->Outcome || expr->Args.size() != 1 ||
+          expr->Args[0]->NativeSyncGuardOrigin != guard ||
+          !validateNativeSyncOwner(guard->Owner, expr) ||
+          !guard->Owner->ElementType->equals(*access->ElementType)) {
+        error(expr, DiagID::ERR_CODEGEN, "native sync wait: GuardContractMismatch");
+        return {};
+      }
     }
   }
   const std::string authorityRoute =

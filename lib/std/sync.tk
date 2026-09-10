@@ -314,74 +314,22 @@ impl<'T: @{Send, Sync}> RwMutex<'T>@Send {}
 
 impl<'T: @{Send, Sync}> RwMutex<'T> {
     pub fn new(cede 'data: T) -> RwMutex<'T> {
-        unsafe {
-            auto env = sys_alloc_thread_env(sizeof('T) as usize)
-            auto *p# = sync_writable_storage<['T]>(env)
-            p[0] = cede 'data
-            return RwMutex<'T>(
-                handle = sys_rwlock_create(),
-                data_ptr = env
-            )
-        }
+        return __sync_rw_create<'T>(cede 'data)
     }
 
     pub fn make_shared(cede 'data: T) -> ~RwMutex<'T> {
-        unsafe {
-            auto env = sys_alloc_thread_env(sizeof('T) as usize)
-            auto *p# = sync_writable_storage<['T]>(env)
-            p[0] = cede 'data
-            auto ~rwlock = new RwMutex<'T>(
-                handle = sys_rwlock_create(),
-                data_ptr = env
-            )
-            return cede ~rwlock
-        }
+        auto prepared = __sync_rw_create<'T>(cede 'data)
+        auto ~rwlock# = new RwMutex<'T>(handle = 0:Addr#, data_ptr = 0:Addr#)
+        rwlock = cede prepared
+        return cede ~rwlock
     }
     
     pub fn read_lock(self) -> Result<RwReadLock<'T>, Error> <- self {
-        unsafe {
-            auto rc = sys_rwlock_rdlock(self.handle)
-            if rc != 0 {
-                auto msg# = string::from("rwlock read_lock failed with error code: ")
-                auto rc_str = string::from_int(rc)
-                msg#.push_str(rc_str.as_str())
-                
-                return Result<RwReadLock<'T>, Error>::Err(Error::new(rc, msg))
-            }
-            
-            auto temp_h = self.handle:Addr
-            auto *p = (self.data_ptr as *['T])
-            auto nul *tok = null:nul *byte
-            
-            return Result<RwReadLock<'T>, Error>::Ok(RwReadLock<'T>(
-                handle = temp_h,
-                &data = &'(p[0]),
-                *thread_token = *tok
-            ))
-        }
+        return __sync_rw_read<'T>(self)
     }
     
     pub fn write_lock(self) -> Result<RwWriteLock<'T>, Error> <- self {
-        unsafe {
-            auto rc = sys_rwlock_wrlock(self.handle)
-            if rc != 0 {
-                auto msg# = string::from("rwlock write_lock failed with error code: ")
-                auto rc_str = string::from_int(rc)
-                msg#.push_str(rc_str.as_str())
-                
-                return Result<RwWriteLock<'T>, Error>::Err(Error::new(rc, msg))
-            }
-            
-            auto temp_h = self.handle:Addr
-            auto *p# = sync_writable_storage<['T]>(self.data_ptr)
-            auto nul *tok = null:nul *byte
-            
-            return Result<RwWriteLock<'T>, Error>::Ok(RwWriteLock<'T>(
-                handle = temp_h,
-                &data = &'(p[0]),
-                *thread_token = *tok
-            ))
-        }
+        return __sync_rw_write<'T>(self)
     }
     
     pub fn unlock(self) -> Result<i32, Error> {
@@ -401,17 +349,7 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
 
 impl<'T> RwMutex<'T>@Encap {
     fn drop(self#) {
-        unsafe {
-            if self.data_ptr != 0:Addr {
-                auto *p# = sync_writable_storage<['T]>(self.data_ptr)
-                free[1] *p
-                self.data_ptr = 0:Addr
-            }
-            if self.handle != 0:Addr {
-                sys_rwlock_destroy(self.handle)
-                self.handle = 0:Addr
-            }
-        }
+        __sync_rw_drop<'T>(self#)
     }
 }
 
@@ -423,12 +361,7 @@ pub shape RwReadLock<'T: @{Send, Sync}>(
 
 impl<'T> RwReadLock<'T>@Encap {
     fn drop(self#) {
-        unsafe {
-            if self.handle != 0:Addr {
-                sys_rwlock_unlock(self.handle)
-                self.handle = 0:Addr
-            }
-        }
+        __sync_rw_read_release<'T>(self#)
     }
 }
 
@@ -450,12 +383,7 @@ pub shape RwWriteLock<'T: @{Send, Sync}>(
 
 impl<'T> RwWriteLock<'T>@Encap {
     fn drop(self#) {
-        unsafe {
-            if self.handle != 0:Addr {
-                sys_rwlock_unlock(self.handle)
-                self.handle = 0:Addr
-            }
-        }
+        __sync_rw_write_release<'T>(self#)
     }
 }
 
@@ -479,46 +407,40 @@ impl<'T: @Send> CondVar<'T>@Send {}
 
 impl<'T: @Send> CondVar<'T> {
     pub fn new() -> CondVar<'T> {
-        return CondVar<'T>(
-            handle = sys_cond_create()
-        )
+        return __sync_cond_create<'T>()
     }
 
     pub fn make() -> ^CondVar<'T> {
-        auto ^condition = new CondVar<'T>(
-            handle = sys_cond_create()
-        )
+        auto prepared = __sync_cond_create<'T>()
+        auto ^condition# = new CondVar<'T>(handle = 0:Addr#)
+        condition = cede prepared
         return ^condition
     }
 
+    /// Construct a shared condition owner without a unique-to-shared conversion.
+    pub fn make_shared() -> ~CondVar<'T> {
+        auto prepared = __sync_cond_create<'T>()
+        auto ~condition# = new CondVar<'T>(handle = 0:Addr#)
+        condition = cede prepared
+        return cede ~condition
+    }
+
     pub fn wait_cond(self, lock: MutexLock<'T>) {
-        unsafe {
-            sys_cond_wait(self.handle, lock.handle)
-        }
+        __sync_cond_wait<'T>(self, lock)
     }
 
     pub fn notify_one(self) {
-        unsafe {
-            sys_cond_signal(self.handle)
-        }
+        __sync_cond_signal<'T>(self)
     }
 
     pub fn notify_all(self) {
-        unsafe {
-            sys_cond_broadcast(self.handle)
-        }
+        __sync_cond_broadcast<'T>(self)
     }
 }
 
 impl<'T> CondVar<'T>@Encap {
     fn drop(self#) {
-        unsafe {
-            auto h = self.handle:Addr
-            if h != 0:Addr {
-                sys_cond_destroy(h)
-                self.handle = 0:Addr
-            }
-        }
+        __sync_cond_drop<'T>(self#)
     }
 }
 

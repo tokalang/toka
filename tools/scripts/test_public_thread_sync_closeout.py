@@ -25,12 +25,13 @@ def main():
                         "-c", str(ROOT / "lib/sys/toka_rt.c"), "-o", str(runtime)], check=True)
 
         def compile_source(name, *flags):
-            return subprocess.run([str(compiler), str(FIXTURES / name), *map(str, flags)],
+            source = ROOT / "tests/pass" / name if name.startswith("g09_") else FIXTURES / name
+            return subprocess.run([str(compiler), str(source), *map(str, flags)],
                                   cwd=ROOT, env=env, capture_output=True, text=True, timeout=45)
 
         for name in ("sync_unique_guard.tk", "sync_managed_storage_pending.tk",
                      "sync_shared_guard.tk", "sync_thread_pending.tk", "captured_shared_receiver.tk",
-                     "sync_thread_resource_replace.tk"):
+                     "sync_thread_resource_replace.tk", "sync_thread_rw.tk", "g09_sync_condvar.tk"):
             normal = compile_source(name, "--check-only")
             shadow = compile_source(name, "--check-only", "--non-call-transfer-shadow=json")
             if normal.returncode != 0 or shadow.returncode != 0 or normal.stderr != shadow.stderr:

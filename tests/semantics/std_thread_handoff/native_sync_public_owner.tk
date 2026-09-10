@@ -1,9 +1,10 @@
-import std/sync::Mutex
+import std/sync::{Mutex, RwMutex, CondVar}
 extern fn toka_sync_test_category() -> i32
 extern fn toka_sync_test_arm(category: i32) -> void
 extern fn toka_sync_test_drop() -> void
 extern fn toka_sync_test_done() -> i32
 extern fn toka_sync_test_public_owner() -> i32
+extern fn toka_sync_test_kind() -> i32
 
 shape OwnerToken(value: i32)
 impl OwnerToken@Encap {
@@ -15,8 +16,16 @@ impl OwnerToken@Encap {
 impl OwnerToken@Send {}
 impl OwnerToken@Sync {}
 
-fn run_owner<'T: @Send>(cede 'data: T, shared: bool) {
-    if shared {
+fn run_owner<'T: @{Send, Sync}>(cede 'data: T, shared: bool) {
+    auto kind = unsafe toka_sync_test_kind()
+    if kind == 1 {
+        auto ~owner = RwMutex<'T>::make_shared(cede 'data)
+        auto ~other = ~owner
+        {
+            auto locked = other.read_lock().unwrap()
+        }
+        auto locked = owner.write_lock().unwrap()
+    } else if shared {
         auto ~owner = Mutex<'T>::make_shared(cede 'data)
         auto ~other = ~owner
         auto locked = other.lock().unwrap()
@@ -29,6 +38,18 @@ fn run_owner<'T: @Send>(cede 'data: T, shared: bool) {
 fn main() -> i32 {
     auto category = unsafe toka_sync_test_category()
     auto shared = (unsafe toka_sync_test_public_owner()) == 2
+    auto kind = unsafe toka_sync_test_kind()
+    if kind == 2 {
+        unsafe { toka_sync_test_arm(0) }
+        if shared {
+            auto ~condition = CondVar<i32>::make_shared()
+            condition.notify_all()
+        } else {
+            auto ^condition = CondVar<i32>::make()
+            condition.notify_one()
+        }
+        return unsafe toka_sync_test_done()
+    }
     if category == 0 {
         unsafe { toka_sync_test_arm(category) }
         run_owner<i32>(7, shared)

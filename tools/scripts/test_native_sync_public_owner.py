@@ -55,6 +55,20 @@ def main():
                     assert ran.returncode == (0 if mode == 0 else 134), (
                         owner_kind, category, mode, ran.returncode, ran.stderr)
                     runs += 1
+        # RwMutex shared owners use the same checked allocation handoff;
+        # CondVar is native-only and must not fabricate a payload allocation.
+        for kind in (1, 2):
+            for owner_kind in ((2,) if kind == 1 else (1, 2)):
+                for category in (range(4) if kind == 1 else (0,)):
+                    modes = (0, 1, 2, 3, 11, 12) if kind == 1 else (
+                        (0, 1, 3, 11, 12) if owner_kind == 2 else (0, 1, 3, 11))
+                    for mode in modes:
+                        case_env = dict(env, TOKA_SYNC_PUBLIC_OWNER=str(owner_kind), TOKA_SYNC_KIND=str(kind),
+                                        TOKA_SYNC_CATEGORY=str(category), TOKA_SYNC_MODE=str(mode))
+                        if darwin: case_env["DYLD_INSERT_LIBRARIES"] = str(hooks)
+                        ran = subprocess.run([str(binary)], env=case_env, capture_output=True, timeout=10)
+                        assert ran.returncode == (0 if mode == 0 else 134), (kind, owner_kind, category, mode, ran.returncode, ran.stderr)
+                        runs += 1
         # Reject a non-empty wrapper before giving it allocation-cleanup
         # authority. A later read of the prepared source also checks that this
         # additional Sema rejection restores the destructive RHS state.

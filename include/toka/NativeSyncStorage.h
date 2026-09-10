@@ -2,6 +2,8 @@
 #include <string>
 #include <memory>
 #include <cstdint>
+#include <map>
+#include <vector>
 
 namespace toka {
 class Sema; class CodeGen; class Expr; class CallExpr; class FunctionDecl;
@@ -47,6 +49,7 @@ class NativeSyncOwnerCandidate {
   const FunctionDecl *Provider = nullptr;
   std::shared_ptr<Type> ValueType;
   std::shared_ptr<const NativeSyncOwnerCandidate> Parent;
+  std::map<std::string, std::shared_ptr<const NativeSyncOwnerCandidate>> Children;
 };
 using NativeSyncOwnerCandidatePtr = std::shared_ptr<const NativeSyncOwnerCandidate>;
 
@@ -62,6 +65,11 @@ class NativeSyncOwnerWitness {
   const FunctionDecl *Acquire = nullptr;
   const FunctionDecl *GuardDrop = nullptr;
   const FunctionDecl *GuardAccess = nullptr;
+  const FunctionDecl *ReadAcquire = nullptr, *ReadGuardDrop = nullptr, *ReadGuardAccess = nullptr;
+  const FunctionDecl *NotifyOne = nullptr, *NotifyAll = nullptr, *Wait = nullptr;
+  NativeSyncFactoryKind Kind = NativeSyncFactoryKind::None;
+  std::map<std::string, std::shared_ptr<const NativeSyncOwnerWitness>> Children;
+  std::vector<const FunctionDecl *> CompositeOperations;
 };
 using NativeSyncOwnerWitnessPtr = std::shared_ptr<const NativeSyncOwnerWitness>;
 
@@ -71,6 +79,8 @@ class NativeSyncGuardOrigin {
   NativeSyncGuardOrigin() = default;
   NativeSyncOwnerWitnessPtr Owner;
   const Expr *AcquireSite = nullptr;
+  const FunctionDecl *Access = nullptr;
+  bool Writable = false;
   bool Outcome = true;
 };
 using NativeSyncGuardOriginPtr = std::shared_ptr<const NativeSyncGuardOrigin>;
