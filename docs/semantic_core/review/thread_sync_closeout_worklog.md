@@ -105,6 +105,16 @@ not by a new language-design requirement. See the precise
 Their non-authorizing child recipes may be recorded, but no composite witness
 or cleanup grant has been enabled. No full suite or final candidate is claimed.
 
+Awaiting-approval investigation: the additional whole unique/shared-element
+replacement matrix was probed without modifying compiler rules. Current
+reference/handle target spellings reject (`^&^T`/reference-target mismatch or
+insufficient write capability); this does not prove a valid replacement route.
+The exploratory source is preserved in `managed_slot_replacement_probe.tk`,
+outside the executable gate list because its source contract is not established.
+The required matrix row remains open—direct-value replacement passing must not
+be reported as proof that managed-handle replacement passes. No permission,
+source-view, or cleanup rule was relaxed during this investigation.
+
 ## Continue from the actual program, not another helper milestone
 
 The Mutex witness now combines the exact owner recipe with completed factory,

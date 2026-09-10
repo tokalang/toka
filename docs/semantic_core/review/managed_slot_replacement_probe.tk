@@ -1,0 +1,42 @@
+// Investigation probe, not an accepted source spelling or passing gate.
+// Whole unique/shared handle replacement through the returned reference view
+// remains unverified; current checking rejects these target expressions.
+import std/sync::Mutex
+auto drops# = 0
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+impl Token@Send {}
+impl Token@Sync {}
+fn main() -> i32 {
+    {
+        auto ^first = new Token(value = 7)
+        auto ~mutex = Mutex<^Token>::make_shared(cede ^first)
+        {
+            auto held = mutex.lock().unwrap()
+            auto &'slot# = held.borrow_mut()
+            'slot = new Token(value = 9)
+            if drops != 1 || 'slot.value != 9 { return 1 }
+        }
+    }
+    if drops != 2 { return 2 }
+    {
+        auto ~first = new Token(value = 11)
+        auto ~remaining = ~first
+        {
+            auto ~mutex = Mutex<~Token>::make_shared(cede ~first)
+            {
+                auto held = mutex.lock().unwrap()
+                auto &'slot# = held.borrow_mut()
+                auto ~next = new Token(value = 13)
+                'slot = cede ~next
+                if drops != 2 || 'slot.value != 13 || remaining.value != 11 { return 3 }
+            }
+        }
+        if drops != 3 || remaining.value != 11 { return 4 }
+    }
+    if drops != 4 { return 5 }
+    return 0
+}
