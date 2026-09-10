@@ -1088,6 +1088,8 @@ Sema::queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *value) {
         address->Expression.get());
   if (auto *postfix = dynamic_cast<PostfixExpr *>(value))
     return queryExplicitCedeStage0AccessCapabilityReadOnly(postfix->LHS.get());
+  if (auto *unary = dynamic_cast<UnaryExpr *>(value); unary && unary->NativeSyncManagedSlotTarget)
+    return getAccessCapability(unary);
   if (auto *unary = dynamic_cast<UnaryExpr *>(value))
     return queryExplicitCedeStage0AccessCapabilityReadOnly(unary->RHS.get());
   if (auto *variable = dynamic_cast<VariableExpr *>(value)) {

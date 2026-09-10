@@ -1040,7 +1040,7 @@ int main(int argc, char **argv) {
       const std::set<std::string> faults = {"missing", "origin", "factory", "allocation", "type", "element",
           "drop", "acquire", "guard-drop", "guard-access", "thread-list", "access-site",
           "slot-missing", "slot-type", "slot-destination", "read-acquire", "read-drop", "read-access",
-          "notify", "wait-guard"};
+          "notify", "wait-guard", "slot-kind", "slot-reference", "slot-source"};
       if (!faults.count(nativeSyncWitnessFault)) {
         llvm::errs() << "unknown native sync witness fault\n"; return 1;
       }

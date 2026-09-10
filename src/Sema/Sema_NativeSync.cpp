@@ -86,6 +86,8 @@ void Sema::collectNativeSyncGuardFlow(Expr *expression) {
       child = cast->Expression.get();
     else if (auto *postfix = dynamic_cast<PostfixExpr *>(expression)) child = postfix->LHS.get();
     else if (auto *cede = dynamic_cast<CedeExpr *>(expression)) child = cede->Value.get();
+    else if (auto *selected = dynamic_cast<UnaryExpr *>(expression);
+             selected && selected->NativeSyncManagedSlotTarget) child = selected->RHS.get();
     if (child) {
       expression->NativeSyncGuardOrigin = child->NativeSyncGuardOrigin;
       expression->NativeSyncSlotOrigin = child->NativeSyncSlotOrigin;
@@ -101,6 +103,28 @@ void Sema::recordNativeSyncGuardBinding(const AccessPath &place, Expr *source) {
   if (source->NativeSyncSlotOrigin) m_NativeSyncSlots[place.RootID] = source->NativeSyncSlotOrigin;
 }
 
+std::shared_ptr<Type> Sema::queryNativeSyncManagedSlotTarget(UnaryExpr *target) {
+  if (!target || (target->Op != TokenType::Caret && target->Op != TokenType::Tilde)) return {};
+  auto *variable = dynamic_cast<VariableExpr *>(target->RHS.get());
+  if (!variable) return {};
+  auto path = makeAccessPath(variable);
+  auto found = m_NativeSyncSlots.find(path.RootID);
+  SymbolInfo *binding = nullptr;
+  if (found == m_NativeSyncSlots.end() || !found->second || found->second->Outcome ||
+      !nativeSyncOwnerLive(found->second->Owner) ||
+      !CurrentScope->findSymbolByID(path.RootID, binding) || !binding || binding->IsPlaceAlias ||
+      !binding->TypeObj || !binding->TypeObj->isReference()) return {};
+  auto element = found->second->Owner->ElementType;
+  auto referenced = binding->TypeObj->getPointeeType();
+  if (!element || !referenced || !nativeSameValueView(element, referenced) ||
+      (target->Op == TokenType::Caret ? !element->isUniquePtr() : !element->isSharedPtr())) return {};
+  // Reference P authorizes replacing the complete slot. It does not authorize
+  // modifying the managed pointee, nor reseating the reference binding itself.
+  const auto view = getAccessCapability(variable);
+  const bool writable = found->second->Writable && referenced->IsWritable && !view.PayloadFlowRestricted;
+  return element->withAttributes(writable, element->IsNullable, element->IsBlocked);
+}
+
 void Sema::prepareNativeSyncReplacement(BinaryExpr *assignment) {
   auto path = makeAccessPath(assignment->LHS.get());
   if (!path || !path.Projections.empty()) return;
@@ -108,7 +132,9 @@ void Sema::prepareNativeSyncReplacement(BinaryExpr *assignment) {
   if (slot == m_NativeSyncSlots.end()) return;
   Expr *lhs = assignment->LHS.get();
   while (auto *postfix = dynamic_cast<PostfixExpr *>(lhs)) lhs = postfix->LHS.get();
-  if (!dynamic_cast<VariableExpr *>(lhs)) {
+  auto *selected = dynamic_cast<UnaryExpr *>(lhs);
+  const bool managedHandle = selected && selected->NativeSyncManagedSlotTarget;
+  if (!dynamic_cast<VariableExpr *>(lhs) && !managedHandle) {
     // Rebinding a reference is not replacing the initialized native element.
     m_NativeSyncSlots.erase(slot);
     return;
@@ -126,8 +152,13 @@ void Sema::prepareNativeSyncReplacement(BinaryExpr *assignment) {
     fail("IncompleteSlotPlan"); return;
   }
   auto element = guard->Owner->ElementType;
+  const bool validatedManagedFlow = managedHandle && element &&
+      nativeSameValueView(element, assignment->LHS->ResolvedType) &&
+      assignment->RHS->ResolvedType->typeKind == element->typeKind &&
+      authority->ItemPlan->Prepared.TypeCompatibility == TransferTypeCompatibility::Compatible;
   if (!element || !checkNativeSyncClosedPayload(element).closed() ||
-      !element->withAttributes(false, false)->equals(*assignment->RHS->ResolvedType->withAttributes(false, false))) {
+      (!validatedManagedFlow &&
+       !element->withAttributes(false, false)->equals(*assignment->RHS->ResolvedType->withAttributes(false, false)))) {
     error(assignment, DiagID::ERR_GENERIC_SEMA, "native sync replacement: ElementTypeMismatch: expected " +
         (element ? element->toString() : "unknown") + ", got " + assignment->RHS->ResolvedType->toString());
     return;
@@ -138,6 +169,16 @@ void Sema::prepareNativeSyncReplacement(BinaryExpr *assignment) {
   plan->Source = assignment->RHS.get();
   plan->Guard = guard;
   plan->ElementType = element;
+  if (managedHandle) {
+    if (!queryNativeSyncManagedSlotTarget(selected)) { fail("ManagedSlotTargetMismatch"); return; }
+    SymbolInfo *binding = nullptr;
+    if (!CurrentScope->findSymbolByID(path.RootID, binding) || !binding || !binding->TypeObj) {
+      fail("MissingReferenceBinding"); return;
+    }
+    plan->ManagedHandle = true;
+    plan->ReferenceBinding = selected->RHS.get();
+    plan->ReferenceType = binding->TypeObj;
+  }
   assignment->NativeSyncReplacement = std::move(plan);
 }
 

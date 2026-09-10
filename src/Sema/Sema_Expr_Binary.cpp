@@ -226,10 +226,18 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   // [Toka 1.3] Evaluation Order: Check RHS first to avoid LHS
   // borrows/moves blocking RHS usage (e.g. &#cursor = cursor.&next)
   Bin->RHS = foldGenericConstant(std::move(Bin->RHS));
+  std::shared_ptr<Type> nativeManagedTarget;
+  if (Bin->Op == "=" && m_EnableStage1ExplicitCallerCede) {
+    if (auto *target = dynamic_cast<UnaryExpr *>(Bin->LHS.get())) {
+      nativeManagedTarget = queryNativeSyncManagedSlotTarget(target);
+      target->NativeSyncManagedSlotTarget = nativeManagedTarget != nullptr;
+      if (nativeManagedTarget) Bin->NativeSyncReplacementRequired = true;
+    }
+  }
   if (Bin->Op == "=" &&
       (bindingTransfer.enabled() || SemanticEvidence::isNonCallTransferShadowEnabled())) {
     auto destinationType =
-        queryExplicitCedeStage0NonCallType(Bin->LHS.get(), nullptr);
+        nativeManagedTarget ? nativeManagedTarget : queryExplicitCedeStage0NonCallType(Bin->LHS.get(), nullptr);
     if (bindingTransfer.enabled())
       bindingTransfer.prepare(Bin->RHS.get(), destinationType, Bin->LHS.get());
     else
@@ -292,7 +300,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   m_LastBorrowSource = ""; // [NEW] Clear stale borrow source
   std::shared_ptr<toka::Type> rhsType;
   if (!rhsIsTodo)
-    rhsType = checkExpr(Bin->RHS.get());
+    rhsType = nativeManagedTarget ? checkExpr(Bin->RHS.get(), nativeManagedTarget)
+                                  : checkExpr(Bin->RHS.get());
   std::string rhsBorrowSource = ""; 
   if (!rhsIsTodo && !getPathString(Bin->RHS.get()).empty()) {
       rhsBorrowSource = m_LastBorrowSource;
@@ -419,7 +428,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         LHS = lhsType->toString();
       }
     }
-  } else if (rhsType->isUniquePtr() || rhsType->isSharedPtr()) {
+  } else if (!nativeManagedTarget && (rhsType->isUniquePtr() || rhsType->isSharedPtr())) {
     if (auto inner = rhsType->getPointeeType()) {
       if (isTypeCompatible(lhsType, inner)) {
         rhsType = inner;

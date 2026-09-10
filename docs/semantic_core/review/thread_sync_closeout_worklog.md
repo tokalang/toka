@@ -12,7 +12,23 @@ Delivery boundary fixed by the user on 2026-09-10:
 Unrelated network/container/binding debt and the rest of the cede RFC are not
 part of this delivery. Intermediate commits are internal checkpoints only.
 
-## Latest checkpoint — composite implementation authorized and connected
+## Latest implementation — managed-slot directed matrix closed
+
+The full `^/~` slot replacement implementation and its directed matrix pass:
+5 runtime/parity programs, 7 rejection/rollback cases and 12 fault checks.
+The slot stores a complete handle, not its payload; old cleanup follows RHS
+preparation, and remaining shared owners survive. Read-only, active-borrow,
+overlap, wrong-morphology and invalid-RHS cases reject without leaked source
+state or artifacts. See [the bounded implementation and matrix](managed_slot_closeout.md).
+
+Both managed-slot positives are mandatory entries in the existing public
+thread/sync gate. The single full comparison and subsequent targeted correction
+are complete; see [the candidate report](thread_sync_candidate_report.md) for
+the measured counts, four recoveries, one fixed runtime regression and retained
+baseline debt. No oracle was changed and no full suite was retried. No new
+Accepted or freeze has been declared.
+
+## Previous checkpoint — composite implementation authorized and connected
 
 The user explicitly approved all five composite allocation/cleanup boundaries.
 The earlier approval blocker is closed; the historical blocked notes below do

@@ -660,6 +660,10 @@ public:
 
 class UnaryExpr : public Expr {
 public:
+  // Set only by the checked assignment destination path. This selects the
+  // complete managed element behind a native guard reference, never an owning
+  // transfer from that borrowed reference. Not copied by clone().
+  bool NativeSyncManagedSlotTarget = false;
   TokenType Op;
   std::unique_ptr<Expr> RHS;
   bool HasNull = false;      // Raw may-zero or removed nullable recovery.

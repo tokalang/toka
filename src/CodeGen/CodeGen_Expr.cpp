@@ -496,6 +496,9 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     auto changed = std::shared_ptr<NativeSyncReplacementPlan>(new NativeSyncReplacementPlan(*nativeReplacement));
     if (m_NativeSyncWitnessFault == "slot-type") changed->ElementType = Type::fromString("i64");
     if (m_NativeSyncWitnessFault == "slot-destination") changed->Destination = nullptr;
+    if (m_NativeSyncWitnessFault == "slot-kind") changed->ManagedHandle = !changed->ManagedHandle;
+    if (m_NativeSyncWitnessFault == "slot-reference") changed->ReferenceType.reset();
+    if (m_NativeSyncWitnessFault == "slot-source") changed->ReferenceBinding = nullptr;
     nativeReplacement = std::move(changed);
   }
 #endif
@@ -510,6 +513,28 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
         !validateNativeSyncOwner(nativeReplacement->Guard->Owner, assignmentSite)) {
       error(assignmentSite, DiagID::ERR_CODEGEN, "native sync replacement: MissingOrMismatchedPlan");
       return {};
+    }
+    const auto *target = dynamic_cast<const UnaryExpr *>(lhsExpr);
+    if (nativeReplacement->ManagedHandle != (target && target->NativeSyncManagedSlotTarget)) {
+      error(assignmentSite, DiagID::ERR_CODEGEN, "native sync replacement: DestinationKindMismatch");
+      return {};
+    }
+    if (nativeReplacement->ManagedHandle) {
+      const auto &reference = nativeReplacement->ReferenceType;
+      const auto *authority = assignmentSite->Stage0Authority ? &*assignmentSite->Stage0Authority : nullptr;
+      if (!target || !target->NativeSyncManagedSlotTarget || nativeReplacement->ReferenceBinding != target->RHS.get() ||
+          !reference || !reference->isReference() || !symLHS->soulTypeObj ||
+          !reference->equals(*symLHS->soulTypeObj) || !reference->getPointeeType() ||
+          !reference->getPointeeType()->withAttributes(false, reference->getPointeeType()->IsNullable,
+              reference->getPointeeType()->IsBlocked)->equals(*nativeReplacement->ElementType) ||
+          (target->Op == TokenType::Caret ? !nativeReplacement->ElementType->isUniquePtr() :
+           target->Op == TokenType::Tilde ? !nativeReplacement->ElementType->isSharedPtr() : true) ||
+          !authority || !authority->SemaValidated || !authority->Complete || !authority->DestinationMatching ||
+          authority->Destination != TransferDestination::Assignment || !authority->ItemPlan ||
+          !authority->ItemPlan->admitted()) {
+        error(assignmentSite, DiagID::ERR_CODEGEN, "native sync replacement: ManagedHandlePlanMismatch");
+        return {};
+      }
     }
   }
 
@@ -628,6 +653,27 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
 
   if (!rhsVal)
     return nullptr;
+
+  if (nativeReplacement && nativeReplacement->ManagedHandle) {
+    auto *type = getLLVMType(nativeReplacement->ElementType);
+    // Local reference bindings store exactly the slot address. Peel the
+    // reference once, NOT the contained unique/shared handle to its payload.
+    auto *bindingAddress = llvm::dyn_cast_or_null<llvm::AllocaInst>(symLHS->allocaPtr);
+    if (!bindingAddress || !bindingAddress->getAllocatedType()->isPointerTy() || rhsVal->getType() != type ||
+        assignmentSite->AssignmentKind != AssignmentSemanticKind::Handle) {
+      error(assignmentSite, DiagID::ERR_CODEGEN, "native sync replacement: ManagedSlotAddressMismatch");
+      return {};
+    }
+    auto *slotAddress = m_Builder.CreateLoad(m_Builder.getPtrTy(), bindingAddress, "native.managed.slot");
+    // RHS production (including retain for a shared copy) is already complete.
+    // This slot owns one old complete T; the reference itself owns no T.
+    emitDropForType(slotAddress, nativeReplacement->ElementType);
+    markMemoryEvent(m_Builder.CreateStore(rhsVal, slotAddress), "rebind");
+    recordAssignmentLoweringCarrier(assignmentSite, AssignmentLoweringCarrier::EnvelopeRebind);
+    verifyLowering(AssignmentLoweringCarrier::EnvelopeRebind);
+    m_InLHS = false;
+    return PhysEntity(rhsVal, "void", rhsVal->getType(), false);
+  }
 
   // Own the incoming environment before releasing the old target below.
   // This ordering also covers self-copy and two aliases of one environment.
@@ -1818,8 +1864,19 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
 
   // [Constitution 1.3] Reference Sigil: &p (Static Borrow)
   if (unary->Op == TokenType::Ampersand) {
-    llvm::Value *soulAddr = emitEntityAddr(unary->RHS.get());
-    bool borrowsSelectedHandle = false;
+    const auto *morphicValue = dynamic_cast<const VariableExpr *>(unary->RHS.get());
+    const bool borrowsMorphicShared = morphicValue &&
+        (morphicValue->IsMorphicExempt || (!morphicValue->Name.empty() && morphicValue->Name.front() == '\'')) &&
+        unary->RHS->ResolvedType && unary->RHS->ResolvedType->isSharedPtr() &&
+        unary->ResolvedType && unary->ResolvedType->isReference() &&
+        unary->ResolvedType->getPointeeType() &&
+        unary->ResolvedType->getPointeeType()->equals(*unary->RHS->ResolvedType);
+    // &'value borrows the complete instantiated value. A shared parameter is
+    // now represented by its real carrier address; projecting its soul here
+    // would return Cell* where the validated result promises &~Cell.
+    llvm::Value *soulAddr = borrowsMorphicShared ? emitHandleAddr(unary->RHS.get())
+                                               : emitEntityAddr(unary->RHS.get());
+    bool borrowsSelectedHandle = borrowsMorphicShared;
     if (auto *selected = dynamic_cast<const UnaryExpr *>(unary->RHS.get())) {
       borrowsSelectedHandle =
           selected->Op == TokenType::Caret ||

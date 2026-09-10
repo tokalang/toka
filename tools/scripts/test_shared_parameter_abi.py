@@ -77,8 +77,9 @@ def main():
             except subprocess.TimeoutExpired:
                 failures.append(label + ": timeout")
 
-        for name in ("shared_parameter_matrix.tk", "sync_managed_storage_pending.tk", "sync_shared_guard.tk"):
-            source = FIXTURES / name
+        for name in ("shared_parameter_matrix.tk", "sync_managed_storage_pending.tk", "sync_shared_guard.tk",
+                     "g08_morphology_constraint_domains.tk"):
+            source = ROOT / "tests/pass" / name if name.startswith("g08_") else FIXTURES / name
             normal = compile_source(source, "--check-only")
             shadow = compile_source(source, "--check-only", "--non-call-transfer-shadow=json")
             if normal.returncode != 0 or shadow.returncode != 0 or normal.stderr != shadow.stderr:
@@ -89,6 +90,16 @@ def main():
             if built.returncode != 0:
                 failures.append(name + ": build\n" + built.stderr)
                 continue
+            if name == "g08_morphology_constraint_domains.tk":
+                ir = work / "morphic-borrow.ll"
+                emitted = compile_source(source, "--emit-llvm", "-o", ir)
+                assert emitted.returncode == 0, emitted.stderr
+                bodies = [match[0] for match in re.finditer(
+                    r"^define linkonce_odr[^\n]*@__toka_gfn_([0-9a-f]+)_M_S[^\n]*\n.*?^}",
+                    ir.read_text(), re.M | re.S)
+                    if ";15:borrow_identity;" in bytes.fromhex(match[1]).decode()]
+                assert len(bodies) == 1 and 'ret ptr %"\'value"' in bodies[0], "morphic shared borrow must return the caller carrier"
+                assert "shared.data_ptr" not in bodies[0], "morphic borrow incorrectly selected payload"
             if name == "shared_parameter_matrix.tk":
                 ir = work / "shared-parameter.ll"
                 emitted = compile_source(source, "--emit-llvm", "-o", ir)

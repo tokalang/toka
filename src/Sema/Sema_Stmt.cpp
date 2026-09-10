@@ -1723,6 +1723,21 @@ void Sema::checkStmt(Stmt *S) {
   } else if (auto *Var = dynamic_cast<VariableDecl *>(S)) {
     Stage1BindingTransfer bindingTransfer(*this, Var, Var->Init != nullptr);
     recordHandleSurfaceVariableDecl(*Var);
+    const bool inferredManagedConstruction = (Var->IsUnique || Var->IsShared) &&
+        dynamic_cast<NewExpr *>(Var->Init.get());
+    const bool inferredManagedReference = Var->IsReference && Var->ResolvedType &&
+        Var->Permission.HandleLayers.size() == 2 && Var->ResolvedType->isReference() &&
+        Var->ResolvedType->getPointeeType() &&
+        (Var->ResolvedType->getPointeeType()->isUniquePtr() || Var->ResolvedType->getPointeeType()->isSharedPtr());
+    if (!Var->DeclaredTypeSyntax && Var->ResolvedType &&
+        (inferredManagedReference || inferredManagedConstruction)) {
+      // Capture discovery has already elaborated this inferred two-layer
+      // reference or explicit new binding. TypeName is a cached inner type,
+      // not a new source annotation. Re-infer instead of wrapping twice or
+      // applying the non-construction unique/shared conversion rules to new.
+      Var->TypeName.clear();
+      Var->ResolvedType.reset();
+    }
     const bool inferredType = Var->TypeName.empty() || Var->TypeName == "auto";
 
     // [Constitutional 1.3] Adversarial Principle: $ is only for contesting

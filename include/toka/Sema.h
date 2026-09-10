@@ -1023,6 +1023,7 @@ private:
   void collectNativeSyncGuardFlow(Expr *expression);
   void recordNativeSyncGuardBinding(const AccessPath &place, Expr *source);
   void prepareNativeSyncReplacement(BinaryExpr *assignment);
+  std::shared_ptr<Type> queryNativeSyncManagedSlotTarget(UnaryExpr *target);
   NativeSyncOwnerWitnessPtr qualifyNativeSyncOwner(const NativeSyncOwnerCandidatePtr &recipe,
                                                   const std::shared_ptr<Type> &actualType);
   bool nativeSyncOwnerLive(const NativeSyncOwnerWitnessPtr &witness) const;

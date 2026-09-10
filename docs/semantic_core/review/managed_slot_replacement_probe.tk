@@ -1,6 +1,6 @@
-// Investigation probe, not an accepted source spelling or passing gate.
-// Whole unique/shared handle replacement through the returned reference view
-// remains unverified; current checking rejects these target expressions.
+// Historical rejected-spelling probe, not a passing gate. The now-implemented
+// handle replacement uses &^#slot / &~#slot with ^slot / ~slot destinations.
+// See managed_slot_closeout.md and the mandatory sync_managed_slot_replace.tk.
 import std/sync::Mutex
 auto drops# = 0
 shape Token(value: i32)

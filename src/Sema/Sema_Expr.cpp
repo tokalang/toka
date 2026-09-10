@@ -134,6 +134,14 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
   }
 
   if (auto *Unary = dynamic_cast<UnaryExpr *>(E)) {
+    if (Unary->NativeSyncManagedSlotTarget) {
+      auto element = queryNativeSyncManagedSlotTarget(Unary);
+      if (!element) return {};
+      auto pointee = element->getPointeeType();
+      auto reference = getAccessCapability(Unary->RHS.get(), declarationOnly);
+      return applyPathFlowCeiling({pointee && pointee->IsWritable, element->IsWritable,
+                                  reference.PayloadFlowRestricted});
+    }
     // A reference to a selected raw-storage element handle addresses the
     // slot, not the managed pointee. Its P is the slot's H. Preserve the
     // complete inner type (including pointee permissions); never derive this

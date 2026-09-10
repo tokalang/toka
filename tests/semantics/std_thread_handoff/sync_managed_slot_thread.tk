@@ -1,0 +1,31 @@
+import std/sync::Mutex
+import std/thread::thread_spawn
+auto drops# = 0:i32
+shape Token(value: i32)
+impl Token@Encap { pub value
+    fn drop(self#) { drops += 1 }
+}
+impl Token@Send {}
+impl Token@Sync {}
+fn main() -> i32 {
+    {
+        auto ^first = new Token(value = 7)
+        auto ~mutex = Mutex<^Token>::make_shared(cede ^first)
+        auto ~worker = ~mutex
+        auto callback = { [cede ~worker] =>
+            auto held = worker.lock().unwrap()
+            auto &^#slot = held.borrow_mut()
+            auto ^incoming = new Token(value = 9)
+            ^slot = cede ^incoming
+            return 0
+        }:dyn fn() -> i32
+        auto created = thread_spawn<i32>(cede callback)
+        auto handle# = created.unwrap()
+        handle#.join().unwrap()
+        if drops != 1 { return 1 }
+        auto held = mutex.lock().unwrap()
+        auto &^slot = held.borrow_mut()
+        if slot.value != 9 { return 2 }
+    }
+    return drops - 2
+}

@@ -93,6 +93,9 @@ class NativeSyncReplacementPlan {
   const Expr *Destination = nullptr, *Source = nullptr;
   NativeSyncGuardOriginPtr Guard;
   std::shared_ptr<Type> ElementType;
+  bool ManagedHandle = false;
+  const Expr *ReferenceBinding = nullptr;
+  std::shared_ptr<Type> ReferenceType;
 };
 
 // Cleanup for allocation of the managed wrapper around an already prepared
