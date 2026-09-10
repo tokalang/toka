@@ -432,7 +432,8 @@ bool Sema::rejectNativeSyncUnlock(Expr *expression) {
   }
   if (!recipe) return false;
   auto conflicts = [&](const NativeSyncGuardOriginPtr &guard) {
-    if (!guard || !guard->Owner || guard->Owner->Kind != NativeSyncFactoryKind::Mutex ||
+    if (!guard || !guard->Owner ||
+        (guard->Owner->Kind != NativeSyncFactoryKind::Mutex && guard->Owner->Kind != NativeSyncFactoryKind::RwMutex) ||
         guard->Owner->Origin != recipe) return false;
     auto owner = std::dynamic_pointer_cast<ShapeType>(guard->Owner->OwnerType);
     if (!owner || !owner->Decl) return false;

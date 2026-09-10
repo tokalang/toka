@@ -191,7 +191,8 @@ return 0
             built = compile_case(source, obj, "-c")
             assert built.returncode == 0, built.stderr
             subprocess.run([cc, str(obj), str(runtime), str(hook), "-pthread", "-lm",
-                            *([] if darwin else ["-Wl,--wrap=pthread_mutex_init", "-Wl,--wrap=pthread_mutex_unlock"]),
+                            *([] if darwin else ["-Wl,--wrap=pthread_mutex_init", "-Wl,--wrap=pthread_mutex_unlock",
+                                                "-Wl,--wrap=pthread_rwlock_init", "-Wl,--wrap=pthread_rwlock_unlock"]),
                             "-o", str(binary)], check=True, capture_output=True)
             ran = subprocess.run([str(binary)], env=dict(env, **({"DYLD_INSERT_LIBRARIES": str(hook)} if darwin else {})),
                                  capture_output=True, text=True, timeout=10)

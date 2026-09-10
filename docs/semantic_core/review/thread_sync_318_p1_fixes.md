@@ -1,5 +1,10 @@
 # Incremental fixes after the 31843d5c review — candidate, not Accepted
 
+Review of `9c36b72f` closed the shared-slot P1 but found that the unlock kind
+check omitted RwMutex. That single remaining correction is documented in the
+[RwMutex follow-up](thread_sync_rw_unlock_followup.md); the results below are
+the previous increment's evidence, not a claim that 9c36b72f was Accepted.
+
 Scope is only the two authorized P1s. No syntax, runtime ABI, capture layout,
 reference-count algorithm, unlock protocol or unrelated binding work changed.
 The previous full-run evidence remains unchanged; this revision uses directed
