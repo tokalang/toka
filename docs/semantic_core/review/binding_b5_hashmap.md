@@ -37,28 +37,59 @@ into the pointer-binding slot rather than the metadata byte. The library-only
 raw-handle adaptation fixes that and the repeated-removal regression is kept.
 No compiler addressing/ABI change is included.
 
-## Separate authorization blocker
+## Clone authorization and implementation
 
-Resource `HashMap<i32, Token>` instantiation still checks the unbounded existing
-`clone` method. Its raw bare-copy initialization fails at the value field even
-though the fixture never invokes clone. `lifecycle.tk` is a **failed positive**,
-not a negative gate or a skipped success.
+At the first checkpoint, resource `HashMap<i32, Token>` instantiation checked
+the unbounded existing `clone` method and failed at bare raw payload copying
+even though the fixture never invoked clone. This blocker is now closed:
+`lifecycle.tk` builds and runs, including 200 non-Dup resources, resize,
+remove/repeated remove, clear/repeated clear, reuse and exact-once drop.
 
-Proposed follow-up is to align source-preserving clone with Vec's existing
+The user explicitly authorized aligning source-preserving clone with Vec's existing
 `@Dup` contract: bound only the clone impl's K/V to Dup and use `.dup()` for
 each occupied payload. The automatic reviewer rejected applying this change
 because it changes generic admission and copying semantics beyond raw_take
-migration. That diff is **not applied**; the import, impl bounds and clone
-body remain unchanged. Explicit additional authorization is needed before
-that change or an alternative public clone policy is implemented.
+migration. After that explicit additional authorization, the new implementation
+imports `@Dup`, bounds only the clone impl, and duplicates each occupied key and
+value. The HashMap type and all ordinary operations remain unconstrained.
 
-The JSON positive now also exposes unproved recursive JsonNode dependencies in
-raw_take, parser raw-buffer cleanup, and the same clone path. No corresponding
+Target metadata starts empty. Both duplication results are local owned values
+before either is stored; occupied is published only after both stores. Empty
+and tombstone metadata is preserved without reading their payloads. Source
+metadata, length and slots are never written. Dup returns a value, not a
+recoverable error result; no new unwinding or cleanup-on-fatal promise is added.
+For a normal return, the target owns each completed pair and its existing
+HashMap drop path cleans it. A fatal during allocation/dup retains the existing
+process-termination semantics; this is not a new generic exception mechanism.
+
+The JSON positive now exposes unproved recursive JsonNode dependencies in
+raw_take and parser raw-buffer cleanup; the clone failure is gone. No corresponding
 compiler guards or JSON source are changed. These remain visible blockers.
 
 The scalar gate is deliberately named as a partial gate, not a full HashMap
-qualification. Resource/unique/shared exact-once and JSON must pass before
-this migration can be presented as a complete candidate.
+qualification. The new clone gate independently checks the now-working resource
+subset. Direct managed element types and JSON still prevent declaring the
+whole HashMap migration complete.
+
+## Current directed coverage
+
+`toka_binding_b5_hashmap_clone` checks four runtime/parity fixtures:
+
+- `lifecycle.tk`: NonDup resource ordinary use, including resize and exact-once;
+- `clone.tk`: Copy values and explicit Dup keys/resources; empty, tombstone,
+  resize, all copied contents, source preservation and exact destructor counts;
+- `strings.tk`: owning key/value clones remain usable independently;
+- `owned_handles.tk`: records containing unique/shared resources move through
+  resize/remove/clear/drop with exact-once cleanup and a surviving shared owner.
+
+Two NonDup clone negatives (key and value independently) require only E0417,
+normal/shadow parity, and object/IR absence. Removing only the forbidden clone
+line must produce a working ordinary container, not another error.
+
+`handles.tk` remains a failed **direct managed-element positive**, distinct
+from the passing owning-record controls. Current blockers include a morphic
+helper-result binding mismatch and iterator `*^Token` / `&^Token` view handling.
+Neither is hidden by assigning Copy/Dup or changing raw/managed rules.
 
 ## Checkpoint validation
 
@@ -69,8 +100,36 @@ this migration can be presented as a complete candidate.
 - The new scalar regression covers empty/repeated removal, tombstone
   traversal/reuse, repeated clear/reuse and populated drop. Its IR checks the
   marker store precedes the typed take without intervening calls.
-- `lifecycle.tk` still fails in existing clone; it is not included among the
-  passing gates. JSON remains failed. No full PASS/FAIL or return-matrix rerun.
+- At that checkpoint `lifecycle.tk` still failed in clone (now fixed as above).
+  JSON remains failed. No full PASS/FAIL or return-matrix rerun.
 - No compiler, Copy, raw_take, interface-key, runtime or thread ref changes.
 
 This is a local **WIP checkpoint**, not a freeze or Accepted candidate.
+
+## Authorized clone increment: final results
+
+Final CTest **5/5**, **102.87 seconds**: B5 clone, B5 scalar, B4 enum Copy,
+Vec pop and raw_take frontend/runtime/fault gates. The clone target passed its
+four runtime/parity cases and both clone-only negative/control pairs. No full
+PASS/FAIL suite was run; no oracle was changed to bless a failing positive.
+
+Continued JSON diagnosis after clone:
+
+1. The old HashMap bare-copy clone errors have disappeared.
+2. `JsonNode::ArrayNode(Vec<JsonNode>)` and
+   `JsonNode::ObjectNode(HashMap<string, JsonNode>)` contain internal raw
+   storage. The current raw_take structural traversal rejects raw fields and
+   recursive cycles; it does not carry an owning-container storage witness.
+   The failure is `ElementDependenciesUnproven` in HashMap's bridge and Vec's
+   existing bridge, not another enum Copy bug.
+3. Parser cleanup at JSON lines 621/640 still uses `cede k_buf[0]`. The parser
+   allocates and zeroes a generic K before calling its mutating parse method.
+   Zero fill is not an initialization proof, and a mutation method's type alone
+   does not certify a fresh independent owning result. Any migration must
+   account separately for initialization, parse success/failure and cleanup.
+
+No change to raw_take admission, no canonical-name exemption for JsonNode,
+and no new generic parser initialization contract has been made. Further JSON
+recovery cannot be reported as a mechanical completion of clone; these proof
+and parser obligations remain explicit. The direct managed-element failed
+positive is also retained, not substituted by the passing owning-record test.

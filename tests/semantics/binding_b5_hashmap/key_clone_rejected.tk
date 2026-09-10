@@ -1,0 +1,19 @@
+import std/hashmap::{HashMap}
+import core/traits::{@Hash, @PartialEq}
+shape Key(id: i32)
+impl Key@Encap {
+    pub id
+    fn drop(self#) {}
+}
+impl Key@Hash {
+    pub fn hash(self) -> u64 { return self.id as u64 }
+}
+impl Key@PartialEq {
+    pub fn eq(self, other: Key) -> bool { return self.id == other.id }
+}
+fn main() -> i32 {
+    auto source# = HashMap<Key, i32>::new()
+    source#.insert(Key(id = 1), 7)
+    auto copied = source.clone()
+    return 0
+}

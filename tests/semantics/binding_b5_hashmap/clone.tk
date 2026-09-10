@@ -1,0 +1,90 @@
+import std/hashmap::{HashMap}
+import core/traits::{@Dup, @Hash, @PartialEq}
+auto drops# = 0:i32
+auto copies# = 0:i32
+auto key_drops# = 0:i32
+auto key_copies# = 0:i32
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+impl Token@Dup {
+    pub fn dup(self) -> Token {
+        copies += 1
+        return Token(id = self.id)
+    }
+}
+shape Key(id: i32)
+impl Key@Encap {
+    pub id
+    fn drop(self#) { key_drops += 1 }
+}
+impl Key@Dup {
+    pub fn dup(self) -> Key {
+        key_copies += 1
+        return Key(id = self.id)
+    }
+}
+impl Key@Hash {
+    pub fn hash(self) -> u64 { return self.id as u64 }
+}
+impl Key@PartialEq {
+    pub fn eq(self, other: Key) -> bool { return self.id == other.id }
+}
+fn main() -> i32 {
+    {
+        auto source# = HashMap<i32, Token>::new()
+        { auto empty = source.clone()
+          if !empty.is_empty() || copies != 0 { return 1 } }
+        auto i# = 0:i32
+        loop i < 200 {
+            source#.insert(i, Token(id = i))
+            i += 1
+        }
+        source#.remove(7)
+        if drops != 1 || source.len() != 199 { return 2 }
+        {
+            auto copied# = source.clone()
+            if copies != 199 || copied.len() != 199 || source.len() != 199 { return 3 }
+            if copied#.remove(7).is_some() || source#.remove(7).is_some() { return 4 }
+            auto j# = 0:i32
+            loop j < 200 {
+                if j != 7 {
+                    auto result = copied#.remove(j)
+                    auto value = result.unwrap()
+                    if value.id != j { return 5 }
+                }
+                j += 1
+            }
+            if source.len() != 199 || copied.len() != 0 { return 6 }
+        }
+        if drops != 200 { return 7 }
+        { auto result = source#.remove(199)
+          auto value = result.unwrap()
+          if value.id != 199 { return 8 } }
+        source#.clear()
+        if drops != 399 { return 9 }
+    }
+    if drops != 399 { return 10 }
+    {
+        auto source# = HashMap<Key, Token>::new()
+        source#.insert(Key(id = 1), Token(id = 1))
+        source#.insert(Key(id = 129), Token(id = 129))
+        { auto copied = source.clone()
+          if copied.len() != 2 || source.len() != 2 || key_copies != 2 { return 11 } }
+        if key_drops != 2 || drops != 401 { return 12 }
+    }
+    if key_drops != 4 || drops != 403 || copies != 201 { return 13 }
+    {
+        auto source# = HashMap<i32, i32>::new()
+        source#.insert(1, 10)
+        source#.insert(129, 20)
+        source#.remove(1)
+        auto copied# = source.clone()
+        if copied.get(129).unwrap() != 20 || copied.get(1).is_some() { return 14 }
+        copied#.clear()
+        if source.get(129).unwrap() != 20 { return 15 }
+    }
+    return 0
+}

@@ -1,0 +1,42 @@
+import std/hashmap::{HashMap}
+auto drops# = 0:i32
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto map# = HashMap<i32, ^Token>::new()
+        auto i# = 0:i32
+        loop i < 100 {
+            auto ^value = new Token(id = i)
+            map#.insert(i, cede ^value)
+            i += 1
+        }
+        if drops != 0 { return 1 }
+        { auto removed = map#.remove(7)
+          auto ^taken = removed.unwrap()
+          if taken.id != 7 || drops != 0 { return 2 } }
+        if drops != 1 { return 3 }
+        map#.clear()
+        if drops != 100 { return 4 }
+    }
+    if drops != 100 { return 5 }
+    {
+        auto ~value = new Token(id = 8)
+        auto ~other = ~value
+        {
+            auto map# = HashMap<i32, ~Token>::new()
+            map#.insert(8, cede ~value)
+            map#.resize(256)
+            map#.remove(8)
+            if drops != 100 || other.id != 8 { return 6 }
+            auto ~next = new Token(id = 9)
+            map#.insert(9, cede ~next)
+        }
+        if drops != 101 || other.id != 8 { return 7 }
+    }
+    if drops != 102 { return 8 }
+    return 0
+}

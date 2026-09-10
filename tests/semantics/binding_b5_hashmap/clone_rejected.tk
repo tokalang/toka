@@ -1,0 +1,12 @@
+import std/hashmap::{HashMap}
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) {}
+}
+fn main() -> i32 {
+    auto source# = HashMap<i32, Token>::new()
+    source#.insert(1, Token(id = 1))
+    auto copied = source.clone()
+    return 0
+}

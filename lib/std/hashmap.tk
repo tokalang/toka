@@ -1,5 +1,5 @@
 import core/types::{usize}
-import core/traits::{@Hash, @PartialEq, @Encap, @Iterable, @Iterator, @BorrowIterator}
+import core/traits::{@Hash, @PartialEq, @Dup, @Encap, @Iterable, @Iterator, @BorrowIterator}
 import core/option::{Option}
 import std/vec::{Vec}
 import core/primitives
@@ -60,7 +60,7 @@ impl<'K, 'V> HashMap<'K, 'V>@Encap {
     
 }
 
-impl<'K, 'V> HashMap<'K, 'V> {
+impl<'K: @Dup, 'V: @Dup> HashMap<'K, 'V> {
     pub fn clone(self) -> HashMap<'K, 'V> {
         unsafe {
             if self.cap == 0 {
@@ -73,13 +73,17 @@ impl<'K, 'V> HashMap<'K, 'V> {
             auto i# = 0:usize
             loop i < self.cap {
                 auto m_val = self.meta.get(i)
-                m#.push(m_val)
+                m#.push(0)
                 if m_val == 1 {
-                    auto 'key = self.keys.buf[i]
+                    // Duplicate both values before publishing an occupied slot.
+                    auto 'key = self.keys.buf[i].dup()
+                    auto 'val = self.vals.buf[i].dup()
                     k.buf[i] = cede 'key
-
-                    auto 'val = self.vals.buf[i]
                     v.buf[i] = cede 'val
+                    m.buf[i] = 1
+                } else {
+                    // Preserve probe chains without reading retired payloads.
+                    m.buf[i] = m_val
                 }
                 i += 1
             }

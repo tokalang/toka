@@ -1,0 +1,24 @@
+import std/hashmap::{HashMap}
+fn main() -> i32 {
+    auto source# = HashMap<string, string>::new()
+    source#.insert(string::from("key"), string::from("value"))
+    source#.insert(string::from("removed"), string::from("old"))
+    auto removed_key = string::from("removed")
+    auto key = string::from("key")
+    source#.remove(removed_key)
+    auto copied# = source.clone()
+    if source.len() != 1 || copied.len() != 1 { return 1 }
+    if copied#.remove(removed_key).is_some() { return 2 }
+    {
+        auto found = copied#.remove(key)
+        auto value = found.unwrap()
+        if !value.as_str().equals("value") { return 3 }
+    }
+    {
+        auto found = source#.remove(key)
+        auto value = found.unwrap()
+        if !value.as_str().equals("value") { return 4 }
+    }
+    if !source.is_empty() || !copied.is_empty() { return 5 }
+    return 0
+}
