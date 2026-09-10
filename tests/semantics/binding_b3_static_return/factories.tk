@@ -1,0 +1,28 @@
+fn relay(value: str) -> str <- value { return value }
+
+// Callers intentionally precede the factories. The later module walk must
+// reuse their checked definitions, not execute Sema again.
+fn main() -> i32 {
+    auto first = text()
+    auto second = text()
+    auto chained = wrapper()
+    auto selected = choose(false)
+    auto number = generic(1:i32)
+    auto boolean = generic(true)
+    if !first.equals("static text") || !second.equals(first) { return 1 }
+    if !chained.equals(first) || !selected.equals("right") { return 2 }
+    if !number.equals("generic") || !boolean.equals(number) { return 3 }
+    return 0
+}
+
+fn wrapper() -> str { return text().clone() }
+fn text() -> str {
+    auto literal = "static text"
+    auto cloned = literal.clone()
+    return relay(cloned)
+}
+fn choose(flag: bool) -> str {
+    if flag { return "left" }
+    return "right"
+}
+fn generic<T>(_value: T) -> str { return "generic" }

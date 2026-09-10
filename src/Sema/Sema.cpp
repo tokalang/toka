@@ -5246,7 +5246,10 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
   const auto state = m_CallableFactoryStates.find(function);
   if (state != m_CallableFactoryStates.end() && state->second != CallableFactoryState::Unprepared)
     return state->second == CallableFactoryState::Valid &&
-           m_ValidatedCallableReturnEnvironments.count(function);
+           (m_ValidatedCallableReturnEnvironments.count(function) ||
+            m_ValidatedStaticReturnStorage.count(function));
+  // Reuse the same isolated definition preparation for static view returns.
+  // A checked definition without the required proof is never re-executed.
   // Generic instances are prepared in their instantiation scope. Ordinary
   // definitions are checked independently of their caller's candidate scope.
   if (!function->Body || !function->GenericParams.empty() || function->TemplateOrigin ||
@@ -5347,6 +5350,7 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
   if (!journal.Complete) {
     m_CallableFactoryStates[function] = CallableFactoryState::Invalid;
     m_ValidatedCallableReturnEnvironments.erase(function);
+    m_ValidatedStaticReturnStorage.erase(function);
   } else m_CallableFactoryBodyJournals[function] = std::move(journal);
   return m_CallableFactoryStates[function] == CallableFactoryState::Valid;
 }
@@ -5441,7 +5445,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
   if (Fn->ResolvedReturnType) {
     if (m_EnableStage1ExplicitCallerCede &&
-        (Fn->ResolvedReturnType->isFunction() || Fn->ResolvedReturnType->isDynFn()))
+        (Fn->ResolvedReturnType->isFunction() || Fn->ResolvedReturnType->isDynFn() ||
+         isStaticReturnStorageCandidate(Fn)))
       m_CallableFactoryStates[Fn] = CallableFactoryState::Preparing;
     validateHandleGrammar(getLoc(Fn), Fn->ResolvedReturnType);
     std::string fnId = !Fn->CodegenName.empty() ? Fn->CodegenName : Fn->Name;
@@ -5720,6 +5725,10 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   checkUnsafePublicFunctionBoundary(Fn);
 
   std::optional<CallableReturnEnvironmentFrame> callableReturnEnvironment;
+  std::optional<StaticReturnStorageFrame> staticReturnStorage;
+  const bool collectStaticReturn = m_EnableStage1ExplicitCallerCede &&
+      !m_IsPrecomputingCaptures && isStaticReturnStorageCandidate(Fn);
+  if (collectStaticReturn) m_ValidatedStaticReturnStorage.erase(Fn);
   const bool collectCallableReturn = m_EnableStage1ExplicitCallerCede &&
       Fn->ResolvedReturnType && (Fn->ResolvedReturnType->isFunction() || Fn->ResolvedReturnType->isDynFn());
   if (collectCallableReturn) m_ValidatedCallableReturnEnvironments.erase(Fn);
@@ -5735,7 +5744,13 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       frame.Facts.Complete = true;
       m_CallableReturnFrames.push_back(std::move(frame));
     }
+    if (collectStaticReturn)
+      m_StaticReturnStorageFrames.push_back({Fn, m_CallableReturnClosureDepth});
     checkStmt(Fn->Body.get());
+    if (collectStaticReturn) {
+      staticReturnStorage = std::move(m_StaticReturnStorageFrames.back());
+      m_StaticReturnStorageFrames.pop_back();
+    }
     if (collectCallableReturn) {
       callableReturnEnvironment = std::move(m_CallableReturnFrames.back());
       m_CallableReturnFrames.pop_back();
@@ -5901,8 +5916,21 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     if (valid && !HasError)
       m_ValidatedCallableReturnEnvironments[Fn] = std::move(callableReturnEnvironment->Facts);
   }
-  if (collectCallableReturn)
-    m_CallableFactoryStates[Fn] = m_ValidatedCallableReturnEnvironments.count(Fn)
+  if (staticReturnStorage && staticReturnStorage->SawReturn &&
+      staticReturnStorage->Complete && !staticReturnStorage->Origins.empty() &&
+      Fn->Body && allPathsReturn(Fn->Body.get())) {
+    const auto &records = DiagnosticEngine::records();
+    if (!HasError && std::none_of(records.begin() + functionDiagnosticStart, records.end(),
+                                 [](const auto &record) { return record.Level == DiagLevel::Error; })) {
+      auto &origins = staticReturnStorage->Origins;
+      std::sort(origins.begin(), origins.end());
+      origins.erase(std::unique(origins.begin(), origins.end()), origins.end());
+      m_ValidatedStaticReturnStorage[Fn] = std::move(staticReturnStorage->Origins);
+    }
+  }
+  if (collectCallableReturn || collectStaticReturn)
+    m_CallableFactoryStates[Fn] = (m_ValidatedCallableReturnEnvironments.count(Fn) ||
+                                    m_ValidatedStaticReturnStorage.count(Fn))
         ? CallableFactoryState::Valid : CallableFactoryState::Invalid;
   if (Fn->Body) {
     auto &rawSummary = m_RawAddressReturns[Fn];
@@ -7068,6 +7096,9 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     if (validation != GenericSpecializationValidationState::Valid &&
         !m_CallableReturnFrames.empty())
       m_CallableReturnFrames.back().Facts.Complete = false;
+    if (validation != GenericSpecializationValidationState::Valid &&
+        !m_StaticReturnStorageFrames.empty())
+      m_StaticReturnStorageFrames.back().Complete = false;
     if (!entry ||
         validation == GenericSpecializationValidationState::Unchecked) {
       if (entry) {
@@ -7757,6 +7788,9 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
   if (validation != GenericSpecializationValidationState::Valid &&
       !m_CallableReturnFrames.empty())
     m_CallableReturnFrames.back().Facts.Complete = false;
+  if (validation != GenericSpecializationValidationState::Valid &&
+      !m_StaticReturnStorageFrames.empty())
+    m_StaticReturnStorageFrames.back().Complete = false;
   return {Instance, validation, cacheEntry->BodyQualification};
 }
 

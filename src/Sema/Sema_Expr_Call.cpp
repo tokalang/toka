@@ -3522,7 +3522,25 @@ bool Sema::collectActualReturnReferents(
       for (const auto &field : formal->MemberDependencies)
         for (const auto &dependency : field.second)
           dependencies.emplace_back(field.first, dependency);
-      if (dependencies.empty()) return false;
+      if (dependencies.empty()) {
+        // Only a completed, all-returns proof can replace the missing dynamic
+        // mapping. Empty declarations and return types are not static evidence.
+        auto found = m_ValidatedStaticReturnStorage.find(formal);
+        auto actual = method ? method->ResolvedType : call->ResolvedType;
+        if (found == m_ValidatedStaticReturnStorage.end() || found->second.empty() ||
+            !actual || !formal->ResolvedReturnType ||
+            !actual->equals(*formal->ResolvedReturnType) ||
+            !isStaticReturnStorageCandidate(formal)) return false;
+        if (formal->TemplateOrigin) {
+          auto cached = InstantiationCache.find(formal->Name);
+          if (cached == InstantiationCache.end() || !cached->second ||
+              cached->second->Instance != formal ||
+              cached->second->Validation != GenericSpecializationValidationState::Valid)
+            return false;
+        }
+        preparedStatic.insert(preparedStatic.end(), found->second.begin(), found->second.end());
+        return true;
+      }
       for (const auto &[resultField, dependency] : dependencies) {
         auto formalPath = makeAccessPath(dependency);
         Expr *argument = nullptr;
@@ -3766,6 +3784,43 @@ bool Sema::collectActualBindingReferents(
                                      nullptr, nullptr, fields);
 }
 
+bool Sema::isStaticReturnStorageCandidate(FunctionDecl *function) {
+  if (!function || !function->Body || function->IsClosureInvoke ||
+      function->Effect != EffectKind::None || !function->LifeDependencies.empty() ||
+      !function->MemberDependencies.empty()) return false;
+  auto type = function->ResolvedReturnType;
+  return type && !type->isReference() && !type->isRawPointer() &&
+         queryExplicitCedeStage0OwnershipReadOnly(type) == ValueOwnership::BorrowedView;
+}
+
+void Sema::prepareStaticReturnStorage(Expr *source) {
+  if (!m_EnableStage1ExplicitCallerCede || m_IsPrecomputingCaptures) return;
+  source = stage0SurfaceSource(source);
+  if (auto *cast = dynamic_cast<CastExpr *>(source)) {
+    prepareStaticReturnStorage(cast->Expression.get());
+    return;
+  }
+  FunctionDecl *function = nullptr;
+  if (auto *call = dynamic_cast<CallExpr *>(source)) {
+    for (const auto &argument : call->Args) prepareStaticReturnStorage(argument.get());
+    function = call->ResolvedFn;
+  } else if (auto *method = dynamic_cast<MethodCallExpr *>(source)) {
+    prepareStaticReturnStorage(method->Object.get());
+    for (const auto &argument : method->Args) prepareStaticReturnStorage(argument.get());
+    function = method->ResolvedFn;
+  }
+  // A forward declaration may not have its resolved result cached yet. The
+  // normally checked call type selects preparation only; the definition's own
+  // resolved type and all-return proof still decide whether facts are published.
+  auto actual = source ? source->ResolvedType : nullptr;
+  if (function && function->Body && !function->IsClosureInvoke &&
+      function->Effect == EffectKind::None && function->LifeDependencies.empty() &&
+      function->MemberDependencies.empty() && actual && !actual->isReference() &&
+      !actual->isRawPointer() &&
+      queryExplicitCedeStage0OwnershipReadOnly(actual) == ValueOwnership::BorrowedView)
+    prepareCallableFactory(function);
+}
+
 bool Sema::prepareCallableReturnEnvironment(Expr *source) {
   source = stage0SurfaceSource(source);
   while (auto *cast = dynamic_cast<CastExpr *>(source)) {
@@ -3998,10 +4053,14 @@ bool Sema::Stage1BindingTransfer::prepare(
     Expr *destination, bool validated, std::shared_ptr<Type> actual) {
   if (!Snapshot) return true;
   const auto &diagnostics = DiagnosticEngine::records();
-  if (validated && std::any_of(
+  auto hasNewError = [&] { return std::any_of(
           diagnostics.begin() + std::min(Snapshot->DiagnosticStart, diagnostics.size()),
-          diagnostics.end(), [](const auto &record) { return record.Level == DiagLevel::Error; }))
-    return false;
+          diagnostics.end(), [](const auto &record) { return record.Level == DiagLevel::Error; }); };
+  if (validated && hasNewError()) return false;
+  if (validated) {
+    Owner.prepareStaticReturnStorage(source);
+    if (hasNewError()) return false;
+  }
   bool refreshCallable = false;
   bool refreshRawConstruction = false;
   if (validated) {
@@ -8046,6 +8105,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           m_GenericValidationFrames.back().HasInvalidDependency = true;
         if (!m_CallableReturnFrames.empty())
           m_CallableReturnFrames.back().Facts.Complete = false;
+        if (!m_StaticReturnStorageFrames.empty())
+          m_StaticReturnStorageFrames.back().Complete = false;
         if (SemanticEvidence::isCallTransferShadowEnabled() &&
             stage0CallEntrySnapshot) {
           m_Stage0InvalidGenericSpecializationCalls.insert(Call);

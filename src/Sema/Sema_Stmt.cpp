@@ -671,6 +671,10 @@ void Sema::checkStmt(Stmt *S) {
       auto authorityContext =
           beginAuthorityFullExpression(Ret->ReturnValue.get());
       auto RetTypeObj = checkExpr(Ret->ReturnValue.get(), returnExpectation);
+      if (!m_StaticReturnStorageFrames.empty() &&
+          m_StaticReturnStorageFrames.back().Function == CurrentFunction &&
+          m_StaticReturnStorageFrames.back().ClosureDepth == m_CallableReturnClosureDepth)
+        prepareStaticReturnStorage(Ret->ReturnValue.get());
       returnExpressionWasWholeOutcome =
           functionOutcome && RetTypeObj && RetTypeObj->isMissOutcome();
       restoreAuthorityFullExpression(std::move(authorityContext));
@@ -1555,6 +1559,34 @@ void Sema::checkStmt(Stmt *S) {
               toString(returnSourcePlan->Rejection));
         break;
       }
+    }
+    if (!m_StaticReturnStorageFrames.empty() &&
+        m_StaticReturnStorageFrames.back().Function == CurrentFunction &&
+        m_StaticReturnStorageFrames.back().ClosureDepth == m_CallableReturnClosureDepth) {
+      auto &frame = m_StaticReturnStorageFrames.back();
+      frame.SawReturn = true;
+      const bool staticPlan = !hasNewReturnError() && enforceReturnSourcePlan &&
+          returnSourcePlan->admitted() &&
+          returnSourcePlan->ValueProduction == TransferValueProduction::CopyIdentity &&
+          returnSourcePlan->Drop == TransferDropDisposition::NoLiability &&
+          !returnSourcePlan->Prepared.CarriesDropLiability &&
+          returnSourcePlan->Prepared.DropLiabilityComplete &&
+          returnSourcePlan->Prepared.DependencyFactsComplete &&
+          returnSourcePlan->Prepared.Dependency == TransferDependencyKind::None &&
+          returnSourcePlan->Prepared.DependencyRoots.empty() &&
+          !returnSourcePlan->Prepared.ReferentPlace &&
+          returnSourcePlan->Prepared.StructuredReferentPlaces.empty() &&
+          std::all_of(returnSourcePlan->Prepared.ResultFieldReferents.begin(),
+                      returnSourcePlan->Prepared.ResultFieldReferents.end(),
+                      [](const auto &field) { return field.second.empty(); }) &&
+          !returnSourcePlan->Prepared.StaticStorageOrigins.empty();
+      std::vector<AccessPath> paths, storage;
+      std::vector<SourceLocation> origins;
+      const bool complete = staticPlan && collectActualReturnReferents(
+          Ret->ReturnValue.get(), paths, &origins, &storage) &&
+          paths.empty() && storage.empty() && !origins.empty();
+      frame.Complete &= complete;
+      if (complete) frame.Origins.insert(frame.Origins.end(), origins.begin(), origins.end());
     }
     if (!m_CallableReturnFrames.empty() &&
         m_CallableReturnFrames.back().Function == CurrentFunction &&

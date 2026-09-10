@@ -1099,6 +1099,17 @@ private:
   unsigned m_CallableReturnClosureDepth = 0;
   std::vector<CallableReturnEnvironmentFrame> m_CallableReturnFrames;
   std::map<FunctionDecl *, CallableEnvironmentFacts> m_ValidatedCallableReturnEnvironments;
+  struct StaticReturnStorageFrame {
+    FunctionDecl *Function = nullptr;
+    unsigned ClosureDepth = 0;
+    bool Complete = true;
+    bool SawReturn = false;
+    std::vector<SourceLocation> Origins;
+  };
+  std::vector<StaticReturnStorageFrame> m_StaticReturnStorageFrames;
+  std::map<FunctionDecl *, std::vector<SourceLocation>> m_ValidatedStaticReturnStorage;
+  bool isStaticReturnStorageCandidate(FunctionDecl *function);
+  void prepareStaticReturnStorage(Expr *source);
   enum class CallableFactoryState { Unprepared, Preparing, Valid, Invalid };
   std::map<FunctionDecl *, CallableFactoryState> m_CallableFactoryStates;
   std::map<FunctionDecl *, SemanticEvidence::DefinitionJournal> m_CallableFactoryBodyJournals;

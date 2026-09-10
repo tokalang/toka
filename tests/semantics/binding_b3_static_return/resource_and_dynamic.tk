@@ -1,0 +1,22 @@
+auto drops# = 0:i32
+shape Token(value: i32)
+impl Token@Encap {
+    fn drop(self#) { drops += 1 }
+}
+fn dispose(cede token: Token) -> str {
+    auto owned = cede token
+    return "static"
+}
+fn bounded(input: str, use_static: bool) -> str <- input {
+    if use_static { return "literal branch" }
+    return input
+}
+fn main() -> i32 {
+    auto token = Token(value = 7)
+    auto static_result = dispose(cede token)
+    if !static_result.equals("static") || drops != 1 { return 1 }
+    auto owner = string::from("dynamic")
+    auto dynamic_result = bounded(owner.as_str(), false)
+    if !dynamic_result.equals("dynamic") || drops != 1 { return 2 }
+    return 0
+}
