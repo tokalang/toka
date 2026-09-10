@@ -1,0 +1,31 @@
+import std/hashmap::{HashMap}
+fn main() -> i32 {
+    auto map# = HashMap<i32, i32>::new()
+    if map#.remove(7).is_some() { return 1 }
+    map#.clear()
+    auto i# = 0:i32
+    loop i < 2000 {
+        map#.insert(i, i * 3)
+        i += 1
+    }
+    if map.len() != 2000 { return 2 }
+    auto j# = 0:i32
+    loop j < 2000 {
+        if map.get(j).unwrap() != j * 3 { return 3 }
+        j += 1
+    }
+    if map#.remove(7).unwrap() != 21 || map.len() != 1999 { return 4 }
+    if map#.remove(7).is_some() || map.len() != 1999 { return 5 }
+    map#.resize(8192)
+    if map.get(1999).unwrap() != 5997 || map.get(7).is_some() { return 6 }
+    map#.clear()
+    if !map.is_empty() || map.get(1999).is_some() { return 7 }
+    map#.clear()
+    map#.insert(1, 11)
+    map#.insert(8193, 22)
+    map#.remove(1)
+    if map.get(8193).unwrap() != 22 { return 8 }
+    map#.insert(16385, 33)
+    if map.get(16385).unwrap() != 33 || map.len() != 2 { return 9 }
+    return 0
+}

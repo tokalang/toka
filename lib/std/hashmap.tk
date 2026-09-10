@@ -3,7 +3,21 @@ import core/traits::{@Hash, @PartialEq, @Encap, @Iterable, @Iterator, @BorrowIte
 import core/option::{Option}
 import std/vec::{Vec}
 import core/primitives
-import sys/libc::{libc_printf, libc_fflush}
+import sys/libc::{libc_printf, libc_fflush, libc_abort}
+
+// Private unsafe container bridge. The caller owns one initialized element
+// in a slot selected by occupied metadata, including the pending value after
+// its key has been taken. Retirement does not prove initialization or release
+// the other element. Both takes must complete before user operations resume.
+fn hashmap_take_raw_element<'T>(nul *storage: ['T], index: usize, *marker#: u8) -> 'T {
+    if *storage is null {
+        unsafe { libc_abort() }
+        unreachable
+    } else {
+        marker = 2
+        return unsafe raw_take storage[index]
+    }
+}
 
 
 // HashMap using SOA (Structure of Arrays)
@@ -22,16 +36,18 @@ impl<'K, 'V> HashMap<'K, 'V>@Encap {
             // 1. Drop elements
             auto i# = 0:usize
             loop i < self.cap {
-                 auto *m = self.meta.unsafe_get(i)
+                 auto *m# = self.meta.unsafe_get(i)
                  if m == 1 {
-                     // Drop key
+                     // Take both before either local can run user cleanup.
+                     auto 'k = hashmap_take_raw_element<'K>(self.keys.*buf, i, *m)
+                     auto 'v = hashmap_take_raw_element<'V>(self.vals.*buf, i, *m)
                      {
-                         auto 'k = cede self.keys.buf[i]:K// Copy/Move out
+                         auto 'retired_key = cede 'k
                      }
                      
                      // Drop val
                      {
-                         auto 'v = cede self.vals.buf[i]:V
+                         auto 'retired_value = cede 'v
                      }
                  }
                  i += 1
@@ -196,8 +212,8 @@ impl<'K, 'V> HashMap<'K, 'V> {
                 auto *m_ptr# = self.meta.unsafe_get(i) as *u8
                 if m_ptr == 1 {
                      moved_count += 1
-                     auto 'key = cede self.keys.buf[i]:K
-                     auto 'val = cede self.vals.buf[i]:V
+                     auto 'key = hashmap_take_raw_element<'K>(self.keys.*buf, i, *m_ptr)
+                     auto 'val = hashmap_take_raw_element<'V>(self.vals.*buf, i, *m_ptr)
                      
                      auto idx# = ('key.hash() as usize) & (new_cap - 1)
                      auto start_idx = idx
@@ -205,9 +221,9 @@ impl<'K, 'V> HashMap<'K, 'V> {
                      loop true {
                          auto *nm_ptr# = new_m.unsafe_get(idx) as *u8
                          if nm_ptr == 0 {
-                             nm_ptr = 1
                              new_k.buf[idx] = cede 'key
                              new_v.buf[idx] = cede 'val
+                             nm_ptr = 1
                              break
                          }
                          idx = (idx + 1) & (new_cap - 1)
@@ -324,11 +340,9 @@ impl<'K, 'V> HashMap<'K, 'V> {
                  if m_ptr == 1 {
                      auto *'k_ptr# = self.keys.unsafe_get(idx) as *K
                      if 'k_ptr.eq('key) {
-                         m_ptr = 2 // Mark as tombstone
+                         auto 'old_k = hashmap_take_raw_element<'K>(self.keys.*buf, idx, *m_ptr)
+                         auto 'old_v = hashmap_take_raw_element<'V>(self.vals.*buf, idx, *m_ptr)
                          self.len -= 1
-                         
-                         auto 'old_k = cede self.keys.buf[idx]:K
-                         auto 'old_v = cede self.vals.buf[idx]:V
                          auto outcome = Option<'V>::Some(cede 'old_v)
                          return cede outcome
                      }
@@ -347,9 +361,9 @@ impl<'K, 'V> HashMap<'K, 'V> {
             loop i < self.cap {
                 auto *m_ptr# = self.meta.unsafe_get(i) as *u8
                 if m_ptr == 1 {
+                    auto '_old_k = hashmap_take_raw_element<'K>(self.keys.*buf, i, *m_ptr)
+                    auto '_old_v = hashmap_take_raw_element<'V>(self.vals.*buf, i, *m_ptr)
                     m_ptr = 0
-                    auto '_old_k = cede self.keys.buf[i]:K
-                    auto '_old_v = cede self.vals.buf[i]:V
                 } else {
                     if m_ptr == 2 {
                         m_ptr = 0

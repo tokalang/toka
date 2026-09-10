@@ -2,8 +2,10 @@
 
 Base: `ba7d22292ca67f073959ef8ab528a74f92f888e1`.
 Branch: `impl/binding-b4-enum-copy`.
-Status: local implementation/validation; **not Accepted** and not complete JSON
-or binding qualification.
+Status: **Accepted** at `93216ae610f46981afcf6ec75dea40c30e5aecfa`, per user
+incremental review. Acceptance covers enum Copy, consuming callable consistency
+and the Path migration only; it is not complete JSON or binding qualification.
+Independent targeted CTest: 7/7, 127.51 seconds.
 
 ## Corrected diagnosis
 

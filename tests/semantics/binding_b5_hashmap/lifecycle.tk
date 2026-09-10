@@ -1,0 +1,50 @@
+import std/hashmap::{HashMap}
+auto drops# = 0:i32
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto map# = HashMap<i32, Token>::new()
+        auto missing = map#.remove(7)
+        if missing.is_some() || drops != 0 { return 1 }
+        map#.clear()
+        auto i# = 0:i32
+        loop i < 200 {
+            map#.insert(i, Token(id = i))
+            i += 1
+        }
+        if map.len() != 200 || drops != 0 { return 2 }
+        {
+            auto removed = map#.remove(7)
+            if !removed.is_some() || map.len() != 199 || drops != 0 { return 3 }
+            auto value = removed.unwrap()
+            if value.id != 7 { return 4 }
+        }
+        if drops != 1 { return 5 }
+        auto again = map#.remove(7)
+        if again.is_some() || drops != 1 { return 6 }
+        map#.clear()
+        if drops != 200 || map.len() != 0 { return 7 }
+        map#.clear()
+        if drops != 200 { return 8 }
+        map#.insert(7, Token(id = 300))
+        map#.insert(263, Token(id = 301))
+        if map.len() != 2 { return 9 }
+    }
+    if drops != 202 { return 10 }
+    {
+        auto map# = HashMap<i32, i32>::new()
+        map#.insert(1, 10)
+        map#.insert(129, 20)
+        map#.remove(1)
+        if map.get(129).unwrap() != 20 { return 11 }
+        map#.insert(257, 30)
+        if map.get(257).unwrap() != 30 || map.len() != 2 { return 12 }
+        map#.resize(512)
+        if map.get(129).unwrap() != 20 || map.get(257).unwrap() != 30 { return 13 }
+    }
+    return 0
+}
