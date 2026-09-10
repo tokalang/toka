@@ -11,11 +11,11 @@ shape ArenaChunk (
     data: Addr,
     capacity: usize,
     offset#: usize,
-    nul *#next: ArenaChunk = null as nul *ArenaChunk
+    nul *#next#: ArenaChunk = null as nul *ArenaChunk
 )
 
 pub shape Arena (
-    nul *#chunks: ArenaChunk = null as nul *ArenaChunk,
+    nul *#chunks#: ArenaChunk = null as nul *ArenaChunk,
     default_chunk_size: usize = 65536:usize
 )
 
@@ -75,13 +75,17 @@ impl Arena {
                 return ADDR0
             }
 
-            // Allocate the ArenaChunk structure itself
-            auto *new_chunk# = (unsafe alloc [1] ArenaChunk) as *ArenaChunk
-            auto new_chunk_addr = *new_chunk as Addr
-            if new_chunk_addr == ADDR0 {
+            // Keep this allocation fallible so the buffer is released if
+            // the descriptor cannot be allocated; plain alloc would panic.
+            auto new_chunk_addr = libc_malloc(sizeof(ArenaChunk)) as Addr
+            // Preserve nullable storage until the same pointer is checked.
+            // The unsafe constructor assumes writability, not initialization.
+            auto nul *candidate# = unsafe (new_chunk_addr as nul *ArenaChunk#)
+            if *candidate is null {
                 libc_free(raw_data as *void)
                 return ADDR0
             }
+            auto *new_chunk# = candidate.unwrap()
 
             // Construct the ArenaChunk
             new_chunk.data = raw_data

@@ -1,0 +1,66 @@
+import std/arena::{Arena}
+import core/types::{Addr, ADDR0, usize}
+
+extern fn b2_arena_begin(fail_at: usize) -> void
+extern fn b2_arena_check(attempts: usize, allocated: usize, freed: usize, live: usize) -> i32
+
+fn main() -> i32 {
+    b2_arena_begin(0:usize)
+    {
+        auto arena# = Arena::new_with_capacity(16:usize)
+        if arena#.alloc_bytes(0:usize) != ADDR0 { return 1 }
+        if b2_arena_check(0:usize, 0:usize, 0:usize, 0:usize) != 0 { return 2 }
+        auto first = arena#.alloc_bytes(3:usize)
+        auto second = arena#.alloc_bytes(5:usize)
+        auto third = arena#.alloc_bytes(8:usize)
+        if first == ADDR0 || second - first != 8:Addr || third == ADDR0 { return 3 }
+        if b2_arena_check(4:usize, 4:usize, 0:usize, 4:usize) != 0 { return 4 }
+        arena#.reset()
+        if arena#.alloc_bytes(8:usize) != third { return 5 }
+        if b2_arena_check(4:usize, 4:usize, 0:usize, 4:usize) != 0 { return 6 }
+        arena#.release()
+        arena#.release()
+        if b2_arena_check(4:usize, 4:usize, 4:usize, 0:usize) != 0 { return 7 }
+    }
+    if b2_arena_check(4:usize, 4:usize, 4:usize, 0:usize) != 0 { return 8 }
+
+    // Automatic drop, without explicit release.
+    b2_arena_begin(0:usize)
+    {
+        auto arena# = Arena::new_with_capacity(8:usize)
+        if arena#.alloc_bytes(8:usize) == ADDR0 { return 9 }
+    }
+    if b2_arena_check(2:usize, 2:usize, 2:usize, 0:usize) != 0 { return 10 }
+
+    // Failed buffer allocation publishes no chunk.
+    b2_arena_begin(1:usize)
+    {
+        auto arena# = Arena::new()
+        if arena#.alloc_bytes(8:usize) != ADDR0 { return 11 }
+    }
+    if b2_arena_check(1:usize, 0:usize, 0:usize, 0:usize) != 0 { return 12 }
+
+    // Failed descriptor allocation releases the buffer; retry remains usable.
+    b2_arena_begin(2:usize)
+    {
+        auto arena# = Arena::new_with_capacity(16:usize)
+        if arena#.alloc_bytes(8:usize) != ADDR0 { return 13 }
+        if b2_arena_check(2:usize, 1:usize, 1:usize, 0:usize) != 0 { return 14 }
+        if arena#.alloc_bytes(8:usize) == ADDR0 { return 15 }
+    }
+    if b2_arena_check(4:usize, 3:usize, 3:usize, 0:usize) != 0 { return 16 }
+
+    // Failure while extending a nonempty arena preserves its existing chunk.
+    b2_arena_begin(4:usize)
+    {
+        auto arena# = Arena::new_with_capacity(8:usize)
+        auto first = arena#.alloc_bytes(8:usize)
+        if first == ADDR0 { return 17 }
+        if arena#.alloc_bytes(8:usize) != ADDR0 { return 18 }
+        if b2_arena_check(4:usize, 3:usize, 1:usize, 2:usize) != 0 { return 19 }
+        arena#.reset()
+        if arena#.alloc_bytes(8:usize) != first { return 20 }
+    }
+    if b2_arena_check(4:usize, 3:usize, 3:usize, 0:usize) != 0 { return 21 }
+    return 0
+}

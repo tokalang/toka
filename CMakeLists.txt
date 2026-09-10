@@ -311,6 +311,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_binding_b1_propagation.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_binding_b2_arena
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_binding_b2_arena.py
+                --build-dir ${CMAKE_BINARY_DIR})
         if(UNIX)
             add_test(NAME toka_thread_handoff_adapter
                 COMMAND ${Python3_EXECUTABLE}
