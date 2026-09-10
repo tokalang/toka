@@ -1565,6 +1565,13 @@ void Sema::checkStmt(Stmt *S) {
       auto &frame = m_CallableReturnFrames.back();
       frame.SawReturn = true;
       auto environment = collectStage1CallableEnvironment(Ret->ReturnValue.get());
+      if (!environment.NativeOwners.empty()) {
+        // Native instance witnesses need caller-edge rebasing; do not lose
+        // them and accidentally advertise an independent erased result.
+        m_CallableReturnFrames.back().Facts.NativeOwners.insert(
+            m_CallableReturnFrames.back().Facts.NativeOwners.end(),
+            environment.NativeOwners.begin(), environment.NativeOwners.end());
+      }
       frame.Facts.Complete &= environment.Complete && !hasNewReturnError() &&
           (!enforceReturnSourcePlan || returnSourcePlan->admitted());
       auto appendParameterOrigins = [&](const auto &origins, auto &destination) {
@@ -2731,6 +2738,7 @@ void Sema::checkStmt(Stmt *S) {
       recordRawAddressBinding(path, Var->Init.get());
       if (!HasError) recordNativeSyncBinding(path, Var->Init.get(), true);
       if (!HasError) recordNativeSyncOwnerRecipe(path, Var->Init.get(), true);
+      if (!HasError) recordNativeSyncGuardBinding(path, Var->Init.get());
     }
     if (!Info.ConditionalTodoIds.empty()) {
       SemanticEvidence::recordConditionalFact(

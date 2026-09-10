@@ -4828,6 +4828,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
         for (const auto &method : Impl->Methods) {
           if (method->Name == "drop") {
             owner->MangledDestructorName = method->CodegenName;
+            m_NativeSyncDropDeclarations[owner] = method.get();
             break;
           }
         }
@@ -5003,6 +5004,7 @@ void Sema::declareImpl(ImplDecl *Impl) {
         for (const auto &method : Impl->Methods) {
           if (method->Name == "drop") {
             owner->MangledDestructorName = method->CodegenName;
+            m_NativeSyncDropDeclarations[owner] = method.get();
             break;
           }
         }

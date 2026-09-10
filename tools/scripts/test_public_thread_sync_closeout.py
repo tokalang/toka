@@ -29,7 +29,8 @@ def main():
                                   cwd=ROOT, env=env, capture_output=True, text=True, timeout=45)
 
         for name in ("sync_unique_guard.tk", "sync_managed_storage_pending.tk",
-                     "sync_shared_guard.tk", "sync_thread_pending.tk"):
+                     "sync_shared_guard.tk", "sync_thread_pending.tk", "captured_shared_receiver.tk",
+                     "sync_thread_resource_replace.tk"):
             normal = compile_source(name, "--check-only")
             shadow = compile_source(name, "--check-only", "--non-call-transfer-shadow=json")
             if normal.returncode != 0 or shadow.returncode != 0 or normal.stderr != shadow.stderr:
@@ -67,7 +68,7 @@ def main():
                     print("PASS reject: " + name + " " + mode, flush=True)
     for failure in failures:
         print("FAIL " + failure, flush=True)
-    print(f"sync/thread closeout: {passed}/12 checks; {len(failures)} failed; no skips")
+    print(f"sync/thread closeout: {passed}/{passed + len(failures)} checks; {len(failures)} failed; no skips")
     raise SystemExit(1 if failures else 0)
 
 

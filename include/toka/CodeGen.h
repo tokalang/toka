@@ -143,6 +143,7 @@ public:
   void setPublicThreadFault(const std::string &fault) { m_PublicThreadFault = fault; }
   void setNativeSyncFactoryFault(const std::string &fault) { m_NativeSyncFactoryFault = fault; }
   void setNativeSyncAllocationFault(const std::string &fault) { m_NativeSyncAllocationFault = fault; }
+  void setNativeSyncWitnessFault(const std::string &fault) { m_NativeSyncWitnessFault = fault; }
 #endif
   bool hasErrors() const { return m_ErrorCount > 0; }
   bool validateUnsafeRawConstructions(const std::vector<const CastExpr *> &sites);
@@ -165,6 +166,7 @@ private:
   PhysEntity genThreadHandoffProbe(const CallExpr *call);
   PhysEntity genPublicThread(const CallExpr *call);
   bool validateNativeSyncFactory(const CallExpr *call);
+  bool validateNativeSyncOwner(const NativeSyncOwnerWitnessPtr &witness, const ASTNode *site);
   bool guardNativeSyncAllocation(const NewExpr *site, llvm::Value *allocated,
                                  llvm::Value *emptyOwner = nullptr);
   std::string m_ThreadHandoffSourceFault;
@@ -173,6 +175,7 @@ private:
   std::string m_PublicThreadFault;
   std::string m_NativeSyncFactoryFault;
   std::string m_NativeSyncAllocationFault;
+  std::string m_NativeSyncWitnessFault;
   std::string m_RawTakeFault;
   bool m_RawTakeFaultConsumed = false;
   std::string m_UnsafeRawConstructionFault;

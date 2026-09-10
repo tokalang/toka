@@ -5,7 +5,7 @@
 
 namespace toka {
 class Sema; class CodeGen; class Expr; class CallExpr; class FunctionDecl;
-class ShapeDecl; class Type; class NewExpr; class VariableDecl;
+class ShapeDecl; class Type; class NewExpr; class VariableDecl; class BinaryExpr;
 enum class NativeSyncFactoryKind : uint8_t { None, Mutex, RwMutex, CondVar };
 
 // This is the initialized factory edge, not a nominal-type exemption and not
@@ -49,6 +49,41 @@ class NativeSyncOwnerCandidate {
   std::shared_ptr<const NativeSyncOwnerCandidate> Parent;
 };
 using NativeSyncOwnerCandidatePtr = std::shared_ptr<const NativeSyncOwnerCandidate>;
+
+class NativeSyncOwnerWitness {
+  friend class Sema;
+  friend class CodeGen;
+  NativeSyncOwnerWitness() = default;
+  NativeSyncOwnerCandidatePtr Origin;
+  std::shared_ptr<Type> ValueType, OwnerType, ElementType;
+  const CallExpr *FactorySite = nullptr;
+  const NewExpr *AllocationSite = nullptr;
+  const FunctionDecl *OwnerDrop = nullptr;
+  const FunctionDecl *Acquire = nullptr;
+  const FunctionDecl *GuardDrop = nullptr;
+  const FunctionDecl *GuardAccess = nullptr;
+};
+using NativeSyncOwnerWitnessPtr = std::shared_ptr<const NativeSyncOwnerWitness>;
+
+class NativeSyncGuardOrigin {
+  friend class Sema;
+  friend class CodeGen;
+  NativeSyncGuardOrigin() = default;
+  NativeSyncOwnerWitnessPtr Owner;
+  const Expr *AcquireSite = nullptr;
+  bool Outcome = true;
+};
+using NativeSyncGuardOriginPtr = std::shared_ptr<const NativeSyncGuardOrigin>;
+
+class NativeSyncReplacementPlan {
+  friend class Sema;
+  friend class CodeGen;
+  NativeSyncReplacementPlan() = default;
+  const BinaryExpr *Site = nullptr;
+  const Expr *Destination = nullptr, *Source = nullptr;
+  NativeSyncGuardOriginPtr Guard;
+  std::shared_ptr<Type> ElementType;
+};
 
 // Cleanup for allocation of the managed wrapper around an already prepared
 // native owner. This is not a general allocation/unwind protocol.

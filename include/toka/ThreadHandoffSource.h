@@ -2,6 +2,8 @@
 #include <memory>
 #include <string>
 #include <cstdint>
+#include <vector>
+#include "toka/NativeSyncStorage.h"
 namespace toka {
 class Sema; class CodeGen; class Type; class CallExpr; class Expr; class FunctionDecl;
 enum class ThreadProbeKind : uint8_t { None, Run, Discard, RunAndDrop };
@@ -25,6 +27,8 @@ class PublicThreadPlan {
   bool Complete = false;
   int64_t OkTag = -1, ErrTag = -1;
   std::string ResultIdentity;
+  std::vector<NativeSyncOwnerWitnessPtr> NativeOwners;
+  size_t NativeOwnerCount = 0;
 };
 // Only the real Sema producer can construct/seal this carrier. Tests exercise
 // source programs and fault injection, not writable qualification booleans.

@@ -41,9 +41,10 @@ struct CallableEnvironmentFacts {
   // A checked parameter contract permits local value flow, not a claim about
   // the hidden capture layout or an independently escaping environment.
   std::vector<AccessPath> LocalBounds;
+  std::vector<NativeSyncOwnerWitnessPtr> NativeOwners;
   bool operator==(const CallableEnvironmentFacts &other) const {
     return Complete == other.Complete && Referents == other.Referents &&
-           LocalBounds == other.LocalBounds;
+           LocalBounds == other.LocalBounds && NativeOwners == other.NativeOwners;
   }
 };
 
@@ -786,6 +787,7 @@ private:
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
   struct AnalysisState {
+    std::map<uint64_t, NativeSyncGuardOriginPtr> NativeSyncGuards, NativeSyncSlots;
     std::map<uint64_t, NativeSyncOwnerCandidatePtr> NativeSyncOwnerRecipes;
     std::set<NativeSyncOwnerCandidatePtr> InvalidNativeSyncOwnerRecipes;
     std::map<uint64_t, NativeSyncFactoryPtr> NativeSyncBindings;
@@ -1015,6 +1017,17 @@ private:
   std::map<uint64_t, NativeSyncOwnerCandidatePtr> m_NativeSyncOwnerRecipes;
   std::set<NativeSyncOwnerCandidatePtr> m_InvalidNativeSyncOwnerRecipes;
   std::map<const FunctionDecl *, std::vector<NativeSyncOwnerCandidatePtr>> m_NativeSyncOwnerReturns;
+  std::map<const ShapeDecl *, const FunctionDecl *> m_NativeSyncDropDeclarations;
+  std::map<NativeSyncOwnerCandidatePtr, NativeSyncOwnerWitnessPtr> m_NativeSyncOwnerWitnesses;
+  std::map<uint64_t, NativeSyncGuardOriginPtr> m_NativeSyncGuards, m_NativeSyncSlots;
+  void collectNativeSyncGuardFlow(Expr *expression);
+  void recordNativeSyncGuardBinding(const AccessPath &place, Expr *source);
+  void prepareNativeSyncReplacement(BinaryExpr *assignment);
+  NativeSyncOwnerWitnessPtr qualifyNativeSyncOwner(const NativeSyncOwnerCandidatePtr &recipe,
+                                                  const std::shared_ptr<Type> &actualType);
+  bool nativeSyncOwnerLive(const NativeSyncOwnerWitnessPtr &witness) const;
+  bool nativeSyncDefinitionReady(const FunctionDecl *function) const;
+  void checkNativeSyncOwnerExposure(Expr *expression);
   NativeSyncOwnerCandidatePtr collectNativeSyncOwnerRecipe(Expr *source);
   void recordNativeSyncOwnerRecipe(const AccessPath &place, Expr *source, bool initialization);
   void recordNativeSyncOwnerReturn(ReturnStmt *statement);

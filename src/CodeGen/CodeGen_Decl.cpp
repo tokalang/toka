@@ -2642,6 +2642,18 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
 }
 
 PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
+  if (expr->NativeSyncAccessRequired || expr->NativeSyncAccess) {
+    auto access = expr->NativeSyncAccess;
+#ifdef TOKA_BUILD_TESTING
+    if (m_NativeSyncWitnessFault == "access-site") access.reset();
+#endif
+    if (!validateNativeSyncOwner(access, expr)) return {};
+    if (expr->ResolvedFn != expr->NativeSyncAccess->Acquire ||
+        expr->Object->NativeSyncOwnerRecipe != expr->NativeSyncAccess->Origin) {
+      error(expr, DiagID::ERR_CODEGEN, "native sync access: OwnerOrOperationMismatch");
+      return {};
+    }
+  }
   const std::string authorityRoute =
       expr->Stage0Authority && !expr->Stage0Authority->Route.empty()
           ? expr->Stage0Authority->Route
@@ -2717,6 +2729,17 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
       receiverSymbol != m_Symbols.end() &&
       receiverSymbol->second.isMorphicValueTransport &&
       receiverSymbol->second.mode != AddressingMode::Direct;
+  std::shared_ptr<Type> capturedSharedReceiver;
+  if (receiverVar && receiverSymbol == m_Symbols.end() && m_CurrentFunction &&
+      m_CurrentFunction->IsClosureInvoke && !m_CurrentFunction->Args.empty()) {
+    auto environment = std::dynamic_pointer_cast<ShapeType>(m_CurrentFunction->Args[0].ResolvedType);
+    if (environment && environment->Decl && environment->Decl->IsCompilerSynthesized) {
+      const auto name = Type::stripMorphology(receiverVar->codegenName());
+      for (const auto &field : environment->Decl->Members)
+        if (field.Name == name && field.ResolvedType && field.ResolvedType->isSharedPtr())
+          capturedSharedReceiver = field.ResolvedType;
+    }
+  }
 
   // `genVariableExpr` carries a unique receiver as its payload address but
   // also records a pointer-shaped IR type. Loading that entity once more
@@ -3024,6 +3047,19 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   }
 
   llvm::Value *finalObjVal = objVal;
+  const auto formalSelf = fd && !fd->Args.empty() ? fd->Args[0].ResolvedType : nullptr;
+  const bool capturedSharedPayload = capturedSharedReceiver && formalSelf &&
+      !selfIsCeded && !formalSelf->isPointer() && !formalSelf->isReference();
+  if (capturedSharedPayload) {
+    // Captured fields are not entries in m_Symbols. Their already-evaluated
+    // value is the full shared carrier; ordinary self needs its payload, not
+    // the address of that carrier in the closure environment.
+    if (objVal->getType() != getLLVMType(capturedSharedReceiver)) {
+      error(expr, DiagID::ERR_CODEGEN, "captured shared receiver: CarrierTypeMismatch");
+      return {};
+    }
+    finalObjVal = m_Builder.CreateExtractValue(objVal, 0, "capture.shared.payload");
+  }
   if (receiverProvidesUniquePayload && receiverVar) {
     if (llvm::Value *payloadAddr = getEntityAddr(receiverVar->codegenName()))
       finalObjVal = payloadAddr;
@@ -3031,7 +3067,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   bool targetExpectsPtr =
       (callee->arg_size() > selfLlvmIdx && callee->getArg(selfLlvmIdx)->getType()->isPointerTy());
 
-  if ((selfIsMutable || targetExpectsPtr) && !receiverProvidesUniquePayload) {
+  if ((selfIsMutable || targetExpectsPtr) && !receiverProvidesUniquePayload && !capturedSharedPayload) {
     // Must pass address
     // Reuse the address produced by the single receiver evaluation. Calling
     // genAddr again for a member chain whose base is a consuming call would

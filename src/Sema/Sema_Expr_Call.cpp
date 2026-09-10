@@ -3775,6 +3775,9 @@ CallableEnvironmentFacts Sema::collectStage1CallableEnvironment(Expr *source) {
     auto summary = m_ValidatedCallableReturnEnvironments.find(function);
     if (summary == m_ValidatedCallableReturnEnvironments.end() || !summary->second.Complete)
       return {}; // A return type or a bodyless declaration is not an environment proof.
+    // A definition-local native owner is not a caller instance. Return/call
+    // mapping for these witnesses is separate from ordinary dependency roots.
+    if (!summary->second.NativeOwners.empty()) return {};
     if (function->TemplateOrigin) {
       auto cached = InstantiationCache.find(function->Name);
       if (cached == InstantiationCache.end() || !cached->second ||
@@ -3808,6 +3811,7 @@ CallableEnvironmentFacts Sema::collectStage1CallableEnvironment(Expr *source) {
       if (!actual.Complete) return {};
       mapped.Referents.insert(mapped.Referents.end(), actual.Referents.begin(), actual.Referents.end());
       mapped.LocalBounds.insert(mapped.LocalBounds.end(), actual.LocalBounds.begin(), actual.LocalBounds.end());
+      mapped.NativeOwners.insert(mapped.NativeOwners.end(), actual.NativeOwners.begin(), actual.NativeOwners.end());
     }
     return mapped;
   }
@@ -3816,7 +3820,11 @@ CallableEnvironmentFacts Sema::collectStage1CallableEnvironment(Expr *source) {
     std::string name;
     if (CurrentScope->findVariableWithDeref(binding->Name, info, name) && info) {
       auto found = m_CallableEnvironments.find(info->SymbolID);
-      if (found != m_CallableEnvironments.end()) return found->second;
+      if (found != m_CallableEnvironments.end()) {
+        for (const auto &owner : found->second.NativeOwners)
+          if (!nativeSyncOwnerLive(owner)) return {};
+        return found->second;
+      }
       if (info->IsFunctionParameter && CurrentFunction && info->TypeObj &&
           (info->TypeObj->isFunction() || info->TypeObj->isDynFn())) {
         const auto formal = std::find_if(CurrentFunction->Args.begin(), CurrentFunction->Args.end(),
@@ -3894,6 +3902,15 @@ CallableEnvironmentFacts Sema::collectStage1CallableEnvironment(Expr *source) {
     auto capture = std::find_if(closure->ExplicitCaptures.begin(), closure->ExplicitCaptures.end(),
         [&](const CaptureItem &item) { return Type::stripMorphology(item.Name) == name; });
     if (!implicit && capture == closure->ExplicitCaptures.end()) return {};
+    if (!implicit) {
+      auto native = closure->NativeSyncCaptureRecipes.find(member.Name);
+      if (native != closure->NativeSyncCaptureRecipes.end()) {
+        auto witness = qualifyNativeSyncOwner(native->second, type);
+        if (!witness) return {};
+        result.NativeOwners.push_back(std::move(witness));
+        continue;
+      }
+    }
     auto value = std::make_unique<VariableExpr>(name);
     value->Loc = implicit ? closure->Loc : capture->Loc;
     std::vector<AccessPath> roots;

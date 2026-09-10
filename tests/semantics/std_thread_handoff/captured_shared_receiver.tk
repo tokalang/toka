@@ -1,0 +1,27 @@
+auto drops# = 0
+shape Counter(value#: i32)
+impl Counter@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+impl Counter {
+    fn read(self) -> i32 { return self.value }
+    fn write(self#, next: i32) { self.value = next }
+}
+fn main() -> i32 {
+    {
+        auto ~counter# = new Counter(value = 7)
+        {
+            auto ~held# = ~counter
+            auto callback = { [cede ~held] =>
+                return held.read()
+            }:dyn fn() -> i32
+            counter#.write(9)
+            if callback() != 9 { return 1 }
+            if callback() != 9 { return 2 }
+        }
+        if counter.read() != 9 || drops != 0 { return 3 }
+    }
+    if drops != 1 { return 4 }
+    return 0
+}

@@ -67,23 +67,51 @@ seconds (ClosedPayload, native factory flow, sync storage, shared ABI, private
 adapters, factory source/faults, public owner). No full suite was run. This is
 an internal regression checkpoint, not the integrated thread/sync candidate.
 
-**The actual delivery program still rejects at callback initialization with
-E04661 / IncompleteFacts. It has not been modified or marked an expected fail.**
+**The actual `sync_thread_pending.tk` now compiles and runs successfully,
+unchanged.** This proves the first delivery scenario, not the full integration.
 No full suite, acceptance, push or PR has occurred.
 
 ## Continue from the actual program, not another helper milestone
 
-The owner recipe reaches the explicit capture, but there is deliberately no
-environment lifetime exemption yet. Complete the finite accepted witness before
-letting `collectStage1CallableEnvironment` and public thread qualification accept
-it. Both must consume the same exact relation; CodeGen must reject missing or
-mismatched authority rather than independently deciding ownership.
+The Mutex witness now combines the exact owner recipe with completed factory,
+managed-allocation, owner cleanup, lock, guard cleanup and guard-access source
+contracts, plus ClosedPayload. Callable environment and public thread plans
+carry the same witness, and stale/escaped owner recipes invalidate stored
+environment summaries. CodeGen validates source plans and witnessed access.
+
+The first end-to-end run exposed a captured-shared receiver bug: the closure's
+carrier address was passed to ordinary payload `self`. The fix extracts the
+payload from the already evaluated, physically typed shared capture; no capture
+layout or refcount/ABI change was made. A small non-native shared-capture
+receiver regression also runs successfully.
+
+Guard results and `borrow_mut` references now carry the acquisition relation.
+Complete whole-slot replacements use a matching Sema plan and reclaim the old
+element after RHS preparation. The resource replacement thread regression
+checks one drop on replacement and a second on final owner cleanup and passes.
+Ordinary references did not receive ownership or a generic drop exemption.
+
+Directed source/CodeGen witness checks pass: 30 no-artifact faults and six
+strict-parity denials. Of the source denials, forged/private-field access is
+stopped by E0418, and borrowed `str` currently stops at the earlier E0454
+constructor return-dependency boundary; these are not misreported as witness
+diagnostics. Handle escape, post-capture invalidation, and unknown call exposure
+exercise witness invalidation. The expanded runtime/denial closeout gate is
+14/14 without skips.
+
+Witness/slot regression run: 9/9 relevant CTest targets passed in 173.56 seconds.
+This includes all preceding allocation/source gates as well as the real thread
+program and new witness denial matrix. No full PASS/FAIL run yet; RwMutex,
+CondVar, once/waitgroup and the final relative-baseline audit remain required.
 
 Mandatory outstanding checks include:
 
 - Complete successful factory/managed-owner publication, matching terminal
   owner cleanup and guard acquisition/discharge/slot replacement. Check all
   actual input/environment dependencies; ClosedPayload alone is insufficient.
+  The first Mutex path and direct-resource replacement now pass; additional
+  unique/shared-element replacement, rollback, and native-owner compositions
+  remain part of the required matrix, not implicitly covered by those results.
 - Extend the now-tested Mutex managed-allocation failure path to the remaining
   native owner wrappers as they are migrated. The passing Mutex matrix is not
   a claim that all RwMutex/CondVar constructors have already been migrated.

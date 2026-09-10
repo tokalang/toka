@@ -489,6 +489,30 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     hasRebind = true;
   }
 
+  auto nativeReplacement = assignmentSite ? assignmentSite->NativeSyncReplacement : nullptr;
+#ifdef TOKA_BUILD_TESTING
+  if (m_NativeSyncWitnessFault == "slot-missing") nativeReplacement.reset();
+  else if (nativeReplacement && m_NativeSyncWitnessFault.rfind("slot-", 0) == 0) {
+    auto changed = std::shared_ptr<NativeSyncReplacementPlan>(new NativeSyncReplacementPlan(*nativeReplacement));
+    if (m_NativeSyncWitnessFault == "slot-type") changed->ElementType = Type::fromString("i64");
+    if (m_NativeSyncWitnessFault == "slot-destination") changed->Destination = nullptr;
+    nativeReplacement = std::move(changed);
+  }
+#endif
+  if ((assignmentSite && assignmentSite->NativeSyncReplacementRequired) || nativeReplacement) {
+    if (!nativeReplacement || nativeReplacement->Site != assignmentSite ||
+        nativeReplacement->Destination != lhsExpr || nativeReplacement->Source != rhsExpr ||
+        !nativeReplacement->Guard || !nativeReplacement->Guard->Owner || nativeReplacement->Guard->Outcome ||
+        !nativeReplacement->ElementType || !nativeReplacement->Guard->Owner->ElementType ||
+        !nativeReplacement->ElementType->equals(*nativeReplacement->Guard->Owner->ElementType) ||
+        !variableTarget || !symLHS || symLHS->mode != AddressingMode::Reference ||
+        lhsExpr->NativeSyncSlotOrigin != nativeReplacement->Guard ||
+        !validateNativeSyncOwner(nativeReplacement->Guard->Owner, assignmentSite)) {
+      error(assignmentSite, DiagID::ERR_CODEGEN, "native sync replacement: MissingOrMismatchedPlan");
+      return {};
+    }
+  }
+
   auto callableDisposition = assignmentSite
       ? assignmentSite->CallableAssignment : CallableAssignmentDisposition::Unvalidated;
   const bool callableBinding = variableTarget && lhsExpr->ResolvedType &&
@@ -736,7 +760,13 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     // slot. Reclaim the previous owner first, but only on paths where its
     // scope drop flag is still live (a moved-from slot is reinitialized
     // without a second drop).
-    if (variableTarget && symLHS && symLHS->hasDrop &&
+    if (nativeReplacement) {
+      // This reference denotes the one initialized element of the matched
+      // acquired guard, not an owned reference binding. RHS preparation has
+      // already succeeded; reclaim the old element before installing the new.
+      emitDropForType(soulAddr, nativeReplacement->ElementType);
+    }
+    if (!nativeReplacement && variableTarget && symLHS && symLHS->hasDrop &&
         symLHS->morphology == Morphology::None && assignmentSite &&
         !assignmentSite->IsInitialization) {
       llvm::Value *dropFlag = nullptr;
@@ -5026,6 +5056,48 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
                         targetTypeObj, transfersOwnership);
     }
   }
+}
+
+bool CodeGen::validateNativeSyncOwner(const NativeSyncOwnerWitnessPtr &original, const ASTNode *site) {
+  auto w = original;
+#ifdef TOKA_BUILD_TESTING
+  if (m_NativeSyncWitnessFault == "missing") w.reset();
+  else if (w && !m_NativeSyncWitnessFault.empty()) {
+    auto changed = std::shared_ptr<NativeSyncOwnerWitness>(new NativeSyncOwnerWitness(*w));
+    const auto &fault = m_NativeSyncWitnessFault;
+    if (fault == "origin") changed->Origin.reset();
+    if (fault == "factory") changed->FactorySite = nullptr;
+    if (fault == "allocation") changed->AllocationSite = nullptr;
+    if (fault == "type") changed->OwnerType.reset();
+    if (fault == "element") changed->ElementType.reset();
+    if (fault == "drop") changed->OwnerDrop = nullptr;
+    if (fault == "acquire") changed->Acquire = nullptr;
+    if (fault == "guard-drop") changed->GuardDrop = nullptr;
+    if (fault == "guard-access") changed->GuardAccess = nullptr;
+    w = std::move(changed);
+  }
+#endif
+  auto reject = [&](const char *why) {
+    error(site, DiagID::ERR_CODEGEN, std::string("native sync owner: ") + why);
+    return false;
+  };
+  if (!w || !w->Origin || !w->FactorySite || !w->AllocationSite || !w->ValueType ||
+      !w->OwnerType || !w->ElementType || !w->OwnerDrop || !w->Acquire || !w->GuardDrop || !w->GuardAccess)
+    return reject("IncompleteWitness");
+  auto factory = w->FactorySite->NativeSyncFactorySource;
+  auto allocation = w->AllocationSite->NativeSyncAllocationSource;
+  if (!factory || !factory->Validated || factory->Site != w->FactorySite ||
+      factory->Declaration != w->FactorySite->ResolvedFn || !allocation || !allocation->Complete ||
+      allocation->Allocation != w->AllocationSite) return reject("UnqualifiedSourcePlans");
+  if (!factory->OwnerType || !factory->ElementType || !allocation->OwnerType ||
+      !factory->OwnerType->equals(*w->OwnerType) || !factory->ElementType->equals(*w->ElementType) ||
+      !allocation->OwnerType->equals(*w->OwnerType) || !w->Origin->ValueType ||
+      !w->Origin->ValueType->equals(*w->ValueType)) return reject("SourceTypeMismatch");
+  auto *owner = dynamic_cast<ShapeType *>(w->OwnerType.get());
+  if (!owner || !owner->Decl || owner->Decl->MangledDestructorName != w->OwnerDrop->CodegenName ||
+      !w->OwnerDrop->Body || !w->Acquire->Body || !w->GuardDrop->Body || !w->GuardAccess->Body)
+    return reject("CleanupContractMismatch");
+  return true;
 }
 
 bool CodeGen::validateNativeSyncFactory(const CallExpr *call) {

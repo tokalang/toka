@@ -252,6 +252,8 @@ bool Sema::qualifyPublicThread(CallExpr *call, const AnalysisState &before, size
     if (!prepareCallableReturnEnvironment(const_cast<Expr *>(p->Callable)))
       return reject("EnvironmentPreparationFailed");
     auto envFacts = collectStage1CallableEnvironment(const_cast<Expr *>(p->Callable));
+    p->NativeOwners = envFacts.NativeOwners;
+    p->NativeOwnerCount = envFacts.NativeOwners.size();
     bool independentOwnedEnvironment = false;
     auto ownedEnvironment = std::dynamic_pointer_cast<ShapeType>(p->CallableType);
     if (ownedEnvironment && ownedEnvironment->Decl == environmentShape->Decl) {

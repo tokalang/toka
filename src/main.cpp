@@ -852,6 +852,7 @@ int main(int argc, char **argv) {
   std::string publicThreadFault;
   std::string nativeSyncFactoryFault;
   std::string nativeSyncAllocationFault;
+  std::string nativeSyncWitnessFault;
 #endif
   bool dumpNonCallTransferShadow = false;
   bool dumpD3DirectCallObservation = false;
@@ -1034,6 +1035,14 @@ int main(int argc, char **argv) {
     } else if (arg == "--stage0-codegen-authority") {
       stage0CodeGenAuthority = true;
 #ifdef TOKA_BUILD_TESTING
+    } else if (arg.rfind("--native-sync-witness-fault=", 0) == 0) {
+      nativeSyncWitnessFault = arg.substr(std::string("--native-sync-witness-fault=").size());
+      const std::set<std::string> faults = {"missing", "origin", "factory", "allocation", "type", "element",
+          "drop", "acquire", "guard-drop", "guard-access", "thread-list", "access-site",
+          "slot-missing", "slot-type", "slot-destination"};
+      if (!faults.count(nativeSyncWitnessFault)) {
+        llvm::errs() << "unknown native sync witness fault\n"; return 1;
+      }
     } else if (arg.rfind("--native-sync-allocation-fault=", 0) == 0) {
       nativeSyncAllocationFault = arg.substr(std::string("--native-sync-allocation-fault=").size());
       const std::set<std::string> faults = {"missing", "incomplete", "site", "binding", "definition", "input", "type"};
@@ -2090,6 +2099,7 @@ int main(int argc, char **argv) {
   codegen.setPublicThreadFault(publicThreadFault);
   codegen.setNativeSyncFactoryFault(nativeSyncFactoryFault);
   codegen.setNativeSyncAllocationFault(nativeSyncAllocationFault);
+  codegen.setNativeSyncWitnessFault(nativeSyncWitnessFault);
 #endif
   if (!codegen.validateUnsafeRawConstructions(sema.getUnsafeRawConstructionSites())) return 1;
   if (stage0CodeGenAuthority)

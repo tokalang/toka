@@ -3,6 +3,236 @@
 #include <set>
 
 namespace toka {
+void Sema::collectNativeSyncGuardFlow(Expr *expression) {
+  if (auto *method = dynamic_cast<MethodCallExpr *>(expression)) {
+    if (method->NativeSyncAccess) {
+      auto origin = std::shared_ptr<NativeSyncGuardOrigin>(new NativeSyncGuardOrigin);
+      origin->Owner = method->NativeSyncAccess;
+      origin->AcquireSite = method;
+      expression->NativeSyncGuardOrigin = std::move(origin);
+    } else if (auto origin = method->Object->NativeSyncGuardOrigin) {
+      if (!nativeSyncOwnerLive(origin->Owner) || !nativeSyncDefinitionReady(method->ResolvedFn)) return;
+      if (origin->Outcome && method->Method == "unwrap" && method->Args.empty()) {
+        auto *module = getLexicalModule(method->ResolvedFn->Loc);
+        if (!module || !module->IsTrustedSystemModule || !module->ShadowCoordinateKnown ||
+            module->ShadowLogicalModulePath != "core/result" || method->ResolvedFn->Args.empty() ||
+            !method->ResolvedFn->Args[0].IsCeded || !method->ResolvedType ||
+            !origin->Owner->GuardAccess->Args[0].ResolvedType ||
+            !method->ResolvedType->withAttributes(false, false)->equals(
+                *origin->Owner->GuardAccess->Args[0].ResolvedType->withAttributes(false, false))) return;
+        auto guard = std::shared_ptr<NativeSyncGuardOrigin>(new NativeSyncGuardOrigin(*origin));
+        guard->Outcome = false;
+        expression->NativeSyncGuardOrigin = std::move(guard);
+      } else if (!origin->Outcome && method->ResolvedFn == origin->Owner->GuardAccess) {
+        expression->NativeSyncSlotOrigin = origin;
+      }
+    }
+  } else if (auto *variable = dynamic_cast<VariableExpr *>(expression)) {
+    auto path = makeAccessPath(variable);
+    auto guard = m_NativeSyncGuards.find(path.RootID);
+    if (guard != m_NativeSyncGuards.end()) expression->NativeSyncGuardOrigin = guard->second;
+    auto slot = m_NativeSyncSlots.find(path.RootID);
+    if (slot != m_NativeSyncSlots.end()) expression->NativeSyncSlotOrigin = slot->second;
+  } else {
+    Expr *child = nullptr;
+    if (auto *cast = dynamic_cast<CastExpr *>(expression); cast && cast->Kind == CastKind::Ascription)
+      child = cast->Expression.get();
+    else if (auto *postfix = dynamic_cast<PostfixExpr *>(expression)) child = postfix->LHS.get();
+    else if (auto *cede = dynamic_cast<CedeExpr *>(expression)) child = cede->Value.get();
+    if (child) {
+      expression->NativeSyncGuardOrigin = child->NativeSyncGuardOrigin;
+      expression->NativeSyncSlotOrigin = child->NativeSyncSlotOrigin;
+    }
+  }
+}
+
+void Sema::recordNativeSyncGuardBinding(const AccessPath &place, Expr *source) {
+  if (!place || !place.Projections.empty() || !source) return;
+  m_NativeSyncGuards.erase(place.RootID);
+  m_NativeSyncSlots.erase(place.RootID);
+  if (source->NativeSyncGuardOrigin) m_NativeSyncGuards[place.RootID] = source->NativeSyncGuardOrigin;
+  if (source->NativeSyncSlotOrigin) m_NativeSyncSlots[place.RootID] = source->NativeSyncSlotOrigin;
+}
+
+void Sema::prepareNativeSyncReplacement(BinaryExpr *assignment) {
+  auto path = makeAccessPath(assignment->LHS.get());
+  if (!path || !path.Projections.empty()) return;
+  auto slot = m_NativeSyncSlots.find(path.RootID);
+  if (slot == m_NativeSyncSlots.end()) return;
+  Expr *lhs = assignment->LHS.get();
+  while (auto *postfix = dynamic_cast<PostfixExpr *>(lhs)) lhs = postfix->LHS.get();
+  if (!dynamic_cast<VariableExpr *>(lhs)) {
+    // Rebinding a reference is not replacing the initialized native element.
+    m_NativeSyncSlots.erase(slot);
+    return;
+  }
+  assignment->NativeSyncReplacementRequired = true;
+  assignment->NativeSyncReplacement.reset();
+  auto guard = slot->second;
+  auto fail = [&] { error(assignment, DiagID::ERR_GENERIC_SEMA, "native sync replacement: IncompleteSlotPlan"); };
+  auto *authority = assignment->Stage0Authority ? &*assignment->Stage0Authority : nullptr;
+  if (!guard || guard->Outcome || !nativeSyncOwnerLive(guard->Owner) ||
+      !authority || !authority->SemaValidated || !authority->Complete || !authority->ItemPlan ||
+      !authority->ItemPlan->admitted() || assignment->IsInitialization ||
+      dynamic_cast<UnsetExpr *>(assignment->RHS.get()) || !assignment->RHS->ResolvedType) {
+    fail(); return;
+  }
+  auto element = guard->Owner->ElementType;
+  if (!element || !checkNativeSyncClosedPayload(element).closed() ||
+      !element->withAttributes(false, false)->equals(*assignment->RHS->ResolvedType->withAttributes(false, false))) {
+    fail(); return;
+  }
+  auto plan = std::shared_ptr<NativeSyncReplacementPlan>(new NativeSyncReplacementPlan);
+  plan->Site = assignment;
+  plan->Destination = assignment->LHS.get();
+  plan->Source = assignment->RHS.get();
+  plan->Guard = guard;
+  plan->ElementType = element;
+  assignment->NativeSyncReplacement = std::move(plan);
+}
+
+bool Sema::nativeSyncDefinitionReady(const FunctionDecl *function) const {
+  if (!function || !function->Body || !function->GenericParams.empty()) return false;
+  auto checked = m_RawAddressReturns.find(const_cast<FunctionDecl *>(function));
+  if (checked == m_RawAddressReturns.end() || !checked->second.Checked || !checked->second.Valid) return false;
+  if (!function->TemplateOrigin) return true;
+  auto cached = InstantiationCache.find(function->Name);
+  return cached != InstantiationCache.end() && cached->second && cached->second->Instance == function &&
+      cached->second->Validation == GenericSpecializationValidationState::Valid;
+}
+
+bool Sema::nativeSyncOwnerLive(const NativeSyncOwnerWitnessPtr &witness) const {
+  if (!witness || !witness->Origin) return false;
+  std::set<const NativeSyncOwnerCandidate *> seen;
+  for (auto node = witness->Origin; node; node = node->Parent) {
+    if (!seen.insert(node.get()).second || m_InvalidNativeSyncOwnerRecipes.count(node) ||
+        !nativeSyncDefinitionReady(node->Provider)) return false;
+  }
+  return true;
+}
+
+NativeSyncOwnerWitnessPtr Sema::qualifyNativeSyncOwner(const NativeSyncOwnerCandidatePtr &recipe,
+                                                     const std::shared_ptr<Type> &actualType) {
+  if (!recipe || !recipe->Factory || !actualType || !recipe->ValueType ||
+      !actualType->equals(*recipe->ValueType) ||
+      (!actualType->isSharedPtr() && !actualType->isUniquePtr())) return {};
+  auto cached = m_NativeSyncOwnerWitnesses.find(recipe);
+  if (cached != m_NativeSyncOwnerWitnesses.end())
+    return nativeSyncOwnerLive(cached->second) ? cached->second : NativeSyncOwnerWitnessPtr{};
+  const auto &factory = recipe->Factory;
+  if (factory->Kind != NativeSyncFactoryKind::Mutex || !factory->Site || !factory->OwnerType ||
+      !factory->ElementType || !checkNativeSyncClosedPayload(factory->ElementType).closed() ||
+      !nativeSyncDefinitionReady(factory->Declaration) || !nativeSyncDefinitionReady(factory->OwnerDefinition)) return {};
+  auto *module = getLexicalModule(factory->Declaration->Loc);
+  if (!module || !module->SourceModule || module->SourceModule->IsInterface ||
+      !module->IsTrustedSystemModule || !module->ShadowCoordinateKnown ||
+      module->ShadowLogicalModulePath != "std/sync") return {};
+  auto owner = std::dynamic_pointer_cast<ShapeType>(factory->OwnerType);
+  auto captureOwner = std::dynamic_pointer_cast<ShapeType>(actualType->getPointeeType());
+  if (!owner || !owner->Decl || !captureOwner || captureOwner->Decl != owner->Decl ||
+      !recipe->Allocation) return {};
+  auto allocation = dynamic_cast<const NewExpr *>(recipe->Allocation);
+  if (!allocation || !allocation->NativeSyncAllocationRequired || !allocation->NativeSyncAllocationSource ||
+      !nativeSyncDefinitionReady(allocation->NativeSyncAllocationSource->Definition)) return {};
+  auto drop = m_NativeSyncDropDeclarations.find(owner->Decl);
+  if (drop == m_NativeSyncDropDeclarations.end() || !nativeSyncDefinitionReady(drop->second) ||
+      drop->second->CodegenName != owner->Decl->MangledDestructorName) return {};
+  auto method = [&](const ShapeDecl *type, const char *name) -> const FunctionDecl * {
+    auto found = MethodDecls.find(type->Name);
+    if (found == MethodDecls.end()) found = MethodDecls.find(type->CodegenName);
+    if (found == MethodDecls.end()) return nullptr;
+    auto item = found->second.find(name);
+    return item == found->second.end() ? nullptr : item->second;
+  };
+  auto forwarder = [&](const FunctionDecl *function, const char *helper, bool returns) {
+    if (!nativeSyncDefinitionReady(function) || function->Effect != EffectKind::None ||
+        function->Args.size() != 1 || function->Args[0].IsCeded ||
+        function->Body->Statements.size() != 1) return false;
+    Expr *body = nullptr;
+    if (returns) {
+      auto *ret = dynamic_cast<ReturnStmt *>(function->Body->Statements[0].get());
+      if (ret) body = ret->ReturnValue.get();
+    } else {
+      auto *statement = dynamic_cast<ExprStmt *>(function->Body->Statements[0].get());
+      if (statement) body = statement->Expression.get();
+    }
+    auto *call = dynamic_cast<CallExpr *>(body);
+    if (!call || !nativeSyncDefinitionReady(call->ResolvedFn) || call->Args.size() != 1) return false;
+    auto declared = module->Functions.find(helper);
+    auto origin = call->ResolvedFn->TemplateOrigin ? call->ResolvedFn->TemplateOrigin : call->ResolvedFn;
+    if (declared == module->Functions.end() || declared->second != origin) return false;
+    auto *argument = call->Args[0].get();
+    if (auto *postfix = dynamic_cast<PostfixExpr *>(argument)) argument = postfix->LHS.get();
+    auto *self = dynamic_cast<VariableExpr *>(argument);
+    return self && Type::stripMorphology(self->Name) == "self";
+  };
+  auto acquire = method(owner->Decl, "lock");
+  if (!forwarder(drop->second, "__sync_mutex_drop", false) ||
+      !forwarder(acquire, "__sync_mutex_acquire", true)) return {};
+  auto outcome = std::dynamic_pointer_cast<ShapeType>(acquire->ResolvedReturnType);
+  if (!outcome || !outcome->Decl || outcome->Decl->Kind != ShapeKind::Enum) return {};
+  std::shared_ptr<ShapeType> guard;
+  for (const auto &variant : outcome->Decl->Members)
+    if (variant.Name == "Ok" && variant.SubMembers.size() == 1)
+      guard = std::dynamic_pointer_cast<ShapeType>(getPhysicalType(variant.SubMembers[0]));
+  auto guardTemplate = module->Shapes.find("MutexLock");
+  if (!guard || !guard->Decl || guardTemplate == module->Shapes.end() ||
+      guard->Decl->InstantiationTemplate != guardTemplate->second || guard->Decl->InstantiationArgs.size() != 1 ||
+      !guard->Decl->InstantiationArgs[0]->equals(*factory->ElementType)) return {};
+  auto guardDrop = m_NativeSyncDropDeclarations.find(guard->Decl);
+  auto access = method(guard->Decl, "borrow_mut");
+  if (guardDrop == m_NativeSyncDropDeclarations.end() ||
+      !forwarder(guardDrop->second, "__sync_mutex_release", false) ||
+      !nativeSyncDefinitionReady(access) || access->Body->Statements.size() != 1 ||
+      access->Args.size() != 1 || access->Args[0].IsCeded) return {};
+  auto *ret = dynamic_cast<ReturnStmt *>(access->Body->Statements[0].get());
+  auto *view = ret ? dynamic_cast<MemberExpr *>(ret->ReturnValue.get()) : nullptr;
+  auto *self = view ? dynamic_cast<VariableExpr *>(view->Object.get()) : nullptr;
+  if (!view || !self || self->Name != "self" || Type::stripMorphology(view->Member) != "data" ||
+      !view->ResolvedType || !access->ResolvedReturnType || !access->ResolvedReturnType->isReference() ||
+      !view->ResolvedType->equals(*access->ResolvedReturnType)) return {};
+  auto witness = std::shared_ptr<NativeSyncOwnerWitness>(new NativeSyncOwnerWitness);
+  witness->Origin = recipe;
+  witness->ValueType = actualType;
+  witness->OwnerType = factory->OwnerType;
+  witness->ElementType = factory->ElementType;
+  witness->FactorySite = factory->Site;
+  witness->AllocationSite = allocation;
+  witness->OwnerDrop = drop->second;
+  witness->Acquire = acquire;
+  witness->GuardDrop = guardDrop->second;
+  witness->GuardAccess = access;
+  if (!nativeSyncOwnerLive(witness)) return {};
+  m_NativeSyncOwnerWitnesses[recipe] = witness;
+  return witness;
+}
+
+void Sema::checkNativeSyncOwnerExposure(Expr *expression) {
+  if (!expression) return;
+  auto invalidate = [&](const NativeSyncOwnerCandidatePtr &recipe) {
+    if (recipe) m_InvalidNativeSyncOwnerRecipes.insert(recipe);
+  };
+  if (auto *member = dynamic_cast<MemberExpr *>(expression)) {
+    invalidate(member->Object->NativeSyncOwnerRecipe);
+  } else if (auto *method = dynamic_cast<MethodCallExpr *>(expression)) {
+    auto recipe = method->Object->NativeSyncOwnerRecipe;
+    if (!recipe) return;
+    auto type = recipe->ValueType;
+    auto witness = qualifyNativeSyncOwner(recipe, type);
+    if (!witness || method->ResolvedFn != witness->Acquire) invalidate(recipe);
+    else {
+      method->NativeSyncAccessRequired = true;
+      method->NativeSyncAccess = witness;
+    }
+  } else if (auto *call = dynamic_cast<CallExpr *>(expression)) {
+    // An empty checked observer cannot escape or mutate a value. Other calls
+    // need an explicit native contract before their owner recipe can survive.
+    const bool observer = nativeSyncDefinitionReady(call->ResolvedFn) && call->ResolvedFn->Body->Statements.empty();
+    if (!observer)
+      for (const auto &argument : call->Args) invalidate(argument->NativeSyncOwnerRecipe);
+  }
+}
+
 void Sema::snapshotNativeSyncAllocation(NewExpr *allocation) {
   if (!allocation || !CurrentFunction || !CurrentFunction->ResolvedReturnType) return;
   auto result = CurrentFunction->ResolvedReturnType;

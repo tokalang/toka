@@ -22,6 +22,16 @@ PhysEntity CodeGen::genPublicThread(const CallExpr *call) {
   if (!p) return reject("MissingPlan");
   if (!call->ResolvedFn || !p->Declaration) return reject("MissingDeclaration");
   if (!p->Complete) return reject("IncompletePlan");
+#ifdef TOKA_BUILD_TESTING
+  if (m_NativeSyncWitnessFault == "thread-list" && p->NativeOwnerCount) {
+    auto changed = std::shared_ptr<PublicThreadPlan>(new PublicThreadPlan(*p));
+    changed->NativeOwners.clear();
+    p = std::move(changed);
+  }
+#endif
+  if (p->NativeOwnerCount != p->NativeOwners.size()) return reject("NativeWitnessCountMismatch");
+  for (const auto &owner : p->NativeOwners)
+    if (!validateNativeSyncOwner(owner, call)) return {};
   if (!p->OwnerDefinition || p->OwnerDefinition != m_CurrentFunction)
     return reject("OwnerDefinitionMismatch");
   if (p->Site != call) return reject("SiteMismatch");

@@ -388,6 +388,8 @@ public:
   // copy this: each instantiated body must elaborate its own source edge.
   NativeSyncFactoryPtr NativeSyncFactoryOrigin;
   NativeSyncOwnerCandidatePtr NativeSyncOwnerRecipe;
+  NativeSyncGuardOriginPtr NativeSyncGuardOrigin;
+  NativeSyncGuardOriginPtr NativeSyncSlotOrigin;
   bool IsMorphicExempt = false; // [NEW] Track morphic exemption at expression level
   bool HasParens = false; // [NEW] Track explicit parentheses
   bool ExtendLifetime = false; // [NEW] Flag for Temporary Lifetime Extension
@@ -621,6 +623,8 @@ enum class AssignmentSemanticKind {
 
 class BinaryExpr : public Expr {
 public:
+  bool NativeSyncReplacementRequired = false;
+  std::shared_ptr<const NativeSyncReplacementPlan> NativeSyncReplacement;
   // Sema-only edge qualification; clones must be checked in their new scope.
   CallableAssignmentDisposition CallableAssignment =
       CallableAssignmentDisposition::Unvalidated;
@@ -1151,6 +1155,8 @@ public:
 
 class MethodCallExpr : public Expr {
 public:
+  bool NativeSyncAccessRequired = false;
+  NativeSyncOwnerWitnessPtr NativeSyncAccess;
   std::unique_ptr<Expr> Object;
   std::string Method;
   std::vector<std::unique_ptr<Expr>> Args;

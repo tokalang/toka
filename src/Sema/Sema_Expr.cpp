@@ -806,6 +806,8 @@ Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.NativeSyncBindings = m_NativeSyncBindings;
   state.NativeSyncOwnerRecipes = m_NativeSyncOwnerRecipes;
+  state.NativeSyncGuards = m_NativeSyncGuards;
+  state.NativeSyncSlots = m_NativeSyncSlots;
   state.InvalidNativeSyncOwnerRecipes = m_InvalidNativeSyncOwnerRecipes;
   state.InvalidNativeSyncOrigins = m_InvalidNativeSyncOrigins;
   state.RawAddressBindings = m_RawAddressBindings;
@@ -873,6 +875,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   auto callableEnvironments = states.front().CallableEnvironments;
   auto nativeSyncBindings = states.front().NativeSyncBindings;
   auto nativeOwnerRecipes = states.front().NativeSyncOwnerRecipes;
+  auto nativeGuards = states.front().NativeSyncGuards;
+  auto nativeSlots = states.front().NativeSyncSlots;
   auto invalidOwnerRecipes = states.front().InvalidNativeSyncOwnerRecipes;
   auto invalidNativeSyncOrigins = states.front().InvalidNativeSyncOrigins;
   auto rawAddressBindings = states.front().RawAddressBindings;
@@ -880,6 +884,15 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
 
   for (size_t i = 1; i < states.size(); ++i) {
     const auto &state = states[i];
+    auto intersectNative = [](auto &left, const auto &right) {
+      for (auto it = left.begin(); it != left.end();) {
+        auto other = right.find(it->first);
+        if (other == right.end() || other->second != it->second) it = left.erase(it);
+        else ++it;
+      }
+    };
+    intersectNative(nativeGuards, state.NativeSyncGuards);
+    intersectNative(nativeSlots, state.NativeSyncSlots);
     invalidOwnerRecipes.insert(state.InvalidNativeSyncOwnerRecipes.begin(),
                                state.InvalidNativeSyncOwnerRecipes.end());
     for (auto it = nativeOwnerRecipes.begin(); it != nativeOwnerRecipes.end();) {
@@ -964,6 +977,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   m_CallableEnvironments = std::move(callableEnvironments);
   m_NativeSyncBindings = std::move(nativeSyncBindings);
   m_NativeSyncOwnerRecipes = std::move(nativeOwnerRecipes);
+  m_NativeSyncGuards = std::move(nativeGuards);
+  m_NativeSyncSlots = std::move(nativeSlots);
   m_InvalidNativeSyncOwnerRecipes = std::move(invalidOwnerRecipes);
   m_InvalidNativeSyncOrigins = std::move(invalidNativeSyncOrigins);
   m_RawAddressBindings = std::move(rawAddressBindings);
@@ -1189,6 +1204,9 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   if (auto *allocation = dynamic_cast<NewExpr *>(E)) snapshotNativeSyncAllocation(allocation);
   std::optional<AnalysisState> nativeAllocationRollback;
   if (auto *assignment = dynamic_cast<BinaryExpr *>(E); assignment && assignment->Op == "=") {
+    auto slot = makeAccessPath(assignment->LHS.get());
+    if (slot && slot.Projections.empty() && m_NativeSyncSlots.count(slot.RootID))
+      nativeAllocationRollback = captureAnalysisState();
     auto path = canonicalizeAccessPath(makeAccessPath(assignment->LHS.get()));
     SymbolInfo *target = nullptr;
     if (path && path.Projections.empty() && CurrentScope->findSymbolByID(path.RootID, target) &&
@@ -1203,6 +1221,8 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   E->RawAddressViewFacts.reset();
   E->NativeSyncFactoryOrigin.reset();
   E->NativeSyncOwnerRecipe.reset();
+  E->NativeSyncGuardOrigin.reset();
+  E->NativeSyncSlotOrigin.reset();
   m_LastInitMask = ~0ULL; // Default to fully set
   auto T = checkExprImpl(E);
   std::set<std::string> taskDependencies;
@@ -1221,6 +1241,8 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   if (expressionSucceeded) {
     E->NativeSyncFactoryOrigin = collectNativeSyncFactoryOrigin(E);
     E->NativeSyncOwnerRecipe = collectNativeSyncOwnerRecipe(E);
+    checkNativeSyncOwnerExposure(E);
+    collectNativeSyncGuardFlow(E);
   }
   E->RawAddressValueFacts = collectRawAddressSource(E, false);
   E->RawAddressViewFacts = collectRawAddressSource(E, true);
@@ -1235,6 +1257,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
                               assignment->Op == "=" ? assignment->RHS.get() : nullptr);
       recordNativeSyncOwnerRecipe(makeAccessPath(assignment->LHS.get()),
                                   assignment->Op == "=" ? assignment->RHS.get() : nullptr, false);
+      if (assignment->Op == "=") prepareNativeSyncReplacement(assignment);
     }
   }
   if (nativeAllocationRollback) {
