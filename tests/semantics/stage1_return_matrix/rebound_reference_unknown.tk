@@ -1,5 +1,7 @@
 fn escaped(input: str, address: Addr) -> &str <- input {
-    auto &#reference# = &input
+    // Rebindable handle, readonly payload: test the unknown return origin,
+    // not an earlier attempted payload-permission elevation on assignment.
+    auto &#reference = &input
     unsafe { &reference = (address as *str) as &str }
     return &reference
 }

@@ -3,7 +3,11 @@ fn inspect(value: i32) -> i32 {
 }
 
 fn main() -> i32 {
-    auto callback = { left, right => cede left + cede right }:
+    auto callback = { left, right =>
+        auto owned_left = cede left
+        auto owned_right = cede right
+        return owned_left + owned_right
+    }:
         fn(cede i32, cede i32) -> i32
     auto first = 1:i32
     auto second = 2:i32

@@ -109,6 +109,24 @@ def main():
             "error[E04510]" in ordinary_out_of_slice.stderr and
             "error[E0438]" in ordinary_out_of_slice.stderr,
             "ordinary non-cede failure was pulled into Stage-1 rollback")
+    binding_rejection = check(tokac, "noncede_failure_binding_rollback.tk")
+    require(binding_rejection.returncode != 0 and
+            binding_rejection.stderr.count("error[E04510]") == 1 and
+            "E0438" not in binding_rejection.stderr and
+            "E0410" not in binding_rejection.stderr,
+            "enclosing binding failed to restore the ordinary method receiver")
+    for source in ("noncede_failure_out_of_slice.tk",
+                   "noncede_failure_binding_rollback.tk"):
+        normal = check(tokac, source)
+        observed = check(tokac, source, "--call-transfer-shadow=json")
+        require(normal.returncode == observed.returncode and
+                normal.stderr == observed.stderr,
+                source + " changed method/binding rollback in observation mode")
+    replay = check(tokac, "noncede_failure_out_of_slice.tk",
+                   "--stage1-legacy-ordinary-cede")
+    require(replay.returncode == ordinary_out_of_slice.returncode and
+            replay.stderr == ordinary_out_of_slice.stderr,
+            "isolated ordinary method no longer preserves historical diagnostics")
 
     unsafe_bare = check(tokac, "unsafe_wrapper_requires_cede.tk")
     require(unsafe_bare.returncode != 0 and

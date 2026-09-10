@@ -54,6 +54,8 @@ def main():
         tokac, "unique_named_requires_cede.tk", "--diagnostics-json").stdout)
     unique_diagnostic = next(item for item in unique_document["diagnostics"]
                              if item["code"] == "E04570")
+    require("E04656" not in named_results["unique_named_requires_cede.tk"].stderr,
+            "unique indirect test was intercepted by a redundant return cede")
     unique_edit = unique_diagnostic["fixes"][0]["edits"][0]
     unique_start = unique_edit["range"]["start"]
     unique_line = (FIXTURES / "unique_named_requires_cede.tk").read_text(
@@ -62,6 +64,14 @@ def main():
             unique_edit["range"]["end"] == unique_start and
             unique_line[unique_start["character"]:].startswith("^source"),
             "indirect E04570 fix did not preserve unique-handle spelling")
+
+    with tempfile.TemporaryDirectory(prefix="toka-indirect-unique-fix-") as temp:
+        fixed = Path(temp) / "fixed.tk"
+        fixed.write_text((FIXTURES / "unique_named_requires_cede.tk").read_text(
+            encoding="utf-8").replace("callback(^source)", "callback(cede ^source)"))
+        fixed_result = subprocess.run([str(tokac), "--check-only", str(fixed)],
+            cwd=ROOT, capture_output=True, text=True, timeout=30)
+        require(fixed_result.returncode == 0, "unique caller fix did not restore compilation: " + fixed_result.stderr)
 
     explicit = check(tokac, "explicit_copy_invalidates.tk")
     require(explicit.returncode != 0 and "error[E0438]" in explicit.stderr,
@@ -189,6 +199,8 @@ def main():
                 "could not emit source-hidden indirect provider")
         provider.unlink()
         consumer = work / "main.tk"
+        # Keep the original factory-return integration positive. Its missing
+        # environment summary must remain a failure, not be blessed or skipped.
         consumer.write_text(
             "import callback_provider::{make}\n\n"
             "fn main() -> i32 {\n"
@@ -204,7 +216,7 @@ def main():
                 hidden.stderr.count("error[E04570]") == 1 and
                 "E0438" not in hidden.stderr and
                 "E0410" not in hidden.stderr,
-                "source-hidden indirect signature lost caller spelling")
+                "source-hidden indirect signature lost caller spelling: " + hidden.stderr)
 
     for name in (
             "indirect_fn_named_copy_requires_cede.tk",

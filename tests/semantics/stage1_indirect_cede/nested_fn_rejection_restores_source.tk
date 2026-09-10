@@ -17,7 +17,8 @@ fn inspect(value: Resource) -> i32 {
 fn main() -> i32 {
     auto callback = { resource, amount =>
         auto owned = cede resource
-        return owned.value + cede amount
+        auto owned_amount = cede amount
+        return owned.value + owned_amount
     }:fn(cede Resource, cede i32) -> i32
     auto source = Resource(value = 7:i32)
     auto amount = 1:i32

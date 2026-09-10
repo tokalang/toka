@@ -92,6 +92,11 @@ def main():
                 "E0410" not in result.stderr,
                 source + " did not fail atomically with " + diagnostic)
 
+    unknown = run(tokac, "rebound_reference_unknown.tk", "--check-only", "--diagnostics-json")
+    unknown_errors = [d for d in json.loads(unknown.stdout)["diagnostics"] if d["code"] == "E0455"]
+    require(len(unknown_errors) == 1 and "E04661" not in unknown.stderr,
+            "unknown rebind never reached return-source lifetime validation")
+
     with tempfile.TemporaryDirectory(prefix="toka-return-matrix-") as temp:
         declarations = {
             "unused_alias": "alias Callback = dyn fn() -> cede i32",

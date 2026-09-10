@@ -49,7 +49,7 @@ Completion requires runtime/evidence positives, negative no-artifact/rollback
 controls, related regressions and one final integration comparison after the
 candidate converges. No full suite is started just to rediscover known debt.
 
-## Current checkpoint
+## Implementation checkpoint `4142eebd` (before full integration)
 
 The generated SourceLoc literal-coordinate fix is applied to the compiler.
 The original `g03_default_args.tk` passes actual runtime, strict normal/shadow
@@ -76,8 +76,9 @@ escape and a view retained from an owning temporary. No full suite was run.
 An additional probe returning a `str` view of a local string (not `&str` to its
 descriptor) was accepted in current normal/shadow modes. It is preserved as
 `b1_view_return_probe.tk`, not counted as a passing rejection test. Its baseline
-status is not yet independently established; it is outside these two fixes
-and must not be reported as resolved or silently change the return rules.
+status was not yet independently established at that checkpoint. The subsequent
+exact-baseline comparison confirms it predates B1; see
+`local_view_return_baseline.md`. It remains unresolved, outside these fixes.
 
 In legacy-mode IR for `g03_chain_static.tk`, `Encap_string_drop(sret.tmp)` occurs
 before the returned view is stored in `v`. The proposed named-owner migration
@@ -112,8 +113,9 @@ on JSON line 529. It now reports the raw-buffer element transfers at lines
 546/563 (`ContradictoryFacts`). These are not fixed or counted as restored PASS
 tests, and the excluded container scope is not added to B1.
 
-B1 still needs its remaining integration-test-purpose reconciliation and final
-bounded candidate verification. No whole-suite result or Accepted is claimed.
+The subsequent test-purpose reconciliation and full bounded comparison are
+recorded in `binding_b1_candidate.md`. They submit B1 as a complete bounded
+candidate, not as Accepted or as a fully green binding/release qualification.
 
 Validation for this increment: incremental **Debug** compiler build passes;
 seven targeted CTest entries pass (`binding_b1_default_args`,
@@ -126,6 +128,7 @@ incompatible assignment with no leaked E0438/E0410. Parser errors cannot count
 as successful semantic negatives. Normal/shadow diagnostics match and rejected
 cases produce neither object nor IR. `git diff --check` passes.
 
-No full PASS/FAIL suite, Lexer/Parser/formatter change, return-rule change,
-thread implementation change, push or PR is included. The accepted thread tag,
-thread branch and RC13 ref remain unchanged.
+No full PASS/FAIL suite was run at the `4142eebd` checkpoint; the final comparison
+has now been run and is reported separately. No Lexer/Parser/formatter change,
+return-rule change, thread implementation change, push or PR is included.
+The accepted thread tag, thread branch and RC13 ref remain unchanged.

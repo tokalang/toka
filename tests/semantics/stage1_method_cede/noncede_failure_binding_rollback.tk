@@ -1,21 +1,16 @@
 shape Resource(value: i32)
-
 impl Resource {
     fn drop(self#) {}
-
     fn inspect(cede self, amount: i32) -> i32 {
         auto owned = cede self
         return owned.value + amount
     }
 }
-
-fn read(value: Resource) -> i32 {
-    return value.value
-}
-
+fn read(value: Resource) -> i32 { return value.value }
 fn main() -> i32 {
     auto resource = Resource(value = 7:i32)
-    // No enclosing binding transaction: test the method route itself.
-    resource.inspect(true)
+    // The enclosing binding must restore source state on failure, even when
+    // the method's ordinary parameter is outside explicit-cede activation.
+    auto rejected = resource.inspect(true)
     return read(resource)
 }
