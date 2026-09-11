@@ -1,6 +1,7 @@
-# JSON recovery: concrete leaf candidate and deferred designs
+# JSON recovery: accepted concrete leaf slice and deferred designs
 
-Status: concrete leaf slice implemented as a candidate; not Accepted.
+Status: concrete leaf slice Accepted at `94eaaa46c410054c46ae50c54f51d1075535540d`.
+Local freeze: `freeze/json-leaf-94eaaa46`. This first slice is closed.
 The recursive-container and public JsonFactory designs below remain proposals.
 This is separate from managed-element morphology alignment. No raw_take,
 Copy/Dup, thread, ABI or interface rule changes are authorized here.
@@ -10,7 +11,7 @@ Copy/Dup, thread, ABI or interface rule changes are authorized here.
 shared/iterator 已在 c81ecdd6 验收，本设计不再向该切片追加工作。
 建议先验证工厂构造，再决定泛型迁移；递归容器证明仍独立待裁定。
 
-首片范围（**已获实施授权，尚未验收**）：
+首片范围（**已验收并收口，不追加任务**）：
 
 1. 将三个具体解析器需要的扫描/解码逻辑提取到不依赖 JsonNode 的小型
    内部模块；保持算法、错误文本和现有入口行为，不复制第二套解析算法。

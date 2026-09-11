@@ -1,4 +1,18 @@
-# JSON leaf closeout — complete candidate, not Accepted
+# JSON leaf closeout — Accepted
+
+Accepted revision: `94eaaa46c410054c46ae50c54f51d1075535540d`.
+Local freeze: `freeze/json-leaf-94eaaa46` (points to the accepted implementation,
+not this documentation commit).
+Scope: the three concrete i32/owning-string/borrowed-str factories, authorized
+enum source refinement and old-destination cleanup, including the binding-ID
+shadowing repair. This first slice is closed; no further tasks are appended.
+Generic factories, recursive container proofs and complete JSON recovery remain
+outside this acceptance, as do the full binding slice and RC13 qualification.
+
+The user's independent acceptance run reported **7/7 passed, 149.49 seconds**,
+with the shadowing/rename controls rejected, static positive running, no stale
+ID inheritance by clones and no name fallback on missing identity. This
+acceptance-record update changes documentation only; it does not rerun tests.
 
 Implementation base: `35af4aae20a059a8cfa4ec9b2909f2ec3ea107e5`.
 Last WIP checkpoint: `ee186ac27f72dd4a24caef71882545496ee69c40`.
@@ -69,8 +83,8 @@ bounds, recursive container witness, receiver-write protocol, TKI or ABI work.
   parity and object/IR non-production; no earlier results were substituted.
 - Incremental Debug tokac build, `git diff --check` and reverse applicability
   of the confirmed diff passed. No full PASS/FAIL suite or RC13 qualification
-  was run. This is a complete concrete-factory candidate, not an Accepted marker
-  for the candidate, full JSON module, binding slice or release.
+  was run. These implementation-run results support the narrowly scoped
+  acceptance recorded above, not full JSON, binding or release qualification.
 
 ## Applied return-edge refinement
 
