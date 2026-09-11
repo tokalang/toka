@@ -1,0 +1,45 @@
+import stdx/serde/json_factory::{@JsonFactory, Parsed}
+auto drops# = 0
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+impl Token@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<Token>, str> <- json {
+        auto attempt = i32::parse_value(json)
+        if attempt.is_err() {
+            auto failure = Result<Parsed<Token>, str>::Err(attempt.unwrap_err())
+            return cede failure
+        }
+        auto number = attempt.unwrap()
+        auto token = Token(id = number.value)
+        auto parsed = Parsed<Token>(value = cede token, rest = number.rest)
+        auto result = Result<Parsed<Token>, str>::Ok(cede parsed)
+        return cede result
+    }
+}
+fn main() -> i32 {
+    {
+        auto result = Option<Token>::parse_value("42!")
+        if result.is_err() { return 1 }
+    }
+    if drops != 1 { return 2 }
+    {
+        auto result = Option<Token>::parse_value("bad")
+        if result.is_ok() { return 3 }
+    }
+    if drops != 1 { return 4 }
+    {
+        // The child exists, but the enclosing delimiter is missing.
+        auto result = Result<Token, i32>::parse_value("{\"Ok\":42")
+        if result.is_ok() { return 5 }
+    }
+    if drops != 2 { return 6 }
+    {
+        auto result = Result<i32, Token>::parse_value("{\"Err\":42}!")
+        if result.is_err() { return 7 }
+    }
+    if drops != 3 { return 8 }
+    return 0
+}

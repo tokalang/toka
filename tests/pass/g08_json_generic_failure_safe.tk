@@ -3,21 +3,29 @@ import core/option::{Option}
 import core/result::{Result}
 import std/vec::{Vec}
 import std/hashmap::{HashMap}
-import stdx/serde/json::{@FromJson, JsonRes}
+import stdx/serde/json::{@FromJson, @JsonFactory, Parsed}
 
 auto g_drops# = 0
 
 shape StrictRes (
     id: i32
 )
-impl StrictRes@FromJson {
-    pub fn parse_json(self#, json: str) -> JsonRes <- json {
+impl StrictRes@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<StrictRes>, str> <- json {
         if json.starts_with("FAIL") {
-            auto failure = JsonRes::Err("Explicit parse failure")
+            auto failure = Result<Parsed<StrictRes>, str>::Err("Explicit parse failure")
             return cede failure
         }
-        auto parsed = self.id#.parse_json(json)
-        return cede parsed
+        auto attempt = i32::parse_value(json)
+        if attempt.is_err() {
+            auto failure = Result<Parsed<StrictRes>, str>::Err(attempt.unwrap_err())
+            return cede failure
+        }
+        auto number = attempt.unwrap()
+        auto value = StrictRes(id = number.value)
+        auto parsed = Parsed<StrictRes>(value = cede value, rest = number.rest)
+        auto result = Result<Parsed<StrictRes>, str>::Ok(cede parsed)
+        return cede result
     }
 }
 impl StrictRes@Encap {

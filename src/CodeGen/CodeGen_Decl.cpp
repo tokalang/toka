@@ -174,6 +174,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     ~FnGuard() { Target = Old; }
   } fnGuard(m_CurrentFunction, func);
 
+  if (func->DeferredJsonBody && !func->DeferredJsonBodyChecked) return nullptr;
   if (!declOnly && func->Body && !validateStage0SpecializationAuthority(func))
     return nullptr;
 

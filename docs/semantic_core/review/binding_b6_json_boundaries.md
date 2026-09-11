@@ -2,9 +2,38 @@
 
 Status: concrete leaf slice Accepted at `94eaaa46c410054c46ae50c54f51d1075535540d`.
 Local freeze: `freeze/json-leaf-94eaaa46`. This first slice is closed.
-The recursive-container and public JsonFactory designs below remain proposals.
+The subsequent combined JSON-recovery implementation is in progress on
+`impl/json-recovery`; neither that work nor its container evidence is Accepted.
+The original eight nonempty JSON targets remain required positives. The earlier
+scope decisions below are historical; they are not additional helper approval gates.
 This is separate from managed-element morphology alignment. No raw_take,
 Copy/Dup, thread, ABI or interface rule changes are authorized here.
+
+## Combined recovery implementation checkpoint (2026-09-11)
+
+- Separate `@JsonFactory` constructs complete `Parsed<T>` values; generic
+  Option/Result/Vec/HashMap and JsonNode code no longer constructs arbitrary T
+  through byte-zero initialization. Library migration is WIP, not qualified
+  container support.
+- Generic factory bodies are prepared on demand in their captured declaration
+  scope, after shape analysis, rather than eagerly during global registration.
+  Invalid/unprepared bodies cannot obtain code generation through this path.
+- The new factory-values regression checks scalar/Option/Result values,
+  resource cleanup including a missing outer delimiter, both producer orders,
+  normal/shadow parity, invalid-body cache rejection, and local borrowed-result
+  escape rejection. Incremental tool build passed; the eight directly related
+  CTest gates passed 8/8 in 165.44 seconds. No full PASS/FAIL run was performed.
+- Original-target check: 1/9, but that one is an existing empty main. Actual
+  JSON recovery is **0/8**. First errors remain `ElementDependenciesUnproven`;
+  `Vec<i32>` factory integration separately reports `IncompleteFacts` for
+  `Parsed<Vec<i32>>`. Neither is converted to an expected negative.
+- Still required: verified recursive container descriptor/instance evidence,
+  mutation preservation/invalidation and cleanup, followed by the original
+  JSON runtime matrix. No blanket raw_take or recursive-type exemption exists.
+
+Reproduce the distinct gates with `tools/scripts/test_json_factory_values.py`
+and `tools/scripts/test_json_recovery.py`, each with `--build-dir BUILD`.
+The latter defaults to compile **and run**; `--check-only` is diagnostic only.
 
 ## 下一实施裁定：先做完整值 factory 的具体类型验证
 

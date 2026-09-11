@@ -4247,6 +4247,20 @@ bool Sema::Stage1BindingTransfer::prepare(
     }
     return false;
   }
+  if (validated && destination && Owner.m_JsonOwnedAdapters.count(Owner.CurrentFunction)) {
+    const auto targetPath = Owner.makeAccessPath(destination);
+    SymbolInfo *targetInfo = nullptr;
+    if (targetPath.RootID && Owner.CurrentScope->findSymbolByID(targetPath.RootID, targetInfo) &&
+        targetInfo && targetInfo->IsFunctionParameter && !targetInfo->IsCeded) {
+      const auto &facts = Plan->Prepared;
+      if (!facts.DependencyFactsComplete || !facts.DependencyRoots.empty() || facts.ReferentPlace ||
+          !facts.StructuredReferentPlaces.empty()) {
+        Owner.error(source, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                    "JsonReceiverRequiresIndependentValueUseFactoryInstead");
+        return false;
+      }
+    }
+  }
   if (validated && destination && target &&
       (target->isFunction() || target->isDynFn())) {
     const auto path = Owner.makeAccessPath(destination);
@@ -6610,7 +6624,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   size_t pos = CallName.find("::");
   if (pos != std::string::npos) {
     std::string RawPrefix = CallName.substr(0, pos);
-    bool staticTypeVisible = isTypeNameVisible(RawPrefix, getLoc(Call));
+    SymbolInfo prefixAlias;
+    const bool scopedTypeAlias = CurrentScope->lookup(RawPrefix, prefixAlias) &&
+        prefixAlias.IsTypeAlias && prefixAlias.TypeObj;
+    auto prefixType = toka::Type::fromString(RawPrefix);
+    const bool builtinPrimitive = prefixType && prefixType->typeKind == Type::Primitive && !prefixType->isUnknown();
+    bool staticTypeVisible = scopedTypeAlias || builtinPrimitive || isTypeNameVisible(RawPrefix, getLoc(Call));
     if (!staticTypeVisible &&
         (ShapeMap.count(RawPrefix) || TypeAliasMap.count(RawPrefix))) {
       DiagnosticEngine::report(getLoc(Call), DiagID::ERR_UNDEFINED_TYPE,
@@ -6627,7 +6646,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
     auto staticType =
         staticTypeVisible
-            ? resolveType(toka::Type::fromString(RawPrefix))
+            ? resolveType(scopedTypeAlias ? prefixAlias.TypeObj : toka::Type::fromString(RawPrefix))
             : nullptr;
     auto staticShapeType = std::dynamic_pointer_cast<ShapeType>(
         staticType ? staticType->getSoulType() : nullptr);
@@ -6640,10 +6659,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
     if (!staticShape && staticTypeVisible)
       staticShape = findVisibleShapeDecl(RawPrefix, getLoc(Call));
-    if (staticShape) {
+    const bool primitiveStaticOwner = staticType && staticType->typeKind == Type::Primitive &&
+        !staticType->isUnknown() && MethodMap.count(staticType->getSoulName());
+    if (staticShape || primitiveStaticOwner) {
       const std::string methodKey =
-          staticShape->CodegenName.empty() ? staticShape->Name
-                                           : staticShape->CodegenName;
+          staticShape ? (staticShape->CodegenName.empty() ? staticShape->Name
+                                                        : staticShape->CodegenName)
+                      : staticType->getSoulName();
       // Update CallName and Callee for subsequent lookup and CodeGen
       CallName = methodKey + "::" + VariantName;
       Call->Callee = CallName;
@@ -6657,6 +6679,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             MetAST = MethodDecls[methodKey][VariantName];
         }
         Call->ResolvedFn = MetAST;
+        if (MetAST && MetAST->DeferredJsonBody && !MetAST->DeferredJsonBodyChecked) {
+          if (!prepareCallableFactory(MetAST)) {
+            error(Call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                  "JsonFactoryBodyUnqualified");
+            return Type::fromString("unknown");
+          }
+        }
         if (MetAST) {
           std::string fnId = !MetAST->CodegenName.empty() ? MetAST->CodegenName : MetAST->Name;
           markHandleGrammarFunctionReachable(fnId);
@@ -6879,6 +6908,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 "TaskHandle",
                 std::vector<std::shared_ptr<toka::Type>>{resolvedRet}));
         }
+        // Static factories carry the same declared formal-to-actual return
+        // dependencies as ordinary calls. Preserve those actual roots in a
+        // receiving binding instead of making the local result its own origin.
+        if (MetAST) {
+          MetAST->ResolvedReturnType = resolvedRet;
+          Call->ResolvedType = resolvedRet;
+          std::vector<AccessPath> returnOrigins;
+          if (collectActualReturnReferents(Call, returnOrigins))
+            for (const auto &origin : returnOrigins)
+              m_LastLifeDependencies.insert(origin.toLegacyString());
+        }
         markExplicitCedeStage0RouteValidationComplete(Call);
         return resolvedRet;
       } else {
@@ -6915,7 +6955,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
       // Enum Variant Constructor
       ShapeDecl *SD = staticShape;
-      if (SD->Kind == ShapeKind::Enum) {
+      if (SD && SD->Kind == ShapeKind::Enum) {
         for (auto &Memb : SD->Members) {
           if (Memb.Name == VariantName) {
             // Enum Variant Constructor: Variant(Args...) -> ShapeName

@@ -2396,6 +2396,10 @@ public:
 
   bool IsVariadic = false;
   bool IsClosureInvoke = false;
+  // Source-only JSON generic construction methods are checked on demand,
+  // after module shape facts exist. Unchecked bodies are never emitted.
+  bool DeferredJsonBody = false;
+  bool DeferredJsonBodyChecked = false;
   // Set by Sema only for declarations resolved from the trusted
   // core/intrinsics/atomic toolchain module.
   bool IsTrustedAtomicIntrinsic = false;

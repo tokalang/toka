@@ -2671,6 +2671,12 @@ void Sema::applyAssociatedTypeSubstitutions(
     return;
 
   for (auto &Method : Impl->Methods) {
+    auto prepared = m_CallableFactoryStates.find(Method.get());
+    auto checked = m_RawAddressReturns.find(Method.get());
+    if (prepared != m_CallableFactoryStates.end() && checked != m_RawAddressReturns.end() &&
+        checked->second.Checked && (prepared->second == CallableFactoryState::Valid ||
+                                    prepared->second == CallableFactoryState::Invalid))
+      continue; // Re-registration must not erase a prepared definition's signature.
     for (const auto &[name, ty] : substitutions) {
       substituteSourceTypeSyntax(Method->ReturnTypeSyntax, Method->ReturnType,
                                   name, ty);
@@ -4681,6 +4687,12 @@ void Sema::registerImpl(ImplDecl *Impl) {
   // so that callers (like main) typically don't fail to resolve 'Self'.
   std::string selfTy = Impl->TypeName;
   for (auto &Method : Impl->Methods) {
+    auto prepared = m_CallableFactoryStates.find(Method.get());
+    auto checked = m_RawAddressReturns.find(Method.get());
+    if (prepared != m_CallableFactoryStates.end() && checked != m_RawAddressReturns.end() &&
+        checked->second.Checked && (prepared->second == CallableFactoryState::Valid ||
+                                    prepared->second == CallableFactoryState::Invalid))
+      continue; // The body was already checked with its exact Self/associated types.
     substituteSourceTypeSyntax(Method->ReturnTypeSyntax, Method->ReturnType,
                                 "Self", selfTy);
     Method->syncReturnContractTypeCache();
@@ -5270,6 +5282,8 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
   globals.Symbols = lexical->second->LexicalSymbols;
   for (const auto &[name, type] : lexical->second->LexicalTypes)
     globals.Symbols.emplace(name, type);
+  if (auto bindings = m_JsonFactoryLexicalBindings.find(function); bindings != m_JsonFactoryLexicalBindings.end())
+    for (const auto &[name, symbol] : bindings->second) globals.Symbols[name] = symbol;
   auto *savedScope = CurrentScope;
   auto *savedModule = CurrentModule;
   auto *savedCaptureScope = m_ClosureCaptureRootScope;
@@ -5961,6 +5975,11 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     auto &enumSummary = m_EnumReturnSummaries[Fn];
     enumSummary.Checked = true;
     enumSummary.Valid = rawSummary.Valid && !HasError && allPathsJump(Fn->Body.get());
+    if (Fn->DeferredJsonBody) {
+      Fn->DeferredJsonBodyChecked = rawSummary.Valid && !HasError;
+      m_CallableFactoryStates[Fn] = Fn->DeferredJsonBodyChecked
+          ? CallableFactoryState::Valid : CallableFactoryState::Invalid;
+    }
     if (enumSummary.Valid && enumSummary.SawReturn && enumSummary.CompleteResults && enumSummary.Result)
       m_CallableFactoryStates[Fn] = CallableFactoryState::Valid;
   }
@@ -6078,6 +6097,7 @@ void Sema::checkImpl(ImplDecl *Impl) {
   // 3. Check all methods
   for (auto &Method : Impl->Methods) {
     // Methods inside Impl are FunctionDecls.
+    if (Method->DeferredJsonBody) continue;
     checkFunction(Method.get());
   }
 

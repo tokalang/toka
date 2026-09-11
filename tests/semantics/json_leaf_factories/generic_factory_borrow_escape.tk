@@ -1,0 +1,7 @@
+import stdx/serde/json_factory::{@JsonFactory}
+fn escaped() -> str {
+    auto owner = string::from("\"borrowed\"")
+    auto result = str::parse_value(owner.as_str()).unwrap()
+    return result.value
+}
+fn main() -> i32 { return 0 }

@@ -1,0 +1,21 @@
+import stdx/serde/json_factory::{@JsonFactory}
+fn main() -> i32 {
+    auto integer = i32::parse_value("42tail").unwrap()
+    if integer.value != 42 || !integer.rest.equals("tail") { return 1 }
+    auto boolean = bool::parse_value("true!").unwrap()
+    if !boolean.value || !boolean.rest.equals("!") { return 2 }
+    auto real = f64::parse_value("-1.25e2!").unwrap()
+    if real.value != -125.0 { return 3 }
+    auto empty_result = Option<i32>::parse_value("null!").unwrap()
+    if !empty_result.value.is_none() || !empty_result.rest.equals("!") { return 4 }
+    auto present_result = Option<i32>::parse_value("42!").unwrap()
+    if present_result.value.unwrap() != 42 || !present_result.rest.equals("!") { return 5 }
+    auto ok = Result<i32, string>::parse_value("{\"Ok\":42}!").unwrap()
+    if !ok.rest.equals("!") || ok.value.unwrap() != 42 { return 6 }
+    auto err = Result<i32, string>::parse_value("{\"Err\":\"bad\"}!").unwrap()
+    auto message = err.value.unwrap_err()
+    if !message.as_str().equals("bad") || !err.rest.equals("!") { return 7 }
+    auto bad = Result<i32, string>::parse_value("{\"Ok\":42")
+    if !bad.is_err() { return 8 }
+    return 0
+}

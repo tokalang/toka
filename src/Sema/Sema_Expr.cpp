@@ -5116,6 +5116,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         FunctionDecl *FD = dupProvider ? dupProvider
                                        : MethodDecls[soulType][Met->Method];
         Met->ResolvedFn = FD;
+        if (FD && FD->DeferredJsonBody && !FD->DeferredJsonBodyChecked && !prepareCallableFactory(FD)) {
+          error(Met, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED, "JsonFactoryBodyUnqualified");
+          return Type::fromString("unknown");
+        }
         const bool hasStage1CedeParameter =
             m_EnableStage1ExplicitCallerCede &&
             std::any_of(FD->Args.begin() + std::min<size_t>(1, FD->Args.size()),

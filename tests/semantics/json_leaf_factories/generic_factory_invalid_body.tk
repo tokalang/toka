@@ -1,0 +1,12 @@
+import stdx/serde/json_factory::{@JsonFactory, Parsed}
+shape Wrapped<'T>('value: T)
+impl<'T> Wrapped<'T>@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<Wrapped<'T>>, str> <- json {
+        return true
+    }
+}
+fn main() -> i32 {
+    auto first = Wrapped<i32>::parse_value("1")
+    auto second = Wrapped<i32>::parse_value("2")
+    return 0
+}

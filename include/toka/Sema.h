@@ -1022,6 +1022,10 @@ private:
     bool Completed = false;
   };
   std::map<uint64_t, CallableEnvironmentFacts> m_CallableEnvironments;
+  // Restrictive policy for source-visible generic JSON mutation adapters.
+  // Factory capability alone never authorizes storing input borrows in self.
+  std::set<const FunctionDecl *> m_JsonOwnedAdapters;
+  std::map<const FunctionDecl *, std::map<std::string, SymbolInfo>> m_JsonFactoryLexicalBindings;
   std::map<uint64_t, EnumResultSourcePtr> m_EnumResults;
   std::map<uint64_t, EnumPayloadSelection> m_EnumSelections;
   std::map<const Expr *, EnumResultSourcePtr> m_EnumExpressionResults;

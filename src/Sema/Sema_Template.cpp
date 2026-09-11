@@ -401,6 +401,21 @@ void Sema::instantiateGenericImpl(
     return;
   }
 
+  auto *implModule = getLexicalModule(Template->Loc);
+  const bool jsonOwnedAdapter = implModule && implModule->IsTrustedSystemModule &&
+      implModule->ShadowCoordinateKnown && implModule->ShadowLogicalModulePath == "stdx/serde/json" &&
+      getTraitFamilyName(Template->TraitName) == "FromJson";
+  auto *factoryTrait = findVisibleTraitDecl(Template->TraitName, Template->Loc);
+  auto *factoryModule = factoryTrait ? getLexicalModule(factoryTrait->Loc) : nullptr;
+  const bool jsonFactory = factoryModule && factoryModule->IsTrustedSystemModule &&
+      factoryModule->ShadowLogicalModulePath == "stdx/serde/json_factory" &&
+      getTraitFamilyName(Template->TraitName) == "JsonFactory";
+  if (jsonOwnedAdapter) {
+    for (const auto &argument : GenericArgs)
+      if (!argument || argument->isReference() || argument->isRawPointer() || hasBorrowedValueFields(argument))
+        return; // Borrowed construction remains available through JsonFactory.
+  }
+
   // [NEW] Check Trait Bounds (SFINAE)
   for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
     if (!checkMorphologyBounds(Template->Loc, Template->GenericParams[i],
@@ -501,6 +516,9 @@ void Sema::instantiateGenericImpl(
     // Wait, FunctionDecl::clone() returns unique_ptr<ASTNode>.
     std::unique_ptr<FunctionDecl> ClonedFn(
         static_cast<FunctionDecl *>(ClonedAST.release()));
+    if (jsonOwnedAdapter) m_JsonOwnedAdapters.insert(ClonedFn.get());
+    ClonedFn->DeferredJsonBody = jsonOwnedAdapter || jsonFactory;
+    ClonedFn->DeferredJsonBodyChecked = false;
 
     // Apply Substitution
     Instantiator.visitFunction(ClonedFn.get());
@@ -694,6 +712,9 @@ void Sema::instantiateGenericImpl(
 
   // Now Register it!
   registerImpl(RawPtr);
+  for (const auto &method : RawPtr->Methods)
+    if (method->DeferredJsonBody)
+      m_JsonFactoryLexicalBindings[method.get()] = CurrentScope->Symbols;
 
   // Now Check it!
   // This will check method bodies with isolated expression state

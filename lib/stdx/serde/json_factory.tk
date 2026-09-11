@@ -1,0 +1,342 @@
+// Complete-value construction, separate from mutation of an existing receiver.
+pub import stdx/serde/json_leaf::{Parsed}
+import stdx/serde/json_leaf::{leaf_skip_whitespace, parse_i32_value, parse_string_value, parse_str_view}
+import std/vec::{Vec}
+import std/hashmap::{HashMap}
+import std/math
+pub alias JsonRes = Result<str, str>
+
+pub trait @JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<Self>, str> <- json
+}
+
+impl i32@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<i32>, str> <- json {
+        auto result = parse_i32_value(json)
+        return cede result
+    }
+}
+impl string@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<string>, str> <- json {
+        auto result = parse_string_value(json)
+        return cede result
+    }
+}
+impl str@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<str>, str> <- json {
+        auto result = parse_str_view(json)
+        return cede result
+    }
+}
+impl bool@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<bool>, str> <- json {
+        auto rem = leaf_skip_whitespace(json)
+        if rem.starts_with("true") {
+            auto parsed = Parsed<bool>(value = true, rest = rem.substr(4, rem.len() - 4))
+            auto result = Result<Parsed<bool>, str>::Ok(cede parsed)
+            return cede result
+        }
+        if rem.starts_with("false") {
+            auto parsed = Parsed<bool>(value = false, rest = rem.substr(5, rem.len() - 5))
+            auto result = Result<Parsed<bool>, str>::Ok(cede parsed)
+            return cede result
+        }
+        auto error = Result<Parsed<bool>, str>::Err("Invalid bool")
+        return cede error
+    }
+}
+
+fn json_skip_whitespace(json: str) -> str <- json {
+    return leaf_skip_whitespace(json)
+}
+
+pub fn json_skip_value(json_in: str) -> JsonRes <- json_in {
+    auto result = _json_skip_value(json_in, 0)
+    return cede result
+}
+
+fn _json_skip_value(json_in: str, depth: usize) -> JsonRes <- json_in {
+    if depth > 128 {
+        auto outcome_257 = JsonRes::Err("Depth limit exceeded")
+        return cede outcome_257
+    }
+    auto json# = json_skip_whitespace(json_in)
+    if json.len() == 0 {
+        auto outcome_259 = JsonRes::Err("Unexpected EOF")
+        return cede outcome_259
+    }
+
+    auto c = json.byte_at(0)
+    if c == 123 { // '{'
+        json = json.substr(1, json.len() - 1)
+        loop json.len() > 0 && json.byte_at(0) != 125 {
+            json = json_skip_whitespace(json)
+            if json.len() > 0 && json.byte_at(0) == 125 { break }
+            json = _json_skip_value(json, depth + 1)!
+            json = json_skip_whitespace(json)
+            if json.len() > 0 && json.byte_at(0) == 58 { json = json.substr(1, json.len() - 1) }
+            json = _json_skip_value(json, depth + 1)!
+            json = json_skip_whitespace(json)
+            if json.len() > 0 && json.byte_at(0) == 44 { json = json.substr(1, json.len() - 1) }
+        }
+        if json.len() > 0 { json = json.substr(1, json.len() - 1) }
+        auto outcome_275 = JsonRes::Ok(json)
+        return cede outcome_275
+    } else if c == 91 { // '['
+        json = json.substr(1, json.len() - 1)
+        loop json.len() > 0 && json.byte_at(0) != 93 {
+            json = json_skip_whitespace(json)
+            if json.len() > 0 && json.byte_at(0) == 93 { break }
+            json = _json_skip_value(json, depth + 1)!
+            json = json_skip_whitespace(json)
+            if json.len() > 0 && json.byte_at(0) == 44 { json = json.substr(1, json.len() - 1) }
+        }
+        if json.len() > 0 { json = json.substr(1, json.len() - 1) }
+        auto outcome_286 = JsonRes::Ok(json)
+        return cede outcome_286
+    } else if c == 34 { // '"'
+        auto i# = 1:usize
+        loop i < json.len() {
+            auto ch = json.byte_at(i)
+            if ch == 34 {
+                auto outcome_291 = JsonRes::Ok(json.substr(i + 1, json.len() - i - 1))
+                return cede outcome_291
+            }
+            if ch == 92 { i += 1 }
+            i += 1
+        }
+        auto outcome_295 = JsonRes::Err("Unterminated string")
+        return cede outcome_295
+    } else {
+        auto i# = 0:usize
+        loop i < json.len() {
+            auto b = json.byte_at(i)
+            if b == 32 || b == 10 || b == 13 || b == 9 || b == 44 || b == 125 || b == 93 { break }
+            i += 1
+        }
+        auto outcome_303 = JsonRes::Ok(json.substr(i, json.len() - i))
+        return cede outcome_303
+    }
+}
+
+impl f64@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<f64>, str> <- json {
+        auto rem = json_skip_whitespace(json)
+        auto skip_res = json_skip_value(rem)!
+        auto val_str = rem.substr(0, rem.len() - skip_res.len())
+
+        auto i# = 0:usize
+        auto n = val_str.len()
+        auto result# = 0.0:f64
+        auto sign# = 1.0:f64
+
+        if i < n && val_str.byte_at(i) == 45 { sign = -1.0; i += 1 }
+        else if i < n && val_str.byte_at(i) == 43 { i += 1 }
+
+        loop i < n && val_str.byte_at(i) >= 48 && val_str.byte_at(i) <= 57 {
+            result = result * 10.0 + ((val_str.byte_at(i) - 48) as f64)
+            i += 1
+        }
+        if i < n && val_str.byte_at(i) == 46 { // '.'
+            i += 1
+            auto frac# = 0.1:f64
+            loop i < n && val_str.byte_at(i) >= 48 && val_str.byte_at(i) <= 57 {
+                result = result + ((val_str.byte_at(i) - 48) as f64) * frac
+                frac = frac * 0.1
+                i += 1
+            }
+        }
+        if i < n && (val_str.byte_at(i) == 101 || val_str.byte_at(i) == 69) {
+            i += 1
+            auto exp_sign# = 1.0:f64
+            if i < n && val_str.byte_at(i) == 45 { exp_sign = -1.0; i += 1 }
+            else if i < n && val_str.byte_at(i) == 43 { i += 1 }
+            auto exp# = 0.0:f64
+            loop i < n && val_str.byte_at(i) >= 48 && val_str.byte_at(i) <= 57 {
+                exp = exp * 10.0 + ((val_str.byte_at(i) - 48) as f64)
+                i += 1
+            }
+            if exp != 0.0 { result = result * math::pow(10.0, exp * exp_sign) }
+        }
+        auto parsed = Parsed<f64>(value = sign * result, rest = skip_res)
+        auto outcome_347 = Result<Parsed<f64>, str>::Ok(cede parsed)
+        return cede outcome_347
+    }
+}
+
+impl<'T: @JsonFactory> Option<'T>@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<Option<'T>>, str> <- json {
+        auto rem = leaf_skip_whitespace(json)
+        if rem.starts_with("null") {
+            auto value = Option<'T>::None
+            auto parsed = Parsed<Option<'T>>(value = cede value, rest = rem.substr(4, rem.len() - 4))
+            auto result = Result<Parsed<Option<'T>>, str>::Ok(cede parsed)
+            return cede result
+        }
+        auto child = T::parse_value(rem)
+        if child.is_err() {
+            auto error = Result<Parsed<Option<'T>>, str>::Err(child.unwrap_err())
+            return cede error
+        }
+        auto parsed_child = child.unwrap()
+        auto 'payload = cede parsed_child.value
+        auto optional = Option<'T>::Some(cede 'payload)
+        auto parsed = Parsed<Option<'T>>(value = cede optional, rest = parsed_child.rest)
+        auto result = Result<Parsed<Option<'T>>, str>::Ok(cede parsed)
+        return cede result
+    }
+}
+
+impl<'T: @JsonFactory> Vec<'T>@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<Vec<'T>>, str> <- json {
+        auto rem# = leaf_skip_whitespace(json)
+        if rem.len() == 0 || rem.byte_at(0) != 91 {
+            auto error = Result<Parsed<Vec<'T>>, str>::Err("Expected [")
+            return cede error
+        }
+        rem = rem.substr(1, rem.len() - 1)
+        auto value# = Vec<'T>::new()
+        auto first# = true
+        loop true {
+            rem = leaf_skip_whitespace(rem)
+            if rem.len() > 0 && rem.byte_at(0) == 93 {
+                rem = rem.substr(1, rem.len() - 1)
+                break
+            }
+            if !first {
+                if rem.len() == 0 || rem.byte_at(0) != 44 {
+                    auto error = Result<Parsed<Vec<'T>>, str>::Err("Expected ,")
+                    return cede error
+                }
+                rem = leaf_skip_whitespace(rem.substr(1, rem.len() - 1))
+            }
+            first = false
+            auto child = T::parse_value(rem)
+            if child.is_err() {
+                auto error = Result<Parsed<Vec<'T>>, str>::Err(child.unwrap_err())
+                return cede error
+            }
+            auto parsed_child = child.unwrap()
+            auto 'item = cede parsed_child.value
+            value#.push(cede 'item)
+            rem = parsed_child.rest
+        }
+        auto parsed = Parsed<Vec<'T>>(value = cede value, rest = rem)
+        auto result = Result<Parsed<Vec<'T>>, str>::Ok(cede parsed)
+        return cede result
+    }
+}
+
+impl<'T: @JsonFactory, 'E: @JsonFactory> Result<'T, 'E>@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<Result<'T, 'E>>, str> <- json {
+        auto rem# = leaf_skip_whitespace(json)
+        if rem.len() == 0 || rem.byte_at(0) != 123 {
+            auto error = Result<Parsed<Result<'T, 'E>>, str>::Err("Expected { for Result")
+            return cede error
+        }
+        rem = rem.substr(1, rem.len() - 1)
+        auto key_result = parse_string_value(rem)
+        if key_result.is_err() {
+            auto error = Result<Parsed<Result<'T, 'E>>, str>::Err(key_result.unwrap_err())
+            return cede error
+        }
+        auto key = key_result.unwrap()
+        rem = leaf_skip_whitespace(key.rest)
+        if rem.len() == 0 || rem.byte_at(0) != 58 {
+            auto error = Result<Parsed<Result<'T, 'E>>, str>::Err("Expected : for Result")
+            return cede error
+        }
+        rem = rem.substr(1, rem.len() - 1)
+        if key.value.as_str().equals("Ok") {
+            auto child = T::parse_value(rem)
+            if child.is_err() {
+                auto error = Result<Parsed<Result<'T, 'E>>, str>::Err(child.unwrap_err())
+                return cede error
+            }
+            auto parsed_child = child.unwrap()
+            auto tail = leaf_skip_whitespace(parsed_child.rest)
+            if tail.len() == 0 || tail.byte_at(0) != 125 {
+                auto error = Result<Parsed<Result<'T, 'E>>, str>::Err("Expected } for Result")
+                return cede error
+            }
+            auto 'payload = cede parsed_child.value
+            auto value = Result<'T, 'E>::Ok(cede 'payload)
+            auto parsed = Parsed<Result<'T, 'E>>(value = cede value, rest = tail.substr(1, tail.len() - 1))
+            auto result = Result<Parsed<Result<'T, 'E>>, str>::Ok(cede parsed)
+            return cede result
+        }
+        if key.value.as_str().equals("Err") {
+            auto child = E::parse_value(rem)
+            if child.is_err() {
+                auto error = Result<Parsed<Result<'T, 'E>>, str>::Err(child.unwrap_err())
+                return cede error
+            }
+            auto parsed_child = child.unwrap()
+            auto tail = leaf_skip_whitespace(parsed_child.rest)
+            if tail.len() == 0 || tail.byte_at(0) != 125 {
+                auto error = Result<Parsed<Result<'T, 'E>>, str>::Err("Expected } for Result")
+                return cede error
+            }
+            auto 'payload = cede parsed_child.value
+            auto value = Result<'T, 'E>::Err(cede 'payload)
+            auto parsed = Parsed<Result<'T, 'E>>(value = cede value, rest = tail.substr(1, tail.len() - 1))
+            auto result = Result<Parsed<Result<'T, 'E>>, str>::Ok(cede parsed)
+            return cede result
+        }
+        auto error = Result<Parsed<Result<'T, 'E>>, str>::Err("Invalid key for Result")
+        return cede error
+    }
+}
+
+impl<'K: @JsonFactory, 'V: @JsonFactory> HashMap<'K, 'V>@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<HashMap<'K, 'V>>, str> <- json {
+        auto rem# = leaf_skip_whitespace(json)
+        if rem.len() == 0 || rem.byte_at(0) != 123 {
+            auto error = Result<Parsed<HashMap<'K, 'V>>, str>::Err("Expected { for HashMap")
+            return cede error
+        }
+        rem = rem.substr(1, rem.len() - 1)
+        auto value# = HashMap<'K, 'V>::new()
+        auto first# = true
+        loop true {
+            rem = leaf_skip_whitespace(rem)
+            if rem.len() > 0 && rem.byte_at(0) == 125 {
+                rem = rem.substr(1, rem.len() - 1)
+                break
+            }
+            if !first {
+                if rem.len() == 0 || rem.byte_at(0) != 44 {
+                    auto error = Result<Parsed<HashMap<'K, 'V>>, str>::Err("Expected ,")
+                    return cede error
+                }
+                rem = leaf_skip_whitespace(rem.substr(1, rem.len() - 1))
+            }
+            first = false
+            auto key_result = K::parse_value(rem)
+            if key_result.is_err() {
+                auto error = Result<Parsed<HashMap<'K, 'V>>, str>::Err(key_result.unwrap_err())
+                return cede error
+            }
+            auto key = key_result.unwrap()
+            rem = leaf_skip_whitespace(key.rest)
+            if rem.len() == 0 || rem.byte_at(0) != 58 {
+                auto error = Result<Parsed<HashMap<'K, 'V>>, str>::Err("Expected :")
+                return cede error
+            }
+            rem = rem.substr(1, rem.len() - 1)
+            auto child = V::parse_value(rem)
+            if child.is_err() {
+                auto error = Result<Parsed<HashMap<'K, 'V>>, str>::Err(child.unwrap_err())
+                return cede error
+            }
+            auto parsed_child = child.unwrap()
+            auto 'key_value = cede key.value
+            auto 'child_value = cede parsed_child.value
+            value#.insert(cede 'key_value, cede 'child_value)
+            rem = parsed_child.rest
+        }
+        auto parsed = Parsed<HashMap<'K, 'V>>(value = cede value, rest = rem)
+        auto result = Result<Parsed<HashMap<'K, 'V>>, str>::Ok(cede parsed)
+        return cede result
+    }
+}
