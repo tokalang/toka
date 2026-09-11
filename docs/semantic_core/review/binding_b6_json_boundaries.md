@@ -4,6 +4,51 @@ Status: **proposed for scope decision**, not Accepted or implemented.
 This is separate from managed-element morphology alignment. No raw_take,
 Copy/Dup, thread, ABI or interface rule changes are authorized here.
 
+## 下一实施裁定：先做完整值 factory 的具体类型验证
+
+shared/iterator 已在 c81ecdd6 验收，本设计不再向该切片追加工作。
+建议先验证工厂构造，再决定泛型迁移；递归容器证明仍独立待裁定。
+
+首片建议范围（**尚未授权实施**）：
+
+1. 将三个具体解析器需要的扫描/解码逻辑提取到不依赖 JsonNode 的小型
+   内部模块；保持算法、错误文本和现有入口行为，不复制第二套解析算法。
+   这是为了让叶子验证不被旧 json 模块中主动检查的递归容器路径阻断，
+   不是从最终 JSON 门禁中排除 JsonNode。
+2. 先提供内部具体函数，暂不引入公共 @JsonFactory 或迁移泛型 bounds：
+
+   ```toka
+   parse_i32_value(json: str) -> Result<Parsed<i32>, str> <- json
+   parse_string_value(json: str) -> Result<Parsed<string>, str> <- json
+   parse_str_view(json: str) -> Result<Parsed<str>, str> <- json
+   ```
+
+   以上是待验证的签名，不是声称已经可编译。Parsed 沿用下文的 value/rest
+   设计；每个字段的实际来源须独立验证。
+3. i32/string 从其合法初值构造；str view 直接来自输入的已验证切片。
+   不使用 memset(T,0)、假默认值或“解析成功即证明任意 T 已构造”的推断。
+4. 成功交出完整结果；失败清理已拥有的字符串/中间结果。借用 str 与 rest
+   保留输入依赖，静态错误文本使用独立静态 witness。不得把整个结果标成
+   dependency-free，也不得回填声明依赖来伪造实际 referent。
+5. 先覆盖正常/空/畸形输入、转义及非 ASCII、失败清理、输入存活/局部逃逸、
+   owning string 脱离输入后存活、normal/shadow 一致和拒绝不产物。
+   所有公开 JSON/return-matrix 正例继续保留，不能将局部门禁算作恢复。
+
+完成线：三个具体 factory 的构造和逐字段依赖均有真实运行/拒绝对照，
+现有解析算法未分叉。到此提交完整候选，再决定 @JsonFactory、组合解析器
+和 mutating adapter 的迁移；不按 helper 追加接受点。
+
+本次进一步核对的依据：
+
+- `Sema_Expr.cpp:5860` 的方法 MemberDependencies 应用先检查
+  `returnTypeHasMember`，随后写入 `m_LastFieldDependencies`。
+- `Sema_Expr_Call.cpp:10568` 的普通调用同样映射返回字段依赖。
+- `syntax.md:323-374` 描述的是返回值/返回成员的依赖契约。
+
+这些已检查路径不能用作通用 receiver-write 依赖证明。因此首片不新增
+借用 payload 的通用 mutating adapter；不将“暂未验证”描述成已经支持。
+下文两份较完整设计仍是候选，尤其 container witness 不在该首片内。
+
 ## 1. Recursive owning-container evidence
 
 The concrete JsonNode parser already constructs valid values: HashMap::new,
