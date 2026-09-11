@@ -2,11 +2,12 @@
 
 Base: `a38773eae5d626fdc070fa896562a1900037a383`.
 Branch: `impl/binding-b6-managed-elements`.
-Status: **not Accepted; the subsequently authorized domain/shared scopes are
-implemented**. Current candidate and complete matrix:
-`shared_aggregate_closeout.md`. The checkpoint history below preserves prior
-failures and authorization boundaries; its pending items are superseded by
-that candidate, not silently counted as earlier passes.
+Status: the two subsequent borrow-domain/shared-aggregate scopes are
+**Accepted at c81ecdd6**, as recorded in `shared_aggregate_closeout.md`.
+This is not blanket acceptance of B6, binding or release qualification. The
+checkpoint history below preserves prior failures and authorization boundaries;
+resolved items are not silently counted as earlier passes. The accepted two
+scopes are closed and will not accumulate further work here.
 
 ## Reproduced facts and applied changes
 

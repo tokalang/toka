@@ -1,8 +1,23 @@
 # B6: borrow domains and shared aggregate responsibility
 
 Base: `c03adb571cc62c0966e0f8821d9c4d54d3cc6992`.
-Status: implementation candidate for the two explicitly authorized scopes;
-**not Accepted**, not complete binding/RFC/release qualification.
+Status: **Accepted**, limited to borrow-interface domains and shared aggregate
+transfer responsibility.
+Accepted revision: `c81ecdd6bdb1b8f91a05d16e5f6e2a661885db0a`.
+Local implementation freeze: `freeze/borrow-domains-shared-c81ecdd6`.
+This does not accept JSON, recursive-container evidence, JsonFactory, the whole
+binding work, the complete cede RFC, or RC13 release qualification.
+
+The user's independent acceptance review reports ten selected related CTest
+targets **10/10**, **179.78 seconds**, plus wrapper-copy, multi-field/nested
+aggregate and partial-field-move controls. The source receipt did not replace
+destination permission validation. The original extended result remains
+**10/11**, not a fully green suite; the baseline condvar failure is neither a
+new blocker for these scopes nor a passing test.
+
+These two implementation scopes are closed. Subsequent work must be separately
+scoped; no further shared/iterator changes are included in this acceptance
+record. This documentation update does not rerun tests or alter implementation.
 
 ## 1. Interface domains
 
