@@ -1096,6 +1096,7 @@ int main(int argc, char **argv) {
           "missing", "rejected", "mismatch", "incomplete", "production-none",
           "production-identity", "production-borrow", "production-temporary", "production-unknown",
           "slot-proof-missing", "slot-proof-mismatch",
+          "slot-index", "slot-allocation", "slot-leaf",
           "copy-proof", "drop", "storage-type", "index-type"};
       if (!faults.count(rawTakeFault)) {
         llvm::errs() << "unknown raw_take fault\n";

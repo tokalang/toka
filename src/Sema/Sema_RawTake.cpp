@@ -23,10 +23,15 @@ std::optional<AccessPath> Sema::qualifiedRawSlot(ArrayIndexExpr *slot,
                                               uint64_t *indexBinding) {
   if (!slot || slot->Indices.size() != 1 || !CurrentFunction) return {};
   auto *base = dynamic_cast<VariableExpr *>(slot->Array.get());
-  auto *index = dynamic_cast<NumberExpr *>(slotSource(slot->Indices[0].get()));
+  Expr *indexSource = slot->Indices[0].get();
+  // Unsafe is value preserving; casts are not assumed to be. In particular,
+  // narrowing/ascription must not reuse the unconverted binding's identity.
+  while (auto *wrapper = dynamic_cast<UnsafeExpr *>(indexSource))
+    indexSource = wrapper->Expression.get();
+  auto *index = dynamic_cast<NumberExpr *>(indexSource);
   uint64_t indexID = 0;
   if (!index) {
-    auto *variable = dynamic_cast<VariableExpr *>(slotSource(slot->Indices[0].get()));
+    auto *variable = dynamic_cast<VariableExpr *>(indexSource);
     auto indexPath = variable ? makeAccessPath(variable) : AccessPath{};
     SymbolInfo *info = nullptr;
     if (!indexPath.RootID || !indexPath.Projections.empty() ||
@@ -40,19 +45,14 @@ std::optional<AccessPath> Sema::qualifiedRawSlot(ArrayIndexExpr *slot,
     auto owner = decl ? m_LocalVariableOwners.find(decl) : m_LocalVariableOwners.end();
     if (!decl || owner == m_LocalVariableOwners.end() || owner->second != CurrentFunction)
       return {};
-    // Deliberately retain the literal-extent and proven in-range requirement.
-    // No runtime index, initializer replay by name, or unknown bound is admitted.
-    index = dynamic_cast<NumberExpr *>(slotSource(decl->Init.get()));
     indexID = indexPath.RootID;
   }
-  if (!base || !index) return {};
+  if (!base || (!index && !indexID)) return {};
   auto path = canonicalizeAccessPath(makeAccessPath(slot));
-  if (indexID && path.Projections.size() == 1 &&
-      path.Projections.front().Kind == AccessProjectionKind::DynamicIndex)
-    path.Projections.front() = AccessProjection::constantIndex(index->Value);
   SymbolInfo *binding = nullptr;
   if (!path.RootID || path.Projections.size() != 1 ||
-      path.Projections.front().Kind != AccessProjectionKind::ConstantIndex ||
+      path.Projections.front().Kind != (indexID ? AccessProjectionKind::DynamicIndex
+                                              : AccessProjectionKind::ConstantIndex) ||
       !CurrentScope->findSymbolByID(path.RootID, binding) || !binding ||
       binding->IsFunctionParameter || binding->IsPlaceAlias || binding->Permission.IdentityRebindable ||
       !binding->TypeObj || !binding->TypeObj->isRawPointer() || !binding->ASTPtr) return {};
@@ -61,8 +61,10 @@ std::optional<AccessPath> Sema::qualifiedRawSlot(ArrayIndexExpr *slot,
   if (!declaration || owner == m_LocalVariableOwners.end() || owner->second != CurrentFunction) return {};
   auto *allocation = dynamic_cast<AllocExpr *>(slotSource(declaration->Init.get()));
   auto *extent = allocation ? dynamic_cast<NumberExpr *>(slotSource(allocation->ArraySize.get())) : nullptr;
-  if (!allocation || !allocation->IsArray || allocation->Initializer || !extent ||
-      index->Value >= extent->Value || !allocation->RawAddressValueFacts ||
+  // This is allocation identity plus actual value dependency evidence, NOT a
+  // bounds/initialized-extent proof. Runtime bounds remain unsafe preconditions.
+  if (!allocation || !allocation->IsArray || allocation->Initializer ||
+      (index && extent && index->Value >= extent->Value) || !allocation->RawAddressValueFacts ||
       !allocation->RawAddressValueFacts->AllocationAncestry) return {};
   const auto &ancestry = *allocation->RawAddressValueFacts->AllocationAncestry;
   if (ancestry.SourceEdge.empty() || !ancestry.IsArray || ancestry.HasInitializerSyntax) return {};
@@ -120,6 +122,12 @@ void Sema::recordRawSlotWrite(BinaryExpr *assignment) {
   uint64_t indexBinding = 0;
   auto path = qualifiedRawSlot(slot, &allocation, &allocationExpression, &indexBinding);
   if (!path) return;
+  // Assignment LHS checking does not necessarily stamp the base VariableExpr.
+  // Seal the binding resolved by the successful write while its scope is live;
+  // CodeGen must not re-resolve it by name or infer it from a receipt alone.
+  auto *base = dynamic_cast<VariableExpr *>(slot->Array.get());
+  if (!base || (base->ResolvedBindingID && base->ResolvedBindingID != path->RootID)) return;
+  base->ResolvedBindingID = path->RootID;
   Expr *value = assignment->RHS.get();
   while (value && !value->KnownNullRawStorageType) {
     auto *next = slotSource(value);
@@ -372,8 +380,9 @@ std::shared_ptr<Type> Sema::checkRawTakeExpr(RawTakeExpr *take) {
     take->KnownNullRawStorageType = element->withAttributes(
         element->IsWritable, element->IsNullable, element->IsBlocked);
   }
-  if (auto exact = qualifiedRawSlot(index)) m_RawSlotDependencies.erase(*exact);
-  else m_RawSlotDependencies.clear();
+  // Different raw roots may alias. Without an independence proof retire all
+  // receipts, not just records whose lexical RootID happens to match.
+  m_RawSlotDependencies.clear();
   index->ResolvedType = element;
   // No managed place state is changed: live-slot retirement is an explicit
   // unsafe postcondition. The raw allocation/remainder remains with its owner.

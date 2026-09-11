@@ -108,6 +108,43 @@ Incremental compiler build and the recorded-slot/Vec CTest pair passed (2/2,
 rejection/parity cases and ten fault checks. No original JSON recovery is
 claimed from this follow-up; no full suite or release qualification was run.
 
+### Dynamic-index implementation (2026-09-12, not Accepted)
+
+Following the explicit review of the rejected proposal, the production
+implementation now admits an immutable local integer index whose value is
+determined at runtime, and nonliteral allocation extents. A constant out-of-range
+index/extent pair still rejects. No bounds or initialization proof is claimed:
+the receipt proves the checked stored value's dependencies, and the existing
+unsafe addressing, initialized-element and remainder obligations remain intact.
+
+The current supported index form is a bare binding or a value-preserving unsafe
+wrapper (parentheses do not introduce a value conversion). Cast/ascription index
+expressions are conservatively ineligible, rather than identifying a converted
+value with the original binding. Writable indices, aliases, unresolved sources
+and different binding identities remain ineligible. No old initializer is replayed.
+
+Every possibly mutating operation and every successful take discards other slot
+receipts conservatively; different lexical roots are not assumed disjoint.
+Rejected writes restore the pre-expression snapshot. Joined receipts require
+the same index identity and all reaching write leaves. CodeGen checks actual
+write/take bindings, index types, element types, allocation ancestry and every
+leaf, with missing/index/allocation/leaf fault rejection and no artifacts.
+
+The old temporary worktree was missing its git pointer and 2,872 tracked files.
+Its remaining source files were left intact. This candidate is on
+`impl/json-dynamic-index` in `/private/tmp/toka-b6-dynamic-20260912`, based on
+`3c665233401ba8d20c00f48966084dfb278d0818`; frozen refs remain unchanged.
+Raw storage formals/cross-function helper receipts and recursive container
+descriptors are still not implemented by this change. This is not B6 completion.
+
+Validation: fresh Release compiler/SDK build passed; recorded-slot, raw_take,
+Vec, factory-values and binding-dependency CTest gates passed together (5/5,
+77.09 s). The slot runner includes runtime indices, unsafe wrappers, nonliteral
+extents, both dynamic branch outcomes, conversion/shadowing/missing-write
+rejections, rejected-write rollback, and 22 object/IR fault checks. The original
+nonempty JSON targets were rechecked and remain 0/8, each still reporting
+`ElementDependenciesUnproven`. No full PASS/FAIL run or acceptance is claimed.
+
 ## 下一实施裁定：先做完整值 factory 的具体类型验证
 
 shared/iterator 已在 c81ecdd6 验收，本设计不再向该切片追加工作。

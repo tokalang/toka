@@ -51,20 +51,39 @@ def main():
         indexed = original.replace("    auto item", "    auto offset = 0:i32\n    auto item")\
                           .replace("storage[0]", "storage[offset]")
         check("literal_index_binding", indexed, 0)
-        check("index_outside_extent", indexed.replace("offset = 0", "offset = 1"), 1)
+        check("literal_outside_extent", original.replace("storage[0]", "storage[1]"), 1)
         check("mutable_index", indexed.replace("offset = 0", "offset# = 0"), 1)
         check("different_index_binding", indexed.replace("    auto item", "    auto other = 0:i32\n    auto item")
               .replace("raw_take storage[offset]", "raw_take storage[other]"), 1)
-        check("runtime_index", indexed.replace("fn main() -> i32 {", "fn scenario(seed: i32) -> i32 {")
-              .replace("offset = 0:i32", "offset = seed") + "\nfn main() -> i32 { return 0 }\n", 1)
+        runtime = indexed.replace("fn main() -> i32 {", "fn scenario(seed: i32) -> i32 {")\
+                         .replace("offset = 0:i32", "offset = seed")
+        dynamic = check("runtime_index", runtime + "\nfn main() -> i32 { return scenario(0) }\n", 0)
+        check("unsafe_index_wrapper", runtime.replace("storage[offset]", "storage[unsafe offset]")
+              + "\nfn main() -> i32 { return scenario(0) }\n", 0)
+        check("narrowing_index", runtime.replace("raw_take storage[offset]", "raw_take storage[(offset as i8)]")
+              + "\nfn main() -> i32 { return 0 }\n", 1)
+        check("converted_write_index", runtime.replace("storage[offset] =", "storage[(offset as i8)] =")
+              + "\nfn main() -> i32 { return 0 }\n", 1)
+        check("same_root_other_value", runtime.replace("    auto item", "    auto other = 1:i32\n    auto item")
+              .replace("raw_take storage[offset]", "raw_take storage[other]")
+              + "\nfn main() -> i32 { return 0 }\n", 1)
+        check("shadowed_index", indexed.replace("        auto taken", "        {\n        auto offset = 0:i32\n        auto taken")
+              .replace("        free [0] *storage", "        }\n        free [0] *storage"), 1)
         check("unknown_extent", indexed.replace("    auto *storage# = unsafe alloc [1] Item",
-              "    auto extent = 1:i32\n    auto *storage# = unsafe alloc [extent] Item"), 1)
+              "    auto extent = 1:i32\n    auto *storage# = unsafe alloc [extent] Item"), 0)
+        joined = None
         for flag in ("true", "false"):
-            check("both_branches_" + flag,
+            joined = check("both_branches_" + flag,
                   original.replace("fn main() -> i32 {", "fn scenario(flag: bool) -> i32 {")
                   .replace("        storage[0] = cede item",
                            "        if flag { storage[0] = cede item } else { storage[0] = cede item }")
                   + "\nfn main() -> i32 { return scenario(" + flag + ") }\n", 0)
+        for flag in ("true", "false"):
+            joined = check("dynamic_branches_" + flag,
+                  runtime.replace("scenario(seed: i32)", "scenario(seed: i32, flag: bool)")
+                  .replace("        storage[offset] = cede item",
+                           "        if flag { storage[offset] = cede item } else { storage[offset] = cede item }")
+                  + "\nfn main() -> i32 { return scenario(0, " + flag + ") }\n", 0)
         check("transfer_twice", original.replace("        if taken.id", "        storage[0] = cede taken\n        auto final_value = raw_take storage[0]\n        if final_value.id"), 0)
         check("vector_value", (ROOT / "tests/semantics/json_leaf_factories/recorded_vec_take.tk").read_text(), 0)
         check("no_write", original.replace("        storage[0] = cede item\n", ""), 1)
@@ -91,11 +110,24 @@ fn extract(*storage: [Outcome]) -> Outcome {
 }
 fn main() -> i32 { return 0 }
 """, 1)
+        rejected = work / "failed_write_restores_receipt.tk"
+        rejected.write_text(indexed.replace("        auto taken", "        storage[offset] = true\n        auto taken"))
+        normal = compile(rejected, "--check-only")
+        shadow = compile(rejected, "--check-only", "--non-call-transfer-shadow=json")
+        assert normal.returncode == shadow.returncode == 1, (normal.stderr, shadow.stderr)
+        assert normal.stderr == shadow.stderr and "E04662" not in normal.stderr, normal.stderr
+        print("PASS failed_write_restores_receipt", flush=True)
         for fault in ("missing", "rejected", "incomplete", "slot-proof-missing", "slot-proof-mismatch"):
             for mode, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
                 output = work / (fault + suffix)
                 result = compile(good, "--raw-take-fault=" + fault, mode, "-o", output)
                 assert result.returncode == 1 and "E0701" in result.stderr and not output.exists(), (fault, result.stderr)
+        for source in (dynamic, joined):
+            for fault in ("slot-index", "slot-allocation", "slot-leaf"):
+                for mode, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
+                    output = work / (source.stem + fault + suffix)
+                    result = compile(source, "--raw-take-fault=" + fault, mode, "-o", output)
+                    assert result.returncode == 1 and "E0701" in result.stderr and not output.exists(), (fault, result.stderr)
         print("PASS fault-injected proof rejection without artifacts", flush=True)
 
 

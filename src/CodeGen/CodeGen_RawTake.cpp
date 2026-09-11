@@ -27,6 +27,18 @@ PhysEntity CodeGen::genRawTakeExpr(const RawTakeExpr *take) {
         broken->Slot.RootID = 0;
         plan->RecordedSlot = std::move(broken);
       }
+      else if ((m_RawTakeFault == "slot-index" || m_RawTakeFault == "slot-allocation" ||
+                m_RawTakeFault == "slot-leaf") && plan->RecordedSlot) {
+        auto broken = std::make_shared<RawSlotDependencyEvidence>(*plan->RecordedSlot);
+        if (m_RawTakeFault == "slot-index") ++broken->IndexBinding;
+        else if (m_RawTakeFault == "slot-allocation") broken->Allocation = nullptr;
+        else if (!broken->Alternatives.empty()) {
+          auto leaf = std::make_shared<RawSlotDependencyEvidence>(*broken->Alternatives.back());
+          leaf->Write = nullptr;
+          broken->Alternatives.back() = std::move(leaf);
+        } else broken->Write = nullptr;
+        plan->RecordedSlot = std::move(broken);
+      }
     }
   }
 #endif
@@ -58,10 +70,8 @@ PhysEntity CodeGen::genRawTakeExpr(const RawTakeExpr *take) {
   case RawElementTakePlan::DependencyProofKind::RecordedSlot: {
     const auto &proof = plan->RecordedSlot;
     const auto indexBinding = [](const Expr *expression) -> uint64_t {
-      while (auto *cast = dynamic_cast<const CastExpr *>(expression)) {
-        if (cast->Kind != CastKind::Ascription && cast->Kind != CastKind::Implicit) return 0;
-        expression = cast->Expression.get();
-      }
+      while (auto *wrapper = dynamic_cast<const UnsafeExpr *>(expression))
+        expression = wrapper->Expression.get();
       const auto *variable = dynamic_cast<const VariableExpr *>(expression);
       return variable ? variable->ResolvedBindingID : 0;
     };
@@ -84,10 +94,16 @@ PhysEntity CodeGen::genRawTakeExpr(const RawTakeExpr *take) {
           !leaf->Write->RawStorageWrite->ElementType ||
           !leaf->Write->RawStorageWrite->ElementType->equals(*leaf->ElementType)) return false;
       const auto &writePath = leaf->Write->RawStorageWrite->Slot;
+      const auto *actualWrite = dynamic_cast<const ArrayIndexExpr *>(leaf->Write->LHS.get());
+      const auto *actualBase = actualWrite
+          ? dynamic_cast<const VariableExpr *>(actualWrite->Array.get()) : nullptr;
+      if (!actualBase || actualBase->ResolvedBindingID != proof->Slot.RootID) return false;
       if (leaf->IndexBinding) {
         const auto *written = dynamic_cast<const ArrayIndexExpr *>(leaf->Write->LHS.get());
         if (!written || written->Indices.size() != 1 ||
             indexBinding(written->Indices[0].get()) != leaf->IndexBinding ||
+            !written->Indices[0]->ResolvedType ||
+            !written->Indices[0]->ResolvedType->equals(*plan->IndexType) ||
             writePath.RootID != leaf->Slot.RootID || writePath.Projections.size() != 1 ||
             writePath.Projections.front().Kind != AccessProjectionKind::DynamicIndex) return false;
       } else if (!(writePath == leaf->Slot)) return false;

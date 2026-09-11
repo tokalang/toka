@@ -1259,8 +1259,8 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     if (!exactWrite) m_NullStorageBindings.clear();
   }
   if (mayInvalidateNullStorage) {
-    if (exactWrite) m_RawSlotDependencies.erase(*exactWrite);
-    else m_RawSlotDependencies.clear();
+    // No allocation-disjointness proof exists for the other raw roots.
+    m_RawSlotDependencies.clear();
   }
   m_EnumExpressionResults.erase(E);
   m_EnumExpressionSelections.erase(E);
