@@ -1,6 +1,7 @@
-# JSON leaf closeout — execution-blocked, not Accepted
+# JSON leaf closeout — complete candidate, not Accepted
 
 Implementation base: `35af4aae20a059a8cfa4ec9b2909f2ec3ea107e5`.
+Last WIP checkpoint: `ee186ac27f72dd4a24caef71882545496ee69c40`.
 The user explicitly authorized enum branch source refinement and complete
 borrowed-destination replacement cleanup. No new public JsonFactory, generic
 bounds, recursive container witness, receiver-write protocol, TKI or ABI work.
@@ -58,34 +59,38 @@ bounds, recursive container witness, receiver-write protocol, TKI or ABI work.
   and object/IR non-production. Different producers, mixed Err sources,
   rebinding, branch joins, loop paths, writable calls and descriptor addresses
   have explicit refusal cases.
-- Final directed CTest: **6/7 passed, 1 failed, 149.58 seconds**. Entry, core,
-  return source, binding B3 static return, binding value dependencies and shared
-  aggregate handoff passed. Only `toka_json_leaf_static_error` failed. Incremental
-  Debug tokac build, `git diff --check` and unapplied-patch applicability check
-  passed. This is not full PASS/FAIL or RC13 qualification.
+- After applying the exact confirmed refinement, final directed CTest:
+  **7/7 passed, 147.86 seconds**. Entry, core, static-error, return source,
+  binding B3 static return, binding value dependencies and shared aggregate
+  handoff all passed. Static-error covers the original lifetime positive,
+  all three concrete error producers, static rebinding and failed-call rollback.
+  All twelve core refusals were rerun after application, including normal/shadow
+  parity and object/IR non-production; no earlier results were substituted.
+- Incremental Debug tokac build, `git diff --check` and reverse applicability
+  of the confirmed diff passed. No full PASS/FAIL suite or RC13 qualification
+  was run. This is a complete concrete-factory candidate, not an Accepted marker
+  for the candidate, full JSON module, binding slice or release.
 
-## Exact remaining execution block
+## Applied return-edge refinement
 
-The producer/slot evidence is now available, but the return collector still
-adds the conservative whole-Result `m_LastLifeDependencies`. Therefore the
-required `static_error.tk` positive still reports E0455. The four concrete
-producer/static-rebinding positives in `enum_static_sources.tk` remain blocked
-by the same return dependency merge. The failed-call rollback fixture remains
-a required test, not an expected-failure oracle.
+After the user explicitly confirmed the exact saved diff, execution approval
+allowed its application with `apply_patch`. No shared-scratch clearing change
+was applied and no execution-review bypass was used. The historical exact diff
+is retained in `enum_payload_return_refinement.patch`; its reverse applicability
+check passes against the implementation.
 
-Execution review rejected both a shared-scratch clearing approach and the
-narrower return-edge refinement. Neither was applied; all debug tracing was
-removed. No alternative tool or indirect write was used to apply the rejected
-semantics.
+The return collector retains `collectDeps`/`collectMemberDeps`, all shared
+scratch state and subsequent lifecycle checks. Only the current expression's
+conservative whole-Result merge is omitted when actual-origin collection is
+complete, has no dynamic or addressed-storage roots, and the exact typed enum
+payload has nonempty static storage evidence. These are not independent proofs:
+the safety claim depends on the upstream producer/variant/slot summary remaining
+complete and current.
 
-The **exact unapplied narrower diff** is saved as
-`enum_payload_return_refinement.patch`. `git apply --check` passes (check only;
-the patch has not been applied). It retains all shared scratch facts and all
-independently collected return dependencies, and would replace only the
-conservative whole-result merge for an exact static selected payload with no
-actual dynamic/storage roots. Execution review still considers that lifetime
-admission change insufficiently established. This requires human confirmation
-of the concrete diff through the execution-approval process, not another vague
-semantic authorization or an automatic Accepted declaration.
+The original static-error positive, all three concrete factory error returns,
+static rebinding and failed-call rollback have been rerun after application.
+Dynamic Err, different producers, rebinding/joins, descriptor addresses and
+Ok/value/rest escapes are likewise rerun; earlier refusal results are not used
+as substitutes. No tests were changed into expected failures or skipped.
 
 No thread/iterator/shared freeze ref was moved. No push or PR was made.

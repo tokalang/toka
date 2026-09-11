@@ -1201,10 +1201,20 @@ void Sema::checkStmt(Stmt *S) {
 
           collectDeps(Ret->ReturnValue.get());
           collectMemberDeps(Ret->ReturnValue.get());
-          for (const auto &dep : m_LastLifeDependencies)
-            recordDependencyPath(dep);
-          if (!m_LastBorrowSource.empty())
-            recordDependencyPath(m_LastBorrowSource);
+          // A checked static enum payload has per-expression provenance. Do
+          // not mutate the shared dependency scratch state: only this exact
+          // return edge may replace the conservative whole-enum mapping.
+          // All independently collected dependencies above remain in force.
+          std::vector<SourceLocation> selectedPayloadStorage;
+          const bool exactStaticPayload = currentOriginsComplete && origins.empty() &&
+              storageOrigins.empty() && collectStaticEnumPayload(
+                  Ret->ReturnValue.get(), selectedPayloadStorage);
+          if (!exactStaticPayload) {
+            for (const auto &dep : m_LastLifeDependencies)
+              recordDependencyPath(dep);
+            if (!m_LastBorrowSource.empty())
+              recordDependencyPath(m_LastBorrowSource);
+          }
 
           // Validate dependencies against declared LifeDependencies
           if (CurrentFunction) {

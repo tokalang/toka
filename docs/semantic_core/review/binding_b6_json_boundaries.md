@@ -1,6 +1,6 @@
-# JSON recovery: two bounded designs, no activation
+# JSON recovery: concrete leaf candidate and deferred designs
 
-Status: concrete leaf slice authorized for implementation; not Accepted.
+Status: concrete leaf slice implemented as a candidate; not Accepted.
 The recursive-container and public JsonFactory designs below remain proposals.
 This is separate from managed-element morphology alignment. No raw_take,
 Copy/Dup, thread, ABI or interface rule changes are authorized here.
@@ -24,8 +24,8 @@ shared/iterator 已在 c81ecdd6 验收，本设计不再向该切片追加工作
    parse_str_view(json: str) -> Result<Parsed<str>, str> <- json
    ```
 
-   以上是待验证的签名，不是声称已经可编译。Parsed 沿用下文的 value/rest
-   设计；每个字段的实际来源须独立验证。
+   以上三个签名已在具体 factory 候选中编译、运行验证。Parsed 沿用下文的
+   value/rest 设计；验证及范围见 `json_leaf_closeout_2026_09_11.md`。
 3. i32/string 从其合法初值构造；str view 直接来自输入的已验证切片。
    不使用 memset(T,0)、假默认值或“解析成功即证明任意 T 已构造”的推断。
 4. 成功交出完整结果；失败清理已拥有的字符串/中间结果。借用 str 与 rest
