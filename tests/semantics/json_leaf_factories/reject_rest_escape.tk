@@ -1,0 +1,7 @@
+import stdx/serde/json_leaf::{parse_i32_value}
+fn escaped()->str {
+    auto input = string::from("1 tail")
+    auto parsed = parse_i32_value(input.as_str()).unwrap()
+    return parsed.rest
+}
+fn main()->i32 { return 0 }

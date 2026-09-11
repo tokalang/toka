@@ -3342,6 +3342,33 @@ void Sema::invalidateReturnSourceProof(Expr *expression, bool unknown) {
   }
 }
 
+bool Sema::hasBorrowedValueFields(std::shared_ptr<toka::Type> type) {
+  // Presence only, never a proof of independence. Follow exact resolved
+  // declarations, including enum payloads; no short-name special cases.
+  std::set<const ShapeDecl *> active;
+  std::function<bool(std::shared_ptr<Type>)> visit = [&](std::shared_ptr<Type> current) {
+    current = resolveExplicitCedeStage0TypeReadOnly(current);
+    if (!current || current->isUnknown()) return false;
+    if (current->isReference()) return true;
+    if (current->isRawPointer()) return false;
+    if (current->isUniquePtr() || current->isSharedPtr()) return visit(current->getPointeeType());
+    if (current->isArray()) return visit(current->getArrayElementType());
+    auto shape = std::dynamic_pointer_cast<ShapeType>(current);
+    if (!shape || !shape->Decl || !active.insert(shape->Decl).second) return false;
+    bool borrowed = false;
+    for (const auto &member : shape->Decl->Members) {
+      if (shape->Decl->Kind == ShapeKind::Enum) {
+        for (const auto &payload : member.SubMembers) borrowed |= visit(getPhysicalType(payload));
+        if (member.SubMembers.empty() && !member.IsUnitVariant)
+          borrowed |= visit(getPhysicalType(member));
+      } else borrowed |= visit(getPhysicalType(member));
+    }
+    active.erase(shape->Decl);
+    return borrowed;
+  };
+  return visit(type);
+}
+
 bool Sema::collectActualReturnReferents(
     Expr *expression, std::vector<AccessPath> &paths,
     std::vector<SourceLocation> *staticStorage,
@@ -3637,7 +3664,15 @@ bool Sema::collectActualReturnReferents(
         if (mappedProjection) {
           // FieldDependencySet already denotes the field's actual referent;
           // do not append the formal suffix to the underlying owner's bytes.
-        } else if (returnedType && returnedType->isReference() && !transfersValue) {
+        } else if (returnedType && !transfersValue &&
+                   (returnedType->isReference() ||
+                    (queryExplicitCedeStage0OwnershipReadOnly(returnedType) == ValueOwnership::BorrowedView &&
+                     argument && argument->ResolvedType &&
+                     queryExplicitCedeStage0OwnershipReadOnly(argument->ResolvedType) == ValueOwnership::Owned))) {
+          // A non-consuming view of owning storage (e.g. string.as_str)
+          // depends on that storage, not on borrowed siblings carried by an
+          // enclosing Parsed/record. Do not turn decoded local bytes into the
+          // input's lifetime merely because the record also contains rest.
           if (!storageOrigin(argument, roots)) return false;
         } else {
           bool carriedReference = false;
@@ -3715,8 +3750,8 @@ bool Sema::collectActualReturnReferents(
       return false;
     const bool invalidated = m_ReturnSourceInvalidatedRoots.count(binding->SymbolID);
     const auto bindingOwnership = queryExplicitCedeStage0OwnershipReadOnly(binding->TypeObj);
-    bool borrowedBinding = bindingOwnership &&
-        *bindingOwnership == ValueOwnership::BorrowedView;
+    bool borrowedBinding = (bindingOwnership &&
+        *bindingOwnership == ValueOwnership::BorrowedView) || hasBorrowedValueFields(binding->TypeObj);
     if (auto shape = std::dynamic_pointer_cast<ShapeType>(binding->TypeObj);
         shape && shape->Decl) {
       for (const auto &field : shape->Decl->Members) {
@@ -3725,6 +3760,13 @@ bool Sema::collectActualReturnReferents(
         borrowedBinding |= type && !type->isRawPointer() && ownership &&
                            *ownership == ValueOwnership::BorrowedView;
       }
+    }
+    if (!path.Projections.empty()) {
+      // Selecting an owned field does not inherit a sibling's borrowed data.
+      // Storage borrows (handled above) still follow their actual container.
+      auto selectedType = value->ResolvedType ? value->ResolvedType
+          : queryExplicitCedeStage0NonCallType(value, nullptr);
+      borrowedBinding = hasBorrowedValueFields(selectedType);
     }
     auto *declaration = binding->ASTPtr
         ? dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(binding->ASTPtr))
@@ -3743,8 +3785,11 @@ bool Sema::collectActualReturnReferents(
                               binding->TypeObj->isAddrType() ||
                               binding->TypeObj->isOAddrType())))) {
         for (auto &root : roots) {
-          root.Projections.insert(root.Projections.end(), path.Projections.begin(),
-                                  path.Projections.end());
+          // Carried dependencies already name storage. A value projection
+          // such as parsed.rest is not a field of the referenced byte buffer.
+          if (!borrowedBinding)
+            root.Projections.insert(root.Projections.end(), path.Projections.begin(),
+                                    path.Projections.end());
           result.push_back(canonicalizeAccessPath(root));
         }
         visiting.erase(binding->SymbolID);

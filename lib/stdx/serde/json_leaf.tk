@@ -1,0 +1,164 @@
+// Internal concrete JSON construction. No JsonNode or generic parser capability.
+// Existing mutation entry points in json.tk delegate to these factories.
+pub shape Parsed<'T>('value: T, rest: str)
+
+pub fn leaf_skip_whitespace(json: str) -> str <- json {
+    auto res# = json
+    loop res.len() > 0 {
+        auto c = res.byte_at(0)
+        if c == 32 || c == 9 || c == 13 || c == 10 {
+            res = res.substr(1, res.len() - 1)
+        } else { break }
+    }
+    return cede res
+}
+
+// 0: no opening quote; len: unterminated; otherwise the closing quote index.
+fn scan_string_end(rem: str) -> usize {
+    if rem.len() == 0 || rem.byte_at(0) != 34 {
+        return 0
+    }
+    auto i# = 1:usize
+    loop i < rem.len() {
+        auto c = rem.byte_at(i)
+        if c == 34 {
+            return i
+        }
+        if c == 92 { i += 1 }
+        i += 1
+    }
+    return rem.len()
+}
+
+fn parse_hex4(rem: str, start: usize) -> u32 {
+    auto cp# = 0:u32
+    auto j# = 0:usize
+    loop j < 4 {
+        auto c = rem.byte_at(start + j)
+        auto val# = 0:u32
+        if c >= 48 && c <= 57 { val = (c - 48) as u32 }
+        else if c >= 65 && c <= 70 { val = ((c - 65) + 10) as u32 }
+        else if c >= 97 && c <= 102 { val = ((c - 97) + 10) as u32 }
+        cp = (cp * 16:u32) + val
+        j += 1
+    }
+    return cp
+}
+
+fn push_utf8(out#: string, cp: u32) {
+    if cp <= 127:u32 { out#.push_char(cp as char) }
+    else if cp <= 2047:u32 {
+        out#.push_char((192:u32 + (cp / 64:u32)) as char)
+        out#.push_char((128:u32 + (cp % 64:u32)) as char)
+    } else if cp <= 65535:u32 {
+        out#.push_char((224:u32 + (cp / 4096:u32)) as char)
+        out#.push_char((128:u32 + ((cp / 64:u32) % 64:u32)) as char)
+        out#.push_char((128:u32 + (cp % 64:u32)) as char)
+    } else {
+        out#.push_char((240:u32 + (cp / 262144:u32)) as char)
+        out#.push_char((128:u32 + ((cp / 4096:u32) % 64:u32)) as char)
+        out#.push_char((128:u32 + ((cp / 64:u32) % 64:u32)) as char)
+        out#.push_char((128:u32 + (cp % 64:u32)) as char)
+    }
+}
+
+pub fn parse_i32_value(json: str) -> Result<Parsed<i32>, str> <- json {
+    auto rem = leaf_skip_whitespace(json)
+    if rem.len() == 0 {
+        auto error = Result<Parsed<i32>, str>::Err("EOF")
+        return cede error
+    }
+    auto i# = 0:usize
+    auto neg# = false
+    if rem.byte_at(0) == 45 { neg = true; i = 1 }
+    auto val# = 0:i32
+    auto found# = false
+    loop i < rem.len() {
+        auto c = rem.byte_at(i)
+        if c >= 48 && c <= 57 {
+            val = val * 10 + ((c - 48) as i32)
+            found = true
+            i += 1
+        } else { break }
+    }
+    if !found {
+        auto error = Result<Parsed<i32>, str>::Err("Invalid i32")
+        return cede error
+    }
+    if neg { val = 0 - val }
+    auto parsed = Parsed<i32>(value = val, rest = rem.substr(i, rem.len() - i))
+    auto result = Result<Parsed<i32>, str>::Ok(cede parsed)
+    return cede result
+}
+
+pub fn parse_string_value(json: str) -> Result<Parsed<string>, str> <- json {
+    auto rem = leaf_skip_whitespace(json)
+    auto i = scan_string_end(rem)
+    if i == 0 {
+        auto error = Result<Parsed<string>, str>::Err("Expected string")
+        return cede error
+    }
+    if i == rem.len() {
+        auto error = Result<Parsed<string>, str>::Err("Unterminated string")
+        return cede error
+    }
+    auto decoded# = string::from("")
+    auto j# = 1:usize
+    loop j < i {
+        auto c = rem.byte_at(j)
+        if c == 92 {
+            j += 1
+            auto ec = rem.byte_at(j)
+            if ec == 34 { decoded#.push_char(34 as char) }
+            else if ec == 92 { decoded#.push_char(92 as char) }
+            else if ec == 47 { decoded#.push_char(47 as char) }
+            else if ec == 98 { decoded#.push_char(8 as char) }
+            else if ec == 102 { decoded#.push_char(12 as char) }
+            else if ec == 110 { decoded#.push_char(10 as char) }
+            else if ec == 114 { decoded#.push_char(13 as char) }
+            else if ec == 116 { decoded#.push_char(9 as char) }
+            else if ec == 117 {
+                // Do not read past the closing quote on a truncated escape.
+                if i - j <= 4 {
+                    auto error = Result<Parsed<string>, str>::Err("Incomplete unicode escape")
+                    return cede error
+                }
+                auto cp# = parse_hex4(rem, j + 1)
+                j += 4
+                if cp >= 55296:u32 && cp <= 56319:u32 {
+                    if i - j > 2 && rem.byte_at(j + 1) == 92 && rem.byte_at(j + 2) == 117 {
+                        if i - j <= 6 {
+                            auto error = Result<Parsed<string>, str>::Err("Incomplete unicode escape")
+                            return cede error
+                        }
+                        auto low_cp = parse_hex4(rem, j + 3)
+                        cp = ((cp - 55296:u32) * 1024:u32) + (low_cp - 56320:u32) + 65536:u32
+                        j += 6
+                    }
+                }
+                push_utf8(decoded#, cp)
+            } else { decoded#.push_char(ec as char) }
+        } else { decoded#.push_char(c as char) }
+        j += 1
+    }
+    auto parsed = Parsed<string>(value = cede decoded, rest = rem.substr(i + 1, rem.len() - i - 1))
+    auto result = Result<Parsed<string>, str>::Ok(cede parsed)
+    return cede result
+}
+
+pub fn parse_str_view(json: str) -> Result<Parsed<str>, str> <- json {
+    auto rem = leaf_skip_whitespace(json)
+    auto i = scan_string_end(rem)
+    if i == 0 {
+        auto error = Result<Parsed<str>, str>::Err("Expected string")
+        return cede error
+    }
+    if i == rem.len() {
+        auto error = Result<Parsed<str>, str>::Err("Unterminated string")
+        return cede error
+    }
+    // This is the original input slice, including escape text, never decoded storage.
+    auto parsed = Parsed<str>(value = rem.substr(1, i - 1), rest = rem.substr(i + 1, rem.len() - i - 1))
+    auto result = Result<Parsed<str>, str>::Ok(cede parsed)
+    return cede result
+}

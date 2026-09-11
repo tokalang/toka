@@ -1270,6 +1270,7 @@ private:
   bool validateTypeVisibilityInType(std::shared_ptr<toka::Type> type,
                                     SourceLocation loc);
   bool isBorrowLikeType(std::shared_ptr<toka::Type> type) const;
+  bool hasBorrowedValueFields(std::shared_ptr<toka::Type> type);
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
                                               bool force);
   std::shared_ptr<toka::Type>

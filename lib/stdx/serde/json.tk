@@ -7,6 +7,7 @@ import std/vec::{Vec}
 import std/math
 import sys/libc::{libc_memset}
 import core/comptime::{reflect}
+import stdx/serde/json_leaf::{leaf_skip_whitespace, parse_i32_value, parse_string_value, parse_str_view}
 
 // Result type for parsing: Ok(remaining_json) or Err(error_message)
 pub alias JsonRes = Result<str, str>
@@ -197,14 +198,7 @@ pub trait @FromJson {
 }
 
 pub fn json_skip_whitespace(json: str) -> str <- json {
-    auto res# = json
-    loop res.len() > 0 {
-        auto c = res.byte_at(0)
-        if c == 32 || c == 9 || c == 10 || c == 13 {
-            res = res.substr(1, res.len() - 1)
-        } else { break }
-    }
-    return cede res
+    return leaf_skip_whitespace(json)
 }
 
 fn _str_cast(s: str) -> str <- s {
@@ -213,32 +207,16 @@ fn _str_cast(s: str) -> str <- s {
 
 impl i32@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        auto rem# = json_skip_whitespace(json)
-        if rem.len() == 0 {
-            auto outcome_217 = JsonRes::Err("EOF")
-            return cede outcome_217
+        auto result = parse_i32_value(json)
+        if result.is_err() {
+            auto error = JsonRes::Err(result.unwrap_err())
+            return cede error
         }
-        auto i# = 0:usize
-        auto neg# = false
-        if rem.byte_at(0) == 45 { neg = true; i = 1 }
-        auto val# = 0:i32
-        auto found# = false
-        loop i < rem.len() {
-            auto c = rem.byte_at(i)
-            if c >= 48 && c <= 57 {
-                val = val * 10 + ((c - 48) as i32)
-                found = true
-                i = i + 1
-            } else { break }
-        }
-        if !found {
-            auto outcome_231 = JsonRes::Err("Invalid i32")
-            return cede outcome_231
-        }
-        if neg { val = 0 - val }
-        self = val
-        auto outcome_234 = JsonRes::Ok(rem.substr(i, rem.len() - i))
-        return cede outcome_234
+        auto parsed = result.unwrap()
+        auto value = parsed.value
+        self = value
+        auto status = JsonRes::Ok(parsed.rest)
+        return cede status
     }
 }
 
@@ -373,113 +351,33 @@ impl f64@FromJson {
     }
 }
 
-fn json_parse_hex4(rem: str, start: usize) -> u32 {
-    auto cp# = 0:u32
-    auto j# = 0:usize
-    loop j < 4 {
-        auto c = rem.byte_at(start + j)
-        auto val# = 0:u32
-        if c >= 48 && c <= 57 { val = (c - 48) as u32 }
-        else if c >= 65 && c <= 70 { val = ((c - 65) + 10) as u32 }
-        else if c >= 97 && c <= 102 { val = ((c - 97) + 10) as u32 }
-        cp = (cp * 16:u32) + val
-        j += 1
-    }
-    return cp
-}
-
-fn json_push_utf8(str#: string, cp: u32) {
-    if cp <= 127:u32 { str#.push_char(cp as char) }
-    else if cp <= 2047:u32 {
-        str#.push_char((192:u32 + (cp / 64:u32)) as char)
-        str#.push_char((128:u32 + (cp % 64:u32)) as char)
-    } else if cp <= 65535:u32 {
-        str#.push_char((224:u32 + (cp / 4096:u32)) as char)
-        str#.push_char((128:u32 + ((cp / 64:u32) % 64:u32)) as char)
-        str#.push_char((128:u32 + (cp % 64:u32)) as char)
-    } else {
-        str#.push_char((240:u32 + (cp / 262144:u32)) as char)
-        str#.push_char((128:u32 + ((cp / 4096:u32) % 64:u32)) as char)
-        str#.push_char((128:u32 + ((cp / 64:u32) % 64:u32)) as char)
-        str#.push_char((128:u32 + (cp % 64:u32)) as char)
-    }
-}
-
 impl string@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        auto rem = json_skip_whitespace(json)
-        if rem.len() == 0 || rem.byte_at(0) != 34 {
-            auto outcome_386 = JsonRes::Err("Expected string")
-            return cede outcome_386
+        auto result = parse_string_value(json)
+        if result.is_err() {
+            auto error = JsonRes::Err(result.unwrap_err())
+            return cede error
         }
-        auto i# = 1:usize
-        auto closed# = false
-        loop i < rem.len() {
-            auto c = rem.byte_at(i)
-            if c == 34 { closed = true; break }
-            if c == 92 { i += 1 }
-            i += 1
-        }
-        if !closed {
-            auto outcome_395 = JsonRes::Err("Unterminated string")
-            return cede outcome_395
-        }
-        auto new_str# = string::from("")
-        auto j# = 1:usize
-        loop j < i {
-            auto c = rem.byte_at(j)
-            if c == 92 {
-                j += 1
-                auto ec = rem.byte_at(j)
-                if ec == 34 { new_str#.push_char(34 as char) }
-                else if ec == 92 { new_str#.push_char(92 as char) }
-                else if ec == 47 { new_str#.push_char(47 as char) }
-                else if ec == 98 { new_str#.push_char(8 as char) }
-                else if ec == 102 { new_str#.push_char(12 as char) }
-                else if ec == 110 { new_str#.push_char(10 as char) }
-                else if ec == 114 { new_str#.push_char(13 as char) }
-                else if ec == 116 { new_str#.push_char(9 as char) }
-                else if ec == 117 {
-                    auto cp# = json_parse_hex4(rem, j + 1)
-                    j += 4
-                    if cp >= 55296:u32 && cp <= 56319:u32 {
-                        if j + 2 < i && rem.byte_at(j+1) == 92 && rem.byte_at(j+2) == 117 {
-                            auto low_cp = json_parse_hex4(rem, j + 3)
-                            cp = ((cp - 55296:u32) * 1024:u32) + (low_cp - 56320:u32) + 65536:u32
-                            j += 6
-                        }
-                    }
-                    json_push_utf8(new_str#, cp)
-                } else { new_str#.push_char(ec as char) }
-            } else { new_str#.push_char(c as char) }
-            j += 1
-        }
-        self = cede new_str
-        auto outcome_427 = JsonRes::Ok(rem.substr(i + 1, rem.len() - i - 1))
-        return cede outcome_427
+        auto parsed = result.unwrap()
+        auto value = cede parsed.value
+        self = cede value
+        auto status = JsonRes::Ok(parsed.rest)
+        return cede status
     }
 }
 
 impl str@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        auto rem = json_skip_whitespace(json)
-        if rem.len() == 0 || rem.byte_at(0) != 34 {
-            auto outcome_434 = JsonRes::Err("Expected string")
-            return cede outcome_434
+        auto result = parse_str_view(json)
+        if result.is_err() {
+            auto error = JsonRes::Err(result.unwrap_err())
+            return cede error
         }
-        auto i# = 1:usize
-        loop i < rem.len() {
-            auto c = rem.byte_at(i)
-            if c == 34 {
-                self = rem.substr(1, i - 1)
-                auto outcome_440 = JsonRes::Ok(rem.substr(i + 1, rem.len() - i - 1))
-                return cede outcome_440
-            }
-            if c == 92 { i += 1 }
-            i += 1
-        }
-        auto outcome_445 = JsonRes::Err("Unterminated string")
-        return cede outcome_445
+        auto parsed = result.unwrap()
+        auto value = parsed.value
+        self = value
+        auto status = JsonRes::Ok(parsed.rest)
+        return cede status
     }
 }
 

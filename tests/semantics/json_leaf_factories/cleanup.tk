@@ -1,0 +1,42 @@
+import stdx/serde/json_leaf::{parse_i32_value, parse_string_value, parse_str_view}
+extern fn leaf_watch() -> void
+extern fn leaf_releases() -> i32
+
+fn early() -> i32 {
+    auto result = parse_string_value("\"x\"")
+    return 0
+}
+
+fn detached() -> string {
+    auto input = string::from("\"x\"tail")
+    auto parsed = parse_string_value(input.as_str()).unwrap()
+    auto value = cede parsed.value
+    return cede value
+}
+
+fn main() -> i32 {
+    leaf_watch()
+    {
+        auto result = parse_string_value("\"x\\u1\"")
+        if !result.is_err() || leaf_releases() != 1 { return 1 }
+    }
+    if leaf_releases() != 1 { return 2 }
+    leaf_watch()
+    { auto result = parse_string_value("\"x\"") }
+    if leaf_releases() != 1 { return 3 }
+    leaf_watch()
+    parse_string_value("\"x\"")
+    if leaf_releases() != 1 { return 4 }
+    leaf_watch()
+    if early() != 0 || leaf_releases() != 1 { return 5 }
+    leaf_watch()
+    { auto result = parse_str_view("\"x\\n\"") }
+    if leaf_releases() != 0 { return 10 }
+    leaf_watch()
+    {
+        auto value = detached()
+        if !value.as_str().equals("x") || leaf_releases() != 1 { return 11 }
+    }
+    if leaf_releases() != 2 { return 12 }
+    return 0
+}

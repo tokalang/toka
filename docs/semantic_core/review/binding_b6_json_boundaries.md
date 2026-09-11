@@ -1,6 +1,7 @@
 # JSON recovery: two bounded designs, no activation
 
-Status: **proposed for scope decision**, not Accepted or implemented.
+Status: concrete leaf slice authorized for implementation; not Accepted.
+The recursive-container and public JsonFactory designs below remain proposals.
 This is separate from managed-element morphology alignment. No raw_take,
 Copy/Dup, thread, ABI or interface rule changes are authorized here.
 
@@ -9,7 +10,7 @@ Copy/Dup, thread, ABI or interface rule changes are authorized here.
 shared/iterator 已在 c81ecdd6 验收，本设计不再向该切片追加工作。
 建议先验证工厂构造，再决定泛型迁移；递归容器证明仍独立待裁定。
 
-首片建议范围（**尚未授权实施**）：
+首片范围（**已获实施授权，尚未验收**）：
 
 1. 将三个具体解析器需要的扫描/解码逻辑提取到不依赖 JsonNode 的小型
    内部模块；保持算法、错误文本和现有入口行为，不复制第二套解析算法。

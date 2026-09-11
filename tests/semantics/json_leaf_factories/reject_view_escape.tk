@@ -1,0 +1,7 @@
+import stdx/serde/json_leaf::{parse_str_view}
+fn escaped()->str {
+    auto input = string::from("\"view\" tail")
+    auto parsed = parse_str_view(input.as_str()).unwrap()
+    return parsed.value
+}
+fn main()->i32 { return 0 }

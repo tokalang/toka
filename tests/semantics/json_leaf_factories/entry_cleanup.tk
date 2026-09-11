@@ -1,0 +1,22 @@
+// Required entry-point cleanup matrix; not an expected failure.
+import stdx/serde/json_leaf::{parse_i32_value, parse_string_value, parse_str_view}
+extern fn leaf_watch() -> void
+extern fn leaf_releases() -> i32
+fn main() -> i32 {
+    {
+        auto target# = string::from("old")
+        leaf_watch()
+        auto status = target#.parse_json("\"x\"tail")
+        if status.is_err() || !target.as_str().equals("x") { return 1 }
+        if leaf_releases() != 1 { return 60 + leaf_releases() }
+    }
+    if leaf_releases() != 2 { return 2 }
+    {
+        auto target# = string::from("old")
+        leaf_watch()
+        auto status = target#.parse_json("\"x\\u1\"")
+        if !status.is_err() || !target.as_str().equals("old") || leaf_releases() != 1 { return 3 }
+    }
+    if leaf_releases() != 2 { return 4 }
+    return 0
+}

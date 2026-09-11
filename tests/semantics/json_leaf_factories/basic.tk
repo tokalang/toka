@@ -1,0 +1,71 @@
+import stdx/serde/json_leaf::{parse_i32_value, parse_string_value, parse_str_view}
+
+fn detached() -> string {
+    auto input = string::from("\"owned\\nvalue\" rest")
+    auto result = parse_string_value(input.as_str())
+    auto parsed = result.unwrap()
+    auto value = cede parsed.value
+    return cede value
+}
+
+fn remaining(input: str) -> str <- input {
+    auto parsed = parse_i32_value(input).unwrap()
+    return parsed.rest
+}
+
+fn borrowed(input: str) -> str <- input {
+    auto parsed = parse_str_view(input).unwrap()
+    return parsed.value
+}
+
+fn main() -> i32 {
+    {
+        auto input = string::from(" \n -123,tail")
+        auto parsed = parse_i32_value(input.as_str()).unwrap()
+        if parsed.value != -123 || !parsed.rest.equals(",tail") { return 1 }
+    }
+    if parse_i32_value("2147483647").unwrap().value != 2147483647 { return 2 }
+    if parse_i32_value("-2147483648").unwrap().value != -2147483648 { return 3 }
+    if !parse_i32_value("").unwrap_err().equals("EOF") { return 4 }
+    if !parse_i32_value(" \r\n").unwrap_err().equals("EOF") { return 5 }
+    if !parse_i32_value("-x").unwrap_err().equals("Invalid i32") { return 6 }
+    {
+        auto input = string::from("\"a\\n中\"tail")
+        auto owned = parse_string_value(input.as_str()).unwrap()
+        auto view = parse_str_view(input.as_str()).unwrap()
+        if !owned.value.as_str().equals("a\n中") || !owned.rest.equals("tail") { return 7 }
+        if !view.value.equals("a\\n中") || !view.rest.equals("tail") { return 8 }
+    }
+    {
+        auto parsed = parse_string_value("\"\\\"\\\\\\/\\b\\f\\n\\r\\t\"").unwrap()
+        if parsed.value.len() != 8 { return 9 }
+        auto text = parsed.value.as_str()
+        if text.byte_at(0) != 34 || text.byte_at(1) != 92 || text.byte_at(2) != 47 ||
+           text.byte_at(3) != 8 || text.byte_at(4) != 12 || text.byte_at(5) != 10 ||
+           text.byte_at(6) != 13 || text.byte_at(7) != 9 { return 10 }
+    }
+    {
+        auto parsed = parse_string_value("\"\\uD83D\\uDE00\"!").unwrap()
+        if !parsed.value.as_str().equals("😀") || !parsed.rest.equals("!") { return 11 }
+        auto view = parse_str_view("\"\\uD83D\\uDE00\"!").unwrap()
+        if !view.value.equals("\\uD83D\\uDE00") { return 12 }
+    }
+    if parse_string_value("\"\"tail").unwrap().value.len() != 0 { return 13 }
+    if !parse_string_value("bad").unwrap_err().equals("Expected string") { return 14 }
+    if !parse_str_view("\"open").unwrap_err().equals("Unterminated string") { return 15 }
+    if !parse_string_value("\"prefix\\u12\"").unwrap_err().equals("Incomplete unicode escape") { return 16 }
+    if !parse_string_value("\"prefix\\uD800\\u1\"").unwrap_err().equals("Incomplete unicode escape") { return 17 }
+    // Existing permissive handling of unknown escapes/hex is not tightened.
+    if !parse_string_value("\"a\\q\"").unwrap().value.as_str().equals("aq") { return 18 }
+    {
+        auto parsed = parse_string_value("\"\\uZZZZ\"").unwrap()
+        if parsed.value.len() != 1 || parsed.value.as_str().byte_at(0) != 0 { return 19 }
+    }
+    {
+        auto value = detached()
+        if !value.as_str().equals("owned\nvalue") { return 20 }
+    }
+    if !remaining("1tail").equals("tail") { return 26 }
+    if !borrowed("\"x\\n\"").equals("x\\n") { return 27 }
+    return 0
+}

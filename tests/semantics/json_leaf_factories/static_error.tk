@@ -1,0 +1,10 @@
+import stdx/serde/json_leaf::{parse_i32_value}
+fn error_text() -> str {
+    auto input = string::from("bad")
+    auto result = parse_i32_value(input.as_str())
+    return result.unwrap_err()
+}
+fn main()->i32 {
+    if !error_text().equals("Invalid i32") { return 1 }
+    return 0
+}

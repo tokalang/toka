@@ -319,6 +319,18 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_binding_b3_static_return.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_json_leaf_factories
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_json_leaf_factories.py
+                --build-dir ${CMAKE_BINARY_DIR} --section core)
+        add_test(NAME toka_json_leaf_entries
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_json_leaf_factories.py
+                --build-dir ${CMAKE_BINARY_DIR} --section entries)
+        add_test(NAME toka_json_leaf_static_error
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_json_leaf_factories.py
+                --build-dir ${CMAKE_BINARY_DIR} --section static-error)
         add_test(NAME toka_binding_b4_enum_copy
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_binding_b4_enum_copy.py

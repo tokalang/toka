@@ -1,0 +1,6 @@
+import stdx/serde/json_leaf::{parse_str_view}
+fn wrong(first: str, second: str) -> str <- first {
+    auto parsed = parse_str_view(second).unwrap()
+    return parsed.value
+}
+fn main() -> i32 { return 0 }

@@ -570,6 +570,24 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       }
     }
 
+    // Moving a payload preserves dependencies already carried by that value;
+    // it does not borrow the dying container's descriptor. At a consuming
+    // parameter boundary the actual matched input is the symbolic carrier,
+    // not a dependency fabricated from this function's return declaration.
+    if (TransfersOwnership && !Pat->IsReference && TargetAccessPath &&
+        hasBorrowedValueFields(Info.TypeObj)) {
+      SymbolInfo *targetInfo = nullptr;
+      CurrentScope->findSymbolByID(TargetAccessPath.RootID, targetInfo);
+      if (targetInfo && !m_ReturnSourceUnknownRoots.count(targetInfo->SymbolID)) {
+        Info.LifeDependencySet = targetInfo->LifeDependencySet;
+        if (TargetAccessPath.Projections.empty() && targetInfo->TypeObj &&
+            targetInfo->TypeObj->equals(*Info.TypeObj))
+          Info.FieldDependencySet = targetInfo->FieldDependencySet;
+        if (targetInfo->IsFunctionParameter && targetInfo->IsCeded)
+          Info.LifeDependencySet.insert(TargetAccessPath.toLegacyString());
+      }
+    }
+
     // Pattern bindings are declarations too.  Preserve their payload-side
     // capability rather than relying on a later use-site # to recreate it.
     Info.IsDeclaredMutable = bindingPayloadWritable;

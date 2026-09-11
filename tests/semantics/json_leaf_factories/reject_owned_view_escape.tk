@@ -1,0 +1,6 @@
+import stdx/serde/json_leaf::{parse_string_value}
+fn escaped()->str {
+    auto parsed = parse_string_value("\"decoded\"").unwrap()
+    return parsed.value.as_str()
+}
+fn main()->i32 { return 0 }

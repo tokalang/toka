@@ -1065,6 +1065,13 @@ void Sema::checkStmt(Stmt *S) {
                 }
             }
             else if (auto *Method = dynamic_cast<MethodCallExpr *>(E)) {
+                std::vector<AccessPath> actualOrigins;
+                std::vector<SourceLocation> staticOrigins;
+                if (collectActualReturnReferents(Method, actualOrigins, &staticOrigins)) {
+                  for (const auto &origin : actualOrigins)
+                    recordDependencyPathTo(out, origin.toLegacyString());
+                  return;
+                }
                 if (Method->ResolvedFn) {
                   for (const auto &dep : Method->ResolvedFn->LifeDependencies) {
                     if (Type::stripMorphology(dep) == "self") {
@@ -1110,6 +1117,16 @@ void Sema::checkStmt(Stmt *S) {
             }
             // Case 7: MemberExpr (e.g., e.&val)
             else if (auto *Memb = dynamic_cast<MemberExpr *>(E)) {
+                if (Memb->ResolvedType && !Memb->ResolvedType->isRawPointer() &&
+                    queryExplicitCedeStage0OwnershipReadOnly(Memb->ResolvedType) ==
+                        ValueOwnership::BorrowedView) {
+                  std::vector<AccessPath> actualOrigins;
+                  if (collectActualReturnReferents(Memb, actualOrigins)) {
+                    for (const auto &origin : actualOrigins)
+                      recordDependencyPathTo(out, origin.toLegacyString());
+                    return;
+                  }
+                }
                 bool isRef = false;
                 bool isAddressOf = Memb->Member.find('&') != std::string::npos;
                 if (isAddressOf || Memb->Member.find('^') != std::string::npos || Memb->Member.find('~') != std::string::npos) {
