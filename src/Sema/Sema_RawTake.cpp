@@ -19,12 +19,37 @@ Expr *slotSource(Expr *expression) {
 
 std::optional<AccessPath> Sema::qualifiedRawSlot(ArrayIndexExpr *slot,
                                               std::string *allocationSource,
-                                              const AllocExpr **allocationResult) {
+                                              const AllocExpr **allocationResult,
+                                              uint64_t *indexBinding) {
   if (!slot || slot->Indices.size() != 1 || !CurrentFunction) return {};
   auto *base = dynamic_cast<VariableExpr *>(slot->Array.get());
   auto *index = dynamic_cast<NumberExpr *>(slotSource(slot->Indices[0].get()));
+  uint64_t indexID = 0;
+  if (!index) {
+    auto *variable = dynamic_cast<VariableExpr *>(slotSource(slot->Indices[0].get()));
+    auto indexPath = variable ? makeAccessPath(variable) : AccessPath{};
+    SymbolInfo *info = nullptr;
+    if (!indexPath.RootID || !indexPath.Projections.empty() ||
+        !CurrentScope->findSymbolByID(indexPath.RootID, info) || !info ||
+        !info->TypeObj || !info->TypeObj->isInteger() || info->TypeObj->IsWritable ||
+        info->Permission.SoulWritable || info->Permission.IdentityRebindable ||
+        m_ReturnSourceUnknownRoots.count(indexPath.RootID) ||
+        info->IsPlaceAlias || info->IsFunctionParameter || info->Moved || !info->ASTPtr)
+      return {};
+    auto *decl = dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(info->ASTPtr));
+    auto owner = decl ? m_LocalVariableOwners.find(decl) : m_LocalVariableOwners.end();
+    if (!decl || owner == m_LocalVariableOwners.end() || owner->second != CurrentFunction)
+      return {};
+    // Deliberately retain the literal-extent and proven in-range requirement.
+    // No runtime index, initializer replay by name, or unknown bound is admitted.
+    index = dynamic_cast<NumberExpr *>(slotSource(decl->Init.get()));
+    indexID = indexPath.RootID;
+  }
   if (!base || !index) return {};
   auto path = canonicalizeAccessPath(makeAccessPath(slot));
+  if (indexID && path.Projections.size() == 1 &&
+      path.Projections.front().Kind == AccessProjectionKind::DynamicIndex)
+    path.Projections.front() = AccessProjection::constantIndex(index->Value);
   SymbolInfo *binding = nullptr;
   if (!path.RootID || path.Projections.size() != 1 ||
       path.Projections.front().Kind != AccessProjectionKind::ConstantIndex ||
@@ -43,6 +68,7 @@ std::optional<AccessPath> Sema::qualifiedRawSlot(ArrayIndexExpr *slot,
   if (ancestry.SourceEdge.empty() || !ancestry.IsArray || ancestry.HasInitializerSyntax) return {};
   if (allocationSource) *allocationSource = ancestry.SourceEdge;
   if (allocationResult) *allocationResult = allocation;
+  if (indexBinding) *indexBinding = indexID;
   return path;
 }
 
@@ -91,7 +117,8 @@ void Sema::recordRawSlotWrite(BinaryExpr *assignment) {
   auto *slot = dynamic_cast<ArrayIndexExpr *>(assignment->LHS.get());
   std::string allocation;
   const AllocExpr *allocationExpression = nullptr;
-  auto path = qualifiedRawSlot(slot, &allocation, &allocationExpression);
+  uint64_t indexBinding = 0;
+  auto path = qualifiedRawSlot(slot, &allocation, &allocationExpression, &indexBinding);
   if (!path) return;
   Expr *value = assignment->RHS.get();
   while (value && !value->KnownNullRawStorageType) {
@@ -106,6 +133,7 @@ void Sema::recordRawSlotWrite(BinaryExpr *assignment) {
           *element->withAttributes(false, element->IsNullable, element->IsBlocked))) return;
   auto evidence = std::make_shared<RawSlotDependencyEvidence>();
   evidence->Slot = *path;
+  evidence->IndexBinding = indexBinding;
   evidence->ElementType = element;
   evidence->Write = assignment;
   evidence->ValueEdge = value;
@@ -125,6 +153,7 @@ std::map<AccessPath, RawSlotDependencyEvidencePtr> Sema::joinRawSlots(
     const auto &rhs = other->second;
     if (value == rhs) { joined[slot] = value; continue; }
     if (!value->NoBorrowedValueFields || !rhs->NoBorrowedValueFields ||
+        value->IndexBinding != rhs->IndexBinding ||
         !value->ElementType || !rhs->ElementType || !value->ElementType->equals(*rhs->ElementType) ||
         value->Allocation != rhs->Allocation || value->AllocationSourceEdge != rhs->AllocationSourceEdge) continue;
     auto result = std::make_shared<RawSlotDependencyEvidence>(*value);
@@ -266,9 +295,11 @@ std::shared_ptr<Type> Sema::checkRawTakeExpr(RawTakeExpr *take) {
   };
   RawSlotDependencyEvidencePtr stored;
   if (!dependencyFree(element)) {
-    auto slot = qualifiedRawSlot(index);
+    uint64_t indexBinding = 0;
+    auto slot = qualifiedRawSlot(index, nullptr, nullptr, &indexBinding);
     auto found = slot ? m_RawSlotDependencies.find(*slot) : m_RawSlotDependencies.end();
     if (found == m_RawSlotDependencies.end() || !found->second ||
+        found->second->IndexBinding != indexBinding ||
         !found->second->ElementType || !found->second->ElementType->equals(*element) ||
         (found->second->Alternatives.empty() &&
          (!found->second->ValueEdge || !found->second->ValueEdge->KnownNullRawStorageType)) ||
@@ -277,6 +308,7 @@ std::shared_ptr<Type> Sema::checkRawTakeExpr(RawTakeExpr *take) {
     stored = found->second;
     for (const auto &leaf : stored->Alternatives) {
       if (!leaf || !leaf->Alternatives.empty() || !leaf->NoBorrowedValueFields ||
+          leaf->IndexBinding != stored->IndexBinding ||
           !(leaf->Slot == stored->Slot) || leaf->Allocation != stored->Allocation ||
           leaf->AllocationSourceEdge != stored->AllocationSourceEdge ||
           !leaf->ElementType || !leaf->ElementType->equals(*element) ||
@@ -284,9 +316,10 @@ std::shared_ptr<Type> Sema::checkRawTakeExpr(RawTakeExpr *take) {
         return reject("ElementDependenciesUnproven");
     }
   }
-  const auto source = canonicalizeAccessPath(makeAccessPath(index));
+  const auto rawSource = canonicalizeAccessPath(makeAccessPath(index));
+  const auto source = stored ? stored->Slot : rawSource;
   if (!source || !source.RootID) return reject("ExactSourceRequired");
-  if (PALCheckerState.verifyInvalidation(source)) return reject("ActiveBorrowConflict");
+  if (PALCheckerState.verifyInvalidation(rawSource)) return reject("ActiveBorrowConflict");
   auto capability = queryExplicitCedeStage0AccessCapabilityReadOnly(index);
   auto elementPayload = element->isPointer() ? element->getPointeeType() : element;
   // A read-only shared handle still transfers its existing reference. The

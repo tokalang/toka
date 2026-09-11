@@ -57,23 +57,40 @@ PhysEntity CodeGen::genRawTakeExpr(const RawTakeExpr *take) {
     break;
   case RawElementTakePlan::DependencyProofKind::RecordedSlot: {
     const auto &proof = plan->RecordedSlot;
+    const auto indexBinding = [](const Expr *expression) -> uint64_t {
+      while (auto *cast = dynamic_cast<const CastExpr *>(expression)) {
+        if (cast->Kind != CastKind::Ascription && cast->Kind != CastKind::Implicit) return 0;
+        expression = cast->Expression.get();
+      }
+      const auto *variable = dynamic_cast<const VariableExpr *>(expression);
+      return variable ? variable->ResolvedBindingID : 0;
+    };
     if (!proof || !take->RecordedSlotProofRequired || !proof->NoBorrowedValueFields ||
         !(proof->Slot == plan->SourceSlot) || proof->AllocationSourceEdge.empty() ||
         !proof->ElementType || !proof->ElementType->equals(*plan->ElementType) ||
         !proof->Allocation || !proof->Allocation->RawAddressValueFacts ||
         !proof->Allocation->RawAddressValueFacts->AllocationAncestry ||
         proof->Allocation->RawAddressValueFacts->AllocationAncestry->SourceEdge != proof->AllocationSourceEdge ||
-        base->ResolvedBindingID != proof->Slot.RootID) return fail();
+        base->ResolvedBindingID != proof->Slot.RootID ||
+        indexBinding(plan->IndexEdge) != proof->IndexBinding) return fail();
     const auto validLeaf = [&](const RawSlotDependencyEvidencePtr &leaf) {
       if (!leaf || !leaf->Alternatives.empty() || !leaf->NoBorrowedValueFields ||
+          leaf->IndexBinding != proof->IndexBinding ||
           !(leaf->Slot == proof->Slot) || leaf->Allocation != proof->Allocation ||
           leaf->AllocationSourceEdge != proof->AllocationSourceEdge ||
           !leaf->ElementType || !leaf->ElementType->equals(*proof->ElementType) ||
           !leaf->Write || !leaf->Write->RawStorageWrite ||
           !leaf->ValueEdge || !leaf->ValueEdge->KnownNullRawStorageType ||
-          !(leaf->Write->RawStorageWrite->Slot == leaf->Slot) ||
           !leaf->Write->RawStorageWrite->ElementType ||
           !leaf->Write->RawStorageWrite->ElementType->equals(*leaf->ElementType)) return false;
+      const auto &writePath = leaf->Write->RawStorageWrite->Slot;
+      if (leaf->IndexBinding) {
+        const auto *written = dynamic_cast<const ArrayIndexExpr *>(leaf->Write->LHS.get());
+        if (!written || written->Indices.size() != 1 ||
+            indexBinding(written->Indices[0].get()) != leaf->IndexBinding ||
+            writePath.RootID != leaf->Slot.RootID || writePath.Projections.size() != 1 ||
+            writePath.Projections.front().Kind != AccessProjectionKind::DynamicIndex) return false;
+      } else if (!(writePath == leaf->Slot)) return false;
       const auto &valueType = leaf->ValueEdge->KnownNullRawStorageType;
       return valueType->withAttributes(false, valueType->IsNullable, valueType->IsBlocked)->equals(
           *leaf->ElementType->withAttributes(false, leaf->ElementType->IsNullable,

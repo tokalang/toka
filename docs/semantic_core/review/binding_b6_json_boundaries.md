@@ -90,6 +90,24 @@ The six related CTest gates passed together (6/6, 124.32 s), including the
 recorded-slot matrix, existing raw_take/Vec gates, factory values, binding
 dependencies and allocation ancestry. No full PASS/FAIL run was performed.
 
+### Fixed index binding follow-up
+
+An immutable local integer binding initialized directly from an in-range
+literal may identify the slot. The allocation extent must still be a literal;
+runtime indices and unknown extents remain rejected. Binding identity is
+preserved in the receipt and checked against both the actual write and take
+by CodeGen. No old initializer is followed through a name lookup or alias.
+
+The preceding proposal to support runtime indices and nonliteral extents was
+rejected by execution review and was not applied. The accepted execution
+alternative retains both literal-index-value and literal-extent checks; it
+does not bypass that rejection. The broader dynamic/private-helper work is
+still unfinished and is not covered by the fixed-index tests.
+Incremental compiler build and the recorded-slot/Vec CTest pair passed (2/2,
+62.48 s). The expanded slot runner includes six runtime positives, seventeen
+rejection/parity cases and ten fault checks. No original JSON recovery is
+claimed from this follow-up; no full suite or release qualification was run.
+
 ## 下一实施裁定：先做完整值 factory 的具体类型验证
 
 shared/iterator 已在 c81ecdd6 验收，本设计不再向该切片追加工作。

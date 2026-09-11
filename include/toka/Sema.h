@@ -1030,7 +1030,8 @@ private:
   std::map<AccessPath, RawSlotDependencyEvidencePtr> m_RawSlotDependencies;
   std::optional<AccessPath> qualifiedRawSlot(ArrayIndexExpr *slot,
                                           std::string *allocationSource = nullptr,
-                                          const AllocExpr **allocation = nullptr);
+                                          const AllocExpr **allocation = nullptr,
+                                          uint64_t *indexBinding = nullptr);
   bool rawSlotValueHasNoBorrows(const std::shared_ptr<Type> &type);
   void recordRawSlotWrite(BinaryExpr *assignment);
   std::map<AccessPath, RawSlotDependencyEvidencePtr> joinRawSlots(

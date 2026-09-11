@@ -48,6 +48,17 @@ def main():
             return source
 
         good = check("written", original, 0)
+        indexed = original.replace("    auto item", "    auto offset = 0:i32\n    auto item")\
+                          .replace("storage[0]", "storage[offset]")
+        check("literal_index_binding", indexed, 0)
+        check("index_outside_extent", indexed.replace("offset = 0", "offset = 1"), 1)
+        check("mutable_index", indexed.replace("offset = 0", "offset# = 0"), 1)
+        check("different_index_binding", indexed.replace("    auto item", "    auto other = 0:i32\n    auto item")
+              .replace("raw_take storage[offset]", "raw_take storage[other]"), 1)
+        check("runtime_index", indexed.replace("fn main() -> i32 {", "fn scenario(seed: i32) -> i32 {")
+              .replace("offset = 0:i32", "offset = seed") + "\nfn main() -> i32 { return 0 }\n", 1)
+        check("unknown_extent", indexed.replace("    auto *storage# = unsafe alloc [1] Item",
+              "    auto extent = 1:i32\n    auto *storage# = unsafe alloc [extent] Item"), 1)
         for flag in ("true", "false"):
             check("both_branches_" + flag,
                   original.replace("fn main() -> i32 {", "fn scenario(flag: bool) -> i32 {")

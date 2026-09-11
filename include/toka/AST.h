@@ -693,6 +693,7 @@ public:
 class AllocExpr;
 struct RawSlotDependencyEvidence {
   AccessPath Slot;
+  uint64_t IndexBinding = 0;
   std::shared_ptr<Type> ElementType;
   const BinaryExpr *Write = nullptr;
   const Expr *ValueEdge = nullptr;
