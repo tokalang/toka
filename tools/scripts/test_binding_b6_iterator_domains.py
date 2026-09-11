@@ -31,6 +31,8 @@ def main():
         subprocess.run([clang, "-c", str(CASES / "raw_accessors_driver.c"), "-o", str(driver)], check=True)
         for source in (ROOT / "tests/semantics/binding_b5_hashmap/handles.tk",
                        CASES / "iterators.tk", CASES / "raw_accessors.tk",
+                       CASES / "raw_next_pending.tk", CASES / "shared_aggregate.tk",
+                       CASES / "shared_transfer.tk",
                        ROOT / "tests/pass/g07_hashmap_resize_test.tk"):
             normal = run(source, "--check-only")
             shadow = run(source, "--check-only", "--non-call-transfer-shadow=json")
@@ -73,10 +75,23 @@ def main():
                         accepted = run(control, "--check-only")
                         assert accepted.returncode == 0, accepted.stderr
                     print("PASS managed raw rejection: " + source.stem, flush=True)
-    print("4 runtime/parity cases, 8 raw-domain rejections, 4 borrowed-domain controls.")
-    print("raw_next_pending.tk remains a failed positive due to EntryRef's unbounded borrow domain.")
-    print("shared_aggregate.tk remains a failed positive: bare morphic shared copy retains twice.")
-    print("shared_transfer.tk remains a failed positive for wrapped aggregate transfer.")
+        for role in ("key", "value"):
+            for illegal in ("*i32", "&&Cell"):
+                types = illegal + ", i32" if role == "key" else "i32, " + illegal
+                source = work / ("borrow-" + role + ("-raw" if illegal == "*i32" else "-depth") + ".tk")
+                source.write_text("import std/hashmap::{HashMapIterator}\nshape Cell(id:i32)\n"
+                    "fn probe(cursor#: HashMapIterator<" + types + ">) { cursor#.next_ref() }\n"
+                    "fn main()->i32{return 0}\n")
+                normal = run(source, "--check-only")
+                shadow = run(source, "--check-only", "--non-call-transfer-shadow=json")
+                assert normal.returncode == shadow.returncode == 1 and normal.stderr == shadow.stderr, normal.stderr + shadow.stderr
+                assert "E0621" in normal.stderr and "borrow_extendable" in normal.stderr, normal.stderr
+                for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
+                    output = source.with_suffix(suffix)
+                    failed = run(source, flag, "-o", output)
+                    assert failed.returncode == 1 and not output.exists(), failed.stderr
+                print("PASS invalid borrow domain: " + source.stem, flush=True)
+    print("7 runtime/parity cases, 12 domain rejections, 4 borrowed-domain controls; no skipped positives.")
 
 
 if __name__ == "__main__":

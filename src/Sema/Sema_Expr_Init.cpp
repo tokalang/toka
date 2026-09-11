@@ -35,15 +35,18 @@ AggregateTransferKind Sema::qualifyAggregateTransfer(
     return AggregateTransferKind::Unqualified;
 
   Expr *identity = source;
-  bool explicitTransfer = false;
+  const CedeExpr *explicitTransfer = nullptr;
   while (identity) {
     if (auto *cast = dynamic_cast<CastExpr *>(identity)) {
       identity = cast->Expression.get();
     } else if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(identity)) {
       identity = unsafeExpr->Expression.get();
     } else if (auto *cede = dynamic_cast<CedeExpr *>(identity)) {
-      explicitTransfer = true;
+      explicitTransfer = cede;
       identity = cede->Value.get();
+    } else if (auto *selector = dynamic_cast<UnaryExpr *>(identity);
+               selector && selector->Op == TokenType::Tilde) {
+      identity = selector->RHS.get();
     } else {
       break;
     }
@@ -57,7 +60,7 @@ AggregateTransferKind Sema::qualifyAggregateTransfer(
   std::string actualName;
   if (!CurrentScope->findVariableWithDeref(variable->Name, sourceInfo,
                                            actualName) ||
-      !sourceInfo || !sourceInfo->IsMorphicExempt)
+      !sourceInfo)
     return AggregateTransferKind::Unqualified;
 
   auto concreteType = source->ResolvedType ? source->ResolvedType
@@ -67,16 +70,20 @@ AggregateTransferKind Sema::qualifyAggregateTransfer(
   if (!concreteType && destinationType)
     concreteType = resolveType(destinationType, false);
   if (!concreteType || concreteType->isUnknown())
-    return AggregateTransferKind::CopyValue;
+    return sourceInfo->IsMorphicExempt ? AggregateTransferKind::CopyValue
+                                      : AggregateTransferKind::Unqualified;
 
-  if (concreteType->isSharedPtr()) {
-    // checkExpr has already validated/invalidated an explicit cede source.
-    // Preserve that transfer when a morphic shared value enters an aggregate;
-    // retaining here would leak an extra reference after the source retires.
-    if (explicitTransfer && hasPlaceState(sourceInfo->placeFact(), PlaceState::Moved))
-      return AggregateTransferKind::MoveOwned;
+  if (concreteType->isSharedPtr() && sourceInfo->TypeObj &&
+      sourceInfo->TypeObj->isSharedPtr()) {
+    // Source validation precedes this insertion edge. Do not reconstruct its
+    // intent from a later Moved bit (candidate rollback/wrappers can differ).
+    if (explicitTransfer)
+      return explicitTransfer->SourceCheckSucceeded
+          ? AggregateTransferKind::MoveOwned : AggregateTransferKind::Unqualified;
     return AggregateTransferKind::RetainShared;
   }
+  if (!sourceInfo->IsMorphicExempt)
+    return AggregateTransferKind::Unqualified;
   if (concreteType->isRawPointer() || concreteType->isReference())
     return AggregateTransferKind::CopyIdentity;
   if (!concreteType->requiresExplicitOwnershipTransfer(this))

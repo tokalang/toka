@@ -452,7 +452,11 @@ pub shape EntryRef<'K, 'V> (
     &'val: V
 )
 
-impl<'K, 'V> EntryRef<'K, 'V> {
+impl<'K, 'V> EntryRef<'K, 'V>
+where:
+    'K: morphology borrow_extendable
+    'V: morphology borrow_extendable
+{
     pub fn key(self) -> &'K 
     effects: return <- self {
         return self.&key
@@ -517,7 +521,11 @@ where:
     }
 }
 
-impl<'K, 'V> HashMapIterator<'K, 'V>@BorrowIterator {
+impl<'K, 'V> HashMapIterator<'K, 'V>@BorrowIterator
+where:
+    'K: morphology borrow_extendable
+    'V: morphology borrow_extendable
+{
     type BorrowedItem = EntryRef<'K, 'V>
 
     pub fn next_ref(self#) -> Option<BorrowedItem> <- self {

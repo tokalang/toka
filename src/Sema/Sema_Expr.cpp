@@ -1209,6 +1209,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     return toka::Type::fromString("()");
   ActiveNodeRAII Active(E);
   const size_t expressionDiagnosticStart = DiagnosticEngine::records().size();
+  if (auto *cede = dynamic_cast<CedeExpr *>(E)) cede->SourceCheckSucceeded = false;
   NativeSyncTemporaryGuardFrame nativeGuardFrame{CurrentFunction, {}};
   auto *previousNativeGuardFrame = m_NativeSyncTemporaryGuards;
   if (!previousNativeGuardFrame || previousNativeGuardFrame->Definition != CurrentFunction)
@@ -1265,6 +1266,17 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   const bool expressionSucceeded = std::none_of(
       expressionRecords.begin() + std::min(expressionDiagnosticStart, expressionRecords.size()),
       expressionRecords.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
+  if (auto *cede = dynamic_cast<CedeExpr *>(E)) {
+    Expr *source = cede->Value.get();
+    while (source) {
+      if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source)) source = unsafe->Expression.get();
+      else if (auto *cast = dynamic_cast<CastExpr *>(source);
+               cast && cast->Kind == CastKind::Ascription) source = cast->Expression.get();
+      else break;
+    }
+    cede->SourceCheckSucceeded = expressionSucceeded && T && !T->isUnknown() &&
+                                static_cast<bool>(makeAccessPath(source));
+  }
   if (expressionSucceeded) {
     if (rejectNativeSyncUnlock(E)) {
       if (nativeUnlockEntry) mergeAnalysisStates({*nativeUnlockEntry}, nativeUnlockEntry->PAL);
@@ -4068,7 +4080,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       call->CallableReceiver = CallableReceiverMode::Consuming;
     bool cedingPlaceAlias = false;
     std::shared_ptr<toka::Type> innerTy;
-    AccessPath cedePath = makeAccessPath(ce->Value.get());
+    Expr *sourceView = ce->Value.get();
+    while (sourceView) {
+      if (auto *unsafe = dynamic_cast<UnsafeExpr *>(sourceView)) sourceView = unsafe->Expression.get();
+      else if (auto *cast = dynamic_cast<CastExpr *>(sourceView);
+               cast && cast->Kind == CastKind::Ascription) sourceView = cast->Expression.get();
+      else break;
+    }
+    AccessPath cedePath = makeAccessPath(sourceView);
     SymbolInfo *cedeRootInfo = nullptr;
     if (cedePath.RootID != 0)
       CurrentScope->findSymbolByID(cedePath.RootID, cedeRootInfo);
@@ -4092,15 +4111,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     
     // [Fix] Enforce tracking move semantics and borrow check for `cede` expression universally.
     if (ce->Value) {
-      std::string pathToMove = getPathString(ce->Value.get());
+      std::string pathToMove = getPathString(sourceView);
       if (canInvalidate && !pathToMove.empty()) {
           auto conflict = PALCheckerState.verifyInvalidation(
-              canonicalizeAccessPath(makeAccessPath(ce->Value.get())));
+              canonicalizeAccessPath(makeAccessPath(sourceView)));
           if (conflict) {
               error(ce, DiagID::ERR_MOVE_BORROWED, conflict->displayPath());
               recordPALConflict(
                   ce, PALOperationClass::Invalidation,
-                  canonicalizeAccessPath(makeAccessPath(ce->Value.get())),
+                  canonicalizeAccessPath(makeAccessPath(sourceView)),
                   *conflict);
               canInvalidate = false;
           }
@@ -4122,7 +4141,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
 
       Expr *underlying =
-          canInvalidate ? unwrapCedeDirectSource(ce->Value.get()) : nullptr;
+          canInvalidate ? unwrapCedeDirectSource(sourceView) : nullptr;
       if (auto *Var = dynamic_cast<VariableExpr *>(underlying)) {
         SymbolInfo *Info = nullptr;
         std::string actualName;

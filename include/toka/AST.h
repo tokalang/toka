@@ -1289,6 +1289,9 @@ public:
   // explicit cede expression, while tooling can still recover caller spelling.
   bool IsImplicitCallTransfer = false;
   bool IsFaultInjectedMissingCallTransfer = false;
+  // Source check only, not destination/transaction authority. Reset on every
+  // check and never copied into a fresh AST specialization.
+  bool SourceCheckSucceeded = false;
   CedeExpr(std::unique_ptr<Expr> val) : Value(std::move(val)) {}
   std::string toString() const override {
     return "Cede(" + (Value ? Value->toString() : "none") + ")";

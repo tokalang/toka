@@ -236,6 +236,10 @@ private:
   std::string m_CurrentSelfType;
   std::map<std::string, llvm::Value *> m_NamedValues;
   bool m_InLHS = false;
+  // Only the exact leaf/selector of a Sema-qualified aggregate retain.
+  const VariableExpr *m_AggregateRetainSource = nullptr;
+  const UnaryExpr *m_AggregateRetainSelector = nullptr;
+  std::shared_ptr<Type> m_AggregateRetainType;
   bool m_InUnsafeContext = false;
   llvm::Value *m_CurrentCoroHandle = nullptr;
   llvm::Value *m_CurrentCoroPromise = nullptr;
@@ -309,6 +313,7 @@ private:
   std::vector<FullExpressionTemporary> m_FullExpressionTemporaries;
 
   void suppressDropForMove(const std::string &name);
+  llvm::Value *genAggregateOperand(const Expr *expr, AggregateTransferKind transfer);
   void applyAggregateTransfer(AggregateTransferKind transfer,
                               const Expr *expr, llvm::Value *value);
   void markInitLive(const BinaryExpr *assignment);

@@ -2,7 +2,11 @@
 
 Base: `a38773eae5d626fdc070fa896562a1900037a383`.
 Branch: `impl/binding-b6-managed-elements`.
-Status: **not Accepted; handles.tk now passes, full domain matrix still pending**.
+Status: **not Accepted; the subsequently authorized domain/shared scopes are
+implemented**. Current candidate and complete matrix:
+`shared_aggregate_closeout.md`. The checkpoint history below preserves prior
+failures and authorization boundaries; its pending items are superseded by
+that candidate, not silently counted as earlier passes.
 
 ## Reproduced facts and applied changes
 

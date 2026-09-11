@@ -2032,7 +2032,7 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
     if (unary->RHS->ResolvedType) pType = unary->RHS->ResolvedType->getPointeeType();
     
     
-    emitAcquire(val, pType);
+    if (unary != m_AggregateRetainSelector) emitAcquire(val, pType);
 
     std::string typeName =
         unary->RHS->ResolvedType ? unary->RHS->ResolvedType->toString() : "";
@@ -2252,6 +2252,13 @@ PhysEntity CodeGen::genCastExpr(const CastExpr *cast) {
 }
 
 PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
+  if (var == m_AggregateRetainSource && m_AggregateRetainType) {
+    auto *address = emitHandleAddr(var);
+    if (!address) return nullptr;
+    auto *type = getLLVMType(m_AggregateRetainType);
+    return PhysEntity(m_Builder.CreateLoad(type, address, "aggregate.shared.value"),
+                      m_AggregateRetainType->toString(), type, false);
+  }
   // [Annotated AST] Constant Substitution: RValue Generation
 
   llvm::Value *soulAddr = nullptr;
@@ -6271,12 +6278,10 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
           std::vector<llvm::Value *> args;
           for (size_t i = 0; i < call->Args.size(); ++i) {
             auto &argExpr = call->Args[i];
-            args.push_back(genExpr(argExpr.get()).load(m_Builder));
-            applyAggregateTransfer(
+            args.push_back(genAggregateOperand(argExpr.get(),
                 i < call->ArgumentTransfers.size()
                     ? call->ArgumentTransfers[i]
-                    : AggregateTransferKind::Unqualified,
-                argExpr.get(), args.back());
+                    : AggregateTransferKind::Unqualified));
           }
           if (!args.empty() && !args.back())
             return nullptr;
@@ -7670,7 +7675,7 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
         if (auto *cast = dynamic_cast<const CastExpr *>(source))
           source = cast->Expression.get();
         else if (auto *unsafe = dynamic_cast<const UnsafeExpr *>(source);
-                 (validatedStandalone || exactMorphicHandle) && unsafe)
+                 (validatedStandalone || ce->SourceCheckSucceeded || exactMorphicHandle) && unsafe)
           source = unsafe->Expression.get();
         else
           break;
@@ -7962,8 +7967,7 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
       fieldVal = elemTy->isPointerTy() ? llvm::Constant::getNullValue(elemTy)
                                        : llvm::UndefValue::get(elemTy);
     } else {
-      fieldVal = genExpr(f.second.get()).load(m_Builder);
-      applyAggregateTransfer(transfer, f.second.get(), fieldVal);
+      fieldVal = genAggregateOperand(f.second.get(), transfer);
     }
 
     if (!fieldVal)
@@ -8330,20 +8334,14 @@ PhysEntity CodeGen::genAnonymousRecordExpr(const AnonymousRecordExpr *expr) {
   llvm::Value *alloca = createEntryBlockAlloca(recType, nullptr, "anon_rec");
 
   for (size_t i = 0; i < expr->Fields.size(); ++i) {
-    PhysEntity val_ent = genExpr(expr->Fields[i].second.get()).load(m_Builder);
-    llvm::Value *val = val_ent.load(m_Builder);
-    if (!val)
-      return nullptr;
-
-    // GEP to element i (Struct layout matches Fields order)
-    llvm::Value *ptr = m_Builder.CreateStructGEP(recType, alloca, i);
-
     const Expr *fieldExpr = expr->Fields[i].second.get();
     const AggregateTransferKind transfer =
         i < expr->FieldTransfers.size()
             ? expr->FieldTransfers[i]
             : AggregateTransferKind::Unqualified;
-    applyAggregateTransfer(transfer, fieldExpr, val);
+    llvm::Value *val = genAggregateOperand(fieldExpr, transfer);
+    if (!val) return nullptr;
+    llvm::Value *ptr = m_Builder.CreateStructGEP(recType, alloca, i);
     const bool ownsSharedHandle =
         fieldExpr && fieldExpr->ResolvedType &&
         fieldExpr->ResolvedType->isSharedPtr() &&

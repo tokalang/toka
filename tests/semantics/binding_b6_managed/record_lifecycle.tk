@@ -1,0 +1,18 @@
+auto drops# = 0:i32
+shape Cell(id:i32)
+impl Cell@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main()->i32 {
+    {
+        auto ~source = new Cell(id=42)
+        {
+            auto box = (value=~source)
+            if box.value.id != 42 || drops != 0 { return 1 }
+        }
+        if source.id != 42 || drops != 0 { return 2 }
+    }
+    if drops != 1 { return 100 + drops }
+    return 0
+}

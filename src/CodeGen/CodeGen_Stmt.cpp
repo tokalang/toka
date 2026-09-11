@@ -340,6 +340,57 @@ void CodeGen::suppressDropForMove(const std::string &name) {
   }
 }
 
+llvm::Value *CodeGen::genAggregateOperand(const Expr *expr,
+                                         AggregateTransferKind transfer) {
+  // RetainShared is a Sema-owned insertion disposition. Evaluate its simple
+  // shared identity without the ordinary RValue acquire, then fulfill exactly
+  // one retain here. All other RValue evaluation remains unchanged.
+  if (transfer == AggregateTransferKind::RetainShared) {
+    const Expr *identity = expr;
+    const UnaryExpr *sharedSelector = nullptr;
+    while (identity) {
+      if (auto *cast = dynamic_cast<const CastExpr *>(identity)) identity = cast->Expression.get();
+      else if (auto *unsafe = dynamic_cast<const UnsafeExpr *>(identity)) identity = unsafe->Expression.get();
+      else if (auto *selector = dynamic_cast<const UnaryExpr *>(identity);
+               selector && selector->Op == TokenType::Tilde) {
+        sharedSelector = selector;
+        identity = selector->RHS.get();
+      }
+      else break;
+    }
+    auto *variable = dynamic_cast<const VariableExpr *>(identity);
+    if (!variable || !expr->ResolvedType || !expr->ResolvedType->isSharedPtr()) {
+      error(expr, DiagID::ERR_CODEGEN_INVALID_REPRESENTATION_FOR,
+            "qualified shared aggregate identity");
+      return nullptr;
+    }
+    struct RestoreAggregateEvaluation {
+      const VariableExpr *&Source;
+      const UnaryExpr *&Selector;
+      std::shared_ptr<Type> &TypeSlot;
+      const VariableExpr *OldSource;
+      const UnaryExpr *OldSelector;
+      std::shared_ptr<Type> OldType;
+      ~RestoreAggregateEvaluation() {
+        Source = OldSource; Selector = OldSelector; TypeSlot = OldType;
+      }
+    } restore{m_AggregateRetainSource, m_AggregateRetainSelector, m_AggregateRetainType,
+              m_AggregateRetainSource, m_AggregateRetainSelector, m_AggregateRetainType};
+    m_AggregateRetainSource = variable;
+    m_AggregateRetainSelector = sharedSelector;
+    m_AggregateRetainType = expr->ResolvedType;
+    // Evaluate wrappers/conversions normally, suppressing only this leaf's
+    // acquire. Do not skip checks or evaluation because we know its identity.
+    auto *value = genExpr(expr).load(m_Builder);
+    if (!value) return nullptr;
+    emitAcquire(value, expr->ResolvedType->getPointeeType());
+    return value;
+  }
+  auto *value = genExpr(expr).load(m_Builder);
+  if (value) applyAggregateTransfer(transfer, expr, value);
+  return value;
+}
+
 void CodeGen::applyAggregateTransfer(AggregateTransferKind transfer,
                                      const Expr *expr, llvm::Value *value) {
   if (transfer == AggregateTransferKind::CopyValue ||
@@ -353,6 +404,10 @@ void CodeGen::applyAggregateTransfer(AggregateTransferKind transfer,
     } else if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(identity)) {
       identity = unsafeExpr->Expression.get();
     } else if (auto *cede = dynamic_cast<const CedeExpr *>(identity)) {
+      // genCedeExpr already delivered the owned value and retired its source.
+      if (transfer == AggregateTransferKind::MoveOwned && cede->SourceCheckSucceeded &&
+          cede->ResolvedType && cede->ResolvedType->isSharedPtr())
+        return;
       identity = cede->Value.get();
     } else {
       break;
@@ -375,10 +430,8 @@ void CodeGen::applyAggregateTransfer(AggregateTransferKind transfer,
   }
 
   if (transfer == AggregateTransferKind::RetainShared) {
-    auto type = expr && expr->ResolvedType ? expr->ResolvedType
-                                          : symbol->second.soulTypeObj;
-    if (value && type && type->isSharedPtr())
-      emitAcquire(value, type->getPointeeType());
+    error(expr, DiagID::ERR_CODEGEN_INVALID_REPRESENTATION_FOR,
+          "shared aggregate retain bypassed qualified evaluation");
     return;
   }
 
