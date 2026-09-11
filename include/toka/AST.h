@@ -688,6 +688,21 @@ public:
   }
 };
 
+// Dependency evidence for one currently recorded slot value. Initialization,
+// valid addressing and remainder maintenance remain raw_take preconditions.
+class AllocExpr;
+struct RawSlotDependencyEvidence {
+  AccessPath Slot;
+  std::shared_ptr<Type> ElementType;
+  const BinaryExpr *Write = nullptr;
+  const Expr *ValueEdge = nullptr;
+  const AllocExpr *Allocation = nullptr;
+  bool NoBorrowedValueFields = false;
+  std::vector<std::shared_ptr<const RawSlotDependencyEvidence>> Alternatives;
+  std::string AllocationSourceEdge;
+};
+using RawSlotDependencyEvidencePtr = std::shared_ptr<const RawSlotDependencyEvidence>;
+
 class UnaryExpr : public Expr {
 public:
   // Set only by the checked assignment destination path. This selects the
@@ -929,6 +944,9 @@ public:
 // This is an unsafe source operation, distinct from the source-less result
 // passed to a surrounding destination planner. Clone never copies authority.
 struct RawElementTakePlan {
+  enum class DependencyProofKind { StructuralType, RecordedSlot };
+  DependencyProofKind DependencyProof = DependencyProofKind::StructuralType;
+  RawSlotDependencyEvidencePtr RecordedSlot;
   bool SemaValidated = false;
   const ArrayIndexExpr *SlotEdge = nullptr;
   const Expr *BaseEdge = nullptr;
@@ -951,6 +969,7 @@ struct RawElementTakePlan {
 
 class RawTakeExpr : public Expr {
 public:
+  bool RecordedSlotProofRequired = false;
   std::unique_ptr<Expr> Slot;
   std::optional<RawElementTakePlan> Plan;
   explicit RawTakeExpr(std::unique_ptr<Expr> slot) : Slot(std::move(slot)) {}

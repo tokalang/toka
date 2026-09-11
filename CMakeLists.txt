@@ -324,6 +324,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_binding_b3_static_return.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_b6_recorded_slots
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_b6_recorded_slots.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_json_factory_values
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_json_factory_values.py

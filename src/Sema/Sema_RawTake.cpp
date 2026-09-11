@@ -4,8 +4,150 @@
 
 namespace toka {
 
+namespace {
+Expr *slotSource(Expr *expression) {
+  while (expression) {
+    if (auto *unsafe = dynamic_cast<UnsafeExpr *>(expression)) expression = unsafe->Expression.get();
+    else if (auto *cast = dynamic_cast<CastExpr *>(expression);
+             cast && (cast->Kind == CastKind::Implicit || cast->Kind == CastKind::Ascription))
+      expression = cast->Expression.get();
+    else break;
+  }
+  return expression;
+}
+}
+
+std::optional<AccessPath> Sema::qualifiedRawSlot(ArrayIndexExpr *slot,
+                                              std::string *allocationSource,
+                                              const AllocExpr **allocationResult) {
+  if (!slot || slot->Indices.size() != 1 || !CurrentFunction) return {};
+  auto *base = dynamic_cast<VariableExpr *>(slot->Array.get());
+  auto *index = dynamic_cast<NumberExpr *>(slotSource(slot->Indices[0].get()));
+  if (!base || !index) return {};
+  auto path = canonicalizeAccessPath(makeAccessPath(slot));
+  SymbolInfo *binding = nullptr;
+  if (!path.RootID || path.Projections.size() != 1 ||
+      path.Projections.front().Kind != AccessProjectionKind::ConstantIndex ||
+      !CurrentScope->findSymbolByID(path.RootID, binding) || !binding ||
+      binding->IsFunctionParameter || binding->IsPlaceAlias || binding->Permission.IdentityRebindable ||
+      !binding->TypeObj || !binding->TypeObj->isRawPointer() || !binding->ASTPtr) return {};
+  auto *declaration = dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(binding->ASTPtr));
+  auto owner = declaration ? m_LocalVariableOwners.find(declaration) : m_LocalVariableOwners.end();
+  if (!declaration || owner == m_LocalVariableOwners.end() || owner->second != CurrentFunction) return {};
+  auto *allocation = dynamic_cast<AllocExpr *>(slotSource(declaration->Init.get()));
+  auto *extent = allocation ? dynamic_cast<NumberExpr *>(slotSource(allocation->ArraySize.get())) : nullptr;
+  if (!allocation || !allocation->IsArray || allocation->Initializer || !extent ||
+      index->Value >= extent->Value || !allocation->RawAddressValueFacts ||
+      !allocation->RawAddressValueFacts->AllocationAncestry) return {};
+  const auto &ancestry = *allocation->RawAddressValueFacts->AllocationAncestry;
+  if (ancestry.SourceEdge.empty() || !ancestry.IsArray || ancestry.HasInitializerSyntax) return {};
+  if (allocationSource) *allocationSource = ancestry.SourceEdge;
+  if (allocationResult) *allocationResult = allocation;
+  return path;
+}
+
+bool Sema::rawSlotValueHasNoBorrows(const std::shared_ptr<Type> &input) {
+  std::set<const ShapeDecl *> active;
+  std::function<bool(std::shared_ptr<Type>)> visit = [&](std::shared_ptr<Type> type) {
+    type = resolveExplicitCedeStage0TypeReadOnly(type);
+    if (!type || type->isUnknown() || type->isUninit() || type->isReference() ||
+        type->isFunction() || type->isDynFn()) return false;
+    if (hasCanonicalOwningStringStorage(type)) return true;
+    // This row is used only alongside a current whole-value certificate
+    // establishing that opaque raw fields are null. No raw pointee is read.
+    if (type->isRawPointer()) return true;
+    if (queryExplicitCedeStage0OwnershipReadOnly(type) == ValueOwnership::BorrowedView) return false;
+    if (type->isUniquePtr() || type->isSharedPtr()) return visit(type->getPointeeType());
+    if (type->isArray()) return visit(type->getArrayElementType());
+    if (!type->isShape()) return type->typeKind == Type::Primitive;
+    auto shape = std::dynamic_pointer_cast<ShapeType>(type);
+    if (!shape || !shape->Decl || !active.insert(shape->Decl).second) return false;
+    std::map<std::string, std::shared_ptr<Type>> substitutions;
+    if (!shape->Decl->GenericParams.empty()) {
+      if (shape->GenericArgs.size() != shape->Decl->GenericParams.size()) return false;
+      for (size_t index = 0; index < shape->GenericArgs.size(); ++index)
+        substitutions[shape->Decl->GenericParams[index].Name] = shape->GenericArgs[index];
+    }
+    auto fieldClosed = [&](const ShapeMember &field) {
+      auto fieldType = getPhysicalType(field);
+      if (fieldType && !substitutions.empty()) fieldType = fieldType->substitute(substitutions);
+      return fieldType && visit(fieldType);
+    };
+    bool closed = true;
+    for (const auto &field : shape->Decl->Members) {
+      if (shape->Decl->Kind == ShapeKind::Enum) {
+        if (!field.IsUnitVariant && field.SubMembers.empty()) closed &= fieldClosed(field);
+        for (const auto &payload : field.SubMembers) closed &= fieldClosed(payload);
+      } else closed &= fieldClosed(field);
+    }
+    active.erase(shape->Decl);
+    return closed;
+  };
+  return visit(input);
+}
+
+void Sema::recordRawSlotWrite(BinaryExpr *assignment) {
+  if (!assignment || !assignment->RawStorageWrite) return;
+  auto *slot = dynamic_cast<ArrayIndexExpr *>(assignment->LHS.get());
+  std::string allocation;
+  const AllocExpr *allocationExpression = nullptr;
+  auto path = qualifiedRawSlot(slot, &allocation, &allocationExpression);
+  if (!path) return;
+  Expr *value = assignment->RHS.get();
+  while (value && !value->KnownNullRawStorageType) {
+    auto *next = slotSource(value);
+    if (next == value) break;
+    value = next;
+  }
+  auto proofType = value ? value->KnownNullRawStorageType : nullptr;
+  auto element = assignment->RawStorageWrite->ElementType;
+  if (!proofType || !element || !rawSlotValueHasNoBorrows(element) ||
+      !proofType->withAttributes(false, proofType->IsNullable, proofType->IsBlocked)->equals(
+          *element->withAttributes(false, element->IsNullable, element->IsBlocked))) return;
+  auto evidence = std::make_shared<RawSlotDependencyEvidence>();
+  evidence->Slot = *path;
+  evidence->ElementType = element;
+  evidence->Write = assignment;
+  evidence->ValueEdge = value;
+  evidence->Allocation = allocationExpression;
+  evidence->NoBorrowedValueFields = true;
+  evidence->AllocationSourceEdge = std::move(allocation);
+  m_RawSlotDependencies[*path] = std::move(evidence);
+}
+
+std::map<AccessPath, RawSlotDependencyEvidencePtr> Sema::joinRawSlots(
+    const std::map<AccessPath, RawSlotDependencyEvidencePtr> &left,
+    const std::map<AccessPath, RawSlotDependencyEvidencePtr> &right) {
+  std::map<AccessPath, RawSlotDependencyEvidencePtr> joined;
+  for (const auto &[slot, value] : left) {
+    auto other = right.find(slot);
+    if (other == right.end() || !value || !other->second) continue;
+    const auto &rhs = other->second;
+    if (value == rhs) { joined[slot] = value; continue; }
+    if (!value->NoBorrowedValueFields || !rhs->NoBorrowedValueFields ||
+        !value->ElementType || !rhs->ElementType || !value->ElementType->equals(*rhs->ElementType) ||
+        value->Allocation != rhs->Allocation || value->AllocationSourceEdge != rhs->AllocationSourceEdge) continue;
+    auto result = std::make_shared<RawSlotDependencyEvidence>(*value);
+    result->Write = nullptr;
+    result->ValueEdge = nullptr;
+    result->Alternatives.clear();
+    std::set<const RawSlotDependencyEvidence *> seen;
+    auto append = [&](const RawSlotDependencyEvidencePtr &candidate) {
+      if (candidate->Alternatives.empty()) {
+        if (seen.insert(candidate.get()).second) result->Alternatives.push_back(candidate);
+      } else for (const auto &leaf : candidate->Alternatives)
+        if (leaf && seen.insert(leaf.get()).second) result->Alternatives.push_back(leaf);
+    };
+    append(value);
+    append(rhs);
+    joined[slot] = std::move(result);
+  }
+  return joined;
+}
+
 std::shared_ptr<Type> Sema::checkRawTakeExpr(RawTakeExpr *take) {
   take->Plan.reset();
+  take->RecordedSlotProofRequired = false;
   const std::vector<std::unique_ptr<Expr>> noArguments;
   CallArgumentRollbackGuard rollback(*this, noArguments, true);
   const size_t diagnosticStart = DiagnosticEngine::records().size();
@@ -115,13 +257,33 @@ std::shared_ptr<Type> Sema::checkRawTakeExpr(RawTakeExpr *take) {
     bool complete = true;
     for (const auto &field : shape->Decl->Members) {
       if (shape->Decl->Kind == ShapeKind::Enum) {
+        if (!field.IsUnitVariant && field.SubMembers.empty()) complete &= fieldComplete(field);
         for (const auto &payload : field.SubMembers) complete &= fieldComplete(payload);
       } else complete &= fieldComplete(field);
     }
     typeStack.erase(shape->Decl);
     return complete;
   };
-  if (!dependencyFree(element)) return reject("ElementDependenciesUnproven");
+  RawSlotDependencyEvidencePtr stored;
+  if (!dependencyFree(element)) {
+    auto slot = qualifiedRawSlot(index);
+    auto found = slot ? m_RawSlotDependencies.find(*slot) : m_RawSlotDependencies.end();
+    if (found == m_RawSlotDependencies.end() || !found->second ||
+        !found->second->ElementType || !found->second->ElementType->equals(*element) ||
+        (found->second->Alternatives.empty() &&
+         (!found->second->ValueEdge || !found->second->ValueEdge->KnownNullRawStorageType)) ||
+        !found->second->NoBorrowedValueFields)
+      return reject("ElementDependenciesUnproven");
+    stored = found->second;
+    for (const auto &leaf : stored->Alternatives) {
+      if (!leaf || !leaf->Alternatives.empty() || !leaf->NoBorrowedValueFields ||
+          !(leaf->Slot == stored->Slot) || leaf->Allocation != stored->Allocation ||
+          leaf->AllocationSourceEdge != stored->AllocationSourceEdge ||
+          !leaf->ElementType || !leaf->ElementType->equals(*element) ||
+          !leaf->Write || !leaf->ValueEdge || !leaf->ValueEdge->KnownNullRawStorageType)
+        return reject("ElementDependenciesUnproven");
+    }
+  }
   const auto source = canonicalizeAccessPath(makeAccessPath(index));
   if (!source || !source.RootID) return reject("ExactSourceRequired");
   if (PALCheckerState.verifyInvalidation(source)) return reject("ActiveBorrowConflict");
@@ -143,6 +305,10 @@ std::shared_ptr<Type> Sema::checkRawTakeExpr(RawTakeExpr *take) {
     return Type::fromString("unknown");
   }
   RawElementTakePlan plan;
+  if (stored) {
+    plan.DependencyProof = RawElementTakePlan::DependencyProofKind::RecordedSlot;
+    plan.RecordedSlot = stored;
+  }
   plan.SlotEdge = index;
   plan.BaseEdge = index->Array.get();
   plan.IndexEdge = index->Indices.front().get();
@@ -166,6 +332,15 @@ std::shared_ptr<Type> Sema::checkRawTakeExpr(RawTakeExpr *take) {
   plan.UnsafeCallerPreconditions = plan.CallerMaintainsRemainder = true;
   plan.SemaValidated = true;
   take->Plan = std::move(plan);
+  take->RecordedSlotProofRequired = stored != nullptr;
+  if (stored) {
+    // The load transfers the exact recorded value, without user code or a
+    // clone. Preserve its existing storage certificate on the new value.
+    take->KnownNullRawStorageType = element->withAttributes(
+        element->IsWritable, element->IsNullable, element->IsBlocked);
+  }
+  if (auto exact = qualifiedRawSlot(index)) m_RawSlotDependencies.erase(*exact);
+  else m_RawSlotDependencies.clear();
   index->ResolvedType = element;
   // No managed place state is changed: live-slot retirement is an explicit
   // unsafe postcondition. The raw allocation/remainder remains with its owner.

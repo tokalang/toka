@@ -1663,6 +1663,8 @@ void Sema::checkStmt(Stmt *S) {
     m_LastLifeDependencies.clear();
     m_LastFieldDependencies.clear();
   } else if (auto *Free = dynamic_cast<FreeStmt *>(S)) {
+    auto rawSlotsBeforeRelease = m_RawSlotDependencies;
+    m_RawSlotDependencies.clear();
     Free->RawStorageRelease.reset();
     const size_t releaseDiagnostics = DiagnosticEngine::records().size();
     Free->Expression = foldGenericConstant(std::move(Free->Expression));
@@ -1695,6 +1697,8 @@ void Sema::checkStmt(Stmt *S) {
       observation->DeclaredCount = Free->Count.get();
       if (!observation->SourceEdge.empty() && observation->StorageBinding.RootID)
         Free->RawStorageRelease = std::move(observation);
+    } else {
+      m_RawSlotDependencies = std::move(rawSlotsBeforeRelease);
     }
   } else if (auto *Unsafe = dynamic_cast<UnsafeStmt *>(S)) {
     bool oldUnsafe = m_InUnsafeContext;

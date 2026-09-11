@@ -1,0 +1,16 @@
+import std/vec::{Vec}
+import stdx/serde/json_leaf::{Parsed}
+fn main() -> i32 {
+    auto *storage# = unsafe alloc [1] Vec<i32>
+    auto value = Vec<i32>::new()
+    unsafe {
+        storage[0] = cede value
+        auto recovered = raw_take storage[0]
+        auto parsed = Parsed<Vec<i32>>(value = cede recovered, rest = "tail")
+        auto taken# = cede parsed.value
+        taken#.push(42)
+        if taken.len() != 1 || taken.get(0) != 42 { return 1 }
+        free [0] *storage
+    }
+    return 0
+}

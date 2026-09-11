@@ -21,6 +21,12 @@ PhysEntity CodeGen::genRawTakeExpr(const RawTakeExpr *take) {
       else if (m_RawTakeFault == "drop") plan->CarriesDropLiability = !plan->CarriesDropLiability;
       else if (m_RawTakeFault == "storage-type") plan->StorageType.reset();
       else if (m_RawTakeFault == "index-type") plan->IndexType.reset();
+      else if (m_RawTakeFault == "slot-proof-missing") plan->RecordedSlot.reset();
+      else if (m_RawTakeFault == "slot-proof-mismatch" && plan->RecordedSlot) {
+        auto broken = std::make_shared<RawSlotDependencyEvidence>(*plan->RecordedSlot);
+        broken->Slot.RootID = 0;
+        plan->RecordedSlot = std::move(broken);
+      }
     }
   }
 #endif
@@ -45,6 +51,45 @@ PhysEntity CodeGen::genRawTakeExpr(const RawTakeExpr *take) {
       !plan->BaseKnownNonNull || !plan->DependencyFree ||
       !plan->UnsafeCallerPreconditions || !plan->CallerMaintainsRemainder)
     return fail();
+  switch (plan->DependencyProof) {
+  case RawElementTakePlan::DependencyProofKind::StructuralType:
+    if (plan->RecordedSlot || take->RecordedSlotProofRequired) return fail();
+    break;
+  case RawElementTakePlan::DependencyProofKind::RecordedSlot: {
+    const auto &proof = plan->RecordedSlot;
+    if (!proof || !take->RecordedSlotProofRequired || !proof->NoBorrowedValueFields ||
+        !(proof->Slot == plan->SourceSlot) || proof->AllocationSourceEdge.empty() ||
+        !proof->ElementType || !proof->ElementType->equals(*plan->ElementType) ||
+        !proof->Allocation || !proof->Allocation->RawAddressValueFacts ||
+        !proof->Allocation->RawAddressValueFacts->AllocationAncestry ||
+        proof->Allocation->RawAddressValueFacts->AllocationAncestry->SourceEdge != proof->AllocationSourceEdge ||
+        base->ResolvedBindingID != proof->Slot.RootID) return fail();
+    const auto validLeaf = [&](const RawSlotDependencyEvidencePtr &leaf) {
+      if (!leaf || !leaf->Alternatives.empty() || !leaf->NoBorrowedValueFields ||
+          !(leaf->Slot == proof->Slot) || leaf->Allocation != proof->Allocation ||
+          leaf->AllocationSourceEdge != proof->AllocationSourceEdge ||
+          !leaf->ElementType || !leaf->ElementType->equals(*proof->ElementType) ||
+          !leaf->Write || !leaf->Write->RawStorageWrite ||
+          !leaf->ValueEdge || !leaf->ValueEdge->KnownNullRawStorageType ||
+          !(leaf->Write->RawStorageWrite->Slot == leaf->Slot) ||
+          !leaf->Write->RawStorageWrite->ElementType ||
+          !leaf->Write->RawStorageWrite->ElementType->equals(*leaf->ElementType)) return false;
+      const auto &valueType = leaf->ValueEdge->KnownNullRawStorageType;
+      return valueType->withAttributes(false, valueType->IsNullable, valueType->IsBlocked)->equals(
+          *leaf->ElementType->withAttributes(false, leaf->ElementType->IsNullable,
+                                            leaf->ElementType->IsBlocked));
+    };
+    if (proof->Alternatives.empty()) {
+      if (!validLeaf(proof)) return fail();
+    } else {
+      if (proof->Write || proof->ValueEdge) return fail();
+      for (const auto &leaf : proof->Alternatives)
+        if (!validLeaf(leaf)) return fail();
+    }
+    break;
+  }
+  default: return fail();
+  }
   // Positive, closed-world production table. Do not accept arbitrary non-None
   // dispositions (in particular CopyIdentity / ConsumeTemporary / future enums).
   switch (plan->Production) {

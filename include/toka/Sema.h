@@ -788,6 +788,7 @@ private:
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
   struct AnalysisState {
+    std::map<AccessPath, RawSlotDependencyEvidencePtr> RawSlotDependencies;
     std::map<uint64_t, std::shared_ptr<Type>> NullStorageBindings;
     std::map<uint64_t, EnumResultSourcePtr> EnumResults;
     std::map<uint64_t, EnumPayloadSelection> EnumSelections;
@@ -1026,6 +1027,15 @@ private:
   // A narrow current-value certificate: every otherwise opaque raw field is
   // literally null. It proves neither ownership nor initialized extent.
   std::map<uint64_t, std::shared_ptr<Type>> m_NullStorageBindings;
+  std::map<AccessPath, RawSlotDependencyEvidencePtr> m_RawSlotDependencies;
+  std::optional<AccessPath> qualifiedRawSlot(ArrayIndexExpr *slot,
+                                          std::string *allocationSource = nullptr,
+                                          const AllocExpr **allocation = nullptr);
+  bool rawSlotValueHasNoBorrows(const std::shared_ptr<Type> &type);
+  void recordRawSlotWrite(BinaryExpr *assignment);
+  std::map<AccessPath, RawSlotDependencyEvidencePtr> joinRawSlots(
+      const std::map<AccessPath, RawSlotDependencyEvidencePtr> &left,
+      const std::map<AccessPath, RawSlotDependencyEvidencePtr> &right);
   bool hasCompleteValueStorage(Expr *expression, bool *sawNull = nullptr);
   void recordNullStorageExpression(Expr *expression, bool valid);
   void recordNullStorageBinding(const AccessPath &place, Expr *source);

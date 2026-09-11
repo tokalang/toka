@@ -1095,6 +1095,7 @@ int main(int argc, char **argv) {
       const std::set<std::string> faults = {
           "missing", "rejected", "mismatch", "incomplete", "production-none",
           "production-identity", "production-borrow", "production-temporary", "production-unknown",
+          "slot-proof-missing", "slot-proof-mismatch",
           "copy-proof", "drop", "storage-type", "index-type"};
       if (!faults.count(rawTakeFault)) {
         llvm::errs() << "unknown raw_take fault\n";

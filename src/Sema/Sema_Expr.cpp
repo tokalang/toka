@@ -813,6 +813,7 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
 Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.EnumResults = m_EnumResults;
+  state.RawSlotDependencies = m_RawSlotDependencies;
   state.NullStorageBindings = m_NullStorageBindings;
   state.EnumSelections = m_EnumSelections;
   state.NativeSyncBindings = m_NativeSyncBindings;
@@ -885,6 +886,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   auto mergedReferenceTargets = states.front().ReferenceTargets;
   auto callableEnvironments = states.front().CallableEnvironments;
   auto enumResults = states.front().EnumResults;
+  auto rawSlotDependencies = states.front().RawSlotDependencies;
   auto nullStorageBindings = states.front().NullStorageBindings;
   auto enumSelections = states.front().EnumSelections;
   auto nativeSyncBindings = states.front().NativeSyncBindings;
@@ -907,6 +909,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
     };
     intersectNative(nativeGuards, state.NativeSyncGuards);
     intersectNative(enumResults, state.EnumResults);
+    rawSlotDependencies = joinRawSlots(rawSlotDependencies, state.RawSlotDependencies);
     for (auto it = nullStorageBindings.begin(); it != nullStorageBindings.end();) {
       auto other = state.NullStorageBindings.find(it->first);
       if (other == state.NullStorageBindings.end() || !it->second || !other->second ||
@@ -998,6 +1001,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   restoreVisibleReferenceTargets(CurrentScope, mergedReferenceTargets);
   m_CallableEnvironments = std::move(callableEnvironments);
   m_EnumResults = std::move(enumResults);
+  m_RawSlotDependencies = std::move(rawSlotDependencies);
   m_NullStorageBindings = std::move(nullStorageBindings);
   m_EnumSelections = std::move(enumSelections);
   m_NativeSyncBindings = std::move(nativeSyncBindings);
@@ -1227,6 +1231,11 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   ActiveNodeRAII Active(E);
   const size_t expressionDiagnosticStart = DiagnosticEngine::records().size();
   E->KnownNullRawStorageType.reset();
+  std::optional<std::map<AccessPath, RawSlotDependencyEvidencePtr>> rawSlotsBefore;
+  rawSlotsBefore = m_RawSlotDependencies;
+  // No incoming slot fact may be reused across an unqualified loop backedge.
+  // A store in the body can still justify a later take in that same iteration.
+  if (dynamic_cast<LoopExpr *>(E) || dynamic_cast<ForExpr *>(E)) m_RawSlotDependencies.clear();
   if (auto *assignment = dynamic_cast<BinaryExpr *>(E)) assignment->RawStorageWrite.reset();
   // Until an operation has a storage-preservation summary, it cannot retain
   // a storage-source certificate. Invalidate before evaluating its operands;
@@ -1238,10 +1247,20 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       dynamic_cast<ClosureExpr *>(E) || dynamic_cast<AwaitExpr *>(E) ||
       dynamic_cast<WaitExpr *>(E) || dynamic_cast<StartExpr *>(E) ||
       dynamic_cast<MagicExpr *>(E);
+  auto *slotWrite = dynamic_cast<BinaryExpr *>(E);
+  auto *writtenSlot = slotWrite && slotWrite->Op == "="
+      ? dynamic_cast<ArrayIndexExpr *>(slotWrite->LHS.get()) : nullptr;
+  const auto exactWrite = qualifiedRawSlot(writtenSlot);
   std::optional<std::map<uint64_t, std::shared_ptr<Type>>> nullStorageRollback;
   if (mayInvalidateNullStorage && !m_NullStorageBindings.empty()) {
     nullStorageRollback = m_NullStorageBindings;
-    m_NullStorageBindings.clear();
+    // An exact fresh-allocation slot has no side-effectful LHS. Its RHS
+    // evidence is captured before the actual store invalidates local facts.
+    if (!exactWrite) m_NullStorageBindings.clear();
+  }
+  if (mayInvalidateNullStorage) {
+    if (exactWrite) m_RawSlotDependencies.erase(*exactWrite);
+    else m_RawSlotDependencies.clear();
   }
   m_EnumExpressionResults.erase(E);
   m_EnumExpressionSelections.erase(E);
@@ -1420,6 +1439,8 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       finalRecords.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
   if (!finalSuccess && nullStorageRollback)
     m_NullStorageBindings = std::move(*nullStorageRollback);
+  if (!finalSuccess && rawSlotsBefore)
+    m_RawSlotDependencies = std::move(*rawSlotsBefore);
   if (finalSuccess && T->isReference()) m_NullStorageBindings.clear();
   recordNullStorageExpression(E, finalSuccess);
   if (auto *assignment = dynamic_cast<BinaryExpr *>(E);
@@ -1438,6 +1459,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
         observation->Value = assignment->RHS.get();
         if (!observation->SourceEdge.empty() && observation->Slot.RootID)
           assignment->RawStorageWrite = std::move(observation);
+        recordRawSlotWrite(assignment);
       }
     }
   }
@@ -1448,8 +1470,9 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     ancestry->StorageType = T->withAttributes(T->IsWritable, T->IsNullable, T->IsBlocked);
     ancestry->IsArray = allocation->IsArray;
     ancestry->HasInitializerSyntax = allocation->Initializer != nullptr;
-    // Keep every pre-existing restriction and graph edge intact. No planner
-    // or CodeGen gate consumes this observational ancestry as authority.
+    // Keep every pre-existing restriction and graph edge intact. Allocation
+    // ancestry alone never authorizes a take; recorded-slot receipts also
+    // require a checked value write and current dependency evidence.
     if (!ancestry->SourceEdge.empty()) {
       auto attach = [&](RawAddressSourcePtr &facts) {
         if (!facts) return;
@@ -1461,6 +1484,10 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       attach(E->RawAddressViewFacts);
     }
   }
+  if (finalSuccess && exactWrite) m_NullStorageBindings.clear();
+  if (finalSuccess && (dynamic_cast<MatchExpr *>(E) || dynamic_cast<GuardExpr *>(E) ||
+                       dynamic_cast<LoopExpr *>(E) || dynamic_cast<ForExpr *>(E)))
+    m_RawSlotDependencies.clear();
   return T;
 }
 
@@ -2971,6 +2998,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto palBefore = PALCheckerState.snapshot();
 
     auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
+    auto rawSlotsBeforeIf = m_RawSlotDependencies;
+    auto nullsBeforeIf = m_NullStorageBindings;
 
     if (narrowsInitState)
       applyInitStateNarrowing(PlaceState::Never);
@@ -2983,6 +3012,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto exactPlacesThen = captureVisibleExactPlaceFacts(CurrentScope);
     auto conditionalThen = captureVisibleConditionalTodoIds(CurrentScope);
     auto referencesThen = captureVisibleReferenceTargets(CurrentScope);
+    auto rawSlotsThen = m_RawSlotDependencies;
+    auto rawSlotsElse = rawSlotsBeforeIf;
+    auto nullsThen = m_NullStorageBindings;
+    auto nullsElse = nullsBeforeIf;
     auto palThen = PALCheckerState.snapshot();
 
     if (narrowsInitState)
@@ -3006,6 +3039,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
       PALCheckerState.restore(palBefore);
 
+      m_RawSlotDependencies = rawSlotsBeforeIf;
+      m_NullStorageBindings = nullsBeforeIf;
+
       m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
       if (narrowsInitState)
         applyInitStateNarrowing(PlaceState::Live);
@@ -3018,6 +3054,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       auto masksElse = captureVisibleInitMasks(CurrentScope);
       auto conditionalElse = captureVisibleConditionalTodoIds(CurrentScope);
       auto referencesElse = captureVisibleReferenceTargets(CurrentScope);
+      rawSlotsElse = m_RawSlotDependencies;
+      nullsElse = m_NullStorageBindings;
       auto exactPlacesElse = captureVisibleExactPlaceFacts(CurrentScope);
       auto palElse = PALCheckerState.snapshot();
       m_ControlFlowStack.pop_back();
@@ -3151,6 +3189,25 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         PALCheckerState.restore(palBefore);
       } else {
         PALCheckerState.mergeBranches(palBefore, palThen, true, palBefore, true);
+      }
+    }
+
+    if (thenReturns && elseReturns) m_RawSlotDependencies = rawSlotsBeforeIf;
+    else if (thenReturns) m_RawSlotDependencies = rawSlotsElse;
+    else if (elseReturns) m_RawSlotDependencies = rawSlotsThen;
+    else {
+      m_RawSlotDependencies = joinRawSlots(rawSlotsThen, rawSlotsElse);
+    }
+    if (thenReturns && elseReturns) m_NullStorageBindings = nullsBeforeIf;
+    else if (thenReturns) m_NullStorageBindings = nullsElse;
+    else if (elseReturns) m_NullStorageBindings = nullsThen;
+    else {
+      m_NullStorageBindings = nullsThen;
+      for (auto it = m_NullStorageBindings.begin(); it != m_NullStorageBindings.end();) {
+        auto other = nullsElse.find(it->first);
+        if (other == nullsElse.end() || !it->second || !other->second ||
+            !it->second->equals(*other->second)) it = m_NullStorageBindings.erase(it);
+        else ++it;
       }
     }
 
@@ -6475,6 +6532,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     bool hasInvalidOutcomeArm = false;
 
     for (auto &arm : me->Arms) {
+      // Match arms do not share newly recorded raw-slot value evidence.
+      // A store within an arm may justify a take in that same arm only.
+      m_RawSlotDependencies.clear();
       restoreMatchEntryState();
       enterScope();
       if (outcomeFunction) {

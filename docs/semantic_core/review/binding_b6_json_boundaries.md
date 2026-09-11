@@ -53,8 +53,42 @@ The latter defaults to compile **and run**; `--check-only` is diagnostic only.
 - Execution review rejected proposed allocation-to-storage admission and an
   enum fallback. Those changes are not applied. The later empty-owner pattern
   verifier was also rejected and is not applied. Full B6 production admission
-  remains pending explicit consolidated scope confirmation, not another leaf
-  acceptance. Do not infer permission from this WIP checkpoint.
+  was awaiting scope confirmation at that checkpoint. The user has now
+  explicitly authorized complete B6 production implementation, including
+  descriptors, instance evidence, Sema admission and CodeGen consumption.
+  That authorization does not accept the rejected implementations or this WIP.
+
+### Recorded-slot production work (in progress)
+
+The first additional dependency provider recognizes a current, checked write
+to an exact constant slot of a local raw allocation. It requires the written
+value's existing null-opaque-storage certificate and independently excludes
+borrowed value fields. This is a dependency proof only: it does not discharge
+raw_take's unsafe initialization, addressing, retirement or remainder duties.
+
+The provider records slot/element/write/allocation identities, invalidates on
+unknown effects and release, retires on take, restores rejected-expression
+state, and joins only slots proved on every reaching branch. Joined receipts
+retain all checked write alternatives; CodeGen validates each leaf. A missing
+branch write cannot be filled from another branch. Unqualified loop backedges and match
+continuations discard the new facts. CodeGen validates the attached receipt;
+missing/mismatched receipts fail without artifacts. Existing structural-type
+raw_take proofs are unchanged.
+
+This is not a Vec/HashMap recursive descriptor or a JSON recovery claim. The
+dynamic-index/private-helper and recursive-instance contract work remains;
+the original eight nonempty targets and cleanup/lifetime matrix still define
+the acceptance boundary. No additional implementation authorization is needed.
+
+Current verification: the recorded-slot runner passes five runtime positives
+(including both branch choices and a stored Vec value), twelve rejection/parity
+cases, and ten object/IR fault checks. The tool build passes. Re-running the
+original JSON targets in check-only mode still gives **0/8 nonempty positives**;
+all eight retain `ElementDependenciesUnproven`. This checkpoint does not claim
+completion of the recursive container contract or request another acceptance.
+The six related CTest gates passed together (6/6, 124.32 s), including the
+recorded-slot matrix, existing raw_take/Vec gates, factory values, binding
+dependencies and allocation ancestry. No full PASS/FAIL run was performed.
 
 ## 下一实施裁定：先做完整值 factory 的具体类型验证
 
