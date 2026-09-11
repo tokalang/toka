@@ -5251,7 +5251,8 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
   if (state != m_CallableFactoryStates.end() && state->second != CallableFactoryState::Unprepared)
     return state->second == CallableFactoryState::Valid &&
            (m_ValidatedCallableReturnEnvironments.count(function) ||
-            m_ValidatedStaticReturnStorage.count(function));
+            m_ValidatedStaticReturnStorage.count(function) ||
+            (m_EnumReturnSummaries.count(function) && m_EnumReturnSummaries.at(function).Valid));
   // Reuse the same isolated definition preparation for static view returns.
   // A checked definition without the required proof is never re-executed.
   // Generic instances are prepared in their instantiation scope. Ordinary
@@ -5355,6 +5356,7 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
     m_CallableFactoryStates[function] = CallableFactoryState::Invalid;
     m_ValidatedCallableReturnEnvironments.erase(function);
     m_ValidatedStaticReturnStorage.erase(function);
+    m_EnumReturnSummaries[function].Valid = false;
   } else m_CallableFactoryBodyJournals[function] = std::move(journal);
   return m_CallableFactoryStates[function] == CallableFactoryState::Valid;
 }
@@ -5382,6 +5384,17 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
   }
   const size_t functionDiagnosticStart = DiagnosticEngine::records().size();
+  auto savedEnumResults = std::move(m_EnumResults);
+  auto savedEnumSelections = std::move(m_EnumSelections);
+  m_EnumResults.clear();
+  m_EnumSelections.clear();
+  struct RestoreEnumSources {
+    std::function<void()> Restore;
+    ~RestoreEnumSources() { Restore(); }
+  } restoreEnumSources{[&] {
+    m_EnumResults = std::move(savedEnumResults);
+    m_EnumSelections = std::move(savedEnumSelections);
+  }};
   validateResultCedeSyntax(Fn, Fn->ReturnTypeSyntax, true);
   for (const auto &argument : Fn->Args) {
     validateResultCedeSyntax(Fn, argument.TypeSyntax);
@@ -5737,6 +5750,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       Fn->ResolvedReturnType && (Fn->ResolvedReturnType->isFunction() || Fn->ResolvedReturnType->isDynFn());
   if (collectCallableReturn) m_ValidatedCallableReturnEnvironments.erase(Fn);
   if (Fn->Body) {
+    m_EnumReturnSummaries[Fn] = {};
+    m_EnumReturnSummaries[Fn].ClosureDepth = m_CallableReturnClosureDepth;
     auto &rawSummary = m_RawAddressReturns[Fn];
     rawSummary = {};
     rawSummary.Checking = true;
@@ -5943,6 +5958,11 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     const auto &records = DiagnosticEngine::records();
     rawSummary.Valid = std::none_of(records.begin() + functionDiagnosticStart, records.end(),
         [](const auto &record) { return record.Level == DiagLevel::Error; });
+    auto &enumSummary = m_EnumReturnSummaries[Fn];
+    enumSummary.Checked = true;
+    enumSummary.Valid = rawSummary.Valid && !HasError && allPathsJump(Fn->Body.get());
+    if (enumSummary.Valid && enumSummary.SawReturn && enumSummary.CompleteResults && enumSummary.Result)
+      m_CallableFactoryStates[Fn] = CallableFactoryState::Valid;
   }
   exitScope();
   m_OutcomePendingCalls = std::move(savedOutcomePendingCalls);

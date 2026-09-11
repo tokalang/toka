@@ -1,0 +1,39 @@
+extern fn token_drop(id: i32) -> void
+extern fn token_count(id: i32) -> i32
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { token_drop(self.id) }
+}
+fn replace(target#: Token, cede incoming: Token) {
+    target = cede incoming
+}
+impl Token {
+    fn replace_with(self#, cede incoming: Token) {
+        self = cede incoming
+    }
+}
+fn decline(target#: Token) -> bool {
+    auto unused = Token(id = 4)
+    return false
+}
+fn exercise() -> i32 {
+    {
+        auto target# = Token(id = 1)
+        auto source = Token(id = 2)
+        replace(target#, cede source)
+        if token_count(1) != 1 || token_count(2) != 0 || target.id != 2 { return 1 }
+        target#.replace_with(Token(id = 3))
+        if token_count(2) != 1 || token_count(3) != 0 || target.id != 3 { return 2 }
+        if decline(target#) || token_count(4) != 1 || token_count(3) != 0 || target.id != 3 { return 3 }
+    }
+    if token_count(1) != 1 || token_count(2) != 1 || token_count(3) != 1 || token_count(4) != 1 { return 4 }
+    {
+        auto target# = Token(id = 5)
+        auto moved = cede target
+        target = Token(id = 6)
+        if token_count(5) != 0 || token_count(6) != 0 || target.id != 6 { return 5 }
+    }
+    if token_count(5) != 1 || token_count(6) != 1 { return 6 }
+    return 0
+}

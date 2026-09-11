@@ -1,0 +1,13 @@
+extern fn token_drop(id: i32) -> void
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { token_drop(self.id) }
+}
+fn inspect(value: Token) -> i32 { return value.id }
+fn rejected(target: Token, cede incoming: Token) {
+    target = cede incoming
+    inspect(incoming)
+    cede incoming
+}
+fn main() -> i32 { return 0 }

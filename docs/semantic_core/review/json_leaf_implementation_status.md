@@ -1,5 +1,8 @@
 # Concrete JSON factories — incomplete implementation checkpoint
 
+Current follow-up: see `json_leaf_closeout_2026_09_11.md`. The figures and two
+blockers below describe historical checkpoint `35af4aae`, not the latest work.
+
 Base: `e1402bd23ef78f460021a432422689cfc4ae1fd9`.
 Branch: `impl/json-leaf-factories`. No Accepted/freeze, push or PR.
 

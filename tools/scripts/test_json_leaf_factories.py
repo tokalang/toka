@@ -74,6 +74,15 @@ def main():
                 parity(basic, 0)
                 run(basic)
                 print("PASS parsing/runtime/parity: 22 checks", flush=True)
+                metadata = FIXTURES / "enum_metadata.tk"
+                parity(metadata, 0)
+                run(metadata)
+                observed = compile(metadata, "--non-call-transfer-shadow=json")
+                records = [record for record in json.loads(observed.stdout)["records"]
+                           if record["location"]["file"].endswith("enum_metadata.tk") and
+                           record["boundary"] == "initialization" and record["location"]["line"] == 4]
+                assert len(records) == 1 and records[0].get("static_storage_origins") and not records[0]["plan"]["dependency_roots"], records
+                print("PASS exact static Err payload metadata with input-bound return unchanged", flush=True)
             for source in sorted(FIXTURES.glob("reject_*.tk")) if args.section != "entries" else []:
                 normal = parity(source, 1)
                 diagnostic = "E0454" if source.name == "reject_wrong_dependency.tk" else "E0455"
@@ -99,7 +108,10 @@ def main():
             shim.write_text("static int enabled, count;\n"
                             "void leaf_watch(void) { enabled = 1; count = 0; }\n"
                             "int leaf_releases(void) { return count; }\n"
-                            "void leaf_freed(void *p) { if (enabled && p) ++count; }\n")
+                            "void leaf_freed(void *p) { if (enabled && p) ++count; }\n"
+                            "static int tokens[16];\n"
+                            "void token_drop(int id) { if (id >= 0 && id < 16) ++tokens[id]; }\n"
+                            "int token_count(int id) { return id >= 0 && id < 16 ? tokens[id] : -1; }\n")
             clang = next((path for path in ("/opt/homebrew/opt/llvm@20/bin/clang",
                          "/opt/homebrew/opt/llvm/bin/clang", shutil.which("clang"))
                          if path and Path(path).is_file()), None)
@@ -128,6 +140,37 @@ def main():
                 cleanup.write_text(import_entry + (FIXTURES / "entry_cleanup.tk").read_text())
                 run(cleanup, tracker, environment=dict(env, TOKA_LIB=str(library)))
                 print("PASS existing entries: 5 behavior, 4 cleanup checks", flush=True)
+                if not args.entry_baseline:
+                    resource = library / "stdx/serde/replacement_probe.tk"
+                    resource_body = (FIXTURES / "borrowed_replacement.tk").read_text().replace("fn exercise()", "pub fn exercise()")
+                    resource.write_text(resource_body)
+                    driver = work / "resource_replacement.tk"
+                    driver.write_text("import stdx/serde/replacement_probe::{exercise}\nfn main() -> i32 { return exercise() }\n")
+                    parity(driver, 0, environment=dict(env, TOKA_LIB=str(library)))
+                    run(driver, tracker, environment=dict(env, TOKA_LIB=str(library)))
+                    print("PASS borrowed replacement: 6 resource/callee-scope/moved-from checks", flush=True)
+                    fault_source = FIXTURES / "replacement_fault.tk"
+                    # Shadow is check-only by contract; it cannot exercise a
+                    # CodeGen fault. Sema parity is checked independently above.
+                    for output_flag, extension in (("-c", ".o"), ("--emit-llvm", ".ll")):
+                        output = work / ("replacement-positive" + extension)
+                        admitted = compile(fault_source, output_flag, "-o", output)
+                        assert admitted.returncode == 0 and output.exists(), admitted.stderr
+                    for fault in ("missing", "rejected", "type", "source", "destination", "snapshot", "place"):
+                        for output_flag, extension in (("-c", ".o"), ("--emit-llvm", ".ll")):
+                            output = work / (fault + extension)
+                            failed = compile(fault_source, output_flag, "-o", output,
+                                             "--borrowed-replacement-fault=" + fault)
+                            assert failed.returncode == 1 and "E0701" in failed.stderr and "borrowed value replacement" in failed.stderr and not output.exists(), (fault, failed.stderr)
+                    print("PASS borrowed replacement: 14 missing/mismatch/no-artifact checks", flush=True)
+                    readonly = FIXTURES / "replacement_readonly.tk"
+                    rejected = parity(readonly, 1)
+                    assert "E0438" not in rejected.stderr and "E0410" not in rejected.stderr, rejected.stderr
+                    for output_flag, extension in (("-c", ".o"), ("--emit-llvm", ".ll")):
+                        output = work / ("readonly" + extension)
+                        rejected = compile(readonly, output_flag, "-o", output)
+                        assert rejected.returncode == 1 and "error[E" in rejected.stderr and not output.exists(), rejected.stderr
+                    print("PASS readonly replacement rejects and restores source; no artifacts", flush=True)
 
         if args.section in ("static-error", "all"):
             # This is deliberately not an expected-failure oracle: until it
@@ -135,6 +178,12 @@ def main():
             parity(FIXTURES / "static_error.tk", 0)
             run(FIXTURES / "static_error.tk")
             print("PASS static error independent of input", flush=True)
+            parity(FIXTURES / "enum_static_sources.tk", 0)
+            run(FIXTURES / "enum_static_sources.tk")
+            print("PASS concrete producers and static rebinding", flush=True)
+            rollback = parity(FIXTURES / "enum_failed_call_rollback.tk", 1)
+            assert "E04554" in rollback.stderr and "E0455]" not in rollback.stderr and "E0438" not in rollback.stderr, rollback.stderr
+            print("PASS rejected call restores enum source", flush=True)
 
 
 if __name__ == "__main__":

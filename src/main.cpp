@@ -847,6 +847,7 @@ int main(int argc, char **argv) {
   bool threadHandoffSourceProbe = false;
 #ifdef TOKA_BUILD_TESTING
   std::string rawTakeFault;
+  std::string borrowedReplacementFault;
   std::string unsafeRawConstructionFault;
   std::string threadHandoffSourceFault;
   std::string publicThreadFault;
@@ -1097,6 +1098,13 @@ int main(int argc, char **argv) {
           "copy-proof", "drop", "storage-type", "index-type"};
       if (!faults.count(rawTakeFault)) {
         llvm::errs() << "unknown raw_take fault\n";
+        return 1;
+      }
+    } else if (arg.rfind("--borrowed-replacement-fault=", 0) == 0) {
+      borrowedReplacementFault = arg.substr(std::string("--borrowed-replacement-fault=").size());
+      const std::set<std::string> faults = {"missing", "rejected", "type", "source", "destination", "snapshot", "place"};
+      if (!faults.count(borrowedReplacementFault)) {
+        llvm::errs() << "unknown borrowed replacement fault\n";
         return 1;
       }
     } else if (arg.rfind("--stage1-callable-assignment-fault=", 0) == 0) {
@@ -2097,6 +2105,7 @@ int main(int argc, char **argv) {
   codegen.enableStage1CallableAssignments(enableStage1ExplicitCallerCede, callableAssignmentFault);
 #ifdef TOKA_BUILD_TESTING
   codegen.setRawTakeFault(rawTakeFault);
+  codegen.setBorrowedReplacementFault(borrowedReplacementFault);
   codegen.setUnsafeRawConstructionFault(unsafeRawConstructionFault);
   codegen.setThreadHandoffSourceFault(threadHandoffSourceFault);
   codegen.setPublicThreadFault(publicThreadFault);

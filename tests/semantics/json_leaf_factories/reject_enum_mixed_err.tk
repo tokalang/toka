@@ -1,0 +1,15 @@
+alias Outcome = Result<i32, str>
+fn mixed(input: str, flag: bool) -> Outcome <- input {
+    if flag {
+        auto result = Outcome::Err("static")
+        return cede result
+    }
+    auto result = Outcome::Err(input)
+    return cede result
+}
+fn escaped(flag: bool) -> str {
+    auto owner = string::from("dynamic")
+    auto result = mixed(owner.as_str(), flag)
+    return result.unwrap_err()
+}
+fn main() -> i32 { return 0 }

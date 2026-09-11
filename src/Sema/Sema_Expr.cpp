@@ -812,6 +812,8 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
 
 Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
+  state.EnumResults = m_EnumResults;
+  state.EnumSelections = m_EnumSelections;
   state.NativeSyncBindings = m_NativeSyncBindings;
   state.NativeSyncOwnerRecipes = m_NativeSyncOwnerRecipes;
   state.NativeSyncGuards = m_NativeSyncGuards;
@@ -881,6 +883,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       states.front().PayloadFlowRestrictedPaths;
   auto mergedReferenceTargets = states.front().ReferenceTargets;
   auto callableEnvironments = states.front().CallableEnvironments;
+  auto enumResults = states.front().EnumResults;
+  auto enumSelections = states.front().EnumSelections;
   auto nativeSyncBindings = states.front().NativeSyncBindings;
   auto nativeOwnerRecipes = states.front().NativeSyncOwnerRecipes;
   auto nativeGuards = states.front().NativeSyncGuards;
@@ -900,6 +904,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       }
     };
     intersectNative(nativeGuards, state.NativeSyncGuards);
+    intersectNative(enumResults, state.EnumResults);
+    intersectNative(enumSelections, state.EnumSelections);
     intersectNative(nativeSlots, state.NativeSyncSlots);
     invalidOwnerRecipes.insert(state.InvalidNativeSyncOwnerRecipes.begin(),
                                state.InvalidNativeSyncOwnerRecipes.end());
@@ -983,6 +989,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   restoreVisibleConditionalTodoIds(CurrentScope, mergedConditionalTodoIds);
   restoreVisibleReferenceTargets(CurrentScope, mergedReferenceTargets);
   m_CallableEnvironments = std::move(callableEnvironments);
+  m_EnumResults = std::move(enumResults);
+  m_EnumSelections = std::move(enumSelections);
   m_NativeSyncBindings = std::move(nativeSyncBindings);
   m_NativeSyncOwnerRecipes = std::move(nativeOwnerRecipes);
   m_NativeSyncGuards = std::move(nativeGuards);
@@ -1209,6 +1217,8 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     return toka::Type::fromString("()");
   ActiveNodeRAII Active(E);
   const size_t expressionDiagnosticStart = DiagnosticEngine::records().size();
+  m_EnumExpressionResults.erase(E);
+  m_EnumExpressionSelections.erase(E);
   if (auto *cede = dynamic_cast<CedeExpr *>(E)) cede->SourceCheckSucceeded = false;
   NativeSyncTemporaryGuardFrame nativeGuardFrame{CurrentFunction, {}};
   auto *previousNativeGuardFrame = m_NativeSyncTemporaryGuards;
@@ -1266,6 +1276,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   const bool expressionSucceeded = std::none_of(
       expressionRecords.begin() + std::min(expressionDiagnosticStart, expressionRecords.size()),
       expressionRecords.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
+  recordEnumExpression(E, expressionSucceeded);
   if (auto *cede = dynamic_cast<CedeExpr *>(E)) {
     Expr *source = cede->Value.get();
     while (source) {

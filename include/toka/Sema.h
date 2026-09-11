@@ -13,6 +13,7 @@
 // limitations under the License.
 #pragma once
 #include "toka/NativeSyncStorage.h"
+#include "toka/EnumPayloadSources.h"
 
 #include "toka/AST.h"
 #include "toka/AccessPath.h"
@@ -787,6 +788,8 @@ private:
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
   struct AnalysisState {
+    std::map<uint64_t, EnumResultSourcePtr> EnumResults;
+    std::map<uint64_t, EnumPayloadSelection> EnumSelections;
     std::map<uint64_t, NativeSyncGuardOriginPtr> NativeSyncGuards, NativeSyncSlots;
     std::map<uint64_t, NativeSyncOwnerCandidatePtr> NativeSyncOwnerRecipes;
     std::set<NativeSyncOwnerCandidatePtr> InvalidNativeSyncOwnerRecipes;
@@ -1013,11 +1016,23 @@ private:
     std::optional<ActualReturnFieldOrigins> PropagatedOrigins;
     Expr *PropagationSource = nullptr;
     Expr *Destination = nullptr;
+    std::shared_ptr<const BorrowedValueReplacementPlan> BorrowedReplacement;
     CallableAssignmentDisposition AssignmentDisposition =
         CallableAssignmentDisposition::Unvalidated;
     bool Completed = false;
   };
   std::map<uint64_t, CallableEnvironmentFacts> m_CallableEnvironments;
+  std::map<uint64_t, EnumResultSourcePtr> m_EnumResults;
+  std::map<uint64_t, EnumPayloadSelection> m_EnumSelections;
+  std::map<const Expr *, EnumResultSourcePtr> m_EnumExpressionResults;
+  std::map<const Expr *, EnumPayloadSelection> m_EnumExpressionSelections;
+  std::map<const FunctionDecl *, EnumReturnSourceSummary> m_EnumReturnSummaries;
+  void recordEnumExpression(Expr *expression, bool valid);
+  void recordEnumBinding(const AccessPath &destination, Expr *source);
+  void recordEnumPattern(MatchArm::Pattern *pattern, ShapeDecl *shape, size_t variant,
+                         size_t slot, const AccessPath &source, bool consuming);
+  void recordEnumReturn(ReturnStmt *statement, bool valid);
+  bool collectStaticEnumPayload(Expr *expression, std::vector<SourceLocation> &origins);
   std::map<uint64_t, NativeSyncFactoryPtr> m_NativeSyncBindings;
   std::set<NativeSyncFactoryPtr> m_InvalidNativeSyncOrigins;
   std::vector<std::weak_ptr<NativeSyncFactoryPlan>> m_PendingNativeSyncFactories;

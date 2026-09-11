@@ -1,0 +1,7 @@
+import stdx/serde/json_leaf::{parse_i32_value}
+fn escaped() -> &str {
+    auto result = parse_i32_value("bad")
+    auto error = result.unwrap_err()
+    return &error
+}
+fn main() -> i32 { return 0 }

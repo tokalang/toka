@@ -1,0 +1,16 @@
+alias Outcome = Result<i32, str>
+fn safe(input: str) -> Outcome <- input {
+    auto result = Outcome::Err("static")
+    return cede result
+}
+fn dynamic(input: str) -> Outcome <- input {
+    auto result = Outcome::Err(input)
+    return cede result
+}
+fn escaped() -> str {
+    auto owner = string::from("dynamic")
+    auto prime = safe(owner.as_str())
+    auto result = dynamic(owner.as_str())
+    return result.unwrap_err()
+}
+fn main() -> i32 { return 0 }

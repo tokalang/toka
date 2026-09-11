@@ -1,0 +1,15 @@
+alias Outcome = Result<i32, str>
+fn safe(input: str) -> Outcome <- input {
+    auto result = Outcome::Err("static")
+    return cede result
+}
+fn replace(result#: Outcome, input: str) {
+    result = Outcome::Err(input)
+}
+fn escaped() -> str {
+    auto owner = string::from("dynamic")
+    auto result# = safe(owner.as_str())
+    replace(result#, owner.as_str())
+    return result.unwrap_err()
+}
+fn main() -> i32 { return 0 }

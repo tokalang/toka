@@ -1577,6 +1577,7 @@ void Sema::checkStmt(Stmt *S) {
         break;
       }
     }
+    recordEnumReturn(Ret, !hasNewReturnError());
     if (!m_StaticReturnStorageFrames.empty() &&
         m_StaticReturnStorageFrames.back().Function == CurrentFunction &&
         m_StaticReturnStorageFrames.back().ClosureDepth == m_CallableReturnClosureDepth) {
@@ -2824,6 +2825,7 @@ void Sema::checkStmt(Stmt *S) {
     CurrentScope->define(Var->Name, Info);
     if (Var->Init) {
       auto path = makeAccessPath(Var->Name);
+      if (!HasError) recordEnumBinding(path, Var->Init.get());
       recordRawAddressBinding(path, Var->Init.get());
       if (!HasError) recordNativeSyncBinding(path, Var->Init.get(), true);
       if (!HasError) recordNativeSyncOwnerRecipe(path, Var->Init.get(), true);

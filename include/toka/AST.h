@@ -621,8 +621,21 @@ enum class AssignmentSemanticKind {
   ResidualCompound,
 };
 
+// Per-assignment permission to destroy one old value in caller-owned storage.
+// It never registers a scope Drop for the borrowed parameter itself.
+struct BorrowedValueReplacementPlan {
+  const Expr *Destination = nullptr;
+  const Expr *Source = nullptr;
+  std::shared_ptr<Type> ValueType;
+  std::optional<PlaceId> Place;
+  uint64_t SnapshotRevision = 0;
+  bool SemaValidated = false;
+};
+
 class BinaryExpr : public Expr {
 public:
+  bool BorrowedValueReplacementRequired = false;
+  std::shared_ptr<const BorrowedValueReplacementPlan> BorrowedValueReplacement;
   bool NativeSyncReplacementRequired = false;
   std::shared_ptr<const NativeSyncReplacementPlan> NativeSyncReplacement;
   // Sema-only edge qualification; clones must be checked in their new scope.

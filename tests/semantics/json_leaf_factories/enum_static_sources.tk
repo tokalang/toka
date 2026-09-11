@@ -1,0 +1,35 @@
+import stdx/serde/json_leaf::{parse_i32_value, parse_string_value, parse_str_view}
+alias Outcome = Result<i32, str>
+fn later(input: str) -> Outcome <- input {
+    auto message = "later"
+    auto result = Outcome::Err(message)
+    return cede result
+}
+fn from_i32() -> str {
+    auto owner = string::from("bad")
+    auto result = parse_i32_value(owner.as_str())
+    return result.unwrap_err()
+}
+fn from_string() -> str {
+    auto owner = string::from("bad")
+    auto result = parse_string_value(owner.as_str())
+    return result.unwrap_err()
+}
+fn from_view() -> str {
+    auto owner = string::from("bad")
+    auto result = parse_str_view(owner.as_str())
+    return result.unwrap_err()
+}
+fn rebound() -> str {
+    auto owner = string::from("dynamic")
+    auto result# = Outcome::Err(owner.as_str())
+    result = later(owner.as_str())
+    return result.unwrap_err()
+}
+fn main() -> i32 {
+    if !from_i32().equals("Invalid i32") { return 1 }
+    if !from_string().equals("Expected string") { return 2 }
+    if !from_view().equals("Expected string") { return 3 }
+    if !rebound().equals("later") { return 4 }
+    return 0
+}

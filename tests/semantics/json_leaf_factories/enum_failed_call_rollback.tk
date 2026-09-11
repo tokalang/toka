@@ -1,0 +1,12 @@
+// Required: E04554 only; the failed mutation must not replace result's witness.
+alias Outcome = Result<i32, str>
+fn require_same<T>(first: T, second: T) -> i32 { return 0 }
+fn escaped() -> str {
+    auto prime = Outcome::Err("prime")
+    auto primed = prime.unwrap_err()
+    auto owner = string::from("dynamic")
+    auto result# = Outcome::Err("static")
+    auto rejected = require_same((result = Outcome::Err(owner.as_str())), true)
+    return result.unwrap_err()
+}
+fn main() -> i32 { return 0 }

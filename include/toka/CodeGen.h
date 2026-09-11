@@ -139,6 +139,7 @@ public:
   }
   void finalizeDebugInfo();
 #ifdef TOKA_BUILD_TESTING
+  void setBorrowedReplacementFault(const std::string &fault) { m_BorrowedReplacementFault = fault; }
   void setRawTakeFault(const std::string &fault) { m_RawTakeFault = fault; }
   void setPublicThreadFault(const std::string &fault) { m_PublicThreadFault = fault; }
   void setNativeSyncFactoryFault(const std::string &fault) { m_NativeSyncFactoryFault = fault; }
@@ -159,6 +160,9 @@ public:
   llvm::IntegerType *getIntPtrTy();
 
 private:
+#ifdef TOKA_BUILD_TESTING
+  std::string m_BorrowedReplacementFault;
+#endif
   int m_ErrorCount = 0;
   bool m_Stage1CallableAssignments = false;
   std::string m_CallableAssignmentFault;

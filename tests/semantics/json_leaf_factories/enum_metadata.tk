@@ -1,0 +1,10 @@
+import stdx/serde/json_leaf::{parse_i32_value}
+fn prove(input: str) -> str <- input {
+    auto result = parse_i32_value(input)
+    auto error = result.unwrap_err()
+    return error
+}
+fn main() -> i32 {
+    if !prove("bad").equals("Invalid i32") { return 1 }
+    return 0
+}

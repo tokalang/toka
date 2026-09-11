@@ -949,6 +949,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                       if (i == elisionIndex) continue;
                       size_t memberIndex = (i < elisionIndex) ? i : (i + elidedFields - 1);
                       checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(foundMemb->SubMembers[memberIndex]), SourceCapability, TargetPath, TargetAccessPath, TransfersOwnership);
+                      recordEnumPattern(Pat->SubPatterns[i].get(), SD, foundMemb - SD->Members.data(),
+                                        memberIndex, TargetAccessPath, TransfersOwnership);
                     }
                   }
                 } else {
@@ -961,6 +963,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
                       checkPattern(Pat->SubPatterns[i].get(),
                                    getPhysicalTypeName(foundMemb->SubMembers[i]), SourceCapability, TargetPath, TargetAccessPath, TransfersOwnership);
+                      recordEnumPattern(Pat->SubPatterns[i].get(), SD, foundMemb - SD->Members.data(),
+                                        i, TargetAccessPath, TransfersOwnership);
                     }
                   }
                 }
@@ -990,6 +994,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     checkPattern(Pat->SubPatterns[0].get(), foundMemb->Type,
                                  SourceCapability, TargetPath, TargetAccessPath,
                                  TransfersOwnership);
+                    recordEnumPattern(Pat->SubPatterns[0].get(), SD, foundMemb - SD->Members.data(),
+                                      0, TargetAccessPath, TransfersOwnership);
                   }
                 }
               }

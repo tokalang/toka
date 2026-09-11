@@ -490,6 +490,48 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
   }
 
   auto nativeReplacement = assignmentSite ? assignmentSite->NativeSyncReplacement : nullptr;
+  auto borrowedReplacement = assignmentSite ? assignmentSite->BorrowedValueReplacement : nullptr;
+#ifdef TOKA_BUILD_TESTING
+  if (borrowedReplacement && !m_BorrowedReplacementFault.empty()) {
+    auto changed = std::make_shared<BorrowedValueReplacementPlan>(*borrowedReplacement);
+    if (m_BorrowedReplacementFault == "missing") borrowedReplacement.reset();
+    else {
+      if (m_BorrowedReplacementFault == "rejected") changed->SemaValidated = false;
+      if (m_BorrowedReplacementFault == "type") changed->ValueType = Type::fromString("i32");
+      if (m_BorrowedReplacementFault == "source") changed->Source = nullptr;
+      if (m_BorrowedReplacementFault == "destination") changed->Destination = nullptr;
+      if (m_BorrowedReplacementFault == "snapshot") ++changed->SnapshotRevision;
+      if (m_BorrowedReplacementFault == "place") changed->Place.reset();
+      borrowedReplacement = std::move(changed);
+    }
+  }
+#endif
+  if ((assignmentSite && assignmentSite->BorrowedValueReplacementRequired) || borrowedReplacement) {
+    const auto *authority = assignmentSite && assignmentSite->Stage0Authority
+        ? &*assignmentSite->Stage0Authority : nullptr;
+    bool hasScopeDrop = false;
+    if (variableTarget) {
+      const auto name = Type::stripMorphology(variableTarget->Name);
+      for (const auto &scope : m_ScopeStack)
+        for (const auto &entry : scope)
+          if (Type::stripMorphology(entry.Name) == name && (entry.DropFlag || entry.DropMask))
+            hasScopeDrop = true;
+    }
+    if (!borrowedReplacement || !borrowedReplacement->SemaValidated || !authority ||
+        !authority->SemaValidated || !authority->Complete || !authority->DestinationMatching ||
+        !authority->ItemPlan || !authority->ItemPlan->admitted() ||
+        authority->Destination != TransferDestination::Assignment ||
+        borrowedReplacement->SnapshotRevision != authority->SnapshotRevision ||
+        borrowedReplacement->Place != authority->ItemPlan->Prepared.DestinationPlace ||
+        borrowedReplacement->Destination != lhsExpr || borrowedReplacement->Source != rhsExpr ||
+        !borrowedReplacement->ValueType || !lhsExpr->ResolvedType ||
+        !borrowedReplacement->ValueType->equals(*lhsExpr->ResolvedType) ||
+        !variableTarget || !symLHS || symLHS->morphology != Morphology::None ||
+        assignmentSite->IsInitialization || nativeReplacement || assignmentSite->NativeSyncReplacementRequired || hasScopeDrop) {
+      error(assignmentSite, DiagID::ERR_CODEGEN, "borrowed value replacement: MissingOrMismatchedPlan");
+      return {};
+    }
+  }
 #ifdef TOKA_BUILD_TESTING
   if (m_NativeSyncWitnessFault == "slot-missing") nativeReplacement.reset();
   else if (nativeReplacement && m_NativeSyncWitnessFault.rfind("slot-", 0) == 0) {
@@ -812,7 +854,12 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
       // already succeeded; reclaim the old element before installing the new.
       emitDropForType(soulAddr, nativeReplacement->ElementType);
     }
-    if (!nativeReplacement && variableTarget && symLHS && symLHS->hasDrop &&
+    if (borrowedReplacement) {
+      // Normal RHS production has completed. This is a destination write
+      // obligation, not a local lifetime/DropFlag owned by the callee.
+      emitDropForType(soulAddr, borrowedReplacement->ValueType);
+    }
+    if (!nativeReplacement && !borrowedReplacement && variableTarget && symLHS && symLHS->hasDrop &&
         symLHS->morphology == Morphology::None && assignmentSite &&
         !assignmentSite->IsInitialization) {
       llvm::Value *dropFlag = nullptr;

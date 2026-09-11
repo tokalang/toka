@@ -3508,6 +3508,11 @@ bool Sema::collectActualReturnReferents(
   };
   visit = [&](Expr *value, std::vector<AccessPath> &result) -> bool {
     if (!value) return false;
+    std::vector<SourceLocation> enumStatic;
+    if (collectStaticEnumPayload(value, enumStatic)) {
+      preparedStatic.insert(preparedStatic.end(), enumStatic.begin(), enumStatic.end());
+      return true;
+    }
     if (dynamic_cast<ViewStringExpr *>(value) || dynamic_cast<StringExpr *>(value)) {
       if (!value->Loc.isValid()) return false;
       preparedStatic.push_back(value->Loc);
@@ -4126,6 +4131,12 @@ bool Sema::Stage1BindingTransfer::prepare(
     Expr *source, const std::shared_ptr<Type> &target,
     Expr *destination, bool validated, std::shared_ptr<Type> actual) {
   if (!Snapshot) return true;
+  if (!validated) {
+    if (auto *assignment = dynamic_cast<BinaryExpr *>(Site)) {
+      assignment->BorrowedValueReplacementRequired = false;
+      assignment->BorrowedValueReplacement.reset();
+    }
+  }
   const auto &diagnostics = DiagnosticEngine::records();
   auto hasNewError = [&] { return std::any_of(
           diagnostics.begin() + std::min(Snapshot->DiagnosticStart, diagnostics.size()),
@@ -4266,6 +4277,39 @@ bool Sema::Stage1BindingTransfer::prepare(
       return false;
     }
   }
+  if (validated && destination && target && target->isShape()) {
+    auto *assignment = dynamic_cast<BinaryExpr *>(Site);
+    const auto path = Owner.canonicalizeAccessPath(Owner.makeAccessPath(destination));
+    SymbolInfo *binding = nullptr;
+    if (assignment && !assignment->IsInitialization && !assignment->NativeSyncReplacementRequired &&
+        dynamic_cast<VariableExpr *>(destination) && path.RootID && path.Projections.empty() &&
+        Owner.CurrentScope->findSymbolByID(path.RootID, binding) && binding &&
+        binding->IsFunctionParameter && !binding->IsCeded && !binding->IsPlaceAlias &&
+        binding->TypeObj && binding->TypeObj->isShape() &&
+        Plan->Prepared.DropLiabilityComplete && Plan->Prepared.CarriesDropLiability) {
+      assignment->BorrowedValueReplacementRequired = true;
+      auto exact = Snapshot->State.ExactPlaces.find(path.RootName);
+      auto mask = Snapshot->State.InitMasks.find(path.RootName);
+      if (!Plan->Prepared.DestinationFactsComplete || !Plan->Prepared.DestinationPlace ||
+          Plan->Prepared.DestinationView != TransferSourceView::DirectValue ||
+          !Plan->Prepared.DestinationCapabilities.Complete ||
+          !Plan->Prepared.DestinationCapabilities.PayloadWritable ||
+          exact == Snapshot->State.ExactPlaces.end() || !exact->second.isDefinitelyLive() ||
+          mask == Snapshot->State.InitMasks.end() || mask->second != ~uint64_t(0)) {
+        Owner.error(destination, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                    "BorrowedReplacementDestinationNotCompleteLive");
+        return false;
+      }
+      auto replacement = std::make_shared<BorrowedValueReplacementPlan>();
+      replacement->Destination = destination;
+      replacement->Source = source;
+      replacement->ValueType = target;
+      replacement->Place = Plan->Prepared.DestinationPlace;
+      replacement->SnapshotRevision = Snapshot->Revision;
+      replacement->SemaValidated = true;
+      BorrowedReplacement = std::move(replacement);
+    }
+  }
   return true;
 }
 
@@ -4278,8 +4322,10 @@ Sema::Stage1BindingTransfer::~Stage1BindingTransfer() {
   if (failed) {
     Owner.mergeAnalysisStates({Snapshot->State}, Snapshot->State.PAL);
     if (Site->Stage0Authority) Site->Stage0Authority->SemaValidated = false;
-    if (auto *assignment = dynamic_cast<BinaryExpr *>(Site))
+    if (auto *assignment = dynamic_cast<BinaryExpr *>(Site)) {
       assignment->CallableAssignment = CallableAssignmentDisposition::Unvalidated;
+      assignment->BorrowedValueReplacement.reset();
+    }
     return;
   }
   Stage0CodeGenAuthority authority;
@@ -4290,8 +4336,10 @@ Sema::Stage1BindingTransfer::~Stage1BindingTransfer() {
   authority.Destination = Plan->Destination;
   authority.ItemPlan = *Plan;
   Site->Stage0Authority = std::move(authority);
-  if (auto *assignment = dynamic_cast<BinaryExpr *>(Site))
+  if (auto *assignment = dynamic_cast<BinaryExpr *>(Site)) {
     assignment->CallableAssignment = AssignmentDisposition;
+    assignment->BorrowedValueReplacement = std::move(BorrowedReplacement);
+  }
   if (CallableFacts && CallableFacts->Complete) {
     SymbolInfo *info = nullptr;
     std::string name;
@@ -6930,6 +6978,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
             // Set ResolvedShape for CodeGen
             Call->ResolvedShape = SD;
+            Call->MatchedMemberIdx = static_cast<int>(&Memb - SD->Members.data());
             auto result = std::make_shared<toka::ShapeType>(ShapeName);
             result->resolve(SD);
             return result;
