@@ -188,11 +188,20 @@ impl<'K, 'V> HashMap<'K, 'V> {
         
         unsafe {
             if is_new {
-                self.meta.buf[found_slot] = 1
                 self.keys.buf[found_slot] = cede 'key
+                self.vals.buf[found_slot] = cede 'val
+                // Publish only after both payloads are initialized.
+                self.meta.buf[found_slot] = 1
                 self.len = self.len + 1
+            } else {
+                // The old value owns its cleanup; raw assignment alone does
+                // not retire it. Restore occupied before any user Drop runs.
+                auto *marker# = self.meta.unsafe_get(found_slot)
+                auto 'old = hashmap_take_raw_element<'V>(self.vals.*buf, found_slot, *marker)
+                self.vals.buf[found_slot] = cede 'val
+                marker = 1
+                auto 'unused_key = cede 'key
             }
-            self.vals.buf[found_slot] = cede 'val
         }
     }
     

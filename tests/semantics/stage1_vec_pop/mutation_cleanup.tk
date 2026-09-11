@@ -1,0 +1,36 @@
+import std/vec::{Vec}
+auto drops# = 0:i32
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto vec# = Vec<Token>::new()
+        vec#.push(Token(id = 1))
+        vec#.push(Token(id = 2))
+        vec#.push(Token(id = 3))
+        vec#.set(1, Token(id = 4))
+        if drops != 1 || vec.len() != 3 { return 1 }
+        {
+            auto removed = vec#.remove(1).unwrap()
+            if removed.id != 4 || vec.len() != 2 || drops != 1 { return 2 }
+        }
+        if drops != 2 { return 3 }
+        {
+            auto tail = vec#.pop().unwrap()
+            if tail.id != 3 { return 4 }
+        }
+        if drops != 3 { return 5 }
+        vec#.set(5, Token(id = 5))
+        if drops != 4 || vec.len() != 1 { return 6 }
+        vec#.clear()
+        if drops != 5 || vec.len() != 0 { return 7 }
+        vec#.clear()
+        if drops != 5 { return 8 }
+        vec#.push(Token(id = 6))
+    }
+    if drops != 6 { return 9 }
+    return 0
+}

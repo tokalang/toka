@@ -1,0 +1,66 @@
+import std/hashmap::{HashMap}
+import core/traits::{@Hash, @PartialEq}
+auto drops# = 0:i32
+auto key_drops# = 0:i32
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+shape Key(id: i32)
+impl Key@Encap {
+    pub id
+    fn drop(self#) { key_drops += 1 }
+}
+impl Key@Hash {
+    pub fn hash(self) -> u64 { return self.id as u64 }
+}
+impl Key@PartialEq {
+    pub fn eq(self, other: Key) -> bool { return self.id == other.id }
+}
+fn main() -> i32 {
+    {
+        auto map# = HashMap<i32, Token>::new()
+        map#.insert(7, Token(id = 1))
+        map#.insert(7, Token(id = 2))
+        if drops != 1 || map.len() != 1 { return 1 }
+        map#.insert(7, Token(id = 3))
+        if drops != 2 || map.len() != 1 { return 2 }
+        {
+            auto removed = map#.remove(7).unwrap()
+            if removed.id != 3 || drops != 2 { return 3 }
+        }
+        if drops != 3 || map.len() != 0 { return 4 }
+    }
+    if drops != 3 { return 5 }
+    {
+        auto map# = HashMap<Key, Token>::new()
+        map#.insert(Key(id = 1), Token(id = 4))
+        map#.insert(Key(id = 1), Token(id = 5))
+        if key_drops != 1 || drops != 4 || map.len() != 1 { return 6 }
+    }
+    if key_drops != 2 || drops != 5 { return 7 }
+    {
+        auto map# = HashMap<i32, ^Token>::new()
+        auto ^first = new Token(id = 6)
+        map#.insert(1, cede ^first)
+        auto ^second = new Token(id = 7)
+        map#.insert(1, cede ^second)
+        if drops != 6 { return 8 }
+    }
+    if drops != 7 { return 9 }
+    {
+        auto ~first = new Token(id = 8)
+        auto ~other = ~first
+        {
+            auto map# = HashMap<i32, ~Token>::new()
+            map#.insert(1, cede ~first)
+            auto ~second = new Token(id = 9)
+            map#.insert(1, cede ~second)
+            if drops != 7 || other.id != 8 { return 10 }
+        }
+        if drops != 8 || other.id != 8 { return 11 }
+    }
+    if drops != 9 { return 12 }
+    return 0
+}

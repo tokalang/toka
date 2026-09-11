@@ -28,7 +28,7 @@ def main():
                               cwd=ROOT, env=env, text=True, capture_output=True, timeout=45)
 
     with tempfile.TemporaryDirectory(prefix="toka-vec-pop-gate-") as directory:
-        for source in ("copy_pop.tk", "owned_pop.tk", "plain_noncopy_pop.tk", "handle_pop.tk", "owning_string_pop.tk"):
+        for source in ("copy_pop.tk", "owned_pop.tk", "plain_noncopy_pop.tk", "handle_pop.tk", "owning_string_pop.tk", "mutation_cleanup.tk"):
             normal = run(source, "--check-only")
             shadow = run(source, "--check-only", "--non-call-transfer-shadow=json")
             record(source + "/parity", normal.returncode == shadow.returncode == 0 and

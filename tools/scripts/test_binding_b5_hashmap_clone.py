@@ -24,7 +24,7 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="toka-b5-clone-") as directory:
         work = Path(directory)
-        for name in ("lifecycle.tk", "clone.tk", "strings.tk", "owned_handles.tk"):
+        for name in ("lifecycle.tk", "clone.tk", "strings.tk", "owned_handles.tk", "replacement.tk"):
             source = CASES / name
             normal = compile(source, "--check-only")
             shadow = compile(source, "--check-only", "--non-call-transfer-shadow=json")
@@ -57,7 +57,7 @@ def main():
             assert built.returncode == 0, built.stderr
             assert subprocess.run([str(binary)], timeout=15).returncode == 0
             print("PASS NonDup clone-only rejection/control: " + name, flush=True)
-    print("4 runtime/parity cases; 2 clone rejections with object/IR absence and ordinary-use controls.")
+    print("5 runtime/parity cases; 2 clone rejections with object/IR absence and ordinary-use controls.")
     print("Direct managed element morphology and recursive JSON remain separate failed positives.")
 
 
