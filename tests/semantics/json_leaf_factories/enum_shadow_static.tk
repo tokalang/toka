@@ -1,0 +1,19 @@
+alias Outcome = Result<i32, str>
+fn producer(input: str) -> Outcome <- input {
+    auto text = "original static"
+    auto forwarded = text
+    {
+        auto text = input
+        auto result = Outcome::Err(forwarded)
+        return cede result
+    }
+}
+fn escaped() -> str {
+    auto owner = string::from("dynamic")
+    auto result = producer(owner.as_str())
+    return result.unwrap_err()
+}
+fn main() -> i32 {
+    if !escaped().equals("original static") { return 1 }
+    return 0
+}

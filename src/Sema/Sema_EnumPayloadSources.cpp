@@ -166,7 +166,11 @@ void Sema::recordEnumExpression(Expr *expression, bool valid) {
       if (collectStaticEnumPayload(value, out)) return true;
       auto *variable = dynamic_cast<VariableExpr *>(value);
       SymbolInfo *binding = nullptr;
-      if (!variable || !CurrentScope->findSymbol(variable->Name, binding) || !binding ||
+      // This expression can belong to an older initializer. Its spelling may
+      // now be shadowed, so follow only the binding resolved when it was checked.
+      // An unavailable identity is unknown, never an invitation to rebind by name.
+      if (!variable || !variable->ResolvedBindingID ||
+          !CurrentScope->findSymbolByID(variable->ResolvedBindingID, binding) || !binding ||
           binding->IsFunctionParameter || binding->IsDeclaredMutable || !binding->ASTPtr ||
           m_ReturnSourceInvalidatedRoots.count(binding->SymbolID) || m_ReturnSourceUnknownRoots.count(binding->SymbolID) ||
           !active.insert(binding->SymbolID).second) return false;

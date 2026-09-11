@@ -516,6 +516,9 @@ class VariableExpr : public Expr {
 public:
   std::string Name;
   std::string ResolvedName;
+  // Sema binding identity at this use site, not a later name lookup. Clones
+  // deliberately start unresolved and must bind again in their own scope.
+  uint64_t ResolvedBindingID = 0;
   bool IsRawPointer = false;
   bool IsUnique = false;
   bool IsShared = false;

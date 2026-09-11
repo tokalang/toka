@@ -1993,6 +1993,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       auto t = toka::Type::fromString("str");
       return resolveType(t);
   } else if (auto *ve = dynamic_cast<VariableExpr *>(E)) {
+    ve->ResolvedBindingID = 0;
     if (m_IsPrecomputingCaptures && m_ClosureCaptureRootScope) {
       SymbolInfo *CapturedInfo = nullptr;
       std::string actualName;
@@ -2072,6 +2073,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       isImplicitDeref = (actualName != ve->Name);
       Info = *InfoPtr;
       ve->ResolvedName = Info.CodegenName;
+      if (!m_IsPrecomputingCaptures) ve->ResolvedBindingID = Info.SymbolID;
       ve->IsMorphicExempt = Info.IsMorphicExempt; // [NEW]
       ve->IsImplicitDeref = isImplicitDeref;      // [Fix] Mark AST node
       if (!m_InLHS) {

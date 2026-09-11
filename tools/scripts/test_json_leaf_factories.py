@@ -181,6 +181,9 @@ def main():
             parity(FIXTURES / "enum_static_sources.tk", 0)
             run(FIXTURES / "enum_static_sources.tk")
             print("PASS concrete producers and static rebinding", flush=True)
+            parity(FIXTURES / "enum_shadow_static.tk", 0)
+            run(FIXTURES / "enum_shadow_static.tk")
+            print("PASS original static binding survives dynamic name shadowing", flush=True)
             rollback = parity(FIXTURES / "enum_failed_call_rollback.tk", 1)
             assert "E04554" in rollback.stderr and "E0455]" not in rollback.stderr and "E0438" not in rollback.stderr, rollback.stderr
             print("PASS rejected call restores enum source", flush=True)

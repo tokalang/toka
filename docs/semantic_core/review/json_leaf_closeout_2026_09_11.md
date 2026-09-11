@@ -55,16 +55,17 @@ bounds, recursive container witness, receiver-write protocol, TKI or ABI work.
   moved-from checks, fourteen missing/rejected/mismatched-plan no-artifact
   checks, and readonly rejection/source rollback with object/IR non-production.
 - Factory core passed: 22 behavior checks, eight cleanup checks, exact Err
-  metadata, and twelve lifetime/dependency refusals with normal/shadow parity
+  metadata, and fourteen lifetime/dependency refusals with normal/shadow parity
   and object/IR non-production. Different producers, mixed Err sources,
   rebinding, branch joins, loop paths, writable calls and descriptor addresses
   have explicit refusal cases.
-- After applying the exact confirmed refinement, final directed CTest:
-  **7/7 passed, 147.86 seconds**. Entry, core, static-error, return source,
+- After repairing the reviewed initializer identity chain, final directed CTest:
+  **7/7 passed, 147.81 seconds**. Entry, core, static-error, return source,
   binding B3 static return, binding value dependencies and shared aggregate
   handoff all passed. Static-error covers the original lifetime positive,
-  all three concrete error producers, static rebinding and failed-call rollback.
-  All twelve core refusals were rerun after application, including normal/shadow
+  all three concrete error producers, static rebinding, failed-call rollback,
+  and a genuinely static initializer chain shadowed by a dynamic same-name binding.
+  All fourteen core refusals were rerun after the fix, including normal/shadow
   parity and object/IR non-production; no earlier results were substituted.
 - Incremental Debug tokac build, `git diff --check` and reverse applicability
   of the confirmed diff passed. No full PASS/FAIL suite or RC13 qualification
@@ -94,3 +95,23 @@ Ok/value/rest escapes are likewise rerun; earlier refusal results are not used
 as substitutes. No tests were changed into expected failures or skipped.
 
 No thread/iterator/shared freeze ref was moved. No push or PR was made.
+
+## Incremental P1 repair after `cbf45fea`
+
+The audit's dynamic `text -> forwarded` chain was incorrectly reinterpreted
+through an inner same-name literal. The unchanged compiler accepted that
+negative and rejected the inverse, genuinely static chain. Only semantic checks
+were used to reproduce the negative; no dangling-reference program was run.
+
+Variable expressions now retain the binding ID obtained by ordinary Sema
+resolution. The enum literal-chain walker uses that ID, never a current-scope
+name lookup. Missing/unavailable IDs remain unknown. Clones default to an
+unresolved ID and must bind in their own scope; the field is not exported in
+TKI and does not change CodeGen naming or ordinary lookup behavior.
+
+`reject_enum_shadow_literal.tk` and its rename-only control now both reject
+with E0455, normal/shadow parity and no object/IR artifacts.
+`enum_shadow_static.tk` retains the outer literal through dynamic shadowing
+and passes compilation/runtime/parity. Existing source, cleanup and fault
+gates were rerun without oracle changes. No cleanup implementation, source
+system expansion, full regression suite or release qualification is included.
