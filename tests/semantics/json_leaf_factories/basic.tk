@@ -51,16 +51,13 @@ fn main() -> i32 {
         if !view.value.equals("\\uD83D\\uDE00") { return 12 }
     }
     if parse_string_value("\"\"tail").unwrap().value.len() != 0 { return 13 }
-    if !parse_string_value("bad").unwrap_err().equals("Expected string") { return 14 }
-    if !parse_str_view("\"open").unwrap_err().equals("Unterminated string") { return 15 }
-    if !parse_string_value("\"prefix\\u12\"").unwrap_err().equals("Incomplete unicode escape") { return 16 }
-    if !parse_string_value("\"prefix\\uD800\\u1\"").unwrap_err().equals("Incomplete unicode escape") { return 17 }
-    // Existing permissive handling of unknown escapes/hex is not tightened.
-    if !parse_string_value("\"a\\q\"").unwrap().value.as_str().equals("aq") { return 18 }
-    {
-        auto parsed = parse_string_value("\"\\uZZZZ\"").unwrap()
-        if parsed.value.len() != 1 || parsed.value.as_str().byte_at(0) != 0 { return 19 }
-    }
+    if !parse_string_value("bad").unwrap_err().equals("Invalid JSON string") { return 14 }
+    if !parse_str_view("\"open").unwrap_err().equals("Invalid JSON string") { return 15 }
+    if !parse_string_value("\"prefix\\u12\"").unwrap_err().equals("Invalid JSON string") { return 16 }
+    if !parse_string_value("\"prefix\\uD800\\u1\"").unwrap_err().equals("Invalid JSON string") { return 17 }
+    // Invalid escapes/hex are rejected before decoding, not silently repaired.
+    if !parse_string_value("\"a\\q\"").is_err() { return 18 }
+    if !parse_string_value("\"\\uZZZZ\"").is_err() { return 19 }
     {
         auto value = detached()
         if !value.as_str().equals("owned\nvalue") { return 20 }

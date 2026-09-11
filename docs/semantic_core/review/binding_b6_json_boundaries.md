@@ -16,9 +16,40 @@ match; rejected executable/IR artifacts are absent. The Document destructor
 counter runs once on each successful or early-exit lifetime; this is not a heap
 leak audit. CTest `toka_json_flat_document` passes (1/1, 10.74 s).
 
-Decision: use this flat representation for the next library/parser migration.
-The probe is not a parser and does not claim JSON functionality is complete.
+The representation was accepted at `8ac463b2`. The library migration candidate
+now implements Document parsing/readers/serialization; see `docs/stdx_json_document.md`.
+It removes recursive JsonNode rather than adding compiler container proofs.
+Typed construction uses explicit JsonFactory implementations; container factories
+return a complete value plus consumed byte count, not a stored remainder view.
+The original generic resource failure/Drop assertions remain and pass.
 No compiler, existing Vec/HashMap implementation or language rule was modified.
+
+Candidate verification (not an Accepted declaration):
+
+- Eight migrated nonempty JSON targets compile and run, 8/8; the empty smoke
+  remains separately identified. Parser tests cover 21 valid/34 invalid inputs,
+  round-trip content, depth, malformed UTF-8/escapes, input-owner death, checked
+  readers and forbidden view/descriptor escape with normal/shadow parity.
+- Document success/failure stress (200 each) and the generic resource matrix
+  both report zero leaks/zero leaked bytes with macOS `leaks --atExit`.
+  Generated cleanup IR also passes AddressSanitizer; the native runtime object
+  itself was not rebuilt with ASan. This supplements the earlier Drop counter.
+- Same unchanged compiler, serial baseline `8ac463b2`/candidate full PASS runs:
+  327/451 -> 335/451; eight recovered, zero added failures. Full FAIL:
+  423/473 -> 423/473, identical 50 failing expectations, no abnormal-exit or
+  unexpectedly-passed entries. No blessing or exclusion was used.
+- One full candidate CTest run: 79/86 (373.75 s). Three old JSON assertions
+  depended on permissive invalid escapes/old error text or allocating before
+  syntax validation; individually migrated, then passed 3/3 (31.14 s).
+  The four other failing gates were reproduced against baseline sources:
+  call-transfer shadow, indirect parameters, return matrix and remaining routes.
+  A final parser/recovery targeted run passed 2/2 (75.93 s). This is not a claim
+  that a fresh whole-suite 86/86 run occurred.
+- Complete integration logs: `/private/tmp/toka-json-integration.78ntYb`.
+  The YAML consumer still requires its own migration from removed JsonNode;
+  its existing failing PASS target was not hidden or relabeled. No thread,
+  network, generic borrowing or release-qualification debt was folded into this work.
+
 The earlier implementation history below is retained, not a mandate to expand it.
 
 Status: concrete leaf slice Accepted at `94eaaa46c410054c46ae50c54f51d1075535540d`.

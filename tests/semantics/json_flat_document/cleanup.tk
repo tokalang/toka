@@ -1,0 +1,29 @@
+import stdx/serde/json_document::{parse_document}
+fn main() -> i32 {
+    auto prefix# = string::from("[")
+    auto n# = 0:usize
+    loop n < 80 {
+        if n != 0 { prefix#.push_str(",") }
+        prefix#.push_str("\"owned text with \\uD83D\\uDE80 and escaped \\n content\"")
+        n += 1
+    }
+    auto valid# = string::from(prefix.as_str())
+    valid#.push_str("]")
+    auto invalid# = string::from(prefix.as_str())
+    invalid#.push_str(",\"unfinished \\uD800\"")
+    auto i# = 0:usize
+    loop i < 200 {
+        {
+            auto result = parse_document(valid.as_str())
+            if result.is_err() { return 1 }
+            auto document = result.unwrap()
+            if document.kind(1) != 4 { return 2 }
+        }
+        {
+            auto result = parse_document(invalid.as_str())
+            if result.is_ok() { return 3 }
+        }
+        i += 1
+    }
+    return 0
+}

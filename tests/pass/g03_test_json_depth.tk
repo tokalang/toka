@@ -1,5 +1,5 @@
 import std/io::{println}
-import stdx/serde/json::{JsonNode}
+import stdx/serde/json::{parse_document}
 
 import core/str::{str}
 
@@ -19,8 +19,7 @@ fn main() -> i32 {
         i += 1:usize
     }
     
-    auto root# = JsonNode::NullNode(0):JsonNode
-    auto parse_res = root#.parse_json(string_buf.as_str())
+    auto parse_res = parse_document(string_buf.as_str())
     
     if parse_res.is_err() {
         println("Successfully defended against deep recursion!")

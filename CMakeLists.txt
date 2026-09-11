@@ -332,6 +332,14 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_json_flat_document.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_json_document_parser
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_json_document.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_json_recovery
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_json_recovery.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_json_factory_values
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_json_factory_values.py

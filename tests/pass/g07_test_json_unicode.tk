@@ -28,3 +28,26 @@ fn main() -> i32 {
     println("All unicode matches OK!")
     return 0
 }
+import stdx/serde/json::{@JsonFactory, Parsed, parse_document}
+impl UniTest@JsonFactory {
+    pub fn parse_value(input: str) -> Result<Parsed<UniTest>, str> <- input {
+        auto attempt = parse_document(input)
+        if attempt.is_err() {
+            auto error = Result<Parsed<UniTest>, str>::Err("Invalid JSON")
+            return cede error
+        }
+        auto document = attempt.unwrap()
+        if document.kind(1) != 5 {
+            auto error = Result<Parsed<UniTest>, str>::Err("Expected object")
+            return cede error
+        }
+        if document.kind(document.find(1, "msg")) != 3 {
+            auto error = Result<Parsed<UniTest>, str>::Err("Invalid field msg")
+            return cede error
+        }
+        auto value = UniTest(msg = string::from(document.text(document.find(1, "msg"))))
+        auto parsed = Parsed<UniTest>(value = cede value, rest = input.substr(input.len(), 0))
+        auto result = Result<Parsed<UniTest>, str>::Ok(cede parsed)
+        return cede result
+    }
+}

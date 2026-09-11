@@ -1,167 +1,21 @@
-import std/io
-import std/io::{println, print}
-import sys/libc::{libc_fflush, libc_printf}
-
-import core/str::{str, str}
-import stdx/serde/json::{JsonNode}
-
-fn put(s: string) {
-    auto fmt = string::from("%")
-    libc_printf(fmt.c_str(), s.c_str())
-}
-
-fn put_ptr(*s: string) {
-    auto fmt = string::from("%")
-    libc_printf(fmt.c_str(), s.c_str())
-}
-
-fn print_json_node(val: JsonNode) {
-    match val {
-        auto NullNode(n) => { put(string::from("null")) }
-        auto BoolNode(b) => {
-            if b { put(string::from("true")) } else { put(string::from("false")) }
-        }
-        auto NumNode(n) => {
-            auto num_str = string::from_f64(n)
-            put(num_str) 
-        }
-        auto StrNode(&s) => {
-            put(string::from("\""))
-            put(s)
-            put(string::from("\""))
-        }
-        auto ArrayNode(&arr_ptr) => {
-            put(string::from("["))
-            auto arr_iter# = arr_ptr.iter()
-            auto first# = true
-            loop true {
-                auto item_opt = arr_iter#.next_ref()
-                if item_opt.is_none() { break }
-                auto &item = item_opt.unwrap()
-                print_json_node(item)
-                first = false
-            }
-            put(string::from("]"))
-        }
-        auto ObjectNode(&map_ptr) => {
-            put(string::from("{"))
-            auto iter# = map_ptr#.iter()
-            auto first# = true
-            loop true {
-                auto entry_opt = iter#.next()
-                if entry_opt.is_none() { break }
-                auto entry = entry_opt.unwrap()
-                if !first { put(string::from(", ")) }
-                first = false
-                put(string::from("\""))
-                auto *k_ptr = entry.key()
-                put_ptr(*k_ptr)
-                put(string::from("\": "))
-                auto *v_ptr = entry.val()
-                print_json_node_ptr(*v_ptr)
-            }
-            put(string::from("}"))
-        }
-    }
-}
-
-fn print_json_node_ptr(*val_ptr: JsonNode) {
-    match val_ptr {
-        auto NullNode(n) => { put(string::from("null")) }
-        auto BoolNode(b) => {
-            if b { put(string::from("true")) } else { put(string::from("false")) }
-        }
-        auto NumNode(n) => {
-            auto num_str = string::from_f64(n)
-            put(num_str) 
-        }
-        auto StrNode(&s) => {
-            put(string::from("\""))
-            put(s)
-            put(string::from("\""))
-        }
-        auto ArrayNode(&arr_ptr) => {
-            put(string::from("["))
-            auto arr_iter# = arr_ptr.iter()
-            auto first# = true
-            loop true {
-                auto item_opt = arr_iter#.next_ref()
-                if item_opt.is_none() { break }
-                auto &item = item_opt.unwrap()
-                print_json_node(item)
-                if !first { put(string::from(", ")) }
-                first = false
-            }
-            put(string::from("]"))
-        }
-        auto ObjectNode(&map_ptr) => {
-            put(string::from("{"))
-            auto iter# = map_ptr#.iter()
-            auto first# = true
-            loop true {
-                auto entry_opt = iter#.next()
-                if entry_opt.is_none() { break }
-                auto entry = entry_opt.unwrap()
-                if !first { put(string::from(", ")) }
-                first = false
-                put(string::from("\""))
-                put_ptr(entry.key())
-                put(string::from("\": "))
-                print_json_node_ptr(entry.val())
-            }
-            put(string::from("}"))
-        }
-    }
-}
-
-pub fn main() -> i32 {
-    auto json_str = string::from("{\"name\": \"Toka\", \"version\": 1.0, \"is_fast\": true, \"scores\": [100, 99.5], \"meta\": {\"type\": null}}")
-    auto v_str = json_str.as_str()
-    
-    auto root# = JsonNode::NullNode(0):JsonNode
-    println("Starting parse...")
-    auto parse_res = root#.parse_json_internal(v_str, 0:usize)
-    println("Finished parse!")
-    
-    if parse_res.is_err() {
-        println("Parse failed")
-        return 1
-    }
-    
-    // Test match functionality over dynamic JSON Node!
-    match root {
-        auto ObjectNode(&map_ptr) => {
-            println("Found root object!")
-            
-            println("--- Keys inside Object ---")
-            auto iter# = map_ptr#.iter()
-            loop true {
-                auto entry_opt = iter#.next()
-                if entry_opt.is_none() { break }
-                auto entry = entry_opt.unwrap()
-                auto *key_p = entry.key()
-                auto *val_p = entry.val()
-                
-                put_ptr(*key_p)
-                put(string::from(": "))
-                print_json_node_ptr(*val_p)
-                put(string::from("\n"))
-                // fflush stdout (null pointer to flush all)
-                libc_fflush(null as nul *void)
-            }
-            println("--------------------------")
-            
-            // Check keys
-            if map_ptr.try_borrow(string::from("name")).is_some() {
-                println("Contains name!")
-            }
-        }
-        _ => {
-            println("Root is not object")
-            return 1
-        }
-    }
-    
-    println("Successfully parsed and explored dynamic JsonNode!")
+import stdx/serde/json::{parse_document, to_json}
+fn main() -> i32 {
+    auto input = string::from("{\"name\":\"Toka\",\"version\":1.0,\"is_fast\":true,\"scores\":[100,99.5],\"meta\":{\"type\":null}}")
+    auto result = parse_document(input.as_str())
+    if result.is_err() { return 1 }
+    auto document = result.unwrap()
+    if document.kind(1) != 5 { return 2 }
+    if document.text(document.find(1, "name")) != "Toka" { return 3 }
+    if document.number(document.find(1, "version")).unwrap() != 1.0 { return 4 }
+    if !document.boolean(document.find(1, "is_fast")).unwrap() { return 5 }
+    auto scores = document.find(1, "scores")
+    auto first = document.first(scores)
+    if document.number(first).unwrap() != 100.0 { return 6 }
+    if document.number(document.next(first)).unwrap() != 99.5 { return 7 }
+    auto meta = document.find(1, "meta")
+    if document.kind(document.find(meta, "type")) != 0 { return 8 }
+    auto serialized = to_json(document)
+    auto reparsed = parse_document(serialized.as_str())
+    if reparsed.is_err() { return 9 }
     return 0
 }

@@ -38,3 +38,34 @@ pub fn main() -> i32 {
     println("JSON Serde tests passed!")
     return 0
 }
+import stdx/serde/json::{@JsonFactory, Parsed, parse_document}
+impl User@JsonFactory {
+    pub fn parse_value(input: str) -> Result<Parsed<User>, str> <- input {
+        auto attempt = parse_document(input)
+        if attempt.is_err() {
+            auto error = Result<Parsed<User>, str>::Err("Invalid JSON")
+            return cede error
+        }
+        auto document = attempt.unwrap()
+        if document.kind(1) != 5 {
+            auto error = Result<Parsed<User>, str>::Err("Expected object")
+            return cede error
+        }
+        if document.kind(document.find(1, "id")) != 2 {
+            auto error = Result<Parsed<User>, str>::Err("Invalid field id")
+            return cede error
+        }
+        if document.kind(document.find(1, "name")) != 3 {
+            auto error = Result<Parsed<User>, str>::Err("Invalid field name")
+            return cede error
+        }
+        if document.kind(document.find(1, "active")) != 1 {
+            auto error = Result<Parsed<User>, str>::Err("Invalid field active")
+            return cede error
+        }
+        auto value = User(id = document.number(document.find(1, "id")).unwrap() as i32, name = string::from(document.text(document.find(1, "name"))), active = document.boolean(document.find(1, "active")).unwrap())
+        auto parsed = Parsed<User>(value = cede value, rest = input.substr(input.len(), 0))
+        auto result = Result<Parsed<User>, str>::Ok(cede parsed)
+        return cede result
+    }
+}

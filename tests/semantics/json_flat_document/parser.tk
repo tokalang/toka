@@ -1,0 +1,20 @@
+import stdx/serde/json_document::{parse_document}
+fn main() -> i32 {
+    auto result = parse_document("{\"name\":\"Toka\",\"x\":[true,null,1.2e-4],\"u\":\"\\uD83D\\uDE80\"}")
+    if result.is_err() { return 1 }
+    auto document = result.unwrap()
+    if document.kind(1) != 5 { return 2 }
+    auto name = document.find(1, "name")
+    if document.text(name) != "Toka" { return 3 }
+    auto array = document.find(1, "x")
+    auto boolean = document.first(array)
+    if document.boolean(boolean).unwrap() != true { return 4 }
+    auto null_value = document.next(boolean)
+    if document.kind(null_value) != 0 { return 5 }
+    auto number = document.next(null_value)
+    if document.number(number).unwrap() != 0.00012 { return 6 }
+    auto unicode = document.find(1, "u")
+    if document.text(unicode) != "🚀" { return 7 }
+    if document.valid(0) || document.valid(999999) { return 8 }
+    return 0
+}

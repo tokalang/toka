@@ -1,0 +1,190 @@
+// Owned flat JSON tree. Zero is an invalid/end node ID; the root is one.
+// Only integer IDs/offsets survive growth; views are created by checked readers.
+import std/vec::{Vec}
+import stdx/serde/json_leaf::{parse_string_value, json_string_valid}
+
+shape JsonEntry(kind: i32, first#: usize, next#: usize, start: usize, count: usize,
+                key_start: usize, key_count: usize, number: f64)
+pub shape Document(text#: string, nodes#: Vec<JsonEntry>)
+impl Document@Encap {}
+pub shape JsonError(offset: usize)
+
+fn space(input: str, pos#: usize) {
+    loop pos < input.len() {
+        auto c = input.byte_at(pos)
+        if c != 32 && c != 9 && c != 10 && c != 13 { break }
+        pos += 1
+    }
+}
+fn string_into(document#: Document, input: str, pos#: usize) -> bool {
+    if !json_string_valid(input, pos) { return false }
+    auto attempt = parse_string_value(input.substr(pos, input.len() - pos))
+    if attempt.is_err() { return false }
+    auto parsed = attempt.unwrap()
+    pos = input.len() - parsed.rest.len()
+    auto decoded = cede parsed.value
+    document.text#.push_str(decoded.as_str())
+    return true
+}
+fn digit(input: str, pos: usize) -> bool {
+    return pos < input.len() && input.byte_at(pos) >= 48 && input.byte_at(pos) <= 57
+}
+fn value_into(document#: Document, input: str, pos#: usize, depth: usize,
+              key_start: usize, key_count: usize) -> usize {
+    space(input, pos#)
+    if depth > 128 || pos >= input.len() { return 0 }
+    auto c = input.byte_at(pos)
+    auto id = document.nodes.len()
+    auto start = document.text.len()
+    auto kind# = 0:i32
+    auto number# = 0.0:f64
+    if c == 123 || c == 91 {
+        kind = 4
+        if c == 123 { kind = 5 }
+    } else if c == 34 {
+        kind = 3
+        if !string_into(document#, input, pos#) { return 0 }
+    } else if c == 110 || c == 116 || c == 102 {
+        auto rest = input.substr(pos, input.len() - pos)
+        if c == 110 && rest.starts_with("null") { pos += 4 }
+        else if c == 116 && rest.starts_with("true") { kind = 1; number = 1.0; pos += 4 }
+        else if c == 102 && rest.starts_with("false") { kind = 1; pos += 5 }
+        else { return 0 }
+    } else {
+        kind = 2
+        auto begin = pos
+        if c == 45 { pos += 1 }
+        if !digit(input, pos) { return 0 }
+        if input.byte_at(pos) == 48 { pos += 1 }
+        else {
+            loop digit(input, pos) {
+                pos += 1
+            }
+        }
+        if pos < input.len() && input.byte_at(pos) == 46 {
+            pos += 1
+            if !digit(input, pos) { return 0 }
+            loop digit(input, pos) {
+                pos += 1
+            }
+        }
+        if pos < input.len() && (input.byte_at(pos) == 101 || input.byte_at(pos) == 69) {
+            pos += 1
+            if pos < input.len() && input.byte_at(pos) == 45 { pos += 1 }
+            else if pos < input.len() && input.byte_at(pos) == 43 { pos += 1 }
+            if !digit(input, pos) { return 0 }
+            loop digit(input, pos) {
+                pos += 1
+            }
+        }
+        // Grammar is checked above; reuse the core numeric conversion instead
+        // of overflowing an intermediate mantissa before applying the exponent.
+        auto lexeme = string::from(input.substr(begin, pos - begin))
+        auto converted = lexeme.parse_f64()
+        if converted.is_err() { return 0 }
+        number = converted.unwrap()
+        document.text#.push_str(lexeme.as_str())
+    }
+    document.nodes#.push(JsonEntry(kind = kind, first = 0, next = 0, start = start,
+        count = document.text.len() - start, key_start = key_start, key_count = key_count, number = number))
+    if kind < 4 { return id }
+    pos += 1
+    space(input, pos#)
+    auto close# = 93:i32
+    if kind == 5 { close = 125 }
+    if pos < input.len() && (input.byte_at(pos) as i32) == close { pos += 1; return id }
+    auto previous# = 0:usize
+    loop true {
+        auto name_start = document.text.len()
+        auto name_count# = 0:usize
+        if kind == 5 {
+            if !string_into(document#, input, pos#) { return 0 }
+            name_count = document.text.len() - name_start
+            space(input, pos#)
+            if pos >= input.len() || input.byte_at(pos) != 58 { return 0 }
+            pos += 1
+        }
+        auto child = value_into(document#, input, pos#, depth + 1, name_start, name_count)
+        if child == 0 { return 0 }
+        if previous == 0 {
+            auto parent# = document.nodes.get(id)
+            parent.first = child
+            document.nodes#.set(id, cede parent)
+        } else {
+            auto sibling# = document.nodes.get(previous)
+            sibling.next = child
+            document.nodes#.set(previous, cede sibling)
+        }
+        previous = child
+        space(input, pos#)
+        if pos >= input.len() { return 0 }
+        auto closing = input.byte_at(pos) as i32
+        if closing == close { pos += 1; return id }
+        if input.byte_at(pos) != 44 { return 0 }
+        pos += 1
+        space(input, pos#)
+    }
+    return 0
+}
+pub fn parse_document(input: str) -> Result<Document, JsonError> {
+    auto document# = Document(text = string::from(""), nodes = Vec<JsonEntry>::new())
+    document.nodes#.push(JsonEntry(kind = 0, first = 0, next = 0, start = 0, count = 0,
+                                  key_start = 0, key_count = 0, number = 0.0))
+    auto pos# = 0:usize
+    auto root = value_into(document#, input, pos#, 0, 0, 0)
+    space(input, pos#)
+    if root == 0 || pos != input.len() {
+        auto failure = Result<Document, JsonError>::Err(JsonError(offset = pos))
+        return cede failure
+    }
+    auto result = Result<Document, JsonError>::Ok(cede document)
+    return cede result
+}
+impl Document {
+    pub fn valid(self, id: usize) -> bool { return id > 0 && id < self.nodes.len() }
+    pub fn kind(self, id: usize) -> i32 {
+        if !self.valid(id) { return -1 }
+        return self.nodes.get(id).kind
+    }
+    pub fn first(self, id: usize) -> usize {
+        if !self.valid(id) { return 0 }
+        return self.nodes.get(id).first
+    }
+    pub fn next(self, id: usize) -> usize {
+        if !self.valid(id) { return 0 }
+        return self.nodes.get(id).next
+    }
+    pub fn number(self, id: usize) -> Option<f64> {
+        if self.kind(id) != 2 { return Option<f64>::None }
+        return Option<f64>::Some(self.nodes.get(id).number)
+    }
+    pub fn boolean(self, id: usize) -> Option<bool> {
+        if self.kind(id) != 1 { return Option<bool>::None }
+        return Option<bool>::Some(self.nodes.get(id).number == 1.0)
+    }
+    pub fn text(self, id: usize) -> str <- self {
+        if !self.valid(id) { return "" }
+        auto node = self.nodes.get(id)
+        if node.start > self.text.len() || node.count > self.text.len() - node.start { return "" }
+        return self.text.as_str().substr(node.start, node.count)
+    }
+    // Last duplicate key wins; no recursive HashMap or saved internal view.
+    pub fn key(self, id: usize) -> str <- self {
+        if !self.valid(id) { return "" }
+        auto node = self.nodes.get(id)
+        if node.key_start > self.text.len() || node.key_count > self.text.len() - node.key_start { return "" }
+        return self.text.as_str().substr(node.key_start, node.key_count)
+    }
+    pub fn find(self, object: usize, name: str) -> usize {
+        if self.kind(object) != 5 { return 0 }
+        auto child# = self.first(object)
+        auto found# = 0:usize
+        loop self.valid(child) {
+            auto node = self.nodes.get(child)
+            if node.key_start > self.text.len() || node.key_count > self.text.len() - node.key_start { return 0 }
+            if self.text.as_str().substr(node.key_start, node.key_count).equals(name) { found = child }
+            child = node.next
+        }
+        return found
+    }
+}

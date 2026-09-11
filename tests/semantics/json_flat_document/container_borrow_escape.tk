@@ -1,0 +1,9 @@
+import std/vec::{Vec}
+import stdx/serde/json_factory::{@JsonFactory}
+fn escaped() -> Vec<str> {
+    auto input = string::from("[\"local\"]")
+    auto result = Vec<str>::parse_complete(input.as_str())
+    auto parsed = result.unwrap()
+    return cede parsed.value
+}
+fn main() -> i32 { return 0 }

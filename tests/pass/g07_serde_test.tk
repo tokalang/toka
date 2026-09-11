@@ -1,4 +1,4 @@
-import stdx/serde/json::{JsonNode, to_json, deserialize_shape, ToJson, serialize_shape}
+import stdx/serde/json::{parse_document, to_json, ToJson, serialize_shape}
 
 import std/io::{println}
 import std/vec::{Vec}
@@ -30,33 +30,24 @@ fn main() -> i32 {
         status = Result<i32, string>::Err(string::from("Offline"))
     )
     
-    u.tags#.push(cede string::from("rust"))
-    u.tags#.push(cede string::from("toka"))
+    u.tags#.push(string::from("rust"))
+    u.tags#.push(string::from("toka"))
     
     auto json = to_json(u)
     println("JSON: {}", json.as_view())
     
-    // Test deserialization
-    auto u_res = deserialize_shape<User>(json.as_view())
-    match u_res {
-        auto Result<User, str>::Ok(&u2) => {
-            println("Deserialized ID: {}", u2.id)
-            println("Deserialized Name: {}", u2.name)
-            println("Deserialized Tags len: {}", u2.tags.len() as i32)
-            match u2.email {
-                auto Option<string>::Some(&e) => println("Deserialized Email: {}", e.as_view())
-                _ => println("Deserialized Email: None")
-            }
-            match u2.status {
-                auto Result<i32, string>::Err(&e) => println("Deserialized Status: Err({})", e.as_view())
-                _ => println("Deserialized Status: Ok")
-            }
-        }
-        auto Result<User, str>::Err(&e) => {
-            println("Deserialization failed: {}", e)
-            return 1
-        }
-    }
-    
+    // Read the complete serialized content through the new dynamic document API.
+    auto parsed = parse_document(json.as_view())
+    if parsed.is_err() { return 1 }
+    auto document = parsed.unwrap()
+    if document.number(document.find(1, "id")).unwrap() != 1.0 { return 2 }
+    if document.text(document.find(1, "name")) != "Alice" { return 3 }
+    auto tags = document.find(1, "tags")
+    auto first = document.first(tags)
+    if document.text(first) != "rust" { return 4 }
+    if document.text(document.next(first)) != "toka" { return 5 }
+    if document.text(document.find(1, "email")) != "alice@example.com" { return 6 }
+    auto status = document.find(1, "status")
+    if document.text(document.find(status, "Err")) != "Offline" { return 7 }
     return 0
 }

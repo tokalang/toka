@@ -2,6 +2,74 @@
 // Existing mutation entry points in json.tk delegate to these factories.
 pub shape Parsed<'T>('value: T, rest: str)
 
+fn hex(c: u8) -> i32 {
+    if c >= 48 && c <= 57 { return (c - 48) as i32 }
+    if c >= 65 && c <= 70 { return (c - 55) as i32 }
+    if c >= 97 && c <= 102 { return (c - 87) as i32 }
+    return -1
+}
+fn unicode4(input: str, start: usize) -> i32 {
+    if start > input.len() || input.len() - start < 4 { return -1 }
+    auto value# = 0:i32
+    auto i# = 0:usize
+    loop i < 4 {
+        auto digit = hex(input.byte_at(start + i) as u8)
+        if digit < 0 { return -1 }
+        value = value * 16 + digit
+        i += 1
+    }
+    return value
+}
+// Validate before using the shared decoder, including surrogate pairing and UTF-8.
+pub fn json_string_valid(input: str, start: usize) -> bool {
+    if start >= input.len() || input.byte_at(start) != 34 { return false }
+    auto p# = start + 1
+    loop p < input.len() {
+        auto c = input.byte_at(p) as u8
+        if c == 34 { return true }
+        if c < 32 { return false }
+        if c == 92 {
+            p += 1
+            if p >= input.len() { return false }
+            auto e = input.byte_at(p)
+            if e == 117 {
+                auto cp = unicode4(input, p + 1)
+                if cp < 0 || (cp >= 56320 && cp <= 57343) { return false }
+                p += 5
+                if cp >= 55296 && cp <= 56319 {
+                    if input.len() - p < 6 || input.byte_at(p) != 92 || input.byte_at(p + 1) != 117 { return false }
+                    auto low = unicode4(input, p + 2)
+                    if low < 56320 || low > 57343 { return false }
+                    p += 6
+                }
+            } else {
+                if e != 34 && e != 92 && e != 47 && e != 98 && e != 102 && e != 110 && e != 114 && e != 116 { return false }
+                p += 1
+            }
+        } else if c >= 128 {
+            auto width# = 0:usize
+            if c >= 194 && c <= 223 { width = 2 }
+            else if c >= 224 && c <= 239 { width = 3 }
+            else if c >= 240 && c <= 244 { width = 4 }
+            else { return false }
+            if input.len() - p < width { return false }
+            auto second = input.byte_at(p + 1) as u8
+            if c == 224 && second < 160 { return false }
+            if c == 237 && second >= 160 { return false }
+            if c == 240 && second < 144 { return false }
+            if c == 244 && second >= 144 { return false }
+            auto k# = 1:usize
+            loop k < width {
+                auto byte = input.byte_at(p + k) as u8
+                if byte < 128 || byte > 191 { return false }
+                k += 1
+            }
+            p += width
+        } else { p += 1 }
+    }
+    return false
+}
+
 pub fn leaf_skip_whitespace(json: str) -> str <- json {
     auto res# = json
     loop res.len() > 0 {
@@ -93,6 +161,10 @@ pub fn parse_i32_value(json: str) -> Result<Parsed<i32>, str> <- json {
 
 pub fn parse_string_value(json: str) -> Result<Parsed<string>, str> <- json {
     auto rem = leaf_skip_whitespace(json)
+    if !json_string_valid(rem, 0) {
+        auto error = Result<Parsed<string>, str>::Err("Invalid JSON string")
+        return cede error
+    }
     auto i = scan_string_end(rem)
     if i == 0 {
         auto error = Result<Parsed<string>, str>::Err("Expected string")
@@ -148,6 +220,10 @@ pub fn parse_string_value(json: str) -> Result<Parsed<string>, str> <- json {
 
 pub fn parse_str_view(json: str) -> Result<Parsed<str>, str> <- json {
     auto rem = leaf_skip_whitespace(json)
+    if !json_string_valid(rem, 0) {
+        auto error = Result<Parsed<str>, str>::Err("Invalid JSON string")
+        return cede error
+    }
     auto i = scan_string_end(rem)
     if i == 0 {
         auto error = Result<Parsed<str>, str>::Err("Expected string")

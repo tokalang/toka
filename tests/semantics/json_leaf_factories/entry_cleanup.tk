@@ -15,8 +15,9 @@ fn main() -> i32 {
         auto target# = string::from("old")
         leaf_watch()
         auto status = target#.parse_json("\"x\\u1\"")
-        if !status.is_err() || !target.as_str().equals("old") || leaf_releases() != 1 { return 3 }
+        // Validation fails before allocating; the old target is not released.
+        if !status.is_err() || !target.as_str().equals("old") || leaf_releases() != 0 { return 3 }
     }
-    if leaf_releases() != 2 { return 4 }
+    if leaf_releases() != 1 { return 4 }
     return 0
 }

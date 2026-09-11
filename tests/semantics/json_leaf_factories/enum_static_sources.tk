@@ -28,8 +28,8 @@ fn rebound() -> str {
 }
 fn main() -> i32 {
     if !from_i32().equals("Invalid i32") { return 1 }
-    if !from_string().equals("Expected string") { return 2 }
-    if !from_view().equals("Expected string") { return 3 }
+    if !from_string().equals("Invalid JSON string") { return 2 }
+    if !from_view().equals("Invalid JSON string") { return 3 }
     if !rebound().equals("later") { return 4 }
     return 0
 }

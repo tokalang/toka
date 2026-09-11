@@ -18,9 +18,10 @@ fn main() -> i32 {
     leaf_watch()
     {
         auto result = parse_string_value("\"x\\u1\"")
-        if !result.is_err() || leaf_releases() != 1 { return 1 }
+        // Syntax is validated before a decoding buffer is allocated.
+        if !result.is_err() || leaf_releases() != 0 { return 1 }
     }
-    if leaf_releases() != 1 { return 2 }
+    if leaf_releases() != 0 { return 2 }
     leaf_watch()
     { auto result = parse_string_value("\"x\"") }
     if leaf_releases() != 1 { return 3 }
