@@ -1,0 +1,36 @@
+// Library representation probe, not a JSON parser or compatibility adapter.
+// All inter-node edges and text references are integers, not borrowed fields.
+import std/vec::{Vec}
+auto destroyed# = 0:i32
+shape Node(kind: i32, first: usize, next: usize, start: usize, count: usize)
+shape Document(text#: string, nodes#: Vec<Node>)
+impl Document@Encap {
+    pub text, nodes
+    fn drop(self#) { destroyed += 1 }
+}
+fn build() -> Document {
+    auto text = string::from("hello")
+    auto nodes# = Vec<Node>::new()
+    nodes#.push(Node(kind = 1, first = 1, next = 0, start = 0, count = 0))
+    nodes#.push(Node(kind = 2, first = 0, next = 0, start = 0, count = 5))
+    auto document = Document(text = cede text, nodes = cede nodes)
+    return cede document
+}
+fn fail_after_build() -> i32 {
+    auto document = build()
+    if document.nodes.len() == 2 { return 7 }
+    return 9
+}
+fn main() -> i32 {
+    {
+        auto original = build()
+        auto moved = cede original
+        auto root = moved.nodes.get(0)
+        auto child = moved.nodes.get(root.first)
+        auto view = moved.text.as_str().substr(child.start, child.count)
+        if view != "hello" || destroyed != 0 { return 1 }
+    }
+    if destroyed != 1 { return 2 }
+    if fail_after_build() != 7 || destroyed != 2 { return 3 }
+    return 0
+}

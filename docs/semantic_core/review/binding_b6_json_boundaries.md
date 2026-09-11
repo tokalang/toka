@@ -1,5 +1,26 @@
 # JSON recovery: accepted concrete leaf slice and deferred designs
 
+## Current direction: library-first (2026-09-12)
+
+The user superseded the assumption that existing JsonNode/raw-container source
+must be preserved. Further cross-function slot receipts and recursive container
+descriptors are not the default next step. Existing safety fixes remain intact.
+
+A library-only representation probe now passes: Document owns a string and
+Vec<Node>; Node contains only primitive tags, indices and text offsets/lengths.
+No recursive owned payload, internal borrowed view or additional raw interface
+is introduced. Seven cases cover construction/return/move, input-owner death,
+buffer growth, complete-value Result factories and failure cleanup, moved-source
+rejection, view escape and descriptor-address escape. Normal/shadow diagnostics
+match; rejected executable/IR artifacts are absent. The Document destructor
+counter runs once on each successful or early-exit lifetime; this is not a heap
+leak audit. CTest `toka_json_flat_document` passes (1/1, 10.74 s).
+
+Decision: use this flat representation for the next library/parser migration.
+The probe is not a parser and does not claim JSON functionality is complete.
+No compiler, existing Vec/HashMap implementation or language rule was modified.
+The earlier implementation history below is retained, not a mandate to expand it.
+
 Status: concrete leaf slice Accepted at `94eaaa46c410054c46ae50c54f51d1075535540d`.
 Local freeze: `freeze/json-leaf-94eaaa46`. This first slice is closed.
 The subsequent combined JSON-recovery implementation is in progress on
