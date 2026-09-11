@@ -1,0 +1,9 @@
+import stdx/serde/json_leaf::{Parsed}
+shape RawHolder(*address: i32)
+shape Choice(Value(i32) | Pointer(RawHolder))
+fn main() -> i32 {
+    auto integer = 7
+    auto value = Choice::Pointer(RawHolder(*address = &integer as *i32))
+    auto parsed = Parsed<Choice>(value = cede value, rest = "tail")
+    return 0
+}

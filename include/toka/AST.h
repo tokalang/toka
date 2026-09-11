@@ -382,6 +382,9 @@ cloneVec(const std::vector<std::unique_ptr<T>> &vec) {
 class Expr : public ASTNode {
 public:
   std::shared_ptr<Type> ResolvedType;
+  // Sema-only current-value fact. Deliberately not copied by expression
+  // clone(): it says opaque raw fields are null, not that storage is owned.
+  std::shared_ptr<Type> KnownNullRawStorageType;
   RawAddressSourcePtr RawAddressValueFacts;
   RawAddressSourcePtr RawAddressViewFacts;
   // Checked expression value-flow provenance. clone() deliberately does not
@@ -635,8 +638,19 @@ struct BorrowedValueReplacementPlan {
   bool SemaValidated = false;
 };
 
+// A checked store occurrence, not a live-set/ownership proof. Control flow,
+// aliasing, retirement and value dependencies must be qualified separately.
+struct RawStorageWriteObservation {
+  std::string SourceEdge;
+  AccessPath Slot;
+  std::shared_ptr<Type> StorageType;
+  std::shared_ptr<Type> ElementType;
+  const Expr *Value = nullptr;
+};
+
 class BinaryExpr : public Expr {
 public:
+  std::shared_ptr<const RawStorageWriteObservation> RawStorageWrite;
   bool BorrowedValueReplacementRequired = false;
   std::shared_ptr<const BorrowedValueReplacementPlan> BorrowedValueReplacement;
   bool NativeSyncReplacementRequired = false;
@@ -1657,8 +1671,17 @@ public:
   }
 };
 
+struct RawStorageReleaseObservation {
+  std::string SourceEdge;
+  AccessPath StorageBinding;
+  std::shared_ptr<Type> StorageType;
+  // Caller-declared syntax only, not a proven initialized-element count.
+  const Expr *DeclaredCount = nullptr;
+};
+
 class FreeStmt : public Stmt {
 public:
+  std::shared_ptr<const RawStorageReleaseObservation> RawStorageRelease;
   std::unique_ptr<Expr> Expression;
   std::unique_ptr<Expr> Count;
   FreeStmt(std::unique_ptr<Expr> expr, std::unique_ptr<Expr> count = nullptr)

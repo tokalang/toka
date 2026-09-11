@@ -1,0 +1,9 @@
+shape Holder(nul *#address: i32)
+shape Mixed(view: str, nested: Holder)
+fn main() -> i32 {
+    auto holder# = Holder(*address = null)
+    auto value = 7
+    holder.*address = &value as nul *i32
+    auto result = Mixed(view = "static", nested = holder)
+    return 0
+}

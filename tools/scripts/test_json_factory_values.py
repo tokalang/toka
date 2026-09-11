@@ -43,6 +43,8 @@ def main():
             print("PASS " + source.name, flush=True)
 
         qualify(FIXTURES / "generic_factory_values.tk", 0)
+        qualify(FIXTURES / "empty_container_base.tk", 0)
+        qualify(FIXTURES / "live_variant_storage.tk", 0)
         cleanup = FIXTURES / "generic_factory_cleanup.tk"
         qualify(cleanup, 0)
         # Same concrete producer before/after its consumer; includes repeated
@@ -55,6 +57,20 @@ def main():
         qualify(reordered, 0)
         qualify(FIXTURES / "generic_factory_borrow_escape.tk", 1)
         qualify(FIXTURES / "generic_factory_invalid_body.tk", 1, "E0408")
+        for name in ("empty_storage_mutated.tk", "empty_storage_unknown_call.tk", "empty_storage_branch.tk", "live_variant_unknown_storage.tk"):
+            source = FIXTURES / name
+            qualify(source, 1, "E04661")
+            for mode, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
+                output = work / (source.stem + suffix)
+                failed = compile(source, mode, "-o", output)
+                assert failed.returncode == 1 and "error[E04661]" in failed.stderr and not output.exists(), failed.stderr
+        rejected = FIXTURES / "empty_storage_rejected_call.tk"
+        normal = compile(rejected, "--check-only")
+        shadow = compile(rejected, "--check-only", "--non-call-transfer-shadow=json")
+        assert normal.returncode == shadow.returncode == 1 and normal.stderr == shadow.stderr, (normal.stderr, shadow.stderr)
+        assert "E04661" not in normal.stderr, normal.stderr
+        assert "unknown" in normal.stderr, normal.stderr
+        print("PASS rejected call preserves null-storage source fact", flush=True)
     print("Factory construction subset passed; container/JSON recovery remains a separate gate.")
 
 

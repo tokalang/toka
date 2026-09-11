@@ -1,0 +1,11 @@
+import std/vec::{Vec}
+import stdx/serde/json_leaf::{Parsed}
+fn main() -> i32 {
+    auto parsed = Parsed<Vec<i32>>(value = Vec<i32>::new(), rest = "remaining")
+    if parsed.value.len() != 0 || !parsed.rest.equals("remaining") { return 1 }
+    auto empty = Vec<i32>::new()
+    auto moved = cede empty
+    auto named = Parsed<Vec<i32>>(value = cede moved, rest = "tail")
+    if named.value.len() != 0 || !named.rest.equals("tail") { return 2 }
+    return 0
+}

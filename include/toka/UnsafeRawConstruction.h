@@ -8,6 +8,17 @@ namespace toka {
 class Expr;
 class CastExpr;
 class FunctionDecl;
+class Type;
+
+// Ancestry only: this identifies an allocation expression that contributed
+// an address. It does NOT establish current liveness, initialized elements,
+// ownership, dependency freedom, or permission to load/take that address.
+struct RawAllocationAncestry {
+  std::string SourceEdge;
+  std::shared_ptr<Type> StorageType;
+  bool IsArray = false;
+  bool HasInitializerSyntax = false;
+};
 
 enum class RawWriteAuthority { None, UnsafeCallerPrecondition };
 
@@ -27,6 +38,7 @@ struct RawAddressSource {
   std::vector<std::shared_ptr<const RawAddressSource>> ArgumentValues;
   std::vector<std::shared_ptr<const RawAddressSource>> ArgumentViews;
   std::vector<std::shared_ptr<const RawAddressSource>> ArgumentStorage;
+  std::shared_ptr<const RawAllocationAncestry> AllocationAncestry;
 };
 using RawAddressSourcePtr = std::shared_ptr<const RawAddressSource>;
 

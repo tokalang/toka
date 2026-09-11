@@ -229,6 +229,11 @@ endif()
 add_subdirectory(src)
 
 if(BUILD_TESTING)
+    add_executable(toka_raw_allocation_ancestry tests/RawAllocationAncestry.cpp)
+    target_link_libraries(toka_raw_allocation_ancestry PRIVATE toka_frontend)
+    target_include_directories(toka_raw_allocation_ancestry PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    add_test(NAME toka_raw_allocation_ancestry
+        COMMAND toka_raw_allocation_ancestry ${CMAKE_SOURCE_DIR}/lib)
     add_executable(toka_native_sync_closed_payload tests/NativeSyncClosedPayload.cpp)
     target_link_libraries(toka_native_sync_closed_payload PRIVATE toka_frontend)
     target_include_directories(toka_native_sync_closed_payload PRIVATE ${CMAKE_SOURCE_DIR}/include)

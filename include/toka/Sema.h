@@ -788,6 +788,7 @@ private:
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
   struct AnalysisState {
+    std::map<uint64_t, std::shared_ptr<Type>> NullStorageBindings;
     std::map<uint64_t, EnumResultSourcePtr> EnumResults;
     std::map<uint64_t, EnumPayloadSelection> EnumSelections;
     std::map<uint64_t, NativeSyncGuardOriginPtr> NativeSyncGuards, NativeSyncSlots;
@@ -1022,6 +1023,12 @@ private:
     bool Completed = false;
   };
   std::map<uint64_t, CallableEnvironmentFacts> m_CallableEnvironments;
+  // A narrow current-value certificate: every otherwise opaque raw field is
+  // literally null. It proves neither ownership nor initialized extent.
+  std::map<uint64_t, std::shared_ptr<Type>> m_NullStorageBindings;
+  bool hasCompleteValueStorage(Expr *expression, bool *sawNull = nullptr);
+  void recordNullStorageExpression(Expr *expression, bool valid);
+  void recordNullStorageBinding(const AccessPath &place, Expr *source);
   // Restrictive policy for source-visible generic JSON mutation adapters.
   // Factory capability alone never authorizes storing input borrows in self.
   std::set<const FunctionDecl *> m_JsonOwnedAdapters;

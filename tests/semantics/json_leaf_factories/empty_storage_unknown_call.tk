@@ -1,0 +1,9 @@
+shape Holder(nul *#address: i32)
+shape Mixed(view: str, nested: Holder)
+extern fn unknown(value#: Holder) -> void
+fn main() -> i32 {
+    auto holder# = Holder(*address = null)
+    unknown(holder#)
+    auto result = Mixed(view = "static", nested = holder)
+    return 0
+}

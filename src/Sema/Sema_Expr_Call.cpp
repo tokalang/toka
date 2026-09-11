@@ -3369,6 +3369,184 @@ bool Sema::hasBorrowedValueFields(std::shared_ptr<toka::Type> type) {
   return visit(type);
 }
 
+bool Sema::hasCompleteValueStorage(Expr *expression, bool *sawNull) {
+  if (sawNull) *sawNull = false;
+  if (!expression || !expression->ResolvedType) return false;
+  std::set<const ShapeDecl *> activeTypes;
+  std::set<const FunctionDecl *> activeFactories;
+  // A null raw field has no referent. Recover that fact only from the
+  // current checked construction, never from a type name, a stale binding
+  // initializer, or absence of dependency roots. This is the empty-storage
+  // base case, not permission to take an element or assume a live extent.
+  auto transparentStorageSource = [](Expr *source) {
+    while (source) {
+      if (auto *cast = dynamic_cast<CastExpr *>(source);
+          cast && (cast->Kind == CastKind::Ascription || cast->Kind == CastKind::Implicit ||
+                   dynamic_cast<NullExpr *>(cast->Expression.get()))) source = cast->Expression.get();
+      else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source)) source = unsafe->Expression.get();
+      else if (auto *cede = dynamic_cast<CedeExpr *>(source)) source = cede->Value.get();
+      else break;
+    }
+    return source;
+  };
+  std::function<bool(std::shared_ptr<Type>, Expr *)> storageComplete =
+      [&](std::shared_ptr<Type> type, Expr *source) -> bool {
+    type = resolveExplicitCedeStage0TypeReadOnly(type);
+    source = transparentStorageSource(source);
+    if (!type || type->isUnknown() || type->isUninit() ||
+        type->isFunction() || type->isDynFn() || type->isAddrType() || type->isOAddrType())
+      return false;
+    if (type->isRawPointer()) {
+      const bool null = type->IsNullable && source && dynamic_cast<NullExpr *>(source);
+      if (null && sawNull) *sawNull = true;
+      return null;
+    }
+    if (hasCanonicalOwningStringStorage(type)) return true;
+    if (type->isUniquePtr() || type->isSharedPtr())
+      return storageComplete(type->getPointeeType(), nullptr);
+    if (type->isArray()) return storageComplete(type->getArrayElementType(), nullptr);
+    // These identities still require the actual-source collector below;
+    // their carrier representation is not an independent raw field.
+    if (queryExplicitCedeStage0OwnershipReadOnly(type) == ValueOwnership::BorrowedView)
+      return true;
+    if (!type->isShape()) return type->typeKind == Type::Primitive;
+    auto shape = std::dynamic_pointer_cast<ShapeType>(type);
+    if (!shape || !shape->Decl) return false;
+    if (shape->Decl->Kind == ShapeKind::Enum) {
+      auto *constructor = dynamic_cast<CallExpr *>(source);
+      const bool directConstructor = constructor && constructor->ResolvedShape == shape->Decl &&
+          constructor->MatchedMemberIdx >= 0;
+      std::set<size_t> variants;
+      if (directConstructor) variants.insert(constructor->MatchedMemberIdx);
+      else if (auto known = m_EnumExpressionResults.find(source);
+               known != m_EnumExpressionResults.end() && known->second &&
+               known->second->Declaration == shape->Decl &&
+               known->second->Producer && known->second->Producer == CurrentFunction)
+        variants = known->second->Variants;
+      if (!variants.empty()) {
+        if (!activeTypes.insert(shape->Decl).second) return false;
+        bool complete = true;
+        for (auto variant : variants) {
+          if (variant >= shape->Decl->Members.size()) { complete = false; break; }
+          const auto &member = shape->Decl->Members[variant];
+          const size_t count = member.IsUnitVariant ? 0 : member.SubMembers.empty() ? 1 : member.SubMembers.size();
+          if (directConstructor && constructor->Args.size() != count) { complete = false; break; }
+          for (size_t slot = 0; slot < count; ++slot) {
+            auto payload = getPhysicalType(member.SubMembers.empty() ? member : member.SubMembers[slot]);
+            // Current construction may supply actual slot facts. A named
+            // value only supplies its live variant: never replay old payload
+            // initializers after mutation, or inspect inactive variants.
+            complete &= storageComplete(payload,
+                directConstructor ? constructor->Args[slot].get() : nullptr);
+          }
+        }
+        activeTypes.erase(shape->Decl);
+        return complete;
+      }
+    }
+    std::shared_ptr<Type> remembered = source ? source->KnownNullRawStorageType : nullptr;
+    if (!remembered) {
+      if (auto *variable = dynamic_cast<VariableExpr *>(source);
+          variable && variable->ResolvedBindingID) {
+        auto found = m_NullStorageBindings.find(variable->ResolvedBindingID);
+        if (found != m_NullStorageBindings.end()) remembered = found->second;
+      }
+    }
+    // Only the outer value permission is irrelevant to a storage-source fact;
+    // element morphology, nullable and blocked attributes remain exact.
+    if (remembered && remembered->isShape() &&
+        remembered->withAttributes(false, remembered->IsNullable, remembered->IsBlocked)->equals(
+            *type->withAttributes(false, type->IsNullable, type->IsBlocked))) {
+      if (sawNull) *sawNull = true;
+      return true;
+    }
+    // A zero-argument, single-return producer may forward its checked
+    // construction. No body execution or name-based parameter substitution
+    // is performed here; cold, invalid and recursive producers stay unknown.
+    if (auto *call = dynamic_cast<CallExpr *>(source); call && call->Args.empty()) {
+      auto *function = call->ResolvedFn;
+      auto checked = m_RawAddressReturns.find(function);
+      if (function && function->Args.empty() && function->Body &&
+          function->Body->Statements.size() == 1 &&
+          function->ResolvedReturnType && source->ResolvedType &&
+          function->ResolvedReturnType->equals(*source->ResolvedType) &&
+          checked != m_RawAddressReturns.end() && checked->second.Checked &&
+          checked->second.Valid && activeFactories.insert(function).second) {
+        auto *returned = dynamic_cast<ReturnStmt *>(function->Body->Statements.front().get());
+        const bool complete = returned && returned->ReturnValue &&
+            returned->ReturnValue->ResolvedType &&
+            returned->ReturnValue->ResolvedType->equals(*source->ResolvedType) &&
+            storageComplete(type, returned->ReturnValue.get());
+        activeFactories.erase(function);
+        return complete;
+      }
+    }
+    if (!activeTypes.insert(shape->Decl).second) return false;
+    auto *construction = dynamic_cast<InitStructExpr *>(source);
+    auto constructedType = construction
+        ? std::dynamic_pointer_cast<ShapeType>(construction->ResolvedType) : nullptr;
+    if (!constructedType || constructedType->Decl != shape->Decl ||
+        !constructedType->equals(*type)) construction = nullptr;
+    std::map<std::string, std::shared_ptr<Type>> substitutions;
+    if (!shape->Decl->GenericParams.empty()) {
+      if (shape->GenericArgs.size() != shape->Decl->GenericParams.size()) return false;
+      for (size_t index = 0; index < shape->GenericArgs.size(); ++index)
+        substitutions[shape->Decl->GenericParams[index].Name] = shape->GenericArgs[index];
+    }
+    auto fieldComplete = [&](const ShapeMember &field) {
+      auto fieldType = getPhysicalType(field);
+      if (fieldType && !substitutions.empty()) fieldType = fieldType->substitute(substitutions);
+      Expr *fieldSource = nullptr;
+      if (construction) {
+        auto found = std::find_if(construction->Members.begin(), construction->Members.end(),
+            [&](const auto &member) {
+              return Type::stripMorphology(member.first) == Type::stripMorphology(field.Name);
+            });
+        if (found != construction->Members.end()) fieldSource = found->second.get();
+        else fieldSource = field.DefaultValue.get();
+      }
+      return storageComplete(fieldType, fieldSource);
+    };
+    bool complete = true;
+    for (const auto &field : shape->Decl->Members) {
+      if (shape->Decl->Kind == ShapeKind::Enum) {
+        for (const auto &payload : field.SubMembers) complete &= fieldComplete(payload);
+      } else complete &= fieldComplete(field);
+    }
+    activeTypes.erase(shape->Decl);
+    return complete;
+  };
+  return storageComplete(expression->ResolvedType, expression);
+}
+
+void Sema::recordNullStorageExpression(Expr *expression, bool valid) {
+  if (!valid || !expression || !expression->ResolvedType || !expression->ResolvedType->isShape()) return;
+  // Only these expression forms can establish/forward the narrow fact. Do
+  // not recursively inspect every shape-valued member access on the hot path.
+  bool candidate = dynamic_cast<InitStructExpr *>(expression) != nullptr;
+  if (auto *call = dynamic_cast<CallExpr *>(expression))
+    candidate = call->Args.empty() || (call->ResolvedShape && call->ResolvedShape->Kind == ShapeKind::Enum);
+  if (auto *variable = dynamic_cast<VariableExpr *>(expression))
+    candidate = variable->ResolvedBindingID && m_NullStorageBindings.count(variable->ResolvedBindingID);
+  if (auto *cede = dynamic_cast<CedeExpr *>(expression)) candidate = cede->Value->KnownNullRawStorageType != nullptr;
+  if (auto *cast = dynamic_cast<CastExpr *>(expression)) candidate = cast->Expression->KnownNullRawStorageType != nullptr;
+  if (auto *unsafe = dynamic_cast<UnsafeExpr *>(expression)) candidate = unsafe->Expression->KnownNullRawStorageType != nullptr;
+  if (!candidate) return;
+  bool sawNull = false;
+  if (hasCompleteValueStorage(expression, &sawNull) && sawNull)
+    expression->KnownNullRawStorageType = expression->ResolvedType->withAttributes(
+        expression->ResolvedType->IsWritable, expression->ResolvedType->IsNullable,
+        expression->ResolvedType->IsBlocked);
+}
+
+void Sema::recordNullStorageBinding(const AccessPath &place, Expr *source) {
+  if (!place.RootID) return;
+  m_NullStorageBindings.erase(place.RootID);
+  if (!CurrentFunction || !place.Projections.empty()) return;
+  if (source && source->KnownNullRawStorageType)
+    m_NullStorageBindings[place.RootID] = source->KnownNullRawStorageType;
+}
+
 bool Sema::collectActualReturnReferents(
     Expr *expression, std::vector<AccessPath> &paths,
     std::vector<SourceLocation> *staticStorage,
@@ -3392,45 +3570,7 @@ bool Sema::collectActualReturnReferents(
     // A mapped field does not prove unrelated storage at any nesting depth.
     // Inspect resolved instances (including array/variant payloads), without
     // instantiating types or mistaking a template's fields for an instance.
-    std::set<const ShapeDecl *> activeTypes;
-    std::function<bool(std::shared_ptr<Type>)> storageComplete =
-        [&](std::shared_ptr<Type> type) -> bool {
-      type = resolveExplicitCedeStage0TypeReadOnly(type);
-      if (!type || type->isUnknown() || type->isUninit() || type->isRawPointer() ||
-          type->isFunction() || type->isDynFn() || type->isAddrType() || type->isOAddrType())
-        return false;
-      if (hasCanonicalOwningStringStorage(type)) return true;
-      if (type->isUniquePtr() || type->isSharedPtr())
-        return storageComplete(type->getPointeeType());
-      if (type->isArray()) return storageComplete(type->getArrayElementType());
-      // These identities still require the actual-source collector below;
-      // their carrier representation is not an independent raw field.
-      if (queryExplicitCedeStage0OwnershipReadOnly(type) == ValueOwnership::BorrowedView)
-        return true;
-      if (!type->isShape()) return type->typeKind == Type::Primitive;
-      auto shape = std::dynamic_pointer_cast<ShapeType>(type);
-      if (!shape || !shape->Decl || !activeTypes.insert(shape->Decl).second) return false;
-      std::map<std::string, std::shared_ptr<Type>> substitutions;
-      if (!shape->Decl->GenericParams.empty()) {
-        if (shape->GenericArgs.size() != shape->Decl->GenericParams.size()) return false;
-        for (size_t index = 0; index < shape->GenericArgs.size(); ++index)
-          substitutions[shape->Decl->GenericParams[index].Name] = shape->GenericArgs[index];
-      }
-      auto fieldComplete = [&](const ShapeMember &field) {
-        auto fieldType = getPhysicalType(field);
-        if (fieldType && !substitutions.empty()) fieldType = fieldType->substitute(substitutions);
-        return storageComplete(fieldType);
-      };
-      bool complete = true;
-      for (const auto &field : shape->Decl->Members) {
-        if (shape->Decl->Kind == ShapeKind::Enum) {
-          for (const auto &payload : field.SubMembers) complete &= fieldComplete(payload);
-        } else complete &= fieldComplete(field);
-      }
-      activeTypes.erase(shape->Decl);
-      return complete;
-    };
-    if (!storageComplete(fieldOwner->ResolvedType)) return false;
+    if (!hasCompleteValueStorage(fieldOwner)) return false;
   }
   std::set<uint64_t> visitingStorage;
   std::function<bool(Expr *, std::vector<AccessPath> &)> visit;

@@ -1663,6 +1663,8 @@ void Sema::checkStmt(Stmt *S) {
     m_LastLifeDependencies.clear();
     m_LastFieldDependencies.clear();
   } else if (auto *Free = dynamic_cast<FreeStmt *>(S)) {
+    Free->RawStorageRelease.reset();
+    const size_t releaseDiagnostics = DiagnosticEngine::records().size();
     Free->Expression = foldGenericConstant(std::move(Free->Expression));
     auto FreeTypeObj = checkExpr(Free->Expression.get());
     if (!FreeTypeObj->isRawPointer()) {
@@ -1676,6 +1678,23 @@ void Sema::checkStmt(Stmt *S) {
                                  ExprType);
         HasError = true;
       }
+    }
+    const auto &releaseRecords = DiagnosticEngine::records();
+    if (FreeTypeObj->isRawPointer() && std::none_of(
+            releaseRecords.begin() + releaseDiagnostics, releaseRecords.end(),
+            [](const auto &record) { return record.Level == DiagLevel::Error; })) {
+      Expr *source = Free->Expression.get();
+      while (auto *selector = dynamic_cast<UnaryExpr *>(source)) {
+        if (selector->Op != TokenType::Star) break;
+        source = selector->RHS.get();
+      }
+      auto observation = std::make_shared<RawStorageReleaseObservation>();
+      observation->SourceEdge = makeExplicitCedeStage0NonCallGroupIdentity(Free, "raw-storage-release");
+      observation->StorageBinding = canonicalizeAccessPath(makeAccessPath(source));
+      observation->StorageType = FreeTypeObj;
+      observation->DeclaredCount = Free->Count.get();
+      if (!observation->SourceEdge.empty() && observation->StorageBinding.RootID)
+        Free->RawStorageRelease = std::move(observation);
     }
   } else if (auto *Unsafe = dynamic_cast<UnsafeStmt *>(S)) {
     bool oldUnsafe = m_InUnsafeContext;
@@ -2836,6 +2855,7 @@ void Sema::checkStmt(Stmt *S) {
     if (Var->Init) {
       auto path = makeAccessPath(Var->Name);
       if (!HasError) recordEnumBinding(path, Var->Init.get());
+      if (!HasError) recordNullStorageBinding(path, Var->Init.get());
       recordRawAddressBinding(path, Var->Init.get());
       if (!HasError) recordNativeSyncBinding(path, Var->Init.get(), true);
       if (!HasError) recordNativeSyncOwnerRecipe(path, Var->Init.get(), true);

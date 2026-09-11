@@ -478,7 +478,7 @@ fn parse_node_value(json: str, depth: usize) -> Result<Parsed<JsonNode>, str> <-
         auto error = Result<Parsed<JsonNode>, str>::Err("Depth limit exceeded")
         return cede error
     }
-    auto rem# = json_skip_whitespace(json)
+    auto rem = json_skip_whitespace(json)
     if rem.len() == 0 {
         auto error = Result<Parsed<JsonNode>, str>::Err("Unexpected EOF")
         return cede error
@@ -486,79 +486,86 @@ fn parse_node_value(json: str, depth: usize) -> Result<Parsed<JsonNode>, str> <-
     auto c = rem.byte_at(0)
     if c == 123 {
         auto values# = HashMap<string, JsonNode>::new()
-        rem = rem.substr(1, rem.len() - 1)
+        auto cursor# = json.len() - rem.len() + 1
         auto first# = true
         loop true {
-            rem = json_skip_whitespace(rem)
-            if rem.len() > 0 && rem.byte_at(0) == 125 {
-                rem = rem.substr(1, rem.len() - 1)
+            auto start = json_skip_whitespace(json.substr(cursor, json.len() - cursor))
+            cursor = json.len() - start.len()
+            if start.len() > 0 && start.byte_at(0) == 125 {
+                cursor += 1
                 break
             }
             if !first {
-                if rem.len() == 0 || rem.byte_at(0) != 44 {
+                if start.len() == 0 || start.byte_at(0) != 44 {
                     auto error = Result<Parsed<JsonNode>, str>::Err("Expected ,")
                     return cede error
                 }
-                rem = json_skip_whitespace(rem.substr(1, rem.len() - 1))
+                cursor += 1
             }
             first = false
-            auto key_result = parse_string_value(rem)
+            auto key_result = parse_string_value(json.substr(cursor, json.len() - cursor))
             if key_result.is_err() {
                 auto error = Result<Parsed<JsonNode>, str>::Err(key_result.unwrap_err())
                 return cede error
             }
             auto key = key_result.unwrap()
-            rem = json_skip_whitespace(key.rest)
-            if rem.len() == 0 || rem.byte_at(0) != 58 {
+            // These internal parsers return suffixes of json. Keep only an
+            // offset across iterations, never a borrow of a local descriptor.
+            auto after_key = json_skip_whitespace(json.substr(json.len() - key.rest.len(), key.rest.len()))
+            cursor = json.len() - after_key.len()
+            if after_key.len() == 0 || after_key.byte_at(0) != 58 {
                 auto error = Result<Parsed<JsonNode>, str>::Err("Expected :")
                 return cede error
             }
-            auto child_result = parse_node_value(rem.substr(1, rem.len() - 1), depth + 1)
+            auto child_result = parse_node_value(json.substr(cursor + 1, json.len() - cursor - 1), depth + 1)
             if child_result.is_err() {
                 auto error = Result<Parsed<JsonNode>, str>::Err(child_result.unwrap_err())
                 return cede error
             }
             auto child = child_result.unwrap()
+            auto remaining = child.rest.len()
             auto name = cede key.value
             auto value = cede child.value
             values#.insert(cede name, cede value)
-            rem = child.rest
+            cursor = json.len() - remaining
         }
         auto value = JsonNode::ObjectNode(cede values)
-        auto parsed = Parsed<JsonNode>(value = cede value, rest = rem)
+        auto parsed = Parsed<JsonNode>(value = cede value, rest = json.substr(cursor, json.len() - cursor))
         auto result = Result<Parsed<JsonNode>, str>::Ok(cede parsed)
         return cede result
     }
     if c == 91 {
         auto values# = Vec<JsonNode>::new()
-        rem = rem.substr(1, rem.len() - 1)
+        auto cursor# = json.len() - rem.len() + 1
         auto first# = true
         loop true {
-            rem = json_skip_whitespace(rem)
-            if rem.len() > 0 && rem.byte_at(0) == 93 {
-                rem = rem.substr(1, rem.len() - 1)
+            auto start = json_skip_whitespace(json.substr(cursor, json.len() - cursor))
+            cursor = json.len() - start.len()
+            if start.len() > 0 && start.byte_at(0) == 93 {
+                cursor += 1
                 break
             }
             if !first {
-                if rem.len() == 0 || rem.byte_at(0) != 44 {
+                if start.len() == 0 || start.byte_at(0) != 44 {
                     auto error = Result<Parsed<JsonNode>, str>::Err("Expected ,")
                     return cede error
                 }
-                rem = json_skip_whitespace(rem.substr(1, rem.len() - 1))
+                cursor += 1
             }
             first = false
-            auto child_result = parse_node_value(rem, depth + 1)
+            auto child_result = parse_node_value(json.substr(cursor, json.len() - cursor), depth + 1)
             if child_result.is_err() {
                 auto error = Result<Parsed<JsonNode>, str>::Err(child_result.unwrap_err())
                 return cede error
             }
             auto child = child_result.unwrap()
+            auto remaining = child.rest.len()
             auto value = cede child.value
             values#.push(cede value)
-            rem = child.rest
+            cursor = json.len() - remaining
         }
         auto value = JsonNode::ArrayNode(cede values)
-        auto parsed = Parsed<JsonNode>(value = cede value, rest = rem)
+        auto parsed = Parsed<JsonNode>(value = cede value, rest = json.substr(cursor, json.len() - cursor))
         auto result = Result<Parsed<JsonNode>, str>::Ok(cede parsed)
         return cede result
     }
@@ -569,9 +576,10 @@ fn parse_node_value(json: str, depth: usize) -> Result<Parsed<JsonNode>, str> <-
             return cede error
         }
         auto child = leaf.unwrap()
+        auto remaining = child.rest.len()
         auto text = cede child.value
         auto value = JsonNode::StrNode(cede text)
-        auto parsed = Parsed<JsonNode>(value = cede value, rest = child.rest)
+        auto parsed = Parsed<JsonNode>(value = cede value, rest = json.substr(json.len() - remaining, remaining))
         auto result = Result<Parsed<JsonNode>, str>::Ok(cede parsed)
         return cede result
     }
@@ -582,14 +590,15 @@ fn parse_node_value(json: str, depth: usize) -> Result<Parsed<JsonNode>, str> <-
             return cede error
         }
         auto child = leaf.unwrap()
+        auto remaining = child.rest.len()
         auto value = JsonNode::BoolNode(child.value)
-        auto parsed = Parsed<JsonNode>(value = cede value, rest = child.rest)
+        auto parsed = Parsed<JsonNode>(value = cede value, rest = json.substr(json.len() - remaining, remaining))
         auto result = Result<Parsed<JsonNode>, str>::Ok(cede parsed)
         return cede result
     }
     if rem.starts_with("null") {
         auto value = JsonNode::NullNode(0)
-        auto parsed = Parsed<JsonNode>(value = cede value, rest = rem.substr(4, rem.len() - 4))
+        auto parsed = Parsed<JsonNode>(value = cede value, rest = json.substr(json.len() - rem.len() + 4, rem.len() - 4))
         auto result = Result<Parsed<JsonNode>, str>::Ok(cede parsed)
         return cede result
     }
@@ -599,8 +608,9 @@ fn parse_node_value(json: str, depth: usize) -> Result<Parsed<JsonNode>, str> <-
         return cede error
     }
     auto child = leaf.unwrap()
+    auto remaining = child.rest.len()
     auto value = JsonNode::NumNode(child.value)
-    auto parsed = Parsed<JsonNode>(value = cede value, rest = child.rest)
+    auto parsed = Parsed<JsonNode>(value = cede value, rest = json.substr(json.len() - remaining, remaining))
     auto result = Result<Parsed<JsonNode>, str>::Ok(cede parsed)
     return cede result
 }

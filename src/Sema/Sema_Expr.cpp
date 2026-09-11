@@ -813,6 +813,7 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
 Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.EnumResults = m_EnumResults;
+  state.NullStorageBindings = m_NullStorageBindings;
   state.EnumSelections = m_EnumSelections;
   state.NativeSyncBindings = m_NativeSyncBindings;
   state.NativeSyncOwnerRecipes = m_NativeSyncOwnerRecipes;
@@ -884,6 +885,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   auto mergedReferenceTargets = states.front().ReferenceTargets;
   auto callableEnvironments = states.front().CallableEnvironments;
   auto enumResults = states.front().EnumResults;
+  auto nullStorageBindings = states.front().NullStorageBindings;
   auto enumSelections = states.front().EnumSelections;
   auto nativeSyncBindings = states.front().NativeSyncBindings;
   auto nativeOwnerRecipes = states.front().NativeSyncOwnerRecipes;
@@ -905,6 +907,12 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
     };
     intersectNative(nativeGuards, state.NativeSyncGuards);
     intersectNative(enumResults, state.EnumResults);
+    for (auto it = nullStorageBindings.begin(); it != nullStorageBindings.end();) {
+      auto other = state.NullStorageBindings.find(it->first);
+      if (other == state.NullStorageBindings.end() || !it->second || !other->second ||
+          !it->second->equals(*other->second)) it = nullStorageBindings.erase(it);
+      else ++it;
+    }
     intersectNative(enumSelections, state.EnumSelections);
     intersectNative(nativeSlots, state.NativeSyncSlots);
     invalidOwnerRecipes.insert(state.InvalidNativeSyncOwnerRecipes.begin(),
@@ -990,6 +998,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   restoreVisibleReferenceTargets(CurrentScope, mergedReferenceTargets);
   m_CallableEnvironments = std::move(callableEnvironments);
   m_EnumResults = std::move(enumResults);
+  m_NullStorageBindings = std::move(nullStorageBindings);
   m_EnumSelections = std::move(enumSelections);
   m_NativeSyncBindings = std::move(nativeSyncBindings);
   m_NativeSyncOwnerRecipes = std::move(nativeOwnerRecipes);
@@ -1217,6 +1226,23 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     return toka::Type::fromString("()");
   ActiveNodeRAII Active(E);
   const size_t expressionDiagnosticStart = DiagnosticEngine::records().size();
+  E->KnownNullRawStorageType.reset();
+  if (auto *assignment = dynamic_cast<BinaryExpr *>(E)) assignment->RawStorageWrite.reset();
+  // Until an operation has a storage-preservation summary, it cannot retain
+  // a storage-source certificate. Invalidate before evaluating its operands;
+  // address exposure and writes are equally conservative. This grants no
+  // privilege to library calls, unsafe blocks, or particular type names.
+  const bool mayInvalidateNullStorage = dynamic_cast<CallExpr *>(E) || dynamic_cast<MethodCallExpr *>(E) ||
+      dynamic_cast<AddressOfExpr *>(E) || dynamic_cast<PostfixExpr *>(E) ||
+      dynamic_cast<BinaryExpr *>(E) || dynamic_cast<UnaryExpr *>(E) ||
+      dynamic_cast<ClosureExpr *>(E) || dynamic_cast<AwaitExpr *>(E) ||
+      dynamic_cast<WaitExpr *>(E) || dynamic_cast<StartExpr *>(E) ||
+      dynamic_cast<MagicExpr *>(E);
+  std::optional<std::map<uint64_t, std::shared_ptr<Type>>> nullStorageRollback;
+  if (mayInvalidateNullStorage && !m_NullStorageBindings.empty()) {
+    nullStorageRollback = m_NullStorageBindings;
+    m_NullStorageBindings.clear();
+  }
   m_EnumExpressionResults.erase(E);
   m_EnumExpressionSelections.erase(E);
   if (auto *cede = dynamic_cast<CedeExpr *>(E)) cede->SourceCheckSucceeded = false;
@@ -1388,6 +1414,53 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       m_LastBorrowSource = "";
   }
 
+  const auto &finalRecords = DiagnosticEngine::records();
+  const bool finalSuccess = T && !T->isUnknown() && std::none_of(
+      finalRecords.begin() + std::min(expressionDiagnosticStart, finalRecords.size()),
+      finalRecords.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
+  if (!finalSuccess && nullStorageRollback)
+    m_NullStorageBindings = std::move(*nullStorageRollback);
+  if (finalSuccess && T->isReference()) m_NullStorageBindings.clear();
+  recordNullStorageExpression(E, finalSuccess);
+  if (auto *assignment = dynamic_cast<BinaryExpr *>(E);
+      assignment && finalSuccess && assignment->Op == "=" && assignment->OverloadedMethod.empty()) {
+    auto *slot = dynamic_cast<ArrayIndexExpr *>(assignment->LHS.get());
+    if (slot && slot->Indices.size() == 1) {
+      auto storage = queryExplicitCedeStage0NonCallType(slot->Array.get(), nullptr);
+      auto pointee = storage && storage->isRawPointer() ? storage->getPointeeType() : nullptr;
+      if (pointee && (pointee->isSlice() || pointee->isArray()) &&
+          pointee->getArrayElementType() && assignment->RHS->ResolvedType) {
+        auto observation = std::make_shared<RawStorageWriteObservation>();
+        observation->SourceEdge = makeExplicitCedeStage0NonCallGroupIdentity(E, "raw-storage-write");
+        observation->Slot = canonicalizeAccessPath(makeAccessPath(slot));
+        observation->StorageType = storage;
+        observation->ElementType = pointee->getArrayElementType();
+        observation->Value = assignment->RHS.get();
+        if (!observation->SourceEdge.empty() && observation->Slot.RootID)
+          assignment->RawStorageWrite = std::move(observation);
+      }
+    }
+  }
+  if (auto *allocation = dynamic_cast<AllocExpr *>(E);
+      allocation && finalSuccess && T->isRawPointer()) {
+    auto ancestry = std::make_shared<RawAllocationAncestry>();
+    ancestry->SourceEdge = makeExplicitCedeStage0NonCallGroupIdentity(E, "raw-allocation-source");
+    ancestry->StorageType = T->withAttributes(T->IsWritable, T->IsNullable, T->IsBlocked);
+    ancestry->IsArray = allocation->IsArray;
+    ancestry->HasInitializerSyntax = allocation->Initializer != nullptr;
+    // Keep every pre-existing restriction and graph edge intact. No planner
+    // or CodeGen gate consumes this observational ancestry as authority.
+    if (!ancestry->SourceEdge.empty()) {
+      auto attach = [&](RawAddressSourcePtr &facts) {
+        if (!facts) return;
+        auto withAncestry = std::make_shared<RawAddressSource>(*facts);
+        withAncestry->AllocationAncestry = ancestry;
+        facts = std::move(withAncestry);
+      };
+      attach(E->RawAddressValueFacts);
+      attach(E->RawAddressViewFacts);
+    }
+  }
   return T;
 }
 

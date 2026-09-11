@@ -1,0 +1,8 @@
+shape Holder(nul *#address: i32)
+shape Mixed(view: str, nested: Holder)
+fn example(flag: bool, *pointer: i32) {
+    auto holder# = Holder(*address = null)
+    if flag { holder.*address = *pointer }
+    auto result = Mixed(view = "static", nested = holder)
+}
+fn main() -> i32 { return 0 }

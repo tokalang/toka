@@ -35,6 +35,27 @@ Reproduce the distinct gates with `tools/scripts/test_json_factory_values.py`
 and `tools/scripts/test_json_recovery.py`, each with `--build-dir BUILD`.
 The latter defaults to compile **and run**; `--check-only` is diagnostic only.
 
+### Subsequent source-chain WIP (not an acceptance)
+
+- Checked null raw fields now survive local value transfer; unknown operations
+  revoke the fact, and rejected calls restore it. No old initializer is
+  reinterpreted by its current spelling. Live enum variants are checked without
+  treating inactive raw payloads as initialized storage.
+- Allocation ancestry, actual raw writes and declared releases are distinct
+  observations. None authorizes a load/take, proves a live set, or supplies an
+  ownership/cleanup plan. The real-source C++ test checks their identities.
+- The concrete recursive parser now retains numeric cursors across iterations
+  and derives views from its original input. The inspected JSON failure no
+  longer reports the prior local `rem`/`key.rest` lifetime errors; it still
+  fails on unqualified recursive storage. Its runtime is NOT qualified.
+- Tool build and nine directly related CTest gates passed (9/9, 178.81 s).
+  No full PASS/FAIL run; original JSON recovery is not claimed.
+- Execution review rejected proposed allocation-to-storage admission and an
+  enum fallback. Those changes are not applied. The later empty-owner pattern
+  verifier was also rejected and is not applied. Full B6 production admission
+  remains pending explicit consolidated scope confirmation, not another leaf
+  acceptance. Do not infer permission from this WIP checkpoint.
+
 ## 下一实施裁定：先做完整值 factory 的具体类型验证
 
 shared/iterator 已在 c81ecdd6 验收，本设计不再向该切片追加工作。
