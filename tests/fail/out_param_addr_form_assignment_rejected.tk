@@ -2,14 +2,15 @@
 // Control: assigning the address form into the payload still requires an
 // explicit handle transfer, so the scalar-copy fix does not silently accept
 // a pointer where a value is expected.
-fn assign_addr(*out: u64#) {
+fn assign_addr(*out#: u64) {
     auto other# = 0:u64
-    auto *p# = *out
+    auto *p# = &out as *u64#
     p = &other as *u64#
 }
 
 fn main() -> i32 {
     auto x# = 0:u64
-    assign_addr(&x as *u64#)
+    auto *px# = &x as *u64#
+    assign_addr(*px)
     return 0
 }

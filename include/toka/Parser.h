@@ -78,6 +78,10 @@ private:
                                       const std::string &bindingPrefix,
                                       TypeSyntaxPtr &typeSyntax,
                                       std::string &typeName);
+  bool rejectTypeSideWriteMarker(const Token &nameTok,
+                                 const std::string &bindingPrefix,
+                                 TypeSyntaxPtr &typeSyntax,
+                                 std::string &typeName);
   bool isTypeStart() const;
 
   bool HasError = false;

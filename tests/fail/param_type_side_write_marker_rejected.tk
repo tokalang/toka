@@ -1,0 +1,14 @@
+// EXPECT: error[E0496]
+// A type-side '#' on a named parameter is meaningless: the writable marker
+// belongs on the binding name (`out#: T`).
+//
+// This is a GRAMMAR gate, deliberately kept separate from the read-only
+// capability gates so that a syntax error can never stand in for a capability
+// rejection (the capability negatives must still fail with E04571).
+fn store(*out: u64#) {
+    out = 123:u64
+}
+
+fn main() -> i32 {
+    return 0
+}

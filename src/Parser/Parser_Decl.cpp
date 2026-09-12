@@ -778,8 +778,9 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       bool isCeded = match(TokenType::KwCede);
 
       if (firstArg && match(TokenType::KwSelf)) {
+        Token selfTok = previous();
         FunctionDecl::Arg arg;
-        arg.Loc = previous().Loc;
+        arg.Loc = selfTok.Loc;
         arg.IsCeded = isCeded;
         arg.IsInit = isInit;
         arg.Name = "self";
@@ -787,23 +788,30 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         arg.TypeSyntax = TypeSyntax::named("Self", arg.Loc, arg.Loc);
         arg.IsRawPointer = false;
         // Capture mutability from token (e.g. self#)
-        if (previous().HasWrite) {
+        if (selfTok.HasWrite) {
           // arg.IsMutable = true; // Deprecated
           arg.IsValueMutable = true;
         }
-        if (previous().IsBlocked) {
+        if (selfTok.IsBlocked) {
           arg.IsValueBlocked = true;
         }
 
         // [Fix] Allow explicit type annotation: self: Type
+        bool rejectedTypeSideWrite = false;
         if (match(TokenType::Colon)) {
           if (!isTypeStart()) {
             error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
           } else {
             arg.TypeSyntax = parseTypeSyntax();
             arg.Type = canonicalType(arg.TypeSyntax);
+            // `self` is a named parameter like any other: a `#` written on its
+            // type is not a write grant.  Writability is spelled on the binding
+            // (`self#` / `self#: T`), which is what the argument gate reads.
+            rejectedTypeSideWrite =
+                rejectTypeSideWriteMarker(selfTok, "", arg.TypeSyntax, arg.Type);
           }
         }
+        arg.HadRejectedTypeSideMorphology = rejectedTypeSideWrite;
         arg.Permission = BindingPermission::fromLegacy(
             arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
             arg.IsRebindable, arg.IsPointerNullable, arg.IsRebindBlocked,
@@ -817,7 +825,21 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       firstArg = false;
 
       std::vector<HandleLayer> handleLayers;
+      // `argPrefix` describes the hat shape alone; it also selects the bare
+      // pointee type reading below, so the markers are kept out of it.
+      // `argHintPrefix` additionally carries what the lexer folded into each hat
+      // token -- `#` (rebindable) and `$` (blocked) -- so a suggested rewrite
+      // cannot silently drop the handle's own authority.
       std::string argPrefix = "";
+      std::string argHintPrefix = "";
+      auto noteHat = [&](const char *hat, const Token &t) {
+        argPrefix += hat;
+        argHintPrefix += hat;
+        if (t.IsSwappablePtr)
+          argHintPrefix += "#";
+        if (t.IsBlocked)
+          argHintPrefix += "$";
+      };
 
       while (true) {
         bool layerNull = match(TokenType::KwNul);
@@ -836,7 +858,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           HandleLayer l2;
           l2.Morphology = BindingMorphology::Reference;
           handleLayers.push_back(l2);
-          argPrefix += "&&";
+          noteHat("&&", t);
         } else if (match(TokenType::Ampersand)) {
           Token t = previous();
           if (layerNull) {
@@ -848,7 +870,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           l.Rebindable = t.IsSwappablePtr;
           l.Blocked = t.IsBlocked;
           handleLayers.push_back(l);
-          argPrefix += "&";
+          noteHat("&", t);
         } else if (match(TokenType::Caret)) {
           Token t = previous();
           if (layerNull) {
@@ -861,7 +883,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           l.Rebindable = t.IsSwappablePtr;
           l.Blocked = t.IsBlocked;
           handleLayers.push_back(l);
-          argPrefix += "^";
+          noteHat("^", t);
         } else if (match(TokenType::Tilde)) {
           Token t = previous();
           if (layerNull) {
@@ -874,7 +896,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           l.Rebindable = t.IsSwappablePtr;
           l.Blocked = t.IsBlocked;
           handleLayers.push_back(l);
-          argPrefix += "~";
+          noteHat("~", t);
         } else if (match(TokenType::Star)) {
           Token t = previous();
           HandleLayer l;
@@ -883,7 +905,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           l.Rebindable = t.IsSwappablePtr;
           l.Blocked = t.IsBlocked;
           handleLayers.push_back(l);
-          argPrefix += "*";
+          noteHat("*", t);
         } else {
           if (layerNull) {
             error(previous(), DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
@@ -922,7 +944,12 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         argTypeSyntax =
             TypeSyntax::withoutLeadingMorphology(argTypeSyntax, "cede ");
       }
-      bool rejectedTypeSide = rejectTypeSideHandleMorphology(argName, argPrefix, argTypeSyntax, argType);
+      bool rejectedTypeSideWrite =
+          rejectTypeSideWriteMarker(argName, argHintPrefix, argTypeSyntax, argType);
+      bool rejectedTypeSide =
+          rejectedTypeSideWrite || rejectTypeSideHandleMorphology(
+                                       argName, argHintPrefix, argTypeSyntax,
+                                       argType);
 
       FunctionDecl::Arg arg;
       arg.Loc = argName.Loc;
@@ -1022,7 +1049,21 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       if (check(TokenType::DotDotDot))
         break;
       bool isCeded = match(TokenType::KwCede);
+      // `argPrefix` describes the hat shape alone; it also selects the bare
+      // pointee type reading below, so the markers are kept out of it.
+      // `argHintPrefix` additionally carries what the lexer folded into each hat
+      // token -- `#` (rebindable) and `$` (blocked) -- so a suggested rewrite
+      // cannot silently drop the handle's own authority.
       std::string argPrefix = "";
+      std::string argHintPrefix = "";
+      auto noteHat = [&](const char *hat, const Token &t) {
+        argPrefix += hat;
+        argHintPrefix += hat;
+        if (t.IsSwappablePtr)
+          argHintPrefix += "#";
+        if (t.IsBlocked)
+          argHintPrefix += "$";
+      };
       std::vector<HandleLayer> handleLayers;
       while (true) {
         bool layerNullable = match(TokenType::KwNul);
@@ -1033,14 +1074,14 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
           }
           handleLayers.push_back({BindingMorphology::Reference, false, layerNullable, false});
           handleLayers.push_back({BindingMorphology::Reference, false, false, false});
-          argPrefix += "&&";
+          noteHat("&&", t);
         } else if (match(TokenType::Ampersand)) {
           Token t = previous();
           if (layerNullable) {
             error(t, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
           }
           handleLayers.push_back({BindingMorphology::Reference, false, layerNullable, false});
-          argPrefix += "&";
+          noteHat("&", t);
         } else if (match(TokenType::Caret)) {
           Token t = previous();
           if (layerNullable) {
@@ -1048,7 +1089,7 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
             HasError = true;
           }
           handleLayers.push_back({BindingMorphology::Unique, false, layerNullable, false});
-          argPrefix += "^";
+          noteHat("^", t);
         } else if (match(TokenType::Tilde)) {
           Token t = previous();
           if (layerNullable) {
@@ -1056,10 +1097,11 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
             HasError = true;
           }
           handleLayers.push_back({BindingMorphology::Shared, false, layerNullable, false});
-          argPrefix += "~";
+          noteHat("~", t);
         } else if (match(TokenType::Star)) {
+          Token t = previous();
           handleLayers.push_back({BindingMorphology::Raw, false, layerNullable, false});
-          argPrefix += "*";
+          noteHat("*", t);
         } else {
           if (layerNullable) {
             error(previous(), DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
@@ -1092,7 +1134,12 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
         argTypeSyntax =
             TypeSyntax::withoutLeadingMorphology(argTypeSyntax, "cede ");
       }
-      bool rejectedTypeSide = rejectTypeSideHandleMorphology(argName, argPrefix, argTypeSyntax, argType);
+      bool rejectedTypeSideWrite =
+          rejectTypeSideWriteMarker(argName, argHintPrefix, argTypeSyntax, argType);
+      bool rejectedTypeSide =
+          rejectedTypeSideWrite || rejectTypeSideHandleMorphology(
+                                       argName, argHintPrefix, argTypeSyntax,
+                                       argType);
 
       ExternDecl::Arg arg;
       arg.Loc = argName.Loc;

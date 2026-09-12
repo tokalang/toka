@@ -126,6 +126,7 @@ DIAG(ERR_EXCEEDED_HANDLE_DEPTH,   Error,   "E0491", "Exceeded maximum handle dep
 DIAG(ERR_MIXED_HANDLE_RAW,        Error,   "E0492", "Illegal mixing of managed handles and raw pointers in type '{}'")
 DIAG(ERR_ALIAS_ROOT_HANDLE_MORPHOLOGY, Error,   "E0493", "Alias target '{}' cannot begin with root handle morphology '{}'; root hats must remain visible on the binding at each use site")
 DIAG(ERR_PARSER_TYPE_SIDE_PARAM_MORPHOLOGY, Error,   "E0494", "Parameter type '{}' cannot begin with root handle morphology '{}'; place the root morphology on the parameter binding instead (did you mean '{}'?)")
+DIAG(ERR_PARSER_TYPE_SIDE_WRITE_MARKER, Error,   "E0496", "Parameter type '{}' carries a type-side writable marker '#'; place the marker on the parameter binding instead (did you mean '{}'?)")
 
 // --- Sema: Memory Safety ---
 DIAG(ERR_UNSAFE_ALLOC_CTX,        Error,   "E0501", "Operation 'alloc' is only allowed in unsafe context")

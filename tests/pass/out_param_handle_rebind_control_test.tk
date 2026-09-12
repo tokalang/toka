@@ -1,14 +1,36 @@
-// Control: rebinding a writable out parameter to another handle stays allowed.
-// Gate for: the scalar-copy fix must not widen or narrow handle authority.
-fn rebind(*out: u64#) {
+// Control: the scalar-copy fix must not widen or narrow handle authority.
+//
+// Two sibling paths, each with the written value asserted:
+//   (1) payload copy — `p = q` between two raw handle bindings copies the
+//       *payload* into the caller's storage.  This is a payload assignment,
+//       NOT a handle rebind (hats are not dereferences in Toka).
+//   (2) handle rebind — `*p = *q` rebinds the handle itself.  The caller's
+//       payload is untouched, and later payload writes land on the new target.
+
+fn copy_payload(*out#: u64) {
     auto other# = 7:u64
     auto *otherp# = &other as *u64#
-    auto *p# = *out
+    auto *p# = &out as *u64#
     p = otherp
 }
 
 pub fn main() -> i32 {
+    // (1) `p = q` is a payload copy: the caller's payload changes.
     auto x# = 0:u64
-    rebind(&x as *u64#)
+    auto *px# = &x as *u64#
+    copy_payload(*px)
+    if x != 7:u64 { return 1 }
+
+    // (2) `*p = *q` is a handle rebind: the original payload is untouched and
+    // rebinding stays allowed (the scalar-copy fix must not narrow it).
+    auto a# = 1:u64
+    auto b# = 2:u64
+    auto *#pa# = &a as *u64#
+    auto *#pb# = &b as *u64#
+    *pa = *pb
+    pa = 99:u64
+    if a != 1:u64 { return 2 }
+    if b != 99:u64 { return 3 }
+
     return 0
 }

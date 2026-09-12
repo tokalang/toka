@@ -1,0 +1,17 @@
+// EXPECT: error[E0496]
+// `self` is a named parameter like any other, so it takes the same rule: a `#`
+// written on its type is not a write grant.  Writability is spelled on the
+// binding (`self#` / `self#: T`), which is what the argument gate reads.
+//
+// The rewrite hint must point at `self#: Cell`, not at the type.
+shape Cell(value: u64)
+
+impl Cell {
+    pub fn put(self: Cell#) -> u64 {
+        return 0:u64
+    }
+}
+
+fn main() -> i32 {
+    return 0
+}

@@ -1,0 +1,5 @@
+error[E0496]: Parameter type 'Cell#' carries a type-side writable marker '#'; place the marker on the parameter binding instead (did you mean 'self#: Cell'?)
+ --> tests/fail/param_type_side_write_marker_self_rejected.tk:10:22
+    |
+ 10 |     pub fn put(self: Cell#) -> u64 {
+    |                      ^

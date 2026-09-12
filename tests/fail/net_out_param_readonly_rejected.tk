@@ -1,8 +1,11 @@
-// EXPECT: error[E04663]
+// EXPECT: error[E04571]
+// A read-only binding must not satisfy the net writable out parameter.
+// Capability gate: the read-only actual argument is rejected by the argument
+// capability check, not by any grammar/diagnostic short-circuit.
 import std/net::{register_async_reactor_read_key}
 
 fn main() -> i32 {
     auto readonly_key = 0:u64
-    register_async_reactor_read_key(0:Addr, 0:i32, &readonly_key as *u64#)
+    register_async_reactor_read_key(0:Addr, 0:i32, readonly_key)
     return 0
 }

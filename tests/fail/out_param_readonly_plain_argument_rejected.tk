@@ -1,17 +1,16 @@
 // EXPECT: error[E04571]
-// A read-only raw pointer must not satisfy a writable out parameter.
+// A read-only raw handle must not satisfy a writable out parameter.
 // Gate for: the read-only actual argument reaching a writable formal
 // parameter (previously accepted, so the callee wrote through a read-only
-// source).  `&key as *u64` is the plain read-only form; the forged writable
-// form (`as *u64#` from a read-only source) is covered by
-// net_out_param_readonly_rejected.tk.
-fn store(*out: u64#) {
-    auto *p# = *out
-    p = 123:u64
+// source).  The forged writable form (a `#`-cast taken from a read-only
+// source) is covered by net_out_param_readonly_rejected.tk.
+fn store(*out#: u64) {
+    out = 123:u64
 }
 
 fn main() -> i32 {
     auto key = 0:u64
-    store(&key as *u64)
+    auto *pk = &key as *u64
+    store(*pk)
     return 0
 }

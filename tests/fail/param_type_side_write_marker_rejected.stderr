@@ -1,0 +1,5 @@
+error[E0496]: Parameter type 'u64#' carries a type-side writable marker '#'; place the marker on the parameter binding instead (did you mean '*out#: u64'?)
+ --> tests/fail/param_type_side_write_marker_rejected.tk:8:16
+   |
+ 8 | fn store(*out: u64#) {
+   |                ^

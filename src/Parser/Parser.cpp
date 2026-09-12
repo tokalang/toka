@@ -237,6 +237,36 @@ bool Parser::rejectTypeSideHandleMorphology(const Token &nameTok,
   return true;
 }
 
+bool Parser::rejectTypeSideWriteMarker(const Token &nameTok,
+                                       const std::string &bindingPrefix,
+                                       TypeSyntaxPtr &typeSyntax,
+                                       std::string &typeName) {
+  if (!typeSyntax)
+    return false;
+
+  // A `#` written on the outermost type of a named parameter is meaningless:
+  // the writable marker belongs on the binding name (`out#: T`), which is what
+  // also drives the read-only argument gate.  Markers nested inside a composite
+  // type (a function result, a generic argument, or the pointee of an
+  // explicitly spelled raw type) keep their existing reading.
+  if (typeSyntax->NodeKind != TypeSyntax::Kind::Morphology ||
+      !typeSyntax->IsPostfix || typeSyntax->Text != "#")
+    return false;
+
+  TypeSyntaxPtr soul = typeSyntax->Subject;
+  std::string soulType = soul ? canonicalType(soul) : typeName;
+  std::string suggestion = bindingPrefix + nameTok.Text + "#: " + soulType;
+
+  DiagnosticEngine::report(typeSyntax->Begin,
+                           DiagID::ERR_PARSER_TYPE_SIDE_WRITE_MARKER, typeName,
+                           suggestion);
+  HasError = true;
+
+  typeSyntax = soul;
+  typeName = soulType;
+  return true;
+}
+
 void Parser::synchronize() {
   size_t startPos = m_Pos;
   PanicMode = false;

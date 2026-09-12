@@ -1,0 +1,19 @@
+// EXPECT: error[E0496]
+// The rewrite hint must carry every hat-side marker across.  `#` written on a
+// hat grants identity rebinding (the handle itself may be re-pointed), while
+// `#` written on the binding name grants payload writability.  Moving only the
+// type-side marker would silently drop the rebind authority:
+//
+//     *#out: u64#   ->   *#out#: u64        (correct)
+//     *#out: u64#   ->   *out#: u64         (WRONG: rebind grant lost)
+//
+// This is a GRAMMAR gate (E0496 from the Parser).  It is deliberately kept
+// separate from the capability gates so that a syntax error can never stand in
+// for a capability rejection.
+fn rebind_and_write(*#out: u64#) {
+    out = 123:u64
+}
+
+fn main() -> i32 {
+    return 0
+}

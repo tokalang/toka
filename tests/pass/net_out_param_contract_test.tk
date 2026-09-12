@@ -3,14 +3,15 @@ import std/io::{println}
 import std/net::{register_async_reactor_read_key, register_async_reactor_write_key}
 
 pub fn main() -> i32 {
+    // The writable out parameter takes the writable binding `key#`; passing a
+    // read-only binding is rejected as a capability mismatch.
     auto key# = 0:u64
-    // Verifies passing writable pointer &key as *u64# compiles and executes safely
-    auto ok = register_async_reactor_read_key(0:Addr, -1:i32, &key as *u64#)
+    auto ok = register_async_reactor_read_key(0:Addr, -1:i32, key#)
     assert(!ok, "invalid coro should return false")
     assert(key == 0:u64, "key should remain unchanged when prepare_suspend fails")
 
     auto write_key# = 0:u64
-    auto write_ok = register_async_reactor_write_key(0:Addr, -1:i32, &write_key as *u64#)
+    auto write_ok = register_async_reactor_write_key(0:Addr, -1:i32, write_key#)
     assert(!write_ok, "invalid coro should return false for write key")
     assert(write_key == 0:u64, "write_key should remain unchanged when prepare_suspend fails")
 
