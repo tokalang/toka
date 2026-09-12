@@ -1,6 +1,16 @@
 import std/io::{println}
-import stdx/serde/json::{JsonNode}
 import stdx/serde/yaml::{YamlDocument}
+
+fn expect_text(document: YamlDocument, id: usize, expected: str) {
+    assert(document.kind(id) == 3, "string node required")
+    assert(document.text(id).equals(expected), "decoded string mismatch")
+}
+fn expect_number(document: YamlDocument, id: usize, expected: f64) {
+    assert(document.kind(id) == 2, "number node required")
+    auto actual = document.number(id).unwrap()
+    auto delta = actual - expected
+    assert(delta <= 0.0000000001 && delta >= -0.0000000001, "number mismatch")
+}
 
 fn test_api_contract_and_scalars() {
     auto yaml_str = "
@@ -15,37 +25,19 @@ hex_num: 0x1A
 exp_num: 1e3
 "
     auto parsed = YamlDocument::parse(yaml_str)
-    assert(parsed.is_ok(), "YAML Document parse must return Ok(JsonNode)")
+    assert(parsed.is_ok(), "YAML Document parse must return Ok(YamlDocument)")
     auto root = parsed.unwrap()
 
-    match root {
-        auto JsonNode::ObjectNode(&map) => {
-            auto &name_node = map.try_borrow(string::from("name")).unwrap()
-            match name_node {
-                auto StrNode(&s) => { assert(s.as_str().equals("toka-service"), "name must match toka-service") }
-                _ => { assert(false, "name node must be StrNode") }
-            }
-
-            auto &port_node = map.try_borrow(string::from("port")).unwrap()
-            match port_node {
-                auto NumNode(n) => { assert(n == 8080.0, "port node must equal 8080") }
-                _ => { assert(false, "port node must be NumNode") }
-            }
-
-            auto &enabled_node = map.try_borrow(string::from("enabled")).unwrap()
-            match enabled_node {
-                auto BoolNode(b) => { assert(b == true, "enabled node must be true") }
-                _ => { assert(false, "enabled node must be BoolNode") }
-            }
-
-            auto &nil_node = map.try_borrow(string::from("nil_val")).unwrap()
-            match nil_node {
-                auto NullNode(_) => {}
-                _ => { assert(false, "nil_val node must be NullNode") }
-            }
-        }
-        _ => { assert(false, "root node must be ObjectNode") }
-    }
+    assert(root.kind(root.root()) == 5, "root must be mapping")
+    expect_text(root, root.find(root.root(), "name"), "toka-service")
+    expect_text(root, root.find(root.root(), "version"), "1.0.0")
+    expect_number(root, root.find(root.root(), "port"), 8080.0)
+    expect_number(root, root.find(root.root(), "ratio"), 3.14159)
+    expect_number(root, root.find(root.root(), "hex_num"), 26.0)
+    expect_number(root, root.find(root.root(), "exp_num"), 1000.0)
+    assert(root.boolean(root.find(root.root(), "enabled")).unwrap(), "enabled must be true")
+    assert(root.kind(root.find(root.root(), "nil_val")) == 0, "null value")
+    assert(root.kind(root.find(root.root(), "alt_nil")) == 0, "tilde null")
 }
 
 fn test_c41_c44_regressions_fixed() {
@@ -57,28 +49,11 @@ fn test_c41_c44_regressions_fixed() {
     auto parsed_c41 = YamlDocument::parse(c41_yaml)
     assert(parsed_c41.is_ok(), "c41 - a: 1\\n  b: 2 must parse as valid [{a:1, b:2}]")
     auto root_c41 = parsed_c41.unwrap()
-    match root_c41 {
-        auto ArrayNode(&arr) => {
-            assert(arr.len() == 1:usize, "c41 array len must be 1")
-            auto &item = arr.borrow(0:usize)
-            match item {
-                auto ObjectNode(&map) => {
-                    auto &a_val = map.try_borrow(string::from("a")).unwrap()
-                    match a_val {
-                        auto NumNode(n) => { assert(n == 1.0, "a must equal 1") }
-                        _ => { assert(false, "a must be NumNode") }
-                    }
-                    auto &b_val = map.try_borrow(string::from("b")).unwrap()
-                    match b_val {
-                        auto NumNode(n) => { assert(n == 2.0, "b must equal 2") }
-                        _ => { assert(false, "b must be NumNode") }
-                    }
-                }
-                _ => { assert(false, "item 0 must be ObjectNode") }
-            }
-        }
-        _ => { assert(false, "root must be ArrayNode") }
-    }
+    assert(root_c41.kind(root_c41.root()) == 4 && root_c41.len(root_c41.root()) == 1, "c41 sequence")
+    auto item = root_c41.first(root_c41.root())
+    assert(root_c41.kind(item) == 5, "c41 mapping item")
+    expect_number(root_c41, root_c41.find(item, "a"), 1.0)
+    expect_number(root_c41, root_c41.find(item, "b"), 2.0)
 
     // 2. c44: list:\n  - name: x\n    tags: [a,b]\n  - name: y\n    tags: [c]
     auto c44_yaml = "
@@ -109,18 +84,7 @@ description: value1
     assert(parsed.is_ok(), "multiline unquoted scalar continuation must parse cleanly")
     auto root = parsed.unwrap()
 
-    match root {
-        auto JsonNode::ObjectNode(&map) => {
-            auto &desc_node = map.try_borrow(string::from("description")).unwrap()
-            match desc_node {
-                auto StrNode(&s) => {
-                    assert(s.as_str().equals("value1 continuation line3"), "unquoted multiline scalar must fold with single space")
-                }
-                _ => { assert(false, "description must be StrNode") }
-            }
-        }
-        _ => { assert(false, "root must be ObjectNode") }
-    }
+    expect_text(root, root.find(root.root(), "description"), "value1 continuation line3")
 }
 
 fn test_nested_sequences_and_inline_null_mapping() {
@@ -134,29 +98,13 @@ fn test_nested_sequences_and_inline_null_mapping() {
     assert(parsed_seq.is_ok(), "nested sequences must parse cleanly")
     auto root_seq = parsed_seq.unwrap()
 
-    match root_seq {
-        auto ArrayNode(&arr) => {
-            assert(arr.len() == 2:usize, "top level array len must be 2")
-            auto &sub_seq = arr.borrow(0:usize)
-            match sub_seq {
-                auto ArrayNode(&sub_arr) => {
-                    assert(sub_arr.len() == 2:usize, "sub array len must be 2")
-                    auto &e0 = sub_arr.borrow(0:usize)
-                    match e0 {
-                        auto StrNode(&s) => { assert(s.as_str().equals("x"), "element 0 must be x") }
-                        _ => { assert(false, "sub element 0 must be StrNode") }
-                    }
-                    auto &e1 = sub_arr.borrow(1:usize)
-                    match e1 {
-                        auto StrNode(&s) => { assert(s.as_str().equals("y"), "element 1 must be y") }
-                        _ => { assert(false, "sub element 1 must be StrNode") }
-                    }
-                }
-                _ => { assert(false, "element 0 must be ArrayNode") }
-            }
-        }
-        _ => { assert(false, "root must be ArrayNode") }
-    }
+    assert(root_seq.kind(root_seq.root()) == 4 && root_seq.len(root_seq.root()) == 2, "outer sequence")
+    auto sub = root_seq.first(root_seq.root())
+    assert(root_seq.kind(sub) == 4 && root_seq.len(sub) == 2, "inner sequence")
+    auto first = root_seq.first(sub)
+    expect_text(root_seq, first, "x")
+    expect_text(root_seq, root_seq.next(first), "y")
+    expect_text(root_seq, root_seq.next(sub), "z")
 
     // 2. Inline mapping with null value: - a:\n  b: c -> [{a: null, b: c}]
     auto map_yaml = "
@@ -167,27 +115,10 @@ fn test_nested_sequences_and_inline_null_mapping() {
     assert(parsed_map.is_ok(), "inline mapping with null key must parse cleanly")
     auto root_map = parsed_map.unwrap()
 
-    match root_map {
-        auto ArrayNode(&arr) => {
-            auto &item0 = arr.borrow(0:usize)
-            match item0 {
-                auto ObjectNode(&map) => {
-                    auto &a_val = map.try_borrow(string::from("a")).unwrap()
-                    match a_val {
-                        auto NullNode(_) => {}
-                        _ => { assert(false, "key 'a' must map to NullNode") }
-                    }
-                    auto &b_val = map.try_borrow(string::from("b")).unwrap()
-                    match b_val {
-                        auto StrNode(&s) => { assert(s.as_str().equals("c"), "key 'b' must match 'c'") }
-                        _ => { assert(false, "key 'b' must map to StrNode") }
-                    }
-                }
-                _ => { assert(false, "item 0 must be ObjectNode") }
-            }
-        }
-        _ => { assert(false, "root must be ArrayNode") }
-    }
+    auto item = root_map.first(root_map.root())
+    assert(root_map.kind(item) == 5, "mapping item")
+    assert(root_map.kind(root_map.find(item, "a")) == 0, "empty value is null")
+    expect_text(root_map, root_map.find(item, "b"), "c")
 }
 
 fn test_escapes_and_unicode() {
@@ -202,34 +133,10 @@ unicode_val: \"\\u00e9\"
     assert(parsed.is_ok(), "escapes and unicode must parse cleanly without crash")
     auto root = parsed.unwrap()
 
-    match root {
-        auto JsonNode::ObjectNode(&map) => {
-            auto &msg = map.try_borrow(string::from("msg")).unwrap()
-            match msg {
-                auto StrNode(&s) => { assert(s.as_str().equals("hi\nthere"), "msg must contain actual newline") }
-                _ => { assert(false, "msg must be StrNode") }
-            }
-
-            auto &esc_q = map.try_borrow(string::from("escaped_quote")).unwrap()
-            match esc_q {
-                auto StrNode(&s) => { assert(s.as_str().equals("a\"b"), "escaped quote must equal a\"b") }
-                _ => { assert(false, "escaped_quote must be StrNode") }
-            }
-
-            auto &esc_s = map.try_borrow(string::from("escaped_slash")).unwrap()
-            match esc_s {
-                auto StrNode(&s) => { assert(s.as_str().equals("c\\d"), "escaped slash must equal c\\d") }
-                _ => { assert(false, "escaped_slash must be StrNode") }
-            }
-
-            auto &uni_val = map.try_borrow(string::from("unicode_val")).unwrap()
-            match uni_val {
-                auto StrNode(&s) => { assert(s.as_str().equals("é"), "unicode escape \\u00e9 must equal é") }
-                _ => { assert(false, "unicode_val must be StrNode") }
-            }
-        }
-        _ => { assert(false, "root must be ObjectNode") }
-    }
+    expect_text(root, root.find(root.root(), "msg"), "hi\nthere")
+    expect_text(root, root.find(root.root(), "escaped_quote"), "a\"b")
+    expect_text(root, root.find(root.root(), "escaped_slash"), "c\\d")
+    expect_text(root, root.find(root.root(), "unicode_val"), "é")
 }
 
 fn test_flow_nesting_and_shorthand() {
@@ -244,27 +151,10 @@ fn test_flow_nesting_and_shorthand() {
     assert(parsed_short.is_ok(), "flow shorthand {a, b: 1} must parse cleanly")
     auto root = parsed_short.unwrap()
 
-    match root {
-        auto JsonNode::ObjectNode(&map) => {
-            auto &config = map.try_borrow(string::from("config")).unwrap()
-            match config {
-                auto JsonNode::ObjectNode(&cfg_map) => {
-                    auto &a_node = cfg_map.try_borrow(string::from("a")).unwrap()
-                    match a_node {
-                        auto NullNode(_) => {}
-                        _ => { assert(false, "shorthand key 'a' must be NullNode") }
-                    }
-                    auto &b_node = cfg_map.try_borrow(string::from("b")).unwrap()
-                    match b_node {
-                        auto NumNode(n) => { assert(n == 1.0, "key 'b' must equal 1") }
-                        _ => { assert(false, "key 'b' must be NumNode") }
-                    }
-                }
-                _ => { assert(false, "config must be ObjectNode") }
-            }
-        }
-        _ => { assert(false, "root must be ObjectNode") }
-    }
+    auto config = root.find(root.root(), "config")
+    assert(root.kind(config) == 5, "config mapping")
+    assert(root.kind(root.find(config, "a")) == 0, "shorthand null")
+    expect_number(root, root.find(config, "b"), 1.0)
 }
 
 fn test_rejection_rules_with_column() {
@@ -335,26 +225,9 @@ c: \"a\\
     auto parsed_ml = YamlDocument::parse(ml_yaml)
     assert(parsed_ml.is_ok(), "multiline quoted scalars must parse cleanly")
     auto ml_root = parsed_ml.unwrap()
-    match ml_root {
-        auto JsonNode::ObjectNode(&map) => {
-            auto &a_node = map.try_borrow(string::from("a")).unwrap()
-            match a_node {
-                auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("multi line"), "double-quoted multiline must fold to space") }
-                _ => { assert(false, "a must be StrNode") }
-            }
-            auto &b_node = map.try_borrow(string::from("b")).unwrap()
-            match b_node {
-                auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("single quote"), "single-quoted multiline must fold to space") }
-                _ => { assert(false, "b must be StrNode") }
-            }
-            auto &c_node = map.try_borrow(string::from("c")).unwrap()
-            match c_node {
-                auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("ab"), "backslash line continuation must join without space") }
-                _ => { assert(false, "c must be StrNode") }
-            }
-        }
-        _ => { assert(false, "ml root must be ObjectNode") }
-    }
+    expect_text(ml_root, ml_root.find(ml_root.root(), "a"), "multi line")
+    expect_text(ml_root, ml_root.find(ml_root.root(), "b"), "single quote")
+    expect_text(ml_root, ml_root.find(ml_root.root(), "c"), "ab")
 
     // Block scalar chomping and folding details
     auto bs_yaml = "
@@ -376,36 +249,11 @@ cont: foo
     auto parsed_bs = YamlDocument::parse(bs_yaml)
     assert(parsed_bs.is_ok(), "block scalar details must parse cleanly")
     auto bs_root = parsed_bs.unwrap()
-    match bs_root {
-        auto JsonNode::ObjectNode(&map) => {
-            auto &keep = map.try_borrow(string::from("keep")).unwrap()
-            match keep {
-                auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("keep\n\n"), "keep chomp must retain trailing blank line") }
-                _ => { assert(false, "keep must be StrNode") }
-            }
-            auto &keep2 = map.try_borrow(string::from("keep2")).unwrap()
-            match keep2 {
-                auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("strip"), "strip chomp must drop trailing breaks") }
-                _ => { assert(false, "keep2 must be StrNode") }
-            }
-            auto &folded = map.try_borrow(string::from("folded")).unwrap()
-            match folded {
-                auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("folded\n more\nnormal\n"), "more-indented folded lines must stay literal") }
-                _ => { assert(false, "folded must be StrNode") }
-            }
-            auto &lit = map.try_borrow(string::from("lit")).unwrap()
-            match lit {
-                auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("\nx\n"), "leading blank line in literal block must be kept") }
-                _ => { assert(false, "lit must be StrNode") }
-            }
-            auto &cont = map.try_borrow(string::from("cont")).unwrap()
-            match cont {
-                auto JsonNode::StrNode(&s) => { assert(s.as_str().equals("foo - bar"), "plain scalar continuation must fold sequence-looking lines") }
-                _ => { assert(false, "cont must be StrNode") }
-            }
-        }
-        _ => { assert(false, "bs root must be ObjectNode") }
-    }
+    expect_text(bs_root, bs_root.find(bs_root.root(), "keep"), "keep\n\n")
+    expect_text(bs_root, bs_root.find(bs_root.root(), "keep2"), "strip")
+    expect_text(bs_root, bs_root.find(bs_root.root(), "folded"), "folded\n more\nnormal\n")
+    expect_text(bs_root, bs_root.find(bs_root.root(), "lit"), "\nx\n")
+    expect_text(bs_root, bs_root.find(bs_root.root(), "cont"), "foo - bar")
 
     // Flow plain scalar colon rejection
     auto flow_colon_yaml = "map: {a: b:c}"

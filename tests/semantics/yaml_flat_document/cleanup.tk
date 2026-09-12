@@ -1,0 +1,41 @@
+import stdx/serde/yaml::{YamlDocument}
+fn main() -> i32 {
+    auto input# = string::from("")
+    auto i# = 0:i32
+    loop i < 60 {
+        input#.push_str("key")
+        auto key = string::from_int(i)
+        input#.push_str(key.as_str())
+        input#.push_str(": [owned, text, .inf, -.inf, .nan]\n")
+        i += 1
+    }
+    auto invalid# = string::from(input.as_str())
+    invalid#.push_str("key0: duplicate\n")
+    auto deep# = string::from("")
+    i = 0
+    loop i < 129 { deep#.push_str("["); i += 1 }
+    deep#.push_str("0")
+    i = 0
+    loop i < 129 { deep#.push_str("]"); i += 1 }
+    i = 0
+    loop i < 100 {
+        {
+            auto result = YamlDocument::parse(input.as_str())
+            if result.is_err() { return 1 }
+            auto document = result.unwrap()
+            if document.len(document.root()) != 60 { return 2 }
+        }
+        {
+            auto result = YamlDocument::parse(invalid.as_str())
+            if result.is_ok() { return 3 }
+            auto error = result.unwrap_err()
+            if error.line() != 61 { return 4 }
+        }
+        {
+            auto result = YamlDocument::parse(deep.as_str())
+            if result.is_ok() { return 5 }
+        }
+        i += 1
+    }
+    return 0
+}

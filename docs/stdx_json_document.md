@@ -65,6 +65,7 @@ Unproved borrowed-element containers remain rejected; this change does not
 establish arbitrary generic container lifetime support. Explicit resource
 factories and partial-failure cleanup are tested separately from Document.
 
-Consumers of the removed recursive representation, including the current YAML
-adapter, need a separate library migration. They are not silently adapted via
-new compiler rules or counted as recovered by JSON tests.
+YAML now uses its own flat `YamlDocument` and preserves its nonfinite numeric
+values directly; it does not pass through JSON text. Other consumers of the
+removed recursive representation must migrate explicitly, not through a
+compiler rule or a recursive JsonNode compatibility layer.

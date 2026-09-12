@@ -2,6 +2,30 @@
 
 ## Current direction: library-first (2026-09-12)
 
+JSON library migration was accepted at
+`0f8c540864be45cc07efcc2d789a7e90b757218d`, limited to that library migration.
+This does not accept all binding work, the cede RFC or RC13. The following
+YAML work continues the same library-only route without a new freeze branch.
+
+YAML migration candidate: the reader now builds its own owned flat YamlDocument
+with primitive node/member indices and a text buffer. The original block,
+quoted/plain scalar, folding/chomping and diagnostic paths were retained;
+JsonNode cloning/HashMap recursion is removed, not hidden behind a wrapper.
+IEEE infinities and NaN remain numeric, with no JSON text conversion. Public
+API and the added flow-recursion bound are documented in `docs/stdx_yaml_v1.md`.
+
+Validation: migrated original YAML tests plus tree/scalar/error-location,
+input/error-owner lifetime and escape tests passed. YAML + JSON parser/recovery
+CTest selection passed 3/3 (75.03 s). Generated cleanup IR passes ASan (runtime
+object not itself ASan-instrumented); success, duplicate-key failure and depth
+failure 100 times each report 0 leaks / 0 leaked bytes with macOS leaks.
+One integration run against the accepted JSON baseline: PASS 335 -> 336 / 451,
+only g17_stdx_yaml_test recovered and no added failures; FAIL stays 423/473 with
+the same 50 failing expectations and no abnormal exits. Full CTest is 83/87
+(401.50 s); the four previously recorded call/return/thread failures remain.
+Logs: `/private/tmp/toka-yaml-integration.OUAvki`. No compiler changes, new
+recursive proof mechanism, acceptance declaration or release claim is made.
+
 The user superseded the assumption that existing JsonNode/raw-container source
 must be preserved. Further cross-function slot receipts and recursive container
 descriptors are not the default next step. Existing safety fixes remain intact.

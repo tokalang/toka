@@ -4,9 +4,7 @@
 import core/option::{Option}
 import core/result::{Result}
 import std/vec::{Vec}
-import std/hashmap::{HashMap}
 import std/math
-import stdx/serde/json::{JsonNode}
 
 pub shape YamlError (
     message: string,
@@ -49,41 +47,146 @@ impl YamlError {
     }
 }
 
-pub shape YamlDocument (
-    root: JsonNode
-)
+// Owned flat tree: IDs are one-based, zero means missing/end. No JSON storage.
+shape YamlEntry(kind: i32, first#: usize, next#: usize, start: usize, count: usize,
+                key_start#: usize, key_count#: usize, number: f64)
+shape YamlMember(start: usize, count: usize, value: usize)
+pub shape YamlDocument(text#: string, nodes#: Vec<YamlEntry>, root_id#: usize)
+impl YamlDocument@Encap {}
 
-fn clone_json_node(ptr: JsonNode) -> JsonNode {
-    match ptr {
-        auto NullNode(v) => return JsonNode::NullNode(v)
-        auto BoolNode(b) => return JsonNode::BoolNode(b)
-        auto NumNode(f) => return JsonNode::NumNode(f)
-        auto StrNode(&s) => return JsonNode::StrNode(string::from(s.as_str()))
-        auto ArrayNode(&arr) => {
-            auto out# = Vec<JsonNode>::new()
-            auto i# = 0:usize
-            loop i < arr.len() {
-                out#.push(clone_json_node(arr.borrow(i)))
-                i = i + 1:usize
-            }
-            return JsonNode::ArrayNode(cede out)
-        }
-        auto ObjectNode(&map) => return JsonNode::ObjectNode(map.clone())
+fn node_atom(document#: YamlDocument, kind: i32, value: f64) -> usize {
+    document.nodes#.push(YamlEntry(kind = kind, first = 0, next = 0, start = 0, count = 0,
+                                   key_start = 0, key_count = 0, number = value))
+    return document.nodes.len()
+}
+fn node_number(document#: YamlDocument, value: f64) -> usize { return node_atom(document#, 2, value) }
+fn node_bool(document#: YamlDocument, value: bool) -> usize {
+    if value { return node_atom(document#, 1, 1.0) }
+    return node_atom(document#, 1, 0.0)
+}
+fn node_text(document#: YamlDocument, cede value: string) -> usize {
+    auto start = document.text.len()
+    document.text#.push_str(value.as_str())
+    document.nodes#.push(YamlEntry(kind = 3, first = 0, next = 0, start = start, count = value.len(),
+                                   key_start = 0, key_count = 0, number = 0.0))
+    cede value
+    return document.nodes.len()
+}
+fn has_key(document: YamlDocument, members: Vec<YamlMember>, key: str) -> bool {
+    auto i# = 0:usize
+    loop i < members.len() {
+        auto member = members.get(i)
+        if document.text.as_str().substr(member.start, member.count).equals(key) { return true }
+        i += 1
     }
+    return false
+}
+fn put_member(document#: YamlDocument, members#: Vec<YamlMember>, key: str, value: usize) {
+    auto start = document.text.len()
+    document.text#.push_str(key)
+    members#.push(YamlMember(start = start, count = key.len(), value = value))
+}
+fn node_sequence(document#: YamlDocument, items: Vec<usize>) -> usize {
+    auto first# = 0:usize
+    auto previous# = 0:usize
+    auto i# = 0:usize
+    loop i < items.len() {
+        auto child = items.get(i)
+        if previous == 0 { first = child }
+        else {
+            auto entry# = document.nodes.get(previous - 1)
+            entry.next = child
+            document.nodes#.set(previous - 1, cede entry)
+        }
+        previous = child
+        i += 1
+    }
+    document.nodes#.push(YamlEntry(kind = 4, first = first, next = 0, start = 0, count = items.len(),
+                                   key_start = 0, key_count = 0, number = 0.0))
+    return document.nodes.len()
+}
+fn node_mapping(document#: YamlDocument, members: Vec<YamlMember>) -> usize {
+    auto items# = Vec<usize>::new()
+    auto i# = 0:usize
+    loop i < members.len() {
+        auto member = members.get(i)
+        auto entry# = document.nodes.get(member.value - 1)
+        entry.key_start = member.start
+        entry.key_count = member.count
+        document.nodes#.set(member.value - 1, cede entry)
+        items#.push(member.value)
+        i += 1
+    }
+    auto id = node_sequence(document#, items)
+    auto sequence = document.nodes.get(id - 1)
+    document.nodes#.set(id - 1, YamlEntry(kind = 5, first = sequence.first, next = 0, start = 0,
+        count = members.len(), key_start = 0, key_count = 0, number = 0.0))
+    return id
 }
 
 impl YamlDocument {
-    pub fn parse(input: str) -> Result<JsonNode, YamlError> {
-        return parse_yaml_to_json(input)
+    pub fn parse(input: str) -> Result<YamlDocument, YamlError> { return parse_document_value(input) }
+    pub fn root(self) -> usize { return self.root_id }
+    pub fn valid(self, id: usize) -> bool { return id > 0 && id <= self.nodes.len() }
+    pub fn kind(self, id: usize) -> i32 {
+        if !self.valid(id) { return -1 }
+        return self.nodes.get(id - 1).kind
     }
-
-    pub fn root(self) -> JsonNode {
-        return clone_json_node(self.root)
+    pub fn first(self, id: usize) -> usize {
+        if !self.valid(id) { return 0 }
+        return self.nodes.get(id - 1).first
+    }
+    pub fn next(self, id: usize) -> usize {
+        if !self.valid(id) { return 0 }
+        return self.nodes.get(id - 1).next
+    }
+    pub fn len(self, id: usize) -> usize {
+        if !self.valid(id) { return 0 }
+        return self.nodes.get(id - 1).count
+    }
+    pub fn number(self, id: usize) -> Option<f64> {
+        if self.kind(id) != 2 { return Option<f64>::None }
+        return Option<f64>::Some(self.nodes.get(id - 1).number)
+    }
+    pub fn boolean(self, id: usize) -> Option<bool> {
+        if self.kind(id) != 1 { return Option<bool>::None }
+        return Option<bool>::Some(self.nodes.get(id - 1).number == 1.0)
+    }
+    pub fn text(self, id: usize) -> str <- self {
+        if self.kind(id) != 3 { return "" }
+        auto entry = self.nodes.get(id - 1)
+        if entry.start > self.text.len() || entry.count > self.text.len() - entry.start { return "" }
+        return self.text.as_str().substr(entry.start, entry.count)
+    }
+    pub fn key(self, id: usize) -> str <- self {
+        if !self.valid(id) { return "" }
+        auto entry = self.nodes.get(id - 1)
+        if entry.key_start > self.text.len() || entry.key_count > self.text.len() - entry.key_start { return "" }
+        return self.text.as_str().substr(entry.key_start, entry.key_count)
+    }
+    pub fn find(self, id: usize, key: str) -> usize {
+        if self.kind(id) != 5 { return 0 }
+        auto child# = self.first(id)
+        loop self.valid(child) {
+            auto entry = self.nodes.get(child - 1)
+            if entry.key_start > self.text.len() || entry.key_count > self.text.len() - entry.key_start { return 0 }
+            if self.text.as_str().substr(entry.key_start, entry.key_count).equals(key) { return child }
+            child = entry.next
+        }
+        return 0
     }
 }
-
-pub fn parse(input: str) -> Result<JsonNode, YamlError> {
-    return parse_yaml_to_json(input)
+pub fn parse(input: str) -> Result<YamlDocument, YamlError> { return parse_document_value(input) }
+fn parse_document_value(input: str) -> Result<YamlDocument, YamlError> {
+    auto document# = YamlDocument(text = string::from(""), nodes = Vec<YamlEntry>::new(), root_id = 0)
+    auto attempt = build_document(document#, input)
+    if attempt.is_err() {
+        auto error = Result<YamlDocument, YamlError>::Err(attempt.unwrap_err())
+        return cede error
+    }
+    document.root_id = attempt.unwrap()
+    auto result = Result<YamlDocument, YamlError>::Ok(cede document)
+    return cede result
 }
 
 shape YamlLine (
@@ -141,7 +244,7 @@ fn trim_str(input: str) -> string {
     return copy_substr(input, start, end)
 }
 
-fn parse_yaml_to_json(input: str) -> Result<JsonNode, YamlError> {
+fn build_document(document#: YamlDocument, input: str) -> Result<usize, YamlError> {
     auto lines# = Vec<YamlLine>::new()
     auto line_start# = 0:usize
     auto current_line_no# = 1:usize
@@ -174,7 +277,7 @@ fn parse_yaml_to_json(input: str) -> Result<JsonNode, YamlError> {
         }
 
         if has_tab_indent {
-            return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("tab indent is not allowed"), current_line_no, tab_col))
+            return Result<usize, YamlError>::Err(YamlError::new(string::from("tab indent is not allowed"), current_line_no, tab_col))
         }
 
         auto end_idx# = raw_line.len()
@@ -186,16 +289,16 @@ fn parse_yaml_to_json(input: str) -> Result<JsonNode, YamlError> {
         auto trimmed_content = trim_str(content_str.as_str())
 
         if trimmed_content.len() > 0:usize && trimmed_content.as_str().byte_at(0:usize) as u8 == '%' as u8 {
-            return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("directives % are not supported"), current_line_no, idx + 1:usize))
+            return Result<usize, YamlError>::Err(YamlError::new(string::from("directives % are not supported"), current_line_no, idx + 1:usize))
         }
 
         if trimmed_content.as_str().equals("---") || (trimmed_content.len() >= 4:usize && copy_substr(trimmed_content.as_str(), 0:usize, 4:usize).as_str().equals("--- ")) {
             doc_start_count = doc_start_count + 1:usize
             if doc_start_count > 1:usize {
-                return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("multi-document YAML is not supported"), current_line_no, idx + 1:usize))
+                return Result<usize, YamlError>::Err(YamlError::new(string::from("multi-document YAML is not supported"), current_line_no, idx + 1:usize))
             }
             if trimmed_content.len() > 3:usize {
-                return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("inline scalar on document marker is not supported"), current_line_no, idx + 1:usize))
+                return Result<usize, YamlError>::Err(YamlError::new(string::from("inline scalar on document marker is not supported"), current_line_no, idx + 1:usize))
             }
         } else {
             if trimmed_content.as_str().equals("...") {
@@ -206,10 +309,10 @@ fn parse_yaml_to_json(input: str) -> Result<JsonNode, YamlError> {
                 continue
             } else {
                 if doc_ended && trimmed_content.len() > 0:usize && trimmed_content.as_str().byte_at(0:usize) as u8 != '#' as u8 {
-                    return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("content after document end marker is not supported"), current_line_no, idx + 1:usize))
+                    return Result<usize, YamlError>::Err(YamlError::new(string::from("content after document end marker is not supported"), current_line_no, idx + 1:usize))
                 }
                 auto is_blk = trimmed_content.len() == 0:usize || trimmed_content.as_str().byte_at(0:usize) as u8 == '#' as u8
-                lines#.push(cede YamlLine(
+                lines#.push(YamlLine(
                     indent = indent,
                     content = cede content_str,
                     line_no = current_line_no,
@@ -227,13 +330,13 @@ fn parse_yaml_to_json(input: str) -> Result<JsonNode, YamlError> {
     }
 
     if lines.len() == 0:usize {
-        return Result<JsonNode, YamlError>::Ok(JsonNode::NullNode(0))
+        return Result<usize, YamlError>::Ok(node_atom(document#, 0, 0.0))
     }
 
     auto pos# = 0:usize
-    auto res = parse_block_node(lines, pos, 0:usize, 0:usize)
+    auto res = parse_block_node(document#, lines, pos#, 0:usize, 0:usize)
     if res.is_err() {
-        return Result<JsonNode, YamlError>::Err(res.unwrap_err())
+        return Result<usize, YamlError>::Err(res.unwrap_err())
     }
 
     // Ensure all non-blank lines were consumed by document root
@@ -242,15 +345,15 @@ fn parse_yaml_to_json(input: str) -> Result<JsonNode, YamlError> {
     }
     if pos < lines.len() {
         auto unconsumed = lines.borrow(pos).clone()
-        return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("unexpected content after document root"), unconsumed.line_no, unconsumed.col_no))
+        return Result<usize, YamlError>::Err(YamlError::new(string::from("unexpected content after document root"), unconsumed.line_no, unconsumed.col_no))
     }
 
-    return Result<JsonNode, YamlError>::Ok(cede res.unwrap())
+    return Result<usize, YamlError>::Ok(res.unwrap())
 }
 
-fn parse_block_node(lines: Vec<YamlLine>, pos#: usize, min_indent: usize, depth: usize) -> Result<JsonNode, YamlError> {
+fn parse_block_node(document#: YamlDocument, lines: Vec<YamlLine>, pos#: usize, min_indent: usize, depth: usize) -> Result<usize, YamlError> {
     if depth > 128:usize {
-        return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("maximum recursion depth of 128 exceeded"), 1:usize, 1:usize))
+        return Result<usize, YamlError>::Err(YamlError::new(string::from("maximum recursion depth of 128 exceeded"), 1:usize, 1:usize))
     }
 
     loop pos < lines.len() && lines.borrow(pos).is_blank {
@@ -258,33 +361,33 @@ fn parse_block_node(lines: Vec<YamlLine>, pos#: usize, min_indent: usize, depth:
     }
 
     if pos >= lines.len() {
-        return Result<JsonNode, YamlError>::Ok(JsonNode::NullNode(0))
+        return Result<usize, YamlError>::Ok(node_atom(document#, 0, 0.0))
     }
 
     auto cur_line = lines.borrow(pos).clone()
     if cur_line.indent < min_indent {
-        return Result<JsonNode, YamlError>::Ok(JsonNode::NullNode(0))
+        return Result<usize, YamlError>::Ok(node_atom(document#, 0, 0.0))
     }
 
     auto content = trim_comment(cur_line.content.as_str())
 
     auto check_res = check_unsupported_syntax(content.as_str(), cur_line.line_no, cur_line.col_no)
     if check_res.is_err() {
-        return Result<JsonNode, YamlError>::Err(check_res.unwrap_err())
+        return Result<usize, YamlError>::Err(check_res.unwrap_err())
     }
 
     if is_sequence_start(content.as_str()) {
-        return parse_block_sequence(lines, pos, cur_line.indent, depth)
+        return parse_block_sequence(document#, lines, pos#, cur_line.indent, depth)
     }
 
     if is_mapping_start(content.as_str()) {
-        return parse_block_mapping(lines, pos, cur_line.indent, depth)
+        return parse_block_mapping(document#, lines, pos#, cur_line.indent, depth)
     }
 
     pos = pos + 1:usize
     auto parent_indent# = 0:usize
     if min_indent > 0:usize { parent_indent = min_indent - 1:usize }
-    return parse_scalar_node(lines, pos, cur_line, content.as_str(), parent_indent, depth)
+    return parse_scalar_node(document#, lines, pos#, cur_line, content.as_str(), parent_indent, depth)
 }
 
 fn trim_comment(input: str) -> string {
@@ -314,16 +417,16 @@ fn check_unsupported_syntax(content: str, line_no: usize, col_no: usize) -> Resu
     if content.len() == 0:usize { return Result<i32, YamlError>::Ok(0) }
     auto b0 = content.byte_at(0:usize) as u8
     if b0 == '&' as u8 || b0 == '*' as u8 {
-        return Result<i32, YamlError>::Err(YamlError::new(cede string::from("anchors and aliases are not supported"), line_no, col_no))
+        return Result<i32, YamlError>::Err(YamlError::new(string::from("anchors and aliases are not supported"), line_no, col_no))
     }
     if b0 == '!' as u8 {
-        return Result<i32, YamlError>::Err(YamlError::new(cede string::from("tags are not supported"), line_no, col_no))
+        return Result<i32, YamlError>::Err(YamlError::new(string::from("tags are not supported"), line_no, col_no))
     }
     if b0 == '?' as u8 && (content.len() == 1:usize || is_space_byte(content.byte_at(1:usize) as u8)) {
-        return Result<i32, YamlError>::Err(YamlError::new(cede string::from("explicit key '?' is not supported"), line_no, col_no))
+        return Result<i32, YamlError>::Err(YamlError::new(string::from("explicit key '?' is not supported"), line_no, col_no))
     }
     if content.len() >= 2:usize && content.byte_at(0:usize) as u8 == '<' as u8 && content.byte_at(1:usize) as u8 == '<' as u8 {
-        return Result<i32, YamlError>::Err(YamlError::new(cede string::from("merge key '<<' is not supported"), line_no, col_no))
+        return Result<i32, YamlError>::Err(YamlError::new(string::from("merge key '<<' is not supported"), line_no, col_no))
     }
     return Result<i32, YamlError>::Ok(0)
 }
@@ -365,8 +468,8 @@ fn find_key_colon(content: str) -> usize {
     return content.len()
 }
 
-fn parse_block_sequence(lines: Vec<YamlLine>, pos#: usize, seq_indent: usize, depth: usize) -> Result<JsonNode, YamlError> {
-    auto items# = Vec<JsonNode>::new()
+fn parse_block_sequence(document#: YamlDocument, lines: Vec<YamlLine>, pos#: usize, seq_indent: usize, depth: usize) -> Result<usize, YamlError> {
+    auto items# = Vec<usize>::new()
 
     loop pos < lines.len() {
         loop pos < lines.len() && lines.borrow(pos).is_blank {
@@ -387,28 +490,28 @@ fn parse_block_sequence(lines: Vec<YamlLine>, pos#: usize, seq_indent: usize, de
         }
 
         if rest.len() == 0:usize {
-            auto val_res = parse_block_node(lines, pos, seq_indent + 1:usize, depth + 1:usize)
-            if val_res.is_err() { return Result<JsonNode, YamlError>::Err(val_res.unwrap_err()) }
-            items#.push(cede val_res.unwrap())
+            auto val_res = parse_block_node(document#, lines, pos#, seq_indent + 1:usize, depth + 1:usize)
+            if val_res.is_err() { return Result<usize, YamlError>::Err(val_res.unwrap_err()) }
+            items#.push(val_res.unwrap())
         } else {
             if is_mapping_start(rest.as_str()) {
-                auto map_res = parse_inline_mapping_item(lines, pos, seq_indent + 2:usize, rest.as_str(), cur_line.line_no, cur_line.col_no, depth + 1:usize)
-                if map_res.is_err() { return Result<JsonNode, YamlError>::Err(map_res.unwrap_err()) }
-                items#.push(cede map_res.unwrap())
+                auto map_res = parse_inline_mapping_item(document#, lines, pos#, seq_indent + 2:usize, rest.as_str(), cur_line.line_no, cur_line.col_no, depth + 1:usize)
+                if map_res.is_err() { return Result<usize, YamlError>::Err(map_res.unwrap_err()) }
+                items#.push(map_res.unwrap())
             } else {
                 if is_sequence_start(rest.as_str()) {
                     auto rest_seq# = trim_str(copy_substr(rest.as_str(), 1:usize, rest.len()).as_str())
-                    auto nested_vec# = Vec<JsonNode>::new()
+                    auto nested_vec# = Vec<usize>::new()
                     if rest_seq.len() > 0:usize {
                         auto empty_lines# = Vec<YamlLine>::new()
                         auto dummy_pos# = 0:usize
-                        auto sub_item = parse_scalar_or_value_with_continuation(empty_lines, dummy_pos, rest_seq.as_str(), cur_line.line_no, cur_line.col_no, 0:usize)
-                        if sub_item.is_err() { return Result<JsonNode, YamlError>::Err(sub_item.unwrap_err()) }
-                        nested_vec#.push(cede sub_item.unwrap())
+                        auto sub_item = parse_scalar_or_value_with_continuation(document#, empty_lines, dummy_pos#, rest_seq.as_str(), cur_line.line_no, cur_line.col_no, 0:usize, 0)
+                        if sub_item.is_err() { return Result<usize, YamlError>::Err(sub_item.unwrap_err()) }
+                        nested_vec#.push(sub_item.unwrap())
                     } else {
-                        auto val_res = parse_block_node(lines, pos, seq_indent + 2:usize, depth + 1:usize)
-                        if val_res.is_err() { return Result<JsonNode, YamlError>::Err(val_res.unwrap_err()) }
-                        nested_vec#.push(cede val_res.unwrap())
+                        auto val_res = parse_block_node(document#, lines, pos#, seq_indent + 2:usize, depth + 1:usize)
+                        if val_res.is_err() { return Result<usize, YamlError>::Err(val_res.unwrap_err()) }
+                        nested_vec#.push(val_res.unwrap())
                     }
 
                     loop pos < lines.len() {
@@ -420,25 +523,25 @@ fn parse_block_sequence(lines: Vec<YamlLine>, pos#: usize, seq_indent: usize, de
 
                         pos = pos + 1:usize
                         auto nxt_item# = trim_str(copy_substr(nxt_content.as_str(), 1:usize, nxt_content.len()).as_str())
-                        auto sub_val = parse_scalar_or_value_with_continuation(lines, pos, nxt_item.as_str(), nxt_line.line_no, nxt_line.col_no, seq_indent + 3:usize)
-                        if sub_val.is_err() { return Result<JsonNode, YamlError>::Err(sub_val.unwrap_err()) }
-                        nested_vec#.push(cede sub_val.unwrap())
+                        auto sub_val = parse_scalar_or_value_with_continuation(document#, lines, pos#, nxt_item.as_str(), nxt_line.line_no, nxt_line.col_no, seq_indent + 3:usize, 0)
+                        if sub_val.is_err() { return Result<usize, YamlError>::Err(sub_val.unwrap_err()) }
+                        nested_vec#.push(sub_val.unwrap())
                     }
-                    items#.push(JsonNode::ArrayNode(cede nested_vec))
+                    items#.push(node_sequence(document#, nested_vec))
                 } else {
-                    auto item_val = parse_scalar_or_value_with_continuation(lines, pos, rest.as_str(), cur_line.line_no, cur_line.col_no, seq_indent + 1:usize)
-                    if item_val.is_err() { return Result<JsonNode, YamlError>::Err(item_val.unwrap_err()) }
-                    items#.push(cede item_val.unwrap())
+                    auto item_val = parse_scalar_or_value_with_continuation(document#, lines, pos#, rest.as_str(), cur_line.line_no, cur_line.col_no, seq_indent + 1:usize, 0)
+                    if item_val.is_err() { return Result<usize, YamlError>::Err(item_val.unwrap_err()) }
+                    items#.push(item_val.unwrap())
                 }
             }
         }
     }
 
-    return Result<JsonNode, YamlError>::Ok(JsonNode::ArrayNode(cede items))
+    return Result<usize, YamlError>::Ok(node_sequence(document#, items))
 }
 
-fn parse_block_mapping(lines: Vec<YamlLine>, pos#: usize, map_indent: usize, depth: usize) -> Result<JsonNode, YamlError> {
-    auto map# = HashMap<string, JsonNode>::new()
+fn parse_block_mapping(document#: YamlDocument, lines: Vec<YamlLine>, pos#: usize, map_indent: usize, depth: usize) -> Result<usize, YamlError> {
+    auto map# = Vec<YamlMember>::new()
 
     loop pos < lines.len() {
         loop pos < lines.len() && lines.borrow(pos).is_blank {
@@ -454,18 +557,18 @@ fn parse_block_mapping(lines: Vec<YamlLine>, pos#: usize, map_indent: usize, dep
         auto colon_idx = find_key_colon(content.as_str())
         auto raw_key = trim_str(copy_substr(content.as_str(), 0:usize, colon_idx).as_str())
         if raw_key.len() == 0:usize {
-            return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("empty key is not supported"), cur_line.line_no, cur_line.col_no))
+            return Result<usize, YamlError>::Err(YamlError::new(string::from("empty key is not supported"), cur_line.line_no, cur_line.col_no))
         }
 
         auto key_res = parse_key_string(raw_key.as_str(), cur_line.line_no, cur_line.col_no)
-        if key_res.is_err() { return Result<JsonNode, YamlError>::Err(key_res.unwrap_err()) }
+        if key_res.is_err() { return Result<usize, YamlError>::Err(key_res.unwrap_err()) }
         auto key_str = key_res.unwrap()
 
-        if map.contains_key(string::from(key_str.as_str())) {
+        if has_key(document, map, key_str.as_str()) {
             auto err_msg# = string::from("duplicate key '")
             err_msg#.push_str(key_str.as_str())
             err_msg#.push_str("'")
-            return Result<JsonNode, YamlError>::Err(YamlError::new(cede err_msg, cur_line.line_no, cur_line.col_no))
+            return Result<usize, YamlError>::Err(YamlError::new(cede err_msg, cur_line.line_no, cur_line.col_no))
         }
 
         pos = pos + 1:usize
@@ -476,17 +579,17 @@ fn parse_block_mapping(lines: Vec<YamlLine>, pos#: usize, map_indent: usize, dep
             val_str = trim_str(copy_substr(content.as_str(), rest_start, content.len()).as_str())
         }
 
-        auto val# = JsonNode::NullNode(0)
+        auto val# = node_atom(document#, 0, 0.0)
         if val_str.len() > 0:usize {
             auto b0 = val_str.as_str().byte_at(0:usize) as u8
             if b0 == '|' as u8 || b0 == '>' as u8 {
-                auto b_scalar = parse_block_scalar(lines, pos, cur_line, val_str.as_str())
-                if b_scalar.is_err() { return Result<JsonNode, YamlError>::Err(b_scalar.unwrap_err()) }
-                val = cede b_scalar.unwrap()
+                auto b_scalar = parse_block_scalar(document#, lines, pos#, cur_line, val_str.as_str())
+                if b_scalar.is_err() { return Result<usize, YamlError>::Err(b_scalar.unwrap_err()) }
+                val = b_scalar.unwrap()
             } else {
-                auto s_val = parse_scalar_or_value_with_continuation(lines, pos, val_str.as_str(), cur_line.line_no, cur_line.col_no, cur_line.indent + 1:usize)
-                if s_val.is_err() { return Result<JsonNode, YamlError>::Err(s_val.unwrap_err()) }
-                val = cede s_val.unwrap()
+                auto s_val = parse_scalar_or_value_with_continuation(document#, lines, pos#, val_str.as_str(), cur_line.line_no, cur_line.col_no, cur_line.indent + 1:usize, 0)
+                if s_val.is_err() { return Result<usize, YamlError>::Err(s_val.unwrap_err()) }
+                val = s_val.unwrap()
             }
         } else {
             auto nxt_pos# = pos
@@ -494,29 +597,29 @@ fn parse_block_mapping(lines: Vec<YamlLine>, pos#: usize, map_indent: usize, dep
                 nxt_pos = nxt_pos + 1:usize
             }
             if nxt_pos < lines.len() && lines.borrow(nxt_pos).indent > map_indent {
-                auto child_val = parse_block_node(lines, pos, map_indent + 1:usize, depth + 1:usize)
-                if child_val.is_err() { return Result<JsonNode, YamlError>::Err(child_val.unwrap_err()) }
-                val = cede child_val.unwrap()
+                auto child_val = parse_block_node(document#, lines, pos#, map_indent + 1:usize, depth + 1:usize)
+                if child_val.is_err() { return Result<usize, YamlError>::Err(child_val.unwrap_err()) }
+                val = child_val.unwrap()
             } else {
-                val = JsonNode::NullNode(0)
+                val = node_atom(document#, 0, 0.0)
             }
         }
 
-        map#.insert(cede key_str, cede val)
+        put_member(document#, map#, key_str.as_str(), val)
     }
 
-    return Result<JsonNode, YamlError>::Ok(JsonNode::ObjectNode(cede map))
+    return Result<usize, YamlError>::Ok(node_mapping(document#, map))
 }
 
-fn parse_inline_mapping_item(lines: Vec<YamlLine>, pos#: usize, min_indent: usize, inline_content: str, line_no: usize, col_no: usize, depth: usize) -> Result<JsonNode, YamlError> {
-    auto map# = HashMap<string, JsonNode>::new()
+fn parse_inline_mapping_item(document#: YamlDocument, lines: Vec<YamlLine>, pos#: usize, min_indent: usize, inline_content: str, line_no: usize, col_no: usize, depth: usize) -> Result<usize, YamlError> {
+    auto map# = Vec<YamlMember>::new()
     auto colon_idx = find_key_colon(inline_content)
     auto raw_key = trim_str(copy_substr(inline_content, 0:usize, colon_idx).as_str())
     if raw_key.len() == 0:usize {
-        return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("empty key is not supported"), line_no, col_no))
+        return Result<usize, YamlError>::Err(YamlError::new(string::from("empty key is not supported"), line_no, col_no))
     }
     auto key_res = parse_key_string(raw_key.as_str(), line_no, col_no)
-    if key_res.is_err() { return Result<JsonNode, YamlError>::Err(key_res.unwrap_err()) }
+    if key_res.is_err() { return Result<usize, YamlError>::Err(key_res.unwrap_err()) }
     auto key_str = key_res.unwrap()
 
     auto val_str# = string::from("")
@@ -525,22 +628,22 @@ fn parse_inline_mapping_item(lines: Vec<YamlLine>, pos#: usize, min_indent: usiz
         val_str = trim_str(copy_substr(inline_content, rest_start, inline_content.len()).as_str())
     }
 
-    auto val# = JsonNode::NullNode(0)
+    auto val# = node_atom(document#, 0, 0.0)
     if val_str.len() > 0:usize {
-        auto s_val = parse_scalar_or_value_with_continuation(lines, pos, val_str.as_str(), line_no, col_no, min_indent + 1:usize)
-        if s_val.is_err() { return Result<JsonNode, YamlError>::Err(s_val.unwrap_err()) }
-        val = cede s_val.unwrap()
+        auto s_val = parse_scalar_or_value_with_continuation(document#, lines, pos#, val_str.as_str(), line_no, col_no, min_indent + 1:usize, 0)
+        if s_val.is_err() { return Result<usize, YamlError>::Err(s_val.unwrap_err()) }
+        val = s_val.unwrap()
     } else {
         if pos < lines.len() && lines.borrow(pos).indent > min_indent {
-            auto child_val = parse_block_node(lines, pos, min_indent + 1:usize, depth + 1:usize)
-            if child_val.is_err() { return Result<JsonNode, YamlError>::Err(child_val.unwrap_err()) }
-            val = cede child_val.unwrap()
+            auto child_val = parse_block_node(document#, lines, pos#, min_indent + 1:usize, depth + 1:usize)
+            if child_val.is_err() { return Result<usize, YamlError>::Err(child_val.unwrap_err()) }
+            val = child_val.unwrap()
         } else {
-            val = JsonNode::NullNode(0)
+            val = node_atom(document#, 0, 0.0)
         }
     }
 
-    map#.insert(cede key_str, cede val)
+    put_member(document#, map#, key_str.as_str(), val)
 
     loop pos < lines.len() {
         loop pos < lines.len() && lines.borrow(pos).is_blank { pos = pos + 1:usize }
@@ -554,17 +657,17 @@ fn parse_inline_mapping_item(lines: Vec<YamlLine>, pos#: usize, min_indent: usiz
         auto c_idx = find_key_colon(content.as_str())
         auto r_key = trim_str(copy_substr(content.as_str(), 0:usize, c_idx).as_str())
         if r_key.len() == 0:usize {
-            return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("empty key is not supported"), cur_line.line_no, cur_line.col_no))
+            return Result<usize, YamlError>::Err(YamlError::new(string::from("empty key is not supported"), cur_line.line_no, cur_line.col_no))
         }
         auto k_res = parse_key_string(r_key.as_str(), cur_line.line_no, cur_line.col_no)
-        if k_res.is_err() { return Result<JsonNode, YamlError>::Err(k_res.unwrap_err()) }
+        if k_res.is_err() { return Result<usize, YamlError>::Err(k_res.unwrap_err()) }
         auto k_str = k_res.unwrap()
 
-        if map.contains_key(string::from(k_str.as_str())) {
+        if has_key(document, map, k_str.as_str()) {
             auto err_msg# = string::from("duplicate key '")
             err_msg#.push_str(k_str.as_str())
             err_msg#.push_str("'")
-            return Result<JsonNode, YamlError>::Err(YamlError::new(cede err_msg, cur_line.line_no, cur_line.col_no))
+            return Result<usize, YamlError>::Err(YamlError::new(cede err_msg, cur_line.line_no, cur_line.col_no))
         }
 
         pos = pos + 1:usize
@@ -573,24 +676,24 @@ fn parse_inline_mapping_item(lines: Vec<YamlLine>, pos#: usize, min_indent: usiz
         if v_start < content.len() {
             v_str = trim_str(copy_substr(content.as_str(), v_start, content.len()).as_str())
         }
-        auto v_val# = JsonNode::NullNode(0)
+        auto v_val# = node_atom(document#, 0, 0.0)
         if v_str.len() > 0:usize {
-            auto s_val = parse_scalar_or_value_with_continuation(lines, pos, v_str.as_str(), cur_line.line_no, cur_line.col_no, cur_line.indent + 1:usize)
-            if s_val.is_err() { return Result<JsonNode, YamlError>::Err(s_val.unwrap_err()) }
-            v_val = cede s_val.unwrap()
+            auto s_val = parse_scalar_or_value_with_continuation(document#, lines, pos#, v_str.as_str(), cur_line.line_no, cur_line.col_no, cur_line.indent + 1:usize, 0)
+            if s_val.is_err() { return Result<usize, YamlError>::Err(s_val.unwrap_err()) }
+            v_val = s_val.unwrap()
         } else {
             if pos < lines.len() && lines.borrow(pos).indent > cur_line.indent {
-                auto child_val = parse_block_node(lines, pos, cur_line.indent + 1:usize, depth + 1:usize)
-                if child_val.is_err() { return Result<JsonNode, YamlError>::Err(child_val.unwrap_err()) }
-                v_val = cede child_val.unwrap()
+                auto child_val = parse_block_node(document#, lines, pos#, cur_line.indent + 1:usize, depth + 1:usize)
+                if child_val.is_err() { return Result<usize, YamlError>::Err(child_val.unwrap_err()) }
+                v_val = child_val.unwrap()
             } else {
-                v_val = JsonNode::NullNode(0)
+                v_val = node_atom(document#, 0, 0.0)
             }
         }
-        map#.insert(cede k_str, cede v_val)
+        put_member(document#, map#, k_str.as_str(), v_val)
     }
 
-    return Result<JsonNode, YamlError>::Ok(JsonNode::ObjectNode(cede map))
+    return Result<usize, YamlError>::Ok(node_mapping(document#, map))
 }
 
 fn parse_key_string(raw_key: str, line_no: usize, col_no: usize) -> Result<string, YamlError> {
@@ -607,7 +710,7 @@ fn parse_key_string(raw_key: str, line_no: usize, col_no: usize) -> Result<strin
     }
     auto colon_check = find_key_colon(raw_key)
     if colon_check < raw_key.len() {
-        return Result<string, YamlError>::Err(YamlError::new(cede string::from("invalid unquoted key containing colon"), line_no, col_no))
+        return Result<string, YamlError>::Err(YamlError::new(string::from("invalid unquoted key containing colon"), line_no, col_no))
     }
     auto check_res = check_unsupported_syntax(raw_key, line_no, col_no)
     if check_res.is_err() {
@@ -616,14 +719,14 @@ fn parse_key_string(raw_key: str, line_no: usize, col_no: usize) -> Result<strin
     return Result<string, YamlError>::Ok(string::from(raw_key))
 }
 
-fn parse_scalar_node(lines: Vec<YamlLine>, pos#: usize, header_line: YamlLine, content: str, parent_indent: usize, depth: usize) -> Result<JsonNode, YamlError> {
+fn parse_scalar_node(document#: YamlDocument, lines: Vec<YamlLine>, pos#: usize, header_line: YamlLine, content: str, parent_indent: usize, depth: usize) -> Result<usize, YamlError> {
     if content.byte_at(0:usize) as u8 == '|' as u8 || content.byte_at(0:usize) as u8 == '>' as u8 {
-        return parse_block_scalar(lines, pos, header_line, content)
+        return parse_block_scalar(document#, lines, pos#, header_line, content)
     }
-    return parse_scalar_or_value_with_continuation(lines, pos, content, header_line.line_no, header_line.col_no, parent_indent + 1:usize)
+    return parse_scalar_or_value_with_continuation(document#, lines, pos#, content, header_line.line_no, header_line.col_no, parent_indent + 1:usize, 0)
 }
 
-fn parse_block_scalar(lines: Vec<YamlLine>, pos#: usize, header_line: YamlLine, header_content: str) -> Result<JsonNode, YamlError> {
+fn parse_block_scalar(document#: YamlDocument, lines: Vec<YamlLine>, pos#: usize, header_line: YamlLine, header_content: str) -> Result<usize, YamlError> {
     auto is_folded = header_content.byte_at(0:usize) as u8 == '>' as u8
     auto chomp# = 0:i32 // 0: clip (default), 1: strip (-), 2: keep (+)
     auto explicit_indent# = 0:usize
@@ -735,7 +838,7 @@ fn parse_block_scalar(lines: Vec<YamlLine>, pos#: usize, header_line: YamlLine, 
         }
     }
 
-    return Result<JsonNode, YamlError>::Ok(JsonNode::StrNode(cede buf))
+    return Result<usize, YamlError>::Ok(node_text(document#, cede buf))
 }
 
 // Scan one segment of a quoted scalar starting at `start`. Appends decoded
@@ -768,12 +871,12 @@ fn y_quote_scan(quote: u8, seg: str, start: usize, col_no: usize, out#: string, 
             else if nb == '\\' as u8 { out#.push_str("\\") }
             else if nb == 'u' as u8 {
                 if i + 6 > n {
-                    return Result<i32, YamlError>::Err(YamlError::new(cede string::from("invalid unicode escape sequence"), line_no, col_no + i))
+                    return Result<i32, YamlError>::Err(YamlError::new(string::from("invalid unicode escape sequence"), line_no, col_no + i))
                 }
                 auto hex_str = copy_substr(seg, i + 2:usize, i + 6:usize)
                 auto hex_opt = parse_hex_int(hex_str.as_str())
                 if hex_opt.is_none() {
-                    return Result<i32, YamlError>::Err(YamlError::new(cede string::from("invalid unicode hex code"), line_no, col_no + i))
+                    return Result<i32, YamlError>::Err(YamlError::new(string::from("invalid unicode hex code"), line_no, col_no + i))
                 }
                 auto code = hex_opt.unwrap() as u32
                 if code <= 0x7F:u32 {
@@ -812,7 +915,7 @@ fn y_parse_quoted_multiline(lines: Vec<YamlLine>, pos#: usize, first_content: st
 
     auto first_buf# = string::from("")
     auto first_closed# = false
-    auto first_res = y_quote_scan(quote, first_content, 1:usize, col_no, first_buf, first_closed, line_no)
+    auto first_res = y_quote_scan(quote, first_content, 1:usize, col_no, first_buf#, first_closed#, line_no)
     if first_res.is_err() { return Result<string, YamlError>::Err(first_res.unwrap_err()) }
     out#.push_str(first_buf.trim_end().as_str())
     continued = first_res.unwrap() == 1
@@ -825,13 +928,13 @@ fn y_parse_quoted_multiline(lines: Vec<YamlLine>, pos#: usize, first_content: st
             continue
         }
         if line.indent < min_continuation_indent {
-            return Result<string, YamlError>::Err(YamlError::new(cede string::from("unterminated quoted string"), line.line_no, line.col_no))
+            return Result<string, YamlError>::Err(YamlError::new(string::from("unterminated quoted string"), line.line_no, line.col_no))
         }
         pos = pos + 1:usize
 
         auto seg_buf# = string::from("")
         auto seg_closed# = false
-        auto seg_res = y_quote_scan(quote, line.content.as_str(), 0:usize, line.col_no, seg_buf, seg_closed, line.line_no)
+        auto seg_res = y_quote_scan(quote, line.content.as_str(), 0:usize, line.col_no, seg_buf#, seg_closed#, line.line_no)
         if seg_res.is_err() { return Result<string, YamlError>::Err(seg_res.unwrap_err()) }
 
         auto folded = seg_buf.trim_end()
@@ -853,40 +956,43 @@ fn y_parse_quoted_multiline(lines: Vec<YamlLine>, pos#: usize, first_content: st
         continued = seg_res.unwrap() == 1
     }
 
-    return Result<string, YamlError>::Err(YamlError::new(cede string::from("unterminated quoted string"), line_no, col_no))
+    return Result<string, YamlError>::Err(YamlError::new(string::from("unterminated quoted string"), line_no, col_no))
 }
 
-fn parse_scalar_or_value_with_continuation(lines: Vec<YamlLine>, pos#: usize, content: str, line_no: usize, col_no: usize, min_continuation_indent: usize) -> Result<JsonNode, YamlError> {
+fn parse_scalar_or_value_with_continuation(document#: YamlDocument, lines: Vec<YamlLine>, pos#: usize, content: str, line_no: usize, col_no: usize, min_continuation_indent: usize, flow_depth: usize) -> Result<usize, YamlError> {
+    if flow_depth > 128 {
+        return Result<usize, YamlError>::Err(YamlError::new(string::from("maximum recursion depth of 128 exceeded"), line_no, col_no))
+    }
     if content.len() == 0:usize {
-        return Result<JsonNode, YamlError>::Ok(JsonNode::NullNode(0))
+        return Result<usize, YamlError>::Ok(node_atom(document#, 0, 0.0))
     }
 
     auto check_res = check_unsupported_syntax(content, line_no, col_no)
     if check_res.is_err() {
-        return Result<JsonNode, YamlError>::Err(check_res.unwrap_err())
+        return Result<usize, YamlError>::Err(check_res.unwrap_err())
     }
 
     auto b0 = content.byte_at(0:usize) as u8
     if b0 == '[' as u8 {
-        return parse_flow_sequence(content, line_no, col_no)
+        return parse_flow_sequence(document#, content, line_no, col_no, flow_depth)
     }
     if b0 == '{' as u8 {
-        return parse_flow_mapping(content, line_no, col_no)
+        return parse_flow_mapping(document#, content, line_no, col_no, flow_depth)
     }
     if b0 == '\'' as u8 || b0 == '"' as u8 {
         auto quote = content.byte_at(0:usize) as u8
         auto probe_buf# = string::from("")
         auto probe_closed# = false
-        auto probe_res = y_quote_scan(quote, content, 1:usize, col_no, probe_buf, probe_closed, line_no)
+        auto probe_res = y_quote_scan(quote, content, 1:usize, col_no, probe_buf#, probe_closed#, line_no)
         if probe_res.is_err() {
             auto str_res = parse_quoted_string(content, line_no, col_no)
-            if str_res.is_err() { return Result<JsonNode, YamlError>::Err(str_res.unwrap_err()) }
+            if str_res.is_err() { return Result<usize, YamlError>::Err(str_res.unwrap_err()) }
             auto s_val = str_res.unwrap()
-            return Result<JsonNode, YamlError>::Ok(JsonNode::StrNode(cede s_val))
+            return Result<usize, YamlError>::Ok(node_text(document#, cede s_val))
         }
         if probe_closed {
             auto str_res = parse_quoted_string(content, line_no, col_no)
-            if str_res.is_err() { return Result<JsonNode, YamlError>::Err(str_res.unwrap_err()) }
+            if str_res.is_err() { return Result<usize, YamlError>::Err(str_res.unwrap_err()) }
             auto s_val = str_res.unwrap()
 
             if pos < lines.len() {
@@ -894,21 +1000,22 @@ fn parse_scalar_or_value_with_continuation(lines: Vec<YamlLine>, pos#: usize, co
                 if !nxt_line.is_blank && nxt_line.indent >= min_continuation_indent {
                     auto nxt_c = trim_comment(nxt_line.content.as_str())
                     if nxt_c.len() > 0:usize && !is_mapping_start(nxt_c.as_str()) && !is_sequence_start(nxt_c.as_str()) {
-                        return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("quoted string cannot have unquoted continuation line"), nxt_line.line_no, nxt_line.col_no))
+                        return Result<usize, YamlError>::Err(YamlError::new(string::from("quoted string cannot have unquoted continuation line"), nxt_line.line_no, nxt_line.col_no))
                     }
                 }
             }
-            return Result<JsonNode, YamlError>::Ok(JsonNode::StrNode(cede s_val))
+            return Result<usize, YamlError>::Ok(node_text(document#, cede s_val))
         }
 
-        auto ml_res = y_parse_quoted_multiline(lines, pos, content, line_no, col_no, min_continuation_indent)
-        if ml_res.is_err() { return Result<JsonNode, YamlError>::Err(ml_res.unwrap_err()) }
-        return Result<JsonNode, YamlError>::Ok(JsonNode::StrNode(cede ml_res.unwrap()))
+        auto ml_res = y_parse_quoted_multiline(lines, pos#, content, line_no, col_no, min_continuation_indent)
+        if ml_res.is_err() { return Result<usize, YamlError>::Err(ml_res.unwrap_err()) }
+        auto text_value = ml_res.unwrap()
+        return Result<usize, YamlError>::Ok(node_text(document#, cede text_value))
     }
 
     auto inline_colon = find_key_colon(content)
     if inline_colon < content.len() {
-        return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("invalid unquoted scalar containing mapping colon"), line_no, col_no))
+        return Result<usize, YamlError>::Err(YamlError::new(string::from("invalid unquoted scalar containing mapping colon"), line_no, col_no))
     }
 
     // Unquoted scalar with multiline continuation lines
@@ -928,7 +1035,7 @@ fn parse_scalar_or_value_with_continuation(lines: Vec<YamlLine>, pos#: usize, co
         // A plain scalar continuation may not contain a mapping colon
         auto colon_at = find_key_colon(nxt_content.as_str())
         if colon_at < nxt_content.len() {
-            return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("mapping values are not allowed in this context"), nxt.line_no, nxt.col_no + colon_at))
+            return Result<usize, YamlError>::Err(YamlError::new(string::from("mapping values are not allowed in this context"), nxt.line_no, nxt.col_no + colon_at))
         }
 
         pos = pos + 1:usize
@@ -944,17 +1051,17 @@ fn parse_scalar_or_value_with_continuation(lines: Vec<YamlLine>, pos#: usize, co
         }
     }
 
-    return Result<JsonNode, YamlError>::Ok(parse_core_schema_scalar(scalar_buf.as_str()))
+    return Result<usize, YamlError>::Ok(parse_core_schema_scalar(document#, scalar_buf.as_str()))
 }
 
 fn parse_quoted_string(content: str, line_no: usize, col_no: usize) -> Result<string, YamlError> {
     if content.len() < 2:usize {
-        return Result<string, YamlError>::Err(YamlError::new(cede string::from("unterminated quoted string"), line_no, col_no))
+        return Result<string, YamlError>::Err(YamlError::new(string::from("unterminated quoted string"), line_no, col_no))
     }
     auto quote = content.byte_at(0:usize) as u8
     auto last_idx = content.len() - 1:usize
     if content.byte_at(last_idx) as u8 != quote {
-        return Result<string, YamlError>::Err(YamlError::new(cede string::from("unterminated quoted string"), line_no, col_no))
+        return Result<string, YamlError>::Err(YamlError::new(string::from("unterminated quoted string"), line_no, col_no))
     }
 
     auto has_special# = false
@@ -982,7 +1089,7 @@ fn parse_quoted_string(content: str, line_no: usize, col_no: usize) -> Result<st
         if quote == '"' as u8 && b == '\\' as u8 {
             auto next_idx = idx + 1:usize
             if next_idx >= last_idx {
-                return Result<string, YamlError>::Err(YamlError::new(cede string::from("invalid escape sequence"), line_no, col_no + idx))
+                return Result<string, YamlError>::Err(YamlError::new(string::from("invalid escape sequence"), line_no, col_no + idx))
             }
             auto next_b = content.byte_at(next_idx) as u8
             if next_b == 'n' as u8 { out#.push_str("\n") }
@@ -993,12 +1100,12 @@ fn parse_quoted_string(content: str, line_no: usize, col_no: usize) -> Result<st
             else if next_b == 'u' as u8 {
                 auto hex_end = next_idx + 5
                 if hex_end > last_idx {
-                    return Result<string, YamlError>::Err(YamlError::new(cede string::from("invalid unicode escape sequence"), line_no, col_no + idx))
+                    return Result<string, YamlError>::Err(YamlError::new(string::from("invalid unicode escape sequence"), line_no, col_no + idx))
                 }
                 auto hex_str = copy_substr(content, next_idx + 1:usize, next_idx + 5:usize)
                 auto hex_opt = parse_hex_int(hex_str.as_str())
                 if hex_opt.is_none() {
-                    return Result<string, YamlError>::Err(YamlError::new(cede string::from("invalid unicode hex code"), line_no, col_no + idx))
+                    return Result<string, YamlError>::Err(YamlError::new(string::from("invalid unicode hex code"), line_no, col_no + idx))
                 }
                 auto code = hex_opt.unwrap() as u32
                 if code <= 0x7F:u32 {
@@ -1056,13 +1163,13 @@ fn flow_plain_has_colon(raw: str) -> bool {
     return false
 }
 
-fn parse_flow_sequence(content: str, line_no: usize, col_no: usize) -> Result<JsonNode, YamlError> {
+fn parse_flow_sequence(document#: YamlDocument, content: str, line_no: usize, col_no: usize, flow_depth: usize) -> Result<usize, YamlError> {
     auto last_idx = content.len() - 1:usize
     if content.byte_at(last_idx) as u8 != ']' as u8 {
-        return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("unterminated flow sequence ']'"), line_no, col_no))
+        return Result<usize, YamlError>::Err(YamlError::new(string::from("unterminated flow sequence ']'"), line_no, col_no))
     }
     auto inner = copy_substr(content, 1:usize, last_idx)
-    auto items# = Vec<JsonNode>::new()
+    auto items# = Vec<usize>::new()
     auto inner_str = inner.as_str()
     auto start# = 0:usize
     auto in_quote# = 0:u8
@@ -1093,16 +1200,16 @@ fn parse_flow_sequence(content: str, line_no: usize, col_no: usize) -> Result<Js
                     auto elem_raw = trim_str(copy_substr(inner_str, start, idx).as_str())
                     if elem_raw.len() > 0:usize {
                         if flow_plain_has_colon(elem_raw.as_str()) {
-                            return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("found unexpected ':' while scanning a plain scalar"), line_no, col_no + start))
+                            return Result<usize, YamlError>::Err(YamlError::new(string::from("found unexpected ':' while scanning a plain scalar"), line_no, col_no + start))
                         }
                         auto empty_lines# = Vec<YamlLine>::new()
                         auto dummy_pos# = 0:usize
-                        auto elem_val = parse_scalar_or_value_with_continuation(empty_lines, dummy_pos, elem_raw.as_str(), line_no, col_no + start, 0:usize)
-                        if elem_val.is_err() { return Result<JsonNode, YamlError>::Err(elem_val.unwrap_err()) }
-                        items#.push(cede elem_val.unwrap())
+                        auto elem_val = parse_scalar_or_value_with_continuation(document#, empty_lines, dummy_pos#, elem_raw.as_str(), line_no, col_no + start, 0:usize, flow_depth + 1)
+                        if elem_val.is_err() { return Result<usize, YamlError>::Err(elem_val.unwrap_err()) }
+                        items#.push(elem_val.unwrap())
                     } else {
                         if b == ',' as u8 && (start == 0:usize || idx < inner_str.len()) {
-                            return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("empty flow sequence element is not supported"), line_no, col_no + start))
+                            return Result<usize, YamlError>::Err(YamlError::new(string::from("empty flow sequence element is not supported"), line_no, col_no + start))
                         }
                     }
                     start = idx + 1:usize
@@ -1112,16 +1219,16 @@ fn parse_flow_sequence(content: str, line_no: usize, col_no: usize) -> Result<Js
         idx = idx + 1:usize
     }
 
-    return Result<JsonNode, YamlError>::Ok(JsonNode::ArrayNode(cede items))
+    return Result<usize, YamlError>::Ok(node_sequence(document#, items))
 }
 
-fn parse_flow_mapping(content: str, line_no: usize, col_no: usize) -> Result<JsonNode, YamlError> {
+fn parse_flow_mapping(document#: YamlDocument, content: str, line_no: usize, col_no: usize, flow_depth: usize) -> Result<usize, YamlError> {
     auto last_idx = content.len() - 1:usize
     if content.byte_at(last_idx) as u8 != '}' as u8 {
-        return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("unterminated flow mapping '}'"), line_no, col_no))
+        return Result<usize, YamlError>::Err(YamlError::new(string::from("unterminated flow mapping '}'"), line_no, col_no))
     }
     auto inner = copy_substr(content, 1:usize, last_idx)
-    auto map# = HashMap<string, JsonNode>::new()
+    auto map# = Vec<YamlMember>::new()
     auto inner_str = inner.as_str()
     auto start# = 0:usize
     auto in_quote# = 0:u8
@@ -1155,20 +1262,20 @@ fn parse_flow_mapping(content: str, line_no: usize, col_no: usize) -> Result<Jso
                         if colon < elem_raw.len() {
                             auto raw_k = trim_str(copy_substr(elem_raw.as_str(), 0:usize, colon).as_str())
                             if raw_k.len() == 0:usize {
-                                return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("empty key is not supported"), line_no, col_no + start))
+                                return Result<usize, YamlError>::Err(YamlError::new(string::from("empty key is not supported"), line_no, col_no + start))
                             }
                             if flow_plain_has_colon(raw_k.as_str()) {
-                                return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("found unexpected ':' while scanning a plain scalar"), line_no, col_no + start))
+                                return Result<usize, YamlError>::Err(YamlError::new(string::from("found unexpected ':' while scanning a plain scalar"), line_no, col_no + start))
                             }
                             auto k_res = parse_key_string(raw_k.as_str(), line_no, col_no + start)
-                            if k_res.is_err() { return Result<JsonNode, YamlError>::Err(k_res.unwrap_err()) }
+                            if k_res.is_err() { return Result<usize, YamlError>::Err(k_res.unwrap_err()) }
                             auto k_str = k_res.unwrap()
 
-                            if map.contains_key(string::from(k_str.as_str())) {
+                            if has_key(document, map, k_str.as_str()) {
                                 auto err_msg# = string::from("duplicate key '")
                                 err_msg#.push_str(k_str.as_str())
                                 err_msg#.push_str("'")
-                                return Result<JsonNode, YamlError>::Err(YamlError::new(cede err_msg, line_no, col_no + start))
+                                return Result<usize, YamlError>::Err(YamlError::new(cede err_msg, line_no, col_no + start))
                             }
 
                             auto val_raw# = string::from("")
@@ -1177,30 +1284,30 @@ fn parse_flow_mapping(content: str, line_no: usize, col_no: usize) -> Result<Jso
                                 val_raw = trim_str(copy_substr(elem_raw.as_str(), v_start, elem_raw.len()).as_str())
                             }
                             if val_raw.len() > 0:usize && flow_plain_has_colon(val_raw.as_str()) {
-                                return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("found unexpected ':' while scanning a plain scalar"), line_no, col_no + start + colon))
+                                return Result<usize, YamlError>::Err(YamlError::new(string::from("found unexpected ':' while scanning a plain scalar"), line_no, col_no + start + colon))
                             }
                             auto empty_lines# = Vec<YamlLine>::new()
                             auto dummy_pos# = 0:usize
-                            auto v_val = parse_scalar_or_value_with_continuation(empty_lines, dummy_pos, val_raw.as_str(), line_no, col_no + start + colon, 0:usize)
-                            if v_val.is_err() { return Result<JsonNode, YamlError>::Err(v_val.unwrap_err()) }
+                            auto v_val = parse_scalar_or_value_with_continuation(document#, empty_lines, dummy_pos#, val_raw.as_str(), line_no, col_no + start + colon, 0:usize, flow_depth + 1)
+                            if v_val.is_err() { return Result<usize, YamlError>::Err(v_val.unwrap_err()) }
 
-                            map#.insert(cede k_str, cede v_val.unwrap())
+                            put_member(document#, map#, k_str.as_str(), v_val.unwrap())
                         } else {
                             if flow_plain_has_colon(elem_raw.as_str()) {
-                                return Result<JsonNode, YamlError>::Err(YamlError::new(cede string::from("found unexpected ':' while scanning a plain scalar"), line_no, col_no + start))
+                                return Result<usize, YamlError>::Err(YamlError::new(string::from("found unexpected ':' while scanning a plain scalar"), line_no, col_no + start))
                             }
                             auto k_res = parse_key_string(elem_raw.as_str(), line_no, col_no + start)
-                            if k_res.is_err() { return Result<JsonNode, YamlError>::Err(k_res.unwrap_err()) }
+                            if k_res.is_err() { return Result<usize, YamlError>::Err(k_res.unwrap_err()) }
                             auto k_str = k_res.unwrap()
 
-                            if map.contains_key(string::from(k_str.as_str())) {
+                            if has_key(document, map, k_str.as_str()) {
                                 auto err_msg# = string::from("duplicate key '")
                                 err_msg#.push_str(k_str.as_str())
                                 err_msg#.push_str("'")
-                                return Result<JsonNode, YamlError>::Err(YamlError::new(cede err_msg, line_no, col_no + start))
+                                return Result<usize, YamlError>::Err(YamlError::new(cede err_msg, line_no, col_no + start))
                             }
 
-                            map#.insert(cede k_str, JsonNode::NullNode(0))
+                            put_member(document#, map#, k_str.as_str(), node_atom(document#, 0, 0.0))
                         }
                     }
                     start = idx + 1:usize
@@ -1210,48 +1317,48 @@ fn parse_flow_mapping(content: str, line_no: usize, col_no: usize) -> Result<Jso
         idx = idx + 1:usize
     }
 
-    return Result<JsonNode, YamlError>::Ok(JsonNode::ObjectNode(cede map))
+    return Result<usize, YamlError>::Ok(node_mapping(document#, map))
 }
 
-fn parse_core_schema_scalar(content: str) -> JsonNode {
+fn parse_core_schema_scalar(document#: YamlDocument, content: str) -> usize {
     if content.equals("null") || content.equals("Null") || content.equals("NULL") || content.equals("~") {
-        return JsonNode::NullNode(0)
+        return node_atom(document#, 0, 0.0)
     }
     if content.equals("true") || content.equals("True") || content.equals("TRUE") {
-        return JsonNode::BoolNode(true)
+        return node_bool(document#, true)
     }
     if content.equals("false") || content.equals("False") || content.equals("FALSE") {
-        return JsonNode::BoolNode(false)
+        return node_bool(document#, false)
     }
     if content.equals(".inf") || content.equals(".Inf") || content.equals(".INF") || content.equals("+.inf") {
-        return JsonNode::NumNode(1.0 / 0.0)
+        return node_number(document#, 1.0 / 0.0)
     }
     if content.equals("-.inf") || content.equals("-.Inf") || content.equals("-.INF") {
-        return JsonNode::NumNode(-1.0 / 0.0)
+        return node_number(document#, -1.0 / 0.0)
     }
     if content.equals(".nan") || content.equals(".NaN") || content.equals(".NAN") {
-        return JsonNode::NumNode(0.0 / 0.0)
+        return node_number(document#, 0.0 / 0.0)
     }
 
     if content.len() >= 3:usize && content.byte_at(0:usize) as u8 == '0' as u8 && (content.byte_at(1:usize) as u8 == 'x' as u8 || content.byte_at(1:usize) as u8 == 'X' as u8) {
         auto hex_val = parse_hex_int(copy_substr(content, 2:usize, content.len()).as_str())
         if hex_val.is_some() {
-            return JsonNode::NumNode(hex_val.unwrap() as f64)
+            return node_number(document#, hex_val.unwrap() as f64)
         }
     }
 
     auto int_val = parse_int(content)
     if int_val.is_some() {
-        return JsonNode::NumNode(int_val.unwrap() as f64)
+        return node_number(document#, int_val.unwrap() as f64)
     }
 
     auto float_val = parse_float(content)
     if float_val.is_some() {
-        return JsonNode::NumNode(float_val.unwrap())
+        return node_number(document#, float_val.unwrap())
     }
 
     auto str_out = string::from(content)
-    return JsonNode::StrNode(cede str_out)
+    return node_text(document#, cede str_out)
 }
 
 fn parse_hex_int(content: str) -> Option<i64> {
