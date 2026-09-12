@@ -1,5 +1,25 @@
 # Toka v1.0.0-rc.13 Release Candidate Notes
 
+## Current implementation-branch qualification notes
+
+These are pending consumer/release qualifications, not an update to the
+historical publication gate described below:
+
+- `db4385dc` fixes source-visible, capture-free `fn` closure returns that could
+  previously generate an uninitialized carrier and SIGBUS. Direct nonempty or
+  unqualified thin-fn closure returns currently fail closed. This implementation
+  limit is not a newly adopted language ban; other valid lifetime/representation
+  cases still require analysis. Source-hidden callable factory environment
+  information remains a separate unresolved qualification gap.
+- Host mailbox imports move from `std/task` to `std/task_mailbox`; no compatibility
+  forwarding layer is provided. GUI consumers need both import migration and
+  qualification against the new SDK/version. Prior GUI qualification, including
+  its old compiler-version check, is not evidence for an RC13 GUI combination.
+  GUI migration is a separate consumer task, not a condition for accepting the
+  `db4385dc` batch. This worktree has not modified or requalified the GUI repository.
+
+## Historical RC13 candidate description
+
 RC13 is the consolidated product-stabilization candidate after the RC10–RC12
 black-box trials. It bundles the release-blocking and onboarding repairs found
 by those trials into one candidate. It does not add syntax, change ownership

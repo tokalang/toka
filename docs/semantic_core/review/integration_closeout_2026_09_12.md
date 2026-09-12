@@ -4,6 +4,17 @@ Baseline: `2d2cbaf4`; accepted JSON `0f8c5408` and YAML `2d2cbaf4` stay closed.
 This is an implementation/validation record, not acceptance of binding or RC13.
 No push, PR, existing freeze-ref move, new ABI/TKI contract or recursive proof.
 
+The batch was accepted at `db4385dc` by independent incremental review, including
+the three added gates (3/3, 19.16 s); the reviewer did not rerun full suites.
+Next priority is the 38 remaining programs whose actual first error was Ring,
+not filename-based synchronization/network groups. They are a shared blocker,
+not a promise that all 38 programs recover after removing that first error.
+
+Actual checkout: `/private/tmp/toka-b6-dynamic-20260912`, branch
+`impl/json-dynamic-index`, accepted starting revision
+`db4385dcb02e73b9424fafee185bc11ccc4c71f6`. Directory migration is separate work;
+no checkout, older return-matrix branch, or existing freeze ref is moved.
+
 ## Implemented shared causes
 
 - Darwin network adapters now construct a complete `sockaddr_in`-compatible
@@ -84,3 +95,44 @@ test names for all three suites. Existing frozen refs and RC13 are unchanged.
 The remaining 85 PASS failures and 35 FAIL expectation failures are still
 release blockers. This batch is a reduction in measured failures, not a
 release-ready declaration.
+
+## Ring continuation (library-only candidate)
+
+Ring's raw-retirement proposal was again rejected before application. Rather
+than retrying it indirectly, the candidate changes representation to two
+complete-value Vecs, with balanced refills. No Ring raw_take/alloc/free remains;
+no compiler, Vec, native sync, raw_take or ABI/TKI implementation was changed.
+See `docs/std_ring.md` for owner transitions, performance, removed raw-field
+interface and destructor-order differences. This is not an Accepted declaration.
+
+The eight runtime matrix cases and two rejecting cases pass. A 400-operation
+seeded reference model checks contents/get/len after each operation. Resource,
+unique and shared tests verify no early destruction during growth/refill and
+exact-once after removal/clear/early return; a separate shared-owner case stays
+usable. String pressure, unique and shared-owner executables each report
+0 leaks / 0 leaked bytes through macOS leaks (outside the task-port sandbox).
+The original conformance Ring resource test also compiles and runs unchanged.
+
+Six related CTests pass 6/6 (78.24 s): Ring, Vec pop, managed elements, iterator
+domains, accepted thread/sync, and call-shadow. The final Ring gate was rerun
+after ensuring model-test error returns cannot truncate to zero exit status;
+it passes 1/1 (26.91 s). The complete incremental tool build also succeeds.
+
+Rechecking exactly the 38 remaining Ring-first-error cases:
+
+- Six now compile and run: cede_exemptions, g07_ring_test,
+  g07_test_advanced_containers, g08_sync_mpsc, g09_async_context_smoke_tests,
+  g09_context.
+- Thirty next fail at `lib/std/net.tk:1201`, readonly raw out_key rebound as a
+  writable pointer. This is a newly exposed **actual** shared first error,
+  not a Ring fix or a claimed network recovery.
+- Two MPSC tests next fail on old `fn#` thread closures/public spawn usage.
+  They are still failed positive tests, not intentionally unsupported behavior.
+
+Logs and exact case records: `/private/tmp/toka-ring-closeout.m8aiab`.
+The current full FAIL run is 438/473, identical failing names, no newly admitted
+negative or abnormal exit. Full PASS is 372/451 (204.32 s): six recovered, zero
+added failures, 79 remaining. `comparison.json` records both full-suite deltas
+against `db4385dc`'s logs. The full CTest suite was not rerun; only the six
+directly related gates above are claimed for this candidate. The prior full
+88/90 result remains historical, with its two distinct unresolved failures.

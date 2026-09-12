@@ -352,6 +352,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_empty_fn_return.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_ring_library
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_ring_library.py
+                --build-dir ${CMAKE_BINARY_DIR})
         if(APPLE)
             add_test(NAME toka_network_value_adapters
                 COMMAND ${Python3_EXECUTABLE}

@@ -1,162 +1,94 @@
-import core/types::{usize, Addr, ADDR0}
+import core/types::{usize}
 import core/traits::{@Encap, @Dup}
-import sys/libc::*
 import core/option::{Option}
+import std/vec::{Vec}
 
-fn next_pow2(n: usize) -> usize {
-    if n == 0 { return 8 }
-    auto v# = n - 1
-    v = v | (v >> 1)
-    v = v | (v >> 2)
-    v = v | (v >> 4)
-    v = v | (v >> 8)
-    v = v | (v >> 16)
-    v = v | (v >> 32)
-    return v + 1
+// Logical order is reverse(front) followed by back. Every element is a
+// complete value owned by exactly one Vec, never a Ring-managed raw slot.
+// Refill an empty side with half of the other side, avoiding repeated full
+// reversals when callers alternate pop_front/pop_back.
+fn ring_refill<'T>(source#: Vec<'T>, target#: Vec<'T>) {
+    auto keep = source.len() / 2
+    auto saved# = Vec<'T>::with_capacity(keep)
+    loop saved.len() < keep {
+        auto 'value = source#.pop().unwrap()
+        saved#.push(cede 'value)
+    }
+    loop !source.is_empty() {
+        auto 'value = source#.pop().unwrap()
+        target#.push(cede 'value)
+    }
+    loop !saved.is_empty() {
+        auto 'value = saved#.pop().unwrap()
+        source#.push(cede 'value)
+    }
 }
 
 pub shape RingCore<'T> (
-    nul *#buf#: ['T] = null as nul *['T],
-    cap#: usize = 0,
-    mask#: usize = 0,
-    head#: usize = 0,
-    len#: usize = 0
+    front#: Vec<'T> = Vec<'T>::new(),
+    back#: Vec<'T> = Vec<'T>::new()
 )
 
 impl<'T: @Send> RingCore<'T>@Send {}
 
 impl<'T> RingCore<'T> {
     pub fn new() -> RingCore<'T> {
-        return RingCore<'T>(
-            *buf = null as nul *['T],
-            cap = 0,
-            mask = 0,
-            head = 0,
-            len = 0
-        )
+        return RingCore<'T>(front = Vec<'T>::new(), back = Vec<'T>::new())
     }
 
     pub fn len(self) -> usize {
-        return self.len
+        return self.front.len() + self.back.len()
     }
 
     pub fn is_empty(self) -> bool {
-        return self.len == 0
+        return self.front.is_empty() && self.back.is_empty()
     }
 
     pub fn clear(self#) {
-        unsafe {
-            auto i# = 0:usize
-            loop i < self.len {
-                auto idx = (self.head + i) & self.mask
-                auto _val = cede self.buf[idx]
-                i += 1
-            }
-            self.len = 0
-            self.head = 0
-        }
-    }
-
-    fn grow(self#) {
-        unsafe {
-            auto new_cap# = self.cap * 2
-            if new_cap == 0 { new_cap = 8 }
-            
-            auto *new_buf# = unsafe alloc [new_cap] 'T
-            auto new_mask = new_cap - 1
-            
-            auto i# = 0:usize
-            loop i < self.len {
-                auto idx = (self.head + i) & self.mask
-                new_buf[i] = cede self.buf[idx]
-                i += 1
-            }
-            
-            if self.*buf != null {
-                unsafe free [0] self.*#buf
-            }
-            
-            self.*buf = *new_buf
-            self.cap = new_cap
-            self.mask = new_mask
-            self.head = 0
-        }
+        self.front#.clear()
+        self.back#.clear()
     }
 
     pub fn push_back(self#, cede 'val: T) {
-        if self.len == self.cap {
-            self#.grow()
-        }
-        unsafe {
-            auto idx = (self.head + self.len) & self.mask
-            self.buf[idx] = cede 'val
-            self.len += 1
-        }
+        self.back#.push(cede 'val)
     }
 
     pub fn push_front(self#, cede 'val: T) {
-        if self.len == self.cap {
-            self#.grow()
-        }
-        unsafe {
-            self.head = (self.head + self.cap - 1) & self.mask
-            self.buf[self.head] = cede 'val
-            self.len += 1
-        }
+        self.front#.push(cede 'val)
     }
 
     pub fn pop_back(self#) -> Option<'T> {
-        if self.len == 0 {
-            return Option<'T>::None
+        if self.back.is_empty() && !self.front.is_empty() {
+            ring_refill(self.front#, self.back#)
         }
-        unsafe {
-            auto idx = (self.head + self.len - 1) & self.mask
-            auto 'val = cede self.buf[idx]:T
-            self.len -= 1
-            return Option<'T>::Some(cede 'val)
-        }
+        auto outcome = self.back#.pop()
+        return cede outcome
     }
 
     pub fn pop_front(self#) -> Option<'T> {
-        if self.len == 0 {
-            return Option<'T>::None
+        if self.front.is_empty() && !self.back.is_empty() {
+            ring_refill(self.back#, self.front#)
         }
-        unsafe {
-            auto 'val = cede self.buf[self.head]:T
-            self.head = (self.head + 1) & self.mask
-            self.len -= 1
-            return Option<'T>::Some(cede 'val)
-        }
+        auto outcome = self.front#.pop()
+        return cede outcome
     }
-
 }
 
 impl<'T: @Dup> RingCore<'T> {
     /// Duplicates an element without removing it.
     pub fn get(self, index: usize) -> Option<'T> {
-        if index >= self.len {
-            return Option<'T>::None
+        if index >= self.len() {
+            auto outcome = Option<'T>::None
+            return cede outcome
         }
-        unsafe {
-            auto idx = (self.head + index) & self.mask
-            return Option<'T>::Some(self.buf[idx].dup())
+        if index < self.front.len() {
+            return self.front.get_opt(self.front.len() - 1 - index)
         }
+        return self.back.get_opt(index - self.front.len())
     }
 }
 
 impl<'T> RingCore<'T>@Encap {
-    pub buf, cap, mask, head, len
-
-    fn drop(self#) {
-        unsafe {
-            if self.*buf != null {
-                self#.clear()
-                unsafe free [0] self.*#buf
-                self.*buf = null as nul *['T]
-            }
-            self.cap = 0
-            self.mask = 0
-        }
-    }
-    
+    // Both Vec fields retain their ordinary cleanup responsibilities.
+    fn drop(self#) {}
 }
