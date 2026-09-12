@@ -960,20 +960,28 @@ def main():
     ))
 
     source = "tests/pass/g09_sync_condvar.tk"
-    records = run(tokac, source)
+    # Current std/thread relies on current binding/storage qualification.
+    # Do not run this library integration under the historical language profile.
+    scope = ("--workspace-node", "call-shadow-stdlib", "--workspace-root", str(ROOT))
+    require_shadow_parity(tokac, source, extra=scope, legacy=False)
+    records = run(tokac, source, extra=scope, legacy=False)
+    wait_lines = [i for i, line in enumerate((ROOT / source).read_text().splitlines(), 1)
+                  if "local_cv.wait_cond(lock)" in line]
+    require(len(wait_lines) == 1, "expected the original condition-variable wait site")
+    wait_line = wait_lines[0]
     receipts.append(find(
-        records, source, callee="wait_cond", location_line=27,
+        records, source, callee="wait_cond", location_line=wait_line,
         source_path="lock",
     ))
     require(sum(1 for record in records
                 if record["callee"] == "wait_cond" and
                 record["location"]["file"].endswith(source) and
-                record["location"]["line"] == 27) == 1,
+                record["location"]["line"] == wait_line) == 1,
             "closure capture precompute emitted a speculative plan")
     require(sum(1 for transaction in TRANSACTIONS[source]
                 if transaction["callee"] == "wait_cond" and
                 transaction["location"]["file"].endswith(source) and
-                transaction["location"]["line"] == 27) == 1,
+                transaction["location"]["line"] == wait_line) == 1,
             "closure capture precompute emitted a speculative transaction")
 
     source = "tests/semantics/call_transfer_shadow_m1/closure_callable_replay.tk"

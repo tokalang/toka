@@ -1,6 +1,6 @@
 import core/option::{Option}
 import core/result::{Result}
-import std/task::{host_mailbox, HostMailboxPoll}
+import std/task_mailbox::{host_mailbox, HostMailboxPoll}
 import std/thread::{thread_spawn}
 
 fn main() -> i32 {

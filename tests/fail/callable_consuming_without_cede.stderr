@@ -1,5 +1,5 @@
 error[E04591]: Callable 'take' consumes its environment; invoke it with 'cede take(...)'
- --> tests/fail/callable_consuming_without_cede.tk:8:19
+ --> tests/fail/callable_consuming_without_cede.tk:8:5
    |
- 8 |     auto result = take() // EXPECT: error[E04591]
-   |                   ^
+ 8 |     take() // EXPECT: error[E04591]
+   |     ^

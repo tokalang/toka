@@ -1,0 +1,12 @@
+import sys/os/net as net
+extern fn network_abi_calls() -> i32
+fn main() -> i32 {
+    auto message = string::from("ping")
+    auto *data = message.c_str() as *u8
+    if net::net_sendto_impl(17, *data, 4, 0x0100007f, 43210) != 4 { return 1 }
+    if net::net_getsockopt_error_impl(17) != 42 { return 2 }
+    if net::net_getsockopt_error_impl(-1) != -1 { return 3 }
+    if net::net_setsockopt_reuse_impl(17) != 0 { return 4 }
+    if network_abi_calls() != 3 { return 5 }
+    return 0
+}

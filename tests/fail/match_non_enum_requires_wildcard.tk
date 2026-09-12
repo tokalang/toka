@@ -8,5 +8,5 @@ fn main() -> i32 {
             pass 20
         }
     }
-    return value
+    return 0
 }

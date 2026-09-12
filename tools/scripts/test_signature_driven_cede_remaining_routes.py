@@ -45,7 +45,7 @@ def main():
         temp_path = pathlib.Path(temp)
 
         for fixture in ("generic_runtime.tk", "generic_method_runtime.tk",
-                        "async_runtime.tk", "thread_state_runtime.tk"):
+                        "async_runtime.tk"):
             source = FIXTURES / fixture
             default = run([str(tokac), "--check-only", str(source)])
             require(default.returncode == 0,
@@ -55,6 +55,19 @@ def main():
                     f"compatibility flag changed {fixture}: {enabled.stderr}")
             compile_and_run(tokac, source, temp_path / fixture.removesuffix(".tk"),
                             ())
+
+        # The public thread API has an explicit state handoff and Result handle.
+        # Keep historic replay for the compiler fixtures above, not current std/thread.
+        historical = os.environ.pop("TOKA_STAGE1_LEGACY_REPLAY", None)
+        try:
+            source = FIXTURES / "thread_state_runtime.tk"
+            for options in ((), (FLAG,)):
+                checked = run([str(tokac), *options, "--check-only", str(source)])
+                require(checked.returncode == 0, "current thread state contract failed: " + checked.stderr)
+            compile_and_run(tokac, source, temp_path / "thread_state_runtime")
+        finally:
+            if historical is not None:
+                os.environ["TOKA_STAGE1_LEGACY_REPLAY"] = historical
 
         for fixture in ("generic_use_after_implicit.tk",
                         "async_use_after_implicit.tk"):
@@ -166,17 +179,22 @@ def main():
                 "E0438" in hidden_moved.stderr,
                 "source-hidden transfer did not invalidate source")
 
-        compile_and_run(tokac, FIXTURES / "thread_closure_runtime.tk",
-                        temp_path / "thread-closure", ())
-        compile_and_run(tokac, FIXTURES / "thread_closure_forward_runtime.tk",
-                        temp_path / "thread-closure-forward", ())
-        moved_closure = run(
-            [str(tokac), "--check-only",
-             str(FIXTURES / "thread_closure_use_after_implicit.tk")])
-        require(moved_closure.returncode != 0 and
-                "E0438" in moved_closure.stderr and
-                "E04570" not in moved_closure.stderr,
-                "signature-driven closure handoff did not invalidate source")
+        historical = os.environ.pop("TOKA_STAGE1_LEGACY_REPLAY", None)
+        try:
+            compile_and_run(tokac, FIXTURES / "thread_closure_runtime.tk",
+                            temp_path / "thread-closure", ())
+            compile_and_run(tokac, FIXTURES / "thread_closure_forward_runtime.tk",
+                            temp_path / "thread-closure-forward", ())
+            moved_closure = run(
+                [str(tokac), "--check-only",
+                 str(FIXTURES / "thread_closure_use_after_implicit.tk")])
+            require(moved_closure.returncode != 0 and
+                    "E0438" in moved_closure.stderr and
+                    "E04570" not in moved_closure.stderr,
+                    "signature-driven closure handoff did not invalidate source")
+        finally:
+            if historical is not None:
+                os.environ["TOKA_STAGE1_LEGACY_REPLAY"] = historical
 
     print("Signature-driven remaining-route tests PASSED")
     return 0

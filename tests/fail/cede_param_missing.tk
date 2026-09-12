@@ -14,6 +14,6 @@ pub fn consume_payload(cede p: Payload) -> i32 {
 
 pub fn main() -> i32 {
     auto p = Payload(val=42)
-    auto v = consume_payload(p)
-    return p.val + v
+    consume_payload(p)
+    return p.val // Rejected calls must preserve the source.
 }

@@ -13,9 +13,11 @@ fn main() -> i32 {
     auto worker = { [cede token] =>
         auto result = token.value
         return cede result
-    }:fn() -> i32
+    }:dyn fn() -> i32
     auto forwarded = cede worker
-    auto handle# = thread_spawn<i32>(forwarded)
+    auto spawned = thread_spawn<i32>(cede forwarded)
+    if spawned.is_err() { return 4 }
+    auto handle# = spawned.unwrap()
     auto result = handle#.join()
     if result.is_err() { return 1:i32 }
     if result.unwrap() != 23:i32 { return 2:i32 }

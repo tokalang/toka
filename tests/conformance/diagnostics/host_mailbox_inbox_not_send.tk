@@ -1,4 +1,4 @@
-import std/task::{host_mailbox}
+import std/task_mailbox::{host_mailbox}
 import std/thread::{thread_spawn}
 
 fn main() -> i32 {

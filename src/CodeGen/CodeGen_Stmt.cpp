@@ -55,7 +55,36 @@ llvm::Value *CodeGen::genReturnStmt(const ReturnStmt *ret) {
         break;
       }
     }
-    if (declaredReturnType && declaredReturnType->isDynFn() && returnSource &&
+    if (declaredReturnType && declaredReturnType->isFunction() &&
+        dynamic_cast<const ClosureExpr *>(returnSource) &&
+        returnSource->ResolvedType && returnSource->ResolvedType->isShape()) {
+      const auto *closure = static_cast<const ClosureExpr *>(returnSource);
+      auto shape = std::static_pointer_cast<ShapeType>(returnSource->ResolvedType);
+      auto *environmentType = llvm::dyn_cast_or_null<llvm::StructType>(
+          getLLVMType(returnSource->ResolvedType));
+      auto *carrier = llvm::dyn_cast_or_null<llvm::StructType>(getLLVMType(declaredReturnType));
+      auto *invoke = m_Module->getFunction(shape->Name + "___invoke");
+      if (!shape->Decl || !shape->Decl->Members.empty() ||
+          !closure->ExplicitCaptures.empty() || !closure->ImplicitCaptures.empty() ||
+          !environmentType || environmentType->getNumElements() != 0 ||
+          !carrier || carrier->getNumElements() != 2 ||
+          !carrier->getElementType(0)->isPointerTy() ||
+          !carrier->getElementType(1)->isPointerTy() || !invoke) {
+        error(returnSource, DiagID::ERR_CODEGEN,
+              "direct thin fn return requires a qualified capture-free closure");
+        return nullptr;
+      }
+      // A thin fn has no environment cleanup ownership. For an actually empty
+      // closure, use permanent storage, not a callee stack address or an empty
+      // aggregate reinterpreted as uninitialized {env, invoke} bytes.
+      auto *environment = m_Module->getGlobalVariable("__toka_empty_fn_environment", true);
+      if (!environment)
+        environment = new llvm::GlobalVariable(*m_Module, m_Builder.getInt8Ty(), true,
+            llvm::GlobalValue::PrivateLinkage, m_Builder.getInt8(0), "__toka_empty_fn_environment");
+      retVal = llvm::ConstantStruct::get(carrier, {
+          llvm::ConstantExpr::getPointerCast(environment, m_Builder.getPtrTy()),
+          llvm::ConstantExpr::getPointerCast(invoke, m_Builder.getPtrTy())});
+    } else if (declaredReturnType && declaredReturnType->isDynFn() && returnSource &&
         returnSource->ResolvedType && returnSource->ResolvedType->isShape()) {
       llvm::Value *environment = genExpr(returnSource).load(m_Builder);
       retVal =

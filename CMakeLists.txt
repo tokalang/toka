@@ -344,6 +344,20 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_yaml_document.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_integration_diagnostic_purposes
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_integration_diagnostic_purposes.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_empty_fn_return
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_empty_fn_return.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        if(APPLE)
+            add_test(NAME toka_network_value_adapters
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/scripts/test_network_value_adapters.py
+                    --build-dir ${CMAKE_BINARY_DIR})
+        endif()
         add_test(NAME toka_json_factory_values
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_json_factory_values.py

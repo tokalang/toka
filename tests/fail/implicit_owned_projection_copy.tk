@@ -15,5 +15,5 @@ shape Owner(
 fn main() -> i32 {
     auto owner = Owner(resource = Resource(value = 1))
     auto copied = owner.resource
-    return copied.value
+    return 0
 }

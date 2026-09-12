@@ -11,5 +11,5 @@ impl Env@Encap {
 fn main() -> i32 {
     auto env = Env(value = 5)
     auto f = { [copy env] => env.value }:fn() -> i32
-    return f()
+    return 0
 }

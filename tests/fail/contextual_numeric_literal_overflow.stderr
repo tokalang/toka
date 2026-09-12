@@ -1,15 +1,15 @@
 error[E04598]: Integer literal '256' is out of range for type 'u8'
- --> tests/fail/contextual_numeric_literal_overflow.tk:5:24
+ --> tests/fail/contextual_numeric_literal_overflow.tk:5:15
    |
- 5 |     auto a = accept_u8(256)
-   |                        ^
+ 5 |     accept_u8(256)
+   |               ^
 error[E04598]: Integer literal '128' is out of range for type 'i8'
- --> tests/fail/contextual_numeric_literal_overflow.tk:6:24
+ --> tests/fail/contextual_numeric_literal_overflow.tk:6:15
    |
- 6 |     auto b = accept_i8(128)
-   |                        ^
+ 6 |     accept_i8(128)
+   |               ^
 error[E04598]: Integer literal '-1' is out of range for type 'u8'
- --> tests/fail/contextual_numeric_literal_overflow.tk:7:25
+ --> tests/fail/contextual_numeric_literal_overflow.tk:7:16
    |
- 7 |     auto c = accept_u8(-1)
-   |                         ^
+ 7 |     accept_u8(-1)
+   |                ^

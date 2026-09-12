@@ -1,0 +1,16 @@
+fn make() -> fn(cede i32) -> i32 {
+    return { value => cede value }:fn(cede i32) -> i32
+}
+fn choose(flag: bool) -> fn(i32) -> i32 {
+    if flag { return { value => value + 1 }:fn(i32) -> i32 }
+    return unsafe ({ value => value + 2 }:fn(i32) -> i32)
+}
+fn main() -> i32 {
+    auto callback = make()
+    auto value = 7:i32
+    if callback(cede value) != 7 { return 1 }
+    auto first = choose(true)
+    auto second = choose(false)
+    if first(4) != 5 || second(4) != 6 { return 2 }
+    return 0
+}

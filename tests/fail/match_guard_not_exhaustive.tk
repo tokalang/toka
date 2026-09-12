@@ -13,5 +13,5 @@ fn main() -> i32 {
             pass 0
         }
     }
-    return code
+    return 0
 }

@@ -1,0 +1,28 @@
+import sys/os/net as net
+fn run(sender: i32, receiver: i32) -> i32 {
+    if net::net_bind_impl(sender, 0x0100007f, 0) != 0 { return 1 }
+    if net::net_bind_impl(receiver, 0x0100007f, 0) != 0 { return 2 }
+    auto port = net::net_local_port_impl(receiver)
+    if port <= 0 { return 3 }
+    auto message = string::from("ping")
+    auto *data = message.c_str() as *u8
+    if net::net_sendto_impl(sender, *data, 4, 0x0100007f, port) != 4 { return 4 }
+    auto buffer# = [0:u8; 8]
+    auto host# = 0:usize
+    auto peer_port# = 0:i32
+    auto received = net::net_recvfrom_impl(receiver, &buffer[0] as *u8, 8, &host as *usize, &peer_port as *i32)
+    if received != 4 || buffer[0] != 112:u8 || buffer[3] != 103:u8 { return 5 }
+    if host != 0x0100007f || peer_port != net::net_local_port_impl(sender) { return 6 }
+    if net::net_getsockopt_error_impl(receiver) != 0 { return 7 }
+    return 0
+}
+fn main() -> i32 {
+    auto sender = net::net_socket_udp_impl()
+    if sender < 0 { return 10 }
+    auto receiver = net::net_socket_udp_impl()
+    if receiver < 0 { net::net_close_impl(sender); return 11 }
+    auto status = run(sender, receiver)
+    net::net_close_impl(receiver)
+    net::net_close_impl(sender)
+    return status
+}

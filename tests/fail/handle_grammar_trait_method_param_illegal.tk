@@ -1,4 +1,4 @@
-trait BadTrait {
+trait @BadTrait {
     pub fn bad(*^x: i32)
 }
 

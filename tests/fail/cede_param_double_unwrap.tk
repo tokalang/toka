@@ -8,7 +8,7 @@ pub fn main() -> i32 {
     auto val1 = res.unwrap()
     
     // Second unwrap should fail statically because 'res' is moved
-    auto val2 = res.unwrap() 
+    res.unwrap()
     
-    return val2
+    return 0
 }

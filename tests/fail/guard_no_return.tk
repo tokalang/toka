@@ -6,7 +6,7 @@ import std/error::{Error}
 fn main() -> i32 {
     auto m# = Mutex<i32>::new(0)
     
-    guard auto Result<MutexLock<i32>, Error>::Ok(g) = m#.lock() else {
+    guard auto Result<MutexLock<i32>, Error>::Ok(&g) = m#.lock() else {
         println("Failed to lock!")
         // No return! Should trigger ERR_GUARD_MUST_DIVERGE
     }

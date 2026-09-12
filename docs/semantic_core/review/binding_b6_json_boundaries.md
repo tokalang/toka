@@ -4,10 +4,11 @@
 
 JSON library migration was accepted at
 `0f8c540864be45cc07efcc2d789a7e90b757218d`, limited to that library migration.
-This does not accept all binding work, the cede RFC or RC13. The following
-YAML work continues the same library-only route without a new freeze branch.
+YAML library migration was accepted at `2d2cbaf4`, limited to that migration.
+JSON/YAML are closed; neither acceptance covers all binding work, the cede RFC
+or RC13. Integration closeout continues separately, without a new freeze branch.
 
-YAML migration candidate: the reader now builds its own owned flat YamlDocument
+Accepted YAML migration: the reader builds its own owned flat YamlDocument
 with primitive node/member indices and a text buffer. The original block,
 quoted/plain scalar, folding/chomping and diagnostic paths were retained;
 JsonNode cloning/HashMap recursion is removed, not hidden behind a wrapper.
@@ -23,8 +24,9 @@ One integration run against the accepted JSON baseline: PASS 335 -> 336 / 451,
 only g17_stdx_yaml_test recovered and no added failures; FAIL stays 423/473 with
 the same 50 failing expectations and no abnormal exits. Full CTest is 83/87
 (401.50 s); the four previously recorded call/return/thread failures remain.
-Logs: `/private/tmp/toka-yaml-integration.OUAvki`. No compiler changes, new
-recursive proof mechanism, acceptance declaration or release claim is made.
+Logs: `/private/tmp/toka-yaml-integration.OUAvki`. The independent acceptance
+reran YAML/JSON 3/3 (74.36 s), confirmed zero leaks and no added integration
+failures. No compiler changes, recursive proof mechanism or release claim.
 
 The user superseded the assumption that existing JsonNode/raw-container source
 must be preserved. Further cross-function slot receipts and recursive container

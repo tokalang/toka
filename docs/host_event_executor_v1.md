@@ -16,7 +16,9 @@ any platform toolkit.
 
 ## Public v1 surface
 
-`std/task` defines:
+`std/task` defines the executor surface below. `HostMailbox` and
+`host_mailbox` are imported separately from `std/task_mailbox`; the executor
+does not import the optional channel-backed mailbox implementation.
 
 ```toka
 pub shape HostEventPoll (

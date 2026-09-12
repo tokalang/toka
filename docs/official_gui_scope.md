@@ -89,7 +89,7 @@ or the GUI 1.0 portability gate above.
 The compiler-facing integration is the bounded `@HostEventSource` adapter
 implemented by `App`. It lets ready tasks, timers, non-blocking socket
 readiness, and one AppKit wait cooperate without making `std` depend on GUI or
-moving AppKit objects across threads. `std/task::host_mailbox` supplies the
+moving AppKit objects across threads. `std/task_mailbox::host_mailbox` supplies the
 companion data-only worker-to-UI path: `@Send` updates can cross threads while
 the inbox remains on the App thread. This is not a cross-platform co-wait
 backend, a wakeable native dispatcher, or a closure/callback path into AppKit.

@@ -5,6 +5,6 @@ fn main() -> i32 {
     auto take = { [cede token] =>
         return cede token
     }:cede fn() -> Token
-    auto result = take() // EXPECT: error[E04591]
-    return result.id
+    take() // EXPECT: error[E04591]
+    return 0
 }

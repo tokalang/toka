@@ -33,33 +33,17 @@ pub fn net_socket_udp_impl() -> i32 {
 
 pub fn net_setsockopt_reuse_impl(fd: i32) -> i32 {
     unsafe {
-        auto *opt# = unsafe alloc [4] byte as *[i32]
-        opt[0] = 1
-        auto res = libc_setsockopt(fd, 65535, 4, *opt as *void, 4)
-        libc_free(*opt as *void)
-        return cede res
+        auto option = 1:i32
+        return libc_setsockopt(fd, 65535, 4, &option as *void, 4)
     }
 }
 
-fn fill_sockaddr_in(*addr_buf: char, ip: u32, port: u16) -> bool {
+// Darwin sockaddr_in: complete native value, no readonly-to-writable cast.
+shape DarwinSockAddrV4(length: u8, family: u8, port: u16, address: u32, zero_a: u32, zero_b: u32)
+fn make_sockaddr(ip: u32, port: u16) -> DarwinSockAddrV4 {
     unsafe {
-        auto base_addr = *addr_buf as usize
-        auto *p_len# = base_addr as *char
-        p_len = 16 as char
-        auto *p1# = (base_addr + 1) as *char
-        p1 = 2 as char
-        auto nport = (port >> 8) | (port << 8):u16 // htons for little endian
-        auto *p_port# = (base_addr + 2) as *u16
-        p_port = nport
-        auto *p_addr# = (base_addr + 4) as *u32
-        p_addr = ip
-        auto i# = 8:usize
-        loop i < 16:usize {
-            auto *p_z# = (base_addr + i) as *char
-            p_z = 0 as char
-            i += 1:usize
-        }
-        return true
+        return DarwinSockAddrV4(length = 16, family = 2, port = libc_htons(port),
+                                 address = ip, zero_a = 0, zero_b = 0)
     }
 }
 
@@ -71,18 +55,11 @@ pub fn get_errno_impl() -> i32 {
 
 pub fn net_getsockopt_error_impl(fd: i32) -> i32 {
     unsafe {
-        auto pval = unsafe alloc [4] byte as Addr
-        auto pvlen = unsafe alloc [4] byte as Addr
-        auto *val# = pval as *i32
-        auto *vlen# = pvlen as *u32
-        val = 0
-        vlen = 4:u32
-        auto res = getsockopt(fd, 0xffff, 0x1007, pval as *void, pvlen as *u32)
-        auto err = val
-        libc_free(pval as *void)
-        libc_free(pvlen as *void)
+        auto value# = 0:i32
+        auto length# = 4:u32
+        auto res = getsockopt(fd, 0xffff, 0x1007, &value as *void, &length as *u32)
         if res != 0 { return -1 }
-        return err
+        return value
     }
 }
 
@@ -172,15 +149,8 @@ pub fn net_write_impl(fd: i32, *buf: u8, len: usize) -> i64 {
 
 pub fn net_sendto_impl(fd: i32, *buf: u8, len: usize, host: usize, port: i32) -> i64 {
     unsafe {
-        auto *addr_buf# = unsafe alloc [32] byte as *char
-        if *addr_buf as usize == 0 { return -1 }
-        if !fill_sockaddr_in(*addr_buf, host as u32, port as u16) {
-            libc_free(*addr_buf as *void)
-            return -1
-        }
-        auto res = libc_sendto(fd, *buf as *void, len, 0, *addr_buf as *void, 16:u32)
-        libc_free(*addr_buf as *void)
-        return cede res
+        auto address = make_sockaddr(host as u32, port as u16)
+        return libc_sendto(fd, *buf as *void, len, 0, &address as *void, 16:u32)
     }
 }
 
