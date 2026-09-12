@@ -5189,7 +5189,26 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       facts.CopyProof == TransferCopyProof::ProvenNonCopy &&
       !facts.CarriesDropLiability && facts.DestinationDependencyAccepted;
   facts.SourceFlowCeiling = facts.ActualCapabilities;
-  if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace) {
+  // Copying a physical scalar (integer / boolean / float) into a writable
+  // payload is a value copy, not a handle authority transfer.  Such a value
+  // holds no writable handle of its own, so its `PayloadWritable == false` is
+  // read as a flow ceiling that forbids the write and the copy is misdiagnosed
+  // as a capability mismatch.  Without this the scalar's own ceiling would
+  // block the assignment it should not constrain at all.
+  //
+  // The ownership class `ValueOwnership::Trivial` is deliberately NOT used as
+  // the test here: it also covers arrays whose elements are borrowed views,
+  // callables and drop-free shapes.  Widening this ceiling for those types
+  // would change their authority facts as well, which is outside this fix.
+  // Keep the exception to the exact value class this fix was proven on.
+  auto scalarSource =
+      actualType ? resolveExplicitCedeStage0TypeReadOnly(actualType) : nullptr;
+  const bool sourceIsPhysicalScalar =
+      scalarSource && !scalarSource->isUnknown() &&
+      (scalarSource->isInteger() || scalarSource->isBoolean() ||
+       scalarSource->isFloatingPoint());
+  if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace ||
+      sourceIsPhysicalScalar) {
     facts.SourceFlowCeiling.Complete = true;
     facts.SourceFlowCeiling.HandleRebindable = true;
     facts.SourceFlowCeiling.PayloadWritable = facts.StaticStorageOrigins.empty();
@@ -10227,17 +10246,33 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         getAccessCapability(Call->Args[i].get(), true);
     AccessCapability argCapability = getAccessCapability(Call->Args[i].get());
     AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
+    // A parameter that declares a handle morphology asks the callee to write
+    // the pointee payload (`*name: T#`).  That requirement lives on the
+    // pointee, not on the binding name, so FunctionDecl::Arg::IsValueMutable
+    // alone under-reports it and a read-only raw argument would silently enter
+    // a writable payload.  Derive it from the physical parameter type, the way
+    // the callable-value recovery above already does.  Keep it separate from
+    // paramIsValueMutable: that flag also selects the PAL access class, and
+    // escalating every `*name: T#` argument to ExclusivePayloadBorrow would
+    // reject aliasing that is legitimate for an out-parameter.
+    const bool paramRequiresPayloadWrite =
+        paramIsValueMutable ||
+        (paramIsHatted && paramType && !paramType->isUnknown() &&
+         [](const std::shared_ptr<Type> &type) {
+           auto pointee = type->getPointeeType();
+           return pointee && pointee->IsWritable;
+         }(paramType));
     bool lacksHandleCapability =
         paramIsHatted && paramIsRebindable &&
         (!declaredCapability.HandleRebindable ||
          !argCapability.HandleRebindable || !argIntent.HandleRebind);
     bool lacksPayloadCapability =
-        paramIsValueMutable && !isIndependentCedeTransfer &&
+        paramRequiresPayloadWrite && !isIndependentCedeTransfer &&
         (!declaredCapability.PayloadWritable ||
          !argCapability.PayloadWritable || !argIntent.PayloadWrite);
-    if (paramIsRebindable || paramIsValueMutable) {
+    if (paramIsRebindable || paramRequiresPayloadWrite) {
       const bool requiredHandle = paramIsHatted && paramIsRebindable;
-      const bool requiredPayload = paramIsValueMutable;
+      const bool requiredPayload = paramRequiresPayloadWrite;
       std::string parameter = "arg" + std::to_string(i + 1);
       if (Fn && i < Fn->Args.size())
         parameter = Fn->Args[i].Name;

@@ -1,0 +1,19 @@
+// Net out parameter capability and registration contract test
+import std/io::{println}
+import std/net::{register_async_reactor_read_key, register_async_reactor_write_key}
+
+pub fn main() -> i32 {
+    auto key# = 0:u64
+    // Verifies passing writable pointer &key as *u64# compiles and executes safely
+    auto ok = register_async_reactor_read_key(0:Addr, -1:i32, &key as *u64#)
+    assert(!ok, "invalid coro should return false")
+    assert(key == 0:u64, "key should remain unchanged when prepare_suspend fails")
+
+    auto write_key# = 0:u64
+    auto write_ok = register_async_reactor_write_key(0:Addr, -1:i32, &write_key as *u64#)
+    assert(!write_ok, "invalid coro should return false for write key")
+    assert(write_key == 0:u64, "write_key should remain unchanged when prepare_suspend fails")
+
+    println("net_out_param_contract_test passed!")
+    return 0
+}

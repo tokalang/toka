@@ -242,6 +242,25 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       (bindingTransfer.enabled() || SemanticEvidence::isNonCallTransferShadowEnabled())) {
     auto destinationType =
         nativeManagedTarget ? nativeManagedTarget : queryExplicitCedeStage0NonCallType(Bin->LHS.get(), nullptr);
+    // `p = value`, where the binding of `p` is a raw pointer, stores into the
+    // payload that pointer denotes -- exactly the payload write normal
+    // assignment validation already checks.  Recording the plan against the raw
+    // pointer instead makes a plain scalar copy look like a handle-authority
+    // transfer, so the pre-pass rejects it as TypeIncompatible and the stale
+    // rejection outlives the validated pass.  A handle-valued source keeps the
+    // pointer formal so a genuine rebind is still checked as one.
+    if (destinationType && destinationType->isRawPointer()) {
+      auto sourceType =
+          queryExplicitCedeStage0NonCallType(Bin->RHS.get(), destinationType);
+      const bool sourceIsHandle =
+          sourceType && !sourceType->isUnknown() &&
+          (sourceType->isPointer() || sourceType->isSmartPointer() ||
+           sourceType->isFunction() || sourceType->isDynFn());
+      if (!sourceIsHandle) {
+        if (auto pointee = destinationType->getPointeeType())
+          destinationType = resolveExplicitCedeStage0TypeReadOnly(pointee);
+      }
+    }
     if (bindingTransfer.enabled())
       bindingTransfer.prepare(Bin->RHS.get(), destinationType, Bin->LHS.get());
     else

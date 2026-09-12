@@ -1,0 +1,15 @@
+// EXPECT: error[E0448]
+// Control: assigning the address form into the payload still requires an
+// explicit handle transfer, so the scalar-copy fix does not silently accept
+// a pointer where a value is expected.
+fn assign_addr(*out: u64#) {
+    auto other# = 0:u64
+    auto *p# = *out
+    p = &other as *u64#
+}
+
+fn main() -> i32 {
+    auto x# = 0:u64
+    assign_addr(&x as *u64#)
+    return 0
+}

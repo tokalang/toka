@@ -1,0 +1,14 @@
+// Control: rebinding a writable out parameter to another handle stays allowed.
+// Gate for: the scalar-copy fix must not widen or narrow handle authority.
+fn rebind(*out: u64#) {
+    auto other# = 7:u64
+    auto *otherp# = &other as *u64#
+    auto *p# = *out
+    p = otherp
+}
+
+pub fn main() -> i32 {
+    auto x# = 0:u64
+    rebind(&x as *u64#)
+    return 0
+}

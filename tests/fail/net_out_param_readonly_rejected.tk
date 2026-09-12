@@ -1,0 +1,8 @@
+// EXPECT: error[E04663]
+import std/net::{register_async_reactor_read_key}
+
+fn main() -> i32 {
+    auto readonly_key = 0:u64
+    register_async_reactor_read_key(0:Addr, 0:i32, &readonly_key as *u64#)
+    return 0
+}
