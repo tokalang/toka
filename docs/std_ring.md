@@ -4,7 +4,9 @@ RingCore preserves its deque operations: new, len, is_empty, push_front/back,
 pop_front/back, clear, and source-preserving get for T: @Dup. It is now backed
 by two Vecs instead of a separately managed raw circular allocation. Raw
 buf/cap/mask/head/len fields are no longer a public storage interface; consumers
-use the deque methods. VecDeque and channel use only those methods.
+use the deque methods. VecDeque and channel use only those methods. RingCore's
+source-visible layout changes: rebuild consumers; this is not binary-compatible
+with old precompiled RingCore artifacts.
 
 Logical order is `reverse(front) ++ back`. Push/pop on a nonempty corresponding
 side use Vec push/pop. If the requested side is empty, half the other side is
@@ -39,7 +41,8 @@ cleared elements front-to-back; that incidental destruction order is not
 preserved. Callers requiring ordered destruction should explicitly pop and
 dispose in their chosen order. Element order returned by pop/get is unchanged.
 This representation changes storage/performance details,
-not capture, shared reference counting, ABI/TKI, Copy/Dup or raw_take rules.
+not capture, shared reference counting, native runtime ABI, compiler TKI schema,
+Copy/Dup or raw_take rules.
 Unproved element dependencies remain subject to the existing Vec restrictions.
 
 The gate `toka_ring_library` verifies a seeded model of 400 mixed operations,
