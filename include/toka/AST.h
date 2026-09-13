@@ -394,6 +394,8 @@ public:
   NativeSyncGuardOriginPtr NativeSyncGuardOrigin;
   NativeSyncGuardOriginPtr NativeSyncSlotOrigin;
   bool IsMorphicExempt = false; // [NEW] Track morphic exemption at expression level
+  // Checked source-view identity; re-elaborated in each cloned body.
+  bool IsAbstractWholeValue = false;
   bool HasParens = false; // [NEW] Track explicit parentheses
   bool ExtendLifetime = false; // [NEW] Flag for Temporary Lifetime Extension
 };
@@ -1893,6 +1895,7 @@ public:
   bool IsRebindBlocked = false;   // Pointer Attribute $ (^$p)
   bool IsValueBlocked = false;    // Identifier Attribute $ (p$)
   bool IsMorphicExempt = false;   // [NEW] Exempt from strict hat rules
+  bool IsAbstractWholeValue = false; // Sema-only local source-view identity
   BindingPermission Permission;
   // Elaborated by Sema for the bounded partial-cede slice.  This is not
   // source syntax and is deliberately recomputed for source-less TKI bodies.
@@ -2330,6 +2333,9 @@ public:
     bool IsRebindBlocked = false; // "$" pointer attribute
     bool IsValueBlocked = false;  // "$" identifier attribute
     bool IsMorphicExempt = false; // [NEW] Exempt from strict hat rules
+    // G: the declaration names an abstract complete type, before substitution.
+    // This is a view fact, not a payload-write or transfer grant.
+    bool IsAbstractWholeValue = false;
     bool IsCeded = false;         // [NEW] Ownership consumed by callee
     // The callee constructs caller-owned storage supplied as `init place`.
     bool IsInit = false;
@@ -2364,6 +2370,7 @@ public:
       a.IsRebindBlocked = IsRebindBlocked;
       a.IsValueBlocked = IsValueBlocked;
       a.IsMorphicExempt = IsMorphicExempt;
+      a.IsAbstractWholeValue = IsAbstractWholeValue;
       a.IsCeded = IsCeded;
       a.IsInit = IsInit;
       a.HadRejectedTypeSideMorphology = HadRejectedTypeSideMorphology;

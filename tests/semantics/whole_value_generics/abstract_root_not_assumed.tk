@@ -1,0 +1,7 @@
+shape Resource(value:i32)
+fn invalid<T>(cede value:T) -> T { return cede ^value }
+fn main() -> i32 {
+    auto ^owner = new Resource(value=1)
+    auto ^result = invalid(cede ^owner)
+    return 0
+}

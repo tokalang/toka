@@ -1,0 +1,20 @@
+shape Resource(value:i32)
+fn borrow<T>(value:T) -> &T <- value { return &value }
+fn main() -> i32 {
+    auto number = 7:i32
+    {
+        auto &view = borrow<i32>(number)
+        if view != 7 { return 1 }
+    }
+    {
+        auto ^owner = new Resource(value=11)
+        auto &^view = borrow<^Resource>(^owner)
+        if view.value != 11 { return 2 }
+    }
+    {
+        auto &reference = &number
+        auto &&view = borrow<&i32>(&reference)
+        if view != 7 { return 3 }
+    }
+    return 0
+}

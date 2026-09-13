@@ -357,6 +357,8 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_operations.py --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_permission_views
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_views.py --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_whole_value_generics
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_whole_value_generics.py --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_permission_native_literals
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_native_literals.py --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_permission_net_regression

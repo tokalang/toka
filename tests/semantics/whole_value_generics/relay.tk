@@ -1,0 +1,36 @@
+auto drops# = 0
+shape Resource(value:i32)
+impl Resource@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn relay<T>(cede value:T) -> T { return cede value }
+fn main() -> i32 {
+    auto number = 7:i32
+    if relay<i32>(cede number) != 7 { return 1 }
+    {
+        auto ^first = new Resource(value=11)
+        auto ^second = relay(cede ^first)
+        if second.value != 11 || drops != 0 { return 2 }
+    }
+    if drops != 1 { return 3 }
+    {
+        auto ~first = new Resource(value=17)
+        auto ~remaining = ~first
+        {
+            auto ~second = relay<~Resource>(cede ~first)
+            if second.value != 17 || drops != 1 { return 4 }
+        }
+        if remaining.value != 17 || drops != 1 { return 5 }
+    }
+    if drops != 2 { return 6 }
+    {
+        auto ~first# = new Resource(value=23)
+        auto ~remaining# = ~first
+        auto ~result# = relay<~Resource#>(cede ~first)
+        result.value = 29
+        if remaining.value != 29 || drops != 2 { return 7 }
+    }
+    if drops != 3 { return 8 }
+    return 0
+}

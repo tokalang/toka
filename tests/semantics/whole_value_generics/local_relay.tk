@@ -1,0 +1,19 @@
+auto drops# = 0
+shape Resource(value:i32)
+impl Resource@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn relay<T>(cede value:T) -> T {
+    auto local = cede value
+    return cede local
+}
+fn main() -> i32 {
+    {
+        auto ^owner = new Resource(value=9)
+        auto ^result = relay(cede ^owner)
+        if result.value != 9 || drops != 0 { return 1 }
+    }
+    if drops != 1 { return 2 }
+    return 0
+}

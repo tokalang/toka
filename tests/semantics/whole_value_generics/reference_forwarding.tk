@@ -1,0 +1,11 @@
+fn identity<T>(value:T) -> T <- value { return value }
+fn forward(input:i32) -> &i32 <- input {
+    auto &reference = &input
+    return identity<&i32>(&reference)
+}
+fn main() -> i32 {
+    auto number = 7:i32
+    auto &view = forward(number)
+    if view != 7 { return 1 }
+    return 0
+}

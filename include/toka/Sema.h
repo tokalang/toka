@@ -149,6 +149,15 @@ struct SymbolInfo {
   bool IsSoulMutable() const {
     if (!TypeObj)
       return false;
+    if (IsAbstractWholeValue) {
+      // A transported handle retains its internal P ceiling. WholeSlotWrite
+      // is mapped separately to IdentityRebindable, never to this pointee.
+      if (TypeObj->isPointer() || TypeObj->isReference() || TypeObj->isSmartPointer()) {
+        auto pointee = TypeObj->getPointeeType();
+        return pointee && pointee->IsWritable && !pointee->IsBlocked;
+      }
+      return IsDeclaredMutable;
+    }
     if (TypeObj->isReference()) {
       return IsDeclaredMutable;
     }
@@ -184,6 +193,7 @@ struct SymbolInfo {
   bool IsTraitName = false;
   bool IsRebindable = false; // [NEW] prefix '#' or '!' rebind permission
   bool IsMorphicExempt = false; // [NEW] Track morphic exemption
+  bool IsAbstractWholeValue = false;
   bool IsCeded = false;
   bool IsFunctionParameter = false;
   CallableReceiverMode CallableReceiver = CallableReceiverMode::Shared;
@@ -1145,6 +1155,9 @@ private:
   };
   std::vector<StaticReturnStorageFrame> m_StaticReturnStorageFrames;
   std::map<FunctionDecl *, std::vector<SourceLocation>> m_ValidatedStaticReturnStorage;
+  // Explicit, checked &parameter returns that borrow a complete generic T
+  // slot. This preserves storage level; it does not elide dependency routes.
+  std::map<FunctionDecl *, std::set<size_t>> m_WholeParameterStorageReturns;
   bool isStaticReturnStorageCandidate(FunctionDecl *function);
   void prepareStaticReturnStorage(Expr *source);
   enum class CallableFactoryState { Unprepared, Preparing, Valid, Invalid };

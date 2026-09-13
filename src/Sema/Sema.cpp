@@ -3355,6 +3355,7 @@ void Sema::declareGlobals(Module &M) {
               argument.TypeSyntax != nullptr;
           argument.Stage0GenericValueRole = false;
           argument.Stage0MorphicGenericRole = false;
+          argument.IsAbstractWholeValue = false;
           auto callableOrigins = classifyCallableParameterOrigins(
               argument.TypeSyntax, exactGenericNames);
           argument.CallableParameterOrigins = std::move(callableOrigins.first);
@@ -3366,6 +3367,7 @@ void Sema::declareGlobals(Module &M) {
               argument.TypeSyntax->NodeKind == TypeSyntax::Kind::Named) {
             const bool namesGeneric =
                 exactGenericNames.count(argument.TypeSyntax->Text) != 0;
+            argument.IsAbstractWholeValue = namesGeneric;
             argument.Stage0MorphicGenericRole =
                 namesGeneric && argument.IsMorphicExempt;
             argument.Stage0GenericValueRole =
@@ -5694,7 +5696,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
 
     bool morphicPayloadWritable = false;
-    if (Arg.IsMorphicExempt && Info.TypeObj) {
+    if (Arg.IsMorphicExempt && !Arg.IsAbstractWholeValue && Info.TypeObj) {
       auto payloadType = Info.TypeObj;
       if (payloadType->isPointer() || payloadType->isSmartPointer() ||
           payloadType->isReference())
@@ -5711,7 +5713,17 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         declaredPayloadWritable, Arg.IsValueNullable, Arg.IsValueBlocked,
         Arg.IsMorphicExempt);
     Info.IsMorphicExempt = Arg.IsMorphicExempt; // [NEW]
+    Info.IsAbstractWholeValue = Arg.IsAbstractWholeValue;
     Info.IsDeclaredMutable = declaredPayloadWritable;
+    if (Arg.IsAbstractWholeValue && Info.TypeObj &&
+        (Info.TypeObj->isPointer() || Info.TypeObj->isSmartPointer() ||
+         Info.TypeObj->isReference())) {
+      // Map the symbolic slot request onto the selected physical identity.
+      // Do not mutate T or grant writes through its pointee.
+      Info.IsRebindable = Arg.IsValueMutable;
+      Info.Permission.IdentityRebindable = Arg.IsValueMutable;
+      Info.Permission.SoulWritable = false;
+    }
     Info.IsDeclaredVariable = true;
     Info.DeclLoc = argLoc;
     Info.IsCeded = Arg.IsCeded;
@@ -5764,6 +5776,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       Fn->ResolvedReturnType && (Fn->ResolvedReturnType->isFunction() || Fn->ResolvedReturnType->isDynFn());
   if (collectCallableReturn) m_ValidatedCallableReturnEnvironments.erase(Fn);
   if (Fn->Body) {
+    m_WholeParameterStorageReturns.erase(Fn);
     m_EnumReturnSummaries[Fn] = {};
     m_EnumReturnSummaries[Fn].ClosureDepth = m_CallableReturnClosureDepth;
     auto &rawSummary = m_RawAddressReturns[Fn];
@@ -7330,7 +7343,7 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
 
   // Substitute types in signature
   for (auto &Arg : Instance->Args) {
-    if (refersToMorphicParam(Arg.Type)) {
+    if (Arg.IsAbstractWholeValue || refersToMorphicParam(Arg.Type)) {
       Arg.IsMorphicExempt = true;
       Arg.Permission.MorphicExempt = true;
     }

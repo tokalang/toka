@@ -110,6 +110,14 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
   if (!rhsType || rhsType->isUnknown())
     return toka::Type::fromString("unknown");
 
+  if (Unary->RHS->IsAbstractWholeValue &&
+      (Unary->Op == TokenType::Star || Unary->Op == TokenType::Caret ||
+       (Unary->Op == TokenType::Tilde && !rhsType->isInteger()))) {
+    error(Unary, DiagID::ERR_GENERIC_SEMA,
+          "a concrete handle selector requires a declared root morphology; opaque T denotes the whole value");
+    return toka::Type::fromString("unknown");
+  }
+
   if (Unary->NativeSyncManagedSlotTarget && m_InLHS) {
     auto element = queryNativeSyncManagedSlotTarget(Unary);
     if (element) return element;

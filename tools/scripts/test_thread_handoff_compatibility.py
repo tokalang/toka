@@ -31,7 +31,9 @@ def main():
     compiler = Path(args.build_dir).resolve() / "bin/tokac"
     version = re.search(r'#define TOKA_COMPILER_INTERFACE_VERSION "([^"]+)"',
                        (ROOT / "include/toka/InterfaceVersion.h").read_text()).group(1)
-    require(version == "0.9.9-19", "ABI/compiler interface lockstep needs explicit migration")
+    # G changes compiler-side generic contracts, not the v1 native layout or
+    # handoff protocol. Reject pre-G TKI/cache while retaining that native ABI.
+    require(version == "0.9.9-20", "compiler interface migration must be qualified")
     env = dict(os.environ, TOKA_LIB=str(ROOT / "lib"))
 
     with tempfile.TemporaryDirectory(prefix="toka-thread-version-") as directory:
@@ -50,14 +52,14 @@ def main():
         tki = work / "provider.tki"
         current = tki.read_text()
         require("compiler_version: " + version in current, "wrong emitted interface version")
-        stale = current.replace("compiler_version: " + version, "compiler_version: 0.9.9-18")
+        stale = current.replace("compiler_version: " + version, "compiler_version: 0.9.9-19")
         provider.unlink()
         tki.write_text(stale)
         for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
             output = work / ("rejected" + suffix)
             rejected = run("-I", work, flag, consumer, "-o", output)
             require(rejected.returncode == 1 and "Compiler version mismatch" in rejected.stderr and
-                    version in rejected.stderr and "0.9.9-18" in rejected.stderr and not output.exists(),
+                    version in rejected.stderr and "0.9.9-19" in rejected.stderr and not output.exists(),
                     "old source-hidden TKI acquired authority\n" + rejected.stderr)
 
         # Put an actual stale object/interface pair in the resolver-owned cache.

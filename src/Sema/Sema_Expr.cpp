@@ -2184,6 +2184,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       ve->ResolvedName = Info.CodegenName;
       if (!m_IsPrecomputingCaptures) ve->ResolvedBindingID = Info.SymbolID;
       ve->IsMorphicExempt = Info.IsMorphicExempt; // [NEW]
+      ve->IsAbstractWholeValue = Info.IsAbstractWholeValue;
       ve->IsImplicitDeref = isImplicitDeref;      // [Fix] Mark AST node
       if (!m_InLHS) {
         InfoPtr->HasBeenUsed = true;
@@ -2486,6 +2487,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     auto current = Info.TypeObj;
+    if (Info.IsAbstractWholeValue)
+      return current; // Preserve T; slot access is checked independently.
     if (shouldCollapse && current) {
       while (current && (current->isPointer() || current->isReference() ||
                          current->isSmartPointer())) {
@@ -4271,8 +4274,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     if (!cedingPlaceAlias)
       innerTy = checkExpr(ce->Value.get());
-    if (ce->Value)
+    if (ce->Value) {
       ce->IsMorphicExempt = ce->Value->IsMorphicExempt;
+      ce->IsAbstractWholeValue = ce->Value->IsAbstractWholeValue;
+    }
     bool canInvalidate = !cedingPlaceAlias;
     
     // [Fix] Enforce tracking move semantics and borrow check for `cede` expression universally.

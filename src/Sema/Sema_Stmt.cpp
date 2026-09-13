@@ -1656,6 +1656,20 @@ void Sema::checkStmt(Stmt *S) {
         (!returnSourcePlan->admitted() || hasNewReturnError()))
       mergeAnalysisStates({*returnRollbackState}, returnRollbackState->PAL);
     if (!hasNewReturnError()) {
+      auto *borrow = dynamic_cast<UnaryExpr *>(Ret->ReturnValue.get());
+      auto *value = borrow && borrow->Op == TokenType::Ampersand
+          ? dynamic_cast<VariableExpr *>(borrow->RHS.get()) : nullptr;
+      SymbolInfo *parameter = nullptr;
+      if (value && value->IsAbstractWholeValue && value->ResolvedBindingID &&
+          CurrentScope->findSymbolByID(value->ResolvedBindingID, parameter) &&
+          parameter && parameter->IsFunctionParameter && CurrentFunction) {
+        for (size_t index = 0; index < CurrentFunction->Args.size(); ++index) {
+          const auto &formal = CurrentFunction->Args[index];
+          if (formal.IsAbstractWholeValue && formal.Loc == parameter->DeclLoc &&
+              Type::stripMorphology(formal.Name) == Type::stripMorphology(value->Name))
+            m_WholeParameterStorageReturns[CurrentFunction].insert(index);
+        }
+      }
       recordRawAddressReturn(Ret);
       recordNativeSyncOwnerReturn(Ret);
     }
@@ -2087,6 +2101,14 @@ void Sema::checkStmt(Stmt *S) {
       DiagnosticEngine::report(getLoc(Var),
                                DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
       HasError = true;
+    }
+
+    if (inferredType && Var->Init && Var->Init->IsAbstractWholeValue &&
+        Var->Permission.HandleLayers.empty() && !Var->IsRawPointer &&
+        !Var->IsUnique && !Var->IsShared && !Var->IsReference) {
+      Var->IsAbstractWholeValue = true;
+      Var->IsMorphicExempt = true;
+      Var->Permission.MorphicExempt = true;
     }
 
     // A qualified raw_take returns the complete stored morphology. For an
@@ -2688,6 +2710,7 @@ void Sema::checkStmt(Stmt *S) {
 
     Info.IsRebindable = Var->IsRebindable;
     Info.IsMorphicExempt = Var->IsMorphicExempt; // [NEW]
+    Info.IsAbstractWholeValue = Var->IsAbstractWholeValue;
     Info.IsDeclaredMutable = Var->IsValueMutable;
     Info.DeclLoc = Var->Loc;
     Var->ResolvedType = Info.TypeObj;

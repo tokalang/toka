@@ -3762,10 +3762,14 @@ bool Sema::collectActualReturnReferents(
         auto formalPath = makeAccessPath(dependency);
         Expr *argument = nullptr;
         bool transfersValue = false;
+        bool borrowsWholeStorage = false;
         for (size_t index = 0; index < formal->Args.size(); ++index) {
           if (Type::stripMorphology(formal->Args[index].Name) !=
               Type::stripMorphology(formalPath.RootName)) continue;
           transfersValue = formal->Args[index].IsCeded;
+          auto storageReturn = m_WholeParameterStorageReturns.find(formal);
+          borrowsWholeStorage = storageReturn != m_WholeParameterStorageReturns.end() &&
+              storageReturn->second.count(index) != 0;
           if (method && index == 0) argument = method->Object.get();
           else if (method && index - 1 < method->Args.size())
             argument = method->Args[index - 1].get();
@@ -3825,6 +3829,14 @@ bool Sema::collectActualReturnReferents(
         if (mappedProjection) {
           // FieldDependencySet already denotes the field's actual referent;
           // do not append the formal suffix to the underlying owner's bytes.
+        } else if (borrowsWholeStorage) {
+          // The checked callee borrowed this complete argument slot. A
+          // reference identity argument denotes its descriptor here, not
+          // that descriptor's current target (which storageOrigin follows).
+          auto storage = makeAccessPath(argument);
+          if (!storage || !storage.RootID || !storage.RootLoc.isValid()) return false;
+          roots.push_back(storage);
+          preparedStorage.push_back(storage);
         } else if (returnedType && !transfersValue &&
                    (returnedType->isReference() ||
                     (queryExplicitCedeStage0OwnershipReadOnly(returnedType) == ValueOwnership::BorrowedView &&
@@ -10218,6 +10230,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     bool paramIsHatted = false;
     bool paramIsRebindable = false;
     bool paramIsValueMutable = false;
+    const bool abstractWholeFormal =
+        Fn && i < Fn->Args.size() && Fn->Args[i].IsAbstractWholeValue;
 
     // [NEW] Enforce explicit cede for normal function calls
     bool isCededParam = false;
@@ -10236,6 +10250,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         paramIsRebindable = Ext->Args[i].IsRebindable;
         paramIsValueMutable = Ext->Args[i].IsValueMutable;
         cedeParamLoc = Ext->Args[i].Loc;
+    }
+
+    // G7: the declaration requests a write to the complete T slot.  For a
+    // handle instance this is H, never a request to write its pointee.
+    if (abstractWholeFormal && paramType &&
+        (paramType->isPointer() || paramType->isSmartPointer() ||
+         paramType->isReference())) {
+      paramIsHatted = true;
+      paramIsRebindable = paramIsValueMutable;
+      paramIsValueMutable = false;
     }
 
     // Callable values have no FunctionDecl/ExternDecl metadata at this point,
@@ -10296,7 +10320,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     // reject aliasing that is legitimate for an out-parameter.
     const bool paramRequiresPayloadWrite =
         paramIsValueMutable ||
-        (paramIsHatted && paramType && !paramType->isUnknown() &&
+        (!abstractWholeFormal && paramIsHatted && paramType && !paramType->isUnknown() &&
          [](const std::shared_ptr<Type> &type) {
            auto pointee = type->getPointeeType();
            return pointee && pointee->IsWritable;

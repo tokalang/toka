@@ -1,0 +1,7 @@
+shape Resource(value:i32)
+fn invalid<T>(value#:T) { value.value = 9 }
+fn main() -> i32 {
+    auto ^#owner = new Resource(value=1)
+    invalid<^Resource>(^#owner)
+    return 0
+}

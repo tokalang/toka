@@ -1,0 +1,8 @@
+shape Resource(value:i32)
+fn replace<T>(slot#:T, cede next:T) { slot = cede next }
+fn main() -> i32 {
+    auto ^owner# = new Resource(value=1)
+    auto ^next = new Resource(value=2)
+    replace<^Resource>(^owner#, cede ^next)
+    return 0
+}

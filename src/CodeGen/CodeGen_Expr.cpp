@@ -368,6 +368,15 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
   if (assignmentStatsEnabled())
     assignmentStats().LoweredEnvelopeRebindings++;
 
+  if (lhsExpr && lhsExpr->IsAbstractWholeValue && sym.soulTypeObj &&
+      sym.soulTypeObj->isUniquePtr()) {
+    // Sema selected a complete T slot. Use its full cleanup type rather than
+    // the borrowed parameter's scope-drop flags (which deliberately own none).
+    emitDropForType(handleAddr, sym.soulTypeObj);
+    markMemoryEvent(m_Builder.CreateStore(rhsVal, handleAddr), "rebind");
+    return;
+  }
+
   if (sym.morphology == Morphology::Shared) {
     // 1. Release(Old)
     llvm::Value *oldVal =
@@ -1912,18 +1921,20 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
   // [Constitution 1.3] Reference Sigil: &p (Static Borrow)
   if (unary->Op == TokenType::Ampersand) {
     const auto *morphicValue = dynamic_cast<const VariableExpr *>(unary->RHS.get());
-    const bool borrowsMorphicShared = morphicValue &&
-        (morphicValue->IsMorphicExempt || (!morphicValue->Name.empty() && morphicValue->Name.front() == '\'')) &&
-        unary->RHS->ResolvedType && unary->RHS->ResolvedType->isSharedPtr() &&
+    const bool borrowsWholeHandle = morphicValue &&
+        unary->RHS->ResolvedType &&
+        ((morphicValue->IsAbstractWholeValue && unary->RHS->ResolvedType->isPointer()) ||
+         ((morphicValue->IsMorphicExempt || (!morphicValue->Name.empty() && morphicValue->Name.front() == '\'')) &&
+          unary->RHS->ResolvedType->isSharedPtr())) &&
         unary->ResolvedType && unary->ResolvedType->isReference() &&
         unary->ResolvedType->getPointeeType() &&
         unary->ResolvedType->getPointeeType()->equals(*unary->RHS->ResolvedType);
-    // &'value borrows the complete instantiated value. A shared parameter is
-    // now represented by its real carrier address; projecting its soul here
-    // would return Cell* where the validated result promises &~Cell.
-    llvm::Value *soulAddr = borrowsMorphicShared ? emitHandleAddr(unary->RHS.get())
+    // The validated borrow stops at the complete T slot. Shared carriers are
+    // direct; captured unique/reference slots require one wrapper load, not
+    // a further projection into their stored handle's pointee.
+    llvm::Value *soulAddr = borrowsWholeHandle ? emitHandleAddr(unary->RHS.get())
                                                : emitEntityAddr(unary->RHS.get());
-    bool borrowsSelectedHandle = borrowsMorphicShared;
+    bool borrowsSelectedHandle = borrowsWholeHandle;
     if (auto *selected = dynamic_cast<const UnaryExpr *>(unary->RHS.get())) {
       borrowsSelectedHandle =
           selected->Op == TokenType::Caret ||
@@ -2338,11 +2349,19 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
   auto symbolIt = m_Symbols.find(baseName);
   TokaSymbol *sym = symbolIt == m_Symbols.end() ? nullptr : &symbolIt->second;
   const bool exactMorphicTransport =
-      !m_InLHS && sym && sym->isMorphicValueTransport;
+      !m_InLHS && sym &&
+      (sym->isMorphicValueTransport ||
+       (var->IsAbstractWholeValue && var->ResolvedType &&
+        (var->ResolvedType->isPointer() || var->ResolvedType->isReference() ||
+         var->ResolvedType->isSmartPointer())));
 
   // Use getEntityAddr to get the Soul address (fully dereferenced if needed)
   soulAddr = exactMorphicTransport ? getIdentityAddr(baseName)
                                    : getEntityAddr(varName);
+  if (exactMorphicTransport && var->IsAbstractWholeValue &&
+      sym->capturedHandleSlotNeedsLoad && soulAddr)
+    soulAddr = m_Builder.CreateLoad(m_Builder.getPtrTy(), soulAddr,
+                                   "whole.caller_slot");
 
   if (!exactMorphicTransport && var->ResolvedType &&
       var->ResolvedType->isSharedPtr()) {

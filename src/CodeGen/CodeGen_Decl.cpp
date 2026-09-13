@@ -535,7 +535,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         (isDirectValue && (isAggregate || argDecl.IsValueMutable)) ||
         argDecl.IsRebindable ||
         (argDecl.IsUnique && !argDecl.IsCeded) || argDecl.IsShared ||
-        typeObj->isSharedPtr();
+        typeObj->isSharedPtr() ||
+        (argDecl.IsAbstractWholeValue && argDecl.IsValueMutable &&
+         !argDecl.IsCeded);
 
     const bool isMorphicParameter =
         argDecl.IsMorphicExempt ||
@@ -731,10 +733,14 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     }
 
     // Explicit permission/flag overrides from AST if not in Type String
-    sym.isRebindable = argDecl.IsRebindable;
+    const bool wholeHandleWrite = argDecl.IsAbstractWholeValue &&
+        argDecl.IsValueMutable &&
+        (typeObj->isPointer() || typeObj->isSmartPointer() || typeObj->isReference());
+    sym.isRebindable = argDecl.IsRebindable || wholeHandleWrite;
     sym.isCallerHandleSlot =
         needsCapture && !storesMovedUniqueHandleDirectly &&
-        argDecl.IsRebindable && !argDecl.IsShared && !typeObj->isSharedPtr();
+        (argDecl.IsRebindable || wholeHandleWrite) &&
+        !argDecl.IsShared && !typeObj->isSharedPtr();
     sym.capturedHandleSlotNeedsLoad =
         needsCapture && !typeObj->isSharedPtr() && !storesMovedUniqueHandleDirectly &&
         llvm::isa<llvm::AllocaInst>(finalStorage) &&

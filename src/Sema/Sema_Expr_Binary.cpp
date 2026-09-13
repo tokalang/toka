@@ -447,7 +447,10 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   // If one side is Smart Pointer and other side matches its Pointee,
   // decay Smart Pointer.
   const bool explicitHandleTarget =
-      isAssign && selectsHandleIdentity(Bin->LHS.get());
+      isAssign && (selectsHandleIdentity(Bin->LHS.get()) ||
+                   (Bin->LHS->IsAbstractWholeValue &&
+                    (lhsType->isPointer() || lhsType->isSmartPointer() ||
+                     lhsType->isReference())));
   bool assignmentLHSWasSmartPointerPayloadDecay = false;
   if (!explicitHandleTarget &&
       (lhsType->isUniquePtr() || lhsType->isSharedPtr())) {
@@ -459,7 +462,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         LHS = lhsType->toString();
       }
     }
-  } else if (!nativeManagedTarget && (rhsType->isUniquePtr() || rhsType->isSharedPtr())) {
+  } else if (!nativeManagedTarget && !Bin->RHS->IsAbstractWholeValue &&
+             (rhsType->isUniquePtr() || rhsType->isSharedPtr())) {
     if (auto inner = rhsType->getPointeeType()) {
       if (isTypeCompatible(lhsType, inner)) {
         rhsType = inner;

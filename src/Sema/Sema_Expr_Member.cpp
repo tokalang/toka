@@ -129,6 +129,13 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   m_IsStartingTask = savedStartingTask;
   m_StartBoundaryRoot = savedStartBoundaryRoot;
 
+  if (Memb->Object->IsAbstractWholeValue) {
+    // An instantiation's physical fields are not a source-level contract for
+    // opaque T. Named structures such as Slot<T> are handled separately.
+    error(Memb, DiagID::ERR_NO_SUCH_MEMBER, "abstract T", Memb->Member);
+    return toka::Type::fromString("unknown");
+  }
+
   if (!m_InLHS && !m_InIntermediatePath && !path.empty()) {
     AccessPath memberPath = makeAccessPath(Memb);
     auto conflict = PALCheckerState.verifyAccess(

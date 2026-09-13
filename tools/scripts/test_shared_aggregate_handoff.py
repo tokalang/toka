@@ -37,7 +37,8 @@ def make_case(destination, source_kind, action):
             "record": "(value=" + value + ")"}[destination]
     check = "!box.is_some()" if destination == "enum" else "box.value.id != 42"
     body = "{ auto box = " + ctor + "\nif " + check + " || drops != 0 { return 1 } }\n"
-    if action == "copy": body += "if " + payload + ".id != 42 { return 2 }\n"
+    if action == "copy" and not (parameter and morphic):
+        body += "if " + payload + ".id != 42 { return 2 }\n"
     body += "if drops != 0 { return 3 }\nreturn 0\n"
     if parameter:
         formal = ("cede " if action != "copy" else "") + ("'value:T" if morphic else "~value:Cell")
@@ -45,6 +46,10 @@ def make_case(destination, source_kind, action):
         arg = "~value" if action == "copy" else "cede ~value"
         exercise = "auto ~value = make()\nauto ~other = ~value\n"
         exercise += "auto result = route" + ("<~Cell>" if morphic else "") + "(" + arg + ")\n"
+        if action == "copy" and morphic:
+            # Opaque T cannot inspect Cell fields after instantiation. Check
+            # the same surviving source in its concrete caller instead.
+            exercise += "if value.id != 42 { return 2 }\n"
         exercise += "if result != 0 { return result }\nif other.id != 42 || drops != 0 { return 4 }\nreturn 0\n"
     else:
         route = ""
