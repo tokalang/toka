@@ -362,7 +362,8 @@ ReturnContractSyntax Parser::parseReturnContract(bool allowDependencies,
     if (!isTypeStart()) {
       error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
     } else {
-      contract.TypeSyntax = parseTypeSyntax(true, false, false, allowNever);
+      contract.TypeSyntax = parseTypeSyntax(true, false, false, allowNever, false,
+                                             TypeSyntaxPosition::Return);
       contract.HasExplicitResultType = true;
       if (contract.BindingSoulWritable) {
         contract.TypeSyntax = TypeSyntax::morphology(
@@ -392,7 +393,7 @@ ReturnContractSyntax Parser::parseReturnContract(bool allowDependencies,
       advance();
   } else {
     contract.TypeSyntax = parseTypeSyntax(true, false, false, allowNever,
-                                          true);
+                                          true, TypeSyntaxPosition::Return);
     contract.HasExplicitResultType = true;
     contract.Type = canonicalType(contract.TypeSyntax);
     contract.End = contract.TypeSyntax->End;
@@ -679,7 +680,8 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           m.Type = "";
         }
 
-        TypeSyntaxPtr rawTypeSyntax = parseRequiredTypeSyntax(m.IsRawPointer);
+        TypeSyntaxPtr rawTypeSyntax = parseRequiredTypeSyntax(m.IsRawPointer,
+            kind == ShapeKind::Struct ? TypeSyntaxPosition::NamedBinding : TypeSyntaxPosition::NonReturn);
         std::string rawType = canonicalType(rawTypeSyntax);
         if (kind == ShapeKind::Struct) {
           std::string trimmed = rawType;
@@ -802,7 +804,8 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           if (!isTypeStart()) {
             error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
           } else {
-            arg.TypeSyntax = parseTypeSyntax();
+            arg.TypeSyntax = parseTypeSyntax(true, false, false, false, false,
+                                               TypeSyntaxPosition::NamedParameter);
             arg.Type = canonicalType(arg.TypeSyntax);
             // `self` is a named parameter like any other: a `#` written on its
             // type is not a write grant.  Writability is spelled on the binding
@@ -929,7 +932,8 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       } else if (!isTypeStart()) {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
       } else {
-        argTypeSyntax = parseTypeSyntax(true, false, false, false, argPrefix == "*");
+        argTypeSyntax = parseTypeSyntax(true, false, false, false, argPrefix == "*",
+                                          TypeSyntaxPosition::NamedParameter);
         argType = canonicalType(argTypeSyntax);
       }
       bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';
@@ -1119,7 +1123,8 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
       } else {
         argTypeSyntax =
-            parseTypeSyntax(true, false, false, false, argPrefix == "*");
+            parseTypeSyntax(true, false, false, false, argPrefix == "*",
+                            TypeSyntaxPosition::NamedParameter);
         argType = canonicalType(argTypeSyntax);
       }
       bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';

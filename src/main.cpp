@@ -1085,7 +1085,7 @@ int main(int argc, char **argv) {
           arg.substr(std::string("--stage0-codegen-fault=").size());
     } else if (arg.rfind("--unsafe-raw-construction-fault=", 0) == 0) {
       unsafeRawConstructionFault = arg.substr(std::string("--unsafe-raw-construction-fault=").size());
-      const std::set<std::string> faults = {"missing", "source", "target", "rejected", "incomplete", "authority", "nullable", "rejection"};
+      const std::set<std::string> faults = {"missing", "source", "target", "rejected", "incomplete", "authority", "nullable", "rejection", "request"};
       if (!faults.count(unsafeRawConstructionFault)) {
         llvm::errs() << "unknown unsafe raw construction fault\n";
         return 1;

@@ -2114,6 +2114,7 @@ bool CodeGen::validateUnsafeRawConstructions(const std::vector<const CastExpr *>
       else if (plan) {
         plan = std::make_shared<UnsafeRawConstructionPlan>(*plan);
         if (m_UnsafeRawConstructionFault == "source") plan->SourceEdge = nullptr;
+        if (m_UnsafeRawConstructionFault == "request") plan->WriteRequest = nullptr;
         if (m_UnsafeRawConstructionFault == "target") plan->TargetType = "mismatched";
         if (m_UnsafeRawConstructionFault == "rejected") plan->SemaValidated = false;
         if (m_UnsafeRawConstructionFault == "incomplete") plan->RestrictionsComplete = false;
@@ -2123,7 +2124,13 @@ bool CodeGen::validateUnsafeRawConstructions(const std::vector<const CastExpr *>
       }
     }
 #endif
-    if (!plan || !plan->Prepared || !plan->SemaValidated || !plan->RestrictionsComplete || !plan->Rejection.empty() ||
+    const auto *request = cast->RawWriteRequest;
+    const Expr *requestEdge = request ? request->Init.get() : nullptr;
+    while (auto *wrapper = dynamic_cast<const UnsafeExpr *>(requestEdge))
+      requestEdge = wrapper->Expression.get();
+    if (!plan || !request || plan->WriteRequest != request || requestEdge != cast ||
+        !request->IsRawPointer || !request->IsValueMutable || request->IsValueBlocked ||
+        !plan->Prepared || !plan->SemaValidated || !plan->RestrictionsComplete || !plan->Rejection.empty() ||
         plan->Authority != RawWriteAuthority::UnsafeCallerPrecondition || plan->Site != cast ||
         plan->SourceEdge != cast->Expression.get() || cast->Kind != CastKind::Conversion ||
         !cast->ResolvedType || !cast->Expression->ResolvedType ||

@@ -91,6 +91,10 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
     if (Cast->Kind == CastKind::Conversion && Cast->Expression->ResolvedType &&
         Cast->Expression->ResolvedType->isAddrType() && Cast->ResolvedType && Cast->ResolvedType->isRawPointer())
       return applyPathFlowCeiling({false, false, false});
+    if (Cast->Kind == CastKind::Conversion && Cast->Expression->ResolvedType &&
+        (Cast->Expression->ResolvedType->isInteger() || Cast->Expression->ResolvedType->isFloatingPoint() ||
+         Cast->Expression->ResolvedType->isBoolean()) && Cast->ResolvedType && Cast->ResolvedType->isRawPointer())
+      return applyPathFlowCeiling({false, false, false});
     return getAccessCapability(Cast->Expression.get(), declarationOnly);
   }
   if (auto *Cede = dynamic_cast<CedeExpr *>(E))
@@ -115,6 +119,8 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
       // remains identity-only and cannot manufacture it.
       bool rawPayloadCapability =
           m_InUnsafeContext && Info->TypeObj && Info->TypeObj->isRawPointer() &&
+          Info->TypeObj->getPointeeType() && Info->TypeObj->getPointeeType()->IsWritable &&
+          !Info->TypeObj->getPointeeType()->IsBlocked &&
           !Info->IsHandleRebindable();
       const bool declaredPayloadWritable = Info->IsSoulMutable();
       bool valueBindingCanRebindMemberHandle =
@@ -204,7 +210,7 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
     for (const auto &field : shape->Members) {
       if (Type::stripMorphology(field.Name) != access.MemberName)
         continue;
-      auto fieldType = Type::fromString(synthesizePhysicalType(field));
+      auto fieldType = getPhysicalType(field);
       bool insulated = fieldType &&
                        (fieldType->isPointer() ||
                         fieldType->isSmartPointer() ||
@@ -218,7 +224,10 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
       const bool fieldPayloadDeclared =
           field.IsValueMutable || field.Permission.SoulWritable;
       const bool fieldPayloadBlocked =
-          field.IsValueBlocked || field.Permission.SoulBlocked;
+          field.IsValueBlocked || field.Permission.SoulBlocked ||
+          (field.IsMorphicExempt && insulated &&
+           (!fieldType->getPointeeType() || !fieldType->getPointeeType()->IsWritable ||
+            fieldType->getPointeeType()->IsBlocked));
       // A field declaration is an authority source in its own right.  An
       // outer handle that only grants H therefore does not erase `field#`.
       // Conversely, a handle/reference field without P establishes a
@@ -2514,6 +2523,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             !Info.TypeObj->isSmartPointer() && !Info.TypeObj->isReference();
         bool rawPayloadCapability =
             m_InUnsafeContext && Info.TypeObj && Info.TypeObj->isRawPointer() &&
+            Info.TypeObj->getPointeeType() && Info.TypeObj->getPointeeType()->IsWritable &&
+            !Info.TypeObj->getPointeeType()->IsBlocked &&
             !Info.IsHandleRebindable();
         bool payloadCapability =
             Info.Permission.SoulWritable || rawPayloadCapability;
@@ -2560,8 +2571,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     validateHandleGrammar(getLoc(Cast), targetType);
     const std::vector<std::unique_ptr<Expr>> noCastArguments;
     CallArgumentRollbackGuard rawConstructionRollback(*this, noCastArguments,
-        Cast->Kind == CastKind::Conversion && targetType && targetType->isRawPointer() &&
-        targetType->getPointeeType() && targetType->getPointeeType()->IsWritable,
+        Cast->Kind == CastKind::Conversion && Cast->RawWriteRequest &&
+        targetType && targetType->isRawPointer(),
         false, false);
     if (m_EnableStage1ExplicitCallerCede && targetType &&
         (targetType->isRawPointer() || targetType->isAddrType() || targetType->isOAddrType())) {
@@ -2608,6 +2619,18 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto srcType = Cast->Kind == CastKind::Ascription
                        ? checkExpr(Cast->Expression.get(), targetType)
                        : checkExpr(Cast->Expression.get());
+    if (Cast->RawWriteRequest && Cast->Kind == CastKind::Conversion &&
+        targetType && targetType->isRawPointer() && targetType->getPointeeType()) {
+      auto pointee = targetType->getPointeeType();
+      auto sourcePointee = srcType ? srcType->getPointeeType() : nullptr;
+      if (srcType && (srcType->isAddrType() ||
+                     (sourcePointee && sourcePointee->IsWritable && !sourcePointee->IsBlocked))) {
+        auto writable = std::make_shared<RawPointerType>(pointee->withAttributes(true, pointee->IsNullable, pointee->IsBlocked));
+        targetType = writable->withAttributes(targetType->IsWritable, targetType->IsNullable, targetType->IsBlocked);
+      }
+      // No other source gets upgraded by the binding request. Leave its target
+      // unchanged for the existing cast, provenance and binding-ceiling gates.
+    }
     Cast->AddressSource = collectRawAddressSource(Cast->Expression.get());
     if (srcType && srcType->isAddrType() && Cast->Kind == CastKind::Conversion &&
         targetType && targetType->isRawPointer() && targetType->getPointeeType() &&

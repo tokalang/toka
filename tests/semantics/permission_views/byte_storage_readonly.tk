@@ -1,0 +1,3 @@
+import std/vec::{Vec, writable_byte_storage}
+fn bad(buffer:Vec<u8>) { writable_byte_storage(buffer#) }
+fn main() -> i32 { return 0 }

@@ -1,0 +1,17 @@
+shape Slot<'T>('value#:T)
+fn write(slot#:Slot<&i32#>) { slot.value = 42 }
+fn is_nine(slot:Slot<&i32>) -> bool { return slot.value == 9 }
+fn main() -> i32 {
+    {
+        auto number# = 1:i32
+        auto slot# = Slot<&i32#>(value = &number)
+        write(slot#)
+        if slot.value != 42 { return 1 }
+    }
+    {
+        auto number = 9:i32
+        auto slot = Slot<&i32>(value = &number)
+        if !is_nine(slot) { return 2 }
+    }
+    return 0
+}

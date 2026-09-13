@@ -150,12 +150,19 @@ private:
   std::unique_ptr<Expr> parsePrimary(bool allowTrailingClosure = true);
   std::vector<std::unique_ptr<Expr>>
   parseCallArguments(std::vector<bool> &initArguments);
+  enum class TypeSyntaxPosition { NonReturn, Return, NamedParameter, NamedBinding, ViewPayload };
+  bool rejectTypePermissionPositions(const TypeSyntaxPtr &syntax,
+                                     TypeSyntaxPosition position,
+                                     const Token *binding = nullptr,
+                                     const std::string &prefix = "");
   TypeSyntaxPtr parseTypeSyntax(bool allowAssociatedProjection = true,
                                 bool stopAtConstructor = false,
                                 bool stopAtExpression = false,
                                 bool allowNever = false,
-                                bool allowAbiVoid = false);
-  TypeSyntaxPtr parseRequiredTypeSyntax(bool allowDirectVoid = false);
+                                bool allowAbiVoid = false,
+                                TypeSyntaxPosition position = TypeSyntaxPosition::NonReturn);
+  TypeSyntaxPtr parseRequiredTypeSyntax(bool allowDirectVoid = false,
+                                       TypeSyntaxPosition position = TypeSyntaxPosition::NonReturn);
   TypeArgumentSyntax parseTypeArgumentSyntax();
   static std::string canonicalType(const TypeSyntaxPtr &syntax,
                                    const std::string &fallback = "");

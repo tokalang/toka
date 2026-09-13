@@ -1,4 +1,4 @@
-error[E0496]: Parameter type 'u64#' carries a type-side writable marker '#'; place the marker on the parameter binding instead (did you mean '*#out#: u64'?)
+error[E0496]: Type 'u64#' places a binding permission on the type; use the binding name/hat, or an unnamed handle/reference capability type (did you mean '*#out#: u64'?)
  --> tests/fail/param_type_side_write_marker_rebind_hint_rejected.tk:13:28
     |
  13 | fn rebind_and_write(*#out: u64#) {

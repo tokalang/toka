@@ -308,8 +308,12 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
 
         // Return type based on Toka 1.3 Pointer-Value Duality
         std::shared_ptr<toka::Type> fieldType;
-        if (requestedMorphicIdentity && Field.ResolvedType) {
-          fieldType = Field.ResolvedType;
+        if ((requestedMorphicIdentity ||
+             (Field.IsMorphicExempt && std::dynamic_pointer_cast<toka::PointerType>(Field.ResolvedType))) &&
+            Field.ResolvedType) {
+          fieldType = Field.ResolvedType->withAttributes(
+              std::dynamic_pointer_cast<toka::PointerType>(Field.ResolvedType) ? Field.IsRebindable : Field.ResolvedType->IsWritable,
+              Field.ResolvedType->IsNullable, Field.ResolvedType->IsBlocked || Field.IsRebindBlocked);
         } else if (Field.ResolvedType &&
                    (Field.ResolvedType->isShape() ||
                     Field.ResolvedType->isPointer() ||
@@ -351,6 +355,11 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
               permitInheritance ? objTypeObj->IsWritable : false;
         }
 
+        if (Field.IsMorphicExempt && isSoulInsulated) {
+          auto inner = Field.ResolvedType ? Field.ResolvedType->getPointeeType() : nullptr;
+          finalSoulWritable = finalSoulWritable && inner && inner->IsWritable && !inner->IsBlocked;
+        }
+
         // [Toka 1.3] Unit Variant Support: Allow omission of
         // parentheses
         if (SD->Kind == ShapeKind::Enum || SD->Kind == ShapeKind::Union) {
@@ -368,10 +377,15 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
 
         // Apply soul writing to the fieldType itself if it's a pointer
         if (finalSoulWritable) {
-          if (auto pt = fieldType->getPointeeType())
-            pt->IsWritable = true;
-          else
-            fieldType->IsWritable = true;
+          if (auto pointer = std::dynamic_pointer_cast<toka::PointerType>(fieldType)) {
+            auto copy = std::dynamic_pointer_cast<toka::PointerType>(
+                pointer->withAttributes(pointer->IsWritable, pointer->IsNullable, pointer->IsBlocked));
+            copy->PointeeType = pointer->PointeeType->withAttributes(
+                true, pointer->PointeeType->IsNullable, pointer->PointeeType->IsBlocked);
+            fieldType = copy;
+          } else {
+            fieldType = fieldType->withAttributes(true, fieldType->IsNullable, fieldType->IsBlocked);
+          }
         }
 
         if (!m_InLHS && !m_InIntermediatePath && !path.empty() &&
@@ -415,7 +429,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
           // [Toka 1.3] Handle Inheritance:
           // The Identity pointer (Handle) inherits its own writable
           // status from self#
-          if (!result->IsBlocked) {
+          if (!result->IsBlocked && !Field.IsMorphicExempt) {
             result->IsWritable = result->IsWritable || objTypeObj->IsWritable;
           }
 

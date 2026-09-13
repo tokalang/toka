@@ -3,7 +3,7 @@
 // This module is deliberately separate from stdx/rand's deterministic PRNGs.
 
 import core/result::{Result}
-import std/vec::{Vec}
+import std/vec::{Vec, writable_byte_storage}
 import sys/libc::{toka_random_bytes}
 
 // Fill an owned buffer with OS entropy and return that same owner on success.
@@ -14,7 +14,7 @@ pub fn fill_secure_random_bytes(cede buffer: Vec<u8>) -> Result<Vec<u8>, string>
     if owned.len() == 0:usize {
         return Result<Vec<u8>, string>::Ok(cede owned)
     }
-    auto *ptr# = owned.unsafe_get(0:usize)
+    auto *ptr# = writable_byte_storage(owned#)
     auto status = unsafe toka_random_bytes(*ptr, owned.len())
     if status != 0:i32 {
         return Result<Vec<u8>, string>::Err(string::from("OS secure random bytes generation failed"))

@@ -776,7 +776,9 @@ impl u64 {
     pub fn to_string_fmt(self, fmt: str) -> string { return _format_i64(self as i64, fmt) }
     pub fn to_string(self) -> string {
         unsafe {
-             auto *buf# = libc_malloc(32).unwrap() as *char
+             auto *allocation = libc_malloc(32).unwrap()
+             auto address = *allocation as Addr
+             auto *buf# = unsafe (address as *char)
              libc_snprintf(*buf, 32, c"%llu", self)
              auto s = string::from_cstr(*buf)
              libc_free(*buf as *void)

@@ -1,0 +1,10 @@
+fn main() -> i32 {
+    auto *storage# = unsafe alloc [2] i32 as *[i32]
+    unsafe {
+        storage[0] = 31
+        storage[1] = 47
+        if storage[0] != 31 || storage[1] != 47 { return 1 }
+        free [2] *storage
+    }
+    return 0
+}

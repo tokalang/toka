@@ -63,9 +63,9 @@ def main():
         shutil.copytree(ROOT / "lib", library,
                         ignore=shutil.ignore_patterns("*.o", "*.a", "*.tki", "*.ll"))
         sync = (ROOT / "lib/std/sync.tk").read_text()
-        target = "auto ^owner# = new Once(mutex = Mutex<bool>(handle = 0:Addr#, data_ptr = 0:Addr#), done = false)"
+        target = "auto ^owner# = new Once(mutex = Mutex<bool>(handle = 0:Addr, data_ptr = 0:Addr), done = false)"
         assert sync.count(target) == 1
-        sync = sync.replace(target, target.replace("handle = 0:Addr#", "handle = 1:Addr#"))
+        sync = sync.replace(target, target.replace("handle = 0:Addr", "handle = 1:Addr"))
         site = "owner = cede prepared\n        return ^owner"
         # The first instance is Once::make. Observe the restored source after
         # rejecting the nonempty target, without changing the expected oracle.

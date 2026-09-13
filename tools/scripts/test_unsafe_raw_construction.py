@@ -28,12 +28,14 @@ def main():
                               env=env, capture_output=True, text=True, timeout=45)
 
     with tempfile.TemporaryDirectory(prefix="toka-unsafe-raw-") as directory:
-        for source in ("allocated_write.tk", "nullable_guard.tk", "discard.tk", "fallible_allocation.tk", "checked_generic.tk", "no_drop_authority.tk"):
+        positives = ("allocated_write.tk", "no_target_write.tk", "block_request.tk", "same_type_allocation.tk",
+                     "nullable_guard.tk", "discard.tk", "fallible_allocation.tk", "checked_generic.tk", "no_drop_authority.tk")
+        for source in positives:
             normal = run(source, "--check-only")
             shadow = run(source, "--check-only", "--non-call-transfer-shadow=json")
             require(normal.returncode == shadow.returncode == 0 and normal.stderr == shadow.stderr,
                     source + ": " + normal.stderr + shadow.stderr)
-            if source != "discard.tk":
+            if source != "same_type_allocation.tk":
                 records = [r for r in json.loads(shadow.stdout)["records"]
                            if r["location"]["file"].endswith(source) and r.get("raw_write_authority")]
                 require(records and all(r["raw_write_authority"] == "UnsafeCallerPrecondition" and
@@ -46,7 +48,6 @@ def main():
             require(executed.returncode == 0, source + ": runtime " + str(executed.returncode) + executed.stderr)
         negatives = {
             "no_unsafe.tk": "UnsafeContextRequired",
-            "no_target_write.tk": "AccessCapabilityMismatch",
             "readonly_copy.tk": "KnownReadOnlyOrFrozenSource",
             "readonly_call.tk": "KnownReadOnlyOrFrozenSource",
             "readonly_record.tk": "KnownReadOnlyOrFrozenSource",
@@ -57,8 +58,10 @@ def main():
             "pal_conflict.tk": "KnownBorrowConflict",
             "nullable_reject.tk": "KnownNullableSourceRequiresGuard",
             "null_nonzero.tk": "E0483",
-            "ordinary_pointer_upgrade.tk": "ExplicitAddrConstructionRequired",
-            "numeric_is_not_addr.tk": "ExplicitAddrConstructionRequired",
+            "ordinary_pointer_upgrade.tk": "AccessCapabilityMismatch",
+            "numeric_is_not_addr.tk": "AccessCapabilityMismatch",
+            "block_without_conversion.tk": "AccessCapabilityMismatch",
+            "nested_request_rejected.tk": "AccessCapabilityMismatch",
         }
         for source, expected in negatives.items():
             normal = run(source, "--check-only")
@@ -69,7 +72,7 @@ def main():
                 output = Path(directory) / (source + suffix)
                 rejected = run(source, flag, "-o", str(output))
                 require(rejected.returncode == 1 and not output.exists(), source + ": rejected artifact or crash")
-        faults = ("missing", "source", "target", "rejected", "incomplete", "authority", "nullable", "rejection")
+        faults = ("missing", "source", "target", "rejected", "incomplete", "authority", "nullable", "rejection", "request")
         for source in ("allocated_write.tk", "discard.tk"):
             for fault in faults:
                 for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
@@ -77,7 +80,7 @@ def main():
                     rejected = run(source, "--unsafe-raw-construction-fault=" + fault, flag, "-o", str(output))
                     require(rejected.returncode == 1 and "E0701" in rejected.stderr and not output.exists(),
                             source + ": fault " + fault + " did not fail closed\n" + rejected.stderr)
-    print("unsafe raw construction: 6 runtime/parity, 14 rejection/parity, 28 negative no-artifact, 32 fault no-artifact checks; no skips")
+    print(f"unsafe raw construction: {len(positives)} runtime/parity, {len(negatives)} rejection/parity, {len(negatives)*2} negative no-artifact, {len(faults)*4} fault no-artifact checks; no skips")
 
 
 if __name__ == "__main__":

@@ -182,7 +182,7 @@ pub fn net_sendto_impl(fd: i32, *buf: u8, len: usize, host: usize, port: i32) ->
     }
 }
 
-pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, *out_host: usize, *out_port: i32) -> i64 {
+pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, out_host#: usize, out_port#: i32) -> i64 {
     unsafe {
         auto *addr_buf = unsafe alloc [32] byte as *char
         auto *addrlen# = unsafe alloc [4] byte as *u32
@@ -192,8 +192,7 @@ pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, *out_host: usize, *out_p
         if res >= 0:i64 {
             auto *p0 = (*addr_buf as usize + 2) as *u8
             auto *p1 = (*addr_buf as usize + 3) as *u8
-            auto *_pp# = *out_port
-            _pp = ((p0 as i32) << 8) | (p1 as i32)
+            out_port = ((p0 as i32) << 8) | (p1 as i32)
 
             auto *a = (*addr_buf as usize + 4) as *u8
             auto *b = (*addr_buf as usize + 5) as *u8
@@ -203,8 +202,7 @@ pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, *out_host: usize, *out_p
             auto bu = b as usize
             auto cu = c as usize
             auto du = d as usize
-            auto *_ph# = *out_host
-            _ph = au | (bu << 8) | (cu << 16) | (du << 24)
+            out_host = au | (bu << 8) | (cu << 16) | (du << 24)
         }
         libc_free(*addr_buf as *void)
         libc_free(*addrlen as *void)

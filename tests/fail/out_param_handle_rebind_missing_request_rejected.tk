@@ -1,0 +1,14 @@
+// EXPECT: error[E04571]
+// Same callee as out_param_handle_rebind_explicit_call_test.tk, but the call
+// site omits the rebind request: `*p` presents the handle without the hat-side
+// '#' that asks for rebind authority.  Being bound as rebindable does not mean
+// the authority is ceded on every call — it has to be requested at the use
+// site, and this is a capability rejection, not a grammar one.
+fn replace(*#out#: u64) {}
+
+fn main() -> i32 {
+    auto a# = 1:u64
+    auto *#p# = &a as *u64#
+    replace(*p)
+    return 0
+}

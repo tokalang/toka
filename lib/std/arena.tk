@@ -80,7 +80,7 @@ impl Arena {
             auto new_chunk_addr = libc_malloc(sizeof(ArenaChunk)) as Addr
             // Preserve nullable storage until the same pointer is checked.
             // The unsafe constructor assumes writability, not initialization.
-            auto nul *candidate# = unsafe (new_chunk_addr as nul *ArenaChunk#)
+            auto nul *candidate# = unsafe (new_chunk_addr as nul *ArenaChunk)
             if *candidate is null {
                 libc_free(raw_data as *void)
                 return ADDR0

@@ -1,5 +1,5 @@
 fn main() -> i32 {
     auto bits# = 42:u64
-    auto *writer# = unsafe (bits as *i32#)
+    auto *writer# = unsafe (bits as *i32)
     return 0
 }

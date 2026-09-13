@@ -58,6 +58,21 @@ pub shape Vec<'T> (
 impl<'T: @Send> Vec<'T> @Send {}
 impl<'T: @Sync> Vec<'T> @Sync {}
 
+// Writable raw view of byte storage for native output operations. The mutable
+// owner grants access to its existing allocation, not initialized-element proof.
+// Callers retain bounds/length responsibility; no reference to an unwritten byte
+// is formed. This concrete byte helper does not widen generic raw element APIs.
+pub fn writable_byte_storage(buffer#: Vec<u8>) -> *u8# <- buffer {
+    auto nul *storage# = buffer.*buf
+    if *storage is null {
+        unsafe { libc_abort() }
+        unreachable
+    } else {
+        auto *nonnull# = (*storage).unwrap()
+        return *nonnull as *u8#
+    }
+}
+
 // `clone` remains as a compatibility spelling, but duplication is provided by
 // the explicit @Dup capability. Copy types receive the intrinsic Dup witness;
 // resource types must provide their own source-preserving duplication recipe.
@@ -292,11 +307,11 @@ impl<'T> Vec<'T> {
         return self.*buf
     }
 
-    pub fn unsafe_into_raw(self#) -> nul *['T] {
+    pub fn unsafe_into_raw(self#) -> nul *['T]# {
         unsafe {
             // Nullify buffer to prevent drop from freeing it
             // This is used when ownership is manually transferred
-            auto nul *ptr = self.*buf
+            auto nul *ptr# = self.*buf
             self.*buf = null
             self.cap = 0
             self.len = 0

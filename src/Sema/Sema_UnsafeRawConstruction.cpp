@@ -278,10 +278,12 @@ void Sema::prepareUnsafeRawConstruction(CastExpr *cast, const std::shared_ptr<Ty
     return;
   }
   if (cast->Kind != CastKind::Conversion || !sourceType->isAddrType() ||
+      !cast->RawWriteRequest ||
       !targetType->isRawPointer() || !targetType->getPointeeType() ||
       !targetType->getPointeeType()->IsWritable) return;
   cast->RequiresRawConstruction = true;
   auto plan = std::make_shared<UnsafeRawConstructionPlan>();
+  plan->WriteRequest = cast->RawWriteRequest;
   cast->RawConstruction = plan;
   plan->Site = cast;
   plan->SourceEdge = cast->Expression.get();

@@ -146,6 +146,9 @@ add_definitions(${LLVM_DEFS})
 include_directories(${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include)
 
 if(BUILD_TESTING)
+    add_executable(toka_permission_syntax tests/PermissionSyntax.cpp)
+    target_link_libraries(toka_permission_syntax PRIVATE toka_frontend)
+    add_test(NAME toka_permission_syntax COMMAND toka_permission_syntax)
     add_executable(toka_typesyntax_canonicalization
         tests/TypeSyntaxCanonicalization.cpp)
     add_executable(toka_canonical_declaration_witness
@@ -348,6 +351,16 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_integration_diagnostic_purposes.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_permission_positions
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_positions.py --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_permission_operations
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_operations.py --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_permission_views
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_views.py --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_permission_native_literals
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_native_literals.py --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_permission_net_regression
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_net_regression.py --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_empty_fn_return
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_empty_fn_return.py

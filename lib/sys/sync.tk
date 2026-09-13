@@ -117,7 +117,7 @@ pub fn sys_cond_destroy(handle: Addr) {
 pub fn sys_atomic_init_i32(val: i32) -> Addr {
     unsafe {
         auto ptr = libc_malloc(4 as usize) as Addr
-        auto nul *i_ptr# = unsafe (ptr as nul *[i32]#)
+        auto nul *i_ptr# = unsafe (ptr as nul *[i32])
         if *i_ptr is null {
             return 0:Addr
         } else {

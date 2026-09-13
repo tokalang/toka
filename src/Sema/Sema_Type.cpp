@@ -1147,6 +1147,16 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
       // rather than reparsing a synthesized spelling.
       auto memberTypeObj = Sema::synthesizePhysicalTypeObject(m);
       auto subObj = memberTypeObj->substitute(substMap);
+      if (m.IsMorphicExempt && m.Permission.HandleLayers.empty() &&
+          m.Permission.Morphology == BindingMorphology::None && m.TypeSyntax &&
+          m.TypeSyntax->NodeKind == TypeSyntax::Kind::Named) {
+        auto actual = substMap.find(m.TypeSyntax->Text);
+        if (actual != substMap.end() &&
+            std::dynamic_pointer_cast<toka::PointerType>(actual->second)) {
+          // Store the complete argument type; declaration permissions govern access.
+          subObj = actual->second;
+        }
+      }
       std::string newStr = subObj->toString();
 
       // Update m.Type to ensure downstream logic (e.g. CodeGen) perceives the substituted template type

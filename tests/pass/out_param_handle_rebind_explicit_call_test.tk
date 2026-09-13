@@ -1,0 +1,29 @@
+// Cross-function handle rebind requires an explicit request at the call site.
+//
+//   fn replace(*#out#: u64, ...)  hat-side '#'  -> the handle itself is
+//                                                 rebindable (identity rebind)
+//                                 name-side '#' -> the payload is writable
+//   replace(*#p, *q)              the use site asks for the rebind
+//
+// The callee repoints its handle at the second argument and then writes the
+// payload through the new target, so the original target keeps its value and
+// the new target takes the write.  A rebindable binding does not hand out
+// rebind authority on every call by itself — the call site must request it;
+// out_param_handle_rebind_missing_request_rejected.tk is the matching
+// rejection for a call that omits the request.
+fn replace(*#out#: u64, *other#: u64) {
+    *out = *other
+    out = 99:u64
+}
+
+pub fn main() -> i32 {
+    auto a# = 1:u64
+    auto b# = 2:u64
+    auto *#p# = &a as *u64#
+    auto *q# = &b as *u64#
+    replace(*#p, *q)
+    if a != 1:u64 { return 1 }
+    if b != 99:u64 { return 2 }
+    if p != 99:u64 { return 3 }
+    return 0
+}

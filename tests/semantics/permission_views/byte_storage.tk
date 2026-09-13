@@ -1,0 +1,16 @@
+import std/vec::{Vec, writable_byte_storage}
+fn main() -> i32 {
+    auto buffer# = Vec<u8>::with_capacity(4)
+    if buffer.len() != 0 { return 1 }
+    auto *output# = writable_byte_storage(buffer#)
+    auto *span# = *output as *[u8]#
+    unsafe {
+        span[0] = 11:u8
+        span[1] = 22:u8
+        span[2] = 33:u8
+        span[3] = 44:u8
+        buffer#.unsafe_set_len(4)
+    }
+    if buffer.get(0) != 11:u8 || buffer.get(3) != 44:u8 { return 2 }
+    return 0
+}

@@ -1,10 +1,10 @@
 fn main() -> i32 {
     auto *storage# = unsafe alloc [1] i32
     auto address = unsafe *storage as Addr
-    auto nul *candidate# = unsafe (address as nul *i32#)
+    auto nul *candidate# = unsafe (address as nul *i32)
     guard *candidate {
         auto verified = unsafe *candidate as Addr
-        auto *writer# = unsafe (verified as *i32#)
+        auto *writer# = unsafe (verified as *i32)
         unsafe {
             writer = 42:i32
             if storage[0] != 42 { return 1 }

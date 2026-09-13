@@ -60,7 +60,7 @@ return 0
 """
         spawn = "auto created = thread_spawn<i32>(cede callback)\nreturn 0\n"
         bodies = {
-            "forged": "auto ~mutex = new Mutex<i32>(handle = 0:Addr#, data_ptr = 0:Addr#)\n"
+            "forged": "auto ~mutex = new Mutex<i32>(handle = 0:Addr, data_ptr = 0:Addr)\n"
                       "auto ~worker_mutex = ~mutex\n" + capture + spawn,
             "handle-escape": creation + "auto raw = mutex.get_handle()\n" + capture + spawn,
             "field-escape": creation + "auto raw = mutex.data_ptr\n" + capture + spawn,

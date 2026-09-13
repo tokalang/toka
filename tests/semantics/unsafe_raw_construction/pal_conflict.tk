@@ -2,7 +2,7 @@ fn rejected(*storage#: [i32]) {
     unsafe {
         auto address = *storage as Addr
         auto &borrow = &storage[0]
-        auto *writer# = address as *i32#
+        auto *writer# = address as *i32
         auto used = borrow
     }
 }

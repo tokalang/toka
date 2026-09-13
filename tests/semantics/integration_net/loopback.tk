@@ -10,7 +10,7 @@ fn run(sender: i32, receiver: i32) -> i32 {
     auto buffer# = [0:u8; 8]
     auto host# = 0:usize
     auto peer_port# = 0:i32
-    auto received = net::net_recvfrom_impl(receiver, &buffer[0] as *u8, 8, &host as *usize, &peer_port as *i32)
+    auto received = net::net_recvfrom_impl(receiver, &buffer[0] as *u8, 8, host#, peer_port#)
     if received != 4 || buffer[0] != 112:u8 || buffer[3] != 103:u8 { return 5 }
     if host != 0x0100007f || peer_port != net::net_local_port_impl(sender) { return 6 }
     if net::net_getsockopt_error_impl(receiver) != 0 { return 7 }

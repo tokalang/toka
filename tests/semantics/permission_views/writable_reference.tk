@@ -1,0 +1,9 @@
+shape Slot<'T>('value#:T)
+fn write(slot#:Slot<&i32#>) { slot.value = 42 }
+fn main() -> i32 {
+    auto number# = 1:i32
+    auto slot# = Slot<&i32#>(value = &number)
+    write(slot#)
+    if slot.value != 42 { return 1 }
+    return 0
+}

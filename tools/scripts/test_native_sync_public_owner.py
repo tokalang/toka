@@ -76,11 +76,11 @@ def main():
         shutil.copytree(ROOT / "lib", library,
                         ignore=shutil.ignore_patterns("*.o", "*.a", "*.tki", "*.ll"))
         sync = (ROOT / "lib/std/sync.tk").read_text()
-        original = ("auto ~mutex# = new Mutex<'T>(handle = 0:Addr#, data_ptr = 0:Addr#)\n"
+        original = ("auto ~mutex# = new Mutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)\n"
                     "        mutex = cede prepared")
         assert sync.count(original) == 1
         sync = sync.replace(original,
-            "auto ~mutex# = new Mutex<'T>(handle = 1:Addr#, data_ptr = 0:Addr#)\n"
+            "auto ~mutex# = new Mutex<'T>(handle = 1:Addr, data_ptr = 0:Addr)\n"
             "        mutex = cede prepared\n        auto allocation_rollback_observed = prepared.handle")
         (library / "std/sync.tk").write_text(sync)
         negative = work / "nonempty.tk"

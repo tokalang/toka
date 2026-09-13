@@ -38,7 +38,8 @@ bool nativeInitializerFields(Expr *expression, std::map<std::string, Expr *> &fi
 bool nativeZeroLiteral(Expr *expression) {
   while (auto *cast = dynamic_cast<CastExpr *>(expression)) {
     if (cast->Kind != CastKind::Ascription &&
-        !(cast->Kind == CastKind::Implicit && nativeCompositePrimitive(cast->ResolvedType) &&
+        !(cast->Kind == CastKind::Implicit && cast->ResolvedType &&
+          (nativeCompositePrimitive(cast->ResolvedType) || cast->ResolvedType->isAddrType()) &&
           nativeSameValueView(cast->Expression->ResolvedType, cast->ResolvedType))) return false;
     expression = cast->Expression.get();
   }
@@ -634,16 +635,7 @@ bool Sema::prepareNativeSyncAllocation(const NewExpr *allocation, const Variable
     if ((name != "handle" && (nativeOnly || name != "data_ptr")) ||
         !expression || !expression->ResolvedType || !expression->ResolvedType->isAddrType())
       return fail("EmptyCarrierSchemaMismatch");
-    while (auto *cast = dynamic_cast<CastExpr *>(expression)) {
-      if (cast->Kind != CastKind::Ascription) {
-        error(source, DiagID::ERR_GENERIC_SEMA,
-              "native sync owner allocation: EmptyCarrierLiteralRequired: " + expression->toString());
-        return false;
-      }
-      expression = cast->Expression.get();
-    }
-    auto *zero = dynamic_cast<NumberExpr *>(expression);
-    if (!zero || zero->Value != 0) {
+    if (!nativeZeroLiteral(expression)) {
       error(source, DiagID::ERR_GENERIC_SEMA,
             "native sync owner allocation: EmptyCarrierLiteralRequired: " + expression->toString());
       return false;

@@ -212,13 +212,14 @@ fn __sync_cond_broadcast<'T: @Send>(owner: CondVar<'T>) {
 }
 
 fn sync_writable_storage<'T>(address: Addr) -> *'T# {
-    auto nul *candidate# = unsafe (address as nul *'T#)
+    auto nul *candidate# = unsafe (address as nul *'T)
     if *candidate is null {
         unsafe { libc_abort() }
         unreachable
     } else {
         auto verified = unsafe *candidate as Addr
-        return unsafe (verified as *'T#)
+        auto *result# = unsafe (verified as *'T)
+        return *result
     }
 }
 
@@ -243,14 +244,14 @@ impl<'T: @Send> Mutex<'T> {
     /// Directly allocates and initializes a new Mutex as a shared pointer (~Mutex)
     pub fn make(cede 'data: T) -> ^Mutex<'T> {
         auto prepared = __sync_mutex_create<'T>(cede 'data)
-        auto ^mutex# = new Mutex<'T>(handle = 0:Addr#, data_ptr = 0:Addr#)
+        auto ^mutex# = new Mutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)
         mutex = cede prepared
         return ^mutex
     }
 
     pub fn make_shared(cede 'data: T) -> ~Mutex<'T> {
         auto prepared = __sync_mutex_create<'T>(cede 'data)
-        auto ~mutex# = new Mutex<'T>(handle = 0:Addr#, data_ptr = 0:Addr#)
+        auto ~mutex# = new Mutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)
         mutex = cede prepared
         return cede ~mutex
     }
@@ -319,7 +320,7 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
 
     pub fn make_shared(cede 'data: T) -> ~RwMutex<'T> {
         auto prepared = __sync_rw_create<'T>(cede 'data)
-        auto ~rwlock# = new RwMutex<'T>(handle = 0:Addr#, data_ptr = 0:Addr#)
+        auto ~rwlock# = new RwMutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)
         rwlock = cede prepared
         return cede ~rwlock
     }
@@ -412,7 +413,7 @@ impl<'T: @Send> CondVar<'T> {
 
     pub fn make() -> ^CondVar<'T> {
         auto prepared = __sync_cond_create<'T>()
-        auto ^condition# = new CondVar<'T>(handle = 0:Addr#)
+        auto ^condition# = new CondVar<'T>(handle = 0:Addr)
         condition = cede prepared
         return ^condition
     }
@@ -420,7 +421,7 @@ impl<'T: @Send> CondVar<'T> {
     /// Construct a shared condition owner without a unique-to-shared conversion.
     pub fn make_shared() -> ~CondVar<'T> {
         auto prepared = __sync_cond_create<'T>()
-        auto ~condition# = new CondVar<'T>(handle = 0:Addr#)
+        auto ~condition# = new CondVar<'T>(handle = 0:Addr)
         condition = cede prepared
         return cede ~condition
     }
@@ -463,14 +464,14 @@ impl Once {
 
     pub fn make() -> ^Once {
         auto prepared = Once::new()
-        auto ^owner# = new Once(mutex = Mutex<bool>(handle = 0:Addr#, data_ptr = 0:Addr#), done = false)
+        auto ^owner# = new Once(mutex = Mutex<bool>(handle = 0:Addr, data_ptr = 0:Addr), done = false)
         owner = cede prepared
         return ^owner
     }
 
     pub fn make_shared() -> ~Once# {
         auto prepared = Once::new()
-        auto ~owner# = new Once(mutex = Mutex<bool>(handle = 0:Addr#, data_ptr = 0:Addr#), done = false)
+        auto ~owner# = new Once(mutex = Mutex<bool>(handle = 0:Addr, data_ptr = 0:Addr), done = false)
         owner = cede prepared
         return cede ~owner
     }
@@ -499,16 +500,16 @@ impl WaitGroup {
 
     pub fn make() -> ^WaitGroup {
         auto prepared = WaitGroup::new()
-        auto ^owner# = new WaitGroup(mutex = Mutex<i32>(handle = 0:Addr#, data_ptr = 0:Addr#),
-                                    cond = CondVar<i32>(handle = 0:Addr#))
+        auto ^owner# = new WaitGroup(mutex = Mutex<i32>(handle = 0:Addr, data_ptr = 0:Addr),
+                                    cond = CondVar<i32>(handle = 0:Addr))
         owner = cede prepared
         return ^owner
     }
 
     pub fn make_shared() -> ~WaitGroup# {
         auto prepared = WaitGroup::new()
-        auto ~owner# = new WaitGroup(mutex = Mutex<i32>(handle = 0:Addr#, data_ptr = 0:Addr#),
-                                    cond = CondVar<i32>(handle = 0:Addr#))
+        auto ~owner# = new WaitGroup(mutex = Mutex<i32>(handle = 0:Addr, data_ptr = 0:Addr),
+                                    cond = CondVar<i32>(handle = 0:Addr))
         owner = cede prepared
         return cede ~owner
     }

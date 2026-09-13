@@ -76,7 +76,7 @@ pub fn net_sendto_impl(fd: i32, *buf: u8, len: usize, host: usize, port: i32) ->
     return -1
 }
 
-pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, *out_host: usize, *out_port: i32) -> i64 {
+pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, out_host#: usize, out_port#: i32) -> i64 {
     return -1
 }
 

@@ -6,7 +6,7 @@ import core/types::{usize, isize, Addr, ADDR0}
 import core/traits::{@Dup}
 import core/result::{Result}
 import core/option::{Option}
-import std/vec::{Vec}
+import std/vec::{Vec, writable_byte_storage}
 import std/error::{IoError}
 import sys/libc::{
     toka_datafile_open_read,
@@ -109,7 +109,7 @@ impl ReadDataFile {
     /// 打开只读数据文件（SSTable 场景）
     pub fn open(path: string) -> Result<ReadDataFile, IoError> {
         auto path_cstr# = path.clone()
-        auto *path_ptr# = path_cstr.c_str()
+        auto *path_ptr = path_cstr.c_str()
         auto os_err# = 0:i32
         auto handle = unsafe toka_datafile_open_read(*path_ptr, &os_err as *i32)
         if handle == 0:Addr {
@@ -174,7 +174,7 @@ impl ReadDataFile {
         }
 
         buf#.unsafe_set_len(max_len)
-        auto *ptr# = buf.unsafe_get(0:usize)
+        auto *ptr# = writable_byte_storage(buf#)
         auto os_err# = 0:i32
         auto n = unsafe toka_datafile_pread(self.handle, *ptr as *void, max_len, offset, &os_err as *i32)
         if n < 0:i64 {
@@ -229,7 +229,7 @@ impl WalFile {
     /// 打开或创建 WAL 文件（O_RDWR | O_CREAT，严禁 O_APPEND）
     pub fn open(path: string) -> Result<WalFile, IoError> {
         auto path_cstr# = path.clone()
-        auto *path_ptr# = path_cstr.c_str()
+        auto *path_ptr = path_cstr.c_str()
         auto os_err# = 0:i32
         auto fd = unsafe toka_datafile_open_wal(*path_ptr, &os_err as *i32)
         if fd < 0:i32 {
@@ -262,7 +262,7 @@ impl WalFile {
             ))
         }
 
-        auto *ptr# = buf.unsafe_get(0:usize)
+        auto *ptr = buf.unsafe_get(0:usize)
         auto os_err# = 0:i32
         auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, buf.len(), offset, &os_err as *i32)
         if n < 0:i64 {
@@ -305,7 +305,7 @@ impl WalFile {
         auto total_written# = 0:usize
         loop total_written < total_len {
             auto remaining = total_len - total_written
-            auto *ptr# = buf.unsafe_get(total_written)
+            auto *ptr = buf.unsafe_get(total_written)
             auto curr_offset = offset + (total_written as u64)
             auto os_err# = 0:i32
             auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, remaining, curr_offset, &os_err as *i32)
@@ -433,7 +433,7 @@ impl PendingOutputFile@Encap {
         // Once renamed (stage >= 1), the file lives at target_path and MUST NEVER be unlinked on drop.
         if self.stage == PENDING_STAGE_PRE_RENAME && self.temp_path.len() > 0:usize {
             auto temp_cstr# = self.temp_path.clone()
-            auto *tp# = temp_cstr.c_str()
+            auto *tp = temp_cstr.c_str()
             unsafe { libc_remove(*tp) }
         }
         self.opened = false
@@ -444,12 +444,12 @@ impl PendingOutputFile {
     /// Creates an exclusive temporary file sibling to target_path in the exact same directory.
     pub fn create_sibling_temp(target_path: string) -> Result<PendingOutputFile, IoError> {
         auto t_cstr# = target_path.clone()
-        auto *t_ptr# = t_cstr.c_str()
+        auto *t_ptr = t_cstr.c_str()
 
         // Allocate buffer for returned temp path
         auto temp_buf# = Vec<u8>::with_capacity(1024:usize)
         temp_buf#.unsafe_set_len(1024:usize)
-        auto *out_ptr# = temp_buf.unsafe_get(0:usize)
+        auto *out_ptr# = writable_byte_storage(temp_buf#)
         auto os_err# = 0:i32
 
         auto fd = unsafe toka_datafile_open_sibling_temp(*t_ptr, *out_ptr as *char, 1024:usize, &os_err as *i32)
@@ -509,7 +509,7 @@ impl PendingOutputFile {
             ))
         }
 
-        auto *ptr# = buf.unsafe_get(0:usize)
+        auto *ptr = buf.unsafe_get(0:usize)
         auto os_err# = 0:i32
         auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, count, offset, &os_err as *i32)
         if n < 0:i64 {
@@ -552,7 +552,7 @@ impl PendingOutputFile {
                 ))
             }
 
-            auto *ptr# = buf.unsafe_get(total_written)
+            auto *ptr = buf.unsafe_get(total_written)
             auto os_err# = 0:i32
             auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, chunk_len, curr_offset, &os_err as *i32)
             if n <= 0:i64 {
@@ -600,9 +600,9 @@ impl PendingOutputFile {
         }
 
         auto temp_cstr# = self.temp_path.clone()
-        auto *temp_ptr# = temp_cstr.c_str()
+        auto *temp_ptr = temp_cstr.c_str()
         auto target_cstr# = self.target_path.clone()
-        auto *target_ptr# = target_cstr.c_str()
+        auto *target_ptr = target_cstr.c_str()
 
         auto out_stage# = 0:i32
         auto os_err# = 0:i32

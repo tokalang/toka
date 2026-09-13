@@ -345,7 +345,7 @@ pub fn create_temp_file_system() -> Result<TempFile, IoError> {
  * Unsupported platforms (e.g. Windows/WASI) return an unsupported IoError.
  */
 pub fn sync_directory(dir_path: string) -> Result<(), IoError> {
-    auto *dir_ptr# = dir_path.c_str()
+    auto *dir_ptr = dir_path.c_str()
     auto os_err# = 0:i32
     auto res = unsafe toka_dir_sync(*dir_ptr, &os_err as *i32)
     if res != 0:i32 {
@@ -366,8 +366,8 @@ pub fn sync_directory(dir_path: string) -> Result<(), IoError> {
  */
 pub fn atomic_write_durable(path: string, content: bytes) -> Result<(), IoError> {
     auto path_cstr# = path.clone()
-    auto *path_ptr# = path_cstr.c_str()
-    auto *data_ptr# = content.raw_ptr() as *u8
+    auto *path_ptr = path_cstr.c_str()
+    auto *data_ptr = content.raw_ptr() as *u8
     auto os_err# = 0:i32
     auto res = unsafe toka_atomic_write_durable(*path_ptr, *data_ptr, content.size(), &os_err as *i32)
     if res != 0:i32 {

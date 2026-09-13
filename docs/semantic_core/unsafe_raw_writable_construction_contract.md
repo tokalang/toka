@@ -2,16 +2,31 @@
 
 Status: Design authorized; implementation in progress, integration not qualified
 
-Latest validation and scope blocker:
-[unsafe_raw_construction_progress.md](review/unsafe_raw_construction_progress.md).
+Current name-side construction validation:
+[permission_position_wip.md](review/permission_position_wip.md).
+The earlier [progress report](review/unsafe_raw_construction_progress.md) records
+the preceding type-side spelling and is not the current migration result.
 
 ## Contract
 
-The existing spelling `unsafe (addr as *T#)` is an explicit raw construction.
-It requires a normal, successfully checked `as` conversion from semantic `Addr`
-and an explicitly writable raw pointee in its target type. An unsafe block may
-contain this explicit conversion; the block alone, an ordinary cast without
-target P, or a writable destination binding is not a grant.
+The authorized declaration spelling is `auto *p# = unsafe (addr as *T)`.
+`unsafe { auto *p# = addr as *T }` is equivalent. It requires all three:
+the name-side payload-write request, a successfully checked explicit conversion
+from semantic Addr to raw, and unsafe context. The binding marker is a request,
+not the proof. An unsafe block alone, a marker alone, an ordinary numeric value,
+or a readonly raw source does not satisfy this construction contract.
+
+Sema associates the request with the declaration's direct conversion edge.
+It must not transmit expected writability into arbitrary nested expressions,
+calls, branches or inner casts. CodeGen validates that exact association.
+
+Unnamed handle/reference view types can describe internal capabilities, such as
+`&i32#` or `Slot<&i32#>`. Such a type description does not grant authority to a
+cast. Named declaration permissions belong on the name/hat, not bare `T#`.
+The existing return-signature exception and separate `fn#` protocol remain.
+`'T` preserves the complete internal view without changing outer binding,
+member or handle-rebind declarations; outer writability cannot upgrade a
+readonly inner view. This does not qualify Vec element dependency propagation.
 
 The capability origin is **UnsafeCallerPrecondition**, not compiler-proven
 writable storage. The caller must ensure the address is valid for the intended
@@ -49,7 +64,10 @@ commit source/target changes.
 ## Qualification before thread migration
 
 - Real allocated storage: construction, write, readback and cleanup.
-- No unsafe / no explicit target P / destination-only P rejection.
+- Name-side request plus explicit unsafe Addr construction is a positive case
+  (including the former `no_target_write.tk`); test actual write/read/cleanup.
+- No unsafe, no explicit Addr conversion, readonly raw, and ordinary integer
+  sources remain negative. Unnamed capability descriptions alone are not grants.
 - Readonly or frozen origin through Addr and copies/calls/aggregates.
 - Known PAL conflict, nullable source and guarded/non-null controls.
 - Missing/wrong/rejected/incomplete plan: E0701 and no artifacts.

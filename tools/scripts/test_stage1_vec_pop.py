@@ -69,7 +69,10 @@ def main():
         if compiled.returncode == 0 and ir.is_file():
             functions = re.findall(r"^define .*?^}", ir.read_text(), re.M | re.S)
             bodies = [f for f in functions if "raw.take.value = load" in f]
-            valid_interval = len(bodies) == 1
+            # Concrete byte-storage helpers can also instantiate Vec<u8>.
+            # Require the resource specialization, and check every emitted take
+            # rather than assuming the module contains only one specialization.
+            valid_interval = sum("raw.take.value = load %Token," in f for f in bodies) == 1
             for body in bodies:
                 lines = body.splitlines()
                 take = next(i for i, line in enumerate(lines) if "raw.take.value = load" in line)

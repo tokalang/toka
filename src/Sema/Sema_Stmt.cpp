@@ -1846,6 +1846,16 @@ void Sema::checkStmt(Stmt *S) {
     m_LastBorrowSource.clear();
     if (Var->Init) {
       Var->Init = foldGenericConstant(std::move(Var->Init));
+      // Only the initializer's direct conversion can receive this request.
+      // Do not broadcast expected writability into calls, branches or casts'
+      // operands. Parentheses are absent from the AST; unsafe is transparent.
+      Expr *requestEdge = Var->Init.get();
+      while (auto *wrapper = dynamic_cast<UnsafeExpr *>(requestEdge))
+        requestEdge = wrapper->Expression.get();
+      if (auto *cast = dynamic_cast<CastExpr *>(requestEdge))
+        cast->RawWriteRequest = Var->IsRawPointer && Var->IsValueMutable &&
+                                       cast->Kind == CastKind::Conversion
+                                   ? Var : nullptr;
       m_ControlFlowStack.push_back({Var->Name, NoProducedValue, nullptr, false, true});
       std::shared_ptr<toka::Type> declTargetTy = nullptr;
       if (!Var->TypeName.empty() && Var->TypeName != "auto") {

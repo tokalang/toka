@@ -241,30 +241,60 @@ bool Parser::rejectTypeSideWriteMarker(const Token &nameTok,
                                        const std::string &bindingPrefix,
                                        TypeSyntaxPtr &typeSyntax,
                                        std::string &typeName) {
-  if (!typeSyntax)
-    return false;
+  return rejectTypePermissionPositions(typeSyntax, TypeSyntaxPosition::NamedBinding,
+                                       &nameTok, bindingPrefix);
+}
 
-  // A `#` written on the outermost type of a named parameter is meaningless:
-  // the writable marker belongs on the binding name (`out#: T`), which is what
-  // also drives the read-only argument gate.  Markers nested inside a composite
-  // type (a function result, a generic argument, or the pointee of an
-  // explicitly spelled raw type) keep their existing reading.
-  if (typeSyntax->NodeKind != TypeSyntax::Kind::Morphology ||
-      !typeSyntax->IsPostfix || typeSyntax->Text != "#")
-    return false;
-
-  TypeSyntaxPtr soul = typeSyntax->Subject;
-  std::string soulType = soul ? canonicalType(soul) : typeName;
-  std::string suggestion = bindingPrefix + nameTok.Text + "#: " + soulType;
-
-  DiagnosticEngine::report(typeSyntax->Begin,
-                           DiagID::ERR_PARSER_TYPE_SIDE_WRITE_MARKER, typeName,
-                           suggestion);
-  HasError = true;
-
-  typeSyntax = soul;
-  typeName = soulType;
-  return true;
+bool Parser::rejectTypePermissionPositions(const TypeSyntaxPtr &syntax,
+                                           TypeSyntaxPosition position,
+                                           const Token *binding,
+                                           const std::string &prefix) {
+  if (!syntax) return false;
+  using K = TypeSyntax::Kind;
+  bool rejected = false;
+  if (syntax->NodeKind == K::Morphology) {
+    // Inspect the morphology node's operator, never arbitrary source text.
+    const auto &op = syntax->Text;
+    const bool marker = op == "#" || op == "$" ||
+        (!op.empty() && (op.front() == '*' || op.front() == '&' || op.front() == '^' || op.front() == '~') &&
+         (op.find('#') != std::string::npos || op.find('$') != std::string::npos));
+    if (marker && position != TypeSyntaxPosition::Return &&
+        position != TypeSyntaxPosition::ViewPayload &&
+        !(position == TypeSyntaxPosition::NonReturn && !syntax->IsPostfix &&
+          !op.empty() && (op.front() == '*' || op.front() == '&' || op.front() == '^' || op.front() == '~'))) {
+      std::string suggestion = "place permissions on the binding name or binding hat, not the type";
+      if (binding && syntax->IsPostfix && (op == "#" || op == "$"))
+        suggestion = prefix + binding->Text + op + ": " + canonicalType(syntax->Subject);
+      DiagnosticEngine::report(syntax->Begin, DiagID::ERR_PARSER_TYPE_SIDE_WRITE_MARKER,
+                               canonicalType(syntax), suggestion);
+      HasError = rejected = true;
+    }
+  }
+  auto visit = [&](const TypeSyntaxPtr &child, TypeSyntaxPosition context) {
+    rejected = rejectTypePermissionPositions(child, context) || rejected;
+  };
+  if (syntax->NodeKind == K::Function) {
+    // fn# / dyn fn# describe their independent callable receiver protocol.
+    for (const auto &parameter : syntax->Elements) visit(parameter, TypeSyntaxPosition::NonReturn);
+    visit(syntax->Result, TypeSyntaxPosition::Return);
+  } else {
+    auto subjectPosition = position;
+    if (syntax->NodeKind == K::Morphology && !syntax->IsPostfix &&
+        !syntax->Text.empty() &&
+        (syntax->Text.front() == '*' || syntax->Text.front() == '&' ||
+         syntax->Text.front() == '^' || syntax->Text.front() == '~') &&
+        position != TypeSyntaxPosition::NamedBinding)
+      subjectPosition = TypeSyntaxPosition::ViewPayload;
+    if (syntax->NodeKind == K::Array || syntax->NodeKind == K::Slice)
+      subjectPosition = TypeSyntaxPosition::NonReturn;
+    visit(syntax->Subject, subjectPosition);
+    for (const auto &element : syntax->Elements) visit(element, TypeSyntaxPosition::NonReturn);
+    for (const auto &field : syntax->Fields) visit(field.Type, TypeSyntaxPosition::NamedBinding);
+    for (const auto &argument : syntax->Arguments)
+      if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type)
+        visit(argument.Type, TypeSyntaxPosition::NonReturn);
+  }
+  return rejected;
 }
 
 void Parser::synchronize() {
@@ -306,6 +336,11 @@ namespace {
 
 std::string canonicalTypeTokenText(const Token &tok) {
   std::string text = tok.Text;
+  if (tok.Kind == TokenType::Star || tok.Kind == TokenType::Ampersand ||
+      tok.Kind == TokenType::Caret || tok.Kind == TokenType::Tilde) {
+    if (tok.IsSwappablePtr) text += "#";
+    if (tok.IsBlocked) text += "$";
+  }
   if (tok.Kind == TokenType::Identifier || tok.Kind == TokenType::KwSelf ||
       tok.Kind == TokenType::KwUpperSelf || tok.Kind == TokenType::KwFn ||
       tok.Kind == TokenType::KwNever) {
@@ -343,7 +378,8 @@ bool usesVoidOutsideRawPointee(const TypeSyntaxPtr &syntax,
     // ABI void.  Any other prefix starts a new pointee context.
     return usesVoidOutsideRawPointee(
         syntax->Subject,
-        syntax->IsPostfix ? rawPointee : syntax->Text == "*");
+        syntax->IsPostfix ? rawPointee :
+            (!syntax->Text.empty() && syntax->Text.front() == '*'));
   case TypeSyntax::Kind::GenericApplication:
     if (usesVoidOutsideRawPointee(syntax->Subject))
       return true;
@@ -483,16 +519,16 @@ private:
       } else if (match(TokenType::KwCede)) {
         prefixes.emplace_back("cede ", Tokens[Pos - 1].Loc);
       } else if (match(TokenType::Ampersand)) {
-        prefixes.emplace_back("&", Tokens[Pos - 1].Loc);
+        prefixes.emplace_back(canonicalTypeTokenText(Tokens[Pos - 1]), Tokens[Pos - 1].Loc);
       } else if (match(TokenType::And)) {
         prefixes.emplace_back("&", Tokens[Pos - 1].Loc);
         prefixes.emplace_back("&", Tokens[Pos - 1].Loc);
       } else if (match(TokenType::Star)) {
-        prefixes.emplace_back("*", Tokens[Pos - 1].Loc);
+        prefixes.emplace_back(canonicalTypeTokenText(Tokens[Pos - 1]), Tokens[Pos - 1].Loc);
       } else if (match(TokenType::Caret)) {
-        prefixes.emplace_back("^", Tokens[Pos - 1].Loc);
+        prefixes.emplace_back(canonicalTypeTokenText(Tokens[Pos - 1]), Tokens[Pos - 1].Loc);
       } else if (match(TokenType::Tilde)) {
-        prefixes.emplace_back("~", Tokens[Pos - 1].Loc);
+        prefixes.emplace_back(canonicalTypeTokenText(Tokens[Pos - 1]), Tokens[Pos - 1].Loc);
       } else if (match(TokenType::TokenWrite)) {
         prefixes.emplace_back("#", Tokens[Pos - 1].Loc);
       } else {
@@ -581,8 +617,13 @@ private:
       const size_t traitBegin = Pos;
       while (!atEnd())
         take();
-      return TypeSyntax::dynTrait(spelling(traitBegin, Pos), dyn.Loc,
-                                  Tokens[Pos - 1].Loc);
+      auto result = std::make_shared<TypeSyntax>(*TypeSyntax::dynTrait(
+          spelling(traitBegin, Pos), dyn.Loc, Tokens[Pos - 1].Loc));
+      // Preserve the existing canonical trait spelling, but also retain its
+      // structure so nested permission positions cannot hide in opaque text.
+      std::vector<Token> traitTokens(Tokens.begin() + traitBegin, Tokens.begin() + Pos);
+      result->Subject = TypeSyntaxBuilder(traitTokens).parse();
+      return result;
     }
     if (match(TokenType::KwFn)) {
       const Token &fn = Tokens[Pos - 1];
@@ -811,7 +852,8 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
                                       bool stopAtConstructor,
                                       bool stopAtExpression,
                                       bool allowNever,
-                                      bool allowAbiVoid) {
+                                      bool allowAbiVoid,
+                                      TypeSyntaxPosition position) {
   std::vector<Token> tokens;
   std::vector<TokenType> delimiters;
   auto isOpeningDelimiter = [](TokenType type) {
@@ -956,6 +998,8 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
   }
 
   TypeSyntaxPtr syntax = TypeSyntaxBuilder(tokens).parse();
+  if (position != TypeSyntaxPosition::NamedParameter)
+    rejectTypePermissionPositions(syntax, position);
   const bool containsNever = std::any_of(
       tokens.begin(), tokens.end(), [](const Token &token) {
         return token.Kind == TokenType::KwNever;
@@ -991,12 +1035,12 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
   return syntax;
 }
 
-TypeSyntaxPtr Parser::parseRequiredTypeSyntax(bool allowDirectVoid) {
+TypeSyntaxPtr Parser::parseRequiredTypeSyntax(bool allowDirectVoid, TypeSyntaxPosition position) {
   if (!isTypeStart()) {
     error(peek(), DiagID::ERR_PARSER_EXPECTED_TYPE_ANNOTATION);
     return TypeSyntax::invalid("", peek().Loc, peek().Loc);
   }
-  return parseTypeSyntax(true, false, false, false, allowDirectVoid);
+  return parseTypeSyntax(true, false, false, false, allowDirectVoid, position);
 }
 
 TypeArgumentSyntax Parser::parseTypeArgumentSyntax() {

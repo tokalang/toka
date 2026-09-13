@@ -2,7 +2,7 @@ fn main() -> i32 {
     auto value = 7:i32
     auto address = unsafe (&value as Addr)
     auto copied = forward(address)
-    auto *writer# = unsafe (copied as *i32#)
+    auto *writer# = unsafe (copied as *i32)
     return 0
 }
 fn forward(value: Addr) -> Addr { return value }

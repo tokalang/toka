@@ -3,6 +3,6 @@ impl Frozen@Encap { pub value }
 fn main() -> i32 {
     auto cell# = Frozen(value = 7)
     auto address = unsafe (&(cell.value) as Addr)
-    auto *writer# = unsafe (address as *i32#)
+    auto *writer# = unsafe (address as *i32)
     return 0
 }

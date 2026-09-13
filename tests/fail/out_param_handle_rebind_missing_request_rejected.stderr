@@ -1,0 +1,15 @@
+error[E04571]: Type mismatch for argument 1: expected *#u64#, got *u64#
+ --> tests/fail/out_param_handle_rebind_missing_request_rejected.tk:12:13
+    |
+ 12 |     replace(*p)
+    |             ^
+note: handle-rebind authority comes from the binding or parameter declaration; a use-site '#' can request it but cannot create it
+ --> tests/fail/out_param_handle_rebind_missing_request_rejected.tk:12:13
+    |
+ 12 |     replace(*p)
+    |             ^
+error[E04571]: Type mismatch for argument 1: expected *#u64#, got *u64#
+ --> tests/fail/out_param_handle_rebind_missing_request_rejected.tk:12:13
+    |
+ 12 |     replace(*p)
+    |             ^

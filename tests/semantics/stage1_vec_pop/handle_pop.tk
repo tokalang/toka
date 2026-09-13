@@ -5,8 +5,8 @@ impl Cell@Encap {
     pub value
     fn drop(self#) { drops += 1 }
 }
-fn allocate<'T>() -> *['T] {
-    auto *storage = unsafe alloc [2] 'T
+fn allocate<'T>() -> *['T]# {
+    auto *storage# = unsafe alloc [2] 'T
     return *storage
 }
 fn main() -> i32 {

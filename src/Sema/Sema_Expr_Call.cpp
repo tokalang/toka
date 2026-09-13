@@ -787,10 +787,13 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
   }
   if (!source)
     return toka::Type::fromString("unknown");
-  if (auto *cast = dynamic_cast<CastExpr *>(source))
+  if (auto *cast = dynamic_cast<CastExpr *>(source)) {
+    if (cast->RawWriteRequest && cast->ResolvedType)
+      return resolveExplicitCedeStage0TypeReadOnly(cast->ResolvedType);
     return resolveExplicitCedeStage0TypeReadOnly(
         cast->TargetTypeSyntax ? Type::fromSyntax(cast->TargetTypeSyntax)
                                : Type::fromString(cast->TargetType));
+  }
   if (auto *allocation = dynamic_cast<NewExpr *>(source)) {
     auto payload = resolveExplicitCedeStage0TypeReadOnly(
         allocation->TypeSyntax ? Type::fromSyntax(allocation->TypeSyntax)
@@ -1078,6 +1081,14 @@ Sema::queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *value) {
     if (cast->Kind == CastKind::Conversion && cast->Expression->ResolvedType &&
         cast->Expression->ResolvedType->isAddrType() && cast->ResolvedType && cast->ResolvedType->isRawPointer())
       return applyFlowCeiling({false, false, false});
+    // A scalar value's local writability says nothing about the memory at the
+    // numeric address. Do not carry scalar-copy permission through a raw cast.
+    if (cast->Kind == CastKind::Conversion && cast->Expression->ResolvedType &&
+        (cast->Expression->ResolvedType->isInteger() ||
+         cast->Expression->ResolvedType->isFloatingPoint() ||
+         cast->Expression->ResolvedType->isBoolean()) &&
+        cast->ResolvedType && cast->ResolvedType->isRawPointer())
+      return applyFlowCeiling({false, false, false});
     return queryExplicitCedeStage0AccessCapabilityReadOnly(
         cast->Expression.get());
   }
@@ -1099,7 +1110,9 @@ Sema::queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *value) {
         CurrentScope->findVariableWithDeref(variable->Name, info, actualName) &&
         info) {
       const bool rawPayload =
-          m_InUnsafeContext && info->TypeObj && info->TypeObj->isRawPointer();
+          m_InUnsafeContext && info->TypeObj && info->TypeObj->isRawPointer() &&
+          info->TypeObj->getPointeeType() && info->TypeObj->getPointeeType()->IsWritable &&
+          !info->TypeObj->getPointeeType()->IsBlocked;
       return applyFlowCeiling({info->IsSoulMutable() || rawPayload,
                                info->Permission.IdentityRebindable, false});
     }
@@ -1128,14 +1141,17 @@ Sema::queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *value) {
     for (const auto &field : declaration->Members) {
       if (Type::stripMorphology(field.Name) != access.MemberName)
         continue;
-      auto fieldType = Type::fromString(synthesizePhysicalType(field));
+      auto fieldType = getPhysicalType(field);
       const bool insulated =
           fieldType && (fieldType->isPointer() || fieldType->isSmartPointer() ||
                         fieldType->isReference());
       const bool declaredPayload =
           field.IsValueMutable || field.Permission.SoulWritable;
       const bool blockedPayload =
-          field.IsValueBlocked || field.Permission.SoulBlocked;
+          field.IsValueBlocked || field.Permission.SoulBlocked ||
+          (field.IsMorphicExempt && insulated &&
+           (!fieldType->getPointeeType() || !fieldType->getPointeeType()->IsWritable ||
+            fieldType->getPointeeType()->IsBlocked));
       const bool startsRestricted = insulated && !declaredPayload;
       return applyFlowCeiling(
           {!base.PayloadFlowRestricted && !blockedPayload &&
@@ -4950,6 +4966,20 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       auto *cast = dynamic_cast<CastExpr *>(surface);
       if (!cast) break;
       if (cast->Kind == CastKind::Conversion && cast->Expression->ResolvedType &&
+          !cast->Expression->ResolvedType->isAddrType() &&
+          (cast->Expression->ResolvedType->isInteger() ||
+           cast->Expression->ResolvedType->isFloatingPoint() ||
+           cast->Expression->ResolvedType->isBoolean()) &&
+          cast->ResolvedType && cast->ResolvedType->isRawPointer()) {
+        // Deny pointee authority from scalar binding mutability. This is not
+        // an Addr construction and can never consume its granting plan.
+        facts.ActualCapabilities.Complete = true;
+        facts.ActualCapabilities.PayloadWritable = false;
+        facts.ActualCapabilities.HandleRebindable = false;
+        facts.RawWriteAuthority.clear();
+        break;
+      }
+      if (cast->Kind == CastKind::Conversion && cast->Expression->ResolvedType &&
           cast->Expression->ResolvedType->isAddrType() && cast->ResolvedType && cast->ResolvedType->isRawPointer()) {
         // Addr's own value mutability is not pointee authority. Only this
         // explicit, Sema-qualified construction introduces a new raw P.
@@ -5212,6 +5242,15 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
     facts.SourceFlowCeiling.Complete = true;
     facts.SourceFlowCeiling.HandleRebindable = true;
     facts.SourceFlowCeiling.PayloadWritable = facts.StaticStorageOrigins.empty();
+  }
+  if (normalSemaValidated && actualType &&
+      (actualType->isRawPointer() || actualType->isReference()) &&
+      (dynamic_cast<CallExpr *>(exactValue) || dynamic_cast<MethodCallExpr *>(exactValue)) &&
+      (!facts.ActualCapabilities.PayloadWritable || !actualType->getPointeeType() ||
+       !actualType->getPointeeType()->IsWritable || actualType->getPointeeType()->IsBlocked)) {
+    // Denial only: a readonly returned view cannot gain P from temporary status.
+    // Existing false ceilings (including static-source restrictions) stay false.
+    facts.SourceFlowCeiling.PayloadWritable = false;
   }
   const auto resolvedDestination =
       destinationType ? resolveExplicitCedeStage0TypeReadOnly(destinationType)

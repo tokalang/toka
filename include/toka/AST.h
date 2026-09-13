@@ -845,6 +845,8 @@ enum class CastKind {
 
 class CastExpr : public Expr {
 public:
+  // Re-established by Sema from the exact enclosing declaration, never cloned.
+  const VariableDecl *RawWriteRequest = nullptr;
   RawAddressSourcePtr AddressSource;
   std::shared_ptr<UnsafeRawConstructionPlan> RawConstruction;
   bool RequiresRawConstruction = false;

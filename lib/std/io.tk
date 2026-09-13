@@ -152,7 +152,9 @@ impl File {
                 return IoStringResult::Ok(string::from(""))
             }
             
-            auto *buf# = libc_malloc((size + 1) as usize).unwrap() as *[char]
+            auto *allocation = libc_malloc((size + 1) as usize).unwrap()
+            auto address = *allocation as Addr
+            auto *buf# = unsafe (address as *[char])
             auto count = libc_fread(*buf as *void, 1, size as usize, self.*handle)
             auto last_idx = count as i32
             buf[last_idx] = 0 as char
@@ -256,7 +258,8 @@ auto g_stdin_handle# = 0:Addr
 pub fn get_stdin() -> File {
     unsafe {
         if g_stdin_handle == 0:Addr { g_stdin_handle = libc_fdopen(0, c"r") as Addr }
-        return File(*handle = g_stdin_handle as *#void, opened = (g_stdin_handle != 0:Addr), owned = false)
+        auto *#handle = g_stdin_handle as *void
+        return File(*handle = *handle, opened = (g_stdin_handle != 0:Addr), owned = false)
     }
 }
 
@@ -264,7 +267,8 @@ auto g_stdout_handle# = 0:Addr
 pub fn get_stdout() -> File {
     unsafe {
         if g_stdout_handle == 0:Addr { g_stdout_handle = libc_fdopen(1, c"w") as Addr }
-        return File(*handle = g_stdout_handle as *#void, opened = (g_stdout_handle != 0:Addr), owned = false)
+        auto *#handle = g_stdout_handle as *void
+        return File(*handle = *handle, opened = (g_stdout_handle != 0:Addr), owned = false)
     }
 }
 
@@ -272,7 +276,8 @@ auto g_stderr_handle# = 0:Addr
 pub fn get_stderr() -> File {
     unsafe {
         if g_stderr_handle == 0:Addr { g_stderr_handle = libc_fdopen(2, c"w") as Addr }
-        return File(*handle = g_stderr_handle as *#void, opened = (g_stderr_handle != 0:Addr), owned = false)
+        auto *#handle = g_stderr_handle as *void
+        return File(*handle = *handle, opened = (g_stderr_handle != 0:Addr), owned = false)
     }
 }
 

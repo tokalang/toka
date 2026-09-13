@@ -8,6 +8,7 @@ namespace toka {
 class Expr;
 class CastExpr;
 class FunctionDecl;
+class VariableDecl;
 class Type;
 
 // Ancestry only: this identifies an allocation expression that contributed
@@ -43,6 +44,7 @@ struct RawAddressSource {
 using RawAddressSourcePtr = std::shared_ptr<const RawAddressSource>;
 
 struct UnsafeRawConstructionPlan {
+  const VariableDecl *WriteRequest = nullptr;
   const CastExpr *Site = nullptr;
   const Expr *SourceEdge = nullptr;
   std::string SourceType;
