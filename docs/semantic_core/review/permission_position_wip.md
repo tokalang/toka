@@ -80,3 +80,38 @@ construction, native public/composite/witness, network adapters, shared paramete
 ABI, shared aggregate handoff and Vec pop. Complete incremental tool build and
 `git diff --check` passed. This is a local rollback checkpoint, not full-suite
 qualification or an independent Accepted verdict.
+
+## Independent unquoted-generic observation (after permission checkpoint)
+
+Permission checkpoint: `bc6d252c7f08427cca1d84fd3de76ae2dff24e35`.
+No compiler behavior was changed for this experiment. Reproduce with
+`tools/scripts/probe_unquoted_generic.py --build-dir BUILD --output-dir OUT`.
+The script is deliberately not a CTest gate and does not label a rejected
+program as an intended permanent negative.
+
+Seven operations on Slot (binding, member extraction, fixed array indexing,
+passing, return, borrow, whole-slot replacement), three actual types (i32,
+unique Cell, shared Cell), and two spellings produce 42 check-only observations.
+Final logs: `/private/tmp/toka-permission-position.IcQTeC/unquoted-ascribed-probe`.
+Ordinary T accepts 7/21 (all i32); existing morphic spelling accepts 18/21.
+These are observations, **not** a runtime correctness score or complete-type
+qualification. Initial malformed probe spellings were corrected before these
+results; earlier probe directories are not the final matrix.
+
+- Unquoted managed instances hit the existing rigid-generic E0604 rule. This
+  is a known implementation policy to migrate, not evidence that a full type
+  cannot be represented without a quote.
+- Quoted unique member extraction reaches `ProjectedHandleRequiresSubroot`.
+  Its existing rejection must not be removed merely to eliminate a spelling.
+- Quoted managed array cases stop at array initialization `IncompleteFacts`,
+  before the index operation. They do not establish index behavior either way.
+- Quoted shared extraction with explicit full-type ascription is accepted;
+  inferred extraction is a distinct existing morphology issue, not silently
+  counted as covered.
+
+Next bounded step is separating whole-value generic interpretation from these
+existing admission restrictions, with reference/readonly and concrete-binding
+controls. No replacement placeholder is proposed. Removing `'` must not imply
+opening partial moves, declaring array dependencies complete, or reopening the
+permission checkpoint. This experiment does not yet claim the full seven-route
+no-quote implementation or authorize deleting existing safety checks.
