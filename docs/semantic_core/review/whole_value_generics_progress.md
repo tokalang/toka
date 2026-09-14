@@ -3,6 +3,31 @@
 Design/authorization checkpoint: `ddb19870`. E is not started. Work remains on
 the existing integration branch; no push, PR, tag or release is authorized.
 
+## Latest: approved receipt activation on `2574cec3`
+
+Applied the exact user-approved `g_receipt_view_activation_unapplied.patch`
+(SHA-256 `1f46a16cb03f2ffa7393feaa4dc6db0e26deeaf35ff3d26ea7bc2bc9029ce474`).
+Production now calls `verifyArgumentBorrow` with the successful private receipt
+only when the existing descriptor/referent view is consistent. A view mismatch
+withdraws exclusion eligibility and falls back to ordinary conflict checking.
+No broader descriptor path rewrite or active-borrow return fixture edit was
+applied. The historical held-activation notes below describe earlier states.
+
+Rebuilt tokac and the receipt unit. The receipt, G increment, permission views,
+shared parameter ABI and native managed-slot CTests passed **5/5, 166.88 s**.
+This includes scalar/unique/shared exact-once replacement, descriptor forwarding,
+other active loans, duplicate arguments, parent/child and branch targets,
+view-changing wrappers, normal/shadow parity, rollback and no-artifact controls.
+An explicit receipt unit assertion also covers HandleRebind non-exemption.
+
+The separate return-matrix rerun **failed** at the unchanged
+`rebound_reference_active_borrow.tk`: E0454 for `first`, versus expected E0442.
+It is not counted green or rewritten to evade the failure. No full suite was
+run; G remains WIP, E and publishing remain unstarted. Other-worker RFC edits
+are preserved and excluded from this implementation checkpoint.
+
+## Earlier implementation checkpoints (historical results)
+
 Implemented so far:
 
 - Exact generic-binder recognition records an abstract whole-value formal

@@ -21,6 +21,7 @@ int main() {
   CHECK(!checker.verifyArgumentBorrow(root, read, own));
   CHECK(checker.getState(root) == PathState::BorrowedMut);
   CHECK(checker.verifyArgumentBorrow(root, PALOperationClass::Invalidation, own));
+  CHECK(checker.verifyArgumentBorrow(root, PALOperationClass::HandleRebind, own));
   CHECK(checker.verifyArgumentBorrow(child, write, own));
 
   // Neither source-coordinate reuse nor restoring a snapshot reuses a grant.
