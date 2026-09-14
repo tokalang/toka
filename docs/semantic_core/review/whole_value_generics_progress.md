@@ -3,6 +3,31 @@
 Design/authorization checkpoint: `ddb19870`. E is not started. Work remains on
 the existing integration branch; no push, PR, tag or release is authorized.
 
+## Complete comparison at `9c37f659`, followed by the nested-enum correction
+
+Logs: `/private/tmp/toka-G-candidate.Kb7a1a`. Against the prior complete
+`/private/tmp/toka-G-final.0snzrT` snapshot:
+
+| Suite | Previous complete snapshot | This complete snapshot | Newly failing names |
+| --- | --- | --- | --- |
+| PASS | 363/456 | 388/457 | 0 |
+| FAIL | 441/479 | 444/478 | 0 |
+| CTest | 86/99 | 96/99 | 0 |
+
+Twenty-four same-name PASS cases recovered; the extra positive is the migrated
+rigid-T negative. No abnormal or unexpected-success FAIL result remains in this
+run. Ten CTests recovered; source-hidden callable, return-matrix container
+integration and Arena remain red. This is not RC13 qualification.
+
+A subsequent concrete probe found the same pattern-binder issue when T itself
+is an enum with a `val` variant: Option<T>::unwrap reinterpreted its binding
+name `val` using the instantiated enum. The correction skips this implicit
+variant lookup only for unqualified source-level whole-T binders. Explicit
+qualified variant patterns retain their checks. The probe is now part of
+`enum_struct_field_binding`; runtime and the expanded G CTest pass (102.78 s).
+The table above is not backfilled with that later result. Final qualification
+must use the post-correction implementation and its own complete logs.
+
 ## Return-chain closeout continuation from `4549aa97` (WIP)
 
 - A selected static factory now projects its declared return contract through

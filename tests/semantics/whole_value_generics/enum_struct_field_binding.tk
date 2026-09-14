@@ -1,10 +1,17 @@
 import core/option::{Option}
 import core/result::{Result}
 shape Payload(val:i32)
+shape Nested(val(i32) = 1 | Nil = 0)
 fn main() -> i32 {
     auto option = Option<Payload>::Some(Payload(val=7))
     auto first = option.unwrap()
     auto result = Result<Payload, i32>::Ok(Payload(val=9))
     auto second = result.unwrap()
-    return first.val + second.val - 16
+    if first.val + second.val != 16 { return 1 }
+    auto outer = Option<Nested>::Some(Nested::val(7))
+    auto inner = outer.unwrap()
+    match inner {
+        auto Nested::val(number) => return number - 7
+        _ => return 2
+    }
 }

@@ -369,7 +369,12 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       baseShapeName = resolveType(patName.substr(0, scopePos));
       patName = patName.substr(scopePos + 2);
     }
-    if (ShapeMap.count(baseShapeName) &&
+    // An unqualified binder of source-level T stays a binder. A variant in
+    // the eventual concrete T must not reinterpret that source declaration.
+    // Explicitly qualified variant patterns still use the ordinary checks.
+    const bool abstractBinder = scopePos == std::string::npos &&
+        Pat->GenericContract && Pat->GenericContract->isWholeValue();
+    if (!abstractBinder && ShapeMap.count(baseShapeName) &&
         (ShapeMap[baseShapeName]->Kind == ShapeKind::Enum ||
          ShapeMap[baseShapeName]->Kind == ShapeKind::Union)) {
       ShapeDecl *SD = ShapeMap[baseShapeName];
