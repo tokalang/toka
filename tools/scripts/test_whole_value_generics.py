@@ -8,6 +8,12 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+MORPHOLOGY_CASES = {
+    'morphology_borrow_extendable_level2': 'E0621',
+    'morphology_borrow_extendable_raw': 'E0621',
+    'morphology_soul_only_unique': 'E0621',
+    'morphology_constraint_unknown': 'E01267',
+}
 
 
 def main():
@@ -18,10 +24,12 @@ def main():
     with tempfile.TemporaryDirectory(prefix='toka-G-') as directory:
         work = Path(directory)
         def check(name, *flags):
+            source_dir = ROOT / ('tests/fail' if name in MORPHOLOGY_CASES else
+                                 'tests/semantics/whole_value_generics')
             return subprocess.run([
                 str(args.build_dir / 'bin/tokac'), '--workspace-node', 'whole-value-G',
                 '--workspace-root', str(ROOT),
-                str(ROOT / 'tests/semantics/whole_value_generics' / (name + '.tk')),
+                str(source_dir / (name + '.tk')),
                 *map(str, flags)], env=env, cwd=ROOT, capture_output=True,
                 text=True, timeout=60)
 
@@ -55,9 +63,20 @@ def main():
                     assert len(loads) == 1 and body.count('= load ptr') == 1, body
                     assert f'ret ptr {loads[0]}' in body, body
             print('PASS runtime/parity ' + name, flush=True)
+        for name in ('raw_slot_borrow',):
+            normal = check(name, '--check-only')
+            shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
+            assert normal.returncode == shadow.returncode == 0, (name, normal.stderr, shadow.stderr)
+            assert normal.stderr == shadow.stderr, name
+            for flag, extension in (('-c', '.o'), ('--emit-llvm', '.ll')):
+                output = work / (name + extension)
+                built = check(name, flag, '-o', output)
+                assert built.returncode == 0 and output.exists(), (name, built.stderr)
+            print('PASS compile/parity ' + name, flush=True)
         for name, diagnostic in (
             ('borrowed_parameter_cannot_move', 'E0473'),
             ('reference_consumption_rejected', 'E04661'),
+            ('raw_slot_readonly_rejected', 'E04573'),
             ('concrete_payload_not_owner', 'E04571'),
             ('payload_write_is_not_slot_write', 'E04571'),
             ('abstract_does_not_reveal_fields', 'E0417'),
@@ -69,7 +88,7 @@ def main():
             ('legacy_quote_type', 'E01268'),
             ('legacy_quote_binding', 'E01268'),
             ('legacy_quote_expression', 'E01268'),
-        ):
+        ) + tuple(MORPHOLOGY_CASES.items()):
             normal = check(name, '--check-only')
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 1, name

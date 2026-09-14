@@ -127,3 +127,36 @@ at sync.tk:141/167 with E04573 (plus a downstream prepared-recipe failure).
 This remains a G integration failure, not an accepted negative; investigate
 the whole-slot versus inner payload view without relaxing permission checks.
 No full suite was run. This is a local WIP checkpoint, not G acceptance.
+
+### Whole indexed-slot borrow continuation
+
+Checkpoint `c0e9d1c2` saves the exact approved schema patch before continuing.
+A standalone `View<T>(&value#:T)` constructor reproduced the remaining E04573
+without native sync, threads or factory witnesses. The existing selected-slot
+capability path recognized only the removed quote operator. It now also
+recognizes a checked `IsAbstractWholeValue` index; its storage type, inner type
+equality, source capability and flow-ceiling checks are unchanged.
+
+The independent writable slot constructor now compiles to object/IR; its
+readonly-storage counterpart still rejects with E04573 and no artifact.
+The shared matrix is **24/24** after this fix. Permission views passed,
+including outer/field mutation ceilings and cross-instance isolation.
+
+The managed-slot readonly-guard fixture previously requested a writable
+reference from a readonly borrow and failed before reaching its assignment.
+It now obtains the legitimate readonly reference, then attempts replacement;
+the original E04572/E04573 rejection expectation remains. Extra assertions
+exclude undeclared-slot and initializer-capability failures. All managed-slot
+runtime, rejection/rollback and fault checks pass (34.80 s).
+
+Four morphology negative sources were mechanically migrated from quote syntax;
+their domain/unknown-bound diagnostic expectations are unchanged and now run
+inside the G gate. The latest G gate passed (29.83 s): 12 runtime cases, one
+compile-only slot-constructor control, 18 rejection/parity cases with 36
+object/IR no-artifact checks, and three caller-storage IR controls. The
+compile-only constructor is not counted as a runtime cleanup test; managed
+storage execution is covered by the existing shared/managed-slot programs.
+
+G remains WIP with the propagation, constraints and full-comparison items
+above outstanding. The concurrent RFC changes remain outside implementation
+commits. No push, PR, E work or full-suite run occurred.

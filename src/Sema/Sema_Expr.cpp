@@ -156,6 +156,8 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
     auto *index = selected && selected->Op == TokenType::MorphicIdentity
                       ? dynamic_cast<ArrayIndexExpr *>(selected->RHS.get())
                       : nullptr;
+    if (!index && Unary->RHS->IsAbstractWholeValue)
+      index = dynamic_cast<ArrayIndexExpr *>(Unary->RHS.get());
     if (Unary->Op == TokenType::Ampersand && index && E->ResolvedType &&
         E->ResolvedType->isReference() && index->ResolvedType &&
         (index->ResolvedType->isUniquePtr() || index->ResolvedType->isSharedPtr())) {

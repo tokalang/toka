@@ -1,0 +1,15 @@
+shape Token(value:i32)
+shape View<T>(&value#:T)
+fn view_slot<T>(*buffer#: [T]) -> View<T> <- buffer {
+    unsafe { return View<T>(&value = &(buffer[0])) }
+}
+fn borrow_slot<T>(*buffer#: [T]) -> &T# <- buffer {
+    unsafe { return &(buffer[0]) }
+}
+fn bridge(*buffer#: [~Token]) -> &~Token# <- buffer {
+    return borrow_slot<~Token>(*buffer)
+}
+fn bridge_view(*buffer#: [~Token]) -> View<~Token> <- buffer {
+    return view_slot<~Token>(*buffer)
+}
+fn main() -> i32 { return 0 }

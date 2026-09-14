@@ -153,7 +153,8 @@ return drops - 2
         negatives = {
             "readonly-binding": (START.replace("&^#slot", "&^slot") + "^slot = cede ^incoming" + READS, ("E04572",)),
             "readonly-guard": (START.replace("Mutex<", "RwMutex<").replace("mutex.lock()", "mutex.read_lock()")
-                               .replace("held.borrow_mut()", "held.borrow()") + "^slot = cede ^incoming" + READS, ("E04572", "E04573")),
+                               .replace("held.borrow_mut()", "held.borrow()").replace("&^#slot", "&^slot")
+                               + "^slot = cede ^incoming" + READS, ("E04572", "E04573")),
             "live-borrow": (START + "auto &view = &slot\n^slot = cede ^incoming\nauto after_borrow = view.value" + READS,
                             ("E0442",)),
             "overlap": (START + "^slot = cede ^slot" + READS, ("E04615", "E04646", "E04583", "E04663", "E04661")),
@@ -172,6 +173,10 @@ return drops - 2
             shadow = compile(source, "--check-only", "--non-call-transfer-shadow=json")
             assert normal.returncode == shadow.returncode == 1 and normal.stderr == shadow.stderr, (name, normal.stderr, shadow.stderr)
             assert any(reason in normal.stderr for reason in reasons), (name, normal.stderr)
+            if name == "readonly-guard":
+                # Reach the forbidden replacement, not an invalid attempt to
+                # initialize a writable reference from read_lock().borrow().
+                assert "E0402" not in normal.stderr and "AccessCapabilityMismatch" not in normal.stderr, normal.stderr
             if name == "live-borrow":
                 assert "conflicting borrow originates here" in normal.stderr, normal.stderr
             assert "E0438" not in normal.stderr and "E0410" not in normal.stderr, (name, normal.stderr)

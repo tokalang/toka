@@ -1,8 +1,8 @@
-fn borrow_identity<'T>('value: T) -> &'T
+fn borrow_identity<T>(value: T) -> &T
 where:
-    'T: morphology borrow_extendable
-effects: return <- 'value {
-    return &'value
+    T: morphology borrow_extendable
+effects: return <- value {
+    return &value
 }
 
 // EXPECT: error[E0621]
