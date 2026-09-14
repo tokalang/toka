@@ -7,33 +7,33 @@ import std/vec::{Vec}
 // complete value owned by exactly one Vec, never a Ring-managed raw slot.
 // Refill an empty side with half of the other side, avoiding repeated full
 // reversals when callers alternate pop_front/pop_back.
-fn ring_refill<'T>(source#: Vec<'T>, target#: Vec<'T>) {
+fn ring_refill<T>(source#: Vec<T>, target#: Vec<T>) {
     auto keep = source.len() / 2
-    auto saved# = Vec<'T>::with_capacity(keep)
+    auto saved# = Vec<T>::with_capacity(keep)
     loop saved.len() < keep {
-        auto 'value = source#.pop().unwrap()
-        saved#.push(cede 'value)
+        auto value = source#.pop().unwrap()
+        saved#.push(cede value)
     }
     loop !source.is_empty() {
-        auto 'value = source#.pop().unwrap()
-        target#.push(cede 'value)
+        auto value = source#.pop().unwrap()
+        target#.push(cede value)
     }
     loop !saved.is_empty() {
-        auto 'value = saved#.pop().unwrap()
-        source#.push(cede 'value)
+        auto value = saved#.pop().unwrap()
+        source#.push(cede value)
     }
 }
 
-pub shape RingCore<'T> (
-    front#: Vec<'T> = Vec<'T>::new(),
-    back#: Vec<'T> = Vec<'T>::new()
+pub shape RingCore<T> (
+    front#: Vec<T> = Vec<T>::new(),
+    back#: Vec<T> = Vec<T>::new()
 )
 
-impl<'T: @Send> RingCore<'T>@Send {}
+impl<T: @Send> RingCore<T>@Send {}
 
-impl<'T> RingCore<'T> {
-    pub fn new() -> RingCore<'T> {
-        return RingCore<'T>(front = Vec<'T>::new(), back = Vec<'T>::new())
+impl<T> RingCore<T> {
+    pub fn new() -> RingCore<T> {
+        return RingCore<T>(front = Vec<T>::new(), back = Vec<T>::new())
     }
 
     pub fn len(self) -> usize {
@@ -49,15 +49,15 @@ impl<'T> RingCore<'T> {
         self.back#.clear()
     }
 
-    pub fn push_back(self#, cede 'val: T) {
-        self.back#.push(cede 'val)
+    pub fn push_back(self#, cede val: T) {
+        self.back#.push(cede val)
     }
 
-    pub fn push_front(self#, cede 'val: T) {
-        self.front#.push(cede 'val)
+    pub fn push_front(self#, cede val: T) {
+        self.front#.push(cede val)
     }
 
-    pub fn pop_back(self#) -> Option<'T> {
+    pub fn pop_back(self#) -> Option<T> {
         if self.back.is_empty() && !self.front.is_empty() {
             ring_refill(self.front#, self.back#)
         }
@@ -65,7 +65,7 @@ impl<'T> RingCore<'T> {
         return cede outcome
     }
 
-    pub fn pop_front(self#) -> Option<'T> {
+    pub fn pop_front(self#) -> Option<T> {
         if self.front.is_empty() && !self.back.is_empty() {
             ring_refill(self.back#, self.front#)
         }
@@ -74,11 +74,11 @@ impl<'T> RingCore<'T> {
     }
 }
 
-impl<'T: @Dup> RingCore<'T> {
+impl<T: @Dup> RingCore<T> {
     /// Duplicates an element without removing it.
-    pub fn get(self, index: usize) -> Option<'T> {
+    pub fn get(self, index: usize) -> Option<T> {
         if index >= self.len() {
-            auto outcome = Option<'T>::None
+            auto outcome = Option<T>::None
             return cede outcome
         }
         if index < self.front.len() {
@@ -88,7 +88,7 @@ impl<'T: @Dup> RingCore<'T> {
     }
 }
 
-impl<'T> RingCore<'T>@Encap {
+impl<T> RingCore<T>@Encap {
     // Both Vec fields retain their ordinary cleanup responsibilities.
     fn drop(self#) {}
 }

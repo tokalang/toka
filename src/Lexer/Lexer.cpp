@@ -556,15 +556,18 @@ Token Lexer::punctuation() {
     // A quote followed by a parenthesized expression selects that
     // expression's abstract/morphic handle identity.  Preserve ordinary
     // character literals such as `'('` by recognizing their closing quote.
-    if (peek() == '(' && peekNext() != '\'')
+    if (peek() == '(' && peekNext() != '\'') {
+      DiagnosticEngine::report(locationAt(m_Current - 1), DiagID::ERR_LEXER_GENERIC_QUOTE_REMOVED);
       return Token{TokenType::MorphicIdentity, "'", line, col};
+    }
     if (isAlpha(peek())) {
       const char *lookahead = m_Current;
       while (isAlpha(*lookahead) || isDigit(*lookahead) || *lookahead == '_') {
         lookahead++;
       }
       if (*lookahead != '\'') {
-        std::string text = "'";
+        DiagnosticEngine::report(locationAt(m_Current - 1), DiagID::ERR_LEXER_GENERIC_QUOTE_REMOVED);
+        std::string text;
         while (isAlpha(peek()) || isDigit(peek()) || peek() == '_') {
           text += advance();
         }

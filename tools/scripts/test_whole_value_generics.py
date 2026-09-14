@@ -25,7 +25,8 @@ def main():
                 *map(str, flags)], env=env, cwd=ROOT, capture_output=True,
                 text=True, timeout=60)
 
-        for name in ('relay', 'local_relay', 'slot_write', 'whole_borrow', 'reference_forwarding'):
+        for name in ('relay', 'local_relay', 'slot_write', 'whole_borrow', 'reference_forwarding', 'structure_views', 'index_views',
+                     'enum_transfer', 'shared_observer_contract', 'literal_preservation'):
             normal = check(name, '--check-only')
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 0, (name, normal.stderr, shadow.stderr)
@@ -63,6 +64,10 @@ def main():
             ('local_descriptor_escape', 'E0455'),
             ('named_copy_requires_cede', 'E04570'),
             ('copy_source_invalidated', 'E0438'),
+            ('abstract_field_root_not_assumed', 'E0406'),
+            ('legacy_quote_type', 'E01268'),
+            ('legacy_quote_binding', 'E01268'),
+            ('legacy_quote_expression', 'E01268'),
         ):
             normal = check(name, '--check-only')
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
@@ -103,6 +108,40 @@ def main():
         result = subprocess.run([str(output)], capture_output=True, text=True, timeout=10)
         assert result.returncode == 0, (result.returncode, result.stderr)
         print('PASS source-hidden runtime/parity relay', flush=True)
+
+        # A provider's symbolic Slot<T> must not be rebound to a caller's
+        # same-named declaration when a generic factory result is inferred.
+        provider.write_text('''pub shape Slot<T>(value:T)
+pub fn pack<T>(cede value:T) -> Slot<T> { return Slot<T>(value=cede value) }
+''')
+        emitted = subprocess.run(prefix + ['--emit-interface', '-c', str(provider),
+                                  '-o', str(work / 'provider.o')], env=env, cwd=work,
+                                 capture_output=True, text=True, timeout=60)
+        assert emitted.returncode == 0, emitted.stderr
+        provider.unlink()
+        consumer.write_text('''import provider::{Slot as RemoteSlot, pack}
+shape Slot<T>(different:T)
+shape Resource(value:i32)
+fn wrap<T>(cede value:T) -> RemoteSlot<T> {
+    auto result = pack<T>(cede value)
+    { auto &view = &(result.value) }
+    return cede result
+}
+fn main() -> i32 {
+    auto ^owner = new Resource(value=31)
+    auto result = wrap<^Resource>(cede ^owner)
+    if result.value.value != 31 { return 1 }
+    return 0
+}
+''')
+        output = work / 'source-hidden-structure'
+        built = subprocess.run(prefix + [str(consumer), str(work / 'provider.o'),
+                                '-o', str(output)], env=env, cwd=work,
+                               capture_output=True, text=True, timeout=60)
+        assert built.returncode == 0, built.stderr
+        result = subprocess.run([str(output)], capture_output=True, text=True, timeout=10)
+        assert result.returncode == 0, (result.returncode, result.stderr)
+        print('PASS source-hidden structure/nominal shadowing', flush=True)
 
 
 if __name__ == '__main__':

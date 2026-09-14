@@ -1,0 +1,40 @@
+auto drops# = 0
+shape Resource(value:i32)
+impl Resource@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+shape Slot<T>(value:T)
+impl<T> Slot<T> {
+    fn view(self) -> &T <- self { return &(self.value) }
+    fn named_view(self) -> &item: T
+    effects:
+        &item <- self
+    { return &(self.value) }
+}
+fn inside<T>(slot:Slot<T>) -> &T <- slot { return &(slot.value) }
+fn pack<T>(cede value:T) -> Slot<T> {
+    auto local = cede value
+    return Slot<T>(value=cede local)
+}
+fn main() -> i32 {
+  {
+    auto ^owner = new Resource(value=19)
+    auto slot = pack<^Resource>(cede ^owner):Slot<^Resource>
+    if slot.value.value != 19 { return 1 }
+    {
+        auto &^view = inside<^Resource>(slot)
+        if view.value != 19 { return 2 }
+    }
+    {
+        auto &^view = slot.view()
+        if view.value != 19 { return 4 }
+    }
+    {
+        auto &^view = slot.named_view()
+        if view.value != 19 { return 5 }
+    }
+  }
+    if drops != 1 { return 30 + (drops as i32) }
+    return 0
+}

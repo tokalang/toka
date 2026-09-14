@@ -43,20 +43,20 @@ int main() {
     }
   }
   // Only representation/substitution is tested here, not container eligibility.
-  auto parameter = toka::Type::fromString("'T");
+  auto parameter = toka::Type::fromString("T");
   auto view = toka::Type::fromString("&i32#");
-  auto instance = parameter->substitute({{"T", view}, {"'T", view}});
+  auto instance = parameter->substitute({{"T", view}});
   if (!instance || !instance->isReference() || instance->IsWritable ||
       !instance->getPointeeType()->IsWritable ||
       !view->getPointeeType()->IsWritable) return 2;
-  auto slot = toka::Type::fromString("Slot<'T>")->substitute({{"T", view}, {"'T", view}});
+  auto slot = toka::Type::fromString("Slot<T>")->substitute({{"T", view}});
   auto slotType = std::dynamic_pointer_cast<toka::ShapeType>(slot);
   if (!slotType || slotType->IsWritable || slotType->GenericArgs.size() != 1 ||
       slotType->GenericArgs[0]->toString() != view->toString()) return 3;
   auto readonlySlot = toka::Type::fromString("Slot<&i32>");
   if (slotType->equals(*readonlySlot)) return 5;
   auto readonly = toka::Type::fromString("&i32");
-  auto writableSlot = toka::Type::fromString("Slot<'T>")->substitute({{"T", readonly}, {"'T", readonly}})->withAttributes(true, false);
+  auto writableSlot = toka::Type::fromString("Slot<T>")->substitute({{"T", readonly}})->withAttributes(true, false);
   auto writableSlotType = std::dynamic_pointer_cast<toka::ShapeType>(writableSlot);
   if (!writableSlotType || !writableSlotType->IsWritable ||
       writableSlotType->GenericArgs[0]->getPointeeType()->IsWritable ||

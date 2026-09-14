@@ -1,5 +1,5 @@
 shape Token(value: i32)
-fn borrowed<'T>('value: T) -> async i32 { return 'value.value }
+fn borrowed<T>(value: T) -> async i32 { return value.value }
 fn main() -> i32 {
     auto ~owner = new Token(value = 42)
     auto task = borrowed<~Token>(~owner).start

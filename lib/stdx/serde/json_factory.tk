@@ -6,7 +6,7 @@ import std/hashmap::{HashMap}
 import std/math
 pub alias JsonRes = Result<str, str>
 // Container factories return a numeric cursor, not an internal borrowed rest view.
-pub shape Complete<'T>('value: T, consumed: usize)
+pub shape Complete<T>(value: T, consumed: usize)
 
 pub trait @JsonFactory {
     pub fn parse_value(json: str) -> Result<Parsed<Self>, str> <- json
@@ -166,38 +166,38 @@ impl f64@JsonFactory {
     }
 }
 
-impl<'T: @JsonFactory> Option<'T>@JsonFactory {
-    pub fn parse_value(json: str) -> Result<Parsed<Option<'T>>, str> <- json {
+impl<T: @JsonFactory> Option<T>@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<Option<T>>, str> <- json {
         auto rem = leaf_skip_whitespace(json)
         if rem.starts_with("null") {
-            auto value = Option<'T>::None
-            auto parsed = Parsed<Option<'T>>(value = cede value, rest = rem.substr(4, rem.len() - 4))
-            auto result = Result<Parsed<Option<'T>>, str>::Ok(cede parsed)
+            auto value = Option<T>::None
+            auto parsed = Parsed<Option<T>>(value = cede value, rest = rem.substr(4, rem.len() - 4))
+            auto result = Result<Parsed<Option<T>>, str>::Ok(cede parsed)
             return cede result
         }
         auto child = T::parse_value(rem)
         if child.is_err() {
-            auto error = Result<Parsed<Option<'T>>, str>::Err(child.unwrap_err())
+            auto error = Result<Parsed<Option<T>>, str>::Err(child.unwrap_err())
             return cede error
         }
         auto parsed_child = child.unwrap()
-        auto 'payload = cede parsed_child.value
-        auto optional = Option<'T>::Some(cede 'payload)
-        auto parsed = Parsed<Option<'T>>(value = cede optional, rest = parsed_child.rest)
-        auto result = Result<Parsed<Option<'T>>, str>::Ok(cede parsed)
+        auto payload = cede parsed_child.value
+        auto optional = Option<T>::Some(cede payload)
+        auto parsed = Parsed<Option<T>>(value = cede optional, rest = parsed_child.rest)
+        auto result = Result<Parsed<Option<T>>, str>::Ok(cede parsed)
         return cede result
     }
 }
 
-impl<'T: @JsonFactory> Vec<'T> {
-    pub fn parse_complete(json: str) -> Result<Complete<Vec<'T>>, str> <- json {
+impl<T: @JsonFactory> Vec<T> {
+    pub fn parse_complete(json: str) -> Result<Complete<Vec<T>>, str> <- json {
         auto rem# = leaf_skip_whitespace(json)
         if rem.len() == 0 || rem.byte_at(0) != 91 {
-            auto error = Result<Complete<Vec<'T>>, str>::Err("Expected [")
+            auto error = Result<Complete<Vec<T>>, str>::Err("Expected [")
             return cede error
         }
         rem = rem.substr(1, rem.len() - 1)
-        auto value# = Vec<'T>::new()
+        auto value# = Vec<T>::new()
         auto first# = true
         loop true {
             rem = leaf_skip_whitespace(rem)
@@ -207,7 +207,7 @@ impl<'T: @JsonFactory> Vec<'T> {
             }
             if !first {
                 if rem.len() == 0 || rem.byte_at(0) != 44 {
-                    auto error = Result<Complete<Vec<'T>>, str>::Err("Expected ,")
+                    auto error = Result<Complete<Vec<T>>, str>::Err("Expected ,")
                     return cede error
                 }
                 rem = leaf_skip_whitespace(rem.substr(1, rem.len() - 1))
@@ -215,90 +215,90 @@ impl<'T: @JsonFactory> Vec<'T> {
             first = false
             auto child = T::parse_value(rem)
             if child.is_err() {
-                auto error = Result<Complete<Vec<'T>>, str>::Err(child.unwrap_err())
+                auto error = Result<Complete<Vec<T>>, str>::Err(child.unwrap_err())
                 return cede error
             }
             auto parsed_child = child.unwrap()
-            auto 'item = cede parsed_child.value
-            value#.push(cede 'item)
+            auto item = cede parsed_child.value
+            value#.push(cede item)
             rem = parsed_child.rest
         }
-        auto parsed = Complete<Vec<'T>>(value = cede value, consumed = json.len() - rem.len())
-        auto result = Result<Complete<Vec<'T>>, str>::Ok(cede parsed)
+        auto parsed = Complete<Vec<T>>(value = cede value, consumed = json.len() - rem.len())
+        auto result = Result<Complete<Vec<T>>, str>::Ok(cede parsed)
         return cede result
     }
 }
 
-impl<'T: @JsonFactory, 'E: @JsonFactory> Result<'T, 'E>@JsonFactory {
-    pub fn parse_value(json: str) -> Result<Parsed<Result<'T, 'E>>, str> <- json {
+impl<T: @JsonFactory, E: @JsonFactory> Result<T, E>@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<Result<T, E>>, str> <- json {
         auto rem# = leaf_skip_whitespace(json)
         if rem.len() == 0 || rem.byte_at(0) != 123 {
-            auto error = Result<Parsed<Result<'T, 'E>>, str>::Err("Expected { for Result")
+            auto error = Result<Parsed<Result<T, E>>, str>::Err("Expected { for Result")
             return cede error
         }
         rem = rem.substr(1, rem.len() - 1)
         auto key_result = parse_string_value(rem)
         if key_result.is_err() {
-            auto error = Result<Parsed<Result<'T, 'E>>, str>::Err(key_result.unwrap_err())
+            auto error = Result<Parsed<Result<T, E>>, str>::Err(key_result.unwrap_err())
             return cede error
         }
         auto key = key_result.unwrap()
         rem = leaf_skip_whitespace(key.rest)
         if rem.len() == 0 || rem.byte_at(0) != 58 {
-            auto error = Result<Parsed<Result<'T, 'E>>, str>::Err("Expected : for Result")
+            auto error = Result<Parsed<Result<T, E>>, str>::Err("Expected : for Result")
             return cede error
         }
         rem = rem.substr(1, rem.len() - 1)
         if key.value.as_str().equals("Ok") {
             auto child = T::parse_value(rem)
             if child.is_err() {
-                auto error = Result<Parsed<Result<'T, 'E>>, str>::Err(child.unwrap_err())
+                auto error = Result<Parsed<Result<T, E>>, str>::Err(child.unwrap_err())
                 return cede error
             }
             auto parsed_child = child.unwrap()
             auto tail = leaf_skip_whitespace(parsed_child.rest)
             if tail.len() == 0 || tail.byte_at(0) != 125 {
-                auto error = Result<Parsed<Result<'T, 'E>>, str>::Err("Expected } for Result")
+                auto error = Result<Parsed<Result<T, E>>, str>::Err("Expected } for Result")
                 return cede error
             }
-            auto 'payload = cede parsed_child.value
-            auto value = Result<'T, 'E>::Ok(cede 'payload)
-            auto parsed = Parsed<Result<'T, 'E>>(value = cede value, rest = tail.substr(1, tail.len() - 1))
-            auto result = Result<Parsed<Result<'T, 'E>>, str>::Ok(cede parsed)
+            auto payload = cede parsed_child.value
+            auto value = Result<T, E>::Ok(cede payload)
+            auto parsed = Parsed<Result<T, E>>(value = cede value, rest = tail.substr(1, tail.len() - 1))
+            auto result = Result<Parsed<Result<T, E>>, str>::Ok(cede parsed)
             return cede result
         }
         if key.value.as_str().equals("Err") {
             auto child = E::parse_value(rem)
             if child.is_err() {
-                auto error = Result<Parsed<Result<'T, 'E>>, str>::Err(child.unwrap_err())
+                auto error = Result<Parsed<Result<T, E>>, str>::Err(child.unwrap_err())
                 return cede error
             }
             auto parsed_child = child.unwrap()
             auto tail = leaf_skip_whitespace(parsed_child.rest)
             if tail.len() == 0 || tail.byte_at(0) != 125 {
-                auto error = Result<Parsed<Result<'T, 'E>>, str>::Err("Expected } for Result")
+                auto error = Result<Parsed<Result<T, E>>, str>::Err("Expected } for Result")
                 return cede error
             }
-            auto 'payload = cede parsed_child.value
-            auto value = Result<'T, 'E>::Err(cede 'payload)
-            auto parsed = Parsed<Result<'T, 'E>>(value = cede value, rest = tail.substr(1, tail.len() - 1))
-            auto result = Result<Parsed<Result<'T, 'E>>, str>::Ok(cede parsed)
+            auto payload = cede parsed_child.value
+            auto value = Result<T, E>::Err(cede payload)
+            auto parsed = Parsed<Result<T, E>>(value = cede value, rest = tail.substr(1, tail.len() - 1))
+            auto result = Result<Parsed<Result<T, E>>, str>::Ok(cede parsed)
             return cede result
         }
-        auto error = Result<Parsed<Result<'T, 'E>>, str>::Err("Invalid key for Result")
+        auto error = Result<Parsed<Result<T, E>>, str>::Err("Invalid key for Result")
         return cede error
     }
 }
 
-impl<'K: @JsonFactory, 'V: @JsonFactory> HashMap<'K, 'V> {
-    pub fn parse_complete(json: str) -> Result<Complete<HashMap<'K, 'V>>, str> <- json {
+impl<K: @JsonFactory, V: @JsonFactory> HashMap<K, V> {
+    pub fn parse_complete(json: str) -> Result<Complete<HashMap<K, V>>, str> <- json {
         auto rem# = leaf_skip_whitespace(json)
         if rem.len() == 0 || rem.byte_at(0) != 123 {
-            auto error = Result<Complete<HashMap<'K, 'V>>, str>::Err("Expected { for HashMap")
+            auto error = Result<Complete<HashMap<K, V>>, str>::Err("Expected { for HashMap")
             return cede error
         }
         rem = rem.substr(1, rem.len() - 1)
-        auto value# = HashMap<'K, 'V>::new()
+        auto value# = HashMap<K, V>::new()
         auto first# = true
         loop true {
             rem = leaf_skip_whitespace(rem)
@@ -308,7 +308,7 @@ impl<'K: @JsonFactory, 'V: @JsonFactory> HashMap<'K, 'V> {
             }
             if !first {
                 if rem.len() == 0 || rem.byte_at(0) != 44 {
-                    auto error = Result<Complete<HashMap<'K, 'V>>, str>::Err("Expected ,")
+                    auto error = Result<Complete<HashMap<K, V>>, str>::Err("Expected ,")
                     return cede error
                 }
                 rem = leaf_skip_whitespace(rem.substr(1, rem.len() - 1))
@@ -316,29 +316,29 @@ impl<'K: @JsonFactory, 'V: @JsonFactory> HashMap<'K, 'V> {
             first = false
             auto key_result = K::parse_value(rem)
             if key_result.is_err() {
-                auto error = Result<Complete<HashMap<'K, 'V>>, str>::Err(key_result.unwrap_err())
+                auto error = Result<Complete<HashMap<K, V>>, str>::Err(key_result.unwrap_err())
                 return cede error
             }
             auto key = key_result.unwrap()
             rem = leaf_skip_whitespace(key.rest)
             if rem.len() == 0 || rem.byte_at(0) != 58 {
-                auto error = Result<Complete<HashMap<'K, 'V>>, str>::Err("Expected :")
+                auto error = Result<Complete<HashMap<K, V>>, str>::Err("Expected :")
                 return cede error
             }
             rem = rem.substr(1, rem.len() - 1)
             auto child = V::parse_value(rem)
             if child.is_err() {
-                auto error = Result<Complete<HashMap<'K, 'V>>, str>::Err(child.unwrap_err())
+                auto error = Result<Complete<HashMap<K, V>>, str>::Err(child.unwrap_err())
                 return cede error
             }
             auto parsed_child = child.unwrap()
-            auto 'key_value = cede key.value
-            auto 'child_value = cede parsed_child.value
-            value#.insert(cede 'key_value, cede 'child_value)
+            auto key_value = cede key.value
+            auto child_value = cede parsed_child.value
+            value#.insert(cede key_value, cede child_value)
             rem = parsed_child.rest
         }
-        auto parsed = Complete<HashMap<'K, 'V>>(value = cede value, consumed = json.len() - rem.len())
-        auto result = Result<Complete<HashMap<'K, 'V>>, str>::Ok(cede parsed)
+        auto parsed = Complete<HashMap<K, V>>(value = cede value, consumed = json.len() - rem.len())
+        auto result = Result<Complete<HashMap<K, V>>, str>::Ok(cede parsed)
         return cede result
     }
 }

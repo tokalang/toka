@@ -24,12 +24,12 @@ pub shape TaskResult (
     size: u64
 )
 
-shape ReceiverBox<'T: @Send> (
-    rx#: Receiver<'T>
+shape ReceiverBox<T: @Send> (
+    rx#: Receiver<T>
 )
 
-shape SenderBox<'T: @Send> (
-    tx#: Sender<'T>
+shape SenderBox<T: @Send> (
+    tx#: Sender<T>
 )
 
 pub shape WorkerPool (

@@ -1,15 +1,15 @@
 extern fn libc_exit(status: i32) -> void
 
 
-pub shape Option<'T> (
-    Some('T) = 1 |
+pub shape Option<T> (
+    Some(T) = 1 |
     None = 0
 )
 
-impl<'T> Option<'T> {
+impl<T> Option<T> {
     pub fn is_some(self) -> bool {
         match self {
-            auto Option<'T>::Some(_) => return true
+            auto Option<T>::Some(_) => return true
             _ => return false
         }
     }
@@ -18,9 +18,9 @@ impl<'T> Option<'T> {
         return self.is_some() == false
     }
 
-    pub fn unwrap(cede self) -> 'T <- self {
+    pub fn unwrap(cede self) -> T <- self {
         match cede self {
-            auto Option<'T>::Some('val) => return cede 'val
+            auto Option<T>::Some(val) => return cede val
             _ => {
                 libc_exit(1)
                 unreachable
@@ -28,10 +28,10 @@ impl<'T> Option<'T> {
         }
     }
 
-    pub fn unwrap_or(cede self, cede 'def_val: T) -> 'T <- self | 'def_val {
+    pub fn unwrap_or(cede self, cede def_val: T) -> T <- self | def_val {
         match cede self {    
-            auto Option<'T>::Some('val) => return cede 'val
-            _ => return cede 'def_val
+            auto Option<T>::Some(val) => return cede val
+            _ => return cede def_val
         }
     }
 }

@@ -112,25 +112,25 @@ pub shape SourceLoc(
     line: i32
 )
 
-pub shape RowFat<'T>(
-    *buf: ['T],
+pub shape RowFat<T>(
+    *buf: [T],
     len: usize
 )
 
-impl<'T> RowFat<'T>@Encap {
+impl<T> RowFat<T>@Encap {
     fn drop(self#) {
     }
 
 }
 
-impl<'T> RowFat<'T> {
-    pub fn clone(self) -> RowFat<'T> {
-        return RowFat<'T>(*buf = self.*buf, len = self.len)
+impl<T> RowFat<T> {
+    pub fn clone(self) -> RowFat<T> {
+        return RowFat<T>(*buf = self.*buf, len = self.len)
     }
 }
 
-pub shape RefFat<'T>(
-    &buf: ['T],
+pub shape RefFat<T>(
+    &buf: [T],
     len: usize
 )
 

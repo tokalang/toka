@@ -998,10 +998,11 @@ void CodeGen::emitDropCascadeWithMask(llvm::Value *ptrAddr,
   for (size_t i = 0; i < shape->Members.size(); ++i) {
     std::string rawType = shape->Members[i].Type;
     const auto memberDropType = shape->Members[i].ResolvedType;
-    const bool sharedOwner = memberDropType && memberDropType->isSharedPtr();
+    const bool owningPointer = memberDropType &&
+        (memberDropType->isUniquePtr() || memberDropType->isSharedPtr());
     while (!rawType.empty() && rawType.front() == '(' && rawType.back() == ')')
       rawType = rawType.substr(1, rawType.size() - 2);
-    if (!sharedOwner && (rawType.empty() || rawType.front() == '*' || rawType.front() == '^' ||
+    if (!owningPointer && (rawType.empty() || rawType.front() == '*' || rawType.front() == '^' ||
         rawType.front() == '~' || rawType.front() == '&' ||
         rawType.front() == '#'))
       continue;
@@ -1010,7 +1011,7 @@ void CodeGen::emitDropCascadeWithMask(llvm::Value *ptrAddr,
     const std::string memberType = Type::stripMorphology(rawType);
     const bool memberNeedsDrop =
         memberDropType &&
-        (memberDropType->isSharedPtr() || memberDropType->isArray() ||
+        (memberDropType->isUniquePtr() || memberDropType->isSharedPtr() || memberDropType->isArray() ||
          memberDropType->isMissOutcome() ||
          memberDropType->isDynFn() ||
          (memberSoul && m_Shapes.count(memberSoul->getSoulName())));

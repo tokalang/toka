@@ -219,7 +219,7 @@ fn quotes_closed(input: str) -> bool {
 
 // Read one logical record through the existing buffered reader. This keeps
 // the adapter generic without introducing another owning wrapper around R.
-pub fn read_record<'R: @Reader>(reader#: BufferedReader<'R>, max_record_bytes: usize)
+pub fn read_record<R: @Reader>(reader#: BufferedReader<R>, max_record_bytes: usize)
                              -> Result<Option<Vec<string>>, CsvError> {
     auto record# = string::from("")
     auto line# = 1:usize
@@ -268,7 +268,7 @@ pub fn read_record<'R: @Reader>(reader#: BufferedReader<'R>, max_record_bytes: u
 
 // Write one owned record through the existing buffered writer. The caller
 // controls flushing, which keeps batching policy explicit.
-pub fn write_record<'W: @Writer>(writer#: BufferedWriter<'W>, cede record: Vec<string>)
+pub fn write_record<W: @Writer>(writer#: BufferedWriter<W>, cede record: Vec<string>)
                               -> Result<(), CsvError> {
     auto records# = Vec<Vec<string>>::new()
     records#.push(cede record)

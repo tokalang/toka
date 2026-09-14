@@ -7,7 +7,7 @@ impl Token@Encap {
 }
 impl Token@Send {}
 impl Token@Sync {}
-shape WritableView<'T>(&'value#: T)
+shape WritableView<T>(&value#: T)
 fn main() -> i32 {
     {
         auto ^item# = new Token(value = 17)

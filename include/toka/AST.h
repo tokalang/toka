@@ -38,6 +38,20 @@ namespace toka {
 class ASTNode;
 class FunctionDecl;
 
+// Immutable source-phase type expression. Unlike the physical instantiated
+// Type, this retains the opaque boundaries at the current source use.
+struct GenericValueContract {
+  TypeSyntaxPtr Type;
+  std::set<std::string> Parameters;
+  bool isWholeValue() const {
+    auto root = Type;
+    while (root && root->NodeKind == TypeSyntax::Kind::Morphology && root->IsPostfix)
+      root = root->Subject;
+    return root && root->NodeKind == TypeSyntax::Kind::Named && Parameters.count(root->Text);
+  }
+};
+using GenericValueContractPtr = std::shared_ptr<const GenericValueContract>;
+
 enum class CallableParameterProvenance : uint8_t {
   Indeterminate,
   Concrete,
@@ -396,6 +410,7 @@ public:
   bool IsMorphicExempt = false; // [NEW] Track morphic exemption at expression level
   // Checked source-view identity; re-elaborated in each cloned body.
   bool IsAbstractWholeValue = false;
+  GenericValueContractPtr GenericContract;
   bool HasParens = false; // [NEW] Track explicit parentheses
   bool ExtendLifetime = false; // [NEW] Flag for Temporary Lifetime Extension
 };
@@ -1408,6 +1423,8 @@ public:
     bool HasAutoBinding = false;
     BindingOrigin Binding = BindingOrigin::Existing;
     std::shared_ptr<Type> MatchedValueType;
+    GenericValueContractPtr GenericContract;
+    bool IsAbstractWholeValue = false;
     std::shared_ptr<Type> ExistingBindingType;
     std::string EqualityMethod;
     bool IsReference = false;
@@ -2239,6 +2256,9 @@ struct ReturnContractSyntax {
   // (`-> &item#: T`), not to the Soul spelling after the colon.  TypeSyntax
   // receives the corresponding postfix morphology only as a semantic cache.
   bool BindingSoulWritable = false;
+  // G: a named borrow of opaque T wraps the complete T, not its eventual
+  // innermost payload. Derived from the declaration before substitution.
+  bool BindingBorrowsWholeGenericValue = false;
   // A named `&result: T` contract borrows the payload selected by `T`.  If a
   // morphic generic later substitutes `T = ^U`, `~U`, or `&U`, the result is
   // `&U`, not an identity borrow such as `&^U`.
@@ -2336,6 +2356,7 @@ public:
     // G: the declaration names an abstract complete type, before substitution.
     // This is a view fact, not a payload-write or transfer grant.
     bool IsAbstractWholeValue = false;
+    GenericValueContractPtr GenericContract;
     bool IsCeded = false;         // [NEW] Ownership consumed by callee
     // The callee constructs caller-owned storage supplied as `init place`.
     bool IsInit = false;
@@ -2371,6 +2392,7 @@ public:
       a.IsValueBlocked = IsValueBlocked;
       a.IsMorphicExempt = IsMorphicExempt;
       a.IsAbstractWholeValue = IsAbstractWholeValue;
+      a.GenericContract = GenericContract;
       a.IsCeded = IsCeded;
       a.IsInit = IsInit;
       a.HadRejectedTypeSideMorphology = HadRejectedTypeSideMorphology;

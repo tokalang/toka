@@ -30,7 +30,7 @@ LEGAL = {
     'callable_receiver': 'alias Callback = fn#(i32) -> i32',
     'dynamic_callable_receiver': 'alias Callback = dyn fn#(i32) -> i32',
     'array_view': 'alias Views = [&i32#; 2]',
-    'morphic_view': "shape Slot<'T>('value:T)\nalias View = Slot<&i32#>",
+    'morphic_view': "shape Slot<T>(value:T)\nalias View = Slot<&i32#>",
     'callback_view': 'alias Callback = fn(&i32#) -> i32',
 }
 

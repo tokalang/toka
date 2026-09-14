@@ -58,9 +58,9 @@ impl ReadDir {
         loop !self.finished {
             auto name_opt = sys::readdir_impl(self.handle)
             match cede name_opt {
-                auto Option<string>::Some('name) => {
-                    if 'name.as_str() != "." && 'name.as_str() != ".." {
-                        return Option<string>::Some(cede 'name)
+                auto Option<string>::Some(name) => {
+                    if name.as_str() != "." && name.as_str() != ".." {
+                        return Option<string>::Some(cede name)
                     }
                 }
                 Option<string>::None => {
@@ -275,8 +275,8 @@ impl TempFile {
         if self.opened {
             auto closed = self#.close()
             match cede closed {
-                auto Result<bool, IoError>::Err('error) => {
-                    return Result<bool, IoError>::Err(cede 'error)
+                auto Result<bool, IoError>::Err(error) => {
+                    return Result<bool, IoError>::Err(cede error)
                 }
                 _ => {}
             }
@@ -305,10 +305,10 @@ pub fn create_temp_file(directory: string) -> Result<TempFile, IoError> {
     }
     auto path_result = sys::temp_file_path_impl(handle)
     match cede path_result {
-        auto Option<string>::Some('path) => {
+        auto Option<string>::Some(path) => {
             return Result<TempFile, IoError>::Ok(TempFile(
                 handle = handle,
-                location = cede 'path,
+                location = cede path,
                 opened = true,
                 removed = false
             ))
@@ -329,9 +329,9 @@ pub fn create_temp_file(directory: string) -> Result<TempFile, IoError> {
 pub fn create_temp_file_system() -> Result<TempFile, IoError> {
     auto configured = env::var(string::from("TMPDIR"))
     match cede configured {
-        auto Option<string>::Some('directory) => {
-            if 'directory.len() > 0:usize {
-                return create_temp_file('directory)
+        auto Option<string>::Some(directory) => {
+            if directory.len() > 0:usize {
+                return create_temp_file(directory)
             }
         }
         _ => {}

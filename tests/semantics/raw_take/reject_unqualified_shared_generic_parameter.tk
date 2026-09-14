@@ -5,10 +5,10 @@ impl Token@Encap {
     pub value
     fn drop(self#) { drops += 1 }
 }
-fn roundtrip<'T>(cede 'value: T) {
-    auto *buffer# = unsafe alloc [1] 'T
-    unsafe { buffer[0] = cede 'value }
-    auto 'result = unsafe raw_take buffer[0]
+fn roundtrip<T>(cede value: T) {
+    auto *buffer# = unsafe alloc [1] T
+    unsafe { buffer[0] = cede value }
+    auto result = unsafe raw_take buffer[0]
     unsafe free [0] *buffer
 }
 fn main() -> i32 {

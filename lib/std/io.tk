@@ -83,7 +83,7 @@ impl File {
     pub fn open(path: string, mode: str) -> File {
         auto opened = File::try_open(path, mode)
         match cede opened {
-            auto Result<File, IoError>::Ok('file) => return cede 'file
+            auto Result<File, IoError>::Ok(file) => return cede file
             _ => {
                 libc_abort()
                 unreachable

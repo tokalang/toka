@@ -1,6 +1,6 @@
 // Internal concrete JSON construction. No JsonNode or generic parser capability.
 // Existing mutation entry points in json.tk delegate to these factories.
-pub shape Parsed<'T>('value: T, rest: str)
+pub shape Parsed<T>(value: T, rest: str)
 
 fn hex(c: u8) -> i32 {
     if c >= 48 && c <= 57 { return (c - 48) as i32 }

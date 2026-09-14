@@ -2711,6 +2711,7 @@ void Sema::checkStmt(Stmt *S) {
     Info.IsRebindable = Var->IsRebindable;
     Info.IsMorphicExempt = Var->IsMorphicExempt; // [NEW]
     Info.IsAbstractWholeValue = Var->IsAbstractWholeValue;
+    Info.GenericContract = Var->Init ? queryGenericValueContract(Var->Init.get()) : nullptr;
     Info.IsDeclaredMutable = Var->IsValueMutable;
     Info.DeclLoc = Var->Loc;
     Var->ResolvedType = Info.TypeObj;

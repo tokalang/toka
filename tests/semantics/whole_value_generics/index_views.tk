@@ -1,0 +1,7 @@
+fn first<T>(values:[T;2]) -> &T <- values { return &(values[0]) }
+fn main() -> i32 {
+    auto values = [7, 9]:[i32; 2]
+    auto &value = first<i32>(values)
+    if value != 7 { return 1 }
+    return 0
+}

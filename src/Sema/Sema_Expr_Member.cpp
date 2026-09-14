@@ -309,14 +309,24 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
           return toka::Type::fromString("unknown");
         }
         Memb->Index = i; // [FIX] Set index for CodeGen
-        Memb->IsMorphicExempt = Field.IsMorphicExempt; // [NEW]
+        Memb->GenericContract = projectGenericFieldContract(Memb->Object.get(), SD, i);
+        Memb->IsAbstractWholeValue = Memb->GenericContract && Memb->GenericContract->isWholeValue();
+        Memb->IsMorphicExempt = requestedMorphicIdentity || Memb->IsAbstractWholeValue;
+        if (Memb->IsAbstractWholeValue && access.AccessHats > 0) {
+          error(Memb, DiagID::ERR_GENERIC_SEMA,
+                "a concrete field selector requires a declared root morphology, not opaque T");
+          return toka::Type::fromString("unknown");
+        }
         if (!canNameEncapField(SD, requestedMember, getLoc(Memb)))
           error(Memb, DiagID::ERR_MEMBER_PRIVATE, requestedMember, ObjType);
+        if (Memb->IsAbstractWholeValue && requestedPrefix.empty())
+          return getPhysicalType(Field);
+        const bool wholeField = isWholeGenericField(SD, Field);
 
         // Return type based on Toka 1.3 Pointer-Value Duality
         std::shared_ptr<toka::Type> fieldType;
         if ((requestedMorphicIdentity ||
-             (Field.IsMorphicExempt && std::dynamic_pointer_cast<toka::PointerType>(Field.ResolvedType))) &&
+             ((Field.IsMorphicExempt || wholeField) && std::dynamic_pointer_cast<toka::PointerType>(Field.ResolvedType))) &&
             Field.ResolvedType) {
           fieldType = Field.ResolvedType->withAttributes(
               std::dynamic_pointer_cast<toka::PointerType>(Field.ResolvedType) ? Field.IsRebindable : Field.ResolvedType->IsWritable,
@@ -362,7 +372,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
               permitInheritance ? objTypeObj->IsWritable : false;
         }
 
-        if (Field.IsMorphicExempt && isSoulInsulated) {
+        if ((Field.IsMorphicExempt || wholeField) && isSoulInsulated) {
           auto inner = Field.ResolvedType ? Field.ResolvedType->getPointeeType() : nullptr;
           finalSoulWritable = finalSoulWritable && inner && inner->IsWritable && !inner->IsBlocked;
         }
@@ -436,8 +446,9 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
           // [Toka 1.3] Handle Inheritance:
           // The Identity pointer (Handle) inherits its own writable
           // status from self#
-          if (!result->IsBlocked && !Field.IsMorphicExempt) {
-            result->IsWritable = result->IsWritable || objTypeObj->IsWritable;
+          if (!result->IsBlocked && !Field.IsMorphicExempt && !wholeField) {
+            result = result->withAttributes(result->IsWritable || objTypeObj->IsWritable,
+                                            result->IsNullable, result->IsBlocked);
           }
 
           // Parse intent from requestedPrefix
@@ -571,6 +582,9 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
     std::string actualName = Var->Name;
     if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
       baseType = Info->TypeObj;
+      Var->GenericContract = Info->GenericContract;
+      Var->IsAbstractWholeValue = Info->IsAbstractWholeValue;
+      Var->ResolvedType = baseType;
       if (!m_InLHS && Info && Info->TypeObj && Info->TypeObj->isArray() &&
           Idx->Indices.size() == 1) {
         if (auto *constant = dynamic_cast<NumberExpr *>(Idx->Indices[0].get())) {
@@ -620,6 +634,13 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
 
   if (!baseType || baseType->isUnknown())
     return toka::Type::fromString("unknown");
+  if (Idx->Array->IsAbstractWholeValue) {
+    error(Idx, DiagID::ERR_GENERIC_SEMA, "opaque T has no declared indexing contract");
+    return toka::Type::fromString("unknown");
+  }
+  Idx->GenericContract = queryGenericValueContract(Idx);
+  Idx->IsAbstractWholeValue = Idx->GenericContract && Idx->GenericContract->isWholeValue();
+  Idx->IsMorphicExempt = Idx->IsAbstractWholeValue;
 
   std::shared_ptr<toka::Type> resultType = nullptr;
   baseType = resolveType(baseType, true);
@@ -705,7 +726,7 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
   // Arrays inherit writability from their handle.
   // Pointers do NOT inherit from handle; they use their own Pointee
   // attributes (Insulation).
-  if (baseType->isArray()) {
+  if (baseType->isArray() && !Idx->IsAbstractWholeValue) {
     bool isBaseWritable = baseType->IsWritable;
     resultType =
         resultType->withAttributes(isBaseWritable, resultType->IsNullable);

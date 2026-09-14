@@ -1,4 +1,4 @@
-shape Slot<'T>('value#:T)
+shape Slot<T>(value#:T)
 fn write(slot#:Slot<&i32#>) { slot.value = 42 }
 fn is_nine(slot:Slot<&i32>) -> bool { return slot.value == 9 }
 fn main() -> i32 {

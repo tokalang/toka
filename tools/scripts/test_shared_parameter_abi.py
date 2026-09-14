@@ -28,20 +28,25 @@ def verify_carrier_ir(text):
             if f";{len(name)}:{name};" in identity:
                 bodies[name] = match[0]
     assert len(bodies) == 4, "missing exact generic IR bodies"
-    argument = '%"\'value"'
+    argument = '%value'
     for name in ("generic_read", "generic_take", "generic_echo"):
         body = bodies[name]
-        assert f"(ptr {argument})" in body.splitlines()[0], name + " ABI changed"
-        assert '%"\'value.addr" = alloca ptr' not in body, name + " has carrier wrapper"
-    assert f"ptr {argument}, i32 0, i32 0" in bodies["generic_read"], "read misses real carrier"
+        signature = f"(ptr {argument})" if name == "generic_echo" else f"(ptr {argument}, ptr %reader)"
+        assert signature in body.splitlines()[0], name + " carrier ABI changed"
+        assert '%value.addr = alloca ptr' not in body, name + " has carrier wrapper"
+    observer = bodies["generic_read"]
+    copied = re.search(r'(%[0-9A-Za-z_.]+) = load \{ ptr, ptr \}, ptr ' + re.escape(argument), observer)
+    assert copied, "observer does not read the complete incoming carrier"
+    forwarded = re.search(r'store \{ ptr, ptr \} ' + re.escape(copied[1]) + r', ptr (%[0-9A-Za-z_.]+)', observer)
+    assert forwarded and re.search(r'call i32 %[^ (]+\(ptr %[^,]+, ptr ' + re.escape(forwarded[1]) + r'\)', observer), "observer misses the carrier forwarding edge"
     for name in ("generic_take", "generic_echo"):
         assert f"load {{ ptr, ptr }}, ptr {argument}" in bodies[name], name + " move misses carrier"
         assert f"store {{ ptr, ptr }} zeroinitializer, ptr {argument}" in bodies[name], name + " source not retired"
     assert bodies["generic_take"].count("atomicrmw sub") == 1, "discard must release exactly one shared reference"
     assert "ptr %unused.result.tmp)" not in bodies["generic_take"], "payload Drop called on a carrier"
     asynchronous = bodies["generic_take_async"]
-    assert f"(ptr {argument})" in asynchronous.splitlines()[0], "async ABI changed"
-    assert '%"\'value.addr" = alloca ptr' not in asynchronous, "async carrier wrapped again"
+    assert f"(ptr {argument}, ptr %reader)" in asynchronous.splitlines()[0], "async carrier ABI changed"
+    assert '%value.addr = alloca ptr' not in asynchronous, "async carrier wrapped again"
     loaded = re.search(r'(%[0-9A-Za-z_.]+) = load \{ ptr, ptr \}, ptr ' + re.escape(argument), asynchronous)
     assert loaded and f"store {{ ptr, ptr }} {loaded[1]}, ptr" in asynchronous, "async frame lacks complete carrier copy"
 
@@ -98,7 +103,7 @@ def main():
                     r"^define linkonce_odr[^\n]*@__toka_gfn_([0-9a-f]+)_M_S[^\n]*\n.*?^}",
                     ir.read_text(), re.M | re.S)
                     if ";15:borrow_identity;" in bytes.fromhex(match[1]).decode()]
-                assert len(bodies) == 1 and 'ret ptr %"\'value"' in bodies[0], "morphic shared borrow must return the caller carrier"
+                assert len(bodies) == 1 and 'ret ptr %value' in bodies[0], "whole shared borrow must return the caller carrier"
                 assert "shared.data_ptr" not in bodies[0], "morphic borrow incorrectly selected payload"
             if name == "shared_parameter_matrix.tk":
                 ir = work / "shared-parameter.ll"

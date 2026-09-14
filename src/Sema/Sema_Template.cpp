@@ -93,6 +93,7 @@ namedReturnSoulReplacements(
     const FunctionDecl *function,
     const std::map<std::string, std::shared_ptr<toka::Type>> &replacements) {
   if (!function || !function->ReturnContract.BindingBorrowsSoul ||
+      function->ReturnContract.BindingBorrowsWholeGenericValue ||
       !function->ReturnTypeSyntax)
     return replacements;
 
@@ -120,6 +121,7 @@ static std::shared_ptr<toka::Type>
 projectNamedReturnSoul(const FunctionDecl *function,
                        const std::shared_ptr<toka::Type> &substituted) {
   if (!function || !function->ReturnContract.BindingBorrowsSoul ||
+      function->ReturnContract.BindingBorrowsWholeGenericValue ||
       !substituted)
     return substituted;
 

@@ -1,0 +1,27 @@
+extern fn libc_abort() -> void
+auto drops# = 0
+shape Resource(value:i32)
+impl Resource@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+shape Maybe<T>(Some(T) = 1 | None = 0)
+fn unpack<T>(cede box:Maybe<T>) -> T {
+    match cede box {
+        auto Maybe<T>::Some(value) => return cede value
+        _ => {
+            unsafe { libc_abort() }
+            unreachable
+        }
+    }
+}
+fn main() -> i32 {
+    {
+        auto ^owner = new Resource(value=17)
+        auto box = Maybe<^Resource>::Some(cede ^owner)
+        auto ^result = unpack<^Resource>(cede box)
+        if result.value != 17 || drops != 0 { return 1 }
+    }
+    if drops != 1 { return 2 }
+    return 0
+}

@@ -21,9 +21,9 @@ import core/option::{Option}
 // live prefix; raw_take does not prove that extent or maintain the remainder.
 // Prepare/check every operand before retiring the tail. Between the length
 // store and the take body there is no allocation, user call or suspension.
-fn vec_pop_raw_tail<'T>(nul *storage: ['T], length#: usize) -> Option<'T> {
+fn vec_pop_raw_tail<T>(nul *storage: [T], length#: usize) -> Option<T> {
     if length == 0 {
-        auto outcome = Option<'T>::None
+        auto outcome = Option<T>::None
         return cede outcome
     }
     if *storage is null {
@@ -32,7 +32,7 @@ fn vec_pop_raw_tail<'T>(nul *storage: ['T], length#: usize) -> Option<'T> {
     } else {
         auto tail = length - 1
         length = tail
-        auto outcome = Option<'T>::Some(unsafe raw_take storage[tail])
+        auto outcome = Option<T>::Some(unsafe raw_take storage[tail])
         return cede outcome
     }
 }
@@ -48,15 +48,15 @@ impl Counter {
 
 // Module-level factory functions removed. using static methods.
 
-pub shape Vec<'T> (
-    nul *#buf#: ['T] = null as nul *['T],
+pub shape Vec<T> (
+    nul *#buf#: [T] = null as nul *[T],
     len#: usize = 0,
     cap#: usize = 0
 )
 
 // Explictly bypass raw-pointer structural block by declaring Vec is Send/Sync when its payload is
-impl<'T: @Send> Vec<'T> @Send {}
-impl<'T: @Sync> Vec<'T> @Sync {}
+impl<T: @Send> Vec<T> @Send {}
+impl<T: @Sync> Vec<T> @Sync {}
 
 // Writable raw view of byte storage for native output operations. The mutable
 // owner grants access to its existing allocation, not initialized-element proof.
@@ -76,24 +76,24 @@ pub fn writable_byte_storage(buffer#: Vec<u8>) -> *u8# <- buffer {
 // `clone` remains as a compatibility spelling, but duplication is provided by
 // the explicit @Dup capability. Copy types receive the intrinsic Dup witness;
 // resource types must provide their own source-preserving duplication recipe.
-impl<'T: @Dup> Vec<'T> {
-    pub fn clone(self) -> Vec<'T> {
+impl<T: @Dup> Vec<T> {
+    pub fn clone(self) -> Vec<T> {
         unsafe {
             if self.cap == 0 {
-                return Vec<'T>(*buf=null, len=0, cap=0)
+                return Vec<T>(*buf=null, len=0, cap=0)
             }
-            auto *new_buf# = unsafe alloc [self.cap] 'T
+            auto *new_buf# = unsafe alloc [self.cap] T
             auto ctr# = Counter(val=0)
             loop ctr.val < self.len {
                 new_buf[ctr.val] = self.buf[ctr.val].dup()
                 ctr#.inc()
             }
-            return Vec<'T>(*buf=*new_buf, len=self.len, cap=self.cap)
+            return Vec<T>(*buf=*new_buf, len=self.len, cap=self.cap)
         }
     }
 }
 
-impl<'T: @Dup> Vec<'T>@Dup {
+impl<T: @Dup> Vec<T>@Dup {
     pub fn dup(self) -> Self {
         return self.clone()
     }
@@ -101,9 +101,9 @@ impl<'T: @Dup> Vec<'T>@Dup {
 
 // Duplication operations are intentionally kept out of the move-only core impl.
 // Vec itself remains a capsule; these APIs are ordinary library operations.
-impl<'T: @Dup> Vec<'T> {
+impl<T: @Dup> Vec<T> {
     // Get element at index by duplication.
-    pub fn get(self, index: usize) -> 'T {
+    pub fn get(self, index: usize) -> T {
         unsafe {
              if index >= self.len {
                  libc_exit(1)
@@ -113,23 +113,23 @@ impl<'T: @Dup> Vec<'T> {
     }
 
     // Alias to get
-    pub fn at(self, index: usize) -> 'T {
+    pub fn at(self, index: usize) -> T {
         return self.get(index)
     }
 
     // Safe get
-    pub fn get_opt(self, index: usize) -> Option<'T> {
+    pub fn get_opt(self, index: usize) -> Option<T> {
         unsafe {
              if index >= self.len {
-                 return Option<'T>::None
+                 return Option<T>::None
              }
-             return Option<'T>::Some(self.buf[index].dup())
+             return Option<T>::Some(self.buf[index].dup())
         }
     }
 
 }
 
-impl<'T> Vec<'T>@Encap {
+impl<T> Vec<T>@Encap {
     pub buf, len, cap
     fn drop(self#) {
         unsafe {
@@ -142,7 +142,7 @@ impl<'T> Vec<'T>@Encap {
 
 }
 
-impl<'T> Vec<'T> {
+impl<T> Vec<T> {
     // Getters for length and capacity
     pub fn len(self) -> usize {
         return self.len
@@ -160,12 +160,12 @@ impl<'T> Vec<'T> {
         unsafe {
             loop self.len > 0 {
                 self.len -= 1
-                auto _old = Option<'T>::Some(cede self.buf[self.len])
+                auto _old = Option<T>::Some(cede self.buf[self.len])
             }
         }
     }
 
-    pub fn insert(self#, index: usize, cede 'val: T) {
+    pub fn insert(self#, index: usize, cede val: T) {
         if index > self.len {
             unsafe {
                 libc_printf(c"[Vec] panic: insert index out of bounds\n")
@@ -181,18 +181,18 @@ impl<'T> Vec<'T> {
                 self.buf[i] = cede self.buf[i - 1]
                 i -= 1
             }
-            self.buf[index] = cede 'val
+            self.buf[index] = cede val
             self.len += 1
         }
     }
 
-    pub fn remove(self#, index: usize) -> Option<'T> {
+    pub fn remove(self#, index: usize) -> Option<T> {
         if index >= self.len {
-            auto outcome = Option<'T>::None
+            auto outcome = Option<T>::None
             return cede outcome
         }
         unsafe {
-            auto ret = Option<'T>::Some(cede self.buf[index])
+            auto ret = Option<T>::Some(cede self.buf[index])
             auto i# = index
             loop i < self.len - 1 {
                 self.buf[i] = cede self.buf[i + 1]
@@ -204,25 +204,25 @@ impl<'T> Vec<'T> {
     }
     
     // Create empty vector (Static Method)
-    pub fn new() -> Vec<'T> {
+    pub fn new() -> Vec<T> {
         // Implicit conversation works for assignment/init of pointer variable
-        return Vec<'T>(*buf=null, len=0, cap=0)
+        return Vec<T>(*buf=null, len=0, cap=0)
     }
 
     // Create vector with capacity (Static Method)
-    pub fn with_capacity(capacity: usize) -> Vec<'T> {
+    pub fn with_capacity(capacity: usize) -> Vec<T> {
         unsafe {
             if capacity == 0 {
-                return Vec<'T>(*buf=null, len=0, cap=0)
+                return Vec<T>(*buf=null, len=0, cap=0)
             }
             // alloc array syntax
-            auto *_new_buf# = unsafe alloc [capacity] 'T
-            return Vec<'T>(*buf=*_new_buf, len=0, cap=capacity)
+            auto *_new_buf# = unsafe alloc [capacity] T
+            return Vec<T>(*buf=*_new_buf, len=0, cap=capacity)
         }
     }
 
     // Push element to end
-    pub fn push(self#, cede 'val: T) {
+    pub fn push(self#, cede val: T) {
         unsafe {
             if self.len == self.cap {
                 self#.grow()
@@ -230,20 +230,20 @@ impl<'T> Vec<'T> {
             
             // Pointer indexing handles
             // *self.buf provides the handle.
-            self.buf[self.len] = cede 'val
+            self.buf[self.len] = cede val
             self.len += 1
         }
     }
     
     // Pop element from end
-    pub fn pop(self#) -> Option<'T> {
-        auto outcome = vec_pop_raw_tail<'T>(self.*buf, self.len#)
+    pub fn pop(self#) -> Option<T> {
+        auto outcome = vec_pop_raw_tail<T>(self.*buf, self.len#)
         return cede outcome
     }
 
     /// Moves the backing allocation and all initialized elements into a new
     /// Vec, leaving this Vec empty and immediately reusable.
-    pub fn take(self#) -> Vec<'T> {
+    pub fn take(self#) -> Vec<T> {
         unsafe {
             auto nul *taken_buf = self.*buf
             auto taken_len = self.len
@@ -251,7 +251,7 @@ impl<'T> Vec<'T> {
             self.*buf = null
             self.len = 0
             self.cap = 0
-            return Vec<'T>(*buf = *taken_buf, len = taken_len, cap = taken_cap)
+            return Vec<T>(*buf = *taken_buf, len = taken_len, cap = taken_cap)
         }
     }
 
@@ -287,8 +287,8 @@ impl<'T> Vec<'T> {
         }
     }
     
-    pub fn from_raw(nul *buf: ['T], len: usize, cap: usize) -> Vec<'T> {
-        return Vec<'T>(
+    pub fn from_raw(nul *buf: [T], len: usize, cap: usize) -> Vec<T> {
+        return Vec<T>(
             *buf=*buf,
             len=len,
             cap=cap
@@ -303,11 +303,11 @@ impl<'T> Vec<'T> {
         }
     }
 
-    pub fn unsafe_as_raw(self) -> nul *['T] {
+    pub fn unsafe_as_raw(self) -> nul *[T] {
         return self.*buf
     }
 
-    pub fn unsafe_into_raw(self#) -> nul *['T]# {
+    pub fn unsafe_into_raw(self#) -> nul *[T]# {
         unsafe {
             // Nullify buffer to prevent drop from freeing it
             // This is used when ownership is manually transferred
@@ -328,14 +328,14 @@ impl<'T> Vec<'T> {
             if new_cap == 0 {
                 // Initial allocation case
                 auto cap = 4 : usize
-                auto *_new_buf# = unsafe alloc [4] 'T
+                auto *_new_buf# = unsafe alloc [4] T
                 
                 // Fields
                 self.*buf = *_new_buf
                 self.cap = cap
             } else {
                 // Growth case
-                auto *new_buf# = unsafe alloc [new_cap] 'T
+                auto *new_buf# = unsafe alloc [new_cap] T
                 
                 // Move initialized elements; the old backing allocation is
                 // then released with free[0], so it cannot drop stale copies.
@@ -369,22 +369,22 @@ impl<'T> Vec<'T> {
     }
 
     // Set value at index
-    pub fn set(self#, index: usize, cede 'val: T) {
+    pub fn set(self#, index: usize, cede val: T) {
         unsafe {
              if index < self.len {
-                 auto _old = Option<'T>::Some(cede self.buf[index])
-                 self.buf[index] = cede 'val
+                 auto _old = Option<T>::Some(cede self.buf[index])
+                 self.buf[index] = cede val
              } else {
-                 auto _unused = Option<'T>::Some(cede 'val)
+                 auto _unused = Option<T>::Some(cede val)
              }
         }
     }
 
 }
 
-impl<'T: @Copy> Vec<'T> {
+impl<T: @Copy> Vec<T> {
     // Resize vector by cloning the fill value into each new element.
-    pub fn resize(self#, new_len: usize, 'val: T) {
+    pub fn resize(self#, new_len: usize, val: T) {
         unsafe {
             if new_len > self.cap {
                  loop self.cap < new_len {
@@ -393,7 +393,7 @@ impl<'T: @Copy> Vec<'T> {
             }
             auto i# = self.len
             loop i < new_len {
-                self.buf[i] = 'val
+                self.buf[i] = val
                 i += 1
             }
             self.len = new_len
@@ -401,26 +401,26 @@ impl<'T: @Copy> Vec<'T> {
     }
 }
 
-impl<'T> Vec<'T>
+impl<T> Vec<T>
 where:
-    'T: morphology raw_extendable
+    T: morphology raw_extendable
 {
-    pub fn unsafe_get(self, index: usize) -> *'T {
+    pub fn unsafe_get(self, index: usize) -> *T {
         unsafe {
-            auto *ptr = self.*buf.unwrap() as *['T]
+            auto *ptr = self.*buf.unwrap() as *[T]
             return *ptr[index]
         }
     }
 }
 
-pub shape VecIterator<'T> (
-    &buf: ['T],
+pub shape VecIterator<T> (
+    &buf: [T],
     len#: usize = 0,
     pos#: usize = 0
 )
 
-pub shape VecMutIterator<'T> (
-    nul *buf#: ['T],
+pub shape VecMutIterator<T> (
+    nul *buf#: [T],
     len#: usize = 0,
     pos#: usize = 0
 )
@@ -428,24 +428,24 @@ pub shape VecMutIterator<'T> (
 // Owned iteration is separate from VecIterator: the latter is a borrowed
 // cursor returned by @Iterable::iter and therefore carries a source
 // dependency. VecIntoIterator owns the Vec and may move each element out.
-pub shape VecIntoIterator<'T> (
-    source#: Vec<'T>
+pub shape VecIntoIterator<T> (
+    source#: Vec<T>
 )
 
-impl<'T> VecIntoIterator<'T>@Encap {
+impl<T> VecIntoIterator<T>@Encap {
     fn drop(self#) {}
 }
 
-impl<'T> Vec<'T>@IntoIterable {
-    type IntoIter = VecIntoIterator<'T>
+impl<T> Vec<T>@IntoIterable {
+    type IntoIter = VecIntoIterator<T>
 
     pub fn into_iter(cede self) -> IntoIter {
-        return VecIntoIterator<'T>(source = cede self)
+        return VecIntoIterator<T>(source = cede self)
     }
 }
 
-impl<'T> VecIntoIterator<'T>@Iterator {
-    type Item = 'T
+impl<T> VecIntoIterator<T>@Iterator {
+    type Item = T
 
     // Vec::remove(0) keeps the public consuming order identical to ordinary
     // Vec iteration. A future storage-level drain cursor may optimize this
@@ -456,12 +456,12 @@ impl<'T> VecIntoIterator<'T>@Iterator {
     }
 }
 
-impl<'T> Vec<'T>@Iterable {
-    type Iter = VecIterator<'T>
+impl<T> Vec<T>@Iterable {
+    type Iter = VecIterator<T>
 
     pub fn iter(self) -> Iter <- self {
         unsafe {
-            return VecIterator<'T>(
+            return VecIterator<T>(
                 &buf = (self.*buf as &[T]),
                 len = self.len,
                 pos = 0
@@ -470,9 +470,9 @@ impl<'T> Vec<'T>@Iterable {
     }
 }
 
-impl<'T> Vec<'T> {
-    pub fn iter_mut(self#) -> VecMutIterator<'T> <- self {
-        return VecMutIterator<'T>(
+impl<T> Vec<T> {
+    pub fn iter_mut(self#) -> VecMutIterator<T> <- self {
+        return VecMutIterator<T>(
             *buf = self.*buf,
             len = self.len,
             pos = 0
@@ -480,31 +480,31 @@ impl<'T> Vec<'T> {
     }
 }
 
-impl<'T> VecMutIterator<'T>@Encap { fn drop(self#) {} }
+impl<T> VecMutIterator<T>@Encap { fn drop(self#) {} }
 
-impl<'T> VecMutIterator<'T>@MutableBorrowIterator
+impl<T> VecMutIterator<T>@MutableBorrowIterator
 where:
-    'T: morphology borrow_extendable
+    T: morphology borrow_extendable
 {
-    type BorrowedItem = &'T
+    type BorrowedItem = &T
 
     pub fn next_mut(self#) -> Option<BorrowedItem> <- self {
         if self.pos >= self.len { return Option<BorrowedItem>::None }
         auto index = self.pos
         self.pos += 1
         unsafe {
-            return Option<BorrowedItem>::Some(&'(self.buf[index]))
+            return Option<BorrowedItem>::Some(&(self.buf[index]))
         }
     }
 }
 
-impl<'T> VecIterator<'T>@Encap {
+impl<T> VecIterator<T>@Encap {
     fn drop(self#) {}
 }
 
-impl<'T> VecIterator<'T> {
-    pub fn clone(self) -> VecIterator<'T> <- self {
-        return VecIterator<'T>(
+impl<T> VecIterator<T> {
+    pub fn clone(self) -> VecIterator<T> <- self {
+        return VecIterator<T>(
              &buf = self.&buf,
              len = self.len,
              pos = self.pos
@@ -513,8 +513,8 @@ impl<'T> VecIterator<'T> {
 }
 
 // Concrete Implementation
-impl<'T: @Copy> VecIterator<'T>@Iterator {
-    type Item = 'T
+impl<T: @Copy> VecIterator<T>@Iterator {
+    type Item = T
 
     pub fn next(self#) -> Option<Item> {
         if self.pos >= self.len {
@@ -528,8 +528,8 @@ impl<'T: @Copy> VecIterator<'T>@Iterator {
     }
 }
 
-impl<'T> VecIterator<'T>@BorrowIterator {
-    type BorrowedItem = &'T
+impl<T> VecIterator<T>@BorrowIterator {
+    type BorrowedItem = &T
 
     pub fn next_ref(self#) -> Option<BorrowedItem> <- self {
         if self.pos >= self.len {
@@ -538,13 +538,13 @@ impl<'T> VecIterator<'T>@BorrowIterator {
 
         self.pos += 1
         unsafe {
-            return Option<BorrowedItem>::Some(&'(self.buf[self.pos - 1]))
+            return Option<BorrowedItem>::Some(&(self.buf[self.pos - 1]))
         }
     }
 }
 
-impl<'T> VecIterator<'T>@PlaceIterator {
-    type Item = 'T
+impl<T> VecIterator<T>@PlaceIterator {
+    type Item = T
 
     pub fn next_place(self#) -> __PlaceOutcome<Item> <- self {
         if self.pos >= self.len {
@@ -554,7 +554,7 @@ impl<'T> VecIterator<'T>@PlaceIterator {
         auto index = self.pos
         self.pos += 1
         unsafe {
-            return __place_hit<Item>('(self.buf[index]))
+            return __place_hit<Item>((self.buf[index]))
         }
     }
 }

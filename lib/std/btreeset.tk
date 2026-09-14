@@ -2,17 +2,17 @@ import core/types::{usize}
 import core/traits::{@PartialOrd, @PartialEq, @Encap}
 import std/btreemap::{BTreeMap}
 
-pub shape BTreeSet<'T: @PartialOrd> (
-    map#: BTreeMap<'T, bool>
+pub shape BTreeSet<T: @PartialOrd> (
+    map#: BTreeMap<T, bool>
 )
 
-impl<'T: @PartialOrd> BTreeSet<'T> {
-    pub fn new() -> BTreeSet<'T> {
-        return BTreeSet<'T>( map = BTreeMap<'T, bool>::new() )
+impl<T: @PartialOrd> BTreeSet<T> {
+    pub fn new() -> BTreeSet<T> {
+        return BTreeSet<T>( map = BTreeMap<T, bool>::new() )
     }
 }
 
-impl<'T> BTreeSet<'T>@Encap {
+impl<T> BTreeSet<T>@Encap {
     fn drop(self#) {
         self.map#.clear()
     }
@@ -23,18 +23,18 @@ impl<'T> BTreeSet<'T>@Encap {
 
 }
 
-impl<'T: @PartialOrd> BTreeSet<'T> {
+impl<T: @PartialOrd> BTreeSet<T> {
     pub fn len(self) -> usize {
         return self.map.len()
     }
     pub fn is_empty(self) -> bool {
         return self.map.is_empty()
     }
-    pub fn insert(self#, cede 'val: T) {
-        self.map#.insert(cede 'val, true)
+    pub fn insert(self#, cede val: T) {
+        self.map#.insert(cede val, true)
     }
-    pub fn contains(self, 'val: T) -> bool {
-        return self.map.contains_key('val)
+    pub fn contains(self, val: T) -> bool {
+        return self.map.contains_key(val)
     }
     pub fn clear(self#) {
         self.map#.clear()

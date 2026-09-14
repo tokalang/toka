@@ -10,19 +10,19 @@ pub fn addr_is_not_null(a: Addr) -> bool {
     return (a as u64) != 0:u64
 }
 
-shape BTreeNode<'K, 'V> (
+shape BTreeNode<K, V> (
     len#: usize = 0,
     is_leaf#: bool = true,
-    keys#: ['K; 5],
-    vals#: ['V; 5],
+    keys#: [K; 5],
+    vals#: [V; 5],
     children#: [Addr; 6]
 )
 
-impl<'K, 'V> BTreeNode<'K, 'V> {
+impl<K, V> BTreeNode<K, V> {
     pub fn destroy(node_addr: Addr) {
         unsafe {
             if addr_is_null(node_addr) { return }
-            auto *n# = node_addr as *BTreeNode<'K, 'V>
+            auto *n# = node_addr as *BTreeNode<K, V>
             
             auto i# = 0:usize
             loop i < n.len {
@@ -36,21 +36,21 @@ impl<'K, 'V> BTreeNode<'K, 'V> {
                 loop j <= n.len {
                     auto c_addr = n.children[j]
                     if addr_is_not_null(c_addr) {
-                        BTreeNode<'K, 'V>::destroy(c_addr)
+                        BTreeNode<K, V>::destroy(c_addr)
                     }
                     j += 1
                 }
             }
             // The initialized entries were consumed above.  Deallocate the
             // node storage without recursively dropping its fixed arrays.
-            unsafe free [0] (node_addr as *[BTreeNode<'K, 'V>])
+            unsafe free [0] (node_addr as *[BTreeNode<K, V>])
         }
     }
 
     pub fn new(is_leaf: bool) -> Addr {
         unsafe {
-            auto node_addr = (unsafe alloc [1] BTreeNode<'K, 'V>) as Addr
-            auto *node# = node_addr as *BTreeNode<'K, 'V>
+            auto node_addr = (unsafe alloc [1] BTreeNode<K, V>) as Addr
+            auto *node# = node_addr as *BTreeNode<K, V>
             node.len = 0
             node.is_leaf = is_leaf
             
@@ -65,9 +65,9 @@ impl<'K, 'V> BTreeNode<'K, 'V> {
 
     pub fn split_child(self#, i: usize) {
         unsafe {
-            auto *y# = self.children[i] as *BTreeNode<'K, 'V>
-            auto z_addr = BTreeNode<'K, 'V>::new(y.is_leaf)
-            auto *z# = z_addr as *BTreeNode<'K, 'V>
+            auto *y# = self.children[i] as *BTreeNode<K, V>
+            auto z_addr = BTreeNode<K, V>::new(y.is_leaf)
+            auto *z# = z_addr as *BTreeNode<K, V>
             
             z.len = 2
             
@@ -109,14 +109,14 @@ impl<'K, 'V> BTreeNode<'K, 'V> {
     }
 }
 
-pub fn btree_node_insert_non_full_iterative<'K: @PartialOrd, 'V>(root_addr: Addr, cede 'key: K, cede 'val: V) -> bool {
+pub fn btree_node_insert_non_full_iterative<K: @PartialOrd, V>(root_addr: Addr, cede key: K, cede val: V) -> bool {
     unsafe {
-        auto key_buf# = [cede 'key]
-        auto val_buf# = [cede 'val]
+        auto key_buf# = [cede key]
+        auto val_buf# = [cede val]
         auto curr_addr# = root_addr
         
         loop true {
-            auto *node# = curr_addr as *BTreeNode<'K, 'V>
+            auto *node# = curr_addr as *BTreeNode<K, V>
             auto idx# = 0:usize
             
             loop idx < node.len {
@@ -166,7 +166,7 @@ pub fn btree_node_insert_non_full_iterative<'K: @PartialOrd, 'V>(root_addr: Addr
                 }
                 auto idx2# = j
                 auto child_addr = node.children[idx2]
-                auto *child# = child_addr as *BTreeNode<'K, 'V>
+                auto *child# = child_addr as *BTreeNode<K, V>
                 if child.len == 5 {
                     node#.split_child(idx2)
                     auto new_k_ptr = node.keys[idx2]
@@ -184,23 +184,23 @@ pub fn btree_node_insert_non_full_iterative<'K: @PartialOrd, 'V>(root_addr: Addr
     }
 }
 
-pub shape BTreeMap<'K: @PartialOrd, 'V> (
+pub shape BTreeMap<K: @PartialOrd, V> (
     root_addr#: Addr = ADDR0,
     len#: usize = 0
 )
 
-pub fn btree_node_get<'K: @PartialOrd, 'V: @Dup>(node_addr: Addr, 'key: K) -> Option<'V> {
+pub fn btree_node_get<K: @PartialOrd, V: @Dup>(node_addr: Addr, key: K) -> Option<V> {
     unsafe {
         auto current_addr# = node_addr
         loop true {
-            if addr_is_null(current_addr) { return Option<'V>::None }
-            auto *n# = current_addr as *BTreeNode<'K, 'V>
+            if addr_is_null(current_addr) { return Option<V>::None }
+            auto *n# = current_addr as *BTreeNode<K, V>
             auto i# = 0:usize
             loop i < n.len {
                 auto k_ptr = n.keys[i]
-                auto cmp_res = 'key.cmp(k_ptr)
+                auto cmp_res = key.cmp(k_ptr)
                 if cmp_res == 0 {
-                    return Option<'V>::Some(n.vals[i].dup())
+                    return Option<V>::Some(n.vals[i].dup())
                 }
                 if cmp_res < 0 {
                     break
@@ -208,23 +208,23 @@ pub fn btree_node_get<'K: @PartialOrd, 'V: @Dup>(node_addr: Addr, 'key: K) -> Op
                 i += 1
             }
             if n.is_leaf {
-                return Option<'V>::None
+                return Option<V>::None
             }
             current_addr = n.children[i]
         }
-        return Option<'V>::None
+        return Option<V>::None
     }
 }
 
-pub fn btree_node_contains<'K: @PartialOrd, 'V>(node_addr: Addr, 'key: K) -> bool {
+pub fn btree_node_contains<K: @PartialOrd, V>(node_addr: Addr, key: K) -> bool {
     unsafe {
         auto current_addr# = node_addr
         loop true {
             if addr_is_null(current_addr) { return false }
-            auto *n# = current_addr as *BTreeNode<'K, 'V>
+            auto *n# = current_addr as *BTreeNode<K, V>
             auto i# = 0:usize
             loop i < n.len {
-                auto cmp_res = 'key.cmp(n.keys[i])
+                auto cmp_res = key.cmp(n.keys[i])
                 if cmp_res == 0 { return true }
                 if cmp_res < 0 { break }
                 i += 1
@@ -236,20 +236,20 @@ pub fn btree_node_contains<'K: @PartialOrd, 'V>(node_addr: Addr, 'key: K) -> boo
     }
 }
 
-impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V> {
-    pub fn new() -> BTreeMap<'K, 'V> {
-        return BTreeMap<'K, 'V>(
-            root_addr = BTreeNode<'K, 'V>::new(true),
+impl<K: @PartialOrd, V> BTreeMap<K, V> {
+    pub fn new() -> BTreeMap<K, V> {
+        return BTreeMap<K, V>(
+            root_addr = BTreeNode<K, V>::new(true),
             len = 0
         )
     }
 }
 
-impl<'K, 'V> BTreeMap<'K, 'V>@Encap {
+impl<K, V> BTreeMap<K, V>@Encap {
     fn drop(self#) {
         unsafe {
             if addr_is_not_null(self.root_addr) {
-                BTreeNode<'K, 'V>::destroy(self.root_addr)
+                BTreeNode<K, V>::destroy(self.root_addr)
                 self.root_addr = ADDR0
                 self.len = 0
             }
@@ -261,48 +261,48 @@ impl<'K, 'V> BTreeMap<'K, 'V>@Encap {
 
 }
 
-impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V> {
+impl<K: @PartialOrd, V> BTreeMap<K, V> {
     pub fn is_empty(self) -> bool { return self.len == 0 }
     pub fn len(self) -> usize { return self.len }
 
     pub fn clear(self#) {
         unsafe {
             if addr_is_not_null(self.root_addr) {
-                BTreeNode<'K, 'V>::destroy(self.root_addr)
-                self.root_addr = BTreeNode<'K, 'V>::new(true)
+                BTreeNode<K, V>::destroy(self.root_addr)
+                self.root_addr = BTreeNode<K, V>::new(true)
                 self.len = 0
             }
         }
     }
-    pub fn insert(self#, cede 'key: K, cede 'val: V) {
+    pub fn insert(self#, cede key: K, cede val: V) {
         unsafe {
-            auto key_buf# = [cede 'key]
-            auto val_buf# = [cede 'val]
+            auto key_buf# = [cede key]
+            auto val_buf# = [cede val]
             auto old_root_addr = self.root_addr
-            auto *r# = old_root_addr as *BTreeNode<'K, 'V>
+            auto *r# = old_root_addr as *BTreeNode<K, V>
             if r.len == 5 {
-                auto s_addr = BTreeNode<'K, 'V>::new(false)
-                auto *s# = s_addr as *BTreeNode<'K, 'V>
+                auto s_addr = BTreeNode<K, V>::new(false)
+                auto *s# = s_addr as *BTreeNode<K, V>
                 self.root_addr = s_addr
                 s.children[0] = old_root_addr
                 s#.split_child(0)
-                auto added = btree_node_insert_non_full_iterative<'K, 'V>(s_addr, cede key_buf[0], cede val_buf[0])
+                auto added = btree_node_insert_non_full_iterative<K, V>(s_addr, cede key_buf[0], cede val_buf[0])
                 if added { self.len += 1 }
             } else {
-                auto added = btree_node_insert_non_full_iterative<'K, 'V>(old_root_addr, cede key_buf[0], cede val_buf[0])
+                auto added = btree_node_insert_non_full_iterative<K, V>(old_root_addr, cede key_buf[0], cede val_buf[0])
                 if added { self.len += 1 }
             }
         }
     }
-    pub fn contains_key(self, 'key: K) -> bool {
-        return btree_node_contains<'K, 'V>(self.root_addr, 'key)
+    pub fn contains_key(self, key: K) -> bool {
+        return btree_node_contains<K, V>(self.root_addr, key)
     }
 }
 
-impl<'K: @PartialOrd, 'V: @Dup> BTreeMap<'K, 'V> {
+impl<K: @PartialOrd, V: @Dup> BTreeMap<K, V> {
     /// Duplicates the stored value. Move-only values intentionally have no
     /// by-value get surface; use a container-specific borrow or removal API.
-    pub fn get(self, 'key: K) -> Option<'V> {
-        return btree_node_get<'K, 'V>(self.root_addr, 'key)
+    pub fn get(self, key: K) -> Option<V> {
+        return btree_node_get<K, V>(self.root_addr, key)
     }
 }

@@ -16,21 +16,21 @@ impl OwnerToken@Encap {
 impl OwnerToken@Send {}
 impl OwnerToken@Sync {}
 
-fn run_owner<'T: @{Send, Sync}>(cede 'data: T, shared: bool) {
+fn run_owner<T: @{Send, Sync}>(cede data: T, shared: bool) {
     auto kind = unsafe toka_sync_test_kind()
     if kind == 1 {
-        auto ~owner = RwMutex<'T>::make_shared(cede 'data)
+        auto ~owner = RwMutex<T>::make_shared(cede data)
         auto ~other = ~owner
         {
             auto locked = other.read_lock().unwrap()
         }
         auto locked = owner.write_lock().unwrap()
     } else if shared {
-        auto ~owner = Mutex<'T>::make_shared(cede 'data)
+        auto ~owner = Mutex<T>::make_shared(cede data)
         auto ~other = ~owner
         auto locked = other.lock().unwrap()
     } else {
-        auto ^owner = Mutex<'T>::make(cede 'data)
+        auto ^owner = Mutex<T>::make(cede data)
         auto locked = owner.lock().unwrap()
     }
 }

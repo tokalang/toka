@@ -1001,13 +1001,8 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
     if (!checkMorphologyBounds(Template->Loc, Param, ArgType))
       return GenericShape;
 
-    // Morphic constraint check
-    if (!Param.IsMorphic) {
-      if (ArgType->isRawPointer() || ArgType->isUniquePtr() || ArgType->isSharedPtr() || ArgType->isReference()) {
-        DiagnosticEngine::report(Template->Loc, DiagID::ERR_MORPHIC_CONSTRAINT, Param.Name, Param.Name);
-        return GenericShape;
-      }
-    }
+    // All type parameters denote full legal types. Explicit morphology and
+    // capability bounds above/below remain independent admission conditions.
 
     if (!Param.TraitBounds.empty()) {
       if (!checkTraitBounds(Template->Loc, Param.Name, Param.TraitBounds,
@@ -1147,7 +1142,7 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
       // rather than reparsing a synthesized spelling.
       auto memberTypeObj = Sema::synthesizePhysicalTypeObject(m);
       auto subObj = memberTypeObj->substitute(substMap);
-      if (m.IsMorphicExempt && m.Permission.HandleLayers.empty() &&
+      if (m.Permission.HandleLayers.empty() &&
           m.Permission.Morphology == BindingMorphology::None && m.TypeSyntax &&
           m.TypeSyntax->NodeKind == TypeSyntax::Kind::Named) {
         auto actual = substMap.find(m.TypeSyntax->Text);

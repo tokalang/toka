@@ -462,7 +462,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         LHS = lhsType->toString();
       }
     }
-  } else if (!nativeManagedTarget && !Bin->RHS->IsAbstractWholeValue &&
+  } else if (!explicitHandleTarget && !nativeManagedTarget && !Bin->RHS->IsAbstractWholeValue &&
              (rhsType->isUniquePtr() || rhsType->isSharedPtr())) {
     if (auto inner = rhsType->getPointeeType()) {
       if (isTypeCompatible(lhsType, inner)) {

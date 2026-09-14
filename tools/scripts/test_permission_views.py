@@ -34,14 +34,14 @@ def main():
         readonly_body = 'fn bad(slot#:Slot<&i32>) { slot.value = 9 }\n'
         warm = 'fn warm(slot#:Slot<&i32#>) { slot.value = 42 }\n'
         cases = {
-            'outer_only': ("shape Slot<'T>('value:T)\n" + readonly_body, 'E04573'),
-            'field_only': ("shape Slot<'T>('value#:T)\nfn bad(slot:Slot<&i32>) { slot.value = 9 }\n", 'E04573'),
-            'both': ("shape Slot<'T>('value#:T)\n" + readonly_body, 'E04573'),
-            'mutable_then_readonly': ("shape Slot<'T>('value#:T)\n" + warm + readonly_body, 'E04573'),
-            'readonly_then_mutable': ("shape Slot<'T>('value#:T)\n" + readonly_body + warm, 'E04573'),
-            'no_rebind_grant': ("shape Slot<'T>('value:T)\nfn bad(slot#:Slot<&i32#>, next#:i32) { slot.&#value = &next }\n", 'E04572'),
-            'invariant_up': ("shape Slot<'T>('value:T)\nfn accept(value:Slot<&i32#>) {}\nfn bad(value:Slot<&i32>) { accept(value) }\n", 'E04571'),
-            'invariant_down': ("shape Slot<'T>('value:T)\nfn accept(value:Slot<&i32>) {}\nfn bad(value:Slot<&i32#>) { accept(value) }\n", 'E04571'),
+            'outer_only': ("shape Slot<T>(value:T)\n" + readonly_body, 'E04573'),
+            'field_only': ("shape Slot<T>(value#:T)\nfn bad(slot:Slot<&i32>) { slot.value = 9 }\n", 'E04573'),
+            'both': ("shape Slot<T>(value#:T)\n" + readonly_body, 'E04573'),
+            'mutable_then_readonly': ("shape Slot<T>(value#:T)\n" + warm + readonly_body, 'E04573'),
+            'readonly_then_mutable': ("shape Slot<T>(value#:T)\n" + readonly_body + warm, 'E04573'),
+            'no_rebind_grant': ("shape Slot<T>(value:T)\nfn bad(slot#:Slot<&i32#>, next#:i32) { slot.&#value = &next }\n", 'E04572'),
+            'invariant_up': ("shape Slot<T>(value:T)\nfn accept(value:Slot<&i32#>) {}\nfn bad(value:Slot<&i32>) { accept(value) }\n", 'E04571'),
+            'invariant_down': ("shape Slot<T>(value:T)\nfn accept(value:Slot<&i32>) {}\nfn bad(value:Slot<&i32#>) { accept(value) }\n", 'E04571'),
         }
         for name, (text, code) in cases.items():
             source = work / (name + '.tk')

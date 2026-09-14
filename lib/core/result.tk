@@ -2,15 +2,15 @@
 
 extern fn libc_exit(status: i32) -> void
 
-pub shape Result<'T, 'E> (
-    Ok('T) = 1 |
-    Err('E) = 0
+pub shape Result<T, E> (
+    Ok(T) = 1 |
+    Err(E) = 0
 )
 
-impl<'T, 'E> Result<'T, 'E> {
+impl<T, E> Result<T, E> {
     pub fn is_ok(self) -> bool {
         match self {
-            auto Result<'T, 'E>::Ok(_) => return true
+            auto Result<T, E>::Ok(_) => return true
             _ => return false
         }
     }
@@ -19,9 +19,9 @@ impl<'T, 'E> Result<'T, 'E> {
         return self.is_ok() == false
     }
 
-    pub fn unwrap(cede self) -> 'T <- self {
+    pub fn unwrap(cede self) -> T <- self {
         match cede self {
-            auto Result<'T, 'E>::Ok('val) => return cede 'val
+            auto Result<T, E>::Ok(val) => return cede val
             _ => {
                 libc_exit(1)
                 unreachable
@@ -29,9 +29,9 @@ impl<'T, 'E> Result<'T, 'E> {
         }
     }
 
-    pub fn unwrap_err(cede self) -> 'E <- self {
+    pub fn unwrap_err(cede self) -> E <- self {
         match cede self {
-            auto Result<'T, 'E>::Err('e) => return cede 'e
+            auto Result<T, E>::Err(e) => return cede e
             _ => {
                 libc_exit(1)
                 unreachable

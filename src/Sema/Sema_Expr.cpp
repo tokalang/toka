@@ -225,7 +225,7 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
           field.IsValueMutable || field.Permission.SoulWritable;
       const bool fieldPayloadBlocked =
           field.IsValueBlocked || field.Permission.SoulBlocked ||
-          (field.IsMorphicExempt && insulated &&
+          ((field.IsMorphicExempt || isWholeGenericField(shape, field)) && insulated &&
            (!fieldType->getPointeeType() || !fieldType->getPointeeType()->IsWritable ||
             fieldType->getPointeeType()->IsBlocked));
       // A field declaration is an authority source in its own right.  An
@@ -1330,6 +1330,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   const bool expressionSucceeded = std::none_of(
       expressionRecords.begin() + std::min(expressionDiagnosticStart, expressionRecords.size()),
       expressionRecords.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
+  if (expressionSucceeded && T && !T->isUnknown()) recordGenericValueContract(E);
   recordEnumExpression(E, expressionSucceeded);
   if (auto *cede = dynamic_cast<CedeExpr *>(E)) {
     Expr *source = cede->Value.get();
@@ -2185,6 +2186,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!m_IsPrecomputingCaptures) ve->ResolvedBindingID = Info.SymbolID;
       ve->IsMorphicExempt = Info.IsMorphicExempt; // [NEW]
       ve->IsAbstractWholeValue = Info.IsAbstractWholeValue;
+      ve->GenericContract = Info.GenericContract;
       ve->IsImplicitDeref = isImplicitDeref;      // [Fix] Mark AST node
       if (!m_InLHS) {
         InfoPtr->HasBeenUsed = true;
@@ -4447,11 +4449,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
     if (!innerTy) return nullptr;
-    if (auto ptrTy = std::dynamic_pointer_cast<toka::PointerType>(innerTy)) {
-        if (m_ExpectedType && !std::dynamic_pointer_cast<toka::PointerType>(m_ExpectedType)) {
-            innerTy = ptrTy->PointeeType;
-        }
-    }
+    // cede preserves the checked source view. An enclosing expected type
+    // (including an aggregate result context) cannot turn its handle into
+    // the pointee; normal destination compatibility decides admissibility.
     ce->ResolvedType = innerTy;
     return innerTy;
   } else if (auto *se = dynamic_cast<SizeOfExpr *>(E)) {
@@ -6589,6 +6589,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           }
         }
       }
+      arm->Pat->GenericContract = queryGenericValueContract(me->Target.get());
+      arm->Pat->MatchedValueType = me->Target->ResolvedType;
       checkPattern(arm->Pat.get(), targetType, targetCapability, targetPath,
                    targetAccessPath, me->TransfersPayloadOwnership);
       if (arm->Guard) {

@@ -194,6 +194,7 @@ struct SymbolInfo {
   bool IsRebindable = false; // [NEW] prefix '#' or '!' rebind permission
   bool IsMorphicExempt = false; // [NEW] Track morphic exemption
   bool IsAbstractWholeValue = false;
+  GenericValueContractPtr GenericContract;
   bool IsCeded = false;
   bool IsFunctionParameter = false;
   CallableReceiverMode CallableReceiver = CallableReceiverMode::Shared;
@@ -853,6 +854,16 @@ private:
       const std::vector<std::string> &formalNames = {});
   std::set<std::string>
   callableDeclarationGenericNames(const FunctionDecl *function) const;
+  GenericValueContractPtr makeGenericValueContract(
+      TypeSyntaxPtr syntax, const std::set<std::string> &parameters) const;
+  GenericValueContractPtr queryGenericValueContract(Expr *expression);
+  GenericValueContractPtr projectGenericFieldContract(
+      Expr *object, const ShapeDecl *shape, size_t index);
+  GenericValueContractPtr projectGenericMemberContract(
+      GenericValueContractPtr contract, const ShapeDecl *shape,
+      const ShapeMember &sourceMember);
+  void recordGenericValueContract(Expr *expression);
+  bool isWholeGenericField(const ShapeDecl *shape, const ShapeMember &field) const;
   void populateCallableParameterOrigins(
       SymbolInfo &symbol, const TypeSyntaxPtr &syntax,
       const std::set<std::string> &declarationGenericNames) const;

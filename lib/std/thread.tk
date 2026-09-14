@@ -8,43 +8,43 @@ pub fn yield_now() { unsafe { libc_sched_yield() } }
 /// No-allocation native error. Kinds: Allocation=1, Create=2, Join=3,
 /// Detach=4, Closed=5, Busy=6, Setup=7. Native errors preserve native_code.
 pub shape ThreadError(kind: i32, native_code: i32)
-pub alias ThreadClosure<'T> = dyn fn#() -> 'T
+pub alias ThreadClosure<T> = dyn fn#() -> T
 
 /// Transfers an owned callable environment to one native worker.
 /// Err destroys the transferred input on the creator; it does not revive it.
 /// These bodies are compiler-qualified boundaries, never executable fallbacks.
-pub fn thread_spawn<'T: @Send, F>(cede f: F) -> Result<JoinHandle<'T>, ThreadError> {
+pub fn thread_spawn<T: @Send, F>(cede f: F) -> Result<JoinHandle<T>, ThreadError> {
     unreachable
 }
 
 /// Owns state until the non-capturing entry completes, then cleans it once.
-pub fn thread_spawn_with_state<'S: @Send, 'T: @Send>(
-    cede 'state: S, entry: fn('S) -> 'T
-) -> Result<JoinHandle<'T>, ThreadError> {
+pub fn thread_spawn_with_state<S: @Send, T: @Send>(
+    cede state: S, entry: fn(S) -> T
+) -> Result<JoinHandle<T>, ThreadError> {
     unreachable
 }
 
 /// One H responsibility. Neither field is a public native thread ID.
-pub shape JoinHandle<'T: @Send>(control#: Addr, join_adapter: Addr)
+pub shape JoinHandle<T: @Send>(control#: Addr, join_adapter: Addr)
 
-fn __thread_join<'T: @Send>(handle#: JoinHandle<'T>) -> Result<'T, ThreadError> { unreachable }
-fn __thread_detach<'T: @Send>(handle#: JoinHandle<'T>) -> Result<(), ThreadError> { unreachable }
-fn __thread_drop<'T: @Send>(handle#: JoinHandle<'T>) { unreachable }
+fn __thread_join<T: @Send>(handle#: JoinHandle<T>) -> Result<T, ThreadError> { unreachable }
+fn __thread_detach<T: @Send>(handle#: JoinHandle<T>) -> Result<(), ThreadError> { unreachable }
+fn __thread_drop<T: @Send>(handle#: JoinHandle<T>) { unreachable }
 
-impl<'T: @Send> JoinHandle<'T> {
+impl<T: @Send> JoinHandle<T> {
     /// Success waits for native termination and closes this handle.
     /// Failure preserves the handle for retry or detach.
-    pub fn join(self#) -> Result<'T, ThreadError> {
-        return __thread_join<'T>(self#)
+    pub fn join(self#) -> Result<T, ThreadError> {
+        return __thread_join<T>(self#)
     }
     /// Does not wait for worker completion. Failure preserves this handle.
     pub fn detach(self#) -> Result<(), ThreadError> {
-        return __thread_detach<'T>(self#)
+        return __thread_detach<T>(self#)
     }
 }
-impl<'T> JoinHandle<'T>@Encap {
+impl<T> JoinHandle<T>@Encap {
     /// An implicit detach failure terminates without I/O or allocation.
     /// Process termination does not promise completion of user destructors.
-    fn drop(self#) { __thread_drop<'T>(self#) }
+    fn drop(self#) { __thread_drop<T>(self#) }
 }
-impl<'T: @Send> JoinHandle<'T>@Send {}
+impl<T: @Send> JoinHandle<T>@Send {}

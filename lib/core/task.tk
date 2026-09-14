@@ -70,7 +70,7 @@ pub fn __toka_detach_task(nul *handle: void) {
     }
 }
 
-pub fn task_get_coro_handle<'T>(handle: TaskHandle<'T>) -> nul *void {
+pub fn task_get_coro_handle<T>(handle: TaskHandle<T>) -> nul *void {
     return handle.*coro_handle
 }
 

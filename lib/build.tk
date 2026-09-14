@@ -301,19 +301,19 @@ impl RebuildPlan {
     }
 }
 
-fn plan_to_json('plan: RebuildPlan) -> string {
+fn plan_to_json(plan: RebuildPlan) -> string {
     auto buf# = string::from("")
     buf#.push_str("{\"status\":")
-    json_write_string('plan.status, buf#)
+    json_write_string(plan.status, buf#)
     buf#.push_str(",\"dirty_roots\":[")
     auto i# = 0:usize
-    loop i < 'plan.dirty_roots.len() {
+    loop i < plan.dirty_roots.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string('plan.dirty_roots.borrow(i).as_str(), buf#)
+        json_write_string(plan.dirty_roots.borrow(i).as_str(), buf#)
         i += 1
     }
     buf#.push_str("],\"dirty_modules\":{")
-    auto iter# = 'plan.dirty_modules.iter()
+    auto iter# = plan.dirty_modules.iter()
     auto first# = true
     loop {
         auto opt = iter#.next_ref()
@@ -365,10 +365,10 @@ impl DfsResult {
     }
 }
 
-fn vec_contains('vec: Vec<string>, 'item: string) -> bool {
+fn vec_contains(vec: Vec<string>, item: string) -> bool {
     auto i# = 0:usize
-    loop i < 'vec.len() {
-        if 'vec.borrow(i).as_str().equals('item) {
+    loop i < vec.len() {
+        if vec.borrow(i).as_str().equals(item) {
             return true
         }
         i += 1
@@ -376,11 +376,11 @@ fn vec_contains('vec: Vec<string>, 'item: string) -> bool {
     return false
 }
 
-fn roots_equal('a: Vec<string>, 'b: Vec<string>) -> bool {
-    if 'a.len() != 'b.len() { return false }
+fn roots_equal(a: Vec<string>, b: Vec<string>) -> bool {
+    if a.len() != b.len() { return false }
     auto i# = 0:usize
-    loop i < 'a.len() {
-        if !vec_contains('b, 'a.borrow(i).clone()) {
+    loop i < a.len() {
+        if !vec_contains(b, a.borrow(i).clone()) {
             return false
         }
         i += 1
@@ -414,9 +414,9 @@ fn is_std_or_core(path: string) -> bool {
     return false
 }
 
-fn collect_submodule_output_updates('graph: DependencyManifest, build_dir: string,
+fn collect_submodule_output_updates(graph: DependencyManifest, build_dir: string,
                                     updates#: HashMap<string, ModuleSnapshot>) {
-    auto iter# = 'graph.modules.iter()
+    auto iter# = graph.modules.iter()
     loop {
         auto entry_opt = iter#.next_ref()
         if entry_opt.is_none() { break }
@@ -426,7 +426,7 @@ fn collect_submodule_output_updates('graph: DependencyManifest, build_dir: strin
         auto m_path = key.clone()
         auto info# = val.clone()
 
-        if !vec_contains('graph.roots, m_path) && info.kind == "source" {
+        if !vec_contains(graph.roots, m_path) && info.kind == "source" {
             if is_std_or_core(m_path.clone()) {
                 continue
             }
@@ -456,9 +456,9 @@ fn collect_submodule_output_updates('graph: DependencyManifest, build_dir: strin
     }
 }
 
-fn populate_submodule_outputs('graph#: DependencyManifest, build_dir: string) {
+fn populate_submodule_outputs(graph#: DependencyManifest, build_dir: string) {
     auto updates# = HashMap<string, ModuleSnapshot>::new()
-    collect_submodule_output_updates('graph, build_dir, updates#)
+    collect_submodule_output_updates(graph, build_dir, updates#)
 
     auto updates_iter# = updates.iter()
     loop {
@@ -467,7 +467,7 @@ fn populate_submodule_outputs('graph#: DependencyManifest, build_dir: string) {
         auto entry = entry_opt.unwrap()
         auto &key = entry.key()
         auto &val = entry.val()
-        'graph.modules#.insert(cede key.clone(), cede val.clone())
+        graph.modules#.insert(cede key.clone(), cede val.clone())
     }
 }
 

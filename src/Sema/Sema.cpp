@@ -3344,18 +3344,31 @@ void Sema::declareGlobals(Module &M) {
   };
   auto annotateStage0FormalDeclarations =
       [&](FunctionDecl &function,
-          const std::vector<GenericParam> *enclosingParameters) {
+          const std::vector<GenericParam> *enclosingParameters,
+          TypeSyntaxPtr receiverContract = nullptr) {
         std::set<std::string> exactGenericNames;
         if (enclosingParameters)
           addExactTypeParameters(exactGenericNames, *enclosingParameters);
         function.Stage0EnclosingGenericTypeNames = exactGenericNames;
         addExactTypeParameters(exactGenericNames, function.GenericParams);
+        auto returned = function.ReturnTypeSyntax;
+        if (returned && returned->NodeKind == TypeSyntax::Kind::Morphology &&
+            !returned->IsPostfix && returned->Text == "&") returned = returned->Subject;
+        auto returnedContract = makeGenericValueContract(returned, exactGenericNames);
+        function.ReturnContract.BindingBorrowsWholeGenericValue =
+            function.ReturnContract.BindingBorrowsSoul && returnedContract && returnedContract->isWholeValue();
         for (auto &argument : function.Args) {
           argument.Stage0DeclarationProvenanceComplete =
               argument.TypeSyntax != nullptr;
           argument.Stage0GenericValueRole = false;
           argument.Stage0MorphicGenericRole = false;
           argument.IsAbstractWholeValue = false;
+          auto sourceType = synthesizePhysicalTypeObject(argument, false);
+          argument.GenericContract = makeGenericValueContract(
+              sourceType ? sourceType->toSyntax(argument.Loc, argument.Loc) : argument.TypeSyntax,
+              exactGenericNames);
+          if (Type::stripMorphology(argument.Name) == "self" && receiverContract)
+            argument.GenericContract = makeGenericValueContract(receiverContract, exactGenericNames);
           auto callableOrigins = classifyCallableParameterOrigins(
               argument.TypeSyntax, exactGenericNames);
           argument.CallableParameterOrigins = std::move(callableOrigins.first);
@@ -3383,7 +3396,7 @@ void Sema::declareGlobals(Module &M) {
   }
   for (auto &impl : M.Impls) {
     for (auto &method : impl->Methods)
-      annotateStage0FormalDeclarations(*method, &impl->GenericParams);
+      annotateStage0FormalDeclarations(*method, &impl->GenericParams, impl->HeaderSyntax.Type);
   }
   for (const auto &function : M.Functions)
     rememberTypeParameters(function->GenericParams);
@@ -5714,6 +5727,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         Arg.IsMorphicExempt);
     Info.IsMorphicExempt = Arg.IsMorphicExempt; // [NEW]
     Info.IsAbstractWholeValue = Arg.IsAbstractWholeValue;
+    Info.GenericContract = Arg.GenericContract;
     Info.IsDeclaredMutable = declaredPayloadWritable;
     if (Arg.IsAbstractWholeValue && Info.TypeObj &&
         (Info.TypeObj->isPointer() || Info.TypeObj->isSmartPointer() ||
@@ -7350,6 +7364,7 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     applyTypeSyntaxSubst(Arg.TypeSyntax, Arg.Type);
   }
   if (Instance->ReturnContract.BindingBorrowsSoul &&
+      !Instance->ReturnContract.BindingBorrowsWholeGenericValue &&
       Instance->ReturnTypeSyntax) {
     TypeSyntaxPtr root = Instance->ReturnTypeSyntax;
     if (root->NodeKind == TypeSyntax::Kind::Morphology &&
@@ -7405,6 +7420,7 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
   Instance->ResolvedReturnType =
       semanticReturn ? semanticReturn->substitute(substMap) : nullptr;
   if (Instance->ReturnContract.BindingBorrowsSoul &&
+      !Instance->ReturnContract.BindingBorrowsWholeGenericValue &&
       Instance->ResolvedReturnType) {
     auto reference = std::dynamic_pointer_cast<toka::ReferenceType>(
         Instance->ResolvedReturnType);

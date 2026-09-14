@@ -5,38 +5,38 @@ import std/hashmap::{HashMap, HashMapIterator, Entry, EntryRef}
 import core/traits::{@Hash, @PartialEq, @Encap, @Iterable, @Iterator, @BorrowIterator}
 import core/option::{Option}
 
-pub shape HashSet<'T>(
-    map: HashMap<'T, bool>
+pub shape HashSet<T>(
+    map: HashMap<T, bool>
 )
 
-impl<'T> HashSet<'T>@Encap {
+impl<T> HashSet<T>@Encap {
     fn drop(self#) {
         // Map drops automatically
     }
     
 }
 
-impl<'T> HashSet<'T> {
-    pub fn clone(self) -> HashSet<'T> {
-        return HashSet<'T>(
+impl<T> HashSet<T> {
+    pub fn clone(self) -> HashSet<T> {
+        return HashSet<T>(
             map = self.map.clone()
         )
     }
 }
 
-impl<'T> HashSet<'T> {
-    pub fn new() -> HashSet<'T> {
-        return HashSet<'T>(
-            map = HashMap<'T, bool>::new()
+impl<T> HashSet<T> {
+    pub fn new() -> HashSet<T> {
+        return HashSet<T>(
+            map = HashMap<T, bool>::new()
         )
     }
 
-    pub fn insert(self#, cede 'val: T) {
-        self.map#.insert(cede 'val, true)
+    pub fn insert(self#, cede val: T) {
+        self.map#.insert(cede val, true)
     }
 
-    pub fn contains(self, 'val: T) -> bool {
-        match self.map.get('val) {
+    pub fn contains(self, val: T) -> bool {
+        match self.map.get(val) {
             auto Option<bool>::Some(_) => return true
             auto Option<bool>::None => return false
         }
@@ -54,40 +54,40 @@ impl<'T> HashSet<'T> {
         self.map#.clear()
     }
 
-    pub fn remove(self#, 'val: T) -> bool {
-        auto opt = self.map#.remove('val)
+    pub fn remove(self#, val: T) -> bool {
+        auto opt = self.map#.remove(val)
         return opt.is_some()
     }
 
 }
 
-impl<'T> HashSet<'T>@Iterable {
-    type Iter = HashSetIterator<'T>
+impl<T> HashSet<T>@Iterable {
+    type Iter = HashSetIterator<T>
 
     pub fn iter(self) -> Iter <- self {
-        return HashSetIterator<'T>(
+        return HashSetIterator<T>(
             map_iter = self.map.iter()
         )
     }
 }
 
-pub shape HashSetIterator<'T> (
-    map_iter#: HashMapIterator<'T, bool>
+pub shape HashSetIterator<T> (
+    map_iter#: HashMapIterator<T, bool>
 )
 
-impl<'T> HashSetIterator<'T>@Iterator {
-    type Item = 'T
+impl<T> HashSetIterator<T>@Iterator {
+    type Item = T
 
     pub fn next(self#) -> Option<Item> {
         match self.map_iter#.next() {
-            auto Option<Entry<'T, bool>>::Some(entry) => return Option<Item>::Some(*entry.key())
-            auto Option<Entry<'T, bool>>::None => return Option<Item>::None
+            auto Option<Entry<T, bool>>::Some(entry) => return Option<Item>::Some(*entry.key())
+            auto Option<Entry<T, bool>>::None => return Option<Item>::None
         }
     }
 }
 
-impl<'T> HashSetIterator<'T>@BorrowIterator {
-    type BorrowedItem = &'T
+impl<T> HashSetIterator<T>@BorrowIterator {
+    type BorrowedItem = &T
 
     pub fn next_ref(self#) -> Option<BorrowedItem> <- self {
         auto entry = self.map_iter#.next_ref()

@@ -9,7 +9,7 @@ import sys/libc::{libc_printf, libc_fflush, libc_abort}
 // in a slot selected by occupied metadata, including the pending value after
 // its key has been taken. Retirement does not prove initialization or release
 // the other element. Both takes must complete before user operations resume.
-fn hashmap_take_raw_element<'T>(nul *storage: ['T], index: usize, *marker#: u8) -> 'T {
+fn hashmap_take_raw_element<T>(nul *storage: [T], index: usize, *marker#: u8) -> T {
     if *storage is null {
         unsafe { libc_abort() }
         unreachable
@@ -22,15 +22,15 @@ fn hashmap_take_raw_element<'T>(nul *storage: ['T], index: usize, *marker#: u8) 
 
 // HashMap using SOA (Structure of Arrays)
 // keys[i], vals[i], meta[i] correspond to the same slot.
-pub shape HashMap<'K, 'V> (
-    keys#: Vec<'K> = Vec<'K>::new(),
-    vals#: Vec<'V> = Vec<'V>::new(),
+pub shape HashMap<K, V> (
+    keys#: Vec<K> = Vec<K>::new(),
+    vals#: Vec<V> = Vec<V>::new(),
     meta#: Vec<u8> = Vec<u8>::new(), // 0=Empty, 1=Occupied
     len#: usize = 0,
     cap#: usize = 0
 )
 
-impl<'K, 'V> HashMap<'K, 'V>@Encap {
+impl<K, V> HashMap<K, V>@Encap {
     fn drop(self#) {
         unsafe {
             // 1. Drop elements
@@ -39,15 +39,15 @@ impl<'K, 'V> HashMap<'K, 'V>@Encap {
                  auto *m# = self.meta.unsafe_get(i)
                  if m == 1 {
                      // Take both before either local can run user cleanup.
-                     auto 'k = hashmap_take_raw_element<'K>(self.keys.*buf, i, *m)
-                     auto 'v = hashmap_take_raw_element<'V>(self.vals.*buf, i, *m)
+                     auto k = hashmap_take_raw_element<K>(self.keys.*buf, i, *m)
+                     auto v = hashmap_take_raw_element<V>(self.vals.*buf, i, *m)
                      {
-                         auto 'retired_key = cede 'k
+                         auto retired_key = cede k
                      }
                      
                      // Drop val
                      {
-                         auto 'retired_value = cede 'v
+                         auto retired_value = cede v
                      }
                  }
                  i += 1
@@ -60,14 +60,14 @@ impl<'K, 'V> HashMap<'K, 'V>@Encap {
     
 }
 
-impl<'K: @Dup, 'V: @Dup> HashMap<'K, 'V> {
-    pub fn clone(self) -> HashMap<'K, 'V> {
+impl<K: @Dup, V: @Dup> HashMap<K, V> {
+    pub fn clone(self) -> HashMap<K, V> {
         unsafe {
             if self.cap == 0 {
-                return HashMap<'K, 'V>::new()
+                return HashMap<K, V>::new()
             }
-            auto k# = Vec<'K>::with_capacity(self.cap)
-            auto v# = Vec<'V>::with_capacity(self.cap)
+            auto k# = Vec<K>::with_capacity(self.cap)
+            auto v# = Vec<V>::with_capacity(self.cap)
             auto m# = Vec<u8>::with_capacity(self.cap)
             
             auto i# = 0:usize
@@ -76,10 +76,10 @@ impl<'K: @Dup, 'V: @Dup> HashMap<'K, 'V> {
                 m#.push(0)
                 if m_val == 1 {
                     // Duplicate both values before publishing an occupied slot.
-                    auto 'key = self.keys.buf[i].dup()
-                    auto 'val = self.vals.buf[i].dup()
-                    k.buf[i] = cede 'key
-                    v.buf[i] = cede 'val
+                    auto key = self.keys.buf[i].dup()
+                    auto val = self.vals.buf[i].dup()
+                    k.buf[i] = cede key
+                    v.buf[i] = cede val
                     m.buf[i] = 1
                 } else {
                     // Preserve probe chains without reading retired payloads.
@@ -88,7 +88,7 @@ impl<'K: @Dup, 'V: @Dup> HashMap<'K, 'V> {
                 i += 1
             }
             
-            auto map = HashMap<'K, 'V>(
+            auto map = HashMap<K, V>(
                 keys = cede k,
                 vals = cede v,
                 meta = cede m,
@@ -101,7 +101,7 @@ impl<'K: @Dup, 'V: @Dup> HashMap<'K, 'V> {
     }
 }
 
-impl<'K, 'V> HashMap<'K, 'V> {
+impl<K, V> HashMap<K, V> {
     pub fn len(self) -> usize {
         return self.len
     }
@@ -110,11 +110,11 @@ impl<'K, 'V> HashMap<'K, 'V> {
         return self.len == 0
     }
 
-    pub fn new() -> HashMap<'K, 'V> {
+    pub fn new() -> HashMap<K, V> {
         unsafe {
             auto init_cap = 128:usize
-            auto k# = Vec<'K>::with_capacity(init_cap)
-            auto v# = Vec<'V>::with_capacity(init_cap)
+            auto k# = Vec<K>::with_capacity(init_cap)
+            auto v# = Vec<V>::with_capacity(init_cap)
             auto m# = Vec<u8>::with_capacity(init_cap) // 0 initialized by alloc usually? No, alloc is garbage.
             
             // init_cap is 16 (Power of 2), so we can use bitwise mask optimization
@@ -132,7 +132,7 @@ impl<'K, 'V> HashMap<'K, 'V> {
             // Since len=0, Vec's own drop won't touch elements (which might be garbage).
             // This is correct behavior for us.
             
-            auto map = HashMap<'K, 'V>(
+            auto map = HashMap<K, V>(
                 keys = cede k,
                 vals = cede v,
                 meta = cede m,
@@ -144,14 +144,14 @@ impl<'K, 'V> HashMap<'K, 'V> {
         }
     }
 
-    pub fn insert(self#, cede 'key: K, cede 'val: V) {
+    pub fn insert(self#, cede key: K, cede val: V) {
         if self.len * 4 >= self.cap * 3 {
              self#.resize(self.cap * 2)
         }
         
         auto capacity = self.cap
         // Optimization: capacity is power of 2, use mask
-        auto idx# = ('key.hash() as usize) & (capacity - 1)
+        auto idx# = (key.hash() as usize) & (capacity - 1)
         auto start_idx = idx
         auto found_slot# = capacity:usize
         auto is_new# = false
@@ -173,8 +173,8 @@ impl<'K, 'V> HashMap<'K, 'V> {
                     }
                 } else {
                     // Occupied. Check Key match.
-                    auto *'k_ptr# = self.keys.unsafe_get(idx) as *K
-                    if 'k_ptr.eq('key) {
+                    auto *k_ptr# = self.keys.unsafe_get(idx) as *K
+                    if k_ptr.eq(key) {
                         found_slot = idx
                         is_new = false
                         break
@@ -188,8 +188,8 @@ impl<'K, 'V> HashMap<'K, 'V> {
         
         unsafe {
             if is_new {
-                self.keys.buf[found_slot] = cede 'key
-                self.vals.buf[found_slot] = cede 'val
+                self.keys.buf[found_slot] = cede key
+                self.vals.buf[found_slot] = cede val
                 // Publish only after both payloads are initialized.
                 self.meta.buf[found_slot] = 1
                 self.len = self.len + 1
@@ -197,18 +197,18 @@ impl<'K, 'V> HashMap<'K, 'V> {
                 // The old value owns its cleanup; raw assignment alone does
                 // not retire it. Restore occupied before any user Drop runs.
                 auto *marker# = self.meta.unsafe_get(found_slot)
-                auto 'old = hashmap_take_raw_element<'V>(self.vals.*buf, found_slot, *marker)
-                self.vals.buf[found_slot] = cede 'val
+                auto old = hashmap_take_raw_element<V>(self.vals.*buf, found_slot, *marker)
+                self.vals.buf[found_slot] = cede val
                 marker = 1
-                auto 'unused_key = cede 'key
+                auto unused_key = cede key
             }
         }
     }
     
     pub fn resize(self#, new_cap: usize) {
         unsafe {
-            auto new_k# = Vec<'K>::with_capacity(new_cap)
-            auto new_v# = Vec<'V>::with_capacity(new_cap)
+            auto new_k# = Vec<K>::with_capacity(new_cap)
+            auto new_v# = Vec<V>::with_capacity(new_cap)
             auto new_m# = Vec<u8>::with_capacity(new_cap) // Empty buffer
             
             // Populate meta with 0 up to new_cap
@@ -225,17 +225,17 @@ impl<'K, 'V> HashMap<'K, 'V> {
                 auto *m_ptr# = self.meta.unsafe_get(i) as *u8
                 if m_ptr == 1 {
                      moved_count += 1
-                     auto 'key = hashmap_take_raw_element<'K>(self.keys.*buf, i, *m_ptr)
-                     auto 'val = hashmap_take_raw_element<'V>(self.vals.*buf, i, *m_ptr)
+                     auto key = hashmap_take_raw_element<K>(self.keys.*buf, i, *m_ptr)
+                     auto val = hashmap_take_raw_element<V>(self.vals.*buf, i, *m_ptr)
                      
-                     auto idx# = ('key.hash() as usize) & (new_cap - 1)
+                     auto idx# = (key.hash() as usize) & (new_cap - 1)
                      auto start_idx = idx
                      
                      loop true {
                          auto *nm_ptr# = new_m.unsafe_get(idx) as *u8
                          if nm_ptr == 0 {
-                             new_k.buf[idx] = cede 'key
-                             new_v.buf[idx] = cede 'val
+                             new_k.buf[idx] = cede key
+                             new_v.buf[idx] = cede val
                              nm_ptr = 1
                              break
                          }
@@ -258,14 +258,14 @@ impl<'K, 'V> HashMap<'K, 'V> {
     
 }
 
-impl<'K, 'V: @Copy> HashMap<'K, 'V> {
-    pub fn get(self, 'key: K) -> Option<'V> {
+impl<K, V: @Copy> HashMap<K, V> {
+    pub fn get(self, key: K) -> Option<V> {
          auto capacity = self.cap
          if capacity == 0 {
-             auto outcome = Option<'V>::None
+             auto outcome = Option<V>::None
              return cede outcome
          }
-         auto idx# = ('key.hash() as usize) & (capacity - 1)
+         auto idx# = (key.hash() as usize) & (capacity - 1)
          auto start_idx = idx
 
          loop true {
@@ -273,36 +273,36 @@ impl<'K, 'V: @Copy> HashMap<'K, 'V> {
                  auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
 
                  if m_ptr == 0 {
-                     auto outcome = Option<'V>::None
+                     auto outcome = Option<V>::None
                      return cede outcome
                  }
 
                  if m_ptr == 1 {
                      // Occupied, check key
-                     auto *'k_ptr# = self.keys.unsafe_get(idx) as *K
-                     if 'k_ptr.eq('key) {
-                         auto *'v_ptr# = self.vals.unsafe_get(idx) as *V
-                         return Option<'V>::Some('v_ptr)
+                     auto *k_ptr# = self.keys.unsafe_get(idx) as *K
+                     if k_ptr.eq(key) {
+                         auto *v_ptr# = self.vals.unsafe_get(idx) as *V
+                         return Option<V>::Some(v_ptr)
                      }
                  }
              }
 
              idx = (idx + 1) & (capacity - 1)
              if idx == start_idx {
-                 return Option<'V>::None
+                 return Option<V>::None
              }
          }
-         return Option<'V>::None
+         return Option<V>::None
     }
 
 }
 
-impl<'K, 'V> HashMap<'K, 'V> {
-    pub fn try_borrow(self, 'key: K) -> Option<&'V>
+impl<K, V> HashMap<K, V> {
+    pub fn try_borrow(self, key: K) -> Option<&V>
     effects: return <- self {
          auto capacity = self.cap
-         if capacity == 0 { return Option<&'V>::None }
-         auto idx# = ('key.hash() as usize) & (capacity - 1)
+         if capacity == 0 { return Option<&V>::None }
+         auto idx# = (key.hash() as usize) & (capacity - 1)
          auto start_idx = idx
 
          loop true {
@@ -310,53 +310,53 @@ impl<'K, 'V> HashMap<'K, 'V> {
                  auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
 
                  if m_ptr == 0 {
-                     return Option<&'V>::None
+                     return Option<&V>::None
                  }
 
                  if m_ptr == 1 {
-                     auto *'k_ptr# = self.keys.unsafe_get(idx) as *K
-                     if 'k_ptr.eq('key) {
-                         return Option<&'V>::Some(&'(self.vals.buf[idx]))
+                     auto *k_ptr# = self.keys.unsafe_get(idx) as *K
+                     if k_ptr.eq(key) {
+                         return Option<&V>::Some(&(self.vals.buf[idx]))
                      }
                  }
              }
 
              idx = (idx + 1) & (capacity - 1)
              if idx == start_idx {
-                 return Option<&'V>::None
+                 return Option<&V>::None
              }
          }
-         return Option<&'V>::None
+         return Option<&V>::None
     }
 
-    pub fn contains_key(self, 'key: K) -> bool {
-         auto val_opt = self.try_borrow('key)
+    pub fn contains_key(self, key: K) -> bool {
+         auto val_opt = self.try_borrow(key)
          return val_opt.is_some()
     }
 
-    pub fn remove(self#, 'key: K) -> Option<'V> {
+    pub fn remove(self#, key: K) -> Option<V> {
          auto capacity = self.cap
          if capacity == 0 {
-             auto outcome = Option<'V>::None
+             auto outcome = Option<V>::None
              return cede outcome
          }
-         auto idx# = ('key.hash() as usize) & (capacity - 1)
+         auto idx# = (key.hash() as usize) & (capacity - 1)
          auto start_idx = idx
          
          loop true {
              unsafe {
                  auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
                  if m_ptr == 0 {
-                     auto outcome = Option<'V>::None
+                     auto outcome = Option<V>::None
                      return cede outcome
                  }
                  if m_ptr == 1 {
-                     auto *'k_ptr# = self.keys.unsafe_get(idx) as *K
-                     if 'k_ptr.eq('key) {
-                         auto 'old_k = hashmap_take_raw_element<'K>(self.keys.*buf, idx, *m_ptr)
-                         auto 'old_v = hashmap_take_raw_element<'V>(self.vals.*buf, idx, *m_ptr)
+                     auto *k_ptr# = self.keys.unsafe_get(idx) as *K
+                     if k_ptr.eq(key) {
+                         auto old_k = hashmap_take_raw_element<K>(self.keys.*buf, idx, *m_ptr)
+                         auto old_v = hashmap_take_raw_element<V>(self.vals.*buf, idx, *m_ptr)
                          self.len -= 1
-                         auto outcome = Option<'V>::Some(cede 'old_v)
+                         auto outcome = Option<V>::Some(cede old_v)
                          return cede outcome
                      }
                  }
@@ -364,7 +364,7 @@ impl<'K, 'V> HashMap<'K, 'V> {
              idx = (idx + 1) & (capacity - 1)
              if idx == start_idx { break }
          }
-         auto outcome = Option<'V>::None
+         auto outcome = Option<V>::None
          return cede outcome
     }
 
@@ -374,8 +374,8 @@ impl<'K, 'V> HashMap<'K, 'V> {
             loop i < self.cap {
                 auto *m_ptr# = self.meta.unsafe_get(i) as *u8
                 if m_ptr == 1 {
-                    auto '_old_k = hashmap_take_raw_element<'K>(self.keys.*buf, i, *m_ptr)
-                    auto '_old_v = hashmap_take_raw_element<'V>(self.vals.*buf, i, *m_ptr)
+                    auto _old_k = hashmap_take_raw_element<K>(self.keys.*buf, i, *m_ptr)
+                    auto _old_v = hashmap_take_raw_element<V>(self.vals.*buf, i, *m_ptr)
                     m_ptr = 0
                 } else {
                     if m_ptr == 2 {
@@ -390,18 +390,18 @@ impl<'K, 'V> HashMap<'K, 'V> {
 
 }
 
-impl<'K, 'V> HashMap<'K, 'V>
+impl<K, V> HashMap<K, V>
 where:
-    'V: morphology borrow_extendable
+    V: morphology borrow_extendable
 {
     /// Returns a borrowed value on hit, or the operation outcome `miss`.
     /// Unlike Option, this surface is intended for immediate branch/forward
     /// control flow rather than storing absence as data.
-    pub fn lookup(self, 'key: K) -> &'V | miss
+    pub fn lookup(self, key: K) -> &V | miss
     effects: return <- self {
          auto capacity = self.cap
          if capacity == 0 { return miss }
-         auto idx# = ('key.hash() as usize) & (capacity - 1)
+         auto idx# = (key.hash() as usize) & (capacity - 1)
          auto start_idx = idx
 
          loop true {
@@ -411,9 +411,9 @@ where:
                      return miss
                  }
                  if m_ptr == 1 {
-                     auto *'k_ptr# = self.keys.unsafe_get(idx) as *K
-                     if 'k_ptr.eq('key) {
-                         return &'(self.vals.buf[idx])
+                     auto *k_ptr# = self.keys.unsafe_get(idx) as *K
+                     if k_ptr.eq(key) {
+                         return &(self.vals.buf[idx])
                      }
                  }
              }
@@ -426,12 +426,12 @@ where:
     }
 }
 
-impl<'K, 'V> HashMap<'K, 'V>@Iterable {
-    type Iter = HashMapIterator<'K, 'V>
+impl<K, V> HashMap<K, V>@Iterable {
+    type Iter = HashMapIterator<K, V>
 
     pub fn iter(self) -> Iter <- self {
         unsafe {
-            return HashMapIterator<'K, 'V>(
+            return HashMapIterator<K, V>(
                  &keys = (self.keys.*buf as &[K]),
                  &vals = (self.vals.*buf as &[V]),
                  &meta = (self.meta.*buf as &[u8]),
@@ -442,60 +442,60 @@ impl<'K, 'V> HashMap<'K, 'V>@Iterable {
     }
 }
 
-pub shape Entry<'K, 'V> (
-    *'key: K,
-    *'val: V
+pub shape Entry<K, V> (
+    *key: K,
+    *val: V
 )
 
-impl<'K, 'V> Entry<'K, 'V>
+impl<K, V> Entry<K, V>
 where:
-    'K: morphology raw_extendable
-    'V: morphology raw_extendable
+    K: morphology raw_extendable
+    V: morphology raw_extendable
 {
-    pub fn key(self) -> *'K { return self.*key } 
-    pub fn val(self) -> *'V { return self.*val }
+    pub fn key(self) -> *K { return self.*key }
+    pub fn val(self) -> *V { return self.*val }
 }
 
-pub shape EntryRef<'K, 'V> (
-    &'key: K,
-    &'val: V
+pub shape EntryRef<K, V> (
+    &key: K,
+    &val: V
 )
 
-impl<'K, 'V> EntryRef<'K, 'V>
+impl<K, V> EntryRef<K, V>
 where:
-    'K: morphology borrow_extendable
-    'V: morphology borrow_extendable
+    K: morphology borrow_extendable
+    V: morphology borrow_extendable
 {
-    pub fn key(self) -> &'K 
+    pub fn key(self) -> &K
     effects: return <- self {
         return self.&key
     }
     
-    pub fn val(self) -> &'V 
+    pub fn val(self) -> &V
     effects: return <- self {
         return self.&val
     }
 }
 
-pub alias MapResult<'K, 'V> = Option<Entry<'K, 'V>>
+pub alias MapResult<K, V> = Option<Entry<K, V>>
 
-pub shape HashMapIterator<'K, 'V> (
-    &keys: ['K],
-    &vals: ['V],
+pub shape HashMapIterator<K, V> (
+    &keys: [K],
+    &vals: [V],
     &meta: [u8],
     cap: usize,
     pos#: usize
 )
 
-impl<'K, 'V> HashMapIterator<'K, 'V>@Encap {
+impl<K, V> HashMapIterator<K, V>@Encap {
     pub keys, vals, meta, cap, pos
     fn drop(self#) {}
     
 }
 
-impl<'K, 'V> HashMapIterator<'K, 'V> {
-    pub fn clone(self) -> HashMapIterator<'K, 'V> <- self {
-        return HashMapIterator<'K, 'V>(
+impl<K, V> HashMapIterator<K, V> {
+    pub fn clone(self) -> HashMapIterator<K, V> <- self {
+        return HashMapIterator<K, V>(
             &keys = self.&keys,
             &vals = self.&vals,
             &meta = self.&meta,
@@ -505,12 +505,12 @@ impl<'K, 'V> HashMapIterator<'K, 'V> {
     }
 }
 
-impl<'K, 'V> HashMapIterator<'K, 'V>@Iterator
+impl<K, V> HashMapIterator<K, V>@Iterator
 where:
-    'K: morphology raw_extendable
-    'V: morphology raw_extendable
+    K: morphology raw_extendable
+    V: morphology raw_extendable
 {
-    type Item = Entry<'K, 'V>
+    type Item = Entry<K, V>
 
     pub fn next(self#) -> Option<Item> {
         unsafe {
@@ -518,7 +518,7 @@ where:
                 if self.meta[self.pos] == 1 {
                     auto p = self.pos
                     self.pos += 1
-                    return Option<Item>::Some(Entry<'K, 'V>(
+                    return Option<Item>::Some(Entry<K, V>(
                         *key = (&self.keys[p] as *K),
                         *val = (&self.vals[p] as *V)
                     ))
@@ -530,12 +530,12 @@ where:
     }
 }
 
-impl<'K, 'V> HashMapIterator<'K, 'V>@BorrowIterator
+impl<K, V> HashMapIterator<K, V>@BorrowIterator
 where:
-    'K: morphology borrow_extendable
-    'V: morphology borrow_extendable
+    K: morphology borrow_extendable
+    V: morphology borrow_extendable
 {
-    type BorrowedItem = EntryRef<'K, 'V>
+    type BorrowedItem = EntryRef<K, V>
 
     pub fn next_ref(self#) -> Option<BorrowedItem> <- self {
         unsafe {
@@ -543,9 +543,9 @@ where:
                 if self.meta[self.pos] == 1 {
                     auto p = self.pos
                     self.pos += 1
-                    return Option<BorrowedItem>::Some(EntryRef<'K, 'V>(
-                        &key = &'(self.keys[p]),
-                        &val = &'(self.vals[p])
+                    return Option<BorrowedItem>::Some(EntryRef<K, V>(
+                        &key = &(self.keys[p]),
+                        &val = &(self.vals[p])
                     ))
                 }
                 self.pos += 1

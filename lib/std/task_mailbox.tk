@@ -17,86 +17,86 @@ impl HostThreadAffinity@Encap {
 
 // Values move from workers to the host thread.  They must be Send, but the
 // sender cannot carry a UI object or a borrowed closure across the boundary.
-pub shape HostMailboxSender<'T: @Send> (
-    sender#: Sender<'T>
+pub shape HostMailboxSender<T: @Send> (
+    sender#: Sender<T>
 )
 
-impl<'T: @Send> HostMailboxSender<'T>@Send {}
+impl<T: @Send> HostMailboxSender<T>@Send {}
 
-impl<'T: @Send> HostMailboxSender<'T> {
-    pub fn clone(self#) -> HostMailboxSender<'T> {
-        return HostMailboxSender<'T>(sender = cede self.sender#.clone())
+impl<T: @Send> HostMailboxSender<T> {
+    pub fn clone(self#) -> HostMailboxSender<T> {
+        return HostMailboxSender<T>(sender = cede self.sender#.clone())
     }
 
-    pub fn post(self#, message: cede 'T) -> Result<(), string> {
+    pub fn post(self#, message: cede T) -> Result<(), string> {
         auto sent = self.sender#.send(cede message)
         match cede sent {
             auto Result<(), Error>::Ok(_) => return Result<(), string>::Ok(())
-            auto Result<(), Error>::Err('error) => {
-                return Result<(), string>::Err(cede 'error.message)
+            auto Result<(), Error>::Err(error) => {
+                return Result<(), string>::Err(cede error.message)
             }
             _ => return Result<(), string>::Err(string::from("invalid host mailbox send result"))
         }
     }
 }
 
-pub shape HostMailboxPoll<'T: @Send> (
-    Message('T) = 1 |
+pub shape HostMailboxPoll<T: @Send> (
+    Message(T) = 1 |
     Empty = 2 |
     Closed = 3
 )
 
-pub shape HostMailboxInbox<'T: @Send> (
-    receiver#: Receiver<'T>,
+pub shape HostMailboxInbox<T: @Send> (
+    receiver#: Receiver<T>,
     thread_affinity: HostThreadAffinity
 )
 
-impl<'T: @Send> HostMailboxInbox<'T> {
+impl<T: @Send> HostMailboxInbox<T> {
     // This is non-blocking so applications can drain it after every bounded
     // host/executor turn without introducing a second wait loop.
-    pub fn try_next(self#) -> Result<HostMailboxPoll<'T>, string> {
+    pub fn try_next(self#) -> Result<HostMailboxPoll<T>, string> {
         auto received = self.receiver#.try_recv()
         match cede received {
-            auto Result<Option<Option<'T> >, Error>::Err('error) => {
-                return Result<HostMailboxPoll<'T>, string>::Err(cede 'error.message)
+            auto Result<Option<Option<T> >, Error>::Err(error) => {
+                return Result<HostMailboxPoll<T>, string>::Err(cede error.message)
             }
-            auto Result<Option<Option<'T> >, Error>::Ok('state) => {
-                match cede 'state {
-                    auto Option<Option<'T> >::None() => {
-                        return Result<HostMailboxPoll<'T>, string>::Ok(HostMailboxPoll<'T>::Empty)
+            auto Result<Option<Option<T> >, Error>::Ok(state) => {
+                match cede state {
+                    auto Option<Option<T> >::None() => {
+                        return Result<HostMailboxPoll<T>, string>::Ok(HostMailboxPoll<T>::Empty)
                     }
-                    auto Option<Option<'T> >::Some('item) => {
-                        match cede 'item {
-                            auto Option<'T>::Some('message) => {
-                                return Result<HostMailboxPoll<'T>, string>::Ok(
-                                    HostMailboxPoll<'T>::Message(cede 'message)
+                    auto Option<Option<T> >::Some(item) => {
+                        match cede item {
+                            auto Option<T>::Some(message) => {
+                                return Result<HostMailboxPoll<T>, string>::Ok(
+                                    HostMailboxPoll<T>::Message(cede message)
                                 )
                             }
-                            auto Option<'T>::None() => {
-                                return Result<HostMailboxPoll<'T>, string>::Ok(HostMailboxPoll<'T>::Closed)
+                            auto Option<T>::None() => {
+                                return Result<HostMailboxPoll<T>, string>::Ok(HostMailboxPoll<T>::Closed)
                             }
                         }
                     }
                 }
             }
-            _ => return Result<HostMailboxPoll<'T>, string>::Err(string::from("invalid host mailbox receive result"))
+            _ => return Result<HostMailboxPoll<T>, string>::Err(string::from("invalid host mailbox receive result"))
         }
     }
 }
 
-pub shape HostMailbox<'T: @Send> (
-    sender#: HostMailboxSender<'T>,
-    inbox#: HostMailboxInbox<'T>
+pub shape HostMailbox<T: @Send> (
+    sender#: HostMailboxSender<T>,
+    inbox#: HostMailboxInbox<T>
 )
 
 // Construct this beside the host event source.  Moving HostMailboxInbox into
 // a worker is rejected by its HostThreadAffinity member; move or clone only
 // HostMailboxSender when a worker must publish an owned update.
-pub fn host_mailbox<'T: @Send>() -> HostMailbox<'T> {
-    auto pair = channel<'T>()
-    return HostMailbox<'T>(
-        sender = HostMailboxSender<'T>(sender = cede pair.tx),
-        inbox = HostMailboxInbox<'T>(
+pub fn host_mailbox<T: @Send>() -> HostMailbox<T> {
+    auto pair = channel<T>()
+    return HostMailbox<T>(
+        sender = HostMailboxSender<T>(sender = cede pair.tx),
+        inbox = HostMailboxInbox<T>(
             receiver = cede pair.rx,
             thread_affinity = HostThreadAffinity(*marker = null as nul *void)
         )

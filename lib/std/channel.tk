@@ -7,8 +7,8 @@ import core/intrinsics/atomic::*
 import core/option::{Option}
 
 /// The shared state protected by the channel Mutex
-pub shape WaitQueue<'T: @Send>(
-    queue#: RingCore<'T>,
+pub shape WaitQueue<T: @Send>(
+    queue#: RingCore<T>,
     closed#: bool,
     senders#: i32,
     receivers#: i32,
@@ -16,28 +16,28 @@ pub shape WaitQueue<'T: @Send>(
 )
 
 /// The channel synchronization core
-pub shape AsyncChannel<'T: @Send>(
-    state#: Mutex<WaitQueue<'T> >,
-    cond_not_empty#: CondVar<WaitQueue<'T> >,
-    cond_not_full#: CondVar<WaitQueue<'T> >   // For future bounded channels
+pub shape AsyncChannel<T: @Send>(
+    state#: Mutex<WaitQueue<T> >,
+    cond_not_empty#: CondVar<WaitQueue<T> >,
+    cond_not_full#: CondVar<WaitQueue<T> >   // For future bounded channels
 )
 
 /// The sender half of a channel
-pub shape Sender<'T: @Send>(
-    ~channel#: AsyncChannel<'T>
+pub shape Sender<T: @Send>(
+    ~channel#: AsyncChannel<T>
 )
-impl<'T: @Send> Sender<'T>@Send {}
+impl<T: @Send> Sender<T>@Send {}
 
 /// The receiver half of a channel
-pub shape Receiver<'T: @Send>(
-    ~channel#: AsyncChannel<'T>
+pub shape Receiver<T: @Send>(
+    ~channel#: AsyncChannel<T>
 )
-impl<'T: @Send> Receiver<'T>@Send {}
+impl<T: @Send> Receiver<T>@Send {}
 
-impl<'T: @Send> WaitQueue<'T> {
-    pub fn new(capacity: i32) -> WaitQueue<'T> {
-        return WaitQueue<'T>(
-            queue = RingCore<'T>::new(),
+impl<T: @Send> WaitQueue<T> {
+    pub fn new(capacity: i32) -> WaitQueue<T> {
+        return WaitQueue<T>(
+            queue = RingCore<T>::new(),
             closed = false,
             senders = 1,
             receivers = 1,
@@ -46,51 +46,51 @@ impl<'T: @Send> WaitQueue<'T> {
     }
 }
 
-pub shape ChannelPair<'T: @Send>(
-    tx#: Sender<'T>,
-    rx#: Receiver<'T>
+pub shape ChannelPair<T: @Send>(
+    tx#: Sender<T>,
+    rx#: Receiver<T>
 )
 
-pub fn channel<'T: @Send>() -> ChannelPair<'T> {
-    auto ~inner# = new AsyncChannel<'T>(
-        state = Mutex<WaitQueue<'T> >::new(WaitQueue<'T>::new(-1:i32)),
-        cond_not_empty = CondVar<WaitQueue<'T> >::new(),
-        cond_not_full = CondVar<WaitQueue<'T> >::new()
+pub fn channel<T: @Send>() -> ChannelPair<T> {
+    auto ~inner# = new AsyncChannel<T>(
+        state = Mutex<WaitQueue<T> >::new(WaitQueue<T>::new(-1:i32)),
+        cond_not_empty = CondVar<WaitQueue<T> >::new(),
+        cond_not_full = CondVar<WaitQueue<T> >::new()
     )
     
-    return ChannelPair<'T>(
-        tx=Sender<'T>(~channel = ~inner),
-        rx=Receiver<'T>(~channel = ~inner)
+    return ChannelPair<T>(
+        tx=Sender<T>(~channel = ~inner),
+        rx=Receiver<T>(~channel = ~inner)
     )
 }
 
-pub fn sync_channel<'T: @Send>(bound: i32) -> ChannelPair<'T> {
-    auto ~inner# = new AsyncChannel<'T>(
-        state = Mutex<WaitQueue<'T> >::new(WaitQueue<'T>::new(bound)),
-        cond_not_empty = CondVar<WaitQueue<'T> >::new(),
-        cond_not_full = CondVar<WaitQueue<'T> >::new()
+pub fn sync_channel<T: @Send>(bound: i32) -> ChannelPair<T> {
+    auto ~inner# = new AsyncChannel<T>(
+        state = Mutex<WaitQueue<T> >::new(WaitQueue<T>::new(bound)),
+        cond_not_empty = CondVar<WaitQueue<T> >::new(),
+        cond_not_full = CondVar<WaitQueue<T> >::new()
     )
     
-    return ChannelPair<'T>(
-        tx=Sender<'T>(~channel = ~inner),
-        rx=Receiver<'T>(~channel = ~inner)
+    return ChannelPair<T>(
+        tx=Sender<T>(~channel = ~inner),
+        rx=Receiver<T>(~channel = ~inner)
     )
 }
 
-impl<'T: @Send> Sender<'T> {
-    pub fn clone(self#) -> Sender<'T> {
+impl<T: @Send> Sender<T> {
+    pub fn clone(self#) -> Sender<T> {
         auto lguard_res = self.channel.state.lock()
         if lguard_res.is_err() {
             assert(false, "Mutex lock failed during Sender clone")
-            return Sender<'T>(~channel = self.~channel)
+            return Sender<T>(~channel = self.~channel)
         }
         auto lguard = lguard_res.unwrap()
         auto &q# = lguard.borrow_mut()
         q.senders = q.senders + 1
-        return Sender<'T>(~channel = self.~channel)
+        return Sender<T>(~channel = self.~channel)
     }
     
-    pub fn send(self#, val: cede 'T) -> Result<(), Error> {
+    pub fn send(self#, val: cede T) -> Result<(), Error> {
         auto lguard = self.channel.state.lock()!
         
         auto &q# = lguard.borrow_mut()
@@ -114,21 +114,21 @@ impl<'T: @Send> Sender<'T> {
 
 }
 
-impl<'T: @Send> Receiver<'T> {
+impl<T: @Send> Receiver<T> {
     pub fn get_raw_addr(self#) -> Addr {
         unsafe {
-            auto *mut_ptr = ((*self) as *Receiver<'T>)
+            auto *mut_ptr = ((*self) as *Receiver<T>)
             return *mut_ptr as Addr
         }
     }
     
-    pub fn recv(self#) -> Result<Option<'T>, Error> {
+    pub fn recv(self#) -> Result<Option<T>, Error> {
         auto lguard = self.channel.state.lock()!
 
         auto &q# = lguard.borrow_mut()
         loop q.queue.len() == 0 {
             if q.closed && q.queue.len() == 0 {
-                return Result<Option<'T>, Error>::Ok(Option<'T>::None())
+                return Result<Option<T>, Error>::Ok(Option<T>::None())
             }
             self.channel.cond_not_empty.wait_cond(lguard)
         }
@@ -137,10 +137,10 @@ impl<'T: @Send> Receiver<'T> {
         if q.capacity >= 0 {
             self.channel.cond_not_full.notify_one()
         }
-        return Result<Option<'T>, Error>::Ok(cede item)
+        return Result<Option<T>, Error>::Ok(cede item)
     }
 
-    pub fn try_recv(self#) -> Result<Option<Option<'T> >, Error> {
+    pub fn try_recv(self#) -> Result<Option<Option<T> >, Error> {
         auto lguard = self.channel.state.lock()!
         auto &q# = lguard.borrow_mut()
         if q.queue.len() > 0 {
@@ -148,17 +148,17 @@ impl<'T: @Send> Receiver<'T> {
             if q.capacity >= 0 {
                 self.channel.cond_not_full.notify_one()
             }
-            return Result<Option<Option<'T> >, Error>::Ok(Option<Option<'T> >::Some(cede item))
+            return Result<Option<Option<T> >, Error>::Ok(Option<Option<T> >::Some(cede item))
         }
         if q.closed {
-            return Result<Option<Option<'T> >, Error>::Ok(Option<Option<'T> >::Some(Option<'T>::None()))
+            return Result<Option<Option<T> >, Error>::Ok(Option<Option<T> >::Some(Option<T>::None()))
         }
-        return Result<Option<Option<'T> >, Error>::Ok(Option<Option<'T> >::None())
+        return Result<Option<Option<T> >, Error>::Ok(Option<Option<T> >::None())
     }
 }
 
 // Drop implementations for sender/receiver cloning
-impl<'T> Sender<'T>@Encap {
+impl<T> Sender<T>@Encap {
     fn drop(self#) {
         auto lguard_res = self.channel.state.lock()
         if lguard_res.is_err() {
@@ -175,20 +175,20 @@ impl<'T> Sender<'T>@Encap {
     
 }
 
-impl<'T: @Send> Sender<'T> {
-    pub fn clone(self) -> Sender<'T> {
+impl<T: @Send> Sender<T> {
+    pub fn clone(self) -> Sender<T> {
         auto lguard_res = self.channel.state.lock()
         if lguard_res.is_err() {
-            return Sender<'T>(~channel = self.~channel)
+            return Sender<T>(~channel = self.~channel)
         }
         auto lguard = lguard_res.unwrap()
         auto &q# = lguard.borrow_mut()
         q.senders = q.senders + 1
-        return Sender<'T>(~channel = self.~channel)
+        return Sender<T>(~channel = self.~channel)
     }
 }
 
-impl<'T> Receiver<'T>@Encap {
+impl<T> Receiver<T>@Encap {
     fn drop(self#) {
         auto lguard_res = self.channel.state.lock()
         if lguard_res.is_err() {

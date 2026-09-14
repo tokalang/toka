@@ -6,17 +6,17 @@ import sys/libc::*
 import std/io::{@Reader, @Writer}
 
 /// BufferedReader wraps a reader and buffers its input.
-pub shape BufferedReader<'R: @Reader> (
-    'reader: R,
+pub shape BufferedReader<R: @Reader> (
+    reader: R,
     buf: [u8; 4096],
     pos: usize,
     cap: usize
 )
 
-impl<'R: @Reader> BufferedReader<'R> {
-    pub fn new(reader: cede 'R) -> BufferedReader<'R> {
+impl<R: @Reader> BufferedReader<R> {
+    pub fn new(reader: cede R) -> BufferedReader<R> {
         auto init_buf = [0:u8; 4096]
-        return BufferedReader<'R>(
+        return BufferedReader<R>(
             reader = cede reader,
             buf = init_buf,
             pos = 0 as usize,
@@ -24,9 +24,9 @@ impl<'R: @Reader> BufferedReader<'R> {
         )
     }
 
-    pub fn make(reader: cede 'R) -> ^BufferedReader<'R> {
+    pub fn make(reader: cede R) -> ^BufferedReader<R> {
         auto init_buf = [0:u8; 4096]
-        auto ^result = new BufferedReader<'R>(
+        auto ^result = new BufferedReader<R>(
             reader = cede reader,
             buf = init_buf,
             pos = 0 as usize,
@@ -137,32 +137,32 @@ impl<'R: @Reader> BufferedReader<'R> {
     }
 }
 
-impl<'R: @Reader> BufferedReader<'R>@Reader {
+impl<R: @Reader> BufferedReader<R>@Reader {
     pub fn read_bytes(self#, *buf: u8, len: usize) -> Result<usize, string> {
         return self#.read_bytes(*buf, len)
     }
 }
 
 /// BufferedWriter wraps a writer and buffers its output.
-pub shape BufferedWriter<'W: @Writer> (
-    'writer: W,
+pub shape BufferedWriter<W: @Writer> (
+    writer: W,
     buf: [u8; 4096],
     pos: usize
 )
 
-impl<'W: @Writer> BufferedWriter<'W> {
-    pub fn new(writer: cede 'W) -> BufferedWriter<'W> {
+impl<W: @Writer> BufferedWriter<W> {
+    pub fn new(writer: cede W) -> BufferedWriter<W> {
         auto init_buf = [0:u8; 4096]
-        return BufferedWriter<'W>(
+        return BufferedWriter<W>(
             writer = cede writer,
             buf = init_buf,
             pos = 0 as usize
         )
     }
 
-    pub fn make(writer: cede 'W) -> ^BufferedWriter<'W> {
+    pub fn make(writer: cede W) -> ^BufferedWriter<W> {
         auto init_buf = [0:u8; 4096]
-        auto ^result = new BufferedWriter<'W>(
+        auto ^result = new BufferedWriter<W>(
             writer = cede writer,
             buf = init_buf,
             pos = 0 as usize
@@ -229,7 +229,7 @@ impl<'W: @Writer> BufferedWriter<'W> {
     }
 }
 
-impl<'W: @Writer> BufferedWriter<'W>@Writer {
+impl<W: @Writer> BufferedWriter<W>@Writer {
     pub fn write_bytes(self#, *buf: u8, len: usize) -> Result<usize, string> {
         return self#.write_bytes(*buf, len)
     }

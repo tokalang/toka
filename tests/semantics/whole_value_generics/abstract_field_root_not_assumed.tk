@@ -1,0 +1,9 @@
+shape Resource(value:i32)
+shape Slot<T>(value:T)
+fn invalid<T>(slot:Slot<T>) { auto &view = &(slot.^value) }
+fn main() -> i32 {
+    auto ^owner = new Resource(value=1)
+    auto slot = Slot<^Resource>(value=cede ^owner)
+    invalid<^Resource>(slot)
+    return 0
+}

@@ -11,12 +11,12 @@ import std/io::{println};
 extern fn __builtin_coro_current_handle() -> *void
 extern fn __builtin_coro_suspend() -> void
 
-pub shape RaceWinner<'T1, 'T2> (
-    First('T1) = 1 |
-    Second('T2) = 2
+pub shape RaceWinner<T1, T2> (
+    First(T1) = 1 |
+    Second(T2) = 2
 )
 
-pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>) -> async RaceWinner<'T1, 'T2> {
+pub fn race2<T1, T2>(cede first: TaskHandle<T1>, cede second: TaskHandle<T2>) -> async RaceWinner<T1, T2> {
     auto owned_first# = cede first
     auto owned_second# = cede second
 
@@ -39,12 +39,12 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
         }
 
         // Subscribe completion notifications for first and second tasks
-        auto sub1 = task_subscribe_completion<'T1>(owned_first, id1, gen1)
-        auto sub2 = task_subscribe_completion<'T2>(owned_second, id2, gen2)
+        auto sub1 = task_subscribe_completion<T1>(owned_first, id1, gen1)
+        auto sub2 = task_subscribe_completion<T2>(owned_second, id2, gen2)
 
         if !sub1 || !sub2 {
-            if sub1 { task_unsubscribe_completion<'T1>(owned_first, id1, gen1) }
-            if sub2 { task_unsubscribe_completion<'T2>(owned_second, id2, gen2) }
+            if sub1 { task_unsubscribe_completion<T1>(owned_first, id1, gen1) }
+            if sub2 { task_unsubscribe_completion<T2>(owned_second, id2, gen2) }
             toka_wait_registry_release(id1, gen1)
             toka_wait_registry_release(id2, gen2)
             toka_task_abort_suspend(*coro_handle)
@@ -53,8 +53,8 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
 
         // Completion subscriptions are installed before activation so even
         // cold tasks that complete immediately cannot lose their wakeup.
-        auto nul *first_start_tcb = task_get_coro_handle<'T1>(owned_first)
-        auto nul *second_start_tcb = task_get_coro_handle<'T2>(owned_second)
+        auto nul *first_start_tcb = task_get_coro_handle<T1>(owned_first)
+        auto nul *second_start_tcb = task_get_coro_handle<T2>(owned_second)
         auto registered_first# = false
         auto registered_second# = false
         if *first_start_tcb != null {
@@ -74,8 +74,8 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
                 auto *live_second = second_start_tcb.unwrap()
                 toka_task_unregister_cancel_child(*coro_handle, *live_second)
             }
-            task_unsubscribe_completion<'T1>(owned_first, id1, gen1)
-            task_unsubscribe_completion<'T2>(owned_second, id2, gen2)
+            task_unsubscribe_completion<T1>(owned_first, id1, gen1)
+            task_unsubscribe_completion<T2>(owned_second, id2, gen2)
             toka_wait_registry_release(id1, gen1)
             toka_wait_registry_release(id2, gen2)
             toka_task_abort_suspend(*coro_handle)
@@ -100,8 +100,8 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
 
     if winner1 {
         // First task won: cancel second task
-        task_cancel<'T2>(owned_second)
-        auto nul *second_tcb = task_get_coro_handle<'T2>(owned_second)
+        task_cancel<T2>(owned_second)
+        auto nul *second_tcb = task_get_coro_handle<T2>(owned_second)
         if *second_tcb != null {
             auto *live_second = second_tcb.unwrap()
             assert(toka_task_try_retain(*live_second) != 0,
@@ -111,8 +111,8 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
             }
             toka_task_release(*live_second)
         }
-        auto nul *first_cleanup_tcb = task_get_coro_handle<'T1>(owned_first)
-        auto nul *second_cleanup_tcb = task_get_coro_handle<'T2>(owned_second)
+        auto nul *first_cleanup_tcb = task_get_coro_handle<T1>(owned_first)
+        auto nul *second_cleanup_tcb = task_get_coro_handle<T2>(owned_second)
         if *first_cleanup_tcb != null {
             auto *live_first = first_cleanup_tcb.unwrap()
             toka_task_unregister_cancel_child(*coro_handle, *live_first)
@@ -124,11 +124,11 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
         toka_wait_registry_release(id1, gen1)
         toka_wait_registry_release(id2, gen2)
         auto res1 = owned_first.await
-        return RaceWinner<'T1, 'T2>::First(cede res1)
+        return RaceWinner<T1, T2>::First(cede res1)
     } else {
         // Second task won: cancel first task
-        task_cancel<'T1>(owned_first)
-        auto nul *first_tcb = task_get_coro_handle<'T1>(owned_first)
+        task_cancel<T1>(owned_first)
+        auto nul *first_tcb = task_get_coro_handle<T1>(owned_first)
         if *first_tcb != null {
             auto *live_first = first_tcb.unwrap()
             assert(toka_task_try_retain(*live_first) != 0,
@@ -138,8 +138,8 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
             }
             toka_task_release(*live_first)
         }
-        auto nul *first_cleanup_tcb = task_get_coro_handle<'T1>(owned_first)
-        auto nul *second_cleanup_tcb = task_get_coro_handle<'T2>(owned_second)
+        auto nul *first_cleanup_tcb = task_get_coro_handle<T1>(owned_first)
+        auto nul *second_cleanup_tcb = task_get_coro_handle<T2>(owned_second)
         if *first_cleanup_tcb != null {
             auto *live_first = first_cleanup_tcb.unwrap()
             toka_task_unregister_cancel_child(*coro_handle, *live_first)
@@ -151,7 +151,7 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
         toka_wait_registry_release(id1, gen1)
         toka_wait_registry_release(id2, gen2)
         auto res2 = owned_second.await
-        return RaceWinner<'T1, 'T2>::Second(cede res2)
+        return RaceWinner<T1, T2>::Second(cede res2)
     }
 }
 
@@ -228,11 +228,11 @@ impl TaskScope {
 // Consume a typed cold task into a runtime registry without exposing its TCB
 // or requiring the caller to name its result type.  A rejected enrollment
 // returns the untouched handle: Close won before lifecycle authority moved.
-pub fn spawn_into<'T>(scope#: TaskScope, cede task: TaskHandle<'T>) -> Result<(), TaskHandle<'T>> {
+pub fn spawn_into<T>(scope#: TaskScope, cede task: TaskHandle<T>) -> Result<(), TaskHandle<T>> {
     auto owned# = cede task
-    auto nul *tcb_ptr = task_get_coro_handle<'T>(owned)
+    auto nul *tcb_ptr = task_get_coro_handle<T>(owned)
     if *tcb_ptr == null as nul *void {
-        return Result<(), TaskHandle<'T>>::Err(cede owned)
+        return Result<(), TaskHandle<T>>::Err(cede owned)
     }
 
     // The runtime arbiter linearizes Open enrollment against Closing. On
@@ -240,9 +240,9 @@ pub fn spawn_into<'T>(scope#: TaskScope, cede task: TaskHandle<'T>) -> Result<()
     // before activation so its drop hook cannot detach that transferred owner.
     auto *live_tcb = tcb_ptr.unwrap()
     if toka_task_scope_try_enroll(scope.*registry, *live_tcb) != 1 {
-        return Result<(), TaskHandle<'T>>::Err(cede owned)
+        return Result<(), TaskHandle<T>>::Err(cede owned)
     }
     owned.*coro_handle = null as nul *void
     toka_task_start(*live_tcb)
-    return Result<(), TaskHandle<'T>>::Ok(())
+    return Result<(), TaskHandle<T>>::Ok(())
 }

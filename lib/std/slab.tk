@@ -41,22 +41,22 @@ impl SlabID {
     }
 }
 
-shape SlabEntry<'T> (
-    val#: Option<'T> = Option<'T>::None,
+shape SlabEntry<T> (
+    val#: Option<T> = Option<T>::None,
     generation#: u32 = 0,
     next_free#: usize = 0
 )
 
-pub shape Slab<'T> (
-    entries#: Vec<SlabEntry<'T> > = Vec<SlabEntry<'T> >::new(),
+pub shape Slab<T> (
+    entries#: Vec<SlabEntry<T> > = Vec<SlabEntry<T> >::new(),
     free_head#: usize = 0xFFFFFFFF:usize,
     len#: usize = 0
 )
 
-impl<'T> Slab<'T> {
-    pub fn new() -> Slab<'T> {
-        return Slab<'T>(
-            entries = Vec<SlabEntry<'T> >::new(),
+impl<T> Slab<T> {
+    pub fn new() -> Slab<T> {
+        return Slab<T>(
+            entries = Vec<SlabEntry<T> >::new(),
             free_head = 0xFFFFFFFF:usize,
             len = 0
         )
@@ -86,7 +86,7 @@ impl<'T> Slab<'T> {
                 // Resource assignment reclaims the previous Option payload.
                 // Keep the slot itself so that clear cannot revive a stale
                 // SlabID by recreating generation 1.
-                entry.val = Option<'T>::None
+                entry.val = Option<T>::None
                 if entry.generation < 0xFFFFFFFE:u32 {
                     entry.next_free = next_free
                     next_free = index
@@ -100,7 +100,7 @@ impl<'T> Slab<'T> {
         self.len = 0
     }
 
-    pub fn insert(self#, cede 'val: T) -> SlabID {
+    pub fn insert(self#, cede val: T) -> SlabID {
         auto head = self.free_head
         auto idx# = 0:usize
         auto gen# = 0:usize
@@ -108,8 +108,8 @@ impl<'T> Slab<'T> {
         if head == 0xFFFFFFFF:usize {
             idx = self.entries.len()
             gen = 1:usize
-            auto entry = SlabEntry<'T>(
-                val = Option<'T>::None,
+            auto entry = SlabEntry<T>(
+                val = Option<T>::None,
                 generation = 1:u32,
                 next_free = 0xFFFFFFFF:usize
             )
@@ -126,7 +126,7 @@ impl<'T> Slab<'T> {
         
         unsafe {
             auto *#target# = self.entries.unsafe_get(idx)
-            target.val = Option<'T>::Some(cede 'val)
+            target.val = Option<T>::Some(cede val)
         }
         
         self.len = self.len + 1
@@ -134,18 +134,18 @@ impl<'T> Slab<'T> {
         return cede result
     }
 
-    pub fn remove(self#, id: SlabID) -> Option<'T> {
+    pub fn remove(self#, id: SlabID) -> Option<T> {
         auto idx = id.index()
         if idx >= self.entries.len() {
-            return Option<'T>::None
+            return Option<T>::None
         }
         unsafe {
             auto *#entry# = self.entries.unsafe_get(idx)
             if entry.generation as usize != id.generation() {
-                return Option<'T>::None
+                return Option<T>::None
             }
             if entry.val.is_none() {
-                return Option<'T>::None
+                return Option<T>::None
             }
             
             auto val = cede entry.val
@@ -167,54 +167,54 @@ impl<'T> Slab<'T> {
         }
     }
 
-    pub fn get(self, id: SlabID) -> Option<&'T> <- self {
+    pub fn get(self, id: SlabID) -> Option<&T> <- self {
         auto idx = id.index()
         if idx >= self.entries.len() {
-            return Option<&'T>::None
+            return Option<&T>::None
         }
         {
             auto &entry = self.entries.borrow(idx)
             if entry.generation as usize != id.generation() {
-                return Option<&'T>::None
+                return Option<&T>::None
             }
             match entry.val {
                 auto Some(&val) => {
-                    return Option<&'T>::Some(&val)
+                    return Option<&T>::Some(&val)
                 }
                 None => {
-                    return Option<&'T>::None
+                    return Option<&T>::None
                 }
             }
         }
     }
 
-    pub fn get_mut(self#, id: SlabID) -> Option<&'T#> <- self {
+    pub fn get_mut(self#, id: SlabID) -> Option<&T#> <- self {
         auto idx = id.index()
         if idx >= self.entries.len() {
-            return Option<&'T#>::None
+            return Option<&T#>::None
         }
         {
             auto &entry# = self.entries#.borrow_mut(idx)
             if entry.generation as usize != id.generation() {
-                return Option<&'T#>::None
+                return Option<&T#>::None
             }
             match entry.val {
                 auto Some(&val#) => {
-                    return Option<&'T#>::Some(&val)
+                    return Option<&T#>::Some(&val)
                 }
                 None => {
-                    return Option<&'T#>::None
+                    return Option<&T#>::None
                 }
             }
         }
     }
 }
 
-impl<'T> Slab<'T>
+impl<T> Slab<T>
 where:
-    'T: morphology borrow_extendable
+    T: morphology borrow_extendable
 {
-    pub fn lookup(self, id: SlabID) -> &'T | miss
+    pub fn lookup(self, id: SlabID) -> &T | miss
     effects: return <- self {
         auto idx = id.index()
         if idx >= self.entries.len() {
@@ -232,7 +232,7 @@ where:
         }
     }
 
-    pub fn lookup_mut(self#, id: SlabID) -> &'T# | miss
+    pub fn lookup_mut(self#, id: SlabID) -> &T# | miss
     effects: return <- self {
         auto idx = id.index()
         if idx >= self.entries.len() {
@@ -251,7 +251,7 @@ where:
     }
 }
 
-impl<'T> Slab<'T>@Encap {
+impl<T> Slab<T>@Encap {
     fn drop(self#) {
         self#.clear()
     }

@@ -348,7 +348,8 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
 
   // Fallback for non-variable expressions or other op types
   std::shared_ptr<toka::Type> inner = rhsType;
-  if (Unary->Op == TokenType::Ampersand && !borrowsSelectedHandle && inner) {
+  if (Unary->Op == TokenType::Ampersand && !borrowsSelectedHandle &&
+      !Unary->RHS->IsAbstractWholeValue && inner) {
     auto soul = inner->getSoulType();
     if (soul) {
       inner = soul->withAttributes(m_ExpectedWritability, soul->IsNullable,

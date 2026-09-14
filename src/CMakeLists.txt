@@ -12,6 +12,7 @@ set(toka_frontend_sources
     Parser/Parser_Expr.cpp
     Sema/Sema.cpp
     Sema/Sema_Type.cpp
+    Sema/Sema_GenericValue.cpp
     Sema/Sema_Expr.cpp
     Sema/Sema_RawTake.cpp
     Sema/Sema_UnsafeRawConstruction.cpp

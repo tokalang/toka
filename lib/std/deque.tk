@@ -3,13 +3,13 @@ import core/option::{Option}
 import core/traits::{@Encap, @Dup}
 import core/types::{usize}
 
-pub shape VecDeque<'T> (
-    ring#: RingCore<'T> = RingCore<'T>::new()
+pub shape VecDeque<T> (
+    ring#: RingCore<T> = RingCore<T>::new()
 )
 
-impl<'T> VecDeque<'T> {
-    pub fn new() -> VecDeque<'T> {
-        return VecDeque<'T>(ring = RingCore<'T>::new())
+impl<T> VecDeque<T> {
+    pub fn new() -> VecDeque<T> {
+        return VecDeque<T>(ring = RingCore<T>::new())
     }
 
     pub fn len(self) -> usize {
@@ -24,31 +24,31 @@ impl<'T> VecDeque<'T> {
         self.ring#.clear()
     }
 
-    pub fn push_back(self#, cede 'val: T) {
-        self.ring#.push_back(cede 'val)
+    pub fn push_back(self#, cede val: T) {
+        self.ring#.push_back(cede val)
     }
 
-    pub fn push_front(self#, cede 'val: T) {
-        self.ring#.push_front(cede 'val)
+    pub fn push_front(self#, cede val: T) {
+        self.ring#.push_front(cede val)
     }
 
-    pub fn pop_back(self#) -> Option<'T> {
+    pub fn pop_back(self#) -> Option<T> {
         return self.ring#.pop_back()
     }
 
-    pub fn pop_front(self#) -> Option<'T> {
+    pub fn pop_front(self#) -> Option<T> {
         return self.ring#.pop_front()
     }
 
 }
 
-impl<'T: @Dup> VecDeque<'T> {
+impl<T: @Dup> VecDeque<T> {
     /// Duplicates an element without removing it.
-    pub fn get(self, index: usize) -> Option<'T> {
+    pub fn get(self, index: usize) -> Option<T> {
         return self.ring.get(index)
     }
 }
 
-impl<'T> VecDeque<'T>@Encap {
+impl<T> VecDeque<T>@Encap {
     fn drop(self#) {}
 }

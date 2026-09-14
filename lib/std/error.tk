@@ -16,9 +16,9 @@ pub shape IoError(
 )
 
 // Typed context preserves the original error instead of erasing it.
-pub shape ErrorContext<'E>(
+pub shape ErrorContext<E>(
     message: string,
-    'source: E
+    source: E
 )
 
 impl Error {
@@ -49,14 +49,14 @@ impl IoError {
     }
 }
 
-pub fn with_context<'T, 'E>(cede result: Result<'T, 'E>, message: string) -> Result<'T, ErrorContext<'E>> {
+pub fn with_context<T, E>(cede result: Result<T, E>, message: string) -> Result<T, ErrorContext<E>> {
     match cede result {
-        auto Result<'T, 'E>::Ok('value) => {
-            return Result<'T, ErrorContext<'E>>::Ok(cede 'value)
+        auto Result<T, E>::Ok(value) => {
+            return Result<T, ErrorContext<E>>::Ok(cede value)
         }
-        auto Result<'T, 'E>::Err('error) => {
-            return Result<'T, ErrorContext<'E>>::Err(
-                ErrorContext<'E>(message = message.clone(), source = cede 'error)
+        auto Result<T, E>::Err(error) => {
+            return Result<T, ErrorContext<E>>::Err(
+                ErrorContext<E>(message = message.clone(), source = cede error)
             )
         }
         _ => {

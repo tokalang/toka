@@ -61,7 +61,7 @@ impl TypeInfo@Encap {
 // ==========================================
 
 // ()
-pub fn reflect<'T>() -> TypeInfo {
+pub fn reflect<T>() -> TypeInfo {
     // [Compiler Hook] Sema  TypeInfo
     unsafe {
         auto dummy = uninit:TypeInfo
@@ -70,7 +70,7 @@ pub fn reflect<'T>() -> TypeInfo {
 }
 
 
-pub fn is_pointer<'T>() -> bool {
+pub fn is_pointer<T>() -> bool {
     // [Compiler Hook]
     return false
 }

@@ -183,7 +183,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
   if (!Pat)
     return;
 
-  auto targetObject = resolveType(toka::Type::fromString(TargetType), false);
+  auto targetObject = Pat->MatchedValueType ? Pat->MatchedValueType
+      : resolveType(toka::Type::fromString(TargetType), false);
   if (auto outcome =
           std::dynamic_pointer_cast<toka::MissOutcomeType>(targetObject)) {
     if (Pat->PatternKind == MatchArm::Pattern::Wildcard)
@@ -193,6 +194,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       return;
     if (Pat->PatternKind == MatchArm::Pattern::Variable &&
         Pat->Binding == MatchArm::Pattern::BindingOrigin::Fresh) {
+      Pat->MatchedValueType = outcome->PayloadType;
       checkPattern(Pat,
                    outcome->PayloadType
                        ? outcome->PayloadType->toString()
@@ -303,6 +305,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     
     for (auto &sub : Pat->SubPatterns) {
       CurrentScope = new Scope(originalScope);
+      sub->GenericContract = Pat->GenericContract;
+      sub->MatchedValueType = Pat->MatchedValueType;
       checkPattern(sub.get(), TargetType, SourceCapability, TargetPath, {}, TransfersOwnership);
       branchSymbols.push_back(CurrentScope->Symbols);
       Scope* temp = CurrentScope;
@@ -327,7 +331,9 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
         
         std::string t1 = sym1.TypeObj ? sym1.TypeObj->toString() : "";
         std::string t2 = sym2.TypeObj ? sym2.TypeObj->toString() : "";
-        if (t1 != t2 ||
+        const auto c1 = sym1.GenericContract ? sym1.GenericContract->Type->toCanonicalString() : "";
+        const auto c2 = sym2.GenericContract ? sym2.GenericContract->Type->toCanonicalString() : "";
+        if (t1 != t2 || c1 != c2 ||
             sym1.IsSoulMutable() != sym2.IsSoulMutable() ||
             sym1.IsHandleRebindable() != sym2.IsHandleRebindable() ||
             sym1.IsReference() != sym2.IsReference() ||
@@ -434,8 +440,9 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       break;
     }
 
-    auto expectedTypeObj = toka::Type::fromString(T);
-    bool isMorphicExempt = (!Pat->Name.empty() && Pat->Name[0] == '\'');
+    auto expectedTypeObj = Pat->MatchedValueType ? Pat->MatchedValueType : toka::Type::fromString(T);
+    Pat->IsAbstractWholeValue = Pat->GenericContract && Pat->GenericContract->isWholeValue();
+    bool isMorphicExempt = Pat->IsAbstractWholeValue || (!Pat->Name.empty() && Pat->Name[0] == '\'');
     if (expectedTypeObj->isReference() && !Pat->IsReference &&
         !isMorphicExempt) {
       DiagnosticEngine::report(
@@ -458,9 +465,11 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       fullType = "&";
     fullType += T;
 
-    if (!Pat->Name.empty() && Pat->Name[0] == '\'') {
+    if (isMorphicExempt) {
       Info.IsMorphicExempt = true;
     }
+    Info.GenericContract = Pat->GenericContract;
+    Info.IsAbstractWholeValue = Pat->IsAbstractWholeValue;
 
     bool bindingPayloadWritable = Pat->IsValueMutable;
     if (isMorphicExempt) {
@@ -474,6 +483,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     if (bindingPayloadWritable)
       fullType += "#";
     Info.TypeObj = toka::Type::fromString(fullType);
+    if (Pat->IsAbstractWholeValue && !Pat->IsReference) Info.TypeObj = expectedTypeObj;
     if (auto resolvedBindingType = resolveType(Info.TypeObj, false))
       Info.TypeObj = resolvedBindingType;
     // CodeGen must receive the exact semantic type of a fresh binder.  The
@@ -649,6 +659,20 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
 
     if (ShapeMap.count(shapeName)) {
       ShapeDecl *SD = ShapeMap[shapeName];
+      auto prepareChild = [&](MatchArm::Pattern *child, size_t memberIndex,
+                              std::optional<size_t> payloadIndex = std::nullopt) {
+        auto *sourceShape = SD->InstantiationTemplate ? SD->InstantiationTemplate : SD;
+        if (memberIndex >= SD->Members.size() || memberIndex >= sourceShape->Members.size()) return;
+        const ShapeMember *actual = &SD->Members[memberIndex];
+        const ShapeMember *source = &sourceShape->Members[memberIndex];
+        if (payloadIndex) {
+          if (*payloadIndex >= actual->SubMembers.size() || *payloadIndex >= source->SubMembers.size()) return;
+          actual = &actual->SubMembers[*payloadIndex];
+          source = &source->SubMembers[*payloadIndex];
+        }
+        child->MatchedValueType = getPhysicalType(*actual);
+        child->GenericContract = projectGenericMemberContract(Pat->GenericContract, SD, *source);
+      };
       if (SD->Kind == ShapeKind::Struct || SD->Kind == ShapeKind::Tuple) {
         std::string varBase = variantName;
         size_t ltV = varBase.find("<");
@@ -829,13 +853,14 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
             if (Pat->SubPatterns[i]->PatternKind == MatchArm::Pattern::Elision) continue;
             size_t memberIndex = memberIndices[i];
             if (memberIndex != (size_t)-1) {
+              prepareChild(Pat->SubPatterns[i].get(), memberIndex);
               const std::string encapField = toka::Type::stripMorphology(
                   SD->Members[memberIndex].Name);
               if (!canNameEncapField(SD, encapField, Pat->Loc)) {
                 error(Pat, DiagID::ERR_MEMBER_PRIVATE, encapField,
                       SD->Name);
               }
-              if (!SD->Members[memberIndex].IsMorphicExempt) {
+              if (!(Pat->SubPatterns[i]->GenericContract && Pat->SubPatterns[i]->GenericContract->isWholeValue())) {
                 auto memberTypeObj = getPhysicalType(SD->Members[memberIndex]);
                 MorphKind expectedMorph = morphKindFromType(memberTypeObj);
 
@@ -948,6 +973,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
                       if (i == elisionIndex) continue;
                       size_t memberIndex = (i < elisionIndex) ? i : (i + elidedFields - 1);
+                      prepareChild(Pat->SubPatterns[i].get(), foundMemb - SD->Members.data(), memberIndex);
                       checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(foundMemb->SubMembers[memberIndex]), SourceCapability, TargetPath, TargetAccessPath, TransfersOwnership);
                       recordEnumPattern(Pat->SubPatterns[i].get(), SD, foundMemb - SD->Members.data(),
                                         memberIndex, TargetAccessPath, TransfersOwnership);
@@ -961,6 +987,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     HasError = true;
                   } else {
                     for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
+                      prepareChild(Pat->SubPatterns[i].get(), foundMemb - SD->Members.data(), i);
                       checkPattern(Pat->SubPatterns[i].get(),
                                    getPhysicalTypeName(foundMemb->SubMembers[i]), SourceCapability, TargetPath, TargetAccessPath, TransfersOwnership);
                       recordEnumPattern(Pat->SubPatterns[i].get(), SD, foundMemb - SD->Members.data(),
@@ -991,6 +1018,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                         1, Pat->SubPatterns.size());
                     HasError = true;
                   } else {
+                    prepareChild(Pat->SubPatterns[0].get(), foundMemb - SD->Members.data());
                     checkPattern(Pat->SubPatterns[0].get(), foundMemb->Type,
                                  SourceCapability, TargetPath, TargetAccessPath,
                                  TransfersOwnership);
@@ -1408,7 +1436,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
       memberTypeObj = toka::Type::fromString(pDefMember->Type);
 
     // [New] Morphic Exemption: Validating Caller Transparency
-    if (!pDefMember->IsMorphicExempt) {
+    if (!pDefMember->IsMorphicExempt && !isWholeGenericField(SD, *pDefMember)) {
       MorphKind providedMorph = MorphKind::None;
       if (pair.first.find('^') != std::string::npos) providedMorph = MorphKind::Unique;
       else if (pair.first.find('~') != std::string::npos) providedMorph = MorphKind::Shared;
@@ -1707,7 +1735,7 @@ Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
       memberTypeObj = toka::Type::fromString(pDefMember->Type);
 
     // [New] Morphic Exemption: validate caller transparency for variants
-    if (!pDefMember->IsMorphicExempt) {
+    if (!pDefMember->IsMorphicExempt && !isWholeGenericField(SD, *pDefMember)) {
       MorphKind providedMorph = MorphKind::None;
       if (pair.first.find('^') != std::string::npos) providedMorph = MorphKind::Unique;
       else if (pair.first.find('~') != std::string::npos) providedMorph = MorphKind::Shared;

@@ -6,4 +6,4 @@ impl Token@Encap {
 }
 pub fn drop_count() -> i32 { return drops }
 pub fn concrete_echo(cede ~value: Token) -> ~Token { return cede ~value }
-pub fn generic_echo<'T>(cede 'value: T) -> 'T { return cede 'value }
+pub fn generic_echo<T>(cede value: T) -> T { return cede value }

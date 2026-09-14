@@ -48,7 +48,7 @@ impl Document@ToJson {
     pub fn write_json(self, buf#: string) { write_document_value(self, 1, buf#) }
 }
 
-impl<'T: @ToJson> &'T@ToJson {
+impl<T: @ToJson> &T@ToJson {
     pub fn write_json(self, buf#: string) {
         // [Compiler Magic] This will call the write_json on the soul
         self.write_json(buf#)
@@ -125,10 +125,10 @@ impl string@ToJson {
 }
 
 // Reflection-based serializer for structural Shapes
-pub fn serialize_shape<'T>('obj: T, buf#: string) {
+pub fn serialize_shape<T>(obj: T, buf#: string) {
     buf#.push_str("{")
     auto first# = true
-    for auto f in reflect<'T>().fields {
+    for auto f in reflect<T>().fields {
         if !first { buf#.push_str(",") }
         first = false
         
@@ -136,12 +136,12 @@ pub fn serialize_shape<'T>('obj: T, buf#: string) {
         buf#.push_view(f.name)
         buf#.push_str("\":")
         
-        f.get('obj).write_json(buf#)
+        f.get(obj).write_json(buf#)
     }
     buf#.push_str("}")
 }
 
-impl<'T: @ToJson> Vec<'T>@ToJson {
+impl<T: @ToJson> Vec<T>@ToJson {
     pub fn write_json(self, buf#: string) {
         buf#.push_str("[")
         auto first# = true
@@ -156,7 +156,7 @@ impl<'T: @ToJson> Vec<'T>@ToJson {
     }
 }
 
-impl<'K: @ToJson, 'V: @ToJson> HashMap<'K, 'V>@ToJson {
+impl<K: @ToJson, V: @ToJson> HashMap<K, V>@ToJson {
     pub fn write_json(self, buf#: string) {
         buf#.push_str("{")
         auto first# = true
@@ -177,10 +177,10 @@ impl<'K: @ToJson, 'V: @ToJson> HashMap<'K, 'V>@ToJson {
     }
 }
 
-impl<'T: @ToJson> Option<'T>@ToJson {
+impl<T: @ToJson> Option<T>@ToJson {
     pub fn write_json(self, buf#: string) {
         match self {
-            auto Option<'T>::Some(&val) => val.write_json(buf#)
+            auto Option<T>::Some(&val) => val.write_json(buf#)
             _ => {
                 buf#.push_str("null")
             }
@@ -188,15 +188,15 @@ impl<'T: @ToJson> Option<'T>@ToJson {
     }
 }
 
-impl<'T: @ToJson, 'E: @ToJson> Result<'T, 'E>@ToJson {
+impl<T: @ToJson, E: @ToJson> Result<T, E>@ToJson {
     pub fn write_json(self, buf#: string) {
         buf#.push_str("{\"")
         match self {
-            auto Result<'T, 'E>::Ok(&val) => {
+            auto Result<T, E>::Ok(&val) => {
                 buf#.push_str("Ok\":")
                 val.write_json(buf#)
             }
-            auto Result<'T, 'E>::Err(&e) => {
+            auto Result<T, E>::Err(&e) => {
                 buf#.push_str("Err\":")
                 e.write_json(buf#)
             }
@@ -205,9 +205,9 @@ impl<'T: @ToJson, 'E: @ToJson> Result<'T, 'E>@ToJson {
     }
 }
 
-pub fn to_json<'T: @ToJson>('obj: T) -> string {
+pub fn to_json<T: @ToJson>(obj: T) -> string {
     auto res# = string::from("")
-    'obj.write_json(res#)
+    obj.write_json(res#)
     return cede res
 }
 
@@ -303,61 +303,61 @@ impl str@FromJson {
 
 // Construction is factory-first. Generic mutation is restricted to values
 // with complete, independent contents; borrowed values use the factory API.
-impl<'T: @JsonFactory> Option<'T>@FromJson {
+impl<T: @JsonFactory> Option<T>@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        auto attempt = Option<'T>::parse_value(json)
+        auto attempt = Option<T>::parse_value(json)
         if attempt.is_err() {
             auto error = JsonRes::Err(attempt.unwrap_err())
             return cede error
         }
         auto parsed = attempt.unwrap()
-        auto 'new_value = cede parsed.value
-        self = cede 'new_value
+        auto new_value = cede parsed.value
+        self = cede new_value
         auto status = JsonRes::Ok(parsed.rest)
         return cede status
     }
 }
 
-impl<'T: @JsonFactory, 'E: @JsonFactory> Result<'T, 'E>@FromJson {
+impl<T: @JsonFactory, E: @JsonFactory> Result<T, E>@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        auto attempt = Result<'T, 'E>::parse_value(json)
+        auto attempt = Result<T, E>::parse_value(json)
         if attempt.is_err() {
             auto error = JsonRes::Err(attempt.unwrap_err())
             return cede error
         }
         auto parsed = attempt.unwrap()
-        auto 'new_value = cede parsed.value
-        self = cede 'new_value
+        auto new_value = cede parsed.value
+        self = cede new_value
         auto status = JsonRes::Ok(parsed.rest)
         return cede status
     }
 }
 
-impl<'K: @JsonFactory, 'V: @JsonFactory> HashMap<'K, 'V>@FromJson {
+impl<K: @JsonFactory, V: @JsonFactory> HashMap<K, V>@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        auto attempt = HashMap<'K, 'V>::parse_complete(json)
+        auto attempt = HashMap<K, V>::parse_complete(json)
         if attempt.is_err() {
             auto error = JsonRes::Err(attempt.unwrap_err())
             return cede error
         }
         auto parsed = attempt.unwrap()
-        auto 'new_value = cede parsed.value
-        self = cede 'new_value
+        auto new_value = cede parsed.value
+        self = cede new_value
         auto status = JsonRes::Ok(json.substr(parsed.consumed, json.len() - parsed.consumed))
         return cede status
     }
 }
 
-impl<'T: @JsonFactory> Vec<'T>@FromJson {
+impl<T: @JsonFactory> Vec<T>@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        auto attempt = Vec<'T>::parse_complete(json)
+        auto attempt = Vec<T>::parse_complete(json)
         if attempt.is_err() {
             auto error = JsonRes::Err(attempt.unwrap_err())
             return cede error
         }
         auto parsed = attempt.unwrap()
-        auto 'new_value = cede parsed.value
-        self = cede 'new_value
+        auto new_value = cede parsed.value
+        self = cede new_value
         auto status = JsonRes::Ok(json.substr(parsed.consumed, json.len() - parsed.consumed))
         return cede status
     }
@@ -365,12 +365,12 @@ impl<'T: @JsonFactory> Vec<'T>@FromJson {
 
 // The initialized field is used only for type inference; it is never consumed
 // or passed to a parser as an uninitialized construction target.
-fn parse_field_value<'F: @JsonFactory>('hint: F, json: str) -> Result<Parsed<'F>, str> <- json {
+fn parse_field_value<F: @JsonFactory>(hint: F, json: str) -> Result<Parsed<F>, str> <- json {
     auto result = F::parse_value(json)
     return cede result
 }
 
-pub fn deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- json_str {
+pub fn deserialize_nested_shape<T>(obj#: T, json_str: str) -> JsonRes <- json_str {
     auto res# = json_skip_whitespace(json_str)
     if res.len() == 0 || res.byte_at(0) != 123 {
         auto outcome_637 = JsonRes::Err("Expected {")
@@ -401,13 +401,13 @@ pub fn deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- json_
         }
         res = res.substr(1, res.len() - 1)
         auto found# = false
-        for auto f in reflect<'T>().fields {
+        for auto f in reflect<T>().fields {
             if key_view.equals(f.name) {
                 found = true
-                auto field_result = parse_field_value(f.get('obj), res)!
+                auto field_result = parse_field_value(f.get(obj), res)!
                 res = field_result.rest
-                auto 'value = cede field_result.value
-                f.set('obj, cede 'value)
+                auto value = cede field_result.value
+                f.set(obj, cede value)
                 continue
             }
         }
@@ -419,18 +419,18 @@ pub fn deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- json_
 
 // Typed construction is explicit: a schema supplies a complete-value factory.
 // Reflection serialization remains independent of deserialization construction.
-pub fn deserialize_shape<'T: @JsonFactory>(json_str: str) -> Result<'T, str> <- json_str {
+pub fn deserialize_shape<T: @JsonFactory>(json_str: str) -> Result<T, str> <- json_str {
     auto attempt = T::parse_value(json_str)
     if attempt.is_err() {
-        auto error = Result<'T, str>::Err(attempt.unwrap_err())
+        auto error = Result<T, str>::Err(attempt.unwrap_err())
         return cede error
     }
     auto parsed = attempt.unwrap()
     if leaf_skip_whitespace(parsed.rest).len() != 0 {
-        auto error = Result<'T, str>::Err("Trailing JSON input")
+        auto error = Result<T, str>::Err("Trailing JSON input")
         return cede error
     }
-    auto 'value = cede parsed.value
-    auto result = Result<'T, str>::Ok(cede 'value)
+    auto value = cede parsed.value
+    auto result = Result<T, str>::Ok(cede value)
     return cede result
 }

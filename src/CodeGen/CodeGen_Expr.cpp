@@ -1921,10 +1921,9 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
   // [Constitution 1.3] Reference Sigil: &p (Static Borrow)
   if (unary->Op == TokenType::Ampersand) {
     const auto *morphicValue = dynamic_cast<const VariableExpr *>(unary->RHS.get());
-    const bool borrowsWholeHandle = morphicValue &&
-        unary->RHS->ResolvedType &&
-        ((morphicValue->IsAbstractWholeValue && unary->RHS->ResolvedType->isPointer()) ||
-         ((morphicValue->IsMorphicExempt || (!morphicValue->Name.empty() && morphicValue->Name.front() == '\'')) &&
+    const bool borrowsWholeHandle = unary->RHS->ResolvedType &&
+        ((unary->RHS->IsAbstractWholeValue && unary->RHS->ResolvedType->isPointer()) ||
+         (morphicValue && (morphicValue->IsMorphicExempt || (!morphicValue->Name.empty() && morphicValue->Name.front() == '\'')) &&
           unary->RHS->ResolvedType->isSharedPtr())) &&
         unary->ResolvedType && unary->ResolvedType->isReference() &&
         unary->ResolvedType->getPointeeType() &&
@@ -4862,7 +4861,7 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
     // Sema records the exact fresh-binder type.  Populate the complete symbol
     // metadata from it so handle binders cannot retain Direct addressing mode.
     fillSymbolMetadata(sym, bindingTypeObj, val->getType());
-    sym.isMorphicValueTransport = !pName.empty() && pName.front() == '\'';
+    sym.isMorphicValueTransport = pat->IsAbstractWholeValue || (!pName.empty() && pName.front() == '\'');
     sym.isRebindable = false;
 
     std::string typeName = "";

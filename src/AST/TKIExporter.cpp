@@ -134,12 +134,8 @@ static std::string reconstructVarFromPermission(
     }
 
     std::string name = toka::Type::stripMorphology(rawName);
-    bool nameHasMorphicPrefix = !name.empty() && name[0] == '\'';
-    std::string strippedType = toka::Type::stripPrefixes(typeStr);
-    bool typeHasMorphicPrefix = !strippedType.empty() && strippedType[0] == '\'';
-    if ((permission.MorphicExempt || typeHasMorphicPrefix) && !nameHasMorphicPrefix) {
-        result += "'";
-    }
+    // Whole-value identity is a semantic contract, not an exported sigil.
+    if (!name.empty() && name.front() == '\'') name.erase(0, 1);
     result += name;
 
     if (permission.SoulWritable) {

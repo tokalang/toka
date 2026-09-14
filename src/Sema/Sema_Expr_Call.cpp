@@ -863,7 +863,13 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
     for (const auto &field : declaration->Members) {
       if (Type::stripMorphology(field.Name) != access.MemberName)
         continue;
-      return resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(field));
+      auto type = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(field));
+      const size_t index = &field - declaration->Members.data();
+      auto contract = projectGenericFieldContract(member->Object.get(), declaration, index);
+      if (type && access.Prefix.empty() && !access.IsMorphicIdentity &&
+          !(contract && contract->isWholeValue()))
+        return resolveExplicitCedeStage0TypeReadOnly(type->getSoulType());
+      return type;
     }
     return toka::Type::fromString("unknown");
   }
@@ -1149,7 +1155,7 @@ Sema::queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *value) {
           field.IsValueMutable || field.Permission.SoulWritable;
       const bool blockedPayload =
           field.IsValueBlocked || field.Permission.SoulBlocked ||
-          (field.IsMorphicExempt && insulated &&
+          ((field.IsMorphicExempt || isWholeGenericField(declaration, field)) && insulated &&
            (!fieldType->getPointeeType() || !fieldType->getPointeeType()->IsWritable ||
             fieldType->getPointeeType()->IsBlocked));
       const bool startsRestricted = insulated && !declaredPayload;

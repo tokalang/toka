@@ -27,8 +27,8 @@ fn __sync_fatal() -> never {
 
 // The exact value returns into the caller's full-expression cleanup. This
 // avoids a cloning aggregate wrapper and preserves the complete T morphology.
-fn __sync_dispose_input<'T>(cede 'data: T) -> 'T {
-    return cede 'data
+fn __sync_dispose_input<T>(cede data: T) -> T {
+    return cede data
 }
 
 // The reserves are checked against the native headers in
@@ -67,48 +67,48 @@ fn __sync_native_drop(handle: Addr, kind: i32) {
     }
 }
 
-fn __sync_mutex_create<'T: @Send>(cede 'data: T) -> Mutex<'T> {
-    auto storage = sys_alloc_thread_env(sizeof('T) as usize)
+fn __sync_mutex_create<T: @Send>(cede data: T) -> Mutex<T> {
+    auto storage = sys_alloc_thread_env(sizeof(T) as usize)
     if storage == 0:Addr {
-        __sync_dispose_input<'T>(cede 'data)
+        __sync_dispose_input<T>(cede data)
         __sync_fatal()
     }
     auto native = __sync_native_create(0)
     if native == 0:Addr {
-        __sync_dispose_input<'T>(cede 'data)
+        __sync_dispose_input<T>(cede data)
         sys_free_thread_env(storage)
         __sync_fatal()
     }
     unsafe {
-        auto *slot# = sync_writable_storage<['T]>(storage)
-        slot[0] = cede 'data
+        auto *slot# = sync_writable_storage<[T]>(storage)
+        slot[0] = cede data
     }
-    return Mutex<'T>(handle = native, data_ptr = storage)
+    return Mutex<T>(handle = native, data_ptr = storage)
 }
 
-fn __sync_rw_create<'T: @{Send, Sync}>(cede 'data: T) -> RwMutex<'T> {
-    auto storage = sys_alloc_thread_env(sizeof('T) as usize)
+fn __sync_rw_create<T: @{Send, Sync}>(cede data: T) -> RwMutex<T> {
+    auto storage = sys_alloc_thread_env(sizeof(T) as usize)
     if storage == 0:Addr {
-        __sync_dispose_input<'T>(cede 'data)
+        __sync_dispose_input<T>(cede data)
         __sync_fatal()
     }
     auto native = __sync_native_create(1)
     if native == 0:Addr {
-        __sync_dispose_input<'T>(cede 'data)
+        __sync_dispose_input<T>(cede data)
         sys_free_thread_env(storage)
         __sync_fatal()
     }
     unsafe {
-        auto *slot# = sync_writable_storage<['T]>(storage)
-        slot[0] = cede 'data
+        auto *slot# = sync_writable_storage<[T]>(storage)
+        slot[0] = cede data
     }
-    return RwMutex<'T>(handle = native, data_ptr = storage)
+    return RwMutex<T>(handle = native, data_ptr = storage)
 }
 
-fn __sync_mutex_drop<'T: @Send>(owner#: Mutex<'T>) {
+fn __sync_mutex_drop<T: @Send>(owner#: Mutex<T>) {
     if owner.data_ptr != 0:Addr {
         unsafe {
-            auto *slot# = sync_writable_storage<['T]>(owner.data_ptr)
+            auto *slot# = sync_writable_storage<[T]>(owner.data_ptr)
             free[1] *slot
         }
         owner.data_ptr = 0:Addr
@@ -117,10 +117,10 @@ fn __sync_mutex_drop<'T: @Send>(owner#: Mutex<'T>) {
     owner.handle = 0:Addr
 }
 
-fn __sync_rw_drop<'T: @{Send, Sync}>(owner#: RwMutex<'T>) {
+fn __sync_rw_drop<T: @{Send, Sync}>(owner#: RwMutex<T>) {
     if owner.data_ptr != 0:Addr {
         unsafe {
-            auto *slot# = sync_writable_storage<['T]>(owner.data_ptr)
+            auto *slot# = sync_writable_storage<[T]>(owner.data_ptr)
             free[1] *slot
         }
         owner.data_ptr = 0:Addr
@@ -129,135 +129,135 @@ fn __sync_rw_drop<'T: @{Send, Sync}>(owner#: RwMutex<'T>) {
     owner.handle = 0:Addr
 }
 
-fn __sync_mutex_acquire<'T: @Send>(owner: Mutex<'T>) -> Result<MutexLock<'T>, Error> <- owner {
+fn __sync_mutex_acquire<T: @Send>(owner: Mutex<T>) -> Result<MutexLock<T>, Error> <- owner {
     auto status = unsafe libc_pthread_mutex_lock(owner.handle)
     if status != 0 {
-        return Result<MutexLock<'T>, Error>::Err(Error::new(status, string::from("mutex lock failed")))
+        return Result<MutexLock<T>, Error>::Err(Error::new(status, string::from("mutex lock failed")))
     }
     unsafe {
-        auto *slot# = sync_writable_storage<['T]>(owner.data_ptr)
+        auto *slot# = sync_writable_storage<[T]>(owner.data_ptr)
         auto nul *token = null:nul *byte
-        return Result<MutexLock<'T>, Error>::Ok(MutexLock<'T>(
-            handle = owner.handle, &data = &'(slot[0]), *thread_token = *token))
+        return Result<MutexLock<T>, Error>::Ok(MutexLock<T>(
+            handle = owner.handle, &data = &(slot[0]), *thread_token = *token))
     }
 }
 
-fn __sync_rw_read<'T: @{Send, Sync}>(owner: RwMutex<'T>) -> Result<RwReadLock<'T>, Error> <- owner {
+fn __sync_rw_read<T: @{Send, Sync}>(owner: RwMutex<T>) -> Result<RwReadLock<T>, Error> <- owner {
     auto status = unsafe libc_pthread_rwlock_rdlock(owner.handle)
     if status != 0 {
-        return Result<RwReadLock<'T>, Error>::Err(Error::new(status, string::from("rwlock read failed")))
+        return Result<RwReadLock<T>, Error>::Err(Error::new(status, string::from("rwlock read failed")))
     }
     unsafe {
-        auto *slot = owner.data_ptr as *['T]
+        auto *slot = owner.data_ptr as *[T]
         auto nul *token = null:nul *byte
-        return Result<RwReadLock<'T>, Error>::Ok(RwReadLock<'T>(
-            handle = owner.handle, &data = &'(slot[0]), *thread_token = *token))
+        return Result<RwReadLock<T>, Error>::Ok(RwReadLock<T>(
+            handle = owner.handle, &data = &(slot[0]), *thread_token = *token))
     }
 }
 
-fn __sync_rw_write<'T: @{Send, Sync}>(owner: RwMutex<'T>) -> Result<RwWriteLock<'T>, Error> <- owner {
+fn __sync_rw_write<T: @{Send, Sync}>(owner: RwMutex<T>) -> Result<RwWriteLock<T>, Error> <- owner {
     auto status = unsafe libc_pthread_rwlock_wrlock(owner.handle)
     if status != 0 {
-        return Result<RwWriteLock<'T>, Error>::Err(Error::new(status, string::from("rwlock write failed")))
+        return Result<RwWriteLock<T>, Error>::Err(Error::new(status, string::from("rwlock write failed")))
     }
     unsafe {
-        auto *slot# = sync_writable_storage<['T]>(owner.data_ptr)
+        auto *slot# = sync_writable_storage<[T]>(owner.data_ptr)
         auto nul *token = null:nul *byte
-        return Result<RwWriteLock<'T>, Error>::Ok(RwWriteLock<'T>(
-            handle = owner.handle, &data = &'(slot[0]), *thread_token = *token))
+        return Result<RwWriteLock<T>, Error>::Ok(RwWriteLock<T>(
+            handle = owner.handle, &data = &(slot[0]), *thread_token = *token))
     }
 }
 
-fn __sync_mutex_release<'T: @Send>(held#: MutexLock<'T>) {
+fn __sync_mutex_release<T: @Send>(held#: MutexLock<T>) {
     if held.handle != 0:Addr {
         auto status = unsafe libc_pthread_mutex_unlock(held.handle)
         if status != 0 { __sync_fatal() }
         held.handle = 0:Addr
     }
 }
-fn __sync_rw_read_release<'T: @{Send, Sync}>(held#: RwReadLock<'T>) {
+fn __sync_rw_read_release<T: @{Send, Sync}>(held#: RwReadLock<T>) {
     if held.handle != 0:Addr {
         auto status = unsafe libc_pthread_rwlock_unlock(held.handle)
         if status != 0 { __sync_fatal() }
         held.handle = 0:Addr
     }
 }
-fn __sync_rw_write_release<'T: @{Send, Sync}>(held#: RwWriteLock<'T>) {
+fn __sync_rw_write_release<T: @{Send, Sync}>(held#: RwWriteLock<T>) {
     if held.handle != 0:Addr {
         auto status = unsafe libc_pthread_rwlock_unlock(held.handle)
         if status != 0 { __sync_fatal() }
         held.handle = 0:Addr
     }
 }
-fn __sync_cond_create<'T: @Send>() -> CondVar<'T> {
+fn __sync_cond_create<T: @Send>() -> CondVar<T> {
     auto native = __sync_native_create(2)
     if native == 0:Addr { __sync_fatal() }
-    return CondVar<'T>(handle = native)
+    return CondVar<T>(handle = native)
 }
-fn __sync_cond_drop<'T: @Send>(owner#: CondVar<'T>) {
+fn __sync_cond_drop<T: @Send>(owner#: CondVar<T>) {
     __sync_native_drop(owner.handle, 2)
     owner.handle = 0:Addr
 }
-fn __sync_cond_wait<'T: @Send>(owner: CondVar<'T>, held: MutexLock<'T>) {
+fn __sync_cond_wait<T: @Send>(owner: CondVar<T>, held: MutexLock<T>) {
     auto status = unsafe libc_pthread_cond_wait(owner.handle, held.handle)
     if status != 0 { __sync_fatal() }
 }
-fn __sync_cond_signal<'T: @Send>(owner: CondVar<'T>) {
+fn __sync_cond_signal<T: @Send>(owner: CondVar<T>) {
     auto status = unsafe libc_pthread_cond_signal(owner.handle)
     if status != 0 { __sync_fatal() }
 }
-fn __sync_cond_broadcast<'T: @Send>(owner: CondVar<'T>) {
+fn __sync_cond_broadcast<T: @Send>(owner: CondVar<T>) {
     auto status = unsafe libc_pthread_cond_broadcast(owner.handle)
     if status != 0 { __sync_fatal() }
 }
 
-fn sync_writable_storage<'T>(address: Addr) -> *'T# {
-    auto nul *candidate# = unsafe (address as nul *'T)
+fn sync_writable_storage<T>(address: Addr) -> *T# {
+    auto nul *candidate# = unsafe (address as nul *T)
     if *candidate is null {
         unsafe { libc_abort() }
         unreachable
     } else {
         auto verified = unsafe *candidate as Addr
-        auto *result# = unsafe (verified as *'T)
+        auto *result# = unsafe (verified as *T)
         return *result
     }
 }
 
 /// A mutual exclusion primitive useful for protecting shared data
-pub shape Mutex<'T: @Send>(
+pub shape Mutex<T: @Send>(
     handle#: Addr,
     data_ptr#: Addr
 )
 
-impl<'T: @Send> Mutex<'T>@Sync {}
-impl<'T: @Send> Mutex<'T>@Send {}
+impl<T: @Send> Mutex<T>@Sync {}
+impl<T: @Send> Mutex<T>@Send {}
 
-impl<'T: @Send> Mutex<'T> {
+impl<T: @Send> Mutex<T> {
     pub fn get_handle(self) -> Addr {
         return self.handle
     }
     
-    pub fn new(cede 'data: T) -> Mutex<'T> {
-        return __sync_mutex_create<'T>(cede 'data)
+    pub fn new(cede data: T) -> Mutex<T> {
+        return __sync_mutex_create<T>(cede data)
     }
     
     /// Directly allocates and initializes a new Mutex as a shared pointer (~Mutex)
-    pub fn make(cede 'data: T) -> ^Mutex<'T> {
-        auto prepared = __sync_mutex_create<'T>(cede 'data)
-        auto ^mutex# = new Mutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)
+    pub fn make(cede data: T) -> ^Mutex<T> {
+        auto prepared = __sync_mutex_create<T>(cede data)
+        auto ^mutex# = new Mutex<T>(handle = 0:Addr, data_ptr = 0:Addr)
         mutex = cede prepared
         return ^mutex
     }
 
-    pub fn make_shared(cede 'data: T) -> ~Mutex<'T> {
-        auto prepared = __sync_mutex_create<'T>(cede 'data)
-        auto ~mutex# = new Mutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)
+    pub fn make_shared(cede data: T) -> ~Mutex<T> {
+        auto prepared = __sync_mutex_create<T>(cede data)
+        auto ~mutex# = new Mutex<T>(handle = 0:Addr, data_ptr = 0:Addr)
         mutex = cede prepared
         return cede ~mutex
     }
     
-    pub fn lock(self) -> Result<MutexLock<'T>, Error> <- self {
-        return __sync_mutex_acquire<'T>(self)
+    pub fn lock(self) -> Result<MutexLock<T>, Error> <- self {
+        return __sync_mutex_acquire<T>(self)
     }
     
     /// Unlocks the mutex implicitly yielding it to other waiting threads.
@@ -276,26 +276,26 @@ impl<'T: @Send> Mutex<'T> {
     }
 }
 
-impl<'T> Mutex<'T>@Encap {
+impl<T> Mutex<T>@Encap {
     fn drop(self#) {
-        __sync_mutex_drop<'T>(self#)
+        __sync_mutex_drop<T>(self#)
     }
 }
 
-pub shape MutexLock<'T: @Send>(
+pub shape MutexLock<T: @Send>(
     handle: Addr,
-    &'data#: T,
+    &data#: T,
     nul *thread_token: byte
 )
 
-impl<'T> MutexLock<'T>@Encap {
+impl<T> MutexLock<T>@Encap {
     fn drop(self#) {
-        __sync_mutex_release<'T>(self#)
+        __sync_mutex_release<T>(self#)
     }
 }
 
-impl<'T: @Send> MutexLock<'T> {
-    pub fn borrow_mut(self) -> &'T#
+impl<T: @Send> MutexLock<T> {
+    pub fn borrow_mut(self) -> &T#
     effects:
         return <- self
     {
@@ -305,32 +305,32 @@ impl<'T: @Send> MutexLock<'T> {
 }
 
 /// A reader-writer lock
-pub shape RwMutex<'T: @{Send, Sync}>(
+pub shape RwMutex<T: @{Send, Sync}>(
     handle#: Addr,
     data_ptr#: Addr
 )
 
-impl<'T: @{Send, Sync}> RwMutex<'T>@Sync {}
-impl<'T: @{Send, Sync}> RwMutex<'T>@Send {}
+impl<T: @{Send, Sync}> RwMutex<T>@Sync {}
+impl<T: @{Send, Sync}> RwMutex<T>@Send {}
 
-impl<'T: @{Send, Sync}> RwMutex<'T> {
-    pub fn new(cede 'data: T) -> RwMutex<'T> {
-        return __sync_rw_create<'T>(cede 'data)
+impl<T: @{Send, Sync}> RwMutex<T> {
+    pub fn new(cede data: T) -> RwMutex<T> {
+        return __sync_rw_create<T>(cede data)
     }
 
-    pub fn make_shared(cede 'data: T) -> ~RwMutex<'T> {
-        auto prepared = __sync_rw_create<'T>(cede 'data)
-        auto ~rwlock# = new RwMutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)
+    pub fn make_shared(cede data: T) -> ~RwMutex<T> {
+        auto prepared = __sync_rw_create<T>(cede data)
+        auto ~rwlock# = new RwMutex<T>(handle = 0:Addr, data_ptr = 0:Addr)
         rwlock = cede prepared
         return cede ~rwlock
     }
     
-    pub fn read_lock(self) -> Result<RwReadLock<'T>, Error> <- self {
-        return __sync_rw_read<'T>(self)
+    pub fn read_lock(self) -> Result<RwReadLock<T>, Error> <- self {
+        return __sync_rw_read<T>(self)
     }
     
-    pub fn write_lock(self) -> Result<RwWriteLock<'T>, Error> <- self {
-        return __sync_rw_write<'T>(self)
+    pub fn write_lock(self) -> Result<RwWriteLock<T>, Error> <- self {
+        return __sync_rw_write<T>(self)
     }
     
     pub fn unlock(self) -> Result<i32, Error> {
@@ -348,26 +348,26 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
     }
 }
 
-impl<'T> RwMutex<'T>@Encap {
+impl<T> RwMutex<T>@Encap {
     fn drop(self#) {
-        __sync_rw_drop<'T>(self#)
+        __sync_rw_drop<T>(self#)
     }
 }
 
-pub shape RwReadLock<'T: @{Send, Sync}>(
+pub shape RwReadLock<T: @{Send, Sync}>(
     handle: Addr,
-    &'data: T,
+    &data: T,
     nul *thread_token: byte
 )
 
-impl<'T> RwReadLock<'T>@Encap {
+impl<T> RwReadLock<T>@Encap {
     fn drop(self#) {
-        __sync_rw_read_release<'T>(self#)
+        __sync_rw_read_release<T>(self#)
     }
 }
 
-impl<'T: @{Send, Sync}> RwReadLock<'T> {
-    pub fn borrow(self) -> &'T
+impl<T: @{Send, Sync}> RwReadLock<T> {
+    pub fn borrow(self) -> &T
     effects:
         return <- self
     {
@@ -376,20 +376,20 @@ impl<'T: @{Send, Sync}> RwReadLock<'T> {
 
 }
 
-pub shape RwWriteLock<'T: @{Send, Sync}>(
+pub shape RwWriteLock<T: @{Send, Sync}>(
     handle: Addr,
-    &'data#: T,
+    &data#: T,
     nul *thread_token: byte
 )
 
-impl<'T> RwWriteLock<'T>@Encap {
+impl<T> RwWriteLock<T>@Encap {
     fn drop(self#) {
-        __sync_rw_write_release<'T>(self#)
+        __sync_rw_write_release<T>(self#)
     }
 }
 
-impl<'T: @{Send, Sync}> RwWriteLock<'T> {
-    pub fn borrow_mut(self) -> &'T#
+impl<T: @{Send, Sync}> RwWriteLock<T> {
+    pub fn borrow_mut(self) -> &T#
     effects:
         return <- self
     {
@@ -399,49 +399,49 @@ impl<'T: @{Send, Sync}> RwWriteLock<'T> {
 }
 
 /// A Condition Variable
-pub shape CondVar<'T: @Send>(
+pub shape CondVar<T: @Send>(
     handle#: Addr
 )
 
-impl<'T: @Send> CondVar<'T>@Sync {}
-impl<'T: @Send> CondVar<'T>@Send {}
+impl<T: @Send> CondVar<T>@Sync {}
+impl<T: @Send> CondVar<T>@Send {}
 
-impl<'T: @Send> CondVar<'T> {
-    pub fn new() -> CondVar<'T> {
-        return __sync_cond_create<'T>()
+impl<T: @Send> CondVar<T> {
+    pub fn new() -> CondVar<T> {
+        return __sync_cond_create<T>()
     }
 
-    pub fn make() -> ^CondVar<'T> {
-        auto prepared = __sync_cond_create<'T>()
-        auto ^condition# = new CondVar<'T>(handle = 0:Addr)
+    pub fn make() -> ^CondVar<T> {
+        auto prepared = __sync_cond_create<T>()
+        auto ^condition# = new CondVar<T>(handle = 0:Addr)
         condition = cede prepared
         return ^condition
     }
 
     /// Construct a shared condition owner without a unique-to-shared conversion.
-    pub fn make_shared() -> ~CondVar<'T> {
-        auto prepared = __sync_cond_create<'T>()
-        auto ~condition# = new CondVar<'T>(handle = 0:Addr)
+    pub fn make_shared() -> ~CondVar<T> {
+        auto prepared = __sync_cond_create<T>()
+        auto ~condition# = new CondVar<T>(handle = 0:Addr)
         condition = cede prepared
         return cede ~condition
     }
 
-    pub fn wait_cond(self, lock: MutexLock<'T>) {
-        __sync_cond_wait<'T>(self, lock)
+    pub fn wait_cond(self, lock: MutexLock<T>) {
+        __sync_cond_wait<T>(self, lock)
     }
 
     pub fn notify_one(self) {
-        __sync_cond_signal<'T>(self)
+        __sync_cond_signal<T>(self)
     }
 
     pub fn notify_all(self) {
-        __sync_cond_broadcast<'T>(self)
+        __sync_cond_broadcast<T>(self)
     }
 }
 
-impl<'T> CondVar<'T>@Encap {
+impl<T> CondVar<T>@Encap {
     fn drop(self#) {
-        __sync_cond_drop<'T>(self#)
+        __sync_cond_drop<T>(self#)
     }
 }
 

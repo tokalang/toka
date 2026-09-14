@@ -1,13 +1,13 @@
 import sys/thread::{sys_alloc_thread_env, sys_free_thread_env}
 import sys/libc::{libc_abort}
-fn unsafe_checked<'T>(address: Addr) -> *'T# {
-    auto nul *candidate# = unsafe (address as nul *'T)
+fn unsafe_checked<T>(address: Addr) -> *T# {
+    auto nul *candidate# = unsafe (address as nul *T)
     if *candidate is null {
         unsafe { libc_abort() }
         unreachable
     } else {
         auto verified = unsafe *candidate as Addr
-        auto *result# = unsafe (verified as *'T)
+        auto *result# = unsafe (verified as *T)
         return *result
     }
 }
