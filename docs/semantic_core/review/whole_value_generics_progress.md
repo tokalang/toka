@@ -3,6 +3,49 @@
 Design/authorization checkpoint: `ddb19870`. E is not started. Work remains on
 the existing integration branch; no push, PR, tag or release is authorized.
 
+## Overall G candidate: `13b907bc2bbf078cc4f7aaa13bd9c38d42f1f152`
+
+The nested-enum correction is included in this exact implementation revision.
+It is an overall candidate for concentrated review, **not Accepted** and not
+RC13 release qualification. No implementation edits occurred during its full
+run. The only pre-existing tracked difference was the other worker's RFC edit,
+which was not included in implementation commits.
+
+Complete logs and per-name comparison:
+`/private/tmp/toka-G-qualification.02qe7a/{metadata.json,comparison.json,tools-build.log,pass.log,fail.log,ctest.log}`.
+The same `/private/tmp/toka-b6-dynamic-build-20260912` supplied all tools and suites.
+
+| Suite | Original complete baseline | Final candidate complete run | New failing names |
+| --- | --- | --- | --- |
+| Tools | Passed | Passed (4.23 s) | — |
+| PASS compile/run | 363/456 | **388/457** (258.09 s) | **0** |
+| FAIL expectations | 441/479 | **444/478** (144.80 s) | **0** |
+| CTest | 86/99 | **96/99** (1015.18 s) | **0** |
+
+24 same-name PASS failures recovered; one obsolete rigid-T negative moved to
+a content-checked positive, explaining the changed suite sizes. Three other
+negative purposes recovered and no abnormal or unexpected-success FAIL result
+was reported. Ten CTests recovered. The expanded G test, including nested enum,
+source-hidden static factories/reflection and nullable controls, passed within
+this full run (119.67 s). No earlier targeted result was substituted into the
+full totals above.
+
+Still failing, without exception or reclassification as success:
+
+- `toka_stage1_indirect_parameter_cede`: retained source-hidden callable
+  environment qualification gap.
+- `toka_stage1_return_matrix`: retained build-buffer/container integration
+  failure; the earlier E0454/E0442 regression is closed.
+- `toka_binding_b2_arena`: known-readonly provenance still blocks the writable
+  Arena use. No provenance check was relaxed to obtain a passing result.
+- 69 PASS programs and 34 FAIL expectations remain listed by name in the
+  comparison. They already failed in the comparison baseline; that fact alone
+  is not a claim that every root cause is unrelated to G.
+
+The old full snapshots below remain historical evidence. Final candidate
+results do not retroactively turn any previous run green. E is unstarted;
+no push, PR, release or existing freeze-ref change was performed.
+
 ## Complete comparison at `9c37f659`, followed by the nested-enum correction
 
 Logs: `/private/tmp/toka-G-candidate.Kb7a1a`. Against the prior complete
