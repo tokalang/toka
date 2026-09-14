@@ -1,0 +1,24 @@
+auto drops# = 0:i32
+shape Resource(value:i32)
+impl Resource@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn replace<T>(&slot#:T, cede incoming:T) { slot = cede incoming }
+fn main() -> i32 {
+    {
+        auto ^#owner = new Resource(value=7)
+        auto ^next = new Resource(value=9)
+        replace<^Resource>(&^#owner, cede ^next)
+        if owner.value != 9 || drops != 1 { return 1 }
+    }
+    if drops != 2 { return 2 }
+    {
+        auto ~#owner = new Resource(value=11)
+        auto ~survivor = ~owner
+        auto ~next = new Resource(value=13)
+        replace<~Resource>(&~#owner, cede ~next)
+        if owner.value != 13 || survivor.value != 11 || drops != 2 { return 3 }
+    }
+    return drops - 4
+}

@@ -1,0 +1,19 @@
+alias Value<T> = T
+alias Again<T> = Value<T>
+shape Slot<T>(value:T)
+alias Container<T> = Slot<T>
+fn relay<T>(cede value:Again<T>) -> Again<T> {
+    auto result = cede value
+    return cede result
+}
+fn borrow<T>(slot:Container<T>) -> &T <- slot { return &(slot.value) }
+shape Resource(value:i32)
+fn main() -> i32 {
+    auto ^owner = new Resource(value=7)
+    auto ^result = relay<^Resource>(cede ^owner)
+    if result.value != 7 { return 1 }
+    auto box = Slot<^Resource>(^value=cede ^result)
+    auto &^view = borrow<^Resource>(box)
+    if view.value != 7 { return 2 }
+    return 0
+}

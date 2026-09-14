@@ -3364,9 +3364,10 @@ void Sema::declareGlobals(Module &M) {
         }
         auto returned = function.ReturnTypeSyntax
             ? function.ReturnTypeSyntax->substitute(associatedSyntax) : nullptr;
+        function.GenericReturnContract = makeGenericValueContract(returned, exactGenericNames, &M);
         if (returned && returned->NodeKind == TypeSyntax::Kind::Morphology &&
             !returned->IsPostfix && returned->Text == "&") returned = returned->Subject;
-        auto returnedContract = makeGenericValueContract(returned, exactGenericNames);
+        auto returnedContract = makeGenericValueContract(returned, exactGenericNames, &M);
         function.ReturnContract.BindingBorrowsWholeGenericValue =
             function.ReturnContract.BindingBorrowsSoul && returnedContract && returnedContract->isWholeValue();
         for (auto &argument : function.Args) {
@@ -3380,7 +3381,7 @@ void Sema::declareGlobals(Module &M) {
                                            : argument.TypeSyntax;
           if (contractSyntax) contractSyntax = contractSyntax->substitute(associatedSyntax);
           argument.GenericContract = makeGenericValueContract(
-              contractSyntax, exactGenericNames);
+              contractSyntax, exactGenericNames, &M);
           if (Type::stripMorphology(argument.Name) == "self" && receiverContract)
             argument.GenericContract = makeGenericValueContract(receiverContract, exactGenericNames);
           auto callableOrigins = classifyCallableParameterOrigins(
@@ -3390,12 +3391,8 @@ void Sema::declareGlobals(Module &M) {
 
           if (argument.Stage0DeclarationProvenanceComplete &&
               !argument.IsRawPointer && !argument.IsUnique &&
-              !argument.IsShared && !argument.IsReference &&
-              argument.TypeSyntax->NodeKind == TypeSyntax::Kind::Named) {
-            auto declaredValue = argument.TypeSyntax->substitute(associatedSyntax);
-            const bool namesGeneric = declaredValue &&
-                declaredValue->NodeKind == TypeSyntax::Kind::Named &&
-                exactGenericNames.count(declaredValue->Text) != 0;
+              !argument.IsShared && !argument.IsReference) {
+            const bool namesGeneric = argument.GenericContract && argument.GenericContract->isWholeValue();
             argument.IsAbstractWholeValue = namesGeneric;
             if (namesGeneric) {
               argument.IsMorphicExempt = true;
@@ -5412,6 +5409,7 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
 }
 
 void Sema::checkFunction(FunctionDecl *Fn) {
+  refreshGenericSourceContracts(Fn);
   auto rawPrepared = m_RawAddressReturns.find(Fn);
   if (m_RawAddressPreparedDefinitions.count(Fn) && rawPrepared != m_RawAddressReturns.end() &&
       rawPrepared->second.Checked) {
@@ -7089,6 +7087,8 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     FunctionDecl *Template,
     const std::vector<std::shared_ptr<toka::Type>> &Args, CallExpr *CallSite,
     bool prepareStage0BodyCalls, bool promoteStage0BodyCalls) {
+
+  refreshGenericSourceContracts(Template);
 
   std::string qualificationParentIdentity;
   if (prepareStage0BodyCalls && CurrentFunction &&

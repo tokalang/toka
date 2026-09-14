@@ -467,6 +467,7 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
 
   // 2. Resolve LHS Metadata
   TokaSymbol *symLHS = nullptr;
+  TokaSymbol genericViewTarget;
   llvm::Value *lhsAlloca = nullptr;
   const auto *variableTarget =
       dynamic_cast<const VariableExpr *>(targetLHS);
@@ -489,6 +490,14 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     if (m_Symbols.count(baseName)) {
       symLHS = &m_Symbols[baseName];
       lhsAlloca = symLHS->allocaPtr;
+      if (varLHS->GenericViewDepth && varLHS->ResolvedType) {
+        lhsAlloca = emitGenericViewAddr(varLHS);
+        if (!lhsAlloca) return {};
+        fillSymbolMetadata(genericViewTarget, varLHS->ResolvedType,
+                           getLLVMType(varLHS->ResolvedType));
+        genericViewTarget.allocaPtr = lhsAlloca;
+        symLHS = &genericViewTarget;
+      }
     }
   }
   if (symLHS &&

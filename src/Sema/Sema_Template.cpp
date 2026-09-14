@@ -398,6 +398,8 @@ void Sema::instantiateGenericImpl(
     ImplDecl *Template, const std::string &ConcreteTypeName,
     const std::vector<std::shared_ptr<toka::Type>> &GenericArgs,
     ShapeDecl *ConcreteOwner) {
+  for (const auto &method : Template->Methods)
+    refreshGenericSourceContracts(method.get());
   // 1. Verify generic args count
   if (GenericArgs.size() != Template->GenericParams.size()) {
     return;

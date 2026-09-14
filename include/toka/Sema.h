@@ -855,7 +855,8 @@ private:
   std::set<std::string>
   callableDeclarationGenericNames(const FunctionDecl *function) const;
   GenericValueContractPtr makeGenericValueContract(
-      TypeSyntaxPtr syntax, const std::set<std::string> &parameters) const;
+      TypeSyntaxPtr syntax, const std::set<std::string> &parameters,
+      const Module *sourceModule = nullptr);
   GenericValueContractPtr queryGenericValueContract(Expr *expression);
   GenericValueContractPtr projectGenericFieldContract(
       Expr *object, const ShapeDecl *shape, size_t index);
@@ -863,6 +864,7 @@ private:
       GenericValueContractPtr contract, const ShapeDecl *shape,
       const ShapeMember &sourceMember);
   void recordGenericValueContract(Expr *expression);
+  void refreshGenericSourceContracts(FunctionDecl *function);
   bool isWholeGenericField(const ShapeDecl *shape, const ShapeMember &field) const;
   void populateCallableParameterOrigins(
       SymbolInfo &symbol, const TypeSyntaxPtr &syntax,

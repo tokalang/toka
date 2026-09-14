@@ -215,3 +215,54 @@ Earlier failed iterations are not counted as passing.
 Still WIP: general alias/method-result propagation, complete qualified-write
 and branch/loop coverage, remaining fixture/purpose migrations, then the single
 full build and integrated comparison. No full PASS/FAIL run, E work or push.
+
+### Method/alias continuation and execution-review boundary
+
+`4cfd0a17` preserves the preceding library/source-view work. This continuation
+adds declaration-owned result contracts for generic receiver methods and a
+read-only alias expansion using exact source-module/lexical import identities.
+Aliases are refreshed after imports become available and before specialization;
+no body is re-executed and no specialization's actual types are used to infer
+the original declaration role. Strong aliases and unresolved/unsupported alias
+forms are not silently made opaque. Same-module alias chains and renamed
+source-hidden imported aliases now pass the expanded G gate (71.45 s).
+
+The previous four-test selection was 3/4: only the newly added imported-alias
+case failed; permission views, shared parameters and managed slots passed.
+The targeted alias rerun above closes that failure, not a full-suite rerun.
+
+`qualified_slot_write.tk` is a required pending positive, not a passing negative
+or an excluded supported domain. Its generic target view/capability and cleanup
+address preparation are in WIP, but it still rejects with E04571 and E0475.
+Two attempted changes were rejected by execution review and were NOT applied:
+
+- `g_qualified_reference_intent_unapplied.patch`: maps an explicit selected
+  handle-rebind request to the outer borrow's slot-write request. It does not
+  replace the independent source capability checks. Review flagged possible
+  write-permission elevation.
+- `g_qualified_reference_loan_unapplied.patch`: checks exact path, origin and
+  transient loan state to avoid treating the argument's own already-acquired
+  reference loan as a second incompatible borrow. It does not remove the loan
+  or pairwise argument checking. Review flagged possible incompatible-loan
+  admission. This implementation still needs explicit human confirmation and
+  dynamic tests; its safety is not asserted from the description alone.
+
+Both complete original differences are saved locally in this directory
+(gitignored review artifacts). SHA-256:
+
+- intent: `94cb815b492843a648d167d2dfbb1d382fc2094288400f11b43ecc3ea3999753`
+- loan: `f0af3ec957df4b9b41e4490b3bc1fe265980a0d403ffa1b98a2fc2ddc6f725a8`
+
+Patch target hashes, prior to the next checkpoint:
+
+- Sema_Expr.cpp: `ce53b399b92afef72cc8e62a365a9f3c9509c16dc0714f61da0786edee9ddcd8`
+- Sema_Expr_Call.cpp: `0d000433c4039671e85942e03b1d238237baed19de133965bb7a6f3d2412eeea`
+- PAL_Checker.h: `20385b42cdb0a99eb6af0790a23ff9a37f0db9d7169a724875919fed887b5a58`
+- PAL_Checker.cpp: `d2ade28894010de800d44748941c18ac5312ad750536fb980fff54c39703cf4d`
+
+Before qualified writes can count as complete, require scalar/unique/shared
+replacement and old-value cleanup, readonly source/request rejection, prior
+active borrow and duplicate-argument rejection, source/target rollback, plus
+normal/shadow parity and no artifact on rejection. Do not bypass the execution
+rejection or call the existing partial G gate full qualification. E, full-suite
+comparison and publishing remain unstarted.

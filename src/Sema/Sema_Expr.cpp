@@ -109,6 +109,14 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
     std::string actualName = Var->Name;
     if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName) &&
         Info) {
+      if (Var->GenericViewDepth && Var->IsAbstractWholeValue && Var->ResolvedType &&
+          (Var->ResolvedType->isPointer() || Var->ResolvedType->isReference() ||
+           Var->ResolvedType->isSmartPointer())) {
+        auto payload = Var->ResolvedType->getPointeeType();
+        return applyPathFlowCeiling({payload && payload->IsWritable,
+            Info->IsSoulMutable() && (declarationOnly || Info->PayloadFlowWritable),
+            !declarationOnly && Info->HasPayloadFlowCeiling && !Info->PayloadFlowWritable});
+      }
       bool isPlainOwnedValue =
           Info->IsDeclaredVariable && !Info->IsPlaceAlias &&
           !Info->IsFunctionParameter &&
@@ -153,6 +161,14 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
     // complete inner type (including pointee permissions); never derive this
     // capability merely from unsafe context or from the requested borrow.
     auto *selected = dynamic_cast<UnaryExpr *>(Unary->RHS.get());
+    if (Unary->Op == TokenType::Ampersand && selected &&
+        (selected->Op == TokenType::Caret || selected->Op == TokenType::Tilde ||
+         (selected->Op == TokenType::Ampersand && selected->SelectsHandleIdentity)) &&
+        E->ResolvedType && E->ResolvedType->isReference() && selected->ResolvedType &&
+        E->ResolvedType->getPointeeType()->equals(*selected->ResolvedType)) {
+      auto source = getAccessCapability(selected, declarationOnly);
+      return applyPathFlowCeiling({source.HandleRebindable, false, !source.HandleRebindable});
+    }
     auto *index = selected && selected->Op == TokenType::MorphicIdentity
                       ? dynamic_cast<ArrayIndexExpr *>(selected->RHS.get())
                       : nullptr;

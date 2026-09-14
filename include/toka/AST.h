@@ -2464,6 +2464,7 @@ public:
   TypeSyntaxPtr ReturnTypeSyntax;
   EffectKind Effect = EffectKind::None;
   ReturnContractSyntax ReturnContract;
+  GenericValueContractPtr GenericReturnContract;
   OutcomeContractSyntax OutcomeContract;
   std::shared_ptr<toka::Type> ResolvedReturnType;
   std::vector<std::string> LifeDependencies; // [NEW] e.g., <- x|y
@@ -2566,6 +2567,7 @@ public:
                                             GenericParams, LifeDependencies, Effect);
     n->CodegenName = CodegenName;
     n->setReturnContract(ReturnContract);
+    n->GenericReturnContract = GenericReturnContract;
     n->OutcomeContract = OutcomeContract;
     n->MemberDependencies = MemberDependencies;
     n->IsVariadic = IsVariadic;

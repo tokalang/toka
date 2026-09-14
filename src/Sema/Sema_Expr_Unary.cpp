@@ -376,6 +376,8 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     refType->IsWritable = Unary->IsRebindable;
     
     bool isExclusive = Unary->IsRebindable;
+    if (borrowsSelectedHandle && inner->IsWritable && m_ExpectedWritability)
+      isExclusive = true;
     if (inner->IsWritable && !(inner->isSharedPtr() || inner->isRawPointer() || inner->isReference())) {
       if (m_ExpectedWritability) {
           isExclusive = true;

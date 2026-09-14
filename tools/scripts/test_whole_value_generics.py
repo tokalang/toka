@@ -36,7 +36,7 @@ def main():
         for name in ('relay', 'local_relay', 'slot_write', 'whole_borrow', 'reference_forwarding', 'structure_views', 'index_views',
                      'enum_transfer', 'shared_observer_contract', 'literal_preservation',
                      'library_domains', 'option_fallback', 'raw_local_relay',
-                     'associated_values', 'qualified_borrow'):
+                     'associated_values', 'qualified_borrow', 'alias_values'):
             normal = check(name, '--check-only')
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 0, (name, normal.stderr, shadow.stderr)
@@ -249,6 +249,28 @@ pub fn borrow_forward<T>(&value:T) -> &T <- value {
         assert built.returncode == 0, built.stderr
         assert subprocess.run([str(output)], timeout=10).returncode == 0
         print('PASS source-hidden associated value and descriptor-preserving borrow', flush=True)
+
+        alias_source = (ROOT / 'tests/semantics/whole_value_generics/alias_values.tk').read_text()
+        alias_provider, alias_consumer = alias_source.split('shape Resource', 1)
+        alias_provider = re.sub(r'(?m)^(alias|shape|fn) ', r'pub \1 ', alias_provider)
+        provider.write_text(alias_provider)
+        emitted = subprocess.run(prefix + ['--emit-interface', '-c', str(provider),
+                                  '-o', str(work / 'provider.o')], env=env, cwd=work,
+                                 capture_output=True, text=True, timeout=60)
+        assert emitted.returncode == 0, emitted.stderr
+        provider.unlink()
+        consumer.write_text('import provider::{Slot, Again as Input, relay, borrow}\n'
+                            'fn client<T>(cede value:Input<T>) -> Input<T> {\n'
+                            'auto local = cede value\nreturn cede local\n}\nshape Resource' +
+                            alias_consumer.replace('relay<^Resource>(cede ^owner)',
+                                                   'client<^Resource>(cede ^owner)'))
+        output = work / 'source-hidden-alias'
+        built = subprocess.run(prefix + [str(consumer), str(work / 'provider.o'),
+                                '-o', str(output)], env=env, cwd=work,
+                               capture_output=True, text=True, timeout=60)
+        assert built.returncode == 0, built.stderr
+        assert subprocess.run([str(output)], timeout=10).returncode == 0
+        print('PASS source-hidden imported alias contract', flush=True)
 
 
 if __name__ == '__main__':
