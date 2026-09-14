@@ -369,7 +369,9 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       baseShapeName = resolveType(patName.substr(0, scopePos));
       patName = patName.substr(scopePos + 2);
     }
-    if (ShapeMap.count(baseShapeName)) {
+    if (ShapeMap.count(baseShapeName) &&
+        (ShapeMap[baseShapeName]->Kind == ShapeKind::Enum ||
+         ShapeMap[baseShapeName]->Kind == ShapeKind::Union)) {
       ShapeDecl *SD = ShapeMap[baseShapeName];
       for (auto &Memb : SD->Members) {
         bool noPayload = Memb.IsUnitVariant ||

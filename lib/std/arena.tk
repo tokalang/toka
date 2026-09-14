@@ -140,22 +140,28 @@ impl Arena {
 }
 
 /**
- * Allocate generic type 'T safely and return a raw pointer to it.
+ * Allocate storage for T; no initialized value or Drop ownership is created.
  */
-pub fn alloc_type<T>(arena#: Arena) -> nul *T {
+pub fn alloc_type<T>(arena#: Arena) -> nul *T# <- arena
+where:
+    T: morphology raw_extendable
+{
     auto size = sizeof(T)
     auto addr = arena#.alloc_bytes(size)
-    auto nul *result = addr as nul *T
+    auto nul *result# = unsafe (addr as nul *T)
     return *result
 }
 
 /**
- * Allocate an array of generic type 'T inside the arena chunk pool.
+ * Allocate array storage inside the arena chunk pool.
  */
-pub fn alloc_array<T>(arena#: Arena, count: usize) -> nul *T {
+pub fn alloc_array<T>(arena#: Arena, count: usize) -> nul *T# <- arena
+where:
+    T: morphology raw_extendable
+{
     auto size = sizeof(T) * count
     auto addr = arena#.alloc_bytes(size)
-    auto nul *result = addr as nul *T
+    auto nul *result# = unsafe (addr as nul *T)
     return *result
 }
 

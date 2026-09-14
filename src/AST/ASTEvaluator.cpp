@@ -49,6 +49,8 @@ std::unique_ptr<Expr> ASTEvaluator::foldExpression(std::unique_ptr<Expr> E, Scop
       auto Field = std::make_unique<ComptimeFieldExpr>(
           Info.ComptimeFieldName, Info.ComptimeFieldTypeStr,
           Info.ComptimeFieldOffset, Info.ComptimeFieldSize);
+      Field->OwnerType = Info.ComptimeFieldOwner;
+      Field->OwnerFieldIndex = Info.ComptimeFieldIndex;
       Field->Loc = Var->Loc;
       return Field;
     }
@@ -105,6 +107,8 @@ std::unique_ptr<Expr> ASTEvaluator::foldExpression(std::unique_ptr<Expr> E, Scop
         // Fold format: field.get(obj) -> obj.FieldName
         Met->Args[0] = foldExpression(std::move(Met->Args[0]), CurrentScope, SemaInstance);
         auto replacement = std::make_unique<MemberExpr>(std::move(Met->Args[0]), CFE->FieldName);
+        replacement->ReflectionOwnerType = CFE->OwnerType;
+        replacement->ReflectionFieldIndex = CFE->OwnerFieldIndex;
         replacement->Loc = Met->Loc;
         return replacement;
       } else if (Met->Method == "set" && Met->Args.size() == 2) {
@@ -112,6 +116,8 @@ std::unique_ptr<Expr> ASTEvaluator::foldExpression(std::unique_ptr<Expr> E, Scop
         Met->Args[0] = foldExpression(std::move(Met->Args[0]), CurrentScope, SemaInstance);
         Met->Args[1] = foldExpression(std::move(Met->Args[1]), CurrentScope, SemaInstance);
         auto dest = std::make_unique<MemberExpr>(std::move(Met->Args[0]), CFE->FieldName);
+        dest->ReflectionOwnerType = CFE->OwnerType;
+        dest->ReflectionFieldIndex = CFE->OwnerFieldIndex;
         dest->Loc = Met->Loc;
         auto assign = std::make_unique<BinaryExpr>("=", std::move(dest), std::move(Met->Args[1]));
         assign->Loc = Met->Loc;

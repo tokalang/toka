@@ -64,7 +64,7 @@ def main():
                     assert expected in normal.stderr, (api, normal.stderr)
                     if api == "next":
                         assert "raw_extendable" in normal.stderr, normal.stderr
-                        assert ("generic parameter 'K" if role == "key" else "generic parameter 'V") in normal.stderr, normal.stderr
+                        assert ("generic parameter K" if role == "key" else "generic parameter V") in normal.stderr, normal.stderr
                     for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
                         output = source.with_suffix(suffix)
                         failed = run(source, flag, "-o", output)

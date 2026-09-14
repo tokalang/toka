@@ -1,0 +1,45 @@
+extern fn libc_abort() -> void
+shape Box<T>(Some(T) = 1 | None = 0)
+impl<T> Box<T> {
+    fn empty() -> Box<T> { return Box<T>::None }
+    fn make(cede value:T) -> Box<T> { return Box<T>::Some(cede value) }
+    fn take(cede self) -> T {
+        match cede self {
+            auto Box<T>::Some(value) => return cede value
+            _ => {
+                unsafe { libc_abort() }
+                unreachable
+            }
+        }
+    }
+}
+fn roundtrip<T>(cede value:T) -> T {
+    auto empty = Box<T>::empty()
+    cede empty
+    auto saved = Box<T>::make(cede value)
+    auto out = saved.take()
+    return cede out
+}
+auto drops# = 0:i32
+shape Resource(value:i32)
+impl Resource@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    auto number = 3:i32
+    if roundtrip(cede number) != 3 { return 1 }
+    {
+        auto ^owner = new Resource(value=7)
+        auto ^result = roundtrip<^Resource>(cede ^owner)
+        if result.value != 7 || drops != 0 { return 2 }
+    }
+    if drops != 1 { return 3 }
+    {
+        auto ~owner = new Resource(value=9)
+        auto ~survivor = ~owner
+        auto ~result = roundtrip(cede ~owner)
+        if result.value != 9 || survivor.value != 9 || drops != 1 { return 4 }
+    }
+    return drops - 2
+}

@@ -914,6 +914,10 @@ public:
   std::string Member;
   SourceLocation MemberLoc;
   bool IsStatic;
+  bool IsStaticSyntax;
+  // Evidence from the checked reflect<T>().fields unroll, never source text.
+  std::shared_ptr<Type> ReflectionOwnerType;
+  int ReflectionFieldIndex = -1;
   // Set by Sema only when `receiver.start` is the TaskHandle activation
   // operation.  The parser must keep `start` available as an ordinary field
   // name for every other shape.
@@ -922,7 +926,7 @@ public:
   MemberExpr(std::unique_ptr<Expr> obj, const std::string &member,
              bool isStatic = false)
       : Object(std::move(obj)), Member(member),
-        IsStatic(isStatic) {}
+        IsStatic(isStatic), IsStaticSyntax(isStatic) {}
   std::string toString() const override {
     return Object->toString() + "." + Member;
   }
@@ -930,6 +934,9 @@ public:
     auto n = std::make_unique<MemberExpr>(cloneNode(Object), Member,
                                           IsStatic);
     n->IsTaskStart = IsTaskStart;
+    n->IsStaticSyntax = IsStaticSyntax;
+    n->ReflectionOwnerType = ReflectionOwnerType;
+    n->ReflectionFieldIndex = ReflectionFieldIndex;
     n->Index = Index;
     n->MemberLoc = MemberLoc;
     n->Loc = Loc;
@@ -1538,6 +1545,8 @@ public:
 
 class ComptimeFieldExpr : public Expr {
 public:
+  std::shared_ptr<Type> OwnerType;
+  int OwnerFieldIndex = -1;
   std::string FieldName;
   std::string FieldTypeName;
   int FieldOffset;
@@ -1551,6 +1560,8 @@ public:
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<ComptimeFieldExpr>(FieldName, FieldTypeName,
                                                  FieldOffset, FieldSize);
+    n->OwnerType = OwnerType;
+    n->OwnerFieldIndex = OwnerFieldIndex;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

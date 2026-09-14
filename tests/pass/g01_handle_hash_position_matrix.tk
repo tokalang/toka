@@ -55,18 +55,17 @@ fn shared_identity_and_soul() -> i32 {
 fn reference_identity_and_soul() -> i32 {
     auto left# = 1
     auto right# = 2
-    auto &#slot# = &left
+    {
+        auto &#slot# = &left
+        slot = 3
+        if slot != 3 { return 1 }
 
-    slot = 3
-    if left != 3 {
-        return 1
+        &slot = &right
+        slot = 4
+        if slot != 4 { return 2 }
     }
-
-    &slot = &right
-    slot = 4
-    if right != 4 {
-        return 2
-    }
+    // Verify both writebacks after the exclusive reference's lifetime ends.
+    if left != 3 || right != 4 { return 3 }
 
     return 0
 }

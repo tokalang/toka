@@ -9,7 +9,7 @@ import sys/libc::{libc_printf, libc_fflush, libc_abort}
 // in a slot selected by occupied metadata, including the pending value after
 // its key has been taken. Retirement does not prove initialization or release
 // the other element. Both takes must complete before user operations resume.
-fn hashmap_take_raw_element<T>(nul *storage: [T], index: usize, *marker#: u8) -> T {
+fn hashmap_take_raw_element<T>(nul *storage: [T], index: usize, marker#: u8) -> T {
     if *storage is null {
         unsafe { libc_abort() }
         unreachable
@@ -36,11 +36,11 @@ impl<K, V> HashMap<K, V>@Encap {
             // 1. Drop elements
             auto i# = 0:usize
             loop i < self.cap {
-                 auto *m# = self.meta.unsafe_get(i)
+                 auto m = self.meta.buf[i]
                  if m == 1 {
                      // Take both before either local can run user cleanup.
-                     auto k = hashmap_take_raw_element<K>(self.keys.*buf, i, *m)
-                     auto v = hashmap_take_raw_element<V>(self.vals.*buf, i, *m)
+                     auto k = hashmap_take_raw_element<K>(self.keys.*buf, i, self.meta.buf[i]#)
+                     auto v = hashmap_take_raw_element<V>(self.vals.*buf, i, self.meta.buf[i]#)
                      {
                          auto retired_key = cede k
                      }
@@ -158,7 +158,7 @@ impl<K, V> HashMap<K, V> {
         
         loop true {
             unsafe {
-                auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
+                auto *m_ptr = self.meta.unsafe_get(idx) as *u8
                 if m_ptr == 0 {
                     if found_slot == capacity {
                         found_slot = idx
@@ -173,7 +173,7 @@ impl<K, V> HashMap<K, V> {
                     }
                 } else {
                     // Occupied. Check Key match.
-                    auto *k_ptr# = self.keys.unsafe_get(idx) as *K
+                    auto *k_ptr = self.keys.unsafe_get(idx) as *K
                     if k_ptr.eq(key) {
                         found_slot = idx
                         is_new = false
@@ -196,10 +196,9 @@ impl<K, V> HashMap<K, V> {
             } else {
                 // The old value owns its cleanup; raw assignment alone does
                 // not retire it. Restore occupied before any user Drop runs.
-                auto *marker# = self.meta.unsafe_get(found_slot)
-                auto old = hashmap_take_raw_element<V>(self.vals.*buf, found_slot, *marker)
+                auto old = hashmap_take_raw_element<V>(self.vals.*buf, found_slot, self.meta.buf[found_slot]#)
                 self.vals.buf[found_slot] = cede val
-                marker = 1
+                self.meta.buf[found_slot] = 1
                 auto unused_key = cede key
             }
         }
@@ -222,21 +221,21 @@ impl<K, V> HashMap<K, V> {
             auto i# = 0:usize
             auto moved_count# = 0
             loop i < self.cap {
-                auto *m_ptr# = self.meta.unsafe_get(i) as *u8
+                auto m_ptr = self.meta.buf[i]
                 if m_ptr == 1 {
                      moved_count += 1
-                     auto key = hashmap_take_raw_element<K>(self.keys.*buf, i, *m_ptr)
-                     auto val = hashmap_take_raw_element<V>(self.vals.*buf, i, *m_ptr)
+                     auto key = hashmap_take_raw_element<K>(self.keys.*buf, i, self.meta.buf[i]#)
+                     auto val = hashmap_take_raw_element<V>(self.vals.*buf, i, self.meta.buf[i]#)
                      
                      auto idx# = (key.hash() as usize) & (new_cap - 1)
                      auto start_idx = idx
                      
                      loop true {
-                         auto *nm_ptr# = new_m.unsafe_get(idx) as *u8
+                         auto nm_ptr = new_m.buf[idx]
                          if nm_ptr == 0 {
                              new_k.buf[idx] = cede key
                              new_v.buf[idx] = cede val
-                             nm_ptr = 1
+                             new_m.buf[idx] = 1
                              break
                          }
                          idx = (idx + 1) & (new_cap - 1)
@@ -270,7 +269,7 @@ impl<K, V: @Copy> HashMap<K, V> {
 
          loop true {
              unsafe {
-                 auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
+                 auto *m_ptr = self.meta.unsafe_get(idx) as *u8
 
                  if m_ptr == 0 {
                      auto outcome = Option<V>::None
@@ -279,9 +278,9 @@ impl<K, V: @Copy> HashMap<K, V> {
 
                  if m_ptr == 1 {
                      // Occupied, check key
-                     auto *k_ptr# = self.keys.unsafe_get(idx) as *K
+                     auto *k_ptr = self.keys.unsafe_get(idx) as *K
                      if k_ptr.eq(key) {
-                         auto *v_ptr# = self.vals.unsafe_get(idx) as *V
+                         auto *v_ptr = self.vals.unsafe_get(idx) as *V
                          return Option<V>::Some(v_ptr)
                      }
                  }
@@ -307,14 +306,14 @@ impl<K, V> HashMap<K, V> {
 
          loop true {
              unsafe {
-                 auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
+                 auto *m_ptr = self.meta.unsafe_get(idx) as *u8
 
                  if m_ptr == 0 {
                      return Option<&V>::None
                  }
 
                  if m_ptr == 1 {
-                     auto *k_ptr# = self.keys.unsafe_get(idx) as *K
+                     auto *k_ptr = self.keys.unsafe_get(idx) as *K
                      if k_ptr.eq(key) {
                          return Option<&V>::Some(&(self.vals.buf[idx]))
                      }
@@ -345,16 +344,16 @@ impl<K, V> HashMap<K, V> {
          
          loop true {
              unsafe {
-                 auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
+                 auto m_ptr = self.meta.buf[idx]
                  if m_ptr == 0 {
                      auto outcome = Option<V>::None
                      return cede outcome
                  }
                  if m_ptr == 1 {
-                     auto *k_ptr# = self.keys.unsafe_get(idx) as *K
+                     auto *k_ptr = self.keys.unsafe_get(idx) as *K
                      if k_ptr.eq(key) {
-                         auto old_k = hashmap_take_raw_element<K>(self.keys.*buf, idx, *m_ptr)
-                         auto old_v = hashmap_take_raw_element<V>(self.vals.*buf, idx, *m_ptr)
+                         auto old_k = hashmap_take_raw_element<K>(self.keys.*buf, idx, self.meta.buf[idx]#)
+                         auto old_v = hashmap_take_raw_element<V>(self.vals.*buf, idx, self.meta.buf[idx]#)
                          self.len -= 1
                          auto outcome = Option<V>::Some(cede old_v)
                          return cede outcome
@@ -372,14 +371,14 @@ impl<K, V> HashMap<K, V> {
         unsafe {
             auto i# = 0:usize
             loop i < self.cap {
-                auto *m_ptr# = self.meta.unsafe_get(i) as *u8
+                auto m_ptr = self.meta.buf[i]
                 if m_ptr == 1 {
-                    auto _old_k = hashmap_take_raw_element<K>(self.keys.*buf, i, *m_ptr)
-                    auto _old_v = hashmap_take_raw_element<V>(self.vals.*buf, i, *m_ptr)
-                    m_ptr = 0
+                    auto _old_k = hashmap_take_raw_element<K>(self.keys.*buf, i, self.meta.buf[i]#)
+                    auto _old_v = hashmap_take_raw_element<V>(self.vals.*buf, i, self.meta.buf[i]#)
+                    self.meta.buf[i] = 0
                 } else {
                     if m_ptr == 2 {
-                        m_ptr = 0
+                        self.meta.buf[i] = 0
                     }
                 }
                 i += 1
@@ -406,12 +405,12 @@ where:
 
          loop true {
              unsafe {
-                 auto *m_ptr# = self.meta.unsafe_get(idx) as *u8
+                 auto *m_ptr = self.meta.unsafe_get(idx) as *u8
                  if m_ptr == 0 {
                      return miss
                  }
                  if m_ptr == 1 {
-                     auto *k_ptr# = self.keys.unsafe_get(idx) as *K
+                     auto *k_ptr = self.keys.unsafe_get(idx) as *K
                      if k_ptr.eq(key) {
                          return &(self.vals.buf[idx])
                      }

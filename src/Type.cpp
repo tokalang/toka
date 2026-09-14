@@ -1077,7 +1077,14 @@ std::shared_ptr<Type> SliceType::substitute(const std::map<std::string, std::sha
 std::shared_ptr<Type> ShapeType::substitute(const std::map<std::string, std::shared_ptr<Type>> &substMap) const {
   if (substMap.count(Name)) {
     // Substitute base. Does not usually have VariantSuffix but we can append it if needed, or just return.
-    auto substituted = substMap.at(Name)->withAttributes(IsWritable, IsNullable, IsBlocked);
+    const auto &replacement = substMap.at(Name);
+    // An unqualified T denotes the complete replacement, not an attribute
+    // reset. In particular, default false bits on the placeholder cannot
+    // erase nullable/rebind/blocked facts carried by the actual type.
+    auto substituted = !IsWritable && !IsNullable && !IsBlocked
+        ? replacement->withAttributes(replacement->IsWritable,
+                                      replacement->IsNullable, replacement->IsBlocked)
+        : replacement->withAttributes(IsWritable, IsNullable, IsBlocked);
     substituted->IsCede = substituted->IsCede || IsCede;
     if (!VariantSuffix.empty()) {
       if (auto st = std::dynamic_pointer_cast<ShapeType>(substituted)) {

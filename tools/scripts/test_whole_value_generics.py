@@ -26,7 +26,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix='toka-G-') as directory:
         work = Path(directory)
         def check(name, *flags):
-            source_dir = ROOT / ('tests/fail' if name in MORPHOLOGY_CASES else
+            source_dir = ROOT / ('tests/pass' if name == 'g08_raw_layered_nullability_types' else
+                                 'tests/fail' if name in MORPHOLOGY_CASES else
                                  'tests/semantics/whole_value_generics')
             return subprocess.run([
                 str(args.build_dir / 'bin/tokac'), '--workspace-node', 'whole-value-G',
@@ -40,7 +41,9 @@ def main():
                      'library_domains', 'option_fallback', 'raw_local_relay',
                      'associated_values', 'qualified_borrow', 'alias_values',
                      'qualified_slot_write', 'qualified_loan_wrappers',
-                     'borrowed_record_values', 'qualified_slot_loop'):
+                     'borrowed_record_values', 'qualified_slot_loop',
+                     'static_factory_chain', 'reflection_fields',
+                     'enum_struct_field_binding', 'g08_raw_layered_nullability_types'):
             normal = check(name, '--check-only')
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 0, (name, normal.stderr, shadow.stderr)
@@ -92,6 +95,9 @@ def main():
             ('qualified_borrow_readonly', 'E04572'),
             ('qualified_descriptor_escape', 'E0455'),
             ('borrowed_record_escape', 'E0455'),
+            ('reflection_wrong_owner', 'E0406'),
+            ('reflection_readonly', 'E04572'),
+            ('nullable_return_rejected', 'E0408'),
             ('qualified_loan_existing', 'E0475'),
             ('qualified_loan_parent', 'E0475'),
             ('qualified_loan_child', 'E0475'),
@@ -292,6 +298,45 @@ pub fn borrow_forward<T>(&value:T) -> &T <- value {
         assert built.returncode == 0, built.stderr
         assert subprocess.run([str(output)], timeout=10).returncode == 0
         print('PASS source-hidden imported alias contract', flush=True)
+
+        chain = (ROOT / 'tests/semantics/whole_value_generics/static_factory_chain.tk').read_text()
+        chain_provider, chain_consumer = chain.split('fn roundtrip', 1)
+        chain_provider = chain_provider.replace('shape Box<T>', 'pub shape Box<T>')
+        chain_provider = re.sub(r'(?m)^(    )fn ', r'\1pub fn ', chain_provider)
+        provider.write_text(chain_provider)
+        emitted = subprocess.run(prefix + ['--emit-interface', '-c', str(provider),
+                                  '-o', str(work / 'provider.o')], env=env, cwd=work,
+                                 capture_output=True, text=True, timeout=60)
+        assert emitted.returncode == 0, emitted.stderr
+        provider.unlink()
+        consumer.write_text('import provider::{Box as RemoteBox}\nshape Box<T>(unrelated:T)\n'
+                            'fn roundtrip' + chain_consumer.replace('Box<T>::', 'RemoteBox<T>::'))
+        output = work / 'source-hidden-static-chain'
+        built = subprocess.run(prefix + [str(consumer), str(work / 'provider.o'),
+                                '-o', str(output)], env=env, cwd=work,
+                               capture_output=True, text=True, timeout=60)
+        assert built.returncode == 0, built.stderr
+        assert subprocess.run([str(output)], timeout=10).returncode == 0
+        print('PASS source-hidden renamed static factory chain and cleanup', flush=True)
+
+        reflection = (ROOT / 'tests/semantics/whole_value_generics/reflection_fields.tk').read_text()
+        reflection_provider, reflection_main = reflection.split('fn main()', 1)
+        provider.write_text(reflection_provider.replace('fn total<', 'pub fn total<')
+                                              .replace('fn fill<', 'pub fn fill<'))
+        emitted = subprocess.run(prefix + ['--emit-interface', '-c', str(provider),
+                                  '-o', str(work / 'provider.o')], env=env, cwd=work,
+                                 capture_output=True, text=True, timeout=60)
+        assert emitted.returncode == 0, emitted.stderr
+        provider.unlink()
+        consumer.write_text('import provider::{total, fill}\n'
+                            'shape Pair(left:i32, right:i32)\nfn main()' + reflection_main)
+        output = work / 'source-hidden-reflection'
+        built = subprocess.run(prefix + [str(consumer), str(work / 'provider.o'),
+                                '-o', str(output)], env=env, cwd=work,
+                               capture_output=True, text=True, timeout=60)
+        assert built.returncode == 0, built.stderr
+        assert subprocess.run([str(output)], timeout=10).returncode == 0
+        print('PASS source-hidden reflection over caller-owned nominal type', flush=True)
 
 
 if __name__ == '__main__':

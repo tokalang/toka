@@ -1,0 +1,9 @@
+shape Pair(value:i32)
+shape Other(value:i32)
+fn read<T>(value:T) -> i32 {
+    for auto field in reflect<Pair>().fields {
+        return field.get(value):i32
+    }
+    return 0
+}
+fn main() -> i32 { return read(Other(value=7)) }

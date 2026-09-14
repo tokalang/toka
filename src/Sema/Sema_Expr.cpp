@@ -3740,6 +3740,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           SymbolInfo Info;
           Info.TypeObj = toka::Type::fromString("FieldInfo");
           Info.IsComptimeField = true;
+          Info.ComptimeFieldOwner = resolvedObj;
+          Info.ComptimeFieldIndex = static_cast<int>(&member - SD->Members.data());
           Info.ComptimeFieldName = member.Name;
           Info.ComptimeFieldTypeStr = member.Type;
           Info.ComptimeFieldOffset = currentOffset;

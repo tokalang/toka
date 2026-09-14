@@ -264,6 +264,20 @@ int main() {
       continue;
     }
     std::string m = t->getMangledName();
+    const toka::ShapeType parameter("T");
+    auto substituted = parameter.substitute({{"T", t}});
+    if (!substituted || !substituted->equals(*t) ||
+        substituted->getMangledName() != m || t->getMangledName() != m) {
+      std::cerr << p.first << ": bare T substitution changed complete type\n";
+      passed = false;
+    }
+    if (substituted) {
+      substituted->IsNullable = !substituted->IsNullable;
+      if (t->getMangledName() != m) {
+        std::cerr << p.first << ": substitution mutated the shared actual type\n";
+        passed = false;
+      }
+    }
     if (seenMangles.count(m)) {
       std::cerr << "Mangle collision between '" << p.first << "' and '"
                 << seenMangles[m] << "' on mangled name: " << m << "\n";

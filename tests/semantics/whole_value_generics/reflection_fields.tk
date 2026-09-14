@@ -1,0 +1,20 @@
+shape Pair(left:i32, right:i32)
+fn total<T>(value:T) -> i32 {
+    auto result# = 0:i32
+    for auto field in reflect<T>().fields {
+        result += field.get(value):i32
+    }
+    return result
+}
+fn fill<T>(value#:T) {
+    for auto field in reflect<T>().fields {
+        field.set(value, 9:i32)
+    }
+}
+fn main() -> i32 {
+    auto pair# = Pair(left=3, right=4)
+    if total(pair) != 7 { return 1 }
+    fill(pair#)
+    if pair.left != 9 || pair.right != 9 { return 2 }
+    return 0
+}

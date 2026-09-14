@@ -129,7 +129,25 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   m_IsStartingTask = savedStartingTask;
   m_StartBoundaryRoot = savedStartBoundaryRoot;
 
-  if (Memb->Object->IsAbstractWholeValue) {
+  bool validatedReflection = false;
+  if (Memb->ReflectionOwnerType) {
+    auto reflected = std::dynamic_pointer_cast<ShapeType>(Memb->ReflectionOwnerType);
+    auto actual = std::dynamic_pointer_cast<ShapeType>(objTypeObj);
+    // Matching the owner does not grant write permission: only top-level
+    // access writability is ignored for identity, and the normal permission,
+    // PAL, visibility and transfer checks below still apply to the access.
+    validatedReflection = reflected && actual && reflected->Decl &&
+        reflected->Decl == actual->Decl && Memb->ReflectionFieldIndex >= 0 &&
+        static_cast<size_t>(Memb->ReflectionFieldIndex) < reflected->Decl->Members.size() &&
+        reflected->Decl->Members[Memb->ReflectionFieldIndex].Name == Memb->Member &&
+        reflected->withAttributes(false, reflected->IsNullable, reflected->IsBlocked)->equals(
+            *actual->withAttributes(false, actual->IsNullable, actual->IsBlocked));
+    if (!validatedReflection) {
+      error(Memb, DiagID::ERR_GENERIC_SEMA, "reflected field does not match the actual owner type");
+      return toka::Type::fromString("unknown");
+    }
+  }
+  if (Memb->Object->IsAbstractWholeValue && !validatedReflection) {
     // An instantiation's physical fields are not a source-level contract for
     // opaque T. Named structures such as Slot<T> are handled separately.
     error(Memb, DiagID::ERR_NO_SUCH_MEMBER, "abstract T", Memb->Member);

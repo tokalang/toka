@@ -80,7 +80,7 @@ pub shape LLVMContext (
 
 impl LLVMContext {
     pub fn new() -> LLVMContext {
-        return LLVMContext(*handle = toka_llvm_create_context() as *#void, disposed = false)
+        return LLVMContext(*handle = toka_llvm_create_context() as *void, disposed = false)
     }
 
     pub fn dispose(self#) {
@@ -257,7 +257,7 @@ pub shape LLVMModule (
 
 impl LLVMModule {
     pub fn new(name: string, ctx: LLVMContext) -> LLVMModule {
-        return LLVMModule(*handle = toka_llvm_create_module(name.c_str(), ctx.*handle) as *#void, disposed = false)
+        return LLVMModule(*handle = toka_llvm_create_module(name.c_str(), ctx.*handle) as *void, disposed = false)
     }
 
     pub fn dispose(self#) {
@@ -319,7 +319,7 @@ pub shape LLVMBuilder (
 
 impl LLVMBuilder {
     pub fn new(ctx: LLVMContext) -> LLVMBuilder {
-        return LLVMBuilder(*handle = toka_llvm_create_builder(ctx.*handle) as *#void, disposed = false)
+        return LLVMBuilder(*handle = toka_llvm_create_builder(ctx.*handle) as *void, disposed = false)
     }
 
     pub fn dispose(self#) {

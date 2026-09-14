@@ -201,6 +201,8 @@ struct SymbolInfo {
 
   // [Phase 2] Comptime Field Unroll Node Information
   bool IsComptimeField = false;
+  std::shared_ptr<Type> ComptimeFieldOwner;
+  int ComptimeFieldIndex = -1;
   std::string ComptimeFieldName = "";
   std::string ComptimeFieldTypeStr = "";
   uint64_t ComptimeFieldOffset = 0;

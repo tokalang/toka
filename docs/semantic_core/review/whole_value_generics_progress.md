@@ -3,6 +3,58 @@
 Design/authorization checkpoint: `ddb19870`. E is not started. Work remains on
 the existing integration branch; no push, PR, tag or release is authorized.
 
+## Return-chain closeout continuation from `4549aa97` (WIP)
+
+- A selected static factory now projects its declared return contract through
+  the exact source nominal substitution, using the existing member-contract
+  mapper. Resolved physical type alone is not used to invent abstract T.
+  `static_factory_chain` covers scalar/unique/shared, zero-argument factories,
+  explicit/inferred arguments and exact-once cleanup; its source-hidden variant
+  renames the import and introduces a caller namesake. Ring's unmodified public
+  lifecycle/deque gate passed (24.53 s).
+- TKI expression printing preserves source `::` separately from Sema's static
+  enum-value classification. This repairs the empty-variant factory round trip
+  without changing ordinary `.field` syntax or the runtime ABI.
+- Pattern variable recognition only searches actual enum/union variants, not
+  struct fields with the same name. Option/Result unwrap of `Payload(val:i32)`
+  and the original sret/self regression programs compile and run.
+- Reflection get/set carries the checked owner's complete type and exact field
+  index from the existing unroll into the generated member expression. The
+  member checker verifies nominal identity, full type (ignoring only outer
+  access writability) and field identity; normal visibility, PAL and permission
+  checks still run. Wrong-owner and readonly writes reject. Ordinary opaque-T
+  field access remains rejected. The two original JSON serde programs run;
+  this does not qualify the old approximate reflection offset/size metadata.
+- Bare T substitution now preserves the replacement's attributes instead of
+  resetting them to the placeholder's default false bits. This closes the
+  independently observed loss of outer raw nullability. Canonicalization tests
+  verify complete identity and no mutation of the shared actual type; the
+  three layered-nullability instances run and nullable-to-nonnull still rejects.
+- HashMap no longer manufactures writable raw pointers merely to update an
+  initialized metadata byte. Its private take bridge receives `marker#: u8`
+  and callers pass the exact metadata slot. Read-only key/value probes keep
+  read-only raw views. Retirement order, raw_take storage and remainder cleanup
+  are unchanged. Scalar and clone/replacement gates passed; iterator-domain
+  runtime controls passed after concrete shared bindings regained their hats,
+  and its bound diagnostic now matches the unquoted K/V name.
+- The unverified experimental writable Vec accessor was removed, not widened.
+  Arena has explicit raw-domain and writable-construction declarations under
+  examination, but its original write test still rejects known-readonly source
+  facts. No such rejection was removed or counted as passing.
+- Crypto input pointers no longer request write permission; the six MD5/SHA/
+  HMAC/HKDF/PBKDF2 programs run. LLVM handle constructors no longer attach H
+  to a cast type; the backend-instructions runtime control passes.
+- The native-sync appended tkfrag was migrated with the protected-token scanner
+  (21 markers), not by changing protocol expectations. Raw storage-helper
+  returns explicitly describe their writable allocation view. Adapter/raw-take
+  CTests passed 2/2 (44.71 s), without expanding raw_take's element domain.
+
+The latest combined type/G/permission/shared/unsafe selection passed **6/6,
+217.88 s**. These are targeted results, not a replacement for the recorded
+363/456, 441/479, 86/99 full baseline below. A new complete run must retain its
+own logs and exact implementation revision. Other-worker RFC edits stay out of
+implementation commits; E/push/PR/release remain off.
+
 ## Current integration result — G is not ready for acceptance
 
 The one complete run is retained at `/private/tmp/toka-G-final.0snzrT`.

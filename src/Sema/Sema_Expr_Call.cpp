@@ -7133,6 +7133,29 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 ? resolveType(MetAST->ResolvedReturnType)
                 : resolveType(toka::Type::fromString(
                       MethodMap[methodKey][VariantName]));
+
+        // Preserve the source receiver substitution for a static factory just
+        // as for an instance method. Resolved return types alone have already
+        // replaced T, and cannot establish an abstract whole-value contract.
+        auto *staticDeclaration = MetAST && MetAST->TemplateOrigin
+                                      ? MetAST->TemplateOrigin : MetAST;
+        const auto sourceScope = Call->OriginalCallee.rfind("::");
+        if (staticShape && staticDeclaration &&
+            staticDeclaration->GenericParams.empty() &&
+            staticDeclaration->GenericReturnContract &&
+            staticDeclaration->Effect == EffectKind::None &&
+            sourceScope != std::string::npos) {
+          auto ownerSyntax = Type::fromString(Call->OriginalCallee.substr(0, sourceScope));
+          auto ownerContract = ownerSyntax ? makeGenericValueContract(
+              ownerSyntax->toSyntax(Call->Loc, Call->Loc),
+              callableDeclarationGenericNames(CurrentFunction)) : nullptr;
+          ShapeMember resultMember;
+          resultMember.TypeSyntax = staticDeclaration->GenericReturnContract->Type;
+          resultMember.Type = resultMember.TypeSyntax->toCanonicalString();
+          resultMember.Loc = staticDeclaration->Loc;
+          Call->GenericContract = projectGenericMemberContract(
+              ownerContract, staticShape, resultMember);
+        }
         
         // [FIX] Check if Static Method is async and wrap in TaskHandle
         if (MetAST && MetAST->Effect == EffectKind::Async) {

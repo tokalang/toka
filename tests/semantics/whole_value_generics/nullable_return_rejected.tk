@@ -1,0 +1,6 @@
+fn relay<T>(cede value:T) -> T { return cede value }
+fn wrong(nul *source:i32) -> *i32 {
+    auto nul *forwarded = *source
+    return relay<nul *i32>(cede *forwarded)
+}
+fn main() -> i32 { return 0 }

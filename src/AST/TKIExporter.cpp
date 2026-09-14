@@ -973,7 +973,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         exportExpr(addr->Expression.get());
     } else if (auto mem = dynamic_cast<const MemberExpr *>(expr)) {
         exportExpr(mem->Object.get());
-        m_OS << "." << mem->Member;
+        m_OS << (mem->IsStaticSyntax ? "::" : ".") << mem->Member;
     } else if (auto idx = dynamic_cast<const ArrayIndexExpr *>(expr)) {
         exportExpr(idx->Array.get());
         m_OS << "[";

@@ -1,0 +1,10 @@
+import core/option::{Option}
+import core/result::{Result}
+shape Payload(val:i32)
+fn main() -> i32 {
+    auto option = Option<Payload>::Some(Payload(val=7))
+    auto first = option.unwrap()
+    auto result = Result<Payload, i32>::Ok(Payload(val=9))
+    auto second = result.unwrap()
+    return first.val + second.val - 16
+}
