@@ -266,3 +266,60 @@ active borrow and duplicate-argument rejection, source/target rollback, plus
 normal/shadow parity and no artifact on rejection. Do not bypass the execution
 rejection or call the existing partial G gate full qualification. E, full-suite
 comparison and publishing remain unstarted.
+
+### Loan receipt revision — implemented core, activation held
+
+The user approved the request-layer mapping and rejected the old
+path/location-based `conflict.reset()` implementation. The request mapping is
+now applied. The replacement PAL core uses a private, per-successful-acquisition
+receipt. Failed acquisition clears the output; AST clones do not inherit it.
+Snapshots preserve identity; rollback followed by a new acquisition produces a
+different receipt even at the same source coordinate. Coalesced, branch-only,
+merged-different and upgraded entries lose single-loan exclusion eligibility.
+The verifier visits every overlapping entry and can exclude only the exact
+identified loan for a compatible borrow operation, never invalidation/rebind.
+
+The source matrix exposed persistence omissions, corrected without deleting
+other loans: duplicate transient markers no longer erase a committed entry;
+`&#` bindings commit their reference loan; rebindings in nested branches retain
+the already-created loan in the binding's enclosing scope. Contextual writable
+reference requests are supplied during generic deduction, so acquisition mode
+does not depend on an absent expected type. These are requests, not source
+permission proofs; independent capability checks remain.
+
+The enabled intermediate implementation passed the receipt unit, G increment
+and managed-slot selection **3/3 (134.95 s)**, including scalar/unique/shared
+exact-once replacement, equal-view wrappers, other active loans, parent/child
+paths, both branch targets, duplicate arguments, no-capability and changed-view
+rejection, parity and no-artifact controls. This is historical intermediate
+validation, NOT qualification of the current activation state.
+
+Further inspection found that existing reference-descriptor path normalization
+is not yet a sufficient view proof. Execution review rejected both a broader
+path change and a conservative receipt/view guard. Neither rejected difference
+was applied. Their complete original artifacts are preserved as:
+
+- `g_descriptor_path_rejected.patch` (includes the rejected fixture rewrite);
+- `g_receipt_view_guard_rejected.patch`.
+
+To avoid publishing authority with that unresolved boundary, production call
+checking has been restored to ordinary `verifyOperation`. The receipt API and
+its unit matrix remain implemented, but the call-site exclusion is inactive.
+Current `qualified_slot_write.tk` rejects with E0475 and produces no object;
+it remains a required positive, not a blessed negative. The current receipt
+unit passes. No full suite was run.
+
+`g_receipt_view_activation_unapplied.patch` is a new, unapplied candidate against
+this held state. It combines the conservative view guard with activation; it
+does not apply the broader descriptor rewrite or change the active-borrow
+return fixture. SHA-256:
+`1f46a16cb03f2ffa7393feaa4dc6db0e26deeaf35ff3d26ea7bc2bc9029ce474`.
+Explicit confirmation is needed before retrying the rejected view adjustment.
+
+Return-matrix migration observations remain separately tracked: the anonymous
+record permission negative now carries its target capability through a legal
+complete type argument and still emits exactly E04573, with normal/shadow
+parity and no object/IR. Unknown rebound origin now expects E04658 rather than
+inventing a definitely-local origin. The original active-borrow return fixture
+remains unchanged and still blocks that suite (E0454 versus its E0442 oracle);
+it is not counted green or removed. G remains WIP; E/push/PR/release are off.

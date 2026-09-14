@@ -37,6 +37,7 @@ namespace toka {
 
 class ASTNode;
 class FunctionDecl;
+class PALBorrowReceipt;
 
 // Immutable source-phase type expression. Unlike the physical instantiated
 // Type, this retains the opaque boundaries at the current source use.
@@ -726,6 +727,8 @@ using RawSlotDependencyEvidencePtr = std::shared_ptr<const RawSlotDependencyEvid
 
 class UnaryExpr : public Expr {
 public:
+  // Present only after this evaluation acquired a PAL loan. Not cloned.
+  std::shared_ptr<const PALBorrowReceipt> AcquiredBorrow;
   // Set only by the checked assignment destination path. This selects the
   // complete managed element behind a native guard reference, never an owning
   // transfer from that borrowed reference. Not copied by clone().

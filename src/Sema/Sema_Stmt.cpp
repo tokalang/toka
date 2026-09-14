@@ -2499,7 +2499,8 @@ void Sema::checkStmt(Stmt *S) {
       }
     }
 
-    if (morph == "&" && !m_LastBorrowSource.empty()) {
+    // Handle rebinding (&#) does not remove the reference's persistent loan.
+    if (Info.TypeObj && Info.TypeObj->isReference() && !m_LastBorrowSource.empty()) {
       Info.BorrowedFrom = m_LastBorrowSource;
       Info.LifeDependencySet.insert(m_LastBorrowSource);
 

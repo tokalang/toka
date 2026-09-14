@@ -495,6 +495,13 @@ AccessIntent Sema::getAccessIntent(Expr *E) {
   }
   if (auto *Unary = dynamic_cast<UnaryExpr *>(E)) {
     auto intent = getAccessIntent(Unary->RHS.get());
+    auto *selected = dynamic_cast<UnaryExpr *>(Unary->RHS.get());
+    if (Unary->Op == TokenType::Ampersand && selected &&
+        (selected->Op == TokenType::Caret || selected->Op == TokenType::Tilde ||
+         (selected->Op == TokenType::Ampersand && selected->SelectsHandleIdentity)) &&
+        E->ResolvedType && E->ResolvedType->isReference() && selected->ResolvedType &&
+        E->ResolvedType->getPointeeType()->equals(*selected->ResolvedType))
+      intent.PayloadWrite = intent.HandleRebind; // Request to borrow the selected slot writable.
     intent.HandleRebind = Unary->IsRebindable;
     return intent;
   }

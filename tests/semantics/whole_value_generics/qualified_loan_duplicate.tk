@@ -1,0 +1,6 @@
+fn use_pair<T>(&first#:T, &second#:T) {}
+fn main() -> i32 {
+    auto value# = 1:i32
+    use_pair<i32>(&value, &value)
+    return value
+}

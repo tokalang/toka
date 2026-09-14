@@ -1,0 +1,9 @@
+shape Pair(left#:i32, right:i32)
+fn replace<T>(&slot#:T, cede incoming:T) { slot = cede incoming }
+fn main() -> i32 {
+    auto pair# = Pair(left=1, right=2)
+    auto &held = &(pair.left)
+    auto next = Pair(left=7, right=9)
+    replace<Pair>(&pair, cede next)
+    return held + next.left + pair.left
+}

@@ -48,6 +48,14 @@ struct PALConflict {
   std::string displayPath() const { return Path.toDebugString(); }
 };
 
+// Ephemeral compiler identity, not a source coordinate or public evidence ID.
+// Only a successful acquisition can create one. Snapshot copies preserve it.
+class PALBorrowReceipt {
+  PALBorrowReceipt() = default;
+  friend class PALChecker;
+};
+using PALBorrowReceiptPtr = std::shared_ptr<const PALBorrowReceipt>;
+
 /// Toka's PAL (Path-Anchored Ledger) System
 /// 
 /// PAL is the official identifier for Toka's Borrow Checker mechanism. 
@@ -75,7 +83,8 @@ public:
   // Marks a specific path as degraded
   // isMutable parameter determines exclusivity
   bool recordBorrow(const AccessPath &path, bool isMutable = false,
-                    SourceLocation originLoc = {});
+                    SourceLocation originLoc = {},
+                    PALBorrowReceiptPtr *acquired = nullptr);
 
   // Verifies if a path can be exclusively mutated
   std::optional<PALConflict> verifyMutation(const AccessPath &path);
@@ -89,6 +98,11 @@ public:
   // Verifies whether an operation class can be applied at a path.
   std::optional<PALConflict> verifyOperation(const AccessPath &path,
                                              PALOperationClass op);
+  // Verify a call's borrow access using its actual acquisition. Only that
+  // exact loan is excluded; all other overlapping ledger entries are checked.
+  std::optional<PALConflict> verifyArgumentBorrow(
+      const AccessPath &path, PALOperationClass op,
+      const PALBorrowReceiptPtr &acquired);
   bool operationRequiresExclusive(PALOperationClass op) const;
   bool operationsConflict(PALOperationClass lhs, PALOperationClass rhs) const;
   AccessPathOverlap classifyOverlap(const AccessPath &lhs,
@@ -105,7 +119,8 @@ public:
   PathState getState(const AccessPath &path) const;
 
   // Commits a specific transient borrow so it persists until the scope ends
-  void commitTransient(const AccessPath &path);
+  void commitTransient(const AccessPath &path,
+                       std::optional<size_t> retainingLevels = std::nullopt);
 
   // Releases an exact borrow introduced by a compiler-managed lexical value.
   void releaseBorrow(const AccessPath &path);
@@ -133,6 +148,7 @@ private:
   struct LedgerEntry {
     PathState State = PathState::Free;
     SourceLocation OriginLoc;
+    PALBorrowReceiptPtr Acquisition;
   };
 
   struct LedgerScope {

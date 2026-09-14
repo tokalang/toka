@@ -1,0 +1,34 @@
+*** Begin Patch
+*** Update File: /private/tmp/toka-b6-dynamic-20260912/src/Sema/Sema_Expr_Call.cpp
+@@
+-        // Keep production fail-closed until descriptor/source-view identity
+-        // is qualified too. The receipt verifier remains covered by its
+-        // independent matrix; an acquisition alone is not a view proof.
+-        auto conflict = PALCheckerState.verifyOperation(argPath, access);
++        PALBorrowReceiptPtr acquired;
++        if (auto *reference = dynamic_cast<UnaryExpr *>(construction);
++            reference && reference->Op == TokenType::Ampersand &&
++            reference->ResolvedType && reference->ResolvedType->isReference()) {
++          acquired = reference->AcquiredBorrow;
++          const auto operand = makeAccessPath(reference->RHS.get());
++          auto *selection = dynamic_cast<UnaryExpr *>(reference->RHS.get());
++          const bool descriptor =
++              (selection && selection->Op == TokenType::Ampersand && selection->SelectsHandleIdentity) ||
++              (reference->RHS->IsAbstractWholeValue && reference->RHS->ResolvedType &&
++               reference->RHS->ResolvedType->isReference());
++          SymbolInfo *binding = nullptr;
++          if (operand.RootID) CurrentScope->findSymbolByID(operand.RootID, binding);
++          if (descriptor && !(operand == argPath)) {
++            acquired.reset(); // The existing path does not prove this descriptor view.
++          } else if (!descriptor && binding && binding->CurrentReferenceTargets) {
++            const auto &targets = *binding->CurrentReferenceTargets;
++            if (targets.size() != 1) acquired.reset();
++            else {
++              auto current = targets.front();
++              current.Projections.insert(current.Projections.end(), operand.Projections.begin(), operand.Projections.end());
++              if (!(current == argPath)) acquired.reset();
++            }
++          }
++        }
++        auto conflict = PALCheckerState.verifyArgumentBorrow(argPath, access, acquired);
+*** End Patch

@@ -1,0 +1,59 @@
+*** Begin Patch
+*** Update File: /private/tmp/toka-b6-dynamic-20260912/include/toka/Sema.h
+@@
+   AccessPath makeAccessPath(Expr *E);
++  AccessPath makeBorrowSourcePath(Expr *E);
+*** Update File: /private/tmp/toka-b6-dynamic-20260912/src/Sema/Sema_AccessPath.cpp
+@@
+-AccessPath Sema::makeAccessPath(Expr *E) {
++AccessPath Sema::makeBorrowSourcePath(Expr *E) {
++  auto path = makeAccessPath(E);
++  auto *selection = dynamic_cast<UnaryExpr *>(E);
++  if (selection && selection->Op == TokenType::Ampersand &&
++      selection->SelectsHandleIdentity && selection->ResolvedType &&
++      selection->ResolvedType->isReference() &&
++      dynamic_cast<VariableExpr *>(selection->RHS.get()))
++    return path; // &&r borrows r's descriptor, not the referent stored in r.
++  return canonicalizeAccessPath(path);
++}
++
++AccessPath Sema::makeAccessPath(Expr *E) {
+*** Update File: /private/tmp/toka-b6-dynamic-20260912/src/Sema/Sema_Expr_Unary.cpp
+@@
+         if (!PALCheckerState.recordBorrow(
+-                canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
++                makeBorrowSourcePath(Unary->RHS.get()),
+@@
+-                  canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
++                  makeBorrowSourcePath(Unary->RHS.get()),
+*** Update File: /private/tmp/toka-b6-dynamic-20260912/src/Sema/Sema_Stmt.cpp
+@@
+-            borrowPath = canonicalizeAccessPath(
+-                makeAccessPath(borrowExpr->RHS.get()));
++            borrowPath = makeBorrowSourcePath(borrowExpr->RHS.get());
+*** Update File: /private/tmp/toka-b6-dynamic-20260912/src/Sema/Sema_Expr_Call.cpp
+@@
+       AccessPath argPath =
+           canonicalizeAccessPath(makeAccessPath(construction));
++      if (auto *reference = dynamic_cast<UnaryExpr *>(construction);
++          reference && reference->Op == TokenType::Ampersand)
++        argPath = makeBorrowSourcePath(reference->RHS.get());
+*** Update File: /private/tmp/toka-b6-dynamic-20260912/src/Sema/Sema_Expr_Binary.cpp
+@@
+         AccessPath lhsPath =
+             canonicalizeAccessPath(makeAccessPath(Bin->LHS.get()));
++        if (auto *selection = dynamic_cast<UnaryExpr *>(Bin->LHS.get());
++            isRefAssign && selection && selection->Op == TokenType::Ampersand &&
++            dynamic_cast<VariableExpr *>(selection->RHS.get()))
++          lhsPath = makeAccessPath(selection->RHS.get());
+*** Update File: /private/tmp/toka-b6-dynamic-20260912/tests/semantics/stage1_return_matrix/rebound_reference_active_borrow.tk
+@@
+-    auto &#reference# = &first
++    auto &#reference = &first
+@@
+-    auto &saved = &reference
++    auto &&saved = &&reference
+@@
+-    return &saved
++    return &second
+*** End Patch

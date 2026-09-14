@@ -1,0 +1,8 @@
+fn replace<T>(&slot#:T, cede incoming:T) { slot = cede incoming }
+fn main() -> i32 {
+    auto value# = 1:i32
+    auto &held = &value
+    auto next = 7:i32
+    replace<i32>(&value, cede next)
+    return held + next + value
+}

@@ -1312,8 +1312,12 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
               !collectActualReturnReferents(Bin->RHS.get(), targets))
             targets.clear();
           binding->LifeDependencySet.clear();
-          for (const auto &target : targets)
+          for (const auto &target : targets) {
             binding->LifeDependencySet.insert(target.toLegacyString());
+            const int scope = getScopeDepth(name);
+            if (scope >= 0 && scope <= CurrentScope->Depth)
+              PALCheckerState.commitTransient(target, static_cast<size_t>(CurrentScope->Depth - scope));
+          }
           binding->CurrentReferenceTargets = std::move(targets);
         }
       }

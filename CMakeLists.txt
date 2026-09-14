@@ -161,6 +161,9 @@ if(BUILD_TESTING)
         tests/SemanticDependencyClosure.cpp)
     add_executable(toka_place_state_fact
         tests/PlaceStateFact.cpp)
+    add_executable(toka_pal_borrow_receipt tests/PALBorrowReceipt.cpp)
+    target_link_libraries(toka_pal_borrow_receipt PRIVATE toka_frontend)
+    add_test(NAME toka_pal_borrow_receipt COMMAND toka_pal_borrow_receipt)
     add_executable(toka_nominal_shape_id
         tests/NominalShapeId.cpp)
     add_executable(toka_handle_grammar_classifier

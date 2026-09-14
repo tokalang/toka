@@ -6399,9 +6399,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   auto checkArgumentWithHandleCapture =
       [&](Expr *argument, const std::shared_ptr<toka::Type> &expectedType,
           bool parameterIsUnique,
-          bool parameterIsCeded) -> std::shared_ptr<toka::Type> {
+          bool parameterIsCeded,
+          bool referenceWriteRequest = false) -> std::shared_ptr<toka::Type> {
     const bool oldBorrowingSelectedHandle = m_BorrowingSelectedHandle;
+    const bool oldExpectedWritability = m_ExpectedWritability;
     auto resolvedExpected = expectedType ? resolveType(expectedType) : nullptr;
+    if (referenceWriteRequest || (resolvedExpected && resolvedExpected->isReference() &&
+        resolvedExpected->getPointeeType() && resolvedExpected->getPointeeType()->IsWritable))
+      m_ExpectedWritability = true;
     if (!parameterIsCeded &&
         (parameterIsUnique ||
          (resolvedExpected && resolvedExpected->isUniquePtr()))) {
@@ -6410,6 +6415,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     auto result = expectedType ? checkExpr(argument, expectedType)
                                : checkExpr(argument);
     m_BorrowingSelectedHandle = oldBorrowingSelectedHandle;
+    m_ExpectedWritability = oldExpectedWritability;
     return result;
   };
 
@@ -9013,7 +9019,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                   hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
               auto argType = checkArgumentWithHandleCapture(
                   Call->Args[i].get(), nullptr, Param.IsUnique,
-                  Param.IsCeded);
+                  Param.IsCeded, Param.IsReference && Param.IsValueMutable);
               m_AllowPermissionSuffix = oldAllowPermissionSuffix;
               precheckedArgTypes[i] = argType;
               std::shared_ptr<toka::Type> candidate;
@@ -9075,7 +9081,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         m_AllowPermissionSuffix =
             hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
         auto argType = checkArgumentWithHandleCapture(
-            Call->Args[i].get(), nullptr, locIsUnique, Param.IsCeded);
+            Call->Args[i].get(), nullptr, locIsUnique, Param.IsCeded,
+            Param.IsReference && Param.IsValueMutable);
         m_AllowPermissionSuffix = oldAllowPermissionSuffix;
         precheckedArgTypes[i] = argType;
         if (!argType || argType->isUnknown())
@@ -10523,8 +10530,19 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     if (paramType && i < ParamTypes.size()) {
+      Expr *construction = Call->Args[i].get();
+      while (construction && construction->ResolvedType && construction->ResolvedType->isReference()) {
+        Expr *inner = nullptr;
+        if (auto *cast = dynamic_cast<CastExpr *>(construction);
+            cast && (cast->Kind == CastKind::Implicit || cast->Kind == CastKind::Ascription))
+          inner = cast->Expression.get();
+        else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(construction))
+          inner = unsafe->Expression.get();
+        if (!inner || !inner->ResolvedType || !construction->ResolvedType->equals(*inner->ResolvedType)) break;
+        construction = inner;
+      }
       AccessPath argPath =
-          canonicalizeAccessPath(makeAccessPath(Call->Args[i].get()));
+          canonicalizeAccessPath(makeAccessPath(construction));
       if (argPath) {
         PALOperationClass access = PALOperationClass::SharedPayloadBorrow;
         if (isCallerCeded || (isCededParam && !isCedeParamImplicitlyExempt)) {
@@ -10537,6 +10555,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           access = PALOperationClass::HandleViewBorrow;
         }
 
+        // Keep production fail-closed until descriptor/source-view identity
+        // is qualified too. The receipt verifier remains covered by its
+        // independent matrix; an acquisition alone is not a view proof.
         auto conflict = PALCheckerState.verifyOperation(argPath, access);
         if (conflict) {
           error(Call->Args[i].get(), DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,

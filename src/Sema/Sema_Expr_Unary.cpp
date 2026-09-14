@@ -31,6 +31,7 @@ namespace toka {
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
 std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
+  Unary->AcquiredBorrow.reset();
 
   if (auto *todo = dynamic_cast<TodoExpr *>(Unary->RHS.get())) {
     SemanticEvidence::recordTodoGoal(todo->TodoId, TodoGoalStatus::Unsupported,
@@ -234,7 +235,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
              // Toka Path-Anchored Check
              if (!PALCheckerState.recordBorrow(
                      canonicalSourcePath,
-                     isExclusive, Unary->Loc)) {
+                     isExclusive, Unary->Loc, &Unary->AcquiredBorrow)) {
                 const auto &conflict = PALCheckerState.lastConflict();
                 // Reborrowing an already-held reference is permitted only
                 // for that reference's own recorded source path.  It is
@@ -376,7 +377,9 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     refType->IsWritable = Unary->IsRebindable;
     
     bool isExclusive = Unary->IsRebindable;
-    if (borrowsSelectedHandle && inner->IsWritable && m_ExpectedWritability)
+    // An explicitly selected writable handle slot already requests an
+    // exclusive loan, including during deduction without an expected type.
+    if (borrowsSelectedHandle && inner->IsWritable)
       isExclusive = true;
     if (inner->IsWritable && !(inner->isSharedPtr() || inner->isRawPointer() || inner->isReference())) {
       if (m_ExpectedWritability) {
@@ -482,7 +485,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
 
         if (!PALCheckerState.recordBorrow(
                 canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
-                isExclusive, Unary->Loc)) {
+                isExclusive, Unary->Loc, &Unary->AcquiredBorrow)) {
             error(Unary, DiagID::ERR_BORROW_MUT, pathToBorrow);
             if (PALCheckerState.lastConflict()) {
               recordPALConflict(

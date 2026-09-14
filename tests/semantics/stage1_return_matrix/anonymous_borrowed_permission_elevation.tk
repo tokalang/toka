@@ -1,10 +1,16 @@
 shape Holder(value: i32)
 
-fn invalid(~holder: Holder) -> result: (item: &i32#)
+// Carry the reference capability as a complete type argument, rather than
+// putting a forbidden permission suffix on a named record field's type.
+fn invalid<T>(~holder: Holder) -> result: (item: T)
 effects:
     result.item <- holder
 {
     return (item = &(holder.value))
 }
 
-fn main() -> i32 { return 0 }
+fn main() -> i32 {
+    auto ~holder = new Holder(value=7)
+    auto result = invalid<&i32#>(~holder)
+    return 0
+}

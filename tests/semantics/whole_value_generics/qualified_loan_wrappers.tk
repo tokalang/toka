@@ -1,0 +1,8 @@
+fn replace<T>(&slot#:T, cede incoming:T) { slot = cede incoming }
+fn main() -> i32 {
+    auto number# = 1:i32
+    replace<i32>(unsafe (&number), 7)
+    if number != 7 { return 1 }
+    replace<i32>((unsafe (&number):&i32#), 9)
+    return number - 9
+}

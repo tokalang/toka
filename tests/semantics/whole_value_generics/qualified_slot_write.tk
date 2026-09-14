@@ -6,6 +6,9 @@ impl Resource@Encap {
 }
 fn replace<T>(&slot#:T, cede incoming:T) { slot = cede incoming }
 fn main() -> i32 {
+    auto number# = 1:i32
+    replace<i32>(&number, 7)
+    if number != 7 { return 5 }
     {
         auto ^#owner = new Resource(value=7)
         auto ^next = new Resource(value=9)

@@ -36,7 +36,8 @@ def main():
         for name in ('relay', 'local_relay', 'slot_write', 'whole_borrow', 'reference_forwarding', 'structure_views', 'index_views',
                      'enum_transfer', 'shared_observer_contract', 'literal_preservation',
                      'library_domains', 'option_fallback', 'raw_local_relay',
-                     'associated_values', 'qualified_borrow', 'alias_values'):
+                     'associated_values', 'qualified_borrow', 'alias_values',
+                     'qualified_slot_write', 'qualified_loan_wrappers'):
             normal = check(name, '--check-only')
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 0, (name, normal.stderr, shadow.stderr)
@@ -87,6 +88,15 @@ def main():
             ('associated_opaque_rejected', 'E0417'),
             ('qualified_borrow_readonly', 'E04572'),
             ('qualified_descriptor_escape', 'E0455'),
+            ('qualified_loan_existing', 'E0475'),
+            ('qualified_loan_parent', 'E0475'),
+            ('qualified_loan_child', 'E0475'),
+            ('qualified_loan_duplicate', 'E0475'),
+            ('qualified_loan_branch', 'E0475'),
+            ('qualified_loan_branch_other', 'E0475'),
+            ('qualified_loan_rebindable', 'E0475'),
+            ('qualified_loan_changed_view', 'E0475'),
+            ('qualified_slot_write_no_capability', 'E04571'),
             ('concrete_payload_not_owner', 'E04571'),
             ('payload_write_is_not_slot_write', 'E04571'),
             ('abstract_does_not_reveal_fields', 'E0417'),
@@ -103,6 +113,11 @@ def main():
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 1, name
             assert normal.stderr == shadow.stderr and f'error[{diagnostic}]' in normal.stderr, normal.stderr
+            if name.startswith('qualified_loan_'):
+                assert 'E0438' not in normal.stderr and 'E0410' not in normal.stderr, normal.stderr
+                assert 'conflicting borrow originates here' in normal.stderr, normal.stderr
+            if name == 'qualified_slot_write_no_capability':
+                assert 'E0438' not in normal.stderr and 'E0410' not in normal.stderr, normal.stderr
             for flag, extension in (('-c', '.o'), ('--emit-llvm', '.ll')):
                 output = work / (name + extension)
                 rejected = check(name, flag, '-o', output)

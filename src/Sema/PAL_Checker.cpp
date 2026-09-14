@@ -18,7 +18,9 @@
 namespace toka {
 
 bool PALChecker::recordBorrow(const AccessPath &path, bool isMutable,
-                              SourceLocation originLoc) {
+                              SourceLocation originLoc,
+                              PALBorrowReceiptPtr *acquired) {
+  if (acquired) acquired->reset();
   if (!IsEnabled) return true;
   LastConflict.reset();
 
@@ -34,10 +36,14 @@ bool PALChecker::recordBorrow(const AccessPath &path, bool isMutable,
   }
   
   auto& map = LedgerStack.back().Map;
+  const bool coalesced = map.count(path) != 0;
+  PALBorrowReceiptPtr receipt;
+  if (acquired && !coalesced) receipt.reset(new PALBorrowReceipt);
   map[path] = {isMutable ? PathState::BorrowedMut
                          : PathState::BorrowedShared,
-               originLoc};
+               originLoc, coalesced ? nullptr : receipt};
   TransientBorrows.push_back(path);
+  if (acquired) *acquired = receipt;
   return true;
 }
 
@@ -49,6 +55,7 @@ bool PALChecker::upgradeBorrow(const AccessPath &path) {
       if (map.count(path) &&
           map[path].State == PathState::BorrowedShared) {
           map[path].State = PathState::BorrowedMut;
+          map[path].Acquisition.reset();
           return true;
       }
   }
@@ -153,6 +160,31 @@ PALChecker::verifyOperation(const AccessPath &path, PALOperationClass op) {
   return verifyAccess(path);
 }
 
+std::optional<PALConflict> PALChecker::verifyArgumentBorrow(
+    const AccessPath &path, PALOperationClass op,
+    const PALBorrowReceiptPtr &acquired) {
+  const bool borrowing = op == PALOperationClass::SharedPayloadBorrow ||
+      op == PALOperationClass::ExclusivePayloadBorrow ||
+      op == PALOperationClass::HandleViewBorrow;
+  if (!acquired || !borrowing ||
+      std::find(TransientBorrows.begin(), TransientBorrows.end(), path) == TransientBorrows.end())
+    return verifyOperation(path, op);
+  if (!IsEnabled) return std::nullopt;
+  const bool exclusive = operationRequiresExclusive(op);
+  for (auto scope = LedgerStack.rbegin(); scope != LedgerStack.rend(); ++scope) {
+    for (const auto &[otherPath, entry] : scope->Map) {
+      if (!pathsOverlap(otherPath, path)) continue;
+      if (entry.Acquisition == acquired && otherPath == path &&
+          (!exclusive || entry.State == PathState::BorrowedMut))
+        continue;
+      if (entry.State == PathState::BorrowedMut ||
+          (exclusive && entry.State == PathState::BorrowedShared))
+        return PALConflict{otherPath, entry.State, entry.OriginLoc};
+    }
+  }
+  return std::nullopt;
+}
+
 PathState PALChecker::getState(const AccessPath &path) const {
   if (!IsEnabled) return PathState::Free;
   for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
@@ -163,11 +195,32 @@ PathState PALChecker::getState(const AccessPath &path) const {
   return PathState::Free;
 }
 
-void PALChecker::commitTransient(const AccessPath &path) {
-  auto it = std::find(TransientBorrows.begin(), TransientBorrows.end(), path);
-  if (it != TransientBorrows.end()) {
-      TransientBorrows.erase(it);
+void PALChecker::commitTransient(const AccessPath &path,
+                                 std::optional<size_t> retainingLevels) {
+  // A reference assigned in a nested branch can outlive that branch. Retain
+  // its existing loan in the binding's scope; do not remove other entries.
+  if (retainingLevels && *retainingLevels < LedgerStack.size()) {
+    const size_t retainingScope = LedgerStack.size() - 1 - *retainingLevels;
+    for (size_t i = LedgerStack.size(); i-- > retainingScope;) {
+      auto source = LedgerStack[i].Map.find(path);
+      if (source == LedgerStack[i].Map.end()) continue;
+      auto &target = LedgerStack[retainingScope].Map;
+      auto retained = target.find(path);
+      if (retained == target.end()) target.emplace(path, source->second);
+      else if (i != retainingScope) {
+        if (retained->second.Acquisition != source->second.Acquisition)
+          retained->second.Acquisition.reset();
+        if (source->second.State == PathState::BorrowedMut)
+          retained->second.State = PathState::BorrowedMut;
+      }
+      break;
+    }
   }
+  // Several checked source routes can coalesce into one ledger entry. Once
+  // committed, no duplicate transient marker may erase it at statement end.
+  TransientBorrows.erase(
+      std::remove(TransientBorrows.begin(), TransientBorrows.end(), path),
+      TransientBorrows.end());
 }
 
 void PALChecker::releaseBorrow(const AccessPath &path) {
@@ -256,6 +309,15 @@ void PALChecker::mergeBranches(const PALChecker& base,
 
   restore(first);
 
+  // A branch-only acquisition is not evidence of one definitely acquired
+  // loan after the join, even though its possible borrow state is retained.
+  for (size_t i = 0; i < LedgerStack.size(); ++i) {
+    for (auto &[path, entry] : LedgerStack[i].Map) {
+      if (i >= second.LedgerStack.size() || !second.LedgerStack[i].Map.count(path))
+        entry.Acquisition.reset();
+    }
+  }
+
   auto mergeState = [](PathState lhs, PathState rhs) {
     if (lhs == PathState::BorrowedMut || rhs == PathState::BorrowedMut)
       return PathState::BorrowedMut;
@@ -274,7 +336,10 @@ void PALChecker::mergeBranches(const PALChecker& base,
       auto found = dst.find(path);
       if (found == dst.end()) {
         dst[path] = entry;
+        dst[path].Acquisition.reset();
       } else {
+        if (found->second.Acquisition != entry.Acquisition)
+          found->second.Acquisition.reset(); // A merged entry is not one identifiable loan.
         PathState merged = mergeState(found->second.State, entry.State);
         if (merged == entry.State && merged != found->second.State)
           found->second.OriginLoc = entry.OriginLoc;
