@@ -82,10 +82,11 @@ After quote removal, `g-noquote-expanded.log` reports 12 runtime cases,
 IR controls. This includes enum transfer, literal preservation and source-hidden
 structure/nominal-shadowing checks. It is not the full G matrix or a full suite.
 
-Execution review rejected a proposed three-file schema migration; **none of
-that patch was applied**. Its complete Codex patch-format artifact is
+Execution review initially rejected a proposed three-file schema migration.
+The exact patch was subsequently explicitly approved against `b5398f26` and
+has now been applied. Its original Codex patch-format artifact is
 `g_noquote_schema_unapplied.patch` in this directory (locally present, gitignored).
-It requires concrete execution approval, not another RFC design decision.
+The execution approval did not reopen the RFC or accept the whole G candidate.
 The concerns were the legacy morphic-exemption marking and native declaration
 schema admission. The patch also keeps cede/reference substitution fail-closed
 and retains actual morphology-bound checking for every type parameter.
@@ -103,3 +104,26 @@ fixtures reach the old declaration schema, and the morphology-domain fixture
 reaches the obsolete "requires morphic parameter" check. No oracle was changed
 to accept these failures. E, push/PR/release and the final full comparison have
 not been started.
+
+### Approved schema migration checkpoint
+
+The three-file migration is applied unchanged. The native factory recursion
+fixture now matches the unquoted signature exactly once before injection;
+its recursive rejection and no-artifact assertion are retained. G also adds
+a reference-consuming specialization rejection, checked in normal/shadow and
+object/IR modes.
+
+Validation after rebuilding tokac: the G suite passed (12 runtime cases,
+13 rejection/parity cases, 26 no-artifact checks and three storage IR checks),
+and the native factory plan suite passed including its fault injections.
+The initial C++ factory-flow test still used an old linked frontend and failed;
+after rebuilding the C++ targets, permission syntax, closed payload and
+factory flow all passed (3/3, 2.69 s). The initial failed run is not counted green.
+
+The shared matrix is now **23/24, no skips**. Both the declaration-schema
+blocker and morphology-domain blocker are closed. The remaining
+`sync_managed_storage_pending.tk` rejects the generic managed-slot reference
+at sync.tk:141/167 with E04573 (plus a downstream prepared-recipe failure).
+This remains a G integration failure, not an accepted negative; investigate
+the whole-slot versus inner payload view without relaxing permission checks.
+No full suite was run. This is a local WIP checkpoint, not G acceptance.

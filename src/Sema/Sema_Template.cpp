@@ -743,12 +743,11 @@ bool Sema::checkMorphologyBounds(
   if (Param.MorphologyBounds.empty())
     return true;
 
-  if (!Param.IsMorphic) {
+  if (Param.IsConst) {
     if (!isSilent) {
       DiagnosticEngine::report(
-          Loc, DiagID::ERR_MORPHOLOGY_BOUND_REQUIRES_MORPHIC,
-          morphologyConstraintName(Param.MorphologyBounds.front()),
-          Param.Name);
+          Loc, DiagID::ERR_GENERIC_SEMA,
+          "morphology bounds require a type parameter, not a const parameter");
       HasError = true;
     }
     return false;

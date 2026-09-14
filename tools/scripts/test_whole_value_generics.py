@@ -57,6 +57,7 @@ def main():
             print('PASS runtime/parity ' + name, flush=True)
         for name, diagnostic in (
             ('borrowed_parameter_cannot_move', 'E0473'),
+            ('reference_consumption_rejected', 'E04661'),
             ('concrete_payload_not_owner', 'E04571'),
             ('payload_write_is_not_slot_write', 'E04571'),
             ('abstract_does_not_reveal_fields', 'E0417'),

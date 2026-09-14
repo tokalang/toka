@@ -1,0 +1,7 @@
+fn consume<T>(cede value:T) { cede value }
+fn main() -> i32 {
+    auto number = 7:i32
+    auto &view = &number
+    consume<&i32>(cede &view)
+    return 0
+}

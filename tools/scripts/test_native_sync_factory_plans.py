@@ -77,10 +77,11 @@ pub fn __factory_test() -> i32 {
 
         # Return-nominal preparation must not make genuine factory recursion
         # admissible. Only metadata ordering changed, not Unchecked authority.
+        recursive_signature = "fn __sync_mutex_create<T: @Send>(cede data: T) -> Mutex<T> {"
+        assert sdk.count(recursive_signature) == 1, "recursive factory injection must match exactly once"
         recursive_sdk = sdk.replace(
-            "fn __sync_mutex_create<'T: @Send>(cede 'data: T) -> Mutex<'T> {",
-            "fn __sync_mutex_create<'T: @Send>(cede 'data: T) -> Mutex<'T> {\n"
-            "    return __sync_mutex_create<'T>(cede 'data)")
+            recursive_signature,
+            recursive_signature + "\n    return __sync_mutex_create<T>(cede data)", 1)
         (library / "std/sync.tk").write_text(recursive_sdk + '''
 pub fn __factory_test() -> i32 {
     auto owner = __sync_mutex_create<i32>(7)

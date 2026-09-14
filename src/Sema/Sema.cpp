@@ -3381,6 +3381,10 @@ void Sema::declareGlobals(Module &M) {
             const bool namesGeneric =
                 exactGenericNames.count(argument.TypeSyntax->Text) != 0;
             argument.IsAbstractWholeValue = namesGeneric;
+            if (namesGeneric) {
+              argument.IsMorphicExempt = true;
+              argument.Permission.MorphicExempt = true;
+            }
             argument.Stage0MorphicGenericRole =
                 namesGeneric && argument.IsMorphicExempt;
             argument.Stage0GenericValueRole =
@@ -5680,6 +5684,11 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
 
     if (Arg.ResolvedType) {
+      if (Arg.IsAbstractWholeValue && Arg.IsCeded && Arg.ResolvedType->isReference()) {
+        DiagnosticEngine::report(argLoc, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                                 "ReferenceBindingSelectorUnavailable");
+        HasError = true;
+      }
       paramOk = validateParameterHandleChain(
           argLoc, Arg.Name, Arg.Permission, Arg.ResolvedType, Arg.TypeSyntax,
           Arg.HadRejectedTypeSideMorphology);

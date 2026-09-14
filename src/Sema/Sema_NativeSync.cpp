@@ -876,17 +876,16 @@ bool Sema::qualifyNativeSyncFactory(CallExpr *call, size_t diagnosticStart) {
     return reject("InvalidSpecialization");
   const bool nativeOnly = fn->NativeSyncFactory == NativeSyncFactoryKind::CondVar;
   const size_t arity = nativeOnly ? 0 : 1;
-  if (declaration->GenericParams.size() != 1 || !declaration->GenericParams[0].IsMorphic ||
+  if (declaration->GenericParams.size() != 1 ||
       declaration->GenericParams[0].IsConst || declaration->IsVariadic ||
       declaration->Effect != EffectKind::None || declaration->Args.size() != arity ||
       fn->Args.size() != arity || call->Args.size() != arity)
     return reject("DeclarationSchemaMismatch");
   if (!nativeOnly) {
     const auto &a = declaration->Args.front();
-    if (!a.IsCeded || !a.IsMorphicExempt) return reject("InputRequiresCededMorphicDeclaration");
-    // Parser retains the apostrophe on the generic binder, but records the
-    // argument's morphology separately from its bare type name.
-    if ("'" + a.Type != declaration->GenericParams[0].Name) {
+    if (!a.IsCeded || !a.IsAbstractWholeValue) return reject("InputRequiresCededWholeValueDeclaration");
+    if (!a.TypeSyntax || a.TypeSyntax->NodeKind != TypeSyntax::Kind::Named ||
+        a.TypeSyntax->Text != declaration->GenericParams[0].Name) {
       error(call, DiagID::ERR_GENERIC_SEMA, "native sync factory: InputTypeSchemaMismatch (" +
             a.Type + " versus " + declaration->GenericParams[0].Name + ")");
       return false;
