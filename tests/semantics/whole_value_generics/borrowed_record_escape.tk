@@ -1,0 +1,8 @@
+shape View(text:str)
+fn forward<T>(value:T) -> &T <- value { return &value }
+fn escape() -> &View {
+    auto owner = string::from_str("local")
+    auto source = View(text=owner.as_str())
+    return forward<View>(source)
+}
+fn main() -> i32 { return 0 }

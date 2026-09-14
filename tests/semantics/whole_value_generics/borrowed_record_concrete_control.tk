@@ -1,0 +1,9 @@
+shape View(text:str)
+fn forward(cede value:View) -> View <- value { return cede value }
+fn main() -> i32 {
+    auto owner = string::from_str("left")
+    auto source = View(text=owner.as_str())
+    auto result = forward(cede source)
+    if result.text != "left" { return 1 }
+    return 0
+}

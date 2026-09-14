@@ -37,7 +37,8 @@ def main():
                      'enum_transfer', 'shared_observer_contract', 'literal_preservation',
                      'library_domains', 'option_fallback', 'raw_local_relay',
                      'associated_values', 'qualified_borrow', 'alias_values',
-                     'qualified_slot_write', 'qualified_loan_wrappers'):
+                     'qualified_slot_write', 'qualified_loan_wrappers',
+                     'borrowed_record_values', 'qualified_slot_loop'):
             normal = check(name, '--check-only')
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 0, (name, normal.stderr, shadow.stderr)
@@ -88,6 +89,7 @@ def main():
             ('associated_opaque_rejected', 'E0417'),
             ('qualified_borrow_readonly', 'E04572'),
             ('qualified_descriptor_escape', 'E0455'),
+            ('borrowed_record_escape', 'E0455'),
             ('qualified_loan_existing', 'E0475'),
             ('qualified_loan_parent', 'E0475'),
             ('qualified_loan_child', 'E0475'),

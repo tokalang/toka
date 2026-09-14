@@ -80,7 +80,7 @@ def main():
         "static_view_descriptor_unwrap.tk": "error[E0455]",
         "rebound_reference_local.tk": "error[E0455]",
         "rebound_reference_wrong_dependency.tk": "error[E0454]",
-        "rebound_reference_unknown.tk": "error[E04658]",
+        "rebound_reference_unknown.tk": "error[E0455]",
         "rebound_reference_branch_local.tk": "error[E0455]",
         "rebound_reference_active_borrow.tk": "error[E0442]",
     }
@@ -93,10 +93,10 @@ def main():
                 source + " did not fail atomically with " + diagnostic)
 
     unknown = run(tokac, "rebound_reference_unknown.tk", "--check-only", "--diagnostics-json")
-    # The current target is unknown, not proven to be the local descriptor.
-    # Require the return-source planner to reject it, without inventing a
-    # local or parameter origin or failing at the earlier rebind boundary.
-    unknown_errors = [d for d in json.loads(unknown.stdout)["diagnostics"] if d["code"] == "E04658"]
+    # Preserve the pre-G lifetime gate: removing the erroneous permanent
+    # initializer alias restores this earlier rejection. Unknown storage is
+    # not thereby proved local; diagnostic precision is a separate issue.
+    unknown_errors = [d for d in json.loads(unknown.stdout)["diagnostics"] if d["code"] == "E0455"]
     require(len(unknown_errors) == 1 and "E04661" not in unknown.stderr,
             "unknown rebind never reached return-source lifetime validation")
 

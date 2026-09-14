@@ -2501,7 +2501,9 @@ void Sema::checkStmt(Stmt *S) {
 
     // Handle rebinding (&#) does not remove the reference's persistent loan.
     if (Info.TypeObj && Info.TypeObj->isReference() && !m_LastBorrowSource.empty()) {
-      Info.BorrowedFrom = m_LastBorrowSource;
+      // A rebindable reference retains its loan, but is not a permanent
+      // alias of its initializer. CurrentReferenceTargets tracks rebinding.
+      if (!Var->IsRebindable) Info.BorrowedFrom = m_LastBorrowSource;
       Info.LifeDependencySet.insert(m_LastBorrowSource);
 
       SymbolInfo *srcPtr = nullptr;
@@ -2529,7 +2531,7 @@ void Sema::checkStmt(Stmt *S) {
                                    "shorter-lived dependency declared here");
       }
 
-      Info.BorrowedFrom = m_LastBorrowSource;
+      if (!Var->IsRebindable) Info.BorrowedFrom = m_LastBorrowSource;
       if (!m_LastBorrowSource.empty()) {
           AccessPath borrowPath =
               canonicalizeAccessPath(makeAccessPath(m_LastBorrowSource));
@@ -2539,7 +2541,7 @@ void Sema::checkStmt(Stmt *S) {
             borrowPath = canonicalizeAccessPath(
                 makeAccessPath(borrowExpr->RHS.get()));
           }
-          Info.BorrowedPath = borrowPath;
+          if (!Var->IsRebindable) Info.BorrowedPath = borrowPath;
           PALCheckerState.commitTransient(borrowPath);
       }
       for (const auto &dep : Info.LifeDependencySet) {

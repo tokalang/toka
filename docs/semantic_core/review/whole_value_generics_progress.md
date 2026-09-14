@@ -28,6 +28,51 @@ are preserved and excluded from this implementation checkpoint.
 
 ## Earlier implementation checkpoints (historical results)
 
+### G closeout matrix and reference regression
+
+The G8 minimum matrix now additionally exercises a complete `View(text:str)`
+through an explicitly dependent generic storage borrow, with two same-type
+calls bound to different owners (`borrowed_record_values`), local escape
+rejection (`borrowed_record_escape`), and repeated/zero-iteration qualified
+unique-slot replacement (`qualified_slot_loop`). Runtime/parity and negative
+no-artifact checks are part of the existing G runner, not a new freeze gate.
+
+| Frozen requirement | Current evidence |
+| --- | --- |
+| G1/G2 full scalar/unique/shared/reference/raw type, explicit and inferred T | relay, local_relay, reference_forwarding, raw_local_relay |
+| G3 members/index/call/return and concrete-vs-abstract views | structure_views, index_views, associated_values, alias_values; concrete/opaque rejection controls |
+| G4 consuming handshake, no borrowed consumption or implicit Dup | named_copy_requires_cede, copy_source_invalidated, borrowed_parameter_cannot_move, reference_consumption_rejected, option_fallback |
+| G5 full-slot storage, descriptor vs referent | whole_borrow IR controls, qualified_borrow, raw_slot_borrow, descriptor/local escape controls |
+| G6 explicit interface domains | library_domains, Float/Copy/soul/raw/borrow bounds and source-hidden positive/negative calls |
+| G7 slot permission vs inner capability, loans and cleanup | qualified_slot_write, qualified_slot_loop, permission_views, qualified_loan_* and shared_parameter_abi |
+| G8 distinct actual sources, rollback, storage lifetime | borrowed_record_values/escape, branch targets, duplicate arguments, source-hidden nominal shadowing |
+| Legacy spelling removal / cross-module consistency | literal_preservation, E01268 negatives, migration self-test and hidden-provider matrix |
+
+Not qualified: whole-value return of `View(text:str)` currently rejects
+IncompleteFacts in both the generic exploratory case and its independent
+non-generic `borrowed_record_concrete_control`. The retained pre-G compiler
+(`/private/tmp/toka-head-build-20260912`, source revision `3626db0a`) also rejects
+that concrete control at the same return. This is not recorded as successful
+whole-value transfer and does not trigger new dependency-elision work.
+
+The E0454/E0442 difference was an implementation regression, not an oracle
+migration: G's expanded persistent-loan registration also gave rebindable
+references a permanent `BorrowedFrom/BorrowedPath` initializer alias. Preserve
+the loan and existing lifetime checks, but do not install that fixed alias on
+a rebindable reference; its current targets remain separately maintained.
+The unchanged `rebound_reference_active_borrow` again rejects E0442 with the
+original conflict location, as does the retained pre-G compiler. The temporary
+G-only E04658 expectation for `rebound_reference_unknown` is reverted to its
+original E0455 after the same cause is removed; the negative still reaches the
+return lifetime gate. Precision of that conservative unknown-origin diagnostic
+is not asserted as a proof of local storage.
+
+The expanded G CTest passed (93.19 s), and managed-slot passed (58.67 s).
+The corrected return-matrix rerun reached its final build-buffer integration
+and failed on the already tracked Vec element-dependency / HashMap capability
+paths; the suite remains red. Full comparison is running in
+`/private/tmp/toka-G-final.0snzrT`; no full-green or G Accepted claim is made.
+
 Implemented so far:
 
 - Exact generic-binder recognition records an abstract whole-value formal
