@@ -9,8 +9,8 @@ impl Resource@Encap {
 fn main() -> i32 {
     auto opt = Option<Resource>::Some(Resource(name = string::from("hello")))
     match opt {
-        auto Option<Resource>::Some('val) => {
-            auto stolen = cede 'val
+        auto Option<Resource>::Some(val) => {
+            auto stolen = cede val
         }
         auto Option<Resource>::None => {}
     }

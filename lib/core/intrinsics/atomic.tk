@@ -16,39 +16,66 @@ pub shape Ordering (
 // CodeGen_Expr.cpp  LLVM
 // ==========================================
 
-pub fn __toka_atomic_load<T>(ptr#: T, _order: Ordering) -> T {
+pub fn __toka_atomic_load<T: @Copy>(ptr#: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
     unsafe { return ptr }
 }
 
-pub fn __toka_atomic_store<T>(ptr#: T, val: T, _order: Ordering) {
+pub fn __toka_atomic_store<T: @Copy>(ptr#: T, val: T, _order: Ordering)
+where:
+    T: morphology soul_only
+{
     unsafe { ptr = val }
 }
 
-pub fn __toka_atomic_fetch_add<T>(ptr#: T, val: T, _order: Ordering) -> T {
+pub fn __toka_atomic_fetch_add<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
     unsafe { auto old = ptr; ptr = old + val; return old }
 }
 
-pub fn __toka_atomic_fetch_sub<T>(ptr#: T, val: T, _order: Ordering) -> T {
+pub fn __toka_atomic_fetch_sub<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
     unsafe { auto old = ptr; ptr = old - val; return old }
 }
 
-pub fn __toka_atomic_fetch_and<T>(ptr#: T, val: T, _order: Ordering) -> T {
+pub fn __toka_atomic_fetch_and<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
     unsafe { auto old = ptr; ptr = old & val; return old }
 }
 
-pub fn __toka_atomic_fetch_or<T>(ptr#: T, val: T, _order: Ordering) -> T {
+pub fn __toka_atomic_fetch_or<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
     unsafe { auto old = ptr; ptr = old | val; return old }
 }
 
-pub fn __toka_atomic_fetch_xor<T>(ptr#: T, val: T, _order: Ordering) -> T {
+pub fn __toka_atomic_fetch_xor<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
     unsafe { auto old = ptr; ptr = old ^ val; return old }
 }
 
-pub fn __toka_atomic_swap<T>(ptr#: T, val: T, _order: Ordering) -> T {
+pub fn __toka_atomic_swap<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
     unsafe { auto old = ptr; ptr = val; return old }
 }
 
-pub fn __toka_atomic_compare_exchange<T>(ptr#: T, current: T, new_val: T, _success: Ordering, _failure: Ordering) -> (old: T, success: bool) {
+pub fn __toka_atomic_compare_exchange<T: @Copy>(ptr#: T, current: T, new_val: T, _success: Ordering, _failure: Ordering) -> (old: T, success: bool)
+where:
+    T: morphology soul_only
+{
     unsafe {
         auto old = ptr
         if old == current { ptr = new_val; return (old = old, success = true) }
@@ -64,42 +91,69 @@ pub fn __toka_atomic_fence_release() {}
 // API (Public API Wrappers)
 // ==========================================
 
-pub fn load<T>(ptr#: T, _order: Ordering) -> T {
-    return __toka_atomic_load(ptr, _order)
+pub fn load<T: @Copy>(ptr#: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
+    return __toka_atomic_load(ptr#, _order)
 }
 
-pub fn store<T>(ptr#: T, val: T, _order: Ordering) {
-    __toka_atomic_store(ptr, val, _order)
+pub fn store<T: @Copy>(ptr#: T, val: T, _order: Ordering)
+where:
+    T: morphology soul_only
+{
+    __toka_atomic_store(ptr#, val, _order)
 }
 
-pub fn fetch_add<T>(ptr#: T, val: T, _order: Ordering) -> T {
-    return __toka_atomic_fetch_add(ptr, val, _order)
+pub fn fetch_add<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
+    return __toka_atomic_fetch_add(ptr#, val, _order)
 }
 
-pub fn fetch_sub<T>(ptr#: T, val: T, _order: Ordering) -> T {
-    return __toka_atomic_fetch_sub(ptr, val, _order)
+pub fn fetch_sub<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
+    return __toka_atomic_fetch_sub(ptr#, val, _order)
 }
 
-pub fn fetch_and<T>(ptr#: T, val: T, _order: Ordering) -> T {
-    return __toka_atomic_fetch_and(ptr, val, _order)
+pub fn fetch_and<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
+    return __toka_atomic_fetch_and(ptr#, val, _order)
 }
 
-pub fn fetch_or<T>(ptr#: T, val: T, _order: Ordering) -> T {
+pub fn fetch_or<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
     return __toka_atomic_fetch_or(ptr#, val, _order)
 }
 
-pub fn fetch_xor<T>(ptr#: T, val: T, _order: Ordering) -> T {
+pub fn fetch_xor<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
     return __toka_atomic_fetch_xor(ptr#, val, _order)
 }
 
-pub fn swap<T>(ptr#: T, val: T, _order: Ordering) -> T {
-    return __toka_atomic_swap(ptr, val, _order)
+pub fn swap<T: @Copy>(ptr#: T, val: T, _order: Ordering) -> T
+where:
+    T: morphology soul_only
+{
+    return __toka_atomic_swap(ptr#, val, _order)
 }
 
-pub fn compare_exchange<T>(
+pub fn compare_exchange<T: @Copy>(
     ptr#: T, current: T, new_val: T, _success: Ordering, _failure: Ordering
-) -> (old: T, success: bool) {
-    return __toka_atomic_compare_exchange(ptr, current, new_val, _success, _failure)
+) -> (old: T, success: bool)
+where:
+    T: morphology soul_only
+{
+    return __toka_atomic_compare_exchange(ptr#, current, new_val, _success, _failure)
 }
 
 pub fn fence(_order: Ordering) {

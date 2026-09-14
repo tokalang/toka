@@ -34,7 +34,9 @@ def main():
                 text=True, timeout=60)
 
         for name in ('relay', 'local_relay', 'slot_write', 'whole_borrow', 'reference_forwarding', 'structure_views', 'index_views',
-                     'enum_transfer', 'shared_observer_contract', 'literal_preservation'):
+                     'enum_transfer', 'shared_observer_contract', 'literal_preservation',
+                     'library_domains', 'option_fallback', 'raw_local_relay',
+                     'associated_values', 'qualified_borrow'):
             normal = check(name, '--check-only')
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 0, (name, normal.stderr, shadow.stderr)
@@ -77,6 +79,14 @@ def main():
             ('borrowed_parameter_cannot_move', 'E0473'),
             ('reference_consumption_rejected', 'E04661'),
             ('raw_slot_readonly_rejected', 'E04573'),
+            ('math_nonfloat_rejected', 'E0606'),
+            ('math_shape_rejected', 'E04571'),
+            ('atomic_shape_rejected', 'E0619'),
+            ('atomic_handle_rejected', 'E0621'),
+            ('plain_resource_match_rejected', 'E0554'),
+            ('associated_opaque_rejected', 'E0417'),
+            ('qualified_borrow_readonly', 'E04572'),
+            ('qualified_descriptor_escape', 'E0455'),
             ('concrete_payload_not_owner', 'E04571'),
             ('payload_write_is_not_slot_write', 'E04571'),
             ('abstract_does_not_reveal_fields', 'E0417'),
@@ -162,6 +172,83 @@ fn main() -> i32 {
         result = subprocess.run([str(output)], capture_output=True, text=True, timeout=10)
         assert result.returncode == 0, (result.returncode, result.stderr)
         print('PASS source-hidden structure/nominal shadowing', flush=True)
+
+        provider.write_text('''import std/math::{Float, sqrt}
+import core/intrinsics/atomic::{load, Ordering}
+pub fn checked_root<T: @{Float, Copy}>(value:T) -> T { return sqrt(value) }
+pub fn checked_load<T: @Copy>(value#:T) -> T
+where:
+    T: morphology soul_only
+{ return load(value#, Ordering::SeqCst) }
+''')
+        emitted = subprocess.run(prefix + ['--emit-interface', '-c', str(provider),
+                                  '-o', str(work / 'provider.o')], env=env, cwd=work,
+                                 capture_output=True, text=True, timeout=60)
+        assert emitted.returncode == 0, emitted.stderr
+        provider.unlink()
+        consumer.write_text('''import provider::{checked_root, checked_load}
+fn main() -> i32 {
+    auto value# = 9:i32
+    if checked_load(value#) != 9 || checked_root(16.0) != 4.0 { return 1 }
+    return 0
+}
+''')
+        output = work / 'source-hidden-domains'
+        built = subprocess.run(prefix + [str(consumer), str(work / 'provider.o'),
+                                '-o', str(output)], env=env, cwd=work,
+                               capture_output=True, text=True, timeout=60)
+        assert built.returncode == 0, built.stderr
+        assert subprocess.run([str(output)], timeout=10).returncode == 0
+        for label, body, code in (
+            ('float-bound', 'auto result = checked_root(7)', 'E0606'),
+            ('morphology-bound', 'auto ^#value = new Value(number=1)\n'
+             'auto result = checked_load<^Value>(^#value)', 'E0621'),
+            ('intrinsic-domain', 'auto value# = Value(number=1)\n'
+             'auto result = checked_load(value#)', 'E0619'),
+        ):
+            consumer.write_text('import provider::{checked_root, checked_load}\n'
+                                'shape Value(number:i32)\nfn main() -> i32 {\n' + body + '\nreturn 0\n}\n')
+            diagnostics = []
+            for flags in ([], ['--non-call-transfer-shadow=json']):
+                rejected = subprocess.run(prefix + [str(consumer), '--check-only', *flags],
+                    env=env, cwd=work, capture_output=True, text=True, timeout=60)
+                assert rejected.returncode == 1 and f'error[{code}]' in rejected.stderr, rejected.stderr
+                diagnostics.append(rejected.stderr)
+            assert diagnostics[0] == diagnostics[1], label
+            for flag, suffix in (('-c', '.o'), ('--emit-llvm', '.ll')):
+                rejected_output = work / (label + suffix)
+                rejected = subprocess.run(prefix + [str(consumer), flag, '-o', str(rejected_output)],
+                    env=env, cwd=work, capture_output=True, text=True, timeout=60)
+                assert rejected.returncode == 1 and not rejected_output.exists(), rejected.stderr
+        print('PASS source-hidden library bounds and intrinsic-domain controls', flush=True)
+
+        associated_source = (ROOT / 'tests/semantics/whole_value_generics/associated_values.tk').read_text()
+        associated_provider, associated_consumer = associated_source.split('shape Resource', 1)
+        associated_provider = associated_provider.replace('trait @Producer', 'pub trait @Producer').replace(
+            'shape Provider', 'pub shape Provider').replace('    fn relay', '    pub fn relay')
+        provider.write_text(associated_provider + '''
+pub fn borrow_forward<T>(&value:T) -> &T <- value {
+    auto &local = &value
+    return &local
+}
+''')
+        emitted = subprocess.run(prefix + ['--emit-interface', '-c', str(provider),
+                                  '-o', str(work / 'provider.o')], env=env, cwd=work,
+                                 capture_output=True, text=True, timeout=60)
+        assert emitted.returncode == 0, emitted.stderr
+        provider.unlink()
+        consumer.write_text('import provider::{Provider, Producer, borrow_forward}\nshape Resource' +
+                            associated_consumer.replace('    return 0',
+                                '    auto number = 17:i32\n    auto &reference = &number\n'
+                                '    auto &&view = borrow_forward<&i32>(&&reference)\n'
+                                '    if view != 17 { return 2 }\n    return 0'))
+        output = work / 'source-hidden-associated-borrow'
+        built = subprocess.run(prefix + [str(consumer), str(work / 'provider.o'),
+                                '-o', str(output)], env=env, cwd=work,
+                               capture_output=True, text=True, timeout=60)
+        assert built.returncode == 0, built.stderr
+        assert subprocess.run([str(output)], timeout=10).returncode == 0
+        print('PASS source-hidden associated value and descriptor-preserving borrow', flush=True)
 
 
 if __name__ == '__main__':

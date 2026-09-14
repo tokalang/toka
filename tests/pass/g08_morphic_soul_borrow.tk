@@ -1,8 +1,8 @@
-shape MorphBox<'T>(
-    'data: T
+shape MorphBox<T>(
+    data: T
 )
 
-fn borrow_payload<'T>(box: MorphBox<'T>) -> &item: T
+fn borrow_payload<T>(box: MorphBox<T>) -> &item: T
 effects:
     &item <- box
 {

@@ -1660,6 +1660,7 @@ PhysEntity CodeGen::genIndexExpr(const ArrayIndexExpr *idxExpr) {
 
 llvm::Value *CodeGen::genAddr(const Expr *expr) {
   if (auto *var = dynamic_cast<const VariableExpr *>(expr)) {
+    if (var->GenericViewDepth) return emitGenericViewAddr(var);
     return getEntityAddr(var->codegenName());
   }
 
@@ -2106,6 +2107,7 @@ llvm::Value *CodeGen::getIdentityAddr(const std::string &name) {
 
 llvm::Value *CodeGen::emitEntityAddr(const Expr *expr) {
   if (auto *var = dynamic_cast<const VariableExpr *>(expr)) {
+    if (var->GenericViewDepth) return emitGenericViewAddr(var);
     return getEntityAddr(var->codegenName());
   }
 
@@ -2145,6 +2147,7 @@ llvm::Value *CodeGen::emitEntityAddr(const Expr *expr) {
 
 llvm::Value *CodeGen::emitHandleAddr(const Expr *expr) {
   if (auto *var = dynamic_cast<const VariableExpr *>(expr)) {
+    if (var->GenericViewDepth) return emitGenericViewAddr(var);
     llvm::Value *identity = getIdentityAddr(var->codegenName());
     const std::string baseName = Type::stripMorphology(var->codegenName());
     auto symbol = m_Symbols.find(baseName);
@@ -2156,6 +2159,34 @@ llvm::Value *CodeGen::emitHandleAddr(const Expr *expr) {
     return identity;
   }
   return genAddr(expr);
+}
+
+llvm::Value *CodeGen::emitGenericViewAddr(const VariableExpr *variable) {
+  const auto name = Type::stripMorphology(variable->codegenName());
+  auto symbol = m_Symbols.find(name);
+  if (!variable->IsAbstractWholeValue || !variable->GenericViewDepth ||
+      !variable->ResolvedType || symbol == m_Symbols.end()) {
+    error(variable, DiagID::ERR_CODEGEN, "missing checked generic source view");
+    return nullptr;
+  }
+  auto current = symbol->second.soulTypeObj;
+  auto target = current;
+  for (unsigned i = 0; i < variable->GenericViewDepth && target; ++i)
+    target = target->getPointeeType();
+  if (!target || !target->equals(*variable->ResolvedType)) {
+    error(variable, DiagID::ERR_CODEGEN, "generic source view does not match its storage type");
+    return nullptr;
+  }
+  llvm::Value *address = getIdentityAddr(variable->codegenName());
+  if (!address) return nullptr;
+  if (symbol->second.capturedHandleSlotNeedsLoad || symbol->second.isCallerHandleSlot)
+    address = m_Builder.CreateLoad(m_Builder.getPtrTy(), address, "generic.caller_slot");
+  for (unsigned i = 0; i < variable->GenericViewDepth; ++i) {
+    auto value = m_Builder.CreateLoad(getLLVMType(current), address, "generic.outer_view");
+    address = current->isSharedPtr() ? m_Builder.CreateExtractValue(value, 0) : value;
+    current = current->getPointeeType();
+  }
+  return address;
 }
 
 } // namespace toka

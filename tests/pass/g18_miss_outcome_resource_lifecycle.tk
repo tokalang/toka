@@ -35,8 +35,8 @@ fn main() -> i32 {
     {
         auto receipt = Receipt(result = make_token(true))
         match cede receipt.result {
-            auto 'token => {
-                if 'token.id != 7 { return 7 }
+            auto token => {
+                if token.id != 7 { return 7 }
             }
             miss => return 8
         }
@@ -46,7 +46,7 @@ fn main() -> i32 {
     {
         auto missing = make_token(false)
         match cede missing {
-            auto 'token => return 'token.id
+            auto token => return token.id
             miss => {}
         }
     }
@@ -55,8 +55,8 @@ fn main() -> i32 {
     {
         auto found = relay_token(cede make_token(true))
         match cede found {
-            auto 'token => {
-                if 'token.id != 7 { return 2 }
+            auto token => {
+                if token.id != 7 { return 2 }
             }
             miss => return 3
         }

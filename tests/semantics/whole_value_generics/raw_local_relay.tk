@@ -1,0 +1,12 @@
+fn relay<T>(cede value:T) -> T <- value {
+    auto result = cede value
+    return cede result
+}
+fn main() -> i32 {
+    auto value = 7:i32
+    auto *pointer = *value
+    auto *result = relay<*i32>(cede *pointer)
+    unsafe { if result != 7 { return 1 } }
+    if value != 7 { return 2 }
+    return 0
+}

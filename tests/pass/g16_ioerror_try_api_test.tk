@@ -12,7 +12,7 @@ fn main() -> i32 {
     remove_file(missing.clone())
     auto unopened = File::try_open(missing, "r")
     match cede unopened {
-        auto Result<File, IoError>::Ok('file) => {
+        auto Result<File, IoError>::Ok(file) => {
             return 1
         }
         auto Result<File, IoError>::Err(error) => {
@@ -24,8 +24,8 @@ fn main() -> i32 {
     remove_file(output.clone())
     auto opened = File::try_open(output.clone(), "w")
     match cede opened {
-        auto Result<File, IoError>::Ok('file) => {
-            'file.write("ok")
+        auto Result<File, IoError>::Ok(file) => {
+            file.write("ok")
         }
         _ => return 3
     }
@@ -37,7 +37,7 @@ fn main() -> i32 {
     // local listener.
     auto refused = TcpStream::try_connect(SocketAddrV4::new(loopback, 0:u16))
     match cede refused {
-        auto Result<TcpStream, IoError>::Ok('stream) => {
+        auto Result<TcpStream, IoError>::Ok(stream) => {
             return 5
         }
         auto Result<TcpStream, IoError>::Err(error) => {

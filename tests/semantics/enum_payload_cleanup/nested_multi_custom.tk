@@ -6,12 +6,12 @@ impl Resource@Encap {
     pub id
     fn drop(self#) { drops += 1 }
 }
-shape Event<'A, 'B>(
-    Both('A, 'B) |
-    Nested(Option<'A>) |
+shape Event<A, B>(
+    Both(A, B) |
+    Nested(Option<A>) |
     Empty
 )
-impl<'A, 'B> Event<'A, 'B>@Encap {
+impl<A, B> Event<A, B>@Encap {
     fn drop(self#) { hooks += 1 }
 }
 fn main() -> i32 {

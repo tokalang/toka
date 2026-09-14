@@ -31,9 +31,9 @@ fn converted(fail: bool) -> Result<i32, AppError> {
     return Result<i32, AppError>::Ok(value * 2)
 }
 
-fn lift<'T, 'E1: @ErrorInto<E2>, 'E2>(cede result: Result<'T, 'E1>) -> Result<'T, 'E2> {
+fn lift<T, E1: @ErrorInto<E2>, E2>(cede result: Result<T, E1>) -> Result<T, E2> {
     auto value = result!
-    return Result<'T, 'E2>::Ok(value)
+    return Result<T, E2>::Ok(value)
 }
 
 fn main() -> i32 {

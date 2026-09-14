@@ -411,6 +411,9 @@ public:
   // Checked source-view identity; re-elaborated in each cloned body.
   bool IsAbstractWholeValue = false;
   GenericValueContractPtr GenericContract;
+  // Checked outer declaration layers selected before reaching opaque T.
+  // Not copied by expression cloning; each body re-elaborates its view.
+  unsigned GenericViewDepth = 0;
   bool HasParens = false; // [NEW] Track explicit parentheses
   bool ExtendLifetime = false; // [NEW] Flag for Temporary Lifetime Extension
 };

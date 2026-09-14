@@ -1,10 +1,10 @@
 // Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
-import std/math::{PI, PI32, sin, sqrt, abs, gcd, lerp}
+import std/math::{PI, PI32, sin, sqrt, abs, abs_f64, gcd, lerp, Float}
 import std/io::{println}
 
 // Move generic function to global scope
-fn generic_calculate<T>(val: T) -> T {
-    return sin(val) // Relies on T having .sin()
+fn generic_calculate<T: @{Float, Copy}>(val: T) -> T {
+    return sin(val)
 }
 
 fn main() -> i32 {
@@ -29,7 +29,7 @@ fn main() -> i32 {
     // 4. Generic Utils
     assert(gcd(48, 18) == 6, "gcd(i32)")
     assert(abs(0 - 100) == 100, "abs(i32)")
-    assert(abs(0.0 - 3.14) == 3.14, "abs(f64)")
+    assert(abs_f64(0.0 - 3.14) == 3.14, "abs(f64)")
 
     println("All Duck-Typed Trait Math Tests Passed!")
     return 0

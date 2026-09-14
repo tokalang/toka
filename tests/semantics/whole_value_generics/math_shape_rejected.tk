@@ -1,0 +1,6 @@
+import std/math::abs
+shape Value(number:i32)
+fn main() -> i32 {
+    auto result = abs(Value(number=7))
+    return 0
+}

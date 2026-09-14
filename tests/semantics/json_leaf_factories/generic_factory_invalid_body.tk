@@ -1,7 +1,7 @@
 import stdx/serde/json_factory::{@JsonFactory, Parsed}
-shape Wrapped<'T>('value: T)
-impl<'T> Wrapped<'T>@JsonFactory {
-    pub fn parse_value(json: str) -> Result<Parsed<Wrapped<'T>>, str> <- json {
+shape Wrapped<T>(value: T)
+impl<T> Wrapped<T>@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<Wrapped<T>>, str> <- json {
         return true
     }
 }

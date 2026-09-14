@@ -1,4 +1,7 @@
-fn identity<T>(value:T) -> T <- value { return value }
+fn identity<T>(value:T) -> T <- value {
+    auto local = value
+    return local
+}
 fn forward(input:i32) -> &i32 <- input {
     auto &reference = &input
     return identity<&i32>(&reference)

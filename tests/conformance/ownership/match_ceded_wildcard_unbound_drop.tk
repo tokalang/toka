@@ -24,7 +24,7 @@ fn test_match_wildcard() -> i32 {
     {
         auto choice = Choice::Right(Resource(name = string::from("hello")))
         match cede choice {
-            auto Choice::Left('val) => return 1
+            auto Choice::Left(val) => return 1
             _ => {
                 // choice was Right(Resource) and was ceded.
                 // Entering the wildcard branch drops the Right(Resource) payload.
@@ -69,9 +69,9 @@ fn test_partial_payload_cleanup() -> i32 {
         Resource(name = string::from("residual"))
     )
     match cede bundle {
-        auto Bundle::Pair('owned, _) => {
+        auto Bundle::Pair(owned, _) => {
             if g_drop_count != 0 { return 50 }
-            if !'owned.name.as_str().equals("owned") { return 51 }
+            if !owned.name.as_str().equals("owned") { return 51 }
         }
         _ => return 52
     }
@@ -86,9 +86,9 @@ fn test_elided_payload_cleanup() -> i32 {
         Resource(name = string::from("elided"))
     )
     match cede bundle {
-        auto Bundle::Pair('owned, ..) => {
+        auto Bundle::Pair(owned, ..) => {
             if g_drop_count != 0 { return 60 }
-            if !'owned.name.as_str().equals("owned") { return 61 }
+            if !owned.name.as_str().equals("owned") { return 61 }
         }
         _ => return 62
     }

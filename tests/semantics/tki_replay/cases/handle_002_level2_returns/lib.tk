@@ -23,9 +23,9 @@ effects: return <- owner {
     return &~owner
 }
 
-pub fn reference_view<'T>('reference: T) -> &'T
+pub fn reference_view<T>(reference: T) -> &T
 where:
-    'T: morphology borrow_extendable
-effects: return <- 'reference {
-    return &'reference
+    T: morphology borrow_extendable
+effects: return <- reference {
+    return &reference
 }

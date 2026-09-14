@@ -101,8 +101,8 @@ fn consume_enum_payload() {
     auto h = async_returns_enum_payload().start;
     auto p = block_on<Payload>(h);
     match cede p {
-        auto Payload::Bulk('value) => {
-            assert('value.marker == 44, "enum payload")
+        auto Payload::Bulk(value) => {
+            assert(value.marker == 44, "enum payload")
         }
         _ => {
             assert(false, "enum payload missing")

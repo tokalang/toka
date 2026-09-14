@@ -1,3 +1,5 @@
+// EXPECT: error[E01268]
+// Legacy generic quote syntax is rejected before semantic view selection.
 shape Point(
     x: i32,
     y: i32

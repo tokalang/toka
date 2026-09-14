@@ -102,6 +102,15 @@ GenericValueContractPtr Sema::queryGenericValueContract(Expr *expression) {
   }
   if (auto *cede = dynamic_cast<CedeExpr *>(expression)) return queryGenericValueContract(cede->Value.get());
   if (auto *unsafe = dynamic_cast<UnsafeExpr *>(expression)) return queryGenericValueContract(unsafe->Expression.get());
+  if (auto *unary = dynamic_cast<UnaryExpr *>(expression);
+      unary && unary->Op == TokenType::Ampersand && unary->ResolvedType &&
+      unary->ResolvedType->isReference()) {
+    auto source = queryGenericValueContract(unary->RHS.get());
+    if (!source) return nullptr;
+    auto result = std::make_shared<GenericValueContract>(*source);
+    result->Type = TypeSyntax::morphology("&", source->Type, unary->Loc, unary->Loc);
+    return result;
+  }
   if (auto *member = dynamic_cast<MemberExpr *>(expression)) {
     auto objectType = member->Object->ResolvedType;
     if (!objectType) objectType = queryExplicitCedeStage0NonCallType(member->Object.get(), nullptr);

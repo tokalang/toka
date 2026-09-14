@@ -71,49 +71,49 @@ impl f32@Float {
 
 // --- Unified Global API ---
 
-pub fn sin<T>(x: T) -> T { return x.sin() }
-pub fn cos<T>(x: T) -> T { return x.cos() }
-pub fn tan<T>(x: T) -> T { return x.tan() }
-pub fn asin<T>(x: T) -> T { return x.asin() }
-pub fn acos<T>(x: T) -> T { return x.acos() }
-pub fn atan<T>(x: T) -> T { return x.atan() }
-pub fn sqrt<T>(x: T) -> T { return x.sqrt() }
-pub fn log<T>(x: T) -> T { return x.log() }
-pub fn exp<T>(x: T) -> T { return x.exp() }
-pub fn floor<T>(x: T) -> T { return x.floor() }
-pub fn ceil<T>(x: T) -> T { return x.ceil() }
-pub fn pow<T>(x: T, y: T) -> T { return x.pow(y) }
+pub fn sin<T: @{Float, Copy}>(x: T) -> T { return x.sin() }
+pub fn cos<T: @{Float, Copy}>(x: T) -> T { return x.cos() }
+pub fn tan<T: @{Float, Copy}>(x: T) -> T { return x.tan() }
+pub fn asin<T: @{Float, Copy}>(x: T) -> T { return x.asin() }
+pub fn acos<T: @{Float, Copy}>(x: T) -> T { return x.acos() }
+pub fn atan<T: @{Float, Copy}>(x: T) -> T { return x.atan() }
+pub fn sqrt<T: @{Float, Copy}>(x: T) -> T { return x.sqrt() }
+pub fn log<T: @{Float, Copy}>(x: T) -> T { return x.log() }
+pub fn exp<T: @{Float, Copy}>(x: T) -> T { return x.exp() }
+pub fn floor<T: @{Float, Copy}>(x: T) -> T { return x.floor() }
+pub fn ceil<T: @{Float, Copy}>(x: T) -> T { return x.ceil() }
+pub fn pow<T: @{Float, Copy}>(x: T, y: T) -> T { return x.pow(y) }
 
 // --- Generic Utilities ---
 
-pub fn abs<T>(val: T) -> T {
+fn __abs<T: @Copy>(val: T) -> T {
     if val < (0 as T) { return (0 as T) - val }
     return val
 }
 
-pub fn min<T>(a: T, b: T) -> T {
+fn __min<T: @Copy>(a: T, b: T) -> T {
     if a < b { return a }
     return b
 }
 
-pub fn max<T>(a: T, b: T) -> T {
+fn __max<T: @Copy>(a: T, b: T) -> T {
     if a > b { return a }
     return b
 }
 
-pub fn clamp<T>(val: T, min_val: T, max_val: T) -> T {
+fn __clamp<T: @Copy>(val: T, min_val: T, max_val: T) -> T {
     if val < min_val { return min_val }
     if val > max_val { return max_val }
     return val
 }
 
-pub fn lerp<T>(a: T, b: T, t: T) -> T {
+fn __lerp<T: @Copy>(a: T, b: T, t: T) -> T {
     return a + (b - a) * t
 }
 
-pub fn gcd<T>(a: T, b: T) -> T {
-    auto x# = abs<T>(a)
-    auto y# = abs<T>(b)
+fn __gcd<T: @Copy>(a: T, b: T) -> T {
+    auto x# = __abs<T>(a)
+    auto y# = __abs<T>(b)
     loop y != (0 as T) {
         auto t = y
         y = x % y
@@ -122,17 +122,87 @@ pub fn gcd<T>(a: T, b: T) -> T {
     return x
 }
 
-pub fn lcm<T>(a: T, b: T) -> T {
-    if a == (0 as T) || b == (0 as T) { return (0 as T) }
-    return (abs<T>(a) / gcd<T>(a, b)) * abs<T>(b)
+fn __lcm<T: @Copy>(a: T, b: T) -> T {
+    if a == (0 as T) || b == (0 as T) { return 0 }
+    return (__abs<T>(a) / __gcd<T>(a, b)) * __abs<T>(b)
 }
 
 // --- Status ---
-pub fn is_nan<T>(x: T) -> bool { return x != x }
+pub fn is_nan_f32(x: f32) -> bool { return x != x }
+pub fn is_nan(x: f64) -> bool { return x != x }
 
 pub fn is_inf(x: f64) -> bool {
     auto inf = 1.0 / 0.0
     return x == inf || x == (0.0 - inf)
 }
 
-pub fn is_finite(x: f64) -> bool { return !is_nan<f64>(x) && !is_inf(x) }
+pub fn is_finite(x: f64) -> bool { return !is_nan(x) && !is_inf(x) }
+
+// Numeric utility entry points are concrete. The shared private algorithms
+// retain Copy checks; arbitrary user shapes do not acquire numeric operations.
+pub fn abs_i8(val: i8) -> i8 { return __abs<i8>(val) }
+pub fn abs_i16(val: i16) -> i16 { return __abs<i16>(val) }
+pub fn abs(val: i32) -> i32 { return __abs<i32>(val) }
+pub fn abs_i64(val: i64) -> i64 { return __abs<i64>(val) }
+pub fn abs_u8(val: u8) -> u8 { return __abs<u8>(val) }
+pub fn abs_u16(val: u16) -> u16 { return __abs<u16>(val) }
+pub fn abs_u32(val: u32) -> u32 { return __abs<u32>(val) }
+pub fn abs_u64(val: u64) -> u64 { return __abs<u64>(val) }
+pub fn abs_f32(val: f32) -> f32 { return __abs<f32>(val) }
+pub fn abs_f64(val: f64) -> f64 { return __abs<f64>(val) }
+pub fn min_i8(a: i8, b: i8) -> i8 { return __min<i8>(a, b) }
+pub fn min_i16(a: i16, b: i16) -> i16 { return __min<i16>(a, b) }
+pub fn min(a: i32, b: i32) -> i32 { return __min<i32>(a, b) }
+pub fn min_i64(a: i64, b: i64) -> i64 { return __min<i64>(a, b) }
+pub fn min_u8(a: u8, b: u8) -> u8 { return __min<u8>(a, b) }
+pub fn min_u16(a: u16, b: u16) -> u16 { return __min<u16>(a, b) }
+pub fn min_u32(a: u32, b: u32) -> u32 { return __min<u32>(a, b) }
+pub fn min_u64(a: u64, b: u64) -> u64 { return __min<u64>(a, b) }
+pub fn min_f32(a: f32, b: f32) -> f32 { return __min<f32>(a, b) }
+pub fn min_f64(a: f64, b: f64) -> f64 { return __min<f64>(a, b) }
+pub fn max_i8(a: i8, b: i8) -> i8 { return __max<i8>(a, b) }
+pub fn max_i16(a: i16, b: i16) -> i16 { return __max<i16>(a, b) }
+pub fn max(a: i32, b: i32) -> i32 { return __max<i32>(a, b) }
+pub fn max_i64(a: i64, b: i64) -> i64 { return __max<i64>(a, b) }
+pub fn max_u8(a: u8, b: u8) -> u8 { return __max<u8>(a, b) }
+pub fn max_u16(a: u16, b: u16) -> u16 { return __max<u16>(a, b) }
+pub fn max_u32(a: u32, b: u32) -> u32 { return __max<u32>(a, b) }
+pub fn max_u64(a: u64, b: u64) -> u64 { return __max<u64>(a, b) }
+pub fn max_f32(a: f32, b: f32) -> f32 { return __max<f32>(a, b) }
+pub fn max_f64(a: f64, b: f64) -> f64 { return __max<f64>(a, b) }
+pub fn clamp_i8(val: i8, min_val: i8, max_val: i8) -> i8 { return __clamp<i8>(val, min_val, max_val) }
+pub fn clamp_i16(val: i16, min_val: i16, max_val: i16) -> i16 { return __clamp<i16>(val, min_val, max_val) }
+pub fn clamp(val: i32, min_val: i32, max_val: i32) -> i32 { return __clamp<i32>(val, min_val, max_val) }
+pub fn clamp_i64(val: i64, min_val: i64, max_val: i64) -> i64 { return __clamp<i64>(val, min_val, max_val) }
+pub fn clamp_u8(val: u8, min_val: u8, max_val: u8) -> u8 { return __clamp<u8>(val, min_val, max_val) }
+pub fn clamp_u16(val: u16, min_val: u16, max_val: u16) -> u16 { return __clamp<u16>(val, min_val, max_val) }
+pub fn clamp_u32(val: u32, min_val: u32, max_val: u32) -> u32 { return __clamp<u32>(val, min_val, max_val) }
+pub fn clamp_u64(val: u64, min_val: u64, max_val: u64) -> u64 { return __clamp<u64>(val, min_val, max_val) }
+pub fn clamp_f32(val: f32, min_val: f32, max_val: f32) -> f32 { return __clamp<f32>(val, min_val, max_val) }
+pub fn clamp_f64(val: f64, min_val: f64, max_val: f64) -> f64 { return __clamp<f64>(val, min_val, max_val) }
+pub fn lerp_i8(a: i8, b: i8, t: i8) -> i8 { return __lerp<i8>(a, b, t) }
+pub fn lerp_i16(a: i16, b: i16, t: i16) -> i16 { return __lerp<i16>(a, b, t) }
+pub fn lerp_i32(a: i32, b: i32, t: i32) -> i32 { return __lerp<i32>(a, b, t) }
+pub fn lerp_i64(a: i64, b: i64, t: i64) -> i64 { return __lerp<i64>(a, b, t) }
+pub fn lerp_u8(a: u8, b: u8, t: u8) -> u8 { return __lerp<u8>(a, b, t) }
+pub fn lerp_u16(a: u16, b: u16, t: u16) -> u16 { return __lerp<u16>(a, b, t) }
+pub fn lerp_u32(a: u32, b: u32, t: u32) -> u32 { return __lerp<u32>(a, b, t) }
+pub fn lerp_u64(a: u64, b: u64, t: u64) -> u64 { return __lerp<u64>(a, b, t) }
+pub fn lerp_f32(a: f32, b: f32, t: f32) -> f32 { return __lerp<f32>(a, b, t) }
+pub fn lerp(a: f64, b: f64, t: f64) -> f64 { return __lerp<f64>(a, b, t) }
+pub fn gcd_i8(a: i8, b: i8) -> i8 { return __gcd<i8>(a, b) }
+pub fn gcd_i16(a: i16, b: i16) -> i16 { return __gcd<i16>(a, b) }
+pub fn gcd(a: i32, b: i32) -> i32 { return __gcd<i32>(a, b) }
+pub fn gcd_i64(a: i64, b: i64) -> i64 { return __gcd<i64>(a, b) }
+pub fn gcd_u8(a: u8, b: u8) -> u8 { return __gcd<u8>(a, b) }
+pub fn gcd_u16(a: u16, b: u16) -> u16 { return __gcd<u16>(a, b) }
+pub fn gcd_u32(a: u32, b: u32) -> u32 { return __gcd<u32>(a, b) }
+pub fn gcd_u64(a: u64, b: u64) -> u64 { return __gcd<u64>(a, b) }
+pub fn lcm_i8(a: i8, b: i8) -> i8 { return __lcm<i8>(a, b) }
+pub fn lcm_i16(a: i16, b: i16) -> i16 { return __lcm<i16>(a, b) }
+pub fn lcm(a: i32, b: i32) -> i32 { return __lcm<i32>(a, b) }
+pub fn lcm_i64(a: i64, b: i64) -> i64 { return __lcm<i64>(a, b) }
+pub fn lcm_u8(a: u8, b: u8) -> u8 { return __lcm<u8>(a, b) }
+pub fn lcm_u16(a: u16, b: u16) -> u16 { return __lcm<u16>(a, b) }
+pub fn lcm_u32(a: u32, b: u32) -> u32 { return __lcm<u32>(a, b) }
+pub fn lcm_u64(a: u64, b: u64) -> u64 { return __lcm<u64>(a, b) }

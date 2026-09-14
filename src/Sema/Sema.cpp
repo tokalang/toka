@@ -3345,13 +3345,25 @@ void Sema::declareGlobals(Module &M) {
   auto annotateStage0FormalDeclarations =
       [&](FunctionDecl &function,
           const std::vector<GenericParam> *enclosingParameters,
-          TypeSyntaxPtr receiverContract = nullptr) {
+          TypeSyntaxPtr receiverContract = nullptr,
+          const std::vector<AssociatedTypeDecl> *associatedTypes = nullptr) {
         std::set<std::string> exactGenericNames;
         if (enclosingParameters)
           addExactTypeParameters(exactGenericNames, *enclosingParameters);
         function.Stage0EnclosingGenericTypeNames = exactGenericNames;
         addExactTypeParameters(exactGenericNames, function.GenericParams);
-        auto returned = function.ReturnTypeSyntax;
+        std::map<std::string, TypeSyntaxPtr> associatedSyntax;
+        if (associatedTypes) {
+          // Expand only declarations from this exact impl. Resolution and
+          // trait conformance still validate these RHS types independently.
+          for (size_t pass = 0; pass < associatedTypes->size(); ++pass)
+            for (const auto &associated : *associatedTypes)
+              if (associated.TypeSyntax)
+                associatedSyntax[associated.Name] =
+                    associated.TypeSyntax->substitute(associatedSyntax);
+        }
+        auto returned = function.ReturnTypeSyntax
+            ? function.ReturnTypeSyntax->substitute(associatedSyntax) : nullptr;
         if (returned && returned->NodeKind == TypeSyntax::Kind::Morphology &&
             !returned->IsPostfix && returned->Text == "&") returned = returned->Subject;
         auto returnedContract = makeGenericValueContract(returned, exactGenericNames);
@@ -3364,9 +3376,11 @@ void Sema::declareGlobals(Module &M) {
           argument.Stage0MorphicGenericRole = false;
           argument.IsAbstractWholeValue = false;
           auto sourceType = synthesizePhysicalTypeObject(argument, false);
+          auto contractSyntax = sourceType ? sourceType->toSyntax(argument.Loc, argument.Loc)
+                                           : argument.TypeSyntax;
+          if (contractSyntax) contractSyntax = contractSyntax->substitute(associatedSyntax);
           argument.GenericContract = makeGenericValueContract(
-              sourceType ? sourceType->toSyntax(argument.Loc, argument.Loc) : argument.TypeSyntax,
-              exactGenericNames);
+              contractSyntax, exactGenericNames);
           if (Type::stripMorphology(argument.Name) == "self" && receiverContract)
             argument.GenericContract = makeGenericValueContract(receiverContract, exactGenericNames);
           auto callableOrigins = classifyCallableParameterOrigins(
@@ -3378,8 +3392,10 @@ void Sema::declareGlobals(Module &M) {
               !argument.IsRawPointer && !argument.IsUnique &&
               !argument.IsShared && !argument.IsReference &&
               argument.TypeSyntax->NodeKind == TypeSyntax::Kind::Named) {
-            const bool namesGeneric =
-                exactGenericNames.count(argument.TypeSyntax->Text) != 0;
+            auto declaredValue = argument.TypeSyntax->substitute(associatedSyntax);
+            const bool namesGeneric = declaredValue &&
+                declaredValue->NodeKind == TypeSyntax::Kind::Named &&
+                exactGenericNames.count(declaredValue->Text) != 0;
             argument.IsAbstractWholeValue = namesGeneric;
             if (namesGeneric) {
               argument.IsMorphicExempt = true;
@@ -3400,7 +3416,8 @@ void Sema::declareGlobals(Module &M) {
   }
   for (auto &impl : M.Impls) {
     for (auto &method : impl->Methods)
-      annotateStage0FormalDeclarations(*method, &impl->GenericParams, impl->HeaderSyntax.Type);
+      annotateStage0FormalDeclarations(*method, &impl->GenericParams, impl->HeaderSyntax.Type,
+                                      &impl->AssociatedTypes);
   }
   for (const auto &function : M.Functions)
     rememberTypeParameters(function->GenericParams);
@@ -5700,7 +5717,15 @@ void Sema::checkFunction(FunctionDecl *Fn) {
                                Fn->Name, "", Arg.Name, argLoc, isGeneric, fnId);
     }
 
-    if (paramOk && Arg.IsReference && !Arg.IsRebindable &&
+    bool borrowsAbstractWholeValue = false;
+    if (Arg.IsReference && Arg.GenericContract && Arg.GenericContract->Type &&
+        Arg.GenericContract->Type->NodeKind == TypeSyntax::Kind::Morphology &&
+        !Arg.GenericContract->Type->IsPostfix && Arg.GenericContract->Type->Text == "&") {
+      auto selected = *Arg.GenericContract;
+      selected.Type = selected.Type->Subject;
+      borrowsAbstractWholeValue = selected.isWholeValue();
+    }
+    if (paramOk && Arg.IsReference && !Arg.IsRebindable && !borrowsAbstractWholeValue &&
         Type::stripMorphology(Arg.Name) != "self") {
       if (!Arg.ResolvedType || !Arg.ResolvedType->isReference() ||
           !Arg.ResolvedType->getPointeeType() ||

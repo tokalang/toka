@@ -47,17 +47,21 @@ def main():
         ir = work / "factory.ll"
         emitted = run(FIXTURE, "--emit-llvm", "-o", ir)
         assert emitted.returncode == 0, emitted.stderr
-        assert re.search(r'"?unique\.cede_morphic"? = load ptr, ptr %"\'value', ir.read_text()), ir.read_text()
+        main_ir = re.search(r'^define i32 @main\([^\n]*\) \{(.*?)^}', ir.read_text(), re.M | re.S).group(1)
+        transfers = re.findall(r'(%move\.val\d*) = load ptr, ptr (%value\d*),[^\n]*\n'
+                               r'\s*store ptr null, ptr \2,[^\n]*\n\s*store ptr \1, ptr %moved', main_ir)
+        assert len(transfers) == 2, main_ir[:6000]
         prelude = FIXTURE.read_text().split("fn main()", 1)[0]
         cases = {
-            "moved": "auto 'value = make_unique(); auto 'moved = cede 'value; return 'value.id",
-            "borrow": "auto ^value = make_unique(); auto &^view = &^value; auto 'moved = cede ^value; return view.id",
-            "write": "auto 'value# = make_shared(); 'value.id = 9; return 0",
-            "copy": "auto 'value = make_unique(); auto 'copied = 'value; return 'value.id",
+            "moved": "auto ^value = make_unique(); auto ^moved = cede ^value; return value.id",
+            "borrow": "auto ^value = make_unique(); auto &^view = &^value; auto ^moved = cede ^value; return view.id",
+            "write": "auto ~value = make_shared(); value.id = 9; return 0",
+            "copy": "auto ^value = make_unique(); duplicate<^Cell>(^value); return value.id",
         }
         for name, body in cases.items():
             source = work / (name + ".tk")
-            source.write_text(prelude + "fn main() -> i32 { " + body + " }\n")
+            helper = "fn duplicate<T>(value:T)->i32 { auto copied=value; return 0 }\n" if name == "copy" else ""
+            source.write_text(prelude + helper + "fn main() -> i32 { " + body + " }\n")
             rejected = run(source, "--check-only")
             observed = run(source, "--check-only", "--non-call-transfer-shadow=json")
             assert rejected.returncode == observed.returncode == 1 and rejected.stderr == observed.stderr, (name, rejected.stderr, observed.stderr)

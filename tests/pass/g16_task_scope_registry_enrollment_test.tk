@@ -16,8 +16,8 @@ fn registry_close_before_enroll() -> async i32 {
     auto first = delayed_value(1:i32).start
     match cede spawn_into(scope, cede first) {
         auto Result<(), TaskHandle<i32>>::Ok(_) => {}
-        auto Result<(), TaskHandle<i32>>::Err('returned) => {
-            auto value = 'returned.await
+        auto Result<(), TaskHandle<i32>>::Err(returned) => {
+            auto value = returned.await
             assert(value == 1:i32, "open registry must accept its first child")
             return 1:i32
         }
@@ -32,8 +32,8 @@ fn registry_close_before_enroll() -> async i32 {
             assert(false, "closed registry must reject a cold task")
             return 2:i32
         }
-        auto Result<(), TaskHandle<i32>>::Err('returned) => {
-            auto value = 'returned.await
+        auto Result<(), TaskHandle<i32>>::Err(returned) => {
+            auto value = returned.await
             assert(value == 23:i32,
                    "rejected enrollment must return the original typed handle")
         }

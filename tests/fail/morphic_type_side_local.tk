@@ -1,4 +1,5 @@
-// EXPECT: error[E0463]:
+// EXPECT: error[E01268]
+// Legacy generic quote syntax is rejected before semantic view selection.
 
 fn main() -> i32 {
     auto x = 1:'T

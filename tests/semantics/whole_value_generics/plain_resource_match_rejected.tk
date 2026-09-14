@@ -1,0 +1,11 @@
+shape Resource(value:i32)
+impl Resource@Encap { fn drop(self#) {} }
+shape Box(Value(Resource) | Empty)
+fn main() -> i32 {
+    auto value = Box::Value(Resource(value=7))
+    match value {
+        auto Box::Value(item) => { cede item }
+        _ => {}
+    }
+    return 0
+}

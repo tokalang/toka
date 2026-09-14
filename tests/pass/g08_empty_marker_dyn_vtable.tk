@@ -2,7 +2,7 @@ import std/vec::{Vec}
 
 trait @DynMarker {}
 
-impl<'T> Vec<'T>@DynMarker {}
+impl<T> Vec<T>@DynMarker {}
 
 fn accept_marked(_value: dyn @DynMarker) -> i32 {
     return 7

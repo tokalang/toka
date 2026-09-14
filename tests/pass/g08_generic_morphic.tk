@@ -1,6 +1,6 @@
 // Test Morphic Generics ('T) bypass of explicit hat
-shape Box<'T>(
-  'data: T
+shape Box<T>(
+  data: T
 )
 
 fn test_morphic_unique() -> i32 {
@@ -18,8 +18,8 @@ fn test_morphic_raw() -> i32 {
   return val - 100
 }
 
-fn morphic_identity<'T>('value: T) -> 'T <- 'value {
-  return 'value
+fn morphic_identity<T>(value: T) -> T <- value {
+  return value
 }
 
 fn test_morphic_nohat() -> i32 {

@@ -1,4 +1,5 @@
-// EXPECT: error[E0105]:
+// EXPECT: error[E01268]
+// Legacy generic quote syntax is rejected before semantic view selection.
 
 shape Box<'T>(
     'data: 'T

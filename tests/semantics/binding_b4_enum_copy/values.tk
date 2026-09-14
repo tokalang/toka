@@ -6,11 +6,11 @@ impl Token@Encap {
 }
 shape NonCopy(value: i32)
 impl NonCopy@Encap { pub value }
-shape Packet<'T>(Empty | Value('T))
-shape Nested<'T>(Empty | Value(Option<'T>))
-shape Fixed<'T>(Empty | Value(['T; 2]))
-shape Multi<'T>(Empty | Pair(i32, 'T))
-shape Phantom<'T>(First | Second)
+shape Packet<T>(Empty | Value(T))
+shape Nested<T>(Empty | Value(Option<T>))
+shape Fixed<T>(Empty | Value([T; 2]))
+shape Multi<T>(Empty | Pair(i32, T))
+shape Phantom<T>(First | Second)
 
 fn main() -> i32 {
     auto scalar = Result<i32, bool>::Ok(7)

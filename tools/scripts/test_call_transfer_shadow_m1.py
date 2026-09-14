@@ -773,7 +773,7 @@ def main():
     records = run(tokac, source)
     record = find(
         records, source, callee="borrow_identity", route="ordinary",
-        parameter="'value", value_category="Temporary",
+        parameter="value", value_category="Temporary",
     )
     receipts.append(record)
     require_stage0(record, source, outcome="Admitted", rejection="None",
@@ -878,11 +878,15 @@ def main():
         parameter="value", value_category="Place",
     )
     receipts.append(record)
-    require_stage0(record, source, outcome="Rejected",
-                   rejection="OwnershipContractMismatch",
-                   formal_contract_origin="GenericValueDeclaration",
-                   formal_transfer_class="ValueTransfer",
-                   formal_ownership="Borrowed")
+    # G removes the rigid/morphic source split. str is still a borrowed
+    # identity (not an owning value); reference-consuming formals remain a
+    # separate rejected domain in the G gate.
+    require_stage0(record, source, outcome="Admitted", rejection="None",
+                   formal_contract_origin="MorphicGenericDeclaration",
+                   formal_transfer_class="IdentityTransfer",
+                   formal_ownership="Borrowed", value_production="CopyIdentity",
+                   drop="NoLiability", dependency="Borrowed")
+    require(record["stage0"]["dependency_roots"], source + " lost borrowed input roots")
 
     source = "tests/semantics/call_transfer_shadow_m1/concrete_alias_contract_origin.tk"
     records = run(tokac, source)
@@ -904,33 +908,31 @@ def main():
         location_line=9,
     )
     receipts.append(generic_raw)
-    require_stage0(generic_raw, source, outcome="Rejected",
-                   rejection="OwnershipContractMismatch",
-                   declared_formal_morphology="DirectValue",
+    require_stage0(generic_raw, source, outcome="Admitted", rejection="None",
+                   declared_formal_morphology="Morphic",
                    formal_morphology="RawHandle",
-                   formal_contract_origin="GenericValueDeclaration",
-                   formal_transfer_class="ValueTransfer")
+                   formal_contract_origin="MorphicGenericDeclaration",
+                   formal_transfer_class="IdentityTransfer", value_production="CopyIdentity")
     generic_unique = find(
         records, source, callee="consume_generic", route="ordinary",
         location_line=13,
     )
     receipts.append(generic_unique)
     require_stage0(generic_unique, source,
-                   declared_formal_morphology="DirectValue",
+                   declared_formal_morphology="Morphic",
                    formal_morphology="UniqueHandle",
-                   formal_contract_origin="GenericValueDeclaration",
-                   formal_transfer_class="ValueTransfer")
+                   formal_contract_origin="MorphicGenericDeclaration",
+                   formal_transfer_class="OwnershipTransfer", value_production="MoveOwned")
     generic_callable = find(
         records, source, callee="consume_generic", route="ordinary",
         location_line=17,
     )
     receipts.append(generic_callable)
-    require_stage0(generic_callable, source, outcome="Rejected",
-                   rejection="OwnershipContractMismatch",
-                   declared_formal_morphology="DirectValue",
+    require_stage0(generic_callable, source, outcome="Admitted", rejection="None",
+                   declared_formal_morphology="Morphic",
                    formal_morphology="Callable",
-                   formal_contract_origin="GenericValueDeclaration",
-                   formal_transfer_class="ValueTransfer")
+                   formal_contract_origin="MorphicGenericDeclaration",
+                   formal_transfer_class="CallableTransfer", value_production="CopyIdentity")
 
     source = "tests/semantics/call_transfer_shadow_m1/borrowed_projection_paths.tk"
     records = run(tokac, source)

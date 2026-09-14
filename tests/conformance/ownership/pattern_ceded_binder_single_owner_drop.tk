@@ -14,8 +14,8 @@ fn main() -> i32 {
     {
         auto opt = Option<Resource>::Some(Resource(name = string::from("hello")))
         match cede opt {
-            auto Option<Resource>::Some('val) => {
-                auto stolen = cede 'val
+            auto Option<Resource>::Some(val) => {
+                auto stolen = cede val
                 if g_drop_count != 0 { return 1 }
                 if !stolen.name.as_str().equals("hello") { return 2 }
             }

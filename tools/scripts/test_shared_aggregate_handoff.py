@@ -27,8 +27,8 @@ fn make() -> ~Cell {
 def make_case(destination, source_kind, action):
     morphic = source_kind.endswith("morphic")
     parameter = source_kind.startswith("parameter")
-    identity = "'value" if morphic else "~value"
-    payload = "'value" if morphic else "value"
+    identity = "value" if morphic else "~value"
+    payload = "value"
     value = identity if action == "copy" else "cede " + identity
     if action == "wrapped":
         value = "unsafe ((cede unsafe " + identity + "):~Cell)"
@@ -41,8 +41,8 @@ def make_case(destination, source_kind, action):
         body += "if " + payload + ".id != 42 { return 2 }\n"
     body += "if drops != 0 { return 3 }\nreturn 0\n"
     if parameter:
-        formal = ("cede " if action != "copy" else "") + ("'value:T" if morphic else "~value:Cell")
-        route = "fn route" + ("<'T>" if morphic else "") + "(" + formal + ")->i32 {\n" + body + "}\n"
+        formal = ("cede " if action != "copy" else "") + ("value:T" if morphic else "~value:Cell")
+        route = "fn route" + ("<T>" if morphic else "") + "(" + formal + ")->i32 {\n" + body + "}\n"
         arg = "~value" if action == "copy" else "cede ~value"
         exercise = "auto ~value = make()\nauto ~other = ~value\n"
         exercise += "auto result = route" + ("<~Cell>" if morphic else "") + "(" + arg + ")\n"
@@ -53,7 +53,7 @@ def make_case(destination, source_kind, action):
         exercise += "if result != 0 { return result }\nif other.id != 42 || drops != 0 { return 4 }\nreturn 0\n"
     else:
         route = ""
-        exercise = ("auto 'value = make()" if morphic else "auto ~value = make()") + "\n"
+        exercise = ("auto ~value = unsafe make()" if source_kind == "local_wrapped_factory" else "auto ~value = make()") + "\n"
         exercise += "auto ~other = ~" + payload + "\n" + body
     return PRELUDE + route + "fn exercise()->i32 {\n" + exercise + "}\n" + """fn main()->i32 {
     auto code = exercise()
@@ -78,7 +78,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="toka-shared-handoff-") as directory:
         work = Path(directory)
         for destination in ("enum", "struct", "record"):
-            for source_kind in ("local_ordinary", "local_morphic", "parameter_ordinary", "parameter_morphic"):
+            for source_kind in ("local_ordinary", "local_wrapped_factory", "parameter_ordinary", "parameter_morphic"):
                 for action in ("copy", "move", "wrapped"):
                     name = destination + "_" + source_kind + "_" + action
                     source = work / (name + ".tk")

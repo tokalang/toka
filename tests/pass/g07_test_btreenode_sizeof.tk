@@ -2,17 +2,17 @@ import core/types::{usize, Addr}
 import core/traits::*
 import core/primitives
 
-pub shape BTreeNode<'K, 'V> (
-    keys#: ['K; 5],
-    vals#: ['V; 5],
+pub shape BTreeNode<K, V> (
+    keys#: [K; 5],
+    vals#: [V; 5],
     children#: [Addr; 6],
     len#: usize = 0,
     is_leaf#: bool = true
 )
 
-pub fn btree_node_new<'K: @PartialOrd, 'V>() -> Addr {
+pub fn btree_node_new<K: @PartialOrd, V>() -> Addr {
     unsafe {
-        return (unsafe alloc [1] BTreeNode<'K, 'V>) as Addr
+        return (unsafe alloc [1] BTreeNode<K, V>) as Addr
     }
 }
 

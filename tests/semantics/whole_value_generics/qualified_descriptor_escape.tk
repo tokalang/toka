@@ -1,0 +1,9 @@
+fn escape<T>(&value:T) -> &&T <- value {
+    auto &local = &value
+    return &&local
+}
+fn main() -> i32 {
+    auto number = 7:i32
+    auto &&invalid = escape<i32>(&number)
+    return 0
+}

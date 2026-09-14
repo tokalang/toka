@@ -57,12 +57,12 @@ def main():
             assert result.returncode == 0, (source.name, result.returncode, result.stderr)
             print("PASS runtime/parity/proof: " + source.name, flush=True)
 
-        prelude = "shape Token(value:i32)\nimpl Token@Encap {\nfn drop(self#) {}\n}\nshape Packet<'T>(Empty | Value('T))\n"
+        prelude = "shape Token(value:i32)\nimpl Token@Encap {\nfn drop(self#) {}\n}\nshape Packet<T>(Empty | Value(T))\n"
         cases = {
             "resource_copy": prelude + "fn main()->i32 {auto value=Packet<Token>::Value(Token(value=1)); auto copied=value; return 0}\n",
             "nested_copy": prelude + "fn main()->i32 {auto value=Packet<Option<Token>>::Value(Option<Token>::Some(Token(value=1))); auto copied=value; return 0}\n",
-            "consuming_copy": "shape Packet<'T>(Empty | Value('T))\nfn main()->i32 {auto once={=>7}:cede fn()->i32; auto value=Packet<cede fn()->i32>::Value(cede once); auto copied=value; return 0}\n",
-            "direct_consuming_copy": "shape Packet<'T>(Empty | Value(cede fn()->i32))\nfn main()->i32 {auto once={=>7}:cede fn()->i32; auto value=Packet<i32>::Value(cede once); auto copied=value; return 0}\n",
+            "consuming_copy": "shape Packet<T>(Empty | Value(T))\nfn main()->i32 {auto once={=>7}:cede fn()->i32; auto value=Packet<cede fn()->i32>::Value(cede once); auto copied=value; return 0}\n",
+            "direct_consuming_copy": "shape Packet<T>(Empty | Value(cede fn()->i32))\nfn main()->i32 {auto once={=>7}:cede fn()->i32; auto value=Packet<i32>::Value(cede once); auto copied=value; return 0}\n",
             "moved_source": prelude + "fn read(value:Packet<Token>)->i32{return 0}\nfn main()->i32 {auto value=Packet<Token>::Value(Token(value=1)); auto moved=cede value; return read(value)}\n",
             "no_drop_noncopy": "shape Item(value:i32)\nimpl Item@Encap {pub value}\nshape Packet<T>(Empty | Value(T))\nfn main()->i32 {auto value=Packet<Item>::Value(Item(value=1)); auto copied=value; return 0}\n",
             "borrow_conflict": prelude + "fn read(value:Packet<Token>)->i32{return 0}\nfn main()->i32 {auto value=Packet<Token>::Value(Token(value=1)); auto &view=&value; auto moved=cede value; return read(view)}\n",
@@ -123,7 +123,7 @@ def main():
         print("PASS generic @Copy domain requires actual payload proof")
 
         provider = work / "provider.tk"
-        provider.write_text("pub shape Packet<'T>(Empty | Value('T))\npub shape Phantom<'T>(First | Second)\n")
+        provider.write_text("pub shape Packet<T>(Empty | Value(T))\npub shape Phantom<T>(First | Second)\n")
         emitted = run(provider, "-c", "--emit-interface", "-o", work / "provider.o")
         assert emitted.returncode == 0, emitted.stderr
         tki = work / "provider.tki"

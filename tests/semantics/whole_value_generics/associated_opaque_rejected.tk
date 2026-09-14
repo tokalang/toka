@@ -1,0 +1,15 @@
+trait @Producer {
+    type Item
+    fn inspect(self, value:Item) -> i32
+}
+shape Provider<T>(marker:bool)
+impl<T> Provider<T>@Producer {
+    type Item = T
+    fn inspect(self, value:Item) -> i32 { return value.value }
+}
+shape Resource(value:i32)
+fn main() -> i32 {
+    auto provider = Provider<^Resource>(marker=true)
+    auto ^owner = new Resource(value=7)
+    return provider.inspect(^owner)
+}

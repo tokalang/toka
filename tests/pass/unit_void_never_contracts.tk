@@ -12,8 +12,8 @@ impl UnitMethodProbe {
 fn record() {
 }
 
-fn identity<'T>(cede 'value: T) -> 'T {
-    return cede 'value
+fn identity<T>(cede value: T) -> T {
+    return cede value
 }
 
 fn stop() -> never {

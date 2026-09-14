@@ -1,5 +1,5 @@
-shape Packet<'T>(Empty | Value('T))
-shape Direct<'Unused>(Empty | Value(cede fn() -> i32))
+shape Packet<T>(Empty | Value(T))
+shape Direct<Unused>(Empty | Value(cede fn() -> i32))
 
 fn main() -> i32 {
     auto once = { => 7 }:cede fn() -> i32

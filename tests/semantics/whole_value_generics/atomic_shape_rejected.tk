@@ -1,0 +1,7 @@
+import core/intrinsics/atomic::{load, Ordering}
+shape Value(number:i32)
+fn main() -> i32 {
+    auto value# = Value(number=7)
+    auto result = load(value#, Ordering::SeqCst)
+    return 0
+}

@@ -1,7 +1,7 @@
 import core/comptime::{is_pointer, compile_error}
 
-pub fn check_ptr<'T>() -> bool {
-    if is_pointer<'T>() {
+pub fn check_ptr<T>() -> bool {
+    if is_pointer<T>() {
         return true
     } else {
         return false

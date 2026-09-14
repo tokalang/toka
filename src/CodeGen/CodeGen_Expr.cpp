@@ -2357,7 +2357,9 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
   // Use getEntityAddr to get the Soul address (fully dereferenced if needed)
   soulAddr = exactMorphicTransport ? getIdentityAddr(baseName)
                                    : getEntityAddr(varName);
-  if (exactMorphicTransport && var->IsAbstractWholeValue &&
+  if (var->GenericViewDepth)
+    soulAddr = emitGenericViewAddr(var);
+  else if (exactMorphicTransport && var->IsAbstractWholeValue &&
       sym->capturedHandleSlotNeedsLoad && soulAddr)
     soulAddr = m_Builder.CreateLoad(m_Builder.getPtrTy(), soulAddr,
                                    "whole.caller_slot");
@@ -2378,7 +2380,8 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
 
   llvm::Type *soulType = nullptr;
   if (sym) {
-    soulType = exactMorphicTransport && sym->soulTypeObj
+    soulType = var->GenericViewDepth ? getLLVMType(var->ResolvedType)
+               : exactMorphicTransport && sym->soulTypeObj
                    ? getLLVMType(sym->soulTypeObj)
                    : sym->soulType;
   } else {
@@ -6569,7 +6572,13 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       shouldPassAddr = true;
     }
 
-    if (shouldPassAddr) {
+    if (isRef && !isCaptured && call->Args[i]->ResolvedType &&
+        call->Args[i]->ResolvedType->isReference()) {
+      // A non-rebinding reference formal receives the checked reference
+      // value. Stripping all unary layers and re-addressing its root would
+      // turn &&r into &payload and lose the descriptor storage level.
+      val = genExpr(call->Args[i].get()).load(m_Builder);
+    } else if (shouldPassAddr) {
       if (dynamic_cast<const AddressOfExpr *>(call->Args[i].get())) {
         val = genExpr(call->Args[i].get()).load(m_Builder);
       } else {

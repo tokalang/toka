@@ -2189,6 +2189,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       ve->IsMorphicExempt = Info.IsMorphicExempt; // [NEW]
       ve->IsAbstractWholeValue = Info.IsAbstractWholeValue;
       ve->GenericContract = Info.GenericContract;
+      ve->GenericViewDepth = 0;
       ve->IsImplicitDeref = isImplicitDeref;      // [Fix] Mark AST node
       if (!m_InLHS) {
         InfoPtr->HasBeenUsed = true;
@@ -2493,6 +2494,24 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto current = Info.TypeObj;
     if (Info.IsAbstractWholeValue)
       return current; // Preserve T; slot access is checked independently.
+    if (shouldCollapse && Info.GenericContract) {
+      auto selected = std::make_shared<GenericValueContract>(*Info.GenericContract);
+      auto selectedType = current;
+      unsigned depth = 0;
+      while (!selected->isWholeValue() && selected->Type && selectedType &&
+             selected->Type->NodeKind == TypeSyntax::Kind::Morphology &&
+             !selected->Type->IsPostfix && selectedType->getPointeeType()) {
+        selected->Type = selected->Type->Subject;
+        selectedType = selectedType->getPointeeType();
+        ++depth;
+      }
+      if (depth && selected->isWholeValue()) {
+        ve->GenericContract = std::move(selected);
+        ve->IsAbstractWholeValue = true;
+        ve->GenericViewDepth = depth;
+        return selectedType;
+      }
+    }
     if (shouldCollapse && current) {
       while (current && (current->isPointer() || current->isReference() ||
                          current->isSmartPointer())) {

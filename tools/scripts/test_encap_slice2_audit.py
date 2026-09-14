@@ -97,8 +97,8 @@ def main() -> int:
 
         conditional = root / "conditional.tk"
         conditional.write_text(
-            "shape Generic<'T>(value: T)\n"
-            "impl<'T: @Send> Generic<'T>@Encap { pub value }\n"
+            "shape Generic<T>(value: T)\n"
+            "impl<T: @Send> Generic<T>@Encap { pub value }\n"
             "fn main() -> i32 { return 0 }\n", encoding="utf-8")
         rejected_conditional = compile_source(conditional, root, expect_success=False)
         if "E0406" not in rejected_conditional.stderr:

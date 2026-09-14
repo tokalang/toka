@@ -1,9 +1,9 @@
 import std/io::println
 import core/option::{Option}
 
-shape Entry<'K, 'V>(
-    'key: K,
-    'val: V
+shape Entry<K, V>(
+    key: K,
+    val: V
 )
 
 shape Big(
@@ -13,8 +13,8 @@ shape Big(
     d: i64
 )
 
-fn make_entry<'K, 'V>('k: K, 'v: V) -> Option<Entry<'K, 'V>> {
-    return Option<Entry<'K, 'V>>::Some(Entry<'K, 'V>(key='k, val='v))
+fn make_entry<K, V>(k: K, v: V) -> Option<Entry<K, V>> {
+    return Option<Entry<K, V>>::Some(Entry<K, V>(key=k, val=v))
 }
 
 fn make_big(a: i64, b: i64, c: i64, d: i64) -> Option<Big> {

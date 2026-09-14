@@ -1,0 +1,6 @@
+fn overwrite<T>(&value:T, replacement:T) { value = replacement }
+fn main() -> i32 {
+    auto number = 7:i32
+    overwrite<i32>(&number, 9)
+    return number
+}

@@ -1,6 +1,6 @@
 // Generic allocation only; raw_take itself is checked against concrete storage.
-fn allocate<'T>() -> *['T] {
-    auto *buffer = unsafe alloc [1] 'T
+fn allocate<T>() -> *[T] {
+    auto *buffer = unsafe alloc [1] T
     return *buffer
 }
 auto drops# = 0

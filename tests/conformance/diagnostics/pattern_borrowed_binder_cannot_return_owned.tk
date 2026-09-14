@@ -9,7 +9,7 @@ impl Resource@Encap {
 fn test_match_return() -> Resource {
     auto opt = Option<Resource>::Some(Resource(name = string::from("hello")))
     match opt {
-        auto Option<Resource>::Some('val) => return 'val
+        auto Option<Resource>::Some(val) => return val
         auto Option<Resource>::None => return Resource(name = string::from("fallback"))
     }
 }

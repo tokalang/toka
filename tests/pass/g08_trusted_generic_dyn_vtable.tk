@@ -4,7 +4,7 @@ trait @DynLength {
     pub fn dyn_length(self) -> usize
 }
 
-impl<'T> Vec<'T>@DynLength {
+impl<T> Vec<T>@DynLength {
     pub fn dyn_length(self) -> usize {
         return self.len()
     }

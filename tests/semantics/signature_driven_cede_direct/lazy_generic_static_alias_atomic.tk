@@ -2,9 +2,9 @@ import core/traits::{@Encap}
 
 shape Token(value: i32)
 impl Token@Encap { fn drop(self#) {} }
-shape GenericRunner<'T>()
+shape GenericRunner<T>()
 
-impl<'T> GenericRunner<'T> {
+impl<T> GenericRunner<T> {
     fn combine(cede left: T, cede right: T) -> i32 {
         auto moved_left = cede left
         auto moved_right = cede right

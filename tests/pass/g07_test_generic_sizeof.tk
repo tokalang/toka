@@ -1,13 +1,13 @@
 import core/types::{usize, Addr}
 
-pub shape GenericArray<'T> (
-    arr#: ['T; 5],
+pub shape GenericArray<T> (
+    arr#: [T; 5],
     len#: usize = 0
 )
 
-pub fn alloc_array<'T>() -> Addr {
+pub fn alloc_array<T>() -> Addr {
     unsafe {
-        return (unsafe alloc [1] GenericArray<'T>) as Addr
+        return (unsafe alloc [1] GenericArray<T>) as Addr
     }
 }
 

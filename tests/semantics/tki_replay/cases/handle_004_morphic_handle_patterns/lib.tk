@@ -29,82 +29,82 @@ pub fn item_drop_count() -> i32 {
     return g_item_drop_count
 }
 
-pub shape Carrier<'T>(
-    Value('T) = 1
+pub shape Carrier<T>(
+    Value(T) = 1
 )
 
-impl<'T> Carrier<'T> {
-    pub fn unsafe_exact(cede self) -> 'T <- self {
+impl<T> Carrier<T> {
+    pub fn unsafe_exact(cede self) -> T <- self {
         match cede self {
-            auto Carrier<'T>::Value('value) => return 'value
+            auto Carrier<T>::Value(value) => return value
         }
     }
 
     pub fn field(cede self) -> i32 {
         match cede self {
-            auto Carrier<'T>::Value('value) => return 'value.val
+            auto Carrier<T>::Value(value) => return value.val
         }
     }
 
     pub fn method(cede self) -> i32 {
         match cede self {
-            auto Carrier<'T>::Value('value) => return 'value.read()
+            auto Carrier<T>::Value(value) => return value.read()
         }
     }
 
-    pub fn rewrap(cede self) -> Carrier<'T> {
+    pub fn rewrap(cede self) -> Carrier<T> {
         match cede self {
-            auto Carrier<'T>::Value('value) => {
-                return Carrier<'T>::Value('value)
+            auto Carrier<T>::Value(value) => {
+                return Carrier<T>::Value(value)
             }
         }
     }
 
 }
 
-pub shape RepeatCarrier<'T>(
-    Value('T) = 1
+pub shape RepeatCarrier<T>(
+    Value(T) = 1
 )
 
-impl<'T> RepeatCarrier<'T> {
+impl<T> RepeatCarrier<T> {
     pub fn field(cede self) -> i32 {
         match cede self {
-            auto RepeatCarrier<'T>::Value('value) => return 'value.val
+            auto RepeatCarrier<T>::Value(value) => return value.val
         }
     }
 
-    pub fn double_rewrap(cede self) -> RepeatCarrier<'T> {
+    pub fn double_rewrap(cede self) -> RepeatCarrier<T> {
         match cede self {
-            auto RepeatCarrier<'T>::Value('value) => {
-                auto first = RepeatCarrier<'T>::Value('value)
+            auto RepeatCarrier<T>::Value(value) => {
+                auto first = RepeatCarrier<T>::Value(value)
                 auto seen = first.field()
                 assert(seen != -1, "first aggregate must remain readable")
-                return RepeatCarrier<'T>::Value('value)
+                return RepeatCarrier<T>::Value(value)
             }
         }
     }
 }
 
-pub shape IndexCarrier<'T>(
-    Value('T) = 1
+pub shape IndexCarrier<T>(
+    Value(T) = 1
 )
 
-impl<'T> IndexCarrier<'T> {
+impl<T> IndexCarrier<T> {
     pub fn index(cede self) -> i32 {
         match cede self {
-            auto IndexCarrier<'T>::Value('value) => return 'value[1].val
+            auto IndexCarrier<T>::Value(value) => return value[1].val
         }
     }
 }
 
-pub shape CedeCarrier<'T>(
-    Value('T) = 1
+pub shape CedeCarrier<T>(
+    Value(T) = 1
 )
 
-impl<'T> CedeCarrier<'T> {
-    pub fn unsafe_forward(cede self) -> 'T <- self {
+impl<T> CedeCarrier<T> {
+    pub fn unsafe_forward(cede self) -> T <- self {
         match cede self {
-            auto CedeCarrier<'T>::Value('value) => return cede ^'value
+            auto CedeCarrier<T>::Value(value) => return cede ^value
         }
     }
 }

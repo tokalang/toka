@@ -7,9 +7,9 @@ impl Token@Encap {
     fn drop(self#) { g_drops += 1:i32 }
 }
 
-shape GenericRunner<'T>()
+shape GenericRunner<T>()
 
-impl<'T> GenericRunner<'T> {
+impl<T> GenericRunner<T> {
     fn combine(cede left: T, cede right: T) -> i32 {
         auto moved_left = cede left
         auto moved_right = cede right

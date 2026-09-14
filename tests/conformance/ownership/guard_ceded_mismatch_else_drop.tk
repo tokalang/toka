@@ -23,7 +23,7 @@ fn test_guard_choice_mismatch() -> i32 {
     g_drop_count = 0
     {
         auto choice = Choice::Right(Resource(name = string::from("hello")))
-        guard auto Choice::Left('val) = cede choice else {
+        guard auto Choice::Left(val) = cede choice else {
             // choice was Right(Resource) and was ceded.
             // On mismatch entering else, the Right(Resource) payload is dropped.
             if g_drop_count != 1 { return 20 }
@@ -54,9 +54,9 @@ fn guard_partial_success() -> i32 {
         Resource(name = string::from("owned")),
         Resource(name = string::from("residual"))
     )
-    guard auto Bundle::Pair('owned, _) = cede bundle else { return 40 }
+    guard auto Bundle::Pair(owned, _) = cede bundle else { return 40 }
     if g_drop_count != 0 { return 41 }
-    if !'owned.name.as_str().equals("owned") { return 42 }
+    if !owned.name.as_str().equals("owned") { return 42 }
     return 0
 }
 

@@ -160,3 +160,58 @@ storage execution is covered by the existing shared/managed-slot programs.
 G remains WIP with the propagation, constraints and full-comparison items
 above outstanding. The concurrent RFC changes remain outside implementation
 commits. No push, PR, E work or full-suite run occurred.
+
+### Library contracts and remaining expression routes (WIP)
+
+Continuation from `02db4283`, not G acceptance. The concurrent RFC supplement
+remains outside implementation commits.
+
+| Entry family | Previous assumption | Migration and evidence |
+| --- | --- | --- |
+| Twelve std/math floating wrappers | T happens to have float methods | explicit Float + Copy; runtime f32/f64 and source-hidden bound rejection |
+| std/math numeric utilities | T happens to be numeric/Copy | concrete scalar entry points, shared private Copy algorithms; i32 default (f64 for lerp), other widths use scalar suffixes |
+| Nine atomic hooks and nine wrappers | rigid T plus intrinsic qualification | explicit Copy + soul_only, forwarded write request; existing trusted machine-type and ordering checks remain; Copy shapes still reject |
+| Option.unwrap_or | consuming bare T works for every T | consumes a complete Option fallback; discarded fallback/resource/borrowed-value runtime controls |
+| Vec.unsafe_get | old quoted element selector | select the declared raw handle before indexing; no raw_take or initialized-storage expansion |
+| PlaceIterator source | quote node required | same registered provider, parameter root, access path and exact item type; plain checked place replaces quote |
+
+Numeric overload trials exposed legacy imported-overload selection ambiguity.
+Distinct numeric suffixes avoid adding overload-resolution work to G. The
+original math runtime assertions pass after this API and bound migration.
+`bit_cast` was inspected but not changed: its existing intrinsic path bypasses
+template bounds, so source-only labels would not enforce a new contract. It
+was not protected by rigid-T instantiation and is not counted as qualified.
+
+The protected-token scanner migrated 64 test files / 374 markers before
+purpose-specific adjustments. Removed-syntax negatives keep their quoted
+source and expect E01268. The former requires-morphic negative moves to
+`g08_unquoted_morphology_constraint.tk` as a positive. Some remaining fixtures,
+including the old unique projection-return negative, still need purpose
+alignment; mechanical migration does not count them as passing.
+
+Expression fixes:
+
+- Exact impl-associated RHS declarations expand formal source contracts:
+  Item = T stays whole T; a concrete RHS is not made opaque. Normal type and
+  trait validation remains mandatory.
+- Inferred whole raw/reference locals synchronize physical binding metadata
+  through the existing unique/shared path, without bypassing the planner.
+- Checked GenericViewDepth records outer declared layers before T. CodeGen
+  validates the final type and selects only these layers; clones re-elaborate.
+- Explicit &value:T is not a redundant concrete borrow. Readonly local
+  reborrows retain T, and non-rebinding reference arguments pass the checked
+  reference value instead of stripping &&r to its pointee.
+- Explicit descriptor selection in &&local preserves the local storage root;
+  the new escaping-descriptor control rejects with E0455.
+- A consuming match of a plain resource is not an implicit copy; the
+  non-consuming resource match still rejects with E0554.
+
+Validation: G/call-shadow/managed-binding/shared-aggregate passed 4/4
+(157.95 s). After the borrow changes, G/permission-views/shared-parameter/
+managed-slot passed 4/4 (106.68 s). The final G gate, including source-hidden
+associated values and descriptor-preserving borrows, passed (50.65 s).
+Earlier failed iterations are not counted as passing.
+
+Still WIP: general alias/method-result propagation, complete qualified-write
+and branch/loop coverage, remaining fixture/purpose migrations, then the single
+full build and integrated comparison. No full PASS/FAIL run, E work or push.

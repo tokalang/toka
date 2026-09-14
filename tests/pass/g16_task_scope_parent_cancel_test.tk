@@ -27,8 +27,8 @@ fn parent_with_scope() -> async i32 {
     auto child = child_waiting_for_parent_cancel().start
     match cede spawn_into(scope, cede child) {
         auto Result<(), TaskHandle<i32>>::Ok(_) => {}
-        auto Result<(), TaskHandle<i32>>::Err('returned) => {
-            auto value = 'returned.await
+        auto Result<(), TaskHandle<i32>>::Err(returned) => {
+            auto value = returned.await
             return value
         }
     }

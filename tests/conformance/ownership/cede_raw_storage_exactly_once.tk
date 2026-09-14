@@ -33,13 +33,13 @@ impl Outer@Encap {
 
 }
 
-shape RawStore<'T> (
+shape RawStore<T> (
     nul *#buf#: [T] = null as nul *[T],
     len#: usize = 0:usize,
     cap#: usize = 0:usize
 )
 
-impl<'T> RawStore<'T>@Encap {
+impl<T> RawStore<T>@Encap {
     fn drop(self#) {
         unsafe {
             if self.*buf != null {
@@ -53,8 +53,8 @@ impl<'T> RawStore<'T>@Encap {
 
 }
 
-impl<'T> RawStore<'T> {
-    fn new() -> RawStore<'T> {
+impl<T> RawStore<T> {
+    fn new() -> RawStore<T> {
         return RawStore<T>(*buf = null as nul *[T], len = 0:usize, cap = 0:usize)
     }
 
@@ -74,10 +74,10 @@ impl<'T> RawStore<'T> {
         }
     }
 
-    fn push(self#, cede 'value: T) {
+    fn push(self#, cede value: T) {
         if self.len == self.cap { self#.grow() }
         unsafe {
-            self.buf[self.len] = cede 'value
+            self.buf[self.len] = cede value
             self.len += 1:usize
         }
     }
@@ -86,8 +86,8 @@ impl<'T> RawStore<'T> {
         if self.len == 0:usize { return Option<T>::None }
         unsafe {
             self.len -= 1:usize
-            auto 'value = cede self.buf[self.len]
-            return Option<T>::Some(cede 'value)
+            auto value = cede self.buf[self.len]
+            return Option<T>::Some(cede value)
         }
     }
 }

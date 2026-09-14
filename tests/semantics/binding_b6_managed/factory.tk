@@ -14,36 +14,36 @@ fn make_shared() -> ~Cell {
 }
 fn main() -> i32 {
     {
-        auto 'value = make_unique()
-        if 'value.id != 7 { return 1 }
+        auto ^value = make_unique()
+        if value.id != 7 { return 1 }
     }
     if drops != 1 { return 2 }
     {
-        auto 'value = unsafe make_unique()
-        auto 'moved = cede 'value
-        if 'moved.id != 7 { return 3 }
+        auto ^value = unsafe make_unique()
+        auto ^moved = cede ^value
+        if moved.id != 7 { return 3 }
     }
     if drops != 2 { return 4 }
     {
-        auto 'value = make_shared()
-        auto ~other = ~'value
+        auto ~value = make_shared()
+        auto ~other = ~value
         {
-            auto 'moved = cede 'value
-            if 'moved.id != 8 || drops != 2 { return 5 }
+            auto ~moved = cede ~value
+            if moved.id != 8 || drops != 2 { return 5 }
         }
         if other.id != 8 || drops != 2 { return 6 }
     }
     if drops != 3 { return 7 }
     {
-        auto 'value = make_unique()
-        auto 'moved = cede unsafe 'value
-        if 'moved.id != 7 { return 8 }
+        auto ^value = make_unique()
+        auto ^moved = cede unsafe ^value
+        if moved.id != 7 { return 8 }
     }
     if drops != 4 { return 9 }
     {
-        auto 'value = make_shared()
-        auto 'moved = cede unsafe 'value
-        if 'moved.id != 8 { return 10 }
+        auto ~value = make_shared()
+        auto ~moved = cede unsafe ~value
+        if moved.id != 8 { return 10 }
     }
     if drops != 5 { return 11 }
     return 0

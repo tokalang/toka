@@ -1,0 +1,5 @@
+import std/math::sqrt
+fn main() -> i32 {
+    auto result = sqrt(7)
+    return result
+}

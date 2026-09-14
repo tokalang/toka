@@ -15,7 +15,7 @@ def main():
     args = parser.parse_args()
     compiler = Path(args.build_dir).resolve() / 'bin/tokac'
     sdk = (ROOT / 'lib/std/sync.tk').read_text()
-    original = "auto ~mutex# = new Mutex<'T>(handle = 0:Addr, data_ptr = 0:Addr)"
+    original = "auto ~mutex# = new Mutex<T>(handle = 0:Addr, data_ptr = 0:Addr)"
     assert sdk.count(original) == 1
     with tempfile.TemporaryDirectory(prefix='toka-permission-native-') as directory:
         work = Path(directory)

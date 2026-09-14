@@ -3609,6 +3609,18 @@ bool Sema::collectActualReturnReferents(
     auto direct = makeAccessPath(value);
     SymbolInfo *current = nullptr;
     if (direct.RootID) CurrentScope->findSymbolByID(direct.RootID, current);
+    if (auto *selector = dynamic_cast<UnaryExpr *>(value);
+        selector && selector->Op == TokenType::Ampersand &&
+        selector->SelectsHandleIdentity) {
+      // In &&r the inner & selects r's descriptor. Its current referent
+      // targets describe the stored value, not the lifetime of this slot.
+      if (!current || !current->TypeObj || !current->TypeObj->isReference() ||
+          !selector->ResolvedType || !selector->ResolvedType->isReference() ||
+          !direct.RootLoc.isValid()) return false;
+      result.push_back(direct);
+      preparedStorage.push_back(direct);
+      return true;
+    }
     if (current && current->CurrentReferenceTargets) {
       if (usedCurrentReference) *usedCurrentReference = true;
       if (current->CurrentReferenceTargets->empty()) return false;
@@ -6447,11 +6459,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     if (isHit) {
-      auto *identity =
-          dynamic_cast<UnaryExpr *>(Call->Args.front().get());
-      AccessPath yieldedPath =
-          identity && identity->RHS ? makeAccessPath(identity->RHS.get())
-                                    : AccessPath{};
+      Expr *source = Call->Args.front().get();
+      if (auto *identity = dynamic_cast<UnaryExpr *>(source);
+          identity && identity->Op == TokenType::MorphicIdentity)
+        source = identity->RHS.get();
+      AccessPath yieldedPath = source ? makeAccessPath(source) : AccessPath{};
       bool admittedRoot = yieldedPath &&
                           Type::stripMorphology(yieldedPath.RootName) ==
                               "self";
@@ -6475,8 +6487,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
       admittedRoot = admittedRoot && rootInfo &&
                      rootInfo->IsFunctionParameter;
-      if (!identity || identity->Op != TokenType::MorphicIdentity ||
-          !identity->RHS || !yieldedPath || !admittedRoot) {
+      if (!source || !yieldedPath || !admittedRoot) {
         error(Call, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY, CallName);
         return toka::Type::fromString("unknown");
       }

@@ -13,17 +13,17 @@ impl Resource@Encap {
 fn test_match_return() -> Resource {
     auto opt = Option<Resource>::Some(Resource(name = string::from("match_res")))
     match cede opt {
-        auto Option<Resource>::Some('val) => return 'val
+        auto Option<Resource>::Some(val) => return val
         auto Option<Resource>::None => return Resource(name = string::from("fallback"))
     }
 }
 
 fn test_guard_return() -> Resource {
     auto opt = Option<Resource>::Some(Resource(name = string::from("guard_res")))
-    guard auto Option<Resource>::Some('val) = cede opt else {
+    guard auto Option<Resource>::Some(val) = cede opt else {
         return Resource(name = string::from("fallback"))
     }
-    return 'val
+    return val
 }
 
 fn main() -> i32 {

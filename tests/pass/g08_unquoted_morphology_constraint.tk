@@ -1,4 +1,4 @@
-// EXPECT: error[E0622]
+// G: an ordinary type parameter can declare a morphology domain without quotes.
 shape Bad<T>
 where:
     T: morphology raw_extendable

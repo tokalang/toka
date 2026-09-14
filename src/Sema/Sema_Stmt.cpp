@@ -2321,9 +2321,14 @@ void Sema::checkStmt(Stmt *S) {
         !Var->IsUnique && !Var->IsShared && !Var->IsReference &&
         !Var->IsRawPointer &&
         ((morph == "^" && InitTypeObj->isUniquePtr()) ||
-         (morph == "~" && InitTypeObj->isSharedPtr()))) {
+         (morph == "~" && InitTypeObj->isSharedPtr()) ||
+         (morph == "*" && InitTypeObj->isRawPointer()) ||
+         (morph == "&" && InitTypeObj->isReference()))) {
       Var->IsUnique = InitTypeObj->isUniquePtr();
       Var->IsShared = InitTypeObj->isSharedPtr();
+      Var->IsRawPointer = InitTypeObj->isRawPointer();
+      Var->IsReference = InitTypeObj->isReference();
+      Var->IsPointerNullable = InitTypeObj->IsNullable;
       Var->Permission = BindingPermission::fromLegacy(
           Var->IsRawPointer, Var->IsUnique, Var->IsShared, Var->IsReference,
           Var->IsRebindable, Var->IsPointerNullable, Var->IsRebindBlocked,
@@ -2346,6 +2351,23 @@ void Sema::checkStmt(Stmt *S) {
     LocalPermission.SoulWritable =
         Var->IsValueMutable || (morph.empty() && Var->IsRebindable);
     Info.Permission = LocalPermission;
+
+    // An inferred reference constructed over opaque T borrows that complete
+    // T, not its eventual terminal soul. Keep the checked inner type; the
+    // binding's own permission remains the access ceiling.
+    auto initializerContract = Var->Init ? queryGenericValueContract(Var->Init.get()) : nullptr;
+    if (inferredType && Var->IsReference && !Var->IsValueMutable &&
+        InitTypeObj && InitTypeObj->isReference() && initializerContract &&
+        initializerContract->Type &&
+        initializerContract->Type->NodeKind == TypeSyntax::Kind::Morphology &&
+        initializerContract->Type->Text == "&" &&
+        !initializerContract->Type->IsPostfix) {
+      auto selected = *initializerContract;
+      selected.Type = selected.Type->Subject;
+      if (selected.isWholeValue())
+        Info.TypeObj = InitTypeObj->withAttributes(
+            Var->IsRebindable, Var->IsPointerNullable, Var->IsRebindBlocked);
+    }
 
     if (!Info.TypeObj) {
       if (inferredType && morph.empty() && InitTypeObj &&

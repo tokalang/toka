@@ -408,7 +408,8 @@ where:
     pub fn unsafe_get(self, index: usize) -> *T {
         unsafe {
             auto *ptr = self.*buf.unwrap() as *[T]
-            return *ptr[index]
+            auto *element = (*ptr)[index] as *T
+            return *element
         }
     }
 }

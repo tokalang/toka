@@ -5,8 +5,8 @@ import std/fs::{Metadata, TempFile, create_temp_file, create_temp_file_system, e
 fn drop_owned_temp_file() -> Result<string, i32> {
     auto created = create_temp_file_system()
     match cede created {
-        auto Result<TempFile, IoError>::Ok('file) => {
-            auto file# = cede 'file
+        auto Result<TempFile, IoError>::Ok(file) => {
+            auto file# = cede file
             auto path = file.path()
             if file#.write("drop payload").is_err() {
                 return Result<string, i32>::Err(1)

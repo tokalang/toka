@@ -7,8 +7,8 @@ shape Container(
     ^ptr: Point
 )
 
-shape Box<'T>(
-    'data: T
+shape Box<T>(
+    data: T
 )
 
 fn main() -> i32 {
@@ -22,7 +22,7 @@ fn main() -> i32 {
 
         // 2. Test morphic identity '
         auto box = Box<i32>(data=8)
-        auto v = box.'data
+        auto v = box.data
         assert(v == 8, "morphic identity ' failed")
     }
     return 0

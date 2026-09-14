@@ -14,11 +14,11 @@ effects: return <- owner {
     return &~owner
 }
 
-fn reference_view<'T>('reference: T) -> &'T
+fn reference_view<T>(reference: T) -> &T
 where:
-    'T: morphology borrow_extendable
-effects: return <- 'reference {
-    return &'reference
+    T: morphology borrow_extendable
+effects: return <- reference {
+    return &reference
 }
 
 fn main() -> i32 {

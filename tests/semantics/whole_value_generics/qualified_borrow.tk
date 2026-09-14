@@ -1,0 +1,17 @@
+shape Resource(value:i32)
+fn forward<T>(&value:T) -> &T <- value {
+    auto &local = &value
+    return &local
+}
+fn main() -> i32 {
+    auto ^owner = new Resource(value=7)
+    auto &^again = forward<^Resource>(&^owner)
+    if again.value != 7 { return 1 }
+    auto number = 17:i32
+    auto &scalar = forward<i32>(&number)
+    if scalar != 17 { return 2 }
+    auto &reference = &number
+    auto &&descriptor = forward<&i32>(&&reference)
+    if descriptor != 17 { return 3 }
+    return 0
+}

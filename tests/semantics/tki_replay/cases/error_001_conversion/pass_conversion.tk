@@ -1,12 +1,12 @@
 import core/traits::{@ErrorInto}
 import ./lib::{low, conversion_bound, LowError, AppError}
 
-fn lift<'T, 'E1, 'E2>(cede result: Result<'T, 'E1>) -> Result<'T, 'E2>
+fn lift<T, E1, E2>(cede result: Result<T, E1>) -> Result<T, E2>
 where:
     E1: @ErrorInto<E2>
 {
     auto value = result!
-    return Result<'T, 'E2>::Ok(value)
+    return Result<T, E2>::Ok(value)
 }
 
 fn high(fail: bool) -> Result<i32, AppError> {

@@ -16,13 +16,13 @@ fn make_async(hit: bool) -> async Token | miss {
 fn run() -> async i32 {
     auto missing = make_async(false).await
     match cede missing {
-        auto 'token => return 'token.id
+        auto token => return token.id
         miss => {}
     }
     auto found = make_async(true).await
     match cede found {
-        auto 'token => {
-            if 'token.id != 8 { return 1 }
+        auto token => {
+            if token.id != 8 { return 1 }
         }
         miss => return 2
     }

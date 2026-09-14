@@ -25,8 +25,8 @@ fn run() -> async i32 {
     auto child = completed_scope_result().start
     match cede spawn_into(scope, cede child) {
         auto Result<(), TaskHandle<ScopeResultProbe>>::Ok(_) => {}
-        auto Result<(), TaskHandle<ScopeResultProbe>>::Err('returned) => {
-            auto value = 'returned.await
+        auto Result<(), TaskHandle<ScopeResultProbe>>::Err(returned) => {
+            auto value = returned.await
             return 1:i32
         }
     }
@@ -45,8 +45,8 @@ fn reap_completed_result() -> async i32 {
     auto child = completed_scope_result().start
     match cede spawn_into(scope, cede child) {
         auto Result<(), TaskHandle<ScopeResultProbe>>::Ok(_) => {}
-        auto Result<(), TaskHandle<ScopeResultProbe>>::Err('returned) => {
-            auto value = 'returned.await
+        auto Result<(), TaskHandle<ScopeResultProbe>>::Err(returned) => {
+            auto value = returned.await
             return 1:i32
         }
     }

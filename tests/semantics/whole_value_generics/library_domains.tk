@@ -1,0 +1,16 @@
+import std/math::{sqrt, sin, min_u64, max_u32, clamp_i8, abs_i16, gcd, lcm, lerp, is_nan}
+import core/intrinsics/atomic::{load, store, fetch_add, fetch_and, compare_exchange, Ordering}
+fn main() -> i32 {
+    if sqrt(16.0) != 4.0 || sin(0.0:f32) != 0.0:f32 { return 1 }
+    if abs_i16(-7:i16) != 7:i16 || gcd(48,18) != 6 || lcm(4,6) != 12 { return 2 }
+    if min_u64(5:u64,9:u64) != 5:u64 || max_u32(5:u32,9:u32) != 9:u32 { return 3 }
+    if clamp_i8(12:i8,0:i8,10:i8) != 10:i8 || lerp(2.0,4.0,0.5) != 3.0 { return 4 }
+    if is_nan(1.0) { return 5 }
+    auto value# = 3:i32
+    store(value#, 4, Ordering::SeqCst)
+    if fetch_add(value#, 2, Ordering::SeqCst) != 4 { return 6 }
+    if fetch_and(value#, 7, Ordering::SeqCst) != 6 { return 7 }
+    auto exchanged = compare_exchange(value#, 6, 9, Ordering::SeqCst, Ordering::SeqCst)
+    if !exchanged.success || load(value#, Ordering::SeqCst) != 9 { return 8 }
+    return 0
+}

@@ -371,6 +371,7 @@ private:
   struct MemberMaterialization;
 
   llvm::Value *peelNestedMemberBaseAddress(const Expr *object, llvm::Value *addr);
+  llvm::Value *emitGenericViewAddr(const VariableExpr *variable);
   MemberObjectInfo resolveMemberObject(const Expr *object, llvm::Value *addr);
   llvm::Value *peelDerefObjectToSoulAddress(const Expr *object, llvm::Value *addr);
   MemberFieldInfo resolveMemberField(llvm::StructType *structTy, const std::string &shapeName, int initialIndex, const std::string &name);
