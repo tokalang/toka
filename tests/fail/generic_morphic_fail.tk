@@ -1,9 +1,0 @@
-// Test strict hat enforcement without 'T
-shape RigidBox<T>(data: T)
-
-fn main() -> i32 {
-  unsafe {
-    auto val = RigidBox<^i32>(^data=new i32(42))
-  }
-  return 0
-}

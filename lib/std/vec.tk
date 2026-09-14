@@ -408,7 +408,11 @@ where:
     pub fn unsafe_get(self, index: usize) -> *T {
         unsafe {
             auto *ptr = self.*buf.unwrap() as *[T]
-            auto *element = (*ptr)[index] as *T
+            // This API returns the slot address, not the complete element
+            // value reinterpreted as an address. Bounds remain the caller's
+            // unsafe precondition; no element is read or moved here.
+            auto address = (*ptr as Addr) + index * sizeof(T)
+            auto *element = address as *T
             return *element
         }
     }

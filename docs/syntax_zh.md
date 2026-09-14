@@ -589,9 +589,9 @@ impl PublicRecord@Encap {
 }
 ```
 
-## 8. 成员访问与 Morphic 字段
+## 8. 成员访问与整值泛型字段
 
-普通成员访问请求 payload 视图。
+具体 handle 成员的无帽访问请求 payload 视图。
 
 ```toka
 auto x = point.x
@@ -608,53 +608,48 @@ d.^p = new i32(300) // 重绑定成员 handle
 d.p = 500           // 通过 payload 视图写入
 ```
 
-Morphic 字段在泛型代码内部保留 handle 形态。单引号写在绑定名上，不写在类型侧。
+泛型内部类型为抽象 T 的字段保留完整 T。
 
 ```toka
-shape Box<'T>(
-    'data: T
-)
-
-fn take_identity<'T>(cede box: Box<'T>) -> 'T {
-    return cede box.'data
+shape Box<T>(data: T)
+fn view<T>(box: Box<T>) -> &T <- box {
+    return &(box.data)
 }
 ```
 
-当泛型代码必须保留抽象 handle 形态时使用 `box.'data`。当代码明确请求 payload 视图时使用 `box.data`。
+这里的 `box.data` 是完整抽象 T。在已具体化的 `Box<^Node>` 访问处，
+`box.data` 选择 payload，`box.^data` 选择 owner。整值选择不自动授予
+字段移出资格或清理权限。
 
 ## 9. 泛型
 
-刚性泛型参数描述 payload 类型。
+T 表示完整合法类型，保留内部 handle／引用权限及可空性。抽象绑定的
+整值含义不因单态化改变；具体声明仍遵守名字侧帽子规则。
 
 ```toka
 shape Box<T>(data: T)
 ```
 
-Morphic 泛型参数保留 handle 形态。
-
 ```toka
-shape Box<'T>('data: T)
-```
-
-在有名字的绑定位置，单引号属于绑定名：
-
-```toka
-fn id<'T>('x: T) -> 'T {
-    return 'x
+fn relay<T>(cede value: T) -> T {
+    return cede value
 }
 ```
 
-局部绑定也遵循这条规则：写 `auto 'local = expr:T`，不要写
-`auto local: 'T = expr`。单引号仍在绑定侧；类型 ascription 属于初始化表达式。
-
-在纯类型位置，写 `'T`：
+类型位置写 T，抽象整值使用普通名字：
 
 ```toka
-Vec<'T>
-Option<'T>
--> 'T
-sizeof('T)
+Vec<T>
+Option<T>
+-> T
+sizeof(T)
 ```
+
+泛型撇号占位语法已移除（E01268），字符及字符串字面量不变。
+`&value` 借用完整 T 槽位；T = &Node 时得到 &&Node，不折叠成 &Node。
+外层槽位写权限不能升级内部引用权限。操作仍须满足已声明的 Copy、消费、
+写权限及形态域契约；本项不自动省略依赖路由。
+参见 [G 的设计与实施边界](semantic_core/whole_value_generics_and_checked_dependency_elision_rfc.md)。
 
 ## 10. 控制流
 
@@ -1063,5 +1058,5 @@ Toka 1.x 保持冻结 1.0 表面中程序的源码层含义。新增能力以及
 | `fn read(info: &Info)` | `fn read(info: Info)` | 帽子属于绑定名；普通参数使用 payload 视图 |
 | 只读取 payload 时写 `fn inspect(&info: Info)` | `fn inspect(info: Info)` | 带帽参数是 handle 契约，不是普通传参的写法 |
 | `shape Ref <- val (&val: T)` | `shape Ref(&val: T)` | borrow-like 字段直接携带依赖事实；shape 头部依赖已移除 |
-| `fn id<'T>(x: 'T) -> 'T` | `fn id<'T>('x: T) -> 'T` | 在绑定位置，单引号属于绑定名 |
-| `shape Box<'T>('data: 'T)` | `shape Box<'T>('data: T)` | 字段名保留形态，类型侧保持 `T` |
+| 泛型撇号占位 | `T` 与普通抽象绑定名 | 整值身份来自源码契约，不来自撇号 |
+| `shape Box<'T>('data: T)` | `shape Box<T>(data: T)` | 保留完整 T；具体访问仍遵守帽子规则 |

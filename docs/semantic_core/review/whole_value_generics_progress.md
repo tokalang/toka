@@ -3,6 +3,79 @@
 Design/authorization checkpoint: `ddb19870`. E is not started. Work remains on
 the existing integration branch; no push, PR, tag or release is authorized.
 
+## Current integration result — G is not ready for acceptance
+
+The one complete run is retained at `/private/tmp/toka-G-final.0snzrT`.
+Its implementation state was subsequently saved as `86288f97`; the runner
+started at `dfbebc57` with the exact tracked diff and added-file hashes saved
+alongside its metadata. Later corrections below are NOT folded into these
+full-suite totals.
+
+| Suite | Measured result |
+| --- | --- |
+| Complete tools build | Passed, 9.60 s |
+| PASS compile/run | 363/456; 93 failures, 249.11 s |
+| FAIL expectations | 441/479; 38 failures, 151.31 s |
+| Complete CTest | 86/99; 13 failures, 881.23 s |
+
+`comparison.json` compares the retained db4385dc-era full logs, not an exact
+G-start baseline. PASS: 17 recovered names, 25 newly failing names. FAIL: one
+recovered, four newly failing. CTest: eleven newly failing names and the two
+previous failures. Test inventory and permission/library migrations changed
+between these snapshots; these observed deltas are not automatically all G
+regressions or G recoveries. `added-pass-triage.json` records first diagnostics
+for the 25 names; its check-only successes do not override runtime failures.
+
+### Corrections after that run (targeted evidence only)
+
+- Vec.unsafe_get accidentally cast the complete indexed element to a pointer.
+  It now calculates an address from the existing raw base plus index*sizeof(T)
+  without reading/moving an element. No writable capability or initialized
+  extent is added. The original stride test runs with difference 4; the real
+  TLS server/client test, which crashed in both full PASS and the exact net
+  gate, now completes handshake and bidirectional transfer (exit 0).
+- The old morphic payload-borrow test now receives the complete &^, &~, and &&
+  result types. Its original content assertions pass. The obsolete rigid-T
+  negative is migrated to `g08_unquoted_full_type_argument`, which constructs
+  the unique instance and checks its value at runtime (exit 0).
+- Private thread-handoff declaration qualification now requires the exact
+  abstract-whole formal and already matched generic binder, rather than
+  rejecting legacy internal morphic flags. Trusted source, consuming contract,
+  qualifier, result and environment checks remain. Its complete CTest passes
+  (35.96 s); no thread runtime/protocol change.
+- The negative-harness real compiler control now reaches an invalid member
+  initializer in Sema, rather than a migrated fixture rejected in the lexer.
+  Crash/bless mocks and object/IR rejection remain; CTest passes (1.20 s).
+- The missing-quote negative now tests the still-unqualified projected unique
+  transfer, requiring `ProjectedHandleRequiresSubroot`; the obsolete quote
+  spelling snapshot requires E01268. The two precise FAIL checks pass 2/2 and
+  are included in the G runner's parity/no-artifact matrix.
+- English/Chinese syntax sections now describe whole T, concrete hats,
+  non-collapsing references, explicit operation domains and unchanged explicit
+  dependency requirements. Historical design records are not rewritten.
+
+### Remaining finite work, not new semantics
+
+1. Static factory/chain result contracts: Ring's inferred saved Vec loses the
+   abstract T on pop().unwrap(); independent reproduction and exact source
+   contract propagation are needed, not a Ring name exception.
+2. Existing enum/reflection paths: Option/Result pattern handling and generated
+   field access report E0550 / abstract-T member rejection. Separate generated
+   validated access from illegal user access before making any change.
+3. Library/factory writable raw return contracts: HashMap, crypto, arena and
+   native adapter controls lose or lack a declared writable result. Do not
+   compensate by granting write permission to all raw casts or all T.
+4. Remaining snapshots/negative purposes, including the HashMap escape test
+   currently blocked before its intended lifetime check. No blanket blessing.
+5. Retained source-hidden callable and build-buffer dependency failures remain
+   separately visible. Borrowed-record whole return remains unqualified as
+   documented below; E and a new dependency framework are not prerequisites.
+
+These items still prevent a clean G whole-candidate claim. No second full run
+has been performed, and no post-fix full-green totals are inferred.
+The expanded G runner passes again after these corrections (1/1, 93.95 s),
+including the added explicit rejection-reason and no-artifact controls.
+
 ## Latest: approved receipt activation on `2574cec3`
 
 Applied the exact user-approved `g_receipt_view_activation_unapplied.patch`

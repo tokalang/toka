@@ -13,6 +13,8 @@ MORPHOLOGY_CASES = {
     'morphology_borrow_extendable_raw': 'E0621',
     'morphology_soul_only_unique': 'E0621',
     'morphology_constraint_unknown': 'E01267',
+    'morphic_member_missing_quote': 'E04658',
+    'morphic_member_quote_on_plain_field': 'E01268',
 }
 
 
@@ -115,6 +117,8 @@ def main():
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 1, name
             assert normal.stderr == shadow.stderr and f'error[{diagnostic}]' in normal.stderr, normal.stderr
+            if name == 'morphic_member_missing_quote':
+                assert 'ProjectedHandleRequiresSubroot' in normal.stderr, normal.stderr
             if name.startswith('qualified_loan_'):
                 assert 'E0438' not in normal.stderr and 'E0410' not in normal.stderr, normal.stderr
                 assert 'conflicting borrow originates here' in normal.stderr, normal.stderr

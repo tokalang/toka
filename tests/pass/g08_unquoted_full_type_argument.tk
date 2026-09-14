@@ -1,0 +1,7 @@
+// Former rigid-T negative: G admits a complete unique type argument.
+shape RigidBox<T>(data: T)
+fn main() -> i32 {
+    auto val = RigidBox<^i32>(^data=new i32(42))
+    if val.data != 42 { return 1 }
+    return 0
+}

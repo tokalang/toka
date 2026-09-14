@@ -137,12 +137,12 @@ bool Sema::qualifyThreadHandoffSource(CallExpr *call, const AnalysisState &befor
       function->Args[0].TypeSyntax->Text != function->GenericParams[1].Name)
     return reject("InvalidIntrinsicDeclarationSchema");
   const auto &formal = function->Args[0];
-  if (formal.IsRawPointer || formal.IsUnique || formal.IsShared || formal.IsReference ||
-      formal.IsMorphicExempt || formal.IsRebindable || formal.IsValueMutable ||
+  if (!formal.IsAbstractWholeValue || formal.IsRawPointer || formal.IsUnique || formal.IsShared || formal.IsReference ||
+      formal.IsRebindable || formal.IsValueMutable ||
       formal.IsPointerNullable || formal.IsValueNullable || formal.IsRebindBlocked || formal.IsValueBlocked)
     return reject("InvalidIntrinsicDeclarationSchema");
   for (const auto &parameter : function->GenericParams)
-    if (parameter.IsConst || parameter.IsMorphic || !parameter.Type.empty() ||
+    if (parameter.IsConst || !parameter.Type.empty() ||
         !parameter.TraitBounds.empty() || !parameter.MorphologyBounds.empty())
       return reject("InvalidIntrinsicDeclarationSchema");
   if (function->ThreadProbe == ThreadProbeKind::Run &&

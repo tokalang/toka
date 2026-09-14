@@ -43,7 +43,13 @@ def main():
             assert message in output.getvalue(), output.getvalue()
             assert golden.read_text(encoding="utf-8") == expected
 
-        real_source = ROOT / "tests/fail/member_access_sema_prefix_fail.tk"
+        # The former fixture now intentionally fails at removed quote syntax.
+        # Keep this control in Sema: an invalid initializer must never reach
+        # CodeGen or leave an artifact, independent of the lexer migration.
+        real_source = Path(temp) / "invalid-member.tk"
+        real_source.write_text("shape Point(x:i32)\nfn main() -> i32 {\n"
+                               "auto point = Point(x=1)\nauto invalid = point.missing\n"
+                               "return 0\n}\n", encoding="utf-8")
         for mode in ([], ["--stage1-legacy-ordinary-cede"]):
             for flags, suffix in ((["-c"], ".o"), (["--emit-llvm"], ".ll")):
                 target = Path(temp) / ("invalid-member" + suffix)
@@ -51,7 +57,7 @@ def main():
                                         cwd=ROOT, env=dict(os.environ, TOKA_LIB=str(ROOT / "lib")),
                                         capture_output=True, text=True, timeout=30)
                 assert result.returncode == 1, (result.returncode, result.stderr)
-                assert "error[E0406]" in result.stderr and "error[E0461]" in result.stderr
+                assert "error[E0417]" in result.stderr and "E01268" not in result.stderr
                 assert not target.exists()
     print("negative termination: crash cannot pass or bless; real invalid initializer rejects without artifacts")
 

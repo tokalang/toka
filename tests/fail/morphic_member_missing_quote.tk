@@ -1,4 +1,6 @@
-// EXPECT: error[E0408]
+// EXPECT: error[E04658]
+// G preserves the complete T field without a quote. That view does not
+// authorize projected unique transfer: a qualified ownership subroot is absent.
 
 shape Box<T>(
     data: T

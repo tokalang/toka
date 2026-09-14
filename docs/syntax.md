@@ -686,9 +686,9 @@ impl PublicRecord@Encap {
 }
 ```
 
-## 8. Member Access And Morphic Fields
+## 8. Member Access And Whole-Value Generic Fields
 
-Normal member access requests the payload view.
+Concrete handle member access without a hat requests the payload view.
 
 ```toka
 auto x = point.x
@@ -705,54 +705,50 @@ d.^p = new i32(300) // rebind the member handle
 d.p = 500           // write through the payload view
 ```
 
-Morphic fields preserve handle shape inside generic code. The quote is written on the binding name, not on the type side.
+An abstract field of type T preserves the complete T inside generic code.
 
 ```toka
-shape Box<'T>(
-    'data: T
-)
-
-fn take_identity<'T>(cede box: Box<'T>) -> 'T {
-    return cede box.'data
+shape Box<T>(data: T)
+fn view<T>(box: Box<T>) -> &T <- box {
+    return &(box.data)
 }
 ```
 
-Use `box.'data` when the generic code must preserve the abstract handle shape. Use `box.data` when the code intentionally requests the payload view.
+Here `box.data` is the complete abstract T. At a concrete `Box<^Node>` access,
+`box.data` selects the payload and `box.^data` selects the owner. Full-value
+selection does not grant partial-move or cleanup authority.
 
 ## 9. Generics
 
-Rigid generic parameters describe payload types.
+T denotes a complete legal type, including its internal handle/reference
+permissions and nullability. Abstract bindings retain that meaning after
+specialization; concrete declarations keep their name-side hat rules.
 
 ```toka
 shape Box<T>(data: T)
 ```
 
-Morphic generic parameters preserve handle shape.
-
 ```toka
-shape Box<'T>('data: T)
-```
-
-In binding positions, the quote belongs to the binding name:
-
-```toka
-fn id<'T>('x: T) -> 'T {
-    return 'x
+fn relay<T>(cede value: T) -> T {
+    return cede value
 }
 ```
 
-The same rule applies to local bindings: write `auto 'local = expr:T`, not
-`auto local: 'T = expr`. The quote remains binding-side; the type ascription
-belongs to the initializer.
-
-In pure type positions, write `'T`:
+Use `T` in type positions and ordinary names for abstract whole values:
 
 ```toka
-Vec<'T>
-Option<'T>
--> 'T
-sizeof('T)
+Vec<T>
+Option<T>
+-> T
+sizeof(T)
 ```
+
+Generic quote syntax is removed (E01268); character and string literals are
+unchanged. `&value` borrows the complete T slot, so T = &Node yields &&Node,
+not a collapsed &Node. Outer slot-write permission cannot upgrade internal
+reference permissions. Operations still require the declared Copy, consuming,
+write and morphology contracts; dependency routes are not implicitly omitted.
+See the [G design and implementation boundary](semantic_core/whole_value_generics_and_checked_dependency_elision_rfc.md).
 
 ## 10. Control Flow
 
@@ -1239,5 +1235,5 @@ and do not carry a cross-version compatibility promise.
 | `fn read(info: &Info)` | `fn read(info: Info)` | Hats belong to binding names, and ordinary parameters use the payload view |
 | `fn inspect(&info: Info)` when only reading payload | `fn inspect(info: Info)` | A hatted parameter is a handle contract, not a spelling for normal passing |
 | `shape Ref <- val (&val: T)` | `shape Ref(&val: T)` | Borrow-like fields carry dependency facts directly; shape header dependencies are removed |
-| `fn id<'T>(x: 'T) -> 'T` | `fn id<'T>('x: T) -> 'T` | In binding positions, the quote belongs to the binding name |
-| `shape Box<'T>('data: 'T)` | `shape Box<'T>('data: T)` | The field name preserves morphology; the type side remains `T` |
+| Generic quote placeholders | `T` and plain abstract binding names | Full-value identity follows the source contract, not a quote |
+| `shape Box<'T>('data: T)` | `shape Box<T>(data: T)` | Preserve complete T; concrete access still follows its hat rules |
