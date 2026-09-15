@@ -183,6 +183,38 @@ this test's recovery. Only the corpus case is a restored original PASS target.
 BufIO, Build, TOML and Template are not silently fixed or reclassified here.
 Probe logs: `/private/tmp/toka-element-deps.ODDq3g`.
 
+### CSV streaming: isolated compiler candidate, not applied
+
+Baseline `9f010b7426e4349a9b38ec3ad9d1b8652baeaae2`.
+Real File probes independently reproduce BufferedReader<File>::make and
+BufferedWriter<File>::make rejection. Calling only Reader::new still checks
+the unused make method and fails. A smaller non-generic `FileBox(file:File)`
+with `new FileBox(file=cede file)` also rejects IncompleteFacts; neither CSV
+nor the 4096-byte array is necessary. The equivalent value FileBox compiles
+and runs; a scalar unique Box also compiles and runs. All probes use File::open,
+with no fd/unsafe substitute or debugger.
+
+Facts path: new has UniqueOwner/NoSourcePlace, but payload type-only dependency
+inspection sees File's opaque handle and retains Structural/IncompleteFacts.
+The constructor's existing field transfers are not used to qualify the outer
+new value. No evidence supports changing every unique value to dependency-free.
+
+The full proposed patch is [csv_new_initializer_candidate.patch](csv_new_initializer_candidate.patch).
+It prepares unpublished AggregateMember plans only after normal validation,
+against the original snapshot and exact initializer/declaration; every explicit
+field must be admitted and dependency-complete/free, and the pure whole-group
+gate must admit before qualifying the new temporary. It excludes array-new,
+missing/default/spread fields and all unproved dependent fields. Existing source,
+PAL, morphology, permission, group, cleanup and final validation checks remain.
+This is a proposed production admission change, not merely reporting facts.
+
+Auto-review rejected applying that compiler diff as outside the current library
+repair scope. It is saved **unapplied and unbuilt** for explicit review; no
+alternative bypass was attempted. Required validation if authorized: real File
+new/make and original streaming tests, duplicate source, borrowed/raw payload,
+permission/lifetime mismatch, missing/invalid plans without artifact, and exact
+cleanup controls. Probe directory: `/private/tmp/toka-csv-stream.TTV0ps`.
+
 ## Shape inference crash recovery
 
 The unchanged `tests/pass/g09_context.tk` previously terminated with SIGSEGV
