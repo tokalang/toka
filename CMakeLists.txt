@@ -372,6 +372,9 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_native_literals.py --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_permission_net_regression
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_net_regression.py --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_rc13_semver_thread_migration
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_rc13_semver_thread_migration.py --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(toka_rc13_semver_thread_migration PROPERTIES TIMEOUT 240 RESOURCE_LOCK rc13_legacy_tcp_ports)
         add_test(NAME toka_empty_fn_return
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_empty_fn_return.py

@@ -31,7 +31,7 @@ fn run_server(port: u16) -> i32 {
         
         println("[Server] Accepted connection!")
         
-        auto buf = [0 as char; 128]:[char; 128]
+        auto buf# = [0 as char; 128]:[char; 128]
         auto *buf_ptr# = &buf[0] as *u8
         
         loop true {
@@ -47,7 +47,9 @@ fn run_server(port: u16) -> i32 {
              }
              
              // Echo back
-             stream#.write(*buf_ptr, n)
+            auto echoed = stream#.write(*buf_ptr, n)
+            assert(echoed.is_ok(), "server echo write must succeed")
+            assert(echoed.unwrap() == n, "server must echo the complete message")
         }
         
         println("[Server] Done")
@@ -67,9 +69,11 @@ pub fn main() -> i32 {
 
     unsafe {
         // Spawn server thread
-        auto server_thread# = thread_spawn<i32>({ => 
+        auto spawned = thread_spawn<i32>({ =>
             return run_server(49095:u16)
         })
+        assert(spawned.is_ok(), "server thread creation must succeed")
+        auto server_thread# = spawned.unwrap()
         
         println("[Client] Connecting to 127.0.0.1:49095...")
         auto ip = Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8)
@@ -89,14 +93,16 @@ pub fn main() -> i32 {
         
         auto msg = string::from("Hello Toka")
         auto write_res = stream#.write_string(msg)
+        assert(write_res.is_ok(), "client write must succeed")
         if write_res.is_ok() {
             println("[Client] Sent {} bytes", write_res.unwrap() as i32)
         }
         
         // Read Echo
-        auto buf = [0 as char; 128]:[char; 128]
+        auto buf# = [0 as char; 128]:[char; 128]
         auto *buf_ptr# = &buf[0] as *u8
         auto read_res = stream#.read(*buf_ptr, 128)
+        assert(read_res.is_ok(), "client echo read must succeed")
         
         if read_res.is_ok() {
             auto n = read_res.unwrap()
@@ -109,12 +115,15 @@ pub fn main() -> i32 {
             // To pass the pointer (Handle) to println, we must pass the hat or cast it
             println("[Client] Echo received ({} bytes)", n as i32)
             assert(n == 10:usize, "Echo length mismatch")
+            assert(buf[0] == 'H' && buf[9] == 'a', "Echo content mismatch")
         }
         
         // Explicitly close so the server receives EOF
         stream#.close()
         
-        server_thread#.join()
+        auto joined = server_thread#.join()
+        assert(joined.is_ok(), "server join must succeed")
+        assert(joined.unwrap() == 0, "server must complete normally")
         println("[Client] Server thread joined. Test complete.")
         return 0
     }

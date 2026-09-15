@@ -107,7 +107,7 @@ fn validate_build(input: str, start: usize, end: usize) -> Result<Vec<string>, S
             }
             index = index + 1:usize
         }
-        values#.push(cede copy_range(input, part_start, part_end))
+        values#.push(copy_range(input, part_start, part_end))
         if part_end == end { break }
         part_start = part_end + 1:usize
     }
@@ -138,9 +138,9 @@ fn parse_pre_release(input: str, start: usize, end: usize) -> Result<Vec<PreRele
             }
             auto number = parse_core_number(input, part_start, part_end)
             if number.is_err() { return Result<Vec<PreReleaseId>, SemVerError>::Err(number.unwrap_err()) }
-            values#.push(cede PreReleaseId::Numeric(number.unwrap()))
+            values#.push(PreReleaseId::Numeric(number.unwrap()))
         } else {
-            values#.push(cede PreReleaseId::Text(copy_range(input, part_start, part_end)))
+            values#.push(PreReleaseId::Text(copy_range(input, part_start, part_end)))
         }
         if part_end == end { break }
         part_start = part_end + 1:usize
@@ -219,13 +219,13 @@ impl SemVer {
         auto copied_pre# = Vec<PreReleaseId>::new()
         auto pre_index# = 0:usize
         loop pre_index < self.pre_release.len() {
-            copied_pre#.push(cede self.pre_release.borrow(pre_index).clone())
+            copied_pre#.push(self.pre_release.borrow(pre_index).clone())
             pre_index = pre_index + 1:usize
         }
         auto copied_build# = Vec<string>::new()
         auto build_index# = 0:usize
         loop build_index < self.build.len() {
-            copied_build#.push(cede string::from(self.build.borrow(build_index).as_str()))
+            copied_build#.push(string::from(self.build.borrow(build_index).as_str()))
             build_index = build_index + 1:usize
         }
         return SemVer(
@@ -248,7 +248,7 @@ impl SemVer {
         if plus < input.len() {
             auto parsed_build = validate_build(input, plus + 1:usize, input.len())
             if parsed_build.is_err() { return Result<SemVer, SemVerError>::Err(parsed_build.unwrap_err()) }
-            build = cede parsed_build.unwrap()
+            build = parsed_build.unwrap()
         }
         auto core_and_pre_end = plus
         auto dash = find_byte(input, 0:usize, core_and_pre_end, '-' as u8)
@@ -257,7 +257,7 @@ impl SemVer {
         if dash < core_and_pre_end {
             auto parsed_pre = parse_pre_release(input, dash + 1:usize, core_and_pre_end)
             if parsed_pre.is_err() { return Result<SemVer, SemVerError>::Err(parsed_pre.unwrap_err()) }
-            pre_release = cede parsed_pre.unwrap()
+            pre_release = parsed_pre.unwrap()
             core_end = dash
         }
         auto first_dot = find_byte(input, 0:usize, core_end, '.' as u8)

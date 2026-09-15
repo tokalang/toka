@@ -472,3 +472,38 @@ forwarding/cache, exact-once payload cleanup and the admitted/rejected matrices
 are complete for the authorized candidate. E remains off, no push/PR, no frozen
 ref movement; leak tooling's previously recorded permission limitation is not
 reinterpreted as a zero-leak result.
+
+## CSV accepted; source-only semver/thread migration
+
+`c4b726a7` is **Accepted** for CSV library migration, explicit new initialization
+and restricted independent-return qualification. Independent review reran the
+five targeted gates (5/5, 136.23 s) and checked the full named comparison.
+This scope is closed; it is not general binding or RC13 acceptance.
+
+The next source-only batch removes seven redundant temporary-result `cede`
+spellings in semver. The two old TCP tests now check spawn Result, extract the
+JoinHandle, and check join Result plus worker exit status. Their actual writable
+receive buffers are declared writable on the binding, without a compiler/raw
+permission workaround. Existing chunking, concurrent server/client, EOF and
+content assertions are preserved; echo write/read and clone/source-preservation
+assertions are strengthened. A network-unavailable skip is not a qualified run.
+The dedicated runner also runs existing thread-example and condvar controls.
+No compiler implementation or existing oracle is changed by this batch.
+
+Final directed verification: full tool targets built successfully; CTest
+`toka_rc13_semver_thread_migration` and `toka_permission_net_regression` pass
+2/2 (111.64 s). The former runs all five programs with normal/shadow parity
+(34.31 s); the latter reruns the exact twelve net controls. Strengthened
+semver clone, echo content, spawn/join and worker exit assertions are included.
+
+Actual restored failures from the c4b726a7 full baseline are:
+
+- `g15_stdx_semver_test.tk`;
+- `g10_net_read_exact.tk`;
+- `g10_net_tcp_echoserver.tk`.
+
+These are **three directed recoveries only**, not a new full-suite result.
+The complete baseline stays 412/457, 447/478, 103/106 until rerun. Neither
+the remaining stress/MPSC source failures nor the three old CTest failures
+are declared resolved by these changes. No full rerun, compiler changes,
+E activation, push or release; other-worker RFC edits remain untouched.

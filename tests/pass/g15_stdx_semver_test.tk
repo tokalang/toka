@@ -17,6 +17,11 @@ fn test_parse_and_format() {
     assert(version.is_pre_release(), "pre-release state must be observable")
     assert(version.to_string().as_str().equals("1.2.3-alpha.1+build.7"),
            "canonical SemVer formatting must round-trip")
+    auto copied = version.clone()
+    assert(copied.to_string().as_str().equals("1.2.3-alpha.1+build.7"),
+           "clone must preserve pre-release and build fields")
+    assert(version.to_string().as_str().equals("1.2.3-alpha.1+build.7"),
+           "clone must not consume or change the source")
 }
 
 fn test_precedence() {

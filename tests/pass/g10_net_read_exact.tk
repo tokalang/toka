@@ -42,9 +42,11 @@ fn main() -> i32 {
 
     unsafe {
         auto port = 49123:u16
-        auto server_thread# = thread_spawn<i32>(cede { [copy port] =>
+        auto spawned = thread_spawn<i32>({ [copy port] =>
             return run_server(port)
         })
+        assert(spawned.is_ok(), "server thread creation must succeed")
+        auto server_thread# = spawned.unwrap()
         
         auto ip = Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8)
         auto addr = SocketAddrV4::new(ip, port)
@@ -59,7 +61,7 @@ fn main() -> i32 {
             retries = retries + 1
         }
         
-        auto buf = [0:u8; 10]:[u8; 10]
+        auto buf# = [0:u8; 10]:[u8; 10]
         auto *buf_ptr# = &buf[0] as *u8
         
         // This should block/loop until all 10 bytes are read
@@ -82,7 +84,9 @@ fn main() -> i32 {
         
         println("net_read_exact test passed!")
         stream#.close()
-        server_thread#.join()
+        auto joined = server_thread#.join()
+        assert(joined.is_ok(), "server join must succeed")
+        assert(joined.unwrap() == 0, "server must send both chunks")
         return 0
     }
 }
