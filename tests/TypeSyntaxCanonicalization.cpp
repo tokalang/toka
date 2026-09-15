@@ -14,6 +14,7 @@
 
 #include "toka/TypeSyntax.h"
 #include "toka/Type.h"
+#include "toka/AST.h"
 #include <iostream>
 #include <map>
 #include <string>
@@ -287,5 +288,21 @@ int main() {
     }
   }
 
+  toka::ShapeDecl concrete(false, "T", {}, toka::ShapeKind::Struct, {});
+  auto fixed = std::make_shared<toka::TypeSyntax>(*toka::TypeSyntax::named("T", {}, {}));
+  fixed->NominalDeclaration = &concrete;
+  auto replacement = toka::TypeSyntax::named("i32", {}, {});
+  auto retained = fixed->substitute({{"T", replacement}});
+  auto semantic = toka::Type::fromSyntax(retained)->substitute({{"T", toka::Type::fromString("i32")}});
+  auto nominal = std::dynamic_pointer_cast<toka::ShapeType>(semantic);
+  if (retained->NominalDeclaration != &concrete || !nominal || nominal->Decl != &concrete) {
+    std::cerr << "concrete alias declaration was captured by generic T\n";
+    passed = false;
+  }
+  auto abstract = toka::TypeSyntax::named("T", {}, {})->substitute({{"T", replacement}});
+  if (abstract->toCanonicalString() != "i32") {
+    std::cerr << "actual generic T stopped substituting\n";
+    passed = false;
+  }
   return passed ? 0 : 1;
 }

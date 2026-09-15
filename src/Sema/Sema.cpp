@@ -3639,6 +3639,10 @@ void Sema::declareGlobals(Module &M) {
     }
     if (!targetSyntax || targetSyntax->toCanonicalString() != target)
       targetSyntax = TypeSyntax::named(target, Alias->Loc, Alias->Loc);
+    std::set<std::string> aliasBinders;
+    for (const auto &parameter : Alias->GenericParams)
+      if (!parameter.IsConst) aliasBinders.insert(parameter.Name);
+    targetSyntax = bindGenericSourceTypeSyntax(targetSyntax, aliasBinders, &M);
     ms.TypeAliases[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
                                    Alias->GenericParams};
     TypeAliasMap[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
@@ -4014,6 +4018,10 @@ void Sema::registerGlobals(Module &M) {
     }
     if (!targetSyntax || targetSyntax->toCanonicalString() != target)
       targetSyntax = TypeSyntax::named(target, Alias->Loc, Alias->Loc);
+    std::set<std::string> aliasBinders;
+    for (const auto &parameter : Alias->GenericParams)
+      if (!parameter.IsConst) aliasBinders.insert(parameter.Name);
+    targetSyntax = bindGenericSourceTypeSyntax(targetSyntax, aliasBinders, &M);
     ms.TypeAliases[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
                                    Alias->GenericParams};
     TypeAliasMap[Alias->Name] = {target, targetSyntax, Alias->IsStrong,

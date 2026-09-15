@@ -733,7 +733,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
     }
 
     // [NEW] Local Scope Alias Lookup (for T -> i32)
-    if (CurrentScope && !shape->BypassesCurrentTypeAlias) {
+    if (CurrentScope && !shape->Decl && !shape->BypassesCurrentTypeAlias) {
       SymbolInfo *Sym = nullptr;
       if (CurrentScope->findSymbol(shape->Name, Sym)) {
         if (Sym && Sym->IsTypeAlias && Sym->TypeObj) {
@@ -762,7 +762,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
 
     // [FIX] Check for Aliases (including Generic Aliases) BEFORE finding
     // Shape Template
-    if (TypeAliasMap.count(shape->Name)) {
+    if (!shape->Decl && TypeAliasMap.count(shape->Name)) {
       const auto &aliasInfo = TypeAliasMap[shape->Name];
       if (!shape->GenericArgs.empty() && !aliasInfo.GenericParams.empty()) {
         for (auto &Arg : shape->GenericArgs) {

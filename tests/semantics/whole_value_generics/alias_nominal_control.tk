@@ -1,0 +1,7 @@
+shape T(value:i32)
+alias Fixed = T
+fn read<U>(input:Fixed) -> i32 { return input.value }
+fn main() -> i32 {
+    auto input = T(value=7)
+    return read<i32>(input) - 7
+}

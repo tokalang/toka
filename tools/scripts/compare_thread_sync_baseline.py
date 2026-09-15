@@ -19,6 +19,41 @@ def clean(text):
     return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
+def pass_abnormal(text):
+    """Keep crashes distinct from ordinary rejection, including old logs.
+
+    Old parallel workers wrote shell signal lines outside their buffered case
+    report. Attribute only an immediately following FAIL; otherwise retain an
+    unattributed event rather than guessing across intervening worker output.
+    """
+    lines = clean(text).splitlines()
+    events = []
+    current_case = None
+    for index, line in enumerate(lines):
+        case = re.match(r"^\[(PASS|FAIL)\] (\S+\.tk)", line)
+        if case:
+            current_case = case[2]
+        if 'Compiler abnormal exit (' in line:
+            events.append(dict(case=current_case, phase='compiler', evidence=line.strip(),
+                               attribution='case-report'))
+        elif 'Runtime crash (' in line:
+            code = re.search(r'Runtime crash \((-?\d+)\)', line)
+            if code and (int(code[1]) < 0 or int(code[1]) >= 128):
+                events.append(dict(case=current_case, phase='runtime', evidence=line.strip(),
+                                   attribution='case-report'))
+        elif re.search(r'Segmentation fault|SIGSEGV|Bus error|Abort trap', line) and \
+                re.search(r': line \d+:', line) and re.search(r'\$TOKAC|tokac(?:["\s]|$)', line):
+            following = re.match(r"^\[FAIL\] (\S+\.tk)", lines[index+1]) if index+1 < len(lines) else None
+            events.append(dict(case=following[1] if following else None, phase='compiler',
+                               evidence=line.strip(), attribution='adjacent-failure' if following else 'unattributed'))
+    # The end-of-suite failure recap repeats case reports; do not count twice.
+    unique = {(event['case'], event['phase'], event['evidence']): event for event in events}
+    explicit = {(event['case'], event['phase']) for event in events
+                if event['attribution'] == 'case-report'}
+    return [event for event in unique.values() if event['attribution'] == 'case-report' or
+            (event['case'], event['phase']) not in explicit]
+
+
 def suite(directory, name):
     text = clean((directory / (name + ".log")).read_text())
     if name == "ctest":
@@ -34,7 +69,8 @@ def suite(directory, name):
     pattern = r"^\[FAIL\] (\S+\.tk)" if name == "pass" else r"^Testing (\S+\.tk)\s+(?:FAIL|ERROR)"
     return dict(passed=int(summary[1]), failed=int(summary[2]),
                 failures=sorted(set(re.findall(pattern, text, re.M))),
-                abnormal=re.findall(r"^Testing .*?(?:Unexpectedly Passed|Abnormal Exit|Execution Failed).*?$", text, re.M))
+                abnormal=pass_abnormal(text) if name == "pass" else
+                    re.findall(r"^Testing .*?(?:Unexpectedly Passed|Abnormal Exit|Execution Failed).*?$", text, re.M))
 
 
 def main():

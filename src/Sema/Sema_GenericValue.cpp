@@ -19,21 +19,22 @@ bool Sema::isWholeGenericField(const ShapeDecl *shape, const ShapeMember &field)
   return false;
 }
 
-GenericValueContractPtr Sema::makeGenericValueContract(
+TypeSyntaxPtr Sema::bindGenericSourceTypeSyntax(
     TypeSyntaxPtr syntax, const std::set<std::string> &parameters,
     const Module *sourceModule) {
   std::set<const TypeAliasDecl *> activeAliases;
   auto expand = [&](auto &&self, const TypeSyntaxPtr &input,
-                    const Module *module) -> TypeSyntaxPtr {
+                    const Module *module, const std::set<std::string> &binders) -> TypeSyntaxPtr {
     if (!input) return nullptr;
+    if (input->NominalDeclaration) return input;
     auto result = std::make_shared<TypeSyntax>(*input);
     for (auto &argument : result->Arguments)
       if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type)
-        argument.Type = self(self, argument.Type, module);
+        argument.Type = self(self, argument.Type, module, binders);
     const auto head = input->NodeKind == TypeSyntax::Kind::GenericApplication
         ? input->Subject : input;
     if (head && head->NodeKind == TypeSyntax::Kind::Named &&
-        !parameters.count(head->Text)) {
+        !binders.count(head->Text)) {
       auto *scope = getLexicalModule(head->Begin);
       std::string name = head->Text;
       if (auto separator = name.find("::"); separator != std::string::npos && scope) {
@@ -45,6 +46,7 @@ GenericValueContractPtr Sema::makeGenericValueContract(
       }
       if (!module && scope) module = scope->SourceModule;
       const TypeAliasDecl *alias = nullptr;
+      ShapeDecl *nominal = nullptr;
       if (scope) {
         auto *lookupScope = scope;
         auto lookupName = name;
@@ -54,6 +56,7 @@ GenericValueContractPtr Sema::makeGenericValueContract(
           if (symbol == lookupScope->LexicalTypes.end()) break;
           if (symbol->second.ASTPtr) {
             alias = dynamic_cast<TypeAliasDecl *>(static_cast<ASTNode *>(symbol->second.ASTPtr));
+            nominal = dynamic_cast<ShapeDecl *>(static_cast<ASTNode *>(symbol->second.ASTPtr));
             break;
           }
           auto *import = symbol->second.ImportingDecl;
@@ -77,10 +80,16 @@ GenericValueContractPtr Sema::makeGenericValueContract(
       if (!alias && module && name == head->Text)
         for (const auto &candidate : module->TypeAliases)
           if (candidate->Name == name) { alias = candidate.get(); break; }
+      if (!alias && !nominal && module && name == head->Text)
+        for (const auto &candidate : module->Shapes)
+          if (candidate->Name == name) { nominal = candidate.get(); break; }
+      if (nominal && result->NodeKind == TypeSyntax::Kind::Named)
+        result->NominalDeclaration = nominal;
       if (alias && !alias->IsStrong && alias->TargetTypeSyntax &&
           alias->GenericParams.size() == result->Arguments.size()) {
         if (!activeAliases.insert(alias).second) return nullptr;
         std::map<std::string, TypeSyntaxPtr> substitutions;
+        std::set<std::string> aliasBinders;
         for (size_t i = 0; i < alias->GenericParams.size(); ++i) {
           if (alias->GenericParams[i].IsConst ||
               result->Arguments[i].ArgumentKind != TypeArgumentSyntax::Kind::Type) {
@@ -88,24 +97,35 @@ GenericValueContractPtr Sema::makeGenericValueContract(
             return input;
           }
           substitutions[alias->GenericParams[i].Name] = result->Arguments[i].Type;
+          aliasBinders.insert(alias->GenericParams[i].Name);
         }
         const auto *owner = getLexicalModule(alias->Loc);
-        auto target = self(self, alias->TargetTypeSyntax->substitute(substitutions),
-                           owner && owner->SourceModule ? owner->SourceModule : module);
+        // Resolve the body in the alias's binder scope *before* substituting
+        // caller arguments. Concrete names in that body are not caller T.
+        auto target = self(self, alias->TargetTypeSyntax,
+                           owner && owner->SourceModule ? owner->SourceModule : module,
+                           aliasBinders);
         activeAliases.erase(alias);
-        return target;
+        return target ? target->substitute(substitutions) : nullptr;
       }
     }
-    result->Subject = self(self, result->Subject, module);
-    result->Result = self(self, result->Result, module);
-    for (auto &element : result->Elements) element = self(self, element, module);
-    for (auto &field : result->Fields) field.Type = self(self, field.Type, module);
+    result->Subject = self(self, result->Subject, module, binders);
+    result->Result = self(self, result->Result, module, binders);
+    for (auto &element : result->Elements) element = self(self, element, module, binders);
+    for (auto &field : result->Fields) field.Type = self(self, field.Type, module, binders);
     return result;
   };
-  syntax = expand(expand, syntax, sourceModule);
+  return expand(expand, syntax, sourceModule, parameters);
+}
+
+GenericValueContractPtr Sema::makeGenericValueContract(
+    TypeSyntaxPtr syntax, const std::set<std::string> &parameters,
+    const Module *sourceModule) {
+  syntax = bindGenericSourceTypeSyntax(syntax, parameters, sourceModule);
   auto contains = [&](auto &&self, const TypeSyntaxPtr &type) -> bool {
     if (!type) return false;
-    if (type->NodeKind == TypeSyntax::Kind::Named && parameters.count(type->Text)) return true;
+    if (type->NodeKind == TypeSyntax::Kind::Named && !type->NominalDeclaration &&
+        parameters.count(type->Text)) return true;
     if (self(self, type->Subject) || self(self, type->Result)) return true;
     for (const auto &arg : type->Arguments)
       if (arg.ArgumentKind == TypeArgumentSyntax::Kind::Type && self(self, arg.Type)) return true;
@@ -266,16 +286,61 @@ GenericValueContractPtr Sema::queryGenericValueContract(Expr *expression) {
           call->GenericArgSyntax[i].ArgumentKind == TypeArgumentSyntax::Kind::Type)
         argument = call->GenericArgSyntax[i].Type;
       if (!argument) {
+        // This is source-contract projection after successful deduction, not
+        // a second type inference pass. Match the complete formal structure
+        // against the checked actual's source view, retaining opaque leaves.
+        auto match = [&](auto &&self, TypeSyntaxPtr formal, TypeSyntaxPtr actual,
+                         bool bind) -> bool {
+          if (!formal || !actual) return !formal && !actual;
+          if (bind && formal->NodeKind == TypeSyntax::Kind::Named &&
+              !formal->NominalDeclaration && formal->Text == parameter.Name) {
+            if (argument && !self(self, argument, actual, false)) return false;
+            argument = actual;
+            return true;
+          }
+          if (bind && formal->NodeKind == TypeSyntax::Kind::Named &&
+              !formal->NominalDeclaration &&
+              callableDeclarationGenericNames(declaration).count(formal->Text))
+            return true; // The other binder is projected in its own iteration.
+          if (formal->NodeKind != actual->NodeKind) return false;
+          if (formal->NodeKind == TypeSyntax::Kind::Named &&
+              (formal->NominalDeclaration || actual->NominalDeclaration)) {
+            auto origin = [](ShapeDecl *decl) {
+              return decl && decl->InstantiationTemplate ? decl->InstantiationTemplate : decl;
+            };
+            return origin(formal->NominalDeclaration) == origin(actual->NominalDeclaration);
+          }
+          if (formal->Text != actual->Text || formal->MemberName != actual->MemberName ||
+              formal->PathSuffix != actual->PathSuffix || formal->IsPostfix != actual->IsPostfix ||
+              formal->HasExplicitResult != actual->HasExplicitResult || formal->IsVariadic != actual->IsVariadic ||
+              formal->Arguments.size() != actual->Arguments.size() ||
+              formal->Elements.size() != actual->Elements.size() || formal->Fields.size() != actual->Fields.size() ||
+              formal->ExtentArgument.toCanonicalString() != actual->ExtentArgument.toCanonicalString()) return false;
+          if (!self(self, formal->Subject, actual->Subject, bind) ||
+              !self(self, formal->Result, actual->Result, bind)) return false;
+          for (size_t k = 0; k < formal->Arguments.size(); ++k) {
+            const auto &f = formal->Arguments[k]; const auto &a = actual->Arguments[k];
+            if (f.ArgumentKind != a.ArgumentKind || f.ConstantText != a.ConstantText ||
+                !self(self, f.Type, a.Type, bind)) return false;
+          }
+          for (size_t k = 0; k < formal->Elements.size(); ++k)
+            if (!self(self, formal->Elements[k], actual->Elements[k], bind)) return false;
+          for (size_t k = 0; k < formal->Fields.size(); ++k)
+            if (formal->Fields[k].Name != actual->Fields[k].Name ||
+                !self(self, formal->Fields[k].Type, actual->Fields[k].Type, bind)) return false;
+          return true;
+        };
         for (size_t j = 0; j < declaration->Args.size() && j < call->Args.size(); ++j) {
-          auto formal = declaration->Args[j].TypeSyntax;
-          if (!formal || formal->NodeKind != TypeSyntax::Kind::Named ||
-              Type::stripMorphology(formal->Text) != Type::stripMorphology(parameter.Name)) continue;
+          auto physical = synthesizePhysicalTypeObject(declaration->Args[j], false);
+          auto contract = makeGenericValueContract(
+              physical ? physical->toSyntax(declaration->Args[j].Loc, declaration->Args[j].Loc) : nullptr,
+              callableDeclarationGenericNames(declaration));
+          if (!contract) continue;
+          auto formal = contract->Type;
           auto source = queryGenericValueContract(call->Args[j].get());
           auto candidate = source ? source->Type : call->Args[j]->ResolvedType
               ? call->Args[j]->ResolvedType->toSyntax(call->Loc, call->Loc) : nullptr;
-          if (!candidate) return nullptr;
-          if (argument && argument->toCanonicalString() != candidate->toCanonicalString()) return nullptr;
-          argument = candidate;
+          if (!candidate || !match(match, formal, candidate, true)) return nullptr;
         }
       }
       if (!argument) return nullptr;

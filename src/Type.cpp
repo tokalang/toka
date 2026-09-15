@@ -1075,7 +1075,7 @@ std::shared_ptr<Type> SliceType::substitute(const std::map<std::string, std::sha
 }
 
 std::shared_ptr<Type> ShapeType::substitute(const std::map<std::string, std::shared_ptr<Type>> &substMap) const {
-  if (substMap.count(Name)) {
+  if (!Decl && substMap.count(Name)) {
     // Substitute base. Does not usually have VariantSuffix but we can append it if needed, or just return.
     const auto &replacement = substMap.at(Name);
     // An unqualified T denotes the complete replacement, not an attribute
@@ -1441,7 +1441,20 @@ TypeSyntaxPtr typeSyntaxFromType(const Type &type, SourceLocation begin,
 } // namespace
 
 TypeSyntaxPtr Type::toSyntax(SourceLocation begin, SourceLocation end) const {
-  return typeSyntaxFromType(*this, begin, end);
+  auto syntax = typeSyntaxFromType(*this, begin, end);
+  const auto *shape = dynamic_cast<const ShapeType *>(this);
+  if (!shape || !shape->Decl) return syntax;
+  auto bind = [&](auto &&self, TypeSyntaxPtr node) -> TypeSyntaxPtr {
+    if (!node) return node;
+    auto copy = std::make_shared<TypeSyntax>(*node);
+    if (copy->NodeKind == TypeSyntax::Kind::Named)
+      copy->NominalDeclaration = shape->Decl;
+    else if (copy->NodeKind == TypeSyntax::Kind::GenericApplication ||
+             copy->NodeKind == TypeSyntax::Kind::Morphology)
+      copy->Subject = self(self, copy->Subject);
+    return copy;
+  };
+  return bind(bind, syntax);
 }
 
 std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
@@ -1453,6 +1466,11 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
     return std::make_shared<UnresolvedType>(syntax->Text);
 
   case TypeSyntax::Kind::Named:
+    if (syntax->NominalDeclaration) {
+      auto nominal = std::make_shared<ShapeType>(syntax->NominalDeclaration->Name);
+      nominal->Decl = syntax->NominalDeclaration;
+      return nominal;
+    }
     if (isGeneratedCanonicalTypeLeaf(syntax->Text))
       return fromString(syntax->Text);
     return lowerNamedType(syntax->Text);
@@ -1470,8 +1488,9 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
       return std::make_shared<UninitType>(arguments.front());
     if (name == "__PlaceOutcome" && arguments.size() == 1)
       return std::make_shared<PlaceOutcomeType>(arguments.front());
-    return std::make_shared<ShapeType>(name, std::move(arguments),
-                                       syntax->PathSuffix);
+    auto shape = std::make_shared<ShapeType>(name, std::move(arguments), syntax->PathSuffix);
+    if (syntax->Subject) shape->Decl = syntax->Subject->NominalDeclaration;
+    return shape;
   }
 
   case TypeSyntax::Kind::MissOutcome:

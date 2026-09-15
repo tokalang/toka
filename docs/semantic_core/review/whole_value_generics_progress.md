@@ -3,6 +3,56 @@
 Design/authorization checkpoint: `ddb19870`. E is not started. Work remains on
 the existing integration branch; no push, PR, tag or release is authorized.
 
+## 2026-09-15 incremental revision: two G P1s and comparison attribution
+
+The review of `13b907bc` requested revisions; it is not Accepted. This follow-up
+does not reopen the RFC or start E, and does not rerun full suites.
+
+- Inferred return contracts now project parameter leaves through the checked
+  formal structure (including Box<T>), rather than consulting only direct T
+  formals. Nominal heads, morphology, extents and other structural components
+  must match; inconsistent source views do not acquire a contract. This is
+  post-deduction source-view mapping, not a new deduction engine.
+- Alias bodies are bound in the alias's own parameter/declaration scope before
+  caller arguments are substituted. Concrete nominal syntax retains its actual
+  declaration and cannot be captured by an identically spelled generic name.
+  Semantic alias lowering preserves the same identity; genuinely abstract
+  binders still substitute. This also covers a concrete generic nominal head
+  such as Pair inside an alias when the caller has a parameter named Pair.
+- The original inferred/explicit pair and alias-shadow/renamed pair now run
+  with normal/shadow parity. Additional controls cover repeated nested inputs,
+  exact-once cleanup, mixed concrete/abstract alias components, genuine generic
+  alias substitution, source-hidden renamed imports and an opaque-T rejection.
+  A two-independent-parameter exploratory deduction hit E04555 before this
+  contract mapper; it was not converted into a passing claim or folded into a
+  general-deduction rewrite. The repeated-single-binder case qualifies the
+  multiple-input consistency path in the authorized scope.
+
+Final targeted selection: **4/4 passed, 126.31 s** (whole-value G, receipt,
+TypeSyntax canonicalization/identity, negative-harness termination). Log:
+`/private/tmp/toka-G-p1-fix.g015YV/targeted.log`.
+
+### Statistics correction (no suite rerun)
+
+The 363/456, 441/479, 86/99 comparison baseline was an **intermediate G
+snapshot**, not G-start. “No new failing names” against it does not establish
+zero regressions since `ddb19870`.
+
+The PASS parser previously searched only the FAIL-suite's `Testing ...` form
+for abnormalities. Corrected parsing now distinguishes compiler and runtime
+signal-style failures from ordinary diagnostics/nonzero assertions. Historical
+shell signal messages use an explicitly labelled adjacent-failure association;
+intervening worker output leaves the event unattributed. New normal-worker
+compile failures include a case-owned abnormal-exit record, without changing
+pass/fail behavior. Unit controls cover ambiguous interleaving, recap de-dup,
+ordinary rejection, runtime failure, and a fake compiler returning 139.
+
+Re-reading both the intermediate and final logs identifies the compiler SIGSEGV
+adjacent to `g09_context.tk` in each. Its implementation was not fixed or rerun
+here; no introduction date is claimed. Corrected analysis, preserving the old
+logs and totals, is saved at
+`/private/tmp/toka-G-p1-fix.g015YV/comparison-corrected.json`.
+
 ## Overall G candidate: `13b907bc2bbf078cc4f7aaa13bd9c38d42f1f152`
 
 The nested-enum correction is included in this exact implementation revision.
@@ -15,7 +65,7 @@ Complete logs and per-name comparison:
 `/private/tmp/toka-G-qualification.02qe7a/{metadata.json,comparison.json,tools-build.log,pass.log,fail.log,ctest.log}`.
 The same `/private/tmp/toka-b6-dynamic-build-20260912` supplied all tools and suites.
 
-| Suite | Original complete baseline | Final candidate complete run | New failing names |
+| Suite | Intermediate G complete baseline | Final candidate complete run | New failing names |
 | --- | --- | --- | --- |
 | Tools | Passed | Passed (4.23 s) | — |
 | PASS compile/run | 363/456 | **388/457** (258.09 s) | **0** |

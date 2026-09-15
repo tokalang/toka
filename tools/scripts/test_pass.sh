@@ -247,9 +247,14 @@ run_worker() {
             exit_code=$?
             run_skipped=1
         else
-            if ! "$TOKAC" "${TOKAC_SCOPE_ARGS[@]}" "$test_path" "${CACHED_LIB_OBJECTS[@]}" -o "$exe_file" > /dev/null 2> "$log_file"; then
+            compile_status=0
+            "$TOKAC" "${TOKAC_SCOPE_ARGS[@]}" "$test_path" "${CACHED_LIB_OBJECTS[@]}" -o "$exe_file" > /dev/null 2> "$log_file" || compile_status=$?
+            if [ "$compile_status" -ne 0 ]; then
                 append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
                 append "    ${RED}$test_path:1: error: Compilation failed${NC}"
+                if [ "$compile_status" -ge 128 ]; then
+                    append "    $test_path: Compiler abnormal exit ($compile_status)"
+                fi
                 # Tail logs
                 LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
                 append "$LOGS"

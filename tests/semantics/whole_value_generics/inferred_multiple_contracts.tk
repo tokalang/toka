@@ -1,0 +1,27 @@
+shape Box<T>(value:T)
+fn relay_pair<T>(cede left:Box<T>, cede right:Box<T>) -> Box<T> {
+    cede right
+    return cede left
+}
+fn inspect<T>(&value:T) {}
+fn wrap<T>(cede first:T, cede second:T) -> Box<T> {
+    auto left = Box<T>(value=cede first)
+    auto right = Box<T>(value=cede second)
+    auto result = relay_pair(cede left, cede right)
+    inspect<T>(&(result.value))
+    return cede result
+}
+auto drops# = 0:i32
+shape Resource(value:i32)
+impl Resource@Encap { pub value
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto ^owner = new Resource(value=31)
+        auto ^other = new Resource(value=7)
+        auto result = wrap<^Resource>(cede ^owner, cede ^other)
+        if result.value.value != 31 || drops != 1 { return 1 }
+    }
+    return drops - 2
+}

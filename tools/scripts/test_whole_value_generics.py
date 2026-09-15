@@ -43,7 +43,10 @@ def main():
                      'qualified_slot_write', 'qualified_loan_wrappers',
                      'borrowed_record_values', 'qualified_slot_loop',
                      'static_factory_chain', 'reflection_fields',
-                     'enum_struct_field_binding', 'g08_raw_layered_nullability_types'):
+                     'enum_struct_field_binding', 'g08_raw_layered_nullability_types',
+                     'inferred_nested_contract', 'explicit_nested_contract',
+                     'inferred_multiple_contracts', 'alias_nominal_shadow',
+                     'alias_nominal_control', 'alias_binder_scopes'):
             normal = check(name, '--check-only')
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 0, (name, normal.stderr, shadow.stderr)
@@ -98,6 +101,7 @@ def main():
             ('reflection_wrong_owner', 'E0406'),
             ('reflection_readonly', 'E04572'),
             ('nullable_return_rejected', 'E0408'),
+            ('alias_does_not_concretize_binder', 'E0417'),
             ('qualified_loan_existing', 'E0475'),
             ('qualified_loan_parent', 'E0475'),
             ('qualified_loan_child', 'E0475'),
@@ -337,6 +341,38 @@ pub fn borrow_forward<T>(&value:T) -> &T <- value {
         assert built.returncode == 0, built.stderr
         assert subprocess.run([str(output)], timeout=10).returncode == 0
         print('PASS source-hidden reflection over caller-owned nominal type', flush=True)
+
+        nested_source = (ROOT / 'tests/semantics/whole_value_generics/inferred_nested_contract.tk').read_text()
+        declarations = ('shape Box<T>(value:T)\n'
+                        'fn relay_box<T>(cede box:Box<T>) -> Box<T> { return cede box }\n')
+        assert nested_source.count(declarations) == 1
+        hidden_nested = nested_source.replace(declarations,
+            'import provider::{Box as RemoteBox, relay_box}\n').replace('Box<T>', 'RemoteBox<T>')
+        for name, exported, client in (
+            ('nested-inference', declarations.replace('shape ', 'pub shape ', 1).replace('fn ', 'pub fn ', 1), hidden_nested),
+            ('alias-owner', 'pub shape T(value:i32)\npub alias Fixed = T\n',
+             'import provider::{T as Item, Fixed}\nshape T(unrelated:i32)\n'
+             'fn read<T>(input:Fixed) -> i32 { return input.value }\n'
+             'fn main() -> i32 { auto input = Item(value=7)\nreturn read<i32>(input) - 7 }\n'),
+        ):
+            provider.write_text(exported)
+            emitted = subprocess.run(prefix + ['--emit-interface', '-c', str(provider),
+                                      '-o', str(work / 'provider.o')], env=env, cwd=work,
+                                     capture_output=True, text=True, timeout=60)
+            assert emitted.returncode == 0, emitted.stderr
+            provider.unlink()
+            consumer.write_text(client)
+            normal = subprocess.run(prefix + [str(consumer), '--check-only'], env=env,
+                                    cwd=work, capture_output=True, text=True, timeout=60)
+            shadow = subprocess.run(prefix + [str(consumer), '--check-only', '--non-call-transfer-shadow=json'],
+                                    env=env, cwd=work, capture_output=True, text=True, timeout=60)
+            assert normal.returncode == shadow.returncode == 0 and normal.stderr == shadow.stderr, (name, normal.stderr, shadow.stderr)
+            output = work / ('source-hidden-' + name)
+            built = subprocess.run(prefix + [str(consumer), str(work / 'provider.o'), '-o', str(output)],
+                                   env=env, cwd=work, capture_output=True, text=True, timeout=60)
+            assert built.returncode == 0, built.stderr
+            assert subprocess.run([str(output)], timeout=10).returncode == 0
+            print('PASS source-hidden runtime/parity ' + name, flush=True)
 
 
 if __name__ == '__main__':

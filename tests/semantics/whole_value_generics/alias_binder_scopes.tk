@@ -1,0 +1,16 @@
+shape T(value:i32)
+shape Pair<A,B>(left:A, right:B)
+alias Fixed = T
+alias Value<U> = U
+alias Mixed<U> = Pair<T,U>
+fn read<T>(input:Mixed<i32>) -> i32 { return input.left.value + input.right }
+fn read_head<Pair>(input:Mixed<i32>) -> i32 { return input.left.value + input.right }
+fn relay<T>(cede input:Value<T>) -> Value<T> { return cede input }
+fn main() -> i32 {
+    auto input = Pair<T,i32>(left=T(value=7), right=3)
+    if read<i32>(input) != 10 || read_head<i32>(input) != 10 { return 1 }
+    auto ^owner = new T(value=9)
+    auto ^result = relay<^T>(cede ^owner)
+    if result.value != 9 { return 2 }
+    return 0
+}

@@ -856,6 +856,9 @@ private:
       const std::vector<std::string> &formalNames = {});
   std::set<std::string>
   callableDeclarationGenericNames(const FunctionDecl *function) const;
+  TypeSyntaxPtr bindGenericSourceTypeSyntax(
+      TypeSyntaxPtr syntax, const std::set<std::string> &parameters,
+      const Module *sourceModule = nullptr);
   GenericValueContractPtr makeGenericValueContract(
       TypeSyntaxPtr syntax, const std::set<std::string> &parameters,
       const Module *sourceModule = nullptr);

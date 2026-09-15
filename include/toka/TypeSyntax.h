@@ -21,6 +21,7 @@
 #include <vector>
 
 namespace toka {
+class ShapeDecl;
 
 /// Source-level type syntax.  The parser only publishes shared_ptr<const>
 /// instances, so a syntax tree can be copied between AST declarations without
@@ -83,6 +84,9 @@ struct TypeSyntax final {
   // DynTrait: trait spelling. AssociatedProjection: trait spelling.
   // Invalid: recovered source spelling.
   std::string Text;
+  // Sema-owned lexical nominal binding. It prevents a concrete alias target
+  // from being captured by a same-spelled generic binder. Not serialized.
+  ShapeDecl *NominalDeclaration = nullptr;
   // AssociatedProjection's final associated type name.
   std::string MemberName;
   // A namespace/variant path following a generic application (for example
@@ -319,7 +323,7 @@ struct TypeSyntax final {
       const std::map<std::string, TypeSyntaxPtr> &replacements) const {
     if (NodeKind == Kind::Named) {
       auto it = replacements.find(Text);
-      if (it != replacements.end())
+      if (!NominalDeclaration && it != replacements.end())
         return it->second;
       return std::make_shared<TypeSyntax>(*this);
     }

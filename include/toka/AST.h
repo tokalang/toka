@@ -48,7 +48,8 @@ struct GenericValueContract {
     auto root = Type;
     while (root && root->NodeKind == TypeSyntax::Kind::Morphology && root->IsPostfix)
       root = root->Subject;
-    return root && root->NodeKind == TypeSyntax::Kind::Named && Parameters.count(root->Text);
+    return root && root->NodeKind == TypeSyntax::Kind::Named &&
+        !root->NominalDeclaration && Parameters.count(root->Text);
   }
 };
 using GenericValueContractPtr = std::shared_ptr<const GenericValueContract>;
