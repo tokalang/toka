@@ -1,0 +1,54 @@
+import std/io::{File, remove_file}
+import std/vec::{Vec}
+import stdx/io/bufio::{BufferedReader, BufferedWriter}
+import stdx/data/csv::{read_record, write_record}
+
+fn main()->i32 {
+    auto path = string::from("toka_csv_cross_block.tmp")
+    auto expected# = string::from("prefix,\"quoted\"\r\n")
+    auto count# = 0:usize
+    loop count < 6000:usize { expected#.push_str("x"); count += 1 }
+    {
+        auto file = File::open(path.clone(), "w")
+        assert(file.is_valid(), "open writer")
+        auto writer# = BufferedWriter<File>::new(cede file)
+        auto row# = Vec<string>::new()
+        row#.push(string::from("id"))
+        row#.push(expected.clone())
+        assert(write_record<File>(writer#, cede row).is_ok(), "write across buffer boundary")
+        assert(writer#.flush().is_ok(), "flush complete record")
+    }
+    {
+        auto file = File::open(path.clone(), "r")
+        assert(file.is_valid(), "open reader")
+        auto reader# = BufferedReader<File>::new(cede file)
+        auto parsed = read_record<File>(reader#, 20000:usize)
+        assert(parsed.is_ok(), "read multiline record across blocks")
+        auto row_option = parsed.unwrap()
+        assert(row_option.is_some(), "record exists")
+        auto row = row_option.unwrap()
+        assert(row.get(1:usize).as_str().equals(expected.as_str()), "entire field retained")
+        auto eof = read_record<File>(reader#, 20000:usize)
+        assert(eof.is_ok(), "EOF succeeds")
+        assert(eof.unwrap().is_none(), "EOF empty")
+        auto again = read_record<File>(reader#, 20000:usize)
+        assert(again.is_ok(), "repeated EOF succeeds")
+        assert(again.unwrap().is_none(), "repeated EOF remains empty")
+    }
+    {
+        auto file = File::open(path.clone(), "r")
+        auto reader# = BufferedReader<File>::new(cede file)
+        assert(read_record<File>(reader#, 4096:usize).is_err(), "cross-block limit failure")
+    }
+    remove_file(path.clone())
+    assert(File::try_open(path.clone(), "r").is_err(), "recoverable open error")
+    {
+        auto file# = File::open(path.clone(), "w")
+        file#.close()
+        assert(!file.is_valid(), "closed file control")
+        auto reader# = BufferedReader<File>::new(cede file)
+        assert(read_record<File>(reader#, 100:usize).is_err(), "read error preserves cleanup")
+    }
+    remove_file(path)
+    return 0
+}

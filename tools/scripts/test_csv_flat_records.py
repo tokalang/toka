@@ -21,7 +21,9 @@ def main():
                                    str(source), *map(str, flags)], cwd=ROOT, env=env,
                                   text=True, capture_output=True, timeout=60)
         for source in (ROOT / 'tests/pass/g14_stdx_csv_corpus_test.tk',
-                       ROOT / 'tests/semantics/csv_flat_records/records.tk'):
+                       ROOT / 'tests/semantics/csv_flat_records/records.tk',
+                       ROOT / 'tests/pass/g14_stdx_csv_test.tk',
+                       ROOT / 'tests/semantics/csv_flat_records/stream_blocks.tk'):
             normal = compile(source, '--check-only')
             shadow = compile(source, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 0, (source, normal.stderr, shadow.stderr)
@@ -30,7 +32,7 @@ def main():
             built = compile(source, '-o', binary)
             assert built.returncode == 0, built.stderr
             result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
-            assert result.returncode == 0, (result.stdout, result.stderr)
+            assert result.returncode == 0, (source.name, result.returncode, result.stdout, result.stderr)
             print('PASS ' + source.stem, flush=True)
         source = work / 'escape.tk'
         source.write_text('import stdx/data/csv::{parse_records}\n'

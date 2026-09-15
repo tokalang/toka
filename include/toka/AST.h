@@ -1114,6 +1114,9 @@ public:
   // Semantic consumers must not infer direct-nominal provenance from the
   // rewritten ShapeName alone.
   std::string OriginalShapeName;
+  // Captured on first Sema entry, before spread/default expansion. This is
+  // syntax provenance, not validation authority; clones must retain it.
+  std::optional<std::vector<std::string>> PreExpansionMemberNames;
   std::vector<std::pair<std::string, std::unique_ptr<Expr>>> Members;
   std::vector<AggregateTransferKind> MemberTransfers;
   std::vector<std::string> CededBases;
@@ -1130,6 +1133,7 @@ public:
     }
     auto n = std::make_unique<InitStructExpr>(ShapeName, std::move(members));
     n->OriginalShapeName = OriginalShapeName;
+    n->PreExpansionMemberNames = PreExpansionMemberNames;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     n->CededBases = CededBases;

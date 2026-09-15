@@ -320,3 +320,43 @@ No source library changes or container exemptions were needed.
 Discarded lead: a temporary nested-match probe without workspace identity had an
 empty destination identity. With proper workspace registration it passes. This
 was a probe-environment difference, not proof of a Context assignment regression.
+
+## Tightened new initializer implementation (WIP)
+
+The authorized initializer patch is now applied with pre-expansion provenance.
+InitStructExpr captures its original member names before Sema can expand spread
+or inject defaults, and clone preserves that record. The new route checks that
+record, exact nominal type, explicit complete field coverage, original snapshot,
+individual dependency-complete field plans and whole-group admission. It
+**re-prepares and revalidates** field plans; it does not claim to retrieve a
+previously persisted complete group. No CodeGen ownership reconstruction was added.
+
+Direct new FileBox and an owning File payload with a destructor counter run;
+the counter reaches one only after the box is dropped. Defaults, elision,
+generic default completion, duplicate source, borrowed/raw fields, permission
+and type mismatch are rejected without object/IR. Default/type rejection restores
+the source File (no subsequent E0438/E0410). Ordinary scalar defaults and value
+spread remain valid. New-expression spread currently stops at the Parser; this
+is explicitly not counted as exercising the Sema spread gate. A native AST test
+checks that post-expansion clones preserve original default/spread markers.
+
+The original CSV corpus and full streaming test now run. Additional real File
+tests pass >4096-byte quoted/multiline records, repeated EOF, size-limit errors,
+try_open failure and reads from an explicitly closed File. File::open is
+intentionally fatal on missing files; the first error-control probe incorrectly
+used it and was corrected to the recoverable API, not fixed in the library.
+
+**Still pending:** direct callers binding the result of Reader/Writer make<File>
+remain IncompleteFacts. The callee's new is now qualified, but its returning
+unique result has no caller-visible independence evidence. A proposed private
+constructor-certificate return forwarding extension was rejected by auto-review
+as broader admission work and was not applied. No return certificate fields or
+return-statement forwarding code are in this implementation. Thus the requested
+full make<File> matrix is not yet complete, despite restoration of CSV's actual
+value-construction path. This WIP must not be marked Accepted.
+
+Applied-part final validation: initializer provenance, new-initializer matrix,
+Stage-0 CodeGen authority fault suite, and CSV corpus/full/streaming matrix:
+4/4 CTest, 74.48 s. This is not qualification of the still-failing direct factory
+result bindings and is not a whole-suite rerun. Other-worker RFC changes remain
+untouched; no push or E activation.

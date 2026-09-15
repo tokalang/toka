@@ -4581,8 +4581,12 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   const bool bindingBehaviorPlan = m_EnableStage1ExplicitCallerCede &&
       (destination == TransferDestination::Initialization ||
        destination == TransferDestination::Assignment);
+  const bool validatedAggregateEvidence = m_EnableStage1ExplicitCallerCede &&
+      normalSemaValidated && !publish &&
+      destination == TransferDestination::AggregateMember;
   if ((!SemanticEvidence::isNonCallTransferShadowEnabled() &&
-       !returnBehaviorPlan && !standaloneBehaviorPlan && !bindingBehaviorPlan) ||
+       !returnBehaviorPlan && !standaloneBehaviorPlan && !bindingBehaviorPlan &&
+       !validatedAggregateEvidence) ||
       m_IsPrecomputingCaptures || !site || !value)
     return {};
 
@@ -5248,6 +5252,65 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       facts.Ownership == TransferOwnershipKind::PlainValue &&
       facts.CopyProof == TransferCopyProof::ProvenNonCopy &&
       !facts.CarriesDropLiability && facts.DestinationDependencyAccepted;
+  // Re-prepare and validate the exact initializer's field plans against
+  // the original pre-mutation snapshot, after normal Sema has succeeded;
+  // do not infer dependency freedom from the unique hat or lack of errors.
+  if (bindingBehaviorPlan && normalSemaValidated &&
+      facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
+      facts.Ownership == TransferOwnershipKind::UniqueOwner) {
+    auto *allocation = dynamic_cast<NewExpr *>(exactValue);
+    auto *init = allocation && !allocation->ArraySize
+        ? dynamic_cast<InitStructExpr *>(allocation->Initializer.get()) : nullptr;
+    auto payload = actualType && actualType->isUniquePtr()
+        ? std::dynamic_pointer_cast<ShapeType>(actualType->getPointeeType()) : nullptr;
+    auto initialized = init ? std::dynamic_pointer_cast<ShapeType>(init->ResolvedType) : nullptr;
+    bool explicitFields = init && init->PreExpansionMemberNames &&
+        init->PreExpansionMemberNames->size() == init->Members.size();
+    if (explicitFields) for (const auto &name : *init->PreExpansionMemberNames)
+      explicitFields &= name != "*" && name != ".." && !name.empty();
+    bool complete = explicitFields && payload && initialized && payload->Decl &&
+        payload->Decl == initialized->Decl &&
+        payload->withAttributes(false, payload->IsNullable, payload->IsBlocked)->equals(
+            *initialized->withAttributes(false, initialized->IsNullable, initialized->IsBlocked)) &&
+        init->Members.size() == payload->Decl->Members.size();
+    ExplicitCedeNonCallGroupFacts groupFacts;
+    groupFacts.Destination = TransferDestination::AggregateMember;
+    groupFacts.ExpectedSnapshotRevision = providedSnapshot->Revision;
+    std::set<const ShapeMember *> seen;
+    if (complete) for (const auto &entry : init->Members) {
+      auto field = std::find_if(payload->Decl->Members.begin(), payload->Decl->Members.end(),
+          [&](const ShapeMember &candidate) {
+            return Type::stripMorphology(candidate.Name) == Type::stripMorphology(entry.first);
+          });
+      const bool wasExplicit = std::any_of(init->PreExpansionMemberNames->begin(),
+          init->PreExpansionMemberNames->end(), [&](const std::string &name) {
+            return Type::stripMorphology(name) == Type::stripMorphology(entry.first);
+          });
+      if (!wasExplicit || field == payload->Decl->Members.end() || !seen.insert(&*field).second) {
+        complete = false;
+        break;
+      }
+      auto item = recordExplicitCedeStage0NonCallPlan(
+          init, entry.second.get(), getPhysicalType(*field),
+          TransferDestination::AggregateMember, TransferEligibilityContext::AggregateMember,
+          "aggregate", nullptr, providedSnapshot, {}, entry.first,
+          static_cast<unsigned>(groupFacts.Items.size()), false, true,
+          entry.second->ResolvedType, false);
+      const auto &prepared = item.Prepared;
+      complete &= item.admitted() && prepared.DependencyFactsComplete &&
+          prepared.Dependency == TransferDependencyKind::None &&
+          !prepared.ReferentPlace && prepared.DependencyRoots.empty() &&
+          prepared.StructuredReferentPlaces.empty() && prepared.StaticStorageOrigins.empty();
+      groupFacts.Items.push_back(prepared);
+    }
+    if (complete && prepareExplicitCedeNonCallGroupPlan(groupFacts).admitted()) {
+      facts.Dependency = TransferDependencyKind::None;
+      facts.DependencyFactsComplete = true;
+      facts.ReferentPlace.reset();
+      facts.DependencyRoots.clear();
+      facts.TemporaryEligibility = TransferTemporaryEligibility::Eligible;
+    }
+  }
   facts.SourceFlowCeiling = facts.ActualCapabilities;
   // Copying a physical scalar (integer / boolean / float) into a writable
   // payload is a value copy, not a handle authority transfer.  Such a value

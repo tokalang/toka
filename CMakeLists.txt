@@ -146,6 +146,9 @@ add_definitions(${LLVM_DEFS})
 include_directories(${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include)
 
 if(BUILD_TESTING)
+    add_executable(toka_initializer_source_provenance tests/InitializerSourceProvenance.cpp)
+    target_link_libraries(toka_initializer_source_provenance PRIVATE toka_frontend)
+    add_test(NAME toka_initializer_source_provenance COMMAND toka_initializer_source_provenance)
     add_executable(toka_permission_syntax tests/PermissionSyntax.cpp)
     target_link_libraries(toka_permission_syntax PRIVATE toka_frontend)
     add_test(NAME toka_permission_syntax COMMAND toka_permission_syntax)
@@ -511,6 +514,11 @@ if(BUILD_TESTING)
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_csv_flat_records.py
                 --build-dir ${CMAKE_BINARY_DIR})
         set_tests_properties(toka_csv_flat_records PROPERTIES TIMEOUT 180)
+        add_test(NAME toka_csv_new_initializer
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_csv_new_initializer.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(toka_csv_new_initializer PROPERTIES TIMEOUT 180)
         add_test(NAME toka_raw_take_frontend
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_raw_take_frontend.py

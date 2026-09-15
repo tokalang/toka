@@ -1054,6 +1054,11 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
 }
 
 std::shared_ptr<toka::Type> Sema::checkShapeInit(InitStructExpr *Init) {
+  if (!Init->PreExpansionMemberNames) {
+    Init->PreExpansionMemberNames.emplace();
+    for (const auto &member : Init->Members)
+      Init->PreExpansionMemberNames->push_back(member.first);
+  }
   std::string OriginalName = Init->ShapeName; // [Fix] Capture original name
   std::map<std::string, uint64_t> memberMasks;
   if (!validateTypeVisibilityInType(OriginalName, getLoc(Init)))
