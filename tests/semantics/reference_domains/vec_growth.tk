@@ -1,0 +1,31 @@
+import std/vec::{Vec}
+auto drops# = 0:i32
+shape Resource(id:i32)
+impl Resource@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main()->i32 {
+    {
+        auto first = Resource(id=1)
+        auto second = Resource(id=2)
+        {
+            auto values# = Vec<&Resource>::new()
+            auto index# = 0:usize
+            loop index < 12:usize {
+                if index < 6:usize { values = values#.appended(&first) }
+                else { values = values#.appended(&second) }
+                index += 1
+            }
+            assert(values.len()==12:usize,"reference growth keeps all descriptors")
+            auto sum# = 0:i32
+            for alias &value in values { sum += value.id }
+            assert(sum==18,"multiple referents survive growth")
+            assert(drops==0,"container does not destroy referents")
+        }
+        assert(drops==0,"dropping reference storage keeps owners live")
+        assert(first.id==1 && second.id==2,"source owners remain readable")
+    }
+    assert(drops==2,"each owner drops exactly once")
+    return 0
+}

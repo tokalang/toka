@@ -156,53 +156,6 @@ impl<T> Vec<T> {
         return self.len == 0
     }
 
-    pub fn clear(self#) {
-        unsafe {
-            loop self.len > 0 {
-                self.len -= 1
-                auto _old = Option<T>::Some(cede self.buf[self.len])
-            }
-        }
-    }
-
-    pub fn insert(self#, index: usize, cede val: T) {
-        if index > self.len {
-            unsafe {
-                libc_printf(c"[Vec] panic: insert index out of bounds\n")
-                libc_abort()
-            }
-        }
-        if self.len == self.cap {
-            self#.grow()
-        }
-        unsafe {
-            auto i# = self.len
-            loop i > index {
-                self.buf[i] = cede self.buf[i - 1]
-                i -= 1
-            }
-            self.buf[index] = cede val
-            self.len += 1
-        }
-    }
-
-    pub fn remove(self#, index: usize) -> Option<T> {
-        if index >= self.len {
-            auto outcome = Option<T>::None
-            return cede outcome
-        }
-        unsafe {
-            auto ret = Option<T>::Some(cede self.buf[index])
-            auto i# = index
-            loop i < self.len - 1 {
-                self.buf[i] = cede self.buf[i + 1]
-                i += 1
-            }
-            self.len -= 1
-            return cede ret
-        }
-    }
-    
     // Create empty vector (Static Method)
     pub fn new() -> Vec<T> {
         // Implicit conversation works for assignment/init of pointer variable
@@ -219,26 +172,6 @@ impl<T> Vec<T> {
             auto *_new_buf# = unsafe alloc [capacity] T
             return Vec<T>(*buf=*_new_buf, len=0, cap=capacity)
         }
-    }
-
-    // Push element to end
-    pub fn push(self#, cede val: T) {
-        unsafe {
-            if self.len == self.cap {
-                self#.grow()
-            }
-            
-            // Pointer indexing handles
-            // *self.buf provides the handle.
-            self.buf[self.len] = cede val
-            self.len += 1
-        }
-    }
-    
-    // Pop element from end
-    pub fn pop(self#) -> Option<T> {
-        auto outcome = vec_pop_raw_tail<T>(self.*buf, self.len#)
-        return cede outcome
     }
 
     /// Moves the backing allocation and all initialized elements into a new
@@ -319,7 +252,88 @@ impl<T> Vec<T> {
         }
     }
 
-    // Helper: Grow buffer
+    // Set the logical length without initializing or moving elements.
+    // This is restricted to buffer adapters that initialize the selected range
+    // through an FFI read before exposing it to safe code.
+    pub fn unsafe_set_len(self#, new_len: usize) {
+        unsafe {
+            if new_len <= self.cap {
+                self.len = new_len
+            }
+        }
+    }
+
+}
+
+impl<T> Vec<T>
+where:
+    T: morphology non_reference
+{
+    pub fn clear(self#) {
+        unsafe {
+            loop self.len > 0 {
+                self.len -= 1
+                auto _old = Option<T>::Some(cede self.buf[self.len])
+            }
+        }
+    }
+
+    pub fn insert(self#, index: usize, cede val: T) {
+        if index > self.len {
+            unsafe {
+                libc_printf(c"[Vec] panic: insert index out of bounds\n")
+                libc_abort()
+            }
+        }
+        if self.len == self.cap {
+            self#.grow()
+        }
+        unsafe {
+            auto i# = self.len
+            loop i > index {
+                self.buf[i] = cede self.buf[i - 1]
+                i -= 1
+            }
+            self.buf[index] = cede val
+            self.len += 1
+        }
+    }
+
+    pub fn remove(self#, index: usize) -> Option<T> {
+        if index >= self.len {
+            auto outcome = Option<T>::None
+            return cede outcome
+        }
+        unsafe {
+            auto ret = Option<T>::Some(cede self.buf[index])
+            auto i# = index
+            loop i < self.len - 1 {
+                self.buf[i] = cede self.buf[i + 1]
+                i += 1
+            }
+            self.len -= 1
+            return cede ret
+        }
+    }
+
+    pub fn push(self#, cede val: T) {
+        unsafe {
+            if self.len == self.cap {
+                self#.grow()
+            }
+
+            // Pointer indexing handles
+            // *self.buf provides the handle.
+            self.buf[self.len] = cede val
+            self.len += 1
+        }
+    }
+
+    pub fn pop(self#) -> Option<T> {
+        auto outcome = vec_pop_raw_tail<T>(self.*buf, self.len#)
+        return cede outcome
+    }
+
     fn grow(self#) {
         unsafe {
             // Determine new capacity
@@ -357,18 +371,6 @@ impl<T> Vec<T> {
         }
     }
 
-    // Set the logical length without initializing or moving elements.
-    // This is restricted to buffer adapters that initialize the selected range
-    // through an FFI read before exposing it to safe code.
-    pub fn unsafe_set_len(self#, new_len: usize) {
-        unsafe {
-            if new_len <= self.cap {
-                self.len = new_len
-            }
-        }
-    }
-
-    // Set value at index
     pub fn set(self#, index: usize, cede val: T) {
         unsafe {
              if index < self.len {
@@ -379,10 +381,43 @@ impl<T> Vec<T> {
              }
         }
     }
-
 }
 
-impl<T: @Copy> Vec<T> {
+// Reference descriptors are copied under the existing Copy/PAL rules.
+// Return the container so both prior and newly added dependencies reach the
+// caller through the existing return contract (not a receiver-write effect).
+impl<T: @Copy> Vec<T>
+where:
+    T: morphology reference_only
+{
+    pub fn appended(cede self#, val: T) -> Vec<T> <- self | val {
+        if self.len == self.cap { self#.grow() }
+        unsafe { self.buf[self.len] = val }
+        self.len += 1
+        return cede self
+    }
+
+    fn grow(self#) {
+        auto capacity# = self.cap * 2
+        if capacity == 0 { capacity = 4:usize }
+        unsafe {
+            auto *buffer# = alloc [capacity] T
+            auto index# = 0:usize
+            loop index < self.len {
+                buffer[index] = self.buf[index]
+                index += 1
+            }
+            if self.*buf != null { free [0] self.*#buf }
+            self.*buf = *buffer
+            self.cap = capacity
+        }
+    }
+}
+
+impl<T: @Copy> Vec<T>
+where:
+    T: morphology non_reference
+{
     // Resize vector by cloning the fill value into each new element.
     pub fn resize(self#, new_len: usize, val: T) {
         unsafe {
@@ -441,7 +476,10 @@ impl<T> VecIntoIterator<T>@Encap {
     fn drop(self#) {}
 }
 
-impl<T> Vec<T>@IntoIterable {
+impl<T> Vec<T>@IntoIterable
+where:
+    T: morphology non_reference
+{
     type IntoIter = VecIntoIterator<T>
 
     pub fn into_iter(cede self) -> IntoIter {
@@ -449,7 +487,10 @@ impl<T> Vec<T>@IntoIterable {
     }
 }
 
-impl<T> VecIntoIterator<T>@Iterator {
+impl<T> VecIntoIterator<T>@Iterator
+where:
+    T: morphology non_reference
+{
     type Item = T
 
     // Vec::remove(0) keeps the public consuming order identical to ordinary

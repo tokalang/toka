@@ -1,0 +1,32 @@
+pub shape Slot<T>(value:T)
+impl<T> Slot<T>
+where:
+    T: morphology non_reference
+{
+    pub fn consume(self, cede value:T) { cede value }
+    pub fn value_domain(self)->i32 { return 1 }
+}
+impl<T> Slot<T>
+where:
+    T: morphology reference_only
+{
+    pub fn reference_domain(self)->i32 { return 2 }
+}
+pub fn reference<T>(value:T)->i32
+where:
+    T: morphology reference_only
+{ return 2 }
+pub fn non_reference<T>(value:T)->i32
+where:
+    T: morphology non_reference
+{ return 1 }
+pub fn reference_borrow<T>(value:T)->i32
+where:
+    T: morphology reference_only
+    T: morphology borrow_extendable
+{ return 2 }
+pub fn non_reference_raw<T>(value:T)->i32
+where:
+    T: morphology non_reference
+    T: morphology raw_extendable
+{ return 1 }

@@ -21,9 +21,9 @@ fn main() -> i32 {
     {
         auto v# = Vec<&i32>::with_capacity(10)
         auto a = 10
-        v#.push(&a)
-        v#.push(&a)
-        v#.push(&a)
+        v = v#.appended(&a)
+        v = v#.appended(&a)
+        v = v#.appended(&a)
 
         println("Iterating Vec<&T>:")
         for auto &x in v {

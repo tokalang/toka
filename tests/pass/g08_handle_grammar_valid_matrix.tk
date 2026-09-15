@@ -61,7 +61,7 @@ fn main() -> i32 {
 
     // Level 2: &&T via Vec<&Point> iterator
     auto v# = Vec<&Point>::with_capacity(2)
-    v#.push(&pt)
+    v = v#.appended(&pt)
     for auto &&x in v {
         assert(x.x == 10, "Double borrow &&T iteration value must match")
     }

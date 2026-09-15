@@ -325,7 +325,7 @@ DIAG(ERR_PARSER_WHERE_IMPL_REMOVED, Error,   "E01258", "Where constraints use ':
 DIAG(ERR_PARSER_EXPECTED_TYPE_ANNOTATION, Error,   "E01259", "Expected a type annotation")
 DIAG(ERR_PARSER_EXTERN_RETURN_DEPENDENCY_UNSUPPORTED, Error,   "E01260", "Extern declarations cannot declare return dependencies")
 DIAG(ERR_PARSER_AUTO_BINDING_TYPE_ANNOTATION, Error,   "E01266", "'auto' binding '{}' cannot have a declaration-side type annotation; ascribe its initializer instead")
-DIAG(ERR_PARSER_UNKNOWN_MORPHOLOGY_CONSTRAINT, Error,   "E01267", "Unknown morphology constraint '{}'; expected soul_only, borrow_extendable, or raw_extendable")
+DIAG(ERR_PARSER_UNKNOWN_MORPHOLOGY_CONSTRAINT, Error,   "E01267", "Unknown morphology constraint '{}'; expected soul_only, borrow_extendable, raw_extendable, reference_only, or non_reference")
 DIAG(ERR_LEXER_GENERIC_QUOTE_REMOVED, Error, "E01268", "Generic whole-value quote syntax is removed; use the ordinary type or binding name")
 DIAG(ERR_PARSER_AUTO_BINDING_REQUIRES_INITIALIZER, Error,   "E01262", "'auto' binding '{}' requires an initializer")
 DIAG(ERR_PARSER_DEFAULT_WILDCARD_REMOVED, Error,   "E01263", "'default' is not a match wildcard; use '_' instead")

@@ -319,6 +319,8 @@ enum class MorphologyConstraintKind {
   SoulOnly,
   BorrowExtendable,
   RawExtendable,
+  ReferenceOnly,
+  NonReference,
 };
 
 inline const char *morphologyConstraintName(MorphologyConstraintKind kind) {
@@ -329,6 +331,10 @@ inline const char *morphologyConstraintName(MorphologyConstraintKind kind) {
     return "borrow_extendable";
   case MorphologyConstraintKind::RawExtendable:
     return "raw_extendable";
+  case MorphologyConstraintKind::ReferenceOnly:
+    return "reference_only";
+  case MorphologyConstraintKind::NonReference:
+    return "non_reference";
   }
   return "unknown";
 }

@@ -4,7 +4,7 @@ import std/vec::Vec
 fn main() -> i32 {
     auto value = 42
     auto values# = Vec<&i32>::new()
-    values#.push(&value)
+    values = values#.appended(&value)
     unsafe {
         values.unsafe_get(0:usize)
     }

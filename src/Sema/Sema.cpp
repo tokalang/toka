@@ -8058,6 +8058,14 @@ bool Sema::isBorrowLikeType(std::shared_ptr<toka::Type> type) const {
         if (walk(arg))
           return true;
       }
+      // Materialized shapes keep their type arguments on the declaration.
+      // Match return lifetime checking so assignment cannot drop dependencies
+      // merely because generic substitution cleared the Type's argument list.
+      if (shape->GenericArgs.empty() && shape->Decl &&
+          shape->Decl->InstantiationTemplate) {
+        for (const auto &arg : shape->Decl->InstantiationArgs)
+          if (walk(arg)) return true;
+      }
       std::string name = ty->getSoulName();
       if (name == "str" || name == "bytes")
         return true;

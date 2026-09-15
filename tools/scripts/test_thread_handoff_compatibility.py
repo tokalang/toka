@@ -31,9 +31,9 @@ def main():
     compiler = Path(args.build_dir).resolve() / "bin/tokac"
     version = re.search(r'#define TOKA_COMPILER_INTERFACE_VERSION "([^"]+)"',
                        (ROOT / "include/toka/InterfaceVersion.h").read_text()).group(1)
-    # G changes compiler-side generic contracts, not the v1 native layout or
-    # handoff protocol. Reject pre-G TKI/cache while retaining that native ABI.
-    require(version == "0.9.9-21", "compiler interface migration must be qualified")
+    # Top-level morphology domains extend compiler-side generic contracts,
+    # not the v1 native layout or handoff protocol. Keep stale-cache rejection.
+    require(version == "0.9.9-22", "compiler interface migration must be qualified")
     env = dict(os.environ, TOKA_LIB=str(ROOT / "lib"))
 
     with tempfile.TemporaryDirectory(prefix="toka-thread-version-") as directory:

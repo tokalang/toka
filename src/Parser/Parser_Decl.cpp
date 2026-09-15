@@ -155,6 +155,10 @@ void Parser::parseWhereConstraints(std::vector<GenericParam> &genericParams,
         morphologyBound = MorphologyConstraintKind::BorrowExtendable;
       } else if (constraint.Text == "raw_extendable") {
         morphologyBound = MorphologyConstraintKind::RawExtendable;
+      } else if (constraint.Text == "reference_only") {
+        morphologyBound = MorphologyConstraintKind::ReferenceOnly;
+      } else if (constraint.Text == "non_reference") {
+        morphologyBound = MorphologyConstraintKind::NonReference;
       } else {
         error(constraint, DiagID::ERR_PARSER_UNKNOWN_MORPHOLOGY_CONSTRAINT,
               constraint.Text);

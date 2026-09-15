@@ -1,0 +1,26 @@
+import slot::{Slot, reference, non_reference, reference_borrow, non_reference_raw}
+alias Scalar = i32
+shape View(&item:i32)
+fn main()->i32 {
+    auto owner = 7:i32
+    auto refslot = Slot<&Scalar>(value=&owner)
+    assert(refslot.reference_domain()==2,"reference impl")
+    assert(reference<&Scalar>(&owner)==2,"alias resolved before classification")
+    assert(reference_borrow<&Scalar>(&owner)==2,"compatible reference domain intersection")
+    auto slot = Slot<i32>(value=7)
+    slot.consume(3)
+    assert(slot.value_domain()==1,"value impl")
+    assert(non_reference<i32>(7)==1,"known value")
+    assert(non_reference_raw<Scalar>(7)==1,"compatible value domain intersection")
+    auto ^unique = new i32(3)
+    assert(non_reference<^i32>(^unique)==1,"unique domain retained")
+    auto ~shared = new i32(4)
+    assert(non_reference<~i32>(~shared)==1,"shared domain retained")
+    unsafe {
+        auto *raw = &owner as *i32
+        assert(non_reference<*i32>(*raw)==1,"raw domain retained")
+    }
+    auto view = View(&item=&owner)
+    assert(non_reference<View>(view)==1,"borrowed fields do not change top-level domain")
+    return 0
+}

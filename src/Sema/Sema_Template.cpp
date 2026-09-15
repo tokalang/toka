@@ -756,9 +756,45 @@ bool Sema::checkMorphologyBounds(
   }
 
   auto concrete = resolveType(ConcreteType);
+  // These domains classify only a known, legal top-level morphology. They
+  // confer no Copy, transfer, lifetime, initialization or Drop capability.
+  std::function<bool(const std::shared_ptr<Type> &)> knownType =
+      [&](const std::shared_ptr<Type> &type) {
+        if (!type || type->isUnknown() ||
+            !Type::classifyHandleGrammar(type).isValid())
+          return false;
+        if (type->isPointer() || type->isReference())
+          return knownType(type->getPointeeType());
+        if (auto shape = std::dynamic_pointer_cast<ShapeType>(type)) {
+          if (!shape->Decl || !shape->Decl->GenericParams.empty()) return false;
+          return std::all_of(shape->GenericArgs.begin(), shape->GenericArgs.end(), knownType);
+        }
+        if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+          return array->SymbolicSize.empty() && knownType(array->ElementType);
+        if (type->isSlice())
+          return knownType(type->getArrayElementType());
+        if (auto storage = std::dynamic_pointer_cast<UninitType>(type))
+          return knownType(storage->InnerType);
+        if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(type))
+          return knownType(outcome->PayloadType);
+        if (auto outcome = std::dynamic_pointer_cast<PlaceOutcomeType>(type))
+          return knownType(outcome->ItemType);
+        if (auto fn = std::dynamic_pointer_cast<FunctionType>(type))
+          return knownType(fn->ReturnType) &&
+                 std::all_of(fn->ParamTypes.begin(), fn->ParamTypes.end(), knownType);
+        if (auto fn = std::dynamic_pointer_cast<DynFnType>(type))
+          return knownType(fn->ReturnType) &&
+                 std::all_of(fn->ParamTypes.begin(), fn->ParamTypes.end(), knownType);
+        return type->typeKind != Type::Unresolved;
+      };
   auto satisfies = [&](MorphologyConstraintKind bound) {
     if (!concrete)
       return false;
+    if (bound == MorphologyConstraintKind::ReferenceOnly ||
+        bound == MorphologyConstraintKind::NonReference)
+      return knownType(concrete) &&
+             (concrete->isReference() ==
+              (bound == MorphologyConstraintKind::ReferenceOnly));
     if (bound == MorphologyConstraintKind::SoulOnly)
       return !concrete->isPointer() && !concrete->isReference() &&
              !concrete->isSmartPointer();

@@ -496,6 +496,16 @@ if(BUILD_TESTING)
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_context_receiver_handoff.py
                 --build-dir ${CMAKE_BINARY_DIR})
         set_tests_properties(toka_context_receiver_handoff PROPERTIES TIMEOUT 240)
+        add_test(NAME toka_reference_domains
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_reference_domains.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(toka_reference_domains PROPERTIES TIMEOUT 240)
+        add_test(NAME toka_vec_reference_domains
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_vec_reference_domains.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(toka_vec_reference_domains PROPERTIES TIMEOUT 240)
         add_test(NAME toka_raw_take_frontend
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_raw_take_frontend.py

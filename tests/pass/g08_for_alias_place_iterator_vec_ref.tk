@@ -3,7 +3,7 @@ import std/vec::Vec
 fn main() -> i32 {
     auto value = 41
     auto refs# = Vec<&i32>::new()
-    refs#.push(&value)
+    refs = refs#.appended(&value)
 
     for alias &x in refs {
         if x != 41 { return 1 }

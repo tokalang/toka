@@ -67,6 +67,71 @@ Fresh first-error priorities (counts are blocked tests, not promised recoveries)
 No new batch was implemented during this baseline run. E, G freeze, and push/
 release restrictions remain unchanged.
 
+## Reference domains and the seven Vec cases (post-baseline candidate)
+
+User-authorized extension: `reference_only` and `non_reference` classify only
+known legal top-level reference/non-reference types. Unknown/unresolved types,
+unresolved component types, const subjects and illegal handle chains cannot
+gain admission by negation. Classification grants no Copy, ownership, dependency,
+Drop, initialization, or raw_take proof. Existing constrained impl selection is
+reused; there is no lazy-body or overload-system rewrite.
+
+Interface key changes from `0.9.9-21` to `0.9.9-22`, with format/native ABI
+unchanged. Both constraints use the existing generic-bound source/TKI exporter
+and semantic identity paths. Tests cover source-hidden agreement and rejection
+of old interfaces, plus nominal values, unique/shared/raw, borrowed-field shapes,
+transparent scalar aliases beneath references and intersected bounds.
+
+The initial minimal Vec constructor failed while eagerly checking unused
+insert/push/pop/set implementations. Consumption, removal, growth, resize and
+owned iteration now have a `non_reference` impl domain. Constructors and borrowed
+iteration remain available for references. No reference consumption check was
+removed. Domain-specific methods remain rejected when explicitly selected
+outside their declared domain.
+
+For references, the new API is `values = values#.appended(&owner)`.
+It requires **both** `reference_only` and the independently checked `@Copy`,
+consumes the old container, copies only the reference descriptor under existing
+permissions/PAL, and returns the container with `self | val` dependencies.
+Growth copies live descriptors, releases old storage with free[0], and never
+takes ownership of referents. Existing non-reference push/insert behavior stays
+unchanged. The seven tests migrate their reference pushes only; no runtime
+assertions were removed. The payload-borrow fixture now spells `&&payload`,
+matching the existing non-collapsing `&T` rule for T = &i32.
+
+Two intermediate append implementations were withdrawn after a local-escape
+probe compiled: in-place append had no receiver-write dependency channel, and
+the first returning version exposed an existing assignment classifier gap.
+Materialized shapes have empty GenericArgs and keep their arguments on
+Decl::InstantiationArgs. Return checking inspected both, while assignment's
+isBorrowLikeType ignored the latter and discarded carried dependencies.
+Assignment now reads the same instance arguments. This preserves dependencies
+from the existing return contract, without inventing referent facts or a new
+receiver-write protocol. The escape probe now rejects with E0455.
+
+Final targeted results (not a full baseline replacement):
+
+- Seven original Vec cases compile and run: `g07_for_iterators`,
+  `g08_for_alias_binding`, `g08_for_alias_generic_clone`,
+  `g08_for_alias_place_iterator_vec_ref`, `g08_handle_grammar_parser_matrix`,
+  `g08_handle_grammar_valid_matrix`, `g08_vec_payload_borrow_views`.
+- Multi-owner 12-element growth retains content; disposing of the reference
+  storage leaves both owners usable and they subsequently drop exactly once.
+- Local escape, readonly writes, repeated container consumption, lost alias
+  morphology and raw interface misuse all reject with no object, normal/shadow
+  equal. The latter two existing fixtures were migrated to reach their original
+  target diagnostics E04643/E0621, without changing expectations.
+- Final combined domain/Vec/iterator/shared-aggregate/Vec-pop gates: 5/5,
+  102.72 s. The two new domain/Vec gates account for the seven recovered cases,
+  growth/cleanup and refusal checks; do not add those cases again to a full total.
+- G targeted gate: 1/1, 122.94 s. Interface compatibility script also passed
+  stale-TKI no-artifact checks, stale-cache source fallback/runtime, source-hidden
+  rejection and old-runtime link rejection. No full PASS/FAIL rerun is claimed.
+
+The five ElementDependenciesUnproven cases remain out of scope. No raw_take,
+native ABI, capture or reference-count algorithm changes are included.
+E remains unstarted; other-worker RFC edits are not part of this candidate.
+
 ## Shape inference crash recovery
 
 The unchanged `tests/pass/g09_context.tk` previously terminated with SIGSEGV
