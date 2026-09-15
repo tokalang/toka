@@ -764,7 +764,7 @@ impl WsConnection {
                 if mask_res.is_err() {
                     return Result<WsMessage, string>::Err(string::from("Failed reading mask key"))
                 }
-                mask_vec = cede mask_res.unwrap()
+                mask_vec = mask_res.unwrap()
             }
 
             // Read payload data
@@ -776,7 +776,7 @@ impl WsConnection {
                 if payload_res.is_err() {
                     return Result<WsMessage, string>::Err(string::from("Failed reading WebSocket payload data"))
                 }
-                payload_vec = cede payload_res.unwrap()
+                payload_vec = payload_res.unwrap()
             }
 
             // Unmask if masked

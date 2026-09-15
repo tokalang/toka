@@ -227,7 +227,7 @@ impl HeaderMap {
         if found {
             auto _old = self.entries#.remove(found_idx)
         }
-        self.entries#.push(cede HeaderEntry(key = cede norm_key, value = value.clone()))
+        self.entries#.push(HeaderEntry(key = cede norm_key, value = value.clone()))
         return Result<bool, string>::Ok(true)
     }
 
@@ -723,7 +723,7 @@ pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) ->
                 if target_cl < actual_body_len {
                     return Result<HttpRequest, string>::Err(string::from("Trailing bytes after Content-Length payload unsupported in Phase 1"))
                 }
-                body_str = cede string_slice(req_str, body_start, target_cl)
+                body_str = string_slice(req_str, body_start, target_cl)
             } else {
                 if target_cl > 0:usize {
                     return Result<HttpRequest, string>::Err(string::from("Content-Length exceeds payload body length"))
@@ -756,7 +756,7 @@ fn parse_http_request_headers(header_str: string) -> Result<HttpRequest, string>
 
     auto first_line# = iter#.next()
     if first_line.ends_with("\r") {
-        first_line = cede string_slice(first_line, 0, first_line.len() - 1:usize)
+        first_line = string_slice(first_line, 0, first_line.len() - 1:usize)
     }
 
     // Verify request line contains exactly 2 space delimiters (3 tokens)
@@ -1003,7 +1003,7 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
     auto body_str# = string::from("")
     auto raw_body_str# = string::from("")
     if body_start < resp_len {
-        raw_body_str = cede string_slice(resp_str, body_start, resp_len - body_start)
+        raw_body_str = string_slice(resp_str, body_start, resp_len - body_start)
     }
 
     if headers#.contains_key("transfer-encoding") {
@@ -1013,7 +1013,7 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
             if chunk_res.is_err() {
                 return Result<HttpResponse, string>::Err(chunk_res.unwrap_err())
             }
-            body_str = cede chunk_res.unwrap()
+            body_str = chunk_res.unwrap()
         } else {
             return Result<HttpResponse, string>::Err(string::from("Unsupported Transfer-Encoding in response"))
         }
@@ -1031,7 +1031,7 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
             body_str = cede raw_body_str
         } else {
             auto sub_str = raw_body_str.as_str().substr(0, target_cl)
-            body_str = cede string::from(sub_str)
+            body_str = string::from(sub_str)
         }
     } else {
         body_str = cede raw_body_str
@@ -1039,7 +1039,7 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
 
     auto content_type# = string::from("text/plain")
     if headers#.contains_key("content-type") {
-        content_type = cede headers#.get("content-type").unwrap()
+        content_type = headers#.get("content-type").unwrap()
     }
 
     return Result<HttpResponse, string>::Ok(HttpResponse(
@@ -1231,7 +1231,7 @@ impl HttpResponseStream {
             }
             if self.content_length_remaining > 0:i64 {
                 return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
-                    buffer = cede res#.take_buffer(),
+                    buffer = res#.take_buffer(),
                     message = string::from("Unexpected EOF before Content-Length satisfied")
                 ))
             }
