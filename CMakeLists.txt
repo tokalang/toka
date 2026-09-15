@@ -506,6 +506,11 @@ if(BUILD_TESTING)
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_vec_reference_domains.py
                 --build-dir ${CMAKE_BINARY_DIR})
         set_tests_properties(toka_vec_reference_domains PROPERTIES TIMEOUT 240)
+        add_test(NAME toka_csv_flat_records
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_csv_flat_records.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(toka_csv_flat_records PROPERTIES TIMEOUT 180)
         add_test(NAME toka_raw_take_frontend
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_raw_take_frontend.py

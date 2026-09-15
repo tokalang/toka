@@ -1,11 +1,10 @@
 import std/io::{println, File, remove_file}
 import std/vec::{Vec}
-import stdx/data/csv::{parse_records, write_records, read_record, write_record}
+import stdx/data/csv::{CsvRecords, parse_records, write_records, read_record, write_record}
 import stdx/io/bufio::{BufferedReader, BufferedWriter}
 
-fn assert_field(records#: Vec<Vec<string>>, row: usize, column: usize, expected: str) {
-    auto &record = records.borrow(row)
-    auto &field = record.borrow(column)
+fn assert_field(records: CsvRecords, row: usize, column: usize, expected: str) {
+    auto &field = records.field(row, column)
     assert(field.as_str().equals(expected), "unexpected CSV field")
 }
 
@@ -29,7 +28,7 @@ fn test_write_round_trip() {
     first#.push(cede string::from("plain"))
     first#.push(cede string::from("needs,quote"))
     first#.push(cede string::from("say \"hi\""))
-    auto records# = Vec<Vec<string>>::new()
+    auto records# = CsvRecords::new()
     records#.push(cede first)
     auto wire = write_records(cede records)
     assert(wire.as_str().equals("plain,\"needs,quote\",\"say \"\"hi\"\"\"\r\n"),

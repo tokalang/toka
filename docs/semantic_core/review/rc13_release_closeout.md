@@ -69,6 +69,11 @@ release restrictions remain unchanged.
 
 ## Reference domains and the seven Vec cases (post-baseline candidate)
 
+Accepted by independent incremental review at `79534cf1`: core CTest 2/2,
+27.68 s; additional local-then-external referent escape rejects E0455 with no
+artifact, and the legal external-source control runs. This accepts only the
+two domains/seven-case batch, not a refreshed full baseline.
+
 User-authorized extension: `reference_only` and `non_reference` classify only
 known legal top-level reference/non-reference types. Unknown/unresolved types,
 unresolved component types, const subjects and illegal handle chains cannot
@@ -131,6 +136,52 @@ Final targeted results (not a full baseline replacement):
 The five ElementDependenciesUnproven cases remain out of scope. No raw_take,
 native ABI, capture or reference-count algorithm changes are included.
 E remains unstarted; other-worker RFC edits are not part of this candidate.
+
+## Five ElementDependenciesUnproven cases
+
+Current-revision check-only rerun confirms all five originally still reached
+`vec_pop_raw_tail<T>` at vec.tk:35 before the CSV migration below. Independent
+probes use the same field representations (not claims of identical declaration
+identity). A constructor-only Vec probe is sufficient to trigger the rejection:
+its matching impl eagerly checks pop even when the program never calls it.
+
+| Cases | Concrete element types implicated by source and isolated probes | Missing proof |
+| --- | --- | --- |
+| g14_stdx_csv_test, g14_stdx_csv_corpus_test | Vec<string> inside Vec<Vec<string>> | Inner buffer is raw storage; the raw parameter bridge has no allocation/slot value certificate for that owner |
+| g10_build_hybrid_test | ModuleSnapshot, RebuildModuleInfo (HashMap value vectors) | dependencies/dirty_deps contain Vec<string>; same opaque inner storage issue |
+| g15_stdx_toml_test | TomlValue and TomlEntry | Recursive ArrayValue(Vec<TomlValue>), no closed per-instance element dependency proof |
+| g18_stdx_template_test | Vec<string> in list-map values; FuncHandler in function vector | Opaque nested storage; function pointer category also rejected by the current raw_take dependency predicate |
+
+Vec<string> alone and Vec<TemplateNode> (string + i32) are passing controls.
+These findings do not establish an actual-source propagation regression and
+do not prove that every opaque owner is dependency-free. The bridge receives
+a raw parameter, not a local allocation with matching recorded writes, so its
+recorded-slot fallback is unavailable. No raw_take, E, or compiler changes are
+made in this batch.
+
+### CSV library migration checkpoint (not accepted)
+
+`CsvRecords` replaces the nested row-owner vector with owned Vec<string> fields
+and Vec<usize> row boundaries. `parse_records`/`write_records` use CsvRecords;
+read_record/write_record retain their single-row Vec<string> API. Owned rows
+are drained using the already-supported pop<string>; storing each row in reverse
+physical order permits moves without cloning or a new raw operation. Public
+field access and extraction preserve logical row/column order.
+
+The original corpus case compiles and runs. Additional tests cover a parsed
+document outliving its owned input, row order, single-row extraction, 100 rounds
+of success/partial failure, and refusal to return a field reference into a local
+document (E0455; object/IR absent). These are not a leak-freedom measurement.
+Parser scanning, RFC4180 content checks and error-position assertions are retained.
+The registered `toka_csv_flat_records` CTest passed 1/1 in 25.36 s; this includes
+the original corpus, the new owned-input/row-order loop and escape refusals.
+
+The complete g14_stdx_csv_test **is still failed**, now at the existing BufIO
+make<File> unique initialization (bufio.tk:29/165, IncompleteFacts), before its
+streaming path can run. Do not count eliminating the outer-Vec first error as
+this test's recovery. Only the corpus case is a restored original PASS target.
+BufIO, Build, TOML and Template are not silently fixed or reclassified here.
+Probe logs: `/private/tmp/toka-element-deps.ODDq3g`.
 
 ## Shape inference crash recovery
 
