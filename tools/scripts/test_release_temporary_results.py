@@ -8,10 +8,18 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 CASES = (
+    'g10_async_http_server_test',
     'g10_http_empty_header_value',
+    'g10_http_phase1_test',
+    'g10_net_http_server_test',
+    'g10_websocket',
+    'g12_stdx_http_client_server_test',
+    'g12_stdx_https_wss_test',
     'g18_header_map_lookup_miss',
     'g12_stdx_websocket_malformed_test',
     'g12_stdx_websocket_test',
+    'g13_stdx_net_zero_copy_bench',
+    'g16_stdx_http_server_connection_test',
 )
 
 

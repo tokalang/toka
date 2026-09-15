@@ -450,8 +450,8 @@ fn main_async() -> async i32 {
     println("--- Starting Real OpenSSL HTTPS, WSS & Security Boundary Test Suite ---")
     auto cert_p# = string::from("tmp/g12_wss_cert_v1.crt")
     auto key_p# = string::from("tmp/g12_wss_cert_v1.key")
-    auto *cert_raw# = cert_p.raw_ptr() as *char
-    auto *key_raw# = key_p.raw_ptr() as *char
+    auto *cert_raw = cert_p.raw_ptr() as *char
+    auto *key_raw = key_p.raw_ptr() as *char
     auto gen_res = unsafe toka_ensure_test_cert_files(*cert_raw, *key_raw)
     if gen_res != 0 {
         println("[FAIL] Failed to generate test certificates!")

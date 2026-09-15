@@ -42,7 +42,7 @@ pub fn main() -> i32 {
         auto local_port = listener.local_port()
 
         // Spawn server thread
-        auto server_thread# = thread_spawn<i32>(cede { [cede listener] =>
+        auto spawned = thread_spawn<i32>({ [cede listener] =>
             unsafe {
                 auto s# = listener#.accept()
                 if !s.is_valid() { return 1 }
@@ -71,6 +71,9 @@ pub fn main() -> i32 {
                 return 0
             }
         })
+
+        assert(spawned.is_ok(), "server thread creation failed")
+        auto server_thread# = spawned.unwrap()
         
         sleep(1)
 
@@ -93,7 +96,9 @@ pub fn main() -> i32 {
         assert(resp_str.contains("Welcome to Toka HTTP Framework"), "HTTP Response content mismatch")
 
         stream#.close()
-        server_thread#.join()
+        auto joined = server_thread#.join()
+        assert(joined.is_ok(), "server thread join failed")
+        assert(joined.unwrap() == 0, "server thread failed")
         println("[Test] Web Server HTTP engine successful!")
         return 0
     }

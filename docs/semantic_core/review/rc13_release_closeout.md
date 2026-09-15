@@ -23,7 +23,7 @@ and writable expected-type `Box` construction. Latest targeted rerun: 1/1,
 17.26 seconds. Earlier current-patch G + termination gate: 2/2, 138.67 seconds.
 No full-suite result is claimed for this change.
 
-## Network temporary-result migration (in progress)
+## Network temporary-result migration
 
 HTTP/WebSocket remove outer `cede` from call/unwrap temporary results, retaining
 named-source transfers inside them. Four original controls compile and run:
@@ -31,8 +31,19 @@ named-source transfers inside them. Four original controls compile and run:
 `g12_stdx_websocket_malformed_test`, `g12_stdx_websocket_test`.
 Their normal/shadow check-only return codes and stderr also match.
 The reproducible runner is `tools/scripts/test_release_temporary_results.py`.
-The complete historical network cluster is still being qualified; four controls
-are not a full-suite recovery count.
+The complete HTTP/WebSocket first-error union from the retained triage contains
+12 PASS cases including HeaderMap (rather than the initially quoted 11).
+All 12 compile and run with exit 0 after migrating two thread callers and the
+read-only certificate path bindings. Runtime logs confirm real HTTP/WS/TLS
+execution, not an unsupported-network skip. Thread callers still use native
+threads and now check spawn, join and worker results. The certificate helper
+takes `const char *`; writable pointers were unnecessary.
+
+The 12 cases are explicitly listed in the runner. Initial library-only changes
+restored 9/12; the three caller migrations restore the remaining 3/12. Four
+controls and the three changed callers have separately checked normal/shadow
+parity. This is a targeted cluster result, not a new full PASS/FAIL/CTest run.
+Local checkpoints: crash recovery `9bd79b16`, library temporaries `492ee129`.
 
 The remaining Vec cluster includes `ReferenceBindingSelectorUnavailable` on
 reference-valued parameters. Do not infer a raw-element migration from a stale
