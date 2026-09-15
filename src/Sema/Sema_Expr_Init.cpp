@@ -1060,6 +1060,10 @@ std::shared_ptr<toka::Type> Sema::checkShapeInit(InitStructExpr *Init) {
     return toka::Type::fromString("unknown");
   auto resolvedTypeObj =
       resolveType(toka::Type::fromString(Init->ShapeName), true);
+  if (!resolvedTypeObj) {
+    if (!HasError) error(Init, DiagID::ERR_UNKNOWN_STRUCT, Init->ShapeName);
+    return toka::Type::fromString("unknown");
+  }
   std::string resolvedName = resolvedTypeObj->toString();
   ShapeDecl *resolvedShape = nullptr;
   if (auto shapeType = std::dynamic_pointer_cast<ShapeType>(resolvedTypeObj))
@@ -1068,6 +1072,20 @@ std::shared_ptr<toka::Type> Sema::checkShapeInit(InitStructExpr *Init) {
     resolvedShape = findVisibleShapeDecl(resolvedName, getLoc(Init));
 
   // Helper lambda for inference (copied from original)
+  auto useInferredType = [&](const std::shared_ptr<Type> &type,
+                             std::string &name, ShapeDecl *&declaration) {
+    auto shape = std::dynamic_pointer_cast<ShapeType>(type);
+    name = shape ? shape->getSoulName() : type ? type->toString() : "unknown";
+    // Declaration identity is not the permission-decorated display string.
+    // Use a materialized declaration when available, without admitting an
+    // unresolved template merely because it has a declaration pointer.
+    if (shape && shape->Decl && shape->Decl->GenericParams.empty()) {
+      declaration = shape->Decl;
+    } else {
+      auto found = ShapeMap.find(name);
+      declaration = found == ShapeMap.end() ? nullptr : found->second;
+    }
+  };
   auto performInference = [&](std::string &currentName, ShapeDecl *&SD) {
     if (!SD)
       return;
@@ -1077,8 +1095,7 @@ std::shared_ptr<toka::Type> Sema::checkShapeInit(InitStructExpr *Init) {
           std::dynamic_pointer_cast<toka::ShapeType>(m_ExpectedType);
       if (expShape && (expShape->Name == SD->Name ||
                        expShape->Name.find(SD->Name + "_M") == 0)) {
-        currentName = resolveType(m_ExpectedType->toString());
-        SD = ShapeMap[currentName];
+        useInferredType(resolveType(m_ExpectedType), currentName, SD);
       }
     }
 
@@ -1147,8 +1164,7 @@ std::shared_ptr<toka::Type> Sema::checkShapeInit(InitStructExpr *Init) {
             fullName += ", ";
         }
         fullName += ">";
-        currentName = resolveType(fullName, true);
-        SD = ShapeMap[currentName];
+        useInferredType(resolveType(Type::fromString(fullName), true), currentName, SD);
       }
     }
   };
@@ -1156,6 +1172,12 @@ std::shared_ptr<toka::Type> Sema::checkShapeInit(InitStructExpr *Init) {
   if (resolvedShape) {
     ShapeDecl *SD = resolvedShape;
     performInference(resolvedName, SD);
+    // A failed/deferred inference can have no materialized declaration.
+    // Do not insert a null map entry or continue into visibility/field access.
+    if (!SD) {
+      if (!HasError) error(Init, DiagID::ERR_UNKNOWN_STRUCT, resolvedName);
+      return toka::Type::fromString("unknown");
+    }
     Init->ShapeName = resolvedName;
 
     if (!checkVisibility(Init, SD)) {

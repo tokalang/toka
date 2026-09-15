@@ -88,6 +88,42 @@ def main():
                 assert result.returncode == 1, (result.returncode, result.stderr)
                 assert "error[E0417]" in result.stderr and "E01268" not in result.stderr
                 assert not target.exists()
+
+        # g09_context used to SIGSEGV during shape-inference error recovery.
+        # It remains a positive release target: do not require its current
+        # semantic errors forever, but a rejected compile must have no artifact.
+        context = ROOT / 'tests/pass/g09_context.tk'
+        for flags, suffix in ((['--check-only'], '.check'), (['-c'], '.o'), (['--emit-llvm'], '.ll')):
+            results = []
+            for mode in ([], ['--non-call-transfer-shadow=json']):
+                target = Path(temp) / ('context' + ('-shadow' if mode else '-normal') + suffix)
+                result = subprocess.run([compiler, '--workspace-node', 'toka-tests-v1',
+                                         '--workspace-root', str(ROOT), *mode, *flags,
+                                         str(context), '-o', str(target)], cwd=ROOT,
+                                        env=dict(os.environ, TOKA_LIB=str(ROOT / 'lib')),
+                                        capture_output=True, text=True, timeout=60)
+                assert result.returncode in (0, 1), ('context abnormal termination', result.returncode, result.stderr[-2000:])
+                if result.returncode == 1:
+                    assert 'error[' in result.stderr and not target.exists(), result.stderr
+                elif suffix != '.check':
+                    assert target.exists()
+                results.append(result)
+            assert results[0].returncode == results[1].returncode and results[0].stderr == results[1].stderr
+
+        valid = Path(temp) / 'inferred-shapes.tk'
+        valid.write_text('shape Box<T>(value:T)\n'
+                         'fn writable() -> Box<i32># { return Box(value=5) }\n'
+                         'fn main() -> i32 {\n'
+                         'auto first = Box(value=7)\n'
+                         'auto second = Box(value=9):Box<i32>\n'
+                         'auto third = writable()\n'
+                         'return first.value + second.value + third.value - 21\n}\n')
+        executable = Path(temp) / 'inferred-shapes'
+        built = subprocess.run([compiler, str(valid), '-o', str(executable)], cwd=ROOT,
+                               env=dict(os.environ, TOKA_LIB=str(ROOT / 'lib')),
+                               capture_output=True, text=True, timeout=30)
+        assert built.returncode == 0, built.stderr
+        assert subprocess.run([str(executable)], timeout=10).returncode == 0
     print("negative termination: crash cannot pass or bless; real invalid initializer rejects without artifacts")
 
 
