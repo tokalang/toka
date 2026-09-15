@@ -1,7 +1,44 @@
-# G implementation (not Accepted)
+# G implementation — Accepted within the frozen RFC scope
 
 Design/authorization checkpoint: `ddb19870`. E is not started. Work remains on
 the existing integration branch; no push, PR, tag or release is authorized.
+
+## Acceptance record — 2026-09-15
+
+- **Status: Accepted — G implementation only.**
+- **Accepted revision: `4005a68edd776f616d41fd8d460a3691f84414b4`.**
+- Scope: G as defined by the frozen
+  `whole_value_generics_and_checked_dependency_elision_rfc.md`; not E,
+  the remaining release work, or RC13 qualification.
+- Acceptance evidence: the user's independent incremental review confirmed
+  that the four original counterexample/control programs compile and run,
+  normal/shadow results agree, resource cleanup assertions pass, and the four
+  targeted CTests pass **4/4, 120.84 s**, including source-hidden controls.
+  Both reviewed P1s and the comparison-scope/abnormal-classification correction
+  were accepted, with no new incremental blocker found.
+- Implementation-side targeted evidence remains **4/4, 126.31 s** in
+  `/private/tmp/toka-G-p1-fix.g015YV/targeted.log`. It is distinct from the
+  independent review result above. This documentation-only acceptance update
+  did not rerun tests.
+
+The 388/457, 444/478 and 96/99 totals below belong to their recorded earlier
+full-run revision, **not** to a full run of `4005a68e`. They are not backfilled
+or combined with the incremental acceptance evidence.
+
+Remaining release blockers stay open and separately tracked in this record:
+the three failed CTests (source-hidden callable, return-matrix integration and
+Arena), residual PASS/FAIL cases, and the `g09_context.tk` compiler SIGSEGV.
+None is waived or automatically declared unrelated to G. Their presence does
+not reopen a broad G audit; future work addresses concrete release blockers.
+
+E remains unstarted and unauthorized. No push, PR, release or freeze-ref change
+is part of this acceptance recording. The other worker's RFC edits are left
+unchanged and excluded from this documentation commit.
+
+## Historical implementation and validation records
+
+The candidate/WIP statuses below describe those earlier revisions, not the
+accepted status of `4005a68e`.
 
 ## 2026-09-15 incremental revision: two G P1s and comparison attribution
 
