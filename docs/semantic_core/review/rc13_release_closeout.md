@@ -421,3 +421,54 @@ the intended E04661/IncompleteFacts rather than merely any compile failure.
 Full tools/PASS/FAIL/CTest comparison follows on a fixed implementation snapshot;
 these targeted counts do not replace the previous full baseline. No E, push,
 ABI/TKI or raw_take change; the other worker's RFC edit stays unstaged.
+
+## Fixed candidate full comparison: c4b726a7
+
+Implementation tested: `c4b726a74641d88b39067e7a7a2c29c997061117`.
+The strengthened rejection run above also passed (all five expected
+E04661/IncompleteFacts checks, parity and no-object/no-IR assertions).
+This is a unified CSV/factory candidate, **not an Accepted or RC13-ready claim**.
+
+Full logs: `/private/tmp/toka-rc13-csv-final.2SiBic`.
+Machine-readable metadata and named differences:
+[rc13_baseline_c4b726a7.json](rc13_baseline_c4b726a7.json).
+Comparison baseline is the complete `291db6cb` run, not an intermediate directed
+test result. Every stage preserved the tracked source manifest, including the
+other worker's uncommitted RFC; no implementation changes occurred during runs.
+
+| Gate | Result | Named change from complete baseline | Seconds |
+| --- | --- | --- | --- |
+| All tool targets | Passed | No build failure | 0.73 (incremental, full targets) |
+| PASS | 412/457 | 11 recovered, 0 new failures | 266.67 |
+| FAIL | 447/478 | 2 recovered, 0 new expectation failures | 145.13 |
+| CTest | 103/106 | Same 3 failures; 6 added gates pass | 1126.52 |
+
+No compiler/runtime abnormal exits were recorded. PASS recoveries are the seven
+accepted Vec/domain cases plus `g10_io_bufio`, `g14_generic_nested_reader_bound`,
+`g14_stdx_csv_corpus_test` and `g14_stdx_csv_test`. The two FAIL recoveries are
+`for_alias_removes_morphology` and `morphology_raw_extendable_vec_borrowed`.
+These changes span the revisions since 291db6cb; they are **not all attributed
+to the 17-line activation patch**. No oracle was changed in this candidate.
+
+The remaining CTest failures retain their actual causes:
+
+- indirect: source-hidden callable factory lacks environment information,
+  E04661 `CallableReturnEnvironmentUnavailable`, before the intended E04570 check;
+- return matrix: build-return-buffer fixture hits Vec/HashMap raw_take
+  `ElementDependenciesUnproven`;
+- Arena: writable raw request from a known read-only/frozen source, E04663.
+
+All 45 remaining PASS failures were checked for their current first diagnostic.
+44 match the baseline code/message/source-file (ignoring line shifts); the one
+text difference is the existing TCP echo-server missing `join` on Result, whose
+mangled nominal text reflects interface version 21→22. This candidate itself
+does not change the interface key. Current shared first sites include BTreeMap
+(3), Vec element dependencies (Build/TOML/Template, 3), and Slab (2). Their full
+probe results remain in `first-errors.json` alongside the run logs. They are
+separate release work, not reasons to broaden this CSV implementation.
+
+CSV's original corpus and streaming paths, real File constructors/factories,
+forwarding/cache, exact-once payload cleanup and the admitted/rejected matrices
+are complete for the authorized candidate. E remains off, no push/PR, no frozen
+ref movement; leak tooling's previously recorded permission limitation is not
+reinterpreted as a zero-leak result.
