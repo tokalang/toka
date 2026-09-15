@@ -5428,6 +5428,23 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       facts.TemporaryEligibility = TransferTemporaryEligibility::Eligible;
     }
   }
+  // Only consume a completed source-instance summary with discharged proof
+  // prerequisites. Preserve any already recorded external dependency and all
+  // capability/source/drop checks; the fact does not authorize a transfer.
+  if ((bindingBehaviorPlan || returnBehaviorPlan) && normalSemaValidated &&
+      facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
+      facts.Ownership == TransferOwnershipKind::UniqueOwner &&
+      legacy.DependencyPaths.empty() && facts.DependencyRoots.empty() &&
+      !facts.ReferentPlace && facts.StructuredReferentPlaces.empty() &&
+      facts.StaticStorageOrigins.empty()) {
+    prepareResultIndependence(exactValue);
+    auto proof = resultIndependence(exactValue);
+    if (proof && proof->RequiredArguments.empty()) {
+      facts.Dependency = TransferDependencyKind::None;
+      facts.DependencyFactsComplete = true;
+      facts.TemporaryEligibility = TransferTemporaryEligibility::Eligible;
+    }
+  }
   facts.SourceFlowCeiling = facts.ActualCapabilities;
   // Copying a physical scalar (integer / boolean / float) into a writable
   // payload is a value copy, not a handle authority transfer.  Such a value

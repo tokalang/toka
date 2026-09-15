@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify explicit new initializers; factory-call forwarding is still pending."""
+"""Qualify explicit new initializers and validated independent factory results."""
 import argparse
 import os
 from pathlib import Path
@@ -17,6 +17,27 @@ def main():
     compiler = Path(args.build_dir).resolve() / 'bin/tokac'
     env = dict(os.environ, TOKA_LIB=str(ROOT / 'lib'))
     positive = {
+        'reader-writer-factory-cache': FILE +
+            'import stdx/io/bufio::{BufferedReader,BufferedWriter}\n'
+            'fn main()->i32 {\n' + OPEN +
+            'auto ^reader=BufferedReader<File>::make(cede file)\n'
+            'auto second=File::open(string::from("/dev/null"),"r")\n'
+            'auto ^cached=BufferedReader<File>::make(cede second)\n'
+            'auto output=File::open(string::from("/dev/null"),"w")\n'
+            'auto ^writer=BufferedWriter<File>::make(cede output)\nreturn 0}',
+        'factory-forward-drop-once': FILE + 'auto drops#=0:i32\n'
+            'shape Tracked(file:File)\nimpl Tracked@Encap {pub file\nfn drop(self#){drops+=1}}\n'
+            'shape Box(value:Tracked)\n'
+            'fn forward(cede file:File)->^Box {return make(cede file)}\n'
+            'fn make(cede file:File)->^Box {auto tracked=Tracked(file=cede file)\n'
+            'auto ^result=new Box(value=cede tracked)\nreturn ^result}\n'
+            'fn relay(cede ^value:Box)->^Box {return ^value}\n'
+            'fn main()->i32 {{\n' + OPEN +
+            'auto ^first=forward(cede file)\n'
+            'auto ^second=relay(cede ^first)\n'
+            'assert(second.value.file.is_valid(),"forwarded live File")\n'
+            'assert(drops==0,"not dropped early")\n}\n'
+            'assert(drops==1,"forwarded exact once")\nreturn 0}',
         'file-box': FILE + 'shape Box(file:File)\nfn main()->i32 {\n' + OPEN +
             'auto ^box=new Box(file=cede file)\nassert(box.file.is_valid(),"live File")\nreturn 0}',
         'drop-once': FILE + 'auto drops#=0:i32\nshape Tracked(file:File)\n'
@@ -30,6 +51,24 @@ def main():
             'assert(first.x==1 && second.y==2,"old independent paths preserved")\nreturn 0}',
     }
     negative = {
+        'missing-result-proof': FILE + 'shape Box(file:File)\nextern fn unknown()->^Box\n'
+            'fn main()->i32 {auto ^result=unknown()\nreturn 0}',
+        'unmet-prerequisite': FILE + 'shape Box(file:File)\nextern fn unknown()->^Box\n'
+            'fn relay(cede ^value:Box)->^Box {return ^value}\n'
+            'fn main()->i32 {auto ^result=relay(unknown())\nreturn 0}',
+        'stale-field': FILE + 'shape Box(file:File,tag#:i32)\n'
+            'fn make(cede file:File)->^Box {auto ^result=new Box(file=cede file,tag=0)\n'
+            'result.tag=1\nreturn ^result}\nfn main()->i32 {\n' + OPEN +
+            'auto ^result=make(cede file)\nreturn 0}',
+        'stale-branch': FILE + 'shape Box(file:File,tag#:i32)\n'
+            'fn make(cede file:File,flag:bool)->^Box {auto ^result=new Box(file=cede file,tag=0)\n'
+            'if flag {result.tag=1}\nreturn ^result}\nfn main()->i32 {\n' + OPEN +
+            'auto ^result=make(cede file,false)\nreturn 0}',
+        'stale-rebinding': FILE + 'shape Box(file:File)\n'
+            'fn make(cede file:File,cede second:File)->^Box {auto ^#result=new Box(file=cede file)\n'
+            '^result=new Box(file=cede second)\nreturn ^result}\nfn main()->i32 {\n' + OPEN +
+            'auto other=File::open(string::from("/dev/null"),"r")\n'
+            'auto ^result=make(cede file,cede other)\nreturn 0}',
         'default': FILE + 'shape Box(file:File,tag:i32=1)\nfn main()->i32 {\n' + OPEN +
             'auto ^box=new Box(file=cede file)\nauto valid=file.is_valid()\nreturn 0}',
         'elision': FILE + 'shape Box(file:File,tag:i32=1)\nfn main()->i32 {\n' + OPEN +
@@ -74,6 +113,9 @@ def main():
             shadow = compile(source, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 1, (name, normal.stderr, shadow.stderr)
             assert normal.stderr == shadow.stderr
+            if name in ('missing-result-proof', 'unmet-prerequisite', 'stale-field',
+                        'stale-branch', 'stale-rebinding'):
+                assert 'E04661' in normal.stderr and 'IncompleteFacts' in normal.stderr, (name, normal.stderr)
             if name in ('default', 'elision', 'type-rollback'):
                 assert 'E0438' not in normal.stderr and 'E0410' not in normal.stderr, normal.stderr
             for flag, suffix in (('-c', '.o'), ('--emit-llvm', '.ll')):

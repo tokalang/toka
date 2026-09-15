@@ -361,7 +361,7 @@ Stage-0 CodeGen authority fault suite, and CSV corpus/full/streaming matrix:
 result bindings and is not a whole-suite rerun. Other-worker RFC changes remain
 untouched; no push or E activation.
 
-## Result independence fact collection (WIP, admission not enabled)
+## Result independence fact collection (c3a7393b checkpoint, initially not enabled)
 
 The next implementation reuses the existing factory Unprepared/Preparing/Valid/
 Invalid state machine and isolated body journal, rather than adding a public
@@ -395,3 +395,29 @@ Direct make<File> caller bindings therefore remain pending; cache/source-hidden
 end-to-end qualification and the requested full baseline refresh have not been
 claimed. Explicit production-admission approval is still required by execution
 review. E, ABI/TKI, raw_take, publishing and other-worker changes remain untouched.
+
+## CSV result admission activation candidate
+
+After explicit production-admission approval, the saved consumer diff is applied.
+The historical `activation_unapplied.patch` filename describes the reviewed
+artifact, not its current application status. A normally validated unique result
+with a completed exact-instance summary, no remaining argument prerequisites and
+no recorded external dependencies supplies the three missing dependency/temporary
+facts. The full planner remains the only admission path; no capability, source,
+cleanup or lifecycle check is bypassed.
+
+Reader/Writer `make<File>`, repeated Reader specialization calls, a forwarder
+declared before its factory, and a conditional unique relay now compile and run.
+The forwarded File-owning payload is destroyed exactly once. Missing result
+summaries, unmet relay prerequisites, field mutation, branch pollution and
+rebinding remain rejected without object/IR, with normal/shadow parity. The
+existing default/type-error source rollback, permissions, borrowed/raw fields,
+source duplication, snapshot join and invalidation tests remain in place.
+
+Targeted CTest: result facts, initializer syntax provenance, new/factory matrix,
+Stage-0 CodeGen fault gates and the original CSV corpus/full/streaming tests:
+5/5, 77.78 s. A follow-up run strengthens the new rejection assertions to require
+the intended E04661/IncompleteFacts rather than merely any compile failure.
+Full tools/PASS/FAIL/CTest comparison follows on a fixed implementation snapshot;
+these targeted counts do not replace the previous full baseline. No E, push,
+ABI/TKI or raw_take change; the other worker's RFC edit stays unstaged.
