@@ -1,0 +1,26 @@
+import std/arena::{Arena, alloc_type}
+
+shape Point(x: i32, y: i32)
+
+fn forwarded(arena#: Arena) -> nul *Point# <- arena {
+    auto nul *result# = alloc_type<Point>(arena#)
+    return *result
+}
+
+fn main() -> i32 {
+    auto arena# = Arena::new_with_capacity(64:usize)
+    auto nul *pending# = alloc_type<Point>(arena#)
+    if *pending is null { return 1 }
+    auto *point# = pending.unwrap()
+    // Allocation supplies storage only: initialize both fields before reading.
+    point.x = 11
+    point.y = 22
+    assert(point.x == 11 && point.y == 22, "split nullable binding retains permissions")
+    auto *other# = forwarded(arena#).unwrap()
+    other.x = 33
+    other.y = 44
+    assert(other.x == 33 && other.y == 44, "forwarded return retains permissions")
+    assert(point.x == 11 && point.y == 22, "second allocation preserves first storage")
+    arena#.release()
+    return 0
+}

@@ -11,25 +11,25 @@ shape ArenaChunk (
     data: Addr,
     capacity: usize,
     offset#: usize,
-    nul *#next#: ArenaChunk = null as nul *ArenaChunk
+    nul *#next#: ArenaChunk = null
 )
 
 pub shape Arena (
-    nul *#chunks#: ArenaChunk = null as nul *ArenaChunk,
+    nul *#chunks#: ArenaChunk = null,
     default_chunk_size: usize = 65536:usize
 )
 
 impl Arena {
     pub fn new() -> Arena {
         return Arena(
-            *chunks = null as nul *ArenaChunk,
+            *chunks = null,
             default_chunk_size = 65536:usize
         )
     }
 
     pub fn new_with_capacity(capacity: usize) -> Arena {
         return Arena(
-            *chunks = null as nul *ArenaChunk,
+            *chunks = null,
             default_chunk_size = capacity
         )
     }
@@ -134,7 +134,7 @@ impl Arena {
 
                 *curr = *next
             }
-            self.*chunks = null as nul *ArenaChunk
+            self.*chunks = null
         }
     }
 }

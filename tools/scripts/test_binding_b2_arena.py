@@ -23,7 +23,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="toka-b2-arena-gate-") as directory:
         work = Path(directory)
         for source in (ROOT / "tests/semantics/stage1_return_matrix/arena_raw_handle_return.tk",
-                       ROOT / "tests/pass/g07_arena_test.tk"):
+                       ROOT / "tests/pass/g07_arena_test.tk", CASES / "nullable_flow.tk"):
             normal = compile(source, "--check-only")
             shadow = compile(source, "--check-only", "--non-call-transfer-shadow=json")
             assert normal.returncode == shadow.returncode == 0 and normal.stderr == shadow.stderr, normal.stderr + shadow.stderr
@@ -82,7 +82,7 @@ def main():
                 output = work / (source.stem + suffix)
                 rejected = compile(source, flag, "-o", output)
                 assert rejected.returncode == 1 and diagnostic in rejected.stderr and not output.exists(), rejected.stderr
-        print("Arena: 3 source parity cases, 2 original runtime cases, scoped allocation/failure matrix, 5 rejection pairs and 10 no-artifact checks; no skips")
+        print("Arena: 4 source parity cases, 3 runtime cases, scoped allocation/failure matrix, 5 rejection pairs and 10 no-artifact checks; no skips")
 
 
 if __name__ == "__main__":

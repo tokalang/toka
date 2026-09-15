@@ -507,3 +507,41 @@ The complete baseline stays 412/457, 447/478, 103/106 until rerun. Neither
 the remaining stress/MPSC source failures nor the three old CTest failures
 are declared resolved by these changes. No full rerun, compiler changes,
 E activation, push or release; other-worker RFC edits remain untouched.
+
+## Semver/thread accepted; Arena nullable-slot migration
+
+`1c5c42fb` is Accepted for the preceding source-only batch. Independent review
+reran its five-program test (1/1, 32.62 s); the three recoveries remain directed,
+not a revised full-suite count.
+
+Arena isolation showed that writable nullable result binding failed even before
+`unwrap`; non-Arena ordinary/generic pointer returns and unwrap controls passed.
+Arena's five `null as nul *ArenaChunk` expressions explicitly introduced a
+readonly pointee view into writable nullable slots and their recorded ancestry.
+Use context-typed `null` for those slots instead: the declaration already carries
+the complete pointer permissions. `alloc_type`/`alloc_array` return signatures,
+the unsafe Addr constructor, nullable checks and runtime allocation remain intact.
+
+An independent probe also exposed conservative sibling-ancestry pollution when
+reading an integer member as an allocation size. A trial compiler refinement
+fixed that probe but did not alone fix Arena; it was **removed**, and the compiler
+rebuilt before the successful Arena run. No compiler change belongs to this
+candidate. That separate probe is not declared solved or made an Arena prerequisite.
+Isolation files are in `/private/tmp/toka-arena-permission.IzNdzD`.
+
+The original Arena runtime, scoped malloc/free failure/retry counts, and five
+readonly/nullable/PAL rejection pairs already passed with the library-only change.
+The gate now also checks a split nullable binding, explicit non-null check,
+unwrap, and a forwarding function, initializing the Point fields before reads.
+No allocation is reclassified as an initialized T or given Drop ownership.
+
+Final directed CTest: `toka_binding_b2_arena` and
+`toka_unsafe_raw_construction`, 2/2 (49.28 s). Arena covers four source-parity
+cases, three runtime programs, zero-size/multi-chunk/reset/repeated release/drop,
+both allocation failures and retry, plus five rejection pairs and ten
+no-object/no-IR checks. All tool targets rebuilt successfully after removing
+the trial compiler patch; `src/` and `include/` have no candidate differences.
+`g07_arena_test` and the previously failed Arena CTest are directed recoveries;
+the complete 412/457, 447/478, 103/106 baseline is not rewritten. No E, push,
+publication or other-worker changes; this is a completed candidate, not an
+Accepted claim.
