@@ -491,6 +491,11 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_negative_harness_termination.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_context_receiver_handoff
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_context_receiver_handoff.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(toka_context_receiver_handoff PROPERTIES TIMEOUT 240)
         add_test(NAME toka_raw_take_frontend
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_raw_take_frontend.py

@@ -6898,8 +6898,14 @@ bool Sema::canImplicitlyPassToCede(std::shared_ptr<toka::Type> Ty) {
 
   // 2. Shape 类型判断
   if (Ty->typeKind == toka::Type::Shape) {
-    std::string sName = Ty->toString();
-    std::string resolved = resolveType(sName);
+    // Binding permissions are not part of the nominal Drop lookup key.
+    // Resolve the complete type first: stripping a display spelling can
+    // otherwise send Receiver<bool># to the unresolved Receiver<T> template.
+    auto resolvedType = resolveType(Ty);
+    if (!resolvedType || resolvedType->isUnknown())
+      return false;
+    std::string sName = resolvedType->getSoulName();
+    std::string resolved = sName;
 
     // 如果是闭包合成类型，检查其捕获成员
     if (resolved.rfind("__Closure_", 0) == 0 || sName.rfind("__Closure_", 0) == 0) {

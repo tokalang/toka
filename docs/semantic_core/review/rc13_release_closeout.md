@@ -50,7 +50,7 @@ reference-valued parameters. Do not infer a raw-element migration from a stale
 line number alone. Context's concrete failing instances will be investigated
 after the network batch, without Option/Vec/raw_take exemptions.
 
-## Context investigation (not complete)
+## Context receiver handoff repair
 
 `tests/semantics/context_release/cancel_chain.tk` preserves
 `with_cancel<BackgroundContext>`, the actual `Vec<Sender<bool>>` state,
@@ -66,8 +66,44 @@ the Option return/discard errors and downstream unresolved Vec morphology; simpl
 removing the await does not resolve them. Starting a worker with the direct
 `channel<bool>()` receiver is a passing control. Explicit Receiver<bool> annotation
 and a trivial worker body do not resolve the Context-derived receiver failure.
-The first type/provenance loss is not yet established; no container exemptions
-have been made, and full `g09_context` remains failed.
+Those preliminary controls did not use the same outer binding writability.
+The same-worker three-route matrix corrects that: direct channel, function-returned
+Option/unwrap and Context-returned receiver all failed with a writable `rx#`.
+The first wrong lookup is `canImplicitlyPassToCede`: its Drop query used the
+permission-decorated display string (`Receiver_M_bool#`) instead of the resolved
+nominal identity (`Receiver_M_bool`). Missing that cache/map key caused property
+analysis to fall back to the generic template and check unresolved T bodies.
+The repair resolves the complete type and uses its soul name for this lookup;
+it does not change permission, Send, dependency, Drop or raw_take policy.
+
+After repair, all three original writable-binding routes compile and run. The
+worker receives a closed notification and exits. Context cancels twice. The
+gate also rejects a second consuming handoff of the same binding with E0438
+and no object output. Both call and non-call shadow match normal diagnostics.
+
+| Boundary | Observed facts in this matrix |
+| --- | --- |
+| Return/wrap | Full Option<Receiver<bool>> value; result carries cleanup |
+| unwrap | Full Receiver<bool> result; no external dependency roots |
+| binding | Receiver<bool># retains nominal instance and current write view |
+| worker argument | OwnedValue, MoveOwned, InvalidateSubtree, CalleeAssumesLiability; dependency complete |
+| start | StartHandoff, explicit consuming formal/source, no escaping dependency |
+
+Original unmodified `g09_context` now compiles and runs with exit 0, including
+timeout (20 ms in the observed run), parent/child cancellation and value query.
+This is targeted recovery, not a full-suite rerun. Tests are retained in
+`test_context_receiver_handoff.py`. Final three-route plus original-program
+CTest: 1/1, 26.02 seconds.
+Ordinary caller, direct signature and termination regression gates: 3/3,
+31.34 seconds. Other signature-driven method/static, callable/indirect,
+multi-argument atomic and remaining-route gates: 4/4, 42.39 seconds.
+The termination test's successful-shadow branch was corrected:
+main.cpp intentionally forces shadow to check-only, so it must not demand an
+artifact even if -c/--emit-llvm was supplied. Normal compilation still must
+produce one; rejected compilation must not.
+
+Additional leaks-at-exit inspection timed out; no zero-leak claim is made.
+No source library changes or container exemptions were needed.
 
 Discarded lead: a temporary nested-match probe without workspace identity had an
 empty destination identity. With proper workspace registration it passes. This

@@ -105,6 +105,11 @@ def main():
                 assert result.returncode in (0, 1), ('context abnormal termination', result.returncode, result.stderr[-2000:])
                 if result.returncode == 1:
                     assert 'error[' in result.stderr and not target.exists(), result.stderr
+                elif mode:
+                    # main.cpp forces both transfer-shadow modes to check-only,
+                    # even when -c/--emit-llvm is supplied. A successful observer
+                    # is not an artifact-producing compilation.
+                    assert not target.exists()
                 elif suffix != '.check':
                     assert target.exists()
                 results.append(result)
