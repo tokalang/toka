@@ -49,3 +49,26 @@ The remaining Vec cluster includes `ReferenceBindingSelectorUnavailable` on
 reference-valued parameters. Do not infer a raw-element migration from a stale
 line number alone. Context's concrete failing instances will be investigated
 after the network batch, without Option/Vec/raw_take exemptions.
+
+## Context investigation (not complete)
+
+`tests/semantics/context_release/cancel_chain.tk` preserves
+`with_cancel<BackgroundContext>`, the actual `Vec<Sender<bool>>` state,
+`Option<Receiver<bool>>` returned by `done()`, async start/block_on, cancellation
+error, closed-channel receive and repeated cancellation. Normal/shadow checks
+match and the compiled program exits 0. The original `test_cancel` extracted
+without changing its body also compiles and runs under start/block_on.
+No library/compiler changes were required for this cancellation path.
+
+Timeout isolation retains workspace identity. Creating the timeout and obtaining
+its receiver pass separately. Starting a worker with that receiver reproduces
+the Option return/discard errors and downstream unresolved Vec morphology; simply
+removing the await does not resolve them. Starting a worker with the direct
+`channel<bool>()` receiver is a passing control. Explicit Receiver<bool> annotation
+and a trivial worker body do not resolve the Context-derived receiver failure.
+The first type/provenance loss is not yet established; no container exemptions
+have been made, and full `g09_context` remains failed.
+
+Discarded lead: a temporary nested-match probe without workspace identity had an
+empty destination identity. With proper workspace registration it passes. This
+was a probe-environment difference, not proof of a Context assignment regression.

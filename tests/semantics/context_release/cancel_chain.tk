@@ -1,0 +1,29 @@
+import std/context::{background, with_cancel, BackgroundContext}
+import std/task::{block_on}
+
+fn cancel_chain() -> async i32 {
+    auto bg# = background()
+    auto result = with_cancel<BackgroundContext>(cede bg)
+    auto ctx# = cede result.ctx
+    auto canceler = result.canceler.clone()
+    assert(!ctx.is_canceled(), "new context is live")
+    canceler.call()
+    assert(ctx.is_canceled(), "cancel updates shared state")
+    auto error = ctx.err()
+    assert(error.is_some(), "cancellation has an error")
+    assert(error.unwrap() == string::from("context canceled"), "cancel error")
+    auto pending = ctx#.done()
+    assert(pending.is_some(), "canceled context provides receiver")
+    auto receiver# = pending.unwrap()
+    auto closed = receiver#.recv()
+    assert(closed.is_ok(), "receive succeeds")
+    assert(closed.unwrap().is_none(), "notification channel is closed")
+    canceler.call()
+    assert(ctx.is_canceled(), "cancel is idempotent")
+    return 0
+}
+
+fn main() -> i32 {
+    auto task = cancel_chain().start
+    return block_on<i32>(task)
+}
