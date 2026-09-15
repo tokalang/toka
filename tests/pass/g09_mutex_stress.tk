@@ -3,7 +3,7 @@ import std/thread::{thread_spawn, yield_now}
 import std/io::{println}
 
 pub fn main() -> i32 {
-    auto ~m = Mutex<i32>::make(0)
+    auto ~m = Mutex<i32>::make_shared(0)
     
     // We spawn 5 threads, each looping 1000 times, incrementing the protected value by 1 each time
     // The expected total sum should be 5000
@@ -12,7 +12,7 @@ pub fn main() -> i32 {
     auto ~m3 = ~m
     auto ~m4 = ~m
     auto ~m5 = ~m
-    auto f1# = { [cede m1] =>
+    auto f1# = { [cede ~m1] =>
         auto i# = 0
         loop i < 1000 {
             auto ~local = ~m1
@@ -31,8 +31,8 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return 0
-    }:fn#() -> i32
-    auto f2# = { [cede m2] =>
+    }:dyn fn() -> i32
+    auto f2# = { [cede ~m2] =>
         auto i# = 0
         loop i < 1000 {
             auto ~local = ~m2
@@ -44,8 +44,8 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return 0
-    }:fn#() -> i32
-    auto f3# = { [cede m3] =>
+    }:dyn fn() -> i32
+    auto f3# = { [cede ~m3] =>
         auto i# = 0
         loop i < 1000 {
             auto ~local = ~m3
@@ -57,8 +57,8 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return 0
-    }:fn#() -> i32
-    auto f4# = { [cede m4] =>
+    }:dyn fn() -> i32
+    auto f4# = { [cede ~m4] =>
         auto i# = 0
         loop i < 1000 {
             auto ~local = ~m4
@@ -70,8 +70,8 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return 0
-    }:fn#() -> i32
-    auto f5# = { [cede m5] =>
+    }:dyn fn() -> i32
+    auto f5# = { [cede ~m5] =>
         auto i# = 0
         loop i < 1000 {
             auto ~local = ~m5
@@ -83,15 +83,15 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return 0
-    }:fn#() -> i32
+    }:dyn fn() -> i32
     
     println("Spawning 5 threads to increment Mutex data 1000 times each...")
 
-    auto t1# = thread_spawn<i32>(cede f1)
-    auto t2# = thread_spawn<i32>(cede f2)
-    auto t3# = thread_spawn<i32>(cede f3)
-    auto t4# = thread_spawn<i32>(cede f4)
-    auto t5# = thread_spawn<i32>(cede f5)
+    auto t1# = thread_spawn<i32>(cede f1).unwrap()
+    auto t2# = thread_spawn<i32>(cede f2).unwrap()
+    auto t3# = thread_spawn<i32>(cede f3).unwrap()
+    auto t4# = thread_spawn<i32>(cede f4).unwrap()
+    auto t5# = thread_spawn<i32>(cede f5).unwrap()
     
     t1#.join().unwrap()
     t2#.join().unwrap()

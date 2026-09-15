@@ -7,23 +7,26 @@ pub fn main() -> i32 {
     auto tx2# = pair.tx#.clone()
     
     // Fill up the channel
-    pair.tx#.send(cede 1:i32).unwrap()
-    pair.tx#.send(cede 2:i32).unwrap()
+    pair.tx#.send(1:i32).unwrap()
+    pair.tx#.send(2:i32).unwrap()
     
     // cede pair completely into the closure
-    auto f# = { [cede pair#] =>
-        auto val1 = pair.rx#.recv().unwrap()
-        auto val2 = pair.rx#.recv().unwrap()
-        auto val3 = pair.rx#.recv().unwrap()
+    auto f = { [cede pair] =>
+        auto local# = cede pair
+        auto val1 = local.rx#.recv().unwrap().unwrap()
+        auto val2 = local.rx#.recv().unwrap().unwrap()
+        auto val3 = local.rx#.recv().unwrap().unwrap()
+        assert(val1 == 1 && val2 == 2 && val3 == 3, "bounded FIFO must deliver all three values")
         return 0
-    }:fn#() -> i32
-    auto t# = thread_spawn<i32>(cede f)
+    }
+    auto t# = thread_spawn<i32>(cede f).unwrap()
     
     // Now send the 3rd item, this should block until the receiver pops
-    tx2#.send(cede 3:i32).unwrap()
+    tx2#.send(3:i32).unwrap()
     
     // Wait for the receiver to finish
     auto res = t#.join().unwrap()
+    assert(res == 0, "receiver worker completed")
     println("Bounded channel sync test passed!")
     return 0
 }

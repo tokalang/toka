@@ -21,7 +21,7 @@ pub fn main() -> i32 {
 
     // 2. Concurrent Stress Test using ~AtomicUsize
     println("Spawning 10 threads to aggressively mutate ~AtomicUsize...")
-    auto ~counter = AtomicUsize::make(0)
+    auto ~counter = new AtomicUsize(val = 0:usize)
     auto ~c1 = ~counter
     auto ~c2 = ~counter
     auto ~c3 = ~counter
@@ -34,77 +34,87 @@ pub fn main() -> i32 {
     auto ~c10 = ~counter
     
 
-    auto t1# = thread_spawn<i32>(cede { [cede c1] =>
+    auto f1 = { [cede ~c1] =>
         auto i# = 0
         auto ~local = ~c1
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return 0
-    })
-    auto t2# = thread_spawn<i32>(cede { [cede c2] =>
+    }:dyn fn() -> i32
+    auto t1# = thread_spawn<i32>(cede f1).unwrap()
+    auto f2 = { [cede ~c2] =>
         auto i# = 0
         auto ~local = ~c2
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return 0
-    })
-    auto t3# = thread_spawn<i32>(cede { [cede c3] =>
+    }:dyn fn() -> i32
+    auto t2# = thread_spawn<i32>(cede f2).unwrap()
+    auto f3 = { [cede ~c3] =>
         auto i# = 0
         auto ~local = ~c3
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return 0
-    })
-    auto t4# = thread_spawn<i32>(cede { [cede c4] =>
+    }:dyn fn() -> i32
+    auto t3# = thread_spawn<i32>(cede f3).unwrap()
+    auto f4 = { [cede ~c4] =>
         auto i# = 0
         auto ~local = ~c4
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return 0
-    })
-    auto t5# = thread_spawn<i32>(cede { [cede c5] =>
+    }:dyn fn() -> i32
+    auto t4# = thread_spawn<i32>(cede f4).unwrap()
+    auto f5 = { [cede ~c5] =>
         auto i# = 0
         auto ~local = ~c5
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return 0
-    })
-    auto t6# = thread_spawn<i32>(cede { [cede c6] =>
+    }:dyn fn() -> i32
+    auto t5# = thread_spawn<i32>(cede f5).unwrap()
+    auto f6 = { [cede ~c6] =>
         auto i# = 0
         auto ~local = ~c6
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return 0
-    })
-    auto t7# = thread_spawn<i32>(cede { [cede c7] =>
+    }:dyn fn() -> i32
+    auto t6# = thread_spawn<i32>(cede f6).unwrap()
+    auto f7 = { [cede ~c7] =>
         auto i# = 0
         auto ~local = ~c7
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return 0
-    })
-    auto t8# = thread_spawn<i32>(cede { [cede c8] =>
+    }:dyn fn() -> i32
+    auto t7# = thread_spawn<i32>(cede f7).unwrap()
+    auto f8 = { [cede ~c8] =>
         auto i# = 0
         auto ~local = ~c8
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return 0
-    })
-    auto t9# = thread_spawn<i32>(cede { [cede c9] =>
+    }:dyn fn() -> i32
+    auto t8# = thread_spawn<i32>(cede f8).unwrap()
+    auto f9 = { [cede ~c9] =>
         auto i# = 0
         auto ~local = ~c9
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return 0
-    })
-    auto t10# = thread_spawn<i32>(cede { [cede c10] =>
+    }:dyn fn() -> i32
+    auto t9# = thread_spawn<i32>(cede f9).unwrap()
+    auto f10 = { [cede ~c10] =>
         auto i# = 0
         auto ~local = ~c10
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return 0
-    })
+    }:dyn fn() -> i32
+    auto t10# = thread_spawn<i32>(cede f10).unwrap()
 
-    auto _ = t1#.join()
-    auto _ = t2#.join()
-    auto _ = t3#.join()
-    auto _ = t4#.join()
-    auto _ = t5#.join()
-    auto _ = t6#.join()
-    auto _ = t7#.join()
-    auto _ = t8#.join()
-    auto _ = t9#.join()
-    auto _ = t10#.join()
+    assert(t1#.join().unwrap() == 0, "worker completed")
+    assert(t2#.join().unwrap() == 0, "worker completed")
+    assert(t3#.join().unwrap() == 0, "worker completed")
+    assert(t4#.join().unwrap() == 0, "worker completed")
+    assert(t5#.join().unwrap() == 0, "worker completed")
+    assert(t6#.join().unwrap() == 0, "worker completed")
+    assert(t7#.join().unwrap() == 0, "worker completed")
+    assert(t8#.join().unwrap() == 0, "worker completed")
+    assert(t9#.join().unwrap() == 0, "worker completed")
+    assert(t10#.join().unwrap() == 0, "worker completed")
 
     auto final_count = counter.load(Ordering::SeqCst)
     println("All threads finished. Final count: {}", final_count)

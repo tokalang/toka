@@ -13,9 +13,9 @@ impl Counter@Encap {
 pub fn main() -> i32 {
     println("Testing atomic reference counting for ~Mutex...")
     {
-        auto xxx = Mutex<Counter>::new(cede Counter(val=0))
+        auto xxx = Mutex<Counter>::new(Counter(val=0))
     }
-    auto ~m = Mutex<Counter>::make(cede Counter(val=0))
+    auto ~m = Mutex<Counter>::make_shared(Counter(val=0))
     
     auto ~m1 = ~m
     auto ~m2 = ~m
@@ -23,7 +23,7 @@ pub fn main() -> i32 {
     auto ~m4 = ~m
     auto ~m5 = ~m
 
-    auto f1 = { [cede m1] =>
+    auto f1 = { [cede ~m1] =>
         auto i# = 0
         loop i < 50000 {
             auto ~local = ~m1
@@ -34,9 +34,9 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return 0
-    }:fn() -> i32
+    }:dyn fn() -> i32
 
-    auto f2 = { [cede m2] =>
+    auto f2 = { [cede ~m2] =>
         auto i# = 0
         loop i < 50000 {
             auto ~local = ~m2
@@ -46,9 +46,9 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return 0
-    }:fn() -> i32
+    }:dyn fn() -> i32
 
-    auto f3 = { [cede m3] =>
+    auto f3 = { [cede ~m3] =>
         auto i# = 0
         loop i < 50000 {
             auto ~local = ~m3
@@ -58,9 +58,9 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return 0
-    }:fn() -> i32
+    }:dyn fn() -> i32
 
-    auto f4 = { [cede m4] =>
+    auto f4 = { [cede ~m4] =>
         auto i# = 0
         loop i < 50000 {
             auto ~local = ~m4
@@ -70,9 +70,9 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return 0
-    }:fn() -> i32
+    }:dyn fn() -> i32
 
-    auto f5 = { [cede m5] =>
+    auto f5 = { [cede ~m5] =>
         auto i# = 0
         loop i < 50000 {
             auto ~local = ~m5
@@ -82,15 +82,15 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return 0
-    }:fn() -> i32
+    }:dyn fn() -> i32
 
     println("Spawning 5 threads, each doing 50000 local clone/drops of ~Mutex...")
 
-    auto t1# = thread_spawn<i32>(cede f1)
-    auto t2# = thread_spawn<i32>(cede f2)
-    auto t3# = thread_spawn<i32>(cede f3)
-    auto t4# = thread_spawn<i32>(cede f4)
-    auto t5# = thread_spawn<i32>(cede f5)
+    auto t1# = thread_spawn<i32>(cede f1).unwrap()
+    auto t2# = thread_spawn<i32>(cede f2).unwrap()
+    auto t3# = thread_spawn<i32>(cede f3).unwrap()
+    auto t4# = thread_spawn<i32>(cede f4).unwrap()
+    auto t5# = thread_spawn<i32>(cede f5).unwrap()
 
     auto r1 = t1#.join().unwrap()
     auto r2 = t2#.join().unwrap()
@@ -107,6 +107,7 @@ pub fn main() -> i32 {
         auto g = m#.lock().unwrap()
         auto &val = g.borrow_mut()
         println("Final Mutex data: {}", val.val)
+        assert(val.val == 250000, "five workers completed all increments")
     }
 
     println("Stress test PASS! Reference counter didn't corrupt :)")

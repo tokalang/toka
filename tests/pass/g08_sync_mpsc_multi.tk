@@ -11,20 +11,22 @@ pub fn main() -> i32 {
     auto t2_tx# = pair.tx#.clone()
     
     // Thread 1
-    auto task1# = { [cede t1_tx#] =>
+    auto task1 = { [cede t1_tx] =>
+        auto sender# = cede t1_tx
         sleep_ms(10:u32)
-        t1_tx#.send(cede 100)
+        sender#.send(100).unwrap()
         return 0
-    }:fn#() -> i32
-    auto t1# = thread_spawn<i32>(cede task1)
+    }
+    auto t1# = thread_spawn<i32>(cede task1).unwrap()
     
     // Thread 2
-    auto task2# = { [cede t2_tx#] =>
+    auto task2 = { [cede t2_tx] =>
+        auto sender# = cede t2_tx
         sleep_ms(20:u32)
-        t2_tx#.send(cede 200)
+        sender#.send(200).unwrap()
         return 0
-    }:fn#() -> i32
-    auto t2# = thread_spawn<i32>(cede task2)
+    }
+    auto t2# = thread_spawn<i32>(cede task2).unwrap()
     
     // Receiver on Main Thread
     auto count# = 0
@@ -43,8 +45,8 @@ pub fn main() -> i32 {
         return 3
     }
 
-    t1#.join().unwrap()
-    t2#.join().unwrap()
+    assert(t1#.join().unwrap() == 0, "first sender completed")
+    assert(t2#.join().unwrap() == 0, "second sender completed")
     
     return 0
 }

@@ -545,3 +545,48 @@ the trial compiler patch; `src/` and `include/` have no candidate differences.
 the complete 412/457, 447/478, 103/106 baseline is not rewritten. No E, push,
 publication or other-worker changes; this is a completed candidate, not an
 Accepted claim.
+
+## Arena accepted; five legacy thread programs (source migration WIP)
+
+`2fcb343d` is Accepted for the five library null initializers; independent
+Arena/raw-construction CTest passed 2/2 (64.17 s). No compiler change is included.
+
+The following batch changes only test source and its runner. Mutex uses
+`make_shared` instead of binding a unique `make` result as shared. AtomicUsize
+uses its existing shared `new` construction. Captures select shared handles;
+owned environments use actual matching callable modes. Named callables transfer
+with cede; spawn Results are unwrapped before joining. All thread counts and
+iteration budgets are unchanged. No serial substitute, early success, unsafe
+permission bypass, runtime/ABI/compiler change or oracle update was made.
+
+Strict five-program run (`tools/scripts/test_rc13_legacy_threads.py`, logs in
+`/private/tmp/toka-thread-five-final/results.json`) finishes **3/5**, not green:
+
+| Original program | Actual result |
+| --- | --- |
+| g09_atomic_stress | Runtime/parity passes: 5 × 50,000; final value 250,000; both Counter drops still observed |
+| g09_mutex_stress | Runtime/parity passes: 5 × 1,000 with existing yields; final value 5,000 |
+| g09_std_atomic | Runtime/parity passes: 10 × 10,000; final value 100,000, sequential atomic assertions retained |
+| g08_sync_mpsc_bounded | Still rejected: EnvironmentLifetimeUnproven at spawn; capacity 2, prefill 2, third send and worker retained |
+| g08_sync_mpsc_multi | Still rejected: EnvironmentLifetimeUnproven at both spawns; two producers, delays and sum 300 retained |
+
+MPSC workers now own their captured endpoints and move them into writable local
+bindings on their single invocation. Dropping a mismatched type-erasure annotation
+lets the concrete closure bind, but does not qualify its environment. The two
+programs are still required positives: their refusal is not a passing oracle.
+The runner asserts all five succeed and therefore currently exits nonzero.
+
+Independent pending positive:
+`tests/semantics/rc13_thread_migration_pending/sender_capture.tk` captures an owned
+Sender, sends one integer and joins. Equivalent isolated source is rejected with
+EnvironmentLifetimeUnproven in normal/shadow and produces neither object nor IR.
+A shared Mutex owning-environment control runs successfully. These probes isolate
+the missing Sender environment qualification; they do not establish whether its
+underlying fix belongs to library qualification or the compiler fact producer.
+No such fix was attempted in this source-only scope. Probe files and stderr:
+`/private/tmp/toka-thread-five-probes`.
+
+All five have matching normal/shadow return code and stderr. Only the three
+runtime successes are directed recoveries; no full baseline figures are updated.
+No E, push or release; other-worker RFC edits remain unstaged. This batch is an
+incomplete WIP, not a request to accept all five or to weaken the environment gate.
