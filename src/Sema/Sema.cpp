@@ -5304,6 +5304,7 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
   if (state != m_CallableFactoryStates.end() && state->second != CallableFactoryState::Unprepared)
     return state->second == CallableFactoryState::Valid &&
            (m_ValidatedCallableReturnEnvironments.count(function) ||
+            m_IndependentReturns.count(function) ||
             m_ValidatedStaticReturnStorage.count(function) ||
             (m_EnumReturnSummaries.count(function) && m_EnumReturnSummaries.at(function).Valid));
   // Reuse the same isolated definition preparation for static view returns.
@@ -5410,6 +5411,7 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
   if (!journal.Complete) {
     m_CallableFactoryStates[function] = CallableFactoryState::Invalid;
     m_ValidatedCallableReturnEnvironments.erase(function);
+    m_IndependentReturns.erase(function);
     m_ValidatedStaticReturnStorage.erase(function);
     m_EnumReturnSummaries[function].Valid = false;
   } else m_CallableFactoryBodyJournals[function] = std::move(journal);
@@ -5440,6 +5442,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
   }
   const size_t functionDiagnosticStart = DiagnosticEngine::records().size();
+  auto savedIndependentValues = std::move(m_IndependentValues);
+  m_IndependentValues.clear();
   auto savedEnumResults = std::move(m_EnumResults);
   auto savedEnumSelections = std::move(m_EnumSelections);
   m_EnumResults.clear();
@@ -5448,6 +5452,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     std::function<void()> Restore;
     ~RestoreEnumSources() { Restore(); }
   } restoreEnumSources{[&] {
+    m_IndependentValues = std::move(savedIndependentValues);
     m_EnumResults = std::move(savedEnumResults);
     m_EnumSelections = std::move(savedEnumSelections);
   }};
@@ -5519,6 +5524,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   if (Fn->ResolvedReturnType) {
     if (m_EnableStage1ExplicitCallerCede &&
         (Fn->ResolvedReturnType->isFunction() || Fn->ResolvedReturnType->isDynFn() ||
+         Fn->ResolvedReturnType->isUniquePtr() ||
          isStaticReturnStorageCandidate(Fn)))
       m_CallableFactoryStates[Fn] = CallableFactoryState::Preparing;
     validateHandleGrammar(getLoc(Fn), Fn->ResolvedReturnType);
@@ -5814,6 +5820,14 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       Info.IsMorphicExempt = true;
     }
     CurrentScope->define(Arg.Name, Info);
+    if (m_EnableStage1ExplicitCallerCede && Arg.IsCeded && Info.TypeObj &&
+        Info.TypeObj->isUniquePtr()) {
+      auto proof = std::make_shared<ResultIndependenceFact>();
+      proof->ValueType = Info.TypeObj;
+      proof->Scope = Fn;
+      proof->RequiredArguments.insert(argumentIndex);
+      m_IndependentValues[CurrentScope->Symbols.at(Arg.Name).SymbolID] = std::move(proof);
+    }
   }
 
   populateOutcomeTransitionIdentities(Fn);
@@ -5822,6 +5836,11 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   checkUnsafePublicFunctionBoundary(Fn);
 
   std::optional<CallableReturnEnvironmentFrame> callableReturnEnvironment;
+  std::optional<IndependentReturnFrame> independentReturn;
+  const bool collectIndependentReturn = m_EnableStage1ExplicitCallerCede &&
+      !m_IsPrecomputingCaptures && !Fn->IsClosureInvoke && Fn->ResolvedReturnType &&
+      Fn->ResolvedReturnType->isUniquePtr();
+  if (collectIndependentReturn) m_IndependentReturns.erase(Fn);
   std::optional<StaticReturnStorageFrame> staticReturnStorage;
   const bool collectStaticReturn = m_EnableStage1ExplicitCallerCede &&
       !m_IsPrecomputingCaptures && isStaticReturnStorageCandidate(Fn);
@@ -5846,7 +5865,13 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
     if (collectStaticReturn)
       m_StaticReturnStorageFrames.push_back({Fn, m_CallableReturnClosureDepth});
+    if (collectIndependentReturn)
+      m_IndependentReturnFrames.push_back({Fn, m_CallableReturnClosureDepth});
     checkStmt(Fn->Body.get());
+    if (collectIndependentReturn) {
+      independentReturn = std::move(m_IndependentReturnFrames.back());
+      m_IndependentReturnFrames.pop_back();
+    }
     if (collectStaticReturn) {
       staticReturnStorage = std::move(m_StaticReturnStorageFrames.back());
       m_StaticReturnStorageFrames.pop_back();
@@ -6028,9 +6053,22 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       m_ValidatedStaticReturnStorage[Fn] = std::move(staticReturnStorage->Origins);
     }
   }
-  if (collectCallableReturn || collectStaticReturn)
+  if (independentReturn && independentReturn->SawReturn && independentReturn->Complete &&
+      Fn->Body && allPathsReturn(Fn->Body.get()) && !HasError) {
+    const auto &records = DiagnosticEngine::records();
+    if (std::none_of(records.begin() + functionDiagnosticStart, records.end(),
+                    [](const auto &record) { return record.Level == DiagLevel::Error; })) {
+      auto proof = std::make_shared<ResultIndependenceFact>();
+      proof->Scope = Fn;
+      proof->ValueType = Fn->ResolvedReturnType;
+      proof->RequiredArguments = std::move(independentReturn->RequiredArguments);
+      m_IndependentReturns[Fn] = std::move(proof);
+    }
+  }
+  if (collectCallableReturn || collectStaticReturn || collectIndependentReturn)
     m_CallableFactoryStates[Fn] = (m_ValidatedCallableReturnEnvironments.count(Fn) ||
-                                    m_ValidatedStaticReturnStorage.count(Fn))
+                                    m_ValidatedStaticReturnStorage.count(Fn) ||
+                                    m_IndependentReturns.count(Fn))
         ? CallableFactoryState::Valid : CallableFactoryState::Invalid;
   if (Fn->Body) {
     auto &rawSummary = m_RawAddressReturns[Fn];
@@ -7218,6 +7256,9 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     if (validation != GenericSpecializationValidationState::Valid &&
         !m_StaticReturnStorageFrames.empty())
       m_StaticReturnStorageFrames.back().Complete = false;
+    if (validation != GenericSpecializationValidationState::Valid &&
+        !m_IndependentReturnFrames.empty())
+      m_IndependentReturnFrames.back().Complete = false;
     if (!entry ||
         validation == GenericSpecializationValidationState::Unchecked) {
       if (entry) {
@@ -7912,6 +7953,9 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
   if (validation != GenericSpecializationValidationState::Valid &&
       !m_StaticReturnStorageFrames.empty())
     m_StaticReturnStorageFrames.back().Complete = false;
+  if (validation != GenericSpecializationValidationState::Valid &&
+      !m_IndependentReturnFrames.empty())
+    m_IndependentReturnFrames.back().Complete = false;
   return {Instance, validation, cacheEntry->BodyQualification};
 }
 

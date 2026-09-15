@@ -1588,6 +1588,16 @@ void Sema::checkStmt(Stmt *S) {
       }
     }
     recordEnumReturn(Ret, !hasNewReturnError());
+    if (!m_IndependentReturnFrames.empty() &&
+        m_IndependentReturnFrames.back().Function == CurrentFunction &&
+        m_IndependentReturnFrames.back().ClosureDepth == m_CallableReturnClosureDepth) {
+      auto proof = resultIndependence(Ret->ReturnValue.get());
+      auto &frame = m_IndependentReturnFrames.back();
+      frame.SawReturn = true;
+      frame.Complete &= enforceReturnSourcePlan && !hasNewReturnError() &&
+                        returnSourcePlan->admitted() && proof != nullptr;
+      if (proof) frame.RequiredArguments.insert(proof->RequiredArguments.begin(), proof->RequiredArguments.end());
+    }
     if (!m_StaticReturnStorageFrames.empty() &&
         m_StaticReturnStorageFrames.back().Function == CurrentFunction &&
         m_StaticReturnStorageFrames.back().ClosureDepth == m_CallableReturnClosureDepth) {

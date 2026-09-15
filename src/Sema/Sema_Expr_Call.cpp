@@ -3332,6 +3332,23 @@ Sema::makeExplicitCedeStage0NonCallGroupIdentity(ASTNode *site,
 }
 
 void Sema::invalidateReturnSourceProof(Expr *expression, bool unknown) {
+  auto proofPath = makeAccessPath(expression);
+  SymbolInfo *proofBinding = nullptr;
+  if (!proofPath.RootID) m_IndependentValues.clear();
+  else {
+    m_IndependentValues.erase(proofPath.RootID);
+    m_IndependentValues.erase(canonicalizeAccessPath(proofPath).RootID);
+    if (CurrentScope->findSymbolByID(proofPath.RootID, proofBinding) && proofBinding) {
+      if (proofBinding->TypeObj && proofBinding->TypeObj->isRawPointer())
+        m_IndependentValues.clear();
+      if (proofBinding->CurrentReferenceTargets) {
+        if (proofBinding->CurrentReferenceTargets->empty()) m_IndependentValues.clear();
+        for (const auto &target : *proofBinding->CurrentReferenceTargets)
+          m_IndependentValues.erase(canonicalizeAccessPath(target).RootID);
+      }
+      m_IndependentValues.erase(proofBinding->BorrowedPath.RootID);
+    }
+  }
   while (expression) {
     if (auto *cast = dynamic_cast<CastExpr *>(expression))
       expression = cast->Expression.get();
@@ -4086,6 +4103,75 @@ void Sema::prepareStaticReturnStorage(Expr *source) {
     prepareCallableFactory(function);
 }
 
+static bool sameIndependentValueType(const std::shared_ptr<Type> &left,
+                                     const std::shared_ptr<Type> &right) {
+  if (!left || !right || !left->isUniquePtr() || !right->isUniquePtr() ||
+      left->IsBlocked != right->IsBlocked) return false;
+  auto a = left->getPointeeType(), b = right->getPointeeType();
+  return a && b && a->withAttributes(false, a->IsNullable, a->IsBlocked)->equals(
+      *b->withAttributes(false, b->IsNullable, b->IsBlocked));
+}
+
+void Sema::prepareResultIndependence(Expr *source) {
+  source = stage0SurfaceSource(source);
+  if (!source || !source->ResolvedType || !source->ResolvedType->isUniquePtr()) return;
+  FunctionDecl *function = nullptr;
+  if (auto *call = dynamic_cast<CallExpr *>(source)) function = call->ResolvedFn;
+  if (auto *call = dynamic_cast<MethodCallExpr *>(source)) function = call->ResolvedFn;
+  if (function && function->Body && !function->IsClosureInvoke)
+    prepareCallableFactory(function);
+}
+
+std::shared_ptr<const ResultIndependenceFact> Sema::resultIndependence(Expr *source) {
+  if (!source || !source->ResolvedType || !source->ResolvedType->isUniquePtr()) return {};
+  const auto actual = source->ResolvedType;
+  source = stage0SurfaceSource(source);
+  if (!source) return {};
+  if (auto *allocation = dynamic_cast<NewExpr *>(source)) {
+    auto proof = allocation->ResultIndependence;
+    return proof && proof->Scope == CurrentFunction &&
+        sameIndependentValueType(proof->ValueType, actual) ? proof : nullptr;
+  }
+  auto *call = dynamic_cast<CallExpr *>(source);
+  auto *method = dynamic_cast<MethodCallExpr *>(source);
+  if (call || method) {
+    FunctionDecl *function = call ? call->ResolvedFn : method->ResolvedFn;
+    auto found = m_IndependentReturns.find(function);
+    if (!function || !function->Body || function->IsClosureInvoke ||
+        found == m_IndependentReturns.end() ||
+        found->second->Scope != function ||
+        m_CallableFactoryStates[function] != CallableFactoryState::Valid ||
+        !sameIndependentValueType(found->second->ValueType, actual)) return {};
+    if (function->TemplateOrigin) {
+      auto entry = InstantiationCache.find(function->Name);
+      if (entry == InstantiationCache.end() || !entry->second ||
+          entry->second->Instance != function ||
+          entry->second->Validation != GenericSpecializationValidationState::Valid) return {};
+    }
+    auto proof = std::make_shared<ResultIndependenceFact>();
+    proof->ValueType = actual;
+    proof->Scope = CurrentFunction;
+    for (size_t index : found->second->RequiredArguments) {
+      Expr *argument = call ? (index < call->Args.size() ? call->Args[index].get() : nullptr)
+          : index == 0 ? method->Object.get()
+          : index - 1 < method->Args.size() ? method->Args[index-1].get() : nullptr;
+      auto actualProof = resultIndependence(argument);
+      if (!actualProof) return {};
+      proof->RequiredArguments.insert(actualProof->RequiredArguments.begin(), actualProof->RequiredArguments.end());
+    }
+    return proof;
+  }
+  auto path = makeAccessPath(source);
+  if (!path.RootID || !path.Projections.empty()) return {};
+  SymbolInfo *binding = nullptr;
+  if (!CurrentScope->findSymbolByID(path.RootID, binding) || !binding || binding->IsPlaceAlias)
+    return {};
+  auto found = m_IndependentValues.find(path.RootID);
+  if (found == m_IndependentValues.end() || found->second->Scope != CurrentFunction ||
+      !sameIndependentValueType(found->second->ValueType, actual)) return {};
+  return found->second;
+}
+
 bool Sema::prepareCallableReturnEnvironment(Expr *source) {
   source = stage0SurfaceSource(source);
   while (auto *cast = dynamic_cast<CastExpr *>(source)) {
@@ -4330,6 +4416,7 @@ bool Sema::Stage1BindingTransfer::prepare(
   if (validated && hasNewError()) return false;
   if (validated) {
     Owner.prepareStaticReturnStorage(source);
+    Owner.prepareResultIndependence(source);
     if (hasNewError()) return false;
   }
   bool refreshCallable = false;
@@ -4536,6 +4623,36 @@ Sema::Stage1BindingTransfer::~Stage1BindingTransfer() {
   authority.Destination = Plan->Destination;
   authority.ItemPlan = *Plan;
   Site->Stage0Authority = std::move(authority);
+  // Fresh bindings only. Mutation remains a conservative loss of evidence.
+  if (auto *variable = dynamic_cast<VariableDecl *>(Site)) {
+    SymbolInfo *binding = nullptr;
+    std::string name;
+    if (variable->Init && Owner.CurrentScope->findVariableWithDeref(variable->Name, binding, name) && binding) {
+      // A type-closed new may already have an admitted pre-plan, so no
+      // post-check replan was necessary. Seal its fact only at this successful
+      // transaction commit, after normal initializer validation completed.
+      if (auto *allocation = dynamic_cast<NewExpr *>(variable->Init.get());
+          allocation && !allocation->ResultIndependence && allocation->ResolvedType &&
+          allocation->ResolvedType->isUniquePtr() && Plan->Prepared.DependencyFactsComplete &&
+          Plan->Prepared.Dependency == TransferDependencyKind::None &&
+          Plan->Prepared.DependencyRoots.empty() && !Plan->Prepared.ReferentPlace) {
+        auto proof = std::make_shared<ResultIndependenceFact>();
+        proof->ValueType = allocation->ResolvedType;
+        proof->Scope = Owner.CurrentFunction;
+        bool complete = true;
+        if (auto *init = dynamic_cast<InitStructExpr *>(allocation->Initializer.get()))
+          for (const auto &field : init->Members)
+            if (field.second->ResolvedType && field.second->ResolvedType->isUniquePtr()) {
+              auto child = Owner.resultIndependence(field.second.get());
+              if (!child) { complete = false; break; }
+              proof->RequiredArguments.insert(child->RequiredArguments.begin(), child->RequiredArguments.end());
+            }
+        if (complete) allocation->ResultIndependence = std::move(proof);
+      }
+      auto proof = Owner.resultIndependence(variable->Init.get());
+      if (proof) Owner.m_IndependentValues[binding->SymbolID] = std::move(proof);
+    }
+  }
   if (auto *assignment = dynamic_cast<BinaryExpr *>(Site)) {
     assignment->CallableAssignment = AssignmentDisposition;
     assignment->BorrowedValueReplacement = std::move(BorrowedReplacement);
@@ -5500,6 +5617,27 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   auto plan = completeExplicitCedeStage0CallPlan(
       std::move(facts), actualType, destinationType, false, true, {},
       destination, context, true);
+  // Record only; this block does not change plan admission or eligibility.
+  if (normalSemaValidated && plan.admitted() && actualType && actualType->isUniquePtr() &&
+      plan.Prepared.DependencyFactsComplete && plan.Prepared.Dependency == TransferDependencyKind::None &&
+      plan.Prepared.DependencyRoots.empty() && !plan.Prepared.ReferentPlace) {
+    if (auto *allocation = dynamic_cast<NewExpr *>(exactValue)) {
+      auto proof = std::make_shared<ResultIndependenceFact>();
+      proof->ValueType = actualType;
+      proof->Scope = CurrentFunction;
+      bool complete = true;
+      if (auto *init = dynamic_cast<InitStructExpr *>(allocation->Initializer.get())) {
+        for (const auto &field : init->Members) {
+          if (field.second->ResolvedType && field.second->ResolvedType->isUniquePtr()) {
+            auto child = resultIndependence(field.second.get());
+            if (!child) { complete = false; break; }
+            proof->RequiredArguments.insert(child->RequiredArguments.begin(), child->RequiredArguments.end());
+          }
+        }
+      }
+      if (complete) allocation->ResultIndependence = std::move(proof);
+    }
+  }
   if (validatedCallableBinding && actualType->isDynFn() && plan.admitted() &&
       plan.ValueProduction == TransferValueProduction::CopyIdentity &&
       plan.Source == TransferSourceDisposition::KeepLive) {
@@ -8592,6 +8730,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           m_CallableReturnFrames.back().Facts.Complete = false;
         if (!m_StaticReturnStorageFrames.empty())
           m_StaticReturnStorageFrames.back().Complete = false;
+        if (!m_IndependentReturnFrames.empty())
+          m_IndependentReturnFrames.back().Complete = false;
         if (SemanticEvidence::isCallTransferShadowEnabled() &&
             stage0CallEntrySnapshot) {
           m_Stage0InvalidGenericSpecializationCalls.insert(Call);

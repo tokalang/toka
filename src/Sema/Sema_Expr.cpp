@@ -846,6 +846,7 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
 
 Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
+  state.IndependentValues = m_IndependentValues;
   state.EnumResults = m_EnumResults;
   state.RawSlotDependencies = m_RawSlotDependencies;
   state.NullStorageBindings = m_NullStorageBindings;
@@ -919,6 +920,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       states.front().PayloadFlowRestrictedPaths;
   auto mergedReferenceTargets = states.front().ReferenceTargets;
   auto callableEnvironments = states.front().CallableEnvironments;
+  auto independentValues = states.front().IndependentValues;
   auto enumResults = states.front().EnumResults;
   auto rawSlotDependencies = states.front().RawSlotDependencies;
   auto nullStorageBindings = states.front().NullStorageBindings;
@@ -1023,6 +1025,12 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       else
         ++it;
     }
+    for (auto it = independentValues.begin(); it != independentValues.end();) {
+      auto other = state.IndependentValues.find(it->first);
+      if (other == state.IndependentValues.end() || it->second != other->second)
+        it = independentValues.erase(it);
+      else ++it;
+    }
 
     PALCheckerState.restore(mergedPAL);
     PALCheckerState.mergeBranches(palBase, mergedPAL, true, state.PAL, true);
@@ -1034,6 +1042,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   restoreVisibleConditionalTodoIds(CurrentScope, mergedConditionalTodoIds);
   restoreVisibleReferenceTargets(CurrentScope, mergedReferenceTargets);
   m_CallableEnvironments = std::move(callableEnvironments);
+  m_IndependentValues = std::move(independentValues);
   m_EnumResults = std::move(enumResults);
   m_RawSlotDependencies = std::move(rawSlotDependencies);
   m_NullStorageBindings = std::move(nullStorageBindings);
@@ -4731,6 +4740,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     error(AIE, DiagID::ERR_SEMA_BARE_ARRAY_INIT_EXCLUDED);
     return toka::Type::fromString("unknown");
   } else if (auto *New = dynamic_cast<NewExpr *>(E)) {
+    New->ResultIndependence.reset();
     validateTypeVisibilityInType(New->Type, getLoc(New));
     auto resolvedType = resolveType(
         New->TypeSyntax ? toka::Type::fromSyntax(New->TypeSyntax)

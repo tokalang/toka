@@ -360,3 +360,38 @@ Stage-0 CodeGen authority fault suite, and CSV corpus/full/streaming matrix:
 4/4 CTest, 74.48 s. This is not qualification of the still-failing direct factory
 result bindings and is not a whole-suite rerun. Other-worker RFC changes remain
 untouched; no push or E activation.
+
+## Result independence fact collection (WIP, admission not enabled)
+
+The next implementation reuses the existing factory Unprepared/Preparing/Valid/
+Invalid state machine and isolated body journal, rather than adding a public
+dependency inference protocol. A private value certificate is seeded only after
+an admitted, normally validated new initializer with complete empty dependencies.
+It is bound to the expression/type/function instance and is not cloned or exported.
+Fresh local bindings carry the fact; mutation, rebind, alias writes and uncertain
+raw aliasing discard it. Snapshot rollback restores facts, while joins intersect.
+Rebinding does not automatically restore an old fact merely because types match.
+
+All checked returns contribute to a function frame; publication waits for full
+successful body validation and all-return coverage. Generic Invalid/Unchecked
+dependencies poison that frame using the existing validation paths. A consuming
+unique parameter may carry a **conditional prerequisite**, never an unconditional
+independence claim: an explicit whole-value relay requires the caller's actual
+argument to have a corresponding fact. No borrow/dependency route is synthesized.
+Missing bodies, missing summaries, wrong function/type identity and invalid
+generic cache entries cannot supply a fact.
+
+Native Sema tests exercise constructors, conditional relay, forwarding, all-return
+branches, field/alias/loop mutation, rebind, rollback and conservative joins.
+The combined fact/new-initializer/CSV gates pass 3/3 (77.86 s); after an additional
+function-identity guard, the fact unit passes again (1/1, 1.67 s).
+
+**No new result admission is enabled.** Auto-review rejected the small consumer
+that would set Dependency=None, DependencyFactsComplete=true and
+TemporaryEligibility=Eligible only for a normally validated result with a valid
+summary, discharged prerequisites and no existing external dependency. The full
+unapplied consumer is [result_independence_activation_unapplied.patch](result_independence_activation_unapplied.patch).
+Direct make<File> caller bindings therefore remain pending; cache/source-hidden
+end-to-end qualification and the requested full baseline refresh have not been
+claimed. Explicit production-admission approval is still required by execution
+review. E, ABI/TKI, raw_take, publishing and other-worker changes remain untouched.

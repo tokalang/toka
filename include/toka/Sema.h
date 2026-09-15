@@ -369,6 +369,7 @@ public:
 
 class Sema {
 public:
+  friend struct ResultIndependenceTestAccess;
   friend bool areStructsStructurallyCompatible(Sema *sema, const std::string &targetName, const std::string &sourceName);
 
   Sema() {
@@ -801,6 +802,7 @@ private:
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
   struct AnalysisState {
+    std::map<uint64_t, std::shared_ptr<const ResultIndependenceFact>> IndependentValues;
     std::map<AccessPath, RawSlotDependencyEvidencePtr> RawSlotDependencies;
     std::map<uint64_t, std::shared_ptr<Type>> NullStorageBindings;
     std::map<uint64_t, EnumResultSourcePtr> EnumResults;
@@ -1164,6 +1166,17 @@ private:
   unsigned m_CallableReturnClosureDepth = 0;
   std::vector<CallableReturnEnvironmentFrame> m_CallableReturnFrames;
   std::map<FunctionDecl *, CallableEnvironmentFacts> m_ValidatedCallableReturnEnvironments;
+  struct IndependentReturnFrame {
+    FunctionDecl *Function = nullptr;
+    unsigned ClosureDepth = 0;
+    bool SawReturn = false, Complete = true;
+    std::set<size_t> RequiredArguments;
+  };
+  std::vector<IndependentReturnFrame> m_IndependentReturnFrames;
+  std::map<uint64_t, std::shared_ptr<const ResultIndependenceFact>> m_IndependentValues;
+  std::map<FunctionDecl *, std::shared_ptr<const ResultIndependenceFact>> m_IndependentReturns;
+  std::shared_ptr<const ResultIndependenceFact> resultIndependence(Expr *source);
+  void prepareResultIndependence(Expr *source);
   struct StaticReturnStorageFrame {
     FunctionDecl *Function = nullptr;
     unsigned ClosureDepth = 0;

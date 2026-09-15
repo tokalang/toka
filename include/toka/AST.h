@@ -401,9 +401,18 @@ cloneVec(const std::vector<std::unique_ptr<T>> &vec) {
   return res;
 }
 
+// Private Sema proof, never serialized or cloned. Nonempty prerequisites are
+// conditional facts, not permission to treat a parameter as independent.
+struct ResultIndependenceFact {
+  std::shared_ptr<Type> ValueType;
+  const FunctionDecl *Scope = nullptr;
+  std::set<size_t> RequiredArguments;
+};
+
 class Expr : public ASTNode {
 public:
   std::shared_ptr<Type> ResolvedType;
+  std::shared_ptr<const ResultIndependenceFact> ResultIndependence;
   // Sema-only current-value fact. Deliberately not copied by expression
   // clone(): it says opaque raw fields are null, not that storage is owned.
   std::shared_ptr<Type> KnownNullRawStorageType;
