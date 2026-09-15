@@ -590,3 +590,96 @@ All five have matching normal/shadow return code and stderr. Only the three
 runtime successes are directed recoveries; no full baseline figures are updated.
 No E, push or release; other-worker RFC edits remain unstaged. This batch is an
 incomplete WIP, not a request to accept all five or to weaken the environment gate.
+
+## Channel targeted diagnosis (b821cafd; no admission changes)
+
+18 isolated normal/shadow comparisons separate construction, duplication,
+concrete closure capture/spawn and dyn-fn capture/spawn. Eleven successful
+programs compile and run; seven rejected variants preserve parity and emit
+neither object nor IR. These are diagnostic observations, not new negative
+oracles or a claim that all legal variants are supported.
+
+| Source | Construction / duplicate | Concrete closure binding / spawn | dyn fn binding / spawn |
+| --- | --- | --- | --- |
+| Direct ~Mutex<i32> | pass / pass | pass / EnvironmentLifetimeUnproven | pass / pass |
+| User Wrapper containing ~Mutex<i32> | pass / pass | pass / EnvironmentLifetimeUnproven | IncompleteFacts / IncompleteFacts |
+| Actual ChannelPair<i32> then Sender.clone | pass / pass | pass / EnvironmentLifetimeUnproven | IncompleteFacts / IncompleteFacts |
+
+The wrapper explicitly declares Send for this comparison. That declaration does
+not supply storage evidence and does not make the failed variants pass. Capture
+bodies only return zero, so the comparison does not conflate payload operations
+with construction of an owning execution environment.
+
+A standalone read-only AST inspector links the existing frontend library and
+checks normally analyzed source. It does not inject witnesses, alter compiler
+code, use a debugger, or patch the running compiler. Observed candidate records:
+
+- Direct owner: recipe present; shared duplicate: recipe present; both concrete
+  and dyn closure ASTs retain one NativeSyncCaptureRecipe and a boundary summary.
+- Wrapper value and duplicated wrapper: no owner recipe; closure: zero native
+  capture recipes, despite its boundary summary being present.
+- ChannelPair and cloned Sender: no owner recipe; closure: zero capture recipes.
+- Sender ClosedPayload fails at
+  `payload.channel.pointee.state.type_argument[0].queue.front.buf`, with
+  `ReplacementMayCarryExternalDependency`. ChannelPair reports the same path
+  prefixed with `.tx`.
+
+**Recipe presence is not a validated witness.** Direct Mutex also fails plain
+structural ClosedPayload at its native handle, but succeeds via the accepted
+native owner path. Conversely, successful wrapping/cloning does not prove that
+an execution-boundary storage witness exists.
+
+There are three distinct causes, not one lost boolean:
+
+1. Existing-fact wiring: Stage1BindingTransfer collects/stores callable facts
+   only for Function/DynFn types. The concrete closure is a Shape; its capture
+   recipe exists but the later named-binding environment lookup cannot use it.
+   This explains the direct concrete/dyn discrepancy, not Sender's absent proof.
+2. Wrapper admission boundary: collectNativeSyncOwnerRecipe does not retain a
+   usable candidate for this wrapper. Even repairing that local propagation
+   would still meet qualifyNativeSyncOwner's explicit std/sync-only composite
+   restriction and its restricted children/operations rules. It is not valid to
+   claim that removing one cast or restoring one map entry qualifies the wrapper.
+3. Missing Channel storage contract: Mutex<WaitQueue<T>> requires a payload rule
+   that cannot be obtained from Send or structural ClosedPayload. RingCore's Vec
+   raw buffer is outside that predicate. The failed predicate says the current
+   contract cannot prove the invariant; it does not prove this live Sender is
+   actually borrowing external storage. No complete Channel witness is being
+   silently dropped by Sender.clone: none was observed at ChannelPair creation.
+
+### Minimum proposed next scope (design only)
+
+Do not expand generic recursive-container proofs or enable arbitrary wrapper
+composition. A Channel-specific private owner adapter is the smaller coherent
+option, but requires an explicit storage contract before implementation:
+
+- Bind an exact endpoint instance to its actual shared channel owner, native
+  children and owned queue storage. Keep the existing endpoint API, unbounded
+  channel behavior, bounded backpressure and thread protocol unchanged.
+- The private constructor must establish the queue/native cleanup responsibility;
+  send/recv, clone, growth/removal and drop must preserve or retire it. Raw import,
+  unknown alias writes and exposed internal mutation invalidate the evidence.
+  Reuse raw_take's existing unsafe obligations; do not infer initialization or
+  a live extent from alloc, a type name or Send.
+- Do not call WaitQueue universally ClosedPayload: its buffer contract differs
+  from permission to replace it with any raw-bearing value. Qualify the actual
+  owned queue and checked element domain, not an unconditional independent flag.
+  Nonempty queues, failure cleanup, outstanding owners and replacement must be
+  covered. Generic instances lacking complete element/lifetime facts stay out.
+- Clone/capture may carry that exact adapter identity only after it exists.
+  CodeGen would consume its completed plan, not reconstruct ownership. No new
+  capture layout, RC algorithm, ABI, runtime protocol or generic proof engine.
+
+This is a proposed new *limited contract*, not implementation authorization or
+an assertion that a few propagation lines will finish MPSC. The separate concrete
+closure wiring issue can be fixed narrowly later, but is not sufficient or a
+reason to reopen frozen thread/sync. Simply splitting Mutex/CondVar into separate
+captures would also leave the raw queue problem unresolved; a fixed-capacity
+substitute would change the unbounded channel contract and is not proposed.
+
+Reproduction sources, scripts, runtime/diagnostic results and AST observations:
+`/private/tmp/toka-channel-diagnosis.f8uqNL` (`matrix.py`, `erased.py`,
+`results.json`, `erased-results.json`, `inspect.cpp`, `*.facts`). No repository
+implementation/test inputs were changed during diagnosis. The three recovered
+stress programs remain intact; both MPSC programs remain required positives.
+No E, full-suite rerun, push, runtime or environment-gate changes.
