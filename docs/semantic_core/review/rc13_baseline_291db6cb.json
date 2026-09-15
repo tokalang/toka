@@ -1,0 +1,854 @@
+{
+  "tested_revision": "291db6cbed2ba80d4a57ec7777914eacef6d56c7",
+  "baseline_revision": "13b907bc2bbf078cc4f7aaa13bd9c38d42f1f152",
+  "baseline_scope": "Previous complete G qualification run, not G-start baseline",
+  "logs": "/private/tmp/toka-rc13-baseline.NrSLyz",
+  "source_unchanged_during_all_runs": true,
+  "tracked_diff_sha256": "fa394f679b26a2f6f7957f6c5b70d4035918809912664eb1b08166c7ba1cc882",
+  "runs": {
+    "tools-build": {
+      "command": [
+        "cmake",
+        "--build",
+        "/private/tmp/toka-b6-dynamic-build-20260912",
+        "-j",
+        "4"
+      ],
+      "returncode": 0,
+      "seconds": 17.85,
+      "changed_tracked_files": []
+    },
+    "pass": {
+      "command": [
+        "bash",
+        "tools/scripts/test_pass.sh"
+      ],
+      "returncode": 1,
+      "seconds": 303.71,
+      "changed_tracked_files": []
+    },
+    "fail": {
+      "command": [
+        "python3",
+        "tools/scripts/test_verify_fail.py"
+      ],
+      "returncode": 1,
+      "seconds": 142.18,
+      "changed_tracked_files": []
+    },
+    "ctest": {
+      "command": [
+        "ctest",
+        "--test-dir",
+        "/private/tmp/toka-b6-dynamic-build-20260912",
+        "--output-on-failure",
+        "-j",
+        "2"
+      ],
+      "returncode": 8,
+      "seconds": 1028.37,
+      "changed_tracked_files": []
+    }
+  },
+  "suites": {
+    "pass": {
+      "baseline_passed": 388,
+      "baseline_total": 457,
+      "passed": 401,
+      "total": 457,
+      "recovered": [
+        "g09_context.tk",
+        "g10_async_http_server_test.tk",
+        "g10_http_empty_header_value.tk",
+        "g10_http_phase1_test.tk",
+        "g10_net_http_server_test.tk",
+        "g10_websocket.tk",
+        "g12_stdx_http_client_server_test.tk",
+        "g12_stdx_https_wss_test.tk",
+        "g12_stdx_websocket_malformed_test.tk",
+        "g12_stdx_websocket_test.tk",
+        "g13_stdx_net_zero_copy_bench.tk",
+        "g16_stdx_http_server_connection_test.tk",
+        "g18_header_map_lookup_miss.tk"
+      ],
+      "added_failures": [],
+      "remaining_failures": [
+        "for_mutable_binding.tk",
+        "g03_diagnostic_test.tk",
+        "g04_anon_records.tk",
+        "g04_raw_pointer.tk",
+        "g04_scratch_uninit.tk",
+        "g04_token_interior_mut.tk",
+        "g07_alias_generic_test.tk",
+        "g07_arena_test.tk",
+        "g07_btree_map_test.tk",
+        "g07_btree_set_test.tk",
+        "g07_container_get_dup_lifecycle.tk",
+        "g07_for_iterators.tk",
+        "g07_slab_test.tk",
+        "g07_test_panic.tk",
+        "g07_test_stdx_flag.tk",
+        "g08_auto_drop.tk",
+        "g08_for_alias_binding.tk",
+        "g08_for_alias_generic_clone.tk",
+        "g08_for_alias_handle_array_permissions.tk",
+        "g08_for_alias_place_iterator_vec_ref.tk",
+        "g08_for_alias_shared_array_interior_mutability.tk",
+        "g08_for_alias_shared_array_permissions.tk",
+        "g08_for_alias_writable_vec_handles.tk",
+        "g08_handle_grammar_parser_matrix.tk",
+        "g08_handle_grammar_valid_matrix.tk",
+        "g08_issue14.tk",
+        "g08_match_guard_leak.tk",
+        "g08_match_shared_refcount.tk",
+        "g08_morphic_member_identity.tk",
+        "g08_noshared.tk",
+        "g08_pal_member_shared_borrow_payload_write.tk",
+        "g08_pal_stress_test.tk",
+        "g08_pal_stress_test_borrow.tk",
+        "g08_pointer_print.tk",
+        "g08_ptr_repro.tk",
+        "g08_sync_mpsc_bounded.tk",
+        "g08_sync_mpsc_multi.tk",
+        "g08_test.tk",
+        "g08_vec_payload_borrow_views.tk",
+        "g09_async_cede_shared_move_test.tk",
+        "g09_async_wait_syntax.tk",
+        "g09_atomic_stress.tk",
+        "g09_mutex_stress.tk",
+        "g09_std_atomic.tk",
+        "g10_build_hybrid_test.tk",
+        "g10_io_bufio.tk",
+        "g10_net_read_exact.tk",
+        "g10_net_tcp_echoserver.tk",
+        "g10_test_sentry_benchmark.tk",
+        "g14_generic_nested_reader_bound.tk",
+        "g14_stdx_csv_corpus_test.tk",
+        "g14_stdx_csv_test.tk",
+        "g15_stdx_semver_test.tk",
+        "g15_stdx_toml_test.tk",
+        "g18_slab_lookup_miss.tk",
+        "g18_stdx_template_test.tk"
+      ],
+      "abnormal_exits": []
+    },
+    "fail": {
+      "baseline_passed": 444,
+      "baseline_total": 478,
+      "passed": 445,
+      "total": 478,
+      "recovered": [
+        "header_map_lookup_miss_blocks_insert.tk"
+      ],
+      "added_failures": [],
+      "remaining_failures": [
+        "alias_generic_test.tk",
+        "borrow.tk",
+        "borrow_field.tk",
+        "for_alias_removes_morphology.tk",
+        "for_alias_shape_field_ceiling.tk",
+        "for_alias_shared_array_interior_sibling.tk",
+        "init_custom_drop_reference_full_write.tk",
+        "init_custom_drop_reference_sibling_read.tk",
+        "init_immutable_live_array_element_reassign_after_cede.tk",
+        "init_immutable_maybe_moved_array_element_reassign.tk",
+        "member_access_sema_prefix_fail.tk",
+        "morphic_constraint_violation.tk",
+        "morphology_raw_extendable_vec_borrowed.tk",
+        "owned_lazy_iterator_consuming_callable.tk",
+        "pal_branch_borrowed_field_escape.tk",
+        "pal_member_mut_borrow_duplicate.tk",
+        "pal_member_mut_borrow_payload_read.tk",
+        "pal_member_mut_borrow_payload_write.tk",
+        "projection_reference_hole_fill_rejected.tk",
+        "readonly_member_ref_decl_upgrade_from_plain_cast.tk",
+        "ref_life_bound.tk",
+        "return_ref.tk",
+        "slab_lookup_miss_blocks_remove.tk",
+        "slab_uaf_decons.tk",
+        "smart_ptr_from_stack.tk",
+        "sync_guard_non_send.tk",
+        "thread_spawn_copy_non_sync_capture.tk",
+        "thread_spawn_implicit_capture_nested_closure.tk",
+        "thread_spawn_implicit_capture_via_assignment.tk",
+        "thread_spawn_implicit_capture_via_binding.tk",
+        "thread_spawn_non_send_capture.tk",
+        "unique_value_local_move_noncede_parameter.tk",
+        "unset_escape.tk"
+      ],
+      "abnormal_exits": []
+    },
+    "ctest": {
+      "baseline_passed": 96,
+      "baseline_total": 99,
+      "passed": 97,
+      "total": 100,
+      "recovered": [],
+      "added_failures": [],
+      "remaining_failures": [
+        "toka_binding_b2_arena",
+        "toka_stage1_indirect_parameter_cede",
+        "toka_stage1_return_matrix"
+      ],
+      "abnormal_exits": []
+    }
+  },
+  "new_ctest_case": "toka_context_receiver_handoff",
+  "leaks": {
+    "status": "unverified-task-port-unavailable",
+    "probes": [
+      {
+        "name": "program",
+        "command": [
+          "/private/tmp/toka-rc13-context.R0B1Nn/route-direct"
+        ],
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.01
+      },
+      {
+        "name": "tool-control",
+        "command": [
+          "/usr/bin/leaks",
+          "--atExit",
+          "--",
+          "/usr/bin/true"
+        ],
+        "returncode": 255,
+        "timeout": false,
+        "seconds": 0.01
+      },
+      {
+        "name": "tool-program",
+        "command": [
+          "/usr/bin/leaks",
+          "--atExit",
+          "--",
+          "/private/tmp/toka-rc13-context.R0B1Nn/route-direct"
+        ],
+        "returncode": 255,
+        "timeout": true,
+        "seconds": 15
+      }
+    ],
+    "diagnostic": "Could not get task port for both /usr/bin/true and receiver program; receiver program alone exits 0"
+  },
+  "remaining_pass_first_errors": [
+    {
+      "case": "for_mutable_binding.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/for_mutable_binding.tk",
+        "line": 3
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g03_diagnostic_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0402",
+        "message": "Use of undeclared identifier 'labels'",
+        "file": "tests/pass/g03_diagnostic_test.tk",
+        "line": 43
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g04_anon_records.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g04_anon_records.tk",
+        "line": 51
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g04_raw_pointer.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+        "file": "tests/pass/g04_raw_pointer.tk",
+        "line": 88
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g04_scratch_uninit.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g04_scratch_uninit.tk",
+        "line": 4
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g04_token_interior_mut.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: TypeIncompatible",
+        "file": "tests/pass/g04_token_interior_mut.tk",
+        "line": 18
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_alias_generic_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g07_alias_generic_test.tk",
+        "line": 25
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_arena_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04663",
+        "message": "Cannot construct writable raw pointer: KnownReadOnlyOrFrozenSource",
+        "file": "tests/pass/g07_arena_test.tk",
+        "line": 31
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_btree_map_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: RouteIneligible",
+        "file": "lib/std/btreemap.tk",
+        "line": 29
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_btree_set_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: RouteIneligible",
+        "file": "lib/std/btreemap.tk",
+        "line": 29
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_container_get_dup_lifecycle.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: RouteIneligible",
+        "file": "lib/std/btreemap.tk",
+        "line": 29
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_for_iterators.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ReferenceBindingSelectorUnavailable",
+        "file": "lib/std/vec.tk",
+        "line": 168
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_slab_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+        "file": "lib/std/slab.tk",
+        "line": 85
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_test_panic.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04663",
+        "message": "Cannot construct writable raw pointer: KnownNullableSourceRequiresGuard",
+        "file": "tests/pass/g07_test_panic.tk",
+        "line": 32
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_test_stdx_flag.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "lib/stdx/cli/flag.tk",
+        "line": 395
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_auto_drop.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_auto_drop.tk",
+        "line": 54
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_for_alias_binding.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ReferenceBindingSelectorUnavailable",
+        "file": "lib/std/vec.tk",
+        "line": 168
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_for_alias_generic_clone.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ReferenceBindingSelectorUnavailable",
+        "file": "lib/std/vec.tk",
+        "line": 168
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_for_alias_handle_array_permissions.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0402",
+        "message": "Use of undeclared identifier 'owners'",
+        "file": "tests/pass/g08_for_alias_handle_array_permissions.tk",
+        "line": 7
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_for_alias_place_iterator_vec_ref.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ReferenceBindingSelectorUnavailable",
+        "file": "lib/std/vec.tk",
+        "line": 168
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_for_alias_shared_array_interior_mutability.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0402",
+        "message": "Use of undeclared identifier 'values'",
+        "file": "tests/pass/g08_for_alias_shared_array_interior_mutability.tk",
+        "line": 9
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_for_alias_shared_array_permissions.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0402",
+        "message": "Use of undeclared identifier 'values'",
+        "file": "tests/pass/g08_for_alias_shared_array_permissions.tk",
+        "line": 7
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_for_alias_writable_vec_handles.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: TypeIncompatible",
+        "file": "tests/pass/g08_for_alias_writable_vec_handles.tk",
+        "line": 20
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_handle_grammar_parser_matrix.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ReferenceBindingSelectorUnavailable",
+        "file": "lib/std/vec.tk",
+        "line": 168
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_handle_grammar_valid_matrix.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ReferenceBindingSelectorUnavailable",
+        "file": "lib/std/vec.tk",
+        "line": 168
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_issue14.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_issue14.tk",
+        "line": 56
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_match_guard_leak.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_match_guard_leak.tk",
+        "line": 36
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_match_shared_refcount.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_match_shared_refcount.tk",
+        "line": 36
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_morphic_member_identity.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0454",
+        "message": "Returning reference to parameter 'box' requires explicit dependency declaration (<- box)",
+        "file": "tests/pass/g08_morphic_member_identity.tk",
+        "line": 7
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_noshared.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_noshared.tk",
+        "line": 89
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_pal_member_shared_borrow_payload_write.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: TypeIncompatible",
+        "file": "tests/pass/g08_pal_member_shared_borrow_payload_write.tk",
+        "line": 10
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_pal_stress_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ProjectedHandleRequiresSubroot",
+        "file": "tests/pass/g08_pal_stress_test.tk",
+        "line": 77
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_pal_stress_test_borrow.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0496",
+        "message": "Type 'Engine#' places a binding permission on the type; use the binding name/hat, or an unnamed handle/reference capability type (did you mean 'place permissions on the binding name or binding hat, not the type'?)",
+        "file": "tests/pass/g08_pal_stress_test_borrow.tk",
+        "line": 67
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_pointer_print.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_pointer_print.tk",
+        "line": 28
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_ptr_repro.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+        "file": "tests/pass/g08_ptr_repro.tk",
+        "line": 38
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_sync_mpsc_bounded.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_sync_mpsc_bounded.tk",
+        "line": 19
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_sync_mpsc_multi.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_sync_mpsc_multi.tk",
+        "line": 18
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_test.tk",
+        "line": 91
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_vec_payload_borrow_views.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ReferenceBindingSelectorUnavailable",
+        "file": "lib/std/vec.tk",
+        "line": 168
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g09_async_cede_shared_move_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ExplicitCedeRequiresSource",
+        "file": "tests/pass/g09_async_cede_shared_move_test.tk",
+        "line": 46
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g09_async_wait_syntax.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "lib/std/task.tk",
+        "line": 463
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g09_atomic_stress.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: TypeIncompatible",
+        "file": "tests/pass/g09_atomic_stress.tk",
+        "line": 18
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g09_mutex_stress.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: TypeIncompatible",
+        "file": "tests/pass/g09_mutex_stress.tk",
+        "line": 6
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g09_std_atomic.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: TypeIncompatible",
+        "file": "tests/pass/g09_std_atomic.tk",
+        "line": 24
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g10_build_hybrid_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04662",
+        "message": "Cannot raw_take element: ElementDependenciesUnproven",
+        "file": "lib/std/vec.tk",
+        "line": 35
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g10_io_bufio.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "lib/stdx/io/bufio.tk",
+        "line": 165
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g10_net_read_exact.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0406",
+        "message": "public thread: SourceTransferUnproven",
+        "file": "tests/pass/g10_net_read_exact.tk",
+        "line": 45
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g10_net_tcp_echoserver.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0417",
+        "message": "Shape 'Result_M_JoinHandle_M_i32_A_N746f6b612e6e6f6d696e616c2d73686170652e76313b383a7265736f6c7665723b32313a746f6f6c636861696e2d76312d302e392e392d32313b31303a7374642f7468726561643b31313a5468726561644572726f723b313a303b_A#' has no member named 'join'",
+        "file": "tests/pass/g10_net_tcp_echoserver.tk",
+        "line": 117
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g10_test_sentry_benchmark.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0606",
+        "message": "Type 'SentryScope' does not satisfy trait bound '@JsonFactory' for generic parameter 'T'",
+        "file": "tests/pass/g10_test_sentry_benchmark.tk",
+        "line": 28
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g14_generic_nested_reader_bound.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "lib/stdx/io/bufio.tk",
+        "line": 29
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g14_stdx_csv_corpus_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04662",
+        "message": "Cannot raw_take element: ElementDependenciesUnproven",
+        "file": "lib/std/vec.tk",
+        "line": 35
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g14_stdx_csv_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04662",
+        "message": "Cannot raw_take element: ElementDependenciesUnproven",
+        "file": "lib/std/vec.tk",
+        "line": 35
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g15_stdx_semver_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ExplicitCedeRequiresSource",
+        "file": "lib/stdx/version/semver.tk",
+        "line": 251
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g15_stdx_toml_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04662",
+        "message": "Cannot raw_take element: ElementDependenciesUnproven",
+        "file": "lib/std/vec.tk",
+        "line": 35
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g18_slab_lookup_miss.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+        "file": "lib/std/slab.tk",
+        "line": 85
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g18_stdx_template_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04662",
+        "message": "Cannot raw_take element: ElementDependenciesUnproven",
+        "file": "lib/std/vec.tk",
+        "line": 35
+      },
+      "classification": "rejected"
+    }
+  ]
+}

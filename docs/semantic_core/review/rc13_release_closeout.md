@@ -3,6 +3,70 @@
 G remains accepted at `4005a68e`, recorded by `e3102120`. E is not started.
 This log does not revise the G RFC or replace full-suite results with targeted runs.
 
+## Fixed full baseline at 291db6cb
+
+Tested implementation: `291db6cbed2ba80d4a57ec7777914eacef6d56c7`.
+Tools build, PASS, FAIL and CTest ran once in sequence; all tracked-file
+fingerprints were unchanged at every stage boundary. The pre-existing other-worker
+RFC diff was preserved (SHA-256 recorded in the machine-readable report).
+No implementation or expected-diagnostic changes were made during qualification.
+
+Comparison is to the retained complete run at `13b907bc`, **not** G's starting
+revision or an extrapolation from incremental tests.
+
+| Suite | Previous full run | This full run | Recovered failures | New failures |
+| --- | --- | --- | --- | --- |
+| PASS | 388/457 | 401/457 | 13 | 0 |
+| FAIL | 444/478 | 445/478 | 1 | 0 |
+| CTest | 96/99 | 97/100 | 0 | 0 |
+
+CTest adds `toka_context_receiver_handoff`; its higher numerator is not a
+recovered old CTest failure. Remaining CTest failures are exactly
+`toka_stage1_indirect_parameter_cede`, `toka_stage1_return_matrix`, and
+`toka_binding_b2_arena`. No compiler/runtime signal or abnormal-exit event was
+found in the completed current-suite logs. Full tools build passed (17.85 s);
+PASS took 303.71 s, FAIL 142.18 s, CTest 1028.37 s (outer runner timing).
+
+Recovered PASS names:
+
+- `g09_context.tk`
+- `g10_async_http_server_test.tk`
+- `g10_http_empty_header_value.tk`
+- `g10_http_phase1_test.tk`
+- `g10_net_http_server_test.tk`
+- `g10_websocket.tk`
+- `g12_stdx_http_client_server_test.tk`
+- `g12_stdx_https_wss_test.tk`
+- `g12_stdx_websocket_malformed_test.tk`
+- `g12_stdx_websocket_test.tk`
+- `g13_stdx_net_zero_copy_bench.tk`
+- `g16_stdx_http_server_connection_test.tk`
+- `g18_header_map_lookup_miss.tk`
+
+Recovered FAIL name: `header_map_lookup_miss_blocks_insert.tk`.
+All 56 remaining PASS names and 33 remaining FAIL names, plus first-error probes,
+are preserved in [the full comparison](rc13_baseline_291db6cb.json).
+Raw logs and source manifest: `/private/tmp/toka-rc13-baseline.NrSLyz`.
+
+One bounded leaks recheck distinguished the program from the inspection tool:
+the receiver program alone exited 0 in 0.01 s. `leaks --atExit` reported failure
+to acquire a task port for both `/usr/bin/true` and the receiver program; the
+latter was limited to 15 s and its test process group was terminated on timeout.
+Leak freedom remains **unverified**, not zero-leak and not an observed program
+exit hang.
+
+Fresh first-error priorities (counts are blocked tests, not promised recoveries):
+
+1. Vec `ReferenceBindingSelectorUnavailable`: 7 tests. Select this as the next
+   bounded batch; inspect the actual reference-element contract before changing
+   library interfaces or compiler behavior.
+2. Vec `ElementDependenciesUnproven`: 5 tests, a separate dependency question.
+3. BTreeMap `RouteIneligible`: 3 tests.
+4. Slab `AccessCapabilityMismatch`: 2 tests.
+
+No new batch was implemented during this baseline run. E, G freeze, and push/
+release restrictions remain unchanged.
+
 ## Shape inference crash recovery
 
 The unchanged `tests/pass/g09_context.tk` previously terminated with SIGSEGV
