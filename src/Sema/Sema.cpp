@@ -1561,6 +1561,7 @@ void Sema::registerSlice4Impl(ImplDecl *impl) {
 bool Sema::proveSlice4CopyType(std::shared_ptr<toka::Type> type) {
   if (!type || type->isUnknown() || type->isUniquePtr() || type->isSharedPtr())
     return false;
+  if (isNominalScalarReadOnly(type)) return true;
   if (type->isFunction() || type->isDynFn())
     return getCallableReceiverMode(*type) != CallableReceiverMode::Consuming;
   if (type->isAddrType() || type->isOAddrType() || type->isRawPointer() ||

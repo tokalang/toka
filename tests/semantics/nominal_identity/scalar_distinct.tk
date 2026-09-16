@@ -1,0 +1,8 @@
+type First = u16
+type Second = u16
+fn main() -> i32 {
+    auto first# = (7:u16) as First
+    auto second = (8:u16) as Second
+    first = second
+    return 0
+}

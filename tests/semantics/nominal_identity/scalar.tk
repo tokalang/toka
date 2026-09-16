@@ -1,0 +1,12 @@
+type Count = u16
+alias CountAlias = Count
+shape Row(value: Count)
+fn main() -> i32 {
+    auto count = (7:u16) as Count
+    auto copied = count
+    auto row = Row(value = copied)
+    auto alias_value = (9:u16) as CountAlias
+    assert((row.value as u16) == 7, "scalar nominal keeps Copy property")
+    assert((alias_value as u16) == 9, "alias retains scalar nominal identity")
+    return 0
+}

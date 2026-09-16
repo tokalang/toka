@@ -1091,6 +1091,8 @@ Sema::resolveExplicitCedeStage0TypeReadOnly(const std::shared_ptr<Type> &type) {
     auto alias = TypeAliasMap.find(shape->Name);
     if (alias != TypeAliasMap.end() && alias->second.GenericParams.empty()) {
       if (alias->second.IsStrong) {
+        if (isNominalScalarReadOnly(shape))
+          return shape; // Keep nominal identity; only property readers use its representation.
         // A layout lookup must not turn a nominal type into its alias target.
         // Materialization belongs to normal Sema; this reader only consumes it.
         auto declared = ShapeMap.find(shape->Name);
@@ -1120,6 +1122,24 @@ Sema::resolveExplicitCedeStage0TypeReadOnly(const std::shared_ptr<Type> &type) {
   if (type->isUnknown())
     return nullptr;
   return type;
+}
+
+bool Sema::isNominalScalarReadOnly(const std::shared_ptr<Type> &type) const {
+  auto current = type;
+  std::set<const TypeAliasDecl *> visited;
+  bool nominal = false;
+  while (auto shape = std::dynamic_pointer_cast<ShapeType>(current)) {
+    if (shape->Decl || shape->BypassesCurrentTypeAlias || !shape->GenericArgs.empty())
+      return false;
+    auto alias = TypeAliasMap.find(shape->Name);
+    if (alias == TypeAliasMap.end() || !alias->second.Declaration ||
+        !alias->second.TargetSyntax || !alias->second.GenericParams.empty() ||
+        !visited.insert(alias->second.Declaration).second) return false;
+    nominal |= alias->second.IsStrong;
+    current = Type::fromSyntax(alias->second.TargetSyntax);
+  }
+  return nominal && current &&
+      (current->isInteger() || current->isFloatingPoint() || current->isBoolean());
 }
 
 AccessCapability
@@ -1258,6 +1278,8 @@ std::optional<ValueOwnership> Sema::queryExplicitCedeStage0OwnershipReadOnly(
   auto resolved = resolveExplicitCedeStage0TypeReadOnly(type);
   if (!resolved || resolved->isUnknown())
     return std::nullopt;
+  if (isNominalScalarReadOnly(resolved))
+    return ValueOwnership::Trivial;
   if (resolved->isRawPointer() || resolved->isReference() ||
       resolved->isSlice())
     return ValueOwnership::BorrowedView;
@@ -2786,6 +2808,8 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
         resolved->isReference() || resolved->isFunction() ||
         resolved->isDynFn())
       return false;
+    if (isNominalScalarReadOnly(resolved))
+      return true;
     if (resolved->isUniquePtr() || resolved->isSharedPtr())
       return isDependencyFree(resolved->getPointeeType());
     if (resolved->isArray())
@@ -3075,6 +3099,8 @@ TransferCopyProof Sema::queryExplicitCedeStage0CopyProof(
     const std::shared_ptr<Type> &type) {
   if (!type || type->isUnknown())
     return TransferCopyProof::Indeterminate;
+  if (isNominalScalarReadOnly(type))
+    return TransferCopyProof::ProvenCopy;
   if (type->isUniquePtr() || type->isSharedPtr())
     return TransferCopyProof::ProvenNonCopy;
   if (type->isFunction() || type->isDynFn())

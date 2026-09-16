@@ -1,0 +1,7 @@
+type Count = u16
+fn main() -> i32 {
+    auto count = (7:u16) as Count
+    auto plain# = 0:u16
+    plain = count
+    return 0
+}

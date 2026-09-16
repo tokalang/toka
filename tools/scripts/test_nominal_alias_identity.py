@@ -11,7 +11,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / 'tests/semantics/nominal_identity'
 POSITIVES = ('constructors', 'nested_nominal', 'nested_alias', 'cleanup', 'imported',
-             'borrowed_return', 'trait_control', 'own_trait', 'own_drop', 'writable_reference', 'noncopy_transfer')
+             'borrowed_return', 'trait_control', 'own_trait', 'own_drop', 'writable_reference', 'noncopy_transfer', 'scalar')
 NEGATIVES = {
     'mixed_identity': ('E0408', 'first = second'),
     'underlying_target': ('E0408', 'base = strong'),
@@ -23,6 +23,8 @@ NEGATIVES = {
     'borrowed_escape': ('E0455', 'return Strong'),
     'rejected_transfer': ('E0408', 'target = cede source'),
     'noncopy_layout': ('E04661', 'auto result = value'),
+    'scalar_mismatch': ('E0408', 'plain = count'),
+    'scalar_distinct': ('E0408', 'first = second'),
 }
 
 def main():
@@ -73,6 +75,7 @@ def main():
         results.append(dict(case=original.name, status='original-rejection', parity=True))
         positives = [(FIXTURES / (name + '.tk'), 0) for name in POSITIVES]
         positives += [(ROOT / 'tests/pass/g07_alias_generic_test.tk', 0),
+                      (ROOT / 'tests/pass/g04_match_range.tk', 0),
                       (ROOT / 'tests/pass/g03_newtype.tk', 0),
                       (ROOT / 'tests/semantics/rc13_negative_purposes/blockers/alias_good.tk', 30)]
         for source, expected in positives:
@@ -107,7 +110,7 @@ def main():
             assert subprocess.run([str(binary)], cwd=interface, env=env, timeout=30).returncode == 0
             results.append(dict(case='interface', hidden=hidden, status='runtime-passed', parity=True))
         (work / 'results.json').write_text(json.dumps(results, indent=2))
-        print(f'{len(positives)} runtime controls; 11 semantic negatives; 22 no-artifact checks; 2 valid artifacts; source-visible/source-hidden linking and parity')
+        print(f'{len(positives)} runtime controls; {len(NEGATIVES) + 1} semantic negatives; {2 * (len(NEGATIVES) + 1)} no-artifact checks; 2 valid artifacts; source-visible/source-hidden linking and parity')
 
 if __name__ == '__main__':
     main()
