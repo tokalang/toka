@@ -1,0 +1,6 @@
+import std/channel::{channel, Sender}
+fn main() -> i32 {
+    auto pair# = channel<i32>()
+    auto fake = Sender<i32>(~channel = pair.tx.~channel)
+    return 0
+}

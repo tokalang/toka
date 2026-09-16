@@ -51,20 +51,9 @@ pub shape ChannelPair<T: @Send>(
     rx#: Receiver<T>
 )
 
-pub fn channel<T: @Send>() -> ChannelPair<T> {
-    auto ~inner# = new AsyncChannel<T>(
-        state = Mutex<WaitQueue<T> >::new(WaitQueue<T>::new(-1:i32)),
-        cond_not_empty = CondVar<WaitQueue<T> >::new(),
-        cond_not_full = CondVar<WaitQueue<T> >::new()
-    )
-    
-    return ChannelPair<T>(
-        tx=Sender<T>(~channel = ~inner),
-        rx=Receiver<T>(~channel = ~inner)
-    )
-}
-
-pub fn sync_channel<T: @Send>(bound: i32) -> ChannelPair<T> {
+// Private storage-construction boundary. Both public factories must use the
+// same ownership protocol; endpoint fields remain module-private via Encap.
+fn __channel_create<T: @Send>(bound: i32) -> ChannelPair<T> {
     auto ~inner# = new AsyncChannel<T>(
         state = Mutex<WaitQueue<T> >::new(WaitQueue<T>::new(bound)),
         cond_not_empty = CondVar<WaitQueue<T> >::new(),
@@ -77,20 +66,32 @@ pub fn sync_channel<T: @Send>(bound: i32) -> ChannelPair<T> {
     )
 }
 
+pub fn channel<T: @Send>() -> ChannelPair<T> {
+    return __channel_create<T>(-1:i32)
+}
+
+pub fn sync_channel<T: @Send>(bound: i32) -> ChannelPair<T> {
+    return __channel_create<T>(bound)
+}
+
 impl<T: @Send> Sender<T> {
     pub fn clone(self#) -> Sender<T> {
         auto lguard_res = self.channel.state.lock()
         if lguard_res.is_err() {
             assert(false, "Mutex lock failed during Sender clone")
-            return Sender<T>(~channel = self.~channel)
+            unreachable
         }
         auto lguard = lguard_res.unwrap()
         auto &q# = lguard.borrow_mut()
+        assert(q.senders > 0 && q.senders < 2147483647, "Sender count cannot be acquired")
         q.senders = q.senders + 1
         return Sender<T>(~channel = self.~channel)
     }
     
-    pub fn send(self#, val: cede T) -> Result<(), Error> {
+    pub fn send(self#, cede val: T) -> Result<(), Error> {
+        // Own the input before acquiring the lock. Every early return then
+        // releases the guard before dropping an unpublished value.
+        auto owned = cede val
         auto lguard = self.channel.state.lock()!
         
         auto &q# = lguard.borrow_mut()
@@ -107,7 +108,7 @@ impl<T: @Send> Sender<T> {
             }
         }
         
-        q.queue#.push_back(cede val)
+        q.queue#.push_back(cede owned)
         self.channel.cond_not_empty.notify_one()
         return Result<(), Error>::Ok(())
     }
@@ -162,10 +163,12 @@ impl<T> Sender<T>@Encap {
     fn drop(self#) {
         auto lguard_res = self.channel.state.lock()
         if lguard_res.is_err() {
-            return
+            assert(false, "Mutex lock failed during Sender drop")
+            unreachable
         }
         auto lguard = lguard_res.unwrap()
         auto &q# = lguard.borrow_mut()
+        assert(q.senders > 0, "Sender count cannot be released twice")
         q.senders = q.senders - 1
         if q.senders == 0 {
             q.closed = true
@@ -179,10 +182,12 @@ impl<T: @Send> Sender<T> {
     pub fn clone(self) -> Sender<T> {
         auto lguard_res = self.channel.state.lock()
         if lguard_res.is_err() {
-            return Sender<T>(~channel = self.~channel)
+            assert(false, "Mutex lock failed during Sender clone")
+            unreachable
         }
         auto lguard = lguard_res.unwrap()
         auto &q# = lguard.borrow_mut()
+        assert(q.senders > 0 && q.senders < 2147483647, "Sender count cannot be acquired")
         q.senders = q.senders + 1
         return Sender<T>(~channel = self.~channel)
     }
@@ -192,10 +197,12 @@ impl<T> Receiver<T>@Encap {
     fn drop(self#) {
         auto lguard_res = self.channel.state.lock()
         if lguard_res.is_err() {
-            return
+            assert(false, "Mutex lock failed during Receiver drop")
+            unreachable
         }
         auto lguard = lguard_res.unwrap()
         auto &q# = lguard.borrow_mut()
+        assert(q.receivers > 0, "Receiver count cannot be released twice")
         q.receivers = q.receivers - 1
         if q.receivers == 0 {
             q.closed = true

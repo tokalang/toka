@@ -1,0 +1,11 @@
+import std/channel::{channel}
+import std/thread::{thread_spawn}
+fn main() -> i32 {
+    auto pair# = channel<i32>()
+    auto sender = pair.tx#.clone()
+    auto worker = { [cede sender] => return 0 }
+    auto handle# = thread_spawn<i32>(cede worker).unwrap()
+    // Publication does not turn private storage into a safely writable view.
+    pair.tx.channel.state.handle = 0:Addr
+    return 0
+}

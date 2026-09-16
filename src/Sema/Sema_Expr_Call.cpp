@@ -4338,6 +4338,13 @@ CallableEnvironmentFacts Sema::collectStage1CallableEnvironment(Expr *source) {
       if (native != closure->NativeSyncCaptureRecipes.end()) {
         auto witness = qualifyNativeSyncOwner(native->second, type);
         if (!witness) return {};
+        if (witness->Channel) {
+          auto captured = std::shared_ptr<NativeSyncOwnerWitness>(new NativeSyncOwnerWitness(*witness));
+          captured->ChannelCapture = closure;
+          captured->ChannelCaptureType = environment->second;
+          captured->ChannelCaptureName = member.Name;
+          witness = std::move(captured);
+        }
         result.NativeOwners.push_back(std::move(witness));
         continue;
       }
@@ -4421,6 +4428,22 @@ bool Sema::Stage1BindingTransfer::prepare(
   }
   bool refreshCallable = false;
   bool refreshRawConstruction = false;
+  // Channel-only concrete closure bridge. Do not activate the general
+  // synthesized-shape environment path as part of this private contract.
+  if (validated && actual && actual->isShape()) {
+    auto shape = std::dynamic_pointer_cast<ShapeType>(actual);
+    auto *closure = dynamic_cast<ClosureExpr *>(stage0SurfaceSource(source));
+    const bool channelCapture = closure && std::any_of(
+        closure->NativeSyncCaptureRecipes.begin(), closure->NativeSyncCaptureRecipes.end(),
+        [](const auto &entry) { return entry.second && entry.second->Channel; });
+    if (channelCapture && shape && shape->Decl && shape->Decl->IsCompilerSynthesized) {
+      auto environment = Owner.collectStage1CallableEnvironment(source);
+      if (environment.Complete && !environment.NativeOwners.empty() &&
+          std::all_of(environment.NativeOwners.begin(), environment.NativeOwners.end(),
+              [](const auto &witness) { return witness && witness->Channel && witness->Channel->Complete; }))
+        CallableFacts = std::move(environment);
+    }
+  }
   if (validated) {
     Expr *candidate = source;
     while (candidate) {

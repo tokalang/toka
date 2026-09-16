@@ -1,0 +1,22 @@
+import std/channel::{channel}
+extern fn channel_fail_lock() -> void
+extern fn channel_drop(id:i32) -> void
+extern fn channel_drop_count() -> i32
+shape Token(id:i32)
+impl Token@Send {}
+impl Token@Encap { fn drop(self#) { channel_drop(self.id) } }
+fn main()->i32 {
+    auto pair#=channel<Token>()
+    channel_fail_lock()
+    auto value=Token(id=0)
+    assert(pair.tx#.send(cede value).is_err(), "lock failure is reported")
+    assert(channel_drop_count()==1, "unpublished input cleaned on lock failure")
+    auto next=Token(id=1)
+    pair.tx#.send(cede next).unwrap()
+    {
+        auto delivered=pair.rx#.recv().unwrap().unwrap()
+        assert(delivered.id==1, "retry uses the same live core")
+    }
+    assert(channel_drop_count()==2, "retry cleanup exact once")
+    return 0
+}

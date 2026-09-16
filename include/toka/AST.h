@@ -1932,6 +1932,8 @@ public:
 class VariableDecl : public Stmt {
 public:
   std::string Name;
+  // Analysis-local declaration identity. A cloned declaration starts unbound.
+  uint64_t ResolvedBindingID = 0;
   std::unique_ptr<Expr> Init;
   std::string TypeName;
   TypeSyntaxPtr DeclaredTypeSyntax;

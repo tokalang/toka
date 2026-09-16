@@ -8,6 +8,7 @@
 namespace toka {
 class Sema; class CodeGen; class Expr; class CallExpr; class FunctionDecl;
 class ShapeDecl; class Type; class NewExpr; class VariableDecl; class BinaryExpr;
+class ClosureExpr;
 enum class NativeSyncFactoryKind : uint8_t { None, Mutex, RwMutex, CondVar };
 
 // This is the initialized factory edge, not a nominal-type exemption and not
@@ -35,6 +36,23 @@ public:
 };
 using NativeSyncFactoryPtr = std::shared_ptr<const NativeSyncFactoryPlan>;
 
+// The Channel queue is governed by its private storage operations, not by
+// ClosedPayload<WaitQueue>. This record is deliberately not serializable.
+class ChannelStorageProof {
+  friend class Sema;
+  friend class CodeGen;
+  ChannelStorageProof() = default;
+  const CallExpr *FactorySite = nullptr;
+  const FunctionDecl *Factory = nullptr;
+  const NewExpr *CoreAllocation = nullptr;
+  const ShapeDecl *Pair = nullptr, *Sender = nullptr, *Receiver = nullptr;
+  const ShapeDecl *Core = nullptr, *Queue = nullptr;
+  std::shared_ptr<Type> ElementType;
+  std::vector<NativeSyncFactoryPtr> NativeChildren;
+  std::vector<const FunctionDecl *> Operations;
+  bool Complete = false;
+};
+
 // Private value-flow recipe. Unlike the sealed factory plan this may describe
 // a generic body still being checked. It grants no thread/guard authority.
 // A call edge is distinct from its provider's body edge, so two executions
@@ -44,6 +62,7 @@ class NativeSyncOwnerCandidate {
   friend class CodeGen;
   NativeSyncOwnerCandidate() = default;
   NativeSyncFactoryPtr Factory;
+  std::shared_ptr<const ChannelStorageProof> Channel;
   const Expr *OwnerEdge = nullptr;
   const Expr *Allocation = nullptr;
   const FunctionDecl *Provider = nullptr;
@@ -58,7 +77,11 @@ class NativeSyncOwnerWitness {
   friend class CodeGen;
   NativeSyncOwnerWitness() = default;
   NativeSyncOwnerCandidatePtr Origin;
+  std::shared_ptr<const ChannelStorageProof> Channel;
   std::shared_ptr<Type> ValueType, OwnerType, ElementType;
+  const ClosureExpr *ChannelCapture = nullptr;
+  const ShapeDecl *ChannelCaptureType = nullptr;
+  std::string ChannelCaptureName;
   const CallExpr *FactorySite = nullptr;
   const NewExpr *AllocationSite = nullptr;
   const FunctionDecl *OwnerDrop = nullptr;

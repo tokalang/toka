@@ -1,0 +1,9 @@
+import std/channel::{channel}
+extern fn channel_fail_init() -> void
+extern fn channel_unexpected_publish() -> void
+fn main()->i32 {
+    channel_fail_init()
+    auto pair#=channel<i32>()
+    channel_unexpected_publish()
+    return 0
+}

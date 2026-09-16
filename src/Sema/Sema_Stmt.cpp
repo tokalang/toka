@@ -2925,6 +2925,7 @@ void Sema::checkStmt(Stmt *S) {
     Var->PartialMove = Info.partialMovePlan();
     initializeProjectionFacts(Info);
     CurrentScope->define(Var->Name, Info);
+    Var->ResolvedBindingID = makeAccessPath(Var->Name).RootID;
     if (Var->Init) {
       auto path = makeAccessPath(Var->Name);
       if (!HasError) recordEnumBinding(path, Var->Init.get());

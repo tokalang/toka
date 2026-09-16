@@ -220,6 +220,7 @@ bool Sema::nativeSyncOwnerLive(const NativeSyncOwnerWitnessPtr &witness) const {
 
 NativeSyncOwnerWitnessPtr Sema::qualifyNativeSyncOwner(const NativeSyncOwnerCandidatePtr &recipe,
                                                      const std::shared_ptr<Type> &actualType) {
+  if (recipe && recipe->Channel) return qualifyChannelStorage(recipe, actualType);
   if (!recipe || !actualType || !recipe->ValueType ||
       !actualType->equals(*recipe->ValueType) ||
       (!actualType->isSharedPtr() && !actualType->isUniquePtr() && !actualType->isShape())) return {};
@@ -468,6 +469,12 @@ void Sema::checkNativeSyncOwnerExposure(Expr *expression) {
     if (recipe) m_InvalidNativeSyncOwnerRecipes.insert(recipe);
   };
   if (auto *member = dynamic_cast<MemberExpr *>(expression)) {
+    auto recipe = member->Object->NativeSyncOwnerRecipe;
+    if (recipe && recipe->Channel) {
+      auto pair = std::dynamic_pointer_cast<ShapeType>(member->Object->ResolvedType);
+      if (pair && pair->Decl == recipe->Channel->Pair && member->Index >= 0 &&
+          static_cast<size_t>(member->Index) < pair->Decl->Members.size()) return;
+    }
     invalidate(member->Object->NativeSyncOwnerRecipe);
   } else if (auto *method = dynamic_cast<MethodCallExpr *>(expression)) {
     method->NativeSyncAccessRequired = false;
@@ -657,6 +664,7 @@ bool Sema::prepareNativeSyncAllocation(const NewExpr *allocation, const Variable
 
 NativeSyncOwnerCandidatePtr Sema::collectNativeSyncOwnerRecipe(Expr *source) {
   if (!source || !source->ResolvedType) return {};
+  if (auto channel = collectChannelStorageRecipe(source)) return channel;
   NativeSyncOwnerCandidatePtr recipe;
   FunctionDecl *callee = nullptr;
   auto aggregate = std::dynamic_pointer_cast<ShapeType>(source->ResolvedType);
@@ -748,6 +756,16 @@ NativeSyncOwnerCandidatePtr Sema::collectNativeSyncOwnerRecipe(Expr *source) {
     recipe = std::move(rebased);
   }
   if (!recipe || m_InvalidNativeSyncOwnerRecipes.count(recipe)) return {};
+  if (recipe->Channel) {
+    auto shape = std::dynamic_pointer_cast<ShapeType>(source->ResolvedType);
+    const auto &p = recipe->Channel;
+    if (!shape || (shape->Decl != p->Pair && shape->Decl != p->Sender && shape->Decl != p->Receiver)) return {};
+    if (recipe->ValueType && recipe->ValueType->equals(*source->ResolvedType)) return recipe;
+    auto rebased = std::shared_ptr<NativeSyncOwnerCandidate>(new NativeSyncOwnerCandidate(*recipe));
+    rebased->Parent = recipe;
+    rebased->ValueType = source->ResolvedType;
+    return rebased;
+  }
   auto valueType = source->ResolvedType;
   if (valueType->isReference()) valueType = valueType->getPointeeType();
   if (valueType->isUniquePtr() || valueType->isSharedPtr()) valueType = valueType->getPointeeType();
@@ -821,6 +839,17 @@ void Sema::recordNativeSyncOwnerRecipe(const AccessPath &rawPlace, Expr *source,
       owned->ValueType = binding->TypeObj;
       owned->Provider = CurrentFunction;
       recipe = std::move(owned);
+    }
+  }
+  if (recipe && recipe->Channel && recipe->ValueType && binding->TypeObj->isShape() &&
+      !recipe->ValueType->equals(*binding->TypeObj)) {
+    if (!recipe->ValueType->withAttributes(false, false, recipe->ValueType->IsBlocked)->equals(
+            *binding->TypeObj->withAttributes(false, false, binding->TypeObj->IsBlocked))) recipe.reset();
+    else {
+      auto view = std::shared_ptr<NativeSyncOwnerCandidate>(new NativeSyncOwnerCandidate(*recipe));
+      view->Parent = recipe;
+      view->ValueType = binding->TypeObj;
+      recipe = std::move(view);
     }
   }
   m_NativeSyncOwnerRecipes[place.RootID] = std::move(recipe);

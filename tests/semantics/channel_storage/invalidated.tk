@@ -1,0 +1,12 @@
+import std/channel::{channel}
+import std/thread::{thread_spawn}
+// A nonempty non-contract mutable call must not retain a publication witness.
+fn unknown_write<T>(value#: T) { auto flag = 0:i32 }
+fn main() -> i32 {
+    auto pair# = channel<i32>()
+    auto sender# = pair.tx#.clone()
+    unknown_write(sender#)
+    auto worker = { [cede sender] => return 0 }
+    auto handle# = thread_spawn<i32>(cede worker).unwrap()
+    return 0
+}

@@ -375,6 +375,12 @@ if(BUILD_TESTING)
         add_test(NAME toka_rc13_semver_thread_migration
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_rc13_semver_thread_migration.py --build-dir ${CMAKE_BINARY_DIR})
         set_tests_properties(toka_rc13_semver_thread_migration PROPERTIES TIMEOUT 240 RESOURCE_LOCK rc13_legacy_tcp_ports)
+        add_test(NAME toka_channel_storage
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_channel_storage.py --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(toka_channel_storage PROPERTIES TIMEOUT 240)
+        add_test(NAME toka_rc13_legacy_threads
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_rc13_legacy_threads.py --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(toka_rc13_legacy_threads PROPERTIES TIMEOUT 240)
         add_test(NAME toka_empty_fn_return
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_empty_fn_return.py

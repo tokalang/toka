@@ -1112,6 +1112,9 @@ private:
   void checkNativeSyncOwnerExposure(Expr *expression);
   bool rejectNativeSyncUnlock(Expr *expression);
   NativeSyncOwnerCandidatePtr collectNativeSyncOwnerRecipe(Expr *source);
+  NativeSyncOwnerCandidatePtr collectChannelStorageRecipe(Expr *source);
+  NativeSyncOwnerWitnessPtr qualifyChannelStorage(const NativeSyncOwnerCandidatePtr &recipe,
+                                                 const std::shared_ptr<Type> &actualType);
   void recordNativeSyncOwnerRecipe(const AccessPath &place, Expr *source, bool initialization);
   void recordNativeSyncOwnerReturn(ReturnStmt *statement);
   struct NativeSyncAllocationSnapshot {

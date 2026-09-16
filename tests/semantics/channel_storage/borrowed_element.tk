@@ -1,0 +1,10 @@
+import std/channel::{channel}
+import std/thread::{thread_spawn}
+fn main() -> i32 {
+    auto value = 7:i32
+    auto pair# = channel<&i32>()
+    pair.tx#.send(&value).unwrap()
+    auto worker = { [cede pair] => return 0 }
+    auto handle# = thread_spawn<i32>(cede worker).unwrap()
+    return 0
+}

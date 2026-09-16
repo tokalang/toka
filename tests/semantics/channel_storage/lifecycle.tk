@@ -1,0 +1,76 @@
+import std/channel::{channel, sync_channel}
+import std/thread::{thread_spawn, sleep_ms}
+
+extern fn channel_drop(id: i32) -> void
+extern fn channel_drop_count() -> i32
+
+shape Token(id: i32)
+impl Token@Send {}
+impl Token@Encap { fn drop(self#) { channel_drop(self.id) } }
+
+fn main() -> i32 {
+    // Nonempty queues own their payloads across multiple buffer growths.
+    {
+        auto pair# = channel<Token>()
+        auto i# = 0
+        loop i < 64 {
+            auto value = Token(id = i)
+            pair.tx#.send(cede value).unwrap()
+            i += 1
+        }
+        assert(channel_drop_count() == 0, "queued elements stay live")
+    }
+    assert(channel_drop_count() == 64, "nonempty queue cleanup is exact once")
+
+    // Drop the only receiver, then reject a send and clean the input once.
+    {
+        auto pair# = channel<Token>()
+        auto sender# = pair.tx#.clone()
+        cede pair
+        auto rejected = Token(id = 64)
+        auto result = sender#.send(cede rejected)
+        assert(result.is_err(), "closed channel rejects send")
+        assert(channel_drop_count() == 65, "failed send releases its input")
+    }
+    assert(channel_drop_count() == 65, "no repeated input cleanup")
+
+    // Dropping a clone must not close the original sender prematurely.
+    {
+        auto pair# = channel<i32>()
+        { auto sibling = pair.tx#.clone() }
+        pair.tx#.send(7).unwrap()
+        assert(pair.rx#.recv().unwrap().unwrap() == 7, "remaining endpoint stays usable")
+    }
+
+    // Last sender closes and wakes a receiver already waiting on an empty queue.
+    {
+        auto pair# = channel<i32>()
+        auto receiver = cede pair.rx
+        auto worker = { [cede receiver] =>
+            auto local# = cede receiver
+            assert(local#.recv().unwrap().is_none(), "last sender wakes receiver")
+            return 0
+        }
+        auto handle# = thread_spawn<i32>(cede worker).unwrap()
+        sleep_ms(20:u32)
+        cede pair.tx
+        assert(handle#.join().unwrap() == 0, "receiver exits after close")
+    }
+
+    // Last receiver wakes a sender blocked by the existing bounded queue.
+    {
+        auto pair# = sync_channel<i32>(1)
+        pair.tx#.send(1).unwrap()
+        auto sender = pair.tx#.clone()
+        auto worker = { [cede sender] =>
+            auto local# = cede sender
+            assert(local#.send(2).is_err(), "last receiver wakes blocked sender")
+            return 0
+        }
+        auto handle# = thread_spawn<i32>(cede worker).unwrap()
+        sleep_ms(20:u32)
+        cede pair
+        assert(handle#.join().unwrap() == 0, "sender exits after close")
+    }
+    return 0
+}

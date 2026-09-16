@@ -1,6 +1,5 @@
-// Pending positive: owning a Sender is not a new permission or unsafe escape.
-// Currently rejected at thread_spawn with EnvironmentLifetimeUnproven.
-// Do not register its current rejection as a successful negative oracle.
+// Regression from the former pending matrix: the checked Channel contract
+// must qualify this real owned endpoint, not merely its Send/type spelling.
 import std/channel::{channel}
 import std/thread::{thread_spawn}
 fn main() -> i32 {

@@ -18,6 +18,7 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
+#include "toka/ThreadHandoffSource.h"
 #include <cctype>
 #include <iostream>
 #include <set>
@@ -5233,6 +5234,70 @@ bool CodeGen::validateNativeSyncOwner(const NativeSyncOwnerWitnessPtr &original,
     error(site, DiagID::ERR_CODEGEN, std::string("native sync owner: ") + why);
     return false;
   };
+  if (w && w->Channel) {
+    const auto &p = w->Channel;
+    if (w->ChannelCapture) {
+      const auto *call = dynamic_cast<const CallExpr *>(site);
+      auto publication = call ? call->PublicThreadSource : nullptr;
+      auto environment = publication ? std::dynamic_pointer_cast<ShapeType>(publication->EnvironmentType) : nullptr;
+      auto capture = w->ChannelCapture->NativeSyncCaptureRecipes.find(w->ChannelCaptureName);
+      if (!environment || environment->Decl != w->ChannelCaptureType ||
+          capture == w->ChannelCapture->NativeSyncCaptureRecipes.end() || capture->second != w->Origin)
+        return reject("ChannelCaptureEdgeMismatch");
+    }
+    auto *value = w->ValueType ? dynamic_cast<ShapeType *>(w->ValueType.get()) : nullptr;
+    if (!p->Complete || !w->Origin || w->Origin->Channel != p || !value ||
+        !w->OwnerType || !w->OwnerType->equals(*w->ValueType) ||
+        !w->Origin->ValueType || !w->Origin->ValueType->isShape() ||
+        w->Origin->ValueType->IsNullable || w->ValueType->IsNullable ||
+        !w->Origin->ValueType->withAttributes(false, false, w->Origin->ValueType->IsBlocked)->equals(
+            *w->ValueType->withAttributes(false, false, w->ValueType->IsBlocked)) ||
+        !w->ElementType || !p->ElementType || !w->ElementType->equals(*p->ElementType) ||
+        (value->Decl != p->Pair && value->Decl != p->Sender && value->Decl != p->Receiver) ||
+        !p->FactorySite || w->FactorySite != p->FactorySite ||
+        p->FactorySite->ResolvedFn != p->Factory || !p->Factory || !p->Factory->Body ||
+        !p->CoreAllocation || w->AllocationSite != p->CoreAllocation ||
+        !p->Pair || !p->Sender || !p->Receiver || !p->Core || !p->Queue ||
+        p->Pair->Members.size() != 2 || p->Core->Members.size() != 3 ||
+        p->NativeChildren.size() != 3 || p->Operations.size() != 10 ||
+        w->CompositeOperations != p->Operations)
+      return reject("IncompleteChannelWitness");
+    auto sameShape = [&](const std::shared_ptr<Type> &type, const ShapeDecl *expected) {
+      auto shape = std::dynamic_pointer_cast<ShapeType>(type);
+      return shape && shape->Decl == expected;
+    };
+    auto directField = [](const ShapeMember &field) -> std::shared_ptr<Type> {
+      if (field.IsRawPointer || field.IsReference || field.IsUnique || field.IsShared) return {};
+      return field.ResolvedType;
+    };
+    if (!sameShape(directField(p->Pair->Members[0]), p->Sender) ||
+        !sameShape(directField(p->Pair->Members[1]), p->Receiver) ||
+        !p->Sender->HasExplicitDrop || !p->Receiver->HasExplicitDrop)
+      return reject("ChannelEndpointMismatch");
+    for (size_t index = 0; index < p->NativeChildren.size(); ++index) {
+      auto prepared = p->NativeChildren[index];
+      auto child = prepared && prepared->Site ? prepared->Site->NativeSyncFactorySource : nullptr;
+      auto field = directField(p->Core->Members[index]);
+      // The native finalizer replaces a prepared plan with its sealed copy.
+      // Match that exact edge and all prepared fields, then consume the seal.
+      if (!prepared || !child || !child->Validated || child->Site != prepared->Site ||
+          child->Declaration != prepared->Declaration || child->OwnerDefinition != prepared->OwnerDefinition ||
+          child->OwnerTemplate != prepared->OwnerTemplate || child->Input != prepared->Input ||
+          child->Kind != prepared->Kind || !prepared->OwnerType || !prepared->ElementType ||
+          child->ReplacementClosed != prepared->ReplacementClosed ||
+          !child->OwnerType || !child->ElementType ||
+          !child->OwnerType->equals(*prepared->OwnerType) || !child->ElementType->equals(*prepared->ElementType) ||
+          child->Site->ResolvedFn != child->Declaration || !child->OwnerType || !field ||
+          !sameShape(child->ElementType, p->Queue) ||
+          child->Kind != (index == 0 ? NativeSyncFactoryKind::Mutex : NativeSyncFactoryKind::CondVar) ||
+          !field->withAttributes(false, false)->equals(*child->OwnerType->withAttributes(false, false)))
+        return reject("ChannelNativeChildMismatch");
+    }
+    for (auto operation : p->Operations)
+      if (!operation || !operation->Body || !operation->GenericParams.empty())
+        return reject("ChannelOperationIncomplete");
+    return true;
+  }
   if (w && !w->Children.empty()) {
     auto *owner = w->OwnerType ? dynamic_cast<ShapeType *>(w->OwnerType.get()) : nullptr;
     if (!w->Origin || !w->ValueType || !w->Origin->ValueType ||

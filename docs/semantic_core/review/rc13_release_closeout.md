@@ -683,3 +683,27 @@ Reproduction sources, scripts, runtime/diagnostic results and AST observations:
 implementation/test inputs were changed during diagnosis. The three recovered
 stress programs remain intact; both MPSC programs remain required positives.
 No E, full-suite rerun, push, runtime or environment-gate changes.
+
+## Channel private storage implementation candidate
+
+The separately authorized contract and implementation are now combined in
+[channel_private_storage_contract.md](../channel_private_storage_contract.md).
+This is not a general wrapper/recursive-container proof or an Accepted claim.
+
+Actual restorations: independent Sender and both original MPSC programs run;
+the strict five-program gate is now 5/5, with the three earlier stress successes
+unchanged. Resource/close/failure/invalid-source and CodeGen no-artifact matrices
+are registered in `toka_channel_storage`. The concentrated five CTest gates pass
+5/5 (91.81 s); strengthened Channel-only tests also pass afterwards. No full
+baseline figures are rewritten and no unrelated failure is relabeled.
+
+Implementation keeps private endpoint fields sealed after publication. Clone
+failure never returns an uncounted endpoint; send failure cleans an unpublished
+input using an owning local. The finalizer's actual native plan is consumed
+without reconstructing ownership in CodeGen. Generic native/callable/wrapper
+admission is not widened. Two auto-review rejections were not applied: the broad
+all-synthesized-shape bridge was replaced by a Channel-only bridge, and rejected
+paths still return no candidate rather than an incomplete explanatory candidate.
+
+Working logs/probes: `/private/tmp/toka-channel-contract.X9exE9`.
+E/push/release remain disabled. Other-worker RFC modifications remain untouched.

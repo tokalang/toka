@@ -1,0 +1,10 @@
+import std/channel::{channel}
+extern fn channel_fail_lock() -> void
+extern fn channel_unexpected_publish() -> void
+fn main()->i32 {
+    auto pair#=channel<i32>()
+    channel_fail_lock()
+    auto sibling=pair.tx#.clone()
+    channel_unexpected_publish()
+    return 0
+}
