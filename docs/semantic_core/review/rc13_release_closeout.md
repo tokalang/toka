@@ -742,3 +742,130 @@ protocol change in this revision.
 Worktree relocation remains separate: the three child workers are completed,
 but the writer responsible for the uncommitted RFC has not been confirmed stopped.
 No worktree move, branch change, mainline merge, push or WIP overwrite was done.
+
+## Channel Accepted; persistent worktree and full baseline (2026-09-16)
+
+Channel is Accepted at `51ac6e5d4afe7df217f1c05206302f2099ee14cc` by the user.
+This package records infrastructure and tests only; it does not reopen Channel,
+activate E, repair remaining semantics, or declare RC13 ready.
+
+### Migration and preservation
+
+The RFC task confirmed that it and its child workers had stopped writing and
+had no active build/test sessions. Its pending RFC changes match the previously
+requested G migration text, although it did not independently establish the
+original writer. System process inspection found no running compiler/build
+task. All three implementation child workers were stopped.
+
+`git worktree move` moved `/private/tmp/toka-b6-dynamic-20260912` to
+`/Users/zhyi/GitDP/tokalang/worktrees/rc13-integration`, keeping
+`impl/json-dynamic-index`. Before/after verification matched HEAD, every Git ref,
+index/working diff, untracked list, and all 3,541 file hashes (excluding the
+necessarily updated `.git` pointer). No mainline merge or remote operation ran.
+The previous status paragraph describes the earlier checkpoint, not the current
+migration state.
+
+The other-worker RFC remains unstaged and uncommitted:
+`docs/semantic_core/whole_value_generics_and_checked_dependency_elision_rfc.md`,
+SHA-256 `1b73b0fc46f9a700e1bdc9d0a0031614e1d9a4b398ce97f6a6423972474d70e2`.
+Its seven additions/one deletion were neither incorporated into this report
+commit nor discarded. All existing frozen refs were unchanged before and after
+migration/testing; only the current implementation branch advances for this
+documentation commit.
+
+Durable evidence directory:
+`/Users/zhyi/GitDP/tokalang/validation/rc13-migration-20260916.YSCpSU`.
+It contains before/after manifests and worktree lists, staged/unstaged patches,
+a full pre-move source archive (including ignored review patches), the previous
+full baseline archive, and the three retained Channel audit/diagnosis directories.
+Original external audit files and the old external build were not deleted.
+`migrate.py`, `run.py`, `report.py`, and `verify.py` preserve the actual procedure.
+Git's fsmonitor emitted an IPC warning on some commands; commands completed and
+hash/ref comparisons passed. No shared Git configuration was changed.
+
+### New build and one fixed full run
+
+New build: `/Users/zhyi/GitDP/tokalang/builds/rc13-integration`.
+Configured from scratch with Release, `BUILD_TESTING=ON`, LLVM 20.1.8, existing
+LLD and OpenSSL support. CMake cache and CTest inventory contain no old source
+path. Configuration, all tool targets, PASS, FAIL, then CTest ran sequentially.
+Every stage compared the same 3,526 tracked-file hashes, including the preserved
+RFC; none changed. The final verification ran again after diagnostic probes.
+
+Commands: `cmake -S <source> -B <build> -DCMAKE_BUILD_TYPE=Release
+-DBUILD_TESTING=ON -DLLVM_DIR=/opt/homebrew/opt/llvm@20/lib/cmake/llvm`,
+`cmake --build <build> -j4`, `bash tools/scripts/test_pass.sh`,
+`python3 tools/scripts/test_verify_fail.py`, and
+`ctest --test-dir <build> --output-on-failure -j2`.
+The harness used new-build `TOKAC`/`TOKA`, new-source `TOKA_LIB`, `CORES=4`,
+`BLESS=0`, and cleared all four library-cache environment overrides.
+
+| Full run | Current result | Previous c4b726a7 | Seconds |
+| --- | --- | --- | --- |
+| Tools build | Passed | Passed | 43.30 |
+| PASS | 421/457 | 412/457 | 306.89 |
+| FAIL | 447/478 | 447/478 | 115.77 |
+| CTest | 107/109 | 103/106 | 987.31 |
+
+Comparison is against the actual c4b726a7 logs, not an accumulated tally of
+targeted tests. PASS/FAIL fixture inventories are identical; FAIL success lines
+are quiet, so inventory comparison uses the tested Git trees rather than
+counting printed failure lines. The expected null-unwrap panic is a passing
+test, not an unexpected crash. New failures and unexpected abnormal exits are
+zero across all three suites. No tests were removed or blessed.
+
+Nine PASS recoveries (exact names):
+
+- `g07_arena_test.tk`
+- `g08_sync_mpsc_bounded.tk`
+- `g08_sync_mpsc_multi.tk`
+- `g09_atomic_stress.tk`
+- `g09_mutex_stress.tk`
+- `g09_std_atomic.tk`
+- `g10_net_read_exact.tk`
+- `g10_net_tcp_echoserver.tk`
+- `g15_stdx_semver_test.tk`
+
+Existing CTest recovery: `toka_binding_b2_arena`.
+New tests, all passed and not counted as recoveries:
+`toka_rc13_semver_thread_migration`, `toka_rc13_legacy_threads`, and
+`toka_channel_storage`.
+
+### Remaining failures, without semantic changes
+
+The 36 PASS failures were independently probed for their first diagnostic using
+the same compiler. Largest shared sites are:
+
+| First site / observed failure | Cases |
+| --- | --- |
+| `btreemap.tk:29`, E04661 RouteIneligible | g07_btree_map_test, g07_btree_set_test, g07_container_get_dup_lifecycle |
+| `vec.tk:35`, E04662 ElementDependenciesUnproven | g10_build_hybrid_test, g15_stdx_toml_test, g18_stdx_template_test |
+| `slab.tk:85`, E04661 AccessCapabilityMismatch | g07_slab_test, g18_slab_lookup_miss |
+
+The remaining 28 cases have distinct first sites: 13 IncompleteFacts, two other
+AccessCapabilityMismatch, three TypeIncompatible, four undeclared-identifier
+errors, and six individual nullable/return-dependency/projected-handle/type-side
+permission/temporary-cede/JsonFactory-bound errors. These are observations, not
+claims that every site is an independent root cause or should be fixed in the
+compiler. Full case names, sites and diagnostics are in the JSON companion.
+
+All 31 FAIL mismatches are the same cases as c4b726a7: 18 snapshot mismatches and
+13 legacy-match failures. They remain failed tests, not accepted language
+restrictions. Three implicit-capture diagnostics differ only in generated
+`__Closure_<number>` identifiers; diagnostic codes/messages otherwise match.
+No oracle was updated.
+
+Two remaining CTests:
+
+- `toka_stage1_indirect_parameter_cede`: source-hidden `make()` stops at E04661
+  CallableReturnEnvironmentUnavailable, before its intended E04570 check.
+- `toka_stage1_return_matrix`: `build_return_buffers` stops at Vec/HashMap
+  E04662 ElementDependenciesUnproven. This overlaps the PASS Vec cluster.
+
+These sets overlap and must not be summed as independent defects. The bounded
+`leaks` task-port permission limitation remains unverified, not a zero-leak claim.
+No further baseline run or semantic repair was performed in this package.
+Next work should select a complete common-cause batch from these actual results;
+E, push and release remain disabled.
+
+Machine-readable result: [rc13_baseline_51ac6e5d.json](rc13_baseline_51ac6e5d.json).

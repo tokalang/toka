@@ -1,0 +1,1059 @@
+{
+  "evidence_directory": "/Users/zhyi/GitDP/tokalang/validation/rc13-migration-20260916.YSCpSU",
+  "metadata": {
+    "revision": "51ac6e5d4afe7df217f1c05206302f2099ee14cc",
+    "source": "/Users/zhyi/GitDP/tokalang/worktrees/rc13-integration",
+    "build": "/Users/zhyi/GitDP/tokalang/builds/rc13-integration",
+    "baseline": "/private/tmp/toka-rc13-csv-final.2SiBic",
+    "runs": {
+      "configure": {
+        "command": [
+          "cmake",
+          "-S",
+          "/Users/zhyi/GitDP/tokalang/worktrees/rc13-integration",
+          "-B",
+          "/Users/zhyi/GitDP/tokalang/builds/rc13-integration",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DBUILD_TESTING=ON",
+          "-DLLVM_DIR=/opt/homebrew/opt/llvm@20/lib/cmake/llvm"
+        ],
+        "returncode": 0,
+        "seconds": 2.05,
+        "changed_tracked_files": []
+      },
+      "tools-build": {
+        "command": [
+          "cmake",
+          "--build",
+          "/Users/zhyi/GitDP/tokalang/builds/rc13-integration",
+          "-j",
+          "4"
+        ],
+        "returncode": 0,
+        "seconds": 43.3,
+        "changed_tracked_files": []
+      },
+      "pass": {
+        "command": [
+          "bash",
+          "tools/scripts/test_pass.sh"
+        ],
+        "returncode": 1,
+        "seconds": 306.89,
+        "changed_tracked_files": []
+      },
+      "fail": {
+        "command": [
+          "python3",
+          "tools/scripts/test_verify_fail.py"
+        ],
+        "returncode": 1,
+        "seconds": 115.77,
+        "changed_tracked_files": []
+      },
+      "ctest": {
+        "command": [
+          "ctest",
+          "--test-dir",
+          "/Users/zhyi/GitDP/tokalang/builds/rc13-integration",
+          "--output-on-failure",
+          "-j",
+          "2"
+        ],
+        "returncode": 8,
+        "seconds": 987.31,
+        "changed_tracked_files": []
+      }
+    }
+  },
+  "verification_before_report_commit": {
+    "head": "51ac6e5d4afe7df217f1c05206302f2099ee14cc",
+    "branch": "refs/heads/impl/json-dynamic-index",
+    "all_refs_unchanged": true,
+    "all_tracked_files_unchanged": true,
+    "staged_diff_unchanged": true,
+    "unstaged_diff_unchanged": true,
+    "untracked_status_unchanged": true,
+    "refs_sha256": "f89351e5acecb86e07e34a91b836094178f3456e95df986f33a12d4fa61dd1f3",
+    "dirty_rfc": "docs/semantic_core/whole_value_generics_and_checked_dependency_elision_rfc.md",
+    "dirty_rfc_sha256": "1b73b0fc46f9a700e1bdc9d0a0031614e1d9a4b398ce97f6a6423972474d70e2",
+    "tracked_file_count": 3526,
+    "migration_all_file_count": 3541,
+    "evidence_archives": {
+      "source-before.tar.gz": "4c30159c255f899f9390316b15b109e4bc31e1fd0953ee297589bc4546fe4584",
+      "baseline-c4b726a7.tar.gz": "f04dfa878cb3703db0b2748aa32a6c46dc144deab8389d6751ef8e92cebfc073",
+      "channel-evidence.tar.gz": "55895864cd9f73d0f36dbd09245db36a13f2c8f390b0a66491683520aa5a0c5e"
+    }
+  },
+  "comparison": {
+    "pass": {
+      "baseline": {
+        "passed": 412,
+        "failed": 45,
+        "failures": [
+          "for_mutable_binding.tk",
+          "g03_diagnostic_test.tk",
+          "g04_anon_records.tk",
+          "g04_raw_pointer.tk",
+          "g04_scratch_uninit.tk",
+          "g04_token_interior_mut.tk",
+          "g07_alias_generic_test.tk",
+          "g07_arena_test.tk",
+          "g07_btree_map_test.tk",
+          "g07_btree_set_test.tk",
+          "g07_container_get_dup_lifecycle.tk",
+          "g07_slab_test.tk",
+          "g07_test_panic.tk",
+          "g07_test_stdx_flag.tk",
+          "g08_auto_drop.tk",
+          "g08_for_alias_handle_array_permissions.tk",
+          "g08_for_alias_shared_array_interior_mutability.tk",
+          "g08_for_alias_shared_array_permissions.tk",
+          "g08_for_alias_writable_vec_handles.tk",
+          "g08_issue14.tk",
+          "g08_match_guard_leak.tk",
+          "g08_match_shared_refcount.tk",
+          "g08_morphic_member_identity.tk",
+          "g08_noshared.tk",
+          "g08_pal_member_shared_borrow_payload_write.tk",
+          "g08_pal_stress_test.tk",
+          "g08_pal_stress_test_borrow.tk",
+          "g08_pointer_print.tk",
+          "g08_ptr_repro.tk",
+          "g08_sync_mpsc_bounded.tk",
+          "g08_sync_mpsc_multi.tk",
+          "g08_test.tk",
+          "g09_async_cede_shared_move_test.tk",
+          "g09_async_wait_syntax.tk",
+          "g09_atomic_stress.tk",
+          "g09_mutex_stress.tk",
+          "g09_std_atomic.tk",
+          "g10_build_hybrid_test.tk",
+          "g10_net_read_exact.tk",
+          "g10_net_tcp_echoserver.tk",
+          "g10_test_sentry_benchmark.tk",
+          "g15_stdx_semver_test.tk",
+          "g15_stdx_toml_test.tk",
+          "g18_slab_lookup_miss.tk",
+          "g18_stdx_template_test.tk"
+        ],
+        "abnormal": []
+      },
+      "current": {
+        "passed": 421,
+        "failed": 36,
+        "failures": [
+          "for_mutable_binding.tk",
+          "g03_diagnostic_test.tk",
+          "g04_anon_records.tk",
+          "g04_raw_pointer.tk",
+          "g04_scratch_uninit.tk",
+          "g04_token_interior_mut.tk",
+          "g07_alias_generic_test.tk",
+          "g07_btree_map_test.tk",
+          "g07_btree_set_test.tk",
+          "g07_container_get_dup_lifecycle.tk",
+          "g07_slab_test.tk",
+          "g07_test_panic.tk",
+          "g07_test_stdx_flag.tk",
+          "g08_auto_drop.tk",
+          "g08_for_alias_handle_array_permissions.tk",
+          "g08_for_alias_shared_array_interior_mutability.tk",
+          "g08_for_alias_shared_array_permissions.tk",
+          "g08_for_alias_writable_vec_handles.tk",
+          "g08_issue14.tk",
+          "g08_match_guard_leak.tk",
+          "g08_match_shared_refcount.tk",
+          "g08_morphic_member_identity.tk",
+          "g08_noshared.tk",
+          "g08_pal_member_shared_borrow_payload_write.tk",
+          "g08_pal_stress_test.tk",
+          "g08_pal_stress_test_borrow.tk",
+          "g08_pointer_print.tk",
+          "g08_ptr_repro.tk",
+          "g08_test.tk",
+          "g09_async_cede_shared_move_test.tk",
+          "g09_async_wait_syntax.tk",
+          "g10_build_hybrid_test.tk",
+          "g10_test_sentry_benchmark.tk",
+          "g15_stdx_toml_test.tk",
+          "g18_slab_lookup_miss.tk",
+          "g18_stdx_template_test.tk"
+        ],
+        "abnormal": []
+      },
+      "recovered": [
+        "g07_arena_test.tk",
+        "g08_sync_mpsc_bounded.tk",
+        "g08_sync_mpsc_multi.tk",
+        "g09_atomic_stress.tk",
+        "g09_mutex_stress.tk",
+        "g09_std_atomic.tk",
+        "g10_net_read_exact.tk",
+        "g10_net_tcp_echoserver.tk",
+        "g15_stdx_semver_test.tk"
+      ],
+      "added_failures_existing_cases": [],
+      "new_cases": [],
+      "new_case_failures": [],
+      "removed_cases": [],
+      "remaining": [
+        "for_mutable_binding.tk",
+        "g03_diagnostic_test.tk",
+        "g04_anon_records.tk",
+        "g04_raw_pointer.tk",
+        "g04_scratch_uninit.tk",
+        "g04_token_interior_mut.tk",
+        "g07_alias_generic_test.tk",
+        "g07_btree_map_test.tk",
+        "g07_btree_set_test.tk",
+        "g07_container_get_dup_lifecycle.tk",
+        "g07_slab_test.tk",
+        "g07_test_panic.tk",
+        "g07_test_stdx_flag.tk",
+        "g08_auto_drop.tk",
+        "g08_for_alias_handle_array_permissions.tk",
+        "g08_for_alias_shared_array_interior_mutability.tk",
+        "g08_for_alias_shared_array_permissions.tk",
+        "g08_for_alias_writable_vec_handles.tk",
+        "g08_issue14.tk",
+        "g08_match_guard_leak.tk",
+        "g08_match_shared_refcount.tk",
+        "g08_morphic_member_identity.tk",
+        "g08_noshared.tk",
+        "g08_pal_member_shared_borrow_payload_write.tk",
+        "g08_pal_stress_test.tk",
+        "g08_pal_stress_test_borrow.tk",
+        "g08_pointer_print.tk",
+        "g08_ptr_repro.tk",
+        "g08_test.tk",
+        "g09_async_cede_shared_move_test.tk",
+        "g09_async_wait_syntax.tk",
+        "g10_build_hybrid_test.tk",
+        "g10_test_sentry_benchmark.tk",
+        "g15_stdx_toml_test.tk",
+        "g18_slab_lookup_miss.tk",
+        "g18_stdx_template_test.tk"
+      ],
+      "baseline_inventory_count": 457,
+      "current_inventory_count": 457
+    },
+    "fail": {
+      "baseline": {
+        "passed": 447,
+        "failed": 31,
+        "failures": [
+          "alias_generic_test.tk",
+          "borrow.tk",
+          "borrow_field.tk",
+          "for_alias_shape_field_ceiling.tk",
+          "for_alias_shared_array_interior_sibling.tk",
+          "init_custom_drop_reference_full_write.tk",
+          "init_custom_drop_reference_sibling_read.tk",
+          "init_immutable_live_array_element_reassign_after_cede.tk",
+          "init_immutable_maybe_moved_array_element_reassign.tk",
+          "member_access_sema_prefix_fail.tk",
+          "morphic_constraint_violation.tk",
+          "owned_lazy_iterator_consuming_callable.tk",
+          "pal_branch_borrowed_field_escape.tk",
+          "pal_member_mut_borrow_duplicate.tk",
+          "pal_member_mut_borrow_payload_read.tk",
+          "pal_member_mut_borrow_payload_write.tk",
+          "projection_reference_hole_fill_rejected.tk",
+          "readonly_member_ref_decl_upgrade_from_plain_cast.tk",
+          "ref_life_bound.tk",
+          "return_ref.tk",
+          "slab_lookup_miss_blocks_remove.tk",
+          "slab_uaf_decons.tk",
+          "smart_ptr_from_stack.tk",
+          "sync_guard_non_send.tk",
+          "thread_spawn_copy_non_sync_capture.tk",
+          "thread_spawn_implicit_capture_nested_closure.tk",
+          "thread_spawn_implicit_capture_via_assignment.tk",
+          "thread_spawn_implicit_capture_via_binding.tk",
+          "thread_spawn_non_send_capture.tk",
+          "unique_value_local_move_noncede_parameter.tk",
+          "unset_escape.tk"
+        ],
+        "abnormal": []
+      },
+      "current": {
+        "passed": 447,
+        "failed": 31,
+        "failures": [
+          "alias_generic_test.tk",
+          "borrow.tk",
+          "borrow_field.tk",
+          "for_alias_shape_field_ceiling.tk",
+          "for_alias_shared_array_interior_sibling.tk",
+          "init_custom_drop_reference_full_write.tk",
+          "init_custom_drop_reference_sibling_read.tk",
+          "init_immutable_live_array_element_reassign_after_cede.tk",
+          "init_immutable_maybe_moved_array_element_reassign.tk",
+          "member_access_sema_prefix_fail.tk",
+          "morphic_constraint_violation.tk",
+          "owned_lazy_iterator_consuming_callable.tk",
+          "pal_branch_borrowed_field_escape.tk",
+          "pal_member_mut_borrow_duplicate.tk",
+          "pal_member_mut_borrow_payload_read.tk",
+          "pal_member_mut_borrow_payload_write.tk",
+          "projection_reference_hole_fill_rejected.tk",
+          "readonly_member_ref_decl_upgrade_from_plain_cast.tk",
+          "ref_life_bound.tk",
+          "return_ref.tk",
+          "slab_lookup_miss_blocks_remove.tk",
+          "slab_uaf_decons.tk",
+          "smart_ptr_from_stack.tk",
+          "sync_guard_non_send.tk",
+          "thread_spawn_copy_non_sync_capture.tk",
+          "thread_spawn_implicit_capture_nested_closure.tk",
+          "thread_spawn_implicit_capture_via_assignment.tk",
+          "thread_spawn_implicit_capture_via_binding.tk",
+          "thread_spawn_non_send_capture.tk",
+          "unique_value_local_move_noncede_parameter.tk",
+          "unset_escape.tk"
+        ],
+        "abnormal": []
+      },
+      "recovered": [],
+      "added_failures_existing_cases": [],
+      "new_cases": [],
+      "new_case_failures": [],
+      "removed_cases": [],
+      "remaining": [
+        "alias_generic_test.tk",
+        "borrow.tk",
+        "borrow_field.tk",
+        "for_alias_shape_field_ceiling.tk",
+        "for_alias_shared_array_interior_sibling.tk",
+        "init_custom_drop_reference_full_write.tk",
+        "init_custom_drop_reference_sibling_read.tk",
+        "init_immutable_live_array_element_reassign_after_cede.tk",
+        "init_immutable_maybe_moved_array_element_reassign.tk",
+        "member_access_sema_prefix_fail.tk",
+        "morphic_constraint_violation.tk",
+        "owned_lazy_iterator_consuming_callable.tk",
+        "pal_branch_borrowed_field_escape.tk",
+        "pal_member_mut_borrow_duplicate.tk",
+        "pal_member_mut_borrow_payload_read.tk",
+        "pal_member_mut_borrow_payload_write.tk",
+        "projection_reference_hole_fill_rejected.tk",
+        "readonly_member_ref_decl_upgrade_from_plain_cast.tk",
+        "ref_life_bound.tk",
+        "return_ref.tk",
+        "slab_lookup_miss_blocks_remove.tk",
+        "slab_uaf_decons.tk",
+        "smart_ptr_from_stack.tk",
+        "sync_guard_non_send.tk",
+        "thread_spawn_copy_non_sync_capture.tk",
+        "thread_spawn_implicit_capture_nested_closure.tk",
+        "thread_spawn_implicit_capture_via_assignment.tk",
+        "thread_spawn_implicit_capture_via_binding.tk",
+        "thread_spawn_non_send_capture.tk",
+        "unique_value_local_move_noncede_parameter.tk",
+        "unset_escape.tk"
+      ],
+      "baseline_inventory_count": 478,
+      "current_inventory_count": 478
+    },
+    "ctest": {
+      "baseline": {
+        "passed": 103,
+        "failed": 3,
+        "failures": [
+          "toka_binding_b2_arena",
+          "toka_stage1_indirect_parameter_cede",
+          "toka_stage1_return_matrix"
+        ],
+        "abnormal": []
+      },
+      "current": {
+        "passed": 107,
+        "failed": 2,
+        "failures": [
+          "toka_stage1_indirect_parameter_cede",
+          "toka_stage1_return_matrix"
+        ],
+        "abnormal": []
+      },
+      "recovered": [
+        "toka_binding_b2_arena"
+      ],
+      "added_failures_existing_cases": [],
+      "new_cases": [
+        "toka_channel_storage",
+        "toka_rc13_legacy_threads",
+        "toka_rc13_semver_thread_migration"
+      ],
+      "new_case_failures": [],
+      "removed_cases": [],
+      "remaining": [
+        "toka_stage1_indirect_parameter_cede",
+        "toka_stage1_return_matrix"
+      ],
+      "baseline_inventory_count": 106,
+      "current_inventory_count": 109
+    }
+  },
+  "remaining_pass_first_errors": [
+    {
+      "case": "for_mutable_binding.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/for_mutable_binding.tk",
+        "line": 3
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g03_diagnostic_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0402",
+        "message": "Use of undeclared identifier 'labels'",
+        "file": "tests/pass/g03_diagnostic_test.tk",
+        "line": 43
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g04_anon_records.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g04_anon_records.tk",
+        "line": 51
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g04_raw_pointer.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+        "file": "tests/pass/g04_raw_pointer.tk",
+        "line": 88
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g04_scratch_uninit.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g04_scratch_uninit.tk",
+        "line": 4
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g04_token_interior_mut.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: TypeIncompatible",
+        "file": "tests/pass/g04_token_interior_mut.tk",
+        "line": 18
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_alias_generic_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g07_alias_generic_test.tk",
+        "line": 25
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_btree_map_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: RouteIneligible",
+        "file": "lib/std/btreemap.tk",
+        "line": 29
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_btree_set_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: RouteIneligible",
+        "file": "lib/std/btreemap.tk",
+        "line": 29
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_container_get_dup_lifecycle.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: RouteIneligible",
+        "file": "lib/std/btreemap.tk",
+        "line": 29
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_slab_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+        "file": "lib/std/slab.tk",
+        "line": 85
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_test_panic.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04663",
+        "message": "Cannot construct writable raw pointer: KnownNullableSourceRequiresGuard",
+        "file": "tests/pass/g07_test_panic.tk",
+        "line": 32
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g07_test_stdx_flag.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "lib/stdx/cli/flag.tk",
+        "line": 395
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_auto_drop.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_auto_drop.tk",
+        "line": 58
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_for_alias_handle_array_permissions.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0402",
+        "message": "Use of undeclared identifier 'owners'",
+        "file": "tests/pass/g08_for_alias_handle_array_permissions.tk",
+        "line": 7
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_for_alias_shared_array_interior_mutability.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0402",
+        "message": "Use of undeclared identifier 'values'",
+        "file": "tests/pass/g08_for_alias_shared_array_interior_mutability.tk",
+        "line": 9
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_for_alias_shared_array_permissions.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0402",
+        "message": "Use of undeclared identifier 'values'",
+        "file": "tests/pass/g08_for_alias_shared_array_permissions.tk",
+        "line": 7
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_for_alias_writable_vec_handles.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: TypeIncompatible",
+        "file": "tests/pass/g08_for_alias_writable_vec_handles.tk",
+        "line": 20
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_issue14.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_issue14.tk",
+        "line": 56
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_match_guard_leak.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_match_guard_leak.tk",
+        "line": 36
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_match_shared_refcount.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_match_shared_refcount.tk",
+        "line": 36
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_morphic_member_identity.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0454",
+        "message": "Returning reference to parameter 'box' requires explicit dependency declaration (<- box)",
+        "file": "tests/pass/g08_morphic_member_identity.tk",
+        "line": 7
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_noshared.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_noshared.tk",
+        "line": 89
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_pal_member_shared_borrow_payload_write.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: TypeIncompatible",
+        "file": "tests/pass/g08_pal_member_shared_borrow_payload_write.tk",
+        "line": 10
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_pal_stress_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ProjectedHandleRequiresSubroot",
+        "file": "tests/pass/g08_pal_stress_test.tk",
+        "line": 77
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_pal_stress_test_borrow.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0496",
+        "message": "Type 'Engine#' places a binding permission on the type; use the binding name/hat, or an unnamed handle/reference capability type (did you mean 'place permissions on the binding name or binding hat, not the type'?)",
+        "file": "tests/pass/g08_pal_stress_test_borrow.tk",
+        "line": 67
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_pointer_print.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_pointer_print.tk",
+        "line": 28
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_ptr_repro.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+        "file": "tests/pass/g08_ptr_repro.tk",
+        "line": 38
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g08_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "tests/pass/g08_test.tk",
+        "line": 91
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g09_async_cede_shared_move_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: ExplicitCedeRequiresSource",
+        "file": "tests/pass/g09_async_cede_shared_move_test.tk",
+        "line": 46
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g09_async_wait_syntax.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: IncompleteFacts",
+        "file": "lib/std/task.tk",
+        "line": 463
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g10_build_hybrid_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04662",
+        "message": "Cannot raw_take element: ElementDependenciesUnproven",
+        "file": "lib/std/vec.tk",
+        "line": 35
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g10_test_sentry_benchmark.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E0606",
+        "message": "Type 'SentryScope' does not satisfy trait bound '@JsonFactory' for generic parameter 'T'",
+        "file": "tests/pass/g10_test_sentry_benchmark.tk",
+        "line": 28
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g15_stdx_toml_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04662",
+        "message": "Cannot raw_take element: ElementDependenciesUnproven",
+        "file": "lib/std/vec.tk",
+        "line": 35
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g18_slab_lookup_miss.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04661",
+        "message": "Cannot transfer source into binding: AccessCapabilityMismatch",
+        "file": "lib/std/slab.tk",
+        "line": 85
+      },
+      "classification": "rejected"
+    },
+    {
+      "case": "g18_stdx_template_test.tk",
+      "returncode": 1,
+      "first_error": {
+        "code": "E04662",
+        "message": "Cannot raw_take element: ElementDependenciesUnproven",
+        "file": "lib/std/vec.tk",
+        "line": 35
+      },
+      "classification": "rejected"
+    }
+  ],
+  "negative_mismatches": [
+    {
+      "case": "alias_generic_test.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": [
+        "E0408",
+        "Cannot convert type 'GenericNode_M_i32 (assign)' to 'StrongNode#'"
+      ],
+      "actual_first_added_diagnostic": [
+        "E04661",
+        "Cannot transfer source into binding: IncompleteFacts"
+      ]
+    },
+    {
+      "case": "borrow.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": [
+        "E0441",
+        "Cannot access 'x' while it is mutably borrowed"
+      ],
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "borrow_field.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": [
+        "E0441",
+        "Cannot access 'p' while it is mutably borrowed"
+      ],
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "for_alias_shape_field_ceiling.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "for_alias_shared_array_interior_sibling.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "init_custom_drop_reference_full_write.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": [
+        "E0402",
+        "Use of undeclared identifier 'borrow'"
+      ]
+    },
+    {
+      "case": "init_custom_drop_reference_sibling_read.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": [
+        "E0402",
+        "Use of undeclared identifier 'borrow'"
+      ]
+    },
+    {
+      "case": "init_immutable_live_array_element_reassign_after_cede.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": [
+        "E04572",
+        "Cannot assign to immutable entity. Missing writable token '#' or '!'."
+      ],
+      "actual_first_added_diagnostic": [
+        "E04661",
+        "Cannot transfer source into binding: IncompleteFacts"
+      ]
+    },
+    {
+      "case": "init_immutable_maybe_moved_array_element_reassign.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": [
+        "E04572",
+        "Cannot assign to immutable entity. Missing writable token '#' or '!'."
+      ],
+      "actual_first_added_diagnostic": [
+        "E04661",
+        "Cannot transfer source into binding: IncompleteFacts"
+      ]
+    },
+    {
+      "case": "member_access_sema_prefix_fail.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": [
+        "E0406",
+        "Invalid member access modifier combination: '^'data'"
+      ],
+      "actual_first_added_diagnostic": [
+        "E01268",
+        "Generic whole-value quote syntax is removed; use the ordinary type or binding name"
+      ]
+    },
+    {
+      "case": "morphic_constraint_violation.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": [
+        "E0402",
+        "Use of undeclared identifier 'p'"
+      ]
+    },
+    {
+      "case": "owned_lazy_iterator_consuming_callable.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": [
+        "E0473",
+        "Parameter 'mapper' was not declared 'cede' in the function signature and cannot be ceded in the body"
+      ]
+    },
+    {
+      "case": "pal_branch_borrowed_field_escape.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": [
+        "E0410",
+        "Use of uninitialized variable or member 'b.ref'"
+      ]
+    },
+    {
+      "case": "pal_member_mut_borrow_duplicate.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "pal_member_mut_borrow_payload_read.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "pal_member_mut_borrow_payload_write.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "projection_reference_hole_fill_rejected.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": [
+        "E0402",
+        "Use of undeclared identifier 'borrow'"
+      ]
+    },
+    {
+      "case": "readonly_member_ref_decl_upgrade_from_plain_cast.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "ref_life_bound.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": [
+        "E0410",
+        "Use of uninitialized variable or member 'b.ref'"
+      ]
+    },
+    {
+      "case": "return_ref.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": [
+        "E0456",
+        "Object 'ref_a' (lived longer) cannot depend on 'b' (lived shorter)"
+      ],
+      "actual_first_added_diagnostic": [
+        "E04661",
+        "Cannot transfer source into binding: IncompleteFacts"
+      ]
+    },
+    {
+      "case": "slab_lookup_miss_blocks_remove.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "slab_uaf_decons.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": [
+        "E0455",
+        "Returning reference to local variable 'p.x' is unsafe"
+      ],
+      "actual_first_added_diagnostic": [
+        "E0454",
+        "Returning reference to parameter 'opt' requires explicit dependency declaration (<- opt)"
+      ]
+    },
+    {
+      "case": "smart_ptr_from_stack.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": [
+        "E04661",
+        "Cannot transfer source into binding: ContradictoryFacts"
+      ]
+    },
+    {
+      "case": "sync_guard_non_send.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": [
+        "E0477",
+        "Closure passed across execution boundary 'thread_spawn' captures 'r' with a value that is not @Send"
+      ],
+      "actual_first_added_diagnostic": [
+        "E04661",
+        "Cannot transfer source into binding: IncompleteFacts"
+      ]
+    },
+    {
+      "case": "thread_spawn_copy_non_sync_capture.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "thread_spawn_implicit_capture_nested_closure.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "thread_spawn_implicit_capture_via_assignment.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "thread_spawn_implicit_capture_via_binding.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "thread_spawn_non_send_capture.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "unique_value_local_move_noncede_parameter.tk",
+      "failure_kind": "(Legacy Match Failed)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": null
+    },
+    {
+      "case": "unset_escape.tk",
+      "failure_kind": "(Snapshot Mismatch)",
+      "expected_first_removed_diagnostic": null,
+      "actual_first_added_diagnostic": [
+        "E0402",
+        "Use of undeclared identifier 'ref'"
+      ]
+    }
+  ]
+}
