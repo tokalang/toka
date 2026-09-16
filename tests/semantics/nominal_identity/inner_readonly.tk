@@ -1,0 +1,9 @@
+shape Box<T>(value#: T)
+type Strong<T> = Box<T>
+fn main() -> i32 {
+    auto source = 7:i32
+    auto &reference = &source
+    auto holder# = Strong<&i32>(value = &reference)
+    holder.value = 8
+    return 0
+}

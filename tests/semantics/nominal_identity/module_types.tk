@@ -1,0 +1,5 @@
+pub shape Base(value: i32)
+pub type Strong = Base
+pub alias Transparent = Base
+pub fn make(value: i32) -> Strong { return Strong(value = value) }
+pub fn read(value: Strong) -> i32 { return value.value }

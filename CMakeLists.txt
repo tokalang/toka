@@ -304,6 +304,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_member_reference_entry.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_nominal_alias_identity
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_nominal_alias_identity.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_dyn_fn_binding_lifecycle
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_dyn_fn_binding_lifecycle.py

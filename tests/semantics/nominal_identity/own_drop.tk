@@ -1,0 +1,16 @@
+auto drops# = 0:i32
+shape Base(value: i32)
+type Strong = Base
+impl Strong@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto value = Strong(value = 7)
+        auto moved = cede value
+        assert(moved.value == 7, "nominal own-drop value transfers")
+    }
+    assert(drops == 1, "nominal own drop runs exactly once")
+    return 0
+}

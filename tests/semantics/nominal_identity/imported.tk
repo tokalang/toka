@@ -1,0 +1,10 @@
+import tests/semantics/nominal_identity/module_types::{Strong, Transparent, make, read}
+fn main() -> i32 {
+    auto value = make(7)
+    assert(read(value) == 7, "returned imported nominal identity")
+    auto constructed = Strong(value = 8)
+    assert(read(constructed) == 8, "imported nominal construction")
+    auto plain = Transparent(value = 9)
+    assert(plain.value == 9, "imported transparent alias")
+    return 0
+}

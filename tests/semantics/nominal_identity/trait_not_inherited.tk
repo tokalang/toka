@@ -1,0 +1,9 @@
+shape Base(value: i32)
+trait @Mark { pub fn mark(self) -> i32 }
+impl Base@Mark { pub fn mark(self) -> i32 { return self.value } }
+type Strong = Base
+fn needs<T: @Mark>(value: T) -> i32 { return value.mark() }
+fn main() -> i32 {
+    auto value = Strong(value = 7)
+    return needs(value)
+}

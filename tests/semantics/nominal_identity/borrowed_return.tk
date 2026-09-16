@@ -1,0 +1,11 @@
+shape Box<T>(value: T)
+type Strong<T> = Box<T>
+fn borrow(input: i32) -> Strong<&i32> <- input {
+    return Strong<&i32>(value = &input)
+}
+fn main() -> i32 {
+    auto value = 7
+    auto borrowed = borrow(value)
+    assert(borrowed.value == 7, "nominal wrapper retains actual input dependency")
+    return 0
+}

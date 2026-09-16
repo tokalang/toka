@@ -1,0 +1,14 @@
+shape Resource(value: i32)
+shape Box<T>(value: T)
+type First = Box<^Resource>
+type Second = Box<^Resource>
+fn main() -> i32 {
+    auto ^a = new Resource(value = 1)
+    auto ^b = new Resource(value = 2)
+    auto target# = First(value = cede ^a)
+    auto source = Second(value = cede ^b)
+    target = cede source
+    assert(source.value.value == 2, "rejection restores the moved source")
+    assert(target.value.value == 1, "rejection preserves the old target")
+    return 0
+}

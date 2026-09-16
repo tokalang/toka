@@ -1064,7 +1064,7 @@ std::shared_ptr<toka::Type> Sema::checkShapeInit(InitStructExpr *Init) {
   if (!validateTypeVisibilityInType(OriginalName, getLoc(Init)))
     return toka::Type::fromString("unknown");
   auto resolvedTypeObj =
-      resolveType(toka::Type::fromString(Init->ShapeName), true);
+      resolveType(toka::Type::fromString(Init->ShapeName), false);
   if (!resolvedTypeObj) {
     if (!HasError) error(Init, DiagID::ERR_UNKNOWN_STRUCT, Init->ShapeName);
     return toka::Type::fromString("unknown");
@@ -1204,7 +1204,11 @@ std::shared_ptr<toka::Type> Sema::checkShapeInit(InitStructExpr *Init) {
     }
 
     if (TypeAliasMap.count(BaseName) && TypeAliasMap[BaseName].IsStrong) {
-      return toka::Type::fromString(OriginalName);
+      auto nominalType = resolveType(toka::Type::fromString(OriginalName), false);
+      if (auto nominal = std::dynamic_pointer_cast<ShapeType>(nominalType);
+          nominal && nominal->Decl)
+        proveSlice4Copy(nominal->Decl);
+      return nominalType;
     }
     return ResultType;
   }

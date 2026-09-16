@@ -1,0 +1,9 @@
+shape Node<T>(value: T)
+type First<T> = Node<T>
+type Second<T> = Node<T>
+fn main() -> i32 {
+    auto first# = First<i32>(value = 1)
+    auto second = Second<i32>(value = 2)
+    first = second
+    return 0
+}

@@ -1,0 +1,10 @@
+shape Base(value: i32)
+trait @Mark { pub fn mark(self) -> i32 }
+impl Base@Mark { pub fn mark(self) -> i32 { return self.value } }
+alias Transparent = Base
+fn needs<T: @Mark>(value: T) -> i32 { return value.mark() }
+fn main() -> i32 {
+    auto value = Transparent(value = 7)
+    assert(needs(value) == 7, "transparent alias retains the same trait identity")
+    return 0
+}

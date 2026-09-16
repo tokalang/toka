@@ -2154,6 +2154,11 @@ public:
   // semantic-analysis revision does not assign them a source identity.
   bool IsCompilerSynthesized = false;
   ShapeDecl *InstantiationTemplate = nullptr;
+  // Physical/source field contract of a nominal alias. Never a nominal
+  // identity or trait-inheritance link (unlike a generic instantiation).
+  ShapeDecl *NominalLayoutOrigin = nullptr;
+  TypeSyntaxPtr NominalLayoutSyntax;
+  std::vector<GenericParam> NominalLayoutParameters;
   std::vector<std::shared_ptr<toka::Type>> InstantiationArgs;
   // struct GenericParam moved to top-level
   std::vector<GenericParam> GenericParams; // [UPDATED] e.g. <T, N_: usize>

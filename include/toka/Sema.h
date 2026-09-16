@@ -547,6 +547,7 @@ private:
     TypeSyntaxPtr TargetSyntax;
     bool IsStrong;
     std::vector<GenericParam> GenericParams; // [NEW]
+    const TypeAliasDecl *Declaration = nullptr;
   };
   struct AssociatedTypeBinding {
     std::string Type;

@@ -1,0 +1,7 @@
+shape Box<T>(value: T)
+type Strong<T> = Box<T>
+fn escape() -> Strong<&i32> {
+    auto local = 7
+    return Strong<&i32>(value = &local)
+}
+fn main() -> i32 { return 0 }

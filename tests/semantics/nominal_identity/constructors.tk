@@ -1,0 +1,22 @@
+shape Node<T>(value: T)
+alias PlainAlias = Node<i32>
+alias GenericAlias<T> = Node<T>
+type Strong = Node<i32>
+type GenericStrong<T> = Node<T>
+fn main() -> i32 {
+    auto base# = Node<i32>(value = 1)
+    auto synonym# = PlainAlias(value = 2)
+    base = synonym
+    synonym = base
+    auto generic = GenericAlias<i32>(value = 3)
+    synonym = generic
+    assert(synonym.value == 3, "transparent alias remains compatible")
+    auto strong# = Strong(value = 4)
+    auto next = Strong(value = 5)
+    strong = next
+    assert(strong.value == 5 && next.value == 5, "same nominal Copy assignment")
+    auto generic_strong# = GenericStrong<i32>(value = 6)
+    generic_strong = GenericStrong<i32>(value = 7)
+    assert(generic_strong.value == 7, "generic nominal construction and assignment")
+    return 0
+}

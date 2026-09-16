@@ -1,0 +1,8 @@
+shape Linear(value: i32)
+impl Linear@Encap { pub value }
+type Strong = Linear
+fn main() -> i32 {
+    auto value = Strong(value = 7)
+    auto result = value
+    return 0
+}

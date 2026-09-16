@@ -1,0 +1,8 @@
+shape Node<T>(value: T)
+type Strong<T> = Node<T>
+fn main() -> i32 {
+    auto base# = Node<i32>(value = 1)
+    auto strong = Strong<i32>(value = 2)
+    base = strong
+    return 0
+}

@@ -1,0 +1,35 @@
+auto drops# = 0:i32
+shape Resource(value: i32)
+impl Resource@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+shape Box<T>(value: T)
+type Strong<T> = Box<T>
+fn main() -> i32 {
+    {
+        auto ^first = new Resource(value = 1)
+        auto source = Strong<^Resource>(value = cede ^first)
+        auto moved = cede source
+        assert(moved.value.value == 1, "whole nominal owning transfer")
+    }
+    assert(drops == 1, "unique element drops exactly once")
+    {
+        auto ~value = new Resource(value = 2)
+        auto ~other = ~value
+        auto source = Strong<~Resource>(value = cede ~value)
+        auto moved = cede source
+        assert(moved.value.value == 2 && other.value == 2, "shared element and remaining owner")
+    }
+    assert(drops == 2, "shared element drops exactly once")
+    {
+        auto ^old = new Resource(value = 3)
+        auto target# = Strong<^Resource>(value = cede ^old)
+        auto ^next = new Resource(value = 4)
+        auto source = Strong<^Resource>(value = cede ^next)
+        target = cede source
+        assert(drops == 3 && target.value.value == 4, "replacement cleans old nominal value once")
+    }
+    assert(drops == 4, "replacement value cleaned once")
+    return 0
+}

@@ -3,10 +3,19 @@
   "cases": [
     {
       "case": "alias_generic_test.tk",
-      "status": "blocked",
-      "category": "target-not-qualified",
-      "target_codes": [],
-      "reason": "Legal StrongNode construction fails IncompleteFacts before nominal assignment mismatch."
+      "status": "repaired",
+      "category": "nominal-construction-identity-fix",
+      "target_codes": [
+        "E0408"
+      ],
+      "first_message": "Cannot convert type 'GenericNode_M_i32 (assign)' to 'StrongNode#'",
+      "target_sites": [
+        {
+          "code": "E0408",
+          "file": "tests/fail/alias_generic_test.tk",
+          "line": 25
+        }
+      ]
     },
     {
       "case": "borrow.tk",

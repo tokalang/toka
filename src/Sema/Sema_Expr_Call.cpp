@@ -1090,6 +1090,16 @@ Sema::resolveExplicitCedeStage0TypeReadOnly(const std::shared_ptr<Type> &type) {
       return nullptr;
     auto alias = TypeAliasMap.find(shape->Name);
     if (alias != TypeAliasMap.end() && alias->second.GenericParams.empty()) {
+      if (alias->second.IsStrong) {
+        // A layout lookup must not turn a nominal type into its alias target.
+        // Materialization belongs to normal Sema; this reader only consumes it.
+        auto declared = ShapeMap.find(shape->Name);
+        if (declared == ShapeMap.end()) return nullptr;
+        auto nominal = std::make_shared<ShapeType>(shape->Name);
+        nominal->resolve(declared->second);
+        return nominal->withAttributes(shape->IsWritable, shape->IsNullable,
+                                       shape->IsBlocked);
+      }
       auto target = alias->second.TargetSyntax
                         ? Type::fromSyntax(alias->second.TargetSyntax)
                         : Type::fromString(alias->second.Target);
@@ -9721,7 +9731,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
       if (TypeAliasMap.count(OriginalName) &&
           TypeAliasMap[OriginalName].IsStrong) {
-        resultType = toka::Type::fromString(OriginalName);
+        resultType = resolveType(toka::Type::fromString(OriginalName), false);
+        if (auto nominal = std::dynamic_pointer_cast<ShapeType>(resultType);
+            nominal && nominal->Decl)
+          proveSlice4Copy(nominal->Decl);
       }
       return resultType;
     } else if (Sh->Kind == ShapeKind::Union) {

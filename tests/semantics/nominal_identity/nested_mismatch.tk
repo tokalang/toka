@@ -1,0 +1,9 @@
+shape Leaf(value: i32)
+type Id = Leaf
+shape Box<T>(value: T)
+type StrongBox<T> = Box<T>
+fn main() -> i32 {
+    auto box# = StrongBox<Id>(value = Id(value = 7))
+    box.value = Leaf(value = 8)
+    return 0
+}

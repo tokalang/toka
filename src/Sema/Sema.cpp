@@ -1350,6 +1350,15 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
     base.resize(generic);
   ShapeDecl *shape = findVisibleShapeDecl(base, impl->Loc);
   auto implOwner = DeclarationLexicalScopes.find(impl);
+  if (!shape) {
+    auto alias = TypeAliasMap.find(base);
+    if (alias != TypeAliasMap.end() && alias->second.IsStrong &&
+        alias->second.Declaration && alias->second.GenericParams.empty()) {
+      auto nominal = std::dynamic_pointer_cast<ShapeType>(
+          resolveType(Type::fromString(base), false));
+      if (nominal) shape = nominal->Decl;
+    }
+  }
   auto shapeOwner = shape ? DeclarationLexicalScopes.find(shape)
                           : DeclarationLexicalScopes.end();
   if (!shape || implOwner == DeclarationLexicalScopes.end() ||
@@ -1435,6 +1444,11 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
   policy.Owner = implOwner->second;
   policy.Entries = impl->EncapEntries;
   Slice2PolicyMap[shape] = std::move(policy);
+  if (shape->NominalLayoutOrigin && dropHooks == 1) {
+    shape->HasExplicitDrop = true;
+    Slice4CopyProofs.erase(shape);
+    Slice4CopyRecipes.erase(shape);
+  }
 }
 
 bool Sema::canNameEncapField(const ShapeDecl *shape, const std::string &field,
@@ -1580,6 +1594,8 @@ bool Sema::proveSlice4Copy(const ShapeDecl *shape) {
   }
 
   bool copyable = !shape->HasExplicitDrop;
+  if (copyable && shape->NominalLayoutOrigin)
+    copyable = proveSlice4Copy(shape->NominalLayoutOrigin);
   const bool governed = Slice2PolicyMap.count(shape) != 0;
   if (governed && !Slice4CopyRequests.count(shape))
     copyable = false;
@@ -3644,9 +3660,9 @@ void Sema::declareGlobals(Module &M) {
       if (!parameter.IsConst) aliasBinders.insert(parameter.Name);
     targetSyntax = bindGenericSourceTypeSyntax(targetSyntax, aliasBinders, &M);
     ms.TypeAliases[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
-                                   Alias->GenericParams};
+                                   Alias->GenericParams, Alias.get()};
     TypeAliasMap[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
-                                 Alias->GenericParams};
+                                 Alias->GenericParams, Alias.get()};
     SyntaxOrigin aliasOrigin = M.IsInterface ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
     auto aliasTypeObj = toka::Type::fromSyntax(targetSyntax);
     if (!aliasTypeObj)
@@ -4023,9 +4039,9 @@ void Sema::registerGlobals(Module &M) {
       if (!parameter.IsConst) aliasBinders.insert(parameter.Name);
     targetSyntax = bindGenericSourceTypeSyntax(targetSyntax, aliasBinders, &M);
     ms.TypeAliases[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
-                                   Alias->GenericParams};
+                                   Alias->GenericParams, Alias.get()};
     TypeAliasMap[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
-                                 Alias->GenericParams};
+                                 Alias->GenericParams, Alias.get()};
     auto aliasTypeObj = toka::Type::fromSyntax(targetSyntax);
     if (!aliasTypeObj)
       aliasTypeObj = toka::Type::fromString(target);
@@ -6646,6 +6662,32 @@ void Sema::analyzeShapes(Module &M) {
     checkUnsafePublicShapeBoundary(S.get());
   }
 
+  // Nominal aliases can be materialized while registering their own impls,
+  // before the target's member types have been filled. Complete only those
+  // missing semantic types from the exact recorded layout declaration; do not
+  // reinterpret the copied syntax in the caller's scope or replace identity.
+  std::set<ShapeDecl *> refreshedNominals;
+  std::function<void(ShapeDecl *)> refreshNominal = [&](ShapeDecl *shape) {
+    if (!shape || !shape->NominalLayoutOrigin ||
+        !refreshedNominals.insert(shape).second) return;
+    auto *origin = shape->NominalLayoutOrigin;
+    refreshNominal(origin);
+    if (shape->Members.size() != origin->Members.size()) return;
+    auto fill = [&](auto &&self, ShapeMember &member,
+                    const ShapeMember &source) -> void {
+      if (member.Name != source.Name ||
+          member.SubMembers.size() != source.SubMembers.size()) return;
+      if (!member.ResolvedType) member.ResolvedType = source.ResolvedType;
+      for (size_t i = 0; i < member.SubMembers.size(); ++i)
+        self(self, member.SubMembers[i], source.SubMembers[i]);
+    };
+    for (size_t i = 0; i < shape->Members.size(); ++i)
+      fill(fill, shape->Members[i], origin->Members[i]);
+  };
+  // Some early declarations have already moved out of SyntheticShapes into
+  // GenericInstancesModule; the registry retains the same declaration IDs.
+  for (const auto &[name, shape] : ShapeMap) refreshNominal(shape);
+
   // First pass: Compute properties for all shapes
   for (auto &S : M.Shapes) {
     if (!S->GenericParams.empty())
@@ -6705,6 +6747,19 @@ void Sema::analyzeShapes(Module &M) {
     }
   }
   validateSlice4CopyAndDup(M);
+  // Nominal declarations referenced only by signatures/interfaces may never
+  // execute a constructor in this compilation. Copy is a type property, not
+  // evidence that a constructor body happened to run first.
+  for (const auto &[name, shape] : ShapeMap) {
+    if (!shape || !shape->NominalLayoutOrigin) continue;
+    const bool complete = std::all_of(shape->Members.begin(), shape->Members.end(),
+        [](const ShapeMember &member) {
+          return (member.IsUnitVariant || member.ResolvedType) &&
+              std::all_of(member.SubMembers.begin(), member.SubMembers.end(),
+                  [](const ShapeMember &payload) { return payload.ResolvedType != nullptr; });
+        });
+    if (complete) proveSlice4Copy(shape);
+  }
 }
 
 void Sema::computeShapeProperties(const std::string &shapeName, Module &M) {

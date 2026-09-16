@@ -775,7 +775,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
             // Strong aliases keep an isolated nominal identity, but their
             // concrete target now arrives as a semantic Type rather than a
             // generated spelling that must be parsed again.
-            targetTy = resolveType(targetTy, true);
+            targetTy = resolveType(targetTy, false);
             auto targetSh = std::dynamic_pointer_cast<ShapeType>(targetTy);
             if (targetSh && targetSh->Decl) {
               std::string mangledName = shape->Name + "_M";
@@ -791,6 +791,9 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
                 cloned->NominalId.reset();
                 cloned->IsCompilerSynthesized = true;
                 cloned->InstantiationTemplate = nullptr;
+                cloned->NominalLayoutOrigin = targetSh->Decl;
+                cloned->NominalLayoutSyntax = aliasInfo.TargetSyntax;
+                cloned->NominalLayoutParameters = aliasInfo.GenericParams;
                 cloned->InstantiationArgs.clear();
                 cloned->OwnerLinkName.clear();
                 cloned->Name = mangledName;
@@ -798,13 +801,19 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
                 cloned->OwnerLinkName = mangledName;
                 cloned->GenericParams.clear();
                 ShapeMap[mangledName] = cloned;
+                if (aliasInfo.Declaration) {
+                  auto owner = DeclarationLexicalScopes.find(aliasInfo.Declaration);
+                  if (owner != DeclarationLexicalScopes.end())
+                    DeclarationLexicalScopes[cloned] = owner->second;
+                }
                 SyntheticShapes.push_back(std::unique_ptr<ShapeDecl>(cloned));
               }
 
               auto newShape = std::make_shared<ShapeType>(mangledName);
               newShape->resolve(ShapeMap[mangledName]);
               return newShape->withAttributes(type->IsWritable,
-                                               type->IsNullable);
+                                               type->IsNullable,
+                                               type->IsBlocked);
             }
             return shape;
           }
@@ -893,23 +902,32 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
             resShape->GenericArgs = shape->GenericArgs;
         }
         return resolveType(
-            resolved->withAttributes(type->IsWritable, type->IsNullable), true);
+            resolved->withAttributes(type->IsWritable, type->IsNullable,
+                                     type->IsBlocked), force);
       } else {
         // [Strong Alias] Isolated Identity with Cloned Structure
         if (!force && !ShapeMap.count(shape->Name)) {
-          auto targetTy = resolveType(lowerAliasTarget(aliasInfo), true);
+          auto targetTy = resolveType(lowerAliasTarget(aliasInfo), false);
           if (auto targetSh = std::dynamic_pointer_cast<ShapeType>(targetTy)) {
             if (targetSh->Decl) {
               auto cloned = new ShapeDecl(*targetSh->Decl);
               cloned->NominalId.reset();
               cloned->IsCompilerSynthesized = true;
               cloned->InstantiationTemplate = nullptr;
+              cloned->NominalLayoutOrigin = targetSh->Decl;
+              cloned->NominalLayoutSyntax = aliasInfo.TargetSyntax;
+              cloned->NominalLayoutParameters = aliasInfo.GenericParams;
               cloned->InstantiationArgs.clear();
               cloned->OwnerLinkName.clear();
               cloned->Name = shape->Name;
               cloned->CodegenName = shape->Name;
               cloned->OwnerLinkName = shape->Name;
               ShapeMap[cloned->Name] = cloned;
+              if (aliasInfo.Declaration) {
+                auto owner = DeclarationLexicalScopes.find(aliasInfo.Declaration);
+                if (owner != DeclarationLexicalScopes.end())
+                  DeclarationLexicalScopes[cloned] = owner->second;
+              }
               SyntheticShapes.push_back(std::unique_ptr<ShapeDecl>(cloned));
             }
           }

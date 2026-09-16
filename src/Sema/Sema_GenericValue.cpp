@@ -4,6 +4,8 @@
 namespace toka {
 
 bool Sema::isWholeGenericField(const ShapeDecl *shape, const ShapeMember &field) const {
+  while (shape && shape->NominalLayoutOrigin)
+    shape = shape->NominalLayoutOrigin;
   auto *declaration = shape && shape->InstantiationTemplate ? shape->InstantiationTemplate : shape;
   if (!declaration || !field.TypeSyntax ||
       field.TypeSyntax->NodeKind != TypeSyntax::Kind::Named ||
@@ -144,6 +146,29 @@ GenericValueContractPtr Sema::projectGenericFieldContract(
     Expr *object, const ShapeDecl *shape, size_t index) {
   auto contract = queryGenericValueContract(object);
   if (!contract || !shape) return nullptr;
+  // Project the alias's source-level layout expression, not the concrete
+  // specialization's field types. Otherwise Strong<T> would reveal T's
+  // concrete fields while the equivalent Box<T> still treats T as opaque.
+  while (shape->NominalLayoutOrigin) {
+    auto application = contract->Type;
+    while (application && application->NodeKind == TypeSyntax::Kind::Morphology)
+      application = application->Subject;
+    if (!application || application->NodeKind != TypeSyntax::Kind::GenericApplication ||
+        !shape->NominalLayoutSyntax ||
+        application->Arguments.size() != shape->NominalLayoutParameters.size())
+      return nullptr;
+    std::map<std::string, TypeSyntaxPtr> substitutions;
+    for (size_t i = 0; i < application->Arguments.size(); ++i) {
+      const auto &parameter = shape->NominalLayoutParameters[i];
+      const auto &argument = application->Arguments[i];
+      if (!parameter.IsConst && argument.ArgumentKind == TypeArgumentSyntax::Kind::Type)
+        substitutions[parameter.Name] = argument.Type;
+    }
+    contract = makeGenericValueContract(
+        shape->NominalLayoutSyntax->substitute(substitutions), contract->Parameters);
+    if (!contract) return nullptr;
+    shape = shape->NominalLayoutOrigin;
+  }
   auto *declaration = shape->InstantiationTemplate ? shape->InstantiationTemplate : shape;
   if (index >= declaration->Members.size()) return nullptr;
   return projectGenericMemberContract(contract, shape, declaration->Members[index]);

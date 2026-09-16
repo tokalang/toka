@@ -1,0 +1,11 @@
+shape Base(value: i32)
+trait @Mark { pub fn mark(self) -> i32 }
+impl Base@Mark { pub fn mark(self) -> i32 { return self.value } }
+type Strong = Base
+impl Strong@Mark { pub fn mark(self) -> i32 { return self.value + 1 } }
+fn needs<T: @Mark>(value: T) -> i32 { return value.mark() }
+fn main() -> i32 {
+    auto value = Strong(value = 7)
+    assert(needs(value) == 8, "nominal implementation is distinct from target implementation")
+    return 0
+}

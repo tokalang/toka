@@ -1,0 +1,11 @@
+shape Leaf(value: i32)
+type Id = Leaf
+shape Box<T>(value: T)
+type StrongBox<T> = Box<T>
+fn accepts(value: Id) -> i32 { return value.value }
+fn main() -> i32 {
+    auto id = Id(value = 7)
+    auto box = StrongBox<Id>(value = id)
+    assert(accepts(box.value) == 7, "nested nominal identity survives layout lookup")
+    return 0
+}

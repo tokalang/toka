@@ -1,0 +1,10 @@
+shape Leaf(value: i32)
+shape Box<T>(value: T)
+type Strong<T> = Box<T>
+fn invalid<T>(box: Strong<T>) -> i32 {
+    return box.value.value
+}
+fn main() -> i32 {
+    auto box = Strong<Leaf>(value = Leaf(value = 7))
+    return invalid<Leaf>(box)
+}

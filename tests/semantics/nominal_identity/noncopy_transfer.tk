@@ -1,0 +1,9 @@
+shape Linear(value: i32)
+impl Linear@Encap { pub value }
+type Strong = Linear
+fn main() -> i32 {
+    auto value = Strong(value = 7)
+    auto result = cede value
+    assert(result.value == 7, "nominal NonCopy value transfers without inventing Drop")
+    return 0
+}
