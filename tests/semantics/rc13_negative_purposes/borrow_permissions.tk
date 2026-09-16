@@ -1,0 +1,35 @@
+shape Point(x: i32)
+shape Data(val: i32)
+shape Box(inner: Data)
+shape CounterInfo(accesses#: i32, name: str)
+fn main() -> i32 {
+    auto x# = 10
+    {
+        auto &y# = &x
+        y = 11
+        assert(y == 11, "mutable reference reads its own value")
+    }
+    assert(x == 11, "owner available after borrow scope")
+    auto point# = Point(x = 10)
+    {
+        auto &view# = &point
+        view.x = 12
+        assert(view.x == 12, "member access through acquired borrow")
+    }
+    auto info# = CounterInfo(accesses = 0, name = "metrics")
+    {
+        auto &field_view# = &(info.accesses)
+        field_view = 7
+        assert(field_view == 7, "writable field through its own loan")
+    }
+    assert(info.accesses == 7, "field source after release")
+    auto box# = Box(inner = Data(val = 0))
+    {
+        auto &view# = &(box.inner)
+        auto &mut_view# = &view as &Data
+        mut_view.val = 9
+        assert(mut_view.val == 9, "cast preserves already granted write access")
+    }
+    assert(box.inner.val == 9, "owner after cast loan release")
+    return 0
+}

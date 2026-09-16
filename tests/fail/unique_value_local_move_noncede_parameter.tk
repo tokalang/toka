@@ -1,6 +1,6 @@
 shape Cell(value: i32)
 
-// EXPECT: error[E04642]
+// EXPECT: error[E04661]: InvalidIntrinsicUniqueMove
 fn steal(^cell: Cell) -> i32 {
     auto ^owned = ^cell
     return owned.value

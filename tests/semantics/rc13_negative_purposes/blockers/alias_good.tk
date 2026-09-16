@@ -1,0 +1,3 @@
+shape GenericNode<T>(val:T)
+type StrongNode = GenericNode<i32>
+fn main() -> i32 { auto s = StrongNode(val=30); return s.val }

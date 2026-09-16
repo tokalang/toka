@@ -3,6 +3,16 @@ error[E0410]: Use of uninitialized variable or member 'pair'
     |
  17 |     auto &borrow# = &pair
     |                      ^
+error[E0402]: Use of undeclared identifier 'borrow'
+ --> tests/fail/init_custom_drop_reference_sibling_read.tk:18:5
+    |
+ 18 |     borrow.x = 1
+    |     ^
+error[E0421]: Member access 'x' on non-shape type 'Unresolved(unknown)'
+ --> tests/fail/init_custom_drop_reference_sibling_read.tk:18:11
+    |
+ 18 |     borrow.x = 1
+    |           ^
 error[E0410]: Use of uninitialized variable or member 'pair.y'
  --> tests/fail/init_custom_drop_reference_sibling_read.tk:19:16
     |

@@ -1,0 +1,16 @@
+shape Cell(value:i32)
+shape Box<T>(data:T)
+fn take_val<T>(cede v:T) { cede v }
+fn transfer(cede ^cell:Cell) -> i32 {
+    auto ^owned = cede ^cell
+    return owned.value
+}
+fn main() -> i32 {
+    auto box = Box<i32>(data=7)
+    assert(box.data==7,"ordinary member spelling replaces removed quote")
+    auto ^first = new Cell(value=10)
+    take_val<^Cell>(cede ^first)
+    auto ^second = new Cell(value=11)
+    assert(transfer(cede ^second)==11,"explicit owning parameter permits transfer")
+    return 0
+}

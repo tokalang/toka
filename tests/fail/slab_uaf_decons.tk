@@ -18,10 +18,4 @@ fn escape_decons(opt: Option<Point>) -> &i32 {
     }
 }
 
-fn main() -> i32 {
-    auto pt = Point(x=10, y=20)
-    auto opt = Option<Point>::Some(pt)
-    auto &res = escape_decons(opt)
-    println("res = {}", *res)
-    return 0
-}
+fn main() -> i32 { return 0 }

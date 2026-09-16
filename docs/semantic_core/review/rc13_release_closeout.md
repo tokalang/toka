@@ -869,3 +869,19 @@ Next work should select a complete common-cause batch from these actual results;
 E, push and release remain disabled.
 
 Machine-readable result: [rc13_baseline_51ac6e5d.json](rc13_baseline_51ac6e5d.json).
+
+## Negative-purpose migration candidate after e084c990
+
+The infrastructure package is Accepted at `e084c990`. This next test-only package
+audits all 31 remaining FAIL purposes: 18 restored, 13 deliberately still failed.
+One complete FAIL run reports **465/478**, no added failures or abnormal exits.
+The new purpose CTest passes 1/1 (38.58 s), including seven executable controls,
+both shadow modes and 36 no-artifact checks. No compiler/library change, Bless,
+E activation or push occurred; the other-worker RFC diff remains untouched.
+
+This is not a new full PASS/FAIL/CTest baseline. See
+[the complete 31-case classification](rc13_negative_purposes.md) and
+[machine results](rc13_negative_purposes_results.json). Thirteen blocked source
+files and their old expectations were retained, including legal member-reference
+probes that still fail before their intended PAL checks. This candidate does not
+declare those implementation limitations to be permanent language restrictions.

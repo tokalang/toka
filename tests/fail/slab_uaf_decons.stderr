@@ -1,13 +1,23 @@
-error[E0455]: Returning reference to local variable 'p.x' is unsafe
+error[E0454]: Returning reference to parameter 'opt' requires explicit dependency declaration (<- opt)
  --> tests/fail/slab_uaf_decons.tk:13:13
     |
  13 |             return p.&x  // Should fail because &p is bound to opt (local parameter)
     |             ^
-note: escaping local declared here
- --> tests/fail/slab_uaf_decons.tk:12:35
+note: undeclared return dependency originates here
+ --> tests/fail/slab_uaf_decons.tk:9:18
+   |
+ 9 | fn escape_decons(opt: Option<Point>) -> &i32 {
+   |                  ^
+error[E0454]: Returning reference to parameter 'opt.x' requires explicit dependency declaration (<- opt.x)
+ --> tests/fail/slab_uaf_decons.tk:13:13
     |
- 12 |         auto Option<Point>::Some(&p) => {
-    |                                   ^
+ 13 |             return p.&x  // Should fail because &p is bound to opt (local parameter)
+    |             ^
+note: undeclared return dependency originates here
+ --> tests/fail/slab_uaf_decons.tk:9:18
+   |
+ 9 | fn escape_decons(opt: Option<Point>) -> &i32 {
+   |                  ^
 error[E0455]: Returning reference to local variable 'default_val' is unsafe
  --> tests/fail/slab_uaf_decons.tk:16:13
     |

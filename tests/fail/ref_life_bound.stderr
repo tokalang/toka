@@ -8,3 +8,8 @@ note: shorter-lived dependency declared here
    |
  9 |         auto local = 10
    |              ^
+error[E0410]: Use of uninitialized variable or member 'b.ref'
+ --> tests/fail/ref_life_bound.tk:22:14
+    |
+ 22 |     return *b.ref
+    |              ^

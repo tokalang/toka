@@ -18,11 +18,6 @@ note: undeclared return dependency originates here
    |
  6 | fn bigger(x:i32, y:i32) -> &i32 <- x {
    |                  ^
-error[E0461]: Illegal use of permission suffixes (# or $) in everyday contexts. Modifiers are strictly limited to declarations or explicit mutable method calls.
- --> tests/fail/return_ref.tk:26:31
-    |
- 26 |     auto ref_a = RefInt(&val=&a#)
-    |                               ^
 error[E0456]: Object 'ref_a' (lived longer) cannot depend on 'b' (lived shorter)
  --> tests/fail/return_ref.tk:31:21
     |

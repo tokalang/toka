@@ -1,0 +1,13 @@
+import std/iter::map
+import std/vec::Vec
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    values#.push(2)
+    auto source = values.into_iter()
+    auto mapper# = { value => return value }:fn(i32) -> i32
+    auto mapped# = map(cede source, cede mapper)
+    assert(mapped#.next().unwrap() == 1, "first repeatable invocation")
+    assert(mapped#.next().unwrap() == 2, "second repeatable invocation")
+    return 0
+}

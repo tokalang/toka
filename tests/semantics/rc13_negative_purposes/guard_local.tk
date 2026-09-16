@@ -1,0 +1,10 @@
+import std/sync::RwMutex
+fn main() -> i32 {
+    auto ~rw = RwMutex<i32>::make_shared(10)
+    {
+        auto reader = rw.read_lock().unwrap()
+        auto &value = reader.borrow()
+        assert(value == 10, "non-Send guard is valid on its creating thread")
+    }
+    return 0
+}

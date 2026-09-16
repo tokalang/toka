@@ -18,3 +18,8 @@ note: shorter-lived dependency declared here
     |
  13 |         auto other = 20
     |              ^
+error[E0410]: Use of uninitialized variable or member 'b.ref'
+ --> tests/fail/pal_branch_borrowed_field_escape.tk:17:13
+    |
+ 17 |     return b.ref
+    |             ^

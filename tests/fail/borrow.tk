@@ -15,7 +15,7 @@ import std/io::println
 
 fn main() -> i32 {
     auto x# = 10
-    auto &y# = &x#
+    auto &y# = &x
     println("x is {}", x) // EXPECT: error[E0441]:
     return 0
 }

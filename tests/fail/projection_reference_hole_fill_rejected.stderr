@@ -3,3 +3,13 @@ error[E0410]: Use of uninitialized variable or member 'pair'
     |
  18 |     auto &borrow# = &pair
     |                      ^
+error[E0402]: Use of undeclared identifier 'borrow'
+ --> tests/fail/projection_reference_hole_fill_rejected.tk:19:5
+    |
+ 19 |     borrow.left = Token(id = 3)
+    |     ^
+error[E0421]: Member access 'left' on non-shape type 'Unresolved(unknown)'
+ --> tests/fail/projection_reference_hole_fill_rejected.tk:19:11
+    |
+ 19 |     borrow.left = Token(id = 3)
+    |           ^

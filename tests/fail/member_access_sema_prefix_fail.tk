@@ -5,8 +5,8 @@ shape Point(
     y: i32
 )
 
-shape Box<'T>(
-    'data: T
+shape Box<T>(
+    data: T
 )
 
 fn main() -> i32 {

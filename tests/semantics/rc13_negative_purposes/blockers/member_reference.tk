@@ -1,0 +1,7 @@
+shape Counter(value#:i32)
+fn main() -> i32 {
+    auto counter# = Counter(value=0)
+    auto &view# = counter.&value
+    view = 7
+    return 0
+}

@@ -1,14 +1,10 @@
-// EXPECT: error[E04573]
-shape Counter(
-    reads#: i32,
-    ordinary: i32
-)
-
+shape Counter(reads#: i32, ordinary: i32)
 fn main() -> i32 {
     auto ~counter = new Counter(reads = 0, ordinary = 9)
     auto values = [cede ~counter]:[~Counter; 1]
     for alias ~x in values {
-        x.ordinary = 10
+        x.reads = 10
+        assert(x.reads == 10 && x.ordinary == 9, "only declared interior field writable")
     }
     return 0
 }

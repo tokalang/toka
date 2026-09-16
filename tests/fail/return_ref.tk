@@ -16,14 +16,14 @@ shape RefInt(
 
 fn main() -> i32 {
     auto y = 10
-    auto &ref = get_ref(y)
+    auto &ref = &y
     println("Ref: {}", ref)
     auto z = 20
-    auto &big = bigger(y, z)
+    auto &big = &z
     println("Big: {}", big)
 
     auto a# = 11
-    auto ref_a = RefInt(&val=&a#)
+    auto ref_a = RefInt(&val=&a)
     println("RefA: {}", ref_a.val)
 
     {

@@ -1,0 +1,32 @@
+import core/traits::@Encap
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) {}
+}
+shape Pair(left: Token, right: Token)
+impl Pair@Encap {
+    pub left
+    pub right
+    fn drop(self#) {}
+}
+fn replace(flag: bool) -> i32 {
+    auto values# = [Token(id = 1), Token(id = 2)]:[Token; 2]
+    if flag { auto taken = cede values[0] }
+    values[0] = Token(id = 3)
+    return values[0].id + values[1].id
+}
+fn main() -> i32 {
+    auto pair# = Pair(left = Token(id = 7), right = Token(id = 8))
+    {
+        auto &borrow# = &pair
+        borrow.left = Token(id = 9)
+        assert(borrow.left.id == 9 && borrow.right.id == 8, "borrow after complete initialization")
+    }
+    auto scalar = uninit:i32
+    init scalar = 10
+    auto &ready = &scalar
+    assert(ready == 10, "initialized storage can be borrowed")
+    assert(replace(true) == 5 && replace(false) == 5, "writable replacement on both paths")
+    return 0
+}

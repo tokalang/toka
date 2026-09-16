@@ -1,0 +1,450 @@
+{
+  "baseline": "e084c9901f2aa95a970df4dc83a537982edd957a",
+  "cases": [
+    {
+      "case": "alias_generic_test.tk",
+      "status": "blocked",
+      "category": "target-not-qualified",
+      "target_codes": [],
+      "reason": "Legal StrongNode construction fails IncompleteFacts before nominal assignment mismatch."
+    },
+    {
+      "case": "borrow.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E0441"
+      ],
+      "first_message": "Cannot access 'x' while it is mutably borrowed",
+      "target_sites": [
+        {
+          "code": "E0441",
+          "file": "tests/fail/borrow.tk",
+          "line": 19
+        }
+      ]
+    },
+    {
+      "case": "borrow_field.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E0441"
+      ],
+      "first_message": "Cannot access 'p' while it is mutably borrowed",
+      "target_sites": [
+        {
+          "code": "E0441",
+          "file": "tests/fail/borrow_field.tk",
+          "line": 18
+        }
+      ]
+    },
+    {
+      "case": "for_alias_shape_field_ceiling.tk",
+      "status": "blocked",
+      "category": "target-not-qualified",
+      "target_codes": [],
+      "reason": "Explicit array type removes IncompleteFacts, but even writable Cell control stops at E04645 before the frozen field check."
+    },
+    {
+      "case": "for_alias_shared_array_interior_sibling.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E04572",
+        "E04573"
+      ],
+      "first_message": "Cannot assign to immutable entity. Missing writable token '#' or '!'.",
+      "target_sites": [
+        {
+          "code": "E04572",
+          "file": "tests/fail/for_alias_shared_array_interior_sibling.tk",
+          "line": 11
+        },
+        {
+          "code": "E04573",
+          "file": "tests/fail/for_alias_shared_array_interior_sibling.tk",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "case": "init_custom_drop_reference_full_write.tk",
+      "status": "migrated",
+      "category": "existing-target-plus-cascade",
+      "target_codes": [
+        "E0410"
+      ],
+      "first_message": "Use of uninitialized variable or member 'pair'",
+      "target_sites": [
+        {
+          "code": "E0410",
+          "file": "tests/fail/init_custom_drop_reference_full_write.tk",
+          "line": 17
+        }
+      ]
+    },
+    {
+      "case": "init_custom_drop_reference_sibling_read.tk",
+      "status": "migrated",
+      "category": "existing-target-plus-cascade",
+      "target_codes": [
+        "E0410"
+      ],
+      "first_message": "Use of uninitialized variable or member 'pair'",
+      "target_sites": [
+        {
+          "code": "E0410",
+          "file": "tests/fail/init_custom_drop_reference_sibling_read.tk",
+          "line": 17
+        },
+        {
+          "code": "E0410",
+          "file": "tests/fail/init_custom_drop_reference_sibling_read.tk",
+          "line": 19
+        }
+      ]
+    },
+    {
+      "case": "init_immutable_live_array_element_reassign_after_cede.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E04572"
+      ],
+      "first_message": "Cannot assign to immutable entity. Missing writable token '#' or '!'.",
+      "target_sites": [
+        {
+          "code": "E04572",
+          "file": "tests/fail/init_immutable_live_array_element_reassign_after_cede.tk",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "case": "init_immutable_maybe_moved_array_element_reassign.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E04572"
+      ],
+      "first_message": "Cannot assign to immutable entity. Missing writable token '#' or '!'.",
+      "target_sites": [
+        {
+          "code": "E04572",
+          "file": "tests/fail/init_immutable_maybe_moved_array_element_reassign.tk",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "case": "member_access_sema_prefix_fail.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E01268"
+      ],
+      "first_message": "Generic whole-value quote syntax is removed; use the ordinary type or binding name",
+      "target_sites": [
+        {
+          "code": "E01268",
+          "file": "tests/fail/member_access_sema_prefix_fail.tk",
+          "line": 18
+        },
+        {
+          "code": "E01268",
+          "file": "tests/fail/member_access_sema_prefix_fail.tk",
+          "line": 21
+        }
+      ]
+    },
+    {
+      "case": "morphic_constraint_violation.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E04571"
+      ],
+      "first_message": "Type mismatch for argument 1: expected Cell, got ^Cell",
+      "target_sites": [
+        {
+          "code": "E04571",
+          "file": "tests/fail/morphic_constraint_violation.tk",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "case": "owned_lazy_iterator_consuming_callable.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E04591"
+      ],
+      "first_message": "Callable 'mapper' consumes its environment; invoke it with 'cede mapper(...)'",
+      "target_sites": [
+        {
+          "code": "E04591",
+          "file": "lib/std/iter.tk",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "case": "pal_branch_borrowed_field_escape.tk",
+      "status": "migrated",
+      "category": "existing-target-plus-cascade",
+      "target_codes": [
+        "E0456"
+      ],
+      "first_message": "Object 'b' (lived longer) cannot depend on 'local' (lived shorter)",
+      "target_sites": [
+        {
+          "code": "E0456",
+          "file": "tests/fail/pal_branch_borrowed_field_escape.tk",
+          "line": 11
+        },
+        {
+          "code": "E0456",
+          "file": "tests/fail/pal_branch_borrowed_field_escape.tk",
+          "line": 14
+        }
+      ]
+    },
+    {
+      "case": "pal_member_mut_borrow_duplicate.tk",
+      "status": "blocked",
+      "category": "implementation-gap",
+      "target_codes": [
+        "E0441"
+      ],
+      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+    },
+    {
+      "case": "pal_member_mut_borrow_payload_read.tk",
+      "status": "blocked",
+      "category": "implementation-gap",
+      "target_codes": [
+        "E0441"
+      ],
+      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+    },
+    {
+      "case": "pal_member_mut_borrow_payload_write.tk",
+      "status": "blocked",
+      "category": "implementation-gap",
+      "target_codes": [
+        "E0441"
+      ],
+      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+    },
+    {
+      "case": "projection_reference_hole_fill_rejected.tk",
+      "status": "migrated",
+      "category": "existing-target-plus-cascade",
+      "target_codes": [
+        "E0410"
+      ],
+      "first_message": "Use of uninitialized variable or member 'pair'",
+      "target_sites": [
+        {
+          "code": "E0410",
+          "file": "tests/fail/projection_reference_hole_fill_rejected.tk",
+          "line": 18
+        }
+      ]
+    },
+    {
+      "case": "readonly_member_ref_decl_upgrade_from_plain_cast.tk",
+      "status": "blocked",
+      "category": "implementation-gap",
+      "target_codes": [
+        "E04573"
+      ],
+      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+    },
+    {
+      "case": "ref_life_bound.tk",
+      "status": "migrated",
+      "category": "existing-target-plus-cascade",
+      "target_codes": [
+        "E0456"
+      ],
+      "first_message": "Object 'b' (lived longer) cannot depend on 'local' (lived shorter)",
+      "target_sites": [
+        {
+          "code": "E0456",
+          "file": "tests/fail/ref_life_bound.tk",
+          "line": 20
+        }
+      ]
+    },
+    {
+      "case": "return_ref.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E0454",
+        "E0456"
+      ],
+      "first_message": "Returning reference to parameter 'x' requires explicit dependency declaration (<- x)",
+      "target_sites": [
+        {
+          "code": "E0454",
+          "file": "tests/fail/return_ref.tk",
+          "line": 3
+        },
+        {
+          "code": "E0454",
+          "file": "tests/fail/return_ref.tk",
+          "line": 10
+        },
+        {
+          "code": "E0456",
+          "file": "tests/fail/return_ref.tk",
+          "line": 31
+        }
+      ]
+    },
+    {
+      "case": "slab_lookup_miss_blocks_remove.tk",
+      "status": "blocked",
+      "category": "target-not-qualified",
+      "target_codes": [],
+      "reason": "Slab implementation AccessCapabilityMismatch at line 85 prevents lookup/remove borrow conflict; library excluded from this batch."
+    },
+    {
+      "case": "slab_uaf_decons.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E0454",
+        "E0455"
+      ],
+      "first_message": "Returning reference to parameter 'opt' requires explicit dependency declaration (<- opt)",
+      "target_sites": [
+        {
+          "code": "E0454",
+          "file": "tests/fail/slab_uaf_decons.tk",
+          "line": 13
+        },
+        {
+          "code": "E0454",
+          "file": "tests/fail/slab_uaf_decons.tk",
+          "line": 13
+        },
+        {
+          "code": "E0455",
+          "file": "tests/fail/slab_uaf_decons.tk",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "case": "smart_ptr_from_stack.tk",
+      "status": "blocked",
+      "category": "target-not-qualified",
+      "target_codes": [],
+      "reason": "First stack-to-unique expression yields ContradictoryFacts; do not freeze this internal inconsistency as the intended ownership diagnostic."
+    },
+    {
+      "case": "sync_guard_non_send.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E0477"
+      ],
+      "first_message": "Closure passed across execution boundary 'thread_spawn' captures 'r' with a value that is not @Send",
+      "target_sites": [
+        {
+          "code": "E0477",
+          "file": "tests/fail/sync_guard_non_send.tk",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "case": "thread_spawn_copy_non_sync_capture.tk",
+      "status": "blocked",
+      "category": "target-not-qualified",
+      "target_codes": [],
+      "reason": "Correct raw-field selection still leaves closure IncompleteFacts before the copy/non-Sync execution check."
+    },
+    {
+      "case": "thread_spawn_implicit_capture_nested_closure.tk",
+      "status": "blocked",
+      "category": "target-not-qualified",
+      "target_codes": [],
+      "reason": "Inner inferred borrowed closure fails construction before nesting and thread handoff."
+    },
+    {
+      "case": "thread_spawn_implicit_capture_via_assignment.tk",
+      "status": "blocked",
+      "category": "target-not-qualified",
+      "target_codes": [],
+      "reason": "Replacing thin-fn with dyn-fn rejects implicit capture at conversion (E04579), not the intended post-assignment execution check."
+    },
+    {
+      "case": "thread_spawn_implicit_capture_via_binding.tk",
+      "status": "blocked",
+      "category": "target-not-qualified",
+      "target_codes": [],
+      "reason": "Removing obsolete thin-fn ascription leaves borrowed closure IncompleteFacts before execution-boundary check."
+    },
+    {
+      "case": "thread_spawn_non_send_capture.tk",
+      "status": "blocked",
+      "category": "target-not-qualified",
+      "target_codes": [],
+      "reason": "Correct raw-handle capture still leaves closure IncompleteFacts before the non-Send execution check."
+    },
+    {
+      "case": "unique_value_local_move_noncede_parameter.tk",
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E04661"
+      ],
+      "first_message": "Cannot transfer source into binding: InvalidIntrinsicUniqueMove",
+      "target_sites": [
+        {
+          "code": "E04661",
+          "file": "tests/fail/unique_value_local_move_noncede_parameter.tk",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "case": "unset_escape.tk",
+      "status": "migrated",
+      "category": "existing-target-plus-cascade",
+      "target_codes": [
+        "E0410"
+      ],
+      "first_message": "Use of uninitialized variable or member 'x'",
+      "target_sites": [
+        {
+          "code": "E0410",
+          "file": "tests/fail/unset_escape.tk",
+          "line": 6
+        },
+        {
+          "code": "E0410",
+          "file": "tests/fail/unset_escape.tk",
+          "line": 14
+        },
+        {
+          "code": "E0410",
+          "file": "tests/fail/unset_escape.tk",
+          "line": 22
+        },
+        {
+          "code": "E0410",
+          "file": "tests/fail/unset_escape.tk",
+          "line": 36
+        }
+      ]
+    }
+  ]
+}

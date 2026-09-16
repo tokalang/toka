@@ -3,6 +3,11 @@ error[E0410]: Use of uninitialized variable or member 'x'
    |
  6 |     auto &ref = &x
    |                  ^
+error[E0402]: Use of undeclared identifier 'ref'
+ --> tests/fail/unset_escape.tk:7:12
+   |
+ 7 |     return ref // EXPECT: error[E0412]:
+   |            ^
 error[E0410]: Use of uninitialized variable or member 'y'
  --> tests/fail/unset_escape.tk:14:23
     |
@@ -13,6 +18,11 @@ error[E0410]: Use of uninitialized variable or member 'z'
     |
  22 |     auto &refZ = &z
     |                   ^
+error[E0402]: Use of undeclared identifier 'refZ'
+ --> tests/fail/unset_escape.tk:26:14
+    |
+ 26 |         pass refZ // EXPECT: error[E0412]:
+    |              ^
 error[E0410]: Use of uninitialized variable or member 'a'
  --> tests/fail/unset_escape.tk:36:23
     |

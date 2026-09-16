@@ -1,5 +1,10 @@
-error[E0406]: Invalid member access modifier combination: '^'data'
- --> tests/fail/member_access_sema_prefix_fail.tk:16:22
+error[E01268]: Generic whole-value quote syntax is removed; use the ordinary type or binding name
+ --> tests/fail/member_access_sema_prefix_fail.tk:18:24
     |
- 16 |         auto x2 = box.^'data
-    |                      ^
+ 18 |         auto x2 = box.^'data
+    |                        ^
+error[E01268]: Generic whole-value quote syntax is removed; use the ordinary type or binding name
+ --> tests/fail/member_access_sema_prefix_fail.tk:21:23
+    |
+ 21 |         auto x3 = box.'data#
+    |                       ^

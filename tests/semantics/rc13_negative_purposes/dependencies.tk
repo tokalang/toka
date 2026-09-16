@@ -1,0 +1,29 @@
+import core/option::Option
+shape Bound(&ref: i32)
+shape Point(x:i32, y:i32)
+fn choose(x:i32, y:i32) -> &i32 <- x, y {
+    if x > y { return &x }
+    return &y
+}
+fn bound(flag: bool, a:i32, b:i32) -> Bound <- a, b {
+    auto result = uninit:Bound
+    if flag { init result = Bound(&ref = &a) }
+    else { init result = Bound(&ref = &b) }
+    return cede result
+}
+fn main() -> i32 {
+    auto a = 7
+    auto b = 9
+    auto &picked = choose(a,b)
+    assert(picked == 9, "declared actual dependency")
+    auto result = bound(true,a,b)
+    assert(result.ref == 7, "branch retains outer source")
+    auto opt = Option<Point>::Some(Point(x=3,y=4))
+    match opt {
+        auto Option<Point>::Some(&p) => {
+            assert(p.x == 3, "borrow remains inside owner lifetime")
+        }
+        _ => { assert(false, "expected Some") }
+    }
+    return 0
+}

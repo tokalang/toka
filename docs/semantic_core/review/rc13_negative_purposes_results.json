@@ -1,0 +1,490 @@
+{
+  "evidence_directory": "/Users/zhyi/GitDP/tokalang/validation/rc13-negative-20260916.h1JjKQ",
+  "validation": {
+    "base": "e084c9901f2aa95a970df4dc83a537982edd957a",
+    "compiler_sha256": "589ddd587f01180b450ab07a37f274dc61da340fb21924c277cdadb1e69f1750",
+    "runs": {
+      "configure": {
+        "command": [
+          "cmake",
+          "-S",
+          "/Users/zhyi/GitDP/tokalang/worktrees/rc13-integration",
+          "-B",
+          "/Users/zhyi/GitDP/tokalang/builds/rc13-integration"
+        ],
+        "rc": 0,
+        "seconds": 0.63,
+        "changed": []
+      },
+      "ctest": {
+        "command": [
+          "ctest",
+          "--test-dir",
+          "/Users/zhyi/GitDP/tokalang/builds/rc13-integration",
+          "-R",
+          "^toka_rc13_negative_purposes$",
+          "--output-on-failure"
+        ],
+        "rc": 0,
+        "seconds": 38.71,
+        "changed": []
+      },
+      "fail": {
+        "command": [
+          "python3",
+          "tools/scripts/test_verify_fail.py"
+        ],
+        "rc": 1,
+        "seconds": 117.44,
+        "changed": []
+      }
+    }
+  },
+  "fail_comparison": {
+    "baseline": {
+      "passed": 447,
+      "failed": 31,
+      "failures": [
+        "alias_generic_test.tk",
+        "borrow.tk",
+        "borrow_field.tk",
+        "for_alias_shape_field_ceiling.tk",
+        "for_alias_shared_array_interior_sibling.tk",
+        "init_custom_drop_reference_full_write.tk",
+        "init_custom_drop_reference_sibling_read.tk",
+        "init_immutable_live_array_element_reassign_after_cede.tk",
+        "init_immutable_maybe_moved_array_element_reassign.tk",
+        "member_access_sema_prefix_fail.tk",
+        "morphic_constraint_violation.tk",
+        "owned_lazy_iterator_consuming_callable.tk",
+        "pal_branch_borrowed_field_escape.tk",
+        "pal_member_mut_borrow_duplicate.tk",
+        "pal_member_mut_borrow_payload_read.tk",
+        "pal_member_mut_borrow_payload_write.tk",
+        "projection_reference_hole_fill_rejected.tk",
+        "readonly_member_ref_decl_upgrade_from_plain_cast.tk",
+        "ref_life_bound.tk",
+        "return_ref.tk",
+        "slab_lookup_miss_blocks_remove.tk",
+        "slab_uaf_decons.tk",
+        "smart_ptr_from_stack.tk",
+        "sync_guard_non_send.tk",
+        "thread_spawn_copy_non_sync_capture.tk",
+        "thread_spawn_implicit_capture_nested_closure.tk",
+        "thread_spawn_implicit_capture_via_assignment.tk",
+        "thread_spawn_implicit_capture_via_binding.tk",
+        "thread_spawn_non_send_capture.tk",
+        "unique_value_local_move_noncede_parameter.tk",
+        "unset_escape.tk"
+      ],
+      "abnormal": []
+    },
+    "current": {
+      "passed": 465,
+      "failed": 13,
+      "failures": [
+        "alias_generic_test.tk",
+        "for_alias_shape_field_ceiling.tk",
+        "pal_member_mut_borrow_duplicate.tk",
+        "pal_member_mut_borrow_payload_read.tk",
+        "pal_member_mut_borrow_payload_write.tk",
+        "readonly_member_ref_decl_upgrade_from_plain_cast.tk",
+        "slab_lookup_miss_blocks_remove.tk",
+        "smart_ptr_from_stack.tk",
+        "thread_spawn_copy_non_sync_capture.tk",
+        "thread_spawn_implicit_capture_nested_closure.tk",
+        "thread_spawn_implicit_capture_via_assignment.tk",
+        "thread_spawn_implicit_capture_via_binding.tk",
+        "thread_spawn_non_send_capture.tk"
+      ],
+      "abnormal": []
+    },
+    "recovered": [
+      "borrow.tk",
+      "borrow_field.tk",
+      "for_alias_shared_array_interior_sibling.tk",
+      "init_custom_drop_reference_full_write.tk",
+      "init_custom_drop_reference_sibling_read.tk",
+      "init_immutable_live_array_element_reassign_after_cede.tk",
+      "init_immutable_maybe_moved_array_element_reassign.tk",
+      "member_access_sema_prefix_fail.tk",
+      "morphic_constraint_violation.tk",
+      "owned_lazy_iterator_consuming_callable.tk",
+      "pal_branch_borrowed_field_escape.tk",
+      "projection_reference_hole_fill_rejected.tk",
+      "ref_life_bound.tk",
+      "return_ref.tk",
+      "slab_uaf_decons.tk",
+      "sync_guard_non_send.tk",
+      "unique_value_local_move_noncede_parameter.tk",
+      "unset_escape.tk"
+    ],
+    "new_failures": []
+  },
+  "purpose_gate": [
+    {
+      "case": "alias_generic_test.tk",
+      "status": "blocked-not-counted",
+      "reason": "Legal StrongNode construction fails IncompleteFacts before nominal assignment mismatch."
+    },
+    {
+      "case": "borrow.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "borrow_field.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "for_alias_shape_field_ceiling.tk",
+      "status": "blocked-not-counted",
+      "reason": "Explicit array type removes IncompleteFacts, but even writable Cell control stops at E04645 before the frozen field check."
+    },
+    {
+      "case": "for_alias_shared_array_interior_sibling.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "init_custom_drop_reference_full_write.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "init_custom_drop_reference_sibling_read.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "init_immutable_live_array_element_reassign_after_cede.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "init_immutable_maybe_moved_array_element_reassign.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "member_access_sema_prefix_fail.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "morphic_constraint_violation.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "owned_lazy_iterator_consuming_callable.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "pal_branch_borrowed_field_escape.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "pal_member_mut_borrow_duplicate.tk",
+      "status": "blocked-not-counted",
+      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+    },
+    {
+      "case": "pal_member_mut_borrow_payload_read.tk",
+      "status": "blocked-not-counted",
+      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+    },
+    {
+      "case": "pal_member_mut_borrow_payload_write.tk",
+      "status": "blocked-not-counted",
+      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+    },
+    {
+      "case": "projection_reference_hole_fill_rejected.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "readonly_member_ref_decl_upgrade_from_plain_cast.tk",
+      "status": "blocked-not-counted",
+      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+    },
+    {
+      "case": "ref_life_bound.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "return_ref.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "slab_lookup_miss_blocks_remove.tk",
+      "status": "blocked-not-counted",
+      "reason": "Slab implementation AccessCapabilityMismatch at line 85 prevents lookup/remove borrow conflict; library excluded from this batch."
+    },
+    {
+      "case": "slab_uaf_decons.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "smart_ptr_from_stack.tk",
+      "status": "blocked-not-counted",
+      "reason": "First stack-to-unique expression yields ContradictoryFacts; do not freeze this internal inconsistency as the intended ownership diagnostic."
+    },
+    {
+      "case": "sync_guard_non_send.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "thread_spawn_copy_non_sync_capture.tk",
+      "status": "blocked-not-counted",
+      "reason": "Correct raw-field selection still leaves closure IncompleteFacts before the copy/non-Sync execution check."
+    },
+    {
+      "case": "thread_spawn_implicit_capture_nested_closure.tk",
+      "status": "blocked-not-counted",
+      "reason": "Inner inferred borrowed closure fails construction before nesting and thread handoff."
+    },
+    {
+      "case": "thread_spawn_implicit_capture_via_assignment.tk",
+      "status": "blocked-not-counted",
+      "reason": "Replacing thin-fn with dyn-fn rejects implicit capture at conversion (E04579), not the intended post-assignment execution check."
+    },
+    {
+      "case": "thread_spawn_implicit_capture_via_binding.tk",
+      "status": "blocked-not-counted",
+      "reason": "Removing obsolete thin-fn ascription leaves borrowed closure IncompleteFacts before execution-boundary check."
+    },
+    {
+      "case": "thread_spawn_non_send_capture.tk",
+      "status": "blocked-not-counted",
+      "reason": "Correct raw-handle capture still leaves closure IncompleteFacts before the non-Send execution check."
+    },
+    {
+      "case": "unique_value_local_move_noncede_parameter.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "unset_escape.tk",
+      "status": "target-verified",
+      "parity": true,
+      "artifacts": false
+    },
+    {
+      "case": "borrow_permissions.tk",
+      "status": "positive-runtime",
+      "parity": true
+    },
+    {
+      "case": "dependencies.tk",
+      "status": "positive-runtime",
+      "parity": true
+    },
+    {
+      "case": "generic_and_ownership.tk",
+      "status": "positive-runtime",
+      "parity": true
+    },
+    {
+      "case": "guard_local.tk",
+      "status": "positive-runtime",
+      "parity": true
+    },
+    {
+      "case": "initialization.tk",
+      "status": "positive-runtime",
+      "parity": true
+    },
+    {
+      "case": "repeatable_mapper.tk",
+      "status": "positive-runtime",
+      "parity": true
+    },
+    {
+      "case": "shared_interior.tk",
+      "status": "positive-runtime",
+      "parity": true
+    }
+  ],
+  "blocker_probes": [
+    {
+      "probe": "alias_good.tk",
+      "rc": 1,
+      "errors": [
+        [
+          "E04661",
+          "Cannot transfer source into binding: IncompleteFacts"
+        ],
+        [
+          "E0402",
+          "Use of undeclared identifier 's'"
+        ],
+        [
+          "E0421",
+          "Member access 'val' on non-shape type 'Unresolved(unknown)'"
+        ]
+      ]
+    },
+    {
+      "probe": "for_alias_shape_field_ceiling_good.tk",
+      "rc": 1,
+      "errors": [
+        [
+          "E04645",
+          "writable for alias is not yet qualified for this element place"
+        ]
+      ]
+    },
+    {
+      "probe": "member_reference.tk",
+      "rc": 1,
+      "errors": [
+        [
+          "E04661",
+          "Cannot transfer source into binding: TypeIncompatible"
+        ],
+        [
+          "E0402",
+          "Use of undeclared identifier 'view'"
+        ]
+      ]
+    },
+    {
+      "probe": "stack_unique.tk",
+      "rc": 1,
+      "errors": [
+        [
+          "E04661",
+          "Cannot transfer source into binding: ContradictoryFacts"
+        ]
+      ]
+    },
+    {
+      "probe": "thread_spawn_copy_non_sync_capture.tk",
+      "rc": 1,
+      "errors": [
+        [
+          "E04661",
+          "Cannot transfer source into binding: IncompleteFacts"
+        ],
+        [
+          "E0402",
+          "Use of undeclared identifier 'f'"
+        ],
+        [
+          "E0476",
+          "Closure value 'f' has no capture summary and cannot cross execution boundary 'thread_spawn'"
+        ]
+      ]
+    },
+    {
+      "probe": "thread_spawn_implicit_capture_nested_closure.tk",
+      "rc": 1,
+      "errors": [
+        [
+          "E04661",
+          "Cannot transfer source into binding: IncompleteFacts"
+        ],
+        [
+          "E0402",
+          "Use of undeclared identifier 'borrowed'"
+        ],
+        [
+          "E0402",
+          "Use of undeclared identifier 'borrowed'"
+        ],
+        [
+          "E0402",
+          "Use of undeclared identifier 'outer'"
+        ],
+        [
+          "E0476",
+          "Closure value 'outer' has no capture summary and cannot cross execution boundary 'thread_spawn'"
+        ]
+      ]
+    },
+    {
+      "probe": "thread_spawn_implicit_capture_via_assignment.tk",
+      "rc": 1,
+      "errors": [
+        [
+          "E04579",
+          "Closure converted to 'dyn fn' cannot implicitly capture 'value'; use '[cede value]' or '[copy value]' to make ownership explicit"
+        ],
+        [
+          "E04606",
+          "Type ascription 'dyn fn()->i32' is incompatible with expression type '__Closure_4751251417653653091'"
+        ],
+        [
+          "E0402",
+          "Use of undeclared identifier 'f'"
+        ],
+        [
+          "E0406",
+          "public thread: ActualInvokeUnproven"
+        ]
+      ]
+    },
+    {
+      "probe": "thread_spawn_implicit_capture_via_binding.tk",
+      "rc": 1,
+      "errors": [
+        [
+          "E04661",
+          "Cannot transfer source into binding: IncompleteFacts"
+        ],
+        [
+          "E0402",
+          "Use of undeclared identifier 'f'"
+        ],
+        [
+          "E0476",
+          "Closure value 'f' has no capture summary and cannot cross execution boundary 'thread_spawn'"
+        ]
+      ]
+    },
+    {
+      "probe": "thread_spawn_non_send_capture.tk",
+      "rc": 1,
+      "errors": [
+        [
+          "E04661",
+          "Cannot transfer source into binding: IncompleteFacts"
+        ],
+        [
+          "E0402",
+          "Use of undeclared identifier 'f'"
+        ],
+        [
+          "E0476",
+          "Closure value 'f' has no capture summary and cannot cross execution boundary 'thread_spawn'"
+        ]
+      ]
+    }
+  ]
+}
