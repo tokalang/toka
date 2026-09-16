@@ -926,6 +926,8 @@ public:
 
 class MemberExpr : public Expr {
 public:
+  // This evaluation's successful member loan, never copied by clone().
+  std::shared_ptr<const PALBorrowReceipt> AcquiredBorrow;
   std::unique_ptr<Expr> Object;
   std::string Member;
   SourceLocation MemberLoc;

@@ -1,0 +1,7 @@
+shape Pair(left: i32, right: i32)
+fn main() -> i32 {
+    auto pair = Pair(left = 1, right = 2)
+    cede pair.left
+    auto &bad = pair.&left
+    return 0
+}

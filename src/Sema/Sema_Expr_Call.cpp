@@ -540,6 +540,10 @@ CallValueCategory Sema::classifyShadowCallValueCategory(
   }
   if (!source)
     return CallValueCategory::Indeterminate;
+  // Like &(obj.field), this produces a reference value with a referent, not
+  // a transferable source slot. The exact member path remains its dependency.
+  if (isMemberReferenceConstruction(source))
+    return CallValueCategory::Temporary;
 
   bool placeSyntax = dynamic_cast<VariableExpr *>(source) ||
                      dynamic_cast<MemberExpr *>(source) ||
@@ -709,7 +713,16 @@ std::shared_ptr<Type> Sema::queryShadowCallArgumentType(
         if (stripMemberAccessMarkers(field.Name) !=
             stripMemberAccessMarkers(member->Member))
           continue;
-        return resolveType(Sema::getPhysicalType(field), false);
+        auto type = resolveType(Sema::getPhysicalType(field), false);
+        const auto access = parseMemberAccess(member->Member);
+        if (type && (access.Prefix == "&" || access.Prefix == "&#") &&
+            !type->isReference()) {
+          auto referent = (access.Prefix == "&" &&
+                           (type->isUniquePtr() || type->isSharedPtr()))
+                              ? type->getSoulType() : type;
+          return std::make_shared<ReferenceType>(referent);
+        }
+        return type;
       }
     }
     return toka::Type::fromString("unknown");
@@ -866,6 +879,15 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
       auto type = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(field));
       const size_t index = &field - declaration->Members.data();
       auto contract = projectGenericFieldContract(member->Object.get(), declaration, index);
+      if (type && (access.Prefix == "&" || access.Prefix == "&#") &&
+          !type->isReference()) {
+        // Match normal member elaboration. The field/owner capability checks
+        // remain independent of this type; the destination grants no authority.
+        auto referent = (access.Prefix == "&" &&
+                         (type->isUniquePtr() || type->isSharedPtr()))
+                            ? type->getSoulType() : type;
+        return std::make_shared<ReferenceType>(referent);
+      }
       if (type && access.Prefix.empty() && !access.IsMorphicIdentity &&
           !(contract && contract->isWholeValue()))
         return resolveExplicitCedeStage0TypeReadOnly(type->getSoulType());
@@ -1014,6 +1036,27 @@ bool Sema::isConsumingCallableInvocation(const CallExpr *call) {
     return formal->IsClosureInvoke
         ? formal->ClosureReceiver == CallableReceiverMode::Consuming
         : !formal->Args.empty() && formal->Args.front().IsCeded;
+  }
+  return false;
+}
+
+bool Sema::isMemberReferenceConstruction(Expr *value) {
+  auto *member = dynamic_cast<MemberExpr *>(value);
+  if (!member) return false;
+  const auto access = parseMemberAccess(member->Member);
+  if (access.Prefix != "&" && access.Prefix != "&#") return false;
+  auto object = resolveExplicitCedeStage0TypeReadOnly(
+      queryExplicitCedeStage0NonCallType(member->Object.get(), nullptr));
+  auto shape = std::dynamic_pointer_cast<ShapeType>(
+      object ? object->getSoulType() : nullptr);
+  if (!shape || !shape->Decl) return false;
+  for (const auto &field : shape->Decl->Members) {
+    if (stripMemberAccessMarkers(field.Name) !=
+        stripMemberAccessMarkers(member->Member)) continue;
+    auto physical = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(field));
+    // Selecting a reference field preserves its target; it does not borrow
+    // the local descriptor storing that reference.
+    return physical && !physical->isUnknown() && !physical->isReference();
   }
   return false;
 }
@@ -2602,7 +2645,8 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
   facts.MorphicSource =
       (surface && surface->IsMorphicExempt) ||
       (sourceInfo && sourceInfo->IsMorphicExempt);
-  if (dynamic_cast<AddressOfExpr *>(surface)) {
+  if (dynamic_cast<AddressOfExpr *>(surface) ||
+      isMemberReferenceConstruction(surface)) {
     facts.SourceView = TransferSourceView::ReferenceConstruction;
   } else if (auto *unary = dynamic_cast<UnaryExpr *>(surface)) {
     if (unary->Op == TokenType::Caret)
@@ -2652,6 +2696,8 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
   else if (auto *unary = dynamic_cast<UnaryExpr *>(surface);
            unary && unary->Op == TokenType::Ampersand)
     borrowTarget = unary->RHS.get();
+  else if (isMemberReferenceConstruction(surface))
+    borrowTarget = surface;
   if (borrowTarget) {
     // The return collector can already have resolved a checked reference
     // initializer to its target storage. Do not replace it with the local
@@ -3699,6 +3745,8 @@ bool Sema::collectActualReturnReferents(
   };
   visit = [&](Expr *value, std::vector<AccessPath> &result) -> bool {
     if (!value) return false;
+    if (isMemberReferenceConstruction(value))
+      return storageOrigin(value, result);
     std::vector<SourceLocation> enumStatic;
     if (collectStaticEnumPayload(value, enumStatic)) {
       preparedStatic.insert(preparedStatic.end(), enumStatic.begin(), enumStatic.end());
@@ -5497,6 +5545,13 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
     facts.SourceFlowCeiling.Complete = true;
     facts.SourceFlowCeiling.HandleRebindable = true;
     facts.SourceFlowCeiling.PayloadWritable = facts.StaticStorageOrigins.empty();
+  }
+  if (isMemberReferenceConstruction(exactValue)) {
+    // A newly constructed reference is not newly writable storage. Its
+    // pointee permission comes from the selected field and access path.
+    facts.SourceFlowCeiling.PayloadWritable =
+        facts.SourceFlowCeiling.PayloadWritable &&
+        facts.ActualCapabilities.PayloadWritable;
   }
   if (normalSemaValidated && actualType &&
       (actualType->isRawPointer() || actualType->isReference()) &&
@@ -10847,6 +10902,24 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             else {
               auto current = targets.front();
               current.Projections.insert(current.Projections.end(), operand.Projections.begin(), operand.Projections.end());
+              if (!(current == argPath)) acquired.reset();
+            }
+          }
+        }
+        if (auto *member = dynamic_cast<MemberExpr *>(construction);
+            member && member->ResolvedType && member->ResolvedType->isReference() &&
+            isMemberReferenceConstruction(member)) {
+          acquired = member->AcquiredBorrow;
+          const auto operand = makeAccessPath(member);
+          SymbolInfo *binding = nullptr;
+          if (operand.RootID) CurrentScope->findSymbolByID(operand.RootID, binding);
+          if (binding && binding->CurrentReferenceTargets) {
+            const auto &targets = *binding->CurrentReferenceTargets;
+            if (targets.size() != 1) acquired.reset();
+            else {
+              auto current = targets.front();
+              current.Projections.insert(current.Projections.end(),
+                  operand.Projections.begin(), operand.Projections.end());
               if (!(current == argPath)) acquired.reset();
             }
           }

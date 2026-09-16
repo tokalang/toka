@@ -1,0 +1,6 @@
+shape Holder(view: str)
+fn escape() -> &str {
+    auto holder = Holder(view = "static bytes")
+    return holder.&view
+}
+fn main() -> i32 { return 0 }

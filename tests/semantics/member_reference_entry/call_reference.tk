@@ -1,0 +1,12 @@
+shape Info(value#: i32)
+fn replace<T>(&slot#: T, cede incoming: T) { slot = cede incoming }
+fn read<T>(&slot: T) -> i32 { return 0 }
+fn main() -> i32 {
+    auto info = Info(value = 7)
+    assert(read<i32>(info.&value) == 0, "member reference argument")
+    replace<i32>(info.&#value, 8)
+    assert(info.value == 8, "member exclusive loan releases after call")
+    replace<i32>((unsafe (info.&#value) : &i32#), 9)
+    assert(info.value == 9, "equal-view wrappers preserve the acquired loan")
+    return 0
+}

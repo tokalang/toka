@@ -1,0 +1,8 @@
+shape Info(value: i32)
+shape Box(inner: Info)
+fn main() -> i32 {
+    auto box# = Box(inner = Info(value = 7))
+    auto &child# = box.inner.&value
+    auto &bad = box.&inner
+    return child
+}

@@ -33,6 +33,7 @@ namespace toka {
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
 std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
+  Memb->AcquiredBorrow.reset();
   recordHandleSurfaceMemberExpr(*Memb);
   Memb->IsTaskStart = false;
 
@@ -429,7 +430,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
           bool isExclusive = access.HasRebindMarker || m_ExpectedWritability;
           if (!PALCheckerState.recordBorrow(
                   canonicalizeAccessPath(makeAccessPath(Memb)), isExclusive,
-                  Memb->Loc)) {
+                  Memb->Loc, &Memb->AcquiredBorrow)) {
             error(Memb, DiagID::ERR_BORROW_MUT, path);
             if (PALCheckerState.lastConflict()) {
               recordPALConflict(

@@ -118,5 +118,9 @@ int main() {
   expression.AcquiredBorrow = own;
   auto clone = expression.clone();
   CHECK(!static_cast<UnaryExpr *>(clone.get())->AcquiredBorrow);
+  MemberExpr member(std::make_unique<VariableExpr>("owner"), "&field");
+  member.AcquiredBorrow = own;
+  auto memberClone = member.clone();
+  CHECK(!static_cast<MemberExpr *>(memberClone.get())->AcquiredBorrow);
   return 0;
 }

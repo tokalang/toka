@@ -1,0 +1,11 @@
+shape Holder(&value: i32)
+fn forward(input: i32) -> &i32 <- input {
+    auto holder = Holder(&value = &input)
+    return holder.&value
+}
+fn main() -> i32 {
+    auto value = 7
+    auto &result = forward(value)
+    assert(result == 7, "existing reference field retains its real target")
+    return 0
+}

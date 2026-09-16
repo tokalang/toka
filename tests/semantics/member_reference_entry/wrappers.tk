@@ -1,0 +1,11 @@
+shape Info(value: i32)
+fn main() -> i32 {
+    auto info# = Info(value = 7)
+    {
+        auto &view# = unsafe (info.&value)
+        view = 8
+    }
+    auto &view = (info.&value : &i32)
+    assert(view == 8, "transparent wrappers retain the selected path")
+    return 0
+}

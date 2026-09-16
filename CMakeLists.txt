@@ -300,6 +300,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_rc13_negative_purposes.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_member_reference_entry
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_member_reference_entry.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_dyn_fn_binding_lifecycle
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_dyn_fn_binding_lifecycle.py

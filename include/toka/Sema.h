@@ -951,6 +951,7 @@ private:
       Expr *Argument, const std::shared_ptr<Type> &DestinationType);
   std::shared_ptr<Type> queryExplicitCedeStage0NonCallType(
       Expr *Value, const std::shared_ptr<Type> &DestinationType);
+  bool isMemberReferenceConstruction(Expr *Value);
   std::shared_ptr<Type>
   resolveExplicitCedeStage0TypeReadOnly(const std::shared_ptr<Type> &Type);
   AccessCapability queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *Value);

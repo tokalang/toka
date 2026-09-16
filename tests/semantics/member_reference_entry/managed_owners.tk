@@ -1,0 +1,25 @@
+auto drops# = 0:i32
+shape Resource(value: i32)
+impl Resource@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto ^owner# = new Resource(value = 7)
+        {
+            auto &view# = owner.&value
+            view = 8
+        }
+        assert(owner.value == 8 && drops == 0, "reference does not consume unique owner")
+    }
+    assert(drops == 1, "unique owner drops once")
+    {
+        auto ~owner# = new Resource(value = 9)
+        auto ~other = ~owner
+        auto &view = owner.&value
+        assert(view == 9 && other.value == 9, "shared owner remains live")
+    }
+    assert(drops == 2, "shared payload drops once")
+    return 0
+}

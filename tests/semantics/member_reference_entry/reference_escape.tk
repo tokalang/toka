@@ -1,0 +1,7 @@
+shape Holder(&value: i32)
+fn escape() -> &i32 {
+    auto local = 7
+    auto holder = Holder(&value = &local)
+    return holder.&value
+}
+fn main() -> i32 { return 0 }

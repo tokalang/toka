@@ -1,0 +1,7 @@
+shape Info(value#: i32)
+fn pair<T>(&first#: T, &second#: T) {}
+fn main() -> i32 {
+    auto info = Info(value = 7)
+    pair<i32>(info.&#value, info.&#value)
+    return 0
+}

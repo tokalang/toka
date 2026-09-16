@@ -214,30 +214,51 @@
     },
     {
       "case": "pal_member_mut_borrow_duplicate.tk",
-      "status": "blocked",
-      "category": "implementation-gap",
+      "status": "repaired",
+      "category": "member-reference-entry-fix",
       "target_codes": [
         "E0441"
       ],
-      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+      "first_message": "Cannot access 'info.accesses' while it is mutably borrowed",
+      "target_sites": [
+        {
+          "code": "E0441",
+          "file": "tests/fail/pal_member_mut_borrow_duplicate.tk",
+          "line": 11
+        }
+      ]
     },
     {
       "case": "pal_member_mut_borrow_payload_read.tk",
-      "status": "blocked",
-      "category": "implementation-gap",
+      "status": "repaired",
+      "category": "member-reference-entry-fix",
       "target_codes": [
         "E0441"
       ],
-      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+      "first_message": "Cannot access 'info.accesses' while it is mutably borrowed",
+      "target_sites": [
+        {
+          "code": "E0441",
+          "file": "tests/fail/pal_member_mut_borrow_payload_read.tk",
+          "line": 12
+        }
+      ]
     },
     {
       "case": "pal_member_mut_borrow_payload_write.tk",
-      "status": "blocked",
-      "category": "implementation-gap",
+      "status": "repaired",
+      "category": "member-reference-entry-fix",
       "target_codes": [
         "E0441"
       ],
-      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+      "first_message": "Cannot access 'info.accesses' while it is mutably borrowed",
+      "target_sites": [
+        {
+          "code": "E0441",
+          "file": "tests/fail/pal_member_mut_borrow_payload_write.tk",
+          "line": 12
+        }
+      ]
     },
     {
       "case": "projection_reference_hole_fill_rejected.tk",
@@ -257,12 +278,19 @@
     },
     {
       "case": "readonly_member_ref_decl_upgrade_from_plain_cast.tk",
-      "status": "blocked",
-      "category": "implementation-gap",
+      "status": "repaired",
+      "category": "member-reference-entry-fix",
       "target_codes": [
         "E04573"
       ],
-      "reason": "Legal member-reference spelling fails TypeIncompatible before the intended PAL/capability check; equivalent &(owner.field) control works. Original negative and expectation retained."
+      "first_message": "Covenant Violation: Cannot elevate write permission from ReadOnly soul to Writable container.",
+      "target_sites": [
+        {
+          "code": "E04573",
+          "file": "tests/fail/readonly_member_ref_decl_upgrade_from_plain_cast.tk",
+          "line": 14
+        }
+      ]
     },
     {
       "case": "ref_life_bound.tk",

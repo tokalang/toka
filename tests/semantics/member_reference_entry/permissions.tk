@@ -1,0 +1,23 @@
+shape Info(accesses#: i32, ordinary: i32, name: str)
+shape Pair(left: i32, right: i32)
+fn main() -> i32 {
+    auto info = Info(accesses = 0, ordinary = 9, name = "metrics")
+    {
+        auto &counter# = info.&accesses
+        counter = 7
+        assert(counter == 7, "declared interior permission")
+        assert(info.ordinary == 9, "sibling remains readable")
+    }
+    auto &ordinary = info.&ordinary
+    assert(ordinary == 9, "readonly member view")
+    auto pair# = Pair(left = 1, right = 2)
+    {
+        auto &left# = pair.&left
+        auto &right# = pair.&right
+        left = 3
+        right = 4
+        assert(left + right == 7, "disjoint exclusive member paths")
+    }
+    assert(pair.left == 3 && pair.right == 4, "loans release with scope")
+    return 0
+}
