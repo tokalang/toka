@@ -1,0 +1,20 @@
+import std/channel::{channel}
+import std/sync::{Mutex}
+import std/thread::{thread_spawn}
+fn non_contract_observer<T>(value:T) { auto flag=0:i32 }
+fn main() -> i32 {
+    auto pair# = channel<i32>()
+    auto sender = pair.tx#.clone()
+    // Retire this owner's publication witness through a non-contract call.
+    // A still-valid Channel witness must not qualify the other capture.
+    auto ~lock = Mutex<i32>::make_shared(7)
+    non_contract_observer(~lock)
+    auto worker = { [cede sender, cede ~lock] =>
+        auto local# = cede sender
+        local#.send(7).unwrap()
+        auto held = lock.lock().unwrap()
+        return 0
+    }
+    auto handle# = thread_spawn<i32>(cede worker).unwrap()
+    return 0
+}

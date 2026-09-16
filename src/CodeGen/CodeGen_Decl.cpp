@@ -843,6 +843,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         capture.Alloca = fieldAddr;
         capture.AllocType = getLLVMType(member.ResolvedType);
         capture.HasDrop = true;
+        // This address is the complete capture slot. Keep its full morphology
+        // so a live shared capture is released, not dropped as an inline payload.
+        capture.DropType = member.ResolvedType;
         capture.SoulName = member.ResolvedType->getSoulType()->getSoulName();
         capture.DropFlag = createEntryBlockAlloca(
             llvm::Type::getInt1Ty(m_Context), nullptr,

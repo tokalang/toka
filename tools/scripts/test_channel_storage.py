@@ -30,7 +30,7 @@ def main():
             assert normal.stderr == shadow.stderr, source
             if reason: assert reason in normal.stderr, normal.stderr
         for source in (ROOT / 'tests/semantics/rc13_thread_migration_pending/sender_capture.tk',
-                       CASES / 'lifecycle.tk'):
+                       CASES / 'lifecycle.tk', CASES / 'mixed_capture.tk', CASES / 'mixed_cleanup.tk'):
             parity(source)
             binary = work / source.stem
             built = compile(source, observer, '-o', binary)
@@ -69,7 +69,8 @@ def main():
             else: assert ran.returncode == expected, (name, ran.returncode, ran.stderr)
             print('PASS native failure ' + name + ' rc=' + str(ran.returncode), flush=True)
         for name, reason in (('forged', 'E0418'), ('private_write', 'E0418'),
-                             ('borrowed_element', 'E0621'), ('invalidated', 'EnvironmentLifetimeUnproven')):
+                             ('borrowed_element', 'E0621'), ('invalidated', 'EnvironmentLifetimeUnproven'),
+                             ('mixed_unqualified', 'EnvironmentLifetimeUnproven')):
             source = CASES / (name + '.tk')
             parity(source, 1, reason)
             for flag, suffix in (('-c', '.o'), ('--emit-llvm', '.ll')):

@@ -1,0 +1,33 @@
+import std/channel::{channel}
+import std/sync::{Mutex}
+import std/thread::{thread_spawn}
+extern fn channel_drop(id:i32) -> void
+extern fn channel_drop_count() -> i32
+shape Token(id:i32)
+impl Token@Send {}
+impl Token@Encap { fn drop(self#) { channel_drop(self.id) } }
+fn main()->i32 {
+    {
+        auto pair#=channel<i32>()
+        auto sender=pair.tx#.clone()
+        auto ~lock=Mutex<Token>::make_shared(Token(id=0))
+        auto ~remaining=~lock
+        auto worker={ [cede sender, cede ~lock] =>
+            auto local#=cede sender
+            local#.send(7).unwrap()
+            auto held=lock.lock().unwrap()
+            auto &value=held.borrow_mut()
+            assert(value.id==0,"captured mutex payload")
+            return 0
+        }
+        auto handle#=thread_spawn<i32>(cede worker).unwrap()
+        assert(pair.rx#.recv().unwrap().unwrap()==7,"delivered")
+        assert(handle#.join().unwrap()==0,"joined")
+        assert(channel_drop_count()==0,"remaining shared owner keeps payload alive")
+        auto held=remaining.lock().unwrap()
+        auto &value=held.borrow_mut()
+        assert(value.id==0,"remaining owner stays usable")
+    }
+    assert(channel_drop_count()==1,"last shared owner drops payload exactly once")
+    return 0
+}

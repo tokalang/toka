@@ -707,3 +707,38 @@ paths still return no candidate rather than an incomplete explanatory candidate.
 
 Working logs/probes: `/private/tmp/toka-channel-contract.X9exE9`.
 E/push/release remain disabled. Other-worker RFC modifications remain untouched.
+
+## Channel mixed-capture revision (700fcba3 not Accepted)
+
+Independent review passed five gates (154.73 s) but reproduced rejection of a
+named closure owning Sender plus an already qualified shared Mutex. The bridge
+now still requires at least one complete Channel witness and complete per-capture
+facts, while allowing other separately qualified, live native witnesses. It does
+not activate arbitrary synthesized shapes or generic wrapper admission.
+
+After the admission correction, running the original audit source exposed a
+related cleanup defect: the consuming invoke stored only the capture's soul name
+for scope cleanup. IR called `Mutex.drop` on the address of the shared carrier;
+macOS terminated the worker with `os_unfair_lock is corrupt`. This was not a code
+signature/resource-limit issue. The capture scope entry now retains its complete
+DropType and uses the existing typed cleanup path. Its move/drop flag is unchanged;
+the shared capture releases one reference rather than dropping carrier bytes as
+an inline Mutex. No ABI/runtime/refcount algorithm change is made.
+
+The original `/private/tmp/toka-channel-review.GDDRQ4/mixed_capture.tk` now builds
+and exits zero unchanged. New regressions cover Mutex payload access, a surviving
+shared owner and one final resource drop. The negative mixes a valid Channel with
+a Mutex whose qualification was invalidated by a non-contract call, requiring
+EnvironmentLifetimeUnproven, parity and no object/IR. The first attempted negative
+using Mutex<str> stopped at an earlier return-dependency error; that run was not
+counted as environment-check coverage and the expected diagnostic was not relaxed.
+
+Full tool targets build. Legacy five-thread, native witness and dyn-fn lifecycle
+CTest groups passed with the final production code; Channel passed its separate
+rerun (1/1, 54.65 s) after refining the negative fixture. No full-suite baseline is updated. The
+nonblocking sleep-based wakeup test suggestion remains a follow-up, not a runtime
+protocol change in this revision.
+
+Worktree relocation remains separate: the three child workers are completed,
+but the writer responsible for the uncommitted RFC has not been confirmed stopped.
+No worktree move, branch change, mainline merge, push or WIP overwrite was done.

@@ -4438,9 +4438,14 @@ bool Sema::Stage1BindingTransfer::prepare(
         [](const auto &entry) { return entry.second && entry.second->Channel; });
     if (channelCapture && shape && shape->Decl && shape->Decl->IsCompilerSynthesized) {
       auto environment = Owner.collectStage1CallableEnvironment(source);
-      if (environment.Complete && !environment.NativeOwners.empty() &&
+      // Channel selects this bridge; it does not exclude independently
+      // qualified native owners in the same environment. The collector must
+      // still prove every capture, and every supplied witness must be live.
+      if (environment.Complete &&
+          std::any_of(environment.NativeOwners.begin(), environment.NativeOwners.end(),
+              [](const auto &witness) { return witness && witness->Channel && witness->Channel->Complete; }) &&
           std::all_of(environment.NativeOwners.begin(), environment.NativeOwners.end(),
-              [](const auto &witness) { return witness && witness->Channel && witness->Channel->Complete; }))
+              [&](const auto &witness) { return witness && Owner.nativeSyncOwnerLive(witness); }))
         CallableFacts = std::move(environment);
     }
   }
