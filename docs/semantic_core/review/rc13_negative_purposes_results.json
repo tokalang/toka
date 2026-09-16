@@ -131,13 +131,23 @@
       "case": "borrow.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "borrow_field.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "for_alias_shape_field_ceiling.tk",
@@ -148,55 +158,100 @@
       "case": "for_alias_shared_array_interior_sibling.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "init_custom_drop_reference_full_write.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "init_custom_drop_reference_sibling_read.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "init_immutable_live_array_element_reassign_after_cede.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "init_immutable_maybe_moved_array_element_reassign.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "member_access_sema_prefix_fail.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "morphic_constraint_violation.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "owned_lazy_iterator_consuming_callable.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "pal_branch_borrowed_field_escape.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "pal_member_mut_borrow_duplicate.tk",
@@ -217,7 +272,12 @@
       "case": "projection_reference_hole_fill_rejected.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "readonly_member_ref_decl_upgrade_from_plain_cast.tk",
@@ -228,13 +288,23 @@
       "case": "ref_life_bound.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "return_ref.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "slab_lookup_miss_blocks_remove.tk",
@@ -245,7 +315,12 @@
       "case": "slab_uaf_decons.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "smart_ptr_from_stack.tk",
@@ -256,7 +331,12 @@
       "case": "sync_guard_non_send.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "thread_spawn_copy_non_sync_capture.tk",
@@ -287,13 +367,41 @@
       "case": "unique_value_local_move_noncede_parameter.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
     },
     {
       "case": "unset_escape.tk",
       "status": "target-verified",
       "parity": true,
-      "artifacts": false
+      "artifacts": false,
+      "target_checked_modes": [
+        "check-only",
+        "object",
+        "llvm-ir"
+      ]
+    },
+    {
+      "case": "generic_and_ownership.tk",
+      "status": "positive-artifact",
+      "mode": "o",
+      "flags": [
+        "-c"
+      ],
+      "bytes": 67840
+    },
+    {
+      "case": "generic_and_ownership.tk",
+      "status": "positive-artifact",
+      "mode": "ll",
+      "flags": [
+        "--emit-llvm"
+      ],
+      "bytes": 584927
     },
     {
       "case": "borrow_permissions.tk",
@@ -486,5 +594,23 @@
         ]
       ]
     }
-  ]
+  ],
+  "ir_gate_correction": {
+    "base": "30df81b4fbc9aa787eef0ca032d20d72617e3b98",
+    "evidence_directory": "/Users/zhyi/GitDP/tokalang/validation/rc13-negative-ir-gate.dE4Q4o",
+    "previous_ir_checks_valid": false,
+    "previous_invalid_ir_checks": 18,
+    "note": "validation.runs and fail_comparison retain the prior full-run history; purpose_gate now records the corrected targeted run.",
+    "ctest": {
+      "passed": 1,
+      "total": 1,
+      "seconds": 45.75
+    },
+    "validated_semantic_no_artifact_checks": 36,
+    "positive_artifacts": 2,
+    "invalid_option_mutation_rejected": true,
+    "full_fail_rerun": false,
+    "full_pass_rerun": false,
+    "full_ctest_rerun": false
+  }
 }

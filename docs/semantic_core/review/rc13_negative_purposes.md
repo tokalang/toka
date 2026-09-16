@@ -7,8 +7,10 @@
 ## 结果与口径
 
 - 本轮完整 FAIL：**465/478**，前次 **447/478**；按名称恢复 **18**，新增失败 **0**，异常退出 **0**。
-- 新增 `toka_rc13_negative_purposes`：**1/1，38.58 秒**。实际检查 18 个目标、
-  7 个运行正例、normal/call-shadow/non-call-shadow parity、36 次 object/IR 不产物。
+- IR 门禁修订后 `toka_rc13_negative_purposes`：**1/1，45.75 秒**。验证 18 个目标、
+  7 个运行正例、normal/call-shadow/non-call-shadow parity、36 次匹配目标诊断/位置的
+  object/IR 不产物，以及两种模式的合法产物。原 38.58 秒运行中的 18 次 IR
+  检查误用了 `--emit-ir`，没有进入语义检查，撤回其 IR 覆盖结论。
 - 完整 FAIL 只运行一轮，117.44 秒；未 Bless、未排除任何 FAIL 用例。
 - 剩余 **13** 个原失败及其预期原样保留，不算通过。不要求先修改编译器来清零。
 - 未运行完整 PASS/CTest；不得把本次 FAIL 数字拼成一次新的三套完整基线。
@@ -93,3 +95,19 @@ TOKAC=/Users/zhyi/GitDP/tokalang/builds/rc13-integration/bin/tokac \
 第一项只报告修复目的与正例，并明确打印 13 blocked not counted；第二项仍会
 以非零退出并显示剩余 13 项。源码 SHA 和具体诊断证据在结果文件中，不把
 局部门禁绿色冒充 RC13 已就绪。后续需按剩余真实共同原因另选实现范围。
+
+## 30df81b4 增量修订：IR 门禁假阳性
+
+仅修测试门禁，不重做 18 项迁移。输出选项统一为 `-c` / `--emit-llvm`；
+check-only、object、LLVM IR 共用同一目标校验，均要求退出 1、第一诊断及
+目标诊断文件/行号匹配。CLI 参数错误没有对应语义诊断，不能通过校验。
+
+合法 `generic_and_ownership.tk` 同时生成非空产物：arm64 Mach-O object
+67,840 bytes、文本 LLVM IR 584,927 bytes（含 target triple 和函数定义）。
+这两项与负例复用同一输出选项表。额外将选项临时变异回 `--emit-ir` 的
+隔离测试被目标诊断校验准确拒绝；仓库文件未被该变异修改。
+
+修订后直接专项和注册 CTest 均通过；CTest 1/1，45.75 秒。
+证据：`/Users/zhyi/GitDP/tokalang/validation/rc13-negative-ir-gate.dE4Q4o`，
+含 results.json、ctest.log 和两份合法产物。本次没有重跑完整 FAIL、PASS 或
+完整 CTest；465/478 仍引用前次完整 FAIL，不写成这次重跑结果。

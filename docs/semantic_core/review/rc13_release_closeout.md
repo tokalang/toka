@@ -875,8 +875,12 @@ Machine-readable result: [rc13_baseline_51ac6e5d.json](rc13_baseline_51ac6e5d.js
 The infrastructure package is Accepted at `e084c990`. This next test-only package
 audits all 31 remaining FAIL purposes: 18 restored, 13 deliberately still failed.
 One complete FAIL run reports **465/478**, no added failures or abnormal exits.
-The new purpose CTest passes 1/1 (38.58 s), including seven executable controls,
-both shadow modes and 36 no-artifact checks. No compiler/library change, Bless,
+The initial purpose CTest passed 1/1 (38.58 s), but its 18 IR checks used an invalid
+option and did not qualify semantic rejection. The corrected gate passes 1/1
+(45.75 s): seven executable controls, both shadow modes, 36 semantic diagnostic/
+location-matched no-artifact checks, and two successful object/LLVM-IR artifacts.
+The invalid-option mutation is rejected by the corrected check. No full suite was
+rerun for this correction. No compiler/library change, Bless,
 E activation or push occurred; the other-worker RFC diff remains untouched.
 
 This is not a new full PASS/FAIL/CTest baseline. See
