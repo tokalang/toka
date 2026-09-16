@@ -889,3 +889,21 @@ This is not a new full PASS/FAIL/CTest baseline. See
 files and their old expectations were retained, including legal member-reference
 probes that still fail before their intended PAL checks. This candidate does not
 declare those implementation limitations to be permanent language restrictions.
+
+## Member-reference entry candidate at 6952a25b
+
+The preceding negative-purpose package is Accepted at `29d18390`, including its
+18 migrations and corrected IR gate. This next complete package fixes member
+reference type/category, exact storage origin, permission ceiling and successful
+PAL-loan propagation. The four original negative sources were not rewritten.
+
+Three targeted gates pass 3/3 (87.46 s). One fixed full run on `6952a25b` reports
+**424/457 PASS, 469/478 FAIL, 109/111 CTest**, with no added failures or abnormal
+exits. Four FAIL recoveries are relative to 465/478; the earlier 18 migrations
+are not counted as this implementation's work. Three related PASS cases recover.
+The CTest delta is two added tests, not recovery of either old failed CTest.
+
+See [the complete package](rc13_member_reference_entry.md) and
+[named comparisons](rc13_member_reference_results.json). The other nine FAIL
+blockers, two CTest blockers and other-worker RFC diff remain; no E activation,
+library/CodeGen/runtime/ABI change, push or release is included.
