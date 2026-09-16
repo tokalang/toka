@@ -907,3 +907,18 @@ See [the complete package](rc13_member_reference_entry.md) and
 [named comparisons](rc13_member_reference_results.json). The other nine FAIL
 blockers, two CTest blockers and other-worker RFC diff remain; no E activation,
 library/CodeGen/runtime/ABI change, push or release is included.
+
+## Alias / nominal identity candidate at 7477d4f7
+
+Member-reference entry is Accepted at `6952a25b`. The next package preserves
+nominal identity while reading field layout, permissions and Copy/cleanup facts;
+the original alias positive, negative and snapshot remain unchanged. See
+[the complete package](rc13_nominal_identity.md) and
+[machine results](rc13_nominal_identity_results.json).
+
+An intermediate full run on `a301b8cf` exposed a scalar-newtype regression in
+`g04_match_range`; it was retained and corrected, not hidden by an oracle edit.
+The final fixed full run on `7477d4f7` is **425/457, 470/478, 110/112**: one PASS
+and one FAIL case restored, one added passing CTest, no added failures or abnormal
+exits. The same other eight FAIL and two CTest blockers remain. E, push and
+release are still disabled, and the unrelated RFC diff remains untouched.

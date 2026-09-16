@@ -1,0 +1,795 @@
+{
+  "implementation": "7477d4f748af55382088fe2487198641cf435299",
+  "evidence_directory": "/Users/zhyi/GitDP/tokalang/validation/rc13-nominal.ua4ddT",
+  "final_run": {
+    "revision": "7477d4f748af55382088fe2487198641cf435299",
+    "source": "/Users/zhyi/GitDP/tokalang/worktrees/rc13-integration",
+    "build": "/Users/zhyi/GitDP/tokalang/builds/rc13-integration",
+    "baseline": "/Users/zhyi/GitDP/tokalang/validation/rc13-member-reference.uluW37/full",
+    "latest_fail_baseline": "/Users/zhyi/GitDP/tokalang/validation/rc13-member-reference.uluW37/full",
+    "runs": {
+      "tools-build": {
+        "command": [
+          "cmake",
+          "--build",
+          "/Users/zhyi/GitDP/tokalang/builds/rc13-integration",
+          "-j4"
+        ],
+        "returncode": 0,
+        "seconds": 6.03,
+        "changed_tracked_files": []
+      },
+      "pass": {
+        "command": [
+          "bash",
+          "tools/scripts/test_pass.sh"
+        ],
+        "returncode": 1,
+        "seconds": 364.02,
+        "changed_tracked_files": []
+      },
+      "fail": {
+        "command": [
+          "python3",
+          "tools/scripts/test_verify_fail.py"
+        ],
+        "returncode": 1,
+        "seconds": 119.37,
+        "changed_tracked_files": []
+      },
+      "ctest": {
+        "command": [
+          "ctest",
+          "--test-dir",
+          "/Users/zhyi/GitDP/tokalang/builds/rc13-integration",
+          "--output-on-failure",
+          "-j2"
+        ],
+        "returncode": 8,
+        "seconds": 1144.69,
+        "changed_tracked_files": []
+      }
+    }
+  },
+  "comparison": {
+    "pass": {
+      "baseline": {
+        "passed": 424,
+        "failed": 33,
+        "failures": [
+          "for_mutable_binding.tk",
+          "g03_diagnostic_test.tk",
+          "g04_anon_records.tk",
+          "g04_raw_pointer.tk",
+          "g04_scratch_uninit.tk",
+          "g07_alias_generic_test.tk",
+          "g07_btree_map_test.tk",
+          "g07_btree_set_test.tk",
+          "g07_container_get_dup_lifecycle.tk",
+          "g07_slab_test.tk",
+          "g07_test_panic.tk",
+          "g07_test_stdx_flag.tk",
+          "g08_auto_drop.tk",
+          "g08_for_alias_handle_array_permissions.tk",
+          "g08_for_alias_shared_array_interior_mutability.tk",
+          "g08_for_alias_shared_array_permissions.tk",
+          "g08_for_alias_writable_vec_handles.tk",
+          "g08_issue14.tk",
+          "g08_match_guard_leak.tk",
+          "g08_match_shared_refcount.tk",
+          "g08_morphic_member_identity.tk",
+          "g08_noshared.tk",
+          "g08_pal_stress_test_borrow.tk",
+          "g08_pointer_print.tk",
+          "g08_ptr_repro.tk",
+          "g08_test.tk",
+          "g09_async_cede_shared_move_test.tk",
+          "g09_async_wait_syntax.tk",
+          "g10_build_hybrid_test.tk",
+          "g10_test_sentry_benchmark.tk",
+          "g15_stdx_toml_test.tk",
+          "g18_slab_lookup_miss.tk",
+          "g18_stdx_template_test.tk"
+        ],
+        "abnormal": []
+      },
+      "current": {
+        "passed": 425,
+        "failed": 32,
+        "failures": [
+          "for_mutable_binding.tk",
+          "g03_diagnostic_test.tk",
+          "g04_anon_records.tk",
+          "g04_raw_pointer.tk",
+          "g04_scratch_uninit.tk",
+          "g07_btree_map_test.tk",
+          "g07_btree_set_test.tk",
+          "g07_container_get_dup_lifecycle.tk",
+          "g07_slab_test.tk",
+          "g07_test_panic.tk",
+          "g07_test_stdx_flag.tk",
+          "g08_auto_drop.tk",
+          "g08_for_alias_handle_array_permissions.tk",
+          "g08_for_alias_shared_array_interior_mutability.tk",
+          "g08_for_alias_shared_array_permissions.tk",
+          "g08_for_alias_writable_vec_handles.tk",
+          "g08_issue14.tk",
+          "g08_match_guard_leak.tk",
+          "g08_match_shared_refcount.tk",
+          "g08_morphic_member_identity.tk",
+          "g08_noshared.tk",
+          "g08_pal_stress_test_borrow.tk",
+          "g08_pointer_print.tk",
+          "g08_ptr_repro.tk",
+          "g08_test.tk",
+          "g09_async_cede_shared_move_test.tk",
+          "g09_async_wait_syntax.tk",
+          "g10_build_hybrid_test.tk",
+          "g10_test_sentry_benchmark.tk",
+          "g15_stdx_toml_test.tk",
+          "g18_slab_lookup_miss.tk",
+          "g18_stdx_template_test.tk"
+        ],
+        "abnormal": []
+      },
+      "recovered": [
+        "g07_alias_generic_test.tk"
+      ],
+      "added": [],
+      "remaining": [
+        "for_mutable_binding.tk",
+        "g03_diagnostic_test.tk",
+        "g04_anon_records.tk",
+        "g04_raw_pointer.tk",
+        "g04_scratch_uninit.tk",
+        "g07_btree_map_test.tk",
+        "g07_btree_set_test.tk",
+        "g07_container_get_dup_lifecycle.tk",
+        "g07_slab_test.tk",
+        "g07_test_panic.tk",
+        "g07_test_stdx_flag.tk",
+        "g08_auto_drop.tk",
+        "g08_for_alias_handle_array_permissions.tk",
+        "g08_for_alias_shared_array_interior_mutability.tk",
+        "g08_for_alias_shared_array_permissions.tk",
+        "g08_for_alias_writable_vec_handles.tk",
+        "g08_issue14.tk",
+        "g08_match_guard_leak.tk",
+        "g08_match_shared_refcount.tk",
+        "g08_morphic_member_identity.tk",
+        "g08_noshared.tk",
+        "g08_pal_stress_test_borrow.tk",
+        "g08_pointer_print.tk",
+        "g08_ptr_repro.tk",
+        "g08_test.tk",
+        "g09_async_cede_shared_move_test.tk",
+        "g09_async_wait_syntax.tk",
+        "g10_build_hybrid_test.tk",
+        "g10_test_sentry_benchmark.tk",
+        "g15_stdx_toml_test.tk",
+        "g18_slab_lookup_miss.tk",
+        "g18_stdx_template_test.tk"
+      ]
+    },
+    "fail": {
+      "baseline": {
+        "passed": 469,
+        "failed": 9,
+        "failures": [
+          "alias_generic_test.tk",
+          "for_alias_shape_field_ceiling.tk",
+          "slab_lookup_miss_blocks_remove.tk",
+          "smart_ptr_from_stack.tk",
+          "thread_spawn_copy_non_sync_capture.tk",
+          "thread_spawn_implicit_capture_nested_closure.tk",
+          "thread_spawn_implicit_capture_via_assignment.tk",
+          "thread_spawn_implicit_capture_via_binding.tk",
+          "thread_spawn_non_send_capture.tk"
+        ],
+        "abnormal": []
+      },
+      "current": {
+        "passed": 470,
+        "failed": 8,
+        "failures": [
+          "for_alias_shape_field_ceiling.tk",
+          "slab_lookup_miss_blocks_remove.tk",
+          "smart_ptr_from_stack.tk",
+          "thread_spawn_copy_non_sync_capture.tk",
+          "thread_spawn_implicit_capture_nested_closure.tk",
+          "thread_spawn_implicit_capture_via_assignment.tk",
+          "thread_spawn_implicit_capture_via_binding.tk",
+          "thread_spawn_non_send_capture.tk"
+        ],
+        "abnormal": []
+      },
+      "recovered": [
+        "alias_generic_test.tk"
+      ],
+      "added": [],
+      "remaining": [
+        "for_alias_shape_field_ceiling.tk",
+        "slab_lookup_miss_blocks_remove.tk",
+        "smart_ptr_from_stack.tk",
+        "thread_spawn_copy_non_sync_capture.tk",
+        "thread_spawn_implicit_capture_nested_closure.tk",
+        "thread_spawn_implicit_capture_via_assignment.tk",
+        "thread_spawn_implicit_capture_via_binding.tk",
+        "thread_spawn_non_send_capture.tk"
+      ]
+    },
+    "ctest": {
+      "baseline": {
+        "passed": 109,
+        "failed": 2,
+        "failures": [
+          "toka_stage1_indirect_parameter_cede",
+          "toka_stage1_return_matrix"
+        ],
+        "abnormal": []
+      },
+      "current": {
+        "passed": 110,
+        "failed": 2,
+        "failures": [
+          "toka_stage1_indirect_parameter_cede",
+          "toka_stage1_return_matrix"
+        ],
+        "abnormal": []
+      },
+      "recovered": [],
+      "added": [],
+      "remaining": [
+        "toka_stage1_indirect_parameter_cede",
+        "toka_stage1_return_matrix"
+      ],
+      "new_tests": [
+        "toka_nominal_alias_identity"
+      ],
+      "removed_tests": []
+    },
+    "fail_since_negative_migration": {
+      "baseline": {
+        "passed": 469,
+        "failed": 9,
+        "failures": [
+          "alias_generic_test.tk",
+          "for_alias_shape_field_ceiling.tk",
+          "slab_lookup_miss_blocks_remove.tk",
+          "smart_ptr_from_stack.tk",
+          "thread_spawn_copy_non_sync_capture.tk",
+          "thread_spawn_implicit_capture_nested_closure.tk",
+          "thread_spawn_implicit_capture_via_assignment.tk",
+          "thread_spawn_implicit_capture_via_binding.tk",
+          "thread_spawn_non_send_capture.tk"
+        ],
+        "abnormal": []
+      },
+      "current": {
+        "passed": 470,
+        "failed": 8,
+        "failures": [
+          "for_alias_shape_field_ceiling.tk",
+          "slab_lookup_miss_blocks_remove.tk",
+          "smart_ptr_from_stack.tk",
+          "thread_spawn_copy_non_sync_capture.tk",
+          "thread_spawn_implicit_capture_nested_closure.tk",
+          "thread_spawn_implicit_capture_via_assignment.tk",
+          "thread_spawn_implicit_capture_via_binding.tk",
+          "thread_spawn_non_send_capture.tk"
+        ],
+        "abnormal": []
+      },
+      "recovered": [
+        "alias_generic_test.tk"
+      ],
+      "added": []
+    }
+  },
+  "related_gates_in_full_run": [
+    {
+      "name": "toka_whole_value_generics",
+      "seconds": 123.62,
+      "status": "Passed"
+    },
+    {
+      "name": "toka_nominal_alias_identity",
+      "seconds": 72.47,
+      "status": "Passed"
+    },
+    {
+      "name": "toka_binding_b4_enum_copy",
+      "seconds": 29.43,
+      "status": "Passed"
+    },
+    {
+      "name": "toka_rc13_negative_purposes",
+      "seconds": 66.02,
+      "status": "Passed"
+    },
+    {
+      "name": "toka_nominal_shape_id",
+      "seconds": 1.09,
+      "status": "Passed"
+    }
+  ],
+  "nominal_gate_results": [
+    {
+      "case": "mixed_identity",
+      "status": "semantic-rejection",
+      "code": "E0408",
+      "parity": true
+    },
+    {
+      "case": "underlying_target",
+      "status": "semantic-rejection",
+      "code": "E0408",
+      "parity": true
+    },
+    {
+      "case": "nested_mismatch",
+      "status": "semantic-rejection",
+      "code": "E0408",
+      "parity": true
+    },
+    {
+      "case": "trait_not_inherited",
+      "status": "semantic-rejection",
+      "code": "E0606",
+      "parity": true
+    },
+    {
+      "case": "permission",
+      "status": "semantic-rejection",
+      "code": "E04573",
+      "parity": true
+    },
+    {
+      "case": "inner_readonly",
+      "status": "semantic-rejection",
+      "code": "E04573",
+      "parity": true
+    },
+    {
+      "case": "opaque_field",
+      "status": "semantic-rejection",
+      "code": "E0417",
+      "parity": true
+    },
+    {
+      "case": "borrowed_escape",
+      "status": "semantic-rejection",
+      "code": "E0455",
+      "parity": true
+    },
+    {
+      "case": "rejected_transfer",
+      "status": "semantic-rejection",
+      "code": "E0408",
+      "parity": true
+    },
+    {
+      "case": "noncopy_layout",
+      "status": "semantic-rejection",
+      "code": "E04661",
+      "parity": true
+    },
+    {
+      "case": "scalar_mismatch",
+      "status": "semantic-rejection",
+      "code": "E0408",
+      "parity": true
+    },
+    {
+      "case": "scalar_distinct",
+      "status": "semantic-rejection",
+      "code": "E0408",
+      "parity": true
+    },
+    {
+      "case": "alias_generic_test.tk",
+      "status": "original-rejection",
+      "parity": true
+    },
+    {
+      "case": "constructors.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "nested_nominal.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "nested_alias.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "cleanup.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "imported.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "borrowed_return.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "trait_control.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "own_trait.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "own_drop.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "writable_reference.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "noncopy_transfer.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "scalar.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "g07_alias_generic_test.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "g04_match_range.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "g03_newtype.tk",
+      "status": "runtime-passed",
+      "exit": 0,
+      "parity": true
+    },
+    {
+      "case": "alias_good.tk",
+      "status": "runtime-passed",
+      "exit": 30,
+      "parity": true
+    },
+    {
+      "case": "interface",
+      "hidden": false,
+      "status": "runtime-passed",
+      "parity": true
+    },
+    {
+      "case": "interface",
+      "hidden": true,
+      "status": "runtime-passed",
+      "parity": true
+    }
+  ],
+  "superseded_attempt": {
+    "metadata": {
+      "revision": "a301b8cff84accd1ec11875ecb49e3670c409789",
+      "source": "/Users/zhyi/GitDP/tokalang/worktrees/rc13-integration",
+      "build": "/Users/zhyi/GitDP/tokalang/builds/rc13-integration",
+      "baseline": "/Users/zhyi/GitDP/tokalang/validation/rc13-member-reference.uluW37/full",
+      "latest_fail_baseline": "/Users/zhyi/GitDP/tokalang/validation/rc13-member-reference.uluW37/full",
+      "runs": {
+        "tools-build": {
+          "command": [
+            "cmake",
+            "--build",
+            "/Users/zhyi/GitDP/tokalang/builds/rc13-integration",
+            "-j4"
+          ],
+          "returncode": 0,
+          "seconds": 8.48,
+          "changed_tracked_files": []
+        },
+        "pass": {
+          "command": [
+            "bash",
+            "tools/scripts/test_pass.sh"
+          ],
+          "returncode": 1,
+          "seconds": 328.33,
+          "changed_tracked_files": []
+        },
+        "fail": {
+          "command": [
+            "python3",
+            "tools/scripts/test_verify_fail.py"
+          ],
+          "returncode": 1,
+          "seconds": 120.07,
+          "changed_tracked_files": []
+        },
+        "ctest": {
+          "command": [
+            "ctest",
+            "--test-dir",
+            "/Users/zhyi/GitDP/tokalang/builds/rc13-integration",
+            "--output-on-failure",
+            "-j2"
+          ],
+          "returncode": 8,
+          "seconds": 1111.62,
+          "changed_tracked_files": []
+        }
+      }
+    },
+    "comparison": {
+      "pass": {
+        "baseline": {
+          "passed": 424,
+          "failed": 33,
+          "failures": [
+            "for_mutable_binding.tk",
+            "g03_diagnostic_test.tk",
+            "g04_anon_records.tk",
+            "g04_raw_pointer.tk",
+            "g04_scratch_uninit.tk",
+            "g07_alias_generic_test.tk",
+            "g07_btree_map_test.tk",
+            "g07_btree_set_test.tk",
+            "g07_container_get_dup_lifecycle.tk",
+            "g07_slab_test.tk",
+            "g07_test_panic.tk",
+            "g07_test_stdx_flag.tk",
+            "g08_auto_drop.tk",
+            "g08_for_alias_handle_array_permissions.tk",
+            "g08_for_alias_shared_array_interior_mutability.tk",
+            "g08_for_alias_shared_array_permissions.tk",
+            "g08_for_alias_writable_vec_handles.tk",
+            "g08_issue14.tk",
+            "g08_match_guard_leak.tk",
+            "g08_match_shared_refcount.tk",
+            "g08_morphic_member_identity.tk",
+            "g08_noshared.tk",
+            "g08_pal_stress_test_borrow.tk",
+            "g08_pointer_print.tk",
+            "g08_ptr_repro.tk",
+            "g08_test.tk",
+            "g09_async_cede_shared_move_test.tk",
+            "g09_async_wait_syntax.tk",
+            "g10_build_hybrid_test.tk",
+            "g10_test_sentry_benchmark.tk",
+            "g15_stdx_toml_test.tk",
+            "g18_slab_lookup_miss.tk",
+            "g18_stdx_template_test.tk"
+          ],
+          "abnormal": []
+        },
+        "current": {
+          "passed": 424,
+          "failed": 33,
+          "failures": [
+            "for_mutable_binding.tk",
+            "g03_diagnostic_test.tk",
+            "g04_anon_records.tk",
+            "g04_match_range.tk",
+            "g04_raw_pointer.tk",
+            "g04_scratch_uninit.tk",
+            "g07_btree_map_test.tk",
+            "g07_btree_set_test.tk",
+            "g07_container_get_dup_lifecycle.tk",
+            "g07_slab_test.tk",
+            "g07_test_panic.tk",
+            "g07_test_stdx_flag.tk",
+            "g08_auto_drop.tk",
+            "g08_for_alias_handle_array_permissions.tk",
+            "g08_for_alias_shared_array_interior_mutability.tk",
+            "g08_for_alias_shared_array_permissions.tk",
+            "g08_for_alias_writable_vec_handles.tk",
+            "g08_issue14.tk",
+            "g08_match_guard_leak.tk",
+            "g08_match_shared_refcount.tk",
+            "g08_morphic_member_identity.tk",
+            "g08_noshared.tk",
+            "g08_pal_stress_test_borrow.tk",
+            "g08_pointer_print.tk",
+            "g08_ptr_repro.tk",
+            "g08_test.tk",
+            "g09_async_cede_shared_move_test.tk",
+            "g09_async_wait_syntax.tk",
+            "g10_build_hybrid_test.tk",
+            "g10_test_sentry_benchmark.tk",
+            "g15_stdx_toml_test.tk",
+            "g18_slab_lookup_miss.tk",
+            "g18_stdx_template_test.tk"
+          ],
+          "abnormal": []
+        },
+        "recovered": [
+          "g07_alias_generic_test.tk"
+        ],
+        "added": [
+          "g04_match_range.tk"
+        ],
+        "remaining": [
+          "for_mutable_binding.tk",
+          "g03_diagnostic_test.tk",
+          "g04_anon_records.tk",
+          "g04_match_range.tk",
+          "g04_raw_pointer.tk",
+          "g04_scratch_uninit.tk",
+          "g07_btree_map_test.tk",
+          "g07_btree_set_test.tk",
+          "g07_container_get_dup_lifecycle.tk",
+          "g07_slab_test.tk",
+          "g07_test_panic.tk",
+          "g07_test_stdx_flag.tk",
+          "g08_auto_drop.tk",
+          "g08_for_alias_handle_array_permissions.tk",
+          "g08_for_alias_shared_array_interior_mutability.tk",
+          "g08_for_alias_shared_array_permissions.tk",
+          "g08_for_alias_writable_vec_handles.tk",
+          "g08_issue14.tk",
+          "g08_match_guard_leak.tk",
+          "g08_match_shared_refcount.tk",
+          "g08_morphic_member_identity.tk",
+          "g08_noshared.tk",
+          "g08_pal_stress_test_borrow.tk",
+          "g08_pointer_print.tk",
+          "g08_ptr_repro.tk",
+          "g08_test.tk",
+          "g09_async_cede_shared_move_test.tk",
+          "g09_async_wait_syntax.tk",
+          "g10_build_hybrid_test.tk",
+          "g10_test_sentry_benchmark.tk",
+          "g15_stdx_toml_test.tk",
+          "g18_slab_lookup_miss.tk",
+          "g18_stdx_template_test.tk"
+        ]
+      },
+      "fail": {
+        "baseline": {
+          "passed": 469,
+          "failed": 9,
+          "failures": [
+            "alias_generic_test.tk",
+            "for_alias_shape_field_ceiling.tk",
+            "slab_lookup_miss_blocks_remove.tk",
+            "smart_ptr_from_stack.tk",
+            "thread_spawn_copy_non_sync_capture.tk",
+            "thread_spawn_implicit_capture_nested_closure.tk",
+            "thread_spawn_implicit_capture_via_assignment.tk",
+            "thread_spawn_implicit_capture_via_binding.tk",
+            "thread_spawn_non_send_capture.tk"
+          ],
+          "abnormal": []
+        },
+        "current": {
+          "passed": 470,
+          "failed": 8,
+          "failures": [
+            "for_alias_shape_field_ceiling.tk",
+            "slab_lookup_miss_blocks_remove.tk",
+            "smart_ptr_from_stack.tk",
+            "thread_spawn_copy_non_sync_capture.tk",
+            "thread_spawn_implicit_capture_nested_closure.tk",
+            "thread_spawn_implicit_capture_via_assignment.tk",
+            "thread_spawn_implicit_capture_via_binding.tk",
+            "thread_spawn_non_send_capture.tk"
+          ],
+          "abnormal": []
+        },
+        "recovered": [
+          "alias_generic_test.tk"
+        ],
+        "added": [],
+        "remaining": [
+          "for_alias_shape_field_ceiling.tk",
+          "slab_lookup_miss_blocks_remove.tk",
+          "smart_ptr_from_stack.tk",
+          "thread_spawn_copy_non_sync_capture.tk",
+          "thread_spawn_implicit_capture_nested_closure.tk",
+          "thread_spawn_implicit_capture_via_assignment.tk",
+          "thread_spawn_implicit_capture_via_binding.tk",
+          "thread_spawn_non_send_capture.tk"
+        ]
+      },
+      "ctest": {
+        "baseline": {
+          "passed": 109,
+          "failed": 2,
+          "failures": [
+            "toka_stage1_indirect_parameter_cede",
+            "toka_stage1_return_matrix"
+          ],
+          "abnormal": []
+        },
+        "current": {
+          "passed": 110,
+          "failed": 2,
+          "failures": [
+            "toka_stage1_indirect_parameter_cede",
+            "toka_stage1_return_matrix"
+          ],
+          "abnormal": []
+        },
+        "recovered": [],
+        "added": [],
+        "remaining": [
+          "toka_stage1_indirect_parameter_cede",
+          "toka_stage1_return_matrix"
+        ],
+        "new_tests": [
+          "toka_nominal_alias_identity"
+        ],
+        "removed_tests": []
+      },
+      "fail_since_negative_migration": {
+        "baseline": {
+          "passed": 469,
+          "failed": 9,
+          "failures": [
+            "alias_generic_test.tk",
+            "for_alias_shape_field_ceiling.tk",
+            "slab_lookup_miss_blocks_remove.tk",
+            "smart_ptr_from_stack.tk",
+            "thread_spawn_copy_non_sync_capture.tk",
+            "thread_spawn_implicit_capture_nested_closure.tk",
+            "thread_spawn_implicit_capture_via_assignment.tk",
+            "thread_spawn_implicit_capture_via_binding.tk",
+            "thread_spawn_non_send_capture.tk"
+          ],
+          "abnormal": []
+        },
+        "current": {
+          "passed": 470,
+          "failed": 8,
+          "failures": [
+            "for_alias_shape_field_ceiling.tk",
+            "slab_lookup_miss_blocks_remove.tk",
+            "smart_ptr_from_stack.tk",
+            "thread_spawn_copy_non_sync_capture.tk",
+            "thread_spawn_implicit_capture_nested_closure.tk",
+            "thread_spawn_implicit_capture_via_assignment.tk",
+            "thread_spawn_implicit_capture_via_binding.tk",
+            "thread_spawn_non_send_capture.tk"
+          ],
+          "abnormal": []
+        },
+        "recovered": [
+          "alias_generic_test.tk"
+        ],
+        "added": []
+      }
+    },
+    "regression": "g04_match_range.tk: scalar nominal Char16 facts were missing; corrected without erasing nominal identity or editing the original fixture."
+  }
+}
