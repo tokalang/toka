@@ -2704,10 +2704,21 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
   const bool ownsTargetTemporary =
       expr->Target && !isTargetLValue(expr->Target.get());
 
+  std::function<bool(const MatchArm::Pattern *)> containsReferencePattern =
+      [&](const MatchArm::Pattern *pat) -> bool {
+    if (!pat) return false;
+    if (pat->PatternKind == MatchArm::Pattern::Variable && pat->IsReference)
+      return true;
+    for (const auto &sub : pat->SubPatterns) {
+      if (containsReferencePattern(sub.get()))
+        return true;
+    }
+    return false;
+  };
+
   bool hasDirectReferencePattern = false;
   for (const auto &arm : expr->Arms) {
-    if (arm->Pat && arm->Pat->PatternKind == MatchArm::Pattern::Variable &&
-        arm->Pat->IsReference) {
+    if (containsReferencePattern(arm->Pat.get())) {
       hasDirectReferencePattern = true;
       break;
     }

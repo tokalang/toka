@@ -448,7 +448,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     }
 
     auto expectedTypeObj = Pat->MatchedValueType ? Pat->MatchedValueType : toka::Type::fromString(T);
-    Pat->IsAbstractWholeValue = Pat->GenericContract && Pat->GenericContract->isWholeValue();
+    Pat->IsAbstractWholeValue = !Pat->IsReference && Pat->GenericContract && Pat->GenericContract->isWholeValue();
     bool isMorphicExempt = Pat->IsAbstractWholeValue || (!Pat->Name.empty() && Pat->Name[0] == '\'');
     if (expectedTypeObj->isReference() && !Pat->IsReference &&
         !isMorphicExempt) {

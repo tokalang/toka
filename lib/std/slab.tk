@@ -2,6 +2,7 @@ import core/types::{usize}
 import core/traits::{@Encap, @Dup}
 import core/option::{Option}
 import std/vec::{Vec}
+import sys/libc::{libc_abort}
 
 pub shape SlabID (
     raw: u64
@@ -38,6 +39,15 @@ impl SlabID {
     pub fn clone(self) -> SlabID {
         auto result = SlabID(raw = self.raw)
         return cede result
+    }
+}
+
+fn slab_take_raw_option<T>(nul *storage: [Option<T>]) -> Option<T> {
+    if *storage is null {
+        unsafe { libc_abort() }
+        unreachable
+    } else {
+        return unsafe raw_take storage[0]
     }
 }
 
@@ -82,7 +92,7 @@ impl<T> Slab<T> {
         auto next_free# = 0xFFFFFFFF:usize
         loop index < entry_count {
             unsafe {
-                auto *#entry# = self.entries.unsafe_get(index)
+                auto *#entry# = self.entries#.unsafe_get_mut(index)
                 // Resource assignment reclaims the previous Option payload.
                 // Keep the slot itself so that clear cannot revive a stale
                 // SlabID by recreating generation 1.
@@ -117,7 +127,7 @@ impl<T> Slab<T> {
         } else {
             idx = head
             unsafe {
-                auto *#entry# = self.entries.unsafe_get(head)
+                auto *#entry# = self.entries#.unsafe_get_mut(head)
                 self.free_head = entry.next_free
                 entry.generation = entry.generation + 1:u32
                 gen = entry.generation as usize
@@ -125,7 +135,7 @@ impl<T> Slab<T> {
         }
         
         unsafe {
-            auto *#target# = self.entries.unsafe_get(idx)
+            auto *#target# = self.entries#.unsafe_get_mut(idx)
             target.val = Option<T>::Some(cede val)
         }
         
@@ -140,7 +150,7 @@ impl<T> Slab<T> {
             return Option<T>::None
         }
         unsafe {
-            auto *#entry# = self.entries.unsafe_get(idx)
+            auto *#entry# = self.entries#.unsafe_get_mut(idx)
             if entry.generation as usize != id.generation() {
                 return Option<T>::None
             }
@@ -148,13 +158,20 @@ impl<T> Slab<T> {
                 return Option<T>::None
             }
             
-            auto val = cede entry.val
+            auto *val_slice = &(entry.val) as *[Option<T>]
+            auto val = slab_take_raw_option<T>(*val_slice)
             // `val` now owns the payload. Clear only the enum tag so the
             // vacated slot is None without assigning over the moved bytes.
             // This is the storage-level equivalent of Option::take; a plain
             // resource assignment would correctly try to drop the stale
             // moved representation before writing None.
-            auto *#tag_bytes# = &(entry.val) as *#[u8]
+            // Private layout adaptation: In SlabEntry<T>, `val` is the first
+            // field (offset 0), and an Enum's first byte in Toka ABI is its
+            // discriminant tag (0 = None, 1 = Some). Zeroing this byte resets
+            // the vacated slot to Option<T>::None without running Drop on the
+            // already taken payload.
+            auto entry_addr = *entry as Addr
+            auto *#tag_bytes# = entry_addr as *[u8]
             tag_bytes[0] = 0:u8
             if entry.generation < 0xFFFFFFFE:u32 {
                 entry.next_free = self.free_head

@@ -451,6 +451,15 @@ where:
             return *element
         }
     }
+
+    pub fn unsafe_get_mut(self#, index: usize) -> *T# {
+        unsafe {
+            auto *#ptr# = self.*#buf.unwrap() as *[T]
+            auto address = (*ptr as Addr) + index * sizeof(T)
+            auto *#element# = address as *T
+            return *element
+        }
+    }
 }
 
 pub shape VecIterator<T> (
