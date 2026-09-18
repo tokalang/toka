@@ -537,18 +537,44 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
         facts.FormalContract == TransferFormalContract::Cede)
       return reject(TransferPlanRejection::MissingCedeForNamedSource, facts);
   }
+  if (facts.Destination == TransferDestination::Assignment &&
+      facts.DestinationPlace && facts.SourcePlace &&
+      (facts.SurfaceSpelling == TransferSurfaceSpelling::ExplicitCede ||
+       facts.SurfaceSpelling == TransferSurfaceSpelling::IntrinsicUniqueMove)) {
+    ExplicitCedePlan sourceRegion;
+    sourceRegion.TransferOrigin = facts.SourcePlace;
+    sourceRegion.Source = invalidationFor(facts.Reachability);
+    if (sourceRegion.Source != TransferSourceDisposition::NoStateChange &&
+        invalidationRegionConflictsWithPlace(sourceRegion,
+                                             *facts.DestinationPlace))
+      return reject(TransferPlanRejection::DestinationOverlap, facts);
+  }
   if (!callBoundary && !facts.FormalTypeKey.empty() &&
       facts.DestinationCapabilities.Complete &&
       facts.DestinationFlowCeiling.Complete &&
       facts.SourceFlowCeiling.Complete &&
-      facts.DestinationMorphology != TransferFormalMorphology::DirectValue &&
-      ((facts.DestinationCapabilities.HandleRebindable &&
-        (!facts.DestinationFlowCeiling.HandleRebindable ||
-         !facts.SourceFlowCeiling.HandleRebindable)) ||
-       (facts.DestinationCapabilities.PayloadWritable &&
-        (!facts.DestinationFlowCeiling.PayloadWritable ||
-         !facts.SourceFlowCeiling.PayloadWritable))))
-    return reject(TransferPlanRejection::AccessCapabilityMismatch, facts);
+      facts.DestinationMorphology != TransferFormalMorphology::DirectValue) {
+    const bool isHandleRebind =
+        facts.DestinationView == TransferSourceView::UniqueHandle ||
+        facts.DestinationView == TransferSourceView::SharedHandle ||
+        facts.DestinationView == TransferSourceView::ReferenceConstruction;
+    if (isHandleRebind) {
+      if (!facts.DestinationFlowCeiling.HandleRebindable ||
+          (facts.DestinationCapabilities.HandleRebindable &&
+           !facts.SourceFlowCeiling.HandleRebindable) ||
+          (facts.DestinationCapabilities.PayloadWritable &&
+           !facts.SourceFlowCeiling.PayloadWritable))
+        return reject(TransferPlanRejection::AccessCapabilityMismatch, facts);
+    } else {
+      if ((facts.DestinationCapabilities.HandleRebindable &&
+           (!facts.DestinationFlowCeiling.HandleRebindable ||
+            !facts.SourceFlowCeiling.HandleRebindable)) ||
+          (facts.DestinationCapabilities.PayloadWritable &&
+           (!facts.DestinationFlowCeiling.PayloadWritable ||
+            !facts.SourceFlowCeiling.PayloadWritable)))
+        return reject(TransferPlanRejection::AccessCapabilityMismatch, facts);
+    }
+  }
   if (facts.ActualTypeKey.empty() ||
       facts.Destination == TransferDestination::Indeterminate ||
       facts.SourceCategory == TransferSourceCategory::Indeterminate ||
@@ -574,18 +600,6 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
   if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
       facts.SourceLiveness != TransferSourceLiveness::Live)
     return reject(TransferPlanRejection::SourceNotLive, facts);
-  if (facts.Destination == TransferDestination::Assignment &&
-      facts.DestinationPlace && facts.SourcePlace &&
-      (facts.SurfaceSpelling == TransferSurfaceSpelling::ExplicitCede ||
-       facts.SurfaceSpelling == TransferSurfaceSpelling::IntrinsicUniqueMove)) {
-    ExplicitCedePlan sourceRegion;
-    sourceRegion.TransferOrigin = facts.SourcePlace;
-    sourceRegion.Source = invalidationFor(facts.Reachability);
-    if (sourceRegion.Source != TransferSourceDisposition::NoStateChange &&
-        invalidationRegionConflictsWithPlace(sourceRegion,
-                                             *facts.DestinationPlace))
-      return reject(TransferPlanRejection::DestinationOverlap, facts);
-  }
   if (callBoundary &&
       (facts.FormalTypeKey.empty() ||
        facts.FormalContract == TransferFormalContract::None ||
@@ -614,8 +628,11 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
        productionFor(facts) == TransferValueProduction::CopyIdentity ||
        facts.Ownership == TransferOwnershipKind::SharedOwner);
   if (facts.Eligibility == TransferEligibility::Ineligible &&
-      !nonInvalidatingNamedRead)
+      !nonInvalidatingNamedRead) {
+    if (facts.ActiveDerivedBorrow)
+      return reject(TransferPlanRejection::ActiveDerivedBorrow, facts);
     return reject(TransferPlanRejection::RouteIneligible, facts);
+  }
   if (facts.TypeCompatibility == TransferTypeCompatibility::Incompatible)
     return reject(TransferPlanRejection::TypeIncompatible, facts);
   if (callBoundary &&

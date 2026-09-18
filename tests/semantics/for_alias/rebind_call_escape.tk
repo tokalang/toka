@@ -1,0 +1,17 @@
+shape Cell(value:i32)
+fn install(~#slot:Cell, ~incoming:Cell) {
+    ~slot = ~incoming
+}
+fn write_values(cede values:[~Cell#; 1]) {
+    auto owned# = cede values
+    for alias ~slot# in owned { slot.value = 99 }
+}
+fn main()->i32 {
+    auto ~first# = new Cell(value=1)
+    auto owners# = [cede ~first]:[~Cell#; 1]
+    auto ~readonly = new Cell(value=2)
+    for alias ~#slot in owners { install(~#slot, ~readonly) }
+    write_values(cede owners)
+    assert(readonly.value == 99, "readonly value gained P through writable parameter")
+    return 0
+}

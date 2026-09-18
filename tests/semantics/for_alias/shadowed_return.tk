@@ -1,0 +1,7 @@
+fn escape(param:i32) -> [&i32; 2] <- param {
+    {
+        auto param = 7:i32
+        return [&param; 2]
+    }
+}
+fn main() -> i32 { return 0 }

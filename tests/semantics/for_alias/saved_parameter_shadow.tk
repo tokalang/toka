@@ -1,0 +1,13 @@
+fn forward(input:i32) -> [&i32; 2] <- input {
+    auto &saved = &input
+    {
+        auto input = 7:i32
+        return [&saved; 2]
+    }
+}
+fn main()->i32 {
+    auto value=42:i32
+    auto refs=forward(value)
+    for alias &item in refs { assert(item==42, "retain original parameter") }
+    return 0
+}

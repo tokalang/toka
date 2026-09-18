@@ -51,10 +51,25 @@
     },
     {
       "case": "for_alias_shape_field_ceiling.tk",
-      "status": "blocked",
-      "category": "target-not-qualified",
-      "target_codes": [],
-      "reason": "Explicit array type removes IncompleteFacts, but even writable Cell control stops at E04645 before the frozen field check."
+      "status": "migrated",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E04573",
+        "E0443"
+      ],
+      "first_message": "Covenant Violation: Cannot elevate write permission from ReadOnly soul to Writable container.",
+      "target_sites": [
+        {
+          "code": "E04573",
+          "file": "tests/fail/for_alias_shape_field_ceiling.tk",
+          "line": 8
+        },
+        {
+          "code": "E0443",
+          "file": "tests/fail/for_alias_shape_field_ceiling.tk",
+          "line": 8
+        }
+      ]
     },
     {
       "case": "for_alias_shared_array_interior_sibling.tk",

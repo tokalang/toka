@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    auto value = 7:i32
+    auto refs = [&value, &value]
+    for alias &item in refs { assert(item == 7, "borrowed element") }
+    return 0
+}

@@ -52,6 +52,11 @@ struct CallableEnvironmentFacts {
 struct SymbolInfo {
   // New Type Object (Source of Truth)
   std::shared_ptr<toka::Type> TypeObj;
+  // For a place alias (`IsPlaceAlias == true`), the genuine type of the
+  // underlying storage slot in the collection (e.g. `~Cell#` or `^Cell#`).
+  // The alias view type (`TypeObj`) may downgrade pointee writability (P=0)
+  // for field access, but slot rebinding must verify against `PlaceSlotType`.
+  std::shared_ptr<toka::Type> PlaceSlotType;
   std::string CodegenName;
   uint64_t SymbolID = 0;
   SourceLocation DeclLoc;

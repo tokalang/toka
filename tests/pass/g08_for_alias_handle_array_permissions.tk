@@ -13,7 +13,7 @@ fn main() -> i32 {
     }
 
     for alias ^#x in owners {
-        auto ^replacement = new Cell(value = 3)
+        auto ^replacement# = new Cell(value = 3)
         ^x = ^replacement
     }
     for alias ^x in owners {

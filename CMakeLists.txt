@@ -611,6 +611,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_method_chain_consistency.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_for_alias_chain
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_for_alias_chain.py
+                --build-dir ${CMAKE_BINARY_DIR})
         set(_toka_compiler_driven_tests
             toka_call_transfer_shadow_m1
             toka_generic_body_call_qualification_stage0
@@ -634,7 +638,8 @@ if(BUILD_TESTING)
             toka_signature_driven_cede_multi_atomic
             toka_signature_driven_cede_remaining_routes
             toka_cede_obligation_evidence_v2
-            toka_method_chain_consistency)
+            toka_method_chain_consistency
+            toka_for_alias_chain)
         set_tests_properties(${_toka_compiler_driven_tests} PROPERTIES
             ENVIRONMENT "TOKA_LIB=${CMAKE_SOURCE_DIR}/lib")
     endif()

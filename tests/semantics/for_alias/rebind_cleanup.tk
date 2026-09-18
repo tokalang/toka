@@ -1,0 +1,32 @@
+auto drops# = 0:i32
+shape Token(id:i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main()->i32 {
+    {
+        auto ^a# = new Token(id=1)
+        auto owners# = [cede ^a]
+        for alias ^#slot in owners {
+            auto ^b# = new Token(id=2)
+            ^slot = ^b
+            assert(drops == 1, "unique old target released once")
+        }
+        assert(drops == 1, "alias exit has no independent drop")
+    }
+    assert(drops == 2, "unique container releases replacement")
+    {
+        auto ~a# = new Token(id=3)
+        auto owners# = [cede ~a]
+        auto ~b# = new Token(id=4)
+        auto ~remaining = ~b
+        for alias ~#slot in owners {
+            ~slot = cede ~b
+            assert(drops == 3, "shared old target released once")
+        }
+        assert(remaining.id == 4 && drops == 3, "remaining owner stays alive")
+    }
+    assert(drops == 4, "shared replacement released exactly once")
+    return 0
+}

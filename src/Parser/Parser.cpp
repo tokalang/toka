@@ -30,12 +30,24 @@ const Token &Parser::peek() const {
 }
 
 const Token &Parser::peekAt(int offset) const {
+  if (m_Tokens.empty()) {
+    static const Token emptyToken{TokenType::EndOfFile, "", 0, 0, SourceLocation()};
+    return emptyToken;
+  }
+  if ((int)m_Pos + offset < 0)
+    return m_Tokens.front();
   if (m_Pos + offset >= m_Tokens.size())
     return m_Tokens.back();
   return m_Tokens[m_Pos + offset];
 }
 
-const Token &Parser::previous() const { return m_Tokens[m_Pos - 1]; }
+const Token &Parser::previous() const {
+  if (m_Pos == 0) {
+    static const Token emptyToken{TokenType::EndOfFile, "", 0, 0, SourceLocation()};
+    return m_Tokens.empty() ? emptyToken : m_Tokens.front();
+  }
+  return m_Tokens[m_Pos - 1];
+}
 
 Token Parser::advance() {
   if (m_Pos < m_Tokens.size())

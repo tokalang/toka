@@ -182,7 +182,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
       if (Unary->Op == TokenType::Ampersand &&
           Unary->SelectsHandleIdentity && physType &&
           physType->isReference()) {
-        return physType->withAttributes(handleViewWritable, false);
+        return physType->withAttributes(handleViewWritable, physType->IsNullable, physType->IsBlocked);
       }
 
       if (Unary->Op == TokenType::Ampersand) {
@@ -306,10 +306,10 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
           }
         }
         if (physType && physType->isUniquePtr()) {
-          return physType->withAttributes(handleViewWritable, false);
+          return physType->withAttributes(handleViewWritable, physType->IsNullable, physType->IsBlocked);
         }
         if (rhsType && rhsType->isUniquePtr()) {
-          return rhsType->withAttributes(handleViewWritable, false);
+          return rhsType->withAttributes(handleViewWritable, rhsType->IsNullable, rhsType->IsBlocked);
         }
         auto res = std::make_shared<toka::UniquePointerType>(rhsType);
         res->IsWritable = handleViewWritable;
@@ -334,10 +334,10 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
           }
         }
         if (physType && physType->isSharedPtr()) {
-          return physType->withAttributes(handleViewWritable, false);
+          return physType->withAttributes(handleViewWritable, physType->IsNullable, physType->IsBlocked);
         }
         if (rhsType && rhsType->isSharedPtr()) {
-          return rhsType->withAttributes(handleViewWritable, false);
+          return rhsType->withAttributes(handleViewWritable, rhsType->IsNullable, rhsType->IsBlocked);
         }
         auto res = std::make_shared<toka::SharedPointerType>(rhsType);
         res->IsWritable = handleViewWritable;

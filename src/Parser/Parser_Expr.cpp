@@ -752,6 +752,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     node->setLocation(kw, m_CurrentFile);
     expr = std::move(node);
   } else if (match(TokenType::LBracket)) {
+    Token bracketTok = previous();
     // Array literal [1, 2, 3]
     std::vector<std::unique_ptr<Expr>> elements;
     if (!check(TokenType::RBracket)) {
@@ -761,7 +762,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
         consume(TokenType::RBracket, DiagID::ERR_PARSER_EXPECTED_AFTER_REPEAT_COUNT);
         auto node = std::make_unique<RepeatedArrayExpr>(std::move(elements[0]),
                                                         std::move(count));
-        node->setLocation(m_Tokens[m_Pos - 1], m_CurrentFile);
+        node->setLocation(bracketTok, m_CurrentFile);
         expr = std::move(node);
         return expr; // Return immediately
       }
@@ -833,7 +834,9 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       node->setLocation(m_Tokens[m_Pos-1], m_CurrentFile);
       expr = std::move(node);
     } else {
-      expr = std::make_unique<ArrayExpr>(std::move(elements));
+      auto node = std::make_unique<ArrayExpr>(std::move(elements));
+      node->setLocation(bracketTok, m_CurrentFile);
+      expr = std::move(node);
     }
   } else if (check(TokenType::LParen)) {
     Token tok = peek();

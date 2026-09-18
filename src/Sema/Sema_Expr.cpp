@@ -4060,17 +4060,58 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     enterScope();
     CurrentScope->IsLoop = true;
     SymbolInfo Info;
+    Info.DeclLoc = fe->Loc;
     Info.TypeObj = toka::Type::fromString(fullType);
     if (fe->IsPlaceAlias) {
       Info.Permission = fe->Permission;
       Info.IsPlaceAlias = true;
       Info.IsDeclaredVariable = true;
+      Info.ASTPtr = fe;
+      Info.IsRebindable = fe->Permission.IdentityRebindable;
+      if (iteratorSourcePath) {
+        Info.BorrowedPath = iteratorSourcePath;
+      }
+      if (!iteratorSourceName.empty()) {
+        Info.BorrowedFrom = iteratorSourceName;
+        Info.LifeDependencySet.insert(iteratorSourceName);
+      }
+      auto slotResolved = resolveType(toka::Type::fromString(elemType));
+      if (collTypeObj && collTypeObj->isArray() && collTypeObj->getArrayElementType()) {
+        slotResolved = resolveType(collTypeObj->getArrayElementType());
+      }
+      Info.PlaceSlotType = slotResolved;
     }
     if (fe->IsPlaceAlias && fe->Permission.IdentityRebindable && Info.TypeObj)
       Info.TypeObj = Info.TypeObj->withAttributes(
           true, Info.TypeObj->IsNullable, Info.TypeObj->IsBlocked);
-    if (fe->IsPlaceAlias && fe->IsMutable && Info.TypeObj)
+    if (fe->IsPlaceAlias && fe->IsMutable && Info.TypeObj && !Info.TypeObj->IsWritable)
       Info.TypeObj = toka::Type::fromString(Info.TypeObj->toString() + "#");
+    if (fe->IsPlaceAlias && !fe->IsMutable && Info.TypeObj) {
+      if (auto pointee = Info.TypeObj->getPointeeType()) {
+        if (pointee->IsWritable) {
+          auto readOnlyPointee = pointee->withAttributes(false, pointee->IsNullable, pointee->IsBlocked);
+          if (auto unique = std::dynamic_pointer_cast<UniquePointerType>(Info.TypeObj)) {
+            auto cloned = std::make_shared<UniquePointerType>(readOnlyPointee);
+            cloned->IsWritable = unique->IsWritable;
+            cloned->IsNullable = unique->IsNullable;
+            cloned->IsBlocked = unique->IsBlocked;
+            Info.TypeObj = cloned;
+          } else if (auto shared = std::dynamic_pointer_cast<SharedPointerType>(Info.TypeObj)) {
+            auto cloned = std::make_shared<SharedPointerType>(readOnlyPointee);
+            cloned->IsWritable = shared->IsWritable;
+            cloned->IsNullable = shared->IsNullable;
+            cloned->IsBlocked = shared->IsBlocked;
+            Info.TypeObj = cloned;
+          } else if (auto ref = std::dynamic_pointer_cast<ReferenceType>(Info.TypeObj)) {
+            auto cloned = std::make_shared<ReferenceType>(readOnlyPointee);
+            cloned->IsWritable = ref->IsWritable;
+            cloned->IsNullable = ref->IsNullable;
+            cloned->IsBlocked = ref->IsBlocked;
+            Info.TypeObj = cloned;
+          }
+        }
+      }
+    }
     if (fe->IsPlaceAlias && Info.TypeObj) {
       auto soul = Info.TypeObj->getSoulType();
       auto written = soul ? toka::Type::fromString(
@@ -4089,7 +4130,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
     fe->ResolvedIterElementType = Info.TypeObj;
-    if (fe->IsReference && !iteratorSourceName.empty()) {
+    if (!fe->IsPlaceAlias && fe->IsReference && !iteratorSourceName.empty()) {
       Info.BorrowedFrom = iteratorSourceName;
       Info.LifeDependencySet.insert(iteratorSourceName);
     }

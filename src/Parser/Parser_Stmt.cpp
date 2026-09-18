@@ -29,7 +29,7 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
     } else if (check(TokenType::Identifier) && peek().Text == "var") {
       advance();
       error(previous(), DiagID::ERR_PARSER_DEPRECATED_KEYWORD_VAR_USE_AUTO_FOR_VAR);
-    } else if (previous().Kind != TokenType::KwAuto) {
+    } else {
       match(TokenType::KwAuto);
     }
   }

@@ -10,6 +10,28 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 
 
+class ProcessResult:
+    def __init__(self, cmd, pid, returncode, stdout, stderr):
+        self.cmd = cmd
+        self.pid = pid
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+        self.signal = -returncode if returncode < 0 else None
+
+    def describe(self):
+        sig_str = f", signal={self.signal}" if self.signal is not None else ""
+        return (f"Command: {' '.join(self.cmd)}\n"
+                f"PID: {self.pid}, ReturnCode: {self.returncode}{sig_str}\n"
+                f"STDERR:\n{self.stderr}\nSTDOUT:\n{self.stdout}")
+
+
+def require(cond, msg, *results):
+    if not cond:
+        details = "\n---\n".join(r.describe() for r in results if hasattr(r, "describe"))
+        raise AssertionError(f"{msg}\n{details}" if details else msg)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True)
@@ -21,29 +43,36 @@ def main():
         work = Path(directory)
 
         def compile(source, *flags):
-            return subprocess.run([str(compiler), str(source), *map(str, flags)],
-                                  cwd=ROOT, env=env, text=True, capture_output=True, timeout=60)
+            cmd = [str(compiler), str(source), *map(str, flags)]
+            proc = subprocess.Popen(cmd, cwd=ROOT, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            pid = proc.pid
+            stdout, stderr = proc.communicate(timeout=60)
+            return ProcessResult(cmd, pid, proc.returncode, stdout, stderr)
 
         def check(name, text, expected):
             source = work / (name + ".tk")
             source.write_text(text)
             normal = compile(source, "--check-only")
             shadow = compile(source, "--check-only", "--non-call-transfer-shadow=json")
-            assert normal.returncode == shadow.returncode == expected, (name, normal.stderr, shadow.stderr)
-            assert normal.stderr == shadow.stderr, (name, normal.stderr, shadow.stderr)
+            require(normal.returncode == expected, f"{name}: normal returncode {normal.returncode} != expected {expected}", normal)
+            require(shadow.returncode == expected, f"{name}: shadow returncode {shadow.returncode} != expected {expected}", shadow)
+            require(normal.stderr == shadow.stderr, f"{name}: normal vs shadow stderr mismatch", normal, shadow)
             json.loads(shadow.stdout)
             if expected:
-                assert "E04662" in normal.stderr, (name, normal.stderr)
+                require("E04662" in normal.stderr, f"{name}: missing E04662 in stderr", normal)
                 for mode, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
                     output = work / (name + suffix)
                     result = compile(source, mode, "-o", output)
-                    assert result.returncode == 1 and not output.exists(), (name, result.stderr)
+                    require(result.returncode == 1, f"{name}: {mode} expected exit 1", result)
+                    require(not output.exists(), f"{name}: {mode} unexpectedly created {output}", result)
             else:
                 output = work / name
                 result = compile(source, "-o", output)
-                assert result.returncode == 0, (name, result.stderr)
-                ran = subprocess.run([str(output)], timeout=15)
-                assert ran.returncode == 0, (name, ran.returncode)
+                require(result.returncode == 0, f"{name}: compilation failed", result)
+                proc_ran = subprocess.Popen([str(output)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                ran_out, ran_err = proc_ran.communicate(timeout=15)
+                ran_res = ProcessResult([str(output)], proc_ran.pid, proc_ran.returncode, ran_out, ran_err)
+                require(ran_res.returncode == 0, f"{name}: execution failed", ran_res)
             print("PASS " + name, flush=True)
             return source
 
@@ -114,20 +143,26 @@ fn main() -> i32 { return 0 }
         rejected.write_text(indexed.replace("        auto taken", "        storage[offset] = true\n        auto taken"))
         normal = compile(rejected, "--check-only")
         shadow = compile(rejected, "--check-only", "--non-call-transfer-shadow=json")
-        assert normal.returncode == shadow.returncode == 1, (normal.stderr, shadow.stderr)
-        assert normal.stderr == shadow.stderr and "E04662" not in normal.stderr, normal.stderr
+        require(normal.returncode == 1, "failed_write_restores_receipt normal expected exit 1", normal)
+        require(shadow.returncode == 1, "failed_write_restores_receipt shadow expected exit 1", shadow)
+        require(normal.stderr == shadow.stderr, "failed_write_restores_receipt normal vs shadow stderr mismatch", normal, shadow)
+        require("E04662" not in normal.stderr, "failed_write_restores_receipt should not contain E04662", normal)
         print("PASS failed_write_restores_receipt", flush=True)
         for fault in ("missing", "rejected", "incomplete", "slot-proof-missing", "slot-proof-mismatch"):
             for mode, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
                 output = work / (fault + suffix)
                 result = compile(good, "--raw-take-fault=" + fault, mode, "-o", output)
-                assert result.returncode == 1 and "E0701" in result.stderr and not output.exists(), (fault, result.stderr)
+                require(result.returncode == 1, f"fault {fault} {mode} expected exit 1", result)
+                require("E0701" in result.stderr, f"fault {fault} {mode} missing E0701", result)
+                require(not output.exists(), f"fault {fault} {mode} unexpectedly created {output}", result)
         for source in (dynamic, joined):
             for fault in ("slot-index", "slot-allocation", "slot-leaf"):
                 for mode, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
                     output = work / (source.stem + fault + suffix)
                     result = compile(source, "--raw-take-fault=" + fault, mode, "-o", output)
-                    assert result.returncode == 1 and "E0701" in result.stderr and not output.exists(), (fault, result.stderr)
+                    require(result.returncode == 1, f"fault {fault} {mode} for {source.name} expected exit 1", result)
+                    require("E0701" in result.stderr, f"fault {fault} {mode} for {source.name} missing E0701", result)
+                    require(not output.exists(), f"fault {fault} {mode} for {source.name} unexpectedly created {output}", result)
         print("PASS fault-injected proof rejection without artifacts", flush=True)
 
 

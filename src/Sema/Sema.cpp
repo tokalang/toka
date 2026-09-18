@@ -8153,6 +8153,8 @@ bool Sema::isBorrowLikeType(std::shared_ptr<toka::Type> type) const {
       return false;
     if (ty->isReference())
       return true;
+    if (ty->isArray())
+      return walk(ty->getArrayElementType());
     if (auto *shape = dynamic_cast<ShapeType *>(ty.get())) {
       for (const auto &arg : shape->GenericArgs) {
         if (walk(arg))

@@ -1,0 +1,14 @@
+shape Cell(value: i32)
+fn write_values(cede values: [~Cell#; 1]) {
+    auto owned# = cede values
+    for alias ~slot# in owned { slot.value = 99 }
+}
+fn main() -> i32 {
+    auto ~first# = new Cell(value = 1)
+    auto owners# = [cede ~first]:[~Cell#; 1]
+    auto ~readonly = new Cell(value = 2)
+    for alias ~#slot in owners { ~slot = ~readonly }
+    write_values(cede owners)
+    assert(readonly.value == 99, "readonly source upgraded across transfer")
+    return 0
+}

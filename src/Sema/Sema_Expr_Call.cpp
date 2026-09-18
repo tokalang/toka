@@ -923,12 +923,27 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
       return referent ? std::make_shared<ReferenceType>(referent)
                       : toka::Type::fromString("unknown");
     }
-    AccessPath path = canonicalizeAccessPath(makeAccessPath(unary->RHS.get()));
     SymbolInfo *info = nullptr;
+    std::string actualName;
+    if (auto *var = dynamic_cast<VariableExpr *>(unary->RHS.get())) {
+      if (CurrentScope &&
+          CurrentScope->findVariableWithDeref(var->Name, info, actualName) &&
+          info) {
+        if (m_IsAssignmentTarget && info->IsPlaceAlias && info->PlaceSlotType)
+          return resolveExplicitCedeStage0TypeReadOnly(info->PlaceSlotType);
+        if (info->TypeObj)
+          return resolveExplicitCedeStage0TypeReadOnly(info->TypeObj);
+      }
+    }
+    AccessPath path = canonicalizeAccessPath(makeAccessPath(unary->RHS.get()));
     if (path.RootID != 0)
       CurrentScope->findSymbolByID(path.RootID, info);
-    if (info && info->TypeObj)
-      return resolveExplicitCedeStage0TypeReadOnly(info->TypeObj);
+    if (info) {
+      if (m_IsAssignmentTarget && info->IsPlaceAlias && info->PlaceSlotType)
+        return resolveExplicitCedeStage0TypeReadOnly(info->PlaceSlotType);
+      if (info->TypeObj)
+        return resolveExplicitCedeStage0TypeReadOnly(info->TypeObj);
+    }
     return toka::Type::fromString("unknown");
   }
   if (auto *index = dynamic_cast<ArrayIndexExpr *>(source)) {
@@ -943,6 +958,60 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
       return resolveExplicitCedeStage0TypeReadOnly(
           storage->getArrayElementType());
     return toka::Type::fromString("unknown");
+  }
+  if (auto *arr = dynamic_cast<ArrayExpr *>(source)) {
+    if (arr->Elements.empty()) {
+      auto elem = destinationType && destinationType->isArray()
+                      ? destinationType->getArrayElementType()
+                      : Type::fromString("i32");
+      return std::make_shared<ArrayType>(elem, 0);
+    }
+    std::shared_ptr<Type> expectedElem =
+        destinationType && destinationType->isArray()
+            ? destinationType->getArrayElementType()
+            : nullptr;
+    auto firstElemType =
+        queryExplicitCedeStage0NonCallType(arr->Elements[0].get(), expectedElem);
+    firstElemType = resolveExplicitCedeStage0TypeReadOnly(firstElemType);
+    if (!firstElemType || firstElemType->isUnknown())
+      return toka::Type::fromString("unknown");
+    for (size_t i = 1; i < arr->Elements.size(); ++i) {
+      auto nextElemType =
+          queryExplicitCedeStage0NonCallType(arr->Elements[i].get(), firstElemType);
+      nextElemType = resolveExplicitCedeStage0TypeReadOnly(nextElemType);
+      if (!nextElemType || nextElemType->isUnknown())
+        return toka::Type::fromString("unknown");
+      if (!firstElemType->equals(*nextElemType) &&
+          !(firstElemType->typeKind == nextElemType->typeKind &&
+            firstElemType->getSoulName() == nextElemType->getSoulName()))
+        return toka::Type::fromString("unknown");
+    }
+    return std::make_shared<ArrayType>(firstElemType, arr->Elements.size());
+  }
+  if (auto *repeat = dynamic_cast<RepeatedArrayExpr *>(source)) {
+    std::shared_ptr<Type> expectedElem =
+        destinationType && destinationType->isArray()
+            ? destinationType->getArrayElementType()
+            : nullptr;
+    auto elemType =
+        queryExplicitCedeStage0NonCallType(repeat->Value.get(), expectedElem);
+    elemType = resolveExplicitCedeStage0TypeReadOnly(elemType);
+    if (!elemType || elemType->isUnknown())
+      return toka::Type::fromString("unknown");
+    uint64_t size = 0;
+    if (auto *num = dynamic_cast<NumberExpr *>(repeat->Count.get())) {
+      size = num->Value;
+    } else if (auto *var = dynamic_cast<VariableExpr *>(repeat->Count.get())) {
+      SymbolInfo info;
+      if (CurrentScope && CurrentScope->lookup(var->Name, info) && info.HasConstValue) {
+        size = info.ConstValue;
+      } else {
+        return toka::Type::fromString("unknown");
+      }
+    } else {
+      return toka::Type::fromString("unknown");
+    }
+    return std::make_shared<ArrayType>(elemType, size);
   }
   if (auto *init = dynamic_cast<InitStructExpr *>(source))
     return resolveExplicitCedeStage0TypeReadOnly(
@@ -3063,7 +3132,9 @@ ExplicitCedePreparedFacts Sema::buildExplicitCedeStage0ActualFacts(
   auto palSnapshot = snapshotState ? snapshotState->PAL.snapshot()
                                    : PALCheckerState.snapshot();
   facts.ActiveDerivedBorrow =
-      identityPath && palSnapshot.verifyInvalidation(identityPath).has_value();
+      (identityPath && palSnapshot.verifyInvalidation(identityPath).has_value()) ||
+      (legacyShadowPlan.ReferentPath &&
+       palSnapshot.verifyInvalidation(legacyShadowPlan.ReferentPath).has_value());
   facts.SourceTransferAuthorityComplete = sourceInfo != nullptr;
   facts.SourceTransferAuthorized =
       sourceHasTransferBinding && sourceInfo && !sourceInfo->IsPlaceAlias &&
@@ -3807,6 +3878,15 @@ bool Sema::collectActualReturnReferents(
     if (auto *unary = dynamic_cast<UnaryExpr *>(value);
         unary && unary->Op == TokenType::Star)
       return visit(unary->RHS.get(), result);
+    if (auto *arr = dynamic_cast<ArrayExpr *>(value)) {
+      for (const auto &elem : arr->Elements) {
+        if (!visit(elem.get(), result)) return false;
+      }
+      return true;
+    }
+    if (auto *rep = dynamic_cast<RepeatedArrayExpr *>(value)) {
+      return visit(rep->Value.get(), result);
+    }
     auto *method = dynamic_cast<MethodCallExpr *>(value);
     auto *call = dynamic_cast<CallExpr *>(value);
     if (auto *init = dynamic_cast<InitStructExpr *>(value)) {
@@ -5159,8 +5239,7 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
        (bindingBehaviorPlan && normalSemaValidated)) &&
       legacy.ValueCategory == CallValueCategory::Temporary &&
       (legacy.Dependency == CallDependencyDisposition::Borrowed ||
-       (bindingBehaviorPlan && normalSemaValidated &&
-        legacy.Dependency == CallDependencyDisposition::Unclassified))) {
+       legacy.Dependency == CallDependencyDisposition::Unclassified)) {
     std::vector<AccessPath> actualPaths;
     std::map<std::string, ActualReturnFieldOrigins> actualFields;
     auto *address = dynamic_cast<UnaryExpr *>(exactValue);
@@ -5169,14 +5248,16 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
         (address && address->Op == TokenType::Ampersand);
     if ((dynamic_cast<CallExpr *>(exactValue) ||
          dynamic_cast<MethodCallExpr *>(exactValue) || referenceConstruction ||
+         dynamic_cast<ArrayExpr *>(exactValue) ||
+         dynamic_cast<RepeatedArrayExpr *>(exactValue) ||
          (bindingBehaviorPlan && (dynamic_cast<InitStructExpr *>(exactValue) ||
                                  dynamic_cast<UnwrapPropagationExpr *>(exactValue)))) &&
         (bindingBehaviorPlan
              ? bindingOrigins(actualPaths, nullptr, &actualFields)
              : collectActualReturnReferents(exactValue, actualPaths)) &&
         !actualPaths.empty()) {
-      if (legacy.Dependency == CallDependencyDisposition::Borrowed)
-        legacy.ReferentPath = actualPaths.front();
+      legacy.Dependency = CallDependencyDisposition::Borrowed;
+      legacy.ReferentPath = actualPaths.front();
       legacy.DependencyPaths.clear();
       for (const auto &path : actualPaths)
         legacy.DependencyPaths.push_back(path.toLegacyString());
@@ -5405,9 +5486,160 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       facts.DependencyFactsComplete = false;
     }
   }
-  if (legacy.Dependency == CallDependencyDisposition::Unclassified &&
-      legacy.DependencyPaths.empty() &&
-      facts.Ownership == TransferOwnershipKind::OwnedValue) {
+  if (auto *arr = dynamic_cast<ArrayExpr *>(exactValue)) {
+    if (destination == TransferDestination::AggregateMember) {
+      facts.DependencyFactsComplete = false;
+      facts.Eligibility = TransferEligibility::Ineligible;
+      facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+    } else {
+    auto targetElem = actualType && actualType->isArray()
+        ? actualType->getArrayElementType()
+        : (destinationType && destinationType->isArray()
+               ? destinationType->getArrayElementType()
+               : nullptr);
+    targetElem = resolveExplicitCedeStage0TypeReadOnly(targetElem);
+    ExplicitCedeNonCallGroupFacts groupFacts;
+    groupFacts.Destination = TransferDestination::AggregateMember;
+    groupFacts.ExpectedSnapshotRevision = providedSnapshot->Revision;
+    bool elementsComplete = true;
+    bool hasBorrowDependency = false;
+    std::vector<PlaceId> accumulatedReferents;
+    std::vector<RootSymbolId> accumulatedRoots;
+
+    for (size_t i = 0; i < arr->Elements.size(); ++i) {
+      Expr *elemExpr = arr->Elements[i].get();
+      auto item = recordExplicitCedeStage0NonCallPlan(
+          exactValue, elemExpr, targetElem,
+          TransferDestination::AggregateMember,
+          TransferEligibilityContext::AggregateMember,
+          "array_element", nullptr, providedSnapshot, {}, std::to_string(i),
+          static_cast<unsigned>(groupFacts.Items.size()), !normalSemaValidated,
+          normalSemaValidated, elemExpr ? elemExpr->ResolvedType : nullptr, false);
+      const auto &prepared = item.Prepared;
+      if (!item.admitted() || !prepared.DependencyFactsComplete) {
+        elementsComplete = false;
+        break;
+      }
+      if (prepared.Dependency == TransferDependencyKind::Borrowed) {
+        hasBorrowDependency = true;
+        if (prepared.ReferentPlace)
+          accumulatedReferents.push_back(*prepared.ReferentPlace);
+        for (const auto &place : prepared.StructuredReferentPlaces)
+          accumulatedReferents.push_back(place);
+        for (const auto &root : prepared.DependencyRoots)
+          accumulatedRoots.push_back(root);
+      } else if (prepared.Dependency != TransferDependencyKind::None) {
+        elementsComplete = false;
+        break;
+      }
+      for (const auto &storage : prepared.StaticStorageOrigins)
+        facts.StaticStorageOrigins.push_back(storage);
+      groupFacts.Items.push_back(prepared);
+    }
+
+    if (elementsComplete) {
+      auto groupPlan = prepareExplicitCedeNonCallGroupPlan(groupFacts);
+      if (groupPlan.admitted()) {
+        facts.DependencyFactsComplete = true;
+        if (hasBorrowDependency) {
+          facts.Dependency = TransferDependencyKind::Borrowed;
+          facts.StructuredReferentPlaces = std::move(accumulatedReferents);
+          facts.DependencyRoots = std::move(accumulatedRoots);
+          if (!facts.StructuredReferentPlaces.empty())
+            facts.ReferentPlace = facts.StructuredReferentPlaces.front();
+        } else {
+          facts.Dependency = TransferDependencyKind::None;
+          facts.ReferentPlace.reset();
+          facts.DependencyRoots.clear();
+          facts.StructuredReferentPlaces.clear();
+          const bool eligibleTemporary =
+              (facts.Ownership == TransferOwnershipKind::OwnedValue ||
+               (facts.Ownership == TransferOwnershipKind::PlainValue &&
+                facts.CopyProof == TransferCopyProof::ProvenNonCopy) ||
+               facts.Ownership == TransferOwnershipKind::UniqueOwner ||
+               facts.Ownership == TransferOwnershipKind::SharedOwner ||
+               facts.Ownership == TransferOwnershipKind::OwnedCallable);
+          facts.TemporaryEligibility = eligibleTemporary
+              ? TransferTemporaryEligibility::Eligible
+              : TransferTemporaryEligibility::Ineligible;
+        }
+      } else {
+        facts.DependencyFactsComplete = false;
+        facts.Eligibility = TransferEligibility::Ineligible;
+        facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+      }
+    } else {
+      facts.DependencyFactsComplete = false;
+      facts.Eligibility = TransferEligibility::Ineligible;
+      facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+      }
+    }
+  } else if (auto *repeat = dynamic_cast<RepeatedArrayExpr *>(exactValue)) {
+    if (destination == TransferDestination::AggregateMember) {
+      facts.DependencyFactsComplete = false;
+      facts.Eligibility = TransferEligibility::Ineligible;
+      facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+    } else {
+      auto targetElem = actualType && actualType->isArray()
+          ? actualType->getArrayElementType()
+          : (destinationType && destinationType->isArray()
+                 ? destinationType->getArrayElementType()
+                 : nullptr);
+      targetElem = resolveExplicitCedeStage0TypeReadOnly(targetElem);
+      Expr *valExpr = repeat->Value.get();
+      auto item = recordExplicitCedeStage0NonCallPlan(
+          exactValue, valExpr, targetElem,
+          TransferDestination::AggregateMember,
+          TransferEligibilityContext::AggregateMember,
+          "array_element", nullptr, providedSnapshot, {}, "0",
+          0, !normalSemaValidated,
+          normalSemaValidated, valExpr ? valExpr->ResolvedType : nullptr, false);
+      const auto &prepared = item.Prepared;
+      if (item.admitted() && prepared.DependencyFactsComplete) {
+        facts.DependencyFactsComplete = true;
+        if (prepared.Dependency == TransferDependencyKind::Borrowed) {
+          facts.Dependency = TransferDependencyKind::Borrowed;
+          if (prepared.ReferentPlace) {
+            facts.StructuredReferentPlaces.push_back(*prepared.ReferentPlace);
+            facts.ReferentPlace = prepared.ReferentPlace;
+          }
+          for (const auto &place : prepared.StructuredReferentPlaces) {
+            facts.StructuredReferentPlaces.push_back(place);
+            if (!facts.ReferentPlace) facts.ReferentPlace = place;
+          }
+          for (const auto &root : prepared.DependencyRoots)
+            facts.DependencyRoots.push_back(root);
+        } else if (prepared.Dependency == TransferDependencyKind::None) {
+          facts.Dependency = TransferDependencyKind::None;
+          facts.ReferentPlace.reset();
+          facts.DependencyRoots.clear();
+          facts.StructuredReferentPlaces.clear();
+          const bool eligibleTemporary =
+              (facts.Ownership == TransferOwnershipKind::OwnedValue ||
+               (facts.Ownership == TransferOwnershipKind::PlainValue &&
+                facts.CopyProof == TransferCopyProof::ProvenNonCopy) ||
+               facts.Ownership == TransferOwnershipKind::UniqueOwner ||
+               facts.Ownership == TransferOwnershipKind::SharedOwner ||
+               facts.Ownership == TransferOwnershipKind::OwnedCallable);
+          facts.TemporaryEligibility = eligibleTemporary
+              ? TransferTemporaryEligibility::Eligible
+              : TransferTemporaryEligibility::Ineligible;
+        } else {
+          facts.DependencyFactsComplete = false;
+          facts.Eligibility = TransferEligibility::Ineligible;
+          facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+        }
+        for (const auto &storage : prepared.StaticStorageOrigins)
+          facts.StaticStorageOrigins.push_back(storage);
+      } else {
+        facts.DependencyFactsComplete = false;
+        facts.Eligibility = TransferEligibility::Ineligible;
+        facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+      }
+    }
+  } else if (legacy.Dependency == CallDependencyDisposition::Unclassified &&
+             legacy.DependencyPaths.empty() &&
+             facts.Ownership == TransferOwnershipKind::OwnedValue) {
     // An owning value with no expression or binding dependency owns its
     // internal storage (for example `string`'s raw buffer).  Raw storage inside
     // an owning aggregate is not by itself a borrow dependency.
@@ -5451,19 +5683,69 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
       facts.Dependency != TransferDependencyKind::None &&
       facts.Dependency != TransferDependencyKind::Indeterminate &&
-      facts.DependencyFactsComplete && !legacy.DependencyPaths.empty()) {
-    facts.DestinationDependencyAccepted = std::all_of(
-        legacy.DependencyPaths.begin(), legacy.DependencyPaths.end(),
-        [&](const std::string &dependency) {
-          const std::string root = Type::stripMorphology(dependency);
-          return std::any_of(
-              declaredReturnDependencies.begin(),
-              declaredReturnDependencies.end(),
-              [&](const std::string &allowed) {
-                const auto ceiling = Type::stripMorphology(allowed);
-                return ceiling == root || root.rfind(ceiling + ".", 0) == 0;
-              });
-        });
+      facts.DependencyFactsComplete) {
+    if (!facts.DependencyRoots.empty()) {
+      facts.DestinationDependencyAccepted = std::all_of(
+          facts.DependencyRoots.begin(), facts.DependencyRoots.end(),
+          [&](const RootSymbolId &rootId) {
+            for (const auto &allowed : declaredReturnDependencies) {
+              const auto ceiling = Type::stripMorphology(allowed);
+              std::string baseName = ceiling.substr(0, ceiling.find('.'));
+              for (const auto &Arg : CurrentFunction->Args) {
+                if (Arg.Name == baseName) {
+                  AccessPath argPath;
+                  argPath.RootName = Arg.Name;
+                  argPath.RootLoc = Arg.Loc;
+                  std::string origin;
+                  if (ModuleScope *module = getLexicalModule(Arg.Loc);
+                      module && !module->ShadowCrateId.empty() &&
+                      !module->ShadowLogicalModulePath.empty())
+                    origin = "crate:" + module->ShadowCrateId +
+                             ";module:" + module->ShadowLogicalModulePath;
+                  if (origin.empty())
+                    origin = stage0FallbackModuleOrigin(Arg.Loc);
+                  if (origin.empty())
+                    origin = "crate:external;module:source";
+                  auto argPlace = stage0PlaceIdentity(argPath, origin);
+                  if (argPlace && argPlace->root() == rootId)
+                    return true;
+                }
+              }
+            }
+            return false;
+          });
+    } else if (!legacy.DependencyPaths.empty()) {
+      facts.DestinationDependencyAccepted = std::all_of(
+          legacy.DependencyPaths.begin(), legacy.DependencyPaths.end(),
+          [&](const std::string &dependency) {
+            const std::string root = Type::stripMorphology(dependency);
+            std::string baseRoot = root.substr(0, root.find('.'));
+            const FunctionDecl::Arg *matchingArg = nullptr;
+            for (const auto &Arg : CurrentFunction->Args) {
+              if (Arg.Name == baseRoot) {
+                matchingArg = &Arg;
+                break;
+              }
+            }
+            if (!matchingArg)
+              return false;
+            if (CurrentScope) {
+              SymbolInfo *depInfo = nullptr;
+              std::string actualName;
+              if (CurrentScope->findVariableWithDeref(baseRoot, depInfo, actualName) && depInfo) {
+                if (!depInfo->IsFunctionParameter || depInfo->DeclLoc != matchingArg->Loc)
+                  return false;
+              }
+            }
+            return std::any_of(
+                declaredReturnDependencies.begin(),
+                declaredReturnDependencies.end(),
+                [&](const std::string &allowed) {
+                  const auto ceiling = Type::stripMorphology(allowed);
+                  return ceiling == root || root.rfind(ceiling + ".", 0) == 0;
+                });
+          });
+    }
   }
   if (bindingBehaviorPlan && normalSemaValidated &&
       facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
@@ -5632,8 +5914,14 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
     facts.DestinationFactsComplete = true;
   }
   if (destination == TransferDestination::Assignment && destinationValue) {
-    AccessPath destinationPath =
-        canonicalizeAccessPath(makeAccessPath(destinationValue));
+    AccessPath destinationPath = makeAccessPath(destinationValue);
+    SymbolInfo *aliasCheck = nullptr;
+    std::string aliasName;
+    if (!CurrentScope ||
+        !CurrentScope->findVariableWithDeref(destinationPath.RootName, aliasCheck, aliasName) ||
+        !aliasCheck || !aliasCheck->IsPlaceAlias) {
+      destinationPath = canonicalizeAccessPath(destinationPath);
+    }
     if (bindingBehaviorPlan && destinationPath && !destinationPath.RootLoc.isValid()) {
       SymbolInfo *info = nullptr;
       std::string name;
@@ -5656,6 +5944,8 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
         destinationModuleOrigin =
             stage0FallbackModuleOrigin(destinationPath.RootLoc);
     }
+    if (destinationModuleOrigin.empty())
+      destinationModuleOrigin = "crate:external;module:source";
     facts.DestinationPlace =
         stage0PlaceIdentity(destinationPath, destinationModuleOrigin);
     Expr *destinationSurface = stage0SurfaceSource(destinationValue);

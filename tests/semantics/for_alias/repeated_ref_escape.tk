@@ -1,0 +1,5 @@
+fn escape() -> [&i32; 2] {
+    auto local = 7:i32
+    return [&local; 2]
+}
+fn main() -> i32 { return 0 }

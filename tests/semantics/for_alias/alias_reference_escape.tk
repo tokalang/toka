@@ -1,0 +1,9 @@
+fn escape(param:i32) -> [&i32; 1] <- param {
+    auto refs# = [&param]
+    for alias &#slot in refs {
+        auto local = 9:i32
+        &slot = &local
+    }
+    return refs
+}
+fn main() -> i32 { return 0 }

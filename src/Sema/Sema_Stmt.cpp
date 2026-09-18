@@ -757,6 +757,8 @@ void Sema::checkStmt(Stmt *S) {
           return isBorrowLikeType(outcome->PayloadType);
         if (t->isReference() || t->isFunction() || t->isDynFn())
           return true;
+        if (t->isArray())
+          return isBorrowLikeType(t->getArrayElementType());
         if (auto *shape = dynamic_cast<ShapeType *>(t.get())) {
           for (const auto &arg : shape->GenericArgs) {
             if (isBorrowLikeType(arg))
@@ -793,6 +795,14 @@ void Sema::checkStmt(Stmt *S) {
           return Addr->Op == TokenType::Ampersand || returnsBorrowExpr(Addr->RHS.get());
         if (dynamic_cast<AddressOfExpr *>(E))
           return true;
+        if (auto *Arr = dynamic_cast<ArrayExpr *>(E)) {
+          for (const auto &elem : Arr->Elements) {
+            if (returnsBorrowExpr(elem.get())) return true;
+          }
+        }
+        if (auto *Rep = dynamic_cast<RepeatedArrayExpr *>(E)) {
+          return returnsBorrowExpr(Rep->Value.get());
+        }
         if (auto *Cast = dynamic_cast<CastExpr *>(E))
           return returnsBorrowExpr(Cast->Expression.get());
         return false;
@@ -826,6 +836,13 @@ void Sema::checkStmt(Stmt *S) {
             if (carriesLifeDependencyExpr(Field.second.get()))
               return true;
           }
+        } else if (auto *Arr = dynamic_cast<ArrayExpr *>(E)) {
+          for (const auto &elem : Arr->Elements) {
+            if (carriesLifeDependencyExpr(elem.get()))
+              return true;
+          }
+        } else if (auto *Rep = dynamic_cast<RepeatedArrayExpr *>(E)) {
+          return carriesLifeDependencyExpr(Rep->Value.get());
         } else if (auto *Bin = dynamic_cast<BinaryExpr *>(E)) {
           if (Bin->Op == "=")
             return carriesLifeDependencyExpr(Bin->RHS.get());
@@ -1102,6 +1119,12 @@ void Sema::checkStmt(Stmt *S) {
                 for (auto &Field : Anon->Fields) {
                     collectDepsInto(Field.second.get(), out);
                 }
+            } else if (auto *Arr = dynamic_cast<ArrayExpr *>(E)) {
+                for (auto &Elem : Arr->Elements) {
+                    collectDepsInto(Elem.get(), out);
+                }
+            } else if (auto *Rep = dynamic_cast<RepeatedArrayExpr *>(E)) {
+                collectDepsInto(Rep->Value.get(), out);
             }
             // Case 6: Fallback for BinaryExpr named arg init if kept as CallExpr
             else if (auto *Bin = dynamic_cast<BinaryExpr *>(E)) {
@@ -1296,17 +1319,69 @@ void Sema::checkStmt(Stmt *S) {
               }
             }
 
-            bool hasLocalDependency = false;
-            for (const auto &dep : returnedDeps) {
+            auto isParamDependency = [&](const std::string &dep) -> bool {
               std::string baseDep = dep.substr(0, dep.find('.'));
-              bool isParam = false;
+              const FunctionDecl::Arg *matchingArg = nullptr;
               for (const auto &Arg : CurrentFunction->Args) {
                 if (Arg.Name == baseDep) {
-                  isParam = true;
+                  matchingArg = &Arg;
                   break;
                 }
               }
-              if (!isParam) {
+              if (!matchingArg)
+                return false;
+
+              // If origin tracking is complete, verify that an origin exists for baseDep
+              // and that all origins matching baseDep are confirmed as the parameter.
+              // Check if any actual return referent root matches baseDep.
+              // An already identified original referent must take priority;
+              // an inner same-named lexical binding cannot override it.
+              if (currentOriginsComplete) {
+                bool foundOrigin = false;
+                for (const auto &origin : origins) {
+                  if (origin.RootName == baseDep) {
+                    foundOrigin = true;
+                    SymbolInfo *originInfo = nullptr;
+                    if (origin.RootID && CurrentScope)
+                      CurrentScope->findSymbolByID(origin.RootID, originInfo);
+                    if (originInfo) {
+                      if (!originInfo->IsFunctionParameter ||
+                          originInfo->DeclLoc != matchingArg->Loc)
+                        return false;
+                    } else if (origin.RootLoc.isValid()) {
+                      if (origin.RootLoc != matchingArg->Loc)
+                        return false;
+                    } else {
+                      // Missing origin identity: unproven
+                      return false;
+                    }
+                  }
+                }
+                if (foundOrigin) {
+                  return true;
+                }
+              }
+
+              // Fallback: check lexical scope for baseDep when no typed origin
+              // identified it directly (e.g. transitive life dependencies).
+              // Missing identity must remain unproven, not be accepted merely
+              // because a matching parameter name exists.
+              if (CurrentScope) {
+                SymbolInfo *depInfo = nullptr;
+                std::string actualName;
+                if (CurrentScope->findVariableWithDeref(baseDep, depInfo, actualName) && depInfo) {
+                  if (depInfo->IsFunctionParameter &&
+                      depInfo->DeclLoc == matchingArg->Loc)
+                    return true;
+                }
+              }
+
+              return false;
+            };
+
+            bool hasLocalDependency = false;
+            for (const auto &dep : returnedDeps) {
+              if (!isParamDependency(dep)) {
                 hasLocalDependency = true;
                 break;
               }
@@ -1314,17 +1389,7 @@ void Sema::checkStmt(Stmt *S) {
 
             for (const auto &dep : returnedDeps) {
               // 1. Is it a parameter that can outlive the function?
-              bool isParam = false;
-              std::string baseDep = dep;
-              size_t dotPos = baseDep.find('.');
-              if (dotPos != std::string::npos) baseDep = baseDep.substr(0, dotPos);
-
-              for (const auto &Arg : CurrentFunction->Args) {
-                if (Arg.Name == baseDep) {
-                    isParam = true;
-                    break;
-                }
-              }
+              bool isParam = isParamDependency(dep);
 
               if (!isParam) {
                 DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_ESCAPE_LOCAL, dep);

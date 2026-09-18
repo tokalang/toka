@@ -1,0 +1,21 @@
+import std/io::{println}
+auto drops# = 0:i32
+shape Token(id:i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) { drops += 1 }
+}
+fn main()->i32 {
+    {
+        auto ^a# = new Token(id=1)
+        auto owners# = [cede ^a]
+        for alias ^#slot in owners {
+            auto ^b# = new Token(id=2)
+            ^slot = ^b
+            println("after_rebind={}", drops)
+        }
+        println("after_alias={}", drops)
+    }
+    println("after_container={}", drops)
+    return 0
+}

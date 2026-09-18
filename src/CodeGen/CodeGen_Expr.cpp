@@ -277,11 +277,13 @@ void CodeGen::emitRelease(llvm::Value *sharedHandle, const TokaSymbol &sym, std:
       m_Builder.CreateExtractValue(sharedHandle, 0, "sh.rel_data");
 
   // Call drop if exists
-  if (sym.hasDrop) {
-    std::string cleanName = "";
-    if (sym.soulTypeObj) {
-      cleanName = sym.soulTypeObj->getSoulType()->getSoulName();
-    }
+  std::string cleanName = "";
+  if (pointeeType && pointeeType->getSoulType()) {
+    cleanName = pointeeType->getSoulType()->getSoulName();
+  } else if (sym.soulTypeObj && sym.soulTypeObj->getSoulType()) {
+    cleanName = sym.soulTypeObj->getSoulType()->getSoulName();
+  }
+  if (sym.hasDrop || !cleanName.empty()) {
     emitDropCascade(data, cleanName);
   }
 
@@ -398,11 +400,13 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
     m_Builder.CreateCondBr(nn, freeBB, contBB);
 
     m_Builder.SetInsertPoint(freeBB);
-    if (sym.hasDrop) {
-      std::string cleanName = "";
-      if (sym.soulTypeObj) {
-        cleanName = sym.soulTypeObj->getSoulType()->getSoulName();
-      }
+    std::string cleanName = "";
+    if (sym.soulTypeObj && sym.soulTypeObj->getSoulType()) {
+      cleanName = sym.soulTypeObj->getSoulType()->getSoulName();
+    } else if (lhsExpr && lhsExpr->ResolvedType && lhsExpr->ResolvedType->getSoulType()) {
+      cleanName = lhsExpr->ResolvedType->getSoulType()->getSoulName();
+    }
+    if (sym.hasDrop || !cleanName.empty()) {
       emitDropCascade(oldVal, cleanName);
     }
     llvm::Function *freeFn = m_Module->getFunction("free");

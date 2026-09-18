@@ -240,8 +240,10 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   }
   if (Bin->Op == "=" &&
       (bindingTransfer.enabled() || SemanticEvidence::isNonCallTransferShadowEnabled())) {
+    m_IsAssignmentTarget = true;
     auto destinationType =
         nativeManagedTarget ? nativeManagedTarget : queryExplicitCedeStage0NonCallType(Bin->LHS.get(), nullptr);
+    m_IsAssignmentTarget = false;
     // `p = value`, where the binding of `p` is a raw pointer, stores into the
     // payload that pointer denotes -- exactly the payload write normal
     // assignment validation already checks.  Recording the plan against the raw
