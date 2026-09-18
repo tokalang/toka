@@ -922,3 +922,20 @@ The final fixed full run on `7477d4f7` is **425/457, 470/478, 110/112**: one PAS
 and one FAIL case restored, one added passing CTest, no added failures or abnormal
 exits. The same other eight FAIL and two CTest blockers remain. E, push and
 release are still disabled, and the unrelated RFC diff remains untouched.
+
+## For-alias binding and cleanup candidate Accepted at 8ea9850f
+
+Alias / nominal identity is Accepted at `7477d4f7`. The next package completes
+for-alias place/slot binding, handle identity permissions, array iterator targets,
+array borrow provenance, parameter provenance identity preservation under lexical
+shadowing, cascading drop of overwritten unique/shared payload slots on rebind,
+checked-in audit fixtures 1-11, top-level parser token underflow fix, and child
+process diagnostic tracking in test harnesses. See
+[the complete package](rc13_for_alias_binding.md).
+
+The final fixed full run on `8ea9850f` is **431/457 PASS, 471/478 FAIL, 111/113 CTest**:
+six PASS and one FAIL cases restored, one added passing CTest gate (`toka_for_alias_chain`),
+zero added failures, and zero abnormal exits. B1 (13.93s) and B6 (52.96s) pass stably
+in full concurrency. The remaining seven FAIL blockers and two CTest blockers are
+retained without semantic compromise. E, push and release remain disabled, and the
+unrelated RFC diff remains untouched.
