@@ -1,0 +1,16 @@
+import core/option::Option
+
+fn borrow_value<T>(source: Option<T>) -> &T <- source {
+    match source {
+        auto Some(&value) => return &value
+        None => panic("empty")
+    }
+}
+
+fn main() -> i32 {
+    auto owner = 42:i32
+    auto option = Option<&i32>::Some(&owner)
+    auto &&value = borrow_value<&i32>(option)
+    assert(value == 42, "borrow whole reference T")
+    return 0
+}

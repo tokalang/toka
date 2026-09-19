@@ -463,12 +463,14 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     // Type Migration Stage 1: Coexistence
     // Construct type string to parse object. Pattern bindings infer
     // type T. If Reference, it is &T.
+    bool isAbstractWhole = Pat->GenericContract && Pat->GenericContract->isWholeValue();
     std::string fullType = "";
     // A reference pattern over a reference-valued element preserves that
-    // element's exact morphology.  It only creates a new &T borrow view when
-    // the matched value itself is a Soul.
+    // element's exact morphology when concrete. For an abstract whole value T,
+    // borrowing the T slot creates a new &T view regardless of what T is
+    // instantiated with (e.g. &T for T = &i32 becomes &&i32).
     if (Pat->IsReference &&
-        (!expectedTypeObj || !expectedTypeObj->isReference()))
+        (isAbstractWhole || !expectedTypeObj || !expectedTypeObj->isReference()))
       fullType = "&";
     fullType += T;
 
@@ -476,7 +478,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       Info.IsMorphicExempt = true;
     }
     if (Pat->IsReference && Pat->GenericContract &&
-        (!expectedTypeObj || !expectedTypeObj->isReference())) {
+        (isAbstractWhole || !expectedTypeObj || !expectedTypeObj->isReference())) {
       auto refContract = std::make_shared<GenericValueContract>(*Pat->GenericContract);
       refContract->Type = TypeSyntax::morphology("&", Pat->GenericContract->Type, Pat->Loc, Pat->Loc);
       Pat->GenericContract = refContract;

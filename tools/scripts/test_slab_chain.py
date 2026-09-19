@@ -18,7 +18,6 @@ def run(command, env=None, cwd=ROOT):
 
 def require(condition, message):
     if not condition:
-        print(f"[FAIL] {message}", file=sys.stderr)
         raise RuntimeError(message)
 
 
@@ -90,7 +89,57 @@ def check_positive(tokac, source, env, tmp_dir, expected_output=None):
             f"LLVM-IR emission failed for {source.name}:\n{ll_res.stderr}")
 
 
+def trace_root(val, lines, params, visited=None, ops=None):
+    if visited is None:
+        visited = set()
+    if ops is None:
+        ops = []
+    if val in visited:
+        return ('cycle', val)
+    visited.add(val)
+    if val in params:
+        return ('param', val)
+
+    for i in range(len(lines) - 1, -1, -1):
+        line = lines[i].strip()
+        m_def = re.match(rf'^{re.escape(val)}\s*=\s*(.+)$', line)
+        if m_def:
+            rhs = m_def.group(1)
+            if rhs.startswith('alloca'):
+                return ('alloca', val)
+            m_load = re.search(r'load\s+[^,]+,\s*ptr\s+([%][a-zA-Z0-9_.]+)', rhs)
+            if m_load:
+                ops.append('load')
+                ptr_var = m_load.group(1)
+                found_store = False
+                for j in range(len(lines) - 1, -1, -1):
+                    s_line = lines[j].strip()
+                    m_store = re.search(r'store\s+[^,]+\s+([%@][a-zA-Z0-9_.]+),\s*ptr\s+' + re.escape(ptr_var), s_line)
+                    if m_store:
+                        stored_val = m_store.group(1)
+                        found_store = True
+                        return trace_root(stored_val, lines, params, visited, ops)
+                if not found_store:
+                    return trace_root(ptr_var, lines, params, visited, ops)
+            m_gep = re.search(r'getelementptr\s+.*ptr\s+([%][a-zA-Z0-9_.]+)', rhs)
+            if m_gep:
+                ops.append('gep')
+                base = m_gep.group(1)
+                return trace_root(base, lines, params, visited, ops)
+            m_cast = re.search(r'(?:inttoptr|ptrtoint|bitcast)\s+.*([%][a-zA-Z0-9_.]+)', rhs)
+            if m_cast:
+                ops.append('cast')
+                base = m_cast.group(1)
+                return trace_root(base, lines, params, visited, ops)
+            m_call = re.search(r'call\s+.*@([a-zA-Z0-9_.]+)', rhs)
+            if m_call:
+                return ('call', val, m_call.group(1))
+            return ('unknown_def', val, rhs)
+    return ('unknown', val)
+
+
 def verify_option_reset_layout_and_protocol(ll_path):
+    ll_path = pathlib.Path(ll_path)
     require(ll_path.exists(), f"missing LLVM IR file: {ll_path}")
     content = ll_path.read_text()
 
@@ -98,19 +147,24 @@ def verify_option_reset_layout_and_protocol(ll_path):
     slab_entry_matches = re.findall(r'%(SlabEntry_M_[^\s=]+)\s*=\s*type\s*\{\s*(%Option_M_[^\s,}]+)', content)
     require(len(slab_entry_matches) > 0, "SlabEntry struct type with Option field 0 not found in LLVM IR")
 
-    # 2. Verify Option has i8 discriminant tag as its first field (offset 0)
-    opt_matches = re.findall(r'%(Option_M_[^\s=]+)\s*=\s*type\s*\{\s*i8', content)
-    require(len(opt_matches) > 0, "Option struct type with i8 tag at offset 0 not found in LLVM IR")
+    # 2. Verify each Option referenced by SlabEntry has i8 discriminant tag as its first field (offset 0)
+    for entry_name, opt_name in slab_entry_matches:
+        opt_pattern = rf'{re.escape(opt_name)}\s*=\s*type\s*\{{\s*i8'
+        require(re.search(opt_pattern, content) is not None,
+                f"Option struct type {opt_name} in {entry_name} does not have an i8 tag at offset 0")
 
     # 3. Verify in Slab::remove:
     #    a) slab_take_raw_option is called
     #    b) tag zeroing (store i8 0) occurs after take
     #    c) no intervening user calls / drops between take and zeroing
-    match = re.search(r'define [^\n]+@Slab_M_[^\n]+_remove\([^\n]+\)\s*\{', content)
-    require(match, "Slab remove function not found in LLVM IR")
+    #    d) store target points to the same entry/slot being taken
+    match = re.search(r'define [^\n]+@Slab_M_[^\n]+_remove\(([^)]+)\)\s*\{', content)
+    require(match is not None, "Slab remove function not found in LLVM IR")
+    params = re.findall(r'[%][a-zA-Z0-9_.]+', match.group(1))
     func_start = match.start()
     func_end = content.find('\n}\n', func_start)
     body = content[func_start:func_end]
+    body_lines = body.splitlines()
 
     take_hex = "slab_take_raw_option".encode().hex()
     take_pos = body.find(take_hex)
@@ -129,27 +183,43 @@ def verify_option_reset_layout_and_protocol(ll_path):
     require(len(intervening_calls) == 0,
             f"No intervening calls permitted between Option payload take and tag reset: {intervening_calls}")
 
+    take_lines = [l for l in body_lines if take_hex in l or "slab_take_raw_option" in l]
+    zero_lines = [l for l in body_lines if "store i8 0" in l]
+    take_arg_m = re.search(r'call\s+.*@.*\(\s*ptr\s+([%][a-zA-Z0-9_.]+)', take_lines[0])
+    require(take_arg_m, "could not extract argument to slab_take_raw_option")
+    take_arg = take_arg_m.group(1)
+
+    zero_dest_m = re.search(r'store\s+i8\s+0,\s*ptr\s+([%][a-zA-Z0-9_.]+)', zero_lines[0])
+    require(zero_dest_m, "could not extract target of store i8 0")
+    zero_dest = zero_dest_m.group(1)
+
+    root_take = trace_root(take_arg, body_lines, params)
+    root_zero = trace_root(zero_dest, body_lines, params)
+    require(root_take is not None and root_take == root_zero,
+            f"zero store target ({root_zero}) must trace to the same slot address as taken Option ({root_take})")
+
 
 def verify_generic_reference_pattern_ir(ll_path):
+    ll_path = pathlib.Path(ll_path)
     require(ll_path.exists(), f"missing LLVM IR file: {ll_path}")
     content = ll_path.read_text()
 
     # Find borrow_value function
     hex_name = "borrow_value".encode().hex()
-    m = re.search(r'define [^\n]+' + hex_name + r'[^\n]+\([^\n]+\)\s*\{', content)
-    if not m:
-        m = re.search(r'define [^\n]+borrow_value[^\n]+\([^\n]+\)\s*\{', content)
-    require(m, "borrow_value function not found in LLVM IR")
+    m = re.search(r'define [^\n]+(?:' + hex_name + r'|borrow_value)[^\n]*\(([^)]+)\)\s*\{', content)
+    require(m is not None, "borrow_value function not found in LLVM IR")
+    params = re.findall(r'[%][a-zA-Z0-9_.]+', m.group(1))
     func_start = m.start()
     func_end = content.find('\n}\n', func_start)
     body = content[func_start:func_end]
+    body_lines = body.splitlines()
 
     # Verify generic view loading referent directly from source GEP, not stack escape
     require("%generic.outer_view = load ptr, ptr %value" in body,
             "borrow_value must load generic view referent from %value")
     require("ret ptr %generic.outer_view" in body,
             "borrow_value must return %generic.outer_view referent pointer")
-    require("\ncase_Some:" in body, "borrow_value must have case_Some pattern branch")
+    require("\ncase_Some:" in body or "case_Some:" in body, "borrow_value must have case_Some pattern branch")
 
     # In case_Some, verify %value stores the payload address projected from %source
     some_idx = body.rfind("case_Some:")
@@ -158,8 +228,15 @@ def verify_generic_reference_pattern_ir(ll_path):
     require(next_bb != -1, "case_Some must branch to arm_body")
     some_block = body[some_idx:next_bb]
     require("getelementptr" in some_block, "case_Some must project payload address via GEP")
-    require("store ptr" in some_block and ", ptr %value" in some_block,
-            "case_Some must store projected payload address into %value")
+
+    m_store = re.search(r'store\s+ptr\s+([%][a-zA-Z0-9_.]+),\s*ptr\s+%value', some_block)
+    require(m_store, "case_Some must store projected payload address into %value")
+    stored_val = m_store.group(1)
+
+    ops = []
+    root = trace_root(stored_val, body_lines, params, ops=ops)
+    require(root[0] == "param", f"stored payload address must trace to function parameter, got {root}")
+    require("gep" in ops, "payload address must be projected from parameter via getelementptr")
 
 
 def main():
@@ -174,12 +251,14 @@ def main():
     fixture_dir = ROOT / "tests/semantics/slab"
     require(fixture_dir.exists(), f"missing checked-in fixture directory: {fixture_dir}")
 
-    # Part 1: Positive test fixtures (lifecycle, ended_loan_positive, generic_borrow_soul, generic_borrow_unique)
+    # Part 1: Positive test fixtures (lifecycle, ended_loan_positive, generic borrows for all quadrants)
     target_positives = [
         "lifecycle.tk",
         "ended_loan_positive.tk",
         "generic_borrow_soul.tk",
         "generic_borrow_unique.tk",
+        "generic_borrow_shared.tk",
+        "generic_borrow_reference.tk",
     ]
 
     with tempfile.TemporaryDirectory(prefix="toka-slab-positives-") as tmp:
@@ -194,6 +273,7 @@ def main():
         ("remove_live_loan.tk", "E0441", "remove_live_loan.tk:10"),
         ("local_escape.tk", "E0455", "local_escape.tk:9"),
         ("readonly_reject.tk", "E0443", "readonly_reject.tk:6"),
+        ("readonly_nested_write.tk", "E04573", "readonly_nested_write.tk:12"),
     ]
 
     with tempfile.TemporaryDirectory(prefix="toka-slab-negatives-") as tmp:
@@ -210,6 +290,48 @@ def main():
         require(res.returncode == 0, f"failed to emit LLVM IR for lifecycle.tk:\n{res.stderr}")
         verify_option_reset_layout_and_protocol(ll_file)
 
+    # Part 3b: Negative controls for Option reset layout & protocol
+    with tempfile.TemporaryDirectory(prefix="toka-slab-oracle-neg1-") as tmp:
+        tmp_dir = pathlib.Path(tmp)
+        wrong_tag_ll = tmp_dir / "wrong_tag.ll"
+        wrong_tag_ll.write_text("""
+%Option_M_actual = type { i64 }
+%Option_M_unrelated = type { i8 }
+%SlabEntry_M_test = type { %Option_M_actual, i32 }
+declare void @slab_take_raw_option(ptr)
+define void @Slab_M_test_remove(ptr %entry, ptr %unrelated) {
+start:
+  call void @slab_take_raw_option(ptr %entry)
+  store i8 0, ptr %entry
+  ret void
+}
+""")
+        neg_tag_passed = False
+        try:
+            verify_option_reset_layout_and_protocol(wrong_tag_ll)
+        except RuntimeError:
+            neg_tag_passed = True
+        require(neg_tag_passed, "verify_option_reset_layout_and_protocol must reject invalid Option tag type")
+
+        wrong_target_ll = tmp_dir / "wrong_target.ll"
+        wrong_target_ll.write_text("""
+%Option_M_actual = type { i8 }
+%SlabEntry_M_test = type { %Option_M_actual, i32 }
+declare void @slab_take_raw_option(ptr)
+define void @Slab_M_test_remove(ptr %entry, ptr %unrelated) {
+start:
+  call void @slab_take_raw_option(ptr %entry)
+  store i8 0, ptr %unrelated
+  ret void
+}
+""")
+        neg_target_passed = False
+        try:
+            verify_option_reset_layout_and_protocol(wrong_target_ll)
+        except RuntimeError:
+            neg_target_passed = True
+        require(neg_target_passed, "verify_option_reset_layout_and_protocol must reject unrelated zero store target")
+
     # Part 4: Generic reference pattern IR & referent address verification
     with tempfile.TemporaryDirectory(prefix="toka-slab-refpat-") as tmp:
         tmp_dir = pathlib.Path(tmp)
@@ -217,6 +339,32 @@ def main():
         res = run([str(tokac), "--emit-llvm", str(fixture_dir / "generic_borrow_unique.tk"), "-o", str(ll_file)], env=env)
         require(res.returncode == 0, f"failed to emit LLVM IR for generic_borrow_unique.tk:\n{res.stderr}")
         verify_generic_reference_pattern_ir(ll_file)
+
+    # Part 4b: Negative control for generic reference pattern origin
+    with tempfile.TemporaryDirectory(prefix="toka-slab-oracle-neg2-") as tmp:
+        tmp_dir = pathlib.Path(tmp)
+        wrong_ref_ll = tmp_dir / "wrong_ref.ll"
+        wrong_ref_ll.write_text("""
+define ptr @borrow_value_test(ptr %source) {
+entry:
+  %value = alloca ptr
+  %local = alloca i32
+  br label %case_Some
+case_Some:
+  %unrelated.gep = getelementptr i32, ptr %local, i64 0
+  store ptr %unrelated.gep, ptr %value
+  br label %arm_body
+arm_body:
+  %generic.outer_view = load ptr, ptr %value
+  ret ptr %generic.outer_view
+}
+""")
+        neg_ref_passed = False
+        try:
+            verify_generic_reference_pattern_ir(wrong_ref_ll)
+        except RuntimeError:
+            neg_ref_passed = True
+        require(neg_ref_passed, "verify_generic_reference_pattern_ir must reject local alloca origin")
 
     # Part 5: Existing repository Slab regression verification
     with tempfile.TemporaryDirectory(prefix="toka-slab-repo-") as tmp:
@@ -226,7 +374,7 @@ def main():
         check_negative(tokac, ROOT / "tests/fail/slab_lookup_miss_blocks_remove.tk", env, tmp_dir,
                        "E0441", "slab_lookup_miss_blocks_remove.tk:11")
 
-    print("slab chain: PASS (4 positive fixtures, 4 negative fixtures, Option reset layout/protocol IR assertions, generic reference pattern IR assertions, 3 repo Slab controls)")
+    print("slab chain: PASS (6 positive fixtures, 5 negative fixtures, strengthened Option reset layout/protocol and generic reference pattern IR assertions with negative controls, 3 repo Slab controls)")
 
 
 if __name__ == "__main__":

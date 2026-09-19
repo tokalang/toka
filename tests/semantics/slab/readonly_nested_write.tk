@@ -1,0 +1,14 @@
+import core/option::Option
+shape Cell(value: i32)
+fn borrow_value<T>(source: Option<T>) -> &T <- source {
+    match source {
+        auto Some(&value) => return &value
+        None => panic("empty")
+    }
+}
+fn main() -> i32 {
+    auto option = Option<^Cell>::Some(new Cell(value = 42))
+    auto &value = borrow_value<^Cell>(option)
+    value.value = 99
+    return 0
+}

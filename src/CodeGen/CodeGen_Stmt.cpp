@@ -1191,7 +1191,13 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
             if (targetShape->GenericArgs.size() == 1)
               payloadTypeObj = targetShape->GenericArgs[0];
           }
-          if (payloadTypeObj && !payloadTypeObj->isReference()) {
+          bool bindsSlotAddress = gbs->Pat->SubPatterns[0]->IsReference &&
+              gbs->Pat->SubPatterns[0]->MatchedValueType &&
+              payloadTypeObj &&
+              gbs->Pat->SubPatterns[0]->MatchedValueType->isReference() &&
+              gbs->Pat->SubPatterns[0]->MatchedValueType->getPointeeType() &&
+              gbs->Pat->SubPatterns[0]->MatchedValueType->getPointeeType()->equals(*payloadTypeObj);
+          if (bindsSlotAddress || (payloadTypeObj && !payloadTypeObj->isReference())) {
             // A `&binding` of an owned generic payload borrows its enum
             // storage.  Loading the first word here would turn a value such
             // as `MutexLock { handle, data }` into a fabricated pointer.

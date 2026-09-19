@@ -3190,7 +3190,13 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
                 if (targetShape->GenericArgs.size() == 1)
                   payloadTypeObj = targetShape->GenericArgs[0];
               }
-              if (payloadTypeObj && !payloadTypeObj->isReference()) {
+              bool bindsSlotAddress = subPat->SubPatterns[0]->IsReference &&
+                  subPat->SubPatterns[0]->MatchedValueType &&
+                  payloadTypeObj &&
+                  subPat->SubPatterns[0]->MatchedValueType->isReference() &&
+                  subPat->SubPatterns[0]->MatchedValueType->getPointeeType() &&
+                  subPat->SubPatterns[0]->MatchedValueType->getPointeeType()->equals(*payloadTypeObj);
+              if (bindsSlotAddress || (payloadTypeObj && !payloadTypeObj->isReference())) {
                 genPatternBinding(subPat->SubPatterns[0].get(), payloadAddr,
                                   getLLVMType(payloadTypeObj),
                                   payloadTypeObj,

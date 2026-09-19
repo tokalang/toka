@@ -1,0 +1,18 @@
+import core/option::Option
+
+shape Cell(value: i32)
+
+fn borrow_value<T>(source: Option<T>) -> &T <- source {
+    match source {
+        auto Some(&value) => return &value
+        None => panic("empty")
+    }
+}
+
+fn main() -> i32 {
+    auto ~owner = new Cell(value = 42)
+    auto option = Option<~Cell>::Some(cede ~owner)
+    auto &value = borrow_value<~Cell>(option)
+    assert(value.value == 42, "borrow whole shared T")
+    return 0
+}
