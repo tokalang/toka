@@ -615,6 +615,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_for_alias_chain.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_slab_chain
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_slab_chain.py
+                --build-dir ${CMAKE_BINARY_DIR})
         set(_toka_compiler_driven_tests
             toka_call_transfer_shadow_m1
             toka_generic_body_call_qualification_stage0

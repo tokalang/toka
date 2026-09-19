@@ -1,0 +1,9 @@
+import std/slab::Slab
+
+shape Item(value: i32)
+
+fn touch(slab: Slab<Item>) {
+    slab#.clear()
+}
+
+fn main() -> i32 { return 0 }

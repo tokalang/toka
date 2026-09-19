@@ -1,0 +1,15 @@
+import core/option::Option
+
+fn borrow_value<T>(source: Option<T>) -> &T <- source {
+    match source {
+        auto Some(&value) => return &value
+        None => { panic("empty"); unreachable }
+    }
+}
+
+fn main() -> i32 {
+    auto option = Option<i32>::Some(42)
+    auto &value = borrow_value<i32>(option)
+    assert(value == 42, "borrow scalar payload")
+    return 0
+}

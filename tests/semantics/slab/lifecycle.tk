@@ -1,0 +1,40 @@
+import std/slab::Slab
+
+auto drops# = 0:i32
+
+shape Tracker(id: i32)
+
+impl Tracker@Encap {
+    fn drop(self#) {
+        drops += 1
+    }
+}
+
+fn main() -> i32 {
+    {
+        auto slab# = Slab<Tracker>::new()
+        auto a = slab#.insert(Tracker(id = 1))
+        auto b = slab#.insert(Tracker(id = 2))
+        auto c = slab#.insert(Tracker(id = 3))
+        {
+            auto removed = slab#.remove(a.clone())
+            assert(removed.is_some(), "remove hit")
+            assert(drops == 0, "no early cleanup")
+        }
+        assert(drops == 1, "removed result cleanup")
+        assert(slab#.remove(a.clone()).is_none(), "repeat remove misses")
+        auto d = slab#.insert(Tracker(id = 4))
+        assert(d.index() == a.index(), "reuse slot")
+        assert(d.generation() != a.generation(), "generation advances")
+        slab#.clear()
+        assert(drops == 4, "clear each live item once")
+        auto e = slab#.insert(Tracker(id = 5))
+        assert(slab.get(a).is_none(), "stale id remains dead")
+        assert(slab.get(b).is_none(), "clear keeps old id dead")
+        assert(slab.get(c).is_none(), "clear keeps third id dead")
+        assert(slab.get(d).is_none(), "clear keeps reused id dead")
+        assert(slab.get(e).is_some(), "new live id")
+    }
+    assert(drops == 5, "scope cleanup once")
+    return 0
+}

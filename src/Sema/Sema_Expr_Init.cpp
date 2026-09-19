@@ -475,7 +475,15 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     if (isMorphicExempt) {
       Info.IsMorphicExempt = true;
     }
-    Info.GenericContract = Pat->GenericContract;
+    if (Pat->IsReference && Pat->GenericContract &&
+        (!expectedTypeObj || !expectedTypeObj->isReference())) {
+      auto refContract = std::make_shared<GenericValueContract>(*Pat->GenericContract);
+      refContract->Type = TypeSyntax::morphology("&", Pat->GenericContract->Type, Pat->Loc, Pat->Loc);
+      Pat->GenericContract = refContract;
+      Info.GenericContract = std::move(refContract);
+    } else {
+      Info.GenericContract = Pat->GenericContract;
+    }
     Info.IsAbstractWholeValue = Pat->IsAbstractWholeValue;
 
     bool bindingPayloadWritable = Pat->IsValueMutable;

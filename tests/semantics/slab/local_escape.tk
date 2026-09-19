@@ -1,0 +1,12 @@
+import std/slab::Slab
+import core/option::Option
+
+shape Item(value: i32)
+
+fn escape() -> Option<&Item> {
+    auto slab# = Slab<Item>::new()
+    auto id = slab#.insert(Item(value = 10))
+    return slab.get(id)
+}
+
+fn main() -> i32 { return 0 }

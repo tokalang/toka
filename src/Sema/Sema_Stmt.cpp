@@ -2432,16 +2432,31 @@ void Sema::checkStmt(Stmt *S) {
     // binding's own permission remains the access ceiling.
     auto initializerContract = Var->Init ? queryGenericValueContract(Var->Init.get()) : nullptr;
     if (inferredType && Var->IsReference && !Var->IsValueMutable &&
-        InitTypeObj && InitTypeObj->isReference() && initializerContract &&
-        initializerContract->Type &&
-        initializerContract->Type->NodeKind == TypeSyntax::Kind::Morphology &&
-        initializerContract->Type->Text == "&" &&
-        !initializerContract->Type->IsPostfix) {
-      auto selected = *initializerContract;
-      selected.Type = selected.Type->Subject;
-      if (selected.isWholeValue())
-        Info.TypeObj = InitTypeObj->withAttributes(
+        InitTypeObj && InitTypeObj->isReference() &&
+        Var->Permission.HandleLayers.size() <= 1) {
+      bool preserveInner = false;
+      if (initializerContract && initializerContract->Type &&
+          initializerContract->Type->NodeKind == TypeSyntax::Kind::Morphology &&
+          initializerContract->Type->Text == "&" &&
+          !initializerContract->Type->IsPostfix) {
+        auto selected = *initializerContract;
+        selected.Type = selected.Type->Subject;
+        if (selected.isWholeValue())
+          preserveInner = true;
+      } else if (InitTypeObj->getPointeeType() &&
+                 (InitTypeObj->getPointeeType()->isPointer() ||
+                  InitTypeObj->getPointeeType()->isSmartPointer())) {
+        preserveInner = true;
+      }
+      if (preserveInner) {
+        auto pointee = InitTypeObj->getPointeeType();
+        if (pointee && !Var->IsValueMutable && pointee->IsWritable) {
+          pointee = pointee->withAttributes(false, pointee->IsNullable, pointee->IsBlocked);
+        }
+        auto ref = std::make_shared<ReferenceType>(pointee);
+        Info.TypeObj = ref->withAttributes(
             Var->IsRebindable, Var->IsPointerNullable, Var->IsRebindBlocked);
+      }
     }
 
     if (!Info.TypeObj) {
