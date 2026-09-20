@@ -939,3 +939,24 @@ zero added failures, and zero abnormal exits. B1 (13.93s) and B6 (52.96s) pass s
 in full concurrency. The remaining seven FAIL blockers and two CTest blockers are
 retained without semantic compromise. E, push and release remain disabled, and the
 unrelated RFC diff remains untouched.
+
+## Slab operations, borrow constraints and regression suite Accepted at f006ce8f
+
+For-alias binding and cleanup is Accepted at `8ea9850f`. The next package completes
+Slab operations / lookup-remove borrow constraints, private Option take and reset protocol,
+abstract whole-value generic pattern destructuring without referent type collapsing
+(scalar, unique, shared, reference four-quadrant matrix), checked-in regression package
+(`tests/semantics/slab/`, 11 fixtures), and strengthened LLVM IR oracles in
+`tools/scripts/test_slab_chain.py` with exact-offset slot identification and reaching
+unique-store / no-overwrite verification. See
+[the complete package](rc13_slab_operations.md).
+
+The final fixed full run on `f006ce8f` is **433/457 PASS, 472/478 FAIL, 112/114 CTest**:
+two PASS (`g07_slab_test.tk`, `g18_slab_lookup_miss.tk`) and one FAIL
+(`slab_lookup_miss_blocks_remove.tk`) cases restored, one added passing CTest gate
+(`toka_slab_chain`, 30.95s; full unfiltered CTest 782.52s), zero added failures, and
+zero abnormal exits. The remaining six FAIL blockers (`smart_ptr_from_stack.tk` and five
+`thread_spawn_*` cases) and two CTest blockers (`toka_stage1_indirect_parameter_cede`,
+`toka_stage1_return_matrix`) are retained. E, push and release remain disabled, and the
+unrelated RFC diff remains untouched.
+
