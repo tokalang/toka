@@ -1,0 +1,14 @@
+auto drops# = 0:i32
+shape __Closure_Fake(value: i32)
+impl __Closure_Fake@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+fn main() -> i32 {
+    {
+        auto a = __Closure_Fake(value = 1)
+        assert(a.value == 1, "value")
+    }
+    assert(drops == 1, "drop once")
+    return 0
+}

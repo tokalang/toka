@@ -1388,15 +1388,17 @@ std::optional<ValueOwnership> Sema::queryExplicitCedeStage0OwnershipReadOnly(
           shapeType->GenericArgs[index];
     }
     bool ownsMember = shape->HasExplicitDrop;
-    if (shape->Name.rfind("__Closure_", 0) == 0) {
+    if (shape->IsCompilerSynthesized && shape->Name.rfind("__Closure_", 0) == 0) {
       auto foundMethods = MethodDecls.find(shape->Name);
       if (foundMethods != MethodDecls.end()) {
         auto callIt = foundMethods->second.find("call");
         if (callIt != foundMethods->second.end() && callIt->second &&
+            callIt->second->IsClosureInvoke &&
             callIt->second->ClosureReceiver == CallableReceiverMode::Consuming)
           ownsMember = true;
         auto invIt = foundMethods->second.find("__invoke");
         if (invIt != foundMethods->second.end() && invIt->second &&
+            invIt->second->IsClosureInvoke &&
             invIt->second->ClosureReceiver == CallableReceiverMode::Consuming)
           ownsMember = true;
       }
@@ -3213,17 +3215,22 @@ TransferCopyProof Sema::queryExplicitCedeStage0CopyProof(
                     return member.IsUnitVariant;
                   }))
     return TransferCopyProof::ProvenCopy;
-  if (shapeType && (shapeType->Name.rfind("__Toka_Anon_Rec_", 0) == 0 ||
-                    shapeType->Name.rfind("__Closure_", 0) == 0)) {
-    if (shape && shape->Name.rfind("__Closure_", 0) == 0) {
+  const bool isSyntheticAnonRec = shape && shape->IsCompilerSynthesized &&
+                                  shape->Name.rfind("__Toka_Anon_Rec_", 0) == 0;
+  const bool isSyntheticClosure = shape && shape->IsCompilerSynthesized &&
+                                  shape->Name.rfind("__Closure_", 0) == 0;
+  if (shape && (isSyntheticAnonRec || isSyntheticClosure)) {
+    if (isSyntheticClosure) {
       auto foundMethods = MethodDecls.find(shape->Name);
       if (foundMethods != MethodDecls.end()) {
         auto callIt = foundMethods->second.find("call");
         if (callIt != foundMethods->second.end() && callIt->second &&
+            callIt->second->IsClosureInvoke &&
             callIt->second->ClosureReceiver == CallableReceiverMode::Consuming)
           return TransferCopyProof::ProvenNonCopy;
         auto invIt = foundMethods->second.find("__invoke");
         if (invIt != foundMethods->second.end() && invIt->second &&
+            invIt->second->IsClosureInvoke &&
             invIt->second->ClosureReceiver == CallableReceiverMode::Consuming)
           return TransferCopyProof::ProvenNonCopy;
       }

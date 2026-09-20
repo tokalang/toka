@@ -39,7 +39,10 @@ def main():
             subprocess.run([cc, "-std=c11", "-pthread", "-I", str(ROOT / "tests/runtime"),
                             *flags, "-c", str(source), "-o", str(output)], check=True)
         for source in ("dynamic_and_state.tk", "unit_dynamic.tk", "unit.tk", "fresh_mutable.tk",
-                       "owned_closure.tk", "owned_state_return.tk", "results.tk", "responsibility.tk"):
+                       "owned_closure.tk", "owned_state_return.tk", "results.tk", "responsibility.tk",
+                       "thread_spawn_copy_sync_capture.tk", "thread_spawn_nested_closure.tk",
+                       "thread_spawn_binding_capture.tk", "thread_spawn_send_capture.tk",
+                       "thread_spawn_assignment_capture.tk"):
             command = [str(compiler), str(FIXTURES / source)]
             normal = subprocess.run(command + ["--check-only"], cwd=ROOT, env=env,
                                     capture_output=True, text=True, timeout=45)
@@ -103,7 +106,7 @@ def main():
         require(built.returncode == 0, "source-hidden consumer\n" + built.stderr)
         executed = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
         require(executed.returncode == 0, "source-hidden runtime\n" + executed.stderr)
-    print("public thread subset: 8 strict parity fixtures; 22 runtime executions; source-hidden TKI/object run; 10 source rejection/rollback + 10 fault no-artifact checks")
+    print("public thread subset: 13 strict parity fixtures; 27 runtime executions; source-hidden TKI/object run; 10 source rejection/rollback + 10 fault no-artifact checks")
 
 
 if __name__ == "__main__":
