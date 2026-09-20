@@ -4,10 +4,10 @@ fn main() -> i32 {
     auto value = 7
     auto borrowed = { =>
         return cede value
-    }:fn() -> i32
+    }
     auto outer = { [cede borrowed] =>
-        return borrowed()
-    }:fn() -> i32
+        return cede borrowed()
+    }
     auto handle# = thread_spawn<i32>(cede outer)
     return 0
 }

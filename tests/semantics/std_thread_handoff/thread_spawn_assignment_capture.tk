@@ -1,0 +1,27 @@
+import std/thread::{thread_spawn}
+
+shape SyncToken(value: i32)
+impl SyncToken@Send {}
+impl SyncToken@Sync {}
+impl SyncToken {
+    fn id(self) -> i32 { return self.value }
+}
+
+fn main() -> i32 {
+    auto token = SyncToken(value = 99)
+    auto f = { [copy token] =>
+        return token.id()
+    }
+    auto g# = f
+    g = cede f
+    auto worker = { [cede g] =>
+        return g()
+    }
+    auto spawned = thread_spawn<i32>(cede worker)
+    if spawned.is_err() { return 1 }
+    auto handle# = spawned.unwrap()
+    auto result = handle#.join()
+    if result.is_err() { return 2 }
+    if result.unwrap() != 99 { return 3 }
+    return 0
+}

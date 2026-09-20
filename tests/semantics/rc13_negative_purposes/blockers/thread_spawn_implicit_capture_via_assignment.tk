@@ -3,13 +3,11 @@ import std/thread::thread_spawn
 fn main() -> i32 {
     auto value = 7
     auto f = { =>
-        return cede value
-    }:dyn fn() -> i32
-    auto g# = { =>
-        return 0
-    }:dyn fn() -> i32
+        return value
+    }
+    auto g# = f
     g = cede f
-    auto handle# = thread_spawn<i32>(cede g).unwrap()
+    auto handle# = thread_spawn<i32>(cede g)
     return 0
 }
 

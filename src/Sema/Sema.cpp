@@ -6968,6 +6968,31 @@ bool Sema::hasDrop(const std::string &shapeName) {
       resolved == "string" || resolved == "SlabID" || resolved == "TimerHeap") {
     return false;
   }
+  if (resolved.rfind("__Closure_", 0) == 0 || shapeName.rfind("__Closure_", 0) == 0) {
+    std::string closureName = (resolved.rfind("__Closure_", 0) == 0) ? resolved : shapeName;
+    auto found = MethodDecls.find(closureName);
+    if (found != MethodDecls.end()) {
+      auto it = found->second.find("call");
+      if (it != found->second.end() && it->second &&
+          it->second->ClosureReceiver == CallableReceiverMode::Consuming)
+        return true;
+      auto invIt = found->second.find("__invoke");
+      if (invIt != found->second.end() && invIt->second &&
+          invIt->second->ClosureReceiver == CallableReceiverMode::Consuming)
+        return true;
+    }
+    auto shapeIt = ShapeMap.find(closureName);
+    if (shapeIt != ShapeMap.end() && shapeIt->second) {
+      for (const auto &member : shapeIt->second->Members) {
+        auto memberType = Sema::getPhysicalType(member);
+        if (memberType && (memberType->requiresExplicitOwnershipTransfer(this) ||
+                           memberType->valueOwnership(this) == ValueOwnership::Owned ||
+                           memberType->valueOwnership(this) == ValueOwnership::SharedHandle))
+          return true;
+      }
+    }
+    return false;
+  }
   if (!m_ShapeProps.count(shapeName) && CurrentModule) {
     computeShapeProperties(shapeName, *CurrentModule);
   }

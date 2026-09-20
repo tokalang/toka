@@ -15,7 +15,7 @@ fn main() -> i32 {
     auto f = { [copy value] =>
         return value.id()
     }
-    auto handle# = thread_spawn<i32>(cede f).unwrap()
+    auto handle# = thread_spawn<i32>(cede f)
     return 0
 }
 

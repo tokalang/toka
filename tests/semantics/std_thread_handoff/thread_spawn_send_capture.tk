@@ -1,0 +1,23 @@
+import std/thread::{thread_spawn}
+
+auto drops# = 0:i32
+shape SendItem(value: i32)
+impl SendItem@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+impl SendItem@Send {}
+
+fn main() -> i32 {
+    auto item = SendItem(value = 88)
+    auto f = { [cede item] =>
+        return item.value
+    }
+    auto spawned = thread_spawn<i32>(cede f)
+    if spawned.is_err() { return 1 }
+    auto handle# = spawned.unwrap()
+    auto result = handle#.join()
+    if result.is_err() { return 2 }
+    if result.unwrap() != 88 || drops != 1 { return 3 }
+    return 0
+}

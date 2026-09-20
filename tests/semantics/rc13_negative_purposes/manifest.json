@@ -418,38 +418,83 @@
     },
     {
       "case": "thread_spawn_copy_non_sync_capture.tk",
-      "status": "blocked",
-      "category": "target-not-qualified",
-      "target_codes": [],
-      "reason": "Correct raw-field selection still leaves closure IncompleteFacts before the copy/non-Sync execution check."
+      "status": "repaired",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E0478"
+      ],
+      "first_message": "Closure passed across execution boundary 'thread_spawn' copy-captures 'value' with a value that is not @Sync",
+      "target_sites": [
+        {
+          "code": "E0478",
+          "file": "tests/fail/thread_spawn_copy_non_sync_capture.tk",
+          "line": 18
+        }
+      ]
     },
     {
       "case": "thread_spawn_implicit_capture_nested_closure.tk",
-      "status": "blocked",
-      "category": "target-not-qualified",
-      "target_codes": [],
-      "reason": "Inner inferred borrowed closure fails construction before nesting and thread handoff."
+      "status": "repaired",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E04582"
+      ],
+      "first_message": "Closure passed across execution boundary 'thread_spawn' cannot implicitly capture 'value'; use '[cede value]' or '[copy value]' to make capture explicit",
+      "target_sites": [
+        {
+          "code": "E04582",
+          "file": "tests/fail/thread_spawn_implicit_capture_nested_closure.tk",
+          "line": 11
+        }
+      ]
     },
     {
       "case": "thread_spawn_implicit_capture_via_assignment.tk",
-      "status": "blocked",
-      "category": "target-not-qualified",
-      "target_codes": [],
-      "reason": "Replacing thin-fn with dyn-fn rejects implicit capture at conversion (E04579), not the intended post-assignment execution check."
+      "status": "repaired",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E04582"
+      ],
+      "first_message": "Closure passed across execution boundary 'thread_spawn' cannot implicitly capture 'value'; use '[cede value]' or '[copy value]' to make capture explicit",
+      "target_sites": [
+        {
+          "code": "E04582",
+          "file": "tests/fail/thread_spawn_implicit_capture_via_assignment.tk",
+          "line": 10
+        }
+      ]
     },
     {
       "case": "thread_spawn_implicit_capture_via_binding.tk",
-      "status": "blocked",
-      "category": "target-not-qualified",
-      "target_codes": [],
-      "reason": "Removing obsolete thin-fn ascription leaves borrowed closure IncompleteFacts before execution-boundary check."
+      "status": "repaired",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E04582"
+      ],
+      "first_message": "Closure passed across execution boundary 'thread_spawn' cannot implicitly capture 'value'; use '[cede value]' or '[copy value]' to make capture explicit",
+      "target_sites": [
+        {
+          "code": "E04582",
+          "file": "tests/fail/thread_spawn_implicit_capture_via_binding.tk",
+          "line": 8
+        }
+      ]
     },
     {
       "case": "thread_spawn_non_send_capture.tk",
-      "status": "blocked",
-      "category": "target-not-qualified",
-      "target_codes": [],
-      "reason": "Correct raw-handle capture still leaves closure IncompleteFacts before the non-Send execution check."
+      "status": "repaired",
+      "category": "source-or-contract-migration",
+      "target_codes": [
+        "E0477"
+      ],
+      "first_message": "Closure passed across execution boundary 'thread_spawn' captures 'p' with a value that is not @Send",
+      "target_sites": [
+        {
+          "code": "E0477",
+          "file": "tests/fail/thread_spawn_non_send_capture.tk",
+          "line": 8
+        }
+      ]
     },
     {
       "case": "unique_value_local_move_noncede_parameter.tk",

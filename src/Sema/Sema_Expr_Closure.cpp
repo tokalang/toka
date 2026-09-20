@@ -562,10 +562,11 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
         if (!isExplicit) {
            Clo->ImplicitCaptures.push_back(varName);
            Clo->BoundaryImplicitCaptures.push_back(varName);
-        } else if (infoPtr->TypeObj &&
-                   (infoPtr->TypeObj->typeKind == Type::Function ||
-                    infoPtr->TypeObj->typeKind == Type::DynFn)) {
-           if (!infoPtr->HasClosureBoundarySummary) {
+         } else if (infoPtr->HasClosureBoundarySummary ||
+                    (infoPtr->TypeObj &&
+                     (infoPtr->TypeObj->typeKind == Type::Function ||
+                      infoPtr->TypeObj->typeKind == Type::DynFn))) {
+            if (!infoPtr->HasClosureBoundarySummary) {
              completeBoundarySummary = false;
            } else {
              Clo->BoundaryImplicitCaptures.insert(

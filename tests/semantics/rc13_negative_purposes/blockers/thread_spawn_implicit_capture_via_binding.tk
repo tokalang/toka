@@ -5,7 +5,7 @@ fn main() -> i32 {
     auto f = { =>
         return cede value
     }
-    auto handle# = thread_spawn<i32>(cede f).unwrap()
+    auto handle# = thread_spawn<i32>(cede f)
     return 0
 }
 

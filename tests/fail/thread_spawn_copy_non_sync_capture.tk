@@ -11,10 +11,10 @@ impl SendOnly {
 
 fn main() -> i32 {
     auto *ptr = unsafe alloc i32(7)
-    auto value = SendOnly(ptr = ptr)
+    auto value = SendOnly(*ptr = *ptr)
     auto f = { [copy value] =>
         return value.id()
-    }:fn() -> i32
+    }
     auto handle# = thread_spawn<i32>(cede f)
     return 0
 }

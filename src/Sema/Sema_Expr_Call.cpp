@@ -1388,6 +1388,19 @@ std::optional<ValueOwnership> Sema::queryExplicitCedeStage0OwnershipReadOnly(
           shapeType->GenericArgs[index];
     }
     bool ownsMember = shape->HasExplicitDrop;
+    if (shape->Name.rfind("__Closure_", 0) == 0) {
+      auto foundMethods = MethodDecls.find(shape->Name);
+      if (foundMethods != MethodDecls.end()) {
+        auto callIt = foundMethods->second.find("call");
+        if (callIt != foundMethods->second.end() && callIt->second &&
+            callIt->second->ClosureReceiver == CallableReceiverMode::Consuming)
+          ownsMember = true;
+        auto invIt = foundMethods->second.find("__invoke");
+        if (invIt != foundMethods->second.end() && invIt->second &&
+            invIt->second->ClosureReceiver == CallableReceiverMode::Consuming)
+          ownsMember = true;
+      }
+    }
     auto inspectMember = [&](const ShapeMember &member) {
       auto memberType = Sema::getPhysicalType(member);
       if (memberType && !substitutions.empty())
@@ -3200,7 +3213,21 @@ TransferCopyProof Sema::queryExplicitCedeStage0CopyProof(
                     return member.IsUnitVariant;
                   }))
     return TransferCopyProof::ProvenCopy;
-  if (shapeType && shapeType->Name.rfind("__Toka_Anon_Rec_", 0) == 0) {
+  if (shapeType && (shapeType->Name.rfind("__Toka_Anon_Rec_", 0) == 0 ||
+                    shapeType->Name.rfind("__Closure_", 0) == 0)) {
+    if (shape && shape->Name.rfind("__Closure_", 0) == 0) {
+      auto foundMethods = MethodDecls.find(shape->Name);
+      if (foundMethods != MethodDecls.end()) {
+        auto callIt = foundMethods->second.find("call");
+        if (callIt != foundMethods->second.end() && callIt->second &&
+            callIt->second->ClosureReceiver == CallableReceiverMode::Consuming)
+          return TransferCopyProof::ProvenNonCopy;
+        auto invIt = foundMethods->second.find("__invoke");
+        if (invIt != foundMethods->second.end() && invIt->second &&
+            invIt->second->ClosureReceiver == CallableReceiverMode::Consuming)
+          return TransferCopyProof::ProvenNonCopy;
+      }
+    }
     bool sawIndeterminate = false;
     for (const auto &member : shape->Members) {
       const auto memberProof = queryExplicitCedeStage0CopyProof(
@@ -4597,19 +4624,11 @@ bool Sema::Stage1BindingTransfer::prepare(
   if (validated && actual && actual->isShape()) {
     auto shape = std::dynamic_pointer_cast<ShapeType>(actual);
     auto *closure = dynamic_cast<ClosureExpr *>(stage0SurfaceSource(source));
-    const bool channelCapture = closure && std::any_of(
-        closure->NativeSyncCaptureRecipes.begin(), closure->NativeSyncCaptureRecipes.end(),
-        [](const auto &entry) { return entry.second && entry.second->Channel; });
-    if (channelCapture && shape && shape->Decl && shape->Decl->IsCompilerSynthesized) {
+    const bool isClosureShape = shape && shape->Decl && shape->Decl->IsCompilerSynthesized &&
+                                shape->Decl->Name.rfind("__Closure_", 0) == 0;
+    if (isClosureShape) {
       auto environment = Owner.collectStage1CallableEnvironment(source);
-      // Channel selects this bridge; it does not exclude independently
-      // qualified native owners in the same environment. The collector must
-      // still prove every capture, and every supplied witness must be live.
-      if (environment.Complete &&
-          std::any_of(environment.NativeOwners.begin(), environment.NativeOwners.end(),
-              [](const auto &witness) { return witness && witness->Channel && witness->Channel->Complete; }) &&
-          std::all_of(environment.NativeOwners.begin(), environment.NativeOwners.end(),
-              [&](const auto &witness) { return witness && Owner.nativeSyncOwnerLive(witness); }))
+      if (environment.Complete)
         CallableFacts = std::move(environment);
     }
   }

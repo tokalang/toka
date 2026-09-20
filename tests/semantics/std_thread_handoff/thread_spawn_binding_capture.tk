@@ -1,0 +1,23 @@
+import std/thread::{thread_spawn}
+
+auto drops# = 0:i32
+shape Token(value: i32)
+impl Token@Encap {
+    pub value
+    fn drop(self#) { drops += 1 }
+}
+impl Token@Send {}
+
+fn main() -> i32 {
+    auto token = Token(value = 77)
+    auto f = { [cede token] =>
+        return token.value
+    }
+    auto spawned = thread_spawn<i32>(cede f)
+    if spawned.is_err() { return 1 }
+    auto handle# = spawned.unwrap()
+    auto result = handle#.join()
+    if result.is_err() { return 2 }
+    if result.unwrap() != 77 || drops != 1 { return 3 }
+    return 0
+}
