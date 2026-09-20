@@ -960,3 +960,28 @@ zero abnormal exits. The remaining six FAIL blockers (`smart_ptr_from_stack.tk` 
 `toka_stage1_return_matrix`) are retained. E, push and release remain disabled, and the
 unrelated RFC diff remains untouched.
 
+## Thread spawn boundary captures and compiler-synthesized origin guards Accepted at 83a16292
+
+Slab operations, borrow constraints and regression suite is Accepted at `f006ce8f`. The next package resolves the five `thread_spawn_*` boundary capture negative fixtures and their execution-boundary refusal purposes, pairs each negative purpose with an executable legal positive control in `tests/semantics/std_thread_handoff/`, introduces strict origin guarding (`ShapeDecl::IsCompilerSynthesized`) for synthesized closure shapes, and wires all five positive controls into `toka_public_thread_responsibility_subset`. See [the complete package](rc13_thread_spawn_boundary.md).
+
+Implementation commits: `2377c337` and `83a16292`.
+
+Key technical resolutions:
+- Reconciled the five `thread_spawn_*` fixtures to modern closure syntax without thin-fn (`fn() -> i32`) ascriptions while preserving intended boundary refusal semantics:
+  - `thread_spawn_copy_non_sync_capture.tk` -> `E0478` (Copy capture across thread boundary requires `@Sync`)
+  - `thread_spawn_implicit_capture_nested_closure.tk` -> `E04582` (Implicit capture across thread boundary prohibited in nested closures)
+  - `thread_spawn_implicit_capture_via_assignment.tk` -> `E04582` (Implicit boundary capture facts retained across assignment)
+  - `thread_spawn_implicit_capture_via_binding.tk` -> `E04582` (Implicit boundary capture prohibited when closure bound to variable)
+  - `thread_spawn_non_send_capture.tk` -> `E0477` (Non-`@Send` capture across thread boundary prohibited)
+- Origin Guarding (`ShapeDecl::IsCompilerSynthesized`): Fixed P1 classification bug where ordinary user-defined shapes with a `__Closure_` name prefix were misclassified as compiler-synthesized closures, losing user-defined Drop or triggering `E04661: ContradictoryFacts`. Guards in `Sema::hasDrop`, `queryExplicitCedeStage0OwnershipReadOnly`, and `queryExplicitCedeStage0CopyProof` strictly require `ShapeDecl::IsCompilerSynthesized && IsClosureInvoke`. Verified by user-shape drop/copy fixtures (`closure_name_spoof_drop.tk`, `closure_name_spoof_copy_rejected.tk`).
+- Gate wiring & paired legal controls: All five legal controls run in `tools/scripts/test_std_thread_handoff.py` under CTest `toka_public_thread_responsibility_subset` with real thread spawn, join, result checks, and exact-once drop assertions.
+- Manifest update: `tests/semantics/rc13_negative_purposes/manifest.json` updated with all 5 cases marked `repaired` (29/31 total repaired, verified by `toka_rc13_negative_purposes`).
+
+Verification evidence:
+- Independent CTest gate suite: **6/6 Passed (163.21 s)** (`toka_rc13_negative_purposes`, `toka_channel_storage`, `toka_public_thread_responsibility_subset`, `toka_native_sync_managed_slot`, `toka_for_alias_chain`, `toka_slab_chain`).
+- Full FAIL Suite: **478/479 passed** (1 restored from previous, 5 recovered thread cases; only `smart_ptr_from_stack.tk` remaining).
+- Historical full PASS (433/457) and full CTest (112/114) baselines remain recorded without backfilling. Full 3-suite rerun deferred to the next fixed checkpoint.
+- The two CTest blockers (`toka_stage1_indirect_parameter_cede`, `toka_stage1_return_matrix`), E activation, push, and release remain paused.
+- The unrelated RFC diff (`docs/semantic_core/whole_value_generics_and_checked_dependency_elision_rfc.md`) remains untouched (SHA-256 `1b73b0fc...`).
+
+
