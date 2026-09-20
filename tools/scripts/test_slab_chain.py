@@ -89,53 +89,64 @@ def check_positive(tokac, source, env, tmp_dir, expected_output=None):
             f"LLVM-IR emission failed for {source.name}:\n{ll_res.stderr}")
 
 
-def trace_root(val, lines, params, visited=None, ops=None):
+def trace_root(val, lines, params, visited=None, ops=None, line_idx=None):
     if visited is None:
         visited = set()
     if ops is None:
         ops = []
     if val in visited:
-        return ('cycle', val)
+        return ('cycle', val, float('inf'))
     visited.add(val)
     if val in params:
-        return ('param', val)
+        return ('param', val, 0)
 
-    for i in range(len(lines) - 1, -1, -1):
+    start_i = len(lines) - 1 if line_idx is None else line_idx - 1
+    for i in range(start_i, -1, -1):
         line = lines[i].strip()
         m_def = re.match(rf'^{re.escape(val)}\s*=\s*(.+)$', line)
         if m_def:
             rhs = m_def.group(1)
             if rhs.startswith('alloca'):
-                return ('alloca', val)
+                return ('alloca', val, 0)
             m_load = re.search(r'load\s+[^,]+,\s*ptr\s+([%][a-zA-Z0-9_.]+)', rhs)
             if m_load:
                 ops.append('load')
                 ptr_var = m_load.group(1)
                 found_store = False
-                for j in range(len(lines) - 1, -1, -1):
+                for j in range(i - 1, -1, -1):
                     s_line = lines[j].strip()
                     m_store = re.search(r'store\s+[^,]+\s+([%@][a-zA-Z0-9_.]+),\s*ptr\s+' + re.escape(ptr_var), s_line)
                     if m_store:
                         stored_val = m_store.group(1)
                         found_store = True
-                        return trace_root(stored_val, lines, params, visited, ops)
+                        return trace_root(stored_val, lines, params, visited, ops, line_idx=j)
                 if not found_store:
-                    return trace_root(ptr_var, lines, params, visited, ops)
-            m_gep = re.search(r'getelementptr\s+.*ptr\s+([%][a-zA-Z0-9_.]+)', rhs)
+                    return trace_root(ptr_var, lines, params, visited, ops, line_idx=i)
+            m_gep = re.search(r'getelementptr\s+(?:inbounds\s+)?(?:nuw\s+)?(.*),\s*ptr\s+([%][a-zA-Z0-9_.]+)(.*)', rhs)
             if m_gep:
                 ops.append('gep')
-                base = m_gep.group(1)
-                return trace_root(base, lines, params, visited, ops)
+                gep_type = m_gep.group(1).strip()
+                base = m_gep.group(2)
+                indices_str = m_gep.group(3)
+                idx_tokens = re.findall(r'(?:i32|i64)\s+(-?\d+)', indices_str)
+                if all(int(x) == 0 for x in idx_tokens):
+                    add_offset = 0
+                elif gep_type == 'i8' and len(idx_tokens) == 1:
+                    add_offset = int(idx_tokens[0])
+                else:
+                    add_offset = float('inf')
+                base_root = trace_root(base, lines, params, visited, ops, line_idx=i)
+                return (base_root[0], base_root[1], base_root[2] + add_offset)
             m_cast = re.search(r'(?:inttoptr|ptrtoint|bitcast)\s+.*([%][a-zA-Z0-9_.]+)', rhs)
             if m_cast:
                 ops.append('cast')
                 base = m_cast.group(1)
-                return trace_root(base, lines, params, visited, ops)
+                return trace_root(base, lines, params, visited, ops, line_idx=i)
             m_call = re.search(r'call\s+.*@([a-zA-Z0-9_.]+)', rhs)
             if m_call:
-                return ('call', val, m_call.group(1))
-            return ('unknown_def', val, rhs)
-    return ('unknown', val)
+                return ('call', val, 0)
+            return ('unknown_def', val, float('inf'))
+    return ('unknown', val, float('inf'))
 
 
 def verify_option_reset_layout_and_protocol(ll_path):
@@ -157,7 +168,7 @@ def verify_option_reset_layout_and_protocol(ll_path):
     #    a) slab_take_raw_option is called
     #    b) tag zeroing (store i8 0) occurs after take
     #    c) no intervening user calls / drops between take and zeroing
-    #    d) store target points to the same entry/slot being taken
+    #    d) store target points to the exact same slot being taken (offset 0)
     match = re.search(r'define [^\n]+@Slab_M_[^\n]+_remove\(([^)]+)\)\s*\{', content)
     require(match is not None, "Slab remove function not found in LLVM IR")
     params = re.findall(r'[%][a-zA-Z0-9_.]+', match.group(1))
@@ -183,20 +194,32 @@ def verify_option_reset_layout_and_protocol(ll_path):
     require(len(intervening_calls) == 0,
             f"No intervening calls permitted between Option payload take and tag reset: {intervening_calls}")
 
-    take_lines = [l for l in body_lines if take_hex in l or "slab_take_raw_option" in l]
-    zero_lines = [l for l in body_lines if "store i8 0" in l]
-    take_arg_m = re.search(r'call\s+.*@.*\(\s*ptr\s+([%][a-zA-Z0-9_.]+)', take_lines[0])
-    require(take_arg_m, "could not extract argument to slab_take_raw_option")
-    take_arg = take_arg_m.group(1)
+    take_idx = None
+    take_arg = None
+    for idx, l in enumerate(body_lines):
+        if take_hex in l or "slab_take_raw_option" in l:
+            m = re.search(r'call\s+.*@.*\(\s*ptr\s+([%][a-zA-Z0-9_.]+)', l)
+            if m:
+                take_idx = idx
+                take_arg = m.group(1)
+                break
+    require(take_arg is not None, "could not extract argument to slab_take_raw_option")
 
-    zero_dest_m = re.search(r'store\s+i8\s+0,\s*ptr\s+([%][a-zA-Z0-9_.]+)', zero_lines[0])
-    require(zero_dest_m, "could not extract target of store i8 0")
-    zero_dest = zero_dest_m.group(1)
+    zero_idx = None
+    zero_dest = None
+    for idx, l in enumerate(body_lines):
+        if "store i8 0" in l:
+            m = re.search(r'store\s+i8\s+0,\s*ptr\s+([%][a-zA-Z0-9_.]+)', l)
+            if m:
+                zero_idx = idx
+                zero_dest = m.group(1)
+                break
+    require(zero_dest is not None, "could not extract target of store i8 0")
 
-    root_take = trace_root(take_arg, body_lines, params)
-    root_zero = trace_root(zero_dest, body_lines, params)
-    require(root_take is not None and root_take == root_zero,
-            f"zero store target ({root_zero}) must trace to the same slot address as taken Option ({root_take})")
+    root_take = trace_root(take_arg, body_lines, params, line_idx=take_idx)
+    root_zero = trace_root(zero_dest, body_lines, params, line_idx=zero_idx)
+    require(root_take == root_zero and root_take[2] == 0,
+            f"zero store target ({root_zero}) must trace to the exact same slot address (offset 0) as taken Option ({root_take})")
 
 
 def verify_generic_reference_pattern_ir(ll_path):
@@ -219,22 +242,29 @@ def verify_generic_reference_pattern_ir(ll_path):
             "borrow_value must load generic view referent from %value")
     require("ret ptr %generic.outer_view" in body,
             "borrow_value must return %generic.outer_view referent pointer")
-    require("\ncase_Some:" in body or "case_Some:" in body, "borrow_value must have case_Some pattern branch")
 
-    # In case_Some, verify %value stores the payload address projected from %source
-    some_idx = body.rfind("case_Some:")
-    require(some_idx != -1, "case_Some must exist")
-    next_bb = body.find("br label %arm_body", some_idx)
-    require(next_bb != -1, "case_Some must branch to arm_body")
-    some_block = body[some_idx:next_bb]
-    require("getelementptr" in some_block, "case_Some must project payload address via GEP")
+    # In case_Some, verify %value stores the payload address projected from %source,
+    # with exactly one store to %value in the function (checked unique-store / no-overwrite pattern)
+    stores_to_value = []
+    for idx, l in enumerate(body_lines):
+        m_s = re.search(r'store\s+ptr\s+([%][a-zA-Z0-9_.]+),\s*ptr\s+%value\b', l)
+        if m_s:
+            stores_to_value.append((idx, m_s.group(1), l.strip()))
+    require(len(stores_to_value) == 1,
+            f"expected exactly one store to %value without overwrites, found {len(stores_to_value)}: {stores_to_value}")
 
-    m_store = re.search(r'store\s+ptr\s+([%][a-zA-Z0-9_.]+),\s*ptr\s+%value', some_block)
-    require(m_store, "case_Some must store projected payload address into %value")
-    stored_val = m_store.group(1)
+    store_idx, stored_val, store_line = stores_to_value[0]
+
+    curr_label = None
+    for j in range(store_idx, -1, -1):
+        lbl_m = re.match(r'^([a-zA-Z0-9_.]+):', body_lines[j].strip())
+        if lbl_m:
+            curr_label = lbl_m.group(1)
+            break
+    require(curr_label == "case_Some", f"store to %value must be located in case_Some, found in {curr_label}")
 
     ops = []
-    root = trace_root(stored_val, body_lines, params, ops=ops)
+    root = trace_root(stored_val, body_lines, params, ops=ops, line_idx=store_idx)
     require(root[0] == "param", f"stored payload address must trace to function parameter, got {root}")
     require("gep" in ops, "payload address must be projected from parameter via getelementptr")
 
@@ -332,6 +362,26 @@ start:
             neg_target_passed = True
         require(neg_target_passed, "verify_option_reset_layout_and_protocol must reject unrelated zero store target")
 
+        wrong_offset_ll = tmp_dir / "same_root_wrong_offset.ll"
+        wrong_offset_ll.write_text("""
+%Option_M_actual = type { i8 }
+%SlabEntry_M_test = type { %Option_M_actual, i32, i64 }
+declare void @slab_take_raw_option(ptr)
+define void @Slab_M_test_remove(ptr %entry) {
+start:
+  %wrong.field = getelementptr i8, ptr %entry, i64 8
+  call void @slab_take_raw_option(ptr %entry)
+  store i8 0, ptr %wrong.field
+  ret void
+}
+""")
+        neg_offset_passed = False
+        try:
+            verify_option_reset_layout_and_protocol(wrong_offset_ll)
+        except RuntimeError:
+            neg_offset_passed = True
+        require(neg_offset_passed, "verify_option_reset_layout_and_protocol must reject non-zero offset zero store target")
+
     # Part 4: Generic reference pattern IR & referent address verification
     with tempfile.TemporaryDirectory(prefix="toka-slab-refpat-") as tmp:
         tmp_dir = pathlib.Path(tmp)
@@ -365,6 +415,30 @@ arm_body:
         except RuntimeError:
             neg_ref_passed = True
         require(neg_ref_passed, "verify_generic_reference_pattern_ir must reject local alloca origin")
+
+        overwritten_ref_ll = tmp_dir / "overwritten_reference.ll"
+        overwritten_ref_ll.write_text("""
+define ptr @borrow_value_test(ptr %source) {
+entry:
+  %value = alloca ptr
+  %local = alloca i32
+  br label %case_Some
+case_Some:
+  %source.gep = getelementptr i32, ptr %source, i64 0
+  store ptr %source.gep, ptr %value
+  br label %arm_body
+arm_body:
+  store ptr %local, ptr %value
+  %generic.outer_view = load ptr, ptr %value
+  ret ptr %generic.outer_view
+}
+""")
+        neg_overwritten_passed = False
+        try:
+            verify_generic_reference_pattern_ir(overwritten_ref_ll)
+        except RuntimeError:
+            neg_overwritten_passed = True
+        require(neg_overwritten_passed, "verify_generic_reference_pattern_ir must reject overwritten reference store")
 
     # Part 5: Existing repository Slab regression verification
     with tempfile.TemporaryDirectory(prefix="toka-slab-repo-") as tmp:
