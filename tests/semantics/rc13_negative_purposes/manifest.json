@@ -395,10 +395,29 @@
     },
     {
       "case": "smart_ptr_from_stack.tk",
-      "status": "blocked",
-      "category": "target-not-qualified",
-      "target_codes": [],
-      "reason": "First stack-to-unique expression yields ContradictoryFacts; do not freeze this internal inconsistency as the intended ownership diagnostic."
+      "status": "repaired",
+      "category": "stack-smart-pointer-prohibition",
+      "target_codes": [
+        "E0449"
+      ],
+      "first_message": "Smart pointer sigil '94' cannot be applied to stack variable; use 'new' or assign from existing smart pointer",
+      "target_sites": [
+        {
+          "code": "E0449",
+          "file": "tests/fail/smart_ptr_from_stack.tk",
+          "line": 8
+        },
+        {
+          "code": "E0459",
+          "file": "tests/fail/smart_ptr_from_stack.tk",
+          "line": 12
+        },
+        {
+          "code": "E0449",
+          "file": "tests/fail/smart_ptr_from_stack.tk",
+          "line": 19
+        }
+      ]
     },
     {
       "case": "sync_guard_non_send.tk",

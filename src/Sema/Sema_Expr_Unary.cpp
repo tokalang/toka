@@ -311,6 +311,8 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
         if (rhsType && rhsType->isUniquePtr()) {
           return rhsType->withAttributes(handleViewWritable, rhsType->IsNullable, rhsType->IsBlocked);
         }
+        if (!m_InIntermediatePath)
+          error(Unary, DiagID::ERR_SMART_PTR_FROM_STACK, (char)'^');
         auto res = std::make_shared<toka::UniquePointerType>(rhsType);
         res->IsWritable = handleViewWritable;
         res->IsNullable = false;
@@ -339,6 +341,8 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
         if (rhsType && rhsType->isSharedPtr()) {
           return rhsType->withAttributes(handleViewWritable, rhsType->IsNullable, rhsType->IsBlocked);
         }
+        if (!m_InIntermediatePath)
+          error(Unary, DiagID::ERR_SMART_PTR_FROM_STACK, (char)'~');
         auto res = std::make_shared<toka::SharedPointerType>(rhsType);
         res->IsWritable = handleViewWritable;
         res->IsNullable = false;
@@ -522,6 +526,8 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     if (inner && inner->isUniquePtr()) {
       return inner->withAttributes(Unary->IsRebindable || (m_IsAssignmentTarget && inner->IsWritable), false);
     }
+    if (!m_InIntermediatePath)
+      error(Unary, DiagID::ERR_SMART_PTR_FROM_STACK, (char)'^');
     auto res = std::make_shared<toka::UniquePointerType>(inner);
     res->IsWritable = Unary->IsRebindable || (m_IsAssignmentTarget && inner->IsWritable);
     res->IsNullable = false;
@@ -547,6 +553,8 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     if (inner && inner->isSharedPtr()) {
       return inner->withAttributes(Unary->IsRebindable || (m_IsAssignmentTarget && inner->IsWritable), false);
     }
+    if (!m_InIntermediatePath)
+      error(Unary, DiagID::ERR_SMART_PTR_FROM_STACK, (char)'~');
     auto res = std::make_shared<toka::SharedPointerType>(inner);
     res->IsWritable = Unary->IsRebindable || (m_IsAssignmentTarget && inner->IsWritable);
     res->IsNullable = false;

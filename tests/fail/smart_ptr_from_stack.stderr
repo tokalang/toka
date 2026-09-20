@@ -1,3 +1,8 @@
+error[E0449]: Smart pointer sigil '94' cannot be applied to stack variable; use 'new' or assign from existing smart pointer
+ --> tests/fail/smart_ptr_from_stack.tk:8:16
+   |
+ 8 |     auto ^p1 = ^a
+   |                ^
 error[E0459]: Implicit heap-boxing via pointer initialization is prohibited. Use explicit allocation like 'new i32(...)' stringently
  --> tests/fail/smart_ptr_from_stack.tk:12:11
     |
@@ -8,3 +13,4 @@ error[E0449]: Smart pointer sigil '94' cannot be applied to stack variable; use 
     |
  19 |     auto ^p4 = (a as Addr) as ^i32
     |                            ^
+

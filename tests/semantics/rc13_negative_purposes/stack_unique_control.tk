@@ -1,0 +1,73 @@
+// Paired legal positive control for smart_ptr_from_stack.tk
+// Demonstrates that stack variables require explicit 'new' allocation
+// to produce unique pointers, while existing unique pointers can be moved.
+
+import core/traits::@Encap
+
+auto drops# = 0:i32
+
+shape Resource(val: i32)
+impl Resource@Encap {
+    pub val
+    fn drop(self#) {
+        drops += 1
+    }
+}
+
+shape Point(x: i32, y: i32)
+
+fn take_unique(^p: i32) -> i32 {
+    return p
+}
+
+fn forward_unique(cede ^p: i32) -> ^i32 {
+    return ^p
+}
+
+fn main() -> i32 {
+    auto a = 32
+
+    // 1. Legal: Explicit heap allocation with 'new' from stack value
+    auto ^p1# = new i32(a)
+    assert(p1 == 32, "explicit new from stack variable")
+
+    // Mutating heap pointee does not affect stack variable
+    p1 = 64
+    assert(p1 == 64, "heap unique mutation")
+    assert(a == 32, "stack variable unchanged after heap mutation")
+
+    // 2. Legal: Raw pointer from stack variable
+    auto *p3 = *a
+    unsafe {
+        assert(p3 == 32, "raw pointer from stack variable")
+    }
+
+    // 3. Legal: Move of an existing unique pointer
+    auto ^p2 = ^p1
+    assert(p2 == 64, "move from existing unique pointer")
+
+    // 4. Legal: Passing and returning unique pointer via functions
+    auto ^p4 = new i32(100)
+    assert(take_unique(^p4) == 100, "pass unique pointer to function")
+
+    auto ^p5 = new i32(200)
+    auto ^p6 = forward_unique(cede ^p5)
+    assert(p6 == 200, "forward unique pointer via return")
+
+    // 5. Legal: Aggregate heap allocation with new and independence from stack
+    auto pt_stack = Point(x = 10, y = 20)
+    auto ^pt_heap# = new Point(x = pt_stack.x, y = pt_stack.y)
+    pt_heap.x = 30
+    assert(pt_heap.x == 30 && pt_heap.y == 20, "heap point mutation")
+    assert(pt_stack.x == 10, "stack point unchanged")
+
+    // 6. Legal: Custom droppable resource allocated on heap via new
+    {
+        auto item = 42
+        auto ^r = new Resource(val = item)
+        assert(r.val == 42, "heap resource allocation from stack value")
+    }
+    assert(drops == 1, "heap resource dropped exactly once on scope exit")
+
+    return 0
+}
