@@ -160,14 +160,32 @@ fn damaged(flag: bool) -> async Vec<u8> {
 }
 fn main() -> i32 { auto result = block_on(damaged(false)); return 0 }
 ''', 'E04661')
-gate.CASES['discarded_intermediate_requirement'] = (PREFIX + '''
-fn inspect_result(cede value: Vec<u8>) -> i32 {
-    auto result = block_on(relay(cede value))
-    return 7
+gate.CASES['local_use_is_not_qualification'] = (PREFIX + '''
+fn inspect_value(cede value: Vec<u8>) -> usize {
+    auto count = value.len()
+    cede value
+    return count
 }
 fn main() -> i32 {
     auto raw = Vec<u8>::from_raw(null, 0:usize, 0:usize)
-    auto number = inspect_result(cede raw)
+    auto number = inspect_value(cede raw)
+    assert(number == 0:usize, "local use does not need an independence witness")
+    return 0
+}
+''', None)
+gate.CASES['descriptor_alias_control'] = (PREFIX + '''
+fn main() -> i32 {
+    auto value# = Vec<u8>::new()
+    { auto &descriptor# = &value; descriptor.cap = 0:usize }
+    assert(value.len() == 0:usize, "legal descriptor write, not an ownership proof")
+    return 0
+}
+''', None)
+gate.CASES['descriptor_alias_pollution'] = (PREFIX + '''
+fn main() -> i32 {
+    auto value# = Vec<u8>::new()
+    { auto &descriptor# = &value; descriptor.cap = 0:usize }
+    auto result = block_on(relay(cede value))
     return 0
 }
 ''', 'E04661')

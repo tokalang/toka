@@ -850,7 +850,6 @@ Sema::AnalysisState Sema::captureAnalysisState() {
   state.TaskResults = m_TaskResults;
   state.ByteBuffers = m_ByteBuffers;
   for (const auto &frame : m_TaskResultFrames) state.TaskRequirements[frame.Function] = frame.RequiredTasks;
-  for (const auto &frame : m_TaskResultFrames) state.TaskIndependentRequirements[frame.Function] = frame.RequiredIndependentParameters;
   state.EnumResults = m_EnumResults;
   state.RawSlotDependencies = m_RawSlotDependencies;
   state.NullStorageBindings = m_NullStorageBindings;
@@ -928,7 +927,6 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   auto taskResults = states.front().TaskResults;
   auto byteBuffers = states.front().ByteBuffers;
   auto taskRequirements = states.front().TaskRequirements;
-  auto taskIndependentRequirements = states.front().TaskIndependentRequirements;
   auto enumResults = states.front().EnumResults;
   auto rawSlotDependencies = states.front().RawSlotDependencies;
   auto nullStorageBindings = states.front().NullStorageBindings;
@@ -1067,15 +1065,9 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   m_IndependentValues = std::move(independentValues);
   m_TaskResults = std::move(taskResults);
   m_ByteBuffers = std::move(byteBuffers);
-  for (const auto &state : states)
-    for (const auto &[function, requirements] : state.TaskIndependentRequirements)
-      taskIndependentRequirements[function].insert(requirements.begin(), requirements.end());
   for (auto &frame : m_TaskResultFrames)
     if (auto found = taskRequirements.find(frame.Function); found != taskRequirements.end())
       frame.RequiredTasks = found->second;
-  for (auto &frame : m_TaskResultFrames)
-    if (auto found = taskIndependentRequirements.find(frame.Function); found != taskIndependentRequirements.end())
-      frame.RequiredIndependentParameters = found->second;
   m_EnumResults = std::move(enumResults);
   m_RawSlotDependencies = std::move(rawSlotDependencies);
   m_NullStorageBindings = std::move(nullStorageBindings);

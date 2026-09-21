@@ -811,7 +811,6 @@ private:
     std::map<uint64_t, std::shared_ptr<const ByteBufferFact>> ByteBuffers;
     std::map<uint64_t, std::shared_ptr<const TaskResultFact>> TaskResults;
     std::map<FunctionDecl *, std::set<size_t>> TaskRequirements;
-    std::map<FunctionDecl *, std::set<size_t>> TaskIndependentRequirements;
     std::map<uint64_t, std::shared_ptr<const ResultIndependenceFact>> IndependentValues;
     std::map<AccessPath, RawSlotDependencyEvidencePtr> RawSlotDependencies;
     std::map<uint64_t, std::shared_ptr<Type>> NullStorageBindings;
@@ -1205,7 +1204,6 @@ private:
     std::map<std::string, std::vector<SourceLocation>> FieldStaticStorage;
     std::set<size_t> TaskParameters, IndependentParameters;
     std::set<size_t> RequiredTasks;
-    std::set<size_t> RequiredIndependentParameters;
     std::shared_ptr<const ByteBufferFact> Bytes;
   };
   std::map<uint64_t, std::shared_ptr<const TaskResultFact>> m_TaskResults;

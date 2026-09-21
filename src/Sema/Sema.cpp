@@ -5875,8 +5875,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   const auto returnedTaskType = Fn->Effect == EffectKind::None ? taskResultType(Fn->ResolvedReturnType) : nullptr;
   collectTaskReturn |= returnedTaskType != nullptr;
   for (const auto &argument : Fn->Args)
-    collectTaskReturn |= taskResultType(argument.ResolvedType) != nullptr ||
-                         (argument.IsCeded && containsByteBuffer(argument.ResolvedType));
+    collectTaskReturn |= taskResultType(argument.ResolvedType) != nullptr;
   auto taskLexical = DeclarationLexicalScopes.find(Fn->TemplateOrigin ? Fn->TemplateOrigin : Fn);
   const bool taskSourceVisible = taskLexical != DeclarationLexicalScopes.end() && taskLexical->second &&
       taskLexical->second->SourceModule && !taskLexical->second->SourceModule->IsInterface;

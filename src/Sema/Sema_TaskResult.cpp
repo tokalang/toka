@@ -140,10 +140,8 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
   auto publish = [&](std::shared_ptr<const TaskResultFact> proof) {
     if (!proof->TaskCarrier) {
       if (!m_TaskResultFrames.empty() && m_TaskResultFrames.back().Function == CurrentFunction &&
-          m_TaskResultFrames.back().ClosureDepth == m_CallableReturnClosureDepth) {
+          m_TaskResultFrames.back().ClosureDepth == m_CallableReturnClosureDepth)
         m_TaskResultFrames.back().RequiredTasks.insert(proof->TaskParameters.begin(), proof->TaskParameters.end());
-        m_TaskResultFrames.back().RequiredIndependentParameters.insert(proof->IndependentParameters.begin(), proof->IndependentParameters.end());
-      }
       // This is the checked result relation, not the task's execution/capture
       // dependency set. PAL loans and task cleanup state are not changed.
       m_LastLifeDependencies.clear();
@@ -189,9 +187,7 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
   if (!function || !function->Body || function->IsClosureInvoke) return;
   const bool async = function->Effect == EffectKind::Async;
   bool projectsTask = false;
-  for (const auto &argument : function->Args)
-    projectsTask |= taskResultType(argument.ResolvedType) != nullptr ||
-                    (argument.IsCeded && containsByteBuffer(argument.ResolvedType));
+  for (const auto &argument : function->Args) projectsTask |= taskResultType(argument.ResolvedType) != nullptr;
   if (!async && !projectsTask && !taskResultType(source->ResolvedType)) return;
   prepareCallableFactory(function);
   auto found = m_TaskResultSummaries.find(function);
@@ -242,16 +238,6 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
   proof->Origin = summary.Origin;
   proof->StaticStorage = summary.StaticStorage;
   proof->FieldStaticStorage = summary.FieldStaticStorage;
-  std::set<size_t> independentRequirements;
-  for (auto index : summary.RequiredIndependentParameters) {
-    auto actual = argumentIndependence(index);
-    if (!actual || index >= function->Args.size() ||
-        !sameResultType(actual->ValueType, function->Args[index].ResolvedType)) {
-      error(source, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED, "ByteOwnerPrerequisiteUnproven");
-      return;
-    }
-    independentRequirements.insert(actual->RequiredArguments.begin(), actual->RequiredArguments.end());
-  }
   if (!summary.TaskParameters.empty()) {
     bool first = true;
     for (auto index : summary.TaskParameters) {
@@ -318,7 +304,6 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
       proof->Origin = TaskResultFact::Kind::Static;
     }
   }
-  proof->IndependentParameters.insert(independentRequirements.begin(), independentRequirements.end());
   if (summary.Bytes && proof->Origin == TaskResultFact::Kind::Independent) {
     auto bytes = std::make_shared<ByteBufferFact>();
     bytes->Scope = CurrentFunction; bytes->ValueType = result;

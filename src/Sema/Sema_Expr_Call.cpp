@@ -5547,9 +5547,6 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   if (normalSemaValidated) {
     auto task = taskResultFact(exactValue);
     auto bytes = byteBufferFact(exactValue);
-    if (bytes && !m_TaskResultFrames.empty() && m_TaskResultFrames.back().Function == CurrentFunction &&
-        m_TaskResultFrames.back().ClosureDepth == m_CallableReturnClosureDepth)
-      m_TaskResultFrames.back().RequiredIndependentParameters.insert(bytes->RequiredArguments.begin(), bytes->RequiredArguments.end());
     if (bytes || (task && !task->TaskCarrier && task->Origin == TaskResultFact::Kind::Independent)) {
       facts.Dependency = TransferDependencyKind::None;
       facts.DependencyFactsComplete = true;
@@ -9776,8 +9773,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   const bool isGenericDirectCall =
       Fn && (!Fn->GenericParams.empty() || Fn->TemplateOrigin);
   const bool isTaskResultCall = m_EnableStage1ExplicitCallerCede && Fn && std::any_of(Fn->Args.begin(), Fn->Args.end(),
-      [&](const auto &argument) { return taskResultType(argument.ResolvedType) != nullptr ||
-          (argument.IsCeded && containsByteBuffer(argument.ResolvedType)); });
+      [&](const auto &argument) { return taskResultType(argument.ResolvedType) != nullptr; });
   if (!directArgumentRollback)
     directArgumentRollback.emplace(*this, Call->Args, isGenericDirectCall || isTaskResultCall);
 
