@@ -848,7 +848,9 @@ Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.IndependentValues = m_IndependentValues;
   state.TaskResults = m_TaskResults;
+  state.ByteBuffers = m_ByteBuffers;
   for (const auto &frame : m_TaskResultFrames) state.TaskRequirements[frame.Function] = frame.RequiredTasks;
+  for (const auto &frame : m_TaskResultFrames) state.TaskIndependentRequirements[frame.Function] = frame.RequiredIndependentParameters;
   state.EnumResults = m_EnumResults;
   state.RawSlotDependencies = m_RawSlotDependencies;
   state.NullStorageBindings = m_NullStorageBindings;
@@ -924,7 +926,9 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   auto callableEnvironments = states.front().CallableEnvironments;
   auto independentValues = states.front().IndependentValues;
   auto taskResults = states.front().TaskResults;
+  auto byteBuffers = states.front().ByteBuffers;
   auto taskRequirements = states.front().TaskRequirements;
+  auto taskIndependentRequirements = states.front().TaskIndependentRequirements;
   auto enumResults = states.front().EnumResults;
   auto rawSlotDependencies = states.front().RawSlotDependencies;
   auto nullStorageBindings = states.front().NullStorageBindings;
@@ -1035,6 +1039,12 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
         it = independentValues.erase(it);
       else ++it;
     }
+    for (auto it = byteBuffers.begin(); it != byteBuffers.end();) {
+      auto other = state.ByteBuffers.find(it->first);
+      auto joined = other == state.ByteBuffers.end() ? nullptr : joinByteBufferFacts(it->second, other->second);
+      if (!joined) it = byteBuffers.erase(it);
+      else { it->second = std::move(joined); ++it; }
+    }
     for (auto it = taskResults.begin(); it != taskResults.end();) {
       auto other = state.TaskResults.find(it->first);
       if (other == state.TaskResults.end() || it->second != other->second)
@@ -1056,9 +1066,16 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   m_CallableEnvironments = std::move(callableEnvironments);
   m_IndependentValues = std::move(independentValues);
   m_TaskResults = std::move(taskResults);
+  m_ByteBuffers = std::move(byteBuffers);
+  for (const auto &state : states)
+    for (const auto &[function, requirements] : state.TaskIndependentRequirements)
+      taskIndependentRequirements[function].insert(requirements.begin(), requirements.end());
   for (auto &frame : m_TaskResultFrames)
     if (auto found = taskRequirements.find(frame.Function); found != taskRequirements.end())
       frame.RequiredTasks = found->second;
+  for (auto &frame : m_TaskResultFrames)
+    if (auto found = taskIndependentRequirements.find(frame.Function); found != taskIndependentRequirements.end())
+      frame.RequiredIndependentParameters = found->second;
   m_EnumResults = std::move(enumResults);
   m_RawSlotDependencies = std::move(rawSlotDependencies);
   m_NullStorageBindings = std::move(nullStorageBindings);
@@ -1289,6 +1306,8 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     return toka::Type::fromString("()");
   ActiveNodeRAII Active(E);
   E->TaskResult.reset();
+  E->ByteBuffer.reset();
+  E->ByteBufferRecorded = false;
   std::optional<CallArgumentRollbackGuard> taskWaitRollback;
   if (m_EnableStage1ExplicitCallerCede && dynamic_cast<WaitExpr *>(E)) {
     const std::vector<std::unique_ptr<Expr>> noArguments;
@@ -1387,6 +1406,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       expressionRecords.begin() + std::min(expressionDiagnosticStart, expressionRecords.size()),
       expressionRecords.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
   if (expressionSucceeded && T && !T->isUnknown()) recordGenericValueContract(E);
+  recordByteBufferExpression(E, expressionSucceeded);
   recordTaskResultExpression(E, expressionSucceeded);
   recordEnumExpression(E, expressionSucceeded);
   if (auto *cede = dynamic_cast<CedeExpr *>(E)) {
@@ -3105,6 +3125,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
     auto rawSlotsBeforeIf = m_RawSlotDependencies;
     auto nullsBeforeIf = m_NullStorageBindings;
+    auto bytesBeforeIf = m_ByteBuffers;
+    auto tasksBeforeIf = m_TaskResults;
 
     if (narrowsInitState)
       applyInitStateNarrowing(PlaceState::Never);
@@ -3121,6 +3143,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto rawSlotsElse = rawSlotsBeforeIf;
     auto nullsThen = m_NullStorageBindings;
     auto nullsElse = nullsBeforeIf;
+    auto bytesThen = m_ByteBuffers;
+    auto bytesElse = bytesBeforeIf;
+    auto tasksThen = m_TaskResults;
+    auto tasksElse = tasksBeforeIf;
     auto palThen = PALCheckerState.snapshot();
 
     if (narrowsInitState)
@@ -3146,6 +3172,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
       m_RawSlotDependencies = rawSlotsBeforeIf;
       m_NullStorageBindings = nullsBeforeIf;
+      m_ByteBuffers = bytesBeforeIf;
+      m_TaskResults = tasksBeforeIf;
 
       m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
       if (narrowsInitState)
@@ -3161,6 +3189,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       auto referencesElse = captureVisibleReferenceTargets(CurrentScope);
       rawSlotsElse = m_RawSlotDependencies;
       nullsElse = m_NullStorageBindings;
+      bytesElse = m_ByteBuffers;
+      tasksElse = m_TaskResults;
       auto exactPlacesElse = captureVisibleExactPlaceFacts(CurrentScope);
       auto palElse = PALCheckerState.snapshot();
       m_ControlFlowStack.pop_back();
@@ -3302,6 +3332,29 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     else if (elseReturns) m_RawSlotDependencies = rawSlotsThen;
     else {
       m_RawSlotDependencies = joinRawSlots(rawSlotsThen, rawSlotsElse);
+    }
+    if (thenReturns && elseReturns) m_ByteBuffers = bytesBeforeIf;
+    else if (thenReturns) m_ByteBuffers = bytesElse;
+    else if (elseReturns) m_ByteBuffers = bytesThen;
+    else {
+      m_ByteBuffers = bytesThen;
+      for (auto it = m_ByteBuffers.begin(); it != m_ByteBuffers.end();) {
+        auto other = bytesElse.find(it->first);
+        auto joined = other == bytesElse.end() ? nullptr : joinByteBufferFacts(it->second, other->second);
+        if (!joined) it = m_ByteBuffers.erase(it);
+        else { it->second = std::move(joined); ++it; }
+      }
+    }
+    if (thenReturns && elseReturns) m_TaskResults = tasksBeforeIf;
+    else if (thenReturns) m_TaskResults = tasksElse;
+    else if (elseReturns) m_TaskResults = tasksThen;
+    else {
+      m_TaskResults = tasksThen;
+      for (auto it = m_TaskResults.begin(); it != m_TaskResults.end();) {
+        auto other = tasksElse.find(it->first);
+        if (other == tasksElse.end() || it->second != other->second) it = m_TaskResults.erase(it);
+        else ++it;
+      }
     }
     if (thenReturns && elseReturns) m_NullStorageBindings = nullsBeforeIf;
     else if (thenReturns) m_NullStorageBindings = nullsElse;
@@ -4918,6 +4971,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       const bool valid = std::none_of(DiagnosticEngine::records().begin() + taskMethodStart,
           DiagnosticEngine::records().end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
       const auto beforeProof = DiagnosticEngine::records().size();
+      recordByteBufferExpression(Met, valid);
       recordTaskResultExpression(Met, valid);
       if (std::any_of(DiagnosticEngine::records().begin() + beforeProof,
           DiagnosticEngine::records().end(), [](const auto &record) { return record.Level == DiagLevel::Error; }))
@@ -6681,8 +6735,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     PALChecker mergedPAL = palBefore;
     auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
     ReferenceTargets mergedReferences;
+    auto bytesBeforeMatch = m_ByteBuffers;
+    auto tasksBeforeMatch = m_TaskResults;
+    decltype(m_ByteBuffers) mergedBytes;
+    decltype(m_TaskResults) mergedTasks;
+    auto targetBytes = byteBufferFact(me->Target.get());
 
     auto restoreMatchEntryState = [&]() {
+      m_ByteBuffers = bytesBeforeMatch;
+      m_TaskResults = tasksBeforeMatch;
       restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
       for (auto &pair : masksBefore) {
         CurrentScope->Symbols[pair.first].InitMask = pair.second;
@@ -6733,8 +6794,19 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
       arm->Pat->GenericContract = queryGenericValueContract(me->Target.get());
       arm->Pat->MatchedValueType = me->Target->ResolvedType;
+      const auto patternDiagnostics = DiagnosticEngine::records().size();
       checkPattern(arm->Pat.get(), targetType, targetCapability, targetPath,
                    targetAccessPath, me->TransfersPayloadOwnership);
+      if (targetBytes && me->TransfersPayloadOwnership &&
+          std::none_of(DiagnosticEngine::records().begin() + patternDiagnostics,
+                       DiagnosticEngine::records().end(), [](const auto &record) { return record.Level == DiagLevel::Error; })) {
+        for (auto &[name, binding] : CurrentScope->Symbols) {
+          if (binding.IsPlaceAlias || !containsByteBuffer(binding.TypeObj)) continue;
+          auto selected = std::make_shared<ByteBufferFact>(*targetBytes);
+          selected->ValueType = binding.TypeObj; selected->Fields.clear();
+          m_ByteBuffers[binding.SymbolID] = std::move(selected);
+        }
+      }
       if (arm->Guard) {
         auto guardTypeObj = checkExpr(arm->Guard.get());
         if (!arm->Guard->ResolvedType->isBoolean()) {
@@ -6769,6 +6841,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             mergedExactPlaces[pair.first] = pair.second.ExactPlace;
           }
           mergedReferences = captureVisibleReferenceTargets(CurrentScope);
+          mergedBytes = m_ByteBuffers;
+          mergedTasks = m_TaskResults;
           mergedPAL = PALCheckerState.snapshot();
           hasReachableArm = true;
         } else {
@@ -6792,6 +6866,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           }
 
           PALChecker nextMerged = mergedPAL;
+          for (auto it = mergedBytes.begin(); it != mergedBytes.end();) {
+            auto other = m_ByteBuffers.find(it->first);
+            auto joined = other == m_ByteBuffers.end() ? nullptr : joinByteBufferFacts(it->second, other->second);
+            if (!joined) it = mergedBytes.erase(it);
+            else { it->second = std::move(joined); ++it; }
+          }
+          for (auto it = mergedTasks.begin(); it != mergedTasks.end();) {
+            auto other = m_TaskResults.find(it->first);
+            if (other == m_TaskResults.end() || it->second != other->second) it = mergedTasks.erase(it);
+            else ++it;
+          }
           mergedReferences = joinReferenceTargets(mergedReferences,
               captureVisibleReferenceTargets(CurrentScope));
           nextMerged.mergeBranches(palBefore, mergedPAL, true,
@@ -6814,6 +6899,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     if (hasReachableArm) {
+      m_ByteBuffers = std::move(mergedBytes);
+      m_TaskResults = std::move(mergedTasks);
       restoreVisibleReferenceTargets(CurrentScope, mergedReferences);
       for (auto &pair : CurrentScope->Symbols) {
         if (mergedMasks.count(pair.first))

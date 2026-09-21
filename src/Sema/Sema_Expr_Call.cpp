@@ -3560,6 +3560,7 @@ Sema::makeExplicitCedeStage0NonCallGroupIdentity(ASTNode *site,
 }
 
 void Sema::invalidateReturnSourceProof(Expr *expression, bool unknown) {
+  invalidateByteBuffer(expression);
   auto proofPath = makeAccessPath(expression);
   if (!proofPath.RootID) m_TaskResults.clear();
   else {
@@ -4512,6 +4513,13 @@ void Sema::prepareResultIndependence(Expr *source) {
 }
 
 std::shared_ptr<const ResultIndependenceFact> Sema::resultIndependence(Expr *source) {
+  if (auto bytes = byteBufferFact(source)) {
+    auto result = std::make_shared<ResultIndependenceFact>();
+    result->Scope = CurrentFunction; result->ValueType = source->ResolvedType;
+    result->RequiredArguments = bytes->RequiredArguments;
+    result->Bytes = std::move(bytes);
+    return result;
+  }
   if (!source || !source->ResolvedType || !source->ResolvedType->isUniquePtr()) return {};
   if (auto task = taskResultFact(source); task && !task->TaskCarrier &&
       task->Origin == TaskResultFact::Kind::Independent) {
@@ -5068,10 +5076,12 @@ Sema::Stage1BindingTransfer::~Stage1BindingTransfer() {
       auto proof = Owner.resultIndependence(variable->Init.get());
       if (proof) Owner.m_IndependentValues[binding->SymbolID] = std::move(proof);
       Owner.bindTaskResult(Owner.makeAccessPath(variable->Name), variable->Init.get());
+      Owner.bindByteBuffer(Owner.makeAccessPath(variable->Name), variable->Init.get());
     }
   }
   if (auto *assignment = dynamic_cast<BinaryExpr *>(Site)) {
     Owner.bindTaskResult(Owner.makeAccessPath(assignment->LHS.get()), assignment->RHS.get());
+    Owner.bindByteBuffer(Owner.makeAccessPath(assignment->LHS.get()), assignment->RHS.get());
     assignment->CallableAssignment = AssignmentDisposition;
     assignment->BorrowedValueReplacement = std::move(BorrowedReplacement);
   }
@@ -5536,7 +5546,11 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       destination == TransferDestination::Return || (bindingBehaviorPlan && normalSemaValidated));
   if (normalSemaValidated) {
     auto task = taskResultFact(exactValue);
-    if (task && !task->TaskCarrier && task->Origin == TaskResultFact::Kind::Independent) {
+    auto bytes = byteBufferFact(exactValue);
+    if (bytes && !m_TaskResultFrames.empty() && m_TaskResultFrames.back().Function == CurrentFunction &&
+        m_TaskResultFrames.back().ClosureDepth == m_CallableReturnClosureDepth)
+      m_TaskResultFrames.back().RequiredIndependentParameters.insert(bytes->RequiredArguments.begin(), bytes->RequiredArguments.end());
+    if (bytes || (task && !task->TaskCarrier && task->Origin == TaskResultFact::Kind::Independent)) {
       facts.Dependency = TransferDependencyKind::None;
       facts.DependencyFactsComplete = true;
       facts.ReferentPlace.reset();
@@ -9762,7 +9776,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   const bool isGenericDirectCall =
       Fn && (!Fn->GenericParams.empty() || Fn->TemplateOrigin);
   const bool isTaskResultCall = m_EnableStage1ExplicitCallerCede && Fn && std::any_of(Fn->Args.begin(), Fn->Args.end(),
-      [&](const auto &argument) { return taskResultType(argument.ResolvedType) != nullptr; });
+      [&](const auto &argument) { return taskResultType(argument.ResolvedType) != nullptr ||
+          (argument.IsCeded && containsByteBuffer(argument.ResolvedType)); });
   if (!directArgumentRollback)
     directArgumentRollback.emplace(*this, Call->Args, isGenericDirectCall || isTaskResultCall);
 
@@ -11982,6 +11997,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         std::vector<std::shared_ptr<toka::Type>>{ReturnType}));
   }
   Call->ResolvedType = completedResultType;
+  recordByteBufferExpression(Call, std::none_of(
+      DiagnosticEngine::records().begin() + taskResultDiagnosticStart,
+      DiagnosticEngine::records().end(), [](const auto &record) { return record.Level == DiagLevel::Error; }));
   recordTaskResultExpression(Call, std::none_of(
       DiagnosticEngine::records().begin() + taskResultDiagnosticStart,
       DiagnosticEngine::records().end(),

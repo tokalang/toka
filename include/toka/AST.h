@@ -37,6 +37,7 @@ namespace toka {
 
 class ASTNode;
 class FunctionDecl;
+class Expr;
 class PALBorrowReceipt;
 
 // Immutable source-phase type expression. Unlike the physical instantiated
@@ -403,10 +404,24 @@ cloneVec(const std::vector<std::unique_ptr<T>> &vec) {
 
 // Private Sema proof, never serialized or cloned. Nonempty prerequisites are
 // conditional facts, not permission to treat a parameter as independent.
+struct ByteBufferFact {
+  std::shared_ptr<Type> ValueType;
+  const FunctionDecl *Scope = nullptr;
+  // Symbolic prerequisites are discharged for every actual call. An owning
+  // parameter is not an independently allocated buffer merely by its type.
+  std::set<size_t> RequiredArguments;
+  std::set<const Expr *> StorageRoots;
+  std::map<std::string, std::shared_ptr<const ByteBufferFact>> Fields;
+};
+std::shared_ptr<const ByteBufferFact> joinByteBufferFacts(
+    const std::shared_ptr<const ByteBufferFact> &left,
+    const std::shared_ptr<const ByteBufferFact> &right);
+
 struct ResultIndependenceFact {
   std::shared_ptr<Type> ValueType;
   const FunctionDecl *Scope = nullptr;
   std::set<size_t> RequiredArguments;
+  std::shared_ptr<const ByteBufferFact> Bytes;
 };
 
 // Sema-only result witness: never an ownership/cleanup capability, serialized
@@ -418,6 +433,7 @@ struct TaskResultFact {
   const FunctionDecl *Scope = nullptr;
   std::shared_ptr<Type> ValueType, CarrierType;
   bool TaskCarrier = false;
+  std::shared_ptr<const ByteBufferFact> Bytes;
   std::vector<AccessPath> Referents;
   std::vector<AccessPath> AddressedStorage;
   std::vector<SourceLocation> StaticStorage;
@@ -431,6 +447,9 @@ public:
   std::shared_ptr<Type> ResolvedType;
   std::shared_ptr<const ResultIndependenceFact> ResultIndependence;
   std::shared_ptr<const TaskResultFact> TaskResult;
+  // Private current-value receipt, never serialized or inherited by clone.
+  std::shared_ptr<const ByteBufferFact> ByteBuffer;
+  bool ByteBufferRecorded = false;
   // Sema-only current-value fact. Deliberately not copied by expression
   // clone(): it says opaque raw fields are null, not that storage is owned.
   std::shared_ptr<Type> KnownNullRawStorageType;

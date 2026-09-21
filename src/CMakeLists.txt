@@ -18,6 +18,7 @@ set(toka_frontend_sources
     Sema/Sema_UnsafeRawConstruction.cpp
     Sema/Sema_ThreadHandoff.cpp
     Sema/Sema_TaskResult.cpp
+    Sema/Sema_ByteBuffer.cpp
     Sema/Sema_EnumPayloadSources.cpp
     Sema/Sema_PublicThread.cpp
     Sema/Sema_NativeSync.cpp

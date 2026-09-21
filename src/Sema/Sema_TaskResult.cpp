@@ -131,14 +131,19 @@ void Sema::bindTaskResult(const AccessPath &destination, Expr *source) {
 
 void Sema::recordTaskResultExpression(Expr *source, bool valid) {
   if (!source) return;
+  if (valid && source->TaskResult && source->TaskResult->Bytes &&
+      source->TaskResult->Scope == CurrentFunction &&
+      sameResultType(source->TaskResult->CarrierType, source->ResolvedType)) return;
   source->TaskResult.reset();
   if (!m_EnableStage1ExplicitCallerCede || m_IsPrecomputingCaptures || !valid ||
       !source->ResolvedType || !CurrentFunction) return;
   auto publish = [&](std::shared_ptr<const TaskResultFact> proof) {
     if (!proof->TaskCarrier) {
       if (!m_TaskResultFrames.empty() && m_TaskResultFrames.back().Function == CurrentFunction &&
-          m_TaskResultFrames.back().ClosureDepth == m_CallableReturnClosureDepth)
+          m_TaskResultFrames.back().ClosureDepth == m_CallableReturnClosureDepth) {
         m_TaskResultFrames.back().RequiredTasks.insert(proof->TaskParameters.begin(), proof->TaskParameters.end());
+        m_TaskResultFrames.back().RequiredIndependentParameters.insert(proof->IndependentParameters.begin(), proof->IndependentParameters.end());
+      }
       // This is the checked result relation, not the task's execution/capture
       // dependency set. PAL loans and task cleanup state are not changed.
       m_LastLifeDependencies.clear();
@@ -184,7 +189,9 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
   if (!function || !function->Body || function->IsClosureInvoke) return;
   const bool async = function->Effect == EffectKind::Async;
   bool projectsTask = false;
-  for (const auto &argument : function->Args) projectsTask |= taskResultType(argument.ResolvedType) != nullptr;
+  for (const auto &argument : function->Args)
+    projectsTask |= taskResultType(argument.ResolvedType) != nullptr ||
+                    (argument.IsCeded && containsByteBuffer(argument.ResolvedType));
   if (!async && !projectsTask && !taskResultType(source->ResolvedType)) return;
   prepareCallableFactory(function);
   auto found = m_TaskResultSummaries.find(function);
@@ -202,6 +209,19 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
     return call ? (index < call->Args.size() ? call->Args[index].get() : nullptr)
         : index == 0 ? method->Object.get()
         : index - 1 < method->Args.size() ? method->Args[index-1].get() : nullptr;
+  };
+  auto argumentIndependence = [&](size_t index) -> std::shared_ptr<const ResultIndependenceFact> {
+    auto *actual = argument(index);
+    // A consuming receiver has already retired its binding. Use the receipt
+    // captured by this actual evaluation, not a later lookup of that binding.
+    auto bytes = actual ? actual->ByteBuffer : nullptr;
+    if (bytes && bytes->Scope == CurrentFunction && sameResultType(bytes->ValueType, actual->ResolvedType)) {
+      auto value = std::make_shared<ResultIndependenceFact>();
+      value->Scope = CurrentFunction; value->ValueType = actual->ResolvedType;
+      value->RequiredArguments = bytes->RequiredArguments; value->Bytes = std::move(bytes);
+      return value;
+    }
+    return resultIndependence(actual);
   };
   auto requirements = summary.RequiredTasks;
   requirements.insert(summary.TaskParameters.begin(), summary.TaskParameters.end());
@@ -222,6 +242,16 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
   proof->Origin = summary.Origin;
   proof->StaticStorage = summary.StaticStorage;
   proof->FieldStaticStorage = summary.FieldStaticStorage;
+  std::set<size_t> independentRequirements;
+  for (auto index : summary.RequiredIndependentParameters) {
+    auto actual = argumentIndependence(index);
+    if (!actual || index >= function->Args.size() ||
+        !sameResultType(actual->ValueType, function->Args[index].ResolvedType)) {
+      error(source, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED, "ByteOwnerPrerequisiteUnproven");
+      return;
+    }
+    independentRequirements.insert(actual->RequiredArguments.begin(), actual->RequiredArguments.end());
+  }
   if (!summary.TaskParameters.empty()) {
     bool first = true;
     for (auto index : summary.TaskParameters) {
@@ -239,7 +269,7 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
     proof->CarrierType = source->ResolvedType; proof->TaskCarrier = carrier;
   } else {
     for (auto index : summary.IndependentParameters) {
-      auto actual = resultIndependence(argument(index));
+      auto actual = argumentIndependence(index);
       if (!actual) return;
       proof->IndependentParameters.insert(actual->RequiredArguments.begin(), actual->RequiredArguments.end());
     }
@@ -288,6 +318,14 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
       proof->Origin = TaskResultFact::Kind::Static;
     }
   }
+  proof->IndependentParameters.insert(independentRequirements.begin(), independentRequirements.end());
+  if (summary.Bytes && proof->Origin == TaskResultFact::Kind::Independent) {
+    auto bytes = std::make_shared<ByteBufferFact>();
+    bytes->Scope = CurrentFunction; bytes->ValueType = result;
+    bytes->RequiredArguments = proof->IndependentParameters;
+    bytes->StorageRoots.insert(source);
+    proof->Bytes = std::move(bytes);
+  }
   publish(std::move(proof));
 }
 
@@ -324,6 +362,7 @@ void Sema::recordTaskResultReturn(ReturnStmt *statement, bool valid) {
     } else if (auto independent = resultIndependence(source)) {
       created->Origin = TaskResultFact::Kind::Independent;
       created->IndependentParameters = independent->RequiredArguments;
+      created->Bytes = independent->Bytes;
     } else {
       std::vector<AccessPath> storage;
       std::map<std::string, ActualReturnFieldOrigins> fields;
@@ -349,6 +388,7 @@ void Sema::recordTaskResultReturn(ReturnStmt *statement, bool valid) {
   else if (frame.Origin != proof->Origin) { frame.Complete = false; return; }
   frame.TaskParameters.insert(proof->TaskParameters.begin(), proof->TaskParameters.end());
   frame.IndependentParameters.insert(proof->IndependentParameters.begin(), proof->IndependentParameters.end());
+  if (proof->Bytes) frame.Bytes = proof->Bytes;
   frame.StaticStorage.insert(frame.StaticStorage.end(), proof->StaticStorage.begin(), proof->StaticStorage.end());
   for (const auto &[field, origins] : proof->FieldStaticStorage)
     frame.FieldStaticStorage[field].insert(frame.FieldStaticStorage[field].end(), origins.begin(), origins.end());

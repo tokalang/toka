@@ -5465,6 +5465,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   m_IndependentValues.clear();
   auto savedTaskResults = std::move(m_TaskResults);
   m_TaskResults.clear();
+  auto savedByteBuffers = std::move(m_ByteBuffers);
+  m_ByteBuffers.clear();
   auto savedEnumResults = std::move(m_EnumResults);
   auto savedEnumSelections = std::move(m_EnumSelections);
   m_EnumResults.clear();
@@ -5475,6 +5477,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   } restoreEnumSources{[&] {
     m_IndependentValues = std::move(savedIndependentValues);
     m_TaskResults = std::move(savedTaskResults);
+    m_ByteBuffers = std::move(savedByteBuffers);
     m_EnumResults = std::move(savedEnumResults);
     m_EnumSelections = std::move(savedEnumSelections);
   }};
@@ -5844,6 +5847,12 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     CurrentScope->define(Arg.Name, Info);
     if (m_EnableStage1ExplicitCallerCede)
       seedTaskResultParameter(Fn, argumentIndex, CurrentScope->Symbols.at(Arg.Name));
+    if (m_EnableStage1ExplicitCallerCede && Arg.IsCeded && containsByteBuffer(Info.TypeObj)) {
+      auto bytes = std::make_shared<ByteBufferFact>();
+      bytes->Scope = Fn; bytes->ValueType = Info.TypeObj;
+      bytes->RequiredArguments.insert(argumentIndex);
+      m_ByteBuffers[CurrentScope->Symbols.at(Arg.Name).SymbolID] = std::move(bytes);
+    }
     if (m_EnableStage1ExplicitCallerCede && Arg.IsCeded && Info.TypeObj &&
         Info.TypeObj->isUniquePtr()) {
       auto proof = std::make_shared<ResultIndependenceFact>();
@@ -5866,7 +5875,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   const auto returnedTaskType = Fn->Effect == EffectKind::None ? taskResultType(Fn->ResolvedReturnType) : nullptr;
   collectTaskReturn |= returnedTaskType != nullptr;
   for (const auto &argument : Fn->Args)
-    collectTaskReturn |= taskResultType(argument.ResolvedType) != nullptr;
+    collectTaskReturn |= taskResultType(argument.ResolvedType) != nullptr ||
+                         (argument.IsCeded && containsByteBuffer(argument.ResolvedType));
   auto taskLexical = DeclarationLexicalScopes.find(Fn->TemplateOrigin ? Fn->TemplateOrigin : Fn);
   const bool taskSourceVisible = taskLexical != DeclarationLexicalScopes.end() && taskLexical->second &&
       taskLexical->second->SourceModule && !taskLexical->second->SourceModule->IsInterface;
@@ -5879,7 +5889,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   }
   const bool collectIndependentReturn = m_EnableStage1ExplicitCallerCede &&
       !m_IsPrecomputingCaptures && !Fn->IsClosureInvoke && Fn->ResolvedReturnType &&
-      Fn->ResolvedReturnType->isUniquePtr();
+      (Fn->ResolvedReturnType->isUniquePtr() || containsByteBuffer(Fn->ResolvedReturnType));
   if (collectIndependentReturn) m_IndependentReturns.erase(Fn);
   std::optional<StaticReturnStorageFrame> staticReturnStorage;
   const bool collectStaticReturn = m_EnableStage1ExplicitCallerCede &&
@@ -6113,6 +6123,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       proof->Scope = Fn;
       proof->ValueType = Fn->ResolvedReturnType;
       proof->RequiredArguments = std::move(independentReturn->RequiredArguments);
+      proof->Bytes = std::move(independentReturn->Bytes);
       m_IndependentReturns[Fn] = std::move(proof);
     }
   }

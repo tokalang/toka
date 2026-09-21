@@ -1672,6 +1672,7 @@ void Sema::checkStmt(Stmt *S) {
       frame.Complete &= enforceReturnSourcePlan && !hasNewReturnError() &&
                         returnSourcePlan->admitted() && proof != nullptr;
       if (proof) frame.RequiredArguments.insert(proof->RequiredArguments.begin(), proof->RequiredArguments.end());
+      if (proof && proof->Bytes) frame.Bytes = proof->Bytes;
     }
     if (!m_StaticReturnStorageFrames.empty() &&
         m_StaticReturnStorageFrames.back().Function == CurrentFunction &&

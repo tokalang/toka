@@ -567,11 +567,8 @@ impl TcpStream {
             failed = true
             message = string::from("Stream closed")
         } else if max_len > 0:usize {
-            if owned.cap() < max_len {
-                owned#.resize(max_len, 0:u8)
-            } else {
-                owned#.unsafe_set_len(max_len)
-            }
+            // Prepare initialized byte storage, not just a claimed length.
+            owned#.resize(max_len, 0:u8)
             auto *buf_ptr# = writable_byte_storage(owned#)
             auto read_res = self#.read_async_timeout(*buf_ptr, max_len, timeout_ms).await
             match read_res {
@@ -583,6 +580,10 @@ impl TcpStream {
             }
         }
 
+        if bytes_read > max_len || bytes_read > owned.cap() {
+            failed = true
+            message = string::from("Invalid network read count")
+        }
         if failed {
             owned#.unsafe_set_len(0:usize)
             return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
@@ -1016,11 +1017,8 @@ impl TlsSession {
             failed = true
             message = string::from("TLS session is closed")
         } else if max_len > 0:usize {
-            if owned.cap() < max_len {
-                owned#.resize(max_len, 0:u8)
-            } else {
-                owned#.unsafe_set_len(max_len)
-            }
+            // Prepare initialized byte storage, not just a claimed length.
+            owned#.resize(max_len, 0:u8)
             auto *buf_ptr# = writable_byte_storage(owned#)
             auto read_res = tcp#.tls_read_async(self.live_handle(), *buf_ptr, max_len, timeout_ms).await
             match read_res {
@@ -1032,6 +1030,10 @@ impl TlsSession {
             }
         }
 
+        if bytes_read > max_len || bytes_read > owned.cap() {
+            failed = true
+            message = string::from("Invalid network read count")
+        }
         if failed {
             owned#.unsafe_set_len(0:usize)
             return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(

@@ -808,8 +808,10 @@ private:
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
   struct AnalysisState {
+    std::map<uint64_t, std::shared_ptr<const ByteBufferFact>> ByteBuffers;
     std::map<uint64_t, std::shared_ptr<const TaskResultFact>> TaskResults;
     std::map<FunctionDecl *, std::set<size_t>> TaskRequirements;
+    std::map<FunctionDecl *, std::set<size_t>> TaskIndependentRequirements;
     std::map<uint64_t, std::shared_ptr<const ResultIndependenceFact>> IndependentValues;
     std::map<AccessPath, RawSlotDependencyEvidencePtr> RawSlotDependencies;
     std::map<uint64_t, std::shared_ptr<Type>> NullStorageBindings;
@@ -1184,6 +1186,7 @@ private:
     unsigned ClosureDepth = 0;
     bool SawReturn = false, Complete = true;
     std::set<size_t> RequiredArguments;
+    std::shared_ptr<const ByteBufferFact> Bytes;
   };
   struct TaskResultSummary {
     struct Input {
@@ -1202,6 +1205,8 @@ private:
     std::map<std::string, std::vector<SourceLocation>> FieldStaticStorage;
     std::set<size_t> TaskParameters, IndependentParameters;
     std::set<size_t> RequiredTasks;
+    std::set<size_t> RequiredIndependentParameters;
+    std::shared_ptr<const ByteBufferFact> Bytes;
   };
   std::map<uint64_t, std::shared_ptr<const TaskResultFact>> m_TaskResults;
   std::map<FunctionDecl *, TaskResultSummary> m_TaskResultSummaries;
@@ -1214,6 +1219,15 @@ private:
   void seedTaskResultParameter(FunctionDecl *function, size_t index, SymbolInfo &binding);
   bool closedTaskResultType(std::shared_ptr<Type> type);
   std::vector<IndependentReturnFrame> m_IndependentReturnFrames;
+  std::map<uint64_t, std::shared_ptr<const ByteBufferFact>> m_ByteBuffers;
+  std::map<uint32_t, bool> m_ByteBufferSchemas;
+  bool isByteBufferType(const std::shared_ptr<Type> &type);
+  bool containsByteBuffer(const std::shared_ptr<Type> &type);
+  bool byteBufferSchema(SourceLocation location, const std::string &module);
+  std::shared_ptr<const ByteBufferFact> byteBufferFact(Expr *source);
+  void recordByteBufferExpression(Expr *source, bool valid);
+  void bindByteBuffer(const AccessPath &destination, Expr *source);
+  void invalidateByteBuffer(Expr *source);
   std::map<uint64_t, std::shared_ptr<const ResultIndependenceFact>> m_IndependentValues;
   std::map<FunctionDecl *, std::shared_ptr<const ResultIndependenceFact>> m_IndependentReturns;
   std::shared_ptr<const ResultIndependenceFact> resultIndependence(Expr *source);
