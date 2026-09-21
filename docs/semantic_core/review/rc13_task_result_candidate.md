@@ -1,4 +1,95 @@
-# Anonymous records + task result projection: fixed WIP candidate
+# Anonymous records + task/byte result handoff: fixed WIP candidate
+
+## Current candidate — 19d14c4a (not Accepted / not frozen)
+
+Implementation: `19d14c4a2f05c57a9bd287a04553738b766c381c`.
+This completes the approved byte-buffer follow-up to the anonymous-record/task
+package. It is a review candidate, not RC13 acceptance. Phase E, pushing and
+freezing remain paused.
+
+The finite source-visible byte operation contract checks resolver declaration
+identity, concrete u8 specialization, physical layout, normally validated
+function instances and compiler-pinned implementation schema seals. Identity
+selects the contract; only a checked constructor or a matching current-value
+handoff produces a receipt. Neither Drop, a type name, alloc ancestry nor empty
+dependencies is used as a stand-alone proof.
+
+Private receipts follow actual values and checked fields through construction,
+growth, freeze/thaw/take, result packaging, source-visible return summaries and
+async/await/Wait. Summaries keep prerequisites for each caller rather than the
+first caller's values. Flow joins require every reachable alternative to qualify;
+rejection restores the incoming analysis snapshot. Unmatched writes, raw
+exposure, unknown source/extern/indirect calls and descriptor mutations lose
+qualification. Missing qualification does not outlaw ordinary local use or
+cleanup. It cannot be used to publish a new independent task result.
+
+TCP and TLS read adapters now prepare an initialized byte prefix with the
+existing resize operation. Completion explicitly checks both
+`bytes_read <= request` and `bytes_read <= capacity` before publishing the
+result. Existing runtime completion/cancellation and cleanup paths are unchanged.
+No changes to raw_take, CodeGen, ABI/TKI, the two original positive programs,
+Copy classification, or old diagnostic expectations were made.
+
+### Verification on the fixed candidate
+
+Full evidence: `/Users/zhyi/GitDP/tokalang/validation/rc13-byte-buffer-final`.
+`metadata.json`, `source-manifest.json`, `preserved-worktree.patch`, the four
+logs and `comparison.json` identify the exact source and compiler. Every phase
+reported **zero tracked-source changes**.
+
+Compiler SHA-256:
+`8f846d30c3d59b3f5e9358cd4aca0d463445248ecc5a5a848974100c45cc1f06`.
+
+| Complete gate | Result | Seconds |
+| --- | --- | --- |
+| Tools build | passed | 3.14 |
+| PASS | 456/459 | 352.30 |
+| FAIL | 480/480 | 119.03 |
+| Unfiltered CTest | 115/117 | 1361.24 |
+
+Against the previous **118d4860** fixed run:
+
+- Restored unchanged positives: `g09_async_owning_payload_drop_regression.tk`
+  and `g13_net_buffer_abi_test.tk`.
+- Restored CTest: `toka_permission_net_regression`, covering the same network
+  buffer failure, not a third independent positive recovery.
+- `toka_byte_buffer_results` is a **new** passing CTest, not a recovery.
+- No new failures or abnormal exits. PASS still fails Build/TOML/Template;
+  CTest still fails `toka_stage1_indirect_parameter_cede` and
+  `toka_stage1_return_matrix`.
+
+The byte gate covers **27 source cases**, normal/shadow parity and diagnostic
+object/LLVM non-production, plus altered-schema/source-hidden controls. Positive
+source cases execute. A separate generated-IR observer instruments only the
+byte allocator/drop sites: exactly 13 expected allocations, zero remaining
+allocations after taken/unclaimed results, cold-task disposal and early return.
+This is allocation accounting for those paths, not a process-wide `leaks` claim.
+
+### Honest boundaries and retained development evidence
+
+The earlier `02f44a7c` full attempt completed tools/PASS/FAIL but its CTest was
+**interrupted**, after a read-only probe found that an opaque extern write could
+retain the old Bytes receipt. That entry is now invalidated and covered by
+owner/task-handle negatives. The partial run remains separately marked in
+`validation/rc13-byte-buffer-fixed/INCOMPLETE.md`; it supplies no final CTest
+number for this candidate. The temporary over-strict ordinary-call prerequisite
+check was also removed after it falsely rejected HTTP/CSV local buffer cleanup;
+the final full run above verifies their restoration.
+
+One supplemental probe records a separate limitation: direct mutable aggregate
+`extern` lowering produces a ptr/aggregate LLVM signature mismatch. Its positive
+control is explicitly **Sema/parity only**, not an object/IR or runtime success.
+Reproducer: `validation/rc13-byte-buffer-extern-local-control.tk` under the
+repository parent. This ABI path was not repaired or counted as a recovery.
+
+The source-visible contract intentionally does not qualify raw imports, generic
+Vec<T>, recursive containers, source-hidden byte receipts or arbitrary callable
+environments. Build/TOML/Template and the source-hidden callable deficit remain
+independent work. No freeze ref, push, PR or release was performed. The unrelated
+whole-value-generics RFC remains uncommitted and byte-for-byte preserved (SHA-256
+`1b73b0fc46f9a700e1bdc9d0a0031614e1d9a4b398ce97f6a6423972474d70e2`).
+
+## Previous fixed run — 118d4860 (historical, superseded)
 
 Implementation: `118d48608ff01ea9f22d1afd46795102f47a6884`.
 Includes anonymous-record WIP `511964a0` and task-result WIP `2ed69205`.
