@@ -1588,8 +1588,10 @@ void Sema::checkStmt(Stmt *S) {
     const bool completesRawConstruction = returnSourcePlan &&
         returnSourcePlan->Rejection == TransferPlanRejection::AccessCapabilityMismatch &&
         hasQualifiedUnsafeRawConstruction(Ret->ReturnValue.get());
+    const auto checkedTaskResult = taskResultFact(Ret->ReturnValue.get());
+    const bool completesTaskResult = checkedTaskResult && !checkedTaskResult->TaskCarrier;
     if (returnSourcePlan && returnPlanSnapshot && !hasNewReturnError() &&
-        (completesBarePreflight || returnsWholeOutcome || completesRawConstruction)) {
+        (completesBarePreflight || returnsWholeOutcome || completesRawConstruction || completesTaskResult)) {
       returnSourcePlan = recordExplicitCedeStage0NonCallPlan(
           Ret, Ret->ReturnValue.get(),
           returnsWholeOutcome ? expectedRetObj : expectedReturnValueObj,
@@ -1660,6 +1662,7 @@ void Sema::checkStmt(Stmt *S) {
       }
     }
     recordEnumReturn(Ret, !hasNewReturnError());
+    recordTaskResultReturn(Ret, enforceReturnSourcePlan && !hasNewReturnError() && returnSourcePlan->admitted());
     if (!m_IndependentReturnFrames.empty() &&
         m_IndependentReturnFrames.back().Function == CurrentFunction &&
         m_IndependentReturnFrames.back().ClosureDepth == m_CallableReturnClosureDepth) {

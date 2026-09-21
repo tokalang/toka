@@ -1,6 +1,6 @@
 # Wait across a helper: one pending contract decision
 
-Status: proposed, not implemented or accepted. No change to phase E, runtime,
+Status: approved for implementation; implementation WIP, not accepted. No change to phase E, runtime,
 ABI, TKI, raw_take, or caller spelling.
 
 ## Evidence
@@ -54,6 +54,36 @@ alone would supply an allowed upper bound, not prove the actual result source.
 - Normal/shadow parity, valid runtime/exact-once, and object/IR non-production
   for negatives. No execution of dangling-view probes.
 
-This needs a scope decision before production admission: it introduces the
-task-result projection relation which the current helper boundary lacks. The
-anonymous-record work can be completed independently without this contract.
+The user authorized the complete implementation and production planner admission.
+No further per-helper approval is required. This does not constitute acceptance
+of the implementation or the combined anonymous-record / Wait package.
+
+## Implementation notes (WIP)
+
+- Private expression/current-value witnesses distinguish independent, static,
+  borrowed and symbolic task-result projections. They are not cloned or exported.
+- Definition summaries are published only after ordinary body validation and
+  complete returns. Generic summaries contain parameter positions, not a caller's
+  values. Source-hidden definitions do not publish these summaries.
+- Actual return origins and task-witness prerequisites are separate sets: using
+  another task inside a helper must not contaminate the returned result's origins,
+  nor may arithmetic on a result silently drop the prerequisite.
+- Current-value maps are snapshot/merged/restored with AnalysisState; conflicting
+  branch values lose their witness. Function prerequisites union across branches
+  and roll back with rejected calls.
+- Reference results retain addressed-storage identity; static character data
+  cannot exempt a local descriptor. Borrowing an owned task-frame input or a
+  non-reference parameter's descriptor is rejected.
+- Call proof validation runs before its rollback guard exits; Wait snapshots
+  before operand evaluation. No result proof authorizes consumption or cleanup.
+- `block_on` declares `<- handle` and a whole-T local. `.wait` already starts and
+  pumps the task, so the duplicated raw-handle pump call was removed; runtime and
+  CodeGen result-take/repeated-take/cleanup implementations are unchanged.
+
+Consolidated directed validation and the combined fixed-candidate full run are
+pending. Development probes have covered external sources after task cleanup,
+static/scalar/unique/shared results, selected input/field, declaration order,
+cache reuse, move/forward, branch preservation/conflict, mutation, source-hidden
+rejection, producer/frame errors, post-proof rejection rollback, and the existing
+runtime trap for repeated owning-result extraction. No unsafe escape program
+was executed.

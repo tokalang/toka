@@ -847,6 +847,8 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
 Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.IndependentValues = m_IndependentValues;
+  state.TaskResults = m_TaskResults;
+  for (const auto &frame : m_TaskResultFrames) state.TaskRequirements[frame.Function] = frame.RequiredTasks;
   state.EnumResults = m_EnumResults;
   state.RawSlotDependencies = m_RawSlotDependencies;
   state.NullStorageBindings = m_NullStorageBindings;
@@ -921,6 +923,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   auto mergedReferenceTargets = states.front().ReferenceTargets;
   auto callableEnvironments = states.front().CallableEnvironments;
   auto independentValues = states.front().IndependentValues;
+  auto taskResults = states.front().TaskResults;
+  auto taskRequirements = states.front().TaskRequirements;
   auto enumResults = states.front().EnumResults;
   auto rawSlotDependencies = states.front().RawSlotDependencies;
   auto nullStorageBindings = states.front().NullStorageBindings;
@@ -1031,6 +1035,14 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
         it = independentValues.erase(it);
       else ++it;
     }
+    for (auto it = taskResults.begin(); it != taskResults.end();) {
+      auto other = state.TaskResults.find(it->first);
+      if (other == state.TaskResults.end() || it->second != other->second)
+        it = taskResults.erase(it);
+      else ++it;
+    }
+    for (const auto &[function, requirements] : state.TaskRequirements)
+      taskRequirements[function].insert(requirements.begin(), requirements.end());
 
     PALCheckerState.restore(mergedPAL);
     PALCheckerState.mergeBranches(palBase, mergedPAL, true, state.PAL, true);
@@ -1043,6 +1055,10 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   restoreVisibleReferenceTargets(CurrentScope, mergedReferenceTargets);
   m_CallableEnvironments = std::move(callableEnvironments);
   m_IndependentValues = std::move(independentValues);
+  m_TaskResults = std::move(taskResults);
+  for (auto &frame : m_TaskResultFrames)
+    if (auto found = taskRequirements.find(frame.Function); found != taskRequirements.end())
+      frame.RequiredTasks = found->second;
   m_EnumResults = std::move(enumResults);
   m_RawSlotDependencies = std::move(rawSlotDependencies);
   m_NullStorageBindings = std::move(nullStorageBindings);
@@ -1272,6 +1288,12 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   if (!E)
     return toka::Type::fromString("()");
   ActiveNodeRAII Active(E);
+  E->TaskResult.reset();
+  std::optional<CallArgumentRollbackGuard> taskWaitRollback;
+  if (m_EnableStage1ExplicitCallerCede && dynamic_cast<WaitExpr *>(E)) {
+    const std::vector<std::unique_ptr<Expr>> noArguments;
+    taskWaitRollback.emplace(*this, noArguments, true);
+  }
   const size_t expressionDiagnosticStart = DiagnosticEngine::records().size();
   E->KnownNullRawStorageType.reset();
   std::optional<std::map<AccessPath, RawSlotDependencyEvidencePtr>> rawSlotsBefore;
@@ -1365,6 +1387,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       expressionRecords.begin() + std::min(expressionDiagnosticStart, expressionRecords.size()),
       expressionRecords.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
   if (expressionSucceeded && T && !T->isUnknown()) recordGenericValueContract(E);
+  recordTaskResultExpression(E, expressionSucceeded);
   recordEnumExpression(E, expressionSucceeded);
   if (auto *cede = dynamic_cast<CedeExpr *>(E)) {
     Expr *source = cede->Value.get();
@@ -4889,6 +4912,18 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // itself contain successful consuming calls whose state must be restored
     // if the outer method is later rejected by arity, type, or cede checks.
     CallArgumentRollbackGuard methodCallRollback(*this, Met->Args, true, false);
+    const size_t taskMethodStart = DiagnosticEngine::records().size();
+    auto completeTaskMethod = [&](std::shared_ptr<Type> result) {
+      Met->ResolvedType = result;
+      const bool valid = std::none_of(DiagnosticEngine::records().begin() + taskMethodStart,
+          DiagnosticEngine::records().end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
+      const auto beforeProof = DiagnosticEngine::records().size();
+      recordTaskResultExpression(Met, valid);
+      if (std::any_of(DiagnosticEngine::records().begin() + beforeProof,
+          DiagnosticEngine::records().end(), [](const auto &record) { return record.Level == DiagLevel::Error; }))
+        methodCallRollback.reject();
+      return result;
+    };
     auto isStage1ConcreteMethodParameter = [](const FunctionDecl::Arg &arg) {
       return arg.Stage0DeclarationProvenanceComplete &&
              !arg.Stage0GenericValueRole && !arg.Stage0MorphicGenericRole;
@@ -6159,9 +6194,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
         if (FD && FD->Effect == EffectKind::Async) {
             markExplicitCedeStage0RouteValidationComplete(Met);
-            return resolveType(std::make_shared<ShapeType>(
+            return completeTaskMethod(resolveType(std::make_shared<ShapeType>(
                 "TaskHandle",
-                std::vector<std::shared_ptr<toka::Type>>{retType}));
+                std::vector<std::shared_ptr<toka::Type>>{retType})));
         }
         if (containsInternalPlaceOutcome(retType)) {
           error(Met, DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
@@ -6170,7 +6205,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           return toka::Type::fromString("unknown");
         }
         markExplicitCedeStage0RouteValidationComplete(Met);
-        return retType;
+        return completeTaskMethod(retType);
       }
     }
 

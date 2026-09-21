@@ -808,6 +808,8 @@ private:
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
   struct AnalysisState {
+    std::map<uint64_t, std::shared_ptr<const TaskResultFact>> TaskResults;
+    std::map<FunctionDecl *, std::set<size_t>> TaskRequirements;
     std::map<uint64_t, std::shared_ptr<const ResultIndependenceFact>> IndependentValues;
     std::map<AccessPath, RawSlotDependencyEvidencePtr> RawSlotDependencies;
     std::map<uint64_t, std::shared_ptr<Type>> NullStorageBindings;
@@ -1183,6 +1185,34 @@ private:
     bool SawReturn = false, Complete = true;
     std::set<size_t> RequiredArguments;
   };
+  struct TaskResultSummary {
+    struct Input {
+      size_t Parameter;
+      std::vector<AccessProjection> Projections;
+      std::string Field;
+      bool Storage = false;
+    };
+    FunctionDecl *Function = nullptr;
+    std::shared_ptr<Type> ResultType;
+    TaskResultFact::Kind Origin = TaskResultFact::Kind::Independent;
+    bool SawReturn = false, Complete = true, Valid = false, ProducesTask = false;
+    unsigned ClosureDepth = 0;
+    std::vector<Input> Inputs;
+    std::vector<SourceLocation> StaticStorage;
+    std::map<std::string, std::vector<SourceLocation>> FieldStaticStorage;
+    std::set<size_t> TaskParameters, IndependentParameters;
+    std::set<size_t> RequiredTasks;
+  };
+  std::map<uint64_t, std::shared_ptr<const TaskResultFact>> m_TaskResults;
+  std::map<FunctionDecl *, TaskResultSummary> m_TaskResultSummaries;
+  std::vector<TaskResultSummary> m_TaskResultFrames;
+  std::shared_ptr<Type> taskResultType(const std::shared_ptr<Type> &type);
+  std::shared_ptr<const TaskResultFact> taskResultFact(Expr *source);
+  void recordTaskResultExpression(Expr *source, bool valid);
+  void recordTaskResultReturn(ReturnStmt *statement, bool valid);
+  void bindTaskResult(const AccessPath &destination, Expr *source);
+  void seedTaskResultParameter(FunctionDecl *function, size_t index, SymbolInfo &binding);
+  bool closedTaskResultType(std::shared_ptr<Type> type);
   std::vector<IndependentReturnFrame> m_IndependentReturnFrames;
   std::map<uint64_t, std::shared_ptr<const ResultIndependenceFact>> m_IndependentValues;
   std::map<FunctionDecl *, std::shared_ptr<const ResultIndependenceFact>> m_IndependentReturns;

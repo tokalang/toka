@@ -409,10 +409,28 @@ struct ResultIndependenceFact {
   std::set<size_t> RequiredArguments;
 };
 
+// Sema-only result witness: never an ownership/cleanup capability, serialized
+// interface fact, or cloned AST annotation. Projection roots are symbolic
+// task-result values, not addresses of task descriptors.
+struct TaskResultFact {
+  enum class Kind { Independent, Static, Borrowed, Projection };
+  Kind Origin = Kind::Independent;
+  const FunctionDecl *Scope = nullptr;
+  std::shared_ptr<Type> ValueType, CarrierType;
+  bool TaskCarrier = false;
+  std::vector<AccessPath> Referents;
+  std::vector<AccessPath> AddressedStorage;
+  std::vector<SourceLocation> StaticStorage;
+  std::set<size_t> TaskParameters, IndependentParameters;
+  std::map<std::string, std::vector<AccessPath>> FieldReferents;
+  std::map<std::string, std::vector<SourceLocation>> FieldStaticStorage;
+};
+
 class Expr : public ASTNode {
 public:
   std::shared_ptr<Type> ResolvedType;
   std::shared_ptr<const ResultIndependenceFact> ResultIndependence;
+  std::shared_ptr<const TaskResultFact> TaskResult;
   // Sema-only current-value fact. Deliberately not copied by expression
   // clone(): it says opaque raw fields are null, not that storage is owned.
   std::shared_ptr<Type> KnownNullRawStorageType;

@@ -5322,6 +5322,7 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
     return state->second == CallableFactoryState::Valid &&
            (m_ValidatedCallableReturnEnvironments.count(function) ||
             m_IndependentReturns.count(function) ||
+            (m_TaskResultSummaries.count(function) && m_TaskResultSummaries.at(function).Valid) ||
             m_ValidatedStaticReturnStorage.count(function) ||
             (m_EnumReturnSummaries.count(function) && m_EnumReturnSummaries.at(function).Valid));
   // Reuse the same isolated definition preparation for static view returns.
@@ -5429,6 +5430,7 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
     m_CallableFactoryStates[function] = CallableFactoryState::Invalid;
     m_ValidatedCallableReturnEnvironments.erase(function);
     m_IndependentReturns.erase(function);
+    m_TaskResultSummaries.erase(function);
     m_ValidatedStaticReturnStorage.erase(function);
     m_EnumReturnSummaries[function].Valid = false;
   } else m_CallableFactoryBodyJournals[function] = std::move(journal);
@@ -5461,6 +5463,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   const size_t functionDiagnosticStart = DiagnosticEngine::records().size();
   auto savedIndependentValues = std::move(m_IndependentValues);
   m_IndependentValues.clear();
+  auto savedTaskResults = std::move(m_TaskResults);
+  m_TaskResults.clear();
   auto savedEnumResults = std::move(m_EnumResults);
   auto savedEnumSelections = std::move(m_EnumSelections);
   m_EnumResults.clear();
@@ -5470,6 +5474,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     ~RestoreEnumSources() { Restore(); }
   } restoreEnumSources{[&] {
     m_IndependentValues = std::move(savedIndependentValues);
+    m_TaskResults = std::move(savedTaskResults);
     m_EnumResults = std::move(savedEnumResults);
     m_EnumSelections = std::move(savedEnumSelections);
   }};
@@ -5837,6 +5842,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       Info.IsMorphicExempt = true;
     }
     CurrentScope->define(Arg.Name, Info);
+    if (m_EnableStage1ExplicitCallerCede)
+      seedTaskResultParameter(Fn, argumentIndex, CurrentScope->Symbols.at(Arg.Name));
     if (m_EnableStage1ExplicitCallerCede && Arg.IsCeded && Info.TypeObj &&
         Info.TypeObj->isUniquePtr()) {
       auto proof = std::make_shared<ResultIndependenceFact>();
@@ -5854,6 +5861,22 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
   std::optional<CallableReturnEnvironmentFrame> callableReturnEnvironment;
   std::optional<IndependentReturnFrame> independentReturn;
+  std::optional<TaskResultSummary> taskReturn;
+  bool collectTaskReturn = Fn->Effect == EffectKind::Async;
+  const auto returnedTaskType = Fn->Effect == EffectKind::None ? taskResultType(Fn->ResolvedReturnType) : nullptr;
+  collectTaskReturn |= returnedTaskType != nullptr;
+  for (const auto &argument : Fn->Args)
+    collectTaskReturn |= taskResultType(argument.ResolvedType) != nullptr;
+  auto taskLexical = DeclarationLexicalScopes.find(Fn->TemplateOrigin ? Fn->TemplateOrigin : Fn);
+  const bool taskSourceVisible = taskLexical != DeclarationLexicalScopes.end() && taskLexical->second &&
+      taskLexical->second->SourceModule && !taskLexical->second->SourceModule->IsInterface;
+  collectTaskReturn &= m_EnableStage1ExplicitCallerCede && !m_IsPrecomputingCaptures &&
+      !Fn->IsClosureInvoke && Fn->GenericParams.empty() && Fn->ResolvedReturnType &&
+      !Fn->ResolvedReturnType->isVoid() && taskSourceVisible;
+  if (collectTaskReturn) {
+    m_TaskResultSummaries.erase(Fn);
+    m_CallableFactoryStates[Fn] = CallableFactoryState::Preparing;
+  }
   const bool collectIndependentReturn = m_EnableStage1ExplicitCallerCede &&
       !m_IsPrecomputingCaptures && !Fn->IsClosureInvoke && Fn->ResolvedReturnType &&
       Fn->ResolvedReturnType->isUniquePtr();
@@ -5884,7 +5907,18 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       m_StaticReturnStorageFrames.push_back({Fn, m_CallableReturnClosureDepth});
     if (collectIndependentReturn)
       m_IndependentReturnFrames.push_back({Fn, m_CallableReturnClosureDepth});
+    if (collectTaskReturn) {
+      TaskResultSummary frame;
+      frame.Function = Fn; frame.ResultType = returnedTaskType ? returnedTaskType : Fn->ResolvedReturnType;
+      frame.ProducesTask = returnedTaskType != nullptr;
+      frame.ClosureDepth = m_CallableReturnClosureDepth;
+      m_TaskResultFrames.push_back(std::move(frame));
+    }
     checkStmt(Fn->Body.get());
+    if (collectTaskReturn) {
+      taskReturn = std::move(m_TaskResultFrames.back());
+      m_TaskResultFrames.pop_back();
+    }
     if (collectIndependentReturn) {
       independentReturn = std::move(m_IndependentReturnFrames.back());
       m_IndependentReturnFrames.pop_back();
@@ -6082,8 +6116,18 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       m_IndependentReturns[Fn] = std::move(proof);
     }
   }
-  if (collectCallableReturn || collectStaticReturn || collectIndependentReturn)
+  if (taskReturn && taskReturn->Complete &&
+      (taskReturn->SawReturn || taskReturn->ResultType->isUnit()) && Fn->Body &&
+      (allPathsReturn(Fn->Body.get()) || taskReturn->ResultType->isUnit()) &&
+      !HasError && std::none_of(DiagnosticEngine::records().begin() + functionDiagnosticStart,
+                               DiagnosticEngine::records().end(),
+                               [](const auto &record) { return record.Level == DiagLevel::Error; })) {
+    taskReturn->Valid = true;
+    m_TaskResultSummaries[Fn] = std::move(*taskReturn);
+  }
+  if (collectCallableReturn || collectStaticReturn || collectIndependentReturn || collectTaskReturn)
     m_CallableFactoryStates[Fn] = (m_ValidatedCallableReturnEnvironments.count(Fn) ||
+                                    (m_TaskResultSummaries.count(Fn) && m_TaskResultSummaries.at(Fn).Valid) ||
                                     m_ValidatedStaticReturnStorage.count(Fn) ||
                                     m_IndependentReturns.count(Fn))
         ? CallableFactoryState::Valid : CallableFactoryState::Invalid;

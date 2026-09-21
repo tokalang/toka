@@ -40,7 +40,7 @@ fn borrow_view(value: str) -> async str <- value { return value }
         "wait_shadowed_input": (prefix + 'fn escape() -> str {\n' + body +
                                 '    {\n        auto view = "static"\n'
                                 '        return task.wait\n    }\n}\n'
-                                'fn main() -> i32 { return 0 }\n', "E04658"),
+                                'fn main() -> i32 { return 0 }\n', "E0455"),
         "wait_shadowed_origin": (prefix + 'fn escape(input: str) -> str {\n'
                                  '    auto view = input\n    auto task = borrow_view(view)\n'
                                  '    {\n        auto input = "static"\n'

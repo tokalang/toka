@@ -415,6 +415,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_rc13_wait_copy_safety.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_task_result_projection
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_task_result_projection.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_json_leaf_factories
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_json_leaf_factories.py

@@ -3561,6 +3561,15 @@ Sema::makeExplicitCedeStage0NonCallGroupIdentity(ASTNode *site,
 
 void Sema::invalidateReturnSourceProof(Expr *expression, bool unknown) {
   auto proofPath = makeAccessPath(expression);
+  if (!proofPath.RootID) m_TaskResults.clear();
+  else {
+    m_TaskResults.erase(proofPath.RootID);
+    m_TaskResults.erase(canonicalizeAccessPath(proofPath).RootID);
+    SymbolInfo *taskStorage = nullptr;
+    if (CurrentScope->findSymbolByID(proofPath.RootID, taskStorage) && taskStorage &&
+        taskStorage->TypeObj && (taskStorage->TypeObj->isRawPointer() || taskStorage->TypeObj->isReference()))
+      m_TaskResults.clear();
+  }
   SymbolInfo *proofBinding = nullptr;
   if (!proofPath.RootID) m_IndependentValues.clear();
   else {
@@ -3840,7 +3849,6 @@ bool Sema::collectActualReturnReferents(
     std::map<std::string, ActualReturnFieldOrigins> *fields) {
   if (usedCurrentReference) *usedCurrentReference = false;
   std::set<uint64_t> visiting;
-  bool mappingWaitResult = false;
   std::vector<AccessPath> preparedPaths;
   std::vector<SourceLocation> preparedStatic;
   std::vector<AccessPath> preparedStorage;
@@ -3962,20 +3970,6 @@ bool Sema::collectActualReturnReferents(
   };
   visit = [&](Expr *value, std::vector<AccessPath> &result) -> bool {
     if (!value) return false;
-    if (mappingWaitResult) {
-      Expr *root = value;
-      while (auto *member = dynamic_cast<MemberExpr *>(root)) root = member->Object.get();
-      if (auto *variable = dynamic_cast<VariableExpr *>(root)) {
-        SymbolInfo *binding = nullptr;
-        if (!variable->ResolvedBindingID ||
-            !CurrentScope->findSymbolByID(variable->ResolvedBindingID, binding) || !binding ||
-            binding->HasBeenMutated ||
-            m_ReturnSourceInvalidatedRoots.count(binding->SymbolID) ||
-            m_ReturnSourceUnknownRoots.count(binding->SymbolID) ||
-            makeAccessPath(variable).RootID != binding->SymbolID)
-          return false;
-      }
-    }
     if (isMemberReferenceConstruction(value))
       return storageOrigin(value, result);
     std::vector<SourceLocation> enumStatic;
@@ -3988,56 +3982,24 @@ bool Sema::collectActualReturnReferents(
       preparedStatic.push_back(value->Loc);
       return true;
     }
-    if (auto *wait = dynamic_cast<WaitExpr *>(value)) {
-      // Waiting creates a result value, not independent storage. Map the
-      // checked async producer's result contract; never treat a missing
-      // task provenance record as an empty dependency set.
-      Expr *producer = wait->Expression.get();
-      if (auto path = makeAccessPath(producer); path && path.RootID) {
-        SymbolInfo *task = nullptr;
-        if (!path.Projections.empty() ||
-            !CurrentScope->findSymbolByID(path.RootID, task) || !task ||
-            task->IsFunctionParameter || task->HasBeenMutated ||
-            m_ReturnSourceInvalidatedRoots.count(path.RootID) ||
-            m_ReturnSourceUnknownRoots.count(path.RootID))
-          return false;
-        auto *declaration = task->ASTPtr
-            ? dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(task->ASTPtr))
-            : nullptr;
-        if (!declaration || !declaration->Init || !declaration->Init->ResolvedType)
-          return false;
-        producer = declaration->Init.get();
+    if (auto proof = taskResultFact(value); proof && !proof->TaskCarrier) {
+      if (proof->Origin == TaskResultFact::Kind::Independent) return false;
+      for (const auto &root : proof->Referents) {
+        SymbolInfo *visible = nullptr;
+        std::string name;
+        if (!root.RootID || !CurrentScope->findVariableWithDeref(root.RootName, visible, name) ||
+            !visible || visible->SymbolID != root.RootID) return false;
       }
-      auto *call = dynamic_cast<CallExpr *>(producer);
-      auto *method = dynamic_cast<MethodCallExpr *>(producer);
-      auto *formal = call ? call->ResolvedFn : method ? method->ResolvedFn : nullptr;
-      if (!formal || formal->Effect != EffectKind::Async ||
-          !formal->ResolvedReturnType || !wait->ResolvedType ||
-          !formal->ResolvedReturnType->equals(*wait->ResolvedType))
-        return false;
-      // Replaying a checked contract must not rebind its inputs in a later
-      // lexical scope. Until compound task-input provenance is carried by
-      // identity, this path accepts only unchanged, identity-matched inputs.
-      if (method) return false;
-      for (const auto &argument : call->Args) {
-        if (dynamic_cast<StringExpr *>(argument.get()) ||
-            dynamic_cast<ViewStringExpr *>(argument.get())) continue;
-        auto *variable = dynamic_cast<VariableExpr *>(argument.get());
-        SymbolInfo *input = nullptr;
-        if (!variable || !variable->ResolvedBindingID ||
-            !CurrentScope->findSymbolByID(variable->ResolvedBindingID, input) || !input ||
-            input->HasBeenMutated ||
-            m_ReturnSourceInvalidatedRoots.count(input->SymbolID) ||
-            m_ReturnSourceUnknownRoots.count(input->SymbolID) ||
-            makeAccessPath(variable).RootID != input->SymbolID)
-          return false;
+      result.insert(result.end(), proof->Referents.begin(), proof->Referents.end());
+      preparedStorage.insert(preparedStorage.end(), proof->AddressedStorage.begin(), proof->AddressedStorage.end());
+      preparedStatic.insert(preparedStatic.end(), proof->StaticStorage.begin(), proof->StaticStorage.end());
+      if (fields && value == fieldOwner) {
+        for (const auto &[field, roots] : proof->FieldReferents) preparedFields[field].Referents = roots;
+        for (const auto &[field, origins] : proof->FieldStaticStorage) preparedFields[field].StaticStorage = origins;
       }
-      const bool previous = mappingWaitResult;
-      mappingWaitResult = true;
-      const bool complete = visit(producer, result);
-      mappingWaitResult = previous;
-      return complete;
+      return !proof->Referents.empty() || !proof->StaticStorage.empty();
     }
+    if (dynamic_cast<WaitExpr *>(value)) return false;
     if (auto *cast = dynamic_cast<CastExpr *>(value))
       return visit(cast->Expression.get(), result);
     if (auto *unsafe = dynamic_cast<UnsafeExpr *>(value))
@@ -4063,10 +4025,13 @@ bool Sema::collectActualReturnReferents(
           !m_ReturnSourceUnknownRoots.count(path.RootID)) {
         auto *declaration = binding->ASTPtr
             ? dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(binding->ASTPtr)) : nullptr;
-        auto *record = declaration ? dynamic_cast<AnonymousRecordExpr *>(declaration->Init.get()) : nullptr;
-        if (record && record->ResolvedType && binding->TypeObj &&
-            record->ResolvedType->equals(*binding->TypeObj)) {
-          for (const auto &[name, source] : record->Fields) {
+        Expr *initializer = declaration ? declaration->Init.get() : nullptr;
+        const std::vector<std::pair<std::string, std::unique_ptr<Expr>>> *members = nullptr;
+        if (auto *record = dynamic_cast<AnonymousRecordExpr *>(initializer)) members = &record->Fields;
+        if (auto *record = dynamic_cast<InitStructExpr *>(initializer)) members = &record->Members;
+        if (members && initializer->ResolvedType && binding->TypeObj &&
+            initializer->ResolvedType->equals(*binding->TypeObj)) {
+          for (const auto &[name, source] : *members) {
             if (Type::stripMorphology(name) != path.Projections.front().Name) continue;
             const auto selectedType = member->ResolvedType ? member->ResolvedType
                 : queryExplicitCedeStage0NonCallType(member, nullptr);
@@ -4166,6 +4131,9 @@ bool Sema::collectActualReturnReferents(
     if (method || call) {
       auto *formal = method ? method->ResolvedFn : call->ResolvedFn;
       if (!formal) return false;
+      if (auto taskSummary = m_TaskResultSummaries.find(formal);
+          taskSummary != m_TaskResultSummaries.end() && !taskSummary->second.TaskParameters.empty())
+        return false; // A ceiling cannot replace an undischarged result projection.
       // Keep the selected contract's result-field association. An empty key
       // denotes a whole-result dependency, never an invented per-field fact.
       std::vector<std::pair<std::string, std::string>> dependencies;
@@ -4427,7 +4395,6 @@ bool Sema::collectActualReturnReferents(
       preparedStatic.resize(previousStaticCount);
       preparedStorage.resize(previousStorageCount);
       visiting.erase(binding->SymbolID);
-      if (mappingWaitResult && !initializerComplete) return false;
     }
     // A numeric address or an untraced local raw pointer supplies no lifetime
     // proof. A formal raw identity remains a symbolic boundary input, never a
@@ -4546,6 +4513,13 @@ void Sema::prepareResultIndependence(Expr *source) {
 
 std::shared_ptr<const ResultIndependenceFact> Sema::resultIndependence(Expr *source) {
   if (!source || !source->ResolvedType || !source->ResolvedType->isUniquePtr()) return {};
+  if (auto task = taskResultFact(source); task && !task->TaskCarrier &&
+      task->Origin == TaskResultFact::Kind::Independent) {
+    auto proof = std::make_shared<ResultIndependenceFact>();
+    proof->Scope = CurrentFunction; proof->ValueType = source->ResolvedType;
+    proof->RequiredArguments = task->IndependentParameters;
+    return proof;
+  }
   const auto actual = source->ResolvedType;
   source = stage0SurfaceSource(source);
   if (!source) return {};
@@ -5093,9 +5067,11 @@ Sema::Stage1BindingTransfer::~Stage1BindingTransfer() {
       }
       auto proof = Owner.resultIndependence(variable->Init.get());
       if (proof) Owner.m_IndependentValues[binding->SymbolID] = std::move(proof);
+      Owner.bindTaskResult(Owner.makeAccessPath(variable->Name), variable->Init.get());
     }
   }
   if (auto *assignment = dynamic_cast<BinaryExpr *>(Site)) {
+    Owner.bindTaskResult(Owner.makeAccessPath(assignment->LHS.get()), assignment->RHS.get());
     assignment->CallableAssignment = AssignmentDisposition;
     assignment->BorrowedValueReplacement = std::move(BorrowedReplacement);
   }
@@ -5558,6 +5534,22 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       exactValue ? exactValue : value, actualType, legacy,
       &providedSnapshot->State, providedSnapshot->Revision, true,
       destination == TransferDestination::Return || (bindingBehaviorPlan && normalSemaValidated));
+  if (normalSemaValidated) {
+    auto task = taskResultFact(exactValue);
+    if (task && !task->TaskCarrier && task->Origin == TaskResultFact::Kind::Independent) {
+      facts.Dependency = TransferDependencyKind::None;
+      facts.DependencyFactsComplete = true;
+      facts.ReferentPlace.reset();
+      facts.DependencyRoots.clear();
+      facts.StructuredReferentPlaces.clear();
+      if (facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
+          (facts.Ownership == TransferOwnershipKind::OwnedValue ||
+           facts.Ownership == TransferOwnershipKind::UniqueOwner ||
+           facts.Ownership == TransferOwnershipKind::SharedOwner ||
+           (facts.Ownership == TransferOwnershipKind::PlainValue && facts.CopyProof == TransferCopyProof::ProvenNonCopy)))
+        facts.TemporaryEligibility = TransferTemporaryEligibility::Eligible;
+    }
+  }
   if (bindingBehaviorPlan && normalSemaValidated && actualType && actualType->isInteger() &&
       facts.SourceCategory == TransferSourceCategory::NoSourcePlace &&
       queryExplicitCedeStage0OwnershipReadOnly(actualType) == ValueOwnership::Trivial &&
@@ -7277,6 +7269,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   // A mangled cache alias has no GenericParams left. Capture before lookup so
   // its persistent validation state can reject the real argument transaction.
   std::optional<CallArgumentRollbackGuard> directArgumentRollback;
+  const size_t taskResultDiagnosticStart = DiagnosticEngine::records().size();
   if (InstantiationCache.find(CallName) != InstantiationCache.end())
     directArgumentRollback.emplace(*this, Call->Args, true);
 
@@ -9768,8 +9761,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   const bool isGenericDirectCall =
       Fn && (!Fn->GenericParams.empty() || Fn->TemplateOrigin);
+  const bool isTaskResultCall = Fn && std::any_of(Fn->Args.begin(), Fn->Args.end(),
+      [&](const auto &argument) { return taskResultType(argument.ResolvedType) != nullptr; });
   if (!directArgumentRollback)
-    directArgumentRollback.emplace(*this, Call->Args, isGenericDirectCall);
+    directArgumentRollback.emplace(*this, Call->Args, isGenericDirectCall || isTaskResultCall);
 
   // 5. Synthesize FunctionType
   // ParamTypes, ReturnType
@@ -11980,12 +11975,18 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   markExplicitCedeStage0RouteValidationComplete(Call);
 
+  auto completedResultType = ReturnType;
   if (isAsync) {
-    return resolveType(std::make_shared<ShapeType>(
+    completedResultType = resolveType(std::make_shared<ShapeType>(
         "TaskHandle",
         std::vector<std::shared_ptr<toka::Type>>{ReturnType}));
   }
-  return ReturnType;
+  Call->ResolvedType = completedResultType;
+  recordTaskResultExpression(Call, std::none_of(
+      DiagnosticEngine::records().begin() + taskResultDiagnosticStart,
+      DiagnosticEngine::records().end(),
+      [](const auto &record) { return record.Level == DiagLevel::Error; }));
+  return completedResultType;
 }
 
 } // namespace toka
