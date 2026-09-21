@@ -241,7 +241,22 @@ void Sema::recordByteBufferExpression(Expr *source, bool valid) {
     if (!result->Fields.empty()) source->ByteBuffer = std::move(result);
     return;
   }
-  if (!function) return;
+  if (!function) {
+    // Extern and indirect calls have no source-visible FunctionDecl recipe.
+    // Absence of that recipe is not a preservation promise for an actual
+    // owner argument. Enum constructors were handled above.
+    auto expose = [&](Expr *actual) {
+      auto task = actual ? taskResultFact(actual) : nullptr;
+      if (actual && (actual->ByteBuffer || byteBufferFact(actual) || (task && task->Bytes)))
+        invalidateByteBuffer(actual);
+    };
+    if (call) for (auto &actual : call->Args) expose(actual.get());
+    if (method) {
+      expose(method->Object.get());
+      for (auto &actual : method->Args) expose(actual.get());
+    }
+    return;
+  }
   auto argument = [&](size_t i) -> Expr * {
     return call ? (i < call->Args.size() ? call->Args[i].get() : nullptr)
         : i == 0 ? method->Object.get() : i <= method->Args.size() ? method->Args[i-1].get() : nullptr;

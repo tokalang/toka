@@ -189,6 +189,38 @@ fn main() -> i32 {
     return 0
 }
 ''', 'E04661')
+EXTERN = '''import std/bytes::{Bytes}
+import std/task::{block_on}
+extern fn byte_foreign_write(value#: Bytes) -> void
+fn relay_bytes(cede value: Bytes) -> async Bytes { return cede value }
+fn main() -> i32 {
+    auto value# = Bytes::new()
+    byte_foreign_write(value#)
+    auto result = block_on(relay_bytes(cede value))
+    return 0
+}
+'''
+gate.CASES['extern_mutation'] = (EXTERN, 'E04661')
+gate.CASES['extern_task_mutation'] = ('''import std/bytes::{Bytes}
+import std/task::{block_on}
+extern fn byte_foreign_task(value#: TaskHandle<Bytes>) -> void
+fn relay_bytes(cede value: Bytes) -> async Bytes { return cede value }
+fn main() -> i32 {
+    auto input = Bytes::new()
+    auto task# = relay_bytes(cede input)
+    byte_foreign_task(task#)
+    auto result = block_on(task)
+    return 0
+}
+''', 'E04661')
+gate.CASES['closure_mutation'] = (PREFIX + '''
+fn main() -> i32 {
+    auto value# = Vec<u8>::new()
+    { auto action# = { => value.cap = 0:usize; return 0 }; auto status = action#() }
+    auto result = block_on(relay(cede value))
+    return 0
+}
+''', 'E04661')
 
 
 def schema_controls(build_dir):
@@ -249,6 +281,19 @@ fn main() -> i32 { auto value = make(); auto result = block_on(relay(cede value)
 ''')
         check_error(source, 'E04661', 'source-hidden')
         print('PASS altered implementation schema and source-hidden receipt rejection', flush=True)
+        # The unknown call itself remains legal. Only subsequent use of the
+        # expired independence receipt is refused by the negative above.
+        source.write_text(EXTERN.replace('auto result = block_on(relay_bytes(cede value))',
+                                         'assert(value.len() == 0:usize, "local use after foreign call")'))
+        prefix = [str(compiler), str(source), '--check-only']
+        normal = subprocess.run(prefix, cwd=work, env=env, capture_output=True, text=True, timeout=90)
+        shadow = subprocess.run(prefix + ['--non-call-transfer-shadow=json'], cwd=work,
+                                env=env, capture_output=True, text=True, timeout=90)
+        assert normal.returncode == shadow.returncode == 0 and normal.stderr == shadow.stderr, normal.stderr
+        # Explicitly a Sema control: direct mutable aggregate extern lowering
+        # currently has a ptr/aggregate signature mismatch. That independent
+        # ABI path is not repaired, run or counted as a runtime pass here.
+        print('PASS ordinary foreign-call Sema/parity control (no ABI/runtime claim)', flush=True)
 
 if __name__ == '__main__':
     gate.main()
