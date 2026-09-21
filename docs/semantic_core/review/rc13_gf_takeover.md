@@ -54,8 +54,57 @@ direct/bound Wait escape, lexical shadowing, scoped use, declaration-name Copy
 controls, resource cleanup, the protected raw-field negative, and both original
 HTTP programs. Network skipping does not count as successful execution.
 
-Full validation must identify a fixed local WIP SHA, compiler hash, source
-manifest, and separate build/PASS/FAIL/CTest logs. Results are pending until the
-run completes. The independently modified whole-value-generics RFC is excluded
+Full validation identifies a fixed local WIP SHA, compiler hash, source
+manifest, and separate build/PASS/FAIL/CTest logs. The independently modified whole-value-generics RFC is excluded
 from the checkpoint; its preserved hash is
 `1b73b0fc46f9a700e1bdc9d0a0031614e1d9a4b398ce97f6a6423972474d70e2`.
+
+## Fixed-candidate results (2026-09-21)
+
+Implementation: `fcead1a8c6777577f7c7a65a5f988661ca124477` (local WIP, not accepted).
+Compiler SHA-256: `f6ffc10df374b986de803463f0ef579bd513fefb0af7f39bd5803866201d68c6`.
+Evidence directory:
+`/Users/zhyi/GitDP/tokalang/validation/gf-takeover-20260921/fixed-candidate`.
+`metadata.json` records the commands, durations, compiler hash, and empty tracked
+file-change lists after every suite. `source-manifest.json` and
+`preserved-worktree.patch` preserve the exact source state, including the
+uncommitted, untouched RFC. No implementation changed during this run.
+
+| Gate | Actual result | Seconds |
+| --- | --- | --- |
+| Complete tools build | passed | 8.27 |
+| Complete PASS | 452/459 | 351.98 |
+| Complete FAIL | 480/480 | 133.93 |
+| Unfiltered CTest | 113/115 | 1321.42 |
+
+No abnormal compiler/runtime exits were detected in the PASS/FAIL comparison.
+The new safety gate passed in this complete CTest run; its successful programs
+include both original HTTP programs, scoped Wait, genuinely Copy data, and
+exact-once resource transfer. Its negatives check both object and LLVM modes
+without executing escaping views. JSON-factory and CSV gates passed as well.
+
+Compared with the audit's retained earlier WIP logs (not one immutable base):
+
+- PASS restores the two HTTP programs and has seven newly failing programs.
+- FAIL remains 480/480; no oracle was changed by the takeover safety fixes.
+- CTest restores JSON-factory and CSV, retains indirect-parameter failure, and
+  exposes return-matrix failure. The added safety test is **not** a recovery.
+
+Remaining positive failures, from independent same-binary check-only probes:
+
+| Programs | First error |
+| --- | --- |
+| `g04_anon_records`, `g08_noshared`, `g08_test` | binding `IncompleteFacts` at anonymous record construction |
+| `g09_async_wait_syntax` | binding `IncompleteFacts` at `std/task.tk:463`, opaque `TaskHandle<T>` parameter's Wait result |
+| `g10_build_hybrid_test`, `g15_stdx_toml_test`, `g18_stdx_template_test` | `ElementDependenciesUnproven` at `std/vec.tk:35` |
+
+The return-matrix failure has the same Vec first error in build-return buffers.
+The indirect-parameter gate still fails its source-hidden signature test.
+Full stderr is retained per failed program; `comparison.json` in the evidence
+parent lists every restored/new/remaining case. These are open positive targets,
+not newly declared illegal programs. Their independent causes must be resolved
+without reinstating the quarantined rules by default.
+
+This closes the takeover's safety correction and fixed-baseline measurement,
+not overall integration acceptance. No freeze ref, remote, PR, or release was
+changed, and phase E remains inactive.
