@@ -82,7 +82,9 @@ of the implementation or the combined anonymous-record / Wait package.
 
 The 26-case directed matrix passed, followed by the added live-variant owning
 result runtime control. The associated safety/static-return/JSON CTest group
-passed 3/3 (120.53 seconds). The combined fixed-candidate full run is pending.
+passed 3/3 (120.53 seconds). The combined fixed-candidate full run is complete;
+see `rc13_task_result_candidate.md`. The package is still not complete/accepted
+because the full run exposes two owned-buffer positive regressions.
 Development probes have covered external sources after task cleanup,
 static/scalar/unique/shared results, selected input/field, declaration order,
 cache reuse, move/forward, branch preservation/conflict, mutation, source-hidden
