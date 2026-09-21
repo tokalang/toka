@@ -108,3 +108,32 @@ without reinstating the quarantined rules by default.
 This closes the takeover's safety correction and fixed-baseline measurement,
 not overall integration acceptance. No freeze ref, remote, PR, or release was
 changed, and phase E remains inactive.
+
+## Following anonymous-record / Wait package (WIP)
+
+The user's incremental review accepted the preceding safety correction and
+baseline accounting, **not** the entire inherited WIP or RC13. Its independent
+4/4 targeted result is distinct from the full run above.
+
+The anonymous-record portion now preserves actual static witnesses separately
+from dynamic referents and records their field association. Static storage does
+not confer Copy or owning-temporary eligibility. Checked initializer replay uses
+the original binding identity; a selected field does not inherit sibling sources.
+The return-only structured-borrow marker is not set on initialization plans.
+
+Targeted CTest: **5/5, 112.35 seconds**, saved at
+`/Users/zhyi/GitDP/tokalang/validation/rc13-record-wait/targeted.log`:
+`toka_rc13_wait_copy_safety`, `toka_member_reference_entry`,
+`toka_binding_b3_static_return`, `toka_json_factory_values`,
+`toka_json_leaf_static_error`. The safety gate now has 23 cases, including actual
+execution of the three original anonymous-record programs, mixed sources,
+selected-static-field and lexical-shadowing controls, plus local-view and
+descriptor escape rejection in normal/shadow/object/LLVM modes.
+
+These are targeted recoveries only. No full suite was rerun or backfilled.
+The combined package is incomplete: opaque TaskHandle result projection requires
+the scoped decision in `rc13_task_result_projection_proposal.md`, which is not
+implemented. Adding a lifetime ceiling alone cannot invent an actual result
+source. Build/TOML/Template, return-matrix and source-hidden callable remain open;
+no raw_take rule was restored and E remains inactive. No new Accepted/freeze is
+requested for the anonymous-record helper work.

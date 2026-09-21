@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True)
+    parser.add_argument("--case", action="append", default=[])
     args = parser.parse_args()
     compiler = Path(args.build_dir).resolve() / "bin/tokac"
     env = dict(os.environ, TOKA_LIB=str(ROOT / "lib"))
@@ -80,6 +81,71 @@ fn main() -> i32 {
 ''', None)
     for name in ("g10_http_phase1_test", "g10_net_http_server_test"):
         cases[name] = ((ROOT / "tests/pass" / (name + ".tk")).read_text(), None)
+    for name in ("g04_anon_records", "g08_noshared", "g08_test"):
+        cases[name] = ((ROOT / "tests/pass" / (name + ".tk")).read_text(), None)
+    cases["record_mixed_scoped"] = ('''fn main() -> i32 {
+    auto owner = string::from("live")
+    auto value = (fixed = "static", view = owner.as_view(), number = 7)
+    assert(value.fixed.equals("static"), "static field")
+    assert(value.view.equals("live"), "dynamic field")
+    return 0
+}
+''', None)
+    cases["record_dynamic_escape"] = ('''fn escape() -> str {
+    auto owner = string::from("local")
+    auto value = (fixed = "static", view = owner.as_view(), number = 7)
+    return value.view
+}
+fn main() -> i32 { return 0 }
+''', "E0455")
+    cases["record_descriptor_escape"] = ('''fn escape() -> &str {
+    auto value = (view = "static", number = 7)
+    return &(value.view)
+}
+fn main() -> i32 { return 0 }
+''', "E0455")
+    cases["record_shadowed_dynamic"] = ('''fn escape() -> str {
+    auto owner = string::from("local")
+    auto text = owner.as_view()
+    auto forwarded = text
+    {
+        auto text = "static"
+        auto value = (view = forwarded, number = 7)
+        return value.view
+    }
+}
+fn main() -> i32 { return 0 }
+''', "E0455")
+    cases["record_static_field_only"] = ('''fn select() -> str {
+    auto owner = string::from("unrelated")
+    auto value = (fixed = "static", view = owner.as_view())
+    return value.fixed
+}
+fn main() -> i32 {
+    auto result = select()
+    assert(result.equals("static"), "only selected static field escapes")
+    return 0
+}
+''', None)
+    cases["record_shadowed_static"] = ('''fn select() -> str {
+    auto text = "static"
+    auto forwarded = text
+    {
+        auto owner = string::from("unrelated")
+        auto text = owner.as_view()
+        auto value = (view = forwarded, number = 7)
+        return value.view
+    }
+}
+fn main() -> i32 {
+    auto result = select()
+    assert(result.equals("static"), "original binding identity")
+    return 0
+}
+''', None)
+    if args.case:
+        assert set(args.case) <= cases.keys(), args.case
+        cases = {name: cases[name] for name in args.case}
     with tempfile.TemporaryDirectory(prefix="toka-wait-copy-") as directory:
         work = Path(directory)
 

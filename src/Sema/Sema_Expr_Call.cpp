@@ -3860,6 +3860,22 @@ bool Sema::collectActualReturnReferents(
   }
   std::set<uint64_t> visitingStorage;
   std::function<bool(Expr *, std::vector<AccessPath> &)> visit;
+  auto checkedSourcePath = [&](Expr *value) {
+    auto path = makeAccessPath(value);
+    Expr *root = value;
+    while (auto *member = dynamic_cast<MemberExpr *>(root)) root = member->Object.get();
+    if (auto *variable = dynamic_cast<VariableExpr *>(root);
+        variable && variable->ResolvedBindingID) {
+      SymbolInfo *resolved = nullptr;
+      std::string name;
+      if (!CurrentScope->findSymbolByID(variable->ResolvedBindingID, resolved, &name) ||
+          !resolved) return AccessPath{};
+      path.RootID = resolved->SymbolID;
+      path.RootLoc = resolved->DeclLoc;
+      path.RootName = Type::stripMorphology(name);
+    }
+    return path;
+  };
   std::function<bool(Expr *, std::vector<AccessPath> &)> storageOrigin =
       [&](Expr *value, std::vector<AccessPath> &result) {
     while (value) {
@@ -3870,7 +3886,7 @@ bool Sema::collectActualReturnReferents(
       else
         break;
     }
-    auto direct = makeAccessPath(value);
+    auto direct = checkedSourcePath(value);
     SymbolInfo *current = nullptr;
     if (direct.RootID) CurrentScope->findSymbolByID(direct.RootID, current);
     if (auto *selector = dynamic_cast<UnaryExpr *>(value);
@@ -4036,6 +4052,34 @@ bool Sema::collectActualReturnReferents(
     if (auto *unary = dynamic_cast<UnaryExpr *>(value);
         unary && unary->Op == TokenType::Star)
       return visit(unary->RHS.get(), result);
+    if (auto *member = dynamic_cast<MemberExpr *>(value)) {
+      const auto path = checkedSourcePath(member);
+      SymbolInfo *binding = nullptr;
+      if (path.RootID && path.Projections.size() == 1 &&
+          path.Projections.front().Kind == AccessProjectionKind::Field &&
+          CurrentScope->findSymbolByID(path.RootID, binding) && binding &&
+          !binding->IsFunctionParameter && !binding->HasBeenMutated &&
+          !m_ReturnSourceInvalidatedRoots.count(path.RootID) &&
+          !m_ReturnSourceUnknownRoots.count(path.RootID)) {
+        auto *declaration = binding->ASTPtr
+            ? dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(binding->ASTPtr)) : nullptr;
+        auto *record = declaration ? dynamic_cast<AnonymousRecordExpr *>(declaration->Init.get()) : nullptr;
+        if (record && record->ResolvedType && binding->TypeObj &&
+            record->ResolvedType->equals(*binding->TypeObj)) {
+          for (const auto &[name, source] : record->Fields) {
+            if (Type::stripMorphology(name) != path.Projections.front().Name) continue;
+            const auto selectedType = member->ResolvedType ? member->ResolvedType
+                : queryExplicitCedeStage0NonCallType(member, nullptr);
+            if (!source->ResolvedType || !selectedType ||
+                !source->ResolvedType->equals(*selectedType)) return false;
+            // A checked field projection carries only that field's origins;
+            // sibling dynamic dependencies cannot replace a static witness.
+            return visit(source.get(), result);
+          }
+          return false;
+        }
+      }
+    }
     if (auto *arr = dynamic_cast<ArrayExpr *>(value)) {
       for (const auto &elem : arr->Elements) {
         if (!visit(elem.get(), result)) return false;
@@ -4044,6 +4088,32 @@ bool Sema::collectActualReturnReferents(
     }
     if (auto *rep = dynamic_cast<RepeatedArrayExpr *>(value)) {
       return visit(rep->Value.get(), result);
+    }
+    if (auto *record = dynamic_cast<AnonymousRecordExpr *>(value)) {
+      bool borrowed = false;
+      for (const auto &[name, source] : record->Fields) {
+        auto type = source->ResolvedType;
+        auto ownership = queryExplicitCedeStage0OwnershipReadOnly(type);
+        if (!type || !ownership) return false;
+        if (!type->isReference() && *ownership != ValueOwnership::BorrowedView) {
+          if (queryExplicitCedeStage0CopyProof(type) != TransferCopyProof::ProvenCopy)
+            return false;
+          continue;
+        }
+        borrowed = true;
+        const size_t rootStart = result.size();
+        const size_t staticStart = preparedStatic.size();
+        if (!visit(source.get(), result)) return false;
+        if (result.size() == rootStart && preparedStatic.size() == staticStart)
+          return false;
+        if (fields && value == fieldOwner) {
+          auto &origins = preparedFields[Type::stripMorphology(name)];
+          origins.Referents.insert(origins.Referents.end(), result.begin() + rootStart, result.end());
+          origins.StaticStorage.insert(origins.StaticStorage.end(),
+              preparedStatic.begin() + staticStart, preparedStatic.end());
+        }
+      }
+      return borrowed;
     }
     auto *method = dynamic_cast<MethodCallExpr *>(value);
     auto *call = dynamic_cast<CallExpr *>(value);
@@ -4256,7 +4326,7 @@ bool Sema::collectActualReturnReferents(
       }
       return true;
     }
-    auto direct = makeAccessPath(value);
+    auto direct = checkedSourcePath(value);
     SymbolInfo *current = nullptr;
     if (direct.RootID) CurrentScope->findSymbolByID(direct.RootID, current);
     auto path = canonicalizeAccessPath(direct);
@@ -4283,8 +4353,20 @@ bool Sema::collectActualReturnReferents(
     SymbolInfo *binding = nullptr;
     Scope *scope = nullptr;
     std::string name;
-    if (!CurrentScope->findVariableWithDerefScope(path.RootName, binding, name, scope) ||
-        !binding || !binding->TypeObj)
+    if (path.RootID) {
+      for (Scope *owner = CurrentScope; owner && !binding; owner = owner->Parent) {
+        for (auto &[key, info] : owner->Symbols) {
+          if (info.SymbolID != path.RootID) continue;
+          binding = &info;
+          scope = owner;
+          name = key;
+          break;
+        }
+      }
+    } else {
+      CurrentScope->findVariableWithDerefScope(path.RootName, binding, name, scope);
+    }
+    if (!binding || !binding->TypeObj)
       return false;
     const bool invalidated = m_ReturnSourceInvalidatedRoots.count(binding->SymbolID);
     const auto bindingOwnership = queryExplicitCedeStage0OwnershipReadOnly(binding->TypeObj);
@@ -5151,6 +5233,7 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   };
   if (auto *record = dynamic_cast<AnonymousRecordExpr *>(exactValue)) {
     bool fieldsComplete = !record->Fields.empty();
+    bool hasBorrowedField = false;
     for (const auto &field : record->Fields) {
       Expr *fieldValue = field.second.get();
       while (fieldValue) {
@@ -5168,6 +5251,7 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
                unary && unary->Op == TokenType::Ampersand)
         referent = unary->RHS.get();
       if (referent) {
+        hasBorrowedField = true;
         AccessPath path = canonicalizeAccessPath(makeAccessPath(referent));
         if (!path)
           fieldsComplete = false;
@@ -5185,8 +5269,11 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       auto fieldOwnership = queryExplicitCedeStage0OwnershipReadOnly(fieldType);
       if (fieldType && (fieldType->isReference() ||
           (fieldOwnership && *fieldOwnership == ValueOwnership::BorrowedView))) {
+        hasBorrowedField = true;
         std::vector<AccessPath> origins;
-        if (!collectActualReturnReferents(fieldValue, origins) || origins.empty())
+        std::vector<SourceLocation> statics;
+        if (!collectActualReturnReferents(fieldValue, origins, &statics) ||
+            (origins.empty() && statics.empty()))
           fieldsComplete = false;
         else
           structuredBorrowedReferents.insert(structuredBorrowedReferents.end(),
@@ -5201,7 +5288,7 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
     structuredBorrowedTemporary =
         fieldsComplete && !structuredBorrowedReferents.empty();
     structuredCopyTemporary =
-        fieldsComplete && structuredBorrowedReferents.empty();
+        fieldsComplete && !hasBorrowedField;
   }
   const auto contextualDestination =
       destination == TransferDestination::Return && destinationType
@@ -5933,7 +6020,7 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       facts.Dependency != TransferDependencyKind::Indeterminate)
     facts.DestinationDependencyAccepted = true;
   facts.StructuredBorrowedTemporary =
-      structuredBorrowedTemporary &&
+      destination == TransferDestination::Return && structuredBorrowedTemporary &&
       facts.StructuredReferentPlaces.size() ==
           structuredBorrowedReferents.size() &&
       facts.DependencyFactsComplete &&
