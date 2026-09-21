@@ -9761,7 +9761,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   const bool isGenericDirectCall =
       Fn && (!Fn->GenericParams.empty() || Fn->TemplateOrigin);
-  const bool isTaskResultCall = Fn && std::any_of(Fn->Args.begin(), Fn->Args.end(),
+  const bool isTaskResultCall = m_EnableStage1ExplicitCallerCede && Fn && std::any_of(Fn->Args.begin(), Fn->Args.end(),
       [&](const auto &argument) { return taskResultType(argument.ResolvedType) != nullptr; });
   if (!directArgumentRollback)
     directArgumentRollback.emplace(*this, Call->Args, isGenericDirectCall || isTaskResultCall);

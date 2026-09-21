@@ -80,10 +80,21 @@ of the implementation or the combined anonymous-record / Wait package.
   pumps the task, so the duplicated raw-handle pump call was removed; runtime and
   CodeGen result-take/repeated-take/cleanup implementations are unchanged.
 
-Consolidated directed validation and the combined fixed-candidate full run are
-pending. Development probes have covered external sources after task cleanup,
+The 26-case directed matrix passed, followed by the added live-variant owning
+result runtime control. The associated safety/static-return/JSON CTest group
+passed 3/3 (120.53 seconds). The combined fixed-candidate full run is pending.
+Development probes have covered external sources after task cleanup,
 static/scalar/unique/shared results, selected input/field, declaration order,
 cache reuse, move/forward, branch preservation/conflict, mutation, source-hidden
 rejection, producer/frame errors, post-proof rejection rollback, and the existing
 runtime trap for repeated owning-result extraction. No unsafe escape program
 was executed.
+
+Known integration blocker: `g09_async_owning_payload_drop_regression` now reaches
+its `Bytes` row. `Bytes` owns opaque raw buffer storage whose instance provenance
+is not established by this result-projection implementation. Earlier rows
+(`Owned`, `Option<Owned>`, the actual `Ok(Owned)` variant, and regular enum
+payloads) have closed-value/variant proofs. `Bytes` must not receive the same
+proof merely from its name, Drop method, empty dependency set, or a container
+identity rule. The original positive remains unchanged and failing; this is not
+declared a language prohibition. No Bytes/Vec storage contract was added here.

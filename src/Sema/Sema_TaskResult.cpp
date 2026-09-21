@@ -162,6 +162,9 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
         error(source, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED, "TaskResultOriginsUnproven");
       return;
     }
+  } else if (auto *await = dynamic_cast<AwaitExpr *>(source); await && !await->CatchesCancellation) {
+    input = taskResultFact(await->Expression.get());
+    if (!input || !input->TaskCarrier || !sameResultType(input->ValueType, source->ResolvedType)) return;
   } else if (auto *cede = dynamic_cast<CedeExpr *>(source)) input = cede->Value->TaskResult;
   else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source)) input = taskResultFact(unsafe->Expression.get());
   else if (auto *cast = dynamic_cast<CastExpr *>(source);
@@ -171,7 +174,7 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
   if (input) {
     auto proof = std::make_shared<TaskResultFact>(*input);
     proof->CarrierType = source->ResolvedType;
-    if (dynamic_cast<WaitExpr *>(source)) proof->TaskCarrier = false;
+    if (dynamic_cast<WaitExpr *>(source) || dynamic_cast<AwaitExpr *>(source)) proof->TaskCarrier = false;
     publish(std::move(proof));
     return;
   }
@@ -302,7 +305,21 @@ void Sema::recordTaskResultReturn(ReturnStmt *statement, bool valid) {
     auto created = std::make_shared<TaskResultFact>();
     created->Scope = CurrentFunction; created->ValueType = frame.ResultType;
     created->CarrierType = source->ResolvedType;
-    if (closedTaskResultType(frame.ResultType)) {
+    std::function<bool(Expr *)> closedValue = [&](Expr *value) {
+      if (!value || !value->ResolvedType) return false;
+      if (closedTaskResultType(value->ResolvedType)) return true;
+      auto *constructor = dynamic_cast<CallExpr *>(value);
+      auto type = std::dynamic_pointer_cast<ShapeType>(value->ResolvedType);
+      if (!constructor || !type || !type->Decl || type->Decl->Kind != ShapeKind::Enum ||
+          constructor->ResolvedShape != type->Decl || constructor->MatchedMemberIdx < 0 ||
+          static_cast<size_t>(constructor->MatchedMemberIdx) >= type->Decl->Members.size()) return false;
+      const auto &variant = type->Decl->Members[constructor->MatchedMemberIdx];
+      const size_t arity = variant.IsUnitVariant ? 0 : variant.SubMembers.empty() ? 1 : variant.SubMembers.size();
+      if (constructor->Args.size() != arity) return false;
+      for (const auto &argument : constructor->Args) if (!closedValue(argument.get())) return false;
+      return true;
+    };
+    if (closedValue(source)) {
       created->Origin = TaskResultFact::Kind::Independent;
     } else if (auto independent = resultIndependence(source)) {
       created->Origin = TaskResultFact::Kind::Independent;
@@ -349,7 +366,8 @@ void Sema::recordTaskResultReturn(ReturnStmt *statement, bool valid) {
                            proof->AddressedStorage.end();
       const auto ownership = queryExplicitCedeStage0OwnershipReadOnly(arg.ResolvedType);
       if ((arg.IsCeded && (!ownership || *ownership != ValueOwnership::BorrowedView)) ||
-          (storage && (!arg.ResolvedType || !arg.ResolvedType->isReference()))) {
+          (storage && (!arg.ResolvedType || !arg.ResolvedType->isReference()) &&
+           (CurrentFunction->Effect == EffectKind::Async || arg.IsCeded))) {
         error(statement, DiagID::ERR_SEMA_RETURN_PLAN_INCOMPLETE, "TaskFrameResultBorrow");
         return false;
       }

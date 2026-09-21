@@ -262,6 +262,22 @@ fn main() -> i32 {
     return 0
 }
 ''', "E04661")
+CASES["live_variant_owned"] = ('''import std/task::{block_on}
+import core/result::{Result}
+import core/option::{Option}
+auto drops# = 0:i32
+shape Token(value: i32)
+impl Token@Encap { fn drop(self#) { drops += 1 } }
+fn child() -> async Result<Option<Token>, str> {
+    return Result<Option<Token>, str>::Ok(Option<Token>::Some(Token(value = 3)))
+}
+fn parent() -> async Result<Option<Token>, str> { return child().await }
+fn main() -> i32 {
+    { auto value = block_on(parent()); assert(value.is_ok(), "selected owned variant"); }
+    assert(drops == 1, "live variant exact once")
+    return 0
+}
+''', None)
 CASES["shared_result"] = ('''import std/task::{block_on}
 auto drops# = 0:i32
 shape Token(value: i32)
