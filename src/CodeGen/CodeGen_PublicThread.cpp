@@ -148,6 +148,11 @@ PhysEntity CodeGen::genPublicThread(const CallExpr *call) {
         if (auto *cast = dynamic_cast<const CastExpr *>(construction); cast && cast->Kind == CastKind::Ascription)
           construction = cast->Expression.get();
         else if (auto *unsafe = dynamic_cast<const UnsafeExpr *>(construction)) construction = unsafe->Expression.get();
+        else if (auto *cede = dynamic_cast<const CedeExpr *>(construction);
+                 cede && cede->IsImplicitCallTransfer && cede->ResolvedType &&
+                 cede->Value->ResolvedType &&
+                 cede->ResolvedType->equals(*cede->Value->ResolvedType))
+          construction = cede->Value.get();
         else break;
       }
       if (construction != p->EnvironmentConstruction || !dynamic_cast<const ClosureExpr *>(construction) ||

@@ -181,7 +181,7 @@ fn main() -> i32 {
 
     // 8. Record Split Borrow using specific explicit effects syntax
     {
-        auto split_refs2# = split_engines_effects(scene.root.left, scene.root.right)
+        auto split_refs2# = split_engines_effects(scene.root.left#, scene.root.right)
         assert(split_refs2.first.val == 777, "left split val effects")
         assert(split_refs2.second.val == 30, "right split val effects")
         // Check that disjoint references work properly

@@ -1,6 +1,7 @@
 import core/types::{usize, Addr, ADDR0}
 import core/traits::{@PartialOrd, @PartialEq, @Encap, @Dup}
-import core/option::{Option, Option}
+import core/option::{Option}
+import std/vec::{Vec}
 
 pub fn addr_is_null(a: Addr) -> bool {
     return (a as u64) == 0:u64
@@ -11,10 +12,9 @@ pub fn addr_is_not_null(a: Addr) -> bool {
 }
 
 shape BTreeNode<K, V> (
-    len#: usize = 0,
     is_leaf#: bool = true,
-    keys#: [K; 5],
-    vals#: [V; 5],
+    keys#: Vec<K>,
+    vals#: Vec<V>,
     children#: [Addr; 6]
 )
 
@@ -24,16 +24,9 @@ impl<K, V> BTreeNode<K, V> {
             if addr_is_null(node_addr) { return }
             auto *n# = node_addr as *BTreeNode<K, V>
             
-            auto i# = 0:usize
-            loop i < n.len {
-                auto _k = cede n.keys[i]
-                auto _v = cede n.vals[i]
-                i += 1
-            }
-            
             if !n.is_leaf {
                 auto j# = 0:usize
-                loop j <= n.len {
+                loop j <= n.keys.len() {
                     auto c_addr = n.children[j]
                     if addr_is_not_null(c_addr) {
                         BTreeNode<K, V>::destroy(c_addr)
@@ -41,9 +34,7 @@ impl<K, V> BTreeNode<K, V> {
                     j += 1
                 }
             }
-            // The initialized entries were consumed above.  Deallocate the
-            // node storage without recursively dropping its fixed arrays.
-            unsafe free [0] (node_addr as *[BTreeNode<K, V>])
+            unsafe free [1] (node_addr as *[BTreeNode<K, V>])
         }
     }
 
@@ -51,8 +42,9 @@ impl<K, V> BTreeNode<K, V> {
         unsafe {
             auto node_addr = (unsafe alloc [1] BTreeNode<K, V>) as Addr
             auto *node# = node_addr as *BTreeNode<K, V>
-            node.len = 0
             node.is_leaf = is_leaf
+            node.keys = Vec<K>::with_capacity(5:usize)
+            node.vals = Vec<V>::with_capacity(5:usize)
             
             auto i# = 0:usize
             loop i < 6 {
@@ -69,42 +61,29 @@ impl<K, V> BTreeNode<K, V> {
             auto z_addr = BTreeNode<K, V>::new(y.is_leaf)
             auto *z# = z_addr as *BTreeNode<K, V>
             
-            z.len = 2
+            z.keys#.push(y.keys#.remove(3:usize).unwrap())
+            z.keys#.push(y.keys#.remove(3:usize).unwrap())
+            z.vals#.push(y.vals#.remove(3:usize).unwrap())
+            z.vals#.push(y.vals#.remove(3:usize).unwrap())
             
-            auto j# = 0:usize
-            loop j < 2 {
-                z.keys[j] = cede y.keys[j + 3]
-                z.vals[j] = cede y.vals[j + 3]
-                j += 1
-            }
             if !y.is_leaf {
-                j = 0
+                auto j# = 0:usize
                 loop j < 3 {
                     z.children[j] = y.children[j + 3]
                     y.children[j + 3] = 0:Addr
                     j += 1
                 }
             }
-            y.len = 2
             
-            j = self.len
-            loop j > i {
-                self.children[j + 1] = self.children[j]
-                j -= 1
+            auto j_c# = self.keys.len() + 1
+            loop j_c > i + 1 {
+                self.children[j_c] = self.children[j_c - 1]
+                j_c -= 1
             }
             self.children[i + 1] = z_addr
             
-            j = self.len
-            loop j > i {
-                self.keys[j] = cede self.keys[j - 1]
-                self.vals[j] = cede self.vals[j - 1]
-                j -= 1
-            }
-            
-            self.keys[i] = cede y.keys[2]
-            self.vals[i] = cede y.vals[2]
-            
-            self.len += 1
+            self.keys#.insert(i, y.keys#.remove(2:usize).unwrap())
+            self.vals#.insert(i, y.vals#.remove(2:usize).unwrap())
         }
     }
 }
@@ -119,65 +98,39 @@ pub fn btree_node_insert_non_full_iterative<K: @PartialOrd, V>(root_addr: Addr, 
             auto *node# = curr_addr as *BTreeNode<K, V>
             auto idx# = 0:usize
             
-            loop idx < node.len {
-                auto k_ptr_cur = node.keys[idx]
+            loop idx < node.keys.len() {
                 auto tmp_k = cede key_buf[0]
-                auto cmp_res = tmp_k.cmp(k_ptr_cur)
+                auto cmp_res = tmp_k.cmp(node.keys.buf[idx])
                 key_buf[0] = cede tmp_k
                 
                 if cmp_res == 0 {
-                    node.vals[idx] = cede val_buf[0]
+                    node.vals#.set(idx, cede val_buf[0])
                     auto _drop_k = cede key_buf[0]
                     return false
+                }
+                if cmp_res < 0 {
+                    break
                 }
                 idx += 1
             }
             
             if node.is_leaf {
-                auto j# = node.len:usize
-                loop j > 0 {
-                    auto k_ptr_loop = node.keys[j - 1]
-                    auto tmp_k2 = cede key_buf[0]
-                    auto cmp = tmp_k2.cmp(k_ptr_loop)
-                    key_buf[0] = cede tmp_k2
-                    if cmp < 0 {
-                        node.keys[j] = cede node.keys[j - 1]
-                        node.vals[j] = cede node.vals[j - 1]
-                        j -= 1
-                    } else {
-                        break
-                    }
-                }
-                node.keys[j] = cede key_buf[0]
-                node.vals[j] = cede val_buf[0]
-                node.len += 1
+                node.keys#.insert(idx, cede key_buf[0])
+                node.vals#.insert(idx, cede val_buf[0])
                 return true
             } else {
-                auto j# = node.len:usize
-                loop j > 0 {
-                    auto k_ptr_loop = node.keys[j - 1]
-                    auto tmp_k3 = cede key_buf[0]
-                    auto cmp = tmp_k3.cmp(k_ptr_loop)
-                    key_buf[0] = cede tmp_k3
-                    if cmp > 0 {
-                        break
-                    }
-                    j -= 1
-                }
-                auto idx2# = j
-                auto child_addr = node.children[idx2]
+                auto child_addr = node.children[idx]
                 auto *child# = child_addr as *BTreeNode<K, V>
-                if child.len == 5 {
-                    node#.split_child(idx2)
-                    auto new_k_ptr = node.keys[idx2]
-                    auto tmp_k4 = cede key_buf[0]
-                    auto cmp2 = tmp_k4.cmp(new_k_ptr)
-                    key_buf[0] = cede tmp_k4
+                if child.keys.len() == 5 {
+                    node#.split_child(idx)
+                    auto tmp_k2 = cede key_buf[0]
+                    auto cmp2 = tmp_k2.cmp(node.keys.buf[idx])
+                    key_buf[0] = cede tmp_k2
                     if cmp2 > 0 {
-                        idx2 += 1
+                        idx += 1
                     }
                 }
-                curr_addr = node.children[idx2]
+                curr_addr = node.children[idx]
             }
         }
         return false
@@ -196,11 +149,11 @@ pub fn btree_node_get<K: @PartialOrd, V: @Dup>(node_addr: Addr, key: K) -> Optio
             if addr_is_null(current_addr) { return Option<V>::None }
             auto *n# = current_addr as *BTreeNode<K, V>
             auto i# = 0:usize
-            loop i < n.len {
-                auto k_ptr = n.keys[i]
-                auto cmp_res = key.cmp(k_ptr)
+
+            loop i < n.keys.len() {
+                auto cmp_res = key.cmp(n.keys.buf[i])
                 if cmp_res == 0 {
-                    return Option<V>::Some(n.vals[i].dup())
+                    return Option<V>::Some(n.vals.buf[i].dup())
                 }
                 if cmp_res < 0 {
                     break
@@ -223,8 +176,9 @@ pub fn btree_node_contains<K: @PartialOrd, V>(node_addr: Addr, key: K) -> bool {
             if addr_is_null(current_addr) { return false }
             auto *n# = current_addr as *BTreeNode<K, V>
             auto i# = 0:usize
-            loop i < n.len {
-                auto cmp_res = key.cmp(n.keys[i])
+
+            loop i < n.keys.len() {
+                auto cmp_res = key.cmp(n.keys.buf[i])
                 if cmp_res == 0 { return true }
                 if cmp_res < 0 { break }
                 i += 1
@@ -255,10 +209,6 @@ impl<K, V> BTreeMap<K, V>@Encap {
             }
         }
     }
-    
-
-
-
 }
 
 impl<K: @PartialOrd, V> BTreeMap<K, V> {
@@ -280,18 +230,18 @@ impl<K: @PartialOrd, V> BTreeMap<K, V> {
             auto val_buf# = [cede val]
             auto old_root_addr = self.root_addr
             auto *r# = old_root_addr as *BTreeNode<K, V>
-            if r.len == 5 {
+            auto added# = false
+            if r.keys.len() == 5 {
                 auto s_addr = BTreeNode<K, V>::new(false)
                 auto *s# = s_addr as *BTreeNode<K, V>
                 self.root_addr = s_addr
                 s.children[0] = old_root_addr
                 s#.split_child(0)
-                auto added = btree_node_insert_non_full_iterative<K, V>(s_addr, cede key_buf[0], cede val_buf[0])
-                if added { self.len += 1 }
+                added = btree_node_insert_non_full_iterative<K, V>(s_addr, cede key_buf[0], cede val_buf[0])
             } else {
-                auto added = btree_node_insert_non_full_iterative<K, V>(old_root_addr, cede key_buf[0], cede val_buf[0])
-                if added { self.len += 1 }
+                added = btree_node_insert_non_full_iterative<K, V>(old_root_addr, cede key_buf[0], cede val_buf[0])
             }
+            if added { self.len += 1 }
         }
     }
     pub fn contains_key(self, key: K) -> bool {

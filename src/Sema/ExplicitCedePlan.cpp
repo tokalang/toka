@@ -575,28 +575,34 @@ prepareExplicitCedePlan(const ExplicitCedePreparedFacts &facts) {
         return reject(TransferPlanRejection::AccessCapabilityMismatch, facts);
     }
   }
-  if (facts.ActualTypeKey.empty() ||
-      facts.Destination == TransferDestination::Indeterminate ||
-      facts.SourceCategory == TransferSourceCategory::Indeterminate ||
-      facts.SourceView == TransferSourceView::Indeterminate ||
-      facts.Ownership == TransferOwnershipKind::Indeterminate ||
-      facts.CopyProof == TransferCopyProof::Indeterminate ||
-      facts.Eligibility == TransferEligibility::Indeterminate ||
-      facts.EligibilityContext == TransferEligibilityContext::Indeterminate ||
-      facts.TemporaryEligibility ==
-          TransferTemporaryEligibility::Indeterminate ||
-      facts.TypeCompatibility == TransferTypeCompatibility::Indeterminate ||
-      facts.Dependency == TransferDependencyKind::Indeterminate ||
-      !facts.DependencyFactsComplete || !facts.ActualCapabilities.Complete ||
-      !facts.BorrowStateComplete || !facts.DropLiabilityComplete ||
-      facts.SnapshotRevision == 0 || !facts.SourceLivenessComplete ||
-      !facts.InitMaskComplete || !facts.CleanupMaskComplete ||
-      !facts.LiabilityIdentityComplete || !facts.ObligationFactsComplete ||
-      (facts.Destination == TransferDestination::Assignment &&
-       !facts.DestinationFactsComplete) ||
-      (facts.ObligationBefore == TransferObligationState::Outstanding &&
-       (!facts.ObligationRoot || !facts.ObligationRoot->valid())))
-    return reject(TransferPlanRejection::IncompleteFacts, facts);
+  {
+    std::string reason;
+    if (facts.ActualTypeKey.empty()) reason += "ActualTypeKeyEmpty ";
+    if (facts.Destination == TransferDestination::Indeterminate) reason += "DestinationIndet ";
+    if (facts.SourceCategory == TransferSourceCategory::Indeterminate) reason += "SourceCategoryIndet ";
+    if (facts.SourceView == TransferSourceView::Indeterminate) reason += "SourceViewIndet ";
+    if (facts.Ownership == TransferOwnershipKind::Indeterminate) reason += "OwnershipIndet ";
+    if (facts.CopyProof == TransferCopyProof::Indeterminate) reason += "CopyProofIndet ";
+    if (facts.Eligibility == TransferEligibility::Indeterminate) reason += "EligibilityIndet ";
+    if (facts.EligibilityContext == TransferEligibilityContext::Indeterminate) reason += "EligibilityContextIndet ";
+    if (facts.TemporaryEligibility == TransferTemporaryEligibility::Indeterminate) reason += "TemporaryEligibilityIndet ";
+    if (facts.TypeCompatibility == TransferTypeCompatibility::Indeterminate) reason += "TypeCompatibilityIndet ";
+    if (facts.Dependency == TransferDependencyKind::Indeterminate) reason += "DependencyIndet ";
+    if (!facts.DependencyFactsComplete) reason += "DependencyFactsIncomplete ";
+    if (!facts.ActualCapabilities.Complete) reason += "ActualCapabilitiesIncomplete ";
+    if (!facts.BorrowStateComplete) reason += "BorrowStateIncomplete ";
+    if (!facts.DropLiabilityComplete) reason += "DropLiabilityIncomplete ";
+    if (facts.SnapshotRevision == 0) reason += "SnapshotRevision0 ";
+    if (!facts.SourceLivenessComplete) reason += "SourceLivenessIncomplete ";
+    if (!facts.InitMaskComplete) reason += "InitMaskIncomplete ";
+    if (!facts.CleanupMaskComplete) reason += "CleanupMaskIncomplete ";
+    if (!facts.LiabilityIdentityComplete) reason += "LiabilityIdentityIncomplete ";
+    if (!facts.ObligationFactsComplete) reason += "ObligationFactsIncomplete ";
+    if (facts.Destination == TransferDestination::Assignment && !facts.DestinationFactsComplete) reason += "DestFactsIncomplete ";
+    if (facts.ObligationBefore == TransferObligationState::Outstanding && (!facts.ObligationRoot || !facts.ObligationRoot->valid())) reason += "ObligationRootInvalid ";
+    if (!reason.empty())
+      return reject(TransferPlanRejection::IncompleteFacts, facts);
+  }
   if (facts.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
       facts.SourceLiveness != TransferSourceLiveness::Live)
     return reject(TransferPlanRejection::SourceNotLive, facts);

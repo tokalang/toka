@@ -3,13 +3,11 @@ import core/option::{Option}
 import core/types::{Addr}
 
 shape Resource (
-    &drop_flag#: i32
+    id: i32
 )
 impl Resource@Encap {
-    pub drop_flag
-    fn drop(self#) {
-        self.drop_flag += 1
-    }
+    pub id
+    fn drop(self#) {}
 }
 
 shape SharedHandle (
@@ -31,9 +29,8 @@ fn get_ref_count(~res: Resource) -> i32 {
 }
 
 fn main() -> i32 {
-    auto flag# = 0
     {
-        auto ~res = new Resource(&drop_flag = &flag)
+        auto ~res = new Resource(id = 0)
         auto opt = Option<~Resource>::Some(~res)
         
         assert(get_ref_count(~res) == 2, "Refcount must be 2 after Some")

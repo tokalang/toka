@@ -29,7 +29,7 @@ fn test_basic_variable_interpolation() {
     ctx#.set(cede string::from("name"), cede string::from("Toka User"))
     ctx#.set(cede string::from("app_name"), cede string::from("webhook-service"))
 
-    auto rendered_res = parsed.unwrap().render(ctx)
+    auto rendered_res = parsed.unwrap().render(ctx#)
     assert(rendered_res.is_ok(), "Template render must return Ok")
     auto result = rendered_res.unwrap()
 
@@ -43,14 +43,14 @@ fn test_conditional_if_else() {
     auto parsed_prod = Template::parse(source)
     auto ctx_prod# = TemplateContext::new()
     ctx_prod#.set(cede string::from("is_prod"), cede string::from("true"))
-    auto res_prod = parsed_prod.unwrap().render(ctx_prod).unwrap()
+    auto res_prod = parsed_prod.unwrap().render(ctx_prod#).unwrap()
     assert(res_prod.as_str().equals("prod-deploy"), "Conditional true branch must output prod-deploy")
 
     // 2. Test is_prod = false
     auto parsed_dev = Template::parse(source)
     auto ctx_dev# = TemplateContext::new()
     ctx_dev#.set(cede string::from("is_prod"), cede string::from("false"))
-    auto res_dev = parsed_dev.unwrap().render(ctx_dev).unwrap()
+    auto res_dev = parsed_dev.unwrap().render(ctx_dev#).unwrap()
     assert(res_dev.as_str().equals("dev-deploy"), "Conditional false branch must output dev-deploy")
 }
 
@@ -67,7 +67,7 @@ fn test_range_loop() {
     auto ctx# = TemplateContext::new()
     ctx#.set_list(cede string::from("args"), cede list)
 
-    auto rendered = parsed.unwrap().render(ctx).unwrap()
+    auto rendered = parsed.unwrap().render(ctx#).unwrap()
     assert(rendered.as_str().equals("items: [alpha] [beta] [gamma] "), "Range loop must output all items")
 }
 
@@ -79,7 +79,7 @@ fn test_pipeline_functions() {
     auto ctx# = TemplateContext::new()
     ctx#.set(cede string::from("val"), cede string::from("TokaTemplate"))
 
-    auto rendered = parsed.unwrap().render(ctx).unwrap()
+    auto rendered = parsed.unwrap().render(ctx#).unwrap()
     assert(rendered.as_str().equals("Lower: tokatemplate, Upper: TOKATEMPLATE"), "Pipeline functions must transform string")
 }
 
@@ -95,7 +95,7 @@ fn test_custom_function_injection() {
     ctx#.register_func(cede string::from("getenv"), f_getenv)
     ctx#.register_func(cede string::from("cat"), f_cat)
 
-    auto rendered_res = parsed.unwrap().render(ctx)
+    auto rendered_res = parsed.unwrap().render(ctx#)
     if rendered_res.is_ok() {
         auto rendered = rendered_res.unwrap()
         assert(rendered.as_str().equals("Port: 8080, Env: production, Secret: s3cr3t_token"), "Registered custom functions must render accurately")
@@ -116,7 +116,7 @@ fn test_custom_function_error_propagation() {
     auto ctx# = TemplateContext::new()
     ctx#.register_func(cede string::from("getenv"), f_getenv)
 
-    auto rendered_res = parsed.unwrap().render(ctx)
+    auto rendered_res = parsed.unwrap().render(ctx#)
     assert(rendered_res.is_err(), "Rendering failing custom function must return TemplateError")
 }
 
@@ -132,7 +132,7 @@ fn test_strict_parse_validation_and_unknown_func() {
     assert(parsed_unknown.is_ok(), "Syntax is valid, but render must check unknown functions")
 
     auto ctx# = TemplateContext::new()
-    auto res_render = parsed_unknown.unwrap().render(ctx)
+    auto res_render = parsed_unknown.unwrap().render(ctx#)
     assert(res_render.is_err(), "Rendering unknown function must return TemplateError")
 }
 

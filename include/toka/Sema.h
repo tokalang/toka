@@ -1697,6 +1697,46 @@ private:
     return synthesizePhysicalTypeObject(Member);
   }
 
+  static void populateAnonymousRecordMember(ShapeMember &member) {
+    if (!member.ResolvedType)
+      return;
+    if (member.ResolvedType->isReference()) {
+      member.IsReference = true;
+      auto pointee = member.ResolvedType->getPointeeType();
+      if (pointee && pointee->IsWritable) {
+        member.IsValueMutable = true;
+      }
+    } else if (member.ResolvedType->isRawPointer()) {
+      member.IsRawPointer = true;
+      member.IsPointerNullable = member.ResolvedType->IsNullable;
+      member.IsRebindable = member.ResolvedType->IsWritable;
+      auto pointee = member.ResolvedType->getPointeeType();
+      if (pointee && pointee->IsWritable) {
+        member.IsValueMutable = true;
+      }
+    } else if (member.ResolvedType->isUniquePtr()) {
+      member.IsUnique = true;
+      auto pointee = member.ResolvedType->getPointeeType();
+      if (pointee && pointee->IsWritable) {
+        member.IsValueMutable = true;
+      }
+    } else if (member.ResolvedType->isSharedPtr()) {
+      member.IsShared = true;
+      auto pointee = member.ResolvedType->getPointeeType();
+      if (pointee && pointee->IsWritable) {
+        member.IsValueMutable = true;
+      }
+    } else {
+      member.IsValueMutable = member.ResolvedType->IsWritable;
+    }
+    member.Permission = BindingPermission::fromLegacy(
+        member.IsRawPointer, member.IsUnique, member.IsShared,
+        member.IsReference, member.IsRebindable,
+        member.IsPointerNullable, member.IsRebindBlocked,
+        member.IsValueMutable, member.IsValueNullable,
+        member.IsValueBlocked, member.IsMorphicExempt);
+  }
+
   // Pointer Morphology Strictness
   enum class MorphKind {
     None,    // No pointer (value type)

@@ -26,11 +26,13 @@ fn main() -> i32 {
     
     // 4. Test memory operations
     unsafe {
-        auto dst_addr = libc_calloc(4:usize, 1:usize) as Addr
-        auto src_addr = libc_calloc(4:usize, 1:usize) as Addr
+        auto *d_alloc = libc_calloc(4:usize, 1:usize).unwrap()
+        auto *s_alloc = libc_calloc(4:usize, 1:usize).unwrap()
+        auto dst_addr = *d_alloc as Addr
+        auto src_addr = *s_alloc as Addr
         
-        auto *d_slice# = dst_addr as *[u8]
-        auto *s_slice# = src_addr as *[u8]
+        auto *d_slice# = unsafe (dst_addr as *[u8])
+        auto *s_slice# = unsafe (src_addr as *[u8])
         
         s_slice[0] = 1:u8
         s_slice[1] = 2:u8

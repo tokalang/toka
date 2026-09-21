@@ -1,12 +1,22 @@
 import std/io::println
 import core/types::OAddr
 
-shape Point(
+shape RawPoint(
     *x: i32
+)
+impl RawPoint {
+    pub fn clone(self) -> RawPoint {
+        return RawPoint(*x = self.*x)
+    }
+    fn drop(self#) {}
+}
+
+shape Point(
+    x: i32
 )
 impl Point {
     pub fn clone(self) -> Point {
-        return Point(*x = self.*x)
+        return Point(x = self.x)
     }
     fn drop(self#) {}
 }
@@ -16,7 +26,7 @@ shape UniqueCont(
 )
 impl UniqueCont {
     pub fn clone(self) -> UniqueCont {
-        return UniqueCont(^p = new Point(*x = self.p.*x))
+        return UniqueCont(^p = new Point(x = self.p.x))
     }
     fn drop(self#) {}
 }
@@ -26,7 +36,7 @@ shape SharedCont(
 )
 impl SharedCont {
     pub fn clone(self) -> SharedCont {
-        auto ~temp = new Point(*x = self.p.*x)
+        auto ~temp = new Point(x = self.p.x)
         return SharedCont(~p = ~temp)
     }
     fn drop(self#) {}
@@ -41,19 +51,20 @@ pub fn main() -> i32 {
     assert(raw_ptr == 42, "local val mismatch")
 
     // 2. Struct member raw pointer test
-    auto pt = Point(*x = *a)
+    auto pt = RawPoint(*x = *a)
     println("struct member addr: {}", pt.*x as OAddr)
     println("struct member val: {}", pt.x)
     assert(pt.x == 42, "struct member val mismatch")
 
     // 3. Struct member Unique pointer test
-    auto uc = UniqueCont(^p = cede ^pt)
+    auto ^unique_pt = new Point(x = a)
+    auto uc = UniqueCont(^p = cede ^unique_pt)
     println("struct unique addr: {}", uc.^p as OAddr)
     println("struct unique val: {}", uc.p.x)
     assert(uc.p.x == 42, "struct unique val mismatch")
 
     // 4. Struct member Shared pointer test
-    auto ~shared_pt = new Point(*x = *a)
+    auto ~shared_pt = new Point(x = a)
     auto sc = SharedCont(~p = ~shared_pt)
     println("struct shared addr: {}", sc.~p as OAddr)
     println("struct shared val: {}", sc.p.x)

@@ -1497,11 +1497,11 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     }
 
     bool rejectedAliasField = false;
+    Expr *transferSource = pair.second.get();
+    while (auto *cast = dynamic_cast<CastExpr *>(transferSource))
+      transferSource = cast->Expression.get();
     if (memberTypeObj && memberTypeObj->isUniquePtr() &&
-        !dynamic_cast<CedeExpr *>(pair.second.get())) {
-      Expr *transferSource = pair.second.get();
-      while (auto *cast = dynamic_cast<CastExpr *>(transferSource))
-        transferSource = cast->Expression.get();
+        !dynamic_cast<CedeExpr *>(transferSource)) {
       if (auto *unary = dynamic_cast<UnaryExpr *>(transferSource);
           unary && unary->Op == TokenType::Caret)
         rejectedAliasField = diagnosePlaceAliasOwnershipTransfer(
@@ -1524,12 +1524,12 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
         memberTypeObj &&
         memberTypeObj->requiresExplicitOwnershipTransfer(this);
     bool directUniqueValueMove = false;
+    Expr *uniqueDirectSource = pair.second.get();
+    while (auto *cast = dynamic_cast<CastExpr *>(uniqueDirectSource))
+      uniqueDirectSource = cast->Expression.get();
     if (memberTypeObj && memberTypeObj->isUniquePtr() &&
-        !dynamic_cast<CedeExpr *>(pair.second.get())) {
-      Expr *directSource = pair.second.get();
-      while (auto *cast = dynamic_cast<CastExpr *>(directSource))
-        directSource = cast->Expression.get();
-      if (auto *unary = dynamic_cast<UnaryExpr *>(directSource);
+        !dynamic_cast<CedeExpr *>(uniqueDirectSource)) {
+      if (auto *unary = dynamic_cast<UnaryExpr *>(uniqueDirectSource);
           unary && unary->Op == TokenType::Caret) {
         if (auto *variable = dynamic_cast<VariableExpr *>(unary->RHS.get())) {
           SymbolInfo *sourceInfo = nullptr;
@@ -1551,13 +1551,13 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
         }
       }
     }
+    Expr *directSource = pair.second.get();
+    while (auto *cast = dynamic_cast<CastExpr *>(directSource))
+      directSource = cast->Expression.get();
     if (fieldReceivesOwnedValue &&
-        !dynamic_cast<CedeExpr *>(pair.second.get()) &&
+        !dynamic_cast<CedeExpr *>(directSource) &&
         !directUniqueValueMove &&
         Init->MemberTransfers[i] != AggregateTransferKind::MoveOwned) {
-      Expr *directSource = pair.second.get();
-      while (auto *cast = dynamic_cast<CastExpr *>(directSource))
-        directSource = cast->Expression.get();
       // An access path denotes existing storage (a local, projection, or
       // index), unlike a fresh call/constructor result.  Any owned value read
       // from that storage needs an explicit transfer at this new field

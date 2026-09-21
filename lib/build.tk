@@ -6,7 +6,8 @@ import std/env
 import std/path::{dirname, basename, file_stem}
 import std/vec::{Vec}
 import std/hashmap::{HashMap}
-import stdx/serde/json::{FromJson, JsonRes}
+import stdx/serde/json::{@FromJson, JsonRes}
+import stdx/serde/json_factory::{@JsonFactory, Parsed}
 pub import build/project::{Executable, Library}
 import build/internal/support::{__path_normalize, __path_canonicalize, __calculate_fnv1a}
 import build/internal/codec::{__deserialize_nested_shape, __deserialize_shape}
@@ -67,7 +68,7 @@ pub shape ModuleSnapshot (
     interface_version: string = string::from(""),
     source_hash: string = string::from(""),
     content_hash: string = string::from(""),
-    outputs: ModuleOutputs = ModuleOutputs(),
+    outputs: ModuleOutputs = ModuleOutputs(..),
     dependencies: Vec<string> = Vec<string>::new()
 )
 
@@ -138,6 +139,21 @@ impl ModuleSnapshot@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         auto result = __deserialize_nested_shape<ModuleSnapshot>(self#, json)
         return cede result
+    }
+}
+
+impl ModuleSnapshot@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<ModuleSnapshot>, str> <- json {
+        auto val# = ModuleSnapshot(..)
+        auto res = val#.parse_json(json)
+        if res.is_err() {
+            auto err = res.unwrap_err()
+            return Result<Parsed<ModuleSnapshot>, str>::Err(cede err)
+        }
+        auto rem_len = res.unwrap().len()
+        auto remaining = json.substr(json.len() - rem_len, rem_len)
+        auto parsed = Parsed<ModuleSnapshot>(value = cede val, rest = remaining)
+        return Result<Parsed<ModuleSnapshot>, str>::Ok(cede parsed)
     }
 }
 
@@ -260,6 +276,21 @@ impl RebuildModuleInfo@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         auto result = __deserialize_nested_shape<RebuildModuleInfo>(self#, json)
         return cede result
+    }
+}
+
+impl RebuildModuleInfo@JsonFactory {
+    pub fn parse_value(json: str) -> Result<Parsed<RebuildModuleInfo>, str> <- json {
+        auto val# = RebuildModuleInfo(..)
+        auto res = val#.parse_json(json)
+        if res.is_err() {
+            auto err = res.unwrap_err()
+            return Result<Parsed<RebuildModuleInfo>, str>::Err(cede err)
+        }
+        auto rem_len = res.unwrap().len()
+        auto remaining = json.substr(json.len() - rem_len, rem_len)
+        auto parsed = Parsed<RebuildModuleInfo>(value = cede val, rest = remaining)
+        return Result<Parsed<RebuildModuleInfo>, str>::Ok(cede parsed)
     }
 }
 

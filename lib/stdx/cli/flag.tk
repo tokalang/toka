@@ -392,11 +392,10 @@ impl Parser {
                     short_block = arg.substring(1, arg.len() as i32)
                 }
 
-                auto &chars = short_block.as_view().buf()
+                auto short_view = short_block.as_view()
                 auto c_idx# = 0:usize
-                loop c_idx < short_block.len() {
-                    auto c# = 0:char
-                    unsafe { c = chars[c_idx] }
+                loop c_idx < short_view.len() {
+                    auto c = short_view.byte_at(c_idx)
                     auto opt_def = self.find_def_short(c)
                     if opt_def.is_none() {
                         auto err_msg# = string::from("unknown short option: -")

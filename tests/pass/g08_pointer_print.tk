@@ -2,11 +2,11 @@ import std/io::println
 import core/types::OAddr
 
 shape Point(
-    *x: i32
+    x: i32
 )
 impl Point {
     pub fn clone(self) -> Point {
-        return Point(*x = self.*x)
+        return Point(x = self.x)
     }
     fn drop(self#) {}
 }
@@ -25,12 +25,12 @@ pub fn main() -> i32 {
     println("ref with as: {}", &ref as OAddr)
 
     // 3. Unique pointer (cast to OAddr first, then direct print to verify move semantics)
-    auto ^uniq = new Point(*x = *a)
+    auto ^uniq = new Point(x = a)
     println("uniq with as: {}", ^uniq as OAddr)
     println("uniq direct after move: {}", ^uniq)
 
     // 4. Shared pointer direct printing and casting (no ownership transfer/move-to-zero semantics)
-    auto ~shared = new Point(*x = *a)
+    auto ~shared = new Point(x = a)
     println("shared direct: {}", ~shared)
     println("shared with as: {}", ~shared as OAddr)
 

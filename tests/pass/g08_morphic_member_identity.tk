@@ -2,7 +2,7 @@ shape Box<T>(
   Value(T) = 1
 )
 
-fn take_identity<T>(cede box: Box<T>) -> T {
+fn take_identity<T>(cede box: Box<T>) -> T <- box {
   match cede box {
     auto Box<T>::Value(data) => return cede data
   }

@@ -401,9 +401,8 @@ void Sema::instantiateGenericImpl(
   for (const auto &method : Template->Methods)
     refreshGenericSourceContracts(method.get());
   // 1. Verify generic args count
-  if (GenericArgs.size() != Template->GenericParams.size()) {
+  if (GenericArgs.size() != Template->GenericParams.size())
     return;
-  }
 
   auto *implModule = getLexicalModule(Template->Loc);
   const bool jsonOwnedAdapter = implModule && implModule->IsTrustedSystemModule &&
@@ -423,18 +422,16 @@ void Sema::instantiateGenericImpl(
   // [NEW] Check Trait Bounds (SFINAE)
   for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
     if (!checkMorphologyBounds(Template->Loc, Template->GenericParams[i],
-                               GenericArgs[i], true /* isSilent */)) {
+                               GenericArgs[i], true /* isSilent */))
       return; // Explicit domain constraint: this impl is not applicable.
-    }
     if (!Template->GenericParams[i].TraitBounds.empty()) {
       auto bounds = substituteTraitBounds(
           Template->GenericParams[i].TraitBounds, Template->GenericParams,
           GenericArgs);
       if (!checkTraitBounds(Template->Loc, Template->GenericParams[i].Name,
                             bounds, GenericArgs[i],
-                            true /* isSilent */)) {
+                            true /* isSilent */))
         return; // SFINAE: Silently filter out this impl block
-      }
     }
   }
 

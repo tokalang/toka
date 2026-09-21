@@ -14,13 +14,14 @@ Expr *surface(Expr *expression) {
   }
   return expression;
 }
-bool hasCede(Expr *e) {
+bool hasCede(Expr *e, bool includeImplicit = true) {
   while (e) {
     if (auto *u = dynamic_cast<UnsafeExpr *>(e)) e = u->Expression.get();
     else if (auto *c = dynamic_cast<CastExpr *>(e); c && c->Kind == CastKind::Ascription) e = c->Expression.get();
     else break;
   }
-  return dynamic_cast<CedeExpr *>(e) != nullptr;
+  auto *cede = dynamic_cast<CedeExpr *>(e);
+  return cede && (includeImplicit || !cede->IsImplicitCallTransfer);
 }
 }
 
@@ -210,7 +211,10 @@ bool Sema::qualifyPublicThread(CallExpr *call, const AnalysisState &before, size
   } else {
     auto sourceReady = [&](Expr *edge, bool destructive) {
       auto path = canonicalizeAccessPath(makeAccessPath(surface(edge)));
-      if (!path) return !hasCede(edge);
+      // Elaboration wraps an admitted owning temporary in an internal cede.
+      // It is not a user request to invalidate a nonexistent source place.
+      // The environment/invoke/cleanup qualification below is still required.
+      if (!path) return !hasCede(edge, false);
       if (!destructive) return true;
       if (!hasCede(edge) || !path.Projections.empty()) return false;
       auto place = before.ExactPlaces.find(path.RootName);

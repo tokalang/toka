@@ -1,4 +1,4 @@
-import stdx/serde/json::{JsonRes, json_skip_whitespace, json_skip_value}
+import stdx/serde/json::{@FromJson, @JsonFactory, JsonRes, json_skip_whitespace, json_skip_value}
 import core/comptime::{reflect}
 
 pub fn __deserialize_nested_shape<T>(obj#: T, json_str: str) -> JsonRes <- json_str {
@@ -34,9 +34,7 @@ pub fn __deserialize_nested_shape<T>(obj#: T, json_str: str) -> JsonRes <- json_
         for auto f in reflect<T>().fields {
             if key_view.equals(f.name) {
                 found = true
-                auto val# = f.get(obj)
-                res = val#.parse_json(res)!
-                f.set(obj, cede val)
+                res = f.get(obj)#.parse_json(res)!
                 continue
             }
         }
@@ -71,9 +69,7 @@ pub fn __deserialize_shape<T>(json_str: str) -> Result<T, str> {
         for auto f in reflect<T>().fields {
             if key_view.equals(f.name) {
                 found = true
-                auto val# = f.get(obj)
-                res = val#.parse_json(res)!
-                f.set(obj, cede val)
+                res = f.get(obj)#.parse_json(res)!
                 continue
             }
         }

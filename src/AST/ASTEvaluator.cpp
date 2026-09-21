@@ -100,6 +100,18 @@ std::unique_ptr<Expr> ASTEvaluator::foldExpression(std::unique_ptr<Expr> E, Scop
     // same behavior as their un-ascribed form.
     Cast->Expression =
         foldExpression(std::move(Cast->Expression), CurrentScope, SemaInstance);
+  } else if (auto *Cede = dynamic_cast<CedeExpr *>(E.get())) {
+    Cede->Value =
+        foldExpression(std::move(Cede->Value), CurrentScope, SemaInstance);
+  } else if (auto *Post = dynamic_cast<PostfixExpr *>(E.get())) {
+    Post->LHS =
+        foldExpression(std::move(Post->LHS), CurrentScope, SemaInstance);
+  } else if (auto *Unwrap = dynamic_cast<UnwrapPropagationExpr *>(E.get())) {
+    Unwrap->Base =
+        foldExpression(std::move(Unwrap->Base), CurrentScope, SemaInstance);
+  } else if (auto *Un = dynamic_cast<UnaryExpr *>(E.get())) {
+    Un->RHS =
+        foldExpression(std::move(Un->RHS), CurrentScope, SemaInstance);
   } else if (auto *Met = dynamic_cast<MethodCallExpr *>(E.get())) {
     Met->Object = foldExpression(std::move(Met->Object), CurrentScope, SemaInstance);
     if (auto *CFE = dynamic_cast<ComptimeFieldExpr *>(Met->Object.get())) {

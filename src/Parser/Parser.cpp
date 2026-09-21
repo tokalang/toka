@@ -301,7 +301,7 @@ bool Parser::rejectTypePermissionPositions(const TypeSyntaxPtr &syntax,
       subjectPosition = TypeSyntaxPosition::NonReturn;
     visit(syntax->Subject, subjectPosition);
     for (const auto &element : syntax->Elements) visit(element, TypeSyntaxPosition::NonReturn);
-    for (const auto &field : syntax->Fields) visit(field.Type, TypeSyntaxPosition::NamedBinding);
+    for (const auto &field : syntax->Fields) visit(field.Type, TypeSyntaxPosition::NonReturn);
     for (const auto &argument : syntax->Arguments)
       if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type)
         visit(argument.Type, TypeSyntaxPosition::NonReturn);

@@ -1,0 +1,10 @@
+error[E04661]: Cannot transfer source into binding: AccessCapabilityMismatch
+ --> tests/fail/raw_pointer_no_upgrade.tk:4:21
+   |
+ 4 |     auto *px_mut# = *px
+   |                     ^
+note: binding capability facts: actual *[i32]# [H=0 P=0 complete=1]; destination *[i32]# [H=0 P=1 complete=1]; source flow [H=0 P=0 complete=1]; destination flow [H=0 P=1 complete=1]
+ --> tests/fail/raw_pointer_no_upgrade.tk:4:21
+   |
+ 4 |     auto *px_mut# = *px
+   |                     ^

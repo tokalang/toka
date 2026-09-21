@@ -43,7 +43,8 @@ fn test_cede_shared_move() {
 
 fn test_scalar_bnot_move() {
     auto value = 1;
-    auto moved = cede ~value;
+    auto bnot_val = ~value;
+    auto moved = cede bnot_val;
     assert(moved == -2, "cede ~value scalar ~ mismatch!");
 }
 

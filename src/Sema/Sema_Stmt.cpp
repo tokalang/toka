@@ -1132,6 +1132,13 @@ void Sema::checkStmt(Stmt *S) {
                     collectDepsInto(Bin->RHS.get(), out);
                 }
             }
+            else if (auto *wait = dynamic_cast<WaitExpr *>(E)) {
+                std::vector<AccessPath> actualOrigins;
+                if (collectActualReturnReferents(wait, actualOrigins)) {
+                    for (const auto &origin : actualOrigins)
+                        recordDependencyPathTo(out, origin.toLegacyString());
+                }
+            }
             // Case 6b: Closure expression with implicit borrow captures
             else if (auto *Clo = dynamic_cast<ClosureExpr *>(E)) {
                 for (const auto &capture : Clo->ImplicitCaptures) {
@@ -2698,6 +2705,18 @@ void Sema::checkStmt(Stmt *S) {
       }
     }
 
+    if (m_EnableStage1ExplicitCallerCede && Var->Init && !HasError &&
+        dynamic_cast<WaitExpr *>(Var->Init.get())) {
+      std::vector<AccessPath> origins;
+      if (collectActualReturnReferents(Var->Init.get(), origins)) {
+        for (const auto &origin : origins) {
+          const auto dependency = origin.toLegacyString();
+          Info.LifeDependencySet.insert(dependency);
+          depsToCommitAsBorrow.insert(dependency);
+        }
+      }
+    }
+
     // Preserve actual borrowed-field origins of an initialized record.  The
     // return planner must not later substitute the function's declared
     // dependency ceiling for missing binding provenance.
@@ -2705,6 +2724,11 @@ void Sema::checkStmt(Stmt *S) {
         init && Info.TypeObj && !HasError) {
       auto shape = std::dynamic_pointer_cast<ShapeType>(Info.TypeObj);
       if (shape && shape->Decl) {
+        std::map<std::string, std::shared_ptr<Type>> substitutions;
+        if (shape->GenericArgs.size() == shape->Decl->GenericParams.size()) {
+          for (size_t i = 0; i < shape->GenericArgs.size(); ++i)
+            substitutions[shape->Decl->GenericParams[i].Name] = shape->GenericArgs[i];
+        }
         for (const auto &initializer : init->Members) {
           const auto fieldName = Type::stripMorphology(initializer.first);
           auto field = std::find_if(shape->Decl->Members.begin(),
@@ -2712,7 +2736,10 @@ void Sema::checkStmt(Stmt *S) {
                 return Type::stripMorphology(member.Name) == fieldName;
               });
           if (field == shape->Decl->Members.end()) continue;
-          auto fieldType = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(*field));
+          auto fieldType = getPhysicalType(*field);
+          if (fieldType && !substitutions.empty())
+            fieldType = fieldType->substitute(substitutions);
+          fieldType = resolveExplicitCedeStage0TypeReadOnly(fieldType);
           if (!fieldType || fieldType->isRawPointer()) continue;
           auto ownership = queryExplicitCedeStage0OwnershipReadOnly(fieldType);
           if (!ownership || *ownership != ValueOwnership::BorrowedView) continue;

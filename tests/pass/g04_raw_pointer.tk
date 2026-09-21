@@ -82,15 +82,16 @@ fn main() -> i32 {
     }
 
     // 5. Permission Management (Permissions)
-    // According to 8: allow permission upgrade (Trust the Human)
-    auto val = 1:i32
-    auto *px = *val as *[i32]
-    auto *px_mut# = *px // Permission Upgrade: Const -> Mut
+    // Non-escalation covenant: Const cannot upgrade to Mut. Mut can downgrade to Const.
+    auto val# = 1:i32
+    auto *px_mut# = *val as *[i32]
+    auto *px_const = *px_mut // Permission Downgrade: Mut -> Const
     
     unsafe {
         px_mut[0] = 2
-        println("Permission Upgrade: val={} (expected 2)", val)
-        assert(val == 2, "val mismatch after upgrade")
+        println("Permission Downgrade: val={} (expected 2)", val)
+        assert(val == 2, "val mismatch after write through px_mut")
+        assert(px_const[0] == 2, "px_const read mismatch")
     }
 
     // 6. Null Check (Null Check)

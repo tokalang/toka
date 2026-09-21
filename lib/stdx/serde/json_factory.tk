@@ -219,9 +219,9 @@ impl<T: @JsonFactory> Vec<T> {
                 return cede error
             }
             auto parsed_child = child.unwrap()
+            rem = parsed_child.rest
             auto item = cede parsed_child.value
             value#.push(cede item)
-            rem = parsed_child.rest
         }
         auto parsed = Complete<Vec<T>>(value = cede value, consumed = json.len() - rem.len())
         auto result = Result<Complete<Vec<T>>, str>::Ok(cede parsed)
@@ -332,10 +332,10 @@ impl<K: @JsonFactory, V: @JsonFactory> HashMap<K, V> {
                 return cede error
             }
             auto parsed_child = child.unwrap()
+            rem = parsed_child.rest
             auto key_value = cede key.value
             auto child_value = cede parsed_child.value
             value#.insert(cede key_value, cede child_value)
-            rem = parsed_child.rest
         }
         auto parsed = Complete<HashMap<K, V>>(value = cede value, consumed = json.len() - rem.len())
         auto result = Result<Complete<HashMap<K, V>>, str>::Ok(cede parsed)

@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    auto val = 1:i32
+    auto *px = *val as *[i32]
+    auto *px_mut# = *px
+    return 0
+}

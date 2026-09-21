@@ -84,8 +84,8 @@ impl TemplateContext {
             auto copy_list# = Vec<string>::new()
             auto i# = 0:usize
             loop i < list_ref.len() {
-                auto &item_ref = list_ref.borrow(i)
-                copy_list#.push(cede string::from(item_ref.as_str()))
+                auto item_str = string::from(list_ref.borrow(i).as_str())
+                copy_list#.push(cede item_str)
                 i = i + 1:usize
             }
             return Option<Vec<string>>::Some(cede copy_list)
@@ -268,7 +268,7 @@ impl Template {
                 auto trimmed = trim_str(node.content.as_str())
                 if trimmed.as_str().starts_with("if ") {
                     auto cond_expr = trim_str(copy_substr(trimmed.as_str(), 3:usize, trimmed.len()).as_str())
-                    auto cond_res = eval_conditional_block(cond_expr.as_str(), ctx, 1:usize, 1:usize)
+                    auto cond_res = eval_conditional_block(cond_expr.as_str(), ctx#, 1:usize, 1:usize)
                     if cond_res.is_err() { return Result<string, TemplateError>::Err(cond_res.unwrap_err()) }
                     auto is_true = cond_res.unwrap().as_str().equals("true")
 
@@ -300,7 +300,7 @@ impl Template {
                             if sub.node_type == NODE_TEXT {
                                 out#.push_str(sub.content.as_str())
                             } else {
-                                auto val_res = eval_expression(sub.content.as_str(), ctx, 1:usize, 1:usize)
+                                auto val_res = eval_expression(sub.content.as_str(), ctx#, 1:usize, 1:usize)
                                 if val_res.is_err() { return Result<string, TemplateError>::Err(val_res.unwrap_err()) }
                                 auto val_str = val_res.unwrap()
                                 out#.push_str(val_str.as_str())
@@ -337,7 +337,7 @@ impl Template {
                                 if b_node.node_type == NODE_TEXT {
                                     out#.push_str(b_node.content.as_str())
                                 } else {
-                                    auto val_res = eval_expression(b_node.content.as_str(), sub_ctx, 1:usize, 1:usize)
+                                    auto val_res = eval_expression(b_node.content.as_str(), sub_ctx#, 1:usize, 1:usize)
                                     if val_res.is_err() { return Result<string, TemplateError>::Err(val_res.unwrap_err()) }
                                     auto val_str = val_res.unwrap()
                                     out#.push_str(val_str.as_str())
@@ -349,7 +349,7 @@ impl Template {
                     }
                     i = body_end + 1:usize
                 } else {
-                    auto val_res = eval_expression(trimmed.as_str(), ctx, 1:usize, 1:usize)
+                    auto val_res = eval_expression(trimmed.as_str(), ctx#, 1:usize, 1:usize)
                     if val_res.is_err() { return Result<string, TemplateError>::Err(val_res.unwrap_err()) }
                     auto val_str = val_res.unwrap()
                     out#.push_str(val_str.as_str())
@@ -366,7 +366,7 @@ impl TemplateNode {
         if self.node_type == NODE_TEXT {
             return Result<string, TemplateError>::Ok(string::from(self.content.as_str()))
         }
-        return eval_action(self.content.as_str(), ctx, 1:usize, 1:usize)
+        return eval_action(self.content.as_str(), ctx#, 1:usize, 1:usize)
     }
 }
 
@@ -374,14 +374,14 @@ fn eval_action(action: str, ctx#: TemplateContext, tag_line: usize, tag_col: usi
     auto trimmed = trim_str(action)
     if trimmed.as_str().starts_with("if ") {
         auto cond_expr = trim_str(copy_substr(trimmed.as_str(), 3:usize, trimmed.len()).as_str())
-        return eval_conditional_block(cond_expr.as_str(), ctx, tag_line, tag_col)
+        return eval_conditional_block(cond_expr.as_str(), ctx#, tag_line, tag_col)
     }
-    auto eval_res = eval_expression(action, ctx, tag_line, tag_col)
+    auto eval_res = eval_expression(action, ctx#, tag_line, tag_col)
     return cede eval_res
 }
 
 fn eval_conditional_block(cond_expr: str, ctx#: TemplateContext, line_no: usize, col_no: usize) -> Result<string, TemplateError> {
-    auto cond_val = eval_expression(cond_expr, ctx, line_no, col_no)
+    auto cond_val = eval_expression(cond_expr, ctx#, line_no, col_no)
     if cond_val.is_err() {
         return Result<string, TemplateError>::Err(cond_val.unwrap_err())
     }
@@ -488,7 +488,7 @@ fn eval_expression(expr: str, ctx#: TemplateContext, line_no: usize, col_no: usi
             auto left = trim_str(copy_substr(trimmed.as_str(), 0:usize, pipe_idx).as_str())
             auto right = trim_str(copy_substr(trimmed.as_str(), pipe_idx + 1:usize, trimmed.len()).as_str())
 
-            auto left_res = eval_expression(left.as_str(), ctx, line_no, col_no)
+            auto left_res = eval_expression(left.as_str(), ctx#, line_no, col_no)
             if left_res.is_err() {
                 auto err_val = left_res.unwrap_err()
                 return Result<string, TemplateError>::Err(cede err_val)
@@ -535,7 +535,7 @@ fn eval_expression(expr: str, ctx#: TemplateContext, line_no: usize, col_no: usi
         auto possible_func = copy_substr(trimmed.as_str(), 0:usize, first_space)
         if ctx.has_func(possible_func.as_str()) {
             auto raw_arg = copy_substr(trimmed.as_str(), first_space + 1:usize, trimmed.len())
-            auto parsed_arg = parse_single_arg(raw_arg.as_str(), ctx)
+            auto parsed_arg = parse_single_arg(raw_arg.as_str(), ctx#)
 
             auto call_res = ctx#.call_func(cede string::from(possible_func.as_str()), cede parsed_arg)
             if call_res.is_err() {

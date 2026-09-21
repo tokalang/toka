@@ -658,6 +658,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
           member.Type = field.Type ? field.Type->toCanonicalString() : "unknown";
           member.ResolvedType = resolveType(toka::Type::fromSyntax(field.Type),
                                             force);
+          populateAnonymousRecordMember(member);
           members.push_back(std::move(member));
         }
         return finishRecord(std::move(members));
@@ -694,6 +695,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
                 sm.Name = fieldName;
                 sm.Type = fieldType;
                 sm.ResolvedType = resolveType(toka::Type::fromString(fieldType), force);
+                populateAnonymousRecordMember(sm);
                 members.push_back(sm);
               }
             }
@@ -723,6 +725,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
               sm.Name = fieldName;
               sm.Type = fieldType;
               sm.ResolvedType = resolveType(toka::Type::fromString(fieldType), force);
+              populateAnonymousRecordMember(sm);
               members.push_back(sm);
             }
           }

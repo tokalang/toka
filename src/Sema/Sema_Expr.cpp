@@ -2077,6 +2077,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       sm.Name = f.first;
       sm.Type = fieldT;
       sm.ResolvedType = fieldTypeObj;
+      populateAnonymousRecordMember(sm);
       members.push_back(sm);
     }
 
@@ -5312,18 +5313,27 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         !(MethodMap.count(soulType) &&
           MethodMap[soulType].count(Met->Method))) {
       // [NEW] Lazy Impl Instantiation
-      // [Fix] Use fully resolved/mangled name for lazy instantiation lookup
       std::string ConcreteTypeName = soulType;
+      const ShapeDecl *templateDecl =
+          objectShape && objectShape->Decl
+              ? (objectShape->Decl->InstantiationTemplate
+                     ? objectShape->Decl->InstantiationTemplate
+                     : objectShape->Decl)
+              : nullptr;
       std::string BaseName =
-          objectShape && objectShape->Decl &&
-                  objectShape->Decl->InstantiationTemplate
-              ? objectShape->Decl->InstantiationTemplate->Name
-              : ConcreteTypeName;
+          templateDecl ? templateDecl->Name : ConcreteTypeName;
       size_t lt = BaseName.find('<');
       if (lt != std::string::npos) {
         BaseName = BaseName.substr(0, lt);
       }
-      lazyImplKey = genericImplKey(BaseName, getLoc(Met));
+      lazyImplKey = templateDecl ? genericImplKey(templateDecl)
+                                 : genericImplKey(BaseName, getLoc(Met));
+      if (!GenericImplMap.count(lazyImplKey) && templateDecl) {
+        lazyImplKey = genericImplKey(BaseName, getLoc(Met));
+      }
+      if (!GenericImplMap.count(lazyImplKey) && GenericImplMap.count(BaseName)) {
+        lazyImplKey = BaseName;
+      }
       if (GenericImplMap.count(lazyImplKey)) {
           // [FIX] Pass generic arguments to instantiateGenericImpl
           if (objectShape) {
