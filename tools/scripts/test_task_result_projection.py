@@ -351,7 +351,7 @@ def main():
             expected = 1 if error else 0
             assert normal.returncode == shadow.returncode == expected, (name, normal.stderr, shadow.stderr)
             assert normal.stderr == shadow.stderr, name
-            if name == 'rejected_call_rollback':
+            if name in ('rejected_call_rollback', 'nested_mutation_rollback'):
                 assert all(f'error[{code}]' not in normal.stderr for code in ('E0438', 'E0410', 'E04661')), normal.stderr
             if name == 'post_proof_rollback':
                 assert all(f'error[{code}]' not in normal.stderr for code in ('E0438', 'E0410')), normal.stderr

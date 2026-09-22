@@ -222,6 +222,93 @@ fn main() -> i32 {
 }
 ''', 'E04661')
 
+# These descriptor-poisoning programs are compiler-only negatives. Never run
+# them: an incorrect admission can otherwise dereference the original null buf.
+for name, result_type, expression in (
+    ('nested_push_mutation', 'u8', 'value#.push(poison(value#))'),
+    ('nested_resize_mutation', 'usize', 'value#.resize(poison(value#), 0:u8)'),
+    ('sequential_push_mutation', 'u8', 'auto byte = poison(value#); value#.push(byte)'),
+    ('sequential_resize_mutation', 'usize', 'auto count = poison(value#); value#.resize(count, 0:u8)'),
+):
+    gate.CASES[name] = (PREFIX + f'''
+fn poison(value#: Vec<u8>) -> {result_type} {{ value.cap = 1:usize; return {0 if result_type == 'u8' else 1}:{result_type} }}
+fn main() -> i32 {{
+    auto value# = Vec<u8>::new()
+    {expression}
+    auto result = block_on(relay(cede value))
+    return 0
+}}
+''', 'E04661')
+gate.CASES['nested_valid_control'] = (PREFIX + '''
+fn number() -> u8 { return 7:u8 }
+fn main() -> i32 {
+    auto value# = Vec<u8>::new()
+    value#.push(number())
+    auto result = block_on(relay(cede value))
+    assert(result.get(0) == 7:u8, "nested scalar argument")
+    return 0
+}
+''', None)
+gate.CASES['nested_new_current_receipt'] = (PREFIX + '''
+fn main() -> i32 {
+    auto value# = Vec<u8>::new()
+    value#.push(9:u8)
+    value#.push((value#.take()).len() as u8)
+    auto result = block_on(relay(cede value))
+    assert(result.len() == 1:usize && result.get(0) == 1:u8, "use the new empty receiver after take")
+    return 0
+}
+''', None)
+gate.CASES['nested_member_mutation'] = (PREFIX + '''
+shape Envelope(buffer#: Vec<u8>)
+fn poison(value#: Vec<u8>) -> u8 { value.cap = 1:usize; return 1:u8 }
+fn main() -> i32 {
+    auto data = Vec<u8>::new()
+    auto owner# = Envelope(buffer=cede data)
+    owner.buffer#.push(poison(owner.buffer#))
+    auto value = owner.buffer#.take()
+    auto result = block_on(relay(cede value))
+    return 0
+}
+''', 'E04661')
+gate.CASES['nested_alias_mutation'] = (PREFIX + '''
+fn poison_alias(value#: Vec<u8>) -> u8 {
+    auto &descriptor# = &value
+    descriptor.cap = 1:usize
+    return 0:u8
+}
+fn main() -> i32 {
+    auto value# = Vec<u8>::new()
+    value#.push(poison_alias(value#))
+    auto result = block_on(relay(cede value))
+    return 0
+}
+''', 'E04661')
+gate.CASES['saved_cede_with_later_argument'] = (PREFIX + '''
+fn observe_other(value#: Vec<u8>) -> u8 { return 3:u8 }
+fn saved(cede value: Vec<u8>, marker: u8) -> async Vec<u8> { return cede value }
+fn main() -> i32 {
+    auto value# = Vec<u8>::new()
+    value#.push(19:u8)
+    auto other# = Vec<u8>::new()
+    auto result = block_on(saved(cede value, observe_other(other#)))
+    assert(result.get(0) == 19:u8, "transferred value retains its receipt")
+    return 0
+}
+''', None)
+gate.CASES['nested_mutation_rollback'] = (PREFIX + '''
+fn poison(value#: Vec<u8>) -> u8 { value.cap = 1:usize; return 1:u8 }
+fn need_boolean(cede value: Vec<u8>, flag: bool) { cede value }
+fn main() -> i32 {
+    auto value = Vec<u8>::new()
+    auto other# = Vec<u8>::new()
+    need_boolean(cede value, poison(other#))
+    auto first = block_on(relay(cede value))
+    auto second = block_on(relay(cede other))
+    return 0
+}
+''', 'E04571')
+
 
 def schema_controls(build_dir):
     import os

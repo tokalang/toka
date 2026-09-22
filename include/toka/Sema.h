@@ -1223,6 +1223,7 @@ private:
   bool containsByteBuffer(const std::shared_ptr<Type> &type);
   bool byteBufferSchema(SourceLocation location, const std::string &module);
   std::shared_ptr<const ByteBufferFact> byteBufferFact(Expr *source);
+  std::shared_ptr<const ByteBufferFact> byteBufferArgumentFact(Expr *source, bool consumes);
   void recordByteBufferExpression(Expr *source, bool valid);
   void bindByteBuffer(const AccessPath &destination, Expr *source);
   void invalidateByteBuffer(Expr *source);

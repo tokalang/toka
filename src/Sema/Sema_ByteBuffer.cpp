@@ -156,6 +156,68 @@ void Sema::invalidateByteBuffer(Expr *source) {
   }
 }
 
+std::shared_ptr<const ByteBufferFact> Sema::byteBufferArgumentFact(Expr *source, bool consumes) {
+  if (!source || !source->ResolvedType) return {};
+  auto saved = [&]() {
+    auto value = source->ByteBuffer;
+    if (!value && source->TaskResult && !source->TaskResult->TaskCarrier) value = source->TaskResult->Bytes;
+    return value && value->Scope == CurrentFunction && sameByteValue(value->ValueType, source->ResolvedType) ? value : nullptr;
+  };
+  if (auto *cede = dynamic_cast<CedeExpr *>(source)) {
+    // The checked cede expression denotes the transferred value, not a live
+    // receiver slot. Later arguments may legally reinitialize its old binding.
+    if (!cede->SourceCheckSucceeded && !cede->IsImplicitCallTransfer) return {};
+    if (auto value = saved()) return value;
+    auto value = cede->Value->ByteBuffer;
+    return value && value->Scope == CurrentFunction && sameByteValue(value->ValueType, source->ResolvedType) ? value : nullptr;
+  }
+  Expr *wrapped = nullptr;
+  if (auto *unsafe = dynamic_cast<UnsafeExpr *>(source)) wrapped = unsafe->Expression.get();
+  if (auto *cast = dynamic_cast<CastExpr *>(source)) wrapped = cast->Expression.get();
+  if (auto *postfix = dynamic_cast<PostfixExpr *>(source); postfix && postfix->Op == TokenType::TokenWrite)
+    wrapped = postfix->LHS.get();
+  if (wrapped) {
+    if (!sameByteValue(wrapped->ResolvedType, source->ResolvedType)) return {};
+    return byteBufferArgumentFact(wrapped, consumes);
+  }
+  auto path = makeAccessPath(source);
+  // A consuming receiver need not have explicit caller spelling yet. Reuse
+  // its evaluated value only if normal Sema has actually retired that place.
+  // IsCeded alone must not authorize replay of an invalidated live receipt.
+  if (consumes && path.RootID) {
+    SymbolInfo *binding = nullptr;
+    if (CurrentScope->findSymbolByID(path.RootID, binding) && binding) {
+      bool retired = path.Projections.empty() && hasExactlyPlaceState(binding->placeFact(), PlaceState::Moved);
+      if (path.Projections.size() == 1 && path.Projections[0].Kind == AccessProjectionKind::Field) {
+        auto shape = std::dynamic_pointer_cast<ShapeType>(binding->TypeObj);
+        if (shape && shape->Decl) for (size_t i = 0; i < shape->Decl->Members.size(); ++i)
+          if (Type::stripMorphology(shape->Decl->Members[i].Name) == path.Projections[0].Name)
+            retired = hasExactlyPlaceState(binding->ExactPlace.projectionFact(PartialMoveProjectionKind::DirectField, i), PlaceState::Moved);
+      }
+      if (retired) return saved();
+    }
+  }
+  if (auto *variable = dynamic_cast<VariableExpr *>(source)) return byteBufferFact(variable);
+  if (auto *member = dynamic_cast<MemberExpr *>(source)) {
+    auto parent = byteBufferArgumentFact(member->Object.get(), false);
+    if (!parent) return {};
+    auto field = parent->Fields.find(member->Member);
+    if (field != parent->Fields.end() && sameByteValue(field->second->ValueType, source->ResolvedType)) return field->second;
+    auto shape = std::dynamic_pointer_cast<ShapeType>(member->Object->ResolvedType);
+    if (!shape || !shape->Decl || shape->Decl->Kind == ShapeKind::Enum || member->Index < 0 ||
+        static_cast<size_t>(member->Index) >= shape->Decl->Members.size() ||
+        !containsByteBuffer(source->ResolvedType) ||
+        !sameByteValue(getPhysicalType(shape->Decl->Members[member->Index]), source->ResolvedType)) return {};
+    auto value = std::make_shared<ByteBufferFact>(*parent);
+    value->ValueType = source->ResolvedType; value->Fields.clear();
+    return value;
+  }
+  // Other places are not qualified by an old expression annotation. Genuine
+  // temporaries have already produced their value and have no live place to
+  // reread after the remaining arguments are evaluated.
+  return path ? nullptr : saved();
+}
+
 void Sema::bindByteBuffer(const AccessPath &destination, Expr *source) {
   if (!destination.RootID) return;
   auto proof = source ? source->ByteBuffer : nullptr;
@@ -262,11 +324,7 @@ void Sema::recordByteBufferExpression(Expr *source, bool valid) {
         : i == 0 ? method->Object.get() : i <= method->Args.size() ? method->Args[i-1].get() : nullptr;
   };
   auto captured = [&](size_t i) -> std::shared_ptr<const ByteBufferFact> {
-    auto *actual = argument(i);
-    if (!actual) return {};
-    auto value = actual->ByteBuffer;
-    if (!value) value = byteBufferFact(actual);
-    return value && value->Scope == CurrentFunction && sameByteValue(value->ValueType, actual->ResolvedType) ? value : nullptr;
+    return byteBufferArgumentFact(argument(i), i < function->Args.size() && function->Args[i].IsCeded);
   };
   auto *definition = function->TemplateOrigin ? function->TemplateOrigin : function;
   auto *module = getLexicalModule(definition->Loc);

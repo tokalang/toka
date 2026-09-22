@@ -208,15 +208,16 @@ void Sema::recordTaskResultExpression(Expr *source, bool valid) {
   };
   auto argumentIndependence = [&](size_t index) -> std::shared_ptr<const ResultIndependenceFact> {
     auto *actual = argument(index);
-    // A consuming receiver has already retired its binding. Use the receipt
-    // captured by this actual evaluation, not a later lookup of that binding.
-    auto bytes = actual ? actual->ByteBuffer : nullptr;
+    // Share the current-place / transferred-value distinction with the byte
+    // operation consumer; an earlier receiver read is not a freshness proof.
+    auto bytes = byteBufferArgumentFact(actual, index < function->Args.size() && function->Args[index].IsCeded);
     if (bytes && bytes->Scope == CurrentFunction && sameResultType(bytes->ValueType, actual->ResolvedType)) {
       auto value = std::make_shared<ResultIndependenceFact>();
       value->Scope = CurrentFunction; value->ValueType = actual->ResolvedType;
       value->RequiredArguments = bytes->RequiredArguments; value->Bytes = std::move(bytes);
       return value;
     }
+    if (actual && containsByteBuffer(actual->ResolvedType)) return {};
     return resultIndependence(actual);
   };
   auto requirements = summary.RequiredTasks;
