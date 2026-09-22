@@ -419,6 +419,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_task_result_projection.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_build_metadata
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_build_metadata.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_byte_buffer_results
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_byte_buffer_results.py

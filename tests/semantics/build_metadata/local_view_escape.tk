@@ -1,0 +1,7 @@
+import build/internal/strings::{BuildStrings}
+fn escaped() -> str {
+    auto values# = BuildStrings::new()
+    values#.push(string::from("local"))
+    return values.borrow(0)
+}
+fn main() -> i32 { auto view = escaped(); return 0 }

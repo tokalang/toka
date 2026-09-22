@@ -38,14 +38,34 @@ def qualify(build_dir):
             "extern fn test_buffer_freed(nul *ptr: void) -> void\n" +
             string_source.replace(release,
                 "test_buffer_freed(self.*buf as nul *void); " + release))
+        lists = library / "build/internal/strings.tk"
+        list_source = lists.read_text()
+        marker = "impl BuildStrings@Encap {}"
+        if list_source.count(marker) != 1:
+            raise RuntimeError("BuildStrings Drop layout changed; review instrumentation")
+        lists.write_text("extern fn test_list_drop(*ptr: void) -> void\n" + list_source.replace(marker,
+            "impl BuildStrings@Encap { fn drop(self#) { if self.storage.len() > 0 { test_list_drop(self.storage.c_str() as *void) } } }"))
         shim = work / "tracker.c"
         shim.write_text('''#include <stdlib.h>
 static void *watched;
 static int releases;
+static void *pending[4096];
+static int events, outstanding;
+void test_list_drop_reset(void) { if (outstanding) abort(); events = 0; }
+void test_list_drop(void *p) {
+    if (!p || outstanding == 4096) abort();
+    pending[outstanding++] = p;
+    ++events;
+}
+int test_list_drop_events(void) { return events; }
+int test_list_unfreed(void) { return outstanding; }
 void test_buffer_watch(void *p) { watched = p; releases = 0; }
 int test_buffer_releases(void) { return releases; }
 void test_buffer_freed(void *p) {
     if (p && p == watched) ++releases;
+    for (int i = 0; i < outstanding; ++i) {
+        if (pending[i] == p) { pending[i] = pending[--outstanding]; break; }
+    }
 }
 ''')
         tracker = work / "tracker.o"
@@ -67,7 +87,7 @@ void test_buffer_freed(void *p) {
         if ran.returncode:
             raise RuntimeError("buffer lifetime/JSON test failed: " +
                                str(ran.returncode) + "\n" + ran.stderr)
-    print("build return buffers: pass (3 helpers, capacity/address reuse, exact-once free, 5 parsers)")
+    print("build return buffers: pass (3 helpers, capacity/address reuse, exact-once free, 5 parsers; owned metadata roundtrip, rebuild chain and partial-failure cleanup)")
 
 
 if __name__ == "__main__":

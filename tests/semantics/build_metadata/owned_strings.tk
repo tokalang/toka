@@ -1,0 +1,28 @@
+import build/internal/strings::{BuildStrings}
+import stdx/serde/json::{@FromJson, @ToJson}
+
+fn owned_copy() -> string {
+    auto values# = BuildStrings::new()
+    values#.push(string::from("copied"))
+    return values.get(0)
+}
+fn main() -> i32 {
+    auto values# = BuildStrings::new()
+    auto index# = 0:usize
+    loop index < 80:usize {
+        values#.push(index.to_string())
+        index += 1:usize
+    }
+    assert(values.len() == 80:usize, "growth count")
+    assert(values.borrow(0).equals("0") && values.borrow(79).equals("79"), "indexed contents")
+    auto cloned = values.clone()
+    assert(values#.parse_json("[]tail").unwrap().equals("tail"), "empty replacement")
+    assert(values.len() == 0:usize && cloned.len() == 80:usize, "clone independent")
+    assert(owned_copy().equals("copied"), "owned accessor outlives local list")
+    auto encoded# = string::from("")
+    cloned.write_json(encoded#)
+    auto decoded# = BuildStrings::new()
+    assert(decoded#.parse_json(encoded.as_str()).is_ok(), "write_json array protocol")
+    assert(decoded.borrow(79).equals("79"), "serialized contents")
+    return 0
+}

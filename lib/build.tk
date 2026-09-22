@@ -5,8 +5,9 @@ import std/process::{Command}
 import std/env
 import std/path::{dirname, basename, file_stem}
 import std/vec::{Vec}
+pub import build/internal/strings::{BuildStrings}
 import std/hashmap::{HashMap}
-import stdx/serde/json::{@FromJson, JsonRes}
+import stdx/serde/json::{@FromJson, JsonRes, write_escaped_json_string}
 import stdx/serde/json_factory::{@JsonFactory, Parsed}
 pub import build/project::{Executable, Library}
 import build/internal/support::{__path_normalize, __path_canonicalize, __calculate_fnv1a}
@@ -37,9 +38,7 @@ impl ModuleOutputs {
 }
 
 fn json_write_string(s: str, buf#: string) {
-    buf#.push_str("\"")
-    buf#.push_str(s)
-    buf#.push_str("\"")
+    write_escaped_json_string(s, buf#)
 }
 fn outputs_to_json(outputs: ModuleOutputs, cede buf#: string) -> string {
     buf#.push_str("{\"interface\":")
@@ -69,7 +68,7 @@ pub shape ModuleSnapshot (
     source_hash: string = string::from(""),
     content_hash: string = string::from(""),
     outputs: ModuleOutputs = ModuleOutputs(..),
-    dependencies: Vec<string> = Vec<string>::new()
+    dependencies: BuildStrings = BuildStrings::new()
 )
 
 impl ModuleSnapshot@Encap {
@@ -81,10 +80,10 @@ impl ModuleSnapshot@Encap {
 
 impl ModuleSnapshot {
     pub fn clone(self) -> ModuleSnapshot {
-        auto c_dependencies# = Vec<string>::new()
+        auto c_dependencies# = BuildStrings::new()
         auto i# = 0:usize
         loop i < self.dependencies.len() {
-            c_dependencies#.push(cede self.dependencies.borrow(i).clone())
+            c_dependencies#.push(self.dependencies.get(i))
             i += 1
         }
         return ModuleSnapshot(
@@ -128,7 +127,7 @@ fn snapshot_to_json(snapshot: ModuleSnapshot, cede buf#: string) -> string {
     auto i# = 0:usize
     loop i < snapshot.dependencies.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string(snapshot.dependencies.borrow(i).as_str(), buf#)
+        json_write_string(snapshot.dependencies.borrow(i), buf#)
         i += 1
     }
     buf#.push_str("]}")
@@ -159,7 +158,7 @@ impl ModuleSnapshot@JsonFactory {
 
 pub shape DependencyManifest (
     manifest_version: string = string::from(""),
-    roots: Vec<string> = Vec<string>::new(),
+    roots: BuildStrings = BuildStrings::new(),
     modules: HashMap<string, ModuleSnapshot> = HashMap<string, ModuleSnapshot>::new()
 )
 
@@ -171,10 +170,10 @@ impl DependencyManifest@Encap {
 
 impl DependencyManifest {
     pub fn clone(self) -> DependencyManifest {
-        auto c_roots# = Vec<string>::new()
+        auto c_roots# = BuildStrings::new()
         auto i# = 0:usize
         loop i < self.roots.len() {
-            c_roots#.push(cede self.roots.borrow(i).clone())
+            c_roots#.push(self.roots.get(i))
             i += 1
         }
         auto c_modules# = HashMap<string, ModuleSnapshot>::new()
@@ -185,7 +184,7 @@ impl DependencyManifest {
             auto entry = entry_opt.unwrap()
             auto &key = entry.key()
             auto &val = entry.val()
-            c_modules#.insert(cede key.clone(), cede val.clone())
+            c_modules#.insert(key.clone(), val.clone())
         }
         return DependencyManifest(
             manifest_version = self.manifest_version.clone(),
@@ -202,7 +201,7 @@ fn manifest_to_json(manifest: DependencyManifest, cede buf#: string) -> string {
     auto i# = 0:usize
     loop i < manifest.roots.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string(manifest.roots.borrow(i).as_str(), buf#)
+        json_write_string(manifest.roots.borrow(i), buf#)
         i += 1
     }
     buf#.push_str("],\"modules\":{")
@@ -233,7 +232,7 @@ impl DependencyManifest@FromJson {
 
 pub shape RebuildModuleInfo (
     reason: string = string::from(""),
-    dirty_deps: Vec<string> = Vec<string>::new()
+    dirty_deps: BuildStrings = BuildStrings::new()
 )
 
 impl RebuildModuleInfo@Encap {
@@ -244,10 +243,10 @@ impl RebuildModuleInfo@Encap {
 
 impl RebuildModuleInfo {
     pub fn clone(self) -> RebuildModuleInfo {
-        auto c_dirty_deps# = Vec<string>::new()
+        auto c_dirty_deps# = BuildStrings::new()
         auto i# = 0:usize
         loop i < self.dirty_deps.len() {
-            c_dirty_deps#.push(cede self.dirty_deps.borrow(i).clone())
+            c_dirty_deps#.push(self.dirty_deps.get(i))
             i += 1
         }
         return RebuildModuleInfo(
@@ -265,7 +264,7 @@ fn info_to_json(info: RebuildModuleInfo) -> string {
     auto i# = 0:usize
     loop i < info.dirty_deps.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string(info.dirty_deps.borrow(i).as_str(), buf#)
+        json_write_string(info.dirty_deps.borrow(i), buf#)
         i += 1
     }
     buf#.push_str("]}")
@@ -296,7 +295,7 @@ impl RebuildModuleInfo@JsonFactory {
 
 pub shape RebuildPlan (
     status: string = string::from(""),
-    dirty_roots: Vec<string> = Vec<string>::new(),
+    dirty_roots: BuildStrings = BuildStrings::new(),
     dirty_modules: HashMap<string, RebuildModuleInfo> = HashMap<string, RebuildModuleInfo>::new()
 )
 
@@ -308,10 +307,10 @@ impl RebuildPlan@Encap {
 
 impl RebuildPlan {
     pub fn clone(self) -> RebuildPlan {
-        auto c_dirty_roots# = Vec<string>::new()
+        auto c_dirty_roots# = BuildStrings::new()
         auto i# = 0:usize
         loop i < self.dirty_roots.len() {
-            c_dirty_roots#.push(cede self.dirty_roots.borrow(i).clone())
+            c_dirty_roots#.push(self.dirty_roots.get(i))
             i += 1
         }
         auto c_dirty_modules# = HashMap<string, RebuildModuleInfo>::new()
@@ -322,7 +321,7 @@ impl RebuildPlan {
             auto entry = entry_opt.unwrap()
             auto &key = entry.key()
             auto &val = entry.val()
-            c_dirty_modules#.insert(cede key.clone(), cede val.clone())
+            c_dirty_modules#.insert(key.clone(), val.clone())
         }
         return RebuildPlan(
             status = self.status.clone(),
@@ -340,7 +339,7 @@ fn plan_to_json(plan: RebuildPlan) -> string {
     auto i# = 0:usize
     loop i < plan.dirty_roots.len() {
         if i > 0 { buf#.push_str(",") }
-        json_write_string(plan.dirty_roots.borrow(i).as_str(), buf#)
+        json_write_string(plan.dirty_roots.borrow(i), buf#)
         i += 1
     }
     buf#.push_str("],\"dirty_modules\":{")
@@ -373,7 +372,7 @@ impl RebuildPlan@FromJson {
 pub shape DfsResult (
     is_dirty: bool = false,
     reason: string = string::from(""),
-    chain: Vec<string> = Vec<string>::new()
+    chain: BuildStrings = BuildStrings::new()
 )
 
 impl DfsResult@Encap {
@@ -382,24 +381,24 @@ impl DfsResult@Encap {
 
 impl DfsResult {
     pub fn clone(self) -> DfsResult {
-        auto c_chain# = Vec<string>::new()
+        auto c_chain# = BuildStrings::new()
         auto i# = 0:usize
         loop i < self.chain.len() {
-            c_chain#.push(cede self.chain.borrow(i).clone())
+            c_chain#.push(self.chain.get(i))
             i += 1
         }
         return DfsResult(
             is_dirty = self.is_dirty,
-            reason = cede self.reason.clone(),
+            reason = self.reason.clone(),
             chain = cede c_chain
         )
     }
 }
 
-fn vec_contains(vec: Vec<string>, item: string) -> bool {
+fn vec_contains(vec: BuildStrings, item: string) -> bool {
     auto i# = 0:usize
     loop i < vec.len() {
-        if vec.borrow(i).as_str().equals(item) {
+        if vec.borrow(i).equals(item) {
             return true
         }
         i += 1
@@ -407,11 +406,11 @@ fn vec_contains(vec: Vec<string>, item: string) -> bool {
     return false
 }
 
-fn roots_equal(a: Vec<string>, b: Vec<string>) -> bool {
+fn roots_equal(a: BuildStrings, b: BuildStrings) -> bool {
     if a.len() != b.len() { return false }
     auto i# = 0:usize
     loop i < a.len() {
-        if !vec_contains(b, a.borrow(i).clone()) {
+        if !vec_contains(b, a.get(i)) {
             return false
         }
         i += 1
@@ -498,7 +497,7 @@ fn populate_submodule_outputs(graph#: DependencyManifest, build_dir: string) {
         auto entry = entry_opt.unwrap()
         auto &key = entry.key()
         auto &val = entry.val()
-        graph.modules#.insert(cede key.clone(), cede val.clone())
+        graph.modules#.insert(key.clone(), val.clone())
     }
 }
 
@@ -531,8 +530,8 @@ fn check_dirty_recursive(
     if visiting_opt.is_none() == false {
         return DfsResult(
             is_dirty = false,
-            reason = cede string::from(""),
-            chain = cede Vec<string>::new()
+            reason = string::from(""),
+            chain = BuildStrings::new()
         )
     }
     
@@ -540,10 +539,10 @@ fn check_dirty_recursive(
     if dirty_reason_opt.is_none() == false {
         auto res = DfsResult(
             is_dirty = true,
-            reason = cede dirty_reason_opt.unwrap().clone(),
-            chain = cede Vec<string>::new()
+            reason = dirty_reason_opt.unwrap().clone(),
+            chain = BuildStrings::new()
         )
-        memo#.insert(cede node.clone(), cede res.clone())
+        memo#.insert(node.clone(), res.clone())
         return cede res
     }
     
@@ -551,38 +550,38 @@ fn check_dirty_recursive(
     if curr_info_opt.is_none() {
         auto res = DfsResult(
             is_dirty = true,
-            reason = cede string::from("missing module info"),
-            chain = cede Vec<string>::new()
+            reason = string::from("missing module info"),
+            chain = BuildStrings::new()
         )
-        memo#.insert(cede node.clone(), cede res.clone())
+        memo#.insert(node.clone(), res.clone())
         return cede res
     }
     auto &curr_info = curr_info_opt.unwrap()
-    visiting#.insert(cede node.clone(), true)
+    visiting#.insert(node.clone(), true)
     
     auto i# = 0:usize
     loop i < curr_info.dependencies.len() {
-        auto dep = curr_info.dependencies.borrow(i).clone()
+        auto dep = curr_info.dependencies.get(i)
         if vec_contains(current_graph.roots, dep) && !vec_contains(current_graph.roots, node) {
             i += 1
             continue
         }
         auto dep_res = check_dirty_recursive(dep.clone(), current_graph, dirty_map, memo#, visiting#)
         if dep_res.is_dirty {
-            auto chain# = Vec<string>::new()
-            chain#.push(cede dep.clone())
+            auto chain# = BuildStrings::new()
+            chain#.push(dep.clone())
             auto j# = 0:usize
             loop j < dep_res.chain.len() {
-                chain#.push(cede dep_res.chain.borrow(j).clone())
+                chain#.push(dep_res.chain.get(j))
                 j += 1
             }
             auto res = DfsResult(
                 is_dirty = true,
-                reason = cede string::from("dependency changed"),
+                reason = string::from("dependency changed"),
                 chain = cede chain
             )
             auto _removed = visiting#.remove(node)
-            memo#.insert(cede node.clone(), cede res.clone())
+            memo#.insert(node.clone(), res.clone())
             return cede res
         }
         i += 1
@@ -590,11 +589,11 @@ fn check_dirty_recursive(
     
     auto res = DfsResult(
         is_dirty = false,
-        reason = cede string::from(""),
-        chain = cede Vec<string>::new()
+        reason = string::from(""),
+        chain = BuildStrings::new()
     )
     auto _removed = visiting#.remove(node)
-    memo#.insert(cede node.clone(), cede res.clone())
+    memo#.insert(node.clone(), res.clone())
     return cede res
 }
 
@@ -604,10 +603,10 @@ fn generate_rebuild_plan(
     plan#: RebuildPlan
 ) {
     if old_manifest.manifest_version.len() == 0 {
-        plan.status = cede string::from("dirty")
+        plan.status = string::from("dirty")
         auto i# = 0:usize
         loop i < current_graph.roots.len() {
-            plan.dirty_roots#.push(cede current_graph.roots.borrow(i).clone())
+            plan.dirty_roots#.push(current_graph.roots.get(i))
             i += 1
         }
         auto iter# = current_graph.modules.iter()
@@ -618,7 +617,7 @@ fn generate_rebuild_plan(
             auto &m_path = entry.key()
             auto k# = m_path.clone()
             auto info# = RebuildModuleInfo(
-                reason = cede string::from("first build"), ..
+                reason = string::from("first build"), ..
             )
             plan.dirty_modules#.insert(cede k, cede info)
         }
@@ -626,10 +625,10 @@ fn generate_rebuild_plan(
     }
 
     if !old_manifest.manifest_version.starts_with("1.") {
-        plan.status = cede string::from("dirty")
+        plan.status = string::from("dirty")
         auto i# = 0:usize
         loop i < current_graph.roots.len() {
-            plan.dirty_roots#.push(cede current_graph.roots.borrow(i).clone())
+            plan.dirty_roots#.push(current_graph.roots.get(i))
             i += 1
         }
         auto iter# = current_graph.modules.iter()
@@ -640,7 +639,7 @@ fn generate_rebuild_plan(
             auto &m_path = entry.key()
             auto k# = m_path.clone()
             auto info# = RebuildModuleInfo(
-                reason = cede string::from("version/target changed"), ..
+                reason = string::from("version/target changed"), ..
             )
             plan.dirty_modules#.insert(cede k, cede info)
         }
@@ -648,10 +647,10 @@ fn generate_rebuild_plan(
     }
 
     if !roots_equal(current_graph.roots, old_manifest.roots) {
-        plan.status = cede string::from("dirty")
+        plan.status = string::from("dirty")
         auto i# = 0:usize
         loop i < current_graph.roots.len() {
-            plan.dirty_roots#.push(cede current_graph.roots.borrow(i).clone())
+            plan.dirty_roots#.push(current_graph.roots.get(i))
             i += 1
         }
         auto iter# = current_graph.modules.iter()
@@ -662,7 +661,7 @@ fn generate_rebuild_plan(
             auto &m_path = entry.key()
             auto k# = m_path.clone()
             auto info# = RebuildModuleInfo(
-                reason = cede string::from("roots changed"), ..
+                reason = string::from("roots changed"), ..
             )
             plan.dirty_modules#.insert(cede k, cede info)
         }
@@ -681,7 +680,7 @@ fn generate_rebuild_plan(
         
         auto old_info_opt = old_manifest.modules.try_borrow(m_path)
         if old_info_opt.is_none() {
-            dirty_map#.insert(cede m_path.clone(), cede string::from("new module"))
+            dirty_map#.insert(m_path.clone(), string::from("new module"))
             continue
         }
         auto &old_info = old_info_opt.unwrap()
@@ -689,14 +688,14 @@ fn generate_rebuild_plan(
         if curr_info.target_triple != old_info.target_triple ||
            curr_info.compiler_version != old_info.compiler_version ||
            curr_info.interface_version != old_info.interface_version {
-            dirty_map#.insert(cede m_path.clone(), cede string::from("version/target changed"))
+            dirty_map#.insert(m_path.clone(), string::from("version/target changed"))
             continue
         }
         
         if curr_info.outputs.interface != old_info.outputs.interface ||
            curr_info.outputs.object != old_info.outputs.object ||
            curr_info.outputs.executable != old_info.outputs.executable {
-            dirty_map#.insert(cede m_path.clone(), cede string::from("outputs changed"))
+            dirty_map#.insert(m_path.clone(), string::from("outputs changed"))
             continue
         }
         
@@ -711,12 +710,12 @@ fn generate_rebuild_plan(
             outputs_missing = true
         }
         if outputs_missing {
-            dirty_map#.insert(cede m_path.clone(), cede string::from("missing output"))
+            dirty_map#.insert(m_path.clone(), string::from("missing output"))
             continue
         }
         
         if !exists(m_path.clone()) {
-            dirty_map#.insert(cede m_path.clone(), cede string::from("file missing"))
+            dirty_map#.insert(m_path.clone(), string::from("file missing"))
             continue
         }
         
@@ -728,14 +727,14 @@ fn generate_rebuild_plan(
             } else {
                 reason = string::from("stale interface")
             }
-            dirty_map#.insert(cede m_path.clone(), cede reason)
+            dirty_map#.insert(m_path.clone(), cede reason)
             continue
         }
     }
 
     auto memo# = HashMap<string, DfsResult>::new()
     auto visiting# = HashMap<string, bool>::new()
-    plan.status = cede string::from("clean")
+    plan.status = string::from("clean")
     
     auto iter2# = current_graph.modules.iter()
     loop {
@@ -747,24 +746,24 @@ fn generate_rebuild_plan(
         
         auto res = check_dirty_recursive(m_path.clone(), current_graph, dirty_map, memo#, visiting#)
         if res.is_dirty {
-            plan.status = cede string::from("dirty")
+            plan.status = string::from("dirty")
             
-            auto chain# = Vec<string>::new()
+            auto chain# = BuildStrings::new()
             auto j# = 0:usize
             loop j < res.chain.len() {
-                chain#.push(cede res.chain.borrow(j).clone())
+                chain#.push(res.chain.get(j))
                 j += 1
             }
             auto k# = m_path.clone()
             auto info# = RebuildModuleInfo(
-                reason = cede res.reason.clone(),
+                reason = res.reason.clone(),
                 dirty_deps = cede chain
             )
             plan.dirty_modules#.insert(cede k, cede info)
             
             if vec_contains(current_graph.roots, m_path) {
                 if !vec_contains(plan.dirty_roots, m_path) {
-                    plan.dirty_roots#.push(cede m_path.clone())
+                    plan.dirty_roots#.push(m_path.clone())
                 }
             }
         }
@@ -834,7 +833,7 @@ fn run_build_impl(
 
                 auto add_cmd# = Command::new(string::from("toka"))
                 add_cmd#.arg(string::from("add"))
-                add_cmd#.arg(cede pkg_url.clone())
+                add_cmd#.arg(pkg_url.clone())
                 if add_cmd#.status() != 0 {
                     println("error: failed to add dependency {}", pkg_url)
                     return 1
@@ -891,7 +890,7 @@ fn run_build_impl(
         }
 
         if use_forge {
-            auto forge_cmd# = Command::new(cede forge_path.clone())
+            auto forge_cmd# = Command::new(forge_path.clone())
             auto src_str = string::from_cstr(*s)
             forge_cmd#.arg(src_str)
             forge_cmd#.arg(string::from("-j"))
@@ -949,17 +948,17 @@ fn run_build_impl(
             c_args#.push_str("-I ")
             c_args#.push_str(toka_lib_arg)
             c_args#.push_str(" ")
-            compiler_args#.push(cede string::from("-I"))
-            compiler_args#.push(cede toka_lib_arg.clone())
+            compiler_args#.push(string::from("-I"))
+            compiler_args#.push(toka_lib_arg.clone())
         } else {
             c_args#.push_str("-I /usr/local/lib/toka ")
-            compiler_args#.push(cede string::from("-I"))
-            compiler_args#.push(cede string::from("/usr/local/lib/toka"))
+            compiler_args#.push(string::from("-I"))
+            compiler_args#.push(string::from("/usr/local/lib/toka"))
         }
         if libc_access(c".tokapkg", 0) == 0 {
             c_args#.push_str("-I .tokapkg ")
-            compiler_args#.push(cede string::from("-I"))
-            compiler_args#.push(cede string::from(".tokapkg"))
+            compiler_args#.push(string::from("-I"))
+            compiler_args#.push(string::from(".tokapkg"))
         }
         auto env_pkg_args = env::var(string::from("TOKA_PKG_ARGS"))
         if env_pkg_args.is_some() {
@@ -970,7 +969,7 @@ fn run_build_impl(
             loop !pkg_arg_iter.is_done() {
                 auto pkg_arg = pkg_arg_iter#.next()
                 if pkg_arg.len() > 0:usize {
-                    compiler_args#.push(cede pkg_arg.clone())
+                    compiler_args#.push(pkg_arg.clone())
                 }
             }
         }
@@ -981,31 +980,31 @@ fn run_build_impl(
             loop !mapping_iter.is_done() {
                 auto mapping = mapping_iter#.next()
                 if mapping.len() > 0:usize {
-                    compiler_args#.push(cede string::from("--pkg"))
-                    compiler_args#.push(cede mapping.clone())
+                    compiler_args#.push(string::from("--pkg"))
+                    compiler_args#.push(mapping.clone())
                 }
             }
         }
         if !requested_workspace_node.is_empty() && !requested_workspace_root.is_empty() {
-            compiler_args#.push(cede string::from("--workspace-node"))
+            compiler_args#.push(string::from("--workspace-node"))
             compiler_args#.push(cede requested_workspace_node)
-            compiler_args#.push(cede string::from("--workspace-root"))
+            compiler_args#.push(string::from("--workspace-root"))
             compiler_args#.push(cede requested_workspace_root)
         }
         auto requested_node_index# = 0:usize
         loop requested_node_index < requested_pkg_nodes.len() {
-            compiler_args#.push(cede string::from("--pkg-node"))
-            compiler_args#.push(cede requested_pkg_nodes.borrow(requested_node_index).clone())
+            compiler_args#.push(string::from("--pkg-node"))
+            compiler_args#.push(requested_pkg_nodes.borrow(requested_node_index).clone())
             requested_node_index += 1
         }
         if validate_semantic_manifests {
-            compiler_args#.push(cede string::from("--validate-semantic-manifests"))
+            compiler_args#.push(string::from("--validate-semantic-manifests"))
         }
         if validate_semantic_manifest_attestations {
-            compiler_args#.push(cede string::from("--validate-semantic-manifest-attestations"))
+            compiler_args#.push(string::from("--validate-semantic-manifest-attestations"))
         }
         if !requested_semantic_manifest_provenance_dir.is_empty() {
-            compiler_args#.push(cede string::from("--semantic-manifest-provenance-dir"))
+            compiler_args#.push(string::from("--semantic-manifest-provenance-dir"))
             compiler_args#.push(cede requested_semantic_manifest_provenance_dir)
         }
 
@@ -1017,10 +1016,10 @@ fn run_build_impl(
 
         if is_hybrid || is_lib_target {
             c_args#.push_str(" --emit-obj ")
-            compiler_args#.push(cede string::from("--emit-obj"))
+            compiler_args#.push(string::from("--emit-obj"))
             if is_lib_target {
                 c_args#.push_str(" --emit-interface ")
-                compiler_args#.push(cede string::from("--emit-interface"))
+                compiler_args#.push(string::from("--emit-interface"))
             }
             c_args#.push_str(" -o target/debug/")
             c_args#.push_cstr(*n)
@@ -1028,9 +1027,9 @@ fn run_build_impl(
             auto compiler_output# = string::from("target/debug/")
             compiler_output#.push_cstr(*n)
             compiler_output#.push_str(".o")
-            compiler_args#.push(cede string::from("-o"))
+            compiler_args#.push(string::from("-o"))
             compiler_args#.push(cede compiler_output)
-            compiler_args#.push(cede string::from("-O3"))
+            compiler_args#.push(string::from("-O3"))
         } else {
             c_args#.push_str(" -o target/debug/")
             c_args#.push_cstr(*n)
@@ -1043,9 +1042,9 @@ fn run_build_impl(
             if is_windows {
                 compiler_output#.push_str(".exe")
             }
-            compiler_args#.push(cede string::from("-o"))
+            compiler_args#.push(string::from("-o"))
             compiler_args#.push(cede compiler_output)
-            compiler_args#.push(cede string::from("-O3"))
+            compiler_args#.push(string::from("-O3"))
         }
 
         auto has_plan# = false
@@ -1125,12 +1124,12 @@ fn run_build_impl(
         // the fingerprint, whereas a graph-only plan cannot see them.
         if has_plan {
             auto plan_cmd# = Command::new(string::from("python3"))
-            plan_cmd#.arg(cede python_driver_path.clone())
+            plan_cmd#.arg(python_driver_path.clone())
             plan_cmd#.arg(string::from("--plan"))
             plan_cmd#.arg(string::from("-m"))
-            plan_cmd#.arg(cede manifest_path.clone())
+            plan_cmd#.arg(manifest_path.clone())
             plan_cmd#.arg(string::from("--tokac"))
-            plan_cmd#.arg(cede python_tokac_path.clone())
+            plan_cmd#.arg(python_tokac_path.clone())
             auto plan_arg_index# = 0:usize
             loop plan_arg_index < compiler_args.len() {
                 auto plan_arg# = string::from("--compiler-arg=")
@@ -1144,12 +1143,12 @@ fn run_build_impl(
         }
 
         auto cmd1# = Command::new(string::from("python3"))
-        cmd1#.arg(cede python_driver_path.clone())
+        cmd1#.arg(python_driver_path.clone())
         cmd1#.arg(string::from("--build"))
         cmd1#.arg(string::from("-m"))
-        cmd1#.arg(cede manifest_path.clone())
+        cmd1#.arg(manifest_path.clone())
         cmd1#.arg(string::from("--tokac"))
-        cmd1#.arg(cede python_tokac_path.clone())
+        cmd1#.arg(python_tokac_path.clone())
         auto driver_arg_index# = 0:usize
         loop driver_arg_index < compiler_args.len() {
             auto driver_arg# = string::from("--compiler-arg=")
@@ -1197,9 +1196,9 @@ fn run_build_impl(
                         auto file = c_srcs_iter#.next()
                         if file.len() == 0:usize { break }
 
-                        auto c_compile# = Command::new(cede cxx.clone())
+                        auto c_compile# = Command::new(cxx.clone())
                         c_compile#.arg(string::from("-c"))
-                        c_compile#.arg(cede file.clone())
+                        c_compile#.arg(file.clone())
                         c_compile#.arg(string::from("-o"))
                         auto c_object# = string::from("target/debug/")
                         auto f_stem = file_stem(file)
@@ -1316,7 +1315,7 @@ fn run_build_impl(
                     }
                 }
 
-                auto cmd2# = Command::new(cede cxx.clone())
+                auto cmd2# = Command::new(cxx.clone())
                 auto obj_path# = string::from("target/debug/")
                 obj_path#.push_cstr(*n)
                 obj_path#.push_str(".o")
@@ -1327,11 +1326,11 @@ fn run_build_impl(
                     loop {
                         auto file = c_srcs_iter#.next()
                         if file.len() == 0:usize { break }
-                        cmd2#.arg(cede file.clone())
+                        cmd2#.arg(file.clone())
                     }
                 }
 
-                cmd2#.arg(cede rt_path.clone())
+                cmd2#.arg(rt_path.clone())
 
                 if include_dirs.len() > 0:usize {
                     auto inc_iter = include_dirs.split(',' as i32)
@@ -1339,7 +1338,7 @@ fn run_build_impl(
                         auto dir = inc_iter#.next()
                         if dir.len() == 0:usize { break }
                         cmd2#.arg(string::from("-I"))
-                        cmd2#.arg(cede dir.clone())
+                        cmd2#.arg(dir.clone())
                     }
                 }
 
@@ -1349,7 +1348,7 @@ fn run_build_impl(
                         auto dir = lib_dir_iter#.next()
                         if dir.len() == 0:usize { break }
                         cmd2#.arg(string::from("-L"))
-                        cmd2#.arg(cede dir.clone())
+                        cmd2#.arg(dir.clone())
                     }
                 }
 
@@ -1359,7 +1358,7 @@ fn run_build_impl(
                         auto lib = lib_iter#.next()
                         if lib.len() == 0:usize { break }
                         cmd2#.arg(string::from("-l"))
-                        cmd2#.arg(cede lib.clone())
+                        cmd2#.arg(lib.clone())
                     }
                 }
 
@@ -1368,7 +1367,7 @@ fn run_build_impl(
                     loop !ldflag_iter.is_done() {
                         auto ldflag = ldflag_iter#.next()
                         if ldflag.len() > 0:usize {
-                            cmd2#.arg(cede ldflag.clone())
+                            cmd2#.arg(ldflag.clone())
                         }
                     }
                 }

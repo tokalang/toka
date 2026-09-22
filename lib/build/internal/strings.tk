@@ -1,0 +1,106 @@
+// Build metadata string lists use one owning string, not a nested raw Vec.
+// Each item is byte-length-prefixed (decimal length, ':', bytes). This preserves
+// arbitrary UTF-8, empty strings and delimiters without internal borrowed fields.
+import stdx/serde/json::{@FromJson, @ToJson, JsonRes, write_escaped_json_string}
+import stdx/serde/json_leaf::{leaf_skip_whitespace, parse_string_value}
+
+shape StringSpan(start: usize, length: usize)
+pub shape BuildStrings(storage#: string = string::from(""), count#: usize = 0)
+impl BuildStrings@Encap {}
+
+impl BuildStrings {
+    pub fn new() -> BuildStrings { return BuildStrings(storage=string::from(""), count=0) }
+    pub fn clone(self) -> BuildStrings {
+        return BuildStrings(storage=self.storage.clone(), count=self.count)
+    }
+    pub fn len(self) -> usize { return self.count }
+    pub fn push(self#, cede value: string) {
+        auto length = value.len()
+        auto header = length.to_string()
+        self.storage#.push_str(header.as_str())
+        self.storage#.push_char(':')
+        self.storage#.push_str(value.as_str())
+        self.count += 1:usize
+        cede value
+    }
+    fn span(self, index: usize) -> StringSpan {
+        assert(index < self.count, "BuildStrings index out of bounds")
+        auto data = self.storage.as_str()
+        auto pos# = 0:usize
+        auto item# = 0:usize
+        loop item <= index {
+            auto length# = 0:usize
+            auto digits# = 0:usize
+            loop true {
+                assert(pos < data.len(), "Truncated BuildStrings header")
+                auto c = data.byte_at(pos)
+                pos += 1:usize
+                if c == 58 { break }
+                assert(c >= 48 && c <= 57, "Invalid BuildStrings length")
+                assert(length <= data.len() / 10:usize, "BuildStrings length overflow")
+                auto scaled = length * 10:usize
+                auto digit = (c - 48) as usize
+                assert(digit <= data.len() - scaled, "BuildStrings length exceeds storage")
+                length = scaled + digit
+                digits += 1:usize
+            }
+            assert(digits > 0:usize && length <= data.len() - pos, "Invalid BuildStrings item")
+            if item == index { return StringSpan(start=pos, length=length) }
+            pos += length
+            item += 1:usize
+        }
+        unreachable
+    }
+    pub fn borrow(self, index: usize) -> str <- self {
+        auto selected = self.span(index)
+        return self.storage.as_str().substr(selected.start, selected.length)
+    }
+    pub fn get(self, index: usize) -> string { return string::from(self.borrow(index)) }
+}
+
+impl BuildStrings@FromJson {
+    pub fn parse_json(self#, json: str) -> JsonRes <- json {
+        auto rem# = leaf_skip_whitespace(json)
+        if rem.len() == 0 || rem.byte_at(0) != 91 { return JsonRes::Err("Expected [") }
+        rem = rem.substr(1, rem.len() - 1)
+        auto result# = BuildStrings::new()
+        auto first# = true
+        loop true {
+            rem = leaf_skip_whitespace(rem)
+            if rem.len() > 0 && rem.byte_at(0) == 93 {
+                rem = rem.substr(1, rem.len() - 1)
+                break
+            }
+            if !first {
+                if rem.len() == 0 || rem.byte_at(0) != 44 { return JsonRes::Err("Expected ,") }
+                rem = leaf_skip_whitespace(rem.substr(1, rem.len() - 1))
+            }
+            first = false
+            auto remaining# = 0:usize
+            {
+                auto attempt = parse_string_value(rem)
+                if attempt.is_err() { return JsonRes::Err(attempt.unwrap_err()) }
+                auto parsed = attempt.unwrap()
+                remaining = parsed.rest.len()
+                auto item = cede parsed.value
+                result#.push(cede item)
+            }
+            rem = json.substr(json.len() - remaining, remaining)
+        }
+        self = cede result
+        return JsonRes::Ok(rem)
+    }
+}
+
+impl BuildStrings@ToJson {
+    pub fn write_json(self, buf#: string) {
+        buf#.push_str("[")
+        auto index# = 0:usize
+        loop index < self.count {
+            if index > 0 { buf#.push_str(",") }
+            write_escaped_json_string(self.borrow(index), buf#)
+            index += 1:usize
+        }
+        buf#.push_str("]")
+    }
+}
