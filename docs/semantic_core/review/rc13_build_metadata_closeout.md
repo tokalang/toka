@@ -55,8 +55,38 @@ oracles were changed.
   the original hybrid build runtime. No dangerous negative is run.
 - Related JSON factory and accepted byte-owner gates remain passing.
 
-Combined targeted CTest: **4/4, 188.05 seconds**. Full-run results will be recorded
-only after one fixed-candidate tools/PASS/FAIL/CTest comparison completes.
+Combined targeted CTest: **4/4, 188.05 seconds**.
+
+## Fixed candidate and complete comparison
+
+Implementation: `4750fbdda7c056a680fd3c01b587da9ddc671882` (WIP, not Accepted).
+Evidence: `/Users/zhyi/GitDP/tokalang/validation/rc13-build-closeout-final`.
+All four commands reported zero tracked-source changes. The manifest, preserved
+RFC diff, exact commands, logs and comparison are retained there.
+
+| Gate | Result | Seconds |
+| --- | --- | --- |
+| Complete tools build | passed | 11.88 |
+| PASS | 457/459 | 366.24 |
+| FAIL | 480/480 | 128.74 |
+| Unfiltered CTest | 117/118 | 1529.82 |
+
+Compiler SHA-256 after the complete tools build:
+`838bcf49347de69a226b12e3190760f6378ff9b32b1b3e14f88988c54acd4f04`.
+
+Against the accepted a08578e8 full run, the only restored positive is
+`g10_build_hybrid_test.tk`; the restored old CTest is
+`toka_stage1_return_matrix`. `toka_build_metadata` is new, not a recovery.
+There are no new failures or recorded abnormal exits. The remaining positives
+are `g15_stdx_toml_test.tk` and `g18_stdx_template_test.tk`; the remaining CTest
+failure is `toka_stage1_indirect_parameter_cede`.
+
+The implementation diff contains only Build library representation/call-site
+changes, regression fixtures/scripts, CMake registration and this record. No
+compiler, byte contract, raw_take, native runtime or TKI-key changes. No push,
+PR, publishing or freeze-ref changes. The independent RFC remains dirty at
+SHA-256 `1b73b0fc46f9a700e1bdc9d0a0031614e1d9a4b398ce97f6a6423972474d70e2`,
+unchanged and excluded from both local commits.
 
 TOML/Template, source-hidden callable and the previously recorded aggregate
 extern lowering limitation remain separate. E, pushing and publishing remain
