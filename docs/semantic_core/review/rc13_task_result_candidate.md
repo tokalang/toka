@@ -1,8 +1,22 @@
-# Anonymous records + task/byte result handoff: fixed WIP candidate
+# Anonymous records + task/byte result handoff: scoped acceptance
 
-## Current increment — a08578e8 (not Accepted / not frozen)
+## Accepted package — a08578e8
 
 Implementation: `a08578e8ce62bae6eaabfa1cae00f03ade3de9fc`.
+Accepted by incremental review on 2026-09-22, limited to anonymous records,
+source-visible task-result projection and byte-owner/result handoff. The reviewer
+rechecked the original probes and two CTests (2/2, 185.09 seconds), including the
+37-case byte gate. The fixed full-run numbers below were independently reconciled,
+not rerun in full by the reviewer. Acceptance record:
+`/Users/zhyi/GitDP/tokalang/validation/byte-freshness-acceptance-20260922.P6sSd2/acceptance.md`.
+
+This package is closed; no further features are appended. RC13 is not accepted.
+Build plus return-matrix form the next separate library-side delivery. TOML,
+Template, source-hidden callable and mutable aggregate extern lowering remain
+explicit independent work. E, pushing and publishing stay paused. No freeze ref
+is created or moved by this documentation-only acceptance record; the unrelated
+RFC remains preserved.
+
 This increment addresses the reviewed stale-receipt resurrection only. The
 byte contract and the independent extern ABI work are not reopened.
 
