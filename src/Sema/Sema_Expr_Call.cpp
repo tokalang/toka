@@ -7257,6 +7257,7 @@ void Sema::validateAtomicOrderingArguments(
 
 // Stage 5c: Object-Oriented Call Expression Check
 std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
+  Call->ResolvedCallable.reset();
 
   Stage0TransactionFinalizer stage0TransactionFinalizer(*this, Call);
   std::optional<Stage0CallSnapshot> stage0CallEntrySnapshot;
@@ -8938,9 +8939,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   // Local Scope Lookup (Local, Imported, or Shadowed)
   SymbolInfo sym;
   SymbolInfo *symPtr = nullptr;
+  bool hasLexicalValue = false;
   std::string actualCallName = CallName;
   if (CurrentScope->findVariableWithDeref(CallName, symPtr, actualCallName)) {
     sym = *symPtr;
+    hasLexicalValue = scopePos == std::string::npos && !sym.IsTypeAlias &&
+                      (sym.IsDeclaredVariable || sym.IsFunctionParameter);
+    if (hasLexicalValue) {
+      Fn = nullptr;
+      Ext = nullptr;
+      Sh = nullptr;
+    }
     // A callable invocation is still a use of its binding.  It must observe
     // the same cede invalidation state as a field read or ordinary variable
     // expression; otherwise a transferred callback could be invoked again.
@@ -9370,9 +9379,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
   }
 
+  // A value binding shadows declarations even when it is not callable. Never
+  // replace that selection with a module or specialization-cache name match.
   // A generic body is checked at its instantiation site but retains the
   // lexical namespace of its defining module.
-  if (!Fn && !Ext && !Sh) {
+  if (!hasLexicalValue && !Fn && !Ext && !Sh) {
     auto findLexicalSymbol = [&](ModuleScope *lexical) {
       if (!lexical)
         return;
@@ -9411,7 +9422,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   // Concrete generic instances are compiler-created and are not source-level
   // imports. Keep this internal fallback narrow so GlobalFunctions cannot leak
   // unselected module symbols into the current namespace.
-  if (!Fn && !Ext && !Sh) {
+  if (!hasLexicalValue && !Fn && !Ext && !Sh) {
     auto instance = InstantiationCache.find(CallName);
     if (instance != InstantiationCache.end()) {
       const auto entry = instance->second;
@@ -9526,6 +9537,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       [&](const std::vector<std::shared_ptr<Type>> &parameterTypes,
           const std::shared_ptr<Type> &returnType,
           CallTransferRoute route) -> std::shared_ptr<Type> {
+    Call->ResolvedFn = nullptr;
+    Call->ResolvedExtern = nullptr;
+    Call->ResolvedShape = nullptr;
+    Call->ResolvedCallable = std::make_unique<VariableExpr>(actualCallName);
+    Call->ResolvedCallable->Loc = Call->Loc;
+    Call->ResolvedCallable->ResolvedName = sym.CodegenName;
+    Call->ResolvedCallable->ResolvedBindingID = sym.SymbolID;
+    Call->ResolvedCallable->ResolvedType = sym.TypeObj;
     const CallableReceiverMode formalReceiverMode =
         symPtr ? symPtr->CallableReceiver : getCallableReceiverMode(*sym.TypeObj);
     auto isStage1ConcreteIndirectParameter =

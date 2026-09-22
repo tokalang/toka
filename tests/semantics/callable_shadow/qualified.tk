@@ -1,0 +1,9 @@
+import ./qualified_provider
+fn apply(dispatch: fn(i32) -> i32, value: i32) -> i32 {
+    return qualified_provider::dispatch(value) + dispatch(value)
+}
+fn main() -> i32 {
+    auto callback = { value => value + 1 }: fn(i32) -> i32
+    assert(apply(callback, 4) == 29, "explicit module selection remains direct")
+    return 0
+}

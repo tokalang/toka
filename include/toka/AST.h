@@ -1247,6 +1247,10 @@ public:
   std::vector<TypeArgumentSyntax> GenericArgSyntax;
 
   // Semantic Resolution Cache
+  // The lexical value selected by Sema for an indirect call. Do not perform
+  // a second module-function lookup by its spelling in CodeGen. Like other
+  // resolution caches, this is deliberately not copied by clone().
+  std::unique_ptr<VariableExpr> ResolvedCallable;
   FunctionDecl *ResolvedFn = nullptr;
   ExternDecl *ResolvedExtern = nullptr;
   ShapeDecl *ResolvedShape = nullptr;

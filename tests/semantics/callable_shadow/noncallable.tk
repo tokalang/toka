@@ -1,0 +1,5 @@
+fn dispatch(value: i32) -> i32 { return 99 }
+fn main() -> i32 {
+    auto dispatch = 3:i32
+    return dispatch(4)
+}

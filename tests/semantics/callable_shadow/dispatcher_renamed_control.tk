@@ -1,0 +1,13 @@
+import stdx/text/template::{Template, TemplateContext}
+import core/result::{Result}
+fn audit_dispatch_value(name: str, arg: str) -> Result<string, string> {
+    return Result<string, string>::Ok(string::from(arg))
+}
+fn main() -> i32 {
+    auto ctx# = TemplateContext::new()
+    ctx#.enable_func(string::from("echo"))
+    ctx#.set(string::from("input"), string::from("value"))
+    auto parsed = Template::parse("{{ .input | echo }}").unwrap()
+    assert(parsed.render(ctx#).is_err(), "no dispatcher was supplied")
+    return 0
+}

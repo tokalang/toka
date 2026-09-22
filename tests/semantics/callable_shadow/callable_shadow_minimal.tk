@@ -1,0 +1,9 @@
+fn dispatch(value: i32) -> i32 { return 99 }
+fn apply(dispatch: fn(i32) -> i32, value: i32) -> i32 {
+    return dispatch(value)
+}
+fn main() -> i32 {
+    auto callback = { value => value + 1 }: fn(i32) -> i32
+    assert(apply(callback, 4) == 5, "call the supplied parameter, not the global function")
+    return 0
+}

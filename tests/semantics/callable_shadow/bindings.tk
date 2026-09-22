@@ -1,0 +1,25 @@
+fn dispatch(value: i32) -> i32 { return 99 }
+fn apply_dyn(dispatch: dyn fn(i32) -> i32, value: i32) -> i32 {
+    return dispatch(value)
+}
+fn apply_generic<T>(dispatch: fn(T) -> T, value: T) -> T {
+    return dispatch(value)
+}
+fn main() -> i32 {
+    assert(dispatch(4) == 99, "global still callable without shadow")
+    {
+        auto dispatch = { value => value + 2 }: fn(i32) -> i32
+        assert(dispatch(4) == 6, "local binding shadows global")
+        {
+            auto dispatch = { value => value + 3 }: fn(i32) -> i32
+            assert(dispatch(4) == 7, "inner lexical binding")
+        }
+        assert(dispatch(4) == 6, "outer lexical binding restored")
+    }
+    auto callback = { value => value + 1 }: fn(i32) -> i32
+    auto dynamic = { value => value + 5 }: dyn fn(i32) -> i32
+    assert(apply_dyn(dynamic, 4) == 9, "dynamic parameter shadows global")
+    assert(apply_generic(callback, 4) == 5, "generic clone resolves parameter identity")
+    assert(dispatch(4) == 99, "global identity after nested scope")
+    return 0
+}

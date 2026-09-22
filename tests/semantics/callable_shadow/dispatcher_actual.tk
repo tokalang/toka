@@ -1,0 +1,18 @@
+import stdx/text/template::{Template, TemplateContext}
+import core/result::{Result}
+fn dispatch(name: str, arg: str) -> Result<string, string> {
+    return Result<string, string>::Ok(string::from("wrong global"))
+}
+fn supplied(name: str, arg: str) -> Result<string, string> {
+    assert(name.equals("echo") && arg.equals("value"), "actual callback arguments")
+    return Result<string, string>::Ok(string::from("supplied callback"))
+}
+fn main() -> i32 {
+    auto ctx# = TemplateContext::new()
+    ctx#.enable_func(string::from("echo"))
+    auto parsed = Template::parse("{{ echo \"value\" }}").unwrap()
+    auto callback = { name, arg => supplied(name, arg) }: fn(str, str) -> Result<string, string>
+    assert(parsed.render_with(ctx#, callback).unwrap().as_str().equals("supplied callback"), "supplied target, not global")
+    assert(parsed.render(ctx#).is_err(), "no dispatcher remains an error after render_with")
+    return 0
+}

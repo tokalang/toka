@@ -30,9 +30,10 @@ proofs. E, source-hidden callable and extern aggregate lowering remain separate.
   original two mock callbacks and their failure assertions are preserved behind
   the test dispatcher. This does not qualify source-hidden callable environments.
 - Template scanning already uses byte offsets. Its substring helper now uses
-  byte `substr`, rather than character `substring`. ASCII upper/lower preserve
-  non-ASCII bytes instead of encoding each byte as a character. UTF-8 callback
-  and pipeline assertions cover this library-only correction.
+  byte `substr`, rather than character `substring`. UTF-8 callback and pipeline
+  assertions cover this library-only correction. The push_char-to-push_byte_raw
+  spelling change is not a separate behavior fix: push_char already delegates
+  to raw-byte insertion in the current string implementation.
 
 No JSON-text conversion, new unsafe storage operation, compiler change, runtime,
 ABI/TKI-key change, raw_take extension or byte-contract modification is included.

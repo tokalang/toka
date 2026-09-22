@@ -6270,7 +6270,10 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     calleeName = calleeName.substr(5);
   }
 
-  llvm::Function *callee = m_Module->getFunction(calleeName);
+  if (call->ResolvedCallable)
+    calleeName = call->ResolvedCallable->codegenName();
+  llvm::Function *callee = call->ResolvedCallable
+                               ? nullptr : m_Module->getFunction(calleeName);
   if (!callee && call->ResolvedFn) {
     genFunction(call->ResolvedFn, "", true);
     callee = m_Module->getFunction(calleeName);
@@ -6283,12 +6286,13 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   if (!callee) {
     // [NEW] Fat Pointer Invocation Intercept
     // Handle both local variables and closure captures
-    bool isValidVar = m_Symbols.count(calleeName) > 0;
-    std::shared_ptr<Type> symTy = nullptr;
+    bool isValidVar = call->ResolvedCallable || m_Symbols.count(calleeName) > 0;
+    std::shared_ptr<Type> symTy = call->ResolvedCallable
+                                    ? call->ResolvedCallable->ResolvedType : nullptr;
     
-    if (isValidVar) {
+    if (!call->ResolvedCallable && isValidVar) {
         symTy = m_Symbols[calleeName].soulTypeObj;
-    } else if (m_Symbols.count("self")) {
+    } else if (!call->ResolvedCallable && m_Symbols.count("self")) {
         auto selfTy = m_Symbols["self"].soulTypeObj;
         if (selfTy && selfTy->isReference()) {
             selfTy = std::static_pointer_cast<toka::PointerType>(selfTy)->PointeeType;
@@ -6328,7 +6332,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
             
             auto varExpr = std::make_unique<VariableExpr>(calleeName);
             varExpr->ResolvedType = symTy; // Optional, but helps downstream
-            PhysEntity fatVal_ent = genExpr(varExpr.get());
+            PhysEntity fatVal_ent = genExpr(call->ResolvedCallable
+                                               ? call->ResolvedCallable.get()
+                                               : varExpr.get());
             llvm::Value *fatVal = fatVal_ent.load(m_Builder);
             
             if (fatVal && fatVal->getType()->isStructTy() && 
@@ -6397,6 +6403,11 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                 return PhysEntity(ci, returnType->getSoulName(), ci->getType(), false);
             }
         }
+    }
+
+    if (call->ResolvedCallable) {
+      error(call, DiagID::ERR_CODEGEN_CANNOT_RESOLVE_FUNCTION, calleeName);
+      return nullptr;
     }
 
     // Check for ADT Constructor (Type::Member)
