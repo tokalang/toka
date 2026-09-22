@@ -116,7 +116,8 @@ def main():
                 "preview omitted H/P capability delta")
         manager = run([toka, "preview", "--base", base, "--candidate", candidate])
         require(manager.returncode == 0 and manager.stdout == first,
-                "toka preview does not preserve preview output")
+                "toka preview does not preserve preview output: " +
+                repr((manager.returncode, manager.stderr, manager.stdout[:1000], first[:1000])))
 
         pass_case = ROOT / "tests/semantics/tki_replay/cases/pal_call_001_alias/pass_read_read.tk"
         fail_case = ROOT / "tests/semantics/tki_replay/cases/pal_call_001_alias/fail_mut_read_alias.tk"

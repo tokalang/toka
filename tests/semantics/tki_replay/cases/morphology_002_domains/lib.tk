@@ -1,5 +1,5 @@
-// EXPECT_TKI: 'T: morphology borrow_extendable
-// EXPECT_TKI: 'T: morphology soul_only
+// EXPECT_TKI: T: morphology borrow_extendable
+// EXPECT_TKI: T: morphology soul_only
 // EXPECT_TKI_ROUNDTRIP
 
 pub shape Cell(value: i32)

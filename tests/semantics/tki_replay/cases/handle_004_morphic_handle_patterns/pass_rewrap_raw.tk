@@ -7,6 +7,7 @@ fn main() -> i32 {
     auto *ptr = *value as *Item
     auto carrier = Carrier<*Item>::Value(*ptr)
     auto rewrapped = carrier.rewrap()
-    assert(rewrapped.field() == 96, "raw aggregate transport failed")
+    auto *result = rewrapped.unsafe_exact()
+    assert(result.val == 96, "raw aggregate transport failed")
     return 0
 }

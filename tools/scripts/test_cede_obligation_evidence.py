@@ -126,9 +126,23 @@ def main():
                 "unconsumed callee obligation is missing")
 
         _, returned = compile_evidence(tokac, PASS_RETURN, expected=0)
-        require(find_record(returned, "return-transfer", "fulfilled",
-                            "CedeConsumed", "lib.tk") is not None,
-                "fulfilled cede return is missing")
+        # `-> cede T` was removed. A plain result signature must not fabricate
+        # a caller-side return obligation; check the actual body transfer plan.
+        require(not any(r['stage'] == 'return-transfer' for r in returned['records']),
+                "ordinary return signature fabricated a cede return obligation")
+        body = PASS_RETURN.parent / 'lib.tk'
+        planned = run([tokac, '--non-call-transfer-shadow=json', '--check-only', body], expected=0)
+        records = json.loads(planned.stdout)['records']
+        selected = [r for r in records if r['boundary'] == 'return' and
+                    Path(r['location']['file']).resolve() == body.resolve() and
+                    r['location']['line'] == 6]
+        require(len(selected) == 1, 'missing or duplicated explicit return-source plan')
+        plan = selected[0]['plan']
+        require(selected[0]['prepared_before_legacy_mutation'] and
+                selected[0]['group_plan_admitted'] and plan['outcome'] == 'Admitted' and
+                plan['surface_spelling'] == 'ExplicitCede' and
+                plan['source'] == 'InvalidateSubtree' and plan['exact_path'].endswith('binding:p;') and
+                plan['destination'] == 'Return', 'return source was not precisely consumed')
 
         manager = run([
             toka, "cede-obligations", "--json", PASS_CALLER,

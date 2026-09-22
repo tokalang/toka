@@ -4,11 +4,12 @@ pub trait @Readable {
 }
 
 pub shape Box(value: string)
+pub fn make_box() -> Box { return Box(value = string::from("5")) }
 
 impl Box@Readable {
     type Item = string
 
     pub fn read(self) -> Item {
-        return self.value
+        return string::from(self.value.as_str())
     }
 }

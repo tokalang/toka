@@ -7,8 +7,12 @@ fn main() -> i32 {
     {
         auto ~shared_item = new Item(val = 122)
         auto shared_carrier = RepeatCarrier<~Item>::Value(~shared_item)
-        auto shared_result = shared_carrier.double_rewrap()
-        assert(shared_result.field() == 122,
+        auto ~transported = shared_carrier.unsafe_exact()
+        auto first = RepeatCarrier<~Item>::Value(~transported)
+        auto second = RepeatCarrier<~Item>::Value(~transported)
+        auto ~first_value = first.unsafe_exact()
+        auto ~second_value = second.unsafe_exact()
+        assert(first_value.val == 122 && second_value.val == 122,
                "shared repeated transport must retain the handle")
     }
     assert(item_drop_count() == before + 1,
@@ -17,14 +21,22 @@ fn main() -> i32 {
     auto raw_item# = Item(val = 123)
     auto *raw_ptr = *raw_item as *Item
     auto raw_carrier = RepeatCarrier<*Item>::Value(*raw_ptr)
-    auto raw_result = raw_carrier.double_rewrap()
-    assert(raw_result.field() == 123,
+    auto *transported_raw = raw_carrier.unsafe_exact()
+    auto raw_first = RepeatCarrier<*Item>::Value(*transported_raw)
+    auto raw_second = RepeatCarrier<*Item>::Value(*transported_raw)
+    auto *raw_a = raw_first.unsafe_exact()
+    auto *raw_b = raw_second.unsafe_exact()
+    assert(raw_a.val == 123 && raw_b.val == 123,
            "raw repeated transport must copy identity")
 
     auto ref_item = Item(val = 124)
     auto ref_carrier = RepeatCarrier<&Item>::Value(&ref_item)
-    auto ref_result = ref_carrier.double_rewrap()
-    assert(ref_result.field() == 124,
+    auto &transported_ref = ref_carrier.unsafe_exact()
+    auto ref_first = RepeatCarrier<&Item>::Value(&transported_ref)
+    auto ref_second = RepeatCarrier<&Item>::Value(&transported_ref)
+    auto &ref_a = ref_first.unsafe_exact()
+    auto &ref_b = ref_second.unsafe_exact()
+    assert(ref_a.val == 124 && ref_b.val == 124,
            "reference repeated transport must copy identity")
 
     return 0

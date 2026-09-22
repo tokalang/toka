@@ -688,9 +688,9 @@ impl LocalCounter {
     }
 }
 
-pub shape LocalBox<'T>(value: T)
+pub shape LocalBox<T>(value: T)
 
-impl<'T> LocalBox<'T> {
+impl<T> LocalBox<T> {
     pub fn marker(self) -> i32 {
         auto c# = LocalCounter(val = 0)
         if libc_strlen(c"cached\n") == 7:usize {

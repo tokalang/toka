@@ -4016,6 +4016,37 @@ bool Sema::collectActualReturnReferents(
         unary && unary->Op == TokenType::Star)
       return visit(unary->RHS.get(), result);
     if (auto *member = dynamic_cast<MemberExpr *>(value)) {
+      // A reference-valued field of a checked call result forwards that
+      // field's mapped referents, not the temporary record's descriptor or
+      // all sibling dependencies. Reuse the complete existing field mapper.
+      if ((dynamic_cast<CallExpr *>(member->Object.get()) ||
+           dynamic_cast<MethodCallExpr *>(member->Object.get())) &&
+          member->ResolvedType && member->ResolvedType->isReference()) {
+        auto ownerType = std::dynamic_pointer_cast<ShapeType>(
+            resolveExplicitCedeStage0TypeReadOnly(member->Object->ResolvedType));
+        if (!ownerType || !ownerType->Decl) return false;
+        const ShapeMember *selected = nullptr;
+        for (const auto &field : ownerType->Decl->Members)
+          if (stripMemberAccessMarkers(field.Name) == stripMemberAccessMarkers(member->Member))
+            selected = &field;
+        auto fieldType = selected ? resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(*selected)) : nullptr;
+        if (!fieldType || !fieldType->equals(*member->ResolvedType)) return false;
+        std::vector<AccessPath> allRoots;
+        std::map<std::string, ActualReturnFieldOrigins> mapped;
+        if (!collectActualReturnReferents(member->Object.get(), allRoots,
+                                         nullptr, nullptr, nullptr, &mapped)) return false;
+        const auto found = mapped.find(stripMemberAccessMarkers(member->Member));
+        if (found == mapped.end() || (found->second.Referents.empty() &&
+                                      found->second.StaticStorage.empty())) return false;
+        result.insert(result.end(), found->second.Referents.begin(), found->second.Referents.end());
+        // The selected &T refers to T storage, not any borrowed contents of
+        // T (notably a local str descriptor backed by static characters).
+        preparedStorage.insert(preparedStorage.end(), found->second.Referents.begin(),
+                               found->second.Referents.end());
+        preparedStatic.insert(preparedStatic.end(), found->second.StaticStorage.begin(),
+                              found->second.StaticStorage.end());
+        return true;
+      }
       const auto path = checkedSourcePath(member);
       SymbolInfo *binding = nullptr;
       if (path.RootID && path.Projections.size() == 1 &&
@@ -4185,7 +4216,38 @@ bool Sema::collectActualReturnReferents(
         const size_t staticStart = preparedStatic.size();
         auto returnedType = method ? method->ResolvedType : call->ResolvedType;
         bool mappedProjection = false;
-        if (fields && value == fieldOwner && returnedType &&
+        bool addressesActualField = false;
+        if (!transfersValue && fields && value == fieldOwner && formalPath.Projections.size() == 1 &&
+            formalPath.Projections.front().Kind == AccessProjectionKind::Field && argument) {
+          const auto actualPlace = makeAccessPath(argument);
+          SymbolInfo *storage = nullptr;
+          const bool checkedStorage = actualPlace.RootID && actualPlace.Projections.empty() &&
+              CurrentScope->findSymbolByID(actualPlace.RootID, storage) && storage &&
+              storage->ExactPlace.isDefinitelyLive() &&
+              !m_ReturnSourceInvalidatedRoots.count(storage->SymbolID) &&
+              !m_ReturnSourceUnknownRoots.count(storage->SymbolID);
+          auto returnedShape = std::dynamic_pointer_cast<ShapeType>(
+              resolveExplicitCedeStage0TypeReadOnly(returnedType));
+          auto actualShape = std::dynamic_pointer_cast<ShapeType>(
+              resolveExplicitCedeStage0TypeReadOnly(argument->ResolvedType));
+          std::shared_ptr<Type> resultFieldType, actualFieldType;
+          if (checkedStorage && returnedShape && returnedShape->Decl && actualShape && actualShape->Decl) {
+            for (const auto &field : returnedShape->Decl->Members)
+              if (stripMemberAccessMarkers(field.Name) == resultField)
+                resultFieldType = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(field));
+            for (const auto &field : actualShape->Decl->Members)
+              if (stripMemberAccessMarkers(field.Name) == formalPath.Projections.front().Name)
+                actualFieldType = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(field));
+            addressesActualField = resultFieldType && resultFieldType->isReference() &&
+                actualFieldType && resultFieldType->getPointeeType()->equals(*actualFieldType);
+          }
+        }
+        if (addressesActualField) {
+          // A returned &T may refer to the caller's actual T field storage.
+          // That is not a borrowed value carried inside that field, and needs
+          // no initializer-derived/static witness. Preserve its storage level.
+          if (!storageOrigin(argument, roots)) return false;
+        } else if (fields && value == fieldOwner && returnedType &&
             returnedType->isShape() &&
             queryExplicitCedeStage0OwnershipReadOnly(returnedType) != ValueOwnership::BorrowedView &&
             !formalPath.Projections.empty()) {
@@ -5499,7 +5561,8 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
         isMemberReferenceConstruction(exactValue);
     if ((dynamic_cast<CallExpr *>(exactValue) ||
          dynamic_cast<MethodCallExpr *>(exactValue) ||
-         dynamic_cast<WaitExpr *>(exactValue) || referenceConstruction ||
+         dynamic_cast<WaitExpr *>(exactValue) || dynamic_cast<AwaitExpr *>(exactValue) || referenceConstruction ||
+         (dynamic_cast<MemberExpr *>(exactValue) && actualType && actualType->isReference()) ||
          dynamic_cast<ArrayExpr *>(exactValue) ||
          dynamic_cast<RepeatedArrayExpr *>(exactValue) ||
          (bindingBehaviorPlan && (dynamic_cast<InitStructExpr *>(exactValue) ||
@@ -6110,6 +6173,38 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
     }
   }
   facts.SourceFlowCeiling = facts.ActualCapabilities;
+  // OWN-FLOW-01: a fresh whole unique owner derives local H/P from its own
+  // declaration. The old binding's local P is not a referent restriction.
+  // Reuse the represented ceiling; never apply this to projections/aliases,
+  // shared/reference/raw identities. These are facts of the existing checked
+  // binding; final admission still waits for normal expression validation.
+  Expr *uniqueSource = exactValue;
+  if (auto *cede = dynamic_cast<CedeExpr *>(uniqueSource))
+    uniqueSource = cede->Value.get();
+  if (auto *selector = dynamic_cast<UnaryExpr *>(uniqueSource);
+      selector && selector->Op == TokenType::Caret)
+    uniqueSource = selector->RHS.get();
+  if (destination == TransferDestination::Initialization &&
+      facts.SourceView == TransferSourceView::UniqueHandle && facts.SourcePlace &&
+      (facts.SurfaceSpelling == TransferSurfaceSpelling::ExplicitCede ||
+       facts.SurfaceSpelling == TransferSurfaceSpelling::IntrinsicUniqueMove)) {
+    if (auto *variable = dynamic_cast<VariableExpr *>(uniqueSource)) {
+      SymbolInfo *binding = nullptr;
+      std::string name = variable->Name;
+      if (CurrentScope->findVariableWithDeref(name, binding, name) && binding &&
+          !binding->IsPlaceAlias && binding->TypeObj && binding->TypeObj->isUniquePtr() &&
+          actualType && actualType->isUniquePtr() &&
+          actualType->IsNullable == binding->TypeObj->IsNullable &&
+          actualType->getPointeeType() && binding->TypeObj->getPointeeType() &&
+          actualType->getPointeeType()->equals(*binding->TypeObj->getPointeeType()) &&
+          binding->TypeObj->getPointeeType() && !binding->TypeObj->getPointeeType()->IsBlocked &&
+          !(binding->HasPayloadFlowCeiling && !binding->PayloadFlowWritable) &&
+          !queryExplicitCedeStage0AccessCapabilityReadOnly(uniqueSource).PayloadFlowRestricted) {
+        facts.SourceFlowCeiling.HandleRebindable = true;
+        facts.SourceFlowCeiling.PayloadWritable = true;
+      }
+    }
+  }
   // Copying a physical scalar (integer / boolean / float) into a writable
   // payload is a value copy, not a handle authority transfer.  Such a value
   // holds no writable handle of its own, so its `PayloadWritable == false` is
@@ -11782,8 +11877,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         place->InitMask = 0;
     } else {
       if (place->ExactPlace.transitionWhole(PlaceState::Never,
-                                            PlaceState::Live))
+                                            PlaceState::Live)) {
         place->InitMask = ~0ULL;
+        place->ExactPlace.repopulateAllProjections();
+      }
     }
   }
 

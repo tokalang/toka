@@ -1,7 +1,7 @@
 shape SummaryData(value: i32)
 shape SummaryRef(&#value: i32)
 
-auto ms_global# = 0
+auto ms_global# = 0:i32
 
 fn ms_read(data: SummaryData) -> i32 {
     return data.value
@@ -13,7 +13,7 @@ fn ms_write(data#: SummaryData) -> i32 {
 }
 
 fn ms_forward(data#: SummaryData) -> i32 {
-    return ms_write(data)
+    return ms_write(data#)
 }
 
 fn ms_consume(cede data: SummaryData) -> i32 {
@@ -65,10 +65,10 @@ fn main() -> i32 {
     if ms_read(data) != 1 {
         return 1
     }
-    if ms_write(data) != 7 {
+    if ms_write(data#) != 7 {
         return 2
     }
-    if ms_forward(data) != 7 {
+    if ms_forward(data#) != 7 {
         return 3
     }
     return ms_generic<SummaryData>(data) - 1

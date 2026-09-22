@@ -4,7 +4,7 @@
 set -euo pipefail
 
 TOKAC="${TOKAC:-./build/bin/tokac}"
-CDW1_CHECK="${CDW1_CHECK:-./build/bin/toka_canonical_declaration_witness}"
+CDW1_CHECK="${CDW1_CHECK:-$(dirname "$TOKAC")/toka_canonical_declaration_witness}"
 CASE_DIR="tests/semantics/tki_replay/cases/outcome_001_direct_match"
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/toka_outcome_recheck.XXXXXX")"
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -84,22 +84,49 @@ if ! grep -Fq "name=6:Packet;" "$TEST_DIR/nominal/lib.tki"; then
     exit 1
 fi
 
-# Strong aliases are not silently encoded as their temporary synthetic shape.
-# Until aliases receive a stable definition identity, the P1 type domain must
-# reject them even under an otherwise known workspace coordinate.
+# Strong aliases now have declaration-owned nominal identities. Require the
+# alias coordinate/name rather than erasing it into its underlying Packet.
 mkdir -p "$TEST_DIR/strong-alias"
 cp "$CASE_DIR/lib_strong_alias.tk" "$TEST_DIR/strong-alias/lib.tk"
 "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
     -c "$TEST_DIR/strong-alias/lib.tk" -o "$TEST_DIR/strong-alias/lib.o"
-if ! grep -Fq "type-domain=unavailable;" \
+if ! grep -Fq "type-domain=canonical-v1;" \
     "$TEST_DIR/strong-alias/lib.tki"; then
-    echo "FAIL: strong-alias Outcome type was silently admitted to P1" >&2
+    echo "FAIL: known strong-alias Outcome identity is unavailable" >&2
     exit 1
 fi
-if grep -q '^// @tki v2 cdw1:' "$TEST_DIR/strong-alias/lib.tki"; then
-    echo "FAIL: strong-alias Outcome interface emitted a CDW1 prototype" >&2
+if ! grep -Fq 'name=11:PacketAlias;' "$TEST_DIR/strong-alias/lib.tki" || \
+   [[ "$(grep -c '^// @tki v2 cdw1:' "$TEST_DIR/strong-alias/lib.tki")" != 1 ]]; then
+    echo "FAIL: strong-alias Outcome lost its distinct declaration identity" >&2
     exit 1
 fi
+cp "$CASE_DIR/strong_alias_replay.tk.inc" "$TEST_DIR/strong-alias/main.tk"
+"$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/strong-alias/main.tk" -o "$TEST_DIR/strong-alias/source.o"
+mv "$TEST_DIR/strong-alias/lib.tk" "$TEST_DIR/strong-alias/lib.tk.source-hidden"
+"$TOKAC" --validate-semantic-manifests \
+    --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/strong-alias/main.tk" -o "$TEST_DIR/strong-alias/replay.o"
+"$TOKAC" --validate-semantic-manifests \
+    --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    "$TEST_DIR/strong-alias/main.tk" -o "$TEST_DIR/strong-alias/replay"
+"$TEST_DIR/strong-alias/replay"
+cp "$CASE_DIR/strong_alias_error_read.tk.inc" "$TEST_DIR/strong-alias/error-read.tk"
+for mode in -c --emit-llvm; do
+    output="$TEST_DIR/strong-alias/error-read.$mode.out"
+    if "$TOKAC" --validate-semantic-manifests \
+        --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+        "$mode" "$TEST_DIR/strong-alias/error-read.tk" -o "$output" \
+        > "$TEST_DIR/strong-alias/error-read.log" 2>&1; then
+        echo "FAIL: failed Outcome initialized alias fields" >&2
+        exit 1
+    fi
+    if ! grep -Fq 'error[E0410]' "$TEST_DIR/strong-alias/error-read.log" || \
+       ! grep -Fq 'error-read.tk' "$TEST_DIR/strong-alias/error-read.log" || [[ -e "$output" ]]; then
+        echo "FAIL: alias failure must reject field read without an artifact" >&2
+        exit 1
+    fi
+done
 
 cp "$TEST_DIR/lib.tki" "$TEST_DIR/lib.tki.good"
 mv "$TEST_DIR/lib.tk" "$TEST_DIR/lib.tk.source-hidden"

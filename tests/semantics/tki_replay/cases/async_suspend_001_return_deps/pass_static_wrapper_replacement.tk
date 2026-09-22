@@ -1,0 +1,8 @@
+import ./lib::{Data, get_async_view}
+fn main() -> i32 {
+    auto data# = Data(view = "hello")
+    auto view = get_async_view(data).wait
+    data = Data(view = "goodbye")
+    assert(view.equals("hello"), "replacing a descriptor does not destroy static bytes")
+    return 0
+}

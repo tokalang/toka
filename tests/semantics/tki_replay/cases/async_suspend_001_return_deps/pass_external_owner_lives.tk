@@ -1,0 +1,7 @@
+import ./lib::{get_external_view}
+fn main() -> i32 {
+    auto owner = string::from("hello")
+    auto view = get_external_view(owner.as_view()).wait
+    assert(view.equals("hello"), "task cleanup preserves the external live owner")
+    return 0
+}

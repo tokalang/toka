@@ -1,4 +1,4 @@
-// EXPECT_TKI: 'T: morphology raw_extendable
+// EXPECT_TKI: T: morphology raw_extendable
 // EXPECT_TKI: pub fn raw_marker(self: Self) -> i32
 // EXPECT_TKI_ROUNDTRIP
 

@@ -11,7 +11,7 @@ fn main() -> i32 {
     auto local = Box<i32>(remote = true, marker = 2, item = 7)
     auto imported = remote::make_box()
     if local.remote {
-        return imported.remote
+        return imported.remote as i32
     }
     return 0
 }

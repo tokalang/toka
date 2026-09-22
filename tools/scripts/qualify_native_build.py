@@ -157,8 +157,8 @@ class NativeBuildQualification:
         self.work = work
         self.module_count = module_count
         self.seed = seed
-        self.tokac = root / "build" / "bin" / "tokac"
-        self.toka = root / "build" / "bin" / "toka"
+        self.tokac = Path(os.environ.get("TOKAC", root / "build" / "bin" / "tokac")).resolve()
+        self.toka = Path(os.environ.get("TOKA", root / "build" / "bin" / "toka")).resolve()
         self.driver = root / "tools" / "scripts" / "toka_build.py"
         self.manifest = work / "manifest.json"
         self.executable = work / "target" / "debug" / "native_build_reference"

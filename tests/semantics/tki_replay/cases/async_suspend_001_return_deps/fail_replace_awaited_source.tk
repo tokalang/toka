@@ -1,9 +1,9 @@
 // EXPECT_EVIDENCE: ASYNC-SUSPEND-001
-import ./lib::{Data, get_async_view}
+import ./lib::{get_external_view}
 
 fn main() -> i32 {
-    auto data# = Data(view = "hello")
-    auto view = get_async_view(data).wait
-    data = Data(view = "goodbye") // EXPECT_ERROR: E0442
+    auto owner# = string::from("hello")
+    auto view = get_external_view(owner.as_view()).wait
+    owner = string::from("goodbye") // EXPECT_ERROR: E0442
     return view.len() as i32
 }

@@ -1,0 +1,13 @@
+shape Holder(view: str)
+fn project(holder: Holder) -> result: (view: &str)
+effects:
+    result.view <- holder.view
+{
+    return (view = &(holder.view))
+}
+fn main() -> i32 {
+    auto holder = Holder(view = "live descriptor")
+    auto &view = project(holder).&view
+    assert(view.equals("live descriptor"), "caller keeps descriptor alive")
+    return 0
+}

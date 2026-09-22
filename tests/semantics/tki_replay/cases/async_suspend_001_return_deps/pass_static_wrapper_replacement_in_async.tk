@@ -1,0 +1,10 @@
+import ./lib::{Data, get_async_view}
+import std/task::{block_on}
+fn exercise() -> async i32 {
+    auto data# = Data(view = "hello")
+    auto view = get_async_view(data).await
+    data = Data(view = "goodbye")
+    assert(view.equals("hello"), "static bytes survive wrapper replacement across await")
+    return 0
+}
+fn main() -> i32 { return block_on(exercise().start) }

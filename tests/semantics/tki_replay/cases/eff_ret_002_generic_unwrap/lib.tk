@@ -1,4 +1,4 @@
-// EXPECT_TKI: pub fn unwrap(cede self: Self) -> 'T <- self
+// EXPECT_TKI: pub fn unwrap(cede self: Self) -> T <- self
 pub shape Carrier<T> (
     Value(T) = 1
 )

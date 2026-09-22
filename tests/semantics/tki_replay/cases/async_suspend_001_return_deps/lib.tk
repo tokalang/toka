@@ -8,3 +8,7 @@ effects:
 {
     return data.view
 }
+
+pub fn get_external_view(input: str) -> async str <- input {
+    return input
+}

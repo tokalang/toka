@@ -6,6 +6,7 @@ fn main() -> i32 {
     auto ^value = new Item(val = 76)
     auto carrier = Carrier<^Item>::Value(cede ^value)
     auto rewrapped = carrier.rewrap()
-    assert(rewrapped.field() == 76, "unique aggregate transport failed")
+    auto ^result = rewrapped.unsafe_exact()
+    assert(result.val == 76, "unique aggregate transport failed")
     return 0
 }

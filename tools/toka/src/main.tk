@@ -263,6 +263,13 @@ fn detect_semantic_preview_path() -> string {
         }
     }
     auto lib_path = detect_default_lib_path()
+    // An out-of-tree build is not necessarily a child of the source checkout.
+    // Reuse the selected SDK root before trying its installed toolchain copy.
+    auto source_script# = get_dirname(lib_path)
+    source_script#.push_str("/tools/scripts/semantic_diff_preview.py")
+    if exists(source_script.clone()) {
+        return cede source_script
+    }
     auto installed_script# = lib_path.clone()
     installed_script#.push_str("/toolchain/semantic_diff_preview.py")
     return cede installed_script

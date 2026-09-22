@@ -6,6 +6,6 @@ import std/vec::Vec
 fn main() -> i32 {
     auto value = 9
     auto refs# = Vec<&i32>::new()
-    refs#.push(&value)
+    refs = refs#.appended(&value)
     return count_refs<i32>(refs) - 1
 }

@@ -4,7 +4,7 @@
 // EXPECT_TKI: pub alias MaybeReferenceView = Option<&&Cell>
 // EXPECT_TKI: pub fn unique_view(^owner: Cell) -> &^Cell <- owner
 // EXPECT_TKI: pub fn shared_view(~owner: Cell) -> &~Cell <- owner
-// EXPECT_TKI: 'T: morphology borrow_extendable
+// EXPECT_TKI: T: morphology borrow_extendable
 // EXPECT_TKI_ROUNDTRIP
 
 pub shape Cell(value: i32)

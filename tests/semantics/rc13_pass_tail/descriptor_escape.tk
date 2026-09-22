@@ -1,0 +1,12 @@
+shape Holder(view: str)
+fn project(holder: Holder) -> result: (view: &str)
+effects:
+    result.view <- holder.view
+{
+    return (view = &(holder.view))
+}
+fn escaped() -> &str {
+    auto holder = Holder(view = "static characters, local descriptor")
+    return project(holder).&view
+}
+fn main() -> i32 { return 0 }

@@ -1,4 +1,5 @@
-// EXPECT_EVIDENCE: OWN-CEDE-001 OWN-CEDE-002
+// Return-side spelling is validated in the body, not a removed -> cede signature.
+// EXPECT_EVIDENCE: OWN-CEDE-001
 import ./lib::{Parcel, forward_parcel}
 
 fn main() -> i32 {

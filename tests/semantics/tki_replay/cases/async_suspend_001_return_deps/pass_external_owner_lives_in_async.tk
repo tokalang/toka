@@ -1,0 +1,9 @@
+import ./lib::{get_external_view}
+import std/task::{block_on}
+fn exercise() -> async i32 {
+    auto owner = string::from("hello")
+    auto view = get_external_view(owner.as_view()).await
+    assert(view.equals("hello"), "live owner survives child task completion")
+    return 0
+}
+fn main() -> i32 { return block_on(exercise().start) }

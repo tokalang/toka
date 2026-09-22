@@ -46,6 +46,13 @@ extract_expected_codes() {
     sed -n 's/.*EXPECT_ERROR:[[:space:]]*\(E[0-9][0-9]*\).*/\1/p' "$file" | sort -u
 }
 
+check_expected_messages() {
+    local source="$1" diagnostics="$2" message
+    while IFS= read -r message; do
+        [ -z "$message" ] || grep -Fq -- "$message" "$diagnostics" || return 1
+    done < <(sed -n 's/.*EXPECT_ERROR_MESSAGE:[[:space:]]*//p' "$source")
+}
+
 extract_expected_tki() {
     local file="$1"
     sed -n 's/.*EXPECT_TKI:[[:space:]]*//p' "$file"
@@ -219,6 +226,11 @@ run_case() {
                 return
             fi
         done <<< "$source_expected_codes"
+        if ! check_expected_messages "$source_consumer" "$work_dir/$source_stem.source.err"; then
+            echo "FAIL $case_name/$source_stem: source-backed diagnostic reason mismatch"
+            failed=$((failed + 1))
+            return
+        fi
     done
     mv "$held_tki" "$lib_tki"
 
@@ -326,6 +338,10 @@ run_case() {
                 case_failed=1
             fi
         done <<< "$expected_codes"
+        if ! check_expected_messages "$consumer" "$work_dir/$stem.err"; then
+            echo "FAIL $case_name/$stem: replay diagnostic reason mismatch"
+            case_failed=1
+        fi
         if ! python3 "$EVIDENCE_COMPARE" \
             "$work_dir/$stem.source.out" "$work_dir/$stem.out" "$consumer"; then
             echo "FAIL $case_name/$stem: source/interface semantic evidence differs"

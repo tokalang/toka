@@ -7,30 +7,31 @@ TOKAC="${TOKAC:-./build/bin/tokac}"
 WORK_ROOT="${WORK_ROOT:-tmp/native_build_reference_replay}"
 ROOT_DIR="$(pwd)"
 TOKAC_ABS="$(cd "$(dirname "$TOKAC")" && pwd)/$(basename "$TOKAC")"
-TEST_LIB="$ROOT_DIR/$WORK_ROOT/lib"
+if [[ "$WORK_ROOT" != /* ]]; then WORK_ROOT="$ROOT_DIR/$WORK_ROOT"; fi
+TEST_LIB="$WORK_ROOT/lib"
 
 rm -rf "$WORK_ROOT"
-mkdir -p "$WORK_ROOT/lib/build/internal"
+copy_sdk_sources() {
+    python3 - "$ROOT_DIR/lib" "$1" <<'PY'
+import shutil
+import sys
+shutil.copytree(sys.argv[1], sys.argv[2],
+                ignore=shutil.ignore_patterns('*.tki', '*.o', '*.a', '*.ll', '__pycache__'))
+PY
+}
+copy_sdk_sources "$TEST_LIB"
+compile_sdk() { (cd "$WORK_ROOT" && TOKA_LIB="$TEST_LIB" "$TOKAC_ABS" "$@"); }
 
-cp lib/build.tk "$WORK_ROOT/lib/build.tk"
-cp lib/build/project.tk "$WORK_ROOT/lib/build/project.tk"
-cp lib/build/internal/codec.tk "$WORK_ROOT/lib/build/internal/codec.tk"
-cp lib/build/internal/support.tk "$WORK_ROOT/lib/build/internal/support.tk"
-
-for module in core std stdx sys prim hal toolchain; do
-    ln -s "$ROOT_DIR/lib/$module" "$WORK_ROOT/lib/$module"
-done
-
-TOKA_LIB="$TEST_LIB" "$TOKAC_ABS" -c \
+compile_sdk -c \
     "$WORK_ROOT/lib/build/internal/support.tk" \
     -o "$WORK_ROOT/lib/build/internal/support.o"
-TOKA_LIB="$TEST_LIB" "$TOKAC_ABS" -c \
+compile_sdk -c \
     "$WORK_ROOT/lib/build/internal/codec.tk" \
     -o "$WORK_ROOT/lib/build/internal/codec.o"
-TOKA_LIB="$TEST_LIB" "$TOKAC_ABS" -c \
+compile_sdk -c \
     "$WORK_ROOT/lib/build/project.tk" \
     -o "$WORK_ROOT/lib/build/project.o"
-TOKA_LIB="$TEST_LIB" "$TOKAC_ABS" -c \
+compile_sdk -c \
     "$WORK_ROOT/lib/build.tk" \
     -o "$WORK_ROOT/lib/build.o"
 
@@ -86,14 +87,12 @@ mv "$WORK_ROOT/lib/build.tki.valid" "$WORK_ROOT/lib/build.tki"
 
 echo "PASS: native build facade source-less replay"
 
-PROCESS_LIB="$ROOT_DIR/$WORK_ROOT/process_lib"
-mkdir -p "$PROCESS_LIB"
-cp -R lib/std "$PROCESS_LIB/std"
-for module in core stdx sys prim hal; do
-    ln -s "$ROOT_DIR/lib/$module" "$PROCESS_LIB/$module"
-done
+PROCESS_ROOT="$WORK_ROOT/process_case"
+PROCESS_LIB="$PROCESS_ROOT/lib"
+copy_sdk_sources "$PROCESS_LIB"
+compile_process_sdk() { (cd "$PROCESS_ROOT" && TOKA_LIB="$PROCESS_LIB" "$TOKAC_ABS" "$@"); }
 
-TOKA_LIB="$PROCESS_LIB" "$TOKAC_ABS" -c \
+compile_process_sdk -c \
     "$PROCESS_LIB/std/process.tk" \
     -o "$PROCESS_LIB/std/process.o"
 if [ ! -f "$PROCESS_LIB/std/process.tki" ]; then
@@ -101,7 +100,7 @@ if [ ! -f "$PROCESS_LIB/std/process.tki" ]; then
     exit 1
 fi
 mv "$PROCESS_LIB/std/process.tk" "$PROCESS_LIB/std/process.tk.hidden"
-cat > "$WORK_ROOT/process_compile_only.tk" <<'EOF'
+cat > "$PROCESS_ROOT/compile_only.tk" <<'EOF'
 import std/process::{Command, ExitStatus, Output, ProcessError}
 
 fn invoke_process() -> i32 {
@@ -109,8 +108,8 @@ fn invoke_process() -> i32 {
     return command#.status()
 }
 EOF
-TOKA_LIB="$PROCESS_LIB" "$TOKAC_ABS" -c \
-    "$WORK_ROOT/process_compile_only.tk" \
-    -o "$WORK_ROOT/process_compile_only.o"
+compile_process_sdk -c \
+    "$PROCESS_ROOT/compile_only.tk" \
+    -o "$PROCESS_ROOT/compile_only.o"
 
 echo "PASS: process command source-less replay"

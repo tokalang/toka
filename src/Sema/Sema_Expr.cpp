@@ -6779,8 +6779,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 PlaceStateFact(PlaceState::Never).join(PlaceState::Live);
             if (placeInfo->ExactPlace.transitionWhole(
                     pending, isLive ? PlaceStateFact(PlaceState::Live)
-                                    : PlaceStateFact(PlaceState::Never)))
+                                    : PlaceStateFact(PlaceState::Never))) {
               placeInfo->InitMask = isLive ? ~0ULL : 0;
+              if (isLive) placeInfo->ExactPlace.repopulateAllProjections();
+            }
           }
         }
       }

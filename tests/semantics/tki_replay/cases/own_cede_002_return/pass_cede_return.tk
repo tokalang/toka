@@ -1,4 +1,6 @@
-// EXPECT_EVIDENCE: OWN-CEDE-002
+// Ordinary return signatures no longer carry the removed `-> cede T` contract.
+// The consumer still has to explicitly transfer its named result to a callee.
+// EXPECT_EVIDENCE: OWN-CEDE-001
 import ./lib::{make_payload, consume_payload}
 
 fn main() -> i32 {

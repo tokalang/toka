@@ -4,6 +4,7 @@ pub trait @Readable {
 }
 
 pub shape Box(value: i32)
+pub fn make_box() -> Box { return Box(value = 5) }
 
 impl Box@Readable {
     type Item = i32
