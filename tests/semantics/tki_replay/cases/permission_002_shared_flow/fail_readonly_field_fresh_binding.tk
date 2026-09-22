@@ -1,6 +1,4 @@
-// Complete binding validation rejects the same payload permission amplification.
-// EXPECT_ERROR: E04661
-// EXPECT_ERROR_MESSAGE: AccessCapabilityMismatch
+// EXPECT_ERROR: E04661; EXPECT_ERROR_MESSAGE: AccessCapabilityMismatch
 import ./lib::{Cell, ReadonlyHolder}
 
 fn main() -> i32 {

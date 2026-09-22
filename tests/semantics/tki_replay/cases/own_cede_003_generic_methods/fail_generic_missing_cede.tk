@@ -1,4 +1,3 @@
-// Rejection occurs at the bare argument; it must not consume the source.
 // EXPECT_ERROR: E04570
 // EXPECT_EVIDENCE: OWN-CEDE-001
 import ./lib::{Parcel, forward_parcel}

@@ -86,5 +86,82 @@ The dedicated contract matrix subsequently passed all 14 cases, including
 normal/shadow agreement, object/LLVM no-artifact checks and real positive runs
 (`validation/rc13-tail-discriminating-r4.log`). Generic whole-value transport
 controls also run, and the unique negative rejects the actual second move.
-Fixed-candidate all-22/full results are pending; these directed results do not
-replace earlier baseline counts.
+At that development checkpoint, fixed-candidate all-22/full results were still
+pending; those directed results do not replace the full results recorded below.
+
+## Fixed candidate results
+
+Fixed implementation/test tree: `ea7697eb2c20fd913c29fe7b798455a8f2dab8cd`
+(following WIP implementation `beaa9e62`). Evidence directory:
+`/Users/zhyi/GitDP/tokalang/validation/rc13-pass-tail-final`.
+All phases reported zero tracked-source changes. The unrelated RFC's preserved
+SHA-256 remains `1b73b0fc46f9a700e1bdc9d0a0031614e1d9a4b398ce97f6a6423972474d70e2`.
+
+| Phase | Actual result | Seconds | Exit |
+| --- | --- | --- | --- |
+| Complete tools build | passed | 0.63 | 0 |
+| All appended checks, including after failures | 21/22 scripts | 661.45 | 1 |
+| Full PASS command | 459/459 programs; replay tail fails | 739.36 | 1 |
+| Full FAIL suite | 480/480 | 134.51 | 0 |
+| Unfiltered CTest | 118/121 | 1506.44 | 8 |
+
+Compiler SHA-256:
+`4250fd2aa9ef23c66babb5a4136ef196cdbfa29e58bb8f82f40472b641e7f2e5`.
+Full commands, manifests and comparison are retained in metadata.json,
+source-manifest.json, preserved-worktree.patch and comparison.json.
+The comparison baseline is the earlier actual full run at `123a3aa4`, not a
+retroactively attributed full run of the accepted callable correction.
+No newly failing PASS/FAIL cases or abnormal exits were recorded.
+
+Two added CTests (callable shadow and tail contracts) are not recoveries. Two
+old CTests failed because new fixture comments shifted the frozen line anchors:
+`toka_call_transfer_shadow_m1` and `toka_non_call_transfer_shadow_stage0`.
+The former found no transaction at line 7; the latter found no matching rejected
+assignment at its old line, not a newly admitted shared permission amplification.
+The underlying call/assignment were left intact and the comments consolidated
+to preserve their original line numbers. After the full run, those two gates
+passed **2/2, 48.84 seconds** (`validation/rc13-tail-line-anchors.log`). No planner
+assertions changed. This incremental result is **not** a rewritten 120/121 full
+CTest result. The other full CTest failure remains the existing source-hidden
+`toka_stage1_indirect_parameter_cede` qualification gap.
+
+### Remaining appended check: semantic replay
+
+Fixed replay is **49/56 case directories**, not 49 individual programs.
+All 22 scripts were attempted; source-hidden failures were not skipped.
+Exact results and logs: `validation/rc13-pass-tail-fixed/results.json` and its
+per-script logs. Compared with the earlier 13/22 ledger, eight scripts recovered:
+TKI cache, memory summary, readonly, cede evidence, preview, Outcome body recheck,
+semantic cache invalidation and incremental build.
+
+| Remaining case directory | Observed boundary / first failure |
+| --- | --- |
+| async_suspend_001_return_deps | Source-hidden task result proof unavailable; source-backed static/dynamic controls pass |
+| callable_001_modes | Source-hidden callable factory environment unavailable |
+| ergonomics_002_closure_dependencies | Source-hidden closure environment unavailable; original move/lifetime targets remain required |
+| iterator_002_owned_map | VecIntoIterator<i32> construction/return storage facts incomplete in the provider |
+| permission_003_independent_flow | Async source-hidden TaskHandle result qualification; synchronous unique-flow controls pass |
+| permission_005_partial_cede_lifecycle | make_pair(global counter) rejected before partial move / cancellation is reached |
+| runtime_002_webhook_resource_graph | Recursive Vec<TriggerRule> / nested resource element dependencies unproved |
+
+No declaration-only function type was made an environment-independent witness.
+No general Vec/recursive raw-storage contract, source-hidden protocol or E was
+introduced to eliminate these failures. The original failing targets remain.
+
+### Additional isolated remaining-case diagnosis (outside the fixed tree)
+
+`validation/rc13-tail-partial-async-probe/` preserves the actual Pair/Token
+provider and local/global counter controls. Merely adding i32 and explicit #
+to the async global-counter case does not fix it. The non-async **local** counter
+control compiles/runs (including two destructor increments); the same **global**
+counter control rejects IncompleteFacts. This localizes another source-identity/
+fact boundary, rather than proving the whole Pair representation invalid or
+claiming an introduction date. No source-global exception was added.
+
+The isolated Vec iterator bind-before-return attempt also still rejects, so it
+was not promoted as a library migration or used to alter the sealed byte SDK.
+
+This package is not fully closed or Accepted. E, fn_, push, freeze refs and
+publication remain paused. The global-counter boundary and the remaining
+source-hidden/storage capabilities need their own concrete resolution; they
+are not hidden by changing the existing runtime objectives or the old oracles.

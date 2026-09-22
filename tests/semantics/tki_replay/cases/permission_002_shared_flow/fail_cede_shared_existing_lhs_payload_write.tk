@@ -1,6 +1,4 @@
-// The complete transfer now rejects amplification before the later payload write.
-// EXPECT_ERROR: E04661
-// EXPECT_ERROR_MESSAGE: AccessCapabilityMismatch
+// EXPECT_ERROR: E04661; EXPECT_ERROR_MESSAGE: AccessCapabilityMismatch
 import ./lib::{Cell}
 
 fn main() -> i32 {
