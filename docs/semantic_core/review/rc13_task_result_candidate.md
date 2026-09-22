@@ -1,6 +1,58 @@
 # Anonymous records + task/byte result handoff: fixed WIP candidate
 
-## Current candidate — 19d14c4a (not Accepted / not frozen)
+## Current increment — a08578e8 (not Accepted / not frozen)
+
+Implementation: `a08578e8ce62bae6eaabfa1cae00f03ade3de9fc`.
+This increment addresses the reviewed stale-receipt resurrection only. The
+byte contract and the independent extern ABI work are not reopened.
+
+The operation consumer and task-summary argument consumer now share one lookup:
+a still-live receiver/place reads its **current** receipt after all arguments
+have been checked. Transparent wrappers and checked field projections do not
+permit falling back to the old expression annotation. A successfully checked
+cede expression retains its transferred value receipt; an implicitly consuming
+receiver can use its saved value only after normal Sema has actually retired
+that place. Genuine temporaries remain values, not live receiver slots.
+Task-summary fallback cannot bypass this distinction and resurrect the same
+expired byte fact through the general independence query.
+
+The original four audit files were checked unchanged in
+`validation/rc13-byte-freshness-audit`: nested push, nested resize and sequential
+mutation reject with E04661 / TaskResultOriginsUnproven in normal/shadow/object/
+LLVM modes, with no object/IR output. None of the malformed programs was run.
+The original valid nested control compiled and executed successfully.
+
+Ten regressions extend the existing byte gate from 27 to **37 source cases**:
+the nested/sequential refusals, member/alias mutation, valid nesting, a genuinely
+new current receipt after nested take, saved cede value with a later argument,
+and rejected-call rollback. The rollback gate additionally excludes E0438,
+E0410 and E04661 cascades. An attempted opaque Vec extern probe failed before
+the target check; it was not counted as evidence and was replaced by the
+supported alias route, without changing extern ABI handling.
+
+Four targeted CTests passed **4/4, 299.64 seconds**. The subsequent complete
+run used the fixed implementation above, with no tracked-source changes:
+
+| Complete gate | Result | Seconds |
+| --- | --- | --- |
+| Tools build | passed | 7.36 |
+| PASS | 456/459 | 392.27 |
+| FAIL | 480/480 | 118.72 |
+| Unfiltered CTest | 115/117 | 1398.91 |
+
+Full evidence: `/Users/zhyi/GitDP/tokalang/validation/rc13-byte-freshness-final`.
+Compiler SHA-256:
+`fd712e1ff42263aba856d6128e5c63a258507a7625dce517b3320e013b3e3072`.
+`metadata.json` and `comparison.json` compare directly against the 19d14c4a
+run: **no new failures or abnormal exits**, no claimed recoveries, and no new
+CTest (the existing gate was expanded). Build/TOML/Template and the two old
+CTest failures remain separately open.
+
+No library, raw_take, CodeGen, ABI/TKI or old diagnostic expectation changes
+were made in this increment. No push or freeze. The unrelated RFC remains
+byte-for-byte unchanged at its previously recorded hash below.
+
+## Previous candidate — 19d14c4a (rejected for stale receipt)
 
 Implementation: `19d14c4a2f05c57a9bd287a04553738b766c381c`.
 This completes the approved byte-buffer follow-up to the anonymous-record/task
