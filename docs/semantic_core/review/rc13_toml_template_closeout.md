@@ -56,9 +56,54 @@ was not counted as a measurement. Actual permitted measurement is saved under
 `validation/rc13-toml-template-directed/leaks.log` (with the platform's restricted
 process inspection notice retained).
 
-Related directed CTest and final fixed-candidate comparison will be recorded
-below after completion. Original full baseline remains `4750fbdd`:
-457/459 PASS, 480/480 FAIL, 117/118 CTest. Directed passes do not replace it.
+Related directed CTest (`toka_toml_template`, `toka_build_metadata`,
+`toka_json_factory_values`): **3/3, 92.87 seconds**. Full output is retained in
+`validation/rc13-toml-template-directed/ctest.log`.
+
+## Fixed candidate and full comparison
+
+Implementation candidate: `123a3aa454222545deb222d0e837ac24f1310109`.
+Full evidence: `/Users/zhyi/GitDP/tokalang/validation/rc13-toml-template-final`.
+The commands, revision, source manifest, preserved RFC diff and compiler hash
+are recorded in `metadata.json`; every phase reported zero tracked-source changes.
+The documentation-only result record is subsequent, not a different tested
+implementation. No implementation acceptance or release is claimed here.
+
+| Gate | Result | Seconds | Command exit |
+| --- | --- | --- | --- |
+| Complete tools build | passed | 10.13 | 0 |
+| PASS programs | 459/459 | 375.46 including script tail | 1 (see below) |
+| Complete FAIL suite | 480/480 | 129.85 | 0 |
+| Unfiltered CTest | 118/119 | 1522.42 | 8 |
+
+Compared by case name against `4750fbdd` (457/459, 480/480, 117/118):
+the only restored positives are `g15_stdx_toml_test.tk` and
+`g18_stdx_template_test.tk`. There are no newly failing cases or recorded
+abnormal exits in those suite comparisons. `toka_toml_template` is an added
+passing test, not a recovered old CTest. The sole remaining CTest is unchanged:
+`toka_stage1_indirect_parameter_cede`, whose source-hidden factory binding fails
+with `CallableReturnEnvironmentUnavailable` before reaching the spelling check.
+
+### PASS command is not wholly green
+
+After all 459 programs pass, `test_pass.sh` now reaches its appended checks.
+Public unsafe/raw naming passes, but `test_tki_unsafe_revalidation.sh` exits 1
+when it replaces TOKA_LIB with its temporary trusted directory and emits the
+system interface. The resulting core/traits error is E04648. The complete PASS
+command therefore still exits 1; later appended checks are not executed.
+
+The old two-failure baseline stopped before these appended checks. This is a
+newly reached failure, not an added PASS-program failure; this comparison alone
+does not date the underlying problem. The condition matches the previously
+recorded TKI environment limitation. A bounded standalone reproduction and
+actual diagnostic are saved in `validation/rc13-toml-template-directed/` as
+`tki-tail-trace.log` and `tki-tail-error.log`. No oracle or script was changed to
+hide it. This remains a release follow-up, outside TOML/Template.
+
+Final compiler SHA-256:
+`a76aa12ce7c30459a3cb9c16fe13712da88607779c5b41379c7982138f90a67b`.
+Preserved independent RFC SHA-256:
+`1b73b0fc46f9a700e1bdc9d0a0031614e1d9a4b398ce97f6a6423972474d70e2`.
 
 No push, PR, freeze-ref movement or publishing. The independent RFC modification
 is preserved and excluded from this package's commits.
