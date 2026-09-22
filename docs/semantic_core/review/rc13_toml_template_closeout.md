@@ -1,4 +1,12 @@
-# TOML / Template library closeout (candidate, not Accepted)
+# TOML / Template library closeout (Accepted with callable correction)
+
+Accepted scope: library candidate `123a3aa4` together with lexical callable
+correction `8057bfab`; test-environment correction `99c89a88` is also accepted.
+Independent review: `validation/callable-tail-review-20260922.xWv8to/review.md`.
+It reran 3/3 related CTest (87.14 seconds), the TKI anti-forgery script and the
+three original audit programs. No new full baseline was run. The fn_ proposal,
+captured-callable E0721, source-hidden qualification and release acceptance are
+not included. The candidate narratives below are retained as historical records.
 
 This package follows Build acceptance at `4750fbdd`, recorded separately in
 `611ef306`. Build is not extended. The implementation changes library storage
