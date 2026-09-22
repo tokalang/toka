@@ -81,3 +81,10 @@ probe still rejects IncompleteFacts; it was not applied to the SDK or its sealed
 byte-contract fingerprint. These must not be called mere spelling migrations.
 
 No new full baseline or package acceptance is claimed at this WIP checkpoint.
+
+The dedicated contract matrix subsequently passed all 14 cases, including
+normal/shadow agreement, object/LLVM no-artifact checks and real positive runs
+(`validation/rc13-tail-discriminating-r4.log`). Generic whole-value transport
+controls also run, and the unique negative rejects the actual second move.
+Fixed-candidate all-22/full results are pending; these directed results do not
+replace earlier baseline counts.

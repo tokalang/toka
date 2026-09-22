@@ -1,5 +1,6 @@
 // EXPECT_EVIDENCE: ASYNC-SUSPEND-001
 import ./lib::{get_external_view}
+import std/task
 
 fn main() -> i32 {
     auto owner# = string::from("hello")

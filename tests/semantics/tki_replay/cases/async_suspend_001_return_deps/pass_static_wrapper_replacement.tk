@@ -1,4 +1,5 @@
 import ./lib::{Data, get_async_view}
+import std/task
 fn main() -> i32 {
     auto data# = Data(view = "hello")
     auto view = get_async_view(data).wait
