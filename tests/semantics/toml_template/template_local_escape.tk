@@ -1,0 +1,7 @@
+import stdx/text/template::{Template, TemplateContext}
+fn escaped() -> str {
+    auto context# = TemplateContext::new()
+    auto value = Template::parse("owned text").unwrap().render(context#).unwrap()
+    return value.as_str()
+}
+fn main() -> i32 { return 0 }

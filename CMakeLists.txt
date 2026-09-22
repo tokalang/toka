@@ -423,6 +423,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_build_metadata.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_toml_template
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_toml_template.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_byte_buffer_results
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_byte_buffer_results.py

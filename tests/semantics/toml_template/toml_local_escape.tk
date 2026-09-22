@@ -1,0 +1,7 @@
+import stdx/serde/toml::{TomlDocument}
+fn escaped() -> str {
+    auto document = TomlDocument::parse("value = 'owned'").unwrap()
+    auto value = document.get("value").unwrap().as_string().unwrap()
+    return value.as_str()
+}
+fn main() -> i32 { return 0 }

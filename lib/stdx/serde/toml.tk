@@ -12,7 +12,9 @@ pub shape TomlValue (
     StringValue(string) = 0 |
     IntegerValue(i64) = 1 |
     BooleanValue(bool) = 2 |
-    ArrayValue(Vec<TomlValue>) = 3
+    // Arrays own their validated TOML spelling, not recursively owning nodes.
+    // Access parses a bounded temporary list; returned elements are independent.
+    ArrayValue(string) = 3
 )
 
 pub shape TomlEntry (
@@ -232,52 +234,63 @@ fn parse_value(raw: str, depth: usize) -> Result<TomlValue, string> {
         if value.as_str().byte_at(value.len() - 1:usize) as u8 != ']' as u8 {
             return Result<TomlValue, string>::Err(string::from("unterminated TOML array"))
         }
-        auto values# = Vec<TomlValue>::new()
-        auto start# = 1:usize
-        auto index# = 1:usize
-        auto nested# = 0:usize
-        auto quote# = 0:u8
-        auto escaped# = false
-        auto end = value.len() - 1:usize
-        loop index < end {
-            auto byte = value.as_str().byte_at(index) as u8
-            if quote != 0:u8 {
-                if quote == '"' as u8 && escaped { escaped = false }
-                else if quote == '"' as u8 && byte == '\\' as u8 { escaped = true }
-                else if byte == quote { quote = 0:u8 }
-            } else if byte == '"' as u8 || byte == '\'' as u8 {
-                quote = byte
-            } else if byte == '[' as u8 {
-                nested = nested + 1:usize
-            } else if byte == ']' as u8 {
-                if nested == 0:usize {
-                    return Result<TomlValue, string>::Err(string::from("invalid TOML array delimiter"))
-                }
-                nested = nested - 1:usize
-            } else if byte == ',' as u8 && nested == 0:usize {
-                auto item = parse_value(copy_range(value.as_str(), start, index).as_str(), depth + 1:usize)
-                if item.is_err() { return Result<TomlValue, string>::Err(item.unwrap_err()) }
-                values#.push(cede item.unwrap())
-                start = index + 1:usize
-            }
-            index = index + 1:usize
-        }
-        if quote != 0:u8 || nested != 0:usize {
-            return Result<TomlValue, string>::Err(string::from("unterminated TOML array value"))
-        }
-        auto final_part = trimmed(copy_range(value.as_str(), start, end).as_str())
-        if final_part.len() > 0:usize {
-            auto item = parse_value(final_part.as_str(), depth + 1:usize)
-            if item.is_err() { return Result<TomlValue, string>::Err(item.unwrap_err()) }
-            values#.push(cede item.unwrap())
-        } else if start != end {
-            return Result<TomlValue, string>::Err(string::from("empty TOML array element"))
-        }
-        return Result<TomlValue, string>::Ok(TomlValue::ArrayValue(cede values))
+        auto parsed_items = parse_array_items(value.as_str(), depth)
+        if parsed_items.is_err() { return Result<TomlValue, string>::Err(parsed_items.unwrap_err()) }
+        return Result<TomlValue, string>::Ok(TomlValue::ArrayValue(cede value))
     }
     if value.as_str().equals("true") { return Result<TomlValue, string>::Ok(TomlValue::BooleanValue(true)) }
     if value.as_str().equals("false") { return Result<TomlValue, string>::Ok(TomlValue::BooleanValue(false)) }
     return parse_integer(value.as_str())
+}
+
+fn parse_array_items(raw: str, depth: usize) -> Result<Vec<TomlValue>, string> {
+    auto value = string::from(raw)
+    if value.len() < 2:usize || value.as_str().byte_at(0:usize) as u8 != '[' as u8 ||
+       value.as_str().byte_at(value.len() - 1:usize) as u8 != ']' as u8 {
+        return Result<Vec<TomlValue>, string>::Err(string::from("invalid TOML array"))
+    }
+    auto values# = Vec<TomlValue>::new()
+    auto start# = 1:usize
+    auto index# = 1:usize
+    auto nested# = 0:usize
+    auto quote# = 0:u8
+    auto escaped# = false
+    auto end = value.len() - 1:usize
+    loop index < end {
+        auto byte = value.as_str().byte_at(index) as u8
+        if quote != 0:u8 {
+            if quote == '"' as u8 && escaped { escaped = false }
+            else if quote == '"' as u8 && byte == '\\' as u8 { escaped = true }
+            else if byte == quote { quote = 0:u8 }
+        } else if byte == '"' as u8 || byte == '\'' as u8 {
+            quote = byte
+        } else if byte == '[' as u8 {
+            nested = nested + 1:usize
+        } else if byte == ']' as u8 {
+            if nested == 0:usize {
+                return Result<Vec<TomlValue>, string>::Err(string::from("invalid TOML array delimiter"))
+            }
+            nested = nested - 1:usize
+        } else if byte == ',' as u8 && nested == 0:usize {
+            auto item = parse_value(copy_range(value.as_str(), start, index).as_str(), depth + 1:usize)
+            if item.is_err() { return Result<Vec<TomlValue>, string>::Err(item.unwrap_err()) }
+            values#.push(item.unwrap())
+            start = index + 1:usize
+        }
+        index = index + 1:usize
+    }
+    if quote != 0:u8 || nested != 0:usize {
+        return Result<Vec<TomlValue>, string>::Err(string::from("unterminated TOML array value"))
+    }
+    auto final_part = trimmed(copy_range(value.as_str(), start, end).as_str())
+    if final_part.len() > 0:usize {
+        auto item = parse_value(final_part.as_str(), depth + 1:usize)
+        if item.is_err() { return Result<Vec<TomlValue>, string>::Err(item.unwrap_err()) }
+        values#.push(item.unwrap())
+    } else if start != end {
+        return Result<Vec<TomlValue>, string>::Err(string::from("empty TOML array element"))
+    }
+    return Result<Vec<TomlValue>, string>::Ok(cede values)
 }
 
 fn contains_key(entries: Vec<TomlEntry>, key: str) -> bool {
@@ -301,15 +314,7 @@ impl TomlValue {
             auto TomlValue::StringValue(&value) => return TomlValue::StringValue(string::from(value.as_str()))
             auto TomlValue::IntegerValue(value) => return TomlValue::IntegerValue(value)
             auto TomlValue::BooleanValue(value) => return TomlValue::BooleanValue(value)
-            auto TomlValue::ArrayValue(&values) => {
-                auto copied# = Vec<TomlValue>::new()
-                auto index# = 0:usize
-                loop index < values.len() {
-                    copied#.push(cede values.borrow(index).clone())
-                    index = index + 1:usize
-                }
-                return TomlValue::ArrayValue(cede copied)
-            }
+            auto TomlValue::ArrayValue(&values) => return TomlValue::ArrayValue(string::from(values.as_str()))
         }
     }
 }
@@ -335,7 +340,7 @@ impl TomlDocument {
         auto copied# = Vec<TomlEntry>::new()
         auto index# = 0:usize
         loop index < self.entries.len() {
-            copied#.push(cede self.entries.borrow(index).clone())
+            copied#.push(self.entries.borrow(index).clone())
             index = index + 1:usize
         }
         return TomlDocument(entries = cede copied)
@@ -366,7 +371,11 @@ impl TomlValue {
 
     pub fn array_len(self) -> Option<usize> {
         match self {
-            auto TomlValue::ArrayValue(&values) => return Option<usize>::Some(values.len())
+            auto TomlValue::ArrayValue(&values) => {
+                auto parsed = parse_array_items(values.as_str(), 0:usize)
+                if parsed.is_err() { return Option<usize>::None }
+                return Option<usize>::Some(parsed.unwrap().len())
+            }
             _ => return Option<usize>::None
         }
     }
@@ -374,7 +383,10 @@ impl TomlValue {
     pub fn array_at(self, index: usize) -> Option<TomlValue> {
         match self {
             auto TomlValue::ArrayValue(&values) => {
-                if index < values.len() { return Option<TomlValue>::Some(values.borrow(index).clone()) }
+                auto parsed = parse_array_items(values.as_str(), 0:usize)
+                if parsed.is_err() { return Option<TomlValue>::None }
+                auto items = parsed.unwrap()
+                if index < items.len() { return Option<TomlValue>::Some(items.borrow(index).clone()) }
                 return Option<TomlValue>::None
             }
             _ => return Option<TomlValue>::None
@@ -425,7 +437,7 @@ impl TomlDocument {
                     }
                     auto value = parse_value(copy_range(line.as_str(), equals + 1:usize, line.len()).as_str(), 0:usize)
                     if value.is_err() { return Result<TomlDocument, string>::Err(value.unwrap_err()) }
-                    entries#.push(cede TomlEntry(key = cede full_key, value = cede value.unwrap()))
+                    entries#.push(TomlEntry(key = cede full_key, value = value.unwrap()))
                 }
             }
             if line_end == input.len() { break }

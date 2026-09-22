@@ -29,24 +29,23 @@ impl TemplateError {
     }
 }
 
-pub shape FuncHandler (
-    name: string,
-    func_ptr: fn(str) -> Result<string, string>
-)
+// Flat owned list entries avoid a raw-backed Vec nested inside a HashMap value.
+// A marker preserves the distinction between an empty list and a missing key.
+shape TemplateListItem(key: string, value: string, has_value: bool)
 
 pub shape TemplateContext (
     vars: HashMap<string, string>,
-    lists: HashMap<string, Vec<string>>,
-    funcs: Vec<FuncHandler>,
+    lists: Vec<TemplateListItem>,
+    funcs: Vec<string>,
     strict_vars: bool
 )
 
 impl TemplateContext {
     pub fn new() -> TemplateContext {
         return TemplateContext(
-            vars = cede HashMap<string, string>::new(),
-            lists = cede HashMap<string, Vec<string>>::new(),
-            funcs = cede Vec<FuncHandler>::new(),
+            vars = HashMap<string, string>::new(),
+            lists = Vec<TemplateListItem>::new(),
+            funcs = Vec<string>::new(),
             strict_vars = false
         )
     }
@@ -60,11 +59,26 @@ impl TemplateContext {
     }
 
     pub fn set_list(self#, cede key: string, cede list: Vec<string>) {
-        self.lists#.insert(cede key, cede list)
+        auto index# = self.lists.len()
+        loop index > 0:usize {
+            index -= 1:usize
+            auto matches = self.lists.borrow(index).key.as_str().equals(key.as_str())
+            if matches { self.lists#.remove(index) }
+        }
+        self.lists#.push(TemplateListItem(key=string::from(key.as_str()), value=string::from(""), has_value=false))
+        auto item# = 0:usize
+        loop item < list.len() {
+            self.lists#.push(TemplateListItem(key=string::from(key.as_str()), value=string::from(list.borrow(item).as_str()), has_value=true))
+            item += 1:usize
+        }
+        cede key
+        cede list
     }
 
-    pub fn register_func(self#, cede name: string, handler: fn(str) -> Result<string, string>) {
-        self.funcs#.push(FuncHandler(name = cede name, func_ptr = handler))
+    // Names are owned data. The actual dispatcher is supplied to render_with,
+    // never erased into a raw-backed container or retained past rendering.
+    pub fn enable_func(self#, cede name: string) {
+        self.funcs#.push(cede name)
     }
 
     pub fn get_var(self, key: str) -> Option<string> {
@@ -78,18 +92,18 @@ impl TemplateContext {
     }
 
     pub fn get_list(self, key: str) -> Option<Vec<string>> {
-        auto k = string::from(key)
-        if self.lists.contains_key(string::from(k.as_str())) {
-            auto &list_ref = self.lists.try_borrow(k).unwrap()
-            auto copy_list# = Vec<string>::new()
-            auto i# = 0:usize
-            loop i < list_ref.len() {
-                auto item_str = string::from(list_ref.borrow(i).as_str())
-                copy_list#.push(cede item_str)
-                i = i + 1:usize
+        auto found# = false
+        auto copy_list# = Vec<string>::new()
+        auto i# = 0:usize
+        loop i < self.lists.len() {
+            auto &entry = self.lists.borrow(i)
+            if entry.key.as_str().equals(key) {
+                found = true
+                if entry.has_value { copy_list#.push(string::from(entry.value.as_str())) }
             }
-            return Option<Vec<string>>::Some(cede copy_list)
+            i += 1:usize
         }
+        if found { return Option<Vec<string>>::Some(cede copy_list) }
         return Option<Vec<string>>::None
     }
 
@@ -100,7 +114,7 @@ impl TemplateContext {
         auto i# = 0:usize
         loop i < self.funcs.len() {
             auto &fh = self.funcs.borrow(i)
-            if fh.name.as_str().equals(name) {
+            if fh.as_str().equals(name) {
                 return true
             }
             i = i + 1:usize
@@ -108,7 +122,7 @@ impl TemplateContext {
         return false
     }
 
-    pub fn call_func(self#, cede name: string, cede arg: string) -> Result<string, string> {
+    pub fn call_func(self#, cede name: string, cede arg: string, dispatch: fn(str, str) -> Result<string, string>) -> Result<string, string> {
         if name.as_str().equals("lower") {
             auto res = to_lower_str(arg.as_str())
             auto _discard = cede arg
@@ -132,9 +146,8 @@ impl TemplateContext {
         auto i# = 0:usize
         loop i < self.funcs.len() {
             auto &fh = self.funcs.borrow(i)
-            if fh.name.as_str().equals(name.as_str()) {
-                auto f_ptr = fh.func_ptr
-                auto res = f_ptr(arg.as_str())
+            if fh.as_str().equals(name.as_str()) {
+                auto res = dispatch(name.as_str(), arg.as_str())
                 auto _discard_arg = cede arg
                 auto _discard_name = cede name
                 return cede res
@@ -199,7 +212,7 @@ impl Template {
 
                 if !found_close {
                     return Result<Template, TemplateError>::Err(
-                        TemplateError::new(cede string::from("unclosed tag action, expected '}}'"), line, col)
+                        TemplateError::new(string::from("unclosed tag action, expected '}}'"), line, col)
                     )
                 }
 
@@ -218,7 +231,7 @@ impl Template {
                         open_range_count = open_range_count - 1
                     } else {
                         return Result<Template, TemplateError>::Err(
-                            TemplateError::new(cede string::from("unmatched 'end' tag without preceding block"), line, col)
+                            TemplateError::new(string::from("unmatched 'end' tag without preceding block"), line, col)
                         )
                     }
                 }
@@ -247,7 +260,7 @@ impl Template {
 
         if open_if_count > 0 || open_range_count > 0 {
             return Result<Template, TemplateError>::Err(
-                TemplateError::new(cede string::from("unclosed block statement (missing 'end')"), line, col)
+                TemplateError::new(string::from("unclosed block statement (missing 'end')"), line, col)
             )
         }
 
@@ -257,6 +270,11 @@ impl Template {
     }
 
     pub fn render(self, ctx#: TemplateContext) -> Result<string, TemplateError> {
+        auto dispatch = { name, arg => unavailable_function(name, arg) }: fn(str, str) -> Result<string, string>
+        return self.render_with(ctx#, dispatch)
+    }
+
+    pub fn render_with(self, ctx#: TemplateContext, dispatch: fn(str, str) -> Result<string, string>) -> Result<string, TemplateError> {
         auto out# = string::from("")
         auto i# = 0:usize
         loop i < self.nodes.len() {
@@ -268,7 +286,7 @@ impl Template {
                 auto trimmed = trim_str(node.content.as_str())
                 if trimmed.as_str().starts_with("if ") {
                     auto cond_expr = trim_str(copy_substr(trimmed.as_str(), 3:usize, trimmed.len()).as_str())
-                    auto cond_res = eval_conditional_block(cond_expr.as_str(), ctx#, 1:usize, 1:usize)
+                    auto cond_res = eval_conditional_block(cond_expr.as_str(), ctx#, 1:usize, 1:usize, dispatch)
                     if cond_res.is_err() { return Result<string, TemplateError>::Err(cond_res.unwrap_err()) }
                     auto is_true = cond_res.unwrap().as_str().equals("true")
 
@@ -300,7 +318,7 @@ impl Template {
                             if sub.node_type == NODE_TEXT {
                                 out#.push_str(sub.content.as_str())
                             } else {
-                                auto val_res = eval_expression(sub.content.as_str(), ctx#, 1:usize, 1:usize)
+                                auto val_res = eval_expression(sub.content.as_str(), ctx#, 1:usize, 1:usize, dispatch)
                                 if val_res.is_err() { return Result<string, TemplateError>::Err(val_res.unwrap_err()) }
                                 auto val_str = val_res.unwrap()
                                 out#.push_str(val_str.as_str())
@@ -329,7 +347,7 @@ impl Template {
                         loop item_idx < items.len() {
                             auto &item_val = items.borrow(item_idx)
                             auto sub_ctx# = TemplateContext::new()
-                            sub_ctx#.set(cede string::from("."), cede string::from(item_val.as_str()))
+                            sub_ctx#.set(string::from("."), string::from(item_val.as_str()))
 
                             auto b_idx# = body_start
                             loop b_idx < body_end {
@@ -337,7 +355,7 @@ impl Template {
                                 if b_node.node_type == NODE_TEXT {
                                     out#.push_str(b_node.content.as_str())
                                 } else {
-                                    auto val_res = eval_expression(b_node.content.as_str(), sub_ctx#, 1:usize, 1:usize)
+                                    auto val_res = eval_expression(b_node.content.as_str(), sub_ctx#, 1:usize, 1:usize, dispatch)
                                     if val_res.is_err() { return Result<string, TemplateError>::Err(val_res.unwrap_err()) }
                                     auto val_str = val_res.unwrap()
                                     out#.push_str(val_str.as_str())
@@ -349,7 +367,7 @@ impl Template {
                     }
                     i = body_end + 1:usize
                 } else {
-                    auto val_res = eval_expression(trimmed.as_str(), ctx#, 1:usize, 1:usize)
+                    auto val_res = eval_expression(trimmed.as_str(), ctx#, 1:usize, 1:usize, dispatch)
                     if val_res.is_err() { return Result<string, TemplateError>::Err(val_res.unwrap_err()) }
                     auto val_str = val_res.unwrap()
                     out#.push_str(val_str.as_str())
@@ -366,22 +384,27 @@ impl TemplateNode {
         if self.node_type == NODE_TEXT {
             return Result<string, TemplateError>::Ok(string::from(self.content.as_str()))
         }
-        return eval_action(self.content.as_str(), ctx#, 1:usize, 1:usize)
+        auto dispatch = { name, arg => unavailable_function(name, arg) }: fn(str, str) -> Result<string, string>
+        return eval_action(self.content.as_str(), ctx#, 1:usize, 1:usize, dispatch)
     }
 }
 
-fn eval_action(action: str, ctx#: TemplateContext, tag_line: usize, tag_col: usize) -> Result<string, TemplateError> {
+fn unavailable_function(name: str, arg: str) -> Result<string, string> {
+    return Result<string, string>::Err(string::from("custom function requires render_with dispatcher"))
+}
+
+fn eval_action(action: str, ctx#: TemplateContext, tag_line: usize, tag_col: usize, dispatch: fn(str, str) -> Result<string, string>) -> Result<string, TemplateError> {
     auto trimmed = trim_str(action)
     if trimmed.as_str().starts_with("if ") {
         auto cond_expr = trim_str(copy_substr(trimmed.as_str(), 3:usize, trimmed.len()).as_str())
-        return eval_conditional_block(cond_expr.as_str(), ctx#, tag_line, tag_col)
+        return eval_conditional_block(cond_expr.as_str(), ctx#, tag_line, tag_col, dispatch)
     }
-    auto eval_res = eval_expression(action, ctx#, tag_line, tag_col)
+    auto eval_res = eval_expression(action, ctx#, tag_line, tag_col, dispatch)
     return cede eval_res
 }
 
-fn eval_conditional_block(cond_expr: str, ctx#: TemplateContext, line_no: usize, col_no: usize) -> Result<string, TemplateError> {
-    auto cond_val = eval_expression(cond_expr, ctx#, line_no, col_no)
+fn eval_conditional_block(cond_expr: str, ctx#: TemplateContext, line_no: usize, col_no: usize, dispatch: fn(str, str) -> Result<string, string>) -> Result<string, TemplateError> {
+    auto cond_val = eval_expression(cond_expr, ctx#, line_no, col_no, dispatch)
     if cond_val.is_err() {
         return Result<string, TemplateError>::Err(cond_val.unwrap_err())
     }
@@ -415,9 +438,9 @@ fn to_lower_str(s: str) -> string {
     loop i < s.len() {
         auto b = s.byte_at(i) as u8
         if b >= 'A' as u8 && b <= 'Z' as u8 {
-            out#.push_char((b + 32:u8) as char)
+            out#.push_byte_raw(b + 32:u8)
         } else {
-            out#.push_char(b as char)
+            out#.push_byte_raw(b)
         }
         i = i + 1:usize
     }
@@ -430,9 +453,9 @@ fn to_upper_str(s: str) -> string {
     loop i < s.len() {
         auto b = s.byte_at(i) as u8
         if b >= 'a' as u8 && b <= 'z' as u8 {
-            out#.push_char((b - 32:u8) as char)
+            out#.push_byte_raw(b - 32:u8)
         } else {
-            out#.push_char(b as char)
+            out#.push_byte_raw(b)
         }
         i = i + 1:usize
     }
@@ -447,7 +470,8 @@ fn copy_substr(input: str, start: usize, end: usize) -> string {
     if real_end > input.len() {
         real_end = input.len()
     }
-    auto sub = input.substring(start, real_end)
+    // The scanner supplies byte offsets, not Unicode character indexes.
+    auto sub = input.substr(start, real_end - start)
     return string::from(sub)
 }
 
@@ -475,7 +499,7 @@ fn strip_dot(s: str) -> string {
     return cede out
 }
 
-fn eval_expression(expr: str, ctx#: TemplateContext, line_no: usize, col_no: usize) -> Result<string, TemplateError> {
+fn eval_expression(expr: str, ctx#: TemplateContext, line_no: usize, col_no: usize, dispatch: fn(str, str) -> Result<string, string>) -> Result<string, TemplateError> {
     auto trimmed = trim_str(expr)
     if trimmed.len() == 0:usize {
         return Result<string, TemplateError>::Ok(string::from(""))
@@ -488,7 +512,7 @@ fn eval_expression(expr: str, ctx#: TemplateContext, line_no: usize, col_no: usi
             auto left = trim_str(copy_substr(trimmed.as_str(), 0:usize, pipe_idx).as_str())
             auto right = trim_str(copy_substr(trimmed.as_str(), pipe_idx + 1:usize, trimmed.len()).as_str())
 
-            auto left_res = eval_expression(left.as_str(), ctx#, line_no, col_no)
+            auto left_res = eval_expression(left.as_str(), ctx#, line_no, col_no, dispatch)
             if left_res.is_err() {
                 auto err_val = left_res.unwrap_err()
                 return Result<string, TemplateError>::Err(cede err_val)
@@ -504,7 +528,7 @@ fn eval_expression(expr: str, ctx#: TemplateContext, line_no: usize, col_no: usi
                 return Result<string, TemplateError>::Err(TemplateError::new(cede err_m, line_no, col_no))
             }
 
-            auto call_res = ctx#.call_func(cede string::from(func_name.as_str()), cede left_str)
+            auto call_res = ctx#.call_func(string::from(func_name.as_str()), cede left_str, dispatch)
             if call_res.is_err() {
                 auto err_val = call_res.unwrap_err()
                 auto err_msg# = string::from("function '")
@@ -537,7 +561,7 @@ fn eval_expression(expr: str, ctx#: TemplateContext, line_no: usize, col_no: usi
             auto raw_arg = copy_substr(trimmed.as_str(), first_space + 1:usize, trimmed.len())
             auto parsed_arg = parse_single_arg(raw_arg.as_str(), ctx#)
 
-            auto call_res = ctx#.call_func(cede string::from(possible_func.as_str()), cede parsed_arg)
+            auto call_res = ctx#.call_func(string::from(possible_func.as_str()), cede parsed_arg, dispatch)
             if call_res.is_err() {
                 auto err_val = call_res.unwrap_err()
                 auto err_msg# = string::from("function '")
@@ -560,7 +584,7 @@ fn eval_expression(expr: str, ctx#: TemplateContext, line_no: usize, col_no: usi
     // Function call without args: func
     if ctx.has_func(trimmed.as_str()) {
         auto empty_arg = string::from("")
-        auto call_res = ctx#.call_func(cede string::from(trimmed.as_str()), cede empty_arg)
+        auto call_res = ctx#.call_func(string::from(trimmed.as_str()), cede empty_arg, dispatch)
         if call_res.is_ok() {
             auto ok_val = call_res.unwrap()
             return Result<string, TemplateError>::Ok(cede ok_val)

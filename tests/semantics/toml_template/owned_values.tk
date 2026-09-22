@@ -1,0 +1,100 @@
+import stdx/serde/toml::{TomlDocument, TomlValue}
+import stdx/text/template::{Template, TemplateContext}
+import std/vec::{Vec}
+import core/result::{Result}
+
+fn toml_value_after_input() -> TomlValue {
+    auto input# = string::from("items = [['α', \"q\\\"#\"], [], [1, true, 'tail']] # comment\n")
+    auto document = TomlDocument::parse(input.as_str()).unwrap()
+    input = string::from("overwritten input")
+    auto copied = document.clone()
+    return copied.get("items").unwrap()
+}
+
+fn list_after_context() -> Vec<string> {
+    auto ctx# = TemplateContext::new()
+    auto values# = Vec<string>::new()
+    values#.push(string::from("first"))
+    values#.push(string::from(""))
+    auto bytes# = string::from("utf8:雪:")
+    bytes#.push_byte_raw(0:u8)
+    bytes#.push_byte_raw(10:u8)
+    values#.push(cede bytes)
+    ctx#.set_list(string::from("items"), cede values)
+    auto selected = ctx.get_list("items").unwrap()
+    ctx#.set_list(string::from("items"), Vec<string>::new())
+    assert(ctx.get_list("items").unwrap().len() == 0:usize, "empty remains present")
+    assert(ctx.get_list("absent").is_none(), "missing remains absent")
+    return cede selected
+}
+
+fn dispatch_value(name: str, arg: str) -> Result<string, string> {
+    if name.equals("echo") { return Result<string, string>::Ok(string::from(arg)) }
+    return Result<string, string>::Err(string::from("callback rejected"))
+}
+
+fn exercise() {
+    auto values = toml_value_after_input()
+    assert(values.array_len().unwrap() == 3:usize, "nested array count")
+    assert(values.array_at(0).unwrap().array_at(0).unwrap().as_string().unwrap().as_str().equals("α"), "UTF-8 literal")
+    assert(values.array_at(0).unwrap().array_at(1).unwrap().as_string().unwrap().as_str().equals("q\"#"), "escaped quote and comment marker")
+    assert(values.array_at(1).unwrap().array_len().unwrap() == 0:usize, "empty nested array")
+    assert(values.array_at(2).unwrap().array_at(1).unwrap().as_bool().unwrap(), "nested scalar")
+    assert(values.array_at(3).is_none(), "array bounds")
+    auto copied = values.clone()
+    assert(copied.array_at(2).unwrap().array_at(2).unwrap().as_string().unwrap().as_str().equals("tail"), "independent clone")
+
+    assert(TomlDocument::parse("good = 'owned prefix'\nbad = ['first', [1,,2]]\n").is_err(), "partial nested failure")
+    assert(TomlDocument::parse("good = 'owned prefix'\ngood = 'duplicate'\n").is_err(), "duplicate cleanup")
+    assert(TomlDocument::parse("good = 'owned prefix'\nbad = \"bad\\x\"\n").is_err(), "escape failure")
+    auto deep# = string::from("deep = ")
+    auto d# = 0:usize
+    loop d < 17:usize { deep#.push_str("["); d += 1:usize }
+    deep#.push_str("1")
+    d = 0:usize
+    loop d < 17:usize { deep#.push_str("]"); d += 1:usize }
+    assert(TomlDocument::parse(deep.as_str()).is_err(), "depth bound retained")
+
+    auto strings = list_after_context()
+    assert(strings.len() == 3:usize, "owned list survives context")
+    assert(strings.borrow(0).as_str().equals("first") && strings.borrow(1).len() == 0:usize, "order and empty string")
+    auto last = strings.borrow(2).as_str()
+    assert(last.byte_at(last.len() - 2:usize) == 0 && last.byte_at(last.len() - 1:usize) == 10, "NUL/control bytes retained")
+    auto ctx# = TemplateContext::new()
+    auto first# = Vec<string>::new()
+    first#.push(string::from("A")); first#.push(string::from("B"))
+    ctx#.set_list(string::from("items"), cede first)
+    auto other# = Vec<string>::new()
+    other#.push(string::from("other"))
+    ctx#.set_list(string::from("other"), cede other)
+    auto replacement# = Vec<string>::new()
+    replacement#.push(string::from("C"))
+    ctx#.set_list(string::from("items"), cede replacement)
+    assert(ctx.get_list("other").unwrap().borrow(0).as_str().equals("other"), "replacement preserves other key")
+    auto source# = string::from("{{ range .items }}[{{ . }}]{{ end }}")
+    auto parsed = Template::parse(source.as_str()).unwrap()
+    source = string::from("replaced source")
+    assert(parsed.render(ctx#).unwrap().as_str().equals("[C]"), "template owns source and nodes")
+    ctx#.set_list(string::from("items"), Vec<string>::new())
+    assert(parsed.render(ctx#).unwrap().len() == 0:usize, "empty range after replacement")
+
+    ctx#.enable_func(string::from("echo"))
+    ctx#.enable_func(string::from("fail"))
+    auto dispatcher = { name, arg => dispatch_value(name, arg) }: fn(str, str) -> Result<string, string>
+    auto custom = Template::parse("{{ echo \"雪\" }}").unwrap()
+    assert(custom.render_with(ctx#, dispatcher).unwrap().as_str().equals("雪"), "real custom dispatch")
+    assert(custom.render(ctx#).is_err(), "missing dispatcher is not success")
+    ctx#.set(string::from("unicode"), string::from("雪aB"))
+    assert(Template::parse("{{ .unicode | upper }}").unwrap().render(ctx#).unwrap().as_str().equals("雪AB"), "ASCII upper preserves UTF-8 bytes")
+    assert(Template::parse("{{ .unicode | lower }}").unwrap().render(ctx#).unwrap().as_str().equals("雪ab"), "ASCII lower preserves UTF-8 bytes")
+    assert(Template::parse("prefix {{ fail \"owned\" }}").unwrap().render_with(ctx#, dispatcher).is_err(), "callback failure releases prefix")
+    ctx#.set_strict_vars(true)
+    assert(Template::parse("prefix {{ .missing }}").unwrap().render(ctx#).is_err(), "strict failure cleanup")
+    assert(Template::parse("prefix {{ if .missing }}owned").is_err(), "parse failure cleanup")
+}
+
+fn main() -> i32 {
+    auto iteration# = 0:usize
+    loop iteration < 100:usize { exercise(); iteration += 1:usize }
+    return 0
+}
