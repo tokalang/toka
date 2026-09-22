@@ -19,6 +19,10 @@ def main():
     cases = [
         ('tests/semantics/rc13_pass_tail/descriptor_live.tk', None),
         ('tests/semantics/rc13_pass_tail/descriptor_escape.tk', 'E0455'),
+        ('tests/semantics/rc13_pass_tail/global_source.tk', None),
+        ('tests/semantics/rc13_pass_tail/global_source_readonly.tk', 'E04571'),
+        ('tests/semantics/rc13_pass_tail/global_name_local_escape.tk', 'E0455'),
+        (REPLAY+'permission_005_partial_cede_lifecycle/pass_async_cancel_cleanup.tk', None),
         (REPLAY+'eff_member_001_return_deps/pass_select_first_release.tk', None),
         (REPLAY+'permission_003_independent_flow/pass_cede_unique_readonly_source_rebuilds_payload.tk', None),
         (REPLAY+'permission_004_referent_ceiling/fail_cede_preserves_blocked_field.tk', 'E0443'),

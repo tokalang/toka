@@ -3756,6 +3756,7 @@ void Sema::declareGlobals(Module &M) {
       info.IsRebindable = v->IsRebindable;
       info.CodegenName = v->Name;
       info.ASTPtr = v;
+      info.DeclLoc = v->Loc;
       ms.LexicalSymbols[v->Name] = info;
     }
   }
@@ -3834,8 +3835,10 @@ void Sema::declareGlobals(Module &M) {
                                            : synthesizePhysicalType(*global)),
                 global);
       auto symbol = ms.LexicalSymbols.find(name);
-      if (symbol != ms.LexicalSymbols.end() && symbol->second.ASTPtr == global)
+      if (symbol != ms.LexicalSymbols.end() && symbol->second.ASTPtr == global) {
         symbol->second.CodegenName = global->Name;
+        symbol->second.DeclLoc = global->Loc;
+      }
       if (Imp->IsPub)
         ms.Globals[name] = global;
     };
@@ -4104,6 +4107,7 @@ void Sema::registerGlobals(Module &M) {
           v->IsMorphicExempt);
       globalInfo.CodegenName = v->Name;
       globalInfo.ASTPtr = v;
+      globalInfo.DeclLoc = v->Loc;
       CurrentScope->define(v->Name, globalInfo);
     }
   }
@@ -4364,6 +4368,7 @@ void Sema::registerGlobals(Module &M) {
             globalInfo.ReferencedModule = target;
             globalInfo.ImportingDecl = Imp.get();
             globalInfo.ASTPtr = v;
+            globalInfo.DeclLoc = v->Loc;
             std::string actualName = item.Alias.empty() ? name : item.Alias;
             if (CurrentScope->Symbols.count(actualName)) {
               if (CurrentScope->Symbols[actualName].ASTPtr != v) {
@@ -4501,6 +4506,7 @@ void Sema::registerGlobals(Module &M) {
             globalInfo.ReferencedModule = target;
             globalInfo.ImportingDecl = Imp.get();
             globalInfo.ASTPtr = v;
+            globalInfo.DeclLoc = v->Loc;
             if (CurrentScope->Symbols.count(name)) {
               if (CurrentScope->Symbols[name].ASTPtr != v) {
                 DiagnosticEngine::report(getLoc(Imp.get()),

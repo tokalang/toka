@@ -165,3 +165,58 @@ This package is not fully closed or Accepted. E, fn_, push, freeze refs and
 publication remain paused. The global-counter boundary and the remaining
 source-hidden/storage capabilities need their own concrete resolution; they
 are not hidden by changing the existing runtime objectives or the old oracles.
+
+## Incremental review and next-boundary WIP
+
+The user's independent review accepted the incremental corrections, not the
+whole package: four selected gates passed **4/4, 104 seconds**, the complete
+Outcome script passed, and an additional two-source projection control kept the
+local-source escape rejection. Audit:
+`/Users/zhyi/GitDP/tokalang/validation/pass-tail-review-20260922.xziRE1/review.md`.
+The fixed full baseline above remains **118/121 CTest**; line anchors belonged
+to two existing frozen gates. No incremental successes are backfilled.
+
+### Global declaration source correction
+
+Global symbols already had their actual declaration pointer, but omitted
+`DeclLoc` in primary/import registration and lexical previews. AccessPath uses
+that location, and Stage 0 refuses a root without a valid declaration location.
+The correction copies the actual declaration location through those five paths.
+It does not add a static/independent flag, change binding permission, introduce
+Send/Sync evidence, unify unrelated SymbolIDs or alter import alias state.
+
+After rebuilding tools, the expanded existing tail-contract driver passed
+**18/18 cases**, with normal/shadow, object/LLVM and positive execution checks.
+Added controls cover global/local same-name drop counters, readonly-global write
+refusal, a same-named local counter escaping with E0455, and the unchanged
+original async cancellation program. The latter also passed a separate actual
+source-hidden compile/link/run against a freshly emitted provider object.
+
+Evidence:
+- `validation/rc13-global-source-final-build.log`
+- `validation/rc13-global-source-tail.log`
+- `validation/rc13-global-source-hidden.py` and `.log`
+
+The entire `permission_005_partial_cede_lifecycle` directory is **not recovered**.
+Its directed replay run stops at `fail_shared_record_partial_cede_rejected`:
+`new Token(... &drops ...)` reports E04661 IncompleteFacts before the intended
+E04632 partial-move rejection (`validation/rc13-global-source-replay.log`). The
+original assertion/source is unchanged; this run does not establish when that
+remaining defect was introduced. The individual cancellation success cannot
+replace the directory-level failure.
+
+### Source-hidden decision, not production activation
+
+Fresh interfaces and controlled ordinary/generic factory probes distinguish
+missing bodies from retained, recheckable bodies. An arithmetic-only probe
+also demonstrated that a retained ordinary body can be checked while the old
+provider object executes instead. Merely retaining more body text is therefore
+not the proposed authority fix. The exact observations, limited recommended
+execution association, alternative trust boundary and combined matrix are in
+`rc13_source_hidden_qualification_proposal.md`.
+
+No source-hidden proof serialization, body-retention activation or CodeGen
+qualification widening was applied. That concentrated policy decision awaits
+authorization; no separate helper approval is requested. Container-return
+cases remain recorded above, with no recursive/byte/raw_take expansion. These
+are development results, not a new full baseline or package Accepted status.

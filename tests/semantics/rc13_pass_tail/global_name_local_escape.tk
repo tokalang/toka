@@ -1,0 +1,14 @@
+import ../tki_replay/cases/permission_005_partial_cede_lifecycle/lib::{Pair, make_pair}
+
+auto drops# = 0:i32
+
+fn escaped() -> Pair {
+    auto drops# = 0:i32
+    auto pair = make_pair(drops#)
+    return cede pair
+}
+
+fn main() -> i32 {
+    auto pair = escaped()
+    return pair.left.id
+}
