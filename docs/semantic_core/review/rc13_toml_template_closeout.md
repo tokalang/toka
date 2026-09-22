@@ -108,3 +108,79 @@ Preserved independent RFC SHA-256:
 
 No push, PR, freeze-ref movement or publishing. The independent RFC modification
 is preserved and excluded from this package's commits.
+
+## Incremental correction after dispatcher review (not yet Accepted)
+
+Review: `validation/toml-template-review-20260922.gU9niJ/review.md`.
+Callable correction: `8057bfab`; test-environment correction: `99c89a88`.
+
+Sema now retains a lexical value selection instead of replacing it with a
+module function or specialization-cache entry. A non-callable local also
+shadows a function, and is rejected rather than calling that function. Indirect
+calls carry the selected VariableExpr (resolved codegen name, binding ID and
+type); AST clones resolve again. CodeGen uses that value through ordinary
+variable lowering, bypasses the module-function spelling lookup, and does not
+fall back to a constructor/global on a failed indirect lowering. Existing
+argument, receiver, transfer, cleanup and ABI logic is unchanged.
+
+`toka_callable_shadow` includes the three original audit sources, actual supplied
+Template dispatcher invocation, local/nested/dyn-fn/generic bindings, an explicit
+module-qualified control, and non-callable-shadow rejection. It executes both
+public documentation examples too. Runtime, normal/shadow parity, object/LLVM
+checks pass. The minimal `apply` IR loads and calls `%closure_func`, with no
+direct call to `@dispatch`. Enabled custom functions still fail under `render`
+when no dispatcher was supplied, even with an unrelated global `dispatch`.
+`docs/stdx_template_v1.md` now documents enable_func/render_with and the actual
+signature, and no longer recommends the removed API.
+
+Complete incremental tool build passed. Related CTest groups:
+
+- generic-body qualification, ordinary caller cede, dyn-fn lifecycle,
+  TOML/Template and callable shadow: **5/5, 147.34 seconds**;
+- original call-transfer freeze: **1/1, 102.57 seconds**.
+
+Logs: `validation/rc13-callable-shadow-{build-final,ctest,call-freeze}.log`;
+standalone matrix: `validation/rc13-callable-shadow-directed.log`.
+Compiler SHA-256:
+`c306234e4e87b3eeab8e05eeff6cae2da3b89e78341a8dac858aac819e1771b8`.
+These incremental results do not replace the earlier full-suite numbers.
+
+### All appended PASS checks attempted; PASS command remains unqualified
+
+The unsafe TKI test now creates a full source-only temporary SDK and compiles
+inside its isolated directory, so the selected core is actually inside the
+declared trust root. A partial root or symlink outside it was not made trusted.
+All forged-interface, local-shadow and package-spoof assertions remain intact;
+the unsafe TKI script passes. Five additional SDK scripts now receive the same
+out-of-tree build path instead of using missing checkout-local binaries. No
+semantic assertions were removed or blessed.
+
+All **22** checks appended by `test_pass.sh` were executed, continuing past
+failures to obtain the complete list. Five path-dependent checks were rerun
+after explicit build routing: three pass, two reach real assertion failures.
+The combined actual result is **13/22**, not an end-to-end PASS-command success.
+Original and rerouted attempts are both retained:
+
+- `validation/rc13-pass-tail-checks/results.json` and per-check logs;
+- `validation/rc13-pass-tail-checks-routed/results.json` and per-check logs;
+- `validation/rc13-pass-tail-consolidated.json` maps every final result to its
+  attempt, exact command and original return code.
+
+Remaining first failures (unmodified assertions, no introduction-date claim):
+
+| Check | Observed failure |
+| --- | --- |
+| TKI cache validation | Test 7.10 still generates removed `LocalBox<'T>` syntax; E01268 |
+| memory summary | `source_summary.tk:48`, `ms_global = value`: E04661 TypeIncompatible |
+| experimental readonly | same memory-summary fixture fails before its target checks |
+| cede obligation evidence | expected fulfilled return-transfer record is missing |
+| semantic diff preview | `toka preview` output differs from direct preview |
+| semantic replay | 39/56 cases pass, 17 fail; individual source/diagnostic failures retained |
+| Outcome body recheck | strong-alias Outcome rejection assertion fails; requires separate analysis, not treated as harmless noise |
+| semantic cache invalidation | 9/13 cases pass; 4 fail, including member-result IncompleteFacts |
+| incremental build | Tests 0–9 pass; native-build reference step uses a partial/symlink SDK and fails E04648 |
+
+These are newly reached follow-ups after the program corpus became green,
+not nine new failures in the 459-program corpus. That corpus was not rerun in
+this incremental correction. Native-build/source-hidden contracts, ABI,
+raw_take, E, pushing, freezing and publishing were not expanded.
