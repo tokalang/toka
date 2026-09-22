@@ -1,4 +1,14 @@
-# Build + return-matrix library-side closeout (candidate, not Accepted)
+# Build + return-matrix library-side closeout (Accepted)
+
+Accepted implementation: `4750fbdda7c056a680fd3c01b587da9ddc671882`.
+Acceptance is limited to this Build library migration and return-matrix package,
+not RC13 release qualification. No further Build features are included.
+Independent review reran Build metadata, full return-matrix and JSON factory:
+**3/3, 89.85 seconds**, including the real hybrid build/run. Additional malformed
+array old-value retention and UTF-8, embedded NUL and control-byte roundtrips
+passed. The reviewer checked the full logs below, but did not rerun the full
+suites. Review evidence:
+`/Users/zhyi/GitDP/tokalang/validation/build-closeout-review-20260922.gC3Ljj/acceptance.md`.
 
 The preceding anonymous-record/task-result/byte-owner package was accepted at
 `a08578e8`; documentation-only acceptance commit: `1ccf4bc1`.
@@ -59,7 +69,7 @@ Combined targeted CTest: **4/4, 188.05 seconds**.
 
 ## Fixed candidate and complete comparison
 
-Implementation: `4750fbdda7c056a680fd3c01b587da9ddc671882` (WIP, not Accepted).
+Implementation: `4750fbdda7c056a680fd3c01b587da9ddc671882` (Accepted in the scope above).
 Evidence: `/Users/zhyi/GitDP/tokalang/validation/rc13-build-closeout-final`.
 All four commands reported zero tracked-source changes. The manifest, preserved
 RFC diff, exact commands, logs and comparison are retained there.
