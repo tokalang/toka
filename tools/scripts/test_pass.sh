@@ -4,6 +4,10 @@
 # --- Configuration ---
 TOKAC="${TOKAC:-./build/bin/tokac}"
 TOKA="${TOKA:-./build/bin/toka}"
+# Appended SDK checks must use the same out-of-tree build as the program suite,
+# not silently fall back to a missing (or stale) checkout-local build/.
+SDK_TEST_TOKAC="$(command -v "$TOKAC")" || exit 1
+SDK_TEST_BUILD_DIR="$(cd "$(dirname "$SDK_TEST_TOKAC")/.." && pwd)" || exit 1
 TOKAC_SCOPE_ARGS=(--workspace-node toka-tests-v1 --workspace-root "$PWD")
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -579,35 +583,35 @@ fi
 
 echo ""
 echo "Running Public Semantic Evidence v1 ABI gate..."
-if ! run_without_test_cache python3 tools/scripts/test_public_semantic_evidence.py; then
+if ! run_without_test_cache python3 tools/scripts/test_public_semantic_evidence.py --build-dir "$SDK_TEST_BUILD_DIR"; then
     echo -e "${RED}Public Semantic Evidence v1 ABI gate failed!${NC}"
     exit 1
 fi
 
 echo ""
 echo "Running Cede Obligation Evidence v1 ABI gate..."
-if ! run_without_test_cache python3 tools/scripts/test_cede_obligation_evidence.py; then
+if ! run_without_test_cache python3 tools/scripts/test_cede_obligation_evidence.py --build-dir "$SDK_TEST_BUILD_DIR"; then
     echo -e "${RED}Cede Obligation Evidence v1 ABI gate failed!${NC}"
     exit 1
 fi
 
 echo ""
 echo "Running TaskHandle Lifecycle Contract v1 gate..."
-if ! run_without_test_cache python3 tools/scripts/test_taskhandle_lifecycle.py; then
+if ! run_without_test_cache python3 tools/scripts/test_taskhandle_lifecycle.py --build-dir "$SDK_TEST_BUILD_DIR"; then
     echo -e "${RED}TaskHandle Lifecycle Contract v1 gate failed!${NC}"
     exit 1
 fi
 
 echo ""
 echo "Running H/P Call Capability Pilot v1 ABI gate..."
-if ! run_without_test_cache python3 tools/scripts/test_capability_pilot.py; then
+if ! run_without_test_cache python3 tools/scripts/test_capability_pilot.py --build-dir "$SDK_TEST_BUILD_DIR"; then
     echo -e "${RED}H/P Call Capability Pilot v1 ABI gate failed!${NC}"
     exit 1
 fi
 
 echo ""
 echo "Running Ephemeral Semantic Diff Preview v1 ABI gate..."
-if ! run_without_test_cache python3 tools/scripts/test_semantic_diff_preview.py; then
+if ! run_without_test_cache python3 tools/scripts/test_semantic_diff_preview.py --build-dir "$SDK_TEST_BUILD_DIR"; then
     echo -e "${RED}Ephemeral Semantic Diff Preview v1 ABI gate failed!${NC}"
     exit 1
 fi

@@ -2,6 +2,7 @@
 
 """Fail-closed ABI gate for Public Semantic Evidence v1."""
 
+import argparse
 import json
 from pathlib import Path
 import subprocess
@@ -70,9 +71,12 @@ def validate_document(payload):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--build-dir', default='build')
+    args = parser.parse_args()
     suffix = ".exe" if sys.platform == "win32" else ""
-    tokac = ROOT / "build/bin" / ("tokac" + suffix)
-    toka = ROOT / "build/bin" / ("toka" + suffix)
+    tokac = ROOT / args.build_dir / 'bin' / ("tokac" + suffix)
+    toka = ROOT / args.build_dir / 'bin' / ("toka" + suffix)
     schema = ROOT / "schemas/toka.semantic-evidence.v1.schema.json"
     require(tokac.is_file() and toka.is_file(), "SDK binaries are missing")
     require(schema.is_file(), "public evidence schema is missing")

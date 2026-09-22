@@ -166,11 +166,22 @@ if ! "$TOKAC_ABS" -c "$TEST_DIR/explicit-main.tk" \
 fi
 
 mkdir -p "$TEST_DIR/trusted"
+# A replacement trust root must contain the real core/prelude too. Falling
+# back to the checkout's core while declaring only this tiny directory trusted
+# makes compiler-owned place protocols look like untrusted user declarations.
+# Copy source only: do not reuse interfaces with another resolver identity.
+python3 - "$SDK_LIB" "$TEST_DIR/trusted" <<'PY'
+from pathlib import Path
+import shutil
+import sys
+shutil.copytree(Path(sys.argv[1]), Path(sys.argv[2]), dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns('*.tki', '*.o', '*.a', '*.ll', '__pycache__'))
+PY
 cat > "$TEST_DIR/trusted/system_api.tk" <<'EOF'
 pub fn legacy_system_call(*ptr: i32)
 EOF
-TOKA_LIB="$TEST_DIR/trusted" "$TOKAC_ABS" -c --emit-interface \
-    "$TEST_DIR/trusted/system_api.tk" -o "$TEST_DIR/trusted/system_api.o" \
+(cd "$TEST_DIR_ABS" && TOKA_LIB="$TEST_DIR_ABS/trusted" "$TOKAC_ABS" -c --emit-interface \
+    "$TEST_DIR_ABS/trusted/system_api.tk" -o "$TEST_DIR_ABS/trusted/system_api.o") \
     > "$TEST_DIR/trusted-emit.out" 2> "$TEST_DIR/trusted-emit.err"
 rm "$TEST_DIR/trusted/system_api.tk" "$TEST_DIR/trusted/system_api.o"
 cat > "$TEST_DIR/trusted-main.tk" <<'EOF'
@@ -180,8 +191,8 @@ fn main() -> i32 {
     return 0
 }
 EOF
-if ! TOKA_LIB="$TEST_DIR/trusted" "$TOKAC_ABS" \
-    -c "$TEST_DIR/trusted-main.tk" -o "$TEST_DIR/trusted-main.o" \
+if ! (cd "$TEST_DIR_ABS" && TOKA_LIB="$TEST_DIR_ABS/trusted" "$TOKAC_ABS" \
+    -c "$TEST_DIR_ABS/trusted-main.tk" -o "$TEST_DIR_ABS/trusted-main.o") \
     > "$TEST_DIR/trusted.out" 2> "$TEST_DIR/trusted.err"; then
     echo "FAIL: compiler-configured system interface was not trusted"
     cat "$TEST_DIR/trusted.err"
