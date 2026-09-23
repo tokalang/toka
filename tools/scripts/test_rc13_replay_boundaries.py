@@ -254,6 +254,14 @@ fn main() -> i32 {{ return 0 }}
             'auto ' + hat + 'last = ' + ('~other' if route == 'shared_copy' else 'cede ' + hat + 'other'),
             'auto ' + hat + 'last = ' + ('~owner' if route == 'shared_copy' else 'cede ' + hat + 'owner')),
         None)
+    for wrapping, expression in (
+        ('unsafe', f'unsafe ({handed})'),
+        ('ascription', f'(unsafe ({handed})):{hat}View')):
+        for control in ('escape', 'live', 'assignment_escape', 'assignment_live'):
+            original, error = CASES[route + '_' + control]
+            assert original.count(f'= {handed}\n') == 1, (route, control)
+            CASES[route + '_' + wrapping + '_' + control] = (
+                original.replace(f'= {handed}\n', f'= {expression}\n'), error)
 
 
 def main():

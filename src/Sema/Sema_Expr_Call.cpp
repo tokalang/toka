@@ -5084,7 +5084,23 @@ bool Sema::Stage1BindingTransfer::prepare(
     }
   }
   if (validated && target && (target->isUniquePtr() || target->isSharedPtr())) {
-    const auto path = Owner.makeAccessPath(source);
+    Expr *bindingSource = source;
+    while (bindingSource) {
+      bindingSource = stage0SurfaceSource(bindingSource);
+      if (auto *cast = dynamic_cast<CastExpr *>(bindingSource);
+          cast && (cast->Kind == CastKind::Implicit || cast->Kind == CastKind::Ascription)) {
+        bindingSource = cast->Expression.get();
+      } else if (auto *selector = dynamic_cast<UnaryExpr *>(bindingSource);
+                 selector && selector->ResolvedType &&
+                 ((selector->Op == TokenType::Caret && selector->ResolvedType->isUniquePtr()) ||
+                  (selector->Op == TokenType::Tilde && selector->ResolvedType->isSharedPtr()))) {
+        bindingSource = selector->RHS.get();
+      } else break;
+    }
+    auto path = Owner.makeAccessPath(bindingSource);
+    if (auto *variable = dynamic_cast<VariableExpr *>(bindingSource);
+        variable && variable->ResolvedBindingID)
+      path.RootID = variable->ResolvedBindingID;
     SymbolInfo *sourceBinding = nullptr;
     // Only a checked whole owner handoff carries this binding metadata.
     // Resolve the source by identity before defining a possibly shadowing
@@ -5134,6 +5150,13 @@ bool Sema::Stage1BindingTransfer::prepare(
             static_cast<size_t>(Owner.CurrentScope->Depth - targetDepth));
       }
       Destination = destination;
+    } else if (Plan->Prepared.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
+               !Plan->Prepared.DependencyRoots.empty()) {
+      // An unsupported projection/wrapper cannot erase a dependency which
+      // the validated handoff already knows exists.
+      Owner.error(source, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                  "OwnerDependencyHandoffUnavailable");
+      return false;
     }
   }
   return true;
