@@ -215,8 +215,75 @@ not the proposed authority fix. The exact observations, limited recommended
 execution association, alternative trust boundary and combined matrix are in
 `rc13_source_hidden_qualification_proposal.md`.
 
-No source-hidden proof serialization, body-retention activation or CodeGen
-qualification widening was applied. That concentrated policy decision awaits
-authorization; no separate helper approval is requested. Container-return
+At that checkpoint no source-hidden proof serialization, body-retention activation
+or CodeGen qualification widening had been applied. The concentrated policy
+decision was subsequently authorized on 2026-09-23 (implementation below).
+Container-return
 cases remain recorded above, with no recursive/byte/raw_take expansion. These
 are development results, not a new full baseline or package Accepted status.
+
+## Source-hidden execution package: fixed candidate ready for review
+
+Implementation candidate: **`215f225edfa21a717a8fac54bb02cde64b676252`**, following
+WIP checkpoints `cb46eda8` and `a4b47072`. Status is **WIP / awaiting combined
+review**, not Accepted, frozen or RC13-qualified.
+
+The approved body-backed route is implemented: interface policy `checked-local-v1`
+binds specific retained declarations; ordinary bodies and qualified concrete
+instances execute locally with internal linkage. Actual selected AST edges,
+clone definition origins, generated invokes and real custom-drop declarations
+are validated as one dependency closure. A merely present body, an incomplete
+helper, an unselected cache probe, an escaped function identity or a symbol
+collision cannot substitute for that association. Existing retained templates
+receive deferred associations, not unconditional scalar-instance qualification.
+Native layout/runtime, refcounts, raw_take, byte-owner facts, E and fn_ are unchanged.
+
+Fixed evidence directory:
+`/Users/zhyi/GitDP/tokalang/validation/rc13-source-hidden-215f225e/`.
+Reproducible driver:
+`/Users/zhyi/GitDP/tokalang/validation/rc13-source-hidden-215f225e.py`.
+
+| Verification | Actual result | Seconds |
+| --- | --- | --- |
+| Complete tools build | pass | 0.79 |
+| Selected CTest | **7/7** | 209.74 (CTest); 209.87 wall wrapper |
+| async_suspend_001_return_deps replay | pass | 18.16 |
+| callable_001_modes replay | pass | 3.57 |
+| ergonomics_002_closure_dependencies replay | pass | 3.46 |
+| permission_003_independent_flow replay | pass | 13.82 |
+| TKI cache validation | pass | 28.57 |
+| Unsafe-TKI anti-forgery | pass | 6.50 |
+| Full Outcome body recheck script | pass | 12.86 |
+| Thread interface/cache compatibility | pass | 2.09 |
+
+The seven CTests are the new `toka_source_hidden_execution` plus existing
+`toka_stage1_indirect_parameter_cede`, `toka_task_result_projection`,
+`toka_rc13_tail_contracts`, `toka_call_transfer_shadow_m1`,
+`toka_non_call_transfer_shadow_stage0` and `toka_reference_domains`.
+No tracked-source changes occurred during any phase. Compiler SHA-256:
+`c2e67e1177bd047b6568505dccc1576a442ad01bb91fab602524f532f203f20e`.
+
+Key runtime evidence: interface `+10` yields **14** against the old `+1` provider,
+also without that provider. Primed generic function and generic impl providers
+cannot override the checked instances; IR asserts internal linkage. Owned capture
+sharing cleans once; changing the checked drop body changes the observed cleanup
+while still using the old provider. External task sources survive task cleanup;
+second-argument mapping/cache reuse does not permit local or task-frame escape.
+Wrong/missing policy and definition associations, missing/invalid/recursive
+helpers and unavailable private globals reject without object/LLVM artifacts.
+
+The old task-result `source_hidden` expectation was intentionally split: the
+retained executable producer is now a real runtime positive; an explicitly
+declaration-only producer remains negative. Its rollback counterpart asserts
+`TaskResultOriginsUnproven` at `consume(cede owner, task)` in normal, object and
+LLVM modes, and no moved/uninitialized follow-on error. No early unrelated failure
+is counted as rollback coverage. The interface/cache version is `0.9.9-23`;
+version tests retain stale-interface rejection and source fallback/runtime checks.
+
+No full PASS/FAIL/CTest or all-22 refresh was performed in this package. The old
+fixed **118/121** CTest and appended-script figures remain historical, not
+backfilled from these results; the new CTest is an addition, not a recovery.
+The shared-Token early rejection within `permission_005_partial_cede_lifecycle`
+and the two container-return directories remain separate. No main merge, push,
+freeze or publication occurred. The other worker's RFC remains untouched at
+SHA-256 `1b73b0fc46f9a700e1bdc9d0a0031614e1d9a4b398ce97f6a6423972474d70e2`.
