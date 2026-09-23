@@ -391,6 +391,15 @@ void TKIExporter::exportSemanticReplaySurface(const Module &module) {
     exportDeclarations(module);
 }
 
+InterfaceBodyUses TKIExporter::inspectCheckedBody(const FunctionDecl &function) {
+    InterfaceBodyUses uses;
+    uses.Complete = function.Body != nullptr;
+    TKIExporter visitor(llvm::nulls());
+    visitor.m_BodyUses = &uses;
+    if (function.Body) visitor.exportBlock(*function.Body);
+    return uses;
+}
+
 void TKIExporter::selectLocalBodies(const Module &module) {
     m_LocalBodies.clear();
     std::set<const FunctionDecl *> available;
@@ -406,8 +415,17 @@ void TKIExporter::selectLocalBodies(const Module &module) {
     std::set<const FunctionDecl *> visited;
     std::function<void(const FunctionDecl *)> walk = [&](const FunctionDecl *fn) {
         if (!fn || !visited.insert(fn).second) return;
+        auto uses = inspectCheckedBody(*fn);
+        if (!uses.Complete) return;
+        if (fn->InterfaceSourceBody) {
+            InterfaceBodyUses syntax;
+            TKIExporter visitor(llvm::nulls());
+            visitor.m_BodyUses = &syntax;
+            visitor.exportBlock(*fn->InterfaceSourceBody);
+            if (!syntax.Complete) return;
+        }
         if (available.count(fn)) m_LocalBodies.insert(fn);
-        for (auto *callee : fn->InterfaceCallees) walk(callee);
+        for (auto *callee : uses.Callees) walk(callee);
         std::set<const Type *> types;
         auto cleanup = [&](const std::shared_ptr<Type> &type) {
             visitInterfaceCleanupTypes(type, types, [&](const ShapeDecl *shape) {
@@ -416,7 +434,7 @@ void TKIExporter::selectLocalBodies(const Module &module) {
         };
         cleanup(fn->ResolvedReturnType);
         for (const auto &arg : fn->Args) cleanup(arg.ResolvedType);
-        for (const auto &type : fn->InterfaceValueTypes) cleanup(type);
+        for (const auto &type : uses.ValueTypes) cleanup(type);
     };
     for (auto *fn : available)
         if (fn->InterfaceLocalBody || fn->Effect == EffectKind::Async ||
@@ -933,6 +951,14 @@ void TKIExporter::printArg(const FunctionDecl::Arg &arg) {
 
 void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
     if (!expr) return;
+    if (m_BodyUses) {
+        if (expr->ResolvedType) m_BodyUses->ValueTypes.push_back(expr->ResolvedType);
+        const FunctionDecl *callee = nullptr;
+        if (auto *call = dynamic_cast<const CallExpr *>(expr)) callee = call->ResolvedFn;
+        if (auto *method = dynamic_cast<const MethodCallExpr *>(expr)) callee = method->ResolvedFn;
+        if (auto *closure = dynamic_cast<const ClosureExpr *>(expr)) callee = closure->ResolvedInvoke;
+        if (callee) m_BodyUses->Callees.insert(callee);
+    }
 
     if (expr->HasParens) m_OS << "(";
 
@@ -1273,6 +1299,8 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         m_Indent--;
         indent();
         m_OS << "}";
+    } else if (m_BodyUses) {
+        m_BodyUses->Complete = false;
     }
 
     if (expr->HasParens) m_OS << ")";
@@ -1373,6 +1401,8 @@ void TKIExporter::exportStmt(const Stmt *stmt, bool indentStmt) {
         exportExpr(guardBind->Target.get());
         m_OS << " else ";
         exportStmt(guardBind->ElseBody.get(), false);
+    } else if (m_BodyUses) {
+        m_BodyUses->Complete = false;
     }
 }
 

@@ -2558,8 +2558,6 @@ public:
   FunctionMemorySummary MemorySummary;
   // Source snapshot for bounded executable interface export; never a proof.
   std::unique_ptr<BlockStmt> InterfaceSourceBody;
-  std::set<const FunctionDecl *> InterfaceCallees;
-  std::vector<std::shared_ptr<toka::Type>> InterfaceValueTypes;
   // Resolver policy selects a body; successful Sema checking qualifies it.
   bool InterfaceLocalBody = false;
   bool InterfaceLocalBodyValidated = false;

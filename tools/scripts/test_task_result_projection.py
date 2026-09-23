@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -230,9 +231,11 @@ import std/task::{block_on}
 fn main() -> i32 {
     auto task = produce("static")
     auto value = block_on(task)
+    assert(value.equals("static"), "rechecked hidden producer result")
     return 0
 }
-''', "E04661")
+''', None)
+CASES["source_hidden_declaration_only"] = (CASES["source_hidden"][0], "E04661")
 CASES["rejected_call_rollback"] = (PREFIX + '''
 fn consume(cede task: TaskHandle<str>, amount: i32) -> str <- task {
     auto owned = cede task
@@ -331,7 +334,7 @@ def main():
         work.mkdir(parents=True, exist_ok=True)
         rows = []
         for name in selected:
-            if name in ('source_hidden', 'post_proof_rollback'):
+            if name in ('source_hidden', 'source_hidden_declaration_only', 'post_proof_rollback'):
                 provider = work / 'provider.tk'
                 provider.write_text('pub fn produce(value: str) -> async str <- value { return value }\n')
                 emitted = subprocess.run([str(compiler), '-c', '--emit-interface', str(provider),
@@ -339,6 +342,14 @@ def main():
                                          capture_output=True, text=True, timeout=90)
                 assert emitted.returncode == 0 and (work / 'provider.tki').is_file(), emitted.stderr
                 provider.replace(work / 'provider.hidden')
+                if name != 'source_hidden':
+                    interface = work / 'provider.tki'
+                    text = interface.read_text()
+                    assert text.count('return value') == 1
+                    text = re.sub(r'^// @meta local_body_(policy|definitions):.*\n', '', text, flags=re.M)
+                    text, count = re.subn(r'(pub fn produce[^\n{]+)\s*\{[^}]+\}', r'\1', text)
+                    assert count == 1, text
+                    interface.write_text(text)
             text, error = CASES[name]
             source = work / (name + '.tk')
             source.write_text(text)

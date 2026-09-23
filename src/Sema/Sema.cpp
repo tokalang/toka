@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/Sema.h"
 #include "toka/InterfaceBody.h"
+#include "toka/TKIExporter.h"
 #include "toka/CanonicalDeclarationWitness.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleSurfaceStats.h"
@@ -5350,11 +5351,16 @@ bool Sema::finalizeInterfaceBodies() {
         } else if (destructor != fn && !validate(destructor)) valid = false;
       });
     };
-    for (auto *callee : fn->InterfaceCallees)
+    const auto uses = TKIExporter::inspectCheckedBody(*fn);
+    if (!uses.Complete) {
+      error(fn, DiagID::ERR_GENERIC_SEMA, "executable interface body contains an unsupported operation");
+      valid = false;
+    }
+    for (auto *callee : uses.Callees)
       if (!validate(const_cast<FunctionDecl *>(callee))) valid = false;
     cleanup(fn->ResolvedReturnType);
     for (const auto &arg : fn->Args) cleanup(arg.ResolvedType);
-    for (const auto &type : fn->InterfaceValueTypes) cleanup(type);
+    for (const auto &type : uses.ValueTypes) cleanup(type);
     active.erase(fn);
     if (valid) complete.insert(fn);
     return valid;

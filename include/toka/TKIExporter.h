@@ -8,6 +8,12 @@
 
 namespace toka {
 
+struct InterfaceBodyUses {
+  bool Complete = true;
+  std::set<const FunctionDecl *> Callees;
+  std::vector<std::shared_ptr<Type>> ValueTypes;
+};
+
 class TKIExporter {
 public:
   TKIExporter(llvm::raw_ostream &os) : m_OS(os) {}
@@ -20,12 +26,15 @@ public:
   // construction. It intentionally omits @meta transport fields and @tki
   // audit comments while retaining exactly the declarations replayed by TKI.
   void exportSemanticReplaySurface(const Module &module);
+  // Read the final checked AST, not the history of speculative expression checks.
+  static InterfaceBodyUses inspectCheckedBody(const FunctionDecl &function);
 
 private:
   llvm::raw_ostream &m_OS;
   int m_Indent = 0;
   bool m_RetainOutcomeBodies = true;
   std::set<const FunctionDecl *> m_LocalBodies;
+  InterfaceBodyUses *m_BodyUses = nullptr;
   void selectLocalBodies(const Module &module);
 
   void indent();

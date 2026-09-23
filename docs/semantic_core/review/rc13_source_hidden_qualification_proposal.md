@@ -127,8 +127,10 @@ and the declaration-location fix remain separately accounted for.
   and their checked helper/cleanup closure. The snapshots precede closure
   lowering; imports preserve them for replay-surface/digest re-export too.
   This policy does not serialize environment-independent booleans.
-- Sema rechecks ordinary bodies and records exact resolved calls, values and
-  destructor declarations. Final validation checks the finite execution closure,
+- Sema rechecks ordinary bodies. Dependency inspection reads the final selected
+  AST, not a history of candidate probes, and uses exact resolved calls, values
+  and destructor declarations. Unexportable operations do not acquire an
+  executable-body association. Final validation checks the finite execution closure,
   rejects unavailable/invalid/recursive dependencies and escaped function
   identities. Global declarations/storage are not cloned. Compiler field-walk
   cleanup stays compiler-generated; user drop bodies require their real identity.
@@ -150,3 +152,12 @@ No native layout/protocol, reference counting, raw_take, byte-owner qualificatio
 E or `fn_` change is included. No generalized opaque-binary authentication is
 introduced. Unsupported mixed/opaque capture qualification remains subject to
 the previous environment rules; these were not loosened to test the new path.
+
+The first fixed WIP `cb46eda8` passed four replay directories, cache validation,
+unsafe-TKI anti-forgery, Outcome recheck and compatibility. Selected CTest was
+**6/7**: the old task-result `source_hidden` negative now has a rechecked,
+executed body and legitimately succeeds. That test is migrated to a runtime
+positive; a separate declaration-only negative and the proof-rejection rollback
+case explicitly remove the body and its association, preserving their original
+purposes. Evidence: `validation/rc13-source-hidden-cb46eda8/metadata.json`.
+This intermediate outcome is not a replacement for the final candidate rerun.
