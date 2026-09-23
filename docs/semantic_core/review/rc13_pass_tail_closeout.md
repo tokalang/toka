@@ -287,3 +287,55 @@ The shared-Token early rejection within `permission_005_partial_cede_lifecycle`
 and the two container-return directories remain separate. No main merge, push,
 freeze or publication occurred. The other worker's RFC remains untouched at
 SHA-256 `1b73b0fc46f9a700e1bdc9d0a0031614e1d9a4b398ce97f6a6423972474d70e2`.
+
+## Enum payload cleanup dependency correction (incremental candidate)
+
+The independent review of `215f225e` found that the common execution-dependency
+walker skipped enum `SubMembers`. Its accepted ordinary/task root could therefore
+still call an unassociated Token destructor from the old provider. This was
+reproduced before the fix: retained drop text counted 2, but execution counted 1.
+Counter-only evidence is preserved in
+`validation/enum-cleanup-repro-20260923/`; no invalid-free probe was executed.
+
+Correction: **`55f3ab10e413b23b71566d492e46561a800b3170`**, still awaiting incremental
+review, not Accepted or frozen. Only the common `InterfaceBody.h` traversal and
+its regression matrix changed. Multi-payload slots are visited through their
+resolved physical `SubMembers`, recursively; unit variants are skipped. Existing
+unique/shared and array traversal remains, and raw/reference still stop before
+the pointee. No syntax reconstruction, new ownership qualification, interface
+policy/version, ABI, runtime or destructor-algorithm change is included.
+
+The same traversal serves exporter body selection and consumer validation.
+Regressions check:
+
+- The original Token/i32 Pair against an unchanged old provider: checked drop 2
+  executes locally; Empty cleans no payload.
+- Two Token slots each clean once (count 4 when each checked hook adds 2).
+- Struct → generic enum → unique/shared payloads: unique cleans at task completion,
+  a remaining shared owner stays usable, and the last release cleans once.
+- Enum raw/reference payloads do not require a pointee-drop body/association and
+  leave the pointee live; only the caller's eventual owner cleanup runs.
+- Removing the required drop body, association, or both rejects; normal/shadow
+  diagnostics and object/LLVM no-artifact checks are retained. Every source-hidden
+  check also verifies the provider object's bytes remain unchanged.
+
+Fixed candidate validation:
+`/Users/zhyi/GitDP/tokalang/validation/rc13-enum-cleanup-55f3ab10-r2/metadata.json`.
+The tools build passed and selected CTest passed **5/5, 174.29 seconds**:
+`toka_source_hidden_execution`, `toka_enum_payload_cleanup`,
+`toka_stage1_indirect_parameter_cede`, `toka_task_result_projection`, and
+`toka_rc13_tail_contracts`. Tracked source hashes remained unchanged during these
+phases, including the independent RFC.
+
+The separately preserved original retained-but-unassociated audit interface now
+rejects in all four modes; stderr is identical in normal/shadow and no object/LLVM
+artifact is produced. An initial validation-wrapper parity assertion mistakenly
+compared shadow JSON stdout together with stderr. The stderr-only check was fixed
+and those four controls rerun with `validation/rc13-enum-cleanup-original-controls.py`;
+the already-passed CTest run was not rerun or relabeled. Raw logs are retained.
+Compiler SHA-256:
+`d24b502adb57fdce2264ecdc62c0b495ada863d9bed71f24cab52c1e934e0855`.
+
+No full-suite refresh or historical-count backfill; no push, freeze, E, fn_, or
+unrelated shared-Token/container work. The package remains WIP pending review of
+this common-root correction.
