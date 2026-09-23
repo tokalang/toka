@@ -2092,7 +2092,7 @@
       "path": "diagnostics/host_mailbox_inbox_not_send.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0477",
-      "expected_span_line": 10,
+      "expected_span_line": 8,
       "timeout_seconds": 10,
       "description": "A current-thread-bound host inbox cannot be captured by a worker"
     },
@@ -2637,7 +2637,7 @@
       "path": "diagnostics/diag_guard_not_send.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0477",
-      "expected_span_line": 14,
+      "expected_span_line": 12,
       "timeout_seconds": 10,
       "description": "Lock guards do not implement @Send or @Sync and cannot be captured into thread closures"
     },

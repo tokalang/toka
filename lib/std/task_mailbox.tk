@@ -84,14 +84,25 @@ impl<T: @Send> HostMailboxInbox<T> {
     }
 }
 
+// Use this adapter when the sender must cross a worker boundary. The caller
+// keeps the channel's exact sender endpoint (and its storage witness) instead
+// of extracting it from a returned aggregate after the fact.
+pub fn host_mailbox_inbox<T: @Send>(cede receiver: Receiver<T>) -> HostMailboxInbox<T> {
+    return HostMailboxInbox<T>(
+        receiver = cede receiver,
+        thread_affinity = HostThreadAffinity(*marker = null as nul *void)
+    )
+}
+
 pub shape HostMailbox<T: @Send> (
     sender#: HostMailboxSender<T>,
     inbox#: HostMailboxInbox<T>
 )
 
-// Construct this beside the host event source.  Moving HostMailboxInbox into
-// a worker is rejected by its HostThreadAffinity member; move or clone only
-// HostMailboxSender when a worker must publish an owned update.
+// Construct this convenience aggregate beside the host event source. Moving
+// HostMailboxInbox into a worker is rejected by its HostThreadAffinity member.
+// For a worker sender, create the channel at the call site and pass its
+// receiver to host_mailbox_inbox, preserving the sender's exact storage proof.
 pub fn host_mailbox<T: @Send>() -> HostMailbox<T> {
     auto pair = channel<T>()
     return HostMailbox<T>(

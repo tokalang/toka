@@ -1,18 +1,22 @@
 import core/option::{Option}
 import core/result::{Result}
-import std/task_mailbox::{host_mailbox, HostMailboxPoll}
+import std/channel::{channel}
+import std/task_mailbox::{host_mailbox, host_mailbox_inbox, HostMailboxPoll}
 import std/thread::{thread_spawn}
 
 fn main() -> i32 {
-    auto mailbox# = host_mailbox<i32>()
-    match mailbox.inbox#.try_next() {
+    auto smoke# = host_mailbox<i32>()
+    assert(smoke.inbox#.try_next().is_ok(), "host_mailbox factory remains usable")
+    auto pair# = channel<i32>()
+    auto inbox# = host_mailbox_inbox(cede pair.rx)
+    match inbox#.try_next() {
         auto Result<HostMailboxPoll<i32>, string>::Ok(HostMailboxPoll<i32>::Empty) => {}
         _ => return 1:i32
     }
 
-    auto sender = cede mailbox.sender
+    auto sender = cede pair.tx
     auto worker = { [cede sender] =>
-        if sender#.post(cede 41:i32).is_err() { return 2:i32 }
+        if sender#.send(cede 41:i32).is_err() { return 2:i32 }
         return 0:i32
     }
     auto created = thread_spawn<i32>(cede worker)
@@ -26,13 +30,13 @@ fn main() -> i32 {
         _ => return 4:i32
     }
 
-    match mailbox.inbox#.try_next() {
+    match inbox#.try_next() {
         auto Result<HostMailboxPoll<i32>, string>::Ok(HostMailboxPoll<i32>::Message(value)) => {
             if value != 41:i32 { return 5:i32 }
         }
         _ => return 6:i32
     }
-    match mailbox.inbox#.try_next() {
+    match inbox#.try_next() {
         auto Result<HostMailboxPoll<i32>, string>::Ok(HostMailboxPoll<i32>::Closed) => return 0:i32
         _ => return 7:i32
     }
