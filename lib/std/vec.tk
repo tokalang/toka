@@ -474,16 +474,10 @@ pub shape VecMutIterator<T> (
     pos#: usize = 0
 )
 
-// Owned iteration is separate from VecIterator: the latter is a borrowed
-// cursor returned by @Iterable::iter and therefore carries a source
-// dependency. VecIntoIterator owns the Vec and may move each element out.
-pub shape VecIntoIterator<T> (
-    source#: Vec<T>
-)
-
-impl<T> VecIntoIterator<T>@Encap {
-    fn drop(self#) {}
-}
+// The owned iterator is the Vec's complete value, handed off without a
+// second storage wrapper. VecIterator remains the borrowed @Iterable cursor.
+// The alias preserves the public spelling; cleanup stays with Vec itself.
+pub alias VecIntoIterator<T> = Vec<T>
 
 impl<T> Vec<T>@IntoIterable
 where:
@@ -492,11 +486,11 @@ where:
     type IntoIter = VecIntoIterator<T>
 
     pub fn into_iter(cede self) -> IntoIter {
-        return VecIntoIterator<T>(source = cede self)
+        return cede self
     }
 }
 
-impl<T> VecIntoIterator<T>@Iterator
+impl<T> Vec<T>@Iterator
 where:
     T: morphology non_reference
 {
@@ -506,7 +500,7 @@ where:
     // Vec iteration. A future storage-level drain cursor may optimize this
     // without changing the owned-iterator protocol.
     pub fn next(self#) -> Option<Item> {
-        auto outcome = self.source#.remove(0)
+        auto outcome = self#.remove(0)
         return cede outcome
     }
 }

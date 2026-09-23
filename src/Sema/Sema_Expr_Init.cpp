@@ -1575,6 +1575,13 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     // A field declaration is a declaration boundary.  It cannot turn a
     // Shared direct source into a payload-writable view for later readers.
     PermissionFlow memberFlow = getPermissionFlow(pair.second.get());
+    if (memberTypeObj && exprTypeObj && memberTypeObj->isReference() && exprTypeObj->isReference() &&
+        memberTypeObj->getPointeeType() && exprTypeObj->getPointeeType() &&
+        memberTypeObj->getPointeeType()->IsWritable && !exprTypeObj->getPointeeType()->IsWritable) {
+      // A fresh reference field may choose its handle attributes, but cannot
+      // manufacture write permission for an existing referent by coercion.
+      error(pair.second.get(), DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+    }
     if (memberFlow.Kind == PermissionFlowKind::Shared &&
         requiresPayloadWrite(memberTypeObj) &&
         !memberFlow.DirectCapability.PayloadWritable) {

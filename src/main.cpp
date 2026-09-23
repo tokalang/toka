@@ -2197,28 +2197,40 @@ int main(int argc, char **argv) {
   }
   profile.mark("codegen_setup");
 
+  auto codegenFailed = [&] {
+    if (!codegen.hasErrors() && !toka::DiagnosticEngine::hasErrors()) return false;
+    llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted during code generation.\n";
+    return true;
+  };
+
   if (verboseMode) fprintf(stderr, "Pass 1: Discovery (Registration)...\n");
   fflush(stderr);
   for (const auto &ast : astModules) {
     codegen.discover(*ast);
+    if (codegenFailed()) return 1;
   }
   if (genericModule) codegen.discover(*genericModule);
+  if (codegenFailed()) return 1;
   profile.mark("codegen_discover");
 
   if (verboseMode) fprintf(stderr, "Pass 2: Resolution (Signatures)...\n");
   fflush(stderr);
   for (const auto &ast : astModules) {
     codegen.resolveSignatures(*ast);
+    if (codegenFailed()) return 1;
   }
   if (genericModule) codegen.resolveSignatures(*genericModule);
+  if (codegenFailed()) return 1;
   profile.mark("codegen_signatures");
 
   if (verboseMode) fprintf(stderr, "Pass 3: Generation (Emission)...\n");
   fflush(stderr);
   for (const auto &ast : astModules) {
     codegen.generate(*ast);
+    if (codegenFailed()) return 1;
   }
   if (genericModule) codegen.generate(*genericModule);
+  if (codegenFailed()) return 1;
 
   codegen.finalizeGlobals();
   codegen.finalizeDebugInfo();

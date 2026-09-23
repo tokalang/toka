@@ -1,4 +1,4 @@
-// EXPECT_TKI: pub shape Item(val: i32)
+// EXPECT_TKI: pub shape Item<T>(val: T)
 // EXPECT_TKI: pub shape Carrier<T>(Value(T) = 1)
 // EXPECT_TKI: pub shape RepeatCarrier<T>(Value(T) = 1)
 // EXPECT_TKI: pub shape IndexCarrier<T>(Value(T) = 1)
@@ -7,14 +7,17 @@
 
 import core/traits::{@Encap, @Copy}
 
-auto g_item_drop_count# = 0:i32
-pub shape Item(val: i32)
-impl Item@Encap {
+// Payload T is real data; its cleanup body is available under the existing
+// retained-template policy. The native observer is one explicit external state
+// instance, not a private global re-created by source-hidden replay.
+extern fn replay_item_drop() -> void
+extern fn item_drop_count() -> i32
+pub shape Item<T>(val: T)
+impl<T> Item<T>@Encap {
     pub val
-    fn drop(self#) { g_item_drop_count += 1 }
+    fn drop(self#) { replay_item_drop() }
 }
-impl Item { pub fn read(self) -> i32 { return self.val } }
-pub fn item_drop_count() -> i32 { return g_item_drop_count }
+impl<T: @Copy> Item<T> { pub fn read(self) -> T { return self.val } }
 
 // T is a complete value, not an implicit request to dereference an unknown hat.
 // Transport it here; inspect the concrete payload in the consumer.

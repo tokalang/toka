@@ -39,7 +39,7 @@ bool Sema::byteBufferSchema(SourceLocation location, const std::string &module) 
   // Changes, including otherwise harmless edits, require refreshing the reviewed
   // contract. No filesystem path or user-chosen type name establishes trust.
   static const std::map<std::string, std::string> schemas = {
-      {"std/vec", "225d4425a17bf0b052ad6f5b8325f814e74d0f38ca0f743d4d808769f8bdddcb"},
+      {"std/vec", "3afa8fbcfbd5cf281119e0744636a5052ab5fd79e08d07f248b49de5438b011f"},
       {"std/bytes", "5eddfd4abf0b66da5ef09d234a56af884f42361b22d739bf6cc47fb09d4853b4"},
       {"std/net", "c99587738ef2cf5058cf14877bb1e069be079e87cbcdd8b7d5251cb3b5fc114a"},
   };

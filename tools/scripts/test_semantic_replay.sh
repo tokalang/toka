@@ -81,6 +81,18 @@ run_case() {
     local lib_obj="$work_dir/lib.o"
     local lib_tki="$work_dir/lib.tki"
     local lib_hidden="$work_dir/lib.tk.source-hidden"
+    local support_objects=()
+    if [ -f "$case_dir/replay_support.c" ]; then
+        local support_obj="$work_dir/replay_support.o"
+        if ! "${CC:-cc}" -c "$case_dir/replay_support.c" -o "$support_obj" \
+            > "$work_dir/support.out" 2> "$work_dir/support.err"; then
+            echo "FAIL $case_name: native observation support compilation failed"
+            sed 's/^/  | /' "$work_dir/support.err"
+            failed=$((failed + 1))
+            return
+        fi
+        support_objects+=("$support_obj")
+    fi
 
     if ! "$TOKAC_ABS" -c "$lib_src" -o "$lib_obj" > "$work_dir/lib.out" 2> "$work_dir/lib.err"; then
         echo "FAIL $case_name: provider compilation failed"
@@ -182,7 +194,7 @@ run_case() {
         if grep -q "SOURCE_BACKED_RUNTIME" "$source_consumer"; then
             local source_exe="$work_dir/$source_stem.source.exe"
             if ! TOKA_BUILD_DIR="$work_dir/source-build" TOKA_USE_LIB_CACHE=0 \
-                "$TOKAC_ABS" "$source_consumer" "$lib_obj" -o "$source_exe" \
+                "$TOKAC_ABS" "$source_consumer" "$lib_obj" "${support_objects[@]}" -o "$source_exe" \
                 > "$work_dir/$source_stem.source.run-build.out" \
                 2> "$work_dir/$source_stem.source.run-build.err"; then
                 echo "FAIL $case_name/$source_stem: source-backed runtime build failed"
@@ -245,10 +257,10 @@ run_case() {
         local stem
         stem="$(basename "$consumer" .tk)"
         local exe="$work_dir/$stem.exe"
-        local compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "$lib_obj" "-o" "$exe")
+        local compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "$lib_obj" "${support_objects[@]}" "-o" "$exe")
         local compile_only=0
         if grep -q "SOURCELESS_RECHECKED_BODY" "$consumer"; then
-            compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "-o" "$exe")
+            compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "${support_objects[@]}" "-o" "$exe")
         fi
         if grep -q "COMPILE_ONLY" "$consumer"; then
             compile_only=1

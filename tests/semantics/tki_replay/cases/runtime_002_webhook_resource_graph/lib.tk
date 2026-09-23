@@ -17,10 +17,9 @@ impl FileBinding@Encap {
     fn drop(self#) {}
 }
 
-pub shape TriggerRule(
-    Leaf(string) |
-    And(Vec<TriggerRule>)
-)
+// A flat preorder encoding owns its leaf text. Nodes use length/arity values,
+// not recursive raw-backed containers or borrowed interior views.
+pub shape TriggerRule(encoded: string)
 
 impl TriggerRule@Encap {
     fn drop(self#) {}
@@ -28,25 +27,58 @@ impl TriggerRule@Encap {
 
 impl TriggerRule {
     pub fn score(self) -> i32 {
-        match self {
-            auto TriggerRule::Leaf(&text) => return text.len() as i32
-            auto TriggerRule::And(&children) => {
-                auto total# = 100:i32
-                auto index# = 0:usize
-                loop index < children.len() {
-                    total += children.borrow(index).score()
-                    index += 1:usize
-                }
-                return total
+        auto text = self.encoded.as_str()
+        auto pos# = 0:usize
+        auto pending# = 1:usize
+        auto total# = 0:i32
+        loop pending > 0 {
+            assert(pos < text.len(), "rule node")
+            auto kind = text.byte_at(pos)
+            pos += 1
+            auto count# = 0:usize
+            auto digits# = 0:usize
+            loop pos < text.len() && text.byte_at(pos) >= 48 && text.byte_at(pos) <= 57 {
+                auto digit = (text.byte_at(pos) - 48) as usize
+                assert(digit <= text.len() && count <= (text.len() - digit) / 10, "bounded rule length")
+                count = count * 10 + digit
+                pos += 1
+                digits += 1
+            }
+            assert(digits > 0 && pos < text.len() && text.byte_at(pos) == 58, "rule header")
+            pos += 1
+            pending -= 1
+            if kind == 65 {
+                assert(count <= text.len() - pending, "bounded rule arity")
+                pending += count
+                total += 100
+            } else {
+                assert(kind == 76 && count <= text.len() - pos, "rule leaf")
+                total += count as i32
+                pos += count
             }
         }
+        assert(pos == text.len(), "complete rule tree")
+        return total
+    }
+}
+
+// This fixture's schema has exactly two bindings per hook. Retain both real
+// owning records instead of a raw-backed inner Vec; the outer collection is
+// still dynamically grown, moved, removed from and cleared by the consumer.
+pub shape FileBindings(first: FileBinding, second: FileBinding)
+impl FileBindings {
+    pub fn len(self) -> usize { return 2 }
+    pub fn borrow(self, index: usize) -> &FileBinding <- self {
+        assert(index < 2, "binding index")
+        if index == 0 { return &(self.first) }
+        return &(self.second)
     }
 }
 
 pub shape Hook(
     prefix: i64,
     name: string,
-    bindings: Vec<FileBinding>,
+    bindings: FileBindings,
     rule: TriggerRule,
     suffix: i32
 )
@@ -74,33 +106,26 @@ fn binding(ordinal: i64, source: str, enabled: bool,
 }
 
 fn nested_rule() -> TriggerRule {
-    auto nested# = Vec<TriggerRule>::new()
-    nested#.push(cede TriggerRule::Leaf(string::from("nested")))
-
-    auto outer# = Vec<TriggerRule>::new()
-    outer#.push(cede TriggerRule::Leaf(string::from("allow")))
-    outer#.push(cede TriggerRule::And(cede nested))
-    outer#.push(cede TriggerRule::Leaf(string::from("deny")))
-    return TriggerRule::And(cede outer)
+    return TriggerRule(encoded = string::from("A3:L5:allowA1:L6:nestedL4:deny"))
 }
 
 fn hook(seed: i32, base: i64, name: str, first_source: str,
         second_source: str, suffix_base: i32) -> Hook {
-    auto bindings# = Vec<FileBinding>::new()
-    bindings#.push(cede binding(
+    auto first = binding(
         base + seed as i64,
         first_source,
         true,
         "/srv/first",
         suffix_base + seed
-    ))
-    bindings#.push(cede binding(
+    )
+    auto second = binding(
         base + 100:i64 + seed as i64,
         second_source,
         false,
         "/srv/second",
         suffix_base + 100:i32 + seed
-    ))
+    )
+    auto bindings = FileBindings(first = cede first, second = cede second)
     return Hook(
         prefix = base * 10:i64 + seed as i64,
         name = string::from(name),
@@ -116,8 +141,8 @@ pub fn make_hooks(seed: i32) -> Result<Vec<Hook>, string> {
     }
 
     auto hooks# = Vec<Hook>::new()
-    hooks#.push(cede hook(seed, 1000:i64, "alpha-hook", "/tmp/a", "/tmp/b", 10:i32))
-    hooks#.push(cede hook(seed, 2000:i64, "beta-hook", "/tmp/c", "/tmp/d", 20:i32))
+    hooks#.push(hook(seed, 1000:i64, "alpha-hook", "/tmp/a", "/tmp/b", 10:i32))
+    hooks#.push(hook(seed, 2000:i64, "beta-hook", "/tmp/c", "/tmp/d", 20:i32))
     return Result<Vec<Hook>, string>::Ok(cede hooks)
 }
 

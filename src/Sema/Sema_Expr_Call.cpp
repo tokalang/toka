@@ -6121,6 +6121,9 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
     groupFacts.Destination = TransferDestination::AggregateMember;
     groupFacts.ExpectedSnapshotRevision = providedSnapshot->Revision;
     std::set<const ShapeMember *> seen;
+    bool borrowedFields = false;
+    std::vector<PlaceId> fieldReferents;
+    std::vector<RootSymbolId> fieldRoots;
     if (complete) for (const auto &entry : init->Members) {
       auto field = std::find_if(payload->Decl->Members.begin(), payload->Decl->Members.end(),
           [&](const ShapeMember &candidate) {
@@ -6141,18 +6144,39 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
           static_cast<unsigned>(groupFacts.Items.size()), false, true,
           entry.second->ResolvedType, false);
       const auto &prepared = item.Prepared;
-      complete &= item.admitted() && prepared.DependencyFactsComplete &&
-          prepared.Dependency == TransferDependencyKind::None &&
-          !prepared.ReferentPlace && prepared.DependencyRoots.empty() &&
-          prepared.StructuredReferentPlaces.empty() && prepared.StaticStorageOrigins.empty();
+      complete &= item.admitted() && prepared.DependencyFactsComplete && prepared.StaticStorageOrigins.empty();
+      if (prepared.Dependency == TransferDependencyKind::Borrowed &&
+          prepared.ReferentPlace && !prepared.DependencyRoots.empty()) {
+        borrowedFields = true;
+        fieldReferents.push_back(*prepared.ReferentPlace);
+        fieldReferents.insert(fieldReferents.end(), prepared.StructuredReferentPlaces.begin(),
+                             prepared.StructuredReferentPlaces.end());
+        fieldRoots.insert(fieldRoots.end(), prepared.DependencyRoots.begin(), prepared.DependencyRoots.end());
+      } else {
+        complete &= prepared.Dependency == TransferDependencyKind::None &&
+            !prepared.ReferentPlace && prepared.DependencyRoots.empty() && prepared.StructuredReferentPlaces.empty();
+      }
       groupFacts.Items.push_back(prepared);
     }
     if (complete && prepareExplicitCedeNonCallGroupPlan(groupFacts).admitted()) {
-      facts.Dependency = TransferDependencyKind::None;
       facts.DependencyFactsComplete = true;
-      facts.ReferentPlace.reset();
-      facts.DependencyRoots.clear();
-      facts.TemporaryEligibility = TransferTemporaryEligibility::Eligible;
+      if (borrowedFields) {
+        // This is a dependent allocation, not an independent temporary.
+        // Keep the exact validated field origins and the existing lifetime
+        // checks; neither the owner hat nor normal Sema success erases them.
+        facts.Dependency = TransferDependencyKind::Borrowed;
+        if (!facts.ReferentPlace) facts.ReferentPlace = fieldReferents.front();
+        facts.StructuredReferentPlaces.insert(facts.StructuredReferentPlaces.end(),
+                                             fieldReferents.begin(), fieldReferents.end());
+        facts.DependencyRoots.insert(facts.DependencyRoots.end(), fieldRoots.begin(), fieldRoots.end());
+        facts.DestinationDependencyAccepted = true;
+        facts.TemporaryEligibility = TransferTemporaryEligibility::Ineligible;
+      } else {
+        facts.Dependency = TransferDependencyKind::None;
+        facts.ReferentPlace.reset();
+        facts.DependencyRoots.clear();
+        facts.TemporaryEligibility = TransferTemporaryEligibility::Eligible;
+      }
     }
   }
   // Only consume a completed source-instance summary with discharged proof

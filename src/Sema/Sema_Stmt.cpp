@@ -747,6 +747,17 @@ void Sema::checkStmt(Stmt *S) {
           expectedRetObj = resolveType(toka::Type::fromString(CurrentFunctionReturnType));
       }
 
+      auto lookupReturnBinding = [&](const VariableExpr *variable, SymbolInfo &info) {
+        SymbolInfo *binding = nullptr;
+        std::string name;
+        if (variable->ResolvedBindingID)
+          CurrentScope->findSymbolByID(variable->ResolvedBindingID, binding);
+        else
+          CurrentScope->findVariableWithDeref(variable->Name, binding, name);
+        if (!binding) return false;
+        info = *binding;
+        return true;
+      };
       std::set<std::string> visitedBorrowLikeTypes;
       std::function<bool(std::shared_ptr<toka::Type>)> isBorrowLikeType =
           [&](std::shared_ptr<toka::Type> t) -> bool {
@@ -811,11 +822,20 @@ void Sema::checkStmt(Stmt *S) {
       std::function<bool(Expr *)> carriesLifeDependencyExpr = [&](Expr *E) -> bool {
         if (!E)
           return false;
+        if (auto *cede = dynamic_cast<CedeExpr *>(E))
+          return carriesLifeDependencyExpr(cede->Value.get());
+        if (auto *unsafe = dynamic_cast<UnsafeExpr *>(E))
+          return carriesLifeDependencyExpr(unsafe->Expression.get());
+        if (auto *selector = dynamic_cast<UnaryExpr *>(E);
+            selector && selector->ResolvedType &&
+            ((selector->Op == TokenType::Caret && selector->ResolvedType->isUniquePtr()) ||
+             (selector->Op == TokenType::Tilde && selector->ResolvedType->isSharedPtr())))
+          return carriesLifeDependencyExpr(selector->RHS.get());
         if (auto *Cast = dynamic_cast<CastExpr *>(E))
           return carriesLifeDependencyExpr(Cast->Expression.get());
         if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
           SymbolInfo info;
-          if (CurrentScope->lookup(Var->Name, info)) {
+          if (lookupReturnBinding(Var, info)) {
             return !info.BorrowedFrom.empty() || !info.LifeDependencySet.empty();
           }
         }
@@ -855,6 +875,7 @@ void Sema::checkStmt(Stmt *S) {
           returnsBorrowExpr(Ret->ReturnValue.get()) ||
           (carriesLifeDependencyExpr(Ret->ReturnValue.get()) &&
            (!expectedRetObj || expectedRetObj->isUnknown() ||
+            expectedRetObj->isUniquePtr() || expectedRetObj->isSharedPtr() ||
             isBorrowLikeType(expectedRetObj) || isBorrowLikeType(ExprTypeObj)));
 
       // A named record's already prepared structural dependencies must enter
@@ -863,8 +884,12 @@ void Sema::checkStmt(Stmt *S) {
       // does not classify any new type as borrowed.
       if (m_EnableStage1ExplicitCallerCede && returnSourcePlan &&
           returnSourcePlan->Prepared.SourceCategory == TransferSourceCategory::NamedSourcePlace &&
-          returnSourcePlan->Prepared.SourceView == TransferSourceView::DirectValue &&
-          returnSourcePlan->Prepared.Ownership == TransferOwnershipKind::PlainValue &&
+          ((returnSourcePlan->Prepared.SourceView == TransferSourceView::DirectValue &&
+            returnSourcePlan->Prepared.Ownership == TransferOwnershipKind::PlainValue) ||
+           (returnSourcePlan->Prepared.SourceView == TransferSourceView::UniqueHandle &&
+            returnSourcePlan->Prepared.Ownership == TransferOwnershipKind::UniqueOwner) ||
+           (returnSourcePlan->Prepared.SourceView == TransferSourceView::SharedHandle &&
+            returnSourcePlan->Prepared.Ownership == TransferOwnershipKind::SharedOwner)) &&
           returnSourcePlan->Prepared.Dependency == TransferDependencyKind::Structural &&
           returnSourcePlan->Prepared.DependencyFactsComplete &&
           !returnSourcePlan->Prepared.DependencyRoots.empty())
@@ -994,6 +1019,12 @@ void Sema::checkStmt(Stmt *S) {
             if (auto *Addr = dynamic_cast<UnaryExpr *>(E)) {
               if (Addr->Op == TokenType::Ampersand) {
                 recordAddressDependency(Addr, Addr->RHS.get(), out);
+              } else if (Addr->ResolvedType &&
+                         ((Addr->Op == TokenType::Caret && Addr->ResolvedType->isUniquePtr()) ||
+                          (Addr->Op == TokenType::Tilde && Addr->ResolvedType->isSharedPtr()))) {
+                // Handle selection preserves actual payload dependencies;
+                // the integer '~' operation is deliberately excluded.
+                collectDepsInto(Addr->RHS.get(), out);
               }
             }
             // Case 1b: AddressOfExpr Borrow (implicit/explicit borrow alignment)
@@ -1003,7 +1034,7 @@ void Sema::checkStmt(Stmt *S) {
             // Case 2: Returning existing reference variable `x`
             else if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
               SymbolInfo info;
-              if (CurrentScope->lookup(Var->Name, info)) {
+              if (lookupReturnBinding(Var, info)) {
                 if (!info.BorrowedFrom.empty()) {
                   recordDependencyPathTo(out, info.BorrowedFrom);
                 }
@@ -1201,6 +1232,11 @@ void Sema::checkStmt(Stmt *S) {
               collectMemberDeps(unsafe->Expression.get());
             } else if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
               collectMemberDeps(Cast->Expression.get());
+            } else if (auto *selector = dynamic_cast<UnaryExpr *>(E);
+                       selector && selector->ResolvedType &&
+                       ((selector->Op == TokenType::Caret && selector->ResolvedType->isUniquePtr()) ||
+                        (selector->Op == TokenType::Tilde && selector->ResolvedType->isSharedPtr()))) {
+              collectMemberDeps(selector->RHS.get());
             } else if (auto *Bin = dynamic_cast<BinaryExpr *>(E)) {
               if (Bin->Op == "=")
                 collectMemberDeps(Bin->RHS.get());
@@ -1220,7 +1256,7 @@ void Sema::checkStmt(Stmt *S) {
               }
             } else if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
               SymbolInfo info;
-              if (CurrentScope->lookup(Var->Name, info)) {
+              if (lookupReturnBinding(Var, info)) {
                 for (const auto &pair : info.FieldDependencySet) {
                   returnedMemberDeps[pair.first].insert(pair.second.begin(),
                                                         pair.second.end());
@@ -2724,9 +2760,28 @@ void Sema::checkStmt(Stmt *S) {
     // Preserve actual borrowed-field origins of an initialized record.  The
     // return planner must not later substitute the function's declared
     // dependency ceiling for missing binding provenance.
-    if (auto *init = dynamic_cast<InitStructExpr *>(Var->Init.get());
-        init && Info.TypeObj && !HasError) {
-      auto shape = std::dynamic_pointer_cast<ShapeType>(Info.TypeObj);
+    Expr *construction = Var->Init.get();
+    while (auto *cast = dynamic_cast<CastExpr *>(construction)) {
+      if (cast->Kind != CastKind::Implicit && cast->Kind != CastKind::Ascription) break;
+      construction = cast->Expression.get();
+    }
+    auto *recordInitializer = dynamic_cast<InitStructExpr *>(Var->Init.get());
+    auto recordType = Info.TypeObj;
+    if (auto *allocation = dynamic_cast<NewExpr *>(construction);
+        allocation && !allocation->ArraySize && recordType &&
+        (recordType->isUniquePtr() || recordType->isSharedPtr())) {
+      // The allocation owns the descriptor, not the field's referent. Reuse
+      // the same checked field-origin and PAL registration as a value record.
+      auto *initializer = dynamic_cast<InitStructExpr *>(allocation->Initializer.get());
+      auto payload = std::dynamic_pointer_cast<ShapeType>(recordType->getPointeeType());
+      auto initialized = initializer ? std::dynamic_pointer_cast<ShapeType>(initializer->ResolvedType) : nullptr;
+      if (payload && initialized && payload->Decl && payload->Decl == initialized->Decl) {
+        recordInitializer = initializer;
+        recordType = payload;
+      }
+    }
+    if (auto *init = recordInitializer; init && recordType && !HasError) {
+      auto shape = std::dynamic_pointer_cast<ShapeType>(recordType);
       if (shape && shape->Decl) {
         std::map<std::string, std::shared_ptr<Type>> substitutions;
         if (shape->GenericArgs.size() == shape->Decl->GenericParams.size()) {

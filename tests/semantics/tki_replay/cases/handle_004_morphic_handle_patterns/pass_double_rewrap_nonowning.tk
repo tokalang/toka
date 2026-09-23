@@ -5,11 +5,11 @@ import ./lib::{Item, RepeatCarrier, item_drop_count}
 fn main() -> i32 {
     auto before = item_drop_count()
     {
-        auto ~shared_item = new Item(val = 122)
-        auto shared_carrier = RepeatCarrier<~Item>::Value(~shared_item)
+        auto ~shared_item = new Item<i32>(val = 122)
+        auto shared_carrier = RepeatCarrier<~Item<i32>>::Value(~shared_item)
         auto ~transported = shared_carrier.unsafe_exact()
-        auto first = RepeatCarrier<~Item>::Value(~transported)
-        auto second = RepeatCarrier<~Item>::Value(~transported)
+        auto first = RepeatCarrier<~Item<i32>>::Value(~transported)
+        auto second = RepeatCarrier<~Item<i32>>::Value(~transported)
         auto ~first_value = first.unsafe_exact()
         auto ~second_value = second.unsafe_exact()
         assert(first_value.val == 122 && second_value.val == 122,
@@ -18,22 +18,22 @@ fn main() -> i32 {
     assert(item_drop_count() == before + 1,
            "shared repeated transport must drop the payload exactly once")
 
-    auto raw_item# = Item(val = 123)
-    auto *raw_ptr = *raw_item as *Item
-    auto raw_carrier = RepeatCarrier<*Item>::Value(*raw_ptr)
+    auto raw_item# = Item<i32>(val = 123)
+    auto *raw_ptr = *raw_item as *Item<i32>
+    auto raw_carrier = RepeatCarrier<*Item<i32>>::Value(*raw_ptr)
     auto *transported_raw = raw_carrier.unsafe_exact()
-    auto raw_first = RepeatCarrier<*Item>::Value(*transported_raw)
-    auto raw_second = RepeatCarrier<*Item>::Value(*transported_raw)
+    auto raw_first = RepeatCarrier<*Item<i32>>::Value(*transported_raw)
+    auto raw_second = RepeatCarrier<*Item<i32>>::Value(*transported_raw)
     auto *raw_a = raw_first.unsafe_exact()
     auto *raw_b = raw_second.unsafe_exact()
     assert(raw_a.val == 123 && raw_b.val == 123,
            "raw repeated transport must copy identity")
 
-    auto ref_item = Item(val = 124)
-    auto ref_carrier = RepeatCarrier<&Item>::Value(&ref_item)
+    auto ref_item = Item<i32>(val = 124)
+    auto ref_carrier = RepeatCarrier<&Item<i32>>::Value(&ref_item)
     auto &transported_ref = ref_carrier.unsafe_exact()
-    auto ref_first = RepeatCarrier<&Item>::Value(&transported_ref)
-    auto ref_second = RepeatCarrier<&Item>::Value(&transported_ref)
+    auto ref_first = RepeatCarrier<&Item<i32>>::Value(&transported_ref)
+    auto ref_second = RepeatCarrier<&Item<i32>>::Value(&transported_ref)
     auto &ref_a = ref_first.unsafe_exact()
     auto &ref_b = ref_second.unsafe_exact()
     assert(ref_a.val == 124 && ref_b.val == 124,

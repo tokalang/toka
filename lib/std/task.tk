@@ -214,7 +214,8 @@ pub fn task_unsubscribe_completion<T>(handle: TaskHandle<T>, wait_id: u32, slot_
     return false
 }
 
-pub fn __toka_detach_task(nul *task: void) {
+// Explicit detach is distinct from core/task's reserved handle-drop hook.
+fn detach_live_task(nul *task: void) {
     if *task != null {
         auto *live_task = task.unwrap()
         core_task::toka_task_detach(*live_task)
@@ -467,7 +468,7 @@ pub fn block_on<T>(handle: TaskHandle<T>) -> T <- handle {
 pub fn detach_forget<T>(cede handle: TaskHandle<T>) {
     auto owned_handle# = cede handle
     if owned_handle.*coro_handle != null {
-        __toka_detach_task(owned_handle.*coro_handle)
+        detach_live_task(owned_handle.*coro_handle)
     }
     owned_handle.*coro_handle = null as nul *void
 }

@@ -3,8 +3,8 @@
 import ./lib::{Item, RepeatCarrier, duplicate_move}
 
 fn main() -> i32 {
-    auto ^item = new Item(val = 121)
-    auto carrier = RepeatCarrier<^Item>::Value(cede ^item)
+    auto ^item = new Item<i32>(val = 121)
+    auto carrier = RepeatCarrier<^Item<i32>>::Value(cede ^item)
     duplicate_move(cede carrier)
     return 0
 }

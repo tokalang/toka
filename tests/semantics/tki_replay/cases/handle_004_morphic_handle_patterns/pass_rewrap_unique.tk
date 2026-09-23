@@ -3,8 +3,8 @@
 import ./lib::{Carrier, Item}
 
 fn main() -> i32 {
-    auto ^value = new Item(val = 76)
-    auto carrier = Carrier<^Item>::Value(cede ^value)
+    auto ^value = new Item<i32>(val = 76)
+    auto carrier = Carrier<^Item<i32>>::Value(cede ^value)
     auto rewrapped = carrier.rewrap()
     auto ^result = rewrapped.unsafe_exact()
     assert(result.val == 76, "unique aggregate transport failed")

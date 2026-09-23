@@ -3,8 +3,8 @@
 import ./lib::{Carrier, Item}
 
 fn main() -> i32 {
-    auto value = Item(val = 106)
-    auto carrier = Carrier<&Item>::Value(&value)
+    auto value = Item<i32>(val = 106)
+    auto carrier = Carrier<&Item<i32>>::Value(&value)
     auto rewrapped = carrier.rewrap()
     auto &result = rewrapped.unsafe_exact()
     assert(result.val == 106, "reference aggregate transport failed")
