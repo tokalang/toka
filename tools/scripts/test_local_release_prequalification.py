@@ -2,6 +2,7 @@
 
 """Contract checks for the local RC prequalification entry point."""
 
+import ast
 import json
 from pathlib import Path
 import subprocess
@@ -20,6 +21,20 @@ def require(condition, message):
 
 
 def main():
+    gate = ast.parse((ROOT / "tools/scripts/release_gate.py").read_text(encoding="utf-8"))
+    stages = next(node.value for node in ast.walk(gate)
+                  if isinstance(node, ast.Assign) and
+                  any(isinstance(target, ast.Name) and target.id == "stages" for target in node.targets))
+    build_stage = stages.elts[0]
+    require(ast.literal_eval(build_stage.elts[0]) == "build", "build must remain the first release stage")
+    commands = build_stage.elts[1].elts
+    def literals(command):
+        return [item.value for item in command.elts if isinstance(item, ast.Constant)]
+    prepare = next(i for i, command in enumerate(commands)
+                   if "--prepare-runtime-only" in literals(command))
+    ctest = next(i for i, command in enumerate(commands) if "ctest" in literals(command))
+    require(0 < prepare < ctest, "fresh source runtime objects must be prepared after build and before CTest")
+
     with tempfile.TemporaryDirectory(prefix="toka-local-prequalification-test-") as temporary:
         output = Path(temporary) / "output"
         command = [

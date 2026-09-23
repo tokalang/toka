@@ -297,8 +297,8 @@ def main():
     stages = (
         ("build", (
             ["cmake", "--build", str(build_dir), "--parallel", env["CORES"]],
-            ["ctest", "--test-dir", str(build_dir), "--output-on-failure"],
             [sys.executable, "tools/scripts/test_pass.py", "--prepare-runtime-only"],
+            ["ctest", "--test-dir", str(build_dir), "--output-on-failure"],
             toka_command,
         )),
         ("pass", (
