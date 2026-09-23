@@ -116,19 +116,19 @@ impl Database {
         loop i < self.rows.len() {
             auto &row = self.rows.borrow(i)
             if !inserted && key < row.key {
-                append_record(output, key, value)
+                append_record(output#, key, value)
                 inserted = true
             }
             if row.key == key {
-                append_record(output, key, value)
+                append_record(output#, key, value)
                 inserted = true
             } else {
-                append_record(output, row.key, row.value)
+                append_record(output#, row.key, row.value)
             }
             i += 1
         }
-        if !inserted { append_record(output, key, value) }
-        return output
+        if !inserted { append_record(output#, key, value) }
+        return cede output
     }
 
     fn encode_without(self, key: u64) -> string {
@@ -136,10 +136,10 @@ impl Database {
         auto i# = 0:usize
         loop i < self.rows.len() {
             auto &row = self.rows.borrow(i)
-            if row.key != key { append_record(output, row.key, row.value) }
+            if row.key != key { append_record(output#, row.key, row.value) }
             i += 1
         }
-        return output
+        return cede output
     }
 }
 
@@ -278,7 +278,7 @@ fn decode(content: string) -> Result<Vec<Row>, DbError> {
         }
         auto decoded = decode_value(value_hex)
         if decoded.is_err() { return Result<Vec<Row>, DbError>::Err(decoded.unwrap_err()) }
-        rows#.push(cede Row(key = key, value = decoded.unwrap()))
+        rows#.push(Row(key = key, value = decoded.unwrap()))
         previous = key
         has_previous = true
     }
