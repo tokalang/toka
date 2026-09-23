@@ -403,15 +403,16 @@ InterfaceBodyUses TKIExporter::inspectCheckedBody(const FunctionDecl &function) 
 void TKIExporter::selectLocalBodies(const Module &module) {
     m_LocalBodies.clear();
     std::set<const FunctionDecl *> available;
-    auto add = [&](const FunctionDecl *fn) {
-        if (fn->Body && fn->GenericParams.empty() && !fn->IsClosureInvoke) {
+    std::set<const FunctionDecl *> templates;
+    auto add = [&](const FunctionDecl *fn, bool genericImpl = false) {
+        if (fn->Body && !fn->IsClosureInvoke) {
             available.insert(fn);
+            if (genericImpl || !fn->GenericParams.empty()) templates.insert(fn);
         }
     };
     for (const auto &fn : module.Functions) add(fn.get());
     for (const auto &impl : module.Impls)
-        if (impl->GenericParams.empty())
-            for (const auto &fn : impl->Methods) add(fn.get());
+        for (const auto &fn : impl->Methods) add(fn.get(), !impl->GenericParams.empty());
     std::set<const FunctionDecl *> visited;
     std::function<void(const FunctionDecl *)> walk = [&](const FunctionDecl *fn) {
         if (!fn || !visited.insert(fn).second) return;
@@ -437,7 +438,7 @@ void TKIExporter::selectLocalBodies(const Module &module) {
         for (const auto &type : uses.ValueTypes) cleanup(type);
     };
     for (auto *fn : available)
-        if (fn->InterfaceLocalBody || fn->Effect == EffectKind::Async ||
+        if (templates.count(fn) || fn->InterfaceLocalBody || fn->Effect == EffectKind::Async ||
             (fn->ResolvedReturnType && (fn->ResolvedReturnType->isFunction() ||
                                       fn->ResolvedReturnType->isDynFn()))) walk(fn);
 }

@@ -673,25 +673,30 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       meta.LocalBodyPolicy == TOKA_LOCAL_BODY_POLICY;
   if (module->HasLocalBodyPolicy) {
     std::map<std::string, FunctionDecl *> definitions;
+    std::set<FunctionDecl *> templates;
     for (size_t i = 0; i < module->Functions.size(); ++i)
       definitions["f/" + std::to_string(i)] = module->Functions[i].get();
     for (size_t i = 0; i < module->Impls.size(); ++i)
-      if (module->Impls[i]->GenericParams.empty())
-        for (size_t j = 0; j < module->Impls[i]->Methods.size(); ++j)
-          definitions["i/" + std::to_string(i) + "/" + std::to_string(j)] =
-              module->Impls[i]->Methods[j].get();
+      for (size_t j = 0; j < module->Impls[i]->Methods.size(); ++j) {
+        definitions["i/" + std::to_string(i) + "/" + std::to_string(j)] =
+            module->Impls[i]->Methods[j].get();
+        if (!module->Impls[i]->GenericParams.empty())
+          templates.insert(module->Impls[i]->Methods[j].get());
+      }
     std::istringstream entries(meta.LocalBodyDefinitions);
     std::set<std::string> seen;
     std::string id;
     while (std::getline(entries, id, ',')) {
       auto found = definitions.find(id);
       if (!seen.insert(id).second || found == definitions.end() ||
-          !found->second->Body || !found->second->GenericParams.empty()) {
+          !found->second->Body) {
         DiagnosticEngine::report(DiagLoc{}, DiagID::ERR_FILE_IO,
                                  "Invalid executable interface definition: " + id);
         return false;
       }
-      found->second->InterfaceLocalBody = true;
+      if (!found->second->GenericParams.empty() || templates.count(found->second))
+        found->second->InterfaceTemplateBody = true;
+      else found->second->InterfaceLocalBody = true;
     }
     if (seen.empty()) {
       DiagnosticEngine::report(DiagLoc{}, DiagID::ERR_FILE_IO,

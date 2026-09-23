@@ -2560,7 +2560,10 @@ public:
   std::unique_ptr<BlockStmt> InterfaceSourceBody;
   // Resolver policy selects a body; successful Sema checking qualifies it.
   bool InterfaceLocalBody = false;
+  bool InterfaceTemplateBody = false; // deferred until a concrete instance qualifies
   bool InterfaceLocalBodyValidated = false;
+  FunctionDecl *DefinitionBodyOwner = nullptr; // synthesized invoke's checked parent
+  const FunctionDecl *InterfaceDefinitionOrigin = nullptr; // original definition of a clone
 
   bool IsVariadic = false;
   bool IsClosureInvoke = false;
@@ -2668,6 +2671,7 @@ public:
     n->NativeSyncFactory = NativeSyncFactory;
     n->ClosureReceiver = ClosureReceiver;
     n->TemplateOrigin = TemplateOrigin;
+    n->InterfaceDefinitionOrigin = InterfaceDefinitionOrigin ? InterfaceDefinitionOrigin : this;
     n->Stage0EnclosingGenericTypeNames = Stage0EnclosingGenericTypeNames;
     n->Loc = Loc;
     n->ResolvedReturnType = ResolvedReturnType;

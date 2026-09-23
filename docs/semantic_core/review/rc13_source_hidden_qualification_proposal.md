@@ -161,3 +161,22 @@ positive; a separate declaration-only negative and the proof-rejection rollback
 case explicitly remove the body and its association, preserving their original
 purposes. Evidence: `validation/rc13-source-hidden-cb46eda8/metadata.json`.
 This intermediate outcome is not a replacement for the final candidate rerun.
+
+The follow-up fixed `a4b47072` run passed **7/7 selected CTests**, all four replay
+directories and the same cache/anti-forgery/Outcome/compatibility scripts with no
+tracked-source changes (`validation/rc13-source-hidden-a4b47072/metadata.json`).
+An additional generic probe returned 14 but still used LinkOnceODR, which did
+not meet the execution-binding requirement. The final candidate therefore also
+associates existing retained templates with deferred policy: only qualified
+concrete instances and their selected dependency closure become local. Ordinary
+unselected probes are not promoted just because they entered an instantiation
+cache. Clone provenance retains the original definition without reclassifying
+generic impl methods as ordinary function-template cache entries.
+
+The package matrix now primes a provider specialization, changes the interface
+body and requires internal linkage plus result 14 for both generic functions
+and generic impl methods. This does not disclose extra template bodies (they
+were already retained), alter native layouts or authorize missing dependencies.
+The declaration-only rollback control additionally requires
+`TaskResultOriginsUnproven` at the actual consuming call, not an earlier error
+which would trivially leave the owner untouched.

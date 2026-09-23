@@ -94,6 +94,43 @@ pub fn make() -> fn(i32) -> i32 {
               1, 'function identity is not remapped')
         print('PASS policy/helper/identity fail-closed', flush=True)
 
+        generic = provider('''pub fn make<T>(unused: T) -> fn(i32) -> i32 {
+    return { value => value + 1 }:fn(i32) -> i32
+}
+pub fn prime() -> i32 { auto callback = make(0:i32); return callback(4) }
+''')
+        assert generic.count('value + 1') == 1
+        (work/'lib.tki').write_text(generic.replace('value + 1', 'value + 10'))
+        check('import ./lib::{make}\nfn main() -> i32 { auto callback = make(0:i32); return callback(4) }\n', result=14)
+        ir = (work/'main.ll').read_text()
+        assert re.search(r'define internal .*@__toka_gfn_', ir), ir
+        assert not re.search(r'define linkonce_odr .*@__toka_gfn_', ir), ir
+        print('PASS qualified generic instance is local despite primed provider', flush=True)
+
+        generic_method = provider('''pub shape Factory<T>(seed: T)
+impl<T> Factory<T> {
+    pub fn make(self) -> fn(i32) -> i32 { return { value => value + 1 }:fn(i32) -> i32 }
+}
+pub fn prime() -> i32 {
+    auto factory = Factory<i32>(seed = 0)
+    auto callback = factory.make()
+    return callback(4)
+}
+''')
+        assert generic_method.count('value + 1') == 1
+        (work/'lib.tki').write_text(generic_method.replace('value + 1', 'value + 10'))
+        check('''import ./lib::{Factory}
+fn main() -> i32 {
+    auto factory = Factory<i32>(seed = 0)
+    auto callback = factory.make()
+    return callback(4)
+}
+''', result=14)
+        method_definitions = [line for line in (work/'main.ll').read_text().splitlines()
+                              if line.startswith('define ') and '_make(' in line]
+        assert method_definitions and all(line.startswith('define internal ') for line in method_definitions), method_definitions
+        print('PASS generic impl clone preserves executable definition origin', flush=True)
+
         (work/'counter.c').write_text('static int drops; void record_drop(int n) { drops += n; } int drop_count(void) { return drops; }\n')
         run(['cc', '-c', 'counter.c', '-o', 'counter.o'])
         extra_objects.append('counter.o')

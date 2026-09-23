@@ -764,6 +764,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   invokeFunc->GenericParams = invokeGenerics; // [NEW] Attach generic parameters
   invokeFunc->ResolvedReturnType = toka::Type::fromString(invokeRetType);
   invokeFunc->IsClosureInvoke = true;
+  invokeFunc->DefinitionBodyOwner = CurrentFunction;
   invokeFunc->InterfaceLocalBody = CurrentFunction && CurrentFunction->InterfaceLocalBody;
   invokeFunc->ClosureReceiver = Clo->CallableReceiver;
   invokeFunc->CodegenName = UniqueName + "___invoke";

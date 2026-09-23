@@ -366,12 +366,17 @@ def main():
                 assert all(f'error[{code}]' not in normal.stderr for code in ('E0438', 'E0410', 'E04661')), normal.stderr
             if name == 'post_proof_rollback':
                 assert all(f'error[{code}]' not in normal.stderr for code in ('E0438', 'E0410')), normal.stderr
+                rejection_line = next(i for i, line in enumerate(text.splitlines(), 1)
+                                      if 'consume(cede owner, task)' in line)
+                assert 'TaskResultOriginsUnproven' in normal.stderr and f'{source}:{rejection_line}:5' in normal.stderr, normal.stderr
             for mode, suffix in (('-c', '.o'), ('--emit-llvm', '.ll')):
                 output = work / (name + suffix)
                 result = compile([mode, '-o', output])
                 assert result.returncode == expected, (name, result.stderr)
                 if error:
                     assert f'error[{error}]' in result.stderr and str(source) in result.stderr, result.stderr
+                    if name == 'post_proof_rollback':
+                        assert 'TaskResultOriginsUnproven' in result.stderr and f'{source}:{rejection_line}:5' in result.stderr, result.stderr
                     assert not output.exists(), output
                 else:
                     assert output.is_file() and output.stat().st_size > 0, output

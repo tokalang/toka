@@ -5326,13 +5326,15 @@ bool Sema::validateResultCedeSyntax(ASTNode *site, const TypeSyntaxPtr &type,
 }
 
 bool Sema::finalizeInterfaceBodies() {
+  if (m_InterfaceLocalBodies.empty()) return true;
   std::set<FunctionDecl *> active, complete;
   std::function<bool(FunctionDecl *)> validate = [&](FunctionDecl *fn) {
     if (complete.count(fn)) return true;
     if (!fn || !fn->Body || !fn->InterfaceLocalBodyValidated ||
         !hasRecheckableDefinition(fn) || !active.insert(fn).second) {
       error(fn, DiagID::ERR_GENERIC_SEMA,
-            "executable interface dependency is missing, invalid or recursive");
+            "executable interface dependency is missing, invalid or recursive: " +
+                (fn ? fn->Name : std::string("<unknown>")));
       return false;
     }
     // Dependencies which were actually checked from source or instantiated
@@ -5366,8 +5368,33 @@ bool Sema::finalizeInterfaceBodies() {
     return valid;
   };
   bool valid = true;
+  // A candidate probe can prepare a generic instance without selecting it.
+  // Select instance roots from the final checked calls, not the cache history.
+  std::set<const FunctionDecl *> reached;
+  std::function<void(const FunctionDecl *)> follow = [&](const FunctionDecl *fn) {
+    if (!fn || !fn->Body || !fn->GenericParams.empty() || !reached.insert(fn).second) return;
+    if (fn->InterfaceLocalBody && !validate(const_cast<FunctionDecl *>(fn))) valid = false;
+    const auto uses = TKIExporter::inspectCheckedBody(*fn);
+    for (auto *callee : uses.Callees) follow(callee);
+    std::set<const Type *> types;
+    auto cleanup = [&](const std::shared_ptr<Type> &type) {
+      visitInterfaceCleanupTypes(type, types, [&](const ShapeDecl *shape) {
+        if (shape->HasExplicitDrop) follow(shape->ResolvedDestructor);
+      });
+    };
+    for (const auto &arg : fn->Args) cleanup(arg.ResolvedType);
+    cleanup(fn->ResolvedReturnType);
+    for (const auto &type : uses.ValueTypes) cleanup(type);
+  };
+  auto root = [&](const FunctionDecl *fn) {
+    if (fn && !fn->TemplateOrigin && !fn->InterfaceDefinitionOrigin && !fn->DefinitionBodyOwner &&
+        !fn->InterfaceTemplateBody && fn->Stage0EnclosingGenericTypeNames.empty()) follow(fn);
+  };
+  for (auto *fn : GlobalFunctions) root(fn);
+  for (const auto &[owner, methods] : MethodDecls)
+    for (const auto &[name, fn] : methods) root(fn);
   for (auto *fn : m_InterfaceLocalBodies)
-    if (!validate(fn)) valid = false;
+    if (!complete.count(fn)) fn->InterfaceLocalBody = false;
   // A source-visible helper may enter the local execution closure only after
   // its callers have been checked. Do not silently change an escaped address.
   for (auto *fn : m_FunctionIdentityUses)
@@ -5376,13 +5403,25 @@ bool Sema::finalizeInterfaceBodies() {
             "executable interface body requires a direct resolved call; function identity is not remapped");
       valid = false;
     }
+  for (auto *fn : complete)
+    if ((fn->TemplateOrigin && m_FunctionIdentityUses.count(fn->TemplateOrigin)) ||
+        (fn->InterfaceDefinitionOrigin &&
+         m_FunctionIdentityUses.count(const_cast<FunctionDecl *>(fn->InterfaceDefinitionOrigin)))) {
+      error(fn, DiagID::ERR_GENERIC_SEMA, "executable interface template identity is not remapped");
+      valid = false;
+    }
   return valid;
 }
 
 bool Sema::hasRecheckableDefinition(const FunctionDecl *function) const {
   if (!function || !function->Body) return false;
-  if (function->InterfaceLocalBody || function->TemplateOrigin) return true;
-  auto lexical = DeclarationLexicalScopes.find(function);
+  if (function->InterfaceLocalBody) return true;
+  if (function->IsClosureInvoke && function->DefinitionBodyOwner)
+    return hasRecheckableDefinition(function->DefinitionBodyOwner);
+  const auto *origin = function->TemplateOrigin ? function->TemplateOrigin :
+      function->InterfaceDefinitionOrigin ? function->InterfaceDefinitionOrigin : function;
+  if (origin != function && (origin->InterfaceTemplateBody || origin->InterfaceLocalBody)) return true;
+  auto lexical = DeclarationLexicalScopes.find(origin);
   return lexical != DeclarationLexicalScopes.end() && lexical->second &&
       lexical->second->SourceModule && !lexical->second->SourceModule->IsInterface;
 }
@@ -5970,6 +6009,15 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       Fn->ResolvedReturnType && (Fn->ResolvedReturnType->isFunction() || Fn->ResolvedReturnType->isDynFn()) &&
       hasRecheckableDefinition(Fn);
   if (collectCallableReturn) m_ValidatedCallableReturnEnvironments.erase(Fn);
+  // Existing retained templates are rechecked at instantiation. Publishing a
+  // result qualification also binds that exact instance to local execution;
+  // scalar-only, non-qualifying instances are not unconditionally localized.
+  const auto *interfaceOrigin = Fn->TemplateOrigin ? Fn->TemplateOrigin : Fn->InterfaceDefinitionOrigin;
+  if (interfaceOrigin && (interfaceOrigin->InterfaceTemplateBody || interfaceOrigin->InterfaceLocalBody) &&
+      (collectTaskReturn || collectCallableReturn || collectIndependentReturn || collectStaticReturn)) {
+    Fn->InterfaceLocalBody = true;
+    m_InterfaceLocalBodies.insert(Fn);
+  }
   if (Fn->Body) {
     m_WholeParameterStorageReturns.erase(Fn);
     m_EnumReturnSummaries[Fn] = {};
