@@ -1,16 +1,38 @@
 # Toka v1.0.0-rc.13 Release Candidate Notes
 
-## Current implementation-branch qualification notes
+## Current integrated candidate — not release-qualified
 
-These are pending consumer/release qualifications, not an update to the
-historical publication gate described below:
+The accepted integration was fast-forwarded to local main at `fd935049`.
+Local release preparation is recorded in
+[the closeout log](semantic_core/review/rc13_pass_tail_closeout.md).
+The current candidate includes the accepted ownership/explicit-cede and
+whole-value generic migrations: the historical claims below of no language
+changes and an unchanged `0.9.9-16` interface key do **not** describe this tree.
+The current compiler-interface key is **`0.9.9-23`**; old TKI/cache/runtime
+combinations must not be reused as if compatible.
+
+Local macOS ARM64 prequalification at `71173047` passed a clean build and
+123/123 CTest, but failed release conformance (288/325). One retained conformance
+negative also reproduces compiler SIGSEGV during object generation. The SDK
+archive passes its 18-check smoke test and separate relocation/QSLite consumers;
+the full developer-experience suite is blocked by an old callable permission
+fixture. These partial results do not qualify the archive for publication.
+No new tag, push, GitHub qualification run or public release is claimed.
 
 - `db4385dc` fixes source-visible, capture-free `fn` closure returns that could
   previously generate an uninitialized carrier and SIGBUS. Direct nonempty or
   unqualified thin-fn closure returns currently fail closed. This implementation
   limit is not a newly adopted language ban; other valid lifetime/representation
-  cases still require analysis. Source-hidden callable factory environment
-  information remains a separate unresolved qualification gap.
+  cases still require analysis. The bounded source-hidden package is accepted
+  at `55f3ab10`: retained implementation bodies are revalidated and executed
+  locally with their required cleanup/helper dependencies. Declaration-only
+  interfaces without the necessary proof remain rejected; this is not opaque
+  binary qualification.
+- Borrowed-referent name shadowing can still cause a false E0455 rejection,
+  including on a direct return. This separately recorded P2 is not a new naming
+  restriction and does not reopen the accepted owner-handoff safety correction.
+- The separately recorded extern aggregate lowering limitation is not resolved
+  or qualified by this local release-preparation run. E and `fn_` remain paused.
 - Host mailbox imports move from `std/task` to `std/task_mailbox`; no compatibility
   forwarding layer is provided. GUI consumers need both import migration and
   qualification against the new SDK/version. Prior GUI qualification, including

@@ -557,3 +557,85 @@ prequalification (fresh build, SDK package and consumer checks). Preserve the
 other worker's RFC and frozen refs; do not rewrite the accepted commit history.
 This acceptance is not publication authorization. E and fn_ remain paused; no
 push, tag or release is authorized by this record.
+
+## Local main integration and RC13 prequalification — 2026-09-23
+
+**Main integration completed; release prequalification did not pass.**
+Acceptance was recorded in documentation-only `fd935049`. A new clean main
+worktree at `/Users/zhyi/GitDP/tokalang/worktrees/rc13-main` fast-forwarded from
+`8b9af556` to that commit without rewriting history. The original integration
+workspace retains the other worker's RFC. Before/after refs, clean-main checks,
+the RFC hash and preserved patch are in
+`/Users/zhyi/GitDP/tokalang/validation/rc13-main-prequalification-xc1aeqba/`.
+Only main changed during the fast-forward; frozen refs and the historical RC13
+branch were not moved.
+
+Two bounded release-preparation corrections were then saved on main:
+
+- `ddd90817`: QSLite example and generated consumer migration to explicit named
+  return `cede`, bare complete temporaries and name-side mutable-call markers.
+  Persistence format, operation counts, corruption handling and runtime assertions
+  are unchanged. No compiler/runtime modifications.
+- `71173047`: prepare source runtime objects **before** release CTest. The first
+  clean attempt at `fd935049` exposed `g10_build_hybrid_test` linking failure for
+  missing `lib/sys/toka_rt.o`; the old gate prepared it only after CTest.
+  An AST-based gate-order regression and the existing release workflow/local
+  prequalification contract tests pass. The old attempt was stopped after its
+  recorded failure and is marked incomplete, not silently relabeled.
+
+### Exact candidate and measurements
+
+The corrected run cloned **`71173047861fdcddd016166ed8a20ffcb972750c`** into a
+new persistent source/build directory, configured Release with LLVM 20 and the
+`v1.0.0-rc.13` version override, and used the existing thirteen-stage release gate.
+No dirty-source override or newly added exclusion was used. Raw evidence:
+`validation/rc13-main-prequalification-xc1aeqba/native-r2/` under the workspace's
+parent validation directory. `release-gate-macos-arm64.json` is the official local
+gate receipt; the diagnostic consumers are deliberately recorded separately.
+
+| Check | Actual result |
+| --- | --- |
+| Fresh native tools build and unfiltered CTest | **123/123**, 2710.46 s; Build metadata and the original mixed-build runtime pass |
+| Release PASS program set | **446 passed, 0 failed**, using the gate's existing 13-case PR quarantine list; not a new 459/459 run |
+| Release conformance | **288/325**, 37 failed; release `pass` stage fails |
+| Later eleven release stages | **Not run** because the gate stops after failure; old integration FAIL/replay results do not fill them in |
+| Separate SDK archive smoke | **18/18**, including four binaries, versions, compile/run, source-hidden resource graph, POSIX file lifecycle, new/run, preview and offline local dependency |
+| Separate fresh-environment SDK relocation | **7/7**: version, doctor, new, run, check, locked run and doctor-after-lock, via PATH with SDK variables unset and a path containing spaces |
+| Separate QSLite persistence | **300 operations, 313 reopenings, 10 corruption cases**, deterministic bytes/reference model pass |
+| Separate QSLite toolchain | **6/6**: source-hidden, incremental first/no-op/recovery, locked build, offline lock replay |
+| Full developer-experience suite | **Blocked** before installation by the old `fn#(Counter#)` fixture's E0496 |
+
+The macOS ARM64 archive is retained, **unqualified and unpublished**, at:
+`validation/rc13-main-prequalification-xc1aeqba/native-r2/source-macos-arm64/build/toka-v1.0.0-rc.13-macos-arm64.tar.gz`.
+SHA-256: `dede18597b39a61217ba9ba790bcd99d6d3b71ca4684393097055a718a6ae82f`.
+Its smoke/relocation success cannot override the failed release gate.
+An initial relocation-driver attempt selected an archive metadata file rather
+than the sole directory; the driver was corrected, and the final seven checks
+actually ran. Raw preliminary and final logs are both retained.
+
+### Remaining release blockers; no oracle blessing
+
+The 37 conformance failures are enumerated with expected purpose, actual first
+diagnostic and source coordinate in `conformance-first-errors.json`. They include
+12 return `TypeIncompatible` cases, old return/cede/type-permission spellings,
+old thread/callable usage, permission-diagnostic changes and unresolved source
+qualification paths. They are not all classified as new compiler defects, and
+none of their expected results was rewritten in this package.
+
+`diag_vec_recursive_enum_get_rejected_01` is explicitly **not** treated as an
+ordinary oracle mismatch: check-only succeeds, but object generation exits with
+SIGSEGV (shell 139), emits no object and produces no expected E0417. The probe
+program was not executed and no debugger was used. Exact command disposition is
+retained in `recursive-enum-probe.json`; no historical introduction date is claimed.
+
+The DX warning fixture migration was investigated but **not retained**: legitimate
+alternative spellings produced only five W0408 warnings instead of the original
+six, losing the intended indirect-call warning check. The fixture and its expected
+count remain unchanged; this is not counted as restored DX. The separate installed
+archive relocation receipt covers only its seven named checks, not that full suite.
+
+Next release work must close these concrete conformance/termination and DX
+blockers without reopening the accepted owner-handoff package or reducing test
+purposes. Linux/Docker, macOS x64 hosted evidence, sanitizer and the remainder of
+the official release matrix are **not qualified by this run**. No push, tag,
+publication, E/fn_ work, general recursive proof or ABI change occurred.
