@@ -533,3 +533,27 @@ The other worker's independent RFC retains SHA-256
 No main merge, push, publication, new freeze ref, E or fn_ work. This complete
 candidate is ready for the requested incremental review; no peripheral features
 are appended before the subsequent controlled main/release-preparation step.
+
+## Owner-handoff package Accepted — 2026-09-23
+
+The user accepted **`b3b67e00e8af4a0b0bb2c50bf550caefb6cf6bee`** after
+consolidated incremental review. Independent record:
+`/Users/zhyi/GitDP/tokalang/validation/owner-handoff-review-20260923.uCncLP/review.md`.
+The six original probes reject E0455 in normal/shadow and object/LLVM modes
+without artifacts; independent CTest **2/2, 166.35 seconds** includes the 69-check
+handoff matrix. The reviewer verified, but did not rerun or backfill, the fixed
+full results **459/459 complete PASS, 480/480 FAIL, 123/123 CTest** above.
+
+Separately retained **P2**: an unrelated inner local shadowing a borrowed
+referent's name can cause a valid return to report E0455. The direct-return
+control also exhibits it; no introduction revision is asserted. The renamed
+control runs correctly. This is a known false rejection, not a new naming rule
+or reproduced unsafe acceptance; it neither reopens this package nor authorizes
+a broader identity rewrite. The probes remain in the independent review directory.
+
+Implementation work on this package is closed. The next authorized delivery is
+clean-main fast-forward integration plus existing RC13 local release
+prequalification (fresh build, SDK package and consumer checks). Preserve the
+other worker's RFC and frozen refs; do not rewrite the accepted commit history.
+This acceptance is not publication authorization. E and fn_ remain paused; no
+push, tag or release is authorized by this record.
