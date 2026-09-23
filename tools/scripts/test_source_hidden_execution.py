@@ -35,6 +35,7 @@ def main():
             return interface
 
         def check(source, expected=0, diagnostic=None, result=0):
+            provider_object = (work/'lib.o').read_bytes()
             (work/'main.tk').write_text(source)
             normal = run([tokac, '--check-only', 'main.tk'], expected)
             shadow = run([tokac, '--check-only', '--non-call-transfer-shadow=json', 'main.tk'], expected)
@@ -51,6 +52,7 @@ def main():
             if expected == 0:
                 run([tokac, 'main.tk', 'lib.o', *extra_objects, '-o', 'main'])
                 run([work/'main'], result)
+            assert (work/'lib.o').read_bytes() == provider_object, 'consumer changed provider object'
 
         factory = '''fn increment(value: i32) -> i32 { return value + 1 }
 pub fn make() -> fn(i32) -> i32 {
@@ -159,6 +161,107 @@ fn main() -> i32 {
         (work/'lib.tki').write_text(original.replace('record_drop(1)', 'record_drop(2)'))
         check((work/'main.tk').read_text(), result=2)
         print('PASS exact capture cleanup uses checked drop body', flush=True)
+
+        enum_base = '''import core/traits::{@Encap}
+extern fn record_drop(value: i32) -> void
+pub shape Token(id: i32)
+impl Token@Encap { pub id fn drop(self#) { record_drop(1) } }
+'''
+        enum_consumer = '''import ./lib::{Token, Bundle, take}
+import std/task::{block_on}
+extern fn drop_count() -> i32
+fn main() -> i32 {
+    auto token = Token(id = 5)
+    auto bundle = Bundle::Pair(cede token, 0)
+    auto task = take(cede bundle)
+    assert(block_on(task) == 7, "task result")
+    return drop_count()
+}
+'''
+        original = provider(enum_base + '''pub shape Bundle(Pair(Token, i32) | Empty)
+pub fn take(cede bundle: Bundle) -> async i32 { cede bundle; return 7 }
+''')
+        assert 'record_drop(1)' in original, original  # exporter must retain the nested drop
+        definitions = re.search(r'^// @meta local_body_definitions: (.+)$', original, re.M).group(1).split(',')
+        assert 'i/0/0' in definitions, definitions
+        check(enum_consumer, result=1)
+        changed = original.replace('record_drop(1)', 'record_drop(2)')
+        (work/'lib.tki').write_text(changed)
+        check(enum_consumer, result=2)
+        ir = (work/'main.ll').read_text()
+        assert re.search(r'define internal .*@.*_drop\(', ir), ir
+        # Retained body without association must not call the old provider.
+        unassociated = re.sub(r'local_body_definitions: .*',
+                             'local_body_definitions: ' + ','.join(x for x in definitions if x != 'i/0/0'), changed)
+        (work/'lib.tki').write_text(unassociated)
+        check(enum_consumer, 1, 'executable interface dependency')
+        bodyless, count = re.subn(r'(fn drop\([^\n]+) \{[^}]+\}', r'\1', changed)
+        assert count == 1
+        (work/'lib.tki').write_text(bodyless)
+        check(enum_consumer, 1, 'Invalid executable interface definition')
+        (work/'lib.tki').write_text(re.sub(r'local_body_definitions: .*',
+                                         'local_body_definitions: f/0', bodyless))
+        check(enum_consumer, 1, 'executable interface dependency')
+        (work/'lib.tki').write_text(changed)
+        check(enum_consumer.replace('Bundle::Pair(cede token, 0)', 'Bundle::Empty()')
+              .replace('    auto token = Token(id = 5)\n', ''), result=0)
+        print('PASS multi-payload enum checked drop, Empty, missing body/association', flush=True)
+
+        original = provider(enum_base + '''pub shape Bundle(Pair(Token, Token) | Empty)
+pub fn take(cede bundle: Bundle) -> async i32 { cede bundle; return 7 }
+''')
+        (work/'lib.tki').write_text(original.replace('record_drop(1)', 'record_drop(2)'))
+        check(enum_consumer.replace('    auto bundle', '    auto second = Token(id = 6)\n    auto bundle')
+              .replace('Bundle::Pair(cede token, 0)', 'Bundle::Pair(cede token, cede second)'), result=4)
+        print('PASS both enum payload slots clean exactly once', flush=True)
+
+        original = provider(enum_base + '''pub shape Bundle<A, B>(Pair(A, B) | Empty)
+pub shape Envelope(contents: Bundle<^Token, ~Token>)
+pub fn take(cede value: Envelope) -> async i32 { cede value; return 7 }
+''')
+        assert 'record_drop(1)' in original
+        (work/'lib.tki').write_text(original.replace('record_drop(1)', 'record_drop(2)'))
+        check('''import ./lib::{Token, Bundle, Envelope, take}
+import std/task::{block_on}
+extern fn drop_count() -> i32
+fn main() -> i32 {
+    {
+        auto ^first = new Token(id = 1)
+        auto ~second = new Token(id = 2)
+        auto ~other = ~second
+        auto pair = Bundle<^Token, ~Token>::Pair(cede ^first, cede ~second)
+        auto outer = Envelope(contents = cede pair)
+        auto task = take(cede outer)
+        assert(block_on(task) == 7, "nested task")
+        assert(drop_count() == 2 && other.id == 2, "shared survivor remains live")
+    }
+    return drop_count()
+}
+''', result=4)
+        print('PASS nested enum unique/shared physical payloads and surviving owner', flush=True)
+
+        original = provider(enum_base + '''pub shape Bundle<A, B>(Pair(A, B) | Empty)
+pub fn take(value: Bundle<&Token, *Token>) -> async i32 { return 7 }
+''')
+        assert 'record_drop(1)' not in original, original  # no pointee cleanup dependency
+        check('''import ./lib::{Token, Bundle, take}
+import std/task::{block_on}
+extern fn drop_count() -> i32
+fn main() -> i32 {
+    {
+        auto owner = Token(id = 9)
+        {
+            auto *pointer = unsafe (&owner as *Token)
+            auto views = Bundle<&Token, *Token>::Pair(&owner, *pointer)
+            auto task = take(views)
+            assert(block_on(task) == 7, "borrowed task")
+        }
+        assert(drop_count() == 0 && owner.id == 9, "views do not destroy pointee")
+    }
+    return drop_count()
+}
+''', result=1)
+        print('PASS nested raw/reference payloads require no pointee drop association', flush=True)
 
         # Current actual arguments, not the dependency ceiling or task frame,
         # select the returned view. The first owner may be cleaned up first.
