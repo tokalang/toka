@@ -354,3 +354,91 @@ It does not accept RC13, opaque binary qualification or general recursive/contai
 storage. Full semantic replay is the next measurement, followed by the actual
 remaining shared-Token/container cases. Historical full-suite counts remain
 unchanged. E, fn_, main integration, push, freeze and publication remain paused.
+
+## Complete replay closeout and fixed candidate — 2026-09-23
+
+Implementation candidate: **`c8e3f3f1ea122a1eb7df364105214674b8843b72` (WIP,
+not Accepted)**. The preceding documentation-only commit `631b8188` recorded the
+accepted source-hidden package without adding features to it.
+
+### Measured remaining cases and bounded corrections
+
+The first complete replay on `631b8188` returned **51/56**, exit 1, 324.55 seconds.
+It was not the previously estimated three-case remainder. Raw evidence is in
+`/Users/zhyi/GitDP/tokalang/validation/rc13-replay-after-hidden-20260923/`.
+The actual five directories and corrections are:
+
+| Directory | First concrete boundary | Candidate change |
+| --- | --- | --- |
+| `async_p6_abi_cross_module` | Distinct core/std `__toka_detach_task` definitions collided; later CodeGen continued with incomplete state and crashed. | Rename only std's explicit-detach wrapper to private `detach_live_task`; retain core's reserved handle-drop hook. Stop subsequent CodeGen phases after a reported error. The collision guard remains; a dedicated object/LLVM negative proves exit 1 and no artifact rather than a signal. |
+| `handle_004_morphic_handle_patterns` | The needed `Item.drop` body was unavailable and used provider-private global state. | Make its real payload generic (`Item<T>`, exercised as `Item<i32>`) under existing retained-template policy; use one explicit native drop-counter observer shared by provider and checked execution. Preserve runtime counts, double-move rejection and interface roundtrip checks. Do not copy private Toka globals or extend body qualification. |
+| `iterator_002_owned_map` | Returning a new wrapper around a raw-backed Vec lacked complete result facts. | Use the Vec whole value as the owning iterator, retaining the public `VecIntoIterator<T>` spelling as a transparent alias. Borrowed iteration stays separate; element order, existing `remove(0)` cost and remainder cleanup are preserved. |
+| `permission_005_partial_cede_lifecycle` | Explicit `new Token` with an actual borrowed counter field failed before the intended partial-move rejection. | Carry complete, validated explicit-field origins through dependent unique/shared allocation, binding/PAL registration and return lifetime checks. No independent-temporary proof is manufactured. The original E04632 negative now reaches its intended check. |
+| `runtime_002_webhook_resource_graph` | Nested raw-backed owning containers exceeded the supported element proof domain. | Migrate this fixture's rule tree to owned flat preorder text and its exactly-two-bindings schema to two owning fields. Keep the outer dynamic `Vec<Hook>`, original consumer and all 32 rounds of content/layout/remove/reorder/roundtrip/clear assertions. |
+
+The first two were newly exposed relative to the older replay measurement, not
+silently folded into the anticipated three. No general recursive-container,
+raw_take, byte-storage or source-hidden qualification was added.
+
+The dependent-allocation path remains limited to normally validated scalar
+`new` with exact declaration/type, source-explicit fields (not spread/default
+completion), original pre-mutation snapshot, complete field plans and an admitted
+group. Borrowed fields retain their actual referents and roots;
+`TemporaryEligibility` remains `Ineligible`, not dependency-free. Return lookup
+uses resolved binding identity, and typed owner selectors preserve dependencies.
+Readonly-to-writable reference-field coercion rejects rather than manufacturing
+payload permission. Tests cover local/parameter sources, same-name shadowing,
+unique/shared cleanup, PAL conflict, rejected-initializer rollback and no artifact.
+
+Vec's source seal was updated only because of the iterator library migration:
+`3afa8fbcfbd5cf281119e0744636a5052ab5fd79e08d07f248b49de5438b011f`.
+Layout and byte-storage operations did not change. The exact-byte qualification
+contract remains bounded; byte-buffer and network regressions were rerun.
+
+The replay runner's optional `replay_support.c` is compiled and linked into both
+source-backed and source-hidden executions. Support compilation failure fails
+the case, never skips it. This observer replaces the fixture's unavailable private
+global, not the ownership behavior or expected cleanup counts.
+
+### Fixed-candidate verification
+
+Complete replay on the committed candidate returned **56/56**, exit 0,
+**563.43 seconds**. It was also executed successfully again by the full PASS tail.
+Evidence:
+`/Users/zhyi/GitDP/tokalang/validation/rc13-replay-converged-c8e3f3f1/metadata.json`.
+The preceding selected CTest run was **10/10, 541.22 seconds**; it is not used as a
+substitute for the full run below.
+
+Full-run evidence directory:
+`/Users/zhyi/GitDP/tokalang/validation/rc13-replay-full-c8e3f3f1/`.
+Its `metadata.json`, `comparison.json`, logs and tracked-source manifest bind all
+phases to the same candidate and compiler. No implementation changes occurred
+during any phase.
+
+| Fixed-candidate command | Actual result | Wall time |
+| --- | --- | --- |
+| `cmake --build /Users/zhyi/GitDP/tokalang/builds/rc13-integration -j4` | All configured tool targets successful/up to date; exit 0 (not a fresh rebuild) | 0.59 s |
+| `bash tools/scripts/test_pass.sh` | **459/459 programs; entire command including all appended checks exit 0** | 1375.22 s |
+| `python3 tools/scripts/test_verify_fail.py` | **480/480**, exit 0 | 174.87 s |
+| Unfiltered `ctest --output-on-failure -j2` in the same build | **123/123**, zero failed/skipped, exit 0 | 2149.13 s |
+
+The PASS tail completed semantic replay, Outcome recheck, interface/cache checks
+and the native incremental-build qualification (3 cycles, 31 modules); its final
+result is `All Toka Incremental Build Tests PASSED!`, not merely a green program
+count. Compiler SHA-256:
+`d972266092f8a50cb642d40ac006e043713da1df0f7e9bbafeb7d033047a9352`.
+
+Compared with the actual `ea7697eb` full run, program/FAIL counts remain
+459/459 and 480/480, but the previously failing complete PASS command now succeeds.
+The three old CTest failures restored are `toka_call_transfer_shadow_m1`,
+`toka_non_call_transfer_shadow_stage0`, and `toka_stage1_indirect_parameter_cede`.
+`toka_source_hidden_execution` and `toka_rc13_replay_boundaries` are **two added
+tests**, not two recovered failures. There are no newly failing cases or abnormal
+exits in the fixed run. Historical full-run numbers have not been backfilled.
+
+The independent RFC remains unmodified by this work, SHA-256
+`1b73b0fc46f9a700e1bdc9d0a0031614e1d9a4b398ce97f6a6423972474d70e2`.
+No debugger, main merge, push, publication or new freeze ref was used. E and fn_
+remain paused. Green integration is evidence for this complete WIP candidate,
+not a self-declared RC13 acceptance; separately recorded release limitations
+(including extern aggregate lowering) are not erased by these results.
