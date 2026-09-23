@@ -442,3 +442,94 @@ No debugger, main merge, push, publication or new freeze ref was used. E and fn_
 remain paused. Green integration is evidence for this complete WIP candidate,
 not a self-declared RC13 acceptance; separately recorded release limitations
 (including extern aggregate lowering) are not erased by these results.
+
+## Dependent-owner handoff P0 correction — 2026-09-23
+
+The independent review correctly **did not accept `c8e3f3f1`** despite its genuine
+green integration run. A shared copy/move or unique move into a second binding
+lost the owner's carried borrow metadata: the handoff knew `input`/`local`, but
+the subsequent return incorrectly reported `Dependency=None`. Review and original
+non-executed dangling probes:
+`/Users/zhyi/GitDP/tokalang/validation/rc13-final-review-20260923.S0XcMw/review.md`.
+The previous measurements remain historical evidence, not acceptance.
+
+Corrected implementation candidate: **`b3b67e00e8af4a0b0bb2c50bf550caefb6cf6bee`**,
+including local WIP `5ad1cc16`; still pending consolidated review, not frozen.
+The scope is the already validated whole-owner binding handoff:
+
+- Resolve the checked source binding by identity before installing a potentially
+  shadowing target. Preserve both `LifeDependencySet` and `FieldDependencySet`;
+  do not replay an initializer or substitute a declared return dependency ceiling.
+- After normal checking and the complete planner succeed, install those facts
+  only at successful binding-transaction commit, for initialization and whole
+  handle replacement. Keep existing ownership, permissions and cleanup behavior.
+- Retain the source's existing PAL loan, including exclusivity, in the target's
+  scope. Reject a shorter-lived referent; do not retire other owners' obligations.
+- Snapshot owner borrow metadata by symbol ID, restore it on rejection and union
+  reachable branch/loop dependencies. Failed handoff keeps the original target
+  roots and restores source liveness; it does not claim runtime rollback.
+- Preserve the same facts through supported transparent `unsafe`, cede, typed
+  owner selectors and implicit/ascription wrappers. A known dependent source
+  whose handoff cannot be associated is rejected, never silently made independent.
+
+No CodeGen, runtime, ABI/TKI, reference-counting, raw_take or recursive-container
+contract changes are included. No permission is derived from these source facts.
+
+### Regression and execution evidence
+
+`toka_rc13_replay_boundaries` now contains **69 named checks**: its existing 12
+plus 57 owner-handoff checks, not 57 additional registered CTests. They cover all
+three routes (shared copy, shared transfer, unique transfer), source order,
+multiple hops, actual caller use, parameter-backed live returns, exact-once
+cleanup, replacement cleanup, cross-scope lifetime/PAL retention, failed handoff,
+branch/loop joins, same-name binding and transparent-wrapper controls.
+Negative check/object/LLVM modes verify the intended diagnostic and no artifact;
+normal/shadow diagnostics agree. Legal controls actually run. Return evidence
+must retain the real `local` or `input` root, not merely reject for another reason.
+Failed assignment's later return must retain `input` and exclude the rejected
+RHS's `local`, with no spurious E0438/E0410/E0455.
+
+Original audit files were independently rechecked without changing them or running
+the invalid programs. All six direct/copy/move/caller probes reject with E0455,
+normal/shadow parity and no object/LLVM artifacts. Preserved results:
+`/Users/zhyi/GitDP/tokalang/validation/owner-handoff-originals-u4hyzvkm/`
+(final candidate and compiler recorded in `metadata.json`).
+The called two-field case now has `Structural` return dependency with both
+`input` and `local`, rather than `None`.
+
+During self-check, `unsafe ~owner` exposed an additional path through the same
+handoff defect. The first full-run attempt on `5ad1cc16` was deliberately stopped
+during PASS and marked incomplete in
+`validation/rc13-owner-handoff-full-5ad1cc16/ABORTED.md`; no full result is claimed
+for it. The wrapper correction and 24 corresponding positive/negative checks
+are included in the final candidate. Final directed matrix: **69/69**; related
+CTest: **7/7, 419.96 seconds** (`rc13-owner-handoff-r5.log` and
+`rc13-owner-handoff-related-r2.log` under the validation directory).
+
+### Complete fixed-candidate integration
+
+Evidence:
+`/Users/zhyi/GitDP/tokalang/validation/rc13-owner-handoff-full-b3b67e00/`.
+`metadata.json` records the exact candidate, commands, compiler and unchanged
+tracked-source hashes at every phase; `comparison.json` compares the genuine
+`c8e3f3f1` full run. No implementation changes occurred during this final run.
+
+| Phase | Actual result | Wall time |
+| --- | --- | --- |
+| All configured tools build | exit 0, up to date; not a fresh rebuild | 0.74 s |
+| Complete PASS command including its entire tail | **459/459**, command exit 0 | 1403.66 s |
+| Complete FAIL | **480/480**, exit 0 | 174.11 s |
+| Unfiltered CTest | **123/123**, zero failed/skipped, exit 0 | 2222.60 s |
+
+The PASS tail includes **56/56 semantic replay**, and finishes the native build
+qualification (3 cycles, 31 modules). The owner-handoff CTest itself passed in
+this full run in **182.64 seconds**. No newly failing cases or abnormal exits;
+the P0 coverage is newly added to an existing test, not counted as recovery of an
+old suite failure. Compiler SHA-256:
+`77822eaf493bdf9b5b7600e6a8663ecebd890d1b31754068061bc22afa09ded8`.
+
+The other worker's independent RFC retains SHA-256
+`1b73b0fc46f9a700e1bdc9d0a0031614e1d9a4b398ce97f6a6423972474d70e2`.
+No main merge, push, publication, new freeze ref, E or fn_ work. This complete
+candidate is ready for the requested incremental review; no peripheral features
+are appended before the subsequent controlled main/release-preparation step.
