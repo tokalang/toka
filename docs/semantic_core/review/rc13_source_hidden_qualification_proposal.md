@@ -1,6 +1,6 @@
 # RC13 source-hidden qualification: bounded decision proposal
 
-Status: **implementation authorized on 2026-09-23; candidate not Accepted**. Inspection baseline:
+Status: **bounded implementation Accepted at `55f3ab10` on 2026-09-23**. Inspection baseline:
 `cc391e88`; the concurrent global declaration-location correction is unrelated.
 E, `fn_`, publication and push remain paused.
 

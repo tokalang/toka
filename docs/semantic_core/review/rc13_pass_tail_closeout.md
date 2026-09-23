@@ -297,8 +297,8 @@ reproduced before the fix: retained drop text counted 2, but execution counted 1
 Counter-only evidence is preserved in
 `validation/enum-cleanup-repro-20260923/`; no invalid-free probe was executed.
 
-Correction: **`55f3ab10e413b23b71566d492e46561a800b3170`**, still awaiting incremental
-review, not Accepted or frozen. Only the common `InterfaceBody.h` traversal and
+Correction: **`55f3ab10e413b23b71566d492e46561a800b3170`**, subsequently Accepted by
+the independent incremental review recorded below. Only the common `InterfaceBody.h` traversal and
 its regression matrix changed. Multi-payload slots are visited through their
 resolved physical `SubMembers`, recursively; unit variants are skipped. Existing
 unique/shared and array traversal remains, and raw/reference still stop before
@@ -337,5 +337,20 @@ Compiler SHA-256:
 `d24b502adb57fdce2264ecdc62c0b495ada863d9bed71f24cab52c1e934e0855`.
 
 No full-suite refresh or historical-count backfill; no push, freeze, E, fn_, or
-unrelated shared-Token/container work. The package remains WIP pending review of
-this common-root correction.
+unrelated shared-Token/container work occurred during that validation.
+
+## Source-hidden package Accepted — 2026-09-23
+
+The user accepted **`55f3ab10`** for the bounded source-hidden executable-body
+package. Independent evidence:
+`/Users/zhyi/GitDP/tokalang/validation/source-hidden-cleanup-acceptance-20260923.IZ5g77/acceptance.md`.
+The original missing-body/missing-association cases reject in normal/shadow and
+object/LLVM modes; complete association executes the checked drop (count 2)
+against the unchanged old provider. Independent CTest **3/3, 86.22 seconds**
+included source-hidden execution, indirect parameters and enum cleanup.
+
+This acceptance closes the package; no further features are appended here.
+It does not accept RC13, opaque binary qualification or general recursive/container
+storage. Full semantic replay is the next measurement, followed by the actual
+remaining shared-Token/container cases. Historical full-suite counts remain
+unchanged. E, fn_, main integration, push, freeze and publication remain paused.
