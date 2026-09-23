@@ -5083,6 +5083,59 @@ bool Sema::Stage1BindingTransfer::prepare(
       BorrowedReplacement = std::move(replacement);
     }
   }
+  if (validated && target && (target->isUniquePtr() || target->isSharedPtr())) {
+    const auto path = Owner.makeAccessPath(source);
+    SymbolInfo *sourceBinding = nullptr;
+    // Only a checked whole owner handoff carries this binding metadata.
+    // Resolve the source by identity before defining a possibly shadowing
+    // destination; neither its name nor its original initializer is replayed.
+    if (path.RootID && path.Projections.empty() &&
+        Owner.CurrentScope->findSymbolByID(path.RootID, sourceBinding) && sourceBinding &&
+        sourceBinding->TypeObj &&
+        ((target->isUniquePtr() && sourceBinding->TypeObj->isUniquePtr()) ||
+         (target->isSharedPtr() && sourceBinding->TypeObj->isSharedPtr()))) {
+      ManagedBorrows = ManagedBorrowDependencies{
+          sourceBinding->LifeDependencySet, sourceBinding->FieldDependencySet};
+      for (const auto &[field, roots] : ManagedBorrows->Fields)
+        ManagedBorrows->Roots.insert(roots.begin(), roots.end());
+      int targetDepth = Owner.CurrentScope->Depth;
+      std::string targetName = "owner binding";
+      if (destination) {
+        const auto destinationPath = Owner.makeAccessPath(destination);
+        bool found = false;
+        for (auto *scope = Owner.CurrentScope; scope; scope = scope->Parent)
+          for (const auto &[name, info] : scope->Symbols)
+            if (destinationPath.RootID && destinationPath.Projections.empty() &&
+                info.SymbolID == destinationPath.RootID) {
+              targetDepth = scope->Depth;
+              targetName = name;
+              found = true;
+            }
+        if (!found) {
+          Owner.error(destination, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED, "IncompleteOwnerDestination");
+          return false;
+        }
+      }
+      for (const auto &dependency : ManagedBorrows->Roots) {
+        auto referent = Owner.canonicalizeAccessPath(Owner.makeAccessPath(dependency));
+        if (!referent.RootID || targetDepth < Owner.getScopeDepth(dependency)) {
+          Owner.error(source, DiagID::ERR_BORROW_LIFETIME, targetName, dependency);
+          return false;
+        }
+        // Retain the existing loan, including its exclusivity, for the new
+        // binding's lifetime. Copying the owner does not acquire a new mutable
+        // borrow or release any other owner's obligation.
+        if (Owner.PALCheckerState.getState(referent) == PathState::Free &&
+            !Owner.PALCheckerState.recordBorrow(referent, false, Site->Loc)) {
+          Owner.error(source, DiagID::ERR_BORROW_MUT, dependency);
+          return false;
+        }
+        Owner.PALCheckerState.commitTransient(referent,
+            static_cast<size_t>(Owner.CurrentScope->Depth - targetDepth));
+      }
+      Destination = destination;
+    }
+  }
   return true;
 }
 
@@ -5109,6 +5162,17 @@ Sema::Stage1BindingTransfer::~Stage1BindingTransfer() {
   authority.Destination = Plan->Destination;
   authority.ItemPlan = *Plan;
   Site->Stage0Authority = std::move(authority);
+  if (ManagedBorrows) {
+    SymbolInfo *binding = nullptr;
+    if (auto *variable = dynamic_cast<VariableDecl *>(Site))
+      Owner.CurrentScope->findSymbolByID(variable->ResolvedBindingID, binding);
+    else if (Destination)
+      Owner.CurrentScope->findSymbolByID(Owner.makeAccessPath(Destination).RootID, binding);
+    if (binding) {
+      binding->LifeDependencySet = ManagedBorrows->Roots;
+      binding->FieldDependencySet = ManagedBorrows->Fields;
+    }
+  }
   // Fresh bindings only. Mutation remains a conservative loss of evidence.
   if (auto *variable = dynamic_cast<VariableDecl *>(Site)) {
     SymbolInfo *binding = nullptr;

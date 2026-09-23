@@ -846,6 +846,10 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
 
 Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
+  for (auto *scope = CurrentScope; scope; scope = scope->Parent)
+    for (const auto &[name, info] : scope->Symbols)
+      if (info.TypeObj && (info.TypeObj->isUniquePtr() || info.TypeObj->isSharedPtr()))
+        state.ManagedBorrows[info.SymbolID] = {info.LifeDependencySet, info.FieldDependencySet};
   state.IndependentValues = m_IndependentValues;
   state.TaskResults = m_TaskResults;
   state.ByteBuffers = m_ByteBuffers;
@@ -922,6 +926,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   std::set<AccessPath> mergedPayloadFlowRestrictions =
       states.front().PayloadFlowRestrictedPaths;
   auto mergedReferenceTargets = states.front().ReferenceTargets;
+  auto managedBorrows = states.front().ManagedBorrows;
   auto callableEnvironments = states.front().CallableEnvironments;
   auto independentValues = states.front().IndependentValues;
   auto taskResults = states.front().TaskResults;
@@ -942,6 +947,12 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
 
   for (size_t i = 1; i < states.size(); ++i) {
     const auto &state = states[i];
+    for (const auto &[id, dependencies] : state.ManagedBorrows) {
+      auto &joined = managedBorrows[id];
+      joined.Roots.insert(dependencies.Roots.begin(), dependencies.Roots.end());
+      for (const auto &[field, roots] : dependencies.Fields)
+        joined.Fields[field].insert(roots.begin(), roots.end());
+    }
     auto intersectNative = [](auto &left, const auto &right) {
       for (auto it = left.begin(); it != left.end();) {
         auto other = right.find(it->first);
@@ -1061,6 +1072,13 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
                               mergedExactPlaces);
   restoreVisibleConditionalTodoIds(CurrentScope, mergedConditionalTodoIds);
   restoreVisibleReferenceTargets(CurrentScope, mergedReferenceTargets);
+  for (const auto &[id, dependencies] : managedBorrows) {
+    SymbolInfo *binding = nullptr;
+    if (CurrentScope->findSymbolByID(id, binding) && binding) {
+      binding->LifeDependencySet = dependencies.Roots;
+      binding->FieldDependencySet = dependencies.Fields;
+    }
+  }
   m_CallableEnvironments = std::move(callableEnvironments);
   m_IndependentValues = std::move(independentValues);
   m_TaskResults = std::move(taskResults);

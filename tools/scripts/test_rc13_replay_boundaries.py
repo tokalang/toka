@@ -123,6 +123,139 @@ fn main() -> i32 {
 ''', None)
 
 
+OWNER = '''import core/traits::{@Encap}
+auto drops# = 0:i32
+shape View(&first: i32, &second: i32)
+impl View@Encap { pub first, second fn drop(self#) { drops += 1 } }
+'''
+for route, hat, handed in (('shared_copy', '~', '~owner'),
+                           ('shared_move', '~', 'cede ~owner'),
+                           ('unique_move', '^', 'cede ^owner')):
+    returned = 'cede ~other' if hat == '~' else '^other'
+    CASES[route + '_escape'] = (OWNER + f'''
+fn escape(input: i32) -> {hat}View <- input {{
+    auto local = 7:i32
+    auto {hat}owner = new View(&first = &input, &second = &local)
+    auto {hat}other = {handed}
+    return {returned}
+}}
+fn main() -> i32 {{
+    auto input = 13:i32
+    auto {hat}escaped = escape(input)
+    return escaped.second
+}}
+''', 'E0455')
+    CASES[route + '_reverse_escape'] = (
+        CASES[route + '_escape'][0].replace('&first = &input, &second = &local',
+                                           '&first = &local, &second = &input'), 'E0455')
+    CASES[route + '_live'] = (OWNER + f'''
+fn main() -> i32 {{
+    auto first = 13:i32
+    auto second = 21:i32
+    {{
+        auto {hat}owner = new View(&first = &first, &second = &second)
+        {{
+            auto {hat}other = {handed}
+            auto {hat}last = {'~other' if route == 'shared_copy' else 'cede ' + hat + 'other'}
+            assert(last.first == 13 && last.second == 21, "two actual referents")
+            assert(drops == 0, "owner alive")
+        }}
+        {'assert(owner.first == 13 && drops == 0, "remaining shared owner");' if route == 'shared_copy' else 'assert(drops == 1, "transferred owner cleaned");'}
+    }}
+    assert(drops == 1, "exactly one payload drop")
+    return 0
+}}
+''', None)
+    CASES[route + '_parameter_return'] = (OWNER + f'''
+fn keep(input: i32) -> {hat}View <- input {{
+    auto {hat}owner = new View(&first = &input, &second = &input)
+    auto {hat}other = {handed}
+    return {returned}
+}}
+fn main() -> i32 {{
+    auto input = 13:i32
+    {{ auto {hat}result = keep(input); assert(result.second == 13, "live external storage") }}
+    assert(drops == 1, "returned payload cleaned once")
+    return 0
+}}
+''', None)
+    CASES[route + '_assignment_escape'] = (OWNER + f'''
+fn escape(input: i32) -> {hat}View <- input {{
+    auto local = 7:i32
+    auto {hat}#other = new View(&first = &input, &second = &input)
+    auto {hat}owner = new View(&first = &local, &second = &local)
+    {hat}#other = {handed}
+    return {returned}
+}}
+fn main() -> i32 {{ return 0 }}
+''', 'E0455')
+    CASES[route + '_assignment_live'] = (OWNER + f'''
+fn main() -> i32 {{
+    auto first = 13:i32
+    auto second = 21:i32
+    {{
+        auto {hat}#other = new View(&first = &first, &second = &first)
+        {{
+            auto {hat}owner = new View(&first = &second, &second = &second)
+            {hat}#other = {handed}
+            assert(drops == 1 && other.second == 21, "old target released after preparation")
+        }}
+        assert(drops == 1 && other.first == 21, "new target survives source scope")
+    }}
+    assert(drops == 2, "both payloads cleaned once")
+    return 0
+}}
+''', None)
+    CASES[route + '_assignment_inner_escape'] = (OWNER + f'''
+fn reject(input: i32) -> {hat}View <- input {{
+    auto {hat}#other = new View(&first = &input, &second = &input)
+    {{
+        auto local = 7:i32
+        auto {hat}owner = new View(&first = &local, &second = &local)
+        {hat}#other = {handed}
+        assert(owner.first == 7, "rejection restores source")
+    }}
+    return {returned}
+}}
+fn main() -> i32 {{ return 0 }}
+''', 'E0456')
+    CASES[route + '_pal_retention'] = (OWNER + f'''
+fn main() -> i32 {{
+    auto first = 13:i32
+    auto second# = 21:i32
+    auto {hat}#other = new View(&first = &first, &second = &first)
+    {{
+        auto {hat}owner = new View(&first = &second, &second = &second)
+        {hat}#other = {handed}
+    }}
+    auto &exclusive# = &second
+    exclusive = 22
+    return other.second
+}}
+''', 'E0441')
+    CASES[route + '_branch_escape'] = (OWNER + f'''
+fn escape(input: i32, flag: bool) -> {hat}View <- input {{
+    auto local = 7:i32
+    auto {hat}#other = new View(&first = &input, &second = &input)
+    if flag {{
+        auto {hat}owner = new View(&first = &input, &second = &local)
+        {hat}#other = {handed}
+    }}
+    return {returned}
+}}
+fn main() -> i32 {{ return 0 }}
+''', 'E0455')
+    CASES[route + '_loop_escape'] = (
+        CASES[route + '_branch_escape'][0].replace('if flag {', 'loop flag {').replace(
+            f'{hat}#other = {handed}', f'{hat}#other = {handed}\n        break'), 'E0455')
+    CASES[route + '_shadow_binding'] = (
+        CASES[route + '_live'][0].replace(f'auto {hat}other = {handed}',
+                                         f'auto {hat}owner = {handed}').replace(
+            'auto ' + hat + 'last = ' + ('~other' if route == 'shared_copy' else 'cede ' + hat + 'other'),
+            'auto ' + hat + 'last = ' + ('~owner' if route == 'shared_copy' else 'cede ' + hat + 'owner')),
+        None)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--build-dir', required=True)
@@ -143,8 +276,30 @@ def main():
             normal = compile('--check-only')
             shadow = compile('--check-only','--non-call-transfer-shadow=json')
             assert normal.stderr == shadow.stderr, name
-            if name == 'rejected_initializer_rollback':
+            if name == 'rejected_initializer_rollback' or name.endswith('_assignment_inner_escape'):
                 assert all(f'error[{code}]' not in normal.stderr for code in ('E0438','E0410')), normal.stderr
+                if name.endswith('_assignment_inner_escape'):
+                    assert 'error[E0455]' not in normal.stderr, normal.stderr
+                    evidence = json.loads(shadow.stdout)
+                    returned = [x for x in evidence['records'] if x['boundary'] == 'return' and
+                                x['location']['file'].endswith(name + '.tk') and
+                                'View' in x['plan']['actual_type']]
+                    assert returned and all(
+                        any('binding:input;' in dep for dep in x['plan']['dependency_roots']) and
+                        all('binding:local;' not in dep for dep in x['plan']['dependency_roots'])
+                        for x in returned), returned
+            if name.startswith(('shared_copy_', 'shared_move_', 'unique_move_')) and \
+                    name.endswith(('_escape', '_parameter_return')) and \
+                    'assignment_inner' not in name:
+                evidence = json.loads(shadow.stdout)
+                returns = [x for x in evidence['records'] if x['boundary'] == 'return' and
+                           x['location']['file'].endswith(name + '.tk') and
+                           'View' in x['plan']['actual_type']]
+                assert returns, name
+                expected = 'local' if error else 'input'
+                assert all(x['dependency'] != 'None' and
+                           any('binding:' + expected + ';' in dep for dep in x['plan']['dependency_roots'])
+                           for x in returns), returns
             if name in ('shared_borrowed','unique_borrowed','parameter_origin'):
                 evidence = json.loads(shadow.stdout)
                 new_records = [x for x in evidence['records']

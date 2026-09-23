@@ -808,7 +808,14 @@ private:
   bool m_AllowPermissionSuffix = false; // [NEW] Track explicit method call context
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
+  // Existing carried borrow metadata, snapshotted by binding identity for
+  // owner handoff/rollback. This is not an independence or ownership proof.
+  struct ManagedBorrowDependencies {
+    std::set<std::string> Roots;
+    std::map<std::string, std::set<std::string>> Fields;
+  };
   struct AnalysisState {
+    std::map<uint64_t, ManagedBorrowDependencies> ManagedBorrows;
     std::map<uint64_t, std::shared_ptr<const ByteBufferFact>> ByteBuffers;
     std::map<uint64_t, std::shared_ptr<const TaskResultFact>> TaskResults;
     std::map<FunctionDecl *, std::set<size_t>> TaskRequirements;
@@ -1058,6 +1065,7 @@ private:
     std::optional<ExplicitCedePlan> Plan;
     std::optional<CallableEnvironmentFacts> CallableFacts;
     std::optional<ActualReturnFieldOrigins> PropagatedOrigins;
+    std::optional<ManagedBorrowDependencies> ManagedBorrows;
     Expr *PropagationSource = nullptr;
     Expr *Destination = nullptr;
     std::shared_ptr<const BorrowedValueReplacementPlan> BorrowedReplacement;
