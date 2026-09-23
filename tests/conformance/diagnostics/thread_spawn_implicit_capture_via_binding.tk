@@ -4,7 +4,7 @@ fn main() -> i32 {
     auto value = 7
     auto f = { =>
         return cede value
-    }:fn() -> i32
+    }
     auto handle# = thread_spawn<i32>(cede f)
     return 0
 }

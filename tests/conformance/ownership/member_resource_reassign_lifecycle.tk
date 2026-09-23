@@ -65,7 +65,7 @@ fn main() -> i32 {
 
     {
         auto holder# = Holder(item = Resource(value = 13:i32))
-        holder:Holder# = Holder(item = Resource(value = 14:i32))
+        holder = Holder(item = Resource(value = 14:i32))
         if holder.item.value != 14:i32 { return 13 }
         if g_drop_count != 11:i32 || g_drop_sum != 84:i32 { return 14 }
     }

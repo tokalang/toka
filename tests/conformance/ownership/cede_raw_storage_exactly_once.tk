@@ -33,6 +33,35 @@ impl Outer@Encap {
 
 }
 
+// This test container maintains the live prefix itself. These helpers take
+// from initialized raw slots; raw_take does not infer that fact from alloc.
+fn raw_store_move_prefix<T>(nul *source: [T], *destination#: [T], length: usize) {
+    if length == 0:usize { return }
+    if *source is null {
+        unsafe { libc_abort() }
+        unreachable
+    } else {
+        auto index# = 0:usize
+        loop index < length {
+            destination[index] = unsafe raw_take source[index]
+            index += 1:usize
+        }
+    }
+}
+
+fn raw_store_pop_tail<T>(nul *storage: [T], length#: usize) -> Option<T> {
+    if length == 0:usize { return Option<T>::None }
+    if *storage is null {
+        unsafe { libc_abort() }
+        unreachable
+    } else {
+        auto tail = length - 1:usize
+        length = tail
+        auto outcome = Option<T>::Some(unsafe raw_take storage[tail])
+        return cede outcome
+    }
+}
+
 shape RawStore<T> (
     nul *#buf#: [T] = null as nul *[T],
     len#: usize = 0:usize,
@@ -63,11 +92,7 @@ impl<T> RawStore<T> {
             auto next_cap# = self.cap * 2:usize
             if next_cap == 0:usize { next_cap = 2:usize }
             auto *next# = unsafe alloc [next_cap] T
-            auto index# = 0:usize
-            loop index < self.len {
-                next[index] = cede self.buf[index]
-                index += 1:usize
-            }
+            raw_store_move_prefix<T>(self.*buf, *next, self.len)
             if self.*buf != null { unsafe free [0] self.*#buf }
             self.*buf = *next
             self.cap = next_cap
@@ -84,11 +109,8 @@ impl<T> RawStore<T> {
 
     fn pop(self#) -> Option<T> {
         if self.len == 0:usize { return Option<T>::None }
-        unsafe {
-            self.len -= 1:usize
-            auto value = cede self.buf[self.len]
-            return Option<T>::Some(cede value)
-        }
+        auto outcome = raw_store_pop_tail<T>(self.*buf, self.len#)
+        return cede outcome
     }
 }
 

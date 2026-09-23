@@ -10,7 +10,7 @@ fi
 WORK_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/toka-place-security.XXXXXX")"
 trap 'rm -rf "$WORK_ROOT"' EXIT
 mkdir -p "$WORK_ROOT/lib/std"
-ln -s "$REPO_ROOT/lib/core" "$WORK_ROOT/lib/core"
+cp -R "$REPO_ROOT/lib/core" "$WORK_ROOT/lib/core"
 ln -s "$REPO_ROOT/lib/sys" "$WORK_ROOT/lib/sys"
 
 cat > "$WORK_ROOT/main.tk" <<'EOF'
@@ -30,17 +30,21 @@ impl ProbeIter@PlaceIterator {
     type Item = i32
     pub fn next_place(self#) -> __PlaceOutcome<Item> <- self {
         unsafe {
-            return __place_hit<Item>('(self.buf[0]))
+            return __place_hit<Item>(self.buf[0])
         }
     }
 }
 EOF
 
-(
+if ! (
     cd "$WORK_ROOT"
     TOKA_LIB="$WORK_ROOT/lib" "$TOKAC" --check-only main.tk \
         > good.out 2> good.err
-)
+); then
+    echo "FAIL: canonical PlaceIterator control did not compile"
+    cat "$WORK_ROOT/good.err"
+    exit 1
+fi
 
 # Redline: the same canonical provider cannot return a place rooted in a local
 # whose lifetime ends with next_place.
@@ -54,7 +58,7 @@ impl ProbeIter@PlaceIterator {
     type Item = i32
     pub fn next_place(self#) -> __PlaceOutcome<Item> <- self {
         auto local = LocalBox(value = 7)
-        return __place_hit<Item>('(local.value))
+        return __place_hit<Item>(local.value)
     }
 }
 EOF

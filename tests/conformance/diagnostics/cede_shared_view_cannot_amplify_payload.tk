@@ -5,6 +5,5 @@ shape Cell(
 fn main() -> i32 {
     auto ~#source = new Cell(value = 1)
     auto ~view# = cede ~source
-    view.value = 2
     return 0
 }

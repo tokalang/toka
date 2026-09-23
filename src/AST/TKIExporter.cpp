@@ -1076,6 +1076,9 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         m_OS << "; ";
         exportExpr(rep->Count.get());
         m_OS << "]";
+    } else if (auto take = dynamic_cast<const RawTakeExpr *>(expr)) {
+        m_OS << "raw_take ";
+        exportExpr(take->Slot.get());
     } else if (auto uns = dynamic_cast<const UnsafeExpr *>(expr)) {
         m_OS << "unsafe ";
         exportExpr(uns->Expression.get());

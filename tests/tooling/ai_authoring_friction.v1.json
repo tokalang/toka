@@ -7,10 +7,10 @@
       "id": "existing-binding-does-not-amplify-payload",
       "dimension": "declaration-vs-assignment",
       "path": "tests/conformance/diagnostics/cede_shared_existing_lhs_cannot_amplify_payload.tk",
-      "expected": {"exit": 1, "code": "E04573"},
+      "expected": {"exit": 1, "code": "E04661"},
       "intent": "Assigning a value cannot widen the authority declared for an existing binding.",
       "repair_directions": [
-        "Keep the existing binding read-only and do not write its payload.",
+        "Keep the source's read-only payload ceiling; do not request a writable rebind.",
         "Declare or obtain a source and destination whose payload authority matches the intended mutation."
       ]
     },

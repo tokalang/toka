@@ -1,0 +1,8 @@
+shape Recursive(
+    Next(Recursive) = 1 |
+    End = 0
+)
+fn main() -> i32 {
+    auto value = Recursive::End
+    return 0
+}

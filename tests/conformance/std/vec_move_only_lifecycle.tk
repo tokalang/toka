@@ -1,7 +1,7 @@
 import core/traits::{@Encap}
 import std/vec::{Vec}
 
-auto g_drop_count# = 0
+auto g_drop_count# = 0:i32
 
 shape Resource(id: i32)
 

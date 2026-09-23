@@ -4,8 +4,7 @@ shape Cell(
 
 fn main() -> i32 {
     auto ~#source = new Cell(value = 1)
-    auto ~mid# = ~source
+    auto ~mid = ~source
     auto ~view# = ~mid
-    view.value = 2
     return 0
 }

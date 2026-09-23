@@ -537,6 +537,7 @@ DIAG(ERR_SEMA_STANDALONE_CEDE_REJECTED, Error, "E04660", "Cannot discard source 
 DIAG(ERR_SEMA_BINDING_TRANSFER_REJECTED, Error, "E04661", "Cannot transfer source into binding: {}")
 DIAG(ERR_SEMA_RAW_TAKE_REJECTED, Error, "E04662", "Cannot raw_take element: {}")
 DIAG(ERR_SEMA_UNSAFE_RAW_CONSTRUCTION, Error, "E04663", "Cannot construct writable raw pointer: {}")
+DIAG(ERR_RECURSIVE_VALUE_LAYOUT, Error, "E04664", "Shape '{}' contains a by-value recursive field; use explicit indirection")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

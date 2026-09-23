@@ -1,7 +1,7 @@
 import core/traits::{@Encap}
 
 auto g_body_runs# = 0
-auto g_drop_count# = 0
+auto g_drop_count# = 0:i32
 
 shape Token(id: i32)
 

@@ -222,11 +222,11 @@ def main():
             not parse_contract["parameters"][0]["payloadWritable"],
             "CSV parser ownership contract is incomplete")
     require(read_contract["return"]["type"] == "Result<Option<Vec<string>>,CsvError>" and
-            read_contract["parameters"][0]["type"] == "BufferedReader<'R>" and
+            read_contract["parameters"][0]["type"] == "BufferedReader<R>" and
             read_contract["parameters"][0]["payloadWritable"] and
             read_contract["parameters"][1]["type"] == "usize",
             "CSV reader capability contract is incomplete")
-    require(write_contract["parameters"][0]["type"] == "BufferedWriter<'W>" and
+    require(write_contract["parameters"][0]["type"] == "BufferedWriter<W>" and
             write_contract["parameters"][0]["payloadWritable"] and
             write_contract["parameters"][1]["type"] == "Vec<string>" and
             write_contract["parameters"][1]["flow"] == "cede",

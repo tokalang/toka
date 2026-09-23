@@ -825,6 +825,22 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
     auto left =
         queryExplicitCedeStage0NonCallType(binary->LHS.get(), destinationType);
     auto right = queryExplicitCedeStage0NonCallType(binary->RHS.get(), left);
+    const bool scalarArithmetic =
+        binary->Op == "+" || binary->Op == "-" || binary->Op == "*" ||
+        binary->Op == "/" || binary->Op == "%" || binary->Op == "&" ||
+        binary->Op == "|" || binary->Op == "^" || binary->Op == "<<" ||
+        binary->Op == ">>";
+    if (scalarArithmetic && left && right &&
+        ((left->isInteger() && right->isInteger()) ||
+         (left->isFloatingPoint() && right->isFloatingPoint())) &&
+        Type::stripMorphology(left->getSoulName()) ==
+            Type::stripMorphology(right->getSoulName())) {
+      // A writable field is still just a scalar value when used as an
+      // arithmetic operand. Its binding permission does not become a
+      // permission on the newly computed result.
+      return resolveExplicitCedeStage0TypeReadOnly(
+          Type::fromString(Type::stripMorphology(left->getSoulName())));
+    }
     if (left && right && !left->isUnknown() && !right->isUnknown() &&
         (left->equals(*right) || (left->typeKind == right->typeKind &&
                                   left->getSoulName() == right->getSoulName())))
@@ -1379,6 +1395,15 @@ std::optional<ValueOwnership> Sema::queryExplicitCedeStage0OwnershipReadOnly(
   auto shapeType = std::dynamic_pointer_cast<ShapeType>(resolved);
   ShapeDecl *shape = shapeType ? shapeType->Decl : nullptr;
   if (shape) {
+    if (m_UnboxedCycleDeclarations.count(shape))
+      return std::nullopt;
+    if (!m_Stage0OwnershipVisiting.insert(shape).second)
+      return std::nullopt;
+    struct VisitingShape {
+      std::set<const ShapeDecl *> &Active;
+      const ShapeDecl *Declaration;
+      ~VisitingShape() { Active.erase(Declaration); }
+    } visiting{m_Stage0OwnershipVisiting, shape};
     std::map<std::string, std::shared_ptr<Type>> substitutions;
     for (size_t index = 0;
          index < shape->GenericParams.size() &&

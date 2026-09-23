@@ -2,7 +2,7 @@ import core/traits::{@Encap}
 import std/task::{block_on}
 
 auto g_body_runs# = 0
-auto g_drop_count# = 0
+auto g_drop_count# = 0:i32
 
 shape Token(value: i32)
 

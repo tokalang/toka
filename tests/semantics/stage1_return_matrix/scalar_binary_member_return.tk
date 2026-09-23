@@ -1,0 +1,17 @@
+// Reading a writable scalar field as an arithmetic operand yields a new
+// plain value; it does not transfer the field's write capability.
+shape Counter(value#: i32)
+
+impl Counter {
+    fn next(self#, input: i32) -> i32 {
+        self.value += 1:i32
+        return input * self.value
+    }
+}
+
+fn main() -> i32 {
+    auto counter# = Counter(value = 0:i32)
+    if counter#.next(2:i32) != 2:i32 { return 1:i32 }
+    if counter#.next(3:i32) != 6:i32 { return 2:i32 }
+    return 0:i32
+}

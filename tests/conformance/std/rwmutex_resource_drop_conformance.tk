@@ -186,7 +186,7 @@ fn test_cross_thread_rwmutex() {
             round = round + 1
         }
         return 0
-    }:fn() -> i32
+    }:dyn fn() -> i32
 
     auto r2_fn = { [cede rw2] =>
         auto ~local = ~rw2
@@ -202,7 +202,7 @@ fn test_cross_thread_rwmutex() {
             round = round + 1
         }
         return 0
-    }:fn() -> i32
+    }:dyn fn() -> i32
 
     auto w_fn = { [cede rw_w] =>
         auto ~local = ~rw_w
@@ -218,11 +218,17 @@ fn test_cross_thread_rwmutex() {
             round = round + 1
         }
         return 0
-    }:fn() -> i32
+    }:dyn fn() -> i32
 
-    auto th1# = thread_spawn<i32>(cede r1_fn)
-    auto th2# = thread_spawn<i32>(cede r2_fn)
-    auto th_w# = thread_spawn<i32>(cede w_fn)
+    auto first = thread_spawn<i32>(cede r1_fn)
+    assert(first.is_ok(), "first reader must spawn")
+    auto th1# = first.unwrap()
+    auto second = thread_spawn<i32>(cede r2_fn)
+    assert(second.is_ok(), "second reader must spawn")
+    auto th2# = second.unwrap()
+    auto writer = thread_spawn<i32>(cede w_fn)
+    assert(writer.is_ok(), "writer must spawn")
+    auto th_w# = writer.unwrap()
 
     th1#.join().unwrap()
     th2#.join().unwrap()

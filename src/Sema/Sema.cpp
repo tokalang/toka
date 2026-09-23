@@ -6735,6 +6735,51 @@ void Sema::checkShapeSovereignty() {
   }
 }
 
+bool Sema::hasUnboxedValueCycle(const ShapeDecl *root) {
+  std::set<const ShapeDecl *> active, completed;
+  std::function<bool(const ShapeDecl *)> visitShape;
+  std::function<bool(std::shared_ptr<Type>)> visitType;
+  visitType = [&](std::shared_ptr<Type> type) -> bool {
+    if (!type || type->isUnknown()) return false;
+    // Every handle/reference and slice is a finite-sized descriptor. Its
+    // pointee does not contribute an inline field to this value's layout.
+    if (type->isPointer() || type->isReference() || type->isSlice() ||
+        type->isFunction() || type->isDynFn()) return false;
+    if (type->isArray()) return visitType(type->getArrayElementType());
+    auto shapeType = std::dynamic_pointer_cast<ShapeType>(type);
+    if (!shapeType) return false;
+    const ShapeDecl *declaration = shapeType->Decl;
+    if (!declaration && root && shapeType->Name == root->Name)
+      declaration = root;
+    return declaration && declaration->GenericParams.empty() &&
+           visitShape(declaration);
+  };
+  visitShape = [&](const ShapeDecl *shape) -> bool {
+    if (!active.insert(shape).second) return true;
+    if (completed.count(shape)) {
+      active.erase(shape);
+      return false;
+    }
+    bool cyclic = false;
+    for (const auto &member : shape->Members) {
+      if (shape->Kind == ShapeKind::Enum) {
+        if (!member.SubMembers.empty()) {
+          for (const auto &payload : member.SubMembers)
+            cyclic |= visitType(getPhysicalType(payload));
+        } else if (!member.IsUnitVariant)
+          cyclic |= visitType(getPhysicalType(member));
+      } else {
+        cyclic |= visitType(getPhysicalType(member));
+      }
+      if (cyclic) break;
+    }
+    active.erase(shape);
+    if (!cyclic) completed.insert(shape);
+    return cyclic;
+  };
+  return root && visitShape(root);
+}
+
 void Sema::analyzeShapes(Module &M) {
   // Pass 2: Resolve Member Types (The "Filling" Phase)
   // This must happen after registerGlobals (Pass 1) so that all Shape names
@@ -6751,13 +6796,13 @@ void Sema::analyzeShapes(Module &M) {
     // purely yet? Enums have members too) Actually ShapeMember is used for
     // all.
     for (auto &member : S->Members) {
-      auto resolveShapeMemberType = [&](ShapeMember &m) {
+      auto resolveShapeMemberType = [&](ShapeMember &m, bool unnamedPayload = false) {
         if (m.ResolvedType)
           return;
 
-        const std::string fullTypeStr = Sema::synthesizePhysicalType(m);
+        const std::string fullTypeStr = Sema::synthesizePhysicalType(m, !unnamedPayload);
         validateTypeVisibilityInType(fullTypeStr, getLoc(S.get()));
-        m.ResolvedType = resolveType(Sema::synthesizePhysicalTypeObject(m));
+        m.ResolvedType = resolveType(Sema::synthesizePhysicalTypeObject(m, !unnamedPayload));
         if (m.ResolvedType) {
           SyntaxOrigin origin = (CurrentModule && CurrentModule->IsInterface) ? SyntaxOrigin::TKIImport : SyntaxOrigin::SourceSurface;
           recordHandleGrammarAudit(m.ResolvedType, origin,
@@ -6797,7 +6842,9 @@ void Sema::analyzeShapes(Module &M) {
       
       // Resolve SubMembers (mostly payloads for Enum variants)
       for (auto &subMemb : member.SubMembers) {
-          resolveShapeMemberType(subMemb);
+          // An enum tuple payload has no binding name on which to carry a
+          // handle hat. Its type-side morphology is the actual payload type.
+          resolveShapeMemberType(subMemb, true);
       }
 
       // 5. Basic Validation (Optional but good)
@@ -6864,6 +6911,15 @@ void Sema::analyzeShapes(Module &M) {
   // Some early declarations have already moved out of SyntheticShapes into
   // GenericInstancesModule; the registry retains the same declaration IDs.
   for (const auto &[name, shape] : ShapeMap) refreshNominal(shape);
+
+  // A direct value cycle has no finite layout. Pointer and reference edges
+  // were stopped above, so recursive types through explicit handles remain
+  // available without guessing ownership or cleanup facts.
+  for (const auto &shape : M.Shapes)
+    if (shape->GenericParams.empty() && hasUnboxedValueCycle(shape.get())) {
+      m_UnboxedCycleDeclarations.insert(shape.get());
+      error(shape.get(), DiagID::ERR_RECURSIVE_VALUE_LAYOUT, shape->Name);
+    }
 
   // First pass: Compute properties for all shapes
   for (auto &S : M.Shapes) {

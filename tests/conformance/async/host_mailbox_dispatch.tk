@@ -14,8 +14,10 @@ fn main() -> i32 {
     auto worker = { [cede sender] =>
         if sender#.post(cede 41:i32).is_err() { return 2:i32 }
         return 0:i32
-    }:fn#() -> i32
-    auto worker# = thread_spawn<i32>(cede worker)
+    }
+    auto created = thread_spawn<i32>(cede worker)
+    if created.is_err() { return 8:i32 }
+    auto worker# = created.unwrap()
     auto worker_result = worker#.join()
     match cede worker_result {
         auto Result<i32, _>::Ok(status) => {

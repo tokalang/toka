@@ -11,7 +11,10 @@ impl Tracked@Encap {
 }
 
 impl Tracked {
-    fn read(self) -> str {
+    fn read(self) -> res: str
+    effects:
+        res.&buf <- self.value.buf
+    {
         return self.value.as_str()
     }
 

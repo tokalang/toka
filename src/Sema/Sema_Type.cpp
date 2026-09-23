@@ -1161,7 +1161,8 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
       // [NEW] Structural Substitution.  The declaration's TypeSyntax is
       // lowered directly; generic substitution then works on semantic Type
       // rather than reparsing a synthesized spelling.
-      auto memberTypeObj = Sema::synthesizePhysicalTypeObject(m);
+      auto memberTypeObj = Sema::synthesizePhysicalTypeObject(
+          m, &m == &member);
       auto subObj = memberTypeObj->substitute(substMap);
       if (m.Permission.HandleLayers.empty() &&
           m.Permission.Morphology == BindingMorphology::None && m.TypeSyntax &&
@@ -1205,6 +1206,11 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
 
     if (!(storedDecl->Kind == ShapeKind::Enum && member.IsUnitVariant))
       resolveMember(member);
+  }
+
+  if (hasUnboxedValueCycle(storedDecl)) {
+    m_UnboxedCycleDeclarations.insert(storedDecl);
+    error(Template, DiagID::ERR_RECURSIVE_VALUE_LAYOUT, mangledName);
   }
 
   auto instance = std::make_shared<ShapeType>(mangledName);

@@ -97,7 +97,7 @@ fn line_as_string(line#: Vec<u8>, line_len: usize) -> string {
         value#.push_byte_raw(line#.get(index))
         index += 1:usize
     }
-    return value
+    return cede value
 }
 
 fn decimal_retry(value: str) -> Option<i32> {

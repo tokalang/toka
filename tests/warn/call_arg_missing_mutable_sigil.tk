@@ -30,6 +30,15 @@ fn take_ceded(cede c: Counter) -> Counter {
     return cede c
 }
 
+shape MutableCaller()
+
+impl MutableCaller@Callable {
+    pub fn call(self#, item#: Counter) -> i32 {
+        item.value = item.value + 20
+        return 0
+    }
+}
+
 fn main() -> i32 {
     auto c# = Counter(value = 0)
     inc(c)
@@ -39,10 +48,7 @@ fn main() -> i32 {
 
     Service::static_inc(c)
 
-    auto f# = { item =>
-        item.value = item.value + 20
-        return 0
-    }: fn#(Counter#) -> i32
+    auto f# = MutableCaller()
     f#(c)
 
     auto container# = Container(item = Counter(value = 0))

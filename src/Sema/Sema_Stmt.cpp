@@ -1940,7 +1940,12 @@ void Sema::checkStmt(Stmt *S) {
     }
 
   } else if (auto *Var = dynamic_cast<VariableDecl *>(S)) {
-    Stage1BindingTransfer bindingTransfer(*this, Var, Var->Init != nullptr);
+    // A typed todo is an editor-only conditional binding, not an executable
+    // transfer. Keep its E04603 diagnostic and conditional facts visible
+    // without asking the ownership planner to admit an incomplete value.
+    const bool conditionalTodoInitializer = isTodoWrapper(Var->Init.get());
+    Stage1BindingTransfer bindingTransfer(
+        *this, Var, Var->Init != nullptr && !conditionalTodoInitializer);
     recordHandleSurfaceVariableDecl(*Var);
     const bool inferredManagedConstruction = (Var->IsUnique || Var->IsShared) &&
         dynamic_cast<NewExpr *>(Var->Init.get());
@@ -2053,7 +2058,7 @@ void Sema::checkStmt(Stmt *S) {
       }
       if (bindingTransfer.enabled())
         bindingTransfer.prepare(Var->Init.get(), stage0DestinationType);
-      else
+      else if (!conditionalTodoInitializer)
         recordExplicitCedeStage0NonCallPlan(
             Var, Var->Init.get(), stage0DestinationType,
             TransferDestination::Initialization,

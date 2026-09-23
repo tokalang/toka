@@ -41,7 +41,8 @@ pub fn opendir_impl(path: Addr) -> Addr {
         search_path#.push_str(star.as_str())
         auto *wsearch = to_utf16(search_path.c_str()).unwrap()
         
-        auto *wd# = libc_malloc(sizeof(WinDir)).unwrap() as *WinDir
+        auto *allocation = libc_malloc(sizeof(WinDir)).unwrap()
+        auto *wd# = unsafe ((*allocation as Addr) as *WinDir)
         auto h = FindFirstFileW(*wsearch, *(wd.find_data) as Addr)
         
         libc_free(*wsearch as *void)
@@ -143,8 +144,8 @@ pub fn temp_file_destroy_impl(handle: Addr) {}
 // The runtime currently returns failure on Windows until its UTF-16 atomic
 // replacement adapter is introduced; std/fs exposes that as Result::Err.
 pub fn atomic_write_string_impl(path: string, content: string) -> bool {
-    auto *path_ptr# = path.c_str()
-    auto *data_ptr# = content.c_str() as *u8
+    auto *path_ptr = path.c_str()
+    auto *data_ptr = content.c_str() as *u8
     return unsafe toka_atomic_write_file(*path_ptr, *data_ptr, content.len()) == 0
 }
 
@@ -169,14 +170,16 @@ pub fn stat_impl(path: Addr) -> Addr {
             return ADDR0
         }
         
-        auto *ws# = libc_malloc(sizeof(WinStat)).unwrap() as *WinStat
+        auto *stat_allocation = libc_malloc(sizeof(WinStat)).unwrap()
+        auto *ws# = unsafe ((*stat_allocation as Addr) as *WinStat)
         ws.size = 0
         ws.mode = 0x8000 // REG
         auto is_dir = (attr & 0x00000010:u32) != 0
         if is_dir {
             ws.mode = 0x4000 // DIR
         } else {
-            auto *fd# = libc_malloc(sizeof(WIN32_FIND_DATAW)).unwrap() as *WIN32_FIND_DATAW
+            auto *find_data_allocation = libc_malloc(sizeof(WIN32_FIND_DATAW)).unwrap()
+            auto *fd# = unsafe ((*find_data_allocation as Addr) as *WIN32_FIND_DATAW)
             auto h = FindFirstFileW(*wpath, *fd as Addr)
             if h as Addr != 0xFFFFFFFFFFFFFFFF:Addr {
                 ws.size = ((fd.nFileSizeHigh as u64) << 32) | (fd.nFileSizeLow as u64)

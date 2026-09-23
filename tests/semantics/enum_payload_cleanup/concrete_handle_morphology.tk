@@ -1,5 +1,4 @@
-// Sema currently loses root hats on this concrete declaration path. Do not
-// invent a layout or cleanup type; this path must fail closed until repaired.
+// Unnamed enum payloads preserve both complete handle morphologies.
 shape Resource(id: i32)
 impl Resource@Encap { pub id fn drop(self#) {} }
 shape Event(Both(^Resource, ~Resource) | Empty)

@@ -27,7 +27,10 @@ def main():
                               env=env, text=True, capture_output=True, timeout=45)
 
     with tempfile.TemporaryDirectory(prefix="toka-enum-cleanup-gate-") as directory:
-        for source in ("lifecycle.tk", "nested_multi_custom.tk", "raw_reference.tk", "uninitialized.tk"):
+        for source in ("lifecycle.tk", "nested_multi_custom.tk", "raw_reference.tk",
+                       "uninitialized.tk", "concrete_handle_morphology.tk",
+                       "concrete_handle_exact_once.tk", "boxed_recursive_enum.tk",
+                       "boxed_shared_recursive_enum.tk"):
             normal = run(source, "--check-only")
             shadow = run(source, "--check-only", "--non-call-transfer-shadow=json")
             require(normal.returncode == shadow.returncode == 0 and normal.stderr == shadow.stderr,
@@ -40,18 +43,21 @@ def main():
             require(executed.returncode == 0,
                     source + ": lifecycle failed, rc=" + str(executed.returncode) + executed.stderr)
 
-        # This declaration is legal source, but the current declaration path
-        # loses its root hats before CodeGen. Do not bless a guessed layout.
-        source = "incomplete_concrete_morphology.tk"
-        checked = run(source, "--check-only")
-        require(checked.returncode == 0, checked.stderr)
-        for mode, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
-            output = Path(directory) / ("incomplete" + suffix)
-            rejected = run(source, mode, "-o", str(output))
-            require(rejected.returncode == 1 and "E0701" in rejected.stderr and
-                    "enum cleanup requires complete resolved payload types" in rejected.stderr and
-                    not output.exists(), "incomplete payload metadata emitted an artifact or crashed")
-    print("enum cleanup: 4 runtime/parity cases, 2 incomplete-metadata no-artifact checks; zero skips")
+        # A direct value cycle cannot have a finite layout. Both checking and
+        # code generation must reject it; the boxed counterpart above runs.
+        for source in ("unboxed_recursive_enum.tk", "generic_unboxed_recursive_enum.tk",
+                       "mutual_unboxed_recursive_enum.tk"):
+            checked = run(source, "--check-only")
+            shadow = run(source, "--check-only", "--non-call-transfer-shadow=json")
+            require(checked.returncode == shadow.returncode == 1 and
+                    checked.stderr == shadow.stderr and "E04664" in checked.stderr,
+                    source + ": " + checked.stderr + shadow.stderr)
+            for mode, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
+                output = Path(directory) / (source.removesuffix(".tk") + suffix)
+                rejected = run(source, mode, "-o", str(output))
+                require(rejected.returncode == 1 and "E04664" in rejected.stderr and
+                        not output.exists(), source + ": recursive value emitted an artifact or crashed")
+    print("enum cleanup: 8 runtime/parity cases, 6 recursive no-artifact checks; zero skips")
 
 
 if __name__ == "__main__":

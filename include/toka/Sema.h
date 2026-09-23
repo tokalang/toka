@@ -975,6 +975,9 @@ private:
   AccessCapability queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *Value);
   std::optional<ValueOwnership>
   queryExplicitCedeStage0OwnershipReadOnly(const std::shared_ptr<Type> &Type);
+  bool hasUnboxedValueCycle(const ShapeDecl *Root);
+  std::set<const ShapeDecl *> m_Stage0OwnershipVisiting;
+  std::set<const ShapeDecl *> m_UnboxedCycleDeclarations;
   CallExecutionBoundary
   classifyShadowExecutionBoundary(FunctionDecl *Function) const;
   CallTransferPlan buildShadowCallTransferPlan(

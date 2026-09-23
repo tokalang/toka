@@ -384,8 +384,8 @@
       "id": "diag_vec_recursive_enum_get_rejected_01",
       "path": "diagnostics/vec_recursive_enum_get_rejected.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E0417",
-      "expected_span_line": 11,
+      "expected_diagnostic_code": "E04664",
+      "expected_span_line": 3,
       "timeout_seconds": 10,
       "description": "A direct-value recursive enum is never optimistically proven Copy"
     },
@@ -894,19 +894,19 @@
       "id": "diag_shared_view_cannot_amplify_payload_01",
       "path": "diagnostics/shared_view_cannot_amplify_payload.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E04573",
-      "expected_span_line": 9,
+      "expected_diagnostic_code": "E04661",
+      "expected_span_line": 8,
       "timeout_seconds": 10,
-      "description": "A chain of shared views cannot amplify its direct source payload capability"
+      "description": "A chain of shared views cannot acquire payload write capability at a fresh binding"
     },
     {
       "id": "diag_cede_shared_view_cannot_amplify_payload_01",
       "path": "diagnostics/cede_shared_view_cannot_amplify_payload.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E04573",
-      "expected_span_line": 8,
+      "expected_diagnostic_code": "E04661",
+      "expected_span_line": 7,
       "timeout_seconds": 10,
-      "description": "Ceding a shared handle transfers no additional payload capability"
+      "description": "Ceding a shared handle cannot create payload write capability at a fresh binding"
     },
     {
       "id": "diag_cede_shared_projection_cannot_amplify_payload_field_01",
@@ -975,8 +975,8 @@
       "id": "diag_member_field_cannot_rebuild_payload_in_fresh_binding_01",
       "path": "diagnostics/member_field_cannot_rebuild_payload_in_fresh_binding.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E04573",
-      "expected_span_line": 11,
+      "expected_diagnostic_code": "E04661",
+      "expected_span_line": 10,
       "timeout_seconds": 10,
       "description": "A fresh binding from a readonly handle field retains its Payload ceiling"
     },
@@ -1254,8 +1254,8 @@
       "id": "diag_cede_shared_existing_lhs_cannot_amplify_payload_01",
       "path": "diagnostics/cede_shared_existing_lhs_cannot_amplify_payload.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E04573",
-      "expected_span_line": 7,
+      "expected_diagnostic_code": "E04661",
+      "expected_span_line": 6,
       "timeout_seconds": 10,
       "description": "A shared cede rebind preserves its direct source payload ceiling"
     },
@@ -1326,7 +1326,7 @@
       "path": "diagnostics/static_cede_parameter_requires_explicit_transfer.tk",
       "type": "run",
       "timeout_seconds": 10,
-      "description": "A static consuming formal transfers a bare resource argument"
+      "description": "A static consuming formal transfers an explicitly ceded resource argument"
     },
     {
       "id": "ownership_callable_cede_parameter_signature_transfer_01",
@@ -1366,8 +1366,8 @@
       "id": "diag_cede_member_cannot_rebuild_payload_permission_01",
       "path": "diagnostics/cede_member_cannot_rebuild_payload_permission.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E04573",
-      "expected_span_line": 6,
+      "expected_diagnostic_code": "E04661",
+      "expected_span_line": 5,
       "timeout_seconds": 10,
       "description": "A ceded member remains capped by its declared payload permission"
     },
@@ -1375,8 +1375,8 @@
       "id": "diag_cede_member_cast_cannot_rebuild_payload_permission_01",
       "path": "diagnostics/cede_member_cast_cannot_rebuild_payload_permission.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E04573",
-      "expected_span_line": 7,
+      "expected_diagnostic_code": "E04661",
+      "expected_span_line": 6,
       "timeout_seconds": 10,
       "description": "A cast around a ceded member remains capped by its direct payload permission"
     },
@@ -2065,7 +2065,7 @@
       "path": "diagnostics/thread_spawn_implicit_capture_via_assignment.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E04582",
-      "expected_span_line": 12,
+      "expected_span_line": 10,
       "timeout_seconds": 10,
       "description": "Closure capture facts survive assignment before thread_spawn"
     },

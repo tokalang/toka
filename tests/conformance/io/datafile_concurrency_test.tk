@@ -43,7 +43,7 @@ fn main() -> i32 {
     auto r4 = reader.clone()
 
     // 4. Spawn 4 worker threads performing concurrent random-offset reads using read-only receiver (self)
-    auto t1# = thread_spawn<i32>(cede { [cede r1] =>
+    auto worker1 = { [cede r1] =>
         auto buf# = Vec<u8>::with_capacity(128:usize)
         auto iter# = 0:usize
         loop iter < 50:usize {
@@ -62,9 +62,12 @@ fn main() -> i32 {
             iter = iter + 1:usize
         }
         return 0
-    })
+    }:dyn fn() -> i32
+    auto created1 = thread_spawn<i32>(cede worker1)
+    assert(created1.is_ok(), "Thread 1 spawn failed")
+    auto t1# = created1.unwrap()
 
-    auto t2# = thread_spawn<i32>(cede { [cede r2] =>
+    auto worker2 = { [cede r2] =>
         auto buf# = Vec<u8>::with_capacity(256:usize)
         auto iter# = 0:usize
         loop iter < 50:usize {
@@ -83,9 +86,12 @@ fn main() -> i32 {
             iter = iter + 1:usize
         }
         return 0
-    })
+    }:dyn fn() -> i32
+    auto created2 = thread_spawn<i32>(cede worker2)
+    assert(created2.is_ok(), "Thread 2 spawn failed")
+    auto t2# = created2.unwrap()
 
-    auto t3# = thread_spawn<i32>(cede { [cede r3] =>
+    auto worker3 = { [cede r3] =>
         auto buf# = Vec<u8>::with_capacity(64:usize)
         auto iter# = 0:usize
         loop iter < 50:usize {
@@ -104,9 +110,12 @@ fn main() -> i32 {
             iter = iter + 1:usize
         }
         return 0
-    })
+    }:dyn fn() -> i32
+    auto created3 = thread_spawn<i32>(cede worker3)
+    assert(created3.is_ok(), "Thread 3 spawn failed")
+    auto t3# = created3.unwrap()
 
-    auto t4# = thread_spawn<i32>(cede { [cede r4] =>
+    auto worker4 = { [cede r4] =>
         auto buf# = Vec<u8>::with_capacity(512:usize)
         auto iter# = 0:usize
         loop iter < 50:usize {
@@ -125,7 +134,10 @@ fn main() -> i32 {
             iter = iter + 1:usize
         }
         return 0
-    })
+    }:dyn fn() -> i32
+    auto created4 = thread_spawn<i32>(cede worker4)
+    assert(created4.is_ok(), "Thread 4 spawn failed")
+    auto t4# = created4.unwrap()
 
     assert(t1#.join().unwrap() == 0, "Thread 1 joined with failure")
     assert(t2#.join().unwrap() == 0, "Thread 2 joined with failure")

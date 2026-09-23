@@ -150,7 +150,8 @@ def main():
                 "static_view_storage_positive.tk",
                 "rebound_reference_parameter.tk",
                 "rebound_reference_alias_copy.tk",
-                "rebound_reference_branch_parameter.tk"):
+                "rebound_reference_branch_parameter.tk",
+                "scalar_binary_member_return.tk"):
             normal = run(tokac, source, "--check-only")
             shadow = run(tokac, source, "--non-call-transfer-shadow=json", "--check-only")
             require(normal.returncode == shadow.returncode == 0 and
@@ -168,6 +169,15 @@ def main():
                     source + " failed at runtime: " + executed.stderr)
 
     alias_records = return_records(tokac, "copy_alias_keep_live.tk")
+    scalar_records = return_records(tokac, "scalar_binary_member_return.tk")
+    require(any(record["location"]["line"] == 8 and
+                record["plan"]["actual_type"] == "i32" and
+                record["plan"]["outcome"] == "Admitted" and
+                record["source_category"] == "NoSourcePlace" and
+                record["plan"]["value_production"] == "CopyValue" and
+                record["plan"]["drop"] == "NoLiability"
+                for record in scalar_records),
+            "writable member permission leaked into scalar arithmetic result")
     require(any(record["plan"]["value_production"] == "CopyValue" and
                 record["plan"]["source"] == "KeepLive" and
                 record["plan"]["exact_path"] and

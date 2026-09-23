@@ -8,6 +8,5 @@ fn main() -> i32 {
     auto ~source# = new Cell(value = 1)
     auto holder# = Holder(~cell = ~source)
     auto ~view# = holder.~cell
-    view.value = 12
     return 0
 }
