@@ -2235,6 +2235,7 @@ public:
 
   // [NEW] Cache for the mangled name of the destructor (drop method)
   std::string MangledDestructorName;
+  FunctionDecl *ResolvedDestructor = nullptr; // actual checked declaration
   // Distinguishes a source-level `@Encap drop` from the compiler-generated
   // structural destructor used for resource-containing records.
   bool HasExplicitDrop = false;
@@ -2555,6 +2556,13 @@ public:
   std::map<std::string, std::vector<std::string>> MemberDependencies; // [NEW] e.g. res.&left <- a
   std::unique_ptr<BlockStmt> Body;
   FunctionMemorySummary MemorySummary;
+  // Source snapshot for bounded executable interface export; never a proof.
+  std::unique_ptr<BlockStmt> InterfaceSourceBody;
+  std::set<const FunctionDecl *> InterfaceCallees;
+  std::vector<std::shared_ptr<toka::Type>> InterfaceValueTypes;
+  // Resolver policy selects a body; successful Sema checking qualifies it.
+  bool InterfaceLocalBody = false;
+  bool InterfaceLocalBodyValidated = false;
 
   bool IsVariadic = false;
   bool IsClosureInvoke = false;
@@ -2734,6 +2742,7 @@ public:
   std::shared_ptr<toka::Type> ResolvedReturnType;
   std::unique_ptr<BlockStmt> Body;
   std::string SynthesizedShapeName;
+  FunctionDecl *ResolvedInvoke = nullptr; // checked identity, not cloned
   CallableReceiverMode CallableReceiver = CallableReceiverMode::Shared;
 
   ClosureExpr() {}
@@ -2955,6 +2964,7 @@ public:
   bool IsInterface = false;
   bool IsTrustedSystemModule = false; // Resolver provenance; never serialized.
   bool HasBackingObject = false;
+  bool HasLocalBodyPolicy = false;
   std::string BackingObjectPath;
   // Resolver evidence used by stable nominal declaration identities.  A
   // source_path alone never grants a resolver coordinate.

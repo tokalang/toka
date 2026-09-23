@@ -67,8 +67,8 @@ def main():
                 else: diagnostics[name] = normal.stderr
             print('PASS domains ' + ('source-hidden' if hidden else 'source-visible'), flush=True)
         # The new source-level contract must not be consumed as an old cache.
-        assert '0.9.9-22' in original_tki
-        (work / 'slot.tki').write_text(original_tki.replace('0.9.9-22', '0.9.9-21'))
+        assert '0.9.9-23' in original_tki
+        (work / 'slot.tki').write_text(original_tki.replace('0.9.9-23', '0.9.9-22'))
         user.write_text(positive)
         rejected = compile(user, '--check-only')
         assert rejected.returncode == 1, rejected.stderr

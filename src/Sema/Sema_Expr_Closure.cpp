@@ -764,6 +764,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   invokeFunc->GenericParams = invokeGenerics; // [NEW] Attach generic parameters
   invokeFunc->ResolvedReturnType = toka::Type::fromString(invokeRetType);
   invokeFunc->IsClosureInvoke = true;
+  invokeFunc->InterfaceLocalBody = CurrentFunction && CurrentFunction->InterfaceLocalBody;
   invokeFunc->ClosureReceiver = Clo->CallableReceiver;
   invokeFunc->CodegenName = UniqueName + "___invoke";
 
@@ -835,6 +836,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
       const auto &rawDiagnostics = DiagnosticEngine::records();
       rawSummary.Valid = std::none_of(rawDiagnostics.begin() + rawDiagnosticStart, rawDiagnostics.end(),
           [](const auto &record) { return record.Level == DiagLevel::Error; });
+      invokeFunc->InterfaceLocalBodyValidated = rawSummary.Valid && !HasError;
 
       CurrentFunctionReturnType = savedRet;
       CurrentFunction = savedFn;
@@ -847,6 +849,8 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   SyntheticShapes.push_back(std::move(SyntheticShape));
 
   ImplMap[UniqueName]["call"] = invokeFunc.get();
+  Clo->ResolvedInvoke = invokeFunc.get();
+  if (invokeFunc->InterfaceLocalBody) m_InterfaceLocalBodies.insert(invokeFunc.get());
   ImplMap[UniqueName + "@Callable"]["call"] = invokeFunc.get();
   MethodDecls[UniqueName]["call"] = invokeFunc.get();
   MethodDecls[UniqueName]["__invoke"] = invokeFunc.get();

@@ -1,6 +1,6 @@
 # RC13 source-hidden qualification: bounded decision proposal
 
-Status: **proposed, not authorized or activated**. Inspection baseline:
+Status: **implementation authorized on 2026-09-23; candidate not Accepted**. Inspection baseline:
 `cc391e88`; the concurrent global declaration-location correction is unrelated.
 E, `fn_`, publication and push remain paused.
 
@@ -111,6 +111,42 @@ is not silently included in the recommended implementation authorization.
   fail early from a missing SDK or unknown compiler option and count as semantic
   success. Negative object/LLVM modes check intended diagnostics and no artifact.
 
-No production source-hidden exporter, serialized summary or CodeGen admission
-change has been applied while awaiting this decision. The two container return
-cases and the declaration-location fix remain separately accounted for.
+The user approved finite body retention, consumer-local execution and necessary
+interface/cache policy changes. This does not authorize opaque binary proof
+authentication, E, push or release. Implementation and the complete matrix are
+in progress; no candidate acceptance is claimed. The two container return cases
+and the declaration-location fix remain separately accounted for.
+
+## Implementation candidate (2026-09-23, WIP)
+
+- Interface version `0.9.9-23`; `checked-local-v1` metadata associates explicit
+  declaration ordinals with retained bodies. Missing/duplicate/unknown targets
+  or absent bodies are rejected. An unassociated ordinary body cannot publish
+  callable/task-result qualification just because its text is present.
+- Export retains source snapshots only for selected callable/async producers
+  and their checked helper/cleanup closure. The snapshots precede closure
+  lowering; imports preserve them for replay-surface/digest re-export too.
+  This policy does not serialize environment-independent booleans.
+- Sema rechecks ordinary bodies and records exact resolved calls, values and
+  destructor declarations. Final validation checks the finite execution closure,
+  rejects unavailable/invalid/recursive dependencies and escaped function
+  identities. Global declarations/storage are not cloned. Compiler field-walk
+  cleanup stays compiler-generated; user drop bodies require their real identity.
+- CodeGen emits these validated implementations with **internal linkage**, not
+  LinkOnceODR. Declaration pass and body pass remain separate. Exact symbol to
+  declaration associations reject a collision rather than select another body;
+  this first route does not silently rename an externally observable function
+  identity. Closure invokes and custom drop/helper bodies share the local closure;
+  existing generated drop cascades already have private linkage.
+- The original four replay directories and indirect-parameter gate passed during
+  development. The new package test checks old-object/new-body arithmetic and
+  drop mismatches, actual task argument projection after cleanup, invalid helper,
+  recursive helper, missing policy/association, function identity and missing
+  private global refusal. Positive runs, normal/shadow and object/LLVM refusal
+  are separate checks. Final fixed-candidate rerun is recorded in the existing
+  PASS-tail ledger, not inferred from these development runs.
+
+No native layout/protocol, reference counting, raw_take, byte-owner qualification,
+E or `fn_` change is included. No generalized opaque-binary authentication is
+introduced. Unsupported mixed/opaque capture qualification remains subject to
+the previous environment rules; these were not loosened to test the new path.

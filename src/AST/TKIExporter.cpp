@@ -3,6 +3,7 @@
 #include "toka/InterfaceVersion.h"
 #include "toka/Parser.h"
 #include "toka/PathUtils.h"
+#include "toka/InterfaceBody.h"
 #include <cstdio>
 #include <sstream>
 #include <fstream>
@@ -335,6 +336,7 @@ void TKIExporter::writeln(const std::string &str) {
 }
 
 void TKIExporter::exportModule(const Module &module) {
+    selectLocalBodies(module);
     // 0. Export Metadata Headers
     std::string sourceHash = "";
     if (!module.SourcePath.empty()) {
@@ -345,6 +347,22 @@ void TKIExporter::exportModule(const Module &module) {
         }
     }
     writeln("// @meta compiler_version: " + std::string(TOKA_COMPILER_INTERFACE_VERSION));
+    if (!m_LocalBodies.empty()) {
+        writeln("// @meta local_body_policy: " + std::string(TOKA_LOCAL_BODY_POLICY));
+        std::string definitions;
+        auto add = [&](const std::string &id, const FunctionDecl *fn) {
+            if (!m_LocalBodies.count(fn)) return;
+            if (!definitions.empty()) definitions += ",";
+            definitions += id;
+        };
+        for (size_t i = 0; i < module.Functions.size(); ++i)
+            add("f/" + std::to_string(i), module.Functions[i].get());
+        for (size_t i = 0; i < module.Impls.size(); ++i)
+            for (size_t j = 0; j < module.Impls[i]->Methods.size(); ++j)
+                add("i/" + std::to_string(i) + "/" + std::to_string(j),
+                    module.Impls[i]->Methods[j].get());
+        writeln("// @meta local_body_definitions: " + definitions);
+    }
     writeln("// @meta format_version: " + std::string(TOKA_INTERFACE_FORMAT_VERSION));
     writeln("// @meta target_triple: " + Parser::TargetTriple);
     writeln("// @meta source_hash: " + sourceHash);
@@ -369,7 +387,41 @@ void TKIExporter::exportModule(const Module &module) {
 }
 
 void TKIExporter::exportSemanticReplaySurface(const Module &module) {
+    selectLocalBodies(module);
     exportDeclarations(module);
+}
+
+void TKIExporter::selectLocalBodies(const Module &module) {
+    m_LocalBodies.clear();
+    std::set<const FunctionDecl *> available;
+    auto add = [&](const FunctionDecl *fn) {
+        if (fn->Body && fn->GenericParams.empty() && !fn->IsClosureInvoke) {
+            available.insert(fn);
+        }
+    };
+    for (const auto &fn : module.Functions) add(fn.get());
+    for (const auto &impl : module.Impls)
+        if (impl->GenericParams.empty())
+            for (const auto &fn : impl->Methods) add(fn.get());
+    std::set<const FunctionDecl *> visited;
+    std::function<void(const FunctionDecl *)> walk = [&](const FunctionDecl *fn) {
+        if (!fn || !visited.insert(fn).second) return;
+        if (available.count(fn)) m_LocalBodies.insert(fn);
+        for (auto *callee : fn->InterfaceCallees) walk(callee);
+        std::set<const Type *> types;
+        auto cleanup = [&](const std::shared_ptr<Type> &type) {
+            visitInterfaceCleanupTypes(type, types, [&](const ShapeDecl *shape) {
+                walk(shape->ResolvedDestructor);
+            });
+        };
+        cleanup(fn->ResolvedReturnType);
+        for (const auto &arg : fn->Args) cleanup(arg.ResolvedType);
+        for (const auto &type : fn->InterfaceValueTypes) cleanup(type);
+    };
+    for (auto *fn : available)
+        if (fn->InterfaceLocalBody || fn->Effect == EffectKind::Async ||
+            (fn->ResolvedReturnType && (fn->ResolvedReturnType->isFunction() ||
+                                      fn->ResolvedReturnType->isDynFn()))) walk(fn);
 }
 
 void TKIExporter::exportDeclarations(const Module &module) {
@@ -729,9 +781,11 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
     bool hasGenerics = !decl.GenericParams.empty();
     if (decl.Body &&
         (hasGenerics || forceKeepBody ||
-         (m_RetainOutcomeBodies && decl.ResolvedOutcomeTransition))) {
+         (m_RetainOutcomeBodies && decl.ResolvedOutcomeTransition) ||
+         m_LocalBodies.count(&decl))) {
         m_OS << " ";
-        exportBlock(*decl.Body);
+        exportBlock(m_LocalBodies.count(&decl) && decl.InterfaceSourceBody
+                        ? *decl.InterfaceSourceBody : *decl.Body);
     } else {
         m_OS << "\n"; // Semicolon-free "toka "
     }

@@ -40,6 +40,8 @@ struct TKIMetadata {
     std::string PlaceYieldSchemaVersion;
     std::string LogicalModulePath;
     std::string ResolverBindingDigest;
+    std::string LocalBodyPolicy;
+    std::string LocalBodyDefinitions;
 };
 
 // Slice 0 only: this coordinate is observational metadata.  It must not be

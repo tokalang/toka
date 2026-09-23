@@ -25,6 +25,8 @@ private:
   llvm::raw_ostream &m_OS;
   int m_Indent = 0;
   bool m_RetainOutcomeBodies = true;
+  std::set<const FunctionDecl *> m_LocalBodies;
+  void selectLocalBodies(const Module &module);
 
   void indent();
   void write(const std::string &str);

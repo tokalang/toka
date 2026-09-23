@@ -568,7 +568,7 @@ void CodeGen::generate(const Module &ast) {
 
   // [Fix] Generate Impl bodies BEFORE function bodies so drop() exists
   for (const auto &impl : ast.Impls) {
-    genImpl(impl.get(), declOnly);
+    genImpl(impl.get(), declOnly, true);
     if (hasErrors()) return;
   }
 
@@ -576,7 +576,7 @@ void CodeGen::generate(const Module &ast) {
   for (const auto &func : ast.Functions) {
     const bool recheckOutcomeBody = declOnly && func->Body &&
         func->ResolvedOutcomeTransition.has_value();
-    genFunction(func.get(), "", declOnly && !recheckOutcomeBody);
+    genFunction(func.get(), "", declOnly && !recheckOutcomeBody && !func->InterfaceLocalBody);
     if (hasErrors())
       return;
   }

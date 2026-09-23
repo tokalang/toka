@@ -435,6 +435,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_rc13_tail_contracts.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_source_hidden_execution
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_source_hidden_execution.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_byte_buffer_results
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_byte_buffer_results.py

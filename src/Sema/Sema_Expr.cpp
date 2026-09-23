@@ -1393,6 +1393,14 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
     m_LastLifeDependencies.insert(taskDependencies.begin(),
                                   taskDependencies.end());
   E->ResolvedType = T;
+  if (CurrentFunction) {
+    if (T) CurrentFunction->InterfaceValueTypes.push_back(T);
+    const FunctionDecl *callee = nullptr;
+    if (auto *call = dynamic_cast<CallExpr *>(E)) callee = call->ResolvedFn;
+    if (auto *method = dynamic_cast<MethodCallExpr *>(E)) callee = method->ResolvedFn;
+    if (auto *closure = dynamic_cast<ClosureExpr *>(E)) callee = closure->ResolvedInvoke;
+    if (callee) CurrentFunction->InterfaceCallees.insert(callee);
+  }
   const auto &expressionRecords = DiagnosticEngine::records();
   const bool expressionSucceeded = std::none_of(
       expressionRecords.begin() + std::min(expressionDiagnosticStart, expressionRecords.size()),
@@ -2252,6 +2260,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (CurrentScope->findVariableWithDeref(ve->Name, InfoPtr, actualName)) {
       isImplicitDeref = (actualName != ve->Name);
       Info = *InfoPtr;
+      if (Info.ASTPtr && !Info.IsDeclaredVariable && !Info.IsFunctionParameter && !Info.IsTypeName) {
+        auto *decl = dynamic_cast<FunctionDecl *>(static_cast<ASTNode *>(Info.ASTPtr));
+        if (decl && !m_IsPrecomputingCaptures) m_FunctionIdentityUses.insert(decl);
+        if (decl && (decl->InterfaceLocalBody ||
+                     (CurrentFunction && CurrentFunction->InterfaceLocalBody)))
+          error(ve, DiagID::ERR_GENERIC_SEMA,
+                "executable interface body requires a direct resolved call; function identity is not remapped");
+      }
       ve->ResolvedName = Info.CodegenName;
       if (!m_IsPrecomputingCaptures) ve->ResolvedBindingID = Info.SymbolID;
       ve->IsMorphicExempt = Info.IsMorphicExempt; // [NEW]

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "toka/Sema.h"
+#include "toka/InterfaceBody.h"
 #include "toka/CanonicalDeclarationWitness.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleSurfaceStats.h"
@@ -4908,6 +4909,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
         for (const auto &method : Impl->Methods) {
           if (method->Name == "drop") {
             owner->MangledDestructorName = method->CodegenName;
+            owner->ResolvedDestructor = method.get();
             m_NativeSyncDropDeclarations[owner] = method.get();
             break;
           }
@@ -5084,6 +5086,7 @@ void Sema::declareImpl(ImplDecl *Impl) {
         for (const auto &method : Impl->Methods) {
           if (method->Name == "drop") {
             owner->MangledDestructorName = method->CodegenName;
+            owner->ResolvedDestructor = method.get();
             m_NativeSyncDropDeclarations[owner] = method.get();
             break;
           }
@@ -5321,8 +5324,65 @@ bool Sema::validateResultCedeSyntax(ASTNode *site, const TypeSyntaxPtr &type,
   return false;
 }
 
+bool Sema::finalizeInterfaceBodies() {
+  std::set<FunctionDecl *> active, complete;
+  std::function<bool(FunctionDecl *)> validate = [&](FunctionDecl *fn) {
+    if (complete.count(fn)) return true;
+    if (!fn || !fn->Body || !fn->InterfaceLocalBodyValidated ||
+        !hasRecheckableDefinition(fn) || !active.insert(fn).second) {
+      error(fn, DiagID::ERR_GENERIC_SEMA,
+            "executable interface dependency is missing, invalid or recursive");
+      return false;
+    }
+    // Dependencies which were actually checked from source or instantiated
+    // bodies execute in this same local closure, never through ODR selection.
+    fn->InterfaceLocalBody = true;
+    std::set<const Type *> types;
+    bool valid = true;
+    auto cleanup = [&](const std::shared_ptr<Type> &type) {
+      visitInterfaceCleanupTypes(type, types, [&](const ShapeDecl *shape) {
+        if (!shape->HasExplicitDrop) return; // compiler field walk is local
+        auto *destructor = shape->ResolvedDestructor;
+        if (!destructor) {
+          error(fn, DiagID::ERR_GENERIC_SEMA,
+                "executable interface cleanup body unavailable: " + shape->Name);
+          valid = false;
+        } else if (destructor != fn && !validate(destructor)) valid = false;
+      });
+    };
+    for (auto *callee : fn->InterfaceCallees)
+      if (!validate(const_cast<FunctionDecl *>(callee))) valid = false;
+    cleanup(fn->ResolvedReturnType);
+    for (const auto &arg : fn->Args) cleanup(arg.ResolvedType);
+    for (const auto &type : fn->InterfaceValueTypes) cleanup(type);
+    active.erase(fn);
+    if (valid) complete.insert(fn);
+    return valid;
+  };
+  bool valid = true;
+  for (auto *fn : m_InterfaceLocalBodies)
+    if (!validate(fn)) valid = false;
+  // A source-visible helper may enter the local execution closure only after
+  // its callers have been checked. Do not silently change an escaped address.
+  for (auto *fn : m_FunctionIdentityUses)
+    if (fn->InterfaceLocalBody) {
+      error(fn, DiagID::ERR_GENERIC_SEMA,
+            "executable interface body requires a direct resolved call; function identity is not remapped");
+      valid = false;
+    }
+  return valid;
+}
+
+bool Sema::hasRecheckableDefinition(const FunctionDecl *function) const {
+  if (!function || !function->Body) return false;
+  if (function->InterfaceLocalBody || function->TemplateOrigin) return true;
+  auto lexical = DeclarationLexicalScopes.find(function);
+  return lexical != DeclarationLexicalScopes.end() && lexical->second &&
+      lexical->second->SourceModule && !lexical->second->SourceModule->IsInterface;
+}
+
 bool Sema::prepareCallableFactory(FunctionDecl *function) {
-  if (!function) return false;
+  if (!hasRecheckableDefinition(function)) return false;
   const auto state = m_CallableFactoryStates.find(function);
   if (state != m_CallableFactoryStates.end() && state->second != CallableFactoryState::Unprepared)
     return state->second == CallableFactoryState::Valid &&
@@ -5444,6 +5504,7 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
 }
 
 void Sema::checkFunction(FunctionDecl *Fn) {
+  if (Fn->InterfaceLocalBody) m_InterfaceLocalBodies.insert(Fn);
   refreshGenericSourceContracts(Fn);
   auto rawPrepared = m_RawAddressReturns.find(Fn);
   if (m_RawAddressPreparedDefinitions.count(Fn) && rawPrepared != m_RawAddressReturns.end() &&
@@ -5882,9 +5943,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   collectTaskReturn |= returnedTaskType != nullptr;
   for (const auto &argument : Fn->Args)
     collectTaskReturn |= taskResultType(argument.ResolvedType) != nullptr;
-  auto taskLexical = DeclarationLexicalScopes.find(Fn->TemplateOrigin ? Fn->TemplateOrigin : Fn);
-  const bool taskSourceVisible = taskLexical != DeclarationLexicalScopes.end() && taskLexical->second &&
-      taskLexical->second->SourceModule && !taskLexical->second->SourceModule->IsInterface;
+  const bool taskSourceVisible = hasRecheckableDefinition(Fn);
   collectTaskReturn &= m_EnableStage1ExplicitCallerCede && !m_IsPrecomputingCaptures &&
       !Fn->IsClosureInvoke && Fn->GenericParams.empty() && Fn->ResolvedReturnType &&
       !Fn->ResolvedReturnType->isVoid() && taskSourceVisible;
@@ -5894,14 +5953,16 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   }
   const bool collectIndependentReturn = m_EnableStage1ExplicitCallerCede &&
       !m_IsPrecomputingCaptures && !Fn->IsClosureInvoke && Fn->ResolvedReturnType &&
-      (Fn->ResolvedReturnType->isUniquePtr() || containsByteBuffer(Fn->ResolvedReturnType));
+      (Fn->ResolvedReturnType->isUniquePtr() || containsByteBuffer(Fn->ResolvedReturnType)) &&
+      hasRecheckableDefinition(Fn);
   if (collectIndependentReturn) m_IndependentReturns.erase(Fn);
   std::optional<StaticReturnStorageFrame> staticReturnStorage;
   const bool collectStaticReturn = m_EnableStage1ExplicitCallerCede &&
-      !m_IsPrecomputingCaptures && isStaticReturnStorageCandidate(Fn);
+      !m_IsPrecomputingCaptures && isStaticReturnStorageCandidate(Fn) && hasRecheckableDefinition(Fn);
   if (collectStaticReturn) m_ValidatedStaticReturnStorage.erase(Fn);
   const bool collectCallableReturn = m_EnableStage1ExplicitCallerCede &&
-      Fn->ResolvedReturnType && (Fn->ResolvedReturnType->isFunction() || Fn->ResolvedReturnType->isDynFn());
+      Fn->ResolvedReturnType && (Fn->ResolvedReturnType->isFunction() || Fn->ResolvedReturnType->isDynFn()) &&
+      hasRecheckableDefinition(Fn);
   if (collectCallableReturn) m_ValidatedCallableReturnEnvironments.erase(Fn);
   if (Fn->Body) {
     m_WholeParameterStorageReturns.erase(Fn);
@@ -6152,7 +6213,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     rawSummary.Checking = false;
     rawSummary.Checked = true;
     const auto &records = DiagnosticEngine::records();
-    rawSummary.Valid = std::none_of(records.begin() + functionDiagnosticStart, records.end(),
+    rawSummary.Valid = hasRecheckableDefinition(Fn) && std::none_of(records.begin() + functionDiagnosticStart, records.end(),
         [](const auto &record) { return record.Level == DiagLevel::Error; });
     auto &enumSummary = m_EnumReturnSummaries[Fn];
     enumSummary.Checked = true;
@@ -6164,6 +6225,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
     if (enumSummary.Valid && enumSummary.SawReturn && enumSummary.CompleteResults && enumSummary.Result)
       m_CallableFactoryStates[Fn] = CallableFactoryState::Valid;
+    Fn->InterfaceLocalBodyValidated = rawSummary.Valid && !HasError;
   }
   exitScope();
   m_OutcomePendingCalls = std::move(savedOutcomePendingCalls);

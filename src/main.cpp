@@ -1873,6 +1873,23 @@ int main(int argc, char **argv) {
 #endif
 
   // Pass 1: Declare all global symbols across all modules to build the global module map
+  // Capture source syntax before Sema rewrites closures and call arguments.
+  // Preserve re-export/digest syntax for imported executable bodies as well.
+  {
+    auto snapshot = [](toka::FunctionDecl *fn) {
+      if (fn->Body && fn->GenericParams.empty())
+        fn->InterfaceSourceBody = std::unique_ptr<toka::BlockStmt>(
+            static_cast<toka::BlockStmt *>(fn->Body->clone().release()));
+    };
+    for (const auto &ast : astModules) {
+      if (!(emitInterface && ast->IsRootModule && !ast->IsInterface) &&
+          !(ast->IsInterface && ast->HasLocalBodyPolicy)) continue;
+      for (auto &fn : ast->Functions) snapshot(fn.get());
+      for (auto &impl : ast->Impls)
+        if (impl->GenericParams.empty())
+          for (auto &fn : impl->Methods) snapshot(fn.get());
+    }
+  }
   for (const auto &ast : astModules) {
     sema.declareGlobals(*ast);
   }
@@ -1889,6 +1906,7 @@ int main(int argc, char **argv) {
   }
 
   if (!sema.finalizeUnsafeRawConstructions()) return 1;
+  if (!sema.finalizeInterfaceBodies()) return 1;
 
   // Pass 3: Run global shape sovereignty checks once all modules are resolved
   sema.checkShapeSovereignty();

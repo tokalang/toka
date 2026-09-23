@@ -231,6 +231,8 @@ private:
 
   const FunctionDecl *m_CurrentFunction = nullptr;
   std::map<std::string, const FunctionDecl *> m_Functions;
+  // Unlike m_Functions' convenience aliases, this records exact emitted symbols.
+  std::map<std::string, const FunctionDecl *> m_EmittedFunctionDeclarations;
   std::map<std::string, const ExternDecl *> m_Externs;
   std::map<std::string, TokaSymbol> m_Symbols;
   // Argument ABI adaptation can revisit a call-shaped receiver. Preserve the
@@ -426,7 +428,7 @@ private:
   void genGlobal(const Stmt *stmt);
   void genExtern(const ExternDecl *ext);
   void genShape(const ShapeDecl *sh);
-  void genImpl(const ImplDecl *impl, bool declOnly = false);
+  void genImpl(const ImplDecl *impl, bool declOnly = false, bool emitLocalBodies = false);
   PhysEntity genMatchExpr(const MatchExpr *expr);
   PhysEntity genAwaitExpr(const AwaitExpr *E);
   PhysEntity genWaitExpr(const WaitExpr *waitExpr);

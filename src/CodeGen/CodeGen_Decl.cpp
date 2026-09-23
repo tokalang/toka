@@ -166,6 +166,12 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
                                      bool declOnly) {
   if (!func->GenericParams.empty() || func->PublicThread != PublicThreadKind::None)
     return nullptr;
+  // This exact checked definition executes locally. Never let a provider's
+  // external/ODR definition override the body used for qualification.
+  if (func->InterfaceLocalBody && (!func->Body || !func->InterfaceLocalBodyValidated)) {
+    error(func, DiagID::ERR_CODEGEN, "unvalidated executable interface body");
+    return nullptr;
+  }
 
   struct FnGuard {
     const FunctionDecl *&Target;
@@ -218,6 +224,15 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     ~GenContextGuard() { CG.restoreContext(Ctx); }
   } guard(*this, funcName);
 
+  auto emitted = m_EmittedFunctionDeclarations.find(funcName);
+  if ((emitted != m_EmittedFunctionDeclarations.end() && emitted->second != func &&
+       (func->InterfaceLocalBody || emitted->second->InterfaceLocalBody)) ||
+      (emitted == m_EmittedFunctionDeclarations.end() && func->InterfaceLocalBody &&
+       m_Module->getFunction(funcName))) {
+    error(func, DiagID::ERR_CODEGEN, "executable interface symbol identity collision: " + funcName);
+    return nullptr;
+  }
+  m_EmittedFunctionDeclarations[funcName] = func;
   m_Functions[funcName] = func;
   m_Functions[func->Name] = func;
   m_Symbols.clear();
@@ -352,6 +367,10 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     if (triple.supportsCOMDAT()) {
       f->setComdat(m_Module->getOrInsertComdat(f->getName()));
     }
+  }
+  if (func->InterfaceLocalBody) {
+    f->setComdat(nullptr);
+    f->setLinkage(llvm::Function::InternalLinkage);
   }
   if (!declOnly && isCoreRuntimePanicFallback(m_AST, func)) {
     f->setLinkage(llvm::Function::WeakAnyLinkage);
@@ -2523,7 +2542,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
   }
 }
 
-void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
+void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly, bool emitLocalBodies) {
   if (!decl->GenericParams.empty()) {
     return;
   }
@@ -2557,7 +2576,8 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
     } else {
       mangledName = ownerLinkName + "_" + method->Name;
     }
-    genFunction(method.get(), mangledName, declOnly);
+    genFunction(method.get(), mangledName,
+                declOnly && !(emitLocalBodies && method->InterfaceLocalBody));
     implementedMethods.insert(method->Name);
   }
 

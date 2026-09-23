@@ -669,6 +669,36 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   module->ResolvedPath = canonicalPath;
   module->IsRootModule = (m_RecursionStack.size() == 1);
   module->IsInterface = finalIsInterface;
+  module->HasLocalBodyPolicy = finalIsInterface &&
+      meta.LocalBodyPolicy == TOKA_LOCAL_BODY_POLICY;
+  if (module->HasLocalBodyPolicy) {
+    std::map<std::string, FunctionDecl *> definitions;
+    for (size_t i = 0; i < module->Functions.size(); ++i)
+      definitions["f/" + std::to_string(i)] = module->Functions[i].get();
+    for (size_t i = 0; i < module->Impls.size(); ++i)
+      if (module->Impls[i]->GenericParams.empty())
+        for (size_t j = 0; j < module->Impls[i]->Methods.size(); ++j)
+          definitions["i/" + std::to_string(i) + "/" + std::to_string(j)] =
+              module->Impls[i]->Methods[j].get();
+    std::istringstream entries(meta.LocalBodyDefinitions);
+    std::set<std::string> seen;
+    std::string id;
+    while (std::getline(entries, id, ',')) {
+      auto found = definitions.find(id);
+      if (!seen.insert(id).second || found == definitions.end() ||
+          !found->second->Body || !found->second->GenericParams.empty()) {
+        DiagnosticEngine::report(DiagLoc{}, DiagID::ERR_FILE_IO,
+                                 "Invalid executable interface definition: " + id);
+        return false;
+      }
+      found->second->InterfaceLocalBody = true;
+    }
+    if (seen.empty()) {
+      DiagnosticEngine::report(DiagLoc{}, DiagID::ERR_FILE_IO,
+                               "Missing executable interface definitions");
+      return false;
+    }
+  }
   module->IsTrustedSystemModule =
       isWithinRoot(originalTkPath, m_TrustedSystemRoots) ||
       isWithinRoot(canonicalPath, m_TrustedSystemRoots);
@@ -833,6 +863,10 @@ bool ModuleResolver::readTKIMetadata(const std::string &path, TKIMetadata &meta)
                     meta.LogicalModulePath = val;
                 else if (key == "resolver_binding_digest")
                     meta.ResolverBindingDigest = val;
+                else if (key == "local_body_policy")
+                    meta.LocalBodyPolicy = val;
+                else if (key == "local_body_definitions")
+                    meta.LocalBodyDefinitions = val;
             }
         } else if (line.rfind("//", 0) == 0 || line.empty()) {
             continue;
@@ -878,6 +912,14 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(
     }
     if (meta.FormatVersion != TOKA_INTERFACE_FORMAT_VERSION) {
         reason = "Interface format version mismatch (expected " + std::string(TOKA_INTERFACE_FORMAT_VERSION) + ", got " + meta.FormatVersion + ")";
+        return TKICacheStatus::FormatVersionMismatch;
+    }
+    if (!meta.LocalBodyPolicy.empty() && meta.LocalBodyPolicy != TOKA_LOCAL_BODY_POLICY) {
+        reason = "Unsupported local_body_policy";
+        return TKICacheStatus::FormatVersionMismatch;
+    }
+    if (meta.LocalBodyPolicy.empty() != meta.LocalBodyDefinitions.empty()) {
+        reason = "Missing executable interface policy or definitions";
         return TKICacheStatus::FormatVersionMismatch;
     }
     if (meta.IdentitySchemaVersion.empty()) {

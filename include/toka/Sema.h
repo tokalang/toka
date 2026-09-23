@@ -432,6 +432,7 @@ public:
 
   bool hasErrors() const { return HasError; }
   bool finalizeUnsafeRawConstructions();
+  bool finalizeInterfaceBodies();
   bool finalizePublicThreadPlans();
   bool finalizeNativeSyncFactoryPlans();
   std::vector<const CastExpr *> getUnsafeRawConstructionSites() const;
@@ -1250,6 +1251,9 @@ private:
   std::map<FunctionDecl *, SemanticEvidence::DefinitionJournal> m_CallableFactoryBodyJournals;
   bool prepareCallableReturnEnvironment(Expr *source);
   bool prepareCallableFactory(FunctionDecl *function);
+  bool hasRecheckableDefinition(const FunctionDecl *function) const;
+  std::set<FunctionDecl *> m_InterfaceLocalBodies;
+  std::set<FunctionDecl *> m_FunctionIdentityUses;
   CallableEnvironmentFacts collectStage1CallableEnvironment(Expr *source);
   std::map<const ASTNode *, Stage0PendingTransaction>
       m_Stage0PendingTransactions;
