@@ -162,7 +162,7 @@ class NativeSyncAllocationPlan {
   struct FieldCleanup {
     size_t Index = 0;
     std::string Name;
-    std::shared_ptr<Type> Type;
+    std::shared_ptr<toka::Type> Type;
     std::shared_ptr<toka::Type> DeclaredType;
     NativeSyncOwnerCandidatePtr Recipe;
     NativeSyncOwnerWitnessPtr Witness;
