@@ -1,0 +1,11 @@
+import core/option::{Option}
+
+shape Token(value: i32)
+impl Token@Encap { fn drop(self#) {} }
+shape Record(token: Option<Token>)
+
+fn main() -> i32 {
+    auto first = Token(value = 1)
+    auto second = first
+    return 0
+}

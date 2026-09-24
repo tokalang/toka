@@ -1,0 +1,10 @@
+import core/option::{Option}
+
+shape Range(start: usize, end: usize)
+shape Record(range: Option<Range>)
+
+fn main() -> i32 {
+    auto record = Record(range = Option<Range>::Some(Range(start = 1:usize, end = 2:usize)))
+    if record.range.is_some() { return 0 }
+    return 1
+}

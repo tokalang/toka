@@ -6781,15 +6781,100 @@ bool Sema::hasUnboxedValueCycle(const ShapeDecl *root) {
 }
 
 void Sema::analyzeShapes(Module &M) {
+  // Resolving a member such as Option<Range> instantiates Option's methods
+  // immediately.  Publish Copy facts for an already complete Range before
+  // moving on to that member; otherwise the instantiated body observes an
+  // indeterminate argument solely because the ordinary end-of-pass proof has
+  // not run yet.  Drop hooks must be known before any such early proof.
+  for (auto &shape : M.Shapes) {
+    bool hasExplicitDrop = false;
+    for (const auto &impl : M.Impls) {
+      if (impl->TypeName != shape->Name ||
+          getTraitFamilyName(impl->TraitName) != "Encap")
+        continue;
+      for (const auto &method : impl->Methods)
+        hasExplicitDrop |= method->Name == "drop";
+    }
+    shape->HasExplicitDrop = hasExplicitDrop;
+  }
+
+  std::function<bool(const std::shared_ptr<toka::Type> &,
+                     std::set<const ShapeDecl *> &)> copyTypeReady;
+  std::function<bool(const ShapeDecl *, std::set<const ShapeDecl *> &)>
+      copyShapeReady;
+  copyShapeReady = [&](const ShapeDecl *shape,
+                       std::set<const ShapeDecl *> &visiting) -> bool {
+    if (!shape || !shape->GenericParams.empty()) return false;
+    if (Slice4CopyProofs.count(shape)) return true;
+    if (!visiting.insert(shape).second) return false;
+    bool ready = !shape->NominalLayoutOrigin ||
+                 copyShapeReady(shape->NominalLayoutOrigin, visiting);
+    for (const auto &member : shape->Members) {
+      if (!(shape->Kind == ShapeKind::Enum && member.IsUnitVariant))
+        ready = ready && member.ResolvedType &&
+                copyTypeReady(getPhysicalType(member), visiting);
+      for (const auto &payload : member.SubMembers)
+        ready = ready && payload.ResolvedType &&
+                copyTypeReady(getPhysicalType(payload), visiting);
+    }
+    visiting.erase(shape);
+    return ready;
+  };
+  copyTypeReady = [&](const std::shared_ptr<toka::Type> &type,
+                      std::set<const ShapeDecl *> &visiting) -> bool {
+    if (!type || type->isUnknown()) return false;
+    if (type->isArray())
+      return copyTypeReady(type->getArrayElementType(), visiting);
+    if (!type->isShape()) return true;
+    auto shapeType = std::dynamic_pointer_cast<toka::ShapeType>(type);
+    return shapeType && copyShapeReady(shapeType->Decl, visiting);
+  };
+
   // Pass 2: Resolve Member Types (The "Filling" Phase)
   // This must happen after registerGlobals (Pass 1) so that all Shape names
   // are known.
-  for (auto &S : M.Shapes) {
+  // A local concrete type used as a generic argument must have its own
+  // fields and Copy fact ready before the generic impl is instantiated.  Use
+  // the syntax graph only to schedule local declarations, never as a proof of
+  // their ownership properties.
+  std::map<std::string, std::unique_ptr<ShapeDecl> *> localShapes;
+  for (auto &shape : M.Shapes)
+    if (shape->GenericParams.empty()) localShapes[shape->Name] = &shape;
+  std::set<const ShapeDecl *> resolvingShapes, resolvedShapes;
+  std::function<void(std::unique_ptr<ShapeDecl> &)> resolveShape;
+  resolveShape = [&](std::unique_ptr<ShapeDecl> &S) {
+    if (resolvedShapes.count(S.get()) || !resolvingShapes.insert(S.get()).second)
+      return;
     // [NEW] Skip analysis for Generic Templates. They are analyzed only upon
     // Instantiation.
     if (!S->GenericParams.empty()) {
       checkUnsafePublicShapeBoundary(S.get());
-      continue;
+      resolvingShapes.erase(S.get());
+      resolvedShapes.insert(S.get());
+      return;
+    }
+
+    std::function<void(const TypeSyntaxPtr &)> resolveLocalDependencies;
+    resolveLocalDependencies = [&](const TypeSyntaxPtr &syntax) {
+      if (!syntax) return;
+      if (syntax->NodeKind == TypeSyntax::Kind::Named) {
+        auto found = localShapes.find(syntax->Text);
+        if (found != localShapes.end() && found->second->get() != S.get())
+          resolveShape(*found->second);
+      }
+      resolveLocalDependencies(syntax->Subject);
+      for (const auto &argument : syntax->Arguments)
+        resolveLocalDependencies(argument.Type);
+      for (const auto &element : syntax->Elements)
+        resolveLocalDependencies(element);
+      for (const auto &field : syntax->Fields)
+        resolveLocalDependencies(field.Type);
+      resolveLocalDependencies(syntax->Result);
+    };
+    for (const auto &member : S->Members) {
+      resolveLocalDependencies(member.TypeSyntax);
+      for (const auto &payload : member.SubMembers)
+        resolveLocalDependencies(payload.TypeSyntax);
     }
 
     // We only resolve members for structs, enum payload records, and legacy bare unions (not enum variants).
@@ -6884,7 +6969,13 @@ void Sema::analyzeShapes(Module &M) {
 
     // --- Sema: Safety Redline Boundaries ---
     checkUnsafePublicShapeBoundary(S.get());
-  }
+    std::set<const ShapeDecl *> visiting;
+    if (copyShapeReady(S.get(), visiting))
+      proveSlice4Copy(S.get());
+    resolvingShapes.erase(S.get());
+    resolvedShapes.insert(S.get());
+  };
+  for (auto &S : M.Shapes) resolveShape(S);
 
   // Nominal aliases can be materialized while registering their own impls,
   // before the target's member types have been filled. Complete only those

@@ -46,7 +46,9 @@ def main():
                      'enum_struct_field_binding', 'g08_raw_layered_nullability_types',
                      'inferred_nested_contract', 'explicit_nested_contract',
                      'inferred_multiple_contracts', 'alias_nominal_shadow',
-                     'alias_nominal_control', 'alias_binder_scopes'):
+                     'alias_nominal_control', 'alias_binder_scopes',
+                     'option_field_early_copy', 'option_field_forward_copy',
+                     'option_field_transitive_copy'):
             normal = check(name, '--check-only')
             shadow = check(name, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == 0, (name, normal.stderr, shadow.stderr)
@@ -118,6 +120,8 @@ def main():
             ('local_descriptor_escape', 'E0455'),
             ('named_copy_requires_cede', 'E04570'),
             ('copy_source_invalidated', 'E0438'),
+            ('option_field_drop_noncopy', 'E04652'),
+            ('option_field_forward_drop_noncopy', 'E04652'),
             ('abstract_field_root_not_assumed', 'E0406'),
             ('legacy_quote_type', 'E01268'),
             ('legacy_quote_binding', 'E01268'),

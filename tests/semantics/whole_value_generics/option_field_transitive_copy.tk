@@ -1,0 +1,11 @@
+import core/option::{Option}
+
+shape Record(value: Option<Outer>)
+shape Outer(inner: Inner)
+shape Inner(value: i32)
+
+fn main() -> i32 {
+    auto record = Record(value = Option<Outer>::Some(Outer(inner = Inner(value = 7))))
+    if record.value.is_some() { return 0 }
+    return 1
+}
