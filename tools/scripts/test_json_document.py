@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+import time
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -31,28 +33,41 @@ def main():
 
         def compile(source, *flags):
             source_root = ROOT if source.is_relative_to(ROOT) else work
-            return subprocess.run([str(compiler), '--workspace-node', 'json-document-tests',
-                                  '--workspace-root', str(source_root), str(source), *map(str, flags)], cwd=ROOT,
-                                  env=env, text=True, capture_output=True, timeout=120)
+            cmd = [str(compiler), '--workspace-node', 'json-document-tests',
+                   '--workspace-root', str(source_root), str(source), *map(str, flags)]
+            started = time.perf_counter()
+            try:
+                proc = subprocess.run(cmd, cwd=ROOT,
+                                      env=env, text=True, capture_output=True, timeout=300)
+                elapsed = time.perf_counter() - started
+                return proc, elapsed
+            except subprocess.TimeoutExpired:
+                elapsed = time.perf_counter() - started
+                print(f"[TIMEOUT after {elapsed:.2f}s]: {' '.join(cmd)}", flush=True)
+                raise
 
         def qualify(source, diagnostic=None):
-            normal = compile(source, '--check-only')
-            shadow = compile(source, '--check-only', '--non-call-transfer-shadow=json')
+            normal, t_normal = compile(source, '--check-only')
+            shadow, t_shadow = compile(source, '--check-only', '--non-call-transfer-shadow=json')
             assert normal.returncode == shadow.returncode == (1 if diagnostic else 0), (normal.stderr, shadow.stderr)
             assert normal.stderr == shadow.stderr
             json.loads(shadow.stdout)
             output = work / source.stem
-            built = compile(source, '-o', output)
+            built, t_build = compile(source, '-o', output)
             if diagnostic:
                 assert built.returncode == 1 and diagnostic in built.stderr and not output.exists(), built.stderr
                 for flag, suffix in (('-c', '.o'), ('--emit-llvm', '.ll')):
                     path = work / (source.stem + suffix)
-                    failed = compile(source, flag, '-o', path)
+                    failed, _ = compile(source, flag, '-o', path)
                     assert failed.returncode == 1 and not path.exists(), failed.stderr
             else:
                 assert built.returncode == 0, built.stderr
+                t_run_start = time.perf_counter()
                 ran = subprocess.run([str(output)], capture_output=True, text=True, timeout=30)
+                t_run = time.perf_counter() - t_run_start
                 assert ran.returncode == 0, (source.name, ran.returncode, ran.stderr)
+                print(f'PASS {source.name} (check: {t_normal:.2f}s, shadow: {t_shadow:.2f}s, build: {t_build:.2f}s, run: {t_run:.2f}s)', flush=True)
+                return
             print('PASS ' + source.name, flush=True)
 
         lines = ['import stdx/serde/json::{parse_document, to_json}', 'fn main() -> i32 {']

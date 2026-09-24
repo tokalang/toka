@@ -14,7 +14,7 @@ FIXTURE = ROOT / "tests/semantics/stage1_return_matrix/build_return_buffers.tk.i
 
 def qualify(build_dir):
     tokac = Path(build_dir).resolve() / "bin/tokac"
-    clang = next((p for p in (
+    clang = os.environ.get("CC") or next((p for p in (
         "/opt/homebrew/opt/llvm@20/bin/clang",
         "/opt/homebrew/opt/llvm/bin/clang", shutil.which("clang"))
         if p and Path(p).is_file()), None)

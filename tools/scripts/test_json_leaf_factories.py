@@ -112,7 +112,7 @@ def main():
                             "static int tokens[16];\n"
                             "void token_drop(int id) { if (id >= 0 && id < 16) ++tokens[id]; }\n"
                             "int token_count(int id) { return id >= 0 && id < 16 ? tokens[id] : -1; }\n")
-            clang = next((path for path in ("/opt/homebrew/opt/llvm@20/bin/clang",
+            clang = os.environ.get("CC") or next((path for path in ("/opt/homebrew/opt/llvm@20/bin/clang",
                          "/opt/homebrew/opt/llvm/bin/clang", shutil.which("clang"))
                          if path and Path(path).is_file()), None)
             assert clang, "clang required for cleanup instrumentation"

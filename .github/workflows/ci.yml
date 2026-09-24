@@ -75,6 +75,14 @@ jobs:
           chmod +x llvm.sh
           sudo -E ./llvm.sh 20
           sudo apt-get install -y liblld-20-dev lld-20 libpolly-20-dev libzstd-dev libssl-dev
+          echo "/usr/lib/llvm-20/bin" >> "$GITHUB_PATH"
+          echo "CC=/usr/lib/llvm-20/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=/usr/lib/llvm-20/bin/clang++" >> "$GITHUB_ENV"
+          export PATH="/usr/lib/llvm-20/bin:$PATH"
+          echo "=== Linux LLVM 20 toolchain verification ==="
+          which clang clang++
+          /usr/lib/llvm-20/bin/clang --version
+          /usr/lib/llvm-20/bin/clang++ --version
 
       - name: Install LLVM 20 (macOS)
         if: runner.os == 'macOS'
