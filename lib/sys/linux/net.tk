@@ -4,13 +4,10 @@ import sys/os/abi::*
 
 // === Networking ===
 
+extern fn toka_get_errno_impl() -> i32
+
 pub fn get_last_error() -> i32 {
-    unsafe {
-        auto addr = __errno_location()
-        if addr == 0:Addr { return 0 }
-        auto *val = addr as *i32
-        return val
-    }
+    return unsafe toka_get_errno_impl()
 }
 
 pub fn net_socket_impl() -> i32 {
@@ -41,41 +38,19 @@ pub fn net_setsockopt_reuse_impl(fd: i32) -> i32 {
     }
 }
 
-fn fill_sockaddr_in(*addr_buf: char, ip: usize, port: i32) -> bool {
+// Linux sockaddr_in is a complete 16-byte value. Keep the pointer to this
+// local value alive only for the synchronous sendto call.
+shape LinuxSockAddrV4(family: u16, port: u16, address: u32, zero_a: u32, zero_b: u32)
+
+fn make_sockaddr_in(ip: usize, port: i32) -> LinuxSockAddrV4 {
     unsafe {
-        auto base_addr = *addr_buf as usize
-
-        // Offset 0: family = 2 (u16 on Linux)
-        auto *_p_family# = base_addr as *u16
-        _p_family = 2:u16
-
-        // Offset 2: port (u16)
-        auto nport = libc_htons(port as u16):u16
-        auto *_p_port# = (base_addr + 2) as *u16
-        _p_port = nport
-
-        // Offset 4: addr (u32)
-        auto *_p_addr# = (base_addr + 4) as *u32
-        _p_addr = ip as u32
-
-        // Offset 8..16: Zero
-        auto i# = 8:usize
-        loop i < 16:usize {
-            auto *_p_z# = (base_addr + i) as *char
-            _p_z = 0 as char
-            i += 1:usize
-        }
-        return true
+        return LinuxSockAddrV4(family = 2:u16, port = libc_htons(port as u16),
+                               address = ip as u32, zero_a = 0:u32, zero_b = 0:u32)
     }
 }
 
 pub fn get_errno_impl() -> i32 {
-    unsafe {
-        auto addr = __errno_location()
-        if addr == 0:Addr { return 0 }
-        auto *val = addr as *i32
-        return val
-    }
+    return unsafe toka_get_errno_impl()
 }
 
 pub fn net_getsockopt_error_impl(fd: i32) -> i32 {
@@ -170,15 +145,8 @@ pub fn net_write_impl(fd: i32, *buf: u8, len: usize) -> i64 {
 
 pub fn net_sendto_impl(fd: i32, *buf: u8, len: usize, host: usize, port: i32) -> i64 {
     unsafe {
-        auto *addr_buf = unsafe alloc [32] byte as *char
-        if *addr_buf as usize == 0 { return -1 }
-        if !fill_sockaddr_in(*addr_buf, host, port) {
-            libc_free(*addr_buf as *void)
-            return -1
-        }
-        auto res = libc_sendto(fd, *buf as *void, len, 0, *addr_buf as *void, 16:u32)
-        libc_free(*addr_buf as *void)
-        return cede res
+        auto addr = make_sockaddr_in(host, port)
+        return libc_sendto(fd, *buf as *void, len, 0, &addr as *void, 16:u32)
     }
 }
 
