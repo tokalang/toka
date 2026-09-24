@@ -1323,7 +1323,7 @@
     },
     {
       "id": "ownership_static_cede_parameter_signature_transfer_01",
-      "path": "diagnostics/static_cede_parameter_requires_explicit_transfer.tk",
+      "path": "ownership/static_cede_parameter_explicit_transfer.tk",
       "type": "run",
       "timeout_seconds": 10,
       "description": "A static consuming formal transfers an explicitly ceded resource argument"
