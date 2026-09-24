@@ -229,7 +229,7 @@ def verify_generic_reference_pattern_ir(ll_path):
 
     # Find borrow_value function
     hex_name = "borrow_value".encode().hex()
-    m = re.search(r'define [^\n]+(?:' + hex_name + r'|borrow_value)[^\n]*\(([^)]+)\)\s*\{', content)
+    m = re.search(r'define [^\n]+(?:' + hex_name + r'|borrow_value)[^\n]*\(([^)]+)\)(?: comdat)?\s*\{', content)
     require(m is not None, "borrow_value function not found in LLVM IR")
     params = re.findall(r'[%][a-zA-Z0-9_.]+', m.group(1))
     func_start = m.start()
