@@ -3229,7 +3229,9 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         if (arg.IsValueMutable) {
           isCaptured = true;
         } else {
-          llvm::Type *logicalTy = resolveType(arg.Type, false);
+          llvm::Type *logicalTy = arg.ResolvedType
+              ? getLLVMType(arg.ResolvedType)
+              : resolveType(arg.Type, false);
           if (logicalTy && (logicalTy->isStructTy() || logicalTy->isArrayTy()))
             isCaptured = true;
         }

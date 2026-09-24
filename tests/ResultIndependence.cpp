@@ -82,7 +82,9 @@ fn main()->i32 {return 0}
   DiagnosticEngine::reset();
   DiagnosticEngine::init(sources);
   Lexer lexer(code.c_str(), start);
-  Parser parser(lexer.tokenize(), "/tmp/tests/independent_results.tk");
+  // Parser retains a reference to these tokens until parseModule returns.
+  auto tokens = lexer.tokenize();
+  Parser parser(tokens, "/tmp/tests/independent_results.tk");
   auto module = parser.parseModule();
   module->Imports.clear(); // This isolated Sema unit uses only local declarations/primitives.
   Sema sema;

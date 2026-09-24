@@ -169,7 +169,7 @@ def verify_option_reset_layout_and_protocol(ll_path):
     #    b) tag zeroing (store i8 0) occurs after take
     #    c) no intervening user calls / drops between take and zeroing
     #    d) store target points to the exact same slot being taken (offset 0)
-    match = re.search(r'define [^\n]+@Slab_M_[^\n]+_remove\(([^)]+)\)\s*\{', content)
+    match = re.search(r'define [^\n]+@Slab_M_[^\n]+_remove\(([^)]+)\)(?: comdat)?\s*\{', content)
     require(match is not None, "Slab remove function not found in LLVM IR")
     params = re.findall(r'[%][a-zA-Z0-9_.]+', match.group(1))
     func_start = match.start()

@@ -2,6 +2,7 @@
 """Channel private storage: real programs, failure responsibility and denials."""
 import argparse
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -38,6 +39,18 @@ def main():
             ran = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
             assert ran.returncode == 0, (source, ran.returncode, ran.stderr)
             print('PASS runtime ' + source.name, flush=True)
+        # A named MutexLock is a borrowed ordinary argument. Passing a copy
+        # through an aggregate ABI temporary would drop/unlock it before the
+        # original guard and leave the native mutex busy at final cleanup.
+        sender = ROOT / 'tests/semantics/rc13_thread_migration_pending/sender_capture.tk'
+        sender_ir = work / 'sender_capture.ll'
+        emitted = compile(sender, '--emit-llvm', '-o', sender_ir)
+        assert emitted.returncode == 0, emitted.stderr
+        wait_calls = re.findall(
+            r'call void @CondVar_M_WaitQueue_M_i32_A_wait_cond\([^\n]+\)',
+            sender_ir.read_text())
+        assert len(wait_calls) == 2 and all(
+            call.endswith(', ptr %lguard)') for call in wait_calls), wait_calls
         # Fault only the generated SDK native calls. The runtime's own control
         # mutex and its protocol are not interposed or changed.
         for name, expected, marker in (('lock_failure', 0, 'CHANNEL_LOCK_FAULT'),

@@ -64,7 +64,7 @@ def main():
                 assert emitted.returncode == 0, emitted.stderr
                 bodies = []
                 for function, body in re.findall(
-                        r'^define linkonce_odr ptr @(__toka_gfn_[^(]+)\(ptr %value\) \{(.*?)^}',
+                        r'^define linkonce_odr ptr @(__toka_gfn_[^(]+)\(ptr %value\)(?: comdat)? \{(.*?)^}',
                         ir.read_text(), re.M | re.S):
                     identity = function.split('_M_')[0].removeprefix('__toka_gfn_')
                     if ';6:borrow;' in bytes.fromhex(identity).decode():
