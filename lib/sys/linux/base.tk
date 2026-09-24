@@ -62,7 +62,7 @@ pub fn get_arg_impl(index: i32) -> string {
                     auto *str_ptr = (*buf as usize + start) as *char
                     auto s = string::from_cstr(*str_ptr)
                     libc_free(*buf as *void)
-                    return s
+                    return cede s
                 }
                 count += 1
                 start = i + 1
