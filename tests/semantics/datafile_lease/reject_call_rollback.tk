@@ -1,0 +1,16 @@
+import std/data_file::{ReadDataFile}
+
+fn require_number(cede owner: ReadDataFile, count: i32) -> i32 {
+    auto owned = cede owner
+    cede owned
+    return count
+}
+
+fn main() -> i32 {
+    auto opened = ReadDataFile::open(string::from("/dev/null"))
+    if opened.is_err() { return 1 }
+    auto owner = opened.unwrap()
+    require_number(cede owner, true)
+    auto still_live = owner.size()
+    return 0
+}

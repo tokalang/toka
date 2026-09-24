@@ -1,0 +1,26 @@
+import std/data_file::{ReadDataFile}
+
+extern fn toka_rt_test_datafile_reset() -> void
+extern fn toka_rt_test_datafile_created() -> i32
+extern fn toka_rt_test_datafile_retained() -> i32
+extern fn toka_rt_test_datafile_released() -> i32
+extern fn toka_rt_test_datafile_closed() -> i32
+extern fn toka_rt_test_datafile_freed() -> i32
+
+fn created() -> i32 { return unsafe toka_rt_test_datafile_created() }
+fn retained() -> i32 { return unsafe toka_rt_test_datafile_retained() }
+fn released() -> i32 { return unsafe toka_rt_test_datafile_released() }
+fn closed() -> i32 { return unsafe toka_rt_test_datafile_closed() }
+fn freed() -> i32 { return unsafe toka_rt_test_datafile_freed() }
+
+fn main() -> i32 {
+    unsafe { toka_rt_test_datafile_reset() }
+    auto opened = ReadDataFile::open(string::from("/dev/null"))
+    if opened.is_err() { return 1 }
+    auto owner = opened.unwrap()
+    auto moved = cede owner
+    if created() != 1 || retained() != 0 || released() != 0 { return 2 }
+    cede moved
+    if released() != 1 || closed() != 1 || freed() != 1 { return 3 }
+    return 0
+}

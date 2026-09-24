@@ -7,8 +7,10 @@
 
 namespace toka {
 class Sema; class CodeGen; class Expr; class CallExpr; class FunctionDecl;
+class ExternDecl;
 class ShapeDecl; class Type; class NewExpr; class VariableDecl; class BinaryExpr;
 class ClosureExpr;
+class Module;
 enum class NativeSyncFactoryKind : uint8_t { None, Mutex, RwMutex, CondVar };
 
 // This is the initialized factory edge, not a nominal-type exemption and not
@@ -53,6 +55,25 @@ class ChannelStorageProof {
   bool Complete = false;
 };
 
+// A source-visible, toolchain-owned ReadDataFile lease contract. This is an
+// exact operation/schema seal, not a property of every value named
+// ReadDataFile. Only a checked open/unwrap or retain-backed clone edge may
+// produce an instance recipe. No native ABI or reference count is inferred.
+class DataFileLeaseContract {
+  friend class Sema;
+  friend class CodeGen;
+  DataFileLeaseContract() = default;
+  const Module *SourceModule = nullptr;
+  const ShapeDecl *Owner = nullptr;
+  const FunctionDecl *Open = nullptr, *Clone = nullptr;
+  const FunctionDecl *Drop = nullptr, *ReadAt = nullptr;
+  const ExternDecl *NativeOpen = nullptr, *NativeRetain = nullptr;
+  const ExternDecl *NativeRelease = nullptr, *NativeReadAt = nullptr;
+  std::string SourceDigest, NativeDeclarationsDigest;
+  bool Complete = false;
+};
+enum class DataFileLeasePhase : uint8_t { None, PendingOpen, Owned };
+
 // Private value-flow recipe. Unlike the sealed factory plan this may describe
 // a generic body still being checked. It grants no thread/guard authority.
 // A call edge is distinct from its provider's body edge, so two executions
@@ -63,6 +84,8 @@ class NativeSyncOwnerCandidate {
   NativeSyncOwnerCandidate() = default;
   NativeSyncFactoryPtr Factory;
   std::shared_ptr<const ChannelStorageProof> Channel;
+  std::shared_ptr<const DataFileLeaseContract> DataFile;
+  DataFileLeasePhase DataFilePhase = DataFileLeasePhase::None;
   const Expr *OwnerEdge = nullptr;
   const Expr *Allocation = nullptr;
   const FunctionDecl *Provider = nullptr;
@@ -78,6 +101,10 @@ class NativeSyncOwnerWitness {
   NativeSyncOwnerWitness() = default;
   NativeSyncOwnerCandidatePtr Origin;
   std::shared_ptr<const ChannelStorageProof> Channel;
+  std::shared_ptr<const DataFileLeaseContract> DataFile;
+  const ClosureExpr *DataFileCapture = nullptr;
+  const ShapeDecl *DataFileCaptureType = nullptr;
+  std::string DataFileCaptureName;
   std::shared_ptr<Type> ValueType, OwnerType, ElementType;
   const ClosureExpr *ChannelCapture = nullptr;
   const ShapeDecl *ChannelCaptureType = nullptr;

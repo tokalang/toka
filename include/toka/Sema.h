@@ -1117,6 +1117,7 @@ private:
   std::map<const FunctionDecl *, std::vector<NativeSyncOwnerCandidatePtr>> m_NativeSyncOwnerReturns;
   std::map<const ShapeDecl *, const FunctionDecl *> m_NativeSyncDropDeclarations;
   std::map<NativeSyncOwnerCandidatePtr, NativeSyncOwnerWitnessPtr> m_NativeSyncOwnerWitnesses;
+  std::map<const ShapeDecl *, std::shared_ptr<const DataFileLeaseContract>> m_DataFileLeaseContracts;
   std::map<uint64_t, NativeSyncGuardOriginPtr> m_NativeSyncGuards, m_NativeSyncSlots;
   struct NativeSyncTemporaryGuardFrame {
     const FunctionDecl *Definition = nullptr;
@@ -1135,6 +1136,10 @@ private:
   void checkNativeSyncOwnerExposure(Expr *expression);
   bool rejectNativeSyncUnlock(Expr *expression);
   NativeSyncOwnerCandidatePtr collectNativeSyncOwnerRecipe(Expr *source);
+  NativeSyncOwnerCandidatePtr collectDataFileLeaseRecipe(Expr *source);
+  NativeSyncOwnerWitnessPtr qualifyDataFileLease(const NativeSyncOwnerCandidatePtr &recipe,
+                                                const std::shared_ptr<Type> &actualType);
+  bool dataFileLeaseLive(const NativeSyncOwnerWitnessPtr &witness) const;
   NativeSyncOwnerCandidatePtr collectChannelStorageRecipe(Expr *source);
   NativeSyncOwnerWitnessPtr qualifyChannelStorage(const NativeSyncOwnerCandidatePtr &recipe,
                                                  const std::shared_ptr<Type> &actualType);

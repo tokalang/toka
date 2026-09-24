@@ -1,0 +1,17 @@
+import std/data_file::{ReadDataFile}
+import std/thread::{thread_spawn}
+
+fn passthrough(cede input: ReadDataFile) -> ReadDataFile {
+    return cede input
+}
+
+fn main() -> i32 {
+    auto opened = ReadDataFile::open(string::from("/dev/null"))
+    if opened.is_err() { return 1 }
+    auto owner = opened.unwrap()
+    auto clone# = owner.clone()
+    clone = passthrough(cede clone)
+    auto worker = { [cede clone] => 0:i32 }
+    auto started = thread_spawn<i32>(cede worker)
+    return 0
+}

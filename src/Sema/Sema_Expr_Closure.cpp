@@ -643,6 +643,20 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
               continue;
             }
           }
+          // A native file lease may be captured only from its current live
+          // binding. A second [cede] of the same name cannot reuse the
+          // historical open/clone receipt after the first capture moved it.
+          auto dataFileSource = m_NativeSyncOwnerRecipes.find(infoPtr->SymbolID);
+          if (explicitMode == CaptureMode::ExplicitCede &&
+              dataFileSource != m_NativeSyncOwnerRecipes.end() &&
+              dataFileSource->second && dataFileSource->second->DataFile &&
+              (!infoPtr->placeFact().isExactly(PlaceState::Live) ||
+               infoPtr->Moved || infoPtr->InitMask == 0 ||
+               m_InvalidNativeSyncOwnerRecipes.count(dataFileSource->second))) {
+            error(Clo, DiagID::ERR_USE_MOVED, varName);
+            completeBoundarySummary = false;
+            continue;
+          }
           sm.Type = infoPtr->TypeObj->toString();
           sm.ResolvedType = infoPtr->TypeObj; // [Fix] Pre-resolve
           // An explicit capture is a new binding, but it carries the

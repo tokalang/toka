@@ -1,0 +1,16 @@
+import core/result::{Result}
+import std/data_file::{ReadDataFile}
+import std/error::{IoError}
+import std/thread::{thread_spawn}
+
+fn main() -> i32 {
+    auto opened = ReadDataFile::open(string::from("/dev/null"))
+    if opened.is_err() { return 1 }
+    auto owner = opened.unwrap()
+    auto clone = owner.clone()
+    auto wrapped = Result<ReadDataFile, IoError>::Ok(cede clone)
+    auto relayed = wrapped.unwrap()
+    auto worker = { [cede relayed] => 0:i32 }
+    auto started = thread_spawn<i32>(cede worker)
+    return 0
+}

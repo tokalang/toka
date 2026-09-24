@@ -207,6 +207,7 @@ bool Sema::nativeSyncDefinitionReady(const FunctionDecl *function) const {
 }
 
 bool Sema::nativeSyncOwnerLive(const NativeSyncOwnerWitnessPtr &witness) const {
+  if (witness && witness->DataFile) return dataFileLeaseLive(witness);
   if (!witness || !witness->Origin) return false;
   std::set<const NativeSyncOwnerCandidate *> seen;
   for (auto node = witness->Origin; node; node = node->Parent) {
@@ -220,6 +221,7 @@ bool Sema::nativeSyncOwnerLive(const NativeSyncOwnerWitnessPtr &witness) const {
 
 NativeSyncOwnerWitnessPtr Sema::qualifyNativeSyncOwner(const NativeSyncOwnerCandidatePtr &recipe,
                                                      const std::shared_ptr<Type> &actualType) {
+  if (recipe && recipe->DataFile) return qualifyDataFileLease(recipe, actualType);
   if (recipe && recipe->Channel) return qualifyChannelStorage(recipe, actualType);
   if (!recipe || !actualType || !recipe->ValueType ||
       !actualType->equals(*recipe->ValueType) ||
@@ -468,7 +470,14 @@ void Sema::checkNativeSyncOwnerExposure(Expr *expression) {
   auto invalidate = [&](const NativeSyncOwnerCandidatePtr &recipe) {
     if (recipe) m_InvalidNativeSyncOwnerRecipes.insert(recipe);
   };
-  if (auto *member = dynamic_cast<MemberExpr *>(expression)) {
+  if (auto *address = dynamic_cast<AddressOfExpr *>(expression)) {
+    auto recipe = address->Expression->NativeSyncOwnerRecipe;
+    if (recipe && recipe->DataFile) invalidate(recipe);
+  } else if (auto *unary = dynamic_cast<UnaryExpr *>(expression);
+             unary && unary->Op == TokenType::Ampersand) {
+    auto recipe = unary->RHS->NativeSyncOwnerRecipe;
+    if (recipe && recipe->DataFile) invalidate(recipe);
+  } else if (auto *member = dynamic_cast<MemberExpr *>(expression)) {
     auto recipe = member->Object->NativeSyncOwnerRecipe;
     if (recipe && recipe->Channel) {
       auto pair = std::dynamic_pointer_cast<ShapeType>(member->Object->ResolvedType);
@@ -482,6 +491,37 @@ void Sema::checkNativeSyncOwnerExposure(Expr *expression) {
     method->NativeSyncWaitGuard.reset();
     auto recipe = method->Object->NativeSyncOwnerRecipe;
     if (!recipe) return;
+    if (recipe->DataFile) {
+      const auto *resultOrigin = method->ResolvedFn &&
+                                 method->ResolvedFn->TemplateOrigin
+                                     ? method->ResolvedFn->TemplateOrigin
+                                     : method->ResolvedFn;
+      auto *resultScope = resultOrigin
+                              ? getLexicalModule(resultOrigin->Loc) : nullptr;
+      const bool trustedResult = resultOrigin && resultOrigin->Body &&
+          resultScope && resultScope->SourceModule &&
+          !resultScope->SourceModule->IsInterface &&
+          resultScope->IsTrustedSystemModule &&
+          resultScope->ShadowCoordinateKnown &&
+          resultScope->ShadowLogicalModulePath == "core/result" &&
+          resultScope->SourceModule->ShadowCoordinateOrigin == "toolchain";
+      if (recipe->DataFilePhase == DataFileLeasePhase::PendingOpen &&
+          (method->Method == "unwrap" || method->Method == "is_ok" ||
+           method->Method == "is_err") && trustedResult &&
+          method->Args.empty() &&
+          method->Object->ResolvedType &&
+          method->Object->ResolvedType->equals(
+              *recipe->DataFile->Open->ResolvedReturnType)) return;
+      auto lease = qualifyDataFileLease(recipe, method->Object->ResolvedType);
+      if (!lease || (method->ResolvedFn != recipe->DataFile->Clone &&
+                     method->ResolvedFn != recipe->DataFile->ReadAt)) {
+        invalidate(recipe);
+        return;
+      }
+      method->NativeSyncAccessRequired = true;
+      method->NativeSyncAccess = std::move(lease);
+      return;
+    }
     auto type = recipe->ValueType;
     auto witness = qualifyNativeSyncOwner(recipe, type);
     const bool allowed = witness && (method->ResolvedFn == witness->Acquire || method->ResolvedFn == witness->ReadAcquire ||
@@ -664,6 +704,7 @@ bool Sema::prepareNativeSyncAllocation(const NewExpr *allocation, const Variable
 
 NativeSyncOwnerCandidatePtr Sema::collectNativeSyncOwnerRecipe(Expr *source) {
   if (!source || !source->ResolvedType) return {};
+  if (auto lease = collectDataFileLeaseRecipe(source)) return lease;
   if (auto channel = collectChannelStorageRecipe(source)) return channel;
   NativeSyncOwnerCandidatePtr recipe;
   FunctionDecl *callee = nullptr;
@@ -756,6 +797,13 @@ NativeSyncOwnerCandidatePtr Sema::collectNativeSyncOwnerRecipe(Expr *source) {
     recipe = std::move(rebased);
   }
   if (!recipe || m_InvalidNativeSyncOwnerRecipes.count(recipe)) return {};
+  if (recipe->DataFile)
+    return recipe->ValueType &&
+                   recipe->ValueType->withAttributes(false, false,
+                       recipe->ValueType->IsBlocked)->equals(
+                       *source->ResolvedType->withAttributes(false, false,
+                           source->ResolvedType->IsBlocked))
+               ? recipe : NativeSyncOwnerCandidatePtr{};
   if (recipe->Channel) {
     auto shape = std::dynamic_pointer_cast<ShapeType>(source->ResolvedType);
     const auto &p = recipe->Channel;
@@ -798,6 +846,21 @@ void Sema::recordNativeSyncOwnerRecipe(const AccessPath &rawPlace, Expr *source,
   auto recipe = source ? source->NativeSyncOwnerRecipe : NativeSyncOwnerCandidatePtr{};
   SymbolInfo *binding = nullptr;
   if (!CurrentScope->findSymbolByID(place.RootID, binding) || !binding || !binding->TypeObj) return;
+  if (recipe && recipe->DataFile) {
+    if (!recipe->ValueType ||
+        !recipe->ValueType->withAttributes(false, false,
+            recipe->ValueType->IsBlocked)->equals(
+            *binding->TypeObj->withAttributes(false, false,
+                binding->TypeObj->IsBlocked))) recipe.reset();
+    else if (dynamic_cast<CedeExpr *>(source)) {
+      auto moved = std::shared_ptr<NativeSyncOwnerCandidate>(
+          new NativeSyncOwnerCandidate(*recipe));
+      moved->Parent = recipe;
+      moved->OwnerEdge = source;
+      moved->ValueType = binding->TypeObj;
+      recipe = std::move(moved);
+    }
+  }
   if (!recipe && !initialization &&
       (binding->TypeObj->isUniquePtr() || binding->TypeObj->isSharedPtr())) {
     auto *decl = binding->ASTPtr ? dynamic_cast<VariableDecl *>(static_cast<ASTNode *>(binding->ASTPtr)) : nullptr;

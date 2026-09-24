@@ -4835,6 +4835,14 @@ CallableEnvironmentFacts Sema::collectStage1CallableEnvironment(Expr *source) {
           captured->ChannelCaptureType = environment->second;
           captured->ChannelCaptureName = member.Name;
           witness = std::move(captured);
+        } else if (witness->DataFile) {
+          if (capture->Mode != CaptureMode::ExplicitCede) return {};
+          auto captured = std::shared_ptr<NativeSyncOwnerWitness>(
+              new NativeSyncOwnerWitness(*witness));
+          captured->DataFileCapture = closure;
+          captured->DataFileCaptureType = environment->second;
+          captured->DataFileCaptureName = member.Name;
+          witness = std::move(captured);
         }
         result.NativeOwners.push_back(std::move(witness));
         continue;

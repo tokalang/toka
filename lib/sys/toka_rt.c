@@ -262,6 +262,27 @@ typedef struct {
     _Atomic int32_t ref_count;
 } toka_read_datafile_t;
 
+#ifdef TOKA_DATAFILE_TEST_OBSERVATION
+static _Atomic int32_t g_toka_datafile_created;
+static _Atomic int32_t g_toka_datafile_retained;
+static _Atomic int32_t g_toka_datafile_released;
+static _Atomic int32_t g_toka_datafile_closed;
+static _Atomic int32_t g_toka_datafile_freed;
+
+void toka_rt_test_datafile_reset(void) {
+    atomic_store(&g_toka_datafile_created, 0);
+    atomic_store(&g_toka_datafile_retained, 0);
+    atomic_store(&g_toka_datafile_released, 0);
+    atomic_store(&g_toka_datafile_closed, 0);
+    atomic_store(&g_toka_datafile_freed, 0);
+}
+int32_t toka_rt_test_datafile_created(void) { return atomic_load(&g_toka_datafile_created); }
+int32_t toka_rt_test_datafile_retained(void) { return atomic_load(&g_toka_datafile_retained); }
+int32_t toka_rt_test_datafile_released(void) { return atomic_load(&g_toka_datafile_released); }
+int32_t toka_rt_test_datafile_closed(void) { return atomic_load(&g_toka_datafile_closed); }
+int32_t toka_rt_test_datafile_freed(void) { return atomic_load(&g_toka_datafile_freed); }
+#endif
+
 uint64_t toka_datafile_open_read(const char *path, int32_t *os_error) {
 #if defined(_WIN32) || defined(__wasi__)
     (void)path;
@@ -292,6 +313,9 @@ uint64_t toka_datafile_open_read(const char *path, int32_t *os_error) {
     }
     rf->fd = fd;
     rf->ref_count = 1;
+#ifdef TOKA_DATAFILE_TEST_OBSERVATION
+    atomic_fetch_add(&g_toka_datafile_created, 1);
+#endif
     if (os_error) *os_error = 0;
     return (uint64_t)(uintptr_t)rf;
 #endif
@@ -301,16 +325,30 @@ void toka_datafile_read_retain(uint64_t handle) {
     if (handle == 0) return;
     toka_read_datafile_t *rf = (toka_read_datafile_t *)(uintptr_t)handle;
     atomic_fetch_add(&rf->ref_count, 1);
+#ifdef TOKA_DATAFILE_TEST_OBSERVATION
+    atomic_fetch_add(&g_toka_datafile_retained, 1);
+#endif
 }
 
 void toka_datafile_read_release(uint64_t handle) {
     if (handle == 0) return;
     toka_read_datafile_t *rf = (toka_read_datafile_t *)(uintptr_t)handle;
+#ifdef TOKA_DATAFILE_TEST_OBSERVATION
+    atomic_fetch_add(&g_toka_datafile_released, 1);
+#endif
     if (atomic_fetch_sub(&rf->ref_count, 1) == 1) {
 #if !defined(_WIN32) && !defined(__wasi__)
-        if (rf->fd >= 0) close(rf->fd);
+        if (rf->fd >= 0) {
+            close(rf->fd);
+#ifdef TOKA_DATAFILE_TEST_OBSERVATION
+            atomic_fetch_add(&g_toka_datafile_closed, 1);
+#endif
+        }
 #endif
         free(rf);
+#ifdef TOKA_DATAFILE_TEST_OBSERVATION
+        atomic_fetch_add(&g_toka_datafile_freed, 1);
+#endif
     }
 }
 

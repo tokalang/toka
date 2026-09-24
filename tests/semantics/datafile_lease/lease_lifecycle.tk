@@ -1,0 +1,83 @@
+import std/data_file::{ReadDataFile, WalFile}
+import std/fs::{create_temp_file_system}
+import std/vec::{Vec}
+import std/thread::{thread_spawn}
+
+extern fn thread_test_begin() -> i32
+extern fn toka_rt_test_datafile_reset() -> void
+extern fn toka_rt_test_datafile_created() -> i32
+extern fn toka_rt_test_datafile_retained() -> i32
+extern fn toka_rt_test_datafile_released() -> i32
+extern fn toka_rt_test_datafile_closed() -> i32
+extern fn toka_rt_test_datafile_freed() -> i32
+
+fn created() -> i32 { return unsafe toka_rt_test_datafile_created() }
+fn retained() -> i32 { return unsafe toka_rt_test_datafile_retained() }
+fn released() -> i32 { return unsafe toka_rt_test_datafile_released() }
+fn closed() -> i32 { return unsafe toka_rt_test_datafile_closed() }
+fn freed() -> i32 { return unsafe toka_rt_test_datafile_freed() }
+
+fn main() -> i32 {
+    auto temp_result = create_temp_file_system()
+    if temp_result.is_err() { return 1 }
+    auto temp# = temp_result.unwrap()
+    auto path = temp.path().clone()
+    auto wal_result = WalFile::open(path.clone())
+    if wal_result.is_err() { return 2 }
+    auto wal# = wal_result.unwrap()
+    auto buffer# = Vec<u8>::new()
+    buffer#.push(41:u8)
+    buffer#.push(42:u8)
+    auto written = wal#.write_all_at(cede buffer, 0:u64)
+    if written.is_err() { return 3 }
+    if written.unwrap().bytes_written != 2:usize { return 3 }
+    if wal#.close().is_err() { return 4 }
+
+    unsafe { toka_rt_test_datafile_reset() }
+    auto missing = ReadDataFile::open(string::from(""))
+    if missing.is_ok() || created() != 0 || retained() != 0 ||
+       released() != 0 || closed() != 0 || freed() != 0 { return 18 }
+    auto opened = ReadDataFile::open(path.clone())
+    if opened.is_err() { return 5 }
+    auto owner = opened.unwrap()
+    auto clone# = owner.clone()
+    auto spare = owner.clone()
+    clone = owner.clone()
+    if created() != 1 || retained() != 3 || released() != 1 { return 6 }
+    cede owner
+    if released() != 2 || closed() != 0 || freed() != 0 { return 7 }
+    cede spare
+    if released() != 3 || closed() != 0 || freed() != 0 { return 17 }
+
+    auto mode = unsafe thread_test_begin()
+    auto worker = { [cede clone] =>
+        auto read_buffer# = Vec<u8>::with_capacity(2:usize)
+        auto read = clone.read_at(cede read_buffer, 0:u64, 2:usize)
+        if read.is_err() { return 8 }
+        auto result = read.unwrap()
+        if result.bytes_read != 2:usize { return 9 }
+        auto bytes = result.take_buffer()
+        if bytes.get(0:usize) != 41:u8 || bytes.get(1:usize) != 42:u8 { return 10 }
+        return 0
+    }:dyn fn() -> i32
+    if mode == 2 {
+        cede worker
+        if released() != 4 || closed() != 1 || freed() != 1 { return 16 }
+        temp#.remove()
+        return 0
+    }
+    auto spawned = thread_spawn<i32>(cede worker)
+    if mode == 1 {
+        if spawned.is_ok() { return 11 }
+        if released() != 4 || closed() != 1 || freed() != 1 { return 12 }
+    } else {
+        if spawned.is_err() { return 13 }
+        auto handle# = spawned.unwrap()
+        auto joined = handle#.join()
+        if joined.is_err() { return 14 }
+        if joined.unwrap() != 0 { return 14 }
+        if released() != 4 || closed() != 1 || freed() != 1 { return 15 }
+    }
+    temp#.remove()
+    return 0
+}

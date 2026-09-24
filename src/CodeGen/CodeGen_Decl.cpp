@@ -2680,6 +2680,9 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     if (!validateNativeSyncOwner(access, expr)) return {};
     const bool operation = expr->ResolvedFn == access->Acquire || expr->ResolvedFn == access->ReadAcquire ||
         expr->ResolvedFn == access->NotifyOne || expr->ResolvedFn == access->NotifyAll || expr->ResolvedFn == access->Wait ||
+        (access->DataFile &&
+         (expr->ResolvedFn == access->DataFile->Clone ||
+          expr->ResolvedFn == access->DataFile->ReadAt)) ||
         std::find(access->CompositeOperations.begin(), access->CompositeOperations.end(), expr->ResolvedFn) !=
             access->CompositeOperations.end();
     if (!operation ||

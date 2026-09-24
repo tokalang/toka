@@ -5248,13 +5248,95 @@ bool CodeGen::validateNativeSyncOwner(const NativeSyncOwnerWitnessPtr &original,
     if (fault == "read-drop") changed->ReadGuardDrop = nullptr;
     if (fault == "read-access") changed->ReadGuardAccess = nullptr;
     if (fault == "notify") changed->NotifyOne = nullptr;
+    if (fault == "datafile-lease") changed->DataFile.reset();
+    if (fault == "datafile-capture") changed->DataFileCaptureName.clear();
     w = std::move(changed);
   }
 #endif
   auto reject = [&](const char *why) {
-    error(site, DiagID::ERR_CODEGEN, std::string("native sync owner: ") + why);
+    error(site, DiagID::ERR_CODEGEN,
+          std::string(original && original->DataFile
+                          ? "native datafile lease: " : "native sync owner: ") + why);
     return false;
   };
+  if (w && w->DataFile) {
+    const auto &p = w->DataFile;
+    auto *value = w->ValueType ? dynamic_cast<ShapeType *>(w->ValueType.get()) : nullptr;
+    if (!p->Complete || p->SourceDigest !=
+            "560d2e089d9a356d6253c05a0134cbe82590c582b08028008cdef8a76e237ee1" ||
+        p->NativeDeclarationsDigest !=
+            "9ad7d86356a3e7da822b9ff78ce5eb17c315eba280d0b0e55f9ac319d48c87a0" ||
+        !p->SourceModule || p->SourceModule->IsInterface || !p->Owner ||
+        !p->Open || !p->Clone || !p->Drop || !p->ReadAt ||
+        !p->NativeOpen || !p->NativeRetain || !p->NativeRelease ||
+        !p->NativeReadAt ||
+        p->NativeOpen->Name != "toka_datafile_open_read" ||
+        p->NativeRetain->Name != "toka_datafile_read_retain" ||
+        p->NativeRelease->Name != "toka_datafile_read_release" ||
+        p->NativeReadAt->Name != "toka_datafile_pread" ||
+        p->NativeOpen->Args.size() != 2 ||
+        p->NativeRetain->Args.size() != 1 ||
+        p->NativeRelease->Args.size() != 1 ||
+        p->NativeReadAt->Args.size() != 5 ||
+        !p->Open->Body || !p->Clone->Body || !p->Drop->Body ||
+        !p->ReadAt->Body || !value || value->Decl != p->Owner ||
+        !p->Owner->HasExplicitDrop || p->Owner->ResolvedDestructor != p->Drop ||
+        p->Owner->Members.size() != 1 ||
+        p->Owner->Members[0].Name != "handle" ||
+        !p->Owner->Members[0].ResolvedType ||
+        !p->Owner->Members[0].ResolvedType->isAddrType() ||
+        !w->Origin || !w->OwnerType ||
+        !w->OwnerType->equals(*w->ValueType) ||
+        w->Origin->DataFile != p ||
+        w->Origin->DataFilePhase != DataFileLeasePhase::Owned ||
+        !w->Origin->ValueType ||
+        !w->Origin->ValueType->withAttributes(false, false,
+            w->Origin->ValueType->IsBlocked)->equals(
+            *w->ValueType->withAttributes(false, false,
+                w->ValueType->IsBlocked)))
+      return reject("IncompleteDataFileLease");
+    std::set<const NativeSyncOwnerCandidate *> visited;
+    bool sawOpen = false;
+    for (auto node = w->Origin; node; node = node->Parent) {
+      if (!visited.insert(node.get()).second || node->DataFile != p ||
+          !node->OwnerEdge || !node->ValueType) return reject("DataFileLeaseLineageMismatch");
+      if (node->DataFilePhase == DataFileLeasePhase::PendingOpen) {
+        auto *opened = dynamic_cast<const CallExpr *>(node->OwnerEdge);
+        if (node->Parent || !opened || opened->ResolvedFn != p->Open)
+          return reject("DataFileOpenEdgeMismatch");
+        sawOpen = true;
+      } else if (auto *method = dynamic_cast<const MethodCallExpr *>(node->OwnerEdge)) {
+        if (!node->Parent || !method->Object ||
+            method->Object->NativeSyncOwnerRecipe != node->Parent ||
+            (method->ResolvedFn != p->Clone && method->Method != "unwrap"))
+          return reject("DataFileMethodEdgeMismatch");
+      } else if (auto *cede = dynamic_cast<const CedeExpr *>(node->OwnerEdge)) {
+        if (!node->Parent || !cede->Value ||
+            cede->Value->NativeSyncOwnerRecipe != node->Parent)
+          return reject("DataFileMoveEdgeMismatch");
+      } else return reject("DataFileLeaseLineageMismatch");
+    }
+    if (!sawOpen) return reject("DataFileOpenMissing");
+    if (w->DataFileCapture) {
+      const auto *call = dynamic_cast<const CallExpr *>(site);
+      auto publication = call ? call->PublicThreadSource : nullptr;
+      auto environment = publication
+          ? std::dynamic_pointer_cast<ShapeType>(publication->EnvironmentType)
+          : nullptr;
+      auto capture = w->DataFileCapture->NativeSyncCaptureRecipes.find(
+          w->DataFileCaptureName);
+      if (!environment || environment->Decl != w->DataFileCaptureType ||
+          capture == w->DataFileCapture->NativeSyncCaptureRecipes.end() ||
+          capture->second != w->Origin)
+        return reject("DataFileCaptureEdgeMismatch");
+    } else if (auto *method = dynamic_cast<const MethodCallExpr *>(site)) {
+      if (!method->Object ||
+          method->Object->NativeSyncOwnerRecipe != w->Origin ||
+          (method->ResolvedFn != p->Clone && method->ResolvedFn != p->ReadAt))
+        return reject("DataFileAccessEdgeMismatch");
+    } else return reject("DataFileSiteMismatch");
+    return true;
+  }
   if (w && w->Channel) {
     const auto &p = w->Channel;
     if (w->ChannelCapture) {

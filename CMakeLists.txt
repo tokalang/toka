@@ -509,6 +509,11 @@ if(BUILD_TESTING)
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_public_thread_sync_closeout.py
                     --build-dir ${CMAKE_BINARY_DIR})
             set_tests_properties(toka_public_thread_sync_closeout PROPERTIES TIMEOUT 180)
+            add_test(NAME toka_datafile_thread_lease
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/scripts/test_datafile_thread_lease.py
+                    --build-dir ${CMAKE_BINARY_DIR})
+            set_tests_properties(toka_datafile_thread_lease PROPERTIES TIMEOUT 180)
             add_test(NAME toka_shared_parameter_abi
                 COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_shared_parameter_abi.py

@@ -1,0 +1,10 @@
+import std/data_file::{ReadDataFile}
+
+fn main() -> i32 {
+    auto opened = ReadDataFile::open(string::from("/dev/null"))
+    if opened.is_err() { return 1 }
+    auto owner = opened.unwrap()
+    cede owner
+    auto duplicate = owner.clone()
+    return 0
+}

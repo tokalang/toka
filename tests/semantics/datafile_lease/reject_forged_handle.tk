@@ -1,0 +1,10 @@
+import core/types::{Addr}
+import std/data_file::{ReadDataFile}
+import std/thread::{thread_spawn}
+
+fn main() -> i32 {
+    auto forged = ReadDataFile(handle = 7:Addr)
+    auto worker = { [cede forged] => 0:i32 }
+    auto started = thread_spawn<i32>(cede worker)
+    return 0
+}

@@ -1,0 +1,13 @@
+import core/types::{Addr}
+import std/thread::{thread_spawn}
+
+shape ReadDataFile(handle: Addr)
+impl ReadDataFile@Send {}
+impl ReadDataFile@Encap { fn drop(self#) {} }
+
+fn main() -> i32 {
+    auto fake = ReadDataFile(handle = 0:Addr)
+    auto worker = { [cede fake] => 0:i32 }
+    auto started = thread_spawn<i32>(cede worker)
+    return 0
+}

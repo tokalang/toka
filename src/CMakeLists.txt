@@ -21,6 +21,7 @@ set(toka_frontend_sources
     Sema/Sema_ByteBuffer.cpp
     Sema/Sema_EnumPayloadSources.cpp
     Sema/Sema_PublicThread.cpp
+    Sema/Sema_DataFileLease.cpp
     Sema/Sema_NativeSync.cpp
     Sema/Sema_ChannelStorage.cpp
     Sema/Sema_Expr_Member.cpp
