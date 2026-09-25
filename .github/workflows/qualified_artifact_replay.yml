@@ -12,13 +12,21 @@ on:
         required: true
         type: string
       qualification_run_id:
-        description: Successful tagged four-target Release Qualification run id
+        description: Successful four-target Release Qualification run id for the same candidate
         required: true
         type: string
       archive_sha256:
         description: SHA-256 recorded for the macOS x64 draft asset
         required: true
         type: string
+      asset_source:
+        description: Read the archive from the qualified run or the draft release
+        required: true
+        default: qualified_run
+        type: choice
+        options:
+          - qualified_run
+          - draft_release
 
 permissions:
   actions: read
@@ -39,6 +47,7 @@ jobs:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
           ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}
+          ASSET_SOURCE: ${{ inputs.asset_source }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -46,6 +55,7 @@ jobs:
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$QUALIFICATION_RUN_ID" =~ ^[0-9]+$ ]]
           [[ "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$ASSET_SOURCE" = qualified_run || "$ASSET_SOURCE" = draft_release ]]
           git rev-parse "refs/tags/$TAG_NAME^{tag}" >/dev/null
           test "$(git rev-parse "refs/tags/$TAG_NAME^{commit}")" = \
             "$CANDIDATE_SHA"
@@ -54,11 +64,16 @@ jobs:
           test "$(gh api "$run_api" --jq .status)" = completed
           test "$(gh api "$run_api" --jq .conclusion)" = success
           test "$(gh api "$run_api" --jq .head_sha)" = "$CANDIDATE_SHA"
+          if [[ "$ASSET_SOURCE" = draft_release ]]; then
+            test "$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft,isPrerelease --jq '.isDraft and .isPrerelease')" = true
+          fi
 
       - name: Install SDK host dependencies
         run: brew install lld@20 zstd openssl@3
 
       - name: Download qualified macOS x64 archive
+        if: inputs.asset_source == 'qualified_run'
         uses: actions/download-artifact@v4
         with:
           name: release-archive-macos-x64
@@ -66,12 +81,24 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.qualification_run_id }}
 
+      - name: Download macOS x64 draft asset
+        if: inputs.asset_source == 'draft_release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p qualified-assets
+          gh release download "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern "toka-$TAG_NAME-macos-x64.tar.gz" --dir qualified-assets
+
       - name: Verify and replay qualified archive from a clean extraction
         env:
           TAG_NAME: ${{ inputs.tag_name }}
           ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          ASSET_SOURCE: ${{ inputs.asset_source }}
         run: |
           set -euo pipefail
           archive="$GITHUB_WORKSPACE/qualified-assets/toka-$TAG_NAME-macos-x64.tar.gz"
@@ -137,7 +164,7 @@ jobs:
 
           receipt="$GITHUB_WORKSPACE/qualified-artifact-replay-receipt.json"
           python3 -c \
-            'import json,os; print(json.dumps({"archive_sha256":os.environ["ARCHIVE_SHA256"],"candidate_revision":os.environ["CANDIDATE_SHA"],"qualification_run_id":int(os.environ["QUALIFICATION_RUN_ID"]),"result":"pass","schema":"toka.qualified-artifact-replay","target":"macos-x64","version":1,"version_label":os.environ["TAG_NAME"]},sort_keys=True,separators=(",",":")))' \
+            'import json,os; print(json.dumps({"archive_sha256":os.environ["ARCHIVE_SHA256"],"asset_source":os.environ["ASSET_SOURCE"],"candidate_revision":os.environ["CANDIDATE_SHA"],"qualification_run_id":int(os.environ["QUALIFICATION_RUN_ID"]),"result":"pass","schema":"toka.qualified-artifact-replay","target":"macos-x64","version":1,"version_label":os.environ["TAG_NAME"]},sort_keys=True,separators=(",",":")))' \
             > "$receipt"
 
       - name: Upload replay receipt
