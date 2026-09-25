@@ -18,6 +18,30 @@ a claim of global novelty, derivation, equivalence, or superiority.
   is a maintainer account. The entries below are documented milestones, not
   claims about the first private idea or the first invention of a mechanism.
 
+## Current RC13 Rule and Comparison Scope
+
+For a concrete handle binding, a bare use selects its payload view and an
+explicit hat can select a handle view or create a borrow, subject to that
+operation's permission, lifetime, and ownership checks. Raw, borrowed, unique,
+and shared handles participate in this source-level distinction; they do not
+have identical transfer or cleanup rules. The public [syntax guide](syntax.md)
+specifies the admitted forms.
+
+An abstract whole-value binding of generic type `T` is an important exception
+to any slogan that *all* bare names mean payloads: while `T` remains abstract,
+the name denotes the complete `T`, even if a later concrete instance has a
+handle root. Monomorphization does not reinterpret that source occurrence.
+An access whose source contract is already concrete follows the concrete hat
+rules.
+This RC13 rule is detailed in the
+[whole-value generics boundary](semantic_core/whole_value_generics_and_checked_dependency_elision_rfc.md).
+
+The comparisons below concern source expression and assignment rules, not
+whether another language uses identical AST nodes, physical storage, or
+ownership proofs. An earlier local correspondence remains relevant even when
+the complete languages differ. This targeted record is not an exhaustive
+priority search or a formal proof of a unique design.
+
 ## Documented Toka Timeline
 
 Dates below are commit dates recorded in the public repository. "Earliest"
@@ -52,38 +76,90 @@ means the earliest evidence currently located in that history.
 These references acknowledge precedents for individual mechanisms. They do not
 imply that the systems have the same overall model or responsibility split.
 
-### C
+### C pointer slots
 
-C pointer types compose recursively, and repeated pointer declarators and
-operators provide the longstanding baseline for multi-level pointer structure.
-See the type and declarator rules in the
+C pointer types compose recursively. Given `int *p` and `int **pp = &p`,
+`**pp` designates the integer target while `*pp` designates the pointer slot
+`p`, which can be rebound. Taking the address of such a slot is likewise an
+ordinary typed lvalue operation. These storage capabilities and repeated
+pointer syntax are not inventions of Toka. See the type, indirection, and
+assignment rules in the
 [C11 committee draft N1570](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf).
+Toka's comparison concerns the source convention for selecting a payload or
+handle view, not whether C can reach or change the same underlying storage.
 
-### Cforall
+### Cforall rebindable references
 
-Cforall documents
-[multi-level rebindable references](https://cforall.uwaterloo.ca/features/#RebindableReferences)
-such as `&&&`, automatic dereferencing across the declared depth, and explicit
-selection of reference levels by cancelling implicit dereferences. This is a
-close precedent for repeated reference sigils and multi-level reference
-selection.
+Cforall's [multi-level references](https://cforall.uwaterloo.ca/features/#RebindableReferences)
+are rebindable and automatically dereferenced to their referent. Taking `&r`
+can cancel an implicit dereference and expose the reference cell; repeated
+`&` can select outward reference levels. Aaron Moss's
+[2019 thesis](https://uwspace.uwaterloo.ca/items/2ad9e91b-d4a6-4c13-a44c-92e9fc488093)
+documents both `&r = &y` rebinding and `&&r` addressing the reference slot.
+This is a substantive earlier counterpart to payload-default access and
+explicit selection of handle layers along a pure reference chain, not merely
+a resemblance between punctuation marks.
 
-### Alusus
+Cforall also retains ordinary C-style pointers, whose bare names denote
+pointer values rather than automatically reached payloads. Toka applies its
+concrete payload/handle convention across raw, borrowed, unique, and shared
+handles, with distinct permissions for each. The languages may reach
+corresponding cells in the reference-only case; neither this correspondence
+nor a different internal representation proves equivalence or historical
+influence between their full models.
 
-Alusus's official English reference, published in 2023, documents nested
-references such as `ref[ref[Int]]` and operations that apply to the referenced
-content regardless of reference depth. It describes `~ptr` as starting from the
-content layer and shows repeated `~ptr` when assigning nested-reference
-handles, while `~no_deref` suppresses automatic reference following so that
-the reference itself can be changed. See the immutable source for
-[nested references](https://github.com/Alusus/Alusus/blob/b777761c5b07a51bd785f510c7811e6d3f18adc8/Doc/lang-reference.en.html#L1358-L1371)
-and
-[`~no_deref`](https://github.com/Alusus/Alusus/blob/b777761c5b07a51bd785f510c7811e6d3f18adc8/Doc/lang-reference.en.html#L1391-L1403).
+### Alusus content-default references
+
+The [Alusus language reference](https://alusus.org/Documents/lang-reference.en.html)
+documents `ref[ref[Int]]`, content-default operations irrespective of reference
+depth, repeated `~ptr` to expose reference levels, and `~no_deref` when a
+reference itself must be changed. This is another close local precedent for
+the distinction between content access and reference rebinding. Alusus's raw
+pointer and smart-reference operations use other conventions, including
+`~cnt` and `.obj` in its
+[pointer and smart-reference tutorial](https://alusus.org/Documents/Tutorial.en/7_pointers_references_smart_references.html).
+The documented categories therefore do not establish Toka's complete
+four-category expression convention.
+
+### Fortran pointer association
+
+Fortran distinguishes [intrinsic assignment](https://www.intel.com/content/www/us/en/docs/fortran-compiler/developer-guide-reference/2024-2/intrinsic-assignment-statements.html)
+to an associated pointer's target (`p = value`) from
+[pointer assignment](https://www.intel.com/content/www/us/en/docs/fortran-compiler/developer-guide-reference/2024-2/pointer-assignments.html)
+that changes association (`p => target`). This is an earlier payload-versus-
+association distinction. It uses different assignment forms rather than a
+common hat-view syntax across Toka's handle categories.
+
+### Chapel ownership categories
+
+Chapel distinguishes `owned`, `shared`, `borrowed`, and `unmanaged` class
+types. Its [class specification](https://chapel-lang.org/docs/language/spec/classes.html)
+states that assignment between `owned` values transfers ownership, leaving
+the source empty. Thus the four management categories are not themselves
+Toka's invention, while Chapel's ordinary owned assignment is not Toka's
+concrete payload-assignment convention. `unmanaged` classes also should not
+be treated as equivalent to every raw-pointer use.
+
+### Considered alternatives
+
+The [Carbon values and references proposal](https://docs.carbon-lang.dev/proposals/p002006-values-variables-pointers-and-references.html)
+explicitly discusses syntax-free dereferencing and a references-only
+alternative, then argues against losing the visible marker for non-local
+access. It establishes that broad automatic-dereference ideas were considered
+elsewhere; it does not specify Toka's four-category hat convention.
 
 ## Scope of Toka's Design Claim
 
 Toka does not claim repeated pointer/reference glyphs, recursive pointer or
-reference structure, automatic payload access, or explicit handle selection as
-first inventions. Its design focus is the way hat forms participate together
-in payload/handle selection, ownership, borrowing, rebinding, and resource
-contracts.
+reference structure, payload-default access, explicit handle selection, or
+reference-slot rebinding as first inventions. The documented design emphasis
+is the consistent *concrete* payload/handle expression convention across its
+four handle categories, combined with ownership, borrowing, rebinding, and
+resource contracts. The abstract generic whole-value exception and each
+category's access restrictions remain part of that description.
+
+The cited works show substantial local overlaps and different design choices.
+They do not establish that Toka derived from them, nor does this limited survey
+establish that no earlier language used the same complete combination. This
+document does not present an order-only sketch as normative RC13 semantics or
+as an independently verified formal theorem.

@@ -50,16 +50,16 @@ Toka combines several mechanisms toward that goal. The design tries to keep ever
 - PAL (Path-Anchored Ledger) static checking for borrow validity and resource-contract safety
 - compact markers for mutation, rebinding, transfer, nullability, and handle identity
 - integrated project tooling instead of large external build-system setup
-- a payload/handle distinction where ordinary names operate on object payloads, while hats such as `&`, `*`, `^`, and `~` expose or preserve handle identity only when the code genuinely needs that layer
+- a payload/handle distinction where concrete handle names select object payloads, while hats such as `&`, `*`, `^`, and `~` select permitted handle views; abstract generic bindings of `T` instead preserve the complete `T` value
 
 The hat syntax is one consequence of this design, not the goal itself. It exists because Toka needs a compact, consistent way to distinguish payload operations from handle operations.
 
-**Design-lineage note.** Toka's hat syntax was developed independently; related
-mechanisms in C, Cforall, and Alusus are acknowledged as precedents. Toka does
-not claim the individual glyphs, multi-level references, or explicit handle
-selection as inventions. Its design focus is the integration of hat forms with
-payload/handle selection, ownership, borrowing, rebinding, and resource
-contracts. See [Design lineage and evidence](docs/design_lineage.md).
+**Design-lineage note.** Toka's hat syntax was developed independently;
+Cforall, Alusus, and other systems provide related earlier mechanisms. Toka
+does not claim the glyphs, payload-default reference access, or explicit
+handle selection as individual inventions. Its design focus is their integration
+across concrete handle categories with ownership, borrowing, rebinding, and
+resource contracts. See [Design history and related work](docs/design_lineage.md).
 
 Toka therefore explores a position between C, Rust, Go, and Zig: close to the machine, statically disciplined, and designed to keep everyday systems code readable without turning important systems boundaries into convention.
 
