@@ -3,8 +3,7 @@
 RC13 is a release candidate, not a Toka 1.0 stability declaration. The source
 candidate is commit `6fb3337fa4f9956392326a7783c9dcdecabd7e5b`. The
 [four-target release qualification](https://github.com/tokalang/toka/actions/runs/36093979008)
-passed for that exact commit on Linux x64/ARM64 and macOS x64/ARM64. This draft
-is not a promotion or a public release.
+passed for that exact commit on Linux x64/ARM64 and macOS x64/ARM64.
 
 ## Language and migration boundary
 
@@ -30,8 +29,8 @@ is not a promotion or a public release.
   associated cleanup/helpers locally. A declaration-only interface without
   required evidence remains fail-closed; this is not opaque-binary support.
 
-See the [explicit cede RFC](semantic_core/explicit_call_boundary_cede_rfc.md)
-and [whole-value generics RFC](semantic_core/whole_value_generics_and_checked_dependency_elision_rfc.md)
+See the [explicit cede RFC](https://github.com/tokalang/toka/blob/6fb3337fa4f9956392326a7783c9dcdecabd7e5b/docs/semantic_core/explicit_call_boundary_cede_rfc.md)
+and [whole-value generics RFC](https://github.com/tokalang/toka/blob/6fb3337fa4f9956392326a7783c9dcdecabd7e5b/docs/semantic_core/whole_value_generics_and_checked_dependency_elision_rfc.md)
 for the detailed accepted rules and their remaining boundaries.
 
 ## Standard library and tools
@@ -60,5 +59,4 @@ for the detailed accepted rules and their remaining boundaries.
 - E (dependency-contract elision) and `fn_` design work are deferred. Windows
   remains a source-build dogfood target, not a packaged RC13 SDK target.
 
-Platform archives target Linux x64/ARM64 and macOS x64/ARM64. Do not treat a
-draft release or a passing qualification workflow as final promotion.
+Platform archives target Linux x64/ARM64 and macOS x64/ARM64.
