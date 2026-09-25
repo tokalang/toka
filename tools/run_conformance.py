@@ -82,6 +82,7 @@ def main():
         out_bin = os.path.join(tmp_dir, f"conf_{test_id}.exe")
         out_ll = os.path.join(tmp_dir, f"conf_{test_id}.ll")
 
+        phase = "Compilation"
         try:
             if test_type == "ir-verify":
                 cmd = [tokac_bin, "--emit-llvm", test_full_path, "-o", out_ll]
@@ -171,6 +172,7 @@ def main():
                     continue
 
                 # Execute binary with timeout
+                phase = "Execution"
                 run_res = subprocess.run([out_bin], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env, cwd=root_dir)
                 if test_type == "run-fail":
                     if run_res.returncode == 0:
@@ -191,7 +193,7 @@ def main():
                 passed_count += 1
 
         except subprocess.TimeoutExpired:
-            print(f"[FAILED] [{test_id}] Execution timed out after {timeout_sec}s.")
+            print(f"[FAILED] [{test_id}] {phase} timed out after {timeout_sec}s.")
             failed_count += 1
         finally:
             for clean_path in (out_bin, out_ll):
