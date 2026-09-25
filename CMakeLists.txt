@@ -578,12 +578,14 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_csv_flat_records.py
                 --build-dir ${CMAKE_BINARY_DIR})
-        set_tests_properties(toka_csv_flat_records PROPERTIES TIMEOUT 180)
+        # These suites run many independent compiler invocations serially.
+        # Their per-invocation timeouts and all assertions remain unchanged.
+        set_tests_properties(toka_csv_flat_records PROPERTIES TIMEOUT 480)
         add_test(NAME toka_csv_new_initializer
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_csv_new_initializer.py
                 --build-dir ${CMAKE_BINARY_DIR})
-        set_tests_properties(toka_csv_new_initializer PROPERTIES TIMEOUT 180)
+        set_tests_properties(toka_csv_new_initializer PROPERTIES TIMEOUT 480)
         add_test(NAME toka_raw_take_frontend
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_raw_take_frontend.py
