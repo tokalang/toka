@@ -119,6 +119,49 @@ static bool isFreshAllocationExpr(const Expr *expr) {
          dynamic_cast<const AllocExpr *>(expr);
 }
 
+// A concrete payload capture may reuse a named source place only through
+// wrappers that Sema proved preserve its complete value view. In particular,
+// a conversion or a unary hat may select a different physical layer and must
+// not be peeled merely because it eventually contains the same identifier.
+static bool preservesCapturedValueView(const Expr *outer, const Expr *inner) {
+  return outer && inner && outer->ResolvedType && inner->ResolvedType &&
+         outer->ResolvedType->equals(*inner->ResolvedType) &&
+         outer->IsAbstractWholeValue == inner->IsAbstractWholeValue &&
+         outer->GenericViewDepth == inner->GenericViewDepth;
+}
+
+static const VariableExpr *concretePayloadCaptureVariable(const Expr *expr) {
+  while (expr) {
+    if (auto *cede = dynamic_cast<const CedeExpr *>(expr)) {
+      if (!preservesCapturedValueView(expr, cede->Value.get()))
+        return nullptr;
+      expr = cede->Value.get();
+    } else if (auto *unsafe = dynamic_cast<const UnsafeExpr *>(expr)) {
+      if (!preservesCapturedValueView(expr, unsafe->Expression.get()))
+        return nullptr;
+      expr = unsafe->Expression.get();
+    } else if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      if (cast->Kind == CastKind::Conversion ||
+          !preservesCapturedValueView(expr, cast->Expression.get()))
+        return nullptr;
+      expr = cast->Expression.get();
+    } else if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
+      // A checked name-side payload-write request changes authority, not the
+      // selected payload storage. Other postfix forms may change the view.
+      if (postfix->Op != TokenType::TokenWrite || !postfix->LHS ||
+          !postfix->LHS->ResolvedType ||
+          postfix->LHS->ResolvedType->isPointer() ||
+          postfix->LHS->IsAbstractWholeValue ||
+          postfix->LHS->GenericViewDepth != expr->GenericViewDepth)
+        return nullptr;
+      expr = postfix->LHS.get();
+    } else {
+      break;
+    }
+  }
+  return dynamic_cast<const VariableExpr *>(expr);
+}
+
 static bool isOwnedAggregateRvalue(const Expr *expr) {
   while (expr) {
     if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
@@ -6671,6 +6714,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
     bool isCaptured = false;
     bool capturesMorphicHandleIdentity = false;
+    bool capturesConcretePayloadView = false;
 
     if (funcDecl && i < funcDecl->Args.size()) {
       const auto &arg = funcDecl->Args[i];
@@ -6743,6 +6787,18 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
           capturesMorphicHandleIdentity) {
         isCaptured = true;
       }
+      // An ordinary concrete payload formal captures the payload place, not
+      // the caller's owning/shared handle slot. The source's checked view is
+      // decisive even when the binding itself stores a handle. Abstract T,
+      // init places, and explicit handle formals keep their existing ABI.
+      capturesConcretePayloadView =
+          isCaptured && !capturesMorphicHandleIdentity && !arg.IsInit &&
+          !arg.IsAbstractWholeValue && !arg.IsRawPointer && !arg.IsReference &&
+          !arg.IsUnique && !arg.IsShared && arg.ResolvedType &&
+          !arg.ResolvedType->isPointer() &&
+          call->Args[i]->ResolvedType &&
+          !call->Args[i]->ResolvedType->isPointer() &&
+          !call->Args[i]->IsAbstractWholeValue;
     } else if (extDecl && i < extDecl->Args.size()) {
       const auto &arg = extDecl->Args[i];
       const bool consumesUnique =
@@ -6770,10 +6826,23 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       if (dynamic_cast<const AddressOfExpr *>(call->Args[i].get())) {
         val = genExpr(call->Args[i].get()).load(m_Builder);
       } else {
-        // [Fix] Explicit Identity Capture
-        // If we are capturing (Pass-By-Reference), we want the Identity
-        // Address (Alloca), not the Soul Address (Heap Ptr). genAddr often
-        // peels to Soul. We manually unwrap and seek Identity.
+        if (capturesConcretePayloadView) {
+          if (const auto *payload =
+                  concretePayloadCaptureVariable(call->Args[i].get())) {
+            if (!payload->HasConstantValue) {
+              val = getEntityAddr(payload->codegenName());
+              if (!val) {
+                error(call->Args[i].get(), DiagID::ERR_CODEGEN,
+                      "validated concrete payload has no source address");
+                return nullptr;
+              }
+            }
+          }
+        }
+        // Preserve the existing handle-identity capture path for formals that
+        // do not request the concrete payload view selected above. Capturing
+        // a handle contract may require the caller's slot rather than the
+        // payload address, so genAddr is not a blanket replacement here.
         const Expr *rawArg = call->Args[i].get();
         // Unwrap decorators to find the variable
         while (true) {
@@ -6789,25 +6858,27 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
             break;
         }
 
-        if (auto *ve = dynamic_cast<const VariableExpr *>(rawArg)) {
-          if (ve->HasConstantValue) {
-            // [Fix] Constants are RValues. Fall through to Temp
-            // Materialization (genExpr)
-            val = nullptr;
-          } else {
-            std::string baseName = toka::Type::stripMorphology(ve->Name);
-            if (m_Symbols.count(baseName)) {
-               auto &sym = m_Symbols[baseName];
-               if (capturesMorphicHandleIdentity) {
-                   val = getIdentityAddr(ve->codegenName());
-               } else if (sym.mode == AddressingMode::Reference ||
-                   (sym.mode == AddressingMode::Pointer && sym.morphology == Morphology::None)) {
-                   val = getEntityAddr(ve->codegenName());
-               } else {
-                   val = getIdentityAddr(ve->codegenName());
-               }
+        if (!val) {
+          if (auto *ve = dynamic_cast<const VariableExpr *>(rawArg)) {
+            if (ve->HasConstantValue) {
+              // [Fix] Constants are RValues. Fall through to Temp
+              // Materialization (genExpr)
+              val = nullptr;
             } else {
-               val = getIdentityAddr(ve->codegenName());
+              std::string baseName = toka::Type::stripMorphology(ve->Name);
+              if (m_Symbols.count(baseName)) {
+                 auto &sym = m_Symbols[baseName];
+                 if (capturesMorphicHandleIdentity) {
+                     val = getIdentityAddr(ve->codegenName());
+                 } else if (sym.mode == AddressingMode::Reference ||
+                     (sym.mode == AddressingMode::Pointer && sym.morphology == Morphology::None)) {
+                     val = getEntityAddr(ve->codegenName());
+                 } else {
+                     val = getIdentityAddr(ve->codegenName());
+                 }
+              } else {
+                 val = getIdentityAddr(ve->codegenName());
+              }
             }
           }
         }

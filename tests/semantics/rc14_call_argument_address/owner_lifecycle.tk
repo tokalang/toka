@@ -1,0 +1,27 @@
+import core/traits::{@Encap}
+
+shape Plain(first: i32, &drops#: i32)
+
+impl Plain@Encap {
+    fn drop(self#) { self.drops += 1 }
+}
+
+fn observe(p: Plain) -> i32 { return p.first }
+
+fn main() -> i32 {
+    auto unique_drops# = 0:i32
+    auto shared_drops# = 0:i32
+    {
+        auto ^unique = new Plain(first = 42, &drops = &unique_drops)
+        auto ~shared = new Plain(first = 43, &drops = &shared_drops)
+        if observe(unique) != 42 { return 1 }
+        if observe(shared) != 43 { return 2 }
+        if unique_drops != 0:i32 || shared_drops != 0:i32 { return 3 }
+        auto ~copy_owner = ~shared
+        if observe(copy_owner) != 43 { return 4 }
+        if shared_drops != 0:i32 { return 5 }
+    }
+    if unique_drops != 1:i32 { return 6 }
+    if shared_drops != 1:i32 { return 7 }
+    return 0
+}

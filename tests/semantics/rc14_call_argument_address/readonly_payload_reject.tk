@@ -1,0 +1,11 @@
+shape Plain(second#: i32)
+
+fn write(p#: Plain) {
+    p.second = 7
+}
+
+fn main() -> i32 {
+    auto ^owner = new Plain(second = 42)
+    write(owner#)
+    return 0
+}

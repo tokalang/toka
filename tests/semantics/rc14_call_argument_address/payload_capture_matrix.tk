@@ -1,0 +1,47 @@
+// A concrete payload formal receives the payload address, not an owning or
+// shared handle slot. The direct/method and direct/handle controls are kept in
+// one runnable matrix so the caller and callee must agree on every value.
+shape Plain(first: i32, second#: i32)
+shape Owner(^slot#: i32)
+shape Reader()
+
+impl Reader {
+    fn read(self, p: Plain) -> i32 { return p.second }
+    fn write(self, p#: Plain, value: i32) { p.second = value }
+}
+
+fn read_plain(p: Plain) -> i32 { return p.second }
+fn read_unique(p: Plain) -> i32 { return p.second }
+fn read_shared(p: Plain) -> i32 { return p.second }
+fn read_reference(p: Plain) -> i32 { return p.second }
+fn read_owner(o: Owner) -> i32 { return o.slot }
+fn write_plain(p#: Plain, value: i32) { p.second = value }
+
+fn make_plain(counter#: i32) -> Plain {
+    counter += 1
+    return Plain(first = 5, second = 42)
+}
+
+fn main() -> i32 {
+    auto plain = Plain(first = 5, second = 42)
+    if read_plain(plain) != 42 { return 1 }
+    auto owner = Owner(^slot = new i32(42))
+    if read_owner(owner) != 42 { return 2 }
+    auto ^unique# = new Plain(first = 5, second = 42)
+    if read_unique(unique) != 42 { return 3 }
+    auto ~shared = new Plain(first = 5, second = 42)
+    if read_shared(shared) != 42 { return 4 }
+    auto &reference = &plain
+    if read_reference(reference) != 42 { return 5 }
+    auto reader = Reader()
+    if reader.read(unique) != 42 { return 6 }
+    if reader.read(shared) != 42 { return 7 }
+    write_plain(unique#, 77)
+    if unique.second != 77 { return 8 }
+    reader.write(unique#, 88)
+    if unique.second != 88 { return 9 }
+    auto count# = 0:i32
+    if read_plain(make_plain(count#)) != 42 { return 10 }
+    if count != 1:i32 { return 11 }
+    return 0
+}

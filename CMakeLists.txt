@@ -284,6 +284,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_stage1_explicit_caller_cede.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_rc14_call_argument_address
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_rc14_call_argument_address.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_stage1_method_parameter_cede
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_stage1_method_parameter_cede.py

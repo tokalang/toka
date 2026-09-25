@@ -1,0 +1,15 @@
+// Only a transparent wrapper around the validated payload view may reuse the
+// payload place. The explicit handle selector keeps the handle-identity path.
+shape Plain(first: i32, second: i32)
+
+fn read(p: Plain) -> i32 { return p.second }
+fn handle_read(^p: Plain) -> i32 { return p.second }
+
+fn main() -> i32 {
+    auto ^owner = new Plain(first = 5, second = 42)
+    if read(unsafe owner) != 42 { return 1 }
+    if read(owner: Plain) != 42 { return 2 }
+    if handle_read(^owner) != 42 { return 3 }
+    if owner.second != 42 { return 4 }
+    return 0
+}

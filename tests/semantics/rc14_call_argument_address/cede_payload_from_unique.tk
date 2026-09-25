@@ -1,0 +1,11 @@
+shape Plain(val: i32)
+
+fn consume(cede p: Plain) -> i32 {
+    auto owned = cede p
+    return owned.val
+}
+
+fn main() -> i32 {
+    auto ^p = new Plain(val = 42)
+    return consume(cede p) - 42
+}
