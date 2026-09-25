@@ -20,13 +20,13 @@ on:
         required: true
         type: string
       asset_source:
-        description: Read the archive from the qualified run or the draft release
+        description: Read the tagged or candidate archive from the qualified run
         required: true
         default: qualified_run
         type: choice
         options:
           - qualified_run
-          - draft_release
+          - candidate_run
 
 permissions:
   actions: read
@@ -55,7 +55,7 @@ jobs:
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$QUALIFICATION_RUN_ID" =~ ^[0-9]+$ ]]
           [[ "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          [[ "$ASSET_SOURCE" = qualified_run || "$ASSET_SOURCE" = draft_release ]]
+          [[ "$ASSET_SOURCE" = qualified_run || "$ASSET_SOURCE" = candidate_run ]]
           git rev-parse "refs/tags/$TAG_NAME^{tag}" >/dev/null
           test "$(git rev-parse "refs/tags/$TAG_NAME^{commit}")" = \
             "$CANDIDATE_SHA"
@@ -64,10 +64,6 @@ jobs:
           test "$(gh api "$run_api" --jq .status)" = completed
           test "$(gh api "$run_api" --jq .conclusion)" = success
           test "$(gh api "$run_api" --jq .head_sha)" = "$CANDIDATE_SHA"
-          if [[ "$ASSET_SOURCE" = draft_release ]]; then
-            test "$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
-              --json isDraft,isPrerelease --jq '.isDraft and .isPrerelease')" = true
-          fi
 
       - name: Install SDK host dependencies
         run: brew install lld@20 zstd openssl@3
@@ -81,16 +77,14 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.qualification_run_id }}
 
-      - name: Download macOS x64 draft asset
-        if: inputs.asset_source == 'draft_release'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ inputs.tag_name }}
-        run: |
-          set -euo pipefail
-          mkdir -p qualified-assets
-          gh release download "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
-            --pattern "toka-$TAG_NAME-macos-x64.tar.gz" --dir qualified-assets
+      - name: Download byte-identical candidate archive
+        if: inputs.asset_source == 'candidate_run'
+        uses: actions/download-artifact@v4
+        with:
+          name: candidate-archive-macos-x64
+          path: qualified-assets
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.qualification_run_id }}
 
       - name: Verify and replay qualified archive from a clean extraction
         env:
