@@ -1,7 +1,8 @@
 # RC14 memory-contract preparation candidate
 
-**Status:** Local optimization candidate, not independently Accepted and not
-RC14 release qualification. Base measurement checkpoint: `735290b8`.
+**Status:** Local optimization candidate `4222f188`, not independently
+Accepted and not RC14 release qualification. Base measurement checkpoint:
+`735290b8`.
 
 ## Scope and invariant
 
@@ -62,8 +63,16 @@ source-hidden records, object-byte parity with/without JSON dumping, disabled
 borrow checking, and object/IR no-artifact rejection for test-only faults:
 changed record, IR, summary, mode, and pre-existing erroneous IR attribute.
 Those five injected faults all returned error 1 and produced no artifact in
-the local run. The targeted RC14 call-address and authority gates also passed.
+the local run. Six related CTest gates, including source-hidden execution,
+RC13 replay, whole-value generics, RC14 call-address and authority, passed
+**6/6**. The complete tool build passed.
 
-Full-suite results remain pending for this candidate. Channel's earlier
-parallel timeout remains a separate qualification-stability issue; no timeout
-was raised or Channel behavior altered here.
+Full PASS passed **459/459**, full FAIL **480/480**, and conformance
+**325/325**. A no-exclusion serial CTest run was attempted but interrupted:
+the host wall clock jumped by hours, leading to five recorded timeouts rather
+than a valid complete-suite result. The five timed-out recorded-slots,
+JSON-parser/recovery and YAML gates subsequently passed **5/5** in isolation.
+Do not report this as a green 126/126 CTest run. Channel's earlier parallel
+timeout remains a separate qualification-stability issue; no timeout was
+raised or Channel behavior altered here. A stable, budgeted complete CTest
+run is still required before any RC14 release qualification claim.
