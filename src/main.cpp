@@ -2274,6 +2274,7 @@ int main(int argc, char **argv) {
     llvm::errs() << "Fatal Error: LLVM IR Verification Failed!\n";
     return 1;
   }
+  profile.detail("verify_llvm_ir");
   memorySummaryErrors.clear();
   if (!toka::MemorySummaryAnalysis::verifyIR(
           summaryModules, *codegen.getModule(), memorySummaryErrors)) {
@@ -2281,6 +2282,7 @@ int main(int argc, char **argv) {
       llvm::errs() << "Memory summary IR verification error: " << error << '\n';
     return 1;
   }
+  profile.detail("verify_memory_summary_ir");
   if (emitTrustedMemoryEvidence) {
     for (const auto &ast : astModules) {
       std::string canonicalPath =
@@ -2300,9 +2302,11 @@ int main(int argc, char **argv) {
       }
     }
   }
+  profile.detail("verify_memory_evidence_bind");
   toka::MemoryContractShadow memoryContracts =
       toka::MemoryContractShadow::analyze(
           summaryModules, *codegen.getModule(), !disableBorrowCheck);
+  profile.detail("verify_memory_contract_analyze");
   memorySummaryErrors.clear();
   if (!memoryContracts.verify(summaryModules, *codegen.getModule(),
                               !disableBorrowCheck, memorySummaryErrors)) {
@@ -2311,6 +2315,7 @@ int main(int argc, char **argv) {
                    << '\n';
     return 1;
   }
+  profile.detail("verify_memory_contract_check");
   if (experimentalNoCapture)
     memoryContracts.emitExperimental(*codegen.getModule(),
                                      toka::MemoryContractKind::NoCapture);
@@ -2338,6 +2343,7 @@ int main(int argc, char **argv) {
     toka::MemorySummaryAnalysis::dumpJSON(summaryModules, std::cout);
   if (dumpMemoryContracts)
     memoryContracts.dumpJSON(std::cout);
+  profile.detail("verify_experimental_and_dump");
   profile.mark("verify");
 
   if (verboseMode) fprintf(stderr, "Pass 4: Optimization (Coroutines & O2)...\n");
