@@ -288,6 +288,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_rc14_call_argument_address.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_memory_contract_preparation
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_memory_contract_preparation.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_stage1_method_parameter_cede
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_stage1_method_parameter_cede.py

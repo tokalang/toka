@@ -1,0 +1,69 @@
+# RC14 memory-contract preparation candidate
+
+**Status:** Local optimization candidate, not independently Accepted and not
+RC14 release qualification. Base measurement checkpoint: `735290b8`.
+
+## Scope and invariant
+
+The expensive part of `MemoryContractShadow::analyze` is preparation of a
+capture-analysis LLVM module. On the retained 5,042-line JSON matrix, one
+pre-optimization run spent **0.17/0.16 s** cloning, **9.31/9.65 s** in
+mem2reg, and about **1.3 ms** generating records on the initial/verification
+passes. The old `verify()` called `analyze()` again and repeated preparation.
+
+This candidate retains a one-shot, per-shadow prepared capture module for the
+immediately following verification. Verification independently generates the
+expected records from current summaries and IR, compares every record, and
+still checks duplicate records, the separate noalias gate, and actual emitted
+IR attributes. It does **not** reuse the first `Records` as the expected
+answer. Preparation is consumed on verification; a later verification falls
+back to fresh preparation rather than using a cross-phase cache.
+
+Reuse requires the same module and ordered source modules, the same borrow
+check mode, and exact IR and relevant summary/formal-name snapshots. Any
+change rejects before consulting the prepared capture module. Snapshotting is
+content comparison, not Module-pointer equality alone. No ABI, TKI, language
+contract, or ownership decision was changed.
+
+## Measurement
+
+Two instrumented optimized compile/link runs of the same matrix both
+succeeded. The old instrumented run measured `verify` at **19.38 s** and
+compiler total at **38.27 s**. Optimized runs measured `verify` at **10.66 s**
+and **10.27 s**, with compiler totals **30.67 s** and **30.40 s**. The saved
+verification pass is about **8.7–9.1 s**; observed total improvement is about
+**7.6–7.9 s**, roughly **20–21%** for this sample, not a universal compiler
+speedup. Object emission still takes about 15–16 s and was not changed.
+
+The tiny sample's `verify` grew from **8.05 ms** to **10.99 ms** because the
+content seal costs more than a second preparation on a tiny module. A
+source-hidden consumer measured **8.31 ms** versus **10.61 ms** for `verify`,
+while total compilation was approximately unchanged (**329 ms** versus
+**330 ms**). The large-module gain and small-module overhead must both remain
+visible in subsequent evaluation.
+
+## Equivalence and fault evidence
+
+An independent Release compiler built from `735290b8` compiled the same
+source fixture, large JSON matrix, and source-hidden TKI consumer. For each,
+baseline and optimized contract JSON SHA-256 values matched; corresponding
+object files were byte-identical. Both experimental `nocapture` and
+`readonly` modes also produced matching object hashes. Normal source and
+source-hidden checks did not change diagnostics or contract decisions.
+
+| Compared case | Contract JSON SHA-256 | Object SHA-256 |
+| --- | --- | --- |
+| Source fixture | `1279c53b416b300ad1287e1bc1889705ab4ad3960fbffdee70d276d35a10cd7c` | `133bbbe2ab2c93fc5b7bee1f47f6d2f91b889d26e18ba90eeeed3d49f9ab449b` |
+| JSON matrix | `55aace143c48eb52b1e9cf4f02c1c861bf3b733a8f6d51e9f4fc95dc8355cd81` | `1302055c44d791bfe8276108a5b6333526c68c05b06d4f95e6cdf91e5a0b299f` |
+| Source-hidden consumer | `90c085cd62cbf86163a4e8feba98fbb3c8c3ee3e67ae71d78eaaccd9c548b282` | `6e7d28015ad73818626db84a123ba9b81971964daf08445b7f45b2c3b112636b` |
+
+The registered `toka_memory_contract_preparation` test covers source and
+source-hidden records, object-byte parity with/without JSON dumping, disabled
+borrow checking, and object/IR no-artifact rejection for test-only faults:
+changed record, IR, summary, mode, and pre-existing erroneous IR attribute.
+Those five injected faults all returned error 1 and produced no artifact in
+the local run. The targeted RC14 call-address and authority gates also passed.
+
+Full-suite results remain pending for this candidate. Channel's earlier
+parallel timeout remains a separate qualification-stability issue; no timeout
+was raised or Channel behavior altered here.

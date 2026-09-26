@@ -854,6 +854,7 @@ int main(int argc, char **argv) {
   std::string nativeSyncFactoryFault;
   std::string nativeSyncAllocationFault;
   std::string nativeSyncWitnessFault;
+  std::string memoryContractPrepFault;
 #endif
   bool dumpNonCallTransferShadow = false;
   bool dumpD3DirectCallObservation = false;
@@ -1036,6 +1037,17 @@ int main(int argc, char **argv) {
     } else if (arg == "--stage0-codegen-authority") {
       stage0CodeGenAuthority = true;
 #ifdef TOKA_BUILD_TESTING
+    } else if (arg.rfind("--memory-contract-prep-fault=", 0) == 0) {
+      memoryContractPrepFault =
+          arg.substr(std::string("--memory-contract-prep-fault=").size());
+      if (memoryContractPrepFault != "record" &&
+          memoryContractPrepFault != "ir" &&
+          memoryContractPrepFault != "summary" &&
+          memoryContractPrepFault != "mode" &&
+          memoryContractPrepFault != "attribute") {
+        llvm::errs() << "unknown memory contract preparation fault\n";
+        return 1;
+      }
     } else if (arg.rfind("--native-sync-witness-fault=", 0) == 0) {
       nativeSyncWitnessFault = arg.substr(std::string("--native-sync-witness-fault=").size());
       const std::set<std::string> faults = {"missing", "origin", "factory", "allocation", "type", "element",
@@ -2303,13 +2315,68 @@ int main(int argc, char **argv) {
     }
   }
   profile.detail("verify_memory_evidence_bind");
+#ifdef TOKA_BUILD_TESTING
+  if (memoryContractPrepFault == "attribute") {
+    bool injected = false;
+    for (toka::FunctionDecl *declaration :
+         toka::MemorySummaryAnalysis::collectFunctions(summaryModules)) {
+      llvm::Function *function = codegen.getModule()->getFunction(
+          declaration->MemorySummary.FunctionName);
+      if (!function)
+        continue;
+      for (llvm::Argument &argument : function->args()) {
+        if (!argument.getType()->isPointerTy())
+          continue;
+        function->addParamAttr(argument.getArgNo(), llvm::Attribute::ReadOnly);
+        injected = true;
+        break;
+      }
+      if (injected)
+        break;
+    }
+    if (!injected) {
+      llvm::errs() << "memory contract test fault found no pointer parameter\n";
+      return 1;
+    }
+  }
+#endif
   toka::MemoryContractShadow memoryContracts =
       toka::MemoryContractShadow::analyze(
           summaryModules, *codegen.getModule(), !disableBorrowCheck);
   profile.detail("verify_memory_contract_analyze");
+#ifdef TOKA_BUILD_TESTING
+  if (memoryContractPrepFault == "record") {
+    auto &records = const_cast<std::vector<toka::MemoryContractRecord> &>(
+        memoryContracts.records());
+    if (records.empty()) {
+      llvm::errs() << "memory contract test fault found no record\n";
+      return 1;
+    }
+    records.front().Decision =
+        records.front().Decision == toka::MemoryContractDecision::Candidate
+            ? toka::MemoryContractDecision::Reject
+            : toka::MemoryContractDecision::Candidate;
+  } else if (memoryContractPrepFault == "ir") {
+    codegen.getModule()->addModuleFlag(llvm::Module::Warning,
+                                       "toka.contract.test-fault", 1u);
+  } else if (memoryContractPrepFault == "summary") {
+    auto functions = toka::MemorySummaryAnalysis::collectFunctions(summaryModules);
+    if (functions.empty()) {
+      llvm::errs() << "memory contract test fault found no summary\n";
+      return 1;
+    }
+    functions.front()->MemorySummary.Effects ^=
+        static_cast<uint32_t>(toka::FunctionMemoryEffect::UnknownBoundary);
+  }
+#endif
   memorySummaryErrors.clear();
+  bool contractVerifyBorrowCheck = !disableBorrowCheck;
+#ifdef TOKA_BUILD_TESTING
+  if (memoryContractPrepFault == "mode")
+    contractVerifyBorrowCheck = !contractVerifyBorrowCheck;
+#endif
   if (!memoryContracts.verify(summaryModules, *codegen.getModule(),
-                              !disableBorrowCheck, memorySummaryErrors)) {
+                              contractVerifyBorrowCheck, memorySummaryErrors)) {
     for (const auto &error : memorySummaryErrors)
       llvm::errs() << "Memory contract shadow verification error: " << error
                    << '\n';

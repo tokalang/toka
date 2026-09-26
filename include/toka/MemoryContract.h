@@ -4,6 +4,7 @@
 #pragma once
 
 #include <iosfwd>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,7 @@ class Module;
 namespace toka {
 
 class Module;
+struct MemoryContractPrepared;
 
 enum class MemoryContractKind {
   NoCapture,
@@ -63,6 +65,13 @@ class MemoryContractShadow {
 public:
   static constexpr unsigned SchemaVersion = 3;
 
+  MemoryContractShadow();
+  ~MemoryContractShadow();
+  MemoryContractShadow(MemoryContractShadow &&) noexcept;
+  MemoryContractShadow &operator=(MemoryContractShadow &&) noexcept;
+  MemoryContractShadow(const MemoryContractShadow &) = delete;
+  MemoryContractShadow &operator=(const MemoryContractShadow &) = delete;
+
   static MemoryContractShadow analyze(const std::vector<Module *> &modules,
                                       const llvm::Module &irModule,
                                       bool borrowCheckEnabled);
@@ -81,6 +90,8 @@ public:
 
 private:
   std::vector<MemoryContractRecord> Records;
+  // One-shot, local preparation for the analyze -> verify interval only.
+  mutable std::unique_ptr<MemoryContractPrepared> Prepared;
 };
 
 const char *toString(MemoryContractKind value);

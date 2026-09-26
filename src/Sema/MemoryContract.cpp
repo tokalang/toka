@@ -12,17 +12,74 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
 #include <map>
 #include <memory>
 #include <ostream>
 #include <set>
+#include <sstream>
 #include <tuple>
 
 namespace toka {
+
+struct MemoryContractPrepared {
+  const llvm::Module *IRModule = nullptr;
+  std::vector<Module *> Modules;
+  bool BorrowCheckEnabled = false;
+  std::string IRSnapshot;
+  std::string SummarySnapshot;
+  std::unique_ptr<llvm::Module> CaptureModule;
+};
+
+MemoryContractShadow::MemoryContractShadow() = default;
+MemoryContractShadow::~MemoryContractShadow() = default;
+MemoryContractShadow::MemoryContractShadow(MemoryContractShadow &&) noexcept = default;
+MemoryContractShadow &MemoryContractShadow::operator=(MemoryContractShadow &&) noexcept = default;
+
 namespace {
+
+using ProfileClock = std::chrono::steady_clock;
+
+bool profileContracts() {
+  const char *value = std::getenv("TOKA_PROFILE");
+  return value && value[0] != '\0' && value[0] != '0';
+}
+
+void profileContractPhase(const char *name, ProfileClock::time_point start) {
+  if (!profileContracts())
+    return;
+  const auto elapsed = std::chrono::duration<double, std::milli>(
+      ProfileClock::now() - start);
+  llvm::errs() << "[contract-profile] " << name << ": " << elapsed.count()
+               << " ms\n";
+}
+
+std::string snapshotIR(const llvm::Module &module) {
+  std::string text;
+  llvm::raw_string_ostream stream(text);
+  module.print(stream, nullptr);
+  stream.flush();
+  return text;
+}
+
+std::string snapshotSummaries(const std::vector<Module *> &modules) {
+  std::ostringstream stream;
+  MemorySummaryAnalysis::dumpJSON(modules, stream);
+  // Contract evaluation also reads the formal binding names, which are not
+  // part of the public summary JSON. Include them in this private seal.
+  for (const FunctionDecl *function :
+       MemorySummaryAnalysis::collectFunctions(modules)) {
+    stream << function->Args.size() << ':';
+    for (const auto &argument : function->Args)
+      stream << argument.Name.size() << ':' << argument.Name;
+  }
+  return stream.str();
+}
 
 uint32_t bit(MemoryRootEffect effect) {
   return static_cast<uint32_t>(effect);
@@ -189,7 +246,10 @@ MemoryContractRecord evaluate(const FunctionDecl &function,
 
 std::unique_ptr<llvm::Module>
 makeCaptureAnalysisModule(const llvm::Module &irModule) {
+  const auto cloneStart = ProfileClock::now();
   std::unique_ptr<llvm::Module> captureModule = llvm::CloneModule(irModule);
+  profileContractPhase("clone", cloneStart);
+  const auto promoteStart = ProfileClock::now();
   for (llvm::Function &function : *captureModule) {
     if (function.isDeclaration())
       continue;
@@ -204,6 +264,7 @@ makeCaptureAnalysisModule(const llvm::Module &irModule) {
     llvm::DominatorTree dominatorTree(function);
     llvm::PromoteMemToReg(promotableAllocas, dominatorTree);
   }
+  profileContractPhase("mem2reg", promoteStart);
   return captureModule;
 }
 
@@ -254,27 +315,24 @@ std::string escapeJSON(const std::string &value) {
   return result;
 }
 
-} // namespace
-
-MemoryContractShadow MemoryContractShadow::analyze(
+std::vector<MemoryContractRecord> collectRecords(
     const std::vector<Module *> &modules, const llvm::Module &irModule,
-    bool borrowCheckEnabled) {
-  MemoryContractShadow result;
-  std::unique_ptr<llvm::Module> captureModule =
-      makeCaptureAnalysisModule(irModule);
+    const llvm::Module &captureModule, bool borrowCheckEnabled) {
+  std::vector<MemoryContractRecord> records;
   std::map<std::tuple<std::string, unsigned, MemoryContractKind>,
            MemoryContractRecord>
       merged;
   constexpr MemoryContractKind kinds[] = {
       MemoryContractKind::NoCapture, MemoryContractKind::ReadOnly,
       MemoryContractKind::WriteOnly, MemoryContractKind::NoAlias};
+  const auto recordStart = ProfileClock::now();
   for (FunctionDecl *function :
        MemorySummaryAnalysis::collectFunctions(modules)) {
     for (size_t i = 0; i < function->Args.size(); ++i) {
       for (MemoryContractKind kind : kinds) {
         MemoryContractRecord candidate =
             evaluate(*function, function->Args[i],
-                     static_cast<unsigned>(i), kind, irModule, *captureModule,
+                     static_cast<unsigned>(i), kind, irModule, captureModule,
                      borrowCheckEnabled);
         auto key = std::make_tuple(candidate.FunctionName,
                                    candidate.ParameterIndex, candidate.Kind);
@@ -294,8 +352,8 @@ MemoryContractShadow MemoryContractShadow::analyze(
     }
   }
   for (auto &entry : merged)
-    result.Records.push_back(std::move(entry.second));
-  std::sort(result.Records.begin(), result.Records.end(),
+    records.push_back(std::move(entry.second));
+  std::sort(records.begin(), records.end(),
             [](const MemoryContractRecord &lhs,
                const MemoryContractRecord &rhs) {
               return std::tie(lhs.FunctionName, lhs.ParameterIndex, lhs.Kind,
@@ -303,6 +361,28 @@ MemoryContractShadow MemoryContractShadow::analyze(
                      std::tie(rhs.FunctionName, rhs.ParameterIndex, rhs.Kind,
                               rhs.ParameterName);
             });
+  profileContractPhase("records", recordStart);
+  return records;
+}
+
+} // namespace
+
+MemoryContractShadow MemoryContractShadow::analyze(
+    const std::vector<Module *> &modules, const llvm::Module &irModule,
+    bool borrowCheckEnabled) {
+  MemoryContractShadow result;
+  auto prepared = std::make_unique<MemoryContractPrepared>();
+  prepared->IRModule = &irModule;
+  prepared->Modules = modules;
+  prepared->BorrowCheckEnabled = borrowCheckEnabled;
+  const auto sealStart = ProfileClock::now();
+  prepared->IRSnapshot = snapshotIR(irModule);
+  prepared->SummarySnapshot = snapshotSummaries(modules);
+  profileContractPhase("seal", sealStart);
+  prepared->CaptureModule = makeCaptureAnalysisModule(irModule);
+  result.Records = collectRecords(modules, irModule, *prepared->CaptureModule,
+                                  borrowCheckEnabled);
+  result.Prepared = std::move(prepared);
   return result;
 }
 
@@ -310,13 +390,39 @@ bool MemoryContractShadow::verify(const std::vector<Module *> &modules,
                                   const llvm::Module &irModule,
                                   bool borrowCheckEnabled,
                                   std::vector<std::string> &errors) const {
-  MemoryContractShadow expected =
-      analyze(modules, irModule, borrowCheckEnabled);
-  if (Records.size() != expected.Records.size()) {
+  std::vector<MemoryContractRecord> expectedRecords;
+  // Preparation is consumed once. A later verification must prepare afresh;
+  // it cannot treat a long-lived shadow object as a cross-phase cache.
+  std::unique_ptr<MemoryContractPrepared> prepared = std::move(Prepared);
+  if (prepared) {
+    if (prepared->IRModule != &irModule || prepared->Modules != modules ||
+        prepared->BorrowCheckEnabled != borrowCheckEnabled) {
+      errors.push_back("prepared memory contract input identity or mode changed");
+      return false;
+    }
+    const auto sealStart = ProfileClock::now();
+    const bool unchanged = prepared->IRSnapshot == snapshotIR(irModule) &&
+                           prepared->SummarySnapshot == snapshotSummaries(modules);
+    profileContractPhase("reseal", sealStart);
+    if (!unchanged) {
+      errors.push_back("prepared memory contract IR or summary changed");
+      return false;
+    }
+    expectedRecords = collectRecords(modules, irModule,
+                                     *prepared->CaptureModule,
+                                     borrowCheckEnabled);
+  } else {
+    // Preserve the public API's standalone behavior, without reuse, when a
+    // shadow was not produced by this analyze/verify interval.
+    MemoryContractShadow expected =
+        analyze(modules, irModule, borrowCheckEnabled);
+    expectedRecords = std::move(expected.Records);
+  }
+  if (Records.size() != expectedRecords.size()) {
     errors.push_back("record count differs from a fresh shadow analysis");
   } else {
     for (size_t i = 0; i < Records.size(); ++i)
-      if (!sameRecord(Records[i], expected.Records[i])) {
+      if (!sameRecord(Records[i], expectedRecords[i])) {
         errors.push_back("record differs from a fresh shadow analysis at index " +
                          std::to_string(i));
         break;
