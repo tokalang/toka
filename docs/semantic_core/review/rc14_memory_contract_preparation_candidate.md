@@ -1,8 +1,9 @@
-# RC14 memory-contract preparation candidate
+# RC14 memory-contract preparation acceptance
 
-**Status:** Local optimization candidate `4222f188`, not independently
-Accepted and not RC14 release qualification. Base measurement checkpoint:
-`735290b8`.
+**Status:** Accepted within the bounded optimization scope at
+`4222f188823ea35e5c010984b3c45e0653cb4ca9` after independent incremental
+review. This is **not** RC14 release qualification. Base measurement
+checkpoint: `735290b8`.
 
 ## Scope and invariant
 
@@ -43,6 +44,12 @@ while total compilation was approximately unchanged (**329 ms** versus
 **330 ms**). The large-module gain and small-module overhead must both remain
 visible in subsequent evaluation.
 
+The independent reviewer measured the same large matrix in object-emission
+mode: `verify` **18.48 → 9.76 s** and whole command **37.09 → 28.63 s**
+(about **23%** for that pair). Small source and source-hidden samples each
+added roughly **2–3 ms** of verification overhead. These are distinct samples,
+not figures to average into a universal speedup.
+
 ## Equivalence and fault evidence
 
 An independent Release compiler built from `735290b8` compiled the same
@@ -67,6 +74,15 @@ the local run. Six related CTest gates, including source-hidden execution,
 RC13 replay, whole-value generics, RC14 call-address and authority, passed
 **6/6**. The complete tool build passed.
 
+Independent review reran two registered gates **2/2**, checked **10** further
+API boundaries—including a second verification preparing afresh, changed IR,
+summary, formal name and module list, duplicate records and erroneous IR
+attributes—and compared five old/new source, source-hidden and experimental
+mode pairs. Every contract JSON and object pair was byte-identical. The older,
+unregistered `test_memory_contract_shadow.py` generic assertion fails on both
+baseline and candidate; it is a separate baseline test issue, not counted as
+passed or attributed to this optimization.
+
 Full PASS passed **459/459**, full FAIL **480/480**, and conformance
 **325/325**. A no-exclusion serial CTest run was attempted but interrupted:
 the host wall clock jumped by hours, leading to five recorded timeouts rather
@@ -76,3 +92,7 @@ Do not report this as a green 126/126 CTest run. Channel's earlier parallel
 timeout remains a separate qualification-stability issue; no timeout was
 raised or Channel behavior altered here. A stable, budgeted complete CTest
 run is still required before any RC14 release qualification claim.
+
+This package is closed. Do not add a small-module heuristic, backend
+optimization-level change or another safety-proof shortcut to this accepted
+slice.
