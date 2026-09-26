@@ -3189,6 +3189,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     while (auto *cast = dynamic_cast<const CastExpr *>(source))
       source = cast->Expression.get();
     bool isCaptured = false;
+    bool capturesConcretePayloadView = false;
     size_t targetArgIdx = isStatic ? i : (i + 1);
     size_t llvmArgIdx = targetArgIdx + (isSRet ? 1 : 0);
     if (fd && targetArgIdx < fd->Args.size() &&
@@ -3242,29 +3243,53 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
           arg.IsShared || arg.IsRebindable) {
         isCaptured = true;
       }
+      capturesConcretePayloadView =
+          isCaptured && !arg.IsInit && !arg.IsAbstractWholeValue &&
+          !arg.IsRawPointer && !arg.IsReference && !arg.IsUnique &&
+          !arg.IsShared && arg.ResolvedType &&
+          !arg.ResolvedType->isPointer() &&
+          expr->Args[i]->ResolvedType &&
+          !expr->Args[i]->ResolvedType->isPointer() &&
+          !expr->Args[i]->IsAbstractWholeValue;
     }
 
     llvm::Value *argVal = nullptr;
     if (isCaptured) {
-      // Captured values are passed through their storage slot. In particular,
+      // A captured concrete payload uses its entity address. Explicit
+      // handle contracts keep their storage/identity address. In particular,
       // a ceded local must not be materialized into an aggregate temporary:
       // the callee receives the source storage and the caller's drop
       // obligation is discharged below.
-      if (auto *var = dynamic_cast<const VariableExpr *>(source)) {
-        const std::string baseName =
-            Type::stripMorphology(var->codegenName());
-        const auto symbol = m_Symbols.find(baseName);
-        if (symbol != m_Symbols.end() &&
-            (symbol->second.mode == AddressingMode::Reference ||
-             (symbol->second.mode == AddressingMode::Pointer &&
-              symbol->second.morphology == Morphology::None))) {
-          argVal = getEntityAddr(var->codegenName());
-        } else {
-          argVal = getIdentityAddr(var->codegenName());
+      if (capturesConcretePayloadView) {
+        if (const auto *payload =
+                concretePayloadCaptureVariable(expr->Args[i].get())) {
+          if (!payload->HasConstantValue) {
+            argVal = getEntityAddr(payload->codegenName());
+            if (!argVal) {
+              error(expr->Args[i].get(), DiagID::ERR_CODEGEN,
+                    "validated concrete payload has no source address");
+              return nullptr;
+            }
+          }
         }
-      } else if (dynamic_cast<const MemberExpr *>(source) ||
-                 dynamic_cast<const ArrayIndexExpr *>(source)) {
-        argVal = genAddr(source);
+      }
+      if (!argVal && !capturesConcretePayloadView) {
+        if (auto *var = dynamic_cast<const VariableExpr *>(source)) {
+          const std::string baseName =
+              Type::stripMorphology(var->codegenName());
+          const auto symbol = m_Symbols.find(baseName);
+          if (symbol != m_Symbols.end() &&
+              (symbol->second.mode == AddressingMode::Reference ||
+               (symbol->second.mode == AddressingMode::Pointer &&
+                symbol->second.morphology == Morphology::None))) {
+            argVal = getEntityAddr(var->codegenName());
+          } else {
+            argVal = getIdentityAddr(var->codegenName());
+          }
+        } else if (dynamic_cast<const MemberExpr *>(source) ||
+                   dynamic_cast<const ArrayIndexExpr *>(source)) {
+          argVal = genAddr(source);
+        }
       }
       if (!argVal)
         argVal = genAddr(expr->Args[i].get());

@@ -1,15 +1,41 @@
-// Only a transparent wrapper around the validated payload view may reuse the
-// payload place. The explicit handle selector keeps the handle-identity path.
-shape Plain(first: i32, second: i32)
+// Same-nominal ascription/conversion may attenuate a writable payload view
+// without changing its storage. Explicit identity keeps its separate path.
+shape Plain(first: i32, second#: i32)
+shape Reader()
+
+impl Reader {
+    fn read(self, p: Plain) -> i32 { return p.second }
+    fn write(self, p#: Plain, value: i32) { p.second = value }
+}
 
 fn read(p: Plain) -> i32 { return p.second }
 fn handle_read(^p: Plain) -> i32 { return p.second }
+fn write(p#: Plain, value: i32) { p.second = value }
 
 fn main() -> i32 {
-    auto ^owner = new Plain(first = 5, second = 42)
+    auto reader = Reader()
+    auto ^owner# = new Plain(first = 5, second = 42)
     if read(unsafe owner) != 42 { return 1 }
     if read(owner: Plain) != 42 { return 2 }
-    if handle_read(^owner) != 42 { return 3 }
-    if owner.second != 42 { return 4 }
+    if read(owner as Plain) != 42 { return 3 }
+    if handle_read(^owner) != 42 { return 4 }
+    if reader.read(owner: Plain) != 42 { return 12 }
+    write((unsafe owner)#, 44)
+    if owner.second != 44 { return 5 }
+    write((owner: Plain)#, 55)
+    if owner.second != 55 { return 6 }
+    write((owner as Plain)#, 66)
+    if owner.second != 66 { return 7 }
+    reader.write((owner: Plain)#, 77)
+    if owner.second != 77 { return 13 }
+    reader.write((owner as Plain)#, 88)
+    if owner.second != 88 { return 15 }
+
+    auto ~shared# = new Plain(first = 8, second = 42)
+    if read(unsafe shared) != 42 { return 8 }
+    if read(shared: Plain) != 42 { return 9 }
+    if read(shared as Plain) != 42 { return 10 }
+    if shared.second != 42 { return 11 }
+    if reader.read(shared: Plain) != 42 { return 14 }
     return 0
 }

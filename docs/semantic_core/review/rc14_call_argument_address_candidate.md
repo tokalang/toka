@@ -1,6 +1,8 @@
 # RC14 concrete-payload call-address candidate
 
-**Status:** Local implementation candidate; not independently Accepted.
+**Status:** Revised local implementation candidate; not independently Accepted.
+The initial `4fd865e7` candidate was rejected because wrapped concrete
+payload arguments could still fall back to the handle-slot address.
 
 ## Root cause and bounded correction
 
@@ -11,28 +13,40 @@ plain-value formal. The callee interpreted that address as the payload. The
 LLVM IR evidence. A direct `Owner` value with a unique field was already
 correct; the error depended on the **outer source root**, not the field type.
 
-`CodeGen::genCallExpr` now uses the checked formal and source value view to
-select `getEntityAddr` only for a concrete payload capture from a proven named
-source place. `cede`, exact ascription, `unsafe` and name-side payload-write
-wrappers are unwrapped only when their checked view or storage selection is
-preserved. Conversion casts, arbitrary unary selectors and abstract whole
-values do not enter the new path. Existing handle-identity, consuming unique,
-init-place and rvalue materialization paths remain distinct. The ordinary
-method argument route already used the payload address and was left unchanged.
+`CodeGen::genCallExpr` uses the checked formal and source value view to select
+`getEntityAddr` only for a concrete payload capture from a proven named source
+place. `cede`, `unsafe`, name-side payload-write, and same-storage
+ascription/conversion wrappers are unwrapped only when the checked storage and
+complete nominal type match. A top-level writable view may be attenuated, but
+not amplified; nested type, pointer morphology, blocked/nullable and abstract
+whole-value differences remain distinct. A concrete payload formal cannot
+fall back to the old handle-identity address after wrapper recognition fails:
+real conversions instead materialize one temporary from a single evaluation.
+The ordinary method-argument route now makes the same source selection.
+Existing handle-identity, consuming unique and init-place paths remain
+separate; receiver lowering was not changed.
 
-In generated LLVM IR, the `read_unique` argument now comes from a load of the
+In generated LLVM IR, the `read_unique` argument comes from a load of the
 unique handle slot, while `read_shared` comes from the shared carrier's data
-field. The test follows each call operand's SSA definition back to that
-storage layer; matching a temporary variable name alone would not suffice.
+field. Wrapped direct and method writes likewise receive a payload address
+loaded from the owning handle slot, not the slot itself. The test follows each
+call operand's SSA definition back to that storage layer; matching a temporary
+variable name alone would not suffice.
 
 ## Validation on the fixed local source
 
-- Fresh external Release tools build completed.
-- New `toka_rc14_call_argument_address` CTest and 9 related call, Stage 0,
-  generic, binding and shared-ABI tests passed **10/10** in a targeted run.
-- No-exclusion CTest passed **125/125** (2701.40 s).
-- Full PASS suite passed **459/459**, failed 0 (644.59 s).
-- Full FAIL suite passed **480/480**, failed 0; no Bless or oracle updates.
+- The external Release compiler rebuilt successfully after this revision.
+- The RC14 gate and 9 related call, Stage 0, generic, binding and shared-ABI
+  tests passed **10/10**. Nine independent audit reproductions compiled and
+  ran with exit 0; the new fixture also checks method wrappers and that a real
+  numeric conversion evaluates once without writing through its source.
+- Full PASS passed **459/459** and full FAIL passed **480/480**; no Bless or
+  oracle updates.
+- Complete no-exclusion CTest under permitted process-inspection access ran
+  **124/125**; `toka_channel_storage` timed out under `-j 4`. The unchanged
+  test passed **1/1** alone in 46.30 s. This is not represented as a single
+  green 125/125 run. An earlier sandboxed attempt was invalid because several
+  harnesses could not invoke `/bin/ps` and timed out.
 - Independent conformance suite passed **325/325**.
 - `git diff --check` passed. No Parser, Sema admission, TKI/ABI layout,
   permission rule, refcount algorithm or receiver-lowering implementation was

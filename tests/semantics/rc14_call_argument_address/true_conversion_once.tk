@@ -1,0 +1,22 @@
+// A real numeric conversion is evaluated once and passed as a temporary.
+// Its mutable formal cannot write through to the original i32 source.
+fn make_value(counter#: i32) -> i32 {
+    counter += 1
+    return 41
+}
+
+fn touch(value#: i64) -> i64 {
+    value += 1:i64
+    return value
+}
+
+fn main() -> i32 {
+    auto count# = 0:i32
+    auto answer = touch((make_value(count#) as i64)#)
+    if count != 1:i32 { return 1 }
+    if answer != 42:i64 { return 2 }
+    auto source# = 41:i32
+    if touch((source as i64)#) != 42:i64 { return 3 }
+    if source != 41:i32 { return 4 }
+    return 0
+}

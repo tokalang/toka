@@ -14,6 +14,7 @@ FIXTURES = ROOT / "tests/semantics/rc14_call_argument_address"
 POSITIVE = (
     "payload_capture_matrix.tk",
     "wrapped_payload_identity.tk",
+    "true_conversion_once.tk",
     "owner_lifecycle.tk",
     "cede_payload_from_unique.tk",
 )
@@ -69,6 +70,28 @@ def verify_payload_address_ir(ir):
             "writable payload capture does not address the original owner")
 
 
+def verify_wrapped_write_ir(ir):
+    main = re.search(r"^define i32 @main\(\) \{\n(.*?)^\}", ir,
+                     re.M | re.S)
+    require(main is not None, "wrapped-write main IR body is missing")
+    body = main.group(1)
+    definitions = dict(re.findall(r"^\s*(" + SSA + r") = (.+)$", body,
+                                  re.M))
+    calls = re.findall(r"\bcall void @write\(ptr (" + SSA +
+                       r"), i32 (?:44|55|66)\)", body)
+    require(len(calls) == 3, "wrapped payload writes were not emitted")
+    method = re.findall(r"\bcall void @\S+_write\(ptr " + SSA +
+                        r", ptr (" + SSA + r"), i32 (?:77|88)\)", body)
+    require(len(method) == 2, "wrapped method payload writes were not emitted")
+    calls.extend(method)
+    for operand in calls:
+        load = re.match(r"load ptr, ptr (" + SSA + r")",
+                        definitions.get(operand, ""))
+        require(load is not None and
+                definitions.get(load.group(1), "").startswith("alloca ptr"),
+                "wrapped write received an owner slot instead of payload")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
@@ -107,6 +130,15 @@ def main():
                 emitted.stderr)
         verify_payload_address_ir(ir_file.read_text(encoding="utf-8"))
 
+        wrapped_ir = work / "wrapped_payload_identity.ll"
+        emitted = run((compiler, "--emit-llvm",
+                       FIXTURES / "wrapped_payload_identity.tk",
+                       "-o", wrapped_ir), cwd=ROOT, env=env)
+        require(emitted.returncode == 0 and wrapped_ir.is_file(),
+                "wrapped-write LLVM IR emission failed:\n" +
+                emitted.stderr)
+        verify_wrapped_write_ir(wrapped_ir.read_text(encoding="utf-8"))
+
         rejected = FIXTURES / "readonly_payload_reject.tk"
         for mode, flags, suffix in (
             ("check", ("--check-only",), ".check"),
@@ -116,7 +148,7 @@ def main():
             output = work / ("readonly" + suffix)
             result = run((compiler, *flags, rejected, "-o", output),
                          cwd=ROOT, env=env)
-            require(result.returncode != 0 and "error[E04571]" in result.stderr
+            require(result.returncode == 1 and "error[E04571]" in result.stderr
                     and not output.exists(),
                     "read-only payload upgrade did not fail closed in " + mode)
 

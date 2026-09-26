@@ -457,6 +457,7 @@ private:
                          bool transfersOwnership = false);
   PhysEntity genInitStructExpr(const InitStructExpr *expr);
   PhysEntity genAnonymousRecordExpr(const AnonymousRecordExpr *expr);
+  static const VariableExpr *concretePayloadCaptureVariable(const Expr *expr);
   PhysEntity genMethodCall(const MethodCallExpr *expr);
   PhysEntity genCallExpr(const CallExpr *expr);
   PhysEntity genPostfixExpr(const PostfixExpr *expr);

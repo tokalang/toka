@@ -121,8 +121,8 @@ static bool isFreshAllocationExpr(const Expr *expr) {
 
 // A concrete payload capture may reuse a named source place only through
 // wrappers that Sema proved preserve its complete value view. In particular,
-// a conversion or a unary hat may select a different physical layer and must
-// not be peeled merely because it eventually contains the same identifier.
+// a unary hat may select a different physical layer and must not be peeled
+// merely because it eventually contains the same identifier.
 static bool preservesCapturedValueView(const Expr *outer, const Expr *inner) {
   return outer && inner && outer->ResolvedType && inner->ResolvedType &&
          outer->ResolvedType->equals(*inner->ResolvedType) &&
@@ -130,7 +130,33 @@ static bool preservesCapturedValueView(const Expr *outer, const Expr *inner) {
          outer->GenericViewDepth == inner->GenericViewDepth;
 }
 
-static const VariableExpr *concretePayloadCaptureVariable(const Expr *expr) {
+// A same-type cast can attenuate the top-level payload-write attribute
+// without changing its storage or nominal identity. Do not treat pointer
+// morphology, blocked/nullable state, cede-ness, nested types, or a write
+// amplification as a transparent conversion.
+static bool preservesConcretePayloadStorage(const Expr *outer,
+                                            const Expr *inner) {
+  if (!outer || !inner || !outer->ResolvedType || !inner->ResolvedType ||
+      outer->IsAbstractWholeValue != inner->IsAbstractWholeValue ||
+      outer->GenericViewDepth != inner->GenericViewDepth)
+    return false;
+  if (outer->ResolvedType->equals(*inner->ResolvedType))
+    return true;
+  const auto &target = *outer->ResolvedType;
+  const auto &source = *inner->ResolvedType;
+  if (target.isPointer() || source.isPointer() ||
+      target.IsNullable != source.IsNullable ||
+      target.IsBlocked != source.IsBlocked ||
+      target.IsCede != source.IsCede ||
+      (target.IsWritable && !source.IsWritable))
+    return false;
+  auto attenuated = source.withAttributes(target.IsWritable,
+                                          target.IsNullable,
+                                          target.IsBlocked);
+  return attenuated && attenuated->equals(target);
+}
+
+const VariableExpr *CodeGen::concretePayloadCaptureVariable(const Expr *expr) {
   while (expr) {
     if (auto *cede = dynamic_cast<const CedeExpr *>(expr)) {
       if (!preservesCapturedValueView(expr, cede->Value.get()))
@@ -141,8 +167,8 @@ static const VariableExpr *concretePayloadCaptureVariable(const Expr *expr) {
         return nullptr;
       expr = unsafe->Expression.get();
     } else if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
-      if (cast->Kind == CastKind::Conversion ||
-          !preservesCapturedValueView(expr, cast->Expression.get()))
+      if (cast->RequiresRawConstruction ||
+          !preservesConcretePayloadStorage(expr, cast->Expression.get()))
         return nullptr;
       expr = cast->Expression.get();
     } else if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
@@ -6858,7 +6884,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
             break;
         }
 
-        if (!val) {
+        if (!val && !capturesConcretePayloadView) {
           if (auto *ve = dynamic_cast<const VariableExpr *>(rawArg)) {
             if (ve->HasConstantValue) {
               // [Fix] Constants are RValues. Fall through to Temp
