@@ -1,8 +1,10 @@
-# RC14 concrete-payload call-address candidate
+# RC14 concrete-payload call-address acceptance
 
-**Status:** Revised local implementation candidate; not independently Accepted.
-The initial `4fd865e7` candidate was rejected because wrapped concrete
-payload arguments could still fall back to the handle-slot address.
+**Status:** Accepted for this repair at
+`174633c08a7a838340852ceb867bb36b31b031a5` after independent incremental
+review. This is not RC14 release qualification. The initial `4fd865e7`
+candidate was rejected because wrapped concrete payload arguments could still
+fall back to the handle-slot address.
 
 ## Root cause and bounded correction
 
@@ -48,10 +50,16 @@ variable name alone would not suffice.
   green 125/125 run. An earlier sandboxed attempt was invalid because several
   harnesses could not invoke `/bin/ps` and timed out.
 - Independent conformance suite passed **325/325**.
+- Independent incremental review reran the nine original audit sources and
+  additional method-conversion, generic-owner and readonly controls: **48**
+  mode checks and **11** positive runtime programs passed. The registered
+  RC14 gate passed independently **1/1** (14.41 s). The review did not rerun
+  the full suites.
 - `git diff --check` passed. No Parser, Sema admission, TKI/ABI layout,
   permission rule, refcount algorithm or receiver-lowering implementation was
   changed.
 
-The nested-owned-`Vec` `E04662` issue, compiler-speed investigation, and
-post-1.0 RFCs remain outside this candidate. No push, PR, tag or release is
-claimed.
+The repair is closed; do not append further address-selection features here.
+The nested-owned-`Vec` `E04662` issue, compiler-speed investigation, Channel
+qualification stability and post-1.0 RFCs remain separate. No push, PR, tag
+or release is claimed.
