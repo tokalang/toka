@@ -84,14 +84,21 @@ baseline and candidate; it is a separate baseline test issue, not counted as
 passed or attributed to this optimization.
 
 Full PASS passed **459/459**, full FAIL **480/480**, and conformance
-**325/325**. A no-exclusion serial CTest run was attempted but interrupted:
-the host wall clock jumped by hours, leading to five recorded timeouts rather
-than a valid complete-suite result. The five timed-out recorded-slots,
-JSON-parser/recovery and YAML gates subsequently passed **5/5** in isolation.
-Do not report this as a green 126/126 CTest run. Channel's earlier parallel
-timeout remains a separate qualification-stability issue; no timeout was
-raised or Channel behavior altered here. A stable, budgeted complete CTest
-run is still required before any RC14 release qualification claim.
+**325/325**. The first no-exclusion serial CTest attempt was interrupted:
+the host wall clock jumped by hours, leading to five recorded timeouts. Those
+five gates subsequently passed **5/5** in isolation; that evidence was not
+called a complete-suite pass.
+
+After scoped acceptance, the unchanged implementation was rerun in one
+complete, no-exclusion CTest invocation under a declared stable budget:
+`caffeinate -i -m -s ctest --test-dir <external Release build>
+--output-on-failure -j 1`. It ran outside the filesystem/process sandbox so
+existing harnesses could use `/bin/ps`; all test-specific timeouts and
+assertions were unchanged. The result was **126/126 passed**, exit 0, in
+**2,727.50 s**. `toka_channel_storage` passed inside that run in **44.96 s**.
+This establishes the complete local CTest gate for this candidate under the
+stated budget; it does not prove the cause of the earlier parallel Channel
+timeout or by itself grant RC14 release qualification.
 
 This package is closed. Do not add a small-module heuristic, backend
 optimization-level change or another safety-proof shortcut to this accepted
