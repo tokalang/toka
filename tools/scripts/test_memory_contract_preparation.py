@@ -37,7 +37,7 @@ def find_record(document, suffix, contract):
 
 
 def dump(compiler, env, source, output):
-    result = run(compiler, env, "--dump-memory-contracts=json", "-c",
+    result = run(compiler, env, "-c", "--dump-memory-contracts=json",
                  source, "-o", output)
     require(result.returncode == 0 and output.is_file(),
             "contract dump failed: " + result.stderr)
