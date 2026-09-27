@@ -6,7 +6,7 @@ if(APPLE)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-w")
 endif()
 
-project(TokaCompiler VERSION 1.0.0 LANGUAGES C CXX)
+project(TokaCompiler VERSION 0.10.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CTest)
 # Keep ordinary reconfiguration on the version declared above.  A cached
@@ -15,7 +15,7 @@ include(CTest)
 # still supply an explicit label through the separate override.
 set(TOKA_RELEASE_VERSION_OVERRIDE "" CACHE STRING
     "Optional version string reported by an explicitly labeled release build")
-set(TOKA_VERSION_STRING "${TokaCompiler_VERSION}-rc.13")
+set(TOKA_VERSION_STRING "${TokaCompiler_VERSION}")
 if(NOT TOKA_RELEASE_VERSION_OVERRIDE STREQUAL "")
     set(TOKA_VERSION_STRING "${TOKA_RELEASE_VERSION_OVERRIDE}")
 endif()

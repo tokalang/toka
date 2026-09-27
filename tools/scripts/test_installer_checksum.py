@@ -13,7 +13,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = ROOT / "tools/install.sh"
-VERSION = "v1.0.0-rc.checksum-test"
+VERSION = "v0.10.0"
 
 
 def require(condition, message):
@@ -46,7 +46,7 @@ def make_archive(root, tarball, inner):
         archive.add(payload, arcname=inner)
 
 
-def run_installer(home, fake_bin, archive, sums):
+def run_installer(home, fake_bin, archive, sums, version=VERSION):
     env = os.environ.copy()
     env.update({
         "HOME": str(home),
@@ -54,9 +54,10 @@ def run_installer(home, fake_bin, archive, sums):
         "SHELL": "/bin/sh",
         "TEST_ARCHIVE": str(archive),
         "TEST_SUMS": str(sums),
+        "TEST_LATEST_URL": "https://github.com/tokalang/toka/releases/tag/" + VERSION,
     })
     return subprocess.run(
-        ["sh", str(INSTALLER), VERSION],
+        ["sh", str(INSTALLER)] + ([version] if version is not None else []),
         cwd=ROOT,
         env=env,
         text=True,
@@ -79,6 +80,11 @@ def main():
         fake_curl = fake_bin / "curl"
         fake_curl.write_text(
             "#!/bin/sh\n"
+            "for arg in \"$@\"; do\n"
+            "  case \"$arg\" in\n"
+            "    */releases/latest) printf '%s' \"$TEST_LATEST_URL\"; exit 0 ;;\n"
+            "  esac\n"
+            "done\n"
             "output=\n"
             "want_output=0\n"
             "for arg in \"$@\"; do\n"
@@ -103,6 +109,38 @@ def main():
                 "installer rejected a matching checksum:\n" + success.stdout + success.stderr)
         require((success_home / ".toka/bin/toka").is_file(),
                 "verified archive was not activated")
+
+        latest_home = temp_root / "latest-home"
+        latest_home.mkdir()
+        latest = run_installer(latest_home, fake_bin, archive, sums, version=None)
+        require(latest.returncode == 0 and
+                (latest_home / ".toka/bin/toka").is_file(),
+                "bare installer did not follow the selected full-release Latest")
+
+        invalid_home = temp_root / "invalid-home"
+        invalid_home.mkdir()
+        invalid = run_installer(invalid_home, fake_bin, archive, sums, version="0.10.0")
+        require(invalid.returncode != 0 and
+                "Invalid release tag" in invalid.stdout and
+                not (invalid_home / ".toka").exists(),
+                "installer accepted a tag without its v prefix")
+
+        historical = "v1.0.0-rc.13"
+        historical_filename = "toka-%s-%s-%s.tar.gz" % (
+            historical, os_name, arch_name)
+        historical_archive = temp_root / historical_filename
+        make_archive(temp_root, historical_archive, historical_filename[:-7])
+        historical_sums = temp_root / "historical-SHA256SUMS"
+        historical_sums.write_text(
+            "%s  %s\n" % (hashlib.sha256(historical_archive.read_bytes()).hexdigest(),
+                            historical_filename), encoding="utf-8")
+        historical_home = temp_root / "historical-home"
+        historical_home.mkdir()
+        pinned = run_installer(historical_home, fake_bin, historical_archive,
+                               historical_sums, version=historical)
+        require(pinned.returncode == 0 and
+                (historical_home / ".toka/bin/toka").is_file(),
+                "historical exact-tag install was lost")
 
         mismatch_home = temp_root / "mismatch-home"
         (mismatch_home / ".toka").mkdir(parents=True)

@@ -9,15 +9,16 @@ cannot accidentally pass because of the caller's uncommitted source or a stale
 It is a preflight, not release evidence. GitHub Actions remains the only
 qualification authority for the exact Linux/macOS four-target matrix.
 
-## RC8 example
+## 0.10.0 candidate example
 
-From the repository root, first choose an immutable candidate SHA:
+From the repository root, first choose an immutable candidate SHA. This is a
+prepublication check; it does not create a tag or release:
 
 ```sh
-RC8_CANDIDATE_SHA=$(git rev-parse HEAD)
+RELEASE_CANDIDATE_SHA=$(git rev-parse HEAD)
 python3 tools/scripts/prequalify_release.py \
-  --revision "$RC8_CANDIDATE_SHA" \
-  --version v1.0.0-rc.8 \
+  --revision "$RELEASE_CANDIDATE_SHA" \
+  --version v0.10.0 \
   --target native \
   --target linux-arm64 \
   --target linux-x64

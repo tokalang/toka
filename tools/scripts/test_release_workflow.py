@@ -4,6 +4,7 @@
 
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,7 @@ from release_gate import parse_counts
 from classify_ci_changes import requires_heavy
 WORKFLOW = ROOT / ".github/workflows/release.yml"
 PROMOTION = ROOT / ".github/workflows/promote_release.yml"
+QUALIFIED_REPLAY = ROOT / ".github/workflows/qualified_artifact_replay.yml"
 INTEL_REPLAY = ROOT / ".github/workflows/rc8_macos_x64_draft_replay.yml"
 INTEL_REPLAY_V2 = ROOT / ".github/workflows/rc8_macos_x64_qualified_artifact_replay.yml"
 RC9_INTEL_REPLAY = ROOT / ".github/workflows/rc9_macos_x64_qualified_artifact_replay.yml"
@@ -23,7 +25,7 @@ ASSETS = ROOT / "tools/scripts/verify_release_assets.py"
 RELEASE_GATE = ROOT / "tools/scripts/release_gate.py"
 HANDLE_AUDIT = ROOT / "tools/scripts/audit_handle_grammar.py"
 INSTALLER = ROOT / "tools/install.sh"
-ACTIVE_CANDIDATE = "v1.0.0-rc.13"
+ACTIVE_CANDIDATE = "v0.10.0"
 ACTIVE_RELEASE_NOTES = ROOT / ("docs/release_notes_%s.md" % ACTIVE_CANDIDATE)
 TARGETS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64")
 STAGES = (
@@ -107,6 +109,21 @@ def report(target, revision, label):
 def exercise_verifiers():
     with tempfile.TemporaryDirectory(prefix="toka-release-workflow-") as temp:
         root = Path(temp)
+        invalid_gate = subprocess.run([
+            sys.executable, str(RELEASE_GATE), "--target", "linux-x64",
+            "--output", str(root / "invalid-gate.json"),
+            "--version", "v0.10.01",
+        ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        require(invalid_gate.returncode != 0 and
+                "canonical v0.10.x tag" in invalid_gate.stderr and
+                not (root / "invalid-gate.json").exists(),
+                "release gate admitted a noncanonical label")
+        invalid_package = subprocess.run([
+            "bash", "tools/scripts/package_release.sh", "v0.10.01",
+        ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        require(invalid_package.returncode != 0 and
+                "canonical v0.10.x tag" in invalid_package.stderr,
+                "release packager admitted a noncanonical label")
         evidence = root / "evidence"
         evidence.mkdir()
         revision = "a" * 40
@@ -151,6 +168,15 @@ def exercise_verifiers():
         run_expect_failure([sys.executable, str(QUALIFICATION), "--evidence-dir", str(evidence),
                             "--revision", revision, "--version-label", label,
                             "--output", str(root / "invalid-summary.json")])
+        (evidence / "release-gate-linux-x64.json").write_text(
+            json.dumps(report("linux-x64", revision, "v0.10.1")), encoding="utf-8")
+        run_expect_failure([sys.executable, str(QUALIFICATION), "--evidence-dir", str(evidence),
+                            "--revision", revision, "--version-label", label,
+                            "--output", str(root / "wrong-label-summary.json")])
+        (evidence / "release-gate-linux-x64.json").unlink()
+        run_expect_failure([sys.executable, str(QUALIFICATION), "--evidence-dir", str(evidence),
+                            "--revision", revision, "--version-label", label,
+                            "--output", str(root / "missing-report-summary.json")])
 
         assets = root / "assets"
         assets.mkdir()
@@ -162,6 +188,20 @@ def exercise_verifiers():
         run([sys.executable, str(ASSETS), "--assets-dir", str(assets),
              "--version-label", label, "--checksums-output", str(checksums),
              "--require-checksums"])
+        run_expect_failure([sys.executable, str(ASSETS), "--assets-dir", str(assets),
+                            "--version-label", "v0.10.1", "--checksums-output", str(checksums),
+                            "--require-checksums"])
+        correct_manifest = checksums.read_text(encoding="utf-8")
+        checksums.write_text("0" * 64 + correct_manifest[64:], encoding="utf-8")
+        run_expect_failure([sys.executable, str(ASSETS), "--assets-dir", str(assets),
+                            "--version-label", label, "--checksums-output", str(checksums),
+                            "--require-checksums"])
+        checksums.write_text(correct_manifest, encoding="utf-8")
+        (assets / ("toka-%s-macos-x64.tar.gz" % label)).unlink()
+        run_expect_failure([sys.executable, str(ASSETS), "--assets-dir", str(assets),
+                            "--version-label", label, "--checksums-output", str(checksums),
+                            "--require-checksums"])
+        (assets / ("toka-%s-macos-x64.tar.gz" % label)).write_bytes(b"macos-x64")
         (assets / "unexpected.txt").write_text("not a release asset\n", encoding="utf-8")
         run_expect_failure([sys.executable, str(ASSETS), "--assets-dir", str(assets),
                             "--version-label", label, "--checksums-output", str(checksums),
@@ -205,6 +245,7 @@ def main():
         encoding="utf-8",
     )
     promotion = PROMOTION.read_text(encoding="utf-8")
+    qualified_replay = QUALIFIED_REPLAY.read_text(encoding="utf-8")
     intel_replay = INTEL_REPLAY.read_text(encoding="utf-8")
     intel_replay_v2 = INTEL_REPLAY_V2.read_text(encoding="utf-8")
     rc9_intel_replay = RC9_INTEL_REPLAY.read_text(encoding="utf-8")
@@ -279,13 +320,25 @@ def main():
     ):
         for block in shell_run_blocks(workflow_text):
             require("${{ inputs.tag_name" not in block and
-                    "${{ inputs.first_hour_receipt" not in block and
+                    "${{ inputs.candidate_sha" not in block and
+                    "${{ inputs.qualification_run_id" not in block and
+                    "${{ inputs.replay_run_id" not in block and
                     "${{ github.ref_name" not in block and
                     "${{ steps.version.outputs.label" not in block and
                     "${{ steps.candidate.outputs" not in block,
                     workflow_name + " workflow interpolates context into shell")
-    require("canonical RC tag" in text and "canonical RC tag" in promotion,
-            "release workflows do not validate canonical RC tag names")
+    active_pattern = r"^v0\.10\.(0|[1-9][0-9]*)$"
+    require(text.count(active_pattern) == 3 and
+            promotion.count(active_pattern) == 1 and
+            qualified_replay.count(active_pattern) == 1,
+            "active workflows do not validate the same canonical v0.10.x tag")
+    for label in ("v0.10.0", "v0.10.1", "v0.10.123"):
+        require(re.fullmatch(active_pattern, label) is not None,
+                "valid active release label was rejected: " + label)
+    for label in ("v0.10.00", "v0.10.01", "v0.11.0", "v1.0.0-rc.13",
+                  "v0.10.0-rc.1", "v0.10.0x"):
+        require(re.fullmatch(active_pattern, label) is None,
+                "invalid active release label was admitted: " + label)
     require("SHA256SUMS" in installer and "EXPECTED_SHA256" in installer and
             "ACTUAL_SHA256" in installer and
             ("sha256sum" in installer and "shasum" in installer),
@@ -308,6 +361,13 @@ def main():
             "matrix gate must not publish a release directly")
     require("contents: read" in gate,
             "matrix gate must not receive release-write permission")
+    for name, block in (("matrix gate", gate), ("qualification summary", summary)):
+        require("Verify exact source identity" in block and
+                "fetch-depth: 0" in block and
+                '[[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]]' in block and
+                'git rev-parse "$GITHUB_REF^{tag}"' in block and
+                'git rev-parse "$GITHUB_REF^{commit}"' in block,
+                name + " does not bind a branch SHA or annotated tag")
     require("name: release-gate-${{ matrix.name }}" in gate and
             "taskhandle-lifecycle-conformance-${{ matrix.name }}.json" in gate,
             "each matrix member must upload named gate evidence")
@@ -324,20 +384,35 @@ def main():
             "--revision" in summary and "--version-label" in summary,
             "summary must verify exact revision and label")
     require("needs: qualification-summary" in draft and
-            "needs.qualification-summary.result == 'success'" in draft,
-            "draft creation must wait for a passing summary")
+            "needs.qualification-summary.result == 'success'" in draft and
+            "github.event_name == 'push'" in draft and
+            "startsWith(github.ref, 'refs/tags/v')" in draft,
+            "only a passing tag push may create a draft")
     require("verify_release_assets.py" in draft and "SHA256SUMS" in draft,
             "draft creation must verify exact archive names and checksums")
     require("softprops/action-gh-release@v3" in draft and "draft: true" in draft and
-            "prerelease: true" in draft,
-            "tag workflow must create a draft pre-release, not publish it")
+            "prerelease: false" in draft and "make_latest: false" in draft,
+            "tag workflow must create an unpublished full-release draft")
     require("environment: release-publication" in promotion and
-            "first_hour_receipt" in promotion,
-            "promotion must require protected approval and a first-hour receipt")
-    require("gh release view" in promotion and "--json assets" in promotion and
-            "SHA256SUMS" in promotion and "--draft=false" in promotion and
-            "--require-checksums" in promotion,
-            "promotion must verify a draft and its downloaded assets before publication")
+            "actions: read" in promotion and "contents: write" in promotion and
+            "qualified-artifact-replay-${{ inputs.tag_name }}-macos-x64" in promotion,
+            "promotion must protect publication and download a replay receipt")
+    require("refs/tags/$TAG_NAME^{tag}" in qualified_replay and
+            "refs/tags/$TAG_NAME^{commit}" in qualified_replay and
+            "QUALIFICATION_RUN_ID" in qualified_replay and
+            "ARCHIVE_SHA256" in qualified_replay and
+            "gh api" in qualified_replay and "shasum -a 256" in qualified_replay and
+            "qualified-artifact-replay-receipt.json" in qualified_replay,
+            "qualified archive replay lost its candidate/run/archive binding")
+    require("refs/tags/$TAG_NAME^{tag}" in promotion and
+            "refs/tags/$TAG_NAME^{commit}" in promotion and
+            "verify_release_qualification.py" in promotion and
+            "verify_release_assets.py" in promotion and "--require-checksums" in promotion and
+            "verify_release_promotion.py" in promotion and
+            "release-promotion-verification-${{ inputs.tag_name }}" in promotion and
+            "--draft=false --prerelease=false --latest" in promotion and
+            "releases/latest" in promotion,
+            "promotion must bind the candidate and publish only a verified full release")
     exercise_verifiers()
     print("Release workflow qualification/draft/promotion gate PASSED")
 

@@ -1,4 +1,4 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Quick Start](#quick-start) | [RC12 Public Preview](docs/release_notes_v1.0.0-rc.12.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Quick Start](#quick-start) | [0.10.x Development Line](docs/0_10_development_line.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
 # Toka systems programming language
 
@@ -67,11 +67,11 @@ Toka therefore explores a position between C, Rust, Go, and Zig: close to the ma
 
 ## Quick Start
 
-Toka is currently a public preview. Use an exact published release candidate
-for a repeatable install:
+Toka `0.10.0` is being prepared and is **not yet published**. For a repeatable
+public install today, pin the already-published RC13 tag:
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.12
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.13
 export PATH="$HOME/.toka/bin:$PATH"
 export TOKA_LIB="$HOME/.toka/lib"
 toka doctor
@@ -89,8 +89,9 @@ sudo apt-get install clang lld python3 pkg-config libssl-dev
 
 Before replacing the tag, check the
 [GitHub releases page](https://github.com/tokalang/toka/releases). The bare
-installer intentionally follows GitHub's stable-release selector and is not
-the recommended public-preview path.
+installer follows GitHub's full-release Latest selector; it does not select
+the newest prerelease. `0.10.0` becomes an installable Latest target only after
+its separate, verified publication.
 
 Build from source to contribute to the compiler or test unreleased changes.
 This requires CMake, a C++17 compiler, and LLVM 20:
@@ -306,26 +307,30 @@ documented in [AI tooling](docs/ai_tooling.md). The protocols are explanation
 and verification interfaces, not a promise that any particular model will
 write correct code without review.
 
-## RC12 Status And Boundaries
+## Current Development Route And Published RC13
 
-Toka `v1.0.0-rc.12` is a published **Public Preview** release candidate, not a
-stable 1.0 compatibility promise. The 1.0 language semantics are frozen during
-this stabilization phase: current work is documentation, ecosystem adoption,
-qualification, and bug fixing rather than new language features.
+The 1.0 release-candidate cycle has ended. `0.10.0` is the pending next
+development release, with an evolving public API rather than a 1.0 stability
+promise. Published RCs, including `v1.0.0-rc.13`, retain their original tags,
+source and assets. See the [development route](docs/0_10_development_line.md)
+and [pending release notes](docs/release_notes_v0.10.0.md).
 
-| Platform | RC12 status |
+| Platform | Published RC13 status |
 | :--- | :--- |
 | Linux x86_64 | Published Tier 1 SDK archive |
 | Linux aarch64 | Published Tier 1 SDK archive |
 | macOS x86_64 | Published Tier 1 SDK archive |
 | macOS aarch64 / Apple Silicon | Published Tier 1 SDK archive |
-| Windows / MSYS2 | Source-build and dogfood path; no RC12 SDK archive |
-| WSL2 / WASI | Available or experimental; not a 1.0 blocking release target |
+| Windows / MSYS2 | Source-build and dogfood path; no RC13 SDK archive |
+| WSL2 / WASI | Available or experimental; not a 0.10.0 blocking release target |
 
 Known boundaries:
 
-- RC12 is a prerelease; source, package, and interface compatibility may still
-  change before stable 1.0.
+- `0.10.0` is not yet a public download. Within `0.10.x` the project aims to
+  preserve compatibility where practical; planned breaking changes belong in
+  `0.11.0` with migration notes.
+- Nested-owned-Vec extraction remains unresolved and outside the first 0.10.0
+  candidate.
 - The language is not yet self-hosted, and the package ecosystem is young.
 - TokaKV is an embedded, single-process preview engine. Its current compaction
   scope is L0-to-L1; deeper levels, distributed replication, and a Redis
@@ -338,12 +343,11 @@ The repository currently contains:
 - A standard library with core containers and system-level modules.
 - The `toka` project manager / build tool, `tokafmt`, and `tokalsp`.
 - Incremental build metadata and TKI interface cache validation.
-- Linux and macOS as the supported 1.0 release platforms.
+- Linux and macOS as the planned 0.10.0 SDK release platforms.
 
-The immediate priority is to make the frozen RC12 surface easier to evaluate:
-clear documentation, reproducible examples, ecosystem proof such as TokaKV,
-and release qualification. Windows parity and eventual self-hosting remain
-later work.
+The immediate priority is to qualify the bounded 0.10.0 candidate, provide
+clear migration guidance, and retain the existing security and release gates.
+Windows parity and eventual self-hosting remain later work.
 
 ## Is Toka A Good Fit?
 

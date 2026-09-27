@@ -39,7 +39,7 @@ def main():
         output = Path(temporary) / "output"
         command = [
             sys.executable, str(RUNNER), "--dry-run", "--revision", "HEAD",
-            "--version", "v1.0.0-rc.8", "--target", "native",
+            "--version", "v0.10.0", "--target", "native",
             "--target", "linux-arm64", "--target", "linux-x64",
             "--output-dir", str(output),
         ]
@@ -51,6 +51,8 @@ def main():
                 "summary schema changed")
         require(summary["version"] == 1 and summary["result"] == "planned",
                 "dry-run must produce a planned v1 summary")
+        require(summary["version_label"] == "v0.10.0",
+                "local prequalification used the wrong 0.10.0 label")
         targets = {entry["target"] for entry in summary["targets"]}
         require({"linux-arm64", "linux-x64"}.issubset(targets),
                 "dry-run omitted Docker Linux targets")
@@ -67,11 +69,28 @@ def main():
         require(result.stdout.count("--build-dir /src/build") == docker_targets,
                 "Docker gates must use the isolated checkout's standard build directory")
 
+        default_output = Path(temporary) / "default-output"
+        default_run = subprocess.run([
+            sys.executable, str(RUNNER), "--dry-run", "--target", "native",
+            "--output-dir", str(default_output),
+        ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        require(default_run.returncode == 0 and json.loads(
+            (default_output / "local-release-prequalification-summary.json").read_text(
+                encoding="utf-8"))["version_label"] == "v0.10.0",
+                "default prequalification version did not move to 0.10.0")
+
         invalid = subprocess.run([
             sys.executable, str(RUNNER), "--dry-run", "--docker-cores", "0",
         ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         require(invalid.returncode != 0 and "must be positive" in invalid.stderr,
                 "invalid Docker parallelism must fail before a prequalification run")
+        for label in ("v0.10.01", "v1.0.0-rc.13", "v0.11.0"):
+            invalid_label = subprocess.run([
+                sys.executable, str(RUNNER), "--dry-run", "--version", label,
+            ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            require(invalid_label.returncode != 0 and
+                    "canonical v0.10.x tag" in invalid_label.stderr,
+                    "invalid active prequalification label was accepted: " + label)
 
     text = DOCKERFILE.read_text(encoding="utf-8")
     require("ARG BASE_IMAGE=ubuntu:24.04" in text,

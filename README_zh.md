@@ -1,4 +1,4 @@
-[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [快速开始](#快速开始) | [RC12 Public Preview](docs/release_notes_v1.0.0-rc.12.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
+[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [快速开始](#快速开始) | [0.10.x 开发路线](docs/0_10_development_line.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
 
 # Toka systems programming language（Toka 系统编程语言）
 
@@ -61,11 +61,11 @@ Toka 组合了几类机制来接近这个目标。设计上，它试图让日常
 
 ## 快速开始
 
-Toka 当前处于 Public Preview。为获得可复现的安装，请使用一个明确、已发布的
-release candidate：
+Toka `0.10.0` 正在准备，**尚未发布**。当前要获得可复现的公开安装，请指定
+已经发布的 RC13 tag：
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.12
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.13
 export PATH="$HOME/.toka/bin:$PATH"
 export TOKA_LIB="$HOME/.toka/lib"
 toka doctor
@@ -81,8 +81,9 @@ sudo apt-get install clang lld python3 pkg-config libssl-dev
 `toka doctor` 会先检查这些运行条件，再报告 SDK ready。
 
 更换 tag 前，请先检查 [GitHub Releases 页面](https://github.com/tokalang/toka/releases)。
-不带参数的安装脚本会遵循 GitHub 的稳定版 Latest 选择器，因此不建议将其作为
-Public Preview 阶段的默认路径。
+不带参数的安装脚本遵循 GitHub 已公开正式版的 Latest 选择器，不会自动选择
+最新 prerelease。只有在 `0.10.0` 单独完成审核并公开发布后，它才会成为可安装的
+Latest 目标。
 
 若要参与编译器开发或测试未发布改动，可从源码构建。需要 CMake、C++17
 编译器，以及 LLVM 20：
@@ -277,24 +278,27 @@ toka capabilities --json main.tk
 
 机器可读诊断、语义证据与有界上下文见 [AI tooling](docs/ai_tooling.md)。这些协议是解释与验证接口，不承诺任何特定模型无需审查就能正确编写代码。
 
-## RC12 状态与已知边界
+## 当前开发路线与已发布的 RC13
 
-Toka `v1.0.0-rc.12` 是已经发布的 **Public Preview** release candidate，
-不是稳定 1.0 兼容性承诺。在当前稳定化阶段，1.0 语言语义已冻结；工作重点是
-文档、生态采用、资格验证和缺陷修复，不再增加语言新特性。
+1.0 release candidate 周期已经结束，`0.10.0` 是待发布的下一条开发线版本，
+公共 API 仍在演进，不构成 1.0 稳定性承诺。包括 `v1.0.0-rc.13` 在内的已发布
+RC 保留原有 tag、源码和资产。详见[开发路线](docs/0_10_development_line.md)与
+[待发布说明](docs/release_notes_v0.10.0.md)。
 
-| 平台 | RC12 状态 |
+| 平台 | 已发布 RC13 的状态 |
 | :--- | :--- |
 | Linux x86_64 | 已发布 Tier 1 SDK archive |
 | Linux aarch64 | 已发布 Tier 1 SDK archive |
 | macOS x86_64 | 已发布 Tier 1 SDK archive |
 | macOS aarch64 / Apple Silicon | 已发布 Tier 1 SDK archive |
-| Windows / MSYS2 | 源码构建与 dogfood 路径；没有 RC12 SDK archive |
-| WSL2 / WASI | 可用或实验性路径；不是 1.0 阻塞发布目标 |
+| Windows / MSYS2 | 源码构建与 dogfood 路径；没有 RC13 SDK archive |
+| WSL2 / WASI | 可用或实验性路径；不是 0.10.0 阻塞发布目标 |
 
 已知边界：
 
-- RC12 是 prerelease；源码、包和接口兼容性在稳定 1.0 前仍可能变化。
+- `0.10.0` 尚无公开下载资产。项目会尽量保持 `0.10.x` 内的兼容性，并把计划性
+  breaking 变更集中到 `0.11.0`，配套迁移说明。
+- 嵌套 owned Vec 的提取问题尚未解决，不纳入首个 `0.10.0` 候选。
 - 语言尚未自举，包生态仍然年轻。
 - TokaKV 当前是单进程嵌入式 preview 引擎，compaction 范围为 L0-to-L1；
   尚不包含更深层级、分布式复制或 Redis 协议服务端。
@@ -306,10 +310,10 @@ Toka `v1.0.0-rc.12` 是已经发布的 **Public Preview** release candidate，
 - 包含核心容器与系统级模块的标准库。
 - `toka` 项目管理器 / 构建工具、`tokafmt`、`tokalsp`。
 - 增量构建元数据与 TKI interface cache 校验。
-- Linux 与 macOS 是受支持的 1.0 发布平台。
+- Linux 与 macOS 是计划中的 `0.10.0` SDK 发布平台。
 
-当前优先事项是让冻结后的 RC12 表面更容易评估：清晰文档、可复现示例、
-TokaKV 这样的生态证明，以及发布资格验证。Windows parity 与最终自举仍属于后续工作。
+当前优先事项是验证范围受限的 `0.10.0` 候选、提供清晰迁移说明，并保持现有
+安全检查与发布门禁。Windows parity 与最终自举仍属于后续工作。
 
 ## Toka 适合你吗？
 

@@ -224,11 +224,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--version", default="v1.0.0-rc.9")
+    parser.add_argument("--version", default="v0.10.0")
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
+    if not re.fullmatch(r"v0\.10\.(0|[1-9][0-9]*)", args.version):
+        parser.error("release label must be a canonical v0.10.x tag")
 
     root = Path(__file__).resolve().parents[2]
     build_dir = (root / args.build_dir).resolve()
@@ -330,6 +332,9 @@ def main():
             [sys.executable, "tools/scripts/test_developer_experience.py",
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_release_workflow.py"],
+            [sys.executable, "tools/scripts/test_release_promotion.py"],
+            [sys.executable, "tools/scripts/test_release_version_identity.py",
+             "--build-dir", str(build_dir), "--version", args.version],
             [sys.executable, "tools/scripts/test_installer_checksum.py"],
             [sys.executable, "tools/scripts/test_local_release_prequalification.py"],
             [sys.executable, "tools/scripts/test_ai_tooling.py",

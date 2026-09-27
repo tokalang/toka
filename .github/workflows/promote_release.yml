@@ -4,11 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: Existing draft tag to publish, for example v1.0.0-rc.9
+        description: Existing v0.10.x draft tag to publish
         required: true
         type: string
-      first_hour_receipt:
-        description: URL or audit reference for successful clean-asset first-hour replay
+      candidate_sha:
+        description: Exact commit peeled from the annotated release tag
+        required: true
+        type: string
+      qualification_run_id:
+        description: Successful four-target Release Qualification run id
+        required: true
+        type: string
+      replay_run_id:
+        description: Successful qualified macOS x64 artifact replay run id
         required: true
         type: string
 
@@ -18,27 +26,42 @@ jobs:
     runs-on: ubuntu-22.04
     environment: release-publication
     permissions:
+      actions: read
       contents: write
     steps:
       - name: Validate promotion inputs
         env:
           TAG_NAME: ${{ inputs.tag_name }}
-          FIRST_HOUR_RECEIPT: ${{ inputs.first_hour_receipt }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          REPLAY_RUN_ID: ${{ inputs.replay_run_id }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
-            echo "tag_name must be a canonical RC tag" >&2
+          if [[ ! "$TAG_NAME" =~ ^v0\.10\.(0|[1-9][0-9]*)$ ]]; then
+            echo "tag_name must be a canonical v0.10.x tag" >&2
             exit 1
           fi
-          if (( ${#FIRST_HOUR_RECEIPT} > 1024 )) || \
-             [[ ! "$FIRST_HOUR_RECEIPT" =~ ^[A-Za-z0-9][A-Za-z0-9:/._#?=\&%+-]*$ ]]; then
-            echo "first_hour_receipt contains unsupported characters" >&2
+          if [[ ! "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || \
+             [[ ! "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]] || \
+             [[ ! "$REPLAY_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "candidate SHA or run id is invalid" >&2
             exit 1
           fi
 
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Bind annotated tag to candidate
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          git rev-parse "refs/tags/$TAG_NAME^{tag}" >/dev/null
+          test "$(git rev-parse "refs/tags/$TAG_NAME^{commit}")" = "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
 
       - name: Verify draft state
         env:
@@ -46,8 +69,9 @@ jobs:
           TAG_NAME: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
-          test "$(gh release view "$TAG_NAME" --json isDraft --jq .isDraft)" = "true"
-          test "$(gh release view "$TAG_NAME" --json isPrerelease --jq .isPrerelease)" = "true"
+          gh release view "$TAG_NAME" --json tagName,isDraft,isPrerelease,assets \
+            > draft-release.json
+          python3 -c 'import json; d=json.load(open("draft-release.json")); assert d["isDraft"] is True and d["isPrerelease"] is False'
 
       - name: Verify exact draft asset names
         env:
@@ -82,15 +106,80 @@ jobs:
             --checksums-output release-assets/SHA256SUMS \
             --require-checksums
 
-      - name: Publish reviewed pre-release
+      - name: Read qualified runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          REPLAY_RUN_ID: ${{ inputs.replay_run_id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALIFICATION_RUN_ID" \
+            > qualification-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$REPLAY_RUN_ID" \
+            > replay-run.json
+
+      - name: Download four-target qualification evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-gate-*
+          path: qualification-evidence
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.qualification_run_id }}
+
+      - name: Download qualified artifact replay receipt
+        uses: actions/download-artifact@v4
+        with:
+          name: qualified-artifact-replay-${{ inputs.tag_name }}-macos-x64
+          path: replay-evidence
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.replay_run_id }}
+
+      - name: Verify candidate, qualification, replay and draft assets
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          REPLAY_RUN_ID: ${{ inputs.replay_run_id }}
+        run: |
+          set -euo pipefail
+          python3 tools/scripts/verify_release_qualification.py \
+            --evidence-dir qualification-evidence \
+            --revision "$CANDIDATE_SHA" \
+            --version-label "$TAG_NAME" \
+            --output qualification-summary.json
+          python3 tools/scripts/verify_release_promotion.py \
+            --tag-name "$TAG_NAME" \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --qualification-run-id "$QUALIFICATION_RUN_ID" \
+            --replay-run-id "$REPLAY_RUN_ID" \
+            --draft-json draft-release.json \
+            --qualification-run-json qualification-run.json \
+            --replay-run-json replay-run.json \
+            --qualification-summary qualification-summary.json \
+            --replay-receipt replay-evidence/qualified-artifact-replay-receipt.json \
+            --assets-dir release-assets \
+            --output promotion-verification.json
+
+      - name: Upload bound promotion evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-promotion-verification-${{ inputs.tag_name }}
+          path: promotion-verification.json
+          if-no-files-found: error
+
+      - name: Publish reviewed full release as Latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ inputs.tag_name }}
-          FIRST_HOUR_RECEIPT: ${{ inputs.first_hour_receipt }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          REPLAY_RUN_ID: ${{ inputs.replay_run_id }}
         run: |
           set -euo pipefail
-          gh release edit "$TAG_NAME" --draft=false --prerelease --latest=false
+          gh release edit "$TAG_NAME" --draft=false --prerelease=false --latest
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" = "$TAG_NAME"
           {
-            echo "Published after first-hour replay receipt:"
-            printf '%s\n' "$FIRST_HOUR_RECEIPT"
+            echo "Published $TAG_NAME from candidate $CANDIDATE_SHA"
+            echo "Qualification run: $QUALIFICATION_RUN_ID"
+            echo "Qualified artifact replay run: $REPLAY_RUN_ID"
           } >> "$GITHUB_STEP_SUMMARY"

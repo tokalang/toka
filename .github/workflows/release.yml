@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       tag_name:
-        description: Candidate version label, for example v1.0.0-rc.9
+        description: Exact 0.10.x release label, for example v0.10.0
         required: true
         type: string
   push:
@@ -17,7 +17,7 @@ on:
 
 jobs:
   release-gate:
-    name: RC gate (${{ matrix.name }})
+    name: Release gate (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -46,6 +46,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.candidate_ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Verify exact source identity
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            [[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]]
+            test "$(git rev-parse HEAD)" = "$CANDIDATE_REF"
+          else
+            [[ "$GITHUB_REF" =~ ^refs/tags/v0\.10\.(0|[1-9][0-9]*)$ ]]
+            git rev-parse "$GITHUB_REF^{tag}" >/dev/null
+            test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$(git rev-parse HEAD)"
+          fi
 
       - name: Install LLVM 20 (Linux)
         if: runner.os == 'Linux'
@@ -85,8 +101,8 @@ jobs:
           TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
-            echo "release label must be a canonical RC tag" >&2
+          if [[ ! "$TAG_NAME" =~ ^v0\.10\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release label must be a canonical v0.10.x tag" >&2
             exit 1
           fi
           echo "label=$TAG_NAME" >> "$GITHUB_OUTPUT"
@@ -105,7 +121,7 @@ jobs:
             ${ZSTD_LIBRARY:+-DZSTD_LIBRARY="$ZSTD_LIBRARY"} \
             ${OPENSSL_ROOT_DIR:+-DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR"}
 
-      - name: Run unified RC gate
+      - name: Run unified release gate
         env:
           OS: ${{ matrix.os }}
           ARCH: ${{ matrix.arch }}
@@ -157,6 +173,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.candidate_ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Verify exact source identity
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            [[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]]
+            test "$(git rev-parse HEAD)" = "$CANDIDATE_REF"
+          else
+            [[ "$GITHUB_REF" =~ ^refs/tags/v0\.10\.(0|[1-9][0-9]*)$ ]]
+            git rev-parse "$GITHUB_REF^{tag}" >/dev/null
+            test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$(git rev-parse HEAD)"
+          fi
 
       - name: Resolve candidate identity
         id: candidate
@@ -165,8 +197,8 @@ jobs:
           TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
-            echo "release label must be a canonical RC tag" >&2
+          if [[ ! "$TAG_NAME" =~ ^v0\.10\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release label must be a canonical v0.10.x tag" >&2
             exit 1
           fi
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -207,6 +239,7 @@ jobs:
     name: Create complete draft release
     needs: qualification-summary
     if: >-
+      github.event_name == 'push' &&
       startsWith(github.ref, 'refs/tags/v') &&
       needs.qualification-summary.result == 'success'
     runs-on: ubuntu-22.04
@@ -224,8 +257,8 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
-            echo "release label must be a canonical RC tag" >&2
+          if [[ ! "$TAG_NAME" =~ ^v0\.10\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release label must be a canonical v0.10.x tag" >&2
             exit 1
           fi
           echo "label=$TAG_NAME" >> "$GITHUB_OUTPUT"
@@ -252,7 +285,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.label }}
           body_path: docs/release_notes_${{ steps.version.outputs.label }}.md
           draft: true
-          prerelease: true
+          prerelease: false
           make_latest: false
           fail_on_unmatched_files: true
           files: release-assets/*

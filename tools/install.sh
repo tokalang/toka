@@ -28,8 +28,8 @@ else
   exit 1
 fi
 
-# Pass an exact tag for a release candidate. The unqualified path deliberately
-# follows GitHub's stable Latest release instead of guessing a prerelease.
+# Pass an exact tag for a reproducible install. The unqualified path follows
+# GitHub's Latest published full release.
 VERSION=${1:-"latest"}
 if [ "$VERSION" = "latest" ]; then
   echo "Fetching latest version..."
@@ -44,7 +44,7 @@ fi
 case "$VERSION" in
   v*) ;;
   *)
-    echo "Invalid release tag '$VERSION'. Pass a tag such as v1.0.0-rc.9."
+    echo "Invalid release tag '$VERSION'. Pass a tag such as v0.10.0."
     exit 1
     ;;
 esac
