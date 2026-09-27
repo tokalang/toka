@@ -397,6 +397,13 @@ def main():
             "actions: read" in promotion and "contents: write" in promotion and
             "qualified-artifact-replay-${{ inputs.tag_name }}-macos-x64" in promotion,
             "promotion must protect publication and download a replay receipt")
+    require("archive_source=qualified_run" in promotion and
+            "archive_source=candidate_run" in promotion and
+            "pattern: release-archive-*" in promotion and
+            "pattern: candidate-archive-*" in promotion and
+            "--qualified-archives-dir qualification-archives" in promotion and
+            promotion.count("run-id: ${{ inputs.qualification_run_id }}") >= 3,
+            "promotion must download the selected four qualified archives")
     require("refs/tags/$TAG_NAME^{tag}" in qualified_replay and
             "refs/tags/$TAG_NAME^{commit}" in qualified_replay and
             "QUALIFICATION_RUN_ID" in qualified_replay and

@@ -107,6 +107,7 @@ jobs:
             --require-checksums
 
       - name: Read qualified runs
+        id: qualified_source
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
@@ -117,12 +118,37 @@ jobs:
             > qualification-run.json
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$REPLAY_RUN_ID" \
             > replay-run.json
+          qualification_event=$(python3 -c \
+            'import json; print(json.load(open("qualification-run.json"))["event"])')
+          case "$qualification_event" in
+            push) echo "archive_source=qualified_run" >> "$GITHUB_OUTPUT" ;;
+            workflow_dispatch) echo "archive_source=candidate_run" >> "$GITHUB_OUTPUT" ;;
+            *) echo "unsupported qualification run event" >&2; exit 1 ;;
+          esac
 
       - name: Download four-target qualification evidence
         uses: actions/download-artifact@v4
         with:
           pattern: release-gate-*
           path: qualification-evidence
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.qualification_run_id }}
+
+      - name: Download qualified tag archives
+        if: steps.qualified_source.outputs.archive_source == 'qualified_run'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-archive-*
+          path: qualification-archives
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.qualification_run_id }}
+
+      - name: Download qualified candidate archives
+        if: steps.qualified_source.outputs.archive_source == 'candidate_run'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: candidate-archive-*
+          path: qualification-archives
           github-token: ${{ github.token }}
           run-id: ${{ inputs.qualification_run_id }}
 
@@ -158,6 +184,7 @@ jobs:
             --qualification-summary qualification-summary.json \
             --replay-receipt replay-evidence/qualified-artifact-replay-receipt.json \
             --assets-dir release-assets \
+            --qualified-archives-dir qualification-archives \
             --output promotion-verification.json
 
       - name: Upload bound promotion evidence

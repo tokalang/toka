@@ -50,8 +50,11 @@ def run_errors(document, run_id, revision, workflow, require_candidate_head=True
     return errors
 
 
-def validate(args):
+def validate(args, observed=None):
     errors = []
+    if observed is None:
+        observed = {}
+    observed["archives"] = {}
     if not TAG.fullmatch(args.tag_name):
         errors.append("tag is not a canonical v0.10.x release")
     if not SHA.fullmatch(args.candidate_sha):
@@ -85,6 +88,13 @@ def validate(args):
     errors.extend(run_errors(replay_run, args.replay_run_id,
                              args.candidate_sha, "qualified_artifact_replay",
                              require_candidate_head=False))
+    qualification_event = qualification_run.get("event")
+    archive_source = {"push": "qualified_run",
+                      "workflow_dispatch": "candidate_run"}.get(qualification_event)
+    if archive_source is None:
+        errors.append("qualification run is neither a tag push nor a candidate dispatch")
+    else:
+        observed["archive_source"] = archive_source
 
     expected_targets = summary.get("expected_targets")
     if summary.get("schema") != "toka.release-qualification-summary" or \
@@ -117,7 +127,10 @@ def validate(args):
             receipt.get("qualification_run_id") != args.qualification_run_id or \
             receipt.get("asset_source") not in ("qualified_run", "candidate_run"):
         errors.append("replay receipt does not bind the candidate and qualification")
+    if archive_source is not None and receipt.get("asset_source") != archive_source:
+        errors.append("replay receipt names the wrong qualification archive source")
 
+    draft_hashes = {}
     try:
         actual_names = {path.name for path in args.assets_dir.iterdir() if path.is_file()}
     except OSError as error:
@@ -126,18 +139,52 @@ def validate(args):
     if actual_names != expected_assets:
         errors.append("downloaded assets do not match the exact four-target set")
     if actual_names == expected_assets:
+        draft_hashes = {name: sha256(args.assets_dir / name)
+                        for name in expected_archives}
         manifest = "".join("%s  %s\n" %
-                           (sha256(args.assets_dir / name), name)
+                           (draft_hashes[name], name)
                            for name in sorted(expected_archives))
         if (args.assets_dir / "SHA256SUMS").read_text(encoding="utf-8") != manifest:
             errors.append("SHA256SUMS does not match downloaded archives")
-        archive_digest = sha256(args.assets_dir /
-                                ("toka-%s-macos-x64.tar.gz" % args.tag_name))
+        archive_digest = draft_hashes["toka-%s-macos-x64.tar.gz" % args.tag_name]
         recorded_digest = receipt.get("archive_sha256")
         if not isinstance(recorded_digest, str) or \
                 not DIGEST.fullmatch(recorded_digest) or \
                 recorded_digest != archive_digest:
             errors.append("replay receipt does not match the macOS x64 archive")
+
+    if archive_source is not None:
+        prefix = "release-archive-" if archive_source == "qualified_run" \
+            else "candidate-archive-"
+        expected_directories = {prefix + target for target in TARGETS}
+        try:
+            directories = list(args.qualified_archives_dir.iterdir())
+        except OSError as error:
+            errors.append("cannot read qualification archives: %s" % error)
+            directories = []
+        if {path.name for path in directories} != expected_directories or \
+                len(directories) != len(TARGETS):
+            errors.append("qualification artifacts are not the exact four %s archives" %
+                          archive_source)
+        for target in TARGETS:
+            name = "toka-%s-%s.tar.gz" % (args.tag_name, target)
+            directory = args.qualified_archives_dir / (prefix + target)
+            archive = directory / name
+            if directory.is_symlink() or not directory.is_dir() or \
+                    not archive.is_file() or archive.is_symlink() or \
+                    {path.name for path in directory.iterdir()} != {name}:
+                errors.append("qualification archive is missing or ambiguous: " + target)
+                continue
+            qualified_digest = sha256(archive)
+            draft_digest = draft_hashes.get(name)
+            observed["archives"][target] = {
+                "artifact_name": prefix + target,
+                "archive_name": name,
+                "draft_sha256": draft_digest,
+                "qualification_sha256": qualified_digest,
+            }
+            if draft_digest != qualified_digest:
+                errors.append("draft archive differs from qualification: " + target)
     return errors
 
 
@@ -148,15 +195,19 @@ def main():
     parser.add_argument("--qualification-run-id", required=True, type=int)
     parser.add_argument("--replay-run-id", required=True, type=int)
     for name in ("draft-json", "qualification-run-json", "replay-run-json",
-                 "qualification-summary", "replay-receipt", "assets-dir", "output"):
+                 "qualification-summary", "replay-receipt", "assets-dir",
+                 "qualified-archives-dir", "output"):
         parser.add_argument("--" + name, required=True, type=Path)
     args = parser.parse_args()
-    errors = validate(args)
+    observed = {}
+    errors = validate(args, observed)
     result = {"schema": "toka.release-promotion-verification", "version": 1,
               "tag_name": args.tag_name, "candidate_revision": args.candidate_sha,
               "qualification_run_id": args.qualification_run_id,
               "replay_run_id": args.replay_run_id,
-              "result": "fail" if errors else "pass", "errors": errors}
+              "result": "fail" if errors else "pass", "errors": errors,
+              "archive_source": observed.get("archive_source"),
+              "archives": observed["archives"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n",
                            encoding="utf-8")
