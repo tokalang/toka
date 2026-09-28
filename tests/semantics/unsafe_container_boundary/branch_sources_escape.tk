@@ -1,0 +1,16 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn escaped(which: bool) -> Vec<str> {
+    auto first = string::from("first")
+    auto second = string::from("second")
+    auto values# = Vec<str>::new()
+    if which {
+        values#.push(first.as_str())
+    } else {
+        values#.push(second.as_str())
+    }
+    return cede values
+}
+
+fn main() -> i32 { return 0 }

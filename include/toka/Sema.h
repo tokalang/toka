@@ -102,6 +102,9 @@ struct SymbolInfo {
   std::optional<std::vector<AccessPath>> CurrentReferenceTargets;
   std::set<std::string> LifeDependencySet; // [NEW] Shadow Dependency Set
   std::map<std::string, std::set<std::string>> FieldDependencySet; // [NEW] Member-specific deps
+  // Identity-preserving external value sources; nullopt is unknown.
+  std::optional<std::set<AccessPath>> ExternalValueDependencies;
+  bool ExternalValueTracked = false;
 
   // An incomplete typed-todo binding is useful to editor tooling only as a
   // conditional fact.  It is never a completed initialization or ordinary
@@ -814,8 +817,14 @@ private:
     std::set<std::string> Roots;
     std::map<std::string, std::set<std::string>> Fields;
   };
+  struct ExternalDependencyState {
+    std::optional<std::set<AccessPath>> Sources;
+    std::set<std::string> LegacyRoots;
+    bool Tracked = false;
+  };
   struct AnalysisState {
     std::map<uint64_t, ManagedBorrowDependencies> ManagedBorrows;
+    std::map<uint64_t, ExternalDependencyState> ExternalDependencies;
     std::map<uint64_t, std::shared_ptr<const ByteBufferFact>> ByteBuffers;
     std::map<uint64_t, std::shared_ptr<const TaskResultFact>> TaskResults;
     std::map<FunctionDecl *, std::set<size_t>> TaskRequirements;
@@ -865,6 +874,9 @@ private:
     Sema &Owner;
     std::optional<AnalysisState> Base;
     size_t DiagnosticStart = 0;
+    std::string SavedBorrowSource;
+    std::set<std::string> SavedLifeDependencies;
+    std::map<std::string, std::set<std::string>> SavedFieldDependencies;
     bool Armed = true;
     bool Rejected = false;
   };
@@ -1410,6 +1422,8 @@ private:
                                    std::vector<AccessPath> *addressedStorage = nullptr,
                                    bool *usedCurrentReference = nullptr,
                                    std::map<std::string, ActualReturnFieldOrigins> *fields = nullptr);
+  bool safeBorrowFreeType(const std::shared_ptr<Type> &type);
+  std::optional<std::set<AccessPath>> externalValueDependencies(Expr *value);
   void invalidateReturnSourceProof(Expr *expression, bool unknown = true);
   bool collectActualBindingReferents(Expr *expression,
                                     std::vector<AccessPath> &paths,

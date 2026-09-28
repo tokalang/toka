@@ -1,0 +1,17 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn extract() -> string {
+    auto values# = Vec<string>::new()
+    auto owned = string::from("owned")
+    values#.push(cede owned)
+    auto result = values#.pop()
+    auto value = result.unwrap()
+    return cede value
+}
+
+fn main() -> i32 {
+    auto value = extract()
+    if !value.as_str().equals("owned") { return 1 }
+    return 0
+}

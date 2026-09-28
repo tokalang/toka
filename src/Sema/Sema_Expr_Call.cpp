@@ -168,6 +168,8 @@ stage0PlaceIdentity(const AccessPath &path, const std::string &moduleOrigin) {
     case AccessProjectionKind::Dereference:
       projections.push_back(PlaceProjection::dereference());
       break;
+    case AccessProjectionKind::ExternalValue:
+      return std::nullopt; // Semantic dependency, never a physical place.
     case AccessProjectionKind::Unknown:
       projections.push_back(PlaceProjection::unknown());
       break;
@@ -4139,6 +4141,18 @@ bool Sema::collectActualReturnReferents(
     }
     auto *method = dynamic_cast<MethodCallExpr *>(value);
     auto *call = dynamic_cast<CallExpr *>(value);
+    if ((method || call) && value->ExternalValueTracked) {
+      if (!value->ExternalValueDependencies) return false;
+      for (auto source : *value->ExternalValueDependencies) {
+        if (!source.Projections.empty() &&
+            source.Projections.back().Kind ==
+                AccessProjectionKind::ExternalValue)
+          source.Projections.pop_back();
+        result.push_back(std::move(source));
+      }
+      return !value->ExternalValueDependencies->empty() ||
+             safeBorrowFreeType(value->ResolvedType);
+    }
     if (auto *init = dynamic_cast<InitStructExpr *>(value)) {
       auto shape = std::dynamic_pointer_cast<ShapeType>(init->ResolvedType);
       if (!shape || !shape->Decl) return false;
@@ -4541,6 +4555,113 @@ bool Sema::collectActualBindingReferents(
   }
   return collectActualReturnReferents(expression, paths, staticStorage,
                                      nullptr, nullptr, fields);
+}
+
+bool Sema::safeBorrowFreeType(const std::shared_ptr<Type> &input) {
+  std::set<const ShapeDecl *> active;
+  std::function<bool(const std::shared_ptr<Type> &)> visit =
+      [&](const std::shared_ptr<Type> &candidate) -> bool {
+    auto type = candidate ? resolveExplicitCedeStage0TypeReadOnly(candidate) : nullptr;
+    if (hasCanonicalOwningStringStorage(type)) return true;
+    if (!type || type->isUnknown() || type->isUninit() ||
+        type->isReference() || type->isSlice() || type->isFunction() ||
+        type->isDynFn()) return false;
+    // A raw address is not a safe borrow of its pointee. This says nothing
+    // about allocation ownership or the safety of dereferencing that address.
+    if (type->isRawPointer()) return true;
+    if (type->isBoolean() || type->isInteger() || type->isFloatingPoint() ||
+        type->isUnit() || type->isAddrType() || type->isOAddrType()) return true;
+    if (type->isUniquePtr() || type->isSharedPtr())
+      return visit(type->getPointeeType());
+    if (type->isArray()) return visit(type->getArrayElementType());
+    auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
+    auto *decl = shape ? shape->Decl : nullptr;
+    if (!decl || !decl->GenericParams.empty() || !active.insert(decl).second)
+      return false;
+    bool closed = true;
+    if (decl->InstantiationTemplate)
+      for (const auto &argument : decl->InstantiationArgs)
+        closed &= visit(argument);
+    for (const auto &member : decl->Members) {
+      if (decl->Kind == ShapeKind::Enum && !member.SubMembers.empty()) {
+        for (const auto &payload : member.SubMembers)
+          closed &= visit(getPhysicalType(payload));
+      } else if (!member.IsUnitVariant) {
+        closed &= visit(getPhysicalType(member));
+      }
+    }
+    active.erase(decl);
+    return closed;
+  };
+  return visit(input);
+}
+
+std::optional<std::set<AccessPath>>
+Sema::externalValueDependencies(Expr *value) {
+  if (!value) return std::nullopt;
+  if (value->ExternalValueDependencies)
+    return value->ExternalValueDependencies;
+  if (value->ExternalValueTracked)
+    return std::nullopt;
+  if (auto *cede = dynamic_cast<CedeExpr *>(value))
+    return externalValueDependencies(cede->Value.get());
+  if (auto *unsafe = dynamic_cast<UnsafeExpr *>(value))
+    return externalValueDependencies(unsafe->Expression.get());
+  if (auto *cast = dynamic_cast<CastExpr *>(value);
+      cast && cast->Kind == CastKind::Ascription)
+    return externalValueDependencies(cast->Expression.get());
+  if (auto *call = dynamic_cast<CallExpr *>(value);
+      call && call->ResolvedShape &&
+      call->ResolvedShape->Kind == ShapeKind::Enum &&
+      call->MatchedMemberIdx >= 0 &&
+      size_t(call->MatchedMemberIdx) < call->ResolvedShape->Members.size()) {
+    const auto &variant =
+        call->ResolvedShape->Members[call->MatchedMemberIdx];
+    const size_t count = variant.IsUnitVariant ? 0 :
+        variant.SubMembers.empty() ? 1 : variant.SubMembers.size();
+    if (count != call->Args.size()) return std::nullopt;
+    std::set<AccessPath> result;
+    for (size_t index = 0; index < count; ++index) {
+      auto type = getPhysicalType(variant.SubMembers.empty()
+                                      ? variant : variant.SubMembers[index]);
+      if (safeBorrowFreeType(type)) continue;
+      auto payload = externalValueDependencies(call->Args[index].get());
+      if (!payload) return std::nullopt;
+      result.insert(payload->begin(), payload->end());
+    }
+    return result;
+  }
+  if (auto *variable = dynamic_cast<VariableExpr *>(value);
+      variable && variable->ResolvedBindingID) {
+    SymbolInfo *binding = nullptr;
+    if (!CurrentScope->findSymbolByID(variable->ResolvedBindingID, binding) ||
+        !binding) return std::nullopt;
+    value->ExternalValueTracked = binding->ExternalValueTracked;
+    if (binding->ExternalValueDependencies)
+      return binding->ExternalValueDependencies;
+    if (binding->ExternalValueTracked)
+      return std::nullopt;
+  }
+  if (value->KnownNullRawStorageType)
+    return std::set<AccessPath>{};
+  std::vector<AccessPath> origins;
+  std::vector<SourceLocation> staticStorage;
+  if (collectActualReturnReferents(value, origins, &staticStorage) &&
+      (!origins.empty() || !staticStorage.empty())) {
+    std::set<AccessPath> result;
+    for (auto origin : origins) {
+      origin = canonicalizeAccessPath(origin);
+      SymbolInfo *binding = nullptr;
+      if (!origin.RootID || !origin.RootLoc.isValid() ||
+          !CurrentScope->findSymbolByID(origin.RootID, binding) || !binding)
+        return std::nullopt;
+      result.insert(std::move(origin));
+    }
+    return result;
+  }
+  if (safeBorrowFreeType(value->ResolvedType))
+    return std::set<AccessPath>{};
+  return std::nullopt;
 }
 
 bool Sema::isStaticReturnStorageCandidate(FunctionDecl *function) {

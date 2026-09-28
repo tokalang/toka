@@ -176,7 +176,10 @@ impl<T> Vec<T> {
 
     /// Moves the backing allocation and all initialized elements into a new
     /// Vec, leaving this Vec empty and immediately reusable.
-    pub fn take(self#) -> Vec<T> {
+    pub fn take(self#) -> Vec<T>
+    effects:
+        return <- self.external
+    {
         unsafe {
             auto nul *taken_buf = self.*buf
             auto taken_len = self.len
@@ -278,7 +281,10 @@ where:
         }
     }
 
-    pub fn insert(self#, index: usize, cede val: T) {
+    pub fn insert(self#, index: usize, cede val: T)
+    effects:
+        self <- val
+    {
         if index > self.len {
             unsafe {
                 libc_printf(c"[Vec] panic: insert index out of bounds\n")
@@ -299,7 +305,10 @@ where:
         }
     }
 
-    pub fn remove(self#, index: usize) -> Option<T> {
+    pub fn remove(self#, index: usize) -> Option<T>
+    effects:
+        return <- self.external
+    {
         if index >= self.len {
             auto outcome = Option<T>::None
             return cede outcome
@@ -316,7 +325,10 @@ where:
         }
     }
 
-    pub fn push(self#, cede val: T) {
+    pub fn push(self#, cede val: T)
+    effects:
+        self <- val
+    {
         unsafe {
             if self.len == self.cap {
                 self#.grow()
@@ -371,7 +383,10 @@ where:
         }
     }
 
-    pub fn set(self#, index: usize, cede val: T) {
+    pub fn set(self#, index: usize, cede val: T)
+    effects:
+        self <- val
+    {
         unsafe {
              if index < self.len {
                  auto _old = Option<T>::Some(cede self.buf[index])
@@ -419,7 +434,10 @@ where:
     T: morphology non_reference
 {
     // Resize vector by cloning the fill value into each new element.
-    pub fn resize(self#, new_len: usize, val: T) {
+    pub fn resize(self#, new_len: usize, val: T)
+    effects:
+        self <- val
+    {
         unsafe {
             if new_len > self.cap {
                  loop self.cap < new_len {
@@ -499,7 +517,10 @@ where:
     // Vec::remove(0) keeps the public consuming order identical to ordinary
     // Vec iteration. A future storage-level drain cursor may optimize this
     // without changing the owned-iterator protocol.
-    pub fn next(self#) -> Option<Item> {
+    pub fn next(self#) -> Option<Item>
+    effects:
+        return <- self.external
+    {
         auto outcome = self#.remove(0)
         return cede outcome
     }
@@ -565,7 +586,7 @@ impl<T> VecIterator<T> {
 impl<T: @Copy> VecIterator<T>@Iterator {
     type Item = T
 
-    pub fn next(self#) -> Option<Item> {
+    pub fn next(self#) -> Option<Item> <- self {
         if self.pos >= self.len {
             return Option<Item>::None
         }

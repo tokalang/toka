@@ -1,0 +1,12 @@
+import std/vec::{Vec}
+
+shape Holder(&value: i32)
+
+fn escaped() -> Vec<Holder> {
+    auto owner = 1:i32
+    auto values# = Vec<Holder>::new()
+    values#.resize(1:usize, Holder(&value = &owner))
+    return cede values
+}
+
+fn main() -> i32 { return 0 }

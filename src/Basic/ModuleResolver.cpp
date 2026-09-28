@@ -857,6 +857,7 @@ bool ModuleResolver::readTKIMetadata(const std::string &path, TKIMetadata &meta)
                 trim(val);
                 if (key == "compiler_version") meta.CompilerVersion = val;
                 else if (key == "format_version") meta.FormatVersion = val;
+                else if (key == "replay_surface_hash") meta.ReplaySurfaceHash = val;
                 else if (key == "target_triple") meta.TargetTriple = val;
                 else if (key == "source_hash") meta.SourceHash = val;
                 else if (key == "source_path") meta.SourcePath = val;
@@ -918,6 +919,22 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(
     if (meta.FormatVersion != TOKA_INTERFACE_FORMAT_VERSION) {
         reason = "Interface format version mismatch (expected " + std::string(TOKA_INTERFACE_FORMAT_VERSION) + ", got " + meta.FormatVersion + ")";
         return TKICacheStatus::FormatVersionMismatch;
+    }
+    if (meta.ReplaySurfaceHash.empty()) {
+        reason = "Missing replay_surface_hash metadata";
+        return TKICacheStatus::FormatVersionMismatch;
+    }
+    {
+        std::ifstream interfaceFile(path, std::ios::binary);
+        std::string content((std::istreambuf_iterator<char>(interfaceFile)),
+                            std::istreambuf_iterator<char>());
+        const size_t declarationsBegin = content.find("\n\n");
+        if (declarationsBegin == std::string::npos ||
+            calculateFNV1a(content.substr(declarationsBegin + 2)) !=
+                meta.ReplaySurfaceHash) {
+            reason = "Interface replay surface hash mismatch";
+            return TKICacheStatus::FormatVersionMismatch;
+        }
     }
     if (!meta.LocalBodyPolicy.empty() && meta.LocalBodyPolicy != TOKA_LOCAL_BODY_POLICY) {
         reason = "Unsupported local_body_policy";

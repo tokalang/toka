@@ -327,6 +327,71 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   if (!rhsIsTodo)
     rhsType = nativeManagedTarget ? checkExpr(Bin->RHS.get(), nativeManagedTarget)
                                   : checkExpr(Bin->RHS.get());
+  if (Bin->Op == "=" && CurrentFunction && !CurrentFunction->Args.empty() &&
+      CurrentFunction->Args.front().Name == "self" &&
+      CurrentFunction->Args.front().IsValueMutable && rhsType &&
+      !rhsType->isRawPointer() && !rhsType->isNullType() &&
+      !safeBorrowFreeType(rhsType)) {
+    const auto destination = canonicalizeAccessPath(
+        makeAccessPath(Bin->LHS.get()));
+    const auto receiver = canonicalizeAccessPath(makeAccessPath("self"));
+    if (destination.RootID && receiver.RootID &&
+        destination.RootID == receiver.RootID &&
+        !destination.Projections.empty()) {
+      const auto sourcePlace = canonicalizeAccessPath(
+          makeAccessPath(Bin->RHS.get()));
+      if (sourcePlace.RootID != receiver.RootID) {
+        auto sources = externalValueDependencies(Bin->RHS.get());
+        if (!sources) {
+          error(Bin, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                "ReceiverWriteSourceUnknown");
+          return Type::fromString("unknown");
+        }
+        for (const auto &source : *sources) {
+          if (source.RootID == receiver.RootID) continue;
+          SymbolInfo *binding = nullptr;
+          std::string name;
+          if (!source.RootID || !CurrentScope->findSymbolByID(
+                  source.RootID, binding, &name) || !binding ||
+              !binding->IsFunctionParameter) {
+            error(Bin, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                  "ReceiverWriteLocalDependency");
+            return Type::fromString("unknown");
+          }
+          bool covered = false;
+          for (const auto &route : CurrentFunction->ReturnContract.Routes)
+            if (route.Target.Kind ==
+                ReturnDependencyTargetKind::ReceiverPoststate)
+              for (const auto &declared : route.Sources) {
+                if (declared.Root != name ||
+                    declared.Members.size() > source.Projections.size())
+                  continue;
+                bool projectionCovered = true;
+                for (size_t index = 0; index < declared.Members.size(); ++index) {
+                  const auto &projection = source.Projections[index];
+                  projectionCovered &=
+                      (projection.Kind == AccessProjectionKind::Field &&
+                       projection.Name == declared.Members[index]) ||
+                      (projection.Kind == AccessProjectionKind::ExternalValue &&
+                       declared.Members[index] == "external");
+                }
+                covered |= projectionCovered;
+              }
+          if (CurrentFunction->Args.front().IsCeded)
+            for (const auto &declared : CurrentFunction->LifeDependencies)
+              covered |= declared == name ||
+                  (declared.size() > name.size() &&
+                   declared.compare(0, name.size(), name) == 0 &&
+                   declared[name.size()] == '.');
+          if (!covered) {
+            error(Bin, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                  "ReceiverWriteDependencyUndeclared");
+            return Type::fromString("unknown");
+          }
+        }
+      }
+    }
+  }
   std::string rhsBorrowSource = ""; 
   if (!rhsIsTodo && !getPathString(Bin->RHS.get()).empty()) {
       rhsBorrowSource = m_LastBorrowSource;

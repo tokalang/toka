@@ -847,9 +847,14 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
 Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   for (auto *scope = CurrentScope; scope; scope = scope->Parent)
-    for (const auto &[name, info] : scope->Symbols)
+    for (const auto &[name, info] : scope->Symbols) {
+      if (info.SymbolID)
+        state.ExternalDependencies[info.SymbolID] = {
+            info.ExternalValueDependencies, info.LifeDependencySet,
+            info.ExternalValueTracked};
       if (info.TypeObj && (info.TypeObj->isUniquePtr() || info.TypeObj->isSharedPtr()))
         state.ManagedBorrows[info.SymbolID] = {info.LifeDependencySet, info.FieldDependencySet};
+    }
   state.IndependentValues = m_IndependentValues;
   state.TaskResults = m_TaskResults;
   state.ByteBuffers = m_ByteBuffers;
@@ -890,6 +895,9 @@ Sema::CallArgumentRollbackGuard::CallArgumentRollbackGuard(
     return;
   Base = Owner.captureAnalysisState();
   DiagnosticStart = DiagnosticEngine::records().size();
+  SavedBorrowSource = Owner.m_LastBorrowSource;
+  SavedLifeDependencies = Owner.m_LastLifeDependencies;
+  SavedFieldDependencies = Owner.m_LastFieldDependencies;
 }
 
 void Sema::CallArgumentRollbackGuard::reject() {
@@ -897,6 +905,11 @@ void Sema::CallArgumentRollbackGuard::reject() {
   Rejected = true;
   if (Base)
     Owner.mergeAnalysisStates({*Base}, Base->PAL);
+  if (Base) {
+    Owner.m_LastBorrowSource = SavedBorrowSource;
+    Owner.m_LastLifeDependencies = SavedLifeDependencies;
+    Owner.m_LastFieldDependencies = SavedFieldDependencies;
+  }
 }
 
 Sema::CallArgumentRollbackGuard::~CallArgumentRollbackGuard() {
@@ -908,8 +921,12 @@ Sema::CallArgumentRollbackGuard::~CallArgumentRollbackGuard() {
                   records.end(), [](const auto &record) {
                     return record.Level == DiagLevel::Error;
                   });
-  if (Rejected || rejected)
+  if (Rejected || rejected) {
     Owner.mergeAnalysisStates({*Base}, Base->PAL);
+    Owner.m_LastBorrowSource = SavedBorrowSource;
+    Owner.m_LastLifeDependencies = SavedLifeDependencies;
+    Owner.m_LastFieldDependencies = SavedFieldDependencies;
+  }
 }
 
 void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
@@ -927,6 +944,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       states.front().PayloadFlowRestrictedPaths;
   auto mergedReferenceTargets = states.front().ReferenceTargets;
   auto managedBorrows = states.front().ManagedBorrows;
+  auto externalDependencies = states.front().ExternalDependencies;
   auto callableEnvironments = states.front().CallableEnvironments;
   auto independentValues = states.front().IndependentValues;
   auto taskResults = states.front().TaskResults;
@@ -952,6 +970,21 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       joined.Roots.insert(dependencies.Roots.begin(), dependencies.Roots.end());
       for (const auto &[field, roots] : dependencies.Fields)
         joined.Fields[field].insert(roots.begin(), roots.end());
+    }
+    for (auto &[id, joined] : externalDependencies) {
+      auto other = state.ExternalDependencies.find(id);
+      if (other == state.ExternalDependencies.end() || !joined.Sources ||
+          !other->second.Sources) {
+        joined.Sources.reset();
+      } else {
+        joined.Sources->insert(other->second.Sources->begin(),
+                               other->second.Sources->end());
+      }
+      if (other != state.ExternalDependencies.end())
+        joined.LegacyRoots.insert(other->second.LegacyRoots.begin(),
+                                  other->second.LegacyRoots.end());
+      if (other != state.ExternalDependencies.end())
+        joined.Tracked |= other->second.Tracked;
     }
     auto intersectNative = [](auto &left, const auto &right) {
       for (auto it = left.begin(); it != left.end();) {
@@ -1077,6 +1110,14 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
     if (CurrentScope->findSymbolByID(id, binding) && binding) {
       binding->LifeDependencySet = dependencies.Roots;
       binding->FieldDependencySet = dependencies.Fields;
+    }
+  }
+  for (const auto &[id, dependencies] : externalDependencies) {
+    SymbolInfo *binding = nullptr;
+    if (CurrentScope->findSymbolByID(id, binding) && binding) {
+      binding->ExternalValueDependencies = dependencies.Sources;
+      binding->LifeDependencySet = dependencies.LegacyRoots;
+      binding->ExternalValueTracked = dependencies.Tracked;
     }
   }
   m_CallableEnvironments = std::move(callableEnvironments);
@@ -4984,6 +5025,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // if the outer method is later rejected by arity, type, or cede checks.
     CallArgumentRollbackGuard methodCallRollback(*this, Met->Args, true, false);
     const size_t taskMethodStart = DiagnosticEngine::records().size();
+    bool applyReceiverEffect = false;
+    uint64_t receiverEffectBindingID = 0;
+    std::optional<std::set<AccessPath>> receiverEffectSources;
     auto completeTaskMethod = [&](std::shared_ptr<Type> result) {
       Met->ResolvedType = result;
       const bool valid = std::none_of(DiagnosticEngine::records().begin() + taskMethodStart,
@@ -4994,6 +5038,62 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (std::any_of(DiagnosticEngine::records().begin() + beforeProof,
           DiagnosticEngine::records().end(), [](const auto &record) { return record.Level == DiagLevel::Error; }))
         methodCallRollback.reject();
+      if (applyReceiverEffect && valid &&
+          DiagnosticEngine::records().size() == beforeProof) {
+        SymbolInfo *receiver = nullptr;
+        if (!receiverEffectBindingID ||
+            !CurrentScope->findSymbolByID(receiverEffectBindingID, receiver) ||
+            !receiver) {
+          error(Met, DiagID::ERR_GENERIC_SEMA,
+                "receiver dependency destination has no exact binding");
+          methodCallRollback.reject();
+        } else {
+          methodCallRollback.arm();
+          receiver->ExternalValueTracked = true;
+          if (!receiver->ExternalValueDependencies || !receiverEffectSources)
+            receiver->ExternalValueDependencies.reset();
+          else
+            receiver->ExternalValueDependencies->insert(
+                receiverEffectSources->begin(), receiverEffectSources->end());
+        }
+      }
+      if (valid && Met->ResolvedFn) {
+        bool hasExternalResult = false;
+        std::optional<std::set<AccessPath>> resultSources =
+            std::set<AccessPath>{};
+        for (const auto &route : Met->ResolvedFn->ReturnContract.Routes) {
+          if (route.Target.Kind != ReturnDependencyTargetKind::ReturnValue)
+            continue;
+          for (const auto &source : route.Sources) {
+            if (source.Members.size() != 1 ||
+                source.Members.front() != "external")
+              continue;
+            hasExternalResult = true;
+            Expr *actual = nullptr;
+            for (size_t index = 0; index < Met->ResolvedFn->Args.size();
+                 ++index) {
+              if (Met->ResolvedFn->Args[index].Name != source.Root)
+                continue;
+              actual = index == 0 ? Met->Object.get() :
+                  index - 1 < Met->Args.size() ? Met->Args[index - 1].get()
+                                               : nullptr;
+              break;
+            }
+            auto carried = externalValueDependencies(actual);
+            if (!carried || !resultSources) {
+              resultSources.reset();
+            } else {
+              resultSources->insert(carried->begin(), carried->end());
+            }
+          }
+        }
+        if (hasExternalResult) {
+          if (safeBorrowFreeType(result))
+            resultSources = std::set<AccessPath>{};
+          Met->ExternalValueDependencies = resultSources;
+          Met->ExternalValueTracked = true;
+        }
+      }
       return result;
     };
     auto isStage1ConcreteMethodParameter = [](const FunctionDecl::Arg &arg) {
@@ -5488,6 +5588,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         FunctionDecl *FD = dupProvider ? dupProvider
                                        : MethodDecls[soulType][Met->Method];
         Met->ResolvedFn = FD;
+        std::vector<std::optional<std::set<AccessPath>>>
+            checkedArgumentSources(Met->Args.size());
+        const bool hasReceiverPoststate = std::any_of(
+            FD->ReturnContract.Routes.begin(), FD->ReturnContract.Routes.end(),
+            [](const ReturnDependencyRouteSyntax &route) {
+              return route.Target.Kind ==
+                     ReturnDependencyTargetKind::ReceiverPoststate;
+            });
+        if (hasReceiverPoststate)
+          methodCallRollback.arm();
         if (FD && FD->DeferredJsonBody && !FD->DeferredJsonBodyChecked && !prepareCallableFactory(FD)) {
           error(Met, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED, "JsonFactoryBodyUnqualified");
           return Type::fromString("unknown");
@@ -5866,6 +5976,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 // If variadic, handle appropriately
                 if (Met->Args.size() < expectedArgs) {
                     error(Met, DiagID::ERR_SEMA_METHOD_EXPECTS_AT_LEAST_ARGUMENTS_GOT, Met->Method, std::to_string(expectedArgs), std::to_string(Met->Args.size()));
+                } else {
+                    error(Met, DiagID::ERR_SEMA_TOO_MANY_ARGUMENTS_PROVIDED_CANNOT_ELIDE);
                 }
             }
             
@@ -5898,6 +6010,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 m_BorrowingSelectedHandle = oldBorrowingSelectedHandle;
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 projectOwnedStringView(Met->Args[i], argTy, expectedParamTy);
+                if (hasReceiverPoststate)
+                  checkedArgumentSources[i] =
+                      externalValueDependencies(Met->Args[i].get());
 
                 const bool stage1ExplicitMethodParameter =
                     i < expectedArgs && m_EnableStage1ExplicitCallerCede &&
@@ -6262,6 +6377,40 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     pair.first + "<-" + argVar, dep, FD->Loc);
               }
             }
+        }
+
+        if (hasReceiverPoststate && !safeBorrowFreeType(ObjTypeObj)) {
+          const auto receiverPath = canonicalizeAccessPath(
+              makeAccessPath(Met->Object.get()));
+          if (!receiverPath.RootID) {
+            error(Met, DiagID::ERR_GENERIC_SEMA,
+                  "receiver dependency effect requires an exact receiver place");
+          } else {
+            applyReceiverEffect = true;
+            receiverEffectBindingID = receiverPath.RootID;
+            receiverEffectSources = std::set<AccessPath>{};
+            for (const auto &route : FD->ReturnContract.Routes) {
+              if (route.Target.Kind !=
+                  ReturnDependencyTargetKind::ReceiverPoststate) continue;
+              for (const auto &source : route.Sources) {
+                if (source.Root == "self") continue;
+                size_t formal = 1;
+                while (formal < FD->Args.size() &&
+                       FD->Args[formal].Name != source.Root)
+                  ++formal;
+                if (formal >= FD->Args.size() || formal - 1 >=
+                    checkedArgumentSources.size() ||
+                    !checkedArgumentSources[formal - 1]) {
+                  receiverEffectSources.reset();
+                  break;
+                }
+                receiverEffectSources->insert(
+                    checkedArgumentSources[formal - 1]->begin(),
+                    checkedArgumentSources[formal - 1]->end());
+              }
+              if (!receiverEffectSources) break;
+            }
+          }
         }
 
         if (FD && FD->Effect == EffectKind::Async) {

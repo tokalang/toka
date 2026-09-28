@@ -5549,6 +5549,26 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
 }
 
 void Sema::checkFunction(FunctionDecl *Fn) {
+  for (const auto &route : Fn->ReturnContract.Routes) {
+    if (route.Target.Kind != ReturnDependencyTargetKind::ReceiverPoststate)
+      continue;
+    if (Fn->Args.empty() || Fn->Args.front().Name != "self" ||
+        !Fn->Args.front().IsValueMutable || Fn->Args.front().IsCeded) {
+      error(Fn, DiagID::ERR_GENERIC_SEMA,
+            "receiver dependency effect requires mutable self#");
+      continue;
+    }
+    for (const auto &source : route.Sources) {
+      const bool declared = std::any_of(
+          Fn->Args.begin(), Fn->Args.end(), [&](const FunctionDecl::Arg &arg) {
+            return arg.Name == source.Root;
+          });
+      if (!declared)
+        error(Fn, DiagID::ERR_GENERIC_SEMA,
+              "receiver dependency source is not a formal parameter: " +
+                  source.Root);
+    }
+  }
   if (Fn->InterfaceLocalBody) m_InterfaceLocalBodies.insert(Fn);
   refreshGenericSourceContracts(Fn);
   auto rawPrepared = m_RawAddressReturns.find(Fn);
@@ -5957,6 +5977,32 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       Info.IsMorphicExempt = true;
     }
     CurrentScope->define(Arg.Name, Info);
+    bool carriesSymbolicExternal = false;
+    for (const auto &route : Fn->ReturnContract.Routes) {
+      if (route.Target.Kind == ReturnDependencyTargetKind::ReceiverPoststate &&
+          argumentIndex == 0)
+        carriesSymbolicExternal = true;
+      for (const auto &source : route.Sources)
+        if (source.Root == Arg.Name &&
+            (route.Target.Kind == ReturnDependencyTargetKind::ReceiverPoststate ||
+             (source.Members.size() == 1 &&
+              source.Members.front() == "external")))
+          carriesSymbolicExternal = true;
+    }
+    if (carriesSymbolicExternal) {
+      auto &formal = CurrentScope->Symbols.at(Arg.Name);
+      formal.ExternalValueTracked = true;
+      formal.ExternalValueDependencies = std::set<AccessPath>{};
+      if (!safeBorrowFreeType(formal.TypeObj)) {
+        auto symbolic = makeAccessPath(Arg.Name);
+        if (symbolic.RootID) {
+          symbolic.Projections.push_back(AccessProjection::externalValue());
+          formal.ExternalValueDependencies->insert(std::move(symbolic));
+        } else {
+          formal.ExternalValueDependencies.reset();
+        }
+      }
+    }
     if (m_EnableStage1ExplicitCallerCede)
       seedTaskResultParameter(Fn, argumentIndex, CurrentScope->Symbols.at(Arg.Name));
     if (m_EnableStage1ExplicitCallerCede && Arg.IsCeded && containsByteBuffer(Info.TypeObj)) {
@@ -5972,6 +6018,35 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       proof->Scope = Fn;
       proof->RequiredArguments.insert(argumentIndex);
       m_IndependentValues[CurrentScope->Symbols.at(Arg.Name).SymbolID] = std::move(proof);
+    }
+  }
+
+  for (const auto &route : Fn->ReturnContract.Routes) {
+    if (route.Target.Kind != ReturnDependencyTargetKind::ReceiverPoststate)
+      continue;
+    for (const auto &source : route.Sources) {
+      auto formal = std::find_if(Fn->Args.begin(), Fn->Args.end(),
+                                 [&](const FunctionDecl::Arg &arg) {
+                                   return arg.Name == source.Root;
+                                 });
+      if (formal == Fn->Args.end()) continue;
+      auto projected = formal->ResolvedType;
+      for (const auto &memberName : source.Members) {
+        auto shape = std::dynamic_pointer_cast<ShapeType>(
+            projected ? projected->getSoulType() : nullptr);
+        const ShapeMember *field = nullptr;
+        if (shape && shape->Decl)
+          for (const auto &candidate : shape->Decl->Members)
+            if (Type::stripMorphology(candidate.Name) == memberName)
+              field = &candidate;
+        if (!field) {
+          error(Fn, DiagID::ERR_GENERIC_SEMA,
+                "receiver dependency projection is not a resolved field: " +
+                    source.toCanonicalString());
+          break;
+        }
+        projected = getPhysicalType(*field);
+      }
     }
   }
 

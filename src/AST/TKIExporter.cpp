@@ -4,6 +4,7 @@
 #include "toka/Parser.h"
 #include "toka/PathUtils.h"
 #include "toka/InterfaceBody.h"
+#include <algorithm>
 #include <cstdio>
 #include <sstream>
 #include <fstream>
@@ -337,6 +338,12 @@ void TKIExporter::writeln(const std::string &str) {
 
 void TKIExporter::exportModule(const Module &module) {
     selectLocalBodies(module);
+    std::string declarations;
+    llvm::raw_string_ostream declarationsStream(declarations);
+    TKIExporter declarationExporter(declarationsStream);
+    declarationExporter.setRetainOutcomeBodies(m_RetainOutcomeBodies);
+    declarationExporter.exportSemanticReplaySurface(module);
+    declarationsStream.flush();
     // 0. Export Metadata Headers
     std::string sourceHash = "";
     if (!module.SourcePath.empty()) {
@@ -364,6 +371,7 @@ void TKIExporter::exportModule(const Module &module) {
         writeln("// @meta local_body_definitions: " + definitions);
     }
     writeln("// @meta format_version: " + std::string(TOKA_INTERFACE_FORMAT_VERSION));
+    writeln("// @meta replay_surface_hash: " + calculateFNV1a(declarations));
     writeln("// @meta target_triple: " + Parser::TargetTriple);
     writeln("// @meta source_hash: " + sourceHash);
     writeln("// @meta source_path: " + PathUtils::canonicalize(module.SourcePath));
@@ -383,7 +391,7 @@ void TKIExporter::exportModule(const Module &module) {
         writeln("// @tki v2 " + fact);
     writeln();
 
-    exportDeclarations(module);
+    m_OS << declarations;
 }
 
 void TKIExporter::exportSemanticReplaySurface(const Module &module) {
@@ -713,8 +721,25 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
 
     std::vector<std::string> lifeDependencies;
     std::map<std::string, std::vector<std::string>> memberDependencies;
+    std::vector<std::string> receiverDependencies;
+    std::vector<std::string> externalReturnSources;
     decl.ReturnContract.deriveLegacyDependencies(lifeDependencies,
                                                  memberDependencies);
+    for (const auto &route : decl.ReturnContract.Routes) {
+        if (route.Target.Kind != ReturnDependencyTargetKind::ReceiverPoststate) {
+            for (const auto &source : route.Sources)
+                if (source.Root == "self" && source.Members.size() == 1 &&
+                    source.Members.front() == "external")
+                    externalReturnSources.push_back(source.toCanonicalString());
+            continue;
+        }
+        for (const auto &source : route.Sources) {
+            const std::string spelling = source.toCanonicalString();
+            if (std::find(receiverDependencies.begin(), receiverDependencies.end(), spelling) ==
+                receiverDependencies.end())
+                receiverDependencies.push_back(spelling);
+        }
+    }
     if (decl.ReturnContract.Routes.empty() &&
         (!decl.LifeDependencies.empty() || !decl.MemberDependencies.empty())) {
         lifeDependencies = decl.LifeDependencies;
@@ -728,7 +753,8 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
         }
     }
     bool useEffectsBlock =
-        !memberDependencies.empty() || hasDottedLifeDependency;
+        !memberDependencies.empty() || hasDottedLifeDependency ||
+        !receiverDependencies.empty() || !externalReturnSources.empty();
 
     if (!lifeDependencies.empty() && !useEffectsBlock) {
         m_OS << " <- ";
@@ -755,6 +781,19 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
                 m_OS << lifeDependencies[i];
             }
             m_OS << "\n";
+        }
+        if (!receiverDependencies.empty()) {
+            indent();
+            m_OS << "self <- ";
+            for (size_t i = 0; i < receiverDependencies.size(); ++i) {
+                if (i > 0) m_OS << " | ";
+                m_OS << receiverDependencies[i];
+            }
+            m_OS << "\n";
+        }
+        for (const auto &source : externalReturnSources) {
+            indent();
+            m_OS << "return <- " << source << "\n";
         }
         for (const auto &pair : memberDependencies) {
             indent();

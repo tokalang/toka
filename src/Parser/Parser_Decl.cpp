@@ -261,6 +261,11 @@ bool Parser::parseReturnDependencyTarget(
   if (match(TokenType::KwReturn)) {
     target.Kind = ReturnDependencyTargetKind::ReturnValue;
     target.End = previous().Loc;
+  } else if (match(TokenType::KwSelf)) {
+    target.Kind = ReturnDependencyTargetKind::ReceiverPoststate;
+    target.BindingName = "self";
+    target.End = previous().Loc;
+    return true;
   } else {
     if (contract.BindingName.empty())
       return false;

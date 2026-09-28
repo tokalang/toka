@@ -21,7 +21,7 @@ write_metadata() {
     local path="$1"
     {
         echo "// @meta compiler_version: any"
-        echo "// @meta format_version: 3"
+        echo "// @meta format_version: 4"
         echo "// @meta target_triple: any"
         echo "// @meta source_hash: any"
         echo "// @meta identity_schema_version: 2"
@@ -33,9 +33,25 @@ write_metadata() {
     } > "$path"
 }
 
+seal_interface() {
+    python3 - "$1" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+header, body = path.read_text().split("\n\n", 1)
+digest = 14695981039346656037
+for byte in body.encode():
+    digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
+path.write_text(header.replace("// @meta format_version: 4",
+    f"// @meta format_version: 4\n// @meta replay_surface_hash: {digest:016x}", 1)
+    + "\n\n" + body)
+PY
+}
+
 expect_rejected_interface() {
     local module="$1"
     local code="$2"
+    seal_interface "$WORK_ROOT/$module.tki"
     cat > "$WORK_ROOT/$module-main.tk" <<EOF
 import ./$module
 

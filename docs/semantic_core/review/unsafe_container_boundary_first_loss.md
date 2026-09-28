@@ -1,6 +1,10 @@
 # Vec write boundary: first lost borrowed source
 
-**Status:** decision required before an implementation change. This branch is
+**Historical diagnostic checkpoint:** the contract was subsequently approved
+and implemented in `unsafe_container_boundary_receiver_poststate.md`. The
+observations below describe the compiler before that implementation.
+
+**Status at this checkpoint:** decision required before an implementation change. This branch is
 based on `a1fdc191b4be453654f458d465dd9f3fb1735696`. It changes no
 production Vec, `raw_take`, PAL, generic bound, ABI, or release asset. The
 four archived counterexamples are compiled only; none is executed.
