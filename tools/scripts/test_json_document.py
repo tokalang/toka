@@ -157,9 +157,9 @@ fn main() -> i32 {
 }
 ''')
         qualify(traversal)
-        # This container remains outside the proved borrowed-element domain;
-        # do not mistake its rejection for a completed generic lifetime proof.
-        qualify(ROOT / 'tests/semantics/json_flat_document/container_borrow_escape.tk', 'E04662')
+        qualify(ROOT / 'tests/semantics/json_flat_document/container_borrow_escape.tk', 'E0455')
+        qualify(ROOT / 'tests/semantics/json_flat_document/container_borrow_owner_alive.tk')
+        qualify(ROOT / 'tests/semantics/json_flat_document/container_owned_return.tk')
         for name, body in {
             'view_escape': 'auto result = parse_document("\\\"owned\\\"")\nauto document = result.unwrap()\nreturn document.text(1)',
             'descriptor_escape': 'auto result = parse_document("\\\"owned\\\"")\nauto document = result.unwrap()\nauto view = document.text(1)\nreturn &view',

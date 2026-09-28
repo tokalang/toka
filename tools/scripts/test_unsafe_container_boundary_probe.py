@@ -23,6 +23,7 @@ ESCAPES = (
     "assignment_field_escape", "assignment_alias_field_escape",
     "assignment_shadowed_source_escape", "assignment_hidden_enum_escape",
     "direct_self_effect_escape", "direct_external_result_escape",
+    "assignment_view_rebase_local_escape",
 )
 RUNTIME = (
     "local_view_alive", "owned_string_return", "owned_token_exact_drop",
@@ -33,6 +34,7 @@ RUNTIME = (
     "assignment_owned_exact_once", "assignment_shadowed_target_alive",
     "qualified_shadowed_target_alive",
     "assignment_owned_pattern_alive",
+    "assignment_view_rebase_parameter",
     "direct_self_owner_alive",
 )
 
@@ -116,6 +118,9 @@ def main():
             else:
                 require(normal.returncode == 1 and "E0455" in normal.stderr,
                         name + ": did not reach local-owner lifetime rejection: " + normal.stderr)
+                if name == "assignment_view_rebase_local_escape":
+                    require("local variable 'owner" in normal.stderr,
+                            "view assignment kept its local alias as the source")
                 for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
                     output = work / (name + suffix)
                     rejected = compile(source, flag, "-o", str(output))

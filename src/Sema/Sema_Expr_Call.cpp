@@ -4610,6 +4610,28 @@ Sema::externalValueDependencies(Expr *value) {
   if (auto *cast = dynamic_cast<CastExpr *>(value);
       cast && cast->Kind == CastKind::Ascription)
     return externalValueDependencies(cast->Expression.get());
+  if (auto *member = dynamic_cast<MemberExpr *>(value);
+      member && !safeBorrowFreeType(value->ResolvedType)) {
+    // A selected field can contain any external borrow carried by the whole
+    // value. Keep the superset through extraction; removing unrelated field
+    // sources is a separate precision problem. In particular, a moved
+    // payload must not acquire a dependency on the retired record slot.
+    auto parent = externalValueDependencies(member->Object.get());
+    const auto objectPath = canonicalizeAccessPath(makeAccessPath(member->Object.get()));
+    const bool symbolicWholeValue = parent && objectPath.RootID &&
+        std::any_of(parent->begin(), parent->end(), [&](const AccessPath &source) {
+          return source.RootID == objectPath.RootID &&
+              !source.Projections.empty() &&
+              source.Projections.back().Kind == AccessProjectionKind::ExternalValue;
+        });
+    // A formal's symbolic whole-value source is not the source of every
+    // selected field. Let the ordinary projection mapper resolve that field.
+    if (member->Object->ExternalValueTracked && !symbolicWholeValue) {
+      value->ExternalValueTracked = true;
+      value->ExternalValueDependencies = parent;
+      return parent;
+    }
+  }
   if (auto *call = dynamic_cast<CallExpr *>(value);
       call && call->ResolvedShape &&
       call->ResolvedShape->Kind == ShapeKind::Enum &&

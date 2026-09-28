@@ -10,7 +10,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CANDIDATE = "0.9.9-26"
+CANDIDATE = "0.9.9-27"
 
 
 def require(condition, message):

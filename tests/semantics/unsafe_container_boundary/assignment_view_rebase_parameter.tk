@@ -1,0 +1,14 @@
+import core/string::{string}
+
+fn trim(input: str) -> str <- input {
+    auto view# = input
+    view = view.substr(1:usize, view.len() - 1:usize)
+    return cede view
+}
+
+fn main() -> i32 {
+    auto owner = string::from(" alive")
+    auto result = trim(owner.as_str())
+    if !result.equals("alive") { return 1 }
+    return 0
+}

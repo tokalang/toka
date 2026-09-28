@@ -911,6 +911,12 @@ void Sema::checkStmt(Stmt *S) {
           externalSource = cast->Expression.get();
         else break;
       }
+      // A field projection may carry the external dependencies of its whole
+      // value. Resolve it before deciding whether the return needs the
+      // external-value lifetime check.
+      std::optional<std::set<AccessPath>> projectedExternalFacts;
+      if (dynamic_cast<MemberExpr *>(externalSource))
+        projectedExternalFacts = externalValueDependencies(externalSource);
       bool externalTracked = externalSource &&
           externalSource->ExternalValueTracked;
       if (auto *variable = dynamic_cast<VariableExpr *>(externalSource);
@@ -922,7 +928,9 @@ void Sema::checkStmt(Stmt *S) {
       }
       const size_t externalDiagnosticStart = DiagnosticEngine::records().size();
       if (externalTracked) {
-        auto externalFacts = externalValueDependencies(Ret->ReturnValue.get());
+        auto externalFacts = projectedExternalFacts
+            ? projectedExternalFacts
+            : externalValueDependencies(Ret->ReturnValue.get());
         isTrackedRet = true;
         if (!externalFacts) {
           error(Ret, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,

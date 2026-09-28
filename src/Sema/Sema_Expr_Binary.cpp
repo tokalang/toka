@@ -1675,7 +1675,32 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           CurrentScope->findSymbolByID(target.RootID, binding) && binding) {
         auto sources = externalValueDependencies(Bin->RHS.get());
         const bool borrowFree = safeBorrowFreeType(rhsType);
-        if (borrowFree) sources = std::set<AccessPath>{};
+        if (borrowFree) {
+          sources = std::set<AccessPath>{};
+        } else if (sources) {
+          std::set<AccessPath> rebased;
+          bool unknown = false;
+          for (const auto &source : *sources) {
+            SymbolInfo *sourceBinding = nullptr;
+            if (source.RootID && CurrentScope->findSymbolByID(
+                    source.RootID, sourceBinding) && sourceBinding) {
+              const auto ownership = queryExplicitCedeStage0OwnershipReadOnly(
+                  sourceBinding->TypeObj);
+              if (ownership && *ownership == ValueOwnership::BorrowedView) {
+                if (!sourceBinding->ExternalValueDependencies) {
+                  unknown = true;
+                  break;
+                }
+                rebased.insert(sourceBinding->ExternalValueDependencies->begin(),
+                               sourceBinding->ExternalValueDependencies->end());
+                continue;
+              }
+            }
+            rebased.insert(source);
+          }
+          if (unknown) sources.reset();
+          else sources = std::move(rebased);
+        }
         if (target.Projections.empty()) {
           binding->ExternalValueDependencies = std::move(sources);
           binding->ExternalValueTracked =

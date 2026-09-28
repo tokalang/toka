@@ -1,0 +1,10 @@
+import core/string::{string}
+
+fn escaped() -> str {
+    auto owner = string::from(" local")
+    auto view# = owner.as_str()
+    view = view.substr(1:usize, view.len() - 1:usize)
+    return cede view
+}
+
+fn main() -> i32 { return 0 }
