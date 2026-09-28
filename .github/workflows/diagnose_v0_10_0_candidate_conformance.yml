@@ -1,0 +1,159 @@
+name: Diagnose v0.10.0 candidate macOS x64 conformance
+
+# Diagnostic only. Use the already qualified SDK; this job cannot qualify or
+# publish a release and never builds the compiler or repackages an archive.
+on:
+  push:
+    branches:
+      - diagnose/v0.10.0-candidate-conformance
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: driver
+          fetch-depth: 0
+
+      - uses: actions/checkout@v4
+        with:
+          ref: a1fdc191b4be453654f458d465dd9f3fb1735696
+          path: source
+          fetch-depth: 0
+
+      - name: Verify isolated driver and qualification identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = a1fdc191b4be453654f458d465dd9f3fb1735696
+          test "$(git -C source rev-parse 'refs/tags/v0.10.0^{commit}')" = a1fdc191b4be453654f458d465dd9f3fb1735696
+          test "$(git -C driver diff --name-only a1fdc191b4be453654f458d465dd9f3fb1735696..HEAD)" = .github/workflows/diagnose_v0_10_0_candidate_conformance.yml
+          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/36367398160 --jq .status)" = completed
+          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/36367398160 --jq .conclusion)" = success
+          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/36367398160 --jq .event)" = workflow_dispatch
+          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/36367398160 --jq .head_sha)" = a1fdc191b4be453654f458d465dd9f3fb1735696
+
+      - name: Install SDK host dependencies
+        run: brew install lld@20 zstd openssl@3
+
+      - name: Download qualified candidate macOS x64 SDK
+        uses: actions/download-artifact@v4
+        with:
+          name: candidate-archive-macos-x64
+          path: candidate
+          github-token: ${{ github.token }}
+          run-id: 36367398160
+
+      - name: Extract exact archive
+        run: |
+          set -euo pipefail
+          archive=candidate/toka-v0.10.0-macos-x64.tar.gz
+          echo 'e5fba90283306b22136974f51b18d98448f4372021d67c8886f5a4c07192d407  candidate/toka-v0.10.0-macos-x64.tar.gz' | shasum -a 256 --check
+          mkdir sdk
+          tar -xzf "$archive" -C sdk
+          test "$(uname -m)" = x86_64
+          file sdk/toka-v0.10.0-macos-x64/bin/tokac
+          sdk/toka-v0.10.0-macos-x64/bin/tokac --version
+
+      - name: Run only the three previously timed out cases
+        id: cases
+        continue-on-error: true
+        env:
+          SDK: ${{ github.workspace }}/sdk/toka-v0.10.0-macos-x64
+        run: |
+          set -euo pipefail
+          mkdir -p diagnosis/work
+          python3 -u - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import time
+
+          root = Path(os.environ['GITHUB_WORKSPACE'])
+          sdk = Path(os.environ['SDK'])
+          work = root / 'diagnosis/work'
+          manifest = json.loads((root / 'source/tests/conformance/manifest.json').read_text())
+          expected = (
+              'syntax_error_propagation_01',
+              'std_tcp_stream_close_invariant_01',
+              'std_async_io_result_take_buffer_exactly_once_01',
+          )
+          selected = {item['id']: item for item in manifest['suites']
+                      if item['id'] in expected}
+          assert set(selected) == set(expected)
+          env = dict(os.environ, TOKA_LIB=str(sdk / 'lib'),
+                     PATH=str(sdk / 'bin') + os.pathsep + os.environ['PATH'])
+          report = {
+              'schema': 'toka.candidate-targeted-conformance', 'version': 1,
+              'candidate_revision': 'a1fdc191b4be453654f458d465dd9f3fb1735696',
+              'version_label': 'v0.10.0', 'qualification_run_id': 36367398160,
+              'archive_sha256': 'e5fba90283306b22136974f51b18d98448f4372021d67c8886f5a4c07192d407',
+              'target': 'macos-x64', 'cases': [],
+          }
+          failed = False
+          for name in expected:
+              item = selected[name]
+              assert item['type'] == 'run' and item['expected_exit_code'] == 0
+              source = root / 'source/tests/conformance' / item['path']
+              output = work / (name + '.exe')
+              row = {'id': name, 'original_compile_limit_seconds':
+                     item['timeout_seconds']}
+              print('START', name, 'compile', flush=True)
+              start = time.monotonic()
+              try:
+                  compiled = subprocess.run(
+                      [str(sdk / 'bin/tokac'), str(source), '-o', str(output)],
+                      cwd=work, env=env, text=True, capture_output=True,
+                      timeout=90)
+                  row['compile_seconds'] = round(time.monotonic() - start, 3)
+                  row['compile_exit_code'] = compiled.returncode
+                  if compiled.returncode != 0 or not output.is_file():
+                      row['compile_output'] = (compiled.stdout + compiled.stderr)[-4000:]
+                      failed = True
+                  else:
+                      print('START', name, 'run', flush=True)
+                      start = time.monotonic()
+                      executed = subprocess.run(
+                          [str(output)], cwd=work, env=env, text=True,
+                          capture_output=True, timeout=30)
+                      row['run_seconds'] = round(time.monotonic() - start, 3)
+                      row['run_exit_code'] = executed.returncode
+                      if executed.returncode != 0:
+                          row['run_output'] = (executed.stdout + executed.stderr)[-4000:]
+                          failed = True
+              except subprocess.TimeoutExpired as error:
+                  row['timeout_phase'] = ('run' if 'compile_exit_code' in row
+                                          else 'compile')
+                  row['timeout_seconds'] = error.timeout
+                  row['elapsed_seconds'] = round(time.monotonic() - start, 3)
+                  failed = True
+              report['cases'].append(row)
+              print(json.dumps(row, sort_keys=True), flush=True)
+          report['result'] = 'fail' if failed else 'pass'
+          (root / 'diagnosis/result.json').write_text(
+              json.dumps(report, sort_keys=True, indent=2) + '\n')
+          sys.exit(1 if failed else 0)
+          PY
+
+      - name: Upload diagnostic timing and outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v0.10.0-candidate-macos-x64-targeted-conformance
+          path: diagnosis/result.json
+          if-no-files-found: error
+
+      - name: Conclude diagnostic
+        if: always()
+        env:
+          CASES_OUTCOME: ${{ steps.cases.outcome }}
+        run: test "$CASES_OUTCOME" = success
