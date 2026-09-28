@@ -36,7 +36,7 @@ fn main() -> i32 {
     values#.push(66:u8)
     {
         auto vec_view = bytes_from_vec(values)
-        auto base = values.unsafe_as_raw() as Addr
+        auto base = unsafe values.unsafe_as_raw() as Addr
         auto view_address = vec_view.raw_ptr() as Addr
         if view_address != base { return 6 }
         if vec_view.at(1:usize).unwrap() != 66:byte { return 7 }

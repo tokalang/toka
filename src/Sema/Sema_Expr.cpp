@@ -5588,6 +5588,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         FunctionDecl *FD = dupProvider ? dupProvider
                                        : MethodDecls[soulType][Met->Method];
         Met->ResolvedFn = FD;
+        if (FD && FD->IsUnsafe && !m_InUnsafeContext) {
+          error(Met, DiagID::ERR_UNSAFE_CALL_REQUIRES_CONTEXT, Met->Method);
+          methodCallRollback.reject();
+          return Type::fromString("unknown");
+        }
         std::vector<std::optional<std::set<AccessPath>>>
             checkedArgumentSources(Met->Args.size());
         const bool hasReceiverPoststate = std::any_of(

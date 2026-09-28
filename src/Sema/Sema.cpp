@@ -462,7 +462,7 @@ void Sema::checkUnsafePublicFunctionBoundary(FunctionDecl *Fn) {
     trustedDeclaration = owner->second->IsTrustedSystemModule;
   }
   if (isUnsafePublicAPIExempt(CurrentModule, Fn->Loc) || trustedDeclaration ||
-      !Fn->IsPub ||
+      !Fn->IsPub || Fn->IsUnsafe ||
       Fn->Name.rfind("unsafe_", 0) == 0 ||
       Fn->Name.rfind("raw_", 0) == 0 || Fn->Name.rfind("__", 0) == 0) {
     return;

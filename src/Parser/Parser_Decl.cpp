@@ -750,6 +750,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
 std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
   if (match(TokenType::KwPub))
     isPub = true;
+  bool isUnsafe = match(TokenType::KwUnsafe);
   consume(TokenType::KwFn, DiagID::ERR_PARSER_EXPECTED_FN);
   Token name;
   if (check(TokenType::KwMain)) {
@@ -1036,6 +1037,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
   auto decl = std::make_unique<FunctionDecl>(
       isPub, name.Text, std::move(args), std::move(body), contract.Type,
       genericParams, std::vector<std::string>{}, contract.Effect);
+  decl->IsUnsafe = isUnsafe;
   decl->setReturnContract(std::move(contract));
   decl->OutcomeContract = std::move(outcomeContract);
   decl->IsVariadic = isVariadic;
@@ -1478,7 +1480,10 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
         isPub = true;
       }
 
-      if (check(TokenType::KwFn)) {
+      if (check(TokenType::KwFn) ||
+          (check(TokenType::KwUnsafe) && checkAt(1, TokenType::KwFn))) {
+        if (!traitName.empty() && check(TokenType::KwUnsafe))
+          error(peek(), DiagID::ERR_UNSAFE_TRAIT_METHOD_UNSUPPORTED);
         methods.push_back(parseFunctionDecl(isPub));
       } else {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_METHOD_IN_IMPL_BLOCK);
@@ -1529,7 +1534,10 @@ std::unique_ptr<TraitDecl> Parser::parseTrait(bool isPub) {
     if (match(TokenType::KwPub)) {
       isPub = true;
     }
-    if (check(TokenType::KwFn)) {
+    if (check(TokenType::KwFn) ||
+        (check(TokenType::KwUnsafe) && checkAt(1, TokenType::KwFn))) {
+      if (check(TokenType::KwUnsafe))
+        error(peek(), DiagID::ERR_UNSAFE_TRAIT_METHOD_UNSUPPORTED);
       methods.push_back(parseFunctionDecl(isPub));
     } else {
       error(peek(), DiagID::ERR_PARSER_EXPECTED_METHOD_PROTOTYPE_IN_TRAIT);

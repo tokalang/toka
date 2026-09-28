@@ -8171,6 +8171,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             MetAST = MethodDecls[methodKey][VariantName];
         }
         Call->ResolvedFn = MetAST;
+        if (MetAST && MetAST->IsUnsafe && !m_InUnsafeContext) {
+          error(Call, DiagID::ERR_UNSAFE_CALL_REQUIRES_CONTEXT, MetAST->Name);
+          if (directArgumentRollback)
+            directArgumentRollback->reject();
+          return Type::fromString("unknown");
+        }
         if (MetAST && MetAST->DeferredJsonBody && !MetAST->DeferredJsonBodyChecked) {
           if (!prepareCallableFactory(MetAST)) {
             error(Call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
@@ -10512,6 +10518,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   if (Fn) {
     Call->ResolvedFn = Fn;
+    if (Fn->IsUnsafe && !m_InUnsafeContext) {
+      error(Call, DiagID::ERR_UNSAFE_CALL_REQUIRES_CONTEXT, Fn->Name);
+      if (directArgumentRollback)
+        directArgumentRollback->reject();
+      return toka::Type::fromString("unknown");
+    }
     std::string fnId = !Fn->CodegenName.empty() ? Fn->CodegenName : Fn->Name;
     markHandleGrammarFunctionReachable(fnId);
     for (auto &arg : Fn->Args) {

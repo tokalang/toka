@@ -4,7 +4,6 @@
 import argparse
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import tempfile
 
@@ -18,11 +17,13 @@ ESCAPES = (
     "alias_receiver_escape", "branch_sources_escape",
     "insert_escape", "set_escape", "clear_retains_dependency",
     "take_escape", "resize_hidden_borrow_escape",
+    "unsafe_does_not_erase_view_escape",
 )
 RUNTIME = (
     "local_view_alive", "owned_string_return", "owned_token_exact_drop",
     "extracted_view_outlives_vec", "owned_pop_outlives_vec",
-    "shadowed_parameter_alive",
+    "shadowed_parameter_alive", "production_nested_vec_lifecycle",
+    "unsafe_from_raw_empty_control", "unsafe_public_raw_control",
 )
 
 
@@ -34,7 +35,8 @@ def require(condition, message):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
-    parser.add_argument("--mode", choices=("diagnose", "closed"), default="closed")
+    parser.add_argument("--mode", choices=("diagnose", "production"),
+                        default="production")
     args = parser.parse_args()
     build = args.build_dir.resolve()
     compiler = build / "bin/tokac"
@@ -51,28 +53,17 @@ def main():
                 cwd=ROOT, capture_output=True, text=True, timeout=15)
             require(baseline.returncode == 0, "baseline Vec source unavailable")
             vec_path.write_text(baseline.stdout)
-        else:
-            shutil.copy2(ROOT / "lib/std/vec.tk", vec_path)
-        with (CASES / "pop_remove.patch").open("rb") as patch:
-            applied = subprocess.run(["patch", "-p1"], cwd=work / "overlay",
-                                     stdin=patch, capture_output=True, timeout=15)
-        require(applied.returncode == 0, "isolated pop patch failed: " + applied.stderr.decode())
-        # The archived replacement changes only pop's body. The approved
-        # external-source result contract is overlaid separately here; the
-        # production raw_take body remains untouched.
-        if args.mode == "closed":
-            vec_source = vec_path.read_text()
-            old_pop = "pub fn pop(self#) -> Option<T> {"
-            require(vec_source.count(old_pop) == 1, "isolated pop signature changed")
-            vec_path.write_text(vec_source.replace(
-                old_pop, "pub fn pop(self#) -> Option<T>\n"
-                         "    effects:\n"
-                         "        return <- self.external\n"
-                         "    {"))
+            with (CASES / "pop_remove.patch").open("rb") as patch:
+                applied = subprocess.run(["patch", "-p1"], cwd=work / "overlay",
+                                         stdin=patch, capture_output=True,
+                                         timeout=15)
+            require(applied.returncode == 0,
+                    "isolated pop patch failed: " + applied.stderr.decode())
         env = dict(os.environ, TOKA_LIB=os.pathsep.join(
             (str(overlay_lib), str(ROOT / "lib"), str(build / "lib"))))
 
         def compile(source, *flags, isolated=True):
+            isolated = isolated and args.mode != "production"
             command = [str(compiler)]
             if isolated:
                 command += ["-I", str(overlay_lib)]
@@ -86,8 +77,8 @@ def main():
             for name in ESCAPES[:4]:
                 source = CASES / (name + ".tk")
                 baseline = compile(source, "--check-only", isolated=False)
-                require(baseline.returncode == 1 and "E04662" in baseline.stderr,
-                        name + ": production pop no longer masks the escape")
+                require(baseline.returncode == 1 and "E0455" in baseline.stderr,
+                        name + ": production escape was accepted")
                 for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
                     output = work / ("production-" + name + suffix)
                     rejected = compile(source, flag, "-o", str(output), isolated=False)
@@ -139,8 +130,15 @@ def main():
 
         for name, error_code in (("reference_escape", "E0455"),
                                  ("borrowed_element_storage_escape", "E0455"),
+                                 ("unwrap_borrowed_element_storage_escape", "E0455"),
                                  ("active_borrow_mutation", "E0441"),
-                                 ("rejected_call_rollback", "E04557")):
+                                 ("rejected_call_rollback", "E04557"),
+                                 ("unsafe_from_raw_safe_reject", "E0623"),
+                                 ("unsafe_set_len_safe_reject", "E0623"),
+                                 ("unsafe_storage_safe_reject", "E0623"),
+                                 ("private_vec_fields_reject", "E0418"),
+                                 ("private_vec_fields_unsafe_reject", "E0418"),
+                                 ("private_vec_constructor_reject", "E0418")):
             source = CASES / (name + ".tk")
             normal = compile(source, "--check-only")
             shadow = compile(source, "--check-only", "--non-call-transfer-shadow=json")

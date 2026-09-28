@@ -704,6 +704,7 @@ void TKIExporter::exportImpl(const ImplDecl &decl) {
 void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
     indent();
     if (decl.IsPub) m_OS << "pub ";
+    if (decl.IsUnsafe) m_OS << "unsafe ";
     m_OS << "fn " << decl.Name;
     printGenericParams(decl.GenericParams);
     m_OS << "(";

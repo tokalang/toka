@@ -815,7 +815,7 @@ mkdir -p "$TEST_DIR/sourceless_interface"
 
 cat << 'EOF' > "$TEST_DIR/sourceless_interface/lib.tki"
 // @meta compiler_version: any
-// @meta format_version: 4
+// @meta format_version: 5
 // @meta target_triple: any
 // @meta source_hash: any
 // @meta identity_schema_version: 2
@@ -833,8 +833,8 @@ header, body = path.read_text().split("\n\n", 1)
 digest = 14695981039346656037
 for byte in body.encode():
     digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
-path.write_text(header.replace("// @meta format_version: 4",
-    f"// @meta format_version: 4\n// @meta replay_surface_hash: {digest:016x}", 1)
+path.write_text(header.replace("// @meta format_version: 5",
+    f"// @meta format_version: 5\n// @meta replay_surface_hash: {digest:016x}", 1)
     + "\n\n" + body)
 PY
 

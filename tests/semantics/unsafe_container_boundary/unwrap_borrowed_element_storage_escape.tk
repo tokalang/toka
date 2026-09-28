@@ -1,0 +1,11 @@
+import std/vec::{Vec}
+import core/option::{Option}
+
+fn escaped() -> &i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(7)
+    auto item = Option<&i32>::Some(values.borrow(0:usize))
+    return item.unwrap()
+}
+
+fn main() -> i32 { return 0 }

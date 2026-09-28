@@ -1,0 +1,6 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto values = unsafe Vec<i32>::from_raw(null, 0:usize, 0:usize)
+    return values.len() as i32
+}

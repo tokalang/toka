@@ -1,0 +1,6 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    Vec<i32>::from_raw(null, 0:usize, 0:usize)
+    return 0
+}

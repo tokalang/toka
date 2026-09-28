@@ -2552,6 +2552,7 @@ public:
   };
 
   bool IsPub = false;
+  bool IsUnsafe = false;
   std::string Name;
   std::string CodegenName;
   std::vector<Arg> Args;
@@ -2668,6 +2669,7 @@ public:
     auto n = std::make_unique<FunctionDecl>(IsPub, Name, std::move(clonedArgs),
                                             std::move(clonedBody), ReturnType,
                                             GenericParams, LifeDependencies, Effect);
+    n->IsUnsafe = IsUnsafe;
     n->CodegenName = CodegenName;
     n->setReturnContract(ReturnContract);
     n->GenericReturnContract = GenericReturnContract;

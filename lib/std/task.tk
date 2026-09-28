@@ -127,9 +127,9 @@ impl TimerHeap {
 // ==========================================
 // Global Ready Task Queue (based on underlying inline pthread_mutex + Vec)
 // ==========================================
-auto g_task_queue# = Vec<TaskPtr>(*buf=null, len=0, cap=0)
-auto g_timer_queue# = TimerHeap(data=Vec<TimerEntry>(*buf=null, len=0, cap=0))
-auto g_detached_tasks# = Vec<TaskPtr>(*buf=null, len=0, cap=0)
+auto g_task_queue# = Vec<TaskPtr>::new()
+auto g_timer_queue# = TimerHeap(data=Vec<TimerEntry>::new())
+auto g_detached_tasks# = Vec<TaskPtr>::new()
 
 auto g_mutex_ptr# = 0:Addr
 auto g_mutex_init# = false:bool

@@ -1,0 +1,7 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto values = Vec<i32>::new()
+    unsafe { values.*buf }
+    return 0
+}

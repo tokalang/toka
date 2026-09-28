@@ -1,5 +1,9 @@
 # Receiver poststate dependencies: implementation closeout
 
+**Historical mechanism checkpoint.** The subsequent production Vec candidate
+and its separate verification are recorded in
+`unsafe_container_boundary_production_integration.md`.
+
 This change is isolated on `design/unsafe-container-boundary`, based on
 `a1fdc191b4be453654f458d465dd9f3fb1735696`. It does not change the
 production `raw_take` check, native ABI, the release candidate, or any release
@@ -51,7 +55,7 @@ to preserve their legal reference source.
 
 TKI exports receiver and external-result routes as symbolic formal paths,
 never as a compilation's binding IDs. Import maps those paths to the current
-call's bindings. Interface format 4 and compiler interface version `0.9.9-24`
+call's bindings. Interface format 5 and compiler interface version `0.9.9-25`
 reject old caches; the `replay_surface_hash` covers the exact declaration
 surface so a changed source-hidden effect cannot silently replay. The native
 ABI is unchanged.

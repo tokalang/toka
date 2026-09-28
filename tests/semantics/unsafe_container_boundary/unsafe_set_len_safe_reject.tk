@@ -1,0 +1,7 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::with_capacity(1:usize)
+    values#.unsafe_set_len(1:usize)
+    return 0
+}

@@ -100,7 +100,8 @@ pub fn btree_node_insert_non_full_iterative<K: @PartialOrd, V>(root_addr: Addr, 
             
             loop idx < node.keys.len() {
                 auto tmp_k = cede key_buf[0]
-                auto cmp_res = tmp_k.cmp(node.keys.buf[idx])
+                auto *key_ptr = node.keys.unsafe_get(idx) as *[K]
+                auto cmp_res = tmp_k.cmp(key_ptr[0])
                 key_buf[0] = cede tmp_k
                 
                 if cmp_res == 0 {
@@ -124,7 +125,8 @@ pub fn btree_node_insert_non_full_iterative<K: @PartialOrd, V>(root_addr: Addr, 
                 if child.keys.len() == 5 {
                     node#.split_child(idx)
                     auto tmp_k2 = cede key_buf[0]
-                    auto cmp2 = tmp_k2.cmp(node.keys.buf[idx])
+                    auto *key_ptr = node.keys.unsafe_get(idx) as *[K]
+                    auto cmp2 = tmp_k2.cmp(key_ptr[0])
                     key_buf[0] = cede tmp_k2
                     if cmp2 > 0 {
                         idx += 1
@@ -151,9 +153,11 @@ pub fn btree_node_get<K: @PartialOrd, V: @Dup>(node_addr: Addr, key: K) -> Optio
             auto i# = 0:usize
 
             loop i < n.keys.len() {
-                auto cmp_res = key.cmp(n.keys.buf[i])
+                auto *key_ptr = n.keys.unsafe_get(i) as *[K]
+                auto cmp_res = key.cmp(key_ptr[0])
                 if cmp_res == 0 {
-                    return Option<V>::Some(n.vals.buf[i].dup())
+                    auto *value_ptr = n.vals.unsafe_get(i) as *[V]
+                    return Option<V>::Some(value_ptr[0].dup())
                 }
                 if cmp_res < 0 {
                     break
@@ -178,7 +182,8 @@ pub fn btree_node_contains<K: @PartialOrd, V>(node_addr: Addr, key: K) -> bool {
             auto i# = 0:usize
 
             loop i < n.keys.len() {
-                auto cmp_res = key.cmp(n.keys.buf[i])
+                auto *key_ptr = n.keys.unsafe_get(i) as *[K]
+                auto cmp_res = key.cmp(key_ptr[0])
                 if cmp_res == 0 { return true }
                 if cmp_res < 0 { break }
                 i += 1

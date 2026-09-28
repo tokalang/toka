@@ -17,27 +17,6 @@ import core/traits::{@Copy, @Dup, @Encap, @Iterable, @Iterator, @IntoIterable, @
 import sys/libc::*
 import core/option::{Option}
 
-// Private unsafe-container bridge. `storage[0..length]` is the caller-maintained
-// live prefix; raw_take does not prove that extent or maintain the remainder.
-// Prepare/check every operand before retiring the tail. Between the length
-// store and the take body there is no allocation, user call or suspension.
-fn vec_pop_raw_tail<T>(nul *storage: [T], length#: usize) -> Option<T> {
-    if length == 0 {
-        auto outcome = Option<T>::None
-        return cede outcome
-    }
-    if *storage is null {
-        unsafe { libc_abort() }
-        unreachable
-    } else {
-        auto tail = length - 1
-        length = tail
-        auto outcome = Option<T>::Some(unsafe raw_take storage[tail])
-        return cede outcome
-    }
-}
-
-
 // Helper for mutable iteration
 shape Counter(val: usize)
 impl Counter {
@@ -130,7 +109,6 @@ impl<T: @Dup> Vec<T> {
 }
 
 impl<T> Vec<T>@Encap {
-    pub buf, len, cap
     fn drop(self#) {
         unsafe {
             if self.*buf != null {
@@ -223,7 +201,11 @@ impl<T> Vec<T> {
         }
     }
     
-    pub fn from_raw(nul *buf: [T], len: usize, cap: usize) -> Vec<T> {
+    // Caller proves len <= cap, a compatible allocation of cap slots (null
+    // only when cap is zero), an initialized prefix of exactly len complete
+    // elements, no conflicting live borrow, and sole cleanup responsibility.
+    // The compiler does not infer these facts from the raw address.
+    pub unsafe fn from_raw(nul *buf: [T], len: usize, cap: usize) -> Vec<T> {
         return Vec<T>(
             *buf=*buf,
             len=len,
@@ -231,7 +213,7 @@ impl<T> Vec<T> {
         )
     }
 
-    pub fn unsafe_forget(self#) {
+    pub unsafe fn unsafe_forget(self#) {
         unsafe {
             self.*buf = null
             self.cap = 0
@@ -239,11 +221,29 @@ impl<T> Vec<T> {
         }
     }
 
-    pub fn unsafe_as_raw(self) -> nul *[T] {
+    pub unsafe fn unsafe_as_raw(self) -> nul *[T] {
         return self.*buf
     }
 
-    pub fn unsafe_into_raw(self#) -> nul *[T]# {
+    // Caller is responsible for bounds, initialized slots and retirement.
+    pub unsafe fn unsafe_storage(self) -> *[T] {
+        return self.*buf.unwrap()
+    }
+
+    pub unsafe fn unsafe_storage_mut(self#) -> *[T]# {
+        return self.*#buf.unwrap()
+    }
+
+    // Caller proves index names an initialized slot and keeps the Vec alive
+    // for the returned borrow. PAL still tracks this borrow of Vec storage.
+    pub unsafe fn unsafe_borrow(self, index: usize) -> &item: T
+    effects:
+        &item <- self
+    {
+        unsafe { return &self.buf[index] }
+    }
+
+    pub unsafe fn unsafe_into_raw(self#) -> nul *[T]# {
         unsafe {
             // Nullify buffer to prevent drop from freeing it
             // This is used when ownership is manually transferred
@@ -255,10 +255,9 @@ impl<T> Vec<T> {
         }
     }
 
-    // Set the logical length without initializing or moving elements.
-    // This is restricted to buffer adapters that initialize the selected range
-    // through an FFI read before exposing it to safe code.
-    pub fn unsafe_set_len(self#, new_len: usize) {
+    // Caller proves newly exposed slots are initialized and retired slots no
+    // longer need Vec cleanup. This operation does not initialize or drop.
+    pub unsafe fn unsafe_set_len(self#, new_len: usize) {
         unsafe {
             if new_len <= self.cap {
                 self.len = new_len
@@ -341,8 +340,16 @@ where:
         }
     }
 
-    pub fn pop(self#) -> Option<T> {
-        auto outcome = vec_pop_raw_tail<T>(self.*buf, self.len#)
+    pub fn pop(self#) -> Option<T>
+    effects:
+        return <- self.external
+    {
+        if self.len == 0 {
+            auto outcome = Option<T>::None
+            return cede outcome
+        }
+        auto tail = self.len - 1
+        auto outcome = self#.remove(tail)
         return cede outcome
     }
 
@@ -458,7 +465,7 @@ impl<T> Vec<T>
 where:
     T: morphology raw_extendable
 {
-    pub fn unsafe_get(self, index: usize) -> *T {
+    pub unsafe fn unsafe_get(self, index: usize) -> *T {
         unsafe {
             auto *ptr = self.*buf.unwrap() as *[T]
             // This API returns the slot address, not the complete element
@@ -470,7 +477,7 @@ where:
         }
     }
 
-    pub fn unsafe_get_mut(self#, index: usize) -> *T# {
+    pub unsafe fn unsafe_get_mut(self#, index: usize) -> *T# {
         unsafe {
             auto *#ptr# = self.*#buf.unwrap() as *[T]
             auto address = (*ptr as Addr) + index * sizeof(T)

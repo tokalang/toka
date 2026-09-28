@@ -45,23 +45,24 @@ fn main() -> i32 {
 }
 ''', None)
 for name, mutation in {
-    'raw_import': 'auto data = Vec<u8>::from_raw(null, 0:usize, 0:usize)',
+    'raw_import': 'auto data = unsafe Vec<u8>::from_raw(null, 0:usize, 0:usize)',
     'direct_constructor': 'auto data = Vec<u8>(*buf=null, len=0:usize, cap=0:usize)',
     'overwritten_length': 'auto data# = Vec<u8>::new(); data.len = 1:usize',
     'overwritten_capacity': 'auto data# = Vec<u8>::new(); data.cap = 1:usize',
-    'raw_export': 'auto data# = Vec<u8>::new(); auto nul *pointer = data.unsafe_as_raw()',
-    'raw_takeaway': 'auto data# = Vec<u8>::new(); auto nul *pointer# = data#.unsafe_into_raw()',
-    'unproved_length': 'auto data# = Vec<u8>::with_capacity(4); data#.unsafe_set_len(4)',
+    'raw_export': 'auto data# = Vec<u8>::new(); auto nul *pointer = unsafe data.unsafe_as_raw()',
+    'raw_takeaway': 'auto data# = Vec<u8>::new(); auto nul *pointer# = unsafe data#.unsafe_into_raw()',
+    'unproved_length': 'auto data# = Vec<u8>::with_capacity(4); unsafe data#.unsafe_set_len(4)',
 }.items():
     gate.CASES[name] = (PREFIX + '\nfn main() -> i32 {\n' + mutation + '''
     auto result = block_on(relay(cede data))
     return 0
 }
-''', 'E04661')
+''', 'E0418' if name in ('direct_constructor', 'overwritten_length',
+                       'overwritten_capacity') else 'E04661')
 gate.CASES['unqualified_branch'] = (PREFIX + '''
 fn make(flag: bool) -> Vec<u8> {
     auto data# = Vec<u8>::new()
-    if flag { data.cap = 1:usize }
+    if flag { unsafe data#.unsafe_set_len(1:usize) }
     return cede data
 }
 fn main() -> i32 { auto value = make(false); auto result = block_on(relay(cede value)); return 0 }
@@ -91,7 +92,7 @@ fn main() -> i32 {
 }
 ''', None)
 gate.CASES['unknown_modifier'] = (PREFIX + '''
-fn replace(value#: Vec<u8>) { value.cap = 1:usize }
+fn replace(value#: Vec<u8>) { unsafe value#.unsafe_set_len(1:usize) }
 fn main() -> i32 {
     auto value# = Vec<u8>::new()
     replace(value#)
@@ -103,7 +104,7 @@ gate.CASES['mutated_task_result'] = (PREFIX + '''
 fn main() -> i32 {
     auto value = Vec<u8>::new()
     auto result# = block_on(relay(cede value))
-    result.cap = 1:usize
+    unsafe result#.unsafe_set_len(1:usize)
     auto second = block_on(relay(cede result))
     return 0
 }
@@ -120,7 +121,7 @@ fn main() -> i32 {
     auto good = forward_bytes(cede first)
     auto ok = block_on(relay(cede good))
     auto second# = Vec<u8>::new()
-    second.cap = 7:usize
+    unsafe second#.unsafe_set_len(7:usize)
     auto bad = forward_bytes(cede second)
     auto rejected = block_on(relay(cede bad))
     return 0
@@ -155,7 +156,7 @@ gate.CASES['task_result_branch_pollution'] = (PREFIX + '''
 fn damaged(flag: bool) -> async Vec<u8> {
     auto first = Vec<u8>::new()
     auto value# = block_on(relay(cede first))
-    if flag { value.cap = 1:usize } else { value = Vec<u8>::new() }
+    if flag { unsafe value#.unsafe_set_len(1:usize) } else { value = Vec<u8>::new() }
     return cede value
 }
 fn main() -> i32 { auto result = block_on(damaged(false)); return 0 }
@@ -167,7 +168,7 @@ fn inspect_value(cede value: Vec<u8>) -> usize {
     return count
 }
 fn main() -> i32 {
-    auto raw = Vec<u8>::from_raw(null, 0:usize, 0:usize)
+    auto raw = unsafe Vec<u8>::from_raw(null, 0:usize, 0:usize)
     auto number = inspect_value(cede raw)
     assert(number == 0:usize, "local use does not need an independence witness")
     return 0
@@ -176,15 +177,15 @@ fn main() -> i32 {
 gate.CASES['descriptor_alias_control'] = (PREFIX + '''
 fn main() -> i32 {
     auto value# = Vec<u8>::new()
-    { auto &descriptor# = &value; descriptor.cap = 0:usize }
-    assert(value.len() == 0:usize, "legal descriptor write, not an ownership proof")
+    { auto &descriptor# = &value; unsafe descriptor#.unsafe_set_len(0:usize) }
+    assert(value.len() == 0:usize, "unsafe descriptor write, not an ownership proof")
     return 0
 }
 ''', None)
 gate.CASES['descriptor_alias_pollution'] = (PREFIX + '''
 fn main() -> i32 {
     auto value# = Vec<u8>::new()
-    { auto &descriptor# = &value; descriptor.cap = 0:usize }
+    { auto &descriptor# = &value; unsafe descriptor#.unsafe_set_len(0:usize) }
     auto result = block_on(relay(cede value))
     return 0
 }
@@ -216,7 +217,7 @@ fn main() -> i32 {
 gate.CASES['closure_mutation'] = (PREFIX + '''
 fn main() -> i32 {
     auto value# = Vec<u8>::new()
-    { auto action# = { => value.cap = 0:usize; return 0 }; auto status = action#() }
+    { auto action# = { => unsafe value#.unsafe_set_len(0:usize); return 0 }; auto status = action#() }
     auto result = block_on(relay(cede value))
     return 0
 }
@@ -231,7 +232,7 @@ for name, result_type, expression in (
     ('sequential_resize_mutation', 'usize', 'auto count = poison(value#); value#.resize(count, 0:u8)'),
 ):
     gate.CASES[name] = (PREFIX + f'''
-fn poison(value#: Vec<u8>) -> {result_type} {{ value.cap = 1:usize; return {0 if result_type == 'u8' else 1}:{result_type} }}
+fn poison(value#: Vec<u8>) -> {result_type} {{ unsafe value#.unsafe_set_len(1:usize); return {0 if result_type == 'u8' else 1}:{result_type} }}
 fn main() -> i32 {{
     auto value# = Vec<u8>::new()
     {expression}
@@ -261,7 +262,7 @@ fn main() -> i32 {
 ''', None)
 gate.CASES['nested_member_mutation'] = (PREFIX + '''
 shape Envelope(buffer#: Vec<u8>)
-fn poison(value#: Vec<u8>) -> u8 { value.cap = 1:usize; return 1:u8 }
+fn poison(value#: Vec<u8>) -> u8 { unsafe value#.unsafe_set_len(1:usize); return 1:u8 }
 fn main() -> i32 {
     auto data = Vec<u8>::new()
     auto owner# = Envelope(buffer=cede data)
@@ -274,7 +275,7 @@ fn main() -> i32 {
 gate.CASES['nested_alias_mutation'] = (PREFIX + '''
 fn poison_alias(value#: Vec<u8>) -> u8 {
     auto &descriptor# = &value
-    descriptor.cap = 1:usize
+    unsafe descriptor#.unsafe_set_len(1:usize)
     return 0:u8
 }
 fn main() -> i32 {
@@ -297,7 +298,7 @@ fn main() -> i32 {
 }
 ''', None)
 gate.CASES['nested_mutation_rollback'] = (PREFIX + '''
-fn poison(value#: Vec<u8>) -> u8 { value.cap = 1:usize; return 1:u8 }
+fn poison(value#: Vec<u8>) -> u8 { unsafe value#.unsafe_set_len(1:usize); return 1:u8 }
 fn need_boolean(cede value: Vec<u8>, flag: bool) { cede value }
 fn main() -> i32 {
     auto value = Vec<u8>::new()

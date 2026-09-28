@@ -8,7 +8,7 @@ namespace {
 // RC13 implementation. A changed library body cannot silently inherit native
 // lease authority; updating the implementation requires requalification.
 constexpr const char *kReadDataFileSourceSHA256 =
-    "560d2e089d9a356d6253c05a0134cbe82590c582b08028008cdef8a76e237ee1";
+    "8db6e8372ffc7c0cf85c2db47970850e27edf0848f18e0cb9c0bb0db2547c269";
 constexpr const char *kNativeDeclarationsSHA256 =
     "9ad7d86356a3e7da822b9ff78ce5eb17c315eba280d0b0e55f9ac319d48c87a0";
 

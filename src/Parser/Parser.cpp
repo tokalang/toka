@@ -1187,7 +1187,8 @@ std::unique_ptr<Module> Parser::parseModule() {
 
     if (check(TokenType::KwImport)) {
       module->Imports.push_back(parseImport(isPub));
-    } else if (check(TokenType::KwFn)) {
+    } else if (check(TokenType::KwFn) ||
+               (check(TokenType::KwUnsafe) && checkAt(1, TokenType::KwFn))) {
       module->Functions.push_back(parseFunctionDecl(isPub));
     } else if (check(TokenType::KwLet) || check(TokenType::KwAuto) ||
                check(TokenType::KwConst) ||
