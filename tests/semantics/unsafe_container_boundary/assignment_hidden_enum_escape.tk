@@ -1,0 +1,15 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+shape Payload(View(str) | Empty)
+
+fn escaped() -> Vec<Payload> {
+    auto owner = string::from("local")
+    auto left# = Vec<Payload>::new()
+    auto right# = Vec<Payload>::new()
+    right#.push(Payload::View(owner.as_str()))
+    left = cede right
+    return cede left
+}
+
+fn main() -> i32 { return 0 }

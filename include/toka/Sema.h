@@ -1424,6 +1424,10 @@ private:
                                    std::map<std::string, ActualReturnFieldOrigins> *fields = nullptr);
   bool safeBorrowFreeType(const std::shared_ptr<Type> &type);
   std::optional<std::set<AccessPath>> externalValueDependencies(Expr *value);
+  bool applyExternalCallEffects(
+      FunctionDecl *function, const std::vector<Expr *> &actuals,
+      const std::vector<std::optional<std::set<AccessPath>>> &checkedSources,
+      Expr *call, const std::shared_ptr<Type> &resultType);
   void invalidateReturnSourceProof(Expr *expression, bool unknown = true);
   bool collectActualBindingReferents(Expr *expression,
                                     std::vector<AccessPath> &paths,

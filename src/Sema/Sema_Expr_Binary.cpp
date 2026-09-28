@@ -172,6 +172,7 @@ static bool proveDistinctArrayElements(const ArrayIndexExpr *destination,
 
 // Stage 5: Object-Oriented Binary Expression Check
 std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
+  const size_t assignmentDiagnosticStart = DiagnosticEngine::records().size();
   struct SuffixGuard {
     bool &flag;
     bool oldVal;
@@ -1657,8 +1658,43 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       }
     }
 
-    if (bindingTransfer.prepare(Bin->RHS.get(), lhsType, Bin->LHS.get(), true, rhsType))
+    const bool transferPrepared = bindingTransfer.prepare(
+        Bin->RHS.get(), lhsType, Bin->LHS.get(), true, rhsType);
+    if (transferPrepared)
       bindingTransfer.complete();
+    if (Bin->Op == "=" && transferPrepared &&
+        std::none_of(DiagnosticEngine::records().begin() +
+                         assignmentDiagnosticStart,
+                     DiagnosticEngine::records().end(),
+                     [](const auto &record) {
+                       return record.Level == DiagLevel::Error;
+                     })) {
+      const auto target = canonicalizeAccessPath(makeAccessPath(Bin->LHS.get()));
+      SymbolInfo *binding = nullptr;
+      if (target.RootID &&
+          CurrentScope->findSymbolByID(target.RootID, binding) && binding) {
+        auto sources = externalValueDependencies(Bin->RHS.get());
+        const bool borrowFree = safeBorrowFreeType(rhsType);
+        if (borrowFree) sources = std::set<AccessPath>{};
+        if (target.Projections.empty()) {
+          binding->ExternalValueDependencies = std::move(sources);
+          binding->ExternalValueTracked =
+              Bin->RHS->ExternalValueTracked || !borrowFree ||
+              (binding->ExternalValueDependencies &&
+               !binding->ExternalValueDependencies->empty());
+        } else if (!binding->TypeObj ||
+                   !binding->TypeObj->isRawPointer()) {
+          // A field or element replacement can leave other live fields in the
+          // root. Retain old sources and conservatively join the new value.
+          binding->ExternalValueTracked = true;
+          if (!binding->ExternalValueDependencies || !sources)
+            binding->ExternalValueDependencies.reset();
+          else
+            binding->ExternalValueDependencies->insert(sources->begin(),
+                                                        sources->end());
+        }
+      }
+    }
     return lhsType;
   }
 

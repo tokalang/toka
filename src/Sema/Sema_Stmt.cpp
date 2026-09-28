@@ -920,6 +920,7 @@ void Sema::checkStmt(Stmt *S) {
                                          binding) && binding)
           externalTracked |= binding->ExternalValueTracked;
       }
+      const size_t externalDiagnosticStart = DiagnosticEngine::records().size();
       if (externalTracked) {
         auto externalFacts = externalValueDependencies(Ret->ReturnValue.get());
         isTrackedRet = true;
@@ -960,6 +961,10 @@ void Sema::checkStmt(Stmt *S) {
               DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_ESCAPE_LOCAL,
                                        path);
               HasError = true;
+              if (binding->DeclLoc.isValid())
+                DiagnosticEngine::report(binding->DeclLoc,
+                                         DiagID::NOTE_GENERIC,
+                                         "escaping local declared here");
               continue;
             }
             auto covers = [&](const std::string &declared) {
@@ -1003,6 +1008,17 @@ void Sema::checkStmt(Stmt *S) {
           }
         }
       }
+
+      // The external-value check has already rejected this return. Running
+      // the legacy borrow collector on the same source would repeat E0455;
+      // valid returns still go through it to check new storage borrows.
+      if (std::any_of(DiagnosticEngine::records().begin() +
+                          externalDiagnosticStart,
+                      DiagnosticEngine::records().end(),
+                      [](const auto &record) {
+                        return record.Level == DiagLevel::Error;
+                      }))
+        isTrackedRet = false;
 
       if (isTrackedRet) {
           std::set<std::string> returnedDeps;

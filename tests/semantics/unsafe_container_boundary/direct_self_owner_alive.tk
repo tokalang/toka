@@ -1,0 +1,17 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn append(self#: Vec<str>, val: str)
+effects:
+    self <- val
+{
+    self#.push(val)
+}
+
+fn main() -> i32 {
+    auto owner = string::from("alive")
+    auto values# = Vec<str>::new()
+    append(values#, owner.as_str())
+    if !values.borrow(0:usize).equals("alive") { return 1 }
+    return 0
+}

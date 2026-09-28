@@ -18,12 +18,22 @@ ESCAPES = (
     "insert_escape", "set_escape", "clear_retains_dependency",
     "take_escape", "resize_hidden_borrow_escape",
     "unsafe_does_not_erase_view_escape",
+    "qualified_push_escape", "qualified_remove_escape",
+    "assignment_escape", "assignment_branch_escape",
+    "assignment_field_escape", "assignment_alias_field_escape",
+    "assignment_shadowed_source_escape", "assignment_hidden_enum_escape",
+    "direct_self_effect_escape", "direct_external_result_escape",
 )
 RUNTIME = (
     "local_view_alive", "owned_string_return", "owned_token_exact_drop",
     "extracted_view_outlives_vec", "owned_pop_outlives_vec",
     "shadowed_parameter_alive", "production_nested_vec_lifecycle",
     "unsafe_from_raw_empty_control", "unsafe_public_raw_control",
+    "qualified_owner_alive", "assignment_replaces_old_dependency",
+    "assignment_owned_exact_once", "assignment_shadowed_target_alive",
+    "qualified_shadowed_target_alive",
+    "assignment_owned_pattern_alive",
+    "direct_self_owner_alive",
 )
 
 
@@ -133,6 +143,10 @@ def main():
                                  ("unwrap_borrowed_element_storage_escape", "E0455"),
                                  ("active_borrow_mutation", "E0441"),
                                  ("rejected_call_rollback", "E04557"),
+                                 ("qualified_rejected_call_rollback", "E04557"),
+                                 ("direct_rejected_call_rollback", "E04569"),
+                                 ("assignment_rejected_rollback", "E0408"),
+                                 ("assignment_unknown_stays_unknown", "E0455"),
                                  ("unsafe_from_raw_safe_reject", "E0623"),
                                  ("unsafe_set_len_safe_reject", "E0623"),
                                  ("unsafe_storage_safe_reject", "E0623"),
@@ -145,9 +159,15 @@ def main():
             require(normal.returncode == shadow.returncode == 1 and
                     normal.stderr == shadow.stderr and error_code in normal.stderr,
                     name + ": existing safety gate changed")
-            if name == "rejected_call_rollback":
+            if name in ("rejected_call_rollback",
+                        "qualified_rejected_call_rollback",
+                        "direct_rejected_call_rollback",
+                        "assignment_rejected_rollback"):
                 require("error[E0455]" not in normal.stderr,
                         "rejected call polluted receiver dependencies")
+            if name == "assignment_rejected_rollback":
+                require("error[E0438]" not in normal.stderr,
+                        "rejected assignment consumed its source")
             output = work / (name + ".o")
             rejected = compile(source, "-c", "-o", str(output))
             require(rejected.returncode == 1 and not output.exists(),

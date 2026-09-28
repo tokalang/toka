@@ -4664,6 +4664,95 @@ Sema::externalValueDependencies(Expr *value) {
   return std::nullopt;
 }
 
+bool Sema::applyExternalCallEffects(
+    FunctionDecl *function, const std::vector<Expr *> &actuals,
+    const std::vector<std::optional<std::set<AccessPath>>> &checkedSources,
+    Expr *call, const std::shared_ptr<Type> &resultType) {
+  if (!function || actuals.size() != function->Args.size() ||
+      checkedSources.size() != actuals.size()) {
+    error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+          "ExternalCallFormalArityMismatch");
+    return false;
+  }
+  auto formalIndex = [&](const std::string &name) -> size_t {
+    for (size_t index = 0; index < function->Args.size(); ++index)
+      if (function->Args[index].Name == name) return index;
+    return function->Args.size();
+  };
+  bool receiverRoute = false;
+  bool resultRoute = false;
+  std::optional<std::set<AccessPath>> incoming = std::set<AccessPath>{};
+  std::optional<std::set<AccessPath>> resultSources = std::set<AccessPath>{};
+  for (const auto &route : function->ReturnContract.Routes) {
+    if (route.Target.Kind == ReturnDependencyTargetKind::ReceiverPoststate) {
+      receiverRoute = true;
+      for (const auto &source : route.Sources) {
+        if (source.Root == "self") continue; // Prior receiver sources survive.
+        const size_t index = formalIndex(source.Root);
+        if (index == actuals.size()) {
+          error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                "ReceiverEffectFormalUnavailable");
+          return false;
+        }
+        if (!incoming || !checkedSources[index]) incoming.reset();
+        else incoming->insert(checkedSources[index]->begin(),
+                              checkedSources[index]->end());
+      }
+    } else if (route.Target.Kind == ReturnDependencyTargetKind::ReturnValue) {
+      for (const auto &source : route.Sources) {
+        if (source.Members.size() != 1 ||
+            source.Members.front() != "external") continue;
+        resultRoute = true;
+        const size_t index = formalIndex(source.Root);
+        if (index == actuals.size()) {
+          error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                "ResultExternalFormalUnavailable");
+          return false;
+        }
+        if (!resultSources || !checkedSources[index]) resultSources.reset();
+        else resultSources->insert(checkedSources[index]->begin(),
+                                   checkedSources[index]->end());
+      }
+    }
+  }
+  SymbolInfo *receiver = nullptr;
+  if (receiverRoute &&
+      (function->Args.empty() || function->Args.front().Name != "self" ||
+       !function->Args.front().IsValueMutable)) {
+    error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+          "ReceiverEffectRequiresMutableSelf");
+    return false;
+  }
+  if (receiverRoute && (actuals.empty() || !actuals[0])) {
+    error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+          "ReceiverEffectActualUnavailable");
+    return false;
+  }
+  if (receiverRoute && !safeBorrowFreeType(actuals[0]->ResolvedType)) {
+    const auto path = canonicalizeAccessPath(makeAccessPath(actuals[0]));
+    if (!path.RootID || !CurrentScope->findSymbolByID(path.RootID, receiver) ||
+        !receiver) {
+      error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+            "ReceiverEffectIdentityUnavailable");
+      return false;
+    }
+  }
+  if (safeBorrowFreeType(resultType)) resultSources = std::set<AccessPath>{};
+  if (receiver) {
+    receiver->ExternalValueTracked = true;
+    if (!receiver->ExternalValueDependencies || !incoming)
+      receiver->ExternalValueDependencies.reset();
+    else
+      receiver->ExternalValueDependencies->insert(incoming->begin(),
+                                                   incoming->end());
+  }
+  if (resultRoute) {
+    call->ExternalValueDependencies = std::move(resultSources);
+    call->ExternalValueTracked = true;
+  }
+  return true;
+}
+
 bool Sema::isStaticReturnStorageCandidate(FunctionDecl *function) {
   if (!function || !function->Body || function->IsClosureInvoke ||
       function->Effect != EffectKind::None || !function->LifeDependencies.empty() ||
@@ -8171,6 +8260,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             MetAST = MethodDecls[methodKey][VariantName];
         }
         Call->ResolvedFn = MetAST;
+        const size_t staticDiagnosticStart = DiagnosticEngine::records().size();
         if (MetAST && MetAST->IsUnsafe && !m_InUnsafeContext) {
           error(Call, DiagID::ERR_UNSAFE_CALL_REQUIRES_CONTEXT, MetAST->Name);
           if (directArgumentRollback)
@@ -8195,9 +8285,32 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 if (Call->Args.size() < expectedArgs) {
                     DiagnosticEngine::report(getLoc(Call), DiagID::ERR_SEMA_STATIC_METHOD_EXPECTS_AT_LEAST_ARGUMENTS, MetAST->Name, std::to_string(expectedArgs), std::to_string(Call->Args.size()));
                     HasError = true;
+                } else {
+                    error(Call, DiagID::ERR_SEMA_TOO_MANY_ARGUMENTS_PROVIDED_CANNOT_ELIDE);
                 }
             }
         }
+
+        const bool hasReceiverPoststate = MetAST && std::any_of(
+            MetAST->ReturnContract.Routes.begin(),
+            MetAST->ReturnContract.Routes.end(),
+            [](const ReturnDependencyRouteSyntax &route) {
+              return route.Target.Kind ==
+                     ReturnDependencyTargetKind::ReceiverPoststate;
+            });
+        const bool hasExternalRoute = MetAST && std::any_of(
+            MetAST->ReturnContract.Routes.begin(),
+            MetAST->ReturnContract.Routes.end(),
+            [](const ReturnDependencyRouteSyntax &route) {
+              if (route.Target.Kind ==
+                  ReturnDependencyTargetKind::ReceiverPoststate) return true;
+              return route.Target.Kind == ReturnDependencyTargetKind::ReturnValue &&
+                  std::any_of(route.Sources.begin(), route.Sources.end(),
+                      [](const DependencyPathSyntax &source) {
+                        return source.Members.size() == 1 &&
+                               source.Members.front() == "external";
+                      });
+            });
 
         bool signatureStaticSlice =
             m_EnableSignatureDrivenCallCede && MetAST &&
@@ -8227,8 +8340,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         std::vector<PendingStaticCede> pendingStaticCedes;
         std::vector<bool> plannedStaticCede(Call->Args.size(), false);
         std::vector<std::pair<AccessPath, size_t>> staticArgumentPaths;
-        const size_t staticDiagnosticStart = DiagnosticEngine::records().size();
-        CallArgumentRollbackGuard staticRollback(*this, Call->Args);
+        CallArgumentRollbackGuard staticRollback(*this, Call->Args,
+                                                 hasReceiverPoststate);
+        std::vector<std::optional<std::set<AccessPath>>> checkedStaticSources(
+            Call->Args.size());
         std::vector<bool> staticFormals(Call->Args.size(), false);
         std::vector<std::string> staticNames(Call->Args.size());
         for (size_t index = 0; MetAST && index < Call->Args.size() &&
@@ -8354,6 +8469,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                        "Argument " + std::to_string(i + 1) + " (actual: " + argTy->getSoulName() + ")", expectedTy->getSoulName(), argTy->getSoulName());
               HasError = true;
           }
+          if (hasExternalRoute)
+            checkedStaticSources[i] =
+                externalValueDependencies(Call->Args[i].get());
         }
         for (size_t left = 0; left < staticArgumentPaths.size(); ++left) {
           for (size_t right = left + 1; right < staticArgumentPaths.size();
@@ -8441,6 +8559,27 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               m_LastLifeDependencies.insert(origin.toLegacyString());
         }
         markExplicitCedeStage0RouteValidationComplete(Call);
+        if (hasExternalRoute) {
+          const auto &records = DiagnosticEngine::records();
+          if (std::any_of(records.begin() +
+                              std::min(staticDiagnosticStart, records.size()),
+                          records.end(), [](const auto &record) {
+                            return record.Level == DiagLevel::Error;
+                          })) {
+            staticRollback.reject();
+            return Type::fromString("unknown");
+          }
+          std::vector<Expr *> actuals;
+          actuals.reserve(Call->Args.size());
+          for (const auto &argument : Call->Args)
+            actuals.push_back(argument.get());
+          if (!applyExternalCallEffects(MetAST, actuals,
+                                        checkedStaticSources, Call,
+                                        resolvedRet)) {
+            staticRollback.reject();
+            return Type::fromString("unknown");
+          }
+        }
         return resolvedRet;
       } else {
         // [NEW] Lazy Impl Instantiation
@@ -10157,10 +10296,30 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   const bool isGenericDirectCall =
       Fn && (!Fn->GenericParams.empty() || Fn->TemplateOrigin);
+  const bool directHasReceiverPoststate = Fn && std::any_of(
+      Fn->ReturnContract.Routes.begin(), Fn->ReturnContract.Routes.end(),
+      [](const ReturnDependencyRouteSyntax &route) {
+        return route.Target.Kind ==
+               ReturnDependencyTargetKind::ReceiverPoststate;
+      });
+  const bool directHasExternalRoute = Fn && std::any_of(
+      Fn->ReturnContract.Routes.begin(), Fn->ReturnContract.Routes.end(),
+      [](const ReturnDependencyRouteSyntax &route) {
+        if (route.Target.Kind ==
+            ReturnDependencyTargetKind::ReceiverPoststate) return true;
+        return route.Target.Kind == ReturnDependencyTargetKind::ReturnValue &&
+            std::any_of(route.Sources.begin(), route.Sources.end(),
+                [](const DependencyPathSyntax &source) {
+                  return source.Members.size() == 1 &&
+                         source.Members.front() == "external";
+                });
+      });
   const bool isTaskResultCall = m_EnableStage1ExplicitCallerCede && Fn && std::any_of(Fn->Args.begin(), Fn->Args.end(),
       [&](const auto &argument) { return taskResultType(argument.ResolvedType) != nullptr; });
   if (!directArgumentRollback)
-    directArgumentRollback.emplace(*this, Call->Args, isGenericDirectCall || isTaskResultCall);
+    directArgumentRollback.emplace(*this, Call->Args,
+                                   isGenericDirectCall || isTaskResultCall ||
+                                       directHasReceiverPoststate);
 
   // 5. Synthesize FunctionType
   // ParamTypes, ReturnType
@@ -11309,6 +11468,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     return ReturnType;
   }
 
+  std::vector<std::optional<std::set<AccessPath>>> checkedDirectSources(
+      Call->Args.size());
   for (size_t i = 0; i < Call->Args.size(); ++i) {
     if (m_AuthorityFactsSession)
       observeAuthorityFacts(Call->Args[i].get());
@@ -11405,6 +11566,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     if (descendantJournal)
       SemanticEvidence::rollbackCallTransferJournal(*descendantJournal);
     projectOwnedStringView(Call->Args[i], argType, paramType);
+    if (directHasExternalRoute)
+      checkedDirectSources[i] =
+          externalValueDependencies(Call->Args[i].get());
     if (d3ObservationInput && i == 0)
       d3LegacyArgumentType = argType;
 
@@ -12393,6 +12557,24 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       DiagnosticEngine::records().begin() + taskResultDiagnosticStart,
       DiagnosticEngine::records().end(),
       [](const auto &record) { return record.Level == DiagLevel::Error; }));
+  if (!isAsync && directHasExternalRoute &&
+      std::none_of(DiagnosticEngine::records().begin() +
+                       taskResultDiagnosticStart,
+                   DiagnosticEngine::records().end(),
+                   [](const auto &record) {
+                     return record.Level == DiagLevel::Error;
+                   })) {
+    std::vector<Expr *> actuals;
+    actuals.reserve(Call->Args.size());
+    for (const auto &argument : Call->Args)
+      actuals.push_back(argument.get());
+    if (!applyExternalCallEffects(Fn, actuals, checkedDirectSources, Call,
+                                  completedResultType)) {
+      if (directArgumentRollback)
+        directArgumentRollback->reject();
+      return Type::fromString("unknown");
+    }
+  }
   return completedResultType;
 }
 

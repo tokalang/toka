@@ -5025,9 +5025,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // if the outer method is later rejected by arity, type, or cede checks.
     CallArgumentRollbackGuard methodCallRollback(*this, Met->Args, true, false);
     const size_t taskMethodStart = DiagnosticEngine::records().size();
-    bool applyReceiverEffect = false;
-    uint64_t receiverEffectBindingID = 0;
-    std::optional<std::set<AccessPath>> receiverEffectSources;
+    std::vector<std::optional<std::set<AccessPath>>> checkedArgumentSources;
     auto completeTaskMethod = [&](std::shared_ptr<Type> result) {
       Met->ResolvedType = result;
       const bool valid = std::none_of(DiagnosticEngine::records().begin() + taskMethodStart,
@@ -5038,60 +5036,37 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (std::any_of(DiagnosticEngine::records().begin() + beforeProof,
           DiagnosticEngine::records().end(), [](const auto &record) { return record.Level == DiagLevel::Error; }))
         methodCallRollback.reject();
-      if (applyReceiverEffect && valid &&
+      if (valid && Met->ResolvedFn &&
           DiagnosticEngine::records().size() == beforeProof) {
-        SymbolInfo *receiver = nullptr;
-        if (!receiverEffectBindingID ||
-            !CurrentScope->findSymbolByID(receiverEffectBindingID, receiver) ||
-            !receiver) {
-          error(Met, DiagID::ERR_GENERIC_SEMA,
-                "receiver dependency destination has no exact binding");
-          methodCallRollback.reject();
-        } else {
-          methodCallRollback.arm();
-          receiver->ExternalValueTracked = true;
-          if (!receiver->ExternalValueDependencies || !receiverEffectSources)
-            receiver->ExternalValueDependencies.reset();
-          else
-            receiver->ExternalValueDependencies->insert(
-                receiverEffectSources->begin(), receiverEffectSources->end());
-        }
-      }
-      if (valid && Met->ResolvedFn) {
-        bool hasExternalResult = false;
-        std::optional<std::set<AccessPath>> resultSources =
-            std::set<AccessPath>{};
-        for (const auto &route : Met->ResolvedFn->ReturnContract.Routes) {
-          if (route.Target.Kind != ReturnDependencyTargetKind::ReturnValue)
-            continue;
-          for (const auto &source : route.Sources) {
-            if (source.Members.size() != 1 ||
-                source.Members.front() != "external")
-              continue;
-            hasExternalResult = true;
-            Expr *actual = nullptr;
-            for (size_t index = 0; index < Met->ResolvedFn->Args.size();
-                 ++index) {
-              if (Met->ResolvedFn->Args[index].Name != source.Root)
-                continue;
-              actual = index == 0 ? Met->Object.get() :
-                  index - 1 < Met->Args.size() ? Met->Args[index - 1].get()
-                                               : nullptr;
-              break;
-            }
-            auto carried = externalValueDependencies(actual);
-            if (!carried || !resultSources) {
-              resultSources.reset();
-            } else {
-              resultSources->insert(carried->begin(), carried->end());
-            }
+        const auto &function = *Met->ResolvedFn;
+        const bool hasExternalRoute = std::any_of(
+            function.ReturnContract.Routes.begin(),
+            function.ReturnContract.Routes.end(),
+            [](const ReturnDependencyRouteSyntax &route) {
+              if (route.Target.Kind ==
+                  ReturnDependencyTargetKind::ReceiverPoststate) return true;
+              if (route.Target.Kind != ReturnDependencyTargetKind::ReturnValue)
+                return false;
+              return std::any_of(route.Sources.begin(), route.Sources.end(),
+                  [](const DependencyPathSyntax &source) {
+                    return source.Members.size() == 1 &&
+                           source.Members.front() == "external";
+                  });
+            });
+        if (hasExternalRoute) {
+          std::vector<Expr *> actuals;
+          std::vector<std::optional<std::set<AccessPath>>> sources;
+          actuals.push_back(Met->Object.get());
+          sources.push_back(externalValueDependencies(Met->Object.get()));
+          for (size_t index = 0; index < Met->Args.size(); ++index) {
+            actuals.push_back(Met->Args[index].get());
+            sources.push_back(index < checkedArgumentSources.size()
+                                  ? checkedArgumentSources[index]
+                                  : externalValueDependencies(Met->Args[index].get()));
           }
-        }
-        if (hasExternalResult) {
-          if (safeBorrowFreeType(result))
-            resultSources = std::set<AccessPath>{};
-          Met->ExternalValueDependencies = resultSources;
-          Met->ExternalValueTracked = true;
+          if (!applyExternalCallEffects(Met->ResolvedFn, actuals, sources,
+                                        Met, result))
+            methodCallRollback.reject();
         }
       }
       return result;
@@ -5593,13 +5568,22 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           methodCallRollback.reject();
           return Type::fromString("unknown");
         }
-        std::vector<std::optional<std::set<AccessPath>>>
-            checkedArgumentSources(Met->Args.size());
+        checkedArgumentSources.resize(Met->Args.size());
         const bool hasReceiverPoststate = std::any_of(
             FD->ReturnContract.Routes.begin(), FD->ReturnContract.Routes.end(),
             [](const ReturnDependencyRouteSyntax &route) {
               return route.Target.Kind ==
                      ReturnDependencyTargetKind::ReceiverPoststate;
+            });
+        const bool hasExternalResult = std::any_of(
+            FD->ReturnContract.Routes.begin(), FD->ReturnContract.Routes.end(),
+            [](const ReturnDependencyRouteSyntax &route) {
+              return route.Target.Kind == ReturnDependencyTargetKind::ReturnValue &&
+                     std::any_of(route.Sources.begin(), route.Sources.end(),
+                         [](const DependencyPathSyntax &source) {
+                           return source.Members.size() == 1 &&
+                                  source.Members.front() == "external";
+                         });
             });
         if (hasReceiverPoststate)
           methodCallRollback.arm();
@@ -6015,7 +5999,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 m_BorrowingSelectedHandle = oldBorrowingSelectedHandle;
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 projectOwnedStringView(Met->Args[i], argTy, expectedParamTy);
-                if (hasReceiverPoststate)
+                if (hasReceiverPoststate || hasExternalResult)
                   checkedArgumentSources[i] =
                       externalValueDependencies(Met->Args[i].get());
 
@@ -6382,40 +6366,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     pair.first + "<-" + argVar, dep, FD->Loc);
               }
             }
-        }
-
-        if (hasReceiverPoststate && !safeBorrowFreeType(ObjTypeObj)) {
-          const auto receiverPath = canonicalizeAccessPath(
-              makeAccessPath(Met->Object.get()));
-          if (!receiverPath.RootID) {
-            error(Met, DiagID::ERR_GENERIC_SEMA,
-                  "receiver dependency effect requires an exact receiver place");
-          } else {
-            applyReceiverEffect = true;
-            receiverEffectBindingID = receiverPath.RootID;
-            receiverEffectSources = std::set<AccessPath>{};
-            for (const auto &route : FD->ReturnContract.Routes) {
-              if (route.Target.Kind !=
-                  ReturnDependencyTargetKind::ReceiverPoststate) continue;
-              for (const auto &source : route.Sources) {
-                if (source.Root == "self") continue;
-                size_t formal = 1;
-                while (formal < FD->Args.size() &&
-                       FD->Args[formal].Name != source.Root)
-                  ++formal;
-                if (formal >= FD->Args.size() || formal - 1 >=
-                    checkedArgumentSources.size() ||
-                    !checkedArgumentSources[formal - 1]) {
-                  receiverEffectSources.reset();
-                  break;
-                }
-                receiverEffectSources->insert(
-                    checkedArgumentSources[formal - 1]->begin(),
-                    checkedArgumentSources[formal - 1]->end());
-              }
-              if (!receiverEffectSources) break;
-            }
-          }
         }
 
         if (FD && FD->Effect == EffectKind::Async) {

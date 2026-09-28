@@ -10,7 +10,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CANDIDATE = "0.9.9-25"
+CANDIDATE = "0.9.9-26"
 
 
 def require(condition, message):
@@ -55,6 +55,11 @@ impl Slot {
                 env=env, capture_output=True, text=True, timeout=45)
             require(rejected.returncode == 1 and expected in rejected.stderr,
                     name + ": invalid declaration was accepted")
+        provider.write_text(provider.read_text() + """pub fn replace_direct(self#: Slot, next: Input)
+effects:
+    self <- next.view
+{ self.view = next.view }
+""")
         consumer = work / "consumer.tk"
         consumer.write_text("""import ./slot::{Slot, Input}
 import core/string::{string}
@@ -74,7 +79,8 @@ fn main() -> i32 { return 0 }
         require(built.returncode == 0, "provider failed: " + built.stderr)
         interface = work / "slot.tki"
         original = interface.read_text()
-        require("self <- next.view" in original and
+        require("pub fn replace_direct" in original and
+                original.count("self <- next.view") == 2 and
                 "compiler_version: " + CANDIDATE in original,
                 "interface lost receiver effect or version")
         provider.rename(work / "slot.tk.hidden")
@@ -106,6 +112,30 @@ fn main() -> i32 { return 0 }
             require(rejected.returncode == 1 and not output.exists(),
                     "source-hidden escape produced an artifact")
 
+        direct_consumer = work / "direct_consumer.tk"
+        direct_consumer.write_text(consumer.read_text().replace(
+            "import ./slot::{Slot, Input}",
+            "import ./slot::{Slot, Input, replace_direct}").replace(
+            "box#.replace(input)", "replace_direct(box#, input)"))
+        direct_normal = subprocess.run(
+            [str(compiler), "--check-only", str(direct_consumer)], cwd=work,
+            env=env, capture_output=True, text=True, timeout=45)
+        direct_shadow = subprocess.run(
+            [str(compiler), "--check-only", "--non-call-transfer-shadow=json",
+             str(direct_consumer)], cwd=work, env=env, capture_output=True,
+            text=True, timeout=45)
+        require(direct_normal.returncode == direct_shadow.returncode == 1 and
+                direct_normal.stderr == direct_shadow.stderr and
+                "error[E0455]" in direct_normal.stderr,
+                "source-hidden direct receiver effect did not reach lifetime check")
+        for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
+            output = work / ("direct_consumer" + suffix)
+            rejected = subprocess.run(
+                [str(compiler), flag, "-o", str(output), str(direct_consumer)],
+                cwd=work, env=env, capture_output=True, text=True, timeout=45)
+            require(rejected.returncode == 1 and not output.exists(),
+                    "source-hidden direct escape produced an artifact")
+
         interface.write_text(original.replace("self <- next.view",
                                               "self <- next.missing", 1))
         tampered = subprocess.run(
@@ -118,7 +148,7 @@ fn main() -> i32 { return 0 }
 
         interface.write_text(original.replace(
             "compiler_version: " + CANDIDATE,
-            "compiler_version: 0.9.9-24", 1))
+            "compiler_version: 0.9.9-25", 1))
         old = subprocess.run(
             [str(compiler), "--check-only", str(consumer)], cwd=work,
             env=env, capture_output=True, text=True, timeout=45)

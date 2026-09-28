@@ -1,0 +1,15 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn main() -> i32 {
+    auto owner = string::from("alive")
+    auto view# = "static"
+    {
+        auto values# = Vec<str>::new()
+        Vec<str>::push(values#, owner.as_str())
+        auto result = Vec<str>::remove(values#, 0:usize)
+        view = result.unwrap()
+    }
+    if !view.equals("alive") { return 1 }
+    return 0
+}

@@ -36,10 +36,14 @@ facts from raw pointers. Unsafe trait methods are rejected E0624 in this
 narrow first version so a safe trait dispatch cannot erase the call boundary.
 
 The modifier is preserved in source-hidden TKI; interface format 5 and
-compiler interface version `0.9.9-25` reject older records. Native value and
+compiler interface version `0.9.9-26` reject older records. Native value and
 call ABI are unchanged. Source-hidden tests verify that removing `unsafe`
 without updating the interface replay hash fails and that a safe caller still
 cannot invoke the imported declaration.
+
+The interface compiler-version bump to `0.9.9-26` also prevents reusing an
+object compiled by the earlier `0.9.9-25` checker, which omitted the qualified
+call and whole-assignment dependency updates repaired in this package.
 
 The existing byte-buffer contract has exact, compiler-owned SHA-256 seals
 for `std/vec`, `std/bytes` and `std/net`. These were refreshed only after the
@@ -59,13 +63,49 @@ unsafe raw-storage and initialized-slot borrow methods; DataFile, net and
 bufio enter unsafe for their raw/length operations. HashMap keeps its own
 occupied-slot metadata and retirement responsibility.
 
+## Independent P0 review and correction
+
+Review of the first production candidate found two safe borrow escapes that
+the initial probe missed. A qualified call to the same `Vec<str>::push`
+method skipped `self <- val`; whole assignment `left = cede right` updated
+legacy dependencies but left the new external-value state on `left` empty.
+The two review programs compiled to object and IR before this correction;
+they were never executed. Those original results remain separate audit
+evidence.
+
+Instance methods, qualified methods and ordinary functions with a mutable
+`self#` formal now use one checked formal-to-actual mapper for receiver
+poststate and `return <- self.external` routes. The qualified and ordinary
+call paths capture actual sources as arguments are checked, map them by
+binding ID, and publish the effect only after call validation. A rejected
+call restores its argument and receiver state. Whole-value assignment now
+replaces the destination's external source set on successful transfer;
+field/element replacement conservatively joins sources into the containing
+root. An unknown source remains unknown. The existing analysis-state snapshot
+and branch join carry these facts by binding ID. Structurally borrow-free
+owned values such as `string` are independent even when a pattern binder has
+a temporary legacy source path. This keeps legal owned assignment and
+exact-once cleanup working.
+
+The two original escapes, qualified extraction, direct `self#` calls,
+branch/field/alias/shadow assignments, and unsafe-wrapped use now reach the
+local-owner lifetime rejection in normal and shadow mode without object or
+IR. Legal owner-live qualified calls, dependency-replacing assignment,
+shadowed target use, owned pattern assignment and exact-once owned transfer
+run successfully. Wrong-arity calls and incompatible assignment reject
+without leaving a spurious owner escape or consumed source. Source-hidden
+contracts remain checked. Compiler interface version `0.9.9-26` prevents
+reusing an object made by the earlier checker; interface format 5 and native
+ABI remain unchanged. The production probe and source-hidden contract driver
+are registered in CTest so the regular build gate runs them.
+
 ## Verification boundary
 
 `test_unsafe_container_boundary_probe.py --mode production` uses the actual
-standard library, with no overlay or archived pop patch. It checks all 17
+standard library, with no overlay or archived pop patch. It checks all 27
 borrow escape cases in normal and non-call shadow mode, requiring E0455 and
 no object or IR. One case proves that an `unsafe` block around `push` does not
-erase the ordinary string-view owner source. It runs ten runtime controls,
+erase the ordinary string-view owner source. It runs seventeen runtime controls,
 including a nonempty nested `Vec<Item(children: Vec<Leaf>)>` case covering construction,
 both levels' growth, insertion, nested borrow, replacement, removal, pop,
 consuming iteration, whole-container lifetime and exact-once drop accounting.
@@ -83,10 +123,12 @@ fixture now invokes `raw_take` directly instead of relying on Vec::pop to
 instantiate it. The byte-buffer and TKI cache/unsafe/excluded-syntax gates
 also pass. The first broad pass-suite run found 13 affected BTreeMap/HashMap
 clients after field closure; all 13 passed a targeted rerun after migration.
-The complete pass suite then passed 459/459. The first conformance run passed
+The first production candidate's complete pass suite then passed 459/459. Its
+first conformance run passed
 324/325; its single DataFile closure failure was the old exact source digest.
 After both Sema and CodeGen digests were refreshed and the DataFile concurrency
-case passed alone, the full conformance suite passed 325/325. Initial failures
+case passed alone, the full conformance suite passed 325/325. Those results
+precede the P0 correction and are not its qualification. Initial failures
 and final reruns are kept as separate logs under
 `evidence/unsafe-container-production-3ef17ae8/` outside the repository.
 

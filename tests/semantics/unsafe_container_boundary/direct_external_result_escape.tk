@@ -1,0 +1,21 @@
+import std/vec::{Vec}
+import core/string::{string}
+import core/option::{Option}
+
+fn take(self#: Vec<str>) -> Option<str>
+effects:
+    return <- self.external
+{
+    auto result = self#.remove(0:usize)
+    return cede result
+}
+
+fn escaped() -> Option<str> {
+    auto owner = string::from("local")
+    auto values# = Vec<str>::new()
+    values#.push(owner.as_str())
+    auto result = take(values#)
+    return cede result
+}
+
+fn main() -> i32 { return 0 }

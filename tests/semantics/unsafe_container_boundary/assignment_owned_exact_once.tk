@@ -1,0 +1,30 @@
+import std/vec::{Vec}
+import core/string::{string}
+import core/traits::{@Encap}
+
+auto drops# = 0:i32
+shape Token(label: string)
+impl Token@Encap {
+    pub label
+    fn drop(self#) { drops += 1:i32 }
+}
+
+fn produce() -> Vec<Token> {
+    auto left# = Vec<Token>::new()
+    auto right# = Vec<Token>::new()
+    auto token = Token(label = string::from("owned"))
+    Vec<Token>::push(right#, cede token)
+    left = cede right
+    return cede left
+}
+
+fn main() -> i32 {
+    {
+        auto values = produce()
+        if values.len() != 1:usize ||
+           !values.borrow(0:usize).label.as_str().equals("owned") ||
+           drops != 0:i32 { return 1 }
+    }
+    if drops != 1:i32 { return 2 }
+    return 0
+}

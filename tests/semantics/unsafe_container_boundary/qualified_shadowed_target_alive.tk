@@ -1,0 +1,14 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn main() -> i32 {
+    auto owner = string::from("alive")
+    auto values# = Vec<str>::new()
+    {
+        auto values# = Vec<str>::new()
+        Vec<str>::push(values#, owner.as_str())
+        if !values.borrow(0:usize).equals("alive") { return 1 }
+    }
+    if values.len() != 0:usize { return 2 }
+    return 0
+}
