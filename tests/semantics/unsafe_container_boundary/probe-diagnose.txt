@@ -1,0 +1,13 @@
+KNOWN GAP whole_vec_escape: isolated source admitted
+KNOWN GAP pop_option_escape: isolated source admitted
+KNOWN GAP remove_option_escape: isolated source admitted
+KNOWN GAP owned_next_escape: isolated source admitted
+KNOWN GAP hidden_shape_escape: isolated source admitted
+KNOWN GAP hidden_enum_escape: isolated source admitted
+PASS runtime local_view_alive
+PASS runtime owned_string_return
+PASS runtime owned_token_exact_drop
+PASS runtime reference_growth
+PASS existing rejection reference_escape
+PASS existing rejection active_borrow_mutation
+Unsafe container boundary probe: diagnose complete

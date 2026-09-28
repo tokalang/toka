@@ -1,0 +1,9 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    auto &held = values.borrow(0:usize)
+    values#.push(2)
+    return *held
+}

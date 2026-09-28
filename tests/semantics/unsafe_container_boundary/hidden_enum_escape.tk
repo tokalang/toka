@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+shape Payload(View(str) | Empty)
+
+fn escaped() -> Vec<Payload> {
+    auto owner = string::from("local")
+    auto values# = Vec<Payload>::new()
+    values#.push(Payload::View(owner.as_str()))
+    return cede values
+}
+
+fn main() -> i32 { return 0 }

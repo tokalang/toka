@@ -1,0 +1,14 @@
+import std/vec::{Vec}
+import core/string::{string}
+import core/option::{Option}
+import core/traits::{@Iterator}
+
+fn escaped() -> Option<str> {
+    auto owner = string::from("local")
+    auto values# = Vec<str>::new()
+    values#.push(owner.as_str())
+    auto result = values#.next()
+    return cede result
+}
+
+fn main() -> i32 { return 0 }

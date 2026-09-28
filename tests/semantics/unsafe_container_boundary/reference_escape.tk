@@ -1,0 +1,10 @@
+import std/vec::{Vec}
+
+fn escaped() -> Vec<&i32> {
+    auto owner = 7:i32
+    auto values# = Vec<&i32>::new()
+    values = values#.appended(&owner)
+    return cede values
+}
+
+fn main() -> i32 { return 0 }

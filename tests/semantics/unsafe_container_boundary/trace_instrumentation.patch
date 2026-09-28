@@ -1,0 +1,102 @@
+diff --git a/src/Sema/Sema_Expr.cpp b/src/Sema/Sema_Expr.cpp
+index f7b5a1be..6138530a 100644
+--- a/src/Sema/Sema_Expr.cpp
++++ b/src/Sema/Sema_Expr.cpp
+@@ -24,0 +25 @@
++#include <cstdlib>
+@@ -2282,0 +2284,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
++      if (std::getenv("TOKA_CONTAINER_DEP_TRACE") && CurrentFunction &&
++          CurrentFunction->Name.find("push") != std::string::npos &&
++          ve->Name == "val" && Info.TypeObj &&
++          Info.TypeObj->getSoulName() == "str") {
++        std::cerr << "TRACE formal function=" << CurrentFunction->Name
++                  << " binding_id=" << Info.SymbolID << " life_deps=";
++        for (const auto &dep : Info.LifeDependencySet)
++          std::cerr << dep << ",";
++        std::cerr << " field_deps=";
++        for (const auto &[field, deps] : Info.FieldDependencySet)
++          for (const auto &dep : deps)
++            std::cerr << field << "<-" << dep << ",";
++        std::cerr << "\n";
++      }
+@@ -4987,0 +5003,28 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
++      if (std::getenv("TOKA_CONTAINER_DEP_TRACE") && CurrentFunction &&
++          CurrentFunction->Name == "escaped" &&
++          (Met->Method == "as_str" || Met->Method == "push")) {
++        auto *object = dynamic_cast<VariableExpr *>(Met->Object.get());
++        SymbolInfo *binding = nullptr;
++        if (object && object->ResolvedBindingID)
++          CurrentScope->findSymbolByID(object->ResolvedBindingID, binding);
++        std::cerr << "TRACE method=" << Met->Method
++                  << " object_binding_id="
++                  << (object ? object->ResolvedBindingID : 0)
++                  << " object_life_deps=";
++        if (binding)
++          for (const auto &dep : binding->LifeDependencySet)
++            std::cerr << dep << ",";
++        std::cerr << " result_life_deps=";
++        for (const auto &dep : m_LastLifeDependencies)
++          std::cerr << dep << ",";
++        std::cerr << " result_field_deps=";
++        for (const auto &[field, deps] : m_LastFieldDependencies)
++          for (const auto &dep : deps)
++            std::cerr << field << "<-" << dep << ",";
++        std::cerr << " object_field_deps=";
++        if (binding)
++          for (const auto &[field, deps] : binding->FieldDependencySet)
++            for (const auto &dep : deps)
++              std::cerr << field << "<-" << dep << ",";
++        std::cerr << " last_borrow_source=" << m_LastBorrowSource << "\n";
++      }
+@@ -5900,0 +5944,18 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
++                if (std::getenv("TOKA_CONTAINER_DEP_TRACE") &&
++                    CurrentFunction && CurrentFunction->Name == "escaped" &&
++                    Met->Method == "push") {
++                  std::cerr << "TRACE push_arg index=" << i
++                            << " actual_type="
++                            << (argTy ? argTy->toString() : "<none>")
++                            << " field_deps=";
++                  for (const auto &[field, deps] : m_LastFieldDependencies)
++                    for (const auto &dep : deps) {
++                      std::string root = extractPathRoot(dep);
++                      SymbolInfo *source = nullptr;
++                      std::string actual;
++                      CurrentScope->findVariableWithDeref(root, source, actual);
++                      std::cerr << field << "<-" << dep << "#"
++                                << (source ? source->SymbolID : 0) << ",";
++                    }
++                  std::cerr << "\n";
++                }
+diff --git a/src/Sema/Sema_Stmt.cpp b/src/Sema/Sema_Stmt.cpp
+index e9fa3c0c..68383248 100644
+--- a/src/Sema/Sema_Stmt.cpp
++++ b/src/Sema/Sema_Stmt.cpp
+@@ -23,0 +24 @@
++#include <cstdlib>
+@@ -897,0 +899,26 @@ void Sema::checkStmt(Stmt *S) {
++      if (std::getenv("TOKA_CONTAINER_DEP_TRACE") && CurrentFunction &&
++          CurrentFunction->Name == "escaped") {
++        Expr *source = Ret->ReturnValue.get();
++        if (auto *cede = dynamic_cast<CedeExpr *>(source))
++          source = cede->Value.get();
++        auto *variable = dynamic_cast<VariableExpr *>(source);
++        SymbolInfo *binding = nullptr;
++        if (variable && variable->ResolvedBindingID)
++          CurrentScope->findSymbolByID(variable->ResolvedBindingID, binding);
++        std::cerr << "TRACE return binding_id="
++                  << (variable ? variable->ResolvedBindingID : 0)
++                  << " tracked=" << isTrackedRet << " binding_life_deps=";
++        if (binding)
++          for (const auto &dep : binding->LifeDependencySet)
++            std::cerr << dep << ",";
++        std::cerr << " binding_field_deps=";
++        if (binding)
++          for (const auto &[field, deps] : binding->FieldDependencySet)
++            for (const auto &dep : deps)
++              std::cerr << field << "<-" << dep << ",";
++        std::cerr << " last_life_deps=";
++        for (const auto &dep : m_LastLifeDependencies)
++          std::cerr << dep << ",";
++        std::cerr << "\n";
++      }
++

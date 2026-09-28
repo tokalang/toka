@@ -1,0 +1,4 @@
+TRACE method=as_str object_binding_id=1331 object_life_deps= result_life_deps= result_field_deps=buf<-owner.buf, object_field_deps= last_borrow_source=
+TRACE push_arg index=0 actual_type=str field_deps=buf<-owner.buf#1331,
+TRACE method=push object_binding_id=1469 object_life_deps= result_life_deps= result_field_deps=buf<-owner.buf, object_field_deps= last_borrow_source=
+TRACE return binding_id=1470 tracked=1 binding_life_deps= binding_field_deps= last_life_deps=
