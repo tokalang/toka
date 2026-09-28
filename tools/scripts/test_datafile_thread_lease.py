@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,11 +21,44 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
+def traced_run(command, env=None, timeout=None, cwd=None, check=False):
+    argv = [str(item) for item in command]
+    tool = Path(argv[0]).name
+    if tool == "tokac":
+        phase = "compile" if any(flag in argv for flag in
+                                 ("--check-only", "-c", "--emit-llvm",
+                                  "--dump-dependencies=json")) else "compile+link"
+    elif tool in ("cc", "clang", "gcc", "clang-20", "nm"):
+        phase = "inspect" if tool == "nm" else \
+            ("compile" if "-c" in argv else "link")
+    else:
+        phase = "run"
+    start = time.monotonic()
+    process = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True)
+    print(json.dumps({"event": "start", "phase": phase, "argv": argv,
+                      "pid": process.pid, "monotonic_s": start,
+                      "timeout_s": timeout}, sort_keys=True), flush=True)
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
+        print(json.dumps({"event": "timeout", "phase": phase,
+                          "pid": process.pid, "elapsed_s": round(time.monotonic() - start, 3),
+                          "returncode": process.returncode}, sort_keys=True), flush=True)
+        raise
+    result = subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+    print(json.dumps({"event": "end", "phase": phase, "pid": process.pid,
+                      "elapsed_s": round(time.monotonic() - start, 3),
+                      "returncode": result.returncode}, sort_keys=True), flush=True)
+    if check:
+        result.check_returncode()
+    return result
+
+
 def run(command, env, timeout=45, cwd=ROOT):
-    return subprocess.run(
-        [str(item) for item in command], cwd=cwd, env=env,
-        capture_output=True, text=True, timeout=timeout,
-    )
+    return traced_run(command, env=env, timeout=timeout, cwd=cwd)
 
 
 def main():
@@ -51,19 +85,18 @@ def main():
              ["-DTOKA_THREAD_HANDOFF_TESTING"]),
             (ROOT / "tests/runtime/public_thread_hooks.c", hooks, []),
         ):
-            subprocess.run(
+            traced_run(
                 [cc, "-std=c11", "-pthread", "-I", str(ROOT / "tests/runtime"),
                  *flags, "-c", str(source), "-o", str(output)], check=True,
-                capture_output=True, text=True, timeout=45,
+                timeout=45,
             )
         production_runtime = work / "toka_rt_production.o"
-        subprocess.run(
+        traced_run(
             [cc, "-std=c11", "-pthread", "-c", str(ROOT / "lib/sys/toka_rt.c"),
              "-o", str(production_runtime)], check=True,
-            capture_output=True, text=True, timeout=45,
+            timeout=45,
         )
-        symbols = subprocess.run(["nm", "-g", str(production_runtime)],
-                                 check=True, capture_output=True, text=True)
+        symbols = traced_run(["nm", "-g", str(production_runtime)], check=True)
         require("toka_rt_test_datafile_" not in symbols.stdout,
                 "test observation symbols leaked into the production runtime")
 

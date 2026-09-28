@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """RwMutex read/write guard unlock responsibility; no new unlock protocol."""
 import argparse
+import json
 import os
 from pathlib import Path
 import platform
 import subprocess
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIX = """import std/sync::{RwMutex, RwReadLock, RwWriteLock}
@@ -16,6 +18,39 @@ fn observe_read_result(held: Result<RwReadLock<i32>, Error>, ignored: Result<i32
 fn observe_write_result(held: Result<RwWriteLock<i32>, Error>, ignored: Result<i32, Error>) {}
 """
 OWNER = "auto ~mutex = RwMutex<i32>::make_shared(7)\n"
+
+
+def traced_run(command, env=None, timeout=None, cwd=None, check=False):
+    argv = [str(item) for item in command]
+    tool = Path(argv[0]).name
+    if tool == "tokac":
+        phase = "compile" if "--check-only" in argv or "-c" in argv else "compile+link"
+    elif tool in ("cc", "clang", "gcc", "clang-20"):
+        phase = "compile" if "-c" in argv else "link"
+    else:
+        phase = "run"
+    start = time.monotonic()
+    process = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True)
+    print(json.dumps({"event": "start", "phase": phase, "argv": argv,
+                      "pid": process.pid, "monotonic_s": start,
+                      "timeout_s": timeout}, sort_keys=True), flush=True)
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
+        print(json.dumps({"event": "timeout", "phase": phase,
+                          "pid": process.pid, "elapsed_s": round(time.monotonic() - start, 3),
+                          "returncode": process.returncode}, sort_keys=True), flush=True)
+        raise
+    result = subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+    print(json.dumps({"event": "end", "phase": phase, "pid": process.pid,
+                      "elapsed_s": round(time.monotonic() - start, 3),
+                      "returncode": result.returncode}, sort_keys=True), flush=True)
+    if check:
+        result.check_returncode()
+    return result
 
 
 def main():
@@ -31,9 +66,9 @@ def main():
             path.write_text(PREFIX + "fn main() -> i32 {\n" + body + "\n}\n")
             return path
         def compile(path, *flags):
-            return subprocess.run([str(compiler), "--workspace-node", "rw-unlock-test", "--workspace-root", str(work),
-                                   str(path), *map(str, flags)], cwd=ROOT, env=env,
-                                  capture_output=True, text=True, timeout=60)
+            return traced_run([str(compiler), "--workspace-node", "rw-unlock-test", "--workspace-root", str(work),
+                               str(path), *map(str, flags)], cwd=ROOT, env=env,
+                              timeout=60)
         rejected_count = controls = 0
         for mode in ("read", "write"):
             acquire = f"mutex.{mode}_lock()"
@@ -84,8 +119,8 @@ def main():
         runtime, hook = work / "runtime.o", work / ("unlock.dylib" if darwin else "unlock.o")
         for src, output in ((ROOT / "lib/sys/toka_rt.c", runtime),
                             (ROOT / "tests/runtime/native_sync_unlock_count.c", hook)):
-            subprocess.run([cc, "-std=c11", "-pthread", "-dynamiclib" if darwin and output == hook else "-c",
-                            str(src), "-o", str(output)], check=True, capture_output=True)
+            traced_run([cc, "-std=c11", "-pthread", "-dynamiclib" if darwin and output == hook else "-c",
+                        str(src), "-o", str(output)], check=True)
         runs = (
             ("write-once", "auto held = mutex.write_lock().unwrap()", 1),
             ("read-once", "auto held = mutex.read_lock().unwrap()", 1),
@@ -102,12 +137,12 @@ def main():
             assert normal.returncode == shadow.returncode == 0 and normal.stderr == shadow.stderr, normal.stderr + shadow.stderr
             built = compile(path, "-c", "-o", obj)
             assert built.returncode == 0, built.stderr
-            subprocess.run([cc, str(obj), str(runtime), str(hook), "-pthread", "-lm",
-                            *([] if darwin else ["-Wl,--wrap=" + symbol for symbol in
-                                ("pthread_mutex_init", "pthread_mutex_unlock", "pthread_rwlock_init", "pthread_rwlock_unlock")]),
-                            "-o", str(binary)], check=True, capture_output=True)
-            ran = subprocess.run([str(binary)], env=dict(env, **({"DYLD_INSERT_LIBRARIES": str(hook)} if darwin else {})),
-                                 capture_output=True, text=True, timeout=10)
+            traced_run([cc, str(obj), str(runtime), str(hook), "-pthread", "-lm",
+                        *([] if darwin else ["-Wl,--wrap=" + symbol for symbol in
+                            ("pthread_mutex_init", "pthread_mutex_unlock", "pthread_rwlock_init", "pthread_rwlock_unlock")]),
+                        "-o", str(binary)], check=True)
+            ran = traced_run([str(binary)], env=dict(env, **({"DYLD_INSERT_LIBRARIES": str(hook)} if darwin else {})),
+                             timeout=10)
             assert ran.returncode == 0, (name, ran.returncode, ran.stderr)
             print(f"PASS runtime: {name}, {count} native unlock(s)", flush=True)
         print(f"RwMutex unlock: {rejected_count} rejection/parity/rollback cases; {controls} check-only controls; {len(runs)} counted runtime cases")
