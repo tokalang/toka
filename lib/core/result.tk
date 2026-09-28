@@ -19,7 +19,9 @@ impl<T, E> Result<T, E> {
         return self.is_ok() == false
     }
 
-    pub fn unwrap(cede self) -> T
+    // The ordinary route retains static/field source classification; the
+    // external route carries a payload's outside owner past this envelope.
+    pub fn unwrap(cede self) -> T <- self
     effects:
         return <- self.external
     {
@@ -32,7 +34,7 @@ impl<T, E> Result<T, E> {
         }
     }
 
-    pub fn unwrap_err(cede self) -> E
+    pub fn unwrap_err(cede self) -> E <- self
     effects:
         return <- self.external
     {

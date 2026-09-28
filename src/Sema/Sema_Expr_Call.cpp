@@ -4770,7 +4770,11 @@ bool Sema::applyExternalCallEffects(
   }
   if (resultRoute) {
     call->ExternalValueDependencies = std::move(resultSources);
-    call->ExternalValueTracked = true;
+    // An empty external set needs no new lifetime obligation. Leave the
+    // ordinary return-source checker to classify static storage and internal
+    // owned payloads; keep unknown and nonempty sources on this route.
+    call->ExternalValueTracked = !call->ExternalValueDependencies ||
+        !call->ExternalValueDependencies->empty();
   }
   return true;
 }
