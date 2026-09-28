@@ -521,7 +521,10 @@ if(BUILD_TESTING)
                 COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_datafile_thread_lease.py
                     --build-dir ${CMAKE_BINARY_DIR})
-            set_tests_properties(toka_datafile_thread_lease PROPERTIES TIMEOUT 180)
+            # This driver runs many compiler subprocesses; macOS x64 needs
+            # headroom for the complete suite while each subprocess keeps its
+            # own shorter timeout.
+            set_tests_properties(toka_datafile_thread_lease PROPERTIES TIMEOUT 300)
             add_test(NAME toka_shared_parameter_abi
                 COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_shared_parameter_abi.py
@@ -561,7 +564,7 @@ if(BUILD_TESTING)
                 COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_native_sync_rw_unlock.py
                     --build-dir ${CMAKE_BINARY_DIR})
-            set_tests_properties(toka_native_sync_rw_unlock PROPERTIES TIMEOUT 180)
+            set_tests_properties(toka_native_sync_rw_unlock PROPERTIES TIMEOUT 300)
         endif()
         add_test(NAME toka_negative_harness_termination
             COMMAND ${Python3_EXECUTABLE}

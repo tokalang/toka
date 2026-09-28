@@ -24,7 +24,8 @@ def traced_run(command, env=None, timeout=None, cwd=None, check=False):
     argv = [str(item) for item in command]
     tool = Path(argv[0]).name
     if tool == "tokac":
-        phase = "compile" if "--check-only" in argv or "-c" in argv else "compile+link"
+        phase = "compile" if any(flag in argv for flag in
+                                 ("--check-only", "-c", "--emit-llvm")) else "compile+link"
     elif tool in ("cc", "clang", "gcc", "clang-20"):
         phase = "compile" if "-c" in argv else "link"
     else:
