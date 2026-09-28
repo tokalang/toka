@@ -49,8 +49,8 @@ fn main() -> i32 {
         meta#.push(1)
         {
             auto cursor# = unsafe HashMapIterator<^Cell, i32>(
-                &keys = (keys.*buf as &[^Cell]), &vals = (vals.*buf as &[i32]),
-                &meta = (meta.*buf as &[u8]), cap = 1, pos = 0)
+                &keys = (keys.unsafe_as_raw() as &[^Cell]), &vals = (vals.unsafe_as_raw() as &[i32]),
+                &meta = (meta.unsafe_as_raw() as &[u8]), cap = 1, pos = 0)
             auto result = cursor#.next_ref()
             auto entry = result.unwrap()
             auto &^view = entry.key()
@@ -70,8 +70,8 @@ fn main() -> i32 {
             meta#.push(1)
             {
                 auto cursor# = unsafe HashMapIterator<~Cell, i32>(
-                    &keys = (keys.*buf as &[~Cell]), &vals = (vals.*buf as &[i32]),
-                    &meta = (meta.*buf as &[u8]), cap = 1, pos = 0)
+                    &keys = (keys.unsafe_as_raw() as &[~Cell]), &vals = (vals.unsafe_as_raw() as &[i32]),
+                    &meta = (meta.unsafe_as_raw() as &[u8]), cap = 1, pos = 0)
                 auto result = cursor#.next_ref()
                 auto entry = result.unwrap()
                 auto &~view = entry.key()

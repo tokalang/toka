@@ -4599,6 +4599,10 @@ bool Sema::safeBorrowFreeType(const std::shared_ptr<Type> &input) {
 std::optional<std::set<AccessPath>>
 Sema::externalValueDependencies(Expr *value) {
   if (!value) return std::nullopt;
+  // A complete value whose type cannot carry a safe borrow has no external
+  // lifetime obligation, even when its source is a tracked mutable formal.
+  if (safeBorrowFreeType(value->ResolvedType))
+    return std::set<AccessPath>{};
   if (value->ExternalValueDependencies)
     return value->ExternalValueDependencies;
   if (value->ExternalValueTracked)

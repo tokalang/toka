@@ -189,7 +189,8 @@ impl<K, V> HashMap<K, V> {
         unsafe {
             if is_new {
                 self.keys#.unsafe_storage_mut()[found_slot] = cede key
-                self.vals#.unsafe_storage_mut()[found_slot] = cede val
+                auto *value_slots# = self.vals#.unsafe_storage_mut()
+                value_slots[found_slot] = cede val
                 // Publish only after both payloads are initialized.
                 self.meta#.unsafe_storage_mut()[found_slot] = 1
                 self.len = self.len + 1
@@ -197,7 +198,8 @@ impl<K, V> HashMap<K, V> {
                 // The old value owns its cleanup; raw assignment alone does
                 // not retire it. Restore occupied before any user Drop runs.
                 auto old = hashmap_take_raw_element<V>(self.vals.unsafe_as_raw(), found_slot, self.meta#.unsafe_storage_mut()[found_slot]#)
-                self.vals#.unsafe_storage_mut()[found_slot] = cede val
+                auto *value_slots# = self.vals#.unsafe_storage_mut()
+                value_slots[found_slot] = cede val
                 self.meta#.unsafe_storage_mut()[found_slot] = 1
                 auto unused_key = cede key
             }

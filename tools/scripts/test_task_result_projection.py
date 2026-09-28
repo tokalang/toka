@@ -349,6 +349,18 @@ def main():
                     text = re.sub(r'^// @meta local_body_(policy|definitions):.*\n', '', text, flags=re.M)
                     text, count = re.subn(r'(pub fn produce[^\n{]+)\s*\{[^}]+\}', r'\1', text)
                     assert count == 1, text
+                    # The declaration-only fixture is a new replay surface.
+                    # Keep its integrity hash valid so the test reaches the
+                    # intended TaskResult source check instead of file I/O.
+                    _, separator, declarations = text.partition('\n\n')
+                    assert separator, text
+                    digest = 14695981039346656037
+                    for byte in declarations.encode('utf-8'):
+                        digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
+                    text, count = re.subn(
+                        r'(?m)^// @meta replay_surface_hash: [0-9a-f]{16}$',
+                        f'// @meta replay_surface_hash: {digest:016x}', text)
+                    assert count == 1, text
                     interface.write_text(text)
             text, error = CASES[name]
             source = work / (name + '.tk')

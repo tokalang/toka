@@ -34,10 +34,7 @@ impl<T, E> Result<T, E> {
         }
     }
 
-    pub fn unwrap_err(cede self) -> E <- self
-    effects:
-        return <- self.external
-    {
+    pub fn unwrap_err(cede self) -> E <- self {
         match cede self {
             auto Result<T, E>::Err(e) => return cede e
             _ => {

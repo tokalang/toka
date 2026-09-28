@@ -917,7 +917,9 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
         indexTarget && m_InUnsafeContext &&
         dynamic_cast<const CedeExpr *>(rhsExpr) != nullptr;
     if (unsafeIndexedCedeHandoff) {
-      markMemoryEvent(m_Builder.CreateStore(rhsVal, handleAddr), "rebind");
+      // The unsafe caller has retired or reserved this raw slot. This store
+      // initializes container storage; it is not a rebind of a visible root.
+      markMemoryEvent(m_Builder.CreateStore(rhsVal, handleAddr), "raw_slot_init");
     } else {
       emitEnvelopeRebind(handleAddr, rhsVal, *symLHS, lhsExpr);
     }

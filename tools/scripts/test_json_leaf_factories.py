@@ -178,6 +178,14 @@ def main():
             parity(FIXTURES / "static_error.tk", 0)
             run(FIXTURES / "static_error.tk")
             print("PASS static error independent of input", flush=True)
+            escape = FIXTURES / "result_error_escape.tk"
+            rejected = parity(escape, 1)
+            assert "E0455" in rejected.stderr and "owner.buf" in rejected.stderr, rejected.stderr
+            for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
+                output = work / (escape.stem + suffix)
+                denied = compile(escape, flag, "-o", output)
+                assert denied.returncode == 1 and "E0455" in denied.stderr and not output.exists(), denied.stderr
+            print("PASS borrowed Result error escape rejects without artifacts", flush=True)
             parity(FIXTURES / "enum_static_sources.tk", 0)
             run(FIXTURES / "enum_static_sources.tk")
             print("PASS concrete producers and static rebinding", flush=True)

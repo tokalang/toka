@@ -11,7 +11,7 @@ pub fn raw_probe(*key: [*i32], *val: i32) -> i32 {
     {
         auto cursor# = unsafe HashMapIterator<*i32, i32>(
             &keys = (*key as &[*i32]), &vals = ((*val as *[i32]) as &[i32]),
-            &meta = (meta.*buf as &[u8]), cap = 1, pos = 0)
+            &meta = (meta.unsafe_as_raw() as &[u8]), cap = 1, pos = 0)
         auto result = cursor#.next()
         auto item = result.unwrap()
         auto **raw = item.key()
@@ -22,7 +22,7 @@ pub fn raw_probe(*key: [*i32], *val: i32) -> i32 {
     {
         auto cursor# = unsafe HashMapIterator<i32, *i32>(
             &keys = ((*val as *[i32]) as &[i32]), &vals = (*key as &[*i32]),
-            &meta = (meta.*buf as &[u8]), cap = 1, pos = 0)
+            &meta = (meta.unsafe_as_raw() as &[u8]), cap = 1, pos = 0)
         auto result = cursor#.next()
         auto item = result.unwrap()
         auto *plain = item.key()

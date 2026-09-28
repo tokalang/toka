@@ -1,0 +1,7 @@
+fn escaped() -> str {
+    auto owner = string::from("local")
+    auto result = Result<i32, str>::Err(owner.as_str())
+    return result.unwrap_err()
+}
+
+fn main() -> i32 { return 0 }

@@ -20,6 +20,21 @@ def main():
         work = Path(temporary)
         extra_objects = []
 
+        def write_interface(text):
+            # Edited interface bodies remain a valid replay surface so the
+            # test reaches executable-body and source checks. Integrity
+            # rejection is covered by separate negative fixtures.
+            _, separator, declarations = text.partition('\n\n')
+            assert separator, text
+            digest = 14695981039346656037
+            for byte in declarations.encode('utf-8'):
+                digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
+            text, count = re.subn(
+                r'(?m)^// @meta replay_surface_hash: [0-9a-f]{16}$',
+                f'// @meta replay_surface_hash: {digest:016x}', text)
+            assert count == 1, text
+            (work/'lib.tki').write_text(text)
+
         def run(command, expected=0):
             result = subprocess.run(list(map(str, command)), cwd=work, env=env,
                                     text=True, capture_output=True, timeout=90)
@@ -65,33 +80,37 @@ pub fn make() -> fn(i32) -> i32 {
         assert re.search(r'define internal .*@.*make', (work/'main.ll').read_text())
         assert 'value + 1' in original
         changed = original.replace('value + 1', 'value + 10')
-        (work/'lib.tki').write_text(changed)
+        write_interface(changed)
         check(consumer, result=14)  # old provider object still implements +1
         run([tokac, 'main.tk', '-o', 'without-provider'])
         run([work/'without-provider'], 14)
         print('PASS checked helper/factory executes despite old provider', flush=True)
 
-        (work/'lib.tki').write_text(re.sub(r'^// @meta local_body_(policy|definitions):.*\n', '', original, flags=re.M))
+        write_interface(re.sub(r'^// @meta local_body_(policy|definitions):.*\n', '', original, flags=re.M))
         check(consumer, 1, 'E04661')
-        (work/'lib.tki').write_text(original.replace('checked-local-v1', 'checked-local-unsupported'))
+        write_interface(original.replace('checked-local-v1', 'checked-local-unsupported'))
         check(consumer, 1, 'E0901')
-        (work/'lib.tki').write_text(original.replace('0.9.9-23', '0.9.9-22'))
+        current_version = re.search(
+            r'(?m)^// @meta compiler_version: ([^\n]+)$', original).group(1)
+        write_interface(original.replace(
+            f'compiler_version: {current_version}',
+            'compiler_version: stale-test-version'))
         check(consumer, 1, 'E0901')
-        (work/'lib.tki').write_text(re.sub(r'local_body_definitions: .*', 'local_body_definitions: f/999', original))
+        write_interface(re.sub(r'local_body_definitions: .*', 'local_body_definitions: f/999', original))
         check(consumer, 1, 'Invalid executable interface definition')
         # Do not accept a declaration in place of the helper used for checking.
         missing = re.sub(r'(fn increment\([^\n]+) \{[^}]+\}', r'\1', original)
         assert missing != original
-        (work/'lib.tki').write_text(missing)
+        write_interface(missing)
         check(consumer, 1, 'Invalid executable interface definition')
         # Valid root association cannot cover its now bodyless helper.
-        (work/'lib.tki').write_text(re.sub(r'local_body_definitions: .*', 'local_body_definitions: f/1', missing))
+        write_interface(re.sub(r'local_body_definitions: .*', 'local_body_definitions: f/1', missing))
         check(consumer, 1, 'executable interface dependency')
-        (work/'lib.tki').write_text(original.replace('value + 1', 'increment(value)'))
+        write_interface(original.replace('value + 1', 'increment(value)'))
         check(consumer, 1, 'executable interface dependency')
-        (work/'lib.tki').write_text(original.replace('value + 1', 'true'))
+        write_interface(original.replace('value + 1', 'true'))
         check(consumer, 1, 'E0408')
-        (work/'lib.tki').write_text(original)
+        write_interface(original)
         check('import ./lib::{make}\nfn main() -> i32 { auto identity = make; return 0 }\n',
               1, 'function identity is not remapped')
         print('PASS policy/helper/identity fail-closed', flush=True)
@@ -102,7 +121,7 @@ pub fn make() -> fn(i32) -> i32 {
 pub fn prime() -> i32 { auto callback = make(0:i32); return callback(4) }
 ''')
         assert generic.count('value + 1') == 1
-        (work/'lib.tki').write_text(generic.replace('value + 1', 'value + 10'))
+        write_interface(generic.replace('value + 1', 'value + 10'))
         check('import ./lib::{make}\nfn main() -> i32 { auto callback = make(0:i32); return callback(4) }\n', result=14)
         ir = (work/'main.ll').read_text()
         assert re.search(r'define internal .*@__toka_gfn_', ir), ir
@@ -120,7 +139,7 @@ pub fn prime() -> i32 {
 }
 ''')
         assert generic_method.count('value + 1') == 1
-        (work/'lib.tki').write_text(generic_method.replace('value + 1', 'value + 10'))
+        write_interface(generic_method.replace('value + 1', 'value + 10'))
         check('''import ./lib::{Factory}
 fn main() -> i32 {
     auto factory = Factory<i32>(seed = 0)
@@ -158,7 +177,7 @@ fn main() -> i32 {
 }
 ''', result=1)
         assert 'record_drop(1)' in original
-        (work/'lib.tki').write_text(original.replace('record_drop(1)', 'record_drop(2)'))
+        write_interface(original.replace('record_drop(1)', 'record_drop(2)'))
         check((work/'main.tk').read_text(), result=2)
         print('PASS exact capture cleanup uses checked drop body', flush=True)
 
@@ -186,23 +205,23 @@ pub fn take(cede bundle: Bundle) -> async i32 { cede bundle; return 7 }
         assert 'i/0/0' in definitions, definitions
         check(enum_consumer, result=1)
         changed = original.replace('record_drop(1)', 'record_drop(2)')
-        (work/'lib.tki').write_text(changed)
+        write_interface(changed)
         check(enum_consumer, result=2)
         ir = (work/'main.ll').read_text()
         assert re.search(r'define internal .*@.*_drop\(', ir), ir
         # Retained body without association must not call the old provider.
         unassociated = re.sub(r'local_body_definitions: .*',
                              'local_body_definitions: ' + ','.join(x for x in definitions if x != 'i/0/0'), changed)
-        (work/'lib.tki').write_text(unassociated)
+        write_interface(unassociated)
         check(enum_consumer, 1, 'executable interface dependency')
         bodyless, count = re.subn(r'(fn drop\([^\n]+) \{[^}]+\}', r'\1', changed)
         assert count == 1
-        (work/'lib.tki').write_text(bodyless)
+        write_interface(bodyless)
         check(enum_consumer, 1, 'Invalid executable interface definition')
-        (work/'lib.tki').write_text(re.sub(r'local_body_definitions: .*',
+        write_interface(re.sub(r'local_body_definitions: .*',
                                          'local_body_definitions: f/0', bodyless))
         check(enum_consumer, 1, 'executable interface dependency')
-        (work/'lib.tki').write_text(changed)
+        write_interface(changed)
         check(enum_consumer.replace('Bundle::Pair(cede token, 0)', 'Bundle::Empty()')
               .replace('    auto token = Token(id = 5)\n', ''), result=0)
         print('PASS multi-payload enum checked drop, Empty, missing body/association', flush=True)
@@ -210,7 +229,7 @@ pub fn take(cede bundle: Bundle) -> async i32 { cede bundle; return 7 }
         original = provider(enum_base + '''pub shape Bundle(Pair(Token, Token) | Empty)
 pub fn take(cede bundle: Bundle) -> async i32 { cede bundle; return 7 }
 ''')
-        (work/'lib.tki').write_text(original.replace('record_drop(1)', 'record_drop(2)'))
+        write_interface(original.replace('record_drop(1)', 'record_drop(2)'))
         check(enum_consumer.replace('    auto bundle', '    auto second = Token(id = 6)\n    auto bundle')
               .replace('Bundle::Pair(cede token, 0)', 'Bundle::Pair(cede token, cede second)'), result=4)
         print('PASS both enum payload slots clean exactly once', flush=True)
@@ -220,7 +239,7 @@ pub shape Envelope(contents: Bundle<^Token, ~Token>)
 pub fn take(cede value: Envelope) -> async i32 { cede value; return 7 }
 ''')
         assert 'record_drop(1)' in original
-        (work/'lib.tki').write_text(original.replace('record_drop(1)', 'record_drop(2)'))
+        write_interface(original.replace('record_drop(1)', 'record_drop(2)'))
         check('''import ./lib::{Token, Bundle, Envelope, take}
 import std/task::{block_on}
 extern fn drop_count() -> i32
@@ -298,7 +317,7 @@ fn escape(input: str) -> str <- input {
 }
 fn main() -> i32 { return 0 }
 ''', 1, 'E0455')
-        (work/'lib.tki').write_text(original.replace('return value', 'auto owner = string::from("frame"); return owner.as_view()'))
+        write_interface(original.replace('return value', 'auto owner = string::from("frame"); return owner.as_view()'))
         check(prefix + 'fn main() -> i32 { return 0 }\n', 1, 'E0455')
         print('PASS task external-source/cache mapping and frame escape refusal', flush=True)
 
