@@ -219,8 +219,7 @@ std::optional<PALConflict> PALChecker::verifyArgumentBorrow(
 
 std::optional<PALConflict> PALChecker::replaceCarrierBorrows(
     uint64_t holderID, const std::set<AccessPath> &sources,
-    size_t retainingLevels, int holderScopeDepth, SourceLocation holderDeclLoc,
-    SourceLocation originLoc) {
+    size_t retainingLevels, int holderScopeDepth, SourceLocation originLoc) {
   if (!IsEnabled || !holderID || CarrierStack.empty()) return std::nullopt;
   for (const auto &source : sources)
     if (auto conflict = verifyAccess(source)) return conflict;
@@ -228,8 +227,7 @@ std::optional<PALConflict> PALChecker::replaceCarrierBorrows(
   if (!sources.empty()) {
     const size_t level = retainingLevels < CarrierStack.size()
         ? CarrierStack.size() - 1 - retainingLevels : 0;
-    CarrierStack[level][holderID] = {sources, holderScopeDepth,
-                                    holderDeclLoc, originLoc};
+    CarrierStack[level][holderID] = {sources, holderScopeDepth, originLoc};
   }
   return std::nullopt;
 }
@@ -240,18 +238,13 @@ void PALChecker::releaseCarrierBorrows(uint64_t holderID) {
 }
 
 std::optional<PALConflict> PALChecker::survivingCarrierBorrow(
-    const AccessPath &source, int sourceScopeDepth,
-    SourceLocation sourceDeclLoc) const {
+    const AccessPath &source, int sourceScopeDepth) const {
   if (!IsEnabled || CarrierStack.empty()) return std::nullopt;
   for (size_t level = 0; level < CarrierStack.size(); ++level)
     for (const auto &[holder, entry] : CarrierStack[level])
       for (const auto &borrowed : entry.Sources)
         if (pathsOverlap(borrowed, source) &&
-            (entry.HolderScopeDepth < sourceScopeDepth ||
-             (entry.HolderScopeDepth == sourceScopeDepth &&
-              (!entry.HolderDeclLoc.isValid() ||
-               !sourceDeclLoc.isValid() ||
-               entry.HolderDeclLoc < sourceDeclLoc))))
+            entry.HolderScopeDepth < sourceScopeDepth)
           return PALConflict{borrowed, PathState::BorrowedShared,
                              entry.OriginLoc};
   return std::nullopt;

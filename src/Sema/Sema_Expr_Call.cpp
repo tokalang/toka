@@ -4653,11 +4653,6 @@ Sema::externalValueDependencies(Expr *value) {
     // payload must not acquire a dependency on the retired record slot.
     auto parent = externalValueDependencies(member->Object.get());
     const auto objectPath = canonicalizeAccessPath(makeAccessPath(member->Object.get()));
-    SymbolInfo *objectBinding = nullptr;
-    if (objectPath.RootID)
-      CurrentScope->findSymbolByID(objectPath.RootID, objectBinding);
-    const bool localCarriedValue = objectBinding &&
-        !objectBinding->IsFunctionParameter && !objectBinding->IsPlaceAlias;
     const bool symbolicWholeValue = parent && objectPath.RootID &&
         std::any_of(parent->begin(), parent->end(), [&](const AccessPath &source) {
           return source.RootID == objectPath.RootID &&
@@ -4666,8 +4661,7 @@ Sema::externalValueDependencies(Expr *value) {
         });
     // A formal's symbolic whole-value source is not the source of every
     // selected field. Let the ordinary projection mapper resolve that field.
-    if ((member->Object->ExternalValueTracked || localCarriedValue) &&
-        !symbolicWholeValue) {
+    if (member->Object->ExternalValueTracked && !symbolicWholeValue) {
       value->ExternalValueTracked = true;
       value->ExternalValueDependencies = parent;
       return parent;
@@ -4777,7 +4771,7 @@ bool Sema::retainExternalValueBorrows(
   // formal's physical fields. Calls map it to concrete binding identities.
   if (auto conflict = PALCheckerState.replaceCarrierBorrows(
           holder->SymbolID, concreteSources, *retainingLevels,
-          holderScopeDepth, holder->DeclLoc, site->Loc)) {
+          holderScopeDepth, site->Loc)) {
     error(site, DiagID::ERR_BORROW_MUT, conflict->displayPath());
     recordPALConflict(site, PALOperationClass::SharedPayloadBorrow,
                       conflict->Path, *conflict);

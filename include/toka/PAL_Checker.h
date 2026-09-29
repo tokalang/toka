@@ -133,12 +133,10 @@ public:
   // exit can retire the exact holder without erasing another holder's loan.
   std::optional<PALConflict> replaceCarrierBorrows(
       uint64_t holderID, const std::set<AccessPath> &sources,
-      size_t retainingLevels, int holderScopeDepth, SourceLocation holderDeclLoc,
-      SourceLocation originLoc);
+      size_t retainingLevels, int holderScopeDepth, SourceLocation originLoc);
   void releaseCarrierBorrows(uint64_t holderID);
   std::optional<PALConflict> survivingCarrierBorrow(
-      const AccessPath &source, int sourceScopeDepth,
-      SourceLocation sourceDeclLoc) const;
+      const AccessPath &source, int sourceScopeDepth) const;
 
   // Clears all uncommitted transient borrows (called at statement boundaries)
   void clearTransient();
@@ -172,7 +170,6 @@ private:
   struct CarrierEntry {
     std::set<AccessPath> Sources;
     int HolderScopeDepth = 0;
-    SourceLocation HolderDeclLoc;
     SourceLocation OriginLoc;
   };
   std::vector<LedgerScope> LedgerStack;

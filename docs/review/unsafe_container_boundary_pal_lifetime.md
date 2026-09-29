@@ -21,12 +21,19 @@ as long as a local complete value carries them.
    retiring one of two holders leaves the other's loan intact.
 4. A successful move retires the old holder's loan; the destination inherits
    the source set. A rejected call restores the PAL snapshot. Scope exit
-   compares lexical scope depth and reverse declaration-order cleanup, then
-   releases loans belonging to bindings in that scope.
+   checks loans held in longer-lived lexical scopes, then releases loans
+   belonging to bindings in the exiting scope.
 5. `return <- self.external` and the existing return-source checks continue to
    carry the extracted value's external owner. A borrowed element newly made
    through `borrow()` still depends on container storage through its ordinary
    reference loan.
+
+`Vec::with_capacity` explicitly returns an empty initialized prefix, so its
+external element set is empty even for a borrowing `T`. A consuming `appended`
+call maps its moved receiver's logical external sources through whole-value
+assignment; the old Vec slot is not an element owner. Existing `Vec<&T>`
+iteration and reference alias operations remain supported, while returning a
+Vec that acquired a local `&T` is rejected.
 
 An unsafe raw-slot transfer is still a library invariant. The compiler does
 not prove the allocation, initialized prefix or slot retirement. Internal
@@ -53,5 +60,7 @@ method and direct-call owner mutation.
 
 Dependency removal after `remove` or `clear` is still conservative. A raw
 constructor with no usable external-source fact remains unknown to safe
-receiver-effect calls; unsafe code is responsible for its storage preconditions.
+receiver-effect calls and whole-value assignment; unsafe code is responsible
+for its storage preconditions. Such an assignment rejects before consuming its
+source.
 This package is isolated from the `0.10.0` release line.

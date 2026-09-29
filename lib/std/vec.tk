@@ -141,7 +141,12 @@ impl<T> Vec<T> {
     }
 
     // Create vector with capacity (Static Method)
-    pub fn with_capacity(capacity: usize) -> Vec<T> {
+    // The initialized prefix is empty, so this constructor carries no
+    // external element borrow even when T itself can borrow.
+    pub fn with_capacity(capacity: usize) -> Vec<T>
+    effects:
+        return <- capacity.external
+    {
         unsafe {
             if capacity == 0 {
                 return Vec<T>(*buf=null, len=0, cap=0)

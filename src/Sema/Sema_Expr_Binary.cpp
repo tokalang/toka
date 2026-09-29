@@ -1739,9 +1739,12 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                   !selectedType->isReference() &&
                   !safeBorrowFreeType(selectedType) && selectedOwnership &&
                   *selectedOwnership == ValueOwnership::BorrowedView;
+              const bool transferredWholeCarrier =
+                  source.Projections.empty() &&
+                  (source.RootID == target.RootID || sourceBinding->Moved);
               if (!safeBorrowFreeType(sourceBinding->TypeObj) &&
                   ((ownership && *ownership == ValueOwnership::BorrowedView) ||
-                   projectedBorrowedValue) &&
+                   projectedBorrowedValue || transferredWholeCarrier) &&
                   !sourceBinding->IsFunctionParameter) {
                 if (!sourceBinding->ExternalValueDependencies) {
                   unknown = true;

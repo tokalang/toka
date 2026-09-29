@@ -31,8 +31,8 @@ PAL_ESCAPES = (
     ("hidden_enum_owner_cede_while_vec_live", "E04660", "ActiveDerivedBorrow"),
     ("mixed_owned_field_owner_cede_escape", "E04660", "ActiveDerivedBorrow"),
     ("owner_scope_exit_while_vec_live", "E0440", "owner.buf"),
-    ("same_scope_drop_order_escape", "E0440", "owner.buf"),
     ("owner_mutation_while_vec_live", "E0441", "owner.buf"),
+    ("with_capacity_owner_mutation_escape", "E0441", "owner.buf"),
     ("moved_holder_owner_mutation_escape", "E0441", "owner.buf"),
     ("moved_holder_short_owner_escape", "E0440", "owner.buf"),
     ("one_of_two_holders_removed_escape", "E0441", "owner.buf"),
@@ -56,6 +56,7 @@ RUNTIME = (
     "replaced_holder_releases_old_owner",
     "same_scope_safe_drop_order",
     "unrelated_mutations_owner_alive",
+    "with_capacity_empty_then_static",
     "all_holders_removed_release",
 )
 
@@ -191,7 +192,8 @@ def main():
                                  ("assignment_rejected_rollback", "E0408"),
                                  ("rejected_carrier_assignment_restores_loan", "E0408"),
                                  ("rejected_carrier_call_restores_loan", "E04571"),
-                                 ("assignment_unknown_stays_unknown", "E0455"),
+                                 ("assignment_unknown_stays_unknown", "E04661"),
+                                 ("assignment_unknown_rejection_preserves_source", "E04661"),
                                  ("unsafe_from_raw_safe_reject", "E0623"),
                                  ("unsafe_set_len_safe_reject", "E0623"),
                                  ("unsafe_storage_safe_reject", "E0623"),
@@ -219,6 +221,11 @@ def main():
             if name == "rejected_carrier_assignment_restores_loan":
                 require("error[E0441]" in normal.stderr and "owner.buf" in normal.stderr,
                         "rejected assignment released the live carrier loan")
+            if name in ("assignment_unknown_stays_unknown",
+                        "assignment_unknown_rejection_preserves_source"):
+                require("ExternalValueDependenciesUnknown" in normal.stderr and
+                        "error[E0438]" not in normal.stderr,
+                        "unknown assignment escaped or consumed its source")
             output = work / (name + ".o")
             rejected = compile(source, "-c", "-o", str(output))
             require(rejected.returncode == 1 and not output.exists(),
