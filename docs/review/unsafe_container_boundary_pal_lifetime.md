@@ -34,6 +34,9 @@ as long as a local complete value carries them.
    projected source is checked for storage invalidation by its resolved
    ownership type: retiring a copied borrowed-view descriptor does not free
    its external referent. Unknown projections remain conservative.
+   Closure capture discovery and invoke-body checking each use an independent
+   cleanup boundary, restored after that pass. A closure return therefore
+   checks its own locals without unwinding unrelated outer-function locals.
 5. `return <- self.external` and the existing return-source checks continue to
    carry the extracted value's external owner. A borrowed element newly made
    through `borrow()` still depends on container storage through its ordinary

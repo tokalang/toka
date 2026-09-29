@@ -1,0 +1,21 @@
+auto observed# = 0:i32
+shape Watch(view: str)
+impl Watch@Encap {
+    fn drop(self#) {
+        if self.view.equals("local") { observed += 1:i32 }
+    }
+}
+
+fn main() -> i32 {
+    auto outer = { =>
+        auto holder# = Watch(view = "static")
+        auto owner = string::from("local")
+        holder = Watch(view = owner.as_str())
+        auto inner = { => return 0:i32 }:fn() -> i32
+        cede holder
+        return inner()
+    }:fn() -> i32
+    if outer() != 0 { return 1 }
+    if observed != 1:i32 { return 2 }
+    return 0
+}

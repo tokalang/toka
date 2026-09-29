@@ -1,0 +1,25 @@
+import core/result::{Result}
+
+auto observed# = 0:i32
+shape Watch(view: str)
+impl Watch@Encap {
+    fn drop(self#) {
+        if self.view.equals("local") { observed += 1:i32 }
+    }
+}
+
+fn provide() -> Result<i32, i32> {
+    return Result<i32, i32>::Err(9)
+}
+
+fn main() -> i32 {
+    auto callback = { =>
+        auto holder# = Watch(view = "static")
+        auto owner = string::from("local")
+        holder = Watch(view = owner.as_str())
+        auto value = provide()!
+        cede holder
+        return Result<i32, i32>::Ok(value)
+    }:fn() -> Result<i32, i32>
+    return 0
+}
