@@ -25,6 +25,20 @@ ESCAPES = (
     "direct_self_effect_escape", "direct_external_result_escape",
     "assignment_view_rebase_local_escape",
 )
+PAL_ESCAPES = (
+    ("owner_cede_while_vec_live", "E04660", "ActiveDerivedBorrow"),
+    ("aliased_owner_cede_while_vec_live", "E04660", "ActiveDerivedBorrow"),
+    ("hidden_enum_owner_cede_while_vec_live", "E04660", "ActiveDerivedBorrow"),
+    ("mixed_owned_field_owner_cede_escape", "E04660", "ActiveDerivedBorrow"),
+    ("owner_scope_exit_while_vec_live", "E0440", "owner.buf"),
+    ("same_scope_drop_order_escape", "E0440", "owner.buf"),
+    ("owner_mutation_while_vec_live", "E0441", "owner.buf"),
+    ("moved_holder_owner_mutation_escape", "E0441", "owner.buf"),
+    ("moved_holder_short_owner_escape", "E0440", "owner.buf"),
+    ("one_of_two_holders_removed_escape", "E0441", "owner.buf"),
+    ("branch_holder_owner_mutation_escape", "E0441", "owner.buf"),
+    ("extracted_view_owner_cede_escape", "E04660", "ActiveDerivedBorrow"),
+)
 RUNTIME = (
     "local_view_alive", "owned_string_return", "owned_token_exact_drop",
     "extracted_view_outlives_vec", "owned_pop_outlives_vec",
@@ -36,6 +50,13 @@ RUNTIME = (
     "assignment_owned_pattern_alive",
     "assignment_view_rebase_parameter",
     "direct_self_owner_alive",
+    "last_holder_scope_release", "last_holder_discard_release",
+    "moved_holder_release", "extracted_view_scope_release",
+    "short_owner_holder_discard",
+    "replaced_holder_releases_old_owner",
+    "same_scope_safe_drop_order",
+    "unrelated_mutations_owner_alive",
+    "all_holders_removed_release",
 )
 
 
@@ -132,6 +153,23 @@ def main():
             print("Four-case unannotated Vec rejection complete")
             return
 
+        for name, error_code, source_name in PAL_ESCAPES:
+            source = CASES / (name + ".tk")
+            normal = compile(source, "--check-only")
+            shadow = compile(source, "--check-only", "--non-call-transfer-shadow=json")
+            require(normal.returncode == shadow.returncode == 1 and
+                    normal.stderr == shadow.stderr and
+                    error_code in normal.stderr and source_name in normal.stderr and
+                    str(source) in normal.stderr,
+                    name + ": did not reach the owner-lifetime PAL gate: " + normal.stderr)
+            for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
+                output = work / (name + suffix)
+                rejected = compile(source, flag, "-o", str(output))
+                require(rejected.returncode == 1 and error_code in rejected.stderr and
+                        not output.exists(),
+                        name + ": rejected carrier lifetime produced an artifact")
+            print("PASS carrier PAL rejection " + name, flush=True)
+
         for name in RUNTIME + ("reference_growth",):
             source = (CASES / (name + ".tk") if name != "reference_growth" else
                       ROOT / "tests/semantics/reference_domains/vec_growth.tk")
@@ -151,6 +189,8 @@ def main():
                                  ("qualified_rejected_call_rollback", "E04557"),
                                  ("direct_rejected_call_rollback", "E04569"),
                                  ("assignment_rejected_rollback", "E0408"),
+                                 ("rejected_carrier_assignment_restores_loan", "E0408"),
+                                 ("rejected_carrier_call_restores_loan", "E04571"),
                                  ("assignment_unknown_stays_unknown", "E0455"),
                                  ("unsafe_from_raw_safe_reject", "E0623"),
                                  ("unsafe_set_len_safe_reject", "E0623"),
@@ -173,6 +213,12 @@ def main():
             if name == "assignment_rejected_rollback":
                 require("error[E0438]" not in normal.stderr,
                         "rejected assignment consumed its source")
+            if name == "rejected_carrier_call_restores_loan":
+                require("error[E0441]" in normal.stderr and "owner.buf" in normal.stderr,
+                        "rejected call released the live carrier loan")
+            if name == "rejected_carrier_assignment_restores_loan":
+                require("error[E0441]" in normal.stderr and "owner.buf" in normal.stderr,
+                        "rejected assignment released the live carrier loan")
             output = work / (name + ".o")
             rejected = compile(source, "-c", "-o", str(output))
             require(rejected.returncode == 1 and not output.exists(),

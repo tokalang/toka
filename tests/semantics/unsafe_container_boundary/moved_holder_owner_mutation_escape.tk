@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto owner# = string::from("local")
+    auto left# = Vec<str>::new()
+    auto right# = Vec<str>::new()
+    right#.push(owner.as_str())
+    left = cede right
+    owner#.push_str(" invalidates retained view")
+    auto &item = left.borrow(0:usize)
+    if item.equals("local") { return 0 }
+    return 1
+}

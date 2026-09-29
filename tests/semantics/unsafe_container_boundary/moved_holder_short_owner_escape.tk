@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto values# = Vec<str>::new()
+    {
+        auto owner = string::from("local")
+        auto source# = Vec<str>::new()
+        source#.push(owner.as_str())
+        values = cede source
+    }
+    if values.borrow(0:usize).equals("local") { return 0 }
+    return 1
+}

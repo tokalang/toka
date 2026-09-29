@@ -19,6 +19,7 @@
 #include <string>
 #include <map>
 #include <optional>
+#include <set>
 #include <vector>
 
 namespace toka {
@@ -72,11 +73,13 @@ public:
 
   void pushScope() {
     LedgerStack.push_back({});
+    CarrierStack.push_back({});
   }
 
   void popScope() {
     if (!LedgerStack.empty()) {
       LedgerStack.pop_back();
+      CarrierStack.pop_back();
     }
   }
 
@@ -125,6 +128,18 @@ public:
   // Releases an exact borrow introduced by a compiler-managed lexical value.
   void releaseBorrow(const AccessPath &path);
 
+  // A complete value may carry external borrows without being a reference.
+  // Bind those loans to the value's identity, so moves/replacements and scope
+  // exit can retire the exact holder without erasing another holder's loan.
+  std::optional<PALConflict> replaceCarrierBorrows(
+      uint64_t holderID, const std::set<AccessPath> &sources,
+      size_t retainingLevels, int holderScopeDepth, SourceLocation holderDeclLoc,
+      SourceLocation originLoc);
+  void releaseCarrierBorrows(uint64_t holderID);
+  std::optional<PALConflict> survivingCarrierBorrow(
+      const AccessPath &source, int sourceScopeDepth,
+      SourceLocation sourceDeclLoc) const;
+
   // Clears all uncommitted transient borrows (called at statement boundaries)
   void clearTransient();
 
@@ -154,7 +169,14 @@ private:
   struct LedgerScope {
     std::map<AccessPath, LedgerEntry> Map;
   };
+  struct CarrierEntry {
+    std::set<AccessPath> Sources;
+    int HolderScopeDepth = 0;
+    SourceLocation HolderDeclLoc;
+    SourceLocation OriginLoc;
+  };
   std::vector<LedgerScope> LedgerStack;
+  std::vector<std::map<uint64_t, CarrierEntry>> CarrierStack;
   std::vector<AccessPath> TransientBorrows;
   std::optional<PALConflict> LastConflict;
 };

@@ -4558,8 +4558,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 // invalidation that the real parameter contract forbids.
                 if (m_IsPrecomputingCaptures) canInvalidate = false;
             }
-            if (canInvalidate)
+            if (canInvalidate) {
               CurrentScope->markMoved(actualName, ce->Loc);
+              PALCheckerState.releaseCarrierBorrows(Info->SymbolID);
+            }
         }
       } else if (auto *Member = dynamic_cast<MemberExpr *>(underlying)) {
         // A direct field transfer from a local compiler-managed record leaves
@@ -5873,6 +5875,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                           var->Name);
                   } else {
                     CurrentScope->markMoved(var->Name, Met->Loc);
+                    if (receiverInfo)
+                      PALCheckerState.releaseCarrierBorrows(
+                          receiverInfo->SymbolID);
                   }
                 } else if (auto *index =
                                dynamic_cast<ArrayIndexExpr *>(receiver)) {

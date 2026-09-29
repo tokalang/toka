@@ -3275,6 +3275,18 @@ void Sema::checkStmt(Stmt *S) {
     initializeProjectionFacts(Info);
     CurrentScope->define(Var->Name, Info);
     Var->ResolvedBindingID = makeAccessPath(Var->Name).RootID;
+    if (!HasError && !safeBorrowFreeType(Info.TypeObj)) {
+      SymbolInfo *holder = nullptr;
+      CurrentScope->findSymbolByID(Var->ResolvedBindingID, holder);
+      if (Info.ExternalValueDependencies) {
+        if (!retainExternalValueBorrows(holder,
+                                        *Info.ExternalValueDependencies, Var))
+          HasError = true;
+      } else if (Info.ExternalValueTracked) {
+        error(Var, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+              "ExternalValueDependenciesUnknown");
+      }
+    }
     if (Var->Init) {
       auto path = makeAccessPath(Var->Name);
       if (!HasError) recordEnumBinding(path, Var->Init.get());

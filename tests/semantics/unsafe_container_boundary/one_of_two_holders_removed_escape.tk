@@ -1,0 +1,12 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto owner# = string::from("local")
+    auto first# = Vec<str>::new()
+    auto second# = Vec<str>::new()
+    first#.push(owner.as_str())
+    second#.push(owner.as_str())
+    cede first
+    owner#.push_str(" invalidates second holder")
+    return 0
+}

@@ -1,0 +1,11 @@
+import std/vec::{Vec}
+
+shape Payload(View(str) | Empty)
+
+fn main() -> i32 {
+    auto owner = string::from("local")
+    auto values# = Vec<Payload>::new()
+    values#.push(Payload::View(owner.as_str()))
+    cede owner
+    return 0
+}

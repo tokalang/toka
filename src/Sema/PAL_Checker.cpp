@@ -34,6 +34,15 @@ bool PALChecker::recordBorrow(const AccessPath &path, bool isMutable,
        }
     }
   }
+  if (isMutable)
+    for (const auto &scope : CarrierStack)
+      for (const auto &[holder, entry] : scope)
+        for (const auto &source : entry.Sources)
+          if (pathsOverlap(source, path)) {
+            LastConflict = PALConflict{source, PathState::BorrowedShared,
+                                       entry.OriginLoc};
+            return false;
+          }
   
   auto& map = LedgerStack.back().Map;
   const bool coalesced = map.count(path) != 0;
@@ -49,6 +58,10 @@ bool PALChecker::recordBorrow(const AccessPath &path, bool isMutable,
 
 bool PALChecker::upgradeBorrow(const AccessPath &path) {
   if (!IsEnabled) return true;
+  for (const auto &scope : CarrierStack)
+    for (const auto &[holder, entry] : scope)
+      for (const auto &source : entry.Sources)
+        if (pathsOverlap(source, path)) return false;
   
   if (!LedgerStack.empty()) {
       auto& map = LedgerStack.back().Map;
@@ -81,6 +94,12 @@ PALChecker::verifyExclusiveMutation(const AccessPath &path) {
       }
     }
   }
+  for (const auto &scope : CarrierStack)
+    for (const auto &[holder, entry] : scope)
+      for (const auto &source : entry.Sources)
+        if (pathsOverlap(source, path))
+          return PALConflict{source, PathState::BorrowedShared,
+                             entry.OriginLoc};
   return std::nullopt;
 }
 
@@ -117,6 +136,12 @@ PALChecker::verifyPayloadWrite(const AccessPath &path) {
       }
     }
   }
+  for (const auto &scope : CarrierStack)
+    for (const auto &[holder, entry] : scope)
+      for (const auto &source : entry.Sources)
+        if (pathsOverlap(source, path))
+          return PALConflict{source, PathState::BorrowedShared,
+                             entry.OriginLoc};
   return std::nullopt;
 }
 
@@ -182,6 +207,53 @@ std::optional<PALConflict> PALChecker::verifyArgumentBorrow(
         return PALConflict{otherPath, entry.State, entry.OriginLoc};
     }
   }
+  if (exclusive)
+    for (const auto &scope : CarrierStack)
+      for (const auto &[holder, entry] : scope)
+        for (const auto &source : entry.Sources)
+          if (pathsOverlap(source, path))
+            return PALConflict{source, PathState::BorrowedShared,
+                               entry.OriginLoc};
+  return std::nullopt;
+}
+
+std::optional<PALConflict> PALChecker::replaceCarrierBorrows(
+    uint64_t holderID, const std::set<AccessPath> &sources,
+    size_t retainingLevels, int holderScopeDepth, SourceLocation holderDeclLoc,
+    SourceLocation originLoc) {
+  if (!IsEnabled || !holderID || CarrierStack.empty()) return std::nullopt;
+  for (const auto &source : sources)
+    if (auto conflict = verifyAccess(source)) return conflict;
+  releaseCarrierBorrows(holderID);
+  if (!sources.empty()) {
+    const size_t level = retainingLevels < CarrierStack.size()
+        ? CarrierStack.size() - 1 - retainingLevels : 0;
+    CarrierStack[level][holderID] = {sources, holderScopeDepth,
+                                    holderDeclLoc, originLoc};
+  }
+  return std::nullopt;
+}
+
+void PALChecker::releaseCarrierBorrows(uint64_t holderID) {
+  if (!IsEnabled || !holderID) return;
+  for (auto &scope : CarrierStack) scope.erase(holderID);
+}
+
+std::optional<PALConflict> PALChecker::survivingCarrierBorrow(
+    const AccessPath &source, int sourceScopeDepth,
+    SourceLocation sourceDeclLoc) const {
+  if (!IsEnabled || CarrierStack.empty()) return std::nullopt;
+  for (size_t level = 0; level < CarrierStack.size(); ++level)
+    for (const auto &[holder, entry] : CarrierStack[level])
+      for (const auto &borrowed : entry.Sources)
+        if (pathsOverlap(borrowed, source) &&
+            (entry.HolderScopeDepth < sourceScopeDepth ||
+             (entry.HolderScopeDepth == sourceScopeDepth &&
+              (!entry.HolderDeclLoc.isValid() ||
+               !sourceDeclLoc.isValid() ||
+               entry.HolderDeclLoc < sourceDeclLoc))))
+          return PALConflict{borrowed, PathState::BorrowedShared,
+                             entry.OriginLoc};
   return std::nullopt;
 }
 
@@ -268,6 +340,7 @@ bool PALChecker::revokeRoot(const AccessPath &root) {
 
 void PALChecker::markMoved(const AccessPath &path) {
   if (!IsEnabled) return;
+  if (path.Projections.empty()) releaseCarrierBorrows(path.RootID);
 
   for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
     auto& map = it->Map;
@@ -354,6 +427,14 @@ void PALChecker::mergeBranches(const PALChecker& base,
       TransientBorrows.push_back(path);
     }
   }
+  if (CarrierStack.size() < second.CarrierStack.size())
+    CarrierStack.resize(second.CarrierStack.size());
+  for (size_t level = 0; level < second.CarrierStack.size(); ++level)
+    for (const auto &[holder, entry] : second.CarrierStack[level]) {
+      auto [it, inserted] = CarrierStack[level].try_emplace(holder, entry);
+      if (!inserted)
+        it->second.Sources.insert(entry.Sources.begin(), entry.Sources.end());
+    }
 }
 
 } // namespace toka

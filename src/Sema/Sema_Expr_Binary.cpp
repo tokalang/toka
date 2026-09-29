@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/AssignmentStats.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/MemberAccess.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
@@ -328,6 +329,10 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   if (!rhsIsTodo)
     rhsType = nativeManagedTarget ? checkExpr(Bin->RHS.get(), nativeManagedTarget)
                                   : checkExpr(Bin->RHS.get());
+  const bool hasCheckedAssignmentSources = Bin->Op == "=" && rhsType;
+  const auto checkedAssignmentSources = hasCheckedAssignmentSources
+      ? externalValueDependencies(Bin->RHS.get())
+      : std::optional<std::set<AccessPath>>{};
   if (Bin->Op == "=" && CurrentFunction && !CurrentFunction->Args.empty() &&
       CurrentFunction->Args.front().Name == "self" &&
       CurrentFunction->Args.front().IsValueMutable && rhsType &&
@@ -342,7 +347,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       const auto sourcePlace = canonicalizeAccessPath(
           makeAccessPath(Bin->RHS.get()));
       if (sourcePlace.RootID != receiver.RootID) {
-        auto sources = externalValueDependencies(Bin->RHS.get());
+        auto sources = checkedAssignmentSources;
         if (!sources) {
           error(Bin, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
                 "ReceiverWriteSourceUnknown");
@@ -1669,11 +1674,21 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                      [](const auto &record) {
                        return record.Level == DiagLevel::Error;
                      })) {
+      // An unsafe raw slot write is governed by the container's declared
+      // safe interface effect. The compiler does not infer whole-container
+      // dependencies from each internal pointer-indexing operation.
+      if (m_InUnsafeContext)
+        if (auto *indexed = dynamic_cast<ArrayIndexExpr *>(Bin->LHS.get());
+            indexed && indexed->Array && indexed->Array->ResolvedType &&
+            indexed->Array->ResolvedType->isRawPointer())
+          return lhsType;
       const auto target = canonicalizeAccessPath(makeAccessPath(Bin->LHS.get()));
       SymbolInfo *binding = nullptr;
       if (target.RootID &&
           CurrentScope->findSymbolByID(target.RootID, binding) && binding) {
-        auto sources = externalValueDependencies(Bin->RHS.get());
+        auto sources = hasCheckedAssignmentSources
+            ? checkedAssignmentSources
+            : externalValueDependencies(Bin->RHS.get());
         const bool borrowFree = safeBorrowFreeType(rhsType);
         if (borrowFree) {
           sources = std::set<AccessPath>{};
@@ -1686,7 +1701,48 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                     source.RootID, sourceBinding) && sourceBinding) {
               const auto ownership = queryExplicitCedeStage0OwnershipReadOnly(
                   sourceBinding->TypeObj);
-              if (ownership && *ownership == ValueOwnership::BorrowedView) {
+              std::shared_ptr<Type> selectedType = sourceBinding->TypeObj;
+              for (const auto &projection : source.Projections) {
+                if (projection.Kind != AccessProjectionKind::Field ||
+                    !selectedType) {
+                  selectedType.reset();
+                  break;
+                }
+                auto resolved = resolveExplicitCedeStage0TypeReadOnly(selectedType);
+                auto shape = std::dynamic_pointer_cast<ShapeType>(
+                    resolved ? resolved->getSoulType() : nullptr);
+                if (!shape || !shape->Decl) {
+                  selectedType.reset();
+                  break;
+                }
+                std::map<std::string, std::shared_ptr<Type>> substitutions;
+                for (size_t index = 0;
+                     index < shape->GenericArgs.size() &&
+                     index < shape->Decl->GenericParams.size(); ++index)
+                  substitutions[shape->Decl->GenericParams[index].Name] =
+                      shape->GenericArgs[index];
+                selectedType.reset();
+                for (const auto &field : shape->Decl->Members)
+                  if (stripMemberAccessMarkers(field.Name) == projection.Name) {
+                    selectedType = getPhysicalType(field);
+                    if (selectedType && !substitutions.empty())
+                      selectedType = selectedType->substitute(substitutions);
+                    break;
+                  }
+              }
+              const auto selectedOwnership =
+                  queryExplicitCedeStage0OwnershipReadOnly(selectedType);
+              // Rebase a projected view through its carrier's external
+              // sources. An owned field's raw storage remains an actual
+              // source of its own, even when sibling fields borrow elsewhere.
+              const bool projectedBorrowedValue = selectedType &&
+                  !selectedType->isReference() &&
+                  !safeBorrowFreeType(selectedType) && selectedOwnership &&
+                  *selectedOwnership == ValueOwnership::BorrowedView;
+              if (!safeBorrowFreeType(sourceBinding->TypeObj) &&
+                  ((ownership && *ownership == ValueOwnership::BorrowedView) ||
+                   projectedBorrowedValue) &&
+                  !sourceBinding->IsFunctionParameter) {
                 if (!sourceBinding->ExternalValueDependencies) {
                   unknown = true;
                   break;
@@ -1701,8 +1757,46 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           if (unknown) sources.reset();
           else sources = std::move(rebased);
         }
+        if (!sources) {
+          error(Bin, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                "ExternalValueDependenciesUnknown");
+          return Type::fromString("unknown");
+        }
+        auto retainedSources = *sources;
+        if (!target.Projections.empty() && binding->TypeObj &&
+            !binding->TypeObj->isRawPointer()) {
+          if (!binding->ExternalValueDependencies) {
+            const auto receiver = CurrentFunction &&
+                    !CurrentFunction->Args.empty() &&
+                    CurrentFunction->Args.front().Name == "self" &&
+                    CurrentFunction->Args.front().IsValueMutable
+                ? canonicalizeAccessPath(makeAccessPath("self")) : AccessPath{};
+            bool declaredReceiverEffect = false;
+            if (receiver.RootID && target.RootID == receiver.RootID)
+              for (const auto &route : CurrentFunction->ReturnContract.Routes)
+                declaredReceiverEffect |=
+                    route.Target.Kind == ReturnDependencyTargetKind::ReceiverPoststate;
+            if (declaredReceiverEffect) {
+              // The body has checked its declared receiver effect above. The
+              // caller maps the formal projection to a real owner and PAL
+              // installs that concrete loan at the successful call boundary.
+              binding->ExternalValueTracked = true;
+              return lhsType;
+            }
+            // A borrow-free field write changes none of the whole value's
+            // existing, possibly symbolic, external sources.
+            if (retainedSources.empty()) return lhsType;
+            error(Bin, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                  "ExternalValueDependenciesUnknown");
+            return Type::fromString("unknown");
+          }
+          retainedSources.insert(binding->ExternalValueDependencies->begin(),
+                                 binding->ExternalValueDependencies->end());
+        }
+        if (!retainExternalValueBorrows(binding, retainedSources, Bin))
+          return Type::fromString("unknown");
         if (target.Projections.empty()) {
-          binding->ExternalValueDependencies = std::move(sources);
+          binding->ExternalValueDependencies = std::move(retainedSources);
           binding->ExternalValueTracked =
               Bin->RHS->ExternalValueTracked || !borrowFree ||
               (binding->ExternalValueDependencies &&
@@ -1712,11 +1806,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           // A field or element replacement can leave other live fields in the
           // root. Retain old sources and conservatively join the new value.
           binding->ExternalValueTracked = true;
-          if (!binding->ExternalValueDependencies || !sources)
-            binding->ExternalValueDependencies.reset();
-          else
-            binding->ExternalValueDependencies->insert(sources->begin(),
-                                                        sources->end());
+          binding->ExternalValueDependencies = std::move(retainedSources);
         }
       }
     }

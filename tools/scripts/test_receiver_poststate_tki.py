@@ -10,7 +10,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CANDIDATE = "0.9.9-29"
+CANDIDATE = "0.9.9-30"
 
 
 def require(condition, message):
@@ -135,6 +135,63 @@ fn main() -> i32 { return 0 }
                 cwd=work, env=env, capture_output=True, text=True, timeout=45)
             require(rejected.returncode == 1 and not output.exists(),
                     "source-hidden direct escape produced an artifact")
+
+        live_owner = work / "source_hidden_owner_mutation.tk"
+        live_owner.write_text("""import ./slot::{Slot, Input}
+import core/string::{string}
+fn main() -> i32 {
+    auto owner# = string::from("local")
+    auto box# = Slot(view = "static")
+    auto input = Input(view = owner.as_str(), other = "static")
+    box#.replace(input)
+    owner#.push_str(" invalidates view")
+    return 0
+}
+""")
+        normal = subprocess.run(
+            [str(compiler), "--check-only", str(live_owner)], cwd=work,
+            env=env, capture_output=True, text=True, timeout=45)
+        shadow = subprocess.run(
+            [str(compiler), "--check-only", "--non-call-transfer-shadow=json",
+             str(live_owner)], cwd=work, env=env, capture_output=True,
+            text=True, timeout=45)
+        require(normal.returncode == shadow.returncode == 1 and
+                normal.stderr == shadow.stderr and "error[E0441]" in normal.stderr and
+                "owner.buf" in normal.stderr,
+                "source-hidden receiver loan did not protect its owner")
+        for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
+            output = work / ("source_hidden_owner_mutation" + suffix)
+            rejected = subprocess.run(
+                [str(compiler), flag, "-o", str(output), str(live_owner)],
+                cwd=work, env=env, capture_output=True, text=True, timeout=45)
+            require(rejected.returncode == 1 and not output.exists(),
+                    "source-hidden owner mutation produced an artifact")
+
+        direct_live_owner = work / "source_hidden_direct_owner_mutation.tk"
+        direct_live_owner.write_text(live_owner.read_text().replace(
+            "import ./slot::{Slot, Input}",
+            "import ./slot::{Slot, Input, replace_direct}").replace(
+            "box#.replace(input)", "replace_direct(box#, input)"))
+        direct_normal = subprocess.run(
+            [str(compiler), "--check-only", str(direct_live_owner)], cwd=work,
+            env=env, capture_output=True, text=True, timeout=45)
+        direct_shadow = subprocess.run(
+            [str(compiler), "--check-only", "--non-call-transfer-shadow=json",
+             str(direct_live_owner)], cwd=work, env=env, capture_output=True,
+            text=True, timeout=45)
+        require(direct_normal.returncode == direct_shadow.returncode == 1 and
+                direct_normal.stderr == direct_shadow.stderr and
+                "error[E0441]" in direct_normal.stderr and
+                "owner.buf" in direct_normal.stderr,
+                "source-hidden direct receiver loan did not protect its owner")
+        for flag, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
+            output = work / ("source_hidden_direct_owner_mutation" + suffix)
+            rejected = subprocess.run(
+                [str(compiler), flag, "-o", str(output),
+                 str(direct_live_owner)], cwd=work, env=env,
+                capture_output=True, text=True, timeout=45)
+            require(rejected.returncode == 1 and not output.exists(),
+                    "source-hidden direct owner mutation produced an artifact")
 
         interface.write_text(original.replace("self <- next.view",
                                               "self <- next.missing", 1))

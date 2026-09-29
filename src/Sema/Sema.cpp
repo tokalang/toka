@@ -3308,6 +3308,24 @@ void Sema::enterScope() {
 
 void Sema::exitScope() {
   Scope *Old = CurrentScope;
+  // A carrier may still need storage about to be destroyed here. Compare
+  // lexical scopes, then reverse declaration-order cleanup within one scope.
+  for (const auto &[name, info] : Old->Symbols) {
+    if (!info.IsDeclaredVariable || info.IsFunctionParameter ||
+        !info.SymbolID || info.Moved) continue;
+    AccessPath source;
+    source.RootID = info.SymbolID;
+    source.RootName = Type::stripMorphology(name);
+    source.RootLoc = info.DeclLoc;
+    if (auto conflict = PALCheckerState.survivingCarrierBorrow(
+            source, Old->Depth, info.DeclLoc)) {
+      DiagnosticEngine::report(info.DeclLoc, DiagID::ERR_MOVE_BORROWED,
+                               conflict->displayPath());
+      HasError = true;
+    }
+  }
+  for (const auto &[name, info] : Old->Symbols)
+    PALCheckerState.releaseCarrierBorrows(info.SymbolID);
   CurrentScope = CurrentScope->Parent;
   PALCheckerState.popScope();
   delete Old;

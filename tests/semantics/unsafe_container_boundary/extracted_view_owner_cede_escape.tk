@@ -1,0 +1,16 @@
+import std/vec::{Vec}
+
+fn extract(owner: string) -> str <- owner {
+    auto values# = Vec<str>::new()
+    values#.push(owner.as_str())
+    auto result = values#.pop()
+    return result.unwrap()
+}
+
+fn main() -> i32 {
+    auto owner = string::from("stable")
+    auto view = extract(owner)
+    cede owner
+    if view.equals("stable") { return 0 }
+    return 1
+}

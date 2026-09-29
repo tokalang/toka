@@ -4569,6 +4569,7 @@ bool Sema::safeBorrowFreeType(const std::shared_ptr<Type> &input) {
     // A raw address is not a safe borrow of its pointee. This says nothing
     // about allocation ownership or the safety of dereferencing that address.
     if (type->isRawPointer()) return true;
+    if (type->isNullType()) return true;
     if (type->isBoolean() || type->isInteger() || type->isFloatingPoint() ||
         type->isUnit() || type->isAddrType() || type->isOAddrType()) return true;
     if (type->isUniquePtr() || type->isSharedPtr())
@@ -4614,6 +4615,36 @@ Sema::externalValueDependencies(Expr *value) {
   if (auto *cast = dynamic_cast<CastExpr *>(value);
       cast && cast->Kind == CastKind::Ascription)
     return externalValueDependencies(cast->Expression.get());
+  if (dynamic_cast<UnwrapPropagationExpr *>(value)) {
+    std::vector<AccessPath> selected;
+    std::vector<SourceLocation> staticStorage;
+    if (!collectActualBindingReferents(value, selected, &staticStorage))
+      return std::nullopt;
+    std::set<AccessPath> result;
+    for (auto source : selected) {
+      source = canonicalizeAccessPath(source);
+      SymbolInfo *binding = nullptr;
+      if (!source.RootID || !CurrentScope->findSymbolByID(source.RootID, binding) ||
+          !binding)
+        return std::nullopt;
+      result.insert(std::move(source));
+    }
+    if (!result.empty() || !staticStorage.empty()) return result;
+    return std::nullopt;
+  }
+  if (auto *index = dynamic_cast<ArrayIndexExpr *>(value);
+      m_InUnsafeContext && index && index->Array &&
+      index->Array->ResolvedType && index->Array->ResolvedType->isRawPointer()) {
+    // Unsafe code may move a complete logical element out of a raw slot.
+    // The slot address is not the element's external owner. Its containing
+    // value's declared external sources remain the safe-interface boundary.
+    const auto storage = canonicalizeAccessPath(makeAccessPath(index->Array.get()));
+    SymbolInfo *carrier = nullptr;
+    if (storage.RootID &&
+        CurrentScope->findSymbolByID(storage.RootID, carrier) && carrier)
+      return carrier->ExternalValueDependencies;
+    return std::nullopt;
+  }
   if (auto *member = dynamic_cast<MemberExpr *>(value);
       member && !safeBorrowFreeType(value->ResolvedType)) {
     // A selected field can contain any external borrow carried by the whole
@@ -4622,6 +4653,11 @@ Sema::externalValueDependencies(Expr *value) {
     // payload must not acquire a dependency on the retired record slot.
     auto parent = externalValueDependencies(member->Object.get());
     const auto objectPath = canonicalizeAccessPath(makeAccessPath(member->Object.get()));
+    SymbolInfo *objectBinding = nullptr;
+    if (objectPath.RootID)
+      CurrentScope->findSymbolByID(objectPath.RootID, objectBinding);
+    const bool localCarriedValue = objectBinding &&
+        !objectBinding->IsFunctionParameter && !objectBinding->IsPlaceAlias;
     const bool symbolicWholeValue = parent && objectPath.RootID &&
         std::any_of(parent->begin(), parent->end(), [&](const AccessPath &source) {
           return source.RootID == objectPath.RootID &&
@@ -4630,7 +4666,8 @@ Sema::externalValueDependencies(Expr *value) {
         });
     // A formal's symbolic whole-value source is not the source of every
     // selected field. Let the ordinary projection mapper resolve that field.
-    if (member->Object->ExternalValueTracked && !symbolicWholeValue) {
+    if ((member->Object->ExternalValueTracked || localCarriedValue) &&
+        !symbolicWholeValue) {
       value->ExternalValueTracked = true;
       value->ExternalValueDependencies = parent;
       return parent;
@@ -4688,6 +4725,65 @@ Sema::externalValueDependencies(Expr *value) {
   if (safeBorrowFreeType(value->ResolvedType))
     return std::set<AccessPath>{};
   return std::nullopt;
+}
+
+bool Sema::retainExternalValueBorrows(
+    SymbolInfo *holder, const std::set<AccessPath> &sources, ASTNode *site) {
+  if (!site) return false;
+  if (!holder || !holder->SymbolID) {
+    error(site, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+          "ExternalValueHolderIdentityUnavailable");
+    return false;
+  }
+  if (holder->TypeObj && holder->TypeObj->isReference()) {
+    // Direct references already own an exact PAL loan. The carrier ledger is
+    // for complete values that hide a borrow behind their value boundary.
+    PALCheckerState.releaseCarrierBorrows(holder->SymbolID);
+    return true;
+  }
+  std::optional<size_t> retainingLevels;
+  int holderScopeDepth = 0;
+  for (Scope *scope = CurrentScope; scope; scope = scope->Parent) {
+    for (const auto &[name, info] : scope->Symbols)
+      if (info.SymbolID == holder->SymbolID) {
+        retainingLevels = static_cast<size_t>(CurrentScope->Depth - scope->Depth);
+        holderScopeDepth = scope->Depth;
+        break;
+      }
+    if (retainingLevels) break;
+  }
+  if (!retainingLevels) {
+    error(site, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+          "ExternalValueHolderIdentityUnavailable");
+    return false;
+  }
+  std::set<AccessPath> concreteSources;
+  for (const auto &source : sources) {
+    const bool symbolicExternal = std::any_of(
+        source.Projections.begin(), source.Projections.end(),
+        [](const AccessProjection &projection) {
+          return projection.Kind == AccessProjectionKind::ExternalValue;
+        });
+    if (!symbolicExternal) {
+      if (!source.RootID) {
+        error(site, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+              "ExternalValueDependencyIdentityUnavailable");
+        return false;
+      }
+      concreteSources.insert(source);
+    }
+  }
+  // `formal.external` is an interface parameter, not a borrow of the
+  // formal's physical fields. Calls map it to concrete binding identities.
+  if (auto conflict = PALCheckerState.replaceCarrierBorrows(
+          holder->SymbolID, concreteSources, *retainingLevels,
+          holderScopeDepth, holder->DeclLoc, site->Loc)) {
+    error(site, DiagID::ERR_BORROW_MUT, conflict->displayPath());
+    recordPALConflict(site, PALOperationClass::SharedPayloadBorrow,
+                      conflict->Path, *conflict);
+    return false;
+  }
+  return true;
 }
 
 bool Sema::applyExternalCallEffects(
@@ -4765,12 +4861,17 @@ bool Sema::applyExternalCallEffects(
   }
   if (safeBorrowFreeType(resultType)) resultSources = std::set<AccessPath>{};
   if (receiver) {
+    if (!receiver->ExternalValueDependencies || !incoming) {
+      error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+            "ReceiverExternalSourcesUnknown");
+      return false;
+    }
+    auto mergedSources = *receiver->ExternalValueDependencies;
+    mergedSources.insert(incoming->begin(), incoming->end());
+    if (!retainExternalValueBorrows(receiver, mergedSources, call))
+      return false;
     receiver->ExternalValueTracked = true;
-    if (!receiver->ExternalValueDependencies || !incoming)
-      receiver->ExternalValueDependencies.reset();
-    else
-      receiver->ExternalValueDependencies->insert(incoming->begin(),
-                                                   incoming->end());
+    receiver->ExternalValueDependencies = std::move(mergedSources);
   }
   if (resultRoute) {
     call->ExternalValueDependencies = std::move(resultSources);

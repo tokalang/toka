@@ -1,0 +1,17 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto owner = string::from("local")
+    auto other# = string::from("other")
+    auto values# = Vec<str>::new()
+    values#.push(owner.as_str())
+    other#.push_str("!")
+    auto count# = 0:usize
+    loop count < 8:usize {
+        values#.push("static")
+        count += 1:usize
+    }
+    if !values.borrow(0:usize).equals("local") ||
+       !other.as_str().equals("other!") { return 1 }
+    return 0
+}

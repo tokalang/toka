@@ -1,0 +1,15 @@
+import std/vec::{Vec}
+
+fn consume(cede values: Vec<str>, count: i32) -> i32 {
+    cede values
+    return count
+}
+
+fn main() -> i32 {
+    auto owner# = string::from("local")
+    auto values# = Vec<str>::new()
+    values#.push(owner.as_str())
+    consume(cede values, "wrong")
+    owner#.push_str(" invalidates retained view")
+    return 0
+}
