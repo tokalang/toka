@@ -15,7 +15,8 @@ as long as a local complete value carries them.
    checked RHS facts. Field writes conservatively retain existing sources.
    A projected borrowed view is rebased through its carrier's external facts;
    an owned field's storage path remains its own source. Direct `&T` values
-   keep using their existing PAL loans.
+   keep using their existing PAL loans. Callable values keep using the
+   callable-environment capture and replacement protocol.
 3. PAL rejects source invalidation, conflicting mutation, mutable borrowing
    and cede while a holder remains live. It tracks each holder separately, so
    retiring one of two holders leaves the other's loan intact.
@@ -34,6 +35,10 @@ call maps its moved receiver's logical external sources through whole-value
 assignment; the old Vec slot is not an element owner. Existing `Vec<&T>`
 iteration and reference alias operations remain supported, while returning a
 Vec that acquired a local `&T` is rejected.
+
+The exact `std/vec` source seal used by the ByteBuffer/TaskResult evidence
+path is refreshed for this reviewed constructor-contract change. The
+constructor's allocation and initialized-prefix algorithm is unchanged.
 
 An unsafe raw-slot transfer is still a library invariant. The compiler does
 not prove the allocation, initialized prefix or slot retirement. Internal

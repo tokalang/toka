@@ -1686,6 +1686,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       SymbolInfo *binding = nullptr;
       if (target.RootID &&
           CurrentScope->findSymbolByID(target.RootID, binding) && binding) {
+        // Callable environments have their own capture and replacement
+        // protocol; they are not external-value container carriers.
+        if (binding->TypeObj &&
+            (binding->TypeObj->isFunction() || binding->TypeObj->isDynFn()))
+          return lhsType;
         auto sources = hasCheckedAssignmentSources
             ? checkedAssignmentSources
             : externalValueDependencies(Bin->RHS.get());
