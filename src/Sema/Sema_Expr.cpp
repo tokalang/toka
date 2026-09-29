@@ -3029,7 +3029,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         
         bool isReceiver = false;
         if (!m_ControlFlowStack.empty()) isReceiver = m_ControlFlowStack.back().IsReceiver;
-        m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+        pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
         
         if (ie->ComptimeTaken) {
             checkStmt(ie->Then.get());
@@ -3168,7 +3168,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       isReceiver = m_ControlFlowStack.back().IsReceiver;
     }
 
-    m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+    pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
 
     // Save Mask & Moved State for Intersection Rule
     // A branch may appear inside a nested block while mutating a binding from
@@ -3234,7 +3234,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ByteBuffers = bytesBeforeIf;
       m_TaskResults = tasksBeforeIf;
 
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+      pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
       if (narrowsInitState)
         applyInitStateNarrowing(PlaceState::Live);
       else if (narrowElse)
@@ -3761,7 +3761,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ControlFlowStack.back().IsReceiver = isReceiver;
       tookOver = true;
     } else {
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, true, isReceiver});
+      pushControlFlow({"", NoProducedValue, nullptr, true, isReceiver});
     }
     size_t loopFlowIndex = m_ControlFlowStack.size() - 1;
 
@@ -4284,9 +4284,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ControlFlowStack.back().IsReceiver = isReceiver; // Sync receiver status
       tookOver = true;
     } else {
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, true, isReceiver});
+      pushControlFlow({"", NoProducedValue, nullptr, true, isReceiver});
     }
     size_t loopFlowIndex = m_ControlFlowStack.size() - 1;
+    // The iterator binding belongs to the loop's own scope. A jump unwinds
+    // only the nested body scopes; the iterator is retired at loop exit.
+    m_ControlFlowStack[loopFlowIndex].CleanupTargetScope = CurrentScope;
     checkStmt(fe->Body.get());
     std::string bodyType = m_ControlFlowStack.back().ExpectedType;
     auto bodyTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
@@ -4334,7 +4337,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       PALCheckerState.restore(palBefore);
       restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
 
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+      pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
       checkStmt(fe->ElseBody.get());
       elseType = m_ControlFlowStack.back().ExpectedType;
       elseTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
@@ -4710,7 +4713,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::shared_ptr<toka::Type> valTypeObj;
     if (isPrefixMatch || isPrefixIf || isPrefixFor ||
         isPrefixLoop) {
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, true});
+      pushControlFlow({"", NoProducedValue, nullptr, false, true});
       valTypeObj = checkExpr(pe->Value.get());
       valType = valTypeObj->toString();
       m_ControlFlowStack.pop_back();
@@ -4735,6 +4738,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           } else if (!isTypeCompatible(it->ExpectedTypeObj, valTypeObj)) {
             error(pe, DiagID::ERR_TYPE_MISMATCH, valType, it->ExpectedType);
           }
+          checkCleanupOnEdge(it->CleanupTargetScope, pe->Loc);
           break;
         }
       }
@@ -4783,6 +4787,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!m_InitBlockContexts.empty() &&
           targetDepth < m_InitBlockContexts.back().ControlFlowDepth)
         error(be, DiagID::ERR_INIT_BLOCK_EXIT, "break");
+      checkCleanupOnEdge(target->CleanupTargetScope, be->Loc);
       target->BreakStates.push_back(captureAnalysisState());
       if (valType != NoProducedValue) {
         if (target->ExpectedType == NoProducedValue) {
@@ -4821,6 +4826,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!m_InitBlockContexts.empty() &&
           targetDepth < m_InitBlockContexts.back().ControlFlowDepth)
         error(ce, DiagID::ERR_INIT_BLOCK_EXIT, "continue");
+      checkCleanupOnEdge(target->CleanupTargetScope, ce->Loc);
       target->ContinueStates.push_back(captureAnalysisState());
     }
     return toka::Type::fromString("()");
@@ -6491,6 +6497,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     St->ResolvedType = res;
     return res;
   } else if (auto *Unwrap = dynamic_cast<UnwrapPropagationExpr *>(E)) {
+    const size_t propagationDiagnosticStart = DiagnosticEngine::records().size();
     bool old = m_IsConsumingEffect;
     m_IsConsumingEffect = true;
     auto baseObj = checkExpr(Unwrap->Base.get());
@@ -6689,6 +6696,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
       }
     }
+    const auto &propagationRecords = DiagnosticEngine::records();
+    if (std::none_of(propagationRecords.begin() +
+                         std::min(propagationDiagnosticStart,
+                                  propagationRecords.size()),
+                     propagationRecords.end(), [](const auto &record) {
+                       return record.Level == DiagLevel::Error;
+                     }))
+      checkCleanupOnEdge(m_FunctionCleanupBoundary, Unwrap->Loc);
     return payloadT;
   } else if (auto *Post = dynamic_cast<PostfixExpr *>(E)) {
     // [Fix] Do NOT disable soul collapse.
@@ -6943,7 +6958,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 "match guard", "bool", arm->Guard->ResolvedType->toString());
         }
       }
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+      pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
       checkStmt(arm->Body.get());
       std::string armType = m_ControlFlowStack.back().ExpectedType;
       auto armTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;

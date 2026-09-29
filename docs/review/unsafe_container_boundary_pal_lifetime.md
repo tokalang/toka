@@ -27,7 +27,13 @@ as long as a local complete value carries them.
    Longer-lived holders always constrain a source; a same-scope holder does
    so when its destructor may read the carried borrow. An empty destructor
    body does not count as a read, while nested elements with a potentially
-   reading destructor do.
+   reading destructor do. Each return, break, continue, pass or propagation
+   edge simulates its own unwind from the post-expression PAL state. The
+   simulation uses a ledger copy, so the continuing branch retains its
+   original loans and later statements cannot justify an earlier exit. A
+   projected source is checked for storage invalidation by its resolved
+   ownership type: retiring a copied borrowed-view descriptor does not free
+   its external referent. Unknown projections remain conservative.
 5. `return <- self.external` and the existing return-source checks continue to
    carry the extracted value's external owner. A borrowed element newly made
    through `borrow()` still depends on container storage through its ordinary
@@ -57,9 +63,10 @@ reviewed programs: owner cede, shorter owner scope and owner mutation while a
 assignment, hidden enum payloads, consumed-call rollback, extraction after
 Vec destruction, and a shape with both owned storage and an unrelated
 borrowed field. Same-scope custom-drop cases check bad order at ordinary
-block exit and early return. Good-order and early-holder-retirement controls
-run the destructor and check its exact count; descriptor-only cleanup remains
-accepted. Each dangerous source must fail in normal and shadow checks,
+block exit, conditional return, loop break/continue and propagation. Good-order
+and early-holder-retirement controls run the destructor and check its exact
+count; descriptor-only cleanup remains accepted. Each dangerous source must
+fail in normal and shadow checks,
 with no object or LLVM IR output.
 
 Run controls keep the owner live during access; retire the last holder before

@@ -3306,14 +3306,79 @@ void Sema::enterScope() {
   PALCheckerState.pushScope();
 }
 
-void Sema::exitScope() {
-  Scope *Old = CurrentScope;
+void Sema::pushControlFlow(ControlFlowInfo flow) {
+  flow.CleanupTargetScope = CurrentScope;
+  m_ControlFlowStack.push_back(std::move(flow));
+}
+
+bool Sema::cleanupInvalidatesSource(const AccessPath &source) {
+  SymbolInfo *binding = nullptr;
+  if (!source.RootID || !CurrentScope->findSymbolByID(source.RootID, binding) ||
+      !binding || !binding->TypeObj)
+    return true;
+  auto type = binding->TypeObj;
+  for (const auto &projection : source.Projections) {
+    type = resolveExplicitCedeStage0TypeReadOnly(type);
+    if (!type) return true;
+    // A copied view carries the external storage dependency, but retiring
+    // this descriptor cannot invalidate that storage. The actual owner is
+    // protected by its own source path. Do not infer ownership from `.buf`.
+    if (!hasCanonicalOwningStringStorage(type) &&
+        (type->isReference() ||
+         queryExplicitCedeStage0OwnershipReadOnly(type) ==
+             ValueOwnership::BorrowedView))
+      return false;
+    if (projection.Kind == AccessProjectionKind::Field) {
+      auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
+      if (!shape || !shape->Decl) return true;
+      const ShapeMember *member = nullptr;
+      auto findMember = [&](const ShapeMember &candidate) {
+        if (Type::stripMorphology(candidate.Name) ==
+            Type::stripMorphology(projection.Name))
+          member = &candidate;
+      };
+      for (const auto &candidate : shape->Decl->Members) {
+        findMember(candidate);
+        for (const auto &payload : candidate.SubMembers) findMember(payload);
+      }
+      if (!member) return true;
+      type = getPhysicalType(*member);
+      const auto &arguments = shape->GenericArgs.empty()
+          ? shape->Decl->InstantiationArgs : shape->GenericArgs;
+      if (type && arguments.size() == shape->Decl->GenericParams.size()) {
+        std::map<std::string, std::shared_ptr<Type>> substitutions;
+        for (size_t index = 0; index < arguments.size(); ++index)
+          substitutions[shape->Decl->GenericParams[index].Name] =
+              arguments[index];
+        type = type->substitute(substitutions);
+      }
+    } else if (projection.Kind == AccessProjectionKind::ConstantIndex ||
+               projection.Kind == AccessProjectionKind::DynamicIndex) {
+      if (!type->isArray()) return true;
+      type = type->getArrayElementType();
+    } else if (projection.Kind == AccessProjectionKind::Dereference) {
+      if (!type->isPointer()) return true;
+      type = type->getPointeeType();
+    } else {
+      return true;
+    }
+  }
+  if (!source.Projections.empty()) return true;
+  type = resolveExplicitCedeStage0TypeReadOnly(type);
+  return !type || hasCanonicalOwningStringStorage(type) ||
+      (!type->isReference() &&
+       queryExplicitCedeStage0OwnershipReadOnly(type) !=
+           ValueOwnership::BorrowedView);
+}
+
+void Sema::checkCleanupScope(Scope *scope, PALChecker &pal,
+                             SourceLocation exitLoc) {
   // CodeGen cleans this lexical scope in reverse declaration order. A
   // destructor may read its carried view, so check each source before that
   // source is retired; only then release the completed holder's loans.
   std::vector<std::pair<std::string, const SymbolInfo *>> cleanup;
-  cleanup.reserve(Old->Symbols.size());
-  for (const auto &[name, info] : Old->Symbols)
+  cleanup.reserve(scope->Symbols.size());
+  for (const auto &[name, info] : scope->Symbols)
     cleanup.emplace_back(name, &info);
   std::sort(cleanup.begin(), cleanup.end(), [](const auto &left,
                                                const auto &right) {
@@ -3328,15 +3393,34 @@ void Sema::exitScope() {
       source.RootID = info->SymbolID;
       source.RootName = Type::stripMorphology(name);
       source.RootLoc = info->DeclLoc;
-      if (auto conflict = PALCheckerState.survivingCarrierBorrow(
-              source, Old->Depth)) {
-        DiagnosticEngine::report(info->DeclLoc, DiagID::ERR_MOVE_BORROWED,
+      if (auto conflict = pal.survivingCarrierBorrow(
+              source, scope->Depth, [&](const AccessPath &borrowed) {
+                return cleanupInvalidatesSource(borrowed);
+              })) {
+        DiagnosticEngine::report(exitLoc.isValid() ? exitLoc : info->DeclLoc,
+                                 DiagID::ERR_MOVE_BORROWED,
                                  conflict->displayPath());
         HasError = true;
       }
     }
-    PALCheckerState.releaseCarrierBorrows(info->SymbolID);
+    pal.releaseCarrierBorrows(info->SymbolID);
   }
+}
+
+void Sema::checkCleanupOnEdge(Scope *preserved, SourceLocation exitLoc) {
+  // The sibling path continues with the current ledger. Only the terminating
+  // edge receives the simulated retirements and scope pops.
+  PALChecker edge = PALCheckerState.snapshot();
+  for (Scope *scope = CurrentScope; scope && scope != preserved;
+       scope = scope->Parent) {
+    checkCleanupScope(scope, edge, exitLoc);
+    edge.popScope();
+  }
+}
+
+void Sema::exitScope() {
+  Scope *Old = CurrentScope;
+  checkCleanupScope(Old, PALCheckerState, SourceLocation{});
   CurrentScope = CurrentScope->Parent;
   PALCheckerState.popScope();
   delete Old;
@@ -5840,6 +5924,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
   }
 
+  Scope *savedCleanupBoundary = m_FunctionCleanupBoundary;
+  m_FunctionCleanupBoundary = CurrentScope;
   enterScope(); // Function scope
 
   const FunctionDecl *declarationFunction =
@@ -6386,6 +6472,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     Fn->InterfaceLocalBodyValidated = rawSummary.Valid && !HasError;
   }
   exitScope();
+  m_FunctionCleanupBoundary = savedCleanupBoundary;
   m_OutcomePendingCalls = std::move(savedOutcomePendingCalls);
   CurrentFunctionReturnType = savedRet; // [FIX] Restore state
   CurrentFunction = savedFn;

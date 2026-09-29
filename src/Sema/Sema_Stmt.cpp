@@ -666,7 +666,7 @@ void Sema::checkStmt(Stmt *S) {
       bool oldSuppressAliasInvalidation =
           m_SuppressRejectedAliasInvalidation;
       m_SuppressRejectedAliasInvalidation = rejectedAliasReturn;
-      m_ControlFlowStack.push_back(
+      pushControlFlow(
           {"", CurrentFunctionReturnType, nullptr, false, true});
       auto authorityContext =
           beginAuthorityFullExpression(Ret->ReturnValue.get());
@@ -1936,6 +1936,8 @@ void Sema::checkStmt(Stmt *S) {
     if (returnRollbackState && enforceReturnSourcePlan &&
         (!returnSourcePlan->admitted() || hasNewReturnError()))
       mergeAnalysisStates({*returnRollbackState}, returnRollbackState->PAL);
+    if (!hasNewReturnError())
+      checkCleanupOnEdge(m_FunctionCleanupBoundary, Ret->Loc);
     if (!hasNewReturnError()) {
       auto *borrow = dynamic_cast<UnaryExpr *>(Ret->ReturnValue.get());
       auto *value = borrow && borrow->Op == TokenType::Ampersand
@@ -2002,7 +2004,7 @@ void Sema::checkStmt(Stmt *S) {
     m_InUnsafeContext = oldUnsafe;
   } else if (auto *ExprS = dynamic_cast<ExprStmt *>(S)) {
     // Standalone expressions are NOT receivers
-    m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, false});
+    pushControlFlow({"", NoProducedValue, nullptr, false, false});
     ExprS->Expression = foldGenericConstant(std::move(ExprS->Expression));
     Expr *statementRoot = ExprS->Expression.get();
     while (statementRoot) {
@@ -2156,7 +2158,7 @@ void Sema::checkStmt(Stmt *S) {
         cast->RawWriteRequest = Var->IsRawPointer && Var->IsValueMutable &&
                                        cast->Kind == CastKind::Conversion
                                    ? Var : nullptr;
-      m_ControlFlowStack.push_back({Var->Name, NoProducedValue, nullptr, false, true});
+      pushControlFlow({Var->Name, NoProducedValue, nullptr, false, true});
       std::shared_ptr<toka::Type> declTargetTy = nullptr;
       if (!Var->TypeName.empty() && Var->TypeName != "auto") {
         declTargetTy = resolveType(
@@ -3713,7 +3715,7 @@ void Sema::checkStmt(Stmt *S) {
     if (!m_ControlFlowStack.empty()) {
       isReceiver = m_ControlFlowStack.back().IsReceiver;
     }
-    m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+    pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
     checkStmt(GuardBind->ElseBody.get());
     m_ControlFlowStack.pop_back();
 

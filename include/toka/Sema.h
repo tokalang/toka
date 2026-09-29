@@ -916,12 +916,14 @@ private:
         false; // Whether this context expects a 'pass' or 'break' value
     std::vector<AnalysisState> BreakStates;
     std::vector<AnalysisState> ContinueStates;
+    Scope *CleanupTargetScope = nullptr;
   };
   // This is analysis state, not a source type.  In particular it must never
   // reuse ABI `void`, which remains a real FFI type.
   inline static constexpr const char *NoProducedValue =
       "<no-produced-value>";
   std::vector<ControlFlowInfo> m_ControlFlowStack;
+  Scope *m_FunctionCleanupBoundary = nullptr;
   struct InitBlockContext {
     std::string PlaceName;
     size_t ControlFlowDepth;
@@ -968,6 +970,11 @@ private:
   // Scope management
   void enterScope();
   void exitScope();
+  void checkCleanupScope(Scope *scope, PALChecker &pal,
+                         SourceLocation exitLoc);
+  bool cleanupInvalidatesSource(const AccessPath &source);
+  void checkCleanupOnEdge(Scope *preserved, SourceLocation exitLoc);
+  void pushControlFlow(ControlFlowInfo flow);
   AccessPath makeAccessPath(Expr *E);
   AccessPath makeAccessPath(const std::string &Path);
   AccessPath canonicalizeAccessPath(const AccessPath &Path);

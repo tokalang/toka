@@ -240,12 +240,13 @@ void PALChecker::releaseCarrierBorrows(uint64_t holderID) {
 }
 
 std::optional<PALConflict> PALChecker::survivingCarrierBorrow(
-    const AccessPath &source, int sourceScopeDepth) const {
+    const AccessPath &source, int sourceScopeDepth,
+    const std::function<bool(const AccessPath &)> &invalidates) const {
   if (!IsEnabled || CarrierStack.empty()) return std::nullopt;
   for (size_t level = 0; level < CarrierStack.size(); ++level)
     for (const auto &[holder, entry] : CarrierStack[level])
       for (const auto &borrowed : entry.Sources)
-        if (pathsOverlap(borrowed, source) &&
+        if (pathsOverlap(borrowed, source) && invalidates(borrowed) &&
             (entry.HolderScopeDepth < sourceScopeDepth ||
              (entry.HolderScopeDepth == sourceScopeDepth &&
               entry.MayReadOnDrop)))

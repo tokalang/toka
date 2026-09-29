@@ -17,6 +17,7 @@
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
 #include <string>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -137,7 +138,8 @@ public:
       bool mayReadOnDrop, SourceLocation originLoc);
   void releaseCarrierBorrows(uint64_t holderID);
   std::optional<PALConflict> survivingCarrierBorrow(
-      const AccessPath &source, int sourceScopeDepth) const;
+      const AccessPath &source, int sourceScopeDepth,
+      const std::function<bool(const AccessPath &)> &invalidates) const;
 
   // Clears all uncommitted transient borrows (called at statement boundaries)
   void clearTransient();
