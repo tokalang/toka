@@ -845,9 +845,10 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
 }
 
 Sema::ExternalDependencySnapshot
-Sema::captureVisibleExternalDependencies() {
+Sema::captureVisibleExternalDependencies(Scope *visibleScope) {
   ExternalDependencySnapshot snapshot;
-  for (auto *scope = CurrentScope; scope; scope = scope->Parent)
+  for (auto *scope = visibleScope ? visibleScope : CurrentScope;
+       scope; scope = scope->Parent)
     for (const auto &[name, info] : scope->Symbols)
       if (info.SymbolID)
         snapshot[info.SymbolID] = {info.ExternalValueDependencies,
@@ -892,10 +893,12 @@ Sema::ExternalDependencySnapshot Sema::joinExternalDependencies(
   return joined;
 }
 
-Sema::AnalysisState Sema::captureAnalysisState() {
+Sema::AnalysisState Sema::captureAnalysisState(
+    Scope *visibleScope, const PALChecker *palOverride) {
   AnalysisState state;
-  state.ExternalDependencies = captureVisibleExternalDependencies();
-  for (auto *scope = CurrentScope; scope; scope = scope->Parent)
+  Scope *visible = visibleScope ? visibleScope : CurrentScope;
+  state.ExternalDependencies = captureVisibleExternalDependencies(visible);
+  for (auto *scope = visible; scope; scope = scope->Parent)
     for (const auto &[name, info] : scope->Symbols) {
       if (info.TypeObj && (info.TypeObj->isUniquePtr() || info.TypeObj->isSharedPtr()))
         state.ManagedBorrows[info.SymbolID] = {info.LifeDependencySet, info.FieldDependencySet};
@@ -916,13 +919,13 @@ Sema::AnalysisState Sema::captureAnalysisState() {
   state.InvalidNativeSyncOrigins = m_InvalidNativeSyncOrigins;
   state.RawAddressBindings = m_RawAddressBindings;
   state.CallableEnvironments = m_CallableEnvironments;
-  state.InitMasks = captureVisibleInitMasks(CurrentScope);
-  state.Moved = captureVisibleMoved(CurrentScope);
-  state.ExactPlaces = captureVisibleExactPlaceFacts(CurrentScope);
-  state.ConditionalTodoIds = captureVisibleConditionalTodoIds(CurrentScope);
-  state.ReferenceTargets = captureVisibleReferenceTargets(CurrentScope);
+  state.InitMasks = captureVisibleInitMasks(visible);
+  state.Moved = captureVisibleMoved(visible);
+  state.ExactPlaces = captureVisibleExactPlaceFacts(visible);
+  state.ConditionalTodoIds = captureVisibleConditionalTodoIds(visible);
+  state.ReferenceTargets = captureVisibleReferenceTargets(visible);
   state.PayloadFlowRestrictedPaths = m_PayloadFlowRestrictedPaths;
-  state.PAL = PALCheckerState.snapshot();
+  state.PAL = palOverride ? *palOverride : PALCheckerState.snapshot();
   return state;
 }
 
@@ -3890,9 +3893,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         pair.second.ExactPlace = exactPlaces;
         syncLegacyProjectionLiveness(pair.second);
       }
-      PALCheckerState.mergeBranches(palBefore, palBefore, true, palBody, true);
+      const bool bodyReachesHead = !bodyJumps || !continueStates.empty();
+      PALCheckerState.mergeBranches(palBefore, palBefore, true, palBody,
+                                    bodyReachesHead);
       restoreVisibleExternalDependencies(
-          !bodyJumps || !continueStates.empty()
+          bodyReachesHead
               ? joinExternalDependencies(externalBeforeLoop, externalBody)
               : externalBeforeLoop);
     }
@@ -4860,8 +4865,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!m_InitBlockContexts.empty() &&
           targetDepth < m_InitBlockContexts.back().ControlFlowDepth)
         error(be, DiagID::ERR_INIT_BLOCK_EXIT, "break");
-      checkCleanupOnEdge(target->CleanupTargetScope, be->Loc);
-      target->BreakStates.push_back(captureAnalysisState());
+      PALChecker edgePAL = checkCleanupOnEdge(target->CleanupTargetScope,
+                                              be->Loc);
+      target->BreakStates.push_back(captureAnalysisState(
+          target->CleanupTargetScope, &edgePAL));
       if (valType != NoProducedValue) {
         if (target->ExpectedType == NoProducedValue) {
           target->ExpectedType = valType;
@@ -4899,8 +4906,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!m_InitBlockContexts.empty() &&
           targetDepth < m_InitBlockContexts.back().ControlFlowDepth)
         error(ce, DiagID::ERR_INIT_BLOCK_EXIT, "continue");
-      checkCleanupOnEdge(target->CleanupTargetScope, ce->Loc);
-      target->ContinueStates.push_back(captureAnalysisState());
+      PALChecker edgePAL = checkCleanupOnEdge(target->CleanupTargetScope,
+                                              ce->Loc);
+      target->ContinueStates.push_back(captureAnalysisState(
+          target->CleanupTargetScope, &edgePAL));
     }
     return toka::Type::fromString("()");
   } else if (auto *Call = dynamic_cast<CallExpr *>(E)) {

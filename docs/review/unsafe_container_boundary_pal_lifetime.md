@@ -41,6 +41,12 @@ as long as a local complete value carries them.
    value dependencies by binding ID alongside PAL reachability. Unknown
    sources remain unknown; terminating paths do not contribute dependencies
    to a reachable sibling or zero-iteration continuation.
+   Conditional loops use that same reachability choice for PAL. `break` and
+   `continue` record the PAL snapshot after their own scope cleanup, retaining
+   outer holders while retiring holders in exited scopes. Their analysis
+   snapshot sees only bindings visible from the jump target scope. A terminating
+   `guard auto ... else` arm restores the captured success-path state after
+   validation, including its pattern binding and evaluated target facts.
 5. `return <- self.external` and the existing return-source checks continue to
    carry the extracted value's external owner. A borrowed element newly made
    through `borrow()` still depends on container storage through its ordinary

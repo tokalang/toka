@@ -3407,7 +3407,8 @@ void Sema::checkCleanupScope(Scope *scope, PALChecker &pal,
   }
 }
 
-void Sema::checkCleanupOnEdge(Scope *preserved, SourceLocation exitLoc) {
+PALChecker Sema::checkCleanupOnEdge(Scope *preserved,
+                                    SourceLocation exitLoc) {
   // The sibling path continues with the current ledger. Only the terminating
   // edge receives the simulated retirements and scope pops.
   PALChecker edge = PALCheckerState.snapshot();
@@ -3416,6 +3417,7 @@ void Sema::checkCleanupOnEdge(Scope *preserved, SourceLocation exitLoc) {
     checkCleanupScope(scope, edge, exitLoc);
     edge.popScope();
   }
+  return edge;
 }
 
 void Sema::exitScope() {

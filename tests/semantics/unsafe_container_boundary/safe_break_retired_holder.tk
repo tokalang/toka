@@ -1,0 +1,12 @@
+import std/vec::{Vec}
+fn main() -> i32 {
+    auto owner# = string::from("local")
+    loop {
+        auto values# = Vec<str>::new()
+        values#.push(owner.as_str())
+        break
+    }
+    owner#.push_str("!")
+    if !owner.as_str().equals("local!") { return 1 }
+    return 0
+}

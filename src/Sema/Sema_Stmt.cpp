@@ -3710,6 +3710,7 @@ void Sema::checkStmt(Stmt *S) {
     // Check Pattern and bind variables into CurrentScope
     checkPattern(GuardBind->Pat.get(), targetType, targetCapability,
                  targetPath, targetAccessPath, transfersOwnership);
+    const AnalysisState successState = captureAnalysisState();
 
     bool isReceiver = false;
     if (!m_ControlFlowStack.empty()) {
@@ -3718,6 +3719,9 @@ void Sema::checkStmt(Stmt *S) {
     pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
     checkStmt(GuardBind->ElseBody.get());
     m_ControlFlowStack.pop_back();
+    // The else arm must terminate. Its writes and carried loans cannot become
+    // facts of the successful pattern-binding continuation.
+    mergeAnalysisStates({successState}, successState.PAL);
 
     if (!allPathsJump(GuardBind->ElseBody.get())) {
       DiagnosticEngine::report(getLoc(GuardBind), DiagID::ERR_GUARD_MUST_DIVERGE);

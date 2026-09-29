@@ -975,7 +975,7 @@ private:
   void checkCleanupScope(Scope *scope, PALChecker &pal,
                          SourceLocation exitLoc);
   bool cleanupInvalidatesSource(const AccessPath &source);
-  void checkCleanupOnEdge(Scope *preserved, SourceLocation exitLoc);
+  PALChecker checkCleanupOnEdge(Scope *preserved, SourceLocation exitLoc);
   void pushControlFlow(ControlFlowInfo flow);
   AccessPath makeAccessPath(Expr *E);
   AccessPath makeAccessPath(const std::string &Path);
@@ -1525,8 +1525,10 @@ private:
   FlowSummary summarizeFlow(Stmt *S);
   FlowSummary summarizeFlowExpr(Expr *E);
   void mergeFlowExits(FlowSummary &dst, const FlowSummary &src);
-  AnalysisState captureAnalysisState();
-  ExternalDependencySnapshot captureVisibleExternalDependencies();
+  AnalysisState captureAnalysisState(
+      Scope *visibleScope = nullptr, const PALChecker *palOverride = nullptr);
+  ExternalDependencySnapshot captureVisibleExternalDependencies(
+      Scope *visibleScope = nullptr);
   void restoreVisibleExternalDependencies(
       const ExternalDependencySnapshot &snapshot);
   ExternalDependencySnapshot joinExternalDependencies(
