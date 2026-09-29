@@ -1423,6 +1423,7 @@ private:
                                    bool *usedCurrentReference = nullptr,
                                    std::map<std::string, ActualReturnFieldOrigins> *fields = nullptr);
   bool safeBorrowFreeType(const std::shared_ptr<Type> &type);
+  bool dropMayReadExternalValue(const std::shared_ptr<Type> &type);
   std::optional<std::set<AccessPath>> externalValueDependencies(Expr *value);
   bool retainExternalValueBorrows(SymbolInfo *holder,
                                   const std::set<AccessPath> &sources,

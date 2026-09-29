@@ -133,7 +133,8 @@ public:
   // exit can retire the exact holder without erasing another holder's loan.
   std::optional<PALConflict> replaceCarrierBorrows(
       uint64_t holderID, const std::set<AccessPath> &sources,
-      size_t retainingLevels, int holderScopeDepth, SourceLocation originLoc);
+      size_t retainingLevels, int holderScopeDepth,
+      bool mayReadOnDrop, SourceLocation originLoc);
   void releaseCarrierBorrows(uint64_t holderID);
   std::optional<PALConflict> survivingCarrierBorrow(
       const AccessPath &source, int sourceScopeDepth) const;
@@ -170,6 +171,7 @@ private:
   struct CarrierEntry {
     std::set<AccessPath> Sources;
     int HolderScopeDepth = 0;
+    bool MayReadOnDrop = false;
     SourceLocation OriginLoc;
   };
   std::vector<LedgerScope> LedgerStack;

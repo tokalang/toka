@@ -219,7 +219,8 @@ std::optional<PALConflict> PALChecker::verifyArgumentBorrow(
 
 std::optional<PALConflict> PALChecker::replaceCarrierBorrows(
     uint64_t holderID, const std::set<AccessPath> &sources,
-    size_t retainingLevels, int holderScopeDepth, SourceLocation originLoc) {
+    size_t retainingLevels, int holderScopeDepth,
+    bool mayReadOnDrop, SourceLocation originLoc) {
   if (!IsEnabled || !holderID || CarrierStack.empty()) return std::nullopt;
   for (const auto &source : sources)
     if (auto conflict = verifyAccess(source)) return conflict;
@@ -227,7 +228,8 @@ std::optional<PALConflict> PALChecker::replaceCarrierBorrows(
   if (!sources.empty()) {
     const size_t level = retainingLevels < CarrierStack.size()
         ? CarrierStack.size() - 1 - retainingLevels : 0;
-    CarrierStack[level][holderID] = {sources, holderScopeDepth, originLoc};
+    CarrierStack[level][holderID] = {sources, holderScopeDepth,
+                                    mayReadOnDrop, originLoc};
   }
   return std::nullopt;
 }
@@ -244,7 +246,9 @@ std::optional<PALConflict> PALChecker::survivingCarrierBorrow(
     for (const auto &[holder, entry] : CarrierStack[level])
       for (const auto &borrowed : entry.Sources)
         if (pathsOverlap(borrowed, source) &&
-            entry.HolderScopeDepth < sourceScopeDepth)
+            (entry.HolderScopeDepth < sourceScopeDepth ||
+             (entry.HolderScopeDepth == sourceScopeDepth &&
+              entry.MayReadOnDrop)))
           return PALConflict{borrowed, PathState::BorrowedShared,
                              entry.OriginLoc};
   return std::nullopt;

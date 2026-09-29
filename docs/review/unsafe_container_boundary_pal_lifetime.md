@@ -22,8 +22,12 @@ as long as a local complete value carries them.
    retiring one of two holders leaves the other's loan intact.
 4. A successful move retires the old holder's loan; the destination inherits
    the source set. A rejected call restores the PAL snapshot. Scope exit
-   checks loans held in longer-lived lexical scopes, then releases loans
-   belonging to bindings in the exiting scope.
+   simulates CodeGen's reverse declaration-order cleanup. It checks each
+   source before retiring it, then releases each completed holder's loans.
+   Longer-lived holders always constrain a source; a same-scope holder does
+   so when its destructor may read the carried borrow. An empty destructor
+   body does not count as a read, while nested elements with a potentially
+   reading destructor do.
 5. `return <- self.external` and the existing return-source checks continue to
    carry the extracted value's external owner. A borrowed element newly made
    through `borrow()` still depends on container storage through its ordinary
@@ -52,7 +56,10 @@ reviewed programs: owner cede, shorter owner scope and owner mutation while a
 `Vec<str>` is live. It also checks aliases, two holders, branch joins, whole
 assignment, hidden enum payloads, consumed-call rollback, extraction after
 Vec destruction, and a shape with both owned storage and an unrelated
-borrowed field. Each dangerous source must fail in normal and shadow checks,
+borrowed field. Same-scope custom-drop cases check bad order at ordinary
+block exit and early return. Good-order and early-holder-retirement controls
+run the destructor and check its exact count; descriptor-only cleanup remains
+accepted. Each dangerous source must fail in normal and shadow checks,
 with no object or LLVM IR output.
 
 Run controls keep the owner live during access; retire the last holder before

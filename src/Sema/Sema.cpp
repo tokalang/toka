@@ -3308,24 +3308,35 @@ void Sema::enterScope() {
 
 void Sema::exitScope() {
   Scope *Old = CurrentScope;
-  // A carrier in a longer-lived scope may still need storage about to be
-  // destroyed here. Same-scope values have no intervening read during cleanup.
-  for (const auto &[name, info] : Old->Symbols) {
-    if (!info.IsDeclaredVariable || info.IsFunctionParameter ||
-        !info.SymbolID || info.Moved) continue;
-    AccessPath source;
-    source.RootID = info.SymbolID;
-    source.RootName = Type::stripMorphology(name);
-    source.RootLoc = info.DeclLoc;
-    if (auto conflict = PALCheckerState.survivingCarrierBorrow(
-            source, Old->Depth)) {
-      DiagnosticEngine::report(info.DeclLoc, DiagID::ERR_MOVE_BORROWED,
-                               conflict->displayPath());
-      HasError = true;
-    }
-  }
+  // CodeGen cleans this lexical scope in reverse declaration order. A
+  // destructor may read its carried view, so check each source before that
+  // source is retired; only then release the completed holder's loans.
+  std::vector<std::pair<std::string, const SymbolInfo *>> cleanup;
+  cleanup.reserve(Old->Symbols.size());
   for (const auto &[name, info] : Old->Symbols)
-    PALCheckerState.releaseCarrierBorrows(info.SymbolID);
+    cleanup.emplace_back(name, &info);
+  std::sort(cleanup.begin(), cleanup.end(), [](const auto &left,
+                                               const auto &right) {
+    if (left.second->DeclLoc != right.second->DeclLoc)
+      return right.second->DeclLoc < left.second->DeclLoc;
+    return left.second->SymbolID > right.second->SymbolID;
+  });
+  for (const auto &[name, info] : cleanup) {
+    if (info->IsDeclaredVariable && !info->IsFunctionParameter &&
+        info->SymbolID && !info->Moved) {
+      AccessPath source;
+      source.RootID = info->SymbolID;
+      source.RootName = Type::stripMorphology(name);
+      source.RootLoc = info->DeclLoc;
+      if (auto conflict = PALCheckerState.survivingCarrierBorrow(
+              source, Old->Depth)) {
+        DiagnosticEngine::report(info->DeclLoc, DiagID::ERR_MOVE_BORROWED,
+                                 conflict->displayPath());
+        HasError = true;
+      }
+    }
+    PALCheckerState.releaseCarrierBorrows(info->SymbolID);
+  }
   CurrentScope = CurrentScope->Parent;
   PALCheckerState.popScope();
   delete Old;

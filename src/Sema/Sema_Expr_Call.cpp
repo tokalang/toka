@@ -4575,6 +4575,10 @@ bool Sema::safeBorrowFreeType(const std::shared_ptr<Type> &input) {
     if (type->isUniquePtr() || type->isSharedPtr())
       return visit(type->getPointeeType());
     if (type->isArray()) return visit(type->getArrayElementType());
+    if (!type->isShape() &&
+        queryExplicitCedeStage0OwnershipReadOnly(type) ==
+            ValueOwnership::BorrowedView)
+      return false; // A borrowed descriptor has no user destructor.
     auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
     auto *decl = shape ? shape->Decl : nullptr;
     if (!decl || !decl->GenericParams.empty() || !active.insert(decl).second)
@@ -4593,6 +4597,64 @@ bool Sema::safeBorrowFreeType(const std::shared_ptr<Type> &input) {
     }
     active.erase(decl);
     return closed;
+  };
+  return visit(input);
+}
+
+bool Sema::dropMayReadExternalValue(const std::shared_ptr<Type> &input) {
+  std::set<const ShapeDecl *> active;
+  std::function<bool(const std::shared_ptr<Type> &)> visit =
+      [&](const std::shared_ptr<Type> &candidate) -> bool {
+    auto type = candidate ? resolveExplicitCedeStage0TypeReadOnly(candidate)
+                          : nullptr;
+    if (!type || type->isUnknown() || type->isUninit()) return true;
+    if (hasCanonicalOwningStringStorage(type) || type->isReference() ||
+        type->isRawPointer() || type->isSlice() || type->isBoolean() ||
+        type->isInteger() || type->isFloatingPoint() || type->isUnit() ||
+        type->isAddrType() || type->isOAddrType()) return false;
+    if (type->isUniquePtr() || type->isSharedPtr())
+      return visit(type->getPointeeType());
+    if (type->isArray()) return visit(type->getArrayElementType());
+    auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
+    auto *decl = shape ? shape->Decl : nullptr;
+    if (!decl) return true;
+    if (!active.insert(decl).second) return true;
+    std::map<std::string, std::shared_ptr<Type>> substitutions;
+    const auto &arguments = shape->GenericArgs.empty()
+        ? decl->InstantiationArgs : shape->GenericArgs;
+    for (size_t index = 0;
+         index < arguments.size() && index < decl->GenericParams.size(); ++index)
+      substitutions[decl->GenericParams[index].Name] = arguments[index];
+    bool nestedDropCanRead = false;
+    for (const auto &argument : arguments)
+      nestedDropCanRead |= visit(argument);
+    bool directBorrowField = false;
+    auto inspectField = [&](const ShapeMember &field) {
+      auto fieldType = getPhysicalType(field);
+      if (fieldType && !substitutions.empty())
+        fieldType = fieldType->substitute(substitutions);
+      if (!fieldType || fieldType->isRawPointer()) return;
+      directBorrowField |= !safeBorrowFreeType(fieldType);
+      nestedDropCanRead |= visit(fieldType);
+    };
+    for (const auto &field : decl->Members) {
+      if (field.IsUnitVariant) continue;
+      if (decl->Kind == ShapeKind::Enum && !field.SubMembers.empty()) {
+        for (const auto &payload : field.SubMembers) inspectField(payload);
+      } else {
+        inspectField(field);
+      }
+    }
+    active.erase(decl);
+    bool destructorCanRead = decl->HasExplicitDrop;
+    if (destructorCanRead && decl->ResolvedDestructor &&
+        decl->ResolvedDestructor->Body) {
+      if (auto *body = dynamic_cast<BlockStmt *>(
+              decl->ResolvedDestructor->Body.get());
+          body && body->Statements.empty())
+        destructorCanRead = false;
+    }
+    return nestedDropCanRead || (destructorCanRead && directBorrowField);
   };
   return visit(input);
 }
@@ -4771,7 +4833,9 @@ bool Sema::retainExternalValueBorrows(
   // formal's physical fields. Calls map it to concrete binding identities.
   if (auto conflict = PALCheckerState.replaceCarrierBorrows(
           holder->SymbolID, concreteSources, *retainingLevels,
-          holderScopeDepth, site->Loc)) {
+          holderScopeDepth,
+          !concreteSources.empty() && dropMayReadExternalValue(holder->TypeObj),
+          site->Loc)) {
     error(site, DiagID::ERR_BORROW_MUT, conflict->displayPath());
     recordPALConflict(site, PALOperationClass::SharedPayloadBorrow,
                       conflict->Path, *conflict);
