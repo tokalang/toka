@@ -1,0 +1,22 @@
+import std/vec::{Vec}
+
+fn choose(input: str) -> Vec<str> <- input {
+    auto values# = Vec<str>::new()
+    auto nul *candidate = unsafe (0:Addr as nul *i32)
+    guard *candidate {
+        auto local_owner = string::from("local")
+        values#.push(local_owner.as_str())
+        cede values
+        return Vec<str>::new()
+    } else {
+        values#.push(input)
+    }
+    return cede values
+}
+
+fn main() -> i32 {
+    auto values = choose("static")
+    if values.len() != 1:usize { return 1 }
+    if !values.borrow(0:usize).equals("static") { return 2 }
+    return 0
+}

@@ -822,6 +822,8 @@ private:
     std::set<std::string> LegacyRoots;
     bool Tracked = false;
   };
+  using ExternalDependencySnapshot =
+      std::map<uint64_t, ExternalDependencyState>;
   struct AnalysisState {
     std::map<uint64_t, ManagedBorrowDependencies> ManagedBorrows;
     std::map<uint64_t, ExternalDependencyState> ExternalDependencies;
@@ -1524,6 +1526,12 @@ private:
   FlowSummary summarizeFlowExpr(Expr *E);
   void mergeFlowExits(FlowSummary &dst, const FlowSummary &src);
   AnalysisState captureAnalysisState();
+  ExternalDependencySnapshot captureVisibleExternalDependencies();
+  void restoreVisibleExternalDependencies(
+      const ExternalDependencySnapshot &snapshot);
+  ExternalDependencySnapshot joinExternalDependencies(
+      const ExternalDependencySnapshot &first,
+      const ExternalDependencySnapshot &second);
   std::shared_ptr<Type> checkCallWithThreadHandoff(CallExpr *call);
   bool qualifyPublicThread(CallExpr *call, const AnalysisState &before, size_t diagnosticStart);
   bool inspectThreadValue(std::shared_ptr<Type> type, std::string &identity, bool &needsDrop);

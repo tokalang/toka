@@ -1,0 +1,24 @@
+import std/vec::{Vec}
+
+fn choose(flag: bool, left: str, right: str) -> Vec<str> <- left, right {
+    auto values# = Vec<str>::new()
+    match flag {
+      true => {
+        values = Vec<str>::new()
+        values#.push(left)
+      }
+      _ => {
+        values = Vec<str>::new()
+        values#.push(right)
+      }
+    }
+    return cede values
+}
+
+fn main() -> i32 {
+    auto first = choose(true, "left", "right")
+    auto second = choose(false, "left", "right")
+    if !first.borrow(0:usize).equals("left") { return 1 }
+    if !second.borrow(0:usize).equals("right") { return 2 }
+    return 0
+}

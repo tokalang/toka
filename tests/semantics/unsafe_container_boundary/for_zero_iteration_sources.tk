@@ -1,0 +1,23 @@
+import std/vec::{Vec}
+
+fn choose(flag: bool, input: str) -> Vec<str> <- input {
+    auto values# = Vec<str>::new()
+    auto items# = Vec<i32>::new()
+    if flag { items#.push(1:i32) }
+    for auto item in items {
+        auto local_owner = string::from("local")
+        values#.push(local_owner.as_str())
+        cede values
+        return Vec<str>::new()
+    }
+    values#.push(input)
+    return cede values
+}
+
+fn main() -> i32 {
+    auto first = choose(true, "static")
+    auto second = choose(false, "static")
+    if first.len() != 0:usize || second.len() != 1:usize { return 1 }
+    if !second.borrow(0:usize).equals("static") { return 2 }
+    return 0
+}

@@ -1,0 +1,19 @@
+import std/vec::{Vec}
+
+fn choose(flag: bool, input: str, other: str) -> Vec<str> <- other {
+    auto values# = Vec<str>::new()
+    loop flag {
+        values#.push(input)
+        return Vec<str>::new()
+    }
+    values#.push(other)
+    return cede values
+}
+
+fn main() -> i32 {
+    auto first = choose(true, "unused", "static")
+    auto second = choose(false, "unused", "static")
+    if first.len() != 0:usize || second.len() != 1:usize { return 1 }
+    if !second.borrow(0:usize).equals("static") { return 2 }
+    return 0
+}

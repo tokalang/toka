@@ -37,6 +37,10 @@ as long as a local complete value carries them.
    Closure capture discovery and invoke-body checking each use an independent
    cleanup boundary, restored after that pass. A closure return therefore
    checks its own locals without unwinding unrelated outer-function locals.
+   Ordinary `if`, `match`, guard, and loop joins restore and merge external
+   value dependencies by binding ID alongside PAL reachability. Unknown
+   sources remain unknown; terminating paths do not contribute dependencies
+   to a reachable sibling or zero-iteration continuation.
 5. `return <- self.external` and the existing return-source checks continue to
    carry the extracted value's external owner. A borrowed element newly made
    through `borrow()` still depends on container storage through its ordinary

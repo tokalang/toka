@@ -76,6 +76,12 @@ RUNTIME = (
     "early_return_view_descriptor_good",
     "safe_closure_before_retirement", "safe_closure_after_retirement",
     "closure_propagation_safe_order", "nested_closure_cleanup_boundary",
+    "safe_terminated_branch_sources", "safe_terminated_match_sources",
+    "safe_terminated_branch_sources_control",
+    "dual_continuing_branch_sources", "dual_continuing_match_sources",
+    "shadowed_terminated_branch_sources",
+    "guard_terminated_branch_sources", "loop_zero_iteration_sources",
+    "for_zero_iteration_sources",
     "unrelated_mutations_owner_alive",
     "with_capacity_empty_then_static",
     "all_holders_removed_release",
@@ -215,11 +221,14 @@ def main():
                                  ("rejected_carrier_call_restores_loan", "E04571"),
                                  ("assignment_unknown_stays_unknown", "E04661"),
                                  ("assignment_unknown_rejection_preserves_source", "E04661"),
+                                 ("branch_unknown_stays_unknown", "E04661"),
                                  ("unsafe_from_raw_safe_reject", "E0623"),
                                  ("unsafe_set_len_safe_reject", "E0623"),
                                  ("unsafe_storage_safe_reject", "E0623"),
                                  ("private_vec_fields_reject", "E0418"),
                                  ("private_vec_fields_unsafe_reject", "E0418"),
+                                 ("dual_continuing_missing_source", "E0454"),
+                                 ("dual_continuing_match_missing_source", "E0454"),
                                  ("private_vec_constructor_reject", "E0418")):
             source = CASES / (name + ".tk")
             normal = compile(source, "--check-only")
@@ -243,7 +252,8 @@ def main():
                 require("error[E0441]" in normal.stderr and "owner.buf" in normal.stderr,
                         "rejected assignment released the live carrier loan")
             if name in ("assignment_unknown_stays_unknown",
-                        "assignment_unknown_rejection_preserves_source"):
+                        "assignment_unknown_rejection_preserves_source",
+                        "branch_unknown_stays_unknown"):
                 require("ExternalValueDependenciesUnknown" in normal.stderr and
                         "error[E0438]" not in normal.stderr,
                         "unknown assignment escaped or consumed its source")
@@ -251,6 +261,12 @@ def main():
             rejected = compile(source, "-c", "-o", str(output))
             require(rejected.returncode == 1 and not output.exists(),
                     name + ": rejected object was produced")
+            if name in ("dual_continuing_missing_source",
+                        "dual_continuing_match_missing_source"):
+                ir = work / (name + ".ll")
+                rejected_ir = compile(source, "--emit-llvm", "-o", str(ir))
+                require(rejected_ir.returncode == 1 and not ir.exists(),
+                        name + ": rejected IR was produced")
             print("PASS existing rejection " + name, flush=True)
 
     print("Unsafe container boundary probe: " + args.mode + " complete")
