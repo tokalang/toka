@@ -4566,6 +4566,8 @@ bool Sema::safeBorrowFreeType(const std::shared_ptr<Type> &input) {
     if (!type || type->isUnknown() || type->isUninit() ||
         type->isReference() || type->isSlice() || type->isFunction() ||
         type->isDynFn()) return false;
+    if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(type))
+      return visit(outcome->PayloadType);
     // A raw address is not a safe borrow of its pointee. This says nothing
     // about allocation ownership or the safety of dereferencing that address.
     if (type->isRawPointer()) return true;
@@ -4608,6 +4610,8 @@ bool Sema::dropMayReadExternalValue(const std::shared_ptr<Type> &input) {
     auto type = candidate ? resolveExplicitCedeStage0TypeReadOnly(candidate)
                           : nullptr;
     if (!type || type->isUnknown() || type->isUninit()) return true;
+    if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(type))
+      return visit(outcome->PayloadType);
     if (hasCanonicalOwningStringStorage(type) || type->isReference() ||
         type->isRawPointer() || type->isSlice() || type->isBoolean() ||
         type->isInteger() || type->isFloatingPoint() || type->isUnit() ||

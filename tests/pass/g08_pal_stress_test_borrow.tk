@@ -195,9 +195,11 @@ fn main() -> i32 {
         auto refm = bind_engine_val(scene.root.left)
         assert(refm.v == 888, "bind_engine_val extracts interior reference properly")
         
-        // Ensure changes are visible (since it's an immutable reference)
+        // Retire the shared holder before changing its source, then reborrow.
+        cede refm
         scene.root.left.val = 999
-        assert(refm.v == 999, "bind_engine_val continues reflecting heap updates")
+        auto updated_refm = bind_engine_val(scene.root.left)
+        assert(updated_refm.v == 999, "bind_engine_val observes the updated heap value")
     }
 
     println("PAL check completed brilliantly")

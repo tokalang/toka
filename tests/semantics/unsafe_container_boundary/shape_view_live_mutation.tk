@@ -1,0 +1,16 @@
+shape Engine(val#: i32)
+shape View(&value: i32)
+
+fn bind(engine: Engine) -> result: View
+effects:
+    result.&value <- engine.val
+{
+    return View(&value = engine.&val)
+}
+
+fn main() -> i32 {
+    auto engine# = Engine(val = 7)
+    auto view = bind(engine)
+    engine.val = 9
+    return view.value
+}

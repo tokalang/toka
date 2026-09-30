@@ -62,7 +62,7 @@ to actual binding identities at a call.
 ## Cache and precision boundaries
 
 Regenerate TKI and semantic caches from the new compiler. Format `5` and
-compiler-interface identity `0.9.9-37` reject older records. The public build
+compiler-interface identity `0.9.9-38` reject older records. The public build
 version changes to `0.11.0`; native layout/calling ABI is unchanged here.
 Dependencies after `remove` or `clear` may be retained conservatively;
 unknown sources remain unknown. Existing reference-element paths are

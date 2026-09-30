@@ -1,0 +1,31 @@
+auto drops# = 0:i32
+shape Token(text: string)
+impl Token@Encap {
+    pub text
+    fn drop(self#) { drops += 1:i32 }
+}
+
+fn produce(hit: bool) -> Token | miss {
+    if hit { return Token(text = string::from("owned")) }
+    return miss
+}
+
+fn exercise(hit: bool) -> i32 {
+    auto outcome = uninit:(Token | miss)
+    init outcome = produce(hit)
+    match cede outcome {
+        auto value => {
+            if !value.text.as_str().equals("owned") { return 1 }
+        }
+        miss => {}
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    if exercise(true) != 0 { return 1 }
+    if drops != 1:i32 { return 2 }
+    if exercise(false) != 0 { return 3 }
+    if drops != 1:i32 { return 4 }
+    return 0
+}

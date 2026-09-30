@@ -23,6 +23,10 @@ note does not claim that local validation is hosted four-platform qualification.
 - Vec storage fields are private. Raw construction, storage access, length
   mutation and ownership-forgetting methods require an explicit unsafe call.
   Standard-library adapters have been migrated to these boundaries.
+- Scalar and owning `T | miss` values retain their payload's independence
+  through initialization; borrowed payloads still carry their real sources.
+  Shared view tests retire a holder before modifying its source and preserve
+  rejection controls for mutation while that holder remains live.
 - The active qualification, replay, draft and protected promotion workflows
   validate canonical `v0.11.N` labels and retain SHA, four-target report,
   archive, checksum and replay identity checks. Qualification dispatches
@@ -36,7 +40,7 @@ API and dependency-contract changes. This is a planned public-contract change
 from the `0.10.x` line, not a 1.0 API-stability declaration.
 
 The accepted compiler semantics use TKI format `5` and compiler-interface
-identity `0.9.9-37`; older interfaces and semantic caches must be regenerated.
+identity `0.9.9-38`; older interfaces and semantic caches must be regenerated.
 Native layout and calling ABI were not changed by this integration or by the
 public version update. Default compiler, CLI and SDK build metadata are
 `0.11.0`, with the explicit build-version override retained.

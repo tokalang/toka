@@ -1,0 +1,8 @@
+import std/bytes::{bytes_from_array}
+
+fn main() -> i32 {
+    auto input# = [0:u8; 4]:[u8; 4]
+    auto view = bytes_from_array<4>(input)
+    input[1] = 42:u8
+    return view.at(1:usize).unwrap() as i32
+}

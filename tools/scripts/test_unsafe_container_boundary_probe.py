@@ -24,6 +24,7 @@ ESCAPES = (
     "assignment_shadowed_source_escape", "assignment_hidden_enum_escape",
     "direct_self_effect_escape", "direct_external_result_escape",
     "assignment_view_rebase_local_escape",
+    "miss_outcome_borrow_escape",
 )
 PAL_ESCAPES = (
     ("owner_cede_while_vec_live", "E04660", "ActiveDerivedBorrow"),
@@ -45,6 +46,8 @@ PAL_ESCAPES = (
     ("closure_propagation_before_retirement", "E0440", "owner.buf"),
     ("break_outer_holder_stays_live", "E0441", "owner.buf"),
     ("continue_outer_holder_stays_live", "E0441", "owner.buf"),
+    ("bytes_view_live_mutation", "E0442", "input"),
+    ("shape_view_live_mutation", "E0442", "engine.val"),
     ("owner_mutation_while_vec_live", "E0441", "owner.buf"),
     ("with_capacity_owner_mutation_escape", "E0441", "owner.buf"),
     ("moved_holder_owner_mutation_escape", "E0441", "owner.buf"),
@@ -93,6 +96,7 @@ RUNTIME = (
     "safe_guard_binding_terminated_sources",
     "safe_guard_binding_terminated_sources_control",
     "guard_binding_success_value",
+    "miss_outcome_owned_init", "miss_outcome_borrow_alive",
     "unrelated_mutations_owner_alive",
     "with_capacity_empty_then_static",
     "all_holders_removed_release",
