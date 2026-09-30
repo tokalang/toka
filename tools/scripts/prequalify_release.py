@@ -238,7 +238,7 @@ def main():
     )
     parser.add_argument("--revision", default="HEAD",
                         help="committed candidate revision (default: HEAD)")
-    parser.add_argument("--version", default="v0.10.0",
+    parser.add_argument("--version", default="v0.11.0",
                         help="release label beginning with v")
     parser.add_argument("--target", choices=SUPPORTED_TARGETS, action="append",
                         help="native, linux-arm64, or linux-x64; repeatable")
@@ -250,8 +250,8 @@ def main():
                         help="print the isolated checkout and gate commands without running them")
     args = parser.parse_args()
 
-    if not re.fullmatch(r"v0\.10\.(0|[1-9][0-9]*)", args.version):
-        raise SystemExit("release label must be a canonical v0.10.x tag")
+    if not re.fullmatch(r"v0\.11\.(0|[1-9][0-9]*)", args.version):
+        raise SystemExit("release label must be a canonical v0.11.x tag")
     if args.docker_cores <= 0:
         raise SystemExit("--docker-cores must be positive")
     revision = checked_output(["git", "rev-parse", "--verify", args.revision + "^{commit}"], cwd=ROOT)

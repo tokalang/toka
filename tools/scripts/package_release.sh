@@ -2,9 +2,9 @@
 set -e
 
 # Usage: ./package_release.sh [version]
-VERSION=${1:-"v0.10.0"}
-if [[ ! "$VERSION" =~ ^v0\.10\.(0|[1-9][0-9]*)$ ]]; then
-    echo "Release label must be a canonical v0.10.x tag" >&2
+VERSION=${1:-"v0.11.0"}
+if [[ ! "$VERSION" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]]; then
+    echo "Release label must be a canonical v0.11.x tag" >&2
     exit 1
 fi
 OS=${OS:-""}

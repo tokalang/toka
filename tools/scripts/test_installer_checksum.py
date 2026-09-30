@@ -13,7 +13,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = ROOT / "tools/install.sh"
-VERSION = "v0.10.0"
+VERSION = "v0.11.0"
 
 
 def require(condition, message):
@@ -119,7 +119,7 @@ def main():
 
         invalid_home = temp_root / "invalid-home"
         invalid_home.mkdir()
-        invalid = run_installer(invalid_home, fake_bin, archive, sums, version="0.10.0")
+        invalid = run_installer(invalid_home, fake_bin, archive, sums, version="0.11.0")
         require(invalid.returncode != 0 and
                 "Invalid release tag" in invalid.stdout and
                 not (invalid_home / ".toka").exists(),

@@ -15,7 +15,7 @@ import verify_release_promotion as verifier
 
 ROOT = Path(__file__).resolve().parents[2]
 SHA = "a" * 40
-TAG = "v0.10.0"
+TAG = "v0.11.0"
 TARGETS = verifier.TARGETS
 
 
@@ -127,7 +127,7 @@ def main():
         write_json(args.qualification_run_json, documents["qualification_run"])
         write_json(args.replay_receipt, documents["receipt"])
 
-        for tag in ("v1.0.0-rc.13", "v0.10.01", "v0.11.0", "v0.10.0-rc.1"):
+        for tag in ("v1.0.0-rc.13", "v0.11.01", "v0.10.0", "v0.11.0-rc.1"):
             args.tag_name = tag
             require(verifier.validate(args), "invalid tag was accepted: " + tag)
         args.tag_name = TAG
@@ -135,7 +135,7 @@ def main():
             ("draft", "isDraft", False),
             ("draft", "isPrerelease", True),
             ("draft", "isLatest", True),
-            ("draft", "tagName", "v0.10.1"),
+            ("draft", "tagName", "v0.11.1"),
             ("qualification_run", "id", 99),
             ("qualification_run", "head_sha", "b" * 40),
             ("qualification_run", "conclusion", "failure"),
@@ -146,10 +146,10 @@ def main():
             ("replay_run", "event", "push"),
             ("replay_run", "path", ".github/workflows/other.yml"),
             ("summary", "candidate_revision", "b" * 40),
-            ("summary", "version_label", "v0.10.1"),
+            ("summary", "version_label", "v0.11.1"),
             ("summary", "errors", ["blocked"]),
             ("receipt", "candidate_revision", "b" * 40),
-            ("receipt", "version_label", "v0.10.1"),
+            ("receipt", "version_label", "v0.11.1"),
             ("receipt", "qualification_run_id", 13),
             ("receipt", "asset_source", "candidate_run"),
             ("receipt", "archive_sha256", "0" * 64),

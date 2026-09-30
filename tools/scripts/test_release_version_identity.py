@@ -40,12 +40,12 @@ def require_version(build, version, source_version):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
-    parser.add_argument("--version", default="v0.10.0")
+    parser.add_argument("--version", default="v0.11.0")
     args = parser.parse_args()
     expected = args.version.removeprefix("v")
     source_version = expected.split("-", 1)[0].split("+", 1)[0]
-    if not re.fullmatch(r"0\.10\.(0|[1-9][0-9]*)", source_version):
-        raise RuntimeError("expected version is outside the 0.10.x line")
+    if not re.fullmatch(r"0\.11\.(0|[1-9][0-9]*)", source_version):
+        raise RuntimeError("expected version is outside the 0.11.x line")
     probe_override = source_version + "-dev.19"
 
     with tempfile.TemporaryDirectory(prefix="toka-release-version-") as temporary:

@@ -1,4 +1,4 @@
-[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [快速开始](#快速开始) | [0.10.x 开发路线](docs/0_10_development_line.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
+[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [快速开始](#快速开始) | [0.11.x 开发路线](docs/0_11_development_line.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
 
 # Toka systems programming language（Toka 系统编程语言）
 
@@ -284,7 +284,9 @@ toka capabilities --json main.tk
 1.0 release candidate 周期已经结束，`0.10.0` 是已发布的开发线版本，
 公共 API 仍在演进，不构成 1.0 稳定性承诺。包括 `v1.0.0-rc.13` 在内的已发布
 RC 保留原有 tag、源码和资产。详见[开发路线](docs/0_10_development_line.md)与
-[发布说明](docs/release_notes_v0.10.0.md)。
+[发布说明](docs/release_notes_v0.10.0.md)。当前源码已进入 `0.11.0` 整包集成候选，
+尚未成为公开 SDK 版本。详见 [0.11 开发路线](docs/0_11_development_line.md)、
+[待发布说明](docs/release_notes_v0.11.0.md)与 [Vec 迁移指南](docs/migration_0_11_vec.md)。
 
 | 平台 | 已发布 v0.10.0 的状态 |
 | :--- | :--- |
@@ -299,7 +301,8 @@ RC 保留原有 tag、源码和资产。详见[开发路线](docs/0_10_developme
 
 - 项目会尽量保持 `0.10.x` 内的兼容性，并把计划性
   breaking 变更集中到 `0.11.0`，配套迁移说明。
-- 嵌套 owned Vec 不属于 `v0.10.0` 的支持范围，相关改动计划集成到 `0.11.0`。
+- 嵌套 owned Vec 不属于 `v0.10.0` 的支持范围。`0.11.0` 源码候选已集成正式库的
+  嵌套 Vec 操作和外部 owner 存活保护；新集成 SHA 仍须通过正式发布资格门禁。
 - 语言尚未自举，包生态仍然年轻。
 - TokaKV 当前是单进程嵌入式 preview 引擎，compaction 范围为 L0-to-L1；
   尚不包含更深层级、分布式复制或 Redis 协议服务端。
@@ -313,8 +316,9 @@ RC 保留原有 tag、源码和资产。详见[开发路线](docs/0_10_developme
 - 增量构建元数据与 TKI interface cache 校验。
 - 已发布 Linux 和 macOS 的 x64、ARM64 四份 `v0.10.0` SDK 归档。
 
-当前优先事项是维护 `0.10.x`，并在现有安全检查与发布门禁下准备 `0.11.0`
-及清晰的迁移说明。Windows parity 与最终自举仍属于后续工作。
+当前优先事项是在现有安全检查与发布门禁下验证 `0.11.0` 整包集成候选。
+在 0.11.0 单独发布前，公开安装继续固定使用已发布的 `v0.10.0`。
+Windows parity 与最终自举仍属于后续工作。
 
 ## Toka 适合你吗？
 

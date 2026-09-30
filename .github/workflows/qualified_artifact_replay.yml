@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: Existing canonical v0.10.x tag
+        description: Existing canonical v0.11.x tag
         required: true
         type: string
       candidate_sha:
@@ -51,7 +51,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          [[ "$TAG_NAME" =~ ^v0\.10\.(0|[1-9][0-9]*)$ ]]
+          [[ "$TAG_NAME" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]]
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$QUALIFICATION_RUN_ID" =~ ^[0-9]+$ ]]
           [[ "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]

@@ -9,7 +9,7 @@ import re
 
 
 TARGETS = ("linux-arm64", "linux-x64", "macos-arm64", "macos-x64")
-TAG = re.compile(r"v0\.10\.(?:0|[1-9][0-9]*)\Z")
+TAG = re.compile(r"v0\.11\.(?:0|[1-9][0-9]*)\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -56,7 +56,7 @@ def validate(args, observed=None):
         observed = {}
     observed["archives"] = {}
     if not TAG.fullmatch(args.tag_name):
-        errors.append("tag is not a canonical v0.10.x release")
+        errors.append("tag is not a canonical v0.11.x release")
     if not SHA.fullmatch(args.candidate_sha):
         errors.append("candidate SHA is invalid")
     if args.qualification_run_id <= 0 or args.replay_run_id <= 0:

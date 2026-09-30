@@ -6,7 +6,7 @@ if(APPLE)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-w")
 endif()
 
-project(TokaCompiler VERSION 0.10.0 LANGUAGES C CXX)
+project(TokaCompiler VERSION 0.11.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CTest)
 # Keep ordinary reconfiguration on the version declared above.  A cached

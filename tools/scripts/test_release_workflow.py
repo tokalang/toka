@@ -25,7 +25,7 @@ ASSETS = ROOT / "tools/scripts/verify_release_assets.py"
 RELEASE_GATE = ROOT / "tools/scripts/release_gate.py"
 HANDLE_AUDIT = ROOT / "tools/scripts/audit_handle_grammar.py"
 INSTALLER = ROOT / "tools/install.sh"
-ACTIVE_CANDIDATE = "v0.10.0"
+ACTIVE_CANDIDATE = "v0.11.0"
 ACTIVE_RELEASE_NOTES = ROOT / ("docs/release_notes_%s.md" % ACTIVE_CANDIDATE)
 TARGETS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64")
 STAGES = (
@@ -112,17 +112,17 @@ def exercise_verifiers():
         invalid_gate = subprocess.run([
             sys.executable, str(RELEASE_GATE), "--target", "linux-x64",
             "--output", str(root / "invalid-gate.json"),
-            "--version", "v0.10.01",
+            "--version", "v0.11.01",
         ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         require(invalid_gate.returncode != 0 and
-                "canonical v0.10.x tag" in invalid_gate.stderr and
+                "canonical v0.11.x tag" in invalid_gate.stderr and
                 not (root / "invalid-gate.json").exists(),
                 "release gate admitted a noncanonical label")
         invalid_package = subprocess.run([
-            "bash", "tools/scripts/package_release.sh", "v0.10.01",
+            "bash", "tools/scripts/package_release.sh", "v0.11.01",
         ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         require(invalid_package.returncode != 0 and
-                "canonical v0.10.x tag" in invalid_package.stderr,
+                "canonical v0.11.x tag" in invalid_package.stderr,
                 "release packager admitted a noncanonical label")
         evidence = root / "evidence"
         evidence.mkdir()
@@ -169,7 +169,7 @@ def exercise_verifiers():
                             "--revision", revision, "--version-label", label,
                             "--output", str(root / "invalid-summary.json")])
         (evidence / "release-gate-linux-x64.json").write_text(
-            json.dumps(report("linux-x64", revision, "v0.10.1")), encoding="utf-8")
+            json.dumps(report("linux-x64", revision, "v0.11.1")), encoding="utf-8")
         run_expect_failure([sys.executable, str(QUALIFICATION), "--evidence-dir", str(evidence),
                             "--revision", revision, "--version-label", label,
                             "--output", str(root / "wrong-label-summary.json")])
@@ -189,7 +189,7 @@ def exercise_verifiers():
              "--version-label", label, "--checksums-output", str(checksums),
              "--require-checksums"])
         run_expect_failure([sys.executable, str(ASSETS), "--assets-dir", str(assets),
-                            "--version-label", "v0.10.1", "--checksums-output", str(checksums),
+                            "--version-label", "v0.11.1", "--checksums-output", str(checksums),
                             "--require-checksums"])
         correct_manifest = checksums.read_text(encoding="utf-8")
         checksums.write_text("0" * 64 + correct_manifest[64:], encoding="utf-8")
@@ -327,16 +327,16 @@ def main():
                     "${{ steps.version.outputs.label" not in block and
                     "${{ steps.candidate.outputs" not in block,
                     workflow_name + " workflow interpolates context into shell")
-    active_pattern = r"^v0\.10\.(0|[1-9][0-9]*)$"
+    active_pattern = r"^v0\.11\.(0|[1-9][0-9]*)$"
     require(text.count(active_pattern) == 3 and
             promotion.count(active_pattern) == 1 and
             qualified_replay.count(active_pattern) == 1,
-            "active workflows do not validate the same canonical v0.10.x tag")
-    for label in ("v0.10.0", "v0.10.1", "v0.10.123"):
+            "active workflows do not validate the same canonical v0.11.x tag")
+    for label in ("v0.11.0", "v0.11.1", "v0.11.123"):
         require(re.fullmatch(active_pattern, label) is not None,
                 "valid active release label was rejected: " + label)
-    for label in ("v0.10.00", "v0.10.01", "v0.11.0", "v1.0.0-rc.13",
-                  "v0.10.0-rc.1", "v0.10.0x"):
+    for label in ("v0.11.00", "v0.11.01", "v0.10.0", "v1.0.0-rc.13",
+                  "v0.11.0-rc.1", "v0.11.0x"):
         require(re.fullmatch(active_pattern, label) is None,
                 "invalid active release label was admitted: " + label)
     require("SHA256SUMS" in installer and "EXPECTED_SHA256" in installer and

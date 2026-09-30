@@ -1,4 +1,4 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Quick Start](#quick-start) | [0.10.x Development Line](docs/0_10_development_line.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Quick Start](#quick-start) | [0.11.x Development Line](docs/0_11_development_line.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
 # Toka systems programming language
 
@@ -313,7 +313,11 @@ The 1.0 release-candidate cycle has ended. `0.10.0` is a published
 development release, with an evolving public API rather than a 1.0 stability
 promise. Published RCs, including `v1.0.0-rc.13`, retain their original tags,
 source and assets. See the [development route](docs/0_10_development_line.md)
-and [release notes](docs/release_notes_v0.10.0.md).
+and [release notes](docs/release_notes_v0.10.0.md). The source tree is now a
+`0.11.0` integration candidate; it is not yet a public SDK release. See the
+[0.11 development line](docs/0_11_development_line.md),
+[pending release notes](docs/release_notes_v0.11.0.md) and
+[Vec migration guide](docs/migration_0_11_vec.md).
 
 | Platform | Published v0.10.0 status |
 | :--- | :--- |
@@ -328,8 +332,9 @@ Known boundaries:
 
 - Within `0.10.x` the project aims to preserve compatibility where practical;
   planned breaking changes belong in `0.11.0` with migration notes.
-- Nested-owned-Vec support is outside `v0.10.0`; its planned integration targets
-  `0.11.0`.
+- Nested-owned-Vec support is outside `v0.10.0`. The `0.11.0` source candidate
+  integrates production nested Vec operations and external-owner protection;
+  its integration SHA still needs formal release qualification.
 - The language is not yet self-hosted, and the package ecosystem is young.
 - TokaKV is an embedded, single-process preview engine. Its current compaction
   scope is L0-to-L1; deeper levels, distributed replication, and a Redis
@@ -344,8 +349,9 @@ The repository currently contains:
 - Incremental build metadata and TKI interface cache validation.
 - Published `v0.10.0` SDK archives for Linux and macOS on x64 and ARM64.
 
-The immediate priorities are maintaining `0.10.x` and preparing `0.11.0` with
-clear migration guidance and the existing security and release gates.
+The immediate priority is qualifying the complete `0.11.0` integration
+candidate under the existing security and release gates. Use published
+`v0.10.0` for a pinned public installation until 0.11.0 is separately released.
 Windows parity and eventual self-hosting remain later work.
 
 ## Is Toka A Good Fit?

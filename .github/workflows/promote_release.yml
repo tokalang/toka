@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: Existing v0.10.x draft tag to publish
+        description: Existing v0.11.x draft tag to publish
         required: true
         type: string
       candidate_sha:
@@ -37,8 +37,8 @@ jobs:
           REPLAY_RUN_ID: ${{ inputs.replay_run_id }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.10\.(0|[1-9][0-9]*)$ ]]; then
-            echo "tag_name must be a canonical v0.10.x tag" >&2
+          if [[ ! "$TAG_NAME" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]]; then
+            echo "tag_name must be a canonical v0.11.x tag" >&2
             exit 1
           fi
           if [[ ! "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || \
