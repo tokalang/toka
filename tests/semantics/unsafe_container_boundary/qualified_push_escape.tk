@@ -1,0 +1,9 @@
+import std/vec::{Vec}
+import core/string::{string}
+fn escaped() -> Vec<str> {
+    auto owner = string::from("local")
+    auto values# = Vec<str>::new()
+    Vec<str>::push(values#, owner.as_str())
+    return cede values
+}
+fn main() -> i32 { return 0 }

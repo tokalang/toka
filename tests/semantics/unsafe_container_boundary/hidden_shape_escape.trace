@@ -1,0 +1,3 @@
+TRACE push_arg index=0 actual_type=Holder field_deps=
+TRACE method=push object_binding_id=1509 object_life_deps= result_life_deps=owner, result_field_deps= object_field_deps= last_borrow_source=owner
+TRACE return binding_id=1509 tracked=1 binding_life_deps= binding_field_deps= last_life_deps=

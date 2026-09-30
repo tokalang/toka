@@ -1,0 +1,21 @@
+import std/vec::{Vec}
+import core/string::{string}
+import core/traits::{@Encap}
+
+auto observed# = 0:i32
+shape Watch(view: str)
+impl Watch@Encap {
+    fn drop(self#) {
+        if self.view.equals("local") { observed += 1:i32 }
+    }
+}
+
+fn main() -> i32 {
+    {
+        auto owner = string::from("local")
+        auto values# = Vec<Watch>::new()
+        values#.push(Watch(view = owner.as_str()))
+    }
+    if observed != 1:i32 { return 1 }
+    return 0
+}

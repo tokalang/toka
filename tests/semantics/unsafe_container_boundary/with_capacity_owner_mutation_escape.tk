@@ -1,0 +1,9 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto owner# = string::from("local")
+    auto values# = Vec<str>::with_capacity(4:usize)
+    values#.push(owner.as_str())
+    owner#.push_str(" invalidates view")
+    return 0
+}

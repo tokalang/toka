@@ -1,0 +1,11 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto owner# = string::from("local")
+    auto values# = Vec<str>::new()
+    if owner.len() > 0:usize {
+        values#.push(owner.as_str())
+    }
+    owner#.push_str(" invalidates possible view")
+    return 0
+}

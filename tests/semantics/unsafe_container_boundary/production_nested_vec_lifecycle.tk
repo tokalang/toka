@@ -1,0 +1,71 @@
+import std/vec::{Vec}
+import core/string::{string}
+import core/traits::{@Encap}
+
+auto item_drops# = 0:i32
+auto leaf_drops# = 0:i32
+
+shape Leaf(label: string)
+impl Leaf@Encap {
+    pub label
+    fn drop(self#) { leaf_drops += 1:i32 }
+}
+
+shape Item(children: Vec<Leaf>)
+impl Item@Encap {
+    pub children
+    fn drop(self#) { item_drops += 1:i32 }
+}
+
+fn make_item() -> Item {
+    auto children# = Vec<Leaf>::new()
+    auto index# = 0:usize
+    loop index < 5:usize {
+        children#.push(Leaf(label = string::from("child")))
+        index += 1
+    }
+    return Item(children = cede children)
+}
+
+fn produce() -> Vec<Item> {
+    auto values# = Vec<Item>::new()
+    auto index# = 0:usize
+    loop index < 5:usize {
+        values#.push(make_item())
+        index += 1
+    }
+    return cede values
+}
+
+fn main() -> i32 {
+    {
+        auto values# = produce()
+        if values.len() != 5:usize ||
+           values.borrow(0:usize).children.len() != 5:usize ||
+           !values.borrow(0:usize).children.borrow(0:usize).label.as_str().equals("child") {
+            return 1
+        }
+        values#.set(0:usize, make_item())
+        if item_drops != 1:i32 || leaf_drops != 5:i32 { return 2 }
+        {
+            auto taken = values#.remove(1:usize).unwrap()
+            if taken.children.len() != 5:usize { return 3 }
+        }
+        {
+            auto taken = values#.pop().unwrap()
+            if taken.children.len() != 5:usize { return 4 }
+        }
+        {
+            auto taken = values#.next().unwrap()
+            if taken.children.len() != 5:usize { return 5 }
+        }
+        if values.len() != 2:usize { return 6 }
+        {
+            auto iter# = values.into_iter()
+            auto taken = iter#.next().unwrap()
+            if taken.children.len() != 5:usize { return 7 }
+        }
+    }
+    if item_drops != 6:i32 || leaf_drops != 30:i32 { return 8 }
+    return 0
+}

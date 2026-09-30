@@ -445,6 +445,10 @@ struct TaskResultFact {
 class Expr : public ASTNode {
 public:
   std::shared_ptr<Type> ResolvedType;
+  // Checked external referents carried by this value. Absence means unknown;
+  // an empty set means independently usable. Never copied by AST cloning.
+  std::optional<std::set<AccessPath>> ExternalValueDependencies;
+  bool ExternalValueTracked = false;
   std::shared_ptr<const ResultIndependenceFact> ResultIndependence;
   std::shared_ptr<const TaskResultFact> TaskResult;
   // Private current-value receipt, never serialized or inherited by clone.
@@ -2302,7 +2306,7 @@ struct DependencyPathSyntax {
   }
 };
 
-enum class ReturnDependencyTargetKind { ReturnValue, NamedBinding };
+enum class ReturnDependencyTargetKind { ReturnValue, NamedBinding, ReceiverPoststate };
 
 enum class ReturnResultKind { Unit, Typed, AbiVoid, Never };
 
@@ -2383,11 +2387,17 @@ struct ReturnContractSyntax {
         target.push_back(dependency);
     };
     for (const auto &route : Routes) {
+      if (route.Target.Kind == ReturnDependencyTargetKind::ReceiverPoststate)
+        continue;
       std::vector<std::string> &target = route.Target.MemberName.empty()
                                              ? lifeDependencies
                                              : memberDependencies[route.Target.MemberName];
-      for (const auto &source : route.Sources)
+      for (const auto &source : route.Sources) {
+        if (source.Root == "self" && source.Members.size() == 1 &&
+            source.Members.front() == "external")
+          continue;
         appendUnique(target, source.toCanonicalString());
+      }
     }
   }
 };
@@ -2542,6 +2552,7 @@ public:
   };
 
   bool IsPub = false;
+  bool IsUnsafe = false;
   std::string Name;
   std::string CodegenName;
   std::vector<Arg> Args;
@@ -2658,6 +2669,7 @@ public:
     auto n = std::make_unique<FunctionDecl>(IsPub, Name, std::move(clonedArgs),
                                             std::move(clonedBody), ReturnType,
                                             GenericParams, LifeDependencies, Effect);
+    n->IsUnsafe = IsUnsafe;
     n->CodegenName = CodegenName;
     n->setReturnContract(ReturnContract);
     n->GenericReturnContract = GenericReturnContract;

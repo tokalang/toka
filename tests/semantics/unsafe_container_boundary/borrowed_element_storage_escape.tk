@@ -1,0 +1,10 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn escaped() -> &item: string {
+    auto values# = Vec<string>::new()
+    values#.push(string::from("owned"))
+    return values.borrow(0:usize)
+}
+
+fn main() -> i32 { return 0 }

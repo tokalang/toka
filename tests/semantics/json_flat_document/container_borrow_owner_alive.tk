@@ -1,0 +1,17 @@
+import std/vec::{Vec}
+import stdx/serde/json_factory::{@JsonFactory}
+
+fn parse(json: str) -> Vec<str> <- json {
+    auto result = Vec<str>::parse_complete(json)
+    auto parsed = result.unwrap()
+    return cede parsed.value
+}
+
+fn main() -> i32 {
+    auto input = string::from("[\"alive\"]")
+    auto values = parse(input.as_str())
+    if values.len() != 1:usize || !values.borrow(0:usize).equals("alive") {
+        return 2
+    }
+    return 0
+}

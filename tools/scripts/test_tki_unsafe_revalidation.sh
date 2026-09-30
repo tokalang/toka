@@ -28,7 +28,7 @@ write_metadata() {
     local claimed_source="$2"
     {
         echo "// @meta compiler_version: any"
-        echo "// @meta format_version: 3"
+        echo "// @meta format_version: 5"
         echo "// @meta target_triple: any"
         echo "// @meta source_hash: any"
         echo "// @meta identity_schema_version: 2"
@@ -38,6 +38,21 @@ write_metadata() {
         echo "// @meta source_path: $claimed_source"
         echo
     } > "$path"
+}
+
+seal_interface() {
+    python3 - "$1" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+header, body = path.read_text().split("\n\n", 1)
+digest = 14695981039346656037
+for byte in body.encode():
+    digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
+path.write_text(header.replace("// @meta format_version: 5",
+    f"// @meta format_version: 5\n// @meta replay_surface_hash: {digest:016x}", 1)
+    + "\n\n" + body)
+PY
 }
 
 write_metadata "$TEST_DIR/param.tki" "$TEST_DIR_ABS/forged/lib/param.tk"
@@ -110,6 +125,7 @@ EOF
 expect_error() {
     local module="$1"
     local code="$2"
+    seal_interface "$TEST_DIR/$module.tki"
     write_consumer "$module"
     if "$TOKAC_ABS" -c "$TEST_DIR/$module-main.tk" \
         -o "$TEST_DIR/$module-main.o" \
@@ -137,6 +153,7 @@ mkdir -p "$TEST_DIR/include"
 write_metadata "$TEST_DIR/include/include_path.tki" \
     "$TEST_DIR_ABS/forged/lib/include_path.tk"
 echo "pub fn expose(*ptr: i32)" >> "$TEST_DIR/include/include_path.tki"
+seal_interface "$TEST_DIR/include/include_path.tki"
 cat > "$TEST_DIR/include-main.tk" <<'EOF'
 import include_path
 
@@ -157,6 +174,7 @@ if ! grep -Fq "E0480" "$TEST_DIR/include.err"; then
 fi
 
 write_consumer explicit
+seal_interface "$TEST_DIR/explicit.tki"
 if ! "$TOKAC_ABS" -c "$TEST_DIR/explicit-main.tk" \
     -o "$TEST_DIR/explicit-main.o" \
     > "$TEST_DIR/explicit.out" 2> "$TEST_DIR/explicit.err"; then

@@ -1,0 +1,16 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn main() -> i32 {
+    auto owner = string::from("alive")
+    auto left# = Vec<str>::new()
+    {
+        auto left# = Vec<str>::new()
+        auto right# = Vec<str>::new()
+        right#.push(owner.as_str())
+        left = cede right
+        if !left.borrow(0:usize).equals("alive") { return 1 }
+    }
+    if left.len() != 0:usize { return 2 }
+    return 0
+}

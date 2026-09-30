@@ -1,0 +1,14 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto owner# = string::from("local")
+    auto outer# = Vec<str>::new()
+    outer#.push(owner.as_str())
+    loop {
+        auto inner# = Vec<str>::new()
+        inner#.push(owner.as_str())
+        break
+    }
+    owner#.push_str("!")
+    return 0
+}

@@ -3,6 +3,7 @@
 import argparse
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -67,8 +68,11 @@ def main():
                 else: diagnostics[name] = normal.stderr
             print('PASS domains ' + ('source-hidden' if hidden else 'source-visible'), flush=True)
         # The new source-level contract must not be consumed as an old cache.
-        assert '0.9.9-23' in original_tki
-        (work / 'slot.tki').write_text(original_tki.replace('0.9.9-23', '0.9.9-22'))
+        version = re.search(r'(?m)^// @meta compiler_version: ([^\n]+)$', original_tki)
+        assert version, original_tki
+        (work / 'slot.tki').write_text(original_tki.replace(
+            f'compiler_version: {version.group(1)}',
+            'compiler_version: stale-test-version'))
         user.write_text(positive)
         rejected = compile(user, '--check-only')
         assert rejected.returncode == 1, rejected.stderr

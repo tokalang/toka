@@ -173,12 +173,12 @@ impl ReadDataFile {
             ))
         }
 
-        buf#.unsafe_set_len(max_len)
+        unsafe buf#.unsafe_set_len(max_len)
         auto *ptr# = writable_byte_storage(buf#)
         auto os_err# = 0:i32
         auto n = unsafe toka_datafile_pread(self.handle, *ptr as *void, max_len, offset, &os_err as *i32)
         if n < 0:i64 {
-            buf#.unsafe_set_len(0:usize)
+            unsafe buf#.unsafe_set_len(0:usize)
             return Result<ReadAtResult, ReadAtError>::Err(ReadAtError(
                 buffer = cede buf,
                 error = IoError::new("read_at", os_err, "pread failed")
@@ -186,7 +186,7 @@ impl ReadDataFile {
         }
 
         auto read_count = n as usize
-        buf#.unsafe_set_len(read_count)
+        unsafe buf#.unsafe_set_len(read_count)
         auto is_eof = (max_len > 0:usize && read_count == 0:usize)
         return Result<ReadAtResult, ReadAtError>::Ok(ReadAtResult(
             buffer = cede buf,
@@ -262,7 +262,7 @@ impl WalFile {
             ))
         }
 
-        auto *ptr = buf.unsafe_get(0:usize)
+        auto *ptr = unsafe buf.unsafe_get(0:usize)
         auto os_err# = 0:i32
         auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, buf.len(), offset, &os_err as *i32)
         if n < 0:i64 {
@@ -305,7 +305,7 @@ impl WalFile {
         auto total_written# = 0:usize
         loop total_written < total_len {
             auto remaining = total_len - total_written
-            auto *ptr = buf.unsafe_get(total_written)
+            auto *ptr = unsafe buf.unsafe_get(total_written)
             auto curr_offset = offset + (total_written as u64)
             auto os_err# = 0:i32
             auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, remaining, curr_offset, &os_err as *i32)
@@ -448,7 +448,7 @@ impl PendingOutputFile {
 
         // Allocate buffer for returned temp path
         auto temp_buf# = Vec<u8>::with_capacity(1024:usize)
-        temp_buf#.unsafe_set_len(1024:usize)
+        unsafe temp_buf#.unsafe_set_len(1024:usize)
         auto *out_ptr# = writable_byte_storage(temp_buf#)
         auto os_err# = 0:i32
 
@@ -509,7 +509,7 @@ impl PendingOutputFile {
             ))
         }
 
-        auto *ptr = buf.unsafe_get(0:usize)
+        auto *ptr = unsafe buf.unsafe_get(0:usize)
         auto os_err# = 0:i32
         auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, count, offset, &os_err as *i32)
         if n < 0:i64 {
@@ -552,7 +552,7 @@ impl PendingOutputFile {
                 ))
             }
 
-            auto *ptr = buf.unsafe_get(total_written)
+            auto *ptr = unsafe buf.unsafe_get(total_written)
             auto os_err# = 0:i32
             auto n = unsafe toka_datafile_pwrite(self.fd, *ptr as *void, chunk_len, curr_offset, &os_err as *i32)
             if n <= 0:i64 {

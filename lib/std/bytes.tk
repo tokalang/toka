@@ -36,7 +36,7 @@ effects:
         if data.len() == 0:usize {
             return "".as_bytes()
         }
-        return bytes(&buf = &(data.buf[0]) as *[byte] as &[byte], len = data.len())
+        return bytes(&buf = data.borrow(0:usize) as *[byte] as &[byte], len = data.len())
     }
 }
 
@@ -133,7 +133,7 @@ impl Bytes {
             self.len = 0
             self.cap = 0
             self.*buf = null as nul *[u8]
-            return Vec<u8>(*buf = *p, len = l, cap = c)
+            return Vec<u8>::from_raw(*p, l, c)
         }
     }
 

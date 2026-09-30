@@ -19,6 +19,7 @@ enum class AccessProjectionKind {
   ConstantIndex,
   DynamicIndex,
   Dereference,
+  ExternalValue,
   Unknown,
 };
 
@@ -56,6 +57,12 @@ struct AccessProjection {
     AccessProjection projection;
     projection.Kind = AccessProjectionKind::Dereference;
     projection.Loc = loc;
+    return projection;
+  }
+
+  static AccessProjection externalValue() {
+    AccessProjection projection;
+    projection.Kind = AccessProjectionKind::ExternalValue;
     return projection;
   }
 

@@ -1,0 +1,11 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto values# = Vec<str>::new()
+    {
+        auto owner = string::from("local")
+        values#.push(owner.as_str())
+        cede values
+    }
+    return 0
+}

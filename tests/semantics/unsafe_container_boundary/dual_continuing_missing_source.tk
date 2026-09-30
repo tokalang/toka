@@ -1,0 +1,15 @@
+import std/vec::{Vec}
+
+fn choose(flag: bool, left: str, right: str) -> Vec<str> <- left {
+    auto values# = Vec<str>::new()
+    if flag {
+        values = Vec<str>::new()
+        values#.push(left)
+    } else {
+        values = Vec<str>::new()
+        values#.push(right)
+    }
+    return cede values
+}
+
+fn main() -> i32 { return 0 }

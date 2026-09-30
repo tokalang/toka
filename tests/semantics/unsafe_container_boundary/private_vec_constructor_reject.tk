@@ -1,0 +1,6 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    Vec<i32>(*buf = null, len = 1:usize, cap = 0:usize)
+    return 0
+}

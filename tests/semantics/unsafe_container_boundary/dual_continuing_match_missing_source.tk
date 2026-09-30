@@ -1,0 +1,18 @@
+import std/vec::{Vec}
+
+fn choose(flag: bool, left: str, right: str) -> Vec<str> <- left {
+    auto values# = Vec<str>::new()
+    match flag {
+      true => {
+        values = Vec<str>::new()
+        values#.push(left)
+      }
+      _ => {
+        values = Vec<str>::new()
+        values#.push(right)
+      }
+    }
+    return cede values
+}
+
+fn main() -> i32 { return 0 }

@@ -33,6 +33,19 @@ namespace toka {
 
 namespace {
 
+class ClosureCleanupBoundaryScope {
+public:
+  ClosureCleanupBoundaryScope(Scope *&slot, Scope *boundary)
+      : Slot(slot), Saved(slot) {
+    Slot = boundary;
+  }
+  ~ClosureCleanupBoundaryScope() { Slot = Saved; }
+
+private:
+  Scope *&Slot;
+  Scope *Saved;
+};
+
 uint64_t closureIdentityHash(const std::string &identity) {
   uint64_t hash = 14695981039346656037ULL;
   for (unsigned char c : identity) {
@@ -415,6 +428,8 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
       // This pass discovers captures only.  It must not leave ownership or
       // borrow transitions on the outer declarations: the invoke-body pass
       // below replays those transitions against the fresh capture bindings.
+      ClosureCleanupBoundaryScope cleanupBoundary(
+          m_FunctionCleanupBoundary, CurrentScope->Parent);
       const AnalysisState precomputeState = captureAnalysisState();
       bool oldPrecompute = m_IsPrecomputingCaptures;
       m_IsPrecomputingCaptures = true;
@@ -837,6 +852,8 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
 
   // 3. Check the body
   if (invokeFunc->Body) {
+      ClosureCleanupBoundaryScope cleanupBoundary(
+          m_FunctionCleanupBoundary, CurrentScope->Parent);
       std::string savedRet = CurrentFunctionReturnType;
       FunctionDecl *savedFn = CurrentFunction;
       CurrentFunction = invokeFunc.get();

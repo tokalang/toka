@@ -1,0 +1,9 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto values# = Vec<str>::with_capacity(4:usize)
+    values#.push("static")
+    if values.len() != 1:usize ||
+       !values.borrow(0:usize).equals("static") { return 1 }
+    return 0
+}

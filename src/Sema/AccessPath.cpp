@@ -19,6 +19,8 @@ std::string AccessPath::toLegacyString() const {
   for (const auto &projection : Projections) {
     if (projection.Kind == AccessProjectionKind::Field) {
       result += "." + projection.Name;
+    } else if (projection.Kind == AccessProjectionKind::ExternalValue) {
+      result += ".external";
     }
   }
   return result;
@@ -40,6 +42,9 @@ std::string AccessPath::toDebugString() const {
       break;
     case AccessProjectionKind::Dereference:
       out << "->*";
+      break;
+    case AccessProjectionKind::ExternalValue:
+      out << ".external";
       break;
     case AccessProjectionKind::Unknown:
       out << "<?>";

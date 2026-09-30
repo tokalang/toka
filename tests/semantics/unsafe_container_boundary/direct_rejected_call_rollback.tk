@@ -1,0 +1,18 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn append(self#: Vec<str>, val: str)
+effects:
+    self <- val
+{
+    self#.push(val)
+}
+
+fn attempted() -> Vec<str> {
+    auto owner = string::from("local")
+    auto values# = Vec<str>::new()
+    append(values#, owner.as_str(), 1:i32)
+    return cede values
+}
+
+fn main() -> i32 { return 0 }

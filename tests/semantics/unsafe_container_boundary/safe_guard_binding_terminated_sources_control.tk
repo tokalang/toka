@@ -1,0 +1,19 @@
+import std/vec::{Vec}
+import core/option::{Option}
+fn choose(option: Option<i32>, input: str, other: str) -> Vec<str> <- other {
+    auto values# = Vec<str>::new()
+    guard auto Option<i32>::Some(value) = option else {
+        values#.push(input)
+        return Vec<str>::new()
+    }
+    values = Vec<str>::new()
+    values#.push(other)
+    return cede values
+}
+fn main() -> i32 {
+    auto first = choose(Option<i32>::None, "unused", "static")
+    auto second = choose(Option<i32>::Some(7), "unused", "static")
+    if first.len() != 0:usize || second.len() != 1:usize { return 1 }
+    if !second.borrow(0:usize).equals("static") { return 2 }
+    return 0
+}

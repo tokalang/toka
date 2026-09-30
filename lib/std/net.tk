@@ -506,7 +506,7 @@ impl TcpStream {
             failed = true
             message = string::from("Stream closed")
         } else if len > 0:usize {
-            auto *buf_ptr = owned.unsafe_get(0)
+            auto *buf_ptr = unsafe owned.unsafe_get(0)
             auto write_res = self#.write_all_async_timeout(*buf_ptr, len, timeout_ms).await
             if write_res.is_err() {
                 failed = true
@@ -585,13 +585,13 @@ impl TcpStream {
             message = string::from("Invalid network read count")
         }
         if failed {
-            owned#.unsafe_set_len(0:usize)
+            unsafe owned#.unsafe_set_len(0:usize)
             return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
                 buffer = cede owned,
                 message = cede message
             ))
         }
-        owned#.unsafe_set_len(bytes_read)
+        unsafe owned#.unsafe_set_len(bytes_read)
         return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
             buffer = cede owned,
             bytes_read = bytes_read,
@@ -1035,13 +1035,13 @@ impl TlsSession {
             message = string::from("Invalid network read count")
         }
         if failed {
-            owned#.unsafe_set_len(0:usize)
+            unsafe owned#.unsafe_set_len(0:usize)
             return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
                 buffer = cede owned,
                 message = cede message
             ))
         }
-        owned#.unsafe_set_len(bytes_read)
+        unsafe owned#.unsafe_set_len(bytes_read)
         return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
             buffer = cede owned,
             bytes_read = bytes_read,
@@ -1060,7 +1060,7 @@ impl TlsSession {
             failed = true
             message = string::from("TLS session is closed")
         } else if len > 0:usize {
-            auto *buf_ptr = owned.unsafe_get(0)
+            auto *buf_ptr = unsafe owned.unsafe_get(0)
             auto write_res = tcp#.tls_write_all_async(self.live_handle(), *buf_ptr, len, timeout_ms).await
             if write_res.is_err() {
                 failed = true

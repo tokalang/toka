@@ -20,7 +20,7 @@ fn main() -> i32 {
             ^storage[0] = cede ^first
             ^storage[1] = cede ^last
         }
-        auto values# = Vec<^Cell>(*buf = *storage, len = 2, cap = 2)
+        auto values# = unsafe Vec<^Cell>::from_raw(*storage, 2:usize, 2:usize)
         {
             auto result = values#.pop()
             if !result.is_some() || values.len() != 1 || drops != 0 { return 1 }
@@ -38,7 +38,7 @@ fn main() -> i32 {
             ~storage[1] = cede ~last
         }
         {
-            auto values# = Vec<~Cell>(*buf = *storage, len = 2, cap = 2)
+            auto values# = unsafe Vec<~Cell>::from_raw(*storage, 2:usize, 2:usize)
             values#.pop()
             if drops != 2 || values.len() != 1 { return 4 }
         }

@@ -844,12 +844,65 @@ static ReferenceTargets joinReferenceTargets(const ReferenceTargets &a,
   return result;
 }
 
-Sema::AnalysisState Sema::captureAnalysisState() {
-  AnalysisState state;
-  for (auto *scope = CurrentScope; scope; scope = scope->Parent)
+Sema::ExternalDependencySnapshot
+Sema::captureVisibleExternalDependencies(Scope *visibleScope) {
+  ExternalDependencySnapshot snapshot;
+  for (auto *scope = visibleScope ? visibleScope : CurrentScope;
+       scope; scope = scope->Parent)
     for (const auto &[name, info] : scope->Symbols)
+      if (info.SymbolID)
+        snapshot[info.SymbolID] = {info.ExternalValueDependencies,
+                                   info.LifeDependencySet,
+                                   info.ExternalValueTracked};
+  return snapshot;
+}
+
+void Sema::restoreVisibleExternalDependencies(
+    const ExternalDependencySnapshot &snapshot) {
+  for (const auto &[id, state] : snapshot) {
+    SymbolInfo *binding = nullptr;
+    if (!CurrentScope->findSymbolByID(id, binding) || !binding) continue;
+    binding->ExternalValueDependencies = state.Sources;
+    binding->LifeDependencySet = state.LegacyRoots;
+    binding->ExternalValueTracked = state.Tracked;
+  }
+}
+
+Sema::ExternalDependencySnapshot Sema::joinExternalDependencies(
+    const ExternalDependencySnapshot &first,
+    const ExternalDependencySnapshot &second) {
+  ExternalDependencySnapshot joined = first;
+  for (auto &[id, state] : joined) {
+    auto other = second.find(id);
+    if (other == second.end() || !state.Sources || !other->second.Sources)
+      state.Sources.reset();
+    else
+      state.Sources->insert(other->second.Sources->begin(),
+                            other->second.Sources->end());
+    if (other != second.end()) {
+      state.LegacyRoots.insert(other->second.LegacyRoots.begin(),
+                               other->second.LegacyRoots.end());
+      state.Tracked |= other->second.Tracked;
+    }
+  }
+  for (const auto &[id, state] : second)
+    if (!joined.count(id)) {
+      joined[id] = state;
+      joined[id].Sources.reset();
+    }
+  return joined;
+}
+
+Sema::AnalysisState Sema::captureAnalysisState(
+    Scope *visibleScope, const PALChecker *palOverride) {
+  AnalysisState state;
+  Scope *visible = visibleScope ? visibleScope : CurrentScope;
+  state.ExternalDependencies = captureVisibleExternalDependencies(visible);
+  for (auto *scope = visible; scope; scope = scope->Parent)
+    for (const auto &[name, info] : scope->Symbols) {
       if (info.TypeObj && (info.TypeObj->isUniquePtr() || info.TypeObj->isSharedPtr()))
         state.ManagedBorrows[info.SymbolID] = {info.LifeDependencySet, info.FieldDependencySet};
+    }
   state.IndependentValues = m_IndependentValues;
   state.TaskResults = m_TaskResults;
   state.ByteBuffers = m_ByteBuffers;
@@ -866,13 +919,13 @@ Sema::AnalysisState Sema::captureAnalysisState() {
   state.InvalidNativeSyncOrigins = m_InvalidNativeSyncOrigins;
   state.RawAddressBindings = m_RawAddressBindings;
   state.CallableEnvironments = m_CallableEnvironments;
-  state.InitMasks = captureVisibleInitMasks(CurrentScope);
-  state.Moved = captureVisibleMoved(CurrentScope);
-  state.ExactPlaces = captureVisibleExactPlaceFacts(CurrentScope);
-  state.ConditionalTodoIds = captureVisibleConditionalTodoIds(CurrentScope);
-  state.ReferenceTargets = captureVisibleReferenceTargets(CurrentScope);
+  state.InitMasks = captureVisibleInitMasks(visible);
+  state.Moved = captureVisibleMoved(visible);
+  state.ExactPlaces = captureVisibleExactPlaceFacts(visible);
+  state.ConditionalTodoIds = captureVisibleConditionalTodoIds(visible);
+  state.ReferenceTargets = captureVisibleReferenceTargets(visible);
   state.PayloadFlowRestrictedPaths = m_PayloadFlowRestrictedPaths;
-  state.PAL = PALCheckerState.snapshot();
+  state.PAL = palOverride ? *palOverride : PALCheckerState.snapshot();
   return state;
 }
 
@@ -890,6 +943,9 @@ Sema::CallArgumentRollbackGuard::CallArgumentRollbackGuard(
     return;
   Base = Owner.captureAnalysisState();
   DiagnosticStart = DiagnosticEngine::records().size();
+  SavedBorrowSource = Owner.m_LastBorrowSource;
+  SavedLifeDependencies = Owner.m_LastLifeDependencies;
+  SavedFieldDependencies = Owner.m_LastFieldDependencies;
 }
 
 void Sema::CallArgumentRollbackGuard::reject() {
@@ -897,6 +953,11 @@ void Sema::CallArgumentRollbackGuard::reject() {
   Rejected = true;
   if (Base)
     Owner.mergeAnalysisStates({*Base}, Base->PAL);
+  if (Base) {
+    Owner.m_LastBorrowSource = SavedBorrowSource;
+    Owner.m_LastLifeDependencies = SavedLifeDependencies;
+    Owner.m_LastFieldDependencies = SavedFieldDependencies;
+  }
 }
 
 Sema::CallArgumentRollbackGuard::~CallArgumentRollbackGuard() {
@@ -908,8 +969,12 @@ Sema::CallArgumentRollbackGuard::~CallArgumentRollbackGuard() {
                   records.end(), [](const auto &record) {
                     return record.Level == DiagLevel::Error;
                   });
-  if (Rejected || rejected)
+  if (Rejected || rejected) {
     Owner.mergeAnalysisStates({*Base}, Base->PAL);
+    Owner.m_LastBorrowSource = SavedBorrowSource;
+    Owner.m_LastLifeDependencies = SavedLifeDependencies;
+    Owner.m_LastFieldDependencies = SavedFieldDependencies;
+  }
 }
 
 void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
@@ -927,6 +992,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       states.front().PayloadFlowRestrictedPaths;
   auto mergedReferenceTargets = states.front().ReferenceTargets;
   auto managedBorrows = states.front().ManagedBorrows;
+  auto externalDependencies = states.front().ExternalDependencies;
   auto callableEnvironments = states.front().CallableEnvironments;
   auto independentValues = states.front().IndependentValues;
   auto taskResults = states.front().TaskResults;
@@ -953,6 +1019,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       for (const auto &[field, roots] : dependencies.Fields)
         joined.Fields[field].insert(roots.begin(), roots.end());
     }
+    externalDependencies = joinExternalDependencies(
+        externalDependencies, state.ExternalDependencies);
     auto intersectNative = [](auto &left, const auto &right) {
       for (auto it = left.begin(); it != left.end();) {
         auto other = right.find(it->first);
@@ -1079,6 +1147,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       binding->FieldDependencySet = dependencies.Fields;
     }
   }
+  restoreVisibleExternalDependencies(externalDependencies);
   m_CallableEnvironments = std::move(callableEnvironments);
   m_IndependentValues = std::move(independentValues);
   m_TaskResults = std::move(taskResults);
@@ -2988,7 +3057,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         
         bool isReceiver = false;
         if (!m_ControlFlowStack.empty()) isReceiver = m_ControlFlowStack.back().IsReceiver;
-        m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+        pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
         
         if (ie->ComptimeTaken) {
             checkStmt(ie->Then.get());
@@ -3127,7 +3196,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       isReceiver = m_ControlFlowStack.back().IsReceiver;
     }
 
-    m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+    pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
 
     // Save Mask & Moved State for Intersection Rule
     // A branch may appear inside a nested block while mutating a binding from
@@ -3139,6 +3208,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto exactPlacesBefore = captureVisibleExactPlaceFacts(CurrentScope);
     auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
+    auto externalBefore = captureVisibleExternalDependencies();
 
     auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
     auto rawSlotsBeforeIf = m_RawSlotDependencies;
@@ -3166,6 +3236,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto tasksThen = m_TaskResults;
     auto tasksElse = tasksBeforeIf;
     auto palThen = PALCheckerState.snapshot();
+    auto externalThen = captureVisibleExternalDependencies();
 
     if (narrowsInitState)
       restoreInitStateNarrowing();
@@ -3186,6 +3257,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                   exactPlacesBefore);
       restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
       restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
+      restoreVisibleExternalDependencies(externalBefore);
       PALCheckerState.restore(palBefore);
 
       m_RawSlotDependencies = rawSlotsBeforeIf;
@@ -3193,7 +3265,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ByteBuffers = bytesBeforeIf;
       m_TaskResults = tasksBeforeIf;
 
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+      pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
       if (narrowsInitState)
         applyInitStateNarrowing(PlaceState::Live);
       else if (narrowElse)
@@ -3211,6 +3283,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       tasksElse = m_TaskResults;
       auto exactPlacesElse = captureVisibleExactPlaceFacts(CurrentScope);
       auto palElse = PALCheckerState.snapshot();
+      auto externalElse = captureVisibleExternalDependencies();
       m_ControlFlowStack.pop_back();
       if (narrowsInitState)
         restoreInitStateNarrowing();
@@ -3276,6 +3349,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
         PALCheckerState.mergeBranches(palBefore, palThen, true, palElse, true);
       }
+      restoreVisibleExternalDependencies(
+          thenReturns && elseReturns ? externalBefore
+          : thenReturns ? externalElse
+          : elseReturns ? externalThen
+          : joinExternalDependencies(externalThen, externalElse));
     } else {
       for (const auto &pair : masksBefore) {
         SymbolInfo *info = nullptr;
@@ -3343,6 +3421,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       } else {
         PALCheckerState.mergeBranches(palBefore, palThen, true, palBefore, true);
       }
+      restoreVisibleExternalDependencies(
+          thenReturns ? externalBefore
+                      : joinExternalDependencies(externalBefore, externalThen));
     }
 
     if (thenReturns && elseReturns) m_RawSlotDependencies = rawSlotsBeforeIf;
@@ -3473,8 +3554,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto palBefore = PALCheckerState.snapshot();
 
     auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
+    auto externalBeforeGuard = captureVisibleExternalDependencies();
     auto restoreGuardEntryState = [&]() {
       restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
+      restoreVisibleExternalDependencies(externalBeforeGuard);
       for (auto &pair : masksBefore) {
         CurrentScope->Symbols[pair.first].InitMask = pair.second;
       }
@@ -3572,6 +3655,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     auto referencesThen = captureVisibleReferenceTargets(CurrentScope);
+    auto externalThenGuard = captureVisibleExternalDependencies();
     restoreGuardEntryState();
     if (guard->Else) {
       enterScope();
@@ -3586,6 +3670,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     auto referencesElse = guard->Else
         ? captureVisibleReferenceTargets(CurrentScope) : referencesBefore;
+    auto externalElseGuard = guard->Else
+        ? captureVisibleExternalDependencies() : externalBeforeGuard;
     if (guard->Else) {
       if (thenJumps && elseJumps) {
         restoreGuardEntryState();
@@ -3659,6 +3745,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     restoreVisibleReferenceTargets(CurrentScope,
         thenJumps ? (elseJumps ? referencesBefore : referencesElse)
         : (elseJumps ? referencesThen : joinReferenceTargets(referencesThen, referencesElse)));
+    restoreVisibleExternalDependencies(
+        guard->Else
+            ? (thenJumps && elseJumps ? externalBeforeGuard
+               : thenJumps ? externalElseGuard
+               : elseJumps ? externalThenGuard
+               : joinExternalDependencies(externalThenGuard, externalElseGuard))
+            : (thenJumps ? externalBeforeGuard
+               : joinExternalDependencies(externalBeforeGuard,
+                                          externalThenGuard)));
     return std::make_shared<UnitType>();
   } else if (auto *le = dynamic_cast<LoopExpr *>(E)) {
     if (le->Condition) {
@@ -3720,7 +3815,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ControlFlowStack.back().IsReceiver = isReceiver;
       tookOver = true;
     } else {
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, true, isReceiver});
+      pushControlFlow({"", NoProducedValue, nullptr, true, isReceiver});
     }
     size_t loopFlowIndex = m_ControlFlowStack.size() - 1;
 
@@ -3736,6 +3831,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
     auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
+    auto externalBeforeLoop = captureVisibleExternalDependencies();
 
     enterScope();
     CurrentScope->IsLoop = true;
@@ -3774,6 +3870,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         exactPlacesBody[pair.first] = pair.second.ExactPlace;
       }
       auto palBody = PALCheckerState.snapshot();
+      auto externalBody = captureVisibleExternalDependencies();
 
       for (auto &pair : CurrentScope->Symbols) {
         uint64_t entryMask =
@@ -3796,7 +3893,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         pair.second.ExactPlace = exactPlaces;
         syncLegacyProjectionLiveness(pair.second);
       }
-      PALCheckerState.mergeBranches(palBefore, palBefore, true, palBody, true);
+      const bool bodyReachesHead = !bodyJumps || !continueStates.empty();
+      PALCheckerState.mergeBranches(palBefore, palBefore, true, palBody,
+                                    bodyReachesHead);
+      restoreVisibleExternalDependencies(
+          bodyReachesHead
+              ? joinExternalDependencies(externalBeforeLoop, externalBody)
+              : externalBeforeLoop);
     }
 
     if (!breakStates.empty()) {
@@ -4126,6 +4229,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
     auto referencesBefore = captureVisibleReferenceTargets(CurrentScope);
+    auto externalBeforeFor = captureVisibleExternalDependencies();
 
     // Array reference iteration has the same dynamic-element aliasing
     // property as a BorrowIterator.  The current element is not statically
@@ -4243,9 +4347,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ControlFlowStack.back().IsReceiver = isReceiver; // Sync receiver status
       tookOver = true;
     } else {
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, true, isReceiver});
+      pushControlFlow({"", NoProducedValue, nullptr, true, isReceiver});
     }
     size_t loopFlowIndex = m_ControlFlowStack.size() - 1;
+    // The iterator binding belongs to the loop's own scope. A jump unwinds
+    // only the nested body scopes; the iterator is retired at loop exit.
+    m_ControlFlowStack[loopFlowIndex].CleanupTargetScope = CurrentScope;
     checkStmt(fe->Body.get());
     std::string bodyType = m_ControlFlowStack.back().ExpectedType;
     auto bodyTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
@@ -4279,6 +4386,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto exactPlacesBody = captureVisibleExactPlaceFacts(CurrentScope);
     auto referencesBody = captureVisibleReferenceTargets(CurrentScope);
     auto palBody = PALCheckerState.snapshot();
+    auto externalBodyFor = captureVisibleExternalDependencies();
 
     std::string elseType = NoProducedValue;
     std::shared_ptr<toka::Type> elseTypeObj;
@@ -4287,13 +4395,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::map<std::string, bool> movedElse = movedBefore;
     std::map<std::string, ExactPlaceFacts> exactPlacesElse = exactPlacesBefore;
     PALChecker palElse = palBefore;
+    auto externalElseFor = externalBeforeFor;
     if (fe->ElseBody) {
       restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
                                   exactPlacesBefore);
       PALCheckerState.restore(palBefore);
       restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
+      restoreVisibleExternalDependencies(externalBeforeFor);
 
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+      pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
       checkStmt(fe->ElseBody.get());
       elseType = m_ControlFlowStack.back().ExpectedType;
       elseTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
@@ -4302,6 +4412,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       movedElse = captureVisibleMoved(CurrentScope);
       exactPlacesElse = captureVisibleExactPlaceFacts(CurrentScope);
       palElse = PALCheckerState.snapshot();
+      externalElseFor = captureVisibleExternalDependencies();
       m_ControlFlowStack.pop_back();
     }
 
@@ -4381,6 +4492,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
+    restoreVisibleExternalDependencies(
+        fe->ElseBody
+            ? (!bodyContinuesLoop && elseJumps ? externalBeforeFor
+               : !bodyContinuesLoop ? externalElseFor
+               : elseJumps ? externalBodyFor
+               : joinExternalDependencies(externalBodyFor, externalElseFor))
+            : (!bodyContinuesLoop ? externalBeforeFor
+               : joinExternalDependencies(externalBeforeFor,
+                                          externalBodyFor)));
+
     if (!breakStates.empty()) {
       bool normalAfterReachable = !fe->ElseBody || !(bodyJumps && elseJumps);
       std::vector<AnalysisState> afterStates;
@@ -4390,6 +4511,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                          breakStates.end());
       mergeAnalysisStates(afterStates, palBefore);
     }
+
 
     // As with `loop`, conditional-facts v1 does not model iteration or the
     // `for ... or` reachability split.  Preserve the incoming fact state.
@@ -4517,8 +4639,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 // invalidation that the real parameter contract forbids.
                 if (m_IsPrecomputingCaptures) canInvalidate = false;
             }
-            if (canInvalidate)
+            if (canInvalidate) {
               CurrentScope->markMoved(actualName, ce->Loc);
+              PALCheckerState.releaseCarrierBorrows(Info->SymbolID);
+            }
         }
       } else if (auto *Member = dynamic_cast<MemberExpr *>(underlying)) {
         // A direct field transfer from a local compiler-managed record leaves
@@ -4667,7 +4791,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::shared_ptr<toka::Type> valTypeObj;
     if (isPrefixMatch || isPrefixIf || isPrefixFor ||
         isPrefixLoop) {
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, true});
+      pushControlFlow({"", NoProducedValue, nullptr, false, true});
       valTypeObj = checkExpr(pe->Value.get());
       valType = valTypeObj->toString();
       m_ControlFlowStack.pop_back();
@@ -4692,6 +4816,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           } else if (!isTypeCompatible(it->ExpectedTypeObj, valTypeObj)) {
             error(pe, DiagID::ERR_TYPE_MISMATCH, valType, it->ExpectedType);
           }
+          checkCleanupOnEdge(it->CleanupTargetScope, pe->Loc);
           break;
         }
       }
@@ -4740,7 +4865,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!m_InitBlockContexts.empty() &&
           targetDepth < m_InitBlockContexts.back().ControlFlowDepth)
         error(be, DiagID::ERR_INIT_BLOCK_EXIT, "break");
-      target->BreakStates.push_back(captureAnalysisState());
+      PALChecker edgePAL = checkCleanupOnEdge(target->CleanupTargetScope,
+                                              be->Loc);
+      target->BreakStates.push_back(captureAnalysisState(
+          target->CleanupTargetScope, &edgePAL));
       if (valType != NoProducedValue) {
         if (target->ExpectedType == NoProducedValue) {
           target->ExpectedType = valType;
@@ -4778,7 +4906,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!m_InitBlockContexts.empty() &&
           targetDepth < m_InitBlockContexts.back().ControlFlowDepth)
         error(ce, DiagID::ERR_INIT_BLOCK_EXIT, "continue");
-      target->ContinueStates.push_back(captureAnalysisState());
+      PALChecker edgePAL = checkCleanupOnEdge(target->CleanupTargetScope,
+                                              ce->Loc);
+      target->ContinueStates.push_back(captureAnalysisState(
+          target->CleanupTargetScope, &edgePAL));
     }
     return toka::Type::fromString("()");
   } else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
@@ -4984,6 +5115,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // if the outer method is later rejected by arity, type, or cede checks.
     CallArgumentRollbackGuard methodCallRollback(*this, Met->Args, true, false);
     const size_t taskMethodStart = DiagnosticEngine::records().size();
+    std::vector<std::optional<std::set<AccessPath>>> checkedArgumentSources;
     auto completeTaskMethod = [&](std::shared_ptr<Type> result) {
       Met->ResolvedType = result;
       const bool valid = std::none_of(DiagnosticEngine::records().begin() + taskMethodStart,
@@ -4994,6 +5126,39 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (std::any_of(DiagnosticEngine::records().begin() + beforeProof,
           DiagnosticEngine::records().end(), [](const auto &record) { return record.Level == DiagLevel::Error; }))
         methodCallRollback.reject();
+      if (valid && Met->ResolvedFn &&
+          DiagnosticEngine::records().size() == beforeProof) {
+        const auto &function = *Met->ResolvedFn;
+        const bool hasExternalRoute = std::any_of(
+            function.ReturnContract.Routes.begin(),
+            function.ReturnContract.Routes.end(),
+            [](const ReturnDependencyRouteSyntax &route) {
+              if (route.Target.Kind ==
+                  ReturnDependencyTargetKind::ReceiverPoststate) return true;
+              if (route.Target.Kind != ReturnDependencyTargetKind::ReturnValue)
+                return false;
+              return std::any_of(route.Sources.begin(), route.Sources.end(),
+                  [](const DependencyPathSyntax &source) {
+                    return source.Members.size() == 1 &&
+                           source.Members.front() == "external";
+                  });
+            });
+        if (hasExternalRoute) {
+          std::vector<Expr *> actuals;
+          std::vector<std::optional<std::set<AccessPath>>> sources;
+          actuals.push_back(Met->Object.get());
+          sources.push_back(externalValueDependencies(Met->Object.get()));
+          for (size_t index = 0; index < Met->Args.size(); ++index) {
+            actuals.push_back(Met->Args[index].get());
+            sources.push_back(index < checkedArgumentSources.size()
+                                  ? checkedArgumentSources[index]
+                                  : externalValueDependencies(Met->Args[index].get()));
+          }
+          if (!applyExternalCallEffects(Met->ResolvedFn, actuals, sources,
+                                        Met, result))
+            methodCallRollback.reject();
+        }
+      }
       return result;
     };
     auto isStage1ConcreteMethodParameter = [](const FunctionDecl::Arg &arg) {
@@ -5488,6 +5653,30 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         FunctionDecl *FD = dupProvider ? dupProvider
                                        : MethodDecls[soulType][Met->Method];
         Met->ResolvedFn = FD;
+        if (FD && FD->IsUnsafe && !m_InUnsafeContext) {
+          error(Met, DiagID::ERR_UNSAFE_CALL_REQUIRES_CONTEXT, Met->Method);
+          methodCallRollback.reject();
+          return Type::fromString("unknown");
+        }
+        checkedArgumentSources.resize(Met->Args.size());
+        const bool hasReceiverPoststate = std::any_of(
+            FD->ReturnContract.Routes.begin(), FD->ReturnContract.Routes.end(),
+            [](const ReturnDependencyRouteSyntax &route) {
+              return route.Target.Kind ==
+                     ReturnDependencyTargetKind::ReceiverPoststate;
+            });
+        const bool hasExternalResult = std::any_of(
+            FD->ReturnContract.Routes.begin(), FD->ReturnContract.Routes.end(),
+            [](const ReturnDependencyRouteSyntax &route) {
+              return route.Target.Kind == ReturnDependencyTargetKind::ReturnValue &&
+                     std::any_of(route.Sources.begin(), route.Sources.end(),
+                         [](const DependencyPathSyntax &source) {
+                           return source.Members.size() == 1 &&
+                                  source.Members.front() == "external";
+                         });
+            });
+        if (hasReceiverPoststate)
+          methodCallRollback.arm();
         if (FD && FD->DeferredJsonBody && !FD->DeferredJsonBodyChecked && !prepareCallableFactory(FD)) {
           error(Met, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED, "JsonFactoryBodyUnqualified");
           return Type::fromString("unknown");
@@ -5774,6 +5963,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                           var->Name);
                   } else {
                     CurrentScope->markMoved(var->Name, Met->Loc);
+                    if (receiverInfo)
+                      PALCheckerState.releaseCarrierBorrows(
+                          receiverInfo->SymbolID);
                   }
                 } else if (auto *index =
                                dynamic_cast<ArrayIndexExpr *>(receiver)) {
@@ -5866,6 +6058,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 // If variadic, handle appropriately
                 if (Met->Args.size() < expectedArgs) {
                     error(Met, DiagID::ERR_SEMA_METHOD_EXPECTS_AT_LEAST_ARGUMENTS_GOT, Met->Method, std::to_string(expectedArgs), std::to_string(Met->Args.size()));
+                } else {
+                    error(Met, DiagID::ERR_SEMA_TOO_MANY_ARGUMENTS_PROVIDED_CANNOT_ELIDE);
                 }
             }
             
@@ -5898,6 +6092,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 m_BorrowingSelectedHandle = oldBorrowingSelectedHandle;
                 m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 projectOwnedStringView(Met->Args[i], argTy, expectedParamTy);
+                if (hasReceiverPoststate || hasExternalResult)
+                  checkedArgumentSources[i] =
+                      externalValueDependencies(Met->Args[i].get());
 
                 const bool stage1ExplicitMethodParameter =
                     i < expectedArgs && m_EnableStage1ExplicitCallerCede &&
@@ -6382,6 +6579,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     St->ResolvedType = res;
     return res;
   } else if (auto *Unwrap = dynamic_cast<UnwrapPropagationExpr *>(E)) {
+    const size_t propagationDiagnosticStart = DiagnosticEngine::records().size();
     bool old = m_IsConsumingEffect;
     m_IsConsumingEffect = true;
     auto baseObj = checkExpr(Unwrap->Base.get());
@@ -6580,6 +6778,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
       }
     }
+    const auto &propagationRecords = DiagnosticEngine::records();
+    if (std::none_of(propagationRecords.begin() +
+                         std::min(propagationDiagnosticStart,
+                                  propagationRecords.size()),
+                     propagationRecords.end(), [](const auto &record) {
+                       return record.Level == DiagLevel::Error;
+                     }))
+      checkCleanupOnEdge(m_FunctionCleanupBoundary, Unwrap->Loc);
     return payloadT;
   } else if (auto *Post = dynamic_cast<PostfixExpr *>(E)) {
     // [Fix] Do NOT disable soul collapse.
@@ -6747,6 +6953,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     auto palBefore = PALCheckerState.snapshot();
     bool hasReachableArm = false;
+    auto externalBeforeMatch = captureVisibleExternalDependencies();
+    ExternalDependencySnapshot mergedExternal;
     std::map<std::string, uint64_t> mergedMasks;
     std::map<std::string, bool> mergedMoved;
     std::map<std::string, ExactPlaceFacts> mergedExactPlaces;
@@ -6763,6 +6971,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ByteBuffers = bytesBeforeMatch;
       m_TaskResults = tasksBeforeMatch;
       restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
+      restoreVisibleExternalDependencies(externalBeforeMatch);
       for (auto &pair : masksBefore) {
         CurrentScope->Symbols[pair.first].InitMask = pair.second;
       }
@@ -6834,7 +7043,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 "match guard", "bool", arm->Guard->ResolvedType->toString());
         }
       }
-      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+      pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
       checkStmt(arm->Body.get());
       std::string armType = m_ControlFlowStack.back().ExpectedType;
       auto armTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
@@ -6854,7 +7063,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       exitScope();
 
       if (!allPathsJump(arm->Body.get())) {
+        auto armExternal = captureVisibleExternalDependencies();
         if (!hasReachableArm) {
+          mergedExternal = std::move(armExternal);
           for (auto &pair : CurrentScope->Symbols) {
             mergedMasks[pair.first] = pair.second.InitMask;
             mergedMoved[pair.first] = pair.second.Moved;
@@ -6866,6 +7077,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           mergedPAL = PALCheckerState.snapshot();
           hasReachableArm = true;
         } else {
+          mergedExternal = joinExternalDependencies(mergedExternal,
+                                                     armExternal);
           for (auto &pair : CurrentScope->Symbols) {
             uint64_t armMask = pair.second.InitMask;
             if (mergedMasks.count(pair.first))
@@ -6922,6 +7135,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ByteBuffers = std::move(mergedBytes);
       m_TaskResults = std::move(mergedTasks);
       restoreVisibleReferenceTargets(CurrentScope, mergedReferences);
+      restoreVisibleExternalDependencies(mergedExternal);
       for (auto &pair : CurrentScope->Symbols) {
         if (mergedMasks.count(pair.first))
           pair.second.InitMask = mergedMasks[pair.first];

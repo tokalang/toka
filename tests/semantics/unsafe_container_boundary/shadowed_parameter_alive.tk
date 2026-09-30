@@ -1,0 +1,18 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn forward(owner: string) -> Vec<str> <- owner {
+    auto values# = Vec<str>::new()
+    values#.push(owner.as_str())
+    {
+        auto owner = string::from("shadow")
+        return cede values
+    }
+}
+
+fn main() -> i32 {
+    auto owner = string::from("stable")
+    auto values = forward(owner)
+    if !values.borrow(0:usize).equals("stable") { return 1 }
+    return 0
+}

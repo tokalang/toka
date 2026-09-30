@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn escaped() -> str {
+    auto owner = string::from("local")
+    auto values# = Vec<str>::new()
+    values#.push(owner.as_str())
+    auto option = values#.remove(0:usize)
+    auto view = option.unwrap()
+    return cede view
+}
+
+fn main() -> i32 { return 0 }

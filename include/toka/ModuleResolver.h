@@ -33,6 +33,7 @@ enum class TKICacheStatus {
 struct TKIMetadata {
     std::string CompilerVersion;
     std::string FormatVersion;
+    std::string ReplaySurfaceHash;
     std::string TargetTriple;
     std::string SourceHash;
     std::string SourcePath;

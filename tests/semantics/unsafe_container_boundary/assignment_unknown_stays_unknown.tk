@@ -1,0 +1,10 @@
+import std/vec::{Vec}
+
+fn attempted() -> Vec<str> {
+    auto left# = Vec<str>::new()
+    auto right = unsafe Vec<str>::from_raw(null, 0:usize, 0:usize)
+    left = cede right
+    return cede left
+}
+
+fn main() -> i32 { return 0 }

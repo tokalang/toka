@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Vec::pop responsibility-handoff gate. Known runtime failures remain failures."""
+"""Vec::pop retirement and cleanup gate. Known runtime failures remain failures."""
 import argparse
 import json
 import os
@@ -24,7 +24,8 @@ def main():
         results.append(dict(name=name, passed=passed, **details))
 
     def run(source, *flags):
-        return subprocess.run([str(compiler), *flags, str(FIXTURES / source)],
+        path = source if isinstance(source, Path) else FIXTURES / source
+        return subprocess.run([str(compiler), *flags, str(path)],
                               cwd=ROOT, env=env, text=True, capture_output=True, timeout=45)
 
     with tempfile.TemporaryDirectory(prefix="toka-vec-pop-gate-") as directory:
@@ -50,42 +51,29 @@ def main():
             record("owning_string_pop.tk" + suffix + "/artifact", generated.returncode == 0 and output.is_file(),
                    returncode=generated.returncode)
 
-        for source in ("unproven_borrowed.tk",):
+        for source in (ROOT / "tests/semantics/unsafe_container_boundary/pop_option_escape.tk",):
             normal = run(source, "--check-only")
             shadow = run(source, "--check-only", "--non-call-transfer-shadow=json")
             correct = (normal.returncode == shadow.returncode == 1 and
-                       normal.stderr == shadow.stderr and "E04662" in normal.stderr and
-                       "ElementDependenciesUnproven" in normal.stderr)
-            record(source + "/rejection", correct, stderr=normal.stderr)
+                       normal.stderr == shadow.stderr and "E0455" in normal.stderr)
+            record(source.name + "/rejection", correct, stderr=normal.stderr)
             for mode, suffix in (("-c", ".o"), ("--emit-llvm", ".ll")):
-                output = Path(directory) / (source + suffix)
+                output = Path(directory) / (source.name + suffix)
                 rejected = run(source, mode, "-o", str(output))
-                record(source + suffix + "/no-artifact", rejected.returncode == 1 and not output.exists(),
+                record(source.name + suffix + "/no-artifact", rejected.returncode == 1 and not output.exists(),
                        returncode=rejected.returncode)
 
         ir = Path(directory) / "owned.ll"
         compiled = run("owned_pop.tk", "--emit-llvm", "-o", str(ir))
-        valid_interval = False
+        delegates_to_remove = False
         if compiled.returncode == 0 and ir.is_file():
             functions = re.findall(r"^define .*?^}", ir.read_text(), re.M | re.S)
-            bodies = [f for f in functions if "raw.take.value = load" in f]
-            # Concrete byte-storage helpers can also instantiate Vec<u8>.
-            # Require the resource specialization, and check every emitted take
-            # rather than assuming the module contains only one specialization.
-            valid_interval = sum("raw.take.value = load %Token," in f for f in bodies) == 1
-            for body in bodies:
-                lines = body.splitlines()
-                take = next(i for i, line in enumerate(lines) if "raw.take.value = load" in line)
-                base = next(i for i, line in enumerate(lines) if "raw.take.base = load" in line)
-                length = max(i for i in range(base) if re.search(r"store i64 .*ptr %ptr.peel_soul", lines[i]))
-                tail = max(i for i in range(length) if re.search(r"store i64 .*ptr %tail", lines[i]))
-                prefix = "\n".join(lines[:tail])
-                interval = "\n".join(lines[length + 1:take + 1])
-                valid_interval &= (tail < length < base < take and
-                                   bool(re.search(r"icmp eq i64 .* 0", prefix)) and
-                                   bool(re.search(r"icmp eq ptr .* null", prefix)) and
-                                   not re.search(r"\b(call|invoke|callbr)\b|llvm\.coro", interval))
-        record("check/prepare -> length store -> non-unwinding take", valid_interval)
+            pop_bodies = [body for body in functions
+                          if re.search(r"define .* @Vec_.*_pop\(", body)]
+            delegates_to_remove = bool(pop_bodies) and all(
+                "_remove(" in body and "raw.take.value" not in body
+                for body in pop_bodies)
+        record("pop delegates tail retirement to remove", delegates_to_remove)
 
         # These controls deliberately require success. Their current failure
         # cannot be blessed as an unsafe precondition violation or hidden skip.

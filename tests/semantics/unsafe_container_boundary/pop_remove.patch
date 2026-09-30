@@ -1,0 +1,14 @@
+--- a/lib/std/vec.tk
++++ b/lib/std/vec.tk
+@@ -332,4 +332,10 @@
++    // Isolation probe only: reuse the verified indexed extraction path.
+     pub fn pop(self#) -> Option<T> {
+-        auto outcome = vec_pop_raw_tail<T>(self.*buf, self.len#)
++        if self.len == 0 {
++            auto outcome = Option<T>::None
++            return cede outcome
++        }
++        auto tail = self.len - 1
++        auto outcome = self#.remove(tail)
+         return cede outcome
+     }

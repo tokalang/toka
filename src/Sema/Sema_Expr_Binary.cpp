@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/AssignmentStats.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/MemberAccess.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
@@ -172,6 +173,7 @@ static bool proveDistinctArrayElements(const ArrayIndexExpr *destination,
 
 // Stage 5: Object-Oriented Binary Expression Check
 std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
+  const size_t assignmentDiagnosticStart = DiagnosticEngine::records().size();
   struct SuffixGuard {
     bool &flag;
     bool oldVal;
@@ -327,6 +329,75 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   if (!rhsIsTodo)
     rhsType = nativeManagedTarget ? checkExpr(Bin->RHS.get(), nativeManagedTarget)
                                   : checkExpr(Bin->RHS.get());
+  const bool hasCheckedAssignmentSources = Bin->Op == "=" && rhsType;
+  const auto checkedAssignmentSources = hasCheckedAssignmentSources
+      ? externalValueDependencies(Bin->RHS.get())
+      : std::optional<std::set<AccessPath>>{};
+  if (Bin->Op == "=" && CurrentFunction && !CurrentFunction->Args.empty() &&
+      CurrentFunction->Args.front().Name == "self" &&
+      CurrentFunction->Args.front().IsValueMutable && rhsType &&
+      !rhsType->isRawPointer() && !rhsType->isNullType() &&
+      !safeBorrowFreeType(rhsType)) {
+    const auto destination = canonicalizeAccessPath(
+        makeAccessPath(Bin->LHS.get()));
+    const auto receiver = canonicalizeAccessPath(makeAccessPath("self"));
+    if (destination.RootID && receiver.RootID &&
+        destination.RootID == receiver.RootID &&
+        !destination.Projections.empty()) {
+      const auto sourcePlace = canonicalizeAccessPath(
+          makeAccessPath(Bin->RHS.get()));
+      if (sourcePlace.RootID != receiver.RootID) {
+        auto sources = checkedAssignmentSources;
+        if (!sources) {
+          error(Bin, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                "ReceiverWriteSourceUnknown");
+          return Type::fromString("unknown");
+        }
+        for (const auto &source : *sources) {
+          if (source.RootID == receiver.RootID) continue;
+          SymbolInfo *binding = nullptr;
+          std::string name;
+          if (!source.RootID || !CurrentScope->findSymbolByID(
+                  source.RootID, binding, &name) || !binding ||
+              !binding->IsFunctionParameter) {
+            error(Bin, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                  "ReceiverWriteLocalDependency");
+            return Type::fromString("unknown");
+          }
+          bool covered = false;
+          for (const auto &route : CurrentFunction->ReturnContract.Routes)
+            if (route.Target.Kind ==
+                ReturnDependencyTargetKind::ReceiverPoststate)
+              for (const auto &declared : route.Sources) {
+                if (declared.Root != name ||
+                    declared.Members.size() > source.Projections.size())
+                  continue;
+                bool projectionCovered = true;
+                for (size_t index = 0; index < declared.Members.size(); ++index) {
+                  const auto &projection = source.Projections[index];
+                  projectionCovered &=
+                      (projection.Kind == AccessProjectionKind::Field &&
+                       projection.Name == declared.Members[index]) ||
+                      (projection.Kind == AccessProjectionKind::ExternalValue &&
+                       declared.Members[index] == "external");
+                }
+                covered |= projectionCovered;
+              }
+          if (CurrentFunction->Args.front().IsCeded)
+            for (const auto &declared : CurrentFunction->LifeDependencies)
+              covered |= declared == name ||
+                  (declared.size() > name.size() &&
+                   declared.compare(0, name.size(), name) == 0 &&
+                   declared[name.size()] == '.');
+          if (!covered) {
+            error(Bin, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                  "ReceiverWriteDependencyUndeclared");
+            return Type::fromString("unknown");
+          }
+        }
+      }
+    }
+  }
   std::string rhsBorrowSource = ""; 
   if (!rhsIsTodo && !getPathString(Bin->RHS.get()).empty()) {
       rhsBorrowSource = m_LastBorrowSource;
@@ -1592,8 +1663,161 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       }
     }
 
-    if (bindingTransfer.prepare(Bin->RHS.get(), lhsType, Bin->LHS.get(), true, rhsType))
+    const bool transferPrepared = bindingTransfer.prepare(
+        Bin->RHS.get(), lhsType, Bin->LHS.get(), true, rhsType);
+    if (transferPrepared)
       bindingTransfer.complete();
+    if (Bin->Op == "=" && transferPrepared &&
+        std::none_of(DiagnosticEngine::records().begin() +
+                         assignmentDiagnosticStart,
+                     DiagnosticEngine::records().end(),
+                     [](const auto &record) {
+                       return record.Level == DiagLevel::Error;
+                     })) {
+      // An unsafe raw slot write is governed by the container's declared
+      // safe interface effect. The compiler does not infer whole-container
+      // dependencies from each internal pointer-indexing operation.
+      if (m_InUnsafeContext)
+        if (auto *indexed = dynamic_cast<ArrayIndexExpr *>(Bin->LHS.get());
+            indexed && indexed->Array && indexed->Array->ResolvedType &&
+            indexed->Array->ResolvedType->isRawPointer())
+          return lhsType;
+      const auto target = canonicalizeAccessPath(makeAccessPath(Bin->LHS.get()));
+      SymbolInfo *binding = nullptr;
+      if (target.RootID &&
+          CurrentScope->findSymbolByID(target.RootID, binding) && binding) {
+        // Callable environments have their own capture and replacement
+        // protocol; they are not external-value container carriers.
+        if (binding->TypeObj &&
+            (binding->TypeObj->isFunction() || binding->TypeObj->isDynFn()))
+          return lhsType;
+        auto sources = hasCheckedAssignmentSources
+            ? checkedAssignmentSources
+            : externalValueDependencies(Bin->RHS.get());
+        const bool borrowFree = safeBorrowFreeType(rhsType);
+        if (borrowFree) {
+          sources = std::set<AccessPath>{};
+        } else if (sources) {
+          std::set<AccessPath> rebased;
+          bool unknown = false;
+          for (const auto &source : *sources) {
+            SymbolInfo *sourceBinding = nullptr;
+            if (source.RootID && CurrentScope->findSymbolByID(
+                    source.RootID, sourceBinding) && sourceBinding) {
+              const auto ownership = queryExplicitCedeStage0OwnershipReadOnly(
+                  sourceBinding->TypeObj);
+              std::shared_ptr<Type> selectedType = sourceBinding->TypeObj;
+              for (const auto &projection : source.Projections) {
+                if (projection.Kind != AccessProjectionKind::Field ||
+                    !selectedType) {
+                  selectedType.reset();
+                  break;
+                }
+                auto resolved = resolveExplicitCedeStage0TypeReadOnly(selectedType);
+                auto shape = std::dynamic_pointer_cast<ShapeType>(
+                    resolved ? resolved->getSoulType() : nullptr);
+                if (!shape || !shape->Decl) {
+                  selectedType.reset();
+                  break;
+                }
+                std::map<std::string, std::shared_ptr<Type>> substitutions;
+                for (size_t index = 0;
+                     index < shape->GenericArgs.size() &&
+                     index < shape->Decl->GenericParams.size(); ++index)
+                  substitutions[shape->Decl->GenericParams[index].Name] =
+                      shape->GenericArgs[index];
+                selectedType.reset();
+                for (const auto &field : shape->Decl->Members)
+                  if (stripMemberAccessMarkers(field.Name) == projection.Name) {
+                    selectedType = getPhysicalType(field);
+                    if (selectedType && !substitutions.empty())
+                      selectedType = selectedType->substitute(substitutions);
+                    break;
+                  }
+              }
+              const auto selectedOwnership =
+                  queryExplicitCedeStage0OwnershipReadOnly(selectedType);
+              // Rebase a projected view through its carrier's external
+              // sources. An owned field's raw storage remains an actual
+              // source of its own, even when sibling fields borrow elsewhere.
+              const bool projectedBorrowedValue = selectedType &&
+                  !selectedType->isReference() &&
+                  !safeBorrowFreeType(selectedType) && selectedOwnership &&
+                  *selectedOwnership == ValueOwnership::BorrowedView;
+              const bool transferredWholeCarrier =
+                  source.Projections.empty() &&
+                  (source.RootID == target.RootID || sourceBinding->Moved);
+              if (!safeBorrowFreeType(sourceBinding->TypeObj) &&
+                  ((ownership && *ownership == ValueOwnership::BorrowedView) ||
+                   projectedBorrowedValue || transferredWholeCarrier) &&
+                  !sourceBinding->IsFunctionParameter) {
+                if (!sourceBinding->ExternalValueDependencies) {
+                  unknown = true;
+                  break;
+                }
+                rebased.insert(sourceBinding->ExternalValueDependencies->begin(),
+                               sourceBinding->ExternalValueDependencies->end());
+                continue;
+              }
+            }
+            rebased.insert(source);
+          }
+          if (unknown) sources.reset();
+          else sources = std::move(rebased);
+        }
+        if (!sources) {
+          error(Bin, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                "ExternalValueDependenciesUnknown");
+          return Type::fromString("unknown");
+        }
+        auto retainedSources = *sources;
+        if (!target.Projections.empty() && binding->TypeObj &&
+            !binding->TypeObj->isRawPointer()) {
+          if (!binding->ExternalValueDependencies) {
+            const auto receiver = CurrentFunction &&
+                    !CurrentFunction->Args.empty() &&
+                    CurrentFunction->Args.front().Name == "self" &&
+                    CurrentFunction->Args.front().IsValueMutable
+                ? canonicalizeAccessPath(makeAccessPath("self")) : AccessPath{};
+            bool declaredReceiverEffect = false;
+            if (receiver.RootID && target.RootID == receiver.RootID)
+              for (const auto &route : CurrentFunction->ReturnContract.Routes)
+                declaredReceiverEffect |=
+                    route.Target.Kind == ReturnDependencyTargetKind::ReceiverPoststate;
+            if (declaredReceiverEffect) {
+              // The body has checked its declared receiver effect above. The
+              // caller maps the formal projection to a real owner and PAL
+              // installs that concrete loan at the successful call boundary.
+              binding->ExternalValueTracked = true;
+              return lhsType;
+            }
+            // A borrow-free field write changes none of the whole value's
+            // existing, possibly symbolic, external sources.
+            if (retainedSources.empty()) return lhsType;
+            error(Bin, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                  "ExternalValueDependenciesUnknown");
+            return Type::fromString("unknown");
+          }
+          retainedSources.insert(binding->ExternalValueDependencies->begin(),
+                                 binding->ExternalValueDependencies->end());
+        }
+        if (!retainExternalValueBorrows(binding, retainedSources, Bin))
+          return Type::fromString("unknown");
+        if (target.Projections.empty()) {
+          binding->ExternalValueDependencies = std::move(retainedSources);
+          binding->ExternalValueTracked =
+              Bin->RHS->ExternalValueTracked || !borrowFree ||
+              (binding->ExternalValueDependencies &&
+               !binding->ExternalValueDependencies->empty());
+        } else if (!binding->TypeObj ||
+                   !binding->TypeObj->isRawPointer()) {
+          // A field or element replacement can leave other live fields in the
+          // root. Retain old sources and conservatively join the new value.
+          binding->ExternalValueTracked = true;
+          binding->ExternalValueDependencies = std::move(retainedSources);
+        }
+      }
+    }
     return lhsType;
   }
 

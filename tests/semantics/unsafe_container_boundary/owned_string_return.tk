@@ -1,0 +1,16 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn produce() -> Vec<string> {
+    auto values# = Vec<string>::new()
+    auto owned = string::from("owned")
+    values#.push(cede owned)
+    return cede values
+}
+
+fn main() -> i32 {
+    auto values = produce()
+    if values.len() != 1:usize { return 1 }
+    if !values.borrow(0:usize).as_str().equals("owned") { return 2 }
+    return 0
+}

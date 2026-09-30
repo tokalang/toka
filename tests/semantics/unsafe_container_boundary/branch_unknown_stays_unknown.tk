@@ -1,0 +1,11 @@
+import std/vec::{Vec}
+
+fn attempted(flag: bool) -> Vec<str> {
+    auto values# = unsafe Vec<str>::from_raw(null, 0:usize, 0:usize)
+    if flag {
+        values = Vec<str>::new()
+    }
+    return cede values
+}
+
+fn main() -> i32 { return 0 }

@@ -666,7 +666,7 @@ void Sema::checkStmt(Stmt *S) {
       bool oldSuppressAliasInvalidation =
           m_SuppressRejectedAliasInvalidation;
       m_SuppressRejectedAliasInvalidation = rejectedAliasReturn;
-      m_ControlFlowStack.push_back(
+      pushControlFlow(
           {"", CurrentFunctionReturnType, nullptr, false, true});
       auto authorityContext =
           beginAuthorityFullExpression(Ret->ReturnValue.get());
@@ -790,8 +790,15 @@ void Sema::checkStmt(Stmt *S) {
             if (ShapeMap.count(name)) {
               ShapeDecl *SD = ShapeMap[name];
               for (const auto &member : SD->Members) {
-                if (isBorrowLikeType(getPhysicalType(member)))
+                if (SD->Kind == ShapeKind::Enum &&
+                    !member.SubMembers.empty()) {
+                  for (const auto &payload : member.SubMembers)
+                    if (isBorrowLikeType(getPhysicalType(payload)))
+                      return true;
+                } else if (!member.IsUnitVariant &&
+                           isBorrowLikeType(getPhysicalType(member))) {
                   return true;
+                }
               }
             }
           }
@@ -894,6 +901,132 @@ void Sema::checkStmt(Stmt *S) {
           returnSourcePlan->Prepared.DependencyFactsComplete &&
           !returnSourcePlan->Prepared.DependencyRoots.empty())
         isTrackedRet = true;
+
+      Expr *externalSource = Ret->ReturnValue.get();
+      while (externalSource) {
+        if (auto *cede = dynamic_cast<CedeExpr *>(externalSource))
+          externalSource = cede->Value.get();
+        else if (auto *cast = dynamic_cast<CastExpr *>(externalSource);
+                 cast && cast->Kind == CastKind::Ascription)
+          externalSource = cast->Expression.get();
+        else break;
+      }
+      // A field projection may carry the external dependencies of its whole
+      // value. Resolve it before deciding whether the return needs the
+      // external-value lifetime check.
+      std::optional<std::set<AccessPath>> projectedExternalFacts;
+      if (dynamic_cast<MemberExpr *>(externalSource))
+        projectedExternalFacts = externalValueDependencies(externalSource);
+      bool externalTracked = externalSource &&
+          externalSource->ExternalValueTracked;
+      if (auto *variable = dynamic_cast<VariableExpr *>(externalSource);
+          variable && variable->ResolvedBindingID) {
+        SymbolInfo *binding = nullptr;
+        if (CurrentScope->findSymbolByID(variable->ResolvedBindingID,
+                                         binding) && binding)
+          externalTracked |= binding->ExternalValueTracked;
+      }
+      const size_t externalDiagnosticStart = DiagnosticEngine::records().size();
+      if (externalTracked) {
+        auto externalFacts = projectedExternalFacts
+            ? projectedExternalFacts
+            : externalValueDependencies(Ret->ReturnValue.get());
+        isTrackedRet = true;
+        if (!externalFacts) {
+          error(Ret, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                "ExternalValueDependenciesUnknown");
+        } else {
+          for (const auto &source : *externalFacts) {
+            SymbolInfo *binding = nullptr;
+            std::string resolvedName;
+            if (!source.RootID ||
+                !CurrentScope->findSymbolByID(source.RootID, binding,
+                                              &resolvedName) || !binding) {
+              error(Ret, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                    "ExternalValueDependencyIdentityUnavailable");
+              continue;
+            }
+            std::string path = resolvedName;
+            bool supported = true;
+            bool symbolicExternal = false;
+            for (const auto &projection : source.Projections) {
+              if (projection.Kind == AccessProjectionKind::ExternalValue) {
+                path += ".external";
+                symbolicExternal = true;
+              } else if (projection.Kind == AccessProjectionKind::Field) {
+                path += "." + projection.Name;
+              } else {
+                supported = false;
+                break;
+              }
+            }
+            if (!supported) {
+              error(Ret, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                    "ExternalValueDependencyProjectionUnknown");
+              continue;
+            }
+            if (!binding->IsFunctionParameter) {
+              DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_ESCAPE_LOCAL,
+                                       path);
+              HasError = true;
+              if (binding->DeclLoc.isValid())
+                DiagnosticEngine::report(binding->DeclLoc,
+                                         DiagID::NOTE_GENERIC,
+                                         "escaping local declared here");
+              continue;
+            }
+            auto covers = [&](const std::string &declared) {
+              return path == declared ||
+                     (path.size() > declared.size() &&
+                      path.compare(0, declared.size(), declared) == 0 &&
+                      path[declared.size()] == '.') ||
+                     (declared.size() > path.size() &&
+                      declared.compare(0, path.size(), path) == 0 &&
+                      declared[path.size()] == '.');
+            };
+            bool allowed = std::any_of(
+                CurrentFunction->LifeDependencies.begin(),
+                CurrentFunction->LifeDependencies.end(), covers);
+            if (symbolicExternal) {
+              allowed = false;
+              const bool moved = dynamic_cast<CedeExpr *>(
+                  Ret->ReturnValue.get()) && returnSourcePlan &&
+                  returnSourcePlan->admitted() &&
+                  returnSourcePlan->ValueProduction !=
+                      TransferValueProduction::BorrowCapture;
+              if (moved)
+                for (const auto &route : CurrentFunction->ReturnContract.Routes)
+                  if (route.Target.Kind ==
+                      ReturnDependencyTargetKind::ReturnValue)
+                    for (const auto &declared : route.Sources)
+                      allowed |= declared.Root == resolvedName &&
+                          declared.Members.size() == 1 &&
+                          declared.Members.front() == "external";
+            }
+            for (const auto &[_, dependencies] :
+                 CurrentFunction->MemberDependencies)
+              allowed |= std::any_of(dependencies.begin(),
+                                     dependencies.end(), covers);
+            if (!allowed) {
+              DiagnosticEngine::report(getLoc(Ret),
+                                       DiagID::ERR_LIFETIME_UNION_REQUIRED,
+                                       path, path);
+              HasError = true;
+            }
+          }
+        }
+      }
+
+      // The external-value check has already rejected this return. Running
+      // the legacy borrow collector on the same source would repeat E0455;
+      // valid returns still go through it to check new storage borrows.
+      if (std::any_of(DiagnosticEngine::records().begin() +
+                          externalDiagnosticStart,
+                      DiagnosticEngine::records().end(),
+                      [](const auto &record) {
+                        return record.Level == DiagLevel::Error;
+                      }))
+        isTrackedRet = false;
 
       if (isTrackedRet) {
           std::set<std::string> returnedDeps;
@@ -1325,6 +1458,30 @@ void Sema::checkStmt(Stmt *S) {
               if (a.size() > d.size() && a.substr(0, d.size() + 1) == d + ".") return true;
               return false;
             };
+            const bool movedReturnValue =
+                dynamic_cast<CedeExpr *>(Ret->ReturnValue.get()) &&
+                returnSourcePlan && returnSourcePlan->admitted() &&
+                returnSourcePlan->ValueProduction !=
+                    TransferValueProduction::BorrowCapture &&
+                (returnSourcePlan->Source ==
+                     TransferSourceDisposition::InvalidateRoot ||
+                 returnSourcePlan->Source ==
+                     TransferSourceDisposition::InvalidateSubtree ||
+                 returnSourcePlan->Source ==
+                     TransferSourceDisposition::InvalidateBinding);
+            auto isExternalReturnSource = [&](const std::string &actual) {
+              if (!movedReturnValue) return false;
+              for (const auto &route : CurrentFunction->ReturnContract.Routes) {
+                if (route.Target.Kind != ReturnDependencyTargetKind::ReturnValue)
+                  continue;
+                for (const auto &source : route.Sources) {
+                  if (source.Members.size() != 1 ||
+                      source.Members.front() != "external") continue;
+                  if (isDepMatch(actual, source.Root)) return true;
+                }
+              }
+              return false;
+            };
 
             for (const auto &fieldPair : returnedMemberDeps) {
               auto declaredIt = CurrentFunction->MemberDependencies.find(fieldPair.first);
@@ -1463,6 +1620,8 @@ void Sema::checkStmt(Stmt *S) {
                   break;
                 }
               }
+              if (!allowed && isExternalReturnSource(dep))
+                allowed = true;
               if (!allowed) {
                 for (const auto &pair : CurrentFunction->MemberDependencies) {
                    for (const auto &allowedDep : pair.second) {
@@ -1777,6 +1936,8 @@ void Sema::checkStmt(Stmt *S) {
     if (returnRollbackState && enforceReturnSourcePlan &&
         (!returnSourcePlan->admitted() || hasNewReturnError()))
       mergeAnalysisStates({*returnRollbackState}, returnRollbackState->PAL);
+    if (!hasNewReturnError())
+      checkCleanupOnEdge(m_FunctionCleanupBoundary, Ret->Loc);
     if (!hasNewReturnError()) {
       auto *borrow = dynamic_cast<UnaryExpr *>(Ret->ReturnValue.get());
       auto *value = borrow && borrow->Op == TokenType::Ampersand
@@ -1843,7 +2004,7 @@ void Sema::checkStmt(Stmt *S) {
     m_InUnsafeContext = oldUnsafe;
   } else if (auto *ExprS = dynamic_cast<ExprStmt *>(S)) {
     // Standalone expressions are NOT receivers
-    m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, false});
+    pushControlFlow({"", NoProducedValue, nullptr, false, false});
     ExprS->Expression = foldGenericConstant(std::move(ExprS->Expression));
     Expr *statementRoot = ExprS->Expression.get();
     while (statementRoot) {
@@ -1997,7 +2158,7 @@ void Sema::checkStmt(Stmt *S) {
         cast->RawWriteRequest = Var->IsRawPointer && Var->IsValueMutable &&
                                        cast->Kind == CastKind::Conversion
                                    ? Var : nullptr;
-      m_ControlFlowStack.push_back({Var->Name, NoProducedValue, nullptr, false, true});
+      pushControlFlow({Var->Name, NoProducedValue, nullptr, false, true});
       std::shared_ptr<toka::Type> declTargetTy = nullptr;
       if (!Var->TypeName.empty() && Var->TypeName != "auto") {
         declTargetTy = resolveType(
@@ -3079,6 +3240,25 @@ void Sema::checkStmt(Stmt *S) {
       return;
     }
     Info.ASTPtr = Var;
+    Expr *externalInitializer = Var->Init.get();
+    while (externalInitializer) {
+      if (auto *cede = dynamic_cast<CedeExpr *>(externalInitializer))
+        externalInitializer = cede->Value.get();
+      else if (auto *cast = dynamic_cast<CastExpr *>(externalInitializer);
+               cast && cast->Kind == CastKind::Ascription)
+        externalInitializer = cast->Expression.get();
+      else break;
+    }
+    if (Var->Init && !HasError && Info.TypeObj &&
+        !Info.TypeObj->isFunction() && !Info.TypeObj->isDynFn()) {
+      if (safeBorrowFreeType(Info.TypeObj))
+        Info.ExternalValueDependencies = std::set<AccessPath>{};
+      else
+        Info.ExternalValueDependencies =
+            externalValueDependencies(Var->Init.get());
+    }
+    Info.ExternalValueTracked = externalInitializer &&
+        externalInitializer->ExternalValueTracked;
     if (m_EnableStage1ExplicitCallerCede && Info.TypeObj &&
         Info.TypeObj->isReference()) {
       std::vector<AccessPath> targets;
@@ -3097,6 +3277,18 @@ void Sema::checkStmt(Stmt *S) {
     initializeProjectionFacts(Info);
     CurrentScope->define(Var->Name, Info);
     Var->ResolvedBindingID = makeAccessPath(Var->Name).RootID;
+    if (!HasError && !safeBorrowFreeType(Info.TypeObj)) {
+      SymbolInfo *holder = nullptr;
+      CurrentScope->findSymbolByID(Var->ResolvedBindingID, holder);
+      if (Info.ExternalValueDependencies) {
+        if (!retainExternalValueBorrows(holder,
+                                        *Info.ExternalValueDependencies, Var))
+          HasError = true;
+      } else if (Info.ExternalValueTracked) {
+        error(Var, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+              "ExternalValueDependenciesUnknown");
+      }
+    }
     if (Var->Init) {
       auto path = makeAccessPath(Var->Name);
       if (!HasError) recordEnumBinding(path, Var->Init.get());
@@ -3518,14 +3710,18 @@ void Sema::checkStmt(Stmt *S) {
     // Check Pattern and bind variables into CurrentScope
     checkPattern(GuardBind->Pat.get(), targetType, targetCapability,
                  targetPath, targetAccessPath, transfersOwnership);
+    const AnalysisState successState = captureAnalysisState();
 
     bool isReceiver = false;
     if (!m_ControlFlowStack.empty()) {
       isReceiver = m_ControlFlowStack.back().IsReceiver;
     }
-    m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
+    pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
     checkStmt(GuardBind->ElseBody.get());
     m_ControlFlowStack.pop_back();
+    // The else arm must terminate. Its writes and carried loans cannot become
+    // facts of the successful pattern-binding continuation.
+    mergeAnalysisStates({successState}, successState.PAL);
 
     if (!allPathsJump(GuardBind->ElseBody.get())) {
       DiagnosticEngine::report(getLoc(GuardBind), DiagID::ERR_GUARD_MUST_DIVERGE);

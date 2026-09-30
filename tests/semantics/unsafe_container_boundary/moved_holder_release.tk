@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto owner# = string::from("local")
+    auto left# = Vec<str>::new()
+    auto right# = Vec<str>::new()
+    right#.push(owner.as_str())
+    left = cede right
+    cede left
+    owner#.push_str("!")
+    if !owner.as_str().equals("local!") { return 1 }
+    return 0
+}

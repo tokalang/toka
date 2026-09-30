@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+import core/string::{string}
+import core/option::{Option}
+
+fn escaped() -> Option<str> {
+    auto owner = string::from("local")
+    auto values# = Vec<str>::new()
+    values#.push(owner.as_str())
+    auto result = values#.pop()
+    return cede result
+}
+
+fn main() -> i32 { return 0 }

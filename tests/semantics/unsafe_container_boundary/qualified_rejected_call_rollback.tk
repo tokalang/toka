@@ -1,0 +1,11 @@
+import std/vec::{Vec}
+import core/string::{string}
+
+fn attempted() -> Vec<str> {
+    auto owner = string::from("local")
+    auto values# = Vec<str>::new()
+    Vec<str>::push(values#, owner.as_str(), 1:i32)
+    return cede values
+}
+
+fn main() -> i32 { return 0 }

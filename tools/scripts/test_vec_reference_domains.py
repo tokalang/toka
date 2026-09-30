@@ -39,6 +39,7 @@ def main():
             print('PASS ' + source.stem, flush=True)
         negative = {
             'escape': ('fn escape()->Vec<&i32>{auto owner=7:i32\nauto v#=Vec<&i32>::new()\nv=v#.appended(&owner)\nreturn cede v}\nfn main()->i32{return 0}', 'E0455'),
+            'capacity_escape': ('fn escape()->Vec<&i32>{auto owner=7:i32\nauto v#=Vec<&i32>::with_capacity(4:usize)\nv=v#.appended(&owner)\nreturn cede v}\nfn main()->i32{return 0}', 'E0455'),
             'readonly': ('fn main()->i32{auto owner=7:i32\nauto v#=Vec<&i32>::new()\nv=v#.appended(&owner)\nfor auto &x in v {x=9}\nreturn 0}', 'E04572'),
             'duplicate': ('fn main()->i32{auto owner=7:i32\nauto v#=Vec<&i32>::new()\nauto result=v#.appended(&owner)\nauto again=v#.appended(&owner)\nreturn 0}', 'E0438'),
         }

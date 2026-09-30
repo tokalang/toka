@@ -102,6 +102,9 @@ struct SymbolInfo {
   std::optional<std::vector<AccessPath>> CurrentReferenceTargets;
   std::set<std::string> LifeDependencySet; // [NEW] Shadow Dependency Set
   std::map<std::string, std::set<std::string>> FieldDependencySet; // [NEW] Member-specific deps
+  // Identity-preserving external value sources; nullopt is unknown.
+  std::optional<std::set<AccessPath>> ExternalValueDependencies;
+  bool ExternalValueTracked = false;
 
   // An incomplete typed-todo binding is useful to editor tooling only as a
   // conditional fact.  It is never a completed initialization or ordinary
@@ -814,8 +817,16 @@ private:
     std::set<std::string> Roots;
     std::map<std::string, std::set<std::string>> Fields;
   };
+  struct ExternalDependencyState {
+    std::optional<std::set<AccessPath>> Sources;
+    std::set<std::string> LegacyRoots;
+    bool Tracked = false;
+  };
+  using ExternalDependencySnapshot =
+      std::map<uint64_t, ExternalDependencyState>;
   struct AnalysisState {
     std::map<uint64_t, ManagedBorrowDependencies> ManagedBorrows;
+    std::map<uint64_t, ExternalDependencyState> ExternalDependencies;
     std::map<uint64_t, std::shared_ptr<const ByteBufferFact>> ByteBuffers;
     std::map<uint64_t, std::shared_ptr<const TaskResultFact>> TaskResults;
     std::map<FunctionDecl *, std::set<size_t>> TaskRequirements;
@@ -865,6 +876,9 @@ private:
     Sema &Owner;
     std::optional<AnalysisState> Base;
     size_t DiagnosticStart = 0;
+    std::string SavedBorrowSource;
+    std::set<std::string> SavedLifeDependencies;
+    std::map<std::string, std::set<std::string>> SavedFieldDependencies;
     bool Armed = true;
     bool Rejected = false;
   };
@@ -904,12 +918,14 @@ private:
         false; // Whether this context expects a 'pass' or 'break' value
     std::vector<AnalysisState> BreakStates;
     std::vector<AnalysisState> ContinueStates;
+    Scope *CleanupTargetScope = nullptr;
   };
   // This is analysis state, not a source type.  In particular it must never
   // reuse ABI `void`, which remains a real FFI type.
   inline static constexpr const char *NoProducedValue =
       "<no-produced-value>";
   std::vector<ControlFlowInfo> m_ControlFlowStack;
+  Scope *m_FunctionCleanupBoundary = nullptr;
   struct InitBlockContext {
     std::string PlaceName;
     size_t ControlFlowDepth;
@@ -956,6 +972,11 @@ private:
   // Scope management
   void enterScope();
   void exitScope();
+  void checkCleanupScope(Scope *scope, PALChecker &pal,
+                         SourceLocation exitLoc);
+  bool cleanupInvalidatesSource(const AccessPath &source);
+  PALChecker checkCleanupOnEdge(Scope *preserved, SourceLocation exitLoc);
+  void pushControlFlow(ControlFlowInfo flow);
   AccessPath makeAccessPath(Expr *E);
   AccessPath makeAccessPath(const std::string &Path);
   AccessPath canonicalizeAccessPath(const AccessPath &Path);
@@ -1410,6 +1431,16 @@ private:
                                    std::vector<AccessPath> *addressedStorage = nullptr,
                                    bool *usedCurrentReference = nullptr,
                                    std::map<std::string, ActualReturnFieldOrigins> *fields = nullptr);
+  bool safeBorrowFreeType(const std::shared_ptr<Type> &type);
+  bool dropMayReadExternalValue(const std::shared_ptr<Type> &type);
+  std::optional<std::set<AccessPath>> externalValueDependencies(Expr *value);
+  bool retainExternalValueBorrows(SymbolInfo *holder,
+                                  const std::set<AccessPath> &sources,
+                                  ASTNode *site);
+  bool applyExternalCallEffects(
+      FunctionDecl *function, const std::vector<Expr *> &actuals,
+      const std::vector<std::optional<std::set<AccessPath>>> &checkedSources,
+      Expr *call, const std::shared_ptr<Type> &resultType);
   void invalidateReturnSourceProof(Expr *expression, bool unknown = true);
   bool collectActualBindingReferents(Expr *expression,
                                     std::vector<AccessPath> &paths,
@@ -1494,7 +1525,15 @@ private:
   FlowSummary summarizeFlow(Stmt *S);
   FlowSummary summarizeFlowExpr(Expr *E);
   void mergeFlowExits(FlowSummary &dst, const FlowSummary &src);
-  AnalysisState captureAnalysisState();
+  AnalysisState captureAnalysisState(
+      Scope *visibleScope = nullptr, const PALChecker *palOverride = nullptr);
+  ExternalDependencySnapshot captureVisibleExternalDependencies(
+      Scope *visibleScope = nullptr);
+  void restoreVisibleExternalDependencies(
+      const ExternalDependencySnapshot &snapshot);
+  ExternalDependencySnapshot joinExternalDependencies(
+      const ExternalDependencySnapshot &first,
+      const ExternalDependencySnapshot &second);
   std::shared_ptr<Type> checkCallWithThreadHandoff(CallExpr *call);
   bool qualifyPublicThread(CallExpr *call, const AnalysisState &before, size_t diagnosticStart);
   bool inspectThreadValue(std::shared_ptr<Type> type, std::string &identity, bool &needsDrop);

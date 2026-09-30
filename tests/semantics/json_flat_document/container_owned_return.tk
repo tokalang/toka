@@ -1,0 +1,17 @@
+import std/vec::{Vec}
+import stdx/serde/json_factory::{@JsonFactory}
+
+fn make() -> Vec<string> {
+    auto input = string::from("[\"owned\"]")
+    auto result = Vec<string>::parse_complete(input.as_str())
+    auto parsed = result.unwrap()
+    return cede parsed.value
+}
+
+fn main() -> i32 {
+    auto values = make()
+    if values.len() != 1:usize || !values.borrow(0:usize).as_str().equals("owned") {
+        return 1
+    }
+    return 0
+}

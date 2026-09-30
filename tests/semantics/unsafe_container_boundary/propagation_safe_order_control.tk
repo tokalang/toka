@@ -1,0 +1,31 @@
+import std/vec::{Vec}
+import core/result::{Result}
+
+auto observed# = 0:i32
+shape Watch(view: str)
+impl Watch@Encap {
+    fn drop(self#) {
+        if self.view.equals("local") { observed += 1:i32 }
+    }
+}
+
+fn provide(fail: bool) -> Result<i32, i32> {
+    if fail { return Result<i32, i32>::Err(9) }
+    return Result<i32, i32>::Ok(7)
+}
+
+fn exercise(fail: bool) -> Result<i32, i32> {
+    auto owner = string::from("local")
+    auto values# = Vec<Watch>::new()
+    values#.push(Watch(view = owner.as_str()))
+    auto value = provide(fail)!
+    cede values
+    return Result<i32, i32>::Ok(value)
+}
+
+fn main() -> i32 {
+    if exercise(true).unwrap_err() != 9 { return 1 }
+    if exercise(false).unwrap() != 7 { return 2 }
+    if observed != 2:i32 { return 3 }
+    return 0
+}

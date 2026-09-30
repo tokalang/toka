@@ -168,6 +168,8 @@ stage0PlaceIdentity(const AccessPath &path, const std::string &moduleOrigin) {
     case AccessProjectionKind::Dereference:
       projections.push_back(PlaceProjection::dereference());
       break;
+    case AccessProjectionKind::ExternalValue:
+      return std::nullopt; // Semantic dependency, never a physical place.
     case AccessProjectionKind::Unknown:
       projections.push_back(PlaceProjection::unknown());
       break;
@@ -4139,6 +4141,18 @@ bool Sema::collectActualReturnReferents(
     }
     auto *method = dynamic_cast<MethodCallExpr *>(value);
     auto *call = dynamic_cast<CallExpr *>(value);
+    if ((method || call) && value->ExternalValueTracked) {
+      if (!value->ExternalValueDependencies) return false;
+      for (auto source : *value->ExternalValueDependencies) {
+        if (!source.Projections.empty() &&
+            source.Projections.back().Kind ==
+                AccessProjectionKind::ExternalValue)
+          source.Projections.pop_back();
+        result.push_back(std::move(source));
+      }
+      return !value->ExternalValueDependencies->empty() ||
+             safeBorrowFreeType(value->ResolvedType);
+    }
     if (auto *init = dynamic_cast<InitStructExpr *>(value)) {
       auto shape = std::dynamic_pointer_cast<ShapeType>(init->ResolvedType);
       if (!shape || !shape->Decl) return false;
@@ -4541,6 +4555,391 @@ bool Sema::collectActualBindingReferents(
   }
   return collectActualReturnReferents(expression, paths, staticStorage,
                                      nullptr, nullptr, fields);
+}
+
+bool Sema::safeBorrowFreeType(const std::shared_ptr<Type> &input) {
+  std::set<const ShapeDecl *> active;
+  std::function<bool(const std::shared_ptr<Type> &)> visit =
+      [&](const std::shared_ptr<Type> &candidate) -> bool {
+    auto type = candidate ? resolveExplicitCedeStage0TypeReadOnly(candidate) : nullptr;
+    if (hasCanonicalOwningStringStorage(type)) return true;
+    if (!type || type->isUnknown() || type->isUninit() ||
+        type->isReference() || type->isSlice() || type->isFunction() ||
+        type->isDynFn()) return false;
+    // A raw address is not a safe borrow of its pointee. This says nothing
+    // about allocation ownership or the safety of dereferencing that address.
+    if (type->isRawPointer()) return true;
+    if (type->isNullType()) return true;
+    if (type->isBoolean() || type->isInteger() || type->isFloatingPoint() ||
+        type->isUnit() || type->isAddrType() || type->isOAddrType()) return true;
+    if (type->isUniquePtr() || type->isSharedPtr())
+      return visit(type->getPointeeType());
+    if (type->isArray()) return visit(type->getArrayElementType());
+    if (!type->isShape() &&
+        queryExplicitCedeStage0OwnershipReadOnly(type) ==
+            ValueOwnership::BorrowedView)
+      return false; // A borrowed descriptor has no user destructor.
+    auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
+    auto *decl = shape ? shape->Decl : nullptr;
+    if (!decl || !decl->GenericParams.empty() || !active.insert(decl).second)
+      return false;
+    bool closed = true;
+    if (decl->InstantiationTemplate)
+      for (const auto &argument : decl->InstantiationArgs)
+        closed &= visit(argument);
+    for (const auto &member : decl->Members) {
+      if (decl->Kind == ShapeKind::Enum && !member.SubMembers.empty()) {
+        for (const auto &payload : member.SubMembers)
+          closed &= visit(getPhysicalType(payload));
+      } else if (!member.IsUnitVariant) {
+        closed &= visit(getPhysicalType(member));
+      }
+    }
+    active.erase(decl);
+    return closed;
+  };
+  return visit(input);
+}
+
+bool Sema::dropMayReadExternalValue(const std::shared_ptr<Type> &input) {
+  std::set<const ShapeDecl *> active;
+  std::function<bool(const std::shared_ptr<Type> &)> visit =
+      [&](const std::shared_ptr<Type> &candidate) -> bool {
+    auto type = candidate ? resolveExplicitCedeStage0TypeReadOnly(candidate)
+                          : nullptr;
+    if (!type || type->isUnknown() || type->isUninit()) return true;
+    if (hasCanonicalOwningStringStorage(type) || type->isReference() ||
+        type->isRawPointer() || type->isSlice() || type->isBoolean() ||
+        type->isInteger() || type->isFloatingPoint() || type->isUnit() ||
+        type->isAddrType() || type->isOAddrType()) return false;
+    if (type->isUniquePtr() || type->isSharedPtr())
+      return visit(type->getPointeeType());
+    if (type->isArray()) return visit(type->getArrayElementType());
+    auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
+    auto *decl = shape ? shape->Decl : nullptr;
+    if (!decl) return true;
+    if (!active.insert(decl).second) return true;
+    std::map<std::string, std::shared_ptr<Type>> substitutions;
+    const auto &arguments = shape->GenericArgs.empty()
+        ? decl->InstantiationArgs : shape->GenericArgs;
+    for (size_t index = 0;
+         index < arguments.size() && index < decl->GenericParams.size(); ++index)
+      substitutions[decl->GenericParams[index].Name] = arguments[index];
+    bool nestedDropCanRead = false;
+    for (const auto &argument : arguments)
+      nestedDropCanRead |= visit(argument);
+    bool directBorrowField = false;
+    auto inspectField = [&](const ShapeMember &field) {
+      auto fieldType = getPhysicalType(field);
+      if (fieldType && !substitutions.empty())
+        fieldType = fieldType->substitute(substitutions);
+      if (!fieldType || fieldType->isRawPointer()) return;
+      directBorrowField |= !safeBorrowFreeType(fieldType);
+      nestedDropCanRead |= visit(fieldType);
+    };
+    for (const auto &field : decl->Members) {
+      if (field.IsUnitVariant) continue;
+      if (decl->Kind == ShapeKind::Enum && !field.SubMembers.empty()) {
+        for (const auto &payload : field.SubMembers) inspectField(payload);
+      } else {
+        inspectField(field);
+      }
+    }
+    active.erase(decl);
+    bool destructorCanRead = decl->HasExplicitDrop;
+    if (destructorCanRead && decl->ResolvedDestructor &&
+        decl->ResolvedDestructor->Body) {
+      if (auto *body = dynamic_cast<BlockStmt *>(
+              decl->ResolvedDestructor->Body.get());
+          body && body->Statements.empty())
+        destructorCanRead = false;
+    }
+    return nestedDropCanRead || (destructorCanRead && directBorrowField);
+  };
+  return visit(input);
+}
+
+std::optional<std::set<AccessPath>>
+Sema::externalValueDependencies(Expr *value) {
+  if (!value) return std::nullopt;
+  // A complete value whose type cannot carry a safe borrow has no external
+  // lifetime obligation, even when its source is a tracked mutable formal.
+  if (safeBorrowFreeType(value->ResolvedType))
+    return std::set<AccessPath>{};
+  if (value->ExternalValueDependencies)
+    return value->ExternalValueDependencies;
+  if (value->ExternalValueTracked)
+    return std::nullopt;
+  if (auto *cede = dynamic_cast<CedeExpr *>(value))
+    return externalValueDependencies(cede->Value.get());
+  if (auto *unsafe = dynamic_cast<UnsafeExpr *>(value))
+    return externalValueDependencies(unsafe->Expression.get());
+  if (auto *cast = dynamic_cast<CastExpr *>(value);
+      cast && cast->Kind == CastKind::Ascription)
+    return externalValueDependencies(cast->Expression.get());
+  if (dynamic_cast<UnwrapPropagationExpr *>(value)) {
+    std::vector<AccessPath> selected;
+    std::vector<SourceLocation> staticStorage;
+    if (!collectActualBindingReferents(value, selected, &staticStorage))
+      return std::nullopt;
+    std::set<AccessPath> result;
+    for (auto source : selected) {
+      source = canonicalizeAccessPath(source);
+      SymbolInfo *binding = nullptr;
+      if (!source.RootID || !CurrentScope->findSymbolByID(source.RootID, binding) ||
+          !binding)
+        return std::nullopt;
+      result.insert(std::move(source));
+    }
+    if (!result.empty() || !staticStorage.empty()) return result;
+    return std::nullopt;
+  }
+  if (auto *index = dynamic_cast<ArrayIndexExpr *>(value);
+      m_InUnsafeContext && index && index->Array &&
+      index->Array->ResolvedType && index->Array->ResolvedType->isRawPointer()) {
+    // Unsafe code may move a complete logical element out of a raw slot.
+    // The slot address is not the element's external owner. Its containing
+    // value's declared external sources remain the safe-interface boundary.
+    const auto storage = canonicalizeAccessPath(makeAccessPath(index->Array.get()));
+    SymbolInfo *carrier = nullptr;
+    if (storage.RootID &&
+        CurrentScope->findSymbolByID(storage.RootID, carrier) && carrier)
+      return carrier->ExternalValueDependencies;
+    return std::nullopt;
+  }
+  if (auto *member = dynamic_cast<MemberExpr *>(value);
+      member && !safeBorrowFreeType(value->ResolvedType)) {
+    // A selected field can contain any external borrow carried by the whole
+    // value. Keep the superset through extraction; removing unrelated field
+    // sources is a separate precision problem. In particular, a moved
+    // payload must not acquire a dependency on the retired record slot.
+    auto parent = externalValueDependencies(member->Object.get());
+    const auto objectPath = canonicalizeAccessPath(makeAccessPath(member->Object.get()));
+    const bool symbolicWholeValue = parent && objectPath.RootID &&
+        std::any_of(parent->begin(), parent->end(), [&](const AccessPath &source) {
+          return source.RootID == objectPath.RootID &&
+              !source.Projections.empty() &&
+              source.Projections.back().Kind == AccessProjectionKind::ExternalValue;
+        });
+    // A formal's symbolic whole-value source is not the source of every
+    // selected field. Let the ordinary projection mapper resolve that field.
+    if (member->Object->ExternalValueTracked && !symbolicWholeValue) {
+      value->ExternalValueTracked = true;
+      value->ExternalValueDependencies = parent;
+      return parent;
+    }
+  }
+  if (auto *call = dynamic_cast<CallExpr *>(value);
+      call && call->ResolvedShape &&
+      call->ResolvedShape->Kind == ShapeKind::Enum &&
+      call->MatchedMemberIdx >= 0 &&
+      size_t(call->MatchedMemberIdx) < call->ResolvedShape->Members.size()) {
+    const auto &variant =
+        call->ResolvedShape->Members[call->MatchedMemberIdx];
+    const size_t count = variant.IsUnitVariant ? 0 :
+        variant.SubMembers.empty() ? 1 : variant.SubMembers.size();
+    if (count != call->Args.size()) return std::nullopt;
+    std::set<AccessPath> result;
+    for (size_t index = 0; index < count; ++index) {
+      auto type = getPhysicalType(variant.SubMembers.empty()
+                                      ? variant : variant.SubMembers[index]);
+      if (safeBorrowFreeType(type)) continue;
+      auto payload = externalValueDependencies(call->Args[index].get());
+      if (!payload) return std::nullopt;
+      result.insert(payload->begin(), payload->end());
+    }
+    return result;
+  }
+  if (auto *variable = dynamic_cast<VariableExpr *>(value);
+      variable && variable->ResolvedBindingID) {
+    SymbolInfo *binding = nullptr;
+    if (!CurrentScope->findSymbolByID(variable->ResolvedBindingID, binding) ||
+        !binding) return std::nullopt;
+    value->ExternalValueTracked = binding->ExternalValueTracked;
+    if (binding->ExternalValueDependencies)
+      return binding->ExternalValueDependencies;
+    if (binding->ExternalValueTracked)
+      return std::nullopt;
+  }
+  if (value->KnownNullRawStorageType)
+    return std::set<AccessPath>{};
+  std::vector<AccessPath> origins;
+  std::vector<SourceLocation> staticStorage;
+  if (collectActualReturnReferents(value, origins, &staticStorage) &&
+      (!origins.empty() || !staticStorage.empty())) {
+    std::set<AccessPath> result;
+    for (auto origin : origins) {
+      origin = canonicalizeAccessPath(origin);
+      SymbolInfo *binding = nullptr;
+      if (!origin.RootID || !origin.RootLoc.isValid() ||
+          !CurrentScope->findSymbolByID(origin.RootID, binding) || !binding)
+        return std::nullopt;
+      result.insert(std::move(origin));
+    }
+    return result;
+  }
+  if (safeBorrowFreeType(value->ResolvedType))
+    return std::set<AccessPath>{};
+  return std::nullopt;
+}
+
+bool Sema::retainExternalValueBorrows(
+    SymbolInfo *holder, const std::set<AccessPath> &sources, ASTNode *site) {
+  if (!site) return false;
+  if (!holder || !holder->SymbolID) {
+    error(site, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+          "ExternalValueHolderIdentityUnavailable");
+    return false;
+  }
+  if (holder->TypeObj && holder->TypeObj->isReference()) {
+    // Direct references already own an exact PAL loan. The carrier ledger is
+    // for complete values that hide a borrow behind their value boundary.
+    PALCheckerState.releaseCarrierBorrows(holder->SymbolID);
+    return true;
+  }
+  std::optional<size_t> retainingLevels;
+  int holderScopeDepth = 0;
+  for (Scope *scope = CurrentScope; scope; scope = scope->Parent) {
+    for (const auto &[name, info] : scope->Symbols)
+      if (info.SymbolID == holder->SymbolID) {
+        retainingLevels = static_cast<size_t>(CurrentScope->Depth - scope->Depth);
+        holderScopeDepth = scope->Depth;
+        break;
+      }
+    if (retainingLevels) break;
+  }
+  if (!retainingLevels) {
+    error(site, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+          "ExternalValueHolderIdentityUnavailable");
+    return false;
+  }
+  std::set<AccessPath> concreteSources;
+  for (const auto &source : sources) {
+    const bool symbolicExternal = std::any_of(
+        source.Projections.begin(), source.Projections.end(),
+        [](const AccessProjection &projection) {
+          return projection.Kind == AccessProjectionKind::ExternalValue;
+        });
+    if (!symbolicExternal) {
+      if (!source.RootID) {
+        error(site, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+              "ExternalValueDependencyIdentityUnavailable");
+        return false;
+      }
+      concreteSources.insert(source);
+    }
+  }
+  // `formal.external` is an interface parameter, not a borrow of the
+  // formal's physical fields. Calls map it to concrete binding identities.
+  if (auto conflict = PALCheckerState.replaceCarrierBorrows(
+          holder->SymbolID, concreteSources, *retainingLevels,
+          holderScopeDepth,
+          !concreteSources.empty() && dropMayReadExternalValue(holder->TypeObj),
+          site->Loc)) {
+    error(site, DiagID::ERR_BORROW_MUT, conflict->displayPath());
+    recordPALConflict(site, PALOperationClass::SharedPayloadBorrow,
+                      conflict->Path, *conflict);
+    return false;
+  }
+  return true;
+}
+
+bool Sema::applyExternalCallEffects(
+    FunctionDecl *function, const std::vector<Expr *> &actuals,
+    const std::vector<std::optional<std::set<AccessPath>>> &checkedSources,
+    Expr *call, const std::shared_ptr<Type> &resultType) {
+  if (!function || actuals.size() != function->Args.size() ||
+      checkedSources.size() != actuals.size()) {
+    error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+          "ExternalCallFormalArityMismatch");
+    return false;
+  }
+  auto formalIndex = [&](const std::string &name) -> size_t {
+    for (size_t index = 0; index < function->Args.size(); ++index)
+      if (function->Args[index].Name == name) return index;
+    return function->Args.size();
+  };
+  bool receiverRoute = false;
+  bool resultRoute = false;
+  std::optional<std::set<AccessPath>> incoming = std::set<AccessPath>{};
+  std::optional<std::set<AccessPath>> resultSources = std::set<AccessPath>{};
+  for (const auto &route : function->ReturnContract.Routes) {
+    if (route.Target.Kind == ReturnDependencyTargetKind::ReceiverPoststate) {
+      receiverRoute = true;
+      for (const auto &source : route.Sources) {
+        if (source.Root == "self") continue; // Prior receiver sources survive.
+        const size_t index = formalIndex(source.Root);
+        if (index == actuals.size()) {
+          error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                "ReceiverEffectFormalUnavailable");
+          return false;
+        }
+        if (!incoming || !checkedSources[index]) incoming.reset();
+        else incoming->insert(checkedSources[index]->begin(),
+                              checkedSources[index]->end());
+      }
+    } else if (route.Target.Kind == ReturnDependencyTargetKind::ReturnValue) {
+      for (const auto &source : route.Sources) {
+        if (source.Members.size() != 1 ||
+            source.Members.front() != "external") continue;
+        resultRoute = true;
+        const size_t index = formalIndex(source.Root);
+        if (index == actuals.size()) {
+          error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+                "ResultExternalFormalUnavailable");
+          return false;
+        }
+        if (!resultSources || !checkedSources[index]) resultSources.reset();
+        else resultSources->insert(checkedSources[index]->begin(),
+                                   checkedSources[index]->end());
+      }
+    }
+  }
+  SymbolInfo *receiver = nullptr;
+  if (receiverRoute &&
+      (function->Args.empty() || function->Args.front().Name != "self" ||
+       !function->Args.front().IsValueMutable)) {
+    error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+          "ReceiverEffectRequiresMutableSelf");
+    return false;
+  }
+  if (receiverRoute && (actuals.empty() || !actuals[0])) {
+    error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+          "ReceiverEffectActualUnavailable");
+    return false;
+  }
+  if (receiverRoute && !safeBorrowFreeType(actuals[0]->ResolvedType)) {
+    const auto path = canonicalizeAccessPath(makeAccessPath(actuals[0]));
+    if (!path.RootID || !CurrentScope->findSymbolByID(path.RootID, receiver) ||
+        !receiver) {
+      error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+            "ReceiverEffectIdentityUnavailable");
+      return false;
+    }
+  }
+  if (safeBorrowFreeType(resultType)) resultSources = std::set<AccessPath>{};
+  if (receiver) {
+    if (!receiver->ExternalValueDependencies || !incoming) {
+      error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
+            "ReceiverExternalSourcesUnknown");
+      return false;
+    }
+    auto mergedSources = *receiver->ExternalValueDependencies;
+    mergedSources.insert(incoming->begin(), incoming->end());
+    if (!retainExternalValueBorrows(receiver, mergedSources, call))
+      return false;
+    receiver->ExternalValueTracked = true;
+    receiver->ExternalValueDependencies = std::move(mergedSources);
+  }
+  if (resultRoute) {
+    call->ExternalValueDependencies = std::move(resultSources);
+    // An empty external set needs no new lifetime obligation. Leave the
+    // ordinary return-source checker to classify static storage and internal
+    // owned payloads; keep unknown and nonempty sources on this route.
+    call->ExternalValueTracked = !call->ExternalValueDependencies ||
+        !call->ExternalValueDependencies->empty();
+  }
+  return true;
 }
 
 bool Sema::isStaticReturnStorageCandidate(FunctionDecl *function) {
@@ -8050,6 +8449,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             MetAST = MethodDecls[methodKey][VariantName];
         }
         Call->ResolvedFn = MetAST;
+        const size_t staticDiagnosticStart = DiagnosticEngine::records().size();
+        if (MetAST && MetAST->IsUnsafe && !m_InUnsafeContext) {
+          error(Call, DiagID::ERR_UNSAFE_CALL_REQUIRES_CONTEXT, MetAST->Name);
+          if (directArgumentRollback)
+            directArgumentRollback->reject();
+          return Type::fromString("unknown");
+        }
         if (MetAST && MetAST->DeferredJsonBody && !MetAST->DeferredJsonBodyChecked) {
           if (!prepareCallableFactory(MetAST)) {
             error(Call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
@@ -8068,9 +8474,32 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 if (Call->Args.size() < expectedArgs) {
                     DiagnosticEngine::report(getLoc(Call), DiagID::ERR_SEMA_STATIC_METHOD_EXPECTS_AT_LEAST_ARGUMENTS, MetAST->Name, std::to_string(expectedArgs), std::to_string(Call->Args.size()));
                     HasError = true;
+                } else {
+                    error(Call, DiagID::ERR_SEMA_TOO_MANY_ARGUMENTS_PROVIDED_CANNOT_ELIDE);
                 }
             }
         }
+
+        const bool hasReceiverPoststate = MetAST && std::any_of(
+            MetAST->ReturnContract.Routes.begin(),
+            MetAST->ReturnContract.Routes.end(),
+            [](const ReturnDependencyRouteSyntax &route) {
+              return route.Target.Kind ==
+                     ReturnDependencyTargetKind::ReceiverPoststate;
+            });
+        const bool hasExternalRoute = MetAST && std::any_of(
+            MetAST->ReturnContract.Routes.begin(),
+            MetAST->ReturnContract.Routes.end(),
+            [](const ReturnDependencyRouteSyntax &route) {
+              if (route.Target.Kind ==
+                  ReturnDependencyTargetKind::ReceiverPoststate) return true;
+              return route.Target.Kind == ReturnDependencyTargetKind::ReturnValue &&
+                  std::any_of(route.Sources.begin(), route.Sources.end(),
+                      [](const DependencyPathSyntax &source) {
+                        return source.Members.size() == 1 &&
+                               source.Members.front() == "external";
+                      });
+            });
 
         bool signatureStaticSlice =
             m_EnableSignatureDrivenCallCede && MetAST &&
@@ -8100,8 +8529,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         std::vector<PendingStaticCede> pendingStaticCedes;
         std::vector<bool> plannedStaticCede(Call->Args.size(), false);
         std::vector<std::pair<AccessPath, size_t>> staticArgumentPaths;
-        const size_t staticDiagnosticStart = DiagnosticEngine::records().size();
-        CallArgumentRollbackGuard staticRollback(*this, Call->Args);
+        CallArgumentRollbackGuard staticRollback(*this, Call->Args,
+                                                 hasReceiverPoststate);
+        std::vector<std::optional<std::set<AccessPath>>> checkedStaticSources(
+            Call->Args.size());
         std::vector<bool> staticFormals(Call->Args.size(), false);
         std::vector<std::string> staticNames(Call->Args.size());
         for (size_t index = 0; MetAST && index < Call->Args.size() &&
@@ -8227,6 +8658,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                        "Argument " + std::to_string(i + 1) + " (actual: " + argTy->getSoulName() + ")", expectedTy->getSoulName(), argTy->getSoulName());
               HasError = true;
           }
+          if (hasExternalRoute)
+            checkedStaticSources[i] =
+                externalValueDependencies(Call->Args[i].get());
         }
         for (size_t left = 0; left < staticArgumentPaths.size(); ++left) {
           for (size_t right = left + 1; right < staticArgumentPaths.size();
@@ -8314,6 +8748,27 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               m_LastLifeDependencies.insert(origin.toLegacyString());
         }
         markExplicitCedeStage0RouteValidationComplete(Call);
+        if (hasExternalRoute) {
+          const auto &records = DiagnosticEngine::records();
+          if (std::any_of(records.begin() +
+                              std::min(staticDiagnosticStart, records.size()),
+                          records.end(), [](const auto &record) {
+                            return record.Level == DiagLevel::Error;
+                          })) {
+            staticRollback.reject();
+            return Type::fromString("unknown");
+          }
+          std::vector<Expr *> actuals;
+          actuals.reserve(Call->Args.size());
+          for (const auto &argument : Call->Args)
+            actuals.push_back(argument.get());
+          if (!applyExternalCallEffects(MetAST, actuals,
+                                        checkedStaticSources, Call,
+                                        resolvedRet)) {
+            staticRollback.reject();
+            return Type::fromString("unknown");
+          }
+        }
         return resolvedRet;
       } else {
         // [NEW] Lazy Impl Instantiation
@@ -10030,10 +10485,30 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   const bool isGenericDirectCall =
       Fn && (!Fn->GenericParams.empty() || Fn->TemplateOrigin);
+  const bool directHasReceiverPoststate = Fn && std::any_of(
+      Fn->ReturnContract.Routes.begin(), Fn->ReturnContract.Routes.end(),
+      [](const ReturnDependencyRouteSyntax &route) {
+        return route.Target.Kind ==
+               ReturnDependencyTargetKind::ReceiverPoststate;
+      });
+  const bool directHasExternalRoute = Fn && std::any_of(
+      Fn->ReturnContract.Routes.begin(), Fn->ReturnContract.Routes.end(),
+      [](const ReturnDependencyRouteSyntax &route) {
+        if (route.Target.Kind ==
+            ReturnDependencyTargetKind::ReceiverPoststate) return true;
+        return route.Target.Kind == ReturnDependencyTargetKind::ReturnValue &&
+            std::any_of(route.Sources.begin(), route.Sources.end(),
+                [](const DependencyPathSyntax &source) {
+                  return source.Members.size() == 1 &&
+                         source.Members.front() == "external";
+                });
+      });
   const bool isTaskResultCall = m_EnableStage1ExplicitCallerCede && Fn && std::any_of(Fn->Args.begin(), Fn->Args.end(),
       [&](const auto &argument) { return taskResultType(argument.ResolvedType) != nullptr; });
   if (!directArgumentRollback)
-    directArgumentRollback.emplace(*this, Call->Args, isGenericDirectCall || isTaskResultCall);
+    directArgumentRollback.emplace(*this, Call->Args,
+                                   isGenericDirectCall || isTaskResultCall ||
+                                       directHasReceiverPoststate);
 
   // 5. Synthesize FunctionType
   // ParamTypes, ReturnType
@@ -10391,6 +10866,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   if (Fn) {
     Call->ResolvedFn = Fn;
+    if (Fn->IsUnsafe && !m_InUnsafeContext) {
+      error(Call, DiagID::ERR_UNSAFE_CALL_REQUIRES_CONTEXT, Fn->Name);
+      if (directArgumentRollback)
+        directArgumentRollback->reject();
+      return toka::Type::fromString("unknown");
+    }
     std::string fnId = !Fn->CodegenName.empty() ? Fn->CodegenName : Fn->Name;
     markHandleGrammarFunctionReachable(fnId);
     for (auto &arg : Fn->Args) {
@@ -11176,6 +11657,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     return ReturnType;
   }
 
+  std::vector<std::optional<std::set<AccessPath>>> checkedDirectSources(
+      Call->Args.size());
   for (size_t i = 0; i < Call->Args.size(); ++i) {
     if (m_AuthorityFactsSession)
       observeAuthorityFacts(Call->Args[i].get());
@@ -11272,6 +11755,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     if (descendantJournal)
       SemanticEvidence::rollbackCallTransferJournal(*descendantJournal);
     projectOwnedStringView(Call->Args[i], argType, paramType);
+    if (directHasExternalRoute)
+      checkedDirectSources[i] =
+          externalValueDependencies(Call->Args[i].get());
     if (d3ObservationInput && i == 0)
       d3LegacyArgumentType = argType;
 
@@ -12260,6 +12746,24 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       DiagnosticEngine::records().begin() + taskResultDiagnosticStart,
       DiagnosticEngine::records().end(),
       [](const auto &record) { return record.Level == DiagLevel::Error; }));
+  if (!isAsync && directHasExternalRoute &&
+      std::none_of(DiagnosticEngine::records().begin() +
+                       taskResultDiagnosticStart,
+                   DiagnosticEngine::records().end(),
+                   [](const auto &record) {
+                     return record.Level == DiagLevel::Error;
+                   })) {
+    std::vector<Expr *> actuals;
+    actuals.reserve(Call->Args.size());
+    for (const auto &argument : Call->Args)
+      actuals.push_back(argument.get());
+    if (!applyExternalCallEffects(Fn, actuals, checkedDirectSources, Call,
+                                  completedResultType)) {
+      if (directArgumentRollback)
+        directArgumentRollback->reject();
+      return Type::fromString("unknown");
+    }
+  }
   return completedResultType;
 }
 

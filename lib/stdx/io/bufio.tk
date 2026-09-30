@@ -358,7 +358,7 @@ impl AsyncBufferedReader {
     pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
         auto owned# = cede owner
         if max_len == 0:usize {
-            owned#.unsafe_set_len(0:usize)
+            unsafe owned#.unsafe_set_len(0:usize)
             return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
                 buffer = cede owned,
                 bytes_read = 0:usize,
@@ -372,7 +372,7 @@ impl AsyncBufferedReader {
             if to_copy > available {
                 to_copy = available
             }
-            owned#.unsafe_set_len(0:usize)
+            unsafe owned#.unsafe_set_len(0:usize)
             auto index# = 0:usize
             loop index < to_copy {
                 owned#.push(self.buf[self.pos + index])

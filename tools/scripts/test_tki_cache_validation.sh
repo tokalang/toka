@@ -338,8 +338,15 @@ fi
 # Move lib.tk away to prevent fallback
 mv "$TEST_DIR/lib.tk" "$TEST_DIR/lib.tk.bak"
 
-# Append spaces to lib.tki to change its physical content hash but keep original source_hash metadata
-echo "   " >> "$TEST_DIR/lib.tki"
+# Change transport metadata without changing the hashed declaration body.
+python3 - "$TEST_DIR/lib.tki" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text()
+path.write_text(text.replace("// @meta source_path:",
+                             "// @meta transport_note: changed\n// @meta source_path:", 1))
+PY
 
 # Dump dependencies. Since lib.tk is not present, it will successfully load lib.tki as interface file
 "$TOKAC_ABS" --dump-dependencies=json "$TEST_DIR/main.tk" > "$TEST_DIR/dual_hashes.json"
@@ -808,7 +815,7 @@ mkdir -p "$TEST_DIR/sourceless_interface"
 
 cat << 'EOF' > "$TEST_DIR/sourceless_interface/lib.tki"
 // @meta compiler_version: any
-// @meta format_version: 3
+// @meta format_version: 5
 // @meta target_triple: any
 // @meta source_hash: any
 // @meta identity_schema_version: 2
@@ -818,6 +825,18 @@ cat << 'EOF' > "$TEST_DIR/sourceless_interface/lib.tki"
 
 pub const SOURCELESS_CONST: i32 = 42
 EOF
+python3 - "$TEST_DIR/sourceless_interface/lib.tki" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+header, body = path.read_text().split("\n\n", 1)
+digest = 14695981039346656037
+for byte in body.encode():
+    digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
+path.write_text(header.replace("// @meta format_version: 5",
+    f"// @meta format_version: 5\n// @meta replay_surface_hash: {digest:016x}", 1)
+    + "\n\n" + body)
+PY
 
 cat << 'EOF' > "$TEST_DIR/sourceless_interface/main.tk"
 import ./lib::{SOURCELESS_CONST}

@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+shape Mixed(buf: string, view: str)
+fn main() -> i32 {
+    auto external = string::from("external")
+    auto carrier = Mixed(buf = string::from("local"), view = external.as_str())
+    auto left# = Vec<str>::new()
+    auto right# = Vec<str>::new()
+    right#.push(carrier.buf.as_str())
+    left = cede right
+    cede carrier
+    if left.borrow(0:usize).equals("local") { return 0 }
+    return 1
+}
