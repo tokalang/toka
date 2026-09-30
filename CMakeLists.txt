@@ -613,11 +613,15 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_stage1_vec_pop.py
                 --build-dir ${CMAKE_BINARY_DIR})
-        add_test(NAME toka_unsafe_container_production
-            COMMAND ${Python3_EXECUTABLE}
-                ${CMAKE_SOURCE_DIR}/tools/scripts/test_unsafe_container_boundary_probe.py
-                --build-dir ${CMAKE_BINARY_DIR} --mode production)
-        set_tests_properties(toka_unsafe_container_production PROPERTIES TIMEOUT 300)
+        foreach(section compile runtime)
+            add_test(NAME toka_unsafe_container_production_${section}
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/scripts/test_unsafe_container_boundary_probe.py
+                    --build-dir ${CMAKE_BINARY_DIR} --mode production
+                    --section ${section})
+            set_tests_properties(toka_unsafe_container_production_${section}
+                PROPERTIES TIMEOUT 300)
+        endforeach()
         add_test(NAME toka_receiver_poststate_tki
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_receiver_poststate_tki.py

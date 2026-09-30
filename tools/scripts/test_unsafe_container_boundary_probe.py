@@ -113,7 +113,11 @@ def main():
     parser.add_argument("--build-dir", required=True, type=Path)
     parser.add_argument("--mode", choices=("diagnose", "production"),
                         default="production")
+    parser.add_argument("--section", choices=("all", "compile", "runtime"),
+                        default="all")
     args = parser.parse_args()
+    if args.mode == "diagnose" and args.section != "all":
+        parser.error("sections apply only to the production probe")
     build = args.build_dir.resolve()
     compiler = build / "bin/tokac"
     require(compiler.is_file(), "tokac is missing")
@@ -162,6 +166,8 @@ def main():
                             name + ": production guard produced an artifact")
 
         cases = ESCAPES[:4] if args.mode == "diagnose" else ESCAPES
+        if args.section == "runtime":
+            cases = ()
         for name in cases:
             source = CASES / (name + ".tk")
             normal = compile(source, "--check-only")
@@ -196,7 +202,8 @@ def main():
             print("Four-case unannotated Vec rejection complete")
             return
 
-        for name, error_code, source_name in PAL_ESCAPES:
+        for name, error_code, source_name in (
+                PAL_ESCAPES if args.section != "runtime" else ()):
             source = CASES / (name + ".tk")
             normal = compile(source, "--check-only")
             shadow = compile(source, "--check-only", "--non-call-transfer-shadow=json")
@@ -213,7 +220,8 @@ def main():
                         name + ": rejected carrier lifetime produced an artifact")
             print("PASS carrier PAL rejection " + name, flush=True)
 
-        for name in RUNTIME + ("reference_growth",):
+        for name in (RUNTIME + ("reference_growth",)
+                     if args.section != "compile" else ()):
             source = (CASES / (name + ".tk") if name != "reference_growth" else
                       ROOT / "tests/semantics/reference_domains/vec_growth.tk")
             output = work / name
@@ -224,7 +232,7 @@ def main():
             require(ran.returncode == 0, name + ": runtime " + ran.stderr)
             print("PASS runtime " + name, flush=True)
 
-        for name, error_code in (("reference_escape", "E0455"),
+        safety_rejections = (("reference_escape", "E0455"),
                                  ("borrowed_element_storage_escape", "E0455"),
                                  ("unwrap_borrowed_element_storage_escape", "E0455"),
                                  ("active_borrow_mutation", "E0441"),
@@ -244,7 +252,9 @@ def main():
                                  ("private_vec_fields_unsafe_reject", "E0418"),
                                  ("dual_continuing_missing_source", "E0454"),
                                  ("dual_continuing_match_missing_source", "E0454"),
-                                 ("private_vec_constructor_reject", "E0418")):
+                                 ("private_vec_constructor_reject", "E0418"))
+        for name, error_code in (
+                safety_rejections if args.section != "runtime" else ()):
             source = CASES / (name + ".tk")
             normal = compile(source, "--check-only")
             shadow = compile(source, "--check-only", "--non-call-transfer-shadow=json")
@@ -284,7 +294,9 @@ def main():
                         name + ": rejected IR was produced")
             print("PASS existing rejection " + name, flush=True)
 
-    print("Unsafe container boundary probe: " + args.mode + " complete")
+    section_label = "" if args.section == "all" else " " + args.section
+    print("Unsafe container boundary probe: " + args.mode + section_label +
+          " complete")
 
 
 if __name__ == "__main__":
