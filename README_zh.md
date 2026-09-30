@@ -61,11 +61,12 @@ Toka 组合了几类机制来接近这个目标。设计上，它试图让日常
 
 ## 快速开始
 
-Toka `0.10.0` 正在准备，**尚未发布**。当前要获得可复现的公开安装，请指定
-已经发布的 RC13 tag：
+Toka [`0.10.0`](https://github.com/tokalang/toka/releases/tag/v0.10.0) 已于
+**2026-09-30** 公开发布，目前是 GitHub Latest 正式版本。要获得可复现的安装，
+请固定此版本 tag：
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.13
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v0.10.0
 export PATH="$HOME/.toka/bin:$PATH"
 export TOKA_LIB="$HOME/.toka/lib"
 toka doctor
@@ -80,10 +81,10 @@ sudo apt-get install clang lld python3 pkg-config libssl-dev
 
 `toka doctor` 会先检查这些运行条件，再报告 SDK ready。
 
-更换 tag 前，请先检查 [GitHub Releases 页面](https://github.com/tokalang/toka/releases)。
 不带参数的安装脚本遵循 GitHub 已公开正式版的 Latest 选择器，不会自动选择
-最新 prerelease。只有在 `0.10.0` 单独完成审核并公开发布后，它才会成为可安装的
-Latest 目标。
+最新 prerelease。上面的命令固定安装 `v0.10.0`，即使以后 Latest 发生变化也不受影响。
+包括 `v1.0.0-rc.13` 在内的历史版本仍保留在
+[GitHub Releases 页面](https://github.com/tokalang/toka/releases)。
 
 若要参与编译器开发或测试未发布改动，可从源码构建。需要 CMake、C++17
 编译器，以及 LLVM 20：
@@ -278,27 +279,27 @@ toka capabilities --json main.tk
 
 机器可读诊断、语义证据与有界上下文见 [AI tooling](docs/ai_tooling.md)。这些协议是解释与验证接口，不承诺任何特定模型无需审查就能正确编写代码。
 
-## 当前开发路线与已发布的 RC13
+## 当前开发路线与发布状态
 
-1.0 release candidate 周期已经结束，`0.10.0` 是待发布的下一条开发线版本，
+1.0 release candidate 周期已经结束，`0.10.0` 是已发布的开发线版本，
 公共 API 仍在演进，不构成 1.0 稳定性承诺。包括 `v1.0.0-rc.13` 在内的已发布
 RC 保留原有 tag、源码和资产。详见[开发路线](docs/0_10_development_line.md)与
-[待发布说明](docs/release_notes_v0.10.0.md)。
+[发布说明](docs/release_notes_v0.10.0.md)。
 
-| 平台 | 已发布 RC13 的状态 |
+| 平台 | 已发布 v0.10.0 的状态 |
 | :--- | :--- |
 | Linux x86_64 | 已发布 Tier 1 SDK archive |
 | Linux aarch64 | 已发布 Tier 1 SDK archive |
 | macOS x86_64 | 已发布 Tier 1 SDK archive |
 | macOS aarch64 / Apple Silicon | 已发布 Tier 1 SDK archive |
-| Windows / MSYS2 | 源码构建与 dogfood 路径；没有 RC13 SDK archive |
+| Windows / MSYS2 | 源码构建与 dogfood 路径；没有 v0.10.0 SDK archive |
 | WSL2 / WASI | 可用或实验性路径；不是 0.10.0 阻塞发布目标 |
 
 已知边界：
 
-- `0.10.0` 尚无公开下载资产。项目会尽量保持 `0.10.x` 内的兼容性，并把计划性
+- 项目会尽量保持 `0.10.x` 内的兼容性，并把计划性
   breaking 变更集中到 `0.11.0`，配套迁移说明。
-- 嵌套 owned Vec 的提取问题尚未解决，不纳入首个 `0.10.0` 候选。
+- 嵌套 owned Vec 不属于 `v0.10.0` 的支持范围，相关改动计划集成到 `0.11.0`。
 - 语言尚未自举，包生态仍然年轻。
 - TokaKV 当前是单进程嵌入式 preview 引擎，compaction 范围为 L0-to-L1；
   尚不包含更深层级、分布式复制或 Redis 协议服务端。
@@ -310,10 +311,10 @@ RC 保留原有 tag、源码和资产。详见[开发路线](docs/0_10_developme
 - 包含核心容器与系统级模块的标准库。
 - `toka` 项目管理器 / 构建工具、`tokafmt`、`tokalsp`。
 - 增量构建元数据与 TKI interface cache 校验。
-- Linux 与 macOS 是计划中的 `0.10.0` SDK 发布平台。
+- 已发布 Linux 和 macOS 的 x64、ARM64 四份 `v0.10.0` SDK 归档。
 
-当前优先事项是验证范围受限的 `0.10.0` 候选、提供清晰迁移说明，并保持现有
-安全检查与发布门禁。Windows parity 与最终自举仍属于后续工作。
+当前优先事项是维护 `0.10.x`，并在现有安全检查与发布门禁下准备 `0.11.0`
+及清晰的迁移说明。Windows parity 与最终自举仍属于后续工作。
 
 ## Toka 适合你吗？
 

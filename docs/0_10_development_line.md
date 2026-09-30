@@ -1,8 +1,10 @@
 # The 0.10.x development line
 
-**Status on 2026-09-27: `0.10.0` is pending, not published.** This document
-describes the development route. It does not announce a tag, downloadable SDK
-or compatibility qualification for `0.10.0`.
+**Status on 2026-09-30: [`v0.10.0`](https://github.com/tokalang/toka/releases/tag/v0.10.0)
+is published and is GitHub Latest.** Linux and macOS SDK archives are available
+for x64 and ARM64, together with `SHA256SUMS`. The
+[protected promotion](https://github.com/tokalang/toka/actions/runs/36663395868)
+published the qualified `a1fdc191b4be453654f458d465dd9f3fb1735696` candidate.
 
 The 1.0 release-candidate cycle has ended. Development continues on `0.10.x`
 because foundational language and standard-library contracts are still evolving.
@@ -17,10 +19,13 @@ breaking changes in `0.11.0`, with explicit migration notes. This is a project
 discipline, not a promise that `0.10.x` already has 1.0-level compatibility.
 Security checks and the release gate remain unchanged in strength.
 
-The first `0.10.0` candidate carries the accepted concrete-payload call-argument
+The `0.10.0` release carries the accepted concrete-payload call-argument
 address repair and the one-shot memory-contract preparation reuse, plus their
 tests and release-validation corrections. It does not include a nested-owned-Vec
 solution, dependency-contract elision (E), or other new RFC implementation.
+The separately accepted Vec package is planned for the `0.11.0` development
+line, with public-contract migration notes and qualification of its own
+integration revision.
 The compiler-interface/TKI key and native ABI are not bumped solely for the
 version-route change.
 
@@ -37,8 +42,8 @@ version-route change.
    and archive. Only then may it publish the full release and explicitly mark
    it Latest.
 
-Until that publication, use an exact already-published tag such as
-`v1.0.0-rc.13` for a reproducible public install. The unqualified installer
+Use the exact `v0.10.0` tag for a reproducible public install. Earlier RC tags,
+including `v1.0.0-rc.13`, remain available. The unqualified installer
 follows GitHub's full-release Latest selector; it does not automatically choose
 the newest prerelease or infer this route from version precedence. See the
-[`0.10.0` draft release notes](release_notes_v0.10.0.md) for the planned contents.
+[`0.10.0` release notes](release_notes_v0.10.0.md) for the published contents.

@@ -67,11 +67,12 @@ Toka therefore explores a position between C, Rust, Go, and Zig: close to the ma
 
 ## Quick Start
 
-Toka `0.10.0` is being prepared and is **not yet published**. For a repeatable
-public install today, pin the already-published RC13 tag:
+Toka [`0.10.0`](https://github.com/tokalang/toka/releases/tag/v0.10.0) was
+published on **2026-09-30** and is the current GitHub Latest full release.
+Pin its tag for a repeatable installation:
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.13
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v0.10.0
 export PATH="$HOME/.toka/bin:$PATH"
 export TOKA_LIB="$HOME/.toka/lib"
 toka doctor
@@ -87,11 +88,10 @@ sudo apt-get install clang lld python3 pkg-config libssl-dev
 
 `toka doctor` checks these runtime requirements before declaring the SDK ready.
 
-Before replacing the tag, check the
-[GitHub releases page](https://github.com/tokalang/toka/releases). The bare
-installer follows GitHub's full-release Latest selector; it does not select
-the newest prerelease. `0.10.0` becomes an installable Latest target only after
-its separate, verified publication.
+The bare installer follows GitHub's full-release Latest selector; it does not
+select the newest prerelease. The command above keeps `v0.10.0` pinned even
+after Latest changes. Earlier releases, including `v1.0.0-rc.13`, remain on the
+[GitHub releases page](https://github.com/tokalang/toka/releases).
 
 Build from source to contribute to the compiler or test unreleased changes.
 This requires CMake, a C++17 compiler, and LLVM 20:
@@ -307,30 +307,29 @@ documented in [AI tooling](docs/ai_tooling.md). The protocols are explanation
 and verification interfaces, not a promise that any particular model will
 write correct code without review.
 
-## Current Development Route And Published RC13
+## Current Development Route And Release Status
 
-The 1.0 release-candidate cycle has ended. `0.10.0` is the pending next
+The 1.0 release-candidate cycle has ended. `0.10.0` is a published
 development release, with an evolving public API rather than a 1.0 stability
 promise. Published RCs, including `v1.0.0-rc.13`, retain their original tags,
 source and assets. See the [development route](docs/0_10_development_line.md)
-and [pending release notes](docs/release_notes_v0.10.0.md).
+and [release notes](docs/release_notes_v0.10.0.md).
 
-| Platform | Published RC13 status |
+| Platform | Published v0.10.0 status |
 | :--- | :--- |
 | Linux x86_64 | Published Tier 1 SDK archive |
 | Linux aarch64 | Published Tier 1 SDK archive |
 | macOS x86_64 | Published Tier 1 SDK archive |
 | macOS aarch64 / Apple Silicon | Published Tier 1 SDK archive |
-| Windows / MSYS2 | Source-build and dogfood path; no RC13 SDK archive |
+| Windows / MSYS2 | Source-build and dogfood path; no v0.10.0 SDK archive |
 | WSL2 / WASI | Available or experimental; not a 0.10.0 blocking release target |
 
 Known boundaries:
 
-- `0.10.0` is not yet a public download. Within `0.10.x` the project aims to
-  preserve compatibility where practical; planned breaking changes belong in
-  `0.11.0` with migration notes.
-- Nested-owned-Vec extraction remains unresolved and outside the first 0.10.0
-  candidate.
+- Within `0.10.x` the project aims to preserve compatibility where practical;
+  planned breaking changes belong in `0.11.0` with migration notes.
+- Nested-owned-Vec support is outside `v0.10.0`; its planned integration targets
+  `0.11.0`.
 - The language is not yet self-hosted, and the package ecosystem is young.
 - TokaKV is an embedded, single-process preview engine. Its current compaction
   scope is L0-to-L1; deeper levels, distributed replication, and a Redis
@@ -343,10 +342,10 @@ The repository currently contains:
 - A standard library with core containers and system-level modules.
 - The `toka` project manager / build tool, `tokafmt`, and `tokalsp`.
 - Incremental build metadata and TKI interface cache validation.
-- Linux and macOS as the planned 0.10.0 SDK release platforms.
+- Published `v0.10.0` SDK archives for Linux and macOS on x64 and ARM64.
 
-The immediate priority is to qualify the bounded 0.10.0 candidate, provide
-clear migration guidance, and retain the existing security and release gates.
+The immediate priorities are maintaining `0.10.x` and preparing `0.11.0` with
+clear migration guidance and the existing security and release gates.
 Windows parity and eventual self-hosting remain later work.
 
 ## Is Toka A Good Fit?
