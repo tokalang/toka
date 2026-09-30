@@ -9,6 +9,27 @@ CASE_DIR="tests/semantics/tki_replay/cases/outcome_001_direct_match"
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/toka_outcome_recheck.XXXXXX")"
 trap 'rm -rf "$TEST_DIR"' EXIT
 
+# Deliberately edited replay bodies still need a valid transport envelope to
+# reach the semantic checks below. Keep the compiler's format-5 hash contract.
+refresh_replay_surface_hash() {
+    python3 - "$1" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+header, body = path.read_bytes().split(b"\n\n", 1)
+digest = 14695981039346656037
+for byte in body:
+    digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
+header, count = re.subn(
+    rb"(?m)^// @meta replay_surface_hash: [0-9a-f]{16}$",
+    f"// @meta replay_surface_hash: {digest:016x}".encode(), header)
+assert count == 1, "fixture must contain exactly one replay surface hash"
+path.write_bytes(header + b"\n\n" + body)
+PY
+}
+
 cp "$CASE_DIR/lib.tk" "$TEST_DIR/lib.tk"
 cp "$CASE_DIR/pass_replay.tk" "$TEST_DIR/main.tk"
 
@@ -353,6 +374,23 @@ cp "$TEST_DIR/known/lib.tki" "$TEST_DIR/known/lib.tki.cdw.good"
 grep '^// @tki v2 cdw1:' "$TEST_DIR/known/lib.tki" \
     > "$TEST_DIR/known/lib.tki.cdw.duplicate"
 cat "$TEST_DIR/known/lib.tki.cdw.duplicate" >> "$TEST_DIR/known/lib.tki"
+if "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/comment-stale-hash.o" \
+    > "$TEST_DIR/known/comment-stale-hash.out" \
+    2> "$TEST_DIR/known/comment-stale-hash.err"; then
+    echo "FAIL: changed replay body with stale metadata unexpectedly compiled" >&2
+    exit 1
+fi
+if ! grep -Fq "E0901" "$TEST_DIR/known/comment-stale-hash.err" || \
+   ! grep -Fq "Interface replay surface hash mismatch" \
+       "$TEST_DIR/known/comment-stale-hash.err" || \
+   [[ -e "$TEST_DIR/known/comment-stale-hash.o" ]]; then
+    echo "FAIL: stale replay hash did not reject without an artifact" >&2
+    sed 's/^/  | /' "$TEST_DIR/known/comment-stale-hash.err" >&2
+    exit 1
+fi
+echo "PASS: stale replay hash rejected with E0901 and no object"
+refresh_replay_surface_hash "$TEST_DIR/known/lib.tki"
 if ! "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
     -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/comment-duplicate.o" \
     > "$TEST_DIR/known/comment-duplicate.out" \
@@ -361,6 +399,7 @@ if ! "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
     sed 's/^/  | /' "$TEST_DIR/known/comment-duplicate.err" >&2
     exit 1
 fi
+echo "PASS: duplicate CDW1 audit comments accepted with matching replay hash"
 mv "$TEST_DIR/known/lib.tki.cdw.good" "$TEST_DIR/known/lib.tki"
 
 # A known coordinate is only an audit boundary.  It cannot turn a bodyless
@@ -368,6 +407,7 @@ mv "$TEST_DIR/known/lib.tki.cdw.good" "$TEST_DIR/known/lib.tki"
 sed -n '1,/^    Err => out: uninit$/p' "$TEST_DIR/known/lib.tki" \
     > "$TEST_DIR/known/lib.tki.stripped"
 mv "$TEST_DIR/known/lib.tki.stripped" "$TEST_DIR/known/lib.tki"
+refresh_replay_surface_hash "$TEST_DIR/known/lib.tki"
 if "$TOKAC" --validate-semantic-manifests \
     --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
     -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/main.o" \
@@ -375,11 +415,14 @@ if "$TOKAC" --validate-semantic-manifests \
     echo "FAIL: known-coordinate bodyless Outcome interface unexpectedly compiled" >&2
     exit 1
 fi
-if ! grep -Fq "E04631" "$TEST_DIR/known/bodyless.err"; then
+if ! grep -Fq "E04631" "$TEST_DIR/known/bodyless.err" || \
+   grep -Fq "E0901" "$TEST_DIR/known/bodyless.err" || \
+   [[ -e "$TEST_DIR/known/main.o" ]]; then
     echo "FAIL: known-coordinate bodyless Outcome interface missed E04631" >&2
     sed 's/^/  | /' "$TEST_DIR/known/bodyless.err" >&2
     exit 1
 fi
+echo "PASS: known-coordinate bodyless Outcome rejected with E04631 and no object"
 
 # Keep the signature and outcome declaration, but remove the retained
 # provider body.  This models a bodyless third-party TKI, which cannot
@@ -387,6 +430,7 @@ fi
 sed -n '1,/^    Err => out: uninit$/p' "$TEST_DIR/lib.tki" \
     > "$TEST_DIR/lib.tki.stripped"
 mv "$TEST_DIR/lib.tki.stripped" "$TEST_DIR/lib.tki"
+refresh_replay_surface_hash "$TEST_DIR/lib.tki"
 
 if "$TOKAC" -c "$TEST_DIR/main.tk" -o "$TEST_DIR/main.o" \
     > "$TEST_DIR/out" 2> "$TEST_DIR/err"; then
@@ -394,11 +438,13 @@ if "$TOKAC" -c "$TEST_DIR/main.tk" -o "$TEST_DIR/main.o" \
     exit 1
 fi
 
-if ! grep -Fq "E04631" "$TEST_DIR/err"; then
+if ! grep -Fq "E04631" "$TEST_DIR/err" || \
+   grep -Fq "E0901" "$TEST_DIR/err" || [[ -e "$TEST_DIR/main.o" ]]; then
     echo "FAIL: bodyless Outcome interface missed E04631" >&2
     sed 's/^/  | /' "$TEST_DIR/err" >&2
     exit 1
 fi
+echo "PASS: unbound bodyless Outcome rejected with E04631 and no object"
 
 # A retained body is semantic input, not decorative source.  Replacing its
 # successful construction with a bare return must fail the callee proof.
@@ -406,6 +452,7 @@ cp "$TEST_DIR/lib.tki.good" "$TEST_DIR/lib.tki"
 sed 's/init out = 42:i32//' "$TEST_DIR/lib.tki" \
     > "$TEST_DIR/lib.tki.tampered"
 mv "$TEST_DIR/lib.tki.tampered" "$TEST_DIR/lib.tki"
+refresh_replay_surface_hash "$TEST_DIR/lib.tki"
 
 if "$TOKAC" -c "$TEST_DIR/main.tk" -o "$TEST_DIR/main.o" \
     > "$TEST_DIR/tampered.out" 2> "$TEST_DIR/tampered.err"; then
@@ -413,10 +460,13 @@ if "$TOKAC" -c "$TEST_DIR/main.tk" -o "$TEST_DIR/main.o" \
     exit 1
 fi
 
-if ! grep -Fq "E04628" "$TEST_DIR/tampered.err"; then
+if ! grep -Fq "E04628" "$TEST_DIR/tampered.err" || \
+   grep -Fq "E0901" "$TEST_DIR/tampered.err" || \
+   [[ -e "$TEST_DIR/main.o" ]]; then
     echo "FAIL: tampered Outcome provider body missed E04628" >&2
     sed 's/^/  | /' "$TEST_DIR/tampered.err" >&2
     exit 1
 fi
+echo "PASS: changed Outcome body rejected with E04628 and no object"
 
 echo "PASS: outcome source-less body recheck and coordinate audit"
