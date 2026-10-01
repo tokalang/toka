@@ -1,0 +1,176 @@
+name: Create Draft From Qualified Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Canonical v0.11.x label already qualified
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact qualified commit; not the workflow controller revision
+        required: true
+        type: string
+      qualification_run_id:
+        description: Successful candidate Release Qualification run id
+        required: true
+        type: string
+
+concurrency:
+  group: qualified-draft-${{ inputs.tag_name }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  draft:
+    runs-on: ubuntu-22.04
+    env:
+      TAG_NAME: ${{ inputs.tag_name }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Validate inputs
+        run: |
+          set -euo pipefail
+          [[ "$TAG_NAME" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]]
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+
+      # The controller revision may differ from the immutable SDK candidate.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read successful qualification source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "$CANDIDATE_SHA^{commit}")" = "$CANDIDATE_SHA"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALIFICATION_RUN_ID" > qualification-run.json
+          python3 - <<'PY'
+          import json, os
+          from tools.scripts.verify_release_promotion import run_errors
+          r = json.load(open('qualification-run.json'))
+          assert not run_errors(r, int(os.environ['QUALIFICATION_RUN_ID']), os.environ['CANDIDATE_SHA'], 'release')
+          assert r['event'] == 'workflow_dispatch'
+          assert r['repository']['full_name'] == r['head_repository']['full_name'] == os.environ['GITHUB_REPOSITORY']
+          PY
+
+      - name: Download frozen four-target evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-gate-*
+          path: qualification-evidence
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.qualification_run_id }}
+
+      - name: Download original candidate archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: candidate-archive-*
+          path: qualification-archives
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.qualification_run_id }}
+
+      - name: Verify qualification with candidate's unchanged verifier
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$RUNNER_TEMP/qualified-source" "$CANDIDATE_SHA"
+          python3 "$RUNNER_TEMP/qualified-source/tools/scripts/verify_release_qualification.py" \
+            --evidence-dir qualification-evidence --revision "$CANDIDATE_SHA" \
+            --version-label "$TAG_NAME" --output qualification-summary.json
+          git show "$CANDIDATE_SHA:docs/release_notes_$TAG_NAME.md" > candidate-release-notes.md
+          python3 tools/scripts/verify_qualified_draft.py \
+            --repository "$GITHUB_REPOSITORY" --tag-name "$TAG_NAME" \
+            --candidate-sha "$CANDIDATE_SHA" --qualification-run-id "$QUALIFICATION_RUN_ID" \
+            --qualification-run-json qualification-run.json --qualification-summary qualification-summary.json \
+            --qualified-archives-dir qualification-archives --assets-dir release-assets \
+            --output draft-preparation.json
+
+      - name: Preserve verified original archive hashes before mutation
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualified-draft-preparation-${{ inputs.tag_name }}
+          path: |
+            qualification-run.json
+            qualification-summary.json
+            draft-preparation.json
+            release-assets/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Refuse existing release
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG_NAME" > existing-release.json 2> api-error; then
+            echo "Release already exists; refusing to replace assets or change publication state" >&2
+            exit 1
+          fi
+          grep -q '(HTTP 404)' api-error || { cat api-error >&2; exit 1; }
+
+      - name: Create or verify immutable annotated tag with GITHUB_TOKEN
+        # GITHUB_TOKEN-generated refs do not trigger push workflows. Do not use
+        # a PAT, App token or ordinary git push here: the candidate's release.yml
+        # would otherwise repeat the complete qualification matrix.
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG_NAME" > tag-ref.json 2> api-error; then
+            test "$(python3 -c 'import json; print(json.load(open("tag-ref.json"))["object"]["type"])')" = tag
+            tag_object=$(python3 -c 'import json; print(json.load(open("tag-ref.json"))["object"]["sha"])')
+            gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_object" > tag-object.json
+          else
+            grep -q '(HTTP 404)' api-error || { cat api-error >&2; exit 1; }
+            python3 - <<'PY'
+          import json, os
+          json.dump({'tag': os.environ['TAG_NAME'], 'message': 'Qualified %s from run %s' % (os.environ['TAG_NAME'], os.environ['QUALIFICATION_RUN_ID']), 'object': os.environ['CANDIDATE_SHA'], 'type': 'commit'}, open('tag-request.json', 'w'))
+          PY
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" --input tag-request.json > tag-object.json
+            python3 - <<'PY'
+          import json, os
+          obj = json.load(open('tag-object.json'))
+          json.dump({'ref': 'refs/tags/' + os.environ['TAG_NAME'], 'sha': obj['sha']}, open('ref-request.json', 'w'))
+          PY
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" --input ref-request.json > tag-ref.json
+          fi
+          python3 - <<'PY'
+          import json, os
+          obj = json.load(open('tag-object.json'))
+          ref = json.load(open('tag-ref.json'))
+          assert ref['ref'] == 'refs/tags/' + os.environ['TAG_NAME']
+          assert ref['object']['type'] == 'tag' and ref['object']['sha'] == obj['sha']
+          assert obj['tag'] == os.environ['TAG_NAME']
+          assert obj['object']['type'] == 'commit' and obj['object']['sha'] == os.environ['CANDIDATE_SHA']
+          PY
+
+      - name: Create unpublished draft from original bytes
+        run: |
+          set -euo pipefail
+          gh release create "$TAG_NAME" release-assets/* --verify-tag --draft \
+            --title "$TAG_NAME" --notes-file candidate-release-notes.md --prerelease=false --latest=false
+
+      - name: Read back draft and compare every asset
+        run: |
+          set -euo pipefail
+          gh release view "$TAG_NAME" --json tagName,isDraft,isPrerelease,assets > draft-release.json
+          gh release download "$TAG_NAME" --dir draft-assets
+          python3 tools/scripts/verify_qualified_draft.py \
+            --repository "$GITHUB_REPOSITORY" --tag-name "$TAG_NAME" \
+            --candidate-sha "$CANDIDATE_SHA" --qualification-run-id "$QUALIFICATION_RUN_ID" \
+            --qualification-run-json qualification-run.json --qualification-summary qualification-summary.json \
+            --qualified-archives-dir qualification-archives --draft-json draft-release.json \
+            --draft-assets-dir draft-assets --output draft-verification.json
+
+      - name: Preserve draft and tag verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualified-draft-verification-${{ inputs.tag_name }}
+          path: |
+            tag-ref.json
+            tag-object.json
+            draft-release.json
+            draft-verification.json
+          if-no-files-found: warn

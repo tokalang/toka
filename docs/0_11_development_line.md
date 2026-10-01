@@ -27,7 +27,11 @@ poststates or a general raw-storage proof system.
    validates four native targets, and uploads reports and candidate archives
    without creating a GitHub Release. Old-line, malformed and mismatched
    labels are rejected by the active flow.
-3. A separately authorized annotated tag may create an unpublished,
+3. The [qualified-candidate draft entry](qualified_candidate_draft.md) can reuse
+   those original candidate archives without rebuilding. Its release-control
+   revision is separate from the qualified SDK candidate; tag creation and
+   draft creation require separate authorization.
+4. A separately authorized annotated tag may create an unpublished,
    non-prerelease draft. A protected promotion validates the same candidate,
    qualification source, four archives, checksums and macOS x64 replay before
    public release and an explicit Latest choice.

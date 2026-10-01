@@ -459,6 +459,7 @@ def main():
             "releases/latest" in promotion,
             "promotion must bind the candidate and publish only a verified full release")
     exercise_verifiers()
+    run([sys.executable, str(ROOT / "tools/scripts/test_qualified_draft.py")])
     print("Release workflow qualification/draft/promotion gate PASSED")
 
 
