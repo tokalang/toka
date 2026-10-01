@@ -143,6 +143,33 @@ PL 可以在 B0 后与功能批次按独立提交推进，不以“先删除一�
 - 不以阈值放宽覆盖失败；另用握手夹具和显式短预算验证 timeout/cleanup 状态机。
   性能目标在真实基线形成后制定，不能用未知用户比例或旧完整 CI 总时长代替。
 
+B0 执行协议现固定为 `toka.b0.sdk-components.v1`，独立测量器位于
+`tools/scripts/measure_test_baseline.py`。七项任务固定为 bare_ok、owned_vec_ok、
+json_ok、local_dep_ok、registry_dep_ok、compile_reject、run_nonzero；每平台 5 组
+cold→hot 配对。冷样本使用原包重新解包与新项目，SDK 自带接口保留；本地依赖的
+平台绝对 locator 由 SDK helper 在采样外解析一次，再冻结该对 lock 并清空物化状态。
+热样本完整重复既定阶段顺序。direct compile_link 在 check/build 探针前执行；
+探针是复合流水线计时，不能当作编译器的独立 compile/link 时长。
+
+锁定发布依赖为 unicode 0.1.1，归档 SHA-256
+`c68569e6efbd9eb9bf85226eca68de3a0187d4300e320aeb13857be73b5ad28a`。
+冷样本单列 curl 获取原包的网络 wall time；随后 SDK helper 从已校验缓存离线
+物化，热样本不再获取网络。此协议测量固定包的获取，不声称包含实时 registry
+catalog 查询或对整个公网的延迟估计。
+
+独立保护上限：compile_link/build_pipeline 各 600000 ms，run 120000 ms，
+network_fetch/其他受控命令 180000 ms，另有 CI job 60 分钟上限。这些不是 v1 默认值。
+任何命令触及保护上限记 censored，duration_ms=null，仅保留 observed_wall_ms；
+不得参与正常完成样本统计。测量器不会修改原 SDK/依赖以让任务通过。测量完成
+与功能期待满足分开；常规编译失败真实计时保留，运行未开始则保持固定空状态。
+
+默认值推导规则在正式采样前固定：compile 使用最大可用 compile_link 样本 ×4
+加 5000 ms，至少 30000 ms，再向上按 1000 ms 舍入；run 使用最大可用 run 样本
+×4 加 1000 ms，至少 5000 ms，同样舍入。×4 与加性部分是明确的波动/启动裕量，
+不是从 5 个样本估计的分位数；保守下限避免用微型项目推出脆弱的亚秒默认值。
+网络、依赖准备、复合 CLI probe 都不纳入这两个值。正常功能失败保留在汇总中；
+被信号异常结束的阶段不作为默认值推导样本。原始阶段和失败日志不能删除。
+
 实现前交付的基线记录必须关闭 B01/B02，并给出宿主 OS/架构、核心数、SDK 包
 摘要、编译器/runtime 身份、参数、环境条件、冷热定义和每项原始结果。
 

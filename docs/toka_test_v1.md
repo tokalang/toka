@@ -253,7 +253,7 @@ lock_path、lock_sha256；sdk_revision 无可靠记录时可为 null，缺少 lo
 无依赖项目其 lock 两字段为 null。不要将源码目录 HEAD 写入 sdk_revision。
 
 `summary.total` 为已知的选中数；选择尚未完成时为 null，tests=[]，计数均为 0。
-选择完成后 total 是非负整数，等于 tests 长度及其六类单项计数之和。failed 只包含
+选择完成后 total 是非负整数，等于 tests 长度及其五类单项计数之和。failed 只包含
 compile_failed、run_failed、timed_out；可同时存在先前 failed 与后来的 infrastructure
 或 interrupted。允许为空必须 total=0、passed=0、result=empty。
 
@@ -295,10 +295,11 @@ SDK 身份。优先使用图中的准确归属；项目根路径前缀不能把�
 所有 duration_ms 使用单调时钟、非负毫秒数值，不用日志时间戳相减；测量到的
 极短阶段可以为 0，未开始阶段仍是 null。调用级记录 argument_parse、project、
 artifact_setup、selection、identity、dependencies、execution、report_preparation、total；单项记录真实可
-观测的 compile/link/run/cleanup 阶段。阶段未发生为 null，不是 0。
+观测的 compile/link/run/cleanup 阶段。未开始阶段保留固定 phase 对象，
+state=not_started；其耗时、进程和原始状态字段为 null，不把整个 phase 写成 null。
 
-如果编译器一次完成编译与链接，记录 `compile_link` 的真实耗时，compile 和 link
-各为 null，注明 combined。只有实际边界可观测时才分别记录 compile 和 link。
+如果编译器一次完成编译与链接，记录 `compile_link` 的真实耗时，compile 和 link 保留固定 phase 对象，state=not_started，
+duration_ms/process/exit_code/signal/os_error 均为 null，注明 combined。只有实际边界可观测时才分别记录 compile 和 link。
 调用级 execution 包含单项等待、日志捕获和清理；计时存在包含关系，不能把所有
 字段相加冒充总耗时。total 截止到最终报告序列化快照，不声称包含该报告最后一次
 写入自身所耗时间；report_preparation 也止于该快照。报告注明这个测量边界。

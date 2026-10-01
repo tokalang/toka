@@ -1,0 +1,83 @@
+name: 0.12 B0 Released SDK Baseline
+
+on:
+  push:
+    branches: [measure/0.12-b0]
+    paths:
+      - .github/workflows/measure_0_12_b0.yml
+      - tools/scripts/measure_test_baseline.py
+      - tools/scripts/summarize_test_baseline.py
+      - tools/scripts/test_test_baseline.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: SDK component baseline (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.12'
+      - name: Install released SDK host dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          sudo -E apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y build-essential curl wget lsb-release software-properties-common
+          installer="$RUNNER_TEMP/b0-llvm-installer.sh"
+          wget --timeout=15 --tries=3 -O "$installer" https://apt.llvm.org/llvm.sh
+          chmod +x "$installer"
+          sudo -E "$installer" 20
+          sudo apt-get install -y lld-20 liblld-20-dev libpolly-20-dev libzstd-dev libssl-dev pkg-config
+          echo '/usr/lib/llvm-20/bin' >> "$GITHUB_PATH"
+      - name: Install released SDK host dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew install llvm@20 lld@20 zstd openssl@3
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld@20)/bin" >> "$GITHUB_PATH"
+      - name: Download exact original v0.11.0 SDK
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --max-time 300 \
+            "https://github.com/tokalang/toka/releases/download/v0.11.0/toka-v0.11.0-$TARGET.tar.gz" \
+            --output "$RUNNER_TEMP/b0-sdk.tar.gz"
+      - name: Verify measurement guard controls
+        run: python3 tools/scripts/test_test_baseline.py
+      - name: Measure five cold/hot pairs per fixed task
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          python3 tools/scripts/measure_test_baseline.py --target "$TARGET" \
+            --sdk-archive "$RUNNER_TEMP/b0-sdk.tar.gz" --work-dir "$RUNNER_TEMP/b0-$TARGET" --samples 5
+      - name: Retain every raw result and incomplete report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b0-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/b0-${{ matrix.target }}/baseline.json
+            ${{ runner.temp }}/b0-${{ matrix.target }}/raw
+          if-no-files-found: warn

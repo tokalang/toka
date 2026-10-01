@@ -143,7 +143,7 @@
 | --- | --- | --- | --- | --- |
 | J01 | --json 配合 print 和编译器大量输出 | stdout 恰好单一 JSON；输出实时走 stderr 并存日志 | 0 | UTF-8 可解析、无 ANSI/banner/拼接 JSON；日志保留原始字节 |
 | J02 | JSON 模式下逐一执行 R02、R04、R06、R08、R11、T03 | 可控失败和中断仍报告 | 1/2/130，按所选用例 | schema/version、原始/规范状态与真正退出码一致 |
-| J03 | 选择后在第 2 项失败停调度，余 2 项 | 未运行项保留 | 2 | total=4；tests 长度=4；六类计数之和=4；not_run=2 |
+| J03 | 选择后在第 2 项失败停调度，余 2 项 | 未运行项保留 | 2 | total=4；tests 长度=4；五类计数之和=4；not_run=2 |
 | J04 | 编译失败诊断分别缺源位置、指向虚拟文件/未知系统路径/多义节点 | 来源为 unknown | 1 | unknown 不被用户/依赖/SDK 猜测替换；原 stderr 可追溯 |
 | J05 | 超时清理导致 SIGKILL | 双重状态不丢失 | 1 | trigger=timeout；raw signal=实际信号；不是普通 run_failed |
 | J06 | SIGINT 加清理故障 | 双重原因不丢失 | 2 | interrupt_signal 与基础设施错误同时存在 |
@@ -170,7 +170,7 @@
 | ID | 输入/操作 | 预期行为 | 码 | 报告断言 |
 | --- | --- | --- | --- | --- |
 | M01 | ok 入口，能分别观测编译与链接的代理/实际管线 | 分别记录边界 | 0 | compile/link 均为真实非负耗时，标记 separate |
-| M02 | ok 入口，tokac 单调用完成编译+链接 | 如实合并 | 0 | compile_link 有值，compile/link=null，标记 combined |
+| M02 | ok 入口，tokac 单调用完成编译+链接 | 如实合并 | 0 | compile_link completed；compile/link 固定对象 state=not_started，耗时/进程/原始状态=null；combined |
 | M03 | 分别复用 R02 编译失败、R08 启动失败、R13 停调度输入 | 未发生阶段无伪造计时 | R02=1；R08/R13=2 | run/not_run 的时长为 null，不填 0 |
 | M04 | 等待夹具配显式短 timeout；注入墙钟回拨，单调时钟继续 | deadline 与时长不受墙钟影响 | 1 | 非负 monotonic 值，无负时长 |
 | M05 | ok 入口与固定依赖的冷/热同任务多次执行 | 保存可复现样本与真实包含关系 | 各次 0 | 单项和调用级原始计时、宿主/身份/冷热定义、total 快照边界 |
