@@ -71,9 +71,10 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           sudo -E apt-get update -o Acquire::Retries=5
           sudo apt-get install -y build-essential cmake curl ninja-build lsb-release software-properties-common
-          wget --timeout=15 --tries=3 https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo -E ./llvm.sh 20
+          llvm_installer="$RUNNER_TEMP/toka-llvm-install.sh"
+          wget --timeout=15 --tries=3 -O "$llvm_installer" https://apt.llvm.org/llvm.sh
+          chmod +x "$llvm_installer"
+          sudo -E "$llvm_installer" 20
           sudo apt-get install -y liblld-20-dev lld-20 libpolly-20-dev libzstd-dev libssl-dev
           echo "/usr/lib/llvm-20/bin" >> "$GITHUB_PATH"
           echo "CC=/usr/lib/llvm-20/bin/clang" >> "$GITHUB_ENV"
