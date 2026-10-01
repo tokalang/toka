@@ -39,6 +39,9 @@ jobs:
         shell: msys2 {0}
 
     steps:
+      - name: Use identical LF bytes for Windows and MSYS2 Git
+        shell: pwsh
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
 
       - uses: msys2/setup-msys2@v2
@@ -47,6 +50,7 @@ jobs:
           update: true
           install: >-
             base-devel
+            git
             mingw-w64-x86_64-clang
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-lld
@@ -62,6 +66,7 @@ jobs:
           CXX: clang++
         run: |
           set -euo pipefail
+          test -z "$(git -c core.fsmonitor=false status --porcelain)"
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_DIR=/mingw64/lib/cmake/llvm \
             -DLLD_DIR=/mingw64/lib/cmake/lld
@@ -70,10 +75,11 @@ jobs:
       - name: Exercise installed SDK and project workflow
         run: |
           set -euo pipefail
+          python3 tools/scripts/test_pass.py --prepare-runtime-only
           python3 tools/scripts/test_developer_experience.py | tee build/windows-dogfood.json
           ctest --test-dir build --output-on-failure -R "^toka_async_"
-          python3 tools/scripts/test_taskhandle_lifecycle.py
-          python3 tools/scripts/test_restricted_cancellation_profile.py --conformance-output build/toka-restricted-cancellation-windows.json
+          python3 tools/scripts/test_taskhandle_lifecycle.py --conformance-output build/taskhandle-lifecycle-conformance-windows.json
+          python3 tools/scripts/test_restricted_cancellation_profile.py --candidate-sha "$GITHUB_SHA" --conformance-output build/toka-restricted-cancellation-windows.json
 
       - name: Upload dogfood evidence
         if: always()
@@ -82,6 +88,7 @@ jobs:
           name: windows-dogfood
           path: |
             build/windows-dogfood.json
+            build/taskhandle-lifecycle-conformance-windows.json
             build/toka-restricted-cancellation-windows.json
           if-no-files-found: warn
 

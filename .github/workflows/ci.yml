@@ -107,6 +107,7 @@ jobs:
 
       - name: Verify developer experience
         run: |
+          python3 tools/scripts/test_pass.py --prepare-runtime-only
           python3 tools/scripts/test_developer_experience.py
           python3 tools/scripts/test_ai_tooling.py
           python3 tools/scripts/test_ai_completion_card.py
@@ -115,7 +116,7 @@ jobs:
           python3 tools/scripts/test_semantic_index.py
           python3 tools/scripts/test_cede_obligation_evidence.py
           python3 tools/scripts/test_taskhandle_lifecycle.py
-          python3 tools/scripts/test_restricted_cancellation_profile.py --conformance-output build/toka-restricted-cancellation.json
+          python3 tools/scripts/test_restricted_cancellation_profile.py --candidate-sha "$GITHUB_SHA" --conformance-output build/toka-restricted-cancellation.json
           python3 tools/scripts/test_capability_pilot.py
           python3 tools/scripts/test_semantic_diff_preview.py
           python3 tools/scripts/test_lsp_protocol.py
