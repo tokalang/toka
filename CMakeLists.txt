@@ -623,6 +623,11 @@ if(BUILD_TESTING)
             set_tests_properties(toka_unsafe_container_production_${section}
                 PROPERTIES TIMEOUT 300)
         endforeach()
+        # Intel hosted measurement: 293 serial compiler invocations took 637s,
+        # with a 4.52s maximum. Keep each invocation's 60s limit and allow
+        # headroom for the complete compile collection on slower runners.
+        set_tests_properties(toka_unsafe_container_production_compile
+            PROPERTIES TIMEOUT 900)
         add_test(NAME toka_receiver_poststate_tki
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_receiver_poststate_tki.py
