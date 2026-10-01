@@ -1,13 +1,76 @@
 #!/usr/bin/env python3
 
 import argparse
+import hashlib
 import json
+import os
 from pathlib import Path
+import platform
 import random
 import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
+
+
+DIAGNOSTICS = None
+FAILURE_RECORDS = []
+WORKSPACE = None
+
+
+def retain_failure(command, cwd, result):
+    if DIAGNOSTICS is None or not compiler_failure_reason(result):
+        return
+    directory = DIAGNOSTICS / ("failure-%03d" % len(FAILURE_RECORDS))
+    directory.mkdir()
+    (directory / "stdout.txt").write_bytes(result["stdout"])
+    (directory / "stderr.txt").write_bytes(result["stderr"])
+    inputs = directory / "inputs"
+    inputs.mkdir()
+    retained = set()
+    for argument in command[1:]:
+        path = Path(argument)
+        if not path.is_absolute():
+            path = Path(cwd) / path
+        if not path.is_file():
+            continue
+        candidates = [path]
+        if WORKSPACE is not None and path.is_relative_to(WORKSPACE):
+            candidates = [entry for entry in path.parent.iterdir() if entry.is_file()]
+        for entry in candidates:
+            if entry in retained:
+                continue
+            retained.add(entry)
+            relative = (Path("workspace") / entry.relative_to(WORKSPACE)
+                        if WORKSPACE is not None and entry.is_relative_to(WORKSPACE)
+                        else Path("source") / entry.name)
+            destination = inputs / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(entry, destination)
+    debugger = shutil.which("gdb")
+    stack_status = "gdb unavailable; original sanitizer stderr retained"
+    if debugger and result["returncode"] is not None and result["returncode"] < 0:
+        debugger_env = os.environ.copy()
+        debugger_env["ASAN_OPTIONS"] = debugger_env.get("ASAN_OPTIONS", "") + ":detect_leaks=0"
+        try:
+            stack = subprocess.run(
+                [debugger, "--batch", "-ex", "set pagination off", "-ex", "run",
+                 "-ex", "thread apply all bt full", "--args", *map(str, command)],
+                cwd=str(cwd), env=debugger_env, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, timeout=60,
+            )
+            (directory / "stack.txt").write_bytes(stack.stdout)
+            stack_status = "gdb diagnostic replay completed (exit %s)" % stack.returncode
+        except subprocess.TimeoutExpired as error:
+            (directory / "stack.txt").write_bytes(error.stdout or b"")
+            stack_status = "gdb diagnostic replay timed out after 60s"
+    record = {"command": list(map(str, command)), "cwd": str(cwd),
+              "returncode": result["returncode"], "timeout": result["timeout"],
+              "reason": compiler_failure_reason(result), "stack_status": stack_status,
+              "path": str(directory)}
+    (directory / "failure.json").write_text(json.dumps(record, indent=2) + "\n")
+    FAILURE_RECORDS.append(record)
 
 
 SANITIZER_MARKERS = (
@@ -28,19 +91,21 @@ def run(command, cwd, timeout=15):
             stderr=subprocess.PIPE,
             timeout=timeout,
         )
-        return {
+        captured = {
             "returncode": result.returncode,
             "stdout": result.stdout,
             "stderr": result.stderr,
             "timeout": False,
         }
     except subprocess.TimeoutExpired as error:
-        return {
+        captured = {
             "returncode": None,
             "stdout": error.stdout or b"",
             "stderr": error.stderr or b"",
             "timeout": True,
         }
+    retain_failure(command, cwd, captured)
+    return captured
 
 
 def sanitizer_failure(result):
@@ -91,12 +156,14 @@ def compile_source(tokac, root, source_path, object_path, timeout):
 
 
 def main():
+    global DIAGNOSTICS, WORKSPACE
     parser = argparse.ArgumentParser()
     parser.add_argument("--tokac", default="./build/bin/tokac")
     parser.add_argument("--seed", type=int, default=0x544F4B41)
     parser.add_argument("--parser-mutations", type=int, default=32)
     parser.add_argument("--timeout", type=int, default=15)
     parser.add_argument("--output")
+    parser.add_argument("--diagnostics-dir", default="build/fz3-diagnostics")
     args = parser.parse_args()
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
@@ -105,6 +172,31 @@ def main():
     tokac = Path(args.tokac)
     if not tokac.is_absolute():
         tokac = (root / tokac).resolve()
+    DIAGNOSTICS = (root / args.diagnostics_dir).resolve() / ("run-" + uuid.uuid4().hex)
+    DIAGNOSTICS.mkdir(parents=True)
+    symbolizer = os.environ.get("ASAN_SYMBOLIZER_PATH") or shutil.which("llvm-symbolizer")
+    if symbolizer:
+        os.environ["ASAN_SYMBOLIZER_PATH"] = symbolizer
+    os.environ["UBSAN_OPTIONS"] = os.environ.get("UBSAN_OPTIONS", "") + ":print_stacktrace=1"
+    if "symbolize=" not in os.environ.get("ASAN_OPTIONS", ""):
+        os.environ["ASAN_OPTIONS"] = os.environ.get("ASAN_OPTIONS", "") + ":symbolize=1"
+    identity = {
+        "revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
+        "source_dirty": bool(subprocess.check_output(
+            ["git", "-c", "core.fsmonitor=false", "status", "--porcelain", "--untracked-files=no"],
+            cwd=root, text=True).strip()),
+        "compiler_path": str(tokac),
+        "compiler_sha256": hashlib.sha256(tokac.read_bytes()).hexdigest(),
+        "compiler_version": subprocess.check_output([str(tokac), "--version"], cwd=root, text=True).strip(),
+        "platform": platform.platform(), "machine": platform.machine(),
+        "symbolizer": symbolizer, "asan_options": os.environ.get("ASAN_OPTIONS"),
+        "ubsan_options": os.environ["UBSAN_OPTIONS"], "seed": args.seed,
+    }
+    cache = tokac.parent.parent / "CMakeCache.txt"
+    if cache.is_file():
+        shutil.copy2(cache, DIAGNOSTICS / "CMakeCache.txt")
+        identity["cmake_cache_sha256"] = hashlib.sha256(cache.read_bytes()).hexdigest()
+    (DIAGNOSTICS / "identity.json").write_text(json.dumps(identity, indent=2) + "\n")
     rng = random.Random(args.seed)
     failures = []
     counts = {
@@ -160,6 +252,7 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="toka-fz3-reliability-") as temp:
         work = Path(temp)
+        WORKSPACE = work
 
         for index, relative in enumerate(core_pass):
             result = compile_source(
@@ -350,6 +443,9 @@ def main():
         "counts": counts,
         "result": "pass" if not failures else "fail",
         "failures": failures,
+        "build_identity": identity,
+        "diagnostics_dir": str(DIAGNOSTICS),
+        "subprocess_failures": FAILURE_RECORDS,
     }
     rendered = json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
     if args.output:

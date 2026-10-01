@@ -313,8 +313,10 @@ fn poll_reactor(timeout_millis: i32) -> i32 {
     }
 
     unsafe {
-        auto events_buf = [0:Addr; 64]
-        auto *events_ptr = &events_buf[0] as *Addr
+        auto events_buf# = [0:Addr; 64]
+        auto events_address = &events_buf as Addr
+        auto nul *events_candidate# = unsafe (events_address as nul *Addr)
+        auto *events_ptr# = events_candidate.unwrap()
         auto count = sysnet::reactor_wait_impl(g_reactor_fd, timeout_millis, *events_ptr, 64)
         if count <= 0 { return 0:i32 }
 

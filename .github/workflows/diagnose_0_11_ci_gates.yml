@@ -10,67 +10,62 @@ permissions:
   contents: read
 
 jobs:
-  intel-compile:
-    name: Profile exact e182 Intel compiler
-    runs-on: macos-15-intel
+  linux-x64-sanitizer:
+    name: Diagnose exact candidate Linux x64 sanitizer
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: driver
-      - uses: actions/checkout@v4
-        with:
-          ref: e182ca43cd68eb88dd928ca116047a68e26168f5
-          path: source
-      - name: Verify baseline and record runner resources
+      - name: Install LLVM 20 and debugger
         run: |
           set -euo pipefail
-          test "$(git -C source rev-parse HEAD)" = e182ca43cd68eb88dd928ca116047a68e26168f5
+          sudo apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y build-essential cmake curl ninja-build lsb-release software-properties-common gdb
+          wget --timeout=15 --tries=3 https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20
+          sudo apt-get install -y liblld-20-dev lld-20 libpolly-20-dev libzstd-dev libssl-dev
+          echo "/usr/lib/llvm-20/bin" >> "$GITHUB_PATH"
+          echo "CC=/usr/lib/llvm-20/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=/usr/lib/llvm-20/bin/clang++" >> "$GITHUB_ENV"
+      - name: Build exact candidate with formal sanitizer flags
+        run: |
+          set -euo pipefail
           mkdir -p diagnosis
           {
             echo "qualification=false"
-            echo "baseline_sha=$(git -C source rev-parse HEAD)"
-            echo "driver_sha=$GITHUB_SHA"
-            echo "logical_cpus=$(sysctl -n hw.logicalcpu)"
-            echo "memory_bytes=$(sysctl -n hw.memsize)"
+            echo "candidate_sha=$GITHUB_SHA"
+            git rev-parse HEAD
+            clang --version
+            llvm-config --version
             uname -a
           } > diagnosis/identity.txt
-          (cd source && git ls-files -z tests/semantics/unsafe_container_boundary lib/std/vec.tk | xargs -0 shasum -a 256) > diagnosis/fixtures.sha256
-      - name: Install LLVM 20 dependencies
-        run: |
-          brew install llvm@20 lld@20 zstd openssl@3
-          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
-      - name: Build exact baseline compiler
-        run: |
-          set -euo pipefail
-          cmake -S source -B source/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DLLVM_DIR="$(brew --prefix llvm@20)/lib/cmake/llvm" \
-            -DLLD_DIR="$(brew --prefix lld@20)/lib/cmake/lld" \
-            -DZSTD_LIBRARY="$(brew --prefix zstd)/lib/libzstd.dylib" \
-            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
-          cmake --build source/build --target tokac --parallel 2
-          (cd source && python3 tools/scripts/test_pass.py --prepare-runtime-only)
-          test -z "$(git -C source status --porcelain --untracked-files=no)"
-          shasum -a 256 source/build/bin/tokac >> diagnosis/identity.txt
-      - name: Overlay only measured driver
+          cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DLLVM_DIR=/usr/lib/llvm-20/lib/cmake/llvm -DLLD_DIR=/usr/lib/llvm-20/lib/cmake/lld \
+            -DCMAKE_CXX_FLAGS="-O1 -g -fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined -fno-sanitize=vptr" \
+            2>&1 | tee diagnosis/configure.log
+          cmake --build build-asan --target tokac --parallel 2 2>&1 | tee diagnosis/build.log
+          python3 tools/scripts/test_pass.py --prepare-runtime-only
+          test -z "$(git status --porcelain --untracked-files=no)"
+          sha256sum build-asan/bin/tokac lib/sys/toka_rt.o >> diagnosis/identity.txt
+          cp build-asan/CMakeCache.txt diagnosis/
+      - name: Execute complete reliability audit with retained crash diagnostics
+        env:
+          ASAN_SYMBOLIZER_PATH: /usr/lib/llvm-20/bin/llvm-symbolizer
+          UBSAN_OPTIONS: print_stacktrace=1
         run: |
           set -euo pipefail
-          cp driver/tools/scripts/test_unsafe_container_boundary_probe.py source/tools/scripts/
-          test "$(git -C source diff --name-only)" = tools/scripts/test_unsafe_container_boundary_probe.py
-          git -C source diff > diagnosis/diagnostic-driver.diff
-          shasum -a 256 source/tools/scripts/test_unsafe_container_boundary_probe.py >> diagnosis/identity.txt
-      - name: Measure all compile subprocesses serially
-        timeout-minutes: 20
-        run: |
-          set -euo pipefail
-          (cd source && python3 -u tools/scripts/test_unsafe_container_boundary_probe.py \
-            --build-dir build --mode production --section compile \
-            --timing-output "$GITHUB_WORKSPACE/diagnosis/compile.jsonl") 2>&1 | tee diagnosis/compile.log
-      - name: Upload diagnostic trace
+          export TOKA_LIB="$PWD/lib"
+          python3 tools/scripts/test_fz3_diagnostics.py
+          python3 tools/scripts/audit_fz3_reliability.py --tokac build-asan/bin/tokac \
+            --timeout 30 --output diagnosis/audit.json --diagnostics-dir diagnosis/fz3 \
+            2>&1 | tee diagnosis/audit.log
+      - name: Upload Linux diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 0.11-intel-compile-diagnostic
+          name: 0.11-linux-x64-sanitizer-diagnostic
           path: diagnosis/
           if-no-files-found: error
 
@@ -115,9 +110,10 @@ jobs:
           export TOKA_LIB="$PWD/lib"
           python3 tools/scripts/test_developer_experience.py | tee diagnosis/windows-dogfood.json
           ctest --test-dir build --output-on-failure -R "^toka_async_" | tee diagnosis/async.log
-          python3 tools/scripts/test_taskhandle_lifecycle.py --conformance-output diagnosis/taskhandle.json
+          python3 tools/scripts/test_taskhandle_lifecycle.py --conformance-output diagnosis/taskhandle.json 2>&1 | tee diagnosis/taskhandle.log
           python3 tools/scripts/test_restricted_cancellation_profile.py \
-            --candidate-sha "$GITHUB_SHA" --conformance-output diagnosis/restricted-cancellation.json
+            --candidate-sha "$GITHUB_SHA" --conformance-output diagnosis/restricted-cancellation.json \
+            2>&1 | tee diagnosis/restricted-cancellation.log
       - name: Upload Windows diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4

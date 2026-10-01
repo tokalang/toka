@@ -605,6 +605,13 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_unsafe_raw_construction.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_windows_pal_write_capability
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_windows_pal_write_capability.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_fz3_diagnostics
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_fz3_diagnostics.py)
         add_test(NAME toka_string_buffer_migration
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_string_buffer_migration.py

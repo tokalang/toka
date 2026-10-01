@@ -47,27 +47,41 @@ pub fn net_setsockopt_reuse_impl(fd: i32) -> i32 {
     }
 }
 
-fn fill_sockaddr_in(*addr_buf: char, ip: usize, port: i32) -> bool {
+// Only addresses of the writable PAL-owned allocations below reach this helper.
+// Preserve the nullable view until the same pointer has been checked.
+fn win_writable_storage<T>(address: Addr) -> *T# {
+    auto nul *candidate# = unsafe (address as nul *T)
+    if *candidate is null {
+        unsafe { libc_abort() }
+        unreachable
+    } else {
+        auto verified = unsafe *candidate as Addr
+        auto *result# = unsafe (verified as *T)
+        return *result
+    }
+}
+
+fn fill_sockaddr_in(*addr_buf#: char, ip: usize, port: i32) -> bool {
     unsafe {
-        auto base_addr = *addr_buf as usize
+        auto base_addr = *addr_buf as Addr
 
         // Offset 0: family = 2 (u16)
-        auto *p_family# = base_addr as *u16
+        auto *p_family# = unsafe (base_addr as *u16)
         p_family = 2:u16
 
         // Offset 2: port (u16)
         auto nport = libc_htons(port as u16):u16
-        auto *p_port# = (base_addr + 2) as *u16
+        auto *p_port# = unsafe (((base_addr + 2) as Addr) as *u16)
         p_port = nport
 
         // Offset 4: addr (u32)
-        auto *p_addr# = (base_addr + 4) as *u32
+        auto *p_addr# = unsafe (((base_addr + 4) as Addr) as *u32)
         p_addr = ip as u32
 
         // Offset 8..16: Zero
         auto i# = 8:usize
         loop i < 16:usize {
-            auto *p_z# = (base_addr + i) as *char
+            auto *p_z# = unsafe (((base_addr + i) as Addr) as *char)
             p_z = 0 as char
             i += 1:usize
         }
@@ -210,8 +224,8 @@ pub fn net_getsockopt_error_impl(fd: i32) -> i32 {
         toka_ensure_wsa_initialized()
         auto pval = unsafe alloc [4] byte as Addr
         auto pvlen = unsafe alloc [4] byte as Addr
-        auto *val# = pval as *i32
-        auto *vlen# = pvlen as *i32
+        auto *val# = unsafe (pval as *i32)
+        auto *vlen# = unsafe (pvlen as *i32)
         val = 0
         vlen = 4
         auto res = getsockopt(fd, 0xFFFF, 0x1007, pval as *void, pvlen as *i32)
@@ -245,7 +259,7 @@ auto g_win_reactor# = 0:Addr
 fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
     unsafe {
         if g_win_reactor == 0:Addr {
-            auto *r# = libc_malloc(sizeof(WinReactor)).unwrap() as *WinReactor
+            auto *r# = win_writable_storage<WinReactor>(libc_malloc(sizeof(WinReactor)) as Addr)
             r.fds = libc_malloc(128 * 4:usize) as Addr
             r.coros = libc_malloc(128 * 8:usize) as Addr
             r.is_write = libc_malloc(128 * 4:usize) as Addr
@@ -254,7 +268,7 @@ fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
             g_win_reactor = *r as Addr
         }
 
-        auto *r# = g_win_reactor as *WinReactor
+        auto *r# = win_writable_storage<WinReactor>(g_win_reactor)
         // Check if already exists
         auto i# = 0
         loop i < r.count {
@@ -267,7 +281,7 @@ fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
             }
 
             if p_fd == fd && p_is_write == expected_is_write {
-                auto *p_coro# = (r.coros as usize + (i as usize) * 8:usize) as *Addr
+                auto *p_coro# = unsafe (((r.coros as usize + (i as usize) * 8:usize) as Addr) as *Addr)
                 p_coro = coro
                 if is_write {
                     toka_reactor_add_write(0, fd, coro as u64)
@@ -286,16 +300,16 @@ fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
             return false
         }
 
-        auto *p_fd# = (r.fds as usize + (r.count as usize) * 4:usize) as *i32
+        auto *p_fd# = unsafe (((r.fds as usize + (r.count as usize) * 4:usize) as Addr) as *i32)
         p_fd = fd
-        auto *p_coro# = (r.coros as usize + (r.count as usize) * 8:usize) as *Addr
+        auto *p_coro# = unsafe (((r.coros as usize + (r.count as usize) * 8:usize) as Addr) as *Addr)
         p_coro = coro
 
         auto is_w# = 0:i32
         if is_write {
             is_w = 1
         }
-        auto *p_is_write# = (r.is_write as usize + (r.count as usize) * 4:usize) as *i32
+        auto *p_is_write# = unsafe (((r.is_write as usize + (r.count as usize) * 4:usize) as Addr) as *i32)
         p_is_write = is_w
 
         if is_write {
@@ -312,7 +326,7 @@ fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
 pub fn reactor_create_impl() -> i32 {
     unsafe {
         if g_win_reactor == 0:Addr {
-            auto *r# = libc_malloc(sizeof(WinReactor)).unwrap() as *WinReactor
+            auto *r# = win_writable_storage<WinReactor>(libc_malloc(sizeof(WinReactor)) as Addr)
             r.fds = libc_malloc(128 * 4:usize) as Addr
             r.coros = libc_malloc(128 * 8:usize) as Addr
             r.is_write = libc_malloc(128 * 4:usize) as Addr
@@ -332,7 +346,7 @@ pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool
     return win_reactor_add(fd, event_key, true)
 }
 
-pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, max: i32) -> i32 {
+pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events#: Addr, max: i32) -> i32 {
     unsafe {
         if g_win_reactor == 0:Addr {
             if timeout_ms > 0 {
@@ -341,7 +355,7 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
             return 0
         }
 
-        auto *r# = g_win_reactor as *WinReactor
+        auto *r# = win_writable_storage<WinReactor>(g_win_reactor)
         if r.count == 0 {
             if timeout_ms > 0 {
                 libc_usleep((timeout_ms * 1000) as u32)
@@ -349,15 +363,15 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
             return 0
         }
 
-        auto *readfds# = libc_malloc(1024).unwrap() as *char
-        auto *writefds# = libc_malloc(1024).unwrap() as *char
-        auto *exceptfds# = libc_malloc(1024).unwrap() as *char
+        auto *readfds# = win_writable_storage<char>(libc_malloc(1024) as Addr)
+        auto *writefds# = win_writable_storage<char>(libc_malloc(1024) as Addr)
+        auto *exceptfds# = win_writable_storage<char>(libc_malloc(1024) as Addr)
 
-        auto *read_count# = *readfds as *u32
+        auto *read_count# = unsafe ((*readfds as Addr) as *u32)
         read_count = 0:u32
-        auto *write_count# = *writefds as *u32
+        auto *write_count# = unsafe ((*writefds as Addr) as *u32)
         write_count = 0:u32
-        auto *except_count# = *exceptfds as *u32
+        auto *except_count# = unsafe ((*exceptfds as Addr) as *u32)
         except_count = 0:u32
 
         // Populate fd_sets
@@ -370,27 +384,27 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
             auto is_w = p_is_write
             if is_w == 0 {
                 auto rc = read_count
-                auto *p_sock# = (*readfds as usize + 8:usize + (rc as usize) * 8:usize) as *Addr
+                auto *p_sock# = unsafe (((*readfds as usize + 8:usize + (rc as usize) * 8:usize) as Addr) as *Addr)
                 p_sock = fd_val as Addr
                 read_count = rc + 1:u32
             } else {
                 auto wc = write_count
-                auto *p_sock# = (*writefds as usize + 8:usize + (wc as usize) * 8:usize) as *Addr
+                auto *p_sock# = unsafe (((*writefds as usize + 8:usize + (wc as usize) * 8:usize) as Addr) as *Addr)
                 p_sock = fd_val as Addr
                 write_count = wc + 1:u32
 
                 auto ec = except_count
-                auto *p_sock_ex# = (*exceptfds as usize + 8:usize + (ec as usize) * 8:usize) as *Addr
+                auto *p_sock_ex# = unsafe (((*exceptfds as usize + 8:usize + (ec as usize) * 8:usize) as Addr) as *Addr)
                 p_sock_ex = fd_val as Addr
                 except_count = ec + 1:u32
             }
             idx += 1
         }
 
-        auto *tv# = libc_malloc(8).unwrap() as *i32
-        auto *tv_sec# = *tv as *i32
+        auto *tv# = win_writable_storage<i32>(libc_malloc(8) as Addr)
+        auto *tv_sec# = unsafe ((*tv as Addr) as *i32)
         tv_sec = timeout_ms / 1000
-        auto *tv_usec# = (*tv as usize + 4:usize) as *i32
+        auto *tv_usec# = unsafe (((*tv as usize + 4:usize) as Addr) as *i32)
         tv_usec = (timeout_ms % 1000) * 1000
 
         auto *readfds_u32 = *readfds as *u32
@@ -415,8 +429,8 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
                         auto *p_coro = (r.coros as usize + (k as usize) * 8:usize) as *Addr
 
                         if n_out < max {
-                            auto *out_ev# = (*out_events as usize + (n_out as usize) * 8:usize) as *Addr
-                            out_ev = p_coro
+                            auto *out_ev# = unsafe (((*out_events as usize + (n_out as usize) * 8:usize) as Addr) as *Addr)
+                            out_ev = p_coro as Addr
                             n_out = n_out + 1
                         }
 
@@ -428,12 +442,12 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
                             auto *last_coro = (r.coros as usize + last_idx * 8:usize) as *Addr
                             auto *last_is_write = (r.is_write as usize + last_idx * 4:usize) as *i32
 
-                            auto *curr_fd# = (r.fds as usize + (k as usize) * 4:usize) as *i32
-                            curr_fd = last_fd
-                            auto *curr_coro# = (r.coros as usize + (k as usize) * 8:usize) as *Addr
-                            curr_coro = last_coro
-                            auto *curr_is_write# = (r.is_write as usize + (k as usize) * 4:usize) as *i32
-                            curr_is_write = last_is_write
+                            auto *curr_fd# = unsafe (((r.fds as usize + (k as usize) * 4:usize) as Addr) as *i32)
+                            curr_fd = last_fd as i32
+                            auto *curr_coro# = unsafe (((r.coros as usize + (k as usize) * 8:usize) as Addr) as *Addr)
+                            curr_coro = last_coro as Addr
+                            auto *curr_is_write# = unsafe (((r.is_write as usize + (k as usize) * 4:usize) as Addr) as *i32)
+                            curr_is_write = last_is_write as i32
                         }
                         r.count = r.count - 1
                         break
@@ -460,8 +474,8 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
                         auto *p_coro = (r.coros as usize + (k as usize) * 8:usize) as *Addr
 
                         if n_out < max {
-                            auto *out_ev# = (*out_events as usize + (n_out as usize) * 8:usize) as *Addr
-                            out_ev = p_coro
+                            auto *out_ev# = unsafe (((*out_events as usize + (n_out as usize) * 8:usize) as Addr) as *Addr)
+                            out_ev = p_coro as Addr
                             n_out = n_out + 1
                         }
 
@@ -473,12 +487,12 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
                             auto *last_coro = (r.coros as usize + last_idx * 8:usize) as *Addr
                             auto *last_is_write = (r.is_write as usize + last_idx * 4:usize) as *i32
 
-                            auto *curr_fd# = (r.fds as usize + (k as usize) * 4:usize) as *i32
-                            curr_fd = last_fd
-                            auto *curr_coro# = (r.coros as usize + (k as usize) * 8:usize) as *Addr
-                            curr_coro = last_coro
-                            auto *curr_is_write# = (r.is_write as usize + (k as usize) * 4:usize) as *i32
-                            curr_is_write = last_is_write
+                            auto *curr_fd# = unsafe (((r.fds as usize + (k as usize) * 4:usize) as Addr) as *i32)
+                            curr_fd = last_fd as i32
+                            auto *curr_coro# = unsafe (((r.coros as usize + (k as usize) * 8:usize) as Addr) as *Addr)
+                            curr_coro = last_coro as Addr
+                            auto *curr_is_write# = unsafe (((r.is_write as usize + (k as usize) * 4:usize) as Addr) as *i32)
+                            curr_is_write = last_is_write as i32
                         }
                         r.count = r.count - 1
                         break
@@ -505,8 +519,8 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
                         auto *p_coro = (r.coros as usize + (k as usize) * 8:usize) as *Addr
 
                         if n_out < max {
-                            auto *out_ev# = (*out_events as usize + (n_out as usize) * 8:usize) as *Addr
-                            out_ev = p_coro
+                            auto *out_ev# = unsafe (((*out_events as usize + (n_out as usize) * 8:usize) as Addr) as *Addr)
+                            out_ev = p_coro as Addr
                             n_out = n_out + 1
                         }
 
@@ -516,12 +530,12 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
                             auto *last_coro = (r.coros as usize + last_idx * 8:usize) as *Addr
                             auto *last_is_write = (r.is_write as usize + last_idx * 4:usize) as *i32
 
-                            auto *curr_fd# = (r.fds as usize + (k as usize) * 4:usize) as *i32
-                            curr_fd = last_fd
-                            auto *curr_coro# = (r.coros as usize + (k as usize) * 8:usize) as *Addr
-                            curr_coro = last_coro
-                            auto *curr_is_write# = (r.is_write as usize + (k as usize) * 4:usize) as *i32
-                            curr_is_write = last_is_write
+                            auto *curr_fd# = unsafe (((r.fds as usize + (k as usize) * 4:usize) as Addr) as *i32)
+                            curr_fd = last_fd as i32
+                            auto *curr_coro# = unsafe (((r.coros as usize + (k as usize) * 8:usize) as Addr) as *Addr)
+                            curr_coro = last_coro as Addr
+                            auto *curr_is_write# = unsafe (((r.is_write as usize + (k as usize) * 4:usize) as Addr) as *i32)
+                            curr_is_write = last_is_write as i32
                         }
                         r.count = r.count - 1
                         break
@@ -543,7 +557,7 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
 fn win_reactor_del(fd: i32, is_write_val: i32, expected_key: Addr) {
     unsafe {
         if g_win_reactor == 0:Addr { return }
-        auto *r# = g_win_reactor as *WinReactor
+        auto *r# = win_writable_storage<WinReactor>(g_win_reactor)
         auto i# = 0
         loop i < r.count {
             auto *curr_fd = (r.fds as usize + (i as usize) * 4:usize) as *i32
@@ -560,12 +574,12 @@ fn win_reactor_del(fd: i32, is_write_val: i32, expected_key: Addr) {
                     auto *last_coro = (r.coros as usize + last_idx * 8:usize) as *Addr
                     auto *last_is_write = (r.is_write as usize + last_idx * 4:usize) as *i32
 
-                    auto *target_fd# = (r.fds as usize + (i as usize) * 4:usize) as *i32
-                    target_fd = last_fd
-                    auto *target_coro# = (r.coros as usize + (i as usize) * 8:usize) as *Addr
-                    target_coro = last_coro
-                    auto *target_is_write# = (r.is_write as usize + (i as usize) * 4:usize) as *i32
-                    target_is_write = last_is_write
+                    auto *target_fd# = unsafe (((r.fds as usize + (i as usize) * 4:usize) as Addr) as *i32)
+                    target_fd = last_fd as i32
+                    auto *target_coro# = unsafe (((r.coros as usize + (i as usize) * 8:usize) as Addr) as *Addr)
+                    target_coro = last_coro as Addr
+                    auto *target_is_write# = unsafe (((r.is_write as usize + (i as usize) * 4:usize) as Addr) as *i32)
+                    target_is_write = last_is_write as i32
                 }
                 if is_write_val == 1 {
                     toka_reactor_del_write(0, fd, expected_key as u64)
