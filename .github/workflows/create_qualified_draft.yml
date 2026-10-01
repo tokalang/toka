@@ -105,11 +105,20 @@ jobs:
       - name: Refuse existing release
         run: |
           set -euo pipefail
-          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG_NAME" > existing-release.json 2> api-error; then
-            echo "Release already exists; refusing to replace assets or change publication state" >&2
-            exit 1
-          fi
-          grep -q '(HTTP 404)' api-error || { cat api-error >&2; exit 1; }
+          # Authenticated listings include drafts; the tag endpoint may return
+          # 404 for an existing draft. A failed or partial listing must stop here.
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > existing-releases.json
+          python3 - <<'PY'
+          import json, os
+          pages = json.load(open('existing-releases.json'))
+          if not isinstance(pages, list) or not pages or any(not isinstance(page, list) for page in pages):
+              raise SystemExit('Invalid release listing; refusing to create a tag or draft')
+          releases = [release for page in pages for release in page]
+          if any(not isinstance(release, dict) or not isinstance(release.get('tag_name'), str) for release in releases):
+              raise SystemExit('Invalid release entry; refusing to create a tag or draft')
+          if any(release['tag_name'] == os.environ['TAG_NAME'] for release in releases):
+              raise SystemExit('Release already exists; refusing to replace assets or change publication state')
+          PY
 
       - name: Create or verify immutable annotated tag with GITHUB_TOKEN
         # GITHUB_TOKEN-generated refs do not trigger push workflows. Do not use

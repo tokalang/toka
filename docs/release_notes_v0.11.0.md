@@ -1,11 +1,18 @@
 # Toka v0.11.0
 
-**Status on 2026-09-30: integration candidate, pending qualification and publication.**
-There is no public `v0.11.0` SDK download. The published `v0.10.0` tag and
-assets remain the reproducible installation entry point. This source release
-note does not claim that local validation is hosted four-platform qualification.
+**Published on 2026-10-01; selected as GitHub Latest.**
+Download the [v0.11.0 SDK](https://github.com/tokalang/toka/releases/tag/v0.11.0)
+for Linux and macOS on x64 and ARM64. The annotated tag names
+`57b0f7dd7d52bdc24c6dde0457803240e5c62e8a`. The `v0.10.0` tag and assets
+remain unchanged.
 
-## Candidate contents
+The [four-platform qualification](https://github.com/tokalang/toka/actions/runs/36844946549),
+[original SDK replay](https://github.com/tokalang/toka/actions/runs/36885059618)
+and [protected promotion](https://github.com/tokalang/toka/actions/runs/36885564471)
+all passed. The public archives are the original qualification artifacts,
+with matching SHA-256 values; the independent draft entry did not rebuild them.
+
+## Release contents
 
 - Owning nested Vec elements now work with the production standard library:
   construction, growth, replacement, borrowing, extraction, consuming iteration
@@ -30,12 +37,13 @@ note does not claim that local validation is hosted four-platform qualification.
 - The active qualification, replay, draft and protected promotion workflows
   validate canonical `v0.11.N` labels and retain SHA, four-target report,
   archive, checksum and replay identity checks. Qualification dispatches
-  remain evidence-only; tag publication creates a draft; protected promotion
-  separately authorizes public release and Latest.
+  remain evidence-only; the qualified-candidate entry can create a draft from
+  original archives; protected promotion separately authorizes public release
+  and Latest.
 
 ## Migration and compatibility
 
-See [the Vec migration guide](migration_0_11_vec.md) for public-field, unsafe
+See [the fixed-tag Vec migration guide](https://github.com/tokalang/toka/blob/v0.11.0/docs/migration_0_11_vec.md) for public-field, unsafe
 API and dependency-contract changes. This is a planned public-contract change
 from the `0.10.x` line, not a 1.0 API-stability declaration.
 
@@ -56,6 +64,6 @@ public version update. Default compiler, CLI and SDK build metadata are
 - Existing legal `Vec<&T>` paths remain supported. This package does not
   promise every new borrowing-element path, generic constraints, E elision,
   a PAL redesign or unrelated RFC implementations.
-- Release qualification must be obtained for the new integration SHA on
-  Linux x64/ARM64 and macOS x64/ARM64. Earlier Vec tests and `v0.10.0` reports
-  do not qualify this candidate.
+- Qualification covers Linux x64/ARM64 and macOS x64/ARM64 at the exact
+  published revision. Windows/MSYS2 remains a source-build dogfood path and
+  has no `v0.11.0` SDK archive. A future SDK revision needs its own qualification.

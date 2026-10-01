@@ -133,6 +133,61 @@ def main():
     assert text.index('--output draft-preparation.json') < text.index('git/tags')
     assert 'workflow_dispatch:' in text and '\n  push:' not in text
     assert 'release_gate.py' not in text and 'cmake' not in text
+    assert text.index('Refuse existing release') < text.index('Create or verify immutable annotated tag')
+    release_shell = next(s for s in shell_run_blocks(text) if 'existing-release' in s)
+    with tempfile.TemporaryDirectory(prefix='toka-release-api-test-') as temp:
+        root = Path(temp)
+        fake = root / 'gh'
+        fake.write_text('''#!/usr/bin/env python3
+import os, sys
+assert sys.argv[1] == 'api'
+endpoint = next(arg for arg in sys.argv[2:] if arg.startswith('repos/'))
+if '/releases/tags/' in endpoint:
+    # The tag endpoint returned 404 for the real unpublished v0.11.0 draft.
+    print('gh: Not Found (HTTP 404)', file=sys.stderr)
+    sys.exit(1)
+assert endpoint == 'repos/tokalang/toka/releases?per_page=100'
+assert '--paginate' in sys.argv and '--slurp' in sys.argv
+sys.stdout.write(os.environ['RELEASE_API_RESPONSE'])
+if os.environ['RELEASE_API_ERROR']:
+    print(os.environ['RELEASE_API_ERROR'], file=sys.stderr)
+sys.exit(int(os.environ['RELEASE_API_STATUS']))
+''')
+        fake.chmod(0o755)
+        draft = {'tag_name': TAG, 'draft': True}
+        published = {'tag_name': TAG, 'draft': False}
+        other = {'tag_name': 'v0.10.0', 'draft': False}
+        scenarios = [
+            ('empty', [[]], True),
+            ('other-release', [[other]], True),
+            ('other-draft', [[dict(other, draft=True)]], True),
+            ('existing-draft', [[draft]], False),
+            ('existing-publication', [[published]], False),
+            ('later-page-draft', [[other], [draft]], False),
+            ('later-page-publication', [[other], [published]], False),
+            ('no-pages', [], False),
+            ('invalid-envelope', {}, False),
+            ('invalid-page', [{}], False),
+            ('invalid-release', [[None]], False),
+            ('missing-tag', [[{'draft': True}]], False),
+        ]
+        env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
+                   TAG_NAME=TAG, GITHUB_REPOSITORY='tokalang/toka')
+        cases_to_run = [(name, json.dumps(pages), '', 0, accepted)
+                        for name, pages, accepted in scenarios]
+        cases_to_run.append(('invalid-json', '{', '', 0, False))
+        for status in (401, 403, 404, 429, 500):
+            cases_to_run.append(('http-%d' % status, '',
+                                 'gh: API failure (HTTP %d)' % status, 1, False))
+        cases_to_run.append(('partial-pagination-failure', json.dumps([[other]]),
+                             'gh: connection reset', 1, False))
+        for name, response, error, status, accepted in cases_to_run:
+            env.update(RELEASE_API_RESPONSE=response, RELEASE_API_ERROR=error,
+                       RELEASE_API_STATUS=str(status))
+            result = subprocess.run(['bash', '-c', textwrap.dedent(release_shell)],
+                                    cwd=root, env=env, capture_output=True, text=True)
+            assert (result.returncode == 0) == accepted, (name, result.stderr)
+            cases += 1
     tag_shell = next(s for s in shell_run_blocks(text) if 'git/ref/tags/' in s)
     with tempfile.TemporaryDirectory(prefix='toka-tag-api-test-') as temp:
         root = Path(temp)

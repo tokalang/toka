@@ -1,21 +1,21 @@
 # Toka build tool (`toka`)
 
-This is the current 1.0 RC guide for Toka's project manager. Older references
+This is the v0.11.0 guide for Toka's project manager. Older references
 to `Project.tk`, LLVM 17, or `build/src` are obsolete. The public installation
 guide is also available at [tokalang.dev](https://tokalang.dev/installation/).
 
 ## Install or build the SDK
 
-For a released macOS or Linux SDK, install a stable release with:
+For a released macOS or Linux SDK, install the current GitHub Latest release with:
 
 ```sh
 curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-Use the explicit RC12 public-preview tag for a repeatable install:
+Pin the published v0.11.0 tag for a repeatable install:
 
 ```sh
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.12
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v0.11.0
 export PATH="$HOME/.toka/bin:$PATH"
 export TOKA_LIB="$HOME/.toka/lib"
 toka doctor

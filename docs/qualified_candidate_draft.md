@@ -26,7 +26,10 @@ claim the new release-control code received the candidate's platform tests.
 3. Require the exact four artifact directories and archive names. Copy the
    original bytes into a fresh staging directory, compare hashes and generate
    `SHA256SUMS`. Save preparation evidence before changing any remote state.
-4. Refuse any existing release. Create an annotated tag using the workflow's
+4. Refuse any existing release, including unpublished drafts, using the
+   authenticated, fully paginated release listing. Any API or response-format
+   failure stops before tag creation; a failed lookup is not evidence that the
+   release is absent. Create an annotated tag using the workflow's
    repository `GITHUB_TOKEN`, or verify that an existing annotated tag directly
    names the candidate commit. Never replace or move a tag.
 5. Create an unpublished, non-prerelease draft with the four original archives
