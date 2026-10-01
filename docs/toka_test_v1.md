@@ -155,8 +155,9 @@ Windows GNU x64 保持源构建/dogfood 身份。**本版不承诺 Windows 的 m
   `2147483647`；0、负数、非整数和越界返回 2。没有无限超时选项。
   编译器只提供一次编译+链接调用时，前者涵盖完整 `compile_link` 调用；如果后续
   能分别调用，其预算仍是该入口编译与链接的共享预算，不因拆阶段翻倍。
-- **编译/运行默认值是唯一待测量的数值项**，见开发线的 `B0` 前置门禁。
-  机制、阶段含义和可覆盖方式已经确定；在 B0 关闭前不进入命令实现。
+- B0 的数值建议为 **compile_ms=30000、run_ms=5000**，来源见
+  [基线与推导](toka_test_v1_baseline.md)。机制、阶段含义和 CLI 覆盖方式不变；
+  本批仅提交 B0 证据与契约修订，复审通过前不进入 I1，不标为实现冻结稿。
 - 超时、中断或组内进程残留时，先停止启动新进程，向尚存在的受控组发送
   `SIGTERM`，最多给予 **2000 ms**；仍未确认退出则发送 `SIGKILL`，再最多等待
   **5000 ms**。这两个清理上限是 v1 固定值，与测试超时默认值分开。
@@ -253,7 +254,8 @@ lock_path、lock_sha256；sdk_revision 无可靠记录时可为 null，缺少 lo
 无依赖项目其 lock 两字段为 null。不要将源码目录 HEAD 写入 sdk_revision。
 
 `summary.total` 为已知的选中数；选择尚未完成时为 null，tests=[]，计数均为 0。
-选择完成后 total 是非负整数，等于 tests 长度及其五类单项计数之和。failed 只包含
+选择完成后 total 是非负整数，等于 tests 长度，且
+passed + failed + infrastructure_error + interrupted + not_run = total。failed 只包含
 compile_failed、run_failed、timed_out；可同时存在先前 failed 与后来的 infrastructure
 或 interrupted。允许为空必须 total=0、passed=0、result=empty。
 
@@ -304,8 +306,11 @@ duration_ms/process/exit_code/signal/os_error 均为 null，注明 combined。�
 字段相加冒充总耗时。total 截止到最终报告序列化快照，不声称包含该报告最后一次
 写入自身所耗时间；report_preparation 也止于该快照。报告注明这个测量边界。
 
-默认编译/运行数值必须在 [B0](0_12_development_line.md#b0-默认超时数值与反馈基线)
-关闭后写回本节和 SDK 配置。设计阶段用例用显式超时，不能借此跳过默认值门禁。
-基线要记录 SDK/候选身份、冷/热定义、阶段边界、样本和宿主条件。
+B0 默认值建议：compile_ms=30000，run_ms=5000。依据为同脚本 SHA 的三个核心
+平台各任务 5 冷＋5 热样本；规则和完整原始数据位置见
+[基线记录](toka_test_v1_baseline.md)。它们是待复审的契约建议，不是尚未实现 SDK
+中的配置。复审关闭 B0 后，I1/I2 才把这两个值接入 SDK；本设计包仍不标为最终
+实现冻结稿。合法长测可用已有 CLI 参数显式覆盖，不能用此基线承诺任意大项目
+或套件都将在默认值内完成。
 
 映射：M01–M05、T10。
