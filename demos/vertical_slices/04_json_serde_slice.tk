@@ -1,4 +1,4 @@
-import stdx/serde/json::{to_json, deserialize_shape, ToJson, serialize_shape}
+import stdx/serde/json::{to_json, deserialize_shape, ToJson, serialize_shape, @JsonFactory, Parsed, parse_document}
 import std/io::{println}
 import core/string::{string}
 
@@ -45,4 +45,35 @@ fn main() -> i32 {
 
     println("Micro-Slice 4: Real stdx/serde/json Micro-Slice PASSED ALL SUITES Cleanly!")
     return 0
+}
+
+impl ServiceConfig@JsonFactory {
+    pub fn parse_value(input: str) -> Result<Parsed<ServiceConfig>, str> <- input {
+        auto attempt = parse_document(input)
+        if attempt.is_err() {
+            auto error = Result<Parsed<ServiceConfig>, str>::Err("Invalid JSON")
+            return cede error
+        }
+        auto document = attempt.unwrap()
+        if document.kind(1) != 5 {
+            auto error = Result<Parsed<ServiceConfig>, str>::Err("Expected object")
+            return cede error
+        }
+        if document.kind(document.find(1, "port")) != 2 {
+            auto error = Result<Parsed<ServiceConfig>, str>::Err("Invalid field port")
+            return cede error
+        }
+        if document.kind(document.find(1, "service")) != 3 {
+            auto error = Result<Parsed<ServiceConfig>, str>::Err("Invalid field service")
+            return cede error
+        }
+        if document.kind(document.find(1, "active")) != 1 {
+            auto error = Result<Parsed<ServiceConfig>, str>::Err("Invalid field active")
+            return cede error
+        }
+        auto value = ServiceConfig(port = document.number(document.find(1, "port")).unwrap() as i32, service = string::from(document.text(document.find(1, "service"))), active = document.boolean(document.find(1, "active")).unwrap())
+        auto parsed = Parsed<ServiceConfig>(value = cede value, rest = input.substr(input.len(), 0))
+        auto result = Result<Parsed<ServiceConfig>, str>::Ok(cede parsed)
+        return cede result
+    }
 }
