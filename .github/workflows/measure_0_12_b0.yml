@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12.12'
+          python-version: '3.13.7'
       - name: Install released SDK host dependencies (Linux)
         if: runner.os == 'Linux'
         run: |

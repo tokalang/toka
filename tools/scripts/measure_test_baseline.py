@@ -151,7 +151,7 @@ def git_value(*args):
 def host_info(env):
     facts = {'platform': platform.platform(), 'machine': platform.machine(),
              'processor': platform.processor(), 'logical_cpus': os.cpu_count(),
-             'python': sys.version, 'python_executable': sys.executable,
+             'python': sys.version, 'python_executable': sys.executable, 'python_sha256': digest(sys.executable),
              'image_os': os.environ.get('ImageOS'), 'image_version': os.environ.get('ImageVersion'),
              'runner_os': os.environ.get('RUNNER_OS'), 'runner_arch': os.environ.get('RUNNER_ARCH'),
              'github_run_id': os.environ.get('GITHUB_RUN_ID'),
