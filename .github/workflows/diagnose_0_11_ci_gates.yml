@@ -114,6 +114,7 @@ jobs:
           python3 tools/scripts/test_windows_sync_storage.py 2>&1 | tee build/diagnosis/windows-sync-storage.log
           python3 tools/scripts/test_native_sync_factory_plans.py --build-dir build 2>&1 | tee build/diagnosis/native-factory.log
           python3 tools/scripts/test_taskhandle_lifecycle.py --conformance-output build/diagnosis/taskhandle.json 2>&1 | tee build/diagnosis/taskhandle.log
+          git -c core.fsmonitor=false status --porcelain > build/diagnosis/source-status-before.txt
           python3 tools/scripts/test_restricted_cancellation_profile.py \
             --candidate-sha "$GITHUB_SHA" --conformance-output build/diagnosis/restricted-cancellation.json \
             2>&1 | tee build/diagnosis/restricted-cancellation.log

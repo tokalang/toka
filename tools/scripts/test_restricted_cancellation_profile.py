@@ -172,11 +172,19 @@ def main():
                 "restricted cancellation source revision does not match the candidate")
 
     is_dirty = False
+    status_out = ""
+    status_error = None
     try:
-        status_out = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()
-        is_dirty = len(status_out) > 0
-    except Exception:
-        pass
+        status_out = subprocess.check_output(
+            ["git", "-c", "core.fsmonitor=false", "status", "--porcelain"],
+            cwd=ROOT, text=True, stderr=subprocess.PIPE).strip()
+        is_dirty = bool(status_out)
+    except subprocess.CalledProcessError as error:
+        status_error = error.stderr
+        is_dirty = True
+    except Exception as error:
+        status_error = str(error)
+        is_dirty = True
 
     worktree_digest = compute_worktree_digest(profile, build_path)
     tokac_digest = file_sha256(tokac)
@@ -194,6 +202,9 @@ def main():
 
     any_skipped = any("skipped" in rec["result"] for rec in evidence_records)
     overall_result = "incomplete (environment lacks TCP network-bind capability: RCP-G6a-TCP / RCP-G7a unverified)" if any_skipped else "candidate-pass"
+    dirty_candidate = bool(args.candidate_sha and is_dirty)
+    if dirty_candidate:
+        overall_result = "incomplete (candidate source is dirty or git status failed)"
     if args.conformance_output:
         output = {
             "schema": "toka.restricted-cancellation-profile-conformance",
@@ -201,6 +212,8 @@ def main():
             "base_revision": base_rev,
             "candidate_revision": base_rev,
             "is_dirty": is_dirty,
+            "source_status": status_out.splitlines(),
+            "source_status_error": status_error,
             "worktree_digest": worktree_digest,
             "compiler": {
                 "version": compiler_version,
@@ -218,7 +231,11 @@ def main():
         }
         args.conformance_output.resolve().write_text(
             json.dumps(output, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    if any_skipped:
+    if dirty_candidate:
+        print("Restricted Cancellation Profile v1 candidate gate INCOMPLETE: " + overall_result)
+        print(status_out or status_error)
+        sys.exit(1)
+    elif any_skipped:
         print("Restricted Cancellation Profile v1 candidate gate INCOMPLETE (environment lacks TCP network-bind capability: RCP-G6a-TCP / RCP-G7a unverified)")
         sys.exit(1)
     else:
