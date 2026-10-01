@@ -17,7 +17,9 @@ def main():
     compiler = root / args.build_dir / "bin/tokac.exe"
     cc = os.environ.get("CC", "clang")
     env = dict(os.environ, TOKA_LIB=str(root / "lib"))
-    with tempfile.TemporaryDirectory(prefix="toka-windows-sync-storage-") as temp:
+    # Windows can retain an antivirus/loader handle briefly after a child exits.
+    # Cleanup must not obscure the compile/runtime assertions above it.
+    with tempfile.TemporaryDirectory(prefix="toka-windows-sync-storage-", ignore_cleanup_errors=True) as temp:
         work = Path(temp)
         native = work / "layout.c"
         native.write_text('''#include <stdio.h>

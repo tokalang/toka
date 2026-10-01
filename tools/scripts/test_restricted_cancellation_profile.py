@@ -108,7 +108,7 @@ def main():
 
     evidence_records = []
 
-    with tempfile.TemporaryDirectory(prefix="toka-restricted-cancel-") as temp:
+    with tempfile.TemporaryDirectory(prefix="toka-restricted-cancel-", ignore_cleanup_errors=True) as temp:
         temp_dir = Path(temp)
         for index, evidence in enumerate(profile["source_evidence"]):
             require(set(evidence) == {"path", "guarantee_ids"}, "source evidence record changed")

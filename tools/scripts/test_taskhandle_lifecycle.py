@@ -124,7 +124,7 @@ def main():
         require(set(state) == {"name", "value", "meaning", "successor_states"},
                 "result-state fields changed")
 
-    with tempfile.TemporaryDirectory(prefix="toka-taskhandle-lifecycle-") as temp:
+    with tempfile.TemporaryDirectory(prefix="toka-taskhandle-lifecycle-", ignore_cleanup_errors=True) as temp:
         temp_dir = Path(temp)
         for index, redline in enumerate(contract["redline_tests"]):
             require(set(redline) == {"path", "proves", "guarantee_ids"} and redline["proves"],
