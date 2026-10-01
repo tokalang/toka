@@ -123,20 +123,25 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="toka-developer-experience-") as temp:
         temp_root = Path(temp)
-        preview = run([toka, "test"], temp_root)
-        require("Preview:" in preview.stdout and "not the stable project test contract" in preview.stdout,
+        preview = run([toka, "test"], temp_root, expected=2)
+        require("Preview:" in preview.stdout + preview.stderr and
+                "not the stable project test contract" in preview.stdout + preview.stderr,
                 "toka test is not clearly marked Preview")
         failed_test_root = temp_root / "failed_preview_test"
         (failed_test_root / "tests").mkdir(parents=True)
-        (failed_test_root / "tests" / "compile_error.tk").write_text(
+        (failed_test_root / "package.tk").write_text(
+            'pub const PACKAGE = (name = "preview", version = "1.0.0", dependencies = ())\n',
+            encoding="utf-8")
+        (failed_test_root / "tests" / "compile_error_test.tk").write_text(
             "fn main() -> i32 {\n"
             "    auto value = 1\n"
             "    auto ^moved = ^value\n"
             "    return value\n"
             "}\n", encoding="utf-8")
-        failed_preview = run([toka, "test"], failed_test_root, expected=1)
-        require("[FAILED (Compile)]" in failed_preview.stdout,
-                "toka test did not report the preview fixture failure")
+        failed_preview = run([toka, "test"], failed_test_root, expected=2 if os.name == "nt" else 1)
+        require(("POSIX" in failed_preview.stdout + failed_preview.stderr) if os.name == "nt" else
+                ("[FAILED (Compile)]" in failed_preview.stdout),
+                "toka test did not report the preview capability/failure boundary")
         checks.extend(("toka-test-preview", "toka-test-preview-failure-exit"))
 
         source_dir = temp_root / "project" / "src" / "nested"

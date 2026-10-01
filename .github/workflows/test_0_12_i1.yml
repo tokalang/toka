@@ -1,0 +1,94 @@
+name: 0.12 I1 Project Test Preview
+
+on:
+  push:
+    branches: [implement/0.12-test-i1]
+    paths:
+      - .github/workflows/test_0_12_i1.yml
+      - lib/toolchain/toka_test.py
+      - lib/toolchain/toka_package.py
+      - tools/toka/**
+      - tools/scripts/test_toka_test_i1.py
+      - tools/scripts/stage_test_i1_sdk.py
+      - tools/scripts/test_package_manager_supply_chain.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: I1 installed SDK (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - name: Install released SDK host dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          sudo -E apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y build-essential curl wget lsb-release software-properties-common
+          installer="$RUNNER_TEMP/i1-llvm-installer.sh"
+          wget --timeout=15 --tries=3 -O "$installer" https://apt.llvm.org/llvm.sh
+          chmod +x "$installer"
+          sudo -E "$installer" 20
+          sudo apt-get install -y lld-20 liblld-20-dev libpolly-20-dev libzstd-dev libssl-dev pkg-config
+          echo '/usr/lib/llvm-20/bin' >> "$GITHUB_PATH"
+      - name: Install released SDK host dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew install llvm@20 lld@20 zstd openssl@3
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld@20)/bin" >> "$GITHUB_PATH"
+      - name: Download exact original v0.11.0 SDK
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --max-time 300 \
+            "https://github.com/tokalang/toka/releases/download/v0.11.0/toka-v0.11.0-$TARGET.tar.gz" \
+            --output "$RUNNER_TEMP/i1-sdk.tar.gz"
+      - name: Check discovery, context, serial execution and package regressions
+        run: |
+          set -euo pipefail
+          python3 tools/scripts/test_toka_test_i1.py
+          python3 tools/scripts/test_package_manager_supply_chain.py
+      - name: Build private manager and validate relocated SDK
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          python3 tools/scripts/stage_test_i1_sdk.py --target "$TARGET" \
+            --archive "$RUNNER_TEMP/i1-sdk.tar.gz" --work "$RUNNER_TEMP/i1-stage" \
+            > "$RUNNER_TEMP/i1-sdk-path.txt"
+          sdk=$(tail -1 "$RUNNER_TEMP/i1-sdk-path.txt")
+          python3 tools/scripts/test_toka_test_i1.py --sdk "$sdk" --output "$RUNNER_TEMP/i1-installed"
+      - name: Retain Preview checks and actual SDK identities
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i1-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/i1-stage/stage-identity.json
+            ${{ runner.temp }}/i1-stage/manager-build.stdout
+            ${{ runner.temp }}/i1-stage/manager-build.stderr
+            ${{ runner.temp }}/i1-installed
+          if-no-files-found: warn

@@ -31,7 +31,7 @@ fn print_help() {
     println("                                      Validate bodyless Outcome provider attestations")
     println("  preview      Compare base/candidate snapshots without writing either one")
     println("  query        Run a compiler semantic query (definition, references, rename)")
-    println("  test         Preview: experimental source-tree test scanner")
+    println("  test         Preview: project test entries (I1; lifecycle/JSON pending I2)")
     println("  doc          Generate API documentation")
     println("  add <package-or-url>  Add a Registry package or URL dependency")
     println("  rm <pkg>     Remove a package dependency")
@@ -1029,52 +1029,31 @@ fn cmd_query(argc: i32, shift: i32) -> i32 {
     return command#.status()
 }
 
-fn cmd_test() -> i32 {
-    println("Preview: 'toka test' is an experimental source-tree scanner, not the stable project test contract.")
-    println("Use the package's documented test command for release qualification.")
-    println("Running preview Toka test scan...")
-    
-    auto default_lib = detect_default_lib_path()
-    auto script# = string::from("set -e\npassed=0\nfailed=0\n")
-    script#.push_str("if [ ! -d \"tests\" ]; then echo \"No tests directory found.\"; exit 0; fi\n")
-    script#.push_str("for test_file in $(find tests -name '*.tk'); do\n")
-    script#.push_str("  printf \"  \\x1b[1;36mTesting\\x1b[0m %s ... \" \"$test_file\"\n")
-    script#.push_str("  toka_lib_path=\"")
-    script#.push_str(default_lib.as_str())
-    script#.push_str("\"\n")
-    script#.push_str("  if tokac -I . -I \"$toka_lib_path\" \"$test_file\" -o .toka_test_exe > .toka_test_out 2>&1; then\n")
-    script#.push_str("      if ./.toka_test_exe >> .toka_test_out 2>&1; then\n")
-    script#.push_str("          printf \"\\x1b[1;32m[OK]\\x1b[0m\\n\"\n")
-    script#.push_str("          passed=$((passed+1))\n")
-    script#.push_str("      else\n")
-    script#.push_str("          printf \"\\x1b[1;31m[FAILED (Runtime)]\\x1b[0m\\n\"\n")
-    script#.push_str("          cat .toka_test_out\n")
-    script#.push_str("          failed=$((failed+1))\n")
-    script#.push_str("      fi\n")
-    script#.push_str("  else\n")
-    script#.push_str("      printf \"\\x1b[1;31m[FAILED (Compile)]\\x1b[0m\\n\"\n")
-    script#.push_str("      cat .toka_test_out\n")
-    script#.push_str("      failed=$((failed+1))\n")
-    script#.push_str("  fi\n")
-    script#.push_str("  rm -f .toka_test_exe .toka_test_out\n")
-    script#.push_str("done\n")
-    script#.push_str("printf \"\\n\\x1b[1mTest Results:\\x1b[0m \\x1b[1;32m%d passed\\x1b[0m, \\x1b[1;31m%d failed\\x1b[0m\\n\" \"$passed\" \"$failed\"\n")
-    script#.push_str("if [ \"$failed\" -gt 0 ]; then exit 1; fi\nexit 0\n")
-    
-    write_string(string::from(".toka_test_runner.sh"), script.as_str())
-    
-    unsafe {
-        auto res = libc_system(c"bash .toka_test_runner.sh")
-        if res != 0 && check_is_windows() {
-            println("\n\x1b[33m提示：在 Windows 原生命令行下，'toka test' 需要 Bash 环境（如 Git Bash 或 MSYS2）来调度测试执行。\x1b[0m")
-        }
-        
-        remove_file(string::from(".toka_test_runner.sh"))
-        if res != 0 {
-            return 1
-        }
-        return 0
+fn cmd_test(argc: i32, shift: i32) -> i32 {
+    auto helper# = detect_default_lib_path()
+    helper#.push_str("/toolchain/toka_test.py")
+    if !exists(helper.clone()) {
+        println("Error: project test helper missing from active SDK: {}", helper)
+        return 2
     }
+    auto command# = Command::new(string::from("python3"))
+    command#.arg(helper)
+    command#.arg(string::from("--sdk-lib"))
+    command#.arg(detect_default_lib_path())
+    command#.arg(string::from("--tokac"))
+    command#.arg(detect_tokac_path())
+    command#.arg(string::from("--"))
+    auto index# = 2 + shift
+    loop index < argc {
+        command#.arg(env::get_arg(index))
+        index += 1
+    }
+    auto result = command#.try_status()
+    if result.is_err() {
+        println("Error: could not launch Python 3 project test helper; run 'toka doctor'")
+        return 2
+    }
+    return result.unwrap().legacy_code()
 }
 
 fn cmd_doc() -> i32 {
@@ -1461,7 +1440,7 @@ fn main() -> i32 {
     }
     
     if cmd.eq(string::from("test")) {
-        return cmd_test()
+        return cmd_test(argc, shift)
     }
     
     if cmd.eq(string::from("doc")) {

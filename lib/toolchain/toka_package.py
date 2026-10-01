@@ -780,6 +780,7 @@ class Resolver:
         *,
         offline: bool,
         refresh: bool,
+        locked: bool = False,
     ) -> None:
         self.manifest = manifest.resolve()
         self.project = self.manifest.parent
@@ -787,6 +788,8 @@ class Resolver:
         self.state = state.resolve()
         self.offline = offline
         self.refresh = refresh
+        self.locked = locked
+        self.lock_bytes = self.lock_path.read_bytes() if self.lock_path.is_file() else None
         self.old_lock = read_lock(self.lock_path)
         self.entries: dict[str, LockEntry] = {}
         self.requests: dict[str, tuple[str, str, str]] = {}
@@ -1007,11 +1010,15 @@ class Resolver:
 
     def _materialize(self, dependency: Dependency) -> tuple[LockEntry, Path]:
         locked = self._locked_for(dependency)
+        if self.locked and locked is None:
+            raise PackageError("test requires a matching package.lock; run toka fetch: " + dependency.alias)
         if dependency.kind == "path":
             root = Path(dependency.locator)
             if not (root / "package.tk").is_file():
                 raise PackageError("path package has no package.tk: " + dependency.alias)
             digest = tree_sha256(root)
+            if self.locked and digest != locked.content_sha256:
+                raise PackageError("local package changed since package.lock: " + dependency.alias)
             entry = LockEntry(dependency.alias, "path", dependency.locator, dependency.locator, "-", digest, [])
             return entry, root
         if dependency.kind == "git":
@@ -1050,6 +1057,9 @@ class Resolver:
         try:
             for dependency in parse_manifest(self.manifest):
                 self._resolve(dependency)
+            encoded = encode_lock(self.entries)
+            if self.locked and self.lock_bytes is not None and encoded.encode("utf-8") != self.lock_bytes:
+                raise PackageError("test would change package.lock; run toka fetch explicitly")
             for target, source in sorted(self.candidates.items(), key=lambda item: str(item[0])):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if target.exists():
@@ -1077,8 +1087,8 @@ class Resolver:
                 backup = retirement / str(index)
                 os.replace(target, backup)
                 retired.append((target, backup))
-            encoded = encode_lock(self.entries)
-            atomic_write(self.lock_path, encoded)
+            if not self.locked:
+                atomic_write(self.lock_path, encoded)
             return self.entries
         except BaseException:
             for target in reversed(committed):
