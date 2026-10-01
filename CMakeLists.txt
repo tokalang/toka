@@ -618,7 +618,8 @@ if(BUILD_TESTING)
                 COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tools/scripts/test_unsafe_container_boundary_probe.py
                     --build-dir ${CMAKE_BINARY_DIR} --mode production
-                    --section ${section})
+                    --section ${section}
+                    --timing-output ${CMAKE_BINARY_DIR}/unsafe-container-probe-${section}.jsonl)
             set_tests_properties(toka_unsafe_container_production_${section}
                 PROPERTIES TIMEOUT 300)
         endforeach()

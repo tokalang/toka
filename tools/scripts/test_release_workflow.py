@@ -3,6 +3,7 @@
 """Fail closed when qualification, draft creation, or promotion can drift."""
 
 import json
+import hashlib
 from pathlib import Path
 import re
 import subprocess
@@ -106,6 +107,20 @@ def report(target, revision, label):
     }
 
 
+def cancellation_receipt(revision):
+    profile = json.loads((ROOT / "spec/restricted_cancellation_profile.v1.json").read_text())
+    evidence = [dict(item, kind="source", result="pass") for item in profile["source_evidence"]]
+    evidence += [dict(item, kind="native", result="pass") for item in profile["native_evidence"]]
+    return {"schema": "toka.restricted-cancellation-profile-conformance", "version": 1,
+            "candidate_revision": revision, "base_revision": revision, "is_dirty": False,
+            "result": "candidate-pass", "compiler": {"tokac_sha256": "d" * 64,
+            "runtime_object_sha256": "e" * 64}, "evidence": evidence,
+            "profile": {"schema": profile["schema"], "version": profile["version"],
+            "path": "spec/restricted_cancellation_profile.v1.json",
+            "canonical_sha256": hashlib.sha256(json.dumps(profile, sort_keys=True,
+                separators=(",", ":")).encode()).hexdigest()}}
+
+
 def exercise_verifiers():
     with tempfile.TemporaryDirectory(prefix="toka-release-workflow-") as temp:
         root = Path(temp)
@@ -140,11 +155,30 @@ def exercise_verifiers():
                                  "canonical_sha256": "b" * 64},
                     "evidence": [{"result": "pass"}],
                 }), encoding="utf-8")
+            (evidence / ("toka-restricted-cancellation-%s.json" % target)).write_text(
+                json.dumps(cancellation_receipt(revision)), encoding="utf-8")
         summary = root / "summary.json"
         run([sys.executable, str(QUALIFICATION), "--evidence-dir", str(evidence),
              "--revision", revision, "--version-label", label, "--output", str(summary)])
         summary_document = json.loads(summary.read_text(encoding="utf-8"))
         require(summary_document["result"] == "pass", "valid qualification reports were rejected")
+        receipt_path = evidence / "toka-restricted-cancellation-linux-x64.json"
+        for mutation in ("missing", "wrong-revision", "dirty", "incomplete", "skipped", "wrong-profile", "missing-runtime"):
+            invalid = cancellation_receipt(revision)
+            if mutation == "missing":
+                receipt_path.unlink()
+            else:
+                if mutation == "wrong-revision": invalid["candidate_revision"] = "c" * 40
+                elif mutation == "dirty": invalid["is_dirty"] = True
+                elif mutation == "incomplete": invalid["result"] = "incomplete"
+                elif mutation == "skipped": invalid["evidence"][0]["result"] = "skipped (unsupported environment)"
+                elif mutation == "wrong-profile": invalid["profile"]["canonical_sha256"] = "0" * 64
+                elif mutation == "missing-runtime": invalid["compiler"]["runtime_object_sha256"] = ""
+                receipt_path.write_text(json.dumps(invalid), encoding="utf-8")
+            run_expect_failure([sys.executable, str(QUALIFICATION), "--evidence-dir", str(evidence),
+                                "--revision", revision, "--version-label", label,
+                                "--output", str(root / (mutation + "-cancellation-summary.json"))])
+            receipt_path.write_text(json.dumps(cancellation_receipt(revision)), encoding="utf-8")
         reduced = report("linux-x64", revision, label)
         reduced["stages"][1]["counts"]["conformance"]["passed"] = 297
         (evidence / "release-gate-linux-x64.json").write_text(
@@ -315,6 +349,10 @@ def main():
             '"--quick", "--tokac", env["TOKAC"]' in release_gate and
             '"--build-dir", str(build_dir)' in release_gate,
             "release gate does not enforce the Handle/Place quick security gate")
+    require('"tools/scripts/test_restricted_cancellation_profile.py"' in release_gate and
+            '"--conformance-output", str(build_dir / ("toka-restricted-cancellation-%s.json" % args.target))' in release_gate and
+            "build/toka-restricted-cancellation-${{ matrix.name }}.json" in gate,
+            "release gate must execute and upload candidate-bound restricted cancellation evidence")
     for workflow_name, workflow_text in (
         ("release", text), ("promotion", promotion)
     ):

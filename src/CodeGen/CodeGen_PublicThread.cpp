@@ -1,4 +1,5 @@
 #include "toka/CodeGen.h"
+#include "llvm/TargetParser/Triple.h"
 #include "toka/ThreadHandoffPlan.h"
 #include "toka_thread_handoff_v1.h"
 
@@ -201,7 +202,7 @@ PhysEntity CodeGen::genPublicThread(const CallExpr *call) {
     adapter.Mode = adapter.StartedCleanupMode = p->Consuming ? ThreadCallableMode::Consuming : ThreadCallableMode::Repeatable;
     adapter.ABIKey = TOKA_THREAD_HANDOFF_ABI_V1;
     adapter.ContractKey = p->ResultIdentity + ";edge:" + prefix;
-    adapter.ResultTypeKey = p->ResultIdentity + ";target:" + m_Module->getTargetTriple() + ";layout:" + m_Module->getDataLayoutStr();
+    adapter.ResultTypeKey = p->ResultIdentity + ";target:" + llvm::Triple(m_Module->getTargetTriple()).str() + ";layout:" + m_Module->getDataLayoutStr();
     adapter.PacketType = packetTy; adapter.CarrierType = carrierTy;
     adapter.ResultType = resultTy; adapter.ResultSRet = shouldReturnSRet(p->ResultType);
     adapter.ResultUnit = p->ResultType->isUnit(); adapter.ResultHasDrop = p->ResultHasDrop;

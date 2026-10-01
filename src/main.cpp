@@ -2173,14 +2173,14 @@ int main(int argc, char **argv) {
   auto Features = "";
   llvm::TargetOptions opt;
   std::optional<llvm::Reloc::Model> RM = llvm::Reloc::PIC_;
-#if defined(_WIN32) || defined(__MINGW32__)
+#if LLVM_VERSION_MAJOR >= 22
   auto TargetMachine = Target->createTargetMachine(llvm::Triple(TargetTriple), CPU, Features, opt, RM);
 #else
   auto TargetMachine = Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
 #endif
 
   codegen.getModule()->setDataLayout(TargetMachine->createDataLayout());
-#if defined(_WIN32) || defined(__MINGW32__)
+#if LLVM_VERSION_MAJOR >= 22
   codegen.getModule()->setTargetTriple(llvm::Triple(TargetTriple));
 #else
   codegen.getModule()->setTargetTriple(TargetTriple);

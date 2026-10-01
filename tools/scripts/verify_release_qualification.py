@@ -3,9 +3,11 @@
 """Verify that four release-gate reports qualify one exact candidate."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import sys
+import re
 
 
 TARGETS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64")
@@ -17,6 +19,7 @@ STAGES = (
 
 MIN_CTEST_PASSED = 15
 MIN_CONFORMANCE_PASSED = 298
+PROFILE_PATH = Path(__file__).resolve().parents[2] / "spec/restricted_cancellation_profile.v1.json"
 
 
 def integer_count(counts, key):
@@ -102,6 +105,43 @@ def conformance_errors(document, target, revision):
     return errors
 
 
+def restricted_cancellation_errors(document, target, revision, profile):
+    errors = []
+    if document.get("schema") != "toka.restricted-cancellation-profile-conformance" or document.get("version") != 1:
+        errors.append("%s: unsupported restricted cancellation conformance schema" % target)
+    if document.get("candidate_revision") != revision or document.get("base_revision") != revision:
+        errors.append("%s: restricted cancellation revision does not match candidate" % target)
+    if document.get("is_dirty") is not False or document.get("result") != "candidate-pass":
+        errors.append("%s: restricted cancellation evidence is dirty or incomplete" % target)
+    binding = document.get("profile", {})
+    digest = hashlib.sha256(json.dumps(profile, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if binding.get("schema") != profile["schema"] or binding.get("version") != profile["version"] or \
+            binding.get("path") != "spec/restricted_cancellation_profile.v1.json" or binding.get("canonical_sha256") != digest:
+        errors.append("%s: restricted cancellation profile binding is invalid" % target)
+    compiler = document.get("compiler", {})
+    if any(not isinstance(compiler.get(key), str) or not re.fullmatch(r"[0-9a-f]{64}", compiler[key])
+           for key in ("tokac_sha256", "runtime_object_sha256")):
+        errors.append("%s: restricted cancellation compiler/runtime binding is missing" % target)
+    evidence = document.get("evidence", [])
+    required = {("source", item["path"]): set(item["guarantee_ids"]) for item in profile["source_evidence"]}
+    required.update({("native", item["target"]): set(item["guarantee_ids"]) for item in profile["native_evidence"]})
+    seen = set()
+    guarantees = set()
+    for item in evidence:
+        if item.get("kind") not in ("source", "native"):
+            continue
+        key = (item["kind"], item.get("path") if item["kind"] == "source" else item.get("target"))
+        if key in seen or item.get("result") != "pass":
+            errors.append("%s: restricted cancellation evidence is duplicated or incomplete" % target)
+        if set(item.get("guarantee_ids", [])) != required.get(key):
+            errors.append("%s: restricted cancellation guarantee mapping is invalid" % target)
+        seen.add(key)
+        guarantees.update(item.get("guarantee_ids", []))
+    if seen != set(required) or guarantees != {item["id"] for item in profile["guarantees"]}:
+        errors.append("%s: restricted cancellation required coverage is incomplete" % target)
+    return errors
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--evidence-dir", required=True, type=Path)
@@ -159,6 +199,23 @@ def main():
     if len(conformance_digests) != 1 or None in conformance_digests:
         errors.append("TaskHandle conformance records do not bind one contract digest")
 
+    profile = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
+    restricted_conformances = []
+    for target in TARGETS:
+        paths = list(args.evidence_dir.rglob("toka-restricted-cancellation-%s.json" % target))
+        if len(paths) != 1:
+            errors.append("expected one restricted cancellation conformance record for %s" % target)
+            continue
+        try:
+            document = json.loads(paths[0].read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            errors.append("%s: cannot read restricted cancellation conformance: %s" % (target, error))
+            continue
+        errors.extend(restricted_cancellation_errors(document, target, args.revision, profile))
+        restricted_conformances.append({"path": str(paths[0]), "target": target,
+                                       "profile_sha256": document.get("profile", {}).get("canonical_sha256"),
+                                       "result": document.get("result")})
+
     summary = {
         "schema": "toka.release-qualification-summary",
         "version": 1,
@@ -167,6 +224,7 @@ def main():
         "expected_targets": list(TARGETS),
         "reports": reports,
         "taskhandle_conformance": conformances,
+        "restricted_cancellation_conformance": restricted_conformances,
         "errors": errors,
         "result": "pass" if not errors else "fail",
     }

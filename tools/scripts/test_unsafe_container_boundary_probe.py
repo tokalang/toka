@@ -2,10 +2,13 @@
 """Isolated Vec dependency probe; never execute escaping binaries."""
 
 import argparse
+import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -115,12 +118,58 @@ def main():
                         default="production")
     parser.add_argument("--section", choices=("all", "compile", "runtime"),
                         default="all")
+    parser.add_argument("--timing-output", type=Path)
     args = parser.parse_args()
     if args.mode == "diagnose" and args.section != "all":
         parser.error("sections apply only to the production probe")
     build = args.build_dir.resolve()
     compiler = build / "bin/tokac"
     require(compiler.is_file(), "tokac is missing")
+
+    if args.timing_output:
+        args.timing_output.parent.mkdir(parents=True, exist_ok=True)
+        args.timing_output.write_text("")
+
+    def trace(record):
+        line = json.dumps(record, sort_keys=True)
+        print(line, flush=True)
+        if args.timing_output:
+            with args.timing_output.open("a", encoding="utf-8") as stream:
+                stream.write(line + "\n")
+                stream.flush()
+
+    revision = subprocess.check_output(["git", "-c", "core.fsmonitor=false", "rev-parse", "HEAD"],
+                                       cwd=ROOT, text=True).strip()
+    trace({"event": "identity", "section": args.section, "revision": revision,
+           "compiler_sha256": hashlib.sha256(compiler.read_bytes()).hexdigest(),
+           "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+           "fixture_sha256": {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                              for path in sorted(CASES.glob("*.tk"))}})
+
+    def traced_run(command, *, cwd, env, timeout, phase):
+        argv = [str(part) for part in command]
+        start = time.monotonic()
+        process = subprocess.Popen(argv, cwd=cwd, env=env,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True)
+        trace({"event": "start", "section": args.section, "phase": phase,
+               "argv": argv, "pid": process.pid, "monotonic_s": start,
+               "timeout_s": timeout})
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            trace({"event": "timeout", "section": args.section, "phase": phase,
+                   "pid": process.pid, "monotonic_s": time.monotonic(),
+                   "elapsed_s": time.monotonic() - start,
+                   "returncode": process.returncode})
+            raise subprocess.TimeoutExpired(argv, timeout, output=stdout, stderr=stderr)
+        trace({"event": "end", "section": args.section, "phase": phase,
+               "pid": process.pid, "monotonic_s": time.monotonic(),
+               "elapsed_s": time.monotonic() - start,
+               "returncode": process.returncode})
+        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
 
     with tempfile.TemporaryDirectory(prefix="toka-unsafe-container-boundary-") as directory:
         work = Path(directory)
@@ -148,10 +197,12 @@ def main():
             if isolated:
                 command += ["-I", str(overlay_lib)]
             command += [*flags, str(source)]
-            return subprocess.run(command, cwd=overlay_lib if isolated else ROOT,
+            phase = ("compile" if any(flag in command for flag in
+                     ("--check-only", "-c", "--emit-llvm")) else "compile+link")
+            return traced_run(command, cwd=overlay_lib if isolated else ROOT,
                                   env=env if isolated else dict(os.environ, TOKA_LIB=os.pathsep.join(
                                       (str(ROOT / "lib"), str(build / "lib")))),
-                                  capture_output=True, text=True, timeout=60)
+                                  timeout=60, phase=phase)
 
         if args.mode == "diagnose":
             for name in ESCAPES[:4]:
@@ -228,7 +279,7 @@ def main():
             built = compile(source, "-o", str(output))
             require(built.returncode == 0 and output.is_file(),
                     name + ": " + built.stderr)
-            ran = subprocess.run([str(output)], capture_output=True, text=True, timeout=20)
+            ran = traced_run([str(output)], cwd=None, env=None, timeout=20, phase="run")
             require(ran.returncode == 0, name + ": runtime " + ran.stderr)
             print("PASS runtime " + name, flush=True)
 

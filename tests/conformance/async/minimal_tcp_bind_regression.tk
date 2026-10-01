@@ -45,7 +45,7 @@ fn server_accept(cede listener: TcpListener) -> async TcpStream {
     auto owned_listener# = cede listener
     auto stream = owned_listener#.accept_async().await
     assert(stream.is_valid(), "server accepted valid stream")
-    return stream
+    return cede stream
 }
 
 fn coordinator() -> async i32 {

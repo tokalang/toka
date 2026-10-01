@@ -1,0 +1,127 @@
+name: Diagnose 0.11 CI gate fixes
+
+# Isolated diagnostics. No qualification, release or promotion job.
+on:
+  push:
+    branches: [fixes/0.11-ci-gates]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  intel-compile:
+    name: Profile exact e182 Intel compiler
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: driver
+      - uses: actions/checkout@v4
+        with:
+          ref: e182ca43cd68eb88dd928ca116047a68e26168f5
+          path: source
+      - name: Verify baseline and record runner resources
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = e182ca43cd68eb88dd928ca116047a68e26168f5
+          mkdir -p diagnosis
+          {
+            echo "qualification=false"
+            echo "baseline_sha=$(git -C source rev-parse HEAD)"
+            echo "driver_sha=$GITHUB_SHA"
+            echo "logical_cpus=$(sysctl -n hw.logicalcpu)"
+            echo "memory_bytes=$(sysctl -n hw.memsize)"
+            uname -a
+          } > diagnosis/identity.txt
+          (cd source && git ls-files -z tests/semantics/unsafe_container_boundary lib/std/vec.tk | xargs -0 shasum -a 256) > diagnosis/fixtures.sha256
+      - name: Install LLVM 20 dependencies
+        run: |
+          brew install llvm@20 lld@20 zstd openssl@3
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+      - name: Build exact baseline compiler
+        run: |
+          set -euo pipefail
+          cmake -S source -B source/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR="$(brew --prefix llvm@20)/lib/cmake/llvm" \
+            -DLLD_DIR="$(brew --prefix lld@20)/lib/cmake/lld" \
+            -DZSTD_LIBRARY="$(brew --prefix zstd)/lib/libzstd.dylib" \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+          cmake --build source/build --target tokac --parallel 2
+          (cd source && python3 tools/scripts/test_pass.py --prepare-runtime-only)
+          test -z "$(git -C source status --porcelain --untracked-files=no)"
+          shasum -a 256 source/build/bin/tokac >> diagnosis/identity.txt
+      - name: Overlay only measured driver
+        run: |
+          set -euo pipefail
+          cp driver/tools/scripts/test_unsafe_container_boundary_probe.py source/tools/scripts/
+          test "$(git -C source diff --name-only)" = tools/scripts/test_unsafe_container_boundary_probe.py
+          git -C source diff > diagnosis/diagnostic-driver.diff
+          shasum -a 256 source/tools/scripts/test_unsafe_container_boundary_probe.py >> diagnosis/identity.txt
+      - name: Measure all compile subprocesses serially
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          (cd source && python3 -u tools/scripts/test_unsafe_container_boundary_probe.py \
+            --build-dir build --mode production --section compile \
+            --timing-output "$GITHUB_WORKSPACE/diagnosis/compile.jsonl") 2>&1 | tee diagnosis/compile.log
+      - name: Upload diagnostic trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 0.11-intel-compile-diagnostic
+          path: diagnosis/
+          if-no-files-found: error
+
+  windows-dogfood:
+    name: Exercise patched Windows SDK with LLVM 22
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel mingw-w64-x86_64-clang mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-lld mingw-w64-x86_64-llvm mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-openssl mingw-w64-x86_64-python mingw-w64-x86_64-zstd
+      - name: Record identity and build patched SDK
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          set -euo pipefail
+          mkdir -p diagnosis
+          {
+            echo "qualification=false"
+            echo "driver_sha=$GITHUB_SHA"
+            git rev-parse HEAD
+            llvm-config --version
+            clang --version
+          } > diagnosis/identity.txt
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR=/mingw64/lib/cmake/llvm -DLLD_DIR=/mingw64/lib/cmake/lld
+          cmake --build build --parallel 2
+          shasum -a 256 build/bin/tokac.exe >> diagnosis/identity.txt
+      - name: Run existing installed SDK dogfood and cancellation assertions
+        run: |
+          set -euo pipefail
+          export TOKA_LIB="$PWD/lib"
+          python3 tools/scripts/test_developer_experience.py | tee diagnosis/windows-dogfood.json
+          ctest --test-dir build --output-on-failure -R "^toka_async_" | tee diagnosis/async.log
+          python3 tools/scripts/test_taskhandle_lifecycle.py --conformance-output diagnosis/taskhandle.json
+          python3 tools/scripts/test_restricted_cancellation_profile.py \
+            --candidate-sha "$GITHUB_SHA" --conformance-output diagnosis/restricted-cancellation.json
+      - name: Upload Windows diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 0.11-windows-dogfood-diagnostic
+          path: diagnosis/
+          if-no-files-found: warn

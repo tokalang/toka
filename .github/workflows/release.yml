@@ -143,6 +143,8 @@ jobs:
           path: |
             build/release-gate-${{ matrix.name }}.json
             build/taskhandle-lifecycle-conformance-${{ matrix.name }}.json
+            build/toka-restricted-cancellation-${{ matrix.name }}.json
+            build/unsafe-container-probe-*.jsonl
             build/release-gate-work-${{ matrix.name }}/logs
           if-no-files-found: error
 

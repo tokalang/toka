@@ -79,6 +79,7 @@ def main():
     parser.add_argument("--no-build", action="store_true", help="Skip automatic cmake build")
     parser.add_argument("--timeout", type=int, default=15)
     parser.add_argument("--conformance-output", type=Path)
+    parser.add_argument("--candidate-sha", help="Expected fixed source revision for qualification")
     args = parser.parse_args()
 
     build_path = ROOT / args.build_dir
@@ -166,6 +167,10 @@ def main():
     except Exception:
         pass
 
+    if args.candidate_sha:
+        require(base_rev == args.candidate_sha,
+                "restricted cancellation source revision does not match the candidate")
+
     is_dirty = False
     try:
         status_out = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()
@@ -175,8 +180,10 @@ def main():
 
     worktree_digest = compute_worktree_digest(profile, build_path)
     tokac_digest = file_sha256(tokac)
-    rt_obj_path = build_path / "lib" / "sys" / ("toka_rt.o" if sys.platform != "win32" else "toka_rt.obj")
+    rt_obj_path = ROOT / "lib" / "sys" / "toka_rt.o"
     rt_obj_digest = file_sha256(rt_obj_path)
+    require(tokac_digest and rt_obj_digest,
+            "restricted cancellation compiler/runtime object binding is missing")
 
     compiler_version = "unknown"
     try:
@@ -192,6 +199,7 @@ def main():
             "schema": "toka.restricted-cancellation-profile-conformance",
             "version": 1,
             "base_revision": base_rev,
+            "candidate_revision": base_rev,
             "is_dirty": is_dirty,
             "worktree_digest": worktree_digest,
             "compiler": {

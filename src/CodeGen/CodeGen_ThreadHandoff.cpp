@@ -1,6 +1,7 @@
 #include "toka/CodeGen.h"
 #include "toka/ThreadHandoffPlan.h"
 #include "toka_thread_handoff_v1.h"
+#include "llvm/TargetParser/Triple.h"
 
 namespace toka {
 PhysEntity CodeGen::genThreadHandoffProbe(const CallExpr *call) {
@@ -72,7 +73,7 @@ PhysEntity CodeGen::genThreadHandoffProbe(const CallExpr *call) {
   plan.ABIKey = TOKA_THREAD_HANDOFF_ABI_V1;
   plan.ContractKey = source->ResultIdentity + ";mode:" + (source->Consuming ? "consume" : "repeat") +
                      ";edge:" + prefix;
-  plan.ResultTypeKey = source->ResultIdentity + ";target:" + m_Module->getTargetTriple() +
+  plan.ResultTypeKey = source->ResultIdentity + ";target:" + llvm::Triple(m_Module->getTargetTriple()).str() +
                        ";layout:" + m_Module->getDataLayoutStr();
   plan.PacketType = packetType;
   plan.CarrierType = carrierType;
