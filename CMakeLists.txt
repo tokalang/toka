@@ -612,6 +612,10 @@ if(BUILD_TESTING)
         add_test(NAME toka_fz3_diagnostics
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_fz3_diagnostics.py)
+        add_test(NAME toka_module_input_io
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_module_input_io.py
+                --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_string_buffer_migration
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_string_buffer_migration.py

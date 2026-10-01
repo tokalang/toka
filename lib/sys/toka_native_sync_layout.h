@@ -1,9 +1,10 @@
 #ifndef TOKA_NATIVE_SYNC_LAYOUT_H
 #define TOKA_NATIVE_SYNC_LAYOUT_H
 /* Storage reserves used by the private std/sync adapters. This emits no ABI
- * entry or runtime witness. Supported POSIX runtime builds check real headers,
- * not a guessed opaque pthread layout. Other targets remain unqualified. */
-#if !defined(_WIN32)
+ * entry or thread witness. Supported POSIX and MinGW x64 runtime builds check
+ * real headers, not a guessed opaque pthread layout. Other targets remain
+ * unqualified. */
+#if !defined(_WIN32) || (defined(__MINGW32__) && defined(_WIN64) && defined(__x86_64__))
 #include <pthread.h>
 #include <stddef.h>
 #if defined(__cplusplus)
@@ -19,6 +20,9 @@ TOKA_SYNC_ASSERT(sizeof(pthread_cond_t) <= 64, "native condition reserve is too 
 TOKA_SYNC_ASSERT(TOKA_SYNC_ALIGNOF(pthread_mutex_t) <= TOKA_SYNC_ALIGNOF(max_align_t), "mutex malloc alignment");
 TOKA_SYNC_ASSERT(TOKA_SYNC_ALIGNOF(pthread_rwlock_t) <= TOKA_SYNC_ALIGNOF(max_align_t), "rwlock malloc alignment");
 TOKA_SYNC_ASSERT(TOKA_SYNC_ALIGNOF(pthread_cond_t) <= TOKA_SYNC_ALIGNOF(max_align_t), "condition malloc alignment");
+#if defined(_WIN32)
+TOKA_SYNC_ASSERT(TOKA_SYNC_ALIGNOF(max_align_t) >= 16, "MinGW x64 malloc payload alignment");
+#endif
 #undef TOKA_SYNC_ASSERT
 #undef TOKA_SYNC_ALIGNOF
 #endif

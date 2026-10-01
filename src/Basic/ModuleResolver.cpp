@@ -9,6 +9,7 @@
 #include "toka/PathUtils.h"
 #include "toka/InterfaceVersion.h"
 #include <fstream>
+#include <filesystem>
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -546,22 +547,39 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       }
   }
 
+  std::error_code inputError;
+  if (!sourceOverride && !std::filesystem::is_regular_file(resolvedPath, inputError)) {
+      DiagnosticEngine::report(DiagLoc{}, DiagID::ERR_FILE_IO,
+                               "Module input is not a regular file: " + PathUtils::normalize(resolvedPath));
+      return false;
+  }
   std::string canonicalPath = PathUtils::canonicalize(resolvedPath);
   if (outActualPath) {
       *outActualPath = canonicalPath;
   }
 
   auto getFileHash = [&](const std::string &filePath) -> std::string {
+      std::error_code error;
+      if (!std::filesystem::is_regular_file(filePath, error)) return "";
       std::ifstream ifs(filePath, std::ios::binary);
       if (!ifs) return "";
-      std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-      return calculateFNV1a(content);
+      try {
+          std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+          return calculateFNV1a(content);
+      } catch (const std::ios_base::failure &) {
+          return "";
+      }
   };
 
   bool finalIsInterface = (resolvedPath.length() >= 4 && resolvedPath.substr(resolvedPath.length() - 4) == ".tki");
   std::string contentHash = sourceOverride
       ? calculateFNV1a(*sourceOverride)
       : getFileHash(resolvedPath);
+  if (!sourceOverride && contentHash.empty()) {
+      DiagnosticEngine::report(DiagLoc{}, DiagID::ERR_FILE_IO,
+                               "Could not read module input: " + PathUtils::normalize(resolvedPath));
+      return false;
+  }
   if (!finalIsInterface) {
       sourceHash = contentHash;
   }

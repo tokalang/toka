@@ -134,6 +134,10 @@ pub fn __factory_test() -> i32 {
 ''')
         compile_case("readonly-read")
         positive += 1
+        # The MinGW x64 storage qualification does not admit other Windows ABIs.
+        for triple in ("x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"):
+            compile_case("unqualified-" + triple, ["--target", triple],
+                         succeeds=False, diagnostic="UnqualifiedNativeTarget")
 
         # Resolver trust matters: an ordinary source function with the same
         # spelling is not assigned a private contract (and a native-plan fault
@@ -145,7 +149,7 @@ fn main() -> i32 { return __sync_mutex_create(0) }
         compile_case("same-name-user", ["--native-sync-factory-fault=missing"])
         positive += 1
         print(f"native factory plans: {positive} source positives, {fault_count} E0701/no-artifact faults, "
-              "invalid-parent/recursive-factory and 2 readonly rejections (strict shadow parity); "
+              "invalid-parent/recursive-factory, 2 unqualified Windows ABI denials and 2 readonly rejections (strict shadow parity); "
               "no thread witness granted")
 
 

@@ -92,32 +92,34 @@ jobs:
           CXX: clang++
         run: |
           set -euo pipefail
-          mkdir -p diagnosis
+          mkdir -p build/diagnosis
           {
             echo "qualification=false"
             echo "driver_sha=$GITHUB_SHA"
             git rev-parse HEAD
             llvm-config --version
             clang --version
-          } > diagnosis/identity.txt
+          } > build/diagnosis/identity.txt
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_DIR=/mingw64/lib/cmake/llvm -DLLD_DIR=/mingw64/lib/cmake/lld
           cmake --build build --parallel 2
-          shasum -a 256 build/bin/tokac.exe >> diagnosis/identity.txt
+          shasum -a 256 build/bin/tokac.exe >> build/diagnosis/identity.txt
       - name: Run existing installed SDK dogfood and cancellation assertions
         run: |
           set -euo pipefail
           export TOKA_LIB="$PWD/lib"
-          python3 tools/scripts/test_developer_experience.py | tee diagnosis/windows-dogfood.json
-          ctest --test-dir build --output-on-failure -R "^toka_async_" | tee diagnosis/async.log
-          python3 tools/scripts/test_taskhandle_lifecycle.py --conformance-output diagnosis/taskhandle.json 2>&1 | tee diagnosis/taskhandle.log
+          python3 tools/scripts/test_developer_experience.py | tee build/diagnosis/windows-dogfood.json
+          ctest --test-dir build --output-on-failure -R "^toka_async_" | tee build/diagnosis/async.log
+          python3 tools/scripts/test_windows_sync_storage.py 2>&1 | tee build/diagnosis/windows-sync-storage.log
+          python3 tools/scripts/test_native_sync_factory_plans.py --build-dir build 2>&1 | tee build/diagnosis/native-factory.log
+          python3 tools/scripts/test_taskhandle_lifecycle.py --conformance-output build/diagnosis/taskhandle.json 2>&1 | tee build/diagnosis/taskhandle.log
           python3 tools/scripts/test_restricted_cancellation_profile.py \
-            --candidate-sha "$GITHUB_SHA" --conformance-output diagnosis/restricted-cancellation.json \
-            2>&1 | tee diagnosis/restricted-cancellation.log
+            --candidate-sha "$GITHUB_SHA" --conformance-output build/diagnosis/restricted-cancellation.json \
+            2>&1 | tee build/diagnosis/restricted-cancellation.log
       - name: Upload Windows diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: 0.11-windows-dogfood-diagnostic
-          path: diagnosis/
+          path: build/diagnosis/
           if-no-files-found: warn

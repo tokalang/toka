@@ -56,7 +56,7 @@ def retain_failure(command, cwd, result):
         try:
             stack = subprocess.run(
                 [debugger, "--batch", "-ex", "set pagination off", "-ex", "run",
-                 "-ex", "thread apply all bt full", "--args", *map(str, command)],
+                 "-ex", "thread apply all bt", "--args", *map(str, command)],
                 cwd=str(cwd), env=debugger_env, stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT, timeout=60,
             )

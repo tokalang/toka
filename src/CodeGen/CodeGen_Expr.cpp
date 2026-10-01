@@ -5572,11 +5572,13 @@ bool CodeGen::validateNativeSyncFactory(const CallExpr *call) {
     return reject("InputEdgeMismatch");
   if (!nativeOnly && (!p->Input->ResolvedType || !p->ElementType->equals(*p->Input->ResolvedType)))
     return reject("InputMorphologyMismatch");
-  // This source adapter uses malloc, whose target reserve is only qualified
-  // for the existing 64-bit POSIX targets. Never guess an element stride or
-  // admit an over-aligned allocation on the basis of sizeof alone.
+  // The runtime checks the real pthread storage reserves. MinGW x64 also
+  // checks its malloc alignment; other Windows ABIs remain unqualified.
+  // Never admit an over-aligned allocation on the basis of sizeof alone.
   llvm::Triple target(m_Module->getTargetTriple());
-  if ((!target.isOSDarwin() && !target.isOSLinux()) ||
+  const bool qualifiedMinGW = target.isWindowsGNUEnvironment() &&
+                              target.getArch() == llvm::Triple::x86_64;
+  if ((!target.isOSDarwin() && !target.isOSLinux() && !qualifiedMinGW) ||
       (target.getArch() != llvm::Triple::aarch64 && target.getArch() != llvm::Triple::x86_64))
     return reject("UnqualifiedNativeTarget");
   if (!nativeOnly) {
