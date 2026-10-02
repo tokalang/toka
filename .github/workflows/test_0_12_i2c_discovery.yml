@@ -1,7 +1,5 @@
 name: 0.12 I2-C frozen discovery observations
 on:
-  push:
-    branches: [implement/0.12-i2c-discovery]
   workflow_dispatch:
 permissions:
   contents: read

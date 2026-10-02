@@ -161,6 +161,19 @@ class Controls(unittest.TestCase):
         self.assertEqual(bytes(delivered),path.read_bytes());self.assertEqual(relay.pending_bytes(),0)
         self.assertFalse(relay.failed)
 
+    def test_invalid_entries_keep_reason_input_and_normalized_path(self):
+        source(self.root,content='exit')
+        (self.root/'data.txt').write_text('ordinary file')
+        for entry in ('missing.tk','data.txt','tests','../outside.tk'):
+            with self.subTest(entry=entry):
+                with patch.object(runner.Supervisor,'run',side_effect=AssertionError('selection must not launch a child')):
+                    report,err=self.invoke([entry,'--allow-empty','--filter','ok_'])
+                self.assertEqual(report['exit_code'],2);self.assertEqual(report['result'],'configuration_error')
+                self.assertEqual(report['reason'],'invalid_entry');self.assertIsNone(report['summary']['total']);self.assertEqual(report['tests'],[])
+                self.assertEqual(report['errors'][0]['input'],entry)
+                self.assertEqual(report['errors'][0]['normalized_path'],str((self.root/entry).resolve()))
+                self.assertEqual(report['identity']['status'],'not_checked');self.assertEqual(report['preparation'],{})
+
     def test_invalid_utf8_path_is_recoverable_configuration_error(self):
         import base64
         path=os.fsdecode(os.fsencode(self.root)+b'/tests/invalid\xff_test.tk')

@@ -2,7 +2,7 @@ name: 0.12 I2-C Error, Report and Shared-State Coverage Preview
 
 on:
   push:
-    branches: [implement/0.12-i2c-coverage, implement/0.12-i2c-r08]
+    branches: [implement/0.12-i2c-coverage, implement/0.12-i2c-r08, implement/0.12-i2c-discovery]
     paths:
       - .github/workflows/test_0_12_i2c_coverage.yml
       - lib/toolchain/toka_test*.py
@@ -12,6 +12,8 @@ on:
       - tools/scripts/test_toka_test_i2a.py
       - tools/scripts/test_toka_test_i2b.py
       - tools/scripts/test_toka_test_i2c.py
+      - tools/scripts/test_toka_test_discovery.py
+      - tools/scripts/ledger_toka_test_discovery.py
       - tools/scripts/test_toka_test_link_driver.py
       - tools/scripts/test_toka_test_r08.py
       - tools/scripts/test_toka_test_i2c_batch.py
@@ -248,6 +250,7 @@ jobs:
           assert hashlib.sha256((bundle/'test_toka_test_i2c_batch.py').read_bytes()).hexdigest()==h['harness_sha256']
           assert hashlib.sha256((bundle/'ledger_toka_i2c_batch.py').read_bytes()).hexdigest()==h['ledger_script_sha256']
           assert hashlib.sha256((bundle/'test_toka_test_r08.py').read_bytes()).hexdigest()==h['r08_script_sha256']
+          for name,value in h['discovery_files_sha256'].items():assert hashlib.sha256((bundle/name).read_bytes()).hexdigest()==value
           install=Path(os.environ['RUNNER_TEMP'])/'sdk-only-install';install.mkdir()
           with tarfile.open(archive) as package:package.extractall(install,filter='data')
           sdk=next(install.iterdir())
@@ -275,7 +278,13 @@ jobs:
           if [ "${{ runner.os }}" = Linux ]; then extra=(--r08 "$RUNNER_TEMP/i2c-batch/r08-driver"); fi
           python3 "$RUNNER_TEMP/frozen-input/i2c-harness/ledger_toka_i2c_batch.py" "${extra[@]}" \
             --target "${{ matrix.target }}" --prior "$RUNNER_TEMP/replayed-regression/i2c-matrix.json" \
-            --batch "$RUNNER_TEMP/i2c-batch" --regression "$RUNNER_TEMP/replayed-regression/i2c-installed" --output "$RUNNER_TEMP/i2c-batch/coverage-ledger.json"
+            --batch "$RUNNER_TEMP/i2c-batch" --regression "$RUNNER_TEMP/replayed-regression/i2c-installed" --output "$RUNNER_TEMP/i2c-batch/base-coverage-ledger.json"
+      - name: Discovery, paths and literal filters with real OS permission denial
+        run: |
+          sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
+          cd "$RUNNER_TEMP/frozen-input/i2c-harness"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_discovery.py --sdk "$sdk" --output "$RUNNER_TEMP/i2c-batch/discovery"
+          python3 ledger_toka_test_discovery.py --prior "$RUNNER_TEMP/i2c-batch/base-coverage-ledger.json" --discovery "$RUNNER_TEMP/i2c-batch/discovery" --output "$RUNNER_TEMP/i2c-batch/coverage-ledger.json"
       - name: Retain actual SDK-only results and all faults/incomplete cases
         if: always()
         uses: actions/upload-artifact@v4

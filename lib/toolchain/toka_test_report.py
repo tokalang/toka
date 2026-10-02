@@ -184,6 +184,7 @@ def materialize(report, receipt):
             report['errors']=[{'code':None,'message':receipt.get('error') or receipt.get('persistence_error') or receipt.get('reason') or 'test preparation failed',
                                'phase':report['termination']['phase'],'category':receipt.get('error_category',kind),'os_error':receipt.get('os_error') if receipt.get('os_error') is not None else (last.get('os_error') if last else None),
                                'source':source_origin(None,graph,sdk_root)}]
+    if 'entry_error' in receipt and report['errors']:report['errors'][0].update(receipt['entry_error'])
     report['interrupt_signal']=receipt.get('interrupt_signal');report['interrupt_count']=receipt.get('interrupt_count',0)
     report['finalized']=receipt.get('finalized',False)
     return report

@@ -43,6 +43,22 @@ class ConfigurationError(PreviewError):
     category = 'configuration_error'
 
 
+class InvalidEntryError(ConfigurationError):
+    reason = 'invalid_entry'
+    def __init__(self, message, argument, normalized_path):
+        try:
+            argument.encode('utf-8')
+            if normalized_path is not None: normalized_path.encode('utf-8')
+            self.entry_input, self.normalized_path = argument, normalized_path
+            detail = '; input=' + argument
+            if normalized_path is not None: detail += '; normalized_path=' + normalized_path
+        except UnicodeError:
+            self.entry_input = self.normalized_path = None
+            self.raw_input_base64 = base64.b64encode(os.fsencode(argument)).decode('ascii')
+            detail = ''
+        super().__init__(message + detail)
+
+
 class Parser(argparse.ArgumentParser):
     def error(self, message):
         raise PreviewError(message)
@@ -111,6 +127,12 @@ def find_project(cwd):
 
 def validate_entry(argument, cwd, root):
     raw = Path(argument)
+    try:
+        normalized_path = str((raw if raw.is_absolute() else cwd / raw).resolve())
+    except (OSError, ValueError, RuntimeError):
+        normalized_path = None
+    def invalid(message):
+        return InvalidEntryError(message, argument, normalized_path)
     current = Path(raw.anchor) if raw.is_absolute() else cwd
     parts = raw.parts[1:] if raw.is_absolute() else raw.parts
     for part in parts:
@@ -122,19 +144,19 @@ def validate_entry(argument, cwd, root):
         parent = current.resolve()
         current = current / part
         if current.is_symlink() and (parent == root or root in parent.parents):
-            raise PreviewError('test entry cannot traverse a symbolic link: ' + argument)
+            raise invalid('test entry cannot traverse a symbolic link')
     try:
         path = current.resolve(strict=True)
         relative = path.relative_to(root)
     except (ValueError, OSError) as error:
-        raise PreviewError('test entry is missing or outside the project: ' + argument) from error
+        raise invalid('test entry is missing or outside the project') from error
     if not path.is_file() or path.suffix != '.tk':
-        raise PreviewError('test entry must be a regular .tk file: ' + argument)
+        raise invalid('test entry must be a regular .tk file')
     for directory in path.parents:
         if directory == root:
             break
         if (directory / 'package.tk').exists():
-            raise PreviewError('test entry belongs to a nested project: ' + argument)
+            raise invalid('test entry belongs to a nested project')
     # Resolve actual spelling even on case-insensitive filesystems.
     actual = root
     for part in relative.parts:
@@ -143,7 +165,7 @@ def validate_entry(argument, cwd, root):
             target = actual / part
             choices = [p for p in actual.iterdir() if p.name.casefold() == part.casefold() and p.samefile(target)]
         if len(choices) != 1:
-            raise PreviewError('ambiguous entry path: ' + argument)
+            raise invalid('ambiguous entry path')
         actual = choices[0]
     with actual.open('rb') as stream:
         stream.read(1)
@@ -151,9 +173,7 @@ def validate_entry(argument, cwd, root):
     try:
         identifier.encode('utf-8')
     except UnicodeError as error:
-        invalid=PreviewError('test paths must be valid UTF-8')
-        invalid.raw_input_base64=base64.b64encode(os.fsencode(argument)).decode('ascii')
-        raise invalid from error
+        raise invalid('test paths must be valid UTF-8') from error
     return identifier, actual
 
 
@@ -693,6 +713,9 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started
     except (OSError, packages.PackageError, PreviewError, SupervisionError) as error:
         receipt['result'] = 'configuration_error' if receipt.get('active_stage')=='selection' or getattr(error,'category',None)=='configuration_error' else 'infrastructure_or_configuration_error'
         receipt['error'] = str(error)
+        if isinstance(error, InvalidEntryError):
+            receipt['reason'] = error.reason
+            receipt['entry_error'] = {'input': error.entry_input, 'normalized_path': error.normalized_path}
         receipt['error_category'] = 'configuration_error' if receipt['result']=='configuration_error' else 'infrastructure_error'
         receipt['os_error'] = getattr(error,'errno',None)
         if hasattr(error,'raw_input_base64'):report['raw_inputs_base64'].append(error.raw_input_base64)
