@@ -55,6 +55,35 @@ def group_members(pgid):
     raise SupervisionError('unsupported process group membership backend')
 
 
+class OutputTail:
+    """Regular-file capture avoids pipe EOF hangs from descendants; relay is live."""
+    def __init__(self, paths):
+        self.paths=paths;self.offsets={str(path):0 for path in paths};self.failed=False
+    def pump(self):
+        if self.failed:return
+        try:
+            for path in self.paths:
+                with path.open('rb') as stream:
+                    stream.seek(self.offsets[str(path)])
+                    for _ in range(4):
+                        data=stream.read(65536)
+                        if not data:break
+                        self.offsets[str(path)]+=len(data)
+                        target=getattr(sys.stderr,'buffer',None)
+                        if target is not None:
+                            import fcntl
+                            flags=fcntl.fcntl(target.fileno(),fcntl.F_GETFL)
+                            try:
+                                fcntl.fcntl(target.fileno(),fcntl.F_SETFL,flags|os.O_NONBLOCK)
+                                position=0
+                                while position<len(data):position+=os.write(target.fileno(),data[position:])
+                            finally:fcntl.fcntl(target.fileno(),fcntl.F_SETFL,flags)
+                        else:sys.stderr.write(data.decode('utf-8',errors='replace'));sys.stderr.flush()
+        except (OSError,ValueError):
+            self.failed=True
+            raise
+
+
 class Supervisor:
     def __init__(self):
         self.interrupt_signal = None
@@ -114,6 +143,8 @@ class Supervisor:
                   'cleanup': {'status': 'not_needed', 'direct_child_reaped': False,
                               'group_gone': False, 'logs_closed': False}}
         child = None
+        relay = None
+        cleanup_started = None
         cleanup = result['cleanup']
         try:
             with stdout_path.open('xb') as stdout, stderr_path.open('xb') as stderr:
@@ -122,8 +153,10 @@ class Supervisor:
                                          stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
                                          start_new_session=True)
                 result['pid'] = result['pgid'] = child.pid
+                relay=OutputTail([stdout_path,stderr_path])
                 try:
                     while True:
+                        relay.pump()
                         ended = self.exited(child.pid)
                         if self.interrupt_signal is not None:
                             result['trigger'] = 'interrupt'
@@ -138,7 +171,10 @@ class Supervisor:
                         time.sleep(0.01)
                 except (OSError, SupervisionError) as error:
                     result['supervision_error'] = str(error)
+                    result['os_error'] = getattr(error,'errno',None)
                     result['trigger'] = 'supervision_error'
+                result['execution_duration_ms']=(time.monotonic()-started)*1000
+                cleanup_started=time.monotonic()
                 # All signals precede waitpid: a zombie leader is still our anchor.
                 if result['trigger'] is not None:
                     cleanup['status'] = 'pending'
@@ -149,6 +185,7 @@ class Supervisor:
                         while time.monotonic() < until:
                             if self.exited(child.pid) and not (self.members(child.pid) - {child.pid}):
                                 break
+                            relay.pump()
                             time.sleep(0.01)
                         else:
                             self.send(child.pid, signal.SIGKILL)
@@ -180,10 +217,14 @@ class Supervisor:
                     cleanup['group_gone'] = self.gone(child.pid)
                 if not cleanup['direct_child_reaped'] or not cleanup['group_gone']:
                     cleanup['error'] = cleanup.get('error', 'bounded exit confirmation failed')
+                while any(path.stat().st_size>relay.offsets[str(path)] for path in relay.paths) and not relay.failed:
+                    relay.pump()
             cleanup['logs_closed'] = True
         except (OSError, SupervisionError) as error:
             cleanup['error'] = str(error)
             result['supervision_error'] = str(error)
+            result['os_error'] = getattr(error,'errno',None)
+        cleanup['duration_ms']=(time.monotonic()-cleanup_started)*1000 if cleanup_started is not None else None
         if child is None:
             result['launch_error'] = cleanup.get('error', 'child not started')
             cleanup['status'] = 'not_needed'
@@ -195,3 +236,33 @@ class Supervisor:
         result['interrupt_signal'] = self.interrupt_signal
         result['interrupt_count'] = self.interrupt_count
         return result
+
+
+def streamed_run(command, **options):
+    """Native worker tools stay in its anchored group; retain and relay their pipes."""
+    import selectors
+    check=options.pop('check',False)
+    text=options.pop('text',False)
+    if options.get('stdout')!=subprocess.PIPE or options.get('stderr')!=subprocess.PIPE:
+        return subprocess.run(command,check=check,text=text,**options)
+    child=subprocess.Popen(command,**options)
+    buffers={'stdout':bytearray(),'stderr':bytearray()}
+    with selectors.DefaultSelector() as selector:
+        selector.register(child.stdout,selectors.EVENT_READ,'stdout')
+        selector.register(child.stderr,selectors.EVENT_READ,'stderr')
+        while selector.get_map():
+            for key,event in selector.select(.05):
+                data=os.read(key.fileobj.fileno(),65536)
+                if not data:
+                    selector.unregister(key.fileobj);key.fileobj.close();continue
+                buffers[key.data].extend(data)
+                stream=getattr(sys.stdout if key.data=='stdout' else sys.stderr,'buffer',None)
+                if stream is not None:stream.write(data);stream.flush()
+                # OS fd 2 remains the worker's outer capture file despite Python redirects.
+                os.write(2,data)
+    code=child.wait()
+    stdout,stderr=(bytes(buffers[name]) for name in ('stdout','stderr'))
+    if text:stdout,stderr=stdout.decode('utf-8',errors='replace'),stderr.decode('utf-8',errors='replace')
+    result=subprocess.CompletedProcess(command,code,stdout,stderr)
+    if check and code:raise subprocess.CalledProcessError(code,command,stdout,stderr)
+    return result

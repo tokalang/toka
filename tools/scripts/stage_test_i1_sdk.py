@@ -41,17 +41,18 @@ def main():
     (work/'manager-build.stdout').write_bytes(r.stdout);(work/'manager-build.stderr').write_bytes(r.stderr)
     if r.returncode:raise SystemExit('Preview manager build failed; original manager was not replaced')
     shutil.copyfile(work/'candidate-toka',sdk/'bin/toka');(sdk/'bin/toka').chmod(0o755)
-    for name in ['toka_test.py','toka_package.py','toka_test_process.py']:
+    for name in ['toka_test.py','toka_package.py','toka_test_process.py','toka_test_report.py']:
         shutil.copyfile(ROOT/'lib/toolchain'/name,sdk/'lib/toolchain'/name)
     assert sha(sdk/'bin/tokac')==compiler_before and sha(sdk/'lib/sys/toka_rt.o')==runtime_before
-    (work/'stage-identity.json').write_text(json.dumps({'result':'pass','stage':'I2-A-preview',
+    (work/'stage-identity.json').write_text(json.dumps({'result':'pass','stage':'I2-B-preview',
         'base_sdk_revision':'57b0f7dd7d52bdc24c6dde0457803240e5c62e8a','base_sdk_archive_sha256':HASHES[a.target],
         'candidate_sha':subprocess.check_output(['git','-c','core.fsmonitor=false','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
         'target':a.target,'compiler_sha256':compiler_before,'runtime_sha256':runtime_before,
         'manager_sha256':sha(sdk/'bin/toka'),'runner_sha256':sha(sdk/'lib/toolchain/toka_test.py'),
+        'report_sha256':sha(sdk/'lib/toolchain/toka_test_report.py'),
         'supervisor_sha256':sha(sdk/'lib/toolchain/toka_test_process.py'),
         'resolver_sha256':sha(sdk/'lib/toolchain/toka_package.py'),'manager_build_command':command,
-        'published_sdk_modified':False,'private_sdk_components_modified':['bin/toka','lib/toolchain/toka_test.py','lib/toolchain/toka_package.py','lib/toolchain/toka_test_process.py'],'stable_test_v1':False},indent=2)+'\n')
+        'published_sdk_modified':False,'private_sdk_components_modified':['bin/toka','lib/toolchain/toka_test.py','lib/toolchain/toka_package.py','lib/toolchain/toka_test_process.py','lib/toolchain/toka_test_report.py'],'stable_test_v1':False},indent=2)+'\n')
     print(sdk)
 
 

@@ -34,7 +34,7 @@ class I1Tests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='toka-i1-')
         self.root = Path(self.temp.name) / 'project'; manifest(self.root)
-        self.sdk = Path(self.temp.name) / 'sdk'; self.sdk.mkdir()
+        self.sdk = Path(self.temp.name) / 'sdk'; self.sdk.mkdir(); (self.sdk/'sys').mkdir(); (self.sdk/'sys/toka_rt.o').write_bytes(b'controlled runtime fixture')
         self.compiler = Path(self.temp.name) / 'compiler'
         self.compiler.write_text('''#!/usr/bin/env python3
 import json,os,pathlib,sys
@@ -109,7 +109,7 @@ exe.chmod(0o755)
         with self.assertRaises(runner.PreviewError):self.invoke(['--','--json'])
 
     def test_options_do_not_promise_i2(self):
-        for args in [['--json'],['--run-timeout-ms','0'],['--compile-timeout-ms','-5'],['--allow-empty','--allow-empty'],['--filter',''],['--help','ok.tk']]:
+        for args in [['--run-timeout-ms','0'],['--compile-timeout-ms','-5'],['--allow-empty','--allow-empty'],['--filter',''],['--help','ok.tk']]:
             with self.assertRaises(runner.PreviewError):self.invoke(args)
 
     def test_failures_continue_serial_and_logs_retained(self):

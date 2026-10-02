@@ -82,6 +82,7 @@ class Controls(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='i2a-control-');self.root=Path(self.temp.name)
         self.counter=0
+        self.sdk=self.root/'control-lib';(self.sdk/'sys').mkdir(parents=True);(self.sdk/'sys/toka_rt.o').write_bytes(b'controlled runtime fixture')
     def tearDown(self):self.temp.cleanup()
     def phase(self, mode, budget=100, supervisor=None):
         self.counter+=1;folder=self.root/str(self.counter);folder.mkdir()
@@ -130,7 +131,7 @@ class Controls(unittest.TestCase):
             instance._timeout_fault=args[3]=='run'
             return originalrun(instance,*args,**kwargs)
         with patch.object(processes.Supervisor,'gone',fault),patch.object(processes.Supervisor,'run',run),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
-            with self.assertRaises(runner.PreviewError):runner.execute_preview(['--run-timeout-ms','100'],ROOT/'lib',compiler,root)
+            with self.assertRaises(runner.PreviewError):runner.execute_preview(['--run-timeout-ms','100'],self.sdk,compiler,root)
         r=receipt(root);self.assertEqual(r['exit_code'],2);self.assertEqual([t['result'] for t in r['tests']],['infrastructure_error','not_run'])
         self.assertEqual(r['tests'][0]['run']['trigger'],'timeout')
     def test_preparation_timeout_uses_independent_budget(self):
@@ -140,7 +141,7 @@ class Controls(unittest.TestCase):
         (root/'.toka').mkdir();lock=(root/'.toka/test-context.lock').open('w');fcntl.flock(lock,fcntl.LOCK_EX)
         try:
             with patch.object(runner,'DEFAULT_PREPARE_MS',100),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
-                with self.assertRaises(runner.PreviewError):runner.execute_preview([],ROOT/'lib',compiler,root)
+                with self.assertRaises(runner.PreviewError):runner.execute_preview([],self.sdk,compiler,root)
         finally:lock.close()
         r=receipt(root);self.assertEqual(r['exit_code'],2);self.assertEqual(r['tests'][0]['result'],'not_run')
         self.assertEqual(r['preparation']['context']['trigger'],'timeout');assert_confirmed(r['preparation']['context'])
@@ -152,7 +153,7 @@ class Controls(unittest.TestCase):
         (root/'.toka').mkdir();stream=(root/'.toka/test-context.lock').open('w');fcntl.flock(stream,fcntl.LOCK_EX)
         started=time.monotonic()
         try:
-            child=subprocess.run([sys.executable,str(ROOT/'lib/toolchain/toka_test.py'),'--sdk-lib',str(ROOT/'lib'),'--tokac',str(compiler),'--','--compile-timeout-ms','2000'],cwd=root,capture_output=True,timeout=6)
+            child=subprocess.run([sys.executable,str(ROOT/'lib/toolchain/toka_test.py'),'--sdk-lib',str(self.sdk),'--tokac',str(compiler),'--','--compile-timeout-ms','2000'],cwd=root,capture_output=True,timeout=6)
         finally:stream.close()
         self.assertEqual(child.returncode,2,(child.stdout,child.stderr));self.assertLess(time.monotonic()-started,6)
         r=receipt(root);self.assertEqual(r['budgets_ms']['lock_wait'],2000)
@@ -180,9 +181,9 @@ class Controls(unittest.TestCase):
             return original_write(path,data)
         with patch('builtins.print',printer),patch.object(runner.packages,'atomic_write',writer),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
             if infrastructure or location=='persistence-error':
-                with self.assertRaises((runner.PreviewError,OSError)):runner.execute_preview([],ROOT/'lib',compiler,root)
+                with self.assertRaises((runner.PreviewError,OSError)):runner.execute_preview([],self.sdk,compiler,root)
                 code=2
-            else:code=runner.execute_preview([],ROOT/'lib',compiler,root)
+            else:code=runner.execute_preview([],self.sdk,compiler,root)
         r=receipt(root);self.assertTrue(injected);self.assertTrue(r['finalized'])
         self.assertEqual(code,r['exit_code']);self.assertEqual(r['interrupt_signal'],signal.SIGINT)
         self.assertEqual(code,2 if infrastructure or location=='persistence-error' else 130)
@@ -202,7 +203,7 @@ class Controls(unittest.TestCase):
                 injected=True;os.kill(os.getpid(),signal.SIGTERM)
             return previous
         with patch.object(signal,'pthread_sigmask',mask),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
-            code=runner.execute_preview(['--allow-empty'],ROOT/'lib',self.root/'unused',root)
+            code=runner.execute_preview(['--allow-empty'],self.sdk,self.root/'unused',root)
         r=receipt(root);self.assertEqual(code,130);self.assertEqual(r['exit_code'],130)
         self.assertEqual(r['interrupt_signal'],signal.SIGTERM);self.assertTrue(r['finalized'])
     def test_post_commit_signal_does_not_change_frozen_outcome(self):
@@ -214,7 +215,7 @@ class Controls(unittest.TestCase):
                 injected=True;os.kill(os.getpid(),signal.SIGINT)
             return original(path,data)
         with patch.object(runner.packages,'atomic_write',writer),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
-            code=runner.execute_preview(['--allow-empty'],ROOT/'lib',self.root/'unused',root)
+            code=runner.execute_preview(['--allow-empty'],self.sdk,self.root/'unused',root)
         r=receipt(root);self.assertTrue(injected);self.assertEqual(code,0);self.assertEqual(r['exit_code'],0)
         self.assertIsNone(r['interrupt_signal']);self.assertTrue(r['finalized'])
 
@@ -226,7 +227,7 @@ class Controls(unittest.TestCase):
         source(dep,'lib/official/dep.tk','pub fn answer() -> i32 { return 42 }\n')
         manifest(root,'dep="./dep",')
         runner.packages.Resolver(root/'package.tk',root/'package.lock',root/'.toka',offline=False,refresh=False).run()
-        sdk=self.root/'sdk';(sdk/'toolchain').mkdir(parents=True)
+        sdk=self.root/'sdk';(sdk/'toolchain').mkdir(parents=True);(sdk/'sys').mkdir();(sdk/'sys/toka_rt.o').write_bytes(b'controlled runtime fixture')
         shutil.copyfile(ROOT/'tools/scripts/toka_build.py',sdk/'toolchain/toka_build.py')
         for name in ('toka_package.py','toka_safe_extract.py'):
             shutil.copyfile(ROOT/'lib/toolchain'/name,sdk/'toolchain'/name)
@@ -242,7 +243,7 @@ class Controls(unittest.TestCase):
 
     def test_missing_supervision_module_returns_two(self):
         helper=self.root/'sdk-helper';helper.mkdir()
-        for name in ('toka_test.py','toka_package.py','toka_safe_extract.py'):
+        for name in ('toka_test.py','toka_package.py','toka_safe_extract.py','toka_test_report.py'):
             shutil.copyfile(ROOT/'lib/toolchain'/name,helper/name)
         env=dict(os.environ);env.pop('PYTHONPATH',None)
         result=subprocess.run([sys.executable,str(helper/'toka_test.py'),'--sdk-lib',str(helper),'--tokac','unused','--','--help'],env=env,capture_output=True,timeout=10)

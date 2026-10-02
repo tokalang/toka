@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Project test Preview: I2-A supervision; stable JSON belongs to I2-B."""
+"""Preview project tests: supervised execution and C6 reports; I2-C is pending."""
 from __future__ import annotations
 
 import argparse
+import base64
 from contextlib import contextmanager
 import contextlib
 import hashlib
@@ -17,8 +18,9 @@ import tempfile
 import time
 
 try:
+    import toka_test_report as reports
     import toka_package as packages
-    from toka_test_process import Supervisor, Interrupted, SupervisionError
+    from toka_test_process import Supervisor, Interrupted, SupervisionError, streamed_run
 except ImportError as error:
     print('Error: active SDK test/package helper is unavailable: ' + str(error), file=sys.stderr)
     raise SystemExit(2) from error
@@ -27,8 +29,8 @@ DEFAULT_PREPARE_MS = 180000
 DEFAULT_NATIVE_MS = 120000
 DEFAULT_COMPILE_MS = 30000
 DEFAULT_RUN_MS = 5000
-PREVIEW = ('Preview: I2-A project test supervision; stable JSON and diagnostic provenance '
-           'await I2-B. Installed-SDK final acceptance awaits I2-C.')
+PREVIEW = ('Preview: project tests with supervised execution and C6 JSON. '
+           'Installed-SDK final acceptance awaits I2-C.')
 
 
 class PreviewError(RuntimeError):
@@ -43,7 +45,7 @@ class Parser(argparse.ArgumentParser):
 def parse_options(arguments):
     if arguments == ['--help']:
         return None
-    result = argparse.Namespace(entries=[], filter=[], allow_empty=False, compile_ms=DEFAULT_COMPILE_MS, run_ms=DEFAULT_RUN_MS)
+    result = argparse.Namespace(entries=[], filter=[], allow_empty=False, compile_ms=DEFAULT_COMPILE_MS, run_ms=DEFAULT_RUN_MS, compile_source='default', run_source='default', json=False)
     index = 0
     seen = set()
     while index < len(arguments):
@@ -51,7 +53,11 @@ def parse_options(arguments):
         if value == '--':
             result.entries.extend(arguments[index + 1:])
             break
-        if value == '--allow-empty':
+        if value == '--json':
+            if result.json:
+                raise PreviewError('option may only appear once: --json')
+            result.json = True
+        elif value == '--allow-empty':
             if result.allow_empty:
                 raise PreviewError('option may only appear once: --allow-empty')
             result.allow_empty = True
@@ -78,6 +84,7 @@ def parse_options(arguments):
                 raise PreviewError('option may only appear once: ' + value)
             seen.add(key)
             setattr(result, key, budget)
+            setattr(result, 'compile_source' if key=='compile_ms' else 'run_source', 'cli')
         elif value.startswith('-'):
             raise PreviewError('unsupported Preview option: ' + value + '; use --help')
         else:
@@ -138,7 +145,9 @@ def validate_entry(argument, cwd, root):
     try:
         identifier.encode('utf-8')
     except UnicodeError as error:
-        raise PreviewError('test paths must be valid UTF-8') from error
+        invalid=PreviewError('test paths must be valid UTF-8')
+        invalid.raw_input_base64=base64.b64encode(os.fsencode(argument)).decode('ascii')
+        raise invalid from error
     return identifier, actual
 
 
@@ -248,6 +257,10 @@ def native_inputs(root, sdk_lib, run_dir):
     spec = importlib.util.spec_from_file_location('_toka_test_native', helper)
     build = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(build)
+    class NativeProcesses:
+        run=staticmethod(streamed_run)
+        def __getattr__(self,name):return getattr(__import__('subprocess'),name)
+    build.subprocess=NativeProcesses()
     previous_cwd, previous_lib = Path.cwd(), os.environ.get('TOKA_LIB')
     out, err = run_dir / 'native-build.stdout', run_dir / 'native-build.stderr'
     try:
@@ -281,7 +294,11 @@ def prepare_worker(mode, root, sdk_lib, run_dir, compile_ms):
     try:
         if mode == 'context':
             flags, digest = project_context(root, compile_ms)
-            data = {'flags': flags, 'lock_sha256': digest}
+            nodes = {key.partition('=')[0]: key.partition('=')[2] for key in packages.compiler_node_mappings(root/'package.lock')}
+            graph = {'workspace_root': str(root), 'workspace_node': packages.workspace_node(root/'package.tk', root/'package.lock'),
+                     'dependencies': [{'root': str(packages.package_root(entry, root/'.toka').resolve()), 'node': nodes[alias]}
+                                      for alias, entry in packages.read_lock(root/'package.lock').items()]}
+            data = {'flags': flags, 'lock_sha256': digest, 'provenance': graph}
         else:
             flags, identity = native_inputs(root, sdk_lib, run_dir)
             data = {'flags': flags, 'identity': identity}
@@ -321,7 +338,7 @@ def run_preparation(supervisor, mode, root, sdk_lib, run_dir, receipt, budget, c
     return data
 
 
-def finalize_receipt(receipt, supervisor, path):
+def finalize_receipt(receipt, supervisor, path, report=None, started=None):
     """Stage the receipt, then commit one immutable outcome with signals masked.
 
     Summary/staging interruptions are included. Signals after the commit snapshot
@@ -329,6 +346,7 @@ def finalize_receipt(receipt, supervisor, path):
     failure still overrides the snapshot with infrastructure error 2.
     """
     receipt['finalized'] = False
+    preparation_started = time.monotonic()
     persistence_error = None
     try:
         packages.atomic_write(path, json.dumps(receipt, indent=2) + '\n')
@@ -341,7 +359,7 @@ def finalize_receipt(receipt, supervisor, path):
             for number in sorted(signal.sigpending() & numbers):
                 signal.sigwait({number})
                 supervisor._interrupt(number, None)
-        # This snapshot is the result commit boundary. No child remains to cancel.
+        # Result commitment follows scheduling and all bounded cleanup attempts.
         receipt['interrupt_signal'] = supervisor.interrupt_signal
         receipt['interrupt_count'] = supervisor.interrupt_count
         if persistence_error is not None:
@@ -357,6 +375,12 @@ def finalize_receipt(receipt, supervisor, path):
         receipt['finalized'] = True
         try:
             packages.atomic_write(path, json.dumps(receipt, indent=2) + '\n')
+            if report is not None:
+                reports.materialize(report, receipt)
+                reports.observe(report, 'report_preparation', preparation_started)
+                reports.observe(report, 'total', started)
+                report.pop('stage_starts',None);report.pop('active_stage',None)
+                packages.atomic_write(path.parent/'report.json', json.dumps(report, ensure_ascii=True, indent=2) + '\n')
         except OSError as error:
             receipt['exit_code'] = 2
             receipt['result'] = 'infrastructure_or_configuration_error'
@@ -364,6 +388,9 @@ def finalize_receipt(receipt, supervisor, path):
             # Best effort error receipt; failure never falls back to success.
             try:
                 packages.atomic_write(path, json.dumps(receipt, indent=2) + '\n')
+                if report is not None:
+                    reports.materialize(report, receipt)
+                    packages.atomic_write(path.parent/'report.json', json.dumps(report, ensure_ascii=True, indent=2) + '\n')
             except OSError:
                 pass
             raise
@@ -374,28 +401,107 @@ def finalize_receipt(receipt, supervisor, path):
         raise persistence_error
 
 
+def json_mode(arguments):
+    index=0
+    while index<len(arguments):
+        value=arguments[index]
+        if value=='--':return False
+        if value=='--json':return True
+        if value in ('--filter','--compile-timeout-ms','--run-timeout-ms'):index+=2
+        else:index+=1
+    return False
+
+
 def execute_preview(arguments, sdk_lib, tokac, cwd=None):
     supervisor = Supervisor()
-    with supervisor.signals():
-        return _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor)
+    report = reports.new_report()
+    report['raw_inputs_base64']=[base64.b64encode(os.fsencode(value)).decode('ascii') for value in arguments if any(0xDC80<=ord(c)<=0xDCFF for c in value)]
+    started = time.monotonic()
+    try:
+        with supervisor.signals(), contextlib.redirect_stdout(sys.stderr):
+            code = _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started)
+    except (OSError, ValueError, packages.PackageError, PreviewError, SupervisionError) as error:
+        active=report.get('active_stage')
+        if active in report.get('stage_starts',{}) and report['timings'][active]['state']=='not_started':
+            reports.observe(report,active,report['stage_starts'][active]);report['timings'][active]['state']='aborted'
+        if not report['finalized']:
+            # Configuration can fail before normal project/artifact setup; still retain a report when possible.
+            if report['artifact_root'] is None:
+                fallback_started=time.monotonic()
+                try:
+                    root=find_project((cwd or Path.cwd()).resolve())
+                    report['project_root']=str(root)
+                    if report['timings']['project']['state']=='not_started':reports.observe(report,'project',fallback_started)
+                    fallback_artifact=time.monotonic()
+                    directory=root/'.toka/test-runs'
+                    if (root/'.toka').is_symlink() or directory.is_symlink():raise PreviewError('unsafe artifact directory')
+                    directory.mkdir(parents=True,exist_ok=True)
+                    report['artifact_root']=tempfile.mkdtemp(prefix='i2b-error-',dir=directory)
+                    if report['timings']['artifact_setup']['state']=='not_started':reports.observe(report,'artifact_setup',fallback_artifact)
+                except (OSError,PreviewError):
+                    if report['project_root'] is None and report['timings']['project']['state']=='not_started':
+                        reports.observe(report,'project',fallback_started);report['timings']['project']['state']='aborted'
+            report['result']='configuration_error' if isinstance(error, PreviewError) else 'infrastructure_error'
+            report['reason']=str(error);report['exit_code']=2
+            report['errors']=[{'code':None,'message':str(error),'phase':report.get('active_stage'),
+                               'os_error':getattr(error,'errno',None),'source':reports.source_origin(None,None,None)}]
+            report['termination'].update(reason=report['result'],phase=report.get('active_stage'))
+            report['finalized']=True;reports.observe(report,'total',started)
+        report.pop('stage_starts',None);report.pop('active_stage',None)
+        if report['artifact_root'] is not None:
+            try:packages.atomic_write(Path(report['artifact_root'])/'report.json',json.dumps(report,ensure_ascii=True,indent=2)+'\n')
+            except OSError as persistence:
+                report['exit_code']=2;report['result']='infrastructure_error';report['errors'].append({'code':None,'message':str(persistence),'phase':'report_preparation','os_error':getattr(persistence,'errno',None),'source':reports.source_origin(None,None,None)})
+        if json_mode(arguments):
+            print(json.dumps(report,ensure_ascii=True))
+            return 2
+        raise
+    if json_mode(arguments):
+        try:print(json.dumps(report,ensure_ascii=True))
+        except (OSError,UnicodeError) as error:
+            print('Error: could not deliver test report: '+str(error),file=sys.stderr)
+            return 2
+    return code
 
 
-def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor):
+def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started):
     print(PREVIEW, file=sys.stderr)
+    report['active_stage']='argument_parse'
+    parsed_started=time.monotonic()
+    report.setdefault('stage_starts',{})['argument_parse']=parsed_started
     options = parse_options(arguments)
+    reports.observe(report,'argument_parse',parsed_started)
     if options is None:
         print('Usage: toka test [entry.tk ...] [--filter <literal>] [--allow-empty]')
         print('Explicit entries replace tests/**/*_test.tk discovery. Runs serially at the project root.')
-        print('--compile-timeout-ms <ms> (30000), --run-timeout-ms <ms> (5000). --json awaits I2-B.')
+        print('--compile-timeout-ms <ms> (30000), --run-timeout-ms <ms> (5000). --json emits one C6 report.')
         return 0
+    report['active_stage']='project'
+    project_started=time.monotonic()
+    report.setdefault('stage_starts',{})['project']=project_started
+    report['timeouts'].update(compile_ms=options.compile_ms,run_ms=options.run_ms,
+                              compile_source=options.compile_source,
+                              run_source=options.run_source)
+    report['selection']['mode']='explicit' if options.entries else 'discovery'
+    report['selection']['filters']=options.filter
     invocation = (cwd or Path.cwd()).resolve()
     root = find_project(invocation)
+    report['project_root']=str(root)
+    reports.observe(report,'project',project_started)
+    report['active_stage']='artifact_setup'
+    artifact_started=time.monotonic()
+    report.setdefault('stage_starts',{})['artifact_setup']=artifact_started
     state = root / '.toka'
     artifact_parent = state / 'test-runs'
     if state.is_symlink() or artifact_parent.is_symlink():
         raise PreviewError('test artifact directory cannot be a symbolic link')
     artifact_parent.mkdir(parents=True, exist_ok=True)
     run_dir = Path(tempfile.mkdtemp(prefix='i2a-', dir=artifact_parent))
+    report['artifact_root']=str(run_dir)
+    reports.observe(report,'artifact_setup',artifact_started)
+    report['timeouts'].update(compile_ms=options.compile_ms,run_ms=options.run_ms,
+                              compile_source=options.compile_source,
+                              run_source=options.run_source)
     receipt = {'schema': 'toka.test-preview-i2a', 'version': 1, 'preview': True,
                'project_root': str(root), 'artifact_root': str(run_dir),
                'supervision': 'posix_process_group', 'accepted_future_defaults_ms': {'compile': DEFAULT_COMPILE_MS, 'run': DEFAULT_RUN_MS},
@@ -405,8 +511,12 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor):
                               'probe': options.compile_ms, 'lock_wait': options.compile_ms}, 'tests': [], 'exit_code': 2}
     pending_error = None
     try:
+        receipt['active_stage']=report['active_stage']='selection'
+        selection_started=time.monotonic()
+        report.setdefault('stage_starts',{})['selection']=selection_started
         selected, selection = select_entries(root, invocation, options.entries, options.filter)
         receipt['selection'] = selection
+        reports.observe(report,'selection',selection_started)
         supervisor.check_interrupt()
         if not selected:
             receipt['result'] = 'empty' if options.allow_empty else 'configuration_error'
@@ -414,22 +524,39 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor):
             receipt['exit_code'] = 0 if options.allow_empty else 2
             print('No tests selected. total=0, passed=0; artifacts: ' + str(run_dir))
         else:
-            if os.name != 'posix':
-                raise PreviewError('I1 project test preview supports native POSIX hosts only')
             for identifier, entry in selected:
                 receipt['tests'].append({'id': identifier, 'entry': str(entry), 'result': 'not_run'})
+            if os.name != 'posix':
+                report['supervision']={'backend':'unsupported','scope':'none'}
+                raise PreviewError('unsupported_supervision')
+            receipt['active_stage']=report['active_stage']='identity'
+            report['identity']['status']='failed'
+            identity_started=time.monotonic()
+            report.setdefault('stage_starts',{})['identity']=identity_started
             probe = supervisor.run([str(tokac), '--version'], root, run_dir, 'probe', dict(os.environ), options.compile_ms)
             receipt.setdefault('preparation', {})['probe'] = probe
             phase_error(probe)
             if probe['trigger'] is not None or probe['exit_code'] != 0 or probe['signal'] is not None:
                 raise PreviewError('compiler identity probe failed; see ' + probe['stderr'])
+            reports.compiler_identity(report,tokac,sdk_lib,probe)
+            reports.observe(report,'identity',identity_started)
+            receipt['active_stage']=report['active_stage']='dependencies'
+            dependencies_started=time.monotonic()
+            report.setdefault('stage_starts',{})['dependencies']=dependencies_started
             context = run_preparation(supervisor, 'context', root, sdk_lib, run_dir, receipt, DEFAULT_PREPARE_MS, options.compile_ms)
             flags = context['flags']
             receipt['lock_sha256'] = context['lock_sha256']
+            receipt['provenance'] = context['provenance']
+            report['identity']['lock_sha256']=context['lock_sha256']
+            report['identity']['lock_path']=str(root/'package.lock') if context['lock_sha256'] else None
             receipt['compiler_flags'] = flags
             receipt['tokac'] = str(tokac)
             native = run_preparation(supervisor, 'native', root, sdk_lib, run_dir, receipt, DEFAULT_NATIVE_MS, options.compile_ms)
             native_flags, receipt['native_inputs'] = native['flags'], native['identity']
+            reports.observe(report,'dependencies',dependencies_started)
+            receipt['active_stage']=report['active_stage']='execution'
+            execution_started=time.monotonic()
+            report.setdefault('stage_starts',{})['execution']=execution_started
             failures = 0
             for index, ((identifier, entry), result) in enumerate(zip(selected, receipt['tests']), 1):
                 supervisor.check_interrupt()
@@ -441,7 +568,7 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor):
                 result['result'] = 'infrastructure_error'  # Replaced only after a successful child launch.
                 environment = dict(os.environ, TOKA_TEST_RUN_DIR=str(run_dir), TOKA_TEST_CASE_DIR=str(directory))
                 exe = directory / 'test-executable'
-                compile_phase = supervisor.run([str(tokac), '-I', str(sdk_lib), '-I', str(root / 'lib'),
+                compile_phase = supervisor.run([str(tokac), '--diagnostics-json', '-I', str(sdk_lib), '-I', str(root / 'lib'),
                                            '-I', str(root), *flags, str(entry), *native_flags,
                                            '-o', str(exe), '-O0'], root, directory, 'compile', environment, options.compile_ms)
                 result['compile_link'] = compile_phase
@@ -462,7 +589,9 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor):
                     failures += result['result'] != 'passed'
                     print(('[OK] ' if result['result'] == 'passed' else '[FAILED (Runtime)] ') + identifier)
                 print('  logs: ' + str(directory))
+            reports.observe(report,'execution',execution_started)
             supervisor.check_interrupt()
+            receipt['active_stage']=report['active_stage']='report_preparation'
             receipt['exit_code'] = 1 if failures else 0
             receipt['result'] = 'failed' if failures else 'passed'
             print('Preview results: %d selected, %d passed, %d failed; artifacts: %s' %
@@ -474,12 +603,17 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor):
             if result['result'] == 'infrastructure_error':
                 result['result'] = 'interrupted'
     except (OSError, packages.PackageError, PreviewError, SupervisionError) as error:
-        receipt['result'] = 'infrastructure_or_configuration_error'
+        receipt['result'] = 'configuration_error' if receipt.get('active_stage')=='selection' else 'infrastructure_or_configuration_error'
         receipt['error'] = str(error)
+        receipt['os_error'] = getattr(error,'errno',None)
+        if hasattr(error,'raw_input_base64'):report['raw_inputs_base64'].append(error.raw_input_base64)
         receipt['exit_code'] = 2
         pending_error = error
     finally:
-        finalize_receipt(receipt, supervisor, run_dir / 'preview.json')
+        active=report.get('active_stage')
+        if active in report.get('stage_starts',{}) and report['timings'][active]['state']=='not_started':
+            reports.observe(report,active,report['stage_starts'][active]);report['timings'][active]['state']='aborted'
+        finalize_receipt(receipt, supervisor, run_dir / 'preview.json', report, started)
     if pending_error is not None:
         raise pending_error
     return receipt['exit_code']

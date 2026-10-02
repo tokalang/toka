@@ -1,4 +1,6 @@
 
+import std/time::{Instant}
+import src/test_report::{test_json_requested, test_outer_error}
 import std/env
 import std/io::{println, File, remove_file}
 import std/fs::{read_to_string, exists, create_dir, write_string, read_dir, metadata}
@@ -31,7 +33,7 @@ fn print_help() {
     println("                                      Validate bodyless Outcome provider attestations")
     println("  preview      Compare base/candidate snapshots without writing either one")
     println("  query        Run a compiler semantic query (definition, references, rename)")
-    println("  test         Preview: project test entries (I2-A; JSON pending I2-B)")
+    println("  test         Preview: project test entries (I2-B; installed acceptance pending I2-C)")
     println("  doc          Generate API documentation")
     println("  add <package-or-url>  Add a Registry package or URL dependency")
     println("  rm <pkg>     Remove a package dependency")
@@ -1030,11 +1032,26 @@ fn cmd_query(argc: i32, shift: i32) -> i32 {
 }
 
 fn cmd_test(argc: i32, shift: i32) -> i32 {
+    auto started = Instant::now()
+    auto machine = test_json_requested(argc, 2 + shift)
     auto helper# = detect_default_lib_path()
     helper#.push_str("/toolchain/toka_test.py")
     if !exists(helper.clone()) {
-        println("Error: project test helper missing from active SDK: {}", helper)
-        return 2
+        return test_outer_error(string::from("runner_helper_missing"), string::from("project test helper missing from active SDK"), machine, started)
+    }
+    auto names# = Vec<string>::new()
+    names#.push(string::from("toka_test_process.py"))
+    names#.push(string::from("toka_test_report.py"))
+    names#.push(string::from("toka_package.py"))
+    names#.push(string::from("toka_safe_extract.py"))
+    auto n# = 0:usize
+    loop n < names.len() {
+        auto required# = detect_default_lib_path();required#.push_str("/toolchain/")
+        required#.push_str(names.get(n).as_str())
+        if !exists(required) {
+            return test_outer_error(string::from("sdk_helper_missing"),string::from("required test SDK helper is missing"),machine,started)
+        }
+        n += 1:usize
     }
     if !check_is_windows() {
         // Replace the manager: signals to the real command PID reach the supervisor.
@@ -1064,8 +1081,7 @@ fn cmd_test(argc: i32, shift: i32) -> i32 {
             auto &program = arguments.borrow(0:usize)
             libc_execvp(program.c_str(), argv.unsafe_storage() as *void)
         }
-        println("Error: could not launch Python 3 project test helper; run 'toka doctor'")
-        return 2
+        return test_outer_error(string::from("python_unavailable"),string::from("could not launch Python 3 project test helper; run toka doctor"),machine,started)
     }
     // Windows currently supports empty selection only; no managed backend is claimed.
     auto command# = Command::new(string::from("python3"))
@@ -1081,7 +1097,7 @@ fn cmd_test(argc: i32, shift: i32) -> i32 {
         index += 1
     }
     auto result = command#.try_status()
-    if result.is_err() { return 2 }
+    if result.is_err() { return test_outer_error(string::from("python_unavailable"),string::from("could not launch Python 3 project test helper"),machine,started) }
     return result.unwrap().legacy_code()
 }
 

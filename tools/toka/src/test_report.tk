@@ -1,0 +1,193 @@
+// Native bootstrap failure report: no Python/helper dependency.
+import std/env
+import std/io::{println, stderr_file}
+import std/fs::{exists, create_dir, create_temp_file, create_temp_file_system, write_string_atomic}
+import std/time::{Instant}
+import sys/libc::{libc_snprintf}
+
+fn quote(value: string) -> string {
+ auto out# = string::from("\"")
+ auto view = value.as_str()
+ auto digits = string::from("0123456789abcdef")
+ auto i# = 0:usize
+ loop i < view.len() {
+  auto byte = view.byte_at(i)
+  auto raw_byte = byte as u8
+  if byte == 34:char { out#.push_str("\\\"") }
+  else if byte == 92:char { out#.push_str("\\\\") }
+  else if raw_byte < 32:u8 {
+   out#.push_str("\\u00")
+   out#.push_char(digits.as_str().byte_at((raw_byte as usize)/16:usize))
+   out#.push_char(digits.as_str().byte_at((raw_byte as usize)%16:usize))
+  } else { out#.push_char(byte) }
+  i += 1:usize
+ }
+ out#.push_str("\"")
+ return cede out
+}
+fn valid_utf8(value: string) -> bool {
+ auto text = value.as_str()
+ auto i# = 0:usize
+ loop i < text.len() {
+  auto lead = text.byte_at(i) as u8
+  if lead < 128:u8 { i += 1:usize;continue }
+  auto count# = 0:usize
+  if lead >= 194:u8 && lead <= 223:u8 { count = 1:usize }
+  else if lead >= 224:u8 && lead <= 239:u8 { count = 2:usize }
+  else if lead >= 240:u8 && lead <= 244:u8 { count = 3:usize }
+  else { return false }
+  if i + count >= text.len() { return false }
+  auto first = text.byte_at(i + 1:usize) as u8
+  if lead == 224:u8 && first < 160:u8 { return false }
+  if lead == 237:u8 && first >= 160:u8 { return false }
+  if lead == 240:u8 && first < 144:u8 { return false }
+  if lead == 244:u8 && first >= 144:u8 { return false }
+  auto n# = 1:usize
+  loop n <= count {
+   auto byte = text.byte_at(i + n) as u8
+   if byte < 128:u8 || byte > 191:u8 { return false }
+   n += 1:usize
+  }
+  i += count + 1:usize
+ }
+ return true
+}
+fn verified_directory(path: string) -> bool {
+ auto previous = env::current_dir()
+ if !env::set_current_dir(path.clone()) { return false }
+ auto physical = env::current_dir()
+ auto restored = env::set_current_dir(previous)
+ return restored && physical.eq(path)
+}
+
+fn number(value: u64) -> string {
+ unsafe {
+  auto buffer = [0:i8;64]
+  auto *p = (&buffer[0] as Addr) as *char
+  libc_snprintf(*p,64:usize,c"%llu",value)
+  return string::from_cstr(*p)
+ }
+}
+fn parent(path: string) -> string {
+ auto i# = path.len() as i32
+ loop i > 0 {
+  i -= 1
+  auto c = path.as_str().byte_at(i as usize)
+  if c == 47:char || c == 92:char {
+   if i == 0 { return string::from("/") }
+   return path.substring(0,i)
+  }
+ }
+ return string::from("")
+}
+
+pub fn test_json_requested(argc: i32, start: i32) -> bool {
+ auto i# = start
+ loop i < argc {
+  auto arg = env::get_arg(i)
+  if arg.eq(string::from("--")) { break }
+  if arg.eq(string::from("--json")) { return true }
+  if arg.eq(string::from("--filter")) || arg.eq(string::from("--compile-timeout-ms")) || arg.eq(string::from("--run-timeout-ms")) { i += 2;continue }
+  i += 1
+ }
+ return false
+}
+
+pub fn test_outer_error(reason: string, message: string, machine: bool, started: Instant) -> i32 {
+ auto run_id# = number(Instant::now().duration_since_boot.as_nanos())
+ auto seed = create_temp_file_system()
+ if seed.is_ok() {
+  auto temporary# = seed.unwrap()
+  auto candidate_id = temporary.path()
+  if valid_utf8(candidate_id.clone()) { run_id = cede candidate_id }
+  temporary#.close()
+  temporary#.remove()
+ }
+ auto project_started = Instant::now()
+ auto project# = env::current_dir()
+ loop !project.is_empty() {
+  auto manifest# = project.clone();manifest#.push_str("/package.tk")
+  if exists(manifest) { break }
+  auto next = parent(project.clone())
+  if next.eq(project.clone()) { project = string::from("");break }
+  project = cede next
+ }
+ if !valid_utf8(project.clone()) { project = string::from("") }
+ auto project_time = number(project_started.elapsed().as_millis())
+ auto project_state# = string::from("completed")
+ if project.is_empty() { project_state = string::from("aborted") }
+ auto artifact_started = Instant::now()
+ auto project_json# = string::from("null")
+ auto artifact_json# = string::from("null")
+ auto report_path# = string::from("")
+ if !project.is_empty() {
+  project_json = quote(project.clone())
+  // OS physical cwd verification rejects symlinks and ambiguous spellings without Python.
+  auto state# = project.clone();state#.push_str("/.toka")
+  create_dir(state.clone())
+  if verified_directory(state.clone()) {
+   auto runs# = state.clone();runs#.push_str("/test-runs")
+   create_dir(runs.clone())
+   if verified_directory(runs.clone()) {
+    auto reservation = create_temp_file(runs)
+    if reservation.is_ok() {
+     auto temporary# = reservation.unwrap()
+     auto directory = temporary.path()
+     temporary#.close();temporary#.remove()
+     if create_dir(directory.clone()) {
+      artifact_json = quote(directory.clone())
+      report_path = directory.clone();report_path#.push_str("/report.json")
+     }
+    }
+   }
+  }
+ }
+ auto artifact_time# = string::from("null")
+ auto artifact_state# = string::from("not_started")
+ if !project.is_empty() {
+  artifact_time = number(artifact_started.elapsed().as_millis())
+  artifact_state = string::from("aborted")
+  if !report_path.is_empty() { artifact_state = string::from("completed") }
+ }
+ auto preparation_started = Instant::now()
+ auto quoted_id = quote(run_id)
+ auto quoted_reason = quote(reason)
+ auto quoted_message = quote(message)
+ auto preparation_time = number(preparation_started.elapsed().as_millis())
+ auto millis = number(started.elapsed().as_millis())
+ auto report# = string::from("")
+ report#.push_str("{\"schema\":\"toka.test-report\",\"version\":1,\"run_id\":")
+ report#.push_str(quoted_id.as_str())
+ report#.push_str(",\"preview\":true,\"result\":\"infrastructure_error\",\"reason\":")
+ report#.push_str(quoted_reason.as_str())
+ report#.push_str(",\"exit_code\":2,\"finalized\":true,\"project_root\":")
+ report#.push_str(project_json.as_str())
+ report#.push_str(",\"artifact_root\":")
+ report#.push_str(artifact_json.as_str())
+ report#.push_str(",\"identity\":{\"status\":\"not_checked\",\"tokac_path\":null,\"tokac_version\":null,\"tokac_sha256\":null,\"runtime_object_path\":null,\"runtime_object_sha256\":null,\"sdk_root\":null,\"sdk_version\":null,\"sdk_revision\":null,\"lock_path\":null,\"lock_sha256\":null},\"selection\":{\"mode\":null,\"filters\":[],\"candidate_count\":null,\"selected_count\":null,\"excluded\":[]},\"supervision\":{\"backend\":\"not_checked\",\"scope\":\"none\"},\"timeouts\":{\"compile_ms\":null,\"run_ms\":null,\"compile_source\":null,\"run_source\":null,\"terminate_grace_ms\":2000,\"kill_wait_ms\":5000},\"summary\":{\"total\":null,\"passed\":0,\"failed\":0,\"infrastructure_error\":0,\"interrupted\":0,\"not_run\":0},\"tests\":[],\"errors\":[{\"code\":null,\"message\":")
+ report#.push_str(quoted_message.as_str())
+ report#.push_str(",\"phase\":\"bootstrap\",\"os_error\":null,\"source\":{\"origin\":\"unknown\",\"path\":null,\"package_node_id\":null,\"classification_basis\":\"none\"}}],\"diagnostics\":[],\"termination\":{\"reason\":\"infrastructure_error\",\"phase\":\"bootstrap\",\"trigger\":\"none\",\"signal\":null,\"cleanup\":{\"status\":\"not_needed\",\"scope\":\"none\",\"requested_signals\":[],\"leader_reaped\":null,\"group_absent\":null,\"output_complete\":null,\"duration_ms\":null}},\"timings\":{\"argument_parse\":{\"name\":\"argument_parse\",\"state\":\"not_started\",\"duration_ms\":null,\"exit_code\":null,\"signal\":null,\"os_error\":null,\"process\":null},\"project\":{\"name\":\"project\",\"state\":")
+ report#.push_str(quote(project_state).as_str())
+ report#.push_str(",\"duration_ms\":")
+ report#.push_str(project_time.as_str())
+ report#.push_str(",\"exit_code\":null,\"signal\":null,\"os_error\":null,\"process\":null},\"artifact_setup\":{\"name\":\"artifact_setup\",\"state\":")
+ report#.push_str(quote(artifact_state).as_str())
+ report#.push_str(",\"duration_ms\":")
+ report#.push_str(artifact_time.as_str())
+ report#.push_str(",\"exit_code\":null,\"signal\":null,\"os_error\":null,\"process\":null},\"selection\":{\"name\":\"selection\",\"state\":\"not_started\",\"duration_ms\":null,\"exit_code\":null,\"signal\":null,\"os_error\":null,\"process\":null},\"identity\":{\"name\":\"identity\",\"state\":\"not_started\",\"duration_ms\":null,\"exit_code\":null,\"signal\":null,\"os_error\":null,\"process\":null},\"dependencies\":{\"name\":\"dependencies\",\"state\":\"not_started\",\"duration_ms\":null,\"exit_code\":null,\"signal\":null,\"os_error\":null,\"process\":null},\"execution\":{\"name\":\"execution\",\"state\":\"not_started\",\"duration_ms\":null,\"exit_code\":null,\"signal\":null,\"os_error\":null,\"process\":null},\"report_preparation\":{\"name\":\"report_preparation\",\"state\":\"completed\",\"duration_ms\":")
+ report#.push_str(preparation_time.as_str())
+ report#.push_str(",\"exit_code\":null,\"signal\":null,\"os_error\":null,\"process\":null},\"total\":{\"name\":\"total\",\"state\":\"completed\",\"duration_ms\":")
+ report#.push_str(millis.as_str())
+ report#.push_str(",\"exit_code\":null,\"signal\":null,\"os_error\":null,\"process\":null}},\"timing_boundary\":\"total and report_preparation stop at final serialization snapshot\"}")
+ if !report_path.is_empty() {
+  auto written = write_string_atomic(report_path, report.as_str())
+  if written.is_err() {
+   report = report.substring(0,(report.len() as i32) - 1)
+   report#.push_str(",\"persistence_error\":\"native bootstrap report persistence failed\"}")
+   auto err = stderr_file();err.write("Error: bootstrap report persistence failed\n")
+  }
+ }
+ if machine { println("{}",report) }
+ else { auto err = stderr_file();err.write(message.as_str());err.write("\n") }
+ return 2
+}
