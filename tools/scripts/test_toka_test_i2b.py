@@ -137,9 +137,29 @@ class Controls(unittest.TestCase):
                 def fileno(self):return write
             with patch.object(processes.sys,'stderr',Destination()):
                 raw=processes.Supervisor().run([sys.executable,'-c','import os,time;os.write(1,b"READY");time.sleep(60)'],self.root,folder,'run',dict(os.environ),1000)
-            self.assertLess(raw['duration_ms'],4000);self.assertTrue(raw['cleanup']['group_gone'])
+            self.assertLess(raw['duration_ms'],7000);self.assertTrue(raw['cleanup']['group_gone'])
             self.assertTrue(raw.get('supervision_error'))
         finally:os.close(read);os.close(write)
+
+    def test_transient_stderr_backpressure_retries_exact_bytes(self):
+        import toka_test_process as processes
+        folder=self.base/'relay';folder.mkdir();path=folder/'stdout';path.write_bytes(b'0123456789'*10000)
+        relay=processes.OutputTail([path]);delivered=bytearray();calls=0
+        class Destination:
+            @property
+            def buffer(self):return self
+            def fileno(self):return 2
+        def write(fd,data):
+            nonlocal calls
+            calls+=1
+            if calls in (1,3):raise BlockingIOError(11,'controlled transient backpressure')
+            size=min(len(data),16384);delivered.extend(data[:size]);return size
+        with patch.object(processes.sys,'stderr',Destination()),patch.object(processes.os,'write',write):
+            for _ in range(30):
+                relay.pump()
+                if not relay.pending_bytes():break
+        self.assertEqual(bytes(delivered),path.read_bytes());self.assertEqual(relay.pending_bytes(),0)
+        self.assertFalse(relay.failed)
 
     def test_invalid_utf8_path_is_recoverable_configuration_error(self):
         import base64

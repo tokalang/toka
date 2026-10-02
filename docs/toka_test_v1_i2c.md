@@ -51,3 +51,33 @@ uncovered 保留具体缺口。组合编译器没有 separate compile/link 边�
 本批可报告归档身份/干净安装/指定回归通过；只要仍有 partial/uncovered，不能称
 完整 I1/I2 矩阵通过或授权移除 Preview。I2-C 是否 Accepted、后续补齐和 Preview
 移除由独立复审决定，Q0 仍为后续独立门禁。
+
+## 后续覆盖批次与实际实现缺陷
+
+15267dcb 的归档/安装/就绪取证已独立复核为有效中间交付，I2-C 整体未完成。
+本批先按错误/报告与共享状态边界补逐项断言，再组合已有同候选有效证据。
+复用其冻结 SDK 时，大量正常输出复现了转发 EAGAIN 误判为基础设施错误；
+原始 SDK SHA、失败报告与原始日志保留。只有发现这个实现缺陷后才生成新 SDK。
+
+修订：实时转发只按实际写出的字节推进文件位置。短暂背压在下一轮有界重试，
+不停止进程 deadline 检查；结束时在原有确认上限内排空。真实关闭/永久无法转发
+仍为基础设施错误 2，记录未转发字节，原始日志不丢失。正常大输出不能因临时
+EAGAIN 被杀掉或改记失败。SDK身份依旧按完整归档及实际组件来源绑定。
+
+新增独立 SDK-only runner 不执行 checkout，只下载完整 SDK、单文件标准库 harness、
+原始验收行和 ledger 脚本；harness 只导入标准库及安装 SDK 内 helpers。
+无维护者 compiler/std-library checkout，SDK 自带标准库源码属于发行内容，允许使用。
+原有安装/JSON/中断/P2 回归在另一个任务重放；不能把旧 SHA 结果直接重标。
+
+R03/R04/R08–R11/R13/J01/J03/J09 使用真实 CLI 或明确标识的已安装 SDK helper
+故障注入层；大编译输出代理委托真实 tokac 并追加合成 note 流量，不声称 note
+来自原编译器。J09 stdout 关闭明确标 incomplete，不能从磁盘的早期 pass 快照
+推断已成功交付。共享冷缓存/写锁释放、并发产物、同名 basename、stdin/env、
+错误优先级与 POSIX managed start 拒绝均保存具体见证和原始输出。
+
+R08 的外部 linker 启动变体对本核心 SDK 不适用（bundled LLD，无独立 linker PID）；
+T12 的 Windows managed 后端仍不支持、位于核心 SDK 范围外，POSIX 拒绝启动
+通过故障注入验证。覆盖描述必须保留这些 profile 边界。
+
+逐行 ledger 只在完整输入/结果断言具备证据时收闭；其余行仍 partial/uncovered。
+Preview 保留，Unicode/P01、平台策略、完整 Q0 继续独立。这里不授权移除 Preview。

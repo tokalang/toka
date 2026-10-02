@@ -1,0 +1,275 @@
+name: 0.12 I2-C Error, Report and Shared-State Coverage Preview
+
+on:
+  push:
+    branches: [implement/0.12-i2c-coverage]
+    paths:
+      - .github/workflows/test_0_12_i2c_coverage.yml
+      - lib/toolchain/toka_test*.py
+      - lib/toolchain/toka_package.py
+      - tools/toka/**
+      - tools/scripts/test_toka_test_i1.py
+      - tools/scripts/test_toka_test_i2a.py
+      - tools/scripts/test_toka_test_i2b.py
+      - tools/scripts/test_toka_test_i2c.py
+      - tools/scripts/test_toka_test_i2c_batch.py
+      - tools/scripts/bundle_toka_i2c_batch.py
+      - tools/scripts/ledger_toka_i2c_batch.py
+      - tools/scripts/test_toka_test_fixture_ready.py
+      - tools/scripts/package_test_i2c_sdk.py
+      - tools/scripts/map_toka_test_i2c_acceptance.py
+      - tools/scripts/stage_test_i1_sdk.py
+      - tools/scripts/test_package_manager_supply_chain.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  package:
+    name: I2-C frozen SDK (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - name: Install released SDK host dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          sudo -E apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y build-essential curl wget lsb-release software-properties-common
+          installer="$RUNNER_TEMP/i2c-llvm-installer.sh"
+          wget --timeout=15 --tries=3 -O "$installer" https://apt.llvm.org/llvm.sh
+          chmod +x "$installer"
+          sudo -E "$installer" 20
+          sudo apt-get install -y lld-20 liblld-20-dev libpolly-20-dev libzstd-dev libssl-dev pkg-config
+          echo '/usr/lib/llvm-20/bin' >> "$GITHUB_PATH"
+      - name: Install released SDK host dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew install llvm@20 lld@20 zstd openssl@3
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld@20)/bin" >> "$GITHUB_PATH"
+      - name: Download exact original v0.11.0 SDK
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --max-time 300 \
+            "https://github.com/tokalang/toka/releases/download/v0.11.0/toka-v0.11.0-$TARGET.tar.gz" \
+            --output "$RUNNER_TEMP/i2c-sdk.tar.gz"
+      - name: Freeze complete composite Preview archive
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          python3 tools/scripts/package_test_i2c_sdk.py --archive "$RUNNER_TEMP/i2c-sdk.tar.gz" \
+            --target "$TARGET" --work "$RUNNER_TEMP/i2c-stage" --output "$RUNNER_TEMP/i2c-package"
+      - name: Freeze standalone harness inputs
+        run: python3 tools/scripts/bundle_toka_i2c_batch.py --output "$RUNNER_TEMP/i2c-harness"
+      - name: Retain immutable SDK and build identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i2c-sdk-${{ matrix.target }}
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/i2c-package
+            ${{ runner.temp }}/i2c-harness
+            ${{ runner.temp }}/i2c-stage/stage-identity.json
+            ${{ runner.temp }}/i2c-stage/manager-build.stdout
+            ${{ runner.temp }}/i2c-stage/manager-build.stderr
+  acceptance:
+    needs: package
+    name: I2-C clean install (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - name: Install released SDK host dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          sudo -E apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y build-essential curl wget lsb-release software-properties-common
+          installer="$RUNNER_TEMP/i2c-llvm-installer.sh"
+          wget --timeout=15 --tries=3 -O "$installer" https://apt.llvm.org/llvm.sh
+          chmod +x "$installer"
+          sudo -E "$installer" 20
+          sudo apt-get install -y lld-20 liblld-20-dev libpolly-20-dev libzstd-dev libssl-dev pkg-config
+          echo '/usr/lib/llvm-20/bin' >> "$GITHUB_PATH"
+      - name: Install released SDK host dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew install llvm@20 lld@20 zstd openssl@3
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld@20)/bin" >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@v4
+        with:
+          name: i2c-sdk-${{ matrix.target }}
+          path: ${{ runner.temp }}/frozen-input
+      - name: Readiness, latency and raw logs (no retries)
+        run: |
+          python3 tools/scripts/test_toka_test_fixture_ready.py --output "$RUNNER_TEMP/i2c-ready"
+      - name: Parallel regression with every raw control retained
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/i2c-controls"
+          TOKA_TEST_CONTROL_EVIDENCE="$RUNNER_TEMP/i2c-controls/i1-raw" python3 tools/scripts/test_toka_test_i1.py > "$RUNNER_TEMP/i2c-controls/i1.stdout" 2> "$RUNNER_TEMP/i2c-controls/i1.stderr" &
+          p1=$!
+          TOKA_TEST_CONTROL_EVIDENCE="$RUNNER_TEMP/i2c-controls/i2a-raw" python3 tools/scripts/test_toka_test_i2a.py > "$RUNNER_TEMP/i2c-controls/i2a.stdout" 2> "$RUNNER_TEMP/i2c-controls/i2a.stderr" &
+          p2=$!
+          TOKA_TEST_CONTROL_EVIDENCE="$RUNNER_TEMP/i2c-controls/i2b-raw" python3 tools/scripts/test_toka_test_i2b.py > "$RUNNER_TEMP/i2c-controls/i2b.stdout" 2> "$RUNNER_TEMP/i2c-controls/i2b.stderr" &
+          p3=$!
+          status=0
+          wait "$p1" || status=1
+          wait "$p2" || status=1
+          wait "$p3" || status=1
+          python3 tools/scripts/test_package_manager_supply_chain.py > "$RUNNER_TEMP/i2c-controls/packages.stdout" 2> "$RUNNER_TEMP/i2c-controls/packages.stderr" || status=1
+          exit "$status"
+      - name: Install only the frozen SDK bytes and run public CLI
+        env:
+          TARGET: ${{ matrix.target }}
+          CANDIDATE: ${{ github.sha }}
+        run: |
+          python3 tools/scripts/test_toka_test_i2c.py \
+            --archive "$RUNNER_TEMP/frozen-input/i2c-package/toka-preview-i2c-$TARGET.tar.gz" \
+            --identity "$RUNNER_TEMP/frozen-input/i2c-package/sdk-identity.json" \
+            --candidate-sha "$CANDIDATE" --output "$RUNNER_TEMP/i2c-installed"
+          python3 tools/scripts/map_toka_test_i2c_acceptance.py \
+            --installed "$RUNNER_TEMP/i2c-installed" --controls "$RUNNER_TEMP/i2c-controls" \
+            --ready "$RUNNER_TEMP/i2c-ready" --output "$RUNNER_TEMP/i2c-matrix.json"
+      - name: Retain original regression and readiness outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i2c-regression-${{ matrix.target }}
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/i2c-ready
+            ${{ runner.temp }}/i2c-controls
+            ${{ runner.temp }}/i2c-installed
+            ${{ runner.temp }}/i2c-matrix.json
+  sdk_only:
+    needs: [package, acceptance]
+    name: I2-C SDK-only coverage (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - name: Install released SDK host dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          sudo -E apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y build-essential curl wget lsb-release software-properties-common
+          installer="$RUNNER_TEMP/i2c-llvm-installer.sh"
+          wget --timeout=15 --tries=3 -O "$installer" https://apt.llvm.org/llvm.sh
+          chmod +x "$installer"
+          sudo -E "$installer" 20
+          sudo apt-get install -y lld-20 liblld-20-dev libpolly-20-dev libzstd-dev libssl-dev pkg-config
+          echo '/usr/lib/llvm-20/bin' >> "$GITHUB_PATH"
+      - name: Install released SDK host dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew install llvm@20 lld@20 zstd openssl@3
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld@20)/bin" >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@v4
+        with:
+          name: i2c-sdk-${{ matrix.target }}
+          path: ${{ runner.temp }}/frozen-input
+      - name: Validate frozen SDK and standalone harness then install without checkout
+        env:
+          TARGET: ${{ matrix.target }}
+          CANDIDATE: ${{ github.sha }}
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib,json,os,tarfile
+          from pathlib import Path
+          data=Path(os.environ['RUNNER_TEMP'])/'frozen-input'
+          identity=json.loads((data/'i2c-package/sdk-identity.json').read_text())
+          archive=data/'i2c-package'/identity['archive']
+          assert identity['candidate_sha']==os.environ['CANDIDATE']
+          assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']
+          bundle=data/'i2c-harness';h=json.loads((bundle/'harness-identity.json').read_text())
+          assert h['harness_source_sha']==os.environ['CANDIDATE']
+          assert hashlib.sha256((bundle/'test_toka_test_i2c_batch.py').read_bytes()).hexdigest()==h['harness_sha256']
+          assert hashlib.sha256((bundle/'ledger_toka_i2c_batch.py').read_bytes()).hexdigest()==h['ledger_script_sha256']
+          install=Path(os.environ['RUNNER_TEMP'])/'sdk-only-install';install.mkdir()
+          with tarfile.open(archive) as package:package.extractall(install,filter='data')
+          sdk=next(install.iterdir())
+          for name,value in identity['components'].items():assert hashlib.sha256((sdk/name).read_bytes()).hexdigest()==value['sha256']
+          (Path(os.environ['RUNNER_TEMP'])/'sdk-path.txt').write_text(str(sdk))
+          assert not (Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists()
+          PYCODE
+          sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
+          cd "$RUNNER_TEMP/frozen-input/i2c-harness"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_i2c_batch.py --sdk "$sdk" \
+            --source-unavailable --output "$RUNNER_TEMP/i2c-batch"
+      - uses: actions/download-artifact@v4
+        with:
+          name: i2c-regression-${{ matrix.target }}
+          path: ${{ runner.temp }}/replayed-regression
+      - name: Attach new assertions to the immutable prior ledger
+        run: |
+          python3 "$RUNNER_TEMP/frozen-input/i2c-harness/ledger_toka_i2c_batch.py" \
+            --prior "$RUNNER_TEMP/replayed-regression/i2c-matrix.json" \
+            --batch "$RUNNER_TEMP/i2c-batch" --regression "$RUNNER_TEMP/replayed-regression/i2c-installed" --output "$RUNNER_TEMP/i2c-batch/coverage-ledger.json"
+      - name: Retain actual SDK-only results and all faults/incomplete cases
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i2c-batch-${{ matrix.target }}
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/i2c-batch
+            ${{ runner.temp }}/frozen-input/i2c-harness

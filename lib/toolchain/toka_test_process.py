@@ -59,8 +59,11 @@ class OutputTail:
     """Regular-file capture avoids pipe EOF hangs from descendants; relay is live."""
     def __init__(self, paths):
         self.paths=paths;self.offsets={str(path):0 for path in paths};self.failed=False
+    def pending_bytes(self):
+        return sum(max(0,path.stat().st_size-self.offsets[str(path)]) for path in self.paths)
     def pump(self):
-        if self.failed:return
+        if self.failed:return 0
+        sent=0
         try:
             for path in self.paths:
                 with path.open('rb') as stream:
@@ -68,20 +71,27 @@ class OutputTail:
                     for _ in range(4):
                         data=stream.read(65536)
                         if not data:break
-                        self.offsets[str(path)]+=len(data)
                         target=getattr(sys.stderr,'buffer',None)
                         if target is not None:
                             import fcntl
                             flags=fcntl.fcntl(target.fileno(),fcntl.F_GETFL)
                             try:
                                 fcntl.fcntl(target.fileno(),fcntl.F_SETFL,flags|os.O_NONBLOCK)
-                                position=0
-                                while position<len(data):position+=os.write(target.fileno(),data[position:])
+                                try:written=os.write(target.fileno(),data)
+                                except BlockingIOError:written=0
                             finally:fcntl.fcntl(target.fileno(),fcntl.F_SETFL,flags)
-                        else:sys.stderr.write(data.decode('utf-8',errors='replace'));sys.stderr.flush()
+                        else:
+                            sys.stderr.write(data.decode('utf-8',errors='replace'));sys.stderr.flush()
+                            written=len(data)
+                        # File offsets advance only for bytes actually forwarded. Retry
+                        # transient backpressure on the next poll without stalling deadlines.
+                        self.offsets[str(path)]+=written;sent+=written
+                        if written<len(data):return sent
+            return sent
         except (OSError,ValueError):
             self.failed=True
             raise
+
 
 
 class Supervisor:
@@ -217,10 +227,15 @@ class Supervisor:
                     cleanup['group_gone'] = self.gone(child.pid)
                 if not cleanup['direct_child_reaped'] or not cleanup['group_gone']:
                     cleanup['error'] = cleanup.get('error', 'bounded exit confirmation failed')
-                while any(path.stat().st_size>relay.offsets[str(path)] for path in relay.paths) and not relay.failed:
-                    relay.pump()
+                while relay.pending_bytes() and not relay.failed and time.monotonic()<until:
+                    if not relay.pump():time.sleep(.01)
+                result['live_output']={'status':'complete' if not relay.pending_bytes() and not relay.failed else 'unavailable',
+                                       'unforwarded_bytes':relay.pending_bytes()}
+                if relay.pending_bytes() and not relay.failed:
+                    raise BlockingIOError(11,'live stderr did not drain within bounded output confirmation')
             cleanup['logs_closed'] = True
         except (OSError, SupervisionError) as error:
+            if child is not None and stdout.closed and stderr.closed:cleanup['logs_closed']=True
             cleanup['error'] = str(error)
             result['supervision_error'] = str(error)
             result['os_error'] = getattr(error,'errno',None)

@@ -155,6 +155,7 @@ def materialize(report, receipt):
             raw=raw_test[key]
             if raw_test['result'] in ('infrastructure_error','interrupted'):last,last_name=raw,key
             test['phases'][key]=raw_phase(raw,key,role);test['cleanup']=cleanup(raw)
+            test.setdefault('live_output',{})[key]=raw.get('live_output')
             if key=='compile_link':test['compile_mode']='combined'
             test['trigger']=raw.get('trigger') if raw.get('trigger') in ('timeout','interrupt','residual_process') else 'none'
             test['reason']=raw.get('launch_error') or raw.get('supervision_error') or raw.get('trigger')
