@@ -228,6 +228,20 @@ class Controls(unittest.TestCase):
         rows=reports.diagnostics(raw,'compile_link',graph,str(self.sdk.parent),producer='compiler')
         self.assertEqual(rows[0]['code'],'E0402');self.assertEqual(rows[0]['source']['origin'],'dependency')
 
+    def test_json_delivery_absent_or_flush_failure_is_nonzero(self):
+        import contextlib
+        for target in (None,):
+            err=io.StringIO()
+            with patch.object(runner.sys,'stdout',target),contextlib.redirect_stderr(err):
+                self.assertFalse(runner.deliver_json(reports.new_report()))
+            self.assertIn('could not deliver',err.getvalue())
+        class FailedFlush(io.StringIO):
+            def flush(self):raise BrokenPipeError(32,'controlled closed output')
+        target=FailedFlush();err=io.StringIO()
+        with patch.object(runner.sys,'stdout',target),contextlib.redirect_stderr(err):
+            self.assertFalse(runner.deliver_json(reports.new_report()))
+        self.assertIn('could not deliver',err.getvalue())
+
     def graph(self):
         dep=self.root/'vendored';dep.mkdir();source(dep,'lib.tk','x');(self.sdk/'core').mkdir();source(self.sdk,'core/a.tk','x')
         source(self.root,'src/a.tk','x');external=self.base/'external.tk';external.write_text('x')

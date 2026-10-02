@@ -419,6 +419,27 @@ def json_mode(arguments):
     return False
 
 
+def deliver_json(report):
+    """A buffered/absent stdout must not silently turn delivery failure into code 0."""
+    target=sys.stdout
+    try:
+        if target is None:raise BrokenPipeError('stdout is unavailable')
+        payload=json.dumps(report,ensure_ascii=True)+'\n'
+        written=target.write(payload)
+        if written!=len(payload):raise OSError('stdout did not accept the complete report')
+        target.flush()
+        return True
+    except (OSError,UnicodeError,ValueError) as error:
+        if sys.stderr is not None:
+            try:print('Error: could not deliver test report: '+str(error),file=sys.stderr)
+            except (OSError,ValueError):pass
+        # Avoid a second failing flush during interpreter shutdown. The original
+        # channel is already unavailable; the caller records incomplete delivery.
+        try:sys.stdout=open(os.devnull,'w')
+        except OSError:sys.stdout=None
+        return False
+
+
 def execute_preview(arguments, sdk_lib, tokac, cwd=None):
     supervisor = Supervisor()
     report = reports.new_report()
@@ -460,14 +481,10 @@ def execute_preview(arguments, sdk_lib, tokac, cwd=None):
             except OSError as persistence:
                 report['exit_code']=2;report['result']='infrastructure_error';report['errors'].append({'code':None,'message':str(persistence),'phase':'report_preparation','os_error':getattr(persistence,'errno',None),'source':reports.source_origin(None,None,None)})
         if json_mode(arguments):
-            print(json.dumps(report,ensure_ascii=True))
+            deliver_json(report)
             return 2
         raise
-    if json_mode(arguments):
-        try:print(json.dumps(report,ensure_ascii=True))
-        except (OSError,UnicodeError) as error:
-            print('Error: could not deliver test report: '+str(error),file=sys.stderr)
-            return 2
+    if json_mode(arguments) and not deliver_json(report):return 2
     return code
 
 

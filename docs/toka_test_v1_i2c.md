@@ -81,3 +81,9 @@ T12 的 Windows managed 后端仍不支持、位于核心 SDK 范围外，POSIX 
 
 逐行 ledger 只在完整输入/结果断言具备证据时收闭；其余行仍 partial/uncovered。
 Preview 保留，Unicode/P01、平台策略、完整 Q0 继续独立。这里不授权移除 Preview。
+
+报告输出末端的补充修订：第一次 SDK-only Linux J09 中，关闭 stdout 后没有 JSON
+交付但返回了 0，失败 artifact 原样保留。输出末端现检查 stdout 是否可用，校验
+完整写入并显式 flush；无 stdout、断管或刷写失败返回 2，并在可用 stderr 说明。
+不可交付结果仍标 incomplete，不读取磁盘上的执行快照当成成功交付。测试覆盖
+无 stdout/flush 断管，首次 Linux 的具体时序不由这些控制反推。
