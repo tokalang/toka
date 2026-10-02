@@ -90,11 +90,14 @@ def source_origin(file, graph, sdk_root):
     return result
 
 
-def diagnostics(raw, name, graph, sdk_root):
+def diagnostics(raw, name, graph, sdk_root, *, producer=None):
     collected=[]
-    try:
-        data=json.loads(Path(raw['stdout']).read_text())
-    except (OSError,ValueError,UnicodeError):data=None
+    trusted=producer=='compiler' and name in ('compile_link','compile')
+    data=None
+    if trusted:
+        try:
+            data=json.loads(Path(raw['stdout']).read_text())
+        except (OSError,ValueError,UnicodeError):pass
     if isinstance(data,dict) and data.get('schema')=='toka.diagnostics' and data.get('version') in (1,2) and isinstance(data.get('diagnostics'),list):
         for item in data['diagnostics']:
             if not isinstance(item,dict) or not isinstance(item.get('message'),str):continue
@@ -104,7 +107,7 @@ def diagnostics(raw, name, graph, sdk_root):
                               'message':item['message'],'severity':item.get('severity') if item.get('severity') in ('error','warning','note') else 'unknown',
                               'phase':name,'source':source_origin(file,graph,sdk_root)})
     # Unstructured text remains unknown; never infer severity, code or origin from it.
-    for stream in ('stderr',):
+    for stream in (('stderr',) if trusted else ('stdout','stderr')):
         try:text=Path(raw[stream]).read_bytes().decode('utf-8',errors='replace')
         except OSError:continue
         if text:
@@ -126,7 +129,7 @@ def compiler_identity(report, tokac, sdk_lib, probe):
     match=re.search(r'\b(?:Toka|tokac)\s+(?:version\s+)?v?(\d+\.\d+\.\d+(?:[-+][\w.-]+)?)',text,re.I)
     identity['sdk_version']=match.group(1) if match else None
     # Published SDK has no reliable revision record; never use the source checkout HEAD.
-    identity['status']='checked'
+    # Identity remains failed/incomplete until the context worker verifies the lock identity.
 
 
 def materialize(report, receipt):
@@ -137,7 +140,7 @@ def materialize(report, receipt):
     if 'selection' in receipt:report['selection']=receipt['selection']
     if receipt.get('selection',{}).get('selected_count',0) and report['supervision']['backend']!='unsupported':
         report['supervision']={'backend':'posix_process_group','scope':'direct_child_and_process_group'}
-    graph=receipt.get('provenance');sdk_root=report['identity']['sdk_root'] if report['identity']['status']=='checked' else None
+    graph=receipt.get('provenance');sdk_root=report['identity']['sdk_root'] if report['identity']['status']=='complete' else None
     report['tests']=[];report['diagnostics']=[]
     report['preparation']={name:{'phase':raw_phase(raw,name,'helper'),'cleanup':cleanup(raw),
                                 'logs':{key:str(Path(raw[key]).resolve()) if Path(raw[key]).is_file() else None for key in ('stdout','stderr')}}
@@ -158,10 +161,10 @@ def materialize(report, receipt):
             test['interrupt_signal']=raw.get('interrupt_signal')
             for stream in ('stdout','stderr'):
                 path=Path(raw[stream]);test['logs'][log+'_'+stream]=str(path.resolve()) if path.is_file() else None
-            test['diagnostics']+=diagnostics(raw,key,graph,sdk_root)
+            test['diagnostics']+=diagnostics(raw,key,graph,sdk_root,producer=role)
         report['tests'].append(test);report['diagnostics']+=test['diagnostics']
     for name,raw in receipt.get('preparation',{}).items():
-        report['diagnostics']+=diagnostics(raw,name,graph,sdk_root)
+        report['diagnostics']+=diagnostics(raw,name,graph,sdk_root,producer='helper')
         if raw.get('trigger') or raw.get('launch_error') or raw.get('exit_code') not in (0,None) or raw.get('supervision_error'):
             last,last_name=raw,name
     total=receipt.get('selection',{}).get('selected_count')
@@ -177,7 +180,7 @@ def materialize(report, receipt):
                                'signal':receipt.get('interrupt_signal'),'cleanup':cleanup(last)}
         if receipt['exit_code']==2:
             report['errors']=[{'code':None,'message':receipt.get('error') or receipt.get('persistence_error') or receipt.get('reason') or 'test preparation failed',
-                               'phase':report['termination']['phase'],'os_error':receipt.get('os_error') if receipt.get('os_error') is not None else (last.get('os_error') if last else None),
+                               'phase':report['termination']['phase'],'category':receipt.get('error_category',kind),'os_error':receipt.get('os_error') if receipt.get('os_error') is not None else (last.get('os_error') if last else None),
                                'source':source_origin(None,graph,sdk_root)}]
     report['interrupt_signal']=receipt.get('interrupt_signal');report['interrupt_count']=receipt.get('interrupt_count',0)
     report['finalized']=receipt.get('finalized',False)

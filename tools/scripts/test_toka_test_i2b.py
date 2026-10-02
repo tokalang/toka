@@ -29,6 +29,8 @@ def validate(report):
     assert required<=set(report),required-set(report)
     assert report['schema']=='toka.test-report' and report['version']==1 and report['finalized'] is True
     assert report['preview'] is True
+    # Frozen contract enum, independent of the producer's schema factory.
+    assert report['identity']['status'] in {'not_checked','complete','failed'}
     counts=report['summary'];assert set(counts)=={'total','passed','failed','infrastructure_error','interrupted','not_run'}
     assert counts['total'] is None or counts['total']==len(report['tests'])==sum(counts[key] for key in counts if key!='total')
     for timing in report['timings'].values():check_phase(timing)
@@ -157,6 +159,48 @@ class Controls(unittest.TestCase):
         self.assertTrue(runner.json_mode(['--bad','--json']))
         self.assertTrue(runner.json_mode(['--filter','--json','--json']))
 
+    def test_identity_enum_and_completion_boundary(self):
+        source(self.root,content='exit');r,err=self.invoke()
+        self.assertEqual(r['identity']['status'],'complete')
+        for invalid in ('checked','pending','COMPLETE',None):
+            r['identity']['status']=invalid
+            with self.assertRaises(AssertionError):validate(r)
+    def test_required_lock_errors_are_structured_configuration(self):
+        dep=self.root/'dep';manifest(dep);source(dep,'lib/official/dep.tk','pub fn answer() -> i32 { return 42 }')
+        manifest(self.root,'dep="./dep",');source(self.root,content='exit')
+        for case in ('missing','malformed','stale'):
+            lock=self.root/'package.lock'
+            if lock.exists():lock.unlink()
+            if case=='malformed':lock.write_text('malformed lock')
+            if case=='stale':
+                runner.packages.Resolver(self.root/'package.tk',lock,self.root/'.toka',offline=False,refresh=False).run()
+                manifest(self.root,'dep="./dep",another="./dep",')
+            r,err=self.invoke()
+            self.assertEqual(r['result'],'configuration_error',case)
+            self.assertEqual(r['termination']['reason'],'configuration_error')
+            self.assertEqual(r['exit_code'],2);self.assertEqual(r['summary']['not_run'],1)
+            self.assertEqual(r['identity']['status'],'failed')
+            self.assertEqual(r['errors'][0]['category'],'configuration_error')
+    def test_offline_cache_failure_is_infrastructure_not_lock_configuration(self):
+        manifest(self.root,'reg="reg:1.0.0",');source(self.root,content='exit')
+        entry=runner.packages.LockEntry('reg','registry','reg','1.0.0','1'*64,'2'*64,[])
+        (self.root/'package.lock').write_text(runner.packages.encode_lock({'reg':entry}))
+        with patch.dict(os.environ,{'TOKA_OFFLINE':'1'}):r,err=self.invoke()
+        self.assertEqual(r['result'],'infrastructure_error');self.assertEqual(r['errors'][0]['category'],'infrastructure_error')
+        self.assertEqual(r['summary']['not_run'],1);self.assertEqual(r['exit_code'],2)
+    def test_noncompiler_envelopes_remain_unknown_output(self):
+        graph,dep,external=self.graph();out=self.base/'producer.stdout';err=self.base/'producer.stderr'
+        envelope=json.dumps({'schema':'toka.diagnostics','version':2,'diagnostics':[{'code':'E0402','message':'inert producer-boundary fixture','severity':'error','primary':{'file':str(dep/'lib.tk')}}]})
+        out.write_text(envelope);err.write_text(envelope)
+        raw={'stdout':str(out),'stderr':str(err)}
+        for name,producer in [('run','test'),('context','helper'),('native','helper'),('probe','compiler'),('compile_link','helper'),('compile_link',None)]:
+            rows=reports.diagnostics(raw,name,graph,str(self.sdk.parent),producer=producer)
+            self.assertEqual(len(rows),2,(name,producer))
+            self.assertTrue(all(row['code'] is None and row['severity']=='unknown' and row['source']['origin']=='unknown' for row in rows))
+            self.assertEqual(rows[0]['message'],envelope)
+        rows=reports.diagnostics(raw,'compile_link',graph,str(self.sdk.parent),producer='compiler')
+        self.assertEqual(rows[0]['code'],'E0402');self.assertEqual(rows[0]['source']['origin'],'dependency')
+
     def graph(self):
         dep=self.root/'vendored';dep.mkdir();source(dep,'lib.tk','x');(self.sdk/'core').mkdir();source(self.sdk,'core/a.tk','x')
         source(self.root,'src/a.tk','x');external=self.base/'external.tk';external.write_text('x')
@@ -179,7 +223,7 @@ class Controls(unittest.TestCase):
     def test_structured_warning_note_and_unknown_severity(self):
         graph,dep,external=self.graph();out=self.base/'stdout';err=self.base/'stderr';err.write_text('')
         out.write_text(json.dumps({'schema':'toka.diagnostics','version':2,'diagnostics':[{'message':'m','code':'W0001','severity':severity,'primary':{'file':str(dep/'lib.tk')}} for severity in ('warning','note','arbitrary')]}))
-        rows=reports.diagnostics({'stdout':str(out),'stderr':str(err)},'compile_link',graph,str(self.sdk.parent))
+        rows=reports.diagnostics({'stdout':str(out),'stderr':str(err)},'compile_link',graph,str(self.sdk.parent),producer='compiler')
         self.assertEqual([x['severity'] for x in rows],['warning','note','unknown']);self.assertTrue(all(x['source']['origin']=='dependency' for x in rows))
 
 
@@ -219,7 +263,7 @@ def installed(sdk,output):
             record={'name':name,'command':command,'exit_code':child.returncode,'report':report,'live_handshake_observed':interrupt}
             (folder/'result.json').write_text(json.dumps(record,indent=2)+'\n');results.append(record)
             return report
-        r=run('success');assert r['exit_code']==0 and r['identity']['sdk_revision'] is None
+        r=run('success');assert r['exit_code']==0 and r['identity']['sdk_revision'] is None and r['identity']['status']=='complete'
         r=run('compile-failure','fn main() -> i32 { return undeclared_name }\n');assert r['exit_code']==1
         assert any(d['code']=='E0402' and d['source']['origin']=='user' for d in r['diagnostics'])
         r=run('run-nonzero','fn main() -> i32 { return 7 }\n');assert r['tests'][0]['phases']['run']['exit_code']==7
@@ -234,6 +278,26 @@ def installed(sdk,output):
             manifest(root,'dep="./dep",');runner.packages.Resolver(root/'package.tk',root/'package.lock',root/'.toka',offline=False,refresh=False).run()
         r=run('dependency-source','import official/dep::{answer}\nfn main() -> i32 { return answer() }\n',setup=dependency)
         assert r['exit_code']==1 and any(d['source']['origin']=='dependency' and d['source']['package_node_id'] for d in r['diagnostics'])
+        def lock_problem(case):
+            def setup(root):
+                dep=root/'dep';manifest(dep);source(dep,'lib/official/dep.tk','pub fn answer() -> i32 { return 42 }')
+                manifest(root,'dep="./dep",')
+                if case=='malformed':(root/'package.lock').write_text('malformed lock')
+                if case=='stale':
+                    runner.packages.Resolver(root/'package.tk',root/'package.lock',root/'.toka',offline=False,refresh=False).run()
+                    manifest(root,'dep="./dep",another="./dep",')
+            return setup
+        for case in ('missing','malformed','stale'):
+            r=run('lock-'+case,setup=lock_problem(case))
+            assert r['exit_code']==2 and r['result']=='configuration_error' and r['termination']['reason']=='configuration_error'
+            assert all(t['result']=='not_run' for t in r['tests']) and r['identity']['status']=='failed'
+            assert r['errors'][0]['category']=='configuration_error'
+        def offline(root):
+            manifest(root,'reg="reg:1.0.0",')
+            entry=runner.packages.LockEntry('reg','registry','reg','1.0.0','1'*64,'2'*64,[])
+            (root/'package.lock').write_text(runner.packages.encode_lock({'reg':entry}))
+        r=run('offline-cache-missing',setup=offline,env_extra={'TOKA_OFFLINE':'1'})
+        assert r['exit_code']==2 and r['result']=='infrastructure_error' and r['errors'][0]['category']=='infrastructure_error'
         # Isolated installed SDK variants leave the staged candidate and original archives intact.
         def variant(name,missing):
             copy=base/name;shutil.copytree(sdk,copy)

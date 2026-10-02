@@ -34,7 +34,11 @@ PREVIEW = ('Preview: project tests with supervised execution and C6 JSON. '
 
 
 class PreviewError(RuntimeError):
-    pass
+    category = 'infrastructure_error'
+
+
+class ConfigurationError(PreviewError):
+    category = 'configuration_error'
 
 
 class Parser(argparse.ArgumentParser):
@@ -223,7 +227,7 @@ def project_write_lock(root, compile_ms):
 def project_context(root, compile_ms=DEFAULT_COMPILE_MS):
     manifest, lock, state = root / 'package.tk', root / 'package.lock', root / '.toka'
     if lock.is_symlink():
-        raise PreviewError('package.lock cannot be a symbolic link')
+        raise ConfigurationError('package.lock cannot be a symbolic link')
     with project_write_lock(root, compile_ms):
         before = lock.read_bytes() if lock.is_file() else None
         resolver = packages.Resolver(manifest, lock, state,
@@ -305,7 +309,7 @@ def prepare_worker(mode, root, sdk_lib, run_dir, compile_ms):
         packages.atomic_write(path, json.dumps(data) + '\n')
         return 0
     except (OSError, packages.PackageError, PreviewError) as error:
-        packages.atomic_write(path, json.dumps({'error': str(error), 'type': type(error).__name__}) + '\n')
+        packages.atomic_write(path, json.dumps({'error': str(error), 'type': type(error).__name__, 'category': getattr(error,'category','infrastructure_error')}) + '\n')
         print(str(error), file=sys.stderr)
         return 2
 
@@ -330,6 +334,9 @@ def run_preparation(supervisor, mode, root, sdk_lib, run_dir, receipt, budget, c
         raise PreviewError(mode + ' preparation produced no result; see ' + phase['stderr'])
     data = json.loads(result_path.read_text())
     if 'error' in data:
+        if data.get('category') == 'configuration_error':
+            if data['type'] == 'PackageConfigurationError':raise packages.PackageConfigurationError(data['error'])
+            raise ConfigurationError(data['error'])
         if data['type'] == 'PackageError':
             raise packages.PackageError(data['error'])
         raise PreviewError(data['error'])
@@ -549,6 +556,7 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started
             receipt['provenance'] = context['provenance']
             report['identity']['lock_sha256']=context['lock_sha256']
             report['identity']['lock_path']=str(root/'package.lock') if context['lock_sha256'] else None
+            report['identity']['status']='complete'
             receipt['compiler_flags'] = flags
             receipt['tokac'] = str(tokac)
             native = run_preparation(supervisor, 'native', root, sdk_lib, run_dir, receipt, DEFAULT_NATIVE_MS, options.compile_ms)
@@ -603,8 +611,9 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started
             if result['result'] == 'infrastructure_error':
                 result['result'] = 'interrupted'
     except (OSError, packages.PackageError, PreviewError, SupervisionError) as error:
-        receipt['result'] = 'configuration_error' if receipt.get('active_stage')=='selection' else 'infrastructure_or_configuration_error'
+        receipt['result'] = 'configuration_error' if receipt.get('active_stage')=='selection' or getattr(error,'category',None)=='configuration_error' else 'infrastructure_or_configuration_error'
         receipt['error'] = str(error)
+        receipt['error_category'] = 'configuration_error' if receipt['result']=='configuration_error' else 'infrastructure_error'
         receipt['os_error'] = getattr(error,'errno',None)
         if hasattr(error,'raw_input_base64'):report['raw_inputs_base64'].append(error.raw_input_base64)
         receipt['exit_code'] = 2

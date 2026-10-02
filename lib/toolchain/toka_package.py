@@ -38,7 +38,11 @@ DEFAULT_REGISTRY_URL = "https://pkg.tokalang.dev"
 
 
 class PackageError(RuntimeError):
-    pass
+    category = 'infrastructure_error'
+
+
+class PackageConfigurationError(PackageError):
+    category = 'configuration_error'
 
 
 def build_deterministic_archive(output: Path, inputs: list[str]) -> None:
@@ -604,52 +608,59 @@ def file_sha256(path: Path) -> str:
 
 def read_lock(path: Path) -> dict[str, LockEntry]:
     if not path.is_file():
+        if path.exists():raise PackageConfigurationError('package.lock must be a regular file')
         return {}
-    lines = path.read_text(encoding="utf-8").splitlines()
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except UnicodeError as error:
+        raise PackageConfigurationError('package.lock must be valid UTF-8') from error
     if not lines or lines[0] != LOCK_HEADER:
-        raise PackageError("unsupported or malformed package.lock")
+        raise PackageConfigurationError("unsupported or malformed package.lock")
     entries: dict[str, LockEntry] = {}
     previous = ""
     for line in lines[1:]:
         fields = line.split("\t")
         if len(fields) != 8 or fields[0] != "package":
-            raise PackageError("malformed package.lock entry")
+            raise PackageConfigurationError("malformed package.lock entry")
         _, alias, kind, locator, resolved, archive_hash, content_hash, dependencies = fields
         if not ALIAS_RE.fullmatch(alias) or kind not in ("path", "git", "registry"):
-            raise PackageError("invalid package.lock entry")
+            raise PackageConfigurationError("invalid package.lock entry")
         if alias in entries or (previous and alias <= previous):
-            raise PackageError("package.lock entries are duplicate or unsorted")
+            raise PackageConfigurationError("package.lock entries are duplicate or unsorted")
         if not re.fullmatch(r"[0-9a-f]{64}", content_hash):
-            raise PackageError("invalid package content hash")
+            raise PackageConfigurationError("invalid package content hash")
         if archive_hash != "-" and not re.fullmatch(r"[0-9a-f]{64}", archive_hash):
-            raise PackageError("invalid package archive hash")
+            raise PackageConfigurationError("invalid package archive hash")
         deps = [] if dependencies == "-" else dependencies.split(",")
         if deps != sorted(set(deps)) or any(not ALIAS_RE.fullmatch(dep) for dep in deps):
-            raise PackageError("invalid locked dependency list")
+            raise PackageConfigurationError("invalid locked dependency list")
         entry = LockEntry(alias, kind, locator, resolved, archive_hash, content_hash, deps)
-        entry.line()
+        try:
+            entry.line()
+        except PackageError as error:
+            raise PackageConfigurationError(str(error)) from error
         if kind == "path":
             if archive_hash != "-" or not Path(locator).is_absolute() or resolved != locator:
-                raise PackageError("invalid locked path package: " + alias)
+                raise PackageConfigurationError("invalid locked path package: " + alias)
         elif kind == "git":
             if archive_hash != "-" or not re.fullmatch(r"[0-9a-f]{40,64}", resolved):
-                raise PackageError("invalid locked Git package: " + alias)
+                raise PackageConfigurationError("invalid locked Git package: " + alias)
         elif archive_hash == "-" or not resolved or resolved == "latest":
-            raise PackageError("invalid locked registry package: " + alias)
+            raise PackageConfigurationError("invalid locked registry package: " + alias)
         entries[alias] = entry
         previous = alias
 
     for alias, entry in entries.items():
         for dependency in entry.dependencies:
             if dependency == alias or dependency not in entries:
-                raise PackageError("invalid locked dependency reference: " + alias + " -> " + dependency)
+                raise PackageConfigurationError("invalid locked dependency reference: " + alias + " -> " + dependency)
 
     visiting: set[str] = set()
     visited: set[str] = set()
 
     def visit(alias: str) -> None:
         if alias in visiting:
-            raise PackageError("package.lock contains a dependency cycle")
+            raise PackageConfigurationError("package.lock contains a dependency cycle")
         if alias in visited:
             return
         visiting.add(alias)
@@ -1011,14 +1022,14 @@ class Resolver:
     def _materialize(self, dependency: Dependency) -> tuple[LockEntry, Path]:
         locked = self._locked_for(dependency)
         if self.locked and locked is None:
-            raise PackageError("test requires a matching package.lock; run toka fetch: " + dependency.alias)
+            raise PackageConfigurationError("test requires a matching package.lock; run toka fetch: " + dependency.alias)
         if dependency.kind == "path":
             root = Path(dependency.locator)
             if not (root / "package.tk").is_file():
                 raise PackageError("path package has no package.tk: " + dependency.alias)
             digest = tree_sha256(root)
             if self.locked and digest != locked.content_sha256:
-                raise PackageError("local package changed since package.lock: " + dependency.alias)
+                raise PackageConfigurationError("local package changed since package.lock: " + dependency.alias)
             entry = LockEntry(dependency.alias, "path", dependency.locator, dependency.locator, "-", digest, [])
             return entry, root
         if dependency.kind == "git":
@@ -1059,7 +1070,7 @@ class Resolver:
                 self._resolve(dependency)
             encoded = encode_lock(self.entries)
             if self.locked and self.lock_bytes is not None and encoded.encode("utf-8") != self.lock_bytes:
-                raise PackageError("test would change package.lock; run toka fetch explicitly")
+                raise PackageConfigurationError("test would change package.lock; run toka fetch explicitly")
             for target, source in sorted(self.candidates.items(), key=lambda item: str(item[0])):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if target.exists():
