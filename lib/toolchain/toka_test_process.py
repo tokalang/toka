@@ -189,18 +189,22 @@ class Supervisor:
                 if result['trigger'] is not None:
                     cleanup['status'] = 'pending'
                     try:
-                        self.send(child.pid, signal.SIGTERM)
-                        result['requested_signals'].append(signal.SIGTERM)
-                        until = time.monotonic() + TERMINATE_GRACE_MS / 1000
-                        while time.monotonic() < until:
-                            if self.exited(child.pid) and not (self.members(child.pid) - {child.pid}):
-                                break
-                            relay.pump()
-                            time.sleep(0.01)
-                        else:
-                            self.send(child.pid, signal.SIGKILL)
-                            result['requested_signals'].append(signal.SIGKILL)
-                            cleanup['kill_sent'] = True
+                        # A handled interrupt can coincide with an already-ended worker.
+                        # Keep its wait right, verify no other group members, then reap;
+                        # signaling a zombie-only Darwin group can spuriously return EPERM.
+                        if not (self.exited(child.pid) and not (self.members(child.pid)-{child.pid})):
+                            self.send(child.pid, signal.SIGTERM)
+                            result['requested_signals'].append(signal.SIGTERM)
+                            until = time.monotonic() + TERMINATE_GRACE_MS / 1000
+                            while time.monotonic() < until:
+                                if self.exited(child.pid) and not (self.members(child.pid) - {child.pid}):
+                                    break
+                                relay.pump()
+                                time.sleep(0.01)
+                            else:
+                                self.send(child.pid, signal.SIGKILL)
+                                result['requested_signals'].append(signal.SIGKILL)
+                                cleanup['kill_sent'] = True
                     except (OSError, SupervisionError) as error:
                         cleanup['error'] = str(error)
                         # Preserve identity; one final bounded kill attempt, never bare IDs.

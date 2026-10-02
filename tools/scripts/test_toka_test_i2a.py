@@ -131,6 +131,19 @@ class Controls(unittest.TestCase):
                 self.sent.append(number);super().send(pid,number)
         s=Observed();p=self.phase('ignore',5000,s);assert_confirmed(p)
         self.assertEqual(s.sent,[signal.SIGTERM,signal.SIGKILL])
+    def test_interrupt_after_worker_exit_skips_unneeded_group_signal(self):
+        class EndedInterrupt(processes.Supervisor):
+            def exited(self,pid):
+                ended=super().exited(pid)
+                if ended:self._interrupt(signal.SIGINT,None)
+                return ended
+        with patch.object(os,'killpg',wraps=os.killpg) as calls:
+            raw=self.phase('exit',5000,EndedInterrupt())
+        assert_confirmed(raw)
+        self.assertEqual(raw['trigger'],'interrupt');self.assertEqual(raw['exit_code'],0)
+        self.assertEqual(raw['requested_signals'],[])
+        self.assertFalse(any(call.args[1] in (signal.SIGTERM,signal.SIGKILL) for call in calls.call_args_list))
+
     def test_options_bounds_and_duplicates(self):
         for option in ('--compile-timeout-ms','--run-timeout-ms'):
             for value in ('0','-1','1.5','NaN','2147483648','١'):

@@ -87,3 +87,9 @@ Preview 保留，Unicode/P01、平台策略、完整 Q0 继续独立。这里不
 完整写入并显式 flush；无 stdout、断管或刷写失败返回 2，并在可用 stderr 说明。
 不可交付结果仍标 incomplete，不读取磁盘上的执行快照当成成功交付。测试覆盖
 无 stdout/flush 断管，首次 Linux 的具体时序不由这些控制反推。
+
+P14b 的 macOS SDK-only 首次失败也保留：观察到 interrupt 时 context worker 同时
+正常退出，直接 child 与组最终都已确认消失，但无必要的组信号被 Darwin 拒绝。
+监督修订仅在 leader wait 权仍保留、已确认退出且没有其他组成员时省去发送信号，
+随后正常 wait/reap 和 ESRCH 确认。真正存活成员、权限或身份/组确认错误仍返回 2，
+不忽略 EPERM、不取消权限检查、不向已回收 PID 发信号。独立控制覆盖此完成边界。
