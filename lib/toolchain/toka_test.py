@@ -17,11 +17,10 @@ import time
 
 try:
     import toka_package as packages
+    from toka_test_process import Supervisor, Interrupted, SupervisionError
 except ImportError as error:
-    print('Error: active SDK package helper is unavailable: ' + str(error), file=sys.stderr)
+    print('Error: active SDK test/package helper is unavailable: ' + str(error), file=sys.stderr)
     raise SystemExit(2) from error
-
-from toka_test_process import Supervisor, Interrupted, SupervisionError
 
 DEFAULT_PREPARE_MS = 180000
 DEFAULT_NATIVE_MS = 120000

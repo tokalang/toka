@@ -167,6 +167,14 @@ class Controls(unittest.TestCase):
         self.assertEqual(r['exit_code'],2);self.assertEqual(r['tests'][0]['result'],'not_run')
         p=r['preparation']['native'];self.assertEqual(p['trigger'],'timeout');assert_confirmed(p)
 
+    def test_missing_supervision_module_returns_two(self):
+        helper=self.root/'sdk-helper';helper.mkdir()
+        for name in ('toka_test.py','toka_package.py','toka_safe_extract.py'):
+            shutil.copyfile(ROOT/'lib/toolchain'/name,helper/name)
+        env=dict(os.environ);env.pop('PYTHONPATH',None)
+        result=subprocess.run([sys.executable,str(helper/'toka_test.py'),'--sdk-lib',str(helper),'--tokac','unused','--','--help'],env=env,capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,2);self.assertIn(b'toka_test_process',result.stderr)
+
     def test_interrupt_cleanup_failure_overrides_130(self):
         class InterruptFault(processes.Supervisor):
             def exited(self,pid):
