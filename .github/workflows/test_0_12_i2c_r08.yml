@@ -1,0 +1,78 @@
+name: 0.12 I2-C R08 frozen SDK observations
+on:
+  push:
+    branches: [implement/0.12-i2c-r08]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  frozen:
+    name: Frozen R08 observation (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - name: Install released SDK host dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          sudo -E apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y build-essential curl wget lsb-release software-properties-common
+          installer="$RUNNER_TEMP/i2c-llvm-installer.sh"
+          wget --timeout=15 --tries=3 -O "$installer" https://apt.llvm.org/llvm.sh
+          chmod +x "$installer"
+          sudo -E "$installer" 20
+          sudo apt-get install -y lld-20 liblld-20-dev libpolly-20-dev libzstd-dev libssl-dev pkg-config
+          echo '/usr/lib/llvm-20/bin' >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@v4
+        with:
+          name: i2c-sdk-${{ matrix.target }}
+          run-id: 37007553627
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen-input
+      - name: Validate and install exact 053daa95 archive
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib,json,os,tarfile
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP']);data=root/'frozen-input/i2c-package'
+          identity=json.loads((data/'sdk-identity.json').read_text())
+          assert identity['candidate_sha']=='053daa955970b2ae8333449bf52695f55e3c1b6e'
+          archive=data/identity['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']
+          install=root/'installed';install.mkdir()
+          with tarfile.open(archive) as package:package.extractall(install,filter='data')
+          sdk=next(install.iterdir())
+          for path,value in identity['components'].items():assert hashlib.sha256((sdk/path).read_bytes()).hexdigest()==value['sha256']
+          (root/'sdk-path.txt').write_text(str(sdk))
+          PYCODE
+      - name: Preserve actual startup failures and started-linker control
+        run: |
+          sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
+          python3 tools/scripts/test_toka_test_r08.py --sdk "$sdk" --output "$RUNNER_TEMP/r08" --observe
+          python3 - <<'PYCODE'
+          import hashlib,json,os
+          from pathlib import Path
+          r=Path(os.environ['RUNNER_TEMP']);p=Path('tools/scripts/test_toka_test_r08.py')
+          (r/'r08/identity.json').write_text(json.dumps({'SDK_source_sha':'053daa955970b2ae8333449bf52695f55e3c1b6e','harness_source_sha':os.environ['GITHUB_SHA'],'harness_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'SDK_identity':json.loads((r/'frozen-input/i2c-package/sdk-identity.json').read_text())},indent=2)+'\n')
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r08-frozen-${{ matrix.target }}
+          include-hidden-files: true
+          path: ${{ runner.temp }}/r08

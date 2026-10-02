@@ -9,7 +9,7 @@ ROWS={'R03':['R03'],'R04':['R04'],'R08':['R08-compiler'],'R09':['R09'],'R10':['R
       'A02':['A02'],'A05':['A05'],'T11e':['T11e'],'T12':['T12-posix']}
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--prior',type=Path,required=True);p.add_argument('--batch',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--regression',type=Path,required=True)
+ p=argparse.ArgumentParser();p.add_argument('--prior',type=Path,required=True);p.add_argument('--batch',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--regression',type=Path,required=True);p.add_argument('--target',choices=['linux-x64','linux-arm64','macos-arm64'],required=True)
  a=p.parse_args();ledger=json.loads(a.prior.read_text());summary=json.loads((a.batch/'result.json').read_text());assert summary['result']=='pass'
  for row in ledger['rows']:
   if row['id'] not in ROWS:continue
@@ -22,7 +22,11 @@ def main():
                     'incomplete':record.get('incomplete',False)})
   row['prior_evidence']=row['evidence'];row['prior_coverage']=row['coverage']
   row.update(coverage='covered',gap=None,evidence=attached)
-  if row['id']=='R08':row['profile_scope']='compiler startup covered; separately spawned linker is not applicable to the bundled-LLD core SDK profile; real link failure separately R03'
+  if row['id']=='R08':
+   if a.target=='macos-arm64':row['profile_scope']='compiler startup covered; macOS uses in-process LLD; real link failure separately R03'
+   else:
+    row.update(coverage='partial',gap='Linux external cc driver startup failure remains unverified')
+    row['profile_scope']='Linux launches external cc; R03 covers a started linker reporting symbol failure, not driver startup failure'
   if row['id']=='T12':row['profile_scope']='POSIX managed start refusal covered with injected OS failure; Windows managed backend unsupported and outside core SDK profile'
   if row['id']=='J09':row['completion_policy']='closed stdout evidence is incomplete, never accepted as completed/pass'
   if row['id']=='J01':row['compiler_volume_layer']='controlled proxy delegates real compilation and adds note volume; explicitly not asserted to be original compiler diagnostics'

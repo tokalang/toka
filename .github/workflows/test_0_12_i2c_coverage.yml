@@ -262,7 +262,7 @@ jobs:
       - name: Attach new assertions to the immutable prior ledger
         run: |
           python3 "$RUNNER_TEMP/frozen-input/i2c-harness/ledger_toka_i2c_batch.py" \
-            --prior "$RUNNER_TEMP/replayed-regression/i2c-matrix.json" \
+            --target "${{ matrix.target }}" --prior "$RUNNER_TEMP/replayed-regression/i2c-matrix.json" \
             --batch "$RUNNER_TEMP/i2c-batch" --regression "$RUNNER_TEMP/replayed-regression/i2c-installed" --output "$RUNNER_TEMP/i2c-batch/coverage-ledger.json"
       - name: Retain actual SDK-only results and all faults/incomplete cases
         if: always()
