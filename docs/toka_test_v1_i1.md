@@ -55,3 +55,11 @@ B0 的 Unicode 0.1.1 三平台 30 个失败及原发布包继续保留。此提�
 
 对应验收 ID 与实际控制的映射见 tools/scripts/test_toka_test_i1.py；全 120 条
 矩阵仍有 I2/I3/PL/E0 项，不能把本批定向检查写成整个 v1 Accepted。
+
+## 同提交托管结果
+
+候选 `8b685ef0686c9d40af9ae6bcbf3610ba2c23a408` 的
+[定向运行 36952522545](https://github.com/tokalang/toka/actions/runs/36952522545)
+在 Linux x64、Linux ARM64、macOS ARM64 均通过。每个平台包括 16 组基础控制、
+原包供应链回归及 10 项真实重定位 SDK 场景；实际回执仍标 Preview/stable_v1=false。
+该结果是 I1 交付复审材料，不是稳定 v1、I2 或发布资格 Accepted。
