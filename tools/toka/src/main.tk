@@ -2,7 +2,7 @@
 import std/env
 import std/io::{println, File, remove_file}
 import std/fs::{read_to_string, exists, create_dir, write_string, read_dir, metadata}
-import sys/libc::{libc_system, libc_printf, libc_getenv}
+import sys/libc::{libc_system, libc_printf, libc_getenv, libc_execvp}
 import sys/os/base as sys
 import std/vec::{Vec}
 import std/process::{Command}
@@ -31,7 +31,7 @@ fn print_help() {
     println("                                      Validate bodyless Outcome provider attestations")
     println("  preview      Compare base/candidate snapshots without writing either one")
     println("  query        Run a compiler semantic query (definition, references, rename)")
-    println("  test         Preview: project test entries (I1; lifecycle/JSON pending I2)")
+    println("  test         Preview: project test entries (I2-A; JSON pending I2-B)")
     println("  doc          Generate API documentation")
     println("  add <package-or-url>  Add a Registry package or URL dependency")
     println("  rm <pkg>     Remove a package dependency")
@@ -1036,6 +1036,38 @@ fn cmd_test(argc: i32, shift: i32) -> i32 {
         println("Error: project test helper missing from active SDK: {}", helper)
         return 2
     }
+    if !check_is_windows() {
+        // Replace the manager: signals to the real command PID reach the supervisor.
+        // Keep owned strings and argv storage alive until execvp replaces this image.
+        auto arguments# = Vec<string>::new()
+        arguments#.push(string::from("python3"))
+        arguments#.push(helper.clone())
+        arguments#.push(string::from("--sdk-lib"))
+        arguments#.push(detect_default_lib_path())
+        arguments#.push(string::from("--tokac"))
+        arguments#.push(detect_tokac_path())
+        arguments#.push(string::from("--"))
+        auto index# = 2 + shift
+        loop index < argc {
+            arguments#.push(env::get_arg(index))
+            index += 1
+        }
+        unsafe {
+            auto argv# = Vec<Addr>::with_capacity(arguments.len() + 1:usize)
+            auto position# = 0:usize
+            loop position < arguments.len() {
+                auto &argument = arguments.borrow(position)
+                argv#.push(argument.c_str() as Addr)
+                position += 1:usize
+            }
+            argv#.push(0 as Addr)
+            auto &program = arguments.borrow(0:usize)
+            libc_execvp(program.c_str(), argv.unsafe_storage() as *void)
+        }
+        println("Error: could not launch Python 3 project test helper; run 'toka doctor'")
+        return 2
+    }
+    // Windows currently supports empty selection only; no managed backend is claimed.
     auto command# = Command::new(string::from("python3"))
     command#.arg(helper)
     command#.arg(string::from("--sdk-lib"))
@@ -1049,10 +1081,7 @@ fn cmd_test(argc: i32, shift: i32) -> i32 {
         index += 1
     }
     auto result = command#.try_status()
-    if result.is_err() {
-        println("Error: could not launch Python 3 project test helper; run 'toka doctor'")
-        return 2
-    }
+    if result.is_err() { return 2 }
     return result.unwrap().legacy_code()
 }
 

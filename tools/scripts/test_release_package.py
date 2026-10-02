@@ -67,7 +67,7 @@ def main():
             checks.append("binary:" + name)
 
         for name in ("toka_package.py", "toka_safe_extract.py",
-                     "semantic_diff_preview.py", "toka_test.py"):
+                     "semantic_diff_preview.py", "toka_test.py", "toka_test_process.py"):
             helper = package_root / "lib" / "toolchain" / name
             if not helper.is_file():
                 raise SystemExit("missing packaged package helper: %s" % name)

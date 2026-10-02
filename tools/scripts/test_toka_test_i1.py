@@ -39,6 +39,7 @@ class I1Tests(unittest.TestCase):
         self.compiler.write_text('''#!/usr/bin/env python3
 import json,os,pathlib,sys
 args=sys.argv[1:]
+if args==['--version']:print('controlled compiler');sys.exit(0)
 entry=next(pathlib.Path(a) for a in args if a.endswith('.tk') and '=' not in a)
 data=entry.read_text()
 log=pathlib.Path(os.environ['TOKA_TEST_RUN_DIR'])/'compile-order.jsonl'
@@ -108,7 +109,7 @@ exe.chmod(0o755)
         with self.assertRaises(runner.PreviewError):self.invoke(['--','--json'])
 
     def test_options_do_not_promise_i2(self):
-        for args in [['--json'],['--run-timeout-ms','5'],['--compile-timeout-ms','5'],['--allow-empty','--allow-empty'],['--filter',''],['--help','ok.tk']]:
+        for args in [['--json'],['--run-timeout-ms','0'],['--compile-timeout-ms','-5'],['--allow-empty','--allow-empty'],['--filter',''],['--help','ok.tk']]:
             with self.assertRaises(runner.PreviewError):self.invoke(args)
 
     def test_failures_continue_serial_and_logs_retained(self):
@@ -121,7 +122,7 @@ exe.chmod(0o755)
                 if name in t:
                     for stream in ['stdout','stderr']:self.assertTrue(Path(t[name][stream]).is_file())
         self.assertNotIn('run',r['tests'][0])
-        self.assertTrue(r['preview']);self.assertEqual(r['supervision'],'not_implemented_i1')
+        self.assertTrue(r['preview']);self.assertEqual(r['supervision'],'posix_process_group')
 
     def test_manifest_changes_and_extra_locked_nodes_are_rejected(self):
         dep=Path(self.temp.name)/'dep';manifest(dep);source(dep,'lib/official/dep.tk','pub fn answer() -> i32 { return 42 }\n')
@@ -142,9 +143,9 @@ exe.chmod(0o755)
 
     def test_failed_launch_stops(self):
         source(self.root,'tests/a_test.tk');source(self.root,'tests/b_test.tk');self.compiler.unlink()
-        with self.assertRaises(OSError):self.invoke([])
+        with self.assertRaises(runner.PreviewError):self.invoke([])
         r=self.receipts()[0];self.assertEqual(r['exit_code'],2)
-        self.assertEqual([t['result'] for t in r['tests']],['infrastructure_error','not_run'])
+        self.assertEqual([t['result'] for t in r['tests']],['not_run','not_run'])
 
     def test_lock_is_frozen_and_context_matches_package_helper(self):
         dep=Path(self.temp.name)/'dep';manifest(dep)

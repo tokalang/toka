@@ -151,6 +151,13 @@ Windows GNU x64 保持源构建/dogfood 身份。**本版不承诺 Windows 的 m
   compile_ms 的独立预算；身份工具超时是准备失败/2，不记测试 timed_out。
   依赖获取不计入 compile/run 预算，沿用 fetch 自身的
   网络超时/离线规则；外部 helper 仍必须响应中断并按同一机制清理。
+  I2-A 增加调用级准备保护：依赖 context worker 为 **180000 ms**，native
+  worker（native plan、pkg-config、宿主 C 编译及对象准备合计）为 **120000 ms**。
+  它们是独立保守政策上限，不是 B0 推导值，不占用每项 compile_link/run 预算；
+  触及保护上限且清理成功也返回基础设施错误 2，全部测试保持 not_run。
+  原 fetch 网络超时和离线规则仍生效。native helper 内部工具继承同一个受控组，
+  共享 native 保护预算；编译器身份探测则单独受 compile_ms 约束。
+  本批没有增加用户可覆盖或无限准备预算选项。
 - `--compile-timeout-ms` 和 `--run-timeout-ms` 接受正整数毫秒，最大
   `2147483647`；0、负数、非整数和越界返回 2。没有无限超时选项。
   编译器只提供一次编译+链接调用时，前者涵盖完整 `compile_link` 调用；如果后续
@@ -168,7 +175,10 @@ Windows GNU x64 保持源构建/dogfood 身份。**本版不承诺 Windows 的 m
 - 必须保持监督对象的生命周期，避免组/PID 回收后重新指向别的调用。身份不再
   可信时，停止发信号并报告 2，不靠扫描系统进程或模糊 PID 列表“补杀”。
   需要发出的组信号必须在 leader 身份被回收前完成；最终 wait/reap 与组消失
-  确认后不再向旧 PGID 发信号。实现须以独立监督对象/保留身份等机制满足这一
+  确认后不再向旧 PGID 发信号。I2-A 使用 waitid(WNOWAIT) 保留 leader 的
+  wait 权，每次信号前重验 wait 权；失去身份时禁止继续发送信号。Linux /proc
+  与 Darwin proc_listpids 的组成员读取只用于判断残留，且在 leader 尚未回收时
+  使用；不向枚举所得 PID 发信号。实现须以独立监督对象/保留身份等机制满足这一
   条件，不能把已经 wait 回收的裸 PID 当作安全取消句柄。
 - 普通结束也执行组边界检查。leader 正常退出但组内有存活进程时，同样按上述
   限额收尾；清理成功后该项为 `run_failed`、原因 `residual_process`，不是 passed。

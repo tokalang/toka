@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""I1 project test preview. Production supervision/JSON belong to I2."""
+"""Project test Preview: I2-A supervision; stable JSON belongs to I2-B."""
 from __future__ import annotations
 
 import argparse
@@ -11,7 +11,6 @@ import json
 import os
 import stat
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 import time
@@ -22,10 +21,14 @@ except ImportError as error:
     print('Error: active SDK package helper is unavailable: ' + str(error), file=sys.stderr)
     raise SystemExit(2) from error
 
+from toka_test_process import Supervisor, Interrupted, SupervisionError
+
+DEFAULT_PREPARE_MS = 180000
+DEFAULT_NATIVE_MS = 120000
 DEFAULT_COMPILE_MS = 30000
 DEFAULT_RUN_MS = 5000
-PREVIEW = ('Preview: I1 project test runner, not the stable project test contract. '
-           'Compiler/runtime deadlines, process supervision and JSON output await I2.')
+PREVIEW = ('Preview: I2-A project test supervision; stable JSON and diagnostic provenance '
+           'await I2-B. Installed-SDK final acceptance awaits I2-C.')
 
 
 class PreviewError(RuntimeError):
@@ -40,8 +43,9 @@ class Parser(argparse.ArgumentParser):
 def parse_options(arguments):
     if arguments == ['--help']:
         return None
-    result = argparse.Namespace(entries=[], filter=[], allow_empty=False)
+    result = argparse.Namespace(entries=[], filter=[], allow_empty=False, compile_ms=DEFAULT_COMPILE_MS, run_ms=DEFAULT_RUN_MS)
     index = 0
+    seen = set()
     while index < len(arguments):
         value = arguments[index]
         if value == '--':
@@ -62,8 +66,20 @@ def parse_options(arguments):
             if not text:
                 raise PreviewError('filter must be a nonempty literal substring')
             result.filter.append(text)
+        elif value in ('--compile-timeout-ms', '--run-timeout-ms'):
+            index += 1
+            if index == len(arguments) or not arguments[index].isascii() or not arguments[index].isdecimal():
+                raise PreviewError(value + ' requires an integer in 1..2147483647')
+            budget = int(arguments[index])
+            if not 1 <= budget <= 2147483647:
+                raise PreviewError(value + ' requires an integer in 1..2147483647')
+            key = 'compile_ms' if value == '--compile-timeout-ms' else 'run_ms'
+            if key in seen:
+                raise PreviewError('option may only appear once: ' + value)
+            seen.add(key)
+            setattr(result, key, budget)
         elif value.startswith('-'):
-            raise PreviewError('unsupported I1 Preview option: ' + value + '; use --help')
+            raise PreviewError('unsupported Preview option: ' + value + '; use --help')
         else:
             result.entries.append(value)
         index += 1
@@ -182,6 +198,8 @@ def project_write_lock(root):
                 fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
+                if time.monotonic() - started < 0.04:
+                    print('Waiting for project dependency lock', flush=True)
                 if (time.monotonic() - started) * 1000 >= DEFAULT_COMPILE_MS:
                     raise PreviewError('timed out waiting for project dependency write lock')
                 time.sleep(0.02)
@@ -229,7 +247,7 @@ def native_inputs(root, sdk_lib, run_dir):
     build = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(build)
     previous_cwd, previous_lib = Path.cwd(), os.environ.get('TOKA_LIB')
-    out, err = run_dir / 'native.stdout', run_dir / 'native.stderr'
+    out, err = run_dir / 'native-build.stdout', run_dir / 'native-build.stderr'
     try:
         os.chdir(root)
         os.environ['TOKA_LIB'] = str(sdk_lib)
@@ -255,26 +273,65 @@ def native_inputs(root, sdk_lib, run_dir):
             os.environ['TOKA_LIB'] = previous_lib
 
 
-def run_phase(command, root, directory, name, environment):
-    stdout_path, stderr_path = directory / (name + '.stdout'), directory / (name + '.stderr')
-    started = time.perf_counter_ns()
-    # This is intentionally synchronous I1 execution, not C4 supervision.
-    with stdout_path.open('xb') as stdout, stderr_path.open('xb') as stderr:
-        child = subprocess.run(command, cwd=root, env=environment, stdin=subprocess.DEVNULL,
-                               stdout=stdout, stderr=stderr)
-    return {'command': [str(x) for x in command], 'exit_code': child.returncode if child.returncode >= 0 else None,
-            'signal': -child.returncode if child.returncode < 0 else None,
-            'duration_ms': (time.perf_counter_ns() - started) / 1e6,
-            'stdout': str(stdout_path), 'stderr': str(stderr_path)}
+def prepare_worker(mode, root, sdk_lib, run_dir):
+    """Worker descendants inherit the supervisor-owned group, including native tools."""
+    path = run_dir / (mode + '-result.json')
+    try:
+        if mode == 'context':
+            flags, digest = project_context(root)
+            data = {'flags': flags, 'lock_sha256': digest}
+        else:
+            flags, identity = native_inputs(root, sdk_lib, run_dir)
+            data = {'flags': flags, 'identity': identity}
+        packages.atomic_write(path, json.dumps(data) + '\n')
+        return 0
+    except (OSError, packages.PackageError, PreviewError) as error:
+        packages.atomic_write(path, json.dumps({'error': str(error), 'type': type(error).__name__}) + '\n')
+        print(str(error), file=sys.stderr)
+        return 2
+
+
+def phase_error(phase):
+    if phase.get('launch_error') or phase.get('supervision_error') or phase['cleanup']['status'] == 'failed':
+        raise PreviewError('process supervision failed; see ' + phase['stderr'])
+    if phase['interrupt_signal'] is not None:
+        raise Interrupted('user interrupt')
+
+
+def run_preparation(supervisor, mode, root, sdk_lib, run_dir, receipt, budget):
+    phase = supervisor.run([sys.executable, str(Path(__file__).resolve()), '--worker', mode,
+                            str(root), str(sdk_lib), str(run_dir)], root, run_dir,
+                           mode, dict(os.environ), budget)
+    receipt.setdefault('preparation', {})[mode] = phase
+    phase_error(phase)
+    if phase['trigger'] is not None:
+        raise PreviewError(mode + ' preparation failed: ' + phase['trigger'])
+    result_path = run_dir / (mode + '-result.json')
+    if not result_path.is_file():
+        raise PreviewError(mode + ' preparation produced no result; see ' + phase['stderr'])
+    data = json.loads(result_path.read_text())
+    if 'error' in data:
+        if data['type'] == 'PackageError':
+            raise packages.PackageError(data['error'])
+        raise PreviewError(data['error'])
+    if phase['exit_code'] != 0 or phase['signal'] is not None:
+        raise PreviewError(mode + ' preparation failed; see ' + phase['stderr'])
+    return data
 
 
 def execute_preview(arguments, sdk_lib, tokac, cwd=None):
+    supervisor = Supervisor()
+    with supervisor.signals():
+        return _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor)
+
+
+def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor):
     print(PREVIEW, file=sys.stderr)
     options = parse_options(arguments)
     if options is None:
         print('Usage: toka test [entry.tk ...] [--filter <literal>] [--allow-empty]')
         print('Explicit entries replace tests/**/*_test.tk discovery. Runs serially at the project root.')
-        print('Preview I1: --json and compiler/runtime timeout options are not available until I2.')
+        print('--compile-timeout-ms <ms> (30000), --run-timeout-ms <ms> (5000). --json awaits I2-B.')
         return 0
     invocation = (cwd or Path.cwd()).resolve()
     root = find_project(invocation)
@@ -283,14 +340,18 @@ def execute_preview(arguments, sdk_lib, tokac, cwd=None):
     if state.is_symlink() or artifact_parent.is_symlink():
         raise PreviewError('test artifact directory cannot be a symbolic link')
     artifact_parent.mkdir(parents=True, exist_ok=True)
-    run_dir = Path(tempfile.mkdtemp(prefix='i1-', dir=artifact_parent))
-    receipt = {'schema': 'toka.test-preview-i1', 'version': 1, 'preview': True,
+    run_dir = Path(tempfile.mkdtemp(prefix='i2a-', dir=artifact_parent))
+    receipt = {'schema': 'toka.test-preview-i2a', 'version': 1, 'preview': True,
                'project_root': str(root), 'artifact_root': str(run_dir),
-               'supervision': 'not_implemented_i1', 'accepted_future_defaults_ms': {'compile': DEFAULT_COMPILE_MS, 'run': DEFAULT_RUN_MS},
-               'compiler_runtime_deadlines_enabled': False, 'tests': [], 'exit_code': 2}
+               'supervision': 'posix_process_group', 'accepted_future_defaults_ms': {'compile': DEFAULT_COMPILE_MS, 'run': DEFAULT_RUN_MS},
+               'compiler_runtime_deadlines_enabled': True,
+               'budgets_ms': {'compile_link': options.compile_ms, 'run': options.run_ms,
+                              'context': DEFAULT_PREPARE_MS, 'native': DEFAULT_NATIVE_MS,
+                              'probe': options.compile_ms}, 'tests': [], 'exit_code': 2}
     try:
         selected, selection = select_entries(root, invocation, options.entries, options.filter)
         receipt['selection'] = selection
+        supervisor.check_interrupt()
         if not selected:
             receipt['result'] = 'empty' if options.allow_empty else 'configuration_error'
             receipt['reason'] = 'no_tests' if selection['candidate_count'] == 0 else 'no_matches'
@@ -301,13 +362,21 @@ def execute_preview(arguments, sdk_lib, tokac, cwd=None):
             raise PreviewError('I1 project test preview supports native POSIX hosts only')
         for identifier, entry in selected:
             receipt['tests'].append({'id': identifier, 'entry': str(entry), 'result': 'not_run'})
-        flags, lock_digest = project_context(root)
-        receipt['lock_sha256'] = lock_digest
+        probe = supervisor.run([str(tokac), '--version'], root, run_dir, 'probe', dict(os.environ), options.compile_ms)
+        receipt.setdefault('preparation', {})['probe'] = probe
+        phase_error(probe)
+        if probe['trigger'] is not None or probe['exit_code'] != 0 or probe['signal'] is not None:
+            raise PreviewError('compiler identity probe failed; see ' + probe['stderr'])
+        context = run_preparation(supervisor, 'context', root, sdk_lib, run_dir, receipt, DEFAULT_PREPARE_MS)
+        flags = context['flags']
+        receipt['lock_sha256'] = context['lock_sha256']
         receipt['compiler_flags'] = flags
         receipt['tokac'] = str(tokac)
-        native_flags, receipt['native_inputs'] = native_inputs(root, sdk_lib, run_dir)
+        native = run_preparation(supervisor, 'native', root, sdk_lib, run_dir, receipt, DEFAULT_NATIVE_MS)
+        native_flags, receipt['native_inputs'] = native['flags'], native['identity']
         failures = 0
         for index, ((identifier, entry), result) in enumerate(zip(selected, receipt['tests']), 1):
+            supervisor.check_interrupt()
             directory = run_dir / ('%06d' % index)
             directory.mkdir()
             if entry.is_symlink() or not entry.is_file():
@@ -316,38 +385,53 @@ def execute_preview(arguments, sdk_lib, tokac, cwd=None):
             result['result'] = 'infrastructure_error'  # Replaced only after a successful child launch.
             environment = dict(os.environ, TOKA_TEST_RUN_DIR=str(run_dir), TOKA_TEST_CASE_DIR=str(directory))
             exe = directory / 'test-executable'
-            compile_phase = run_phase([str(tokac), '-I', str(sdk_lib), '-I', str(root / 'lib'),
+            compile_phase = supervisor.run([str(tokac), '-I', str(sdk_lib), '-I', str(root / 'lib'),
                                        '-I', str(root), *flags, str(entry), *native_flags,
-                                       '-o', str(exe), '-O0'], root, directory, 'compile', environment)
+                                       '-o', str(exe), '-O0'], root, directory, 'compile', environment, options.compile_ms)
             result['compile_link'] = compile_phase
-            if compile_phase['signal'] is not None:
+            phase_error(compile_phase)
+            if compile_phase['signal'] is not None and compile_phase['trigger'] is None:
                 result['result'] = 'infrastructure_error'
                 raise PreviewError('compiler terminated by signal: ' + identifier)
-            if compile_phase['exit_code'] != 0:
-                result['result'] = 'compile_failed'
+            if compile_phase['exit_code'] != 0 or compile_phase['trigger'] is not None:
+                result['result'] = 'timed_out' if compile_phase['trigger'] == 'timeout' else 'compile_failed'
                 failures += 1
                 print('[FAILED (Compile)] ' + identifier)
             else:
-                run = run_phase([str(exe)], root, directory, 'run', environment)
+                run = supervisor.run([str(exe)], root, directory, 'run', environment, options.run_ms)
                 result['run'] = run
-                result['result'] = 'passed' if run['exit_code'] == 0 and run['signal'] is None else 'run_failed'
+                result['result'] = 'infrastructure_error'
+                phase_error(run)
+                result['result'] = 'passed' if run['exit_code'] == 0 and run['signal'] is None and run['trigger'] is None else ('timed_out' if run['trigger'] == 'timeout' else 'run_failed')
                 failures += result['result'] != 'passed'
                 print(('[OK] ' if result['result'] == 'passed' else '[FAILED (Runtime)] ') + identifier)
             print('  logs: ' + str(directory))
+        supervisor.check_interrupt()
         receipt['exit_code'] = 1 if failures else 0
         receipt['result'] = 'failed' if failures else 'passed'
         print('Preview results: %d selected, %d passed, %d failed; artifacts: %s' %
               (len(selected), len(selected) - failures, failures, run_dir))
         return receipt['exit_code']
-    except (OSError, packages.PackageError, PreviewError) as error:
+    except Interrupted:
+        receipt['result'] = 'interrupted'
+        receipt['exit_code'] = 130
+        for result in receipt['tests']:
+            if result['result'] == 'infrastructure_error':
+                result['result'] = 'interrupted'
+        return 130
+    except (OSError, packages.PackageError, PreviewError, SupervisionError) as error:
         receipt['result'] = 'infrastructure_or_configuration_error'
         receipt['error'] = str(error)
         raise
     finally:
+        receipt['interrupt_signal'] = supervisor.interrupt_signal
+        receipt['interrupt_count'] = supervisor.interrupt_count
         packages.atomic_write(run_dir / 'preview.json', json.dumps(receipt, indent=2) + '\n')
 
 
 def main():
+    if len(sys.argv) == 6 and sys.argv[1] == '--worker' and sys.argv[2] in ('context', 'native'):
+        return prepare_worker(sys.argv[2], *[Path(value) for value in sys.argv[3:]])
     # Manager-owned options precede --; user options cannot replace SDK/tool paths.
     try:
         separator = sys.argv.index('--')

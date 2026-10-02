@@ -1,7 +1,7 @@
 # 0.12.x 开发线：项目开发体验
 
-状态：2026-10-02 B0 已独立复审 Accepted，I1 基础实现/验证中，仍为 Preview；
-未冻结 0.12 SDK、未启动完整发布资格矩阵。I1 范围见 [阶段记录](toka_test_v1_i1.md)。
+状态：2026-10-02 B0 已独立复审 Accepted，I1 已独立复审 Accepted，I2-A 进程监督实现/验证中，仍为 Preview；
+未冻结 0.12 SDK、未启动完整发布资格矩阵。I1 范围见 [阶段记录](toka_test_v1_i1.md)，I2-A 见 [监督记录](toka_test_v1_i2a.md)。
 本批交付仅包含此文、[toka test v1 契约](toka_test_v1.md)和
 [验收矩阵](toka_test_v1_acceptance.md)。设计承诺不能记作已通过实现测试。
 

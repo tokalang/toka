@@ -270,6 +270,8 @@ if(BUILD_TESTING)
     if(Python3_Interpreter_FOUND)
         add_test(NAME toka_test_i1_preview
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_toka_test_i1.py)
+        add_test(NAME toka_test_i2a_supervision
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_toka_test_i2a.py)
         add_test(NAME toka_call_transfer_shadow_m1
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_call_transfer_shadow_m1.py

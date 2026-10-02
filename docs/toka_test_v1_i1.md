@@ -1,5 +1,8 @@
 # I1 项目测试基础：Preview
 
+复审状态：候选 `8b685ef0` 已由用户独立复审标记 I1 Accepted；该接受仅覆盖 I1，
+命令继续为 Preview。I2-A 进程监督见 [后续阶段](toka_test_v1_i2a.md)。
+
 状态：2026-10-02 I1 实现与定向验证；B0 已独立复审 Accepted。尚未进入 I2，
 也未冻结 0.12 SDK 或修改平台政策。规范仍以 [v1 契约](toka_test_v1.md)为准。
 
