@@ -101,4 +101,5 @@ jobs:
             ${{ runner.temp }}/i2b-i1-installed
             ${{ runner.temp }}/i2b-i2a-installed
             ${{ runner.temp }}/i2b-controls
+          include-hidden-files: true
           if-no-files-found: warn
