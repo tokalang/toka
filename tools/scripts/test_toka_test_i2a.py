@@ -21,11 +21,22 @@ import toka_test as runner
 import toka_test_process as processes
 from test_toka_test_i1 import manifest, source
 
-FIXTURE = '''import os, signal, subprocess, sys, time
+FIXTURE = '''import os, signal, subprocess, sys, time, json, pathlib
+location = os.environ.get('FIXTURE_EVENT_PATH')
+if not location and os.environ.get('TOKA_TEST_CASE_DIR'):
+ location = str(pathlib.Path(os.environ['TOKA_TEST_CASE_DIR'])/'fixture-events.jsonl')
+def event(stage):
+ if location:
+  with open(location,'a') as stream:stream.write(json.dumps({'stage':stage,'monotonic_ns':time.monotonic_ns(),'pid':os.getpid()})+'\\n')
+event('entered')
+delay = int(os.environ.get('FIXTURE_STARTUP_DELAY_MS','0'))
+if delay: event('startup_delay');time.sleep(delay/1000)
 mode = sys.argv[1]
 if mode == 'exit': sys.exit(0)
 if mode == 'signal': os.kill(os.getpid(), signal.SIGABRT)
-if mode == 'ignore': signal.signal(signal.SIGTERM, signal.SIG_IGN)
+if mode == 'ignore':
+ signal.signal(signal.SIGTERM, signal.SIG_IGN)
+ event('term_ignored')
 if mode == 'residual':
  p = subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(60)'])
  print('RESIDUAL', p.pid, flush=True)
@@ -36,6 +47,7 @@ if mode == 'children':
   p.wait(timeout=3); sys.exit(0)
  signal.signal(signal.SIGTERM, stop)
  print('CHILD', p.pid, flush=True)
+event('ready')
 print('READY', flush=True)
 while True: time.sleep(.01)
 '''
@@ -83,15 +95,22 @@ class Controls(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory(prefix='i2a-control-');self.root=Path(self.temp.name)
         self.counter=0
         self.sdk=self.root/'control-lib';(self.sdk/'sys').mkdir(parents=True);(self.sdk/'sys/toka_rt.o').write_bytes(b'controlled runtime fixture')
-    def tearDown(self):self.temp.cleanup()
+    def tearDown(self):
+        retain=os.environ.get('TOKA_TEST_CONTROL_EVIDENCE')
+        if retain:
+            target=Path(retain)/self._testMethodName;target.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copytree(self.root,target)
+        self.temp.cleanup()
     def phase(self, mode, budget=100, supervisor=None):
         self.counter+=1;folder=self.root/str(self.counter);folder.mkdir()
-        return (supervisor or processes.Supervisor()).run([sys.executable,'-c',FIXTURE,mode],self.root,folder,'run',dict(os.environ),budget)
+        return (supervisor or processes.Supervisor()).run([sys.executable,'-c',FIXTURE,mode],self.root,folder,'run',dict(os.environ,FIXTURE_EVENT_PATH=str(folder/'fixture-events.jsonl')),budget)
     def test_normal_exit_and_raw_signal(self):
         p=self.phase('exit',5000);assert_confirmed(p);self.assertEqual(p['exit_code'],0);self.assertIsNone(p['trigger'])
         p=self.phase('signal',5000);assert_confirmed(p);self.assertEqual(p['signal'],signal.SIGABRT)
     def test_timeout_and_term_kill_escalation(self):
-        p=self.phase('ignore',250);assert_confirmed(p);self.assertEqual(p['trigger'],'timeout')
+        p=self.phase('ignore',5000);assert_confirmed(p);self.assertEqual(p['trigger'],'timeout')
+        events=[json.loads(line) for line in (Path(p['stdout']).parent/'fixture-events.jsonl').read_text().splitlines()]
+        self.assertIn('term_ignored',[x['stage'] for x in events]);self.assertIn('ready',[x['stage'] for x in events])
         self.assertTrue(p['cleanup']['kill_sent']);self.assertEqual(p['signal'],signal.SIGKILL)
         self.assertGreaterEqual(p['duration_ms'],2200)
     def test_controlled_descendant_and_normal_residual(self):
@@ -110,7 +129,7 @@ class Controls(unittest.TestCase):
             def send(self,pid,number):
                 os.waitid(os.P_PID,pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
                 self.sent.append(number);super().send(pid,number)
-        s=Observed();p=self.phase('ignore',200,s);assert_confirmed(p)
+        s=Observed();p=self.phase('ignore',5000,s);assert_confirmed(p)
         self.assertEqual(s.sent,[signal.SIGTERM,signal.SIGKILL])
     def test_options_bounds_and_duplicates(self):
         for option in ('--compile-timeout-ms','--run-timeout-ms'):
@@ -234,7 +253,7 @@ class Controls(unittest.TestCase):
         compiler=self.root/'tokac';fake_compiler(compiler)
         ready=self.root/'cc-ready';cc=self.root/'cc'
         cc.write_text('#!'+sys.executable+'\nimport pathlib,time\npathlib.Path('+repr(str(ready))+').write_text("READY")\ntime.sleep(60)\n');cc.chmod(0o755)
-        with patch.dict(os.environ,{'CC':str(cc)}),patch.object(runner,'DEFAULT_NATIVE_MS',1000),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
+        with patch.dict(os.environ,{'CC':str(cc)}),patch.object(runner,'DEFAULT_NATIVE_MS',5000),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(runner.PreviewError):runner.execute_preview([],sdk,compiler,root)
         r=receipt(root)
         self.assertTrue(ready.exists(),json.dumps(r)+str([(str(p),p.read_text()) for p in (root/'.toka/test-runs').glob('*/native*.stderr')]))
@@ -335,7 +354,7 @@ def installed(sdk, output):
                 if not p.get('launch_error'):assert_confirmed(p)
             return r
         for mode in ('wait','children','ignore'):
-            r=case('timeout-'+mode,[mode,'exit'],['--run-timeout-ms','1000']);assert r['exit_code']==1
+            r=case('timeout-'+mode,[mode,'exit'],['--run-timeout-ms','5000' if mode=='ignore' else '1000']);assert r['exit_code']==1
             assert [t['result'] for t in r['tests']]==['timed_out','passed']
         r=case('compile-timeout',['compile_wait','exit'],['--compile-timeout-ms','1000']);assert r['exit_code']==1
         assert [t['result'] for t in r['tests']]==['timed_out','passed']

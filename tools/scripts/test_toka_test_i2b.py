@@ -59,7 +59,12 @@ class Controls(unittest.TestCase):
         self.root=self.base/'project';manifest(self.root)
         self.sdk=self.base/'sdk/lib';(self.sdk/'sys').mkdir(parents=True);(self.sdk/'sys/toka_rt.o').write_bytes(b'controlled runtime fixture')
         self.compiler=self.base/'tokac';fake_compiler(self.compiler)
-    def tearDown(self):self.temp.cleanup()
+    def tearDown(self):
+        retain=os.environ.get('TOKA_TEST_CONTROL_EVIDENCE')
+        if retain:
+            target=Path(retain)/self._testMethodName;target.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copytree(self.base,target)
+        self.temp.cleanup()
     def invoke(self,args=(),compiler=None):
         out,err=io.StringIO(),io.StringIO()
         with contextlib.redirect_stdout(out),contextlib.redirect_stderr(err):
@@ -84,10 +89,12 @@ class Controls(unittest.TestCase):
         self.assertEqual(r['exit_code'],1);self.assertEqual(r['summary']['failed'],1);self.assertEqual(r['summary']['passed'],1)
         self.assertEqual(r['tests'][0]['phases']['run']['signal'],6);self.assertIsNone(r['tests'][0]['interrupt_signal'])
     def test_timeout_has_raw_signal_and_separate_cleanup_time(self):
-        source(self.root,content='ignore');r,err=self.invoke(['--run-timeout-ms','1000'])
+        source(self.root,content='ignore');r,err=self.invoke(['--run-timeout-ms','5000'])
         t=r['tests'][0];self.assertEqual(r['exit_code'],1);self.assertEqual(t['trigger'],'timeout')
         self.assertEqual(t['phases']['run']['signal'],signal.SIGKILL)
-        self.assertGreaterEqual(t['cleanup']['duration_ms'],1900);self.assertLess(t['phases']['run']['duration_ms'],2000)
+        self.assertGreaterEqual(t['cleanup']['duration_ms'],1900);self.assertLess(t['phases']['run']['duration_ms'],6000)
+        events=[json.loads(line) for line in (Path(t['logs']['run_stdout']).parent/'fixture-events.jsonl').read_text().splitlines()]
+        self.assertIn('term_ignored',[x['stage'] for x in events]);self.assertIn('ready',[x['stage'] for x in events])
     def test_launch_failure_preserves_not_run_and_native_errno(self):
         source(self.root,content='exit');self.compiler.unlink();r,err=self.invoke()
         self.assertEqual(r['exit_code'],2);self.assertEqual(r['summary']['not_run'],1)

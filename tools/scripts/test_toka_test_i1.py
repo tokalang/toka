@@ -53,6 +53,10 @@ exe.chmod(0o755)
 '''); self.compiler.chmod(0o755)
 
     def tearDown(self):
+        retain=os.environ.get('TOKA_TEST_CONTROL_EVIDENCE')
+        if retain:
+            target=Path(retain)/self._testMethodName;target.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copytree(Path(self.temp.name),target)
         self.temp.cleanup()
 
     def invoke(self, args, cwd=None):
