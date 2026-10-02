@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Installed CLI discovery/input acceptance. Observation mode retains failures."""
-import argparse,base64,json,os,stat,subprocess,sys
+import argparse,base64,errno,json,os,stat,subprocess,sys
 from pathlib import Path
 from test_toka_test_i2c_batch import Batch,source
 OK='fn main() -> i32 { return 0 }\n'
@@ -71,7 +71,7 @@ class Discovery(Batch):
    try:
     fd=os.open(path,os.O_WRONLY|os.O_CREAT,0o600);os.write(fd,OK.encode());os.close(fd)
    except OSError as error:
-    if sys.platform!='darwin' or error.errno not in (1,22,84):raise
+    if sys.platform!='darwin' or error.errno not in (errno.EPERM,errno.EINVAL,errno.EILSEQ):raise
     normal=root/'tests/valid-name.bytes';normal.write_bytes(OK.encode());normal.unlink()
     fixture_available=False;creation_error={'errno':error.errno,'valid_name_creation_succeeded':True}
    name='D27-'+('explicit' if explicit else 'discovery');argument=os.fsdecode(path)
