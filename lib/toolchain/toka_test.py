@@ -12,6 +12,8 @@ import json
 import os
 import stat
 import signal
+import shlex
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -314,6 +316,58 @@ def prepare_worker(mode, root, sdk_lib, run_dir, compile_ms):
         return 2
 
 
+def link_driver_worker(status_path, original_path, arguments):
+    """The cc child inherits the compiler's supervised group; no new session."""
+    status_path = Path(status_path)
+    status = {'state': 'starting', 'command': ['cc', *arguments], 'pid': None,
+              'exit_code': None, 'signal': None, 'os_error': None}
+    packages.atomic_write(status_path, json.dumps(status) + '\n')
+    try:
+        child = subprocess.Popen(status['command'], env=dict(os.environ, PATH=original_path))
+    except OSError as error:
+        status.update(state='launch_failed', os_error=error.errno, message=str(error))
+        packages.atomic_write(status_path, json.dumps(status) + '\n')
+        return 127
+    status.update(state='started', pid=child.pid)
+    packages.atomic_write(status_path, json.dumps(status) + '\n')
+    code = child.wait()
+    status.update(state='completed', exit_code=code if code >= 0 else None,
+                  signal=-code if code < 0 else None)
+    packages.atomic_write(status_path, json.dumps(status) + '\n')
+    return code if code >= 0 else 128 - code
+
+
+def link_driver_bridge(directory, environment):
+    """Observe Linux cc exec separately from a driver's normal link rejection.
+
+    The immutable compiler still invokes cc. An invocation-private cc shim
+    records the actual launch and delegates with the original search path.
+    Its lifetime is included in the existing combined compilation budget.
+    """
+    if not sys.platform.startswith('linux'):
+        return None
+    bridge = directory / 'link-driver'
+    bridge.mkdir()
+    status_path = bridge / 'status.json'
+    packages.atomic_write(status_path, json.dumps({'state': 'not_invoked'}) + '\n')
+    original_path = environment.get('PATH', os.defpath)
+    command = [sys.executable, str(Path(__file__).resolve()), '--link-driver-worker',
+               str(status_path), original_path]
+    shim = bridge / 'cc'
+    shim.write_text('#!/bin/sh\nexec ' + shlex.join(command) + ' "$@"\n')
+    shim.chmod(0o700)
+    environment['PATH'] = str(bridge) + os.pathsep + original_path
+    return status_path
+
+
+def link_driver_result(status_path):
+    if status_path is None:
+        return None
+    status = json.loads(status_path.read_text())
+    status['record_path'] = str(status_path)
+    return status
+
+
 def phase_error(phase):
     if phase.get('launch_error') or phase.get('supervision_error') or phase['cleanup']['status'] == 'failed':
         raise PreviewError('process supervision failed; see ' + phase['stderr'])
@@ -593,11 +647,20 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started
                 result['result'] = 'infrastructure_error'  # Replaced only after a successful child launch.
                 environment = dict(os.environ, TOKA_TEST_RUN_DIR=str(run_dir), TOKA_TEST_CASE_DIR=str(directory))
                 exe = directory / 'test-executable'
+                compile_environment = dict(environment)
+                driver_status = link_driver_bridge(directory, compile_environment)
                 compile_phase = supervisor.run([str(tokac), '--diagnostics-json', '-I', str(sdk_lib), '-I', str(root / 'lib'),
                                            '-I', str(root), *flags, str(entry), *native_flags,
-                                           '-o', str(exe), '-O0'], root, directory, 'compile', environment, options.compile_ms)
+                                           '-o', str(exe), '-O0'], root, directory, 'compile', compile_environment, options.compile_ms)
                 result['compile_link'] = compile_phase
                 phase_error(compile_phase)
+                driver = link_driver_result(driver_status)
+                if driver is not None:
+                    result['link_driver'] = driver
+                    if driver['state'] == 'launch_failed':
+                        raise OSError(driver['os_error'], 'external cc driver could not start: ' + driver['message'])
+                    if compile_phase['trigger'] is None and (driver['state'] in ('starting', 'started') or driver.get('signal')):
+                        raise PreviewError('external cc driver did not complete normally; see ' + str(driver_status))
                 if compile_phase['signal'] is not None and compile_phase['trigger'] is None:
                     result['result'] = 'infrastructure_error'
                     raise PreviewError('compiler terminated by signal: ' + identifier)
@@ -646,6 +709,8 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started
 
 
 def main():
+    if len(sys.argv) >= 4 and sys.argv[1] == '--link-driver-worker':
+        return link_driver_worker(sys.argv[2], sys.argv[3], sys.argv[4:])
     if len(sys.argv) == 7 and sys.argv[1] == '--worker' and sys.argv[2] in ('context', 'native'):
         return prepare_worker(sys.argv[2], *[Path(value) for value in sys.argv[3:6]], int(sys.argv[6]))
     # Manager-owned options precede --; user options cannot replace SDK/tool paths.

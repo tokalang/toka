@@ -1,7 +1,5 @@
 name: 0.12 I2-C R08 frozen SDK observations
 on:
-  push:
-    branches: [implement/0.12-i2c-r08]
   workflow_dispatch:
 permissions:
   contents: read

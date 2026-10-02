@@ -9,7 +9,7 @@ ROWS={'R03':['R03'],'R04':['R04'],'R08':['R08-compiler'],'R09':['R09'],'R10':['R
       'A02':['A02'],'A05':['A05'],'T11e':['T11e'],'T12':['T12-posix']}
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--prior',type=Path,required=True);p.add_argument('--batch',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--regression',type=Path,required=True);p.add_argument('--target',choices=['linux-x64','linux-arm64','macos-arm64'],required=True)
+ p=argparse.ArgumentParser();p.add_argument('--prior',type=Path,required=True);p.add_argument('--batch',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--regression',type=Path,required=True);p.add_argument('--r08',type=Path);p.add_argument('--target',choices=['linux-x64','linux-arm64','macos-arm64'],required=True)
  a=p.parse_args();ledger=json.loads(a.prior.read_text());summary=json.loads((a.batch/'result.json').read_text());assert summary['result']=='pass'
  for row in ledger['rows']:
   if row['id'] not in ROWS:continue
@@ -27,6 +27,20 @@ def main():
    else:
     row.update(coverage='partial',gap='Linux external cc driver startup failure remains unverified')
     row['profile_scope']='Linux launches external cc; R03 covers a started linker reporting symbol failure, not driver startup failure'
+    if a.r08 is not None:
+     extra=json.loads((a.r08/'result.json').read_text());assert extra['contract_pass'] and len(extra['observations'])==3
+     for item in extra['observations']:
+      path=a.r08/('R08-linker-'+item['case'])/'result.json';record=json.loads(path.read_text());report=record['report']
+      assert record['exit_code']==2 and report['result']=='infrastructure_error'
+      assert [t['result'] for t in report['tests']]==['infrastructure_error','not_run']
+      assert report['tests'][0]['link_driver']['state']=='launch_failed'
+      assert report['tests'][1]['phases']['compile_link']['state']=='not_started'
+      attached.append({'path':str(path),'case':record['name'],'actual_exit_code':2,'evidence_layer':'real installed CLI and OS driver exec failure'})
+     contrast=json.loads((a.r08/'R03/result.json').read_text())['report']
+     assert contrast['exit_code']==1 and [t['result'] for t in contrast['tests']]==['compile_failed','passed']
+     assert contrast['tests'][0]['link_driver']['state']=='completed'
+     row.update(coverage='covered',gap=None)
+     row['profile_scope']='Linux actual missing, non-executable and missing-interpreter cc startup errors return 2 and stop scheduling; R03 started-driver link rejection returns 1 and continues'
   if row['id']=='T12':row['profile_scope']='POSIX managed start refusal covered with injected OS failure; Windows managed backend unsupported and outside core SDK profile'
   if row['id']=='J09':row['completion_policy']='closed stdout evidence is incomplete, never accepted as completed/pass'
   if row['id']=='J01':row['compiler_volume_layer']='controlled proxy delegates real compilation and adds note volume; explicitly not asserted to be original compiler diagnostics'

@@ -150,6 +150,7 @@ def materialize(report, receipt):
         test={'id':raw_test['id'],'entry':raw_test['entry'],'result':raw_test['result'],'reason':None,
               'trigger':'none','interrupt_signal':None,'phases':{key:phase(key) for key in ('compile_link','compile','link','run')},
               'compile_mode':'unknown','cleanup':cleanup(),'logs':{key:None for key in ('compile_stdout','compile_stderr','run_stdout','run_stderr')},'diagnostics':[]}
+        if 'link_driver' in raw_test:test['link_driver']=raw_test['link_driver']
         for key,role,log in [('compile_link','compiler','compile'),('run','test','run')]:
             if key not in raw_test:continue
             raw=raw_test[key]

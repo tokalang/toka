@@ -2,7 +2,7 @@ name: 0.12 I2-C Error, Report and Shared-State Coverage Preview
 
 on:
   push:
-    branches: [implement/0.12-i2c-coverage]
+    branches: [implement/0.12-i2c-coverage, implement/0.12-i2c-r08]
     paths:
       - .github/workflows/test_0_12_i2c_coverage.yml
       - lib/toolchain/toka_test*.py
@@ -12,6 +12,8 @@ on:
       - tools/scripts/test_toka_test_i2a.py
       - tools/scripts/test_toka_test_i2b.py
       - tools/scripts/test_toka_test_i2c.py
+      - tools/scripts/test_toka_test_link_driver.py
+      - tools/scripts/test_toka_test_r08.py
       - tools/scripts/test_toka_test_i2c_batch.py
       - tools/scripts/bundle_toka_i2c_batch.py
       - tools/scripts/ledger_toka_i2c_batch.py
@@ -149,6 +151,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/i2c-controls"
+          python3 tools/scripts/test_toka_test_link_driver.py > "$RUNNER_TEMP/i2c-controls/link-driver.stdout" 2> "$RUNNER_TEMP/i2c-controls/link-driver.stderr"
           TOKA_TEST_CONTROL_EVIDENCE="$RUNNER_TEMP/i2c-controls/i1-raw" python3 tools/scripts/test_toka_test_i1.py > "$RUNNER_TEMP/i2c-controls/i1.stdout" 2> "$RUNNER_TEMP/i2c-controls/i1.stderr" &
           p1=$!
           TOKA_TEST_CONTROL_EVIDENCE="$RUNNER_TEMP/i2c-controls/i2a-raw" python3 tools/scripts/test_toka_test_i2a.py > "$RUNNER_TEMP/i2c-controls/i2a.stdout" 2> "$RUNNER_TEMP/i2c-controls/i2a.stderr" &
@@ -244,6 +247,7 @@ jobs:
           assert h['harness_source_sha']==os.environ['CANDIDATE']
           assert hashlib.sha256((bundle/'test_toka_test_i2c_batch.py').read_bytes()).hexdigest()==h['harness_sha256']
           assert hashlib.sha256((bundle/'ledger_toka_i2c_batch.py').read_bytes()).hexdigest()==h['ledger_script_sha256']
+          assert hashlib.sha256((bundle/'test_toka_test_r08.py').read_bytes()).hexdigest()==h['r08_script_sha256']
           install=Path(os.environ['RUNNER_TEMP'])/'sdk-only-install';install.mkdir()
           with tarfile.open(archive) as package:package.extractall(install,filter='data')
           sdk=next(install.iterdir())
@@ -255,13 +259,21 @@ jobs:
           cd "$RUNNER_TEMP/frozen-input/i2c-harness"
           PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_i2c_batch.py --sdk "$sdk" \
             --source-unavailable --output "$RUNNER_TEMP/i2c-batch"
+      - name: Linux real external driver startup and link-error contrast
+        if: runner.os == 'Linux'
+        run: |
+          sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
+          cd "$RUNNER_TEMP/frozen-input/i2c-harness"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_r08.py --sdk "$sdk" --output "$RUNNER_TEMP/i2c-batch/r08-driver"
       - uses: actions/download-artifact@v4
         with:
           name: i2c-regression-${{ matrix.target }}
           path: ${{ runner.temp }}/replayed-regression
       - name: Attach new assertions to the immutable prior ledger
         run: |
-          python3 "$RUNNER_TEMP/frozen-input/i2c-harness/ledger_toka_i2c_batch.py" \
+          extra=()
+          if [ "${{ runner.os }}" = Linux ]; then extra=(--r08 "$RUNNER_TEMP/i2c-batch/r08-driver"); fi
+          python3 "$RUNNER_TEMP/frozen-input/i2c-harness/ledger_toka_i2c_batch.py" "${extra[@]}" \
             --target "${{ matrix.target }}" --prior "$RUNNER_TEMP/replayed-regression/i2c-matrix.json" \
             --batch "$RUNNER_TEMP/i2c-batch" --regression "$RUNNER_TEMP/replayed-regression/i2c-installed" --output "$RUNNER_TEMP/i2c-batch/coverage-ledger.json"
       - name: Retain actual SDK-only results and all faults/incomplete cases

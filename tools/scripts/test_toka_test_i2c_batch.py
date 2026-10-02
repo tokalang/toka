@@ -58,7 +58,7 @@ class Batch:
         return report
     def run(self):
         ok='fn main() -> i32 { return 0 }\n'
-        # Genuine in-process bundled linker rejects a missing external symbol; later test runs.
+        # Genuine platform linker rejects a missing external symbol; later test runs.
         root=self.project('link-failure',[('a_test.tk','extern fn absent_link_symbol_i2c() -> i32\nfn main() -> i32 { return absent_link_symbol_i2c() }\n'),('b_test.tk',ok)])
         r=self.cli('R03',root,expected=1,rows=['R03'])
         assert [t['result'] for t in r['tests']]==['compile_failed','passed'] and r['tests'][0]['phases']['run']['state']=='not_started'
@@ -74,7 +74,7 @@ class Batch:
         command=[str(variant/'bin/toka'),'test','--json'];result=subprocess.run(command,cwd=root,env=self.env,capture_output=True,timeout=20)
         r=self.save('R08-compiler',root,command,result.returncode,result.stdout,result.stderr,json.loads(result.stdout),rows=['R08'])
         assert r['exit_code']==2 and r['result']=='infrastructure_error' and r['summary']['not_run']==2 and r['preparation']['probe']['phase']['os_error'] in (13,1)
-        (self.output/'R08-compiler/linker-profile.json').write_text(json.dumps({'external_linker_start_variant':'not_applicable','basis':'fixed core SDK uses bundled LLD in compiler process; no separately-launched linker executable','actual_link_failure':'R03 genuine linker error retained'},indent=2)+'\n')
+        (self.output/'R08-compiler/linker-profile.json').write_text(json.dumps({'external_linker_start_variant':'requires_R08_driver_evidence' if sys.platform.startswith('linux') else 'not_applicable','basis':'Linux launches cc; macOS uses in-process LLD','actual_link_failure':'R03 genuine linker error retained'},indent=2)+'\n')
         from unittest.mock import patch
         root=self.project('executable-unavailable',[('a_test.tk',ok),('b_test.tk',ok)])
         original=self.runner.Supervisor.run
