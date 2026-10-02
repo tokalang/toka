@@ -210,6 +210,9 @@ def project_context(root):
         for value in packages.compiler_node_mappings(lock):
             flags += ['--pkg-node', value]
         node = packages.workspace_node(manifest, lock)
+        for mapping in packages.workspace_library_mappings(root, lock):
+            alias = mapping.partition('=')[0]
+            flags += ['--pkg', mapping, '--pkg-node', alias + '=' + node]
         if node:
             flags += ['--workspace-node', node, '--workspace-root', str(root)]
         return flags, hashlib.sha256(after).hexdigest() if after is not None else None
@@ -313,7 +316,8 @@ def execute_preview(arguments, sdk_lib, tokac, cwd=None):
             result['result'] = 'infrastructure_error'  # Replaced only after a successful child launch.
             environment = dict(os.environ, TOKA_TEST_RUN_DIR=str(run_dir), TOKA_TEST_CASE_DIR=str(directory))
             exe = directory / 'test-executable'
-            compile_phase = run_phase([str(tokac), '-I', str(sdk_lib), *flags, str(entry), *native_flags,
+            compile_phase = run_phase([str(tokac), '-I', str(sdk_lib), '-I', str(root / 'lib'),
+                                       '-I', str(root), *flags, str(entry), *native_flags,
                                        '-o', str(exe), '-O0'], root, directory, 'compile', environment)
             result['compile_link'] = compile_phase
             if compile_phase['signal'] is not None:

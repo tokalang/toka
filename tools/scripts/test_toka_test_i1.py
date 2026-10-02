@@ -214,6 +214,10 @@ def installed_sdk_test(sdk, output):
         r=subprocess.run(command,cwd=project,env=env,capture_output=True,text=True,timeout=120)
         if r.returncode!=0:raise RuntimeError(r.stdout+r.stderr)
         if 'Preview:' not in r.stderr:raise RuntimeError('installed runner hid Preview status')
+        source(project,'lib/own/mod.tk','pub fn value() -> i32 { return 42 }\n')
+        source(project,'tests/own_test.tk','import own::{value}\nfn main() -> i32 { if value() != 42 { return 1 } return 0 }\n')
+        r=subprocess.run(['toka','test','tests/own_test.tk'],cwd=project,env=env,capture_output=True,text=True,timeout=120)
+        if r.returncode:raise RuntimeError(r.stdout+r.stderr)
         dep=root/'dependency';manifest(dep)
         source(dep,'lib/official/dep.tk','pub fn answer() -> i32 { return 42 }\n')
         manifest(project,'dep="../dependency",')
@@ -268,7 +272,7 @@ def installed_sdk_test(sdk, output):
             raise RuntimeError(r.stdout+r.stderr+errors)
         output.mkdir(parents=True,exist_ok=True)
         shutil.copytree(project/'.toka/test-runs',output/'test-runs')
-        (output/'installed-result.json').write_text(json.dumps({'result':'pass','preview':True,'checks':['SDK PATH self-location','helper packaged','discovery excludes helpers','explicit subdirectory entry','locked local dependency','locked native C dependency','offline pinned registry fixture','run nonzero','allow empty'],'stable_v1':False},indent=2)+'\n')
+        (output/'installed-result.json').write_text(json.dumps({'result':'pass','preview':True,'checks':['SDK PATH self-location','helper packaged','discovery excludes helpers','explicit subdirectory entry','project own library','locked local dependency','locked native C dependency','offline pinned registry fixture','run nonzero','allow empty'],'stable_v1':False},indent=2)+'\n')
 
 
 if __name__=='__main__':

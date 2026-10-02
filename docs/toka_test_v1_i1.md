@@ -11,7 +11,8 @@
   链接和嵌套项目。显式入口替换默认集合；按规范 ID 排序/去重，字面 filter
   支持 OR，空集合默认 2，allow-empty 为 0 且明确无测试。
 - 复用权威 package resolver、compiler-mappings、compiler-node-mappings 与
-  workspace-node。新的可选 locked 模式只用于此预览，不改变默认 fetch 行为。
+  workspace-node；生成器的 lib/<name>/mod.tk 自身库布局复用权威 helper 的
+  workspace library 映射，并绑定 workspace node。新的可选 locked 模式只用于此预览，不改变默认 fetch 行为。
   测试准备不生成或升级 lock，拒绝 manifest/节点/本地内容失配；按原 lock
   获取并验证缓存。并发预览调用的共享依赖物化用项目写入锁串行化。
 - 必需 native 输入复用 SDK 原有 build helper 的 native plan、C 编译与链接
