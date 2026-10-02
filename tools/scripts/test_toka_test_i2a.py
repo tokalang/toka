@@ -145,6 +145,79 @@ class Controls(unittest.TestCase):
         r=receipt(root);self.assertEqual(r['exit_code'],2);self.assertEqual(r['tests'][0]['result'],'not_run')
         self.assertEqual(r['preparation']['context']['trigger'],'timeout');assert_confirmed(r['preparation']['context'])
 
+    def test_lock_wait_uses_cli_override_and_stops_dispatch(self):
+        import fcntl
+        root=self.root/'project';manifest(root);source(root,'tests/a_test.tk','exit');source(root,'tests/b_test.tk','exit')
+        compiler=self.root/'tokac';fake_compiler(compiler)
+        (root/'.toka').mkdir();stream=(root/'.toka/test-context.lock').open('w');fcntl.flock(stream,fcntl.LOCK_EX)
+        started=time.monotonic()
+        try:
+            child=subprocess.run([sys.executable,str(ROOT/'lib/toolchain/toka_test.py'),'--sdk-lib',str(ROOT/'lib'),'--tokac',str(compiler),'--','--compile-timeout-ms','2000'],cwd=root,capture_output=True,timeout=6)
+        finally:stream.close()
+        self.assertEqual(child.returncode,2,(child.stdout,child.stderr));self.assertLess(time.monotonic()-started,6)
+        r=receipt(root);self.assertEqual(r['budgets_ms']['lock_wait'],2000)
+        self.assertEqual([t['result'] for t in r['tests']],['not_run','not_run'])
+        self.assertIn('dependency write lock',r['error']);assert_confirmed(r['preparation']['context'])
+        self.assertFalse(list((root/'.toka/test-runs').glob('*/000001')))
+
+    def finalization_injection(self, location, infrastructure=False):
+        root=self.root/(location+str(infrastructure));manifest(root);source(root,content='exit')
+        compiler=self.root/'tokac';fake_compiler(compiler)
+        if infrastructure:compiler.unlink()
+        original_print=print;original_write=runner.packages.atomic_write;injected=False
+        def inject():
+            nonlocal injected
+            if not injected:injected=True;os.kill(os.getpid(),signal.SIGINT)
+        def printer(*args,**kwargs):
+            if location=='summary' and args and str(args[0]).startswith('Preview results:'):inject()
+            return original_print(*args,**kwargs)
+        def writer(path,data):
+            if Path(path).name=='preview.json':
+                if location=='persistence':inject()
+                if location=='persistence-error':
+                    inject()
+                    if '"finalized": false' in data:raise OSError('injected staging persistence failure')
+            return original_write(path,data)
+        with patch('builtins.print',printer),patch.object(runner.packages,'atomic_write',writer),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
+            if infrastructure or location=='persistence-error':
+                with self.assertRaises((runner.PreviewError,OSError)):runner.execute_preview([],ROOT/'lib',compiler,root)
+                code=2
+            else:code=runner.execute_preview([],ROOT/'lib',compiler,root)
+        r=receipt(root);self.assertTrue(injected);self.assertTrue(r['finalized'])
+        self.assertEqual(code,r['exit_code']);self.assertEqual(r['interrupt_signal'],signal.SIGINT)
+        self.assertEqual(code,2 if infrastructure or location=='persistence-error' else 130)
+        self.assertEqual(r['result'],'infrastructure_or_configuration_error' if code==2 else 'interrupted')
+    def test_final_summary_interrupt_updates_cli_and_receipt(self):self.finalization_injection('summary')
+    def test_staging_persistence_interrupt_updates_cli_and_receipt(self):self.finalization_injection('persistence')
+    def test_finalization_interrupt_preserves_infrastructure_priority(self):self.finalization_injection('persistence',True)
+    def test_persistence_failure_overrides_interrupt(self):self.finalization_injection('persistence-error')
+
+    def test_pending_signal_at_commit_boundary_is_included(self):
+        root=self.root/'pending';manifest(root)
+        original=signal.pthread_sigmask;injected=False
+        def mask(how,numbers):
+            nonlocal injected
+            previous=original(how,numbers)
+            if how==signal.SIG_BLOCK and not injected:
+                injected=True;os.kill(os.getpid(),signal.SIGTERM)
+            return previous
+        with patch.object(signal,'pthread_sigmask',mask),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
+            code=runner.execute_preview(['--allow-empty'],ROOT/'lib',self.root/'unused',root)
+        r=receipt(root);self.assertEqual(code,130);self.assertEqual(r['exit_code'],130)
+        self.assertEqual(r['interrupt_signal'],signal.SIGTERM);self.assertTrue(r['finalized'])
+    def test_post_commit_signal_does_not_change_frozen_outcome(self):
+        root=self.root/'committed';manifest(root)
+        original=runner.packages.atomic_write;injected=False
+        def writer(path,data):
+            nonlocal injected
+            if Path(path).name=='preview.json' and '"finalized": true' in data and not injected:
+                injected=True;os.kill(os.getpid(),signal.SIGINT)
+            return original(path,data)
+        with patch.object(runner.packages,'atomic_write',writer),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
+            code=runner.execute_preview(['--allow-empty'],ROOT/'lib',self.root/'unused',root)
+        r=receipt(root);self.assertTrue(injected);self.assertEqual(code,0);self.assertEqual(r['exit_code'],0)
+        self.assertIsNone(r['interrupt_signal']);self.assertTrue(r['finalized'])
+
     def test_native_preparation_timeout_is_infrastructure(self):
         root=self.root/'project';manifest(root);source(root)
         dep=root/'dep';manifest(dep)
@@ -278,6 +351,11 @@ def installed(sdk, output):
             (root/'.toka').mkdir();stream=(root/'.toka/test-context.lock').open('w')
             fcntl.flock(stream,fcntl.LOCK_EX)
             return stream.close
+        r=case('lock-wait-cli-override',['exit','exit'],['--compile-timeout-ms','2000'],setup=locked_context)
+        assert r['exit_code']==2 and r['budgets_ms']['lock_wait']==2000
+        assert all(t['result']=='not_run' for t in r['tests'])
+        assert 'dependency write lock' in r['error']
+        assert r['preparation']['context']['duration_ms']>=2000
         r=case('interrupt-context',['exit'],interrupt=signal.SIGINT,stage='context',setup=locked_context)
         assert r['exit_code']==130 and r['tests'][0]['result']=='not_run'
         def slow_native(root,env):

@@ -187,6 +187,11 @@ Windows GNU x64 保持源构建/dogfood 身份。**本版不承诺 Windows 的 m
   观察到的用户中断优先于该周期 timeout；已触发事件保留在报告中，不被后来的
   SIGKILL 状态覆盖。基础设施错误具有最高退出码优先级。
 
+I2-A Preview 的完成边界：汇总和暂存回执写入后，屏蔽 SIGINT/SIGTERM 并收集
+已观察/待处理信号，固定最终结果快照；边界前的中断统一改变调用结果，基础设施
+错误 2 优先。最终回执与 CLI 使用同一快照；边界后的事件不再回写已完成结果。
+暂存回执 finalized=false 不能作为完成结果，成功提交后 finalized=true。
+
 用户中断指 runner 收到 SIGINT（不是测试自身收到信号）；runner 收到 SIGTERM
 也按同一受控中断规则处理，保留其实际信号而不伪称 SIGINT。停止后续调度，完成
 同一清理流程后返回 130；清理失败返回 2，同时保存 `trigger=interrupt` 和

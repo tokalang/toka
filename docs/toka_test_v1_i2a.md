@@ -1,7 +1,7 @@
 # toka test I2-A：进程监督候选
 
 状态：Preview；固定候选 `eacc3f3e8ede815fd0bab68b1eef6d1b6bb978f9` 的三核心平台
-定向验收已通过，等待独立复审。I1 候选 `8b685ef0` 已 Accepted；
+定向验收已通过，但独立复审要求 P2 修订，尚未 Accepted。I1 候选 `8b685ef0` 已 Accepted；
 本批仅实现生命周期，不宣布稳定 v1，不实现 C6 JSON 或 #41 来源分类。
 
 ## 预算与监督范围
@@ -60,3 +60,22 @@ Unicode 包原始失败路径与不可变 0.11 SDK 保留，受控 registry 夹�
 三份远端 ZIP 摘要、提取字节、源码 helper 摘要和原 SDK 编译器/runtime 身份已回读核验。
 旧 `09347bef` 与本地探索记录单独留存，不混入该 SHA 的结果。本记录不自行标记
 I2-A Accepted；Preview、I2-B/I2-C 和 Q0 边界仍按上文保持。
+
+## I2-A P2 独立修订
+
+`eacc3f3e` 的证据通过核验，但独立复审要求先修 I2A-P2-1/2，尚未 Accepted。
+本次修订仍为 Preview，仅收闭两个边界：
+
+- 本次有效 compile_ms 传入 context worker 和 OS 写入锁等待；每次获取尝试前
+  检查 deadline。锁等待超限返回 2，全部入口 not_run；180 秒 context 与 120 秒
+  native 保护预算继续独立，不用固定 30 秒替代 CLI 覆盖值。
+- 汇总之后先写 `finalized=false` 的暂存回执，随后屏蔽 SIGINT/SIGTERM，收集已观察
+  和待处理信号，再固定最终结果快照。该快照是调用的结果提交边界；此前汇总或
+  暂存持久化期间的中断返回 130，基础设施错误仍优先返回 2。固定快照后的信号
+  属于完成后的事件，不再修改回执或返回值。最终回执为 finalized=true；持久化
+  失败仍返回 2，并尽力保存失败回执。不能将暂存回执当作完成结果。
+
+新增控制覆盖 CLI 锁等待覆盖值、最终汇总中断、暂存写入中断、基础设施与中断
+优先级，以及暂存持久化失败。安装场景额外从真实 manager 入口持有 OS 文件锁，
+以 compile_ms=2000 验证返回 2、context 清理确认且所有入口 not_run。
+正式 JSON/诊断来源仍需修订复审通过后进入 I2-B；本批不启动完整发布矩阵。
