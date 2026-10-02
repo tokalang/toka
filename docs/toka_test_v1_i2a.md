@@ -1,6 +1,7 @@
 # toka test I2-A：进程监督候选
 
-状态：Preview，等待固定候选的定向验收与独立复审。I1 候选 `8b685ef0` 已 Accepted；
+状态：Preview；固定候选 `eacc3f3e8ede815fd0bab68b1eef6d1b6bb978f9` 的三核心平台
+定向验收已通过，等待独立复审。I1 候选 `8b685ef0` 已 Accepted；
 本批仅实现生命周期，不宣布稳定 v1，不实现 C6 JSON 或 #41 来源分类。
 
 ## 预算与监督范围
@@ -47,3 +48,15 @@ I1 项目发现/依赖/并发/串行用例同步回归。
 本批定向三核心平台任务不替代 I2-C 最终安装 SDK 验收，也不启动 Q0 全资格矩阵。
 Unicode 包原始失败路径与不可变 0.11 SDK 保留，受控 registry 夹具不替代该验收。
 平台政策仍是独立提交。
+
+## 固定候选回执
+
+[定向运行 36973989245](https://github.com/tokalang/toka/actions/runs/36973989245)，attempt 1，
+三个目标绑定同一上述 SHA。每目标通过 14 组 I2-A 控制、16 组 I1 控制、供应链资格、
+16 个安装生命周期场景和 10 个 I1 安装回归场景。I2-A 合计保存 48 个场景回执与
+228 个清理 confirmed 的阶段；故障注入控制另外验证返回 2 和停止调度。
+
+证据位于 `evidence/0.12-i2a/delivery-eacc3f3e`（仓库外的 tokalang evidence 根）。
+三份远端 ZIP 摘要、提取字节、源码 helper 摘要和原 SDK 编译器/runtime 身份已回读核验。
+旧 `09347bef` 与本地探索记录单独留存，不混入该 SHA 的结果。本记录不自行标记
+I2-A Accepted；Preview、I2-B/I2-C 和 Q0 边界仍按上文保持。
