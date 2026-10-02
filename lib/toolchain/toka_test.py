@@ -16,7 +16,11 @@ import sys
 import tempfile
 import time
 
-import toka_package as packages
+try:
+    import toka_package as packages
+except ImportError as error:
+    print('Error: active SDK package helper is unavailable: ' + str(error), file=sys.stderr)
+    raise SystemExit(2) from error
 
 DEFAULT_COMPILE_MS = 30000
 DEFAULT_RUN_MS = 5000

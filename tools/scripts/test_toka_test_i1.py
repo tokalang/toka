@@ -183,6 +183,15 @@ exe.chmod(0o755)
             case=Path(r['tests'][0]['run']['stdout']).read_text();self.assertIn(r['artifact_root'],case);self.assertIn(str(self.root),case)
         self.assertFalse((self.root/'.toka_test_exe').exists());self.assertFalse((self.root/'.toka_test_runner.sh').exists())
 
+    def test_missing_sdk_module_is_infrastructure_error(self):
+        helper=Path(self.temp.name)/'broken_sdk/toka_test.py';helper.parent.mkdir()
+        shutil.copyfile(ROOT/'lib/toolchain/toka_test.py',helper)
+        env=dict(os.environ);env.pop('PYTHONPATH',None)
+        p=subprocess.run([sys.executable,str(helper),'--sdk-lib',str(self.sdk),'--tokac',str(self.compiler),'--'],cwd=self.root,env=env,capture_output=True,text=True,timeout=10)
+        self.assertEqual(p.returncode,2)
+        self.assertIn('package helper is unavailable',p.stderr)
+        self.assertNotIn('[FAILED (Compile)]',p.stdout)
+
     def test_native_inputs_require_packaged_helper(self):
         dep=Path(self.temp.name)/'dep';manifest(dep)
         source(dep,'lib/official/dep.tk','pub fn answer() -> i32 { return 42 }\n')
