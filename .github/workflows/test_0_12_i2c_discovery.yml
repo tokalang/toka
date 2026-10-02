@@ -1,0 +1,118 @@
+name: 0.12 I2-C frozen discovery observations
+on:
+  push:
+    branches: [implement/0.12-i2c-discovery]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  bundle:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Freeze standalone acceptance bundle
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib,json,os,shutil
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'])/'harness';out.mkdir()
+          names=['test_toka_test_discovery.py','test_toka_test_i2c_batch.py','ledger_toka_test_discovery.py']
+          for name in names:shutil.copyfile(Path('tools/scripts')/name,out/name)
+          (out/'identity.json').write_text(json.dumps({'harness_source_sha':os.environ['GITHUB_SHA'],'files':{n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}},indent=2)+'\n')
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: discovery-harness
+          path: ${{ runner.temp }}/harness
+  frozen:
+    needs: bundle
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - name: Install released SDK host dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          sudo -E apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y build-essential curl wget lsb-release software-properties-common
+          installer="$RUNNER_TEMP/i2c-llvm-installer.sh"
+          wget --timeout=15 --tries=3 -O "$installer" https://apt.llvm.org/llvm.sh
+          chmod +x "$installer"
+          sudo -E "$installer" 20
+          sudo apt-get install -y lld-20 liblld-20-dev libpolly-20-dev libzstd-dev libssl-dev pkg-config
+          echo '/usr/lib/llvm-20/bin' >> "$GITHUB_PATH"
+      - name: Install released SDK host dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew install llvm@20 lld@20 zstd openssl@3
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld@20)/bin" >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@v4
+        with:
+          name: i2c-sdk-${{ matrix.target }}
+          run-id: 37018027796
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: i2c-batch-${{ matrix.target }}
+          run-id: 37018027796
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior-batch
+      - uses: actions/download-artifact@v4
+        with:
+          name: discovery-harness
+          path: ${{ runner.temp }}/harness
+      - name: Validate fixed SDK and harness; no checkout
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib,json,os,tarfile
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP']);data=root/'frozen-input/i2c-package'
+          identity=json.loads((data/'sdk-identity.json').read_text());assert identity['candidate_sha']=='7a5459c8e92db62c15f5a00c2612ca17056ba523'
+          archive=data/identity['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']
+          install=root/'sdk-install';install.mkdir()
+          with tarfile.open(archive) as t:t.extractall(install,filter='data')
+          sdk=next(install.iterdir())
+          for path,value in identity['components'].items():assert hashlib.sha256((sdk/path).read_bytes()).hexdigest()==value['sha256'] and (sdk/path).stat().st_mode&0o777==value['mode']
+          bundle=root/'harness';h=json.loads((bundle/'identity.json').read_text());assert h['harness_source_sha']==os.environ['GITHUB_SHA']
+          for name,value in h['files'].items():assert hashlib.sha256((bundle/name).read_bytes()).hexdigest()==value
+          assert not (Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists()
+          (root/'sdk-path.txt').write_text(str(sdk))
+          PYCODE
+      - name: Retain real discovery/input outcomes without relabeling failures
+        run: |
+          sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
+          cd "$RUNNER_TEMP/harness"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_discovery.py --sdk "$sdk" --output "$RUNNER_TEMP/discovery" --observe
+          python3 ledger_toka_test_discovery.py --prior "$RUNNER_TEMP/prior-batch/i2c-batch/coverage-ledger.json" --discovery "$RUNNER_TEMP/discovery" --output "$RUNNER_TEMP/discovery/coverage-ledger.json"
+          python3 - <<'PYCODE'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          (root/'discovery/identity.json').write_text(json.dumps({'SDK_identity':json.loads((root/'frozen-input/i2c-package/sdk-identity.json').read_text()),'harness_identity':json.loads((root/'harness/identity.json').read_text()),'repository_checkout_present':False,'compiler_source_visible':False,'SDK_standard_library_sources':'allowed installed content','imports':'stdlib plus standalone harness and installed SDK helpers'},indent=2)+'\n')
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: discovery-frozen-${{ matrix.target }}
+          include-hidden-files: true
+          path: ${{ runner.temp }}/discovery
