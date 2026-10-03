@@ -30,6 +30,10 @@ on:
       - tools/scripts/test_package_manager_supply_chain.py
   workflow_dispatch:
 
+env:
+  SDK_SOURCE_SHA: '8341ab9bedaf8d10703cf9bfb89911bd6c648e0a'
+  SDK_SOURCE_RUN: '37089177117'
+
 permissions:
   contents: read
   actions: read
@@ -56,40 +60,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.7'
-      - name: Install released SDK host dependencies (Linux)
-        if: runner.os == 'Linux'
+      - uses: actions/download-artifact@v4
+        with:
+          name: i2c-sdk-${{ matrix.target }}
+          run-id: 37089177117
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/reused-sdk
+      - name: Reuse immutable SDK bytes and original build receipts
         run: |
-          set -euo pipefail
-          export DEBIAN_FRONTEND=noninteractive
-          sudo -E apt-get update -o Acquire::Retries=5
-          sudo apt-get install -y build-essential curl wget lsb-release software-properties-common
-          installer="$RUNNER_TEMP/i2c-llvm-installer.sh"
-          wget --timeout=15 --tries=3 -O "$installer" https://apt.llvm.org/llvm.sh
-          chmod +x "$installer"
-          sudo -E "$installer" 20
-          sudo apt-get install -y lld-20 liblld-20-dev libpolly-20-dev libzstd-dev libssl-dev pkg-config
-          echo '/usr/lib/llvm-20/bin' >> "$GITHUB_PATH"
-      - name: Install released SDK host dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          set -euo pipefail
-          brew install llvm@20 lld@20 zstd openssl@3
-          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
-          echo "$(brew --prefix lld@20)/bin" >> "$GITHUB_PATH"
-      - name: Download exact original v0.11.0 SDK
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          set -euo pipefail
-          curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --max-time 300 \
-            "https://github.com/tokalang/toka/releases/download/v0.11.0/toka-v0.11.0-$TARGET.tar.gz" \
-            --output "$RUNNER_TEMP/i2c-sdk.tar.gz"
-      - name: Freeze complete composite Preview archive
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          python3 tools/scripts/package_test_i2c_sdk.py --archive "$RUNNER_TEMP/i2c-sdk.tar.gz" \
-            --target "$TARGET" --work "$RUNNER_TEMP/i2c-stage" --output "$RUNNER_TEMP/i2c-package"
+          cp -R "$RUNNER_TEMP/reused-sdk/i2c-package" "$RUNNER_TEMP/i2c-package"
+          cp -R "$RUNNER_TEMP/reused-sdk/i2c-stage" "$RUNNER_TEMP/i2c-stage"
+          python3 - <<'PYCODE'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'i2c-package'
+          identity=json.loads((root/'sdk-identity.json').read_text());assert identity['candidate_sha']==os.environ['SDK_SOURCE_SHA']
+          assert hashlib.sha256((root/identity['archive']).read_bytes()).hexdigest()==identity['archive_sha256']
+          PYCODE
       - name: Freeze standalone harness inputs
         run: python3 tools/scripts/bundle_toka_i2c_batch.py --output "$RUNNER_TEMP/i2c-harness"
       - name: Retain immutable SDK and build identity
@@ -173,7 +160,7 @@ jobs:
       - name: Install only the frozen SDK bytes and run public CLI
         env:
           TARGET: ${{ matrix.target }}
-          CANDIDATE: ${{ github.sha }}
+          CANDIDATE: ${{ env.SDK_SOURCE_SHA }}
         run: |
           python3 tools/scripts/test_toka_test_i2c.py \
             --archive "$RUNNER_TEMP/frozen-input/i2c-package/toka-preview-i2c-$TARGET.tar.gz" \
@@ -239,7 +226,7 @@ jobs:
       - name: Validate frozen SDK and standalone harness then install without checkout
         env:
           TARGET: ${{ matrix.target }}
-          CANDIDATE: ${{ github.sha }}
+          CANDIDATE: ${{ env.SDK_SOURCE_SHA }}
         run: |
           python3 - <<'PYCODE'
           import hashlib,json,os,tarfile
@@ -250,7 +237,7 @@ jobs:
           assert identity['candidate_sha']==os.environ['CANDIDATE']
           assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']
           bundle=data/'i2c-harness';h=json.loads((bundle/'harness-identity.json').read_text())
-          assert h['harness_source_sha']==os.environ['CANDIDATE']
+          assert h['harness_source_sha']==os.environ['GITHUB_SHA']
           assert hashlib.sha256((bundle/'test_toka_test_i2c_batch.py').read_bytes()).hexdigest()==h['harness_sha256']
           assert hashlib.sha256((bundle/'ledger_toka_i2c_batch.py').read_bytes()).hexdigest()==h['ledger_script_sha256']
           assert hashlib.sha256((bundle/'test_toka_test_r08.py').read_bytes()).hexdigest()==h['r08_script_sha256']

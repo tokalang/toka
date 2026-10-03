@@ -188,8 +188,14 @@ class Batch:
                 if interrupt:os.kill(one.pid,signal.SIGINT)
                 gate.set()
                 output=[]
-                for index,child in enumerate((one,two)):
-                    out,err=child.communicate(timeout=30);r=json.loads(out);self.save(row+'-'+str(index),root,command,child.returncode,out,err,r,rows=[row]);output.append(r)
+                # Keep both CLI calls concurrent, but archive only after both
+                # finish. Otherwise the sibling's atomic report rename can race
+                # copytree while evidence for the first completed call is saved.
+                completed=[]
+                for child in (one,two):
+                    out,err=child.communicate(timeout=30);completed.append((child,out,err))
+                for index,(child,out,err) in enumerate(completed):
+                    r=json.loads(out);self.save(row+'-'+str(index),root,command,child.returncode,out,err,r,rows=[row]);output.append(r)
                 assert output[0]['exit_code']==(130 if interrupt else 0) and output[1]['exit_code']==0
                 assert (root/'package.lock').read_bytes()==before
                 assert self.packages.tree_sha256(root/'.toka/packages/reg-1.0.0')==content_hash
