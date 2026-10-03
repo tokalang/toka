@@ -11,7 +11,7 @@ def main():
  contract={line.split('|')[1].strip():[p.strip() for p in line.split('|')[2:-1]] for line in a.contract.read_text().splitlines() if line.startswith('| D27 ')}
  for row in ledger['rows']:
   if row['id'] not in ('P01','D27'):continue
-  names=['unicode-0.1.2-identity.json','unicode-0.1.2-check/result.json','unicode-0.1.2-build/result.json','unicode-0.1.2-test/result.json','unicode-0.1.2-run/result.json','unicode-0.1.2-offline-test/result.json','unicode-0.1.2-corpus/result.json'] if row['id']=='P01' else ['D27-filesystem.json']
+  names=['unicode-0.1.2-identity.json','unicode-0.1.2-check/result.json','unicode-0.1.2-build/result.json','unicode-0.1.2-test/result.json','unicode-0.1.2-run/result.json','unicode-0.1.2-offline-test/result.json','unicode-0.1.2-corpus-map.json'] if row['id']=='P01' else ['D27-filesystem.json']
   row.update(prior_coverage=row['coverage'],prior_evidence=row['evidence'],coverage='covered',gap=None,evidence=[{'path':str(a.closure/name),'scope':'real published package migration' if row['id']=='P01' else 'conditional filesystem precondition contract amendment; not an unrun discovery pass'} for name in names])
   if row['id']=='D27':row.update(prior_contract=row['contract'],contract=contract['D27'])
  ledger['coverage_counts']={k:sum(r['coverage']==k for r in ledger['rows']) for k in ('covered','partial','uncovered','not_applicable','outside_i2c')};ledger.update(full_matrix_pass=False,preview_removal_authorized=False,closure_contract_independent_review='pending');a.output.write_text(json.dumps(ledger,indent=2)+'\n')

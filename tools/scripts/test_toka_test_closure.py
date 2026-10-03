@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Real published Unicode migration and conditional filesystem discovery closure."""
-import argparse,base64,errno,json,os,shutil,subprocess,sys,tarfile
+import argparse,base64,errno,json,os,shutil,subprocess,sys,tarfile,re,hashlib
 from pathlib import Path
 from test_toka_test_i2c_batch import Batch,manifest,source,sha,check
 SDK_SHA='8341ab9bedaf8d10703cf9bfb89911bd6c648e0a'
@@ -37,8 +37,14 @@ class Closure(Batch):
    offline=dict(self.env,TOKA_OFFLINE='1')
    self.command(root,'unicode-0.1.2-offline-fetch',[str(self.sdk/'bin/toka'),'fetch'],0,offline)
    data=self.command(root,'unicode-0.1.2-offline-test',[str(self.sdk/'bin/toka'),'test','--json'],0,offline);assert data['report']['summary']['passed']==2
-   corpus=self.command(root,'unicode-0.1.2-corpus',[str(self.sdk/'bin/toka'),'test','--json','corpus/grapheme_corpus.tk','--compile-timeout-ms','180000','--run-timeout-ms','30000'],0,offline)
-   assert corpus['report']['summary']['passed']==1 and lock.read_bytes()==before
+   original=(package/'tests/grapheme_break_corpus.tk').read_text();matches=list(re.finditer(r'^fn corpus_case_(\d+)\(\) -> bool \{',original,re.M));main=original.index('fn main()');assert len(matches)==766
+   header=original[:matches[0].start()];bodies=[original[m.start():(matches[i+1].start() if i+1<len(matches) else main)] for i,m in enumerate(matches)];mapping=[]
+   for start in range(0,len(bodies),64):
+    stop=min(start+64,len(bodies));name='corpus/shard_'+str(start//64)+'.tk';shard_source=header+''.join(bodies[start:stop])+'fn main()->i32 {\n'+''.join(' if !corpus_case_'+str(i)+'() { return 1 }\n' for i in range(start,stop))+' return 0\n}\n';source(root,name,shard_source)
+    corpus=self.command(root,'unicode-0.1.2-corpus-'+str(start//64),[str(self.sdk/'bin/toka'),'test','--json',name,'--compile-timeout-ms','180000','--run-timeout-ms','30000'],0,offline);assert corpus['report']['summary']['passed']==1
+    mapping.append({'entry':name,'source_sha256':sha(root/name),'case_ids':list(range(start,stop)),'original_function_bodies_sha256':[hashlib.sha256(body.encode()).hexdigest() for body in bodies[start:stop]]})
+   assert lock.read_bytes()==before
+   (self.output/'unicode-0.1.2-corpus-map.json').write_text(json.dumps({'original_source_sha256':sha(package/'tests/grapheme_break_corpus.tk'),'case_count':766,'shard_size':64,'function_bodies_unchanged':True,'all_case_ids':list(range(766)),'main_failure_code':1,'shards':mapping,'earlier_monolithic_timeout_not_reclassified':True},indent=2)+'\n')
   node=self.packages.package_node_id(entry)
   for item in results:
    if item.get('report'):
