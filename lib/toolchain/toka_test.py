@@ -630,6 +630,7 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started
         report.setdefault('stage_starts',{})['selection']=selection_started
         selected, selection = select_entries(root, invocation, options.entries, options.filter)
         receipt['selection'] = selection
+        receipt['tests'] = [{'id': identifier, 'entry': str(entry), 'result': 'not_run'} for identifier, entry in selected]
         reports.observe(report,'selection',selection_started)
         supervisor.check_interrupt()
         if not selected:
@@ -638,8 +639,6 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started
             receipt['exit_code'] = 0 if options.allow_empty else 2
             print('No tests selected. total=0, passed=0; artifacts: ' + str(run_dir))
         else:
-            for identifier, entry in selected:
-                receipt['tests'].append({'id': identifier, 'entry': str(entry), 'result': 'not_run'})
             if os.name != 'posix':
                 report['supervision']={'backend':'unsupported','scope':'none'}
                 raise PreviewError('unsupported_supervision')

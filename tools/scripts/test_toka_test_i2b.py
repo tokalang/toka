@@ -161,6 +161,22 @@ class Controls(unittest.TestCase):
         self.assertEqual(bytes(delivered),path.read_bytes());self.assertEqual(relay.pending_bytes(),0)
         self.assertFalse(relay.failed)
 
+    def test_selection_interrupt_retains_known_not_run_items(self):
+        source(self.root,content='exit');source(self.root,'tests/second_test.tk','exit')
+        original=runner.select_entries
+        def interrupted(*args):
+            selected=original(*args)
+            os.kill(os.getpid(),signal.SIGINT)
+            return selected
+        with patch.object(runner,'select_entries',interrupted),patch.object(runner.Supervisor,'run',side_effect=AssertionError('selection interrupt must not launch a child')):
+            r,err=self.invoke()
+        self.assertEqual(r['exit_code'],130);self.assertEqual(r['interrupt_signal'],2)
+        self.assertEqual(r['summary']['total'],2);self.assertEqual(r['summary']['not_run'],2)
+        self.assertEqual(len(r['tests']),2);self.assertTrue(all(t['result']=='not_run' for t in r['tests']))
+        self.assertEqual(r['preparation'],{});self.assertEqual(r['identity']['status'],'not_checked')
+        self.assertEqual(r['termination']['phase'],'selection')
+        self.assertTrue(all(t['phases']['compile_link']['state']=='not_started' for t in r['tests']))
+
     def test_worker_details_and_lock_wait_survive_formal_report(self):
         source(self.root,content='exit')
         # Real worker supervision remains covered by the installed CLI; this
