@@ -161,6 +161,26 @@ class Controls(unittest.TestCase):
         self.assertEqual(bytes(delivered),path.read_bytes());self.assertEqual(relay.pending_bytes(),0)
         self.assertFalse(relay.failed)
 
+    def test_worker_details_and_lock_wait_survive_formal_report(self):
+        source(self.root,content='exit')
+        # Real worker supervision remains covered by the installed CLI; this
+        # control isolates final report forwarding without text-based inference.
+        def fail(supervisor,mode,root,sdk,folder,receipt,*args):
+            receipt['dependencies']={'lock_wait_ms':2017.5,'nodes':[]}
+            receipt['error_details']={'dependency':{'alias':'reg','resolved':'1.0.0','package_node_id':'pkg-v1-controlled','integrity':{'scope':'cached_archive','expected_sha256':'a'*64,'actual_sha256':'b'*64}}}
+            raise runner.packages.PackageError('opaque package error')
+        with patch.object(runner,'run_preparation',fail):r,err=self.invoke()
+        self.assertEqual(r['exit_code'],2);self.assertEqual(r['dependencies']['lock_wait_ms'],2017.5)
+        self.assertEqual(r['errors'][0]['dependency']['integrity']['actual_sha256'],'b'*64)
+        self.assertEqual(r['tests'][0]['result'],'not_run')
+
+    def test_empty_version_failure_keeps_actual_reason(self):
+        source(self.root,content='exit')
+        with patch.object(runner.reports,'compiler_identity',side_effect=ValueError('compiler version probe produced no identity')):r,err=self.invoke()
+        self.assertEqual(r['exit_code'],2);self.assertEqual(r['identity']['status'],'failed')
+        self.assertIn('compiler version probe produced no identity',r['errors'][0]['message'])
+        self.assertEqual(r['tests'][0]['result'],'not_run')
+
     def test_invalid_entries_keep_reason_input_and_normalized_path(self):
         source(self.root,content='exit')
         (self.root/'data.txt').write_text('ordinary file')

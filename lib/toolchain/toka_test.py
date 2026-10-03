@@ -217,8 +217,14 @@ def select_entries(root, cwd, entries, filters):
                       'excluded': excluded}
 
 
+def lock_wait_error(started, observations):
+    elapsed = (time.monotonic() - started) * 1000
+    if observations is not None:observations['lock_wait_ms'] = elapsed
+    return PreviewError('timed out waiting for project dependency write lock')
+
+
 @contextmanager
-def project_write_lock(root, compile_ms):
+def project_write_lock(root, compile_ms, observations=None):
     import fcntl
     state = root / '.toka'
     if state.is_symlink():
@@ -230,7 +236,7 @@ def project_write_lock(root, compile_ms):
     with os.fdopen(descriptor, 'r+b') as stream:
         while True:
             if (time.monotonic() - started) * 1000 >= compile_ms:
-                raise PreviewError('timed out waiting for project dependency write lock')
+                raise lock_wait_error(started, observations)
             try:
                 fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
@@ -238,19 +244,20 @@ def project_write_lock(root, compile_ms):
                 if time.monotonic() - started < 0.04:
                     print('Waiting for project dependency lock', flush=True)
                 if (time.monotonic() - started) * 1000 >= compile_ms:
-                    raise PreviewError('timed out waiting for project dependency write lock')
+                    raise lock_wait_error(started, observations)
                 time.sleep(0.02)
+        if observations is not None:observations['lock_wait_ms'] = (time.monotonic() - started) * 1000
         try:
             yield
         finally:
             fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
-def project_context(root, compile_ms=DEFAULT_COMPILE_MS):
+def project_context(root, compile_ms=DEFAULT_COMPILE_MS, observations=None):
     manifest, lock, state = root / 'package.tk', root / 'package.lock', root / '.toka'
     if lock.is_symlink():
         raise ConfigurationError('package.lock cannot be a symbolic link')
-    with project_write_lock(root, compile_ms):
+    with project_write_lock(root, compile_ms, observations):
         before = lock.read_bytes() if lock.is_file() else None
         resolver = packages.Resolver(manifest, lock, state,
                                      offline=os.environ.get('TOKA_OFFLINE') == '1',
@@ -317,21 +324,27 @@ def native_inputs(root, sdk_lib, run_dir):
 def prepare_worker(mode, root, sdk_lib, run_dir, compile_ms):
     """Worker descendants inherit the supervisor-owned group, including native tools."""
     path = run_dir / (mode + '-result.json')
+    observations = {'lock_wait_ms': None}
     try:
         if mode == 'context':
-            flags, digest = project_context(root, compile_ms)
+            flags, digest = project_context(root, compile_ms, observations)
             nodes = {key.partition('=')[0]: key.partition('=')[2] for key in packages.compiler_node_mappings(root/'package.lock')}
             graph = {'workspace_root': str(root), 'workspace_node': packages.workspace_node(root/'package.tk', root/'package.lock'),
                      'dependencies': [{'root': str(packages.package_root(entry, root/'.toka').resolve()), 'node': nodes[alias]}
                                       for alias, entry in packages.read_lock(root/'package.lock').items()]}
-            data = {'flags': flags, 'lock_sha256': digest, 'provenance': graph}
+            records = [{'alias': alias, 'kind': entry.kind, 'locator': entry.locator, 'resolved': entry.resolved, 'archive_sha256': entry.archive_sha256, 'content_sha256': entry.content_sha256, 'package_node_id': packages.package_node_id(entry), 'root': str(packages.package_root(entry,root/'.toka').resolve())} for alias,entry in packages.read_lock(root/'package.lock').items()]
+            data = {'flags': flags, 'lock_sha256': digest, 'provenance': graph, 'dependencies': {'lock_wait_ms': observations['lock_wait_ms'], 'nodes': records}}
         else:
             flags, identity = native_inputs(root, sdk_lib, run_dir)
             data = {'flags': flags, 'identity': identity}
         packages.atomic_write(path, json.dumps(data) + '\n')
         return 0
     except (OSError, packages.PackageError, PreviewError) as error:
-        packages.atomic_write(path, json.dumps({'error': str(error), 'type': type(error).__name__, 'category': getattr(error,'category','infrastructure_error')}) + '\n')
+        cause = error; native_errno = None
+        while cause is not None:
+            if getattr(cause,'errno',None) is not None:native_errno = cause.errno;break
+            cause = cause.__cause__
+        packages.atomic_write(path, json.dumps({'error': str(error), 'type': type(error).__name__, 'category': getattr(error,'category','infrastructure_error'), 'details': getattr(error,'details',{}), 'os_error': native_errno, 'dependencies': {'lock_wait_ms': observations['lock_wait_ms'], 'nodes': []}}) + '\n')
         print(str(error), file=sys.stderr)
         return 2
 
@@ -390,7 +403,7 @@ def link_driver_result(status_path):
 
 def phase_error(phase):
     if phase.get('launch_error') or phase.get('supervision_error') or phase['cleanup']['status'] == 'failed':
-        raise PreviewError('process supervision failed; see ' + phase['stderr'])
+        raise PreviewError('process supervision failed: ' + str(phase.get('launch_error') or phase.get('supervision_error') or 'exit confirmation failed') + '; see ' + phase['stderr'])
     if phase['interrupt_signal'] is not None:
         raise Interrupted('user interrupt')
 
@@ -407,7 +420,10 @@ def run_preparation(supervisor, mode, root, sdk_lib, run_dir, receipt, budget, c
     if not result_path.is_file():
         raise PreviewError(mode + ' preparation produced no result; see ' + phase['stderr'])
     data = json.loads(result_path.read_text())
+    if mode == 'context':receipt['dependencies'] = data.get('dependencies', {'lock_wait_ms': None, 'nodes': []})
     if 'error' in data:
+        if data.get('details'):receipt['error_details'] = data['details']
+        if data.get('os_error') is not None:receipt['worker_os_error'] = data['os_error']
         if data.get('category') == 'configuration_error':
             if data['type'] == 'PackageConfigurationError':raise packages.PackageConfigurationError(data['error'])
             raise ConfigurationError(data['error'])
@@ -710,14 +726,14 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started
         for result in receipt['tests']:
             if result['result'] == 'infrastructure_error':
                 result['result'] = 'interrupted'
-    except (OSError, packages.PackageError, PreviewError, SupervisionError) as error:
+    except (OSError, ValueError, packages.PackageError, PreviewError, SupervisionError) as error:
         receipt['result'] = 'configuration_error' if receipt.get('active_stage')=='selection' or getattr(error,'category',None)=='configuration_error' else 'infrastructure_or_configuration_error'
         receipt['error'] = str(error)
         if isinstance(error, InvalidEntryError):
             receipt['reason'] = error.reason
             receipt['entry_error'] = {'input': error.entry_input, 'normalized_path': error.normalized_path}
         receipt['error_category'] = 'configuration_error' if receipt['result']=='configuration_error' else 'infrastructure_error'
-        receipt['os_error'] = getattr(error,'errno',None)
+        receipt['os_error'] = getattr(error,'errno',None) if getattr(error,'errno',None) is not None else receipt.get('worker_os_error')
         if hasattr(error,'raw_input_base64'):report['raw_inputs_base64'].append(error.raw_input_base64)
         receipt['exit_code'] = 2
         pending_error = error

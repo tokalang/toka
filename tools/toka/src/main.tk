@@ -1,6 +1,6 @@
 
 import std/time::{Instant}
-import src/test_report::{test_json_requested, test_outer_error}
+import src/test_report::{test_json_requested, test_outer_error, test_outer_error_os}
 import std/env
 import std/io::{println, File, remove_file}
 import std/fs::{read_to_string, exists, create_dir, write_string, read_dir, metadata}
@@ -11,6 +11,8 @@ import std/process::{Command}
 import toka_build/release_version::{release_version}
 import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, build_pkg_mappings, build_pkg_node_mappings, build_workspace_node, cmd_publish, cmd_search}
 
+
+extern fn toka_get_errno_impl() -> i32
 
 fn print_help() {
     println("Toka {}", manager_release_version())
@@ -1037,7 +1039,8 @@ fn cmd_test(argc: i32, shift: i32) -> i32 {
     auto helper# = detect_default_lib_path()
     helper#.push_str("/toolchain/toka_test.py")
     if !exists(helper.clone()) {
-        return test_outer_error(string::from("runner_helper_missing"), string::from("project test helper missing from active SDK"), machine, started)
+        auto message# = string::from("project test helper missing from active SDK: ");message#.push_str(helper.as_str())
+        return test_outer_error(string::from("runner_helper_missing"), message, machine, started)
     }
     auto names# = Vec<string>::new()
     names#.push(string::from("toka_test_process.py"))
@@ -1048,8 +1051,9 @@ fn cmd_test(argc: i32, shift: i32) -> i32 {
     loop n < names.len() {
         auto required# = detect_default_lib_path();required#.push_str("/toolchain/")
         required#.push_str(names.get(n).as_str())
-        if !exists(required) {
-            return test_outer_error(string::from("sdk_helper_missing"),string::from("required test SDK helper is missing"),machine,started)
+        if !exists(required.clone()) {
+            auto message# = string::from("required test SDK helper is missing: ");message#.push_str(required.as_str())
+            return test_outer_error(string::from("sdk_helper_missing"),message,machine,started)
         }
         n += 1:usize
     }
@@ -1069,6 +1073,7 @@ fn cmd_test(argc: i32, shift: i32) -> i32 {
             arguments#.push(env::get_arg(index))
             index += 1
         }
+        auto native_error# = 0:i32
         unsafe {
             auto argv# = Vec<Addr>::with_capacity(arguments.len() + 1:usize)
             auto position# = 0:usize
@@ -1080,8 +1085,9 @@ fn cmd_test(argc: i32, shift: i32) -> i32 {
             argv#.push(0 as Addr)
             auto &program = arguments.borrow(0:usize)
             libc_execvp(program.c_str(), argv.unsafe_storage() as *void)
+            native_error = toka_get_errno_impl()
         }
-        return test_outer_error(string::from("python_unavailable"),string::from("could not launch Python 3 project test helper; run toka doctor"),machine,started)
+        return test_outer_error_os(string::from("python_unavailable"),string::from("could not launch Python 3 project test helper; run toka doctor"),machine,started,native_error)
     }
     // Windows currently supports empty selection only; no managed backend is claimed.
     auto command# = Command::new(string::from("python3"))

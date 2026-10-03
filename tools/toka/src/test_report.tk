@@ -94,6 +94,10 @@ pub fn test_json_requested(argc: i32, start: i32) -> bool {
 }
 
 pub fn test_outer_error(reason: string, message: string, machine: bool, started: Instant) -> i32 {
+ return test_outer_error_os(reason,message,machine,started,0:i32)
+}
+
+pub fn test_outer_error_os(reason: string, message: string, machine: bool, started: Instant, native_errno:i32) -> i32 {
  auto run_id# = number(Instant::now().duration_since_boot.as_nanos())
  auto seed = create_temp_file_system()
  if seed.is_ok() {
@@ -152,6 +156,8 @@ pub fn test_outer_error(reason: string, message: string, machine: bool, started:
  auto preparation_started = Instant::now()
  auto quoted_id = quote(run_id)
  auto quoted_reason = quote(reason)
+ auto native_error# = string::from("null")
+ if native_errno > 0 { native_error = number(native_errno as u64) }
  auto quoted_message = quote(message)
  auto preparation_time = number(preparation_started.elapsed().as_millis())
  auto millis = number(started.elapsed().as_millis())
@@ -166,7 +172,9 @@ pub fn test_outer_error(reason: string, message: string, machine: bool, started:
  report#.push_str(artifact_json.as_str())
  report#.push_str(",\"identity\":{\"status\":\"not_checked\",\"tokac_path\":null,\"tokac_version\":null,\"tokac_sha256\":null,\"runtime_object_path\":null,\"runtime_object_sha256\":null,\"sdk_root\":null,\"sdk_version\":null,\"sdk_revision\":null,\"lock_path\":null,\"lock_sha256\":null},\"selection\":{\"mode\":null,\"filters\":[],\"candidate_count\":null,\"selected_count\":null,\"excluded\":[]},\"supervision\":{\"backend\":\"not_checked\",\"scope\":\"none\"},\"timeouts\":{\"compile_ms\":null,\"run_ms\":null,\"compile_source\":null,\"run_source\":null,\"terminate_grace_ms\":2000,\"kill_wait_ms\":5000},\"summary\":{\"total\":null,\"passed\":0,\"failed\":0,\"infrastructure_error\":0,\"interrupted\":0,\"not_run\":0},\"tests\":[],\"errors\":[{\"code\":null,\"message\":")
  report#.push_str(quoted_message.as_str())
- report#.push_str(",\"phase\":\"bootstrap\",\"os_error\":null,\"source\":{\"origin\":\"unknown\",\"path\":null,\"package_node_id\":null,\"classification_basis\":\"none\"}}],\"diagnostics\":[],\"termination\":{\"reason\":\"infrastructure_error\",\"phase\":\"bootstrap\",\"trigger\":\"none\",\"signal\":null,\"cleanup\":{\"status\":\"not_needed\",\"scope\":\"none\",\"requested_signals\":[],\"leader_reaped\":null,\"group_absent\":null,\"output_complete\":null,\"duration_ms\":null}},\"timings\":{\"argument_parse\":{\"name\":\"argument_parse\",\"state\":\"not_started\",\"duration_ms\":null,\"exit_code\":null,\"signal\":null,\"os_error\":null,\"process\":null},\"project\":{\"name\":\"project\",\"state\":")
+ report#.push_str(",\"phase\":\"bootstrap\",\"os_error\":")
+ report#.push_str(native_error.as_str())
+ report#.push_str(",\"source\":{\"origin\":\"unknown\",\"path\":null,\"package_node_id\":null,\"classification_basis\":\"none\"}}],\"diagnostics\":[],\"termination\":{\"reason\":\"infrastructure_error\",\"phase\":\"bootstrap\",\"trigger\":\"none\",\"signal\":null,\"cleanup\":{\"status\":\"not_needed\",\"scope\":\"none\",\"requested_signals\":[],\"leader_reaped\":null,\"group_absent\":null,\"output_complete\":null,\"duration_ms\":null}},\"timings\":{\"argument_parse\":{\"name\":\"argument_parse\",\"state\":\"not_started\",\"duration_ms\":null,\"exit_code\":null,\"signal\":null,\"os_error\":null,\"process\":null},\"project\":{\"name\":\"project\",\"state\":")
  report#.push_str(quote(project_state).as_str())
  report#.push_str(",\"duration_ms\":")
  report#.push_str(project_time.as_str())

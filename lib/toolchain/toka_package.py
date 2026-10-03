@@ -39,6 +39,14 @@ DEFAULT_REGISTRY_URL = "https://pkg.tokalang.dev"
 
 class PackageError(RuntimeError):
     category = 'infrastructure_error'
+    def __init__(self, message, *, details=None):
+        super().__init__(message)
+        self.details = details or {}
+
+
+class PackageIntegrityError(PackageError):
+    def __init__(self, message, scope, expected, actual):
+        super().__init__(message, details={'integrity': {'scope': scope, 'expected_sha256': expected, 'actual_sha256': actual, 'actual_source': 'registry_catalog' if scope == 'catalog_archive' else 'computed_bytes' if actual is not None else 'missing'}})
 
 
 class PackageConfigurationError(PackageError):
@@ -801,7 +809,11 @@ class Resolver:
         self.refresh = refresh
         self.locked = locked
         self.lock_bytes = self.lock_path.read_bytes() if self.lock_path.is_file() else None
-        self.old_lock = read_lock(self.lock_path)
+        try:
+            self.old_lock = read_lock(self.lock_path)
+        except PackageConfigurationError as error:
+            if not locked:raise
+            raise PackageConfigurationError('invalid package.lock; run toka fetch: ' + str(error)) from error
         self.entries: dict[str, LockEntry] = {}
         self.requests: dict[str, tuple[str, str, str]] = {}
         self.active: list[str] = []
@@ -903,7 +915,7 @@ class Resolver:
             if cached.is_file() and file_sha256(cached) == locked.archive_sha256:
                 return cached, locked.archive_sha256
             if self.offline:
-                raise PackageError("offline archive is missing or corrupt: " + dependency.alias)
+                raise PackageIntegrityError("offline archive is missing or corrupt: " + dependency.alias, "cached_archive", locked.archive_sha256, file_sha256(cached) if cached.is_file() else None)
 
         if self.offline:
             raise PackageError("offline archive is not locked: " + dependency.alias)
@@ -911,9 +923,9 @@ class Resolver:
         _download(archive_url, downloaded)
         digest = file_sha256(downloaded)
         if digest != expected_hash:
-            raise PackageError("downloaded archive does not match registry catalog: " + dependency.alias)
+            raise PackageIntegrityError("downloaded archive does not match registry catalog: " + dependency.alias, "downloaded_archive", expected_hash, digest)
         if locked and digest != locked.archive_sha256:
-            raise PackageError("downloaded archive does not match package.lock: " + dependency.alias)
+            raise PackageIntegrityError("downloaded archive does not match package.lock: " + dependency.alias, "downloaded_archive", locked.archive_sha256, digest)
         cached = cache / (digest + ".tar.gz")
         if cached.is_file() and file_sha256(cached) == digest:
             downloaded.unlink()
@@ -929,7 +941,7 @@ class Resolver:
             if target.is_dir():
                 actual = tree_sha256(target)
                 if actual != locked.content_sha256:
-                    raise PackageError("installed package does not match package.lock: " + dependency.alias)
+                    raise PackageIntegrityError("installed package does not match package.lock: " + dependency.alias, "installed_content", locked.content_sha256, actual)
                 return locked, target
             archive_url = ""
             expected_hash = locked.archive_sha256
@@ -938,7 +950,7 @@ class Resolver:
             if not self.offline and not has_cached_archive:
                 version, archive_url, expected_hash = self._registry_release(dependency, locked.resolved)
                 if expected_hash != locked.archive_sha256:
-                    raise PackageError("registry catalog does not match package.lock: " + dependency.alias)
+                    raise PackageIntegrityError("registry catalog does not match package.lock: " + dependency.alias, "catalog_archive", locked.archive_sha256, expected_hash)
         else:
             version, archive_url, expected_hash = self._registry_release(dependency)
             placeholder = LockEntry(dependency.alias, "registry", dependency.locator, version, "-", "0" * 64, [])
@@ -954,7 +966,7 @@ class Resolver:
             raise PackageError("package archive has no package.tk: " + dependency.alias)
         content_hash = tree_sha256(root)
         if locked and content_hash != locked.content_sha256:
-            raise PackageError("extracted package does not match package.lock: " + dependency.alias)
+            raise PackageIntegrityError("extracted package does not match package.lock: " + dependency.alias, "extracted_content", locked.content_sha256, content_hash)
         entry = LockEntry(dependency.alias, "registry", dependency.locator, version, archive_hash, content_hash, [])
         if target.exists():
             if not target.is_dir() or tree_sha256(target) != content_hash:
@@ -1048,7 +1060,15 @@ class Resolver:
             return
         self.requests[dependency.alias] = fingerprint
         self.active.append(dependency.alias)
-        entry, root = self._materialize(dependency)
+        try:
+            entry, root = self._materialize(dependency)
+        except PackageError as error:
+            if 'dependency' not in error.details:
+                locked = self._locked_for(dependency)
+                fact = {'alias': dependency.alias, 'kind': dependency.kind, 'locator': dependency.locator, 'resolved': locked.resolved if locked else None, 'package_node_id': package_node_id(locked) if locked else None}
+                if 'integrity' in error.details:fact['integrity'] = error.details.pop('integrity')
+                error.details['dependency'] = fact
+            raise
         children = parse_manifest(root / "package.tk")
         for child in children:
             self._resolve(child)
@@ -1237,6 +1257,13 @@ def compiler_mappings(lock_path: Path, state: Path) -> list[str]:
     return mappings
 
 
+def package_node_id(entry: LockEntry) -> str:
+    payload = "\0".join(("toka.package-node.v1", entry.kind, entry.locator,
+                   entry.resolved, entry.archive_sha256,
+                   entry.content_sha256, ",".join(entry.dependencies)))
+    return "pkg-v1-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def compiler_node_mappings(lock_path: Path) -> list[str]:
     """Return import-prefix to opaque locked-package-node mappings.
 
@@ -1245,10 +1272,7 @@ def compiler_node_mappings(lock_path: Path) -> list[str]:
     """
     mappings: list[str] = []
     for alias, entry in sorted(read_lock(lock_path).items()):
-        payload = "\0".join(("toka.package-node.v1", entry.kind, entry.locator,
-                               entry.resolved, entry.archive_sha256,
-                               entry.content_sha256, ",".join(entry.dependencies)))
-        node_id = "pkg-v1-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        node_id = package_node_id(entry)
         mappings.append(alias + "=" + node_id)
         mappings.append("official/" + alias + "=" + node_id)
     return mappings

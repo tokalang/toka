@@ -35,6 +35,7 @@ def new_report():
             'supervision':{'backend':'not_checked','scope':'none'},
             'timeouts':{'compile_ms':None,'run_ms':None,'compile_source':None,'run_source':None,
                         'terminate_grace_ms':2000,'kill_wait_ms':5000},
+            'dependencies':{'lock_wait_ms':None,'nodes':[]},
             'summary':{'total':None,'passed':0,'failed':0,'infrastructure_error':0,'interrupted':0,'not_run':0},
             'tests':[],'errors':[],'diagnostics':[],
             'termination':{'reason':None,'phase':None,'trigger':'none','signal':None,'cleanup':None},
@@ -184,6 +185,8 @@ def materialize(report, receipt):
             report['errors']=[{'code':None,'message':receipt.get('error') or receipt.get('persistence_error') or receipt.get('reason') or 'test preparation failed',
                                'phase':report['termination']['phase'],'category':receipt.get('error_category',kind),'os_error':receipt.get('os_error') if receipt.get('os_error') is not None else (last.get('os_error') if last else None),
                                'source':source_origin(None,graph,sdk_root)}]
+    if 'dependencies' in receipt:report['dependencies']=receipt['dependencies']
+    if receipt.get('error_details') and report['errors']:report['errors'][0].update(receipt['error_details'])
     if 'entry_error' in receipt and report['errors']:report['errors'][0].update(receipt['entry_error'])
     report['interrupt_signal']=receipt.get('interrupt_signal');report['interrupt_count']=receipt.get('interrupt_count',0)
     report['finalized']=receipt.get('finalized',False)
