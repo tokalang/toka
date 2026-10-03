@@ -1,4 +1,4 @@
-name: 0.12 I2-C supervision observation acceptance
+name: 0.12 I2-C report receipt assembly and missing boundaries
 on:
   workflow_dispatch:
 permissions:
@@ -17,15 +17,15 @@ jobs:
           import hashlib,json,os,shutil
           from pathlib import Path
           out=Path(os.environ['RUNNER_TEMP'])/'harness';out.mkdir()
-          names=['test_toka_test_observation.py','test_toka_test_i2c_batch.py','ledger_toka_test_observation.py']
+          names=['test_toka_test_report_boundaries.py','test_toka_test_i2c_batch.py','ledger_toka_test_reports.py']
           for name in names:shutil.copyfile(Path('tools/scripts')/name,out/name)
           shutil.copyfile(Path('docs/toka_test_v1_acceptance.md'),out/'toka_test_v1_acceptance.md')
           names.append('toka_test_v1_acceptance.md')
-          (out/'identity.json').write_text(json.dumps({'harness_source_sha':os.environ['GITHUB_SHA'],'files':{n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}},indent=2)+'\n')
+          (root/'reports-identity.json').write_text(json.dumps({'harness_source_sha':os.environ['GITHUB_SHA'],'files':{n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}},indent=2)+'\n')
           PYCODE
       - uses: actions/upload-artifact@v4
         with:
-          name: observation-harness
+          name: reports-harness
           path: ${{ runner.temp }}/harness
   frozen:
     needs: bundle
@@ -73,13 +73,31 @@ jobs:
           path: ${{ runner.temp }}/frozen-input
       - uses: actions/download-artifact@v4
         with:
+          name: i2c-batch-${{ matrix.target }}
+          run-id: 37090627500
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior-errors
+      - uses: actions/download-artifact@v4
+        with:
+          name: i2c-regression-${{ matrix.target }}
+          run-id: 37090627500
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior-regression
+      - uses: actions/download-artifact@v4
+        with:
           name: cleanup-frozen-${{ matrix.target }}
           run-id: 37125353379
           github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/prior-batch
+          path: ${{ runner.temp }}/prior-cleanup
       - uses: actions/download-artifact@v4
         with:
-          name: observation-harness
+          name: reports-frozen-${{ matrix.target }}
+          run-id: 37126746642
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior-ledger
+      - uses: actions/download-artifact@v4
+        with:
+          name: reports-harness
           path: ${{ runner.temp }}/harness
       - name: Validate fixed SDK and harness; no checkout
         run: |
@@ -98,25 +116,28 @@ jobs:
           assert not (Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists()
           (root/'sdk-path.txt').write_text(str(sdk))
           PYCODE
-      - name: Run installed supervision scope and event-order controls
+      - name: Run only missing report variants then assemble prior exact receipts
         run: |
           set -euo pipefail
           sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
           cd "$RUNNER_TEMP/harness"
-          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_observation.py --sdk "$sdk" --output "$RUNNER_TEMP/observations"
-          python3 ledger_toka_test_observation.py --prior "$RUNNER_TEMP/prior-batch/coverage-ledger.json" --observations "$RUNNER_TEMP/observations" --output "$RUNNER_TEMP/observations/coverage-ledger.json"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_report_boundaries.py --sdk "$sdk" --output "$RUNNER_TEMP/new-reports"
+          python3 ledger_toka_test_reports.py --batch "$RUNNER_TEMP/prior-errors" --regression "$RUNNER_TEMP/prior-regression" --cleanup "$RUNNER_TEMP/prior-cleanup" --prior "$RUNNER_TEMP/prior-ledger/coverage-ledger.json" --new "$RUNNER_TEMP/new-reports" --output "$RUNNER_TEMP/report-assembly"
       - name: Preserve SDK and harness identity even on failure
         if: always()
         run: |
           python3 - <<'PYCODE'
           import json,os
           from pathlib import Path
-          root=Path(os.environ['RUNNER_TEMP']);out=root/'observations';out.mkdir(exist_ok=True)
-          (out/'identity.json').write_text(json.dumps({'SDK_identity':json.loads((root/'frozen-input/i2c-package/sdk-identity.json').read_text()),'harness_identity':json.loads((root/'harness/identity.json').read_text()),'repository_checkout_present':(Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists(),'compiler_source_visible':(Path(os.environ['GITHUB_WORKSPACE'])/'src/codegen').exists(),'SDK_standard_library_sources':'allowed installed content','CI_run':os.environ['GITHUB_RUN_ID'],'CI_attempt':os.environ['GITHUB_RUN_ATTEMPT']},indent=2)+'\n')
+          root=Path(os.environ['RUNNER_TEMP']);out=root/'report-assembly';out.mkdir(exist_ok=True)
+          (root/'reports-identity.json').write_text(json.dumps({'SDK_identity':json.loads((root/'frozen-input/i2c-package/sdk-identity.json').read_text()),'harness_identity':json.loads((root/'harness/identity.json').read_text()),'repository_checkout_present':(Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists(),'compiler_source_visible':(Path(os.environ['GITHUB_WORKSPACE'])/'src/codegen').exists(),'SDK_standard_library_sources':'allowed installed content','CI_run':os.environ['GITHUB_RUN_ID'],'CI_attempt':os.environ['GITHUB_RUN_ATTEMPT']},indent=2)+'\n')
           PYCODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: observation-frozen-${{ matrix.target }}
+          name: reports-frozen-${{ matrix.target }}
           include-hidden-files: true
-          path: ${{ runner.temp }}/observations
+          path: |
+            ${{ runner.temp }}/new-reports
+            ${{ runner.temp }}/report-assembly
+            ${{ runner.temp }}/reports-identity.json
