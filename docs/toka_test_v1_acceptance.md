@@ -111,10 +111,10 @@
 | T02 | 同组子忽略 SIGTERM，随后 timeout | 2000 ms grace 后升级 SIGKILL，限额内确认 | 1 | 保存请求的两个信号与真实原始状态；不只检查 signal sent |
 | T03 | 在活动运行阶段向 runner 发 SIGINT | 完成清理，停止后项 | 130 | interrupted、trigger=interrupt、interrupt_signal；后项 not_run |
 | T04 | 编译/依赖准备/选择阶段 SIGINT；分别注入 | 已启动的受控进程按相同规则清理；其他阶段安全终止 | 130 | 活跃阶段及部分计时/termination 原因保留；不能伪造运行开始 |
-| T05 | SIGINT 后注入组权限/wait/输出结束确认失败 | 保留中断原因，提升基础设施错误 | 2 | trigger=interrupt；result=infrastructure_error；cleanup failed/unconfirmed |
-| T06 | timeout 后注入确认失败；后项有明显启动标记 | 停止调度，不启动后项 | 2 | timeout 原因仍在；后项 not_run；无其启动标记 |
+| T05 | SIGINT 后注入持续组探测权限/wait/输出结束确认失败 | 保留中断原因，提升基础设施错误 | 2 | trigger=interrupt；result=infrastructure_error；cleanup failed/unconfirmed |
+| T06 | timeout 后注入持续确认失败；后项有明显启动标记 | 停止调度，不启动后项 | 2 | timeout 原因仍在；后项 not_run；无其启动标记 |
 | T07 | 正常 exit_0 后留下同组 residue | 成功收尾也不是测试通过 | 1 | run_failed、reason=residual_process、trigger=residual_process、raw exit=0 |
-| T08 | 组消失探测返回 EPERM，或 leader/group 身份无法安全确认 | 不冒险补杀；报告清理失败 | 2 | failed/unconfirmed、原生错误/身份失败原因，停止后项 |
+| T08 | 分别注入：回收后短暂 EPERM→真实 ESRCH；持续 EPERM；无 ESRCH 至截止；身份失效；回收前权限失败 | 仅首种在原确认预算内可恢复，回收后不发信号；其他情况清理失败 | 恢复保持原结果 0/1/130；失败 2 | errno 观察保留；正常恢复继续、timeout 保持失败并继续、interrupt 停止；失败后项 not_run；全部变体见 [C4/T08 修订](toka_test_v1_c4_t08_revision.md) |
 | T09 | escape 离组并把 stdio 重定向到空设备，受控 main 退出 0；harness 持有逃离者回收责任 | 受控组正常结束；不声称监管组外程序 | 0 | scope 不声称 all_descendants；此例不作全后代清理证据，harness 另确认回收 |
 | T10a | compile/run timeout 为 0、负数、小数、NaN、2147483648；各参数分别输入 | 非法值拒绝 | 2 | 配置错误；无子进程；不采用默认值 |
 | T10b | wait 夹具，--run-timeout-ms 1000 | 有效预算在运行阶段触发 | 1 | timed_out；timeouts.run_ms=1000；来源为 CLI，cleanup=confirmed |
