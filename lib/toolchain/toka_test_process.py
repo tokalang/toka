@@ -226,9 +226,18 @@ class Supervisor:
                     result['exit_code'] = child.returncode if child.returncode >= 0 else None
                     result['signal'] = -child.returncode if child.returncode < 0 else None
                     # No more signals after this point, even if confirmation fails.
-                    while not self.gone(child.pid) and time.monotonic() < until:
+                    while True:
+                        try:
+                            cleanup['group_gone'] = self.gone(child.pid)
+                        except PermissionError as error:
+                            # EPERM is never proof of disappearance. A post-reap
+                            # probe may fail transiently; await explicit ESRCH in
+                            # the original confirmation budget, without signaling.
+                            observations = cleanup.setdefault('confirmation_probe_errors', [])
+                            observations.append({'os_error': error.errno, 'message': str(error)})
+                            if time.monotonic() >= until:raise
+                        if cleanup['group_gone'] or time.monotonic() >= until:break
                         time.sleep(0.01)
-                    cleanup['group_gone'] = self.gone(child.pid)
                 if not cleanup['direct_child_reaped'] or not cleanup['group_gone']:
                     cleanup['error'] = cleanup.get('error', 'bounded exit confirmation failed')
                 while relay.pending_bytes() and not relay.failed and time.monotonic()<until:

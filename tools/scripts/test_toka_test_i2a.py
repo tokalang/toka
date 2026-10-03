@@ -123,6 +123,25 @@ class Controls(unittest.TestCase):
                 raise PermissionError('injected EPERM confirmation')
         p=self.phase('wait',100,CannotConfirm());self.assertEqual(p['trigger'],'timeout');self.assertEqual(p['cleanup']['status'],'failed')
         self.assertTrue(p['cleanup']['direct_child_reaped'])
+    def test_post_reap_permission_probe_waits_for_explicit_disappearance(self):
+        class Transient(processes.Supervisor):
+            calls=0
+            def gone(self,pid):
+                self.calls+=1
+                if self.calls<=2:raise PermissionError(1,'controlled transient group probe')
+                return super().gone(pid)
+        s=Transient();p=self.phase('exit',5000,s);assert_confirmed(p)
+        self.assertEqual(s.calls,3);self.assertEqual(len(p['cleanup']['confirmation_probe_errors']),2)
+        self.assertEqual(p['requested_signals'],[]);self.assertEqual(p['exit_code'],0)
+    def test_permission_probe_persistence_still_fails_within_original_budget(self):
+        class Persistent(processes.Supervisor):
+            def gone(self,pid):raise PermissionError(1,'controlled persistent group probe')
+        with patch.object(processes,'KILL_WAIT_MS',100):p=self.phase('exit',5000,Persistent())
+        self.assertEqual(p['cleanup']['status'],'failed');self.assertFalse(p['cleanup']['group_gone'])
+        self.assertTrue(p['cleanup']['direct_child_reaped']);self.assertEqual(p['os_error'],1)
+        self.assertGreaterEqual(p['cleanup']['duration_ms'],95);self.assertLess(p['cleanup']['duration_ms'],1000)
+        self.assertEqual(p['requested_signals'],[])
+
     def test_no_signal_after_reap(self):
         class Observed(processes.Supervisor):
             def __init__(self):super().__init__();self.sent=[]
