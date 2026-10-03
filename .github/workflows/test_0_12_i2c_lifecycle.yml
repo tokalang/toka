@@ -91,7 +91,7 @@ jobs:
           path: ${{ runner.temp }}/prior-cleanup
       - uses: actions/download-artifact@v4
         with:
-          name: reports-frozen-${{ matrix.target }}
+          name: observation-frozen-${{ matrix.target }}
           run-id: 37126746642
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/prior-ledger
