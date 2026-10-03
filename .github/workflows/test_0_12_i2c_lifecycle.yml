@@ -1,4 +1,4 @@
-name: 0.12 I2-C frozen lifecycle observations
+name: 0.12 I2-C cleanup and amended T08 acceptance
 on:
   workflow_dispatch:
 permissions:
@@ -17,13 +17,15 @@ jobs:
           import hashlib,json,os,shutil
           from pathlib import Path
           out=Path(os.environ['RUNNER_TEMP'])/'harness';out.mkdir()
-          names=['test_toka_test_lifecycle.py','test_toka_test_i2c_batch.py','ledger_toka_test_lifecycle.py']
+          names=['test_toka_test_cleanup.py','test_toka_test_eperm_policy.py','test_toka_test_i2c_batch.py','ledger_toka_test_cleanup.py']
           for name in names:shutil.copyfile(Path('tools/scripts')/name,out/name)
+          shutil.copyfile(Path('docs/toka_test_v1_acceptance.md'),out/'toka_test_v1_acceptance.md')
+          names.append('toka_test_v1_acceptance.md')
           (out/'identity.json').write_text(json.dumps({'harness_source_sha':os.environ['GITHUB_SHA'],'files':{n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}},indent=2)+'\n')
           PYCODE
       - uses: actions/upload-artifact@v4
         with:
-          name: lifecycle-harness
+          name: cleanup-harness
           path: ${{ runner.temp }}/harness
   frozen:
     needs: bundle
@@ -66,18 +68,24 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: i2c-sdk-${{ matrix.target }}
-          run-id: 37085072023
+          run-id: 37089177117
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/frozen-input
       - uses: actions/download-artifact@v4
         with:
           name: i2c-batch-${{ matrix.target }}
-          run-id: 37085072023
+          run-id: 37090627500
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/prior-batch
       - uses: actions/download-artifact@v4
         with:
-          name: lifecycle-harness
+          name: i2c-sdk-${{ matrix.target }}
+          run-id: 37085072023
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/previous-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: cleanup-harness
           path: ${{ runner.temp }}/harness
       - name: Validate fixed SDK and harness; no checkout
         run: |
@@ -85,32 +93,45 @@ jobs:
           import hashlib,json,os,tarfile
           from pathlib import Path
           root=Path(os.environ['RUNNER_TEMP']);data=root/'frozen-input/i2c-package'
-          identity=json.loads((data/'sdk-identity.json').read_text());assert identity['candidate_sha']=='1f83447bf4bf9092bac55050ac794eccfaf70227'
+          identity=json.loads((data/'sdk-identity.json').read_text());assert identity['candidate_sha']=='8341ab9bedaf8d10703cf9bfb89911bd6c648e0a'
           archive=data/identity['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']
           install=root/'sdk-install';install.mkdir()
           with tarfile.open(archive) as t:t.extractall(install,filter='data')
           sdk=next(install.iterdir())
           for path,value in identity['components'].items():assert hashlib.sha256((sdk/path).read_bytes()).hexdigest()==value['sha256'] and (sdk/path).stat().st_mode&0o777==value['mode']
+          previous=root/'previous-input/i2c-package';old=json.loads((previous/'sdk-identity.json').read_text())
+          assert old['candidate_sha']=='1f83447bf4bf9092bac55050ac794eccfaf70227'
+          archive=previous/old['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==old['archive_sha256']
+          previous_install=root/'previous-install';previous_install.mkdir()
+          with tarfile.open(archive) as t:t.extractall(previous_install,filter='data')
+          old_sdk=next(previous_install.iterdir())
+          for path,value in old['components'].items():assert hashlib.sha256((old_sdk/path).read_bytes()).hexdigest()==value['sha256'] and (old_sdk/path).stat().st_mode&0o777==value['mode']
+          (root/'previous-sdk-path.txt').write_text(str(old_sdk))
           bundle=root/'harness';h=json.loads((bundle/'identity.json').read_text());assert h['harness_source_sha']==os.environ['GITHUB_SHA']
           for name,value in h['files'].items():assert hashlib.sha256((bundle/name).read_bytes()).hexdigest()==value
           assert not (Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists()
           (root/'sdk-path.txt').write_text(str(sdk))
           PYCODE
-      - name: Retain real lifecycle/input outcomes without relabeling failures
+      - name: Run installed cleanup controls and actual CLI residual cases
         run: |
+          set -euo pipefail
           sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
+          previous=$(cat "$RUNNER_TEMP/previous-sdk-path.txt")
           cd "$RUNNER_TEMP/harness"
-          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_lifecycle.py --sdk "$sdk" --output "$RUNNER_TEMP/lifecycle" --observe
-          python3 ledger_toka_test_lifecycle.py --prior "$RUNNER_TEMP/prior-batch/i2c-batch/coverage-ledger.json" --lifecycle "$RUNNER_TEMP/lifecycle" --output "$RUNNER_TEMP/lifecycle/coverage-ledger.json"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_cleanup.py --sdk "$sdk" --previous-sdk "$previous" --output "$RUNNER_TEMP/cleanup"
+          python3 ledger_toka_test_cleanup.py --prior "$RUNNER_TEMP/prior-batch/i2c-batch/coverage-ledger.json" --cleanup "$RUNNER_TEMP/cleanup" --contract toka_test_v1_acceptance.md --output "$RUNNER_TEMP/cleanup/coverage-ledger.json"
+      - name: Preserve SDK and harness identity even on failure
+        if: always()
+        run: |
           python3 - <<'PYCODE'
           import json,os
           from pathlib import Path
-          root=Path(os.environ['RUNNER_TEMP'])
-          (root/'lifecycle/identity.json').write_text(json.dumps({'SDK_identity':json.loads((root/'frozen-input/i2c-package/sdk-identity.json').read_text()),'harness_identity':json.loads((root/'harness/identity.json').read_text()),'repository_checkout_present':False,'compiler_source_visible':False,'SDK_standard_library_sources':'allowed installed content','imports':'stdlib plus standalone harness and installed SDK helpers'},indent=2)+'\n')
+          root=Path(os.environ['RUNNER_TEMP']);out=root/'cleanup';out.mkdir(exist_ok=True)
+          (out/'identity.json').write_text(json.dumps({'SDK_identity':json.loads((root/'frozen-input/i2c-package/sdk-identity.json').read_text()),'previous_SDK_identity':json.loads((root/'previous-input/i2c-package/sdk-identity.json').read_text()),'harness_identity':json.loads((root/'harness/identity.json').read_text()),'repository_checkout_present':(Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists(),'compiler_source_visible':(Path(os.environ['GITHUB_WORKSPACE'])/'src/codegen').exists(),'SDK_standard_library_sources':'allowed installed content','CI_run':os.environ['GITHUB_RUN_ID'],'CI_attempt':os.environ['GITHUB_RUN_ATTEMPT']},indent=2)+'\n')
           PYCODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: lifecycle-frozen-${{ matrix.target }}
+          name: cleanup-frozen-${{ matrix.target }}
           include-hidden-files: true
-          path: ${{ runner.temp }}/lifecycle
+          path: ${{ runner.temp }}/cleanup
