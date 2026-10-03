@@ -1,5 +1,8 @@
 # 0.12.x 开发线：项目开发体验
 
+整版最新进度见 [路线与阻断](0_12_release_progress.md)。下文保留原设计与历史阶段说明；
+不能把历史待审文字或 I2-C 用例比例解释为当前整版发布状态。
+
 状态：2026-10-02 B0 已独立复审 Accepted，I1 已独立复审 Accepted，I2-A 修订已 Accepted，I2-B 已 Accepted，I2-C 完整 Preview SDK 安装验收中，仍为 Preview；
 未冻结 0.12 SDK、未启动完整发布资格矩阵。I1 范围见 [阶段记录](toka_test_v1_i1.md)，I2-A 见 [监督记录](toka_test_v1_i2a.md)。
 本批交付仅包含此文、[toka test v1 契约](toka_test_v1.md)和

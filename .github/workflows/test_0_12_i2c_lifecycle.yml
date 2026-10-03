@@ -1,4 +1,4 @@
-name: 0.12 I2-C monotonic and cold-warm timing acceptance
+name: 0.12 I2-C published Unicode and filesystem closure
 on:
   workflow_dispatch:
 permissions:
@@ -17,7 +17,7 @@ jobs:
           import hashlib,json,os,shutil
           from pathlib import Path
           out=Path(os.environ['RUNNER_TEMP'])/'harness';out.mkdir()
-          names=['test_toka_test_timing.py','test_toka_test_i2c_batch.py','ledger_toka_test_timing.py']
+          names=['test_toka_test_closure.py','test_toka_test_i2c_batch.py','ledger_toka_test_closure.py']
           for name in names:shutil.copyfile(Path('tools/scripts')/name,out/name)
           shutil.copyfile(Path('docs/toka_test_v1_acceptance.md'),out/'toka_test_v1_acceptance.md')
           names.append('toka_test_v1_acceptance.md')
@@ -25,7 +25,7 @@ jobs:
           PYCODE
       - uses: actions/upload-artifact@v4
         with:
-          name: timing-harness
+          name: closure-harness
           path: ${{ runner.temp }}/harness
   frozen:
     needs: bundle
@@ -73,13 +73,13 @@ jobs:
           path: ${{ runner.temp }}/frozen-input
       - uses: actions/download-artifact@v4
         with:
-          name: reports-frozen-${{ matrix.target }}
-          run-id: 37128840356
+          name: timing-frozen-${{ matrix.target }}
+          run-id: 37131404311
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/prior-ledger
       - uses: actions/download-artifact@v4
         with:
-          name: timing-harness
+          name: closure-harness
           path: ${{ runner.temp }}/harness
       - name: Validate fixed SDK and harness; no checkout
         run: |
@@ -98,25 +98,25 @@ jobs:
           assert not (Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists()
           (root/'sdk-path.txt').write_text(str(sdk))
           PYCODE
-      - name: Run genuine timing samples then wall-clock rollback control
+      - name: Run real immutable Unicode package comparison and raw path controls
         run: |
           set -euo pipefail
           sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
           cd "$RUNNER_TEMP/harness"
-          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_timing.py --sdk "$sdk" --output "$RUNNER_TEMP/timing"
-          python3 ledger_toka_test_timing.py --prior "$RUNNER_TEMP/prior-ledger/report-assembly/coverage-ledger.json" --timing "$RUNNER_TEMP/timing" --output "$RUNNER_TEMP/timing/coverage-ledger.json"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_closure.py --sdk "$sdk" --output "$RUNNER_TEMP/closure"
+          python3 ledger_toka_test_closure.py --prior "$RUNNER_TEMP/prior-ledger/coverage-ledger.json" --closure "$RUNNER_TEMP/closure" --contract toka_test_v1_acceptance.md --output "$RUNNER_TEMP/closure/coverage-ledger.json"
       - name: Preserve SDK and harness identity even on failure
         if: always()
         run: |
           python3 - <<'PYCODE'
           import json,os
           from pathlib import Path
-          root=Path(os.environ['RUNNER_TEMP']);out=root/'timing';out.mkdir(exist_ok=True)
+          root=Path(os.environ['RUNNER_TEMP']);out=root/'closure';out.mkdir(exist_ok=True)
           (out/'identity.json').write_text(json.dumps({'SDK_identity':json.loads((root/'frozen-input/i2c-package/sdk-identity.json').read_text()),'harness_identity':json.loads((root/'harness/identity.json').read_text()),'repository_checkout_present':(Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists(),'compiler_source_visible':(Path(os.environ['GITHUB_WORKSPACE'])/'src/codegen').exists(),'SDK_standard_library_sources':'allowed installed content','CI_run':os.environ['GITHUB_RUN_ID'],'CI_attempt':os.environ['GITHUB_RUN_ATTEMPT']},indent=2)+'\n')
           PYCODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: timing-frozen-${{ matrix.target }}
+          name: closure-frozen-${{ matrix.target }}
           include-hidden-files: true
-          path: ${{ runner.temp }}/timing
+          path: ${{ runner.temp }}/closure
