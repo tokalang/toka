@@ -21,7 +21,7 @@ jobs:
           for name in names:shutil.copyfile(Path('tools/scripts')/name,out/name)
           shutil.copyfile(Path('docs/toka_test_v1_acceptance.md'),out/'toka_test_v1_acceptance.md')
           names.append('toka_test_v1_acceptance.md')
-          (root/'reports-identity.json').write_text(json.dumps({'harness_source_sha':os.environ['GITHUB_SHA'],'files':{n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}},indent=2)+'\n')
+          (out/'identity.json').write_text(json.dumps({'harness_source_sha':os.environ['GITHUB_SHA'],'files':{n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}},indent=2)+'\n')
           PYCODE
       - uses: actions/upload-artifact@v4
         with:
