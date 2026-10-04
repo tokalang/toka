@@ -1,4 +1,4 @@
-name: 0.12 I3-A locked add feedback candidate
+name: 0.12 I3-B scoped evidence candidate
 on:
   workflow_dispatch:
 permissions:
@@ -50,9 +50,10 @@ jobs:
           set -euo pipefail
           gh release download v0.11.0 --repo tokalang/toka --pattern "toka-v0.11.0-${{ matrix.target }}.tar.gz" --dir "$RUNNER_TEMP/original"
           python3 tools/scripts/package_test_i2c_sdk.py --archive "$RUNNER_TEMP/original/toka-v0.11.0-${{ matrix.target }}.tar.gz" --target '${{ matrix.target }}' --work "$RUNNER_TEMP/stage" --output "$RUNNER_TEMP/package"
-      - name: Source add controls, Linux filesystem regression and package regressions
+      - name: Source evidence/add controls and package regressions
         run: |
           mkdir -p "$RUNNER_TEMP/controls"
+          PYTHONDONTWRITEBYTECODE=1 python3 tools/scripts/test_toka_evidence.py -v > "$RUNNER_TEMP/controls/evidence.stdout" 2> "$RUNNER_TEMP/controls/evidence.stderr"
           PYTHONDONTWRITEBYTECODE=1 python3 tools/scripts/test_toka_add.py > "$RUNNER_TEMP/controls/add.stdout" 2> "$RUNNER_TEMP/controls/add.stderr"
           PYTHONDONTWRITEBYTECODE=1 python3 tools/scripts/test_toka_test_filesystem_linux.py > "$RUNNER_TEMP/controls/filesystem.stdout" 2> "$RUNNER_TEMP/controls/filesystem.stderr"
           PYTHONDONTWRITEBYTECODE=1 python3 tools/scripts/test_package_manager_supply_chain.py > "$RUNNER_TEMP/controls/supply.stdout" 2> "$RUNNER_TEMP/controls/supply.stderr"
@@ -62,14 +63,14 @@ jobs:
           import hashlib,json,os,shutil
           from pathlib import Path
           out=Path(os.environ['RUNNER_TEMP'])/'harness';out.mkdir()
-          names=['test_toka_add.py','test_toka_add_installed.py']
+          names=['test_toka_add.py','test_toka_add_installed.py','test_toka_evidence_installed.py']
           for name in names:shutil.copyfile(Path('tools/scripts')/name,out/name)
           (out/'identity.json').write_text(json.dumps({'harness_source_sha':os.environ['GITHUB_SHA'],'files':{n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}},indent=2)+'\n')
           PYCODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: i3-add-sdk-${{ matrix.target }}
+          name: i3-evidence-sdk-${{ matrix.target }}
           include-hidden-files: true
           path: |
             ${{ runner.temp }}/package
@@ -101,7 +102,7 @@ jobs:
         run: brew install openssl@3
       - uses: actions/download-artifact@v4
         with:
-          name: i3-add-sdk-${{ matrix.target }}
+          name: i3-evidence-sdk-${{ matrix.target }}
           path: ${{ runner.temp }}/input
       - name: Validate exact candidate and install without checkout
         run: |
@@ -119,14 +120,16 @@ jobs:
           assert not (Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists()
           (root/'sdk-path.txt').write_text(str(sdk))
           PYCODE
-      - name: Exercise F01-F05 with installed SDK
+      - name: Exercise S01-S04 and accepted F01-F05 regressions with installed SDK
         run: |
           sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
           cd "$RUNNER_TEMP/input/harness"
-          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_add_installed.py --sdk "$sdk" --output "$RUNNER_TEMP/installed"
+          mkdir -p "$RUNNER_TEMP/installed"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_evidence_installed.py --sdk "$sdk" --output "$RUNNER_TEMP/installed/evidence"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_add_installed.py --sdk "$sdk" --output "$RUNNER_TEMP/installed/add"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: i3-add-installed-${{ matrix.target }}
+          name: i3-evidence-installed-${{ matrix.target }}
           include-hidden-files: true
           path: ${{ runner.temp }}/installed

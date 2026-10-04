@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 BASE='57b0f7dd7d52bdc24c6dde0457803240e5c62e8a'
 CHANGED={'bin/toka','lib/toolchain/toka_test.py','lib/toolchain/toka_test_process.py',
-         'lib/toolchain/toka_test_report.py','lib/toolchain/toka_package.py'}
+         'lib/toolchain/toka_test_report.py','lib/toolchain/toka_package.py','lib/toolchain/toka_evidence.py'}
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
 def main():

@@ -1,0 +1,281 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://toka-lang.org/schemas/toka.semantic-evidence-view.v1.schema.json",
+  "title": "Toka Scoped Public Semantic Evidence View v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "version",
+    "result",
+    "exit_code",
+    "scope",
+    "analysis",
+    "records",
+    "reasons",
+    "compiler",
+    "errors"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "toka.semantic-evidence-view"
+    },
+    "version": {
+      "const": 1
+    },
+    "result": {
+      "enum": [
+        "passed",
+        "failed",
+        "configuration_error",
+        "infrastructure_error"
+      ]
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "kind",
+        "target",
+        "input",
+        "output_filtered"
+      ],
+      "properties": {
+        "kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "output_filtered": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "analysis": {
+      "type": "object",
+      "required": [
+        "scope",
+        "result",
+        "exit_code",
+        "records_total",
+        "records_emitted",
+        "retained_rejections"
+      ],
+      "properties": {
+        "scope": {
+          "const": "full"
+        },
+        "result": {
+          "enum": [
+            "passed",
+            "failed",
+            "not_started"
+          ]
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "records_total": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "records_emitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retained_rejections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/record"
+      }
+    },
+    "reasons": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "reason",
+          "subject",
+          "origin",
+          "primary_location",
+          "origin_location",
+          "source",
+          "origin_source"
+        ]
+      }
+    },
+    "compiler": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "category",
+          "message"
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "line",
+        "column"
+      ],
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule",
+        "operation",
+        "decision",
+        "reason",
+        "subject",
+        "origin",
+        "primary_location",
+        "origin_location",
+        "decision_id",
+        "reason_id",
+        "source",
+        "origin_source"
+      ],
+      "properties": {
+        "rule": {
+          "type": "string",
+          "pattern": "^[A-Z]+(?:-[A-Z]+)*-[0-9]{3}$"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "Allow",
+            "Reject",
+            "ConservativeReject"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "primary_location": {
+          "$ref": "#/$defs/location"
+        },
+        "origin_location": {
+          "$ref": "#/$defs/location"
+        },
+        "decision_id": {
+          "type": "string",
+          "pattern": "decision-v1-[0-9a-f]{64}"
+        },
+        "reason_id": {
+          "type": "string",
+          "pattern": "reason-v1-[0-9a-f]{64}"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "origin_source": {
+          "$ref": "#/$defs/source"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "origin",
+        "path",
+        "package_node_id",
+        "classification_basis"
+      ],
+      "properties": {
+        "origin": {
+          "enum": [
+            "user",
+            "dependency",
+            "sdk",
+            "unknown"
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package_node_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "classification_basis": {
+          "enum": [
+            "workspace_node",
+            "locked_package_node",
+            "sdk_root",
+            "none"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

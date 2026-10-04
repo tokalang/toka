@@ -810,22 +810,18 @@ fn cmd_context(argc: i32, shift: i32) -> i32 {
 }
 
 fn cmd_evidence(argc: i32, shift: i32) -> i32 {
-    if argc < 3 + shift {
-        println("Error: 'toka evidence' requires a source file.")
-        return 1
-    }
-    auto command# = Command::new(detect_tokac_path())
-    command#.arg(string::from("--semantic-evidence=json"))
-    command#.arg(string::from("--check-only"))
-    command#.arg(string::from("-I"))
+    auto helper# = detect_default_lib_path()
+    helper#.push_str("/toolchain/toka_evidence.py")
+    auto command# = Command::new(string::from("python3"))
+    command#.arg(helper)
+    command#.arg(string::from("--compiler"))
+    command#.arg(detect_tokac_path())
+    command#.arg(string::from("--sdk-lib"))
     command#.arg(detect_default_lib_path())
-    if append_locked_project_context(command#) != 0 { return 1 }
     auto idx# = 2 + shift
     loop idx < argc {
         auto arg = env::get_arg(idx)
-        if !arg.eq(string::from("--json")) {
-            command#.arg(arg)
-        }
+        command#.arg(arg)
         idx += 1
     }
     return command#.status()

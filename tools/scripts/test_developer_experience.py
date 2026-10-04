@@ -298,7 +298,7 @@ def main():
                 [installed_toka, "evidence", "--json", "src/main.tk"], smoke, env=env,
             )
             project_evidence_doc = json.loads(project_evidence.stdout)
-            require(project_evidence_doc.get("schema") == "toka.semantic-evidence",
+            require(project_evidence_doc.get("schema") == "toka.semantic-evidence-view",
                     "toka evidence did not emit JSON for a locked project dependency")
             project_capabilities = run(
                 [installed_toka, "capabilities", "--json", "src/main.tk"],

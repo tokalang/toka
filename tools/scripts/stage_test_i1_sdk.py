@@ -41,7 +41,7 @@ def main():
     (work/'manager-build.stdout').write_bytes(r.stdout);(work/'manager-build.stderr').write_bytes(r.stderr)
     if r.returncode:raise SystemExit('Preview manager build failed; original manager was not replaced')
     shutil.copyfile(work/'candidate-toka',sdk/'bin/toka');(sdk/'bin/toka').chmod(0o755)
-    for name in ['toka_test.py','toka_package.py','toka_test_process.py','toka_test_report.py']:
+    for name in ['toka_test.py','toka_package.py','toka_test_process.py','toka_test_report.py','toka_evidence.py']:
         shutil.copyfile(ROOT/'lib/toolchain'/name,sdk/'lib/toolchain'/name)
     assert sha(sdk/'bin/tokac')==compiler_before and sha(sdk/'lib/sys/toka_rt.o')==runtime_before
     (work/'stage-identity.json').write_text(json.dumps({'result':'pass','stage':'I2-B-preview',

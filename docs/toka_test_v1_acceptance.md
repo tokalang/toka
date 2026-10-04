@@ -154,8 +154,8 @@
 
 ## 语义证据范围（#38，与 C6 共用边界）
 
-输入用“文件 scope / 决策 scope / all scope”的设计接口表示；具体 CLI 语法在
-#38 批次冻结后补入实际命令，不能因此改变以下行为断言。这是证据输出范围，
+实际命令为 `toka evidence <入口> --scope file|decision|all`，目标参数为
+`--target <文件>` / `--decision <ID>`；详见 [I3-B 接口](toka_evidence_scope_v1.md)。这不能改变以下行为断言。这是证据输出范围，
 不是 `toka test --filter` 的入口选择。
 
 | ID | 输入/操作 | 预期行为 | 码 | 报告断言 |

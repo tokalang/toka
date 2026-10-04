@@ -122,11 +122,18 @@ def main():
                 "public evidence omitted rejection origin")
 
         manager = run([
-            toka, "evidence", "--json", PASS_CASE,
+            toka, "evidence", "--json", "--scope", "all", PASS_CASE,
             "-o", temp_dir / ("manager" + suffix),
         ], expected=0)
-        require(manager.stdout == first.stdout,
-                "toka evidence does not preserve compiler evidence output")
+        manager_document = json.loads(manager.stdout)
+        require(manager_document['schema'] == 'toka.semantic-evidence-view' and
+                manager_document['analysis']['exit_code'] == 0,
+                "toka evidence did not emit a complete-check view")
+        manager_records = [{key:value for key,value in record.items()
+                            if key not in ('decision_id','reason_id','source','origin_source')}
+                           for record in manager_document['records']]
+        require(manager_records == pass_document['records'],
+                "all view changed public compiler evidence records")
 
         mixed = run([
             tokac, "--semantic-evidence=json", "--diagnostics-json",
