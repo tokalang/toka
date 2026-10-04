@@ -53,6 +53,11 @@ ConservativeReject 无条件保留，即使发生于范围外。完整 stderr �
 原始退出码及完整证据 stdout_sha256，供与 all/原始编译器对照。成功保留 0，正常
 语义失败保留编译器非零码；信号退出保留原负码并将 CLI 码归为 128+signal。
 配置错误为 2，启动失败或无效编译器证据为 infrastructure_error/2，原输出保留。
+项目准备进度只写 stderr，不进入报告 stdout，也不混入 compiler.stderr_base64。
+捕获编译器回执和视图后才转发 stderr。stderr 不可写时，工具返回
+infrastructure_error/2，保留原始分析状态及 stdout_base64/stderr_base64；暂停后续
+stderr 写入和退出时重刷，防止二次异常或 120 覆盖工具结果。准备阶段的通道失败
+同样生成报告，compiler=null、analysis.result=not_started；报告 stdout 仍须可写。
 
 本批不新增生产进程监督承诺；Python/SDK helper 的最外层启动失败沿用系统 stderr，
 不属于 S04 的范围参数错误。toka test 的 C6 外层报告承诺保持原样。

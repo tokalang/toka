@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """S01-S04 with locked projects, a complete installed SDK and real compiler checks."""
-import argparse,base64,hashlib,json,os,subprocess
+import argparse,base64,fcntl,hashlib,json,os,select,subprocess,time
 from pathlib import Path
 
 LIB='''pub shape Data(val: i32)
@@ -60,6 +60,55 @@ def main():
         run('S04-'+name,root,options,2)
     for name,options in [('scope',['--scope',os.fsdecode(b'\xff')]),('target',['--target',os.fsdecode(b'\xff')]),('decision',['--scope','decision','--decision',os.fsdecode(b'\xff')])]:
         report=run('S04-encoding-'+name,root,options,2);assert base64.b64decode(report['scope']['input_base64'][-1])==b'\xff' and report['analysis']['result']=='not_started'
+    def boundary(name,project,baseline,locked=False,closed=False):
+        folder=out/name;folder.mkdir();argv=[str(sdk/'bin/toka'),'evidence','main.tk','--json'];before=(project/'package.lock').read_bytes();held=None;writer=None;proc=None;prefix=b'';ready=False;quiet=None
+        try:
+            if locked:
+                held=(project/'.toka/test-context.lock').open('a+b');fcntl.flock(held,fcntl.LOCK_EX)
+            if closed:
+                reader,writer=os.pipe();os.close(reader)
+            proc=subprocess.Popen(argv,cwd=project,env=env,stdout=subprocess.PIPE,stderr=writer if closed else subprocess.PIPE)
+            if writer is not None:os.close(writer);writer=None
+            if locked and not closed:
+                deadline=time.monotonic()+10
+                while b'Waiting for project dependency lock' not in prefix and time.monotonic()<deadline:
+                    readable,_,_=select.select([proc.stderr],[],[],min(0.1,max(0,deadline-time.monotonic())))
+                    if readable:
+                        chunk=os.read(proc.stderr.fileno(),4096)
+                        if not chunk:break
+                        prefix+=chunk
+                ready=b'Waiting for project dependency lock' in prefix;quiet=not select.select([proc.stdout],[],[],0)[0]
+                assert ready and quiet and proc.poll() is None,(name,prefix)
+                fcntl.flock(held,fcntl.LOCK_UN);held.close();held=None
+            stdout,stderr=proc.communicate(timeout=90);stderr=prefix+(stderr or b'')
+        finally:
+            if proc is not None and proc.poll() is None:
+                proc.kill();remaining_out,remaining_err=proc.communicate()
+                if 'stdout' not in locals():stdout=remaining_out;stderr=prefix+(remaining_err or b'')
+            if held is not None:fcntl.flock(held,fcntl.LOCK_UN);held.close()
+            if writer is not None:os.close(writer)
+            if proc is not None:
+                (folder/'stdout').write_bytes(locals().get('stdout',b''));(folder/'stderr').write_bytes(locals().get('stderr',prefix))
+        data=json.loads(stdout);expected=2 if closed else baseline['exit_code'];assert proc.returncode==expected and data['exit_code']==expected
+        assert (project/'package.lock').read_bytes()==before
+        r={'name':name,'argv':argv,'cwd':str(project),'exit_code':proc.returncode,'report':data,
+           'stderr_closed_by_caller':closed,'lock_held':locked,'wait_progress_observed':ready,'stdout_empty_while_lock_held':quiet}
+        (folder/'result.json').write_text(json.dumps(r,indent=2)+'\n');records.append(r)
+        if locked and closed:
+            assert data['result']=='infrastructure_error' and data['compiler'] is None and data['analysis']['result']=='not_started'
+        else:
+            assert data['compiler']['argv']==baseline['compiler']['argv'] and data['compiler']['stdout_sha256']==baseline['compiler']['stdout_sha256']
+            assert data['compiler']['stderr_base64']==baseline['compiler']['stderr_base64'] and data['analysis']==baseline['analysis'] and data['records']==baseline['records']
+            if closed:
+                assert data['result']=='infrastructure_error' and data['errors'][-1]['channel']=='stderr'
+                raw=base64.b64decode(data['compiler']['stdout_base64']);assert hashlib.sha256(raw).hexdigest()==baseline['compiler']['stdout_sha256']
+            else:
+                assert data['result']==baseline['result'] and stderr.endswith(base64.b64decode(data['compiler']['stderr_base64'])) and b'Waiting for project dependency lock' in stderr
+    boundary('P2-lock-pass',root,file,locked=True)
+    boundary('P2-lock-fail',callroot,callfile,locked=True)
+    boundary('P2-closed-stderr-pass',root,file,closed=True)
+    boundary('P2-closed-stderr-fail',callroot,callfile,closed=True)
+    boundary('P2-closed-stderr-preparation',root,file,locked=True,closed=True)
     result={'result':'pass','scenarios':len(records),'records':records,'rows':['S01','S02','S03','S04'],'source_checkout_required':False,'SDK':str(sdk),'Preview':True}
     (out/'result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps({'result':'pass','scenarios':len(records)}))
 

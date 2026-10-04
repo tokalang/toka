@@ -1,7 +1,10 @@
 """Scope public evidence after a complete compiler check; never prune analysis."""
 import argparse
 import base64
+import contextlib
+import errno
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -15,6 +18,38 @@ from toka_test_report import source_origin
 
 class ConfigurationError(ValueError):
     pass
+
+
+class StderrChannelError(OSError):
+    pass
+
+
+def forward_stderr(data):
+    """Keep stdout reserved for the report even when stderr is unusable."""
+    try:
+        stream = sys.stderr
+        if stream is None:
+            raise OSError(errno.EBADF, 'stderr is not available')
+        binary = getattr(stream, 'buffer', None)
+        if binary is not None:
+            binary.write(data)
+        else:
+            stream.write(data.decode('utf-8', errors='replace'))
+        stream.flush()
+    except (OSError, ValueError) as error:
+        # CPython otherwise retries the failed buffered flush at shutdown and
+        # replaces our infrastructure exit code with 120.
+        sys.stderr = sys.__stderr__ = io.StringIO()
+        raise StderrChannelError(getattr(error, 'errno', None), 'cannot write stderr: ' + str(error)) from error
+
+
+class PreparationProgress:
+    def write(self, text):
+        forward_stderr(text.encode('utf-8'))
+        return len(text)
+
+    def flush(self):
+        pass  # Each write was already flushed by forward_stderr.
 
 
 class Parser(argparse.ArgumentParser):
@@ -125,7 +160,8 @@ def main(argv=None):
         root = Path.cwd().resolve()
         graph = None
         if not args.raw_project and (root/'package.tk').is_file():
-            flags, _ = project_context(root)
+            with contextlib.redirect_stdout(PreparationProgress()):
+                flags, _ = project_context(root)
             graph = {'workspace_root':str(root),'workspace_node':packages.workspace_node(root/'package.tk',root/'package.lock'),
                      'dependencies':[{'root':str(packages.package_root(entry, root/'.toka').resolve()),
                                       'node':packages.package_node_id(entry)}
@@ -137,7 +173,6 @@ def main(argv=None):
         command.append(str(source))
         raw = subprocess.run(command, capture_output=True,
                              env=dict(os.environ, TOKA_LIB=str(args.sdk_lib.resolve())))
-        if raw.stderr:sys.stderr.buffer.write(raw.stderr);sys.stderr.buffer.flush()
         report['analysis'].update(result='passed' if raw.returncode == 0 else 'failed',exit_code=raw.returncode)
         report['compiler'] = {'argv':command,'exit_code':raw.returncode,
                               'stdout_sha256':hashlib.sha256(raw.stdout).hexdigest(),
@@ -157,7 +192,16 @@ def main(argv=None):
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
         report.update(result='infrastructure_error',exit_code=2)
         report['errors'] = [{'category':'infrastructure_error','message':str(error)}]
-        if raw is not None:report['compiler']['stdout_base64'] = base64.b64encode(raw.stdout).decode('ascii')
+        if raw is not None and isinstance(report['compiler'], dict):
+            report['compiler']['stdout_base64'] = base64.b64encode(raw.stdout).decode('ascii')
+    if raw is not None and raw.stderr:
+        try:
+            forward_stderr(raw.stderr)
+        except StderrChannelError as error:
+            report.update(result='infrastructure_error',exit_code=2)
+            report['errors'].append({'category':'infrastructure_error','message':str(error),'channel':'stderr','errno':error.errno})
+            if isinstance(report['compiler'], dict):
+                report['compiler']['stdout_base64'] = base64.b64encode(raw.stdout).decode('ascii')
     print(json.dumps(report, sort_keys=True))
     return report['exit_code']
 
