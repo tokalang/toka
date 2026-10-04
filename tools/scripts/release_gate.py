@@ -224,7 +224,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--version", default="v0.11.0")
+    parser.add_argument("--version", default="v0.12.0")
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -332,6 +332,7 @@ def main():
             [sys.executable, "tools/scripts/test_developer_experience.py",
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_release_workflow.py"],
+            [sys.executable, "tools/scripts/test_candidate_replay_binding.py"],
             [sys.executable, "tools/scripts/test_release_promotion.py"],
             [sys.executable, "tools/scripts/test_release_version_identity.py",
              "--build-dir", str(build_dir), "--version", args.version],

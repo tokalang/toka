@@ -3,8 +3,8 @@
 整版最新进度见 [路线与阻断](0_12_release_progress.md)。下文保留原设计与历史阶段说明；
 不能把历史待审文字或 I2-C 用例比例解释为当前整版发布状态。
 
-状态：2026-10-02 B0 已独立复审 Accepted，I1 已独立复审 Accepted，I2-A 修订已 Accepted，I2-B 已 Accepted，I2-C 完整 Preview SDK 安装验收中，仍为 Preview；
-未冻结 0.12 SDK、未启动完整发布资格矩阵。I1 范围见 [阶段记录](toka_test_v1_i1.md)，I2-A 见 [监督记录](toka_test_v1_i2a.md)。
+当前状态：2026-10-04 I2-C、I3、PL、E0 均已独立复审 Accepted，进入 Q0；
+0.12.0 完整 SDK 资格与原包重放仍待完成，继续 Preview。以下阶段文字保留为历史记录。I1 范围见 [阶段记录](toka_test_v1_i1.md)，I2-A 见 [监督记录](toka_test_v1_i2a.md)。
 本批交付仅包含此文、[toka test v1 契约](toka_test_v1.md)和
 [验收矩阵](toka_test_v1_acceptance.md)。设计承诺不能记作已通过实现测试。
 
@@ -35,8 +35,8 @@ Edition 仅作为独立兼容政策设计议题，不是 0.12 发布前置条件
 
 ## 0.12 平台支持政策（独立实现提交）
 
-政策 ID：`toka.release-platforms.0.12.v1`。以下是待部署的 0.12 规则，不是当前
-工作流已修改的声明。平台提交必须在 0.12 候选资格运行前完整通过契约测试。
+政策 ID：`toka.release-platforms.0.12.v1`。PL 的规则、发布链及定向控制已复审
+Accepted；本次 Q0 按以下范围执行正式资格。
 
 | 目标 | 支持等级 | 是否阻断核心发布 | 二进制提供条件 |
 | --- | --- | --- | --- |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preview project tests: supervised execution and C6 reports; I2-C is pending."""
+"""Preview project tests: supervised execution and C6 reports; Q0 qualification pending."""
 from __future__ import annotations
 
 import argparse

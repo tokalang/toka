@@ -1,19 +1,21 @@
 # 0.12 整版路线与当前阻断
 
-状态：2026-10-04，B0/I1/I2-A/I2-B 及 M04/M05 已独立复审 Accepted。
-主功能安装验收 I2-C 已整体验收 Accepted，三个核心平台均为 95/95；
-这个分母仅表示 toka test 安装验收，不表示整版完成比例。
+状态：2026-10-04，I2-C、I3、PL、E0 均已独立复审 Accepted。
+当前进入 Q0，继续 Preview；源码版本冻结为 0.12.0，最终完整 SHA 由冻结回执及资格运行绑定。
 
-| 里程碑 | 当前状态 | 剩余完成条件 |
+| 里程碑 | 当前状态 | 依据与剩余完成条件 |
 | --- | --- | --- |
-| I2-C 主功能收口 | Accepted | 原失败继续保留；SDK 8341ab9b 安装验收完成 |
-| I3 开发反馈 | Accepted：I3-A 3f5c4d68；I3-B 01b6bce3 | F01–F05、S01–S04 已收口；保留原失败及 Preview |
-| PL 平台迁移 | 政策已写，尚无 Accepted 部署交付 | 三核心平台阻断、Intel 尽力支持，同时迁移支持文档、资格、资产、重放、推广、安装器；保留 0.11 记录 |
-| E0 真实项目 | 尚无 Accepted 交付 | 安装 SDK 完成 create/add/check/test/run/交付；固定任务、无源码覆盖及手工补路径，记录介入和耗时 |
-| Q0 与发布 | 未启动 | 前置里程碑完成，冻结同 SHA，统一资格、原包重放、draft、受保护公开推广 |
+| I2-C 主功能 | Accepted | SDK 8341ab9b，三核心平台 95/95；原失败保留 |
+| I3 开发反馈 | Accepted | I3-A 3f5c4d68；I3-B 01b6bce3 |
+| PL 平台迁移 | Accepted | 0e4da202；三个核心平台完整阻断，Intel 独立尽力支持 |
+| E0 真实项目 | Accepted | 最终指南 7e9a3122；两名独立 AI 8/8、12 条获取计时、Linux 原包 4/4；旧失败及修订保留 |
+| Q0／原包重放 | 准备冻结并启动 | 同一 SHA 构建完整 SDK，三核心资格通过，固定 run/attempt 后原字节重放 |
+| draft／受保护发布 | 未启动 | Q0 复审通过后进入；公开发布与 Latest 另需授权 |
 
-当前下一步是 PL 的 V01–V12，并固定 E0 项目/依赖/任务输入。Preview 保留，不自行把
-候选证据或契约修订标为 Accepted。不运行完整发布矩阵定位首错。
+本次 Q0 不包含 macOS x64 资产；optional 状态明确为 not_run，不能记为验证通过。
+Windows GNU x64 保持源构建/dogfood 范围。0.11 四平台记录不变。
 
-目前不能给出可信发版日期：PL、E0 仍需验收，之后才冻结 Q0。后续每轮同时报告
-总里程碑、已完成/剩余事项、阻断及验证范围；当前不是公开发布阶段。
+复审记录：
+[PL](/Users/zhyi/GitDP/tokalang/evidence/0.12-platform-policy-p2-independent-review/verification.json)、
+[E0](/Users/zhyi/GitDP/tokalang/evidence/0.12-e0-closure-independent-review/verification.json)。
+资格构建不使用此前 composite Preview 包；原包重放不重新构建 SDK。
