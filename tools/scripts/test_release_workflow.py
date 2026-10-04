@@ -365,12 +365,12 @@ def main():
                     "${{ steps.version.outputs.label" not in block and
                     "${{ steps.candidate.outputs" not in block,
                     workflow_name + " workflow interpolates context into shell")
-    active_pattern = r"^v0\.11\.(0|[1-9][0-9]*)$"
+    active_pattern = r"^v0\.(11|12)\.(0|[1-9][0-9]*)$"
     require(text.count(active_pattern) == 3 and
             promotion.count(active_pattern) == 1 and
-            qualified_replay.count(active_pattern) == 1,
+            qualified_replay.count(r"^v0\.11\.(0|[1-9][0-9]*)$") == 1,
             "active workflows do not validate the same canonical v0.11.x tag")
-    for label in ("v0.11.0", "v0.11.1", "v0.11.123"):
+    for label in ("v0.11.0", "v0.11.1", "v0.11.123", "v0.12.0", "v0.12.123"):
         require(re.fullmatch(active_pattern, label) is not None,
                 "valid active release label was rejected: " + label)
     for label in ("v0.11.00", "v0.11.01", "v0.10.0", "v1.0.0-rc.13",
@@ -416,7 +416,7 @@ def main():
             "github.event_name == 'workflow_dispatch'" in gate and
             "candidate-archive-${{ matrix.name }}" in gate,
             "manual qualification does not retain unpublished candidate archives")
-    require("needs: release-gate" in summary and "if: always()" in summary,
+    require("needs: [release-gate, platform-plan]" in summary and "if: always()" in summary,
             "qualification summary must inspect all matrix evidence")
     require("verify_release_qualification.py" in summary and
             "--revision" in summary and "--version-label" in summary,
@@ -424,7 +424,7 @@ def main():
     require("needs: qualification-summary" in draft and
             "needs.qualification-summary.result == 'success'" in draft and
             "github.event_name == 'push'" in draft and
-            "startsWith(github.ref, 'refs/tags/v')" in draft,
+            "startsWith(github.ref, 'refs/tags/v0.11.')" in draft,
             "only a passing tag push may create a draft")
     require("verify_release_assets.py" in draft and "SHA256SUMS" in draft,
             "draft creation must verify exact archive names and checksums")
@@ -433,13 +433,13 @@ def main():
             "tag workflow must create an unpublished full-release draft")
     require("environment: release-publication" in promotion and
             "actions: read" in promotion and "contents: write" in promotion and
-            "qualified-artifact-replay-${{ inputs.tag_name }}-macos-x64" in promotion,
+            "qualified-artifact-replay-${{ inputs.tag_name }}-" in promotion and "'macos-x64'" in promotion,
             "promotion must protect publication and download a replay receipt")
     require("archive_source=qualified_run" in promotion and
             "archive_source=candidate_run" in promotion and
             "pattern: release-archive-*" in promotion and
             "pattern: candidate-archive-*" in promotion and
-            "--qualified-archives-dir qualification-archives" in promotion and
+            '--qualified-archives-dir "$archive_dir"' in promotion and
             promotion.count("run-id: ${{ inputs.qualification_run_id }}") >= 3,
             "promotion must download the selected four qualified archives")
     require("refs/tags/$TAG_NAME^{tag}" in qualified_replay and

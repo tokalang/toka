@@ -65,6 +65,9 @@ Toka therefore explores a position between C, Rust, Go, and Zig: close to the ma
 
 **Paper:** [Toka: A Systems Programming Language with Explicit Resource Semantics (arXiv:2606.01974)](https://arxiv.org/abs/2606.01974)
 
+
+The planned 0.12 SDK policy requires full qualification on Linux x64, Linux ARM64 and macOS ARM64. Intel Mac is independent best-effort support: a binary is offered only after the same-candidate package passes basic validation. A version without that asset must be built from source. Published 0.11 qualification and artifacts keep their four-platform contract. See [0.12 platform policy](docs/0_12_platform_policy.md). 0.12 is not yet qualified or published.
+
 ## Quick Start
 
 Toka [`0.11.0`](https://github.com/tokalang/toka/releases/tag/v0.11.0) was

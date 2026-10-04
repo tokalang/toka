@@ -250,8 +250,8 @@ def main():
                         help="print the isolated checkout and gate commands without running them")
     args = parser.parse_args()
 
-    if not re.fullmatch(r"v0\.11\.(0|[1-9][0-9]*)", args.version):
-        raise SystemExit("release label must be a canonical v0.11.x tag")
+    if not re.fullmatch(r"v0\.(?:11|12)\.(0|[1-9][0-9]*)", args.version):
+        raise SystemExit("release label must be a canonical v0.11.x tag or v0.12.x tag")
     if args.docker_cores <= 0:
         raise SystemExit("--docker-cores must be positive")
     revision = checked_output(["git", "rev-parse", "--verify", args.revision + "^{commit}"], cwd=ROOT)

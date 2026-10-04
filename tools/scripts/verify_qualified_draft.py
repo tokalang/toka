@@ -5,6 +5,10 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+try:
+    import release_platform_policy as platforms
+except ModuleNotFoundError:
+    from tools.scripts import release_platform_policy as platforms
 
 from verify_release_promotion import TARGETS, TAG, SHA, run_errors, sha256
 
@@ -13,6 +17,9 @@ def validate(args):
     if not TAG.fullmatch(args.tag_name) or not SHA.fullmatch(args.candidate_sha) or \
             args.qualification_run_id <= 0:
         raise ValueError('invalid release tag or candidate SHA')
+    if platforms.modern(args.tag_name):
+        from verify_release_policy_chain import validate_draft
+        return validate_draft(args)
     run = json.loads(args.qualification_run_json.read_text())
     errors = run_errors(run, args.qualification_run_id, args.candidate_sha, 'release')
     if run.get('event') != 'workflow_dispatch' or \
@@ -84,6 +91,9 @@ def main():
     parser.add_argument('--assets-dir', type=Path)
     parser.add_argument('--draft-json', type=Path)
     parser.add_argument('--draft-assets-dir', type=Path)
+    parser.add_argument('--qualification-artifacts-json',type=Path)
+    parser.add_argument('--artifact-zips-dir',type=Path)
+    parser.add_argument('--optional-run-json',type=Path)
     args = parser.parse_args()
     if (args.draft_json is None) != (args.draft_assets_dir is None):
         parser.error('draft JSON and downloaded assets must be supplied together')
@@ -91,8 +101,8 @@ def main():
         archives = validate(args)
         if args.assets_dir is not None:
             args.assets_dir.mkdir(parents=True, exist_ok=False)
-            for target in TARGETS:
-                name = 'toka-%s-%s.tar.gz' % (args.tag_name, target)
+            for name in archives:
+                target=name[len('toka-'+args.tag_name+'-'):-len('.tar.gz')]
                 source = args.qualified_archives_dir / ('candidate-archive-' + target) / name
                 shutil.copyfile(source, args.assets_dir / name)
                 if sha256(args.assets_dir / name) != archives[name]:

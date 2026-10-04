@@ -8,6 +8,10 @@ import json
 from pathlib import Path
 import sys
 import re
+try:
+    import release_platform_policy as platforms
+except ModuleNotFoundError:
+    from tools.scripts import release_platform_policy as platforms
 
 
 TARGETS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64")
@@ -148,7 +152,11 @@ def main():
     parser.add_argument("--revision", required=True)
     parser.add_argument("--version-label", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument('--source-run-id', type=int)
+    parser.add_argument('--source-run-attempt', type=int)
+    parser.add_argument('--optional-status', type=Path)
     args = parser.parse_args()
+    targets = platforms.core_targets(args.version_label)
 
     errors = []
     reports = []
@@ -169,17 +177,17 @@ def main():
                         "result": report.get("result")})
         errors.extend(report_errors(report, args.revision, args.version_label))
 
-    missing = sorted(set(TARGETS) - set(seen))
-    unexpected = sorted(set(seen) - set(TARGETS))
+    missing = sorted(set(targets) - set(seen))
+    unexpected = sorted(set(seen) - set(targets))
     if missing:
         errors.append("missing target reports: " + ", ".join(missing))
     if unexpected:
         errors.append("unexpected target reports: " + ", ".join(unexpected))
-    if len(seen) != len(TARGETS):
-        errors.append("expected exactly four target reports")
+    if len(seen) != len(targets):
+        errors.append("expected exactly %d target reports" % len(targets))
 
     conformance_digests = set()
-    for target in TARGETS:
+    for target in targets:
         name = "taskhandle-lifecycle-conformance-%s.json" % target
         paths = list(args.evidence_dir.rglob(name))
         if len(paths) != 1:
@@ -201,7 +209,7 @@ def main():
 
     profile = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
     restricted_conformances = []
-    for target in TARGETS:
+    for target in targets:
         paths = list(args.evidence_dir.rglob("toka-restricted-cancellation-%s.json" % target))
         if len(paths) != 1:
             errors.append("expected one restricted cancellation conformance record for %s" % target)
@@ -221,13 +229,23 @@ def main():
         "version": 1,
         "candidate_revision": args.revision,
         "version_label": args.version_label,
-        "expected_targets": list(TARGETS),
+        "expected_targets": list(targets),
         "reports": reports,
         "taskhandle_conformance": conformances,
         "restricted_cancellation_conformance": restricted_conformances,
         "errors": errors,
         "result": "pass" if not errors else "fail",
     }
+    if platforms.modern(args.version_label):
+        try:
+            optional = json.loads(args.optional_status.read_text()) if args.optional_status else platforms.not_run(args.revision,args.version_label)
+        except (OSError,ValueError) as error:
+            optional = None
+            errors.append('cannot read optional target status: '+str(error))
+        summary.update(version=2,policy_id=platforms.POLICY,expected_core_targets=list(targets),
+                       optional_targets={platforms.OPTIONAL:optional},source_run_id=args.source_run_id,source_run_attempt=args.source_run_attempt)
+        errors.extend(platforms.summary_errors(dict(summary,result='pass',errors=[]),args.revision,args.version_label))
+        summary['result']='pass' if not errors else 'fail'
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(summary, sort_keys=True, separators=(",", ":")) + "\n",
                            encoding="utf-8")

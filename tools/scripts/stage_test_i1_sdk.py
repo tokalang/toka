@@ -12,7 +12,8 @@ import tarfile
 ROOT = Path(__file__).resolve().parents[2]
 HASHES = {'linux-x64':'05faa6cf2128f9dc385aa832c33f722e34f5a4f4b98d0613887a3efe79a35635',
           'linux-arm64':'16e8deda50d7983bfa9cffc9f55e8587f4b9b3f4c72c7346a3e82f3c173466f1',
-          'macos-arm64':'81e95d01f685f4fbb057fc42b03c376c2646b41bce08398f8f40a76d2cdd7b99'}
+          'macos-arm64':'81e95d01f685f4fbb057fc42b03c376c2646b41bce08398f8f40a76d2cdd7b99',
+          'macos-x64':'448a4eeefe39859b0a92a20a13a762c9c64f7b7a55180c7ed01e433bfc6a3e01'}
 
 
 def sha(path):

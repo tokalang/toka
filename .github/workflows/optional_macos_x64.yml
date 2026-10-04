@@ -1,0 +1,89 @@
+name: Optional Intel Mac SDK basic validation
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        required: true
+        type: string
+      tag_name:
+        required: true
+        type: string
+      asset_source:
+        type: choice
+        default: candidate_run
+        options: [candidate_run, qualified_run]
+permissions:
+  contents: read
+jobs:
+  optional-basic:
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - name: Bind source and install build dependencies
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$TAG_NAME" =~ ^v0\.12\.(0|[1-9][0-9]*)$ ]]
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          brew install cmake ninja llvm@20 lld@20 zstd openssl@3
+      - name: Build optional SDK without full qualification matrix
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DTOKA_RELEASE_VERSION_OVERRIDE="${TAG_NAME#v}" \
+            -DLLVM_DIR="$(brew --prefix llvm@20)/lib/cmake/llvm" \
+            -DLLD_DIR="$(brew --prefix lld@20)/lib/cmake/lld" \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+          cmake --build build --parallel 3
+          OS=macos ARCH=x64 bash tools/scripts/package_release.sh "$TAG_NAME"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          mkdir -p "$RUNNER_TEMP/intel-package" "$RUNNER_TEMP/basic-harness"
+          cp "build/toka-$TAG_NAME-macos-x64.tar.gz" "$RUNNER_TEMP/intel-package/"
+          cp tools/scripts/validate_sdk_basic.py tools/scripts/release_platform_policy.py "$RUNNER_TEMP/basic-harness/"
+      - name: Validate extracted SDK with compiler source unavailable
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          # This is the disposable hosted checkout, after preserving package/harness.
+          cd "$RUNNER_TEMP"
+          rm -rf "$GITHUB_WORKSPACE"
+          python3 basic-harness/validate_sdk_basic.py \
+            --archive "intel-package/toka-$TAG_NAME-macos-x64.tar.gz" --target macos-x64 \
+            --revision "$CANDIDATE_SHA" --version-label "$TAG_NAME" \
+            --source-run-id "$GITHUB_RUN_ID" --source-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --output-dir "$RUNNER_TEMP/basic-results"
+          python3 - <<'PY'
+          import json,os,sys
+          from pathlib import Path
+          sys.path.insert(0,str(Path(os.environ['RUNNER_TEMP'])/'basic-harness'))
+          import release_platform_policy as policy
+          root=Path(os.environ['RUNNER_TEMP']);receipt=json.loads((root/'basic-results/basic-receipt.json').read_text())
+          state={'target':'macos-x64','status':'passed','reason':'The actual optional SDK passed basic validation.','candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'policy_id':policy.POLICY,'validation_level':'basic','receipt':receipt}
+          assert not policy.optional_errors(state,os.environ['CANDIDATE_SHA'],os.environ['TAG_NAME'])
+          (root/'basic-results/optional-status.json').write_text(json.dumps(state,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ${{ inputs.asset_source == 'candidate_run' && 'candidate' || 'release' }}-archive-macos-x64
+          path: ${{ runner.temp }}/intel-package/*.tar.gz
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: optional-intel-validation
+          path: ${{ runner.temp }}/basic-results

@@ -7,6 +7,10 @@ on:
         description: Canonical v0.11.x label already qualified
         required: true
         type: string
+      optional_run_id:
+        description: Optional same-candidate Intel basic validation run; leave empty for three assets
+        type: string
+        default: ''
       candidate_sha:
         description: Exact qualified commit; not the workflow controller revision
         required: true
@@ -31,12 +35,13 @@ jobs:
       TAG_NAME: ${{ inputs.tag_name }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+      OPTIONAL_RUN_ID: ${{ inputs.optional_run_id }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Validate inputs
         run: |
           set -euo pipefail
-          [[ "$TAG_NAME" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]]
+          [[ "$TAG_NAME" =~ ^v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
 
@@ -79,16 +84,32 @@ jobs:
       - name: Verify qualification with candidate's unchanged verifier
         run: |
           set -euo pipefail
-          git worktree add --detach "$RUNNER_TEMP/qualified-source" "$CANDIDATE_SHA"
-          python3 "$RUNNER_TEMP/qualified-source/tools/scripts/verify_release_qualification.py" \
-            --evidence-dir qualification-evidence --revision "$CANDIDATE_SHA" \
-            --version-label "$TAG_NAME" --output qualification-summary.json
+          if [[ "$TAG_NAME" == v0.12.* ]]; then
+            extra=()
+            if [[ -n "$OPTIONAL_RUN_ID" ]]; then extra+=(--optional-run-id "$OPTIONAL_RUN_ID"); fi
+            python3 tools/scripts/fetch_policy_candidate.py --repository "$GITHUB_REPOSITORY" \
+              --revision "$CANDIDATE_SHA" --tag-name "$TAG_NAME" --qualification-run-id "$QUALIFICATION_RUN_ID" \
+              "${extra[@]}" --output-dir policy-candidate
+            cp policy-candidate/qualification-summary.json qualification-summary.json
+            cp policy-candidate/qualification-run.json qualification-run.json
+            proof=(--qualification-artifacts-json policy-candidate/qualification-artifacts.json --artifact-zips-dir policy-candidate/artifact-zips)
+            if [[ -n "$OPTIONAL_RUN_ID" ]]; then proof+=(--optional-run-json policy-candidate/optional-run.json); fi
+            archive_dir=policy-candidate/qualification-archives
+          else
+            git worktree add --detach "$RUNNER_TEMP/qualified-source" "$CANDIDATE_SHA"
+            python3 "$RUNNER_TEMP/qualified-source/tools/scripts/verify_release_qualification.py" \
+              --evidence-dir qualification-evidence --revision "$CANDIDATE_SHA" \
+              --version-label "$TAG_NAME" --output qualification-summary.json
+            proof=()
+            archive_dir=qualification-archives
+          fi
           git show "$CANDIDATE_SHA:docs/release_notes_$TAG_NAME.md" > candidate-release-notes.md
+          printf '%s' "$archive_dir" > archive-dir.txt
           python3 tools/scripts/verify_qualified_draft.py \
             --repository "$GITHUB_REPOSITORY" --tag-name "$TAG_NAME" \
             --candidate-sha "$CANDIDATE_SHA" --qualification-run-id "$QUALIFICATION_RUN_ID" \
             --qualification-run-json qualification-run.json --qualification-summary qualification-summary.json \
-            --qualified-archives-dir qualification-archives --assets-dir release-assets \
+            --qualified-archives-dir "$archive_dir" --assets-dir release-assets "${proof[@]}" \
             --output draft-preparation.json
 
       - name: Preserve verified original archive hashes before mutation
@@ -165,11 +186,17 @@ jobs:
           set -euo pipefail
           gh release view "$TAG_NAME" --json tagName,isDraft,isPrerelease,assets > draft-release.json
           gh release download "$TAG_NAME" --dir draft-assets
+          archive_dir=$(cat archive-dir.txt)
+          proof=()
+          if [[ "$TAG_NAME" == v0.12.* ]]; then
+            proof+=(--qualification-artifacts-json policy-candidate/qualification-artifacts.json --artifact-zips-dir policy-candidate/artifact-zips)
+            if [[ -n "$OPTIONAL_RUN_ID" ]]; then proof+=(--optional-run-json policy-candidate/optional-run.json); fi
+          fi
           python3 tools/scripts/verify_qualified_draft.py \
             --repository "$GITHUB_REPOSITORY" --tag-name "$TAG_NAME" \
             --candidate-sha "$CANDIDATE_SHA" --qualification-run-id "$QUALIFICATION_RUN_ID" \
             --qualification-run-json qualification-run.json --qualification-summary qualification-summary.json \
-            --qualified-archives-dir qualification-archives --draft-json draft-release.json \
+            --qualified-archives-dir "$archive_dir" "${proof[@]}" --draft-json draft-release.json \
             --draft-assets-dir draft-assets --output draft-verification.json
 
       - name: Preserve draft and tag verification

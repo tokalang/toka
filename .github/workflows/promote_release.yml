@@ -7,6 +7,10 @@ on:
         description: Existing v0.11.x draft tag to publish
         required: true
         type: string
+      optional_run_id:
+        description: Intel validation run included in the draft, or empty
+        type: string
+        default: ''
       candidate_sha:
         description: Exact commit peeled from the annotated release tag
         required: true
@@ -37,8 +41,8 @@ jobs:
           REPLAY_RUN_ID: ${{ inputs.replay_run_id }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]]; then
-            echo "tag_name must be a canonical v0.11.x tag" >&2
+          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "tag_name must be a canonical v0.11.x/v0.12.x tag" >&2
             exit 1
           fi
           if [[ ! "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || \
@@ -74,6 +78,7 @@ jobs:
           python3 -c 'import json; d=json.load(open("draft-release.json")); assert d["isDraft"] is True and d["isPrerelease"] is False'
 
       - name: Verify exact draft asset names
+        if: ${{ !startsWith(inputs.tag_name, 'v0.12.') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ inputs.tag_name }}
@@ -100,11 +105,13 @@ jobs:
           set -euo pipefail
           gh release download "$TAG_NAME" --dir release-assets \
             --pattern 'toka-*.tar.gz' --pattern SHA256SUMS
+          if [[ "$TAG_NAME" != v0.12.* ]]; then
           python3 tools/scripts/verify_release_assets.py \
             --assets-dir release-assets \
             --version-label "$TAG_NAME" \
             --checksums-output release-assets/SHA256SUMS \
             --require-checksums
+          fi
 
       - name: Read qualified runs
         id: qualified_source
@@ -155,7 +162,7 @@ jobs:
       - name: Download qualified artifact replay receipt
         uses: actions/download-artifact@v4
         with:
-          name: qualified-artifact-replay-${{ inputs.tag_name }}-macos-x64
+          name: qualified-artifact-replay-${{ inputs.tag_name }}-${{ startsWith(inputs.tag_name, 'v0.12.') && 'summary' || 'macos-x64' }}
           path: replay-evidence
           github-token: ${{ github.token }}
           run-id: ${{ inputs.replay_run_id }}
@@ -166,13 +173,28 @@ jobs:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
           REPLAY_RUN_ID: ${{ inputs.replay_run_id }}
+          OPTIONAL_RUN_ID: ${{ inputs.optional_run_id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 tools/scripts/verify_release_qualification.py \
-            --evidence-dir qualification-evidence \
-            --revision "$CANDIDATE_SHA" \
-            --version-label "$TAG_NAME" \
-            --output qualification-summary.json
+          proof=()
+          archive_dir=qualification-archives
+          if [[ "$TAG_NAME" == v0.12.* ]]; then
+            extra=()
+            if [[ -n "$OPTIONAL_RUN_ID" ]]; then extra+=(--optional-run-id "$OPTIONAL_RUN_ID"); fi
+            python3 tools/scripts/fetch_policy_candidate.py --repository "$GITHUB_REPOSITORY" \
+              --revision "$CANDIDATE_SHA" --tag-name "$TAG_NAME" --qualification-run-id "$QUALIFICATION_RUN_ID" \
+              "${extra[@]}" --output-dir policy-candidate
+            cp policy-candidate/qualification-summary.json qualification-summary.json
+            cp policy-candidate/qualification-run.json qualification-run.json
+            archive_dir=policy-candidate/qualification-archives
+            proof+=(--qualification-artifacts-json policy-candidate/qualification-artifacts.json --artifact-zips-dir policy-candidate/artifact-zips)
+            if [[ -n "$OPTIONAL_RUN_ID" ]]; then proof+=(--optional-run-json policy-candidate/optional-run.json); fi
+          else
+            python3 tools/scripts/verify_release_qualification.py \
+              --evidence-dir qualification-evidence --revision "$CANDIDATE_SHA" \
+              --version-label "$TAG_NAME" --output qualification-summary.json
+          fi
           python3 tools/scripts/verify_release_promotion.py \
             --tag-name "$TAG_NAME" \
             --candidate-sha "$CANDIDATE_SHA" \
@@ -184,7 +206,7 @@ jobs:
             --qualification-summary qualification-summary.json \
             --replay-receipt replay-evidence/qualified-artifact-replay-receipt.json \
             --assets-dir release-assets \
-            --qualified-archives-dir qualification-archives \
+            --qualified-archives-dir "$archive_dir" "${proof[@]}" \
             --output promotion-verification.json
 
       - name: Upload bound promotion evidence

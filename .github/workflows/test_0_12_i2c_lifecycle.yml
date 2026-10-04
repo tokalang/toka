@@ -2,6 +2,10 @@ name: 0.12 I3-B scoped evidence candidate
 on:
   workflow_dispatch:
     inputs:
+      platform_policy_only:
+        description: Run PL controls and real basic SDK controls; no release qualification
+        type: boolean
+        default: false
       candidate_run:
         description: 'Reuse complete SDK/harness artifacts from this run; skip package jobs'
         type: string
@@ -15,7 +19,7 @@ permissions:
   actions: read
 jobs:
   package:
-    if: inputs.candidate_run == ''
+    if: inputs.candidate_run == '' && !inputs.platform_policy_only
     strategy:
       fail-fast: false
       matrix:
@@ -91,7 +95,7 @@ jobs:
             ${{ runner.temp }}/stage/manager-build.stderr
   installed:
     needs: package
-    if: always() && (needs.package.result == 'success' || (inputs.candidate_run != '' && needs.package.result == 'skipped'))
+    if: always() && !inputs.platform_policy_only && (needs.package.result == 'success' || (inputs.candidate_run != '' && needs.package.result == 'skipped'))
     strategy:
       fail-fast: false
       matrix:
@@ -162,3 +166,74 @@ jobs:
           name: i3-evidence-installed-${{ matrix.target }}
           include-hidden-files: true
           path: ${{ runner.temp }}/installed
+
+  platform-policy:
+    if: inputs.platform_policy_only
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+          - target: macos-x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - name: LLVM host dependencies on macOS
+        if: runner.os == 'macOS'
+        run: brew install llvm@20 lld@20 zstd openssl@3
+      - name: SDK host dependencies on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y build-essential libssl-dev libzstd-dev
+      - name: PL positive and negative controls, including unchanged legacy rules
+        run: |
+          mkdir -p "$RUNNER_TEMP/pl-controls"
+          for script in test_release_platform_policy.py test_platform_installer.py test_release_workflow.py test_release_promotion.py test_qualified_draft.py test_installer_checksum.py; do
+            PYTHONDONTWRITEBYTECODE=1 python3 "tools/scripts/$script" > "$RUNNER_TEMP/pl-controls/$script.stdout" 2> "$RUNNER_TEMP/pl-controls/$script.stderr"
+          done
+      - name: Build a private Preview SDK solely for basic-execution controls
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download v0.11.0 --repo tokalang/toka --pattern "toka-v0.11.0-${{ matrix.target }}.tar.gz" --dir "$RUNNER_TEMP/original"
+          PYTHONDONTWRITEBYTECODE=1 python3 tools/scripts/package_test_i2c_sdk.py --archive "$RUNNER_TEMP/original/toka-v0.11.0-${{ matrix.target }}.tar.gz" --target '${{ matrix.target }}' --work "$RUNNER_TEMP/stage" --output "$RUNNER_TEMP/package"
+          mkdir "$RUNNER_TEMP/basic-harness"
+          cp tools/scripts/validate_sdk_basic.py tools/scripts/release_platform_policy.py "$RUNNER_TEMP/basic-harness/"
+      - name: Run actual SDK install/create/build/run/test controls with source unavailable
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          rm -rf "$GITHUB_WORKSPACE"
+          python3 basic-harness/validate_sdk_basic.py \
+            --archive "package/toka-preview-i2c-$TARGET.tar.gz" --target "$TARGET" \
+            --revision "$GITHUB_SHA" --version-label v0.11.0 \
+            --source-run-id "$GITHUB_RUN_ID" --source-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --control-preview --output-dir "$RUNNER_TEMP/basic-control"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: platform-policy-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/pl-controls
+            ${{ runner.temp }}/package
+            ${{ runner.temp }}/basic-control
+            ${{ runner.temp }}/basic-harness
+            ${{ runner.temp }}/stage/stage-identity.json
+            ${{ runner.temp }}/stage/manager-build.stderr
+            ${{ runner.temp }}/stage/manager-build.stdout

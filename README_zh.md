@@ -59,6 +59,9 @@ Toka 组合了几类机制来接近这个目标。设计上，它试图让日常
 
 **论文：** [Toka: A Systems Programming Language with Explicit Resource Semantics (arXiv:2606.01974)](https://arxiv.org/abs/2606.01974)
 
+
+0.12 的发布 SDK 政策要求 Linux x64、Linux ARM64、macOS ARM64 完整资格。Intel Mac 为独立尽力支持：同候选原包基本验证通过后才提供二进制；本版本没有该包时需源构建。已发布 0.11 的四平台资格和资产承诺保持原样。详见 [0.12 平台政策](docs/0_12_platform_policy.md)。0.12 尚未取得发布资格或公开发布。
+
 ## 快速开始
 
 Toka [`0.11.0`](https://github.com/tokalang/toka/releases/tag/v0.11.0) 已于

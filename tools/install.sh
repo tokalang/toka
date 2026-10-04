@@ -66,14 +66,26 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-# Download
+# Read the exact-version manifest before requesting a possibly absent optional SDK.
+echo "Reading release checksums..."
+curl --fail --location --retry 3 --silent --show-error \
+  -o "${TMP_DIR}/SHA256SUMS" "$CHECKSUM_URL"
+if [ "$OS-$ARCH" = "macos-x64" ]; then
+  case "$VERSION" in
+    v0.12.*)
+      if ! awk -v file="$TARBALL" '$2 == file { found=1 } END { exit !found }' "${TMP_DIR}/SHA256SUMS"; then
+        echo "Release $VERSION has no macos-x64 binary. Intel Mac is best-effort for this version."
+        echo "Build the exact tag $VERSION from source: https://github.com/tokalang/toka/blob/$VERSION/README.md"
+        exit 1
+      fi
+      ;;
+  esac
+fi
+
 echo "Downloading $TARBALL from $DOWNLOAD_URL..."
 curl --fail --location --retry 3 --silent --show-error \
   -o "${TMP_DIR}/${TARBALL}" "$DOWNLOAD_URL"
-
 echo "Verifying SHA-256..."
-curl --fail --location --retry 3 --silent --show-error \
-  -o "${TMP_DIR}/SHA256SUMS" "$CHECKSUM_URL"
 EXPECTED_SHA256=$(awk -v file="$TARBALL" '$2 == file { print $1 }' \
   "${TMP_DIR}/SHA256SUMS")
 case "$EXPECTED_SHA256" in

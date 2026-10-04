@@ -7,6 +7,10 @@ on:
         description: Existing canonical v0.11.x tag
         required: true
         type: string
+      optional_run_id:
+        description: Optional Intel validation run included in this asset set
+        type: string
+        default: ''
       candidate_sha:
         description: Exact commit peeled from the annotated release tag
         required: true
@@ -17,7 +21,7 @@ on:
         type: string
       archive_sha256:
         description: SHA-256 recorded for the macOS x64 draft asset
-        required: true
+        required: false
         type: string
       asset_source:
         description: Read the tagged or candidate archive from the qualified run
@@ -34,6 +38,7 @@ permissions:
 
 jobs:
   replay:
+    if: ${{ !startsWith(inputs.tag_name, 'v0.12.') }}
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -167,3 +172,142 @@ jobs:
           name: qualified-artifact-replay-${{ inputs.tag_name }}-macos-x64
           path: qualified-artifact-replay-receipt.json
           if-no-files-found: error
+
+  policy-plan:
+    if: startsWith(inputs.tag_name, 'v0.12.')
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name }}
+          fetch-depth: 0
+          sparse-checkout: tools/scripts
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ inputs.tag_name }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          OPTIONAL_RUN_ID: ${{ inputs.optional_run_id }}
+        run: |
+          set -euo pipefail
+          git rev-parse "refs/tags/$TAG_NAME^{tag}" >/dev/null
+          test "$(git rev-parse "refs/tags/$TAG_NAME^{commit}")" = "$CANDIDATE_SHA"
+          extra=()
+          if [[ -n "$OPTIONAL_RUN_ID" ]]; then extra+=(--optional-run-id "$OPTIONAL_RUN_ID"); fi
+          python3 tools/scripts/fetch_policy_candidate.py --repository "$GITHUB_REPOSITORY" \
+            --revision "$CANDIDATE_SHA" --tag-name "$TAG_NAME" --qualification-run-id "$QUALIFICATION_RUN_ID" \
+            "${extra[@]}" --output-dir policy-candidate
+          python3 - <<'PYCODE' >> "$GITHUB_OUTPUT"
+          import json,os,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools/scripts')
+          import release_platform_policy as policy
+          root=Path('policy-candidate');summary=json.loads((root/'qualification-summary.json').read_text());run=json.loads((root/'qualification-run.json').read_text())
+          rows=json.loads((root/'qualification-artifacts.json').read_text())['artifacts']
+          prefix='candidate-archive-' if run['event']=='workflow_dispatch' else 'release-archive-'
+          runners={'linux-x64':'ubuntu-22.04','linux-arm64':'ubuntu-24.04-arm','macos-arm64':'macos-15','macos-x64':'macos-15-intel'}
+          include=[]
+          for target in policy.included_targets(summary,os.environ['CANDIDATE_SHA'],os.environ['TAG_NAME']):
+              row=next(r for r in rows if r['name']==prefix+target)
+              include.append({'target':target,'runner':runners[target],'artifact_id':row['id'],'artifact_digest':row['digest']})
+          print('matrix='+json.dumps({'include':include}))
+          PYCODE
+          mkdir replay-input
+          cp policy-candidate/qualification-run.json policy-candidate/qualification-summary.json replay-input/
+          cp tools/scripts/validate_sdk_basic.py tools/scripts/release_platform_policy.py replay-input/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: policy-replay-input
+          path: replay-input
+  policy-replay:
+    needs: policy-plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.policy-plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - name: SDK host dependencies
+        if: runner.os == 'macOS'
+        run: brew install llvm@20 lld@20 zstd openssl@3
+      - uses: actions/download-artifact@v4
+        with:
+          name: policy-replay-input
+          path: ${{ runner.temp }}/replay-input
+      - name: Authenticate original package and run without checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ matrix.artifact_id }}
+          ARTIFACT_DIGEST: ${{ matrix.artifact_digest }}
+          TARGET: ${{ matrix.target }}
+          TAG_NAME: ${{ inputs.tag_name }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > package.zip
+          python3 - <<'PYCODE'
+          import hashlib,json,os,zipfile
+          from pathlib import Path
+          raw=Path('package.zip');assert 'sha256:'+hashlib.sha256(raw.read_bytes()).hexdigest()==os.environ['ARTIFACT_DIGEST']
+          name='toka-%s-%s.tar.gz'%(os.environ['TAG_NAME'],os.environ['TARGET'])
+          with zipfile.ZipFile(raw) as z:
+              assert z.namelist()==[name];Path(name).write_bytes(z.read(name))
+          assert not (Path(os.environ['GITHUB_WORKSPACE'])/'src').exists()
+          PYCODE
+          attempt=$(python3 -c 'import json; print(json.load(open("replay-input/qualification-run.json"))["run_attempt"])')
+          python3 replay-input/validate_sdk_basic.py --archive "toka-$TAG_NAME-$TARGET.tar.gz" \
+            --target "$TARGET" --revision "$CANDIDATE_SHA" --version-label "$TAG_NAME" \
+            --source-run-id "$QUALIFICATION_RUN_ID" --source-run-attempt "$attempt" --output-dir replay-results
+          python3 - <<'PYCODE'
+          import json,os,sys
+          from pathlib import Path
+          sys.path.insert(0,'replay-input');import release_platform_policy as policy
+          r=json.loads(Path('replay-results/basic-receipt.json').read_text());q=json.loads(Path('replay-input/qualification-run.json').read_text())
+          row={'schema':'toka.qualified-artifact-replay','version':2,'policy_id':policy.POLICY,'target':os.environ['TARGET'],'candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'qualification_run_id':int(os.environ['QUALIFICATION_RUN_ID']),'qualification_run_attempt':q['run_attempt'],'asset_source':'candidate_run' if q['event']=='workflow_dispatch' else 'qualified_run','archive_sha256':r['archive_sha256'],'result':'pass'}
+          Path('replay-results/replay-receipt.json').write_text(json.dumps(row,indent=2)+'\n')
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: policy-replay-${{ matrix.target }}
+          path: ${{ runner.temp }}/replay-results
+  policy-summary:
+    needs: [policy-plan, policy-replay]
+    if: always() && needs.policy-plan.result == 'success'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: policy-replay-*
+          path: replay-evidence
+      - name: Require exact included set and all successful replays
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        run: |
+          python3 - <<'PYCODE'
+          import json,os,sys
+          from pathlib import Path
+          root=Path('replay-evidence');inputs=root/'policy-replay-input';sys.path.insert(0,str(inputs));import release_platform_policy as policy
+          q=json.loads((inputs/'qualification-run.json').read_text());s=json.loads((inputs/'qualification-summary.json').read_text())
+          rows=[json.loads(p.read_text()) for p in root.glob('policy-replay-*/replay-receipt.json')]
+          targets=policy.included_targets(s,os.environ['CANDIDATE_SHA'],os.environ['TAG_NAME'])
+          errors=[]
+          if len(rows)!=len(targets) or {r['target'] for r in rows}!=set(targets) or any(r.get('result')!='pass' for r in rows):errors.append('missing/failed package replay')
+          result={'schema':'toka.qualified-artifact-replay-summary','version':2,'policy_id':policy.POLICY,'candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'qualification_run_id':int(os.environ['QUALIFICATION_RUN_ID']),'qualification_run_attempt':q['run_attempt'],'replay_run_id':int(os.environ['GITHUB_RUN_ID']),'replay_run_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'receipts':rows,'errors':errors,'result':'fail' if errors else 'pass'}
+          Path('qualified-artifact-replay-receipt.json').write_text(json.dumps(result,indent=2)+'\n')
+          raise SystemExit(bool(errors))
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qualified-artifact-replay-${{ inputs.tag_name }}-summary
+          path: qualified-artifact-replay-receipt.json

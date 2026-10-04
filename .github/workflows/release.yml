@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       tag_name:
-        description: Exact 0.11.x release label, for example v0.11.0
+        description: Exact 0.11.x or 0.12.x release label, for example v0.11.0
         required: true
         type: string
   push:
@@ -16,31 +16,39 @@ on:
       - "v*"
 
 jobs:
+  platform-plan:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_ref || github.ref }}
+      - id: plan
+        env:
+          TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
+        run: |
+          python3 - <<'PYCODE' >> "$GITHUB_OUTPUT"
+          import json,os,re,sys
+          sys.path.insert(0,'tools/scripts')
+          from release_platform_policy import core_targets
+          label=os.environ['TAG_NAME']
+          assert re.fullmatch(r'v0\.(?:11|12)\.(?:0|[1-9][0-9]*)',label)
+          runners={'linux-x64':'ubuntu-22.04','linux-arm64':'ubuntu-24.04-arm','macos-arm64':'macos-15','macos-x64':'macos-15-intel'}
+          include=[dict(name=t,runner=runners[t],os=t.split('-')[0],arch=t.split('-')[1]) for t in core_targets(label)]
+          print('matrix='+json.dumps({'include':include}))
+          PYCODE
   release-gate:
     name: Release gate (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
+    needs: platform-plan
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: linux-x64
-            runner: ubuntu-22.04
-            os: linux
-            arch: x64
-          - name: linux-arm64
-            runner: ubuntu-24.04-arm
-            os: linux
-            arch: arm64
-          - name: macos-x64
-            runner: macos-15-intel
-            os: macos
-            arch: x64
-          - name: macos-arm64
-            runner: macos-15
-            os: macos
-            arch: arm64
+      matrix: ${{ fromJSON(needs.platform-plan.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +66,7 @@ jobs:
             [[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]]
             test "$(git rev-parse HEAD)" = "$CANDIDATE_REF"
           else
-            [[ "$GITHUB_REF" =~ ^refs/tags/v0\.11\.(0|[1-9][0-9]*)$ ]]
+            [[ "$GITHUB_REF" =~ ^refs/tags/v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]
             git rev-parse "$GITHUB_REF^{tag}" >/dev/null
             test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$(git rev-parse HEAD)"
           fi
@@ -102,8 +110,8 @@ jobs:
           TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]]; then
-            echo "release label must be a canonical v0.11.x tag" >&2
+          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release label must be a canonical v0.11.x/v0.12.x tag" >&2
             exit 1
           fi
           echo "label=$TAG_NAME" >> "$GITHUB_OUTPUT"
@@ -166,8 +174,8 @@ jobs:
           if-no-files-found: error
 
   qualification-summary:
-    name: Verify four-target qualification
-    needs: release-gate
+    name: Verify version-bound core qualification
+    needs: [release-gate, platform-plan]
     if: always()
     runs-on: ubuntu-22.04
     permissions:
@@ -188,7 +196,7 @@ jobs:
             [[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]]
             test "$(git rev-parse HEAD)" = "$CANDIDATE_REF"
           else
-            [[ "$GITHUB_REF" =~ ^refs/tags/v0\.11\.(0|[1-9][0-9]*)$ ]]
+            [[ "$GITHUB_REF" =~ ^refs/tags/v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]
             git rev-parse "$GITHUB_REF^{tag}" >/dev/null
             test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$(git rev-parse HEAD)"
           fi
@@ -200,8 +208,8 @@ jobs:
           TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]]; then
-            echo "release label must be a canonical v0.11.x tag" >&2
+          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release label must be a canonical v0.11.x/v0.12.x tag" >&2
             exit 1
           fi
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -228,6 +236,7 @@ jobs:
             --evidence-dir qualification-evidence \
             --revision "$CANDIDATE_REVISION" \
             --version-label "$VERSION_LABEL" \
+            --source-run-id "$GITHUB_RUN_ID" --source-run-attempt "$GITHUB_RUN_ATTEMPT" \
             --output build/release-qualification-summary.json
 
       - name: Upload qualification summary
@@ -243,7 +252,7 @@ jobs:
     needs: qualification-summary
     if: >-
       github.event_name == 'push' &&
-      startsWith(github.ref, 'refs/tags/v') &&
+      startsWith(github.ref, 'refs/tags/v0.11.') &&
       needs.qualification-summary.result == 'success'
     runs-on: ubuntu-22.04
     permissions:
@@ -260,8 +269,8 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]]; then
-            echo "release label must be a canonical v0.11.x tag" >&2
+          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release label must be a canonical v0.11.x/v0.12.x tag" >&2
             exit 1
           fi
           echo "label=$TAG_NAME" >> "$GITHUB_OUTPUT"

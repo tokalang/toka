@@ -6,6 +6,11 @@ import argparse
 import hashlib
 from pathlib import Path
 import sys
+import json
+try:
+    import release_platform_policy as platforms
+except ModuleNotFoundError:
+    from tools.scripts import release_platform_policy as platforms
 
 
 TARGETS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64")
@@ -19,8 +24,8 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def expected_names(version_label):
-    return tuple("toka-%s-%s.tar.gz" % (version_label, target) for target in TARGETS)
+def expected_names(version_label,targets=None):
+    return platforms.archive_names(version_label,targets or platforms.core_targets(version_label))
 
 
 def main():
@@ -29,12 +34,20 @@ def main():
     parser.add_argument("--version-label", required=True)
     parser.add_argument("--checksums-output", type=Path)
     parser.add_argument("--require-checksums", action="store_true")
+    parser.add_argument('--qualification-summary',type=Path)
     args = parser.parse_args()
 
-    expected = expected_names(args.version_label)
+    targets=platforms.core_targets(args.version_label)
+    if platforms.modern(args.version_label):
+        if args.qualification_summary is None:raise SystemExit('0.12 assets require a bound qualification summary')
+        summary=json.loads(args.qualification_summary.read_text());targets=platforms.included_targets(summary,summary.get('candidate_revision'),args.version_label)
+    expected = expected_names(args.version_label,targets)
     actual = tuple(sorted(path.name for path in args.assets_dir.glob("toka-*.tar.gz") if path.is_file()))
     if actual != tuple(sorted(expected)):
-        raise SystemExit("archive names do not match the required four-target set")
+        raise SystemExit("archive names do not match the exact version-bound target set")
+    if platforms.modern(args.version_label) and platforms.OPTIONAL in targets:
+        errors=platforms.optional_errors(summary['optional_targets'][platforms.OPTIONAL],summary['candidate_revision'],args.version_label,sha256(args.assets_dir/('toka-%s-%s.tar.gz'%(args.version_label,platforms.OPTIONAL))))
+        if errors:raise SystemExit('; '.join(errors))
     allowed = set(expected) | {"SHA256SUMS"}
     unexpected = sorted(path.name for path in args.assets_dir.iterdir()
                         if path.is_file() and path.name not in allowed)

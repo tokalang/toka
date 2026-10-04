@@ -229,8 +229,8 @@ def main():
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
-    if not re.fullmatch(r"v0\.11\.(0|[1-9][0-9]*)", args.version):
-        parser.error("release label must be a canonical v0.11.x tag")
+    if not re.fullmatch(r"v0\.(?:11|12)\.(0|[1-9][0-9]*)", args.version):
+        parser.error("release label must be a canonical v0.11.x tag or v0.12.x tag")
 
     root = Path(__file__).resolve().parents[2]
     build_dir = (root / args.build_dir).resolve()

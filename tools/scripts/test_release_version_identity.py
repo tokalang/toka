@@ -44,8 +44,8 @@ def main():
     args = parser.parse_args()
     expected = args.version.removeprefix("v")
     source_version = expected.split("-", 1)[0].split("+", 1)[0]
-    if not re.fullmatch(r"0\.11\.(0|[1-9][0-9]*)", source_version):
-        raise RuntimeError("expected version is outside the 0.11.x line")
+    if not re.fullmatch(r"0\.(?:11|12)\.(0|[1-9][0-9]*)", source_version):
+        raise RuntimeError("expected version is outside the supported 0.11.x/0.12.x lines")
     probe_override = source_version + "-dev.19"
 
     with tempfile.TemporaryDirectory(prefix="toka-release-version-") as temporary:

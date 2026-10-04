@@ -6,10 +6,14 @@ import hashlib
 import json
 from pathlib import Path
 import re
+try:
+    import release_platform_policy as platforms
+except ModuleNotFoundError:
+    from tools.scripts import release_platform_policy as platforms
 
 
 TARGETS = ("linux-arm64", "linux-x64", "macos-arm64", "macos-x64")
-TAG = re.compile(r"v0\.11\.(?:0|[1-9][0-9]*)\Z")
+TAG = re.compile(r"v0\.(?:11|12)\.(?:0|[1-9][0-9]*)\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -55,6 +59,10 @@ def validate(args, observed=None):
     if observed is None:
         observed = {}
     observed["archives"] = {}
+    if platforms.modern(args.tag_name):
+        from verify_release_policy_chain import validate_promotion
+        if not SHA.fullmatch(args.candidate_sha):return ['invalid candidate SHA']
+        return validate_promotion(args,observed)
     if not TAG.fullmatch(args.tag_name):
         errors.append("tag is not a canonical v0.11.x release")
     if not SHA.fullmatch(args.candidate_sha):
@@ -198,6 +206,9 @@ def main():
                  "qualification-summary", "replay-receipt", "assets-dir",
                  "qualified-archives-dir", "output"):
         parser.add_argument("--" + name, required=True, type=Path)
+    parser.add_argument('--qualification-artifacts-json',type=Path)
+    parser.add_argument('--artifact-zips-dir',type=Path)
+    parser.add_argument('--optional-run-json',type=Path)
     args = parser.parse_args()
     observed = {}
     errors = validate(args, observed)
