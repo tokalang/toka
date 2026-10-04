@@ -1,11 +1,21 @@
 name: 0.12 I3-B scoped evidence candidate
 on:
   workflow_dispatch:
+    inputs:
+      candidate_run:
+        description: 'Reuse complete SDK/harness artifacts from this run; skip package jobs'
+        type: string
+        default: ''
+      candidate_sha:
+        description: 'Exact SDK/harness SHA required when reusing a candidate run'
+        type: string
+        default: ''
 permissions:
   contents: read
   actions: read
 jobs:
   package:
+    if: inputs.candidate_run == ''
     strategy:
       fail-fast: false
       matrix:
@@ -81,6 +91,7 @@ jobs:
             ${{ runner.temp }}/stage/manager-build.stderr
   installed:
     needs: package
+    if: always() && (needs.package.result == 'success' || (inputs.candidate_run != '' && needs.package.result == 'skipped'))
     strategy:
       fail-fast: false
       matrix:
@@ -97,28 +108,46 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.7'
-      - name: Manager runtime host dependencies (macOS)
+      - name: Compiler and manager runtime host dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install openssl@3
+        run: brew install llvm@20 lld@20 zstd openssl@3
       - uses: actions/download-artifact@v4
         with:
           name: i3-evidence-sdk-${{ matrix.target }}
           path: ${{ runner.temp }}/input
+          run-id: ${{ inputs.candidate_run || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Validate exact candidate and install without checkout
+        env:
+          CANDIDATE_RUN: ${{ inputs.candidate_run }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PYCODE'
-          import hashlib,json,os,tarfile
+          import hashlib,json,os,re,subprocess,tarfile
           from pathlib import Path
-          root=Path(os.environ['RUNNER_TEMP']);data=root/'input/package';identity=json.loads((data/'sdk-identity.json').read_text());assert identity['candidate_sha']==os.environ['GITHUB_SHA']
+          root=Path(os.environ['RUNNER_TEMP']);data=root/'input/package';identity=json.loads((data/'sdk-identity.json').read_text())
+          candidate_run=os.environ['CANDIDATE_RUN'];expected=os.environ['CANDIDATE_SHA'] if candidate_run else os.environ['GITHUB_SHA']
+          assert re.fullmatch('[0-9a-f]{40}',expected) and identity['candidate_sha']==expected
+          parent=None
+          if candidate_run:
+              assert candidate_run.isdigit()
+              parent=json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{candidate_run}']))
+              assert parent['head_sha']==expected and parent['run_attempt']==1 and parent['status']=='completed'
+              jobs=json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{candidate_run}/jobs']))['jobs']
+              packages=[job for job in jobs if job['name'].startswith('package (')]
+              assert len(packages)==3 and all(job['conclusion']=='success' for job in packages)
           archive=data/identity['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']
           install=root/'sdk';install.mkdir()
           with tarfile.open(archive) as t:t.extractall(install,filter='data')
           sdk=next(install.iterdir())
           for name,value in identity['components'].items():assert hashlib.sha256((sdk/name).read_bytes()).hexdigest()==value['sha256'] and (sdk/name).stat().st_mode&0o777==value['mode']
-          h=json.loads((root/'input/harness/identity.json').read_text());assert h['harness_source_sha']==os.environ['GITHUB_SHA']
+          h=json.loads((root/'input/harness/identity.json').read_text());assert h['harness_source_sha']==expected
           for name,value in h['files'].items():assert hashlib.sha256((root/'input/harness'/name).read_bytes()).hexdigest()==value
           assert not (Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists()
           (root/'sdk-path.txt').write_text(str(sdk))
+          (root/'installed').mkdir(exist_ok=True)
+          (root/'installed/wiring.json').write_text(json.dumps({'SDK_sha':expected,'harness_sha':h['harness_source_sha'],'workflow_sha':os.environ['GITHUB_SHA'],'candidate_run':candidate_run or os.environ['GITHUB_RUN_ID'],'candidate_attempt':1,'archive_sha256':identity['archive_sha256'],'parent_run':parent,'without_checkout':True},indent=2)+'\n')
           PYCODE
       - name: Exercise S01-S04 and accepted F01-F05 regressions with installed SDK
         run: |
