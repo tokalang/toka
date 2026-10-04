@@ -1,0 +1,107 @@
+{
+  "schema": "toka.e0-input-plan",
+  "version": 1,
+  "status": "inputs_fixed_execution_not_started",
+  "projects": [
+    {
+      "name": "registry_unicode_consumer",
+      "repository": "https://github.com/tokalang/toka-examples",
+      "revision": "cdece08ca6ddc4ec403c160b198bbba8841e14dc",
+      "files": {
+        "package.tk": "8e61b4ae85b524db1097ff96ea788923cf0aa9965e51000589f18cf9fa78435d",
+        "build.tk": "97dc3835fcc2737abe2aae87679a4803d61d9ff20c6d8bc039e0c9dbca6ff054",
+        "src/main.tk": "cd675b89c1847af58e7d562658f4ea754671c0a58a565ea0cc1f5eb17443cced",
+        "package.lock": "001f9c9fe0bb228ea2a9cefde75ff230e41c93ac3e01bdb6da2e536fb7bfd98b"
+      },
+      "existing_project_modified": false
+    },
+    {
+      "name": "csv-transform",
+      "repository": "https://github.com/tokalang/toka-examples",
+      "revision": "cdece08ca6ddc4ec403c160b198bbba8841e14dc",
+      "files": {
+        "package.tk": "a05c786a48c29eceb24a1ac114854d4287e38b22297dae053597f8816266da40",
+        "build.tk": "2d16c35234a369af0ee35c09ef331e52ad7b2e4a5554658920ce08a32f4b93a5",
+        "src/main.tk": "f42b20a24d075fe48d8780aef26008eaa752d888a15749c3ca8e7651b1b05d91"
+      },
+      "existing_project_modified": false
+    }
+  ],
+  "published_dependency": {
+    "alias": "unicode",
+    "original_version": "0.1.1",
+    "requested_version": "0.1.2",
+    "migration": "explicit add into a fresh workspace; retain the original manifest and lock as immutable inputs",
+    "lock_must_match_published_archive": true,
+    "archive_sha256": "b9aeb5db121875e094584597f7548e5ad992d794ecd7b513fc090ef368671e94",
+    "content_sha256": "41ebf895976533b5d68f7bb57a46e3e736c4c94a99b828fbad64c68ba99559fc",
+    "release_revision": "f0910a57ebc121f037c4ba87f40fe6356af86b6c"
+  },
+  "local_dependency_task": {
+    "project": "csv-transform",
+    "dependency": "e0_paths",
+    "purpose": "explicit local dependency supplying resource filenames to the test entry; resource-backed CSV transform remains the real application"
+  },
+  "resource": {
+    "input_csv_utf8": "name,value\nalpha,1\nbeta,2\n",
+    "expected_output": "CSV records retain the same two field values and order"
+  },
+  "operations": [
+    "install",
+    "create",
+    "restore_pinned_project_inputs",
+    "add",
+    "check",
+    "test",
+    "run",
+    "deliver"
+  ],
+  "actors": [
+    "human_process",
+    "AI_process"
+  ],
+  "paths": [
+    "cold",
+    "warm"
+  ],
+  "comparison": [
+    "v0.11.0_original_SDK",
+    "fixed_candidate_SDK"
+  ],
+  "record": [
+    "argv",
+    "exit_code",
+    "stdout",
+    "stderr",
+    "SDK_identity",
+    "lock_bytes",
+    "monotonic_ms",
+    "repair_iterations",
+    "manual_interventions",
+    "failure_category",
+    "completion"
+  ],
+  "constraints": [
+    "source_checkout_not_visible",
+    "no_maintainer_path_or_cache_patch",
+    "same_task_and_starting_snapshot_for_both_actors",
+    "retain_first_execution_and_failures",
+    "do_not_claim_E0_Accepted_from_input_plan"
+  ],
+  "task_fixtures": {
+    "csv-e0_test.tk": "774744737d44a7a67f66fa169684c23ec09f4abc54d371122140fd6d871bc5c8",
+    "expected-unicode-0.1.2.lock": "4433b91e0a15245325edf3176c6acd30ec7c6098c5a2f550eaaf01f7b1568a95",
+    "local-dependency/e0_paths/lib/official/e0_paths.tk": "30ee905b480cb72c774518043ab9d6ef37bc806412a778e0c63dd9a42c982e47",
+    "local-dependency/e0_paths/package.tk": "e126d9eff7317370d06b7272cf5c085cf9032443ab39b7ff064a62cff36e674d",
+    "resources/input.csv": "e7a3929e0913e80f475f937db1615bfa29484299e93ea55d8c87e92770c8078d",
+    "source/csv-transform/build.tk": "2d16c35234a369af0ee35c09ef331e52ad7b2e4a5554658920ce08a32f4b93a5",
+    "source/csv-transform/package.tk": "a05c786a48c29eceb24a1ac114854d4287e38b22297dae053597f8816266da40",
+    "source/csv-transform/src/main.tk": "f42b20a24d075fe48d8780aef26008eaa752d888a15749c3ca8e7651b1b05d91",
+    "source/registry_unicode_consumer/build.tk": "97dc3835fcc2737abe2aae87679a4803d61d9ff20c6d8bc039e0c9dbca6ff054",
+    "source/registry_unicode_consumer/package.lock": "001f9c9fe0bb228ea2a9cefde75ff230e41c93ac3e01bdb6da2e536fb7bfd98b",
+    "source/registry_unicode_consumer/package.tk": "8e61b4ae85b524db1097ff96ea788923cf0aa9965e51000589f18cf9fa78435d",
+    "source/registry_unicode_consumer/src/main.tk": "cd675b89c1847af58e7d562658f4ea754671c0a58a565ea0cc1f5eb17443cced",
+    "verify_csv.py": "24bcc0f5d2ab8f853f1a624826cf0e07ccf391191cebe227a4835a5d1227cc60"
+  },
+  "fixture_root": "tests/fixtures/e0"
+}

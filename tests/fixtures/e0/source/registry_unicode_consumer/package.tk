@@ -1,0 +1,7 @@
+pub const PACKAGE = (
+    name = "registry_unicode_consumer",
+    version = "0.1.0",
+    dependencies = (
+        unicode = "unicode:0.1.1",
+    )
+)

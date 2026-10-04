@@ -1,0 +1,1 @@
+pub const PACKAGE=(name="e0_paths",version="0.1.0",dependencies=())

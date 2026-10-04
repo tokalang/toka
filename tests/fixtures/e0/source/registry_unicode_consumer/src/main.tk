@@ -1,0 +1,50 @@
+import core/option::{Option}
+import core/string::{string}
+import core/types::{byte, Char32, usize}
+import official/unicode::{
+    UnicodeError,
+    grapheme_byte_offset,
+    grapheme_count,
+    grapheme_index_at_byte_offset,
+    grapheme_slice
+}
+import std/io::{println}
+
+fn expect_offset(result: Result<Option<usize>, UnicodeError>, expected: usize) -> bool {
+    if result.is_err() { return false }
+    match cede result.unwrap() {
+        auto Option<usize>::Some('value) => return 'value == expected
+        Option<usize>::None => return false
+    }
+}
+
+fn main() -> i32 {
+    auto text# = string::from("A")
+    text#.push_codepoint(0x308:Char32)
+    text#.push_codepoint('B' as Char32)
+
+    if grapheme_count(text.as_str()).unwrap() != 2:usize { return 1 }
+    auto first = grapheme_slice(text.as_str(), 0:usize, 1:usize).unwrap()
+    match cede first {
+        auto Option<str>::Some('value) => {
+            if !'value.equals("Ä") { return 2 }
+        }
+        Option<str>::None => return 2
+    }
+
+    if !expect_offset(grapheme_byte_offset(text.as_str(), 1:usize), 3:usize) ||
+       !expect_offset(grapheme_index_at_byte_offset(text.as_str(), 3:usize), 1:usize) ||
+       grapheme_index_at_byte_offset(text.as_str(), 1:usize).unwrap().is_some() {
+        return 3
+    }
+
+    auto malformed# = string::from("A")
+    malformed#.push_byte_raw(0x80:u8)
+    auto invalid = grapheme_count(malformed.as_str())
+    if invalid.is_ok() { return 4 }
+    auto error = invalid.unwrap_err()
+    if error.invalid_byte != 0x80:byte || error.position != 1:usize { return 5 }
+
+    println("public Unicode registry consumer passed")
+    return 0
+}

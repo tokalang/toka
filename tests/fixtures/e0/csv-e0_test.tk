@@ -1,0 +1,4 @@
+import official/e0_paths::{input_path,output_path}
+import std/process::{Command}
+import std/fs::{exists}
+fn main()->i32 { auto command#=Command::new(string::from("./target/debug/csv_transform")); command#.arg(input_path()); command#.arg(output_path()); if command#.status()!=0 { return 1 }; if !exists(output_path()) { return 2 }; return 0 }

@@ -1,0 +1,2 @@
+pub fn input_path()->string { return string::from("resources/input.csv") }
+pub fn output_path()->string { return string::from("output.csv") }
