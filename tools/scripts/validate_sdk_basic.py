@@ -29,26 +29,45 @@ def main():
             if preview and not a.control_preview:raise ValueError('Preview composite cannot be a formal release receipt')
             checks.append({'name':'install','result':'pass','exit_code':0})
             env={k:v for k,v in os.environ.items() if not k.startswith('TOKA')};env.update(PATH=str(sdk/'bin')+os.pathsep+os.environ['PATH'],PYTHONDONTWRITEBYTECODE='1')
-            version=subprocess.run([str(sdk/'bin/tokac'),'--version'],cwd=root,env=env,capture_output=True,timeout=30)
-            manager=subprocess.run([str(sdk/'bin/toka'),'--version'],cwd=root,env=env,capture_output=True,timeout=30)
-            (out/'tokac-version.stdout').write_bytes(version.stdout);(out/'toka-version.stdout').write_bytes(manager.stdout)
             expected=a.version_label.removeprefix('v')
             pattern=r'(?<![0-9A-Za-z])v?'+re.escape(expected)+r'(?![0-9A-Za-z.+-])'
-            if version.returncode or manager.returncode or not re.search(pattern,version.stdout.decode()) or not re.search(pattern,manager.stdout.decode()):raise ValueError('installed tool versions do not match')
+            tools={}
+            for name in policy.TOOLS:
+                binary=sdk/'bin'/name;version=subprocess.run([str(binary),'--version'],cwd=root,env=env,capture_output=True,timeout=30)
+                (out/(name+'-version.stdout')).write_bytes(version.stdout);(out/(name+'-version.stderr')).write_bytes(version.stderr)
+                tools[name]={'path':str(binary),'version':expected if re.search(pattern,version.stdout.decode()) else None,'exit_code':version.returncode,'sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'stdout_sha256':hashlib.sha256(version.stdout).hexdigest(),'stderr_sha256':hashlib.sha256(version.stderr).hexdigest()}
+                if version.returncode or tools[name]['version'] is None:raise ValueError('installed tool version does not match: '+name)
             checks.append({'name':'versions','result':'pass','exit_code':0})
-            receipt['sdk_identity']={'version_label':a.version_label,'candidate_revision':a.revision,'preview_composition':preview,'tokac_sha256':hashlib.sha256((sdk/'bin/tokac').read_bytes()).hexdigest()}
+            receipt['sdk_identity']={'version_label':a.version_label,'candidate_revision':a.revision,'preview_composition':preview,'tokac_sha256':tools['tokac']['sha256'],'tools':tools}
             run('create',['toka','new','smoke'],root);project=root/'smoke'
-            run('compile_link',['toka','build'],project)
-            run('run',['toka','run'],project)
+            dependency=root/'basic-dependency'
+            for name,body in policy.DEPENDENCY_FILES.items():
+                path=dependency/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(body)
+            added=run('locked_dependency',['toka','add',str(dependency),'--alias','basic_dep','--json'],project)
+            add=json.loads(added.stdout);lock=project/'package.lock';before=lock.read_bytes();lines=before.decode().splitlines()
+            if len(lines)!=2 or lines[0]!='toka-lock-v1':raise ValueError('basic dependency lock is not an exact single entry')
+            facts={'lock_entry':lines[1].split('\t'),'package_node_id':add['package_node_id'],'lock_sha256_before':hashlib.sha256(before).hexdigest(),'lock_sha256_after':hashlib.sha256(before).hexdigest(),'used_by':['build','run','test_pass','test_fail','test_timeout']}
+            if policy.dependency_errors(facts) or add['content_sha256']!=policy.dependency_digest():raise ValueError('resolved basic dependency identity differs')
+            receipt['dependencies']=facts;(out/'package.lock.before').write_bytes(before)
+            def unchanged():
+                after=lock.read_bytes();(out/'package.lock.after').write_bytes(after)
+                if after!=before:raise ValueError('basic operation changed the locked dependency')
+            prefix='import official/basic_dep::{answer}\n'
+            (project/'src/main.tk').write_text(prefix+'fn main()->i32 { return answer() - 42 }\n')
+            run('compile_link',['toka','build'],project);unchanged()
+            run('run',['toka','run'],project);unchanged()
             tests=project/'tests';tests.mkdir()
-            (tests/'basic_test.tk').write_text('fn main()->i32 { return 0 }\n')
-            run('test_pass',['toka','test','--json'],project)
-            (tests/'basic_test.tk').write_text('fn main()->i32 { return 7 }\n')
-            failed=run('test_fail',['toka','test','--json'],project,1);assert json.loads(failed.stdout)['summary']['failed']==1
-            (tests/'basic_test.tk').write_text('fn main()->i32 { loop {} return 0 }\n')
-            timed=run('test_timeout',['toka','test','--json','--run-timeout-ms','100'],project,1);report=json.loads(timed.stdout);item=report['tests'][0]
-            if item['trigger']!='timeout' or item['cleanup']['status']!='confirmed':raise ValueError('timeout cleanup was not confirmed')
-            checks[-1].update(trigger='timeout',cleanup='confirmed')
+            def test(name,body,expected,options=()):
+                (tests/'basic_test.tk').write_text(prefix+body+'\n');child=run(name,['toka','test','--json',*options],project,expected);unchanged();report=json.loads(child.stdout)
+                items=report.get('tests',[]);item=items[0] if len(items)==1 else {}
+                data={'schema':report.get('schema'),'version':report.get('version'),'finalized':report.get('finalized'),'report_exit_code':report.get('exit_code'),'report_result':report.get('result'),'summary':report.get('summary'),'test_count':len(items),'test_id':item.get('id'),'test_result':item.get('result'),'compile_link':item.get('phases',{}).get('compile_link'),'run':item.get('phases',{}).get('run'),'trigger':item.get('trigger'),'cleanup':item.get('cleanup'),'dependency_nodes':report.get('dependencies',{}).get('nodes'),'lock_sha256':report.get('identity',{}).get('lock_sha256')}
+                checks[-1]['facts']=data
+                errors=policy.test_fact_errors(data,name,facts)
+                if errors:checks[-1].update(result='fail',errors=errors);raise ValueError('; '.join(errors))
+                if name=='test_timeout':checks[-1].update(trigger='timeout',cleanup='confirmed')
+            test('test_pass','fn main()->i32 { return answer() - 42 }',0)
+            test('test_fail','fn main()->i32 { if answer() != 42 { return 3 }\n return 7 }',1)
+            test('test_timeout','fn main()->i32 { if answer() != 42 { return 3 }\n loop {} return 0 }',1,['--run-timeout-ms','100'])
             receipt['result']='pass'
     except (OSError,ValueError,KeyError,AssertionError,subprocess.TimeoutExpired) as error:receipt['error']=str(error)
     if a.control_preview:receipt.update(schema='toka.sdk-basic-control',not_a_release_receipt=True)

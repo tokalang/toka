@@ -16,6 +16,12 @@ v1 的四平台字段和旧 Intel receipt 保持不变；不能用新 summary �
 
 独立 `optional_macos_x64.yml` 仅构建 SDK、执行 basic，不运行完整 release_gate。
 验证 actual package 的安装、工具版本、创建、编译链接运行与 test 成功/非零/超时；
+四个工具 tokac/toka/tokafmt/tokalsp 均执行版本检查并保留原始输出及二进制身份。
+创建后加入固定非空本地依赖 basic_dep，应用与三项测试实际导入调用它；build/run/
+test 前后锁字节不变，content 摘要、锁节点与 C6 dependencies/identity 均核对一致。
+test 成功、失败、超时回执都须为 finalized 的单项 C6 报告。三项均先 compile_link
+成功；失败必须 run_failed 且运行原始退出码 7；超时必须已启动的 run 阶段超时，
+并确认 leader 回收、进程组消失及输出完成。编译失败或编译超时不能替代运行路径。
 超时清理须确认。源码在包与 harness 保存后从一次性 runner 删除，运行目录没有
 编译器源码。只有同 candidate/version、clean、归档 SHA 和 source run/attempt 完整
 的 `toka.sdk-basic-validation` 可以把 optional 状态置为 passed/basic。full 标签

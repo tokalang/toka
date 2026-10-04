@@ -1,13 +1,62 @@
 """Version-bound platform contracts. Never relax a historical qualification."""
 import re
 import json
+import hashlib
 
 LEGACY = ('linux-x64','linux-arm64','macos-x64','macos-arm64')
 CORE = ('linux-x64','linux-arm64','macos-arm64')
 OPTIONAL = 'macos-x64'
 POLICY = 'toka.release-platforms.0.12.v1'
 STATES = ('not_run','running','passed','failed')
-CHECKS = ('install','versions','create','compile_link','run','test_pass','test_fail','test_timeout')
+TOOLS = ('tokac','toka','tokafmt','tokalsp')
+CHECKS = ('install','versions','create','locked_dependency','compile_link','run','test_pass','test_fail','test_timeout')
+DEPENDENCY_FILES = {'package.tk':b'pub const PACKAGE=(name="basic_dep",version="0.1.0",dependencies=())\n',
+                    'lib/official/basic_dep.tk':b'pub fn answer()->i32 { return 42 }\n'}
+
+
+def dependency_digest():
+    value=hashlib.sha256()
+    for name,body in sorted(DEPENDENCY_FILES.items()):
+        encoded=name.encode();value.update(len(encoded).to_bytes(8,'big'));value.update(encoded);value.update(len(body).to_bytes(8,'big'));value.update(body)
+    return value.hexdigest()
+
+
+def dependency_errors(facts):
+    if not isinstance(facts,dict):return ['locked dependency facts are missing']
+    errors=[];fields=facts.get('lock_entry')
+    if not isinstance(fields,list) or len(fields)!=8 or any(not isinstance(v,str) for v in fields):return ['locked dependency entry is invalid']
+    if fields[:3]!=['package','basic_dep','path'] or fields[5]!='-' or fields[6]!=dependency_digest() or fields[7]!='-' or fields[3]!=fields[4]:errors.append('fixed dependency content/kind/identity does not match')
+    node='pkg-v1-'+hashlib.sha256('\0'.join(('toka.package-node.v1',fields[2],fields[3],fields[4],fields[5],fields[6],'')).encode()).hexdigest()
+    if facts.get('package_node_id')!=node:errors.append('locked dependency node does not match')
+    expected=hashlib.sha256(('toka-lock-v1\n'+'\t'.join(fields)+'\n').encode()).hexdigest()
+    if facts.get('lock_sha256_before')!=expected or facts.get('lock_sha256_after')!=expected:errors.append('lock bytes changed or digest does not match the exact entry')
+    if facts.get('used_by')!=['build','run','test_pass','test_fail','test_timeout']:errors.append('locked dependency is not used throughout basic validation')
+    return errors
+
+
+def test_fact_errors(facts,name,dependency):
+    if not isinstance(facts,dict):return ['test phase facts are missing: '+name]
+    errors=[];code=0 if name=='test_pass' else 1
+    result={'test_pass':'passed','test_fail':'run_failed','test_timeout':'timed_out'}[name]
+    if facts.get('schema')!='toka.test-report' or type(facts.get('version')) is not int or facts['version']!=1 or facts.get('finalized') is not True or type(facts.get('report_exit_code')) is not int or facts['report_exit_code']!=code or facts.get('test_id')!='tests/basic_test.tk' or facts.get('test_result')!=result or type(facts.get('test_count')) is not int or facts['test_count']!=1:errors.append('test report identity/result is invalid: '+name)
+    if facts.get('report_result')!=('passed' if code==0 else 'failed'):errors.append('test report aggregate result does not match: '+name)
+    summary=facts.get('summary');expected_summary={'total':1,'passed':1 if code==0 else 0,'failed':0 if code==0 else 1,'infrastructure_error':0,'interrupted':0,'not_run':0}
+    if not isinstance(summary,dict) or any(type(summary.get(k)) is not int or summary[k]!=v for k,v in expected_summary.items()):errors.append('test summary is not the exact single result: '+name)
+    compile=facts.get('compile_link');run=facts.get('run')
+    if not isinstance(compile,dict) or compile.get('state')!='completed' or type(compile.get('exit_code')) is not int or compile['exit_code']!=0 or compile.get('signal') is not None or compile.get('os_error') is not None or not isinstance(compile.get('process'),dict) or not positive_integer(compile['process'].get('leader_pid')):errors.append('compile/link was not successful: '+name)
+    if not isinstance(run,dict) or not isinstance(run.get('process'),dict) or not positive_integer(run['process'].get('leader_pid')):return errors+['run was never started: '+name]
+    if name=='test_timeout':
+        if run.get('state')!='aborted' or run.get('exit_code') is not None or not positive_integer(run.get('signal')) or facts.get('trigger')!='timeout':errors.append('timeout did not occur during running test')
+    elif run.get('state')!='completed' or type(run.get('exit_code')) is not int or run['exit_code']!=(7 if name=='test_fail' else 0) or run.get('signal') is not None or facts.get('trigger')!='none':errors.append('run did not produce the expected raw exit: '+name)
+    if run.get('os_error') is not None:errors.append('run infrastructure error: '+name)
+    cleanup=facts.get('cleanup')
+    if not isinstance(cleanup,dict) or cleanup.get('status')!='confirmed' or any(cleanup.get(k) is not True for k in ('leader_reaped','group_absent','output_complete')):errors.append('test cleanup was not confirmed: '+name)
+    nodes=facts.get('dependency_nodes')
+    if not isinstance(nodes,list) or len(nodes)!=1 or not isinstance(nodes[0],dict) or nodes[0].get('alias')!='basic_dep' or nodes[0].get('package_node_id')!=dependency.get('package_node_id') or nodes[0].get('content_sha256')!=dependency_digest() or facts.get('lock_sha256')!=dependency.get('lock_sha256_before'):errors.append('test does not confirm the locked dependency identity: '+name)
+    entry=dependency.get('lock_entry')
+    if isinstance(nodes,list) and len(nodes)==1 and isinstance(nodes[0],dict) and isinstance(entry,list) and len(entry)==8:
+        if any(nodes[0].get(k)!=v for k,v in zip(('kind','locator','resolved','archive_sha256','content_sha256'),entry[2:7])):errors.append('test dependency lock fields do not match: '+name)
+    return errors
 DIGEST = re.compile(r'[0-9a-f]{64}\Z')
 SHA = re.compile(r'[0-9a-f]{40}\Z')
 
@@ -56,6 +105,13 @@ def optional_errors(state,revision,label,digest=None):
     sdk=receipt.get('sdk_identity',{})
     if not isinstance(sdk,dict) or sdk.get('preview_composition') is not False or sdk.get('version_label')!=label or sdk.get('candidate_revision')!=revision:
         errors.append('optional SDK identity is not the actual release candidate')
+    tools=sdk.get('tools') if isinstance(sdk,dict) else None
+    if not isinstance(tools,dict) or set(tools)!=set(TOOLS):errors.append('all four tool version facts are required')
+    else:
+        for name,fact in tools.items():
+            if not isinstance(fact,dict) or fact.get('version')!=label.removeprefix('v') or type(fact.get('exit_code')) is not int or fact['exit_code']!=0 or any(not isinstance(fact.get(k),str) or not DIGEST.fullmatch(fact[k]) for k in ('sha256','stdout_sha256','stderr_sha256')):errors.append('tool version/identity does not match: '+name)
+    dependency=receipt.get('dependencies',{})
+    errors.extend(dependency_errors(dependency))
     checks=receipt.get('checks')
     if not isinstance(checks,list) or len(checks)!=len(CHECKS) or any(not isinstance(c,dict) for c in checks) or tuple(c.get('name') for c in checks)!=CHECKS or any(c.get('result')!='pass' for c in checks):
         return errors+['optional basic validation checks are incomplete']
@@ -64,6 +120,8 @@ def optional_errors(state,revision,label,digest=None):
         if isinstance(check.get('exit_code'),bool) or check.get('exit_code')!=expected:errors.append('optional check exit code mismatch: '+check['name'])
         if check['name']=='test_timeout' and (check.get('trigger')!='timeout' or check.get('cleanup')!='confirmed'):
             errors.append('optional timeout did not confirm cleanup')
+        if check['name'] in ('test_pass','test_fail','test_timeout'):
+            errors.extend(test_fact_errors(check.get('facts'),check['name'],dependency if isinstance(dependency,dict) else {}))
     if state.get('validation_level')=='full':
         import verify_release_qualification as qualification
         full=receipt.get('full_qualification')

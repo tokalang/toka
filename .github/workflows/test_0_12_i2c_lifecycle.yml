@@ -205,6 +205,7 @@ jobs:
             PYTHONDONTWRITEBYTECODE=1 python3 "tools/scripts/$script" > "$RUNNER_TEMP/pl-controls/$script.stdout" 2> "$RUNNER_TEMP/pl-controls/$script.stderr"
           done
       - name: Build a private Preview SDK solely for basic-execution controls
+        if: inputs.candidate_run == ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -213,9 +214,42 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 tools/scripts/package_test_i2c_sdk.py --archive "$RUNNER_TEMP/original/toka-v0.11.0-${{ matrix.target }}.tar.gz" --target '${{ matrix.target }}' --work "$RUNNER_TEMP/stage" --output "$RUNNER_TEMP/package"
           mkdir "$RUNNER_TEMP/basic-harness"
           cp tools/scripts/validate_sdk_basic.py tools/scripts/release_platform_policy.py "$RUNNER_TEMP/basic-harness/"
+      - name: Download frozen PL SDK without rebuilding
+        if: inputs.candidate_run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: platform-policy-${{ matrix.target }}
+          path: ${{ runner.temp }}/frozen-input
+          run-id: ${{ inputs.candidate_run }}
+          github-token: ${{ github.token }}
+      - name: Bind original SDK and new validation script identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SDK_RUN_ID: ${{ inputs.candidate_run || github.run_id }}
+          SDK_SHA: ${{ inputs.candidate_sha || github.sha }}
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib,json,os,re,shutil,subprocess,tarfile
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP']);revision=os.environ['SDK_SHA'];assert re.fullmatch('[0-9a-f]{40}',revision)
+          if (root/'frozen-input').exists():
+              run=json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{os.environ["SDK_RUN_ID"]}']))
+              assert run['head_sha']==revision and run['run_attempt']==1 and run['conclusion']=='success'
+              shutil.copytree(root/'frozen-input/package',root/'package')
+          data=json.loads((root/'package/sdk-identity.json').read_text());assert data['candidate_sha']==revision
+          archive=root/'package'/data['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==data['archive_sha256']
+          with tarfile.open(archive) as t:
+              prefix='toka-v0.11.0-'+data['target']+'/'
+              for name,fact in data['components'].items():assert hashlib.sha256(t.extractfile(prefix+name).read()).hexdigest()==fact['sha256'] and t.getmember(prefix+name).mode==fact['mode']
+          harness=root/'basic-harness';harness.mkdir(exist_ok=True)
+          for name in ('validate_sdk_basic.py','release_platform_policy.py'):shutil.copyfile(Path('tools/scripts')/name,harness/name)
+          (root/'validation-wiring.json').write_text(json.dumps({'SDK_sha':revision,'SDK_source_run_id':int(os.environ['SDK_RUN_ID']),'SDK_source_run_attempt':1,'archive_sha256':data['archive_sha256'],'validator_sha':os.environ['GITHUB_SHA'],'validation_run_id':int(os.environ['GITHUB_RUN_ID']),'validation_run_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'harness':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in harness.iterdir()}},indent=2)+'\n')
+          PYCODE
       - name: Run actual SDK install/create/build/run/test controls with source unavailable
         env:
           TARGET: ${{ matrix.target }}
+          SDK_SHA: ${{ inputs.candidate_sha || github.sha }}
+          SDK_RUN_ID: ${{ inputs.candidate_run || github.run_id }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP"
@@ -223,8 +257,8 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE"
           python3 basic-harness/validate_sdk_basic.py \
             --archive "package/toka-preview-i2c-$TARGET.tar.gz" --target "$TARGET" \
-            --revision "$GITHUB_SHA" --version-label v0.11.0 \
-            --source-run-id "$GITHUB_RUN_ID" --source-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --revision "$SDK_SHA" --version-label v0.11.0 \
+            --source-run-id "$SDK_RUN_ID" --source-run-attempt "$GITHUB_RUN_ATTEMPT" \
             --control-preview --output-dir "$RUNNER_TEMP/basic-control"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -234,6 +268,7 @@ jobs:
             ${{ runner.temp }}/pl-controls
             ${{ runner.temp }}/package
             ${{ runner.temp }}/basic-control
+            ${{ runner.temp }}/validation-wiring.json
             ${{ runner.temp }}/basic-harness
             ${{ runner.temp }}/stage/stage-identity.json
             ${{ runner.temp }}/stage/manager-build.stderr
