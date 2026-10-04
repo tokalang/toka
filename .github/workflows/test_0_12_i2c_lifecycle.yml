@@ -220,6 +220,7 @@ jobs:
           set -euo pipefail
           cd "$RUNNER_TEMP"
           rm -rf "$GITHUB_WORKSPACE"
+          mkdir -p "$GITHUB_WORKSPACE"
           python3 basic-harness/validate_sdk_basic.py \
             --archive "package/toka-preview-i2c-$TARGET.tar.gz" --target "$TARGET" \
             --revision "$GITHUB_SHA" --version-label v0.11.0 \
