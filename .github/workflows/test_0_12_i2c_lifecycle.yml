@@ -232,9 +232,11 @@ jobs:
           import hashlib,json,os,re,shutil,subprocess,tarfile
           from pathlib import Path
           root=Path(os.environ['RUNNER_TEMP']);revision=os.environ['SDK_SHA'];assert re.fullmatch('[0-9a-f]{40}',revision)
+          source_attempt=int(os.environ['GITHUB_RUN_ATTEMPT'])
           if (root/'frozen-input').exists():
               run=json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{os.environ["SDK_RUN_ID"]}']))
               assert run['head_sha']==revision and run['run_attempt']==1 and run['conclusion']=='success'
+              source_attempt=run['run_attempt']
               shutil.copytree(root/'frozen-input/package',root/'package')
           data=json.loads((root/'package/sdk-identity.json').read_text());assert data['candidate_sha']==revision
           archive=root/'package'/data['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==data['archive_sha256']
@@ -243,7 +245,7 @@ jobs:
               for name,fact in data['components'].items():assert hashlib.sha256(t.extractfile(prefix+name).read()).hexdigest()==fact['sha256'] and t.getmember(prefix+name).mode==fact['mode']
           harness=root/'basic-harness';harness.mkdir(exist_ok=True)
           for name in ('validate_sdk_basic.py','release_platform_policy.py'):shutil.copyfile(Path('tools/scripts')/name,harness/name)
-          (root/'validation-wiring.json').write_text(json.dumps({'SDK_sha':revision,'SDK_source_run_id':int(os.environ['SDK_RUN_ID']),'SDK_source_run_attempt':1,'archive_sha256':data['archive_sha256'],'validator_sha':os.environ['GITHUB_SHA'],'validation_run_id':int(os.environ['GITHUB_RUN_ID']),'validation_run_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'harness':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in harness.iterdir()}},indent=2)+'\n')
+          (root/'validation-wiring.json').write_text(json.dumps({'SDK_sha':revision,'SDK_source_run_id':int(os.environ['SDK_RUN_ID']),'SDK_source_run_attempt':source_attempt,'archive_sha256':data['archive_sha256'],'validator_sha':os.environ['GITHUB_SHA'],'validation_run_id':int(os.environ['GITHUB_RUN_ID']),'validation_run_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'harness':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in harness.iterdir()}},indent=2)+'\n')
           PYCODE
       - name: Run actual SDK install/create/build/run/test controls with source unavailable
         env:
@@ -255,10 +257,11 @@ jobs:
           cd "$RUNNER_TEMP"
           rm -rf "$GITHUB_WORKSPACE"
           mkdir -p "$GITHUB_WORKSPACE"
+          sdk_attempt=$(python3 -c 'import json; print(json.load(open("validation-wiring.json"))["SDK_source_run_attempt"])')
           python3 basic-harness/validate_sdk_basic.py \
             --archive "package/toka-preview-i2c-$TARGET.tar.gz" --target "$TARGET" \
             --revision "$SDK_SHA" --version-label v0.11.0 \
-            --source-run-id "$SDK_RUN_ID" --source-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --source-run-id "$SDK_RUN_ID" --source-run-attempt "$sdk_attempt" \
             --control-preview --output-dir "$RUNNER_TEMP/basic-control"
       - uses: actions/upload-artifact@v4
         if: always()
