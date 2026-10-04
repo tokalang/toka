@@ -51,8 +51,9 @@ def main():
         'manager_sha256':sha(sdk/'bin/toka'),'runner_sha256':sha(sdk/'lib/toolchain/toka_test.py'),
         'report_sha256':sha(sdk/'lib/toolchain/toka_test_report.py'),
         'supervisor_sha256':sha(sdk/'lib/toolchain/toka_test_process.py'),
+        'evidence_sha256':sha(sdk/'lib/toolchain/toka_evidence.py'),
         'resolver_sha256':sha(sdk/'lib/toolchain/toka_package.py'),'manager_build_command':command,
-        'published_sdk_modified':False,'private_sdk_components_modified':['bin/toka','lib/toolchain/toka_test.py','lib/toolchain/toka_package.py','lib/toolchain/toka_test_process.py','lib/toolchain/toka_test_report.py'],'stable_test_v1':False},indent=2)+'\n')
+        'published_sdk_modified':False,'private_sdk_components_modified':['bin/toka','lib/toolchain/toka_test.py','lib/toolchain/toka_package.py','lib/toolchain/toka_test_process.py','lib/toolchain/toka_test_report.py','lib/toolchain/toka_evidence.py'],'stable_test_v1':False},indent=2)+'\n')
     print(sdk)
 
 
