@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Output-only projection controls; installed tests separately run the real compiler."""
 import json
+import base64
+import contextlib
+import io
 from pathlib import Path
 import subprocess
 import sys
@@ -35,6 +38,10 @@ class Scope(unittest.TestCase):
     def test_invalid_compiler_document_fails_closed(self):
         self.document['schema']='other'
         with self.assertRaises(RuntimeError):self.project()
+    def test_invalid_utf8_argument_still_has_portable_json_and_original_bytes(self):
+        output=io.StringIO()
+        with contextlib.redirect_stdout(output):code=evidence.main(['--scope','\udcff'])
+        report=json.loads(output.getvalue());self.assertEqual(code,2);self.assertEqual(report['result'],'configuration_error');self.assertEqual(base64.b64decode(report['scope']['input_base64'][-1]),b'\xff');self.assertNotIn('\udcff',report['scope']['input'][-1])
 
 
 if __name__=='__main__':unittest.main()

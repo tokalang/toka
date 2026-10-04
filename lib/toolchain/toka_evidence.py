@@ -89,6 +89,13 @@ def main(argv=None):
               'records':[], 'reasons':{}, 'compiler':None, 'errors':[]}
     raw = None
     try:
+        try:
+            for value in argv:value.encode('utf-8')
+        except UnicodeError as error:
+            encoded = [os.fsencode(value) for value in argv]
+            report['scope']['input_base64'] = [base64.b64encode(value).decode('ascii') for value in encoded]
+            report['scope']['input'] = [value.decode('utf-8', errors='replace') for value in encoded]
+            raise ConfigurationError('evidence arguments must be valid UTF-8') from error
         parser = Parser(description=__doc__)
         parser.add_argument('--compiler', type=Path, required=True)
         parser.add_argument('--sdk-lib', type=Path, required=True)
@@ -151,7 +158,7 @@ def main(argv=None):
         report.update(result='infrastructure_error',exit_code=2)
         report['errors'] = [{'category':'infrastructure_error','message':str(error)}]
         if raw is not None:report['compiler']['stdout_base64'] = base64.b64encode(raw.stdout).decode('ascii')
-    print(json.dumps(report, sort_keys=True, ensure_ascii=False))
+    print(json.dumps(report, sort_keys=True))
     return report['exit_code']
 
 

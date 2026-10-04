@@ -63,6 +63,12 @@
         },
         "output_filtered": {
           "type": "boolean"
+        },
+        "input_base64": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

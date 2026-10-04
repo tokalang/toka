@@ -37,6 +37,8 @@ output_filtered（确实省略了记录才为 true）及原始参数 input。配
 kind/target 可为 null，input 始终保留。analysis.scope 永远为 full，保留原始编译器
 exit_code/result、总记录数、输出记录数及范围外仍保留的拒绝 ID。未启动编译器时
 result=not_started、exit_code/records_total=null、records_emitted=0。
+非 UTF-8 参数在启动分析前返回 configuration_error/2；input 使用替换字符展示，
+input_base64 同时保留每项参数原始 OS 字节，输出仍是可移植的 UTF-8 JSON。
 
 decision_id 为 `decision-v1-` 加原始记录的规范 JSON SHA-256；reason_id 为
 `reason-v1-` 加 reason/subject/origin/两个位置的规范 JSON SHA-256。规范 JSON 使用

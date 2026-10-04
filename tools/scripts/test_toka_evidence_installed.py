@@ -23,7 +23,9 @@ def main():
         folder=out/name;folder.mkdir();child=subprocess.run(argv,cwd=cwd,env=env,capture_output=True,timeout=90)
         (folder/'stdout').write_bytes(child.stdout);(folder/'stderr').write_bytes(child.stderr)
         assert child.returncode==expected,(name,child.returncode,child.stderr)
-        data=json.loads(child.stdout);r={'name':name,'argv':argv,'cwd':str(cwd),'exit_code':child.returncode,'report':data};(folder/'result.json').write_text(json.dumps(r,indent=2)+'\n');return r
+        data=json.loads(child.stdout);r={'name':name,'argv':[os.fsencode(value).decode('utf-8',errors='replace') for value in argv],
+                                      'argv_base64':[base64.b64encode(os.fsencode(value)).decode('ascii') for value in argv],
+                                      'cwd':str(cwd),'exit_code':child.returncode,'report':data};(folder/'result.json').write_text(json.dumps(r,indent=2)+'\n');return r
     def setup(name,body=LIB,source=MAIN):
         root=out/name;root.mkdir();(root/'package.tk').write_text('pub const PACKAGE=(name="scope",version="1.0.0",dependencies=())\n');(root/'main.tk').write_text(source)
         dep=out/(name+'-dep');(dep/'lib/official').mkdir(parents=True);(dep/'package.tk').write_text('pub const PACKAGE=(name="dep",version="1.0.0",dependencies=())\n');(dep/'lib/official/dep.tk').write_text(body)
@@ -56,6 +58,8 @@ def main():
     foreign=out/'foreign.tk';foreign.write_text('fn main()->i32 { return 0 }\n')
     for name,options in [('scope',['--scope','bogus']),('missing-target',['--target','absent.tk']),('foreign-target',['--target',str(foreign)]),('decision',['--scope','decision','--decision','decision-v1-'+'0'*64]),('missing-decision',['--scope','decision']),('conflict',['--scope','all','--target','main.tk']),('missing-value',['--scope']),('unexpected',['--unknown'])]:
         run('S04-'+name,root,options,2)
+    for name,options in [('scope',['--scope',os.fsdecode(b'\xff')]),('target',['--target',os.fsdecode(b'\xff')]),('decision',['--scope','decision','--decision',os.fsdecode(b'\xff')])]:
+        report=run('S04-encoding-'+name,root,options,2);assert base64.b64decode(report['scope']['input_base64'][-1])==b'\xff' and report['analysis']['result']=='not_started'
     result={'result':'pass','scenarios':len(records),'records':records,'rows':['S01','S02','S03','S04'],'source_checkout_required':False,'SDK':str(sdk),'Preview':True}
     (out/'result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps({'result':'pass','scenarios':len(records)}))
 
