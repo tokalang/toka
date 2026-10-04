@@ -42,6 +42,13 @@ def validate(data,path):
     assert data['mount_source'] and type(data['filesystem_type_number']) is int and data['filesystem_type_number']>0
     return data
 
+def linux_filesystem_name(output):
+    # GNU stat may use a composite name, notably ext2/ext3. A slash by
+    # itself is still a file-kind placeholder, never a filesystem name.
+    name=output.decode('utf-8').strip()
+    assert re.fullmatch(r'[A-Za-z][A-Za-z0-9_.+-]*(?:/[A-Za-z][A-Za-z0-9_.+-]*)*',name),name
+    return name
+
 def query(path,evidence):
     path=path.resolve(strict=True);assert path.is_dir()
     evidence.mkdir(parents=True,exist_ok=True)
@@ -60,6 +67,6 @@ def query(path,evidence):
     else:
         argv=['stat','-f','-c','%T',str(path)];result=subprocess.run(argv,capture_output=True,timeout=10)
         assert result.returncode==0,result.stderr
-        name=result.stdout.decode().strip();assert re.fullmatch(r'[A-Za-z][A-Za-z0-9_.+-]*',name)
+        name=linux_filesystem_name(result.stdout)
         data={'schema':'toka.posix.statfs-command.v1','query_path':str(path),'resolved_path':str(path),'filesystem_type':name,'device':path.stat().st_dev}
     return {'argv':argv,'exit_code':result.returncode,'stdout':result.stdout.decode('utf-8'),'stderr':result.stderr.decode('utf-8'),'data':data,'validated':True}
