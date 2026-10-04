@@ -20,7 +20,7 @@ fn print_help() {
     println("  new <name>   Create a new Toka project (--lib for library)")
     println("  init         Initialize a new Toka project in the current directory")
     println("  build        Compile current project to an executable")
-    println("  run [file]   Compile and execute a Toka program")
+    println("  run [file] [-- args...]   Compile and execute a Toka program")
     println("  check        Type-check source files (--json for structured diagnostics)")
     println("  explain      Explain a diagnostic code (--json for machine output)")
     println("  context      Emit bounded semantic context for an AI/editor query")
@@ -603,7 +603,7 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
     }
 }
 
-fn cmd_run_single(file: string) -> i32 {
+fn cmd_run_single(file: string, runtime_args: Vec<string>) -> i32 {
     auto is_windows = check_is_windows()
     auto executable# = string::from(".toka_single_exe")
     if is_windows { executable#.push_str(".exe") }
@@ -625,6 +625,11 @@ fn cmd_run_single(file: string) -> i32 {
     auto run_path# = string::from("./")
     run_path#.push_str(executable.as_str())
     auto run# = Command::new(run_path)
+    auto runtime_index# = 0:usize
+    loop runtime_index < runtime_args.len() {
+        run#.arg(runtime_args.borrow(runtime_index).clone())
+        runtime_index += 1:usize
+    }
     auto run_result = run#.try_status()
     remove_file(executable)
     if run_result.is_err() {
@@ -672,7 +677,7 @@ fn find_newest_executable(dir_path: string) -> string {
     return cede newest_file
 }
 
-fn cmd_run(use_forge: bool) -> i32 {
+fn cmd_run(use_forge: bool, runtime_args: Vec<string>) -> i32 {
     auto extra_args = Vec<string>::new()
     auto res = cmd_build(use_forge, extra_args)
     if res != 0 { return res }
@@ -703,9 +708,15 @@ fn cmd_run(use_forge: bool) -> i32 {
             run_cmd#.push_str(newest_exe.as_str())
         }
         
-        auto run_res = libc_system(run_cmd.c_str())
-        if run_res != 0 { return 1 }
-        return 0
+        auto command# = Command::new(run_cmd)
+        auto runtime_index# = 0:usize
+        loop runtime_index < runtime_args.len() {
+            command#.arg(runtime_args.borrow(runtime_index).clone())
+            runtime_index += 1:usize
+        }
+        auto status = command#.try_status()
+        if status.is_err() { return 2 }
+        return status.unwrap().legacy_code()
     }
 }
 
@@ -1366,11 +1377,24 @@ fn main() -> i32 {
         auto use_forge# = false
         auto idx# = (2 + shift) as i32:i32
         auto single_file# = string::from("")
+        auto runtime_args# = Vec<string>::new()
+        auto runtime_started# = false
         loop idx < argc {
             auto arg = env::get_arg(idx)
-            if arg.eq(string::from("--forge")) || arg.eq(string::from("-f")) {
+            if runtime_started {
+                runtime_args#.push(arg.clone())
+            } else if arg.eq(string::from("--")) {
+                runtime_started = true
+            } else if arg.eq(string::from("--help")) || arg.eq(string::from("-h")) {
+                println("Usage: toka run [file] [--forge] [-- args...]")
+                return 0
+            } else if arg.eq(string::from("--forge")) || arg.eq(string::from("-f")) {
                 use_forge = true
             } else if !arg.starts_with("-") {
+                if !single_file.is_empty() {
+                    println("Error: application arguments must follow '--'.")
+                    return 2
+                }
                 single_file = arg.clone()
             }
             idx += 1
@@ -1381,9 +1405,9 @@ fn main() -> i32 {
             } else {
                 env::set_var(string::from("TOKA_USE_FORGE"), string::from("0"))
             }
-            return cmd_run_single(single_file)
+            return cmd_run_single(single_file, runtime_args)
         }
-        return cmd_run(use_forge)
+        return cmd_run(use_forge, runtime_args)
     }
 
     if cmd.eq(string::from("check")) {
