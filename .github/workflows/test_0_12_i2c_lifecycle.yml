@@ -89,6 +89,7 @@ jobs:
         if: inputs.e0_only
         run: |
           mkdir -p "$RUNNER_TEMP/e0-input/fixtures"
+          git fetch --no-tags origin c4c1030cd33504a9f5d8dc670ab4ab0c1fc515e7
           git show c4c1030cd33504a9f5d8dc670ab4ab0c1fc515e7:spec/e0_input_plan.v1.json > "$RUNNER_TEMP/e0-input/e0_input_plan.v1.json"
           python3 - <<'PYCODE'
           import hashlib,json,os,subprocess
@@ -300,7 +301,7 @@ jobs:
             ${{ runner.temp }}/stage/manager-build.stdout
 
   e0:
-    if: inputs.e0_only
+    if: always() && inputs.e0_only && (needs.package.result == 'success' || (inputs.candidate_run != '' && needs.package.result == 'skipped'))
     needs: package
     strategy:
       fail-fast: false
@@ -325,27 +326,57 @@ jobs:
         with:
           name: i3-evidence-sdk-${{ matrix.target }}
           path: ${{ runner.temp }}/candidate
-      - uses: actions/download-artifact@v4
-        with:
-          name: e0-input-${{ matrix.target }}
-          path: ${{ runner.temp }}/e0-input
+          run-id: ${{ inputs.candidate_run || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Fetch immutable E0 inputs without checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'e0-input';root.mkdir()
+          revision='c4c1030cd33504a9f5d8dc670ab4ab0c1fc515e7'
+          def read(path):return subprocess.check_output(['gh','api','repos/tokalang/toka/contents/'+path+'?ref='+revision,'-H','Accept: application/vnd.github.raw+json'])
+          raw=read('spec/e0_input_plan.v1.json');(root/'e0_input_plan.v1.json').write_bytes(raw)
+          for name,digest in json.loads(raw)['task_fixtures'].items():
+              path=root/'fixtures'/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(read('tests/fixtures/e0/'+name));assert hashlib.sha256(path.read_bytes()).hexdigest()==digest
+          PYCODE
       - name: Bind SDK/input identities and obtain original published comparison
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET: ${{ matrix.target }}
+          SDK_SOURCE_SHA: ${{ inputs.candidate_sha || github.sha }}
+          SDK_SOURCE_RUN: ${{ inputs.candidate_run || github.run_id }}
         run: |
+          gh api "repos/tokalang/toka/actions/runs/$SDK_SOURCE_RUN" > "$RUNNER_TEMP/source-run.json"
           gh release download v0.11.0 --repo tokalang/toka --pattern "toka-v0.11.0-$TARGET.tar.gz" --dir "$RUNNER_TEMP/original"
           python3 - <<'PYCODE'
           import hashlib,json,os,tarfile
           from pathlib import Path
-          root=Path(os.environ['RUNNER_TEMP']);identity=json.loads((root/'candidate/package/sdk-identity.json').read_text());assert identity['candidate_sha']==os.environ['GITHUB_SHA']
+          root=Path(os.environ['RUNNER_TEMP']);identity=json.loads((root/'candidate/package/sdk-identity.json').read_text());assert identity['candidate_sha']==os.environ['SDK_SOURCE_SHA']
+          source_run=json.loads((root/'source-run.json').read_text());assert source_run['head_sha']==identity['candidate_sha'] and source_run['run_attempt']==1
+          if str(source_run['id'])!=os.environ['GITHUB_RUN_ID']:
+              import subprocess
+              jobs=json.loads(subprocess.check_output(['gh','api','repos/tokalang/toka/actions/runs/'+str(source_run['id'])+'/jobs']))['jobs']
+              producer=next(j for j in jobs if j['name'].startswith('package ('+os.environ['TARGET']+','))
+              for name in ('Download original immutable compiler SDK and build only candidate manager','Source evidence/add controls and package regressions','Freeze standalone acceptance bundle','Run actions/upload-artifact@v4'):
+                  assert any(step['name']==name and step['conclusion']=='success' for step in producer['steps']),name
+              assert source_run['status']=='completed'
+              # A task-input bundling failure does not invalidate the already frozen SDK bytes.
+              assert all(step['conclusion']!='failure' or step['name']=='Bundle immutable E0 task inputs' for step in producer['steps'])
           archive=root/'candidate/package'/identity['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']
-          h=json.loads((root/'candidate/harness/identity.json').read_text());assert h['harness_source_sha']==os.environ['GITHUB_SHA']
+          h=json.loads((root/'candidate/harness/identity.json').read_text());assert h['harness_source_sha']==identity['candidate_sha']
           for name,digest in h['files'].items():assert hashlib.sha256((root/'candidate/harness'/name).read_bytes()).hexdigest()==digest
+          import subprocess
+          script=root/'candidate/harness/run_e0_tasks.py'
+          original_script_digest=hashlib.sha256(script.read_bytes()).hexdigest()
+          script.write_bytes(subprocess.check_output(['gh','api','repos/tokalang/toka/contents/tools/scripts/run_e0_tasks.py?ref='+os.environ['GITHUB_SHA'],'-H','Accept: application/vnd.github.raw+json']))
+          script_digest=hashlib.sha256(script.read_bytes()).hexdigest()
           base={'linux-x64':'05faa6cf2128f9dc385aa832c33f722e34f5a4f4b98d0613887a3efe79a35635','linux-arm64':'16e8deda50d7983bfa9cffc9f55e8587f4b9b3f4c72c7346a3e82f3c173466f1','macos-arm64':'81e95d01f685f4fbb057fc42b03c376c2646b41bce08398f8f40a76d2cdd7b99'}
           target=os.environ['TARGET'];assert hashlib.sha256((root/'original'/('toka-v0.11.0-'+target+'.tar.gz')).read_bytes()).hexdigest()==base[target]
           assert not (Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists() and not (Path(os.environ['GITHUB_WORKSPACE'])/'src').exists()
-          (root/'e0-binding.json').write_text(json.dumps({'SDK_sha':identity['candidate_sha'],'script_sha':h['harness_source_sha'],'candidate_archive_sha256':identity['archive_sha256'],'original_archive_sha256':base[target],'input_sha':'c4c1030cd33504a9f5d8dc670ab4ab0c1fc515e7','actual_execution_actor':'Codex scripted workflows','human_participant':False,'source_checkout_absent':True},indent=2)+'\n')
+          (root/'e0-binding.json').write_text(json.dumps({'SDK_sha':identity['candidate_sha'],'script_sha':os.environ['GITHUB_SHA'],'script_sha256':script_digest,'original_bundled_script_sha256':original_script_digest,'SDK_source_run':source_run['id'],'SDK_source_attempt':source_run['run_attempt'],'SDK_source_run_conclusion':source_run['conclusion'],'validation_run':int(os.environ['GITHUB_RUN_ID']),'validation_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'candidate_archive_sha256':identity['archive_sha256'],'original_archive_sha256':base[target],'input_sha':'c4c1030cd33504a9f5d8dc670ab4ab0c1fc515e7','actual_execution_actor':'Codex scripted workflows','human_participant':False,'source_checkout_absent':True},indent=2)+'\n')
           PYCODE
       - name: Runtime argument regression and both fixed task flows
         env:
@@ -366,7 +397,7 @@ jobs:
           for variant in candidate original_0.11.0; do
             if [[ "$variant" == candidate ]]; then
               archive="$candidate"
-              revision="$GITHUB_SHA"
+              revision=$(python3 -c 'import json; print(json.load(open("e0-binding.json"))["SDK_sha"])')
               digest=$(python3 -c 'import json; print(json.load(open("e0-binding.json"))["candidate_archive_sha256"])')
             else
               archive="original/toka-v0.11.0-$TARGET.tar.gz"

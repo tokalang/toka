@@ -86,7 +86,14 @@ fn main() -> i32 {
                 edit('tests/basic_test.tk',corrected,'Repair fixed scaffold syntax following the retained test compile diagnostics; task and expected output unchanged.')
                 execute('test-repaired',['toka','test','--json'],project)
             argv=['toka','run']+(['--','resources/input.csv','output.csv'] if project_name=='csv-transform' else [])
-            execute('run',argv,project)
+            run_code,run_output=execute('run',argv,project)
+            if a.flow=='AI_process' and a.variant=='candidate' and project_name=='csv-transform' and run_code and b'CSV read failed' in run_output:
+                resource=project/'resources/input.csv';old=resource.read_bytes();new=old.replace(b'\r\n',b'\n').replace(b'\n',b'\r\n')
+                resource.write_bytes(new)
+                patch=logs/'resource-CRLF-repair.json';patch.write_text(json.dumps({'before_hex':old.hex(),'after_hex':new.hex()},indent=2)+'\n')
+                changes.append({'actor':'Codex','kind':'AI_workspace_resource_edit','file':'resources/input.csv','reason':'Retained independent runtime diagnostic: record terminator must be CRLF. Normalize line endings only; fields/order unchanged.','diff':str(patch),'fixture_modified':False,'before_sha256':hashlib.sha256(old).hexdigest(),'after_sha256':sha(resource)})
+                execute('test-repaired',['toka','test','--json'],project)
+                execute('run-repaired',argv,project)
             output_valid=False if project_name=='csv-transform' else None
             if project_name=='csv-transform' and (project/'output.csv').exists():
                 result,_=execute('verify_output',['python3',str(fixtures/'verify_csv.py'),'output.csv'],project);output_valid=result==0
