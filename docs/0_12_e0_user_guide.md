@@ -30,7 +30,7 @@ SDK 归档及输入包由验收交付提供；无需编译器源码目录。
 4. 旧示例用 `'value` 表示模式绑定，而当前语言使用普通名字。将模式中的
    `Some('value)` 改为 `Some(value)`，相应引用 `'value` 改为 `value`。
    保留真正字符字面量，例如 `'B'`；不要删除所有单引号。
-   将修订后的主入口复制为 tests/basic_test.tk；留存修订差异。
+   在项目内执行 `mkdir -p tests`，再将修订后的主入口复制为 tests/basic_test.tk；留存修订差异。
 5. 依次运行 `toka check --json src/main.tk`、`toka build`、`toka test --json`、
    `toka run`。test 报告应 finalized=true、exit_code=0、passed=1；
    程序应打印 public Unicode registry consumer passed 并返回 0。
@@ -43,7 +43,8 @@ SDK 归档及输入包由验收交付提供；无需编译器源码目录。
 2. 复制 fixtures/local-dependency 为项目相邻的 local-dependency 目录，
    将 fixtures/resources 复制到项目 resources；在项目目录执行
    `toka add ../local-dependency/e0_paths`。
-3. 固定 csv-e0_test.tk 是旧的紧凑写法。先复制到 tests/basic_test.tk 留存原件，
+3. 固定 csv-e0_test.tk 是旧的紧凑写法。先执行 `mkdir -p tests`，
+   再复制到 tests/basic_test.tk 留存原件，
    再按下面正常多行测试入口修订工作副本，不使用语句末尾分号：
 
 ```toka
