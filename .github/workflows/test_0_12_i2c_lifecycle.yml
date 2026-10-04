@@ -2,6 +2,10 @@ name: 0.12 I3-B scoped evidence candidate
 on:
   workflow_dispatch:
     inputs:
+      e0_closure_only:
+        description: E0 acquisition probes and Linux delivered-byte execution; reuse frozen SDK
+        type: boolean
+        default: false
       e0_only:
         description: Run fixed real-project E0 flows plus run-argument controls; no Q0
         type: boolean
@@ -23,7 +27,7 @@ permissions:
   actions: read
 jobs:
   package:
-    if: inputs.candidate_run == '' && !inputs.platform_policy_only
+    if: inputs.candidate_run == '' && !inputs.platform_policy_only && !inputs.e0_closure_only
     strategy:
       fail-fast: false
       matrix:
@@ -118,7 +122,7 @@ jobs:
             ${{ runner.temp }}/stage/manager-build.stderr
   installed:
     needs: package
-    if: always() && !inputs.platform_policy_only && !inputs.e0_only && (needs.package.result == 'success' || (inputs.candidate_run != '' && needs.package.result == 'skipped'))
+    if: always() && !inputs.platform_policy_only && !inputs.e0_only && !inputs.e0_closure_only && (needs.package.result == 'success' || (inputs.candidate_run != '' && needs.package.result == 'skipped'))
     strategy:
       fail-fast: false
       matrix:
@@ -418,3 +422,78 @@ jobs:
           path: |
             ${{ runner.temp }}/e0-results
             !${{ runner.temp }}/e0-results/**/installed-sdk/**
+
+  e0-closure:
+    if: inputs.e0_closure_only
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - uses: actions/download-artifact@v4
+        with:
+          name: i3-evidence-sdk-${{ matrix.target }}
+          path: ${{ runner.temp }}/candidate
+          run-id: 37191546927
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: e0-results-${{ matrix.target }}
+          path: ${{ runner.temp }}/old-e0
+          run-id: 37191719627
+          github-token: ${{ github.token }}
+      - name: Bind frozen inputs and fetch closure scripts without checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib,json,os,subprocess,tarfile
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP']);out=root/'e0-closure';out.mkdir();code=out/'scripts';code.mkdir();fixtures=out/'fixtures';fixtures.mkdir()
+          def read(path,revision):return subprocess.check_output(['gh','api','repos/tokalang/toka/contents/'+path+'?ref='+revision,'-H','Accept: application/vnd.github.raw+json'])
+          revision='c4c1030cd33504a9f5d8dc670ab4ab0c1fc515e7';raw=read('spec/e0_input_plan.v1.json',revision);(out/'input-plan.json').write_bytes(raw);plan=json.loads(raw)
+          data=read('tests/fixtures/e0/verify_csv.py',revision);assert hashlib.sha256(data).hexdigest()==plan['task_fixtures']['verify_csv.py'];(fixtures/'verify_csv.py').write_bytes(data)
+          names=['measure_e0_acquisition.py','run_e0_delivery_installed.py']
+          for name in names:(code/name).write_bytes(read('tools/scripts/'+name,os.environ['GITHUB_SHA']))
+          (out/'user-guide.md').write_bytes(read('docs/0_12_e0_user_guide.md',os.environ['GITHUB_SHA']))
+          source=json.loads(subprocess.check_output(['gh','api','repos/tokalang/toka/actions/runs/37191546927']));assert source['run_attempt']==1 and source['head_sha']=='59b40e6dd659593871c644fc2f00a696606ab850'
+          identity=json.loads((root/'candidate/package/sdk-identity.json').read_text());assert identity['candidate_sha']==source['head_sha']
+          digest={'linux-x64':'80c15e5b38d79e51889d9efd5e40e2cd00d15757d79618af808a10d6086fef71','linux-arm64':'f58bc516ad72754d4bee22c94ecfec8dfd979f2443e037b6134a556cb1a93449','macos-arm64':'b1d9173007cdb0ae39b6c8b7b061807d2eef90622470ee7bf08f21b049366ab0'}[os.environ['TARGET']]
+          archive=root/'candidate/package'/identity['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']==digest
+          install=root/'sdk';install.mkdir()
+          with tarfile.open(archive) as t:t.extractall(install,filter='data')
+          sdk=next(install.iterdir());descriptor=json.loads((sdk/'preview-sdk.json').read_text());assert descriptor['components']==identity['components']
+          for name,facts in descriptor['components'].items():assert hashlib.sha256((sdk/name).read_bytes()).hexdigest()==facts['sha256'] and (sdk/name).stat().st_mode&0o777==facts['mode']
+          assert not (Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists() and not (Path(os.environ['GITHUB_WORKSPACE'])/'src').exists()
+          (out/'binding.json').write_text(json.dumps({'SDK_sha':identity['candidate_sha'],'SDK_archive_sha256':digest,'SDK_source_run':source['id'],'SDK_source_attempt':source['run_attempt'],'SDK_source_conclusion':source['conclusion'],'script_sha':os.environ['GITHUB_SHA'],'script_digests':{n:hashlib.sha256((code/n).read_bytes()).hexdigest() for n in names},'guide_digest':hashlib.sha256((out/'user-guide.md').read_bytes()).hexdigest(),'input_sha':revision,'validation_run':int(os.environ['GITHUB_RUN_ID']),'validation_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'source_checkout_absent':True},indent=2)+'\n')
+          PYCODE
+      - name: Acquire fixed dependency with explicit timing boundary
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          cd "$RUNNER_TEMP"
+          python3 e0-closure/scripts/measure_e0_acquisition.py --sdk "sdk/toka-v0.11.0-$TARGET" --input-plan e0-closure/input-plan.json --output e0-closure/acquisition
+      - name: Run relocated original application delivery bytes on Linux
+        if: runner.os == 'Linux'
+        run: |
+          cd "$RUNNER_TEMP"
+          python3 e0-closure/scripts/run_e0_delivery_installed.py --receipts old-e0 --fixtures e0-closure/fixtures --output e0-closure/deliveries
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e0-closure-${{ matrix.target }}
+          include-hidden-files: true
+          path: ${{ runner.temp }}/e0-closure
