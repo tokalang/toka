@@ -2,6 +2,10 @@ name: 0.12 I3-B scoped evidence candidate
 on:
   workflow_dispatch:
     inputs:
+      e0_only:
+        description: Run fixed real-project E0 flows plus run-argument controls; no Q0
+        type: boolean
+        default: false
       platform_policy_only:
         description: Run PL controls and real basic SDK controls; no release qualification
         type: boolean
@@ -77,10 +81,28 @@ jobs:
           import hashlib,json,os,shutil
           from pathlib import Path
           out=Path(os.environ['RUNNER_TEMP'])/'harness';out.mkdir()
-          names=['test_toka_add.py','test_toka_add_installed.py','test_toka_evidence_installed.py']
+          names=['test_toka_add.py','test_toka_add_installed.py','test_toka_evidence_installed.py','run_e0_tasks.py','test_run_arguments_installed.py']
           for name in names:shutil.copyfile(Path('tools/scripts')/name,out/name)
           (out/'identity.json').write_text(json.dumps({'harness_source_sha':os.environ['GITHUB_SHA'],'files':{n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}},indent=2)+'\n')
           PYCODE
+      - name: Bundle immutable E0 task inputs
+        if: inputs.e0_only
+        run: |
+          mkdir -p "$RUNNER_TEMP/e0-input/fixtures"
+          git show c4c1030cd33504a9f5d8dc670ab4ab0c1fc515e7:spec/e0_input_plan.v1.json > "$RUNNER_TEMP/e0-input/e0_input_plan.v1.json"
+          python3 - <<'PYCODE'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'e0-input';plan=json.loads((root/'e0_input_plan.v1.json').read_text())
+          for name,digest in plan['task_fixtures'].items():
+              path=root/'fixtures'/name;path.parent.mkdir(parents=True,exist_ok=True)
+              path.write_bytes(subprocess.check_output(['git','show','c4c1030cd33504a9f5d8dc670ab4ab0c1fc515e7:tests/fixtures/e0/'+name]));assert hashlib.sha256(path.read_bytes()).hexdigest()==digest
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: inputs.e0_only
+        with:
+          name: e0-input-${{ matrix.target }}
+          path: ${{ runner.temp }}/e0-input
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -95,7 +117,7 @@ jobs:
             ${{ runner.temp }}/stage/manager-build.stderr
   installed:
     needs: package
-    if: always() && !inputs.platform_policy_only && (needs.package.result == 'success' || (inputs.candidate_run != '' && needs.package.result == 'skipped'))
+    if: always() && !inputs.platform_policy_only && !inputs.e0_only && (needs.package.result == 'success' || (inputs.candidate_run != '' && needs.package.result == 'skipped'))
     strategy:
       fail-fast: false
       matrix:
@@ -276,3 +298,92 @@ jobs:
             ${{ runner.temp }}/stage/stage-identity.json
             ${{ runner.temp }}/stage/manager-build.stderr
             ${{ runner.temp }}/stage/manager-build.stdout
+
+  e0:
+    if: inputs.e0_only
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 50
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - name: Installed SDK host dependencies
+        if: runner.os == 'macOS'
+        run: brew install llvm@20 lld@20 zstd openssl@3
+      - uses: actions/download-artifact@v4
+        with:
+          name: i3-evidence-sdk-${{ matrix.target }}
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@v4
+        with:
+          name: e0-input-${{ matrix.target }}
+          path: ${{ runner.temp }}/e0-input
+      - name: Bind SDK/input identities and obtain original published comparison
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          gh release download v0.11.0 --repo tokalang/toka --pattern "toka-v0.11.0-$TARGET.tar.gz" --dir "$RUNNER_TEMP/original"
+          python3 - <<'PYCODE'
+          import hashlib,json,os,tarfile
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP']);identity=json.loads((root/'candidate/package/sdk-identity.json').read_text());assert identity['candidate_sha']==os.environ['GITHUB_SHA']
+          archive=root/'candidate/package'/identity['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']
+          h=json.loads((root/'candidate/harness/identity.json').read_text());assert h['harness_source_sha']==os.environ['GITHUB_SHA']
+          for name,digest in h['files'].items():assert hashlib.sha256((root/'candidate/harness'/name).read_bytes()).hexdigest()==digest
+          base={'linux-x64':'05faa6cf2128f9dc385aa832c33f722e34f5a4f4b98d0613887a3efe79a35635','linux-arm64':'16e8deda50d7983bfa9cffc9f55e8587f4b9b3f4c72c7346a3e82f3c173466f1','macos-arm64':'81e95d01f685f4fbb057fc42b03c376c2646b41bce08398f8f40a76d2cdd7b99'}
+          target=os.environ['TARGET'];assert hashlib.sha256((root/'original'/('toka-v0.11.0-'+target+'.tar.gz')).read_bytes()).hexdigest()==base[target]
+          assert not (Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists() and not (Path(os.environ['GITHUB_WORKSPACE'])/'src').exists()
+          (root/'e0-binding.json').write_text(json.dumps({'SDK_sha':identity['candidate_sha'],'script_sha':h['harness_source_sha'],'candidate_archive_sha256':identity['archive_sha256'],'original_archive_sha256':base[target],'input_sha':'c4c1030cd33504a9f5d8dc670ab4ab0c1fc515e7','actual_execution_actor':'Codex scripted workflows','human_participant':False,'source_checkout_absent':True},indent=2)+'\n')
+          PYCODE
+      - name: Runtime argument regression and both fixed task flows
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          mkdir e0-results
+          cp e0-binding.json e0-results/
+          candidate="candidate/package/toka-preview-i2c-$TARGET.tar.gz"
+          python3 - <<'PYCODE'
+          import os,tarfile
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP']);(root/'argv-sdk').mkdir()
+          with tarfile.open(root/'candidate/package'/('toka-preview-i2c-'+os.environ['TARGET']+'.tar.gz')) as t:t.extractall(root/'argv-sdk',filter='data')
+          PYCODE
+          python3 candidate/harness/test_run_arguments_installed.py --sdk "argv-sdk/toka-v0.11.0-$TARGET" --output e0-results/run-arguments
+          for variant in candidate original_0.11.0; do
+            if [[ "$variant" == candidate ]]; then
+              archive="$candidate"
+              revision="$GITHUB_SHA"
+              digest=$(python3 -c 'import json; print(json.load(open("e0-binding.json"))["candidate_archive_sha256"])')
+            else
+              archive="original/toka-v0.11.0-$TARGET.tar.gz"
+              revision=57b0f7dd7d52bdc24c6dde0457803240e5c62e8a
+              digest=$(python3 -c 'import json; print(json.load(open("e0-binding.json"))["original_archive_sha256"])')
+            fi
+            for flow in AI_process documentation_replay; do
+              python3 candidate/harness/run_e0_tasks.py --input-plan e0-input/e0_input_plan.v1.json --fixtures e0-input/fixtures \
+                --sdk-archive "$archive" --sdk-sha256 "$digest" --sdk-source-sha "$revision" --variant "$variant" \
+                --flow "$flow" --output "e0-results/$variant-$flow"
+            done
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e0-results-${{ matrix.target }}
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/e0-results
+            !${{ runner.temp }}/e0-results/**/installed-sdk/**
