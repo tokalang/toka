@@ -2,6 +2,7 @@
 """Real published Unicode migration and conditional filesystem discovery closure."""
 import argparse,base64,errno,json,os,shutil,subprocess,sys,tarfile,re,hashlib
 from pathlib import Path
+from toka_test_filesystem import query as filesystem_query
 from test_toka_test_i2c_batch import Batch,manifest,source,sha,check
 SDK_SHA='8341ab9bedaf8d10703cf9bfb89911bd6c648e0a'
 PACKAGES={'0.1.1':('c68569e6efbd9eb9bf85226eca68de3a0187d4300e320aeb13857be73b5ad28a','8c82ff393812d1ddd9a8b1f6d71d8ab49863a68b6193af1d784ea722e052fe76'), '0.1.2':('b9aeb5db121875e094584597f7548e5ad992d794ecd7b513fc090ef368671e94','41ebf895976533b5d68f7bb57a46e3e736c4c94a99b828fbad64c68ba99559fc')}
@@ -61,7 +62,8 @@ class Closure(Batch):
    except OSError as e:
     if e.errno not in (errno.EPERM,errno.EINVAL,errno.EILSEQ):raise
     error={'errno':e.errno,'message':str(e)}
-   record={'raw_path_base64':base64.b64encode(raw).decode(),'normal_name_creation_succeeded':True,'invalid_name_created':created,'creation_error':error,'platform':sys.platform}
+   filesystem=filesystem_query(root/'tests',self.output/'filesystem-query')
+   record={'filesystem':filesystem,'raw_path_base64':base64.b64encode(raw).decode(),'normal_name_creation_succeeded':True,'invalid_name_created':created,'creation_error':error,'platform':sys.platform}
    try:
     for kind in ('explicit','discovery'):
      if kind=='discovery' and not created:
@@ -73,13 +75,18 @@ class Closure(Batch):
    finally:
     if created:os.rename(raw,os.fsencode(root/'tests/retained-invalid-source.bytes'))
    facts.append(record)
-  command=['stat','-f','%T',str(self.output)] if sys.platform=='darwin' else ['stat','-f','-c','%T',str(self.output)]
-  fs=subprocess.run(command,capture_output=True);(self.output/'D27-filesystem.json').write_text(json.dumps({'argv':command,'exit_code':fs.returncode,'stdout':fs.stdout.decode(errors='replace'),'stderr':fs.stderr.decode(errors='replace'),'uid':os.getuid(),'uname':list(os.uname()),'records':facts,'contract_amendment':'conditional discovery precondition; explicit raw-argv rejection remains mandatory','no_unrun_discovery_claimed_pass':True},indent=2)+'\n')
- def run(self):
+  filesystem=filesystem_query(self.output,self.output/'filesystem-query')
+  (self.output/'D27-filesystem.json').write_text(json.dumps({**filesystem,'uid':os.getuid(),'uname':list(os.uname()),'records':facts,'contract_amendment':'conditional discovery precondition; explicit raw-argv rejection remains mandatory','no_unrun_discovery_claimed_pass':True},indent=2)+'\n')
+ def verify_sdk(self):
   identity=json.loads((self.sdk/'preview-sdk.json').read_text());assert identity['candidate_sha']==SDK_SHA and len(identity['components'])==146
   for name,item in identity['components'].items():assert sha(self.sdk/name)==item['sha256']
+ def run(self):
+  self.verify_sdk()
   self.unicode('0.1.1');self.unicode('0.1.2');self.paths()
   (self.output/'result.json').write_text(json.dumps({'result':'pass_for_closure_candidate','SDK_source_sha':SDK_SHA,'script_sha256':sha(Path(__file__)),'Preview':True,'Accepted':False,'old_0_1_1_still_rejected':True,'new_0_1_2_real_published_package':True,'D27_contract_amendment_requires_review':True},indent=2)+'\n')
 def main():
- p=argparse.ArgumentParser();p.add_argument('--sdk',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();Closure(a.sdk.resolve(),a.output.resolve()).run()
+ p=argparse.ArgumentParser();p.add_argument('--sdk',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--paths-only',action='store_true');a=p.parse_args();probe=Closure(a.sdk.resolve(),a.output.resolve())
+ if a.paths_only:
+  probe.verify_sdk();probe.paths();(probe.output/'result.json').write_text(json.dumps({'result':'pass_for_D27_metadata_revision','SDK_source_sha':SDK_SHA,'script_sha256':sha(Path(__file__)),'paths_only':True,'Unicode_replayed':False,'Preview':True,'Accepted':False},indent=2)+'\n')
+ else:probe.run()
 if __name__=='__main__':main()
