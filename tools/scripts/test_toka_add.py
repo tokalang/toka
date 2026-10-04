@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """I3 add resolution controls with verified package locks and fail-closed reports."""
-import contextlib,http.server,io,json,os,subprocess,sys,tarfile,tempfile,threading,unittest
+import base64,contextlib,http.server,io,json,os,subprocess,sys,tarfile,tempfile,threading,unittest
 from pathlib import Path
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT/'lib/toolchain'))
@@ -39,6 +39,47 @@ class Add(unittest.TestCase):
    worker=run(*args,**kwargs);data=json.loads(worker.stdout);data['nodes'][0]['package_node_id']='invalid';return subprocess.CompletedProcess(worker.args,0,json.dumps(data).encode(),worker.stderr)
   with patch.object(packages.subprocess,'run',mismatch):
    with self.assertRaisesRegex(packages.PackageError,'structured resolution result'):self.add('../dep')
+ def test_invalid_manifest_encoding_is_configuration_error(self):
+  original=b'\xff\r\n';(self.root/'package.tk').write_bytes(original)
+  with self.assertRaises(packages.PackageConfigurationError):self.add('../dep')
+  self.assertEqual((self.root/'package.tk').read_bytes(),original)
+ def test_invalid_lock_encoding_preserves_bytes_and_worker_error(self):
+  dep=self.base/'dep';library(dep);original=(self.root/'package.tk').read_bytes();old=b'toka-lock-v1\r\n\xff\x00';(self.root/'package.lock').write_bytes(old)
+  with self.assertRaises(packages.PackageConfigurationError) as caught:self.add('../dep')
+  self.assertIn(b'package.lock must be valid UTF-8',base64.b64decode(caught.exception.details['worker']['stderr_base64']))
+  self.assertEqual(caught.exception.details['worker_report']['errors'][0]['category'],'configuration_error')
+  self.assertEqual((self.root/'package.tk').read_bytes(),original);self.assertEqual((self.root/'package.lock').read_bytes(),old)
+ def test_field_lookup_ignores_comments_and_strings_and_preserves_offsets(self):
+  dep=self.base/'dep';library(dep)
+  for prefix in ['// dependencies=()\n','// 中文 dependencies=()\r\n','pub const NOTE="dependencies=() \\"quoted\\"";\n']:
+   with self.subTest(prefix=prefix):
+    manifest(self.root);original=prefix+(self.root/'package.tk').read_text();(self.root/'package.tk').write_text(original);(self.root/'package.lock').unlink(missing_ok=True)
+    result=self.add('../dep');self.assertEqual(result['result'],'added');updated=(self.root/'package.tk').read_bytes().decode();self.assertTrue(updated.startswith(prefix));self.assertEqual(updated.replace('\n        dep = "../dep",','',1),original)
+ def test_all_worker_validation_errors_keep_raw_details(self):
+  dep=self.base/'dep';library(dep);run=packages.subprocess.run
+  for fault in ('missing-alias','content','bad-lock'):
+   with self.subTest(fault=fault):
+    manifest(self.root);original=(self.root/'package.tk').read_bytes();(self.root/'package.lock').unlink(missing_ok=True)
+    def corrupt(*args,**kwargs):
+     child=run(*args,**kwargs)
+     if fault=='missing-alias':
+      (self.root/'package.lock').write_text(packages.LOCK_HEADER+'\n');body=json.dumps({'schema':'toka.resolve-report','version':1,'nodes':[]}).encode()
+     else:
+      body=child.stdout
+      if fault=='content':(dep/'lib/official/dep.tk').write_text('changed\n')
+      else:(self.root/'package.lock').write_bytes(b'\xff')
+     return subprocess.CompletedProcess(child.args,0,body,child.stderr)
+    with patch.object(packages.subprocess,'run',corrupt):
+     with self.assertRaises(packages.PackageError) as caught:self.add('../dep')
+    self.assertEqual(caught.exception.details['worker']['exit_code'],0);self.assertIn('stdout_base64',caught.exception.details['worker']);self.assertEqual((self.root/'package.tk').read_bytes(),original);self.assertFalse((self.root/'package.lock').exists())
+ def test_rollback_failure_does_not_mask_worker_and_restores_other_file(self):
+  old=b'toka-lock-v1\r\n';(self.root/'package.lock').write_bytes(old);real=packages.atomic_write
+  def fail_restore(path,content):
+   if path==self.root/'package.tk' and isinstance(content,bytes):raise PermissionError(13,'injected restore failure')
+   return real(path,content)
+  with patch.object(packages,'atomic_write',fail_restore):
+   with self.assertRaises(packages.PackageError) as caught:self.add('../absent')
+  self.assertIn('dependency resolution failed',str(caught.exception));self.assertEqual(caught.exception.details['worker']['exit_code'],1);self.assertEqual(caught.exception.details['rollback_errors'][0]['errno'],13);self.assertEqual((self.root/'package.lock').read_bytes(),old)
  def registry(self,bad_digest=False):
   dep=self.base/'published';library(dep);archive=self.base/'dep-0.1.2.tar.gz'
   with tarfile.open(archive,'w:gz') as t:

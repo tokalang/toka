@@ -222,10 +222,14 @@ def _strip_comments(text: str) -> str:
 
 
 def _dependency_block(text: str) -> tuple[int, int, str]:
-    match = re.search(r"\bdependencies\s*=\s*\(", text)
+    # Mask comments and quoted strings without changing original text offsets.
+    masked = re.sub(r'"(?:\\.|[^"\\])*"|//[^\n]*',
+                    lambda match: ''.join('\n' if c == '\n' else ' ' for c in match.group()),
+                    text)
+    match = re.search(r"\bdependencies\s*=\s*\(", masked)
     if not match:
         return -1, -1, ""
-    open_index = text.find("(", match.start())
+    open_index = masked.find("(", match.start())
     depth = 0
     in_string = False
     escaped = False
@@ -544,6 +548,8 @@ def _parse_dependency(alias: str, expression: str, base: Path) -> Dependency:
 def parse_manifest(path: Path) -> list[Dependency]:
     try:
         original = path.read_text(encoding="utf-8")
+    except UnicodeError as error:
+        raise PackageConfigurationError("package.tk must be valid UTF-8") from error
     except OSError as error:
         raise PackageError("cannot read manifest: " + str(path)) from error
     text = _strip_comments(original)
@@ -689,12 +695,12 @@ def encode_lock(entries: dict[str, LockEntry]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def atomic_write(path: Path, content: str) -> None:
+def atomic_write(path: Path, content: str | bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as output:
-            output.write(content)
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(content.encode('utf-8') if isinstance(content, str) else content)
             output.flush()
             os.fsync(output.fileno())
         os.replace(temporary, path)
@@ -1357,11 +1363,15 @@ def add_dependency(manifest: Path, lock: Path, state: Path, requested: str, alia
     if any(dep.alias == alias for dep in parse_manifest(manifest)):
         raise PackageError('dependency already declared: ' + alias)
     dependency = _parse_dependency(alias, expression, root)
-    text = original.decode('utf-8')
+    try:
+        text = original.decode('utf-8')
+    except UnicodeError as error:
+        raise PackageConfigurationError('package.tk must be valid UTF-8') from error
     start, end, block = _dependency_block(text)
     if start < 0:
         raise PackageError('manifest has no dependencies block')
     updated = text[:start] + '\n        ' + alias + ' = ' + expression + ',' + block + text[end:]
+    failure_details = {}
     try:
         atomic_write(manifest, updated)
         argv = [sys.executable, str(Path(__file__).resolve()), 'fetch', '--json', '--manifest', str(manifest.resolve()), '--lock', str(lock.resolve()), '--state', str(state.resolve())]
@@ -1370,7 +1380,16 @@ def add_dependency(manifest: Path, lock: Path, state: Path, requested: str, alia
         failure_details={'worker':{'argv':argv,'exit_code':worker.returncode,'stdout_base64':base64.b64encode(worker.stdout).decode('ascii'),'stderr_base64':base64.b64encode(worker.stderr).decode('ascii')}}
         if worker.stderr:sys.stderr.write(worker.stderr.decode('utf-8',errors='replace'))
         if worker.returncode:
-            raise PackageError('dependency resolution failed for ' + alias + ': ' + worker.stderr.decode('utf-8',errors='replace').strip() + '; package.tk restored',details=failure_details)
+            error_type = PackageError
+            try:
+                worker_error = json.loads(worker.stdout)
+                if isinstance(worker_error, dict) and worker_error.get('schema') == 'toka.resolve-report' and worker_error.get('version') == 1 and worker_error.get('result') == 'failed':
+                    failure_details['worker_report'] = worker_error
+                    if worker_error.get('errors') and worker_error['errors'][0].get('category') == 'configuration_error':
+                        error_type = PackageConfigurationError
+            except (ValueError, UnicodeError, AttributeError, TypeError):
+                pass
+            raise error_type('dependency resolution failed for ' + alias + ': ' + worker.stderr.decode('utf-8',errors='replace').strip(),details=failure_details)
         try:receipt = json.loads(worker.stdout)
         except (ValueError,UnicodeError) as error:raise PackageError('structured resolution result is missing or invalid',details=failure_details) from error
         actual = read_lock(lock)
@@ -1393,12 +1412,22 @@ def add_dependency(manifest: Path, lock: Path, state: Path, requested: str, alia
                 'content_sha256':entry.content_sha256,'package_node_id':package_node_id(entry),
                 'lock_sha256':hashlib.sha256(lock.read_bytes()).hexdigest(),
                 'manifest_sha256':hashlib.sha256(manifest.read_bytes()).hexdigest(),'errors':[]}
-    except BaseException:
-        atomic_write(manifest, original.decode('utf-8'))
-        if previous_lock is None:
-            lock.unlink(missing_ok=True)
-        else:
-            atomic_write(lock, previous_lock.decode('utf-8'))
+    except BaseException as error:
+        # Keep the worker's original failure even if restoring either file fails.
+        details = dict(getattr(error, 'details', {}))
+        details.update(failure_details)
+        rollback_errors = []
+        for path, content in ((manifest, original), (lock, previous_lock)):
+            try:
+                if content is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    atomic_write(path, content)
+            except OSError as rollback_error:
+                rollback_errors.append({'path': str(path), 'message': str(rollback_error), 'errno': rollback_error.errno})
+        if rollback_errors:
+            details['rollback_errors'] = rollback_errors
+        error.details = details
         raise
 
 def main() -> int:
@@ -1509,6 +1538,10 @@ def main() -> int:
                 print("%s\t%s\t%s" % (name, version, description))
         return 0
     except (ExtractionError, PackageError, OSError) as error:
+        if args.command == 'fetch' and args.json:
+            print(json.dumps({'schema':'toka.resolve-report','version':1,'result':'failed','exit_code':1,
+                              'errors':[{'message':str(error),'category':getattr(error,'category','resolution_error'),
+                                         'details':getattr(error,'details',None)}]}))
         if args.command == 'add' and args.json:
             print(json.dumps({'schema':'toka.add-report','version':1,'result':'failed','exit_code':1,
                               'requested':args.package,'resolved_version':None,'errors':[{'message':str(error),
