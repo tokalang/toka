@@ -1,89 +1,132 @@
-name: 0.12 I2-C macOS D27 filesystem metadata correction
+name: 0.12 I3-A locked add feedback candidate
 on:
   workflow_dispatch:
 permissions:
   contents: read
   actions: read
 jobs:
-  bundle:
-    runs-on: ubuntu-22.04
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Freeze narrow standalone bundle
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.7'
+      - name: SDK host dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y build-essential curl wget lsb-release software-properties-common
+          wget --timeout=15 --tries=3 -O "$RUNNER_TEMP/llvm.sh" https://apt.llvm.org/llvm.sh
+          chmod +x "$RUNNER_TEMP/llvm.sh"
+          sudo -E "$RUNNER_TEMP/llvm.sh" 20
+          sudo apt-get install -y lld-20 liblld-20-dev libpolly-20-dev libzstd-dev libssl-dev pkg-config
+          echo '/usr/lib/llvm-20/bin' >> "$GITHUB_PATH"
+      - name: SDK host dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm@20 lld@20 zstd openssl@3
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld@20)/bin" >> "$GITHUB_PATH"
+      - name: Download original immutable compiler SDK and build only candidate manager
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download v0.11.0 --repo tokalang/toka --pattern "toka-v0.11.0-${{ matrix.target }}.tar.gz" --dir "$RUNNER_TEMP/original"
+          python3 tools/scripts/package_test_i2c_sdk.py --archive "$RUNNER_TEMP/original/toka-v0.11.0-${{ matrix.target }}.tar.gz" --target '${{ matrix.target }}' --work "$RUNNER_TEMP/stage" --output "$RUNNER_TEMP/package"
+      - name: Source add controls, Linux filesystem regression and package regressions
+        run: |
+          mkdir -p "$RUNNER_TEMP/controls"
+          PYTHONDONTWRITEBYTECODE=1 python3 tools/scripts/test_toka_add.py > "$RUNNER_TEMP/controls/add.stdout" 2> "$RUNNER_TEMP/controls/add.stderr"
+          PYTHONDONTWRITEBYTECODE=1 python3 tools/scripts/test_toka_test_filesystem_linux.py > "$RUNNER_TEMP/controls/filesystem.stdout" 2> "$RUNNER_TEMP/controls/filesystem.stderr"
+          PYTHONDONTWRITEBYTECODE=1 python3 tools/scripts/test_package_manager_supply_chain.py > "$RUNNER_TEMP/controls/supply.stdout" 2> "$RUNNER_TEMP/controls/supply.stderr"
+      - name: Freeze standalone acceptance bundle
         run: |
           python3 - <<'PYCODE'
           import hashlib,json,os,shutil
           from pathlib import Path
           out=Path(os.environ['RUNNER_TEMP'])/'harness';out.mkdir()
-          names=['test_toka_test_closure.py','toka_test_filesystem.py','test_toka_test_filesystem.py','test_toka_test_i2c_batch.py']
+          names=['test_toka_add.py','test_toka_add_installed.py']
           for name in names:shutil.copyfile(Path('tools/scripts')/name,out/name)
           (out/'identity.json').write_text(json.dumps({'harness_source_sha':os.environ['GITHUB_SHA'],'files':{n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}},indent=2)+'\n')
           PYCODE
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: d27-metadata-harness
-          path: ${{ runner.temp }}/harness
-  macos:
-    needs: bundle
-    runs-on: macos-15
+          name: i3-add-sdk-${{ matrix.target }}
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/package
+            ${{ runner.temp }}/harness
+            ${{ runner.temp }}/controls
+            ${{ runner.temp }}/stage/stage-identity.json
+            ${{ runner.temp }}/stage/manager-build.stdout
+            ${{ runner.temp }}/stage/manager-build.stderr
+  installed:
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.7'
-      - name: Install SDK runtime host dependencies
-        run: brew install zstd openssl@3
+      - name: Manager runtime host dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install openssl@3
       - uses: actions/download-artifact@v4
         with:
-          name: i2c-sdk-macos-arm64
-          run-id: 37089177117
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/sdk-input
-      - uses: actions/download-artifact@v4
-        with:
-          name: d27-metadata-harness
-          path: ${{ runner.temp }}/harness
-      - name: Verify exact frozen SDK and standalone source identity
+          name: i3-add-sdk-${{ matrix.target }}
+          path: ${{ runner.temp }}/input
+      - name: Validate exact candidate and install without checkout
         run: |
           python3 - <<'PYCODE'
           import hashlib,json,os,tarfile
           from pathlib import Path
-          root=Path(os.environ['RUNNER_TEMP']);data=root/'sdk-input/i2c-package'
-          identity=json.loads((data/'sdk-identity.json').read_text());assert identity['candidate_sha']=='8341ab9bedaf8d10703cf9bfb89911bd6c648e0a' and identity['target']=='macos-arm64'
-          archive=data/identity['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']=='9801d4c4e7eb2d36f3eea1c58e4c1ad3aa813172bd03f94e58147057959566f4'
-          install=root/'sdk-install';install.mkdir()
+          root=Path(os.environ['RUNNER_TEMP']);data=root/'input/package';identity=json.loads((data/'sdk-identity.json').read_text());assert identity['candidate_sha']==os.environ['GITHUB_SHA']
+          archive=data/identity['archive'];assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']
+          install=root/'sdk';install.mkdir()
           with tarfile.open(archive) as t:t.extractall(install,filter='data')
-          sdk=next(install.iterdir());assert len(identity['components'])==146
+          sdk=next(install.iterdir())
           for name,value in identity['components'].items():assert hashlib.sha256((sdk/name).read_bytes()).hexdigest()==value['sha256'] and (sdk/name).stat().st_mode&0o777==value['mode']
-          bundle=root/'harness';h=json.loads((bundle/'identity.json').read_text());assert h['harness_source_sha']==os.environ['GITHUB_SHA']
-          for name,value in h['files'].items():assert hashlib.sha256((bundle/name).read_bytes()).hexdigest()==value
+          h=json.loads((root/'input/harness/identity.json').read_text());assert h['harness_source_sha']==os.environ['GITHUB_SHA']
+          for name,value in h['files'].items():assert hashlib.sha256((root/'input/harness'/name).read_bytes()).hexdigest()==value
           assert not (Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists()
           (root/'sdk-path.txt').write_text(str(sdk))
           PYCODE
-      - name: Run only filesystem controls and three D27 variants
+      - name: Exercise F01-F05 with installed SDK
         run: |
-          set -euo pipefail
           sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
-          cd "$RUNNER_TEMP/harness"
-          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_filesystem.py --output "$RUNNER_TEMP/filesystem-controls"
-          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_closure.py --paths-only --sdk "$sdk" --output "$RUNNER_TEMP/d27"
-      - name: Retain explicit runtime and script identities
-        if: always()
-        run: |
-          python3 - <<'PYCODE'
-          import json,os
-          from pathlib import Path
-          root=Path(os.environ['RUNNER_TEMP'])
-          (root/'d27-identity.json').write_text(json.dumps({'SDK_identity':json.loads((root/'sdk-input/i2c-package/sdk-identity.json').read_text()),'harness_identity':json.loads((root/'harness/identity.json').read_text()),'CI_run':os.environ['GITHUB_RUN_ID'],'CI_attempt':os.environ['GITHUB_RUN_ATTEMPT'],'repository_checkout_present':(Path(os.environ['GITHUB_WORKSPACE'])/'.git').exists(),'compiler_source_visible':(Path(os.environ['GITHUB_WORKSPACE'])/'src/codegen').exists(),'Unicode_replayed':False,'corpus_replayed':False},indent=2)+'\n')
-          PYCODE
+          cd "$RUNNER_TEMP/input/harness"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_add_installed.py --sdk "$sdk" --output "$RUNNER_TEMP/installed"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: d27-metadata-macos-arm64
+          name: i3-add-installed-${{ matrix.target }}
           include-hidden-files: true
-          path: |
-            ${{ runner.temp }}/d27
-            ${{ runner.temp }}/filesystem-controls
-            ${{ runner.temp }}/d27-identity.json
+          path: ${{ runner.temp }}/installed

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from dataclasses import dataclass
 import gzip
 import hashlib
@@ -1334,6 +1335,72 @@ def remove_dependency(manifest: Path, alias: str) -> bool:
     return True
 
 
+
+def add_dependency(manifest: Path, lock: Path, state: Path, requested: str, alias: str | None = None) -> dict:
+    original = manifest.read_bytes()
+    previous_lock = lock.read_bytes() if lock.is_file() else None
+    root = manifest.resolve().parent
+    if requested.startswith(('git(', 'Git(')):
+        if alias is None:
+            raise PackageError('Git expressions require --alias')
+        expression = 'Git' + requested[3:] if requested.startswith('git(') else requested
+    else:
+        value = requested
+        if alias is None:
+            alias = Path(value).name.split(':', 1)[0] if '/' in value else value.split(':', 1)[0]
+            if alias.endswith('.git'):alias = alias[:-4]
+        if ALIAS_RE.fullmatch(value):
+            value += ':latest'
+        expression = json.dumps(value, ensure_ascii=False)
+    if not alias or not ALIAS_RE.fullmatch(alias):
+        raise PackageError('invalid dependency alias: ' + str(alias))
+    if any(dep.alias == alias for dep in parse_manifest(manifest)):
+        raise PackageError('dependency already declared: ' + alias)
+    dependency = _parse_dependency(alias, expression, root)
+    text = original.decode('utf-8')
+    start, end, block = _dependency_block(text)
+    if start < 0:
+        raise PackageError('manifest has no dependencies block')
+    updated = text[:start] + '\n        ' + alias + ' = ' + expression + ',' + block + text[end:]
+    try:
+        atomic_write(manifest, updated)
+        argv = [sys.executable, str(Path(__file__).resolve()), 'fetch', '--json', '--manifest', str(manifest.resolve()), '--lock', str(lock.resolve()), '--state', str(state.resolve())]
+        if os.environ.get('TOKA_OFFLINE') == '1':argv.append('--offline')
+        worker = subprocess.run(argv, cwd=root, capture_output=True)
+        failure_details={'worker':{'argv':argv,'exit_code':worker.returncode,'stdout_base64':base64.b64encode(worker.stdout).decode('ascii'),'stderr_base64':base64.b64encode(worker.stderr).decode('ascii')}}
+        if worker.stderr:sys.stderr.write(worker.stderr.decode('utf-8',errors='replace'))
+        if worker.returncode:
+            raise PackageError('dependency resolution failed for ' + alias + ': ' + worker.stderr.decode('utf-8',errors='replace').strip() + '; package.tk restored',details=failure_details)
+        try:receipt = json.loads(worker.stdout)
+        except (ValueError,UnicodeError) as error:raise PackageError('structured resolution result is missing or invalid',details=failure_details) from error
+        actual = read_lock(lock)
+        expected_nodes = [{'alias':name,'lock_entry':entry.line(),'package_node_id':package_node_id(entry)} for name,entry in sorted(actual.items())]
+        if not isinstance(receipt,dict) or receipt.get('schema')!='toka.resolve-report' or receipt.get('version')!=1 or receipt.get('nodes')!=expected_nodes:
+            raise PackageError('structured resolution result does not match package.lock',details=failure_details)
+        if alias not in actual:
+            raise PackageError('structured resolution result is missing added alias: ' + alias)
+        entry = actual[alias]
+        digest = tree_sha256(package_root(entry, state))
+        if digest != entry.content_sha256:
+            raise PackageError('resolved content no longer matches verified lock: ' + alias)
+        return {'schema':'toka.add-report','version':1,'result':'added','exit_code':0,
+                'requested':requested,'alias':alias,'kind':entry.kind,'locator':entry.locator,
+                'requested_version':dependency.selector if entry.kind == 'registry' else None,
+                'resolved_version':entry.resolved if entry.kind == 'registry' else None,
+                'resolved_revision':entry.resolved if entry.kind == 'git' else None,
+                'resolved_path':entry.resolved if entry.kind == 'path' else None,
+                'archive_sha256':None if entry.archive_sha256 == '-' else entry.archive_sha256,
+                'content_sha256':entry.content_sha256,'package_node_id':package_node_id(entry),
+                'lock_sha256':hashlib.sha256(lock.read_bytes()).hexdigest(),
+                'manifest_sha256':hashlib.sha256(manifest.read_bytes()).hexdigest(),'errors':[]}
+    except BaseException:
+        atomic_write(manifest, original.decode('utf-8'))
+        if previous_lock is None:
+            lock.unlink(missing_ok=True)
+        else:
+            atomic_write(lock, previous_lock.decode('utf-8'))
+        raise
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1344,6 +1411,15 @@ def main() -> int:
     fetch.add_argument("--state", default=".toka")
     fetch.add_argument("--offline", action="store_true")
     fetch.add_argument("--refresh", action="store_true")
+    fetch.add_argument("--json", action="store_true")
+
+    add = subparsers.add_parser("add")
+    add.add_argument("package")
+    add.add_argument("--alias")
+    add.add_argument("--json", action="store_true")
+    add.add_argument("--manifest", default="package.tk")
+    add.add_argument("--lock", default="package.lock")
+    add.add_argument("--state", default=".toka")
 
     mappings = subparsers.add_parser("compiler-mappings")
     mappings.add_argument("--lock", default="package.lock")
@@ -1383,13 +1459,24 @@ def main() -> int:
 
     args = parser.parse_args()
     try:
-        if args.command == "fetch":
+        if args.command == "add":
+            record = add_dependency(Path(args.manifest), Path(args.lock), Path(args.state), args.package, args.alias)
+            if args.json:
+                print(json.dumps(record, sort_keys=True))
+            else:
+                identity = record['resolved_version'] or record['resolved_revision'] or record['resolved_path']
+                digest = record['archive_sha256'] or record['content_sha256']
+                print('Added %s: %s [%s] sha256=%s' % (record['alias'], identity, record['kind'], digest[:12]))
+        elif args.command == "fetch":
             resolver = Resolver(
                 Path(args.manifest), Path(args.lock), Path(args.state),
                 offline=args.offline, refresh=args.refresh,
             )
             entries = resolver.run()
-            print("resolved %d package(s)" % len(entries))
+            if args.json:
+                print(json.dumps({'schema':'toka.resolve-report','version':1,'nodes':[{'alias':name,'lock_entry':entry.line(),'package_node_id':package_node_id(entry)} for name,entry in sorted(entries.items())]}))
+            else:
+                print("resolved %d package(s)" % len(entries))
         elif args.command == "compiler-mappings":
             for mapping in compiler_mappings(Path(args.lock), Path(args.state)):
                 print(mapping)
@@ -1422,6 +1509,10 @@ def main() -> int:
                 print("%s\t%s\t%s" % (name, version, description))
         return 0
     except (ExtractionError, PackageError, OSError) as error:
+        if args.command == 'add' and args.json:
+            print(json.dumps({'schema':'toka.add-report','version':1,'result':'failed','exit_code':1,
+                              'requested':args.package,'resolved_version':None,'errors':[{'message':str(error),
+                              'category':getattr(error,'category','resolution_error'),'details':getattr(error,'details',None)}]}))
         sys.stderr.write("package error: %s\n" % error)
         return 1
 

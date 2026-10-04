@@ -54,7 +54,7 @@ fn print_help() {
 }
 
 fn print_add_help() {
-    println("Usage: toka add <package-or-url>")
+    println("Usage: toka add <package-or-url> [--alias name] [--json]")
     println("")
     println("Add a package from the verified Registry by name, for example:")
     println("  toka add tokakv")
@@ -432,84 +432,28 @@ fn cmd_init(is_lib: bool) -> i32 {
     return 0
 }
 
-fn cmd_add(pkg_url_or_name: string) -> i32 {
-    unsafe {
-        auto pkg_url# = pkg_url_or_name.clone()
-        auto pkg_alias# = string::from("")
-        
-        // A bare name is resolved by the authoritative package helper. Keep
-        // the CLI's manifest edit independent of the registry's evolving
-        // metadata schema; the helper locks `latest` to one verified release.
-        if !pkg_url.contains("/") {
-            pkg_url#.push_str(":latest")
-            pkg_alias = pkg_url_or_name.clone()
-            println("\x1b[32m[Registry]\x1b[0m Resolving {} through the verified registry catalog", pkg_url_or_name)
-        } else {
-            // Direct URL parsing
-            auto iter# = pkg_url.split('/' as i32)
-            loop !iter.is_done() {
-                auto part = iter#.next()
-                if !part.is_empty() {
-                    pkg_alias = part.clone()
-                }
-            }
-            
-            auto colon_idx = pkg_alias.find_str(":")
-            if colon_idx != -1 {
-                pkg_alias = pkg_alias.substring(0, colon_idx)
-            }
-        }
-        
-        if pkg_alias.is_empty() {
-            println("\x1b[1;31m       Error\x1b[0m invalid package URL or name")
-            return 1
-        }
-        
-        println("\x1b[1;32m      Adding\x1b[0m package {} -> {}", pkg_alias, pkg_url)
-        
-        if !exists(string::from("package.tk")) {
-            println("\x1b[1;31m       Error\x1b[0m package.tk not found. Are you in a Toka project?")
-            return 1
-        }
-        
-        auto res = read_to_string(string::from("package.tk"))
-        if res.is_err() {
-            println("\x1b[1;31m       Error\x1b[0m failed to read package.tk")
-            return 1
-        }
-        
-        auto pkg_content = res.unwrap()
-        auto deps_idx = pkg_content.find_str("dependencies = (")
-        if deps_idx == -1 {
-            println("Error: Invalid package.tk format (missing dependencies block)")
-            return 1
-        }
-        
-        auto insert_pos = deps_idx + 16
-        auto new_content# = pkg_content.substring(0, insert_pos)
-        new_content#.push_str("
-        ")
-        new_content#.push_str(pkg_alias.as_str())
-        new_content#.push_str(" = \"")
-        new_content#.push_str(pkg_url.as_str())
-        new_content#.push_str("\",")
-        
-        auto rest = pkg_content.substring(insert_pos, pkg_content.len() as i32)
-        new_content#.push_str(rest.as_str())
-        
-        write_string(string::from("package.tk"), new_content.as_str())
-        
-        println("\x1b[1;32m       Added\x1b[0m {} to package.tk", pkg_alias)
-        
-        println("\x1b[1;32m    Resolving\x1b[0m package graph...")
-        auto fetch_result = cmd_fetch()
-        if fetch_result != 0 {
-            write_string(string::from("package.tk"), pkg_content.as_str())
-            println("\x1b[1;31m       Error\x1b[0m dependency resolution failed; package.tk restored")
-            return fetch_result
-        }
-        return 0
+fn cmd_add(argc: i32, shift: i32) -> i32 {
+    auto helper# = detect_default_lib_path()
+    helper#.push_str("/toolchain/toka_package.py")
+    if !exists(helper.clone()) {
+        println("Error: active SDK package helper is missing: {}", helper)
+        return 1
     }
+    auto command# = Command::new(string::from("python3"))
+    command#.arg(helper.clone())
+    command#.arg(string::from("add"))
+    auto index# = 2 + shift
+    loop index < argc {
+        command#.arg(env::get_arg(index))
+        index += 1
+    }
+    auto result = command#.try_status()
+    if result.is_err() {
+        println("Error: could not launch Python 3 package helper: {}", helper)
+        return 1
+    }
+    if !result.unwrap().success() { return 1 }
+    return 0
 }
 
 fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
@@ -1374,7 +1318,7 @@ fn main() -> i32 {
             print_add_help()
             return 0
         }
-        return cmd_add(url)
+        return cmd_add(argc, shift)
     }
     
     if cmd.eq(string::from("rm")) {
