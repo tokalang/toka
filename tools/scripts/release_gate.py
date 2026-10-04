@@ -329,8 +329,10 @@ def main():
             ["tools/scripts/test_mixed_core_cache.sh"],
         )),
         ("tooling", (
+            [sys.executable, "tools/scripts/test_developer_experience_contract.py"],
             [sys.executable, "tools/scripts/test_developer_experience.py",
-             "--build-dir", str(build_dir)],
+             "--build-dir", str(build_dir),
+             "--diagnostics-dir", str(log_dir / "developer-experience")],
             [sys.executable, "tools/scripts/test_release_workflow.py"],
             [sys.executable, "tools/scripts/test_candidate_replay_binding.py"],
             [sys.executable, "tools/scripts/test_release_promotion.py"],

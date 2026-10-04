@@ -25,3 +25,8 @@ TaskHandle/取消契约与 version-bound summary 必须通过，再冻结三个�
 
 Q0 完成及原包重放自检通过后交付独立复审。只有复审 Accepted 后才进入 draft／
 受保护发布阶段；公开发布和 Latest 不在本次授权范围。
+
+首轮 aed87d9e / run 37203687512 attempt 1 的三个核心 gate 均在 tooling 的
+历史 Preview 文案断言失败，后续阶段 not_run；原日志与失败保持不变，没有重放。
+集中修订改按 Preview/C6 事实检查，并在每条命令后保存原始输出与调用上下文。
+真实 0.12 CLI 的完整 developer-experience 33 项定向通过后才冻结下一候选。

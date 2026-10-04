@@ -35,7 +35,7 @@ fn print_help() {
     println("                                      Validate bodyless Outcome provider attestations")
     println("  preview      Compare base/candidate snapshots without writing either one")
     println("  query        Run a compiler semantic query (definition, references, rename)")
-    println("  test         Preview: project test entries (I2-B; installed acceptance pending I2-C)")
+    println("  test         Preview: project test entries with supervised execution and C6 JSON")
     println("  doc          Generate API documentation")
     println("  add <package-or-url>  Add a Registry package or URL dependency")
     println("  rm <pkg>     Remove a package dependency")

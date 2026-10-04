@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preview project tests: supervised execution and C6 reports; Q0 qualification pending."""
+"""Preview project tests with supervised execution and C6 reports."""
 from __future__ import annotations
 
 import argparse
@@ -31,8 +31,7 @@ DEFAULT_PREPARE_MS = 180000
 DEFAULT_NATIVE_MS = 120000
 DEFAULT_COMPILE_MS = 30000
 DEFAULT_RUN_MS = 5000
-PREVIEW = ('Preview: project tests with supervised execution and C6 JSON. '
-           'Installed-SDK final acceptance awaits I2-C.')
+PREVIEW = 'Preview: project tests with supervised execution and C6 JSON.'
 
 
 class PreviewError(RuntimeError):

@@ -2,6 +2,7 @@
 
 import argparse
 import ast
+import base64
 import json
 import os
 from pathlib import Path
@@ -12,30 +13,84 @@ import sys
 import tempfile
 
 
+_diagnostics_dir = None
+_last_command = None
+
+
 def run(command, cwd, env=None, expected=0, executable=None):
+    global _last_command
+    argv = [str(part) for part in command]
     result = subprocess.run(
-        [str(part) for part in command],
-        cwd=str(cwd),
-        env=env,
+        argv, cwd=str(cwd), env=env,
         executable=str(executable) if executable is not None else None,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        encoding="utf-8",
-        errors="replace",
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
-    if result.returncode != expected:
-        sys.stderr.write(result.stdout)
-        sys.stderr.write(result.stderr)
-        raise RuntimeError(
-            "expected exit %d, got %d: %s"
-            % (expected, result.returncode, " ".join(str(part) for part in command))
-        )
+    context = {
+        "argv": argv, "cwd": str(Path(cwd).resolve()),
+        "executable": str(executable) if executable is not None else None,
+        "expected_exit_code": expected, "actual_exit_code": result.returncode,
+        "stdout_base64": base64.b64encode(result.stdout).decode("ascii"),
+        "stderr_base64": base64.b64encode(result.stderr).decode("ascii"),
+    }
+    if _diagnostics_dir is not None:
+        _diagnostics_dir.mkdir(parents=True, exist_ok=True)
+        stem = "%04d" % (len(list(_diagnostics_dir.glob("*.json"))) + 1)
+        (_diagnostics_dir / (stem + ".stdout")).write_bytes(result.stdout)
+        (_diagnostics_dir / (stem + ".stderr")).write_bytes(result.stderr)
+        (_diagnostics_dir / (stem + ".json")).write_text(
+            json.dumps(context, sort_keys=True) + "\n", encoding="utf-8")
+    _last_command = context
+    result.stdout = result.stdout.decode("utf-8", errors="replace")
+    result.stderr = result.stderr.decode("utf-8", errors="replace")
+    require(result.returncode == expected,
+            "expected exit %d, got %d: %s" %
+            (expected, result.returncode, " ".join(argv)))
     return result
 
 
 def require(value, message):
     if not value:
+        if _last_command is not None:
+            sys.stderr.write("Failing command context: " +
+                             json.dumps(_last_command, sort_keys=True) + "\n")
         raise RuntimeError(message)
+
+
+def preview_report(result, expected_result, expected_exit, compile_failure=False):
+    require("Preview:" in result.stdout + result.stderr,
+            "toka test is not clearly marked Preview")
+    try:
+        report = json.loads(result.stdout)
+    except (ValueError, TypeError):
+        require(False, "toka test stdout is not a single C6 JSON report")
+    require(isinstance(report, dict) and
+            report.get("schema") == "toka.test-report" and
+            type(report.get("version")) is int and report["version"] == 1 and
+            report.get("preview") is True and report.get("finalized") is True and
+            report.get("result") == expected_result and
+            type(report.get("exit_code")) is int and
+            report["exit_code"] == expected_exit == result.returncode,
+            "toka test C6 Preview/result/exit boundary is invalid")
+    if compile_failure:
+        items = report.get("tests")
+        require(isinstance(items, list) and len(items) == 1 and
+                isinstance(items[0], dict) and items[0].get("result") == "compile_failed" and
+                report.get("summary") == {"total": 1, "passed": 0, "failed": 1,
+                    "infrastructure_error": 0, "interrupted": 0, "not_run": 0},
+                "toka test did not report one compile_failed test")
+        phases = items[0].get("phases", {})
+        require(isinstance(phases, dict), "toka test phase objects are invalid")
+        compile_link = phases.get("compile_link", {})
+        run_phase = phases.get("run", {})
+        require(isinstance(compile_link, dict) and isinstance(run_phase, dict) and
+                compile_link.get("state") == "completed" and
+                type(compile_link.get("exit_code")) is int and
+                compile_link["exit_code"] != 0 and compile_link.get("signal") is None and
+                run_phase.get("state") == "not_started" and
+                all(key in run_phase and run_phase[key] is None for key in
+                    ("duration_ms", "exit_code", "signal", "os_error", "process")),
+                "toka test compile failure incorrectly launched or populated run")
+    return report
 
 
 def release_version(output, tool):
@@ -47,10 +102,14 @@ def release_version(output, tool):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", default="build")
+    parser.add_argument("--diagnostics-dir", type=Path)
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[2]
     build_dir = (root / args.build_dir).resolve()
+    global _diagnostics_dir
+    _diagnostics_dir = (args.diagnostics_dir or
+                        build_dir / "developer-experience-diagnostics").resolve()
     suffix = ".exe" if sys.platform == "win32" else ""
     tokac = build_dir / "bin" / ("tokac" + suffix)
     toka = build_dir / "bin" / ("toka" + suffix)
@@ -124,9 +183,10 @@ def main():
     with tempfile.TemporaryDirectory(prefix="toka-developer-experience-") as temp:
         temp_root = Path(temp)
         preview = run([toka, "test"], temp_root, expected=2)
-        require("Preview:" in preview.stdout + preview.stderr and
-                "not the stable project test contract" in preview.stdout + preview.stderr,
+        require("Preview:" in preview.stdout + preview.stderr,
                 "toka test is not clearly marked Preview")
+        preview_json = run([toka, "test", "--json"], temp_root, expected=2)
+        preview_report(preview_json, "configuration_error", 2)
         failed_test_root = temp_root / "failed_preview_test"
         (failed_test_root / "tests").mkdir(parents=True)
         (failed_test_root / "package.tk").write_text(
@@ -140,8 +200,12 @@ def main():
             "}\n", encoding="utf-8")
         failed_preview = run([toka, "test"], failed_test_root, expected=2 if os.name == "nt" else 1)
         require(("POSIX" in failed_preview.stdout + failed_preview.stderr) if os.name == "nt" else
-                ("[FAILED (Compile)]" in failed_preview.stdout),
+                ("[FAILED (Compile)]" in failed_preview.stdout + failed_preview.stderr),
                 "toka test did not report the preview capability/failure boundary")
+        if os.name != "nt":
+            failed_preview_json = run([toka, "test", "--json"], failed_test_root,
+                                      expected=1)
+            preview_report(failed_preview_json, "failed", 1, compile_failure=True)
         checks.extend(("toka-test-preview", "toka-test-preview-failure-exit"))
 
         source_dir = temp_root / "project" / "src" / "nested"
@@ -203,12 +267,16 @@ def main():
             checks.append("doctor-python-runtime-contract")
             missing_python_project = temp_root / "missing_python_project"
             run([installed_toka, "new", missing_python_project], temp_root, env=env)
+            missing_python_env = env.copy()
+            missing_python_env["PATH"] = str(installed_bin)
+            manifest_before = (missing_python_project / "package.tk").read_bytes()
             failed_add = run(
                 [installed_toka, "add", "missing-python-probe"],
-                missing_python_project, env=bad_python_env, expected=1,
+                missing_python_project, env=missing_python_env, expected=1,
             )
-            require("Python 3 package helper" in failed_add.stdout and
-                    "toka doctor" in failed_add.stdout,
+            require("could not launch Python 3 package helper" in
+                    failed_add.stdout + failed_add.stderr and
+                    (missing_python_project / "package.tk").read_bytes() == manifest_before,
                     "toka add hid the package-helper launch failure")
             checks.append("package-helper-launch-diagnostic")
 
