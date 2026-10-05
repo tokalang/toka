@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the real replay shell guards before tags and with annotated tags."""
-import os,subprocess,tempfile,textwrap,unittest
+import json,os,shutil,subprocess,tempfile,textwrap,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 TEXT=(ROOT/'.github/workflows/qualified_artifact_replay.yml').read_text()
@@ -21,9 +21,20 @@ class Binding(unittest.TestCase):
  def git(self,*args):return subprocess.run(['git','-c','core.fsmonitor=false',*args],cwd=self.root,text=True,capture_output=True,check=True)
  def check(self,job='policy-plan',success=True,**override):
   env=dict(os.environ,TAG_NAME='v0.12.0',CANDIDATE_SHA=self.sha,CANDIDATE_ONLY='true',ASSET_SOURCE='candidate_run',QUALIFICATION_RUN_ID='123',ARCHIVE_SHA256='a'*64);env.update(override)
-  row=subprocess.run(['bash','-c',guard(job)],cwd=self.root,env=env,text=True,capture_output=True);self.assertEqual(row.returncode==0,success,row.stderr)
+  shells=list(dict.fromkeys(['/bin/bash',shutil.which('bash')]))
+  for shell in shells:
+   version=subprocess.check_output([shell,'--version'],text=True).splitlines()[0]
+   row=subprocess.run([shell,'-c',guard(job)],cwd=self.root,env=env,text=True,capture_output=True)
+   context={'schema':'toka.replay-shell-guard-control','shell':shell,'shell_version':version,'job':job,'inputs':{k:env[k] for k in ('TAG_NAME','CANDIDATE_SHA','CANDIDATE_ONLY','ASSET_SOURCE')},'expected_success':success,'actual_exit_code':row.returncode,'stdout':row.stdout,'stderr':row.stderr}
+   print(json.dumps(context),flush=True)
+   self.assertEqual(row.returncode==0,success,json.dumps(context))
  def annotate(self,label):self.git('-c','user.name=control','-c','user.email=control@example.invalid','tag','-a',label,'-m','fixed source')
  def test_candidate_bytes_before_tag(self):self.check()
+ def test_canonical_label_matrix(self):
+  for label in ('v0.12.0','v0.12.1','v0.12.10','v0.12.123'):
+   self.check(TAG_NAME=label)
+  for label in ('v0.12.01','v0.12.00','v0.12.0x','v0.12.0-rc.1'):
+   self.check(success=False,TAG_NAME=label)
  def test_default_requires_tag(self):self.check(success=False,CANDIDATE_ONLY='false')
  def test_annotated_tag_remains_required(self):
   self.annotate('v0.12.0');self.check(CANDIDATE_ONLY='false');self.git('tag','-d','v0.12.0');self.git('tag','v0.12.0');self.check(success=False,CANDIDATE_ONLY='false')

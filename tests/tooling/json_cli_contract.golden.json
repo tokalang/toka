@@ -125,14 +125,51 @@
     },
     "evidence": {
       "exit": 1,
-      "schema": "toka.semantic-evidence",
+      "schema": "toka.semantic-evidence-view",
       "version": 1,
       "contains": {
-        "records": [{
-          "rule": "PAL-CALL-001",
-          "decision": "Reject",
-          "reason": "OverlappingExclusiveAccess"
-        }]
+        "records": [
+          {
+            "rule": "PAL-CALL-001",
+            "decision": "Reject",
+            "reason": "OverlappingExclusiveAccess"
+          }
+        ]
+      },
+      "equals": {
+        "result": "failed",
+        "exit_code": 1,
+        "analysis.scope": "full",
+        "analysis.result": "failed",
+        "analysis.exit_code": 1,
+        "compiler.exit_code": 1
+      },
+      "minimum_lengths": {
+        "records": 1
+      }
+    },
+    "evidence_invalid_option": {
+      "exit": 2,
+      "schema": "toka.semantic-evidence-view",
+      "version": 1,
+      "equals": {
+        "result": "configuration_error",
+        "exit_code": 2,
+        "analysis.scope": "full",
+        "analysis.result": "not_started",
+        "analysis.exit_code": null,
+        "analysis.records_total": null,
+        "analysis.records_emitted": 0,
+        "compiler": null,
+        "records": []
+      },
+      "contains": {
+        "errors": [
+          {
+            "category": "configuration_error",
+            "message": "unrecognized arguments: --check-only"
+          }
+        ]
       }
     },
     "cede_obligations": {

@@ -61,16 +61,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test "$CANDIDATE_ONLY" = false
-          [[ "$TAG_NAME" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]]
-          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$QUALIFICATION_RUN_ID" =~ ^[0-9]+$ ]]
-          [[ "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          [[ "$ASSET_SOURCE" = qualified_run || "$ASSET_SOURCE" = candidate_run ]]
-          git rev-parse "refs/tags/$TAG_NAME^{tag}" >/dev/null
+          test "$CANDIDATE_ONLY" = false || { echo "Candidate-only replay is restricted to 0.12" >&2; exit 2; }
+          [[ "$TAG_NAME" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
+          [[ "$QUALIFICATION_RUN_ID" =~ ^[0-9]+$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
+          [[ "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
+          [[ "$ASSET_SOURCE" = qualified_run || "$ASSET_SOURCE" = candidate_run ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
+          git rev-parse "refs/tags/$TAG_NAME^{tag}" >/dev/null || { echo "Replay requires annotated tag" >&2; exit 2; }
           test "$(git rev-parse "refs/tags/$TAG_NAME^{commit}")" = \
-            "$CANDIDATE_SHA"
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+            "$CANDIDATE_SHA" || { echo "Replay tag SHA mismatch" >&2; exit 2; }
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA" || { echo "Replay checkout SHA mismatch" >&2; exit 2; }
           run_api="repos/$GITHUB_REPOSITORY/actions/runs/$QUALIFICATION_RUN_ID"
           test "$(gh api "$run_api" --jq .status)" = completed
           test "$(gh api "$run_api" --jq .conclusion)" = success
@@ -201,14 +201,14 @@ jobs:
           ASSET_SOURCE: ${{ inputs.asset_source }}
         run: |
           set -euo pipefail
-          [[ "$TAG_NAME" =~ ^v0\.12\.(0|[1-9][0-9]*)$ ]]
-          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          [[ "$TAG_NAME" =~ ^v0\.12\.(0|[1-9][0-9]*)$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA" || { echo "Replay checkout SHA mismatch" >&2; exit 2; }
           if [[ "$CANDIDATE_ONLY" == true ]]; then
-            test "$ASSET_SOURCE" = candidate_run
+            test "$ASSET_SOURCE" = candidate_run || { echo "Candidate replay requires candidate_run" >&2; exit 2; }
           else
-            git rev-parse "refs/tags/$TAG_NAME^{tag}" >/dev/null
-            test "$(git rev-parse "refs/tags/$TAG_NAME^{commit}")" = "$CANDIDATE_SHA"
+            git rev-parse "refs/tags/$TAG_NAME^{tag}" >/dev/null || { echo "Replay requires annotated tag" >&2; exit 2; }
+            test "$(git rev-parse "refs/tags/$TAG_NAME^{commit}")" = "$CANDIDATE_SHA" || { echo "Replay tag SHA mismatch" >&2; exit 2; }
           fi
           extra=()
           if [[ -n "$OPTIONAL_RUN_ID" ]]; then extra+=(--optional-run-id "$OPTIONAL_RUN_ID"); fi

@@ -36,6 +36,33 @@ def normalize_machine_output(output, path_aliases):
     return normalized
 
 
+def evidence_rejection_success(document, source):
+    """Manager view contract; keep the raw compiler evidence ABI independent."""
+    if not isinstance(document, dict):
+        return False
+    analysis = document.get("analysis", {})
+    records = document.get("records", [])
+    compiler = document.get("compiler")
+    if not isinstance(analysis, dict) or not isinstance(records, list) or not all(isinstance(r, dict) for r in records):
+        return False
+    return (document.get("schema") == "toka.semantic-evidence-view" and
+            type(document.get("version")) is int and document["version"] == 1 and
+            document.get("result") == "failed" and
+            document.get("exit_code") == 1 and document.get("errors") == [] and
+            analysis.get("scope") == "full" and analysis.get("result") == "failed" and
+            analysis.get("exit_code") == 1 and isinstance(compiler, dict) and
+            compiler.get("exit_code") == 1 and
+            isinstance(analysis.get("records_total"), int) and
+            analysis["records_total"] >= analysis.get("records_emitted", 0) == len(records) and
+            any(record.get("rule") == "PAL-BORROW-002" and
+                record.get("decision") == "Reject" and
+                record.get("reason") == "ActiveSharedBorrow" and
+                record.get("origin_location", {}).get("file") == str(Path(source).resolve()) and
+                isinstance(record.get("source"), dict) and
+                record["source"].get("origin") in ("user", "dependency", "sdk", "unknown")
+                for record in records))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", default="build")
@@ -130,15 +157,7 @@ def main():
         [toka, "evidence", "--json", ownership],
         expected=1, source_bytes=len(ownership_source.encode("utf-8")),
     ).stdout)
-    evidence_successes = int(
-        evidence_doc.get("schema") == "toka.semantic-evidence" and
-        evidence_doc.get("version") == 1 and
-        any(record.get("rule") == "PAL-BORROW-002" and
-            record.get("decision") == "Reject" and
-            record.get("reason") == "ActiveSharedBorrow" and
-            record.get("origin_location", {}).get("file")
-            for record in evidence_doc.get("records", []))
-    )
+    evidence_successes = int(evidence_rejection_success(evidence_doc, ownership))
 
     context_result = json.loads(run([
         tokac, "--semantic-context=json", clean,

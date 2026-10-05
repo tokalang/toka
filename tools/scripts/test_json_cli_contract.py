@@ -78,6 +78,16 @@ def run_case(toka, name, command, spec):
         for expected in expected_records:
             require(any(contains_subset(record, expected) for record in records),
                     name + " omitted golden record at " + path)
+    if name == "evidence":
+        analysis = document["analysis"]
+        require(analysis["records_total"] >= analysis["records_emitted"] == len(document["records"]),
+                "evidence analysis/output record counts disagree")
+        require(any(record.get("rule") == "PAL-CALL-001" and
+                    record.get("decision") == "Reject" and
+                    record.get("reason") == "OverlappingExclusiveAccess" and
+                    record.get("origin_location", {}).get("file")
+                    for record in document["records"]),
+                "evidence lost the PAL rejection origin")
     for path, minimum in spec.get("minimum_lengths", {}).items():
         value = nested_value(document, path)
         require(hasattr(value, "__len__") and len(value) >= minimum,
@@ -132,6 +142,10 @@ def main():
             "--line", "19", "--character", "15", "--json",
         ],
         "evidence": [
+            "evidence", "--json",
+            ROOT / "tests/semantics/tki_replay/cases/pal_call_001_alias/fail_mut_read_alias.tk",
+        ],
+        "evidence_invalid_option": [
             "evidence", "--json", "--check-only",
             ROOT / "tests/semantics/tki_replay/cases/pal_call_001_alias/fail_mut_read_alias.tk",
         ],
