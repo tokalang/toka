@@ -93,6 +93,14 @@ def preview_report(result, expected_result, expected_exit, compile_failure=False
     return report
 
 
+def preview_failure(result, windows):
+    output = result.stdout + result.stderr
+    require((result.returncode == 2 and "Preview:" in output and
+             "unsupported_supervision" in output) if windows else
+            (result.returncode == 1 and "[FAILED (Compile)]" in output),
+            "toka test did not report the preview capability/failure boundary")
+
+
 def release_version(output, tool):
     match = re.search(r"\bversion ([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)\b", output)
     require(match is not None, tool + " did not report a release version")
@@ -199,9 +207,7 @@ def main():
             "    return value\n"
             "}\n", encoding="utf-8")
         failed_preview = run([toka, "test"], failed_test_root, expected=2 if os.name == "nt" else 1)
-        require(("POSIX" in failed_preview.stdout + failed_preview.stderr) if os.name == "nt" else
-                ("[FAILED (Compile)]" in failed_preview.stdout + failed_preview.stderr),
-                "toka test did not report the preview capability/failure boundary")
+        preview_failure(failed_preview, windows=os.name == "nt")
         if os.name != "nt":
             failed_preview_json = run([toka, "test", "--json"], failed_test_root,
                                       expected=1)

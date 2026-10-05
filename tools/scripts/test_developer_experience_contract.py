@@ -39,6 +39,29 @@ class Contract(unittest.TestCase):
                 with self.assertRaises(RuntimeError):self.validate(data,True)
         data=fixture(True);data['tests'][0]['result']='run_failed'
         with self.assertRaises(RuntimeError):self.validate(data,True)
+    def test_windows_requires_same_result_exit_preview_and_capability(self):
+        for stdout,stderr in [('', 'Preview: project tests\r\nError: unsupported_supervision\r\n'),
+                              ('Preview: project tests\n', 'Error: unsupported_supervision\n')]:
+            gate.preview_failure(subprocess.CompletedProcess(['toka','test'],2,stdout,stderr),windows=True)
+        cases=[('exit-zero',0,'Preview: project tests\nError: unsupported_supervision\n'),
+               ('exit-one',1,'Preview: project tests\nError: unsupported_supervision\n'),
+               ('ordinary-error',2,'Preview: project tests\nError: invalid_entry\n'),
+               ('helper-missing',2,'project test helper missing from active SDK\n'),
+               ('helper-missing-with-preview',2,'Preview: project tests\nproject test helper missing from active SDK\n'),
+               ('missing-capability',2,'Preview: project tests\nPOSIX is required\n'),
+               ('missing-preview',2,'Error: unsupported_supervision\n')]
+        # A preceding command's Preview must not satisfy this command's boundary.
+        self.validate(fixture())
+        for name,code,stderr in cases:
+            with self.subTest(name=name),self.assertRaises(RuntimeError):
+                gate.preview_failure(subprocess.CompletedProcess(['toka','test'],code,'',stderr),windows=True)
+    def test_non_windows_compile_failure_behavior_is_preserved(self):
+        gate.preview_failure(subprocess.CompletedProcess(['toka','test'],1,'','[FAILED (Compile)]\n'),windows=False)
+        for code,text in [(0,'[FAILED (Compile)]\n'),(2,'[FAILED (Compile)]\n'),
+                          (1,'Error: invalid_entry\n'),
+                          (1,'Preview: project tests\nError: unsupported_supervision\n')]:
+            with self.subTest(code=code,text=text),self.assertRaises(RuntimeError):
+                gate.preview_failure(subprocess.CompletedProcess(['toka','test'],code,'',text),windows=False)
     def test_semantic_failure_retains_original_context_and_non_utf8(self):
         with tempfile.TemporaryDirectory(prefix='toka-gate-diagnostics-') as tmp:
             root=Path(tmp);gate._diagnostics_dir=root/'logs';argv=[sys.executable,'-c',"import os; os.write(1,b'out\\xff'); os.write(2,b'err\\xfe')"]
