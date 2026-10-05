@@ -34,6 +34,8 @@ jobs:
     needs: change-scope
     if: needs.change-scope.outputs.heavy == 'true'
     runs-on: windows-latest
+    env:
+      TOKA_LIB: ${{ github.workspace }}/lib
     defaults:
       run:
         shell: msys2 {0}

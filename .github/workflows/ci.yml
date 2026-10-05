@@ -50,6 +50,8 @@ jobs:
     needs: change-scope
     if: needs.change-scope.outputs.heavy == 'true'
     runs-on: ${{ matrix.runner }}
+    env:
+      TOKA_LIB: ${{ github.workspace }}/lib
     strategy:
       fail-fast: false
       matrix:
