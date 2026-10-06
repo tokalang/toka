@@ -72,7 +72,7 @@
 | P02 | 锁定本地依赖；移动测试入口但不改项目根 | 本地映射正确 | 0 | lock 节点身份保留、cwd=root；无隐式升级 |
 | P03 | 已校验缓存；开启项目既有离线模式 | 不访问网络 | 0 | 缓存身份一致；lock 摘要不变 |
 | P04 | 离线且缺缓存 | 获取失败；任何入口不启动 | 2 | result=infrastructure_error；dependencies 原因和节点可追溯 |
-| P05 | 有依赖但 lock 缺失/损坏/与 manifest 不符；分别运行 | 提示显式 fetch，不改 lock | 2 | configuration_error；依赖准备前停止，不记 compile_failed |
+| P05 | 有依赖但 lock 缺失/损坏/与 manifest 不符；分别运行 | 提示显式修复/fetch，不改 lock | 2 | 分别为 test.lock_missing / test.lock_invalid / test.lock_mismatch；configuration_error；context 准备退出 2；已选入口 not_run，编译/运行未启动；不得凭 fetch 文案判断身份 |
 | P06 | 无依赖、无 lock 项目 | 允许运行 | 0 | identity.lock_sha256=null；不是锁定校验失败 |
 | P07 | 原锁定包缓存缺失，在线可获取；registry 同时发布更新版本 | 只取原锁定版本 | 0 | 不选择更新版；lock 字节和摘要不变 |
 | P08 | 下载/缓存包摘要与 lock 不符 | 校验失败，不运行入口 | 2 | dependency 身份/期望与实际摘要有记录；不重写 lock |

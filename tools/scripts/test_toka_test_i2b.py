@@ -22,10 +22,13 @@ import toka_test as runner
 import toka_test_report as reports
 from test_toka_test_i1 import manifest, source
 from test_toka_test_i2a import fake_compiler
+from toka_test_lock_contract import validate as validate_lock_codes, require_lock_failure, LOCK_CODES
 
 
 def validate(report):
-    required=set(reports.new_report())-{'preview'}
+    validate_lock_codes(report)
+    from toka_test_lock_contract import REQUIRED_FIELDS
+    required=REQUIRED_FIELDS
     assert required<=set(report),required-set(report)
     assert report['schema']=='toka.test-report' and report['version']==1 and report['finalized'] is True
     assert report['preview'] is True
@@ -252,11 +255,25 @@ class Controls(unittest.TestCase):
                 runner.packages.Resolver(self.root/'package.tk',lock,self.root/'.toka',offline=False,refresh=False).run()
                 manifest(self.root,'dep="./dep",another="./dep",')
             r,err=self.invoke()
+            require_lock_failure(r, LOCK_CODES[case], 2)
             self.assertEqual(r['result'],'configuration_error',case)
             self.assertEqual(r['termination']['reason'],'configuration_error')
             self.assertEqual(r['exit_code'],2);self.assertEqual(r['summary']['not_run'],1)
             self.assertEqual(r['identity']['status'],'failed')
             self.assertEqual(r['errors'][0]['category'],'configuration_error')
+    def test_lock_code_does_not_override_report_persistence_failure(self):
+        dep=self.root/'dep';manifest(dep);source(dep,'lib/official/dep.tk','pub fn answer() -> i32 { return 42 }')
+        manifest(self.root,'dep="./dep",');source(self.root,content='exit')
+        original=runner.packages.atomic_write
+        def fail(path,data):
+            if Path(path).name=='report.json':raise OSError(28,'controlled report persistence failure')
+            return original(path,data)
+        with patch.object(runner.packages,'atomic_write',fail):r,err=self.invoke()
+        self.assertEqual(r['exit_code'],2);self.assertEqual(r['result'],'infrastructure_error')
+        self.assertTrue(all(e['code'] is None for e in r['errors']))
+        raw=json.loads(next((self.root/'.toka/test-runs').rglob('context-result.json')).read_text())
+        self.assertEqual(raw['code'],'test.lock_missing')
+
     def test_offline_cache_failure_is_infrastructure_not_lock_configuration(self):
         manifest(self.root,'reg="reg:1.0.0",');source(self.root,content='exit')
         entry=runner.packages.LockEntry('reg','registry','reg','1.0.0','1'*64,'2'*64,[])
@@ -344,13 +361,20 @@ def installed(sdk,output):
                 assert child.poll() is None
                 os.kill(child.pid,signal.SIGINT)
             stdout,stderr=child.communicate(timeout=30);stderr=observed+stderr
-            decoder=json.JSONDecoder();report,index=decoder.raw_decode(stdout.decode('utf-8'));assert not stdout.decode('utf-8')[index:].strip()
-            validate(report);assert child.returncode==report['exit_code']
-            if report['artifact_root']:
-                assert json.loads((Path(report['artifact_root'])/'report.json').read_text())==report
             folder=output/name;folder.mkdir();(folder/'stdout').write_bytes(stdout);(folder/'stderr').write_bytes(stderr)
+            record={'name':name,'command':command,'cwd':str(root),'exit_code':child.returncode,'report':None,'live_handshake_observed':interrupt}
+            try:
+                decoder=json.JSONDecoder();report,index=decoder.raw_decode(stdout.decode('utf-8'));record['report']=report
+                assert not stdout.decode('utf-8')[index:].strip(),'C6 stdout has trailing content'
+                validate(report);validate_lock_codes(report,child.returncode)
+                if report['artifact_root']:
+                    assert json.loads((Path(report['artifact_root'])/'report.json').read_text())==report
+            except (AssertionError,ValueError,KeyError,TypeError) as failure:
+                record['consumer_contract_error']={'phase':'consumer_report_validation','message':str(failure),
+                    'stdout':str(folder/'stdout'),'stderr':str(folder/'stderr'),
+                    'next_check':'Compare original CLI status and context-result.json against C6/P05.'}
+                (folder/'result.json').write_text(json.dumps(record,indent=2)+'\n');raise
             if (root/'.toka/test-runs').is_dir():shutil.copytree(root/'.toka/test-runs',folder/'test-runs')
-            record={'name':name,'command':command,'exit_code':child.returncode,'report':report,'live_handshake_observed':interrupt}
             (folder/'result.json').write_text(json.dumps(record,indent=2)+'\n');results.append(record)
             return report
         r=run('success');assert r['exit_code']==0 and r['identity']['sdk_revision'] is None and r['identity']['status']=='complete'
@@ -379,6 +403,7 @@ def installed(sdk,output):
             return setup
         for case in ('missing','malformed','stale'):
             r=run('lock-'+case,setup=lock_problem(case))
+            require_lock_failure(r, LOCK_CODES[case], 2)
             assert r['exit_code']==2 and r['result']=='configuration_error' and r['termination']['reason']=='configuration_error'
             assert all(t['result']=='not_run' for t in r['tests']) and r['identity']['status']=='failed'
             assert r['errors'][0]['category']=='configuration_error'

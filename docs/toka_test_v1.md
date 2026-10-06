@@ -266,6 +266,27 @@ stdout 关闭等无法交付情况在可用 stderr 明确说明，不能承诺�
 | `termination` | 停调度原因与触发信号，见下文；没有停止事件时 reason=null |
 | `timings` | C7 中调用级阶段与总耗时 |
 
+A1 在既有 `errors[].code` 字段内增加三类锁配置归因，保持 C6 `version=1`、
+退出码、错误优先级及调度语义不变。代码在实际发现点产生，经 context worker
+传递；不得从人类消息反推：
+
+| code | 发现的锁配置失败 | 用户处理建议 |
+| --- | --- | --- |
+| `test.lock_missing` | 项目要求依赖锁，但锁不存在 | 核对依赖声明后显式运行 `toka fetch` |
+| `test.lock_invalid` | 锁无法按当前格式解析或通过既有格式校验 | 保留原锁，检查格式/编码与工具版本，再显式修复或 fetch |
+| `test.lock_mismatch` | 锁记录与当前依赖要求不匹配 | 核对 manifest、版本、路径包内容及锁记录，确认意图后显式 fetch |
+
+上述受控失败为 `configuration_error/2`；错误与 termination 的 phase 为
+`context`，context 准备子进程正常退出 2，已选测试保持 `not_run`，编译/运行未启动。
+不会隐式生成或更新锁。读取权限、工具启动、下载、缓存、完整性故障和锁等待超时
+保留原分类；其他配置错误不统一映射为这些代码。更高优先级的报告持久化故障
+仍作为基础设施错误，不冒充单一锁错误，原锁代码保留在 worker 回执中。
+
+旧合法报告 `code=null` 保留一般失败结果，显示具体归因不可用，不猜测根因。
+未知代码保留原值，仍按既有 result/exit_code 处理。新候选 P05 的三类受控场景
+缺码、空码或错码必须拒绝。协议必需字段缺失或不支持的协议版本属于消费者契约错误；
+保留原始 CLI 回执，不伪造生产者结果。详见 [A1 迁移与消费者对应表](toka_test_lock_codes.md)。
+
 termination 固定字段为 reason、phase、trigger、signal、cleanup；reason 为
 configuration_error|infrastructure_error|interrupt 或 null，trigger 为
 none|timeout|interrupt|residual_process，signal 是 runner 收到的实际中断信号或 null。

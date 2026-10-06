@@ -182,7 +182,7 @@ def materialize(report, receipt):
                                'trigger':last.get('trigger') if last and last.get('trigger') in ('timeout','interrupt','residual_process') else ('interrupt' if receipt['exit_code']==130 else 'none'),
                                'signal':receipt.get('interrupt_signal'),'cleanup':cleanup(last)}
         if receipt['exit_code']==2:
-            report['errors']=[{'code':None,'message':receipt.get('error') or receipt.get('persistence_error') or receipt.get('reason') or 'test preparation failed',
+            report['errors']=[{'code':receipt.get('error_code') if not receipt.get('persistence_error') else None,'message':receipt.get('error') or receipt.get('persistence_error') or receipt.get('reason') or 'test preparation failed',
                                'phase':report['termination']['phase'],'category':receipt.get('error_category',kind),'os_error':receipt.get('os_error') if receipt.get('os_error') is not None else (last.get('os_error') if last else None),
                                'source':source_origin(None,graph,sdk_root)}]
     if 'dependencies' in receipt:report['dependencies']=receipt['dependencies']

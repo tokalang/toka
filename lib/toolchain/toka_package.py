@@ -40,9 +40,10 @@ DEFAULT_REGISTRY_URL = "https://pkg.tokalang.dev"
 
 class PackageError(RuntimeError):
     category = 'infrastructure_error'
-    def __init__(self, message, *, details=None):
+    def __init__(self, message, *, details=None, code=None):
         super().__init__(message)
         self.details = details or {}
+        self.code = code
 
 
 class PackageIntegrityError(PackageError):
@@ -623,59 +624,59 @@ def file_sha256(path: Path) -> str:
 
 def read_lock(path: Path) -> dict[str, LockEntry]:
     if not path.is_file():
-        if path.exists():raise PackageConfigurationError('package.lock must be a regular file')
+        if path.exists():raise PackageConfigurationError('package.lock must be a regular file', code="test.lock_invalid")
         return {}
     try:
         lines = path.read_text(encoding='utf-8').splitlines()
     except UnicodeError as error:
-        raise PackageConfigurationError('package.lock must be valid UTF-8') from error
+        raise PackageConfigurationError('package.lock must be valid UTF-8', code="test.lock_invalid") from error
     if not lines or lines[0] != LOCK_HEADER:
-        raise PackageConfigurationError("unsupported or malformed package.lock")
+        raise PackageConfigurationError("unsupported or malformed package.lock", code="test.lock_invalid")
     entries: dict[str, LockEntry] = {}
     previous = ""
     for line in lines[1:]:
         fields = line.split("\t")
         if len(fields) != 8 or fields[0] != "package":
-            raise PackageConfigurationError("malformed package.lock entry")
+            raise PackageConfigurationError("malformed package.lock entry", code="test.lock_invalid")
         _, alias, kind, locator, resolved, archive_hash, content_hash, dependencies = fields
         if not ALIAS_RE.fullmatch(alias) or kind not in ("path", "git", "registry"):
-            raise PackageConfigurationError("invalid package.lock entry")
+            raise PackageConfigurationError("invalid package.lock entry", code="test.lock_invalid")
         if alias in entries or (previous and alias <= previous):
-            raise PackageConfigurationError("package.lock entries are duplicate or unsorted")
+            raise PackageConfigurationError("package.lock entries are duplicate or unsorted", code="test.lock_invalid")
         if not re.fullmatch(r"[0-9a-f]{64}", content_hash):
-            raise PackageConfigurationError("invalid package content hash")
+            raise PackageConfigurationError("invalid package content hash", code="test.lock_invalid")
         if archive_hash != "-" and not re.fullmatch(r"[0-9a-f]{64}", archive_hash):
-            raise PackageConfigurationError("invalid package archive hash")
+            raise PackageConfigurationError("invalid package archive hash", code="test.lock_invalid")
         deps = [] if dependencies == "-" else dependencies.split(",")
         if deps != sorted(set(deps)) or any(not ALIAS_RE.fullmatch(dep) for dep in deps):
-            raise PackageConfigurationError("invalid locked dependency list")
+            raise PackageConfigurationError("invalid locked dependency list", code="test.lock_invalid")
         entry = LockEntry(alias, kind, locator, resolved, archive_hash, content_hash, deps)
         try:
             entry.line()
         except PackageError as error:
-            raise PackageConfigurationError(str(error)) from error
+            raise PackageConfigurationError(str(error), code="test.lock_invalid") from error
         if kind == "path":
             if archive_hash != "-" or not Path(locator).is_absolute() or resolved != locator:
-                raise PackageConfigurationError("invalid locked path package: " + alias)
+                raise PackageConfigurationError("invalid locked path package: " + alias, code="test.lock_invalid")
         elif kind == "git":
             if archive_hash != "-" or not re.fullmatch(r"[0-9a-f]{40,64}", resolved):
-                raise PackageConfigurationError("invalid locked Git package: " + alias)
+                raise PackageConfigurationError("invalid locked Git package: " + alias, code="test.lock_invalid")
         elif archive_hash == "-" or not resolved or resolved == "latest":
-            raise PackageConfigurationError("invalid locked registry package: " + alias)
+            raise PackageConfigurationError("invalid locked registry package: " + alias, code="test.lock_invalid")
         entries[alias] = entry
         previous = alias
 
     for alias, entry in entries.items():
         for dependency in entry.dependencies:
             if dependency == alias or dependency not in entries:
-                raise PackageConfigurationError("invalid locked dependency reference: " + alias + " -> " + dependency)
+                raise PackageConfigurationError("invalid locked dependency reference: " + alias + " -> " + dependency, code="test.lock_invalid")
 
     visiting: set[str] = set()
     visited: set[str] = set()
 
     def visit(alias: str) -> None:
         if alias in visiting:
-            raise PackageConfigurationError("package.lock contains a dependency cycle")
+            raise PackageConfigurationError("package.lock contains a dependency cycle", code="test.lock_invalid")
         if alias in visited:
             return
         visiting.add(alias)
@@ -820,7 +821,7 @@ class Resolver:
             self.old_lock = read_lock(self.lock_path)
         except PackageConfigurationError as error:
             if not locked:raise
-            raise PackageConfigurationError('invalid package.lock; run toka fetch: ' + str(error)) from error
+            raise PackageConfigurationError('invalid package.lock; run toka fetch: ' + str(error), code=error.code) from error
         self.entries: dict[str, LockEntry] = {}
         self.requests: dict[str, tuple[str, str, str]] = {}
         self.active: list[str] = []
@@ -1041,14 +1042,15 @@ class Resolver:
     def _materialize(self, dependency: Dependency) -> tuple[LockEntry, Path]:
         locked = self._locked_for(dependency)
         if self.locked and locked is None:
-            raise PackageConfigurationError("test requires a matching package.lock; run toka fetch: " + dependency.alias)
+            raise PackageConfigurationError("test requires a matching package.lock; run toka fetch: " + dependency.alias,
+                                            code="test.lock_missing" if self.lock_bytes is None else "test.lock_mismatch")
         if dependency.kind == "path":
             root = Path(dependency.locator)
             if not (root / "package.tk").is_file():
                 raise PackageError("path package has no package.tk: " + dependency.alias)
             digest = tree_sha256(root)
             if self.locked and digest != locked.content_sha256:
-                raise PackageConfigurationError("local package changed since package.lock: " + dependency.alias)
+                raise PackageConfigurationError("local package changed since package.lock: " + dependency.alias, code="test.lock_mismatch")
             entry = LockEntry(dependency.alias, "path", dependency.locator, dependency.locator, "-", digest, [])
             return entry, root
         if dependency.kind == "git":
@@ -1097,7 +1099,7 @@ class Resolver:
                 self._resolve(dependency)
             encoded = encode_lock(self.entries)
             if self.locked and self.lock_bytes is not None and encoded.encode("utf-8") != self.lock_bytes:
-                raise PackageConfigurationError("test would change package.lock; run toka fetch explicitly")
+                raise PackageConfigurationError("test would change package.lock; run toka fetch explicitly", code="test.lock_mismatch" if self.entries != self.old_lock else None)
             for target, source in sorted(self.candidates.items(), key=lambda item: str(item[0])):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if target.exists():

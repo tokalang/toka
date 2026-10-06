@@ -343,7 +343,7 @@ def prepare_worker(mode, root, sdk_lib, run_dir, compile_ms):
         while cause is not None:
             if getattr(cause,'errno',None) is not None:native_errno = cause.errno;break
             cause = cause.__cause__
-        packages.atomic_write(path, json.dumps({'error': str(error), 'type': type(error).__name__, 'category': getattr(error,'category','infrastructure_error'), 'details': getattr(error,'details',{}), 'os_error': native_errno, 'dependencies': {'lock_wait_ms': observations['lock_wait_ms'], 'nodes': []}}) + '\n')
+        packages.atomic_write(path, json.dumps({'error': str(error), 'type': type(error).__name__, 'category': getattr(error,'category','infrastructure_error'), 'code': getattr(error,'code',None), 'details': getattr(error,'details',{}), 'os_error': native_errno, 'dependencies': {'lock_wait_ms': observations['lock_wait_ms'], 'nodes': []}}) + '\n')
         print(str(error), file=sys.stderr)
         return 2
 
@@ -424,11 +424,13 @@ def run_preparation(supervisor, mode, root, sdk_lib, run_dir, receipt, budget, c
         if data.get('details'):receipt['error_details'] = data['details']
         if data.get('os_error') is not None:receipt['worker_os_error'] = data['os_error']
         if data.get('category') == 'configuration_error':
-            if data['type'] == 'PackageConfigurationError':raise packages.PackageConfigurationError(data['error'])
-            raise ConfigurationError(data['error'])
-        if data['type'] == 'PackageError':
-            raise packages.PackageError(data['error'])
-        raise PreviewError(data['error'])
+            error = packages.PackageConfigurationError(data['error']) if data['type']=='PackageConfigurationError' else ConfigurationError(data['error'])
+        elif data['type'] == 'PackageError':
+            error = packages.PackageError(data['error'])
+        else:
+            error = PreviewError(data['error'])
+        error.code = data.get('code')
+        raise error
     if phase['exit_code'] != 0 or phase['signal'] is not None:
         raise PreviewError(mode + ' preparation failed; see ' + phase['stderr'])
     return data
@@ -568,6 +570,7 @@ def execute_preview(arguments, sdk_lib, tokac, cwd=None):
         if report['artifact_root'] is not None:
             try:packages.atomic_write(Path(report['artifact_root'])/'report.json',json.dumps(report,ensure_ascii=True,indent=2)+'\n')
             except OSError as persistence:
+                for prior_error in report['errors']:prior_error['code']=None
                 report['exit_code']=2;report['result']='infrastructure_error';report['errors'].append({'code':None,'message':str(persistence),'phase':'report_preparation','os_error':getattr(persistence,'errno',None),'source':reports.source_origin(None,None,None)})
         if json_mode(arguments):
             deliver_json(report)
@@ -727,6 +730,7 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started
     except (OSError, ValueError, packages.PackageError, PreviewError, SupervisionError) as error:
         receipt['result'] = 'configuration_error' if receipt.get('active_stage')=='selection' or getattr(error,'category',None)=='configuration_error' else 'infrastructure_or_configuration_error'
         receipt['error'] = str(error)
+        receipt['error_code'] = getattr(error, 'code', None)
         if isinstance(error, InvalidEntryError):
             receipt['reason'] = error.reason
             receipt['entry_error'] = {'input': error.entry_input, 'normalized_path': error.normalized_path}

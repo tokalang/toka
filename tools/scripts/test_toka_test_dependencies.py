@@ -4,19 +4,26 @@ import argparse,contextlib,fcntl,hashlib,http.server,json,os,shutil,subprocess,s
 from pathlib import Path
 from unittest.mock import patch
 from test_toka_test_i2c_batch import Batch,manifest,source,sha
+from toka_test_lock_contract import LOCK_CODES, require_lock_failure
 OK='fn main() -> i32 { return 0 }\n'
 REG='import official/reg::{answer}\nfn main() -> i32 { if answer()!=42 { return 1 } return 0 }\n'
 class Dependencies(Batch):
  def invoke(self,name,root,args=(),code=0,rows=(),env=None,active=None,extra=None):
   before=(root/'package.lock').read_bytes() if (root/'package.lock').is_file() else None
   command=[str((active or self.sdk)/'bin/toka'),'test','--json',*args];r=subprocess.run(command,cwd=root,env=env or self.env,capture_output=True,timeout=45)
-  report,end=json.JSONDecoder().raw_decode(r.stdout.decode());assert not r.stdout.decode()[end:].strip()
-  self.save(name,root,command,r.returncode,r.stdout,r.stderr,report,rows=rows)
+  report=self.decode_save(name,root,command,r,rows=rows)
   after=(root/'package.lock').read_bytes() if (root/'package.lock').is_file() else None
   checks={'exit_code':r.returncode==code,'lock_unchanged':before==after}
   if code==2 and name.startswith(('P04','P05','P08','P11','P14a')):
    checks.update(all_not_run=all(t['result']=='not_run' and t['phases']['compile_link']['state']=='not_started' for t in report['tests']),selected=report['summary']['total']==1)
-  if extra:checks.update(extra(report))
+  if extra:
+   try:checks.update(extra(report))
+   except (AssertionError,KeyError,TypeError,ValueError) as failure:
+    record=self.results[-1];checks['consumer_contract']=False
+    record.update(checks=checks,contract_pass=False,consumer_contract_error={'phase':'consumer_P05_validation','message':str(failure),
+      'stdout':str(self.output/name/'stdout'),'stderr':str(self.output/name/'stderr'),
+      'next_check':'Compare the fixed expected lock code and context facts against context-result.json; do not infer from message text.'})
+    (self.output/name/'result.json').write_text(json.dumps(record,indent=2)+'\n');raise
   if before is not None:(self.output/name/'lock.before').write_bytes(before)
   if after is not None:(self.output/name/'lock.after').write_bytes(after)
   record=self.results[-1];record.update(checks=checks,contract_pass=all(checks.values()),expected_exit_code=code,lock_before_sha256=hashlib.sha256(before).hexdigest() if before is not None else None,lock_after_sha256=hashlib.sha256(after).hexdigest() if after is not None else None)
@@ -85,7 +92,15 @@ class Dependencies(Batch):
     if kind=='missing':(root/'package.lock').unlink()
     elif kind=='malformed':(root/'package.lock').write_bytes(b'invalid lock\n')
     else:manifest(root,'reg="reg:2.0.0",')
-    count=len(self.requests);self.invoke('P05-'+kind,root,code=2,rows=['P05'],env=self.net,extra=lambda r:{'configuration_error':r['result']=='configuration_error','fetch_hint':any('fetch' in x['message'] for x in r['errors']),'no_network':len(self.requests)==count})
+    count=len(self.requests)
+    def lock_checks(r,kind=kind):
+     require_lock_failure(r,LOCK_CODES[kind],2)
+     return {'lock_error_code':r['errors'][0]['code']==LOCK_CODES[kind],
+             'lock_error_phase':r['errors'][0]['phase']=='context',
+             'configuration_error':r['result']=='configuration_error',
+             'repair_hint_readable':bool(r['errors'][0]['message'].strip()),
+             'no_network':len(self.requests)==count}
+    self.invoke('P05-'+kind,root,code=2,rows=['P05'],env=self.net,extra=lock_checks)
    self.latest='2.0.0';root=self.locked('pinned-old');count=len(self.requests);self.invoke('P07',root,rows=['P07'],env=self.net,extra=lambda r:{**self.flags(r,root),'pinned_version':self.packages.read_lock(root/'package.lock')['reg'].resolved=='1.0.0','cache_hash':self.packages.tree_sha256(root/'.toka/packages/reg-1.0.0')==self.content['1.0.0'],'download_old':any(x['path']=='/1.0.0.tar.gz' for x in self.requests[count:]),'never_new':all(x['path']!='/2.0.0.tar.gz' for x in self.requests[count:])});self.notes('P07',{'catalog_latest':self.latest,'requests':self.requests[count:]})
    for kind in ('installed','archive','download','catalog','extracted'):
     root=self.locked('integrity-'+kind);self.catalog_hash=None;self.bad_download=False;env=self.net

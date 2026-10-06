@@ -21,10 +21,16 @@ def cases(sdk,output):
             command=[str(sdk/'bin/toka'),'test',*(['--json'] if machine else []),*args]
             result=subprocess.run(command,cwd=cwd,env=env,capture_output=True,timeout=45)
             folder=output/name;folder.mkdir();(folder/'stdout').write_bytes(result.stdout);(folder/'stderr').write_bytes(result.stderr)
-            report=json.loads(result.stdout) if machine else None
-            if report:validate(report);assert report['exit_code']==result.returncode
+            record={'name':name,'command':command,'cwd':str(cwd),'exit_code':result.returncode,'report':None}
+            try:
+                report=json.loads(result.stdout) if machine else None;record['report']=report
+                if machine:validate(report);assert report['exit_code']==result.returncode
+            except (AssertionError,ValueError,KeyError,TypeError) as failure:
+                record['consumer_contract_error']={'phase':'consumer_report_validation','message':str(failure),
+                    'stdout':str(folder/'stdout'),'stderr':str(folder/'stderr'),
+                    'next_check':'Compare original CLI status and context-result.json against C6/P05.'}
+                (folder/'result.json').write_text(json.dumps(record,indent=2)+'\n');raise
             if (root/'.toka/test-runs').is_dir():shutil.copytree(root/'.toka/test-runs',folder/'test-runs')
-            record={'name':name,'command':command,'cwd':str(cwd),'exit_code':result.returncode,'report':report}
             (folder/'result.json').write_text(json.dumps(record,indent=2)+'\n');records.append(record)
             assert result.returncode==expected,record
             return report

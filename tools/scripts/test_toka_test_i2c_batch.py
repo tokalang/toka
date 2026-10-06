@@ -2,6 +2,7 @@
 """Standalone SDK-only result/report/shared-state acceptance; no repository imports."""
 import argparse,contextlib,hashlib,http.server,importlib,json,os,re,selectors,shutil,signal,subprocess,sys,tarfile,tempfile,threading,time
 from pathlib import Path
+from toka_test_lock_contract import validate as validate_lock_codes, ReportContractError
 
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 def manifest(root,deps=''):
@@ -10,6 +11,7 @@ def source(root,name,content):
     path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content);return path
 
 def check(report):
+    validate_lock_codes(report)
     assert report['schema']=='toka.test-report' and report['version']==1 and report['finalized'] and report['preview']
     assert report['identity']['status'] in ('not_checked','complete','failed')
     total=report['summary']['total'];assert total is None or total==len(report['tests'])==sum(report['summary'][k] for k in report['summary'] if k!='total')
@@ -33,19 +35,38 @@ class Batch:
         return root
     def save(self,name,root,command,code,out,err,report,layer='installed CLI',rows=()):
         folder=self.output/name;folder.mkdir();(folder/'stdout').write_bytes(out);(folder/'stderr').write_bytes(err)
-        if report:
-            check(report);assert code==report['exit_code']
-            if report['artifact_root']:
-                persisted=Path(report['artifact_root'])/'report.json';assert json.loads(persisted.read_text())==report
+        record={'name':name,'rows':list(rows),'evidence_layer':layer,'command':command,'cwd':str(root),'exit_code':code,'report':report}
+        try:
+            if report is not None:
+                validate_lock_codes(report,code);check(report)
+                if report['artifact_root']:
+                    persisted=Path(report['artifact_root'])/'report.json';assert json.loads(persisted.read_text())==report
+        except (AssertionError,KeyError,TypeError,ValueError) as error:
+            record['consumer_contract_error']={'phase':'consumer_report_validation','message':str(error),
+                'stdout':str(folder/'stdout'),'stderr':str(folder/'stderr'),
+                'next_check':'Compare the same CLI receipt, context worker result and C6 report contract.'}
+            (folder/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+            raise
         if (root/'.toka/test-runs').is_dir():shutil.copytree(root/'.toka/test-runs',folder/'test-runs')
-        record={'name':name,'rows':list(rows),'evidence_layer':layer,'command':command,'exit_code':code,'report':report}
         (folder/'result.json').write_text(json.dumps(record,indent=2)+'\n');self.results.append(record)
         return report
+    def decode_save(self,name,root,command,result,rows=()):
+        try:
+            text=result.stdout.decode('utf-8');report,end=json.JSONDecoder().raw_decode(text)
+            if text[end:].strip():raise ReportContractError('C6 stdout has trailing content')
+            if report is None:raise ReportContractError('C6 report must be an object, not null')
+        except (ValueError,UnicodeError,ReportContractError) as failure:
+            self.save(name,root,command,result.returncode,result.stdout,result.stderr,None,rows=rows)
+            record=self.results[-1];record['consumer_contract_error']={'phase':'consumer_report_decode','message':str(failure),
+                'stdout':str(self.output/name/'stdout'),'stderr':str(self.output/name/'stderr'),
+                'next_check':'Check the original CLI stdout against the single-object C6 report contract.'}
+            (self.output/name/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+            raise ReportContractError(str(failure)) from failure
+        return self.save(name,root,command,result.returncode,result.stdout,result.stderr,report,rows=rows)
     def cli(self,name,root,args=(),expected=0,rows=(),env=None,active=None):
         command=[str((active or self.sdk)/'bin/toka'),'test','--json',*args]
         r=subprocess.run(command,cwd=root,env=env or self.env,capture_output=True,timeout=45)
-        text=r.stdout.decode();report,end=json.JSONDecoder().raw_decode(text);assert not text[end:].strip()
-        self.save(name,root,command,r.returncode,r.stdout,r.stderr,report,rows=rows)
+        report=self.decode_save(name,root,command,r,rows=rows)
         assert r.returncode==expected,report
         return report
     def helper_fault(self,name,root,install,expected=2,rows=()):
