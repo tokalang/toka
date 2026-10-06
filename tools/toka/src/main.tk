@@ -9,7 +9,7 @@ import sys/os/base as sys
 import std/vec::{Vec}
 import std/process::{Command}
 import toka_build/release_version::{release_version}
-import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, build_pkg_mappings, build_pkg_node_mappings, build_workspace_node, cmd_publish, cmd_search}
+import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_prepare_entries, cmd_update, cmd_remove, build_pkg_mappings, build_pkg_node_mappings, build_workspace_node, cmd_publish, cmd_search}
 
 
 extern fn toka_get_errno_impl() -> i32
@@ -480,7 +480,10 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
             }
         }
         if resolve_dependencies {
-            auto fetch_res = cmd_fetch_quiet()
+            auto build_entries# = Vec<string>::new()
+            if exists(string::from("build.tk")) { build_entries#.push(string::from("build.tk")) }
+            else if exists(string::from("Project.tk")) { build_entries#.push(string::from("Project.tk")) }
+            auto fetch_res = cmd_prepare_entries(build_entries, false)
             if fetch_res != 0 {
                 return fetch_res
             }
@@ -725,10 +728,14 @@ fn append_locked_project_context(command#: Command) -> i32 {
     if check_is_windows() { return 0 }
 
     if exists(string::from("package.lock")) {
-        auto fetch_result = cmd_fetch_quiet()
+        auto fetch_result = cmd_prepare_entries(Vec<string>::new(), false)
         if fetch_result != 0 { return fetch_result }
     }
 
+    return append_project_mappings(command#)
+}
+
+fn append_project_mappings(command#: Command) -> i32 {
     auto pkg_mappings = build_pkg_mappings()
     auto pkg_node_mappings = build_pkg_node_mappings()
     auto workspace_node = build_workspace_node()
@@ -764,7 +771,17 @@ fn cmd_check(argc: i32, shift: i32) -> i32 {
     command#.arg(string::from("--check-only"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
-    if append_locked_project_context(command#) != 0 { return 1 }
+    auto entries# = Vec<string>::new()
+    auto prepare_json# = false
+    auto entry_idx# = 2 + shift
+    loop entry_idx < argc {
+        auto path = env::get_arg(entry_idx)
+        if path.eq(string::from("--json")) { prepare_json = true }
+        if path.ends_with(".tk") { entries#.push(path.clone()) }
+        entry_idx += 1
+    }
+    if exists(string::from("package.tk")) && cmd_prepare_entries(entries, prepare_json) != 0 { return 1 }
+    if append_project_mappings(command#) != 0 { return 1 }
     auto idx# = 2 + shift
     loop idx < argc {
         auto arg = env::get_arg(idx)

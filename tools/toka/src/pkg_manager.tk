@@ -295,3 +295,18 @@ pub fn cmd_search(query: string) -> i32 {
     }
     return 0
 }
+
+// Entry preparation fails before an empty mapping reaches the compiler.
+pub fn cmd_prepare_entries(entries: Vec<string>, json: bool) -> i32 {
+    auto helper = package_helper_path()
+    if helper.is_empty() { println("error: package helper missing; run toka doctor"); return 1 }
+    auto command# = package_command(string::from("prepare-entry"))
+    if json { command#.arg(string::from("--json")) }
+    auto i# = 0:usize
+    loop i < entries.len() {
+        command#.arg(string::from("--entry"))
+        command#.arg(entries.borrow(i).clone())
+        i += 1
+    }
+    return command#.status()
+}

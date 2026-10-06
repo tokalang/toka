@@ -119,7 +119,57 @@ void DiagnosticEngine::capture(DiagLoc loc, DiagID id, DiagLevel level,
         {"Add mutable argument sigil '#'", {{std::move(editSpan), "#"}}});
   } else if (id == DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2 ||
              id == DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_C) {
-    addFix("Pass the named source with 'cede'", 0, "cede ");
+    // Use the checked source AST: separated '#' is a PostfixExpr located at
+    // the suffix, while an attached suffix belongs to the identifier token.
+    const Expr *source = dynamic_cast<const Expr *>(ActiveNode);
+    SourceLocation suffixLoc;
+    if (const auto *postfix = dynamic_cast<const PostfixExpr *>(source)) {
+      if (postfix->Op == TokenType::TokenWrite) {
+        suffixLoc = postfix->Loc;
+        source = postfix->LHS.get();
+      }
+    }
+    const auto *variable = dynamic_cast<const VariableExpr *>(source);
+    if (const auto *selected = dynamic_cast<const UnaryExpr *>(source)) {
+      if (!selected->IsRebindable &&
+          (selected->Op == TokenType::Caret || selected->Op == TokenType::Star ||
+           selected->Op == TokenType::Ampersand))
+        variable = dynamic_cast<const VariableExpr *>(selected->RHS.get());
+    }
+    if (SrcMgr && variable && source) {
+      FullSourceLoc insertion = SrcMgr->getFullSourceLoc(source->Loc);
+      FullSourceLoc name = SrcMgr->getFullSourceLoc(variable->Loc);
+      FullSourceLoc suffix;
+      const std::string spelling = SrcMgr->getLineData(variable->Loc);
+      size_t nameStart = name.Column > 0 ? name.Column - 1 : spelling.size();
+      if (nameStart < spelling.size() &&
+          (spelling[nameStart] == '^' || spelling[nameStart] == '*' || spelling[nameStart] == '&')) {
+        ++nameStart;
+        while (nameStart < spelling.size() &&
+               (spelling[nameStart] == ' ' || spelling[nameStart] == '\t')) ++nameStart;
+      }
+      const bool namedSpelling = nameStart < spelling.size() &&
+          spelling.compare(nameStart, variable->Name.size(), variable->Name) == 0;
+      if (suffixLoc.isValid()) {
+        suffix = SrcMgr->getFullSourceLoc(suffixLoc);
+      } else if (namedSpelling) {
+        const size_t end = nameStart + variable->Name.size();
+        if (end < spelling.size() && spelling[end] == '#')
+          suffix = FullSourceLoc{name.FileName, name.Line, static_cast<unsigned>(end + 1)};
+      }
+      if (namedSpelling && insertion.isValid()) {
+        DiagnosticSpan insert{PathUtils::canonicalize(insertion.FileName),
+                              static_cast<int>(insertion.Line),
+                              static_cast<int>(insertion.Column), 0, ""};
+        record.Fixes.push_back({"Pass the named source with 'cede'", {{std::move(insert), "cede "}}});
+        if (suffix.isValid()) {
+          DiagnosticSpan remove{PathUtils::canonicalize(suffix.FileName),
+                                static_cast<int>(suffix.Line),
+                                static_cast<int>(suffix.Column), 1, ""};
+          record.Fixes.back().Edits.push_back({std::move(remove), ""});
+        }
+      }
+    }
   } else if (id == DiagID::ERR_SEMA_CALL_ARG_UNEXPECTED_MUTABLE_SIGIL) {
     if (loc.Length > 0) {
       DiagnosticSpan editSpan{loc.File, loc.Line, loc.Col, loc.Length, ""};

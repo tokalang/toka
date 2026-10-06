@@ -252,7 +252,7 @@ def project_write_lock(root, compile_ms, observations=None):
             fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
-def project_context(root, compile_ms=DEFAULT_COMPILE_MS, observations=None):
+def project_context(root, compile_ms=DEFAULT_COMPILE_MS, observations=None, entries=None):
     manifest, lock, state = root / 'package.tk', root / 'package.lock', root / '.toka'
     if lock.is_symlink():
         raise ConfigurationError('package.lock cannot be a symbolic link')
@@ -266,7 +266,7 @@ def project_context(root, compile_ms=DEFAULT_COMPILE_MS, observations=None):
         if before != after:
             raise PreviewError('project lock changed during test preparation')
         flags = []
-        for value in packages.compiler_mappings(lock, state):
+        for value in packages.validate_package_imports(root, lock, state, entries):
             flags += ['--pkg', value]
         for value in packages.compiler_node_mappings(lock):
             flags += ['--pkg-node', value]
@@ -320,13 +320,13 @@ def native_inputs(root, sdk_lib, run_dir):
             os.environ['TOKA_LIB'] = previous_lib
 
 
-def prepare_worker(mode, root, sdk_lib, run_dir, compile_ms):
+def prepare_worker(mode, root, sdk_lib, run_dir, compile_ms, entries=None):
     """Worker descendants inherit the supervisor-owned group, including native tools."""
     path = run_dir / (mode + '-result.json')
     observations = {'lock_wait_ms': None}
     try:
         if mode == 'context':
-            flags, digest = project_context(root, compile_ms, observations)
+            flags, digest = project_context(root, compile_ms, observations, entries)
             nodes = {key.partition('=')[0]: key.partition('=')[2] for key in packages.compiler_node_mappings(root/'package.lock')}
             graph = {'workspace_root': str(root), 'workspace_node': packages.workspace_node(root/'package.tk', root/'package.lock'),
                      'dependencies': [{'root': str(packages.package_root(entry, root/'.toka').resolve()), 'node': nodes[alias]}
@@ -409,7 +409,8 @@ def phase_error(phase):
 
 def run_preparation(supervisor, mode, root, sdk_lib, run_dir, receipt, budget, compile_ms):
     phase = supervisor.run([sys.executable, str(Path(__file__).resolve()), '--worker', mode,
-                            str(root), str(sdk_lib), str(run_dir), str(compile_ms)], root, run_dir,
+                            str(root), str(sdk_lib), str(run_dir), str(compile_ms),
+                            json.dumps([test['entry'] for test in receipt['tests']] if 'tests' in receipt else None)], root, run_dir,
                            mode, dict(os.environ), budget)
     receipt.setdefault('preparation', {})[mode] = phase
     phase_error(phase)
@@ -752,8 +753,8 @@ def _execute_preview(arguments, sdk_lib, tokac, cwd, supervisor, report, started
 def main():
     if len(sys.argv) >= 4 and sys.argv[1] == '--link-driver-worker':
         return link_driver_worker(sys.argv[2], sys.argv[3], sys.argv[4:])
-    if len(sys.argv) == 7 and sys.argv[1] == '--worker' and sys.argv[2] in ('context', 'native'):
-        return prepare_worker(sys.argv[2], *[Path(value) for value in sys.argv[3:6]], int(sys.argv[6]))
+    if len(sys.argv) in (7, 8) and sys.argv[1] == '--worker' and sys.argv[2] in ('context', 'native'):
+        return prepare_worker(sys.argv[2], *[Path(value) for value in sys.argv[3:6]], int(sys.argv[6]), json.loads(sys.argv[7]) if len(sys.argv)==8 else None)
     # Manager-owned options precede --; user options cannot replace SDK/tool paths.
     try:
         separator = sys.argv.index('--')

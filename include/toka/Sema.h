@@ -966,6 +966,12 @@ private:
   void error(ASTNode *Node, DiagID ID, Args &&...args) {
     if (m_IsPrecomputingCaptures) return;
     HasError = true;
+    if (ID == DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_C ||
+        ID == DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2) {
+      ActiveNodeRAII diagnosticSource(Node);
+      DiagnosticEngine::report(Node->Loc, ID, std::forward<Args>(args)...);
+      return;
+    }
     DiagnosticEngine::report(Node->Loc, ID, std::forward<Args>(args)...);
   }
 

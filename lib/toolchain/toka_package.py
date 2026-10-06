@@ -1238,6 +1238,107 @@ def native_build_plan(lock_path: Path, state: Path, *, target: str | None = None
             "target": target, "version": 2}
 
 
+def entry_error(code, alias, requested, expected, suggestion, source=None):
+    facts = {'alias': alias, 'requested_entry': requested,
+             'expected_entry': str(expected), 'suggestion': suggestion, 'source': source}
+    return PackageConfigurationError(
+        'package entry: alias=' + alias + '; requested=' + (requested or '<not available>')
+        + '; expected=' + str(expected) + '; ' + suggestion,
+        code=code, details={'package_entry': facts})
+
+
+def import_requests(paths):
+    """Recognize import paths, masking comments/literals with stable offsets.
+
+    This is a preparation check for known package roots, not semantic parsing.
+    """
+    for path in paths:
+        text = path.read_text(encoding='utf-8')
+        masked = list(text)
+        i = 0
+        while i < len(text):
+            end = i
+            if text.startswith('//', i):
+                end = text.find('\n', i)
+                if end < 0: end = len(text)
+            elif text.startswith('/*', i):
+                depth = 1; end = i + 2
+                while end < len(text) and depth:
+                    if text.startswith('/*', end): depth += 1; end += 2
+                    elif text.startswith('*/', end): depth -= 1; end += 2
+                    else: end += 1
+            elif text[i] in ('"', "'"):
+                quote = text[i]; end = i + 1
+                while end < len(text):
+                    if text[end] == '\\': end += 2; continue
+                    if text[end] == quote: end += 1; break
+                    end += 1
+            if end > i:
+                for n in range(i, min(end, len(text))):
+                    if text[n] != '\n': masked[n] = ' '
+                i = end
+            else: i += 1
+        for match in re.finditer(r'\bimport\s+((?:(?:\./|\.\./)+)?[A-Za-z_][A-Za-z0-9_/-]*)', ''.join(masked)):
+            yield match.group(1), {'file': str(path.resolve()),
+                                  'line': text.count('\n', 0, match.start()) + 1}
+
+
+def validate_package_imports(root, lock, state, entries=None):
+    # No selected roots means locked-node validation only, never a directory scan.
+    paths = [Path(value) if Path(value).is_absolute() else root/value for value in (entries or [])]
+    requests = list(import_requests(dict.fromkeys(paths)))
+    try:
+        mappings = compiler_mappings(lock, state)
+    except PackageConfigurationError as error:
+        facts = error.details.get('package_entry')
+        if facts:
+            for request, source in requests:
+                if request == facts['alias'] or request.startswith(facts['alias'] + '/'):
+                    facts.update(requested_entry=request, source=source)
+                    raise entry_error(error.code, facts['alias'], request,
+                                      facts['expected_entry'], facts['suggestion'], source) from error
+        raise
+    # Follow exact mapped roots and existing source imports within their owning
+    # package. Unknown imports are left to the compiler, not guessed by preflight.
+    mapped = dict(value.split('=', 1) for value in mappings)
+    mapped.update(dict(value.split('=', 1) for value in workspace_library_mappings(root, lock)))
+    owners = [package_root(entry, state).resolve() for entry in read_lock(lock).values()]
+    seen = {path.resolve() for path in paths}
+    queue = list(requests)
+    for request, source in queue:
+        owner = root.resolve()
+        for candidate in sorted(owners, key=lambda p: len(p.parts), reverse=True):
+            if Path(source['file']).is_relative_to(candidate):
+                owner = candidate; break
+        if request.startswith(('./', '../')):
+            target = Path(source['file']).parent/(request + '.tk')
+        else:
+            target = Path(mapped[request]) if request in mapped else owner/(request + '.tk')
+        if target.is_file() and target.resolve() not in seen:
+            seen.add(target.resolve())
+            queue.extend(import_requests([target]))
+    requests = queue
+    for mapping in mappings:
+        identity, _, expected = mapping.partition('=')
+        alias = identity.removeprefix('official/')
+        for request, source in requests:
+            if request in (identity + '/mod', identity + '/' + alias + '/mod'):
+                raise entry_error('package.import_invalid', alias, request, expected,
+                                  'Use import ' + identity + '::{...}; the mapped root is not a directory.', source)
+    return mappings
+
+
+def prepare_entries(root, entries=None):
+    lock, state = root/'package.lock', root/'.toka'
+    before = lock.read_bytes() if lock.is_file() else None
+    # Preserve the caller's offline policy; locked contents may populate cache.
+    Resolver(root/'package.tk', lock, state, offline=os.environ.get('TOKA_OFFLINE') == '1', refresh=False, locked=True).run()
+    mappings = validate_package_imports(root, lock, state, entries)
+    if before != (lock.read_bytes() if lock.is_file() else None):
+        raise PackageError('entry preparation changed package.lock')
+    return mappings
+
+
 def compiler_mappings(lock_path: Path, state: Path) -> list[str]:
     mappings: list[str] = []
     for alias, entry in sorted(read_lock(lock_path).items()):
@@ -1257,12 +1358,16 @@ def compiler_mappings(lock_path: Path, state: Path) -> list[str]:
             mappings.append("official/" + alias + "=" + str(official_module))
             continue
 
-        raise PackageError(
-            "package module is missing: expected "
-            + str(legacy_module)
-            + " or "
-            + str(official_module)
-        )
+        alternatives = sorted((root / 'lib').glob('*/mod.tk'))
+        if alternatives:
+            actual = alternatives[0]
+            name = actual.parent.name
+            raise entry_error('package.entry_alias_mismatch', alias, None, legacy_module,
+                              'Use the library name ' + name + ' as alias and import ' + name
+                              + '::{...}, then run toka fetch explicitly; arbitrary renaming is not supported.')
+        raise entry_error('package.entry_missing', alias, None, legacy_module,
+                          'Restore lib/' + alias + '/mod.tk or the existing official entry '
+                          + str(official_module) + '; then run toka fetch explicitly if contents changed.')
     return mappings
 
 
@@ -1452,6 +1557,10 @@ def main() -> int:
     add.add_argument("--lock", default="package.lock")
     add.add_argument("--state", default=".toka")
 
+    preparation = subparsers.add_parser('prepare-entry')
+    preparation.add_argument('--entry', action='append')
+    preparation.add_argument('--json', action='store_true')
+
     mappings = subparsers.add_parser("compiler-mappings")
     mappings.add_argument("--lock", default="package.lock")
     mappings.add_argument("--state", default=".toka")
@@ -1508,6 +1617,8 @@ def main() -> int:
                 print(json.dumps({'schema':'toka.resolve-report','version':1,'nodes':[{'alias':name,'lock_entry':entry.line(),'package_node_id':package_node_id(entry)} for name,entry in sorted(entries.items())]}))
             else:
                 print("resolved %d package(s)" % len(entries))
+        elif args.command == 'prepare-entry':
+            prepare_entries(Path.cwd(), args.entry)
         elif args.command == "compiler-mappings":
             for mapping in compiler_mappings(Path(args.lock), Path(args.state)):
                 print(mapping)
@@ -1540,10 +1651,11 @@ def main() -> int:
                 print("%s\t%s\t%s" % (name, version, description))
         return 0
     except (ExtractionError, PackageError, OSError) as error:
-        if args.command == 'fetch' and args.json:
+        if args.command in ('fetch', 'prepare-entry') and args.json:
             print(json.dumps({'schema':'toka.resolve-report','version':1,'result':'failed','exit_code':1,
                               'errors':[{'message':str(error),'category':getattr(error,'category','resolution_error'),
-                                         'details':getattr(error,'details',None)}]}))
+                                         'details':getattr(error,'details',None),
+                                         **({'code':getattr(error,'code',None)} if args.command=='prepare-entry' else {})}]}))
         if args.command == 'add' and args.json:
             print(json.dumps({'schema':'toka.add-report','version':1,'result':'failed','exit_code':1,
                               'requested':args.package,'resolved_version':None,'errors':[{'message':str(error),

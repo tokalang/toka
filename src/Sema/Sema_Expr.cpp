@@ -5161,6 +5161,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
       return result;
     };
+    auto methodArgumentCompatible = [&](const std::shared_ptr<Type> &formal,
+                                        const std::shared_ptr<Type> &actual) {
+      if (!isTypeCompatible(formal, actual))
+        return false;
+      auto expected = std::dynamic_pointer_cast<PrimitiveType>(resolveType(formal));
+      auto supplied = std::dynamic_pointer_cast<PrimitiveType>(resolveType(actual));
+      // PrimitiveType's legacy loose fallback must not admit an unsafe
+      // signed-to-unsigned method argument (e.g. i32 to Document.find's usize).
+      return !(expected && supplied && expected->isInteger() &&
+               !expected->isSignedInteger() && supplied->isSignedInteger());
+    };
     auto isStage1ConcreteMethodParameter = [](const FunctionDecl::Arg &arg) {
       return arg.Stage0DeclarationProvenanceComplete &&
              !arg.Stage0GenericValueRole && !arg.Stage0MorphicGenericRole;
@@ -5422,10 +5433,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                            plannedDynamicCede[i]),
                       param.Name, param.Loc);
                 }
-                if (!isTypeCompatible(expectedTy, argTy))
+                if (!methodArgumentCompatible(expectedTy, argTy))
                   error(Met->Args[i].get(),
                         DiagID::ERR_SEMA_TYPE_MISMATCH_IN_METHOD_ARGUMENT_EXPECTED,
-                        std::to_string(i + 1), expectedTy->toString(),
+                        std::to_string(i + 1),
+                        M->Args[i + 1].Type == "usize" ? "usize" : expectedTy->toString(),
                         argTy->toString());
               }
               for (size_t left = 0; left < dynamicArgumentPaths.size(); ++left) {
@@ -6239,8 +6251,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                             evidenceV2.Transfer, evidenceV2.Source);
                     }
 
-                    if (!isTypeCompatible(expectedParamTy, argTy)) {
-                        error(Met->Args[i].get(), DiagID::ERR_SEMA_TYPE_MISMATCH_IN_METHOD_ARGUMENT_EXPECTED, std::to_string(i + 1), expectedParamTy->toString(), argTy->toString());
+                    if (!methodArgumentCompatible(expectedParamTy, argTy)) {
+                        error(Met->Args[i].get(), DiagID::ERR_SEMA_TYPE_MISMATCH_IN_METHOD_ARGUMENT_EXPECTED, std::to_string(i + 1),
+                              FD->Args[i + 1].Type == "usize" ? "usize" : expectedParamTy->toString(),
+                              argTy->toString());
                     } else if (expectedParamTy->isShape() && argTy->isRawPointer()) {
                         auto shp = std::static_pointer_cast<toka::ShapeType>(expectedParamTy);
                         if (shp->Name == "str") {

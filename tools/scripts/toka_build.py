@@ -546,6 +546,17 @@ def main():
     if "--validate-semantic-manifest-attestations" in c_args:
         env["TOKA_USE_LIB_CACHE"] = "1"
 
+    # The build program chooses the actual target entries. Do not scan other
+    # workspace files during the manager's locked-node preparation.
+    helper = package_helper_path()
+    if helper and Path('package.tk').is_file():
+        command = [sys.executable, str(helper), 'prepare-entry']
+        for entry in args.entry_files:
+            command += ['--entry', entry]
+        preparation = subprocess.run(command, env=env)
+        if preparation.returncode != 0:
+            sys.exit(1)
+
     # Resolve the graph before native metadata so the native cache incorporates
     # the exact Toka target triple rather than only host-local package inputs.
     current_graph = run_tokac_dump(args.tokac, c_args, args.entry_files, env=env)
