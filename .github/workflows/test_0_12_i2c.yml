@@ -162,7 +162,7 @@ jobs:
           python3 tools/scripts/test_toka_test_i2c.py \
             --archive "$RUNNER_TEMP/frozen-input/i2c-package/toka-preview-i2c-$TARGET.tar.gz" \
             --identity "$RUNNER_TEMP/frozen-input/i2c-package/sdk-identity.json" \
-            --candidate-sha "$CANDIDATE" --output "$RUNNER_TEMP/i2c-installed"
+            --contract a1 --candidate-sha "$CANDIDATE" --output "$RUNNER_TEMP/i2c-installed"
           python3 tools/scripts/map_toka_test_i2c_acceptance.py \
             --installed "$RUNNER_TEMP/i2c-installed" --controls "$RUNNER_TEMP/i2c-controls" \
             --ready "$RUNNER_TEMP/i2c-ready" --output "$RUNNER_TEMP/i2c-matrix.json"

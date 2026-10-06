@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import shutil
 import unittest
 from unittest.mock import patch
 
@@ -56,6 +57,45 @@ class DeliveryControls(unittest.TestCase):
                 if os.environ.get('TOKA_A1_DELIVERY_EVIDENCE'):
                     import shutil
                     shutil.copytree(bundle,Path(os.environ['TOKA_A1_DELIVERY_EVIDENCE'])/('actual-bundle-'+kind))
+
+    def test_actual_receiver_requires_support_module_and_digest(self):
+        workflow=(ROOT/'.github/workflows/test_0_12_i2c_coverage.yml').read_text()
+        start=workflow.index("          bundle=data/'i2c-harness'")
+        end=workflow.index("          install=Path(os.environ['RUNNER_TEMP'])",start)
+        block=textwrap.dedent(workflow[start:end])
+        with tempfile.TemporaryDirectory(prefix='a1-receiver-') as temp:
+            root=Path(temp);original=root/'original'
+            subprocess.run([sys.executable,str(ROOT/'tools/scripts/bundle_toka_i2c_batch.py'),'--output',str(original)],check=True,capture_output=True)
+            sha=json.loads((original/'harness-identity.json').read_text())['harness_source_sha']
+            for mutation in ('valid','tamper','bad-digest','missing-module','missing-item','missing-map'):
+                data=root/mutation;bundle=data/'i2c-harness';shutil.copytree(original,bundle)
+                identity=json.loads((bundle/'harness-identity.json').read_text())
+                if mutation=='tamper':
+                    with (bundle/'toka_test_lock_contract.py').open('a') as stream:stream.write('\n# tamper\n')
+                elif mutation=='bad-digest':identity['support_files_sha256']['toka_test_lock_contract.py']='0'*64
+                elif mutation=='missing-module':(bundle/'toka_test_lock_contract.py').unlink()
+                elif mutation=='missing-item':del identity['support_files_sha256']['toka_test_lock_contract.py']
+                elif mutation=='missing-map':del identity['support_files_sha256']
+                (bundle/'harness-identity.json').write_text(json.dumps(identity))
+                command=[sys.executable,'-c','import hashlib,json,os,sys\nfrom pathlib import Path\ndata=Path(sys.argv[1])\n'+block,str(data)]
+                result=subprocess.run(command,cwd=root,env=dict(os.environ,GITHUB_SHA=sha),capture_output=True)
+                retain=os.environ.get('TOKA_A1_DELIVERY_EVIDENCE')
+                if retain:
+                    folder=Path(retain)/('receiver-'+mutation);folder.mkdir(parents=True,exist_ok=True)
+                    (folder/'stdout').write_bytes(result.stdout);(folder/'stderr').write_bytes(result.stderr)
+                    (folder/'receipt.json').write_text(json.dumps({'argv':command,'cwd':str(root),'exit_code':result.returncode,'expected':'accept' if mutation=='valid' else 'reject','stage':'actual workflow pre-execution hash receiver'},indent=2))
+                    shutil.copytree(bundle,folder/'bundle')
+                with self.subTest(mutation=mutation):self.assertEqual(result.returncode==0,mutation=='valid',result.stderr.decode())
+
+    def test_workflow_I2C_I2B_contract_chain(self):
+        from test_toka_test_i2c import installed_command
+        frozen=(ROOT/'.github/workflows/test_0_12_i2c_coverage.yml').read_text()
+        self.assertIn('--contract legacy --candidate-sha',frozen)
+        for mode in ('legacy','a1'):
+            command=installed_command('test_toka_test_i2b.py',Path('/sdk'),Path('/output'),mode)
+            self.assertEqual(command[-2:],['--contract',mode])
+            self.assertNotIn('--contract',installed_command('test_toka_test_i1.py',Path('/sdk'),Path('/output'),mode))
+        with self.assertRaises(AssertionError):installed_command('test_toka_test_i2b.py',Path('/sdk'),Path('/output'),None)
 
     def test_explicit_contract_not_selected_by_returned_code(self):
         legacy=fixed_report(None)

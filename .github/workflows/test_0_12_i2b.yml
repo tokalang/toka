@@ -87,7 +87,7 @@ jobs:
           sdk=$(tail -1 "$RUNNER_TEMP/i2b-sdk-path.txt")
           python3 tools/scripts/test_toka_test_i1.py --sdk "$sdk" --output "$RUNNER_TEMP/i2b-i1-installed"
           python3 tools/scripts/test_toka_test_i2a.py --sdk "$sdk" --output "$RUNNER_TEMP/i2b-i2a-installed"
-          python3 tools/scripts/test_toka_test_i2b.py --sdk "$sdk" --output "$RUNNER_TEMP/i2b-installed"
+          python3 tools/scripts/test_toka_test_i2b.py --contract a1 --sdk "$sdk" --output "$RUNNER_TEMP/i2b-installed"
       - name: Retain Preview checks and actual SDK identities
         if: always()
         uses: actions/upload-artifact@v4

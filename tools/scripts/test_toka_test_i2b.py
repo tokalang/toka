@@ -22,7 +22,7 @@ import toka_test as runner
 import toka_test_report as reports
 from test_toka_test_i1 import manifest, source
 from test_toka_test_i2a import fake_compiler
-from toka_test_lock_contract import validate as validate_lock_codes, require_lock_failure, LOCK_CODES
+from toka_test_lock_contract import validate as validate_lock_codes, require_lock_failure, require_p05_failure, LOCK_CODES
 
 
 def validate(report):
@@ -334,7 +334,7 @@ class Controls(unittest.TestCase):
         self.assertEqual([x['severity'] for x in rows],['warning','note','unknown']);self.assertTrue(all(x['source']['origin']=='dependency' for x in rows))
 
 
-def installed(sdk,output):
+def installed(sdk,output,*,p05_contract):
     output.mkdir(parents=True,exist_ok=False)
     with tempfile.TemporaryDirectory(prefix='i2b-installed-') as temp:
         base=Path(temp);results=[]
@@ -362,7 +362,7 @@ def installed(sdk,output):
                 os.kill(child.pid,signal.SIGINT)
             stdout,stderr=child.communicate(timeout=30);stderr=observed+stderr
             folder=output/name;folder.mkdir();(folder/'stdout').write_bytes(stdout);(folder/'stderr').write_bytes(stderr)
-            record={'name':name,'command':command,'cwd':str(root),'exit_code':child.returncode,'report':None,'live_handshake_observed':interrupt}
+            record={'name':name,'command':command,'cwd':str(root),'exit_code':child.returncode,'report':None,'p05_contract':p05_contract,'live_handshake_observed':interrupt}
             try:
                 decoder=json.JSONDecoder();report,index=decoder.raw_decode(stdout.decode('utf-8'));record['report']=report
                 assert not stdout.decode('utf-8')[index:].strip(),'C6 stdout has trailing content'
@@ -403,7 +403,14 @@ def installed(sdk,output):
             return setup
         for case in ('missing','malformed','stale'):
             r=run('lock-'+case,setup=lock_problem(case))
-            require_lock_failure(r, LOCK_CODES[case], 2)
+            try:require_p05_failure(r,case,2,p05_contract)
+            except AssertionError as failure:
+                folder=output/('lock-'+case);record=json.loads((folder/'result.json').read_text())
+                record['consumer_contract_error']={'phase':'installed_P05_validation','selected_contract':p05_contract,
+                    'expected_code':LOCK_CODES[case] if p05_contract=='a1' else None,'actual_codes':[e['code'] for e in r['errors']],
+                    'message':str(failure),'stdout':str(folder/'stdout'),'stderr':str(folder/'stderr'),
+                    'next_check':'Inspect the selected replay contract and context worker code; preserve the original CLI result.'}
+                (folder/'result.json').write_text(json.dumps(record,indent=2)+'\n');raise
             assert r['exit_code']==2 and r['result']=='configuration_error' and r['termination']['reason']=='configuration_error'
             assert all(t['result']=='not_run' for t in r['tests']) and r['identity']['status']=='failed'
             assert r['errors'][0]['category']=='configuration_error'
@@ -427,10 +434,12 @@ def installed(sdk,output):
         r=run('missing-python',env_extra={'PATH':str(empty)});assert r['exit_code']==2 and r['reason']=='python_unavailable'
         r=run('中文-outer-error',env_extra={'PATH':str(empty)});assert r['exit_code']==2 and '中文' in r['project_root']
         r=run('missing-python-existing-state',env_extra={'PATH':str(empty)},setup=lambda root:(root/'.toka').mkdir());assert r['exit_code']==2
-        (output/'installed-result.json').write_text(json.dumps({'result':'pass','preview':True,'stage':'I2-B','scenarios':len(results),'formal_json':True,'stable_v1':False,'results':[{'name':x['name'],'exit_code':x['exit_code']} for x in results]},indent=2)+'\n')
+        (output/'installed-result.json').write_text(json.dumps({'result':'pass','preview':True,'stage':'I2-B','p05_contract':p05_contract,'scenarios':len(results),'formal_json':True,'stable_v1':False,'results':[{'name':x['name'],'exit_code':x['exit_code']} for x in results]},indent=2)+'\n')
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--sdk',type=Path);parser.add_argument('--output',type=Path);args=parser.parse_args()
-    if args.sdk:installed(args.sdk.resolve(),args.output.resolve())
+    parser=argparse.ArgumentParser();parser.add_argument('--sdk',type=Path);parser.add_argument('--output',type=Path);parser.add_argument('--contract',choices=('legacy','a1'));args=parser.parse_args()
+    if args.sdk:
+        if args.contract is None:parser.error('--sdk requires explicit --contract legacy|a1')
+        installed(args.sdk.resolve(),args.output.resolve(),p05_contract=args.contract)
     else:unittest.main(argv=[sys.argv[0]],verbosity=2)

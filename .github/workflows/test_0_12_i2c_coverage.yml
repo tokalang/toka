@@ -166,7 +166,7 @@ jobs:
           python3 tools/scripts/test_toka_test_i2c.py \
             --archive "$RUNNER_TEMP/frozen-input/i2c-package/toka-preview-i2c-$TARGET.tar.gz" \
             --identity "$RUNNER_TEMP/frozen-input/i2c-package/sdk-identity.json" \
-            --candidate-sha "$CANDIDATE" --output "$RUNNER_TEMP/i2c-installed"
+            --contract legacy --candidate-sha "$CANDIDATE" --output "$RUNNER_TEMP/i2c-installed"
           python3 tools/scripts/map_toka_test_i2c_acceptance.py \
             --installed "$RUNNER_TEMP/i2c-installed" --controls "$RUNNER_TEMP/i2c-controls" \
             --ready "$RUNNER_TEMP/i2c-ready" --output "$RUNNER_TEMP/i2c-matrix.json"
@@ -239,6 +239,12 @@ jobs:
           assert hashlib.sha256(archive.read_bytes()).hexdigest()==identity['archive_sha256']
           bundle=data/'i2c-harness';h=json.loads((bundle/'harness-identity.json').read_text())
           assert h['harness_source_sha']==os.environ['GITHUB_SHA']
+          support=h['support_files_sha256']
+          assert isinstance(support,dict) and 'toka_test_lock_contract.py' in support
+          assert 'toka_test_lock_contract.py' in h['bundled_inputs']
+          for name in ('toka_test_lock_contract.py',):
+            assert (bundle/name).is_file(), 'required support module missing: '+name
+            assert hashlib.sha256((bundle/name).read_bytes()).hexdigest()==support[name], 'support module digest mismatch: '+name
           assert hashlib.sha256((bundle/'test_toka_test_i2c_batch.py').read_bytes()).hexdigest()==h['harness_sha256']
           assert hashlib.sha256((bundle/'ledger_toka_i2c_batch.py').read_bytes()).hexdigest()==h['ledger_script_sha256']
           assert hashlib.sha256((bundle/'test_toka_test_r08.py').read_bytes()).hexdigest()==h['r08_script_sha256']

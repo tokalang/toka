@@ -74,9 +74,16 @@ def cases(sdk,output):
         assert r['summary']['failed']==1 and r['summary']['passed']==1 and r['tests'][0]['phases']['run']['signal']==6
         (output/'result.json').write_text(json.dumps({'result':'pass','records':[{'name':r['name'],'exit_code':r['exit_code']} for r in records]},indent=2)+'\n')
 
+def installed_command(script,sdk,output,p05_contract):
+    assert p05_contract in ('legacy','a1'), 'explicit installed contract required'
+    command=[sys.executable,str(ROOT/'tools/scripts'/script),'--sdk',str(sdk),'--output',str(output)]
+    if script=='test_toka_test_i2b.py':command+=['--contract',p05_contract]
+    return command
+
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--archive',type=Path,required=True);p.add_argument('--identity',type=Path,required=True)
-    p.add_argument('--candidate-sha',required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
+    p.add_argument('--candidate-sha',required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--contract',choices=('legacy','a1'),required=True);a=p.parse_args()
     a.output.mkdir(parents=True,exist_ok=False)
     identity=json.loads(a.identity.read_text());assert identity['candidate_sha']==a.candidate_sha and identity['preview']
     assert sha(a.archive)==identity['archive_sha256']
@@ -89,14 +96,14 @@ def main():
         clean_env={k:v for k,v in os.environ.items() if not k.startswith('TOKA')}
         clean_env['PYTHONDONTWRITEBYTECODE']='1'
         for script,folder in [('test_toka_test_i1.py','i1-installed'),('test_toka_test_i2a.py','i2a-installed'),('test_toka_test_i2b.py','i2b-installed')]:
-            command=[sys.executable,str(ROOT/'tools/scripts'/script),'--sdk',str(sdk),'--output',str(a.output/folder)]
+            command=installed_command(script,sdk,a.output/folder,a.contract)
             with (a.output/(folder+'.stdout')).open('wb') as out,(a.output/(folder+'.stderr')).open('wb') as err:
                 result=subprocess.run(command,cwd=install,env=clean_env,stdout=out,stderr=err,timeout=300)
             assert result.returncode==0,(script,result.returncode)
         cases(sdk,a.output/'matrix-cases')
         changes=[name for name,data in descriptor['components'].items() if sha(sdk/name)!=data['sha256']]
         assert not changes,changes
-        (a.output/'install-result.json').write_text(json.dumps({'result':'pass','preview':True,'candidate_sha':a.candidate_sha,
+        (a.output/'install-result.json').write_text(json.dumps({'result':'pass','preview':True,'candidate_sha':a.candidate_sha,'p05_contract':a.contract,
             'archive_sha256':identity['archive_sha256'],'target':identity['target'],'all_components_verified':len(descriptor['components']),
             'all_original_installed_bytes_unchanged':True,'no_source_tree_overrides':True,'package_definition':identity['composition']},indent=2)+'\n')
 
