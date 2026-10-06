@@ -4,14 +4,26 @@ import argparse,contextlib,fcntl,hashlib,http.server,json,os,shutil,subprocess,s
 from pathlib import Path
 from unittest.mock import patch
 from test_toka_test_i2c_batch import Batch,manifest,source,sha
-from toka_test_lock_contract import LOCK_CODES, require_lock_failure
+from toka_test_lock_contract import LOCK_CODES, require_p05_failure
 OK='fn main() -> i32 { return 0 }\n'
 REG='import official/reg::{answer}\nfn main() -> i32 { if answer()!=42 { return 1 } return 0 }\n'
 class Dependencies(Batch):
+ def __init__(self,sdk,output,*,p05_contract='a1',observe=False):
+  super().__init__(sdk,output);self.p05_contract=p05_contract;self.observe=observe
  def invoke(self,name,root,args=(),code=0,rows=(),env=None,active=None,extra=None):
   before=(root/'package.lock').read_bytes() if (root/'package.lock').is_file() else None
   command=[str((active or self.sdk)/'bin/toka'),'test','--json',*args];r=subprocess.run(command,cwd=root,env=env or self.env,capture_output=True,timeout=45)
-  report=self.decode_save(name,root,command,r,rows=rows)
+  try:report=self.decode_save(name,root,command,r,rows=rows)
+  except (AssertionError,KeyError,TypeError,ValueError):
+   record=json.loads((self.output/name/'result.json').read_text())
+   after=(root/'package.lock').read_bytes() if (root/'package.lock').is_file() else None
+   record.update(checks={'consumer_report_contract':False,'exit_code':r.returncode==code,'lock_unchanged':before==after},
+                 contract_pass=False,expected_exit_code=code,p05_contract=self.p05_contract)
+   (self.output/name/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+   if not any(item.get('name')==name for item in self.results):self.results.append(record)
+   else:self.results[-1].update(record)
+   if not self.observe:raise
+   return record['report']
   after=(root/'package.lock').read_bytes() if (root/'package.lock').is_file() else None
   checks={'exit_code':r.returncode==code,'lock_unchanged':before==after}
   if code==2 and name.startswith(('P04','P05','P08','P11','P14a')):
@@ -23,10 +35,11 @@ class Dependencies(Batch):
     record.update(checks=checks,contract_pass=False,consumer_contract_error={'phase':'consumer_P05_validation','message':str(failure),
       'stdout':str(self.output/name/'stdout'),'stderr':str(self.output/name/'stderr'),
       'next_check':'Compare the fixed expected lock code and context facts against context-result.json; do not infer from message text.'})
-    (self.output/name/'result.json').write_text(json.dumps(record,indent=2)+'\n');raise
+    (self.output/name/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+    if not self.observe:raise
   if before is not None:(self.output/name/'lock.before').write_bytes(before)
   if after is not None:(self.output/name/'lock.after').write_bytes(after)
-  record=self.results[-1];record.update(checks=checks,contract_pass=all(checks.values()),expected_exit_code=code,lock_before_sha256=hashlib.sha256(before).hexdigest() if before is not None else None,lock_after_sha256=hashlib.sha256(after).hexdigest() if after is not None else None)
+  record=self.results[-1];record.update(checks=checks,contract_pass=all(checks.values()),expected_exit_code=code,p05_contract=self.p05_contract,lock_before_sha256=hashlib.sha256(before).hexdigest() if before is not None else None,lock_after_sha256=hashlib.sha256(after).hexdigest() if after is not None else None)
   (self.output/name/'result.json').write_text(json.dumps(record,indent=2)+'\n');return report
  def notes(self,name,data): (self.output/name/'witness.json').write_text(json.dumps(data,indent=2)+'\n')
  def fetch(self,root,env=None):
@@ -94,8 +107,8 @@ class Dependencies(Batch):
     else:manifest(root,'reg="reg:2.0.0",')
     count=len(self.requests)
     def lock_checks(r,kind=kind):
-     require_lock_failure(r,LOCK_CODES[kind],2)
-     return {'lock_error_code':r['errors'][0]['code']==LOCK_CODES[kind],
+     require_p05_failure(r,kind,2,self.p05_contract)
+     return {'selected_P05_contract':self.p05_contract=='legacy' or r['errors'][0]['code']==LOCK_CODES[kind],
              'lock_error_phase':r['errors'][0]['phase']=='context',
              'configuration_error':r['result']=='configuration_error',
              'repair_hint_readable':bool(r['errors'][0]['message'].strip()),
@@ -127,8 +140,8 @@ class Dependencies(Batch):
    for path in (variant/'lib').iterdir() if (variant/'lib').is_dir() and not (variant/'lib').is_symlink() else []:
     if path.is_symlink():path.unlink()
    if (variant/'lib').is_symlink():(variant/'lib').unlink()
-  records=[{'name':r['name'],'rows':r['rows'],'checks':r['checks'],'contract_pass':r['contract_pass'],'exit_code':r['exit_code']} for r in self.results if r['rows']]
-  (self.output/'result.json').write_text(json.dumps({'schema':'toka.dependencies-acceptance','contract_pass':all(r['contract_pass'] for r in records),'records':records,'requests':self.requests},indent=2)+'\n')
+  records=[{'name':r['name'],'rows':r['rows'],'checks':r['checks'],'contract_pass':r['contract_pass'],'exit_code':r['exit_code'],'p05_contract':r.get('p05_contract',self.p05_contract)} for r in self.results if r['rows']]
+  (self.output/'result.json').write_text(json.dumps({'schema':'toka.dependencies-acceptance','contract_pass':all(r['contract_pass'] for r in records),'records':records,'requests':self.requests,'p05_contract':self.p05_contract,'observe':self.observe},indent=2)+'\n')
  def provenance(self,dep):
   root=self.project('provenance',[('a_test.tk',OK)]);manifest(root,'dep="../local-dep",');self.fetch(root)
   variant=self.output/'variant-provenance';(variant/'bin').mkdir(parents=True);(variant/'lib').symlink_to(self.sdk/'lib',target_is_directory=True);shutil.copyfile(self.sdk/'bin/toka',variant/'bin/toka');(variant/'bin/toka').chmod(0o755)
@@ -177,5 +190,5 @@ class Dependencies(Batch):
   root=self.project('identity-version',[('a_test.tk',OK)]);variant=self.variant('empty-version');(variant/'bin/tokac').unlink();(variant/'bin/tokac').write_text('#!'+sys.executable+'\nimport sys\nsys.exit(0)\n');(variant/'bin/tokac').chmod(0o755)
   self.invoke('P11-version',root,code=2,rows=['P11'],active=variant,extra=lambda r:{'identity_failed':r['identity']['status']=='failed','no_version_fabricated':r['identity']['tokac_version'] is None})
 def main():
- p=argparse.ArgumentParser();p.add_argument('--sdk',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--observe',action='store_true');a=p.parse_args();b=Dependencies(a.sdk.resolve(),a.output.resolve());b.run();d=json.loads((b.output/'result.json').read_text());print(json.dumps({'cases':len(d['records']),'contract_pass':d['contract_pass'],'failed':[(r['name'],[k for k,v in r['checks'].items() if not v]) for r in d['records'] if not r['contract_pass']]}));return 0 if a.observe or d['contract_pass'] else 1
+ p=argparse.ArgumentParser();p.add_argument('--sdk',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--observe',action='store_true');p.add_argument('--contract',choices=('legacy','a1'),required=True);a=p.parse_args();b=Dependencies(a.sdk.resolve(),a.output.resolve(),p05_contract=a.contract,observe=a.observe);b.run();d=json.loads((b.output/'result.json').read_text());print(json.dumps({'cases':len(d['records']),'contract_pass':d['contract_pass'],'failed':[(r['name'],[k for k,v in r['checks'].items() if not v]) for r in d['records'] if not r['contract_pass']]}));return 0 if a.observe or d['contract_pass'] else 1
 if __name__=='__main__':raise SystemExit(main())

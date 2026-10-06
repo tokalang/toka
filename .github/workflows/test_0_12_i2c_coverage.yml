@@ -21,6 +21,7 @@ on:
       - tools/scripts/test_toka_test_link_driver.py
       - tools/scripts/test_toka_test_r08.py
       - tools/scripts/test_toka_test_i2c_batch.py
+      - tools/scripts/toka_test_lock_contract.py
       - tools/scripts/bundle_toka_i2c_batch.py
       - tools/scripts/ledger_toka_i2c_batch.py
       - tools/scripts/test_toka_test_fixture_ready.py
@@ -282,8 +283,8 @@ jobs:
         run: |
           sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
           cd "$RUNNER_TEMP/frozen-input/i2c-harness"
-          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_dependencies.py --sdk "$sdk" --output "$RUNNER_TEMP/i2c-batch/dependencies"
-          python3 ledger_toka_test_dependencies.py --prior "$RUNNER_TEMP/i2c-batch/discovery-coverage-ledger.json" --dependencies "$RUNNER_TEMP/i2c-batch/dependencies" --output "$RUNNER_TEMP/i2c-batch/dependency-coverage-ledger.json"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_dependencies.py --contract legacy --sdk "$sdk" --output "$RUNNER_TEMP/i2c-batch/dependencies"
+          python3 ledger_toka_test_dependencies.py --contract legacy --prior "$RUNNER_TEMP/i2c-batch/discovery-coverage-ledger.json" --dependencies "$RUNNER_TEMP/i2c-batch/dependencies" --output "$RUNNER_TEMP/i2c-batch/dependency-coverage-ledger.json"
       - name: Timed exits, real CLI interruption and bounded group confirmation
         run: |
           sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")

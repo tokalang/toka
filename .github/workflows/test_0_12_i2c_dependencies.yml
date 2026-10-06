@@ -17,7 +17,7 @@ jobs:
           import hashlib,json,os,shutil
           from pathlib import Path
           out=Path(os.environ['RUNNER_TEMP'])/'harness';out.mkdir()
-          names=['test_toka_test_dependencies.py','test_toka_test_i2c_batch.py','ledger_toka_test_dependencies.py']
+          names=['toka_test_lock_contract.py','test_toka_test_dependencies.py','test_toka_test_i2c_batch.py','ledger_toka_test_dependencies.py']
           for name in names:shutil.copyfile(Path('tools/scripts')/name,out/name)
           (out/'identity.json').write_text(json.dumps({'harness_source_sha':os.environ['GITHUB_SHA'],'files':{n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}},indent=2)+'\n')
           PYCODE
@@ -100,8 +100,8 @@ jobs:
         run: |
           sdk=$(cat "$RUNNER_TEMP/sdk-path.txt")
           cd "$RUNNER_TEMP/harness"
-          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_dependencies.py --sdk "$sdk" --output "$RUNNER_TEMP/dependencies" --observe
-          python3 ledger_toka_test_dependencies.py --prior "$RUNNER_TEMP/prior-batch/i2c-batch/coverage-ledger.json" --dependencies "$RUNNER_TEMP/dependencies" --output "$RUNNER_TEMP/dependencies/coverage-ledger.json"
+          PYTHONDONTWRITEBYTECODE=1 python3 test_toka_test_dependencies.py --sdk "$sdk" --output "$RUNNER_TEMP/dependencies" --contract legacy --observe
+          python3 ledger_toka_test_dependencies.py --prior "$RUNNER_TEMP/prior-batch/i2c-batch/coverage-ledger.json" --contract legacy --dependencies "$RUNNER_TEMP/dependencies" --output "$RUNNER_TEMP/dependencies/coverage-ledger.json"
           python3 - <<'PYCODE'
           import json,os
           from pathlib import Path

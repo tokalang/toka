@@ -34,6 +34,32 @@ else:
 
 不要从错误消息判断类别。修复建议来自固定契约表，不自动调用 fetch。
 
+## P2 修订：独立脚本交付与显式回放契约
+
+独立依赖、发现工作流及 `bundle_toka_i2c_batch.py` 必须携带
+`toka_test_lock_contract.py`。工作流 identity.files 和完整包
+support_files_sha256/bundled_inputs 均记录该模块，不依赖 checkout 或 PYTHONPATH。
+对实际生成的三个包，在 checkout 外、移除 PYTHONPATH 的目录执行所有脚本 --help；
+不能仅在源码目录 import 成功就认为交付完整。
+
+依赖 runner 和 ledger 的 CLI 必须显式指定 `--contract legacy|a1`，
+不根据 code=null、退出码或观测结果自动切换。已冻结的旧 SDK 工作流明确绑定 legacy。
+新候选本地/后续授权验证使用 a1。CLI 直接调用和台账绑定的契约不得冲突。
+
+- legacy：检查既有 context/configuration_error/2 与未启动事实，
+  不要求区分三类错误码，不作 A1 代码验收结论；旧 null 仍为具体归因不可用。
+- a1：三类准确代码及既有阶段事实均为必需，缺失、null、空或错误代码仍不通过。
+- --observe：记录未满足项、原始报告、argv/cwd/退出码及原流，然后继续观察。
+  进程返回 0 只表示观察完成；result.json 的 contract_pass=false 不得当作验收通过。
+- ledger：独立核对所选契约，P05 缺口保留 partial 与具体 contract_gap；
+  不能因为历史 checks=true 或观察命令返回 0 自动放宽 A1。
+  保存 prior_evidence/prior_coverage，不覆盖旧台账；full_matrix_pass 保持 false。
+
+定向结果：旧 SDK 的 A1 观察完成 33 场景且准确保留三个 P05 缺口；
+同 SDK 显式 legacy 完成 33 场景通过；A1 覆盖版的严格 a1 完成 33 场景通过。
+同一历史记录，legacy 台账保留旧契约覆盖，a1 台账保留 P05 partial，不中止生成。
+新增四组控制覆盖真实包启动、契约绑定、观察继续与严格拒绝；不重跑 Q0。
+
 ## 接口变化 → 消费者 → 控制 → 定向结果
 
 下表的结果范围为本地源码控制与 macOS ARM64 原 SDK 副本上的 A1 Python 覆盖层，
@@ -41,8 +67,11 @@ else:
 
 | 消费者 | 原判断 → 新判断 | 控制与结果 |
 | --- | --- | --- |
-| `test_toka_test_dependencies.py` | P05 根据消息含 fetch → 固定代码、context、configuration_error/2、not_run；提示单独检查可读性 | 33 依赖场景通过；P04/P08/P10/P14a 保持基础设施分类 |
-| `ledger_toka_test_dependencies.py` | 仅布尔 checks → 对 P05 原报告再次核对代码和阶段 | 新候选台账通过；旧台账字节不变；继承行注明未为 A1 重验 |
+| `test_toka_test_dependencies.py` | P05 根据消息含 fetch → 显式 legacy/a1；a1 固定代码与同次 context/configuration_error/2/not_run；observe 保留缺口继续 | 33 依赖场景通过；P04/P08/P10/P14a 保持基础设施分类 |
+| `ledger_toka_test_dependencies.py` | 仅布尔 checks → 对 P05 原报告再次核对代码和阶段 | legacy/a1 显式绑定；缺码 a1 保留 partial，legacy 只作原契约结论；旧台账字节不变 |
+| `.github/workflows/test_0_12_i2c_dependencies.yml` | 原脚本清单缺支持模块 → 携带并摘要；冻结 SDK 显式 legacy | 实际生成的独立包脱离 checkout 启动通过；未执行远端工作流 |
+| `.github/workflows/test_0_12_i2c_discovery.yml` | 同样依赖 Batch → 补支持模块及摘要 | 实际生成的独立包脱离 checkout 启动通过；未执行远端工作流 |
+| `bundle_toka_i2c_batch.py` / `.github/workflows/test_0_12_i2c_coverage.yml` | 完整包补支持模块、support hash 与 bundled_inputs；旧 SDK 回放明确 legacy | 全部实际生成脚本脱离 checkout 启动；固定 SDK/门禁范围不变 |
 | `test_toka_test_i2b.py`（源码与 installed 入口） | 一般配置/退出结果 → 增加三类代码与同次阶段断言；独立必需字段清单 | C6 源码控制、安装场景通过；持久化优先级控制通过 |
 | `test_toka_test_i2c.py` | 复用 I2-B validator → 自动采用 A1 校验；先存原始回执再校验 | 共享校验器控制通过；本轮未重跑完整 I2-C |
 | `test_toka_test_i2c_batch.py` | schema/counts → 增加 A1 代码一致性；消费失败保留原结果与流 | 33 场景共享此入口；协议/必需字段/解码负控制通过 |

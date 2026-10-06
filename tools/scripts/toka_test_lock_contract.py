@@ -100,3 +100,17 @@ def require_lock_failure(report, expected_code, actual_exit):
             repr([e['code'] for e in report['errors']]))
     _lock_facts(report, report['errors'][0])
     return report
+
+
+def require_p05_failure(report, case, actual_exit, selected_contract):
+    require(selected_contract in ('legacy','a1'), 'P05 contract must be explicitly legacy or a1')
+    require(case in LOCK_CODES, 'unknown controlled P05 case')
+    if selected_contract=='a1':
+        return require_lock_failure(report,LOCK_CODES[case],actual_exit)
+    validate(report,actual_exit)
+    require(len(report['errors'])==1, 'legacy P05 requires one preparation error')
+    try:
+        _lock_facts(report,report['errors'][0])
+    except (KeyError,TypeError,AttributeError) as error:
+        raise ReportContractError('legacy P05 malformed required fact: '+str(error)) from error
+    return report
