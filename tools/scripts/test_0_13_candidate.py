@@ -13,7 +13,7 @@ def main():
     env=dict(os.environ,PATH=str(sdk/'bin')+':/opt/homebrew/bin:/usr/bin:/bin',PYTHONDONTWRITEBYTECODE='1');env.pop('TOKA_LIB',None);env.pop('TOKAC',None)
     receipts=[]
     def run(name,argv,cwd):
-        d=out/name;d.mkdir();t=time.monotonic_ns()
+        d=out/("command-"+name);d.mkdir();t=time.monotonic_ns()
         try:r=subprocess.run(list(map(str,argv)),cwd=cwd,env=env,capture_output=True,timeout=600)
         except (OSError,subprocess.TimeoutExpired) as error:
             record={'argv':list(map(str,argv)),'cwd':str(cwd),'exit_code':None,'termination':'not_started' if isinstance(error,OSError) else 'protection_timeout','error':str(error)}
