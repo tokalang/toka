@@ -129,16 +129,19 @@ def exercise_verifiers():
             "--output", str(root / "invalid-gate.json"),
             "--version", "v0.11.01",
         ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        require(invalid_gate.returncode != 0 and
-                "canonical v0.11.x tag" in invalid_gate.stderr and
+        require(invalid_gate.returncode == 2 and
+                "release label" in invalid_gate.stderr.lower() and
+                "canonical" in invalid_gate.stderr.lower() and
                 not (root / "invalid-gate.json").exists(),
-                "release gate admitted a noncanonical label")
+                "release gate rejection contract failed: " + json.dumps({"argv": invalid_gate.args, "cwd": str(ROOT), "exit_code": invalid_gate.returncode, "stdout": invalid_gate.stdout, "stderr": invalid_gate.stderr}))
         invalid_package = subprocess.run([
             "bash", "tools/scripts/package_release.sh", "v0.11.01",
         ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        require(invalid_package.returncode != 0 and
-                "canonical v0.11.x tag" in invalid_package.stderr,
-                "release packager admitted a noncanonical label")
+        require(invalid_package.returncode == 1 and
+                "release label" in invalid_package.stderr.lower() and
+                "canonical" in invalid_package.stderr.lower() and
+                not list((ROOT / "build").glob("toka-v0.11.01-*")),
+                "release packager rejection contract failed: " + json.dumps({"argv": invalid_package.args, "cwd": str(ROOT), "exit_code": invalid_package.returncode, "stdout": invalid_package.stdout, "stderr": invalid_package.stderr}))
         evidence = root / "evidence"
         evidence.mkdir()
         revision = "a" * 40

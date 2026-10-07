@@ -89,7 +89,7 @@ def report_errors(report, revision, version_label):
         errors.extend(count_errors(stage, target))
         if version_label.startswith('v0.13.') and stage.get('name')=='package_smoke':
             control=stage.get('counts',{}).get('candidate_013',{})
-            if control.get('schema')!='toka.0.13-candidate-controls' or control.get('result')!='pass' or control.get('candidate_revision')!=revision or control.get('version_label')!=version_label or control.get('build_testing') is not False or control.get('groups')!=['A1','B1','B1-boundaries','B1-relative','D1-D2']:
+            if type(control.get('version')) is not int or control.get('version') != 1 or control.get('schema')!='toka.0.13-candidate-controls' or control.get('result')!='pass' or control.get('candidate_revision')!=revision or control.get('version_label')!=version_label or control.get('build_testing') is not False or control.get('groups')!=['A1','B1','B1-boundaries','B1-relative','D1-D2']:
                 errors.append(target+': required 0.13 installed candidate controls missing or mismatched')
     return errors
 

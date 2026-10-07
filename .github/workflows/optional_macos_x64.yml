@@ -42,7 +42,12 @@ jobs:
           TAG_NAME: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          profile=(-DCMAKE_BUILD_TYPE=Release)
+          if [[ "$TAG_NAME" == v0.13.* ]]; then
+            profile+=(-DBUILD_TESTING=OFF)
+          fi
+          cmake -S . -B build -G Ninja \
+            "${profile[@]}" \
             -DTOKA_RELEASE_VERSION_OVERRIDE="${TAG_NAME#v}" \
             -DLLVM_DIR="$(brew --prefix llvm@20)/lib/cmake/llvm" \
             -DLLD_DIR="$(brew --prefix lld@20)/lib/cmake/lld" \
