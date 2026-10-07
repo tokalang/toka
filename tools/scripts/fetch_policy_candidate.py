@@ -24,7 +24,7 @@ def choose(rows,name):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--repository',required=True);p.add_argument('--revision',required=True);p.add_argument('--tag-name',required=True);p.add_argument('--qualification-run-id',type=int,required=True);p.add_argument('--optional-run-id',type=int);p.add_argument('--output-dir',type=Path,required=True);a=p.parse_args()
-    if not policy.modern(a.tag_name):raise ValueError('policy fetch is only for canonical 0.12')
+    if not policy.modern(a.tag_name):raise ValueError('policy fetch is only for canonical 0.12/0.13')
     root=a.output_dir;root.mkdir(parents=True,exist_ok=False);zips=root/'artifact-zips';run=api(a.repository,'actions/runs/'+str(a.qualification_run_id))
     if run.get('status')!='completed' or run.get('conclusion')!='success' or run.get('head_sha')!=a.revision or run.get('path','').split('@',1)[0]!='.github/workflows/release.yml' or run.get('repository',{}).get('full_name')!=a.repository:raise ValueError('qualification source is not this candidate')
     rows=api(a.repository,'actions/runs/'+str(a.qualification_run_id)+'/artifacts?per_page=100')['artifacts']

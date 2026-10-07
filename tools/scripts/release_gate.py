@@ -231,7 +231,7 @@ def main():
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
     if not re.fullmatch(r"v0\.(?:11|12|13)\.(0|[1-9][0-9]*)", args.version):
-        parser.error("release label must be a canonical v0.11.x tag or v0.12.x tag")
+        parser.error("release label must be a canonical v0.11.x/v0.12.x/v0.13.x tag")
 
     root = Path(__file__).resolve().parents[2]
     build_dir = (root / args.build_dir).resolve()
@@ -405,8 +405,13 @@ def main():
 
     if args.version.startswith('v0.13.'):
         standard = work_dir/'standard-sdk-build'
+        cache={}
+        for line in (build_dir/'CMakeCache.txt').read_text().splitlines():
+            if '=' in line and ':' in line.split('=',1)[0]:
+                key,value=line.split('=',1);cache[key.split(':',1)[0]]=value
+        inherited=['-D'+key+'='+cache[key] for key in ('CMAKE_C_COMPILER','CMAKE_CXX_COMPILER','CMAKE_CXX_FLAGS','LLVM_DIR') if cache.get(key)]
         commands = [
-            ['cmake','-S',str(root),'-B',str(standard),'-DCMAKE_BUILD_TYPE=Release','-DBUILD_TESTING=OFF'],
+            ['cmake','-S',str(root),'-B',str(standard),'-DCMAKE_BUILD_TYPE=Release','-DBUILD_TESTING=OFF',*inherited],
             ['cmake','--build',str(standard),'--target','toka-tools','--parallel',env['CORES']],
             ['env','BINARY_BUILD_DIR='+str(standard),'tools/scripts/package_release.sh',args.version],
             [sys.executable,'tools/scripts/test_release_package.py',str(archive),'--version',args.version,

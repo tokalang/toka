@@ -72,6 +72,8 @@ def policy_id(label):
 
 
 def core_targets(label):
+    if not re.fullmatch(r'v0\.(?:11|12|13)\.(0|[1-9][0-9]*)',label):
+        raise ValueError('unsupported or noncanonical release label')
     return CORE if modern(label) else LEGACY
 
 

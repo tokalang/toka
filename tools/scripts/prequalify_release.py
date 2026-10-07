@@ -251,7 +251,7 @@ def main():
     args = parser.parse_args()
 
     if not re.fullmatch(r"v0\.(?:11|12|13)\.(0|[1-9][0-9]*)", args.version):
-        raise SystemExit("release label must be a canonical v0.11.x tag or v0.12.x tag")
+        raise SystemExit("release label must be a canonical v0.11.x/v0.12.x/v0.13.x tag")
     if args.docker_cores <= 0:
         raise SystemExit("--docker-cores must be positive")
     revision = checked_output(["git", "rev-parse", "--verify", args.revision + "^{commit}"], cwd=ROOT)

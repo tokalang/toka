@@ -39,7 +39,7 @@ def main():
 
     targets=platforms.core_targets(args.version_label)
     if platforms.modern(args.version_label):
-        if args.qualification_summary is None:raise SystemExit('0.12 assets require a bound qualification summary')
+        if args.qualification_summary is None:raise SystemExit('three-core assets require a bound qualification summary')
         summary=json.loads(args.qualification_summary.read_text());targets=platforms.included_targets(summary,summary.get('candidate_revision'),args.version_label)
     expected = expected_names(args.version_label,targets)
     actual = tuple(sorted(path.name for path in args.assets_dir.glob("toka-*.tar.gz") if path.is_file()))
