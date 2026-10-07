@@ -41,7 +41,7 @@ jobs:
       - name: Validate inputs
         run: |
           set -euo pipefail
-          [[ "$TAG_NAME" =~ ^v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$TAG_NAME" =~ ^v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]] || exit 2
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
 
@@ -84,7 +84,7 @@ jobs:
       - name: Verify qualification with candidate's unchanged verifier
         run: |
           set -euo pipefail
-          if [[ "$TAG_NAME" == v0.12.* ]]; then
+          if [[ "$TAG_NAME" == v0.12.* || "$TAG_NAME" == v0.13.* ]]; then
             extra=()
             if [[ -n "$OPTIONAL_RUN_ID" ]]; then extra+=(--optional-run-id "$OPTIONAL_RUN_ID"); fi
             python3 tools/scripts/fetch_policy_candidate.py --repository "$GITHUB_REPOSITORY" \
@@ -188,7 +188,7 @@ jobs:
           gh release download "$TAG_NAME" --dir draft-assets
           archive_dir=$(cat archive-dir.txt)
           proof=()
-          if [[ "$TAG_NAME" == v0.12.* ]]; then
+          if [[ "$TAG_NAME" == v0.12.* || "$TAG_NAME" == v0.13.* ]]; then
             proof+=(--qualification-artifacts-json policy-candidate/qualification-artifacts.json --artifact-zips-dir policy-candidate/artifact-zips)
             if [[ -n "$OPTIONAL_RUN_ID" ]]; then proof+=(--optional-run-json policy-candidate/optional-run.json); fi
           fi

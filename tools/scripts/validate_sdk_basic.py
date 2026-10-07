@@ -13,7 +13,7 @@ def main():
         row={'name':name,'argv':[str(x) for x in argv],'exit_code':r.returncode,'result':'pass' if r.returncode==expected else 'fail'};checks.append(row)
         if r.returncode!=expected:raise ValueError(name+' returned '+str(r.returncode))
         return r
-    receipt={'schema':'toka.sdk-basic-validation','version':1,'policy_id':policy.POLICY,'target':a.target,'candidate_revision':a.revision,'version_label':a.version_label,
+    receipt={'schema':'toka.sdk-basic-validation','version':1,'policy_id':policy.policy_id(a.version_label),'target':a.target,'candidate_revision':a.revision,'version_label':a.version_label,
              'source_dirty':False,'source_run_id':a.source_run_id,'source_run_attempt':a.source_run_attempt,'archive_sha256':hashlib.sha256(a.archive.read_bytes()).hexdigest(),'result':'fail','checks':checks}
     try:
         with tempfile.TemporaryDirectory(prefix='toka-basic-sdk-') as tmp:

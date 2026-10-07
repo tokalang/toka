@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       tag_name:
-        description: Exact 0.11.x or 0.12.x release label, for example v0.11.0
+        description: Exact 0.11.x, 0.12.x or 0.13.x release label, for example v0.11.0
         required: true
         type: string
   push:
@@ -35,7 +35,7 @@ jobs:
           sys.path.insert(0,'tools/scripts')
           from release_platform_policy import core_targets
           label=os.environ['TAG_NAME']
-          assert re.fullmatch(r'v0\.(?:11|12)\.(?:0|[1-9][0-9]*)',label)
+          assert re.fullmatch(r'v0\.(?:11|12|13)\.(?:0|[1-9][0-9]*)',label)
           runners={'linux-x64':'ubuntu-22.04','linux-arm64':'ubuntu-24.04-arm','macos-arm64':'macos-15','macos-x64':'macos-15-intel'}
           include=[dict(name=t,runner=runners[t],os=t.split('-')[0],arch=t.split('-')[1]) for t in core_targets(label)]
           print('matrix='+json.dumps({'include':include}))
@@ -66,7 +66,7 @@ jobs:
             [[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]]
             test "$(git rev-parse HEAD)" = "$CANDIDATE_REF"
           else
-            [[ "$GITHUB_REF" =~ ^refs/tags/v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]
+            [[ "$GITHUB_REF" =~ ^refs/tags/v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]] || exit 2
             git rev-parse "$GITHUB_REF^{tag}" >/dev/null
             test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$(git rev-parse HEAD)"
           fi
@@ -110,7 +110,7 @@ jobs:
           TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]; then
+          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]]; then
             echo "release label must be a canonical v0.11.x/v0.12.x tag" >&2
             exit 1
           fi
@@ -196,7 +196,7 @@ jobs:
             [[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]]
             test "$(git rev-parse HEAD)" = "$CANDIDATE_REF"
           else
-            [[ "$GITHUB_REF" =~ ^refs/tags/v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]
+            [[ "$GITHUB_REF" =~ ^refs/tags/v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]] || exit 2
             git rev-parse "$GITHUB_REF^{tag}" >/dev/null
             test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$(git rev-parse HEAD)"
           fi
@@ -208,7 +208,7 @@ jobs:
           TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]; then
+          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]]; then
             echo "release label must be a canonical v0.11.x/v0.12.x tag" >&2
             exit 1
           fi
@@ -269,7 +269,7 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]; then
+          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]]; then
             echo "release label must be a canonical v0.11.x/v0.12.x tag" >&2
             exit 1
           fi

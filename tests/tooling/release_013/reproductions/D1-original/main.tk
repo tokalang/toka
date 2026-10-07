@@ -1,0 +1,9 @@
+import std/data_file::{ReadDataFile}
+import std/vec::{Vec}
+fn main()->i32 {
+ auto file = ReadDataFile::open(string::from("/dev/null")).unwrap()
+ auto buffer# = Vec<u8>::new()
+ buffer#.resize(1,0)
+ auto part = file.read_at(buffer#,0:u64,1:usize)
+ return 0
+}

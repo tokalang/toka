@@ -365,12 +365,12 @@ def main():
                     "${{ steps.version.outputs.label" not in block and
                     "${{ steps.candidate.outputs" not in block,
                     workflow_name + " workflow interpolates context into shell")
-    active_pattern = r"^v0\.(11|12)\.(0|[1-9][0-9]*)$"
+    active_pattern = r"^v0\.(11|12|13)\.(0|[1-9][0-9]*)$"
     require(text.count(active_pattern) == 3 and
             promotion.count(active_pattern) == 1 and
             qualified_replay.count(r"^v0\.11\.(0|[1-9][0-9]*)$") == 1,
             "active workflows do not validate the same canonical v0.11.x tag")
-    for label in ("v0.11.0", "v0.11.1", "v0.11.123", "v0.12.0", "v0.12.123"):
+    for label in ("v0.11.0", "v0.11.1", "v0.11.123", "v0.12.0", "v0.12.123", "v0.13.0", "v0.13.123"):
         require(re.fullmatch(active_pattern, label) is not None,
                 "valid active release label was rejected: " + label)
     for label in ("v0.11.00", "v0.11.01", "v0.10.0", "v1.0.0-rc.13",

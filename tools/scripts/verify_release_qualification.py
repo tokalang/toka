@@ -87,6 +87,10 @@ def report_errors(report, revision, version_label):
         if stage.get("result") != "pass":
             errors.append("%s: stage %s is not pass" % (target, stage.get("name", "<missing>")))
         errors.extend(count_errors(stage, target))
+        if version_label.startswith('v0.13.') and stage.get('name')=='package_smoke':
+            control=stage.get('counts',{}).get('candidate_013',{})
+            if control.get('schema')!='toka.0.13-candidate-controls' or control.get('result')!='pass' or control.get('candidate_revision')!=revision or control.get('version_label')!=version_label or control.get('build_testing') is not False or control.get('groups')!=['A1','B1','B1-boundaries','B1-relative','D1-D2']:
+                errors.append(target+': required 0.13 installed candidate controls missing or mismatched')
     return errors
 
 
@@ -176,6 +180,8 @@ def main():
         reports.append({"path": str(path), "target": target,
                         "result": report.get("result")})
         errors.extend(report_errors(report, args.revision, args.version_label))
+        if args.version_label.startswith('v0.13.'):
+            reports[-1]['candidate_013']=next((stage.get('counts',{}).get('candidate_013') for stage in report.get('stages',[]) if stage.get('name')=='package_smoke'),None)
 
     missing = sorted(set(targets) - set(seen))
     unexpected = sorted(set(seen) - set(targets))
@@ -242,7 +248,7 @@ def main():
         except (OSError,ValueError) as error:
             optional = None
             errors.append('cannot read optional target status: '+str(error))
-        summary.update(version=2,policy_id=platforms.POLICY,expected_core_targets=list(targets),
+        summary.update(version=2,policy_id=platforms.policy_id(args.version_label),expected_core_targets=list(targets),
                        optional_targets={platforms.OPTIONAL:optional},source_run_id=args.source_run_id,source_run_attempt=args.source_run_attempt)
         errors.extend(platforms.summary_errors(dict(summary,result='pass',errors=[]),args.revision,args.version_label))
         summary['result']='pass' if not errors else 'fail'

@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$TAG_NAME" =~ ^v0\.12\.(0|[1-9][0-9]*)$ ]]
+          [[ "$TAG_NAME" =~ ^v0\.(12|13)\.(0|[1-9][0-9]*)$ ]]
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test -z "$(git status --porcelain --untracked-files=no)"
           brew install cmake ninja llvm@20 lld@20 zstd openssl@3
@@ -74,7 +74,7 @@ jobs:
           sys.path.insert(0,str(Path(os.environ['RUNNER_TEMP'])/'basic-harness'))
           import release_platform_policy as policy
           root=Path(os.environ['RUNNER_TEMP']);receipt=json.loads((root/'basic-results/basic-receipt.json').read_text())
-          state={'target':'macos-x64','status':'passed','reason':'The actual optional SDK passed basic validation.','candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'policy_id':policy.POLICY,'validation_level':'basic','receipt':receipt}
+          state={'target':'macos-x64','status':'passed','reason':'The actual optional SDK passed basic validation.','candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'policy_id':policy.policy_id(os.environ['TAG_NAME']),'validation_level':'basic','receipt':receipt}
           assert not policy.optional_errors(state,os.environ['CANDIDATE_SHA'],os.environ['TAG_NAME'])
           (root/'basic-results/optional-status.json').write_text(json.dumps(state,indent=2)+'\n')
           PY

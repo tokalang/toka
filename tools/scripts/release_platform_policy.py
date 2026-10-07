@@ -62,9 +62,13 @@ SHA = re.compile(r'[0-9a-f]{40}\Z')
 
 
 def modern(label):
-    if label.startswith('v0.12.') and not re.fullmatch(r'v0\.12\.(0|[1-9][0-9]*)', label):
-        raise ValueError('noncanonical 0.12 release label')
-    return bool(re.fullmatch(r'v0\.12\.(0|[1-9][0-9]*)',label))
+    if label.startswith(('v0.12.', 'v0.13.')) and not re.fullmatch(r'v0\.(?:12|13)\.(0|[1-9][0-9]*)', label):
+        raise ValueError('noncanonical three-core release label')
+    return bool(re.fullmatch(r'v0\.(?:12|13)\.(0|[1-9][0-9]*)',label))
+
+
+def policy_id(label):
+    return 'toka.release-platforms.0.13.v1' if label.startswith('v0.13.') else POLICY
 
 
 def core_targets(label):
@@ -77,7 +81,7 @@ def positive_integer(value):
 
 def not_run(revision,label):
     return {'target':OPTIONAL,'status':'not_run','reason':'Independent Intel validation has not been included in this core qualification.',
-            'candidate_revision':revision,'version_label':label,'policy_id':POLICY,
+            'candidate_revision':revision,'version_label':label,'policy_id':policy_id(label),
             'validation_level':None,'receipt':None}
 
 
@@ -85,7 +89,7 @@ def optional_errors(state,revision,label,digest=None):
     errors=[]
     if not isinstance(state,dict):return ['optional target status is missing']
     if state.get('target')!=OPTIONAL or state.get('status') not in STATES or \
-            state.get('candidate_revision')!=revision or state.get('version_label')!=label or state.get('policy_id')!=POLICY:
+            state.get('candidate_revision')!=revision or state.get('version_label')!=label or state.get('policy_id')!=policy_id(label):
         errors.append('optional target identity/status/policy does not match')
     if not isinstance(state.get('reason'),str) or not state['reason'].strip():errors.append('optional target reason is missing')
     if state.get('status')!='passed':
@@ -96,7 +100,7 @@ def optional_errors(state,revision,label,digest=None):
     if state.get('validation_level') not in ('basic','full') or not isinstance(receipt,dict):
         return errors+['optional passed target has no basic/full receipt']
     if receipt.get('schema')!='toka.sdk-basic-validation' or receipt.get('version')!=1 or receipt.get('result')!='pass' or \
-            receipt.get('target')!=OPTIONAL or receipt.get('policy_id')!=POLICY or \
+            receipt.get('target')!=OPTIONAL or receipt.get('policy_id')!=policy_id(label) or \
             receipt.get('candidate_revision')!=revision or receipt.get('version_label')!=label or receipt.get('source_dirty') is not False or \
             not positive_integer(receipt.get('source_run_id')) or not positive_integer(receipt.get('source_run_attempt')) or \
             not isinstance(receipt.get('archive_sha256'),str) or not DIGEST.fullmatch(receipt['archive_sha256']):
@@ -138,13 +142,18 @@ def summary_errors(summary,revision,label):
     errors=[]
     if summary.get('schema')!='toka.release-qualification-summary' or summary.get('version')!=2 or \
             summary.get('result')!='pass' or summary.get('errors')!=[] or summary.get('candidate_revision')!=revision or summary.get('version_label')!=label or \
-            summary.get('policy_id')!=POLICY or summary.get('expected_core_targets')!=list(CORE) or summary.get('expected_targets')!=list(CORE) or \
+            summary.get('policy_id')!=policy_id(label) or summary.get('expected_core_targets')!=list(CORE) or summary.get('expected_targets')!=list(CORE) or \
             not positive_integer(summary.get('source_run_id')) or not positive_integer(summary.get('source_run_attempt')):
         errors.append('three-core qualification identity/policy/run attempt does not match')
     for key,result in [('reports','pass'),('taskhandle_conformance','pass'),('restricted_cancellation_conformance','candidate-pass')]:
         rows=summary.get(key)
         if not isinstance(rows,list) or len(rows)!=len(CORE) or any(not isinstance(row,dict) or row.get('result')!=result for row in rows) or {row.get('target') for row in rows if isinstance(row,dict)}!=set(CORE):
             errors.append('core qualification evidence is incomplete: '+key)
+    if label.startswith('v0.13.'):
+        for row in summary.get('reports',[]):
+            control=row.get('candidate_013',{}) or {}
+            if control.get('schema')!='toka.0.13-candidate-controls' or control.get('result')!='pass' or control.get('candidate_revision')!=revision or control.get('version_label')!=label or control.get('build_testing') is not False or control.get('groups')!=['A1','B1','B1-boundaries','B1-relative','D1-D2']:
+                errors.append('0.13 installed feature proof missing: '+str(row.get('target')))
     optional=summary.get('optional_targets')
     if not isinstance(optional,dict) or set(optional)!={OPTIONAL}:errors.append('optional target status must be explicit')
     else:errors+=optional_errors(optional[OPTIONAL],revision,label)

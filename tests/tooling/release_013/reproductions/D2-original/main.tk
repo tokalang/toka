@@ -1,0 +1,8 @@
+import stdx/serde/json_document::{parse_document, Document}
+fn probe(doc:Document, object:i32)->usize { return doc.find(object,"x") }
+fn main()->i32 {
+ auto doc = parse_document("{} ").unwrap()
+ auto id = probe(doc,1)
+ if id == 0 { return 0 }
+ return 1
+}

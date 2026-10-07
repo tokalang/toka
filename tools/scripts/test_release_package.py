@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import tarfile
+import uuid
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +35,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("archive")
     parser.add_argument("--version")
+    parser.add_argument("--controls-output",type=Path)
     args = parser.parse_args()
 
     archive = Path(args.archive).resolve()
@@ -185,7 +187,16 @@ def main():
         run([str(toka), "rm", "dep"], package_project, env)
         checks.append("toka-package-lock-offline-remove")
 
+        candidate_013 = None
+        if args.version and args.version.startswith('v0.13.'):
+            descriptor=json.loads((package_root/'sdk.json').read_text())
+            command=[sys.executable,str(ROOT/'tools/scripts/test_0_13_candidate.py'),'--sdk',str(package_root),'--revision',descriptor['candidate_revision'],'--version',args.version,'--output',str(args.controls_output or archive.parent/('candidate-controls-'+uuid.uuid4().hex))]
+            run(command,root,env)
+            candidate_013=json.loads((Path(command[-1])/'result.json').read_text())
+            checks.append('0.13-installed-candidate-controls')
+
     print(json.dumps({
+        **({"candidate_013": candidate_013} if candidate_013 is not None else {}),
         "checks": checks,
         "count": len(checks),
         "result": "pass",

@@ -72,7 +72,7 @@ curl --fail --location --retry 3 --silent --show-error \
   -o "${TMP_DIR}/SHA256SUMS" "$CHECKSUM_URL"
 if [ "$OS-$ARCH" = "macos-x64" ]; then
   case "$VERSION" in
-    v0.12.*)
+    v0.12.*|v0.13.*)
       if ! awk -v file="$TARBALL" '$2 == file { found=1 } END { exit !found }' "${TMP_DIR}/SHA256SUMS"; then
         echo "Release $VERSION has no macos-x64 binary. Intel Mac is best-effort for this version."
         echo "Build the exact tag $VERSION from source: https://github.com/tokalang/toka/blob/$VERSION/README.md"

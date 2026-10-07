@@ -2,8 +2,8 @@
 set -e
 
 # Usage: ./package_release.sh [version]
-VERSION=${1:-"v0.12.0"}
-if [[ ! "$VERSION" =~ ^v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]; then
+VERSION=${1:-"v0.13.0"}
+if [[ ! "$VERSION" =~ ^v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]]; then
     echo "Release label must be a canonical v0.11.x tag or v0.12.x tag" >&2
     exit 1
 fi
@@ -60,6 +60,7 @@ mkdir -p "${PACKAGE_DIR}/bin"
 mkdir -p "${PACKAGE_DIR}/lib"
 
 # Verify and copy binaries
+BINARY_BUILD_DIR=${BINARY_BUILD_DIR:-build}
 MISSING_BINARIES=0
 EXPECTED_BINS=()
 
@@ -70,7 +71,7 @@ else
 fi
 
 for bin in "${EXPECTED_BINS[@]}"; do
-    if [ ! -f "build/bin/${bin}" ]; then
+    if [ ! -f "${BINARY_BUILD_DIR}/bin/${bin}" ]; then
         echo "❌ Error: Required binary 'build/bin/${bin}' not found!"
         MISSING_BINARIES=1
     fi
@@ -82,7 +83,7 @@ if [ "$MISSING_BINARIES" -ne 0 ]; then
 fi
 
 for bin in "${EXPECTED_BINS[@]}"; do
-    cp -a "build/bin/${bin}" "${PACKAGE_DIR}/bin/"
+    cp -a "${BINARY_BUILD_DIR}/bin/${bin}" "${PACKAGE_DIR}/bin/"
 done
 
 # Copy standard library
@@ -109,9 +110,32 @@ fi
 mkdir -p "${PACKAGE_DIR}/docs"
 cp -a docs/ai_completion_card.md "${PACKAGE_DIR}/docs/"
 
+if [[ "$VERSION" == v0.13.* ]]; then
+    cp docs/package_entry_contract.md docs/package_entry_example.md docs/diagnostic_d1_d2_migration.md docs/toka_test_lock_codes.md "${PACKAGE_DIR}/docs/"
+fi
+
 # Copy meta files
 cp README.md "${PACKAGE_DIR}/" || true
 cp LICENSE "${PACKAGE_DIR}/" || true
+
+# Bind standard 0.13 archives to the source and all four real binaries.
+if [[ "$VERSION" == v0.13.* ]]; then
+    python3 - "$PACKAGE_DIR" "$VERSION" "$BINARY_BUILD_DIR" <<'PYCODE'
+import hashlib,json,subprocess,sys
+from pathlib import Path
+root=Path(sys.argv[1]);label=sys.argv[2]
+if 'BUILD_TESTING:BOOL=OFF' not in (Path(sys.argv[3])/'CMakeCache.txt').read_text():raise SystemExit('0.13 distribution requires a standard BUILD_TESTING=OFF build')
+revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+dirty=bool(subprocess.check_output(['git','-c','core.fsmonitor=false','status','--porcelain','--untracked-files=no']).strip())
+if dirty:raise SystemExit('0.13 package requires a frozen clean tracked candidate')
+tools={}
+for name in ('tokac','toka','tokafmt','tokalsp'):
+    path=root/'bin'/name;r=subprocess.run([str(path.resolve()),'--version'],capture_output=True)
+    if r.returncode!=0 or label[1:].encode() not in r.stdout+r.stderr:raise SystemExit('tool identity mismatch: '+name)
+    tools[name]={'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'stdout':r.stdout.decode(),'stderr':r.stderr.decode(),'exit_code':r.returncode}
+(root/'sdk.json').write_text(json.dumps({'schema':'toka.sdk-identity','version':1,'version_label':label,'candidate_revision':revision,'source_dirty':False,'build_testing':False,'tools':tools},indent=2)+'\n')
+PYCODE
+fi
 
 # Archive
 cd build

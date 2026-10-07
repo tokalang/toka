@@ -26,8 +26,8 @@ def basic(digest):
             if name=='test_timeout':running.update(state='aborted',exit_code=None,signal=15);row.update(trigger='timeout',cleanup='confirmed')
             row['facts']={'schema':'toka.test-report','version':1,'finalized':True,'report_exit_code':row['exit_code'],'report_result':'passed' if name=='test_pass' else 'failed','summary':{'total':1,'passed':1 if name=='test_pass' else 0,'failed':0 if name=='test_pass' else 1,'infrastructure_error':0,'interrupted':0,'not_run':0},'test_count':1,'test_id':'tests/basic_test.tk','test_result':{'test_pass':'passed','test_fail':'run_failed','test_timeout':'timed_out'}[name],'compile_link':phase,'run':running,'trigger':'timeout' if name=='test_timeout' else 'none','cleanup':{'status':'confirmed','leader_reaped':True,'group_absent':True,'output_complete':True},'lock_sha256':lock,'dependency_nodes':[{'alias':'basic_dep','package_node_id':node,**dict(zip(('kind','locator','resolved','archive_sha256','content_sha256'),fields[2:7]))}]}
         checks.append(row)
-    return {'schema':'toka.sdk-basic-validation','version':1,'policy_id':policy.POLICY,'candidate_revision':SHA,'version_label':TAG,'source_dirty':False,'target':'macos-x64','source_run_id':21,'source_run_attempt':2,'archive_sha256':digest,'result':'pass','dependencies':dep,
-            'sdk_identity':{'preview_composition':False,'version_label':TAG,'candidate_revision':SHA,'tools':{name:{'version':'0.12.0','exit_code':0,'sha256':'1'*64,'stdout_sha256':'2'*64,'stderr_sha256':'3'*64} for name in policy.TOOLS}},'checks':checks}
+    return {'schema':'toka.sdk-basic-validation','version':1,'policy_id':policy.policy_id(TAG),'candidate_revision':SHA,'version_label':TAG,'source_dirty':False,'target':'macos-x64','source_run_id':21,'source_run_attempt':2,'archive_sha256':digest,'result':'pass','dependencies':dep,
+            'sdk_identity':{'preview_composition':False,'version_label':TAG,'candidate_revision':SHA,'tools':{name:{'version':TAG.removeprefix('v'),'exit_code':0,'sha256':'1'*64,'stdout_sha256':'2'*64,'stderr_sha256':'3'*64} for name in policy.TOOLS}},'checks':checks}
 
 
 def fixture(root,intel=False):
@@ -41,14 +41,17 @@ def fixture(root,intel=False):
     (assets/'SHA256SUMS').write_text(''.join('%s  %s\n'%(hashes[name],name) for name in sorted(hashes)))
     optional=policy.not_run(SHA,TAG)
     if intel:optional.update(status='passed',reason='controlled positive optional receipt',validation_level='basic',receipt=basic(hashes['toka-'+TAG+'-macos-x64.tar.gz']))
-    summary={'schema':'toka.release-qualification-summary','version':2,'candidate_revision':SHA,'version_label':TAG,'result':'pass','errors':[],'policy_id':policy.POLICY,'expected_targets':list(policy.CORE),'expected_core_targets':list(policy.CORE),'source_run_id':11,'source_run_attempt':1,'optional_targets':{'macos-x64':optional},
+    summary={'schema':'toka.release-qualification-summary','version':2,'candidate_revision':SHA,'version_label':TAG,'result':'pass','errors':[],'policy_id':policy.policy_id(TAG),'expected_targets':list(policy.CORE),'expected_core_targets':list(policy.CORE),'source_run_id':11,'source_run_attempt':1,'optional_targets':{'macos-x64':optional},
              **{key:[{'target':target,'result':result} for target in policy.CORE] for key,result in [('reports','pass'),('taskhandle_conformance','pass'),('restricted_cancellation_conformance','candidate-pass')]}}
+    if TAG.startswith('v0.13.'):
+        for row in summary['reports']:
+            row['candidate_013']={'schema':'toka.0.13-candidate-controls','version':1,'result':'pass','candidate_revision':SHA,'version_label':TAG,'build_testing':False,'groups':['A1','B1','B1-boundaries','B1-relative','D1-D2']}
     documents={'summary':summary,'run':{'id':11,'run_attempt':1,'status':'completed','conclusion':'success','head_sha':SHA,'path':'.github/workflows/release.yml','event':'workflow_dispatch','repository':{'full_name':'tokalang/toka'},'head_repository':{'full_name':'tokalang/toka'}},
                'draft':{'tagName':TAG,'isDraft':True,'isPrerelease':False,'assets':[{'name':name} for name in [*hashes,'SHA256SUMS']]},'artifacts':{'artifacts':metadata},
                'optional_run':{'id':21,'run_attempt':2,'head_sha':SHA,'status':'completed','conclusion':'success','event':'workflow_dispatch','path':'.github/workflows/optional_macos_x64.yml'},
                'replay_run':{'id':12,'run_attempt':3,'status':'completed','conclusion':'success','event':'workflow_dispatch','path':'.github/workflows/qualified_artifact_replay.yml'},
-               'replay':{'schema':'toka.qualified-artifact-replay-summary','version':2,'policy_id':policy.POLICY,'result':'pass','errors':[],'candidate_revision':SHA,'version_label':TAG,'qualification_run_id':11,'qualification_run_attempt':1,'replay_run_id':12,'replay_run_attempt':3,
-                         'receipts':[{'target':target,'result':'pass','archive_sha256':hashes['toka-%s-%s.tar.gz'%(TAG,target)],'candidate_revision':SHA,'version_label':TAG,'policy_id':policy.POLICY,'asset_source':'candidate_run','qualification_run_id':11,'qualification_run_attempt':1} for target in targets]}}
+               'replay':{'schema':'toka.qualified-artifact-replay-summary','version':2,'policy_id':policy.policy_id(TAG),'result':'pass','errors':[],'candidate_revision':SHA,'version_label':TAG,'qualification_run_id':11,'qualification_run_attempt':1,'replay_run_id':12,'replay_run_attempt':3,
+                         'receipts':[{'target':target,'result':'pass','archive_sha256':hashes['toka-%s-%s.tar.gz'%(TAG,target)],'candidate_revision':SHA,'version_label':TAG,'policy_id':policy.policy_id(TAG),'asset_source':'candidate_run','qualification_run_id':11,'qualification_run_attempt':1} for target in targets]}}
     for name,value in documents.items():dump(root/(name+'.json'),value)
     a=argparse.Namespace(tag_name=TAG,candidate_sha=SHA,repository='tokalang/toka',qualification_run_id=11,replay_run_id=12,qualification_summary=root/'summary.json',qualification_run_json=root/'run.json',qualified_archives_dir=archives,draft_json=root/'draft.json',draft_assets_dir=assets,assets_dir=assets,qualification_artifacts_json=root/'artifacts.json',artifact_zips_dir=zips,optional_run_json=root/'optional_run.json',replay_run_json=root/'replay_run.json',replay_receipt=root/'replay.json')
     return a,documents

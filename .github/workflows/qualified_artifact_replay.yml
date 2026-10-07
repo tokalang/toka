@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       candidate_only:
-        description: Replay qualified 0.12 candidate bytes before creating a tag or draft
+        description: Replay qualified 0.12/0.13 candidate bytes before creating a tag or draft
         type: boolean
         default: false
       tag_name:
-        description: Canonical version label; tag required unless candidate_only for 0.12
+        description: Canonical version label; tag required unless candidate_only for 0.12/0.13
         required: true
         type: string
       optional_run_id:
@@ -42,7 +42,7 @@ permissions:
 
 jobs:
   replay:
-    if: ${{ !startsWith(inputs.tag_name, 'v0.12.') }}
+    if: ${{ !(startsWith(inputs.tag_name, 'v0.12.') || startsWith(inputs.tag_name, 'v0.13.')) }}
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -180,7 +180,7 @@ jobs:
           if-no-files-found: error
 
   policy-plan:
-    if: startsWith(inputs.tag_name, 'v0.12.')
+    if: (startsWith(inputs.tag_name, 'v0.12.') || startsWith(inputs.tag_name, 'v0.13.'))
     runs-on: ubuntu-22.04
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -201,7 +201,7 @@ jobs:
           ASSET_SOURCE: ${{ inputs.asset_source }}
         run: |
           set -euo pipefail
-          [[ "$TAG_NAME" =~ ^v0\.12\.(0|[1-9][0-9]*)$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
+          [[ "$TAG_NAME" =~ ^v0\.(12|13)\.(0|[1-9][0-9]*)$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA" || { echo "Replay checkout SHA mismatch" >&2; exit 2; }
           if [[ "$CANDIDATE_ONLY" == true ]]; then
@@ -300,7 +300,7 @@ jobs:
           from pathlib import Path
           sys.path.insert(0,'replay-input');import release_platform_policy as policy
           r=json.loads(Path('replay-results/basic-receipt.json').read_text());q=json.loads(Path('replay-input/qualification-run.json').read_text())
-          row={'schema':'toka.qualified-artifact-replay','version':2,'policy_id':policy.POLICY,'target':os.environ['TARGET'],'candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'qualification_run_id':int(os.environ['QUALIFICATION_RUN_ID']),'qualification_run_attempt':q['run_attempt'],'asset_source':'candidate_run' if q['event']=='workflow_dispatch' else 'qualified_run','archive_sha256':r['archive_sha256'],'tag_bound':os.environ['CANDIDATE_ONLY']!='true','result':'pass'}
+          row={'schema':'toka.qualified-artifact-replay','version':2,'policy_id':policy.policy_id(os.environ['TAG_NAME']),'target':os.environ['TARGET'],'candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'qualification_run_id':int(os.environ['QUALIFICATION_RUN_ID']),'qualification_run_attempt':q['run_attempt'],'asset_source':'candidate_run' if q['event']=='workflow_dispatch' else 'qualified_run','archive_sha256':r['archive_sha256'],'tag_bound':os.environ['CANDIDATE_ONLY']!='true','result':'pass'}
           Path('replay-results/replay-receipt.json').write_text(json.dumps(row,indent=2)+'\n')
           PYCODE
       - uses: actions/upload-artifact@v4
@@ -332,7 +332,7 @@ jobs:
           targets=policy.included_targets(s,os.environ['CANDIDATE_SHA'],os.environ['TAG_NAME'])
           errors=[]
           if len(rows)!=len(targets) or {r['target'] for r in rows}!=set(targets) or any(r.get('result')!='pass' for r in rows):errors.append('missing/failed package replay')
-          result={'schema':'toka.qualified-artifact-replay-summary','version':2,'policy_id':policy.POLICY,'candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'qualification_run_id':int(os.environ['QUALIFICATION_RUN_ID']),'qualification_run_attempt':q['run_attempt'],'replay_run_id':int(os.environ['GITHUB_RUN_ID']),'replay_run_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'receipts':rows,'errors':errors,'result':'fail' if errors else 'pass'}
+          result={'schema':'toka.qualified-artifact-replay-summary','version':2,'policy_id':policy.policy_id(os.environ['TAG_NAME']),'candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'qualification_run_id':int(os.environ['QUALIFICATION_RUN_ID']),'qualification_run_attempt':q['run_attempt'],'replay_run_id':int(os.environ['GITHUB_RUN_ID']),'replay_run_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'receipts':rows,'errors':errors,'result':'fail' if errors else 'pass'}
           Path('qualified-artifact-replay-receipt.json').write_text(json.dumps(result,indent=2)+'\n')
           raise SystemExit(bool(errors))
           PYCODE

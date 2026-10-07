@@ -41,7 +41,7 @@ jobs:
           REPLAY_RUN_ID: ${{ inputs.replay_run_id }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12)\.(0|[1-9][0-9]*)$ ]]; then
+          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]]; then
             echo "tag_name must be a canonical v0.11.x/v0.12.x tag" >&2
             exit 1
           fi
@@ -78,7 +78,7 @@ jobs:
           python3 -c 'import json; d=json.load(open("draft-release.json")); assert d["isDraft"] is True and d["isPrerelease"] is False'
 
       - name: Verify exact draft asset names
-        if: ${{ !startsWith(inputs.tag_name, 'v0.12.') }}
+        if: ${{ !(startsWith(inputs.tag_name, 'v0.12.') || startsWith(inputs.tag_name, 'v0.13.')) }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ inputs.tag_name }}
@@ -105,7 +105,7 @@ jobs:
           set -euo pipefail
           gh release download "$TAG_NAME" --dir release-assets \
             --pattern 'toka-*.tar.gz' --pattern SHA256SUMS
-          if [[ "$TAG_NAME" != v0.12.* ]]; then
+          if [[ "$TAG_NAME" != v0.12.* && "$TAG_NAME" != v0.13.* ]]; then
           python3 tools/scripts/verify_release_assets.py \
             --assets-dir release-assets \
             --version-label "$TAG_NAME" \
@@ -162,7 +162,7 @@ jobs:
       - name: Download qualified artifact replay receipt
         uses: actions/download-artifact@v4
         with:
-          name: qualified-artifact-replay-${{ inputs.tag_name }}-${{ startsWith(inputs.tag_name, 'v0.12.') && 'summary' || 'macos-x64' }}
+          name: qualified-artifact-replay-${{ inputs.tag_name }}-${{ (startsWith(inputs.tag_name, 'v0.12.') || startsWith(inputs.tag_name, 'v0.13.')) && 'summary' || 'macos-x64' }}
           path: replay-evidence
           github-token: ${{ github.token }}
           run-id: ${{ inputs.replay_run_id }}
@@ -179,7 +179,7 @@ jobs:
           set -euo pipefail
           proof=()
           archive_dir=qualification-archives
-          if [[ "$TAG_NAME" == v0.12.* ]]; then
+          if [[ "$TAG_NAME" == v0.12.* || "$TAG_NAME" == v0.13.* ]]; then
             extra=()
             if [[ -n "$OPTIONAL_RUN_ID" ]]; then extra+=(--optional-run-id "$OPTIONAL_RUN_ID"); fi
             python3 tools/scripts/fetch_policy_candidate.py --repository "$GITHUB_REPOSITORY" \

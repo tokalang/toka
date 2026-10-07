@@ -16,7 +16,7 @@ def validate_document(document, status):
 
 
 def main():
-    a=argparse.ArgumentParser();a.add_argument('--tokac',type=Path,required=True);a.add_argument('--sdk',type=Path,required=True);a.add_argument('--evidence',type=Path,required=True);a.add_argument('--output',type=Path,required=True);args=a.parse_args();out=args.output.resolve();out.mkdir();sdk=args.sdk.resolve();compiler=args.tokac.resolve();evidence=args.evidence.resolve()
+    a=argparse.ArgumentParser();a.add_argument('--tokac',type=Path,required=True);a.add_argument('--sdk',type=Path,required=True);a.add_argument('--evidence','--fixtures',dest='evidence',type=Path,default=Path(__file__).resolve().parents[2]/'tests/tooling/release_013');a.add_argument('--baseline-sdk',type=Path);a.add_argument('--output',type=Path,required=True);args=a.parse_args();out=args.output.resolve();out.mkdir();sdk=args.sdk.resolve();compiler=args.tokac.resolve();evidence=args.evidence.resolve()
     env=dict(os.environ,TOKA_LIB=str(sdk/'lib'));results=[];events=[]
     def run(name,argv,cwd,marker=None):
         folder=out/name;folder.mkdir();argv=list(map(str,argv));start=time.monotonic_ns();record={'argv':argv,'cwd':str(cwd),'phase':'compile/check' if argv[0] in (str(compiler),str(sdk/'bin/tokac')) else 'run','start_monotonic_ns':start,'wall_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'diagnostic_observed_ns':None}
@@ -61,9 +61,11 @@ def main():
         for start,end,value in sorted(edits,reverse=True):patched=patched[:start]+value+patched[end:]
         return patched,fix
     d1=(evidence/'reproductions/D1-original/main.tk').read_text()
-    # Old producer's real edit is applied, not reconstructed from a desired fix.
-    r,stdout,stderr,folder,file,binary=compile('D1-old',d1,sdk/'bin/tokac',True);require(r!=0,folder,'old failure retained','E04509',r)
-    old=json.loads(stdout);patched,_=apply(old,d1,file);r,stdout,stderr,folder,_,_=compile('D1-old-machine-applied',patched,sdk/'bin/tokac',True);require(r!=0 and any(x['code']=='E0461' for x in json.loads(stdout)['diagnostics']),folder,'old edit creates illegal cede suffix','E0461',stdout.decode())
+    if args.baseline_sdk is not None:
+        r,stdout,stderr,folder,file,binary=compile('D1-old',d1,args.baseline_sdk/'bin/tokac',True)
+        old=json.loads(stdout);patched,_=apply(old,d1,file)
+        r,stdout,stderr,folder,_,_=compile('D1-old-machine-applied',patched,args.baseline_sdk/'bin/tokac',True)
+        require(r!=0 and any(x['code']=='E0461' for x in json.loads(stdout)['diagnostics']),folder,'old edit stays illegal','E0461',stdout.decode())
     d1_variants={'adjacent':d1,'bare':d1.replace('read_at(buffer#,','read_at(buffer,'),'space':d1.replace('read_at(buffer#,','read_at(buffer #,'),'newline':d1.replace('read_at(buffer#,','read_at(buffer\n#,'),'comment':d1.replace('read_at(buffer#,','read_at(buffer /*intent*/ #,'),'CRLF':d1.replace('\n','\r\n')}
     for label,text in d1_variants.items():
         r,stdout,stderr,folder,file,_=compile('D1-'+label,text,check=True);report=validate_document(json.loads(stdout),r);require(r!=0 and any(x['code']=='E04509' for x in report['diagnostics']),folder,'missing cede still rejected','E04509',report)
@@ -84,13 +86,14 @@ def main():
                 try:apply(mutated,text,file)
                 except (ValueError,KeyError,StopIteration):rejected.append(case)
                 else:raise RuntimeError('invalid producer report accepted: '+case)
-            (out/'consumer-negative-controls.json').write_text(json.dumps({'rejected':rejected,'legacy_single_edit_applied_in_old_control':True},indent=2))
+            (out/'consumer-negative-controls.json').write_text(json.dumps({'rejected':rejected,'legacy_single_edit_applied_in_old_control':args.baseline_sdk is not None},indent=2))
             require(len(fix['edits'])==2,folder,'mutable named source needs suffix removal','2 edits',fix)
             insertion_only=text[:text.index('buffer#,')]+ 'cede '+text[text.index('buffer#,'):]
             r,stdout,stderr,folder,_,_=compile('D1-insertion-only-negative',insertion_only,check=True);require(r!=0 and any(x['code']=='E0461' for x in json.loads(stdout)['diagnostics']),folder,'insertion-only remains rejected','E0461',stdout.decode())
     d2=(evidence/'reproductions/D2-original/main.tk').read_text()
-    r,stdout,stderr,folder,_,_=compile('D2-old-check',d2,sdk/'bin/tokac',True);require(r==0,folder,'old frontend gap retained','exit0',stdout.decode())
-    r,stdout,stderr,folder,_,_=compile('D2-old-codegen',d2,sdk/'bin/tokac');require(r!=0 and b'LLVM IR Verification Failed' in stderr,folder,'old codegen failure retained','IR verifier failure',stderr.decode())
+    if args.baseline_sdk is not None:
+        r,stdout,stderr,folder,_,_=compile('D2-old-check',d2,args.baseline_sdk/'bin/tokac',True);require(r==0,folder,'old frontend gap retained','exit0',stdout.decode())
+        r,stdout,stderr,folder,_,_=compile('D2-old-codegen',d2,args.baseline_sdk/'bin/tokac');require(r!=0 and b'LLVM IR Verification Failed' in stderr,folder,'old codegen failure retained','IR verifier failure',stderr.decode())
     for check in (True,False):
         r,stdout,stderr,folder,file,_=compile('D2-i32-'+('check' if check else 'codegen'),d2,check=check);report=validate_document(json.loads(stdout),r);diag=next(x for x in report['diagnostics'] if x['code']=='E04510');span=diag['primary'];start=span['range']['start']
         require(r!=0 and b'LLVM IR Verification Failed' not in stderr and span['file']==str(file) and start['line']==1 and 'i32' in diag['message'] and ('usize' in diag['message'] or 'u64' in diag['message']),folder,'front-end source and type facts','E04510 at probe argument with unsigned expected vs i32 actual',diag)

@@ -13,7 +13,7 @@ except ModuleNotFoundError:
 
 
 TARGETS = ("linux-arm64", "linux-x64", "macos-arm64", "macos-x64")
-TAG = re.compile(r"v0\.(?:11|12)\.(?:0|[1-9][0-9]*)\Z")
+TAG = re.compile(r"v0\.(?:11|12|13)\.(?:0|[1-9][0-9]*)\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 

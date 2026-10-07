@@ -5,7 +5,7 @@ from pathlib import Path
 from test_package_entry import validate
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--overlay',type=Path,required=True);parser.add_argument('--review',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);a=parser.parse_args();out=a.output.resolve();out.mkdir();sdk=a.overlay.resolve();review=a.review.resolve()
+    parser=argparse.ArgumentParser();parser.add_argument('--overlay',type=Path,required=True);parser.add_argument('--review','--fixtures',dest='review',type=Path,default=Path(__file__).resolve().parents[2]/'tests/tooling/release_013');parser.add_argument('--output',type=Path,required=True);a=parser.parse_args();out=a.output.resolve();out.mkdir();sdk=a.overlay.resolve();review=a.review.resolve()
     env=dict(os.environ,TOKA_LIB=str(sdk/'lib'),TOKA_OFFLINE='1',PYTHONDONTWRITEBYTECODE='1',PATH=str(sdk/'bin')+':/opt/homebrew/bin:/usr/bin:/bin')
     commands=[]
     def run(name,argv,cwd,environment=env):

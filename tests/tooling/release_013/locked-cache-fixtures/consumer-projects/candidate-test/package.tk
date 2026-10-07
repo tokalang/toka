@@ -1,0 +1,1 @@
+pub const PACKAGE=(name="batch",version="1.0.0",dependencies=(reg="reg:latest",))
