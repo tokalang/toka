@@ -9,7 +9,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--sdk',type=Path,required=True);p.add_argument('--revision',required=True);p.add_argument('--version',default='v0.13.0');p.add_argument('--output',type=Path,required=True);a=p.parse_args();out=a.output.resolve();out.mkdir();sdk=a.sdk.resolve();root=Path(__file__).resolve().parents[2]
     if not re.fullmatch(r'[0-9a-f]{40}',a.revision) or not re.fullmatch(r'v0\.13\.(0|[1-9][0-9]*)',a.version):raise ValueError('invalid candidate identity')
     identity=json.loads((sdk/'sdk.json').read_text())
-    if identity.get('schema')!='toka.sdk-identity' or identity.get('version')!=1 or identity.get('version_label')!=a.version or identity.get('candidate_revision')!=a.revision or identity.get('source_dirty') is not False or identity.get('build_testing') is not False:raise ValueError('SDK metadata does not bind a standard frozen candidate')
+    if identity.get('schema')!='toka.sdk-identity' or type(identity.get('version')) is not int or identity['version']!=1 or identity.get('version_label')!=a.version or identity.get('candidate_revision')!=a.revision or identity.get('source_dirty') is not False or identity.get('build_testing') is not False:raise ValueError('SDK metadata does not bind a standard frozen candidate')
     env=dict(os.environ,PATH=str(sdk/'bin')+':/opt/homebrew/bin:/usr/bin:/bin',PYTHONDONTWRITEBYTECODE='1');env.pop('TOKA_LIB',None);env.pop('TOKAC',None)
     receipts=[]
     def run(name,argv,cwd):

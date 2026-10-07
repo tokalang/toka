@@ -42,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$TAG_NAME" =~ ^v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]] || exit 2
-          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 2
           [[ "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
 
       # The controller revision may differ from the immutable SDK candidate.

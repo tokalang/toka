@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
-            [[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]] || exit 2
             test "$(git rev-parse HEAD)" = "$CANDIDATE_REF"
           else
             [[ "$GITHUB_REF" =~ ^refs/tags/v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]] || exit 2
@@ -193,7 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
-            [[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]] || exit 2
             test "$(git rev-parse HEAD)" = "$CANDIDATE_REF"
           else
             [[ "$GITHUB_REF" =~ ^refs/tags/v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]] || exit 2
