@@ -2,12 +2,15 @@
 
 """Contract checks for the local RC prequalification entry point."""
 
+import argparse
 import ast
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import uuid
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,7 +23,90 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
+
+def label_rejection_errors(result, output):
+    errors = []
+    if type(result.returncode) is not int or result.returncode != 1:
+        errors.append("expected label rejection exit 1, actual %r" % result.returncode)
+    # Match the rejection category, not a specific supported-version list.
+    diagnostic = re.fullmatch(
+        r"release label (?:must be |rejected: )[^\r\n]*\bcanonical\b[^\r\n]*\btag\b[.]?",
+        result.stderr.strip(), re.IGNORECASE)
+    if diagnostic is None:
+        errors.append("expected a canonical release-label rejection diagnostic, actual %r" % result.stderr)
+    if output.exists():
+        errors.append("label rejection created output: " + str(output))
+    return errors
+
+
+def check_rejection_controls(root, diagnostics):
+    output = root / "controlled-output"
+    fixtures = [
+        ("current-wording", 1, "release label must be a canonical v0.11.x/v0.12.x/v0.13.x tag\n", False, True),
+        ("alternate-wording", 1, "Release label rejected: expected a canonical version tag.\n", False, True),
+        ("exit-success", 0, "release label must be a canonical tag\n", False, False),
+        ("bool-exit", True, "release label must be a canonical tag\n", False, False),
+        ("float-exit", 1.0, "release label must be a canonical tag\n", False, False),
+        ("wrong-exit", 2, "release label must be a canonical tag\n", False, False),
+        ("signal-exit", -15, "release label must be a canonical tag\n", False, False),
+        ("ordinary-error", 1, "permission denied\n", False, False),
+        ("missing-helper", 1, "helper not found\n", False, False),
+        ("missing-diagnostic", 1, "", False, False),
+        ("generic-version-error", 1, "unsupported version\n", False, False),
+        ("mixed-failure", 1, "release label must be a canonical tag\nTraceback: helper missing\n", False, False),
+        ("created-empty-directory", 1, "release label must be a canonical tag\n", True, False),
+        ("created-report", 1, "release label must be a canonical tag\n", True, False),
+    ]
+    receipts = []
+    for name, code, stderr, created, accepted in fixtures:
+        if created:
+            output.mkdir()
+            if name == "created-report":
+                (output / "report.json").write_text("{}")
+        result = subprocess.CompletedProcess(["independent controlled fixture"], code, "", stderr)
+        errors = label_rejection_errors(result, output)
+        receipts.append({"name": name, "synthetic_control": True, "exit_code": code,
+                         "stderr": stderr, "output_created": created,
+                         "expected_accept": accepted, "errors": errors})
+        require((not errors) == accepted, "rejection control mismatch: " + json.dumps(receipts[-1]))
+        if created:
+            for entry in output.iterdir():
+                entry.unlink()
+            output.rmdir()
+    (diagnostics / "rejection-controls.json").write_text(json.dumps(receipts, indent=2) + "\n")
+
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--diagnostics-dir", type=Path)
+    args = parser.parse_args()
+    diagnostics = args.diagnostics_dir or ROOT / "build/prequalification-contract" / uuid.uuid4().hex
+    diagnostics.mkdir(parents=True, exist_ok=True)
+    sequence = 0
+
+    def run(argv, **options):
+        nonlocal sequence
+        sequence += 1
+        prefix = diagnostics / ("%03d" % sequence)
+        try:
+            raw_options = dict(options, text=False)
+            raw_result = subprocess.run(argv, **raw_options)
+            result = subprocess.CompletedProcess(argv, raw_result.returncode,
+                raw_result.stdout.decode("utf-8", errors="replace"),
+                raw_result.stderr.decode("utf-8", errors="replace"))
+        except OSError as error:
+            (prefix.with_suffix(".json")).write_text(json.dumps({"argv": argv, "cwd": str(options.get("cwd")),
+                "exit_code": None, "termination": "not_started", "error": str(error),
+                "stdout_available": False, "stderr_available": False}, indent=2))
+            raise
+        prefix.with_suffix(".stdout").write_bytes(raw_result.stdout)
+        prefix.with_suffix(".stderr").write_bytes(raw_result.stderr)
+        prefix.with_suffix(".json").write_text(json.dumps({"argv": argv, "cwd": str(options.get("cwd")),
+            "exit_code": result.returncode if result.returncode >= 0 else None,
+            "signal": -result.returncode if result.returncode < 0 else None}, indent=2))
+        if result.returncode:
+            print("Subcommand returned %d; raw receipt: %s" % (result.returncode, prefix), file=sys.stderr)
+        return result
     gate = ast.parse((ROOT / "tools/scripts/release_gate.py").read_text(encoding="utf-8"))
     stages = next(node.value for node in ast.walk(gate)
                   if isinstance(node, ast.Assign) and
@@ -43,7 +129,7 @@ def main():
             "--target", "linux-arm64", "--target", "linux-x64",
             "--output-dir", str(output),
         ]
-        result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE,
+        result = run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE)
         require(result.returncode == 0, "dry-run failed:\n%s%s" % (result.stdout, result.stderr))
         summary = json.loads((output / "local-release-prequalification-summary.json").read_text(encoding="utf-8"))
@@ -70,7 +156,7 @@ def main():
                 "Docker gates must use the isolated checkout's standard build directory")
 
         default_output = Path(temporary) / "default-output"
-        default_run = subprocess.run([
+        default_run = run([
             sys.executable, str(RUNNER), "--dry-run", "--target", "native",
             "--output-dir", str(default_output),
         ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -79,18 +165,33 @@ def main():
                 encoding="utf-8"))["version_label"] == "v0.11.0",
                 "default prequalification version did not move to 0.11.0")
 
-        invalid = subprocess.run([
+        invalid = run([
             sys.executable, str(RUNNER), "--dry-run", "--docker-cores", "0",
         ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         require(invalid.returncode != 0 and "must be positive" in invalid.stderr,
                 "invalid Docker parallelism must fail before a prequalification run")
+        check_rejection_controls(Path(temporary), diagnostics)
         for label in ("v0.11.01", "v1.0.0-rc.13", "v0.10.0"):
-            invalid_label = subprocess.run([
+            rejected_output = Path(temporary) / ("rejected-" + label)
+            invalid_label = run([
                 sys.executable, str(RUNNER), "--dry-run", "--version", label,
+                "--output-dir", str(rejected_output),
             ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            require(invalid_label.returncode != 0 and
-                    "canonical v0.11.x tag" in invalid_label.stderr,
-                    "invalid active prequalification label was accepted: " + label)
+            errors = label_rejection_errors(invalid_label, rejected_output)
+            require(not errors, "label rejection contract failed for %s: %s; receipt %s; inspect prequalify_release.py label validation" %
+                    (label, "; ".join(errors), diagnostics / ("%03d" % sequence)))
+        for label in ("v0.11.0", "v0.12.0", "v0.13.0"):
+            planned_output = Path(temporary) / ("planned-" + label)
+            legal_label = run([
+                sys.executable, str(RUNNER), "--dry-run", "--version", label,
+                "--target", "native", "--output-dir", str(planned_output),
+            ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            require(legal_label.returncode == 0, "valid label planning failed: " + label + "; receipt " + str(diagnostics / ("%03d" % sequence)))
+            planned = json.loads((planned_output / "local-release-prequalification-summary.json").read_text())
+            require(planned["schema"] == "toka.local-release-prequalification" and
+                    type(planned["version"]) is int and planned["version"] == 1 and
+                    planned["result"] == "planned" and planned["version_label"] == label,
+                    "valid-label planned identity changed: " + label)
 
     text = DOCKERFILE.read_text(encoding="utf-8")
     require("ARG BASE_IMAGE=ubuntu:24.04" in text,
