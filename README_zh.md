@@ -60,16 +60,16 @@ Toka 组合了几类机制来接近这个目标。设计上，它试图让日常
 **论文：** [Toka: A Systems Programming Language with Explicit Resource Semantics (arXiv:2606.01974)](https://arxiv.org/abs/2606.01974)
 
 
-0.12 的发布 SDK 政策要求 Linux x64、Linux ARM64、macOS ARM64 完整资格。Intel Mac 为独立尽力支持：同候选原包基本验证通过后才提供二进制；本版本没有该包时需源构建。已发布 0.11 的四平台资格和资产承诺保持原样。详见 [0.12 平台政策](docs/0_12_platform_policy.md)。0.12 尚未取得发布资格或公开发布。
+自 0.12 起的发布 SDK 政策要求 Linux x64、Linux ARM64、macOS ARM64 完整资格。Intel Mac 为独立尽力支持：同候选原包基本验证通过后才提供二进制；本版本没有该包时需源构建。已发布 0.11 的四平台资格和资产承诺保持原样。详见 [0.12 平台政策](docs/0_12_platform_policy.md)。0.13.0 已完成资格验证、原包重放和受保护公开推广；本版提供三个核心平台 SDK 归档，不含 Intel Mac 二进制。
 
 ## 快速开始
 
-Toka [`0.11.0`](https://github.com/tokalang/toka/releases/tag/v0.11.0) 已于
-**2026-10-01** 公开发布，目前是 GitHub Latest 正式版本。要获得可复现的安装，
+Toka [`0.13.0`](https://github.com/tokalang/toka/releases/tag/v0.13.0) 已于
+**2026-10-08** 公开发布，目前是 GitHub Latest 正式版本。要获得可复现的安装，
 请固定此版本 tag：
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v0.11.0
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v0.13.0
 export PATH="$HOME/.toka/bin:$PATH"
 export TOKA_LIB="$HOME/.toka/lib"
 toka doctor
@@ -85,7 +85,7 @@ sudo apt-get install clang lld python3 pkg-config libssl-dev
 `toka doctor` 会先检查这些运行条件，再报告 SDK ready。
 
 不带参数的安装脚本遵循 GitHub 已公开正式版的 Latest 选择器，不会自动选择
-最新 prerelease。上面的命令固定安装 `v0.11.0`，即使以后 Latest 发生变化也不受影响。
+最新 prerelease。上面的命令固定安装 `v0.13.0`，即使以后 Latest 发生变化也不受影响。
 包括 `v1.0.0-rc.13` 在内的历史版本仍保留在
 [GitHub Releases 页面](https://github.com/tokalang/toka/releases)。
 
@@ -284,20 +284,20 @@ toka capabilities --json main.tk
 
 ## 当前开发路线与发布状态
 
-1.0 release candidate 周期已经结束，`0.11.0` 是已发布的开发线版本，
-公共 API 仍在演进，不构成 1.0 稳定性承诺。包括 `v0.10.0` 和
+1.0 release candidate 周期已经结束，`0.13.0` 是已发布的开发线版本，
+公共 API 仍在演进，不构成 1.0 稳定性承诺。包括 `v0.12.0`、`v0.11.0`、`v0.10.0` 和
 `v1.0.0-rc.13` 在内的历史版本保留原有 tag、源码和资产。
-详见 [0.11 开发路线](docs/0_11_development_line.md)、
-[发布说明](docs/release_notes_v0.11.0.md)与 [Vec 迁移指南](docs/migration_0_11_vec.md)。
+详见 [发布说明](https://github.com/tokalang/toka/releases/tag/v0.13.0)、
+[本地库示例](docs/package_entry_example.md)与 [Vec 迁移指南](docs/migration_0_11_vec.md)。
 
-| 平台 | 已发布 v0.11.0 的状态 |
+| 平台 | 已发布 v0.13.0 的状态 |
 | :--- | :--- |
 | Linux x86_64 | 已发布 Tier 1 SDK archive |
 | Linux aarch64 | 已发布 Tier 1 SDK archive |
-| macOS x86_64 | 已发布 Tier 1 SDK archive |
+| macOS x86_64 | 尽力支持源码构建；本版本没有 SDK archive |
 | macOS aarch64 / Apple Silicon | 已发布 Tier 1 SDK archive |
-| Windows / MSYS2 | 源码构建与 dogfood 路径；没有 v0.11.0 SDK archive |
-| WSL2 / WASI | 可用或实验性路径；不是 0.11.0 阻塞发布目标 |
+| Windows / MSYS2 | 源码构建与 dogfood 路径；没有 v0.13.0 SDK archive |
+| WSL2 / WASI | 可用或实验性路径；不是 0.13.0 阻塞发布目标 |
 
 已知边界：
 
@@ -316,9 +316,9 @@ toka capabilities --json main.tk
 - 包含核心容器与系统级模块的标准库。
 - `toka` 项目管理器 / 构建工具、`tokafmt`、`tokalsp`。
 - 增量构建元数据与 TKI interface cache 校验。
-- 已发布 Linux 和 macOS 的 x64、ARM64 四份 `v0.11.0` SDK 归档。
+- 已发布 Linux x64、Linux ARM64、macOS ARM64 三份 `v0.13.0` SDK 归档。
 
-`0.11.0` 已完成四平台资格验证、原始 SDK 产物重放和受保护公开推广。
+`0.13.0` 已完成三个核心平台资格验证、原始 SDK 产物重放和受保护公开推广。
 后续语言和工具链开发与已发布的不可变 SDK 分开推进。
 Windows parity 与最终自举仍属于后续工作。
 

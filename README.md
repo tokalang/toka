@@ -66,16 +66,16 @@ Toka therefore explores a position between C, Rust, Go, and Zig: close to the ma
 **Paper:** [Toka: A Systems Programming Language with Explicit Resource Semantics (arXiv:2606.01974)](https://arxiv.org/abs/2606.01974)
 
 
-The published 0.12 SDK policy requires full qualification on Linux x64, Linux ARM64 and macOS ARM64. Intel Mac is independent best-effort support: a binary is offered only after the same-candidate package passes basic validation. A version without that asset must be built from source. Published 0.11 qualification and artifacts keep their four-platform contract. See [0.12 platform policy](docs/0_12_platform_policy.md). 0.12.0 has completed qualification, original-package replay and protected public promotion; the release includes the three core SDK archives and no Intel Mac binary.
+The published SDK policy introduced in 0.12 requires full qualification on Linux x64, Linux ARM64 and macOS ARM64. Intel Mac is independent best-effort support: a binary is offered only after the same-candidate package passes basic validation. A version without that asset must be built from source. Published 0.11 qualification and artifacts keep their four-platform contract. See [0.12 platform policy](docs/0_12_platform_policy.md). 0.13.0 has completed qualification, original-package replay and protected public promotion; the release includes the three core SDK archives and no Intel Mac binary.
 
 ## Quick Start
 
-Toka [`0.12.0`](https://github.com/tokalang/toka/releases/tag/v0.12.0) was
-published on **2026-10-05** and is the current GitHub Latest full release.
+Toka [`0.13.0`](https://github.com/tokalang/toka/releases/tag/v0.13.0) was
+published on **2026-10-08** and is the current GitHub Latest full release.
 Pin its tag for a repeatable installation:
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v0.12.0
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v0.13.0
 export PATH="$HOME/.toka/bin:$PATH"
 export TOKA_LIB="$HOME/.toka/lib"
 toka doctor
@@ -92,7 +92,7 @@ sudo apt-get install clang lld python3 pkg-config libssl-dev
 `toka doctor` checks these runtime requirements before declaring the SDK ready.
 
 The bare installer follows GitHub's full-release Latest selector; it does not
-select the newest prerelease. The command above keeps `v0.12.0` pinned even
+select the newest prerelease. The command above keeps `v0.13.0` pinned even
 after Latest changes. Earlier releases, including `v1.0.0-rc.13`, remain on the
 [GitHub releases page](https://github.com/tokalang/toka/releases).
 
@@ -312,23 +312,23 @@ write correct code without review.
 
 ## Current Development Route And Release Status
 
-The 1.0 release-candidate cycle has ended. `0.12.0` is the current published
+The 1.0 release-candidate cycle has ended. `0.13.0` is the current published
 development release, with an evolving public API rather than a 1.0 stability
-promise. Earlier releases, including `v0.11.0`, `v0.10.0` and `v1.0.0-rc.13`, retain their
+promise. Earlier releases, including `v0.12.0`, `v0.11.0`, `v0.10.0` and `v1.0.0-rc.13`, retain their
 original tags, source and assets. See the
 [0.12 development line](docs/0_12_development_line.md),
-[release notes](https://github.com/tokalang/toka/releases/tag/v0.12.0),
+[release notes](https://github.com/tokalang/toka/releases/tag/v0.13.0),
 [project test contract](docs/toka_test_v1.md) and
 [evidence-view migration guide](docs/toka_evidence_scope_v1.md).
 
-| Platform | Published v0.12.0 status |
+| Platform | Published v0.13.0 status |
 | :--- | :--- |
 | Linux x86_64 | Published Tier 1 SDK archive |
 | Linux aarch64 | Published Tier 1 SDK archive |
 | macOS x86_64 | Best-effort source-build support; no SDK archive in this release |
 | macOS aarch64 / Apple Silicon | Published Tier 1 SDK archive |
-| Windows / MSYS2 | Source-build and dogfood path; no v0.12.0 SDK archive |
-| WSL2 / WASI | Available or experimental; not a 0.12.0 blocking release target |
+| Windows / MSYS2 | Source-build and dogfood path; no v0.13.0 SDK archive |
+| WSL2 / WASI | Available or experimental; not a 0.13.0 blocking release target |
 
 Known boundaries:
 
@@ -349,9 +349,9 @@ The repository currently contains:
 - A standard library with core containers and system-level modules.
 - The `toka` project manager / build tool, `tokafmt`, and `tokalsp`.
 - Incremental build metadata and TKI interface cache validation.
-- Published `v0.12.0` SDK archives for Linux x64, Linux ARM64 and macOS ARM64.
+- Published `v0.13.0` SDK archives for Linux x64, Linux ARM64 and macOS ARM64.
 
-The `0.12.0` release completed three-core-platform qualification, original SDK
+The `0.13.0` release completed three-core-platform qualification, original SDK
 artifact replay and protected public promotion. Further language and tooling
 changes are developed separately from the immutable published SDK.
 Windows parity and eventual self-hosting remain later work.
