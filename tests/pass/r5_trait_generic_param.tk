@@ -1,0 +1,99 @@
+import std/vec::{Vec}
+import core/option::{Option}
+
+pub trait @Transformer {
+    pub fn transform(self#, cede input: Vec<u8>, factor: Option<i32>) -> Option<Vec<u8>>
+    pub fn count_bytes(self, bytes: Vec<u8>) -> usize
+}
+
+pub shape ByteMultiplier (
+    multiplier: i32
+)
+
+impl ByteMultiplier@Transformer {
+    pub fn transform(self#, cede input: Vec<u8>, factor: Option<i32>) -> Option<Vec<u8>> {
+        auto mult# = 0
+        if factor.is_some() {
+            mult = factor.unwrap()
+        } else {
+            mult = self.multiplier
+        }
+        if mult <= 0 {
+            return Option<Vec<u8>>::None
+        }
+        auto mut_input# = cede input
+        mut_input#.push(mult as u8)
+        return Option<Vec<u8>>::Some(cede mut_input)
+    }
+
+    pub fn count_bytes(self, bytes: Vec<u8>) -> usize {
+        return bytes.len()
+    }
+}
+
+fn execute_transform<T>(t#: T, cede v: Vec<u8>, opt: Option<i32>) -> Option<Vec<u8>>
+where:
+    T: @Transformer
+{
+    return t#.transform(cede v, opt)
+}
+
+pub fn main() -> i32 {
+    auto t# = ByteMultiplier(multiplier = 7)
+    
+    // Test 1: Direct trait method call with Vec shared borrow parameter
+    auto v1# = Vec<u8>::new()
+    v1#.push(10:u8)
+    v1#.push(20:u8)
+    
+    auto count = t.count_bytes(v1)
+    if count != 2:usize {
+        return 1
+    }
+    
+    // Test 2: Passing cede Vec and Option<i32>::Some
+    auto res1 = t#.transform(cede v1, Option<i32>::Some(42))
+    if res1.is_none() {
+        return 2
+    }
+    auto out_vec1 = res1.unwrap()
+    if out_vec1.len() != 3:usize {
+        return 3
+    }
+    if out_vec1.get(2:usize) != 42:u8 {
+        return 4
+    }
+    
+    // Test 3: Passing cede Vec and Option<i32>::None (uses default multiplier)
+    auto v2# = Vec<u8>::new()
+    v2#.push(99:u8)
+    auto res2 = t#.transform(cede v2, Option<i32>::None)
+    if res2.is_none() {
+        return 5
+    }
+    auto out_vec2 = res2.unwrap()
+    if out_vec2.len() != 2:usize {
+        return 6
+    }
+    if out_vec2.get(1:usize) != 7:u8 {
+        return 7
+    }
+    
+    // Test 4: Generic dispatch through execute_transform<ByteMultiplier>
+    auto t2# = ByteMultiplier(multiplier = 5)
+    auto v3# = Vec<u8>::new()
+    v3#.push(1:u8)
+    auto res3 = execute_transform<ByteMultiplier>(t2#, cede v3, Option<i32>::Some(10))
+    if res3.is_none() {
+        return 8
+    }
+    auto out_vec3 = res3.unwrap()
+    if out_vec3.len() != 2:usize {
+        return 9
+    }
+    if out_vec3.get(1:usize) != 10:u8 {
+        return 10
+    }
+    
+    return 0
+}
