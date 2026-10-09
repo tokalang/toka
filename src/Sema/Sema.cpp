@@ -8740,4 +8740,17 @@ bool Sema::isBorrowLikeType(std::shared_ptr<toka::Type> type) const {
   return walk(type);
 }
 
+bool Sema::isLifetimeCarryingType(std::shared_ptr<toka::Type> type) {
+  if (!type)
+    return false;
+  if (isBorrowLikeType(type))
+    return true;
+  if (taskResultType(type) != nullptr)
+    return true;
+  std::string soul = type->getSoulName();
+  if (soul.rfind("TaskHandle", 0) == 0)
+    return true;
+  return false;
+}
+
 } // namespace toka

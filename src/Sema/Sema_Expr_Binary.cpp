@@ -1195,7 +1195,15 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           CurrentScope->findVariableWithDeref(rv->Name, ri, rhsName);
           if (ri) {
             rhsDeps.insert(ri->LifeDependencySet.begin(), ri->LifeDependencySet.end());
+            if (ri->HasTaskResultDependencies) {
+              targetInfo->HasTaskResultDependencies = true;
+              targetInfo->TaskResultDependencySet = ri->TaskResultDependencySet;
+            }
           }
+        }
+        if (m_HasTaskResultDependencies) {
+          targetInfo->HasTaskResultDependencies = true;
+          targetInfo->TaskResultDependencySet = m_LastTaskResultDependencies;
         }
 
         std::set<std::string> mergedDeps;

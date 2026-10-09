@@ -850,8 +850,20 @@ void Sema::checkStmt(Stmt *S) {
           return !Clo->ImplicitCaptures.empty();
         }
         if (auto *Method = dynamic_cast<MethodCallExpr *>(E)) {
-          return Method->ResolvedFn &&
-                 !Method->ResolvedFn->LifeDependencies.empty();
+          if (Method->ResolvedFn) {
+            if (!Method->ResolvedFn->LifeDependencies.empty())
+              return true;
+            if (Method->ResolvedFn->Effect == EffectKind::Async)
+              return true;
+          }
+        }
+        if (auto *Call = dynamic_cast<CallExpr *>(E)) {
+          if (Call->ResolvedFn) {
+            if (!Call->ResolvedFn->LifeDependencies.empty())
+              return true;
+            if (Call->ResolvedFn->Effect == EffectKind::Async)
+              return true;
+          }
         }
         if (auto *Init = dynamic_cast<InitStructExpr *>(E)) {
           for (auto &Mem : Init->Members) {
@@ -879,11 +891,13 @@ void Sema::checkStmt(Stmt *S) {
 
       bool isTrackedRet =
           isBorrowLikeType(expectedRetObj) || isBorrowLikeType(ExprTypeObj) ||
+          isLifetimeCarryingType(expectedRetObj) || isLifetimeCarryingType(ExprTypeObj) ||
           returnsBorrowExpr(Ret->ReturnValue.get()) ||
           (carriesLifeDependencyExpr(Ret->ReturnValue.get()) &&
            (!expectedRetObj || expectedRetObj->isUnknown() ||
             expectedRetObj->isUniquePtr() || expectedRetObj->isSharedPtr() ||
-            isBorrowLikeType(expectedRetObj) || isBorrowLikeType(ExprTypeObj)));
+            isBorrowLikeType(expectedRetObj) || isBorrowLikeType(ExprTypeObj) ||
+            isLifetimeCarryingType(expectedRetObj) || isLifetimeCarryingType(ExprTypeObj)));
 
       // A named record's already prepared structural dependencies must enter
       // the existing lifetime checker even when legacy type inspection did
@@ -1241,8 +1255,34 @@ void Sema::checkStmt(Stmt *S) {
                     recordDependencyPathTo(out, origin.toLegacyString());
                   return;
                 }
-                for (auto &Arg : Call->Args) {
+                if (Call->ResolvedFn) {
+                  for (const auto &dep : Call->ResolvedFn->LifeDependencies) {
+                    for (size_t i = 0; i < Call->ResolvedFn->Args.size(); ++i) {
+                      if (Call->ResolvedFn->Args[i].Name != dep ||
+                          i >= Call->Args.size())
+                        continue;
+                      std::string path = getPath(Call->Args[i].get());
+                      if (!path.empty())
+                        recordDependencyPathTo(out, path);
+                      break;
+                    }
+                  }
+                  if (Call->ResolvedFn->Effect == EffectKind::Async) {
+                    for (size_t i = 0; i < Call->ResolvedFn->Args.size(); ++i) {
+                      if (Call->ResolvedFn->Args[i].IsCeded ||
+                          (i < Call->Args.size() && dynamic_cast<CedeExpr *>(Call->Args[i].get())))
+                        continue;
+                      if (i < Call->Args.size()) {
+                        std::string path = getPath(Call->Args[i].get());
+                        if (!path.empty())
+                          recordDependencyPathTo(out, path);
+                      }
+                    }
+                  }
+                } else {
+                  for (auto &Arg : Call->Args) {
                     collectDepsInto(Arg.get(), out);
+                  }
                 }
             }
             else if (auto *Method = dynamic_cast<MethodCallExpr *>(E)) {
@@ -1270,6 +1310,23 @@ void Sema::checkStmt(Stmt *S) {
                       if (!path.empty())
                         recordDependencyPathTo(out, path);
                       break;
+                    }
+                  }
+                  if (Method->ResolvedFn->Effect == EffectKind::Async) {
+                    if (!Method->ResolvedFn->Args.empty() && !Method->ResolvedFn->Args[0].IsCeded) {
+                      std::string path = getPath(Method->Object.get());
+                      if (!path.empty())
+                        recordDependencyPathTo(out, path);
+                    }
+                    for (size_t i = 1; i < Method->ResolvedFn->Args.size(); ++i) {
+                      if (Method->ResolvedFn->Args[i].IsCeded ||
+                          (i - 1 < Method->Args.size() && dynamic_cast<CedeExpr *>(Method->Args[i - 1].get())))
+                        continue;
+                      if (i - 1 < Method->Args.size()) {
+                        std::string path = getPath(Method->Args[i - 1].get());
+                        if (!path.empty())
+                          recordDependencyPathTo(out, path);
+                      }
                     }
                   }
                 }
@@ -2707,11 +2764,11 @@ void Sema::checkStmt(Stmt *S) {
           depsToCommitAsBorrow.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
         }
 
-        if (depInfo && !depInfo->IsReference() && !depInfo->LifeDependencySet.empty() && isBorrowLikeType(depInfo->TypeObj)) {
+        if (depInfo && !depInfo->IsReference() && !depInfo->LifeDependencySet.empty() && isLifetimeCarryingType(depInfo->TypeObj)) {
           for (const auto &transDep : depInfo->LifeDependencySet) {
             int transDepth = getScopeDepth(transDep);
             int myDepth = CurrentScope->Depth;
-            if (myDepth < transDepth && isBorrowLikeType(Info.TypeObj)) {
+            if (myDepth < transDepth && isLifetimeCarryingType(Info.TypeObj)) {
               DiagnosticEngine::report(getLoc(Var), DiagID::ERR_BORROW_LIFETIME,
                                        Var->Name, transDep);
               HasError = true;
@@ -2729,7 +2786,7 @@ void Sema::checkStmt(Stmt *S) {
         } else {
           int srcDepth = getScopeDepth(dep);
           int myDepth = CurrentScope->Depth;
-          if (myDepth < srcDepth && isBorrowLikeType(Info.TypeObj)) {
+          if (myDepth < srcDepth && isLifetimeCarryingType(Info.TypeObj)) {
             DiagnosticEngine::report(getLoc(Var), DiagID::ERR_BORROW_LIFETIME,
                                      Var->Name, dep);
             HasError = true;
@@ -2747,6 +2804,26 @@ void Sema::checkStmt(Stmt *S) {
       }
       m_LastLifeDependencies.clear();
     }
+
+    SymbolInfo *rhsVarInfo = nullptr;
+    if (auto *rhsVar = dynamic_cast<VariableExpr *>(Var->Init.get())) {
+      std::string rhsName = rhsVar->Name;
+      CurrentScope->findVariableWithDeref(rhsVar->Name, rhsVarInfo, rhsName);
+    } else if (auto *cede = dynamic_cast<CedeExpr *>(Var->Init.get())) {
+      if (auto *rhsVar = dynamic_cast<VariableExpr *>(cede->Value.get())) {
+        std::string rhsName = rhsVar->Name;
+        CurrentScope->findVariableWithDeref(rhsVar->Name, rhsVarInfo, rhsName);
+      }
+    }
+    if (rhsVarInfo && rhsVarInfo->HasTaskResultDependencies) {
+      Info.HasTaskResultDependencies = true;
+      Info.TaskResultDependencySet = rhsVarInfo->TaskResultDependencySet;
+    } else if (m_HasTaskResultDependencies) {
+      Info.HasTaskResultDependencies = true;
+      Info.TaskResultDependencySet = m_LastTaskResultDependencies;
+    }
+    m_HasTaskResultDependencies = false;
+    m_LastTaskResultDependencies.clear();
 
     Expr *closureSource = Var->Init.get();
     while (closureSource) {

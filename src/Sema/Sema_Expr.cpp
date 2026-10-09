@@ -946,6 +946,8 @@ Sema::CallArgumentRollbackGuard::CallArgumentRollbackGuard(
   SavedBorrowSource = Owner.m_LastBorrowSource;
   SavedLifeDependencies = Owner.m_LastLifeDependencies;
   SavedFieldDependencies = Owner.m_LastFieldDependencies;
+  SavedHasTaskResultDependencies = Owner.m_HasTaskResultDependencies;
+  SavedTaskResultDependencies = Owner.m_LastTaskResultDependencies;
 }
 
 void Sema::CallArgumentRollbackGuard::reject() {
@@ -957,6 +959,8 @@ void Sema::CallArgumentRollbackGuard::reject() {
     Owner.m_LastBorrowSource = SavedBorrowSource;
     Owner.m_LastLifeDependencies = SavedLifeDependencies;
     Owner.m_LastFieldDependencies = SavedFieldDependencies;
+    Owner.m_HasTaskResultDependencies = SavedHasTaskResultDependencies;
+    Owner.m_LastTaskResultDependencies = SavedTaskResultDependencies;
   }
 }
 
@@ -974,6 +978,8 @@ Sema::CallArgumentRollbackGuard::~CallArgumentRollbackGuard() {
     Owner.m_LastBorrowSource = SavedBorrowSource;
     Owner.m_LastLifeDependencies = SavedLifeDependencies;
     Owner.m_LastFieldDependencies = SavedFieldDependencies;
+    Owner.m_HasTaskResultDependencies = SavedHasTaskResultDependencies;
+    Owner.m_LastTaskResultDependencies = SavedTaskResultDependencies;
   }
 }
 
@@ -1472,13 +1478,21 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   m_LastInitMask = ~0ULL; // Default to fully set
   auto T = checkExprImpl(E);
   std::set<std::string> taskDependencies;
-  if (T && T->toString().find("TaskHandle") != std::string::npos)
+  std::set<std::string> taskResultDeps;
+  bool hasTaskResultDeps = m_HasTaskResultDependencies;
+  if (T && T->toString().find("TaskHandle") != std::string::npos) {
     taskDependencies = m_LastLifeDependencies;
+    taskResultDeps = m_LastTaskResultDependencies;
+  }
   // [Fix] Monomorphize type before assigning it to the node
   T = resolveType(T);
   if (!taskDependencies.empty())
     m_LastLifeDependencies.insert(taskDependencies.begin(),
                                   taskDependencies.end());
+  if (hasTaskResultDeps) {
+    m_HasTaskResultDependencies = true;
+    m_LastTaskResultDependencies = std::move(taskResultDeps);
+  }
   E->ResolvedType = T;
   const auto &expressionRecords = DiagnosticEngine::records();
   const bool expressionSucceeded = std::none_of(
@@ -1597,6 +1611,8 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       m_LastLifeDependencies.clear();
       m_LastFieldDependencies.clear();
       m_LastBorrowSource = "";
+      m_LastTaskResultDependencies.clear();
+      m_HasTaskResultDependencies = false;
   }
 
   const auto &finalRecords = DiagnosticEngine::records();
@@ -3215,6 +3231,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto nullsBeforeIf = m_NullStorageBindings;
     auto bytesBeforeIf = m_ByteBuffers;
     auto tasksBeforeIf = m_TaskResults;
+    std::set<std::string> lifeDepsThen, lifeDepsElse;
 
     if (narrowsInitState)
       applyInitStateNarrowing(PlaceState::Never);
@@ -3237,6 +3254,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto tasksElse = tasksBeforeIf;
     auto palThen = PALCheckerState.snapshot();
     auto externalThen = captureVisibleExternalDependencies();
+    lifeDepsThen = m_LastLifeDependencies;
 
     if (narrowsInitState)
       restoreInitStateNarrowing();
@@ -3284,6 +3302,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       auto exactPlacesElse = captureVisibleExactPlaceFacts(CurrentScope);
       auto palElse = PALCheckerState.snapshot();
       auto externalElse = captureVisibleExternalDependencies();
+      lifeDepsElse = m_LastLifeDependencies;
       m_ControlFlowStack.pop_back();
       if (narrowsInitState)
         restoreInitStateNarrowing();
@@ -3483,6 +3502,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     const std::string result =
         (thenType != NoProducedValue) ? thenType : elseType;
+    m_LastLifeDependencies.clear();
+    m_LastLifeDependencies.insert(lifeDepsThen.begin(), lifeDepsThen.end());
+    m_LastLifeDependencies.insert(lifeDepsElse.begin(), lifeDepsElse.end());
     return toka::Type::fromString(result == NoProducedValue ? "()" : result);
   } else if (auto *guard = dynamic_cast<GuardExpr *>(E)) {
     auto condType = checkExpr(guard->Condition.get());
@@ -4935,6 +4957,20 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto innerType = checkExpr(awaitEx->Expression.get());
     m_IsConsumingEffect = oldConsuming;
 
+    SymbolInfo *handleInfo = nullptr;
+    if (auto *var = dynamic_cast<VariableExpr *>(awaitEx->Expression.get())) {
+      CurrentScope->findSymbol(var->Name, handleInfo);
+    }
+    m_LastLifeDependencies.clear();
+    m_LastBorrowSource = "";
+    if (handleInfo && handleInfo->HasTaskResultDependencies) {
+      m_LastLifeDependencies = handleInfo->TaskResultDependencySet;
+    } else if (m_HasTaskResultDependencies) {
+      m_LastLifeDependencies = m_LastTaskResultDependencies;
+    }
+    m_HasTaskResultDependencies = false;
+    m_LastTaskResultDependencies.clear();
+
     auto taskShape = std::dynamic_pointer_cast<ShapeType>(
         innerType ? innerType->getSoulType() : nullptr);
     if (taskShape && taskShape->Decl &&
@@ -4981,6 +5017,20 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     m_IsConsumingEffect = true;
     auto innerType = checkExpr(waitEx->Expression.get());
     m_IsConsumingEffect = oldConsuming;
+
+    SymbolInfo *handleInfo = nullptr;
+    if (auto *var = dynamic_cast<VariableExpr *>(waitEx->Expression.get())) {
+      CurrentScope->findSymbol(var->Name, handleInfo);
+    }
+    m_LastLifeDependencies.clear();
+    m_LastBorrowSource = "";
+    if (handleInfo && handleInfo->HasTaskResultDependencies) {
+      m_LastLifeDependencies = handleInfo->TaskResultDependencySet;
+    } else if (m_HasTaskResultDependencies) {
+      m_LastLifeDependencies = m_LastTaskResultDependencies;
+    }
+    m_HasTaskResultDependencies = false;
+    m_LastTaskResultDependencies.clear();
 
     auto taskShape = std::dynamic_pointer_cast<ShapeType>(
         innerType ? innerType->getSoulType() : nullptr);
@@ -6423,12 +6473,18 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                    if (argInfo) {
                      if (!argInfo->BorrowedFrom.empty()) {
                        m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
+                       if (FD->Effect == EffectKind::Async)
+                         m_LastTaskResultDependencies.insert(argInfo->BorrowedFrom);
                        contributedDeps = true;
                      }
                      if (!argInfo->LifeDependencySet.empty()) {
                        m_LastLifeDependencies.insert(
                            argInfo->LifeDependencySet.begin(),
                            argInfo->LifeDependencySet.end());
+                       if (FD->Effect == EffectKind::Async)
+                         m_LastTaskResultDependencies.insert(
+                             argInfo->LifeDependencySet.begin(),
+                             argInfo->LifeDependencySet.end());
                        contributedDeps = true;
                      }
                    }
@@ -6445,7 +6501,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                    if (isExpressionDependency || isCurrentFunctionParam ||
                        !contributedDeps || isLifetimeAnchor) {
                      m_LastLifeDependencies.insert(argVar);
+                     if (FD->Effect == EffectKind::Async)
+                       m_LastTaskResultDependencies.insert(argVar);
                    }
+                   if (FD->Effect == EffectKind::Async)
+                     m_HasTaskResultDependencies = true;
                    recordDecision(
                        Met, FD->Effect == EffectKind::Async
                                 ? SemanticRuleID::AsyncSuspend001
@@ -6454,6 +6514,58 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                        SemanticDecision::Allow,
                        SemanticReason::InterfaceContractApplied, argVar, dep,
                        FD->Loc);
+                }
+            }
+            if (FD->Effect == EffectKind::Async) {
+                if (!hasExplicitDeps) {
+                    m_LastTaskResultDependencies.clear();
+                    m_HasTaskResultDependencies = true;
+                }
+                if (!FD->Args.empty() && !FD->Args[0].IsCeded) {
+                    std::string selfVar = mapParamToArg("self");
+                    if (!selfVar.empty()) {
+                        SymbolInfo *argInfo = nullptr;
+                        Expr *base = Met->Object.get();
+                        while (auto *mem = dynamic_cast<MemberExpr *>(base)) base = mem->Object.get();
+                        if (auto *var = dynamic_cast<VariableExpr *>(base)) {
+                            CurrentScope->findSymbol(var->Name, argInfo);
+                        }
+                        if (argInfo) {
+                            if (!argInfo->BorrowedFrom.empty())
+                                m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
+                            if (!argInfo->LifeDependencySet.empty())
+                                m_LastLifeDependencies.insert(argInfo->LifeDependencySet.begin(),
+                                                              argInfo->LifeDependencySet.end());
+                        }
+                        m_LastLifeDependencies.insert(selfVar);
+                    }
+                }
+                for (size_t i = 1; i < FD->Args.size(); ++i) {
+                    if (FD->Args[i].IsCeded || (i - 1 < Met->Args.size() && dynamic_cast<CedeExpr *>(Met->Args[i - 1].get())))
+                        continue;
+                    Expr *argExpr = i - 1 < Met->Args.size() ? Met->Args[i - 1].get() : nullptr;
+                    auto argType = argExpr ? argExpr->ResolvedType : nullptr;
+                    SymbolInfo *argInfo = nullptr;
+                    Expr *base = argExpr;
+                    while (auto *mem = dynamic_cast<MemberExpr *>(base)) base = mem->Object.get();
+                    if (auto *var = dynamic_cast<VariableExpr *>(base)) {
+                        CurrentScope->findSymbol(var->Name, argInfo);
+                        if (!argType && argInfo) argType = argInfo->TypeObj;
+                    }
+                    if (argType && (argType->isInteger() || argType->isFloatingPoint() ||
+                                   argType->isBoolean() || argType->isUnit()))
+                        continue;
+                    std::string argVar = mapParamToArg(FD->Args[i].Name);
+                    if (!argVar.empty()) {
+                        if (argInfo) {
+                            if (!argInfo->BorrowedFrom.empty())
+                                m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
+                            if (!argInfo->LifeDependencySet.empty())
+                                m_LastLifeDependencies.insert(argInfo->LifeDependencySet.begin(),
+                                                              argInfo->LifeDependencySet.end());
+                        }
+                        m_LastLifeDependencies.insert(argVar);
+                    }
                 }
             }
 

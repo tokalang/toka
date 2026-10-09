@@ -102,6 +102,8 @@ struct SymbolInfo {
   std::optional<std::vector<AccessPath>> CurrentReferenceTargets;
   std::set<std::string> LifeDependencySet; // [NEW] Shadow Dependency Set
   std::map<std::string, std::set<std::string>> FieldDependencySet; // [NEW] Member-specific deps
+  bool HasTaskResultDependencies = false;
+  std::set<std::string> TaskResultDependencySet;
   // Identity-preserving external value sources; nullopt is unknown.
   std::optional<std::set<AccessPath>> ExternalValueDependencies;
   bool ExternalValueTracked = false;
@@ -593,6 +595,8 @@ private:
   std::set<std::string>
       m_LastLifeDependencies; // [NEW] Track shape dependencies
   std::map<std::string, std::set<std::string>> m_LastFieldDependencies; // [NEW] Track field specific dependencies
+  bool m_HasTaskResultDependencies = false;
+  std::set<std::string> m_LastTaskResultDependencies;
   std::shared_ptr<toka::Type> m_ExpectedType;
   bool m_ExpectedCedeTransfer = false;
   bool m_CheckingNegativeIntegerLiteral = false;
@@ -879,6 +883,8 @@ private:
     std::string SavedBorrowSource;
     std::set<std::string> SavedLifeDependencies;
     std::map<std::string, std::set<std::string>> SavedFieldDependencies;
+    bool SavedHasTaskResultDependencies = false;
+    std::set<std::string> SavedTaskResultDependencies;
     bool Armed = true;
     bool Rejected = false;
   };
@@ -1462,6 +1468,7 @@ private:
   bool validateTypeVisibilityInType(std::shared_ptr<toka::Type> type,
                                     SourceLocation loc);
   bool isBorrowLikeType(std::shared_ptr<toka::Type> type) const;
+  bool isLifetimeCarryingType(std::shared_ptr<toka::Type> type);
   bool hasBorrowedValueFields(std::shared_ptr<toka::Type> type);
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
                                               bool force);
