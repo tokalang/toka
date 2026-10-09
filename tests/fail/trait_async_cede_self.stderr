@@ -1,0 +1,5 @@
+error[E0618]: Async method 'fetch' in trait '@CedeReceiver' is outside the frozen Toka 1.0 surface
+ --> tests/fail/trait_async_cede_self.tk:2:12
+   |
+ 2 |     pub fn fetch(cede self) -> async i32
+   |            ^

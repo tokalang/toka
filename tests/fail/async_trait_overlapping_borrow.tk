@@ -1,0 +1,36 @@
+import std/vec::{Vec}
+import core/result::{Result}
+import std/net::{AsyncReadResult, AsyncIoError}
+
+pub trait @MockTransport {
+    pub fn read(self#, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError>
+}
+
+shape S (
+    count: i32
+)
+
+impl S@MockTransport {
+    pub fn read(self#, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError> {
+        return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+            buffer = cede buf,
+            bytes_read = 0:usize,
+            eof = true
+        ))
+    }
+}
+
+fn test(s#: S) -> async i32 {
+    auto b1 = Vec<u8>::new()
+    auto b2 = Vec<u8>::new()
+    auto t1 = s#.read(cede b1)
+    auto t2 = s#.read(cede b2)
+    t1.await
+    return 0
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0441]

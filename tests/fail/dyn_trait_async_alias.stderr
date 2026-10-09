@@ -1,0 +1,5 @@
+error[E0617]: Trait '@AsyncTrait' cannot be used as 'dyn @AsyncTrait': async trait methods are not object-safe; dynamic dispatch is not supported
+ --> tests/fail/dyn_trait_async_alias.tk:5:6
+   |
+ 5 | type DynAlias = dyn @AsyncTrait
+   |      ^

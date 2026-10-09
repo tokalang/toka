@@ -1,0 +1,5 @@
+error[E0428]: Method signature mismatch: trait defines 'fetch' as parameter 'buf' as ceded (buf), but implementation is unceded (_buf)
+ --> tests/fail/trait_async_impl_param_cede_mismatch.tk:12:12
+    |
+ 12 |     pub fn fetch(self#, _buf: Vec<u8>) -> async i32 {
+    |            ^

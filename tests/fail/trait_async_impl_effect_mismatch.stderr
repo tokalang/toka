@@ -1,0 +1,5 @@
+error[E0428]: Method signature mismatch: trait defines 'fetch' as async, but implementation is sync
+ --> tests/fail/trait_async_impl_effect_mismatch.tk:10:12
+    |
+ 10 |     pub fn fetch(self#) -> i32 {
+    |            ^

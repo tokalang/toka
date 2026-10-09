@@ -1,0 +1,30 @@
+import std/vec::{Vec}
+import core/result::{Result}
+import std/net::{AsyncReadResult, AsyncIoError}
+import std/task::{block_on}
+import ./mod_a::{MockStream}
+import ./mod_b::{consume_generic}
+
+fn coordinator() -> async i32 {
+    auto s# = MockStream(bytes_read = 0:usize)
+    auto b# = Vec<u8>::new()
+    b#.push(1:u8)
+    b#.push(2:u8)
+    auto outcome = consume_generic<MockStream>(s#, cede b).await
+    match cede outcome {
+        auto Result<AsyncReadResult, AsyncIoError>::Ok(r) => {
+            if r.bytes_read != 4:usize {
+                return 1:i32
+            }
+            if s.bytes_read != 4:usize {
+                return 2:i32
+            }
+            return 0:i32
+        }
+        _ => return 3:i32
+    }
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}

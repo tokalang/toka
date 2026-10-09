@@ -1,0 +1,183 @@
+// Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// 0.14 G1: Static dispatch async trait lifecycle verification
+// Covers 4 branches on the same Mock and method:
+// 1. Normal completion -> buffer returned, resource destroyed (drop count = 1), outer stream survives
+// 2. Cold task drop -> task handle dropped without await; frame cleanup runs; stream survives (op_count unchanged); borrow released
+// 3. Handled cancellation -> internal cancellation intercepted; returns Result::Err with buffer preserved; drop count = 1; stream survives
+// 4. Unhandled cancellation -> task_cancel without internal handling; task.await? returns Option::None; frame cleanup destroys resources; stream survives
+
+import std/vec::{Vec}
+import core/result::{Result}
+import core/option::{Option}
+import core/string::{string}
+import std/net::{AsyncReadResult, AsyncIoError}
+import std/task::{block_on, sleep_async, task_cancel}
+import std/io::{println}
+
+auto g_drop_count# = 0:i32
+
+shape DropWitness (
+    id: i32
+)
+
+impl DropWitness@Encap {
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
+
+pub trait @MockTransport {
+    pub fn read(self#, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError>
+}
+
+pub shape MockStream (
+    mode: i32,
+    op_count: i32
+)
+
+impl MockStream@MockTransport {
+    pub fn read(self#, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError> {
+        auto witness = DropWitness(id = self.mode)
+        self.op_count += 1:i32
+
+        if self.mode == 0:i32 {
+            // Branch 1: Normal completion
+            if witness.id < 0:i32 { return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(buffer = cede buf, message = string::from("err"))) }
+            return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+                buffer = cede buf,
+                bytes_read = 4:usize,
+                eof = false
+            ))
+        }
+
+        if self.mode == 1:i32 {
+            // Branch 2: Cold task drop (never polled)
+            if witness.id < 0:i32 { return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(buffer = cede buf, message = string::from("err"))) }
+            sleep_async(1000:i32).await
+            return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+                buffer = cede buf,
+                bytes_read = 0:usize,
+                eof = true
+            ))
+        }
+
+        if self.mode == 2:i32 {
+            // Branch 3: Handled cancellation inside task
+            // Simulates internal cancellation interception: preserves buffer, returns Err
+            if witness.id < 0:i32 { return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(buffer = cede buf, message = string::from("err"))) }
+            return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede buf,
+                message = string::from("handled cancellation")
+            ))
+        }
+
+        // Branch 4: Unhandled cancellation (propagates cancellation to caller via task cancel)
+        if witness.id < 0:i32 { return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(buffer = cede buf, message = string::from("err"))) }
+        sleep_async(100:i32).await
+        return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+            buffer = cede buf,
+            bytes_read = 0:usize,
+            eof = true
+        ))
+    }
+}
+
+pub fn consume_generic<T: @MockTransport>(stream#: T, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError> {
+    auto res = stream#.read(cede buf).await
+    return cede res
+}
+
+fn coordinator() -> async i32 {
+    auto s# = MockStream(mode = 0:i32, op_count = 0:i32)
+
+    // --- Branch 1: Normal Completion ---
+    println("Checking Branch 1: Normal Completion...")
+    g_drop_count = 0:i32
+    s.mode = 0:i32
+    auto b1# = Vec<u8>::new()
+    b1#.push(10:u8)
+    auto out1 = consume_generic<MockStream>(s#, cede b1).await
+    match cede out1 {
+        auto Result<AsyncReadResult, AsyncIoError>::Ok(r) => {
+            if r.bytes_read != 4:usize { return 101:i32 }
+            if g_drop_count != 1:i32 { return 102:i32 }
+            if s.op_count != 1:i32 { return 103:i32 }
+        }
+        _ => return 104:i32
+    }
+    println("Branch 1 passed!")
+
+    // --- Branch 2: Cold Task Drop ---
+    println("Checking Branch 2: Cold Task Drop...")
+    s.mode = 1:i32
+    auto b2# = Vec<u8>::new()
+    b2#.push(20:u8)
+    {
+        auto _task2 = s#.read(cede b2)
+        // Cold drop: _task2 goes out of scope without await
+    }
+    // Stream must survive, op_count is still 1 (body never executed!), borrow is released
+    if s.op_count != 1:i32 { return 201:i32 }
+    println("Branch 2 passed!")
+
+    // --- Branch 3: Handled Cancellation ---
+    println("Checking Branch 3: Handled Cancellation...")
+    g_drop_count = 0:i32
+    s.mode = 2:i32
+    auto b3# = Vec<u8>::new()
+    b3#.push(30:u8)
+    {
+        auto out3 = consume_generic<MockStream>(s#, cede b3).await
+        match cede out3 {
+            auto Result<AsyncReadResult, AsyncIoError>::Err(err) => {
+                if !err.message.equals("handled cancellation") { return 301:i32 }
+                if g_drop_count != 1:i32 { return 302:i32 }
+                if s.op_count != 2:i32 { return 303:i32 }
+                auto returned_buf = err.take_buffer()
+                if returned_buf.len() != 1:usize { return 304:i32 }
+            }
+            _ => return 305:i32
+        }
+    }
+    println("Branch 3 passed!")
+
+    // --- Branch 4: Unhandled Cancellation ---
+    println("Checking Branch 4: Unhandled Cancellation...")
+    g_drop_count = 0:i32
+    s.mode = 3:i32
+    auto b4# = Vec<u8>::new()
+    b4#.push(40:u8)
+    {
+        auto task4 = s#.read(cede b4)
+        task_cancel<Result<AsyncReadResult, AsyncIoError>>(task4)
+        auto out4 = task4.await?
+        match cede out4 {
+            auto Option<Result<AsyncReadResult, AsyncIoError>>::None => {
+                // Unhandled cancellation maps to None (does not fake buffer return)
+                if s.op_count != 2:i32 { return 401:i32 }
+            }
+            _ => return 402:i32
+        }
+    }
+    println("Branch 4 passed!")
+
+    println("All 4 lifecycle branches passed successfully!")
+    return 0:i32
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}

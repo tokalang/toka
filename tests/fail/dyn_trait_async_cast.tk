@@ -1,0 +1,21 @@
+trait @AsyncTrait {
+    pub fn fetch(self#) -> async i32
+}
+
+shape S (
+    v: i32
+)
+
+impl S@AsyncTrait {
+    pub fn fetch(self#) -> async i32 {
+        return self.v
+    }
+}
+
+fn main() -> i32 {
+    auto s = S(v = 1:i32)
+    auto _d = s as dyn @AsyncTrait
+    return 0
+}
+
+// EXPECT: error[E0617]

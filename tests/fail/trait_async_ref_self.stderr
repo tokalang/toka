@@ -1,0 +1,5 @@
+error[E0618]: Async method 'fetch' in trait '@RefReceiver' is outside the frozen Toka 1.0 surface
+ --> tests/fail/trait_async_ref_self.tk:2:12
+   |
+ 2 |     pub fn fetch(self: &Self) -> async i32
+   |            ^

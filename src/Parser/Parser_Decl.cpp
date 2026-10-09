@@ -1484,7 +1484,15 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
           (check(TokenType::KwUnsafe) && checkAt(1, TokenType::KwFn))) {
         if (!traitName.empty() && check(TokenType::KwUnsafe))
           error(peek(), DiagID::ERR_UNSAFE_TRAIT_METHOD_UNSUPPORTED);
-        methods.push_back(parseFunctionDecl(isPub));
+        auto method = parseFunctionDecl(isPub);
+        if (method) {
+          methods.push_back(std::move(method));
+        } else {
+          while (!check(TokenType::RBrace) && !check(TokenType::EndOfFile) &&
+                 !check(TokenType::KwFn) && !check(TokenType::KwPub)) {
+            advance();
+          }
+        }
       } else {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_METHOD_IN_IMPL_BLOCK);
         advance();
@@ -1538,9 +1546,19 @@ std::unique_ptr<TraitDecl> Parser::parseTrait(bool isPub) {
         (check(TokenType::KwUnsafe) && checkAt(1, TokenType::KwFn))) {
       if (check(TokenType::KwUnsafe))
         error(peek(), DiagID::ERR_UNSAFE_TRAIT_METHOD_UNSUPPORTED);
-      methods.push_back(parseFunctionDecl(isPub));
+      auto method = parseFunctionDecl(isPub);
+      if (method) {
+        methods.push_back(std::move(method));
+      } else {
+        while (!check(TokenType::RBrace) && !check(TokenType::EndOfFile) &&
+               !check(TokenType::KwFn) && !check(TokenType::KwPub) &&
+               !isAssociatedTypeDeclStart()) {
+          advance();
+        }
+      }
     } else {
       error(peek(), DiagID::ERR_PARSER_EXPECTED_METHOD_PROTOTYPE_IN_TRAIT);
+      advance();
     }
   }
   consume(TokenType::RBrace, DiagID::ERR_EXPECTED_RBRACE);
