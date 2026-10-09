@@ -1,0 +1,5 @@
+error[E0428]: Method signature mismatch: trait defines 'unsafe_fetch' as parameter 'p' as raw pointer (*p), but implementation is value (p)
+ --> tests/fail/trait_async_impl_raw_param_mismatch.tk:10:12
+    |
+ 10 |     pub fn unsafe_fetch(self#, p: i32) -> async i32 {
+    |            ^

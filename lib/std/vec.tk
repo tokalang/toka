@@ -17,6 +17,8 @@ import core/traits::{@Copy, @Dup, @Encap, @Iterable, @Iterator, @IntoIterable, @
 import sys/libc::*
 import core/option::{Option}
 
+extern fn toka_rt_test_notify_buffer_free(*ptr: void) -> void
+
 // Helper for mutable iteration
 shape Counter(val: usize)
 impl Counter {
@@ -112,6 +114,7 @@ impl<T> Vec<T>@Encap {
     fn drop(self#) {
         unsafe {
             if self.*buf != null {
+                toka_rt_test_notify_buffer_free(*self.*#buf as *void)
                 unsafe free [self.len]self.*#buf
                 self.*buf = null
             }

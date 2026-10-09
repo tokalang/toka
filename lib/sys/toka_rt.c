@@ -283,6 +283,53 @@ int32_t toka_rt_test_datafile_closed(void) { return atomic_load(&g_toka_datafile
 int32_t toka_rt_test_datafile_freed(void) { return atomic_load(&g_toka_datafile_freed); }
 #endif
 
+#define TOKA_MAX_TRACKED_BUFFERS 64
+static void *g_toka_tracked_buffers[TOKA_MAX_TRACKED_BUFFERS] = {0};
+static _Atomic int32_t g_toka_tracked_buffer_live = 0;
+static _Atomic int32_t g_toka_tracked_buffer_drops = 0;
+
+void toka_rt_test_track_buffer(void *ptr) {
+    if (!ptr) return;
+    for (int i = 0; i < TOKA_MAX_TRACKED_BUFFERS; ++i) {
+        if (g_toka_tracked_buffers[i] == ptr) return;
+    }
+    for (int i = 0; i < TOKA_MAX_TRACKED_BUFFERS; ++i) {
+        if (!g_toka_tracked_buffers[i]) {
+            g_toka_tracked_buffers[i] = ptr;
+            atomic_fetch_add(&g_toka_tracked_buffer_live, 1);
+            return;
+        }
+    }
+}
+
+void toka_rt_test_notify_buffer_free(void *ptr) {
+    if (!ptr) return;
+    for (int i = 0; i < TOKA_MAX_TRACKED_BUFFERS; ++i) {
+        if (g_toka_tracked_buffers[i] == ptr) {
+            g_toka_tracked_buffers[i] = NULL;
+            atomic_fetch_sub(&g_toka_tracked_buffer_live, 1);
+            atomic_fetch_add(&g_toka_tracked_buffer_drops, 1);
+            return;
+        }
+    }
+}
+
+int32_t toka_rt_test_tracked_buffer_live(void) {
+    return atomic_load(&g_toka_tracked_buffer_live);
+}
+
+int32_t toka_rt_test_tracked_buffer_drops(void) {
+    return atomic_load(&g_toka_tracked_buffer_drops);
+}
+
+void toka_rt_test_tracked_buffer_reset(void) {
+    for (int i = 0; i < TOKA_MAX_TRACKED_BUFFERS; ++i) {
+        g_toka_tracked_buffers[i] = NULL;
+    }
+    atomic_store(&g_toka_tracked_buffer_live, 0);
+    atomic_store(&g_toka_tracked_buffer_drops, 0);
+}
+
 uint64_t toka_datafile_open_read(const char *path, int32_t *os_error) {
 #if defined(_WIN32) || defined(__wasi__)
     (void)path;

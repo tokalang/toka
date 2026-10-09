@@ -14,30 +14,25 @@
 //
 // 0.14 G1: Static dispatch async trait lifecycle verification
 // Covers 4 branches on the same Mock and method:
-// 1. Normal completion -> buffer returned, resource destroyed (drop count = 1), outer stream survives
-// 2. Cold task drop -> task handle dropped without await; frame cleanup runs; stream survives (op_count unchanged); borrow released
-// 3. Handled cancellation -> internal cancellation intercepted; returns Result::Err with buffer preserved; drop count = 1; stream survives
-// 4. Unhandled cancellation -> task_cancel without internal handling; task.await? returns Option::None; frame cleanup destroys resources; stream survives
+// 1. Normal completion -> buffer returned, buffer resource destroyed by caller (exactly once), outer stream survives
+// 2. Cold task drop -> task handle dropped without await; frame cleanup destroys buffer resource (exactly once); stream survives (op_count unchanged); borrow released
+// 3. Handled cancellation -> task cancelled during suspension; read() catches cancellation, preserves buffer and returns Result::Err(owner); caller extracts buffer, verifies payload and releases; drop count = 1; stream survives
+// 4. Unhandled cancellation -> task cancelled during suspension; cancellation propagates to caller via task.await? returning Option::None; frame cleanup destroys buffer resource (exactly once); stream survives
 
-import std/vec::{Vec}
+import std/vec::{Vec, writable_byte_storage}
 import core/result::{Result}
 import core/option::{Option}
 import core/string::{string}
 import std/net::{AsyncReadResult, AsyncIoError}
 import std/task::{block_on, sleep_async, task_cancel}
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_start}
 import std/io::{println}
 
-auto g_drop_count# = 0:i32
-
-shape DropWitness (
-    id: i32
-)
-
-impl DropWitness@Encap {
-    fn drop(self#) {
-        g_drop_count += 1:i32
-    }
-}
+extern fn toka_rt_test_track_buffer(*ptr: void) -> void
+extern fn toka_rt_test_tracked_buffer_live() -> i32
+extern fn toka_rt_test_tracked_buffer_drops() -> i32
+extern fn toka_rt_test_tracked_buffer_reset() -> void
+extern fn toka_rt_live_wait_registry_count() -> u32
 
 pub trait @MockTransport {
     pub fn read(self#, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError>
@@ -50,14 +45,16 @@ pub shape MockStream (
 
 impl MockStream@MockTransport {
     pub fn read(self#, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError> {
-        auto witness = DropWitness(id = self.mode)
         self.op_count += 1:i32
 
         if self.mode == 0:i32 {
             // Branch 1: Normal completion
-            if witness.id < 0:i32 { return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(buffer = cede buf, message = string::from("err"))) }
+            auto b# = cede buf
+            b#.push(11:u8)
+            b#.push(12:u8)
+            b#.push(13:u8)
             return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
-                buffer = cede buf,
+                buffer = cede b,
                 bytes_read = 4:usize,
                 eof = false
             ))
@@ -65,7 +62,6 @@ impl MockStream@MockTransport {
 
         if self.mode == 1:i32 {
             // Branch 2: Cold task drop (never polled)
-            if witness.id < 0:i32 { return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(buffer = cede buf, message = string::from("err"))) }
             sleep_async(1000:i32).await
             return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
                 buffer = cede buf,
@@ -76,17 +72,24 @@ impl MockStream@MockTransport {
 
         if self.mode == 2:i32 {
             // Branch 3: Handled cancellation inside task
-            // Simulates internal cancellation interception: preserves buffer, returns Err
-            if witness.id < 0:i32 { return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(buffer = cede buf, message = string::from("err"))) }
-            return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
+            // Suspends on timer; when cancellation is requested, sleep_async.await? returns Option::None
+            auto waited = sleep_async(1000:i32).await?
+            if waited.is_none() {
+                // Intercepted cancellation! Return Result::Err with buffer preserved!
+                return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
+                    buffer = cede buf,
+                    message = string::from("handled cancellation")
+                ))
+            }
+            return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
                 buffer = cede buf,
-                message = string::from("handled cancellation")
+                bytes_read = 0:usize,
+                eof = true
             ))
         }
 
         // Branch 4: Unhandled cancellation (propagates cancellation to caller via task cancel)
-        if witness.id < 0:i32 { return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(buffer = cede buf, message = string::from("err"))) }
-        sleep_async(100:i32).await
+        sleep_async(1000:i32).await
         return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
             buffer = cede buf,
             bytes_read = 0:usize,
@@ -105,75 +108,159 @@ fn coordinator() -> async i32 {
 
     // --- Branch 1: Normal Completion ---
     println("Checking Branch 1: Normal Completion...")
-    g_drop_count = 0:i32
+    toka_rt_test_tracked_buffer_reset()
     s.mode = 0:i32
-    auto b1# = Vec<u8>::new()
+    auto b1# = Vec<u8>::with_capacity(16:usize)
     b1#.push(10:u8)
-    auto out1 = consume_generic<MockStream>(s#, cede b1).await
-    match cede out1 {
-        auto Result<AsyncReadResult, AsyncIoError>::Ok(r) => {
-            if r.bytes_read != 4:usize { return 101:i32 }
-            if g_drop_count != 1:i32 { return 102:i32 }
-            if s.op_count != 1:i32 { return 103:i32 }
-        }
-        _ => return 104:i32
+    {
+        auto *p = writable_byte_storage(b1#)
+        unsafe { toka_rt_test_track_buffer(*p as *void) }
     }
+    assert(toka_rt_test_tracked_buffer_live() == 1:i32, "b1 tracked and live")
+    assert(toka_rt_test_tracked_buffer_drops() == 0:i32, "b1 not yet dropped")
+
+    {
+        auto out1 = consume_generic<MockStream>(s#, cede b1).await
+        match cede out1 {
+            auto Result::Ok(r#) => {
+                if r.bytes_read != 4:usize { return 101:i32 }
+                assert(toka_rt_test_tracked_buffer_live() == 1:i32, "buffer still alive in r")
+                assert(toka_rt_test_tracked_buffer_drops() == 0:i32, "buffer not yet dropped before take")
+                auto returned_buf = r#.take_buffer()
+                if returned_buf.len() != 4:usize { return 102:i32 }
+                if returned_buf.get(0) != 10:u8 { return 103:i32 }
+                if returned_buf.get(1) != 11:u8 { return 104:i32 }
+                if returned_buf.get(2) != 12:u8 { return 105:i32 }
+                if returned_buf.get(3) != 13:u8 { return 106:i32 }
+                // returned_buf goes out of scope here and is dropped
+            }
+            _ => return 107:i32
+        }
+    }
+    assert(toka_rt_test_tracked_buffer_live() == 0:i32, "b1 allocation released")
+    assert(toka_rt_test_tracked_buffer_drops() == 1:i32, "b1 destroyed exactly once")
+    if s.op_count != 1:i32 { return 108:i32 }
     println("Branch 1 passed!")
 
     // --- Branch 2: Cold Task Drop ---
     println("Checking Branch 2: Cold Task Drop...")
+    toka_rt_test_tracked_buffer_reset()
     s.mode = 1:i32
-    auto b2# = Vec<u8>::new()
+    auto b2# = Vec<u8>::with_capacity(16:usize)
     b2#.push(20:u8)
     {
-        auto _task2 = s#.read(cede b2)
-        // Cold drop: _task2 goes out of scope without await
+        auto *p = writable_byte_storage(b2#)
+        unsafe { toka_rt_test_track_buffer(*p as *void) }
     }
+    assert(toka_rt_test_tracked_buffer_live() == 1:i32, "b2 tracked and live")
+    assert(toka_rt_test_tracked_buffer_drops() == 0:i32, "b2 not yet dropped")
+
+    {
+        auto _task2 = s#.read(cede b2)
+        // Cold drop: _task2 goes out of scope without start or await
+        // Coroutine frame cleanup destroys captured arguments (b2)
+    }
+    assert(toka_rt_test_tracked_buffer_live() == 0:i32, "b2 allocation released by frame cleanup")
+    assert(toka_rt_test_tracked_buffer_drops() == 1:i32, "b2 destroyed exactly once upon cold drop")
     // Stream must survive, op_count is still 1 (body never executed!), borrow is released
     if s.op_count != 1:i32 { return 201:i32 }
     println("Branch 2 passed!")
 
     // --- Branch 3: Handled Cancellation ---
     println("Checking Branch 3: Handled Cancellation...")
-    g_drop_count = 0:i32
+    toka_rt_test_tracked_buffer_reset()
     s.mode = 2:i32
-    auto b3# = Vec<u8>::new()
+    auto b3# = Vec<u8>::with_capacity(16:usize)
     b3#.push(30:u8)
     {
-        auto out3 = consume_generic<MockStream>(s#, cede b3).await
+        auto *p = writable_byte_storage(b3#)
+        unsafe { toka_rt_test_track_buffer(*p as *void) }
+    }
+    assert(toka_rt_test_tracked_buffer_live() == 1:i32, "b3 tracked and live")
+    assert(toka_rt_test_tracked_buffer_drops() == 0:i32, "b3 not yet dropped")
+
+    {
+        auto task3 = s#.read(cede b3)
+        auto nul *tcb3 = task_get_coro_handle<Result<AsyncReadResult, AsyncIoError>>(task3)
+        auto *live_tcb3 = tcb3.unwrap()
+        toka_task_start(*live_tcb3)
+
+        // Wait until task3 has suspended in sleep_async (witnessed via runtime wait registry)
+        auto waited3# = 0:i32
+        loop toka_rt_live_wait_registry_count() == 0:u32 && waited3 < 100:i32 {
+            sleep_async(1:i32).await
+            waited3 += 1:i32
+        }
+        assert(toka_rt_live_wait_registry_count() > 0:u32, "witnessed active timer wait token for task3")
+
+        task_cancel<Result<AsyncReadResult, AsyncIoError>>(task3)
+        auto out3 = task3.await?
         match cede out3 {
-            auto Result<AsyncReadResult, AsyncIoError>::Err(err) => {
-                if !err.message.equals("handled cancellation") { return 301:i32 }
-                if g_drop_count != 1:i32 { return 302:i32 }
-                if s.op_count != 2:i32 { return 303:i32 }
-                auto returned_buf = err.take_buffer()
-                if returned_buf.len() != 1:usize { return 304:i32 }
+            auto Option::Some(res) => {
+                match cede res {
+                    auto Result::Err(err#) => {
+                        if !err.message.equals("handled cancellation") { return 301:i32 }
+                        assert(toka_rt_test_tracked_buffer_live() == 1:i32, "b3 still alive in err")
+                        assert(toka_rt_test_tracked_buffer_drops() == 0:i32, "b3 not yet dropped before take")
+                        auto returned_buf = err#.take_buffer()
+                        if returned_buf.len() != 1:usize { return 302:i32 }
+                        if returned_buf.get(0) != 30:u8 { return 303:i32 }
+                        // returned_buf dropped at end of scope
+                    }
+                    _ => return 304:i32
+                }
             }
             _ => return 305:i32
         }
     }
+    assert(toka_rt_test_tracked_buffer_live() == 0:i32, "b3 allocation released")
+    assert(toka_rt_test_tracked_buffer_drops() == 1:i32, "b3 destroyed exactly once in handled cancellation")
+    if s.op_count != 2:i32 { return 306:i32 }
     println("Branch 3 passed!")
 
     // --- Branch 4: Unhandled Cancellation ---
     println("Checking Branch 4: Unhandled Cancellation...")
-    g_drop_count = 0:i32
+    toka_rt_test_tracked_buffer_reset()
     s.mode = 3:i32
-    auto b4# = Vec<u8>::new()
+    auto b4# = Vec<u8>::with_capacity(16:usize)
     b4#.push(40:u8)
     {
+        auto *p = writable_byte_storage(b4#)
+        unsafe { toka_rt_test_track_buffer(*p as *void) }
+    }
+    assert(toka_rt_test_tracked_buffer_live() == 1:i32, "b4 tracked and live")
+    assert(toka_rt_test_tracked_buffer_drops() == 0:i32, "b4 not yet dropped")
+
+    {
         auto task4 = s#.read(cede b4)
+        auto nul *tcb4 = task_get_coro_handle<Result<AsyncReadResult, AsyncIoError>>(task4)
+        auto *live_tcb4 = tcb4.unwrap()
+        toka_task_start(*live_tcb4)
+
+        // Wait until task4 has suspended in sleep_async (witnessed via runtime wait registry)
+        auto waited4# = 0:i32
+        loop toka_rt_live_wait_registry_count() == 0:u32 && waited4 < 100:i32 {
+            sleep_async(1:i32).await
+            waited4 += 1:i32
+        }
+        assert(toka_rt_live_wait_registry_count() > 0:u32, "witnessed active timer wait token for task4")
+
         task_cancel<Result<AsyncReadResult, AsyncIoError>>(task4)
         auto out4 = task4.await?
         match cede out4 {
-            auto Option<Result<AsyncReadResult, AsyncIoError>>::None => {
+            auto Option::None => {
                 // Unhandled cancellation maps to None (does not fake buffer return)
-                if s.op_count != 2:i32 { return 401:i32 }
             }
-            _ => return 402:i32
+            _ => return 401:i32
         }
     }
+    assert(toka_rt_test_tracked_buffer_live() == 0:i32, "b4 allocation released by frame cancellation cleanup")
+    assert(toka_rt_test_tracked_buffer_drops() == 1:i32, "b4 destroyed exactly once in unhandled cancellation")
+    if s.op_count != 3:i32 { return 402:i32 }
     println("Branch 4 passed!")
 
+    // Verify outer stream survives throughout all 4 branches
+    assert(s.op_count == 3:i32, "outer stream op_count is exactly 3")
     println("All 4 lifecycle branches passed successfully!")
     return 0:i32
 }

@@ -2506,17 +2506,32 @@ void Sema::validateTraitAssociatedTypes(TraitDecl *Trait) {
   // Dynamic dispatch (dyn Trait) and plain self / &self / cede self / static async methods remain rejected.
   for (const auto &method : Trait->Methods) {
     if (method->Effect == EffectKind::Async) {
-      const bool validSelfMut =
-          !method->Args.empty() &&
-          method->Args.front().Name == "self" &&
-          method->Args.front().IsValueMutable &&
-          !method->Args.front().IsValueBlocked &&
-          !method->Args.front().IsCeded &&
-          !method->Args.front().IsReference &&
-          !method->Args.front().IsRawPointer &&
-          !method->Args.front().IsShared &&
-          !method->Args.front().IsUnique &&
-          !method->Args.front().IsRebindable;
+      bool validSelfMut = false;
+      if (!method->Args.empty()) {
+        const auto &arg = method->Args.front();
+        const bool isSelfNamed = (arg.Name == "self");
+        const bool isStrictSelfType =
+            (arg.Type == "Self") &&
+            (!arg.TypeSyntax ||
+             (arg.TypeSyntax->NodeKind == TypeSyntax::Kind::Named &&
+              arg.TypeSyntax->Text == "Self")) &&
+            arg.Type.find('&') == std::string::npos &&
+            arg.Type.find('*') == std::string::npos &&
+            arg.Type.find('~') == std::string::npos &&
+            arg.Type.find('^') == std::string::npos;
+        validSelfMut =
+            isSelfNamed &&
+            arg.IsValueMutable &&
+            !arg.IsValueBlocked &&
+            !arg.IsCeded &&
+            !arg.IsReference &&
+            !arg.IsRawPointer &&
+            !arg.IsShared &&
+            !arg.IsUnique &&
+            !arg.IsRebindable &&
+            !arg.HadRejectedTypeSideMorphology &&
+            isStrictSelfType;
+      }
       if (!validSelfMut) {
         DiagnosticEngine::report(
             method->Loc, DiagID::ERR_TRAIT_ASYNC_METHOD_OUTSIDE_1_0,
@@ -5014,6 +5029,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
                                          std::to_string(ImplMethod->Args.size()) + " parameter(s)");
                 HasError = true;
               } else {
+                bool argMismatch = false;
                 for (size_t i = 0; i < Method->Args.size(); ++i) {
                   const auto &traitArg = Method->Args[i];
                   const auto &implArg = ImplMethod->Args[i];
@@ -5026,6 +5042,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
                                              "parameter '" + traitArg.Name + "' as " + traitMut,
                                              implMut);
                     HasError = true;
+                    argMismatch = true;
                     break;
                   }
                   if (traitArg.IsCeded != implArg.IsCeded) {
@@ -5037,6 +5054,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
                                              "parameter '" + traitArg.Name + "' as " + traitCede,
                                              implCede);
                     HasError = true;
+                    argMismatch = true;
                     break;
                   }
                   if (traitArg.IsReference != implArg.IsReference) {
@@ -5048,7 +5066,95 @@ void Sema::registerImpl(ImplDecl *Impl) {
                                              "parameter '" + traitArg.Name + "' as " + traitRef,
                                              implRef);
                     HasError = true;
+                    argMismatch = true;
                     break;
+                  }
+
+                  const bool isAsyncContract =
+                      (Method->Effect == EffectKind::Async || ImplMethod->Effect == EffectKind::Async);
+                  if (isAsyncContract) {
+                    if (traitArg.IsRawPointer != implArg.IsRawPointer) {
+                      std::string traitRaw = traitArg.IsRawPointer ? "raw pointer (*" + traitArg.Name + ")" : "value (" + traitArg.Name + ")";
+                      std::string implRaw = implArg.IsRawPointer ? "raw pointer (*" + implArg.Name + ")" : "value (" + implArg.Name + ")";
+                      DiagnosticEngine::report(getLoc(ImplMethod),
+                                               DiagID::ERR_SIGNATURE_MISMATCH,
+                                               Method->Name,
+                                               "parameter '" + traitArg.Name + "' as " + traitRaw,
+                                               implRaw);
+                      HasError = true;
+                      argMismatch = true;
+                      break;
+                    }
+                    if (traitArg.IsUnique != implArg.IsUnique) {
+                      std::string traitU = traitArg.IsUnique ? "unique (^" + traitArg.Name + ")" : "non-unique (" + traitArg.Name + ")";
+                      std::string implU = implArg.IsUnique ? "unique (^" + implArg.Name + ")" : "non-unique (" + implArg.Name + ")";
+                      DiagnosticEngine::report(getLoc(ImplMethod),
+                                               DiagID::ERR_SIGNATURE_MISMATCH,
+                                               Method->Name,
+                                               "parameter '" + traitArg.Name + "' as " + traitU,
+                                               implU);
+                      HasError = true;
+                      argMismatch = true;
+                      break;
+                    }
+                    if (traitArg.IsShared != implArg.IsShared) {
+                      std::string traitS = traitArg.IsShared ? "shared (~" + traitArg.Name + ")" : "non-shared (" + traitArg.Name + ")";
+                      std::string implS = implArg.IsShared ? "shared (~" + implArg.Name + ")" : "non-shared (" + implArg.Name + ")";
+                      DiagnosticEngine::report(getLoc(ImplMethod),
+                                               DiagID::ERR_SIGNATURE_MISMATCH,
+                                               Method->Name,
+                                               "parameter '" + traitArg.Name + "' as " + traitS,
+                                               implS);
+                      HasError = true;
+                      argMismatch = true;
+                      break;
+                    }
+
+                    // Check resolved parameter types
+                    TypeSyntaxPtr expectedSyntax = traitArg.TypeSyntax;
+                    std::string expectedSpelling = traitArg.Type;
+                    substituteSourceTypeSyntax(expectedSyntax, expectedSpelling, "Self", selfTy);
+                    for (const auto &[name, ty] : associatedTypeSubstitutions) {
+                      substituteSourceTypeSyntax(expectedSyntax, expectedSpelling, name, ty);
+                    }
+                    auto expectedType = resolveType(expectedSyntax ? toka::Type::fromSyntax(expectedSyntax) : toka::Type::fromString(expectedSpelling), false);
+                    auto actualType = resolveType(implArg.TypeSyntax ? toka::Type::fromSyntax(implArg.TypeSyntax) : toka::Type::fromString(implArg.Type), false);
+                    bool typesMatch = expectedType && actualType && expectedType->equals(*actualType);
+                    if (!typesMatch && (!expectedType || !actualType)) {
+                      typesMatch = (resolveType(expectedSpelling) == resolveType(implArg.Type));
+                    }
+                    if (!typesMatch) {
+                      DiagnosticEngine::report(getLoc(ImplMethod),
+                                               DiagID::ERR_SIGNATURE_MISMATCH,
+                                               Method->Name,
+                                               "parameter '" + traitArg.Name + "' of type " + (expectedType ? expectedType->toString() : expectedSpelling),
+                                               (actualType ? actualType->toString() : implArg.Type));
+                      HasError = true;
+                      argMismatch = true;
+                      break;
+                    }
+                  }
+                }
+                if (!argMismatch && (Method->Effect == EffectKind::Async || ImplMethod->Effect == EffectKind::Async)) {
+                  TypeSyntaxPtr expectedRetSyntax = Method->ReturnTypeSyntax;
+                  std::string expectedRetSpelling = Method->ReturnType;
+                  substituteSourceTypeSyntax(expectedRetSyntax, expectedRetSpelling, "Self", selfTy);
+                  for (const auto &[name, ty] : associatedTypeSubstitutions) {
+                    substituteSourceTypeSyntax(expectedRetSyntax, expectedRetSpelling, name, ty);
+                  }
+                  auto expectedRetType = resolveType(expectedRetSyntax ? toka::Type::fromSyntax(expectedRetSyntax) : toka::Type::fromString(expectedRetSpelling), false);
+                  auto actualRetType = resolveType(ImplMethod->ReturnTypeSyntax ? toka::Type::fromSyntax(ImplMethod->ReturnTypeSyntax) : toka::Type::fromString(ImplMethod->ReturnType), false);
+                  bool retMatches = expectedRetType && actualRetType && expectedRetType->equals(*actualRetType);
+                  if (!retMatches && (!expectedRetType || !actualRetType)) {
+                    retMatches = (resolveType(expectedRetSpelling) == resolveType(ImplMethod->ReturnType));
+                  }
+                  if (!retMatches) {
+                    DiagnosticEngine::report(getLoc(ImplMethod),
+                                             DiagID::ERR_SIGNATURE_MISMATCH,
+                                             Method->Name,
+                                             "return type " + (expectedRetType ? expectedRetType->toString() : expectedRetSpelling),
+                                             (actualRetType ? actualRetType->toString() : ImplMethod->ReturnType));
+                    HasError = true;
                   }
                 }
               }

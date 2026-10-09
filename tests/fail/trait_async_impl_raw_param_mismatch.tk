@@ -1,0 +1,19 @@
+trait @RawParamTrait {
+    pub fn unsafe_fetch(self#, *p: i32) -> async i32
+}
+
+shape S (
+    v: i32
+)
+
+impl S@RawParamTrait {
+    pub fn unsafe_fetch(self#, p: i32) -> async i32 {
+        return p
+    }
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0428]
