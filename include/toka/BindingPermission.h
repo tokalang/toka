@@ -18,6 +18,15 @@ struct HandleLayer {
   bool Rebindable = false; // #
   bool Nullable = false;   // nul
   bool Blocked = false;    // $
+  bool operator==(const HandleLayer &other) const {
+    return Morphology == other.Morphology &&
+           Rebindable == other.Rebindable &&
+           Nullable == other.Nullable &&
+           Blocked == other.Blocked;
+  }
+  bool operator!=(const HandleLayer &other) const {
+    return !(*this == other);
+  }
 };
 
 // Structured view of Toka's binding/path permission surface.
@@ -154,6 +163,20 @@ struct BindingPermission {
            !isValueNullable &&
            SoulBlocked == isValueBlocked &&
            MorphicExempt == isMorphicExempt;
+  }
+
+  bool operator==(const BindingPermission &other) const {
+    return HandleLayers == other.HandleLayers &&
+           Morphology == other.Morphology &&
+           IdentityRebindable == other.IdentityRebindable &&
+           IdentityMayBeZero == other.IdentityMayBeZero &&
+           IdentityBlocked == other.IdentityBlocked &&
+           SoulWritable == other.SoulWritable &&
+           SoulBlocked == other.SoulBlocked &&
+           MorphicExempt == other.MorphicExempt;
+  }
+  bool operator!=(const BindingPermission &other) const {
+    return !(*this == other);
   }
 };
 
