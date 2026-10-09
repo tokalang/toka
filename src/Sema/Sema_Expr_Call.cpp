@@ -12647,24 +12647,52 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
                 bool contributedDeps = false;
                 SymbolInfo *argInfo = nullptr;
+                auto argResolvedType = Call->Args[i]->ResolvedType;
                 if (auto *var = dynamic_cast<VariableExpr *>(Call->Args[i].get())) {
                   if (CurrentScope->findSymbol(var->Name, argInfo)) {
-                    if (!argInfo->BorrowedFrom.empty()) {
-                      m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
-                      contributedDeps = true;
-                    }
-                    if (!argInfo->LifeDependencySet.empty()) {
-                      m_LastLifeDependencies.insert(
-                          argInfo->LifeDependencySet.begin(),
-                          argInfo->LifeDependencySet.end());
-                      contributedDeps = true;
-                    }
+                    if (!argResolvedType)
+                      argResolvedType = argInfo->TypeObj;
                   }
                 }
 
-                auto argResolvedType = Call->Args[i]->ResolvedType;
-                if (!argResolvedType && argInfo)
-                  argResolvedType = argInfo->TypeObj;
+                bool isUnpackingTask = false;
+                if (argResolvedType && argResolvedType->toString().find("TaskHandle") != std::string::npos &&
+                    (!ReturnType || ReturnType->toString().find("TaskHandle") == std::string::npos)) {
+                  isUnpackingTask = true;
+                }
+
+                if (isUnpackingTask) {
+                  if (argInfo && argInfo->HasTaskResultDependencies) {
+                    m_LastLifeDependencies.insert(
+                        argInfo->TaskResultDependencySet.begin(),
+                        argInfo->TaskResultDependencySet.end());
+                    contributedDeps = true;
+                  } else if (m_HasTaskResultDependencies) {
+                    m_LastLifeDependencies.insert(
+                        m_LastTaskResultDependencies.begin(),
+                        m_LastTaskResultDependencies.end());
+                    contributedDeps = true;
+                  } else if (argInfo) {
+                    contributedDeps = true;
+                  }
+                } else if (argInfo) {
+                  if (!argInfo->BorrowedFrom.empty()) {
+                    m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
+                    if (Fn->Effect == EffectKind::Async || isAsync)
+                      m_LastTaskResultDependencies.insert(argInfo->BorrowedFrom);
+                    contributedDeps = true;
+                  }
+                  if (!argInfo->LifeDependencySet.empty()) {
+                    m_LastLifeDependencies.insert(
+                        argInfo->LifeDependencySet.begin(),
+                        argInfo->LifeDependencySet.end());
+                    if (Fn->Effect == EffectKind::Async || isAsync)
+                      m_LastTaskResultDependencies.insert(
+                          argInfo->LifeDependencySet.begin(),
+                          argInfo->LifeDependencySet.end());
+                    contributedDeps = true;
+                  }
+                }
 
                 bool isDottedDependency = argName != dep;
                 bool isLifetimeAnchor = false;
@@ -12676,11 +12704,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                      ReturnType &&
                                      resolveType(ReturnType)->isReference();
                 }
-                if (isExpressionDependency || isDottedDependency ||
-                    isCurrentFunctionParam || !contributedDeps ||
-                    isLifetimeAnchor) {
+                if (!isUnpackingTask &&
+                    (isExpressionDependency || isDottedDependency ||
+                     isCurrentFunctionParam || !contributedDeps ||
+                     isLifetimeAnchor)) {
                   m_LastLifeDependencies.insert(argVar);
+                  if (Fn->Effect == EffectKind::Async || isAsync)
+                    m_LastTaskResultDependencies.insert(argVar);
                 }
+                if (Fn->Effect == EffectKind::Async || isAsync)
+                  m_HasTaskResultDependencies = true;
                 recordDecision(
                     Call, isAsync ? SemanticRuleID::AsyncSuspend001
                                   : SemanticRuleID::EffRet001,
@@ -12690,6 +12723,39 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     Fn->Args[i].Loc);
                 break;
              }
+          }
+      }
+      if (Fn->Effect == EffectKind::Async || isAsync) {
+          if (!hasExplicitDeps) {
+              m_LastTaskResultDependencies.clear();
+              m_HasTaskResultDependencies = true;
+          }
+          for (size_t i = 0; i < Fn->Args.size(); ++i) {
+              if (Fn->Args[i].IsCeded || (i < Call->Args.size() && dynamic_cast<CedeExpr *>(Call->Args[i].get())))
+                  continue;
+              Expr *argExpr = i < Call->Args.size() ? Call->Args[i].get() : nullptr;
+              auto argType = argExpr ? argExpr->ResolvedType : nullptr;
+              SymbolInfo *argInfo = nullptr;
+              Expr *base = argExpr;
+              while (auto *mem = dynamic_cast<MemberExpr *>(base)) base = mem->Object.get();
+              if (auto *var = dynamic_cast<VariableExpr *>(base)) {
+                  CurrentScope->findSymbol(var->Name, argInfo);
+                  if (!argType && argInfo) argType = argInfo->TypeObj;
+              }
+              if (argType && (argType->isInteger() || argType->isFloatingPoint() ||
+                             argType->isBoolean() || argType->isUnit()))
+                  continue;
+              std::string argVar = mapParamToArg(Fn->Args[i].Name);
+              if (!argVar.empty()) {
+                  if (argInfo) {
+                      if (!argInfo->BorrowedFrom.empty())
+                          m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
+                      if (!argInfo->LifeDependencySet.empty())
+                          m_LastLifeDependencies.insert(argInfo->LifeDependencySet.begin(),
+                                                        argInfo->LifeDependencySet.end());
+                  }
+                  m_LastLifeDependencies.insert(argVar);
+              }
           }
       }
 

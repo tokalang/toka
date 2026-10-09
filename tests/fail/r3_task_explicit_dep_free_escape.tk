@@ -1,0 +1,20 @@
+import core/task::{TaskHandle}
+
+shape Box(val#: i32)
+
+fn free_read(box#: Box, text: str) -> async str <- text {
+    if box.val == 42 {
+        return text
+    }
+    return text
+}
+
+fn escape(text: str) -> TaskHandle<str> <- text {
+    auto local# = Box(val = 42)
+    auto task = free_read(local#, text)
+    return cede task // EXPECT: error[E0455]:
+}
+
+pub fn main() -> i32 {
+    return 0
+}
