@@ -2,7 +2,7 @@
 set -e
 
 # Usage: ./package_release.sh [version]
-VERSION=${1:-"v0.13.0"}
+VERSION=${1:-"v0.13.1"}
 if [[ ! "$VERSION" =~ ^v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]]; then
     echo "Release label must be a canonical v0.11.x/v0.12.x/v0.13.x tag" >&2
     exit 1

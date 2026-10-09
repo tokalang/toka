@@ -157,6 +157,7 @@ def parse_counts(name, output):
             if data.get("schema") == "toka.release-package-smoke":
                 counts = {"checks": int(data.get("count", 0))}
                 if "candidate_013" in data:counts["candidate_013"]=data["candidate_013"]
+                if "r3_r5" in data:counts["r3_r5"]=data["r3_r5"]
                 break
     elif name == "native_build_reference":
         for line in reversed(clean.splitlines()):
@@ -225,7 +226,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--version", default="v0.13.0")
+    parser.add_argument("--version", default="v0.13.1")
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")

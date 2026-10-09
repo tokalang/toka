@@ -95,6 +95,11 @@ def validate_promotion(args,observed):
             name='toka-%s-%s.tar.gz'%(args.tag_name,row['target'])
             if row.get('result')!='pass' or row.get('archive_sha256')!=archives[name] or row.get('candidate_revision')!=args.candidate_sha or row.get('version_label')!=args.tag_name or row.get('policy_id')!=policy.policy_id(args.tag_name) or row.get('asset_source')!=source or row.get('qualification_run_id')!=args.qualification_run_id or row.get('qualification_run_attempt')!=run['run_attempt']:
                 raise ValueError('replay bytes/source do not match: '+row['target'])
+            if args.tag_name.startswith('v0.13.') and args.tag_name != 'v0.13.0':
+                r3_r5 = row.get('r3_r5')
+                r_errors = policy.r3_r5_receipt_errors(r3_r5, args.candidate_sha, args.tag_name, target=row.get('target'))
+                if r_errors:
+                    raise ValueError('R3/R5 replay receipt invalid in promotion (%s): %s' % (row.get('target'), '; '.join(r_errors)))
         observed['archive_source']=source
         observed['archives']={t:{'archive_name':'toka-%s-%s.tar.gz'%(args.tag_name,t),'draft_sha256':archives['toka-%s-%s.tar.gz'%(args.tag_name,t)],'qualification_sha256':archives['toka-%s-%s.tar.gz'%(args.tag_name,t)]} for t in targets}
         return []

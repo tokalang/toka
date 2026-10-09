@@ -1,0 +1,84 @@
+import std/task::{block_on}
+import core/task::{TaskHandle}
+
+shape Box(val#: i32)
+
+impl Box {
+    pub fn read(self#, text: str) -> async str <- text {
+        if self.val == 42 {
+            return text
+        }
+        return text
+    }
+
+    pub fn compute(self#, x: i32) -> async i32 {
+        return self.val + x
+    }
+}
+
+fn free_read(box: Box, text: str) -> async str <- text {
+    if box.val == 42 {
+        return text
+    }
+    return text
+}
+
+// Positive Control 1: Method call awaited via block_on before returning text <- text
+fn safe_read_method(text: str) -> str <- text {
+    auto local# = Box(val = 42)
+    auto task = local#.read(text)
+    auto value = block_on<str>(task)
+    return value
+}
+
+// Positive Control 2: Free function awaited via block_on before returning text <- text
+fn safe_read_free(text: str) -> str <- text {
+    auto local = Box(val = 42)
+    auto task = free_read(local, text)
+    auto value = block_on<str>(task)
+    return value
+}
+
+// Positive Control 3: Method call awaited via task.wait before returning text <- text
+fn safe_read_wait(text: str) -> str <- text {
+    auto local# = Box(val = 42)
+    auto task = local#.read(text)
+    auto value = task.wait
+    return value
+}
+
+// Positive Control 4: Scalar return with no deps, task captures local receiver
+fn safe_compute_method(x: i32) -> i32 {
+    auto local# = Box(val = 42)
+    auto task = local#.compute(x)
+    auto value = block_on<i32>(task)
+    return value
+}
+
+// Positive Control 5: Method call awaited inside an async function via .await
+fn safe_read_async(text: str) -> async str <- text {
+    auto local# = Box(val = 42)
+    auto task = local#.read(text)
+    auto value = task.await
+    return value
+}
+
+pub fn main() -> i32 {
+    auto s1 = safe_read_method("method_ok")
+    if s1 != "method_ok" { return 1 }
+
+    auto s2 = safe_read_free("free_ok")
+    if s2 != "free_ok" { return 2 }
+
+    auto s3 = safe_read_wait("wait_ok")
+    if s3 != "wait_ok" { return 3 }
+
+    auto c1 = safe_compute_method(10)
+    if c1 != 52 { return 4 }
+
+    auto task_async = safe_read_async("async_ok")
+    auto s4 = block_on<str>(task_async)
+    if s4 != "async_ok" { return 5 }
+
+    return 0
+}

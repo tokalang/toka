@@ -1,0 +1,6 @@
+import std/vec::{Counter}
+
+pub fn main() -> i32 {
+    auto c = Counter(val=0) // EXPECT: error[E0405]
+    return 0
+}

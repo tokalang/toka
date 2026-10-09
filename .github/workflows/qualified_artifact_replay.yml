@@ -236,6 +236,13 @@ jobs:
           cp tools/scripts/validate_sdk_basic.py tools/scripts/release_platform_policy.py replay-input/
           cp tools/scripts/test_toka_add.py tools/scripts/test_toka_add_installed.py \
             tools/scripts/test_toka_evidence_installed.py tools/scripts/test_run_arguments_installed.py replay-input/
+          if [[ -f tools/scripts/replay_bundle_manifest.json ]]; then
+            cp tools/scripts/replay_bundle_manifest.json replay-input/
+          fi
+          if [[ "$TAG_NAME" != "v0.13.0" && "$TAG_NAME" == v0.13.* ]]; then
+            cp tools/scripts/test_r3_r5_installed.py replay-input/
+            cp -r tools/scripts/r3_r5_fixtures replay-input/
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: policy-replay-input
@@ -257,6 +264,64 @@ jobs:
         with:
           name: policy-replay-input
           path: ${{ runner.temp }}/replay-input
+      - name: Verify replay input bundle integrity
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib, json, os, sys
+          from pathlib import Path
+          input_dir = Path(os.environ['RUNNER_TEMP']) / 'replay-input'
+          manifest_path = input_dir / 'replay_bundle_manifest.json'
+          tag_name = os.environ['TAG_NAME']
+          is_r3_r5 = (tag_name != 'v0.13.0' and tag_name.startswith('v0.13.'))
+
+          if is_r3_r5 or manifest_path.is_file():
+              if not manifest_path.is_file():
+                  raise SystemExit("Missing mandatory replay_bundle_manifest.json in replay-input")
+              manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+              if manifest.get('schema') != 'toka.replay-bundle-manifest' or manifest.get('version') != 1:
+                  raise SystemExit("Invalid replay_bundle_manifest schema or version")
+              modules = manifest.get('modules')
+              if not isinstance(modules, dict) or not modules:
+                  raise SystemExit("Missing or empty modules in replay_bundle_manifest")
+
+              required_modules = [
+                  'validate_sdk_basic.py', 'release_platform_policy.py',
+                  'test_toka_add.py', 'test_toka_add_installed.py',
+                  'test_toka_evidence_installed.py', 'test_run_arguments_installed.py'
+              ]
+              if is_r3_r5:
+                  required_modules.append('test_r3_r5_installed.py')
+
+              for mod_name in required_modules:
+                  if mod_name not in modules:
+                      raise SystemExit(f"Missing required module in manifest: {mod_name}")
+                  expected_hash = modules[mod_name]
+                  mod_file = input_dir / mod_name
+                  if not mod_file.is_file():
+                      raise SystemExit(f"Missing required support module on disk: {mod_file}")
+                  actual_hash = hashlib.sha256(mod_file.read_bytes()).hexdigest()
+                  if actual_hash != expected_hash:
+                      raise SystemExit(f"Digest mismatch for {mod_name}: expected {expected_hash}, got {actual_hash}")
+
+              if is_r3_r5:
+                  fixtures_dir = input_dir / 'r3_r5_fixtures'
+                  fix_manifest_file = fixtures_dir / 'manifest.json'
+                  if not fix_manifest_file.is_file():
+                      raise SystemExit("Missing r3_r5_fixtures/manifest.json")
+                  fix_manifest = json.loads(fix_manifest_file.read_text(encoding='utf-8'))
+                  hasher = hashlib.sha256()
+                  for rel_path, exp_h in sorted(fix_manifest.items()):
+                      f = fixtures_dir / rel_path
+                      if not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest() != exp_h:
+                          raise SystemExit(f"Fixture mismatch or missing: {rel_path}")
+                      hasher.update(rel_path.encode('utf-8'))
+                      hasher.update(exp_h.encode('utf-8'))
+                  if hasher.hexdigest() != manifest.get('fixtures_digest'):
+                      raise SystemExit("Fixtures digest mismatch against bundle manifest")
+          print("Replay input bundle verification passed.")
+          PYCODE
       - name: Authenticate original package and run without checkout
         env:
           GH_TOKEN: ${{ github.token }}
@@ -295,12 +360,19 @@ jobs:
           python3 replay-input/test_toka_add_installed.py --sdk "$sdk" --output replay-results/add
           python3 replay-input/test_toka_evidence_installed.py --sdk "$sdk" --output replay-results/evidence
           python3 replay-input/test_run_arguments_installed.py --sdk "$sdk" --output replay-results/argv
+          if [[ "$TAG_NAME" != "v0.13.0" && "$TAG_NAME" == v0.13.* ]]; then
+            python3 replay-input/test_r3_r5_installed.py --sdk "$sdk" --revision "$CANDIDATE_SHA" \
+              --version "$TAG_NAME" --target "$TARGET" --fixtures replay-input/r3_r5_fixtures --output replay-results/r3_r5
+          fi
           python3 - <<'PYCODE'
           import json,os,sys
           from pathlib import Path
           sys.path.insert(0,'replay-input');import release_platform_policy as policy
           r=json.loads(Path('replay-results/basic-receipt.json').read_text());q=json.loads(Path('replay-input/qualification-run.json').read_text())
           row={'schema':'toka.qualified-artifact-replay','version':2,'policy_id':policy.policy_id(os.environ['TAG_NAME']),'target':os.environ['TARGET'],'candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'qualification_run_id':int(os.environ['QUALIFICATION_RUN_ID']),'qualification_run_attempt':q['run_attempt'],'asset_source':'candidate_run' if q['event']=='workflow_dispatch' else 'qualified_run','archive_sha256':r['archive_sha256'],'tag_bound':os.environ['CANDIDATE_ONLY']!='true','result':'pass'}
+          r3_r5_path = Path('replay-results/r3_r5/r3_r5_receipt.json')
+          if r3_r5_path.is_file():
+              row['r3_r5'] = json.loads(r3_r5_path.read_text())
           Path('replay-results/replay-receipt.json').write_text(json.dumps(row,indent=2)+'\n')
           PYCODE
       - uses: actions/upload-artifact@v4
@@ -332,6 +404,11 @@ jobs:
           targets=policy.included_targets(s,os.environ['CANDIDATE_SHA'],os.environ['TAG_NAME'])
           errors=[]
           if len(rows)!=len(targets) or {r['target'] for r in rows}!=set(targets) or any(r.get('result')!='pass' for r in rows):errors.append('missing/failed package replay')
+          for r in rows:
+              if os.environ['TAG_NAME'].startswith('v0.13.') and os.environ['TAG_NAME'] != 'v0.13.0':
+                  r_errors = policy.r3_r5_receipt_errors(r.get('r3_r5'), os.environ['CANDIDATE_SHA'], os.environ['TAG_NAME'], target=r.get('target'))
+                  if r_errors:
+                      errors.append('invalid R3/R5 replay receipt for %s: %s' % (r.get('target'), '; '.join(r_errors)))
           result={'schema':'toka.qualified-artifact-replay-summary','version':2,'policy_id':policy.policy_id(os.environ['TAG_NAME']),'candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'qualification_run_id':int(os.environ['QUALIFICATION_RUN_ID']),'qualification_run_attempt':q['run_attempt'],'replay_run_id':int(os.environ['GITHUB_RUN_ID']),'replay_run_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'receipts':rows,'errors':errors,'result':'fail' if errors else 'pass'}
           Path('qualified-artifact-replay-receipt.json').write_text(json.dumps(result,indent=2)+'\n')
           raise SystemExit(bool(errors))

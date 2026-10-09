@@ -1,0 +1,26 @@
+import core/task::{TaskHandle}
+
+shape Stream (
+    val#: i32
+)
+
+impl Stream {
+    pub fn read_task(self#) -> TaskHandle<i32> <- self {
+        auto t = self#.read_impl()
+        return cede t
+    }
+
+    fn read_impl(self#) -> async i32 {
+        return self.val
+    }
+}
+
+fn escape_via_helper() -> TaskHandle<i32> {
+    auto s# = Stream(val = 42:i32)
+    auto t = s#.read_task()
+    return cede t // EXPECT: error[E0455]:
+}
+
+fn main() -> i32 {
+    return 0
+}

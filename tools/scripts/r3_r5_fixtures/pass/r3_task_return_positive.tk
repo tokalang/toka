@@ -1,0 +1,82 @@
+import std/task::{block_on}
+import core/task::{TaskHandle}
+
+shape Resource (
+    val#: i32
+)
+
+impl Resource {
+    fn run(self#) -> async i32 {
+        return self.val
+    }
+}
+
+// 1. Long-lived caller owner
+fn helper_longlived(r#: Resource) -> TaskHandle<i32> <- r {
+    auto t = r#.run()
+    return cede t
+}
+
+// 2. Immediate legal await
+fn test_immediate_await() -> async i32 {
+    auto r# = Resource(val = 21:i32)
+    auto t = r#.run()
+    auto res = t.await
+    return res * 2:i32
+}
+
+// 3. Independent owned task return
+fn producer(val: i32) -> async i32 {
+    return val + 10:i32
+}
+
+fn test_independent_owned() -> TaskHandle<i32> {
+    auto t = producer(32:i32)
+    return cede t
+}
+
+// 4. Binding transfer
+fn test_binding_transfer() -> TaskHandle<i32> {
+    auto t1 = producer(100:i32)
+    auto t2 = cede t1
+    return cede t2
+}
+
+// 5. Mixed branch
+fn test_mixed_branch(flag: bool) -> TaskHandle<i32> {
+    if flag {
+        auto t1 = producer(1:i32)
+        return cede t1
+    } else {
+        auto t2 = producer(2:i32)
+        return cede t2
+    }
+}
+
+pub fn main() -> i32 {
+    // Check 1: Long-lived caller owner
+    auto res# = Resource(val = 42:i32)
+    auto t1 = helper_longlived(res#)
+    if block_on<i32>(t1) != 42:i32 { return 1 }
+
+    // Check 2: Immediate await
+    auto t2 = test_immediate_await()
+    if block_on<i32>(t2) != 42:i32 { return 2 }
+
+    // Check 3: Independent owned
+    auto t3 = test_independent_owned()
+    if block_on<i32>(t3) != 42:i32 { return 3 }
+
+    // Check 4: Binding transfer
+    auto t4 = test_binding_transfer()
+    if block_on<i32>(t4) != 110:i32 { return 4 }
+
+    // Check 5: Mixed branches
+    auto tb1 = test_mixed_branch(true)
+    if block_on<i32>(tb1) != 11:i32 { return 5 }
+
+    auto tb2 = test_mixed_branch(false)
+    if block_on<i32>(tb2) != 12:i32 { return 6 }
+
+    return 0
+}

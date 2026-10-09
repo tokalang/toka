@@ -30,6 +30,46 @@ def basic(digest):
             'sdk_identity':{'preview_composition':False,'version_label':TAG,'candidate_revision':SHA,'tools':{name:{'version':TAG.removeprefix('v'),'exit_code':0,'sha256':'1'*64,'stdout_sha256':'2'*64,'stderr_sha256':'3'*64} for name in policy.TOOLS}},'checks':checks}
 
 
+def valid_r3_r5(revision, label, target):
+    checks = []
+    receipts = []
+    for name in policy.R3_R5_NEGATIVE_TEST_NAMES:
+        diag = policy.R3_R5_EXPECTED_DIAGNOSTICS[name]
+        checks.append({'name': 'neg-%s-check_only' % name, 'mode': 'check_only', 'result': 'pass', 'diagnostic': diag})
+        checks.append({'name': 'neg-%s-object' % name, 'mode': 'object', 'result': 'pass', 'diagnostic': diag, 'artifact_absent': True})
+        checks.append({'name': 'neg-%s-ir' % name, 'mode': 'ir', 'result': 'pass', 'diagnostic': diag, 'artifact_absent': True})
+        receipts.append({'name': 'neg-%s-check_only' % name, 'argv': ['/sdk/bin/tokac', '--check-only', '/fixtures/' + name + '.tk'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0})
+        receipts.append({'name': 'neg-%s-object' % name, 'argv': ['/sdk/bin/tokac', '-c', '/fixtures/' + name + '.tk', '-o', '/tmp/test-' + name + '.o'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0})
+        receipts.append({'name': 'neg-%s-ir' % name, 'argv': ['/sdk/bin/tokac', '--emit-llvm', '/fixtures/' + name + '.tk', '-o', '/tmp/test-' + name + '.ll'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0})
+    for name in policy.R3_R5_POSITIVE_TEST_NAMES:
+        checks.append({'name': 'pos-%s-run' % name, 'result': 'pass', 'exit_code': 0})
+        receipts.append({'name': 'pos-%s-compile' % name, 'argv': ['/sdk/bin/tokac', '/fixtures/' + name + '.tk', '-o', '/tmp/pos-' + name + '.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0})
+        receipts.append({'name': 'pos-%s-run' % name, 'argv': ['/tmp/pos-' + name + '.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0})
+
+    ctrl_sha = policy.expected_r3_r5_script_sha256() or 'a'*64
+    return {
+        'schema': 'toka.r3-r5-installed-controls',
+        'version': 1,
+        'result': 'pass',
+        'candidate_revision': revision,
+        'version_label': label,
+        'target': target,
+        'sdk_root': '/installed/sdk',
+        'fixtures_digest': policy.EXPECTED_R3_R5_FIXTURES_DIGEST,
+        'control_script_name': 'test_r3_r5_installed.py',
+        'control_script_sha256': ctrl_sha,
+        'counts': {
+            'total_checks': 22,
+            'negative_checks': 18,
+            'positive_checks': 4,
+            'passed': 22,
+            'failed': 0,
+        },
+        'checks': checks,
+        'receipts': receipts,
+    }
+
+
 def fixture(root,intel=False):
     targets=policy.CORE+(policy.OPTIONAL,) if intel else policy.CORE
     archives=root/'qualified';archives.mkdir();assets=root/'assets';assets.mkdir();zips=root/'zips';zips.mkdir();metadata=[];hashes={}
@@ -46,12 +86,18 @@ def fixture(root,intel=False):
     if TAG.startswith('v0.13.'):
         for row in summary['reports']:
             row['candidate_013']={'schema':'toka.0.13-candidate-controls','version':1,'result':'pass','candidate_revision':SHA,'version_label':TAG,'build_testing':False,'groups':['A1','B1','B1-boundaries','B1-relative','D1-D2']}
+            if TAG != 'v0.13.0':
+                row['r3_r5']=valid_r3_r5(SHA,TAG,row['target'])
+    replay_receipts=[{'target':target,'result':'pass','archive_sha256':hashes['toka-%s-%s.tar.gz'%(TAG,target)],'candidate_revision':SHA,'version_label':TAG,'policy_id':policy.policy_id(TAG),'asset_source':'candidate_run','qualification_run_id':11,'qualification_run_attempt':1} for target in targets]
+    if TAG.startswith('v0.13.') and TAG != 'v0.13.0':
+        for r in replay_receipts:
+            r['r3_r5']=valid_r3_r5(SHA,TAG,r['target'])
     documents={'summary':summary,'run':{'id':11,'run_attempt':1,'status':'completed','conclusion':'success','head_sha':SHA,'path':'.github/workflows/release.yml','event':'workflow_dispatch','repository':{'full_name':'tokalang/toka'},'head_repository':{'full_name':'tokalang/toka'}},
                'draft':{'tagName':TAG,'isDraft':True,'isPrerelease':False,'assets':[{'name':name} for name in [*hashes,'SHA256SUMS']]},'artifacts':{'artifacts':metadata},
                'optional_run':{'id':21,'run_attempt':2,'head_sha':SHA,'status':'completed','conclusion':'success','event':'workflow_dispatch','path':'.github/workflows/optional_macos_x64.yml'},
                'replay_run':{'id':12,'run_attempt':3,'status':'completed','conclusion':'success','event':'workflow_dispatch','path':'.github/workflows/qualified_artifact_replay.yml'},
                'replay':{'schema':'toka.qualified-artifact-replay-summary','version':2,'policy_id':policy.policy_id(TAG),'result':'pass','errors':[],'candidate_revision':SHA,'version_label':TAG,'qualification_run_id':11,'qualification_run_attempt':1,'replay_run_id':12,'replay_run_attempt':3,
-                         'receipts':[{'target':target,'result':'pass','archive_sha256':hashes['toka-%s-%s.tar.gz'%(TAG,target)],'candidate_revision':SHA,'version_label':TAG,'policy_id':policy.policy_id(TAG),'asset_source':'candidate_run','qualification_run_id':11,'qualification_run_attempt':1} for target in targets]}}
+                         'receipts':replay_receipts}}
     for name,value in documents.items():dump(root/(name+'.json'),value)
     a=argparse.Namespace(tag_name=TAG,candidate_sha=SHA,repository='tokalang/toka',qualification_run_id=11,replay_run_id=12,qualification_summary=root/'summary.json',qualification_run_json=root/'run.json',qualified_archives_dir=archives,draft_json=root/'draft.json',draft_assets_dir=assets,assets_dir=assets,qualification_artifacts_json=root/'artifacts.json',artifact_zips_dir=zips,optional_run_json=root/'optional_run.json',replay_run_json=root/'replay_run.json',replay_receipt=root/'replay.json')
     return a,documents

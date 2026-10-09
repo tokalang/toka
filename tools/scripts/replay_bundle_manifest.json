@@ -1,0 +1,14 @@
+{
+  "schema": "toka.replay-bundle-manifest",
+  "version": 1,
+  "modules": {
+    "validate_sdk_basic.py": "bdf7cac2b303ffa725ff9e2c678a6f8eea40df22bb924941475f92ddec564910",
+    "release_platform_policy.py": "c7c7b10e44ccd80c0036d53f86f02fa0efb5f7aeacadc06591f02f61098608b6",
+    "test_toka_add.py": "18b656a21aff901f497f4d4d0aac39dfe5dd25b02a75635761bf980d3709dbe0",
+    "test_toka_add_installed.py": "3f250187b467d53d2fd055a9055b9cf944fdcc41c6a6f18ea8a94c9523d762c7",
+    "test_toka_evidence_installed.py": "13065cf2848c0616ac3176464c2eecaaa1389e41dcfdb7983ab217f9dc890061",
+    "test_run_arguments_installed.py": "2d1d4e47b66d73a00b123cbff7f5094cc4bd6972128d1e240bc5f0b4290105dd",
+    "test_r3_r5_installed.py": "e67427cb6771384e91b853eaf5a7bbf51d76d0e4464e2641d9f1f013c5e19c6a"
+  },
+  "fixtures_digest": "dd7315ca33ee61a8303b392c57834178da27dcccd52d4a5ad9d812dba56ebd90"
+}

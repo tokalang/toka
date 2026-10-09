@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+import core/option::{Option}
+
+pub trait @CrossModuleProcessor {
+    pub fn process_data(self#, cede buf: Vec<u8>, scale: Option<i32>) -> Option<Vec<u8>>
+}
+
+pub fn run_remote<P>(p#: P, cede buf: Vec<u8>, scale: Option<i32>) -> Option<Vec<u8>>
+where:
+    P: @CrossModuleProcessor
+{
+    return p#.process_data(cede buf, scale)
+}
