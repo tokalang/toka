@@ -5109,6 +5109,101 @@ void Sema::registerImpl(ImplDecl *Impl) {
                       argMismatch = true;
                       break;
                     }
+                    if (traitArg.IsRebindable != implArg.IsRebindable ||
+                        traitArg.Permission.IdentityRebindable != implArg.Permission.IdentityRebindable) {
+                      std::string traitReb = (traitArg.IsRebindable || traitArg.Permission.IdentityRebindable)
+                                                 ? "rebindable (#" + traitArg.Name + ")"
+                                                 : "non-rebindable (" + traitArg.Name + ")";
+                      std::string implReb = (implArg.IsRebindable || implArg.Permission.IdentityRebindable)
+                                                ? "rebindable (#" + implArg.Name + ")"
+                                                : "non-rebindable (" + implArg.Name + ")";
+                      DiagnosticEngine::report(getLoc(ImplMethod),
+                                               DiagID::ERR_SIGNATURE_MISMATCH,
+                                               Method->Name,
+                                               "parameter '" + traitArg.Name + "' as " + traitReb,
+                                               implReb);
+                      HasError = true;
+                      argMismatch = true;
+                      break;
+                    }
+                    if (traitArg.IsPointerNullable != implArg.IsPointerNullable ||
+                        traitArg.Permission.IdentityMayBeZero != implArg.Permission.IdentityMayBeZero) {
+                      std::string traitNull = (traitArg.IsPointerNullable || traitArg.Permission.IdentityMayBeZero)
+                                                  ? "nullable (nul " + traitArg.Name + ")"
+                                                  : "non-nullable (" + traitArg.Name + ")";
+                      std::string implNull = (implArg.IsPointerNullable || implArg.Permission.IdentityMayBeZero)
+                                                 ? "nullable (nul " + implArg.Name + ")"
+                                                 : "non-nullable (" + implArg.Name + ")";
+                      DiagnosticEngine::report(getLoc(ImplMethod),
+                                               DiagID::ERR_SIGNATURE_MISMATCH,
+                                               Method->Name,
+                                               "parameter '" + traitArg.Name + "' as " + traitNull,
+                                               implNull);
+                      HasError = true;
+                      argMismatch = true;
+                      break;
+                    }
+                    if (traitArg.IsRebindBlocked != implArg.IsRebindBlocked ||
+                        traitArg.Permission.IdentityBlocked != implArg.Permission.IdentityBlocked) {
+                      std::string traitBlk = (traitArg.IsRebindBlocked || traitArg.Permission.IdentityBlocked)
+                                                 ? "rebind-blocked ($" + traitArg.Name + ")"
+                                                 : "unblocked (" + traitArg.Name + ")";
+                      std::string implBlk = (implArg.IsRebindBlocked || implArg.Permission.IdentityBlocked)
+                                                ? "rebind-blocked ($" + implArg.Name + ")"
+                                                : "unblocked (" + implArg.Name + ")";
+                      DiagnosticEngine::report(getLoc(ImplMethod),
+                                               DiagID::ERR_SIGNATURE_MISMATCH,
+                                               Method->Name,
+                                               "parameter '" + traitArg.Name + "' as " + traitBlk,
+                                               implBlk);
+                      HasError = true;
+                      argMismatch = true;
+                      break;
+                    }
+                    if (traitArg.IsValueBlocked != implArg.IsValueBlocked ||
+                        traitArg.Permission.SoulBlocked != implArg.Permission.SoulBlocked) {
+                      std::string traitSoulBlk = (traitArg.IsValueBlocked || traitArg.Permission.SoulBlocked)
+                                                     ? "blocked (" + traitArg.Name + "$)"
+                                                     : "unblocked (" + traitArg.Name + ")";
+                      std::string implSoulBlk = (implArg.IsValueBlocked || implArg.Permission.SoulBlocked)
+                                                    ? "blocked (" + implArg.Name + "$)"
+                                                    : "unblocked (" + implArg.Name + ")";
+                      DiagnosticEngine::report(getLoc(ImplMethod),
+                                               DiagID::ERR_SIGNATURE_MISMATCH,
+                                               Method->Name,
+                                               "parameter '" + traitArg.Name + "' as " + traitSoulBlk,
+                                               implSoulBlk);
+                      HasError = true;
+                      argMismatch = true;
+                      break;
+                    }
+                    if (traitArg.IsMorphicExempt != implArg.IsMorphicExempt ||
+                        traitArg.Permission.MorphicExempt != implArg.Permission.MorphicExempt) {
+                      std::string traitExempt = (traitArg.IsMorphicExempt || traitArg.Permission.MorphicExempt)
+                                                    ? "morphic ('" + traitArg.Name + ")"
+                                                    : "non-morphic (" + traitArg.Name + ")";
+                      std::string implExempt = (implArg.IsMorphicExempt || implArg.Permission.MorphicExempt)
+                                                   ? "morphic ('" + implArg.Name + ")"
+                                                   : "non-morphic (" + implArg.Name + ")";
+                      DiagnosticEngine::report(getLoc(ImplMethod),
+                                               DiagID::ERR_SIGNATURE_MISMATCH,
+                                               Method->Name,
+                                               "parameter '" + traitArg.Name + "' as " + traitExempt,
+                                               implExempt);
+                      HasError = true;
+                      argMismatch = true;
+                      break;
+                    }
+                    if (traitArg.Permission != implArg.Permission) {
+                      DiagnosticEngine::report(getLoc(ImplMethod),
+                                               DiagID::ERR_SIGNATURE_MISMATCH,
+                                               Method->Name,
+                                               "parameter '" + traitArg.Name + "' permission contract",
+                                               "incompatible implementation permissions");
+                      HasError = true;
+                      argMismatch = true;
+                      break;
+                    }
 
                     // Check resolved parameter types
                     TypeSyntaxPtr expectedSyntax = traitArg.TypeSyntax;

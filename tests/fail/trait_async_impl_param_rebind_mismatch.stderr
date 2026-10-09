@@ -1,0 +1,5 @@
+error[E0428]: Method signature mismatch: trait defines 'read' as parameter 'p' as non-rebindable (p), but implementation is rebindable (#p)
+ --> tests/fail/trait_async_impl_param_rebind_mismatch.tk:3:24
+   |
+ 3 | impl S@Reader { pub fn read(self#, &#p: i32) -> async i32 { return 0:i32 } }
+   |                        ^

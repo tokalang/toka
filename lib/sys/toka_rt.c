@@ -283,6 +283,7 @@ int32_t toka_rt_test_datafile_closed(void) { return atomic_load(&g_toka_datafile
 int32_t toka_rt_test_datafile_freed(void) { return atomic_load(&g_toka_datafile_freed); }
 #endif
 
+#ifdef TOKA_BUFFER_TEST_OBSERVATION
 #define TOKA_MAX_TRACKED_BUFFERS 64
 static void *g_toka_tracked_buffers[TOKA_MAX_TRACKED_BUFFERS] = {0};
 static _Atomic int32_t g_toka_tracked_buffer_live = 0;
@@ -329,6 +330,7 @@ void toka_rt_test_tracked_buffer_reset(void) {
     atomic_store(&g_toka_tracked_buffer_live, 0);
     atomic_store(&g_toka_tracked_buffer_drops, 0);
 }
+#endif
 
 uint64_t toka_datafile_open_read(const char *path, int32_t *os_error) {
 #if defined(_WIN32) || defined(__wasi__)

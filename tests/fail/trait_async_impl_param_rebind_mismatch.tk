@@ -1,0 +1,4 @@
+trait @Reader { pub fn read(self#, &p: i32) -> async i32 }
+shape S(v: i32)
+impl S@Reader { pub fn read(self#, &#p: i32) -> async i32 { return 0:i32 } }
+fn main() -> i32 { return 0:i32 }
