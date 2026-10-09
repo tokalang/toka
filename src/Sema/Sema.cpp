@@ -2914,9 +2914,15 @@ bool Sema::checkModule(Module &M) {
     std::set<std::string> allowedNames = {"Self"};
     for (const auto &associated : trait->AssociatedTypes)
       allowedNames.insert(associated.Name);
-    for (const auto &method : trait->Methods)
+    for (const auto &method : trait->Methods) {
       validateGenericSignatureTypeNames(method.get(), trait->GenericParams,
                                         allowedNames);
+      for (auto &Arg : method->Args) {
+        if (!Arg.ResolvedType) {
+          Arg.ResolvedType = resolveType(Sema::synthesizePhysicalTypeObject(Arg, false));
+        }
+      }
+    }
   }
 
   // 2c. Check Impl blocks (NEW: Proper Self Injection)
@@ -3832,14 +3838,12 @@ void Sema::declareGlobals(Module &M) {
       validateHandleGrammar(Method->Loc, methodRetTy);
       recordHandleGrammarAudit(methodRetTy, traitOrigin, {FormationPhase::DirectResolution}, Trait->Name, "", "return", Method->Loc, false, Method->Name);
       for (auto &Arg : Method->Args) {
-        if (!Arg.ResolvedType) {
-          Arg.ResolvedType = resolveType(Sema::synthesizePhysicalTypeObject(Arg, false));
-        }
-        if (containsInternalPlaceOutcome(Arg.ResolvedType))
+        auto argTy = Sema::synthesizePhysicalTypeObject(Arg, false);
+        if (containsInternalPlaceOutcome(argTy))
           error(Method.get(), DiagID::ERR_PLACE_OUTCOME_INTERNAL_ONLY,
-                Arg.ResolvedType->toString());
-        validateHandleGrammar(Method->Loc, Arg.ResolvedType);
-        recordHandleGrammarAudit(Arg.ResolvedType, traitOrigin, {FormationPhase::DirectResolution}, Trait->Name, "", Arg.Name, Method->Loc, false, Method->Name);
+                argTy->toString());
+        validateHandleGrammar(Method->Loc, argTy);
+        recordHandleGrammarAudit(argTy, traitOrigin, {FormationPhase::DirectResolution}, Trait->Name, "", Arg.Name, Method->Loc, false, Method->Name);
       }
       MethodMap[traitKey][Method->Name] = Method->ReturnType;
       MethodDecls[traitKey][Method->Name] = Method.get();
