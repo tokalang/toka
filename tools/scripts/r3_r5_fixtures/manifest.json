@@ -1,0 +1,13 @@
+{
+  "fail/r3_task_direct_escape.tk": "130fd9d55b2352fa73d9053a31853af312cf344348fdd342b18b51c76071a231",
+  "fail/r3_task_explicit_dep_local_escape.tk": "d257ac12aa77155b1c3bf8b2f375d26d2ccdee39df95d6f415f28c95e84f3c24",
+  "fail/r3_task_helper_unannotated_escape.tk": "c8fd1e53ce6f2bad471ca8be35fb809c06883e429c4ec2f1af2e567e4d76de15",
+  "fail/r3_task_explicit_dep_free_escape.tk": "e047b184e92371772cdca9bc4fe4af79ad312b6fa628c963e1c56fd1bc882759",
+  "fail/r3_task_helper_annotated_escape.tk": "990ad6557dc597289263212bfb9d2425c654ca6333b79de96a6e391223b7fcdc",
+  "fail/r5_private_shape_rejected.tk": "7f894a9368b9f8b4e3d3317b86e555cda280f986812a1a4024654c0ce295b7b9",
+  "pass/r3_task_return_positive.tk": "2d943eec88d84da016b02141bd2348b2d9ef0c80d4ffcf807ec032c8fd21388f",
+  "pass/r3_task_explicit_dep_safe_await.tk": "ffcaa4e742a804be7080e210294c9d44244f651b64e65f74d7b9bdb7db081eb8",
+  "pass/r5_trait_generic_param.tk": "d24653367390f2277b11586d9ff34223bcb1dd5998b7ecd154db8b447d6d187f",
+  "pass/r5_trait_cross_module.tk": "51f9d4d891d2788c313e78a2edca0aba8d8fba69487bfa6e51d45b16c9beec2a",
+  "pass/r5_trait_module/mod.tk_lib": "a341b90504367d05363fa016766a1635209f9ae3e994b7b82566f9466f7ad409"
+}

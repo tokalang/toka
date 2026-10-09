@@ -1,0 +1,47 @@
+import std/vec::{Vec}
+import core/option::{Option}
+import ./r5_trait_module/mod.tk_lib::{@CrossModuleProcessor, run_remote}
+
+pub shape LocalWorker (
+    id: i32
+)
+
+impl LocalWorker@CrossModuleProcessor {
+    pub fn process_data(self#, cede buf: Vec<u8>, scale: Option<i32>) -> Option<Vec<u8>> {
+        auto factor# = 1
+        if scale.is_some() {
+            factor = scale.unwrap()
+        }
+        auto mut_buf# = cede buf
+        mut_buf#.push(factor as u8)
+        mut_buf#.push(self.id as u8)
+        return Option<Vec<u8>>::Some(cede mut_buf)
+    }
+}
+
+pub fn main() -> i32 {
+    auto worker# = LocalWorker(id = 9)
+    auto input# = Vec<u8>::new()
+    input#.push(100:u8)
+    
+    // Test 1: Cross-module trait generic helper consumption
+    auto res = run_remote<LocalWorker>(worker#, cede input, Option<i32>::Some(5))
+    if res.is_none() {
+        return 1
+    }
+    auto out = res.unwrap()
+    if out.len() != 3:usize {
+        return 2
+    }
+    if out.get(0:usize) != 100:u8 {
+        return 3
+    }
+    if out.get(1:usize) != 5:u8 {
+        return 4
+    }
+    if out.get(2:usize) != 9:u8 {
+        return 5
+    }
+    
+    return 0
+}

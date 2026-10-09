@@ -195,8 +195,18 @@ def main():
             candidate_013=json.loads((Path(command[-1])/'result.json').read_text())
             checks.append('0.13-installed-candidate-controls')
 
+        r3_r5 = None
+        if args.version and args.version.startswith('v0.13.') and args.version != 'v0.13.0':
+            descriptor=json.loads((package_root/'sdk.json').read_text())
+            r3_r5_out = str((Path(args.controls_output).parent / 'candidate-r3-r5-installed') if args.controls_output else archive.parent/('r3-r5-controls-'+uuid.uuid4().hex))
+            command=[sys.executable,str(ROOT/'tools/scripts/test_r3_r5_installed.py'),'--sdk',str(package_root),'--revision',descriptor['candidate_revision'],'--version',args.version,'--output',r3_r5_out]
+            run(command,root,env)
+            r3_r5=json.loads((Path(r3_r5_out)/'r3_r5_receipt.json').read_text())
+            checks.append('0.13.1-r3-r5-installed-controls')
+
     print(json.dumps({
         **({"candidate_013": candidate_013} if candidate_013 is not None else {}),
+        **({"r3_r5": r3_r5} if r3_r5 is not None else {}),
         "checks": checks,
         "count": len(checks),
         "result": "pass",
