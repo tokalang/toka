@@ -1,0 +1,10 @@
+error[E0441]: Cannot access 's' while it is mutably borrowed
+ --> tests/fail/async_trait_overlapping_borrow.tk:27:17
+    |
+ 27 |     auto t2 = s#.read(cede b2)
+    |                 ^
+note: conflicting borrow originates here
+ --> tests/fail/async_trait_overlapping_borrow.tk:26:10
+    |
+ 26 |     auto t1 = s#.read(cede b1)
+    |          ^

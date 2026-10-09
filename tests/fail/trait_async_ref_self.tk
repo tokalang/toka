@@ -1,0 +1,9 @@
+trait @RefReceiver {
+    pub fn fetch(self: &Self) -> async i32
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0618]

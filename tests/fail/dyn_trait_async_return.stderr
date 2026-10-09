@@ -1,0 +1,10 @@
+error[E0617]: Trait '@AsyncTrait' cannot be used as 'dyn @AsyncTrait': async trait methods are not object-safe; dynamic dispatch is not supported
+ --> tests/fail/dyn_trait_async_return.tk:15:4
+    |
+ 15 | fn ret_dyn() -> dyn @AsyncTrait {
+    |    ^
+error[E0617]: Trait '@AsyncTrait' cannot be used as 'dyn @AsyncTrait': async trait methods are not object-safe; dynamic dispatch is not supported
+ --> tests/fail/dyn_trait_async_return.tk:16:25
+    |
+ 16 |     return S(v = 1:i32) as dyn @AsyncTrait
+    |                         ^

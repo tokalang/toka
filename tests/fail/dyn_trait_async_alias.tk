@@ -1,0 +1,11 @@
+trait @AsyncTrait {
+    pub fn fetch(self#) -> async i32
+}
+
+type DynAlias = dyn @AsyncTrait
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0617]

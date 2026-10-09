@@ -1,0 +1,9 @@
+import std/vec::{Vec}
+import core/result::{Result}
+import std/net::{AsyncReadResult, AsyncIoError}
+import ./mod_a::{@MockTransport}
+
+pub fn consume_generic<T: @MockTransport>(stream#: T, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError> {
+    auto res = stream#.read(cede buf).await
+    return cede res
+}

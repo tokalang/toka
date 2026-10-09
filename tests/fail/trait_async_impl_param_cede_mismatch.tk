@@ -1,0 +1,21 @@
+import std/vec::{Vec}
+
+trait @AsyncTrait {
+    pub fn fetch(self#, cede buf: Vec<u8>) -> async i32
+}
+
+shape S (
+    v: i32
+)
+
+impl S@AsyncTrait {
+    pub fn fetch(self#, _buf: Vec<u8>) -> async i32 {
+        return self.v
+    }
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0428]

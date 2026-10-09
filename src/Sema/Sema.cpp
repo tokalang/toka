@@ -2131,6 +2131,8 @@ bool Sema::validateDynTraitObjectSafety(const std::string &traitName,
     return fail("associated types are not yet bindable on dyn trait objects");
 
   for (const auto &method : trait->Methods) {
+    if (method->Effect == EffectKind::Async)
+      return fail("async trait methods are not object-safe; dynamic dispatch is not supported");
     if (!method->GenericParams.empty())
       return fail("method '" + method->Name + "' is generic");
     if (typeMentionsSelf(method->ReturnType))
@@ -2500,16 +2502,27 @@ void Sema::validateTraitAssociatedTypes(TraitDecl *Trait) {
     return;
   CheckedAssociatedTypeTraits.insert(Trait);
 
-  // Ordinary `fn -> async T` is part of the frozen 1.0 async surface. A trait
-  // declaration adds interface, receiver, dispatch, and source-less replay
-  // obligations that are deferred to the async-interface RFC. Reject it before
-  // it can enter MethodMap or a `.tki`.
+  // 0.14 G1: Static dispatch async trait methods are permitted with strictly mutable self# receiver.
+  // Dynamic dispatch (dyn Trait) and plain self / &self / cede self / static async methods remain rejected.
   for (const auto &method : Trait->Methods) {
     if (method->Effect == EffectKind::Async) {
-      DiagnosticEngine::report(
-          method->Loc, DiagID::ERR_TRAIT_ASYNC_METHOD_OUTSIDE_1_0,
-          method->Name, Trait->Name);
-      HasError = true;
+      const bool validSelfMut =
+          !method->Args.empty() &&
+          method->Args.front().Name == "self" &&
+          method->Args.front().IsValueMutable &&
+          !method->Args.front().IsValueBlocked &&
+          !method->Args.front().IsCeded &&
+          !method->Args.front().IsReference &&
+          !method->Args.front().IsRawPointer &&
+          !method->Args.front().IsShared &&
+          !method->Args.front().IsUnique &&
+          !method->Args.front().IsRebindable;
+      if (!validSelfMut) {
+        DiagnosticEngine::report(
+            method->Loc, DiagID::ERR_TRAIT_ASYNC_METHOD_OUTSIDE_1_0,
+            method->Name, Trait->Name);
+        HasError = true;
+      }
     }
   }
 
@@ -4984,6 +4997,62 @@ void Sema::registerImpl(ImplDecl *Impl) {
                                        Method->Name, traitVis, implVis);
               HasError = true;
             }
+            if (getTraitFamilyName(canonicalTrait) != "ErrorInto") {
+              if (ImplMethod->Effect != Method->Effect) {
+                std::string traitEff = Method->Effect == EffectKind::Async ? "async" : "sync";
+                std::string implEff = ImplMethod->Effect == EffectKind::Async ? "async" : "sync";
+                DiagnosticEngine::report(getLoc(ImplMethod),
+                                         DiagID::ERR_SIGNATURE_MISMATCH,
+                                         Method->Name, traitEff, implEff);
+                HasError = true;
+              }
+              if (ImplMethod->Args.size() != Method->Args.size()) {
+                DiagnosticEngine::report(getLoc(ImplMethod),
+                                         DiagID::ERR_SIGNATURE_MISMATCH,
+                                         Method->Name,
+                                         std::to_string(Method->Args.size()) + " parameter(s)",
+                                         std::to_string(ImplMethod->Args.size()) + " parameter(s)");
+                HasError = true;
+              } else {
+                for (size_t i = 0; i < Method->Args.size(); ++i) {
+                  const auto &traitArg = Method->Args[i];
+                  const auto &implArg = ImplMethod->Args[i];
+                  if (traitArg.IsValueMutable != implArg.IsValueMutable) {
+                    std::string traitMut = traitArg.IsValueMutable ? "mutable (" + traitArg.Name + "#)" : "immutable (" + traitArg.Name + ")";
+                    std::string implMut = implArg.IsValueMutable ? "mutable (" + implArg.Name + "#)" : "immutable (" + implArg.Name + ")";
+                    DiagnosticEngine::report(getLoc(ImplMethod),
+                                             DiagID::ERR_SIGNATURE_MISMATCH,
+                                             Method->Name,
+                                             "parameter '" + traitArg.Name + "' as " + traitMut,
+                                             implMut);
+                    HasError = true;
+                    break;
+                  }
+                  if (traitArg.IsCeded != implArg.IsCeded) {
+                    std::string traitCede = traitArg.IsCeded ? "ceded (" + traitArg.Name + ")" : "unceded (" + traitArg.Name + ")";
+                    std::string implCede = implArg.IsCeded ? "ceded (" + implArg.Name + ")" : "unceded (" + implArg.Name + ")";
+                    DiagnosticEngine::report(getLoc(ImplMethod),
+                                             DiagID::ERR_SIGNATURE_MISMATCH,
+                                             Method->Name,
+                                             "parameter '" + traitArg.Name + "' as " + traitCede,
+                                             implCede);
+                    HasError = true;
+                    break;
+                  }
+                  if (traitArg.IsReference != implArg.IsReference) {
+                    std::string traitRef = traitArg.IsReference ? "reference (&" + traitArg.Name + ")" : "value (" + traitArg.Name + ")";
+                    std::string implRef = implArg.IsReference ? "reference (&" + implArg.Name + ")" : "value (" + implArg.Name + ")";
+                    DiagnosticEngine::report(getLoc(ImplMethod),
+                                             DiagID::ERR_SIGNATURE_MISMATCH,
+                                             Method->Name,
+                                             "parameter '" + traitArg.Name + "' as " + traitRef,
+                                             implRef);
+                    HasError = true;
+                    break;
+                  }
+                }
+              }
+            }
           }
           continue;
         }
@@ -5241,8 +5310,10 @@ void Sema::validateGenericSignatureTypeNames(
     if (!name.empty() && name.front() == '\'')
       name.erase(0, 1);
     parameterNames.insert(name);
-    for (const auto &bound : parameter.TraitBounds)
+    for (const auto &bound : parameter.TraitBounds) {
+      findVisibleTraitDecl(bound, Fn->Loc);
       parameterBounds[name].insert(getTraitFamilyName(bound));
+    }
   }
   parameterNames.insert(enclosingTypeNames.begin(), enclosingTypeNames.end());
 
