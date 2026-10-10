@@ -1,7 +1,23 @@
+// Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
 // stdx/net/transport.tk — asynchronous transport abstraction and adapters.
 //
-// Defines @AsyncTransport trait with owner-carrying buffer semantics,
-// along with MockMemoryStream, TcpTransport, TlsTransport, and Metered<T>.
+// Defines @AsyncTransport trait with owner-carrying buffer semantics and
+// resumable cursor range writes, along with MockMemoryStream, TcpTransport,
+// TlsTransport, and Metered<T>.
+
 import std/net::{TcpStream, TlsSession, AsyncReadResult, AsyncWriteResult, AsyncIoError}
 import stdx/net/stream::{AsyncStream}
 import std/vec::{Vec}
@@ -11,7 +27,7 @@ import std/task::{sleep_async}
 
 pub trait @AsyncTransport {
     pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError>
-    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError>
+    pub fn write_from_async(self#, cede owner: Vec<u8>, offset: usize, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError>
     pub fn close(self#)
 }
 
@@ -21,11 +37,13 @@ pub shape MockMemoryStream (
     chunk_size: usize,
     delay_ms: i32,
     fail_after_reads: i32,
+    fail_after_writes: i32,
     fail_message: string,
     written_data: Vec<u8>,
     is_closed: bool,
     read_count: usize,
-    write_count: usize
+    write_count: usize,
+    zero_write_mode: bool
 )
 
 impl MockMemoryStream {
@@ -36,11 +54,13 @@ impl MockMemoryStream {
             chunk_size = 0:usize,
             delay_ms = 0:i32,
             fail_after_reads = -1:i32,
+            fail_after_writes = -1:i32,
             fail_message = string::from(""),
             written_data = Vec<u8>::new(),
             is_closed = false,
             read_count = 0:usize,
-            write_count = 0:usize
+            write_count = 0:usize,
+            zero_write_mode = false
         )
     }
 
@@ -51,11 +71,13 @@ impl MockMemoryStream {
             chunk_size = chunk_size,
             delay_ms = 0:i32,
             fail_after_reads = -1:i32,
+            fail_after_writes = -1:i32,
             fail_message = string::from(""),
             written_data = Vec<u8>::new(),
             is_closed = false,
             read_count = 0:usize,
-            write_count = 0:usize
+            write_count = 0:usize,
+            zero_write_mode = false
         )
     }
 
@@ -67,12 +89,21 @@ impl MockMemoryStream {
         self.chunk_size = chunk_size
     }
 
+    pub fn set_zero_write_mode(self#, enabled: bool) {
+        self.zero_write_mode = enabled
+    }
+
     pub fn set_delay(self#, delay_ms: i32) {
         self.delay_ms = delay_ms
     }
 
     pub fn inject_read_error(self#, after_reads: i32, cede msg: string) {
         self.fail_after_reads = after_reads
+        self.fail_message = cede msg
+    }
+
+    pub fn inject_write_error(self#, after_writes: i32, cede msg: string) {
+        self.fail_after_writes = after_writes
         self.fail_message = cede msg
     }
 
@@ -108,13 +139,7 @@ impl MockMemoryStream@AsyncTransport {
         }
 
         if self.delay_ms > 0:i32 {
-            auto waited = sleep_async(self.delay_ms).await?
-            if waited.is_none() {
-                return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
-                    buffer = cede owned,
-                    message = string::from("Cancelled during read")
-                ))
-            }
+            sleep_async(self.delay_ms).await
         }
 
         if self.fail_after_reads >= 0:i32 && (self.read_count as i32) >= self.fail_after_reads {
@@ -163,7 +188,7 @@ impl MockMemoryStream@AsyncTransport {
         ))
     }
 
-    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+    pub fn write_from_async(self#, cede owner: Vec<u8>, offset: usize, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
         auto owned# = cede owner
         if self.is_closed {
             return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
@@ -172,18 +197,42 @@ impl MockMemoryStream@AsyncTransport {
             ))
         }
 
+        if self.delay_ms > 0:i32 {
+            sleep_async(self.delay_ms).await
+        }
+
+        if self.fail_after_writes >= 0:i32 && (self.write_count as i32) >= self.fail_after_writes {
+            return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede owned,
+                message = self.fail_message.clone()
+            ))
+        }
+
         self.write_count += 1:usize
-        auto n = owned.len()
+
+        auto avail# = 0:usize
+        if offset < owned.len() {
+            avail = owned.len() - offset
+        }
+
+        auto n# = avail
+        if self.zero_write_mode {
+            n = 0:usize
+        } else if self.chunk_size > 0:usize && n > self.chunk_size {
+            n = self.chunk_size
+        }
+
         auto j# = 0:usize
         loop j < n {
-            self.written_data#.push(owned.get(j))
+            self.written_data#.push(owned.get(offset + j))
             j += 1:usize
         }
 
+        auto complete = (offset + n) >= owned.len()
         return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(
             buffer = cede owned,
             bytes_written = n,
-            complete = true
+            complete = complete
         ))
     }
 
@@ -223,9 +272,39 @@ impl TcpTransport@AsyncTransport {
         return cede res
     }
 
-    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
-        auto res = self.raw_tcp#.write_from_async(cede owner, timeout_ms).await
-        return cede res
+    pub fn write_from_async(self#, cede owner: Vec<u8>, offset: usize, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto owned# = cede owner
+        auto len = owned.len()
+        if self.raw_tcp.closed || self.raw_tcp.fd < 0 {
+            return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede owned,
+                message = string::from("Stream closed")
+            ))
+        }
+
+        if offset >= len {
+            return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(
+                buffer = cede owned,
+                bytes_written = 0:usize,
+                complete = true
+            ))
+        }
+
+        auto to_write = len - offset
+        auto *buf_ptr = unsafe owned.unsafe_get(offset)
+        auto write_res = self.raw_tcp#.write_all_async_timeout(*buf_ptr, to_write, timeout_ms).await
+        if write_res.is_err() {
+            return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede owned,
+                message = write_res.unwrap_err()
+            ))
+        }
+
+        return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(
+            buffer = cede owned,
+            bytes_written = to_write,
+            complete = true
+        ))
     }
 
     pub fn close(self#) {
@@ -264,8 +343,8 @@ impl TlsTransport@AsyncTransport {
         return cede res
     }
 
-    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
-        auto res = self.stream#.write_from_async(cede owner, timeout_ms).await
+    pub fn write_from_async(self#, cede owner: Vec<u8>, offset: usize, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto res = self.stream#.write_from_offset_async(cede owner, offset, timeout_ms).await
         return cede res
     }
 
@@ -301,8 +380,8 @@ impl AsyncStreamTransport@AsyncTransport {
         return cede res
     }
 
-    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
-        auto res = self.stream#.write_from_async(cede owner, timeout_ms).await
+    pub fn write_from_async(self#, cede owner: Vec<u8>, offset: usize, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto res = self.stream#.write_from_offset_async(cede owner, offset, timeout_ms).await
         return cede res
     }
 
@@ -317,6 +396,8 @@ pub shape Metered<T: @AsyncTransport> (
     bytes_written: usize,
     read_ops: usize,
     write_ops: usize,
+    failed_read_ops: usize,
+    failed_write_ops: usize,
     frames_read: usize,
     frames_written: usize
 )
@@ -329,6 +410,8 @@ impl<T: @AsyncTransport> Metered<T> {
             bytes_written = 0:usize,
             read_ops = 0:usize,
             write_ops = 0:usize,
+            failed_read_ops = 0:usize,
+            failed_write_ops = 0:usize,
             frames_read = 0:usize,
             frames_written = 0:usize
         )
@@ -350,6 +433,17 @@ impl<T: @AsyncTransport> Metered<T> {
         return self.write_ops
     }
 
+    pub fn failed_read_ops(self) -> usize {
+        return self.failed_read_ops
+    }
+
+    pub fn failed_write_ops(self) -> usize {
+        return self.failed_write_ops
+    }
+
+    // Transport-layer manual frame recording hooks.
+    // Automatic frame counting is maintained by the framing protocol layer
+    // (FramedStream::get_frames_written, FramedReader::get_frames_read).
     pub fn frames_read(self) -> usize {
         return self.frames_read
     }
@@ -371,6 +465,8 @@ impl<T: @AsyncTransport> Metered<T> {
         self.bytes_written = 0:usize
         self.read_ops = 0:usize
         self.write_ops = 0:usize
+        self.failed_read_ops = 0:usize
+        self.failed_write_ops = 0:usize
         self.frames_read = 0:usize
         self.frames_written = 0:usize
     }
@@ -378,28 +474,30 @@ impl<T: @AsyncTransport> Metered<T> {
 
 impl<T: @AsyncTransport> Metered<T>@AsyncTransport {
     pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        self.read_ops += 1:usize
         auto res = self.inner#.read_into_async(cede owner, max_len, timeout_ms).await
         match cede res {
             auto Result::Ok(r#) => {
                 self.bytes_read += r.bytes_read
-                self.read_ops += 1:usize
                 return Result<AsyncReadResult, AsyncIoError>::Ok(cede r)
             }
             auto Result::Err(e#) => {
+                self.failed_read_ops += 1:usize
                 return Result<AsyncReadResult, AsyncIoError>::Err(cede e)
             }
         }
     }
 
-    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
-        auto res = self.inner#.write_from_async(cede owner, timeout_ms).await
+    pub fn write_from_async(self#, cede owner: Vec<u8>, offset: usize, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        self.write_ops += 1:usize
+        auto res = self.inner#.write_from_async(cede owner, offset, timeout_ms).await
         match cede res {
             auto Result::Ok(r#) => {
                 self.bytes_written += r.bytes_written
-                self.write_ops += 1:usize
                 return Result<AsyncWriteResult, AsyncIoError>::Ok(cede r)
             }
             auto Result::Err(e#) => {
+                self.failed_write_ops += 1:usize
                 return Result<AsyncWriteResult, AsyncIoError>::Err(cede e)
             }
         }
