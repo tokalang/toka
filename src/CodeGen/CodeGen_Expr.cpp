@@ -8980,6 +8980,34 @@ PhysEntity CodeGen::genArrayInitExpr(const ArrayInitExpr *expr) {
   std::cerr << "genArrayInitExpr on stack not fully implemented yet." << std::endl;
   return nullptr;
 }
+static bool isOwningTemporaryTaskHandle(const Expr *expr) {
+    while (expr) {
+        if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+            expr = cast->Expression.get();
+        } else if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
+            expr = unsafeExpr->Expression.get();
+        } else if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
+            expr = postfix->LHS.get();
+        } else {
+            break;
+        }
+    }
+    if (!expr)
+        return false;
+    if (dynamic_cast<const CedeExpr *>(expr))
+        return true;
+    if (auto *unary = dynamic_cast<const UnaryExpr *>(expr)) {
+        if (unary->Op == TokenType::Star)
+            return false;
+    }
+    if (dynamic_cast<const VariableExpr *>(expr) ||
+        dynamic_cast<const MemberExpr *>(expr) ||
+        dynamic_cast<const ArrayIndexExpr *>(expr)) {
+        return false;
+    }
+    return true;
+}
+
 PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     if (!m_CurrentCoroPromiseType) {
         error(awaitExpr, DiagID::ERR_CODEGEN_AWAIT_CAN_ONLY_BE_USED_INSIDE_AN_ASYNC);
@@ -8992,6 +9020,19 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     llvm::Value *targetTCBPtr = handleVal;
     if (handleVal->getType()->isStructTy()) {
         targetTCBPtr = m_Builder.CreateExtractValue(handleVal, 0, "await.tcb_ptr");
+    }
+
+    const bool isOwningTemporary = isOwningTemporaryTaskHandle(awaitExpr->Expression.get());
+    llvm::Function *dropHandleFn = nullptr;
+    if (isOwningTemporary) {
+        dropHandleFn = m_Module->getFunction("toka_task_drop_handle");
+        if (!dropHandleFn) {
+            llvm::FunctionType *ft = llvm::FunctionType::get(
+                m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+            dropHandleFn = llvm::Function::Create(
+                ft, llvm::Function::ExternalLinkage,
+                "toka_task_drop_handle", m_Module.get());
+        }
     }
     
     llvm::Function *getPromiseFn = m_Module->getFunction("toka_tcb_get_promise");
@@ -9114,6 +9155,9 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     sw->addCase(m_Builder.getInt8(1), cleanupContBB);
     
     m_Builder.SetInsertPoint(cleanupContBB);
+    if (isOwningTemporary) {
+        m_Builder.CreateCall(dropHandleFn, {targetTCBPtr});
+    }
     m_Builder.CreateBr(m_CurrentCoroCleanupBB);
     
     m_Builder.SetInsertPoint(resumeContBB);
@@ -9141,6 +9185,9 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
 
     m_Builder.SetInsertPoint(canceledBB);
     m_Builder.CreateCall(finishAwaitFn, {m_CurrentCoroTCB});
+    if (isOwningTemporary) {
+        m_Builder.CreateCall(dropHandleFn, {targetTCBPtr});
+    }
     llvm::Value *canceledOutcome = nullptr;
     if (awaitExpr->CatchesCancellation) {
         llvm::Type *outcomeTy = getLLVMType(awaitExpr->ResolvedType);
@@ -9223,6 +9270,9 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
         readyVal = m_Builder.CreateLoad(targetInnerTy, targetValPtr, "target.val");
         m_Builder.CreateCall(releaseResultAccessFn, {resultAccessGuard});
         m_Builder.CreateCall(finishAwaitFn, {m_CurrentCoroTCB});
+        if (isOwningTemporary) {
+            m_Builder.CreateCall(dropHandleFn, {targetTCBPtr});
+        }
         if (!awaitExpr->CatchesCancellation) {
             return PhysEntity(readyVal, awaitExpr->ResolvedType->toString(), targetInnerTy, false);
         }
@@ -9252,6 +9302,9 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     }
     m_Builder.CreateCall(releaseResultAccessFn, {resultAccessGuard});
     m_Builder.CreateCall(finishAwaitFn, {m_CurrentCoroTCB});
+    if (isOwningTemporary) {
+        m_Builder.CreateCall(dropHandleFn, {targetTCBPtr});
+    }
     if (awaitExpr->CatchesCancellation) {
         error(awaitExpr, DiagID::ERR_CODEGEN_INVALID_REPRESENTATION_FOR,
               "Option<void>");
