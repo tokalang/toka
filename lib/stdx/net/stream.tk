@@ -60,18 +60,56 @@ impl AsyncStream {
             auto awaited_result_60 = self.raw_tcp#.read_into_async(cede owned, max_len, timeout_ms).await
             return cede awaited_result_60
         }
-        auto awaited_result_62 = self.tls#.read_into_async(self.raw_tcp, cede owned, max_len, timeout_ms).await
+        auto awaited_result_62 = self.tls#.read_into_async(self.raw_tcp#, cede owned, max_len, timeout_ms).await
         return cede awaited_result_62
     }
 
     pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto awaited_result = self#.write_from_offset_async(cede owner, 0:usize, timeout_ms).await
+        return cede awaited_result
+    }
+
+    pub fn write_from_offset_async(self#, cede owner: Vec<u8>, offset: usize, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
         auto owned# = cede owner
-        if !self.is_tls {
-            auto awaited_result_68 = self.raw_tcp#.write_from_async(cede owned, timeout_ms).await
-            return cede awaited_result_68
+        auto len = owned.len()
+        if offset >= len {
+            return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(
+                buffer = cede owned,
+                bytes_written = 0:usize,
+                complete = true
+            ))
         }
-        auto awaited_result_70 = self.tls#.write_from_async(self.raw_tcp, cede owned, timeout_ms).await
-        return cede awaited_result_70
+
+        auto to_write = len - offset
+        auto *buf_ptr = unsafe owned.unsafe_get(offset)
+
+        if !self.is_tls {
+            auto write_res = self.raw_tcp#.write_all_async_timeout(*buf_ptr, to_write, timeout_ms).await
+            if write_res.is_err() {
+                return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
+                    buffer = cede owned,
+                    message = write_res.unwrap_err()
+                ))
+            }
+            return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(
+                buffer = cede owned,
+                bytes_written = to_write,
+                complete = true
+            ))
+        }
+
+        auto write_res = self.tls#.write_all_async(self.raw_tcp#, *buf_ptr, to_write, timeout_ms).await
+        if write_res.is_err() {
+            return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede owned,
+                message = write_res.unwrap_err()
+            ))
+        }
+        return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(
+            buffer = cede owned,
+            bytes_written = to_write,
+            complete = true
+        ))
     }
 
     pub fn close(self#) {
