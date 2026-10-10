@@ -27,6 +27,10 @@
 // - Contradictory progress (bytes_written > remaining, or bytes_written == remaining
 //   with !complete, or bytes_written < remaining with complete) constitutes a fatal
 //   transport violation and transitions state to FRAMED_STATE_TERMINATED (5).
+// - Transport read operations must satisfy: bytes_read <= need and buffer.len() >= bytes_read.
+// - Contradictory read progress (bytes_read > need, or buffer.len() < bytes_read) constitutes
+//   a fatal transport violation and transitions state to FRAMED_STATE_TERMINATED (5), closing
+//   the transport and returning FramedError IO with caller-owned buffer preserved.
 // - Unhandled task cancellation drops the frame's scope-bound guard, which
 //   transitions state to FRAMED_STATE_TERMINATED (5) and closes the underlying transport.
 
@@ -202,10 +206,10 @@ impl<T: @AsyncTransport> FramedStream<T> {
                     auto is_eof = read_succ.eof
                     temp_chunk = read_succ#.take_buffer()
 
-                    if n > need {
+                    if n > need || temp_chunk.len() < n {
                         failed = true
                         err_kind = 4:i32
-                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range")
+                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range or buffer length")
                         break
                     }
 
@@ -316,10 +320,10 @@ impl<T: @AsyncTransport> FramedStream<T> {
                     auto is_eof = read_succ.eof
                     chunk_buf = read_succ#.take_buffer()
 
-                    if n > need {
+                    if n > need || chunk_buf.len() < n {
                         failed = true
                         err_kind = 4:i32
-                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range")
+                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range or buffer length")
                         break
                     }
 
@@ -614,10 +618,10 @@ impl<T: @AsyncTransport> FramedReader<T> {
                     auto is_eof = read_succ.eof
                     temp_chunk = read_succ#.take_buffer()
 
-                    if n > need {
+                    if n > need || temp_chunk.len() < n {
                         failed = true
                         err_kind = 4:i32
-                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range")
+                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range or buffer length")
                         break
                     }
 
@@ -728,10 +732,10 @@ impl<T: @AsyncTransport> FramedReader<T> {
                     auto is_eof = read_succ.eof
                     chunk_buf = read_succ#.take_buffer()
 
-                    if n > need {
+                    if n > need || chunk_buf.len() < n {
                         failed = true
                         err_kind = 4:i32
-                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range")
+                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range or buffer length")
                         break
                     }
 
