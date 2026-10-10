@@ -65,6 +65,29 @@ impl InvalidCountTransport@AsyncTransport {
     }
 }
 
+shape BadReadBufferTransport (
+    calls: i32,
+    closed: bool
+)
+
+impl BadReadBufferTransport@AsyncTransport {
+    pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        auto owned# = cede owner
+        self.calls += 1:i32
+        owned#.clear()
+        return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(buffer = cede owned, bytes_read = 4:usize, eof = false))
+    }
+
+    pub fn write_from_async(self#, cede owner: Vec<u8>, offset: usize, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto n = owner.len() - offset
+        return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(buffer = cede owner, bytes_written = n, complete = true))
+    }
+
+    pub fn close(self#) {
+        self.closed = true
+    }
+}
+
 fn client_tcp_task(p: u16) -> async i32 {
     sleep_async(20:i32).await
     auto c_addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), p)
@@ -448,8 +471,8 @@ fn coordinator() -> async i32 {
     }
     println("Branch 8 passed!")
 
-    // --- Branch 9: Handled Cancellation with Buffer Preservation ---
-    println("Checking Branch 9: Handled Cancellation with Buffer Preservation...")
+    // --- Branch 9: Unhandled Cancellation with Terminal Closure and Scope Cleanup ---
+    println("Checking Branch 9: Unhandled Cancellation with Terminal Closure and Scope Cleanup...")
     {
         auto wire# = Vec<u8>::new()
         wire#.push(0:u8)
@@ -529,6 +552,15 @@ fn coordinator() -> async i32 {
         auto closed_stream# = AsyncStream::from_tcp(closed_tcp#)
         auto empty_res = closed_stream#.write_from_async(Vec<u8>::new(), 1000:i32).await
         if !empty_res.is_err() { return 914:i32 }
+
+        // Test read buffer length defense: returned buffer shorter than bytes_read
+        auto bad_raw = BadReadBufferTransport(calls = 0:i32, closed = false)
+        auto bad_framed# = FramedStream<BadReadBufferTransport>::new(cede bad_raw)
+        auto bad_buf# = Vec<u8>::with_capacity(16:usize)
+        auto bad_res = bad_framed#.read_frame_async(cede bad_buf, 1000:i32).await
+        if !bad_res.is_err() { return 915:i32 }
+        if bad_framed.get_state() != FRAMED_STATE_TERMINATED { return 916:i32 }
+        if !bad_framed.transport.closed { return 917:i32 }
     }
     println("Branch 9 passed!")
 
