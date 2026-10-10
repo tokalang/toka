@@ -1,0 +1,18 @@
+import std/task::{block_on}
+import core/task::{TaskHandle}
+import core/option::{Option}
+extern fn review_live_snapshot()->void
+fn child()->async i32{return 7:i32}
+fn coordinate()->async Option<i32>{
+ auto h=child()
+ auto wrapped#=Option<TaskHandle<i32>>::Some(cede h)
+ auto transferred=wrapped!
+ auto n=transferred.await
+ assert(n==7:i32,"payload")
+ return Option<i32>::Some(n)
+}
+fn main()->i32{
+ auto answer=block_on<Option<i32>>(coordinate().start)
+ assert(answer.is_some(),"positive result")
+ review_live_snapshot()
+ return 0:i32}

@@ -1,0 +1,65 @@
+import std/task::{block_on}
+import core/task::{TaskHandle}
+
+shape TaskHolder(task: TaskHandle<i32>)
+
+fn child(val: i32) -> async i32 {
+    return val
+}
+
+fn child_unit() -> async {
+    return
+}
+
+fn test_fresh_direct() -> async i32 {
+    auto n = child(10:i32).await
+    assert(n == 10:i32, "fresh direct")
+    return 0:i32
+}
+
+fn test_fresh_start() -> async i32 {
+    auto n = child(20:i32).start.await
+    assert(n == 20:i32, "fresh start")
+    return 0:i32
+}
+
+fn test_named_start() -> async i32 {
+    auto h = child(30:i32).start
+    auto n = h.await
+    assert(n == 30:i32, "named start")
+    return 0:i32
+}
+
+fn test_member_handle() -> async i32 {
+    auto h = child(40:i32)
+    auto c = TaskHolder(task = cede h)
+    auto n = c.task.await
+    assert(n == 40:i32, "member handle")
+    return 0:i32
+}
+
+fn test_cede_handle() -> async i32 {
+    auto h = child(50:i32)
+    auto n = (cede h).await
+    assert(n == 50:i32, "cede handle")
+    return 0:i32
+}
+
+fn test_anonymous_unit() -> async i32 {
+    child_unit().await
+    return 0:i32
+}
+
+fn coordinate() -> async i32 {
+    test_fresh_direct().await
+    test_fresh_start().await
+    test_named_start().await
+    test_member_handle().await
+    test_cede_handle().await
+    test_anonymous_unit().await
+    return 0:i32
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinate().start)
+}

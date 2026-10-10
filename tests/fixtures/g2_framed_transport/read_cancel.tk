@@ -1,0 +1,34 @@
+import std/vec::{Vec}
+import core/result::{Result}
+import stdx/net/transport::{MockMemoryStream}
+import stdx/net/framed::{FramedStream,FramedReader,FramedReadResult,FramedError}
+import std/task::{block_on,sleep_async,task_cancel}
+import core/task::{task_get_coro_handle,toka_task_start}
+import std/io::{println}
+extern fn toka_rt_live_wait_registry_count()->u32
+fn coordinate()->async i32 {
+ auto wire#=Vec<u8>::new()
+ wire#.push(0:u8)
+ wire#.push(0:u8)
+ wire#.push(0:u8)
+ wire#.push(1:u8)
+ wire#.push(9:u8)
+ auto m#=MockMemoryStream::new(cede wire)
+ m#.set_delay(1000:i32)
+ auto f#=FramedReader<MockMemoryStream>::new(cede m)
+ auto task=f#.read_frame_async(Vec<u8>::with_capacity(16:usize),1000:i32)
+ auto nul *tcb=task_get_coro_handle<Result<FramedReadResult,FramedError>>(task)
+ auto *live=tcb.unwrap()
+ toka_task_start(*live)
+ auto polls#=0:i32
+ loop toka_rt_live_wait_registry_count()==0:u32 && polls < 100:i32 {
+  sleep_async(1:i32).await
+  polls+=1:i32
+ }
+ assert(toka_rt_live_wait_registry_count()>0:u32,"actually suspended")
+ task_cancel<Result<FramedReadResult,FramedError>>(task)
+ auto out=task.await?
+ println("None={}, state={}, closed={}, waits={}",out.is_none(),f.get_state(),f.transport#.is_closed(),toka_rt_live_wait_registry_count())
+ return 0:i32
+}
+fn main()->i32{return block_on<i32>(coordinate().start)}

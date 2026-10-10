@@ -887,6 +887,13 @@ if(BUILD_TESTING)
         COMMAND toka_async_identity_exhaustion)
     add_test(NAME toka_async_task_io_cancel_reactor_cleanup
         COMMAND toka_async_task_io_cancel_reactor_cleanup)
+    add_test(NAME toka_g2_framed_transport_directed
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/tools/scripts/test_g2_framed_transport.py
+            --build-dir ${CMAKE_BINARY_DIR})
+    set_tests_properties(toka_g2_framed_transport_directed PROPERTIES
+        TIMEOUT 180
+        ENVIRONMENT "TOKA_LIB=${CMAKE_SOURCE_DIR}/lib")
 endif()
 
 file(GLOB_RECURSE TOKA_TOOL_AND_LIBRARY_SOURCES CONFIGURE_DEPENDS
