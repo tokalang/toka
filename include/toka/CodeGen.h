@@ -489,6 +489,14 @@ private:
                                llvm::Value *dropMaskAddr);
 
   // Helpers
+  static bool hasBlockTerminator(const llvm::BasicBlock *bb) {
+    return bb && !bb->empty() && bb->back().isTerminator();
+  }
+  static llvm::Instruction *getBlockTerminator(llvm::BasicBlock *bb) {
+    if (!bb || bb->empty() || !bb->back().isTerminator())
+      return nullptr;
+    return &bb->back();
+  }
   llvm::AllocaInst *createEntryBlockAlloca(llvm::Type *type, llvm::Value *ArraySize = nullptr, const std::string &varName = "");
   std::string stripMorphology(const std::string &name);
   llvm::Value *genUnsafeStmt(const UnsafeStmt *stmt);

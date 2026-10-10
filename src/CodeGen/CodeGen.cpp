@@ -206,7 +206,7 @@ PhysEntity CodeGen::genExprImpl(const Expr *expr) {
   if (!expr)
     return {};
 
-  if (m_Builder.GetInsertBlock() && m_Builder.GetInsertBlock()->getTerminator())
+  if (hasBlockTerminator(m_Builder.GetInsertBlock()))
     return {};
 
   setDebugLocation(expr);
@@ -373,7 +373,7 @@ void CodeGen::registerFullExpressionTemporary(llvm::Value *address,
 
 void CodeGen::emitFullExpressionTemporaryDrops(bool clear) {
   if (!m_Builder.GetInsertBlock() ||
-      m_Builder.GetInsertBlock()->getTerminator()) {
+      hasBlockTerminator(m_Builder.GetInsertBlock())) {
     if (clear)
       m_FullExpressionTemporaries.clear();
     return;
@@ -392,7 +392,7 @@ void CodeGen::emitFullExpressionTemporaryDrops(bool clear) {
 
     m_Builder.SetInsertPoint(dropBlock);
     emitDropForType(temporary->Address, temporary->TypeObj);
-    if (!m_Builder.GetInsertBlock()->getTerminator())
+    if (!hasBlockTerminator(m_Builder.GetInsertBlock()))
       m_Builder.CreateBr(doneBlock);
 
     m_Builder.SetInsertPoint(doneBlock);

@@ -1009,7 +1009,7 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
         } else {
           emitDropForType(soulAddr, symLHS->soulTypeObj);
         }
-        if (!m_Builder.GetInsertBlock()->getTerminator())
+        if (!hasBlockTerminator(m_Builder.GetInsertBlock()))
           m_Builder.CreateBr(continueBlock);
         m_Builder.SetInsertPoint(continueBlock);
       }
@@ -1053,7 +1053,7 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
             "assign.member.mask.cleared");
         m_Builder.CreateStore(cleared, dropMask);
         emitDropForType(soulAddr, memberTarget->ResolvedType);
-        if (!m_Builder.GetInsertBlock()->getTerminator())
+        if (!hasBlockTerminator(m_Builder.GetInsertBlock()))
           m_Builder.CreateBr(continueBlock);
         m_Builder.SetInsertPoint(continueBlock);
       } else {
@@ -1118,7 +1118,7 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
             "assign.index.mask.cleared");
         m_Builder.CreateStore(cleared, dropMask);
         emitDropForType(soulAddr, indexTarget->ResolvedType);
-        if (!m_Builder.GetInsertBlock()->getTerminator())
+        if (!hasBlockTerminator(m_Builder.GetInsertBlock()))
           m_Builder.CreateBr(continueBlock);
         m_Builder.SetInsertPoint(continueBlock);
       } else if (directArrayMask || directArrayOwnerTracked) {
@@ -1571,7 +1571,7 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
   }
 
   if (!m_Builder.GetInsertBlock() ||
-      m_Builder.GetInsertBlock()->getTerminator()) {
+      hasBlockTerminator(m_Builder.GetInsertBlock())) {
     return nullptr;
   }
 
@@ -1582,7 +1582,7 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
   }
 
   if (!m_Builder.GetInsertBlock() ||
-      m_Builder.GetInsertBlock()->getTerminator()) {
+      hasBlockTerminator(m_Builder.GetInsertBlock())) {
     return nullptr;
   }
 
@@ -2993,7 +2993,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
       executeScopeUnwinding(m_ScopeStack.size() - 1);
       m_ScopeStack.pop_back();
       if (m_Builder.GetInsertBlock() &&
-          !m_Builder.GetInsertBlock()->getTerminator())
+          !hasBlockTerminator(m_Builder.GetInsertBlock()))
         m_Builder.CreateBr(mergeBB);
     };
 
@@ -3410,7 +3410,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
         executeScopeUnwinding(m_ScopeStack.size() - 1);
         m_ScopeStack.pop_back();
         if (m_Builder.GetInsertBlock() &&
-            !m_Builder.GetInsertBlock()->getTerminator())
+            !hasBlockTerminator(m_Builder.GetInsertBlock()))
           m_Builder.CreateBr(mergeBB);
       } else {
         // No match logic here intended, loop continues
@@ -3449,7 +3449,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
       }
     }
     if (m_Builder.GetInsertBlock() &&
-        !m_Builder.GetInsertBlock()->getTerminator())
+        !hasBlockTerminator(m_Builder.GetInsertBlock()))
       m_Builder.CreateBr(mergeBB);
 
     // [Fix] Explicitly finish the if block logic (though 'else' follows)
@@ -3985,7 +3985,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
       executeScopeUnwinding(m_ScopeStack.size() - 1);
       m_ScopeStack.pop_back();
       if (m_Builder.GetInsertBlock() &&
-          !m_Builder.GetInsertBlock()->getTerminator())
+          !hasBlockTerminator(m_Builder.GetInsertBlock()))
         m_Builder.CreateBr(mergeBB);
 
       m_Builder.SetInsertPoint(nextArmBB);
@@ -4054,7 +4054,7 @@ PhysEntity CodeGen::genIfExpr(const IfExpr *ie,
           m_CFStack.pop_back();
       }
       
-      if (m_Builder.GetInsertBlock() && !m_Builder.GetInsertBlock()->getTerminator()) {
+      if (m_Builder.GetInsertBlock() && !hasBlockTerminator(m_Builder.GetInsertBlock())) {
           m_Builder.CreateBr(mergeBB);
       }
       
@@ -4103,7 +4103,7 @@ PhysEntity CodeGen::genIfExpr(const IfExpr *ie,
   genStmt(ie->Then.get());
   m_CFStack.pop_back();
   llvm::BasicBlock *thenEndBB = m_Builder.GetInsertBlock();
-  if (thenEndBB && !thenEndBB->getTerminator())
+  if (thenEndBB && !hasBlockTerminator(thenEndBB))
     m_Builder.CreateBr(mergeBB);
 
   elseBB->insertInto(f);
@@ -4127,7 +4127,7 @@ PhysEntity CodeGen::genIfExpr(const IfExpr *ie,
     m_CFStack.pop_back();
   }
   llvm::BasicBlock *elseEndBB = m_Builder.GetInsertBlock();
-  if (elseEndBB && !elseEndBB->getTerminator())
+  if (elseEndBB && !hasBlockTerminator(elseEndBB))
     m_Builder.CreateBr(mergeBB);
 
   mergeBB->insertInto(f);
@@ -4249,7 +4249,7 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   genStmt(guard->Then.get());
   m_CFStack.pop_back();
   llvm::BasicBlock *thenEndBB = m_Builder.GetInsertBlock();
-  if (thenEndBB && !thenEndBB->getTerminator())
+  if (thenEndBB && !hasBlockTerminator(thenEndBB))
     m_Builder.CreateBr(mergeBB);
 
   elseBB->insertInto(f);
@@ -4260,7 +4260,7 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
     m_CFStack.pop_back();
   }
   llvm::BasicBlock *elseEndBB = m_Builder.GetInsertBlock();
-  if (elseEndBB && !elseEndBB->getTerminator())
+  if (elseEndBB && !hasBlockTerminator(elseEndBB))
     m_Builder.CreateBr(mergeBB);
 
   mergeBB->insertInto(f);
@@ -4314,7 +4314,7 @@ PhysEntity CodeGen::genLoopExpr(const LoopExpr *le) {
     genStmt(le->Body.get());
     m_CFStack.pop_back();
     if (m_Builder.GetInsertBlock() &&
-        !m_Builder.GetInsertBlock()->getTerminator())
+        !hasBlockTerminator(m_Builder.GetInsertBlock()))
       m_Builder.CreateBr(condBB);
   } else {
     llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(m_Context, "loop", f);
@@ -4327,7 +4327,7 @@ PhysEntity CodeGen::genLoopExpr(const LoopExpr *le) {
     genStmt(le->Body.get());
     m_CFStack.pop_back();
     if (m_Builder.GetInsertBlock() &&
-        !m_Builder.GetInsertBlock()->getTerminator())
+        !hasBlockTerminator(m_Builder.GetInsertBlock()))
       m_Builder.CreateBr(loopBB);
   }
 
@@ -4782,7 +4782,7 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
   m_ScopeStack.pop_back();
 
   if (m_Builder.GetInsertBlock() &&
-      !m_Builder.GetInsertBlock()->getTerminator())
+      !hasBlockTerminator(m_Builder.GetInsertBlock()))
     m_Builder.CreateBr(incrBB);
 
   incrBB->insertInto(f);
@@ -4801,7 +4801,7 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     m_CFStack.pop_back();
   }
   if (m_Builder.GetInsertBlock() &&
-      !m_Builder.GetInsertBlock()->getTerminator())
+      !hasBlockTerminator(m_Builder.GetInsertBlock()))
     m_Builder.CreateBr(afterBB);
   afterBB->insertInto(f);
   m_Builder.SetInsertPoint(afterBB);
@@ -7475,7 +7475,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
         m_Builder.SetInsertPoint(caseBlock);
         llvm::Value *result = emit(ordering);
         llvm::BasicBlock *resultBlock = m_Builder.GetInsertBlock();
-        if (!resultBlock->getTerminator())
+        if (!hasBlockTerminator(resultBlock))
           m_Builder.CreateBr(mergeBlock);
         if (resultType)
           incoming.push_back({result, resultBlock});
