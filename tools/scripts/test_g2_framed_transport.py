@@ -98,7 +98,7 @@ def main():
         work_dir = Path(temp_str)
 
         # 1. Core 11 Branches
-        print("[1/4] Running G2 Framed Transport Core (11 branches)...", end="", flush=True)
+        print("[1/5] Running G2 Framed Transport Core (11 branches)...", end="", flush=True)
         rec, run_res = run_case("given_11_branch", PASS_TESTS / "g14_stdx_framed_transport_test.tk", tokac, rt_o, work_dir, env, timeout=45)
         all_records.append(rec)
         if rec["passed"] and "All 11 G2 framed transport verification branches passed successfully!" in run_res.stdout:
@@ -108,7 +108,7 @@ def main():
             failures.append("given_11_branch")
 
         # 2. TaskHandle Lifecycle & .start Lowering Pass Suite
-        print("[2/4] Running TaskHandle Lifecycle & .start Lowering...", end="", flush=True)
+        print("[2/5] Running TaskHandle Lifecycle & .start Lowering...", end="", flush=True)
         rec, run_res = run_case("lifecycle_pass_suite", PASS_TESTS / "g14_task_start_temporary_lifecycle_test.tk", tokac, rt_o, work_dir, env, timeout=30)
         all_records.append(rec)
         if rec["passed"] and "All 10 lifecycle and cancellation controls passed with zero TCB residue and exact-once drop!" in run_res.stdout:
@@ -133,7 +133,7 @@ def main():
             ("writer_cancel", "framed_writer_cancel.tk", lambda out: "state=5, closed=true" in out),
         ]
 
-        print(f"[3/4] Running G2 Transport Protocol Controls ({len(proto_cases)} cases)...", end="", flush=True)
+        print(f"[3/5] Running G2 Transport Protocol Controls ({len(proto_cases)} cases)...", end="", flush=True)
         proto_failed = False
         for name, fname, validator in proto_cases:
             rec, run_res = run_case(name, FIXTURES / fname, tokac, rt_o, work_dir, env, timeout=20)
@@ -154,7 +154,7 @@ def main():
             ("probe_reader_2", "framed_reader_read_short_buffer_2.tk"),
         ]
 
-        print(f"[4/4] Running Short Buffer Read Safety Probes ({len(probe_cases)} cases)...", end="", flush=True)
+        print(f"[4/5] Running Short Buffer Read Safety Probes ({len(probe_cases)} cases)...", end="", flush=True)
         probe_failed = False
         for name, fname in probe_cases:
             rec, run_res = run_case(name, FIXTURES / fname, tokac, rt_o, work_dir, env, timeout=20)
@@ -166,6 +166,16 @@ def main():
             print(" PASS")
         else:
             print(" FAIL")
+
+        # 5. Unwrap Propagation Ownership & Lifecycle Suite (10 controls)
+        print("[5/5] Running Unwrap Propagation Lifecycle Suite (10 controls)...", end="", flush=True)
+        rec, run_res = run_case("unwrap_propagation_suite", PASS_TESTS / "g14_unwrap_propagation_lifecycle_test.tk", tokac, rt_o, work_dir, env, timeout=30)
+        all_records.append(rec)
+        if rec["passed"] and "All 10 unwrap propagation lifecycle controls passed with zero TCB residue and exact-once drop!" in run_res.stdout:
+            print(" PASS")
+        else:
+            print(" FAIL")
+            failures.append("unwrap_propagation_suite")
 
     total_ms = (time.monotonic() - total_start) * 1000
 

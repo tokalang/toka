@@ -7775,27 +7775,24 @@ PhysEntity CodeGen::genUnwrapPropagationExpr(const UnwrapPropagationExpr *expr) 
   llvm::Value *tagVal = m_Builder.CreateExtractValue(baseVal, {0}, "unwrap.tag");
   llvm::Value *isOk = m_Builder.CreateICmpEQ(tagVal, llvm::ConstantInt::get(tagVal->getType(), 1), "unwrap.is_ok");
 
-  // [NEW] Destructive Match Mutation for ! Operator (Early Return / Unwrap)
-  // The ! operator extracts the payload out of the container implicitly.
-  // We must mutate the original container's tag to 'Moved' to prevent double-free
-  // when the current scope ends or returns early.
-  if (baseEnt.isAddress) {
-      std::string baseShapeName = toka::Type::stripMorphology(expr->Base->ResolvedType->toString());
-      if (baseShapeName.find("_M_") != std::string::npos) baseShapeName = baseShapeName.substr(0, baseShapeName.find("_M_"));
-      if (m_Shapes.count(baseShapeName)) {
-          int movedTag = -1;
-          for (size_t i = 0; i < m_Shapes[baseShapeName]->Members.size(); ++i) {
-              if (m_Shapes[baseShapeName]->Members[i].Name == "Moved") {
-                  movedTag = m_Shapes[baseShapeName]->Members[i].TagValue != -1 ? m_Shapes[baseShapeName]->Members[i].TagValue : (int)i;
-                  break;
-              }
-          }
-          if (movedTag != -1) {
-              llvm::Value *tagAddr = m_Builder.CreateStructGEP(baseVal->getType(), baseEnt.value, 0);
-              m_Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(m_Context), movedTag), tagAddr);
-          }
-      }
-  }
+
+
+  auto consumeContainerOwnership = [&]() {
+    // In Toka's tagged enum representation { i8 tag, [aligned union data] },
+    // all valid variant tags are non-negative integers (>= 0).
+    // Mutating the in-memory tag to -1 (0xFF) marks the container as inert/moved,
+    // so any subsequent emitDropCascade will match no active payload case and branch
+    // to default mergeBB without double-dropping.
+    if (baseEnt.isAddress) {
+      llvm::Value *tagAddr = m_Builder.CreateStructGEP(baseVal->getType(), baseEnt.value, 0);
+      m_Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(m_Context), -1), tagAddr);
+    }
+    // If the base expression is a named local variable, disarm its dynamic DropFlag
+    // in m_ScopeStack so executeScopeUnwinding skips scope cleanup for this moved container.
+    if (auto *ve = dynamic_cast<const VariableExpr *>(expr->Base.get())) {
+      suppressDropForMove(ve->Name);
+    }
+  };
 
   llvm::Function *f = m_Builder.GetInsertBlock()->getParent();
   llvm::BasicBlock *failBB = llvm::BasicBlock::Create(m_Context, "unwrap.fail", f);
@@ -7814,6 +7811,7 @@ PhysEntity CodeGen::genUnwrapPropagationExpr(const UnwrapPropagationExpr *expr) 
       retVal = m_Builder.CreateInsertValue(retVal, llvm::ConstantInt::get(tagTy, 0), {0});
     }
     
+    consumeContainerOwnership();
     executeScopeUnwinding(0); 
     
     if (m_CurrentCoroRetTy) {
@@ -7915,6 +7913,7 @@ PhysEntity CodeGen::genUnwrapPropagationExpr(const UnwrapPropagationExpr *expr) 
       retVal = m_Builder.CreateInsertValue(retVal, newUnionData, {1});
     }
 
+    consumeContainerOwnership();
     executeScopeUnwinding(0); 
 
     if (m_CurrentCoroRetTy) {
@@ -7934,6 +7933,8 @@ PhysEntity CodeGen::genUnwrapPropagationExpr(const UnwrapPropagationExpr *expr) 
 
   // -- SUCCESS Path --
   m_Builder.SetInsertPoint(succBB);
+
+  consumeContainerOwnership();
   
   if (!expr->ResolvedType) return nullptr;
   

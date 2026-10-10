@@ -1,0 +1,242 @@
+import std/task::{block_on, sleep_async, task_cancel}
+import core/task::{TaskHandle}
+import core/option::{Option}
+import core/result::{Result}
+import core/traits::{@ErrorInto}
+import std/vec::{Vec}
+import std/io::{println}
+
+extern fn toka_rt_live_tcb_count() -> u32
+extern fn toka_rt_live_wait_registry_count() -> u32
+
+auto g_drops# = 0:i32
+auto g_src_drops# = 0:i32
+auto g_dst_drops# = 0:i32
+
+shape TrackedResource (
+    id: i32,
+    buf: Vec<u8>
+)
+
+impl TrackedResource@Encap {
+    fn drop(self#) {
+        g_drops += 1:i32
+    }
+}
+
+shape SrcError (
+    id: i32,
+    buf: Vec<u8>
+)
+
+impl SrcError@Encap {
+    fn drop(self#) {
+        g_src_drops += 1:i32
+    }
+}
+
+shape DstError (
+    id: i32,
+    buf: Vec<u8>
+)
+
+impl DstError@Encap {
+    fn drop(self#) {
+        g_dst_drops += 1:i32
+    }
+}
+
+impl SrcError@ErrorInto<DstError> {
+    pub fn into_error(cede self) -> DstError {
+        auto converted = DstError(id = self.id, buf = cede self.buf)
+        return cede converted
+    }
+}
+
+fn make_resource(id: i32) -> TrackedResource {
+    auto b# = Vec<u8>::with_capacity(16:usize)
+    b#.push(1:u8)
+    b#.push(2:u8)
+    b#.push(3:u8)
+    return TrackedResource(id = id, buf = cede b)
+}
+
+fn make_src_error(id: i32) -> SrcError {
+    auto b# = Vec<u8>::with_capacity(16:usize)
+    b#.push(9:u8)
+    return SrcError(id = id, buf = cede b)
+}
+
+// 1. Named Option Some with owned payload
+fn test_named_option_some() -> Option<i32> {
+    auto opt = Option<TrackedResource>::Some(make_resource(101))
+    auto tok = opt!
+    return Option<i32>::Some(tok.id)
+}
+
+// 2. Named Option None
+fn test_named_option_none() -> Option<i32> {
+    auto opt = Option<TrackedResource>::None
+    auto tok = opt!
+    return Option<i32>::Some(tok.id)
+}
+
+// 3. Named Result Ok with owned payload
+fn test_named_result_ok() -> Result<i32, i32> {
+    auto res = Result<TrackedResource, i32>::Ok(make_resource(102))
+    auto tok = res!
+    return Result<i32, i32>::Ok(tok.id)
+}
+
+// 4. Named Result Err with owned error payload (P1 fix verification)
+fn test_named_result_err() -> Result<i32, TrackedResource> {
+    auto res = Result<i32, TrackedResource>::Err(make_resource(103))
+    auto val = res!
+    return Result<i32, TrackedResource>::Ok(val)
+}
+
+// 5. Named Result Err with error conversion (@ErrorInto)
+fn test_named_result_err_conversion() -> Result<i32, DstError> {
+    auto res = Result<i32, SrcError>::Err(make_src_error(104))
+    auto val = res!
+    return Result<i32, DstError>::Ok(val)
+}
+
+// 6. Branch where ! is not executed (must not drop early, must not leak)
+fn test_option_unexecuted_branch(do_unwrap: bool) -> Option<i32> {
+    auto opt = Option<TrackedResource>::Some(make_resource(105))
+    if do_unwrap {
+        auto tok = opt!
+        return Option<i32>::Some(tok.id)
+    }
+    return Option<i32>::Some(999)
+}
+
+// 7. Temporary Option Some RValue unwrap
+fn test_temporary_option_some() -> Option<i32> {
+    auto tok = (Option<TrackedResource>::Some(make_resource(106)))!
+    return Option<i32>::Some(tok.id)
+}
+
+// 8. Temporary Result Err RValue unwrap
+fn test_temporary_result_err() -> Result<i32, TrackedResource> {
+    auto val = (Result<i32, TrackedResource>::Err(make_resource(107)))!
+    return Result<i32, TrackedResource>::Ok(val)
+}
+
+// 9. TaskHandle named unwrap normal completion
+fn child_normal() -> async i32 {
+    return 77:i32
+}
+
+fn coordinate_task_normal() -> async Option<i32> {
+    auto h = child_normal()
+    auto wrapped = Option<TaskHandle<i32>>::Some(cede h)
+    auto transferred = wrapped!
+    auto n = transferred.await
+    assert(n == 77:i32, "payload matches")
+    return Option<i32>::Some(n)
+}
+
+// 10. TaskHandle named unwrap cancellation
+fn child_cancellable() -> async i32 {
+    sleep_async(500:i32).await
+    return 88:i32
+}
+
+fn coordinate_task_cancel() -> async Option<i32> {
+    auto h = child_cancellable().start
+    auto wrapped = Option<TaskHandle<i32>>::Some(cede h)
+    auto transferred = wrapped!
+    task_cancel<i32>(transferred)
+    auto outcome = transferred.await?
+    assert(outcome.is_none(), "cancelled outcome is None")
+    return Option<i32>::None
+}
+
+fn main() -> i32 {
+    // Control 1: Named Option Some exactly-once drop
+    g_drops = 0:i32
+    {
+        auto res = test_named_option_some()
+        assert(res.is_some(), "c1: is some")
+    }
+    assert(g_drops == 1:i32, "c1: exactly once drop")
+
+    // Control 2: Named Option None produces zero drops
+    g_drops = 0:i32
+    {
+        auto res = test_named_option_none()
+        assert(res.is_none(), "c2: is none")
+    }
+    assert(g_drops == 0:i32, "c2: zero drops")
+
+    // Control 3: Named Result Ok exactly-once drop
+    g_drops = 0:i32
+    {
+        auto res = test_named_result_ok()
+        assert(res.is_ok(), "c3: is ok")
+    }
+    assert(g_drops == 1:i32, "c3: exactly once drop")
+
+    // Control 4: Named Result Err exactly-once drop (P1)
+    g_drops = 0:i32
+    {
+        auto res = test_named_result_err()
+        assert(res.is_err(), "c4: is err")
+    }
+    assert(g_drops == 1:i32, "c4: exactly once drop of error payload")
+
+    // Control 5: Named Result Err with ErrorInto conversion
+    g_src_drops = 0:i32
+    g_dst_drops = 0:i32
+    {
+        auto res = test_named_result_err_conversion()
+        assert(res.is_err(), "c5: is err")
+    }
+    assert(g_src_drops == 0:i32, "c5: src consumed into dst without drop")
+    assert(g_dst_drops == 1:i32, "c5: exactly once dst drop")
+
+    // Control 6: Unexecuted unwrap branch does not leak or drop early
+    g_drops = 0:i32
+    {
+        auto res = test_option_unexecuted_branch(false)
+        assert(res.is_some(), "c6: is some")
+    }
+    assert(g_drops == 1:i32, "c6: normal scope drop on unexecuted branch")
+
+    // Control 7: Temporary Option Some
+    g_drops = 0:i32
+    {
+        auto res = test_temporary_option_some()
+        assert(res.is_some(), "c7: is some")
+    }
+    assert(g_drops == 1:i32, "c7: temporary some drop exactly once")
+
+    // Control 8: Temporary Result Err
+    g_drops = 0:i32
+    {
+        auto res = test_temporary_result_err()
+        assert(res.is_err(), "c8: is err")
+    }
+    assert(g_drops == 1:i32, "c8: temporary err drop exactly once")
+
+    // Control 9: TaskHandle named unwrap normal completion
+    {
+        auto answer = block_on<Option<i32>>(coordinate_task_normal().start)
+        assert(answer.is_some(), "c9: task normal answered")
+    }
+    assert(toka_rt_live_tcb_count() == 0:u32, "c9: zero TCB residue")
+    assert(toka_rt_live_wait_registry_count() == 0:u32, "c9: zero wait registry residue")
+
+    // Control 10: TaskHandle named unwrap cancellation
+    {
+        auto answer = block_on<Option<i32>>(coordinate_task_cancel().start)
+        assert(answer.is_none(), "c10: task cancel answered None")
+    }
+    assert(toka_rt_live_tcb_count() == 0:u32, "c10: zero TCB residue after cancel")
+    assert(toka_rt_live_wait_registry_count() == 0:u32, "c10: zero wait registry residue after cancel")
+
+    println("All 10 unwrap propagation lifecycle controls passed with zero TCB residue and exact-once drop!")
+    return 0:i32
+}
