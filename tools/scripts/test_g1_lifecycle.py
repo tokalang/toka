@@ -106,8 +106,11 @@ fn main() -> i32 {
     print("test_g1_lifecycle: PASS (isolated observation, production cleanliness verified)")
 
 if __name__ == "__main__":
+    default_build = ROOT / "build"
+    if not (default_build / "bin/tokac").is_file():
+        default_build = ROOT / "../builds/fix-r3-task-escape"
     parser = argparse.ArgumentParser(description="Test G1 static async trait lifecycle with isolated observation")
-    parser.add_argument("--build-dir", default=str(ROOT / "../builds/fix-r3-task-escape"),
+    parser.add_argument("--build-dir", default=str(default_build),
                         help="Path to CMake build directory containing tokac")
     args = parser.parse_args()
     qualify(args.build_dir)
