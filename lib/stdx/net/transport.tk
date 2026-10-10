@@ -1,0 +1,411 @@
+// stdx/net/transport.tk — asynchronous transport abstraction and adapters.
+//
+// Defines @AsyncTransport trait with owner-carrying buffer semantics,
+// along with MockMemoryStream, TcpTransport, TlsTransport, and Metered<T>.
+import std/net::{TcpStream, TlsSession, AsyncReadResult, AsyncWriteResult, AsyncIoError}
+import stdx/net/stream::{AsyncStream}
+import std/vec::{Vec}
+import core/result::{Result}
+import core/string::{string}
+import std/task::{sleep_async}
+
+pub trait @AsyncTransport {
+    pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError>
+    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError>
+    pub fn close(self#)
+}
+
+pub shape MockMemoryStream (
+    read_data: Vec<u8>,
+    read_pos: usize,
+    chunk_size: usize,
+    delay_ms: i32,
+    fail_after_reads: i32,
+    fail_message: string,
+    written_data: Vec<u8>,
+    is_closed: bool,
+    read_count: usize,
+    write_count: usize
+)
+
+impl MockMemoryStream {
+    pub fn new(cede data: Vec<u8>) -> MockMemoryStream {
+        return MockMemoryStream(
+            read_data = cede data,
+            read_pos = 0:usize,
+            chunk_size = 0:usize,
+            delay_ms = 0:i32,
+            fail_after_reads = -1:i32,
+            fail_message = string::from(""),
+            written_data = Vec<u8>::new(),
+            is_closed = false,
+            read_count = 0:usize,
+            write_count = 0:usize
+        )
+    }
+
+    pub fn with_chunk_size(cede data: Vec<u8>, chunk_size: usize) -> MockMemoryStream {
+        return MockMemoryStream(
+            read_data = cede data,
+            read_pos = 0:usize,
+            chunk_size = chunk_size,
+            delay_ms = 0:i32,
+            fail_after_reads = -1:i32,
+            fail_message = string::from(""),
+            written_data = Vec<u8>::new(),
+            is_closed = false,
+            read_count = 0:usize,
+            write_count = 0:usize
+        )
+    }
+
+    pub fn empty() -> MockMemoryStream {
+        return MockMemoryStream::new(Vec<u8>::new())
+    }
+
+    pub fn set_chunk_size(self#, chunk_size: usize) {
+        self.chunk_size = chunk_size
+    }
+
+    pub fn set_delay(self#, delay_ms: i32) {
+        self.delay_ms = delay_ms
+    }
+
+    pub fn inject_read_error(self#, after_reads: i32, cede msg: string) {
+        self.fail_after_reads = after_reads
+        self.fail_message = cede msg
+    }
+
+    pub fn get_written_data(self#) -> Vec<u8> {
+        return self.written_data#.clone()
+    }
+
+    pub fn written_len(self) -> usize {
+        return self.written_data.len()
+    }
+
+    pub fn read_count(self) -> usize {
+        return self.read_count
+    }
+
+    pub fn write_count(self) -> usize {
+        return self.write_count
+    }
+
+    pub fn is_closed(self) -> bool {
+        return self.is_closed
+    }
+}
+
+impl MockMemoryStream@AsyncTransport {
+    pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        auto owned# = cede owner
+        if self.is_closed {
+            return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede owned,
+                message = string::from("MockMemoryStream is closed")
+            ))
+        }
+
+        if self.delay_ms > 0:i32 {
+            auto waited = sleep_async(self.delay_ms).await?
+            if waited.is_none() {
+                return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
+                    buffer = cede owned,
+                    message = string::from("Cancelled during read")
+                ))
+            }
+        }
+
+        if self.fail_after_reads >= 0:i32 && (self.read_count as i32) >= self.fail_after_reads {
+            return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede owned,
+                message = self.fail_message.clone()
+            ))
+        }
+
+        self.read_count += 1:usize
+
+        auto total_avail# = 0:usize
+        if self.read_pos < self.read_data.len() {
+            total_avail = self.read_data.len() - self.read_pos
+        }
+
+        if total_avail == 0:usize {
+            owned#.clear()
+            return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+                buffer = cede owned,
+                bytes_read = 0:usize,
+                eof = true
+            ))
+        }
+
+        auto n# = total_avail
+        if n > max_len {
+            n = max_len
+        }
+        if self.chunk_size > 0:usize && n > self.chunk_size {
+            n = self.chunk_size
+        }
+
+        owned#.clear()
+        auto i# = 0:usize
+        loop i < n {
+            owned#.push(self.read_data.get(self.read_pos + i))
+            i += 1:usize
+        }
+        self.read_pos += n
+
+        return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+            buffer = cede owned,
+            bytes_read = n,
+            eof = false
+        ))
+    }
+
+    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto owned# = cede owner
+        if self.is_closed {
+            return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede owned,
+                message = string::from("MockMemoryStream is closed")
+            ))
+        }
+
+        self.write_count += 1:usize
+        auto n = owned.len()
+        auto j# = 0:usize
+        loop j < n {
+            self.written_data#.push(owned.get(j))
+            j += 1:usize
+        }
+
+        return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(
+            buffer = cede owned,
+            bytes_written = n,
+            complete = true
+        ))
+    }
+
+    pub fn close(self#) {
+        self.is_closed = true
+    }
+}
+
+pub shape TcpTransport (
+    raw_tcp: TcpStream
+)
+
+impl TcpTransport@Encap {
+    pub raw_tcp#
+    fn drop(self#) {
+        self.raw_tcp#.close()
+    }
+}
+
+impl TcpTransport {
+    pub fn new(stream#: TcpStream) -> TcpTransport {
+        return TcpTransport(raw_tcp = stream#.take())
+    }
+
+    pub fn get_fd(self#) -> i32 {
+        return self.raw_tcp#.get_fd()
+    }
+
+    pub fn take_tcp(self#) -> TcpStream {
+        return self.raw_tcp#.take()
+    }
+}
+
+impl TcpTransport@AsyncTransport {
+    pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        auto res = self.raw_tcp#.read_into_async(cede owner, max_len, timeout_ms).await
+        return cede res
+    }
+
+    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto res = self.raw_tcp#.write_from_async(cede owner, timeout_ms).await
+        return cede res
+    }
+
+    pub fn close(self#) {
+        self.raw_tcp#.close()
+    }
+}
+
+pub shape TlsTransport (
+    stream: AsyncStream
+)
+
+impl TlsTransport@Encap {
+    pub stream#
+    fn drop(self#) {
+        self.stream#.close()
+    }
+}
+
+impl TlsTransport {
+    pub fn new(stream#: AsyncStream) -> TlsTransport {
+        return TlsTransport(stream = stream#.take())
+    }
+
+    pub fn from_tls(tcp_stream#: TcpStream, cede session: TlsSession) -> TlsTransport {
+        return TlsTransport(stream = AsyncStream::from_tls(tcp_stream#.take(), cede session))
+    }
+
+    pub fn take_stream(self#) -> AsyncStream {
+        return self.stream#.take()
+    }
+}
+
+impl TlsTransport@AsyncTransport {
+    pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        auto res = self.stream#.read_into_async(cede owner, max_len, timeout_ms).await
+        return cede res
+    }
+
+    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto res = self.stream#.write_from_async(cede owner, timeout_ms).await
+        return cede res
+    }
+
+    pub fn close(self#) {
+        self.stream#.close()
+    }
+}
+
+pub shape AsyncStreamTransport (
+    stream: AsyncStream
+)
+
+impl AsyncStreamTransport@Encap {
+    pub stream#
+    fn drop(self#) {
+        self.stream#.close()
+    }
+}
+
+impl AsyncStreamTransport {
+    pub fn new(stream#: AsyncStream) -> AsyncStreamTransport {
+        return AsyncStreamTransport(stream = stream#.take())
+    }
+
+    pub fn take_stream(self#) -> AsyncStream {
+        return self.stream#.take()
+    }
+}
+
+impl AsyncStreamTransport@AsyncTransport {
+    pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        auto res = self.stream#.read_into_async(cede owner, max_len, timeout_ms).await
+        return cede res
+    }
+
+    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto res = self.stream#.write_from_async(cede owner, timeout_ms).await
+        return cede res
+    }
+
+    pub fn close(self#) {
+        self.stream#.close()
+    }
+}
+
+pub shape Metered<T: @AsyncTransport> (
+    inner: T,
+    bytes_read: usize,
+    bytes_written: usize,
+    read_ops: usize,
+    write_ops: usize,
+    frames_read: usize,
+    frames_written: usize
+)
+
+impl<T: @AsyncTransport> Metered<T> {
+    pub fn new(inner: cede T) -> Metered<T> {
+        return Metered<T>(
+            inner = cede inner,
+            bytes_read = 0:usize,
+            bytes_written = 0:usize,
+            read_ops = 0:usize,
+            write_ops = 0:usize,
+            frames_read = 0:usize,
+            frames_written = 0:usize
+        )
+    }
+
+    pub fn bytes_read(self) -> usize {
+        return self.bytes_read
+    }
+
+    pub fn bytes_written(self) -> usize {
+        return self.bytes_written
+    }
+
+    pub fn read_ops(self) -> usize {
+        return self.read_ops
+    }
+
+    pub fn write_ops(self) -> usize {
+        return self.write_ops
+    }
+
+    pub fn frames_read(self) -> usize {
+        return self.frames_read
+    }
+
+    pub fn frames_written(self) -> usize {
+        return self.frames_written
+    }
+
+    pub fn record_frame_read(self#) {
+        self.frames_read += 1:usize
+    }
+
+    pub fn record_frame_written(self#) {
+        self.frames_written += 1:usize
+    }
+
+    pub fn reset_metrics(self#) {
+        self.bytes_read = 0:usize
+        self.bytes_written = 0:usize
+        self.read_ops = 0:usize
+        self.write_ops = 0:usize
+        self.frames_read = 0:usize
+        self.frames_written = 0:usize
+    }
+}
+
+impl<T: @AsyncTransport> Metered<T>@AsyncTransport {
+    pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        auto res = self.inner#.read_into_async(cede owner, max_len, timeout_ms).await
+        match cede res {
+            auto Result::Ok(r#) => {
+                self.bytes_read += r.bytes_read
+                self.read_ops += 1:usize
+                return Result<AsyncReadResult, AsyncIoError>::Ok(cede r)
+            }
+            auto Result::Err(e#) => {
+                return Result<AsyncReadResult, AsyncIoError>::Err(cede e)
+            }
+        }
+    }
+
+    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto res = self.inner#.write_from_async(cede owner, timeout_ms).await
+        match cede res {
+            auto Result::Ok(r#) => {
+                self.bytes_written += r.bytes_written
+                self.write_ops += 1:usize
+                return Result<AsyncWriteResult, AsyncIoError>::Ok(cede r)
+            }
+            auto Result::Err(e#) => {
+                return Result<AsyncWriteResult, AsyncIoError>::Err(cede e)
+            }
+        }
+    }
+
+    pub fn close(self#) {
+        self.inner#.close()
+    }
+}
