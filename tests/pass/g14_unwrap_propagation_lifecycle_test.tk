@@ -12,6 +12,23 @@ extern fn toka_rt_live_wait_registry_count() -> u32
 auto g_drops# = 0:i32
 auto g_src_drops# = 0:i32
 auto g_dst_drops# = 0:i32
+auto g_outer# = 0:i32
+auto g_inner# = 0:i32
+auto g_task_started# = false
+
+shape ShadowToken (
+    id: i32
+)
+
+impl ShadowToken@Encap {
+    fn drop(self#) {
+        if self.id == 1:i32 {
+            g_outer += 1:i32
+        } else {
+            g_inner += 1:i32
+        }
+    }
+}
 
 shape TrackedResource (
     id: i32,
@@ -154,6 +171,84 @@ fn coordinate_task_cancel() -> async Option<i32> {
     return Option<i32>::None
 }
 
+// 11. Shadowing: Inner Some unwrap does not disarm outer variable of same name
+fn test_shadow_success() -> Option<i32> {
+    auto opt = Option<ShadowToken>::Some(ShadowToken(id = 1:i32))
+    {
+        auto opt = Option<ShadowToken>::Some(ShadowToken(id = 2:i32))
+        auto tok = opt!
+        assert(tok.id == 2:i32, "inner value extracted")
+    }
+    return Option<i32>::Some(0:i32)
+}
+
+// 12. Shadowing: Inner None early return does not disarm outer variable
+fn test_shadow_none_early_return() -> Option<i32> {
+    auto opt = Option<ShadowToken>::Some(ShadowToken(id = 1:i32))
+    {
+        auto opt = Option<ShadowToken>::None
+        auto tok = opt!
+        return Option<i32>::Some(tok.id)
+    }
+    return Option<i32>::Some(0:i32)
+}
+
+// 13. Shadowing: Inner owned Err early return does not disarm outer variable
+fn test_shadow_owned_err() -> Result<i32, ShadowToken> {
+    auto res = Result<i32, ShadowToken>::Err(ShadowToken(id = 1:i32))
+    {
+        auto res = Result<i32, ShadowToken>::Err(ShadowToken(id = 2:i32))
+        auto value = res!
+        return Result<i32, ShadowToken>::Ok(value)
+    }
+    return Result<i32, ShadowToken>::Ok(0:i32)
+}
+
+// 14. Shadowing: Skipped branch does not affect either inner or outer variable
+fn test_shadow_skip(do_it: bool) -> Option<i32> {
+    auto opt = Option<ShadowToken>::Some(ShadowToken(id = 1:i32))
+    {
+        auto opt = Option<ShadowToken>::Some(ShadowToken(id = 2:i32))
+        if do_it {
+            auto tok = opt!
+            return Option<i32>::Some(tok.id)
+        }
+    }
+    return Option<i32>::Some(0:i32)
+}
+
+// 15. Shadowing: Distinct names positive control
+fn test_distinct_name_success() -> Option<i32> {
+    auto outer = Option<ShadowToken>::Some(ShadowToken(id = 1:i32))
+    {
+        auto inner = Option<ShadowToken>::Some(ShadowToken(id = 2:i32))
+        auto tok = inner!
+        assert(tok.id == 2:i32, "inner value extracted")
+    }
+    return Option<i32>::Some(0:i32)
+}
+
+// 16. Task cancellation after real suspension with owned Vec
+fn child_real_suspend(cede token: TrackedResource) -> async TrackedResource {
+    auto r = cede token
+    g_task_started = true
+    sleep_async(1000:i32).await
+    return cede r
+}
+
+fn coordinate_task_real_suspension_cancel() -> async Option<i32> {
+    auto h = child_real_suspend(make_resource(777)).start
+    auto wrapped = Option<TaskHandle<TrackedResource>>::Some(cede h)
+    auto transferred = wrapped!
+    sleep_async(20:i32).await
+    assert(g_task_started, "child actually started")
+    assert(toka_rt_live_wait_registry_count() > 0:u32, "child actually waiting")
+    task_cancel<TrackedResource>(transferred)
+    auto value = transferred.await?
+    assert(value.is_none(), "cancelled child returned None")
+    return Option<i32>::None
+}
+
 fn main() -> i32 {
     // Control 1: Named Option Some exactly-once drop
     g_drops = 0:i32
@@ -237,6 +332,66 @@ fn main() -> i32 {
     assert(toka_rt_live_tcb_count() == 0:u32, "c10: zero TCB residue after cancel")
     assert(toka_rt_live_wait_registry_count() == 0:u32, "c10: zero wait registry residue after cancel")
 
-    println("All 10 unwrap propagation lifecycle controls passed with zero TCB residue and exact-once drop!")
+    // Control 11: Shadowing Some success path (outer drops 1, inner drops 1)
+    g_outer = 0:i32
+    g_inner = 0:i32
+    {
+        auto res = test_shadow_success()
+        assert(res.is_some(), "c11: is some")
+    }
+    assert(g_outer == 1:i32, "c11: outer dropped exactly once")
+    assert(g_inner == 1:i32, "c11: inner dropped exactly once")
+
+    // Control 12: Shadowing None early return path (outer drops 1, inner drops 0)
+    g_outer = 0:i32
+    g_inner = 0:i32
+    {
+        auto res = test_shadow_none_early_return()
+        assert(res.is_none(), "c12: is none")
+    }
+    assert(g_outer == 1:i32, "c12: outer dropped on unwind")
+    assert(g_inner == 0:i32, "c12: inner None dropped 0 times")
+
+    // Control 13: Shadowing owned Err early return path (outer drops 1, inner drops 1)
+    g_outer = 0:i32
+    g_inner = 0:i32
+    {
+        auto res = test_shadow_owned_err()
+        assert(res.is_err(), "c13: is err")
+    }
+    assert(g_outer == 1:i32, "c13: outer dropped on unwind")
+    assert(g_inner == 1:i32, "c13: inner err payload dropped by caller")
+
+    // Control 14: Shadowing skip branch (both drop on scope exit)
+    g_outer = 0:i32
+    g_inner = 0:i32
+    {
+        auto res = test_shadow_skip(false)
+        assert(res.is_some(), "c14: is some")
+    }
+    assert(g_outer == 1:i32, "c14: outer dropped on exit")
+    assert(g_inner == 1:i32, "c14: inner dropped on exit")
+
+    // Control 15: Distinct names positive control
+    g_outer = 0:i32
+    g_inner = 0:i32
+    {
+        auto res = test_distinct_name_success()
+        assert(res.is_some(), "c15: is some")
+    }
+    assert(g_outer == 1:i32, "c15: outer dropped")
+    assert(g_inner == 1:i32, "c15: inner dropped")
+
+    // Control 16: Task cancellation after real suspension with owned Vec
+    g_drops = 0:i32
+    {
+        auto answer = block_on<Option<i32>>(coordinate_task_real_suspension_cancel().start)
+        assert(answer.is_none(), "c16: cancel answered None")
+    }
+    assert(g_drops == 1:i32, "c16: owned resource dropped once")
+    assert(toka_rt_live_tcb_count() == 0:u32, "c16: zero TCB residue")
+    assert(toka_rt_live_wait_registry_count() == 0:u32, "c16: zero wait registry residue")
+
+    println("All 16 unwrap propagation lifecycle controls passed with zero TCB residue and exact-once drop!")
     return 0:i32
 }

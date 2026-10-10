@@ -7778,19 +7778,50 @@ PhysEntity CodeGen::genUnwrapPropagationExpr(const UnwrapPropagationExpr *expr) 
 
 
   auto consumeContainerOwnership = [&]() {
-    // In Toka's tagged enum representation { i8 tag, [aligned union data] },
-    // all valid variant tags are non-negative integers (>= 0).
-    // Mutating the in-memory tag to -1 (0xFF) marks the container as inert/moved,
-    // so any subsequent emitDropCascade will match no active payload case and branch
-    // to default mergeBB without double-dropping.
+    // 1. In-memory tag mutation for Option/Result containers:
+    // The '!' unwrap propagation operator is semantically defined only for Option<T>
+    // (variants: None=0, Some=1) and Result<T, E> (variants: Err=0, Ok=1).
+    // Mutating the in-memory tag to -1 (0xFF) guarantees that emitDropCascade's switch
+    // (which strictly tests tags 0 and 1 for these types) matches no active payload
+    // variant and routes directly to the default mergeBB. (Note: this property is
+    // bounded specifically to the {0, 1} discriminant layout of Option and Result;
+    // general user-defined enums may legally define variant 255).
     if (baseEnt.isAddress) {
       llvm::Value *tagAddr = m_Builder.CreateStructGEP(baseVal->getType(), baseEnt.value, 0);
       m_Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(m_Context), -1), tagAddr);
     }
-    // If the base expression is a named local variable, disarm its dynamic DropFlag
-    // in m_ScopeStack so executeScopeUnwinding skips scope cleanup for this moved container.
-    if (auto *ve = dynamic_cast<const VariableExpr *>(expr->Base.get())) {
-      suppressDropForMove(ve->Name);
+    // 2. Authoritative binding/storage drop suppression for local variables:
+    // Suppress cleanup only for the actual resolved binding or storage slot being consumed.
+    // We must NOT broad-disable all matching names across all scopes (e.g. via
+    // suppressDropForMove), which would erroneously disarm unrelated outer variables
+    // shadowed by the same name.
+    llvm::Value *targetAddr = baseEnt.isAddress ? baseEnt.value : nullptr;
+    const auto *ve = dynamic_cast<const VariableExpr *>(expr->Base.get());
+    std::string movedName = ve ? Type::stripMorphology(ve->Name) : "";
+
+    if (targetAddr || !movedName.empty()) {
+      bool suppressed = false;
+      for (int i = (int)m_ScopeStack.size() - 1; i >= 0 && !suppressed; --i) {
+        for (auto entry = m_ScopeStack[i].rbegin(); entry != m_ScopeStack[i].rend(); ++entry) {
+          bool matches = false;
+          if (targetAddr && entry->Alloca == targetAddr) {
+            matches = true;
+          } else if (!targetAddr && !movedName.empty() && Type::stripMorphology(entry->Name) == movedName) {
+            matches = true;
+          }
+          if (matches) {
+            if (entry->DropFlag) {
+              m_Builder.CreateStore(llvm::ConstantInt::getFalse(m_Context), entry->DropFlag);
+            } else {
+              entry->HasDrop = false;
+              entry->IsShared = false;
+              entry->IsUniquePointer = false;
+            }
+            suppressed = true;
+            break; // Disarm only the single resolved binding/storage slot
+          }
+        }
+      }
     }
   };
 
