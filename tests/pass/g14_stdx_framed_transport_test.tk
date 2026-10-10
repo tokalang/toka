@@ -1,0 +1,511 @@
+// Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// 0.14 G2: Asynchronous framed transport and metered accounting verification
+// Tests 4-byte big-endian framing, adapters (Mock, TCP, TLS), short-reads,
+// truncated frames, metered accounting, and cancellation resource closure.
+
+import std/vec::{Vec}
+import core/result::{Result}
+import core/option::{Option}
+import core/string::{string}
+import std/net::{TcpListener, TcpStream, SocketAddrV4, Ipv4Addr, net_tls_backend_available}
+import stdx/net/stream::{AsyncStream}
+import stdx/net/tls::{TlsStream}
+import stdx/net/transport::{@AsyncTransport, MockMemoryStream, TcpTransport, TlsTransport, Metered}
+import stdx/net/framed::{
+    FramedStream, FramedReader, FramedWriter, FramedReadResult, FramedWriteResult, FramedError,
+    FRAMED_STATE_READY, FRAMED_STATE_TERMINATED, FRAMED_STATE_EOF,
+    FRAMED_ERR_TRUNCATED, FRAMED_ERR_TOO_LARGE, FRAMED_ERR_ZERO_PROGRESS, FRAMED_ERR_IO, FRAMED_ERR_TERMINATED
+}
+import std/task::{block_on, sleep_async, task_cancel}
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_start}
+import std/io::{println}
+
+extern fn toka_rt_live_wait_registry_count() -> u32
+
+fn bytes_from_str(s: str) -> Vec<u8> {
+    auto v# = Vec<u8>::with_capacity(s.len())
+    auto i# = 0:usize
+    loop i < s.len() {
+        v#.push(s.byte_at(i) as u8)
+        i += 1:usize
+    }
+    return cede v
+}
+
+fn client_tcp_task(p: u16) -> async i32 {
+    sleep_async(20:i32).await
+    auto c_addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), p)
+    auto client_tcp# = TcpStream::connect_async(cede c_addr).await
+    if !client_tcp.is_valid() { return 1010:i32 }
+
+    auto client_transport = TcpTransport::new(client_tcp#)
+    auto client_framed# = FramedStream<TcpTransport>::new(cede client_transport)
+
+    // Send request frame
+    auto req_buf# = bytes_from_str("ping-frame")
+    auto write_res = client_framed#.write_frame_async(cede req_buf, 5000:i32).await
+    if write_res.is_err() { return 1011:i32 }
+
+    // Read echo frame
+    auto resp_in# = Vec<u8>::with_capacity(32:usize)
+    auto read_res = client_framed#.read_frame_async(cede resp_in, 5000:i32).await
+    if read_res.is_err() { return 1012:i32 }
+    auto succ = read_res.unwrap()
+    if succ.payload_len != 10:usize { return 1013:i32 }
+    if succ.buffer.get(0) != ('p' as u8) || succ.buffer.get(4) != ('-' as u8) { return 1014:i32 }
+
+    client_framed#.close()
+    return 0:i32
+}
+
+fn client_tls_task_worker(p: u16) -> async i32 {
+    sleep_async(30:i32).await
+    auto c_addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), p)
+    auto client_tcp# = TcpStream::connect_async(cede c_addr).await
+    if !client_tcp.is_valid() { return 1110:i32 }
+
+    auto tls_conn = TlsStream::connect_insecure_async(client_tcp#, string::from("localhost")).await
+    if tls_conn.is_err() { return 1111:i32 }
+    auto async_s# = tls_conn.unwrap()
+
+    auto client_transport = TlsTransport::new(async_s#)
+    auto client_framed# = FramedStream<TlsTransport>::new(cede client_transport)
+
+    // Send TLS request frame
+    auto req_buf# = bytes_from_str("secure-tls-frame")
+    auto write_res = client_framed#.write_frame_async(cede req_buf, 5000:i32).await
+    if write_res.is_err() { return 1112:i32 }
+
+    // Read echo frame over TLS
+    auto resp_in# = Vec<u8>::with_capacity(32:usize)
+    auto read_res = client_framed#.read_frame_async(cede resp_in, 5000:i32).await
+    if read_res.is_err() { return 1113:i32 }
+    auto succ = read_res.unwrap()
+    if succ.payload_len != 16:usize { return 1114:i32 }
+    if succ.buffer.get(0) != ('s' as u8) || succ.buffer.get(6) != ('-' as u8) { return 1115:i32 }
+
+    client_framed#.close()
+    return 0:i32
+}
+
+fn coordinator() -> async i32 {
+    // --- Branch 1: Normal Frame Roundtrip ---
+    println("Checking Branch 1: Normal Frame Roundtrip...")
+    {
+        auto mock = MockMemoryStream::empty()
+        auto framed# = FramedStream<MockMemoryStream>::new(cede mock)
+
+        auto p1# = Vec<u8>::with_capacity(4:usize)
+        p1#.push(10:u8)
+        p1#.push(20:u8)
+        p1#.push(30:u8)
+        p1#.push(40:u8)
+
+        auto write_res = framed#.write_frame_async(cede p1, 1000:i32).await
+        if write_res.is_err() { return 101:i32 }
+        if framed.get_frames_written() != 1:usize { return 102:i32 }
+
+        // Check wire representation
+        auto written_wire = framed.transport#.get_written_data()
+        if written_wire.len() != 8:usize { return 103:i32 }
+        // 4 bytes BE header: 0, 0, 0, 4
+        if written_wire.get(0) != 0:u8 || written_wire.get(1) != 0:u8 || written_wire.get(2) != 0:u8 || written_wire.get(3) != 4:u8 {
+            return 104:i32
+        }
+        // Payload: 10, 20, 30, 40
+        if written_wire.get(4) != 10:u8 || written_wire.get(5) != 20:u8 || written_wire.get(6) != 30:u8 || written_wire.get(7) != 40:u8 {
+            return 105:i32
+        }
+
+        // Read back frame
+        auto reader_mock = MockMemoryStream::new(cede written_wire)
+        auto reader# = FramedStream<MockMemoryStream>::new(cede reader_mock)
+
+        auto read_buf# = Vec<u8>::with_capacity(16:usize)
+        auto read_res = reader#.read_frame_async(cede read_buf, 1000:i32).await
+        if read_res.is_err() { return 106:i32 }
+        auto succ = read_res.unwrap()
+        if succ.eof { return 107:i32 }
+        if succ.payload_len != 4:usize { return 108:i32 }
+        if succ.buffer.len() != 4:usize { return 109:i32 }
+        if succ.buffer.get(0) != 10:u8 || succ.buffer.get(1) != 20:u8 || succ.buffer.get(2) != 30:u8 || succ.buffer.get(3) != 40:u8 {
+            return 110:i32
+        }
+        if reader.get_frames_read() != 1:usize { return 111:i32 }
+
+        // Next read must report clean EOF
+        auto eof_res = reader#.read_frame_async(succ.take_buffer(), 1000:i32).await
+        if eof_res.is_err() { return 112:i32 }
+        auto eof_succ = eof_res.unwrap()
+        if !eof_succ.eof { return 113:i32 }
+        if eof_succ.payload_len != 0:usize { return 114:i32 }
+    }
+    println("Branch 1 passed!")
+
+    // --- Branch 2: Empty Frame (0-byte payload) ---
+    println("Checking Branch 2: Empty Frame (0-byte payload)...")
+    {
+        auto mock = MockMemoryStream::empty()
+        auto framed# = FramedStream<MockMemoryStream>::new(cede mock)
+
+        auto empty_p# = Vec<u8>::new()
+        auto write_res = framed#.write_frame_async(cede empty_p, 1000:i32).await
+        if write_res.is_err() { return 201:i32 }
+        if framed.get_frames_written() != 1:usize { return 202:i32 }
+
+        auto written_wire = framed.transport#.get_written_data()
+        if written_wire.len() != 4:usize { return 203:i32 }
+        if written_wire.get(0) != 0:u8 || written_wire.get(1) != 0:u8 || written_wire.get(2) != 0:u8 || written_wire.get(3) != 0:u8 {
+            return 204:i32
+        }
+
+        auto reader_mock = MockMemoryStream::new(cede written_wire)
+        auto reader# = FramedStream<MockMemoryStream>::new(cede reader_mock)
+
+        auto read_buf# = Vec<u8>::with_capacity(16:usize)
+        auto read_res = reader#.read_frame_async(cede read_buf, 1000:i32).await
+        if read_res.is_err() { return 205:i32 }
+        auto succ = read_res.unwrap()
+        if succ.eof { return 206:i32 }
+        if succ.payload_len != 0:usize { return 207:i32 }
+        if succ.buffer.len() != 0:usize { return 208:i32 }
+        if reader.get_frames_read() != 1:usize { return 209:i32 }
+
+        auto eof_res = reader#.read_frame_async(succ.take_buffer(), 1000:i32).await
+        if eof_res.is_err() { return 210:i32 }
+        if !eof_res.unwrap().eof { return 211:i32 }
+    }
+    println("Branch 2 passed!")
+
+    // --- Branch 3: Multi-Frame Sequence with Clean EOF ---
+    println("Checking Branch 3: Multi-Frame Sequence with Clean EOF...")
+    {
+        auto mock = MockMemoryStream::empty()
+        auto framed# = FramedStream<MockMemoryStream>::new(cede mock)
+
+        auto f1# = Vec<u8>::new()
+        f1#.push(1:u8)
+        f1#.push(2:u8)
+        auto w1 = framed#.write_frame_async(cede f1, 1000:i32).await
+        if w1.is_err() { return 301:i32 }
+
+        auto f2# = Vec<u8>::new()
+        auto w2 = framed#.write_frame_async(cede f2, 1000:i32).await
+        if w2.is_err() { return 302:i32 }
+
+        auto f3# = Vec<u8>::new()
+        f3#.push(99:u8)
+        auto w3 = framed#.write_frame_async(cede f3, 1000:i32).await
+        if w3.is_err() { return 303:i32 }
+
+        if framed.get_frames_written() != 3:usize { return 304:i32 }
+
+        auto written_wire = framed.transport#.get_written_data()
+        auto reader_mock = MockMemoryStream::new(cede written_wire)
+        auto reader# = FramedStream<MockMemoryStream>::new(cede reader_mock)
+
+        auto buf# = Vec<u8>::new()
+        auto r1 = reader#.read_frame_async(cede buf, 1000:i32).await
+        if r1.is_err() { return 305:i32 }
+        auto s1 = r1.unwrap()
+        if s1.payload_len != 2:usize || s1.buffer.len() != 2:usize { return 306:i32 }
+        if s1.buffer.get(0) != 1:u8 || s1.buffer.get(1) != 2:u8 { return 307:i32 }
+
+        auto r2 = reader#.read_frame_async(s1.take_buffer(), 1000:i32).await
+        if r2.is_err() { return 308:i32 }
+        auto s2 = r2.unwrap()
+        if s2.payload_len != 0:usize || s2.buffer.len() != 0:usize { return 309:i32 }
+
+        auto r3 = reader#.read_frame_async(s2.take_buffer(), 1000:i32).await
+        if r3.is_err() { return 310:i32 }
+        auto s3 = r3.unwrap()
+        if s3.payload_len != 1:usize || s3.buffer.len() != 1:usize { return 311:i32 }
+        if s3.buffer.get(0) != 99:u8 { return 312:i32 }
+
+        if reader.get_frames_read() != 3:usize { return 313:i32 }
+
+        auto r4 = reader#.read_frame_async(s3.take_buffer(), 1000:i32).await
+        if r4.is_err() { return 314:i32 }
+        if !r4.unwrap().eof { return 315:i32 }
+    }
+    println("Branch 3 passed!")
+
+    // --- Branch 4: 1-Byte Short-Read Fragmentation Reconstruction ---
+    println("Checking Branch 4: 1-Byte Short-Read Fragmentation Reconstruction...")
+    {
+        auto wire# = Vec<u8>::new()
+        wire#.push(0:u8)
+        wire#.push(0:u8)
+        wire#.push(0:u8)
+        wire#.push(3:u8)
+        wire#.push(77:u8)
+        wire#.push(88:u8)
+        wire#.push(99:u8)
+
+        // Mock with chunk_size = 1 byte!
+        auto mock = MockMemoryStream::with_chunk_size(cede wire, 1:usize)
+        auto reader# = FramedStream<MockMemoryStream>::new(cede mock)
+
+        auto buf# = Vec<u8>::new()
+        auto read_res = reader#.read_frame_async(cede buf, 1000:i32).await
+        if read_res.is_err() { return 401:i32 }
+        auto succ = read_res.unwrap()
+        if succ.payload_len != 3:usize || succ.buffer.len() != 3:usize { return 402:i32 }
+        if succ.buffer.get(0) != 77:u8 || succ.buffer.get(1) != 88:u8 || succ.buffer.get(2) != 99:u8 { return 403:i32 }
+        if reader.get_frames_read() != 1:usize { return 404:i32 }
+        // 4 header bytes + 3 payload bytes = 7 read operations on transport
+        if reader.transport#.read_count() != 7:usize { return 405:i32 }
+    }
+    println("Branch 4 passed!")
+
+    // --- Branch 5: Truncated Frame Detection (Header and Payload) ---
+    println("Checking Branch 5: Truncated Frame Detection...")
+    {
+        // 5.1: Truncated header (only 2 bytes)
+        auto wire1# = Vec<u8>::new()
+        wire1#.push(0:u8)
+        wire1#.push(0:u8)
+        auto mock1 = MockMemoryStream::new(cede wire1)
+        auto reader1# = FramedStream<MockMemoryStream>::new(cede mock1)
+        auto buf1# = Vec<u8>::new()
+        auto res1 = reader1#.read_frame_async(cede buf1, 1000:i32).await
+        if res1.is_ok() { return 501:i32 }
+        auto err1 = res1.unwrap_err()
+        if !err1.is_truncated() { return 502:i32 }
+        if reader1.get_state() != FRAMED_STATE_TERMINATED { return 503:i32 }
+        if !reader1.transport#.is_closed() { return 504:i32 }
+
+        // 5.2: Truncated payload (header says 5 bytes, only 2 provided)
+        auto wire2# = Vec<u8>::new()
+        wire2#.push(0:u8)
+        wire2#.push(0:u8)
+        wire2#.push(0:u8)
+        wire2#.push(5:u8)
+        wire2#.push(1:u8)
+        wire2#.push(2:u8)
+        auto mock2 = MockMemoryStream::new(cede wire2)
+        auto reader2# = FramedStream<MockMemoryStream>::new(cede mock2)
+        auto buf2# = Vec<u8>::new()
+        auto res2 = reader2#.read_frame_async(cede buf2, 1000:i32).await
+        if res2.is_ok() { return 505:i32 }
+        auto err2 = res2.unwrap_err()
+        if !err2.is_truncated() { return 506:i32 }
+        if reader2.get_state() != FRAMED_STATE_TERMINATED { return 507:i32 }
+        if !reader2.transport#.is_closed() { return 508:i32 }
+    }
+    println("Branch 5 passed!")
+
+    // --- Branch 6: Frame Too Large Detection ---
+    println("Checking Branch 6: Frame Too Large Detection...")
+    {
+        auto wire# = Vec<u8>::new()
+        wire#.push(1:u8)
+        wire#.push(16:u8)
+        wire#.push(0:u8)
+        wire#.push(0:u8)
+        auto mock = MockMemoryStream::new(cede wire)
+        auto reader# = FramedStream<MockMemoryStream>::new(cede mock)
+        auto buf# = Vec<u8>::new()
+        auto res = reader#.read_frame_async(cede buf, 1000:i32).await
+        if res.is_ok() { return 601:i32 }
+        auto err = res.unwrap_err()
+        if !err.is_too_large() { return 602:i32 }
+        if reader.get_state() != FRAMED_STATE_TERMINATED { return 603:i32 }
+        if !reader.transport#.is_closed() { return 604:i32 }
+    }
+    println("Branch 6 passed!")
+
+    // --- Branch 7: Standalone FramedReader and FramedWriter ---
+    println("Checking Branch 7: Standalone FramedReader and FramedWriter...")
+    {
+        auto write_mock = MockMemoryStream::empty()
+        auto writer# = FramedWriter<MockMemoryStream>::new(cede write_mock)
+
+        auto p# = Vec<u8>::new()
+        p#.push(55:u8)
+        p#.push(66:u8)
+        auto w_res = writer#.write_frame_async(cede p, 1000:i32).await
+        if w_res.is_err() { return 701:i32 }
+        if writer.get_frames_written() != 1:usize { return 702:i32 }
+
+        auto written_bytes = writer.transport#.get_written_data()
+        auto read_mock = MockMemoryStream::new(cede written_bytes)
+        auto reader# = FramedReader<MockMemoryStream>::new(cede read_mock)
+
+        auto buf# = Vec<u8>::new()
+        auto r_res = reader#.read_frame_async(cede buf, 1000:i32).await
+        if r_res.is_err() { return 703:i32 }
+        auto succ = r_res.unwrap()
+        if succ.payload_len != 2:usize { return 704:i32 }
+        if succ.buffer.get(0) != 55:u8 || succ.buffer.get(1) != 66:u8 { return 705:i32 }
+        if reader.get_frames_read() != 1:usize { return 706:i32 }
+    }
+    println("Branch 7 passed!")
+
+    // --- Branch 8: Metered Byte and Frame Accounting ---
+    println("Checking Branch 8: Metered Accounting...")
+    {
+        auto raw_mock = MockMemoryStream::empty()
+        auto metered = Metered<MockMemoryStream>::new(cede raw_mock)
+        auto framed# = FramedStream<Metered<MockMemoryStream>>::new(cede metered)
+
+        auto p# = Vec<u8>::new()
+        p#.push(42:u8)
+        p#.push(43:u8)
+        auto w = framed#.write_frame_async(cede p, 1000:i32).await
+        if w.is_err() { return 801:i32 }
+
+        // Metered bytes written should be 4 bytes header + 2 bytes payload = 6 bytes!
+        if framed.transport#.bytes_written() != 6:usize { return 802:i32 }
+        if framed.transport#.write_ops() != 2:usize { return 803:i32 }
+        if framed.get_frames_written() != 1:usize { return 804:i32 }
+    }
+    println("Branch 8 passed!")
+
+    // --- Branch 9: Handled Cancellation with Buffer Preservation ---
+    println("Checking Branch 9: Handled Cancellation with Buffer Preservation...")
+    {
+        auto wire# = Vec<u8>::new()
+        wire#.push(0:u8)
+        wire#.push(0:u8)
+        wire#.push(0:u8)
+        wire#.push(4:u8)
+        wire#.push(1:u8)
+        wire#.push(2:u8)
+        wire#.push(3:u8)
+        wire#.push(4:u8)
+
+        auto mock# = MockMemoryStream::new(cede wire)
+        mock#.set_delay(1000:i32)
+        auto reader# = FramedStream<MockMemoryStream>::new(cede mock)
+
+        auto buf# = Vec<u8>::with_capacity(32:usize)
+        buf#.push(99:u8)
+
+        auto task = reader#.read_frame_async(cede buf, 2000:i32)
+        auto nul *tcb = task_get_coro_handle<Result<FramedReadResult, FramedError>>(task)
+        auto *live_tcb = tcb.unwrap()
+        toka_task_start(*live_tcb)
+
+        // Wait until task is suspended in sleep_async timer
+        auto waited# = 0:i32
+        loop toka_rt_live_wait_registry_count() == 0:u32 && waited < 100:i32 {
+            sleep_async(1:i32).await
+            waited += 1:i32
+        }
+        if toka_rt_live_wait_registry_count() == 0:u32 { return 901:i32 }
+
+        task_cancel<Result<FramedReadResult, FramedError>>(task)
+        auto outcome = task.await?
+        if outcome.is_none() { return 902:i32 }
+        auto res = outcome.unwrap()
+        if res.is_ok() { return 903:i32 }
+        auto err# = res.unwrap_err()
+        if !err.is_terminated() { return 904:i32 }
+        auto returned_buf = err#.take_buffer()
+        if returned_buf.len() != 1:usize || returned_buf.get(0) != 99:u8 { return 905:i32 }
+        if reader.get_state() != FRAMED_STATE_TERMINATED { return 906:i32 }
+        if !reader.transport#.is_closed() { return 907:i32 }
+    }
+    println("Branch 9 passed!")
+
+    // --- Branch 10: Real TCP Loopback Framing Roundtrip ---
+    println("Checking Branch 10: Real TCP Loopback Framing Roundtrip...")
+    {
+        auto srv_addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16)
+        auto listener# = TcpListener::bind(srv_addr)
+        if !listener.is_valid() { return 1001:i32 }
+        auto port = listener.local_port()
+
+        auto client_task = client_tcp_task(port).start
+
+        // Server accepts connection
+        auto server_tcp# = listener#.accept_async().await
+        if !server_tcp.is_valid() { return 1002:i32 }
+
+        auto server_transport = TcpTransport::new(server_tcp#)
+        auto server_framed# = FramedStream<TcpTransport>::new(cede server_transport)
+
+        // Read request from client
+        auto srv_buf# = Vec<u8>::with_capacity(32:usize)
+        auto srv_read = server_framed#.read_frame_async(cede srv_buf, 5000:i32).await
+        if srv_read.is_err() { return 1003:i32 }
+        auto srv_succ = srv_read.unwrap()
+        if srv_succ.payload_len != 10:usize { return 1004:i32 }
+
+        // Echo payload back
+        auto echo_payload# = srv_succ.take_buffer()
+        auto srv_write = server_framed#.write_frame_async(cede echo_payload, 5000:i32).await
+        if srv_write.is_err() { return 1005:i32 }
+
+        // Await client completion
+        auto client_outcome = client_task.await
+        if client_outcome != 0:i32 { return client_outcome }
+
+        server_framed#.close()
+    }
+    println("Branch 10 passed!")
+
+    // --- Branch 11: Real TLS Loopback Framing Roundtrip ---
+    println("Checking Branch 11: Real TLS Loopback Framing Roundtrip...")
+    if net_tls_backend_available() {
+        auto srv_addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16)
+        auto listener# = TcpListener::bind(srv_addr)
+        if !listener.is_valid() { return 1101:i32 }
+        auto port = listener.local_port()
+
+        auto client_tls_task = client_tls_task_worker(port).start
+
+        // Server accepts connection and performs server TLS handshake
+        auto server_tcp# = listener#.accept_async().await
+        if !server_tcp.is_valid() { return 1102:i32 }
+
+        auto srv_tls_res = TlsStream::accept_async(server_tcp#).await
+        if srv_tls_res.is_err() { return 1103:i32 }
+        auto srv_async_s# = srv_tls_res.unwrap()
+
+        auto server_transport = TlsTransport::new(srv_async_s#)
+        auto server_framed# = FramedStream<TlsTransport>::new(cede server_transport)
+
+        // Read frame over TLS
+        auto srv_buf# = Vec<u8>::with_capacity(32:usize)
+        auto srv_read = server_framed#.read_frame_async(cede srv_buf, 5000:i32).await
+        if srv_read.is_err() { return 1104:i32 }
+        auto srv_succ = srv_read.unwrap()
+        if srv_succ.payload_len != 16:usize { return 1105:i32 }
+
+        // Echo payload back over TLS
+        auto echo_payload# = srv_succ.take_buffer()
+        auto srv_write = server_framed#.write_frame_async(cede echo_payload, 5000:i32).await
+        if srv_write.is_err() { return 1106:i32 }
+
+        // Await client completion
+        auto client_outcome = client_tls_task.await
+        if client_outcome != 0:i32 { return client_outcome }
+
+        server_framed#.close()
+        println("Branch 11 passed (OpenSSL TLS verified)!")
+    } else {
+        println("Branch 11 skipped (TLS backend unavailable).")
+    }
+
+    println("All 11 G2 framed transport verification branches passed successfully!")
+    return 0:i32
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}
