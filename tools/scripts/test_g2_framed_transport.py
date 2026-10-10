@@ -167,11 +167,11 @@ def main():
         else:
             print(" FAIL")
 
-        # 5. Unwrap Propagation Ownership & Lifecycle Suite (10 controls)
-        print("[5/5] Running Unwrap Propagation Lifecycle Suite (10 controls)...", end="", flush=True)
+        # 5. Unwrap Propagation Ownership & Lifecycle Suite (16 controls)
+        print("[5/5] Running Unwrap Propagation Lifecycle Suite (16 controls)...", end="", flush=True)
         rec, run_res = run_case("unwrap_propagation_suite", PASS_TESTS / "g14_unwrap_propagation_lifecycle_test.tk", tokac, rt_o, work_dir, env, timeout=30)
         all_records.append(rec)
-        if rec["passed"] and "All 10 unwrap propagation lifecycle controls passed with zero TCB residue and exact-once drop!" in run_res.stdout:
+        if rec["passed"] and "All 16 unwrap propagation lifecycle controls passed with zero TCB residue and exact-once drop!" in run_res.stdout:
             print(" PASS")
         else:
             print(" FAIL")
