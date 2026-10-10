@@ -45,6 +45,7 @@
 #include "llvm/Transforms/Coroutines/CoroEarly.h"
 #include "llvm/Transforms/Coroutines/CoroElide.h"
 #include "llvm/Transforms/Coroutines/CoroSplit.h"
+#include "llvm/Config/llvm-config.h"
 
 #include "toka/Version.h"
 #include "toka/InterfaceVersion.h"
@@ -918,7 +919,20 @@ int main(int argc, char **argv) {
       machineFailureDiagnostics);
   HandleGrammarAuditFlushGuard handleGrammarAuditFlushGuard;
   bool runTopologyEval = false;
+  enum class TokaCliOptLevel {
+    O0,
+    O1,
+    O2,
+    O3,
+    Os,
+    Oz
+  };
+  TokaCliOptLevel cliOptLevel = TokaCliOptLevel::O0;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
+#if LLVM_VERSION_MAJOR >= 23
+  bool optForSize = false;
+  bool optForMinSize = false;
+#endif
   std::string outputFile = "";
   std::string cliTargetTriple = "";
   for (int i = 1; i < argc; ++i) {
@@ -1264,17 +1278,17 @@ int main(int argc, char **argv) {
     } else if (arg == "-g") {
       emitDebugInfo = true;
     } else if (arg == "-O0") {
-      optLevel = llvm::OptimizationLevel::O0;
+      cliOptLevel = TokaCliOptLevel::O0;
     } else if (arg == "-O1") {
-      optLevel = llvm::OptimizationLevel::O1;
+      cliOptLevel = TokaCliOptLevel::O1;
     } else if (arg == "-O2") {
-      optLevel = llvm::OptimizationLevel::O2;
+      cliOptLevel = TokaCliOptLevel::O2;
     } else if (arg == "-O3") {
-      optLevel = llvm::OptimizationLevel::O3;
+      cliOptLevel = TokaCliOptLevel::O3;
     } else if (arg == "-Os") {
-      optLevel = llvm::OptimizationLevel::Os;
+      cliOptLevel = TokaCliOptLevel::Os;
     } else if (arg == "-Oz") {
-      optLevel = llvm::OptimizationLevel::Oz;
+      cliOptLevel = TokaCliOptLevel::Oz;
     } else if (arg == "--emit-obj") {
       emitObj = true;
     } else if (arg == "--emit-llvm") {
@@ -1312,6 +1326,38 @@ int main(int argc, char **argv) {
         sourceFiles.push_back(arg);
       }
     }
+  }
+
+  switch (cliOptLevel) {
+    case TokaCliOptLevel::O0:
+      optLevel = llvm::OptimizationLevel::O0;
+      break;
+    case TokaCliOptLevel::O1:
+      optLevel = llvm::OptimizationLevel::O1;
+      break;
+    case TokaCliOptLevel::O2:
+      optLevel = llvm::OptimizationLevel::O2;
+      break;
+    case TokaCliOptLevel::O3:
+      optLevel = llvm::OptimizationLevel::O3;
+      break;
+    case TokaCliOptLevel::Os:
+#if LLVM_VERSION_MAJOR >= 23
+      optLevel = llvm::OptimizationLevel::O2;
+      optForSize = true;
+#else
+      optLevel = llvm::OptimizationLevel::Os;
+#endif
+      break;
+    case TokaCliOptLevel::Oz:
+#if LLVM_VERSION_MAJOR >= 23
+      optLevel = llvm::OptimizationLevel::O2;
+      optForSize = true;
+      optForMinSize = true;
+#else
+      optLevel = llvm::OptimizationLevel::Oz;
+#endif
+      break;
   }
 
   if (dumpCallTransferShadow)
@@ -2440,6 +2486,19 @@ int main(int argc, char **argv) {
         MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
         MPM.addPass(llvm::CoroCleanupPass());
       });
+
+#if LLVM_VERSION_MAJOR >= 23
+  if (optForSize) {
+    for (auto &F : *codegen.getModule()) {
+      if (!F.isDeclaration()) {
+        F.addFnAttr(llvm::Attribute::OptimizeForSize);
+        if (optForMinSize) {
+          F.addFnAttr(llvm::Attribute::MinSize);
+        }
+      }
+    }
+  }
+#endif
 
   llvm::ModulePassManager MPM;
   if (optLevel == llvm::OptimizationLevel::O0) {
