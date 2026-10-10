@@ -17,11 +17,23 @@
 // Implements robust framing over any @AsyncTransport, with owner-carrying
 // buffer lifecycle management, resumable cursor range write driving loops,
 // bounded zero-progress defense, premature EOF / truncated frame detection,
-// and consistent terminal resource cleanup.
+// cancel unwinding cleanup via scope-bound guards, range and completion fact
+// consistency validation, and consistent terminal resource cleanup.
+//
+// Progress consistency semantics:
+// - Offset is the byte offset into the caller's retained buffer.
+// - Transport write operations must satisfy: bytes_written <= total_len - offset.
+// - Transport complete flag must be true iff (offset + bytes_written) == total_len.
+// - Contradictory progress (bytes_written > remaining, or bytes_written == remaining
+//   with !complete, or bytes_written < remaining with complete) constitutes a fatal
+//   transport violation and transitions state to FRAMED_STATE_TERMINATED (5).
+// - Unhandled task cancellation drops the frame's scope-bound guard, which
+//   transitions state to FRAMED_STATE_TERMINATED (5) and closes the underlying transport.
 
 import std/vec::{Vec}
 import core/result::{Result}
 import core/string::{string}
+import core/types::{Addr}
 import stdx/net/transport::{@AsyncTransport}
 
 pub const MAX_FRAME_SIZE: usize = 16777216:usize // 16MB
@@ -107,6 +119,20 @@ pub shape FramedStream<T: @AsyncTransport> (
     frames_written: usize
 )
 
+shape FramedStreamCancelGuard<T> (
+    framed_addr: Addr,
+    active: bool
+)
+
+impl<T> FramedStreamCancelGuard<T>@Encap {
+    fn drop(self#) {
+        if self.active {
+            auto *f# = unsafe (self.framed_addr as *FramedStream<T>#)
+            f#.close()
+        }
+    }
+}
+
 impl<T: @AsyncTransport> FramedStream<T> {
     pub fn new(transport: cede T) -> FramedStream<T> {
         return FramedStream<T>(
@@ -146,6 +172,11 @@ impl<T: @AsyncTransport> FramedStream<T> {
             ))
         }
 
+        auto cancel_guard# = FramedStreamCancelGuard<T>(
+            framed_addr = unsafe (&self as Addr),
+            active = true
+        )
+
         self.state = 1:i32
         auto header_bytes# = Vec<u8>::with_capacity(4:usize)
         auto header_collected# = 0:usize
@@ -170,6 +201,13 @@ impl<T: @AsyncTransport> FramedStream<T> {
                     auto n = read_succ.bytes_read
                     auto is_eof = read_succ.eof
                     temp_chunk = read_succ#.take_buffer()
+
+                    if n > need {
+                        failed = true
+                        err_kind = 4:i32
+                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range")
+                        break
+                    }
 
                     if is_eof && n == 0:usize {
                         if header_collected == 0:usize {
@@ -204,6 +242,7 @@ impl<T: @AsyncTransport> FramedStream<T> {
         }
 
         if is_clean_eof {
+            cancel_guard.active = false
             self.state = 4:i32
             return Result<FramedReadResult, FramedError>::Ok(FramedReadResult(
                 buffer = cede owned,
@@ -215,6 +254,7 @@ impl<T: @AsyncTransport> FramedStream<T> {
         if failed {
             self.state = 5:i32
             self.transport#.close()
+            cancel_guard.active = false
             return Result<FramedReadResult, FramedError>::Err(FramedError(
                 kind = err_kind,
                 buffer = cede owned,
@@ -231,6 +271,7 @@ impl<T: @AsyncTransport> FramedStream<T> {
         if payload_len > 16777216:usize {
             self.state = 5:i32
             self.transport#.close()
+            cancel_guard.active = false
             return Result<FramedReadResult, FramedError>::Err(FramedError(
                 kind = 2:i32,
                 buffer = cede owned,
@@ -242,6 +283,7 @@ impl<T: @AsyncTransport> FramedStream<T> {
             owned#.clear()
             self.frames_read += 1:usize
             self.state = 0:i32
+            cancel_guard.active = false
             return Result<FramedReadResult, FramedError>::Ok(FramedReadResult(
                 buffer = cede owned,
                 payload_len = 0:usize,
@@ -256,7 +298,11 @@ impl<T: @AsyncTransport> FramedStream<T> {
         auto chunk_buf# = Vec<u8>::with_capacity(4096:usize)
 
         loop payload_collected < payload_len {
-            auto need = payload_len - payload_collected
+            auto rem = payload_len - payload_collected
+            auto need# = rem
+            if need > 4096:usize {
+                need = 4096:usize
+            }
             auto payload_res = self.transport#.read_into_async(cede chunk_buf, need, timeout_ms).await
             match cede payload_res {
                 auto Result::Err(io_err#) => {
@@ -269,6 +315,13 @@ impl<T: @AsyncTransport> FramedStream<T> {
                     auto n = read_succ.bytes_read
                     auto is_eof = read_succ.eof
                     chunk_buf = read_succ#.take_buffer()
+
+                    if n > need {
+                        failed = true
+                        err_kind = 4:i32
+                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range")
+                        break
+                    }
 
                     if is_eof && n == 0:usize {
                         failed = true
@@ -301,6 +354,7 @@ impl<T: @AsyncTransport> FramedStream<T> {
         if failed {
             self.state = 5:i32
             self.transport#.close()
+            cancel_guard.active = false
             return Result<FramedReadResult, FramedError>::Err(FramedError(
                 kind = err_kind,
                 buffer = cede owned,
@@ -310,6 +364,7 @@ impl<T: @AsyncTransport> FramedStream<T> {
 
         self.frames_read += 1:usize
         self.state = 0:i32
+        cancel_guard.active = false
         return Result<FramedReadResult, FramedError>::Ok(FramedReadResult(
             buffer = cede owned,
             payload_len = payload_len,
@@ -338,6 +393,11 @@ impl<T: @AsyncTransport> FramedStream<T> {
             ))
         }
 
+        auto cancel_guard# = FramedStreamCancelGuard<T>(
+            framed_addr = unsafe (&self as Addr),
+            active = true
+        )
+
         auto header_buf# = Vec<u8>::with_capacity(4:usize)
         header_buf#.push(((payload_len >> 24) & 0xFF) as u8)
         header_buf#.push(((payload_len >> 16) & 0xFF) as u8)
@@ -363,7 +423,15 @@ impl<T: @AsyncTransport> FramedStream<T> {
                 }
                 auto Result::Ok(write_succ#) => {
                     auto n = write_succ.bytes_written
+                    auto comp = write_succ.complete
                     header_buf = write_succ#.take_buffer()
+                    auto rem = 4:usize - header_offset
+                    if header_buf.len() != 4:usize || n > rem || (n == rem && !comp) || (n < rem && comp) {
+                        header_failed = true
+                        header_err_kind = 4:i32
+                        header_err_msg = string::from("Inconsistent transport write progress: count exceeds range or contradicts complete status")
+                        break
+                    }
                     if n == 0:usize {
                         zero_prog_count += 1:i32
                         if zero_prog_count >= 16:i32 {
@@ -383,6 +451,7 @@ impl<T: @AsyncTransport> FramedStream<T> {
         if header_failed {
             self.state = 5:i32
             self.transport#.close()
+            cancel_guard.active = false
             return Result<FramedWriteResult, FramedError>::Err(FramedError(
                 kind = header_err_kind,
                 buffer = cede owned_payload,
@@ -409,7 +478,15 @@ impl<T: @AsyncTransport> FramedStream<T> {
                     }
                     auto Result::Ok(write_succ#) => {
                         auto n = write_succ.bytes_written
+                        auto comp = write_succ.complete
                         owned_payload = write_succ#.take_buffer()
+                        auto rem = payload_len - payload_offset
+                        if owned_payload.len() != payload_len || n > rem || (n == rem && !comp) || (n < rem && comp) {
+                            payload_failed = true
+                            payload_err_kind = 4:i32
+                            payload_err_msg = string::from("Inconsistent transport write progress: count exceeds range or contradicts complete status")
+                            break
+                        }
                         if n == 0:usize {
                             zero_prog_count += 1:i32
                             if zero_prog_count >= 16:i32 {
@@ -429,6 +506,7 @@ impl<T: @AsyncTransport> FramedStream<T> {
             if payload_failed {
                 self.state = 5:i32
                 self.transport#.close()
+                cancel_guard.active = false
                 return Result<FramedWriteResult, FramedError>::Err(FramedError(
                     kind = payload_err_kind,
                     buffer = cede owned_payload,
@@ -439,6 +517,7 @@ impl<T: @AsyncTransport> FramedStream<T> {
 
         self.frames_written += 1:usize
         self.state = 0:i32
+        cancel_guard.active = false
         return Result<FramedWriteResult, FramedError>::Ok(FramedWriteResult(
             buffer = cede owned_payload,
             bytes_written = payload_len
@@ -456,6 +535,20 @@ pub shape FramedReader<T: @AsyncTransport> (
     state: i32,
     frames_read: usize
 )
+
+shape FramedReaderCancelGuard<T> (
+    reader_addr: Addr,
+    active: bool
+)
+
+impl<T> FramedReaderCancelGuard<T>@Encap {
+    fn drop(self#) {
+        if self.active {
+            auto *f# = unsafe (self.reader_addr as *FramedReader<T>#)
+            f#.close()
+        }
+    }
+}
 
 impl<T: @AsyncTransport> FramedReader<T> {
     pub fn new(transport: cede T) -> FramedReader<T> {
@@ -491,6 +584,11 @@ impl<T: @AsyncTransport> FramedReader<T> {
             ))
         }
 
+        auto cancel_guard# = FramedReaderCancelGuard<T>(
+            reader_addr = unsafe (&self as Addr),
+            active = true
+        )
+
         self.state = 1:i32
         auto header_bytes# = Vec<u8>::with_capacity(4:usize)
         auto header_collected# = 0:usize
@@ -515,6 +613,13 @@ impl<T: @AsyncTransport> FramedReader<T> {
                     auto n = read_succ.bytes_read
                     auto is_eof = read_succ.eof
                     temp_chunk = read_succ#.take_buffer()
+
+                    if n > need {
+                        failed = true
+                        err_kind = 4:i32
+                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range")
+                        break
+                    }
 
                     if is_eof && n == 0:usize {
                         if header_collected == 0:usize {
@@ -549,6 +654,7 @@ impl<T: @AsyncTransport> FramedReader<T> {
         }
 
         if is_clean_eof {
+            cancel_guard.active = false
             self.state = 4:i32
             return Result<FramedReadResult, FramedError>::Ok(FramedReadResult(
                 buffer = cede owned,
@@ -560,6 +666,7 @@ impl<T: @AsyncTransport> FramedReader<T> {
         if failed {
             self.state = 5:i32
             self.transport#.close()
+            cancel_guard.active = false
             return Result<FramedReadResult, FramedError>::Err(FramedError(
                 kind = err_kind,
                 buffer = cede owned,
@@ -576,6 +683,7 @@ impl<T: @AsyncTransport> FramedReader<T> {
         if payload_len > 16777216:usize {
             self.state = 5:i32
             self.transport#.close()
+            cancel_guard.active = false
             return Result<FramedReadResult, FramedError>::Err(FramedError(
                 kind = 2:i32,
                 buffer = cede owned,
@@ -587,6 +695,7 @@ impl<T: @AsyncTransport> FramedReader<T> {
             owned#.clear()
             self.frames_read += 1:usize
             self.state = 0:i32
+            cancel_guard.active = false
             return Result<FramedReadResult, FramedError>::Ok(FramedReadResult(
                 buffer = cede owned,
                 payload_len = 0:usize,
@@ -601,7 +710,11 @@ impl<T: @AsyncTransport> FramedReader<T> {
         auto chunk_buf# = Vec<u8>::with_capacity(4096:usize)
 
         loop payload_collected < payload_len {
-            auto need = payload_len - payload_collected
+            auto rem = payload_len - payload_collected
+            auto need# = rem
+            if need > 4096:usize {
+                need = 4096:usize
+            }
             auto payload_res = self.transport#.read_into_async(cede chunk_buf, need, timeout_ms).await
             match cede payload_res {
                 auto Result::Err(io_err#) => {
@@ -614,6 +727,13 @@ impl<T: @AsyncTransport> FramedReader<T> {
                     auto n = read_succ.bytes_read
                     auto is_eof = read_succ.eof
                     chunk_buf = read_succ#.take_buffer()
+
+                    if n > need {
+                        failed = true
+                        err_kind = 4:i32
+                        err_msg = string::from("Inconsistent transport read progress: count exceeds requested range")
+                        break
+                    }
 
                     if is_eof && n == 0:usize {
                         failed = true
@@ -646,6 +766,7 @@ impl<T: @AsyncTransport> FramedReader<T> {
         if failed {
             self.state = 5:i32
             self.transport#.close()
+            cancel_guard.active = false
             return Result<FramedReadResult, FramedError>::Err(FramedError(
                 kind = err_kind,
                 buffer = cede owned,
@@ -655,6 +776,7 @@ impl<T: @AsyncTransport> FramedReader<T> {
 
         self.frames_read += 1:usize
         self.state = 0:i32
+        cancel_guard.active = false
         return Result<FramedReadResult, FramedError>::Ok(FramedReadResult(
             buffer = cede owned,
             payload_len = payload_len,
@@ -673,6 +795,20 @@ pub shape FramedWriter<T: @AsyncTransport> (
     state: i32,
     frames_written: usize
 )
+
+shape FramedWriterCancelGuard<T> (
+    writer_addr: Addr,
+    active: bool
+)
+
+impl<T> FramedWriterCancelGuard<T>@Encap {
+    fn drop(self#) {
+        if self.active {
+            auto *f# = unsafe (self.writer_addr as *FramedWriter<T>#)
+            f#.close()
+        }
+    }
+}
 
 impl<T: @AsyncTransport> FramedWriter<T> {
     pub fn new(transport: cede T) -> FramedWriter<T> {
@@ -712,6 +848,11 @@ impl<T: @AsyncTransport> FramedWriter<T> {
             ))
         }
 
+        auto cancel_guard# = FramedWriterCancelGuard<T>(
+            writer_addr = unsafe (&self as Addr),
+            active = true
+        )
+
         auto header_buf# = Vec<u8>::with_capacity(4:usize)
         header_buf#.push(((payload_len >> 24) & 0xFF) as u8)
         header_buf#.push(((payload_len >> 16) & 0xFF) as u8)
@@ -737,7 +878,15 @@ impl<T: @AsyncTransport> FramedWriter<T> {
                 }
                 auto Result::Ok(write_succ#) => {
                     auto n = write_succ.bytes_written
+                    auto comp = write_succ.complete
                     header_buf = write_succ#.take_buffer()
+                    auto rem = 4:usize - header_offset
+                    if header_buf.len() != 4:usize || n > rem || (n == rem && !comp) || (n < rem && comp) {
+                        header_failed = true
+                        header_err_kind = 4:i32
+                        header_err_msg = string::from("Inconsistent transport write progress: count exceeds range or contradicts complete status")
+                        break
+                    }
                     if n == 0:usize {
                         zero_prog_count += 1:i32
                         if zero_prog_count >= 16:i32 {
@@ -757,6 +906,7 @@ impl<T: @AsyncTransport> FramedWriter<T> {
         if header_failed {
             self.state = 5:i32
             self.transport#.close()
+            cancel_guard.active = false
             return Result<FramedWriteResult, FramedError>::Err(FramedError(
                 kind = header_err_kind,
                 buffer = cede owned_payload,
@@ -783,7 +933,15 @@ impl<T: @AsyncTransport> FramedWriter<T> {
                     }
                     auto Result::Ok(write_succ#) => {
                         auto n = write_succ.bytes_written
+                        auto comp = write_succ.complete
                         owned_payload = write_succ#.take_buffer()
+                        auto rem = payload_len - payload_offset
+                        if owned_payload.len() != payload_len || n > rem || (n == rem && !comp) || (n < rem && comp) {
+                            payload_failed = true
+                            payload_err_kind = 4:i32
+                            payload_err_msg = string::from("Inconsistent transport write progress: count exceeds range or contradicts complete status")
+                            break
+                        }
                         if n == 0:usize {
                             zero_prog_count += 1:i32
                             if zero_prog_count >= 16:i32 {
@@ -803,6 +961,7 @@ impl<T: @AsyncTransport> FramedWriter<T> {
             if payload_failed {
                 self.state = 5:i32
                 self.transport#.close()
+                cancel_guard.active = false
                 return Result<FramedWriteResult, FramedError>::Err(FramedError(
                     kind = payload_err_kind,
                     buffer = cede owned_payload,
@@ -813,6 +972,7 @@ impl<T: @AsyncTransport> FramedWriter<T> {
 
         self.frames_written += 1:usize
         self.state = 0:i32
+        cancel_guard.active = false
         return Result<FramedWriteResult, FramedError>::Ok(FramedWriteResult(
             buffer = cede owned_payload,
             bytes_written = payload_len

@@ -20,7 +20,7 @@ import std/vec::{Vec}
 import core/result::{Result}
 import core/option::{Option}
 import core/string::{string}
-import std/net::{TcpListener, TcpStream, SocketAddrV4, Ipv4Addr, net_tls_backend_available}
+import std/net::{TcpListener, TcpStream, SocketAddrV4, Ipv4Addr, net_tls_backend_available, AsyncReadResult, AsyncWriteResult, AsyncIoError}
 import stdx/net/stream::{AsyncStream}
 import stdx/net/tls::{TlsStream}
 import stdx/net/transport::{@AsyncTransport, MockMemoryStream, TcpTransport, TlsTransport, Metered}
@@ -43,6 +43,26 @@ fn bytes_from_str(s: str) -> Vec<u8> {
         i += 1:usize
     }
     return cede v
+}
+
+shape InvalidCountTransport (
+    wire: Vec<u8>,
+    closed: bool
+)
+
+impl InvalidCountTransport@AsyncTransport {
+    pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(buffer = cede owner, bytes_read = 0:usize, eof = true))
+    }
+
+    pub fn write_from_async(self#, cede owner: Vec<u8>, offset: usize, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto owned# = cede owner
+        return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(buffer = cede owned, bytes_written = 9:usize, complete = true))
+    }
+
+    pub fn close(self#) {
+        self.closed = true
+    }
 }
 
 fn client_tcp_task(p: u16) -> async i32 {
@@ -464,6 +484,51 @@ fn coordinator() -> async i32 {
         task_cancel<Result<FramedReadResult, FramedError>>(task)
         auto outcome = task.await?
         if !outcome.is_none() { return 902:i32 }
+        if reader.get_state() != FRAMED_STATE_TERMINATED { return 903:i32 }
+        if !reader.transport#.is_closed() { return 904:i32 }
+
+        // Test writer cancellation cleanup
+        auto mock_wr# = MockMemoryStream::empty()
+        mock_wr#.set_delay(1000:i32)
+        auto writer# = FramedStream<MockMemoryStream>::new(cede mock_wr)
+        auto wbuf# = Vec<u8>::with_capacity(16:usize)
+        wbuf#.push(1:u8)
+        wbuf#.push(2:u8)
+        auto wtask = writer#.write_frame_async(cede wbuf, 2000:i32)
+        auto nul *wtcb = task_get_coro_handle<Result<FramedWriteResult, FramedError>>(wtask)
+        auto *wlive_tcb = wtcb.unwrap()
+        toka_task_start(*wlive_tcb)
+
+        waited = 0:i32
+        loop toka_rt_live_wait_registry_count() == 0:u32 && waited < 100:i32 {
+            sleep_async(1:i32).await
+            waited += 1:i32
+        }
+        if toka_rt_live_wait_registry_count() == 0:u32 { return 905:i32 }
+
+        task_cancel<Result<FramedWriteResult, FramedError>>(wtask)
+        auto woutcome = wtask.await?
+        if !woutcome.is_none() { return 906:i32 }
+        if writer.get_state() != FRAMED_STATE_TERMINATED { return 907:i32 }
+        if !writer.transport#.is_closed() { return 908:i32 }
+        if writer.get_frames_written() != 0:usize { return 909:i32 }
+
+        // Test progress fact consistency defense: overreported count rejection
+        auto inv_raw = InvalidCountTransport(wire = Vec<u8>::new(), closed = false)
+        auto inv_framed# = FramedStream<InvalidCountTransport>::new(cede inv_raw)
+        auto inv_buf# = Vec<u8>::with_capacity(8:usize)
+        inv_buf#.push(1:u8)
+        auto inv_res = inv_framed#.write_frame_async(cede inv_buf, 1000:i32).await
+        if !inv_res.is_err() { return 910:i32 }
+        if inv_framed.get_state() != FRAMED_STATE_TERMINATED { return 911:i32 }
+        if !inv_framed.transport.closed { return 912:i32 }
+        if inv_framed.get_frames_written() != 0:usize { return 913:i32 }
+
+        // Test existing AsyncStream closed empty-buffer write defense
+        auto closed_tcp# = TcpStream(fd = -1:i32, closed = true)
+        auto closed_stream# = AsyncStream::from_tcp(closed_tcp#)
+        auto empty_res = closed_stream#.write_from_async(Vec<u8>::new(), 1000:i32).await
+        if !empty_res.is_err() { return 914:i32 }
     }
     println("Branch 9 passed!")
 
