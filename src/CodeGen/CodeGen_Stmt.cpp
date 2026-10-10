@@ -321,8 +321,7 @@ llvm::Value *CodeGen::genBlockStmt(const BlockStmt *bs) {
     if (hasErrors())
       break;
     // Liveness check: stop if terminator was generated
-    if (m_Builder.GetInsertBlock() &&
-        m_Builder.GetInsertBlock()->getTerminator())
+    if (hasBlockTerminator(m_Builder.GetInsertBlock()))
       break;
   }
 
@@ -648,7 +647,7 @@ void CodeGen::restoreDropForIndexAssignment(const ArrayIndexExpr *index) {
 
 void CodeGen::executeScopeUnwinding(size_t targetDepth) {
   llvm::BasicBlock *currBB = m_Builder.GetInsertBlock();
-  if (!currBB || currBB->getTerminator())
+  if (!currBB || hasBlockTerminator(currBB))
     return;
 
   // Cleanup scopes from high to low (up to but not including targetDepth)
@@ -934,7 +933,7 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
 
       if (dropFlagContBB) {
         llvm::BasicBlock *dropEnd = m_Builder.GetInsertBlock();
-        if (dropEnd && !dropEnd->getTerminator())
+        if (dropEnd && !hasBlockTerminator(dropEnd))
           m_Builder.CreateBr(dropFlagContBB);
         m_Builder.SetInsertPoint(dropFlagContBB);
         currBB = dropFlagContBB;
@@ -1136,7 +1135,7 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
   
   genStmt(gbs->ElseBody.get());
   
-  if (!m_Builder.GetInsertBlock()->getTerminator()) {
+  if (!hasBlockTerminator(m_Builder.GetInsertBlock())) {
      m_Builder.CreateUnreachable();
   }
 

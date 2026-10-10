@@ -435,7 +435,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
                   m_Context, "entry", resultDropFn);
               m_Builder.SetInsertPoint(dropEntry);
               emitDropForType(resultDropFn->getArg(0), retTypeObj);
-              if (!m_Builder.GetInsertBlock()->getTerminator())
+              if (!hasBlockTerminator(m_Builder.GetInsertBlock()))
                   m_Builder.CreateRetVoid();
               m_Builder.restoreIP(savedIP);
           }
@@ -901,7 +901,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   genStmt(func->Body.get());
 
   // Ensure Implicit Cleanup
-  if (!m_Builder.GetInsertBlock()->getTerminator()) {
+  if (!hasBlockTerminator(m_Builder.GetInsertBlock())) {
     executeScopeUnwinding(0);
 
     if (func->Effect == EffectKind::Async) {
@@ -975,7 +975,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
   // Ensure all basic blocks have a terminator to satisfy LLVM verifier
   for (llvm::BasicBlock &bb : *f) {
-      if (!bb.getTerminator()) {
+      if (!hasBlockTerminator(&bb)) {
           llvm::IRBuilder<> tmpB(&bb);
           tmpB.CreateUnreachable();
       }

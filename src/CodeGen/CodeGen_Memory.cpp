@@ -305,7 +305,7 @@ void CodeGen::emitDropForType(llvm::Value *ptrAddr,
     m_Builder.SetInsertPoint(dropPayload);
     if (!pointeeType->isUninit())
       emitDropForType(data, pointeeType);
-    if (!m_Builder.GetInsertBlock()->getTerminator())
+    if (!hasBlockTerminator(m_Builder.GetInsertBlock()))
       m_Builder.CreateBr(deallocate);
 
     m_Builder.SetInsertPoint(deallocate);
@@ -343,7 +343,7 @@ void CodeGen::emitDropForType(llvm::Value *ptrAddr,
     m_Builder.SetInsertPoint(destroy);
     if (!pointeeType->isUninit())
       emitDropForType(data, pointeeType);
-    if (!m_Builder.GetInsertBlock()->getTerminator()) {
+    if (!hasBlockTerminator(m_Builder.GetInsertBlock())) {
       llvm::Function *freeFn = m_Module->getFunction("free");
       if (!freeFn) {
         freeFn = llvm::Function::Create(
@@ -380,7 +380,7 @@ void CodeGen::emitDropForType(llvm::Value *ptrAddr,
     llvm::Value *payloadAddr = m_Builder.CreateStructGEP(
         outcomeType, ptrAddr, 1, "drop.miss.payload.addr");
     emitDropForType(payloadAddr, outcome->PayloadType);
-    if (!m_Builder.GetInsertBlock()->getTerminator())
+    if (!hasBlockTerminator(m_Builder.GetInsertBlock()))
       m_Builder.CreateBr(dropDone);
     m_Builder.SetInsertPoint(dropDone);
     return;
@@ -620,7 +620,7 @@ void CodeGen::emitDropForTypeWithMask(
         {m_Builder.getInt32(0), m_Builder.getInt32(static_cast<unsigned>(i))},
         "drop.array.element");
     emitDropForType(elementAddr, elementType);
-    if (!m_Builder.GetInsertBlock()->getTerminator())
+    if (!hasBlockTerminator(m_Builder.GetInsertBlock()))
       m_Builder.CreateBr(nextElement);
     m_Builder.SetInsertPoint(nextElement);
   }
@@ -644,7 +644,7 @@ CodeGen::getOrCreateDropCascadeHelper(const std::string &typeName) {
   m_Builder.SetInsertPoint(entry);
   m_DropCascadeHelperRootTypes.insert(typeName);
   emitDropCascade(helper->getArg(0), typeName);
-  if (!m_Builder.GetInsertBlock()->getTerminator())
+  if (!hasBlockTerminator(m_Builder.GetInsertBlock()))
     m_Builder.CreateRetVoid();
   m_Builder.restoreIP(savedIP);
   return helper;
@@ -1037,7 +1037,7 @@ void CodeGen::emitDropCascadeWithMask(llvm::Value *ptrAddr,
     } else {
       emitDropCascade(fieldAddr, memberType);
     }
-    if (!m_Builder.GetInsertBlock()->getTerminator())
+    if (!hasBlockTerminator(m_Builder.GetInsertBlock()))
       m_Builder.CreateBr(nextField);
     m_Builder.SetInsertPoint(nextField);
   }
