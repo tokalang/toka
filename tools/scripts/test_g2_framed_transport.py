@@ -111,7 +111,7 @@ def main():
         print("[2/4] Running TaskHandle Lifecycle & .start Lowering...", end="", flush=True)
         rec, run_res = run_case("lifecycle_pass_suite", PASS_TESTS / "g14_task_start_temporary_lifecycle_test.tk", tokac, rt_o, work_dir, env, timeout=30)
         all_records.append(rec)
-        if rec["passed"]:
+        if rec["passed"] and "All 10 lifecycle and cancellation controls passed with zero TCB residue and exact-once drop!" in run_res.stdout:
             print(" PASS")
         else:
             print(" FAIL")

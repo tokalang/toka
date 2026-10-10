@@ -1,47 +1,135 @@
-import std/task::{block_on}
-import core/task::{TaskHandle}
+import std/task::{block_on, sleep_async, task_cancel}
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_start}
+import core/option::{Option}
+import std/vec::{Vec}
+import std/io::{println}
 
-shape TaskHolder(task: TaskHandle<i32>)
+extern fn toka_rt_live_tcb_count() -> u32
+extern fn toka_rt_live_wait_registry_count() -> u32
 
-fn child(val: i32) -> async i32 {
-    return val
+auto g_drops# = 0:i32
+
+shape TrackedResource (
+    id: i32,
+    buf: Vec<u8>
+)
+
+impl TrackedResource@Encap {
+    fn drop(self#) {
+        g_drops += 1:i32
+    }
+}
+
+shape TaskHolder (
+    task: TaskHandle<TrackedResource>
+)
+
+fn make_resource(id: i32) -> TrackedResource {
+    auto b# = Vec<u8>::with_capacity(16:usize)
+    b#.push(1:u8)
+    b#.push(2:u8)
+    b#.push(3:u8)
+    return TrackedResource(id = id, buf = cede b)
+}
+
+fn child_immediate(cede r: TrackedResource) -> async TrackedResource {
+    auto res = cede r
+    return cede res
+}
+
+fn child_cancellable(cede r: TrackedResource) -> async TrackedResource {
+    auto res = cede r
+    auto waited = sleep_async(1000:i32).await?
+    return cede res
 }
 
 fn child_unit() -> async {
     return
 }
 
-fn test_fresh_direct() -> async i32 {
-    auto n = child(10:i32).await
-    assert(n == 10:i32, "fresh direct")
+fn forwarded_fresh_start(cede r: TrackedResource) -> async TrackedResource {
+    auto res = child_cancellable(cede r).start.await
+    return cede res
+}
+
+fn forwarded_named_start(cede r: TrackedResource) -> async TrackedResource {
+    auto h = child_cancellable(cede r).start
+    auto res = h.await
+    return cede res
+}
+
+fn forwarded_fresh_direct(cede r: TrackedResource) -> async TrackedResource {
+    auto res = child_cancellable(cede r).await
+    return cede res
+}
+
+fn forwarded_named_direct(cede r: TrackedResource) -> async TrackedResource {
+    auto h = child_cancellable(cede r)
+    auto res = h.await
+    return cede res
+}
+
+fn test_fresh_direct_normal() -> async i32 {
+    g_drops = 0:i32
+    {
+        auto r = make_resource(10:i32)
+        auto res = child_immediate(cede r).await
+        assert(res.id == 10:i32, "fresh direct value")
+        assert(g_drops == 0:i32, "not dropped during call")
+    }
+    assert(g_drops == 1:i32, "fresh direct dropped once on scope exit")
     return 0:i32
 }
 
-fn test_fresh_start() -> async i32 {
-    auto n = child(20:i32).start.await
-    assert(n == 20:i32, "fresh start")
+fn test_fresh_start_normal() -> async i32 {
+    g_drops = 0:i32
+    {
+        auto r = make_resource(20:i32)
+        auto res = child_immediate(cede r).start.await
+        assert(res.id == 20:i32, "fresh start value")
+        assert(g_drops == 0:i32, "not dropped during call")
+    }
+    assert(g_drops == 1:i32, "fresh start dropped once on scope exit")
     return 0:i32
 }
 
-fn test_named_start() -> async i32 {
-    auto h = child(30:i32).start
-    auto n = h.await
-    assert(n == 30:i32, "named start")
+fn test_named_start_normal() -> async i32 {
+    g_drops = 0:i32
+    {
+        auto r = make_resource(30:i32)
+        auto h = child_immediate(cede r).start
+        auto res = h.await
+        assert(res.id == 30:i32, "named start value")
+        assert(g_drops == 0:i32, "not dropped during call")
+    }
+    assert(g_drops == 1:i32, "named start dropped once on scope exit")
     return 0:i32
 }
 
-fn test_member_handle() -> async i32 {
-    auto h = child(40:i32)
-    auto c = TaskHolder(task = cede h)
-    auto n = c.task.await
-    assert(n == 40:i32, "member handle")
+fn test_member_handle_normal() -> async i32 {
+    g_drops = 0:i32
+    {
+        auto r = make_resource(40:i32)
+        auto h = child_immediate(cede r)
+        auto c = TaskHolder(task = cede h)
+        auto res = c.task.await
+        assert(res.id == 40:i32, "member handle value")
+        assert(g_drops == 0:i32, "not dropped during call")
+    }
+    assert(g_drops == 1:i32, "member handle dropped once on scope exit")
     return 0:i32
 }
 
-fn test_cede_handle() -> async i32 {
-    auto h = child(50:i32)
-    auto n = (cede h).await
-    assert(n == 50:i32, "cede handle")
+fn test_cede_handle_normal() -> async i32 {
+    g_drops = 0:i32
+    {
+        auto r = make_resource(50:i32)
+        auto h = child_immediate(cede r)
+        auto res = (cede h).await
+        assert(res.id == 50:i32, "cede handle value")
+        assert(g_drops == 0:i32, "not dropped during call")
+    }
+    assert(g_drops == 1:i32, "cede handle dropped once on scope exit")
     return 0:i32
 }
 
@@ -50,16 +138,116 @@ fn test_anonymous_unit() -> async i32 {
     return 0:i32
 }
 
+fn test_fresh_start_cancel() -> async i32 {
+    g_drops = 0:i32
+    {
+        auto r = make_resource(60:i32)
+        auto task = forwarded_fresh_start(cede r)
+        auto nul *tcb = task_get_coro_handle<TrackedResource>(task)
+        auto *live = tcb.unwrap()
+        toka_task_start(*live)
+        auto polls# = 0:i32
+        loop toka_rt_live_wait_registry_count() == 0:u32 && polls < 100:i32 {
+            sleep_async(1:i32).await
+            polls += 1:i32
+        }
+        assert(toka_rt_live_wait_registry_count() > 0:u32, "fresh_start suspended")
+        task_cancel<TrackedResource>(task)
+        auto out = task.await?
+        assert(out.is_none(), "fresh_start cancel outcome None")
+    }
+    assert(g_drops == 1:i32, "fresh_start resource dropped exactly once on cancellation")
+    assert(toka_rt_live_wait_registry_count() == 0:u32, "fresh_start wait cleaned up")
+    return 0:i32
+}
+
+fn test_named_start_cancel() -> async i32 {
+    g_drops = 0:i32
+    {
+        auto r = make_resource(70:i32)
+        auto task = forwarded_named_start(cede r)
+        auto nul *tcb = task_get_coro_handle<TrackedResource>(task)
+        auto *live = tcb.unwrap()
+        toka_task_start(*live)
+        auto polls# = 0:i32
+        loop toka_rt_live_wait_registry_count() == 0:u32 && polls < 100:i32 {
+            sleep_async(1:i32).await
+            polls += 1:i32
+        }
+        assert(toka_rt_live_wait_registry_count() > 0:u32, "named_start suspended")
+        task_cancel<TrackedResource>(task)
+        auto out = task.await?
+        assert(out.is_none(), "named_start cancel outcome None")
+    }
+    assert(g_drops == 1:i32, "named_start resource dropped exactly once on cancellation")
+    assert(toka_rt_live_wait_registry_count() == 0:u32, "named_start wait cleaned up")
+    return 0:i32
+}
+
+fn test_fresh_direct_cancel() -> async i32 {
+    g_drops = 0:i32
+    {
+        auto r = make_resource(80:i32)
+        auto task = forwarded_fresh_direct(cede r)
+        auto nul *tcb = task_get_coro_handle<TrackedResource>(task)
+        auto *live = tcb.unwrap()
+        toka_task_start(*live)
+        auto polls# = 0:i32
+        loop toka_rt_live_wait_registry_count() == 0:u32 && polls < 100:i32 {
+            sleep_async(1:i32).await
+            polls += 1:i32
+        }
+        assert(toka_rt_live_wait_registry_count() > 0:u32, "fresh_direct suspended")
+        task_cancel<TrackedResource>(task)
+        auto out = task.await?
+        assert(out.is_none(), "fresh_direct cancel outcome None")
+    }
+    assert(g_drops == 1:i32, "fresh_direct resource dropped exactly once on cancellation")
+    assert(toka_rt_live_wait_registry_count() == 0:u32, "fresh_direct wait cleaned up")
+    return 0:i32
+}
+
+fn test_named_direct_cancel() -> async i32 {
+    g_drops = 0:i32
+    {
+        auto r = make_resource(90:i32)
+        auto task = forwarded_named_direct(cede r)
+        auto nul *tcb = task_get_coro_handle<TrackedResource>(task)
+        auto *live = tcb.unwrap()
+        toka_task_start(*live)
+        auto polls# = 0:i32
+        loop toka_rt_live_wait_registry_count() == 0:u32 && polls < 100:i32 {
+            sleep_async(1:i32).await
+            polls += 1:i32
+        }
+        assert(toka_rt_live_wait_registry_count() > 0:u32, "named_direct suspended")
+        task_cancel<TrackedResource>(task)
+        auto out = task.await?
+        assert(out.is_none(), "named_direct cancel outcome None")
+    }
+    assert(g_drops == 1:i32, "named_direct resource dropped exactly once on cancellation")
+    assert(toka_rt_live_wait_registry_count() == 0:u32, "named_direct wait cleaned up")
+    return 0:i32
+}
+
 fn coordinate() -> async i32 {
-    test_fresh_direct().await
-    test_fresh_start().await
-    test_named_start().await
-    test_member_handle().await
-    test_cede_handle().await
+    test_fresh_direct_normal().await
+    test_fresh_start_normal().await
+    test_named_start_normal().await
+    test_member_handle_normal().await
+    test_cede_handle_normal().await
     test_anonymous_unit().await
+    test_fresh_start_cancel().await
+    test_named_start_cancel().await
+    test_fresh_direct_cancel().await
+    test_named_direct_cancel().await
     return 0:i32
 }
 
 fn main() -> i32 {
-    return block_on<i32>(coordinate().start)
+    auto rc = block_on<i32>(coordinate().start)
+    assert(toka_rt_live_tcb_count() == 0:u32, "TCB count zero after block_on")
+    assert(toka_rt_live_wait_registry_count() == 0:u32, "wait registry count zero after block_on")
+    println("All 10 lifecycle and cancellation controls passed with zero TCB residue and exact-once drop!")
+    return rc
 }

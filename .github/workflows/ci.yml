@@ -167,6 +167,19 @@ jobs:
           tools/scripts/test_semantic_replay.sh
           tools/scripts/test_mixed_core_cache.sh
 
+      - name: Run G2 framed transport directed gate
+        run: |
+          set -euo pipefail
+          python3 tools/scripts/test_g2_framed_transport.py --build-dir build --output-dir build/g2-gate-report
+
+      - name: Upload G2 directed gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g2-directed-report-${{ matrix.name }}
+          path: build/g2-gate-report/
+          if-no-files-found: ignore
+
   pr-gate:
     name: Pull request gate result
     if: always()
