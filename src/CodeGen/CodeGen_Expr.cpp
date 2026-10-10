@@ -7834,7 +7834,8 @@ PhysEntity CodeGen::genUnwrapPropagationExpr(const UnwrapPropagationExpr *expr) 
   // -- FAIL Path --
   m_Builder.SetInsertPoint(failBB);
   
-  if (soul == "Option" || soul == "Option" || soul.find("Option_") == 0) {
+  bool isOption = (soul == "Option" || soul.rfind("Option<", 0) == 0 || soul.rfind("Option_M_", 0) == 0);
+  if (isOption) {
     llvm::Type *targetRetTy = m_CurrentCoroRetTy ? m_CurrentCoroRetTy : (m_CurrentSRetTy ? m_CurrentSRetTy : f->getReturnType());
     llvm::Value *retVal = llvm::UndefValue::get(targetRetTy);
     if (targetRetTy->isStructTy() && targetRetTy->getStructNumElements() > 0) {
@@ -7858,7 +7859,7 @@ PhysEntity CodeGen::genUnwrapPropagationExpr(const UnwrapPropagationExpr *expr) 
     } else {
        m_Builder.CreateRet(retVal);
     }
-  } else if (soul == "Result" || soul == "Result" || soul.find("Result_") == 0) {
+  } else {
     llvm::Value *unionData = m_Builder.CreateExtractValue(baseVal, {1}, "unwrap.err_data");
 
     llvm::Type *targetRetTy = m_CurrentCoroRetTy ? m_CurrentCoroRetTy : (m_CurrentSRetTy ? m_CurrentSRetTy : f->getReturnType());
