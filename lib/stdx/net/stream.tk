@@ -72,6 +72,22 @@ impl AsyncStream {
     pub fn write_from_offset_async(self#, cede owner: Vec<u8>, offset: usize, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
         auto owned# = cede owner
         auto len = owned.len()
+        if !self.is_tls {
+            if self.raw_tcp.closed || self.raw_tcp.fd < 0 {
+                return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
+                    buffer = cede owned,
+                    message = string::from("Stream closed")
+                ))
+            }
+        } else {
+            if !self.tls#.is_valid() {
+                return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
+                    buffer = cede owned,
+                    message = string::from("TLS session is closed")
+                ))
+            }
+        }
+
         if offset >= len {
             return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(
                 buffer = cede owned,
