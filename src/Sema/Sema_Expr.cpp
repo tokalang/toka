@@ -6757,42 +6757,151 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto shapeT = std::static_pointer_cast<toka::ShapeType>(baseObj);
     std::string soul = shapeT->Decl ? shapeT->Decl->Name : shapeT->getSoulName();
 
-    bool isResult = soul == "Result" || soul.find("Result_") == 0;
-    bool isOption = soul == "Option" || soul.find("Option_") == 0;
+    auto isSupportedOptionShape = [](const std::shared_ptr<toka::ShapeType> &shape,
+                                     std::shared_ptr<toka::Type> &outPayloadT) -> bool {
+      if (!shape || !shape->Decl) return false;
+      const auto *decl = shape->Decl;
 
-    if (!isResult && !isOption) {
-      error(Unwrap, DiagID::ERR_SEMA_UNWRAP_OPERATOR_REQUIRES_RESULT_T_E_OR_OP, soul);
-      return toka::Type::fromString("unknown");
-    }
-    
+      // 1. Supported container identity:
+      // Must be nominal "Option": declaration name "Option", generic instantiation of "Option",
+      // or canonical mangled name starting with "Option<" or "Option_M_".
+      std::string rootName = decl->InstantiationTemplate ? decl->InstantiationTemplate->Name : decl->Name;
+      size_t colons = rootName.rfind("::");
+      if (colons != std::string::npos) rootName = rootName.substr(colons + 2);
+      size_t slashes = rootName.rfind('/');
+      if (slashes != std::string::npos) rootName = rootName.substr(slashes + 1);
+
+      bool isOptionIdent = (rootName == "Option");
+      if (!isOptionIdent) {
+        std::string sName = shape->getSoulName();
+        size_t sColons = sName.rfind("::");
+        if (sColons != std::string::npos) sName = sName.substr(sColons + 2);
+        size_t sSlashes = sName.rfind('/');
+        if (sSlashes != std::string::npos) sName = sName.substr(sSlashes + 1);
+
+        if (sName == "Option" || sName.rfind("Option<", 0) == 0 || sName.rfind("Option_M_", 0) == 0) {
+          isOptionIdent = true;
+        }
+      }
+      if (!isOptionIdent) return false;
+
+      // 2. Strict variant layout:
+      // Canonical Option must have exactly 2 variants: None (tag 0) and Some (tag 1).
+      if (decl->Members.size() != 2) return false;
+
+      bool hasSome = false;
+      bool hasNone = false;
+      outPayloadT = nullptr;
+
+      for (size_t i = 0; i < decl->Members.size(); ++i) {
+        const auto &m = decl->Members[i];
+        int64_t tag = (m.TagValue != -1) ? m.TagValue : static_cast<int64_t>(i);
+        std::string mName = m.Name;
+        size_t mColons = mName.rfind("::");
+        if (mColons != std::string::npos) mName = mName.substr(mColons + 2);
+
+        if (mName == "Some") {
+          if (tag != 1 || hasSome) return false;
+          hasSome = true;
+          if (!m.SubMembers.empty()) {
+            outPayloadT = m.SubMembers[0].ResolvedType;
+          } else {
+            outPayloadT = m.ResolvedType;
+          }
+          if (!outPayloadT || outPayloadT->isVoid()) return false;
+        } else if (mName == "None") {
+          if (tag != 0 || hasNone) return false;
+          hasNone = true;
+          if (!m.SubMembers.empty() || (m.ResolvedType && !m.ResolvedType->isVoid())) {
+            return false;
+          }
+        } else {
+          return false; // Extra / unexpected variant (e.g. Held = 255)
+        }
+      }
+
+      return hasSome && hasNone && (outPayloadT != nullptr);
+    };
+
+    auto isSupportedResultShape = [](const std::shared_ptr<toka::ShapeType> &shape,
+                                     std::shared_ptr<toka::Type> &outPayloadT,
+                                     std::shared_ptr<toka::Type> &outErrT) -> bool {
+      if (!shape || !shape->Decl) return false;
+      const auto *decl = shape->Decl;
+
+      // 1. Supported container identity:
+      // Must be nominal "Result": declaration name "Result", generic instantiation of "Result",
+      // or canonical mangled name starting with "Result<" or "Result_M_".
+      std::string rootName = decl->InstantiationTemplate ? decl->InstantiationTemplate->Name : decl->Name;
+      size_t colons = rootName.rfind("::");
+      if (colons != std::string::npos) rootName = rootName.substr(colons + 2);
+      size_t slashes = rootName.rfind('/');
+      if (slashes != std::string::npos) rootName = rootName.substr(slashes + 1);
+
+      bool isResultIdent = (rootName == "Result");
+      if (!isResultIdent) {
+        std::string sName = shape->getSoulName();
+        size_t sColons = sName.rfind("::");
+        if (sColons != std::string::npos) sName = sName.substr(sColons + 2);
+        size_t sSlashes = sName.rfind('/');
+        if (sSlashes != std::string::npos) sName = sName.substr(sSlashes + 1);
+
+        if (sName == "Result" || sName.rfind("Result<", 0) == 0 || sName.rfind("Result_M_", 0) == 0) {
+          isResultIdent = true;
+        }
+      }
+      if (!isResultIdent) return false;
+
+      // 2. Strict variant layout:
+      // Canonical Result must have exactly 2 variants: Err (tag 0) and Ok (tag 1).
+      if (decl->Members.size() != 2) return false;
+
+      bool hasOk = false;
+      bool hasErr = false;
+      outPayloadT = nullptr;
+      outErrT = nullptr;
+
+      for (size_t i = 0; i < decl->Members.size(); ++i) {
+        const auto &m = decl->Members[i];
+        int64_t tag = (m.TagValue != -1) ? m.TagValue : static_cast<int64_t>(i);
+        std::string mName = m.Name;
+        size_t mColons = mName.rfind("::");
+        if (mColons != std::string::npos) mName = mName.substr(mColons + 2);
+
+        if (mName == "Ok") {
+          if (tag != 1 || hasOk) return false;
+          hasOk = true;
+          if (!m.SubMembers.empty()) {
+            outPayloadT = m.SubMembers[0].ResolvedType;
+          } else {
+            outPayloadT = m.ResolvedType;
+          }
+          if (!outPayloadT || outPayloadT->isVoid()) return false;
+        } else if (mName == "Err") {
+          if (tag != 0 || hasErr) return false;
+          hasErr = true;
+          if (!m.SubMembers.empty()) {
+            outErrT = m.SubMembers[0].ResolvedType;
+          } else {
+            outErrT = m.ResolvedType;
+          }
+          if (!outErrT || outErrT->isVoid()) return false;
+        } else {
+          return false; // Extra / unexpected variant
+        }
+      }
+
+      return hasOk && hasErr && (outPayloadT != nullptr) && (outErrT != nullptr);
+    };
+
     std::shared_ptr<toka::Type> payloadT = nullptr;
     std::shared_ptr<toka::Type> errT = nullptr;
 
-    auto endsWith = [](const std::string& str, const std::string& suffix) {
-        return str.size() >= suffix.size() && 
-               str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
-    };
+    bool isOption = isSupportedOptionShape(shapeT, payloadT);
+    bool isResult = !isOption && isSupportedResultShape(shapeT, payloadT, errT);
 
-    if (shapeT->Decl) {
-      for (auto &M : shapeT->Decl->Members) {
-        if (M.Name == "Ok" || M.Name == "Some" || endsWith(M.Name, "::Ok") || endsWith(M.Name, "::Some")) {
-           if (!M.SubMembers.empty()) {
-             payloadT = M.SubMembers[0].ResolvedType;
-           } else {
-             payloadT = M.ResolvedType;
-           }
-        } else if (M.Name == "Err" || endsWith(M.Name, "::Err")) {
-           if (!M.SubMembers.empty()) {
-             errT = M.SubMembers[0].ResolvedType;
-           } else {
-             errT = M.ResolvedType;
-           }
-        }
-      }
-    }
-
-    if (!payloadT) {
-      error(Unwrap, DiagID::ERR_SEMA_UNWRAP_OPERATOR_REQUIRES_A_PAYLOAD_TYPE_I, soul);
+    if (!isResult && !isOption) {
+      error(Unwrap, DiagID::ERR_SEMA_UNWRAP_OPERATOR_REQUIRES_RESULT_T_E_OR_OP, soul);
       return toka::Type::fromString("unknown");
     }
     
@@ -6814,92 +6923,75 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         return payloadT;
       }
       auto retShape = std::static_pointer_cast<toka::ShapeType>(fnRetT);
-      std::string fnRetSoul = retShape->Decl ? retShape->Decl->Name : retShape->getSoulName();
-      bool fnIsResult = fnRetSoul == "Result" || fnRetSoul.find("Result_") == 0;
-      if (!fnIsResult) {
+      std::shared_ptr<toka::Type> retPayloadT = nullptr;
+      std::shared_ptr<toka::Type> retErrT = nullptr;
+      if (!isSupportedResultShape(retShape, retPayloadT, retErrT) || !retErrT) {
         error(Unwrap, DiagID::ERR_SEMA_FUNCTION_MUST_RETURN_RESULT_WHEN_UNWRAPPI);
         return payloadT;
       }
       
-      std::shared_ptr<toka::Type> retErrT = nullptr;
-      if (retShape->Decl) {
-        for (auto &M : retShape->Decl->Members) {
-          if (M.Name == "Err" || endsWith(M.Name, "::Err")) {
-             if (!M.SubMembers.empty()) {
-               retErrT = M.SubMembers[0].ResolvedType;
-             } else {
-               retErrT = M.ResolvedType;
-             }
+      errT = resolveType(errT, false);
+      retErrT = resolveType(retErrT, false);
+      Unwrap->SourceErrorType = errT;
+      Unwrap->TargetErrorType = retErrT;
+
+      if (!errT->equals(*retErrT)) {
+        std::string sourceName =
+            Type::stripMorphology(errT->getSoulName());
+        std::string targetName = retErrT->toString();
+        std::string traitName = "ErrorInto<" + targetName + ">";
+        std::string implKey = sourceName + "@" + traitName;
+
+        if (!ImplMap.count(implKey)) {
+          std::string sourceBase = sourceName;
+          size_t generic = sourceBase.find('<');
+          if (generic != std::string::npos)
+            sourceBase = sourceBase.substr(0, generic);
+          const std::string genericKey =
+              genericImplKey(sourceBase, getLoc(Unwrap));
+          if (GenericImplMap.count(genericKey)) {
+            std::vector<std::shared_ptr<toka::Type>> genericArgs;
+            if (auto sourceShape =
+                    std::dynamic_pointer_cast<ShapeType>(errT))
+              genericArgs = sourceShape->GenericArgs;
+            for (auto *impl : GenericImplMap[genericKey])
+              instantiateGenericImpl(impl, sourceName, genericArgs);
           }
         }
-      }
-      if (!errT || !retErrT) {
-        error(Unwrap, DiagID::ERR_SEMA_RESULT_TYPES_MUST_HAVE_ERR_VARIANT);
-      } else {
-        errT = resolveType(errT, false);
-        retErrT = resolveType(retErrT, false);
-        Unwrap->SourceErrorType = errT;
-        Unwrap->TargetErrorType = retErrT;
 
-        if (!errT->equals(*retErrT)) {
-          std::string sourceName =
-              Type::stripMorphology(errT->getSoulName());
-          std::string targetName = retErrT->toString();
-          std::string traitName = "ErrorInto<" + targetName + ">";
-          std::string implKey = sourceName + "@" + traitName;
-
-          if (!ImplMap.count(implKey)) {
-            std::string sourceBase = sourceName;
-            size_t generic = sourceBase.find('<');
-            if (generic != std::string::npos)
-              sourceBase = sourceBase.substr(0, generic);
-            const std::string genericKey =
-                genericImplKey(sourceBase, getLoc(Unwrap));
-            if (GenericImplMap.count(genericKey)) {
-              std::vector<std::shared_ptr<toka::Type>> genericArgs;
-              if (auto sourceShape =
-                      std::dynamic_pointer_cast<ShapeType>(errT))
-                genericArgs = sourceShape->GenericArgs;
-              for (auto *impl : GenericImplMap[genericKey])
-                instantiateGenericImpl(impl, sourceName, genericArgs);
-            }
-          }
-
-          auto impl = ImplMap.find(implKey);
-          if (impl == ImplMap.end() ||
-              !impl->second.count("into_error")) {
-            error(Unwrap, DiagID::ERR_SEMA_ERROR_CONVERSION_REQUIRED,
-                  errT->toString(), retErrT->toString(), sourceName,
-                  targetName);
-            recordDecision(Unwrap, SemanticRuleID::ErrorProp001,
-                           SemanticOperation::ErrorPropagation,
-                           SemanticDecision::Reject,
-                           SemanticReason::MissingErrorConversion,
-                           errT->toString(), retErrT->toString());
-          } else {
-            Unwrap->ErrorConversionFn = impl->second["into_error"];
-            recordDecision(Unwrap, SemanticRuleID::ErrorProp001,
-                           SemanticOperation::ErrorPropagation,
-                           SemanticDecision::Allow,
-                           SemanticReason::ExplicitErrorConversion,
-                           errT->toString(), retErrT->toString());
-          }
+        auto impl = ImplMap.find(implKey);
+        if (impl == ImplMap.end() ||
+            !impl->second.count("into_error")) {
+          error(Unwrap, DiagID::ERR_SEMA_ERROR_CONVERSION_REQUIRED,
+                errT->toString(), retErrT->toString(), sourceName,
+                targetName);
+          recordDecision(Unwrap, SemanticRuleID::ErrorProp001,
+                         SemanticOperation::ErrorPropagation,
+                         SemanticDecision::Reject,
+                         SemanticReason::MissingErrorConversion,
+                         errT->toString(), retErrT->toString());
         } else {
+          Unwrap->ErrorConversionFn = impl->second["into_error"];
           recordDecision(Unwrap, SemanticRuleID::ErrorProp001,
                          SemanticOperation::ErrorPropagation,
                          SemanticDecision::Allow,
-                         SemanticReason::DirectErrorMatch,
+                         SemanticReason::ExplicitErrorConversion,
                          errT->toString(), retErrT->toString());
         }
+      } else {
+        recordDecision(Unwrap, SemanticRuleID::ErrorProp001,
+                       SemanticOperation::ErrorPropagation,
+                       SemanticDecision::Allow,
+                       SemanticReason::DirectErrorMatch,
+                       errT->toString(), retErrT->toString());
       }
     } else if (isOption) {
       if (!fnRetT->isShape()) {
         error(Unwrap, DiagID::ERR_SEMA_FUNCTION_MUST_RETURN_OPTION_WHEN_UNWRAPPI);
       } else {
         auto retShape = std::static_pointer_cast<toka::ShapeType>(fnRetT);
-        std::string fnRetSoul = retShape->Decl ? retShape->Decl->Name : retShape->getSoulName();
-        bool fnIsOption = fnRetSoul == "Option" || fnRetSoul.find("Option_") == 0;
-        if (!fnIsOption) {
+        std::shared_ptr<toka::Type> retPayloadT = nullptr;
+        if (!isSupportedOptionShape(retShape, retPayloadT)) {
           error(Unwrap, DiagID::ERR_SEMA_FUNCTION_MUST_RETURN_OPTION_WHEN_UNWRAPPI);
         }
       }

@@ -1,0 +1,12 @@
+import core/result::{Result}
+shape Token(id: i32)
+shape Result_Probe(Ok(i32) = 1 | Err(Token) = 0 | Other = 255)
+
+fn consume(res: Result_Probe) -> Result<i32, Token> {
+    auto val = res!
+    return Result<i32, Token>::Ok(val)
+}
+
+fn main() -> i32 {
+    return 0:i32
+}
