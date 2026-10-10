@@ -8988,6 +8988,16 @@ static bool isOwningTemporaryTaskHandle(const Expr *expr) {
             expr = unsafeExpr->Expression.get();
         } else if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
             expr = postfix->LHS.get();
+        } else if (auto *start = dynamic_cast<const StartExpr *>(expr)) {
+            expr = start->Expression.get();
+        } else if (auto *unwrap = dynamic_cast<const UnwrapPropagationExpr *>(expr)) {
+            expr = unwrap->Base.get();
+        } else if (auto *member = dynamic_cast<const MemberExpr *>(expr)) {
+            if (member->IsTaskStart) {
+                expr = member->Object.get();
+            } else {
+                break;
+            }
         } else {
             break;
         }
