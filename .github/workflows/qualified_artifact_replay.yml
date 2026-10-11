@@ -440,9 +440,9 @@ jobs:
                   if r_errors:
                       errors.append('invalid R3/R5 replay receipt for %s: %s' % (r.get('target'), '; '.join(r_errors)))
               if os.environ['TAG_NAME'].startswith('v0.14.'):
-                  c = r.get('candidate_014', {}) or {}
-                  if type(c.get('version')) is not int or c.get('version') != 1 or c.get('schema') != 'toka.0.14-candidate-controls' or c.get('result') != 'pass' or c.get('candidate_revision') != os.environ['CANDIDATE_SHA'] or c.get('version_label') != os.environ['TAG_NAME'] or c.get('build_testing') is not False or c.get('groups') != ['G1', 'G2', 'G3-unwrap']:
-                      errors.append('invalid 0.14 replay receipt for %s' % r.get('target'))
+                  c_errors = policy.candidate_014_receipt_errors(r.get('candidate_014'), os.environ['CANDIDATE_SHA'], os.environ['TAG_NAME'], target=r.get('target'))
+                  if c_errors:
+                      errors.append('invalid 0.14 replay receipt for %s: %s' % (r.get('target'), '; '.join(c_errors)))
           result={'schema':'toka.qualified-artifact-replay-summary','version':2,'policy_id':policy.policy_id(os.environ['TAG_NAME']),'candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'qualification_run_id':int(os.environ['QUALIFICATION_RUN_ID']),'qualification_run_attempt':q['run_attempt'],'replay_run_id':int(os.environ['GITHUB_RUN_ID']),'replay_run_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'receipts':rows,'errors':errors,'result':'fail' if errors else 'pass'}
           Path('qualified-artifact-replay-receipt.json').write_text(json.dumps(result,indent=2)+'\n')
           raise SystemExit(bool(errors))

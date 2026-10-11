@@ -100,6 +100,11 @@ def validate_promotion(args,observed):
                 r_errors = policy.r3_r5_receipt_errors(r3_r5, args.candidate_sha, args.tag_name, target=row.get('target'))
                 if r_errors:
                     raise ValueError('R3/R5 replay receipt invalid in promotion (%s): %s' % (row.get('target'), '; '.join(r_errors)))
+            if args.tag_name.startswith('v0.14.'):
+                c014 = row.get('candidate_014')
+                c_errors = policy.candidate_014_receipt_errors(c014, args.candidate_sha, args.tag_name, target=row.get('target'))
+                if c_errors:
+                    raise ValueError('0.14 replay receipt invalid in promotion (%s): %s' % (row.get('target'), '; '.join(c_errors)))
         observed['archive_source']=source
         observed['archives']={t:{'archive_name':'toka-%s-%s.tar.gz'%(args.tag_name,t),'draft_sha256':archives['toka-%s-%s.tar.gz'%(args.tag_name,t)],'qualification_sha256':archives['toka-%s-%s.tar.gz'%(args.tag_name,t)]} for t in targets}
         return []

@@ -32,15 +32,7 @@ class Contract014(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as name:
                 a, d = cases.fixture(Path(name))
-                proof = {
-                    'schema': 'toka.0.14-candidate-controls',
-                    'version': 1,
-                    'result': 'pass',
-                    'candidate_revision': cases.SHA,
-                    'version_label': 'v0.14.0',
-                    'build_testing': False,
-                    'groups': ['G1', 'G2', 'G3-unwrap'],
-                }
+                proof = cases.valid_candidate_014(cases.SHA, 'v0.14.0', 'linux-x64')
                 gate = report('linux-x64', cases.SHA, 'v0.14.0')
                 gate['stages'][-1]['counts']['candidate_014'] = copy.deepcopy(proof)
                 self.assertEqual(qualification.report_errors(gate, cases.SHA, 'v0.14.0'), [])
@@ -61,6 +53,16 @@ class Contract014(unittest.TestCase):
                     ('wrong_label', lambda p: p.update(version_label='v0.13.0')),
                     ('missing_groups', lambda p: p.update(groups=['G1', 'G2'])),
                     ('extra_groups', lambda p: p.update(groups=['G1', 'G2', 'G3-unwrap', 'G4'])),
+                    ('missing_receipts_key', lambda p: p.pop('receipts')),
+                    ('empty_receipts', lambda p: p.update(receipts=[])),
+                    ('wrong_receipt_type', lambda p: p['receipts'].__setitem__(0, "invalid")),
+                    ('all_commands_failed', lambda p: [r.update(exit_code=1) for r in p['receipts'] if r.get('name', '').startswith(('version-', 'g1-', 'g2-', 'g3-compile-', 'g3-run-'))]),
+                    ('counts_mismatch', lambda p: p['counts'].update(total_receipts=73)),
+                    ('counts_failed_nonzero', lambda p: p['counts'].update(failed=1)),
+                    ('missing_tools', lambda p: p.pop('four_tool_versions')),
+                    ('wrong_tool_version', lambda p: p['four_tool_versions'].update(tokac='tokac 0.13.1')),
+                    ('wrong_fixtures_digest', lambda p: p.update(fixtures_digest='0' * 64)),
+                    ('wrong_control_sha', lambda p: p.update(control_script_sha256='0' * 64)),
                 ]
                 for desc, mutate in mutations:
                     with self.subTest(mutation=desc):
@@ -87,6 +89,27 @@ class Contract014(unittest.TestCase):
             with tempfile.TemporaryDirectory() as name:
                 a, d = cases.fixture(Path(name))
                 self.assertEqual(len(draft.validate(a)), 3)
+                self.assertEqual(promotion.validate(a), [])
+
+                # Promotion rejection when replay receipts candidate_014 is mutated or missing
+                for p_desc, p_mutate in [
+                    ('missing_candidate_014', lambda r: r.pop('candidate_014', None)),
+                    ('none_candidate_014', lambda r: r.update(candidate_014=None)),
+                    ('header_only_candidate_014', lambda r: r.update(candidate_014={
+                        'schema': 'toka.0.14-candidate-controls', 'version': 1, 'result': 'pass',
+                        'candidate_revision': cases.SHA, 'version_label': 'v0.14.0', 'build_testing': False,
+                        'groups': ['G1', 'G2', 'G3-unwrap']
+                    })),
+                    ('corrupt_receipt_type', lambda r: r['candidate_014']['receipts'].__setitem__(0, 'bad')),
+                    ('receipt_command_failed', lambda r: r['candidate_014']['receipts'][0].update(exit_code=1)),
+                ]:
+                    with self.subTest(replay_mutation=p_desc):
+                        d_bad = copy.deepcopy(d)
+                        p_mutate(d_bad['replay']['receipts'][0])
+                        cases.dump(a.replay_receipt, d_bad['replay'])
+                        self.assertTrue(promotion.validate(a))
+                # Restore valid replay receipt
+                cases.dump(a.replay_receipt, d['replay'])
                 self.assertEqual(promotion.validate(a), [])
 
                 for tag in ('v0.14.01', 'v0.14.0-rc.1', 'v0.15.0'):

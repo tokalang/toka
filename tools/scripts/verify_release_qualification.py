@@ -97,9 +97,10 @@ def report_errors(report, revision, version_label):
                 if r_errors:
                     errors.append(target+': required R3/R5 installed candidate controls invalid: '+'; '.join(r_errors))
         if version_label.startswith('v0.14.') and stage.get('name')=='package_smoke':
-            control=stage.get('counts',{}).get('candidate_014',{})
-            if type(control.get('version')) is not int or control.get('version') != 1 or control.get('schema')!='toka.0.14-candidate-controls' or control.get('result')!='pass' or control.get('candidate_revision')!=revision or control.get('version_label')!=version_label or control.get('build_testing') is not False or control.get('groups')!=['G1','G2','G3-unwrap']:
-                errors.append(target+': required 0.14 installed candidate controls missing or mismatched')
+            c014 = stage.get('counts',{}).get('candidate_014')
+            c_errors = platforms.candidate_014_receipt_errors(c014, revision, version_label, target=target)
+            if c_errors:
+                errors.append(target+': required 0.14 installed candidate controls invalid: '+'; '.join(c_errors))
     return errors
 
 

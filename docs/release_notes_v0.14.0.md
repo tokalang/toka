@@ -1,17 +1,16 @@
 # Toka 0.14.0 Release Notes
 
-Toka 0.14.0 delivers static dispatch async traits, robust framed transport protocol lifecycle management, and end-to-end semantic correctness for the unwrap propagation operator (`!`).
+Toka 0.14.0 delivers static dispatch async traits, framed transport protocol lifecycle management, and verified ownership consumption and container layout bounds for the unwrap propagation operator (`!`).
 
 ## Key Highlights
 
 ### 1. Static Dispatch Async Traits (G1)
 - **Static Monomorphization**: Supports generic async traits with static dispatch and concrete type monomorphization, enabling zero-cost abstraction for asynchronous interfaces.
 - **Dynamic Dispatch Rejection (`E0617`)**: Dynamic async traits (`dyn @AsyncTrait`) are explicitly rejected at compile time with diagnostic code `error[E0617]`.
-- **Frame Budget Safety**: Enforces a strict 16 MiB coroutine frame upper bound to prevent runaway stack allocation.
 - **Isolated Lifecycle Observation**: Production runtime (`lib/sys/toka_rt.o`) maintains zero observer symbol contamination, while isolated test observation proves exact-once drop and zero buffer leaks across all 4 execution branches.
 
 ### 2. Framed Transport & TaskHandle Lifecycle (G2)
-- **Framed Protocol Core**: Full protocol support for `FramedStream`, `FramedReader`, and `FramedWriter` with guaranteed safety under cancellation, I/O errors, zero-byte frames, and short buffer reads.
+- **Framed Protocol Core**: Full protocol support for `FramedStream`, `FramedReader`, and `FramedWriter` with guaranteed safety under cancellation, I/O errors, zero-byte frames, and short buffer reads. Enforces a strict 16 MiB (`MAX_FRAME_SIZE = 16777216` bytes) payload limit on individual transport frames.
 - **`.start` Ownership Inheritance**: Fixed task handle `.start` wrapper lowering so that `.start` inherits the ownership semantics of its base handle, guaranteeing timely resource cleanup and zero remaining Task Control Blocks (TCB = 0) upon cancellation or completion.
 - **Permanent Lifecycle Assertions**: Lifecycle gates enforce exact-once buffer free and complete TCB reclamation.
 - **Platform Matrix**: 18 directed G2 controls are verified across the three core blocking platforms (Linux x64, Linux ARM64, and macOS ARM64). Windows is continuously validated under the dedicated Windows Dogfood pipeline.
