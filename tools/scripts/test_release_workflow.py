@@ -98,6 +98,8 @@ def report(target, revision, label):
                 "pass_suite": {"passed": 412, "failed": 0},
                 "conformance": {"passed": 298, "failed": 0},
             }
+        elif stage == "semantic_replay":
+            counts = {"passed": 56, "failed": 0}
         stages.append({"name": stage, "result": "pass", "counts": counts})
     return {
         "schema": "toka.release-gate", "version": 2, "result": "pass",

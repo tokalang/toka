@@ -7,15 +7,23 @@ TOKAC="${TOKAC:-./build/bin/tokac}"
 CASE_ROOT="${CASE_ROOT:-tests/semantics/tki_replay/cases}"
 EVIDENCE_COMPARE="${EVIDENCE_COMPARE:-tools/scripts/compare_semantic_evidence.py}"
 
+execution_completed=0
 work_root_is_temporary=0
 if [ -z "${WORK_ROOT:-}" ]; then
     WORK_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/toka_semantic_replay.XXXXXX")"
     work_root_is_temporary=1
-    cleanup_work_root() {
-        rm -rf "$WORK_ROOT"
-    }
-    trap cleanup_work_root EXIT
 fi
+cleanup_work_root() {
+    local rc=$?
+    if [ "$execution_completed" -ne 1 ] && [ "$rc" -eq 0 ]; then
+        rc=1
+    fi
+    if [ "$work_root_is_temporary" -eq 1 ] && [ -n "${WORK_ROOT:-}" ] && [ -d "$WORK_ROOT" ]; then
+        rm -rf "$WORK_ROOT"
+    fi
+    exit "$rc"
+}
+trap cleanup_work_root EXIT
 
 if [[ "$TOKAC" = /* ]]; then
     TOKAC_ABS="$TOKAC"
@@ -82,17 +90,20 @@ run_case() {
     local lib_tki="$work_dir/lib.tki"
     local lib_hidden="$work_dir/lib.tk.source-hidden"
     local support_objects=()
-    if [ -f "$case_dir/replay_support.c" ]; then
-        local support_obj="$work_dir/replay_support.o"
-        if ! "${CC:-cc}" -c "$case_dir/replay_support.c" -o "$support_obj" \
-            > "$work_dir/support.out" 2> "$work_dir/support.err"; then
-            echo "FAIL $case_name: native observation support compilation failed"
-            sed 's/^/  | /' "$work_dir/support.err"
+    for support_src in "$case_dir"/replay_support*.c; do
+        [ -f "$support_src" ] || continue
+        local support_name
+        support_name="$(basename "$support_src" .c)"
+        local support_obj="$work_dir/$support_name.o"
+        if ! "${CC:-cc}" -c "$support_src" -o "$support_obj" \
+            > "$work_dir/$support_name.out" 2> "$work_dir/$support_name.err"; then
+            echo "FAIL $case_name: native observation support compilation failed: $support_src"
+            sed 's/^/  | /' "$work_dir/$support_name.err"
             failed=$((failed + 1))
             return
         fi
         support_objects+=("$support_obj")
-    fi
+    done
 
     if ! "$TOKAC_ABS" -c "$lib_src" -o "$lib_obj" > "$work_dir/lib.out" 2> "$work_dir/lib.err"; then
         echo "FAIL $case_name: provider compilation failed"
@@ -194,7 +205,7 @@ run_case() {
         if grep -q "SOURCE_BACKED_RUNTIME" "$source_consumer"; then
             local source_exe="$work_dir/$source_stem.source.exe"
             if ! TOKA_BUILD_DIR="$work_dir/source-build" TOKA_USE_LIB_CACHE=0 \
-                "$TOKAC_ABS" "$source_consumer" "$lib_obj" "${support_objects[@]}" -o "$source_exe" \
+                "$TOKAC_ABS" "$source_consumer" "$lib_obj" ${support_objects[@]+"${support_objects[@]}"} -o "$source_exe" \
                 > "$work_dir/$source_stem.source.run-build.out" \
                 2> "$work_dir/$source_stem.source.run-build.err"; then
                 echo "FAIL $case_name/$source_stem: source-backed runtime build failed"
@@ -257,10 +268,10 @@ run_case() {
         local stem
         stem="$(basename "$consumer" .tk)"
         local exe="$work_dir/$stem.exe"
-        local compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "$lib_obj" "${support_objects[@]}" "-o" "$exe")
+        local compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "$lib_obj" ${support_objects[@]+"${support_objects[@]}"} "-o" "$exe")
         local compile_only=0
         if grep -q "SOURCELESS_RECHECKED_BODY" "$consumer"; then
-            compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "${support_objects[@]}" "-o" "$exe")
+            compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" ${support_objects[@]+"${support_objects[@]}"} "-o" "$exe")
         fi
         if grep -q "COMPILE_ONLY" "$consumer"; then
             compile_only=1
@@ -401,3 +412,6 @@ fi
 if [ "$failed" -ne 0 ]; then
     exit 1
 fi
+
+execution_completed=1
+

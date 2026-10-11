@@ -27,6 +27,7 @@ STAGE_NAMES = (
     "native_build_reference", "qslite", "async", "sanitizer",
     "package_smoke",
 )
+MIN_SEMANTIC_REPLAY_PASSED = 56
 
 
 def native_package_target():
@@ -211,15 +212,24 @@ def run_commands(name, commands, root, log_dir, env):
             break
     output = "".join(output_parts)
     (log_dir / (name + ".log")).write_text(output, encoding="utf-8")
-    sys.stdout.write("[%s] %s\n" % ("PASS" if returncode == 0 else "FAIL", name))
+    counts = parse_counts(name, output)
+    stage_failed = returncode != 0
+    if name == "semantic_replay":
+        passed = counts.get("passed") if isinstance(counts, dict) else None
+        failed = counts.get("failed") if isinstance(counts, dict) else None
+        if not isinstance(passed, int) or not isinstance(failed, int) or failed != 0 or passed < MIN_SEMANTIC_REPLAY_PASSED:
+            stage_failed = True
+            if returncode == 0:
+                returncode = 1
+    sys.stdout.write("[%s] %s\n" % ("FAIL" if stage_failed else "PASS", name))
     sys.stdout.flush()
-    if returncode != 0:
+    if stage_failed:
         sys.stdout.write(output)
     return {
-        "counts": parse_counts(name, output),
+        "counts": counts,
         "exit_code": returncode,
         "name": name,
-        "result": "pass" if returncode == 0 else "fail",
+        "result": "fail" if stage_failed else "pass",
     }
 
 

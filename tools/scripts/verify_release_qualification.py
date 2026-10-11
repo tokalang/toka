@@ -23,6 +23,7 @@ STAGES = (
 
 MIN_CTEST_PASSED = 15
 MIN_CONFORMANCE_PASSED = 298
+MIN_SEMANTIC_REPLAY_PASSED = 56
 PROFILE_PATH = Path(__file__).resolve().parents[2] / "spec/restricted_cancellation_profile.v1.json"
 
 
@@ -61,6 +62,15 @@ def count_errors(stage, target):
                 conformance_passed < MIN_CONFORMANCE_PASSED:
             errors.append("%s: conformance baseline is not satisfied" % target)
         return errors
+    if name == "semantic_replay":
+        passed = integer_count(counts, "passed")
+        failed = integer_count(counts, "failed")
+        if passed is None or failed is None:
+            return ["%s: semantic_replay completion counts are missing" % target]
+        if failed != 0 or passed < MIN_SEMANTIC_REPLAY_PASSED:
+            return ["%s: semantic_replay baseline is not satisfied (passed=%s, failed=%s, expected>=%s)" %
+                    (target, passed, failed, MIN_SEMANTIC_REPLAY_PASSED)]
+        return []
     return []
 
 
