@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+import std/net::{TcpStream}
+import stdx/net/stream::{AsyncStream}
+import std/task::{block_on}
+import std/io::{println}
+fn coordinate()->async i32 {
+ auto closed#=TcpStream(fd = -1:i32,closed=true)
+ auto s#=AsyncStream::from_tcp(closed#)
+ auto result=s#.write_from_async(Vec<u8>::new(),1000:i32).await
+ println("closed-empty write ok={}",result.is_ok())
+ return 0:i32
+}
+fn main()->i32{return block_on<i32>(coordinate().start)}

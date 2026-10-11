@@ -1,0 +1,15 @@
+import core/option::{Option}
+import core/result::{Result}
+
+shape Token(id: i32)
+shape Option_M_Probe(Some(Token, Token) = 1 | None = 0)
+
+fn consume() -> Option<i32> {
+    auto box = Option_M_Probe::Some(Token(id = 1:i32), Token(id = 2:i32))
+    auto t = box!
+    return Option<i32>::Some(t.id)
+}
+
+fn main() -> i32 {
+    return 0:i32
+}

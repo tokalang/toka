@@ -88,10 +88,16 @@ def fixture(root,intel=False):
             row['candidate_013']={'schema':'toka.0.13-candidate-controls','version':1,'result':'pass','candidate_revision':SHA,'version_label':TAG,'build_testing':False,'groups':['A1','B1','B1-boundaries','B1-relative','D1-D2']}
             if TAG != 'v0.13.0':
                 row['r3_r5']=valid_r3_r5(SHA,TAG,row['target'])
+    if TAG.startswith('v0.14.'):
+        for row in summary['reports']:
+            row['candidate_014']={'schema':'toka.0.14-candidate-controls','version':1,'result':'pass','candidate_revision':SHA,'version_label':TAG,'build_testing':False,'groups':['G1','G2','G3-unwrap']}
     replay_receipts=[{'target':target,'result':'pass','archive_sha256':hashes['toka-%s-%s.tar.gz'%(TAG,target)],'candidate_revision':SHA,'version_label':TAG,'policy_id':policy.policy_id(TAG),'asset_source':'candidate_run','qualification_run_id':11,'qualification_run_attempt':1} for target in targets]
     if TAG.startswith('v0.13.') and TAG != 'v0.13.0':
         for r in replay_receipts:
             r['r3_r5']=valid_r3_r5(SHA,TAG,r['target'])
+    if TAG.startswith('v0.14.'):
+        for r in replay_receipts:
+            r['candidate_014']={'schema':'toka.0.14-candidate-controls','version':1,'result':'pass','candidate_revision':SHA,'version_label':TAG,'build_testing':False,'groups':['G1','G2','G3-unwrap']}
     documents={'summary':summary,'run':{'id':11,'run_attempt':1,'status':'completed','conclusion':'success','head_sha':SHA,'path':'.github/workflows/release.yml','event':'workflow_dispatch','repository':{'full_name':'tokalang/toka'},'head_repository':{'full_name':'tokalang/toka'}},
                'draft':{'tagName':TAG,'isDraft':True,'isPrerelease':False,'assets':[{'name':name} for name in [*hashes,'SHA256SUMS']]},'artifacts':{'artifacts':metadata},
                'optional_run':{'id':21,'run_attempt':2,'head_sha':SHA,'status':'completed','conclusion':'success','event':'workflow_dispatch','path':'.github/workflows/optional_macos_x64.yml'},

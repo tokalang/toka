@@ -157,6 +157,7 @@ def parse_counts(name, output):
             if data.get("schema") == "toka.release-package-smoke":
                 counts = {"checks": int(data.get("count", 0))}
                 if "candidate_013" in data:counts["candidate_013"]=data["candidate_013"]
+                if "candidate_014" in data:counts["candidate_014"]=data["candidate_014"]
                 if "r3_r5" in data:counts["r3_r5"]=data["r3_r5"]
                 break
     elif name == "native_build_reference":
@@ -226,13 +227,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--version", default="v0.13.1")
+    parser.add_argument("--version", default="v0.14.0")
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
-    if not re.fullmatch(r"v0\.(?:11|12|13)\.(0|[1-9][0-9]*)", args.version):
-        parser.error("release label must be a canonical v0.11.x/v0.12.x/v0.13.x tag")
+    if not re.fullmatch(r"v0\.(?:11|12|13|14)\.(0|[1-9][0-9]*)", args.version):
+        parser.error("release label must be a canonical v0.11.x/v0.12.x/v0.13.x/v0.14.x tag")
 
     root = Path(__file__).resolve().parents[2]
     build_dir = (root / args.build_dir).resolve()
@@ -405,19 +406,20 @@ def main():
         )),
     )
 
-    if args.version.startswith('v0.13.'):
+    if args.version.startswith(('v0.13.', 'v0.14.')):
         standard = work_dir/'standard-sdk-build'
         cache={}
         for line in (build_dir/'CMakeCache.txt').read_text().splitlines():
             if '=' in line and ':' in line.split('=',1)[0]:
                 key,value=line.split('=',1);cache[key.split(':',1)[0]]=value
         inherited=['-D'+key+'='+cache[key] for key in ('CMAKE_C_COMPILER','CMAKE_CXX_COMPILER','CMAKE_CXX_FLAGS','LLVM_DIR') if cache.get(key)]
+        controls_subdir = 'candidate-014-installed' if args.version.startswith('v0.14.') else 'candidate-013-installed'
         commands = [
             ['cmake','-S',str(root),'-B',str(standard),'-DCMAKE_BUILD_TYPE=Release','-DBUILD_TESTING=OFF',*inherited],
             ['cmake','--build',str(standard),'--target','toka-tools','--parallel',env['CORES']],
             ['env','BINARY_BUILD_DIR='+str(standard),'tools/scripts/package_release.sh',args.version],
             [sys.executable,'tools/scripts/test_release_package.py',str(archive),'--version',args.version,
-             '--controls-output',str(log_dir/'candidate-013-installed')],
+             '--controls-output',str(log_dir/controls_subdir)],
         ]
         # Test-mode suites retain their own receipts; only standard tools ship.
         stages=tuple((name,tuple(commands) if name=='package_smoke' else rows) for name,rows in stages)

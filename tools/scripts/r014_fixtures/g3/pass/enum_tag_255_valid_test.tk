@@ -1,0 +1,17 @@
+shape TagProbe (
+    Live(i32) = 255 |
+    Empty = 0
+)
+
+fn main() -> i32 {
+    auto p = TagProbe::Live(42:i32)
+    match p {
+        auto TagProbe::Live(v) => {
+            assert(v == 42:i32, "live 42")
+        }
+        _ => {
+            assert(false, "expected live")
+        }
+    }
+    return 0:i32
+}

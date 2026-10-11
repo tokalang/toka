@@ -2,9 +2,9 @@
 set -e
 
 # Usage: ./package_release.sh [version]
-VERSION=${1:-"v0.13.1"}
-if [[ ! "$VERSION" =~ ^v0\.(11|12|13)\.(0|[1-9][0-9]*)$ ]]; then
-    echo "Release label must be a canonical v0.11.x/v0.12.x/v0.13.x tag" >&2
+VERSION=${1:-"v0.14.0"}
+if [[ ! "$VERSION" =~ ^v0\.(11|12|13|14)\.(0|[1-9][0-9]*)$ ]]; then
+    echo "Release label must be a canonical v0.11.x/v0.12.x/v0.13.x/v0.14.x tag" >&2
     exit 1
 fi
 OS=${OS:-""}
@@ -110,24 +110,30 @@ fi
 mkdir -p "${PACKAGE_DIR}/docs"
 cp -a docs/ai_completion_card.md "${PACKAGE_DIR}/docs/"
 
-if [[ "$VERSION" == v0.13.* ]]; then
+if [[ "$VERSION" == v0.13.* ]] || [[ "$VERSION" == v0.14.* ]]; then
     cp docs/package_entry_contract.md docs/package_entry_example.md docs/diagnostic_d1_d2_migration.md docs/toka_test_lock_codes.md "${PACKAGE_DIR}/docs/"
+    if [ -f "docs/release_notes_${VERSION}.md" ]; then
+        cp "docs/release_notes_${VERSION}.md" "${PACKAGE_DIR}/docs/"
+    fi
+    if [ -f "docs/compatibility_0.14.md" ]; then
+        cp "docs/compatibility_0.14.md" "${PACKAGE_DIR}/docs/"
+    fi
 fi
 
 # Copy meta files
 cp README.md "${PACKAGE_DIR}/" || true
 cp LICENSE "${PACKAGE_DIR}/" || true
 
-# Bind standard 0.13 archives to the source and all four real binaries.
-if [[ "$VERSION" == v0.13.* ]]; then
+# Bind standard 0.13 / 0.14 archives to the source and all four real binaries.
+if [[ "$VERSION" == v0.13.* ]] || [[ "$VERSION" == v0.14.* ]]; then
     python3 - "$PACKAGE_DIR" "$VERSION" "$BINARY_BUILD_DIR" <<'PYCODE'
 import hashlib,json,subprocess,sys
 from pathlib import Path
 root=Path(sys.argv[1]);label=sys.argv[2]
-if 'BUILD_TESTING:BOOL=OFF' not in (Path(sys.argv[3])/'CMakeCache.txt').read_text():raise SystemExit('0.13 distribution requires a standard BUILD_TESTING=OFF build')
+if 'BUILD_TESTING:BOOL=OFF' not in (Path(sys.argv[3])/'CMakeCache.txt').read_text():raise SystemExit(f'{label} distribution requires a standard BUILD_TESTING=OFF build')
 revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
 dirty=bool(subprocess.check_output(['git','-c','core.fsmonitor=false','status','--porcelain','--untracked-files=no']).strip())
-if dirty:raise SystemExit('0.13 package requires a frozen clean tracked candidate')
+if dirty:raise SystemExit(f'{label} package requires a frozen clean tracked candidate')
 tools={}
 for name in ('tokac','toka','tokafmt','tokalsp'):
     path=root/'bin'/name;r=subprocess.run([str(path.resolve()),'--version'],capture_output=True)

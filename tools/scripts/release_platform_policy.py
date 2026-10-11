@@ -63,17 +63,19 @@ SHA = re.compile(r'[0-9a-f]{40}\Z')
 
 
 def modern(label):
-    if label.startswith(('v0.12.', 'v0.13.')) and not re.fullmatch(r'v0\.(?:12|13)\.(0|[1-9][0-9]*)', label):
+    if label.startswith(('v0.12.', 'v0.13.', 'v0.14.')) and not re.fullmatch(r'v0\.(?:12|13|14)\.(0|[1-9][0-9]*)', label):
         raise ValueError('noncanonical three-core release label')
-    return bool(re.fullmatch(r'v0\.(?:12|13)\.(0|[1-9][0-9]*)',label))
+    return bool(re.fullmatch(r'v0\.(?:12|13|14)\.(0|[1-9][0-9]*)',label))
 
 
 def policy_id(label):
+    if label.startswith('v0.14.'):
+        return 'toka.release-platforms.0.14.v1'
     return 'toka.release-platforms.0.13.v1' if label.startswith('v0.13.') else POLICY
 
 
 def core_targets(label):
-    if not re.fullmatch(r'v0\.(?:11|12|13)\.(0|[1-9][0-9]*)',label):
+    if not re.fullmatch(r'v0\.(?:11|12|13|14)\.(0|[1-9][0-9]*)',label):
         raise ValueError('unsupported or noncanonical release label')
     return CORE if modern(label) else LEGACY
 
@@ -389,6 +391,11 @@ def summary_errors(summary,revision,label):
                 r_errors = r3_r5_receipt_errors(row.get('r3_r5'), revision, label, target=row.get('target'))
                 if r_errors:
                     errors.append('0.13.1 R3/R5 report proof invalid for %s: %s' % (row.get('target'), '; '.join(r_errors)))
+    if label.startswith('v0.14.'):
+        for row in summary.get('reports',[]):
+            control=row.get('candidate_014',{}) or {}
+            if type(control.get('version')) is not int or control.get('version') != 1 or control.get('schema')!='toka.0.14-candidate-controls' or control.get('result')!='pass' or control.get('candidate_revision')!=revision or control.get('version_label')!=label or control.get('build_testing') is not False or control.get('groups')!=['G1','G2','G3-unwrap']:
+                errors.append('0.14 installed feature proof missing: '+str(row.get('target')))
     optional=summary.get('optional_targets')
     if not isinstance(optional,dict) or set(optional)!={OPTIONAL}:errors.append('optional target status must be explicit')
     else:errors+=optional_errors(optional[OPTIONAL],revision,label)
