@@ -1,0 +1,10 @@
+error[E04512]: Unwrap operator '!' requires Result<T, E> or Option<T> but got: Result_M_Probe
+ --> tests/fail/unwrap_unsupported_mangled_multi_payload_result.tk:9:17
+   |
+ 9 |     auto n = box!
+   |                 ^
+error[E0402]: Use of undeclared identifier 'n'
+ --> tests/fail/unwrap_unsupported_mangled_multi_payload_result.tk:10:35
+    |
+ 10 |     return Result<i32, Token>::Ok(n)
+    |                                   ^
