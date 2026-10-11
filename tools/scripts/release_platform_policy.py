@@ -670,7 +670,7 @@ def candidate_014_receipt_errors(receipt, revision, label, target=None):
                     errors.append('0.14 G2 lifecycle pass suite stdout assertion missing: ' + r_name)
                 elif case == 'given_11_branch' and 'All 11 G2 framed transport verification branches passed successfully!' not in out_str:
                     errors.append('0.14 G2 given 11 branch stdout assertion missing: ' + r_name)
-                elif case == 'closed_empty' and 'closed-empty write ok=true' not in out_str:
+                elif case == 'closed_empty' and 'closed-empty write ok=false' not in out_str:
                     errors.append('0.14 G2 closed empty stdout assertion missing: ' + r_name)
 
         elif r_name.startswith('g3-compile-'):

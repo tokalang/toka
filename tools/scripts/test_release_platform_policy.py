@@ -99,7 +99,7 @@ def valid_candidate_014(revision, label, target=None):
         elif case == 'given_11_branch':
             out_msg = 'All 11 G2 framed transport verification branches passed successfully!'
         elif case == 'closed_empty':
-            out_msg = 'closed-empty write ok=true'
+            out_msg = 'closed-empty write ok=false'
         receipts.append({'name': 'g2-run-' + case, 'argv': [f'/tmp/{case}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass', 'stdout': out_msg})
     tag_files = {
         'lifecycle': 'g14_unwrap_propagation_lifecycle_test.tk',
