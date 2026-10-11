@@ -204,8 +204,17 @@ def main():
             r3_r5=json.loads((Path(r3_r5_out)/'r3_r5_receipt.json').read_text())
             checks.append('0.13.1-r3-r5-installed-controls')
 
+        candidate_014 = None
+        if args.version and args.version.startswith('v0.14.'):
+            descriptor=json.loads((package_root/'sdk.json').read_text())
+            command=[sys.executable,str(ROOT/'tools/scripts/test_0_14_candidate.py'),'--sdk',str(package_root),'--revision',descriptor['candidate_revision'],'--version',args.version,'--output',str(args.controls_output or archive.parent/('candidate-controls-'+uuid.uuid4().hex))]
+            run(command,root,env)
+            candidate_014=json.loads((Path(command[-1])/'result.json').read_text())
+            checks.append('0.14-installed-candidate-controls')
+
     print(json.dumps({
         **({"candidate_013": candidate_013} if candidate_013 is not None else {}),
+        **({"candidate_014": candidate_014} if candidate_014 is not None else {}),
         **({"r3_r5": r3_r5} if r3_r5 is not None else {}),
         "checks": checks,
         "count": len(checks),

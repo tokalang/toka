@@ -1,0 +1,46 @@
+import std/vec::{Vec}
+import core/result::{Result}
+import std/net::{AsyncReadResult, AsyncWriteResult, AsyncIoError}
+import stdx/net/transport::{@AsyncTransport}
+import stdx/net/framed::{FramedStream, FramedWriter, FramedWriteResult, FramedError}
+import std/task::{block_on, sleep_async, task_cancel}
+import core/task::{task_get_coro_handle, toka_task_start}
+import std/io::{println}
+extern fn toka_rt_live_wait_registry_count() -> u32
+shape ProbeTransport(wire: Vec<u8>, calls:i32, mode:i32, closed:bool)
+impl ProbeTransport@AsyncTransport {
+ pub fn read_into_async(self#, cede owner:Vec<u8>, max_len:usize, timeout_ms:i32)->async Result<AsyncReadResult,AsyncIoError> {
+  return Result<AsyncReadResult,AsyncIoError>::Ok(AsyncReadResult(buffer=cede owner,bytes_read=0:usize,eof=true))
+ }
+ pub fn write_from_async(self#, cede owner:Vec<u8>, offset:usize, timeout_ms:i32)->async Result<AsyncWriteResult,AsyncIoError> {
+  auto owned#=cede owner
+  self.calls += 1:i32
+  if self.mode==2:i32 && self.calls==2:i32 {return Result<AsyncWriteResult,AsyncIoError>::Err(AsyncIoError(buffer=cede owned,message=string::from("injected I/O error")))}
+  if self.mode==3:i32 && self.calls==2:i32 {sleep_async(1000:i32).await}
+  auto n# = owned.len() - offset
+  if self.mode==0:i32 && n>1:usize {n=1:usize}
+  if self.mode==1:i32 {n=0:usize}
+  auto i#=0:usize
+  loop i < n {
+   self.wire#.push(owned.get(offset + i))
+   i += 1:usize
+  }
+  auto complete = offset + n == owned.len()
+  return Result<AsyncWriteResult,AsyncIoError>::Ok(AsyncWriteResult(buffer=cede owned,bytes_written=9:usize,complete=true))
+ }
+ pub fn close(self#){self.closed=true}
+}
+fn coordinator()->async i32 {
+ auto raw=ProbeTransport(wire=Vec<u8>::new(),calls=0:i32,mode=0:i32,closed=false)
+ auto fw#=FramedStream<ProbeTransport>::new(cede raw)
+ auto b#=Vec<u8>::with_capacity(16:usize)
+ b#.push(77:u8)
+ b#.push(78:u8)
+ b#.push(79:u8)
+ auto res=fw#.write_frame_async(cede b,1000:i32).await
+ println("ok={}, wire={}, calls={}, frames={}, state={}, closed={}",res.is_ok(),fw.transport.wire.len(),fw.transport.calls,fw.get_frames_written(),fw.get_state(),fw.transport.closed)
+ if res.is_ok(){auto out=res.unwrap();println("reported bytes={}, returned len={}",out.bytes_written,out.buffer.len())}
+
+ return 0:i32
+}
+fn main()->i32{return block_on<i32>(coordinator().start)}

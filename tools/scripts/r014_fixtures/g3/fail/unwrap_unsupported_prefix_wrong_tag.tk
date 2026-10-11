@@ -1,0 +1,12 @@
+import core/option::{Option}
+shape Token(id: i32)
+shape Option_Probe(Some(Token) = 255 | None = 0)
+
+fn consume(opt: Option_Probe) -> Option<i32> {
+    auto tok = opt!
+    return Option<i32>::Some(tok.id)
+}
+
+fn main() -> i32 {
+    return 0:i32
+}

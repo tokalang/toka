@@ -96,6 +96,10 @@ def report_errors(report, revision, version_label):
                 r_errors = platforms.r3_r5_receipt_errors(r3_r5, revision, version_label, target=target)
                 if r_errors:
                     errors.append(target+': required R3/R5 installed candidate controls invalid: '+'; '.join(r_errors))
+        if version_label.startswith('v0.14.') and stage.get('name')=='package_smoke':
+            control=stage.get('counts',{}).get('candidate_014',{})
+            if type(control.get('version')) is not int or control.get('version') != 1 or control.get('schema')!='toka.0.14-candidate-controls' or control.get('result')!='pass' or control.get('candidate_revision')!=revision or control.get('version_label')!=version_label or control.get('build_testing') is not False or control.get('groups')!=['G1','G2','G3-unwrap']:
+                errors.append(target+': required 0.14 installed candidate controls missing or mismatched')
     return errors
 
 
@@ -189,6 +193,8 @@ def main():
             reports[-1]['candidate_013']=next((stage.get('counts',{}).get('candidate_013') for stage in report.get('stages',[]) if stage.get('name')=='package_smoke'),None)
             if args.version_label != 'v0.13.0':
                 reports[-1]['r3_r5']=next((stage.get('counts',{}).get('r3_r5') for stage in report.get('stages',[]) if stage.get('name')=='package_smoke'),None)
+        if args.version_label.startswith('v0.14.'):
+            reports[-1]['candidate_014']=next((stage.get('counts',{}).get('candidate_014') for stage in report.get('stages',[]) if stage.get('name')=='package_smoke'),None)
 
     missing = sorted(set(targets) - set(seen))
     unexpected = sorted(set(seen) - set(targets))

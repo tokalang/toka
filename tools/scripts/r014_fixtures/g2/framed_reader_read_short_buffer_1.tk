@@ -1,0 +1,39 @@
+import std/vec::{Vec}
+import core/result::{Result}
+import std/net::{AsyncReadResult,AsyncWriteResult,AsyncIoError}
+import stdx/net/transport::{@AsyncTransport}
+import stdx/net/framed::{FramedStream,FramedReader,FramedWriter,FramedReadResult,FramedWriteResult,FramedError}
+import std/task::{block_on}
+import std/io::{println}
+shape BadTransport(calls:i32,bad_call:i32)
+impl BadTransport@AsyncTransport{
+ pub fn read_into_async(self#,cede owner:Vec<u8>,max_len:usize,timeout_ms:i32)->async Result<AsyncReadResult,AsyncIoError>{
+  auto owned#=cede owner
+  self.calls+=1:i32
+  owned#.clear()
+  if self.calls != self.bad_call {
+   owned#.push(0:u8)
+   owned#.push(0:u8)
+   owned#.push(0:u8)
+   owned#.push(3:u8)
+  }
+  auto count#=4:usize
+  if self.calls>1:i32{count=3:usize}
+  return Result<AsyncReadResult,AsyncIoError>::Ok(AsyncReadResult(buffer=cede owned,bytes_read=count,eof=false))
+ }
+ pub fn write_from_async(self#,cede owner:Vec<u8>,offset:usize,timeout_ms:i32)->async Result<AsyncWriteResult,AsyncIoError>{
+  auto n=owner.len() - offset
+  return Result<AsyncWriteResult,AsyncIoError>::Ok(AsyncWriteResult(buffer=cede owner,bytes_written=n,complete=true))
+ }
+ pub fn close(self#){println("TRANSPORT CLOSED")}
+}
+fn coordinate()->async i32{
+ auto raw=BadTransport(calls=0:i32,bad_call=1:i32)
+ auto f#=FramedReader<BadTransport>::new(cede raw)
+ println("begin reported count within need but buffer len zero")
+ auto res=f#.read_frame_async(Vec<u8>::with_capacity(16:usize),1000:i32).await
+ println("returned Err={},state={}",res.is_err(),f.get_state())
+ if !res.is_err(){return 90:i32}
+ return 0:i32
+}
+fn main()->i32{return block_on<i32>(coordinate().start)}

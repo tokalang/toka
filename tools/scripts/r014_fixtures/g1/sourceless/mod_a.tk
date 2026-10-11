@@ -1,0 +1,22 @@
+import std/vec::{Vec}
+import core/result::{Result}
+import std/net::{AsyncReadResult, AsyncIoError}
+
+pub trait @MockTransport {
+    pub fn read(self#, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError>
+}
+
+pub shape MockStream (
+    bytes_read: usize
+)
+
+impl MockStream@MockTransport {
+    pub fn read(self#, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError> {
+        self.bytes_read += 4:usize
+        return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+            buffer = cede buf,
+            bytes_read = 4:usize,
+            eof = false
+        ))
+    }
+}

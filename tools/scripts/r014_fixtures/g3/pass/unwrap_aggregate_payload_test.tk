@@ -1,0 +1,51 @@
+import core/option::{Option}
+import core/result::{Result}
+import std/io::{println}
+
+auto g_a# = 0:i32
+auto g_b# = 0:i32
+
+shape Token(id: i32)
+impl Token@Encap {
+    pub id
+    fn drop(self#) {
+        if self.id == 1:i32 {
+            g_a += 1:i32
+        } else {
+            g_b += 1:i32
+        }
+    }
+}
+
+shape Pair(left: Token, right: Token)
+
+fn consume_opt() -> Option<i32> {
+    auto box = Option<Pair>::Some(Pair(left = Token(id = 1:i32), right = Token(id = 2:i32)))
+    auto pair = box!
+    return Option<i32>::Some(42:i32)
+}
+
+fn consume_res() -> Result<i32, Pair> {
+    auto box = Result<i32, Pair>::Err(Pair(left = Token(id = 1:i32), right = Token(id = 2:i32)))
+    auto n = box!
+    return Result<i32, Pair>::Ok(n)
+}
+
+fn main() -> i32 {
+    {
+        auto out = consume_opt()
+        assert(out.is_some(), "some")
+    }
+    assert(g_a == 1:i32 && g_b == 1:i32, "drop opt pair")
+
+    g_a = 0:i32
+    g_b = 0:i32
+    {
+        auto out = consume_res()
+        assert(out.is_err(), "err")
+    }
+    assert(g_a == 1:i32 && g_b == 1:i32, "drop res pair")
+
+    println("PASS")
+    return 0:i32
+}
