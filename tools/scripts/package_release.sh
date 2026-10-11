@@ -127,13 +127,24 @@ cp LICENSE "${PACKAGE_DIR}/" || true
 # Bind standard 0.13 / 0.14 archives to the source and all four real binaries.
 if [[ "$VERSION" == v0.13.* ]] || [[ "$VERSION" == v0.14.* ]]; then
     python3 - "$PACKAGE_DIR" "$VERSION" "$BINARY_BUILD_DIR" <<'PYCODE'
-import hashlib,json,subprocess,sys
+import hashlib,json,re,subprocess,sys
 from pathlib import Path
-root=Path(sys.argv[1]);label=sys.argv[2]
-if 'BUILD_TESTING:BOOL=OFF' not in (Path(sys.argv[3])/'CMakeCache.txt').read_text():raise SystemExit(f'{label} distribution requires a standard BUILD_TESTING=OFF build')
+root=Path(sys.argv[1]);label=sys.argv[2];build_dir=Path(sys.argv[3])
+if 'BUILD_TESTING:BOOL=OFF' not in (build_dir/'CMakeCache.txt').read_text():raise SystemExit(f'{label} distribution requires a standard BUILD_TESTING=OFF build')
 revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
 dirty=bool(subprocess.check_output(['git','-c','core.fsmonitor=false','status','--porcelain','--untracked-files=no']).strip())
 if dirty:raise SystemExit(f'{label} package requires a frozen clean tracked candidate')
+if label.startswith('v0.14.'):
+    version_h=build_dir/'include/toka/Version.h'
+    if not version_h.is_file():raise SystemExit(f'{label} packaging requires built Version.h')
+    m=re.search(r'#define\s+TOKA_COMMIT_HASH\s+"([0-9a-fA-F]+)"',version_h.read_text())
+    if not m or not revision.startswith(m.group(1)):
+        build_sha=m.group(1) if m else 'unknown'
+        raise SystemExit(f'Build directory commit hash {build_sha} does not match candidate revision {revision[:8]}; reconfigure and rebuild required')
+elif (build_dir/'include/toka/Version.h').is_file():
+    m=re.search(r'#define\s+TOKA_COMMIT_HASH\s+"([0-9a-fA-F]+)"',(build_dir/'include/toka/Version.h').read_text())
+    if m and not revision.startswith(m.group(1)):
+        raise SystemExit(f'Build directory commit hash {m.group(1)} does not match candidate revision {revision[:8]}; reconfigure and rebuild required')
 tools={}
 for name in ('tokac','toka','tokafmt','tokalsp'):
     path=root/'bin'/name;r=subprocess.run([str(path.resolve()),'--version'],capture_output=True)
@@ -143,9 +154,10 @@ for name in ('tokac','toka','tokafmt','tokalsp'):
 PYCODE
 fi
 
-# Archive
+# Archive without macOS AppleDouble (._*) metadata
 cd build
-tar -czvf "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
+export COPYFILE_DISABLE=1
+tar --no-xattrs --exclude '._*' -czvf "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
 cd ..
 
 echo ""

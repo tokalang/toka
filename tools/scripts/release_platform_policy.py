@@ -371,6 +371,219 @@ def r3_r5_receipt_errors(receipt, revision, label, target=None):
     return errors
 
 
+EXPECTED_014_FIXTURES_DIGEST = 'e5679cd455cb44e517d05b9c28fafeb403442867faa701841dc43bd6639ddffa'
+AUTHORITATIVE_014_FIXTURES = {
+    'g1/fail/dyn_trait_async_param.tk': '14ed468697dcc14ac4839d5acf0d588fb113f3d5ae1a457b01fe7aba7d5dfaca',
+    'g1/fail/trait_async_plain_self.tk': '3787c6308e638270a618f1880397856370bd842bd102c6dd2daaddc64a7cb4d9',
+    'g1/g14_static_async_trait_lifecycle.tk': '2099a9947e09f0ee0a3981b0e6aed3e543d033564c74e587bc24ca706ba93061',
+    'g1/sourceless/main.tk': '59ca0992069c05324823c07e5b8baa670ad74257f0bb4effdbf5dc4d4547722c',
+    'g1/sourceless/mod_a.tk': '788d9cb2f8cfb6a0b2acdf1cadc296daeeba40f0895c9864f367fc90d7d21ee9',
+    'g1/sourceless/mod_b.tk': 'dd3c9e1607ad14bb586338712636acabf8c7b0b9894b17a2bd0c4dc44c2ae4c3',
+    'g2/closed_empty.tk': '7271c92f2b4fb4328e0da98c5f44c924490cfb5b08dd53c26c8949bd4f0f86a2',
+    'g2/framed_reader_read_short_buffer_1.tk': '0537f2196b96a8e7da43f2666e57aa33ca7e491de17d3a8f61d6c3c057cc1f73',
+    'g2/framed_reader_read_short_buffer_2.tk': '6056873ab8f4ff038e21127e47af2abd46deefc4e0b709189ac3e7ad460999cc',
+    'g2/framed_stream_cancel.tk': '71e1f756894db747851dd13953dccd726e4f0a31285552f11b7c407ba94d0984',
+    'g2/framed_stream_ioerror.tk': 'eccdf17a91db0eafe28be6ec75ef92af90439e735e840cfc3beb4dbcfad91681',
+    'g2/framed_stream_overreported_count.tk': 'ae92c54e646311551af29c1f1bee436843a66466107a08b309fda6de305d1930',
+    'g2/framed_stream_partial.tk': '73cb1aa9c20e00c572109c1d48fb7683adfc7a3e3d479d23a3a00e7e3a70c0bc',
+    'g2/framed_stream_read_short_buffer_1.tk': 'b28d726ad8bef9e69bd0a8a959504c8a98f329689f4adc4f03266a3e9f52297b',
+    'g2/framed_stream_read_short_buffer_2.tk': '139f944999e7cdac7fa9bdabce319d8029d32aa6f9cfac38e95aa78c49928ce3',
+    'g2/framed_stream_zero.tk': '02840a8c384cba12da590993f1f91944128e4aa46ad4f26ca3784b2e0d53e198',
+    'g2/framed_writer_cancel.tk': '75c422867acc5c3cc8a53fff3a763c4107e4c1758e911ffcbf3ae45ebd86dfeb',
+    'g2/framed_writer_ioerror.tk': 'e9e9b16079d6ad54c1ba5172e532e683801aecbfd037787daa8555c00053a11d',
+    'g2/framed_writer_overreported_count.tk': '274b375439f39b42e2abd18d832a421669b2dfe2d1db2a1dbf555e63c6eee448',
+    'g2/framed_writer_partial.tk': '1f48b40c31d6a9a7f2b30ccd75dabc5140ed2c0dc05af2dbf1236141b2939f48',
+    'g2/framed_writer_zero.tk': '0e55418fbabd36d69dc03c120b6cc48b89cb9699f01cfb5dc0f332037f5a5398',
+    'g2/given_11_branch.tk': '63cc151d36caf8049e30f8a7f21c5431b802180535f292a2cfbeea27f123d872',
+    'g2/lifecycle_pass_suite.tk': '54ad3b5dc53ef3abef791cc850a324e4e77ad8a2b2a2dbd21b2ce55f42c27630',
+    'g2/read_cancel.tk': 'dea2f69a216d824c1c467bb85cdd0b1293706e0e5135cb05addd94bcb05f4ed7',
+    'g3/fail/unwrap_unsupported_mangled_multi_payload_option.tk': '7998fa366bfbf8dd2a93c90e8f9a318c31403afbc4b5bfd51a9c9dd4841b59b3',
+    'g3/fail/unwrap_unsupported_mangled_multi_payload_result.tk': '13988a9822bbf1e9d95d6b2859b2fc10bc73f89341563c0b706f7787e28e83f1',
+    'g3/fail/unwrap_unsupported_prefix_extra_tag.tk': '8064ad85a699b12a134b021220da611c9b21789c42c5dad14f0108babf95b85d',
+    'g3/fail/unwrap_unsupported_prefix_wrong_tag.tk': '0babc344c184b722af10e1d1c979aad94473b703093367b67612a6ab6640e57a',
+    'g3/fail/unwrap_unsupported_result_prefix_wrong_tag.tk': '10b547340486a7553772c7c8844aac33634e33e582f931175b58ed441a20b490',
+    'g3/pass/enum_tag_255_valid_test.tk': '19c979ad14fbe59fd3616d35051d162d98bb3dff0b77a7f42312b8bd063a2ab5',
+    'g3/pass/g14_unwrap_propagation_lifecycle_test.tk': '2a0393f8cc57c85b21a731ca34eae3ec2b9d7a73c473c911e17988538c53fd5a',
+    'g3/pass/unwrap_aggregate_payload_test.tk': 'fa28999a9268d00f48d4d1deed9297515d58415092bbd21da6aff598fcd82319',
+}
+G2_014_CASES = (
+    'closed_empty', 'framed_reader_read_short_buffer_1', 'framed_reader_read_short_buffer_2',
+    'framed_stream_cancel', 'framed_stream_ioerror', 'framed_stream_overreported_count',
+    'framed_stream_partial', 'framed_stream_read_short_buffer_1', 'framed_stream_read_short_buffer_2',
+    'framed_stream_zero', 'framed_writer_cancel', 'framed_writer_ioerror',
+    'framed_writer_overreported_count', 'framed_writer_partial', 'framed_writer_zero',
+    'given_11_branch', 'lifecycle_pass_suite', 'read_cancel',
+)
+G3_014_NEG_CASES = (
+    'unwrap_unsupported_prefix_wrong_tag',
+    'unwrap_unsupported_prefix_extra_tag',
+    'unwrap_unsupported_result_prefix_wrong_tag',
+    'unwrap_unsupported_mangled_multi_payload_option',
+    'unwrap_unsupported_mangled_multi_payload_result',
+)
+
+
+def expected_014_script_sha256():
+    m = get_bundle_manifest()
+    if m and isinstance(m.get('modules'), dict):
+        return m['modules'].get('test_0_14_candidate.py')
+    return None
+
+
+def candidate_014_receipt_errors(receipt, revision, label, target=None):
+    if not isinstance(receipt, dict):
+        return ['0.14 candidate receipt is missing or not a dict']
+    errors = []
+    if receipt.get('schema') != 'toka.0.14-candidate-controls':
+        errors.append('0.14 receipt schema mismatch')
+    version = receipt.get('version')
+    if type(version) is not int or isinstance(version, bool) or version != 1:
+        errors.append('0.14 receipt version must be int 1')
+    if receipt.get('result') != 'pass':
+        errors.append('0.14 receipt result is not pass')
+    if receipt.get('candidate_revision') != revision:
+        errors.append('0.14 candidate revision mismatch')
+    if receipt.get('version_label') != label:
+        errors.append('0.14 version label mismatch')
+    if target is not None and receipt.get('target') is not None and receipt.get('target') != target:
+        errors.append('0.14 target mismatch: expected %s, got %s' % (target, receipt.get('target')))
+    if receipt.get('build_testing') is not False:
+        errors.append('0.14 receipt build_testing must be False')
+    if receipt.get('groups') != ['G1', 'G2', 'G3-unwrap']:
+        errors.append('0.14 receipt groups mismatch')
+    if receipt.get('fixtures_digest') != EXPECTED_014_FIXTURES_DIGEST:
+        errors.append('0.14 fixtures digest mismatch')
+
+    if receipt.get('control_script_name') != 'test_0_14_candidate.py':
+        errors.append('0.14 control script name mismatch')
+    control_sha = receipt.get('control_script_sha256')
+    expected_control_sha = expected_014_script_sha256()
+    if not isinstance(control_sha, str) or not re.fullmatch(r'[0-9a-f]{64}', control_sha):
+        errors.append('0.14 control script sha256 missing or invalid')
+    elif expected_control_sha and control_sha != expected_control_sha:
+        errors.append('0.14 control script digest mismatch')
+
+    tools = receipt.get('four_tool_versions')
+    if not isinstance(tools, dict) or set(tools.keys()) != {'tokac', 'toka', 'tokafmt', 'tokalsp'}:
+        errors.append('0.14 four_tool_versions missing or invalid')
+    else:
+        for t_name, t_str in tools.items():
+            if not isinstance(t_str, str) or label.removeprefix('v') not in t_str:
+                errors.append('0.14 tool version mismatch: ' + t_name)
+
+    counts = receipt.get('counts')
+    if not isinstance(counts, dict) or type(counts.get('total_receipts')) is not int or \
+            counts.get('total_receipts') != 74 or counts.get('passed') != 74 or counts.get('failed') != 0:
+        errors.append('0.14 counts mismatch or invalid')
+
+    receipts = receipt.get('receipts')
+    if not isinstance(receipts, list) or len(receipts) != 74:
+        errors.append('0.14 command receipts list must have exactly 74 entries')
+        return errors
+
+    expected_receipt_names = set()
+    for name in ('tokac', 'toka', 'tokafmt', 'tokalsp'):
+        expected_receipt_names.add('version-' + name)
+    expected_receipt_names.update([
+        'g1-lifecycle-compile', 'g1-lifecycle-run',
+        'g1-sourceless-compile-mod-a', 'g1-sourceless-compile-mod-b',
+        'g1-sourceless-compile-main', 'g1-sourceless-run-main',
+        'g1-reject-dyn-trait', 'g1-reject-plain-self',
+    ])
+    for case in G2_014_CASES:
+        expected_receipt_names.add('g2-compile-' + case)
+        expected_receipt_names.add('g2-run-' + case)
+    for tag in ('lifecycle', 'aggregate', 'tag255'):
+        expected_receipt_names.add('g3-compile-' + tag)
+        expected_receipt_names.add('g3-run-' + tag)
+    for case in G3_014_NEG_CASES:
+        for mode in ('check', 'object', 'ir', 'compile'):
+            expected_receipt_names.add(f'g3-neg-{case}-{mode}')
+
+    seen_receipts = set()
+    for r in receipts:
+        if not isinstance(r, dict):
+            errors.append('0.14 command receipt is not a dict')
+            continue
+        r_name = str(r.get('name', ''))
+        seen_receipts.add(r_name)
+
+        if 'signal' not in r or r['signal'] is not None:
+            errors.append('0.14 command receipt missing signal key or abnormal signal: ' + r_name)
+        if r.get('termination') is not None or r.get('error') is not None:
+            errors.append('0.14 command receipt indicates abnormal termination or error: ' + r_name)
+
+        argv = r.get('argv')
+        if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a for a in argv):
+            errors.append('0.14 command receipt argv invalid: ' + r_name)
+            continue
+
+        cwd = r.get('cwd')
+        if not isinstance(cwd, str) or not cwd:
+            errors.append('0.14 command receipt cwd missing or invalid: ' + r_name)
+
+        ms = r.get('execution_ms')
+        if type(ms) not in (int, float) or isinstance(ms, bool) or ms <= 0:
+            errors.append('0.14 command receipt execution_ms missing or invalid: ' + r_name)
+
+        exit_code = r.get('exit_code')
+        if type(exit_code) is not int or isinstance(exit_code, bool):
+            errors.append('0.14 command receipt exit_code missing or not int: ' + r_name)
+            continue
+
+        if r_name.startswith('version-'):
+            if exit_code != 0:
+                errors.append('0.14 tool version command exit code must be 0: ' + r_name)
+        elif r_name in ('g1-reject-dyn-trait', 'g1-reject-plain-self'):
+            if exit_code != 1:
+                errors.append('0.14 G1 negative command exit code must be 1: ' + r_name)
+            if '--check-only' not in argv:
+                errors.append('0.14 G1 negative command missing --check-only: ' + r_name)
+        elif r_name.startswith('g1-'):
+            if exit_code != 0:
+                errors.append('0.14 G1 positive command exit code must be 0: ' + r_name)
+        elif r_name.startswith('g2-compile-'):
+            if exit_code != 0:
+                errors.append('0.14 G2 compile command exit code must be 0: ' + r_name)
+            if '-o' not in argv:
+                errors.append('0.14 G2 compile command missing -o: ' + r_name)
+        elif r_name.startswith('g2-run-'):
+            if exit_code != 0:
+                errors.append('0.14 G2 run command exit code must be 0: ' + r_name)
+        elif r_name.startswith('g3-compile-'):
+            if exit_code != 0:
+                errors.append('0.14 G3 positive compile command exit code must be 0: ' + r_name)
+            if '-o' not in argv:
+                errors.append('0.14 G3 positive compile command missing -o: ' + r_name)
+        elif r_name.startswith('g3-run-'):
+            if exit_code != 0:
+                errors.append('0.14 G3 positive run command exit code must be 0: ' + r_name)
+        elif r_name.startswith('g3-neg-'):
+            if exit_code != 1:
+                errors.append('0.14 G3 negative command exit code must be 1: ' + r_name)
+            mode = r_name.rsplit('-', 1)[1]
+            if mode == 'check':
+                if '--check-only' not in argv:
+                    errors.append('0.14 G3 check command missing --check-only: ' + r_name)
+            elif mode == 'object':
+                if '-c' not in argv or '-o' not in argv:
+                    errors.append('0.14 G3 object command missing -c or -o: ' + r_name)
+            elif mode == 'ir':
+                if '--emit-llvm' not in argv or '-o' not in argv:
+                    errors.append('0.14 G3 IR command missing --emit-llvm or -o: ' + r_name)
+            elif mode == 'compile':
+                if '-o' not in argv:
+                    errors.append('0.14 G3 compile command missing -o: ' + r_name)
+        else:
+            errors.append('Unknown 0.14 command receipt: ' + r_name)
+
+    missing = expected_receipt_names - seen_receipts
+    if missing:
+        errors.append('Missing 0.14 command receipts: ' + ', '.join(sorted(missing)))
+
+    return errors
+
+
 def summary_errors(summary,revision,label):
     errors=[]
     if summary.get('schema')!='toka.release-qualification-summary' or summary.get('version')!=2 or \
@@ -393,9 +606,9 @@ def summary_errors(summary,revision,label):
                     errors.append('0.13.1 R3/R5 report proof invalid for %s: %s' % (row.get('target'), '; '.join(r_errors)))
     if label.startswith('v0.14.'):
         for row in summary.get('reports',[]):
-            control=row.get('candidate_014',{}) or {}
-            if type(control.get('version')) is not int or control.get('version') != 1 or control.get('schema')!='toka.0.14-candidate-controls' or control.get('result')!='pass' or control.get('candidate_revision')!=revision or control.get('version_label')!=label or control.get('build_testing') is not False or control.get('groups')!=['G1','G2','G3-unwrap']:
-                errors.append('0.14 installed feature proof missing: '+str(row.get('target')))
+            r_errors = candidate_014_receipt_errors(row.get('candidate_014'), revision, label, target=row.get('target'))
+            if r_errors:
+                errors.append('0.14 installed candidate proof invalid for %s: %s' % (row.get('target'), '; '.join(r_errors)))
     optional=summary.get('optional_targets')
     if not isinstance(optional,dict) or set(optional)!={OPTIONAL}:errors.append('optional target status must be explicit')
     else:errors+=optional_errors(optional[OPTIONAL],revision,label)

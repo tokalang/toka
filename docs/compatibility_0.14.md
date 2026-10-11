@@ -8,11 +8,11 @@
 - Variant payloads for `Some`, `Ok`, and `Err` must represent exactly one payload type. Multi-element tuple syntax (such as `Some(A, B)`) is rejected at compile time. Applications requiring multiple fields in a payload should use a named struct (e.g. `shape Pair(a: A, b: B)` inside `Option<Pair>`).
 - The `None` variant must carry no payload fields.
 
-### 2. Async Trait Bounds & Coroutine Frames
+### 2. Async Trait Bounds
 - Dynamic dispatch over async traits (`dyn @AsyncTrait`) is not supported and is rejected with diagnostic `error[E0617]`. Use static generic dispatch instead (`fn serve<T: AsyncTrait>(svc: T)`).
-- Coroutine frame allocations are bounded by a 16 MiB ceiling.
 
-### 3. TaskHandle Lifecycle
+### 3. Framed Transport & TaskHandle Lifecycle
+- Framed network transport imposes a strict 16 MiB (`MAX_FRAME_SIZE = 16777216` bytes) payload limit on individual frames.
 - Lowering of `.start.await` guarantees that canceling or completing the task cleanly releases buffers and reclaims the Task Control Block (TCB = 0).
 
 ## SDK Acceptance Checklist
@@ -33,4 +33,4 @@
 4. **Candidate Feature Verification (G1 / G2 / G3)**:
    - G1: Static dispatch async trait lifecycle passes with 0 leaks and exact-once drop.
    - G2: Framed transport (18 directed controls across 3 core platforms, plus Windows Dogfood) passes without frame corruption or descriptor leaks.
-   - G3: Unwrap consumption (21 positive controls pass, 5 rejection controls fail closed with `E04512`).
+   - G3: Unwrap consumption (3 positive controls pass, 5 rejection controls fail closed with `E04512` across 4 modes with zero artifacts).

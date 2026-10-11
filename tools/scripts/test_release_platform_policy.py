@@ -70,6 +70,66 @@ def valid_r3_r5(revision, label, target):
     }
 
 
+def valid_candidate_014(revision, label, target=None):
+    receipts = []
+    for name in ('tokac', 'toka', 'tokafmt', 'tokalsp'):
+        receipts.append({
+            'name': 'version-' + name,
+            'argv': ['/sdk/bin/' + name, '--version'],
+            'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 5.0,
+            'termination': None, 'error': None,
+        })
+    receipts.extend([
+        {'name': 'g1-lifecycle-compile', 'argv': ['/sdk/bin/tokac', '/fixtures/g1/g14_static_async_trait_lifecycle.tk', '-o', '/tmp/g1-life.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
+        {'name': 'g1-lifecycle-run', 'argv': ['/tmp/g1-life.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
+        {'name': 'g1-sourceless-compile-mod-a', 'argv': ['/sdk/bin/tokac', '-c', '/fixtures/g1/sourceless/mod_a.tk', '-o', '/tmp/mod_a.o'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
+        {'name': 'g1-sourceless-compile-mod-b', 'argv': ['/sdk/bin/tokac', '-c', '/fixtures/g1/sourceless/mod_b.tk', '-o', '/tmp/mod_b.o'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
+        {'name': 'g1-sourceless-compile-main', 'argv': ['/sdk/bin/tokac', '/fixtures/g1/sourceless/main.tk', '/tmp/mod_a.o', '/tmp/mod_b.o', '-o', '/tmp/sourceless.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
+        {'name': 'g1-sourceless-run-main', 'argv': ['/tmp/sourceless.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
+        {'name': 'g1-reject-dyn-trait', 'argv': ['/sdk/bin/tokac', '--check-only', '/fixtures/g1/fail/dyn_trait_async_param.tk'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
+        {'name': 'g1-reject-plain-self', 'argv': ['/sdk/bin/tokac', '--check-only', '/fixtures/g1/fail/trait_async_plain_self.tk'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
+    ])
+    for case in policy.G2_014_CASES:
+        receipts.append({'name': 'g2-compile-' + case, 'argv': ['/sdk/bin/tokac', f'/fixtures/g2/{case}.tk', '-o', f'/tmp/g2-{case}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
+        receipts.append({'name': 'g2-run-' + case, 'argv': [f'/tmp/g2-{case}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
+    for tag in ('lifecycle', 'aggregate', 'tag255'):
+        receipts.append({'name': 'g3-compile-' + tag, 'argv': ['/sdk/bin/tokac', f'/fixtures/g3/pass/{tag}.tk', '-o', f'/tmp/g3-{tag}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
+        receipts.append({'name': 'g3-run-' + tag, 'argv': [f'/tmp/g3-{tag}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
+    for case in policy.G3_014_NEG_CASES:
+        receipts.append({'name': f'g3-neg-{case}-check', 'argv': ['/sdk/bin/tokac', '--check-only', f'/fixtures/g3/fail/{case}.tk'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
+        receipts.append({'name': f'g3-neg-{case}-object', 'argv': ['/sdk/bin/tokac', '-c', f'/fixtures/g3/fail/{case}.tk', '-o', f'/tmp/{case}.o'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
+        receipts.append({'name': f'g3-neg-{case}-ir', 'argv': ['/sdk/bin/tokac', '--emit-llvm', f'/fixtures/g3/fail/{case}.tk', '-o', f'/tmp/{case}.ll'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
+        receipts.append({'name': f'g3-neg-{case}-compile', 'argv': ['/sdk/bin/tokac', f'/fixtures/g3/fail/{case}.tk', '-o', f'/tmp/{case}.bin'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
+
+    ctrl_sha = policy.expected_014_script_sha256() or 'b'*64
+    ver = label.removeprefix('v')
+    return {
+        'schema': 'toka.0.14-candidate-controls',
+        'version': 1,
+        'result': 'pass',
+        'candidate_revision': revision,
+        'version_label': label,
+        'target': target,
+        'build_testing': False,
+        'groups': ['G1', 'G2', 'G3-unwrap'],
+        'fixtures_digest': policy.EXPECTED_014_FIXTURES_DIGEST,
+        'control_script_name': 'test_0_14_candidate.py',
+        'control_script_sha256': ctrl_sha,
+        'four_tool_versions': {
+            'tokac': f'tokac {ver}',
+            'toka': f'toka {ver}',
+            'tokafmt': f'tokafmt {ver}',
+            'tokalsp': f'tokalsp {ver}',
+        },
+        'counts': {
+            'total_receipts': 74,
+            'passed': 74,
+            'failed': 0,
+        },
+        'receipts': receipts,
+    }
+
+
 def fixture(root,intel=False):
     targets=policy.CORE+(policy.OPTIONAL,) if intel else policy.CORE
     archives=root/'qualified';archives.mkdir();assets=root/'assets';assets.mkdir();zips=root/'zips';zips.mkdir();metadata=[];hashes={}
@@ -90,14 +150,14 @@ def fixture(root,intel=False):
                 row['r3_r5']=valid_r3_r5(SHA,TAG,row['target'])
     if TAG.startswith('v0.14.'):
         for row in summary['reports']:
-            row['candidate_014']={'schema':'toka.0.14-candidate-controls','version':1,'result':'pass','candidate_revision':SHA,'version_label':TAG,'build_testing':False,'groups':['G1','G2','G3-unwrap']}
+            row['candidate_014']=valid_candidate_014(SHA,TAG,row['target'])
     replay_receipts=[{'target':target,'result':'pass','archive_sha256':hashes['toka-%s-%s.tar.gz'%(TAG,target)],'candidate_revision':SHA,'version_label':TAG,'policy_id':policy.policy_id(TAG),'asset_source':'candidate_run','qualification_run_id':11,'qualification_run_attempt':1} for target in targets]
     if TAG.startswith('v0.13.') and TAG != 'v0.13.0':
         for r in replay_receipts:
             r['r3_r5']=valid_r3_r5(SHA,TAG,r['target'])
     if TAG.startswith('v0.14.'):
         for r in replay_receipts:
-            r['candidate_014']={'schema':'toka.0.14-candidate-controls','version':1,'result':'pass','candidate_revision':SHA,'version_label':TAG,'build_testing':False,'groups':['G1','G2','G3-unwrap']}
+            r['candidate_014']=valid_candidate_014(SHA,TAG,r['target'])
     documents={'summary':summary,'run':{'id':11,'run_attempt':1,'status':'completed','conclusion':'success','head_sha':SHA,'path':'.github/workflows/release.yml','event':'workflow_dispatch','repository':{'full_name':'tokalang/toka'},'head_repository':{'full_name':'tokalang/toka'}},
                'draft':{'tagName':TAG,'isDraft':True,'isPrerelease':False,'assets':[{'name':name} for name in [*hashes,'SHA256SUMS']]},'artifacts':{'artifacts':metadata},
                'optional_run':{'id':21,'run_attempt':2,'head_sha':SHA,'status':'completed','conclusion':'success','event':'workflow_dispatch','path':'.github/workflows/optional_macos_x64.yml'},

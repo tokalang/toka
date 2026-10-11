@@ -35,6 +35,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("archive")
     parser.add_argument("--version")
+    parser.add_argument("--target", default=None)
     parser.add_argument("--controls-output",type=Path)
     args = parser.parse_args()
 
@@ -52,10 +53,10 @@ def main():
         root = Path(temp)
         with tarfile.open(str(archive), "r:gz") as package:
             package.extractall(str(root))
-        entries = sorted(path for path in root.iterdir() if path.is_dir())
-        if len(entries) != 1:
-            raise SystemExit("archive must contain exactly one package root")
-        package_root = entries[0]
+        all_entries = list(root.iterdir())
+        if len(all_entries) != 1 or not all_entries[0].is_dir():
+            raise SystemExit("archive root is ambiguous: must contain exactly one directory and no other files")
+        package_root = all_entries[0]
         generated_python = list(package_root.rglob("__pycache__")) + list(package_root.rglob("*.pyc"))
         if generated_python:
             raise SystemExit("release archive contains generated Python cache files")
@@ -207,9 +208,15 @@ def main():
         candidate_014 = None
         if args.version and args.version.startswith('v0.14.'):
             descriptor=json.loads((package_root/'sdk.json').read_text())
-            command=[sys.executable,str(ROOT/'tools/scripts/test_0_14_candidate.py'),'--sdk',str(package_root),'--revision',descriptor['candidate_revision'],'--version',args.version,'--output',str(args.controls_output or archive.parent/('candidate-controls-'+uuid.uuid4().hex))]
+            output_dir = str(args.controls_output or archive.parent/('candidate-controls-'+uuid.uuid4().hex))
+            command=[sys.executable,str(ROOT/'tools/scripts/test_0_14_candidate.py'),'--sdk',str(package_root),'--revision',descriptor['candidate_revision'],'--version',args.version,'--output',output_dir]
+            target = args.target
+            if not target and package_root.name.startswith(f"toka-{args.version}-"):
+                target = package_root.name[len(f"toka-{args.version}-"):]
+            if target:
+                command.extend(['--target', target])
             run(command,root,env)
-            candidate_014=json.loads((Path(command[-1])/'result.json').read_text())
+            candidate_014=json.loads((Path(output_dir)/'result.json').read_text())
             checks.append('0.14-installed-candidate-controls')
 
     print(json.dumps({
