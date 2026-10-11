@@ -7834,7 +7834,21 @@ PhysEntity CodeGen::genUnwrapPropagationExpr(const UnwrapPropagationExpr *expr) 
   // -- FAIL Path --
   m_Builder.SetInsertPoint(failBB);
   
-  bool isOption = (soul == "Option" || soul.rfind("Option<", 0) == 0 || soul.rfind("Option_M_", 0) == 0);
+  bool isOption = false;
+  if (auto baseShape = std::dynamic_pointer_cast<toka::ShapeType>(expr->Base->ResolvedType)) {
+    if (baseShape->Decl) {
+      const ShapeDecl *tDecl = baseShape->Decl->InstantiationTemplate ? baseShape->Decl->InstantiationTemplate : baseShape->Decl;
+      std::string rName = tDecl->Name;
+      size_t col = rName.rfind("::");
+      if (col != std::string::npos) rName = rName.substr(col + 2);
+      size_t sl = rName.rfind('/');
+      if (sl != std::string::npos) rName = rName.substr(sl + 1);
+      if (rName == "Option") isOption = true;
+    }
+  }
+  if (!isOption) {
+    isOption = (soul == "Option" || soul.rfind("Option<", 0) == 0);
+  }
   if (isOption) {
     llvm::Type *targetRetTy = m_CurrentCoroRetTy ? m_CurrentCoroRetTy : (m_CurrentSRetTy ? m_CurrentSRetTy : f->getReturnType());
     llvm::Value *retVal = llvm::UndefValue::get(targetRetTy);
