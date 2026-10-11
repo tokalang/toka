@@ -1,0 +1,15 @@
+import core/option::{Option}
+import core/result::{Result}
+
+shape Token(id: i32)
+shape Result_M_Probe(Ok(i32) = 1 | Err(Token, Token) = 0)
+
+fn consume() -> Result<i32, Token> {
+    auto box = Result_M_Probe::Err(Token(id = 1:i32), Token(id = 2:i32))
+    auto n = box!
+    return Result<i32, Token>::Ok(n)
+}
+
+fn main() -> i32 {
+    return 0:i32
+}

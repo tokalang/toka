@@ -6763,27 +6763,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       const auto *decl = shape->Decl;
 
       // 1. Supported container identity:
-      // Must be nominal "Option": declaration name "Option", generic instantiation of "Option",
-      // or canonical mangled name starting with "Option<" or "Option_M_".
-      std::string rootName = decl->InstantiationTemplate ? decl->InstantiationTemplate->Name : decl->Name;
+      // Must be nominal "Option" by real resolved declaration / template identity.
+      // Do NOT trust source-spellable mangled prefixes (e.g. Option_M_...).
+      const ShapeDecl *templateDecl = decl->InstantiationTemplate ? decl->InstantiationTemplate : decl;
+      std::string rootName = templateDecl->Name;
       size_t colons = rootName.rfind("::");
       if (colons != std::string::npos) rootName = rootName.substr(colons + 2);
       size_t slashes = rootName.rfind('/');
       if (slashes != std::string::npos) rootName = rootName.substr(slashes + 1);
 
-      bool isOptionIdent = (rootName == "Option");
-      if (!isOptionIdent) {
-        std::string sName = shape->getSoulName();
-        size_t sColons = sName.rfind("::");
-        if (sColons != std::string::npos) sName = sName.substr(sColons + 2);
-        size_t sSlashes = sName.rfind('/');
-        if (sSlashes != std::string::npos) sName = sName.substr(sSlashes + 1);
-
-        if (sName == "Option" || sName.rfind("Option<", 0) == 0 || sName.rfind("Option_M_", 0) == 0) {
-          isOptionIdent = true;
-        }
-      }
-      if (!isOptionIdent) return false;
+      if (rootName != "Option") return false;
 
       // 2. Strict variant layout:
       // Canonical Option must have exactly 2 variants: None (tag 0) and Some (tag 1).
@@ -6803,15 +6792,21 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (mName == "Some") {
           if (tag != 1 || hasSome) return false;
           hasSome = true;
-          if (!m.SubMembers.empty()) {
+          // Must carry exactly ONE payload value: either a single tuple field (m.SubMembers.size() == 1)
+          // or a single non-tuple payload type (m.SubMembers.empty() && m.ResolvedType && !m.ResolvedType->isVoid()).
+          // Multi-payload tuple variants (m.SubMembers.size() > 1) and empty/void payloads are rejected.
+          if (m.SubMembers.size() == 1) {
             outPayloadT = m.SubMembers[0].ResolvedType;
-          } else {
+          } else if (m.SubMembers.empty() && m.ResolvedType && !m.ResolvedType->isVoid()) {
             outPayloadT = m.ResolvedType;
+          } else {
+            return false;
           }
           if (!outPayloadT || outPayloadT->isVoid()) return false;
         } else if (mName == "None") {
           if (tag != 0 || hasNone) return false;
           hasNone = true;
+          // None must carry NO payload.
           if (!m.SubMembers.empty() || (m.ResolvedType && !m.ResolvedType->isVoid())) {
             return false;
           }
@@ -6830,27 +6825,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       const auto *decl = shape->Decl;
 
       // 1. Supported container identity:
-      // Must be nominal "Result": declaration name "Result", generic instantiation of "Result",
-      // or canonical mangled name starting with "Result<" or "Result_M_".
-      std::string rootName = decl->InstantiationTemplate ? decl->InstantiationTemplate->Name : decl->Name;
+      // Must be nominal "Result" by real resolved declaration / template identity.
+      // Do NOT trust source-spellable mangled prefixes (e.g. Result_M_...).
+      const ShapeDecl *templateDecl = decl->InstantiationTemplate ? decl->InstantiationTemplate : decl;
+      std::string rootName = templateDecl->Name;
       size_t colons = rootName.rfind("::");
       if (colons != std::string::npos) rootName = rootName.substr(colons + 2);
       size_t slashes = rootName.rfind('/');
       if (slashes != std::string::npos) rootName = rootName.substr(slashes + 1);
 
-      bool isResultIdent = (rootName == "Result");
-      if (!isResultIdent) {
-        std::string sName = shape->getSoulName();
-        size_t sColons = sName.rfind("::");
-        if (sColons != std::string::npos) sName = sName.substr(sColons + 2);
-        size_t sSlashes = sName.rfind('/');
-        if (sSlashes != std::string::npos) sName = sName.substr(sSlashes + 1);
-
-        if (sName == "Result" || sName.rfind("Result<", 0) == 0 || sName.rfind("Result_M_", 0) == 0) {
-          isResultIdent = true;
-        }
-      }
-      if (!isResultIdent) return false;
+      if (rootName != "Result") return false;
 
       // 2. Strict variant layout:
       // Canonical Result must have exactly 2 variants: Err (tag 0) and Ok (tag 1).
@@ -6871,19 +6855,25 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (mName == "Ok") {
           if (tag != 1 || hasOk) return false;
           hasOk = true;
-          if (!m.SubMembers.empty()) {
+          // Must carry exactly ONE payload value
+          if (m.SubMembers.size() == 1) {
             outPayloadT = m.SubMembers[0].ResolvedType;
-          } else {
+          } else if (m.SubMembers.empty() && m.ResolvedType && !m.ResolvedType->isVoid()) {
             outPayloadT = m.ResolvedType;
+          } else {
+            return false;
           }
           if (!outPayloadT || outPayloadT->isVoid()) return false;
         } else if (mName == "Err") {
           if (tag != 0 || hasErr) return false;
           hasErr = true;
-          if (!m.SubMembers.empty()) {
+          // Must carry exactly ONE payload value
+          if (m.SubMembers.size() == 1) {
             outErrT = m.SubMembers[0].ResolvedType;
-          } else {
+          } else if (m.SubMembers.empty() && m.ResolvedType && !m.ResolvedType->isVoid()) {
             outErrT = m.ResolvedType;
+          } else {
+            return false;
           }
           if (!outErrT || outErrT->isVoid()) return false;
         } else {
