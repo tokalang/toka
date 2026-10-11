@@ -71,35 +71,51 @@ def valid_r3_r5(revision, label, target):
 
 
 def valid_candidate_014(revision, label, target=None):
+    if target is None:
+        target = 'linux-x64'
     receipts = []
     for name in ('tokac', 'toka', 'tokafmt', 'tokalsp'):
         receipts.append({
             'name': 'version-' + name,
             'argv': ['/sdk/bin/' + name, '--version'],
             'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 5.0,
-            'termination': None, 'error': None,
+            'termination': None, 'error': None, 'result': 'pass',
         })
     receipts.extend([
-        {'name': 'g1-lifecycle-compile', 'argv': ['/sdk/bin/tokac', '/fixtures/g1/g14_static_async_trait_lifecycle.tk', '-o', '/tmp/g1-life.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
-        {'name': 'g1-lifecycle-run', 'argv': ['/tmp/g1-life.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
-        {'name': 'g1-sourceless-compile-mod-a', 'argv': ['/sdk/bin/tokac', '-c', '/fixtures/g1/sourceless/mod_a.tk', '-o', '/tmp/mod_a.o'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
-        {'name': 'g1-sourceless-compile-mod-b', 'argv': ['/sdk/bin/tokac', '-c', '/fixtures/g1/sourceless/mod_b.tk', '-o', '/tmp/mod_b.o'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
-        {'name': 'g1-sourceless-compile-main', 'argv': ['/sdk/bin/tokac', '/fixtures/g1/sourceless/main.tk', '/tmp/mod_a.o', '/tmp/mod_b.o', '-o', '/tmp/sourceless.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
-        {'name': 'g1-sourceless-run-main', 'argv': ['/tmp/sourceless.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
-        {'name': 'g1-reject-dyn-trait', 'argv': ['/sdk/bin/tokac', '--check-only', '/fixtures/g1/fail/dyn_trait_async_param.tk'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
-        {'name': 'g1-reject-plain-self', 'argv': ['/sdk/bin/tokac', '--check-only', '/fixtures/g1/fail/trait_async_plain_self.tk'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None},
+        {'name': 'g1-lifecycle-compile', 'argv': ['/sdk/bin/tokac', '/fixtures/g1/g14_static_async_trait_lifecycle.tk', '-o', '/tmp/g1_lifecycle.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass'},
+        {'name': 'g1-lifecycle-run', 'argv': ['/tmp/g1_lifecycle.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass', 'stdout': 'All 4 lifecycle branches passed successfully!'},
+        {'name': 'g1-sourceless-compile-mod-a', 'argv': ['/sdk/bin/tokac', '-c', '/fixtures/g1/sourceless/mod_a.tk', '-o', '/tmp/mod_a.o'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass'},
+        {'name': 'g1-sourceless-compile-mod-b', 'argv': ['/sdk/bin/tokac', '-c', '/fixtures/g1/sourceless/mod_b.tk', '-o', '/tmp/mod_b.o'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass'},
+        {'name': 'g1-sourceless-compile-main', 'argv': ['/sdk/bin/tokac', '/fixtures/g1/sourceless/main.tk', '/tmp/mod_a.o', '/tmp/mod_b.o', '-o', '/tmp/sourceless_main.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass'},
+        {'name': 'g1-sourceless-run-main', 'argv': ['/tmp/sourceless_main.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass'},
+        {'name': 'g1-reject-dyn-trait', 'argv': ['/sdk/bin/tokac', '--check-only', '/fixtures/g1/fail/dyn_trait_async_param.tk'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass', 'diagnostic': 'E0617', 'stderr': 'error[E0617]: dynamic trait async parameter is not supported'},
+        {'name': 'g1-reject-plain-self', 'argv': ['/sdk/bin/tokac', '--check-only', '/fixtures/g1/fail/trait_async_plain_self.tk'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass', 'diagnostic': 'E0618', 'stderr': 'error[E0618]: plain self in async trait method is not supported'},
     ])
     for case in policy.G2_014_CASES:
-        receipts.append({'name': 'g2-compile-' + case, 'argv': ['/sdk/bin/tokac', f'/fixtures/g2/{case}.tk', '-o', f'/tmp/g2-{case}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
-        receipts.append({'name': 'g2-run-' + case, 'argv': [f'/tmp/g2-{case}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
+        receipts.append({'name': 'g2-compile-' + case, 'argv': ['/sdk/bin/tokac', f'/fixtures/g2/{case}.tk', '-o', f'/tmp/{case}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass'})
+        out_msg = 'ok'
+        if case == 'lifecycle_pass_suite':
+            out_msg = 'All 10 lifecycle and cancellation controls passed with zero TCB residue and exact-once drop!'
+        elif case == 'given_11_branch':
+            out_msg = 'All 11 G2 framed transport verification branches passed successfully!'
+        elif case == 'closed_empty':
+            out_msg = 'closed-empty write ok=true'
+        receipts.append({'name': 'g2-run-' + case, 'argv': [f'/tmp/{case}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass', 'stdout': out_msg})
+    tag_files = {
+        'lifecycle': 'g14_unwrap_propagation_lifecycle_test.tk',
+        'aggregate': 'unwrap_aggregate_payload_test.tk',
+        'tag255': 'enum_tag_255_valid_test.tk',
+    }
     for tag in ('lifecycle', 'aggregate', 'tag255'):
-        receipts.append({'name': 'g3-compile-' + tag, 'argv': ['/sdk/bin/tokac', f'/fixtures/g3/pass/{tag}.tk', '-o', f'/tmp/g3-{tag}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
-        receipts.append({'name': 'g3-run-' + tag, 'argv': [f'/tmp/g3-{tag}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
+        fix_name = tag_files[tag]
+        receipts.append({'name': 'g3-compile-' + tag, 'argv': ['/sdk/bin/tokac', f'/fixtures/g3/pass/{fix_name}', '-o', f'/tmp/g3_{tag}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass'})
+        out_msg = 'All 16 unwrap propagation lifecycle controls passed with zero TCB residue and exact-once drop!' if tag == 'lifecycle' else ('PASS' if tag == 'aggregate' else 'PASS')
+        receipts.append({'name': 'g3-run-' + tag, 'argv': [f'/tmp/g3_{tag}.bin'], 'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass', 'stdout': out_msg})
     for case in policy.G3_014_NEG_CASES:
-        receipts.append({'name': f'g3-neg-{case}-check', 'argv': ['/sdk/bin/tokac', '--check-only', f'/fixtures/g3/fail/{case}.tk'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
-        receipts.append({'name': f'g3-neg-{case}-object', 'argv': ['/sdk/bin/tokac', '-c', f'/fixtures/g3/fail/{case}.tk', '-o', f'/tmp/{case}.o'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
-        receipts.append({'name': f'g3-neg-{case}-ir', 'argv': ['/sdk/bin/tokac', '--emit-llvm', f'/fixtures/g3/fail/{case}.tk', '-o', f'/tmp/{case}.ll'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
-        receipts.append({'name': f'g3-neg-{case}-compile', 'argv': ['/sdk/bin/tokac', f'/fixtures/g3/fail/{case}.tk', '-o', f'/tmp/{case}.bin'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None})
+        receipts.append({'name': f'g3-neg-{case}-check', 'argv': ['/sdk/bin/tokac', '--check-only', f'/fixtures/g3/fail/{case}.tk'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass', 'diagnostic': 'E04512', 'stderr': 'error[E04512]: unwrap unsupported layout'})
+        receipts.append({'name': f'g3-neg-{case}-object', 'argv': ['/sdk/bin/tokac', '-c', f'/fixtures/g3/fail/{case}.tk', '-o', f'/tmp/{case}.o'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass', 'diagnostic': 'E04512', 'artifact_absent': True, 'stderr': 'error[E04512]: unwrap unsupported layout'})
+        receipts.append({'name': f'g3-neg-{case}-ir', 'argv': ['/sdk/bin/tokac', '--emit-llvm', f'/fixtures/g3/fail/{case}.tk', '-o', f'/tmp/{case}.ll'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass', 'diagnostic': 'E04512', 'artifact_absent': True, 'stderr': 'error[E04512]: unwrap unsupported layout'})
+        receipts.append({'name': f'g3-neg-{case}-compile', 'argv': ['/sdk/bin/tokac', f'/fixtures/g3/fail/{case}.tk', '-o', f'/tmp/{case}.bin'], 'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0, 'termination': None, 'error': None, 'result': 'pass', 'diagnostic': 'E04512', 'artifact_absent': True, 'stderr': 'error[E04512]: unwrap unsupported layout'})
 
     ctrl_sha = policy.expected_014_script_sha256() or 'b'*64
     ver = label.removeprefix('v')
@@ -125,6 +141,12 @@ def valid_candidate_014(revision, label, target=None):
             'total_receipts': 74,
             'passed': 74,
             'failed': 0,
+            'groups': {
+                'version': 4,
+                'G1': 8,
+                'G2': 36,
+                'G3-unwrap': 26,
+            },
         },
         'receipts': receipts,
     }
