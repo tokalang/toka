@@ -70,6 +70,13 @@ class Contract014(unittest.TestCase):
                     ('missing_target', lambda p: p.pop('target', None)),
                     ('bad_group_counts', lambda p: p['counts'].update(groups={'G1': 0, 'G2': 0, 'G3-unwrap': 0, 'version': 0})),
                     ('nonfinite_timing', lambda p: [r.update(execution_ms=float('nan')) for r in p['receipts']]),
+                    ('missing_raw_outputs', lambda p: [(r.pop('stdout', None), r.pop('stderr', None)) for r in p['receipts']]),
+                    ('missing_negative_stderr', lambda p: [r.pop('stderr', None) for r in p['receipts'] if r['exit_code'] == 1]),
+                    ('invalid_raw_output_types', lambda p: [r.update(stdout=None, stderr=[]) for r in p['receipts']]),
+                    ('wrong_run_name_fragment', lambda p: [r.update(argv=['/not-produced/not-' + r['name'].split('-run-')[-1].replace('g1-lifecycle-run', 'g1_lifecycle') + '-helper']) for r in p['receipts'] if r['name'].startswith(('g2-run-', 'g3-run-'))]),
+                    ('contradictory_zero_output', lambda p: [r.update(stdout='ok=true, wire=3, calls=1, frames=1, state=0, closed=false\n') for r in p['receipts'] if r['name'] == 'g2-run-framed_stream_zero']),
+                    ('empty_protocol_outputs', lambda p: [r.update(stdout='') for r in p['receipts'] if r['name'].startswith('g2-run-') and r['name'].split('g2-run-')[1] not in ('lifecycle_pass_suite', 'given_11_branch', 'closed_empty')]),
+                    ('compile_run_path_mismatch', lambda p: [r['argv'].__setitem__(r['argv'].index('-o') + 1, '/not-produced/unrelated.bin') for r in p['receipts'] if r['name'] in ('g1-lifecycle-compile', 'g2-compile-closed_empty', 'g3-compile-aggregate')]),
                 ]
                 for desc, mutate in mutations:
                     with self.subTest(mutation=desc):
