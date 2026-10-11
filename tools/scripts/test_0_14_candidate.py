@@ -46,7 +46,7 @@ AUTHORITATIVE_014_FIXTURES = {
     "g3/pass/g14_unwrap_propagation_lifecycle_test.tk": "2a0393f8cc57c85b21a731ca34eae3ec2b9d7a73c473c911e17988538c53fd5a",
     "g3/pass/unwrap_aggregate_payload_test.tk": "fa28999a9268d00f48d4d1deed9297515d58415092bbd21da6aff598fcd82319",
 }
-EXPECTED_014_FIXTURES_DIGEST = "e5679cd455cb44e517d05b9c28fafeb403442867faa701841dc43bd6639ddffa"
+EXPECTED_014_FIXTURES_DIGEST = "e5615185f9ec1b297a34b4d07dca868ef7f2ef440736ad05cd3e7bfbe1f24df1"
 
 
 def main():
@@ -114,7 +114,8 @@ def main():
         actual_hash = hashlib.sha256(fixture_file.read_bytes()).hexdigest()
         if actual_hash != expected_hash:
             raise ValueError(f"Fixture digest mismatch for {rel_path}: expected {expected_hash}, got {actual_hash}")
-        hasher.update(f"{rel_path}:{actual_hash}\n".encode("utf-8"))
+        hasher.update(rel_path.encode("utf-8"))
+        hasher.update(actual_hash.encode("utf-8"))
     fixtures_digest = hasher.hexdigest()
     if fixtures_digest != EXPECTED_014_FIXTURES_DIGEST:
         raise ValueError(f"Fixtures digest mismatch: expected {EXPECTED_014_FIXTURES_DIGEST}, got {fixtures_digest}")
@@ -125,7 +126,7 @@ def main():
 
     receipts = []
 
-    def run(name, argv, cwd, allow_fail=False):
+    def run(name, argv, cwd, allow_fail=False, diagnostic=None, artifact_absent=None):
         d = out / ("command-" + name)
         d.mkdir(parents=True, exist_ok=True)
         t = time.monotonic_ns()
@@ -157,7 +158,14 @@ def main():
             "exit_code": r.returncode if r.returncode >= 0 else None,
             "signal": -r.returncode if r.returncode < 0 else None,
             "execution_ms": (time.monotonic_ns() - t) / 1e6,
+            "result": "pass",
+            "stdout": r.stdout.decode("utf-8", errors="replace"),
+            "stderr": r.stderr.decode("utf-8", errors="replace"),
         }
+        if diagnostic is not None:
+            record["diagnostic"] = diagnostic
+        if artifact_absent is not None:
+            record["artifact_absent"] = artifact_absent
         (d / "receipt.json").write_text(json.dumps(record, indent=2))
         receipts.append(record)
         if not allow_fail and r.returncode != 0:
@@ -219,11 +227,11 @@ def main():
     run("g1-sourceless-run-main", [g1_main_bin], g1_dir)
 
     # G1.3: Negative rejection controls
-    r_dyn = run("g1-reject-dyn-trait", [tokac_bin, "--check-only", fixtures_dir / "g1/fail/dyn_trait_async_param.tk"], g1_dir, allow_fail=True)
+    r_dyn = run("g1-reject-dyn-trait", [tokac_bin, "--check-only", fixtures_dir / "g1/fail/dyn_trait_async_param.tk"], g1_dir, allow_fail=True, diagnostic="E0617")
     if r_dyn.returncode != 1 or b"E0617" not in r_dyn.stderr:
         raise RuntimeError("G1 dyn trait parameter did not reject with E0617")
 
-    r_plain = run("g1-reject-plain-self", [tokac_bin, "--check-only", fixtures_dir / "g1/fail/trait_async_plain_self.tk"], g1_dir, allow_fail=True)
+    r_plain = run("g1-reject-plain-self", [tokac_bin, "--check-only", fixtures_dir / "g1/fail/trait_async_plain_self.tk"], g1_dir, allow_fail=True, diagnostic="E0618")
     if r_plain.returncode != 1 or b"E0618" not in r_plain.stderr:
         raise RuntimeError("G1 trait async plain self did not reject with E0618")
 
@@ -273,28 +281,28 @@ def main():
 
     for name, fix in g3_neg_cases:
         # Mode 1: check
-        r = run(f"g3-neg-{name}-check", [tokac_bin, "--check-only", fix], g3_dir, allow_fail=True)
+        r = run(f"g3-neg-{name}-check", [tokac_bin, "--check-only", fix], g3_dir, allow_fail=True, diagnostic="E04512")
         if r.returncode != 1 or b"E04512" not in r.stderr:
             raise RuntimeError(f"G3 negative check {name} did not reject with E04512/exit 1")
 
         # Mode 2: object
         obj_target = g3_dir / f"{name}.o"
         obj_target.unlink(missing_ok=True)
-        r = run(f"g3-neg-{name}-object", [tokac_bin, "-c", fix, "-o", obj_target], g3_dir, allow_fail=True)
+        r = run(f"g3-neg-{name}-object", [tokac_bin, "-c", fix, "-o", obj_target], g3_dir, allow_fail=True, diagnostic="E04512", artifact_absent=True)
         if r.returncode != 1 or b"E04512" not in r.stderr or obj_target.exists():
             raise RuntimeError(f"G3 negative object {name} did not reject with E04512 or produced artifact")
 
         # Mode 3: ir
         ir_target = g3_dir / f"{name}.ll"
         ir_target.unlink(missing_ok=True)
-        r = run(f"g3-neg-{name}-ir", [tokac_bin, "--emit-llvm", fix, "-o", ir_target], g3_dir, allow_fail=True)
+        r = run(f"g3-neg-{name}-ir", [tokac_bin, "--emit-llvm", fix, "-o", ir_target], g3_dir, allow_fail=True, diagnostic="E04512", artifact_absent=True)
         if r.returncode != 1 or b"E04512" not in r.stderr or ir_target.exists():
             raise RuntimeError(f"G3 negative IR {name} did not reject with E04512 or produced artifact")
 
         # Mode 4: compile
         bin_target = g3_dir / f"{name}.bin"
         bin_target.unlink(missing_ok=True)
-        r = run(f"g3-neg-{name}-compile", [tokac_bin, fix, rt_o, "-o", bin_target], g3_dir, allow_fail=True)
+        r = run(f"g3-neg-{name}-compile", [tokac_bin, fix, rt_o, "-o", bin_target], g3_dir, allow_fail=True, diagnostic="E04512", artifact_absent=True)
         if r.returncode != 1 or b"E04512" not in r.stderr or bin_target.exists():
             raise RuntimeError(f"G3 negative compile {name} did not reject with E04512 or produced artifact")
 

@@ -63,6 +63,13 @@ class Contract014(unittest.TestCase):
                     ('wrong_tool_version', lambda p: p['four_tool_versions'].update(tokac='tokac 0.13.1')),
                     ('wrong_fixtures_digest', lambda p: p.update(fixtures_digest='0' * 64)),
                     ('wrong_control_sha', lambda p: p.update(control_script_sha256='0' * 64)),
+                    ('noop_programs', lambda p: [r['argv'].__setitem__(0, '/bin/true' if r['exit_code'] == 0 else '/bin/false') for r in p['receipts']]),
+                    ('wrong_fixture', lambda p: [r['argv'].__setitem__(i, '/fixtures/unrelated.tk') for r in p['receipts'] for i, a in enumerate(r['argv']) if a.endswith('.tk')]),
+                    ('wrong_run_binary', lambda p: [r['argv'].__setitem__(0, '/bin/true') for r in p['receipts'] if '-run' in r.get('name', '')]),
+                    ('contradictory_domain_and_artifacts', lambda p: [r.update(result='failed', diagnostic='E00000', artifact_absent=False, stdout='failure instead of assertions', stderr='ordinary error') for r in p['receipts']]),
+                    ('missing_target', lambda p: p.pop('target', None)),
+                    ('bad_group_counts', lambda p: p['counts'].update(groups={'G1': 0, 'G2': 0, 'G3-unwrap': 0, 'version': 0})),
+                    ('nonfinite_timing', lambda p: [r.update(execution_ms=float('nan')) for r in p['receipts']]),
                 ]
                 for desc, mutate in mutations:
                     with self.subTest(mutation=desc):

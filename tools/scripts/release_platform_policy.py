@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import json
 import hashlib
+import math
 
 LEGACY = ('linux-x64','linux-arm64','macos-x64','macos-arm64')
 CORE = ('linux-x64','linux-arm64','macos-arm64')
@@ -371,7 +372,7 @@ def r3_r5_receipt_errors(receipt, revision, label, target=None):
     return errors
 
 
-EXPECTED_014_FIXTURES_DIGEST = 'e5679cd455cb44e517d05b9c28fafeb403442867faa701841dc43bd6639ddffa'
+EXPECTED_014_FIXTURES_DIGEST = 'e5615185f9ec1b297a34b4d07dca868ef7f2ef440736ad05cd3e7bfbe1f24df1'
 AUTHORITATIVE_014_FIXTURES = {
     'g1/fail/dyn_trait_async_param.tk': '14ed468697dcc14ac4839d5acf0d588fb113f3d5ae1a457b01fe7aba7d5dfaca',
     'g1/fail/trait_async_plain_self.tk': '3787c6308e638270a618f1880397856370bd842bd102c6dd2daaddc64a7cb4d9',
@@ -445,8 +446,11 @@ def candidate_014_receipt_errors(receipt, revision, label, target=None):
         errors.append('0.14 candidate revision mismatch')
     if receipt.get('version_label') != label:
         errors.append('0.14 version label mismatch')
-    if target is not None and receipt.get('target') is not None and receipt.get('target') != target:
-        errors.append('0.14 target mismatch: expected %s, got %s' % (target, receipt.get('target')))
+    target_val = receipt.get('target')
+    if not isinstance(target_val, str) or not target_val:
+        errors.append('0.14 target missing or invalid')
+    elif target is not None and target_val != target:
+        errors.append('0.14 target mismatch: expected %s, got %s' % (target, target_val))
     if receipt.get('build_testing') is not False:
         errors.append('0.14 receipt build_testing must be False')
     if receipt.get('groups') != ['G1', 'G2', 'G3-unwrap']:
@@ -472,8 +476,10 @@ def candidate_014_receipt_errors(receipt, revision, label, target=None):
                 errors.append('0.14 tool version mismatch: ' + t_name)
 
     counts = receipt.get('counts')
+    expected_groups = {'version': 4, 'G1': 8, 'G2': 36, 'G3-unwrap': 26}
     if not isinstance(counts, dict) or type(counts.get('total_receipts')) is not int or \
-            counts.get('total_receipts') != 74 or counts.get('passed') != 74 or counts.get('failed') != 0:
+            counts.get('total_receipts') != 74 or counts.get('passed') != 74 or counts.get('failed') != 0 or \
+            counts.get('groups') != expected_groups:
         errors.append('0.14 counts mismatch or invalid')
 
     receipts = receipt.get('receipts')
@@ -500,6 +506,12 @@ def candidate_014_receipt_errors(receipt, revision, label, target=None):
         for mode in ('check', 'object', 'ir', 'compile'):
             expected_receipt_names.add(f'g3-neg-{case}-{mode}')
 
+    expected_g3_pos_fixtures = {
+        'lifecycle': 'g14_unwrap_propagation_lifecycle_test.tk',
+        'aggregate': 'unwrap_aggregate_payload_test.tk',
+        'tag255': 'enum_tag_255_valid_test.tk',
+    }
+
     seen_receipts = set()
     for r in receipts:
         if not isinstance(r, dict):
@@ -507,6 +519,9 @@ def candidate_014_receipt_errors(receipt, revision, label, target=None):
             continue
         r_name = str(r.get('name', ''))
         seen_receipts.add(r_name)
+
+        if r.get('result') != 'pass':
+            errors.append('0.14 command receipt result is not pass: ' + r_name)
 
         if 'signal' not in r or r['signal'] is not None:
             errors.append('0.14 command receipt missing signal key or abnormal signal: ' + r_name)
@@ -518,12 +533,16 @@ def candidate_014_receipt_errors(receipt, revision, label, target=None):
             errors.append('0.14 command receipt argv invalid: ' + r_name)
             continue
 
+        prog = argv[0].replace('\\', '/')
+        if prog in ('/bin/true', '/bin/false', 'true', 'false') or prog.endswith('/true') or prog.endswith('/false'):
+            errors.append('0.14 command receipt program cannot be no-op dummy: ' + r_name)
+
         cwd = r.get('cwd')
         if not isinstance(cwd, str) or not cwd:
             errors.append('0.14 command receipt cwd missing or invalid: ' + r_name)
 
         ms = r.get('execution_ms')
-        if type(ms) not in (int, float) or isinstance(ms, bool) or ms <= 0:
+        if type(ms) not in (int, float) or isinstance(ms, bool) or not math.isfinite(ms) or ms <= 0:
             errors.append('0.14 command receipt execution_ms missing or invalid: ' + r_name)
 
         exit_code = r.get('exit_code')
@@ -531,49 +550,188 @@ def candidate_014_receipt_errors(receipt, revision, label, target=None):
             errors.append('0.14 command receipt exit_code missing or not int: ' + r_name)
             continue
 
+        if 'stdout' in r:
+            out_s = str(r['stdout'])
+            if 'failure instead of assertions' in out_s or 'assertion failed' in out_s.lower():
+                errors.append('0.14 command receipt stdout indicates failure: ' + r_name)
+
+        is_neg = (r_name in ('g1-reject-dyn-trait', 'g1-reject-plain-self') or r_name.startswith('g3-neg-'))
+
+        if not is_neg:
+            if r.get('diagnostic') is not None:
+                errors.append('0.14 unexpected diagnostic on positive command: ' + r_name)
+            if 'stderr' in r:
+                err_s = str(r['stderr']).strip()
+                if err_s and 'warning' not in err_s.lower():
+                    errors.append('0.14 unexpected stderr in positive command: ' + r_name)
+
         if r_name.startswith('version-'):
             if exit_code != 0:
                 errors.append('0.14 tool version command exit code must be 0: ' + r_name)
-        elif r_name in ('g1-reject-dyn-trait', 'g1-reject-plain-self'):
-            if exit_code != 1:
-                errors.append('0.14 G1 negative command exit code must be 1: ' + r_name)
-            if '--check-only' not in argv:
-                errors.append('0.14 G1 negative command missing --check-only: ' + r_name)
-        elif r_name.startswith('g1-'):
+            t_name = r_name.removeprefix('version-')
+            if t_name == 'toka':
+                if not ((prog.endswith('/toka') or prog == 'toka' or prog.endswith('/toka.exe') or prog == 'toka.exe') and not (prog.endswith('tokac') or prog.endswith('tokac.exe'))):
+                    errors.append('0.14 tool version command program mismatch: ' + r_name)
+            else:
+                if not (prog.endswith('/' + t_name) or prog == t_name or prog.endswith('/' + t_name + '.exe') or prog == t_name + '.exe'):
+                    errors.append('0.14 tool version command program mismatch: ' + r_name)
+
+        elif r_name == 'g1-lifecycle-compile':
             if exit_code != 0:
                 errors.append('0.14 G1 positive command exit code must be 0: ' + r_name)
+            if not (prog.endswith('/tokac') or prog == 'tokac' or prog.endswith('/tokac.exe') or prog == 'tokac.exe'):
+                errors.append('0.14 G1 compile command program must execute tokac: ' + r_name)
+            if not any(arg.endswith('/g14_static_async_trait_lifecycle.tk') or arg == 'g14_static_async_trait_lifecycle.tk' for arg in argv):
+                errors.append('0.14 G1 lifecycle compile fixture mismatch: ' + r_name)
+            if '-o' not in argv:
+                errors.append('0.14 G1 lifecycle compile command missing -o: ' + r_name)
+
+        elif r_name == 'g1-lifecycle-run':
+            if exit_code != 0:
+                errors.append('0.14 G1 positive command exit code must be 0: ' + r_name)
+            if not (prog.endswith('/g1_lifecycle.bin') or prog.endswith('/g1_lifecycle.exe') or prog.endswith('/g1_lifecycle') or prog == 'g1_lifecycle.bin' or prog == 'g1_lifecycle.exe' or 'g1_lifecycle' in prog):
+                errors.append('0.14 G1 lifecycle run program mismatch: ' + r_name)
+            if 'stdout' in r and 'All 4 lifecycle branches passed successfully!' not in str(r['stdout']):
+                errors.append('0.14 G1 lifecycle run stdout assertion missing: ' + r_name)
+
+        elif r_name.startswith('g1-sourceless-compile-'):
+            if exit_code != 0:
+                errors.append('0.14 G1 positive command exit code must be 0: ' + r_name)
+            if not (prog.endswith('/tokac') or prog == 'tokac' or prog.endswith('/tokac.exe') or prog == 'tokac.exe'):
+                errors.append('0.14 G1 compile command program must execute tokac: ' + r_name)
+            if r_name == 'g1-sourceless-compile-mod-a':
+                if not any(arg.endswith('/mod_a.tk') or arg == 'mod_a.tk' for arg in argv):
+                    errors.append('0.14 G1 sourceless mod_a fixture mismatch: ' + r_name)
+            elif r_name == 'g1-sourceless-compile-mod-b':
+                if not any(arg.endswith('/mod_b.tk') or arg == 'mod_b.tk' for arg in argv):
+                    errors.append('0.14 G1 sourceless mod_b fixture mismatch: ' + r_name)
+            elif r_name == 'g1-sourceless-compile-main':
+                if not any(arg.endswith('/main.tk') or arg == 'main.tk' for arg in argv):
+                    errors.append('0.14 G1 sourceless main fixture mismatch: ' + r_name)
+            if '-o' not in argv:
+                errors.append('0.14 G1 sourceless compile command missing -o: ' + r_name)
+
+        elif r_name == 'g1-sourceless-run-main':
+            if exit_code != 0:
+                errors.append('0.14 G1 positive command exit code must be 0: ' + r_name)
+            if not (prog.endswith('/sourceless_main.bin') or prog.endswith('/sourceless_main.exe') or prog.endswith('/sourceless_main') or prog == 'sourceless_main.bin' or prog == 'sourceless_main.exe' or 'sourceless' in prog):
+                errors.append('0.14 G1 sourceless run program mismatch: ' + r_name)
+
+        elif r_name == 'g1-reject-dyn-trait':
+            if exit_code != 1:
+                errors.append('0.14 G1 negative command exit code must be 1: ' + r_name)
+            if not (prog.endswith('/tokac') or prog == 'tokac' or prog.endswith('/tokac.exe') or prog == 'tokac.exe'):
+                errors.append('0.14 G1 negative command must execute tokac: ' + r_name)
+            if not any(arg.endswith('/dyn_trait_async_param.tk') or arg == 'dyn_trait_async_param.tk' for arg in argv):
+                errors.append('0.14 G1 reject dyn trait fixture mismatch: ' + r_name)
+            if '--check-only' not in argv:
+                errors.append('0.14 G1 negative command missing --check-only: ' + r_name)
+            if r.get('diagnostic') != 'E0617':
+                errors.append('0.14 G1 reject dyn trait diagnostic mismatch: ' + r_name)
+            if 'stderr' in r and 'E0617' not in str(r['stderr']):
+                errors.append('0.14 G1 reject dyn trait stderr missing E0617: ' + r_name)
+
+        elif r_name == 'g1-reject-plain-self':
+            if exit_code != 1:
+                errors.append('0.14 G1 negative command exit code must be 1: ' + r_name)
+            if not (prog.endswith('/tokac') or prog == 'tokac' or prog.endswith('/tokac.exe') or prog == 'tokac.exe'):
+                errors.append('0.14 G1 negative command must execute tokac: ' + r_name)
+            if not any(arg.endswith('/trait_async_plain_self.tk') or arg == 'trait_async_plain_self.tk' for arg in argv):
+                errors.append('0.14 G1 reject plain self fixture mismatch: ' + r_name)
+            if '--check-only' not in argv:
+                errors.append('0.14 G1 negative command missing --check-only: ' + r_name)
+            if r.get('diagnostic') != 'E0618':
+                errors.append('0.14 G1 reject plain self diagnostic mismatch: ' + r_name)
+            if 'stderr' in r and 'E0618' not in str(r['stderr']):
+                errors.append('0.14 G1 reject plain self stderr missing E0618: ' + r_name)
+
         elif r_name.startswith('g2-compile-'):
             if exit_code != 0:
                 errors.append('0.14 G2 compile command exit code must be 0: ' + r_name)
+            if not (prog.endswith('/tokac') or prog == 'tokac' or prog.endswith('/tokac.exe') or prog == 'tokac.exe'):
+                errors.append('0.14 G2 compile command program must execute tokac: ' + r_name)
+            case = r_name.removeprefix('g2-compile-')
+            if not any(arg.endswith('/' + case + '.tk') or arg == (case + '.tk') for arg in argv):
+                errors.append('0.14 G2 compile fixture mismatch: ' + r_name)
             if '-o' not in argv:
                 errors.append('0.14 G2 compile command missing -o: ' + r_name)
+
         elif r_name.startswith('g2-run-'):
             if exit_code != 0:
                 errors.append('0.14 G2 run command exit code must be 0: ' + r_name)
+            case = r_name.removeprefix('g2-run-')
+            expected = case + '.bin'
+            expected_exe = case + '.exe'
+            if not (prog.endswith('/' + expected) or prog.endswith('/' + expected_exe) or prog == expected or prog == expected_exe or (case in prog and not prog.endswith('.tk'))):
+                errors.append('0.14 G2 run program mismatch: ' + r_name)
+            if 'stdout' in r:
+                out_str = str(r['stdout'])
+                if case == 'lifecycle_pass_suite' and 'All 10 lifecycle and cancellation controls passed' not in out_str:
+                    errors.append('0.14 G2 lifecycle pass suite stdout assertion missing: ' + r_name)
+                elif case == 'given_11_branch' and 'All 11 G2 framed transport verification branches passed successfully!' not in out_str:
+                    errors.append('0.14 G2 given 11 branch stdout assertion missing: ' + r_name)
+                elif case == 'closed_empty' and 'closed-empty write ok=true' not in out_str:
+                    errors.append('0.14 G2 closed empty stdout assertion missing: ' + r_name)
+
         elif r_name.startswith('g3-compile-'):
             if exit_code != 0:
                 errors.append('0.14 G3 positive compile command exit code must be 0: ' + r_name)
+            if not (prog.endswith('/tokac') or prog == 'tokac' or prog.endswith('/tokac.exe') or prog == 'tokac.exe'):
+                errors.append('0.14 G3 compile command program must execute tokac: ' + r_name)
+            tag = r_name.removeprefix('g3-compile-')
+            fix_name = expected_g3_pos_fixtures.get(tag)
+            if fix_name and not any(arg.endswith('/' + fix_name) or arg == fix_name for arg in argv):
+                errors.append('0.14 G3 positive compile fixture mismatch: ' + r_name)
             if '-o' not in argv:
                 errors.append('0.14 G3 positive compile command missing -o: ' + r_name)
+
         elif r_name.startswith('g3-run-'):
             if exit_code != 0:
                 errors.append('0.14 G3 positive run command exit code must be 0: ' + r_name)
+            tag = r_name.removeprefix('g3-run-')
+            expected = f'g3_{tag}.bin'
+            expected_exe = f'g3_{tag}.exe'
+            if not (prog.endswith('/' + expected) or prog.endswith('/' + expected_exe) or prog == expected or prog == expected_exe or ('g3_' + tag in prog and not prog.endswith('.tk')) or (tag in prog and not prog.endswith('.tk'))):
+                errors.append('0.14 G3 run program mismatch: ' + r_name)
+            if 'stdout' in r:
+                out_str = str(r['stdout'])
+                if tag == 'lifecycle' and 'All 16 unwrap propagation lifecycle controls passed' not in out_str:
+                    errors.append('0.14 G3 lifecycle run stdout assertion missing: ' + r_name)
+                elif tag == 'aggregate' and 'PASS' not in out_str:
+                    errors.append('0.14 G3 aggregate run stdout assertion missing: ' + r_name)
+
         elif r_name.startswith('g3-neg-'):
             if exit_code != 1:
                 errors.append('0.14 G3 negative command exit code must be 1: ' + r_name)
-            mode = r_name.rsplit('-', 1)[1]
-            if mode == 'check':
-                if '--check-only' not in argv:
-                    errors.append('0.14 G3 check command missing --check-only: ' + r_name)
-            elif mode == 'object':
-                if '-c' not in argv or '-o' not in argv:
-                    errors.append('0.14 G3 object command missing -c or -o: ' + r_name)
-            elif mode == 'ir':
-                if '--emit-llvm' not in argv or '-o' not in argv:
-                    errors.append('0.14 G3 IR command missing --emit-llvm or -o: ' + r_name)
-            elif mode == 'compile':
-                if '-o' not in argv:
-                    errors.append('0.14 G3 compile command missing -o: ' + r_name)
+            if not (prog.endswith('/tokac') or prog == 'tokac' or prog.endswith('/tokac.exe') or prog == 'tokac.exe'):
+                errors.append('0.14 G3 negative command program must execute tokac: ' + r_name)
+            parts = r_name.removeprefix('g3-neg-').rsplit('-', 1)
+            if len(parts) == 2:
+                case, mode = parts
+                if not any(arg.endswith('/' + case + '.tk') or arg == (case + '.tk') for arg in argv):
+                    errors.append('0.14 G3 negative fixture mismatch: ' + r_name)
+                if mode == 'check':
+                    if '--check-only' not in argv:
+                        errors.append('0.14 G3 check command missing --check-only: ' + r_name)
+                elif mode == 'object':
+                    if '-c' not in argv or '-o' not in argv:
+                        errors.append('0.14 G3 object command missing -c or -o: ' + r_name)
+                    if r.get('artifact_absent') is not True:
+                        errors.append('0.14 G3 negative object command did not confirm artifact absence: ' + r_name)
+                elif mode == 'ir':
+                    if '--emit-llvm' not in argv or '-o' not in argv:
+                        errors.append('0.14 G3 IR command missing --emit-llvm or -o: ' + r_name)
+                    if r.get('artifact_absent') is not True:
+                        errors.append('0.14 G3 negative IR command did not confirm artifact absence: ' + r_name)
+                elif mode == 'compile':
+                    if '-o' not in argv:
+                        errors.append('0.14 G3 compile command missing -o: ' + r_name)
+                    if r.get('artifact_absent') is not True:
+                        errors.append('0.14 G3 negative compile command did not confirm artifact absence: ' + r_name)
+            if r.get('diagnostic') != 'E04512':
+                errors.append('0.14 G3 negative command diagnostic mismatch: ' + r_name)
+            if 'stderr' in r and 'E04512' not in str(r['stderr']):
+                errors.append('0.14 G3 negative command stderr missing E04512: ' + r_name)
         else:
             errors.append('Unknown 0.14 command receipt: ' + r_name)
 
