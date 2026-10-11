@@ -48,6 +48,73 @@ AUTHORITATIVE_014_FIXTURES = {
 }
 EXPECTED_014_FIXTURES_DIGEST = "e5615185f9ec1b297a34b4d07dca868ef7f2ef440736ad05cd3e7bfbe1f24df1"
 
+G2_EXPECTED_FACTS = {
+    "closed_empty": [
+        "closed-empty write ok=false",
+    ],
+    "framed_reader_read_short_buffer_1": [
+        "begin reported count within need but buffer len zero",
+        "TRANSPORT CLOSED",
+        "returned Err=true,state=5",
+    ],
+    "framed_reader_read_short_buffer_2": [
+        "begin reported count within need but buffer len zero",
+        "TRANSPORT CLOSED",
+        "returned Err=true,state=5",
+    ],
+    "framed_stream_cancel": [
+        "outer outcome None; state=5, closed=true, frames=0",
+    ],
+    "framed_stream_ioerror": [
+        "ok=false, wire=4, calls=2, frames=0, state=5, closed=true",
+    ],
+    "framed_stream_overreported_count": [
+        "ok=false, wire=1, calls=1, frames=0, state=5, closed=true",
+    ],
+    "framed_stream_partial": [
+        "ok=true, wire=7, calls=7, frames=1, state=0, closed=false",
+        "reported bytes=3, returned len=3",
+    ],
+    "framed_stream_read_short_buffer_1": [
+        "begin reported count within need but buffer len zero",
+        "TRANSPORT CLOSED",
+        "returned Err=true,state=5",
+    ],
+    "framed_stream_read_short_buffer_2": [
+        "begin reported count within need but buffer len zero",
+        "TRANSPORT CLOSED",
+        "returned Err=true,state=5",
+    ],
+    "framed_stream_zero": [
+        "ok=false, wire=0, calls=16, frames=0, state=5, closed=true",
+    ],
+    "framed_writer_cancel": [
+        "outer outcome None; state=5, closed=true, frames=0",
+    ],
+    "framed_writer_ioerror": [
+        "ok=false, wire=4, calls=2, frames=0, state=5, closed=true",
+    ],
+    "framed_writer_overreported_count": [
+        "ok=false, wire=1, calls=1, frames=0, state=5, closed=true",
+    ],
+    "framed_writer_partial": [
+        "ok=true, wire=7, calls=7, frames=1, state=0, closed=false",
+        "reported bytes=3, returned len=3",
+    ],
+    "framed_writer_zero": [
+        "ok=false, wire=0, calls=16, frames=0, state=5, closed=true",
+    ],
+    "given_11_branch": [
+        "All 11 G2 framed transport verification branches passed successfully!",
+    ],
+    "lifecycle_pass_suite": [
+        "All 10 lifecycle and cancellation controls passed with zero TCB residue and exact-once drop!",
+    ],
+    "read_cancel": [
+        "None=true, state=5, closed=true, waits=0",
+    ],
+}
+
 
 def main():
     p = argparse.ArgumentParser(description="Toka 0.14 installed candidate verification")
@@ -249,8 +316,13 @@ def main():
         case_name = fix.stem
         case_bin = g2_dir / (case_name + ".bin")
         run(f"g2-compile-{case_name}", [tokac_bin, fix, rt_o, "-o", case_bin], g2_dir)
-        run(f"g2-run-{case_name}", [case_bin], g2_dir)
+        r_run = run(f"g2-run-{case_name}", [case_bin], g2_dir)
         case_bin.unlink(missing_ok=True)
+        if case_name in G2_EXPECTED_FACTS:
+            out_decoded = r_run.stdout.decode("utf-8", errors="replace")
+            for fact in G2_EXPECTED_FACTS[case_name]:
+                if fact not in out_decoded:
+                    raise RuntimeError(f"G2 {case_name} did not produce expected fact {fact!r}")
 
     # ==========================================
     # Group G3-unwrap: Unwrap Consumption & Layout Bounds (26 receipts: 6 positive + 20 negative)
