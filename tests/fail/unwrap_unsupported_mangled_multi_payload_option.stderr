@@ -1,0 +1,15 @@
+error[E04512]: Unwrap operator '!' requires Result<T, E> or Option<T> but got: Option_M_Probe
+ --> tests/fail/unwrap_unsupported_mangled_multi_payload_option.tk:9:17
+   |
+ 9 |     auto t = box!
+   |                 ^
+error[E0402]: Use of undeclared identifier 't'
+ --> tests/fail/unwrap_unsupported_mangled_multi_payload_option.tk:10:30
+    |
+ 10 |     return Option<i32>::Some(t.id)
+    |                              ^
+error[E0421]: Member access 'id' on non-shape type 'Unresolved(unknown)'
+ --> tests/fail/unwrap_unsupported_mangled_multi_payload_option.tk:10:31
+    |
+ 10 |     return Option<i32>::Some(t.id)
+    |                               ^

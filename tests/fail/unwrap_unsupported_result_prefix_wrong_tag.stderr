@@ -1,0 +1,10 @@
+error[E04512]: Unwrap operator '!' requires Result<T, E> or Option<T> but got: Result_Probe
+ --> tests/fail/unwrap_unsupported_result_prefix_wrong_tag.tk:6:19
+   |
+ 6 |     auto val = res!
+   |                   ^
+error[E0402]: Use of undeclared identifier 'val'
+ --> tests/fail/unwrap_unsupported_result_prefix_wrong_tag.tk:7:35
+   |
+ 7 |     return Result<i32, Token>::Ok(val)
+   |                                   ^
