@@ -1,0 +1,11 @@
+fn aliasing_recur<T>(dummy: T, n: i32) -> i32 {
+    if (n <= 0) { return 0; }
+    auto x# = 10;
+    auto &y# = &x;
+    auto val = x;
+    return aliasing_recur(dummy, n - 1);
+}
+
+fn main() -> i32 {
+    return aliasing_recur(42, 3);
+}

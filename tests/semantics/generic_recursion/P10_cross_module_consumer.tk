@@ -1,0 +1,5 @@
+import P10_cross_module_lib::{cross_recur}
+
+fn main() -> i32 {
+    return cross_recur(5, 42);
+}

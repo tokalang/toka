@@ -1,0 +1,28 @@
+import std/vec::{Vec}
+
+fn bsearch_iter<T>(arr: Vec<T>, target: i32, low: i32, high: i32) -> i32 {
+    auto l# = low;
+    auto h# = high;
+    loop (l <= h) {
+        auto mid = l + (h - l) / 2;
+        auto mid_val = arr.get(mid as usize);
+        if (mid_val == target) { return mid; }
+        if (mid_val > target) {
+            h = mid - 1;
+        } else {
+            l = mid + 1;
+        }
+    }
+    return -1;
+}
+
+fn main() -> i32 {
+    auto v# = Vec<i32>::new();
+    v#.push(10);
+    v#.push(20);
+    v#.push(30);
+    v#.push(40);
+    auto idx = bsearch_iter(v, 30, 0, 3);
+    if (idx == 2) { return 0; }
+    return 1;
+}

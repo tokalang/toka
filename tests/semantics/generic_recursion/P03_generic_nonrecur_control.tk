@@ -1,0 +1,11 @@
+fn step<T>(n: i32, val: T) -> i32 {
+    return n - 1;
+}
+
+fn caller<T>(n: i32, val: T) -> i32 {
+    return step(n, val);
+}
+
+fn main() -> i32 {
+    return caller(5, 42);
+}

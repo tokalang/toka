@@ -1,0 +1,31 @@
+shape Node<T>(
+    val: T,
+    has_left: bool,
+    left: usize,
+    has_right: bool,
+    right: usize
+)
+
+import std/vec::{Vec}
+
+fn count_nodes<T>(nodes: Vec<Node<T>>, idx: usize) -> i32 {
+    if (idx >= nodes.len()) { return 0; }
+    auto node = nodes.get(idx);
+    auto l# = 0;
+    if (node.has_left) {
+        l = count_nodes<T>(nodes, node.left);
+    }
+    auto r# = 0;
+    if (node.has_right) {
+        r = count_nodes<T>(nodes, node.right);
+    }
+    return 1 + l + r;
+}
+
+fn main() -> i32 {
+    auto v# = Vec<Node<i32>>::new();
+    v#.push(Node<i32>(val = 1, has_left = false, left = 0, has_right = false, right = 0));
+    auto cnt = count_nodes<i32>(v, 0);
+    if (cnt == 1) { return 0; }
+    return 1;
+}

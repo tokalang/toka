@@ -1,0 +1,12 @@
+fn mutual_healthy<T>(n: i32, val: T) -> i32 {
+    if (n <= 0) { return 0; }
+    return mutual_broken(n - 1, val);
+}
+
+fn mutual_broken<T>(n: i32, val: T) -> i32 {
+    return val + 1;
+}
+
+fn main() -> i32 {
+    return mutual_healthy(3, "test");
+}

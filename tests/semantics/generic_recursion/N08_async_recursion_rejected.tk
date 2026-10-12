@@ -1,0 +1,13 @@
+import std/task::{block_on}
+
+fn recur_async<T>(n: i32, value: T) -> async i32 {
+    if (n <= 0) {
+        return 0;
+    }
+    auto r = recur_async(n - 1, value).await;
+    return r;
+}
+
+fn main() -> i32 {
+    return block_on(recur_async(3, 42));
+}

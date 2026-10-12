@@ -502,6 +502,7 @@ private:
 
   enum class GenericSpecializationValidationState {
     Unchecked,
+    InFlight,
     Valid,
     Invalid,
   };
@@ -518,6 +519,8 @@ private:
     GenericBodyQualificationState BodyQualification =
         GenericBodyQualificationState::Unseen;
     std::string SpecializationIdentity;
+    bool BodyChecked = false;
+    uint32_t GroupId = 0;
   };
   struct GenericFunctionInstantiationResult {
     FunctionDecl *Instance = nullptr;
@@ -529,9 +532,21 @@ private:
   struct GenericValidationFrame {
     bool HasInvalidDependency = false;
   };
+  struct ActiveGenericTemplateEntry {
+    FunctionDecl *Template = nullptr;
+    std::vector<std::shared_ptr<toka::Type>> Args;
+    std::shared_ptr<GenericSpecializationCacheEntry> CacheEntry;
+    size_t StackIndex = 0;
+    size_t LowLink = 0;
+    size_t StartDiagnostics = 0;
+    bool HasInvalidDependency = false;
+    std::vector<std::shared_ptr<GenericSpecializationCacheEntry>> CycleMembers;
+    std::vector<std::pair<FunctionDecl *, std::vector<std::shared_ptr<toka::Type>>>> CycleTemplates;
+  };
   std::map<std::string, std::shared_ptr<GenericSpecializationCacheEntry>>
       InstantiationCache;
   std::vector<GenericValidationFrame> m_GenericValidationFrames;
+  std::vector<ActiveGenericTemplateEntry> m_ActiveGenericTemplateStack;
   std::map<std::string, std::shared_ptr<toka::Type>> GenericShapeCache;
   int RecursionDepth = 0;
 

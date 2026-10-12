@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+
+fn drain_direct<T>(cede v: Vec<T>) -> i32 {
+    auto fin = cede v;
+    return 0;
+}
+
+fn main() -> i32 {
+    auto v# = Vec<i32>::new();
+    v#.push(1);
+    v#.push(2);
+    return drain_direct(cede v);
+}

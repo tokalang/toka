@@ -1,0 +1,15 @@
+fn is_even_i32(n: i32) -> bool {
+    if (n == 0) { return true; }
+    return is_odd_i32(n - 1);
+}
+
+fn is_odd_i32(n: i32) -> bool {
+    if (n == 0) { return false; }
+    return is_even_i32(n - 1);
+}
+
+fn main() -> i32 {
+    auto res = is_even_i32(4);
+    if (res == true) { return 0; }
+    return 1;
+}

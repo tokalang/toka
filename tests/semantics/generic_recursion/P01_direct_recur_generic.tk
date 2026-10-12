@@ -1,0 +1,8 @@
+fn countdown<T>(n: i32, val: T) -> i32 {
+    if (n <= 0) { return 0; }
+    return countdown(n - 1, val);
+}
+
+fn main() -> i32 {
+    return countdown(5, 42);
+}

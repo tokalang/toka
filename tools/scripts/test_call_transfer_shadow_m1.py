@@ -1430,8 +1430,8 @@ def main():
         mangled_source = Path(temp) / "mangled_lookup.tk"
         mangled_source.write_text(
             "fn inner() -> i32 { return 42:i32 }\n\n\n"
-            "fn generic_bad<T>(value: T) -> T {\n"
-            "    return generic_bad(value)\n"
+            "fn generic_bad<T>(value: T) -> i32 {\n"
+            "    return generic_bad([value])\n"
             "}\n\n"
             "fn main() -> i32 {\n"
             "    return generic_bad(inner())\n"

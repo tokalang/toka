@@ -1,0 +1,9 @@
+fn sync_step<T>(n: i32, marker: T) -> i32 {
+ if n <= 0 { return 0 }
+ return async_step(n - 1, marker).wait
+}
+fn async_step<T>(n: i32, marker: T) -> async i32 {
+ if n <= 0 { return 0 }
+ return sync_step(n - 1, marker)
+}
+fn main() -> i32 { return sync_step(3, 42) }
