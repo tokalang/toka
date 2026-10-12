@@ -1,0 +1,16 @@
+import std/task::{block_on}
+
+fn step_async<T>(n: i32, value: T) -> async i32 {
+    return n - 1;
+}
+
+fn caller_async<T>(n: i32, value: T) -> async i32 {
+    auto r = step_async(n, value).await;
+    return r;
+}
+
+fn main() -> i32 {
+    auto res = block_on(caller_async(5, 42));
+    assert(res == 4, "step_async failed");
+    return 0;
+}

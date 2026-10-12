@@ -394,6 +394,9 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_views.py --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_whole_value_generics
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_whole_value_generics.py --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_generic_recursion
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_generic_recursion.py --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(toka_generic_recursion PROPERTIES TIMEOUT 180)
         add_test(NAME toka_permission_native_literals
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/scripts/test_permission_native_literals.py --build-dir ${CMAKE_BINARY_DIR})
         add_test(NAME toka_permission_net_regression

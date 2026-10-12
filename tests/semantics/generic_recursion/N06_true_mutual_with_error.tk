@@ -1,0 +1,15 @@
+fn mutual_a<T>(n: i32, val: T) -> i32 {
+    if (n <= 0) { return 0; }
+    return mutual_b(n - 1, val);
+}
+
+fn mutual_b<T>(n: i32, val: T) -> i32 {
+    if (n <= 0) { return 0; }
+    auto next = mutual_a(n - 1, val);
+    // Semantic type error after recursive call back to mutual_a:
+    return val + 1;
+}
+
+fn main() -> i32 {
+    return mutual_a(3, "hello");
+}

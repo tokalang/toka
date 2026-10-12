@@ -1,0 +1,11 @@
+fn broken_recur<T>(n: i32, val: T) -> i32 {
+    if (n <= 0) { return 0; }
+    auto next = broken_recur(n - 1, val);
+    return val + 1;
+}
+
+fn main() -> i32 {
+    auto first = broken_recur(2, "hello");
+    auto second = broken_recur(2, "hello");
+    return 0;
+}

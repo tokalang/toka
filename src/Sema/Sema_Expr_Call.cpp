@@ -10128,20 +10128,59 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           entry ? entry->Validation
                 : GenericSpecializationValidationState::Unchecked;
       if (validation != GenericSpecializationValidationState::Valid) {
-        if (directArgumentRollback)
-          directArgumentRollback->reject();
-        if (!m_GenericValidationFrames.empty())
-          m_GenericValidationFrames.back().HasInvalidDependency = true;
-        if (!m_CallableReturnFrames.empty())
-          m_CallableReturnFrames.back().Facts.Complete = false;
-        if (!m_StaticReturnStorageFrames.empty())
-          m_StaticReturnStorageFrames.back().Complete = false;
-        if (!m_IndependentReturnFrames.empty())
-          m_IndependentReturnFrames.back().Complete = false;
-        if (SemanticEvidence::isCallTransferShadowEnabled() &&
-            stage0CallEntrySnapshot) {
-          m_Stage0InvalidGenericSpecializationCalls.insert(Call);
-          rollbackInvalidSpecializationDescendants = true;
+        const bool isInFlightAdmitted =
+            validation == GenericSpecializationValidationState::InFlight &&
+            entry && entry->Instance &&
+            entry->Instance->NativeSyncFactory == NativeSyncFactoryKind::None &&
+            entry->Instance->Effect == EffectKind::None &&
+            entry->Instance->ReturnContract.Effect == EffectKind::None;
+        if (!isInFlightAdmitted) {
+          if (directArgumentRollback)
+            directArgumentRollback->reject();
+          if (!m_GenericValidationFrames.empty())
+            m_GenericValidationFrames.back().HasInvalidDependency = true;
+          if (!m_CallableReturnFrames.empty())
+            m_CallableReturnFrames.back().Facts.Complete = false;
+          if (!m_StaticReturnStorageFrames.empty())
+            m_StaticReturnStorageFrames.back().Complete = false;
+          if (!m_IndependentReturnFrames.empty())
+            m_IndependentReturnFrames.back().Complete = false;
+          if (SemanticEvidence::isCallTransferShadowEnabled() &&
+              stage0CallEntrySnapshot) {
+            m_Stage0InvalidGenericSpecializationCalls.insert(Call);
+            rollbackInvalidSpecializationDescendants = true;
+          }
+          if (validation == GenericSpecializationValidationState::InFlight) {
+            if (entry) {
+              entry->Validation = GenericSpecializationValidationState::Invalid;
+              entry->BodyQualification = GenericBodyQualificationState::Invalid;
+              SemanticEvidence::rollbackGenericBodyCallQualification(
+                  entry->SpecializationIdentity);
+            }
+            error(Call, DiagID::ERR_GENERIC_SEMA,
+                  "recursive generic specialization is not supported: " + CallName);
+            return toka::Type::fromString("unknown");
+          }
+        } else {
+          if (!m_CallableReturnFrames.empty())
+            m_CallableReturnFrames.back().Facts.Complete = false;
+          if (!m_StaticReturnStorageFrames.empty())
+            m_StaticReturnStorageFrames.back().Complete = false;
+          if (!m_IndependentReturnFrames.empty())
+            m_IndependentReturnFrames.back().Complete = false;
+          if (!m_ActiveGenericTemplateStack.empty()) {
+            for (const auto &active : m_ActiveGenericTemplateStack) {
+              if (active.CacheEntry == entry ||
+                  std::find(active.CycleMembers.begin(),
+                            active.CycleMembers.end(),
+                            entry) != active.CycleMembers.end()) {
+                m_ActiveGenericTemplateStack.back().LowLink =
+                    std::min(m_ActiveGenericTemplateStack.back().LowLink,
+                             active.StackIndex);
+                break;
+              }
+            }
+          }
         }
       }
       if (!entry ||
@@ -10842,13 +10881,23 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       // otherwise CodeGen will attempt to call the generic template
       // name
       Call->Callee = Fn->Name;
+      const bool isAdmittedSyncFreeFunction =
+          Fn && Fn->NativeSyncFactory == NativeSyncFactoryKind::None &&
+          Fn->Effect == EffectKind::None &&
+          Fn->ReturnContract.Effect == EffectKind::None;
       const bool specializationValidated =
           instantiation.Validation ==
-          GenericSpecializationValidationState::Valid;
+              GenericSpecializationValidationState::Valid ||
+          (instantiation.Validation ==
+               GenericSpecializationValidationState::InFlight &&
+           isAdmittedSyncFreeFunction);
       const bool bodyQualificationComplete =
           !promoteGenericBodyQualification ||
           instantiation.BodyQualification ==
-              GenericBodyQualificationState::Complete;
+              GenericBodyQualificationState::Complete ||
+          (instantiation.Validation ==
+               GenericSpecializationValidationState::InFlight &&
+           isAdmittedSyncFreeFunction);
       if (!specializationValidated || instantiationReportedError ||
           !bodyQualificationComplete) {
         directArgumentRollback->reject();

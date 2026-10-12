@@ -1,0 +1,7 @@
+import provider::{recur_sum}
+
+fn main() -> i32 {
+    auto res = recur_sum(10, 0);
+    assert(res == 55, "recur_sum failed");
+    return 0;
+}

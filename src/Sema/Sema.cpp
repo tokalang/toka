@@ -8090,6 +8090,68 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     mangledName += "_" + semanticArg->getMangledName();
   }
 
+  // Pre-instantiation Active Template Guard
+  auto matchesTemplateArgs =
+      [&](FunctionDecl *candTemplate,
+          const std::vector<std::shared_ptr<toka::Type>> &candArgs) -> bool {
+    if (candTemplate != Template)
+      return false;
+    if (candArgs.size() != Args.size())
+      return false;
+    for (size_t i = 0; i < Args.size(); ++i) {
+      auto r1 = resolveType(Args[i]);
+      auto r2 = resolveType(candArgs[i]);
+      auto a1 = r1 ? r1 : Args[i];
+      auto a2 = r2 ? r2 : candArgs[i];
+      if (!a1 || !a2 || !a1->equals(*a2))
+        return false;
+    }
+    return true;
+  };
+
+  for (const auto &active : m_ActiveGenericTemplateStack) {
+    bool hasMatchingTemplate = (active.Template == Template);
+    if (!hasMatchingTemplate) {
+      for (const auto &ct : active.CycleTemplates) {
+        if (ct.first == Template) {
+          hasMatchingTemplate = true;
+          break;
+        }
+      }
+    }
+    if (hasMatchingTemplate) {
+      bool argsEqual = matchesTemplateArgs(active.Template, active.Args);
+      if (!argsEqual) {
+        for (const auto &ct : active.CycleTemplates) {
+          if (matchesTemplateArgs(ct.first, ct.second)) {
+            argsEqual = true;
+            break;
+          }
+        }
+      }
+      if (!argsEqual) {
+        std::string activeMangledName =
+            (active.CacheEntry && active.CacheEntry->Instance &&
+             !active.CacheEntry->Instance->CodegenName.empty())
+                ? active.CacheEntry->Instance->CodegenName
+                : mangledName;
+        error(CallSite ? static_cast<ASTNode *>(CallSite)
+                       : static_cast<ASTNode *>(Template),
+              DiagID::ERR_GENERIC_SEMA,
+              "recursive generic specialization is not supported: " +
+                  activeMangledName +
+                  ": polymorphic recursion is not supported: generic template '" +
+                  Template->Name +
+                  "' recursively instantiated with changing type arguments");
+        if (!m_GenericValidationFrames.empty())
+          m_GenericValidationFrames.back().HasInvalidDependency = true;
+        if (!m_ActiveGenericTemplateStack.empty())
+          m_ActiveGenericTemplateStack.back().HasInvalidDependency = true;
+        return {nullptr, GenericSpecializationValidationState::Invalid};
+      }
+    }
+  }
+
   // Recursion Guard
   if (RecursionDepth > 100) {
     DiagnosticEngine::report(getLoc(CallSite), DiagID::NOTE_GENERIC, Template->Name);
@@ -8131,18 +8193,18 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     const auto validation =
         entry ? entry->Validation
               : GenericSpecializationValidationState::Unchecked;
-    if (validation != GenericSpecializationValidationState::Valid &&
-        !m_GenericValidationFrames.empty())
-      m_GenericValidationFrames.back().HasInvalidDependency = true;
-    if (validation != GenericSpecializationValidationState::Valid &&
-        !m_CallableReturnFrames.empty())
-      m_CallableReturnFrames.back().Facts.Complete = false;
-    if (validation != GenericSpecializationValidationState::Valid &&
-        !m_StaticReturnStorageFrames.empty())
-      m_StaticReturnStorageFrames.back().Complete = false;
-    if (validation != GenericSpecializationValidationState::Valid &&
-        !m_IndependentReturnFrames.empty())
-      m_IndependentReturnFrames.back().Complete = false;
+    if (validation != GenericSpecializationValidationState::Valid) {
+      if (validation != GenericSpecializationValidationState::InFlight) {
+        if (!m_GenericValidationFrames.empty())
+          m_GenericValidationFrames.back().HasInvalidDependency = true;
+      }
+      if (!m_CallableReturnFrames.empty())
+        m_CallableReturnFrames.back().Facts.Complete = false;
+      if (!m_StaticReturnStorageFrames.empty())
+        m_StaticReturnStorageFrames.back().Complete = false;
+      if (!m_IndependentReturnFrames.empty())
+        m_IndependentReturnFrames.back().Complete = false;
+    }
     if (!entry ||
         validation == GenericSpecializationValidationState::Unchecked) {
       if (entry) {
@@ -8157,6 +8219,43 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
             "recursive generic specialization is not supported: " +
                 mangledName);
       return {nullptr, GenericSpecializationValidationState::Invalid};
+    }
+    if (validation == GenericSpecializationValidationState::InFlight) {
+      const bool isAdmittedSyncFreeFunction =
+          Template->NativeSyncFactory == NativeSyncFactoryKind::None &&
+          Template->Effect == EffectKind::None &&
+          Template->ReturnContract.Effect == EffectKind::None &&
+          (!entry || !entry->Instance ||
+           (entry->Instance->Effect == EffectKind::None &&
+            entry->Instance->ReturnContract.Effect == EffectKind::None));
+
+      if (!isAdmittedSyncFreeFunction) {
+        if (entry) {
+          entry->Validation = GenericSpecializationValidationState::Invalid;
+          entry->BodyQualification = GenericBodyQualificationState::Invalid;
+          SemanticEvidence::rollbackGenericBodyCallQualification(
+              entry->SpecializationIdentity);
+        }
+        error(CallSite ? static_cast<ASTNode *>(CallSite)
+                       : static_cast<ASTNode *>(Template),
+              DiagID::ERR_GENERIC_SEMA,
+              "recursive generic specialization is not supported: " +
+                  mangledName);
+        return {nullptr, GenericSpecializationValidationState::Invalid};
+      }
+      if (!m_ActiveGenericTemplateStack.empty()) {
+        for (const auto &active : m_ActiveGenericTemplateStack) {
+          if (active.CacheEntry == entry ||
+              std::find(active.CycleMembers.begin(), active.CycleMembers.end(),
+                        entry) != active.CycleMembers.end()) {
+            m_ActiveGenericTemplateStack.back().LowLink =
+                std::min(m_ActiveGenericTemplateStack.back().LowLink,
+                         active.StackIndex);
+            break;
+          }
+        }
+      }
+      return {entry->Instance, validation, entry->BodyQualification};
     }
     if (prepareStage0BodyCalls &&
         validation == GenericSpecializationValidationState::Valid) {
@@ -8769,7 +8868,7 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
 
   auto cacheEntry = std::make_shared<GenericSpecializationCacheEntry>();
   cacheEntry->Instance = Instance;
-  cacheEntry->Validation = GenericSpecializationValidationState::Unchecked;
+  cacheEntry->Validation = GenericSpecializationValidationState::InFlight;
   cacheEntry->BodyQualification = GenericBodyQualificationState::Unseen;
   cacheEntry->SpecializationIdentity = std::move(semanticInstantiation);
   Instance->Stage0BodyQualificationRequired =
@@ -8778,6 +8877,18 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
       cacheEntry->SpecializationIdentity;
   InstantiationCache[cacheKey] = cacheEntry;
   InstantiationCache[mangledName] = cacheEntry;
+
+  ActiveGenericTemplateEntry activeFrame;
+  activeFrame.Template = Template;
+  activeFrame.Args = Args;
+  activeFrame.CacheEntry = cacheEntry;
+  activeFrame.StackIndex = m_ActiveGenericTemplateStack.size();
+  activeFrame.LowLink = activeFrame.StackIndex;
+  activeFrame.StartDiagnostics = validationDiagnosticStart;
+  activeFrame.HasInvalidDependency = false;
+  activeFrame.CycleMembers.push_back(cacheEntry);
+  activeFrame.CycleTemplates.push_back({Template, Args});
+  m_ActiveGenericTemplateStack.push_back(activeFrame);
 
   // [NEW] Inject Const Generic Variables into Body
   // Removed dirty hack (VariableDecl injection).
@@ -8803,43 +8914,84 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
   exitScope();
   RecursionDepth--;
 
-  const auto &validationDiagnostics = DiagnosticEngine::records();
-  const bool validationFailed =
-      invalidDependency ||
-      std::any_of(
-          validationDiagnostics.begin() +
-              std::min(validationDiagnosticStart, validationDiagnostics.size()),
-          validationDiagnostics.end(),
-          [](const auto &record) { return record.Level == DiagLevel::Error; });
-  const auto validation = validationFailed
-                              ? GenericSpecializationValidationState::Invalid
-                              : GenericSpecializationValidationState::Valid;
-  cacheEntry->Validation = validation;
-  if (prepareStage0BodyCalls) {
-    if (validation == GenericSpecializationValidationState::Valid) {
-      cacheEntry->BodyQualification = GenericBodyQualificationState::Prepared;
-      SemanticEvidence::recordGenericBodyCallQualificationDependency(
-          qualificationParentIdentity, cacheEntry->SpecializationIdentity);
-      if (promoteStage0BodyCalls)
-        promoteStage0GenericBodyQualification(cacheEntry);
+  cacheEntry->BodyChecked = true;
+  auto currentFrame = m_ActiveGenericTemplateStack.back();
+  m_ActiveGenericTemplateStack.pop_back();
+  if (invalidDependency)
+    currentFrame.HasInvalidDependency = true;
+
+  if (currentFrame.LowLink < currentFrame.StackIndex &&
+      !m_ActiveGenericTemplateStack.empty()) {
+    auto &parentFrame = m_ActiveGenericTemplateStack.back();
+    parentFrame.LowLink =
+        std::min(parentFrame.LowLink, currentFrame.LowLink);
+    if (currentFrame.HasInvalidDependency)
+      parentFrame.HasInvalidDependency = true;
+    parentFrame.CycleMembers.insert(parentFrame.CycleMembers.end(),
+                                   currentFrame.CycleMembers.begin(),
+                                   currentFrame.CycleMembers.end());
+    parentFrame.CycleTemplates.insert(parentFrame.CycleTemplates.end(),
+                                     currentFrame.CycleTemplates.begin(),
+                                     currentFrame.CycleTemplates.end());
+  } else {
+    // Root of SCC! (LowLink == StackIndex)
+    const auto &validationDiagnostics = DiagnosticEngine::records();
+    const bool zeroNewErrors = !std::any_of(
+        validationDiagnostics.begin() +
+            std::min(currentFrame.StartDiagnostics,
+                     validationDiagnostics.size()),
+        validationDiagnostics.end(),
+        [](const auto &record) { return record.Level == DiagLevel::Error; });
+
+    bool allMembersBodyChecked = true;
+    for (const auto &member : currentFrame.CycleMembers) {
+      if (!member->BodyChecked) {
+        allMembersBodyChecked = false;
+        break;
+      }
+    }
+
+    const bool groupCommitSuccess =
+        allMembersBodyChecked && zeroNewErrors && !currentFrame.HasInvalidDependency;
+
+    if (groupCommitSuccess) {
+      for (const auto &member : currentFrame.CycleMembers) {
+        member->Validation = GenericSpecializationValidationState::Valid;
+        if (prepareStage0BodyCalls) {
+          member->BodyQualification =
+              GenericBodyQualificationState::Prepared;
+          SemanticEvidence::recordGenericBodyCallQualificationDependency(
+              qualificationParentIdentity, member->SpecializationIdentity);
+          if (promoteStage0BodyCalls)
+            promoteStage0GenericBodyQualification(member);
+        }
+      }
     } else {
-      cacheEntry->BodyQualification = GenericBodyQualificationState::Invalid;
-      SemanticEvidence::rollbackGenericBodyCallQualification(
-          cacheEntry->SpecializationIdentity);
+      for (const auto &member : currentFrame.CycleMembers) {
+        member->Validation = GenericSpecializationValidationState::Invalid;
+        member->BodyQualification = GenericBodyQualificationState::Invalid;
+        SemanticEvidence::rollbackGenericBodyCallQualification(
+            member->SpecializationIdentity);
+      }
+      if (!m_GenericValidationFrames.empty())
+        m_GenericValidationFrames.back().HasInvalidDependency = true;
+      if (!m_ActiveGenericTemplateStack.empty())
+        m_ActiveGenericTemplateStack.back().HasInvalidDependency = true;
     }
   }
+
+  const auto validation = cacheEntry->Validation;
   if (validation != GenericSpecializationValidationState::Valid &&
-      !m_GenericValidationFrames.empty())
-    m_GenericValidationFrames.back().HasInvalidDependency = true;
-  if (validation != GenericSpecializationValidationState::Valid &&
-      !m_CallableReturnFrames.empty())
-    m_CallableReturnFrames.back().Facts.Complete = false;
-  if (validation != GenericSpecializationValidationState::Valid &&
-      !m_StaticReturnStorageFrames.empty())
-    m_StaticReturnStorageFrames.back().Complete = false;
-  if (validation != GenericSpecializationValidationState::Valid &&
-      !m_IndependentReturnFrames.empty())
-    m_IndependentReturnFrames.back().Complete = false;
+      validation != GenericSpecializationValidationState::InFlight) {
+    if (!m_GenericValidationFrames.empty())
+      m_GenericValidationFrames.back().HasInvalidDependency = true;
+    if (!m_CallableReturnFrames.empty())
+      m_CallableReturnFrames.back().Facts.Complete = false;
+    if (!m_StaticReturnStorageFrames.empty())
+      m_StaticReturnStorageFrames.back().Complete = false;
+    if (!m_IndependentReturnFrames.empty())
+      m_IndependentReturnFrames.back().Complete = false;
+  }
   return {Instance, validation, cacheEntry->BodyQualification};
 }
 

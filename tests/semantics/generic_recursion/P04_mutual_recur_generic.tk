@@ -1,0 +1,15 @@
+fn is_even<T>(n: i32, val: T) -> bool {
+    if (n == 0) { return true; }
+    return is_odd(n - 1, val);
+}
+
+fn is_odd<T>(n: i32, val: T) -> bool {
+    if (n == 0) { return false; }
+    return is_even(n - 1, val);
+}
+
+fn main() -> i32 {
+    auto res = is_even(4, 42);
+    if (res == true) { return 0; }
+    return 1;
+}

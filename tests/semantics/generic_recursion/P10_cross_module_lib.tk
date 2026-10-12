@@ -1,0 +1,4 @@
+pub fn cross_recur<T>(n: i32, val: T) -> i32 {
+    if (n <= 0) { return 0; }
+    return cross_recur(n - 1, val);
+}

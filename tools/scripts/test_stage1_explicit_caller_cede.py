@@ -111,8 +111,8 @@ def main():
             prefix="toka-stage1-invalid-cache-alias-") as temp:
         source = Path(temp) / "invalid_cache_alias.tk"
         source.write_text(
-            "fn generic_bad<T>(cede value: T) -> T {\n"
-            "    return generic_bad(cede value)\n"
+            "fn generic_bad<T>(cede value: T) -> i32 {\n"
+            "    return generic_bad([cede value])\n"
             "}\n\n"
             "fn main() -> i32 {\n"
             "    auto value = 1:i32\n"
