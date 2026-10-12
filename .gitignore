@@ -21,6 +21,7 @@ build_asan/
 !lib/build/
 !lib/build/**
 build-linux/
+build-*/
 bin/
 target/
 .toka_build_exe
