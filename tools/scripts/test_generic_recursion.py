@@ -2,6 +2,7 @@
 """Regression test suite for 0.15 Generic Recursion (Free Functions, Direct & Mutual)."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -200,6 +201,7 @@ def main():
     parser = argparse.ArgumentParser(description="0.15 Generic Recursion Test Suite")
     parser.add_argument("--build-dir", type=Path, default=None, help="CMake build directory containing bin/tokac")
     parser.add_argument("--tokac", type=Path, default=None, help="Explicit path to tokac compiler binary")
+    parser.add_argument("--output-dir", type=Path, default=None, help="Output directory to emit test report JSON")
     args = parser.parse_args()
 
     if args.tokac:
@@ -207,10 +209,13 @@ def main():
     elif args.build_dir:
         tokac = (args.build_dir / "bin/tokac").resolve()
     else:
-        # Fall back to default build dir if available
-        candidate = ROOT / "builds/fix-r3-task-escape/bin/tokac"
-        if candidate.exists():
-            tokac = candidate
+        for candidate in (
+            ROOT / "build/bin/tokac",
+            ROOT.parent / "builds/fix-r3-task-escape/bin/tokac",
+        ):
+            if candidate.exists():
+                tokac = candidate
+                break
         else:
             parser.error("Either --build-dir or --tokac must be specified.")
 
@@ -296,41 +301,76 @@ def main():
         else:
             print(f"  [FAIL] {'cleanup_drop_tracking':38s} compile exit {c_res.returncode}: {c_res.stderr.strip()}")
 
-        # 3. Source-Hidden TKI Compilation & Linkage
+        # 3. Source-Hidden TKI Compilation & Linkage with Negative Fallback Controls
         total_count += 1
         tki_provider_src = PROBES_DIR / "tki_provider.tk"
         tki_consumer_src = PROBES_DIR / "tki_consumer.tk"
         provider_stage_dir = work_dir / "tki_provider_stage"
         provider_stage_dir.mkdir(parents=True, exist_ok=True)
+        provider_copy = provider_stage_dir / "tki_provider.tk"
+        shutil.copy2(tki_provider_src, provider_copy)
 
         c1 = subprocess.run(
-            [str(tokac), str(tki_provider_src), "-c", "-o", str(provider_stage_dir / "provider.o")],
+            [str(tokac), str(provider_copy), "-c", "-o", str(provider_stage_dir / "provider.o")],
             env=env, cwd=provider_stage_dir, capture_output=True, text=True, timeout=30
         )
         tki_file = provider_stage_dir / "provider.tki"
         o_file = provider_stage_dir / "provider.o"
 
         if c1.returncode == 0 and tki_file.exists() and o_file.exists():
+            # Physically remove provider source so it cannot be reached
+            provider_copy.unlink()
+
             consumer_stage_dir = work_dir / "tki_consumer_stage"
             consumer_stage_dir.mkdir(parents=True, exist_ok=True)
-            # Copy only .tki and .o (simulating hidden source)
-            shutil.copy(tki_file, consumer_stage_dir / "provider.tki")
-            shutil.copy(o_file, consumer_stage_dir / "provider.o")
+            consumer_copy = consumer_stage_dir / "tki_consumer.tk"
+            shutil.copy2(tki_consumer_src, consumer_copy)
+            shutil.copy2(tki_file, consumer_stage_dir / "provider.tki")
+            shutil.copy2(o_file, consumer_stage_dir / "provider.o")
 
+            # Clean provider stage to eliminate alternate source/cache routes
+            shutil.rmtree(provider_stage_dir, ignore_errors=True)
+
+            # Negative control: missing .tki must fail with exit 1
+            missing_stage = work_dir / "tki_missing_stage"
+            missing_stage.mkdir(parents=True, exist_ok=True)
+            missing_consumer = missing_stage / "tki_consumer.tk"
+            shutil.copy2(tki_consumer_src, missing_consumer)
+            c_missing = subprocess.run(
+                [str(tokac), "-I", str(missing_stage), str(missing_consumer), str(consumer_stage_dir / "provider.o"), "-o", str(missing_stage / "bad.bin")],
+                env=env, cwd=missing_stage, capture_output=True, text=True, timeout=30
+            )
+            missing_ok = (c_missing.returncode == 1)
+            shutil.rmtree(missing_stage, ignore_errors=True)
+
+            # Negative control: corrupted .tki must fail with exit 1
+            corrupt_stage = work_dir / "tki_corrupt_stage"
+            corrupt_stage.mkdir(parents=True, exist_ok=True)
+            corrupt_consumer = corrupt_stage / "tki_consumer.tk"
+            shutil.copy2(tki_consumer_src, corrupt_consumer)
+            (corrupt_stage / "provider.tki").write_text("// corrupt header\ninvalid\n", encoding="utf-8")
+            c_corrupt = subprocess.run(
+                [str(tokac), "-I", str(corrupt_stage), str(corrupt_consumer), str(consumer_stage_dir / "provider.o"), "-o", str(corrupt_stage / "bad.bin")],
+                env=env, cwd=corrupt_stage, capture_output=True, text=True, timeout=30
+            )
+            corrupt_ok = (c_corrupt.returncode == 1)
+            shutil.rmtree(corrupt_stage, ignore_errors=True)
+
+            # Positive build against source-hidden .tki and .o
             tki_bin = consumer_stage_dir / "tki_bin"
             c2 = subprocess.run(
-                [str(tokac), "-I", str(consumer_stage_dir), str(tki_consumer_src), str(consumer_stage_dir / "provider.o"), "-o", str(tki_bin)],
+                [str(tokac), "-I", str(consumer_stage_dir), str(consumer_copy), str(consumer_stage_dir / "provider.o"), "-o", str(tki_bin)],
                 env=env, cwd=consumer_stage_dir, capture_output=True, text=True, timeout=30
             )
-            if c2.returncode == 0 and tki_bin.exists():
+            if missing_ok and corrupt_ok and c2.returncode == 0 and tki_bin.exists():
                 r_tki = subprocess.run([str(tki_bin)], env=env, cwd=consumer_stage_dir, capture_output=True, text=True, timeout=10)
                 if r_tki.returncode == 0:
                     passed_count += 1
-                    print(f"  [PASS] {'source_hidden_tki_boundary':38s} (provider source absent; recur_sum=55)")
+                    print(f"  [PASS] {'source_hidden_tki_boundary':38s} (provider source absent; recur_sum=55; neg controls pass)")
                 else:
                     print(f"  [FAIL] {'source_hidden_tki_boundary':38s} runtime exit {r_tki.returncode}")
             else:
-                print(f"  [FAIL] {'source_hidden_tki_boundary':38s} consumer build exit {c2.returncode}: {c2.stderr.strip()}")
+                print(f"  [FAIL] {'source_hidden_tki_boundary':38s} (missing_ok={missing_ok}, corrupt_ok={corrupt_ok}, consumer_exit={c2.returncode})")
         else:
             print(f"  [FAIL] {'source_hidden_tki_boundary':38s} provider build exit {c1.returncode}: {c1.stderr.strip()}")
 
@@ -370,6 +410,19 @@ def main():
     print(f"\n==========================================")
     print(f"Summary: {passed_count}/{total_count} passed ({passed_count * 100 // total_count}%)")
     print(f"==========================================")
+
+    if args.output_dir:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        report_data = {
+            "schema": "toka.generic-recursion-gate",
+            "version": 1,
+            "result": "pass" if passed_count == total_count else "fail",
+            "tokac": str(tokac),
+            "total_probes": total_count,
+            "passed_probes": passed_count,
+            "failed_probes": total_count - passed_count,
+        }
+        (args.output_dir / "generic-recursion-report.json").write_text(json.dumps(report_data, indent=2) + "\n", encoding="utf-8")
 
     if passed_count != total_count:
         sys.exit(1)

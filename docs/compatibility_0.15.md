@@ -8,7 +8,7 @@
 - Subsequent lookup of an `Invalid` instance fails closed, aborting compilation and preventing tainted cache reuse.
 
 ### 2. Prohibited Generic Recursion Forms
-- **Async Generic Recursion**: `async fn f<T>` calling itself directly, mutually, or via a mixed sync/async cycle is rejected at compile time with diagnostic `error[E0406]` (or `error[E04661]` for unproven task result origins). Zero object or IR artifacts are generated.
+- **Async Generic Recursion**: `fn f<T>(...) -> async ...` calling itself directly or mutually (or entering a mixed cycle from an async function) is rejected at compile time with diagnostic `error[E0406]`. Mixed cycles entered synchronously calling an un-awaited async function are rejected with `error[E04661]`. Zero object or IR artifacts are generated.
 - **Polymorphic / Type-Expanding Recursion**: Generic functions expanding their type parameter across calls (e.g., `f<T>` calling `f<Option<T>>` or `f<[T]>`) are rejected with diagnostic `error[E0406]`.
 
 ### 3. Preserved Contracts & Zero Regression
@@ -22,7 +22,7 @@
 - **Compiler Interface Key**: `0.9.9-38`
   - Defined in `include/toka/InterfaceVersion.h` (`TOKA_COMPILER_INTERFACE_VERSION`).
   - Emitted in `.tki` interface metadata headers (`// @meta compiler_version: 0.9.9-38`), semantic cache manifests, and diagnostic JSON records (`"compiler_version": "0.9.9-38"`).
-  - Tracks binary/AST interface compatibility, intentionally decoupled from release tags to maintain `.tki` cache compatibility across non-breaking releases. Release verifiers must check the product version without conflating it with the compiler interface key.
+  - Tracks binary/AST interface identity, decoupled from product release tags. Release verifiers must check the product version without conflating it with the compiler interface key.
 
 ## SDK Acceptance Checklist
 
@@ -43,4 +43,4 @@
    - Direct and mutual generic recursion execute correctly with exit code 0.
    - Destructor tracking asserts exact single cede handoff drop (`drop == 1`) and exact per-frame local variable destruction (`drop == 6`).
    - Source-hidden TKI compilation, link, and execution succeed without provider source present.
-   - Negative controls fail closed: async recursion rejected with `error[E0406]` across `--check-only`, `-c -o`, and `--emit-llvm` modes with zero artifacts; polymorphic recursion rejected with `error[E0406]` (<50ms).
+   - Negative controls fail closed: async recursion rejected with `error[E0406]` across `--check-only`, `-c -o`, and `--emit-llvm` modes with zero artifacts; polymorphic recursion rejected with `error[E0406]` (bounded stack depth, ~20ms on reference host).

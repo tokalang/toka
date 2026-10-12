@@ -152,31 +152,117 @@ def valid_candidate_015(revision, label, target=None):
         target = 'linux-x64'
     ver = label.removeprefix('v')
     receipts = []
+    # 1. Four tool versions
     for name in ('tokac', 'toka', 'tokafmt', 'tokalsp'):
+        out_msg = f'{name} version {ver}\n'
         receipts.append({
             'name': 'version-' + name,
             'argv': ['/sdk/bin/' + name, '--version'],
-            'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 5.0,
-            'termination': None, 'error': None, 'result': 'pass', 'ok': True,
-            'stdout': f'{name} version {ver}\n', 'stderr': '',
+            'cmd': ['/sdk/bin/' + name, '--version'],
+            'cwd': '/tmp',
+            'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+            'result': 'pass', 'ok': True, 'execution_ms': 5.0,
+            'stdout': out_msg, 'stderr': '',
+            'stdout_sha256': hashlib.sha256(out_msg.encode('utf-8')).hexdigest(),
+            'stderr_sha256': hashlib.sha256(b'').hexdigest(),
         })
-    for i in range(21):
+
+    # 2. Positive cases (9 cases: compile + run = 18 receipts)
+    for case in policy.POS_015_CASES:
+        comp_out = f'/tmp/{case}_bin'
         receipts.append({
-            'name': f'pos-{i}',
-            'argv': ['/sdk/bin/tokac', f'/fixtures/pass/pos_{i}.tk'],
-            'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0,
-            'termination': None, 'error': None, 'result': 'pass', 'ok': True,
+            'name': f'pos-{case}-compile',
+            'argv': ['/sdk/bin/tokac', f'/fixtures/pass/{case}.tk', '-o', comp_out],
+            'cmd': ['/sdk/bin/tokac', f'/fixtures/pass/{case}.tk', '-o', comp_out],
+            'cwd': '/tmp',
+            'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+            'result': 'pass', 'ok': True, 'execution_ms': 10.0,
             'stdout': '', 'stderr': '',
+            'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+            'stderr_sha256': hashlib.sha256(b'').hexdigest(),
         })
-    for i in range(13):
+        run_out = ''
         receipts.append({
-            'name': f'neg-{i}',
-            'argv': ['/sdk/bin/tokac', '--check-only', f'/fixtures/fail/neg_{i}.tk'],
-            'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0,
-            'termination': None, 'error': None, 'result': 'pass', 'ok': True,
-            'diagnostic': 'E0406',
-            'stdout': '', 'stderr': 'error[E0406]: recursion rejected',
+            'name': f'pos-{case}-run',
+            'argv': [comp_out],
+            'cmd': [comp_out],
+            'cwd': '/tmp',
+            'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+            'result': 'pass', 'ok': True, 'execution_ms': 10.0,
+            'stdout': run_out, 'stderr': '',
+            'stdout_sha256': hashlib.sha256(run_out.encode('utf-8')).hexdigest(),
+            'stderr_sha256': hashlib.sha256(b'').hexdigest(),
         })
+
+    # TKI (3 receipts)
+    receipts.append({
+        'name': 'pos-tki-provider-compile',
+        'argv': ['/sdk/bin/tokac', '/fixtures/sourceless/tki_provider.tk', '-c', '-o', '/tmp/provider.o'],
+        'cmd': ['/sdk/bin/tokac', '/fixtures/sourceless/tki_provider.tk', '-c', '-o', '/tmp/provider.o'],
+        'cwd': '/tmp',
+        'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+        'result': 'pass', 'ok': True, 'execution_ms': 10.0,
+        'stdout': '', 'stderr': '',
+        'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+        'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+    })
+    receipts.append({
+        'name': 'pos-tki-consumer-compile',
+        'argv': ['/sdk/bin/tokac', '-I', '/tmp', '/fixtures/sourceless/tki_consumer.tk', '/tmp/provider.o', '-o', '/tmp/tki_bin'],
+        'cmd': ['/sdk/bin/tokac', '-I', '/tmp', '/fixtures/sourceless/tki_consumer.tk', '/tmp/provider.o', '-o', '/tmp/tki_bin'],
+        'cwd': '/tmp',
+        'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+        'result': 'pass', 'ok': True, 'execution_ms': 10.0,
+        'stdout': '', 'stderr': '',
+        'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+        'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+    })
+    receipts.append({
+        'name': 'pos-tki-consumer-run',
+        'argv': ['/tmp/tki_bin'],
+        'cmd': ['/tmp/tki_bin'],
+        'cwd': '/tmp',
+        'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+        'result': 'pass', 'ok': True, 'execution_ms': 10.0,
+        'stdout': '', 'stderr': '',
+        'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+        'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+    })
+
+    # Negative cases (13 receipts)
+    for name, diag in policy.NEG_015_DIAGNOSTICS.items():
+        err_msg = f'error[{diag}]: compile rejected\n'
+        is_artifact_cmd = name in ('neg-async-direct-object', 'neg-async-direct-ir', 'neg-async-direct-compile')
+        if name == 'neg-async-direct-object':
+            cmd_args = ['/sdk/bin/tokac', '-c', '/fixtures/fail/async_recur_direct.tk', '-o', '/tmp/async_direct.o']
+        elif name == 'neg-async-direct-ir':
+            cmd_args = ['/sdk/bin/tokac', '--emit-llvm', '-c', '/fixtures/fail/async_recur_direct.tk', '-o', '/tmp/async_direct.ll']
+        elif name == 'neg-async-direct-compile':
+            cmd_args = ['/sdk/bin/tokac', '/fixtures/fail/async_recur_direct.tk', '-o', '/tmp/async_direct.bin']
+        elif name == 'neg-async-direct-check':
+            cmd_args = ['/sdk/bin/tokac', '--check-only', '/fixtures/fail/async_recur_direct.tk']
+        elif name == 'neg-async_mutual-check':
+            cmd_args = ['/sdk/bin/tokac', '--check-only', '/fixtures/fail/async_recur_mutual.tk']
+        else:
+            fix_name = name.removeprefix('neg-').removesuffix('-check')
+            cmd_args = ['/sdk/bin/tokac', '--check-only', f'/fixtures/fail/{fix_name}.tk']
+
+        rec = {
+            'name': name,
+            'argv': cmd_args,
+            'cmd': cmd_args,
+            'cwd': '/tmp',
+            'exit_code': 1, 'signal': None, 'termination': None, 'error': None,
+            'result': 'pass', 'ok': True, 'execution_ms': 10.0,
+            'diagnostic': diag,
+            'stdout': '', 'stderr': err_msg,
+            'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+            'stderr_sha256': hashlib.sha256(err_msg.encode('utf-8')).hexdigest(),
+        }
+        if is_artifact_cmd:
+            rec['artifact_absent'] = True
+        receipts.append(rec)
+
     ctrl_sha = policy.expected_015_script_sha256() or 'b'*64
     return {
         'schema': 'toka.0.15-candidate-controls',
@@ -212,9 +298,9 @@ def valid_candidate_015(revision, label, target=None):
 
 def fixture(root,intel=False):
     targets=policy.CORE+(policy.OPTIONAL,) if intel else policy.CORE
-    archives=root/'qualified';archives.mkdir();assets=root/'assets';assets.mkdir();zips=root/'zips';zips.mkdir();metadata=[];hashes={}
+    archives=root/'qualified';archives.mkdir(exist_ok=True);assets=root/'assets';assets.mkdir(exist_ok=True);zips=root/'zips';zips.mkdir(exist_ok=True);metadata=[];hashes={}
     for index,target in enumerate(targets):
-        name='toka-%s-%s.tar.gz'%(TAG,target);body=('controlled fixture '+target).encode();directory=archives/('candidate-archive-'+target);directory.mkdir();(directory/name).write_bytes(body);(assets/name).write_bytes(body);hashes[name]=hashlib.sha256(body).hexdigest()
+        name='toka-%s-%s.tar.gz'%(TAG,target);body=('controlled fixture '+target).encode();directory=archives/('candidate-archive-'+target);directory.mkdir(exist_ok=True);(directory/name).write_bytes(body);(assets/name).write_bytes(body);hashes[name]=hashlib.sha256(body).hexdigest()
         packed=zips/(str(100+index)+'.zip')
         with zipfile.ZipFile(packed,'w') as archive:archive.writestr(name,body)
         metadata.append({'id':100+index,'name':'candidate-archive-'+target,'expired':False,'digest':'sha256:'+hashlib.sha256(packed.read_bytes()).hexdigest(),'workflow_run':{'id':21 if target==policy.OPTIONAL else 11,'head_sha':SHA}})

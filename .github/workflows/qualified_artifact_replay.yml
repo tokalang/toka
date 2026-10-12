@@ -416,7 +416,7 @@ jobs:
           fi
           if [[ "$TAG_NAME" == v0.15.* ]]; then
             python3 replay-input/test_0_15_candidate.py --sdk "$sdk" --revision "$CANDIDATE_SHA" \
-              --version "$TAG_NAME" --fixtures replay-input/r015_fixtures --output replay-results/candidate_015
+              --version "$TAG_NAME" --fixtures replay-input/r015_fixtures --target "$TARGET" --output replay-results/candidate_015
           fi
           python3 - <<'PYCODE'
           import json,os,sys
