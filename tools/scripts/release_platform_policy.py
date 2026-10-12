@@ -1080,23 +1080,47 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
             if not isinstance(n_rec, dict):
                 errors.append(f'0.15 source_hidden_tki {neg_key} must be a dictionary')
                 continue
-            if n_rec.get('ok') is False:
-                errors.append(f'0.15 source_hidden_tki {neg_key} ok is False')
-            if n_rec.get('result') not in (None, 'pass'):
+            # Required field presence and strict types
+            if 'cwd' not in n_rec or not isinstance(n_rec['cwd'], str) or not n_rec['cwd']:
+                errors.append(f'0.15 source_hidden_tki {neg_key} cwd missing or invalid')
+            cwd_val = n_rec.get('cwd', '')
+
+            if 'exit_code' not in n_rec or type(n_rec['exit_code']) is not int or isinstance(n_rec['exit_code'], bool) or n_rec['exit_code'] != 1:
+                errors.append(f'0.15 source_hidden_tki {neg_key} exit_code must be exact integer 1')
+
+            if 'signal' not in n_rec or n_rec['signal'] is not None:
+                errors.append(f'0.15 source_hidden_tki {neg_key} signal must be explicit null')
+
+            if 'termination' not in n_rec or n_rec['termination'] is not None:
+                errors.append(f'0.15 source_hidden_tki {neg_key} termination must be explicit null')
+
+            if 'error' not in n_rec or n_rec['error'] is not None:
+                errors.append(f'0.15 source_hidden_tki {neg_key} error must be explicit null')
+
+            if 'ok' not in n_rec or type(n_rec['ok']) is not bool or n_rec['ok'] is not True:
+                errors.append(f'0.15 source_hidden_tki {neg_key} ok must be exact boolean True')
+
+            if 'result' not in n_rec or n_rec['result'] != 'pass':
                 errors.append(f'0.15 source_hidden_tki {neg_key} result must be pass')
-            if n_rec.get('signal') is not None or n_rec.get('termination') is not None or n_rec.get('error') is not None:
-                errors.append(f'0.15 source_hidden_tki {neg_key} indicates abnormal termination or error')
 
-            n_code = n_rec.get('exit_code')
-            if type(n_code) is not int or isinstance(n_code, bool):
-                errors.append(f'0.15 source_hidden_tki {neg_key} exit_code must be exact int')
-            elif n_code != 1:
-                errors.append(f'0.15 source_hidden_tki {neg_key} exit_code must be 1 (got {n_code})')
+            if 'artifact_absent' not in n_rec or type(n_rec['artifact_absent']) is not bool or n_rec['artifact_absent'] is not True:
+                errors.append(f'0.15 source_hidden_tki {neg_key} artifact_absent must be exact boolean True')
 
-            n_argv = n_rec.get('argv') or n_rec.get('cmd')
-            if not isinstance(n_argv, list) or not n_argv or not all(isinstance(a, str) and a for a in n_argv):
-                errors.append(f'0.15 source_hidden_tki {neg_key} argv missing or invalid')
+            if 'execution_ms' not in n_rec:
+                errors.append(f'0.15 source_hidden_tki {neg_key} execution_ms missing')
             else:
+                ms = n_rec['execution_ms']
+                if type(ms) not in (int, float) or isinstance(ms, bool) or not math.isfinite(ms) or ms <= 0:
+                    errors.append(f'0.15 source_hidden_tki {neg_key} execution_ms invalid')
+
+            if 'argv' not in n_rec:
+                errors.append(f'0.15 source_hidden_tki {neg_key} argv missing')
+                n_argv = []
+            elif not isinstance(n_rec['argv'], list) or not n_rec['argv'] or not all(isinstance(a, str) and a for a in n_rec['argv']):
+                errors.append(f'0.15 source_hidden_tki {neg_key} argv invalid')
+                n_argv = []
+            else:
+                n_argv = n_rec['argv']
                 n_prog = os.path.normpath(n_argv[0].replace('\\', '/'))
                 if expected_tokac and n_prog != expected_tokac:
                     errors.append(f'0.15 source_hidden_tki {neg_key} compiler mismatch: executes {n_prog}, expected {expected_tokac}')
@@ -1110,29 +1134,32 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
                     bad_bin_base = os.path.basename(n_argv[6])
                     if bad_bin_base not in ('bad_bin', 'bad_bin.bin', 'bad_bin.exe'):
                         errors.append(f'0.15 source_hidden_tki {neg_key} output basename mismatch')
+                    if isinstance(cwd_val, str) and cwd_val:
+                        norm_i = os.path.normpath(n_argv[2] if os.path.isabs(n_argv[2]) else os.path.join(cwd_val, n_argv[2]))
+                        norm_cwd = os.path.normpath(cwd_val)
+                        if norm_i != norm_cwd:
+                            errors.append(f'0.15 source_hidden_tki {neg_key} -I directory must match cwd')
 
             out_hash = n_rec.get('stdout_sha256')
-            err_hash = n_rec.get('stderr_sha256')
             if not isinstance(out_hash, str) or not re.fullmatch(r'[0-9a-f]{64}', out_hash):
                 errors.append(f'0.15 source_hidden_tki {neg_key} stdout_sha256 missing or invalid')
+
+            err_hash = n_rec.get('stderr_sha256')
             if not isinstance(err_hash, str) or not re.fullmatch(r'[0-9a-f]{64}', err_hash):
                 errors.append(f'0.15 source_hidden_tki {neg_key} stderr_sha256 missing or invalid')
 
-            if 'cwd' in n_rec and (not isinstance(n_rec['cwd'], str) or not n_rec['cwd']):
-                errors.append(f'0.15 source_hidden_tki {neg_key} cwd invalid')
-            if 'execution_ms' in n_rec:
-                ms = n_rec['execution_ms']
-                if type(ms) not in (int, float) or isinstance(ms, bool) or not math.isfinite(ms) or ms <= 0:
-                    errors.append(f'0.15 source_hidden_tki {neg_key} execution_ms invalid')
-            if 'artifact_absent' in n_rec and n_rec['artifact_absent'] is not True:
-                errors.append(f'0.15 source_hidden_tki {neg_key} artifact_absent must be True')
-
-            if 'stdout' in n_rec:
-                if not isinstance(n_rec['stdout'], str) or hashlib.sha256(n_rec['stdout'].encode('utf-8')).hexdigest() != out_hash:
+            if 'stdout' not in n_rec or not isinstance(n_rec['stdout'], str):
+                errors.append(f'0.15 source_hidden_tki {neg_key} stdout missing or not a string')
+            else:
+                out_text = n_rec['stdout']
+                if isinstance(out_hash, str) and hashlib.sha256(out_text.encode('utf-8')).hexdigest() != out_hash:
                     errors.append(f'0.15 source_hidden_tki {neg_key} stdout content does not match stdout_sha256')
-            if 'stderr' in n_rec:
+
+            if 'stderr' not in n_rec or not isinstance(n_rec['stderr'], str):
+                errors.append(f'0.15 source_hidden_tki {neg_key} stderr missing or not a string')
+            else:
                 err_text = n_rec['stderr']
-                if not isinstance(err_text, str) or hashlib.sha256(err_text.encode('utf-8')).hexdigest() != err_hash:
+                if isinstance(err_hash, str) and hashlib.sha256(err_text.encode('utf-8')).hexdigest() != err_hash:
                     errors.append(f'0.15 source_hidden_tki {neg_key} stderr content does not match stderr_sha256')
                 if 'E0901' not in err_text:
                     errors.append(f'0.15 source_hidden_tki {neg_key} stderr missing E0901')
