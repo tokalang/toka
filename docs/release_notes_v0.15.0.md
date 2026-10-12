@@ -18,8 +18,8 @@ Toka 0.15.0 introduces generic recursion for synchronous free functions, featuri
 - **Explicit Borrow Return Contracts**: Retains explicit borrow annotations (`<- param`) across recursive calls with full borrow-checker validation.
 
 ### 3. Compile-Time Safety Boundaries & Diagnostic Enforcement
-- **Async Generic Recursion Guard**: Asynchronous generic recursion (direct, mutual, or mixed cycles) is strictly prohibited. Sema rejects recursive async calls with `error[E0406]` across all compiler modes (`--check-only`, `-c -o`, `--emit-llvm`), guaranteeing zero artifact emission. Existing non-recursive generic async functions remain 100% supported without regression.
-- **Polymorphic Recursion Guard**: Type-expanding recursion (e.g., `f<T>` calling `f<Option<T>>` or `f<[T]>`) is caught by active template stack cycle detection in under 50ms with `error[E0406]`.
+- **Async Generic Recursion Guard**: Asynchronous generic recursion is strictly prohibited. Sema rejects recursive async calls entered from an async function with `error[E0406]` across all compiler modes (`--check-only`, `-c -o`, `--emit-llvm`), guaranteeing zero artifact emission. Mixed recursion cycles entered from a synchronous function calling an un-awaited async callee in a cycle are rejected with `error[E04661]` (unproven task result origin). Existing non-recursive generic async functions remain 100% supported without regression.
+- **Polymorphic Recursion Guard**: Type-expanding recursion (e.g., `f<T>` calling `f<Option<T>>` or `f<[T]>`) is caught statically by active template stack cycle detection (~20ms on reference host, bounded by template stack depth) with `error[E0406]`.
 - **Precise Diagnostic Mapping**: Standard type mismatches (`error[E0408]`), trait bound violations (`error[E0606]`), borrow conflicts (`error[E0441]`), and double-cede violations (`error[E0438]`) retain dedicated diagnostics.
 
 ## Release & Platform Policy

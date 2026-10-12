@@ -129,10 +129,11 @@ cp LICENSE "${PACKAGE_DIR}/" || true
 
 # Bind standard 0.13 / 0.14 / 0.15 archives to the source and all four real binaries.
 if [[ "$VERSION" == v0.13.* ]] || [[ "$VERSION" == v0.14.* ]] || [[ "$VERSION" == v0.15.* ]]; then
-    python3 - "$PACKAGE_DIR" "$VERSION" "$BINARY_BUILD_DIR" <<'PYCODE'
+    python3 - "$PACKAGE_DIR" "$VERSION" "$BINARY_BUILD_DIR" "$OS" "$ARCH" <<'PYCODE'
 import hashlib,json,re,subprocess,sys
 from pathlib import Path
 root=Path(sys.argv[1]);label=sys.argv[2];build_dir=Path(sys.argv[3])
+target_label=f'{sys.argv[4]}-{sys.argv[5]}'
 if 'BUILD_TESTING:BOOL=OFF' not in (build_dir/'CMakeCache.txt').read_text():raise SystemExit(f'{label} distribution requires a standard BUILD_TESTING=OFF build')
 revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
 dirty=bool(subprocess.check_output(['git','-c','core.fsmonitor=false','status','--porcelain','--untracked-files=no']).strip())
@@ -153,7 +154,7 @@ for name in ('tokac','toka','tokafmt','tokalsp'):
     path=root/'bin'/name;r=subprocess.run([str(path.resolve()),'--version'],capture_output=True)
     if r.returncode!=0 or label[1:].encode() not in r.stdout+r.stderr:raise SystemExit('tool identity mismatch: '+name)
     tools[name]={'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'stdout':r.stdout.decode(),'stderr':r.stderr.decode(),'exit_code':r.returncode}
-(root/'sdk.json').write_text(json.dumps({'schema':'toka.sdk-identity','version':1,'version_label':label,'candidate_revision':revision,'source_dirty':False,'build_testing':False,'tools':tools},indent=2)+'\n')
+(root/'sdk.json').write_text(json.dumps({'schema':'toka.sdk-identity','version':1,'version_label':label,'candidate_revision':revision,'source_dirty':False,'build_testing':False,'target':target_label,'tools':tools},indent=2)+'\n')
 PYCODE
 fi
 

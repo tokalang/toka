@@ -82,6 +82,7 @@ jobs:
           ctest --test-dir build --output-on-failure -R "^toka_async_"
           python3 tools/scripts/test_taskhandle_lifecycle.py --conformance-output build/taskhandle-lifecycle-conformance-windows.json
           python3 tools/scripts/test_restricted_cancellation_profile.py --candidate-sha "$GITHUB_SHA" --conformance-output build/toka-restricted-cancellation-windows.json
+          python3 tools/scripts/test_generic_recursion.py --build-dir build --output-dir build/generic-recursion-gate-report
 
       - name: Upload dogfood evidence
         if: always()
@@ -92,6 +93,7 @@ jobs:
             build/windows-dogfood.json
             build/taskhandle-lifecycle-conformance-windows.json
             build/toka-restricted-cancellation-windows.json
+            build/generic-recursion-gate-report/
           if-no-files-found: warn
 
   windows-gate:

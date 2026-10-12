@@ -180,6 +180,19 @@ jobs:
           path: build/g2-gate-report/
           if-no-files-found: ignore
 
+      - name: Run 0.15 generic recursion directed gate
+        run: |
+          set -euo pipefail
+          python3 tools/scripts/test_generic_recursion.py --build-dir build --output-dir build/generic-recursion-gate-report
+
+      - name: Upload 0.15 generic recursion directed gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generic-recursion-directed-report-${{ matrix.name }}
+          path: build/generic-recursion-gate-report/
+          if-no-files-found: ignore
+
   pr-gate:
     name: Pull request gate result
     if: always()

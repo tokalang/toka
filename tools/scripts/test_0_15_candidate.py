@@ -98,12 +98,20 @@ def main():
 
         ok = True
         err_msg = ""
-        if not allow_fail and r.returncode != 0:
+        signal_val = None
+        termination_val = None
+
+        if r.returncode < 0:
+            ok = False
+            signal_val = -r.returncode
+            termination_val = f"terminated by signal {signal_val}"
+            err_msg = termination_val
+        elif not allow_fail and r.returncode != 0:
             ok = False
             err_msg = f"command failed with exit {r.returncode}"
-        elif allow_fail and r.returncode == 0:
+        elif allow_fail and r.returncode != 1:
             ok = False
-            err_msg = "command unexpectedly succeeded with exit 0"
+            err_msg = f"negative command expected exit 1, got {r.returncode}"
 
         if diagnostic and diagnostic not in combined:
             ok = False
@@ -111,13 +119,19 @@ def main():
 
         rec = {
             "name": name,
+            "argv": [str(c) for c in cmd],
             "cmd": [str(c) for c in cmd],
             "cwd": str(cwd),
             "exit_code": r.returncode,
+            "signal": signal_val,
+            "termination": termination_val,
+            "error": None if ok else err_msg,
+            "result": "pass" if ok else "fail",
             "stdout": r.stdout,
             "stderr": r.stderr,
             "stdout_sha256": sha256_bytes(r.stdout.encode("utf-8")),
             "stderr_sha256": sha256_bytes(r.stderr.encode("utf-8")),
+            "execution_ms": round(elapsed * 1000.0, 2),
             "elapsed_seconds": round(elapsed, 4),
             "ok": ok,
         }
@@ -126,7 +140,6 @@ def main():
         if artifact_absent:
             rec["artifact_absent"] = True
         if not ok:
-            rec["error"] = err_msg
             receipts.append(rec)
             raise RuntimeError(f"Step {name} failed: {err_msg}\n{combined}")
         receipts.append(rec)
@@ -165,27 +178,73 @@ def main():
         if r_run.returncode != exp_ret:
             raise RuntimeError(f"Positive run {name} returned {r_run.returncode}, expected {exp_ret}")
 
-    # Sourceless TKI compilation & execution
+    # Sourceless TKI compilation & execution with physical source hiding and negative fallback controls
     provider_src = fixtures_dir / "sourceless/tki_provider.tk"
     consumer_src = fixtures_dir / "sourceless/tki_consumer.tk"
-    tki_stage = work / "tki_stage"
-    tki_stage.mkdir(parents=True, exist_ok=True)
 
-    run("pos-tki-provider-compile", [tokac_bin, str(provider_src), "-c", "-o", str(tki_stage / "provider.o")], tki_stage)
-    if not (tki_stage / "provider.tki").is_file() or not (tki_stage / "provider.o").is_file():
+    # Step A: Compile provider in an isolated directory
+    provider_stage = work / "tki_provider_stage"
+    provider_stage.mkdir(parents=True, exist_ok=True)
+    provider_copy = provider_stage / "tki_provider.tk"
+    shutil.copy2(provider_src, provider_copy)
+
+    run("pos-tki-provider-compile", [tokac_bin, str(provider_copy), "-c", "-o", str(provider_stage / "provider.o")], provider_stage)
+    provider_tki = provider_stage / "provider.tki"
+    provider_o = provider_stage / "provider.o"
+    if not provider_tki.is_file() or not provider_o.is_file():
         raise RuntimeError("TKI provider compilation did not emit provider.tki and provider.o")
 
-    # Isolated consumer stage with only .tki and .o
-    consumer_stage = work / "consumer_stage"
-    consumer_stage.mkdir(parents=True, exist_ok=True)
-    shutil.copy(tki_stage / "provider.tki", consumer_stage / "provider.tki")
-    shutil.copy(tki_stage / "provider.o", consumer_stage / "provider.o")
+    # Record hashes of emitted interface and object
+    provider_tki_sha = sha256_file(provider_tki)
+    provider_o_sha = sha256_file(provider_o)
 
+    # Physically delete provider source so it is completely inaccessible
+    provider_copy.unlink()
+
+    # Step B: Setup consumer stage containing only consumer source, provider.tki, and provider.o
+    consumer_stage = work / "tki_consumer_stage"
+    consumer_stage.mkdir(parents=True, exist_ok=True)
+    consumer_copy = consumer_stage / "tki_consumer.tk"
+    shutil.copy2(consumer_src, consumer_copy)
+    shutil.copy2(provider_tki, consumer_stage / "provider.tki")
+    shutil.copy2(provider_o, consumer_stage / "provider.o")
+
+    # Clean provider stage entirely to guarantee no alternative source or cache routes exist
+    shutil.rmtree(provider_stage, ignore_errors=True)
+
+    # Negative Control 1: Missing .tki interface must fail closed with exit 1 (no source fallback)
+    missing_stage = work / "tki_missing_stage"
+    missing_stage.mkdir(parents=True, exist_ok=True)
+    missing_consumer = missing_stage / "tki_consumer.tk"
+    shutil.copy2(consumer_src, missing_consumer)
+    r_missing = subprocess.run(
+        [tokac_bin, "-I", str(missing_stage), str(missing_consumer), str(consumer_stage / "provider.o"), "-o", str(missing_stage / "bad_bin")],
+        env=env, cwd=missing_stage, capture_output=True, text=True, timeout=30
+    )
+    if r_missing.returncode != 1:
+        raise RuntimeError(f"Missing TKI control failed: expected exit 1, got {r_missing.returncode}")
+    shutil.rmtree(missing_stage, ignore_errors=True)
+
+    # Negative Control 2: Corrupted .tki interface must fail closed with exit 1 (no source fallback)
+    corrupt_stage = work / "tki_corrupt_stage"
+    corrupt_stage.mkdir(parents=True, exist_ok=True)
+    corrupt_consumer = corrupt_stage / "tki_consumer.tk"
+    shutil.copy2(consumer_src, corrupt_consumer)
+    (corrupt_stage / "provider.tki").write_text("// corrupted tki interface header\ninvalid content\n", encoding="utf-8")
+    r_corrupt = subprocess.run(
+        [tokac_bin, "-I", str(corrupt_stage), str(corrupt_consumer), str(consumer_stage / "provider.o"), "-o", str(corrupt_stage / "bad_bin")],
+        env=env, cwd=corrupt_stage, capture_output=True, text=True, timeout=30
+    )
+    if r_corrupt.returncode != 1:
+        raise RuntimeError(f"Corrupt TKI control failed: expected exit 1, got {r_corrupt.returncode}")
+    shutil.rmtree(corrupt_stage, ignore_errors=True)
+
+    # Positive Step C: Consumer compiles against provider.tki + provider.o without provider source
     tki_bin = consumer_stage / "tki_bin"
-    run("pos-tki-consumer-compile", [tokac_bin, "-I", str(consumer_stage), str(consumer_src), str(consumer_stage / "provider.o"), "-o", str(tki_bin)], consumer_stage)
+    run("pos-tki-consumer-compile", [tokac_bin, "-I", str(consumer_stage), str(consumer_copy), str(consumer_stage / "provider.o"), "-o", str(tki_bin)], consumer_stage)
     r_tki = run("pos-tki-consumer-run", [str(tki_bin)], consumer_stage)
     if r_tki.returncode != 0:
-        raise RuntimeError(f"TKI consumer run returned {r_tki.returncode}")
+        raise RuntimeError(f"TKI consumer run failed: exit={r_tki.returncode}, output={r_tki.stdout}")
 
     # 3. Negative safety boundary controls
     # Multi-mode zero-artifact checks for async recursion
@@ -251,6 +310,13 @@ def main():
             },
         },
         "four_tool_versions": versions,
+        "source_hidden_tki": {
+            "provider_tki_sha256": provider_tki_sha,
+            "provider_object_sha256": provider_o_sha,
+            "missing_interface_rejected": True,
+            "corrupt_interface_rejected": True,
+            "consumer_result": "pass",
+        },
         "groups": ["G-recursion"],
         "SDK_root": str(sdk),
         "receipts": receipts,
