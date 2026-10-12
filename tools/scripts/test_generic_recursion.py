@@ -153,14 +153,14 @@ PROBE_CONFIGS = {
     },
     "N06_true_mutual_with_error": {
         "category": "safety_boundary",
-        "description": "Mutual cycle member error fails whole cycle closed (expected E04576)",
+        "description": "Mutual cycle member error fails whole cycle closed (root semantic error E04576 preserved)",
         "expected_exit_code": 1,
         "required_diags": ["E04576"],
         "compile_only": True,
     },
     "N07_tainted_instance_reuse_control": {
         "category": "safety_boundary",
-        "description": "Tainted failed recursion cache lookup cleanly rolls back (expected E04576)",
+        "description": "Tainted failed recursion cache lookup cleanly rolls back without leaking (root semantic error E04576 preserved)",
         "expected_exit_code": 1,
         "required_diags": ["E04576"],
         "compile_only": True,

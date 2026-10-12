@@ -5,7 +5,7 @@
 ### 1. Synchronous Generic Free Function Recursion
 - Free functions with generic type parameters now support direct homomorphic self-recursion (`walk<T>` calling `walk<T>`) and mutual recursion (`is_even<T>` <-> `is_odd<T>`).
 - Mutual recursion cycles commit atomically via Tarjan SCC validation. If any function in a cycle contains a type or borrow error, all cycle instances are marked `Invalid`.
-- Subsequent lookup of an `Invalid` instance aborts with `error[E04576]`.
+- Subsequent lookup of an `Invalid` instance fails closed, aborting compilation and preventing tainted cache reuse.
 
 ### 2. Prohibited Generic Recursion Forms
 - **Async Generic Recursion**: `async fn f<T>` calling itself directly, mutually, or via a mixed sync/async cycle is rejected at compile time with diagnostic `error[E0406]` (or `error[E04661]` for unproven task result origins). Zero object or IR artifacts are generated.
@@ -14,6 +14,15 @@
 ### 3. Preserved Contracts & Zero Regression
 - Non-recursive generic async functions continue to compile and execute with full static dispatch support.
 - All existing 0.14 features (unwrap operator `!`, static async traits, framed transport) remain fully backward-compatible.
+
+### 4. Version Identity Architecture (Product Version vs Interface Version)
+- **Product Release Version**: `0.15.0`
+  - Emitted by CLI tools (`tokac --version`, `toka --version`, `tokafmt --version`, `tokalsp --version`).
+  - Recorded in `CMakeLists.txt`, `sdk.json`, and official release tarballs (`toka-v0.15.0-<target>.tar.gz`).
+- **Compiler Interface Key**: `0.9.9-38`
+  - Defined in `include/toka/InterfaceVersion.h` (`TOKA_COMPILER_INTERFACE_VERSION`).
+  - Emitted in `.tki` interface metadata headers (`// @meta compiler_version: 0.9.9-38`), semantic cache manifests, and diagnostic JSON records (`"compiler_version": "0.9.9-38"`).
+  - Tracks binary/AST interface compatibility, intentionally decoupled from release tags to maintain `.tki` cache compatibility across non-breaking releases. Release verifiers must check the product version without conflating it with the compiler interface key.
 
 ## SDK Acceptance Checklist
 
