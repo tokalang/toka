@@ -220,10 +220,14 @@ def main():
     missing_consumer = missing_stage / "tki_consumer.tk"
     shutil.copy2(consumer_src, missing_consumer)
     missing_cmd = [tokac_bin, "-I", str(missing_stage), str(missing_consumer), str(consumer_stage / "provider.o"), "-o", str(missing_stage / "bad_bin")]
+    t0_missing = time.time()
     r_missing = subprocess.run(
         missing_cmd,
         env=env, cwd=missing_stage, capture_output=True, text=True, timeout=30
     )
+    elapsed_missing = time.time() - t0_missing
+    if (missing_stage / "bad_bin").exists():
+        raise RuntimeError("Missing TKI control produced binary")
     if r_missing.returncode != 1:
         raise RuntimeError(f"Missing TKI control failed: expected exit 1, got {r_missing.returncode}")
     shutil.rmtree(missing_stage, ignore_errors=True)
@@ -235,10 +239,14 @@ def main():
     shutil.copy2(consumer_src, corrupt_consumer)
     (corrupt_stage / "provider.tki").write_text("// corrupted tki interface header\ninvalid content\n", encoding="utf-8")
     corrupt_cmd = [tokac_bin, "-I", str(corrupt_stage), str(corrupt_consumer), str(consumer_stage / "provider.o"), "-o", str(corrupt_stage / "bad_bin")]
+    t0_corrupt = time.time()
     r_corrupt = subprocess.run(
         corrupt_cmd,
         env=env, cwd=corrupt_stage, capture_output=True, text=True, timeout=30
     )
+    elapsed_corrupt = time.time() - t0_corrupt
+    if (corrupt_stage / "bad_bin").exists():
+        raise RuntimeError("Corrupt TKI control produced binary")
     if r_corrupt.returncode != 1:
         raise RuntimeError(f"Corrupt TKI control failed: expected exit 1, got {r_corrupt.returncode}")
     shutil.rmtree(corrupt_stage, ignore_errors=True)
@@ -324,16 +332,38 @@ def main():
             "missing_interface_command": {
                 "argv": [str(c) for c in missing_cmd],
                 "cmd": [str(c) for c in missing_cmd],
+                "cwd": str(missing_stage),
                 "exit_code": r_missing.returncode,
+                "signal": None,
+                "termination": None,
+                "error": None,
+                "ok": True,
+                "result": "pass",
+                "artifact_absent": True,
+                "stdout": r_missing.stdout,
+                "stderr": r_missing.stderr,
                 "stdout_sha256": sha256_bytes(r_missing.stdout.encode("utf-8")),
                 "stderr_sha256": sha256_bytes(r_missing.stderr.encode("utf-8")),
+                "execution_ms": round(elapsed_missing * 1000.0, 2),
+                "elapsed_seconds": round(elapsed_missing, 4),
             },
             "corrupt_interface_command": {
                 "argv": [str(c) for c in corrupt_cmd],
                 "cmd": [str(c) for c in corrupt_cmd],
+                "cwd": str(corrupt_stage),
                 "exit_code": r_corrupt.returncode,
+                "signal": None,
+                "termination": None,
+                "error": None,
+                "ok": True,
+                "result": "pass",
+                "artifact_absent": True,
+                "stdout": r_corrupt.stdout,
+                "stderr": r_corrupt.stderr,
                 "stdout_sha256": sha256_bytes(r_corrupt.stdout.encode("utf-8")),
                 "stderr_sha256": sha256_bytes(r_corrupt.stderr.encode("utf-8")),
+                "execution_ms": round(elapsed_corrupt * 1000.0, 2),
+                "elapsed_seconds": round(elapsed_corrupt, 4),
             },
             "consumer_result": "pass",
             "provider_source_present": False,
