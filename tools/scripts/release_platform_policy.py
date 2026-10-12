@@ -974,17 +974,30 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
             errors.append('0.15 source_hidden_tki corrupt_interface_rejected must be True')
         if tki_facts.get('consumer_result') != 'pass':
             errors.append('0.15 source_hidden_tki consumer_result must be pass')
-        if tki_facts.get('provider_source_present') is True:
-            errors.append('0.15 source_hidden_tki provider_source_present must not be True')
+        psp = tki_facts.get('provider_source_present')
+        if psp is not False or type(psp) is not bool:
+            errors.append('0.15 source_hidden_tki provider_source_present must exist and be exactly boolean False')
         p_tki = tki_facts.get('provider_tki_sha256')
-        if not isinstance(p_tki, str) or not re.fullmatch(r'[0-9a-f]{64}', p_tki) or set(p_tki) == {'0'}:
-            errors.append('0.15 source_hidden_tki provider_tki_sha256 missing or invalid')
+        if not isinstance(p_tki, str) or not re.fullmatch(r'[0-9a-f]{64}', p_tki) or len(set(p_tki)) <= 4:
+            errors.append('0.15 source_hidden_tki provider_tki_sha256 missing, invalid or unbound dummy hash')
         p_obj = tki_facts.get('provider_object_sha256')
-        if not isinstance(p_obj, str) or not re.fullmatch(r'[0-9a-f]{64}', p_obj) or set(p_obj) == {'0'}:
-            errors.append('0.15 source_hidden_tki provider_object_sha256 missing or invalid')
+        if not isinstance(p_obj, str) or not re.fullmatch(r'[0-9a-f]{64}', p_obj) or len(set(p_obj)) <= 4:
+            errors.append('0.15 source_hidden_tki provider_object_sha256 missing, invalid or unbound dummy hash')
+        if 'consumed_tki_sha256' in tki_facts and tki_facts['consumed_tki_sha256'] != p_tki:
+            errors.append('0.15 source_hidden_tki consumed_tki_sha256 mismatch with provider_tki_sha256')
+        if 'consumed_object_sha256' in tki_facts and tki_facts['consumed_object_sha256'] != p_obj:
+            errors.append('0.15 source_hidden_tki consumed_object_sha256 mismatch with provider_object_sha256')
+        if 'missing_interface_command' in tki_facts:
+            mic = tki_facts['missing_interface_command']
+            if not isinstance(mic, dict) or mic.get('exit_code') != 1:
+                errors.append('0.15 source_hidden_tki missing_interface_command exit_code must be 1')
+        if 'corrupt_interface_command' in tki_facts:
+            cic = tki_facts['corrupt_interface_command']
+            if not isinstance(cic, dict) or cic.get('exit_code') != 1:
+                errors.append('0.15 source_hidden_tki corrupt_interface_command exit_code must be 1')
 
     ver = label.removeprefix('v')
-    ver_regex = re.compile(r'(?<![0-9.])' + re.escape(ver) + r'(?![0-9.])')
+    ver_regex = re.compile(r'(?<![0-9a-zA-Z._+-])' + re.escape(ver) + r'(?![0-9a-zA-Z._+-])')
 
     tools = receipt.get('four_tool_versions')
     if not isinstance(tools, dict) or set(tools.keys()) != {'tokac', 'toka', 'tokafmt', 'tokalsp'}:
@@ -996,15 +1009,49 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
 
     counts = receipt.get('counts')
     expected_groups = {'version': 4, 'G-recursion-positive': 21, 'G-recursion-negative': 13}
-    if not isinstance(counts, dict) or type(counts.get('total_receipts')) is not int or \
-            counts.get('total_receipts') != 38 or counts.get('passed') != 38 or counts.get('failed') != 0 or \
-            counts.get('groups') != expected_groups:
-        errors.append('0.15 counts mismatch or invalid')
+    if not isinstance(counts, dict):
+        errors.append('0.15 counts missing or not a dict')
+    else:
+        for k in ('total_receipts', 'passed', 'failed'):
+            val = counts.get(k)
+            if type(val) is not int or isinstance(val, bool):
+                errors.append(f'0.15 counts {k} must be exact int')
+        if counts.get('total_receipts') != 38 or counts.get('passed') != 38 or counts.get('failed') != 0:
+            errors.append('0.15 counts values mismatch: expected total 38, passed 38, failed 0')
+        groups = counts.get('groups')
+        if not isinstance(groups, dict) or groups != expected_groups:
+            errors.append('0.15 counts groups mismatch or invalid')
+        else:
+            for g_name, g_cnt in groups.items():
+                if type(g_cnt) is not int or isinstance(g_cnt, bool):
+                    errors.append(f'0.15 counts groups {g_name} must be exact int')
 
     receipts = receipt.get('receipts')
     if not isinstance(receipts, list) or len(receipts) != 38:
         errors.append('0.15 command receipts list must have exactly 38 entries')
         return errors
+
+    sdk_root = receipt.get('SDK_root')
+    if not isinstance(sdk_root, str) or not sdk_root:
+        errors.append('0.15 SDK_root missing or invalid')
+
+    expected_tokac = None
+    for r in receipts:
+        if isinstance(r, dict) and r.get('name') == 'version-tokac':
+            v_argv = r.get('argv') or r.get('cmd')
+            v_cwd = r.get('cwd')
+            if isinstance(v_argv, list) and v_argv and isinstance(v_cwd, str):
+                v_prog = v_argv[0].replace('\\', '/')
+                expected_tokac = os.path.normpath(v_prog if os.path.isabs(v_prog) else os.path.join(v_cwd, v_prog))
+            break
+
+    if expected_tokac is None:
+        errors.append('0.15 candidate receipts missing version-tokac command to establish compiler identity')
+    elif isinstance(sdk_root, str) and sdk_root:
+        sdk_tokac_bin = os.path.normpath(os.path.join(sdk_root, 'bin', 'tokac'))
+        sdk_tokac_exe = os.path.normpath(os.path.join(sdk_root, 'bin', 'tokac.exe'))
+        if expected_tokac not in (sdk_tokac_bin, sdk_tokac_exe):
+            errors.append(f'0.15 version-tokac program {expected_tokac} does not match SDK_root {sdk_root}')
 
     compile_outputs = {}
     for r in receipts:
@@ -1106,8 +1153,14 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
 
         is_neg = r_name.startswith('neg-')
         is_pos_compile = r_name.startswith('pos-') and r_name.endswith('-compile')
-        if (is_pos_compile or is_neg) and prog_base not in ('tokac', 'tokac.exe'):
-            errors.append('0.15 compile command program must execute tokac: ' + r_name)
+        if (is_pos_compile or is_neg):
+            if prog_base not in ('tokac', 'tokac.exe'):
+                errors.append('0.15 compile command program must execute tokac: ' + r_name)
+            elif expected_tokac and norm_prog != expected_tokac:
+                errors.append(f'0.15 compile command program mismatch with SDK tokac: {r_name} (executes {norm_prog}, expected {expected_tokac})')
+            for f in ('--version', '-v', '-V', '--help', '-h'):
+                if f in argv:
+                    errors.append(f'0.15 compile/check command contains incompatible flag {f}: {r_name}')
 
         if not is_neg:
             if exit_code != 0:
@@ -1128,10 +1181,29 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
             elif r_name == 'pos-tki-consumer-compile':
                 if '-c' in argv or '--check-only' in argv or '--emit-llvm' in argv:
                     errors.append('0.15 pos-tki-consumer-compile mode mismatch: ' + r_name)
+                i_dir = None
                 if '-I' not in argv:
                     errors.append('0.15 pos-tki-consumer-compile missing -I flag')
-                if not any(a.endswith('.o') for a in argv):
-                    errors.append('0.15 pos-tki-consumer-compile missing .o provider object argument')
+                else:
+                    i_idx = argv.index('-I')
+                    if i_idx + 1 >= len(argv):
+                        errors.append('0.15 pos-tki-consumer-compile missing directory after -I')
+                    else:
+                        i_dir = os.path.normpath(argv[i_idx + 1] if os.path.isabs(argv[i_idx + 1]) else os.path.join(cwd, argv[i_idx + 1]))
+                        norm_cwd = os.path.normpath(cwd) if cwd else ''
+                        if norm_cwd and i_dir != norm_cwd:
+                            errors.append('0.15 pos-tki-consumer-compile -I directory must match consumer work directory: ' + r_name)
+                o_args = [a for a in argv if a.endswith('.o')]
+                if len(o_args) != 1:
+                    errors.append('0.15 pos-tki-consumer-compile requires exactly one .o provider object argument')
+                else:
+                    o_arg = o_args[0]
+                    if os.path.basename(o_arg) != 'provider.o':
+                        errors.append('0.15 pos-tki-consumer-compile provider object basename must be provider.o: ' + r_name)
+                    norm_o = os.path.normpath(o_arg if os.path.isabs(o_arg) else os.path.join(cwd, o_arg))
+                    norm_o_dir = os.path.dirname(norm_o)
+                    if i_dir and norm_o_dir != i_dir:
+                        errors.append('0.15 pos-tki-consumer-compile provider object directory must match -I import directory: ' + r_name)
             else:
                 if '-c' in argv or '--check-only' in argv or '--emit-llvm' in argv:
                     errors.append('0.15 positive executable compile command mode mismatch: ' + r_name)
@@ -1186,8 +1258,15 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
             else:
                 if prog_base not in (t_name, t_name + '.exe'):
                     errors.append('0.15 tool version command program mismatch: ' + r_name)
+            if isinstance(sdk_root, str) and sdk_root:
+                sdk_tool_bin = os.path.normpath(os.path.join(sdk_root, 'bin', t_name))
+                sdk_tool_exe = os.path.normpath(os.path.join(sdk_root, 'bin', t_name + '.exe'))
+                if norm_prog not in (sdk_tool_bin, sdk_tool_exe):
+                    errors.append(f'0.15 tool version program {norm_prog} does not match SDK_root {sdk_root}: {r_name}')
             if '--version' not in argv:
                 errors.append('0.15 tool version command missing --version flag: ' + r_name)
+            if argv != [argv[0], '--version']:
+                errors.append(f'0.15 tool version command argv mismatch: {r_name}')
             if not ver_regex.search(out_s):
                 errors.append(f'0.15 tool version {t_name} stdout missing {ver}: {r_name}')
 

@@ -112,6 +112,27 @@ class Contract015(unittest.TestCase):
                         p['four_tool_versions'].update({k: v.replace('0.15.0', '0.15.00') for k, v in p['four_tool_versions'].items()}),
                         [r.update(stdout=r['stdout'].replace('0.15.0', '0.15.00'), stdout_sha256=hashlib.sha256(r['stdout'].replace('0.15.0', '0.15.00').encode('utf-8')).hexdigest()) for r in p['receipts'] if r.get('name', '').startswith('version-')]
                     ]),
+                    ('different_tokac_same_basename', lambda p: [
+                        r['argv'].__setitem__(0, '/unrelated/bin/tokac')
+                        for r in p['receipts'] if r.get('name', '').startswith('pos-') and r.get('name', '').endswith('-compile')
+                    ]),
+                    ('compile_with_version_action', lambda p: [
+                        r['argv'].insert(1, '--version')
+                        for r in p['receipts'] if r.get('name', '').startswith('pos-') and r.get('name', '').endswith('-compile')
+                    ]),
+                    ('wrong_tki_input_paths', lambda p: [
+                        r['argv'].__setitem__(r['argv'].index('-I') + 1, '/unrelated/interfaces') or
+                        r['argv'].__setitem__(slice(None), [('/unrelated/other.o' if a.endswith('.o') else a) for a in r['argv']])
+                        for r in p['receipts'] if r.get('name') == 'pos-tki-consumer-compile'
+                    ]),
+                    ('missing_source_absence_fact', lambda p: p['source_hidden_tki'].pop('provider_source_present', None)),
+                    ('source_present_integer_one', lambda p: p['source_hidden_tki'].update(provider_source_present=1)),
+                    ('unbound_provider_hashes', lambda p: p['source_hidden_tki'].update(provider_tki_sha256='1' * 64, provider_object_sha256='2' * 64)),
+                    ('prerelease_tool_version', lambda p: [
+                        p['four_tool_versions'].update({k: v.replace('0.15.0', '0.15.0-rc.1') for k, v in p['four_tool_versions'].items()}),
+                        [r.update(stdout=r['stdout'].replace('0.15.0', '0.15.0-rc.1'), stdout_sha256=hashlib.sha256(r['stdout'].replace('0.15.0', '0.15.0-rc.1').encode('utf-8')).hexdigest()) for r in p['receipts'] if r.get('name', '').startswith('version-')]
+                    ]),
+                    ('noninteger_counts', lambda p: p['counts'].update(passed=38.0, failed=False)),
                 ]
                 for desc, mutate in mutations:
                     with self.subTest(mutation=desc):
