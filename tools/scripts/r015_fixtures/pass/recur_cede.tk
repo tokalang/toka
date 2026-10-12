@@ -1,0 +1,16 @@
+import std/vec::{Vec}
+
+fn drain_recur<T>(cede v: Vec<T>, n: i32) -> i32 {
+    if (n <= 0) {
+        auto fin = cede v;
+        return 0;
+    }
+    return drain_recur(cede v, n - 1);
+}
+
+fn main() -> i32 {
+    auto v# = Vec<i32>::new();
+    v#.push(1);
+    v#.push(2);
+    return drain_recur(cede v, 3);
+}

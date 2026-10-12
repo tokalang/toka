@@ -1,0 +1,23 @@
+{
+  "fail/async_cycle_mixed.tk": "459baa686fa419b3912d494a608b86ddeb19d69e633368fdfad8c7c853d8a323",
+  "fail/async_recur_direct.tk": "07377f5092a637c434c406ba47506fafcdb6a8332b1b6b65375cabd490fb0b7c",
+  "fail/async_recur_mutual.tk": "0812975b164295f0c05b9c0bc6d1c862c99a65099012c64bf5acadad18eb4a85",
+  "fail/borrow_conflict.tk": "cba43327d4aae570069f85efe26f2fba6e221c59200b8c7f68ce531f5b6bdb8e",
+  "fail/double_cede.tk": "ddccc284c3f1c4b0e35249642459b67e9cb6c23ab09ede711ec93bed623b9ac1",
+  "fail/mutual_error.tk": "f9191a562708bda7c20de4c88adec200167304e9b6b36955360e365624dbd0e8",
+  "fail/poly_recur.tk": "34ca7389dab6b21d1c33d4d6ec28adeaf2626a23e5f166a3adfddb723ef845ab",
+  "fail/tainted_reuse.tk": "69c567524bee7768e3a971bf56eca5362b199c94efeedbe50f6f5f0e47e0e025",
+  "fail/trait_bound.tk": "f94fa5c06e16d5b9cdf6a5d2b618b36fc0de6b6ff02d0b261b3a7aec5a9d18ae",
+  "fail/type_mismatch.tk": "1d20bd802165a33db2960627940f132495f226ef1c20c16554798bae910cea9e",
+  "pass/async_nonrecur_control.tk": "109b824c8f341f79c0afa685cee499e5ab07eedccd94c83250a9953f76432f0c",
+  "pass/cleanup_drop.tk": "942302ffa32a48eea3510eca74be578c260d5a327bbfeff56b44943ff7696c3c",
+  "pass/recur_borrow.tk": "736f4c44958529da661b60d4ea31d4070bc0becd73e91b911f07b566507e5be5",
+  "pass/recur_bsearch.tk": "a47eb5246d369e5804ef25aaca67d42d5ce458e94cf6c31d0259d44e54836cfe",
+  "pass/recur_cede.tk": "a6548869b064aed51ce0dda29fd26fe37372bf7f9d0ba19e074a7d20ee55cf5a",
+  "pass/recur_direct.tk": "1b6a8f80128dc8c2cb44fd13deab85e98f064bd2cc16832115e4541277a702e3",
+  "pass/recur_mutual.tk": "2bdd32cf63327faaa73b88e17e995d96bcd678cfd3aa25e2e2749515f57821b4",
+  "pass/recur_order_permuted.tk": "90b72a6f706a476a2ccb0577c075665a49e3bf8565ccab6a7dc1af5b9d5fbb11",
+  "pass/recur_tree.tk": "d16c5d94e4feeea9b32dc4b514da47be48c89be768dce40a76b3e65c8638f9bd",
+  "sourceless/tki_consumer.tk": "76981222b5427446759a001d5a3b4a7c964908fcf3a9a6c08f8bcc0bb33923b6",
+  "sourceless/tki_provider.tk": "8b213db1d20d41669b5ac34d19eff784eda1ce041f0d710e80ba92692ee298b6"
+}

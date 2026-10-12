@@ -65,19 +65,21 @@ SHA = re.compile(r'[0-9a-f]{40}\Z')
 
 
 def modern(label):
-    if label.startswith(('v0.12.', 'v0.13.', 'v0.14.')) and not re.fullmatch(r'v0\.(?:12|13|14)\.(0|[1-9][0-9]*)', label):
+    if label.startswith(('v0.12.', 'v0.13.', 'v0.14.', 'v0.15.')) and not re.fullmatch(r'v0\.(?:12|13|14|15)\.(0|[1-9][0-9]*)', label):
         raise ValueError('noncanonical three-core release label')
-    return bool(re.fullmatch(r'v0\.(?:12|13|14)\.(0|[1-9][0-9]*)',label))
+    return bool(re.fullmatch(r'v0\.(?:12|13|14|15)\.(0|[1-9][0-9]*)',label))
 
 
 def policy_id(label):
+    if label.startswith('v0.15.'):
+        return 'toka.release-platforms.0.15.v1'
     if label.startswith('v0.14.'):
         return 'toka.release-platforms.0.14.v1'
     return 'toka.release-platforms.0.13.v1' if label.startswith('v0.13.') else POLICY
 
 
 def core_targets(label):
-    if not re.fullmatch(r'v0\.(?:11|12|13|14)\.(0|[1-9][0-9]*)',label):
+    if not re.fullmatch(r'v0\.(?:11|12|13|14|15)\.(0|[1-9][0-9]*)',label):
         raise ValueError('unsupported or noncanonical release label')
     return CORE if modern(label) else LEGACY
 
@@ -865,6 +867,81 @@ def candidate_014_receipt_errors(receipt, revision, label, target=None):
     return errors
 
 
+EXPECTED_015_FIXTURES_DIGEST = '19d90ad6d157e4f12a3ddab1ddd73721df11f5f321c68a0e6ac3877792f191a4'
+
+
+def expected_015_script_sha256():
+    m = get_bundle_manifest()
+    if m and isinstance(m.get('modules'), dict):
+        return m['modules'].get('test_0_15_candidate.py')
+    return None
+
+
+def candidate_015_receipt_errors(receipt, revision, label, target=None):
+    if not isinstance(receipt, dict):
+        return ['0.15 candidate receipt is missing or not a dict']
+    errors = []
+    if receipt.get('schema') != 'toka.0.15-candidate-controls':
+        errors.append('0.15 receipt schema mismatch')
+    version = receipt.get('version')
+    if type(version) is not int or isinstance(version, bool) or version != 1:
+        errors.append('0.15 receipt version must be int 1')
+    if receipt.get('result') != 'pass':
+        errors.append('0.15 receipt result is not pass')
+    if receipt.get('candidate_revision') != revision:
+        errors.append('0.15 candidate revision mismatch')
+    if receipt.get('version_label') != label:
+        errors.append('0.15 version label mismatch')
+    target_val = receipt.get('target')
+    if not isinstance(target_val, str) or not target_val:
+        errors.append('0.15 target missing or invalid')
+    elif target is not None and target_val != target:
+        errors.append('0.15 target mismatch: expected %s, got %s' % (target, target_val))
+    if receipt.get('build_testing') is not False:
+        errors.append('0.15 receipt build_testing must be False')
+    if receipt.get('groups') != ['G-recursion']:
+        errors.append('0.15 receipt groups mismatch')
+    if receipt.get('fixtures_digest') != EXPECTED_015_FIXTURES_DIGEST:
+        errors.append('0.15 fixtures digest mismatch')
+
+    if receipt.get('control_script_name') != 'test_0_15_candidate.py':
+        errors.append('0.15 control script name mismatch')
+    control_sha = receipt.get('control_script_sha256')
+    expected_control_sha = expected_015_script_sha256()
+    if not isinstance(control_sha, str) or not re.fullmatch(r'[0-9a-f]{64}', control_sha):
+        errors.append('0.15 control script sha256 missing or invalid')
+    elif expected_control_sha and control_sha != expected_control_sha:
+        errors.append('0.15 control script digest mismatch')
+
+    tools = receipt.get('four_tool_versions')
+    if not isinstance(tools, dict) or set(tools.keys()) != {'tokac', 'toka', 'tokafmt', 'tokalsp'}:
+        errors.append('0.15 four_tool_versions missing or invalid')
+    else:
+        for t_name, t_str in tools.items():
+            if not isinstance(t_str, str) or label.removeprefix('v') not in t_str:
+                errors.append('0.15 tool version mismatch: ' + t_name)
+
+    counts = receipt.get('counts')
+    expected_groups = {'version': 4, 'G-recursion-positive': 21, 'G-recursion-negative': 13}
+    if not isinstance(counts, dict) or type(counts.get('total_receipts')) is not int or \
+            counts.get('total_receipts') != 38 or counts.get('passed') != 38 or counts.get('failed') != 0 or \
+            counts.get('groups') != expected_groups:
+        errors.append('0.15 counts mismatch or invalid')
+
+    receipts = receipt.get('receipts')
+    if not isinstance(receipts, list) or len(receipts) != 38:
+        errors.append('0.15 command receipts list must have exactly 38 entries')
+        return errors
+
+    for r in receipts:
+        if not isinstance(r, dict):
+            errors.append('0.15 receipt entry must be a dict')
+            continue
+        if r.get('ok') is not True:
+            errors.append('0.15 receipt entry is not marked ok: ' + str(r.get('name')))
+    return errors
+
+
 def summary_errors(summary,revision,label):
     errors=[]
     if summary.get('schema')!='toka.release-qualification-summary' or summary.get('version')!=2 or \
@@ -890,6 +967,11 @@ def summary_errors(summary,revision,label):
             r_errors = candidate_014_receipt_errors(row.get('candidate_014'), revision, label, target=row.get('target'))
             if r_errors:
                 errors.append('0.14 installed candidate proof invalid for %s: %s' % (row.get('target'), '; '.join(r_errors)))
+    if label.startswith('v0.15.'):
+        for row in summary.get('reports',[]):
+            r_errors = candidate_015_receipt_errors(row.get('candidate_015'), revision, label, target=row.get('target'))
+            if r_errors:
+                errors.append('0.15 installed candidate proof invalid for %s: %s' % (row.get('target'), '; '.join(r_errors)))
     optional=summary.get('optional_targets')
     if not isinstance(optional,dict) or set(optional)!={OPTIONAL}:errors.append('optional target status must be explicit')
     else:errors+=optional_errors(optional[OPTIONAL],revision,label)

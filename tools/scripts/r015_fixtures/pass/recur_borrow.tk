@@ -1,0 +1,12 @@
+fn select_recur<T>(n: i32, a: T, b: T) -> &T <- a {
+    if (n <= 0) { return &a; }
+    return select_recur(n - 1, a, b);
+}
+
+fn main() -> i32 {
+    auto x = 42;
+    auto y = 100;
+    auto &res = select_recur(3, x, y);
+    if (res == 42) { return 0; }
+    return 1;
+}

@@ -9,8 +9,10 @@
     "test_toka_evidence_installed.py": "13065cf2848c0616ac3176464c2eecaaa1389e41dcfdb7983ab217f9dc890061",
     "test_run_arguments_installed.py": "2d1d4e47b66d73a00b123cbff7f5094cc4bd6972128d1e240bc5f0b4290105dd",
     "test_r3_r5_installed.py": "e67427cb6771384e91b853eaf5a7bbf51d76d0e4464e2641d9f1f013c5e19c6a",
-    "test_0_14_candidate.py": "4c9a752278dcb109cc9c0d0f4b4969a6fbbdbb64c8f13df4fe7d5339d8353763"
+    "test_0_14_candidate.py": "4c9a752278dcb109cc9c0d0f4b4969a6fbbdbb64c8f13df4fe7d5339d8353763",
+    "test_0_15_candidate.py": "9f4dda9c05c7e68ef5d24dbf7fa57bff94793b7d93df612fd4b8d3dd29b4f213"
   },
   "fixtures_digest": "dd7315ca33ee61a8303b392c57834178da27dcccd52d4a5ad9d812dba56ebd90",
-  "fixtures_digest_014": "e5615185f9ec1b297a34b4d07dca868ef7f2ef440736ad05cd3e7bfbe1f24df1"
+  "fixtures_digest_014": "e5615185f9ec1b297a34b4d07dca868ef7f2ef440736ad05cd3e7bfbe1f24df1",
+  "fixtures_digest_015": "19d90ad6d157e4f12a3ddab1ddd73721df11f5f321c68a0e6ac3877792f191a4"
 }

@@ -1,0 +1,44 @@
+auto g_drop_count# = 0
+
+shape TrackedToken(
+    id: i32
+)
+
+impl TrackedToken@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+// Pass ownership through 5 recursive frames; drop at base case
+fn recur_handoff<T>(cede token: TrackedToken, n: i32, dummy: T) -> i32 {
+    if (n <= 0) {
+        auto final_token = cede token;
+        return 0;
+    }
+    return recur_handoff(cede token, n - 1, dummy);
+}
+
+// Each frame creates its own token; dropped on frame exit
+fn recur_frame_drops<T>(n: i32, dummy: T) -> i32 {
+    auto local_token = TrackedToken(id = n);
+    if (n <= 0) {
+        return 0;
+    }
+    return recur_frame_drops(n - 1, dummy);
+}
+
+fn main() -> i32 {
+    // 1. Single token passed through 5 recursive levels
+    auto t1 = TrackedToken(id = 100);
+    recur_handoff(cede t1, 5, 42);
+    assert(g_drop_count == 1, "Passed token must drop exactly once");
+
+    // 2. 5 recursive frames, each creating and dropping a token
+    g_drop_count = 0;
+    recur_frame_drops(5, "marker");
+    // n=5, 4, 3, 2, 1, 0 -> 6 tokens created and dropped
+    assert(g_drop_count == 6, "Each frame token must drop exactly once");
+
+    return 0;
+}

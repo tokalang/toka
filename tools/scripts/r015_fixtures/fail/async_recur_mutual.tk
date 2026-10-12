@@ -1,0 +1,6 @@
+import std/task::{block_on}
+fn a<T>(n:i32,v:T)->async i32 { if n<=0 { return 0 }
+ return b(n - 1,v).await }
+fn b<T>(n:i32,v:T)->async i32 { if n<=0 { return 0 }
+ return a(n - 1,v).await }
+fn main()->i32 { return block_on(a(3,42)) }
