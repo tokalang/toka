@@ -12,8 +12,8 @@ Toka 0.15.0 introduces generic recursion for synchronous free functions, featuri
 
 ### 2. Rigorous Semantic Lifecycle & Cycle Safety
 - **Two-Phase Qualification**: Specializations transition cleanly from `Unchecked` to `InFlight` to `Valid` or `Invalid`.
-- **Tarjan SCC Transactional Rollback**: Mutually recursive groups form strongly connected components that commit atomically. If any member in a cycle fails semantic or type validation, the entire cycle is invalidated (`error[E04576]`), preventing partially verified or corrupted instances from entering caches.
-- **Tainted Instance Quarantine**: Specializations marked `Invalid` fail closed upon any subsequent cache lookup (`error[E04576]`).
+- **Tarjan SCC Transactional Rollback**: Mutually recursive groups form strongly connected components that commit atomically. If any member in a cycle fails semantic or type validation, the entire cycle is invalidated, preventing partially verified or corrupted instances from entering caches.
+- **Tainted Instance Quarantine**: Specializations marked `Invalid` fail closed upon any subsequent cache lookup, preventing tainted evidence reuse.
 - **Ownership & Destructor Precision**: Linear types passed via `cede` across recursive frames maintain exact single-handoff destruction (`g_drop == 1`). Unwinding nested recursion frames guarantees exact per-frame local variable destruction (`g_drop == 6` across 5 frames).
 - **Explicit Borrow Return Contracts**: Retains explicit borrow annotations (`<- param`) across recursive calls with full borrow-checker validation.
 

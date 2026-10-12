@@ -12,7 +12,7 @@ Prior to 0.15, generic function instantiation in Toka rejected self-calls or mut
 In 0.15, generic recursion is introduced with rigorous compile-time boundaries:
 - **Two-phase specialization lifecycle**: Instantiations are tracked with states `Unchecked` -> `InFlight` -> `Valid` / `Invalid`.
 - **Tarjan Strongly Connected Component (SCC) group resolution**: Mutually recursive generic functions are tracked on an active template stack (`m_ActiveGenericTemplateStack`). A mutual cycle is committed atomically as `Valid` only when all constituent members complete type and borrow validation without errors. If any member fails, the entire cycle is invalidated.
-- **Tainted instance isolation**: Invalidation marks all cycle specializations as `Invalid`. Any subsequent lookup of an invalid cache entry fails closed with diagnostic `error[E04576]`, preventing corrupted intermediate evidence from leaking.
+- **Tainted instance isolation**: Invalidation marks all cycle specializations as `Invalid`. Any subsequent lookup of an invalid cache entry fails closed, aborting specialization without reusing corrupted intermediate evidence or masking the root error.
 
 ---
 
@@ -51,11 +51,11 @@ The following constructs are strictly outside the 0.15 scope and are determinist
 | **Trait Bound Violations** | `fn f<T: @Encap>(v: T) -> i32` called with unconstrained type | `error[E0606]` | Generic specialization fails prerequisite trait constraint checking before admit (`N02`). |
 | **Illegal Borrow Conflicts** | `fn f<T>(a: &mut T, b: &mut T)` called as `f(&mut x, &mut x)` | `error[E0441]` | Simultaneous mutable borrow aliasing detected across call arguments (`N03`). |
 | **Double Cede / Moved Value Use** | `fn f<T>(cede a: T) { f(cede a); f(cede a) }` | `error[E0438]` | Linear value consumed across first call point is unavailable for subsequent use (`N04`). |
-| **Mutual Cycle Failure Propagation** | `fn a<T>() -> i32 { return b<T>() }` where `b` has semantic error | `error[E04576]` | Tarjan SCC transactional commit detects constituent member failure; entire cycle is marked `Invalid` and fails closed (`N06`). |
-| **Tainted Instance Reuse** | Calling previously invalidated specialization `a<i32>()` | `error[E04576]` | Instantiation cache lookup detects `ValidationState::Invalid` and aborts immediately, preventing tainted evidence reuse (`N07`). |
+| **Mutual Cycle Failure Propagation** | `fn a<T>() -> i32 { return b<T>() }` where `b` has semantic error | Preserved Root Diagnostic (e.g., `E04576` for `val + 1`) | Tarjan SCC transactional commit detects constituent member failure; entire cycle is marked `Invalid` and fails closed (`N06`). The original failure diagnostic inside the invalid body is faithfully reported without leaking corrupted specializations into caches. |
+| **Tainted Instance Quarantine** | Calling previously invalidated specialization `a<i32>()` | Preserved Root Diagnostic (e.g., `E04576` for `val + 1`) | Instantiation cache lookup detects `ValidationState::Invalid` and aborts immediately, preventing tainted evidence reuse (`N07`). |
 
 > [!NOTE]
-> Diagnostic code `error[E04576]` is strictly scoped to Tarjan SCC cycle failure propagation and tainted instance reuse prevention (`N06`, `N07`). It is **not** a blanket code for all recursion errors; standard type, borrow, bound, and linear ownership errors preserve their native diagnostic codes (`E0408`, `E0606`, `E0441`, `E0438`).
+> Diagnostic code `error[E04576]` (`ERR_SEMA_OPERANDS_OF_MUST_BE_NUMERIC_GOT`) observed in test probes `N06` and `N07` is the root semantic type error resulting from evaluating `return val + 1` with `val: str`. It is **not** a dedicated error code for Tarjan cycle failure or cache contamination. The cycle rollback and cache quarantine mechanisms do not invent synthetic error codes; they preserve and surface the underlying semantic diagnostic while ensuring that no invalid specialization is committed or reused.
 >
 > Non-recursive generic async functions (such as `async fn process<T>(val: T) -> T`) remain fully supported and are verified against regression by control probe `P13`.
 
