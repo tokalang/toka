@@ -282,9 +282,10 @@ def valid_candidate_015(revision, label, target=None):
             'tokafmt': f'tokafmt {ver}',
             'tokalsp': f'tokalsp {ver}',
         },
+        'SDK_root': '/sdk',
         'source_hidden_tki': {
-            'provider_tki_sha256': 'a' * 64,
-            'provider_object_sha256': 'b' * 64,
+            'provider_tki_sha256': hashlib.sha256(b'provider.tki').hexdigest(),
+            'provider_object_sha256': hashlib.sha256(b'provider.o').hexdigest(),
             'missing_interface_rejected': True,
             'corrupt_interface_rejected': True,
             'consumer_result': 'pass',

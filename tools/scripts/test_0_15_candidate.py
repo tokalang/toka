@@ -208,6 +208,8 @@ def main():
     shutil.copy2(consumer_src, consumer_copy)
     shutil.copy2(provider_tki, consumer_stage / "provider.tki")
     shutil.copy2(provider_o, consumer_stage / "provider.o")
+    consumed_tki_sha = sha256_file(consumer_stage / "provider.tki")
+    consumed_o_sha = sha256_file(consumer_stage / "provider.o")
 
     # Clean provider stage entirely to guarantee no alternative source or cache routes exist
     shutil.rmtree(provider_stage, ignore_errors=True)
@@ -217,8 +219,9 @@ def main():
     missing_stage.mkdir(parents=True, exist_ok=True)
     missing_consumer = missing_stage / "tki_consumer.tk"
     shutil.copy2(consumer_src, missing_consumer)
+    missing_cmd = [tokac_bin, "-I", str(missing_stage), str(missing_consumer), str(consumer_stage / "provider.o"), "-o", str(missing_stage / "bad_bin")]
     r_missing = subprocess.run(
-        [tokac_bin, "-I", str(missing_stage), str(missing_consumer), str(consumer_stage / "provider.o"), "-o", str(missing_stage / "bad_bin")],
+        missing_cmd,
         env=env, cwd=missing_stage, capture_output=True, text=True, timeout=30
     )
     if r_missing.returncode != 1:
@@ -231,8 +234,9 @@ def main():
     corrupt_consumer = corrupt_stage / "tki_consumer.tk"
     shutil.copy2(consumer_src, corrupt_consumer)
     (corrupt_stage / "provider.tki").write_text("// corrupted tki interface header\ninvalid content\n", encoding="utf-8")
+    corrupt_cmd = [tokac_bin, "-I", str(corrupt_stage), str(corrupt_consumer), str(consumer_stage / "provider.o"), "-o", str(corrupt_stage / "bad_bin")]
     r_corrupt = subprocess.run(
-        [tokac_bin, "-I", str(corrupt_stage), str(corrupt_consumer), str(consumer_stage / "provider.o"), "-o", str(corrupt_stage / "bad_bin")],
+        corrupt_cmd,
         env=env, cwd=corrupt_stage, capture_output=True, text=True, timeout=30
     )
     if r_corrupt.returncode != 1:
@@ -313,8 +317,24 @@ def main():
         "source_hidden_tki": {
             "provider_tki_sha256": provider_tki_sha,
             "provider_object_sha256": provider_o_sha,
+            "consumed_tki_sha256": consumed_tki_sha,
+            "consumed_object_sha256": consumed_o_sha,
             "missing_interface_rejected": True,
             "corrupt_interface_rejected": True,
+            "missing_interface_command": {
+                "argv": [str(c) for c in missing_cmd],
+                "cmd": [str(c) for c in missing_cmd],
+                "exit_code": r_missing.returncode,
+                "stdout_sha256": sha256_bytes(r_missing.stdout.encode("utf-8")),
+                "stderr_sha256": sha256_bytes(r_missing.stderr.encode("utf-8")),
+            },
+            "corrupt_interface_command": {
+                "argv": [str(c) for c in corrupt_cmd],
+                "cmd": [str(c) for c in corrupt_cmd],
+                "exit_code": r_corrupt.returncode,
+                "stdout_sha256": sha256_bytes(r_corrupt.stdout.encode("utf-8")),
+                "stderr_sha256": sha256_bytes(r_corrupt.stderr.encode("utf-8")),
+            },
             "consumer_result": "pass",
             "provider_source_present": False,
         },
