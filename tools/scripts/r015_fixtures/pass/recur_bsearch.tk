@@ -1,0 +1,23 @@
+import std/vec::{Vec}
+
+fn bsearch_recur<T>(arr: Vec<T>, target: i32, low: i32, high: i32) -> i32 {
+    if (low > high) { return -1; }
+    auto mid = low + (high - low) / 2;
+    auto mid_val = arr.get(mid as usize);
+    if (mid_val == target) { return mid; }
+    if (mid_val > target) {
+        return bsearch_recur(arr, target, low, mid - 1);
+    }
+    return bsearch_recur(arr, target, mid + 1, high);
+}
+
+fn main() -> i32 {
+    auto v# = Vec<i32>::new();
+    v#.push(10);
+    v#.push(20);
+    v#.push(30);
+    v#.push(40);
+    auto idx = bsearch_recur(v, 30, 0, 3);
+    if (idx == 2) { return 0; }
+    return 1;
+}

@@ -40,20 +40,23 @@ The 0.15 implementation supports **synchronous generic free functions**:
 
 ## 3. Out-of-Scope Boundaries & Diagnostic Enforcement
 
-The following constructs are strictly outside the 0.15 scope and are deterministically rejected by the compiler:
+The following constructs are strictly outside the 0.15 scope and are deterministically rejected by the compiler with dedicated, non-overlapping diagnostic codes:
 
-| Rejected Construct | Diagnostic Code | Enforcement Mechanism & Behavior |
-|---|---|---|
-| **Asynchronous Generic Recursion** | `error[E0406]` | `async fn f<T>` direct recursion, mutual async recursion, or mixed sync/async recursion cycles are rejected at Sema entry. Enforced across `--check-only`, `-c -o`, and `--emit-llvm` modes with **zero artifact creation** (no `.o` or `.ll` files emitted). |
-| **Polymorphic / Type-Expanding Recursion** | `error[E0406]` | Calls that expand type parameters (e.g., `f<T>` calling `f<Option<T>>` or `f<[T]>`) are intercepted on the active template stack in under 50ms, preventing infinite specialization loops. |
-| **Recursive Return Type Mismatch** | `error[E0408]` | Type checker strictly verifies that recursive call sites match the declared return type signature. |
-| **Trait Bound Violations** | `error[E0606]` | Generic type constraints (`T: @Trait`) are validated prior to admitting recursive call specializations. |
-| **Illegal Borrow Conflicts** | `error[E0441]` | Simultaneous mutable borrow aliasing across recursive call arguments is rejected. |
-| **Double Cede / Moved Value Use** | `error[E0438]` | Using a moved/ceded value across or within recursive frame boundaries is rejected. |
-| **Mutual Cycle Failure Propagation** | `error[E04576]` | If any member in a mutually recursive cycle encounters an error, the entire cycle fails closed, preventing partial specialization leakage. |
-| **Tainted Instance Reuse** | `error[E04576]` | Cached entries resulting from failed recursive specializations are rejected on subsequent lookup. |
+| Category | Example / Syntax | Diagnostic Code | Enforcement Mechanism & Behavior |
+|---|---|---|---|
+| **Asynchronous Generic Recursion** | `async fn f<T>(v: T) -> async i32 { return f(v).await }` | `error[E0406]` | Synchronous free function recursion entry guard detects `async` specifier. Rejection enforced across `--check-only`, `-c -o`, and `--emit-llvm` modes with **zero artifact creation** (no `.o` or `.ll` files emitted; probes `N08`, `N09`, `N10`). |
+| **Mixed Sync/Async Cycle (Sync Entry)** | `fn s<T>(v: T) -> i32 { return a(v) }` where `a` is async | `error[E04661]` | Task result origin unproven when synchronous recursion frame attempts un-awaited transfer into task binding (`N11`). |
+| **Polymorphic / Type Expansion** | `fn f<T>(v: T) -> i32 { return f([v]) }` | `error[E0406]` | Active generic template stack detects nested instantiation of the same template with expanding type argument `[T]`. Intercepted statically in <50ms without runaway depth (`N05`). |
+| **Recursive Return Type Mismatch** | `fn f<T>(v: T) -> i32 { return "str" }` | `error[E0408]` | Return expression fails unification against declared return type signature (`N01`). |
+| **Trait Bound Violations** | `fn f<T: @Encap>(v: T) -> i32` called with unconstrained type | `error[E0606]` | Generic specialization fails prerequisite trait constraint checking before admit (`N02`). |
+| **Illegal Borrow Conflicts** | `fn f<T>(a: &mut T, b: &mut T)` called as `f(&mut x, &mut x)` | `error[E0441]` | Simultaneous mutable borrow aliasing detected across call arguments (`N03`). |
+| **Double Cede / Moved Value Use** | `fn f<T>(cede a: T) { f(cede a); f(cede a) }` | `error[E0438]` | Linear value consumed across first call point is unavailable for subsequent use (`N04`). |
+| **Mutual Cycle Failure Propagation** | `fn a<T>() -> i32 { return b<T>() }` where `b` has semantic error | `error[E04576]` | Tarjan SCC transactional commit detects constituent member failure; entire cycle is marked `Invalid` and fails closed (`N06`). |
+| **Tainted Instance Reuse** | Calling previously invalidated specialization `a<i32>()` | `error[E04576]` | Instantiation cache lookup detects `ValidationState::Invalid` and aborts immediately, preventing tainted evidence reuse (`N07`). |
 
 > [!NOTE]
+> Diagnostic code `error[E04576]` is strictly scoped to Tarjan SCC cycle failure propagation and tainted instance reuse prevention (`N06`, `N07`). It is **not** a blanket code for all recursion errors; standard type, borrow, bound, and linear ownership errors preserve their native diagnostic codes (`E0408`, `E0606`, `E0441`, `E0438`).
+>
 > Non-recursive generic async functions (such as `async fn process<T>(val: T) -> T`) remain fully supported and are verified against regression by control probe `P13`.
 
 ---

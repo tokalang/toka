@@ -147,6 +147,69 @@ def valid_candidate_014(revision, label, target=None):
     }
 
 
+def valid_candidate_015(revision, label, target=None):
+    if target is None:
+        target = 'linux-x64'
+    ver = label.removeprefix('v')
+    receipts = []
+    for name in ('tokac', 'toka', 'tokafmt', 'tokalsp'):
+        receipts.append({
+            'name': 'version-' + name,
+            'argv': ['/sdk/bin/' + name, '--version'],
+            'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 5.0,
+            'termination': None, 'error': None, 'result': 'pass', 'ok': True,
+            'stdout': f'{name} version {ver}\n', 'stderr': '',
+        })
+    for i in range(21):
+        receipts.append({
+            'name': f'pos-{i}',
+            'argv': ['/sdk/bin/tokac', f'/fixtures/pass/pos_{i}.tk'],
+            'exit_code': 0, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0,
+            'termination': None, 'error': None, 'result': 'pass', 'ok': True,
+            'stdout': '', 'stderr': '',
+        })
+    for i in range(13):
+        receipts.append({
+            'name': f'neg-{i}',
+            'argv': ['/sdk/bin/tokac', '--check-only', f'/fixtures/fail/neg_{i}.tk'],
+            'exit_code': 1, 'signal': None, 'cwd': '/tmp', 'execution_ms': 10.0,
+            'termination': None, 'error': None, 'result': 'pass', 'ok': True,
+            'diagnostic': 'E0406',
+            'stdout': '', 'stderr': 'error[E0406]: recursion rejected',
+        })
+    ctrl_sha = policy.expected_015_script_sha256() or 'b'*64
+    return {
+        'schema': 'toka.0.15-candidate-controls',
+        'version': 1,
+        'result': 'pass',
+        'candidate_revision': revision,
+        'version_label': label,
+        'target': target,
+        'build_testing': False,
+        'groups': ['G-recursion'],
+        'fixtures_digest': policy.EXPECTED_015_FIXTURES_DIGEST,
+        'control_script_name': 'test_0_15_candidate.py',
+        'control_script_sha256': ctrl_sha,
+        'four_tool_versions': {
+            'tokac': f'tokac {ver}',
+            'toka': f'toka {ver}',
+            'tokafmt': f'tokafmt {ver}',
+            'tokalsp': f'tokalsp {ver}',
+        },
+        'counts': {
+            'total_receipts': 38,
+            'passed': 38,
+            'failed': 0,
+            'groups': {
+                'version': 4,
+                'G-recursion-positive': 21,
+                'G-recursion-negative': 13,
+            },
+        },
+        'receipts': receipts,
+    }
+
+
 def fixture(root,intel=False):
     targets=policy.CORE+(policy.OPTIONAL,) if intel else policy.CORE
     archives=root/'qualified';archives.mkdir();assets=root/'assets';assets.mkdir();zips=root/'zips';zips.mkdir();metadata=[];hashes={}
@@ -168,6 +231,9 @@ def fixture(root,intel=False):
     if TAG.startswith('v0.14.'):
         for row in summary['reports']:
             row['candidate_014']=valid_candidate_014(SHA,TAG,row['target'])
+    if TAG.startswith('v0.15.'):
+        for row in summary['reports']:
+            row['candidate_015']=valid_candidate_015(SHA,TAG,row['target'])
     replay_receipts=[{'target':target,'result':'pass','archive_sha256':hashes['toka-%s-%s.tar.gz'%(TAG,target)],'candidate_revision':SHA,'version_label':TAG,'policy_id':policy.policy_id(TAG),'asset_source':'candidate_run','qualification_run_id':11,'qualification_run_attempt':1} for target in targets]
     if TAG.startswith('v0.13.') and TAG != 'v0.13.0':
         for r in replay_receipts:
@@ -175,6 +241,9 @@ def fixture(root,intel=False):
     if TAG.startswith('v0.14.'):
         for r in replay_receipts:
             r['candidate_014']=valid_candidate_014(SHA,TAG,r['target'])
+    if TAG.startswith('v0.15.'):
+        for r in replay_receipts:
+            r['candidate_015']=valid_candidate_015(SHA,TAG,r['target'])
     documents={'summary':summary,'run':{'id':11,'run_attempt':1,'status':'completed','conclusion':'success','head_sha':SHA,'path':'.github/workflows/release.yml','event':'workflow_dispatch','repository':{'full_name':'tokalang/toka'},'head_repository':{'full_name':'tokalang/toka'}},
                'draft':{'tagName':TAG,'isDraft':True,'isPrerelease':False,'assets':[{'name':name} for name in [*hashes,'SHA256SUMS']]},'artifacts':{'artifacts':metadata},
                'optional_run':{'id':21,'run_attempt':2,'head_sha':SHA,'status':'completed','conclusion':'success','event':'workflow_dispatch','path':'.github/workflows/optional_macos_x64.yml'},

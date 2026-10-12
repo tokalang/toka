@@ -1,0 +1,15 @@
+import core/traits::{@PartialOrd}
+
+fn min_recur<T: @PartialOrd>(a: T, b: T) -> T {
+    if (a < b) { return a; }
+    return min_recur(b, a);
+}
+
+shape UnOrd(x: i32)
+
+fn main() -> i32 {
+    auto u1 = UnOrd(x = 1);
+    auto u2 = UnOrd(x = 2);
+    auto res = min_recur(u1, u2);
+    return 0;
+}

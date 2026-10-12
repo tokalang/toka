@@ -1,0 +1,15 @@
+import std/vec::{Vec}
+
+fn double_cede_recur<T>(cede v: Vec<T>, n: i32) -> i32 {
+    if (n <= 0) {
+        auto first = cede v;
+        auto second = cede v;
+        return 0;
+    }
+    return double_cede_recur(cede v, n - 1);
+}
+
+fn main() -> i32 {
+    auto v = Vec<i32>::new();
+    return double_cede_recur(cede v, 3);
+}

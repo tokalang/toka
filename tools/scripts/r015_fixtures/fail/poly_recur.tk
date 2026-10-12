@@ -1,0 +1,11 @@
+import core/option::{Option}
+
+fn poly_recur<T>(n: i32, val: T) -> i32 {
+    if (n <= 0) { return 0; }
+    auto next = Option<T>::Some(val);
+    return poly_recur(n - 1, next);
+}
+
+fn main() -> i32 {
+    return poly_recur(5, 42);
+}
