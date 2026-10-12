@@ -282,6 +282,14 @@ def valid_candidate_015(revision, label, target=None):
             'tokafmt': f'tokafmt {ver}',
             'tokalsp': f'tokalsp {ver}',
         },
+        'source_hidden_tki': {
+            'provider_tki_sha256': 'a' * 64,
+            'provider_object_sha256': 'b' * 64,
+            'missing_interface_rejected': True,
+            'corrupt_interface_rejected': True,
+            'consumer_result': 'pass',
+            'provider_source_present': False,
+        },
         'counts': {
             'total_receipts': 38,
             'passed': 38,

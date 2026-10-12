@@ -316,6 +316,7 @@ def main():
             "missing_interface_rejected": True,
             "corrupt_interface_rejected": True,
             "consumer_result": "pass",
+            "provider_source_present": False,
         },
         "groups": ["G-recursion"],
         "SDK_root": str(sdk),

@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import tempfile
 import unittest
@@ -85,6 +86,32 @@ class Contract015(unittest.TestCase):
                     ('positive_unexpected_diagnostic', lambda p: [r.update(diagnostic='E0406') for r in p['receipts'] if r.get('name', '').startswith('pos-')]),
                     ('abnormal_signal', lambda p: [r.update(signal=15) for r in p['receipts']]),
                     ('abnormal_error', lambda p: [r.update(error='aborted') for r in p['receipts']]),
+                    ('positive_compiler_echo', lambda p: [r['argv'].__setitem__(0, '/bin/echo') for r in p['receipts'] if r.get('name', '').startswith('pos-') and r.get('name', '').endswith('-compile')]),
+                    ('negative_wrong_modes', lambda p: [
+                        r['argv'].__setitem__(slice(None), [a for a in r['argv'] if a not in ('-c', '--emit-llvm', '--check-only')]) or r['argv'].insert(1, '--check-only')
+                        for r in p['receipts'] if r.get('name') in ('neg-async-direct-object', 'neg-async-direct-ir', 'neg-async-direct-compile')
+                    ]),
+                    ('version_command_without_version_flag', lambda p: [
+                        r['argv'].__setitem__(slice(None), [a for a in r['argv'] if a != '--version'])
+                        for r in p['receipts'] if r.get('name', '').startswith('version-')
+                    ]),
+                    ('missing_sourceless_facts', lambda p: p.pop('source_hidden_tki', None)),
+                    ('false_sourceless_facts', lambda p: p.update(source_hidden_tki={
+                        'provider_tki_sha256': '0' * 64,
+                        'provider_object_sha256': '0' * 64,
+                        'missing_interface_rejected': False,
+                        'corrupt_interface_rejected': False,
+                        'consumer_result': 'fail',
+                        'provider_source_present': True,
+                    })),
+                    ('tki_consumer_missing_import_and_object', lambda p: [
+                        r['argv'].__setitem__(slice(None), [x for j, x in enumerate(r['argv']) if x != '-I' and (j == 0 or r['argv'][j - 1] != '-I') and not x.endswith('.o')])
+                        for r in p['receipts'] if r.get('name') == 'pos-tki-consumer-compile'
+                    ]),
+                    ('wrong_exact_tool_version', lambda p: [
+                        p['four_tool_versions'].update({k: v.replace('0.15.0', '0.15.00') for k, v in p['four_tool_versions'].items()}),
+                        [r.update(stdout=r['stdout'].replace('0.15.0', '0.15.00'), stdout_sha256=hashlib.sha256(r['stdout'].replace('0.15.0', '0.15.00').encode('utf-8')).hexdigest()) for r in p['receipts'] if r.get('name', '').startswith('version-')]
+                    ]),
                 ]
                 for desc, mutate in mutations:
                     with self.subTest(mutation=desc):

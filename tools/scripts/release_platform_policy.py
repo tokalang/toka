@@ -963,12 +963,35 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
     elif expected_control_sha and control_sha != expected_control_sha:
         errors.append('0.15 control script digest mismatch')
 
+    # Source-hidden TKI facts validation
+    tki_facts = receipt.get('source_hidden_tki')
+    if not isinstance(tki_facts, dict):
+        errors.append('0.15 receipt missing source_hidden_tki dictionary')
+    else:
+        if tki_facts.get('missing_interface_rejected') is not True:
+            errors.append('0.15 source_hidden_tki missing_interface_rejected must be True')
+        if tki_facts.get('corrupt_interface_rejected') is not True:
+            errors.append('0.15 source_hidden_tki corrupt_interface_rejected must be True')
+        if tki_facts.get('consumer_result') != 'pass':
+            errors.append('0.15 source_hidden_tki consumer_result must be pass')
+        if tki_facts.get('provider_source_present') is True:
+            errors.append('0.15 source_hidden_tki provider_source_present must not be True')
+        p_tki = tki_facts.get('provider_tki_sha256')
+        if not isinstance(p_tki, str) or not re.fullmatch(r'[0-9a-f]{64}', p_tki) or set(p_tki) == {'0'}:
+            errors.append('0.15 source_hidden_tki provider_tki_sha256 missing or invalid')
+        p_obj = tki_facts.get('provider_object_sha256')
+        if not isinstance(p_obj, str) or not re.fullmatch(r'[0-9a-f]{64}', p_obj) or set(p_obj) == {'0'}:
+            errors.append('0.15 source_hidden_tki provider_object_sha256 missing or invalid')
+
+    ver = label.removeprefix('v')
+    ver_regex = re.compile(r'(?<![0-9.])' + re.escape(ver) + r'(?![0-9.])')
+
     tools = receipt.get('four_tool_versions')
     if not isinstance(tools, dict) or set(tools.keys()) != {'tokac', 'toka', 'tokafmt', 'tokalsp'}:
         errors.append('0.15 four_tool_versions missing or invalid')
     else:
         for t_name, t_str in tools.items():
-            if not isinstance(t_str, str) or label.removeprefix('v') not in t_str:
+            if not isinstance(t_str, str) or not ver_regex.search(t_str):
                 errors.append('0.15 tool version mismatch: ' + t_name)
 
     counts = receipt.get('counts')
@@ -1082,6 +1105,10 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
             errors.append('0.15 command receipt stdout indicates failure: ' + r_name)
 
         is_neg = r_name.startswith('neg-')
+        is_pos_compile = r_name.startswith('pos-') and r_name.endswith('-compile')
+        if (is_pos_compile or is_neg) and prog_base not in ('tokac', 'tokac.exe'):
+            errors.append('0.15 compile command program must execute tokac: ' + r_name)
+
         if not is_neg:
             if exit_code != 0:
                 errors.append(f'0.15 positive command exit code must be 0: {r_name} (got {exit_code})')
@@ -1092,8 +1119,35 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
         else:
             if exit_code != 1:
                 errors.append(f'0.15 negative command exit code must be 1: {r_name} (got {exit_code})')
-            if prog_base not in ('tokac', 'tokac.exe'):
-                errors.append('0.15 negative command program must execute tokac: ' + r_name)
+
+        # Check compilation and checking modes
+        if is_pos_compile:
+            if r_name == 'pos-tki-provider-compile':
+                if '-c' not in argv or '-o' not in argv or '--check-only' in argv or '--emit-llvm' in argv:
+                    errors.append('0.15 pos-tki-provider-compile mode mismatch: ' + r_name)
+            elif r_name == 'pos-tki-consumer-compile':
+                if '-c' in argv or '--check-only' in argv or '--emit-llvm' in argv:
+                    errors.append('0.15 pos-tki-consumer-compile mode mismatch: ' + r_name)
+                if '-I' not in argv:
+                    errors.append('0.15 pos-tki-consumer-compile missing -I flag')
+                if not any(a.endswith('.o') for a in argv):
+                    errors.append('0.15 pos-tki-consumer-compile missing .o provider object argument')
+            else:
+                if '-c' in argv or '--check-only' in argv or '--emit-llvm' in argv:
+                    errors.append('0.15 positive executable compile command mode mismatch: ' + r_name)
+
+        if r_name == 'neg-async-direct-object':
+            if '-c' not in argv or '-o' not in argv or '--check-only' in argv or '--emit-llvm' in argv:
+                errors.append('0.15 negative command mode mismatch (expected object flags -c and -o): ' + r_name)
+        elif r_name == 'neg-async-direct-ir':
+            if '--emit-llvm' not in argv or '-c' not in argv or '-o' not in argv or '--check-only' in argv:
+                errors.append('0.15 negative command mode mismatch (expected IR flags --emit-llvm, -c, -o): ' + r_name)
+        elif r_name == 'neg-async-direct-compile':
+            if '-o' not in argv or '-c' in argv or '--check-only' in argv or '--emit-llvm' in argv:
+                errors.append('0.15 negative command mode mismatch (expected compile flags -o without -c/--check-only/--emit-llvm): ' + r_name)
+        elif is_neg and r_name.endswith('-check'):
+            if '--check-only' not in argv or '-c' in argv or '-o' in argv or '--emit-llvm' in argv:
+                errors.append('0.15 negative command mode mismatch (expected --check-only): ' + r_name)
 
         # Check compile commands for expected -o output basename
         if r_name in compile_expected_bases:
@@ -1132,8 +1186,9 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
             else:
                 if prog_base not in (t_name, t_name + '.exe'):
                     errors.append('0.15 tool version command program mismatch: ' + r_name)
-            ver = label.removeprefix('v')
-            if ver not in out_s:
+            if '--version' not in argv:
+                errors.append('0.15 tool version command missing --version flag: ' + r_name)
+            if not ver_regex.search(out_s):
                 errors.append(f'0.15 tool version {t_name} stdout missing {ver}: {r_name}')
 
         elif r_name in NEG_015_DIAGNOSTICS:
