@@ -204,23 +204,36 @@ def main():
     parser.add_argument("--output-dir", type=Path, default=None, help="Output directory to emit test report JSON")
     args = parser.parse_args()
 
+    def find_executable(candidate: Path) -> Path:
+        if candidate.is_file():
+            return candidate
+        if candidate.with_suffix(".exe").is_file():
+            return candidate.with_suffix(".exe")
+        alt = candidate.parent / (candidate.name + ".exe")
+        if alt.is_file():
+            return alt
+        return candidate
+
     if args.tokac:
-        tokac = args.tokac.resolve()
+        tokac = find_executable(args.tokac.resolve())
     elif args.build_dir:
-        tokac = (args.build_dir / "bin/tokac").resolve()
+        tokac = find_executable((args.build_dir / "bin/tokac").resolve())
     else:
         for candidate in (
             ROOT / "build/bin/tokac",
             ROOT.parent / "builds/fix-r3-task-escape/bin/tokac",
         ):
-            if candidate.exists():
-                tokac = candidate
+            cand_exe = find_executable(candidate)
+            if cand_exe.exists():
+                tokac = cand_exe
                 break
         else:
             parser.error("Either --build-dir or --tokac must be specified.")
 
     if not tokac.exists():
         sys.exit(f"Error: tokac binary not found at {tokac}")
+
+    exe_suffix = ".exe" if (sys.platform == "win32" or os.name == "nt") else ""
 
     env = dict(os.environ, TOKA_LIB=str(ROOT / "lib"))
 
@@ -240,7 +253,7 @@ def main():
             total_count += 1
             src_file = PROBES_DIR / f"{probe_id}.tk"
             extra_sources = [PROBES_DIR / s for s in cfg.get("extra_sources", [])]
-            bin_file = work_dir / f"{probe_id}_bin"
+            bin_file = work_dir / f"{probe_id}_bin{exe_suffix}"
 
             cmd = [str(tokac)]
             if "include_dir" in cfg:
@@ -269,7 +282,7 @@ def main():
 
             if ok and c_res.returncode == 0 and not cfg.get("compile_only", False):
                 try:
-                    r_res = subprocess.run([str(bin_file)], env=env, cwd=work_dir, capture_output=True, text=True, timeout=10)
+                    r_res = subprocess.run([str(find_executable(bin_file))], env=env, cwd=work_dir, capture_output=True, text=True, timeout=10)
                     exp_r = cfg.get("runtime_return_code", 0)
                     if r_res.returncode != exp_r:
                         ok = False
@@ -289,10 +302,10 @@ def main():
         # 2. Cleanup & Destructor Exact Count Audit
         total_count += 1
         cleanup_src = PROBES_DIR / "test_cleanup_drop.tk"
-        cleanup_bin = work_dir / "cleanup_drop_bin"
+        cleanup_bin = work_dir / f"cleanup_drop_bin{exe_suffix}"
         c_res = subprocess.run([str(tokac), str(cleanup_src), "-o", str(cleanup_bin)], env=env, cwd=work_dir, capture_output=True, text=True, timeout=30)
         if c_res.returncode == 0:
-            r_res = subprocess.run([str(cleanup_bin)], env=env, cwd=work_dir, capture_output=True, text=True, timeout=10)
+            r_res = subprocess.run([str(find_executable(cleanup_bin))], env=env, cwd=work_dir, capture_output=True, text=True, timeout=10)
             if r_res.returncode == 0:
                 passed_count += 1
                 print(f"  [PASS] {'cleanup_drop_tracking':38s} (cede handoff drop=1, frame drops=6)")
@@ -357,13 +370,13 @@ def main():
             shutil.rmtree(corrupt_stage, ignore_errors=True)
 
             # Positive build against source-hidden .tki and .o
-            tki_bin = consumer_stage_dir / "tki_bin"
+            tki_bin = consumer_stage_dir / f"tki_bin{exe_suffix}"
             c2 = subprocess.run(
                 [str(tokac), "-I", str(consumer_stage_dir), str(consumer_copy), str(consumer_stage_dir / "provider.o"), "-o", str(tki_bin)],
                 env=env, cwd=consumer_stage_dir, capture_output=True, text=True, timeout=30
             )
-            if missing_ok and corrupt_ok and c2.returncode == 0 and tki_bin.exists():
-                r_tki = subprocess.run([str(tki_bin)], env=env, cwd=consumer_stage_dir, capture_output=True, text=True, timeout=10)
+            if missing_ok and corrupt_ok and c2.returncode == 0 and find_executable(tki_bin).exists():
+                r_tki = subprocess.run([str(find_executable(tki_bin))], env=env, cwd=consumer_stage_dir, capture_output=True, text=True, timeout=10)
                 if r_tki.returncode == 0:
                     passed_count += 1
                     print(f"  [PASS] {'source_hidden_tki_boundary':38s} (provider source absent; recur_sum=55; neg controls pass)")
@@ -394,11 +407,11 @@ def main():
         c_ir = subprocess.run([str(tokac), "--emit-llvm", "-c", str(n08_src), "-o", str(n08_ll)], env=env, cwd=async_stage, capture_output=True, text=True, timeout=30)
         ir_ok = (c_ir.returncode == 1 and "E0406" in (c_ir.stdout + c_ir.stderr) and not n08_ll.exists())
 
-        p13_bin = async_stage / "p13_bin"
+        p13_bin = async_stage / f"p13_bin{exe_suffix}"
         c_p13 = subprocess.run([str(tokac), str(p13_src), "-o", str(p13_bin)], env=env, cwd=async_stage, capture_output=True, text=True, timeout=30)
         p13_ok = False
         if c_p13.returncode == 0:
-            r_p13 = subprocess.run([str(p13_bin)], env=env, cwd=async_stage, capture_output=True, text=True, timeout=10)
+            r_p13 = subprocess.run([str(find_executable(p13_bin))], env=env, cwd=async_stage, capture_output=True, text=True, timeout=10)
             p13_ok = (r_p13.returncode == 0)
 
         if check_ok and obj_ok and ir_ok and p13_ok:
