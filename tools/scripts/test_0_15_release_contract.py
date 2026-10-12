@@ -153,6 +153,34 @@ class Contract015(unittest.TestCase):
                         r['argv'].extend(['-o', '/unrelated/replaced-output'])
                         for r in p['receipts'] if r.get('name', '').startswith('pos-') and r.get('name', '').endswith('-compile')
                     ]),
+                    ('delete_raw_outputs', lambda p: [
+                        p['source_hidden_tki'][k].pop('stdout', None) or p['source_hidden_tki'][k].pop('stderr', None)
+                        for k in ('missing_interface_command', 'corrupt_interface_command')
+                    ]),
+                    ('delete_context_timing_absence', lambda p: [
+                        [p['source_hidden_tki'][k].pop(f, None) for f in ('cwd', 'execution_ms', 'elapsed_seconds', 'artifact_absent', 'signal', 'termination', 'error', 'ok', 'result')]
+                        for k in ('missing_interface_command', 'corrupt_interface_command')
+                    ]),
+                    ('delete_all_optional_tki_facts', lambda p: [
+                        [p['source_hidden_tki'][k].pop(f, None) for f in ('stdout', 'stderr', 'cwd', 'execution_ms', 'elapsed_seconds', 'artifact_absent', 'signal', 'termination', 'error', 'ok', 'result')]
+                        for k in ('missing_interface_command', 'corrupt_interface_command')
+                    ]),
+                    ('ordinary_error_present', lambda p: [
+                        p['source_hidden_tki'][k].update(
+                            stdout='', stderr='error: linker failed because an unrelated library was not found\n',
+                            stdout_sha256=hashlib.sha256(b'').hexdigest(),
+                            stderr_sha256=hashlib.sha256(b'error: linker failed because an unrelated library was not found\n').hexdigest()
+                        )
+                        for k in ('missing_interface_command', 'corrupt_interface_command')
+                    ]),
+                    ('ordinary_error_hidden', lambda p: [
+                        p['source_hidden_tki'][k].update(
+                            stdout='', stderr='error: linker failed because an unrelated library was not found\n',
+                            stdout_sha256=hashlib.sha256(b'').hexdigest(),
+                            stderr_sha256=hashlib.sha256(b'error: linker failed because an unrelated library was not found\n').hexdigest()
+                        ) or (p['source_hidden_tki'][k].pop('stdout', None), p['source_hidden_tki'][k].pop('stderr', None))
+                        for k in ('missing_interface_command', 'corrupt_interface_command')
+                    ]),
                 ]
                 for desc, mutate in mutations:
                     with self.subTest(mutation=desc):
