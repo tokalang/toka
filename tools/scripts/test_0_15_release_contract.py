@@ -133,6 +133,26 @@ class Contract015(unittest.TestCase):
                         [r.update(stdout=r['stdout'].replace('0.15.0', '0.15.0-rc.1'), stdout_sha256=hashlib.sha256(r['stdout'].replace('0.15.0', '0.15.0-rc.1').encode('utf-8')).hexdigest()) for r in p['receipts'] if r.get('name', '').startswith('version-')]
                     ]),
                     ('noninteger_counts', lambda p: p['counts'].update(passed=38.0, failed=False)),
+                    ('delete_consumed_hashes', lambda p: (p['source_hidden_tki'].pop('consumed_tki_sha256', None), p['source_hidden_tki'].pop('consumed_object_sha256', None))),
+                    ('delete_negative_commands', lambda p: (p['source_hidden_tki'].pop('missing_interface_command', None), p['source_hidden_tki'].pop('corrupt_interface_command', None))),
+                    ('exit_only_negative_commands', lambda p: p['source_hidden_tki'].update(missing_interface_command={'exit_code': 1})),
+                    ('negative_commands_bin_false', lambda p: p['source_hidden_tki']['missing_interface_command'].update(argv=['/bin/false'], cmd=['/bin/false'])),
+                    ('negative_commands_boolean_exit', lambda p: p['source_hidden_tki']['missing_interface_command'].update(exit_code=True)),
+                    ('negative_commands_signal_error', lambda p: p['source_hidden_tki']['missing_interface_command'].update(signal=15, termination='terminated', error='failed to execute')),
+                    ('negative_commands_bad_hash', lambda p: p['source_hidden_tki']['missing_interface_command'].update(stdout_sha256='not-a-hash', stderr_sha256='not-a-hash')),
+                    ('random_provider_hash_without_consumed', lambda p: [
+                        p['source_hidden_tki'].pop('consumed_tki_sha256', None),
+                        p['source_hidden_tki'].pop('consumed_object_sha256', None),
+                        p['source_hidden_tki'].update(provider_tki_sha256=hashlib.sha256(b'unrelated interface').hexdigest(), provider_object_sha256=hashlib.sha256(b'unrelated object').hexdigest())
+                    ]),
+                    ('compile_explain_action', lambda p: [
+                        r['argv'].insert(1, '--explain=E0406')
+                        for r in p['receipts'] if r.get('name', '').startswith('pos-') and r.get('name', '').endswith('-compile')
+                    ]),
+                    ('duplicate_output_flag', lambda p: [
+                        r['argv'].extend(['-o', '/unrelated/replaced-output'])
+                        for r in p['receipts'] if r.get('name', '').startswith('pos-') and r.get('name', '').endswith('-compile')
+                    ]),
                 ]
                 for desc, mutate in mutations:
                     with self.subTest(mutation=desc):

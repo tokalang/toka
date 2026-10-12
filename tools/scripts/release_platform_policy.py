@@ -921,6 +921,19 @@ NEG_015_DIAGNOSTICS = {
     'neg-tainted_reuse-check': 'E04576',
 }
 
+NEG_015_CHECK_FIXTURES = {
+    'neg-async-direct-check': 'async_recur_direct.tk',
+    'neg-async_mutual-check': 'async_recur_mutual.tk',
+    'neg-async_cycle_mixed-check': 'async_cycle_mixed.tk',
+    'neg-poly_recur-check': 'poly_recur.tk',
+    'neg-type_mismatch-check': 'type_mismatch.tk',
+    'neg-trait_bound-check': 'trait_bound.tk',
+    'neg-borrow_conflict-check': 'borrow_conflict.tk',
+    'neg-double_cede-check': 'double_cede.tk',
+    'neg-mutual_error-check': 'mutual_error.tk',
+    'neg-tainted_reuse-check': 'tainted_reuse.tk',
+}
+
 EXPECTED_015_NEG_RECEIPTS = set(NEG_015_DIAGNOSTICS.keys())
 EXPECTED_015_RECEIPTS = (
     EXPECTED_015_VERSION_RECEIPTS | EXPECTED_015_POS_RECEIPTS | EXPECTED_015_NEG_RECEIPTS
@@ -983,18 +996,23 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
         p_obj = tki_facts.get('provider_object_sha256')
         if not isinstance(p_obj, str) or not re.fullmatch(r'[0-9a-f]{64}', p_obj) or len(set(p_obj)) <= 4:
             errors.append('0.15 source_hidden_tki provider_object_sha256 missing, invalid or unbound dummy hash')
-        if 'consumed_tki_sha256' in tki_facts and tki_facts['consumed_tki_sha256'] != p_tki:
+
+        c_tki = tki_facts.get('consumed_tki_sha256')
+        if not isinstance(c_tki, str) or not re.fullmatch(r'[0-9a-f]{64}', c_tki):
+            errors.append('0.15 source_hidden_tki consumed_tki_sha256 is mandatory and must be a 64-hex SHA-256')
+        elif c_tki != p_tki:
             errors.append('0.15 source_hidden_tki consumed_tki_sha256 mismatch with provider_tki_sha256')
-        if 'consumed_object_sha256' in tki_facts and tki_facts['consumed_object_sha256'] != p_obj:
+
+        c_obj = tki_facts.get('consumed_object_sha256')
+        if not isinstance(c_obj, str) or not re.fullmatch(r'[0-9a-f]{64}', c_obj):
+            errors.append('0.15 source_hidden_tki consumed_object_sha256 is mandatory and must be a 64-hex SHA-256')
+        elif c_obj != p_obj:
             errors.append('0.15 source_hidden_tki consumed_object_sha256 mismatch with provider_object_sha256')
-        if 'missing_interface_command' in tki_facts:
-            mic = tki_facts['missing_interface_command']
-            if not isinstance(mic, dict) or mic.get('exit_code') != 1:
-                errors.append('0.15 source_hidden_tki missing_interface_command exit_code must be 1')
-        if 'corrupt_interface_command' in tki_facts:
-            cic = tki_facts['corrupt_interface_command']
-            if not isinstance(cic, dict) or cic.get('exit_code') != 1:
-                errors.append('0.15 source_hidden_tki corrupt_interface_command exit_code must be 1')
+
+        if 'missing_interface_command' not in tki_facts:
+            errors.append('0.15 source_hidden_tki missing_interface_command is mandatory')
+        if 'corrupt_interface_command' not in tki_facts:
+            errors.append('0.15 source_hidden_tki corrupt_interface_command is mandatory')
 
     ver = label.removeprefix('v')
     ver_regex = re.compile(r'(?<![0-9a-zA-Z._+-])' + re.escape(ver) + r'(?![0-9a-zA-Z._+-])')
@@ -1053,6 +1071,76 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
         if expected_tokac not in (sdk_tokac_bin, sdk_tokac_exe):
             errors.append(f'0.15 version-tokac program {expected_tokac} does not match SDK_root {sdk_root}')
 
+    # Full command-receipt validation for nested TKI negative commands
+    if isinstance(tki_facts, dict):
+        for neg_key in ('missing_interface_command', 'corrupt_interface_command'):
+            if neg_key not in tki_facts:
+                continue
+            n_rec = tki_facts[neg_key]
+            if not isinstance(n_rec, dict):
+                errors.append(f'0.15 source_hidden_tki {neg_key} must be a dictionary')
+                continue
+            if n_rec.get('ok') is False:
+                errors.append(f'0.15 source_hidden_tki {neg_key} ok is False')
+            if n_rec.get('result') not in (None, 'pass'):
+                errors.append(f'0.15 source_hidden_tki {neg_key} result must be pass')
+            if n_rec.get('signal') is not None or n_rec.get('termination') is not None or n_rec.get('error') is not None:
+                errors.append(f'0.15 source_hidden_tki {neg_key} indicates abnormal termination or error')
+
+            n_code = n_rec.get('exit_code')
+            if type(n_code) is not int or isinstance(n_code, bool):
+                errors.append(f'0.15 source_hidden_tki {neg_key} exit_code must be exact int')
+            elif n_code != 1:
+                errors.append(f'0.15 source_hidden_tki {neg_key} exit_code must be 1 (got {n_code})')
+
+            n_argv = n_rec.get('argv') or n_rec.get('cmd')
+            if not isinstance(n_argv, list) or not n_argv or not all(isinstance(a, str) and a for a in n_argv):
+                errors.append(f'0.15 source_hidden_tki {neg_key} argv missing or invalid')
+            else:
+                n_prog = os.path.normpath(n_argv[0].replace('\\', '/'))
+                if expected_tokac and n_prog != expected_tokac:
+                    errors.append(f'0.15 source_hidden_tki {neg_key} compiler mismatch: executes {n_prog}, expected {expected_tokac}')
+                if len(n_argv) != 7 or n_argv.count('-I') != 1 or n_argv.count('-o') != 1 or n_argv[1] != '-I' or n_argv[5] != '-o':
+                    errors.append(f'0.15 source_hidden_tki {neg_key} argv template mismatch')
+                else:
+                    if not (n_argv[3].endswith('/tki_consumer.tk') or n_argv[3] == 'tki_consumer.tk'):
+                        errors.append(f'0.15 source_hidden_tki {neg_key} missing consumer source argument')
+                    if os.path.basename(n_argv[4]) != 'provider.o':
+                        errors.append(f'0.15 source_hidden_tki {neg_key} missing provider.o object argument')
+                    bad_bin_base = os.path.basename(n_argv[6])
+                    if bad_bin_base not in ('bad_bin', 'bad_bin.bin', 'bad_bin.exe'):
+                        errors.append(f'0.15 source_hidden_tki {neg_key} output basename mismatch')
+
+            out_hash = n_rec.get('stdout_sha256')
+            err_hash = n_rec.get('stderr_sha256')
+            if not isinstance(out_hash, str) or not re.fullmatch(r'[0-9a-f]{64}', out_hash):
+                errors.append(f'0.15 source_hidden_tki {neg_key} stdout_sha256 missing or invalid')
+            if not isinstance(err_hash, str) or not re.fullmatch(r'[0-9a-f]{64}', err_hash):
+                errors.append(f'0.15 source_hidden_tki {neg_key} stderr_sha256 missing or invalid')
+
+            if 'cwd' in n_rec and (not isinstance(n_rec['cwd'], str) or not n_rec['cwd']):
+                errors.append(f'0.15 source_hidden_tki {neg_key} cwd invalid')
+            if 'execution_ms' in n_rec:
+                ms = n_rec['execution_ms']
+                if type(ms) not in (int, float) or isinstance(ms, bool) or not math.isfinite(ms) or ms <= 0:
+                    errors.append(f'0.15 source_hidden_tki {neg_key} execution_ms invalid')
+            if 'artifact_absent' in n_rec and n_rec['artifact_absent'] is not True:
+                errors.append(f'0.15 source_hidden_tki {neg_key} artifact_absent must be True')
+
+            if 'stdout' in n_rec:
+                if not isinstance(n_rec['stdout'], str) or hashlib.sha256(n_rec['stdout'].encode('utf-8')).hexdigest() != out_hash:
+                    errors.append(f'0.15 source_hidden_tki {neg_key} stdout content does not match stdout_sha256')
+            if 'stderr' in n_rec:
+                err_text = n_rec['stderr']
+                if not isinstance(err_text, str) or hashlib.sha256(err_text.encode('utf-8')).hexdigest() != err_hash:
+                    errors.append(f'0.15 source_hidden_tki {neg_key} stderr content does not match stderr_sha256')
+                if 'E0901' not in err_text:
+                    errors.append(f'0.15 source_hidden_tki {neg_key} stderr missing E0901')
+                if neg_key == 'missing_interface_command' and 'Could not open file' not in err_text:
+                    errors.append(f'0.15 source_hidden_tki {neg_key} stderr missing missing-file diagnostic fact')
+                elif neg_key == 'corrupt_interface_command' and 'Incompatible or stale interface file' not in err_text:
+                    errors.append(f'0.15 source_hidden_tki {neg_key} stderr missing corrupt-file diagnostic fact')
+
     compile_outputs = {}
     for r in receipts:
         if isinstance(r, dict):
@@ -1060,6 +1148,8 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
             argv = r.get('argv') or r.get('cmd')
             cwd = r.get('cwd')
             if isinstance(argv, list) and isinstance(cwd, str) and cwd and '-o' in argv:
+                if argv.count('-o') != 1:
+                    errors.append(f'0.15 compile command must have unique -o flag: {name}')
                 idx = argv.index('-o')
                 if idx + 1 < len(argv) and isinstance(argv[idx + 1], str) and argv[idx + 1]:
                     raw_out = argv[idx + 1]
@@ -1173,85 +1263,11 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
             if exit_code != 1:
                 errors.append(f'0.15 negative command exit code must be 1: {r_name} (got {exit_code})')
 
-        # Check compilation and checking modes
-        if is_pos_compile:
-            if r_name == 'pos-tki-provider-compile':
-                if '-c' not in argv or '-o' not in argv or '--check-only' in argv or '--emit-llvm' in argv:
-                    errors.append('0.15 pos-tki-provider-compile mode mismatch: ' + r_name)
-            elif r_name == 'pos-tki-consumer-compile':
-                if '-c' in argv or '--check-only' in argv or '--emit-llvm' in argv:
-                    errors.append('0.15 pos-tki-consumer-compile mode mismatch: ' + r_name)
-                i_dir = None
-                if '-I' not in argv:
-                    errors.append('0.15 pos-tki-consumer-compile missing -I flag')
-                else:
-                    i_idx = argv.index('-I')
-                    if i_idx + 1 >= len(argv):
-                        errors.append('0.15 pos-tki-consumer-compile missing directory after -I')
-                    else:
-                        i_dir = os.path.normpath(argv[i_idx + 1] if os.path.isabs(argv[i_idx + 1]) else os.path.join(cwd, argv[i_idx + 1]))
-                        norm_cwd = os.path.normpath(cwd) if cwd else ''
-                        if norm_cwd and i_dir != norm_cwd:
-                            errors.append('0.15 pos-tki-consumer-compile -I directory must match consumer work directory: ' + r_name)
-                o_args = [a for a in argv if a.endswith('.o')]
-                if len(o_args) != 1:
-                    errors.append('0.15 pos-tki-consumer-compile requires exactly one .o provider object argument')
-                else:
-                    o_arg = o_args[0]
-                    if os.path.basename(o_arg) != 'provider.o':
-                        errors.append('0.15 pos-tki-consumer-compile provider object basename must be provider.o: ' + r_name)
-                    norm_o = os.path.normpath(o_arg if os.path.isabs(o_arg) else os.path.join(cwd, o_arg))
-                    norm_o_dir = os.path.dirname(norm_o)
-                    if i_dir and norm_o_dir != i_dir:
-                        errors.append('0.15 pos-tki-consumer-compile provider object directory must match -I import directory: ' + r_name)
-            else:
-                if '-c' in argv or '--check-only' in argv or '--emit-llvm' in argv:
-                    errors.append('0.15 positive executable compile command mode mismatch: ' + r_name)
-
-        if r_name == 'neg-async-direct-object':
-            if '-c' not in argv or '-o' not in argv or '--check-only' in argv or '--emit-llvm' in argv:
-                errors.append('0.15 negative command mode mismatch (expected object flags -c and -o): ' + r_name)
-        elif r_name == 'neg-async-direct-ir':
-            if '--emit-llvm' not in argv or '-c' not in argv or '-o' not in argv or '--check-only' in argv:
-                errors.append('0.15 negative command mode mismatch (expected IR flags --emit-llvm, -c, -o): ' + r_name)
-        elif r_name == 'neg-async-direct-compile':
-            if '-o' not in argv or '-c' in argv or '--check-only' in argv or '--emit-llvm' in argv:
-                errors.append('0.15 negative command mode mismatch (expected compile flags -o without -c/--check-only/--emit-llvm): ' + r_name)
-        elif is_neg and r_name.endswith('-check'):
-            if '--check-only' not in argv or '-c' in argv or '-o' in argv or '--emit-llvm' in argv:
-                errors.append('0.15 negative command mode mismatch (expected --check-only): ' + r_name)
-
-        # Check compile commands for expected -o output basename
-        if r_name in compile_expected_bases:
-            if '-o' not in argv:
-                errors.append(f'0.15 compile command missing -o: {r_name}')
-            else:
-                out_path = compile_outputs.get(r_name)
-                if not out_path:
-                    errors.append(f'0.15 compile command missing output path after -o: {r_name}')
-                else:
-                    out_base = os.path.basename(out_path)
-                    if out_base not in compile_expected_bases[r_name]:
-                        errors.append(f'0.15 compile command output basename mismatch: {r_name} (got {out_base}, expected one of {compile_expected_bases[r_name]})')
-
-        # Check run commands for exact match with corresponding compile output
-        if r_name in run_to_compile:
-            comp_name, exp_base = run_to_compile[r_name]
-            expected_compiled_out = compile_outputs.get(comp_name)
-            if not expected_compiled_out:
-                errors.append(f'0.15 missing matching compile output for run command: {r_name} (needs {comp_name})')
-            elif norm_prog != expected_compiled_out:
-                errors.append(f'0.15 run program does not match compile output: {r_name} (executes {norm_prog}, compiled {expected_compiled_out})')
-            valid_bases = (exp_base, exp_base + '.bin', exp_base + '.exe')
-            if prog_base not in valid_bases:
-                errors.append(f'0.15 run program basename mismatch: {r_name} (got {prog_base}, expected one of {valid_bases})')
-
-        if r_name not in EXPECTED_015_RECEIPTS:
-            errors.append('Unknown 0.15 command receipt: ' + r_name)
-
-        # Per-command specific assertions
+        # Exact argv template validation by command role
         if r_name.startswith('version-'):
             t_name = r_name.removeprefix('version-')
+            if len(argv) != 2 or argv[1] != '--version':
+                errors.append(f'0.15 tool version command argv template mismatch: {r_name}')
             if t_name == 'toka':
                 if prog_base not in ('toka', 'toka.exe'):
                     errors.append('0.15 tool version command program mismatch: ' + r_name)
@@ -1263,45 +1279,140 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
                 sdk_tool_exe = os.path.normpath(os.path.join(sdk_root, 'bin', t_name + '.exe'))
                 if norm_prog not in (sdk_tool_bin, sdk_tool_exe):
                     errors.append(f'0.15 tool version program {norm_prog} does not match SDK_root {sdk_root}: {r_name}')
-            if '--version' not in argv:
-                errors.append('0.15 tool version command missing --version flag: ' + r_name)
-            if argv != [argv[0], '--version']:
-                errors.append(f'0.15 tool version command argv mismatch: {r_name}')
             if not ver_regex.search(out_s):
                 errors.append(f'0.15 tool version {t_name} stdout missing {ver}: {r_name}')
 
-        elif r_name in NEG_015_DIAGNOSTICS:
+        elif r_name.startswith('pos-') and r_name.endswith('-run'):
+            if len(argv) != 1:
+                errors.append(f'0.15 run command argv template mismatch (expected only executable): {r_name}')
+            comp_name, exp_base = run_to_compile.get(r_name, ('', ''))
+            expected_compiled_out = compile_outputs.get(comp_name)
+            if not expected_compiled_out:
+                errors.append(f'0.15 missing matching compile output for run command: {r_name} (needs {comp_name})')
+            elif norm_prog != expected_compiled_out:
+                errors.append(f'0.15 run program does not match compile output: {r_name} (executes {norm_prog}, compiled {expected_compiled_out})')
+            valid_bases = (exp_base, exp_base + '.bin', exp_base + '.exe')
+            if prog_base not in valid_bases:
+                errors.append(f'0.15 run program basename mismatch: {r_name} (got {prog_base}, expected one of {valid_bases})')
+
+        elif r_name == 'pos-tki-provider-compile':
+            # Template: [tokac, <src>, -c, -o, <obj>]
+            if len(argv) != 5:
+                errors.append(f'0.15 pos-tki-provider-compile argv length mismatch: expected 5, got {len(argv)}')
+            if argv.count('-c') != 1 or argv.count('-o') != 1:
+                errors.append(f'0.15 pos-tki-provider-compile must have unique -c and -o: {r_name}')
+            if len(argv) >= 4 and (argv[2] != '-c' or argv[3] != '-o'):
+                errors.append(f'0.15 pos-tki-provider-compile argv ordering mismatch: {r_name}')
+            if not (argv[1].endswith('/tki_provider.tk') or argv[1] == 'tki_provider.tk'):
+                errors.append(f'0.15 pos-tki-provider-compile fixture mismatch: {r_name}')
+            if len(argv) >= 5:
+                out_path = os.path.normpath(argv[4] if os.path.isabs(argv[4]) else os.path.join(cwd, argv[4]))
+                if os.path.basename(out_path) != 'provider.o':
+                    errors.append(f'0.15 pos-tki-provider-compile output basename mismatch: {r_name}')
+
+        elif r_name == 'pos-tki-consumer-compile':
+            # Template: [tokac, -I, <stage_dir>, <src>, <provider.o>, -o, <bin>]
+            if len(argv) != 7:
+                errors.append(f'0.15 pos-tki-consumer-compile argv length mismatch: expected 7, got {len(argv)}')
+            if argv.count('-I') != 1 or argv.count('-o') != 1:
+                errors.append(f'0.15 pos-tki-consumer-compile must have unique -I and -o: {r_name}')
+            if len(argv) >= 6 and (argv[1] != '-I' or argv[5] != '-o'):
+                errors.append(f'0.15 pos-tki-consumer-compile argv ordering mismatch: {r_name}')
+            if len(argv) >= 3:
+                i_dir = os.path.normpath(argv[2] if os.path.isabs(argv[2]) else os.path.join(cwd, argv[2]))
+                norm_cwd = os.path.normpath(cwd) if cwd else ''
+                if norm_cwd and i_dir != norm_cwd:
+                    errors.append('0.15 pos-tki-consumer-compile -I directory must match consumer work directory: ' + r_name)
+            if not (len(argv) >= 4 and (argv[3].endswith('/tki_consumer.tk') or argv[3] == 'tki_consumer.tk')):
+                errors.append(f'0.15 pos-tki-consumer-compile consumer fixture mismatch: {r_name}')
+            if len(argv) >= 5:
+                if os.path.basename(argv[4]) != 'provider.o':
+                    errors.append('0.15 pos-tki-consumer-compile provider object basename must be provider.o: ' + r_name)
+                norm_o = os.path.normpath(argv[4] if os.path.isabs(argv[4]) else os.path.join(cwd, argv[4]))
+                norm_o_dir = os.path.dirname(norm_o)
+                if 'i_dir' in locals() and norm_o_dir != i_dir:
+                    errors.append('0.15 pos-tki-consumer-compile provider object directory must match -I import directory: ' + r_name)
+            if len(argv) >= 7:
+                out_path = os.path.normpath(argv[6] if os.path.isabs(argv[6]) else os.path.join(cwd, argv[6]))
+                if os.path.basename(out_path) not in ('tki_bin.bin', 'tki_bin.exe', 'tki_bin'):
+                    errors.append(f'0.15 pos-tki-consumer-compile output basename mismatch: {r_name}')
+
+        elif r_name.startswith('pos-') and r_name.endswith('-compile'):
+            # Template: [tokac, <src>, -o, <bin>]
+            case = r_name.removeprefix('pos-').removesuffix('-compile')
+            if len(argv) != 4:
+                errors.append(f'0.15 positive compile command argv length mismatch: expected 4, got {len(argv)}: {r_name}')
+            if argv.count('-o') != 1:
+                errors.append(f'0.15 positive compile command must have unique -o: {r_name}')
+            if len(argv) >= 3 and argv[2] != '-o':
+                errors.append(f'0.15 positive compile command argv ordering mismatch: {r_name}')
+            if not (argv[1].endswith('/' + case + '.tk') or argv[1] == (case + '.tk')):
+                errors.append(f'0.15 compile fixture mismatch: {r_name}')
+            if len(argv) >= 4:
+                out_path = os.path.normpath(argv[3] if os.path.isabs(argv[3]) else os.path.join(cwd, argv[3]))
+                exp_bases = (f'{case}_bin.bin', f'{case}_bin.exe', f'{case}_bin')
+                if os.path.basename(out_path) not in exp_bases:
+                    errors.append(f'0.15 positive compile command output basename mismatch: {r_name}')
+
+        elif r_name == 'neg-async-direct-object':
+            # Template: [tokac, -c, <src>, -o, <obj>]
+            if len(argv) != 5 or argv.count('-c') != 1 or argv.count('-o') != 1 or argv[1] != '-c' or argv[3] != '-o':
+                errors.append(f'0.15 neg-async-direct-object command template mismatch: {r_name}')
+            if not (argv[2].endswith('/async_recur_direct.tk') or argv[2] == 'async_recur_direct.tk'):
+                errors.append(f'0.15 negative fixture mismatch: {r_name}')
+            if len(argv) >= 5:
+                out_path = os.path.normpath(argv[4] if os.path.isabs(argv[4]) else os.path.join(cwd, argv[4]))
+                if os.path.basename(out_path) != 'async_direct.o':
+                    errors.append(f'0.15 neg-async-direct-object output basename mismatch: {r_name}')
+            if r.get('artifact_absent') is not True:
+                errors.append('0.15 negative command did not confirm artifact absence: ' + r_name)
+
+        elif r_name == 'neg-async-direct-ir':
+            # Template: [tokac, --emit-llvm, -c, <src>, -o, <ir>]
+            if len(argv) != 6 or argv.count('--emit-llvm') != 1 or argv.count('-c') != 1 or argv.count('-o') != 1 or \
+                    argv[1] != '--emit-llvm' or argv[2] != '-c' or argv[4] != '-o':
+                errors.append(f'0.15 neg-async-direct-ir command template mismatch: {r_name}')
+            if not (argv[3].endswith('/async_recur_direct.tk') or argv[3] == 'async_recur_direct.tk'):
+                errors.append(f'0.15 negative fixture mismatch: {r_name}')
+            if len(argv) >= 6:
+                out_path = os.path.normpath(argv[5] if os.path.isabs(argv[5]) else os.path.join(cwd, argv[5]))
+                if os.path.basename(out_path) != 'async_direct.ll':
+                    errors.append(f'0.15 neg-async-direct-ir output basename mismatch: {r_name}')
+            if r.get('artifact_absent') is not True:
+                errors.append('0.15 negative command did not confirm artifact absence: ' + r_name)
+
+        elif r_name == 'neg-async-direct-compile':
+            # Template: [tokac, <src>, -o, <bin>]
+            if len(argv) != 4 or argv.count('-o') != 1 or argv[2] != '-o':
+                errors.append(f'0.15 neg-async-direct-compile command template mismatch: {r_name}')
+            if not (argv[1].endswith('/async_recur_direct.tk') or argv[1] == 'async_recur_direct.tk'):
+                errors.append(f'0.15 negative fixture mismatch: {r_name}')
+            if len(argv) >= 4:
+                out_path = os.path.normpath(argv[3] if os.path.isabs(argv[3]) else os.path.join(cwd, argv[3]))
+                if os.path.basename(out_path) not in ('async_direct.bin', 'async_direct.exe', 'async_direct'):
+                    errors.append(f'0.15 neg-async-direct-compile output basename mismatch: {r_name}')
+            if r.get('artifact_absent') is not True:
+                errors.append('0.15 negative command did not confirm artifact absence: ' + r_name)
+
+        elif is_neg and r_name.endswith('-check'):
+            # Template: [tokac, --check-only, <src>]
+            if len(argv) != 3 or argv.count('--check-only') != 1 or argv[1] != '--check-only':
+                errors.append(f'0.15 negative check command template mismatch: {r_name}')
+            exp_fix = NEG_015_CHECK_FIXTURES.get(r_name)
+            if exp_fix:
+                if not (argv[2].endswith('/' + exp_fix) or argv[2] == exp_fix):
+                    errors.append(f'0.15 negative fixture mismatch: {r_name}')
+            else:
+                fix_name = r_name.removeprefix('neg-').removesuffix('-check')
+                if not (argv[2].endswith('/' + fix_name + '.tk') or argv[2] == (fix_name + '.tk')):
+                    errors.append(f'0.15 negative fixture mismatch: {r_name}')
+
+        if r_name in NEG_015_DIAGNOSTICS:
             exp_diag = NEG_015_DIAGNOSTICS[r_name]
             if r.get('diagnostic') != exp_diag:
                 errors.append(f'0.15 negative command diagnostic mismatch: {r_name} (expected {exp_diag}, got {r.get("diagnostic")})')
             if exp_diag not in err_s:
                 errors.append(f'0.15 negative command stderr missing {exp_diag}: {r_name}')
-            if r_name in ('neg-async-direct-object', 'neg-async-direct-ir', 'neg-async-direct-compile'):
-                if r.get('artifact_absent') is not True:
-                    errors.append('0.15 negative command did not confirm artifact absence: ' + r_name)
-            if r_name.startswith('neg-async-direct-'):
-                if not any(arg.endswith('/async_recur_direct.tk') or arg == 'async_recur_direct.tk' for arg in argv):
-                    errors.append(f'0.15 negative fixture mismatch: {r_name}')
-            elif r_name == 'neg-async_mutual-check':
-                if not any(arg.endswith('/async_recur_mutual.tk') or arg == 'async_recur_mutual.tk' for arg in argv):
-                    errors.append(f'0.15 negative fixture mismatch: {r_name}')
-            else:
-                fix_name = r_name.removeprefix('neg-').removesuffix('-check')
-                if not any(arg.endswith('/' + fix_name + '.tk') or arg == (fix_name + '.tk') for arg in argv):
-                    errors.append(f'0.15 negative fixture mismatch: {r_name}')
-
-        # Check compile fixture inputs
-        if r_name.startswith('pos-') and r_name.endswith('-compile'):
-            case = r_name.removeprefix('pos-').removesuffix('-compile')
-            if case in POS_015_CASES:
-                if not any(arg.endswith('/' + case + '.tk') or arg == (case + '.tk') for arg in argv):
-                    errors.append(f'0.15 compile fixture mismatch: {r_name}')
-            elif case == 'tki-provider':
-                if not any(arg.endswith('/tki_provider.tk') or arg == 'tki_provider.tk' for arg in argv):
-                    errors.append(f'0.15 tki provider fixture mismatch: {r_name}')
-            elif case == 'tki-consumer':
-                if not any(arg.endswith('/tki_consumer.tk') or arg == 'tki_consumer.tk' for arg in argv):
-                    errors.append(f'0.15 tki consumer fixture mismatch: {r_name}')
 
     missing = EXPECTED_015_RECEIPTS - seen_receipts
     if missing:
