@@ -1218,7 +1218,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         }
 
         int targetDepth = getScopeDepth(lookupName);
-        const bool targetHoldsBorrow = targetInfo->IsReference() || isBorrowLikeType(targetInfo->TypeObj);
+        const bool targetHoldsBorrow = targetInfo->IsReference() || isBorrowLikeType(targetInfo->TypeObj) || isLifetimeCarryingType(targetInfo->TypeObj);
         if (targetHoldsBorrow) {
           for (const auto &dep : rhsDeps) {
             targetInfo->LifeDependencySet.insert(dep);
@@ -1229,7 +1229,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
               targetInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
             }
 
-            if (depInfo && !depInfo->IsReference() && !depInfo->LifeDependencySet.empty() && isBorrowLikeType(depInfo->TypeObj)) {
+            if (depInfo && !depInfo->IsReference() && !depInfo->LifeDependencySet.empty() && (isBorrowLikeType(depInfo->TypeObj) || isLifetimeCarryingType(depInfo->TypeObj))) {
                 for (const auto &transDep : depInfo->LifeDependencySet) {
                     int depDepth = getScopeDepth(transDep);
                     if (targetDepth < depDepth) {

@@ -1480,7 +1480,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   std::set<std::string> taskDependencies;
   std::set<std::string> taskResultDeps;
   bool hasTaskResultDeps = m_HasTaskResultDependencies;
-  if (T && T->toString().find("TaskHandle") != std::string::npos) {
+  if (T && (T->toString().find("TaskHandle") != std::string::npos || isTaskLifetimeCarryingType(T))) {
     taskDependencies = m_LastLifeDependencies;
     taskResultDeps = m_LastTaskResultDependencies;
   }
@@ -1596,9 +1596,8 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
           return false;
       };
       hasRefs = checkType(T);
-      std::string soul = T->getSoulName();
       if (!m_LastLifeDependencies.empty() &&
-          soul.rfind("TaskHandle", 0) == 0) {
+          isTaskLifetimeCarryingType(T)) {
         hasRefs = true;
       }
       if (!m_LastLifeDependencies.empty() &&
@@ -6299,6 +6298,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                             FD->Args[i + 1].Name, getLoc(Met->Args[i].get()),
                             FD->Args[i + 1].Loc, evidenceV2.Spelling,
                             evidenceV2.Transfer, evidenceV2.Source);
+                    }
+                    if (!checkConsumingArgumentEscape(
+                            Met->Args[i].get(), expectedParamTy,
+                            i + 1 < FD->Args.size() && FD->Args[i + 1].IsCeded, FD, i + 1,
+                            Met->Args, Met, Met->Object.get())) {
+                        methodCallRollback.reject();
+                        return Type::fromString("unknown");
                     }
 
                     if (!methodArgumentCompatible(expectedParamTy, argTy)) {
