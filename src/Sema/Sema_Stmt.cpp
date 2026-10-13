@@ -3044,14 +3044,40 @@ void Sema::checkStmt(Stmt *S) {
           fieldType = resolveExplicitCedeStage0TypeReadOnly(fieldType);
           if (!fieldType || fieldType->isRawPointer()) continue;
           auto ownership = queryExplicitCedeStage0OwnershipReadOnly(fieldType);
-          if (!ownership || *ownership != ValueOwnership::BorrowedView) continue;
+          if ((!ownership || *ownership != ValueOwnership::BorrowedView) &&
+              !isTaskLifetimeCarryingType(fieldType))
+            continue;
           std::vector<AccessPath> origins;
-          if (!collectActualReturnReferents(initializer.second.get(), origins)) continue;
-          for (const auto &origin : origins) {
-            const auto dependency = origin.toLegacyString();
-            Info.FieldDependencySet[fieldName].insert(dependency);
-            Info.LifeDependencySet.insert(dependency);
-            depsToCommitAsBorrow.insert(dependency);
+          if (collectActualReturnReferents(initializer.second.get(), origins)) {
+            for (const auto &origin : origins) {
+              const auto dependency = origin.toLegacyString();
+              Info.FieldDependencySet[fieldName].insert(dependency);
+              Info.LifeDependencySet.insert(dependency);
+              depsToCommitAsBorrow.insert(dependency);
+            }
+          }
+          if (isTaskLifetimeCarryingType(fieldType)) {
+            Expr *fieldInitExpr = initializer.second.get();
+            while (auto *cede = dynamic_cast<CedeExpr *>(fieldInitExpr))
+              fieldInitExpr = cede->Value.get();
+            while (auto *cast = dynamic_cast<CastExpr *>(fieldInitExpr))
+              fieldInitExpr = cast->Expression.get();
+            if (auto *var = dynamic_cast<VariableExpr *>(fieldInitExpr)) {
+              SymbolInfo *sym = nullptr;
+              std::string actualName;
+              if (CurrentScope->findVariableWithDeref(var->Name, sym, actualName) && sym) {
+                for (const auto &dep : sym->LifeDependencySet) {
+                  Info.FieldDependencySet[fieldName].insert(dep);
+                  Info.LifeDependencySet.insert(dep);
+                  depsToCommitAsBorrow.insert(dep);
+                }
+                if (!sym->BorrowedFrom.empty()) {
+                  Info.FieldDependencySet[fieldName].insert(sym->BorrowedFrom);
+                  Info.LifeDependencySet.insert(sym->BorrowedFrom);
+                  depsToCommitAsBorrow.insert(sym->BorrowedFrom);
+                }
+              }
+            }
           }
         }
       }

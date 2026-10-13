@@ -1626,6 +1626,25 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
           m_LastLifeDependencies.insert(m_LastBorrowSource);
         }
     }
+    if (memberTypeObj && isTaskLifetimeCarryingType(memberTypeObj)) {
+        if (!m_LastBorrowSource.empty()) {
+          m_LastLifeDependencies.insert(m_LastBorrowSource);
+        }
+        Expr *memberExact = pair.second.get();
+        while (auto *cede = dynamic_cast<CedeExpr *>(memberExact))
+          memberExact = cede->Value.get();
+        while (auto *cast = dynamic_cast<CastExpr *>(memberExact))
+          memberExact = cast->Expression.get();
+        if (auto *var = dynamic_cast<VariableExpr *>(memberExact)) {
+          SymbolInfo *sym = nullptr;
+          std::string actualName;
+          if (CurrentScope->findVariableWithDeref(var->Name, sym, actualName) && sym) {
+            m_LastLifeDependencies.insert(sym->LifeDependencySet.begin(), sym->LifeDependencySet.end());
+            if (!sym->BorrowedFrom.empty())
+              m_LastLifeDependencies.insert(sym->BorrowedFrom);
+          }
+        }
+    }
   }
 
   if (hasElision && providedFields.size() == SD->Members.size()) {

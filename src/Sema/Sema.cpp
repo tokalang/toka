@@ -9168,16 +9168,57 @@ bool Sema::isBorrowLikeType(std::shared_ptr<toka::Type> type) const {
   return walk(type);
 }
 
-bool Sema::isLifetimeCarryingType(std::shared_ptr<toka::Type> type) {
-  if (!type)
+bool Sema::isTaskLifetimeCarryingType(const std::shared_ptr<toka::Type> &type) {
+  if (!type) return false;
+  std::set<std::string> visited;
+  std::function<bool(const std::shared_ptr<toka::Type> &)> walk =
+      [&](const std::shared_ptr<toka::Type> &ty) -> bool {
+    if (!ty) return false;
+    if (taskResultType(ty) != nullptr) return true;
+    std::string soul = ty->getSoulName();
+    if (soul.rfind("TaskHandle", 0) == 0 || soul.rfind("TaskScope", 0) == 0)
+      return true;
+    if (ty->isArray())
+      return walk(ty->getArrayElementType());
+    if (ty->isPointer() || ty->isSmartPointer() || ty->isReference())
+      return walk(ty->getPointeeType());
+    if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(ty))
+      return walk(outcome->PayloadType);
+    if (auto *shape = dynamic_cast<ShapeType *>(ty.get())) {
+      for (const auto &arg : shape->GenericArgs) {
+        if (walk(arg)) return true;
+      }
+      if (shape->GenericArgs.empty() && shape->Decl &&
+          shape->Decl->InstantiationTemplate) {
+        for (const auto &arg : shape->Decl->InstantiationArgs)
+          if (walk(arg)) return true;
+      }
+      if (visited.count(soul) == 0) {
+        visited.insert(soul);
+        auto it = ShapeMap.find(soul);
+        if (it != ShapeMap.end()) {
+          ShapeDecl *SD = it->second;
+          for (const auto &member : SD->Members) {
+            if (SD->Kind == ShapeKind::Enum && !member.SubMembers.empty()) {
+              for (const auto &sub : member.SubMembers) {
+                if (walk(getPhysicalType(sub))) return true;
+              }
+            } else if (!member.IsUnitVariant) {
+              if (walk(getPhysicalType(member))) return true;
+            }
+          }
+        }
+      }
+    }
     return false;
-  if (isBorrowLikeType(type))
-    return true;
-  if (taskResultType(type) != nullptr)
-    return true;
-  std::string soul = type->getSoulName();
-  if (soul.rfind("TaskHandle", 0) == 0)
-    return true;
+  };
+  return walk(type);
+}
+
+bool Sema::isLifetimeCarryingType(std::shared_ptr<toka::Type> type) {
+  if (!type) return false;
+  if (isBorrowLikeType(type)) return true;
+  if (isTaskLifetimeCarryingType(type)) return true;
   return false;
 }
 

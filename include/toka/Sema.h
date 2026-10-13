@@ -1483,8 +1483,18 @@ private:
   bool validateTypeVisibilityInType(std::shared_ptr<toka::Type> type,
                                     SourceLocation loc);
   bool isBorrowLikeType(std::shared_ptr<toka::Type> type) const;
+  bool isTaskLifetimeCarryingType(const std::shared_ptr<toka::Type> &type);
   bool isLifetimeCarryingType(std::shared_ptr<toka::Type> type);
   bool hasBorrowedValueFields(std::shared_ptr<toka::Type> type);
+  bool checkConsumingArgumentEscape(
+      Expr *argument,
+      const std::shared_ptr<toka::Type> &paramType,
+      bool isCededParam,
+      FunctionDecl *calleeFn,
+      size_t formalIndex,
+      const std::vector<std::unique_ptr<Expr>> &callArgs,
+      ASTNode *callSite,
+      Expr *methodReceiver = nullptr);
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
                                               bool force);
   std::shared_ptr<toka::Type>

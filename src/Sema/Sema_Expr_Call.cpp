@@ -4848,6 +4848,200 @@ bool Sema::retainExternalValueBorrows(
   return true;
 }
 
+bool Sema::checkConsumingArgumentEscape(
+    Expr *argument,
+    const std::shared_ptr<toka::Type> &paramType,
+    bool isCededParam,
+    FunctionDecl *calleeFn,
+    size_t formalIndex,
+    const std::vector<std::unique_ptr<Expr>> &callArgs,
+    ASTNode *callSite,
+    Expr *methodReceiver) {
+  if (!argument) return true;
+  bool isCallerCeded = dynamic_cast<CedeExpr *>(argument) != nullptr;
+  if (!isCallerCeded && !isCededParam)
+    return true;
+
+  Expr *exactValue = argument;
+  if (auto *cede = dynamic_cast<CedeExpr *>(argument))
+    exactValue = cede->Value.get();
+  while (auto *cast = dynamic_cast<CastExpr *>(exactValue))
+    exactValue = cast->Expression.get();
+
+  auto valType = exactValue && exactValue->ResolvedType ? exactValue->ResolvedType : argument->ResolvedType;
+  if (!valType || !isTaskLifetimeCarryingType(valType))
+    return true;
+
+  std::set<std::string> deps;
+  if (auto *var = dynamic_cast<VariableExpr *>(exactValue)) {
+    SymbolInfo *binding = nullptr;
+    std::string actualName;
+    if (var->ResolvedBindingID && CurrentScope->findSymbolByID(var->ResolvedBindingID, binding) && binding) {
+      deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
+      if (deps.empty() && !binding->BorrowedFrom.empty())
+        deps.insert(binding->BorrowedFrom);
+    } else if (CurrentScope->findVariableWithDeref(var->Name, binding, actualName) && binding) {
+      deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
+      if (deps.empty() && !binding->BorrowedFrom.empty())
+        deps.insert(binding->BorrowedFrom);
+    }
+  } else {
+    auto extDeps = externalValueDependencies(exactValue);
+    if (extDeps) {
+      for (const auto &p : *extDeps)
+        deps.insert(p.toLegacyString());
+    }
+  }
+
+  if (deps.empty()) {
+    if (!m_LastBorrowSource.empty())
+      deps.insert(m_LastBorrowSource);
+    deps.insert(m_LastLifeDependencies.begin(), m_LastLifeDependencies.end());
+  }
+
+  std::set<std::string> expandedDeps = deps;
+  for (const auto &d : deps) {
+    SymbolInfo *dInfo = nullptr;
+    std::string dAct;
+    std::string dRoot = extractPathRoot(d);
+    if (CurrentScope->findVariableWithDeref(dRoot, dInfo, dAct) && dInfo) {
+      expandedDeps.insert(dInfo->LifeDependencySet.begin(), dInfo->LifeDependencySet.end());
+      if (!dInfo->BorrowedFrom.empty())
+        expandedDeps.insert(dInfo->BorrowedFrom);
+    }
+  }
+  deps = std::move(expandedDeps);
+
+  if (deps.empty())
+    return true;
+
+  for (const auto &depStr : deps) {
+    if (depStr.empty()) continue;
+    std::string root = extractPathRoot(depStr);
+    SymbolInfo *depInfo = nullptr;
+    std::string actualDepName = root;
+    CurrentScope->findVariableWithDeref(root, depInfo, actualDepName);
+
+    bool depIsParam = depInfo && depInfo->IsFunctionParameter;
+    int depDepth = getScopeDepth(depStr);
+
+    if (methodReceiver) {
+      bool routesToReceiver = false;
+      if (calleeFn) {
+        for (const auto &route : calleeFn->ReturnContract.Routes) {
+          if (route.Target.Kind == ReturnDependencyTargetKind::ReceiverPoststate) {
+            for (const auto &src : route.Sources) {
+              if (formalIndex < calleeFn->Args.size() && src.Root == calleeFn->Args[formalIndex].Name)
+                routesToReceiver = true;
+            }
+          }
+        }
+      }
+      std::string receiverName = getPathString(methodReceiver);
+      int receiverDepth = getScopeDepth(receiverName);
+      SymbolInfo *recInfo = nullptr;
+      std::string recRoot = extractPathRoot(receiverName);
+      std::string actualRec = recRoot;
+      CurrentScope->findVariableWithDeref(recRoot, recInfo, actualRec);
+      bool recIsParam = recInfo && recInfo->IsFunctionParameter;
+
+      if (routesToReceiver || isTaskLifetimeCarryingType(methodReceiver->ResolvedType)) {
+        if (recIsParam || receiverDepth < depDepth) {
+          error(callSite, DiagID::ERR_BORROW_LIFETIME, receiverName, depStr);
+          SourceLocation originLoc = findPathDeclaration(depStr);
+          if (originLoc.isValid())
+            DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                     "shorter-lived dependency declared here");
+          return false;
+        }
+        if (recInfo) {
+          recInfo->LifeDependencySet.insert(depStr);
+          if (depInfo) {
+            recInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
+                                              depInfo->LifeDependencySet.end());
+          }
+        }
+        continue;
+      }
+    }
+
+    bool routesToReturn = false;
+    if (calleeFn) {
+      for (const auto &route : calleeFn->ReturnContract.Routes) {
+        if (route.Target.Kind == ReturnDependencyTargetKind::ReturnValue) {
+          for (const auto &src : route.Sources) {
+            if (formalIndex < calleeFn->Args.size() && src.Root == calleeFn->Args[formalIndex].Name)
+              routesToReturn = true;
+          }
+        }
+      }
+    }
+    if (routesToReturn) {
+      continue;
+    }
+
+    bool caughtBySibling = false;
+    for (size_t siblingIdx = 0; siblingIdx < callArgs.size(); ++siblingIdx) {
+      size_t actualFormalIdx = methodReceiver ? siblingIdx + 1 : siblingIdx;
+      if (actualFormalIdx == formalIndex) continue;
+      Expr *siblingExpr = callArgs[siblingIdx].get();
+      if (!siblingExpr) continue;
+      auto sibType = siblingExpr->ResolvedType;
+      if (!sibType) continue;
+      std::string sibSoul = sibType->getSoulName();
+      bool isScopeOrCarrier = (sibSoul.rfind("TaskScope", 0) == 0) ||
+                              isTaskLifetimeCarryingType(sibType) ||
+                              (calleeFn && actualFormalIdx < calleeFn->Args.size() && calleeFn->Args[actualFormalIdx].IsValueMutable);
+      if (isScopeOrCarrier) {
+        std::string sibName = getPathString(siblingExpr);
+        int sibDepth = getScopeDepth(sibName);
+        SymbolInfo *sibInfo = nullptr;
+        std::string sibRoot = extractPathRoot(sibName);
+        std::string actualSib = sibRoot;
+        CurrentScope->findVariableWithDeref(sibRoot, sibInfo, actualSib);
+        bool sibIsParam = sibInfo && sibInfo->IsFunctionParameter;
+        if (sibIsParam || sibDepth < depDepth) {
+          error(callSite, DiagID::ERR_BORROW_LIFETIME, sibName, depStr);
+          SourceLocation originLoc = findPathDeclaration(depStr);
+          if (originLoc.isValid())
+            DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                     "shorter-lived dependency declared here");
+          return false;
+        }
+        if (sibInfo) {
+          sibInfo->LifeDependencySet.insert(depStr);
+          if (depInfo) {
+            sibInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
+                                              depInfo->LifeDependencySet.end());
+          }
+        }
+        caughtBySibling = true;
+      }
+    }
+    if (caughtBySibling) {
+      continue;
+    }
+
+    if (calleeFn && calleeFn->Effect == EffectKind::None) {
+      // Safe synchronous consumption: the argument is consumed and dropped
+      // within this synchronous call frame, while the caller's local source
+      // dependency remains alive. It does not escape.
+      continue;
+    }
+
+    if (!depIsParam) {
+      std::string targetName = calleeFn ? calleeFn->Name : getPathString(argument);
+      error(callSite, DiagID::ERR_BORROW_LIFETIME, targetName, depStr);
+      SourceLocation originLoc = findPathDeclaration(depStr);
+      if (originLoc.isValid())
+        DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                 "shorter-lived dependency declared here");
+      return false;
+    }
+  }
+  return true;
+}
+
 bool Sema::applyExternalCallEffects(
     FunctionDecl *function, const std::vector<Expr *> &actuals,
     const std::vector<std::optional<std::set<AccessPath>>> &checkedSources,
@@ -4921,7 +5115,8 @@ bool Sema::applyExternalCallEffects(
       return false;
     }
   }
-  if (safeBorrowFreeType(resultType)) resultSources = std::set<AccessPath>{};
+  if (safeBorrowFreeType(resultType))
+    resultSources = std::set<AccessPath>{};
   if (receiver) {
     if (!receiver->ExternalValueDependencies || !incoming) {
       error(call, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
@@ -8867,6 +9062,22 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               }
               if (!m_LastBorrowSource.empty())
                 m_LastLifeDependencies.insert(m_LastBorrowSource);
+              if (payloadType && isTaskLifetimeCarryingType(payloadType)) {
+                Expr *argExact = Arg.get();
+                while (auto *cede = dynamic_cast<CedeExpr *>(argExact))
+                  argExact = cede->Value.get();
+                while (auto *cast = dynamic_cast<CastExpr *>(argExact))
+                  argExact = cast->Expression.get();
+                if (auto *var = dynamic_cast<VariableExpr *>(argExact)) {
+                  SymbolInfo *sym = nullptr;
+                  std::string actualName;
+                  if (CurrentScope->findVariableWithDeref(var->Name, sym, actualName) && sym) {
+                    m_LastLifeDependencies.insert(sym->LifeDependencySet.begin(), sym->LifeDependencySet.end());
+                    if (!sym->BorrowedFrom.empty())
+                      m_LastLifeDependencies.insert(sym->BorrowedFrom);
+                  }
+                }
+              }
             }
 
             // Set ResolvedShape for CodeGen
@@ -12045,6 +12256,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       error(Call->Args[i].get(),
             DiagID::ERR_SEMA_CEDE_ARGUMENT_TO_BORROWED_PARAMETER,
             getPathString(Call->Args[i].get()), parameter);
+    }
+    if (!checkConsumingArgumentEscape(
+            Call->Args[i].get(), paramType, isCededParam, Fn, i, Call->Args, Call)) {
+      if (directArgumentRollback)
+        directArgumentRollback->reject();
+      return Type::fromString("unknown");
     }
     PermissionFlow argFlow = getPermissionFlow(Call->Args[i].get());
     // A cede parameter receives a fresh P root only from a whole independent
