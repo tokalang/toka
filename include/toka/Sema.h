@@ -1495,6 +1495,11 @@ private:
       const std::vector<std::unique_ptr<Expr>> &callArgs,
       ASTNode *callSite,
       Expr *methodReceiver = nullptr);
+  bool isSafeSynchronousTaskConsumer(FunctionDecl *calleeFn, size_t formalIndex);
+  bool checkSafeTaskConsumerBody(ASTNode *body, const std::string &rootFormal);
+  bool checkSafeTaskConsumerBodyHelper(ASTNode *node, std::set<std::string> &trackedVars);
+  void collectConsumingExpressionDependencies(
+      Expr *expr, std::set<std::string> &deps, bool &hasUnknownSource);
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
                                               bool force);
   std::shared_ptr<toka::Type>

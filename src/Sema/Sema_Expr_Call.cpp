@@ -4848,6 +4848,328 @@ bool Sema::retainExternalValueBorrows(
   return true;
 }
 
+void Sema::collectConsumingExpressionDependencies(
+    Expr *expr, std::set<std::string> &deps, bool &hasUnknownSource) {
+  if (!expr) return;
+  while (auto *cede = dynamic_cast<CedeExpr *>(expr))
+    expr = cede->Value.get();
+  while (auto *cast = dynamic_cast<CastExpr *>(expr))
+    expr = cast->Expression.get();
+  while (auto *unsafe = dynamic_cast<UnsafeExpr *>(expr))
+    expr = unsafe->Expression.get();
+  if (!expr) return;
+
+  if (auto *var = dynamic_cast<VariableExpr *>(expr)) {
+    SymbolInfo *binding = nullptr;
+    std::string actualName;
+    if (var->ResolvedBindingID && CurrentScope->findSymbolByID(var->ResolvedBindingID, binding) && binding) {
+      deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
+      if (deps.empty() && !binding->BorrowedFrom.empty())
+        deps.insert(binding->BorrowedFrom);
+    } else if (CurrentScope->findVariableWithDeref(var->Name, binding, actualName) && binding) {
+      deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
+      if (deps.empty() && !binding->BorrowedFrom.empty())
+        deps.insert(binding->BorrowedFrom);
+    } else {
+      hasUnknownSource = true;
+    }
+    return;
+  }
+
+  if (auto *init = dynamic_cast<InitStructExpr *>(expr)) {
+    deps.insert(init->LifeDependencies.begin(), init->LifeDependencies.end());
+    for (const auto &member : init->Members) {
+      collectConsumingExpressionDependencies(member.second.get(), deps, hasUnknownSource);
+    }
+    return;
+  }
+
+  if (auto *record = dynamic_cast<AnonymousRecordExpr *>(expr)) {
+    deps.insert(record->LifeDependencies.begin(), record->LifeDependencies.end());
+    for (const auto &field : record->Fields) {
+      collectConsumingExpressionDependencies(field.second.get(), deps, hasUnknownSource);
+    }
+    return;
+  }
+
+  if (auto *call = dynamic_cast<CallExpr *>(expr)) {
+    if (call->ResolvedFn) {
+      for (const auto &route : call->ResolvedFn->ReturnContract.Routes) {
+        if (route.Target.Kind == ReturnDependencyTargetKind::ReturnValue) {
+          for (const auto &src : route.Sources) {
+            for (size_t i = 0; i < call->ResolvedFn->Args.size() && i < call->Args.size(); ++i) {
+              if (Type::stripMorphology(call->ResolvedFn->Args[i].Name) == Type::stripMorphology(src.Root)) {
+                collectConsumingExpressionDependencies(call->Args[i].get(), deps, hasUnknownSource);
+              }
+            }
+          }
+        }
+      }
+    } else {
+      hasUnknownSource = true;
+    }
+    auto extDeps = externalValueDependencies(call);
+    if (extDeps) {
+      for (const auto &p : *extDeps)
+        deps.insert(p.toLegacyString());
+    }
+    return;
+  }
+
+  if (auto *method = dynamic_cast<MethodCallExpr *>(expr)) {
+    collectConsumingExpressionDependencies(method->Object.get(), deps, hasUnknownSource);
+    for (const auto &arg : method->Args) {
+      collectConsumingExpressionDependencies(arg.get(), deps, hasUnknownSource);
+    }
+    auto extDeps = externalValueDependencies(method);
+    if (extDeps) {
+      for (const auto &p : *extDeps)
+        deps.insert(p.toLegacyString());
+    }
+    return;
+  }
+
+  if (auto *arr = dynamic_cast<ArrayExpr *>(expr)) {
+    for (const auto &elem : arr->Elements)
+      collectConsumingExpressionDependencies(elem.get(), deps, hasUnknownSource);
+    return;
+  }
+
+  if (auto *idx = dynamic_cast<ArrayIndexExpr *>(expr)) {
+    collectConsumingExpressionDependencies(idx->Array.get(), deps, hasUnknownSource);
+    return;
+  }
+
+  if (auto *member = dynamic_cast<MemberExpr *>(expr)) {
+    collectConsumingExpressionDependencies(member->Object.get(), deps, hasUnknownSource);
+    return;
+  }
+
+  auto extDeps = externalValueDependencies(expr);
+  if (extDeps) {
+    for (const auto &p : *extDeps)
+      deps.insert(p.toLegacyString());
+  } else if (expr->ExternalValueTracked) {
+    hasUnknownSource = true;
+  }
+}
+
+bool Sema::checkSafeTaskConsumerBodyHelper(
+    ASTNode *node, std::set<std::string> &trackedVars) {
+  if (!node) return true;
+
+  auto exprReferencesTracked = [&](Expr *e) -> bool {
+    if (!e) return false;
+    std::function<bool(ASTNode *)> rec = [&](ASTNode *n) -> bool {
+      if (!n) return false;
+      if (auto *v = dynamic_cast<VariableExpr *>(n)) {
+        return trackedVars.count(Type::stripMorphology(v->Name)) > 0;
+      }
+      if (auto *c = dynamic_cast<CedeExpr *>(n)) return rec(c->Value.get());
+      if (auto *c = dynamic_cast<CastExpr *>(n)) return rec(c->Expression.get());
+      if (auto *u = dynamic_cast<UnsafeExpr *>(n)) return rec(u->Expression.get());
+      if (auto *a = dynamic_cast<AddressOfExpr *>(n)) return rec(a->Expression.get());
+      if (auto *u = dynamic_cast<UnaryExpr *>(n)) return rec(u->RHS.get());
+      if (auto *b = dynamic_cast<BinaryExpr *>(n)) return rec(b->LHS.get()) || rec(b->RHS.get());
+      if (auto *m = dynamic_cast<MemberExpr *>(n)) return rec(m->Object.get());
+      if (auto *mc = dynamic_cast<MethodCallExpr *>(n)) {
+        if (rec(mc->Object.get())) return true;
+        for (const auto &arg : mc->Args) if (rec(arg.get())) return true;
+        return false;
+      }
+      if (auto *call = dynamic_cast<CallExpr *>(n)) {
+        for (const auto &arg : call->Args) if (rec(arg.get())) return true;
+        return false;
+      }
+      if (auto *init = dynamic_cast<InitStructExpr *>(n)) {
+        for (const auto &m : init->Members) if (rec(m.second.get())) return true;
+        return false;
+      }
+      if (auto *recExpr = dynamic_cast<AnonymousRecordExpr *>(n)) {
+        for (const auto &f : recExpr->Fields) if (rec(f.second.get())) return true;
+        return false;
+      }
+      if (auto *arr = dynamic_cast<ArrayExpr *>(n)) {
+        for (const auto &el : arr->Elements) if (rec(el.get())) return true;
+        return false;
+      }
+      if (auto *st = dynamic_cast<StartExpr *>(n)) return rec(st->Expression.get());
+      return false;
+    };
+    return rec(e);
+  };
+
+  if (auto *block = dynamic_cast<BlockStmt *>(node)) {
+    for (const auto &stmt : block->Statements) {
+      if (!checkSafeTaskConsumerBodyHelper(stmt.get(), trackedVars))
+        return false;
+    }
+    return true;
+  }
+
+  if (auto *varDecl = dynamic_cast<VariableDecl *>(node)) {
+    if (varDecl->Init && exprReferencesTracked(varDecl->Init.get())) {
+      Expr *initVal = varDecl->Init.get();
+      while (auto *c = dynamic_cast<CedeExpr *>(initVal)) initVal = c->Value.get();
+      while (auto *c = dynamic_cast<CastExpr *>(initVal)) initVal = c->Expression.get();
+      while (auto *u = dynamic_cast<UnsafeExpr *>(initVal)) initVal = u->Expression.get();
+
+      if (auto *v = dynamic_cast<VariableExpr *>(initVal)) {
+        if (trackedVars.count(Type::stripMorphology(v->Name))) {
+          trackedVars.insert(Type::stripMorphology(varDecl->Name));
+          return true;
+        }
+      }
+
+      if (auto *call = dynamic_cast<CallExpr *>(initVal)) {
+        for (size_t i = 0; i < call->Args.size(); ++i) {
+          if (exprReferencesTracked(call->Args[i].get())) {
+            if (!call->ResolvedFn || !isSafeSynchronousTaskConsumer(call->ResolvedFn, i))
+              return false;
+          }
+        }
+        return true;
+      }
+
+      return false;
+    }
+    return true;
+  }
+
+  if (auto *exprStmt = dynamic_cast<ExprStmt *>(node)) {
+    Expr *e = exprStmt->Expression.get();
+    if (!e || !exprReferencesTracked(e))
+      return true;
+
+    if (auto *ifExpr = dynamic_cast<IfExpr *>(e)) {
+      if (ifExpr->Condition && exprReferencesTracked(ifExpr->Condition.get()))
+        return false;
+      if (ifExpr->Then && !checkSafeTaskConsumerBodyHelper(ifExpr->Then.get(), trackedVars))
+        return false;
+      if (ifExpr->Else && !checkSafeTaskConsumerBodyHelper(ifExpr->Else.get(), trackedVars))
+        return false;
+      return true;
+    }
+
+    if (auto *guardExpr = dynamic_cast<GuardExpr *>(e)) {
+      if (guardExpr->Condition && exprReferencesTracked(guardExpr->Condition.get()))
+        return false;
+      if (guardExpr->Then && !checkSafeTaskConsumerBodyHelper(guardExpr->Then.get(), trackedVars))
+        return false;
+      if (guardExpr->Else && !checkSafeTaskConsumerBodyHelper(guardExpr->Else.get(), trackedVars))
+        return false;
+      return true;
+    }
+
+    if (auto *loopExpr = dynamic_cast<LoopExpr *>(e)) {
+      if (loopExpr->Condition && exprReferencesTracked(loopExpr->Condition.get()))
+        return false;
+      if (loopExpr->Body && !checkSafeTaskConsumerBodyHelper(loopExpr->Body.get(), trackedVars))
+        return false;
+      return true;
+    }
+
+    if (auto *forExpr = dynamic_cast<ForExpr *>(e)) {
+      if (forExpr->Collection && exprReferencesTracked(forExpr->Collection.get()))
+        return false;
+      if (forExpr->Body && !checkSafeTaskConsumerBodyHelper(forExpr->Body.get(), trackedVars))
+        return false;
+      if (forExpr->ElseBody && !checkSafeTaskConsumerBodyHelper(forExpr->ElseBody.get(), trackedVars))
+        return false;
+      return true;
+    }
+
+    if (auto *bin = dynamic_cast<BinaryExpr *>(e)) {
+      if (bin->Op == "=") {
+        if (exprReferencesTracked(bin->RHS.get())) {
+          Expr *lhs = bin->LHS.get();
+          while (auto *u = dynamic_cast<UnaryExpr *>(lhs)) lhs = u->RHS.get();
+          if (auto *v = dynamic_cast<VariableExpr *>(lhs)) {
+            trackedVars.insert(Type::stripMorphology(v->Name));
+            return true;
+          }
+          return false;
+        }
+      }
+    }
+
+    if (auto *call = dynamic_cast<CallExpr *>(e)) {
+      for (size_t i = 0; i < call->Args.size(); ++i) {
+        if (exprReferencesTracked(call->Args[i].get())) {
+          if (!call->ResolvedFn || !isSafeSynchronousTaskConsumer(call->ResolvedFn, i))
+            return false;
+        }
+      }
+      return true;
+    }
+
+    if (dynamic_cast<MethodCallExpr *>(e) ||
+        dynamic_cast<MemberExpr *>(e) ||
+        dynamic_cast<StartExpr *>(e)) {
+      return false;
+    }
+
+    return false;
+  }
+
+  if (auto *ifExpr = dynamic_cast<IfExpr *>(node)) {
+    if (ifExpr->Condition && exprReferencesTracked(ifExpr->Condition.get()))
+      return false;
+    if (ifExpr->Then && !checkSafeTaskConsumerBodyHelper(ifExpr->Then.get(), trackedVars))
+      return false;
+    if (ifExpr->Else && !checkSafeTaskConsumerBodyHelper(ifExpr->Else.get(), trackedVars))
+      return false;
+    return true;
+  }
+
+  if (auto *ret = dynamic_cast<ReturnStmt *>(node)) {
+    if (ret->ReturnValue && exprReferencesTracked(ret->ReturnValue.get()))
+      return false;
+    return true;
+  }
+
+  return true;
+}
+
+bool Sema::checkSafeTaskConsumerBody(ASTNode *body, const std::string &rootFormal) {
+  if (!body) return true;
+  std::set<std::string> trackedVars;
+  trackedVars.insert(rootFormal);
+  return checkSafeTaskConsumerBodyHelper(body, trackedVars);
+}
+
+bool Sema::isSafeSynchronousTaskConsumer(FunctionDecl *calleeFn, size_t formalIndex) {
+  if (!calleeFn || !calleeFn->Body) return false;
+  if (calleeFn->Effect != EffectKind::None) return false;
+  if (formalIndex >= calleeFn->Args.size()) return false;
+  if (!calleeFn->Args[formalIndex].IsCeded) return false;
+
+  if (calleeFn->ResolvedReturnType &&
+      (isLifetimeCarryingType(calleeFn->ResolvedReturnType) ||
+       calleeFn->ResolvedReturnType->isReference() ||
+       calleeFn->ResolvedReturnType->isPointer())) {
+    return false;
+  }
+
+  const std::string formalName = Type::stripMorphology(calleeFn->Args[formalIndex].Name);
+  for (const auto &route : calleeFn->ReturnContract.Routes) {
+    for (const auto &src : route.Sources) {
+      if (Type::stripMorphology(src.Root) == formalName)
+        return false;
+    }
+  }
+
+  static std::set<std::pair<FunctionDecl *, size_t>> activeChecking;
+  auto key = std::make_pair(calleeFn, formalIndex);
+  if (activeChecking.count(key))
+    return false;
+  activeChecking.insert(key);
+
+  bool safe = checkSafeTaskConsumerBody(calleeFn->Body.get(), formalName);
+  activeChecking.erase(key);
+  return safe;
+}
+
 bool Sema::checkConsumingArgumentEscape(
     Expr *argument,
     const std::shared_ptr<toka::Type> &paramType,
@@ -4873,34 +5195,21 @@ bool Sema::checkConsumingArgumentEscape(
     return true;
 
   std::set<std::string> deps;
-  if (auto *var = dynamic_cast<VariableExpr *>(exactValue)) {
-    SymbolInfo *binding = nullptr;
-    std::string actualName;
-    if (var->ResolvedBindingID && CurrentScope->findSymbolByID(var->ResolvedBindingID, binding) && binding) {
-      deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
-      if (deps.empty() && !binding->BorrowedFrom.empty())
-        deps.insert(binding->BorrowedFrom);
-    } else if (CurrentScope->findVariableWithDeref(var->Name, binding, actualName) && binding) {
-      deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
-      if (deps.empty() && !binding->BorrowedFrom.empty())
-        deps.insert(binding->BorrowedFrom);
-    }
-  } else {
-    auto extDeps = externalValueDependencies(exactValue);
-    if (extDeps) {
-      for (const auto &p : *extDeps)
-        deps.insert(p.toLegacyString());
-    }
-  }
+  bool hasUnknownSource = false;
+  collectConsumingExpressionDependencies(exactValue, deps, hasUnknownSource);
 
   if (deps.empty()) {
     if (!m_LastBorrowSource.empty())
       deps.insert(m_LastBorrowSource);
     deps.insert(m_LastLifeDependencies.begin(), m_LastLifeDependencies.end());
   }
+  if (deps.empty() && hasUnknownSource) {
+    deps.insert("<unknown>");
+  }
 
   std::set<std::string> expandedDeps = deps;
   for (const auto &d : deps) {
+    if (d == "<unknown>") continue;
     SymbolInfo *dInfo = nullptr;
     std::string dAct;
     std::string dRoot = extractPathRoot(d);
@@ -4917,6 +5226,11 @@ bool Sema::checkConsumingArgumentEscape(
 
   for (const auto &depStr : deps) {
     if (depStr.empty()) continue;
+    if (depStr == "<unknown>") {
+      std::string targetName = calleeFn ? calleeFn->Name : (methodReceiver ? getPathString(methodReceiver) : getPathString(argument));
+      error(callSite, DiagID::ERR_BORROW_LIFETIME, targetName, "unknown dependency");
+      return false;
+    }
     std::string root = extractPathRoot(depStr);
     SymbolInfo *depInfo = nullptr;
     std::string actualDepName = root;
@@ -5022,7 +5336,7 @@ bool Sema::checkConsumingArgumentEscape(
       continue;
     }
 
-    if (calleeFn && calleeFn->Effect == EffectKind::None) {
+    if (calleeFn && isSafeSynchronousTaskConsumer(calleeFn, formalIndex)) {
       // Safe synchronous consumption: the argument is consumed and dropped
       // within this synchronous call frame, while the caller's local source
       // dependency remains alive. It does not escape.
