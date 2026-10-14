@@ -2189,9 +2189,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   } else if (auto *Clo = dynamic_cast<ClosureExpr *>(E)) {
     return checkClosureExpr(Clo);
   } else if (auto *Rec = dynamic_cast<AnonymousRecordExpr *>(E)) {
-    // 1. Infer field types
     std::vector<ShapeMember> members;
     std::set<std::string> seenFields;
+    std::set<std::string> aggregateLifeDeps;
 
     Rec->FieldTransfers.assign(Rec->Fields.size(),
                                AggregateTransferKind::Unqualified);
@@ -2210,6 +2210,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (fieldTypeObj->isUnknown())
         return toka::Type::fromString("unknown");
 
+      if (fieldTypeObj && isTaskLifetimeCarryingType(fieldTypeObj)) {
+        std::set<std::string> fieldMemberDeps;
+        fieldMemberDeps.insert(m_LastLifeDependencies.begin(), m_LastLifeDependencies.end());
+        bool hasUnknown = false;
+        collectConsumingExpressionDependencies(f.second.get(), fieldMemberDeps, hasUnknown);
+        aggregateLifeDeps.insert(fieldMemberDeps.begin(), fieldMemberDeps.end());
+      }
+
       ShapeMember sm;
       sm.Name = f.first;
       sm.Type = fieldT;
@@ -2217,6 +2225,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       populateAnonymousRecordMember(sm);
       members.push_back(sm);
     }
+
+    Rec->LifeDependencies = aggregateLifeDeps;
+    m_LastLifeDependencies.insert(aggregateLifeDeps.begin(), aggregateLifeDeps.end());
 
     // 2. Generate Unique Type Name
     // Each anonymous record literal creates a distinct Nominal Type.

@@ -1234,6 +1234,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
                       const std::string &resolvedName,
                       std::map<std::string, uint64_t> &memberMasks) {
   m_LastLifeDependencies.clear();
+  std::set<std::string> aggregateLifeDeps;
   std::set<std::string> providedFields;
   bool hasElision = false;
 
@@ -1622,28 +1623,16 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     if (memberTypeObj &&
         (memberTypeObj->isReference() || memberTypeObj->isPointer() ||
          memberTypeObj->isSmartPointer())) {
-        if (!m_LastBorrowSource.empty()) {
-          m_LastLifeDependencies.insert(m_LastBorrowSource);
-        }
+      if (!m_LastBorrowSource.empty()) {
+        m_LastLifeDependencies.insert(m_LastBorrowSource);
+      }
     }
     if (memberTypeObj && isTaskLifetimeCarryingType(memberTypeObj)) {
-        if (!m_LastBorrowSource.empty()) {
-          m_LastLifeDependencies.insert(m_LastBorrowSource);
-        }
-        Expr *memberExact = pair.second.get();
-        while (auto *cede = dynamic_cast<CedeExpr *>(memberExact))
-          memberExact = cede->Value.get();
-        while (auto *cast = dynamic_cast<CastExpr *>(memberExact))
-          memberExact = cast->Expression.get();
-        if (auto *var = dynamic_cast<VariableExpr *>(memberExact)) {
-          SymbolInfo *sym = nullptr;
-          std::string actualName;
-          if (CurrentScope->findVariableWithDeref(var->Name, sym, actualName) && sym) {
-            m_LastLifeDependencies.insert(sym->LifeDependencySet.begin(), sym->LifeDependencySet.end());
-            if (!sym->BorrowedFrom.empty())
-              m_LastLifeDependencies.insert(sym->BorrowedFrom);
-          }
-        }
+      std::set<std::string> fieldMemberDeps;
+      fieldMemberDeps.insert(m_LastLifeDependencies.begin(), m_LastLifeDependencies.end());
+      bool hasUnknownFieldSource = false;
+      collectConsumingExpressionDependencies(pair.second.get(), fieldMemberDeps, hasUnknownFieldSource);
+      aggregateLifeDeps.insert(fieldMemberDeps.begin(), fieldMemberDeps.end());
     }
   }
 
@@ -1767,6 +1756,9 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     CurrentScope->markMoved(baseVarActualName, Init->Loc);
   }
 
+  Init->LifeDependencies = aggregateLifeDeps;
+  m_LastLifeDependencies.insert(aggregateLifeDeps.begin(), aggregateLifeDeps.end());
+
   auto resultType = std::make_shared<toka::ShapeType>(resolvedName);
   resultType->resolve(SD);
   return resultType;
@@ -1871,6 +1863,15 @@ Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
       DiagnosticEngine::report(getLoc(Init), DiagID::ERR_UNION_PARTIAL_INIT,
                                SD->Name, pair.first, variantSize, unionSize);
       HasError = true;
+    }
+
+    if (memberTypeObj && isTaskLifetimeCarryingType(memberTypeObj)) {
+      std::set<std::string> variantLifeDeps;
+      variantLifeDeps.insert(m_LastLifeDependencies.begin(), m_LastLifeDependencies.end());
+      bool hasUnknownVariant = false;
+      collectConsumingExpressionDependencies(pair.second.get(), variantLifeDeps, hasUnknownVariant);
+      Init->LifeDependencies = variantLifeDeps;
+      m_LastLifeDependencies.insert(variantLifeDeps.begin(), variantLifeDeps.end());
     }
   }
 

@@ -1,0 +1,20 @@
+import std/async::{TaskScope, spawn_into}
+import core/task::{TaskHandle}
+
+fn worker(x: i32) -> async i32 {
+    return x * 2
+}
+
+pub fn main() -> async i32 {
+    auto scope# = TaskScope::new()
+    auto t1 = worker(10:i32)
+    auto t2 = worker(20:i32)
+    
+    auto r1 = spawn_into(scope#, cede t1)
+    if r1.is_err() { return 1 }
+    auto r2 = spawn_into(scope#, cede t2)
+    if r2.is_err() { return 2 }
+    
+    scope#.close().await
+    return 0
+}

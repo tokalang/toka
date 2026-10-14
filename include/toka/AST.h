@@ -1172,6 +1172,7 @@ public:
   std::vector<std::pair<std::string, std::unique_ptr<Expr>>> Members;
   std::vector<AggregateTransferKind> MemberTransfers;
   std::vector<std::string> CededBases;
+  std::set<std::string> LifeDependencies;
   InitStructExpr(
       const std::string &name,
       std::vector<std::pair<std::string, std::unique_ptr<Expr>>> members)
@@ -1190,6 +1191,7 @@ public:
     n->ResolvedType = ResolvedType;
     n->CededBases = CededBases;
     n->MemberTransfers = MemberTransfers;
+    n->LifeDependencies = LifeDependencies;
     return n;
   }
 };
@@ -1199,6 +1201,7 @@ public:
   std::vector<std::pair<std::string, std::unique_ptr<Expr>>> Fields;
   std::vector<AggregateTransferKind> FieldTransfers;
   std::string AssignedTypeName; // Filled by Sema, used by CodeGen
+  std::set<std::string> LifeDependencies;
 
   AnonymousRecordExpr(
       std::vector<std::pair<std::string, std::unique_ptr<Expr>>> fields)
@@ -1226,6 +1229,7 @@ public:
     n->FieldTransfers = FieldTransfers;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
+    n->LifeDependencies = LifeDependencies;
     return n;
   }
 };

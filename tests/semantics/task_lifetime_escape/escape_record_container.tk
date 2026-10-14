@@ -1,0 +1,11 @@
+import std/vec::{Vec}
+import core/task::{TaskHandle}
+shape Buffer(size: i32, tag: i32)
+fn process_chunk(buf: Buffer, chunk_id: i32) -> async i32 { return buf.size + chunk_id }
+shape Holder(task: TaskHandle<i32>)
+pub fn escape_holder(out_vec#: Vec<Holder>) {
+ auto buf = Buffer(size = 100:i32, tag = 1:i32)
+ auto task = process_chunk(buf, 1:i32)
+ auto wrapped = Holder(task = cede task)
+ out_vec#.push(cede wrapped)
+}

@@ -1,0 +1,11 @@
+import core/task::{TaskHandle}
+shape Buffer(size: i32, tag: i32)
+fn process(buf: Buffer) -> async i32 { return buf.size }
+import std/vec::{Vec}
+shape Holder(task: TaskHandle<i32>, zz: i32)
+pub fn leak(out_vec#: Vec<Holder>) {
+ auto buf = Buffer(size = 100:i32, tag = 1:i32)
+ auto task = process(buf)
+ auto wrapped = Holder(task = cede task, zz = 0:i32)
+ out_vec#.push(cede wrapped)
+}
