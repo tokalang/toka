@@ -167,6 +167,11 @@ jobs:
           tools/scripts/test_semantic_replay.sh
           tools/scripts/test_mixed_core_cache.sh
 
+      - name: Run task lifetime escape gate
+        run: |
+          set -euo pipefail
+          ctest --test-dir build --output-on-failure -R "^toka_task_lifetime_escape$"
+
       - name: Run G2 framed transport directed gate
         run: |
           set -euo pipefail

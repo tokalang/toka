@@ -60,6 +60,8 @@ def check_positive(tokac, source, env, tmp_dir):
     # 2. Object file emission
     obj_file = tmp_dir / f"{source.stem}.o"
     obj_res = run([str(tokac), "-c", str(source), "-o", str(obj_file)], env=env)
+    if not obj_file.exists() and (tmp_dir / f"{source.stem}.obj").exists():
+        obj_file = tmp_dir / f"{source.stem}.obj"
     require(obj_res.returncode == 0 and obj_file.exists() and obj_file.stat().st_size > 0,
             f"Object file emission failed for {source.name}:\n{obj_res.stderr}")
 
@@ -70,9 +72,12 @@ def check_positive(tokac, source, env, tmp_dir):
             f"LLVM-IR emission failed for {source.name}:\n{ll_res.stderr}")
 
     # 4. Compile & execute executable
-    exe = tmp_dir / source.stem
+    suffix = ".exe" if sys.platform == "win32" or os.name == "nt" else ""
+    exe = tmp_dir / f"{source.stem}{suffix}"
     compiled = run([str(tokac), str(source), "-o", str(exe)], env=env)
     require(compiled.returncode == 0, f"failed to compile {source.name}:\n{compiled.stderr}")
+    if not exe.exists() and (tmp_dir / f"{source.stem}.exe").exists():
+        exe = tmp_dir / f"{source.stem}.exe"
     executed = run([str(exe)], env=env)
     require(executed.returncode == 0, f"failed to execute {source.name} (code {executed.returncode}):\n{executed.stderr}")
 
@@ -84,7 +89,12 @@ def main():
     parser.add_argument("--build-dir", required=True, help="Path to compiler build directory")
     args = parser.parse_args()
 
-    tokac = pathlib.Path(args.build_dir).resolve() / "bin/tokac"
+    build_dir = pathlib.Path(args.build_dir).resolve()
+    tokac = build_dir / "bin/tokac"
+    if not tokac.exists() and (build_dir / "bin/tokac.exe").exists():
+        tokac = build_dir / "bin/tokac.exe"
+    elif not tokac.exists() and (build_dir / "bin/Release/tokac.exe").exists():
+        tokac = build_dir / "bin/Release/tokac.exe"
     require(tokac.exists(), f"missing compiler: {tokac}")
 
     toka_lib = os.environ.get("TOKA_LIB", str(ROOT / "lib"))
