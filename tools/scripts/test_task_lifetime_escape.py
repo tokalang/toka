@@ -100,6 +100,8 @@ def main():
         ("borrowed_detach_loop.tk", "E0456"),
         ("borrowed_detach_match.tk", "E0456"),
         ("borrowed_detach_assign_rhs.tk", "E0456"),
+        ("borrowed_detach_assign_lhs.tk", "E0456"),
+        ("borrowed_forget_coro_handle_lhs.tk", "E0456"),
         ("borrowed_detach_destruct_init.tk", "E0456"),
         ("borrowed_detach_guard_bind_target.tk", "E0456"),
         ("borrowed_detach_match_target.tk", "E0456"),

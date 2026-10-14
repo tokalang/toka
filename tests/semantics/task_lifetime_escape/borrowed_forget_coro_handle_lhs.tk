@@ -1,0 +1,14 @@
+import core/task::{TaskHandle}
+shape Buffer(size: i32, tag: i32)
+fn process(buf: Buffer) -> async i32 { return buf.size }
+
+fn forget_coro_handle(cede handle: TaskHandle<i32>) {
+    auto owned_handle# = cede handle
+    owned_handle.*coro_handle = null as nul *void
+}
+
+pub fn leak() {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto task = process(buf)
+    forget_coro_handle(cede task)
+}
