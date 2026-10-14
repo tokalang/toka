@@ -37,7 +37,7 @@ def main():
     p = argparse.ArgumentParser(description="Toka 0.15 installed candidate verification")
     p.add_argument("--sdk", type=Path, required=True, help="Installed SDK root directory")
     p.add_argument("--revision", required=True, help="Expected candidate commit SHA")
-    p.add_argument("--version", default="v0.15.0", help="Expected version label")
+    p.add_argument("--version", default="v0.15.1", help="Expected version label")
     p.add_argument("--target", default="", help="Target platform label")
     p.add_argument("--fixtures", type=Path, default=None, help="Path to r015_fixtures")
     p.add_argument("--output", type=Path, default=None, help="Output directory for results")
