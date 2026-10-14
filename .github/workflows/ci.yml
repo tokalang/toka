@@ -172,6 +172,11 @@ jobs:
           set -euo pipefail
           ctest --test-dir build --output-on-failure -R "^toka_task_lifetime_escape$"
 
+      - name: Run scoped borrowed tasks gate
+        run: |
+          set -euo pipefail
+          ctest --test-dir build --output-on-failure -R "^toka_scoped_borrowed_tasks$"
+
       - name: Run G2 framed transport directed gate
         run: |
           set -euo pipefail
