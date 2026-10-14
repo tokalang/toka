@@ -1,0 +1,23 @@
+import core/task::{TaskHandle}
+shape Buffer(size: i32, tag: i32)
+fn process(buf: Buffer) -> async i32 { return buf.size }
+import std/task::{detach_forget}
+
+fn discard_int(cede x: i32) {
+    auto y = cede x
+}
+
+fn detach_ret(cede task: TaskHandle<i32>) -> i32 {
+    detach_forget(cede task)
+    return 1:i32
+}
+
+fn forward_nested_call(cede task: TaskHandle<i32>) {
+    discard_int(cede detach_ret(cede task))
+}
+
+pub fn leak() {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto task = process(buf)
+    forward_nested_call(cede task)
+}

@@ -1,0 +1,13 @@
+import core/task::{TaskHandle}
+shape Buffer(size: i32, tag: i32)
+fn process(buf: Buffer) -> async i32 { return buf.size }
+
+fn launch_guard_bind(cede task: TaskHandle<i32>) {
+    guard auto started = cede task.start else { return }
+}
+
+pub fn leak() {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto task = process(buf)
+    launch_guard_bind(cede task)
+}

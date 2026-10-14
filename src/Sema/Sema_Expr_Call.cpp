@@ -5093,6 +5093,17 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
     return rec(e);
   };
 
+  auto unwrapExpr = [](Expr *e) -> Expr * {
+    while (e) {
+      if (auto *c = dynamic_cast<CedeExpr *>(e)) { e = c->Value.get(); continue; }
+      if (auto *p = dynamic_cast<PassExpr *>(e)) { e = p->Value.get(); continue; }
+      if (auto *c = dynamic_cast<CastExpr *>(e)) { e = c->Expression.get(); continue; }
+      if (auto *u = dynamic_cast<UnsafeExpr *>(e)) { e = u->Expression.get(); continue; }
+      break;
+    }
+    return e;
+  };
+
   // 1. Statements
   if (auto *block = dynamic_cast<BlockStmt *>(node)) {
     for (const auto &stmt : block->Statements) {
@@ -5118,56 +5129,58 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
 
   if (auto *varDecl = dynamic_cast<VariableDecl *>(node)) {
     if (varDecl->Init && exprReferencesTracked(varDecl->Init.get())) {
-      Expr *initVal = varDecl->Init.get();
-      while (auto *c = dynamic_cast<CedeExpr *>(initVal)) initVal = c->Value.get();
-      while (auto *c = dynamic_cast<CastExpr *>(initVal)) initVal = c->Expression.get();
-      while (auto *u = dynamic_cast<UnsafeExpr *>(initVal)) initVal = u->Expression.get();
-
-      if (auto *v = dynamic_cast<VariableExpr *>(initVal)) {
+      Expr *unwrapped = unwrapExpr(varDecl->Init.get());
+      if (auto *v = dynamic_cast<VariableExpr *>(unwrapped)) {
         if (trackedVars.count(Type::stripMorphology(v->Name))) {
           trackedVars.insert(Type::stripMorphology(varDecl->Name));
           return true;
         }
       }
-
-      if (auto *call = dynamic_cast<CallExpr *>(initVal)) {
-        for (size_t i = 0; i < call->Args.size(); ++i) {
-          if (exprReferencesTracked(call->Args[i].get())) {
-            if (!call->ResolvedFn || !isSafeSynchronousTaskConsumer(call->ResolvedFn, i))
-              return false;
-          }
-        }
-        return true;
-      }
-
-      return false;
+      return checkSafeTaskConsumerBodyHelper(varDecl->Init.get(), trackedVars);
     }
     return true;
   }
 
   if (auto *destruct = dynamic_cast<DestructuringDecl *>(node)) {
     if (destruct->Init && exprReferencesTracked(destruct->Init.get())) {
-      for (const auto &v : destruct->Variables) {
-        trackedVars.insert(Type::stripMorphology(v.Name));
+      Expr *unwrapped = unwrapExpr(destruct->Init.get());
+      if (auto *v = dynamic_cast<VariableExpr *>(unwrapped)) {
+        if (trackedVars.count(Type::stripMorphology(v->Name))) {
+          for (const auto &var : destruct->Variables) {
+            trackedVars.insert(Type::stripMorphology(var.Name));
+          }
+          return true;
+        }
       }
+      return checkSafeTaskConsumerBodyHelper(destruct->Init.get(), trackedVars);
     }
     return true;
   }
 
   if (auto *guardBind = dynamic_cast<GuardBindStmt *>(node)) {
     if (guardBind->Target && exprReferencesTracked(guardBind->Target.get())) {
-      if (guardBind->Pat) {
-        std::function<void(MatchArm::Pattern *)> collectPatternBindings =
-            [&](MatchArm::Pattern *p) {
-              if (!p) return;
-              if (p->PatternKind == MatchArm::Pattern::Variable && !p->Name.empty()) {
-                trackedVars.insert(Type::stripMorphology(p->Name));
-              }
-              for (const auto &sp : p->SubPatterns) {
-                collectPatternBindings(sp.get());
-              }
-            };
-        collectPatternBindings(guardBind->Pat.get());
+      Expr *unwrapped = unwrapExpr(guardBind->Target.get());
+      if (auto *v = dynamic_cast<VariableExpr *>(unwrapped)) {
+        if (trackedVars.count(Type::stripMorphology(v->Name))) {
+          if (guardBind->Pat) {
+            std::function<void(MatchArm::Pattern *)> collectPatternBindings =
+                [&](MatchArm::Pattern *p) {
+                  if (!p) return;
+                  if (p->PatternKind == MatchArm::Pattern::Variable && !p->Name.empty()) {
+                    trackedVars.insert(Type::stripMorphology(p->Name));
+                  }
+                  for (const auto &sp : p->SubPatterns) {
+                    collectPatternBindings(sp.get());
+                  }
+                };
+            collectPatternBindings(guardBind->Pat.get());
+          }
+        } else {
+          return false;
+        }
+      } else {
+        if (!checkSafeTaskConsumerBodyHelper(guardBind->Target.get(), trackedVars))
+          return false;
       }
     }
     if (guardBind->ElseBody && !checkSafeTaskConsumerBodyHelper(guardBind->ElseBody.get(), trackedVars))
@@ -5190,6 +5203,10 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
 
   if (auto *exprStmt = dynamic_cast<ExprStmt *>(node)) {
     return checkSafeTaskConsumerBodyHelper(exprStmt->Expression.get(), trackedVars);
+  }
+
+  if (dynamic_cast<UnreachableStmt *>(node)) {
+    return true;
   }
 
   // 2. Compound Expressions (control flow)
@@ -5233,13 +5250,27 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
 
   if (auto *matchExpr = dynamic_cast<MatchExpr *>(node)) {
     bool targetRef = matchExpr->Target && exprReferencesTracked(matchExpr->Target.get());
+    bool isDirectVarTarget = false;
+
+    if (targetRef) {
+      Expr *unwrapped = unwrapExpr(matchExpr->Target.get());
+      if (auto *v = dynamic_cast<VariableExpr *>(unwrapped)) {
+        if (trackedVars.count(Type::stripMorphology(v->Name))) {
+          isDirectVarTarget = true;
+        }
+      }
+      if (!isDirectVarTarget) {
+        if (!checkSafeTaskConsumerBodyHelper(matchExpr->Target.get(), trackedVars))
+          return false;
+      }
+    }
 
     for (const auto &arm : matchExpr->Arms) {
       if (arm->Guard && exprReferencesTracked(arm->Guard.get()))
         return false;
 
       std::set<std::string> armTrackedVars = trackedVars;
-      if (targetRef && arm->Pat) {
+      if (isDirectVarTarget && arm->Pat) {
         std::function<void(MatchArm::Pattern *)> collectPatternBindings =
             [&](MatchArm::Pattern *p) {
               if (!p) return;
@@ -5277,22 +5308,44 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
     if (auto *bin = dynamic_cast<BinaryExpr *>(e)) {
       if (bin->Op == "=") {
         if (exprReferencesTracked(bin->RHS.get())) {
-          Expr *lhs = bin->LHS.get();
-          while (auto *u = dynamic_cast<UnaryExpr *>(lhs)) lhs = u->RHS.get();
-          if (auto *v = dynamic_cast<VariableExpr *>(lhs)) {
-            trackedVars.insert(Type::stripMorphology(v->Name));
-            return true;
+          Expr *unwrappedRHS = unwrapExpr(bin->RHS.get());
+          if (auto *v = dynamic_cast<VariableExpr *>(unwrappedRHS)) {
+            if (trackedVars.count(Type::stripMorphology(v->Name))) {
+              Expr *lhs = bin->LHS.get();
+              while (auto *u = dynamic_cast<UnaryExpr *>(lhs)) lhs = u->RHS.get();
+              if (auto *lv = dynamic_cast<VariableExpr *>(lhs)) {
+                trackedVars.insert(Type::stripMorphology(lv->Name));
+                return true;
+              }
+              return false;
+            }
           }
-          return false;
+          return checkSafeTaskConsumerBodyHelper(bin->RHS.get(), trackedVars);
         }
+        return true;
       }
     }
 
     if (auto *call = dynamic_cast<CallExpr *>(e)) {
       for (size_t i = 0; i < call->Args.size(); ++i) {
         if (exprReferencesTracked(call->Args[i].get())) {
-          if (!call->ResolvedFn || !isSafeSynchronousTaskConsumer(call->ResolvedFn, i))
-            return false;
+          Expr *unwrappedArg = unwrapExpr(call->Args[i].get());
+          if (auto *v = dynamic_cast<VariableExpr *>(unwrappedArg)) {
+            if (trackedVars.count(Type::stripMorphology(v->Name))) {
+              if (!call->ResolvedFn || !isSafeSynchronousTaskConsumer(call->ResolvedFn, i))
+                return false;
+            } else {
+              return false;
+            }
+          } else {
+            // Nested non-variable sub-expression
+            if (!checkSafeTaskConsumerBodyHelper(unwrappedArg, trackedVars))
+              return false;
+            if (unwrappedArg->ResolvedType && isTaskLifetimeCarryingType(unwrappedArg->ResolvedType)) {
+              if (!call->ResolvedFn || !isSafeSynchronousTaskConsumer(call->ResolvedFn, i))
+                return false;
+            }
+          }
         }
       }
       return true;
@@ -5301,7 +5354,8 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
     return false;
   }
 
-  return true;
+  // Fail-closed: any unhandled ASTNode is rejected as unsafe
+  return false;
 }
 
 bool Sema::checkSafeTaskConsumerBody(ASTNode *body, const std::string &rootFormal) {

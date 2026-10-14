@@ -1,0 +1,17 @@
+import core/task::{TaskHandle}
+shape Buffer(size: i32, tag: i32)
+fn process(buf: Buffer) -> async i32 { return buf.size }
+
+fn discard_in_match(cede task: TaskHandle<i32>, tag: i32) {
+    match tag {
+        0 => { auto local = cede task }
+        _ => { auto local = cede task }
+    }
+}
+
+fn main() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto task = process(buf)
+    discard_in_match(cede task, 1:i32)
+    return 0:i32
+}
