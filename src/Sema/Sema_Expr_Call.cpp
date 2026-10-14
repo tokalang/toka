@@ -4893,6 +4893,17 @@ void Sema::collectConsumingExpressionDependencies(
   }
 
   if (auto *call = dynamic_cast<CallExpr *>(expr)) {
+    if (call->ResolvedShape) {
+      for (const auto &arg : call->Args) {
+        collectConsumingExpressionDependencies(arg.get(), deps, hasUnknownSource);
+      }
+      auto extDeps = externalValueDependencies(call);
+      if (extDeps) {
+        for (const auto &p : *extDeps)
+          deps.insert(p.toLegacyString());
+      }
+      return;
+    }
     if (call->ResolvedFn) {
       for (const auto &route : call->ResolvedFn->ReturnContract.Routes) {
         if (route.Target.Kind == ReturnDependencyTargetKind::ReturnValue) {
@@ -4993,17 +5004,59 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
         for (const auto &el : arr->Elements) if (rec(el.get())) return true;
         return false;
       }
+      if (auto *idx = dynamic_cast<ArrayIndexExpr *>(n)) {
+        if (rec(idx->Array.get())) return true;
+        for (const auto &i : idx->Indices) if (rec(i.get())) return true;
+        return false;
+      }
       if (auto *st = dynamic_cast<StartExpr *>(n)) return rec(st->Expression.get());
+      if (auto *aw = dynamic_cast<AwaitExpr *>(n)) return rec(aw->Expression.get());
+      if (auto *w = dynamic_cast<WaitExpr *>(n)) return rec(w->Expression.get());
+      if (auto *ifE = dynamic_cast<IfExpr *>(n)) {
+        return rec(ifE->Condition.get()) || rec(ifE->Then.get()) || rec(ifE->Else.get());
+      }
+      if (auto *loopE = dynamic_cast<LoopExpr *>(n)) {
+        return rec(loopE->Condition.get()) || rec(loopE->Body.get());
+      }
+      if (auto *forE = dynamic_cast<ForExpr *>(n)) {
+        return rec(forE->Collection.get()) || rec(forE->Body.get()) || rec(forE->ElseBody.get());
+      }
+      if (auto *guardE = dynamic_cast<GuardExpr *>(n)) {
+        return rec(guardE->Condition.get()) || rec(guardE->Then.get()) || rec(guardE->Else.get());
+      }
+      if (auto *blk = dynamic_cast<BlockStmt *>(n)) {
+        for (const auto &s : blk->Statements) if (rec(s.get())) return true;
+        return false;
+      }
+      if (auto *es = dynamic_cast<ExprStmt *>(n)) return rec(es->Expression.get());
+      if (auto *ret = dynamic_cast<ReturnStmt *>(n)) return rec(ret->ReturnValue.get());
+      if (auto *vd = dynamic_cast<VariableDecl *>(n)) return rec(vd->Init.get());
+      if (auto *us = dynamic_cast<UnsafeStmt *>(n)) return rec(us->Statement.get());
       return false;
     };
     return rec(e);
   };
 
+  // 1. Statements
   if (auto *block = dynamic_cast<BlockStmt *>(node)) {
     for (const auto &stmt : block->Statements) {
       if (!checkSafeTaskConsumerBodyHelper(stmt.get(), trackedVars))
         return false;
     }
+    return true;
+  }
+
+  if (auto *unsafe = dynamic_cast<UnsafeStmt *>(node)) {
+    return checkSafeTaskConsumerBodyHelper(unsafe->Statement.get(), trackedVars);
+  }
+
+  if (auto *initBlock = dynamic_cast<InitBlockStmt *>(node)) {
+    return checkSafeTaskConsumerBodyHelper(initBlock->Body.get(), trackedVars);
+  }
+
+  if (auto *ret = dynamic_cast<ReturnStmt *>(node)) {
+    if (ret->ReturnValue && exprReferencesTracked(ret->ReturnValue.get()))
+      return false;
     return true;
   }
 
@@ -5037,47 +5090,56 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
   }
 
   if (auto *exprStmt = dynamic_cast<ExprStmt *>(node)) {
-    Expr *e = exprStmt->Expression.get();
-    if (!e || !exprReferencesTracked(e))
-      return true;
+    return checkSafeTaskConsumerBodyHelper(exprStmt->Expression.get(), trackedVars);
+  }
 
-    if (auto *ifExpr = dynamic_cast<IfExpr *>(e)) {
-      if (ifExpr->Condition && exprReferencesTracked(ifExpr->Condition.get()))
-        return false;
-      if (ifExpr->Then && !checkSafeTaskConsumerBodyHelper(ifExpr->Then.get(), trackedVars))
-        return false;
-      if (ifExpr->Else && !checkSafeTaskConsumerBodyHelper(ifExpr->Else.get(), trackedVars))
-        return false;
-      return true;
-    }
+  // 2. Compound Expressions (control flow)
+  if (auto *ifExpr = dynamic_cast<IfExpr *>(node)) {
+    if (ifExpr->Condition && exprReferencesTracked(ifExpr->Condition.get()))
+      return false;
+    if (ifExpr->Then && !checkSafeTaskConsumerBodyHelper(ifExpr->Then.get(), trackedVars))
+      return false;
+    if (ifExpr->Else && !checkSafeTaskConsumerBodyHelper(ifExpr->Else.get(), trackedVars))
+      return false;
+    return true;
+  }
 
-    if (auto *guardExpr = dynamic_cast<GuardExpr *>(e)) {
-      if (guardExpr->Condition && exprReferencesTracked(guardExpr->Condition.get()))
-        return false;
-      if (guardExpr->Then && !checkSafeTaskConsumerBodyHelper(guardExpr->Then.get(), trackedVars))
-        return false;
-      if (guardExpr->Else && !checkSafeTaskConsumerBodyHelper(guardExpr->Else.get(), trackedVars))
-        return false;
-      return true;
-    }
+  if (auto *guardExpr = dynamic_cast<GuardExpr *>(node)) {
+    if (guardExpr->Condition && exprReferencesTracked(guardExpr->Condition.get()))
+      return false;
+    if (guardExpr->Then && !checkSafeTaskConsumerBodyHelper(guardExpr->Then.get(), trackedVars))
+      return false;
+    if (guardExpr->Else && !checkSafeTaskConsumerBodyHelper(guardExpr->Else.get(), trackedVars))
+      return false;
+    return true;
+  }
 
-    if (auto *loopExpr = dynamic_cast<LoopExpr *>(e)) {
-      if (loopExpr->Condition && exprReferencesTracked(loopExpr->Condition.get()))
-        return false;
-      if (loopExpr->Body && !checkSafeTaskConsumerBodyHelper(loopExpr->Body.get(), trackedVars))
-        return false;
-      return true;
-    }
+  if (auto *loopExpr = dynamic_cast<LoopExpr *>(node)) {
+    if (loopExpr->Condition && exprReferencesTracked(loopExpr->Condition.get()))
+      return false;
+    if (loopExpr->Body && !checkSafeTaskConsumerBodyHelper(loopExpr->Body.get(), trackedVars))
+      return false;
+    return true;
+  }
 
-    if (auto *forExpr = dynamic_cast<ForExpr *>(e)) {
-      if (forExpr->Collection && exprReferencesTracked(forExpr->Collection.get()))
-        return false;
-      if (forExpr->Body && !checkSafeTaskConsumerBodyHelper(forExpr->Body.get(), trackedVars))
-        return false;
-      if (forExpr->ElseBody && !checkSafeTaskConsumerBodyHelper(forExpr->ElseBody.get(), trackedVars))
-        return false;
+  if (auto *forExpr = dynamic_cast<ForExpr *>(node)) {
+    if (forExpr->Collection && exprReferencesTracked(forExpr->Collection.get()))
+      return false;
+    if (forExpr->Body && !checkSafeTaskConsumerBodyHelper(forExpr->Body.get(), trackedVars))
+      return false;
+    if (forExpr->ElseBody && !checkSafeTaskConsumerBodyHelper(forExpr->ElseBody.get(), trackedVars))
+      return false;
+    return true;
+  }
+
+  if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(node)) {
+    return checkSafeTaskConsumerBodyHelper(unsafeExpr->Expression.get(), trackedVars);
+  }
+
+  // 3. Leaf/Direct Expressions
+  if (auto *e = dynamic_cast<Expr *>(node)) {
+    if (!exprReferencesTracked(e))
       return true;
-    }
 
     if (auto *bin = dynamic_cast<BinaryExpr *>(e)) {
       if (bin->Op == "=") {
@@ -5103,29 +5165,7 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
       return true;
     }
 
-    if (dynamic_cast<MethodCallExpr *>(e) ||
-        dynamic_cast<MemberExpr *>(e) ||
-        dynamic_cast<StartExpr *>(e)) {
-      return false;
-    }
-
     return false;
-  }
-
-  if (auto *ifExpr = dynamic_cast<IfExpr *>(node)) {
-    if (ifExpr->Condition && exprReferencesTracked(ifExpr->Condition.get()))
-      return false;
-    if (ifExpr->Then && !checkSafeTaskConsumerBodyHelper(ifExpr->Then.get(), trackedVars))
-      return false;
-    if (ifExpr->Else && !checkSafeTaskConsumerBodyHelper(ifExpr->Else.get(), trackedVars))
-      return false;
-    return true;
-  }
-
-  if (auto *ret = dynamic_cast<ReturnStmt *>(node)) {
-    if (ret->ReturnValue && exprReferencesTracked(ret->ReturnValue.get()))
-      return false;
-    return true;
   }
 
   return true;

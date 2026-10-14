@@ -96,6 +96,8 @@ def main():
     negatives = [
         ("borrowed_detach_forget.tk", "E0456"),
         ("borrowed_detach_wrapper.tk", "E0456"),
+        ("borrowed_detach_if.tk", "E0456"),
+        ("borrowed_detach_loop.tk", "E0456"),
         ("borrowed_start_wrapper.tk", "E0456"),
         ("borrowed_record_argument.tk", "E0456"),
         ("borrowed_record_binding.tk", "E0456"),
@@ -108,6 +110,7 @@ def main():
     positives = [
         "safe_drop_consumer.tk",
         "legal_record_argument.tk",
+        "legal_option_argument.tk",
         "p2_owned_task_in_vec.tk",
         "p3_owned_task_in_scope.tk",
         "r3_task_explicit_dep_safe_await.tk",
