@@ -1,0 +1,20 @@
+// STAGE2-D3: C3 unwind bypass - parent awaits `sleep_async(50).await` (or `c1.await` without `?`); if externally canceled at that await point, `genCoroutineCancelReturn` unwinds `buf` synchronously without draining `scope#`
+import std/task::{sleep_async}
+import std/async::{TaskScope, spawn_scoped, join_scoped}
+shape Buffer(size: i32, tag: i32)
+fn worker(buf: Buffer) -> async i32 {
+    sleep_async(300:i32).await
+    return buf.size
+}
+pub fn parent_ordinary_await() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+    auto c1 = spawn_scoped<i32>(scope#, cede worker(buf))
+    auto c2 = spawn_scoped<i32>(scope#, cede worker(buf))
+    // If parent is canceled during `c1.await` (not `.await?`), `genCoroutineCancelReturn`
+    // runs synchronous `executeScopeUnwinding(0)` and drops `buf` before `c2` finishes!
+    auto r1 = c1.await
+    auto r2 = c2.await
+    join_scoped(scope#).await
+    return r1 + r2
+}

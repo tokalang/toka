@@ -1,0 +1,16 @@
+// STAGE2-D1b: N4 bypass - single task borrows (buf1, buf2); replaceCarrierBorrows overwrites buf1 with buf2, allowing `cede buf1` while child runs
+import std/async::{TaskScope, spawn_scoped, join_scoped}
+shape Buffer(size: i32, tag: i32)
+fn worker2(b1: Buffer, b2: Buffer) -> async i32 { return b1.size + b2.size }
+fn consume_buf(cede b: Buffer) { auto _ = cede b }
+pub fn single_task_two_bufs() -> async i32 {
+    auto buf1 = Buffer(size = 100:i32, tag = 1:i32)
+    auto buf2 = Buffer(size = 200:i32, tag = 2:i32)
+    auto scope# = TaskScope::new()
+    {
+        auto t = spawn_scoped<i32>(scope#, cede worker2(buf1, buf2))
+    }
+    consume_buf(cede buf1)
+    join_scoped(scope#).await
+    return 0:i32
+}

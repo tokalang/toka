@@ -4292,6 +4292,32 @@ int toka_task_scope_try_enroll(void *scope_ptr, void *tcb_ptr) {
     return 1;
 }
 
+int toka_task_scope_enroll_scoped(void *scope_ptr, void *tcb_ptr) {
+    if (!scope_ptr || !tcb_ptr) return 0;
+    TokaTaskScopeRegistry *scope = (TokaTaskScopeRegistry*)scope_ptr;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+
+    if (!toka_task_try_retain(tcb)) return 0;
+
+    toka_mutex_lock(&g_rt_mutex);
+    if (scope->parent && atomic_load(&scope->parent->cancel_requested)) {
+        scope->state = TOKA_TASK_SCOPE_CLOSING;
+    }
+    if (scope->state != TOKA_TASK_SCOPE_OPEN) {
+        toka_mutex_unlock(&g_rt_mutex);
+        toka_task_release(tcb);
+        return 0;
+    }
+    if (!toka_task_scope_ensure_capacity_locked(scope)) {
+        toka_mutex_unlock(&g_rt_mutex);
+        toka_task_release(tcb);
+        return -1;
+    }
+    scope->children[scope->child_count++] = tcb;
+    toka_mutex_unlock(&g_rt_mutex);
+    return 1;
+}
+
 // Closing is idempotent.  A completed scope is never reopened.
 int toka_task_scope_begin_close(void *scope_ptr) {
     if (!scope_ptr) return 0;
@@ -4469,10 +4495,16 @@ void toka_task_scope_release(void *scope_ptr) {
     toka_mutex_unlock(&g_rt_mutex);
 
     for (uint32_t i = 0; i < child_count; ++i) {
+        toka_task_request_cancel(children[i]);
         // Scope destruction may be triggered by an enclosing cancellation
-        // path. Transfer its owning reference to the detached protocol rather
-        // than releasing a still-live child underneath its coroutine frame.
-        toka_task_detach_owned(children[i], TOKA_RESULT_OWNER_SCOPE);
+        // path. For scope-owned tasks, transfer its owning reference to the detached protocol.
+        // For consumer-owned scoped tasks, release the scope's retained reference.
+        uint8_t owner = atomic_load(&children[i]->result_owner);
+        if (owner == TOKA_RESULT_OWNER_SCOPE) {
+            toka_task_detach_owned(children[i], TOKA_RESULT_OWNER_SCOPE);
+        } else {
+            toka_task_release(children[i]);
+        }
     }
     free(children);
     if (parent) toka_task_release(parent);

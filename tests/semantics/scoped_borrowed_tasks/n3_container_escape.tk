@@ -1,0 +1,16 @@
+// N3: Storing a task that borrows local stack data into an escaped container
+import std/vec::{Vec}
+import core/task::{TaskHandle}
+
+shape Buffer ( size: i32, tag: i32 )
+
+fn process_chunk(buf: Buffer, chunk_id: i32) -> async i32 {
+    return buf.size + chunk_id
+}
+
+pub fn escape_via_container(out_vec#: Vec<TaskHandle<i32>>) {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto task = process_chunk(buf, 1:i32)
+    // Attempting to push task with local borrow into longer-lived outer container
+    out_vec#.push(cede task)
+}

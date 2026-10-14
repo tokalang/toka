@@ -234,6 +234,38 @@ std::optional<PALConflict> PALChecker::replaceCarrierBorrows(
   return std::nullopt;
 }
 
+std::optional<PALConflict> PALChecker::accumulateCarrierBorrows(
+    uint64_t holderID, const std::set<AccessPath> &sources,
+    size_t retainingLevels, int holderScopeDepth,
+    bool mayReadOnDrop, SourceLocation originLoc) {
+  if (!IsEnabled || !holderID || CarrierStack.empty()) return std::nullopt;
+  for (const auto &source : sources)
+    if (auto conflict = verifyAccess(source)) return conflict;
+  if (!sources.empty()) {
+    const size_t level = retainingLevels < CarrierStack.size()
+        ? CarrierStack.size() - 1 - retainingLevels : 0;
+    bool found = false;
+    for (auto &scope : CarrierStack) {
+      auto it = scope.find(holderID);
+      if (it != scope.end()) {
+        it->second.Sources.insert(sources.begin(), sources.end());
+        it->second.HolderScopeDepth = std::min(it->second.HolderScopeDepth, holderScopeDepth);
+        it->second.MayReadOnDrop = it->second.MayReadOnDrop || mayReadOnDrop;
+        if (!it->second.OriginLoc.isValid()) {
+          it->second.OriginLoc = originLoc;
+        }
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      CarrierStack[level][holderID] = {sources, holderScopeDepth,
+                                      mayReadOnDrop, originLoc};
+    }
+  }
+  return std::nullopt;
+}
+
 void PALChecker::releaseCarrierBorrows(uint64_t holderID) {
   if (!IsEnabled || !holderID) return;
   for (auto &scope : CarrierStack) scope.erase(holderID);

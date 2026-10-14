@@ -1,0 +1,9 @@
+// Bodyless TKI with scoped borrow obligation must fail closed (RFC §7)
+import bodyless_provider::{Buffer, compute_provider}
+
+pub fn main() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    // Bodyless declaration cannot prove non-escape or provide coroutine lowering body: must fail closed
+    auto t = compute_provider(buf)
+    return 0
+}

@@ -1,0 +1,11 @@
+// STAGE2-D2a: N5 bypass - calling `scope.close()` WITHOUT `.await` moves `scope` (`scope.Moved = true`) and exits scope returning i32 without joining active child
+import std/async::{TaskScope, spawn_scoped}
+shape Buffer(size: i32, tag: i32)
+fn worker(buf: Buffer) -> async i32 { return buf.size }
+pub fn unawaited_close_bypass() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+    auto t1 = spawn_scoped<i32>(scope#, cede worker(buf))
+    auto _ = scope.close()
+    return 0:i32
+}

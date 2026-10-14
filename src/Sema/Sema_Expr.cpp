@@ -4664,6 +4664,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         SymbolInfo *Info = nullptr;
         std::string actualName;
         if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
+            if (Info && Info->TypeObj && Info->TypeObj->getSoulName().rfind("TaskScope", 0) == 0 &&
+                !Info->LifeDependencySet.empty()) {
+              error(ce, DiagID::ERR_BORROW_LIFETIME, Var->Name, *Info->LifeDependencySet.begin());
+              SourceLocation originLoc = findPathDeclaration(*Info->LifeDependencySet.begin());
+              if (originLoc.isValid())
+                DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                         "shorter-lived dependency declared here");
+              canInvalidate = false;
+            }
             if (Info->IsFunctionParameter && !Info->IsCeded) {
                 error(ce, DiagID::ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER, Var->Name);
                 // Capture discovery has no active binding transaction to roll
@@ -4967,9 +4976,56 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto innerType = checkExpr(awaitEx->Expression.get());
     m_IsConsumingEffect = oldConsuming;
 
+    auto clearJoinedScope = [&](const std::string &scopeName) {
+      if (scopeName.empty()) return;
+      std::string scopeRoot = extractPathRoot(scopeName);
+      SymbolInfo *scopeInfo = nullptr;
+      std::string actualName;
+      if (CurrentScope && CurrentScope->findVariableWithDeref(scopeRoot, scopeInfo, actualName) && scopeInfo) {
+        scopeInfo->LifeDependencySet.clear();
+        PALCheckerState.releaseCarrierBorrows(scopeInfo->SymbolID);
+      }
+    };
+
+    bool isScopeDrainAwait = false;
+    if (auto *call = dynamic_cast<CallExpr *>(awaitEx->Expression.get())) {
+      std::string fnName = call->Callee;
+      if (call->ResolvedFn) fnName = call->ResolvedFn->Name;
+      if ((fnName == "join_scoped" || fnName == "cancel_and_join") && !call->Args.empty()) {
+        clearJoinedScope(getPathString(call->Args[0].get()));
+        isScopeDrainAwait = true;
+      }
+    } else if (auto *mcall = dynamic_cast<MethodCallExpr *>(awaitEx->Expression.get())) {
+      if (mcall->Method == "join_async" || mcall->Method == "join" ||
+          mcall->Method == "cancel_and_join") {
+        clearJoinedScope(getPathString(mcall->Object.get()));
+        isScopeDrainAwait = true;
+      }
+    }
+
+    if (!awaitEx->CatchesCancellation && !isScopeDrainAwait) {
+      for (Scope *sc = CurrentScope; sc; sc = sc->Parent) {
+        for (const auto &[name, info] : sc->Symbols) {
+          if (info.TypeObj && info.TypeObj->getSoulName().rfind("TaskScope", 0) == 0 &&
+              !info.LifeDependencySet.empty()) {
+            error(awaitEx, DiagID::ERR_BORROW_LIFETIME, name, *info.LifeDependencySet.begin());
+            SourceLocation originLoc = findPathDeclaration(*info.LifeDependencySet.begin());
+            if (originLoc.isValid())
+              DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                       "shorter-lived dependency declared here");
+            break;
+          }
+        }
+      }
+    }
+
     SymbolInfo *handleInfo = nullptr;
     if (auto *var = dynamic_cast<VariableExpr *>(awaitEx->Expression.get())) {
       CurrentScope->findSymbol(var->Name, handleInfo);
+      if (handleInfo) {
+        handleInfo->LifeDependencySet.clear();
+        PALCheckerState.releaseCarrierBorrows(handleInfo->SymbolID);
+      }
     }
     m_LastLifeDependencies.clear();
     m_LastBorrowSource = "";
@@ -5031,6 +5087,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     SymbolInfo *handleInfo = nullptr;
     if (auto *var = dynamic_cast<VariableExpr *>(waitEx->Expression.get())) {
       CurrentScope->findSymbol(var->Name, handleInfo);
+      if (handleInfo) {
+        handleInfo->LifeDependencySet.clear();
+        PALCheckerState.releaseCarrierBorrows(handleInfo->SymbolID);
+      }
     }
     m_LastLifeDependencies.clear();
     m_LastBorrowSource = "";
@@ -6027,6 +6087,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                           DiagID::ERR_SEMA_CANNOT_TRANSFER_PLACE_ALIAS,
                           var->Name);
                   } else if (receiverInfo &&
+                             receiverInfo->TypeObj &&
+                             receiverInfo->TypeObj->getSoulName().rfind("TaskScope", 0) == 0 &&
+                             !receiverInfo->LifeDependencySet.empty()) {
+                    error(Met->Object.get(),
+                          DiagID::ERR_BORROW_LIFETIME,
+                          var->Name, *receiverInfo->LifeDependencySet.begin());
+                    SourceLocation originLoc = findPathDeclaration(*receiverInfo->LifeDependencySet.begin());
+                    if (originLoc.isValid())
+                      DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                               "shorter-lived dependency declared here");
+                  } else if (receiverInfo &&
                              receiverInfo->IsFunctionParameter &&
                              !receiverInfo->IsCeded && receiverInfo->TypeObj &&
                              !proveSlice4CopyType(receiverInfo->TypeObj)) {
@@ -6309,6 +6380,21 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                             FD->Args[i + 1].Name, getLoc(Met->Args[i].get()),
                             FD->Args[i + 1].Loc, evidenceV2.Spelling,
                             evidenceV2.Transfer, evidenceV2.Source);
+                    }
+                    if (FD && (FD->Effect == EffectKind::Async || isTaskLifetimeCarryingType(FD->ResolvedReturnType)) && !FD->Body) {
+                      Expr *argExpr = Met->Args[i].get();
+                      auto argType = argExpr ? argExpr->ResolvedType : nullptr;
+                      if (argType && !argType->isInteger() && !argType->isFloatingPoint() &&
+                          !argType->isBoolean() && !argType->isUnit()) {
+                        std::string argName = getPathString(argExpr);
+                        error(Met->Args[i].get(), DiagID::ERR_BORROW_LIFETIME, FD->Name, argName.empty() ? "argument" : argName);
+                        SourceLocation originLoc = findPathDeclaration(argName);
+                        if (originLoc.isValid())
+                          DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                                   "shorter-lived dependency declared here");
+                        methodCallRollback.reject();
+                        return Type::fromString("unknown");
+                      }
                     }
                     if (!checkConsumingArgumentEscape(
                             Met->Args[i].get(), expectedParamTy,

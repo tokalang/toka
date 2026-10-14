@@ -1,0 +1,10 @@
+// Level-A cross-module negative control: Attempting to return a borrowed task from a cross-module provider
+import core/task::{TaskHandle}
+import scoped_provider::{Buffer, compute_provider}
+
+pub fn escape_cross_module() -> TaskHandle<i32> {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto t = compute_provider(buf)
+    // MUST REJECT: task borrowing cross-module struct cannot escape lexical scope
+    return t
+}

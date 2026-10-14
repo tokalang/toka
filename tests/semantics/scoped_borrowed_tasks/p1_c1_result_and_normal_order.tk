@@ -1,0 +1,113 @@
+import std/task::{block_on, sleep_async}
+import std/async::{TaskScope, spawn_scoped, join_scoped, cancel_and_join}
+
+auto g_events# = [0:i32; 16]
+auto g_event_count# = 0:i32
+
+const EVT_CHILD1_READ: i32 = 10
+const EVT_CHILD2_READ: i32 = 11
+const EVT_CHILD1_DONE: i32 = 20
+const EVT_CHILD2_DONE: i32 = 21
+const EVT_PARENT_AGGREGATE: i32 = 50
+const EVT_SCOPE_JOINED: i32 = 70
+const EVT_PARENT_BUFFER_DROP: i32 = 100
+
+fn record_event(evt: i32) {
+    if g_event_count < 16:i32 {
+        g_events[g_event_count] = evt
+        g_event_count += 1:i32
+    }
+}
+
+shape Buffer (
+    size: i32,
+    tag: i32
+)
+
+impl Buffer@Encap {
+    fn drop(self#) {
+        record_event(EVT_PARENT_BUFFER_DROP)
+    }
+}
+
+fn worker_chunk(buf: Buffer, mult: i32, read_evt: i32, done_evt: i32, delay_ms: i32) -> async i32 {
+    record_event(read_evt)
+    sleep_async(delay_ms).await
+    record_event(done_evt)
+    return buf.size * mult
+}
+
+fn scoped_coordinator() -> async i32 {
+    // Parent stack-allocated local data
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+
+    // Launch two concurrent child tasks read-only borrowing buf via safe spawn_scoped
+    auto t1 = spawn_scoped<i32>(scope#, cede worker_chunk(buf, 2:i32, EVT_CHILD1_READ, EVT_CHILD1_DONE, 10:i32))
+    auto t2 = spawn_scoped<i32>(scope#, cede worker_chunk(buf, 3:i32, EVT_CHILD2_READ, EVT_CHILD2_DONE, 5:i32))
+
+    // Await both child tasks with cancellation handling (.await?)
+    auto r1_res = t1.await?
+    auto r2_res = t2.await?
+    if r1_res.is_none() || r2_res.is_none() {
+        cancel_and_join(scope#).await
+        return -1:i32
+    }
+    auto sum = r1_res.unwrap() + r2_res.unwrap()
+    record_event(EVT_PARENT_AGGREGATE)
+
+    // Await safe scope convergence
+    join_scoped(scope#).await
+    record_event(EVT_SCOPE_JOINED)
+
+    // Parent verifies results: must equal 500
+    if sum != 500:i32 {
+        return -1:i32
+    }
+
+    // Returning sum discharges scope; buf is destructed at function exit!
+    return sum
+}
+
+pub fn main() -> i32 {
+    auto t = scoped_coordinator()
+    auto final_sum = block_on<i32>(t)
+    if final_sum != 500:i32 {
+        return 1
+    }
+
+    // Verify deterministic event sequence:
+    // 1. Both children read (10, 11)
+    // 2. Both children complete (20, 21)
+    // 3. Parent aggregates sum == 500 (50)
+    // 4. Scope joined & children confirmed terminal (70)
+    // 5. Parent Buffer dropped LAST (100)
+    if g_event_count != 7:i32 {
+        return 2
+    }
+
+    auto idx_agg# = -1:i32
+    auto idx_term# = -1:i32
+    auto idx_drop# = -1:i32
+    auto i# = 0:i32
+    loop i < g_event_count {
+        if g_events[i] == EVT_PARENT_AGGREGATE { idx_agg = i }
+        if g_events[i] == EVT_SCOPE_JOINED { idx_term = i }
+        if g_events[i] == EVT_PARENT_BUFFER_DROP { idx_drop = i }
+        i += 1:i32
+    }
+
+    if idx_agg == -1:i32 || idx_term == -1:i32 || idx_drop == -1:i32 {
+        return 3
+    }
+
+    // Strict causal order verification:
+    if !(idx_agg < idx_term) {
+        return 4 // Aggregation must happen before scope convergence
+    }
+    if !(idx_term < idx_drop) {
+        return 5 // Scope convergence must happen BEFORE parent Buffer drops
+    }
+
+    return 0
+}
