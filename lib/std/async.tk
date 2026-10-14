@@ -3,7 +3,7 @@
 // std/async.tk
 // High-level async combinators and structured concurrency.
 
-import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend_token, toka_task_commit_suspend, toka_task_abort_suspend, toka_wait_registry_allocate_pair_token, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_try_retain, toka_task_release, toka_task_start, toka_task_scope_create, toka_task_scope_try_enroll, toka_task_scope_begin_close, toka_task_scope_is_done, toka_task_scope_request_cancel_all, toka_task_scope_reap_finished, toka_task_scope_finish_close, toka_task_scope_release};
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend_token, toka_task_commit_suspend, toka_task_abort_suspend, toka_wait_registry_allocate_pair_token, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_try_retain, toka_task_release, toka_task_start, toka_task_scope_create, toka_task_scope_try_enroll, toka_task_scope_enroll_scoped, toka_task_scope_begin_close, toka_task_scope_is_done, toka_task_scope_request_cancel_all, toka_task_scope_reap_finished, toka_task_scope_finish_close, toka_task_scope_release};
 import core/result::{Result};
 import std/task::{current_time_ms, sleep_async, task_cancel, task_is_cancel_requested, task_subscribe_completion, task_unsubscribe_completion};
 import std/io::{println};
@@ -245,4 +245,26 @@ pub fn spawn_into<T>(scope#: TaskScope, cede task: TaskHandle<T>) -> Result<(), 
     owned.*coro_handle = null as nul *void
     toka_task_start(*live_tcb)
     return Result<(), TaskHandle<T>>::Ok(())
+}
+
+// Scoped task activation: enrolls cold child task into scope registry,
+// starts it, and returns the live handle preserving its lifetime dependencies.
+pub fn spawn_scoped<T>(scope#: TaskScope, cede task: TaskHandle<T>) -> TaskHandle<T> <- task {
+    auto owned# = cede task
+    auto nul *tcb_ptr = task_get_coro_handle<T>(owned)
+    assert(*tcb_ptr != null as nul *void, "TaskHandle coro handle is null")
+    auto *live_tcb = tcb_ptr.unwrap()
+    assert(toka_task_scope_enroll_scoped(scope.*registry, *live_tcb) == 1,
+           "TaskScope enrollment failed")
+    toka_task_start(*live_tcb)
+    return cede owned
+}
+
+pub fn join_scoped(scope#: TaskScope) -> async {
+    scope#.join_async().await
+}
+
+pub fn cancel_and_join(scope#: TaskScope) -> async {
+    scope#.cancel_all()
+    scope#.join_async().await
 }

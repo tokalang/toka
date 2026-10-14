@@ -1,0 +1,17 @@
+// STAGE2-D1a: Inner-block `buf1` escapes into outer `scope#` when a second `spawn_scoped` overwrites `scope#` carrier borrow
+import std/async::{TaskScope, spawn_scoped, join_scoped}
+shape Buffer(size: i32, tag: i32)
+fn worker(buf: Buffer) -> async i32 { return buf.size }
+pub fn outer_scope_inner_buf1_wiped_by_buf2() -> async i32 {
+    auto buf2 = Buffer(size = 200:i32, tag = 2:i32)
+    auto scope# = TaskScope::new()
+    {
+        auto buf1 = Buffer(size = 100:i32, tag = 1:i32)
+        {
+            auto t1 = spawn_scoped<i32>(scope#, cede worker(buf1))
+        }
+        auto t2 = spawn_scoped<i32>(scope#, cede worker(buf2))
+    }
+    join_scoped(scope#).await
+    return 0:i32
+}

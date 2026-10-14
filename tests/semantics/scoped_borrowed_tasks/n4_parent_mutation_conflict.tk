@@ -1,0 +1,23 @@
+// N4: Moving or mutably borrowing parent local while borrowed by active scoped child
+import std/async::{TaskScope, spawn_scoped, join_scoped}
+
+shape Buffer ( size: i32, tag: i32 )
+
+fn process_chunk(buf: Buffer, chunk_id: i32) -> async i32 {
+    return buf.size + chunk_id
+}
+
+fn consume_buf(cede b: Buffer) {
+    auto _ = cede b
+}
+
+pub fn move_during_borrow() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+    auto task = spawn_scoped<i32>(scope#, cede process_chunk(buf, 1:i32))
+    // MUST REJECT: moving buf while borrowed by active scoped child task
+    consume_buf(cede buf)
+    auto res = task.await
+    join_scoped(scope#).await
+    return res
+}

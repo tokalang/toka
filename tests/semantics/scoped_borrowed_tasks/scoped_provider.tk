@@ -1,0 +1,6 @@
+// Level-A retained-body provider module
+pub shape Buffer ( size: i32, tag: i32 )
+
+pub fn compute_provider(buf: Buffer) -> async i32 {
+    return buf.size * 2:i32
+}

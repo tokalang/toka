@@ -1711,7 +1711,24 @@ void Sema::checkStmt(Stmt *S) {
       }
     }
 
-
+    // Check for unjoined scoped borrowed tasks when returning
+    for (Scope *sc = CurrentScope; sc; sc = sc->Parent) {
+      for (const auto &[name, info] : sc->Symbols) {
+        if (info.IsDeclaredVariable &&
+            info.TypeObj && info.TypeObj->getSoulName().rfind("TaskScope", 0) == 0 &&
+            !info.LifeDependencySet.empty()) {
+          DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_BORROW_LIFETIME,
+                                   name, *info.LifeDependencySet.begin());
+          SourceLocation originLoc = findPathDeclaration(*info.LifeDependencySet.begin());
+          if (originLoc.isValid())
+            DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                     "shorter-lived dependency declared here");
+          HasError = true;
+          break;
+        }
+      }
+      if (HasError) break;
+    }
     std::shared_ptr<toka::Type> expectedRetObj = nullptr;
     if (CurrentFunction && CurrentFunction->ResolvedReturnType && CurrentFunctionReturnType == CurrentFunction->ReturnType) {
         expectedRetObj = CurrentFunction->ResolvedReturnType;

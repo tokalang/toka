@@ -54,6 +54,7 @@ extern fn toka_task_try_retain(*tcb: void) -> i32
 extern fn toka_task_scope_create() -> nul *void
 extern fn toka_task_clear_current(*tcb: void) -> void
 extern fn toka_task_scope_try_enroll(*scope: void, *tcb: void) -> i32
+extern fn toka_task_scope_enroll_scoped(*scope: void, *tcb: void) -> i32
 extern fn toka_task_scope_begin_close(*scope: void) -> i32
 extern fn toka_task_scope_is_done(*scope: void) -> i32
 extern fn toka_task_scope_request_cancel_all(*scope: void) -> void

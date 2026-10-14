@@ -136,6 +136,10 @@ public:
       uint64_t holderID, const std::set<AccessPath> &sources,
       size_t retainingLevels, int holderScopeDepth,
       bool mayReadOnDrop, SourceLocation originLoc);
+  std::optional<PALConflict> accumulateCarrierBorrows(
+      uint64_t holderID, const std::set<AccessPath> &sources,
+      size_t retainingLevels, int holderScopeDepth,
+      bool mayReadOnDrop, SourceLocation originLoc);
   void releaseCarrierBorrows(uint64_t holderID);
   std::optional<PALConflict> survivingCarrierBorrow(
       const AccessPath &source, int sourceScopeDepth,

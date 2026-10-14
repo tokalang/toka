@@ -3422,22 +3422,35 @@ void Sema::checkCleanupScope(Scope *scope, PALChecker &pal,
   });
   for (const auto &[name, info] : cleanup) {
     if (info->IsDeclaredVariable && !info->IsFunctionParameter &&
-        info->SymbolID && !info->Moved) {
-      AccessPath source;
-      source.RootID = info->SymbolID;
-      source.RootName = Type::stripMorphology(name);
-      source.RootLoc = info->DeclLoc;
-      if (auto conflict = pal.survivingCarrierBorrow(
-              source, scope->Depth, [&](const AccessPath &borrowed) {
-                return cleanupInvalidatesSource(borrowed);
-              })) {
+        info->SymbolID) {
+      if (info->TypeObj && info->TypeObj->getSoulName().rfind("TaskScope", 0) == 0 &&
+          !info->LifeDependencySet.empty()) {
         DiagnosticEngine::report(exitLoc.isValid() ? exitLoc : info->DeclLoc,
-                                 DiagID::ERR_MOVE_BORROWED,
-                                 conflict->displayPath());
+                                 DiagID::ERR_BORROW_LIFETIME,
+                                 name, *info->LifeDependencySet.begin());
+        SourceLocation originLoc = findPathDeclaration(*info->LifeDependencySet.begin());
+        if (originLoc.isValid())
+          DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                   "shorter-lived dependency declared here");
         HasError = true;
       }
+      if (!info->Moved) {
+        AccessPath source;
+        source.RootID = info->SymbolID;
+        source.RootName = Type::stripMorphology(name);
+        source.RootLoc = info->DeclLoc;
+        if (auto conflict = pal.survivingCarrierBorrow(
+                source, scope->Depth, [&](const AccessPath &borrowed) {
+                  return cleanupInvalidatesSource(borrowed);
+                })) {
+          DiagnosticEngine::report(exitLoc.isValid() ? exitLoc : info->DeclLoc,
+                                   DiagID::ERR_MOVE_BORROWED,
+                                   conflict->displayPath());
+          HasError = true;
+        }
+      }
+      pal.releaseCarrierBorrows(info->SymbolID);
     }
-    pal.releaseCarrierBorrows(info->SymbolID);
   }
 }
 

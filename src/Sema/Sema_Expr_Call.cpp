@@ -5523,6 +5523,48 @@ bool Sema::checkConsumingArgumentEscape(
       }
     }
     if (routesToReturn) {
+      for (size_t siblingIdx = 0; siblingIdx < callArgs.size(); ++siblingIdx) {
+        size_t actualFormalIdx = methodReceiver ? siblingIdx + 1 : siblingIdx;
+        if (actualFormalIdx == formalIndex) continue;
+        Expr *siblingExpr = callArgs[siblingIdx].get();
+        if (!siblingExpr || !siblingExpr->ResolvedType) continue;
+        std::string sibSoul = siblingExpr->ResolvedType->getSoulName();
+        if (sibSoul.rfind("TaskScope", 0) == 0) {
+          std::string sibName = getPathString(siblingExpr);
+          int sibDepth = getScopeDepth(sibName);
+          SymbolInfo *sibInfo = nullptr;
+          std::string sibRoot = extractPathRoot(sibName);
+          std::string actualSib = sibRoot;
+          CurrentScope->findVariableWithDeref(sibRoot, sibInfo, actualSib);
+          bool sibIsParam = sibInfo && sibInfo->IsFunctionParameter;
+          if (sibIsParam || sibDepth < depDepth) {
+            error(callSite, DiagID::ERR_BORROW_LIFETIME, sibName, depStr);
+            SourceLocation originLoc = findPathDeclaration(depStr);
+            if (originLoc.isValid())
+              DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                       "shorter-lived dependency declared here");
+            return false;
+          }
+          if (sibInfo) {
+            sibInfo->LifeDependencySet.insert(depStr);
+            if (depInfo) {
+              sibInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
+                                                depInfo->LifeDependencySet.end());
+              AccessPath depPath;
+              depPath.RootID = depInfo->SymbolID;
+              depPath.RootName = extractPathRoot(depStr);
+              depPath.RootLoc = depInfo->DeclLoc;
+              size_t retainingLevels = (CurrentScope->Depth >= sibDepth)
+                  ? static_cast<size_t>(CurrentScope->Depth - sibDepth) : 0;
+              if (auto conflict = PALCheckerState.accumulateCarrierBorrows(
+                      sibInfo->SymbolID, {depPath}, retainingLevels, sibDepth, true, callSite->Loc)) {
+                error(callSite, DiagID::ERR_BORROW_MUT, conflict->displayPath());
+                return false;
+              }
+            }
+          }
+        }
+      }
       continue;
     }
 
@@ -5559,6 +5601,17 @@ bool Sema::checkConsumingArgumentEscape(
           if (depInfo) {
             sibInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
                                               depInfo->LifeDependencySet.end());
+            AccessPath depPath;
+            depPath.RootID = depInfo->SymbolID;
+            depPath.RootName = extractPathRoot(depStr);
+            depPath.RootLoc = depInfo->DeclLoc;
+            size_t retainingLevels = (CurrentScope->Depth >= sibDepth)
+                ? static_cast<size_t>(CurrentScope->Depth - sibDepth) : 0;
+            if (auto conflict = PALCheckerState.accumulateCarrierBorrows(
+                    sibInfo->SymbolID, {depPath}, retainingLevels, sibDepth, true, callSite->Loc)) {
+              error(callSite, DiagID::ERR_BORROW_MUT, conflict->displayPath());
+              return false;
+            }
           }
         }
         caughtBySibling = true;
@@ -12802,6 +12855,22 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       error(Call->Args[i].get(),
             DiagID::ERR_SEMA_CEDE_ARGUMENT_TO_BORROWED_PARAMETER,
             getPathString(Call->Args[i].get()), parameter);
+    }
+    if (Fn && (Fn->Effect == EffectKind::Async || isTaskLifetimeCarryingType(Fn->ResolvedReturnType)) && !Fn->Body) {
+      Expr *argExpr = Call->Args[i].get();
+      auto argType = argExpr ? argExpr->ResolvedType : nullptr;
+      if (argType && !argType->isInteger() && !argType->isFloatingPoint() &&
+          !argType->isBoolean() && !argType->isUnit()) {
+        std::string argName = getPathString(argExpr);
+        error(Call->Args[i].get(), DiagID::ERR_BORROW_LIFETIME, Fn->Name, argName.empty() ? "argument" : argName);
+        SourceLocation originLoc = findPathDeclaration(argName);
+        if (originLoc.isValid())
+          DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                   "shorter-lived dependency declared here");
+        if (directArgumentRollback)
+          directArgumentRollback->reject();
+        return Type::fromString("unknown");
+      }
     }
     if (!checkConsumingArgumentEscape(
             Call->Args[i].get(), paramType, isCededParam, Fn, i, Call->Args, Call)) {
