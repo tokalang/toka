@@ -5307,6 +5307,10 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
 
     if (auto *bin = dynamic_cast<BinaryExpr *>(e)) {
       if (bin->Op == "=") {
+        if (exprReferencesTracked(bin->LHS.get())) {
+          return false;
+        }
+
         if (exprReferencesTracked(bin->RHS.get())) {
           Expr *unwrappedRHS = unwrapExpr(bin->RHS.get());
           if (auto *v = dynamic_cast<VariableExpr *>(unwrappedRHS)) {
@@ -5319,10 +5323,11 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
               }
               return false;
             }
+            return false;
           }
           return checkSafeTaskConsumerBodyHelper(bin->RHS.get(), trackedVars);
         }
-        return true;
+        return false;
       }
     }
 
