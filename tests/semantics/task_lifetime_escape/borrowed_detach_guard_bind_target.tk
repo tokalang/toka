@@ -1,0 +1,14 @@
+import core/task::{TaskHandle}
+shape Buffer(size: i32, tag: i32)
+fn process(buf: Buffer) -> async i32 { return buf.size }
+import std/task::{detach_forget}
+
+fn forward_guard_bind(cede task: TaskHandle<i32>) {
+    guard auto x = (if true { detach_forget(cede task); 1:i32 } else { 0:i32 }) else { return }
+}
+
+pub fn leak() {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto task = process(buf)
+    forward_guard_bind(cede task)
+}

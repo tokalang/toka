@@ -1,0 +1,20 @@
+import core/task::{TaskHandle}
+shape Buffer(size: i32, tag: i32)
+fn process(buf: Buffer) -> async i32 { return buf.size }
+import std/task::{detach_forget}
+shape Pair(a: i32, b: i32)
+
+fn detach_pair(cede task: TaskHandle<i32>) -> Pair {
+    detach_forget(cede task)
+    return Pair(a = 1:i32, b = 2:i32)
+}
+
+fn forward_destruct(cede task: TaskHandle<i32>) {
+    auto Pair(a, b) = detach_pair(cede task)
+}
+
+pub fn leak() {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto task = process(buf)
+    forward_destruct(cede task)
+}

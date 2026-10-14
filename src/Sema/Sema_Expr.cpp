@@ -7168,14 +7168,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       outcomeFunction = nullptr;
     }
 
-    std::map<std::string, uint64_t> masksBefore;
-    std::map<std::string, bool> movedBefore;
-    std::map<std::string, ExactPlaceFacts> exactPlacesBefore;
-    for (auto &pair : CurrentScope->Symbols) {
-      masksBefore[pair.first] = pair.second.InitMask;
-      movedBefore[pair.first] = pair.second.Moved;
-      exactPlacesBefore[pair.first] = pair.second.ExactPlace;
-    }
+    auto masksBefore = captureVisibleInitMasks(CurrentScope);
+    auto movedBefore = captureVisibleMoved(CurrentScope);
+    auto exactPlacesBefore = captureVisibleExactPlaceFacts(CurrentScope);
+    auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
     bool hasReachableArm = false;
     auto externalBeforeMatch = captureVisibleExternalDependencies();
@@ -7197,17 +7193,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_TaskResults = tasksBeforeMatch;
       restoreVisibleReferenceTargets(CurrentScope, referencesBefore);
       restoreVisibleExternalDependencies(externalBeforeMatch);
-      for (auto &pair : masksBefore) {
-        CurrentScope->Symbols[pair.first].InitMask = pair.second;
-      }
-      for (auto &pair : movedBefore) {
-        CurrentScope->Symbols[pair.first].Moved = pair.second;
-      }
-      for (auto &pair : exactPlacesBefore) {
-        auto &info = CurrentScope->Symbols[pair.first];
-        info.ExactPlace = pair.second;
-        info.InitMask = pair.second.applyToLegacyInitMask(info.InitMask);
-      }
+      restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
+                                  exactPlacesBefore);
+      restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
       PALCheckerState.restore(palBefore);
     };
 
@@ -7289,13 +7277,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
       if (!allPathsJump(arm->Body.get())) {
         auto armExternal = captureVisibleExternalDependencies();
+        auto armMasks = captureVisibleInitMasks(CurrentScope);
+        auto armMoved = captureVisibleMoved(CurrentScope);
+        auto armExactPlaces = captureVisibleExactPlaceFacts(CurrentScope);
         if (!hasReachableArm) {
           mergedExternal = std::move(armExternal);
-          for (auto &pair : CurrentScope->Symbols) {
-            mergedMasks[pair.first] = pair.second.InitMask;
-            mergedMoved[pair.first] = pair.second.Moved;
-            mergedExactPlaces[pair.first] = pair.second.ExactPlace;
-          }
+          mergedMasks = std::move(armMasks);
+          mergedMoved = std::move(armMoved);
+          mergedExactPlaces = std::move(armExactPlaces);
           mergedReferences = captureVisibleReferenceTargets(CurrentScope);
           mergedBytes = m_ByteBuffers;
           mergedTasks = m_TaskResults;
@@ -7304,23 +7293,29 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         } else {
           mergedExternal = joinExternalDependencies(mergedExternal,
                                                      armExternal);
-          for (auto &pair : CurrentScope->Symbols) {
-            uint64_t armMask = pair.second.InitMask;
+          for (const auto &pair : masksBefore) {
+            uint64_t armMask =
+                armMasks.count(pair.first) ? armMasks[pair.first] : 0;
             if (mergedMasks.count(pair.first))
               mergedMasks[pair.first] &= armMask;
             else
               mergedMasks[pair.first] = armMask;
 
-            bool armMoved = pair.second.Moved;
+            bool armMovedVal =
+                armMoved.count(pair.first) ? armMoved[pair.first] : false;
             if (mergedMoved.count(pair.first))
-              mergedMoved[pair.first] = mergedMoved[pair.first] || armMoved;
+              mergedMoved[pair.first] = mergedMoved[pair.first] || armMovedVal;
             else
-              mergedMoved[pair.first] = armMoved;
+              mergedMoved[pair.first] = armMovedVal;
 
+            ExactPlaceFacts armExact =
+                armExactPlaces.count(pair.first)
+                    ? armExactPlaces[pair.first]
+                    : ExactPlaceFacts::bottom();
             if (mergedExactPlaces.count(pair.first))
-              mergedExactPlaces[pair.first] |= pair.second.ExactPlace;
+              mergedExactPlaces[pair.first] |= armExact;
             else
-              mergedExactPlaces[pair.first] = pair.second.ExactPlace;
+              mergedExactPlaces[pair.first] = armExact;
           }
 
           PALChecker nextMerged = mergedPAL;
@@ -7361,14 +7356,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_TaskResults = std::move(mergedTasks);
       restoreVisibleReferenceTargets(CurrentScope, mergedReferences);
       restoreVisibleExternalDependencies(mergedExternal);
-      for (auto &pair : CurrentScope->Symbols) {
-        if (mergedMasks.count(pair.first))
-          pair.second.InitMask = mergedMasks[pair.first];
-        if (mergedMoved.count(pair.first))
-          pair.second.Moved = mergedMoved[pair.first];
-        if (mergedExactPlaces.count(pair.first)) {
-          pair.second.ExactPlace = mergedExactPlaces[pair.first];
-          syncLegacyProjectionLiveness(pair.second);
+      restoreVisibleAnalysisState(CurrentScope, mergedMasks, mergedMoved,
+                                  mergedExactPlaces);
+      for (const auto &pair : mergedExactPlaces) {
+        SymbolInfo *info = nullptr;
+        if (CurrentScope->findSymbol(pair.first, info) && info) {
+          syncLegacyProjectionLiveness(*info);
         }
       }
       PALCheckerState.restore(mergedPAL);

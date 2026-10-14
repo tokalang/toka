@@ -99,6 +99,13 @@ def main():
         ("borrowed_detach_if.tk", "E0456"),
         ("borrowed_detach_loop.tk", "E0456"),
         ("borrowed_detach_match.tk", "E0456"),
+        ("borrowed_detach_assign_rhs.tk", "E0456"),
+        ("borrowed_detach_destruct_init.tk", "E0456"),
+        ("borrowed_detach_guard_bind_target.tk", "E0456"),
+        ("borrowed_detach_match_target.tk", "E0456"),
+        ("borrowed_detach_nested_call_arg.tk", "E0456"),
+        ("borrowed_start_guard_bind_target.tk", "E0456"),
+        ("borrowed_start_match_target.tk", "E0456"),
         ("borrowed_start_wrapper.tk", "E0456"),
         ("borrowed_record_argument.tk", "E0456"),
         ("borrowed_record_binding.tk", "E0456"),
@@ -110,6 +117,7 @@ def main():
 
     positives = [
         "safe_drop_consumer.tk",
+        "safe_match_drop.tk",
         "legal_record_argument.tk",
         "legal_option_argument.tk",
         "p2_owned_task_in_vec.tk",
