@@ -1,0 +1,16 @@
+import std/vec::{Vec}
+import core/task::{TaskHandle}
+import core/option::{Option}
+
+fn worker(x: i32) -> async i32 { return x }
+
+pub fn legal_push(out_vec#: Vec<Option<TaskHandle<i32>>>) {
+    auto t = worker(10:i32)
+    out_vec#.push(Option<TaskHandle<i32>>::Some(cede t))
+}
+
+fn main() -> i32 {
+    auto v# = Vec<Option<TaskHandle<i32>>>::new()
+    legal_push(v#)
+    return 0:i32
+}
