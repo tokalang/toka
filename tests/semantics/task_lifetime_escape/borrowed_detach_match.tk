@@ -1,0 +1,18 @@
+import core/task::{TaskHandle}
+shape Buffer(size: i32, tag: i32)
+fn process(buf: Buffer) -> async i32 { return buf.size }
+import std/task::{detach_forget}
+
+fn forward_match(cede task: TaskHandle<i32>) {
+    match 1:i32 {
+        _ => {
+            detach_forget(cede task)
+        }
+    }
+}
+
+pub fn leak() {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto task = process(buf)
+    forward_match(cede task)
+}

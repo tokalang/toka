@@ -4977,11 +4977,15 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
         return trackedVars.count(Type::stripMorphology(v->Name)) > 0;
       }
       if (auto *c = dynamic_cast<CedeExpr *>(n)) return rec(c->Value.get());
+      if (auto *p = dynamic_cast<PassExpr *>(n)) return rec(p->Value.get());
       if (auto *c = dynamic_cast<CastExpr *>(n)) return rec(c->Expression.get());
       if (auto *u = dynamic_cast<UnsafeExpr *>(n)) return rec(u->Expression.get());
       if (auto *a = dynamic_cast<AddressOfExpr *>(n)) return rec(a->Expression.get());
+      if (auto *d = dynamic_cast<DereferenceExpr *>(n)) return rec(d->Expression.get());
       if (auto *u = dynamic_cast<UnaryExpr *>(n)) return rec(u->RHS.get());
       if (auto *b = dynamic_cast<BinaryExpr *>(n)) return rec(b->LHS.get()) || rec(b->RHS.get());
+      if (auto *p = dynamic_cast<PostfixExpr *>(n)) return rec(p->LHS.get());
+      if (auto *u = dynamic_cast<UnwrapPropagationExpr *>(n)) return rec(u->Base.get());
       if (auto *m = dynamic_cast<MemberExpr *>(n)) return rec(m->Object.get());
       if (auto *mc = dynamic_cast<MethodCallExpr *>(n)) {
         if (rec(mc->Object.get())) return true;
@@ -5004,11 +5008,27 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
         for (const auto &el : arr->Elements) if (rec(el.get())) return true;
         return false;
       }
+      if (auto *ra = dynamic_cast<RepeatedArrayExpr *>(n)) {
+        return rec(ra->Value.get()) || rec(ra->Count.get());
+      }
       if (auto *idx = dynamic_cast<ArrayIndexExpr *>(n)) {
         if (rec(idx->Array.get())) return true;
         for (const auto &i : idx->Indices) if (rec(i.get())) return true;
         return false;
       }
+      if (auto *rt = dynamic_cast<RawTakeExpr *>(n)) return rec(rt->Slot.get());
+      if (auto *al = dynamic_cast<AllocExpr *>(n)) {
+        return rec(al->Initializer.get()) || rec(al->ArraySize.get());
+      }
+      if (auto *ne = dynamic_cast<NewExpr *>(n)) {
+        return rec(ne->Initializer.get()) || rec(ne->ArraySize.get());
+      }
+      if (auto *ai = dynamic_cast<ArrayInitExpr *>(n)) {
+        return rec(ai->Initializer.get()) || rec(ai->ArraySize.get());
+      }
+      if (auto *sp = dynamic_cast<SpreadExpr *>(n)) return rec(sp->Base.get());
+      if (auto *el = dynamic_cast<ElisionExpr *>(n)) return rec(el->Target.get());
+      if (auto *brk = dynamic_cast<BreakExpr *>(n)) return rec(brk->Value.get());
       if (auto *st = dynamic_cast<StartExpr *>(n)) return rec(st->Expression.get());
       if (auto *aw = dynamic_cast<AwaitExpr *>(n)) return rec(aw->Expression.get());
       if (auto *w = dynamic_cast<WaitExpr *>(n)) return rec(w->Expression.get());
@@ -5024,15 +5044,51 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
       if (auto *guardE = dynamic_cast<GuardExpr *>(n)) {
         return rec(guardE->Condition.get()) || rec(guardE->Then.get()) || rec(guardE->Else.get());
       }
+      if (auto *me = dynamic_cast<MatchExpr *>(n)) {
+        if (rec(me->Target.get())) return true;
+        for (const auto &arm : me->Arms) {
+          if (rec(arm->Guard.get())) return true;
+          if (rec(arm->Body.get())) return true;
+        }
+        return false;
+      }
+      if (auto *cl = dynamic_cast<ClosureExpr *>(n)) {
+        return rec(cl->Body.get());
+      }
       if (auto *blk = dynamic_cast<BlockStmt *>(n)) {
         for (const auto &s : blk->Statements) if (rec(s.get())) return true;
         return false;
       }
+      if (auto *ib = dynamic_cast<InitBlockStmt *>(n)) {
+        return rec(ib->Body.get());
+      }
       if (auto *es = dynamic_cast<ExprStmt *>(n)) return rec(es->Expression.get());
       if (auto *ret = dynamic_cast<ReturnStmt *>(n)) return rec(ret->ReturnValue.get());
       if (auto *vd = dynamic_cast<VariableDecl *>(n)) return rec(vd->Init.get());
+      if (auto *dd = dynamic_cast<DestructuringDecl *>(n)) return rec(dd->Init.get());
+      if (auto *gb = dynamic_cast<GuardBindStmt *>(n)) {
+        return rec(gb->Target.get()) || rec(gb->ElseBody.get());
+      }
+      if (auto *del = dynamic_cast<DeleteStmt *>(n)) return rec(del->Expression.get());
+      if (auto *fr = dynamic_cast<FreeStmt *>(n)) {
+        return rec(fr->Expression.get()) || rec(fr->Count.get());
+      }
       if (auto *us = dynamic_cast<UnsafeStmt *>(n)) return rec(us->Statement.get());
-      return false;
+
+      // Known leaf literals that cannot reference any variable
+      if (dynamic_cast<NumberExpr *>(n) || dynamic_cast<FloatExpr *>(n) ||
+          dynamic_cast<BoolExpr *>(n) || dynamic_cast<NullExpr *>(n) ||
+          dynamic_cast<NoneExpr *>(n) || dynamic_cast<UnsetExpr *>(n) ||
+          dynamic_cast<TodoExpr *>(n) || dynamic_cast<StringExpr *>(n) ||
+          dynamic_cast<ViewStringExpr *>(n) || dynamic_cast<CharLiteralExpr *>(n) ||
+          dynamic_cast<ContinueExpr *>(n) || dynamic_cast<UnreachableStmt *>(n) ||
+          dynamic_cast<ComptimeFieldExpr *>(n) || dynamic_cast<ComptimeReflectExpr *>(n) ||
+          dynamic_cast<SizeOfExpr *>(n) || dynamic_cast<MagicExpr *>(n)) {
+        return false;
+      }
+
+      // Conservative fail-closed for any unhandled node
+      return true;
     };
     return rec(e);
   };
@@ -5089,6 +5145,49 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
     return true;
   }
 
+  if (auto *destruct = dynamic_cast<DestructuringDecl *>(node)) {
+    if (destruct->Init && exprReferencesTracked(destruct->Init.get())) {
+      for (const auto &v : destruct->Variables) {
+        trackedVars.insert(Type::stripMorphology(v.Name));
+      }
+    }
+    return true;
+  }
+
+  if (auto *guardBind = dynamic_cast<GuardBindStmt *>(node)) {
+    if (guardBind->Target && exprReferencesTracked(guardBind->Target.get())) {
+      if (guardBind->Pat) {
+        std::function<void(MatchArm::Pattern *)> collectPatternBindings =
+            [&](MatchArm::Pattern *p) {
+              if (!p) return;
+              if (p->PatternKind == MatchArm::Pattern::Variable && !p->Name.empty()) {
+                trackedVars.insert(Type::stripMorphology(p->Name));
+              }
+              for (const auto &sp : p->SubPatterns) {
+                collectPatternBindings(sp.get());
+              }
+            };
+        collectPatternBindings(guardBind->Pat.get());
+      }
+    }
+    if (guardBind->ElseBody && !checkSafeTaskConsumerBodyHelper(guardBind->ElseBody.get(), trackedVars))
+      return false;
+    return true;
+  }
+
+  if (auto *del = dynamic_cast<DeleteStmt *>(node)) {
+    if (del->Expression && exprReferencesTracked(del->Expression.get()))
+      return false;
+    return true;
+  }
+
+  if (auto *fr = dynamic_cast<FreeStmt *>(node)) {
+    if ((fr->Expression && exprReferencesTracked(fr->Expression.get())) ||
+        (fr->Count && exprReferencesTracked(fr->Count.get())))
+      return false;
+    return true;
+  }
+
   if (auto *exprStmt = dynamic_cast<ExprStmt *>(node)) {
     return checkSafeTaskConsumerBodyHelper(exprStmt->Expression.get(), trackedVars);
   }
@@ -5128,6 +5227,40 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
     if (forExpr->Body && !checkSafeTaskConsumerBodyHelper(forExpr->Body.get(), trackedVars))
       return false;
     if (forExpr->ElseBody && !checkSafeTaskConsumerBodyHelper(forExpr->ElseBody.get(), trackedVars))
+      return false;
+    return true;
+  }
+
+  if (auto *matchExpr = dynamic_cast<MatchExpr *>(node)) {
+    bool targetRef = matchExpr->Target && exprReferencesTracked(matchExpr->Target.get());
+
+    for (const auto &arm : matchExpr->Arms) {
+      if (arm->Guard && exprReferencesTracked(arm->Guard.get()))
+        return false;
+
+      std::set<std::string> armTrackedVars = trackedVars;
+      if (targetRef && arm->Pat) {
+        std::function<void(MatchArm::Pattern *)> collectPatternBindings =
+            [&](MatchArm::Pattern *p) {
+              if (!p) return;
+              if (p->PatternKind == MatchArm::Pattern::Variable && !p->Name.empty()) {
+                armTrackedVars.insert(Type::stripMorphology(p->Name));
+              }
+              for (const auto &sp : p->SubPatterns) {
+                collectPatternBindings(sp.get());
+              }
+            };
+        collectPatternBindings(arm->Pat.get());
+      }
+
+      if (arm->Body && !checkSafeTaskConsumerBodyHelper(arm->Body.get(), armTrackedVars))
+        return false;
+    }
+    return true;
+  }
+
+  if (auto *closure = dynamic_cast<ClosureExpr *>(node)) {
+    if (closure->Body && !checkSafeTaskConsumerBodyHelper(closure->Body.get(), trackedVars))
       return false;
     return true;
   }

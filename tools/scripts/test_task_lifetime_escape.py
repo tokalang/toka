@@ -98,6 +98,7 @@ def main():
         ("borrowed_detach_wrapper.tk", "E0456"),
         ("borrowed_detach_if.tk", "E0456"),
         ("borrowed_detach_loop.tk", "E0456"),
+        ("borrowed_detach_match.tk", "E0456"),
         ("borrowed_start_wrapper.tk", "E0456"),
         ("borrowed_record_argument.tk", "E0456"),
         ("borrowed_record_binding.tk", "E0456"),
