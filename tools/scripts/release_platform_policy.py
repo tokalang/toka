@@ -1598,23 +1598,12 @@ def candidate_016_receipt_errors(receipt, revision, label, target=None):
             errors.append('0.16 source_hidden_tki missing_interface_command is mandatory')
         if 'corrupt_interface_command' not in tki_facts:
             errors.append('0.16 source_hidden_tki corrupt_interface_command is mandatory')
-        if 'escape_negative_commands' not in tki_facts:
-            errors.append('0.16 source_hidden_tki escape_negative_commands is mandatory')
-        if tki_facts.get('escape_negative_rejected') is not True:
+        if 'escape_negative_commands' not in tki_facts or not isinstance(tki_facts['escape_negative_commands'], dict):
+            errors.append('0.16 source_hidden_tki escape_negative_commands is mandatory and must be a dictionary')
+        elif set(tki_facts['escape_negative_commands'].keys()) != {'check', 'object', 'ir', 'compile'}:
+            errors.append('0.16 source_hidden_tki escape_negative_commands must contain exactly [check, object, ir, compile]')
+        if tki_facts.get('escape_negative_rejected') is not True or type(tki_facts.get('escape_negative_rejected')) is not bool:
             errors.append('0.16 source_hidden_tki escape_negative_rejected must be boolean True')
-        esc_cmds = tki_facts.get('escape_negative_commands')
-        if isinstance(esc_cmds, dict):
-            for m_key in ('check', 'object', 'ir', 'compile'):
-                if m_key not in esc_cmds:
-                    errors.append(f'0.16 source_hidden_tki escape_negative_commands missing {m_key}')
-                else:
-                    c_data = esc_cmds[m_key]
-                    if not isinstance(c_data, dict):
-                        errors.append(f'0.16 source_hidden_tki escape_negative_commands {m_key} is not a dict')
-                    elif c_data.get('exit_code') != 1:
-                        errors.append(f'0.16 source_hidden_tki escape_negative_commands {m_key} exit code must be 1')
-                    elif 'E0455' not in str(c_data.get('stderr', '')):
-                        errors.append(f'0.16 source_hidden_tki escape_negative_commands {m_key} stderr missing E0455')
 
     ver = label.removeprefix('v')
     ver_regex = re.compile(r'(?<![0-9a-zA-Z._+-])' + re.escape(ver) + r'(?![0-9a-zA-Z._+-])')
@@ -1675,100 +1664,143 @@ def candidate_016_receipt_errors(receipt, revision, label, target=None):
 
     # Full command-receipt validation for nested TKI negative commands
     if isinstance(tki_facts, dict):
+        nested_items = []
         for neg_key in ('missing_interface_command', 'corrupt_interface_command'):
-            if neg_key not in tki_facts:
-                continue
-            n_rec = tki_facts[neg_key]
+            if neg_key in tki_facts:
+                nested_items.append((neg_key, tki_facts[neg_key], 'legacy_tki'))
+        esc_dict = tki_facts.get('escape_negative_commands')
+        if isinstance(esc_dict, dict):
+            for mode_key in ('check', 'object', 'ir', 'compile'):
+                if mode_key in esc_dict:
+                    nested_items.append((f'escape_negative_commands {mode_key}', esc_dict[mode_key], mode_key))
+
+        for desc, n_rec, kind in nested_items:
             if not isinstance(n_rec, dict):
-                errors.append(f'0.16 source_hidden_tki {neg_key} must be a dictionary')
+                errors.append(f'0.16 source_hidden_tki {desc} must be a dictionary')
                 continue
             # Required field presence and strict types
             if 'cwd' not in n_rec or not isinstance(n_rec['cwd'], str) or not n_rec['cwd']:
-                errors.append(f'0.16 source_hidden_tki {neg_key} cwd missing or invalid')
+                errors.append(f'0.16 source_hidden_tki {desc} cwd missing or invalid')
             cwd_val = n_rec.get('cwd', '')
 
             if 'exit_code' not in n_rec or type(n_rec['exit_code']) is not int or isinstance(n_rec['exit_code'], bool) or n_rec['exit_code'] != 1:
-                errors.append(f'0.16 source_hidden_tki {neg_key} exit_code must be exact integer 1')
+                errors.append(f'0.16 source_hidden_tki {desc} exit_code must be exact integer 1')
 
             if 'signal' not in n_rec or n_rec['signal'] is not None:
-                errors.append(f'0.16 source_hidden_tki {neg_key} signal must be explicit null')
+                errors.append(f'0.16 source_hidden_tki {desc} signal must be explicit null')
 
             if 'termination' not in n_rec or n_rec['termination'] is not None:
-                errors.append(f'0.16 source_hidden_tki {neg_key} termination must be explicit null')
+                errors.append(f'0.16 source_hidden_tki {desc} termination must be explicit null')
 
             if 'error' not in n_rec or n_rec['error'] is not None:
-                errors.append(f'0.16 source_hidden_tki {neg_key} error must be explicit null')
+                errors.append(f'0.16 source_hidden_tki {desc} error must be explicit null')
 
             if 'ok' not in n_rec or type(n_rec['ok']) is not bool or n_rec['ok'] is not True:
-                errors.append(f'0.16 source_hidden_tki {neg_key} ok must be exact boolean True')
+                errors.append(f'0.16 source_hidden_tki {desc} ok must be exact boolean True')
 
             if 'result' not in n_rec or n_rec['result'] != 'pass':
-                errors.append(f'0.16 source_hidden_tki {neg_key} result must be pass')
+                errors.append(f'0.16 source_hidden_tki {desc} result must be pass')
 
             if 'artifact_absent' not in n_rec or type(n_rec['artifact_absent']) is not bool or n_rec['artifact_absent'] is not True:
-                errors.append(f'0.16 source_hidden_tki {neg_key} artifact_absent must be exact boolean True')
+                errors.append(f'0.16 source_hidden_tki {desc} artifact_absent must be exact boolean True')
 
             if 'execution_ms' not in n_rec:
-                errors.append(f'0.16 source_hidden_tki {neg_key} execution_ms missing')
+                errors.append(f'0.16 source_hidden_tki {desc} execution_ms missing')
             else:
                 ms = n_rec['execution_ms']
                 if type(ms) not in (int, float) or isinstance(ms, bool) or not math.isfinite(ms) or ms <= 0:
-                    errors.append(f'0.16 source_hidden_tki {neg_key} execution_ms invalid')
+                    errors.append(f'0.16 source_hidden_tki {desc} execution_ms invalid')
 
             if 'argv' not in n_rec:
-                errors.append(f'0.16 source_hidden_tki {neg_key} argv missing')
+                errors.append(f'0.16 source_hidden_tki {desc} argv missing')
                 n_argv = []
             elif not isinstance(n_rec['argv'], list) or not n_rec['argv'] or not all(isinstance(a, str) and a for a in n_rec['argv']):
-                errors.append(f'0.16 source_hidden_tki {neg_key} argv invalid')
+                errors.append(f'0.16 source_hidden_tki {desc} argv invalid')
                 n_argv = []
             else:
                 n_argv = n_rec['argv']
                 n_prog = os.path.normpath(n_argv[0].replace('\\', '/'))
                 if expected_tokac and n_prog != expected_tokac:
-                    errors.append(f'0.16 source_hidden_tki {neg_key} compiler mismatch: executes {n_prog}, expected {expected_tokac}')
+                    errors.append(f'0.16 source_hidden_tki {desc} compiler mismatch: executes {n_prog}, expected {expected_tokac}')
+                if os.path.basename(n_prog) not in ('tokac', 'tokac.exe'):
+                    errors.append(f'0.16 source_hidden_tki {desc} compiler executable must be tokac')
+
+            out_hash = n_rec.get('stdout_sha256')
+            if not isinstance(out_hash, str) or not re.fullmatch(r'[0-9a-f]{64}', out_hash):
+                errors.append(f'0.16 source_hidden_tki {desc} stdout_sha256 missing or invalid')
+
+            err_hash = n_rec.get('stderr_sha256')
+            if not isinstance(err_hash, str) or not re.fullmatch(r'[0-9a-f]{64}', err_hash):
+                errors.append(f'0.16 source_hidden_tki {desc} stderr_sha256 missing or invalid')
+
+            if 'stdout' not in n_rec or not isinstance(n_rec['stdout'], str):
+                errors.append(f'0.16 source_hidden_tki {desc} stdout missing or not a string')
+            else:
+                out_text = n_rec['stdout']
+                if isinstance(out_hash, str) and hashlib.sha256(out_text.encode('utf-8')).hexdigest() != out_hash:
+                    errors.append(f'0.16 source_hidden_tki {desc} stdout content does not match stdout_sha256')
+
+            if 'stderr' not in n_rec or not isinstance(n_rec['stderr'], str):
+                errors.append(f'0.16 source_hidden_tki {desc} stderr missing or not a string')
+                err_text = ''
+            else:
+                err_text = n_rec['stderr']
+                if isinstance(err_hash, str) and hashlib.sha256(err_text.encode('utf-8')).hexdigest() != err_hash:
+                    errors.append(f'0.16 source_hidden_tki {desc} stderr content does not match stderr_sha256')
+
+            if kind == 'legacy_tki':
                 if len(n_argv) != 7 or n_argv.count('-I') != 1 or n_argv.count('-o') != 1 or n_argv[1] != '-I' or n_argv[5] != '-o':
-                    errors.append(f'0.16 source_hidden_tki {neg_key} argv template mismatch')
+                    errors.append(f'0.16 source_hidden_tki {desc} argv template mismatch')
                 else:
                     if not (n_argv[3].endswith('/consumer.tk') or n_argv[3] == 'consumer.tk'):
-                        errors.append(f'0.16 source_hidden_tki {neg_key} missing consumer source argument')
+                        errors.append(f'0.16 source_hidden_tki {desc} missing consumer source argument')
                     if os.path.basename(n_argv[4]) != 'provider.o':
-                        errors.append(f'0.16 source_hidden_tki {neg_key} missing provider.o object argument')
+                        errors.append(f'0.16 source_hidden_tki {desc} missing provider.o object argument')
                     bad_bin_base = os.path.basename(n_argv[6])
                     if bad_bin_base not in ('bad_bin', 'bad_bin.bin', 'bad_bin.exe'):
-                        errors.append(f'0.16 source_hidden_tki {neg_key} output basename mismatch')
+                        errors.append(f'0.16 source_hidden_tki {desc} output basename mismatch')
                     if isinstance(cwd_val, str) and cwd_val:
                         norm_i = os.path.normpath(n_argv[2] if os.path.isabs(n_argv[2]) else os.path.join(cwd_val, n_argv[2]))
                         norm_cwd = os.path.normpath(cwd_val)
                         if norm_i != norm_cwd:
-                            errors.append(f'0.16 source_hidden_tki {neg_key} -I directory must match cwd')
-
-            out_hash = n_rec.get('stdout_sha256')
-            if not isinstance(out_hash, str) or not re.fullmatch(r'[0-9a-f]{64}', out_hash):
-                errors.append(f'0.16 source_hidden_tki {neg_key} stdout_sha256 missing or invalid')
-
-            err_hash = n_rec.get('stderr_sha256')
-            if not isinstance(err_hash, str) or not re.fullmatch(r'[0-9a-f]{64}', err_hash):
-                errors.append(f'0.16 source_hidden_tki {neg_key} stderr_sha256 missing or invalid')
-
-            if 'stdout' not in n_rec or not isinstance(n_rec['stdout'], str):
-                errors.append(f'0.16 source_hidden_tki {neg_key} stdout missing or not a string')
-            else:
-                out_text = n_rec['stdout']
-                if isinstance(out_hash, str) and hashlib.sha256(out_text.encode('utf-8')).hexdigest() != out_hash:
-                    errors.append(f'0.16 source_hidden_tki {neg_key} stdout content does not match stdout_sha256')
-
-            if 'stderr' not in n_rec or not isinstance(n_rec['stderr'], str):
-                errors.append(f'0.16 source_hidden_tki {neg_key} stderr missing or not a string')
-            else:
-                err_text = n_rec['stderr']
-                if isinstance(err_hash, str) and hashlib.sha256(err_text.encode('utf-8')).hexdigest() != err_hash:
-                    errors.append(f'0.16 source_hidden_tki {neg_key} stderr content does not match stderr_sha256')
+                            errors.append(f'0.16 source_hidden_tki {desc} -I directory must match cwd')
                 if 'E0901' not in err_text:
-                    errors.append(f'0.16 source_hidden_tki {neg_key} stderr missing E0901')
-                if neg_key == 'missing_interface_command' and 'Could not open file' not in err_text:
-                    errors.append(f'0.16 source_hidden_tki {neg_key} stderr missing missing-file diagnostic fact')
-                elif neg_key == 'corrupt_interface_command' and 'Incompatible or stale interface file' not in err_text:
-                    errors.append(f'0.16 source_hidden_tki {neg_key} stderr missing corrupt-file diagnostic fact')
+                    errors.append(f'0.16 source_hidden_tki {desc} stderr missing E0901')
+                if desc == 'missing_interface_command' and 'Could not open file' not in err_text:
+                    errors.append(f'0.16 source_hidden_tki {desc} stderr missing missing-file diagnostic fact')
+                elif desc == 'corrupt_interface_command' and 'Incompatible or stale interface file' not in err_text:
+                    errors.append(f'0.16 source_hidden_tki {desc} stderr missing corrupt-file diagnostic fact')
+            else:
+                if 'E0455' not in err_text:
+                    errors.append(f'0.16 source_hidden_tki {desc} stderr missing E0455')
+                for crash_word in ('linker failed', 'Segmentation fault', 'segmentation fault', 'Assertion failed', 'core dumped'):
+                    if crash_word in err_text:
+                        errors.append(f'0.16 source_hidden_tki {desc} stderr contains non-semantic failure: {crash_word}')
+                if 'diagnostic' in n_rec and n_rec['diagnostic'] != 'E0455':
+                    errors.append(f'0.16 source_hidden_tki {desc} diagnostic must be E0455')
+
+                if len(n_argv) > 2 and n_argv[1] == '-I' and isinstance(cwd_val, str) and cwd_val:
+                    norm_i = os.path.normpath(n_argv[2] if os.path.isabs(n_argv[2]) else os.path.join(cwd_val, n_argv[2]))
+                    norm_cwd = os.path.normpath(cwd_val)
+                    if norm_i != norm_cwd:
+                        errors.append(f'0.16 source_hidden_tki {desc} -I directory must match cwd')
+
+                def _is_esc_src(s):
+                    b = os.path.basename(s)
+                    return b in ('level_a_cross_module_escape_negative.tk', 'escape.tk')
+
+                if kind == 'check':
+                    if len(n_argv) != 5 or n_argv[1] != '-I' or n_argv[3] != '--check-only' or not _is_esc_src(n_argv[4]):
+                        errors.append(f'0.16 source_hidden_tki {desc} argv template mismatch')
+                elif kind == 'object':
+                    if len(n_argv) != 7 or n_argv[1] != '-I' or n_argv[3] != '-c' or not _is_esc_src(n_argv[4]) or n_argv[5] != '-o' or not n_argv[6].endswith('.o'):
+                        errors.append(f'0.16 source_hidden_tki {desc} argv template mismatch')
+                elif kind == 'ir':
+                    if len(n_argv) != 8 or n_argv[1] != '-I' or n_argv[3] != '--emit-llvm' or n_argv[4] != '-c' or not _is_esc_src(n_argv[5]) or n_argv[6] != '-o' or not n_argv[7].endswith('.ll'):
+                        errors.append(f'0.16 source_hidden_tki {desc} argv template mismatch')
+                elif kind == 'compile':
+                    if len(n_argv) != 7 or n_argv[1] != '-I' or not _is_esc_src(n_argv[3]) or os.path.basename(n_argv[4]) != 'provider.o' or n_argv[5] != '-o' or os.path.basename(n_argv[6]) not in ('escape_bin', 'escape_bin.bin', 'escape_bin.exe'):
+                        errors.append(f'0.16 source_hidden_tki {desc} argv template mismatch')
 
     compile_outputs = {}
     for r in receipts:
