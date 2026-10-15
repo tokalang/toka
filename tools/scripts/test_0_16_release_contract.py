@@ -64,7 +64,7 @@ class Contract016(unittest.TestCase):
                     ('empty_receipts', lambda p: p.update(receipts=[])),
                     ('wrong_receipt_type', lambda p: p['receipts'].__setitem__(0, "invalid")),
                     ('not_ok_receipt', lambda p: p['receipts'][0].update(ok=False)),
-                    ('counts_mismatch', lambda p: p['counts'].update(total_receipts=39)),
+                    ('counts_mismatch', lambda p: p['counts'].update(total_receipts=55)),
                     ('counts_failed_nonzero', lambda p: p['counts'].update(failed=1)),
                     ('missing_tools', lambda p: p.pop('four_tool_versions')),
                     ('wrong_tool_version', lambda p: p['four_tool_versions'].update(tokac='tokac 0.15.0')),
@@ -180,6 +180,10 @@ class Contract016(unittest.TestCase):
                         ) or (p['source_hidden_tki'][k].pop('stdout', None), p['source_hidden_tki'][k].pop('stderr', None))
                         for k in ('missing_interface_command', 'corrupt_interface_command')
                     ]),
+                    ('missing_escape_negative_commands', lambda p: p['source_hidden_tki'].pop('escape_negative_commands', None)),
+                    ('bad_escape_negative_exit', lambda p: p['source_hidden_tki']['escape_negative_commands']['compile'].update(exit_code=0)),
+                    ('missing_escape_negative_diagnostic', lambda p: p['source_hidden_tki']['escape_negative_commands']['check'].update(stderr='')),
+                    ('bad_escape_negative_rejected', lambda p: p['source_hidden_tki'].update(escape_negative_rejected=False)),
                 ]
                 for desc, mutate in mutations:
                     with self.subTest(mutation=desc):
@@ -246,6 +250,18 @@ class Contract016(unittest.TestCase):
                     draft.validate(a)
         finally:
             cases.TAG = old
+
+    def test_parse_counts_preserves_candidate_016(self):
+        import release_gate
+        fake_payload = {
+            "schema": "toka.release-package-smoke",
+            "count": 42,
+            "candidate_016": {"sample": "data"}
+        }
+        stdout = f"leading output\n{json.dumps(fake_payload)}\n"
+        counts = release_gate.parse_counts("package_smoke", stdout)
+        self.assertEqual(counts.get("checks"), 42)
+        self.assertEqual(counts.get("candidate_016"), {"sample": "data"})
 
 
 if __name__ == '__main__':

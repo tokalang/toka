@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       candidate_only:
-        description: Replay qualified 0.12/0.13/0.14/0.15 candidate bytes before creating a tag or draft
+        description: Replay qualified 0.12/0.13/0.14/0.15/0.16 candidate bytes before creating a tag or draft
         type: boolean
         default: false
       tag_name:
-        description: Canonical version label; tag required unless candidate_only for 0.12/0.13/0.14/0.15
+        description: Canonical version label; tag required unless candidate_only for 0.12/0.13/0.14/0.15/0.16
         required: true
         type: string
       optional_run_id:
@@ -61,7 +61,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test "$CANDIDATE_ONLY" = false || { echo "Candidate-only replay is restricted to 0.12/0.13/0.14/0.15" >&2; exit 2; }
+          test "$CANDIDATE_ONLY" = false || { echo "Candidate-only replay is restricted to 0.12/0.13/0.14/0.15/0.16" >&2; exit 2; }
           [[ "$TAG_NAME" =~ ^v0\.11\.(0|[1-9][0-9]*)$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
           [[ "$QUALIFICATION_RUN_ID" =~ ^[0-9]+$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
@@ -312,6 +312,8 @@ jobs:
                   required_modules.append('test_0_14_candidate.py')
               if is_015:
                   required_modules.append('test_0_15_candidate.py')
+              if is_016:
+                  required_modules.append('test_0_16_candidate.py')
 
               for mod_name in required_modules:
                   if mod_name not in modules:
@@ -371,6 +373,22 @@ jobs:
                       hasher.update(exp_h.encode('utf-8'))
                   if hasher.hexdigest() != manifest.get('fixtures_digest_015'):
                       raise SystemExit("0.15 fixtures digest mismatch against bundle manifest")
+
+              if is_016:
+                  fixtures_dir = input_dir / 'r016_fixtures'
+                  fix_manifest_file = fixtures_dir / 'manifest.json'
+                  if not fix_manifest_file.is_file():
+                      raise SystemExit("Missing r016_fixtures/manifest.json")
+                  fix_manifest = json.loads(fix_manifest_file.read_text(encoding='utf-8'))
+                  hasher = hashlib.sha256()
+                  for rel_path, exp_h in sorted(fix_manifest.items()):
+                      f = fixtures_dir / rel_path
+                      if not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest() != exp_h:
+                          raise SystemExit(f"Fixture mismatch or missing: {rel_path}")
+                      hasher.update(rel_path.encode('utf-8'))
+                      hasher.update(exp_h.encode('utf-8'))
+                  if hasher.hexdigest() != manifest.get('fixtures_digest_016'):
+                      raise SystemExit("0.16 fixtures digest mismatch against bundle manifest")
           print("Replay input bundle verification passed.")
           PYCODE
       - name: Authenticate original package and run without checkout

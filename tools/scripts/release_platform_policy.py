@@ -1450,7 +1450,7 @@ def candidate_015_receipt_errors(receipt, revision, label, target=None):
     return errors
 
 
-EXPECTED_016_FIXTURES_DIGEST = '2006725464581147600dd684dfb428845ef69ca40b1bed2c04da3d1f9fb3a397'
+EXPECTED_016_FIXTURES_DIGEST = '7579bc4271da9eb1f1f413309b580fe8495b9a28c0b15fbe430a18b89267923e'
 
 
 def expected_016_script_sha256():
@@ -1490,6 +1490,10 @@ NEG_016_MULTI_MODE_CASES = [
     ('spawn_into_escape', 'E0456'),
     ('forged_spawn_routes_return', 'E0456'),
     ('await_question_drain', 'E0456'),
+    ('r2_d2a_mutable_sibling_launder', 'E0456'),
+    ('r2_d2b_forged_spawn_scoped_sibling', 'E0456'),
+    ('forged_join', 'E0456'),
+    ('forged_cancel_join', 'E0456'),
 ]
 
 NEG_016_DIAGNOSTICS = {
@@ -1594,6 +1598,23 @@ def candidate_016_receipt_errors(receipt, revision, label, target=None):
             errors.append('0.16 source_hidden_tki missing_interface_command is mandatory')
         if 'corrupt_interface_command' not in tki_facts:
             errors.append('0.16 source_hidden_tki corrupt_interface_command is mandatory')
+        if 'escape_negative_commands' not in tki_facts:
+            errors.append('0.16 source_hidden_tki escape_negative_commands is mandatory')
+        if tki_facts.get('escape_negative_rejected') is not True:
+            errors.append('0.16 source_hidden_tki escape_negative_rejected must be boolean True')
+        esc_cmds = tki_facts.get('escape_negative_commands')
+        if isinstance(esc_cmds, dict):
+            for m_key in ('check', 'object', 'ir', 'compile'):
+                if m_key not in esc_cmds:
+                    errors.append(f'0.16 source_hidden_tki escape_negative_commands missing {m_key}')
+                else:
+                    c_data = esc_cmds[m_key]
+                    if not isinstance(c_data, dict):
+                        errors.append(f'0.16 source_hidden_tki escape_negative_commands {m_key} is not a dict')
+                    elif c_data.get('exit_code') != 1:
+                        errors.append(f'0.16 source_hidden_tki escape_negative_commands {m_key} exit code must be 1')
+                    elif 'E0455' not in str(c_data.get('stderr', '')):
+                        errors.append(f'0.16 source_hidden_tki escape_negative_commands {m_key} stderr missing E0455')
 
     ver = label.removeprefix('v')
     ver_regex = re.compile(r'(?<![0-9a-zA-Z._+-])' + re.escape(ver) + r'(?![0-9a-zA-Z._+-])')
@@ -1607,7 +1628,7 @@ def candidate_016_receipt_errors(receipt, revision, label, target=None):
                 errors.append('0.16 tool version mismatch: ' + t_name)
 
     counts = receipt.get('counts')
-    expected_groups = {'version': 4, 'G-scoped-tasks-positive': 15, 'G-scoped-tasks-negative': 21}
+    expected_groups = {'version': 4, 'G-scoped-tasks-positive': 15, 'G-scoped-tasks-negative': 37}
     if not isinstance(counts, dict):
         errors.append('0.16 counts missing or not a dict')
     else:
@@ -1615,8 +1636,8 @@ def candidate_016_receipt_errors(receipt, revision, label, target=None):
             val = counts.get(k)
             if type(val) is not int or isinstance(val, bool):
                 errors.append(f'0.16 counts {k} must be exact int')
-        if counts.get('total_receipts') != 40 or counts.get('passed') != 40 or counts.get('failed') != 0:
-            errors.append('0.16 counts values mismatch: expected total 40, passed 40, failed 0')
+        if counts.get('total_receipts') != 56 or counts.get('passed') != 56 or counts.get('failed') != 0:
+            errors.append('0.16 counts values mismatch: expected total 56, passed 56, failed 0')
         groups = counts.get('groups')
         if not isinstance(groups, dict) or groups != expected_groups:
             errors.append('0.16 counts groups mismatch or invalid')
@@ -1626,8 +1647,8 @@ def candidate_016_receipt_errors(receipt, revision, label, target=None):
                     errors.append(f'0.16 counts groups {g_name} must be exact int')
 
     receipts = receipt.get('receipts')
-    if not isinstance(receipts, list) or len(receipts) != 40:
-        errors.append('0.16 command receipts list must have exactly 40 entries')
+    if not isinstance(receipts, list) or len(receipts) != 56:
+        errors.append('0.16 command receipts list must have exactly 56 entries')
         return errors
 
     sdk_root = receipt.get('SDK_root')
