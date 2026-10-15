@@ -1,0 +1,24 @@
+import std/task::{sleep_async}
+import std/async::{TaskScope, spawn_scoped}
+
+shape Buffer(size: i32, tag: i32)
+
+fn worker(buf: Buffer) -> async i32 {
+    sleep_async(300:i32).await
+    return buf.size
+}
+
+shape CustomDrainHandle(val: i32)
+
+impl CustomDrainHandle {
+    pub fn join_async(self#) -> async { }
+}
+
+pub fn parent() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+    auto child = spawn_scoped<i32>(scope#, cede worker(buf))
+    auto h# = CustomDrainHandle(val = 0:i32)
+    h#.join_async().await
+    return 0:i32
+}

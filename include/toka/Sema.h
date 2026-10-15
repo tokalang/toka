@@ -1281,6 +1281,11 @@ private:
   void bindTaskResult(const AccessPath &destination, Expr *source);
   void seedTaskResultParameter(FunctionDecl *function, size_t index, SymbolInfo &binding);
   bool closedTaskResultType(std::shared_ptr<Type> type);
+  const ModuleScope *getDeclarationModuleScope(const ASTNode *node) const;
+  bool isTrustedStdAsyncModule(const ModuleScope *module) const;
+  bool isTaskScopeType(const std::shared_ptr<Type> &type) const;
+  bool isTrustedStdAsyncScopeDrainCall(const CallExpr *call, Expr *&scopeArg) const;
+  bool isTrustedStdAsyncScopeDrainMethod(const MethodCallExpr *mcall, Expr *&scopeArg) const;
   std::vector<IndependentReturnFrame> m_IndependentReturnFrames;
   std::map<uint64_t, std::shared_ptr<const ByteBufferFact>> m_ByteBuffers;
   std::map<uint32_t, bool> m_ByteBufferSchemas;

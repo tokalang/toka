@@ -1715,7 +1715,7 @@ void Sema::checkStmt(Stmt *S) {
     for (Scope *sc = CurrentScope; sc; sc = sc->Parent) {
       for (const auto &[name, info] : sc->Symbols) {
         if (info.IsDeclaredVariable &&
-            info.TypeObj && info.TypeObj->getSoulName().rfind("TaskScope", 0) == 0 &&
+            info.TypeObj && isTaskScopeType(info.TypeObj) &&
             !info.LifeDependencySet.empty()) {
           DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_BORROW_LIFETIME,
                                    name, *info.LifeDependencySet.begin());

@@ -117,6 +117,11 @@ def main():
         ("adv3_unawaited_scope_close_bypass.tk", "E0456"),
         ("adv4_sync_drop_scope_helper_bypass.tk", "E0456"),
         ("adv5_c3_cancel_at_ordinary_await_unjoined_unwind.tk", "E0456"),
+        ("forged_join.tk", "E0456"),
+        ("forged_cancel_join.tk", "E0456"),
+        ("renamed_noop_control.tk", "E0456"),
+        ("forged_method_drain.tk", "E0456"),
+        ("cross_module_forged_join.tk", "E0456"),
     ]
 
     positives = [
@@ -138,7 +143,71 @@ def main():
         for filename in positives:
             check_positive(tokac, suite_dir / filename, env, tmp_dir)
 
+        # RFC §7 Level-A / REL016-R3: Source-Hidden Retained-Body TKI verification
+        check_source_hidden_retained_body_tki(tokac, suite_dir, env, tmp_dir)
+
     print("\nAll Scoped Borrowed Tasks tests passed successfully.")
+
+
+def check_source_hidden_retained_body_tki(tokac, suite_dir, env, tmp_dir):
+    """
+    RFC §7 Level-A / REL016-R3: Verify cross-module retained-body consumption and escape
+    under strict source-hidden conditions (scoped_provider.tk removed/absent).
+    """
+    print("\nChecking Source-Hidden Retained-Body TKI (RFC §7 Level-A):")
+    sh_dir = tmp_dir / "source_hidden_retained_body"
+    sh_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Compile scoped_provider.tk to scoped_provider.o and scoped_provider.tki in sh_dir
+    provider_src = suite_dir / "scoped_provider.tk"
+    provider_obj = sh_dir / "scoped_provider.o"
+    res = run([str(tokac), "-c", str(provider_src), "--emit-interface", "-o", str(provider_obj)], env=env, cwd=sh_dir)
+    require(res.returncode == 0, f"failed to compile provider to .tki + .o:\n{res.stderr}")
+    provider_tki = sh_dir / "scoped_provider.tki"
+    require(provider_obj.exists() and provider_obj.stat().st_size > 0, "scoped_provider.o missing")
+    require(provider_tki.exists() and provider_tki.stat().st_size > 0, "scoped_provider.tki missing")
+
+    # Verify provider .tk source is NOT present in sh_dir
+    require(not (sh_dir / "scoped_provider.tk").exists(), "provider source must not exist in consumer dir")
+
+    # 2. Positive: consumer compiles against only .tki + .o, links and executes with exit 0
+    consumer_src = suite_dir / "level_a_retained_body_consumer.tk"
+    consumer_copy = sh_dir / "consumer.tk"
+    consumer_copy.write_text(consumer_src.read_text())
+
+    suffix = ".exe" if sys.platform == "win32" or os.name == "nt" else ""
+    consumer_exe = sh_dir / f"consumer_exe{suffix}"
+    compile_res = run([str(tokac), str(consumer_copy), str(provider_obj), "-o", str(consumer_exe)], env=env, cwd=sh_dir)
+    require(compile_res.returncode == 0, f"failed to compile consumer against .tki + .o:\n{compile_res.stderr}")
+    run_res = run([str(consumer_exe)], env=env, cwd=sh_dir)
+    require(run_res.returncode == 0, f"consumer execution failed (exit {run_res.returncode}):\n{run_res.stderr}")
+    print("  [PASS] Positive: source-hidden consumer compiled against .tki + .o and executed successfully (exit 0)")
+
+    # 3. Negative: escape probe against only .tki must be rejected in 3 modes with E0455 and zero products
+    escape_src = suite_dir / "level_a_cross_module_escape_negative.tk"
+    escape_copy = sh_dir / "escape_neg.tk"
+    escape_copy.write_text(escape_src.read_text())
+
+    # Check-only
+    chk = run([str(tokac), "--check-only", str(escape_copy)], env=env, cwd=sh_dir)
+    require(chk.returncode == 1, f"source-hidden escape must fail check-only:\n{chk.stderr}")
+    require("E0455" in chk.stderr, f"source-hidden escape check-only missing E0455:\n{chk.stderr}")
+
+    # -c emission
+    esc_obj = sh_dir / "escape_neg_fail.o"
+    c_res = run([str(tokac), "-c", str(escape_copy), "-o", str(esc_obj)], env=env, cwd=sh_dir)
+    require(c_res.returncode == 1, f"source-hidden escape must fail -c:\n{c_res.stderr}")
+    require(not esc_obj.exists(), "source-hidden escape must not emit .o on error")
+    require("E0455" in c_res.stderr, f"source-hidden escape -c missing E0455:\n{c_res.stderr}")
+
+    # --emit-llvm emission
+    esc_ll = sh_dir / "escape_neg_fail.ll"
+    ll_res = run([str(tokac), "--emit-llvm", str(escape_copy), "-o", str(esc_ll)], env=env, cwd=sh_dir)
+    require(ll_res.returncode == 1, f"source-hidden escape must fail --emit-llvm:\n{ll_res.stderr}")
+    require(not esc_ll.exists(), "source-hidden escape must not emit .ll on error")
+    require("E0455" in ll_res.stderr, f"source-hidden escape --emit-llvm missing E0455:\n{ll_res.stderr}")
+
+    print("  [PASS] Negative: source-hidden escape rejected with E0455 across 3 modes with zero products")
 
 
 if __name__ == "__main__":

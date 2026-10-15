@@ -88,10 +88,14 @@ exit scope S
   release S only after terminal + no-active + result/ref closure for all children
 ```
 
-For async parents, scope exit must be an explicit suspension-capable operation
-or be lowered into the parent coroutine's cleanup path. The implementation must
-not silently block an executor worker. Synchronous thread scopes may join
-synchronously under their own execution contract.
+For async parents, 0.16 v1 adopts the **Explicit Convergence Restricted v1** contract:
+scope exit requires an explicit suspension-capable convergence handshake (`join_scoped(scope#).await`
+or `cancel_and_join(scope#).await`), verified fail-closed by Sema across all exit paths, returns,
+and unwinding. The implementation must not silently block an executor worker. Automatic
+compiler-injected coroutine cleanup lowering is deferred to post-0.16 evolution. Under active
+scoped borrows, ordinary `.await` is statically rejected in favor of `.await?` to ensure parent
+unwinding cannot silently drop scopes without explicit cancellation and drain handling.
+Synchronous thread scopes may join synchronously under their own execution contract.
 
 ## 5. Static checks
 
@@ -102,8 +106,8 @@ The first compiler slice should reject:
 - placing a scoped task/dependent closure in an outer variable, heap object,
   global, return value, or detached task capture;
 - moving/ceding a parent path while a scoped child borrows it;
-- ending the scope with an unjoined child on a path where no cleanup lowering
-  proves terminal completion.
+- ending the scope with an unjoined child on any exit path without explicit convergence
+  handshake (`join_scoped` / `cancel_and_join`).
 
 It should accept a borrowed child only when the scope completion operation is
 on every continuing exit path.
@@ -111,9 +115,9 @@ on every continuing exit path.
 ## 6. Implementation slices
 
 1. **Specification-only:** freeze the scope-anchor and non-escape invariants.
-2. **Single-executor async slice:** a lexical scope may host children that
-   borrow a parent local; normal exit awaits all children; cancellation joins
-   before parent cleanup.
+2. **Single-executor async slice (Explicit Convergence Restricted v1):** a lexical scope may host children that
+   borrow a parent local; normal exit explicitly awaits `join_scoped(scope#).await`; cancellation joins
+   via `cancel_and_join(scope#).await` before parent cleanup; Sema enforces explicit drainage on every exit path.
 3. **Escape diagnostics:** cover return, field storage, closure capture,
    `cede`, detached `.start`, and branch/guard joins.
 4. **OS-thread slice:** add scoped threads only after the `@Send` / `@Sync`

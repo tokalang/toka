@@ -45,6 +45,79 @@ std::shared_ptr<Type> Sema::taskResultType(const std::shared_ptr<Type> &type) {
   return arguments.size() == 1 && arguments[0] && !arguments[0]->isUnknown() ? arguments[0] : nullptr;
 }
 
+const Sema::ModuleScope *Sema::getDeclarationModuleScope(const ASTNode *node) const {
+  if (!node) return nullptr;
+  auto it = DeclarationLexicalScopes.find(node);
+  if (it != DeclarationLexicalScopes.end()) return it->second;
+  if (const auto *fn = dynamic_cast<const FunctionDecl *>(node)) {
+    if (fn->TemplateOrigin) {
+      if (const auto *m = getDeclarationModuleScope(fn->TemplateOrigin)) return m;
+    }
+    if (fn->InterfaceDefinitionOrigin) {
+      if (const auto *m = getDeclarationModuleScope(fn->InterfaceDefinitionOrigin)) return m;
+    }
+    if (fn->DefinitionBodyOwner) {
+      if (const auto *m = getDeclarationModuleScope(fn->DefinitionBodyOwner)) return m;
+    }
+  }
+  return nullptr;
+}
+
+bool Sema::isTrustedStdAsyncModule(const ModuleScope *module) const {
+  if (!module) return false;
+  bool trusted = module->IsTrustedSystemModule ||
+                 (module->SourceModule && module->SourceModule->IsTrustedSystemModule);
+  if (!trusted || !module->ShadowCoordinateKnown) return false;
+  if (module->ShadowCrateId.empty() || module->ShadowLogicalModulePath != "std/async") return false;
+  if (module->SourceModule && !module->SourceModule->ShadowCoordinateOrigin.empty() &&
+      module->SourceModule->ShadowCoordinateOrigin != "toolchain") return false;
+  return true;
+}
+
+bool Sema::isTaskScopeType(const std::shared_ptr<Type> &type) const {
+  if (!type) return false;
+  std::shared_ptr<Type> target = type;
+  if (target->isReference()) target = target->getPointeeType();
+  auto shape = std::dynamic_pointer_cast<ShapeType>(target);
+  auto *instance = shape ? shape->Decl : nullptr;
+  auto *definition = instance && instance->InstantiationTemplate ? instance->InstantiationTemplate : instance;
+  if (!definition || !definition->NominalId) return false;
+  auto owner = DeclarationLexicalScopes.find(definition);
+  auto *module = owner == DeclarationLexicalScopes.end() ? nullptr : owner->second;
+  if (!isTrustedStdAsyncModule(module)) return false;
+  auto declared = module->Shapes.find("TaskScope");
+  if (declared == module->Shapes.end() || declared->second != definition ||
+      *definition->NominalId != NominalShapeId::fromResolverCoordinate(
+          module->ShadowCrateId, "std/async", "TaskScope", 0)) return false;
+  return true;
+}
+
+bool Sema::isTrustedStdAsyncScopeDrainCall(const CallExpr *call, Expr *&scopeArg) const {
+  scopeArg = nullptr;
+  if (!call || !call->ResolvedFn) return false;
+  const FunctionDecl *fn = call->ResolvedFn;
+  const auto *mod = getDeclarationModuleScope(fn);
+  if (!isTrustedStdAsyncModule(mod)) return false;
+  if (fn->Name != "join_scoped" && fn->Name != "cancel_and_join") return false;
+  if (call->Args.size() != 1) return false;
+  if (!call->Args[0] || !isTaskScopeType(call->Args[0]->ResolvedType)) return false;
+  scopeArg = call->Args[0].get();
+  return true;
+}
+
+bool Sema::isTrustedStdAsyncScopeDrainMethod(const MethodCallExpr *mcall, Expr *&scopeArg) const {
+  scopeArg = nullptr;
+  if (!mcall || !mcall->Object || !mcall->ResolvedFn) return false;
+  if (!isTaskScopeType(mcall->Object->ResolvedType)) return false;
+  const FunctionDecl *fn = mcall->ResolvedFn;
+  const auto *mod = getDeclarationModuleScope(fn);
+  if (!isTrustedStdAsyncModule(mod)) return false;
+  if (fn->Name != "join_async") return false;
+  if (!mcall->Args.empty()) return false;
+  scopeArg = mcall->Object.get();
+  return true;
+}
+
 bool Sema::closedTaskResultType(std::shared_ptr<Type> type) {
   std::set<const ShapeDecl *> active;
   std::function<bool(std::shared_ptr<Type>)> visit = [&](std::shared_ptr<Type> value) {
