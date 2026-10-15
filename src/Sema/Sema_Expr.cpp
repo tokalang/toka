@@ -4983,28 +4983,32 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       std::string actualName;
       if (CurrentScope && CurrentScope->findVariableWithDeref(scopeRoot, scopeInfo, actualName) && scopeInfo) {
         scopeInfo->LifeDependencySet.clear();
+        scopeInfo->CarriesTaskDependency = false;
         PALCheckerState.releaseCarrierBorrows(scopeInfo->SymbolID);
       }
     };
 
     bool isScopeDrainAwait = false;
     Expr *drainScopeArg = nullptr;
-    if (auto *call = dynamic_cast<CallExpr *>(awaitEx->Expression.get())) {
-      if (isTrustedStdAsyncScopeDrainCall(call, drainScopeArg) && drainScopeArg) {
-        clearJoinedScope(getPathString(drainScopeArg));
-        isScopeDrainAwait = true;
-      }
-    } else if (auto *mcall = dynamic_cast<MethodCallExpr *>(awaitEx->Expression.get())) {
-      if (isTrustedStdAsyncScopeDrainMethod(mcall, drainScopeArg) && drainScopeArg) {
-        clearJoinedScope(getPathString(drainScopeArg));
-        isScopeDrainAwait = true;
+    if (!awaitEx->CatchesCancellation) {
+      if (auto *call = dynamic_cast<CallExpr *>(awaitEx->Expression.get())) {
+        if (isTrustedStdAsyncScopeDrainCall(call, drainScopeArg) && drainScopeArg) {
+          clearJoinedScope(getPathString(drainScopeArg));
+          isScopeDrainAwait = true;
+        }
+      } else if (auto *mcall = dynamic_cast<MethodCallExpr *>(awaitEx->Expression.get())) {
+        if (isTrustedStdAsyncScopeDrainMethod(mcall, drainScopeArg) && drainScopeArg) {
+          clearJoinedScope(getPathString(drainScopeArg));
+          isScopeDrainAwait = true;
+        }
       }
     }
 
     if (!awaitEx->CatchesCancellation && !isScopeDrainAwait) {
       for (Scope *sc = CurrentScope; sc; sc = sc->Parent) {
         for (const auto &[name, info] : sc->Symbols) {
-          if (info.TypeObj && isTaskScopeType(info.TypeObj) &&
+          if (info.TypeObj &&
+              (isTaskScopeType(info.TypeObj) || info.CarriesTaskDependency) &&
               !info.LifeDependencySet.empty()) {
             error(awaitEx, DiagID::ERR_BORROW_LIFETIME, name, *info.LifeDependencySet.begin());
             SourceLocation originLoc = findPathDeclaration(*info.LifeDependencySet.begin());

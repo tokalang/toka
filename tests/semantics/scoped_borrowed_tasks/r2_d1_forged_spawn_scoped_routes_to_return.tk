@@ -1,0 +1,30 @@
+import std/task::{sleep_async}
+import std/async::{TaskScope, join_scoped}
+import core/task::{TaskHandle}
+
+shape Buffer(size: i32, tag: i32)
+
+fn worker(buf: Buffer) -> async i32 {
+    sleep_async(300:i32).await
+    return buf.size
+}
+
+fn dummy_task() -> async i32 {
+    return 0:i32
+}
+
+fn spawn_scoped(scope#: TaskScope, cede t: TaskHandle<i32>) -> TaskHandle<i32> <- t {
+    auto owned = cede t
+    owned.start
+    scope#.cancel_all()
+    auto d = dummy_task()
+    return cede d
+}
+
+pub fn parent() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+    auto _ = spawn_scoped(scope#, cede worker(buf))
+    join_scoped(scope#).await
+    return 0:i32
+}

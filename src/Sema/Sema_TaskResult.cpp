@@ -118,6 +118,15 @@ bool Sema::isTrustedStdAsyncScopeDrainMethod(const MethodCallExpr *mcall, Expr *
   return true;
 }
 
+bool Sema::isTrustedStdAsyncActivationCall(const FunctionDecl *fn) const {
+  if (!fn) return false;
+  const auto *origin = fn->TemplateOrigin ? fn->TemplateOrigin : fn;
+  const auto *mod = getDeclarationModuleScope(origin);
+  if (!isTrustedStdAsyncModule(mod)) return false;
+  return origin->Name == "spawn_scoped" || fn->Name == "spawn_scoped" ||
+         origin->Name == "spawn_into" || fn->Name == "spawn_into";
+}
+
 bool Sema::closedTaskResultType(std::shared_ptr<Type> type) {
   std::set<const ShapeDecl *> active;
   std::function<bool(std::shared_ptr<Type>)> visit = [&](std::shared_ptr<Type> value) {
