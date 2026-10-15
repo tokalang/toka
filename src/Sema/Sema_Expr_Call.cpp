@@ -5402,6 +5402,296 @@ bool Sema::isSafeSynchronousTaskConsumer(FunctionDecl *calleeFn, size_t formalIn
   return safe;
 }
 
+bool Sema::checkSafeTaskForwarderBodyHelper(
+    ASTNode *node,
+    std::set<std::string> &trackedVars,
+    size_t &returnPathsCount,
+    bool &allReturnsTracked) {
+  if (!node) return true;
+
+  auto unwrapExpr = [](Expr *e) -> Expr * {
+    while (e) {
+      if (auto *c = dynamic_cast<CedeExpr *>(e)) { e = c->Value.get(); continue; }
+      if (auto *p = dynamic_cast<PassExpr *>(e)) { e = p->Value.get(); continue; }
+      if (auto *c = dynamic_cast<CastExpr *>(e)) { e = c->Expression.get(); continue; }
+      if (auto *u = dynamic_cast<UnsafeExpr *>(e)) { e = u->Expression.get(); continue; }
+      break;
+    }
+    return e;
+  };
+
+  std::function<bool(ASTNode *)> exprReferencesTracked = [&](ASTNode *n) -> bool {
+    if (!n) return false;
+    if (auto *v = dynamic_cast<VariableExpr *>(n)) {
+      return trackedVars.count(Type::stripMorphology(v->Name)) > 0;
+    }
+    if (auto *m = dynamic_cast<MemberExpr *>(n)) {
+      return exprReferencesTracked(m->Object.get());
+    }
+    if (auto *mc = dynamic_cast<MethodCallExpr *>(n)) {
+      if (exprReferencesTracked(mc->Object.get())) return true;
+      for (const auto &arg : mc->Args) {
+        if (exprReferencesTracked(arg.get())) return true;
+      }
+      return false;
+    }
+    if (auto *call = dynamic_cast<CallExpr *>(n)) {
+      for (const auto &arg : call->Args) {
+        if (exprReferencesTracked(arg.get())) return true;
+      }
+      return false;
+    }
+    if (auto *u = dynamic_cast<UnaryExpr *>(n)) return exprReferencesTracked(u->RHS.get());
+    if (auto *b = dynamic_cast<BinaryExpr *>(n)) {
+      return exprReferencesTracked(b->LHS.get()) || exprReferencesTracked(b->RHS.get());
+    }
+    if (auto *c = dynamic_cast<CedeExpr *>(n)) return exprReferencesTracked(c->Value.get());
+    if (auto *p = dynamic_cast<PassExpr *>(n)) return exprReferencesTracked(p->Value.get());
+    if (auto *cast = dynamic_cast<CastExpr *>(n)) return exprReferencesTracked(cast->Expression.get());
+    if (auto *uns = dynamic_cast<UnsafeExpr *>(n)) return exprReferencesTracked(uns->Expression.get());
+    if (auto *ret = dynamic_cast<ReturnStmt *>(n)) return exprReferencesTracked(ret->ReturnValue.get());
+    if (auto *ex = dynamic_cast<ExprStmt *>(n)) return exprReferencesTracked(ex->Expression.get());
+    if (auto *vd = dynamic_cast<VariableDecl *>(n)) return exprReferencesTracked(vd->Init.get());
+    return false;
+  };
+
+  if (auto *block = dynamic_cast<BlockStmt *>(node)) {
+    for (const auto &stmt : block->Statements) {
+      if (!checkSafeTaskForwarderBodyHelper(stmt.get(), trackedVars, returnPathsCount, allReturnsTracked))
+        return false;
+    }
+    return true;
+  }
+
+  if (auto *unsafe = dynamic_cast<UnsafeStmt *>(node)) {
+    return checkSafeTaskForwarderBodyHelper(unsafe->Statement.get(), trackedVars, returnPathsCount, allReturnsTracked);
+  }
+
+  if (auto *initBlock = dynamic_cast<InitBlockStmt *>(node)) {
+    return checkSafeTaskForwarderBodyHelper(initBlock->Body.get(), trackedVars, returnPathsCount, allReturnsTracked);
+  }
+
+  if (auto *ret = dynamic_cast<ReturnStmt *>(node)) {
+    returnPathsCount++;
+    if (!ret->ReturnValue) {
+      allReturnsTracked = false;
+      return false;
+    }
+    Expr *unwrapped = unwrapExpr(ret->ReturnValue.get());
+    if (auto *v = dynamic_cast<VariableExpr *>(unwrapped)) {
+      if (trackedVars.count(Type::stripMorphology(v->Name))) {
+        return true;
+      }
+    }
+    if (auto *call = dynamic_cast<CallExpr *>(unwrapped)) {
+      for (size_t i = 0; i < call->Args.size(); ++i) {
+        Expr *argUnwrapped = unwrapExpr(call->Args[i].get());
+        if (auto *v = dynamic_cast<VariableExpr *>(argUnwrapped)) {
+          if (trackedVars.count(Type::stripMorphology(v->Name))) {
+            if (call->ResolvedFn && isSafeSynchronousTaskForwarder(call->ResolvedFn, i)) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    allReturnsTracked = false;
+    return false;
+  }
+
+  if (auto *varDecl = dynamic_cast<VariableDecl *>(node)) {
+    if (varDecl->Init && exprReferencesTracked(varDecl->Init.get())) {
+      Expr *unwrapped = unwrapExpr(varDecl->Init.get());
+      if (auto *v = dynamic_cast<VariableExpr *>(unwrapped)) {
+        if (trackedVars.count(Type::stripMorphology(v->Name))) {
+          trackedVars.insert(Type::stripMorphology(varDecl->Name));
+          return true;
+        }
+      }
+      if (auto *call = dynamic_cast<CallExpr *>(unwrapped)) {
+        for (size_t i = 0; i < call->Args.size(); ++i) {
+          Expr *argUnwrapped = unwrapExpr(call->Args[i].get());
+          if (auto *v = dynamic_cast<VariableExpr *>(argUnwrapped)) {
+            if (trackedVars.count(Type::stripMorphology(v->Name))) {
+              if (call->ResolvedFn && isSafeSynchronousTaskForwarder(call->ResolvedFn, i)) {
+                trackedVars.insert(Type::stripMorphology(varDecl->Name));
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+
+  if (auto *exprStmt = dynamic_cast<ExprStmt *>(node)) {
+    return checkSafeTaskForwarderBodyHelper(exprStmt->Expression.get(), trackedVars, returnPathsCount, allReturnsTracked);
+  }
+
+  if (dynamic_cast<UnreachableStmt *>(node)) {
+    return true;
+  }
+
+  if (auto *ifExpr = dynamic_cast<IfExpr *>(node)) {
+    if (ifExpr->Condition && exprReferencesTracked(ifExpr->Condition.get()))
+      return false;
+    if (ifExpr->Then && !checkSafeTaskForwarderBodyHelper(ifExpr->Then.get(), trackedVars, returnPathsCount, allReturnsTracked))
+      return false;
+    if (ifExpr->Else && !checkSafeTaskForwarderBodyHelper(ifExpr->Else.get(), trackedVars, returnPathsCount, allReturnsTracked))
+      return false;
+    return true;
+  }
+
+  if (auto *guardExpr = dynamic_cast<GuardExpr *>(node)) {
+    if (guardExpr->Condition && exprReferencesTracked(guardExpr->Condition.get()))
+      return false;
+    if (guardExpr->Then && !checkSafeTaskForwarderBodyHelper(guardExpr->Then.get(), trackedVars, returnPathsCount, allReturnsTracked))
+      return false;
+    if (guardExpr->Else && !checkSafeTaskForwarderBodyHelper(guardExpr->Else.get(), trackedVars, returnPathsCount, allReturnsTracked))
+      return false;
+    return true;
+  }
+
+  if (auto *loopExpr = dynamic_cast<LoopExpr *>(node)) {
+    if (loopExpr->Condition && exprReferencesTracked(loopExpr->Condition.get()))
+      return false;
+    if (loopExpr->Body && !checkSafeTaskForwarderBodyHelper(loopExpr->Body.get(), trackedVars, returnPathsCount, allReturnsTracked))
+      return false;
+    return true;
+  }
+
+  if (auto *matchExpr = dynamic_cast<MatchExpr *>(node)) {
+    if (matchExpr->Target && exprReferencesTracked(matchExpr->Target.get()))
+      return false;
+    for (const auto &arm : matchExpr->Arms) {
+      if (arm->Guard && exprReferencesTracked(arm->Guard.get()))
+        return false;
+      std::set<std::string> armTrackedVars = trackedVars;
+      if (arm->Body && !checkSafeTaskForwarderBodyHelper(arm->Body.get(), armTrackedVars, returnPathsCount, allReturnsTracked))
+        return false;
+    }
+    return true;
+  }
+
+  if (auto *e = dynamic_cast<Expr *>(node)) {
+    if (!exprReferencesTracked(e))
+      return true;
+
+    if (dynamic_cast<MemberExpr *>(e) || dynamic_cast<MethodCallExpr *>(e))
+      return false;
+
+    if (auto *bin = dynamic_cast<BinaryExpr *>(e)) {
+      if (bin->Op == "=") {
+        if (exprReferencesTracked(bin->LHS.get())) return false;
+        if (exprReferencesTracked(bin->RHS.get())) {
+          Expr *unwrappedRHS = unwrapExpr(bin->RHS.get());
+          if (auto *v = dynamic_cast<VariableExpr *>(unwrappedRHS)) {
+            if (trackedVars.count(Type::stripMorphology(v->Name))) {
+              Expr *lhs = bin->LHS.get();
+              while (auto *u = dynamic_cast<UnaryExpr *>(lhs)) lhs = u->RHS.get();
+              if (auto *lv = dynamic_cast<VariableExpr *>(lhs)) {
+                trackedVars.insert(Type::stripMorphology(lv->Name));
+                return true;
+              }
+            }
+          }
+          return false;
+        }
+        return false;
+      }
+    }
+    return false;
+  }
+
+  return false;
+}
+
+bool Sema::checkSafeTaskForwarderBody(ASTNode *body, const std::string &rootFormal) {
+  if (!body) return false;
+  std::set<std::string> trackedVars;
+  trackedVars.insert(rootFormal);
+  size_t returnPathsCount = 0;
+  bool allReturnsTracked = true;
+  bool ok = checkSafeTaskForwarderBodyHelper(body, trackedVars, returnPathsCount, allReturnsTracked);
+  return ok && returnPathsCount > 0 && allReturnsTracked;
+}
+
+bool Sema::isSafeSynchronousTaskForwarder(FunctionDecl *calleeFn, size_t formalIndex) {
+  if (!calleeFn || !calleeFn->Body) return false;
+  if (calleeFn->Effect != EffectKind::None) return false;
+  if (formalIndex >= calleeFn->Args.size()) return false;
+  if (!calleeFn->Args[formalIndex].IsCeded) return false;
+
+  if (!calleeFn->ResolvedReturnType ||
+      !isTaskLifetimeCarryingType(calleeFn->ResolvedReturnType)) {
+    return false;
+  }
+
+  const std::string formalName = Type::stripMorphology(calleeFn->Args[formalIndex].Name);
+  bool routes = false;
+  for (const auto &route : calleeFn->ReturnContract.Routes) {
+    if (route.Target.Kind == ReturnDependencyTargetKind::ReturnValue) {
+      for (const auto &src : route.Sources) {
+        if (Type::stripMorphology(src.Root) == formalName) {
+          routes = true;
+          break;
+        }
+      }
+    }
+  }
+  if (!routes) return false;
+
+  static std::set<std::pair<FunctionDecl *, size_t>> activeChecking;
+  auto key = std::make_pair(calleeFn, formalIndex);
+  if (activeChecking.count(key))
+    return false;
+  activeChecking.insert(key);
+
+  bool safe = checkSafeTaskForwarderBody(calleeFn->Body.get(), formalName);
+  activeChecking.erase(key);
+  return safe;
+}
+
+bool Sema::isSafeScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskIndex, size_t scopeIndex) {
+  if (!calleeFn || !calleeFn->Body) return false;
+  if (calleeFn->Effect != EffectKind::None) return false;
+  if (taskIndex >= calleeFn->Args.size() || scopeIndex >= calleeFn->Args.size()) return false;
+  if (!calleeFn->Args[taskIndex].IsCeded) return false;
+
+  const std::string taskFormal = Type::stripMorphology(calleeFn->Args[taskIndex].Name);
+  const std::string scopeFormal = Type::stripMorphology(calleeFn->Args[scopeIndex].Name);
+
+  auto *block = dynamic_cast<BlockStmt *>(calleeFn->Body.get());
+  if (!block) return false;
+
+  for (const auto &stmt : block->Statements) {
+    if (auto *ret = dynamic_cast<ReturnStmt *>(stmt.get())) {
+      Expr *retVal = ret->ReturnValue.get();
+      while (retVal) {
+        if (auto *c = dynamic_cast<CedeExpr *>(retVal)) { retVal = c->Value.get(); continue; }
+        if (auto *cast = dynamic_cast<CastExpr *>(retVal)) { retVal = cast->Expression.get(); continue; }
+        break;
+      }
+      auto *call = dynamic_cast<CallExpr *>(retVal);
+      if (!call || !call->ResolvedFn) return false;
+      if (!isTrustedStdAsyncActivationCall(call->ResolvedFn)) return false;
+      if (call->Args.size() != 2) return false;
+      auto *arg0 = dynamic_cast<VariableExpr *>(call->Args[0].get());
+      Expr *arg1Val = call->Args[1].get();
+      if (auto *c = dynamic_cast<CedeExpr *>(arg1Val)) arg1Val = c->Value.get();
+      auto *arg1 = dynamic_cast<VariableExpr *>(arg1Val);
+      if (!arg0 || !arg1) return false;
+      if (Type::stripMorphology(arg0->Name) != scopeFormal ||
+          Type::stripMorphology(arg1->Name) != taskFormal) return false;
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
 bool Sema::checkConsumingArgumentEscape(
     Expr *argument,
     const std::shared_ptr<toka::Type> &paramType,
@@ -5525,103 +5815,72 @@ bool Sema::checkConsumingArgumentEscape(
         }
       }
     }
-    if (routesToReturn && isTrustedActivation) {
-      for (size_t siblingIdx = 0; siblingIdx < callArgs.size(); ++siblingIdx) {
-        size_t actualFormalIdx = methodReceiver ? siblingIdx + 1 : siblingIdx;
-        if (actualFormalIdx == formalIndex) continue;
-        Expr *siblingExpr = callArgs[siblingIdx].get();
-        if (!siblingExpr || !siblingExpr->ResolvedType) continue;
-        if (isTaskScopeType(siblingExpr->ResolvedType)) {
-          std::string sibName = getPathString(siblingExpr);
-          int sibDepth = getScopeDepth(sibName);
-          SymbolInfo *sibInfo = nullptr;
-          std::string sibRoot = extractPathRoot(sibName);
-          std::string actualSib = sibRoot;
-          CurrentScope->findVariableWithDeref(sibRoot, sibInfo, actualSib);
-          bool sibIsParam = sibInfo && sibInfo->IsFunctionParameter;
-          if (sibIsParam || sibDepth < depDepth) {
-            error(callSite, DiagID::ERR_BORROW_LIFETIME, sibName, depStr);
-            SourceLocation originLoc = findPathDeclaration(depStr);
-            if (originLoc.isValid())
-              DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
-                                       "shorter-lived dependency declared here");
-            return false;
-          }
-          if (sibInfo) {
-            sibInfo->LifeDependencySet.insert(depStr);
-            sibInfo->CarriesTaskDependency = true;
-            if (depInfo) {
-              sibInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
-                                                depInfo->LifeDependencySet.end());
-              AccessPath depPath;
-              depPath.RootID = depInfo->SymbolID;
-              depPath.RootName = extractPathRoot(depStr);
-              depPath.RootLoc = depInfo->DeclLoc;
-              size_t retainingLevels = (CurrentScope->Depth >= sibDepth)
-                  ? static_cast<size_t>(CurrentScope->Depth - sibDepth) : 0;
-              if (auto conflict = PALCheckerState.accumulateCarrierBorrows(
-                      sibInfo->SymbolID, {depPath}, retainingLevels, sibDepth, true, callSite->Loc)) {
-                error(callSite, DiagID::ERR_BORROW_MUT, conflict->displayPath());
-                return false;
-              }
-            }
-          }
-        }
+    bool hasTaskScopeSibling = false;
+    size_t scopeSiblingArgIdx = 0;
+    for (size_t siblingIdx = 0; siblingIdx < callArgs.size(); ++siblingIdx) {
+      size_t actualFormalIdx = methodReceiver ? siblingIdx + 1 : siblingIdx;
+      if (actualFormalIdx == formalIndex) continue;
+      Expr *siblingExpr = callArgs[siblingIdx].get();
+      if (!siblingExpr || !siblingExpr->ResolvedType) continue;
+      if (isTaskScopeType(siblingExpr->ResolvedType)) {
+        hasTaskScopeSibling = true;
+        scopeSiblingArgIdx = siblingIdx;
+        break;
       }
-      continue;
     }
 
-    bool caughtBySibling = false;
-    if (isTrustedActivation) {
-      for (size_t siblingIdx = 0; siblingIdx < callArgs.size(); ++siblingIdx) {
-        size_t actualFormalIdx = methodReceiver ? siblingIdx + 1 : siblingIdx;
-        if (actualFormalIdx == formalIndex) continue;
-        Expr *siblingExpr = callArgs[siblingIdx].get();
-        if (!siblingExpr) continue;
-        auto sibType = siblingExpr->ResolvedType;
-        if (!sibType) continue;
-        bool isScopeOrCarrier = isTaskScopeType(sibType);
-        if (isScopeOrCarrier) {
-          std::string sibName = getPathString(siblingExpr);
-          int sibDepth = getScopeDepth(sibName);
-          SymbolInfo *sibInfo = nullptr;
-          std::string sibRoot = extractPathRoot(sibName);
-          std::string actualSib = sibRoot;
-          CurrentScope->findVariableWithDeref(sibRoot, sibInfo, actualSib);
-          bool sibIsParam = sibInfo && sibInfo->IsFunctionParameter;
-          if (sibIsParam || sibDepth < depDepth) {
-            error(callSite, DiagID::ERR_BORROW_LIFETIME, sibName, depStr);
-            SourceLocation originLoc = findPathDeclaration(depStr);
-            if (originLoc.isValid())
-              DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
-                                       "shorter-lived dependency declared here");
-            return false;
-          }
-          if (sibInfo) {
-            sibInfo->LifeDependencySet.insert(depStr);
-            sibInfo->CarriesTaskDependency = true;
-            if (depInfo) {
-              sibInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
-                                                depInfo->LifeDependencySet.end());
-              AccessPath depPath;
-              depPath.RootID = depInfo->SymbolID;
-              depPath.RootName = extractPathRoot(depStr);
-              depPath.RootLoc = depInfo->DeclLoc;
-              size_t retainingLevels = (CurrentScope->Depth >= sibDepth)
-                  ? static_cast<size_t>(CurrentScope->Depth - sibDepth) : 0;
-              if (auto conflict = PALCheckerState.accumulateCarrierBorrows(
-                      sibInfo->SymbolID, {depPath}, retainingLevels, sibDepth, true, callSite->Loc)) {
-                error(callSite, DiagID::ERR_BORROW_MUT, conflict->displayPath());
-                return false;
-              }
+    if (hasTaskScopeSibling) {
+      size_t actualScopeFormalIdx = methodReceiver ? scopeSiblingArgIdx + 1 : scopeSiblingArgIdx;
+      bool isAllowedActivation = isTrustedActivation ||
+          (calleeFn && isSafeScopedActivationWrapper(calleeFn, formalIndex, actualScopeFormalIdx));
+      if (isAllowedActivation) {
+        Expr *siblingExpr = callArgs[scopeSiblingArgIdx].get();
+        std::string sibName = getPathString(siblingExpr);
+        int sibDepth = getScopeDepth(sibName);
+        SymbolInfo *sibInfo = nullptr;
+        std::string sibRoot = extractPathRoot(sibName);
+        std::string actualSib = sibRoot;
+        CurrentScope->findVariableWithDeref(sibRoot, sibInfo, actualSib);
+        bool sibIsParam = sibInfo && sibInfo->IsFunctionParameter;
+        if (sibIsParam || sibDepth < depDepth) {
+          error(callSite, DiagID::ERR_BORROW_LIFETIME, sibName, depStr);
+          SourceLocation originLoc = findPathDeclaration(depStr);
+          if (originLoc.isValid())
+            DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                     "shorter-lived dependency declared here");
+          return false;
+        }
+        if (sibInfo) {
+          sibInfo->LifeDependencySet.insert(depStr);
+          sibInfo->CarriesTaskDependency = true;
+          if (depInfo) {
+            sibInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
+                                              depInfo->LifeDependencySet.end());
+            AccessPath depPath;
+            depPath.RootID = depInfo->SymbolID;
+            depPath.RootName = extractPathRoot(depStr);
+            depPath.RootLoc = depInfo->DeclLoc;
+            size_t retainingLevels = (CurrentScope->Depth >= sibDepth)
+                ? static_cast<size_t>(CurrentScope->Depth - sibDepth) : 0;
+            if (auto conflict = PALCheckerState.accumulateCarrierBorrows(
+                    sibInfo->SymbolID, {depPath}, retainingLevels, sibDepth, true, callSite->Loc)) {
+              error(callSite, DiagID::ERR_BORROW_MUT, conflict->displayPath());
+              return false;
             }
           }
-          caughtBySibling = true;
+        }
+        if (routesToReturn) {
+          m_LastLifeDependencies.insert(depStr);
+        }
+        continue;
+      }
+    } else {
+      if (routesToReturn) {
+        if (calleeFn && isSafeSynchronousTaskForwarder(calleeFn, formalIndex)) {
+          m_LastLifeDependencies.insert(depStr);
+          continue;
         }
       }
-    }
-    if (caughtBySibling) {
-      continue;
     }
 
     if (calleeFn && isSafeSynchronousTaskConsumer(calleeFn, formalIndex)) {

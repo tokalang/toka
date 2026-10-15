@@ -456,6 +456,31 @@ pub fn sleep_async(ms: i32) -> async i32 {
     return 0
 }
 
+pub fn sleep_uninterruptible_async(ms: i32) -> async i32 {
+    auto *handle = __builtin_coro_current_handle()
+    auto task_id# = 0:u64
+    auto task_instance# = 0:u64
+    auto wait_gen# = 0:u64
+    auto ok = core_task::toka_task_prepare_suspend_token_uninterruptible(*handle, &task_id as *u64, &task_instance as *u64, &wait_gen as *u64)
+    if ok != 0 {
+        auto wait_id# = 0:u32
+        auto slot_gen# = 0:u32
+        auto alloc_ok = core_task::toka_wait_registry_allocate_token(task_id, task_instance, wait_gen, 1:u16, &wait_id as *u32, &slot_gen as *u32)
+        if alloc_ok != 0 {
+            auto expire_time = current_time_ms() + (ms as i64)
+            lock_queue()
+            g_timer_queue#.push(TimerEntry(wait_id=wait_id, slot_gen=slot_gen, expire_at=expire_time))
+            unlock_queue()
+            core_task::toka_task_commit_suspend(*handle)
+        } else {
+            core_task::toka_task_abort_suspend(*handle)
+            return -1
+        }
+    }
+    __builtin_coro_suspend()
+    return 0
+}
+
 pub fn sleep(ms: i32) {
     libc_usleep(ms * 1000)
 }

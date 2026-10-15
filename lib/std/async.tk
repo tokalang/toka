@@ -3,9 +3,9 @@
 // std/async.tk
 // High-level async combinators and structured concurrency.
 
-import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend_token, toka_task_commit_suspend, toka_task_abort_suspend, toka_wait_registry_allocate_pair_token, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_try_retain, toka_task_release, toka_task_start, toka_task_scope_create, toka_task_scope_try_enroll, toka_task_scope_enroll_scoped, toka_task_scope_begin_close, toka_task_scope_is_done, toka_task_scope_request_cancel_all, toka_task_scope_reap_finished, toka_task_scope_finish_close, toka_task_scope_release};
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend_token, toka_task_commit_suspend, toka_task_abort_suspend, toka_wait_registry_allocate_pair_token, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_try_retain, toka_task_release, toka_task_start, toka_task_is_current_canceled, toka_task_scope_create, toka_task_scope_try_enroll, toka_task_scope_enroll_scoped, toka_task_scope_begin_close, toka_task_scope_is_done, toka_task_scope_request_cancel_all, toka_task_scope_reap_finished, toka_task_scope_finish_close, toka_task_scope_release};
 import core/result::{Result};
-import std/task::{current_time_ms, sleep_async, task_cancel, task_is_cancel_requested, task_subscribe_completion, task_unsubscribe_completion};
+import std/task::{current_time_ms, sleep_async, sleep_uninterruptible_async, task_cancel, task_is_cancel_requested, task_subscribe_completion, task_unsubscribe_completion};
 import std/io::{println};
 
 extern fn __builtin_coro_current_handle() -> *void
@@ -190,7 +190,10 @@ impl TaskScope {
 
     pub fn join_async(self#) -> async {
         loop !self.is_done() {
-            sleep_async(1:i32).await
+            if toka_task_is_current_canceled(__builtin_coro_current_handle()) != 0 {
+                self#.cancel_all()
+            }
+            auto _ = sleep_uninterruptible_async(1:i32).await?
         }
     }
 
@@ -208,7 +211,7 @@ impl TaskScope {
                        "TaskScope close completed with a live child")
                 return false
             }
-            sleep_async(1:i32).await
+            auto _ = sleep_uninterruptible_async(1:i32).await?
         }
         return true
     }

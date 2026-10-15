@@ -3054,6 +3054,41 @@ int toka_task_prepare_suspend_token(void *coro_frame, uint64_t *out_task_id,
     return 0;
 }
 
+int toka_task_prepare_suspend_token_uninterruptible(void *coro_frame, uint64_t *out_task_id,
+                                                    uint64_t *out_instance_generation,
+                                                    uint64_t *out_gen) {
+    TokaTCB *tcb = lookup_tcb_by_frame_retained(coro_frame);
+    if (!tcb) return 0;
+
+    toka_mutex_lock(&g_rt_mutex);
+    uint64_t new_gen = 0;
+    uint32_t expected = TOKA_TCB_RUNNING;
+    if (toka_advance_schedule_generation(&tcb->task_schedule_generation,
+                                         &new_gen) &&
+        atomic_compare_exchange_strong(&tcb->state, &expected,
+                                       TOKA_TCB_PREPARING)) {
+        if (out_task_id) *out_task_id = tcb->token.task_id;
+        if (out_instance_generation) {
+            *out_instance_generation = tcb->token.task_instance_generation;
+        }
+        if (out_gen) *out_gen = new_gen;
+
+        // Note: Do NOT set TOKA_TCB_PREPARING_WITH_PENDING_WAKE.
+        // This suspension is uninterruptible (used for scope draining),
+        // so it must wait for the timer to expire.
+
+        toka_mutex_unlock(&g_rt_mutex);
+        toka_task_release(tcb);
+        return 1;
+    }
+    if (new_gen != 0) {
+        atomic_fetch_sub(&tcb->task_schedule_generation, 1);
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    toka_task_release(tcb);
+    return 0;
+}
+
 int toka_task_prepare_suspend(void *coro_frame, uint64_t *out_task_id,
                               uint64_t *out_gen) {
     (void)coro_frame;
@@ -3708,6 +3743,75 @@ int toka_task_resolve_await(void *child_promise_ptr, void *parent_tcb_ptr) {
             &parent_tcb->await_resolution, &expected, desired,
             memory_order_acq_rel, memory_order_acquire
         );
+    }
+
+    toka_task_release(child_tcb);
+    toka_task_release(parent_tcb);
+    return result;
+}
+
+int toka_task_resolve_await_barrier(void *child_promise_ptr, void *parent_tcb_ptr) {
+    if (!child_promise_ptr || !parent_tcb_ptr ||
+        !toka_task_try_retain(parent_tcb_ptr)) {
+        return 0;
+    }
+    TokaTCB *parent_tcb = (TokaTCB*)parent_tcb_ptr;
+    struct TokaPromiseHeader *hdr =
+        (struct TokaPromiseHeader*)child_promise_ptr;
+    TokaTCB *child_tcb = (TokaTCB*)hdr->self_tcb;
+    const int child_retained = child_tcb && toka_task_try_retain(child_tcb);
+    if (!child_retained ||
+        child_tcb->promise != child_promise_ptr) {
+        if (child_retained) toka_task_release(child_tcb);
+        toka_task_release(parent_tcb);
+        return 0;
+    }
+
+    int result = 0;
+    for (;;) {
+        uint8_t resolution = atomic_load_explicit(&parent_tcb->await_resolution,
+                                                  memory_order_acquire);
+        if (resolution == TOKA_AWAIT_RESOLUTION_NORMAL_CLAIMED ||
+            resolution == TOKA_AWAIT_RESOLUTION_CANCEL_CLAIMED) {
+            result = 1;
+            break;
+        }
+
+        if (resolution == TOKA_AWAIT_RESOLUTION_CHILD_NORMAL ||
+            resolution == TOKA_AWAIT_RESOLUTION_CHILD_CANCELED) {
+            uint8_t expected = resolution;
+            uint8_t desired = TOKA_AWAIT_RESOLUTION_NORMAL_CLAIMED;
+            if (atomic_compare_exchange_weak_explicit(
+                    &parent_tcb->await_resolution, &expected, desired,
+                    memory_order_acq_rel, memory_order_acquire)) {
+                result = 1;
+                break;
+            }
+            continue;
+        }
+
+        uint32_t child_state = atomic_load_explicit(&child_tcb->state,
+                                                    memory_order_acquire);
+        uint8_t child_result = atomic_load_explicit(&hdr->result_state,
+                                                    memory_order_acquire);
+        if (child_state == TOKA_TCB_COMPLETED ||
+            child_state == TOKA_TCB_COMPLETED_CANCELED ||
+            child_result == TOKA_RESULT_STATE_READYLIVE ||
+            child_result == TOKA_RESULT_STATE_CANCELED) {
+            uint8_t expected = resolution;
+            if (atomic_compare_exchange_weak_explicit(
+                    &parent_tcb->await_resolution, &expected,
+                    TOKA_AWAIT_RESOLUTION_NORMAL_CLAIMED,
+                    memory_order_acq_rel, memory_order_acquire)) {
+                result = 1;
+                break;
+            }
+            continue;
+        }
+
+        // Child is still running: drain barrier remains pending (result = 0).
+        // It NEVER cancels while child is running!
+        break;
     }
 
     toka_task_release(child_tcb);
@@ -5843,6 +5947,7 @@ int toka_task_request_cancel(void *tcb_ptr) {
     if (!toka_task_try_retain(tcb_ptr)) return 0;
     TokaTCB *tcb = (TokaTCB*)tcb_ptr;
     atomic_store(&tcb->cancel_requested, 1);
+    atomic_store(&tcb->cancel_handled, 0);
 
     TokaTCB *child_tcb = NULL;
     TokaTCB **cancel_children = NULL;
@@ -5995,15 +6100,19 @@ int toka_task_is_cancel_requested(void *tcb_ptr) {
     if (!tcb_ptr) return 0;
     if (!toka_task_try_retain(tcb_ptr)) return 0;
     TokaTCB *tcb = (TokaTCB*)tcb_ptr;
-    TokaTCB *curr = tcb;
     int canceled = 0;
     toka_mutex_lock(&g_rt_mutex);
-    while (curr) {
-        if (atomic_load(&curr->cancel_requested)) {
-            canceled = 1;
-            break;
+    if (atomic_load(&tcb->cancel_handled)) {
+        canceled = 0;
+    } else {
+        TokaTCB *curr = tcb;
+        while (curr) {
+            if (atomic_load(&curr->cancel_requested)) {
+                canceled = 1;
+                break;
+            }
+            curr = (TokaTCB*)atomic_load(&curr->parent_tcb);
         }
-        curr = (TokaTCB*)atomic_load(&curr->parent_tcb);
     }
     toka_mutex_unlock(&g_rt_mutex);
     toka_task_release(tcb);
@@ -6013,30 +6122,49 @@ int toka_task_is_cancel_requested(void *tcb_ptr) {
 int toka_task_is_current_canceled(void *coro_frame) {
     if (!coro_frame) return 0;
     TokaTCB *tcb = lookup_tcb_by_frame_retained(coro_frame);
+    if (!tcb) return 0;
     int canceled = 0;
-    TokaTCB *curr = tcb;
     toka_mutex_lock(&g_rt_mutex);
-    while (curr) {
-        if (atomic_load(&curr->cancel_requested)) {
-            canceled = 1;
-            break;
+    if (atomic_load(&tcb->cancel_handled)) {
+        canceled = 0;
+    } else {
+        TokaTCB *curr = tcb;
+        while (curr) {
+            if (atomic_load(&curr->cancel_requested)) {
+                canceled = 1;
+                break;
+            }
+            curr = (TokaTCB*)atomic_load(&curr->parent_tcb);
         }
-        curr = (TokaTCB*)atomic_load(&curr->parent_tcb);
     }
     toka_mutex_unlock(&g_rt_mutex);
-    if (tcb) {
-        toka_task_release(tcb);
-    }
+    toka_task_release(tcb);
     return canceled;
 }
 
 int toka_task_mark_current_cancellation_handled(void *coro_frame) {
     TokaTCB *tcb = lookup_tcb_by_frame_retained(coro_frame);
     if (!tcb) return 0;
-    int was_requested = atomic_load(&tcb->cancel_requested) != 0;
-    if (was_requested) {
+    int was_requested = 0;
+    toka_mutex_lock(&g_rt_mutex);
+    if (atomic_load(&tcb->cancel_requested) != 0) {
+        was_requested = 1;
+        atomic_store(&tcb->cancel_requested, 0);
         atomic_store(&tcb->cancel_handled, 1);
+    } else {
+        TokaTCB *curr = (TokaTCB*)atomic_load(&tcb->parent_tcb);
+        while (curr) {
+            if (atomic_load(&curr->cancel_requested)) {
+                was_requested = 1;
+                break;
+            }
+            curr = (TokaTCB*)atomic_load(&curr->parent_tcb);
+        }
+        if (was_requested) {
+            atomic_store(&tcb->cancel_handled, 1);
+        }
     }
+    toka_mutex_unlock(&g_rt_mutex);
     toka_task_release(tcb);
     return was_requested;
 }

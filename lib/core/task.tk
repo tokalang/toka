@@ -22,6 +22,7 @@ extern fn toka_tcb_is_done(*tcb: void) -> bool
 extern fn toka_tcb_is_canceled(*tcb: void) -> bool
 extern fn toka_task_get_current_token(*coro_frame: void, *out_id: u64, *out_instance: u64, *out_gen: u64) -> i32
 extern fn toka_task_prepare_suspend_token(*coro_frame: void, *out_id: u64, *out_instance: u64, *out_gen: u64) -> i32
+extern fn toka_task_prepare_suspend_token_uninterruptible(*coro_frame: void, *out_id: u64, *out_instance: u64, *out_gen: u64) -> i32
 extern fn toka_task_commit_suspend(*coro_frame: void) -> i32
 extern fn toka_task_abort_suspend(*coro_frame: void) -> i32
 // Compatibility hook for older compiler output. New CodeGen calls

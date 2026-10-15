@@ -9152,10 +9152,24 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
             ft, llvm::Function::ExternalLinkage,
             "toka_task_finish_await_resolution", m_Module.get());
     }
+    llvm::Function *resolveDrainBarrierFn =
+        m_Module->getFunction("toka_task_resolve_await_barrier");
+    if (!resolveDrainBarrierFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(
+            m_Builder.getInt32Ty(), {m_Builder.getPtrTy(), m_Builder.getPtrTy()}, false);
+        resolveDrainBarrierFn = llvm::Function::Create(
+            ft, llvm::Function::ExternalLinkage,
+            "toka_task_resolve_await_barrier", m_Module.get());
+    }
     llvm::Value *entrySelfCanceled = m_Builder.CreateCall(isCurrentCanceledFn, {m_CurrentCoroHandle}, "entry.self.canceled");
     llvm::Value *entryIsSelfCanceled = m_Builder.CreateICmpNE(entrySelfCanceled, m_Builder.getInt32(0));
     llvm::Value *entryTargetCanceled = m_Builder.CreateICmpEQ(targetState, m_Builder.getInt8(3), "entry.target.canceled");
-    llvm::Value *entryCancel = m_Builder.CreateOr(entryIsSelfCanceled, entryTargetCanceled, "entry.cancel");
+    llvm::Value *entryCancel = nullptr;
+    if (awaitExpr->IsScopeDrainBarrier) {
+        entryCancel = entryTargetCanceled;
+    } else {
+        entryCancel = m_Builder.CreateOr(entryIsSelfCanceled, entryTargetCanceled, "entry.cancel");
+    }
     m_Builder.CreateCondBr(entryCancel, canceledBB, stateDispatchBB);
 
     m_Builder.SetInsertPoint(stateDispatchBB);
@@ -9176,9 +9190,16 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     m_Builder.CreateCondBr(condSuspend, suspendBB, postPrepareBB);
 
     m_Builder.SetInsertPoint(postPrepareBB);
-    llvm::Value *postResolution = m_Builder.CreateCall(
-        resolveAwaitFn, {targetPromisePtrRaw, m_CurrentCoroTCB},
-        "post.await.resolution");
+    llvm::Value *postResolution = nullptr;
+    if (awaitExpr->IsScopeDrainBarrier) {
+        postResolution = m_Builder.CreateCall(
+            resolveDrainBarrierFn, {targetPromisePtrRaw, m_CurrentCoroTCB},
+            "post.await.barrier.resolution");
+    } else {
+        postResolution = m_Builder.CreateCall(
+            resolveAwaitFn, {targetPromisePtrRaw, m_CurrentCoroTCB},
+            "post.await.resolution");
+    }
     llvm::Value *postResolutionCanceled = m_Builder.CreateICmpEQ(
         postResolution, m_Builder.getInt32(-1), "post.await.canceled");
     llvm::Value *postResolutionPending = m_Builder.CreateICmpEQ(
@@ -9187,12 +9208,20 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     llvm::Value *postIsCanceled = m_Builder.CreateICmpEQ(postState, m_Builder.getInt8(3), "post_is_canceled");
     llvm::Value *postSelfCanceled = m_Builder.CreateCall(isCurrentCanceledFn, {m_CurrentCoroHandle}, "post.self.canceled");
     llvm::Value *postIsSelfCanceled = m_Builder.CreateICmpNE(postSelfCanceled, m_Builder.getInt32(0));
-    llvm::Value *postSampledCancel = m_Builder.CreateOr(
-        postIsCanceled, postIsSelfCanceled, "post.sampled.cancel");
-    llvm::Value *postFallbackCancel = m_Builder.CreateAnd(
-        postResolutionPending, postSampledCancel, "post.fallback.cancel");
-    llvm::Value *postCancel = m_Builder.CreateOr(
-        postResolutionCanceled, postFallbackCancel, "post.cancel");
+    llvm::Value *postCancel = nullptr;
+    if (awaitExpr->IsScopeDrainBarrier) {
+        llvm::Value *drainFallbackCancel = m_Builder.CreateAnd(
+            postResolutionPending, postIsCanceled, "post.drain.fallback.cancel");
+        postCancel = m_Builder.CreateOr(
+            postResolutionCanceled, drainFallbackCancel, "post.drain.cancel");
+    } else {
+        llvm::Value *postSampledCancel = m_Builder.CreateOr(
+            postIsCanceled, postIsSelfCanceled, "post.sampled.cancel");
+        llvm::Value *postFallbackCancel = m_Builder.CreateAnd(
+            postResolutionPending, postSampledCancel, "post.fallback.cancel");
+        postCancel = m_Builder.CreateOr(
+            postResolutionCanceled, postFallbackCancel, "post.cancel");
+    }
     m_Builder.CreateCondBr(postCancel, canceledBB, readyBB);
 
     m_Builder.SetInsertPoint(suspendBB);
@@ -9218,9 +9247,16 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     m_Builder.CreateBr(m_CurrentCoroCleanupBB);
     
     m_Builder.SetInsertPoint(resumeContBB);
-    llvm::Value *resumeResolution = m_Builder.CreateCall(
-        resolveAwaitFn, {targetPromisePtrRaw, m_CurrentCoroTCB},
-        "resume.await.resolution");
+    llvm::Value *resumeResolution = nullptr;
+    if (awaitExpr->IsScopeDrainBarrier) {
+        resumeResolution = m_Builder.CreateCall(
+            resolveDrainBarrierFn, {targetPromisePtrRaw, m_CurrentCoroTCB},
+            "resume.await.barrier.resolution");
+    } else {
+        resumeResolution = m_Builder.CreateCall(
+            resolveAwaitFn, {targetPromisePtrRaw, m_CurrentCoroTCB},
+            "resume.await.resolution");
+    }
     llvm::Value *resumeResolutionCanceled = m_Builder.CreateICmpEQ(
         resumeResolution, m_Builder.getInt32(-1), "resume.await.canceled");
     llvm::Value *resumeResolutionPending = m_Builder.CreateICmpEQ(
@@ -9231,13 +9267,22 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     llvm::Value *selfCanceled = m_Builder.CreateCall(isCurrentCanceledFn, {m_CurrentCoroHandle}, "self.canceled");
     llvm::Value *isSelfCanceled = m_Builder.CreateICmpNE(selfCanceled, m_Builder.getInt32(0));
 
-    llvm::Value *resumeSampledCancel = m_Builder.CreateOr(
-        resIsCanceled, isSelfCanceled, "resume.sampled.cancel");
-    llvm::Value *resumeFallbackCancel = m_Builder.CreateAnd(
-        resumeResolutionPending, resumeSampledCancel,
-        "resume.fallback.cancel");
-    llvm::Value *unwindCond = m_Builder.CreateOr(
-        resumeResolutionCanceled, resumeFallbackCancel, "unwind_cond");
+    llvm::Value *unwindCond = nullptr;
+    if (awaitExpr->IsScopeDrainBarrier) {
+        llvm::Value *drainResumeFallbackCancel = m_Builder.CreateAnd(
+            resumeResolutionPending, resIsCanceled,
+            "resume.drain.fallback.cancel");
+        unwindCond = m_Builder.CreateOr(
+            resumeResolutionCanceled, drainResumeFallbackCancel, "drain.unwind_cond");
+    } else {
+        llvm::Value *resumeSampledCancel = m_Builder.CreateOr(
+            resIsCanceled, isSelfCanceled, "resume.sampled.cancel");
+        llvm::Value *resumeFallbackCancel = m_Builder.CreateAnd(
+            resumeResolutionPending, resumeSampledCancel,
+            "resume.fallback.cancel");
+        unwindCond = m_Builder.CreateOr(
+            resumeResolutionCanceled, resumeFallbackCancel, "unwind_cond");
+    }
     m_Builder.CreateCondBr(unwindCond, canceledBB, readyBB);
 
     m_Builder.SetInsertPoint(canceledBB);
@@ -9274,6 +9319,25 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     }
 
     m_Builder.SetInsertPoint(readyBB);
+    if (awaitExpr->IsScopeDrainBarrier && !awaitExpr->CatchesCancellation) {
+        llvm::Value *drainEndSelfCanceled = m_Builder.CreateCall(
+            isCurrentCanceledFn, {m_CurrentCoroHandle}, "drain.end.self.canceled");
+        llvm::Value *drainEndIsSelfCanceled = m_Builder.CreateICmpNE(
+            drainEndSelfCanceled, m_Builder.getInt32(0));
+        llvm::BasicBlock *drainCancelBB = llvm::BasicBlock::Create(
+            m_Context, "await.drain.cancel", m_Builder.GetInsertBlock()->getParent());
+        llvm::BasicBlock *drainNormalBB = llvm::BasicBlock::Create(
+            m_Context, "await.drain.normal", m_Builder.GetInsertBlock()->getParent());
+        m_Builder.CreateCondBr(drainEndIsSelfCanceled, drainCancelBB, drainNormalBB);
+
+        m_Builder.SetInsertPoint(drainCancelBB);
+        if (isOwningTemporary) {
+            m_Builder.CreateCall(dropHandleFn, {targetTCBPtr});
+        }
+        genCoroutineCancelReturn();
+
+        m_Builder.SetInsertPoint(drainNormalBB);
+    }
     llvm::Function *takeResultAccessFn =
         m_Module->getFunction("__toka_task_take_result_access");
     if (!takeResultAccessFn) {

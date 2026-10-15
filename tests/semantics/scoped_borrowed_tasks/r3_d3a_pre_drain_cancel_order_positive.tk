@@ -1,0 +1,79 @@
+import std/task::{block_on, sleep_async}
+import std/async::{TaskScope, spawn_scoped, cancel_and_join}
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_start, toka_task_request_cancel}
+
+auto g_events# = [0:i32; 16]
+auto g_evt_cnt# = 0:i32
+fn rec(e: i32) {
+    if g_evt_cnt < 16:i32 {
+        g_events[g_evt_cnt] = e
+        g_evt_cnt += 1:i32
+    }
+}
+
+shape ChildResource(id: i32)
+impl ChildResource@Encap {
+    fn drop(self#) { rec(40:i32 + self.id) }
+}
+
+shape Buffer(size: i32, tag: i32)
+impl Buffer@Encap {
+    fn drop(self#) { rec(100:i32) }
+}
+
+fn worker(buf: Buffer, id: i32) -> async i32 {
+    auto res = ChildResource(id = id)
+    auto _ = sleep_async(300:i32).await?
+    return buf.size + res.id
+}
+
+fn parent() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+    auto c1 = spawn_scoped<i32>(scope#, cede worker(buf, 1:i32))
+    auto c2 = spawn_scoped<i32>(scope#, cede worker(buf, 2:i32))
+    auto r = sleep_async(100:i32).await?
+    if r.is_none() {
+        cancel_and_join(scope#).await
+        rec(90:i32)
+        return -2:i32
+    }
+    cancel_and_join(scope#).await
+    return 0:i32
+}
+
+fn supervisor() -> async i32 {
+    auto p = parent()
+    auto nul *ptcb = task_get_coro_handle<i32>(p)
+    if *ptcb != null { toka_task_start(ptcb.unwrap()) }
+    sleep_async(15:i32).await
+    if *ptcb != null { toka_task_request_cancel(ptcb.unwrap()) }
+    auto _ = p.await?
+    sleep_async(50:i32).await
+    return 0:i32
+}
+
+pub fn main() -> i32 {
+    auto t = supervisor()
+    auto _ = block_on<i32>(t)
+    auto idx_c1# = -1:i32
+    auto idx_c2# = -1:i32
+    auto idx_after_drain# = -1:i32
+    auto idx_buf_drop# = -1:i32
+    auto i# = 0:i32
+    loop i < g_evt_cnt {
+        if g_events[i] == 41:i32 { idx_c1 = i }
+        if g_events[i] == 42:i32 { idx_c2 = i }
+        if g_events[i] == 90:i32 { idx_after_drain = i }
+        if g_events[i] == 100:i32 { idx_buf_drop = i }
+        i += 1:i32
+    }
+    if idx_c1 == -1:i32 || idx_c2 == -1:i32 || idx_buf_drop == -1:i32 {
+        return 98
+    }
+    // Both children MUST drop BEFORE parent Buffer drops (100), and cancel_and_join must complete (90)
+    if !(idx_c1 < idx_buf_drop && idx_c2 < idx_buf_drop && idx_after_drain != -1:i32) {
+        return 99
+    }
+    return 0:i32
+}

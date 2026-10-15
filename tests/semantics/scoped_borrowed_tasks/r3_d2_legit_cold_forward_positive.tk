@@ -1,0 +1,29 @@
+import std/task::{block_on, sleep_async}
+import core/task::{TaskHandle}
+
+shape Buffer(size: i32, tag: i32)
+
+fn worker(buf: Buffer) -> async i32 {
+    sleep_async(5:i32).await
+    return buf.size + 42:i32
+}
+
+fn forward_cold(cede t: TaskHandle<i32>) -> TaskHandle<i32> <- t {
+    return cede t
+}
+
+fn parent() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto h = forward_cold(cede worker(buf))
+    auto v = h.await
+    return v
+}
+
+pub fn main() -> i32 {
+    auto t = parent()
+    auto res = block_on<i32>(t)
+    if res != 142:i32 {
+        return 1
+    }
+    return 0
+}

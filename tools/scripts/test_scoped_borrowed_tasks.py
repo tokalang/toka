@@ -127,6 +127,7 @@ def main():
         ("r2_d2b_forged_spawn_scoped_sibling.tk", "E0456"),
         ("r2_d3_await_question_on_join_scoped.tk", "E0456"),
         ("adv6_user_impl_taskscope_method.tk", "E0456"),
+        ("r3_d1_spawn_into_err_launder_negative.tk", "E0456"),
     ]
 
     positives = [
@@ -134,6 +135,9 @@ def main():
         "c2_early_exit_cleanup_order.tk",
         "c3_parent_cancel_cleanup_order.tk",
         "level_a_retained_body_consumer.tk",
+        "r3_d2_legit_cold_forward_positive.tk",
+        "r3_d3a_pre_drain_cancel_order_positive.tk",
+        "r3_d3b_mid_drain_second_cancel_order_positive.tk",
     ]
 
     print(f"Running Scoped Borrowed Tasks test suite using {tokac}...")

@@ -1505,6 +1505,10 @@ private:
   bool isSafeSynchronousTaskConsumer(FunctionDecl *calleeFn, size_t formalIndex);
   bool checkSafeTaskConsumerBody(ASTNode *body, const std::string &rootFormal);
   bool checkSafeTaskConsumerBodyHelper(ASTNode *node, std::set<std::string> &trackedVars);
+  bool isSafeSynchronousTaskForwarder(FunctionDecl *calleeFn, size_t formalIndex);
+  bool checkSafeTaskForwarderBody(ASTNode *body, const std::string &rootFormal);
+  bool checkSafeTaskForwarderBodyHelper(ASTNode *node, std::set<std::string> &trackedVars, size_t &returnPathsCount, bool &allReturnsTracked);
+  bool isSafeScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskIndex, size_t scopeIndex);
   void collectConsumingExpressionDependencies(
       Expr *expr, std::set<std::string> &deps, bool &hasUnknownSource);
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
