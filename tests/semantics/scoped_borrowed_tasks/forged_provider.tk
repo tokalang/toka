@@ -1,0 +1,4 @@
+import std/async::{TaskScope}
+
+pub fn join_scoped(scope#: TaskScope) -> async { }
+pub fn cancel_and_join(scope#: TaskScope) -> async { }

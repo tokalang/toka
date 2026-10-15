@@ -3423,7 +3423,7 @@ void Sema::checkCleanupScope(Scope *scope, PALChecker &pal,
   for (const auto &[name, info] : cleanup) {
     if (info->IsDeclaredVariable && !info->IsFunctionParameter &&
         info->SymbolID) {
-      if (info->TypeObj && info->TypeObj->getSoulName().rfind("TaskScope", 0) == 0 &&
+      if (info->TypeObj && isTaskScopeType(info->TypeObj) &&
           !info->LifeDependencySet.empty()) {
         DiagnosticEngine::report(exitLoc.isValid() ? exitLoc : info->DeclLoc,
                                  DiagID::ERR_BORROW_LIFETIME,
@@ -4077,6 +4077,8 @@ void Sema::registerGlobals(Module &M) {
       : toka::PathUtils::canonicalize(
             DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
   ModuleScope &ms = ModuleMap[fileName];
+  ms.IsTrustedSystemModule =
+      ms.IsTrustedSystemModule || M.IsTrustedSystemModule;
   ms.ShadowCoordinateKnown = M.ShadowCoordinateKnown;
   ms.ShadowCrateId = M.ShadowCrateId;
   ms.ShadowLogicalModulePath = M.ShadowLogicalModulePath;
@@ -9188,8 +9190,9 @@ bool Sema::isTaskLifetimeCarryingType(const std::shared_ptr<toka::Type> &type) {
       [&](const std::shared_ptr<toka::Type> &ty) -> bool {
     if (!ty) return false;
     if (taskResultType(ty) != nullptr) return true;
+    if (isTaskScopeType(ty)) return true;
     std::string soul = ty->getSoulName();
-    if (soul.rfind("TaskHandle", 0) == 0 || soul.rfind("TaskScope", 0) == 0)
+    if (soul.rfind("TaskHandle", 0) == 0)
       return true;
     if (ty->isArray())
       return walk(ty->getArrayElementType());

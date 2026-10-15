@@ -4664,7 +4664,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         SymbolInfo *Info = nullptr;
         std::string actualName;
         if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
-            if (Info && Info->TypeObj && Info->TypeObj->getSoulName().rfind("TaskScope", 0) == 0 &&
+            if (Info && Info->TypeObj && isTaskScopeType(Info->TypeObj) &&
                 !Info->LifeDependencySet.empty()) {
               error(ce, DiagID::ERR_BORROW_LIFETIME, Var->Name, *Info->LifeDependencySet.begin());
               SourceLocation originLoc = findPathDeclaration(*Info->LifeDependencySet.begin());
@@ -4988,17 +4988,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     };
 
     bool isScopeDrainAwait = false;
+    Expr *drainScopeArg = nullptr;
     if (auto *call = dynamic_cast<CallExpr *>(awaitEx->Expression.get())) {
-      std::string fnName = call->Callee;
-      if (call->ResolvedFn) fnName = call->ResolvedFn->Name;
-      if ((fnName == "join_scoped" || fnName == "cancel_and_join") && !call->Args.empty()) {
-        clearJoinedScope(getPathString(call->Args[0].get()));
+      if (isTrustedStdAsyncScopeDrainCall(call, drainScopeArg) && drainScopeArg) {
+        clearJoinedScope(getPathString(drainScopeArg));
         isScopeDrainAwait = true;
       }
     } else if (auto *mcall = dynamic_cast<MethodCallExpr *>(awaitEx->Expression.get())) {
-      if (mcall->Method == "join_async" || mcall->Method == "join" ||
-          mcall->Method == "cancel_and_join") {
-        clearJoinedScope(getPathString(mcall->Object.get()));
+      if (isTrustedStdAsyncScopeDrainMethod(mcall, drainScopeArg) && drainScopeArg) {
+        clearJoinedScope(getPathString(drainScopeArg));
         isScopeDrainAwait = true;
       }
     }
@@ -5006,7 +5004,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (!awaitEx->CatchesCancellation && !isScopeDrainAwait) {
       for (Scope *sc = CurrentScope; sc; sc = sc->Parent) {
         for (const auto &[name, info] : sc->Symbols) {
-          if (info.TypeObj && info.TypeObj->getSoulName().rfind("TaskScope", 0) == 0 &&
+          if (info.TypeObj && isTaskScopeType(info.TypeObj) &&
               !info.LifeDependencySet.empty()) {
             error(awaitEx, DiagID::ERR_BORROW_LIFETIME, name, *info.LifeDependencySet.begin());
             SourceLocation originLoc = findPathDeclaration(*info.LifeDependencySet.begin());
@@ -6088,7 +6086,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                           var->Name);
                   } else if (receiverInfo &&
                              receiverInfo->TypeObj &&
-                             receiverInfo->TypeObj->getSoulName().rfind("TaskScope", 0) == 0 &&
+                             isTaskScopeType(receiverInfo->TypeObj) &&
                              !receiverInfo->LifeDependencySet.empty()) {
                     error(Met->Object.get(),
                           DiagID::ERR_BORROW_LIFETIME,

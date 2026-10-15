@@ -5528,8 +5528,7 @@ bool Sema::checkConsumingArgumentEscape(
         if (actualFormalIdx == formalIndex) continue;
         Expr *siblingExpr = callArgs[siblingIdx].get();
         if (!siblingExpr || !siblingExpr->ResolvedType) continue;
-        std::string sibSoul = siblingExpr->ResolvedType->getSoulName();
-        if (sibSoul.rfind("TaskScope", 0) == 0) {
+        if (isTaskScopeType(siblingExpr->ResolvedType)) {
           std::string sibName = getPathString(siblingExpr);
           int sibDepth = getScopeDepth(sibName);
           SymbolInfo *sibInfo = nullptr;
@@ -5576,8 +5575,7 @@ bool Sema::checkConsumingArgumentEscape(
       if (!siblingExpr) continue;
       auto sibType = siblingExpr->ResolvedType;
       if (!sibType) continue;
-      std::string sibSoul = sibType->getSoulName();
-      bool isScopeOrCarrier = (sibSoul.rfind("TaskScope", 0) == 0) ||
+      bool isScopeOrCarrier = isTaskScopeType(sibType) ||
                               isTaskLifetimeCarryingType(sibType) ||
                               (calleeFn && actualFormalIdx < calleeFn->Args.size() && calleeFn->Args[actualFormalIdx].IsValueMutable);
       if (isScopeOrCarrier) {
