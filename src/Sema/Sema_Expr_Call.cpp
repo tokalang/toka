@@ -13120,12 +13120,47 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
     if (Fn && (Fn->Effect == EffectKind::Async || isTaskLifetimeCarryingType(Fn->ResolvedReturnType)) && !Fn->Body) {
       Expr *argExpr = Call->Args[i].get();
-      auto argType = argExpr ? argExpr->ResolvedType : nullptr;
-      if (argType && !argType->isInteger() && !argType->isFloatingPoint() &&
-          !argType->isBoolean() && !argType->isUnit()) {
-        std::string argName = getPathString(argExpr);
-        error(Call->Args[i].get(), DiagID::ERR_BORROW_LIFETIME, Fn->Name, argName.empty() ? "argument" : argName);
-        SourceLocation originLoc = findPathDeclaration(argName);
+      std::string targetDep;
+      std::string argName = getPathString(argExpr);
+      if (argName.empty() && argExpr) {
+        if (auto *varExpr = findVariableExpr(argExpr))
+          argName = varExpr->Name;
+      }
+      if (!argName.empty()) {
+        std::string root = extractPathRoot(argName);
+        SymbolInfo *info = nullptr;
+        Scope *owner = nullptr;
+        std::string actualName = root;
+        if (CurrentScope &&
+            CurrentScope->findVariableWithDerefScope(root, info, actualName, owner) &&
+            info && owner && owner->Depth > 0 &&
+            (info->IsDeclaredVariable || info->IsFunctionParameter)) {
+          targetDep = argName;
+        }
+      }
+      if (targetDep.empty() && argExpr) {
+        std::set<std::string> deps;
+        bool hasUnknownSource = false;
+        collectConsumingExpressionDependencies(argExpr, deps, hasUnknownSource);
+        for (const auto &d : deps) {
+          if (d.empty() || d == "<unknown>")
+            continue;
+          std::string root = extractPathRoot(d);
+          SymbolInfo *info = nullptr;
+          Scope *owner = nullptr;
+          std::string actualName = root;
+          if (CurrentScope &&
+              CurrentScope->findVariableWithDerefScope(root, info, actualName, owner) &&
+              info && owner && owner->Depth > 0 &&
+              (info->IsDeclaredVariable || info->IsFunctionParameter)) {
+            targetDep = d;
+            break;
+          }
+        }
+      }
+      if (!targetDep.empty()) {
+        error(Call->Args[i].get(), DiagID::ERR_BORROW_LIFETIME, Fn->Name, targetDep);
+        SourceLocation originLoc = findPathDeclaration(targetDep);
         if (originLoc.isValid())
           DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
                                    "shorter-lived dependency declared here");
