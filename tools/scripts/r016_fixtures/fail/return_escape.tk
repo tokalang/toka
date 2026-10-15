@@ -1,0 +1,17 @@
+// N1: Return scoped borrowed task out of lexical scope
+import core/task::{TaskHandle}
+import std/async::{TaskScope, spawn_scoped}
+
+shape Buffer ( size: i32, tag: i32 )
+
+fn worker(buf: Buffer) -> async i32 {
+    return buf.size
+}
+
+pub fn escape_scoped() -> TaskHandle<i32> {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+    auto task = spawn_scoped<i32>(scope#, cede worker(buf))
+    // MUST REJECT: task carries borrow of local buf, cannot escape out of scope
+    return task
+}

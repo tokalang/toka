@@ -180,7 +180,7 @@ def main():
             errors = label_rejection_errors(invalid_label, rejected_output)
             require(not errors, "label rejection contract failed for %s: %s; receipt %s; inspect prequalify_release.py label validation" %
                     (label, "; ".join(errors), diagnostics / ("%03d" % sequence)))
-        for label in ("v0.11.0", "v0.12.0", "v0.13.0", "v0.14.0", "v0.15.0", "v0.15.1"):
+        for label in ("v0.11.0", "v0.12.0", "v0.13.0", "v0.14.0", "v0.15.0", "v0.15.1", "v0.16.0"):
             planned_output = Path(temporary) / ("planned-" + label)
             legal_label = run([
                 sys.executable, str(RUNNER), "--dry-run", "--version", label,

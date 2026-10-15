@@ -1,0 +1,19 @@
+{
+  "fail/await_question_drain.tk": "3720295feec457f6e55109ed3475f050bd27391da9ff176d75b78fd4b28fd8e9",
+  "fail/borrowed_child_result.tk": "82815a21d813d1ea394e798348e2f45fc4dc7db0185e2cada02abb93737cb8cf",
+  "fail/container_escape.tk": "6c66bcdb19a143ebe60d67c912c7bdc3f31142eba2e1b391a032f86b6d86e0fd",
+  "fail/detached_start.tk": "57c1e5033057c2c143c943b6bbdcd0bea367dbb3dcfdbfc06fe278d2f04d4b84",
+  "fail/forged_spawn_routes_return.tk": "08432e410b20f67c7958bd99041826a1003c0c9d57842b2ba0fc9cc8e2d667c4",
+  "fail/mutation_conflict.tk": "455d4d17446f99426aaad4ac522e338216862975d4a00b917a8ee9310891ed2b",
+  "fail/return_escape.tk": "a68e264832c7d561a24999465f2e66af09743ca2adc116f54cd1c51cca59b8eb",
+  "fail/spawn_into_escape.tk": "e5d73b0aa6fb006261730faa11a29bc043956b9930e4c6e9bf46c02c03b2c66c",
+  "fail/unjoined_scope_exit.tk": "5f218ceef2e911986cdc30b6c56853ad15cb7cc79d790a1469ce347ad4a52c6c",
+  "pass/forwarder_wrapper.tk": "20ca93eca1be3974f76ca542391674be34c26d74b9c4b225f6cfbb810e00baf1",
+  "pass/mid_drain_cancel_barrier.tk": "d6ca8665c29b9f988bf94f4415e0c76a6abdb08bfbd07900dbd9a01af528fb7c",
+  "pass/pre_drain_cancel_order.tk": "2092b6778e7272a6d355691049ed311c30e86d23fe1f1a3e0be32994bdaa1c8b",
+  "pass/scoped_cascade_cancel.tk": "550e4929e4c36bf0d2d4c654f6c233c201a09fc0f7dcaed138b4170045877379",
+  "pass/scoped_early_exit.tk": "4fb211c6f5f19103e9055be0b6720bd92776ce3744ada67102d06bd17edb0ffd",
+  "pass/scoped_normal_order.tk": "de90c4817052a003de4a1b3601b22b8c7d0f1e5daf2cd6e5e424cb1febd06714",
+  "sourceless/level_a_retained_body_consumer.tk": "cbf1111cfb915e31e9057629c42e2bbd196439d938d03b7faad8895cc48720de",
+  "sourceless/scoped_provider.tk": "f7dd8258b782129a87ca7bebefe7b7d5b1bd23baa57ea1e3ed77283531ba23f2"
+}
