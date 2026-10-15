@@ -5003,6 +5003,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
       }
     }
+    awaitEx->IsScopeDrainBarrier = isScopeDrainAwait;
 
     if (!awaitEx->CatchesCancellation && !isScopeDrainAwait) {
       for (Scope *sc = CurrentScope; sc; sc = sc->Parent) {

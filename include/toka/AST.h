@@ -870,6 +870,7 @@ public:
   // `.await?` is the explicit cancellation-capture boundary.  Ordinary
   // `.await` continues to propagate cancellation as a terminal scope exit.
   bool CatchesCancellation = false;
+  bool IsScopeDrainBarrier = false;
   std::shared_ptr<Type> AwaitedType;
   AwaitExpr(std::unique_ptr<Expr> expr) : Expression(std::move(expr)) {}
   std::string toString() const override {
@@ -879,6 +880,7 @@ public:
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<AwaitExpr>(cloneNode(Expression));
     n->CatchesCancellation = CatchesCancellation;
+    n->IsScopeDrainBarrier = IsScopeDrainBarrier;
     n->AwaitedType = AwaitedType;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;

@@ -123,8 +123,7 @@ bool Sema::isTrustedStdAsyncActivationCall(const FunctionDecl *fn) const {
   const auto *origin = fn->TemplateOrigin ? fn->TemplateOrigin : fn;
   const auto *mod = getDeclarationModuleScope(origin);
   if (!isTrustedStdAsyncModule(mod)) return false;
-  return origin->Name == "spawn_scoped" || fn->Name == "spawn_scoped" ||
-         origin->Name == "spawn_into" || fn->Name == "spawn_into";
+  return origin->Name == "spawn_scoped" || fn->Name == "spawn_scoped";
 }
 
 bool Sema::closedTaskResultType(std::shared_ptr<Type> type) {
