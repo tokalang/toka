@@ -1,0 +1,20 @@
+// N5a: Genuine Unjoined Scope Exit
+// Function returning i32 (NOT returning TaskHandle) exits lexical scope of borrowed local
+// with an unjoined/unconverged scoped child task.
+import std/async::{TaskScope, spawn_scoped}
+
+shape Buffer ( size: i32, tag: i32 )
+
+fn worker(buf: Buffer) -> async i32 {
+    return buf.size
+}
+
+pub fn unjoined_scope_exit() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+    auto t1 = spawn_scoped<i32>(scope#, cede worker(buf))
+
+    // MUST REJECT: Exiting lexical scope of `buf` and `scope` returning i32
+    // without performing scope convergence (join_scoped or cancel_and_join).
+    return 0:i32
+}

@@ -1,0 +1,152 @@
+import std/task::{block_on, sleep_async}
+import std/async::{TaskScope, spawn_scoped, join_scoped, cancel_and_join}
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_start, toka_task_request_cancel}
+
+auto g_events# = [0:i32; 32]
+auto g_event_count# = 0:i32
+
+auto g_child_drop_count# = 0:i32
+auto g_buffer_drop_count# = 0:i32
+
+const EVT_CHILD1_STARTED: i32 = 10
+const EVT_CHILD2_STARTED: i32 = 11
+const EVT_PARENT_WAITING_CHILD: i32 = 20
+const EVT_EXTERNAL_CANCEL_INJECTED: i32 = 25
+const EVT_CHILD1_CANCELED: i32 = 30
+const EVT_CHILD2_CANCELED: i32 = 31
+const EVT_CHILD_CLEANUP: i32 = 40
+const EVT_PARENT_HANDLED_CANCELED: i32 = 80
+const EVT_PARENT_BUFFER_DROP: i32 = 100
+
+fn record_event(evt: i32) {
+    if g_event_count < 32:i32 {
+        g_events[g_event_count] = evt
+        g_event_count += 1:i32
+    }
+}
+
+shape ChildResource(id: i32)
+impl ChildResource@Encap {
+    fn drop(self#) {
+        g_child_drop_count += 1:i32
+        record_event(EVT_CHILD_CLEANUP)
+    }
+}
+
+shape Buffer (
+    size: i32,
+    tag: i32
+)
+impl Buffer@Encap {
+    fn drop(self#) {
+        g_buffer_drop_count += 1:i32
+        record_event(EVT_PARENT_BUFFER_DROP)
+    }
+}
+
+fn child_worker(buf: Buffer, id: i32, start_evt: i32, cancel_evt: i32) -> async i32 {
+    auto res = ChildResource(id = id)
+    record_event(start_evt)
+    auto s = sleep_async(300:i32).await
+    if s < 0 {
+        record_event(cancel_evt)
+        return -1:i32
+    }
+    return buf.size + res.id
+}
+
+fn cancellable_parent() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+
+    // >=2 concurrent children borrowing parent local Buffer
+    auto c1 = spawn_scoped<i32>(scope#, cede child_worker(buf, 42:i32, EVT_CHILD1_STARTED, EVT_CHILD1_CANCELED))
+    auto c2 = spawn_scoped<i32>(scope#, cede child_worker(buf, 43:i32, EVT_CHILD2_STARTED, EVT_CHILD2_CANCELED))
+
+    record_event(EVT_PARENT_WAITING_CHILD)
+    auto child_res1 = c1.await?
+
+    if child_res1.is_none() {
+        record_event(EVT_PARENT_HANDLED_CANCELED)
+        // Drain scope: ensures both children complete cleanup before parent unwinds
+        cancel_and_join(scope#).await
+        return -2:i32
+    }
+
+    auto child_res2 = c2.await?
+    if child_res2.is_none() {
+        record_event(EVT_PARENT_HANDLED_CANCELED)
+        cancel_and_join(scope#).await
+        return -2:i32
+    }
+
+    join_scoped(scope#).await
+    return child_res1.unwrap() + child_res2.unwrap()
+}
+
+fn supervisor() -> async i32 {
+    auto parent_task = cancellable_parent()
+    auto nul *parent_tcb = task_get_coro_handle<i32>(parent_task)
+    if *parent_tcb != null { toka_task_start(parent_tcb.unwrap()) }
+
+    // Allow parent to start, create children, and suspend in await
+    sleep_async(15:i32).await
+
+    // External cancellation injected into parent task!
+    record_event(EVT_EXTERNAL_CANCEL_INJECTED)
+    if *parent_tcb != null {
+        toka_task_request_cancel(parent_tcb.unwrap())
+    }
+
+    auto opt = parent_task.await?
+    if opt.is_some() { return opt.unwrap() }
+    return -2:i32
+}
+
+pub fn main() -> i32 {
+    auto t = supervisor()
+    auto res = block_on<i32>(t)
+    if res != -2:i32 {
+        return 1
+    }
+
+    // Verify exactly-once drops for >=2 children and parent buffer
+    if g_child_drop_count != 2:i32 {
+        return 2 // Both child resources must be cleaned up exactly once
+    }
+    if g_buffer_drop_count != 1:i32 {
+        return 3 // Parent Buffer must be dropped exactly once
+    }
+
+    auto idx_cancel_inj# = -1:i32
+    auto first_child_cleanup# = -1:i32
+    auto last_child_cleanup# = -1:i32
+    auto idx_buffer_drop# = -1:i32
+    auto i# = 0:i32
+    loop i < g_event_count {
+        if g_events[i] == EVT_EXTERNAL_CANCEL_INJECTED { idx_cancel_inj = i }
+        if g_events[i] == EVT_CHILD_CLEANUP {
+            if first_child_cleanup == -1:i32 {
+                first_child_cleanup = i
+            }
+            last_child_cleanup = i
+        }
+        if g_events[i] == EVT_PARENT_BUFFER_DROP { idx_buffer_drop = i }
+        i += 1:i32
+    }
+
+    if idx_cancel_inj == -1:i32 || first_child_cleanup == -1:i32 || last_child_cleanup == -1:i32 || idx_buffer_drop == -1:i32 {
+        return 4
+    }
+
+    // Verify causal ordering:
+    // External cancel injected -> children clean up -> parent Buffer dropped LAST
+    if !(idx_cancel_inj < first_child_cleanup) {
+        return 5
+    }
+    if !(last_child_cleanup < idx_buffer_drop) {
+        return 6 // All children cleanup MUST happen BEFORE parent buffer drops
+    }
+
+    return 0
+}

@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       tag_name:
-        description: Exact 0.11.x, 0.12.x, 0.13.x, 0.14.x or 0.15.x release label, for example v0.11.0
+        description: Exact 0.11.x, 0.12.x, 0.13.x, 0.14.x, 0.15.x or 0.16.x release label, for example v0.11.0
         required: true
         type: string
   push:
@@ -110,7 +110,7 @@ jobs:
           TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12|13|14|15)\.(0|[1-9][0-9]*)$ ]]; then
+          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12|13|14|15|16)\.(0|[1-9][0-9]*)$ ]]; then
             echo "release label must be a canonical v0.11.x/v0.12.x tag" >&2
             exit 1
           fi
@@ -208,7 +208,7 @@ jobs:
           TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12|13|14|15)\.(0|[1-9][0-9]*)$ ]]; then
+          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12|13|14|15|16)\.(0|[1-9][0-9]*)$ ]]; then
             echo "release label must be a canonical v0.11.x/v0.12.x tag" >&2
             exit 1
           fi
@@ -269,7 +269,7 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12|13|14|15)\.(0|[1-9][0-9]*)$ ]]; then
+          if [[ ! "$TAG_NAME" =~ ^v0\.(11|12|13|14|15|16)\.(0|[1-9][0-9]*)$ ]]; then
             echo "release label must be a canonical v0.11.x/v0.12.x tag" >&2
             exit 1
           fi

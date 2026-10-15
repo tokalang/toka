@@ -1,0 +1,134 @@
+import std/task::{block_on, sleep_async}
+import std/async::{TaskScope, spawn_scoped, join_scoped, cancel_and_join}
+
+auto g_events# = [0:i32; 16]
+auto g_event_count# = 0:i32
+
+auto g_child_drop_count# = 0:i32
+auto g_buffer_drop_count# = 0:i32
+
+const EVT_CHILD_START: i32 = 10
+const EVT_CHILD_CANCELED: i32 = 30
+const EVT_CHILD_CLEANUP: i32 = 40
+const EVT_PARENT_EARLY_EXIT: i32 = 50
+const EVT_CANCEL_REQUESTED: i32 = 60
+const EVT_CHILD_TERMINAL: i32 = 70
+const EVT_PARENT_BUFFER_DROP: i32 = 100
+
+fn record_event(evt: i32) {
+    if g_event_count < 16:i32 {
+        g_events[g_event_count] = evt
+        g_event_count += 1:i32
+    }
+}
+
+shape ChildResource(id: i32)
+impl ChildResource@Encap {
+    fn drop(self#) {
+        g_child_drop_count += 1:i32
+        record_event(EVT_CHILD_CLEANUP)
+    }
+}
+
+shape Buffer (
+    size: i32,
+    tag: i32
+)
+impl Buffer@Encap {
+    fn drop(self#) {
+        g_buffer_drop_count += 1:i32
+        record_event(EVT_PARENT_BUFFER_DROP)
+    }
+}
+
+fn long_running_child(buf: Buffer, id: i32) -> async i32 {
+    auto res = ChildResource(id = id)
+    record_event(EVT_CHILD_START)
+    // Long sleep: interrupted by cancellation on parent early exit
+    auto sleep_res = sleep_async(300:i32).await
+    if sleep_res < 0 {
+        record_event(EVT_CHILD_CANCELED)
+        return -1:i32
+    }
+    return buf.size + res.id
+}
+
+fn async_parent_early_exit(trigger_error: bool) -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+
+    // Formal safe scoped spawn
+    auto t1 = spawn_scoped<i32>(scope#, cede long_running_child(buf, 1:i32))
+
+    // Yield control so child starts running and enters sleep
+    auto _waited = sleep_async(10:i32).await?
+
+    if trigger_error {
+        record_event(EVT_PARENT_EARLY_EXIT)
+
+        // Scoped Early-Exit Lowering Contract via Safe Surface API:
+        // 1. Request cancellation and asynchronously drain all active children
+        record_event(EVT_CANCEL_REQUESTED)
+        cancel_and_join(scope#).await
+        record_event(EVT_CHILD_TERMINAL)
+
+        // 2. Early return discharges parent scope; buf drops only AFTER child is terminal!
+        return -99:i32
+    }
+
+    auto r_opt = t1.await?
+    if r_opt.is_none() {
+        cancel_and_join(scope#).await
+        return -1:i32
+    }
+    auto r = r_opt.unwrap()
+    join_scoped(scope#).await
+    return r
+}
+
+pub fn main() -> i32 {
+    auto t = async_parent_early_exit(true)
+    auto res = block_on<i32>(t)
+    if res != -99:i32 {
+        return 1
+    }
+
+    // Verify exactly-once drops
+    if g_child_drop_count != 1:i32 {
+        return 2 // Child resource must be cleaned up exactly once
+    }
+    if g_buffer_drop_count != 1:i32 {
+        return 3 // Parent Buffer must be dropped exactly once
+    }
+
+    auto idx_cancel_req# = -1:i32
+    auto idx_child_clean# = -1:i32
+    auto idx_child_term# = -1:i32
+    auto idx_buffer_drop# = -1:i32
+    auto i# = 0:i32
+    loop i < g_event_count {
+        if g_events[i] == EVT_CANCEL_REQUESTED { idx_cancel_req = i }
+        if g_events[i] == EVT_CHILD_CLEANUP { idx_child_clean = i }
+        if g_events[i] == EVT_CHILD_TERMINAL { idx_child_term = i }
+        if g_events[i] == EVT_PARENT_BUFFER_DROP { idx_buffer_drop = i }
+        i += 1:i32
+    }
+
+    if idx_cancel_req == -1:i32 || idx_child_clean == -1:i32 || idx_child_term == -1:i32 || idx_buffer_drop == -1:i32 {
+        return 4
+    }
+
+    // Assert strict causal ordering:
+    // Cancel requested -> child frame cleaned up -> child reached terminal -> parent Buffer drops
+    if !(idx_cancel_req < idx_child_clean) {
+        return 5
+    }
+    if !(idx_child_clean <= idx_child_term) {
+        return 6
+    }
+    if !(idx_child_term < idx_buffer_drop) {
+        return 7 // Child MUST be terminal BEFORE parent Buffer is dropped
+    }
+
+    return 0
+}

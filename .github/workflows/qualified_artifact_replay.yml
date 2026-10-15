@@ -42,7 +42,7 @@ permissions:
 
 jobs:
   replay:
-    if: ${{ !(startsWith(inputs.tag_name, 'v0.12.') || startsWith(inputs.tag_name, 'v0.13.') || startsWith(inputs.tag_name, 'v0.14.') || startsWith(inputs.tag_name, 'v0.15.')) }}
+    if: ${{ !(startsWith(inputs.tag_name, 'v0.12.') || startsWith(inputs.tag_name, 'v0.13.') || startsWith(inputs.tag_name, 'v0.14.') || startsWith(inputs.tag_name, 'v0.15.') || startsWith(inputs.tag_name, 'v0.16.')) }}
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -180,7 +180,7 @@ jobs:
           if-no-files-found: error
 
   policy-plan:
-    if: (startsWith(inputs.tag_name, 'v0.12.') || startsWith(inputs.tag_name, 'v0.13.') || startsWith(inputs.tag_name, 'v0.14.') || startsWith(inputs.tag_name, 'v0.15.'))
+    if: (startsWith(inputs.tag_name, 'v0.12.') || startsWith(inputs.tag_name, 'v0.13.') || startsWith(inputs.tag_name, 'v0.14.') || startsWith(inputs.tag_name, 'v0.15.') || startsWith(inputs.tag_name, 'v0.16.'))
     runs-on: ubuntu-22.04
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -201,7 +201,7 @@ jobs:
           ASSET_SOURCE: ${{ inputs.asset_source }}
         run: |
           set -euo pipefail
-          [[ "$TAG_NAME" =~ ^v0\.(12|13|14|15)\.(0|[1-9][0-9]*)$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
+          [[ "$TAG_NAME" =~ ^v0\.(12|13|14|15|16)\.(0|[1-9][0-9]*)$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Replay input guard rejected: TAG_NAME=$TAG_NAME CANDIDATE_SHA=$CANDIDATE_SHA" >&2; exit 2; }
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA" || { echo "Replay checkout SHA mismatch" >&2; exit 2; }
           if [[ "$CANDIDATE_ONLY" == true ]]; then
@@ -251,6 +251,10 @@ jobs:
             cp tools/scripts/test_0_15_candidate.py replay-input/
             cp -r tools/scripts/r015_fixtures replay-input/
           fi
+          if [[ "$TAG_NAME" == v0.16.* ]]; then
+            cp tools/scripts/test_0_16_candidate.py replay-input/
+            cp -r tools/scripts/r016_fixtures replay-input/
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: policy-replay-input
@@ -285,8 +289,9 @@ jobs:
           is_r3_r5 = (tag_name != 'v0.13.0' and tag_name.startswith('v0.13.'))
           is_014 = tag_name.startswith('v0.14.')
           is_015 = tag_name.startswith('v0.15.')
+          is_016 = tag_name.startswith('v0.16.')
 
-          if is_r3_r5 or is_014 or is_015 or manifest_path.is_file():
+          if is_r3_r5 or is_014 or is_015 or is_016 or manifest_path.is_file():
               if not manifest_path.is_file():
                   raise SystemExit("Missing mandatory replay_bundle_manifest.json in replay-input")
               manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
@@ -418,6 +423,10 @@ jobs:
             python3 replay-input/test_0_15_candidate.py --sdk "$sdk" --revision "$CANDIDATE_SHA" \
               --version "$TAG_NAME" --fixtures replay-input/r015_fixtures --target "$TARGET" --output replay-results/candidate_015
           fi
+          if [[ "$TAG_NAME" == v0.16.* ]]; then
+            python3 replay-input/test_0_16_candidate.py --sdk "$sdk" --revision "$CANDIDATE_SHA" \
+              --version "$TAG_NAME" --fixtures replay-input/r016_fixtures --target "$TARGET" --output replay-results/candidate_016
+          fi
           python3 - <<'PYCODE'
           import json,os,sys
           from pathlib import Path
@@ -433,6 +442,9 @@ jobs:
           c015_path = Path('replay-results/candidate_015/result.json')
           if c015_path.is_file():
               row['candidate_015'] = json.loads(c015_path.read_text())
+          c016_path = Path('replay-results/candidate_016/result.json')
+          if c016_path.is_file():
+              row['candidate_016'] = json.loads(c016_path.read_text())
           Path('replay-results/replay-receipt.json').write_text(json.dumps(row,indent=2)+'\n')
           PYCODE
       - uses: actions/upload-artifact@v4
@@ -477,6 +489,10 @@ jobs:
                   c_errors = policy.candidate_015_receipt_errors(r.get('candidate_015'), os.environ['CANDIDATE_SHA'], os.environ['TAG_NAME'], target=r.get('target'))
                   if c_errors:
                       errors.append('invalid 0.15 replay receipt for %s: %s' % (r.get('target'), '; '.join(c_errors)))
+              if os.environ['TAG_NAME'].startswith('v0.16.'):
+                  c_errors = policy.candidate_016_receipt_errors(r.get('candidate_016'), os.environ['CANDIDATE_SHA'], os.environ['TAG_NAME'], target=r.get('target'))
+                  if c_errors:
+                      errors.append('invalid 0.16 replay receipt for %s: %s' % (r.get('target'), '; '.join(c_errors)))
           result={'schema':'toka.qualified-artifact-replay-summary','version':2,'policy_id':policy.policy_id(os.environ['TAG_NAME']),'candidate_revision':os.environ['CANDIDATE_SHA'],'version_label':os.environ['TAG_NAME'],'qualification_run_id':int(os.environ['QUALIFICATION_RUN_ID']),'qualification_run_attempt':q['run_attempt'],'replay_run_id':int(os.environ['GITHUB_RUN_ID']),'replay_run_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'receipts':rows,'errors':errors,'result':'fail' if errors else 'pass'}
           Path('qualified-artifact-replay-receipt.json').write_text(json.dumps(result,indent=2)+'\n')
           raise SystemExit(bool(errors))

@@ -2,9 +2,9 @@
 set -e
 
 # Usage: ./package_release.sh [version]
-VERSION=${1:-"v0.15.1"}
-if [[ ! "$VERSION" =~ ^v0\.(11|12|13|14|15)\.(0|[1-9][0-9]*)$ ]]; then
-    echo "Release label must be a canonical v0.11.x/v0.12.x/v0.13.x/v0.14.x/v0.15.x tag" >&2
+VERSION=${1:-"v0.16.0"}
+if [[ ! "$VERSION" =~ ^v0\.(11|12|13|14|15|16)\.(0|[1-9][0-9]*)$ ]]; then
+    echo "Release label must be a canonical v0.11.x/v0.12.x/v0.13.x/v0.14.x/v0.15.x/v0.16.x tag" >&2
     exit 1
 fi
 OS=${OS:-""}
@@ -110,7 +110,7 @@ fi
 mkdir -p "${PACKAGE_DIR}/docs"
 cp -a docs/ai_completion_card.md "${PACKAGE_DIR}/docs/"
 
-if [[ "$VERSION" == v0.13.* ]] || [[ "$VERSION" == v0.14.* ]] || [[ "$VERSION" == v0.15.* ]]; then
+if [[ "$VERSION" == v0.13.* ]] || [[ "$VERSION" == v0.14.* ]] || [[ "$VERSION" == v0.15.* ]] || [[ "$VERSION" == v0.16.* ]]; then
     cp docs/package_entry_contract.md docs/package_entry_example.md docs/diagnostic_d1_d2_migration.md docs/toka_test_lock_codes.md "${PACKAGE_DIR}/docs/"
     if [ -f "docs/release_notes_${VERSION}.md" ]; then
         cp "docs/release_notes_${VERSION}.md" "${PACKAGE_DIR}/docs/"
@@ -121,14 +121,20 @@ if [[ "$VERSION" == v0.13.* ]] || [[ "$VERSION" == v0.14.* ]] || [[ "$VERSION" =
     if [ -f "docs/compatibility_0.15.md" ]; then
         cp "docs/compatibility_0.15.md" "${PACKAGE_DIR}/docs/"
     fi
+    if [ -f "docs/compatibility_0.16.md" ]; then
+        cp "docs/compatibility_0.16.md" "${PACKAGE_DIR}/docs/"
+    fi
+    if [ -f "docs/scoped_tasks_v1_guide.md" ]; then
+        cp "docs/scoped_tasks_v1_guide.md" "${PACKAGE_DIR}/docs/"
+    fi
 fi
 
 # Copy meta files
 cp README.md "${PACKAGE_DIR}/" || true
 cp LICENSE "${PACKAGE_DIR}/" || true
 
-# Bind standard 0.13 / 0.14 / 0.15 archives to the source and all four real binaries.
-if [[ "$VERSION" == v0.13.* ]] || [[ "$VERSION" == v0.14.* ]] || [[ "$VERSION" == v0.15.* ]]; then
+# Bind standard 0.13 / 0.14 / 0.15 / 0.16 archives to the source and all four real binaries.
+if [[ "$VERSION" == v0.13.* ]] || [[ "$VERSION" == v0.14.* ]] || [[ "$VERSION" == v0.15.* ]] || [[ "$VERSION" == v0.16.* ]]; then
     python3 - "$PACKAGE_DIR" "$VERSION" "$BINARY_BUILD_DIR" "$OS" "$ARCH" <<'PYCODE'
 import hashlib,json,re,subprocess,sys
 from pathlib import Path
@@ -138,7 +144,7 @@ if 'BUILD_TESTING:BOOL=OFF' not in (build_dir/'CMakeCache.txt').read_text():rais
 revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
 dirty=bool(subprocess.check_output(['git','-c','core.fsmonitor=false','status','--porcelain','--untracked-files=no']).strip())
 if dirty:raise SystemExit(f'{label} package requires a frozen clean tracked candidate')
-if label.startswith(('v0.14.', 'v0.15.')):
+if label.startswith(('v0.14.', 'v0.15.', 'v0.16.')):
     version_h=build_dir/'include/toka/Version.h'
     if not version_h.is_file():raise SystemExit(f'{label} packaging requires built Version.h')
     m=re.search(r'#define\s+TOKA_COMMIT_HASH\s+"([0-9a-fA-F]+)"',version_h.read_text())

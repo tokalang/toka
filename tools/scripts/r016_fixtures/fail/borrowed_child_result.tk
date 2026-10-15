@@ -1,0 +1,11 @@
+// N5b: RFC Invariant 7 - Scoped child cannot return borrowed views or S-dependent results
+shape Buffer ( size: i32, tag: i32 )
+
+fn worker_borrowed_result(buf: Buffer) -> async &Buffer <- buf {
+    // MUST REJECT: Scoped child cannot return a borrowed view of parent data
+    return &buf
+}
+
+pub fn main() -> i32 {
+    return 0
+}

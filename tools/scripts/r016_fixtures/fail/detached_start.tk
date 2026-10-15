@@ -1,0 +1,18 @@
+// N2: Detached .start must be strictly rejected when carrying borrowed data
+import core/task::{TaskHandle}
+shape Buffer ( size: i32, tag: i32 )
+
+fn process_chunk(buf: Buffer, chunk_id: i32) -> async i32 {
+    return buf.size + chunk_id
+}
+
+pub fn run_detached(buf: Buffer) -> i32 {
+    // MUST REJECT: .start is detached and has no scope anchor
+    auto t1 = process_chunk(buf, 1:i32).start
+    return 0:i32
+}
+
+pub fn main() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    return run_detached(buf)
+}
