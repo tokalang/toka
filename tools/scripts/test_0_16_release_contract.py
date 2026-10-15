@@ -184,6 +184,13 @@ class Contract016(unittest.TestCase):
                     ('bad_escape_negative_exit', lambda p: p['source_hidden_tki']['escape_negative_commands']['compile'].update(exit_code=0)),
                     ('missing_escape_negative_diagnostic', lambda p: p['source_hidden_tki']['escape_negative_commands']['check'].update(stderr='')),
                     ('bad_escape_negative_rejected', lambda p: p['source_hidden_tki'].update(escape_negative_rejected=False)),
+                    ('escape_negative_stripped_fields', lambda p: [p['source_hidden_tki']['escape_negative_commands'][m].clear() or p['source_hidden_tki']['escape_negative_commands'][m].update(exit_code=1, stderr='error[E0455]: Returning reference to local variable is unsafe\n') for m in ('check', 'object', 'ir', 'compile')]),
+                    ('escape_negative_bin_false_signal', lambda p: [p['source_hidden_tki']['escape_negative_commands'][m].update(argv=['/bin/false'], signal=15, termination='terminated', error='aborted', ok=False, result='fail', artifact_absent=False) for m in ('check', 'object', 'ir', 'compile')]),
+                    ('escape_negative_bool_exit', lambda p: p['source_hidden_tki']['escape_negative_commands']['check'].update(exit_code=True)),
+                    ('escape_negative_null', lambda p: p['source_hidden_tki'].update(escape_negative_commands=None)),
+                    ('escape_negative_missing_mode', lambda p: p['source_hidden_tki']['escape_negative_commands'].pop('compile')),
+                    ('escape_negative_wrong_compiler', lambda p: p['source_hidden_tki']['escape_negative_commands']['check'].update(argv=['/usr/bin/python3', '-I', '/tmp/escape', '--check-only', '/tmp/escape/escape.tk'])),
+                    ('escape_negative_crash_stderr', lambda p: p['source_hidden_tki']['escape_negative_commands']['check'].update(stderr='error[E0455]: ...\nerror: linker failed with exit code 1\n', stderr_sha256=hashlib.sha256(b'error[E0455]: ...\nerror: linker failed with exit code 1\n').hexdigest())),
                 ]
                 for desc, mutate in mutations:
                     with self.subTest(mutation=desc):
@@ -223,6 +230,10 @@ class Contract016(unittest.TestCase):
                     })),
                     ('corrupt_receipt_type', lambda r: r['candidate_016']['receipts'].__setitem__(0, 'bad')),
                     ('receipt_command_not_ok', lambda r: r['candidate_016']['receipts'][0].update(ok=False)),
+                    ('replay_escape_negative_stripped', lambda r: [r['candidate_016']['source_hidden_tki']['escape_negative_commands'][m].clear() or r['candidate_016']['source_hidden_tki']['escape_negative_commands'][m].update(exit_code=1, stderr='error[E0455]: ...\n') for m in ('check', 'object', 'ir', 'compile')]),
+                    ('replay_escape_negative_bin_false', lambda r: [r['candidate_016']['source_hidden_tki']['escape_negative_commands'][m].update(argv=['/bin/false'], signal=15, termination='terminated', error='aborted', ok=False, result='fail', artifact_absent=False) for m in ('check', 'object', 'ir', 'compile')]),
+                    ('replay_escape_negative_bool_exit', lambda r: r['candidate_016']['source_hidden_tki']['escape_negative_commands']['check'].update(exit_code=True)),
+                    ('replay_escape_negative_null', lambda r: r['candidate_016']['source_hidden_tki'].update(escape_negative_commands=None)),
                 ]:
                     with self.subTest(replay_mutation=p_desc):
                         d_bad = copy.deepcopy(d)
@@ -232,6 +243,23 @@ class Contract016(unittest.TestCase):
                 # Restore valid replay receipt
                 cases.dump(a.replay_receipt, d['replay'])
                 self.assertEqual(promotion.validate(a), [])
+
+                # Summary mutations rejecting draft creation and promotion
+                for s_desc, s_mutate in [
+                    ('summary_escape_negative_stripped', lambda s: [s['reports'][0]['candidate_016']['source_hidden_tki']['escape_negative_commands'][m].clear() or s['reports'][0]['candidate_016']['source_hidden_tki']['escape_negative_commands'][m].update(exit_code=1, stderr='error[E0455]: ...\n') for m in ('check', 'object', 'ir', 'compile')]),
+                    ('summary_escape_negative_bin_false', lambda s: [s['reports'][0]['candidate_016']['source_hidden_tki']['escape_negative_commands'][m].update(argv=['/bin/false'], signal=15, termination='terminated', error='aborted', ok=False, result='fail', artifact_absent=False) for m in ('check', 'object', 'ir', 'compile')]),
+                    ('summary_escape_negative_bool_exit', lambda s: s['reports'][0]['candidate_016']['source_hidden_tki']['escape_negative_commands']['check'].update(exit_code=True)),
+                    ('summary_escape_negative_null', lambda s: s['reports'][0]['candidate_016']['source_hidden_tki'].update(escape_negative_commands=None)),
+                ]:
+                    with self.subTest(summary_draft_mutation=s_desc):
+                        d_bad = copy.deepcopy(d)
+                        s_mutate(d_bad['summary'])
+                        cases.dump(a.qualification_summary, d_bad['summary'])
+                        with self.assertRaises(ValueError):
+                            draft.validate(a)
+                        self.assertTrue(promotion.validate(a))
+                # Restore valid qualification summary
+                cases.dump(a.qualification_summary, d['summary'])
 
                 for tag in ('v0.16.01', 'v0.16.0-rc.1', 'v0.17.0'):
                     b = copy.copy(a)
