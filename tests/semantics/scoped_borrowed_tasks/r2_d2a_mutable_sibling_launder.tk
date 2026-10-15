@@ -1,0 +1,24 @@
+import std/task::{sleep_async}
+import core/task::{TaskHandle}
+
+shape Buffer(size: i32, tag: i32)
+shape Dummy(val: i32)
+
+fn worker(buf: Buffer) -> async i32 {
+    sleep_async(300:i32).await
+    return buf.size
+}
+
+fn launder(s#: Dummy, cede t: TaskHandle<i32>) -> i32 {
+    auto owned = cede t
+    owned.start
+    s = Dummy(val = 1:i32)
+    return s.val
+}
+
+pub fn parent() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto s# = Dummy(val = 0:i32)
+    auto _ = launder(s#, cede worker(buf))
+    return 0:i32
+}

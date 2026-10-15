@@ -3423,7 +3423,8 @@ void Sema::checkCleanupScope(Scope *scope, PALChecker &pal,
   for (const auto &[name, info] : cleanup) {
     if (info->IsDeclaredVariable && !info->IsFunctionParameter &&
         info->SymbolID) {
-      if (info->TypeObj && isTaskScopeType(info->TypeObj) &&
+      if (info->TypeObj &&
+          (isTaskScopeType(info->TypeObj) || info->CarriesTaskDependency) &&
           !info->LifeDependencySet.empty()) {
         DiagnosticEngine::report(exitLoc.isValid() ? exitLoc : info->DeclLoc,
                                  DiagID::ERR_BORROW_LIFETIME,

@@ -5502,6 +5502,7 @@ bool Sema::checkConsumingArgumentEscape(
         }
         if (recInfo) {
           recInfo->LifeDependencySet.insert(depStr);
+          recInfo->CarriesTaskDependency = true;
           if (depInfo) {
             recInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
                                               depInfo->LifeDependencySet.end());
@@ -5510,6 +5511,8 @@ bool Sema::checkConsumingArgumentEscape(
         continue;
       }
     }
+
+    bool isTrustedActivation = calleeFn && isTrustedStdAsyncActivationCall(calleeFn);
 
     bool routesToReturn = false;
     if (calleeFn) {
@@ -5522,7 +5525,7 @@ bool Sema::checkConsumingArgumentEscape(
         }
       }
     }
-    if (routesToReturn) {
+    if (routesToReturn && isTrustedActivation) {
       for (size_t siblingIdx = 0; siblingIdx < callArgs.size(); ++siblingIdx) {
         size_t actualFormalIdx = methodReceiver ? siblingIdx + 1 : siblingIdx;
         if (actualFormalIdx == formalIndex) continue;
@@ -5546,6 +5549,7 @@ bool Sema::checkConsumingArgumentEscape(
           }
           if (sibInfo) {
             sibInfo->LifeDependencySet.insert(depStr);
+            sibInfo->CarriesTaskDependency = true;
             if (depInfo) {
               sibInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
                                                 depInfo->LifeDependencySet.end());
@@ -5568,51 +5572,52 @@ bool Sema::checkConsumingArgumentEscape(
     }
 
     bool caughtBySibling = false;
-    for (size_t siblingIdx = 0; siblingIdx < callArgs.size(); ++siblingIdx) {
-      size_t actualFormalIdx = methodReceiver ? siblingIdx + 1 : siblingIdx;
-      if (actualFormalIdx == formalIndex) continue;
-      Expr *siblingExpr = callArgs[siblingIdx].get();
-      if (!siblingExpr) continue;
-      auto sibType = siblingExpr->ResolvedType;
-      if (!sibType) continue;
-      bool isScopeOrCarrier = isTaskScopeType(sibType) ||
-                              isTaskLifetimeCarryingType(sibType) ||
-                              (calleeFn && actualFormalIdx < calleeFn->Args.size() && calleeFn->Args[actualFormalIdx].IsValueMutable);
-      if (isScopeOrCarrier) {
-        std::string sibName = getPathString(siblingExpr);
-        int sibDepth = getScopeDepth(sibName);
-        SymbolInfo *sibInfo = nullptr;
-        std::string sibRoot = extractPathRoot(sibName);
-        std::string actualSib = sibRoot;
-        CurrentScope->findVariableWithDeref(sibRoot, sibInfo, actualSib);
-        bool sibIsParam = sibInfo && sibInfo->IsFunctionParameter;
-        if (sibIsParam || sibDepth < depDepth) {
-          error(callSite, DiagID::ERR_BORROW_LIFETIME, sibName, depStr);
-          SourceLocation originLoc = findPathDeclaration(depStr);
-          if (originLoc.isValid())
-            DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
-                                     "shorter-lived dependency declared here");
-          return false;
-        }
-        if (sibInfo) {
-          sibInfo->LifeDependencySet.insert(depStr);
-          if (depInfo) {
-            sibInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
-                                              depInfo->LifeDependencySet.end());
-            AccessPath depPath;
-            depPath.RootID = depInfo->SymbolID;
-            depPath.RootName = extractPathRoot(depStr);
-            depPath.RootLoc = depInfo->DeclLoc;
-            size_t retainingLevels = (CurrentScope->Depth >= sibDepth)
-                ? static_cast<size_t>(CurrentScope->Depth - sibDepth) : 0;
-            if (auto conflict = PALCheckerState.accumulateCarrierBorrows(
-                    sibInfo->SymbolID, {depPath}, retainingLevels, sibDepth, true, callSite->Loc)) {
-              error(callSite, DiagID::ERR_BORROW_MUT, conflict->displayPath());
-              return false;
+    if (isTrustedActivation) {
+      for (size_t siblingIdx = 0; siblingIdx < callArgs.size(); ++siblingIdx) {
+        size_t actualFormalIdx = methodReceiver ? siblingIdx + 1 : siblingIdx;
+        if (actualFormalIdx == formalIndex) continue;
+        Expr *siblingExpr = callArgs[siblingIdx].get();
+        if (!siblingExpr) continue;
+        auto sibType = siblingExpr->ResolvedType;
+        if (!sibType) continue;
+        bool isScopeOrCarrier = isTaskScopeType(sibType);
+        if (isScopeOrCarrier) {
+          std::string sibName = getPathString(siblingExpr);
+          int sibDepth = getScopeDepth(sibName);
+          SymbolInfo *sibInfo = nullptr;
+          std::string sibRoot = extractPathRoot(sibName);
+          std::string actualSib = sibRoot;
+          CurrentScope->findVariableWithDeref(sibRoot, sibInfo, actualSib);
+          bool sibIsParam = sibInfo && sibInfo->IsFunctionParameter;
+          if (sibIsParam || sibDepth < depDepth) {
+            error(callSite, DiagID::ERR_BORROW_LIFETIME, sibName, depStr);
+            SourceLocation originLoc = findPathDeclaration(depStr);
+            if (originLoc.isValid())
+              DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                       "shorter-lived dependency declared here");
+            return false;
+          }
+          if (sibInfo) {
+            sibInfo->LifeDependencySet.insert(depStr);
+            sibInfo->CarriesTaskDependency = true;
+            if (depInfo) {
+              sibInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
+                                                depInfo->LifeDependencySet.end());
+              AccessPath depPath;
+              depPath.RootID = depInfo->SymbolID;
+              depPath.RootName = extractPathRoot(depStr);
+              depPath.RootLoc = depInfo->DeclLoc;
+              size_t retainingLevels = (CurrentScope->Depth >= sibDepth)
+                  ? static_cast<size_t>(CurrentScope->Depth - sibDepth) : 0;
+              if (auto conflict = PALCheckerState.accumulateCarrierBorrows(
+                      sibInfo->SymbolID, {depPath}, retainingLevels, sibDepth, true, callSite->Loc)) {
+                error(callSite, DiagID::ERR_BORROW_MUT, conflict->displayPath());
+                return false;
+              }
             }
           }
+          caughtBySibling = true;
         }
-        caughtBySibling = true;
       }
     }
     if (caughtBySibling) {

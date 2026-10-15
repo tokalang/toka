@@ -122,6 +122,11 @@ def main():
         ("renamed_noop_control.tk", "E0456"),
         ("forged_method_drain.tk", "E0456"),
         ("cross_module_forged_join.tk", "E0456"),
+        ("r2_d1_forged_spawn_scoped_routes_to_return.tk", "E0456"),
+        ("r2_d2a_mutable_sibling_launder.tk", "E0456"),
+        ("r2_d2b_forged_spawn_scoped_sibling.tk", "E0456"),
+        ("r2_d3_await_question_on_join_scoped.tk", "E0456"),
+        ("adv6_user_impl_taskscope_method.tk", "E0456"),
     ]
 
     positives = [

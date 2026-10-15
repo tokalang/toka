@@ -104,6 +104,7 @@ struct SymbolInfo {
   std::map<std::string, std::set<std::string>> FieldDependencySet; // [NEW] Member-specific deps
   bool HasTaskResultDependencies = false;
   std::set<std::string> TaskResultDependencySet;
+  bool CarriesTaskDependency = false;
   // Identity-preserving external value sources; nullopt is unknown.
   std::optional<std::set<AccessPath>> ExternalValueDependencies;
   bool ExternalValueTracked = false;
@@ -1286,6 +1287,7 @@ private:
   bool isTaskScopeType(const std::shared_ptr<Type> &type) const;
   bool isTrustedStdAsyncScopeDrainCall(const CallExpr *call, Expr *&scopeArg) const;
   bool isTrustedStdAsyncScopeDrainMethod(const MethodCallExpr *mcall, Expr *&scopeArg) const;
+  bool isTrustedStdAsyncActivationCall(const FunctionDecl *fn) const;
   std::vector<IndependentReturnFrame> m_IndependentReturnFrames;
   std::map<uint64_t, std::shared_ptr<const ByteBufferFact>> m_ByteBuffers;
   std::map<uint32_t, bool> m_ByteBufferSchemas;
