@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-EXPECTED_016_FIXTURES_DIGEST = "2006725464581147600dd684dfb428845ef69ca40b1bed2c04da3d1f9fb3a397"
+EXPECTED_016_FIXTURES_DIGEST = "7579bc4271da9eb1f1f413309b580fe8495b9a28c0b15fbe430a18b89267923e"
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -255,12 +255,57 @@ def main():
     if r_tki.returncode != 0:
         raise RuntimeError(f"TKI consumer run failed: exit={r_tki.returncode}, output={r_tki.stdout}")
 
+    # Negative Control 3: Source-hidden Retained-Body escape negative across --check-only, -c, and --emit-llvm
+    escape_stage = work / "tki_escape_stage"
+    escape_stage.mkdir(parents=True, exist_ok=True)
+    escape_src = fixtures_dir / "sourceless/level_a_cross_module_escape_negative.tk"
+    escape_copy = escape_stage / "level_a_cross_module_escape_negative.tk"
+    shutil.copy2(escape_src, escape_copy)
+    shutil.copy2(consumer_stage / "scoped_provider.tki", escape_stage / "scoped_provider.tki")
+
+    escape_check_cmd = [tokac_bin, "-I", str(escape_stage), "--check-only", str(escape_copy)]
+    t0_esc_chk = time.time()
+    r_esc_chk = subprocess.run(escape_check_cmd, env=env, cwd=escape_stage, capture_output=True, text=True, timeout=30)
+    el_esc_chk = time.time() - t0_esc_chk
+    if r_esc_chk.returncode != 1 or "E0455" not in r_esc_chk.stderr:
+        raise RuntimeError(f"Source-hidden escape check failed: exit={r_esc_chk.returncode}, stderr={r_esc_chk.stderr}")
+
+    escape_o = escape_stage / "escape.o"
+    escape_obj_cmd = [tokac_bin, "-I", str(escape_stage), "-c", str(escape_copy), "-o", str(escape_o)]
+    t0_esc_obj = time.time()
+    r_esc_obj = subprocess.run(escape_obj_cmd, env=env, cwd=escape_stage, capture_output=True, text=True, timeout=30)
+    el_esc_obj = time.time() - t0_esc_obj
+    if escape_o.exists() or r_esc_obj.returncode != 1 or "E0455" not in r_esc_obj.stderr:
+        raise RuntimeError(f"Source-hidden escape object failed: exit={r_esc_obj.returncode}, product_exists={escape_o.exists()}")
+
+    escape_ll = escape_stage / "escape.ll"
+    escape_ir_cmd = [tokac_bin, "-I", str(escape_stage), "--emit-llvm", "-c", str(escape_copy), "-o", str(escape_ll)]
+    t0_esc_ir = time.time()
+    r_esc_ir = subprocess.run(escape_ir_cmd, env=env, cwd=escape_stage, capture_output=True, text=True, timeout=30)
+    el_esc_ir = time.time() - t0_esc_ir
+    if escape_ll.exists() or r_esc_ir.returncode != 1 or "E0455" not in r_esc_ir.stderr:
+        raise RuntimeError(f"Source-hidden escape IR failed: exit={r_esc_ir.returncode}, product_exists={escape_ll.exists()}")
+
+    escape_bin = escape_stage / "escape_bin"
+    escape_bin_cmd = [tokac_bin, "-I", str(escape_stage), str(escape_copy), str(consumer_stage / "provider.o"), "-o", str(escape_bin)]
+    t0_esc_bin = time.time()
+    r_esc_bin = subprocess.run(escape_bin_cmd, env=env, cwd=escape_stage, capture_output=True, text=True, timeout=30)
+    el_esc_bin = time.time() - t0_esc_bin
+    if escape_bin.exists() or r_esc_bin.returncode != 1 or "E0455" not in r_esc_bin.stderr:
+        raise RuntimeError(f"Source-hidden escape binary failed: exit={r_esc_bin.returncode}, product_exists={escape_bin.exists()}")
+
+    shutil.rmtree(escape_stage, ignore_errors=True)
+
     # 4. Negative safety boundary controls (multi-mode zero-artifact checks)
     multi_mode_negatives = [
         ("return_escape", fixtures_dir / "fail/return_escape.tk", "E0455"),
         ("spawn_into_escape", fixtures_dir / "fail/spawn_into_escape.tk", "E0456"),
         ("forged_spawn_routes_return", fixtures_dir / "fail/forged_spawn_routes_return.tk", "E0456"),
         ("await_question_drain", fixtures_dir / "fail/await_question_drain.tk", "E0456"),
+        ("r2_d2a_mutable_sibling_launder", fixtures_dir / "fail/r2_d2a_mutable_sibling_launder.tk", "E0456"),
+        ("r2_d2b_forged_spawn_scoped_sibling", fixtures_dir / "fail/r2_d2b_forged_spawn_scoped_sibling.tk", "E0456"),
+        ("forged_join", fixtures_dir / "fail/forged_join.tk", "E0456"),
+        ("forged_cancel_join", fixtures_dir / "fail/forged_cancel_join.tk", "E0456"),
     ]
 
     for base_name, src, diag in multi_mode_negatives:
@@ -317,7 +362,7 @@ def main():
             "groups": {
                 "version": 4,
                 "G-scoped-tasks-positive": 15,
-                "G-scoped-tasks-negative": 21,
+                "G-scoped-tasks-negative": len(receipts) - 19,
             },
         },
         "four_tool_versions": versions,
@@ -363,6 +408,86 @@ def main():
                 "stderr_sha256": sha256_bytes(r_corrupt.stderr.encode("utf-8")),
                 "execution_ms": round(elapsed_corrupt * 1000.0, 2),
                 "elapsed_seconds": round(elapsed_corrupt, 4),
+            },
+            "escape_negative_rejected": True,
+            "escape_negative_diagnostic": "E0455",
+            "escape_negative_commands": {
+                "check": {
+                    "argv": [str(c) for c in escape_check_cmd],
+                    "cmd": [str(c) for c in escape_check_cmd],
+                    "cwd": str(escape_stage),
+                    "exit_code": r_esc_chk.returncode,
+                    "signal": None,
+                    "termination": None,
+                    "error": None,
+                    "ok": True,
+                    "result": "pass",
+                    "diagnostic": "E0455",
+                    "artifact_absent": True,
+                    "stdout": r_esc_chk.stdout,
+                    "stderr": r_esc_chk.stderr,
+                    "stdout_sha256": sha256_bytes(r_esc_chk.stdout.encode("utf-8")),
+                    "stderr_sha256": sha256_bytes(r_esc_chk.stderr.encode("utf-8")),
+                    "execution_ms": round(el_esc_chk * 1000.0, 2),
+                    "elapsed_seconds": round(el_esc_chk, 4),
+                },
+                "object": {
+                    "argv": [str(c) for c in escape_obj_cmd],
+                    "cmd": [str(c) for c in escape_obj_cmd],
+                    "cwd": str(escape_stage),
+                    "exit_code": r_esc_obj.returncode,
+                    "signal": None,
+                    "termination": None,
+                    "error": None,
+                    "ok": True,
+                    "result": "pass",
+                    "diagnostic": "E0455",
+                    "artifact_absent": not escape_o.exists(),
+                    "stdout": r_esc_obj.stdout,
+                    "stderr": r_esc_obj.stderr,
+                    "stdout_sha256": sha256_bytes(r_esc_obj.stdout.encode("utf-8")),
+                    "stderr_sha256": sha256_bytes(r_esc_obj.stderr.encode("utf-8")),
+                    "execution_ms": round(el_esc_obj * 1000.0, 2),
+                    "elapsed_seconds": round(el_esc_obj, 4),
+                },
+                "ir": {
+                    "argv": [str(c) for c in escape_ir_cmd],
+                    "cmd": [str(c) for c in escape_ir_cmd],
+                    "cwd": str(escape_stage),
+                    "exit_code": r_esc_ir.returncode,
+                    "signal": None,
+                    "termination": None,
+                    "error": None,
+                    "ok": True,
+                    "result": "pass",
+                    "diagnostic": "E0455",
+                    "artifact_absent": not escape_ll.exists(),
+                    "stdout": r_esc_ir.stdout,
+                    "stderr": r_esc_ir.stderr,
+                    "stdout_sha256": sha256_bytes(r_esc_ir.stdout.encode("utf-8")),
+                    "stderr_sha256": sha256_bytes(r_esc_ir.stderr.encode("utf-8")),
+                    "execution_ms": round(el_esc_ir * 1000.0, 2),
+                    "elapsed_seconds": round(el_esc_ir, 4),
+                },
+                "compile": {
+                    "argv": [str(c) for c in escape_bin_cmd],
+                    "cmd": [str(c) for c in escape_bin_cmd],
+                    "cwd": str(escape_stage),
+                    "exit_code": r_esc_bin.returncode,
+                    "signal": None,
+                    "termination": None,
+                    "error": None,
+                    "ok": True,
+                    "result": "pass",
+                    "diagnostic": "E0455",
+                    "artifact_absent": not escape_bin.exists(),
+                    "stdout": r_esc_bin.stdout,
+                    "stderr": r_esc_bin.stderr,
+                    "stdout_sha256": sha256_bytes(r_esc_bin.stdout.encode("utf-8")),
+                    "stderr_sha256": sha256_bytes(r_esc_bin.stderr.encode("utf-8")),
+                    "execution_ms": round(el_esc_bin * 1000.0, 2),
+                    "elapsed_seconds": round(el_esc_bin, 4),
+                },
             },
             "consumer_result": "pass",
             "provider_source_present": False,

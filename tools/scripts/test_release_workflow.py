@@ -371,7 +371,11 @@ def main():
                     "${{ steps.candidate.outputs" not in block,
                     workflow_name + " workflow interpolates context into shell")
     active_pattern = r"^v0\.(11|12|13|14|15|16)\.(0|[1-9][0-9]*)$"
+    ref_pattern = r"^refs/tags/v0\.(11|12|13|14|15|16)\.(0|[1-9][0-9]*)$"
+    plan_pattern = r"v0\.(?:11|12|13|14|15|16)\.(?:0|[1-9][0-9]*)"
     require(text.count(active_pattern) == 3 and
+            text.count(ref_pattern) == 2 and
+            plan_pattern in text and
             promotion.count(active_pattern) == 1 and
             qualified_replay.count(r"^v0\.11\.(0|[1-9][0-9]*)$") == 1,
             "active workflows do not validate the same canonical v0.11.x tag")
