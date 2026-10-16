@@ -7,15 +7,16 @@ Toka 0.16.0 introduces **Scoped Tasks ("显式汇聚受限 v1" Explicit Converge
 ### 1. Structured Concurrency with Scoped Tasks
 - **Lexical Scope Concurrency**: Concurrent async tasks are bound to an explicit `TaskScope` (`TaskScope::new()`), ensuring child execution is strictly anchored to coordinator lifetimes.
 - **Explicit Convergence Model**: Child tasks spawned via `spawn_scoped<T>(scope#, cede task)` must be converged before leaving scope. Coordinators converge either normally via `join_scoped(scope#).await` or through cooperative cancellation via `cancel_and_join(scope#).await`.
-- **Zero Use-After-Free**: Stack-allocated locals (buffers, shapes, resources) captured by reference or value across concurrent tasks remain valid until all child tasks have fully terminated and dropped.
+- **Scoped Concurrency Use-After-Free Prevention (Safe Subset)**: Within the safe scoped-task subset, stack-allocated locals (buffers, shapes, resources) borrowed by concurrent scoped child tasks remain valid until all child tasks have fully terminated and dropped.
 
 ### 2. Compile-Time Safety & Escape Prevention
-- **Return Escape Prevention**: Task handles cannot be returned from the spawning function or scope body (`error[E0455]`).
-- **Container Escape Prevention**: Task handles cannot be embedded inside structs, shapes, tuples, arrays, or heap-allocated containers (`error[E0456]`).
+- **Scoped Return Escape Prevention**: Scoped task handles carrying local borrowed dependencies cannot be returned from the spawning function or scope body (`error[E0455]`); existing owned, dependency-free task handles retain their return capability.
+- **Scoped Container Escape Prevention**: Scoped task handles carrying local borrowed dependencies cannot be embedded inside structs, shapes, tuples, arrays, or heap-allocated containers (`error[E0456]`); existing owned, dependency-free task handles retain their container storage capability.
 - **Unjoined Scope Exit Guard**: Attempting to exit an active scope with unjoined or un-drained child tasks fails closed at compile time (`error[E0456]`).
-- **Detached Start Ban**: Detached background task initiation without structured scope attachment is rejected (`error[E04583]`).
+- **Detached Start Ban**: Detached background task initiation without structured scope attachment is rejected within scoped coordinator contexts (`error[E04583]`).
 - **Concurrency Mutation Conflict**: Spawning tasks with conflicting concurrent mutable accesses to shared captures is rejected (`error[E0440]`).
 - **Cross-Boundary Borrow Guard**: Borrowing internal child task results across scope boundaries is statically rejected (`error[E04658]`).
+*(Note: Escape safety restrictions specifically govern scoped tasks carrying local borrowed dependencies; existing owned, standalone async tasks and unconstrained TaskHandle workflows remain fully supported.)*
 
 ### 3. Deterministic Lifecycle & Uninterruptible Cancel Drain Barrier
 - **Hierarchical Cascade Cancellation**: Canceling a parent coordinator automatically dispatches cooperative cancellation signals to all spawned child tasks.
