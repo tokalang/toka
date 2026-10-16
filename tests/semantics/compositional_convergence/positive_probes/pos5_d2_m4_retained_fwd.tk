@@ -1,0 +1,10 @@
+import ext_provider::{Buffer, fwd_external}
+import core/task::{TaskHandle}
+fn worker(b: Buffer) -> async i32 <- b { return b.size }
+pub fn test_pos5() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto t = worker(buf)
+    auto ret = fwd_external(cede t)
+    return ret.await
+}
+pub fn main() -> i32 { return 0:i32 }

@@ -82,6 +82,7 @@ jobs:
           ctest --test-dir build --output-on-failure -R "^toka_async_"
           ctest --test-dir build --output-on-failure -R "^toka_task_lifetime_escape$"
           ctest --test-dir build --output-on-failure -R "^toka_scoped_borrowed_tasks$"
+          ctest --test-dir build --output-on-failure -R "^toka_compositional_convergence$"
           python3 tools/scripts/test_taskhandle_lifecycle.py --conformance-output build/taskhandle-lifecycle-conformance-windows.json
           python3 tools/scripts/test_restricted_cancellation_profile.py --candidate-sha "$GITHUB_SHA" --conformance-output build/toka-restricted-cancellation-windows.json
           python3 tools/scripts/test_generic_recursion.py --build-dir build --output-dir build/generic-recursion-gate-report

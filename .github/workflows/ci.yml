@@ -177,6 +177,11 @@ jobs:
           set -euo pipefail
           ctest --test-dir build --output-on-failure -R "^toka_scoped_borrowed_tasks$"
 
+      - name: Run compositional convergence gate
+        run: |
+          set -euo pipefail
+          ctest --test-dir build --output-on-failure -R "^toka_compositional_convergence$"
+
       - name: Run G2 framed transport directed gate
         run: |
           set -euo pipefail

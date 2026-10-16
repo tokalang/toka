@@ -1,0 +1,13 @@
+// @meta compiler_version: any
+// @meta format_version: 5
+// @meta replay_surface_hash: 48b270f471852808
+// @meta target_triple: any
+// @meta source_hash: any
+// @meta identity_schema_version: 2
+// @meta place_yield_abi_schema: 1
+// @meta logical_module_path: unbound
+// @meta resolver_binding_digest: unbound
+
+pub shape Buffer ( size: i32, tag: i32 )
+
+pub fn compute_provider(buf: Buffer) -> async i32

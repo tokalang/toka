@@ -1,0 +1,18 @@
+// @meta compiler_version: any
+// @meta format_version: 5
+// @meta replay_surface_hash: 49dbb6daf8ef87d3
+// @meta target_triple: any
+// @meta source_hash: any
+// @meta identity_schema_version: 2
+// @meta place_yield_abi_schema: 1
+// @meta logical_module_path: unbound
+// @meta resolver_binding_digest: unbound
+
+import core/task :: {TaskHandle}
+import std/async :: {TaskScope}
+
+pub fn consume_external_bodyless(cede t: TaskHandle<i32>)
+
+pub fn fwd_external_bodyless(cede t: TaskHandle<i32>) -> TaskHandle<i32> <- t
+
+pub fn spawn_scoped_external_bodyless(scope#: TaskScope, cede t: TaskHandle<i32>) -> TaskHandle<i32> <- t
