@@ -5781,11 +5781,15 @@ bool Sema::isSafeScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskInde
   return false;
 }
 
-static bool fnContainsTaskStart(FunctionDecl *fn) {
+bool Sema::fnContainsTaskStart(FunctionDecl *fn, std::set<const FunctionDecl *> &visited) {
   if (!fn || !fn->Body) return false;
+  if (visited.count(fn)) return false;
+  visited.insert(fn);
+
   std::function<bool(Stmt *)> walkStmt;
   std::function<bool(Expr *)> walkExpr = [&](Expr *e) -> bool {
     if (!e) return false;
+    if (dynamic_cast<StartExpr *>(e)) return true;
     if (auto *mem = dynamic_cast<MemberExpr *>(e)) {
       if (mem->IsTaskStart || Type::stripMorphology(mem->Member) == "start")
         return true;
@@ -5795,10 +5799,28 @@ static bool fnContainsTaskStart(FunctionDecl *fn) {
     if (auto *bin = dynamic_cast<BinaryExpr *>(e)) return walkExpr(bin->LHS.get()) || walkExpr(bin->RHS.get());
     if (auto *call = dynamic_cast<CallExpr *>(e)) {
       for (const auto &arg : call->Args) if (walkExpr(arg.get())) return true;
+      if (call->ResolvedFn) {
+        if (fnContainsTaskStart(call->ResolvedFn, visited)) return true;
+      } else {
+        for (auto *gfn : GlobalFunctions) {
+          if (gfn && gfn->Name == call->Callee) {
+            if (fnContainsTaskStart(gfn, visited)) return true;
+          }
+        }
+      }
     }
     if (auto *mcall = dynamic_cast<MethodCallExpr *>(e)) {
       if (walkExpr(mcall->Object.get())) return true;
       for (const auto &arg : mcall->Args) if (walkExpr(arg.get())) return true;
+      if (mcall->ResolvedFn) {
+        if (fnContainsTaskStart(mcall->ResolvedFn, visited)) return true;
+      } else if (mcall->Object && mcall->Object->ResolvedType) {
+        std::string typeName = mcall->Object->ResolvedType->getSoulName();
+        if (MethodDecls.count(typeName) && MethodDecls[typeName].count(mcall->Method)) {
+          auto *mfn = MethodDecls[typeName][mcall->Method];
+          if (fnContainsTaskStart(mfn, visited)) return true;
+        }
+      }
     }
     if (auto *cede = dynamic_cast<CedeExpr *>(e)) return walkExpr(cede->Value.get());
     if (auto *cast = dynamic_cast<CastExpr *>(e)) return walkExpr(cast->Expression.get());
@@ -5846,6 +5868,11 @@ static bool fnContainsTaskStart(FunctionDecl *fn) {
     return false;
   };
   return walkStmt(fn->Body.get());
+}
+
+bool Sema::fnContainsTaskStart(FunctionDecl *fn) {
+  std::set<const FunctionDecl *> visited;
+  return fnContainsTaskStart(fn, visited);
 }
 
 bool Sema::isSafeMethodScopedActivationWrapper(
@@ -6127,6 +6154,7 @@ bool Sema::checkConsumingArgumentEscape(
             return false;
           }
           if (recInfo) {
+            recInfo->FieldDependencySet.clear();
             recInfo->LifeDependencySet.insert(depStr);
             if (depInfo) {
               recInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
@@ -14170,7 +14198,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 bool contributedDeps = false;
                 SymbolInfo *argInfo = nullptr;
                 auto argResolvedType = Call->Args[i]->ResolvedType;
-                if (auto *var = dynamic_cast<VariableExpr *>(Call->Args[i].get())) {
+                Expr *unwrappedArg = Call->Args[i].get();
+                while (unwrappedArg) {
+                  if (auto *c = dynamic_cast<CedeExpr *>(unwrappedArg)) { unwrappedArg = c->Value.get(); continue; }
+                  if (auto *cast = dynamic_cast<CastExpr *>(unwrappedArg)) { unwrappedArg = cast->Expression.get(); continue; }
+                  if (auto *unsafe = dynamic_cast<UnsafeExpr *>(unwrappedArg)) { unwrappedArg = unsafe->Expression.get(); continue; }
+                  break;
+                }
+                if (auto *var = dynamic_cast<VariableExpr *>(unwrappedArg)) {
                   if (CurrentScope->findSymbol(var->Name, argInfo)) {
                     if (!argResolvedType)
                       argResolvedType = argInfo->TypeObj;

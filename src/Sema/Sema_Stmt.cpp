@@ -2950,6 +2950,7 @@ void Sema::checkStmt(Stmt *S) {
     
     if (!m_LastFieldDependencies.empty()) {
       for (const auto &pair : m_LastFieldDependencies) {
+        Info.FieldDependencySet[pair.first];
         for (const auto &dep : pair.second) {
           std::string actualDep = dep;
           if (actualDep.rfind("self.", 0) == 0)

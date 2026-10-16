@@ -1245,8 +1245,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         }
 
         if (auto *me = dynamic_cast<MemberExpr *>(Bin->LHS.get())) {
-          targetInfo->FieldDependencySet[me->Member].insert(rhsDeps.begin(), rhsDeps.end());
+          targetInfo->FieldDependencySet[me->Member] = rhsDeps;
         } else if (dynamic_cast<VariableExpr *>(Bin->LHS.get())) {
+          targetInfo->FieldDependencySet.clear();
           if (auto *initStruct = dynamic_cast<InitStructExpr *>(peeledRhs)) {
             for (const auto &member : initStruct->Members) {
               std::string fieldName = member.first;
@@ -1357,6 +1358,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         if (!m_LastFieldDependencies.empty()) {
           targetInfo->FieldDependencySet.clear();
           for (const auto &pair : m_LastFieldDependencies) {
+            targetInfo->FieldDependencySet[pair.first];
             for (const auto &dep : pair.second) {
               std::string actualDep = dep;
               if (actualDep.rfind("self.", 0) == 0)
