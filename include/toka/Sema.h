@@ -1512,7 +1512,8 @@ private:
   bool isSafeScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskIndex, size_t scopeIndex);
   bool isSafeMethodScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskIndex, std::string &outScopeField);
   void collectConsumingExpressionDependencies(
-      Expr *expr, std::set<std::string> &deps, bool &hasUnknownSource);
+      Expr *expr, std::set<std::string> &deps, bool &hasUnknownSource,
+      bool isCededBySignature = false);
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
                                               bool force);
   std::shared_ptr<toka::Type>
