@@ -4851,25 +4851,60 @@ bool Sema::retainExternalValueBorrows(
 void Sema::collectConsumingExpressionDependencies(
     Expr *expr, std::set<std::string> &deps, bool &hasUnknownSource) {
   if (!expr) return;
-  while (auto *cede = dynamic_cast<CedeExpr *>(expr))
-    expr = cede->Value.get();
-  while (auto *cast = dynamic_cast<CastExpr *>(expr))
-    expr = cast->Expression.get();
-  while (auto *unsafe = dynamic_cast<UnsafeExpr *>(expr))
-    expr = unsafe->Expression.get();
+  bool isCede = false;
+  while (expr) {
+    if (auto *cede = dynamic_cast<CedeExpr *>(expr)) {
+      isCede = true;
+      expr = cede->Value.get();
+    }
+    else if (auto *cast = dynamic_cast<CastExpr *>(expr))
+      expr = cast->Expression.get();
+    else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(expr))
+      expr = unsafe->Expression.get();
+    else
+      break;
+  }
   if (!expr) return;
+
+  if (isCede && dynamic_cast<ArrayIndexExpr *>(expr)) {
+    // Moving an element out of an array/container does not borrow the container.
+    return;
+  }
 
   if (auto *var = dynamic_cast<VariableExpr *>(expr)) {
     SymbolInfo *binding = nullptr;
     std::string actualName;
+    Scope *owner = nullptr;
     if (var->ResolvedBindingID && CurrentScope->findSymbolByID(var->ResolvedBindingID, binding) && binding) {
       deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
       if (deps.empty() && !binding->BorrowedFrom.empty())
         deps.insert(binding->BorrowedFrom);
-    } else if (CurrentScope->findVariableWithDeref(var->Name, binding, actualName) && binding) {
+      bool isScalar = binding->TypeObj &&
+          (binding->TypeObj->isInteger() || binding->TypeObj->isFloatingPoint() ||
+           binding->TypeObj->isBoolean() || binding->TypeObj->isUnit() || binding->TypeObj->isVoid());
+      bool isPureTask = binding->TypeObj &&
+          (binding->TypeObj->getSoulName().rfind("TaskHandle", 0) == 0 ||
+           isTaskScopeType(binding->TypeObj) ||
+           taskResultType(binding->TypeObj) != nullptr);
+      std::string lookupName = var->Name;
+      if (deps.empty() && !isScalar && !isPureTask && CurrentScope->findVariableWithDerefScope(lookupName, binding, actualName, owner) && owner && owner->Depth > 0 &&
+          (binding->IsDeclaredVariable || binding->IsFunctionParameter)) {
+        deps.insert(actualName.empty() ? lookupName : actualName);
+      }
+    } else if (CurrentScope->findVariableWithDerefScope(var->Name, binding, actualName, owner) && binding) {
       deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
       if (deps.empty() && !binding->BorrowedFrom.empty())
         deps.insert(binding->BorrowedFrom);
+      bool isScalar = binding->TypeObj &&
+          (binding->TypeObj->isInteger() || binding->TypeObj->isFloatingPoint() ||
+           binding->TypeObj->isBoolean() || binding->TypeObj->isUnit() || binding->TypeObj->isVoid());
+      bool isPureTask = binding->TypeObj &&
+          (binding->TypeObj->getSoulName().rfind("TaskHandle", 0) == 0 ||
+           isTaskScopeType(binding->TypeObj) ||
+           taskResultType(binding->TypeObj) != nullptr);
+      if (deps.empty() && !isScalar && !isPureTask && owner && owner->Depth > 0 && (binding->IsDeclaredVariable || binding->IsFunctionParameter)) {
+        deps.insert(actualName.empty() ? var->Name : actualName);
+      }
     } else {
       hasUnknownSource = true;
     }
@@ -4952,7 +4987,33 @@ void Sema::collectConsumingExpressionDependencies(
   }
 
   if (auto *member = dynamic_cast<MemberExpr *>(expr)) {
-    collectConsumingExpressionDependencies(member->Object.get(), deps, hasUnknownSource);
+    bool isPureTaskMember = member->ResolvedType &&
+        (member->ResolvedType->getSoulName().rfind("TaskHandle", 0) == 0 ||
+         isTaskScopeType(member->ResolvedType) ||
+         taskResultType(member->ResolvedType) != nullptr);
+    if (auto *var = dynamic_cast<VariableExpr *>(member->Object.get())) {
+      SymbolInfo *sym = nullptr;
+      std::string actualName;
+      if (CurrentScope && CurrentScope->findVariableWithDeref(var->Name, sym, actualName) && sym) {
+        auto it = sym->FieldDependencySet.find(member->Member);
+        if (it != sym->FieldDependencySet.end()) {
+          deps.insert(it->second.begin(), it->second.end());
+          if (!sym->IsReference()) {
+            return;
+          }
+        }
+        if (isPureTaskMember) {
+          if (sym->IsReference() || !sym->BorrowedFrom.empty()) {
+            deps.insert(sym->BorrowedFrom);
+          }
+          deps.insert(sym->LifeDependencySet.begin(), sym->LifeDependencySet.end());
+          return;
+        }
+      }
+    }
+    if (!isPureTaskMember) {
+      collectConsumingExpressionDependencies(member->Object.get(), deps, hasUnknownSource);
+    }
     return;
   }
 
@@ -5666,8 +5727,22 @@ bool Sema::isSafeScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskInde
   auto *block = dynamic_cast<BlockStmt *>(calleeFn->Body.get());
   if (!block) return false;
 
-  for (const auto &stmt : block->Statements) {
-    if (auto *ret = dynamic_cast<ReturnStmt *>(stmt.get())) {
+  auto checkSpawnScopedCall = [&](CallExpr *call) -> bool {
+    if (!call || !call->ResolvedFn) return false;
+    if (!isTrustedStdAsyncActivationCall(call->ResolvedFn)) return false;
+    if (call->Args.size() != 2) return false;
+    auto *arg0 = dynamic_cast<VariableExpr *>(call->Args[0].get());
+    Expr *arg1Val = call->Args[1].get();
+    if (auto *c = dynamic_cast<CedeExpr *>(arg1Val)) arg1Val = c->Value.get();
+    auto *arg1 = dynamic_cast<VariableExpr *>(arg1Val);
+    if (!arg0 || !arg1) return false;
+    if (Type::stripMorphology(arg0->Name) != scopeFormal ||
+        Type::stripMorphology(arg1->Name) != taskFormal) return false;
+    return true;
+  };
+
+  if (block->Statements.size() == 1) {
+    if (auto *ret = dynamic_cast<ReturnStmt *>(block->Statements[0].get())) {
       Expr *retVal = ret->ReturnValue.get();
       while (retVal) {
         if (auto *c = dynamic_cast<CedeExpr *>(retVal)) { retVal = c->Value.get(); continue; }
@@ -5675,20 +5750,36 @@ bool Sema::isSafeScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskInde
         break;
       }
       auto *call = dynamic_cast<CallExpr *>(retVal);
-      if (!call || !call->ResolvedFn) return false;
-      if (!isTrustedStdAsyncActivationCall(call->ResolvedFn)) return false;
-      if (call->Args.size() != 2) return false;
-      auto *arg0 = dynamic_cast<VariableExpr *>(call->Args[0].get());
-      Expr *arg1Val = call->Args[1].get();
-      if (auto *c = dynamic_cast<CedeExpr *>(arg1Val)) arg1Val = c->Value.get();
-      auto *arg1 = dynamic_cast<VariableExpr *>(arg1Val);
-      if (!arg0 || !arg1) return false;
-      if (Type::stripMorphology(arg0->Name) != scopeFormal ||
-          Type::stripMorphology(arg1->Name) != taskFormal) return false;
-      return true;
+      return checkSpawnScopedCall(call);
     }
     return false;
   }
+
+  if (block->Statements.size() == 2) {
+    auto *vd = dynamic_cast<VariableDecl *>(block->Statements[0].get());
+    auto *ret = dynamic_cast<ReturnStmt *>(block->Statements[1].get());
+    if (!vd || !ret) return false;
+
+    Expr *initVal = vd->Init.get();
+    while (initVal) {
+      if (auto *c = dynamic_cast<CedeExpr *>(initVal)) { initVal = c->Value.get(); continue; }
+      if (auto *cast = dynamic_cast<CastExpr *>(initVal)) { initVal = cast->Expression.get(); continue; }
+      break;
+    }
+    auto *call = dynamic_cast<CallExpr *>(initVal);
+    if (!checkSpawnScopedCall(call)) return false;
+
+    Expr *retVal = ret->ReturnValue.get();
+    while (retVal) {
+      if (auto *c = dynamic_cast<CedeExpr *>(retVal)) { retVal = c->Value.get(); continue; }
+      if (auto *cast = dynamic_cast<CastExpr *>(retVal)) { retVal = cast->Expression.get(); continue; }
+      break;
+    }
+    auto *retVar = dynamic_cast<VariableExpr *>(retVal);
+    if (!retVar) return false;
+    return Type::stripMorphology(retVar->Name) == Type::stripMorphology(vd->Name);
+  }
+
   return false;
 }
 
@@ -5781,8 +5872,8 @@ bool Sema::checkConsumingArgumentEscape(
       CurrentScope->findVariableWithDeref(recRoot, recInfo, actualRec);
       bool recIsParam = recInfo && recInfo->IsFunctionParameter;
 
-      if (routesToReceiver || isTaskLifetimeCarryingType(methodReceiver->ResolvedType)) {
-        if (recIsParam || receiverDepth < depDepth) {
+      if (routesToReceiver) {
+        if ((recIsParam && !depIsParam) || receiverDepth < depDepth) {
           error(callSite, DiagID::ERR_BORROW_LIFETIME, receiverName, depStr);
           SourceLocation originLoc = findPathDeclaration(depStr);
           if (originLoc.isValid())
@@ -5842,7 +5933,7 @@ bool Sema::checkConsumingArgumentEscape(
         std::string actualSib = sibRoot;
         CurrentScope->findVariableWithDeref(sibRoot, sibInfo, actualSib);
         bool sibIsParam = sibInfo && sibInfo->IsFunctionParameter;
-        if (sibIsParam || sibDepth < depDepth) {
+        if ((sibIsParam && !depIsParam) || sibDepth < depDepth) {
           error(callSite, DiagID::ERR_BORROW_LIFETIME, sibName, depStr);
           SourceLocation originLoc = findPathDeclaration(depStr);
           if (originLoc.isValid())
@@ -5853,6 +5944,12 @@ bool Sema::checkConsumingArgumentEscape(
         if (sibInfo) {
           sibInfo->LifeDependencySet.insert(depStr);
           sibInfo->CarriesTaskDependency = true;
+          if (sibName.find('.') != std::string::npos) {
+            std::string fieldName = sibName.substr(sibName.find('.') + 1);
+            while (!fieldName.empty() && (fieldName.back() == '#' || fieldName.back() == '*' || fieldName.back() == '^'))
+              fieldName.pop_back();
+            sibInfo->FieldDependencySet[fieldName].insert(depStr);
+          }
           if (depInfo) {
             sibInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
                                               depInfo->LifeDependencySet.end());
@@ -9924,20 +10021,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               if (!m_LastBorrowSource.empty())
                 m_LastLifeDependencies.insert(m_LastBorrowSource);
               if (payloadType && isTaskLifetimeCarryingType(payloadType)) {
-                Expr *argExact = Arg.get();
-                while (auto *cede = dynamic_cast<CedeExpr *>(argExact))
-                  argExact = cede->Value.get();
-                while (auto *cast = dynamic_cast<CastExpr *>(argExact))
-                  argExact = cast->Expression.get();
-                if (auto *var = dynamic_cast<VariableExpr *>(argExact)) {
-                  SymbolInfo *sym = nullptr;
-                  std::string actualName;
-                  if (CurrentScope->findVariableWithDeref(var->Name, sym, actualName) && sym) {
-                    m_LastLifeDependencies.insert(sym->LifeDependencySet.begin(), sym->LifeDependencySet.end());
-                    if (!sym->BorrowedFrom.empty())
-                      m_LastLifeDependencies.insert(sym->BorrowedFrom);
-                  }
-                }
+                std::set<std::string> fieldMemberDeps;
+                bool hasUnknownFieldSource = false;
+                collectConsumingExpressionDependencies(Arg.get(), fieldMemberDeps, hasUnknownFieldSource);
+                m_LastLifeDependencies.insert(fieldMemberDeps.begin(), fieldMemberDeps.end());
+                m_LastFieldDependencies[Memb.Name].insert(fieldMemberDeps.begin(), fieldMemberDeps.end());
               }
             }
 
@@ -13135,7 +13223,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             CurrentScope->findVariableWithDerefScope(root, info, actualName, owner) &&
             info && owner && owner->Depth > 0 &&
             (info->IsDeclaredVariable || info->IsFunctionParameter)) {
-          targetDep = argName;
+          bool isScalar = info->TypeObj &&
+              (info->TypeObj->isInteger() || info->TypeObj->isFloatingPoint() ||
+               info->TypeObj->isBoolean() || info->TypeObj->isUnit() || info->TypeObj->isVoid());
+          bool isPureTask = info->TypeObj &&
+              (info->TypeObj->getSoulName().rfind("TaskHandle", 0) == 0 ||
+               isTaskScopeType(info->TypeObj) ||
+               taskResultType(info->TypeObj) != nullptr);
+          if (!isScalar && !isPureTask) {
+            targetDep = argName;
+          }
         }
       }
       if (targetDep.empty() && argExpr) {
@@ -13882,7 +13979,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                      ReturnType &&
                                      resolveType(ReturnType)->isReference();
                 }
-                if (!isUnpackingTask &&
+                const bool isCededTaskParam = Fn->Args[i].IsCeded &&
+                    ((argResolvedType && isTaskLifetimeCarryingType(argResolvedType)) ||
+                     (Fn->Args[i].ResolvedType && isTaskLifetimeCarryingType(Fn->Args[i].ResolvedType)));
+                if (argInfo && !argInfo->FieldDependencySet.empty()) {
+                  for (const auto &pair : argInfo->FieldDependencySet) {
+                    m_LastFieldDependencies[pair.first].insert(pair.second.begin(), pair.second.end());
+                  }
+                }
+                if (!isUnpackingTask && !isCededTaskParam &&
                     (isExpressionDependency || isDottedDependency ||
                      isCurrentFunctionParam || !contributedDeps ||
                      isLifetimeAnchor)) {

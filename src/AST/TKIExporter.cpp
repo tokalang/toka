@@ -445,8 +445,51 @@ void TKIExporter::selectLocalBodies(const Module &module) {
         for (const auto &arg : fn->Args) cleanup(arg.ResolvedType);
         for (const auto &type : uses.ValueTypes) cleanup(type);
     };
+    auto isTaskLifetimeCarryingTypeInTKI = [](const std::shared_ptr<Type> &type) -> bool {
+        if (!type) return false;
+        std::set<std::string> visited;
+        std::function<bool(const std::shared_ptr<Type> &)> walkType =
+            [&](const std::shared_ptr<Type> &ty) -> bool {
+            if (!ty) return false;
+            std::string soul = ty->getSoulName();
+            if (soul.rfind("TaskHandle", 0) == 0)
+                return true;
+            if (soul == "TaskScope" || soul.rfind("TaskScope", 0) == 0)
+                return true;
+            if (soul.rfind("TaskResult", 0) == 0)
+                return true;
+            if (ty->isArray())
+                return walkType(ty->getArrayElementType());
+            if (ty->isPointer() || ty->isSmartPointer() || ty->isReference())
+                return walkType(ty->getPointeeType());
+            if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(ty))
+                return walkType(outcome->PayloadType);
+            if (auto *shape = dynamic_cast<ShapeType *>(ty.get())) {
+                for (const auto &arg : shape->GenericArgs) {
+                    if (walkType(arg)) return true;
+                }
+                if (shape->Decl && visited.count(soul) == 0) {
+                    visited.insert(soul);
+                    for (const auto &member : shape->Decl->Members) {
+                        if (walkType(member.ResolvedType)) return true;
+                    }
+                }
+            }
+            return false;
+        };
+        return walkType(type);
+    };
+    auto hasTaskLifetime = [&](const FunctionDecl *f) -> bool {
+        if (!f) return false;
+        if (isTaskLifetimeCarryingTypeInTKI(f->ResolvedReturnType)) return true;
+        for (const auto &arg : f->Args) {
+            if (isTaskLifetimeCarryingTypeInTKI(arg.ResolvedType)) return true;
+        }
+        return false;
+    };
     for (auto *fn : available)
         if (templates.count(fn) || fn->InterfaceLocalBody || fn->Effect == EffectKind::Async ||
+            hasTaskLifetime(fn) ||
             (fn->ResolvedReturnType && (fn->ResolvedReturnType->isFunction() ||
                                       fn->ResolvedReturnType->isDynFn()))) walk(fn);
 }

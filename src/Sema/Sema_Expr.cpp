@@ -4982,9 +4982,37 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       SymbolInfo *scopeInfo = nullptr;
       std::string actualName;
       if (CurrentScope && CurrentScope->findVariableWithDeref(scopeRoot, scopeInfo, actualName) && scopeInfo) {
-        scopeInfo->LifeDependencySet.clear();
-        scopeInfo->CarriesTaskDependency = false;
-        PALCheckerState.releaseCarrierBorrows(scopeInfo->SymbolID);
+        if (scopeName.find('.') != std::string::npos) {
+          std::string fieldName = scopeName.substr(scopeName.find('.') + 1);
+          while (!fieldName.empty() && (fieldName.back() == '#' || fieldName.back() == '*' || fieldName.back() == '^'))
+            fieldName.pop_back();
+          auto it = scopeInfo->FieldDependencySet.find(fieldName);
+          if (it != scopeInfo->FieldDependencySet.end()) {
+            std::set<std::string> drainedDeps = std::move(it->second);
+            scopeInfo->FieldDependencySet.erase(it);
+            for (const auto &dep : drainedDeps) {
+              bool sharedWithOtherField = false;
+              for (const auto &pair : scopeInfo->FieldDependencySet) {
+                if (pair.second.count(dep)) {
+                  sharedWithOtherField = true;
+                  break;
+                }
+              }
+              if (!sharedWithOtherField) {
+                scopeInfo->LifeDependencySet.erase(dep);
+              }
+            }
+          }
+          if (scopeInfo->LifeDependencySet.empty()) {
+            scopeInfo->CarriesTaskDependency = false;
+            PALCheckerState.releaseCarrierBorrows(scopeInfo->SymbolID);
+          }
+        } else {
+          scopeInfo->LifeDependencySet.clear();
+          scopeInfo->FieldDependencySet.clear();
+          scopeInfo->CarriesTaskDependency = false;
+          PALCheckerState.releaseCarrierBorrows(scopeInfo->SymbolID);
+        }
       }
     };
 
