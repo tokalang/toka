@@ -271,21 +271,9 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
 
   if (startSyntax && ObjType.rfind("TaskHandle", 0) == 0) {
     Memb->IsTaskStart = true;
-    std::set<std::string> startDeps = m_LastLifeDependencies;
+    std::set<std::string> startDeps;
     bool hasUnknownSource = false;
     collectConsumingExpressionDependencies(Memb->Object.get(), startDeps, hasUnknownSource);
-    if (auto *subMemb = dynamic_cast<MemberExpr *>(Memb->Object.get())) {
-      if (auto *subVar = dynamic_cast<VariableExpr *>(subMemb->Object.get())) {
-        SymbolInfo *sym = nullptr;
-        std::string actualName;
-        if (CurrentScope && CurrentScope->findVariableWithDeref(subVar->Name, sym, actualName) && sym) {
-          auto it = sym->FieldDependencySet.find(subMemb->Member);
-          if (it != sym->FieldDependencySet.end()) {
-            startDeps.insert(it->second.begin(), it->second.end());
-          }
-        }
-      }
-    }
     for (const auto &dep : startDeps) {
       DiagnosticEngine::report(
           getLoc(Memb), DiagID::ERR_SEMA_START_BOUNDARY_DEPENDENCY, dep);

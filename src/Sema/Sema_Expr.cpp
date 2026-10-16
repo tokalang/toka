@@ -5057,6 +5057,32 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         handleInfo->LifeDependencySet.clear();
         PALCheckerState.releaseCarrierBorrows(handleInfo->SymbolID);
       }
+    } else if (auto *mem = dynamic_cast<MemberExpr *>(awaitEx->Expression.get())) {
+      Expr *base = mem->Object.get();
+      while (auto *subMem = dynamic_cast<MemberExpr *>(base))
+        base = subMem->Object.get();
+      if (auto *var = dynamic_cast<VariableExpr *>(base)) {
+        std::string actualVar;
+        if (CurrentScope && CurrentScope->findVariableWithDeref(var->Name, handleInfo, actualVar) && handleInfo) {
+          std::string field = Type::stripMorphology(mem->Member);
+          auto it = handleInfo->FieldDependencySet.find(field);
+          if (it != handleInfo->FieldDependencySet.end()) {
+            std::set<std::string> drained = std::move(it->second);
+            handleInfo->FieldDependencySet.erase(it);
+            for (const auto &dep : drained) {
+              bool shared = false;
+              for (const auto &p : handleInfo->FieldDependencySet) {
+                if (p.second.count(dep)) { shared = true; break; }
+              }
+              if (!shared) handleInfo->LifeDependencySet.erase(dep);
+            }
+          }
+          if (handleInfo->LifeDependencySet.empty()) {
+            handleInfo->CarriesTaskDependency = false;
+            PALCheckerState.releaseCarrierBorrows(handleInfo->SymbolID);
+          }
+        }
+      }
     }
     m_LastLifeDependencies.clear();
     m_LastBorrowSource = "";

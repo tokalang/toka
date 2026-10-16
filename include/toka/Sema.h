@@ -1285,6 +1285,7 @@ private:
   const ModuleScope *getDeclarationModuleScope(const ASTNode *node) const;
   bool isTrustedStdAsyncModule(const ModuleScope *module) const;
   bool isTaskScopeType(const std::shared_ptr<Type> &type) const;
+  bool containsTaskScope(const std::shared_ptr<Type> &type) const;
   bool isTrustedStdAsyncScopeDrainCall(const CallExpr *call, Expr *&scopeArg) const;
   bool isTrustedStdAsyncScopeDrainMethod(const MethodCallExpr *mcall, Expr *&scopeArg) const;
   bool isTrustedStdAsyncActivationCall(const FunctionDecl *fn) const;
@@ -1509,6 +1510,7 @@ private:
   bool checkSafeTaskForwarderBody(ASTNode *body, const std::string &rootFormal);
   bool checkSafeTaskForwarderBodyHelper(ASTNode *node, std::set<std::string> &trackedVars, size_t &returnPathsCount, bool &allReturnsTracked);
   bool isSafeScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskIndex, size_t scopeIndex);
+  bool isSafeMethodScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskIndex, std::string &outScopeField);
   void collectConsumingExpressionDependencies(
       Expr *expr, std::set<std::string> &deps, bool &hasUnknownSource);
   std::string resolveAssociatedTypeProjection(const std::string &typeName,

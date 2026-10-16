@@ -92,6 +92,51 @@ bool Sema::isTaskScopeType(const std::shared_ptr<Type> &type) const {
   return true;
 }
 
+bool Sema::containsTaskScope(const std::shared_ptr<Type> &type) const {
+  if (!type) return false;
+  std::set<std::string> visited;
+  std::function<bool(const std::shared_ptr<toka::Type> &)> walk =
+      [&](const std::shared_ptr<toka::Type> &ty) -> bool {
+    if (!ty) return false;
+    if (isTaskScopeType(ty)) return true;
+    if (ty->isArray())
+      return walk(ty->getArrayElementType());
+    if (ty->isPointer() || ty->isSmartPointer() || ty->isReference())
+      return walk(ty->getPointeeType());
+    if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(ty))
+      return walk(outcome->PayloadType);
+    if (auto *shape = dynamic_cast<ShapeType *>(ty.get())) {
+      for (const auto &arg : shape->GenericArgs) {
+        if (walk(arg)) return true;
+      }
+      if (shape->GenericArgs.empty() && shape->Decl &&
+          shape->Decl->InstantiationTemplate) {
+        for (const auto &arg : shape->Decl->InstantiationArgs)
+          if (walk(arg)) return true;
+      }
+      std::string soul = ty->getSoulName();
+      if (visited.count(soul) == 0) {
+        visited.insert(soul);
+        auto it = ShapeMap.find(soul);
+        if (it != ShapeMap.end()) {
+          ShapeDecl *SD = it->second;
+          for (const auto &member : SD->Members) {
+            if (SD->Kind == ShapeKind::Enum && !member.SubMembers.empty()) {
+              for (const auto &sub : member.SubMembers) {
+                if (walk(getPhysicalType(sub))) return true;
+              }
+            } else if (!member.IsUnitVariant) {
+              if (walk(getPhysicalType(member))) return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  };
+  return walk(type);
+}
+
 bool Sema::isTrustedStdAsyncScopeDrainCall(const CallExpr *call, Expr *&scopeArg) const {
   scopeArg = nullptr;
   if (!call || !call->ResolvedFn) return false;

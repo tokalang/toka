@@ -1239,7 +1239,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         if (rhsCarriesTask) {
           bool hasUnknownRhs = false;
           collectConsumingExpressionDependencies(Bin->RHS.get(), rhsDeps, hasUnknownRhs);
-          if (!rhsDeps.empty()) {
+          if (!rhsDeps.empty() && Bin->RHS->ResolvedType && isTaskScopeType(Bin->RHS->ResolvedType)) {
             targetInfo->CarriesTaskDependency = true;
           }
         }
@@ -1256,10 +1256,20 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
               std::set<std::string> memberDeps;
               bool hasUnknownMemberSource = false;
               collectConsumingExpressionDependencies(member.second.get(), memberDeps, hasUnknownMemberSource);
+              targetInfo->FieldDependencySet[fieldName] = memberDeps;
               if (!memberDeps.empty()) {
-                targetInfo->FieldDependencySet[fieldName].insert(memberDeps.begin(), memberDeps.end());
                 targetInfo->LifeDependencySet.insert(memberDeps.begin(), memberDeps.end());
-                targetInfo->CarriesTaskDependency = true;
+                if (member.second && member.second->ResolvedType && isTaskScopeType(member.second->ResolvedType)) {
+                  targetInfo->CarriesTaskDependency = true;
+                }
+              }
+            }
+          } else if (auto *rv = dynamic_cast<VariableExpr *>(peeledRhs)) {
+            SymbolInfo *rInfo = nullptr;
+            std::string actualRName;
+            if (CurrentScope && CurrentScope->findVariableWithDeref(rv->Name, rInfo, actualRName) && rInfo) {
+              for (const auto &pair : rInfo->FieldDependencySet) {
+                targetInfo->FieldDependencySet[pair.first] = pair.second;
               }
             }
           }

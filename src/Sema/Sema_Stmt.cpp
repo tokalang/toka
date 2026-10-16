@@ -2964,6 +2964,28 @@ void Sema::checkStmt(Stmt *S) {
 
     m_LastBorrowSource = ""; // Clear for next var
 
+    if (Var->Init) {
+      Expr *unwrappedInit = Var->Init.get();
+      while (unwrappedInit) {
+        if (auto *c = dynamic_cast<CedeExpr *>(unwrappedInit)) { unwrappedInit = c->Value.get(); continue; }
+        if (auto *cast = dynamic_cast<CastExpr *>(unwrappedInit)) { unwrappedInit = cast->Expression.get(); continue; }
+        if (auto *unsafe = dynamic_cast<UnsafeExpr *>(unwrappedInit)) { unwrappedInit = unsafe->Expression.get(); continue; }
+        break;
+      }
+      if (auto *initVar = dynamic_cast<VariableExpr *>(unwrappedInit)) {
+        SymbolInfo *srcInfo = nullptr;
+        std::string actualSrc;
+        if (CurrentScope && CurrentScope->findVariableWithDeref(initVar->Name, srcInfo, actualSrc) && srcInfo) {
+          for (const auto &pair : srcInfo->FieldDependencySet) {
+            Info.FieldDependencySet[pair.first].insert(pair.second.begin(), pair.second.end());
+          }
+          if (srcInfo->CarriesTaskDependency) {
+            Info.CarriesTaskDependency = true;
+          }
+        }
+      }
+    }
+
     // Retain the actual origins of a checked factory result with borrowed
     // fields. Legacy expression checking may have cleared its transient
     // dependency metadata; never reconstruct it from the enclosing return
@@ -3074,34 +3096,14 @@ void Sema::checkStmt(Stmt *S) {
             }
           }
           if (isTaskLifetimeCarryingType(fieldType)) {
-            Expr *fieldInitExpr = initializer.second.get();
-            while (fieldInitExpr) {
-              if (auto *c = dynamic_cast<CedeExpr *>(fieldInitExpr))
-                fieldInitExpr = c->Value.get();
-              else if (auto *cast = dynamic_cast<CastExpr *>(fieldInitExpr))
-                fieldInitExpr = cast->Expression.get();
-              else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(fieldInitExpr))
-                fieldInitExpr = unsafe->Expression.get();
-              else
-                break;
-            }
-            if (auto *var = dynamic_cast<VariableExpr *>(fieldInitExpr)) {
-              SymbolInfo *sym = nullptr;
-              std::string actualName;
-              if (CurrentScope && CurrentScope->findVariableWithDeref(var->Name, sym, actualName) && sym) {
-                for (const auto &dep : sym->LifeDependencySet) {
-                  Info.FieldDependencySet[fieldName].insert(dep);
-                  Info.LifeDependencySet.insert(dep);
-                }
-                if (!sym->BorrowedFrom.empty()) {
-                  Info.FieldDependencySet[fieldName].insert(sym->BorrowedFrom);
-                  Info.LifeDependencySet.insert(sym->BorrowedFrom);
-                }
-              }
-            } else {
-              for (const auto &dep : m_LastLifeDependencies) {
-                Info.FieldDependencySet[fieldName].insert(dep);
-                Info.LifeDependencySet.insert(dep);
+            std::set<std::string> fieldDeps;
+            bool hasUnknownFieldSource = false;
+            collectConsumingExpressionDependencies(initializer.second.get(), fieldDeps, hasUnknownFieldSource);
+            Info.FieldDependencySet[fieldName] = fieldDeps;
+            if (!fieldDeps.empty()) {
+              Info.LifeDependencySet.insert(fieldDeps.begin(), fieldDeps.end());
+              if (isTaskScopeType(fieldType)) {
+                Info.CarriesTaskDependency = true;
               }
             }
           }
