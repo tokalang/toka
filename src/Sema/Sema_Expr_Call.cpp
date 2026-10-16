@@ -4849,9 +4849,10 @@ bool Sema::retainExternalValueBorrows(
 }
 
 void Sema::collectConsumingExpressionDependencies(
-    Expr *expr, std::set<std::string> &deps, bool &hasUnknownSource) {
+    Expr *expr, std::set<std::string> &deps, bool &hasUnknownSource,
+    bool isCededBySignature) {
   if (!expr) return;
-  bool isCede = false;
+  bool isCede = isCededBySignature;
   while (expr) {
     if (auto *cede = dynamic_cast<CedeExpr *>(expr)) {
       isCede = true;
@@ -4861,6 +4862,8 @@ void Sema::collectConsumingExpressionDependencies(
       expr = cast->Expression.get();
     else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(expr))
       expr = unsafe->Expression.get();
+    else if (auto *postfix = dynamic_cast<PostfixExpr *>(expr))
+      expr = postfix->LHS.get();
     else
       break;
   }
@@ -4877,6 +4880,9 @@ void Sema::collectConsumingExpressionDependencies(
     Scope *owner = nullptr;
     if (var->ResolvedBindingID && CurrentScope->findSymbolByID(var->ResolvedBindingID, binding) && binding) {
       deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
+      for (const auto &kv : binding->FieldDependencySet) {
+        deps.insert(kv.second.begin(), kv.second.end());
+      }
       if (deps.empty() && !binding->BorrowedFrom.empty())
         deps.insert(binding->BorrowedFrom);
       bool isScalar = binding->TypeObj &&
@@ -4893,6 +4899,9 @@ void Sema::collectConsumingExpressionDependencies(
       }
     } else if (CurrentScope->findVariableWithDerefScope(var->Name, binding, actualName, owner) && binding) {
       deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
+      for (const auto &kv : binding->FieldDependencySet) {
+        deps.insert(kv.second.begin(), kv.second.end());
+      }
       if (deps.empty() && !binding->BorrowedFrom.empty())
         deps.insert(binding->BorrowedFrom);
       bool isScalar = binding->TypeObj &&
@@ -4945,7 +4954,9 @@ void Sema::collectConsumingExpressionDependencies(
           for (const auto &src : route.Sources) {
             for (size_t i = 0; i < call->ResolvedFn->Args.size() && i < call->Args.size(); ++i) {
               if (Type::stripMorphology(call->ResolvedFn->Args[i].Name) == Type::stripMorphology(src.Root)) {
-                collectConsumingExpressionDependencies(call->Args[i].get(), deps, hasUnknownSource);
+                collectConsumingExpressionDependencies(
+                    call->Args[i].get(), deps, hasUnknownSource,
+                    call->ResolvedFn->Args[i].IsCeded);
               }
             }
           }
@@ -4963,9 +4974,16 @@ void Sema::collectConsumingExpressionDependencies(
   }
 
   if (auto *method = dynamic_cast<MethodCallExpr *>(expr)) {
-    collectConsumingExpressionDependencies(method->Object.get(), deps, hasUnknownSource);
-    for (const auto &arg : method->Args) {
-      collectConsumingExpressionDependencies(arg.get(), deps, hasUnknownSource);
+    bool selfCeded = method->ResolvedFn && !method->ResolvedFn->Args.empty() &&
+                     method->ResolvedFn->Args[0].IsCeded;
+    collectConsumingExpressionDependencies(
+        method->Object.get(), deps, hasUnknownSource, selfCeded);
+    for (size_t i = 0; i < method->Args.size(); ++i) {
+      bool argCeded = method->ResolvedFn &&
+                      (i + 1) < method->ResolvedFn->Args.size() &&
+                      method->ResolvedFn->Args[i + 1].IsCeded;
+      collectConsumingExpressionDependencies(
+          method->Args[i].get(), deps, hasUnknownSource, argCeded);
     }
     auto extDeps = externalValueDependencies(method);
     if (extDeps) {
@@ -5014,7 +5032,8 @@ void Sema::collectConsumingExpressionDependencies(
         }
       }
     }
-    collectConsumingExpressionDependencies(member->Object.get(), deps, hasUnknownSource);
+    collectConsumingExpressionDependencies(
+        member->Object.get(), deps, hasUnknownSource, isCede);
     return;
   }
 

@@ -259,6 +259,8 @@ def main():
         ("r4_p0_1_nested_field_assign_then_start.tk", "E04584"),
         ("r4_p0_2a_effects_self_match_start.tk", "E0456"),
         ("r4_p0_2b_effects_self_bodyless_tki_call.tk", "E0456"),
+        ("r5_neg1_borrowed_self_field_postfix_start.tk", "E04584"),
+        ("r5_neg2_cede_self_carrier_with_borrowed_task_start.tk", "E04584"),
     ]
 
     bodyless_negatives = [
@@ -281,6 +283,7 @@ def main():
         "r2_p1_1a_two_tasks_inline_owned_start_pos.tk",
         "r2_p1_1b_two_tasks_split_var_owned_start_pos.tk",
         "r3_p1_1a_two_tasks_fwd_call_owned_start_pos.tk",
+        "r5_pos1_cede_self_receiver_start.tk",
     ]
 
     receipt = {
@@ -333,7 +336,8 @@ def main():
 
     receipt["status"] = "ALL_PASSED"
     total_probes = receipt["counts"]["total_probes"]
-    print(f"\nAll {total_probes} Compositional Convergence probes passed successfully (including 13/13 native execution rc=0 & portable ext_provider).")
+    pos_count = receipt["counts"]["positive_probes"]
+    print(f"\nAll {total_probes} Compositional Convergence probes passed successfully (including {pos_count}/{pos_count} native execution rc=0 & portable ext_provider).")
 
     # Output receipt
     output_path = None
