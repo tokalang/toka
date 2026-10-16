@@ -1,5 +1,6 @@
 import std/async::{TaskScope, spawn_scoped, join_scoped}
 import core/task::{TaskHandle}
+import std/task::{block_on}
 shape Buffer ( size: i32, tag: i32 )
 shape DualCarrier ( s1#: TaskScope, s2#: TaskScope )
 fn worker(b: Buffer) -> async i32 <- b { return b.size }
@@ -11,4 +12,8 @@ pub fn test_pos8() -> async i32 {
     join_scoped(c.s2#).await
     return 0:i32
 }
-fn main() -> i32 { return 0:i32 }
+pub fn main() -> i32 {
+    auto res = block_on<i32>(test_pos8().start)
+    if res != 0:i32 { return 1:i32 }
+    return 0:i32
+}

@@ -1,4 +1,5 @@
 import core/task::{TaskHandle}
+import std/task::{block_on}
 shape Buffer ( size: i32, tag: i32 )
 shape FwdCarrier(task#: TaskHandle<i32>)
 fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
@@ -14,4 +15,8 @@ pub fn test_pos2() -> async i32 {
     auto ret# = fwd_carrier(cede h)
     return ret.task.await
 }
-pub fn main() -> i32 { return 0:i32 }
+pub fn main() -> i32 {
+    auto res = block_on<i32>(test_pos2().start)
+    if res != 101:i32 { return 1:i32 }
+    return 0:i32
+}

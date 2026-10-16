@@ -1,4 +1,5 @@
 import core/task::{TaskHandle}
+import std/task::{block_on}
 shape Buffer ( size: i32, tag: i32 )
 shape TwoTasks ( borrowed_t#: TaskHandle<i32>, owned_t#: TaskHandle<i32> )
 fn dummy() -> async i32 { return 42:i32 }
@@ -15,4 +16,8 @@ pub fn test() -> async i32 {
     c.owned_t.start
     return c.borrowed_t.await
 }
-pub fn main() -> i32 { return 0:i32 }
+pub fn main() -> i32 {
+    auto res = block_on<i32>(test().start)
+    if res != 101:i32 { return 1:i32 }
+    return 0:i32
+}
