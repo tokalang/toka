@@ -221,20 +221,21 @@ pub fn run_independent_owned_field() -> i32 {
       }
   }
   ```
+  *(Note: This applies to ordinary `impl` receiver methods taking `cede self#`; it does not introduce consuming `cede self` async trait methods.)*
 - **Borrowed Receiver (`self#`) Restriction**: A method taking a borrowed receiver (`self#`, without `cede`) cannot detached-start `self.t.start` or `(self.t).start` (`error[E04584]`), nor can an `effects: self <- t` method launder a scoped task obligation outside its originating `TaskScope` (`error[E0456]`).
 
-### 8.3 Retained-Body vs Bodyless `.tki` Interfaces
-- **Retained-Body `.tki` (`// @meta local_body_policy: checked-local-v1`)**: Cross-module helper functions that retain their body in `.tki` (such as cold forwarders `fwd_external`, `consume_external`, or `spawn_scoped_external`) participate in full compositional borrow and scope verification.
+### 8.3 Retained-Body vs Bodyless `.tki` Interfaces & Cache Migration
+- **Retained-Body `.tki` (`// @meta local_body_policy: checked-local-v1`)**: Cross-module helper functions that retain their body in `.tki` (such as cold forwarders `fwd_external`, `consume_external`, or `spawn_scoped_external`) participate in compositional borrow and scope verification within the supported subset.
 - **Bodyless `.tki` Declarations**: Passing a local-borrowing `TaskHandle<T>` to a bodyless `.tki` function declaration is rejected with `error[E0456]` because the compiler cannot verify that the opaque external callee does not detached-start or escape the borrowed handle.
+- **Upgrade Recompilation**: Upgrading across compiler versions (`0.16.0` → `0.17.0`) requires cleaning build caches and recompiling `.o` objects and `.tki` interfaces with the `0.17.0` `tokac` toolchain.
 
 ### 8.4 Diagnostic Summary (`v0.16.0` → `v0.17.0` Relationship)
 
 | Pattern | `v0.16.0` Behavior | `v0.17.0` Behavior | Diagnostic |
 | :--- | :--- | :--- | :--- |
-| Direct `TaskScope` + `spawn_scoped` + `join_scoped` / `cancel_and_join` | Supported | Supported (100% compatible) | — |
+| Direct `TaskScope` + `spawn_scoped` + `join_scoped` / `cancel_and_join` | Supported | Supported (verified regression baseline) | — |
 | Multi-task carrier starting owned field (`holder.t_owned.start`) | Over-rejected when sibling borrowed | **Supported** (field-sensitive) | — |
-| Consuming `cede self#` method starting owned task field | Over-rejected | **Supported** | — |
-| Carrier / split-var / nested field / postfix `.start` on borrowed task | Partial check on direct handle | **Fail-closed across all carrier/projection paths** | `error[E04584]` |
+| Ordinary `impl` method with `cede self#` starting owned task field | Over-rejected | **Supported** | — |
+| Carrier / split-var / nested field / postfix `.start` on borrowed task | Partial check on direct handle | **Fail-closed across tested carrier/projection paths** | `error[E04584]` |
 | Carrier wrapper escape / dual-scope (`spawn` `s1#`, `join` `s2#`) | Checked on direct scope | **Fail-closed across carriers & receiver `effects`** | `error[E0456]` |
 | Passing local-borrowing `TaskHandle` to bodyless `.tki` declaration | Unchecked bodyless sink | **Fail-closed** | `error[E0456]` |
-
