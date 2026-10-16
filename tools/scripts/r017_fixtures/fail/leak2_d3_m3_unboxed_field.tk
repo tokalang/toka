@@ -1,0 +1,13 @@
+import core/task::{TaskHandle}
+shape Buffer ( size: i32, tag: i32 )
+shape TaskCarrier ( task: TaskHandle<i32> )
+fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
+    return b.size + chunk_id
+}
+pub fn test_leak2() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto c = TaskCarrier(task = process_chunk(buf, 1:i32))
+    c.task.start
+    return 0:i32
+}
+pub fn main() -> i32 { return test_leak2() }

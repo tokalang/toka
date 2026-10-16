@@ -23,7 +23,7 @@ class Contract016(unittest.TestCase):
         self.assertEqual(policy.core_targets('v0.15.0'), policy.CORE)
         self.assertEqual(policy.core_targets('v0.15.1'), policy.CORE)
         self.assertEqual(policy.core_targets('v0.16.0'), policy.CORE)
-        for tag in ('v0.16.00', 'v0.16.01', 'v0.16.0-rc.1', 'v0.17.0', 'v1.0.0'):
+        for tag in ('v0.16.00', 'v0.16.01', 'v0.16.0-rc.1', 'v0.18.0', 'v1.0.0'):
             self.assertIsNone(promotion.TAG.fullmatch(tag))
         self.assertEqual(policy.policy_id('v0.12.0'), 'toka.release-platforms.0.12.v1')
         self.assertEqual(policy.policy_id('v0.13.0'), 'toka.release-platforms.0.13.v1')

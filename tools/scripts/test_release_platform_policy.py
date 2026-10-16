@@ -582,6 +582,245 @@ def valid_candidate_016(revision, label, target=None):
     }
 
 
+def valid_candidate_017(revision, label, target=None):
+    if target is None:
+        target = 'linux-x64'
+    ver = label.removeprefix('v')
+    receipts = []
+    # 1. Four tool versions (4 receipts)
+    for name in ('tokac', 'toka', 'tokafmt', 'tokalsp'):
+        out_msg = f'{name} version {ver}\n'
+        receipts.append({
+            'name': 'version-' + name,
+            'argv': ['/sdk/bin/' + name, '--version'],
+            'cmd': ['/sdk/bin/' + name, '--version'],
+            'cwd': '/tmp',
+            'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+            'result': 'pass', 'ok': True, 'execution_ms': 5.0,
+            'stdout': out_msg, 'stderr': '',
+            'stdout_sha256': hashlib.sha256(out_msg.encode('utf-8')).hexdigest(),
+            'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+        })
+
+    # 2. Positive cases (10 cases: compile + run = 20 receipts)
+    for case in policy.POS_017_CASES:
+        comp_out = f'/tmp/{case}_bin'
+        receipts.append({
+            'name': f'pos-{case}-compile',
+            'argv': ['/sdk/bin/tokac', f'/fixtures/pass/{case}.tk', '-o', comp_out],
+            'cmd': ['/sdk/bin/tokac', f'/fixtures/pass/{case}.tk', '-o', comp_out],
+            'cwd': '/tmp',
+            'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+            'result': 'pass', 'ok': True, 'execution_ms': 10.0,
+            'stdout': '', 'stderr': '',
+            'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+            'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+        })
+        run_out = ''
+        receipts.append({
+            'name': f'pos-{case}-run',
+            'argv': [comp_out],
+            'cmd': [comp_out],
+            'cwd': '/tmp',
+            'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+            'result': 'pass', 'ok': True, 'execution_ms': 10.0,
+            'stdout': run_out, 'stderr': '',
+            'stdout_sha256': hashlib.sha256(run_out.encode('utf-8')).hexdigest(),
+            'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+        })
+
+    # TKI (3 receipts)
+    receipts.append({
+        'name': 'pos-tki-provider-compile',
+        'argv': ['/sdk/bin/tokac', '-c', '/fixtures/sourceless/scoped_provider.tk', '--emit-interface', '-o', '/tmp/provider.o'],
+        'cmd': ['/sdk/bin/tokac', '-c', '/fixtures/sourceless/scoped_provider.tk', '--emit-interface', '-o', '/tmp/provider.o'],
+        'cwd': '/tmp',
+        'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+        'result': 'pass', 'ok': True, 'execution_ms': 10.0,
+        'stdout': '', 'stderr': '',
+        'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+        'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+    })
+    receipts.append({
+        'name': 'pos-tki-consumer-compile',
+        'argv': ['/sdk/bin/tokac', '-I', '/tmp', '/fixtures/sourceless/level_a_retained_body_consumer.tk', '/tmp/provider.o', '-o', '/tmp/tki_bin'],
+        'cmd': ['/sdk/bin/tokac', '-I', '/tmp', '/fixtures/sourceless/level_a_retained_body_consumer.tk', '/tmp/provider.o', '-o', '/tmp/tki_bin'],
+        'cwd': '/tmp',
+        'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+        'result': 'pass', 'ok': True, 'execution_ms': 10.0,
+        'stdout': '', 'stderr': '',
+        'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+        'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+    })
+    receipts.append({
+        'name': 'pos-tki-consumer-run',
+        'argv': ['/tmp/tki_bin'],
+        'cmd': ['/tmp/tki_bin'],
+        'cwd': '/tmp',
+        'exit_code': 0, 'signal': None, 'termination': None, 'error': None,
+        'result': 'pass', 'ok': True, 'execution_ms': 10.0,
+        'stdout': '', 'stderr': '',
+        'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+        'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+    })
+
+    # Negative cases (58 receipts)
+    for name, diag in policy.NEG_017_DIAGNOSTICS.items():
+        err_msg = f'error[{diag}]: compile rejected\n'
+        is_artifact_cmd = name.endswith(('-object', '-ir', '-compile'))
+        base = name.removeprefix('neg-')
+        for suffix in ('-object', '-ir', '-compile', '-check'):
+            if base.endswith(suffix):
+                base = base[:-len(suffix)]
+                break
+        if name.endswith('-object'):
+            cmd_args = ['/sdk/bin/tokac', '-c', f'/fixtures/fail/{base}.tk', '-o', f'/tmp/{base}.o']
+        elif name.endswith('-ir'):
+            cmd_args = ['/sdk/bin/tokac', '--emit-llvm', '-c', f'/fixtures/fail/{base}.tk', '-o', f'/tmp/{base}.ll']
+        elif name.endswith('-compile'):
+            cmd_args = ['/sdk/bin/tokac', f'/fixtures/fail/{base}.tk', '-o', f'/tmp/{base}.bin']
+        else:
+            cmd_args = ['/sdk/bin/tokac', '--check-only', f'/fixtures/fail/{base}.tk']
+
+        rec = {
+            'name': name,
+            'argv': cmd_args,
+            'cmd': cmd_args,
+            'cwd': '/tmp',
+            'exit_code': 1, 'signal': None, 'termination': None, 'error': None,
+            'result': 'pass', 'ok': True, 'execution_ms': 10.0,
+            'diagnostic': diag,
+            'stdout': '', 'stderr': err_msg,
+            'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+            'stderr_sha256': hashlib.sha256(err_msg.encode('utf-8')).hexdigest(),
+        }
+        if is_artifact_cmd:
+            rec['artifact_absent'] = True
+        receipts.append(rec)
+
+    ctrl_sha = policy.expected_017_script_sha256() or 'd'*64
+    p_tki_sha = hashlib.sha256(b'provider.tki').hexdigest()
+    p_obj_sha = hashlib.sha256(b'provider.o').hexdigest()
+    return {
+        'schema': 'toka.0.17-candidate-controls',
+        'version': 1,
+        'result': 'pass',
+        'candidate_revision': revision,
+        'version_label': label,
+        'target': target,
+        'build_testing': False,
+        'groups': ['G-compositional-convergence'],
+        'fixtures_digest': policy.EXPECTED_017_FIXTURES_DIGEST,
+        'control_script_name': 'test_0_17_candidate.py',
+        'control_script_sha256': ctrl_sha,
+        'four_tool_versions': {
+            'tokac': f'tokac {ver}',
+            'toka': f'toka {ver}',
+            'tokafmt': f'tokafmt {ver}',
+            'tokalsp': f'tokalsp {ver}',
+        },
+        'SDK_root': '/sdk',
+        'source_hidden_tki': {
+            'provider_tki_sha256': p_tki_sha,
+            'provider_object_sha256': p_obj_sha,
+            'consumed_tki_sha256': p_tki_sha,
+            'consumed_object_sha256': p_obj_sha,
+            'missing_interface_rejected': True,
+            'corrupt_interface_rejected': True,
+            'consumer_result': 'pass',
+            'provider_source_present': False,
+            'missing_interface_command': {
+                'argv': ['/sdk/bin/tokac', '-I', '/tmp/missing', '/tmp/missing/consumer.tk', '/tmp/provider.o', '-o', '/tmp/missing/bad_bin'],
+                'cmd': ['/sdk/bin/tokac', '-I', '/tmp/missing', '/tmp/missing/consumer.tk', '/tmp/provider.o', '-o', '/tmp/missing/bad_bin'],
+                'cwd': '/tmp/missing',
+                'exit_code': 1,
+                'signal': None,
+                'termination': None,
+                'error': None,
+                'result': 'pass',
+                'ok': True,
+                'artifact_absent': True,
+                'execution_ms': 10.0,
+                'stdout': '',
+                'stderr': 'error[E0901]: File I/O Error: Could not open file: scoped_provider\n',
+                'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+                'stderr_sha256': hashlib.sha256(b'error[E0901]: File I/O Error: Could not open file: scoped_provider\n').hexdigest(),
+            },
+            'corrupt_interface_command': {
+                'argv': ['/sdk/bin/tokac', '-I', '/tmp/corrupt', '/tmp/corrupt/consumer.tk', '/tmp/provider.o', '-o', '/tmp/corrupt/bad_bin'],
+                'cmd': ['/sdk/bin/tokac', '-I', '/tmp/corrupt', '/tmp/corrupt/consumer.tk', '/tmp/provider.o', '-o', '/tmp/corrupt/bad_bin'],
+                'cwd': '/tmp/corrupt',
+                'exit_code': 1,
+                'signal': None,
+                'termination': None,
+                'error': None,
+                'result': 'pass',
+                'ok': True,
+                'artifact_absent': True,
+                'execution_ms': 10.0,
+                'stdout': '',
+                'stderr': 'error[E0901]: File I/O Error: Incompatible or stale interface file: /tmp/corrupt/scoped_provider.tki\n',
+                'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+                'stderr_sha256': hashlib.sha256(b'error[E0901]: File I/O Error: Incompatible or stale interface file: /tmp/corrupt/scoped_provider.tki\n').hexdigest(),
+            },
+            'escape_negative_rejected': True,
+            'escape_negative_commands': {
+                'check': {
+                    'name': 'source-hidden-escape-check',
+                    'argv': ['/sdk/bin/tokac', '-I', '/tmp/escape', '--check-only', '/tmp/escape/escape.tk'],
+                    'cmd': ['/sdk/bin/tokac', '-I', '/tmp/escape', '--check-only', '/tmp/escape/escape.tk'],
+                    'cwd': '/tmp/escape', 'exit_code': 1, 'signal': None, 'termination': None, 'error': None,
+                    'result': 'pass', 'ok': True, 'artifact_absent': True, 'execution_ms': 10.0,
+                    'stdout': '', 'stderr': 'error[E0455]: Returning reference to local variable is unsafe\n',
+                    'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+                    'stderr_sha256': hashlib.sha256(b'error[E0455]: Returning reference to local variable is unsafe\n').hexdigest(),
+                },
+                'object': {
+                    'name': 'source-hidden-escape-object',
+                    'argv': ['/sdk/bin/tokac', '-I', '/tmp/escape', '-c', '/tmp/escape/escape.tk', '-o', '/tmp/escape/escape.o'],
+                    'cmd': ['/sdk/bin/tokac', '-I', '/tmp/escape', '-c', '/tmp/escape/escape.tk', '-o', '/tmp/escape/escape.o'],
+                    'cwd': '/tmp/escape', 'exit_code': 1, 'signal': None, 'termination': None, 'error': None,
+                    'result': 'pass', 'ok': True, 'artifact_absent': True, 'execution_ms': 10.0,
+                    'stdout': '', 'stderr': 'error[E0455]: Returning reference to local variable is unsafe\n',
+                    'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+                    'stderr_sha256': hashlib.sha256(b'error[E0455]: Returning reference to local variable is unsafe\n').hexdigest(),
+                },
+                'ir': {
+                    'name': 'source-hidden-escape-ir',
+                    'argv': ['/sdk/bin/tokac', '-I', '/tmp/escape', '--emit-llvm', '-c', '/tmp/escape/escape.tk', '-o', '/tmp/escape/escape.ll'],
+                    'cmd': ['/sdk/bin/tokac', '-I', '/tmp/escape', '--emit-llvm', '-c', '/tmp/escape/escape.tk', '-o', '/tmp/escape/escape.ll'],
+                    'cwd': '/tmp/escape', 'exit_code': 1, 'signal': None, 'termination': None, 'error': None,
+                    'result': 'pass', 'ok': True, 'artifact_absent': True, 'execution_ms': 10.0,
+                    'stdout': '', 'stderr': 'error[E0455]: Returning reference to local variable is unsafe\n',
+                    'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+                    'stderr_sha256': hashlib.sha256(b'error[E0455]: Returning reference to local variable is unsafe\n').hexdigest(),
+                },
+                'compile': {
+                    'name': 'source-hidden-escape-compile',
+                    'argv': ['/sdk/bin/tokac', '-I', '/tmp/escape', '/tmp/escape/escape.tk', '/tmp/provider.o', '-o', '/tmp/escape/escape_bin'],
+                    'cmd': ['/sdk/bin/tokac', '-I', '/tmp/escape', '/tmp/escape/escape.tk', '/tmp/provider.o', '-o', '/tmp/escape/escape_bin'],
+                    'cwd': '/tmp/escape', 'exit_code': 1, 'signal': None, 'termination': None, 'error': None,
+                    'result': 'pass', 'ok': True, 'artifact_absent': True, 'execution_ms': 10.0,
+                    'stdout': '', 'stderr': 'error[E0455]: Returning reference to local variable is unsafe\n',
+                    'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+                    'stderr_sha256': hashlib.sha256(b'error[E0455]: Returning reference to local variable is unsafe\n').hexdigest(),
+                },
+            },
+        },
+        'counts': {
+            'total_receipts': 85,
+            'passed': 85,
+            'failed': 0,
+            'groups': {
+                'version': 4,
+                'G-compositional-convergence-positive': 23,
+                'G-compositional-convergence-negative': 58,
+            },
+        },
+        'receipts': receipts,
+    }
+
+
 def fixture(root,intel=False):
     targets=policy.CORE+(policy.OPTIONAL,) if intel else policy.CORE
     archives=root/'qualified';archives.mkdir(exist_ok=True);assets=root/'assets';assets.mkdir(exist_ok=True);zips=root/'zips';zips.mkdir(exist_ok=True);metadata=[];hashes={}
@@ -609,6 +848,9 @@ def fixture(root,intel=False):
     if TAG.startswith('v0.16.'):
         for row in summary['reports']:
             row['candidate_016']=valid_candidate_016(SHA,TAG,row['target'])
+    if TAG.startswith('v0.17.'):
+        for row in summary['reports']:
+            row['candidate_017']=valid_candidate_017(SHA,TAG,row['target'])
     replay_receipts=[{'target':target,'result':'pass','archive_sha256':hashes['toka-%s-%s.tar.gz'%(TAG,target)],'candidate_revision':SHA,'version_label':TAG,'policy_id':policy.policy_id(TAG),'asset_source':'candidate_run','qualification_run_id':11,'qualification_run_attempt':1} for target in targets]
     if TAG.startswith('v0.13.') and TAG != 'v0.13.0':
         for r in replay_receipts:
@@ -622,6 +864,9 @@ def fixture(root,intel=False):
     if TAG.startswith('v0.16.'):
         for r in replay_receipts:
             r['candidate_016']=valid_candidate_016(SHA,TAG,r['target'])
+    if TAG.startswith('v0.17.'):
+        for r in replay_receipts:
+            r['candidate_017']=valid_candidate_017(SHA,TAG,r['target'])
     documents={'summary':summary,'run':{'id':11,'run_attempt':1,'status':'completed','conclusion':'success','head_sha':SHA,'path':'.github/workflows/release.yml','event':'workflow_dispatch','repository':{'full_name':'tokalang/toka'},'head_repository':{'full_name':'tokalang/toka'}},
                'draft':{'tagName':TAG,'isDraft':True,'isPrerelease':False,'assets':[{'name':name} for name in [*hashes,'SHA256SUMS']]},'artifacts':{'artifacts':metadata},
                'optional_run':{'id':21,'run_attempt':2,'head_sha':SHA,'status':'completed','conclusion':'success','event':'workflow_dispatch','path':'.github/workflows/optional_macos_x64.yml'},

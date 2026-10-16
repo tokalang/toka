@@ -1,0 +1,10 @@
+import core/task::{TaskHandle}
+shape TaskCarrier ( task: TaskHandle<i32> )
+fn dummy() -> async i32 { return 42:i32 }
+pub fn test1() -> i32 {
+    auto d = dummy()
+    auto c = TaskCarrier(task = cede d)
+    c.task.start
+    return 0:i32
+}
+pub fn main() -> i32 { return test1() }

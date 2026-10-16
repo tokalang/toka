@@ -177,3 +177,64 @@ tokac -I ./interface_dir consumer.tk provider.o -o application_bin
 ```
 
 Downstream consumers can instantiate and coordinate scoped tasks with complete type checking and ABI fidelity without access to the provider's source code.
+
+---
+
+## 8. Restricted Compositional Consistency (New in Toka 0.17.0)
+
+Toka `0.17.0` upgrades Scoped Tasks from single-variable tracking (`v0.16.0`) to **Restricted Compositional Consistency ("受限组合收敛" v1)** across composite carriers, multi-task shapes, method receivers, and `.tki` interfaces.
+
+### 8.1 Field-Sensitive Task-Handle Carriers
+Shapes and structs may hold one or more `TaskHandle<T>` fields alongside data fields. The compiler tracks local borrow dependencies (`FieldDependencySet`) per field:
+
+```toka
+import core/task::{TaskHandle}
+import std/task::{block_on}
+
+shape Buffer(size: i32, tag: i32)
+shape TwoTasks(t1: TaskHandle<i32>, t2: TaskHandle<i32>)
+
+fn borrow_worker(b: Buffer) -> async i32 <- b { return b.size }
+fn owned_worker() -> async i32 { return 42:i32 }
+
+pub fn run_independent_owned_field() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto holder = TwoTasks(
+        t1 = borrow_worker(buf), // t1 borrows local `buf`
+        t2 = owned_worker()      // t2 is dependency-free (owned)
+    )
+    // Allowed in 0.17: starting `holder.t2` is safe because `t2` has no local borrow
+    holder.t2.start
+    return block_on<i32>(holder.t2)
+    // Note: `holder.t1.start` would be rejected with error[E04584]
+}
+```
+
+### 8.2 Method Receivers: `cede self#` vs Borrowed `self#`
+- **Owned Consuming Receiver (`cede self#`)**: A method taking `cede self#` may start an internal `TaskHandle<T>` field (`self.t.start`) provided that the carrier instance passed by the caller holds no local-borrowing task fields:
+  ```toka
+  shape Runner(t: TaskHandle<i32>)
+  impl Runner {
+      pub fn start_owned(cede self#) -> i32 {
+          self.t.start
+          return 0:i32
+      }
+  }
+  ```
+- **Borrowed Receiver (`self#`) Restriction**: A method taking a borrowed receiver (`self#`, without `cede`) cannot detached-start `self.t.start` or `(self.t).start` (`error[E04584]`), nor can an `effects: self <- t` method launder a scoped task obligation outside its originating `TaskScope` (`error[E0456]`).
+
+### 8.3 Retained-Body vs Bodyless `.tki` Interfaces
+- **Retained-Body `.tki` (`// @meta local_body_policy: checked-local-v1`)**: Cross-module helper functions that retain their body in `.tki` (such as cold forwarders `fwd_external`, `consume_external`, or `spawn_scoped_external`) participate in full compositional borrow and scope verification.
+- **Bodyless `.tki` Declarations**: Passing a local-borrowing `TaskHandle<T>` to a bodyless `.tki` function declaration is rejected with `error[E0456]` because the compiler cannot verify that the opaque external callee does not detached-start or escape the borrowed handle.
+
+### 8.4 Diagnostic Summary (`v0.16.0` → `v0.17.0` Relationship)
+
+| Pattern | `v0.16.0` Behavior | `v0.17.0` Behavior | Diagnostic |
+| :--- | :--- | :--- | :--- |
+| Direct `TaskScope` + `spawn_scoped` + `join_scoped` / `cancel_and_join` | Supported | Supported (100% compatible) | — |
+| Multi-task carrier starting owned field (`holder.t_owned.start`) | Over-rejected when sibling borrowed | **Supported** (field-sensitive) | — |
+| Consuming `cede self#` method starting owned task field | Over-rejected | **Supported** | — |
+| Carrier / split-var / nested field / postfix `.start` on borrowed task | Partial check on direct handle | **Fail-closed across all carrier/projection paths** | `error[E04584]` |
+| Carrier wrapper escape / dual-scope (`spawn` `s1#`, `join` `s2#`) | Checked on direct scope | **Fail-closed across carriers & receiver `effects`** | `error[E0456]` |
+| Passing local-borrowing `TaskHandle` to bodyless `.tki` declaration | Unchecked bodyless sink | **Fail-closed** | `error[E0456]` |
+

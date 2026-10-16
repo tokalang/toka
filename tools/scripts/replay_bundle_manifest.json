@@ -3,7 +3,7 @@
   "version": 1,
   "modules": {
     "validate_sdk_basic.py": "bdf7cac2b303ffa725ff9e2c678a6f8eea40df22bb924941475f92ddec564910",
-    "release_platform_policy.py": "1dd27293ab4c5cf2dd0be8975ba2ead7be9118301b7c519dc4a7ae123c58717e",
+    "release_platform_policy.py": "c4f3fc7eebab4d3b31c74f9a452b81612f7739f05d5a6ef009090df5502e400c",
     "test_toka_add.py": "18b656a21aff901f497f4d4d0aac39dfe5dd25b02a75635761bf980d3709dbe0",
     "test_toka_add_installed.py": "3f250187b467d53d2fd055a9055b9cf944fdcc41c6a6f18ea8a94c9523d762c7",
     "test_toka_evidence_installed.py": "13065cf2848c0616ac3176464c2eecaaa1389e41dcfdb7983ab217f9dc890061",
@@ -11,10 +11,12 @@
     "test_r3_r5_installed.py": "e67427cb6771384e91b853eaf5a7bbf51d76d0e4464e2641d9f1f013c5e19c6a",
     "test_0_14_candidate.py": "4c9a752278dcb109cc9c0d0f4b4969a6fbbdbb64c8f13df4fe7d5339d8353763",
     "test_0_15_candidate.py": "09c79a97d75ddbd7e735b29e37bd9561d0fd3b34b47f56a09d85451c98cb3785",
-    "test_0_16_candidate.py": "263e0a01383d3c5912b6a38fcc74ab3e70a78d990bf5d0eb206b42b7f7fad818"
+    "test_0_16_candidate.py": "263e0a01383d3c5912b6a38fcc74ab3e70a78d990bf5d0eb206b42b7f7fad818",
+    "test_0_17_candidate.py": "5d277e7761bc089ece7425b52d9f96041464ee4b42214069512162143e351e0b"
   },
   "fixtures_digest": "dd7315ca33ee61a8303b392c57834178da27dcccd52d4a5ad9d812dba56ebd90",
   "fixtures_digest_014": "e5615185f9ec1b297a34b4d07dca868ef7f2ef440736ad05cd3e7bfbe1f24df1",
   "fixtures_digest_015": "19d90ad6d157e4f12a3ddab1ddd73721df11f5f321c68a0e6ac3877792f191a4",
-  "fixtures_digest_016": "7579bc4271da9eb1f1f413309b580fe8495b9a28c0b15fbe430a18b89267923e"
+  "fixtures_digest_016": "7579bc4271da9eb1f1f413309b580fe8495b9a28c0b15fbe430a18b89267923e",
+  "fixtures_digest_017": "7c18eb0f463654ab8ed3d4c8d5fbf2e75bf3c0a5a18e6219dd5ef66663c3e19e"
 }

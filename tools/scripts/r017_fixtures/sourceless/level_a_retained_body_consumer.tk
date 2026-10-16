@@ -1,0 +1,24 @@
+// Level-A retained-body cross-module verification (RFC §7)
+import std/task::{block_on}
+import std/async::{TaskScope, spawn_scoped, join_scoped, cancel_and_join}
+import scoped_provider::{Buffer, compute_provider}
+
+fn run_cross_module() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto scope# = TaskScope::new()
+    auto t = spawn_scoped<i32>(scope#, cede compute_provider(buf))
+    auto res_opt = t.await?
+    if res_opt.is_none() {
+        cancel_and_join(scope#).await
+        return -1:i32
+    }
+    auto res = res_opt.unwrap()
+    join_scoped(scope#).await
+    return res
+}
+
+pub fn main() -> i32 {
+    auto res = block_on<i32>(run_cross_module())
+    if res != 200:i32 { return 1 }
+    return 0
+}

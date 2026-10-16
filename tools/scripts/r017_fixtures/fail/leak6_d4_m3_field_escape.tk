@@ -1,0 +1,24 @@
+import core/task::{TaskHandle}
+shape Buffer ( size: i32, tag: i32 )
+shape Holder ( task#: TaskHandle<i32> )
+fn dummy() -> async i32 { return 0:i32 }
+fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
+    return b.size + chunk_id
+}
+pub fn test_leak6_outer() -> async i32 {
+    auto d = dummy()
+    auto h# = Holder(task = cede d)
+    {
+        auto buf = Buffer(size = 100:i32, tag = 1:i32)
+        auto t = process_chunk(buf, 1:i32)
+        h.task = cede t
+    }
+    return h.task.await
+}
+pub fn test_leak6_param(out_h#: Holder) -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto t = process_chunk(buf, 1:i32)
+    out_h.task = cede t
+    return 0:i32
+}
+fn main() -> i32 { return 0:i32 }
