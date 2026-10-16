@@ -1,0 +1,18 @@
+import core/task::{TaskHandle}
+shape Buffer ( size: i32, tag: i32 )
+shape TwoTasks ( borrowed_t#: TaskHandle<i32>, owned_t#: TaskHandle<i32> )
+fn dummy() -> async i32 { return 42:i32 }
+fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
+    return b.size + chunk_id
+}
+fn fwd_two(cede c: TwoTasks) -> TwoTasks <- c {
+    return cede c
+}
+pub fn test() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto c0 = TwoTasks(borrowed_t = process_chunk(buf, 1:i32), owned_t = dummy())
+    auto c = fwd_two(cede c0)
+    c.owned_t.start
+    return c.borrowed_t.await
+}
+pub fn main() -> i32 { return 0:i32 }

@@ -1,0 +1,17 @@
+import core/task::{TaskHandle}
+shape Buffer ( size: i32, tag: i32 )
+shape FwdCarrier(task#: TaskHandle<i32>)
+fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
+    return b.size + chunk_id
+}
+pub fn fwd_carrier(cede h: FwdCarrier) -> FwdCarrier <- h {
+    return cede h
+}
+pub fn test_pos2() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto t = process_chunk(buf, 1:i32)
+    auto h# = FwdCarrier(task = cede t)
+    auto ret# = fwd_carrier(cede h)
+    return ret.task.await
+}
+pub fn main() -> i32 { return 0:i32 }

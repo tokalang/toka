@@ -1,0 +1,20 @@
+import std/async::{TaskScope, join_scoped}
+import core/task::{TaskHandle}
+shape Buffer ( size: i32, tag: i32 )
+shape Carrier ( s1#: TaskScope )
+impl Carrier {
+    pub fn bad_start(self#, cede t: TaskHandle<i32>) {
+        auto owned = cede t
+        owned.start
+    }
+}
+fn worker(b: Buffer) -> async i32 <- b { return b.size }
+pub fn test3() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto c# = Carrier(s1 = TaskScope::new())
+    auto t = worker(buf)
+    c#.bad_start(cede t)
+    join_scoped(c.s1#).await
+    return 0:i32
+}
+pub fn main() -> i32 { return 0:i32 }
