@@ -1511,6 +1511,8 @@ private:
   bool checkSafeTaskForwarderBodyHelper(ASTNode *node, std::set<std::string> &trackedVars, size_t &returnPathsCount, bool &allReturnsTracked);
   bool isSafeScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskIndex, size_t scopeIndex);
   bool isSafeMethodScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskIndex, std::string &outScopeField);
+  bool fnContainsTaskStart(FunctionDecl *fn, std::set<const FunctionDecl *> &visited);
+  bool fnContainsTaskStart(FunctionDecl *fn);
   void collectConsumingExpressionDependencies(
       Expr *expr, std::set<std::string> &deps, bool &hasUnknownSource);
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
