@@ -1278,13 +1278,16 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
               if (fieldName == ".." || fieldName == "*") continue;
               while (!fieldName.empty() && (fieldName.back() == '#' || fieldName.back() == '*' || fieldName.back() == '^'))
                 fieldName.pop_back();
+              if (!member.second || !member.second->ResolvedType ||
+                  !isTaskLifetimeCarryingType(member.second->ResolvedType))
+                continue;
               std::set<std::string> memberDeps;
               bool hasUnknownMemberSource = false;
               collectConsumingExpressionDependencies(member.second.get(), memberDeps, hasUnknownMemberSource);
               targetInfo->FieldDependencySet[fieldName] = memberDeps;
               if (!memberDeps.empty()) {
                 targetInfo->LifeDependencySet.insert(memberDeps.begin(), memberDeps.end());
-                if (member.second && member.second->ResolvedType && isTaskScopeType(member.second->ResolvedType)) {
+                if (isTaskScopeType(member.second->ResolvedType)) {
                   targetInfo->CarriesTaskDependency = true;
                 }
               }
