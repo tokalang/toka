@@ -1239,13 +1239,37 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         if (rhsCarriesTask) {
           bool hasUnknownRhs = false;
           collectConsumingExpressionDependencies(Bin->RHS.get(), rhsDeps, hasUnknownRhs);
-          if (!rhsDeps.empty() && Bin->RHS->ResolvedType && isTaskScopeType(Bin->RHS->ResolvedType)) {
+          if (!rhsDeps.empty() && Bin->RHS->ResolvedType &&
+              (isTaskScopeType(Bin->RHS->ResolvedType) || isTaskLifetimeCarryingType(Bin->RHS->ResolvedType))) {
             targetInfo->CarriesTaskDependency = true;
           }
         }
 
         if (auto *me = dynamic_cast<MemberExpr *>(Bin->LHS.get())) {
-          targetInfo->FieldDependencySet[me->Member] = rhsDeps;
+          MemberExpr *topMe = me;
+          Expr *curr = me->Object.get();
+          while (curr) {
+            if (auto *parentMe = dynamic_cast<MemberExpr *>(curr)) {
+              topMe = parentMe;
+              curr = parentMe->Object.get();
+            } else if (auto *un = dynamic_cast<UnaryExpr *>(curr)) {
+              curr = un->RHS.get();
+            } else if (auto *ce = dynamic_cast<CastExpr *>(curr)) {
+              curr = ce->Expression.get();
+            } else {
+              break;
+            }
+          }
+          std::string topField = Type::stripMorphology(topMe->Member);
+          if (topMe == me) {
+            targetInfo->FieldDependencySet[topField] = rhsDeps;
+            if (topField != topMe->Member)
+              targetInfo->FieldDependencySet[topMe->Member] = rhsDeps;
+          } else {
+            targetInfo->FieldDependencySet[topField].insert(rhsDeps.begin(), rhsDeps.end());
+            if (topField != topMe->Member)
+              targetInfo->FieldDependencySet[topMe->Member].insert(rhsDeps.begin(), rhsDeps.end());
+          }
         } else if (dynamic_cast<VariableExpr *>(Bin->LHS.get())) {
           targetInfo->FieldDependencySet.clear();
           if (auto *initStruct = dynamic_cast<InitStructExpr *>(peeledRhs)) {
