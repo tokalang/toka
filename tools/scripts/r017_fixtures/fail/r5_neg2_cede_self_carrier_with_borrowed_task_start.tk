@@ -1,0 +1,25 @@
+import core/task::{TaskHandle}
+
+shape Buffer(size: i32, tag: i32)
+shape TaskHolder(task#: TaskHandle<i32>)
+
+fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
+    return b.size + chunk_id
+}
+
+impl TaskHolder {
+    fn into_task(cede self#) -> TaskHandle<i32> <- self {
+        return cede self.task
+    }
+}
+
+pub fn test() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto h# = TaskHolder(task = process_chunk(buf, 1:i32))
+    h#.into_task().start
+    return 0:i32
+}
+
+pub fn main() -> i32 {
+    return test()
+}

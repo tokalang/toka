@@ -1,0 +1,17 @@
+import core/task::{TaskHandle}
+shape Buffer ( size: i32, tag: i32 )
+shape TaskHolder(task#: TaskHandle<i32>)
+fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
+    return b.size + chunk_id
+}
+pub fn consume_holder(cede h: TaskHolder) {
+    auto owned = cede h
+}
+pub fn test_pos1() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto t = process_chunk(buf, 1:i32)
+    auto h# = TaskHolder(task = cede t)
+    consume_holder(cede h)
+    return 0:i32
+}
+pub fn main() -> i32 { return test_pos1() }

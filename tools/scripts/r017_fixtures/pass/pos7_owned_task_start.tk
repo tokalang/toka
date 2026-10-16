@@ -1,0 +1,10 @@
+import core/task::{TaskHandle}
+fn worker(x: i32) -> async i32 {
+    return x * 2:i32
+}
+pub fn test_pos7() -> i32 {
+    auto t = worker(21:i32)
+    t.start
+    return 0:i32
+}
+pub fn main() -> i32 { return test_pos7() }
