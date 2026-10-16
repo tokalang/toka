@@ -4996,6 +4996,9 @@ void Sema::collectConsumingExpressionDependencies(
       std::string actualName;
       if (CurrentScope && CurrentScope->findVariableWithDeref(var->Name, sym, actualName) && sym) {
         auto it = sym->FieldDependencySet.find(member->Member);
+        if (it == sym->FieldDependencySet.end()) {
+          it = sym->FieldDependencySet.find(Type::stripMorphology(member->Member));
+        }
         if (it != sym->FieldDependencySet.end()) {
           deps.insert(it->second.begin(), it->second.end());
           if (!sym->IsReference()) {
@@ -5025,7 +5028,8 @@ void Sema::collectConsumingExpressionDependencies(
 }
 
 bool Sema::checkSafeTaskConsumerBodyHelper(
-    ASTNode *node, std::set<std::string> &trackedVars) {
+    ASTNode *node, std::set<std::string> &trackedVars,
+    const std::string &allowedSelfReceiver) {
   if (!node) return true;
 
   auto exprReferencesTracked = [&](Expr *e) -> bool {
@@ -5166,18 +5170,18 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
   // 1. Statements
   if (auto *block = dynamic_cast<BlockStmt *>(node)) {
     for (const auto &stmt : block->Statements) {
-      if (!checkSafeTaskConsumerBodyHelper(stmt.get(), trackedVars))
+      if (!checkSafeTaskConsumerBodyHelper(stmt.get(), trackedVars, allowedSelfReceiver))
         return false;
     }
     return true;
   }
 
   if (auto *unsafe = dynamic_cast<UnsafeStmt *>(node)) {
-    return checkSafeTaskConsumerBodyHelper(unsafe->Statement.get(), trackedVars);
+    return checkSafeTaskConsumerBodyHelper(unsafe->Statement.get(), trackedVars, allowedSelfReceiver);
   }
 
   if (auto *initBlock = dynamic_cast<InitBlockStmt *>(node)) {
-    return checkSafeTaskConsumerBodyHelper(initBlock->Body.get(), trackedVars);
+    return checkSafeTaskConsumerBodyHelper(initBlock->Body.get(), trackedVars, allowedSelfReceiver);
   }
 
   if (auto *ret = dynamic_cast<ReturnStmt *>(node)) {
@@ -5195,7 +5199,7 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
           return true;
         }
       }
-      return checkSafeTaskConsumerBodyHelper(varDecl->Init.get(), trackedVars);
+      return checkSafeTaskConsumerBodyHelper(varDecl->Init.get(), trackedVars, allowedSelfReceiver);
     }
     return true;
   }
@@ -5211,7 +5215,7 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
           return true;
         }
       }
-      return checkSafeTaskConsumerBodyHelper(destruct->Init.get(), trackedVars);
+      return checkSafeTaskConsumerBodyHelper(destruct->Init.get(), trackedVars, allowedSelfReceiver);
     }
     return true;
   }
@@ -5238,11 +5242,11 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
           return false;
         }
       } else {
-        if (!checkSafeTaskConsumerBodyHelper(guardBind->Target.get(), trackedVars))
+        if (!checkSafeTaskConsumerBodyHelper(guardBind->Target.get(), trackedVars, allowedSelfReceiver))
           return false;
       }
     }
-    if (guardBind->ElseBody && !checkSafeTaskConsumerBodyHelper(guardBind->ElseBody.get(), trackedVars))
+    if (guardBind->ElseBody && !checkSafeTaskConsumerBodyHelper(guardBind->ElseBody.get(), trackedVars, allowedSelfReceiver))
       return false;
     return true;
   }
@@ -5261,7 +5265,7 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
   }
 
   if (auto *exprStmt = dynamic_cast<ExprStmt *>(node)) {
-    return checkSafeTaskConsumerBodyHelper(exprStmt->Expression.get(), trackedVars);
+    return checkSafeTaskConsumerBodyHelper(exprStmt->Expression.get(), trackedVars, allowedSelfReceiver);
   }
 
   if (dynamic_cast<UnreachableStmt *>(node)) {
@@ -5272,9 +5276,9 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
   if (auto *ifExpr = dynamic_cast<IfExpr *>(node)) {
     if (ifExpr->Condition && exprReferencesTracked(ifExpr->Condition.get()))
       return false;
-    if (ifExpr->Then && !checkSafeTaskConsumerBodyHelper(ifExpr->Then.get(), trackedVars))
+    if (ifExpr->Then && !checkSafeTaskConsumerBodyHelper(ifExpr->Then.get(), trackedVars, allowedSelfReceiver))
       return false;
-    if (ifExpr->Else && !checkSafeTaskConsumerBodyHelper(ifExpr->Else.get(), trackedVars))
+    if (ifExpr->Else && !checkSafeTaskConsumerBodyHelper(ifExpr->Else.get(), trackedVars, allowedSelfReceiver))
       return false;
     return true;
   }
@@ -5282,9 +5286,9 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
   if (auto *guardExpr = dynamic_cast<GuardExpr *>(node)) {
     if (guardExpr->Condition && exprReferencesTracked(guardExpr->Condition.get()))
       return false;
-    if (guardExpr->Then && !checkSafeTaskConsumerBodyHelper(guardExpr->Then.get(), trackedVars))
+    if (guardExpr->Then && !checkSafeTaskConsumerBodyHelper(guardExpr->Then.get(), trackedVars, allowedSelfReceiver))
       return false;
-    if (guardExpr->Else && !checkSafeTaskConsumerBodyHelper(guardExpr->Else.get(), trackedVars))
+    if (guardExpr->Else && !checkSafeTaskConsumerBodyHelper(guardExpr->Else.get(), trackedVars, allowedSelfReceiver))
       return false;
     return true;
   }
@@ -5292,7 +5296,7 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
   if (auto *loopExpr = dynamic_cast<LoopExpr *>(node)) {
     if (loopExpr->Condition && exprReferencesTracked(loopExpr->Condition.get()))
       return false;
-    if (loopExpr->Body && !checkSafeTaskConsumerBodyHelper(loopExpr->Body.get(), trackedVars))
+    if (loopExpr->Body && !checkSafeTaskConsumerBodyHelper(loopExpr->Body.get(), trackedVars, allowedSelfReceiver))
       return false;
     return true;
   }
@@ -5300,9 +5304,9 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
   if (auto *forExpr = dynamic_cast<ForExpr *>(node)) {
     if (forExpr->Collection && exprReferencesTracked(forExpr->Collection.get()))
       return false;
-    if (forExpr->Body && !checkSafeTaskConsumerBodyHelper(forExpr->Body.get(), trackedVars))
+    if (forExpr->Body && !checkSafeTaskConsumerBodyHelper(forExpr->Body.get(), trackedVars, allowedSelfReceiver))
       return false;
-    if (forExpr->ElseBody && !checkSafeTaskConsumerBodyHelper(forExpr->ElseBody.get(), trackedVars))
+    if (forExpr->ElseBody && !checkSafeTaskConsumerBodyHelper(forExpr->ElseBody.get(), trackedVars, allowedSelfReceiver))
       return false;
     return true;
   }
@@ -5319,7 +5323,7 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
         }
       }
       if (!isDirectVarTarget) {
-        if (!checkSafeTaskConsumerBodyHelper(matchExpr->Target.get(), trackedVars))
+        if (!checkSafeTaskConsumerBodyHelper(matchExpr->Target.get(), trackedVars, allowedSelfReceiver))
           return false;
       }
     }
@@ -5343,20 +5347,20 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
         collectPatternBindings(arm->Pat.get());
       }
 
-      if (arm->Body && !checkSafeTaskConsumerBodyHelper(arm->Body.get(), armTrackedVars))
+      if (arm->Body && !checkSafeTaskConsumerBodyHelper(arm->Body.get(), armTrackedVars, allowedSelfReceiver))
         return false;
     }
     return true;
   }
 
   if (auto *closure = dynamic_cast<ClosureExpr *>(node)) {
-    if (closure->Body && !checkSafeTaskConsumerBodyHelper(closure->Body.get(), trackedVars))
+    if (closure->Body && !checkSafeTaskConsumerBodyHelper(closure->Body.get(), trackedVars, allowedSelfReceiver))
       return false;
     return true;
   }
 
   if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(node)) {
-    return checkSafeTaskConsumerBodyHelper(unsafeExpr->Expression.get(), trackedVars);
+    return checkSafeTaskConsumerBodyHelper(unsafeExpr->Expression.get(), trackedVars, allowedSelfReceiver);
   }
 
   // 3. Leaf/Direct Expressions
@@ -5380,17 +5384,60 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
                 trackedVars.insert(Type::stripMorphology(lv->Name));
                 return true;
               }
+              if (!allowedSelfReceiver.empty()) {
+                Expr *baseLhs = bin->LHS.get();
+                while (baseLhs) {
+                  if (auto *me = dynamic_cast<MemberExpr *>(baseLhs))
+                    baseLhs = me->Object.get();
+                  else if (auto *idx = dynamic_cast<ArrayIndexExpr *>(baseLhs))
+                    baseLhs = idx->Array.get();
+                  else if (auto *u = dynamic_cast<UnaryExpr *>(baseLhs))
+                    baseLhs = u->RHS.get();
+                  else if (auto *ce = dynamic_cast<CastExpr *>(baseLhs))
+                    baseLhs = ce->Expression.get();
+                  else
+                    break;
+                }
+                if (auto *baseVar = dynamic_cast<VariableExpr *>(baseLhs)) {
+                  if (Type::stripMorphology(baseVar->Name) == allowedSelfReceiver) {
+                    return true;
+                  }
+                }
+              }
               return false;
             }
             return false;
           }
-          return checkSafeTaskConsumerBodyHelper(bin->RHS.get(), trackedVars);
+          return checkSafeTaskConsumerBodyHelper(bin->RHS.get(), trackedVars, allowedSelfReceiver);
         }
         return false;
       }
     }
 
+    if (dynamic_cast<StartExpr *>(e))
+      return false;
+
+    if (auto *mem = dynamic_cast<MemberExpr *>(e)) {
+      if (mem->IsTaskStart || Type::stripMorphology(mem->Member) == "start")
+        return false;
+      return checkSafeTaskConsumerBodyHelper(mem->Object.get(), trackedVars, allowedSelfReceiver);
+    }
+
+    if (auto *mcall = dynamic_cast<MethodCallExpr *>(e)) {
+      if (mcall->Method == "start" || Type::stripMorphology(mcall->Method) == "start")
+        return false;
+      if (exprReferencesTracked(mcall->Object.get()))
+        return false;
+      for (const auto &arg : mcall->Args) {
+        if (exprReferencesTracked(arg.get()))
+          return false;
+      }
+      return true;
+    }
+
     if (auto *call = dynamic_cast<CallExpr *>(e)) {
+      if (call->Callee == "start" || Type::stripMorphology(call->Callee) == "start")
+        return false;
       for (size_t i = 0; i < call->Args.size(); ++i) {
         if (exprReferencesTracked(call->Args[i].get())) {
           Expr *unwrappedArg = unwrapExpr(call->Args[i].get());
@@ -5403,7 +5450,7 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
             }
           } else {
             // Nested non-variable sub-expression
-            if (!checkSafeTaskConsumerBodyHelper(unwrappedArg, trackedVars))
+            if (!checkSafeTaskConsumerBodyHelper(unwrappedArg, trackedVars, allowedSelfReceiver))
               return false;
             if (unwrappedArg->ResolvedType && isTaskLifetimeCarryingType(unwrappedArg->ResolvedType)) {
               if (!call->ResolvedFn || !isSafeSynchronousTaskConsumer(call->ResolvedFn, i))
@@ -5415,6 +5462,34 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
       return true;
     }
 
+    if (auto *awaitE = dynamic_cast<AwaitExpr *>(e)) {
+      return checkSafeTaskConsumerBodyHelper(awaitE->Expression.get(), trackedVars, allowedSelfReceiver);
+    }
+
+    if (auto *waitE = dynamic_cast<WaitExpr *>(e)) {
+      return checkSafeTaskConsumerBodyHelper(waitE->Expression.get(), trackedVars, allowedSelfReceiver);
+    }
+
+    if (auto *cede = dynamic_cast<CedeExpr *>(e)) {
+      return checkSafeTaskConsumerBodyHelper(cede->Value.get(), trackedVars, allowedSelfReceiver);
+    }
+
+    if (auto *pass = dynamic_cast<PassExpr *>(e)) {
+      return checkSafeTaskConsumerBodyHelper(pass->Value.get(), trackedVars, allowedSelfReceiver);
+    }
+
+    if (auto *cast = dynamic_cast<CastExpr *>(e)) {
+      return checkSafeTaskConsumerBodyHelper(cast->Expression.get(), trackedVars, allowedSelfReceiver);
+    }
+
+    if (auto *un = dynamic_cast<UnaryExpr *>(e)) {
+      return checkSafeTaskConsumerBodyHelper(un->RHS.get(), trackedVars, allowedSelfReceiver);
+    }
+
+    if (auto *v = dynamic_cast<VariableExpr *>(e)) {
+      return true;
+    }
+
     return false;
   }
 
@@ -5422,11 +5497,11 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
   return false;
 }
 
-bool Sema::checkSafeTaskConsumerBody(ASTNode *body, const std::string &rootFormal) {
+bool Sema::checkSafeTaskConsumerBody(ASTNode *body, const std::string &rootFormal, const std::string &allowedSelfReceiver) {
   if (!body) return true;
   std::set<std::string> trackedVars;
   trackedVars.insert(rootFormal);
-  return checkSafeTaskConsumerBodyHelper(body, trackedVars);
+  return checkSafeTaskConsumerBodyHelper(body, trackedVars, allowedSelfReceiver);
 }
 
 bool Sema::isSafeSynchronousTaskConsumer(FunctionDecl *calleeFn, size_t formalIndex) {
@@ -5781,99 +5856,6 @@ bool Sema::isSafeScopedActivationWrapper(FunctionDecl *calleeFn, size_t taskInde
   return false;
 }
 
-bool Sema::fnContainsTaskStart(FunctionDecl *fn, std::set<const FunctionDecl *> &visited) {
-  if (!fn || !fn->Body) return false;
-  if (visited.count(fn)) return false;
-  visited.insert(fn);
-
-  std::function<bool(Stmt *)> walkStmt;
-  std::function<bool(Expr *)> walkExpr = [&](Expr *e) -> bool {
-    if (!e) return false;
-    if (dynamic_cast<StartExpr *>(e)) return true;
-    if (auto *mem = dynamic_cast<MemberExpr *>(e)) {
-      if (mem->IsTaskStart || Type::stripMorphology(mem->Member) == "start")
-        return true;
-      if (walkExpr(mem->Object.get())) return true;
-    }
-    if (auto *un = dynamic_cast<UnaryExpr *>(e)) return walkExpr(un->RHS.get());
-    if (auto *bin = dynamic_cast<BinaryExpr *>(e)) return walkExpr(bin->LHS.get()) || walkExpr(bin->RHS.get());
-    if (auto *call = dynamic_cast<CallExpr *>(e)) {
-      for (const auto &arg : call->Args) if (walkExpr(arg.get())) return true;
-      if (call->ResolvedFn) {
-        if (fnContainsTaskStart(call->ResolvedFn, visited)) return true;
-      } else {
-        for (auto *gfn : GlobalFunctions) {
-          if (gfn && gfn->Name == call->Callee) {
-            if (fnContainsTaskStart(gfn, visited)) return true;
-          }
-        }
-      }
-    }
-    if (auto *mcall = dynamic_cast<MethodCallExpr *>(e)) {
-      if (walkExpr(mcall->Object.get())) return true;
-      for (const auto &arg : mcall->Args) if (walkExpr(arg.get())) return true;
-      if (mcall->ResolvedFn) {
-        if (fnContainsTaskStart(mcall->ResolvedFn, visited)) return true;
-      } else if (mcall->Object && mcall->Object->ResolvedType) {
-        std::string typeName = mcall->Object->ResolvedType->getSoulName();
-        if (MethodDecls.count(typeName) && MethodDecls[typeName].count(mcall->Method)) {
-          auto *mfn = MethodDecls[typeName][mcall->Method];
-          if (fnContainsTaskStart(mfn, visited)) return true;
-        }
-      }
-    }
-    if (auto *cede = dynamic_cast<CedeExpr *>(e)) return walkExpr(cede->Value.get());
-    if (auto *cast = dynamic_cast<CastExpr *>(e)) return walkExpr(cast->Expression.get());
-    if (auto *unsafe = dynamic_cast<UnsafeExpr *>(e)) return walkExpr(unsafe->Expression.get());
-    if (auto *init = dynamic_cast<InitStructExpr *>(e)) {
-      for (const auto &m : init->Members) if (walkExpr(m.second.get())) return true;
-    }
-    if (auto *arr = dynamic_cast<ArrayExpr *>(e)) {
-      for (const auto &el : arr->Elements) if (walkExpr(el.get())) return true;
-    }
-    if (auto *idx = dynamic_cast<ArrayIndexExpr *>(e)) {
-      if (walkExpr(idx->Array.get())) return true;
-      for (const auto &i : idx->Indices) if (walkExpr(i.get())) return true;
-    }
-    if (auto *ife = dynamic_cast<IfExpr *>(e)) {
-      if (walkExpr(ife->Condition.get())) return true;
-      if (walkStmt(ife->Then.get())) return true;
-      if (walkStmt(ife->Else.get())) return true;
-    }
-    if (auto *ge = dynamic_cast<GuardExpr *>(e)) {
-      if (walkExpr(ge->Condition.get())) return true;
-      if (walkStmt(ge->Then.get())) return true;
-      if (walkStmt(ge->Else.get())) return true;
-    }
-    if (auto *le = dynamic_cast<LoopExpr *>(e)) {
-      if (walkExpr(le->Condition.get())) return true;
-      if (walkStmt(le->Body.get())) return true;
-    }
-    if (auto *fe = dynamic_cast<ForExpr *>(e)) {
-      if (walkExpr(fe->Collection.get())) return true;
-      if (walkStmt(fe->Body.get())) return true;
-      if (walkStmt(fe->ElseBody.get())) return true;
-    }
-    return false;
-  };
-  walkStmt = [&](Stmt *s) -> bool {
-    if (!s) return false;
-    if (auto *es = dynamic_cast<ExprStmt *>(s)) return walkExpr(es->Expression.get());
-    if (auto *rs = dynamic_cast<ReturnStmt *>(s)) return walkExpr(rs->ReturnValue.get());
-    if (auto *vd = dynamic_cast<VariableDecl *>(s)) return walkExpr(vd->Init.get());
-    if (auto *bs = dynamic_cast<BlockStmt *>(s)) {
-      for (const auto &child : bs->Statements) if (walkStmt(child.get())) return true;
-    }
-    if (auto *us = dynamic_cast<UnsafeStmt *>(s)) return walkStmt(us->Statement.get());
-    return false;
-  };
-  return walkStmt(fn->Body.get());
-}
-
-bool Sema::fnContainsTaskStart(FunctionDecl *fn) {
-  std::set<const FunctionDecl *> visited;
-  return fnContainsTaskStart(fn, visited);
-}
 
 bool Sema::isSafeMethodScopedActivationWrapper(
     FunctionDecl *calleeFn, size_t taskIndex, std::string &outScopeField) {
@@ -6083,7 +6065,7 @@ bool Sema::checkConsumingArgumentEscape(
       bool recIsParam = recInfo && recInfo->IsFunctionParameter;
 
       if (routesToReceiver) {
-        if (calleeFn && fnContainsTaskStart(calleeFn)) {
+        if (!calleeFn || !calleeFn->Body) {
           error(callSite, DiagID::ERR_BORROW_LIFETIME, receiverName, depStr);
           SourceLocation originLoc = findPathDeclaration(depStr);
           if (originLoc.isValid())
@@ -6095,7 +6077,7 @@ bool Sema::checkConsumingArgumentEscape(
         bool receiverHasScope = methodReceiver->ResolvedType && containsTaskScope(methodReceiver->ResolvedType);
         if (receiverHasScope) {
           std::string targetScopeField;
-          bool isSafeMethodActivation = calleeFn &&
+          bool isSafeMethodActivation =
               isSafeMethodScopedActivationWrapper(calleeFn, formalIndex, targetScopeField);
           if (!isSafeMethodActivation) {
             error(callSite, DiagID::ERR_BORROW_LIFETIME, receiverName, depStr);
@@ -6145,6 +6127,23 @@ bool Sema::checkConsumingArgumentEscape(
           }
           continue;
         } else {
+          std::string taskFormal = formalIndex < calleeFn->Args.size()
+              ? Type::stripMorphology(calleeFn->Args[formalIndex].Name) : "";
+          std::string selfFormal = calleeFn->Args.empty()
+              ? "" : Type::stripMorphology(calleeFn->Args[0].Name);
+          bool receiverCanHoldTask = methodReceiver->ResolvedType &&
+              isTaskLifetimeCarryingType(methodReceiver->ResolvedType);
+          std::string allowedSelf = receiverCanHoldTask ? selfFormal : "";
+
+          if (taskFormal.empty() || !checkSafeTaskConsumerBody(calleeFn->Body.get(), taskFormal, allowedSelf)) {
+            error(callSite, DiagID::ERR_BORROW_LIFETIME, receiverName, depStr);
+            SourceLocation originLoc = findPathDeclaration(depStr);
+            if (originLoc.isValid())
+              DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                       "shorter-lived dependency declared here");
+            return false;
+          }
+
           if ((recIsParam && !depIsParam) || receiverDepth < depDepth) {
             error(callSite, DiagID::ERR_BORROW_LIFETIME, receiverName, depStr);
             SourceLocation originLoc = findPathDeclaration(depStr);
@@ -6155,6 +6154,7 @@ bool Sema::checkConsumingArgumentEscape(
           }
           if (recInfo) {
             recInfo->FieldDependencySet.clear();
+            recInfo->CarriesTaskDependency = true;
             recInfo->LifeDependencySet.insert(depStr);
             if (depInfo) {
               recInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
