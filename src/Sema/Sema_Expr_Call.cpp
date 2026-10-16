@@ -4868,6 +4868,17 @@ void Sema::collectConsumingExpressionDependencies(
       break;
   }
   if (!expr) return;
+  if (expr->ResolvedType &&
+      !expr->ResolvedType->isPointer() &&
+      !expr->ResolvedType->isSmartPointer() &&
+      !expr->ResolvedType->isReference() &&
+      (expr->ResolvedType->isInteger() ||
+       expr->ResolvedType->isFloatingPoint() ||
+       expr->ResolvedType->isBoolean() ||
+       expr->ResolvedType->isUnit() ||
+       expr->ResolvedType->isVoid())) {
+    return;
+  }
 
   if (isCede && dynamic_cast<ArrayIndexExpr *>(expr)) {
     // Moving an element out of an array/container does not borrow the container.
@@ -14283,9 +14294,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 const bool isCededTaskParam = Fn->Args[i].IsCeded &&
                     ((argResolvedType && isTaskLifetimeCarryingType(argResolvedType)) ||
                      (Fn->Args[i].ResolvedType && isTaskLifetimeCarryingType(Fn->Args[i].ResolvedType)));
-                if (argInfo && !argInfo->FieldDependencySet.empty()) {
+                const bool carriesTaskFieldDeps =
+                    isCededTaskParam ||
+                    ((argResolvedType && isTaskLifetimeCarryingType(argResolvedType)) &&
+                     (ReturnType && isTaskLifetimeCarryingType(ReturnType)));
+                if (carriesTaskFieldDeps && argInfo && !argInfo->FieldDependencySet.empty()) {
                   for (const auto &pair : argInfo->FieldDependencySet) {
-                    m_LastFieldDependencies[pair.first].insert(pair.second.begin(), pair.second.end());
+                    m_LastFieldDependencies[pair.first].insert(
+                        pair.second.begin(), pair.second.end());
                   }
                 }
                 if (!isUnpackingTask && !isCededTaskParam &&
