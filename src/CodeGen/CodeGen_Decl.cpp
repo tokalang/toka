@@ -225,10 +225,16 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   } guard(*this, funcName);
 
   auto emitted = m_EmittedFunctionDeclarations.find(funcName);
-  if ((emitted != m_EmittedFunctionDeclarations.end() && emitted->second != func &&
-       (func->InterfaceLocalBody || emitted->second->InterfaceLocalBody)) ||
-      (emitted == m_EmittedFunctionDeclarations.end() && func->InterfaceLocalBody &&
-       m_Module->getFunction(funcName))) {
+  const bool isPanicFallback = (func && func->Name == "__toka_panic_handler") ||
+      isCoreRuntimePanicFallback(m_AST, func) ||
+      (emitted != m_EmittedFunctionDeclarations.end() &&
+       (isCoreRuntimePanicFallback(m_AST, emitted->second) ||
+        (emitted->second && emitted->second->Name == "__toka_panic_handler")));
+  if (!isPanicFallback &&
+      (((emitted != m_EmittedFunctionDeclarations.end() && emitted->second != func &&
+         (func->InterfaceLocalBody || emitted->second->InterfaceLocalBody)) ||
+        (emitted == m_EmittedFunctionDeclarations.end() && func->InterfaceLocalBody &&
+         m_Module->getFunction(funcName))))) {
     error(func, DiagID::ERR_CODEGEN, "executable interface symbol identity collision: " + funcName);
     return nullptr;
   }

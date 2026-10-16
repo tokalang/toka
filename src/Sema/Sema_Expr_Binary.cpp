@@ -405,8 +405,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   const auto *propagatedOrigins = propagationAssignment
       ? bindingTransfer.capturePropagationOrigins(Bin->RHS.get()) : nullptr;
   std::set<std::string> rhsLifeDependencies = m_LastLifeDependencies;
+  const bool rhsCarriesTaskEarly = (rhsType && isTaskLifetimeCarryingType(rhsType));
   if (propagatedOrigins) {
-    rhsLifeDependencies.clear();
+    if (!rhsCarriesTaskEarly) {
+      rhsLifeDependencies.clear();
+    }
     for (const auto &path : propagatedOrigins->Referents)
       rhsLifeDependencies.insert(path.toLegacyString());
   }
@@ -1177,33 +1180,89 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                                           lookupName);
 
       if (targetInfo) {
+        const bool rhsCarriesTask = (rhsType && isTaskLifetimeCarryingType(rhsType)) ||
+                                    (lhsCompatType && isTaskLifetimeCarryingType(lhsCompatType)) ||
+                                    targetInfo->CarriesTaskDependency;
         std::set<std::string> rhsDeps = rhsLifeDependencies;
         if (propagatedOrigins && Bin->Op == "=" &&
             dynamic_cast<VariableExpr *>(Bin->LHS.get())) {
           // Replace the view's carried dependencies, not its source with the
           // target's own binding name. Failed assignment restores the snapshot.
-          targetInfo->LifeDependencySet = rhsDeps;
+          if (!rhsCarriesTask) {
+            targetInfo->LifeDependencySet = rhsDeps;
+          } else {
+            targetInfo->LifeDependencySet.insert(rhsDeps.begin(), rhsDeps.end());
+          }
           targetInfo->BorrowedFrom.clear();
           targetInfo->BorrowedPath = {};
         }
         if (!rhsBorrowSource.empty())
           rhsDeps.insert(rhsBorrowSource);
-        
-        if (auto *rv = dynamic_cast<VariableExpr *>(Bin->RHS.get())) {
+
+        Expr *peeledRhs = Bin->RHS.get();
+        while (peeledRhs) {
+          if (auto *c = dynamic_cast<CedeExpr *>(peeledRhs))
+            peeledRhs = c->Value.get();
+          else if (auto *cast = dynamic_cast<CastExpr *>(peeledRhs))
+            peeledRhs = cast->Expression.get();
+          else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(peeledRhs))
+            peeledRhs = unsafe->Expression.get();
+          else
+            break;
+        }
+
+        if (auto *rv = dynamic_cast<VariableExpr *>(peeledRhs)) {
           SymbolInfo *ri = nullptr;
           std::string rhsName = rv->Name;
           CurrentScope->findVariableWithDeref(rv->Name, ri, rhsName);
           if (ri) {
             rhsDeps.insert(ri->LifeDependencySet.begin(), ri->LifeDependencySet.end());
+            if (ri->CarriesTaskDependency) {
+              targetInfo->CarriesTaskDependency = true;
+            }
             if (ri->HasTaskResultDependencies) {
               targetInfo->HasTaskResultDependencies = true;
               targetInfo->TaskResultDependencySet = ri->TaskResultDependencySet;
+            }
+            if (dynamic_cast<VariableExpr *>(Bin->LHS.get())) {
+              for (const auto &pair : ri->FieldDependencySet) {
+                targetInfo->FieldDependencySet[pair.first].insert(pair.second.begin(), pair.second.end());
+              }
             }
           }
         }
         if (m_HasTaskResultDependencies) {
           targetInfo->HasTaskResultDependencies = true;
           targetInfo->TaskResultDependencySet = m_LastTaskResultDependencies;
+        }
+
+        if (rhsCarriesTask) {
+          bool hasUnknownRhs = false;
+          collectConsumingExpressionDependencies(Bin->RHS.get(), rhsDeps, hasUnknownRhs);
+          if (!rhsDeps.empty()) {
+            targetInfo->CarriesTaskDependency = true;
+          }
+        }
+
+        if (auto *me = dynamic_cast<MemberExpr *>(Bin->LHS.get())) {
+          targetInfo->FieldDependencySet[me->Member].insert(rhsDeps.begin(), rhsDeps.end());
+        } else if (dynamic_cast<VariableExpr *>(Bin->LHS.get())) {
+          if (auto *initStruct = dynamic_cast<InitStructExpr *>(peeledRhs)) {
+            for (const auto &member : initStruct->Members) {
+              std::string fieldName = member.first;
+              if (fieldName == ".." || fieldName == "*") continue;
+              while (!fieldName.empty() && (fieldName.back() == '#' || fieldName.back() == '*' || fieldName.back() == '^'))
+                fieldName.pop_back();
+              std::set<std::string> memberDeps;
+              bool hasUnknownMemberSource = false;
+              collectConsumingExpressionDependencies(member.second.get(), memberDeps, hasUnknownMemberSource);
+              if (!memberDeps.empty()) {
+                targetInfo->FieldDependencySet[fieldName].insert(memberDeps.begin(), memberDeps.end());
+                targetInfo->LifeDependencySet.insert(memberDeps.begin(), memberDeps.end());
+                targetInfo->CarriesTaskDependency = true;
+              }
+            }
+          }
         }
 
         std::set<std::string> mergedDeps;
@@ -1218,21 +1277,39 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         }
 
         int targetDepth = getScopeDepth(lookupName);
-        const bool targetHoldsBorrow = targetInfo->IsReference() || isBorrowLikeType(targetInfo->TypeObj) || isLifetimeCarryingType(targetInfo->TypeObj);
+        bool targetHoldsBorrow = false;
+        if (auto *me = dynamic_cast<MemberExpr *>(Bin->LHS.get())) {
+          targetHoldsBorrow = (Bin->Op == "=") && (isBorrowLikeType(lhsCompatType) || isLifetimeCarryingType(lhsCompatType));
+        } else {
+          targetHoldsBorrow = (Bin->Op == "=") && (targetInfo->IsReference() || isBorrowLikeType(targetInfo->TypeObj) || isLifetimeCarryingType(targetInfo->TypeObj) || targetInfo->CarriesTaskDependency);
+        }
         if (targetHoldsBorrow) {
           for (const auto &dep : rhsDeps) {
+            std::string depRoot = extractPathRoot(dep);
+            if (depRoot == lookupName || dep == lookupName)
+              continue;
             targetInfo->LifeDependencySet.insert(dep);
             SymbolInfo *depInfo = nullptr;
-            std::string depRoot = extractPathRoot(dep);
             std::string actualDepName = depRoot;
             if (CurrentScope->findVariableWithDeref(depRoot, depInfo, actualDepName) && depInfo) {
-              targetInfo->LifeDependencySet.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
+              for (const auto &transDep : depInfo->LifeDependencySet) {
+                std::string transRoot = extractPathRoot(transDep);
+                if (transRoot != lookupName && transDep != lookupName)
+                  targetInfo->LifeDependencySet.insert(transDep);
+              }
             }
 
             if (depInfo && !depInfo->IsReference() && !depInfo->LifeDependencySet.empty() && (isBorrowLikeType(depInfo->TypeObj) || isLifetimeCarryingType(depInfo->TypeObj))) {
                 for (const auto &transDep : depInfo->LifeDependencySet) {
+                    std::string transRoot = extractPathRoot(transDep);
+                    if (transRoot == lookupName || transDep == lookupName)
+                      continue;
+                    SymbolInfo *transDepInfo = nullptr;
+                    std::string actualTrans = transRoot;
+                    CurrentScope->findVariableWithDeref(transRoot, transDepInfo, actualTrans);
+                    bool transIsParam = transDepInfo && transDepInfo->IsFunctionParameter;
                     int depDepth = getScopeDepth(transDep);
-                    if (targetDepth < depDepth) {
+                    if ((targetInfo->IsFunctionParameter && !transIsParam) || targetDepth < depDepth) {
                         error(Bin, DiagID::ERR_BORROW_LIFETIME, targetObjName, transDep);
                         SourceLocation originLoc = findPathDeclaration(transDep);
                         recordDecision(
@@ -1248,8 +1325,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                     }
                 }
             } else {
+                bool depIsParam = depInfo && depInfo->IsFunctionParameter;
                 int depDepth = getScopeDepth(dep);
-                if (targetDepth < depDepth) {
+                if ((targetInfo->IsFunctionParameter && !depIsParam) || targetDepth < depDepth) {
                   error(Bin, DiagID::ERR_BORROW_LIFETIME, targetObjName, dep);
                   SourceLocation originLoc = findPathDeclaration(dep);
                   recordDecision(Bin, SemanticRuleID::EffRet001,
