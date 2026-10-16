@@ -13,6 +13,7 @@ import json
 import os
 import pathlib
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -175,6 +176,44 @@ def check_positive_probe(tokac, source, modules_dir, env, tmp_dir):
     return probe_receipt
 
 
+def check_portable_ext_provider(tokac, modules_dir, env, tmp_dir):
+    print("\nChecking cross-platform portability of ext_provider.tki (zero host path/triple dependency):")
+    foreign_dir = tmp_dir / "portable_ext_verification"
+    foreign_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(modules_dir / "ext_provider.tki", foreign_dir / "ext_provider.tki")
+
+    consumer_tk = foreign_dir / "consumer.tk"
+    consumer_tk.write_text('''
+import ext_provider::{fwd_external}
+import core/task::{TaskHandle}
+import std/task::{block_on}
+fn dummy() -> async i32 { return 42:i32 }
+pub fn main() -> i32 {
+    auto d = dummy()
+    auto t1 = fwd_external(cede d)
+    t1.start
+    auto res = block_on<i32>(t1)
+    if res != 42:i32 { return 1:i32 }
+    return 0:i32
+}
+''')
+    suffix = ".exe" if sys.platform == "win32" or os.name == "nt" else ""
+    exe = foreign_dir / f"consumer_exe{suffix}"
+    comp_res, comp_ms = run([str(tokac), "-I", str(foreign_dir), str(consumer_tk), "-o", str(exe)],
+                            env=env, cwd=foreign_dir)
+    require(comp_res.returncode == 0, f"Portable compilation failed in foreign dir:\n{comp_res.stderr}")
+    run_res, run_ms = run([str(exe)], env=env, cwd=foreign_dir)
+    require(run_res.returncode == 0, f"Portable execution failed in foreign dir (exit {run_res.returncode}):\n{run_res.stderr}")
+    print("  [PASS] Portability: ext_provider.tki compiled and executed successfully in isolated foreign directory (exit 0)")
+    return {
+        "status": "PASS",
+        "compile_ms": comp_ms,
+        "run_ms": run_ms,
+        "foreign_dir": str(foreign_dir)
+    }
+
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", required=True, help="Path to compiler build directory")
@@ -288,9 +327,13 @@ def main():
             rec = check_positive_probe(tokac, pos_dir / filename, modules_dir, env, tmp_dir)
             receipt["results"]["positive_probes"][filename] = rec
 
+        # Verify ext_provider.tki portability in isolated foreign directory
+        port_rec = check_portable_ext_provider(tokac, modules_dir, env, tmp_dir)
+        receipt["results"]["portability_check"] = port_rec
+
     receipt["status"] = "ALL_PASSED"
     total_probes = receipt["counts"]["total_probes"]
-    print(f"\nAll {total_probes} Compositional Convergence probes passed successfully (including 13/13 native execution rc=0).")
+    print(f"\nAll {total_probes} Compositional Convergence probes passed successfully (including 13/13 native execution rc=0 & portable ext_provider).")
 
     # Output receipt
     output_path = None
