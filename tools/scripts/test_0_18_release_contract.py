@@ -86,6 +86,17 @@ class Contract018(unittest.TestCase):
                     ('bad_conv_total', lambda p: p['compositional_convergence'].update(total=59)),
                     ('bad_conv_passed', lambda p: p['compositional_convergence'].update(passed=59)),
                     ('empty_receipts', lambda p: p.update(receipts=[])),
+                    ('bad_neg_modes', lambda p: p['negative_controls'].update(modes=[])),
+                    ('bad_consumed_tki_sha', lambda p: p['source_hidden_tki'].update(consumed_tki_sha256='0'*64)),
+                    ('bad_consumed_obj_sha', lambda p: p['source_hidden_tki'].update(consumed_object_sha256='0'*64)),
+                    ('garbage_receipt', lambda p: p.update(receipts=[{'garbage': True}])),
+                    ('missing_receipt', lambda p: p['receipts'].pop()),
+                    ('bad_neg_exit_code', lambda p: p['receipts'][-20].update(exit_code=0)),
+                    ('bad_missing_iface_cmd', lambda p: p['source_hidden_tki'].pop('missing_interface_command')),
+                    ('bad_missing_iface_cmd_exit', lambda p: p['source_hidden_tki']['missing_interface_command'].update(exit_code=0)),
+                    ('bad_corrupt_iface_cmd', lambda p: p['source_hidden_tki'].pop('corrupt_interface_command')),
+                    ('bad_counts_total', lambda p: p['counts'].update(total_receipts=109)),
+                    ('bad_counts_groups', lambda p: p['counts'].update(groups={})),
                 ]
 
                 for name_mut, mut in mutations:
@@ -95,6 +106,85 @@ class Contract018(unittest.TestCase):
                     self.assertTrue(errs, f"Mutation {name_mut} failed to produce error")
         finally:
             cases.TAG = old
+
+    def test_draft_promotion_and_negatives_018(self):
+        old = cases.TAG
+        cases.TAG = 'v0.18.0'
+        try:
+            with tempfile.TemporaryDirectory() as name:
+                a, d = cases.fixture(Path(name))
+                self.assertEqual(len(draft.validate(a)), 3)
+                self.assertEqual(promotion.validate(a), [])
+
+                # Promotion rejection when replay receipts candidate_018 is mutated or missing
+                for p_desc, p_mutate in [
+                    ('missing_candidate_018', lambda r: r.pop('candidate_018', None)),
+                    ('none_candidate_018', lambda r: r.update(candidate_018=None)),
+                    ('header_only_candidate_018', lambda r: r.update(candidate_018={
+                        'schema': 'toka.0.18-candidate-controls', 'version': 1, 'result': 'pass',
+                        'candidate_revision': cases.SHA, 'version_label': 'v0.18.0', 'build_testing': False,
+                        'groups': ['G-018-cede-self-async-trait']
+                    })),
+                    ('corrupt_receipt_type', lambda r: r['candidate_018']['receipts'].__setitem__(0, 'bad')),
+                    ('receipt_command_not_ok', lambda r: r['candidate_018']['receipts'][0].update(ok=False)),
+                    ('missing_receipts', lambda r: r['candidate_018'].update(receipts=[])),
+                    ('garbage_receipt', lambda r: r['candidate_018'].update(receipts=[{'garbage': True}])),
+                    ('bad_tki_sha_mismatch', lambda r: r['candidate_018']['source_hidden_tki'].update(consumed_tki_sha256='0'*64)),
+                ]:
+                    with self.subTest(replay_mutation=p_desc):
+                        d_bad = copy.deepcopy(d)
+                        p_mutate(d_bad['replay']['receipts'][0])
+                        cases.dump(a.replay_receipt, d_bad['replay'])
+                        self.assertTrue(promotion.validate(a))
+                # Restore valid replay receipt
+                cases.dump(a.replay_receipt, d['replay'])
+                self.assertEqual(promotion.validate(a), [])
+
+                # Summary mutations rejecting draft creation and promotion
+                for s_desc, s_mutate in [
+                    ('summary_missing_c018', lambda s: s['reports'][0].pop('candidate_018', None)),
+                    ('summary_c018_fail', lambda s: s['reports'][0]['candidate_018'].update(result='fail')),
+                    ('summary_tki_mismatch', lambda s: s['reports'][0]['candidate_018']['source_hidden_tki'].update(consumed_tki_sha256='0'*64)),
+                ]:
+                    with self.subTest(summary_draft_mutation=s_desc):
+                        d_bad = copy.deepcopy(d)
+                        s_mutate(d_bad['summary'])
+                        cases.dump(a.qualification_summary, d_bad['summary'])
+                        with self.assertRaises(ValueError):
+                            draft.validate(a)
+                        self.assertTrue(promotion.validate(a))
+                # Restore valid qualification summary
+                cases.dump(a.qualification_summary, d['summary'])
+
+                for tag in ('v0.18.01', 'v0.18.0-rc.1', 'v0.19.0'):
+                    b = copy.copy(a)
+                    b.tag_name = tag
+                    with self.assertRaises(ValueError):
+                        draft.validate(b)
+
+                b = copy.copy(a)
+                b.candidate_sha = 'b' * 40
+                with self.assertRaises(ValueError):
+                    draft.validate(b)
+
+                item = next(a.qualified_archives_dir.glob('*/*.tar.gz'))
+                item.unlink()
+                with self.assertRaises(ValueError):
+                    draft.validate(a)
+        finally:
+            cases.TAG = old
+
+    def test_parse_counts_preserves_candidate_018(self):
+        import release_gate
+        fake_payload = {
+            "schema": "toka.release-package-smoke",
+            "count": 22,
+            "candidate_018": {"sample": "data_018"}
+        }
+        stdout = f"leading output\n{json.dumps(fake_payload)}\n"
+        counts = release_gate.parse_counts("package_smoke", stdout)
+        self.assertEqual(counts.get("checks"), 22)
+        self.assertEqual(counts.get("candidate_018"), {"sample": "data_018"})
 
 
 if __name__ == '__main__':

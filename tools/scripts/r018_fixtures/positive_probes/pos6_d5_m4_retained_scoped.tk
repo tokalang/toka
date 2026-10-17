@@ -1,0 +1,18 @@
+import ext_provider::{Buffer, spawn_scoped_external}
+import std/async::{TaskScope, join_scoped}
+import core/task::{TaskHandle}
+import std/task::{block_on}
+fn worker(b: Buffer) -> async i32 <- b { return b.size }
+pub fn test_pos6() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto s# = TaskScope::new()
+    auto t = worker(buf)
+    auto h = spawn_scoped_external(s#, cede t)
+    join_scoped(s#).await
+    return 0:i32
+}
+pub fn main() -> i32 {
+    auto res = block_on<i32>(test_pos6().start)
+    if res != 0:i32 { return 1:i32 }
+    return 0:i32
+}

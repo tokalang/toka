@@ -2677,6 +2677,62 @@ def candidate_017_receipt_errors(receipt, revision, label, target=None):
     return errors
 
 
+NEG_018_CASES = [
+    ('neg1a_forged_block_on_noncede_start', 'E0456'),
+    ('neg1b_forged_block_on_cede_start', 'E0456'),
+    ('neg1c_forged_spawn_scoped_wrapper', 'E0456'),
+    ('neg1d_forged_close_any_sync_start', 'E0456'),
+    ('neg2a_untrusted_cede_self_impl_detach', 'E0456'),
+    ('neg2b_untrusted_sync_forwarder_missing_dep', 'E0454'),
+    ('neg2c_untrusted_async_helper_detach', 'E0456'),
+    ('neg2d_sync_forwarder_local_borrow_escape', 'E0456'),
+    ('neg3a_concrete_cede_self_return_borrowed_carrier', 'E0455'),
+    ('neg3b_generic_async_close_return_borrowed_carrier', 'E0455'),
+    ('neg3c_concrete_cede_self_start_borrowed_carrier', 'E04584'),
+    ('neg3d_generic_async_close_start_borrowed_carrier', 'E04584'),
+    ('neg4a_ref_carrier_concrete_close_return', 'E0455'),
+    ('neg4b_ref_carrier_generic_close_return', 'E0455'),
+    ('neg4c_ref_carrier_concrete_close_start', 'E04584'),
+    ('neg4d_ref_carrier_generic_close_start', 'E04584'),
+    ('neg6a_unrelaxed_cede_self_mut', 'E0618'),
+    ('neg6b_unrelaxed_init_cede_self', 'E0618'),
+    ('neg6c_unrelaxed_plain_self', 'E0618'),
+    ('neg6d_unrelaxed_ref_self', 'E0618'),
+    ('neg6e_unrelaxed_unique_self', 'E0618'),
+    ('neg6f_unrelaxed_static_no_self', 'E0618'),
+    ('neg6g_unrelaxed_dyn_async_close', 'E0617'),
+    ('neg6h_mismatch_trait_cede_self_impl_self_mut', 'E0428'),
+    ('neg6i_mismatch_trait_self_mut_impl_cede_self', 'E0428'),
+    ('neg6j_mismatch_trait_cede_self_impl_init_cede_self', 'E0428'),
+    ('neg5a_cross_module_tki_bodyless_consumer_borrowed_task', 'E0456'),
+    ('neg5b_cross_module_tki_ref_carrier_return_escape', 'E0455'),
+    ('neg5c_cross_module_tki_ref_carrier_start_escape', 'E04584'),
+]
+
+POS_018_CASES = [
+    'pos1_async_close_7_lifecycle_paths',
+    'pos2_borrowed_and_ref_carrier_local_await_and_generic',
+    'pos3_cross_module_sourceless_tki_async_close',
+]
+
+EXPECTED_018_RECEIPT_NAMES = {
+    'version-tokac',
+    'version-toka',
+    'version-tokafmt',
+    'version-tokalsp',
+    'pos-tki-provider-compile',
+    'neg-tki-missing-iface',
+    'neg-tki-corrupt-iface',
+    'pos-compositional-convergence',
+}
+for _cid, _ in NEG_018_CASES:
+    for _mode in ('check-only', 'compile-obj', 'emit-llvm'):
+        EXPECTED_018_RECEIPT_NAMES.add(f'neg-{_cid}-{_mode}')
+for _cid in POS_018_CASES:
+    for _step in ('check-only', 'emit-llvm', 'compile-obj', 'binary-build', 'native-execution'):
+        EXPECTED_018_RECEIPT_NAMES.add(f'pos-{_cid}-{_step}')
+
+
 def candidate_018_receipt_errors(receipt, revision, label, target=None):
     if not isinstance(receipt, dict):
         return ['0.18 candidate receipt is missing or not a dict']
@@ -2732,9 +2788,35 @@ def candidate_018_receipt_errors(receipt, revision, label, target=None):
         if not isinstance(p_obj, str) or not re.fullmatch(r'[0-9a-f]{64}', p_obj) or len(set(p_obj)) <= 4:
             errors.append('0.18 source_hidden_tki provider_object_sha256 missing, invalid or unbound dummy hash')
 
+        c_tki = tki_facts.get('consumed_tki_sha256')
+        if not isinstance(c_tki, str) or not re.fullmatch(r'[0-9a-f]{64}', c_tki):
+            errors.append('0.18 source_hidden_tki consumed_tki_sha256 is mandatory and must be a 64-hex SHA-256')
+        elif c_tki != p_tki:
+            errors.append('0.18 source_hidden_tki consumed_tki_sha256 mismatch with provider_tki_sha256')
+
+        c_obj = tki_facts.get('consumed_object_sha256')
+        if not isinstance(c_obj, str) or not re.fullmatch(r'[0-9a-f]{64}', c_obj):
+            errors.append('0.18 source_hidden_tki consumed_object_sha256 is mandatory and must be a 64-hex SHA-256')
+        elif c_obj != p_obj:
+            errors.append('0.18 source_hidden_tki consumed_object_sha256 mismatch with provider_object_sha256')
+
+        for cmd_key in ('missing_interface_command', 'corrupt_interface_command'):
+            cmd_rec = tki_facts.get(cmd_key)
+            if not isinstance(cmd_rec, dict):
+                errors.append(f'0.18 source_hidden_tki {cmd_key} is mandatory and must be a dict')
+            else:
+                if cmd_rec.get('exit_code') != 1:
+                    errors.append(f'0.18 source_hidden_tki {cmd_key} exit_code must be 1')
+                if cmd_rec.get('ok') is not True:
+                    errors.append(f'0.18 source_hidden_tki {cmd_key} ok must be True')
+                if cmd_rec.get('result') != 'pass':
+                    errors.append(f'0.18 source_hidden_tki {cmd_key} result must be pass')
+                if cmd_rec.get('artifact_absent') is not True:
+                    errors.append(f'0.18 source_hidden_tki {cmd_key} artifact_absent must be True')
+
     # Four tool versions validation
     tools_dict = receipt.get('four_tool_versions')
-    if not isinstance(tools_dict, dict):
+    if not isinstance(tools_dict, dict) or set(tools_dict.keys()) != {'tokac', 'toka', 'tokafmt', 'tokalsp'}:
         errors.append('0.18 receipt missing four_tool_versions dictionary')
     else:
         ver_exp = label.removeprefix('v')
@@ -2749,6 +2831,10 @@ def candidate_018_receipt_errors(receipt, revision, label, target=None):
     neg = receipt.get('negative_controls')
     if not isinstance(neg, dict) or neg.get('total') != 29 or neg.get('passed') != 29:
         errors.append('0.18 negative_controls must be dict with total=29 and passed=29')
+    else:
+        neg_modes = neg.get('modes')
+        if not isinstance(neg_modes, list) or neg_modes != ['--check-only', '-c', '--emit-llvm']:
+            errors.append('0.18 negative_controls modes must be exactly [--check-only, -c, --emit-llvm]')
 
     # Positive controls validation
     pos = receipt.get('positive_controls')
@@ -2760,10 +2846,139 @@ def candidate_018_receipt_errors(receipt, revision, label, target=None):
     if not isinstance(conv, dict) or conv.get('total') != 60 or conv.get('passed') != 60:
         errors.append('0.18 compositional_convergence must be dict with total=60 and passed=60')
 
+    # Counts validation
+    expected_counts_groups = {
+        'version': 4,
+        'source_hidden_tki': 3,
+        'negative_controls': 87,
+        'positive_controls': 15,
+        'compositional_convergence': 1,
+    }
+    counts = receipt.get('counts')
+    if not isinstance(counts, dict):
+        errors.append('0.18 counts missing or not a dict')
+    else:
+        if counts.get('total_receipts') != 110 or counts.get('passed') != 110 or counts.get('failed') != 0:
+            errors.append('0.18 counts values mismatch: expected total 110, passed 110, failed 0')
+        if counts.get('groups') != expected_counts_groups:
+            errors.append('0.18 counts groups mismatch or invalid')
+
+    # SDK_root
+    sdk_root = receipt.get('SDK_root')
+    if not isinstance(sdk_root, str) or not sdk_root:
+        errors.append('0.18 SDK_root missing or invalid')
+
     # Receipts validation
     recs = receipt.get('receipts')
-    if not isinstance(recs, list) or len(recs) == 0:
-        errors.append('0.18 receipts must be a non-empty list of command receipts')
+    if not isinstance(recs, list) or len(recs) != len(EXPECTED_018_RECEIPT_NAMES):
+        errors.append(f'0.18 receipts must be a list of exactly {len(EXPECTED_018_RECEIPT_NAMES)} command receipts (got {len(recs) if isinstance(recs, list) else type(recs)})')
+        return errors
+
+    expected_tokac = None
+    for r in recs:
+        if isinstance(r, dict) and r.get('name') == 'version-tokac':
+            v_argv = r.get('argv') or r.get('cmd')
+            v_cwd = r.get('cwd')
+            if isinstance(v_argv, list) and v_argv and isinstance(v_cwd, str):
+                v_prog = v_argv[0].replace('\\', '/')
+                expected_tokac = os.path.normpath(v_prog if os.path.isabs(v_prog) else os.path.join(v_cwd, v_prog))
+            break
+
+    if expected_tokac is None:
+        errors.append('0.18 receipts missing version-tokac command')
+    elif isinstance(sdk_root, str) and sdk_root:
+        sdk_tokac_bin = os.path.normpath(os.path.join(sdk_root, 'bin', 'tokac'))
+        sdk_tokac_exe = os.path.normpath(os.path.join(sdk_root, 'bin', 'tokac.exe'))
+        if expected_tokac not in (sdk_tokac_bin, sdk_tokac_exe):
+            errors.append(f'0.18 version-tokac program {expected_tokac} does not match SDK_root {sdk_root}')
+
+    seen_names = set()
+    for r in recs:
+        if not isinstance(r, dict):
+            errors.append('0.18 command receipt is not a dict')
+            continue
+        r_name = r.get('name')
+        if not isinstance(r_name, str) or not r_name:
+            errors.append('0.18 command receipt missing name')
+            continue
+        if r_name in seen_names:
+            errors.append(f'0.18 duplicate command receipt name: {r_name}')
+        seen_names.add(r_name)
+
+        if r_name not in EXPECTED_018_RECEIPT_NAMES:
+            errors.append(f'0.18 unexpected command receipt name: {r_name}')
+
+        if r.get('ok') is not True or r.get('result') != 'pass':
+            errors.append(f'0.18 command receipt {r_name} ok must be True and result must be pass')
+
+        if r.get('signal') is not None or r.get('termination') is not None or r.get('error') is not None:
+            errors.append(f'0.18 command receipt {r_name} indicates abnormal error/termination')
+
+        argv = r.get('argv') or r.get('cmd')
+        if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a for a in argv):
+            errors.append(f'0.18 command receipt {r_name} argv invalid')
+            continue
+
+        cwd = r.get('cwd')
+        if not isinstance(cwd, str) or not cwd:
+            errors.append(f'0.18 command receipt {r_name} cwd missing')
+            cwd = ''
+
+        ms = r.get('execution_ms')
+        if type(ms) not in (int, float) or isinstance(ms, bool) or not math.isfinite(ms) or ms <= 0:
+            errors.append(f'0.18 command receipt {r_name} execution_ms invalid')
+
+        exit_code = r.get('exit_code')
+        if type(exit_code) is not int or isinstance(exit_code, bool):
+            errors.append(f'0.18 command receipt {r_name} exit_code invalid')
+            continue
+
+        out_s = r.get('stdout')
+        err_s = r.get('stderr')
+        if not isinstance(out_s, str) or not isinstance(err_s, str):
+            errors.append(f'0.18 command receipt {r_name} stdout/stderr missing or not string')
+            continue
+
+        if hashlib.sha256(out_s.encode('utf-8')).hexdigest() != r.get('stdout_sha256'):
+            errors.append(f'0.18 command receipt {r_name} stdout_sha256 mismatch')
+        if hashlib.sha256(err_s.encode('utf-8')).hexdigest() != r.get('stderr_sha256'):
+            errors.append(f'0.18 command receipt {r_name} stderr_sha256 mismatch')
+
+        is_neg = r_name.startswith('neg-')
+        is_pos = r_name.startswith('pos-')
+        is_ver = r_name.startswith('version-')
+
+        if is_neg:
+            if exit_code != 1:
+                errors.append(f'0.18 negative command {r_name} exit code must be 1 (got {exit_code})')
+            if r.get('artifact_absent') is not True:
+                errors.append(f'0.18 negative command {r_name} artifact_absent must be True')
+            prog = argv[0].replace('\\', '/')
+            norm_prog = os.path.normpath(prog if os.path.isabs(prog) else os.path.join(cwd, prog))
+            if expected_tokac and norm_prog != expected_tokac:
+                errors.append(f'0.18 negative command {r_name} compiler mismatch: {norm_prog} vs {expected_tokac}')
+            exp_code = r.get('expected_code')
+            if exp_code and exp_code not in (out_s + '\n' + err_s):
+                errors.append(f'0.18 negative command {r_name} stderr missing diagnostic {exp_code}')
+        elif is_pos:
+            if exit_code != 0:
+                errors.append(f'0.18 positive command {r_name} exit code must be 0 (got {exit_code})')
+            prog = argv[0].replace('\\', '/')
+            norm_prog = os.path.normpath(prog if os.path.isabs(prog) else os.path.join(cwd, prog))
+            if os.path.basename(norm_prog) in ('tokac', 'tokac.exe') and expected_tokac and norm_prog != expected_tokac:
+                errors.append(f'0.18 positive command {r_name} compiler mismatch: {norm_prog} vs {expected_tokac}')
+        elif is_ver:
+            if exit_code != 0:
+                errors.append(f'0.18 version command {r_name} exit code must be 0 (got {exit_code})')
+            ver_exp = label.removeprefix('v')
+            if ver_exp not in out_s and ver_exp not in err_s:
+                errors.append(f'0.18 version command {r_name} output missing {ver_exp}')
+
+    missing_names = EXPECTED_018_RECEIPT_NAMES - seen_names
+    if missing_names:
+        errors.append(f'0.18 receipts missing expected commands: {sorted(missing_names)[:5]}')
+
+    return errors
 
     return errors
 

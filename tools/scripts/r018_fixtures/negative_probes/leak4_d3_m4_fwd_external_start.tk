@@ -1,0 +1,12 @@
+import ext_provider::{Buffer, fwd_external}
+import core/task::{TaskHandle}
+fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
+    return b.size + chunk_id
+}
+pub fn test_leak4() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto t1 = fwd_external(cede process_chunk(buf, 1:i32))
+    t1.start
+    return 0:i32
+}
+pub fn main() -> i32 { return test_leak4() }

@@ -1,0 +1,8 @@
+import bodyless_provider::{Buffer, compute_provider}
+fn pass_buf(b: Buffer) -> Buffer <- b { return b }
+pub fn test_leak3() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto t = compute_provider(pass_buf(buf))
+    return 0:i32
+}
+pub fn main() -> i32 { return test_leak3() }

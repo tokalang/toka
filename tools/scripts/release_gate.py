@@ -162,6 +162,7 @@ def parse_counts(name, output):
                 if "candidate_015" in data:counts["candidate_015"]=data["candidate_015"]
                 if "candidate_016" in data:counts["candidate_016"]=data["candidate_016"]
                 if "candidate_017" in data:counts["candidate_017"]=data["candidate_017"]
+                if "candidate_018" in data:counts["candidate_018"]=data["candidate_018"]
                 if "r3_r5" in data:counts["r3_r5"]=data["r3_r5"]
                 break
     elif name == "native_build_reference":

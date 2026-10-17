@@ -262,6 +262,8 @@ jobs:
           if [[ "$TAG_NAME" == v0.18.* ]]; then
             cp tools/scripts/test_0_18_candidate.py replay-input/
             cp tools/scripts/test_018_stage1_verification.py replay-input/
+            cp tools/scripts/test_compositional_convergence.py replay-input/
+            cp -r tools/scripts/r018_fixtures replay-input/
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -329,6 +331,7 @@ jobs:
               if is_018:
                   required_modules.append('test_0_18_candidate.py')
                   required_modules.append('test_018_stage1_verification.py')
+                  required_modules.append('test_compositional_convergence.py')
 
               for mod_name in required_modules:
                   if mod_name not in modules:
@@ -420,6 +423,22 @@ jobs:
                       hasher.update(exp_h.encode('utf-8'))
                   if hasher.hexdigest() != manifest.get('fixtures_digest_017'):
                       raise SystemExit("0.17 fixtures digest mismatch against bundle manifest")
+
+              if is_018:
+                  fixtures_dir = input_dir / 'r018_fixtures'
+                  fix_manifest_file = fixtures_dir / 'manifest.json'
+                  if not fix_manifest_file.is_file():
+                      raise SystemExit("Missing r018_fixtures/manifest.json")
+                  fix_manifest = json.loads(fix_manifest_file.read_text(encoding='utf-8'))
+                  hasher = hashlib.sha256()
+                  for rel_path, exp_h in sorted(fix_manifest.items()):
+                      f = fixtures_dir / rel_path
+                      if not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest() != exp_h:
+                          raise SystemExit(f"Fixture mismatch or missing: {rel_path}")
+                      hasher.update(rel_path.encode('utf-8'))
+                      hasher.update(exp_h.encode('utf-8'))
+                  if hasher.hexdigest() != manifest.get('fixtures_digest_018'):
+                      raise SystemExit("0.18 fixtures digest mismatch against bundle manifest")
           print("Replay input bundle verification passed.")
           PYCODE
       - name: Authenticate original package and run without checkout

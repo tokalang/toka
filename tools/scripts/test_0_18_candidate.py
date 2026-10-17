@@ -26,16 +26,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from test_018_stage1_verification import (
-    COMMON_PREAMBLE,
-    NEGATIVE_CASES,
-    TKI_NEGATIVE_CASES,
-    POSITIVE_CASES,
-    POS3_TKI_CONSUMER_SOURCE,
-    build_tki_provider,
-    verify_negative_case,
-    verify_positive_case,
-)
+import test_018_stage1_verification
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -92,28 +83,63 @@ def main():
 
     receipts = []
 
-    def run_cmd(name, cmd, cwd):
+    def run_cmd(name, cmd, cwd, allow_fail=False, expected_code=None, artifact_absent=False, timeout=300):
         t0 = time.time()
-        r = subprocess.run(cmd, env=env, cwd=cwd, capture_output=True, text=True, timeout=120)
+        r = subprocess.run(cmd, env=env, cwd=cwd, capture_output=True, text=True, timeout=timeout)
         elapsed = time.time() - t0
+        combined = r.stdout + "\n" + r.stderr
+
+        ok = True
+        err_msg = ""
+        signal_val = None
+        termination_val = None
+
+        if r.returncode < 0:
+            ok = False
+            signal_val = -r.returncode
+            termination_val = f"terminated by signal {signal_val}"
+            err_msg = termination_val
+        elif not allow_fail and r.returncode != 0:
+            ok = False
+            err_msg = f"command failed with exit {r.returncode}"
+        elif allow_fail and r.returncode != 1:
+            ok = False
+            err_msg = f"negative command expected exit 1, got {r.returncode}"
+
+        if expected_code and expected_code not in combined:
+            ok = False
+            err_msg = f"missing required diagnostic {expected_code}"
+
         rec = {
             "name": name,
             "argv": [str(c) for c in cmd],
             "cmd": [str(c) for c in cmd],
             "cwd": str(cwd),
             "exit_code": r.returncode,
+            "signal": signal_val,
+            "termination": termination_val,
+            "error": None if ok else err_msg,
+            "result": "pass" if ok else "fail",
             "stdout": r.stdout,
             "stderr": r.stderr,
             "stdout_sha256": sha256_bytes(r.stdout.encode("utf-8")),
             "stderr_sha256": sha256_bytes(r.stderr.encode("utf-8")),
             "execution_ms": round(elapsed * 1000.0, 2),
             "elapsed_seconds": round(elapsed, 4),
-            "ok": (r.returncode == 0),
+            "ok": ok,
         }
+        if expected_code:
+            rec["expected_code"] = expected_code
+            rec["diagnostic"] = expected_code
+        if artifact_absent:
+            rec["artifact_absent"] = True
+
         receipts.append(rec)
+        if not ok:
+            raise RuntimeError(f"Step {name} failed: {err_msg}\n{combined}")
         return r
 
-    # 1. Four tool versions
+    # 1. Four tool versions (4 receipts)
     expected_v = a.version.removeprefix("v")
     versions = {}
     for tool in ("tokac", "toka", "tokafmt", "tokalsp"):
@@ -121,23 +147,37 @@ def main():
         if not tool_bin.is_file() and (sdk / f"bin/{tool}.exe").is_file():
             tool_bin = sdk / f"bin/{tool}.exe"
         r = run_cmd(f"version-{tool}", [str(tool_bin), "--version"], work)
-        if r.returncode != 0:
-            raise RuntimeError(f"Tool {tool} --version failed with exit {r.returncode}")
         if expected_v not in r.stdout and expected_v not in r.stderr:
             raise RuntimeError(f"{tool} version output missing {expected_v}: {r.stdout}")
         versions[tool] = r.stdout.strip()
 
-    # 2. Source-hidden TKI provider compilation & rejection tests
+    # 2. Source-hidden TKI provider compilation & rejection tests (3 receipts)
     tki_dir = work / "tki_provider"
     if tki_dir.exists():
         shutil.rmtree(tki_dir)
     tki_dir.mkdir(parents=True, exist_ok=True)
-    tki_file, tki_obj = build_tki_provider(tokac_bin, toka_lib, env, tki_dir)
 
-    provider_src = tki_dir / "tki_close_provider.tk"
-    if provider_src.exists():
-        provider_src.unlink()
-    provider_source_present = provider_src.exists()
+    src_path = tki_dir / "tki_close_provider.tk"
+    tki_path = tki_dir / "tki_close_provider.tki"
+    obj_path = tki_dir / "tki_close_provider.o"
+    bodyless_tki_path = tki_dir / "bodyless_close_consumer.tki"
+    src_path.write_text(test_018_stage1_verification.TKI_PROVIDER_SOURCE.lstrip(), encoding="utf-8")
+    bodyless_tki_path.write_text(test_018_stage1_verification.BODYLESS_TKI_CONTENT, encoding="utf-8")
+
+    run_cmd(
+        "pos-tki-provider-compile",
+        [str(tokac_bin), "-I", str(toka_lib), "-c", "--emit-interface", str(src_path), "-o", str(obj_path)],
+        tki_dir,
+    )
+    if not tki_path.exists() or not obj_path.exists():
+        raise RuntimeError("Failed to build TKI provider")
+    tki_file = tki_path
+    tki_obj = obj_path
+
+    # Delete source file to guarantee sourceless interface consumption
+    if src_path.exists():
+        src_path.unlink()
+    provider_source_present = src_path.exists()
 
     p_tki_sha = sha256_file(tki_file)
     p_obj_sha = sha256_file(tki_obj)
@@ -146,52 +186,195 @@ def main():
     missing_dir = work / "missing_iface"
     missing_dir.mkdir(parents=True, exist_ok=True)
     bad_consumer = missing_dir / "consumer.tk"
-    bad_consumer.write_text(POS3_TKI_CONSUMER_SOURCE.lstrip(), encoding="utf-8")
-    r_missing = subprocess.run(
+    bad_consumer.write_text(test_018_stage1_verification.POS3_TKI_CONSUMER_SOURCE.lstrip(), encoding="utf-8")
+    r_missing = run_cmd(
+        "neg-tki-missing-iface",
         [str(tokac_bin), "-I", str(toka_lib), "-I", str(missing_dir), "--check-only", str(bad_consumer)],
-        env=env,
-        cwd=missing_dir,
-        capture_output=True,
-        text=True,
-        timeout=60,
+        missing_dir,
+        allow_fail=True,
+        expected_code="E0901",
+        artifact_absent=True,
     )
-    missing_interface_rejected = (r_missing.returncode != 0)
+    missing_interface_rejected = (r_missing.returncode == 1)
+    missing_iface_cmd = receipts[-1]
 
     # Corrupt interface test
     corrupt_dir = work / "corrupt_iface"
     corrupt_dir.mkdir(parents=True, exist_ok=True)
     bad_consumer2 = corrupt_dir / "consumer.tk"
-    bad_consumer2.write_text(POS3_TKI_CONSUMER_SOURCE.lstrip(), encoding="utf-8")
+    bad_consumer2.write_text(test_018_stage1_verification.POS3_TKI_CONSUMER_SOURCE.lstrip(), encoding="utf-8")
     bad_tki = corrupt_dir / "tki_close_provider.tki"
     bad_tki.write_bytes(b"CORRUPT_TKI_GARBAGE_BYTES")
-    r_corrupt = subprocess.run(
+    r_corrupt = run_cmd(
+        "neg-tki-corrupt-iface",
         [str(tokac_bin), "-I", str(toka_lib), "-I", str(corrupt_dir), "--check-only", str(bad_consumer2)],
-        env=env,
-        cwd=corrupt_dir,
-        capture_output=True,
-        text=True,
-        timeout=60,
+        corrupt_dir,
+        allow_fail=True,
+        expected_code="E0901",
+        artifact_absent=True,
     )
-    corrupt_interface_rejected = (r_corrupt.returncode != 0)
+    corrupt_interface_rejected = (r_corrupt.returncode == 1)
+    corrupt_iface_cmd = receipts[-1]
 
-    # Pos3 TKI Consumer test
+    # 3. 29 Negative controls (26 normal + 3 TKI) across 3 modes (87 receipts)
+    neg_results = []
+
+    def execute_negative_case(c, extra_include_dirs=None):
+        cid = c["id"]
+        src_file = probes_dir / f"{cid}.tk"
+        src_file.write_text(c["source"].lstrip(), encoding="utf-8")
+
+        case_work = work / cid
+        if case_work.exists():
+            shutil.rmtree(case_work)
+        case_work.mkdir(parents=True, exist_ok=True)
+
+        inc_args = ["-I", str(toka_lib)]
+        if extra_include_dirs:
+            for d in extra_include_dirs:
+                inc_args.extend(["-I", str(d)])
+
+        obj_file = case_work / f"{cid}.o"
+        ll_file = case_work / f"{cid}.ll"
+
+        # Mode 1: check-only
+        r_chk = run_cmd(
+            f"neg-{cid}-check-only",
+            [str(tokac_bin), *inc_args, "--check-only", str(src_file)],
+            case_work,
+            allow_fail=True,
+            expected_code=c["expected_code"],
+            artifact_absent=True,
+        )
+        # Mode 2: compile-obj
+        r_obj = run_cmd(
+            f"neg-{cid}-compile-obj",
+            [str(tokac_bin), *inc_args, "-c", str(src_file), "-o", str(obj_file)],
+            case_work,
+            allow_fail=True,
+            expected_code=c["expected_code"],
+            artifact_absent=True,
+        )
+        if obj_file.exists():
+            raise RuntimeError(f"Negative case {cid} emitted unexpected object file")
+        # Mode 3: emit-llvm
+        r_ll = run_cmd(
+            f"neg-{cid}-emit-llvm",
+            [str(tokac_bin), *inc_args, "--emit-llvm", str(src_file), "-o", str(ll_file)],
+            case_work,
+            allow_fail=True,
+            expected_code=c["expected_code"],
+            artifact_absent=True,
+        )
+        if ll_file.exists():
+            raise RuntimeError(f"Negative case {cid} emitted unexpected LLVM IR file")
+
+        return {
+            "id": cid,
+            "category": c["category"],
+            "description": c["description"],
+            "passed": True,
+            "modes": {
+                "check-only": {"rc": r_chk.returncode, "expected_code": c["expected_code"], "code_matched": True, "leftover_artifacts": [], "passed": True},
+                "compile-obj": {"rc": r_obj.returncode, "expected_code": c["expected_code"], "code_matched": True, "leftover_artifacts": [], "passed": True},
+                "emit-llvm": {"rc": r_ll.returncode, "expected_code": c["expected_code"], "code_matched": True, "leftover_artifacts": [], "passed": True},
+            },
+        }
+
+    for c in test_018_stage1_verification.NEGATIVE_CASES:
+        res = execute_negative_case(c)
+        neg_results.append(res)
+
+    for c in test_018_stage1_verification.TKI_NEGATIVE_CASES:
+        res = execute_negative_case(c, extra_include_dirs=[tki_dir])
+        neg_results.append(res)
+
+    # 4. Positive controls (pos1, pos2, pos3) across 5 steps (15 receipts)
+    pos_results = []
+
+    def execute_positive_case(c, extra_include_dirs=None, extra_link_objs=None):
+        cid = c["id"]
+        src_file = probes_dir / f"{cid}.tk"
+        src_file.write_text(c["source"].lstrip(), encoding="utf-8")
+
+        case_work = work / cid
+        if case_work.exists():
+            shutil.rmtree(case_work)
+        case_work.mkdir(parents=True, exist_ok=True)
+
+        inc_args = ["-I", str(toka_lib)]
+        if extra_include_dirs:
+            for d in extra_include_dirs:
+                inc_args.extend(["-I", str(d)])
+
+        suffix = ".exe" if sys.platform == "win32" or os.name == "nt" else ""
+        obj_file = case_work / f"{cid}.o"
+        ll_file = case_work / f"{cid}.ll"
+        bin_file = case_work / f"{cid}{suffix}"
+
+        # 1. check-only
+        run_cmd(
+            f"pos-{cid}-check-only",
+            [str(tokac_bin), *inc_args, "--check-only", str(src_file)],
+            case_work,
+        )
+        # 2. emit-llvm
+        run_cmd(
+            f"pos-{cid}-emit-llvm",
+            [str(tokac_bin), *inc_args, "--emit-llvm", str(src_file), "-o", str(ll_file)],
+            case_work,
+        )
+        if not ll_file.exists() or ll_file.stat().st_size == 0:
+            raise RuntimeError(f"Positive {cid} failed to emit LLVM file")
+        # 3. compile-obj
+        run_cmd(
+            f"pos-{cid}-compile-obj",
+            [str(tokac_bin), *inc_args, "-c", str(src_file), "-o", str(obj_file)],
+            case_work,
+        )
+        if not obj_file.exists() or obj_file.stat().st_size == 0:
+            raise RuntimeError(f"Positive {cid} failed to emit object file")
+        # 4. binary-build
+        link_inputs = [str(src_file)]
+        if extra_link_objs:
+            link_inputs.extend(str(o) for o in extra_link_objs)
+        run_cmd(
+            f"pos-{cid}-binary-build",
+            [str(tokac_bin), *inc_args, *link_inputs, "-o", str(bin_file)],
+            case_work,
+        )
+        if not bin_file.exists():
+            raise RuntimeError(f"Positive {cid} failed to build binary")
+        # 5. native-execution
+        r_run = run_cmd(
+            f"pos-{cid}-native-execution",
+            [str(bin_file)],
+            case_work,
+        )
+        if r_run.returncode != 0:
+            raise RuntimeError(f"Positive {cid} native execution failed with exit {r_run.returncode}")
+
+        return {
+            "id": cid,
+            "description": c.get("description", ""),
+            "passed": True,
+        }
+
+    for c in test_018_stage1_verification.POSITIVE_CASES:
+        res = execute_positive_case(c)
+        pos_results.append(res)
+
     pos3_case = {
         "id": "pos3_cross_module_sourceless_tki_async_close",
         "description": "Cross-module sourceless .tki @AsyncClose trait impl and native execution",
-        "source": POS3_TKI_CONSUMER_SOURCE,
+        "source": test_018_stage1_verification.POS3_TKI_CONSUMER_SOURCE,
     }
-    res_pos3 = verify_positive_case(
-        tokac_bin,
-        toka_lib,
-        probes_dir,
-        work,
+    res_pos3 = execute_positive_case(
         pos3_case,
-        env,
         extra_include_dirs=[tki_dir],
         extra_link_objs=[tki_obj],
     )
-    if not res_pos3["passed"]:
-        raise RuntimeError(f"pos3 cross-module sourceless tki failed: {json.dumps(res_pos3, indent=2)}")
+    pos_results.append(res_pos3)
 
     tki_facts = {
         "provider_tki_sha256": p_tki_sha,
@@ -202,51 +385,37 @@ def main():
         "corrupt_interface_rejected": corrupt_interface_rejected,
         "consumer_result": "pass" if res_pos3["passed"] else "fail",
         "provider_source_present": provider_source_present,
+        "missing_interface_command": missing_iface_cmd,
+        "corrupt_interface_command": corrupt_iface_cmd,
     }
 
-    # 3. 29 Negative controls (26 source + 3 TKI)
-    neg_results = []
-    all_neg_cases = list(NEGATIVE_CASES)
-    for c in all_neg_cases:
-        res = verify_negative_case(tokac_bin, toka_lib, probes_dir, work, c, env)
-        neg_results.append(res)
-        if not res["passed"]:
-            raise RuntimeError(f"Negative probe {c['id']} failed: {json.dumps(res, indent=2)}")
-
-    for c in TKI_NEGATIVE_CASES:
-        res = verify_negative_case(tokac_bin, toka_lib, probes_dir, work, c, env, extra_include_dirs=[tki_dir])
-        neg_results.append(res)
-        if not res["passed"]:
-            raise RuntimeError(f"TKI negative probe {c['id']} failed: {json.dumps(res, indent=2)}")
-
-    # 4. Remaining positive controls (pos1, pos2)
-    pos_results = []
-    for c in POSITIVE_CASES:
-        res = verify_positive_case(tokac_bin, toka_lib, probes_dir, work, c, env)
-        pos_results.append(res)
-        if not res["passed"]:
-            raise RuntimeError(f"Positive probe {c['id']} failed: {json.dumps(res, indent=2)}")
-    pos_results.append(res_pos3)
-
-    # 5. Compositional convergence (60 probes)
+    # 5. Compositional convergence (60 probes, 1 receipt)
     comp_conv_script = ROOT / "tools/scripts/test_compositional_convergence.py"
-    comp_conv_passed = False
-    comp_conv_count = 60
-    if comp_conv_script.is_file():
-        r_conv = subprocess.run(
-            [sys.executable, str(comp_conv_script), "--build-dir", str(sdk)],
-            env=env,
-            cwd=work,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if r_conv.returncode == 0:
-            comp_conv_passed = True
+    if not comp_conv_script.is_file():
+        alt = pathlib.Path(__file__).resolve().parent / "test_compositional_convergence.py"
+        if alt.is_file():
+            comp_conv_script = alt
         else:
-            raise RuntimeError(f"Compositional convergence failed:\n{r_conv.stdout}\n{r_conv.stderr}")
-    else:
+            raise RuntimeError(f"Missing mandatory test_compositional_convergence.py: checked {comp_conv_script} and {alt}")
+
+    conv_cmd = [sys.executable, str(comp_conv_script), "--build-dir", str(sdk)]
+    suite_cand = comp_conv_script.parent / "r018_fixtures"
+    if suite_cand.is_dir():
+        conv_cmd.extend(["--suite-dir", str(suite_cand)])
+    elif (ROOT / "tests/semantics/compositional_convergence").is_dir():
+        conv_cmd.extend(["--suite-dir", str(ROOT / "tests/semantics/compositional_convergence")])
+
+    r_conv = run_cmd(
+        "pos-compositional-convergence",
+        conv_cmd,
+        work,
+    )
+    if r_conv.returncode == 0:
         comp_conv_passed = True
+    else:
+        raise RuntimeError(f"Compositional convergence failed:\n{r_conv.stdout}\n{r_conv.stderr}")
+
+    comp_conv_count = 60
 
     report = {
         "schema": "toka.0.18-candidate-controls",
@@ -274,6 +443,18 @@ def main():
         "compositional_convergence": {
             "total": comp_conv_count,
             "passed": comp_conv_count if comp_conv_passed else 0,
+        },
+        "counts": {
+            "total_receipts": len(receipts),
+            "passed": sum(1 for r in receipts if r.get("ok")),
+            "failed": sum(1 for r in receipts if not r.get("ok")),
+            "groups": {
+                "version": 4,
+                "source_hidden_tki": 3,
+                "negative_controls": len(neg_results) * 3,
+                "positive_controls": len(pos_results) * 5,
+                "compositional_convergence": 1,
+            },
         },
         "SDK_root": str(sdk),
         "receipts": receipts,

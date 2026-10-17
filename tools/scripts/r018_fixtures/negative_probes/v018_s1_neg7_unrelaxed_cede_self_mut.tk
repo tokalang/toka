@@ -1,0 +1,4 @@
+trait @BadAsyncClose {
+    pub fn close(cede self#) -> async i32
+}
+fn main() -> i32 { return 0:i32 }

@@ -1,0 +1,17 @@
+import core/task::{TaskHandle}
+
+pub shape RefCarrier(&view: i32, token: i32)
+impl RefCarrier {
+    pub fn read_async(cede self) -> async i32 {
+        auto owned = cede self
+        return owned.view + owned.token
+    }
+}
+pub fn escape_ref_carrier() -> TaskHandle<i32> {
+    auto local = 42:i32
+    auto c = RefCarrier(&view = &local, token = 7:i32)
+    return c.read_async()
+}
+pub fn main() -> i32 {
+    return 0:i32
+}

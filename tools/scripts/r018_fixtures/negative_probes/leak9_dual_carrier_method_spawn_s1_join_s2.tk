@@ -1,0 +1,18 @@
+import std/async::{TaskScope, spawn_scoped, join_scoped}
+import core/task::{TaskHandle}
+shape Buffer ( size: i32, tag: i32 )
+shape DualCarrier ( s1#: TaskScope, s2#: TaskScope )
+impl DualCarrier {
+    pub fn spawn_s1(self#, cede t: TaskHandle<i32>) -> TaskHandle<i32> <- t {
+        return spawn_scoped<i32>(self.s1#, cede t)
+    }
+}
+fn worker(b: Buffer) -> async i32 <- b { return b.size }
+pub fn test1() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto c# = DualCarrier(s1 = TaskScope::new(), s2 = TaskScope::new())
+    auto t1 = c#.spawn_s1(cede worker(buf))
+    join_scoped(c.s2#).await
+    return 0:i32
+}
+pub fn main() -> i32 { return 0:i32 }

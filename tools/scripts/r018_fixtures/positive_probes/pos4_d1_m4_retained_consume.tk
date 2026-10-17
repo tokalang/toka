@@ -1,0 +1,10 @@
+import ext_provider::{Buffer, consume_external}
+import core/task::{TaskHandle}
+fn worker(b: Buffer) -> async i32 <- b { return b.size }
+pub fn test_pos4() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto t = worker(buf)
+    consume_external(cede t)
+    return 0:i32
+}
+pub fn main() -> i32 { return test_pos4() }

@@ -217,6 +217,7 @@ pub fn main() -> i32 {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", required=True, help="Path to compiler build directory")
+    parser.add_argument("--suite-dir", default=None, help="Optional suite directory for compositional convergence")
     parser.add_argument("--output-receipt", default=None, help="Optional output path for JSON execution receipt")
     args = parser.parse_args()
 
@@ -228,11 +229,28 @@ def main():
         tokac = build_dir / "bin/Release/tokac.exe"
     require(tokac.exists(), f"missing compiler: {tokac}")
 
-    toka_lib = os.environ.get("TOKA_LIB", str(ROOT / "lib"))
+    toka_lib = os.environ.get("TOKA_LIB")
+    if not toka_lib:
+        if (build_dir / "lib").is_dir():
+            toka_lib = str(build_dir / "lib")
+        else:
+            toka_lib = str(ROOT / "lib")
     env = dict(os.environ, TOKA_LIB=toka_lib)
 
-    suite_dir = ROOT / "tests/semantics/compositional_convergence"
-    require(suite_dir.exists(), f"missing suite dir: {suite_dir}")
+    suite_dir = None
+    if args.suite_dir:
+        cand = pathlib.Path(args.suite_dir).resolve()
+        if cand.is_dir():
+            suite_dir = cand
+    if suite_dir is None:
+        for cand in [
+            pathlib.Path(__file__).resolve().parent / "r018_fixtures",
+            ROOT / "tests/semantics/compositional_convergence",
+        ]:
+            if cand.is_dir() and (cand / "modules").is_dir():
+                suite_dir = cand
+                break
+    require(suite_dir is not None and suite_dir.exists(), f"missing suite dir: {suite_dir}")
     modules_dir = suite_dir / "modules"
     require(modules_dir.exists(), f"missing modules dir: {modules_dir}")
 
