@@ -3,7 +3,7 @@
   "version": 1,
   "modules": {
     "validate_sdk_basic.py": "bdf7cac2b303ffa725ff9e2c678a6f8eea40df22bb924941475f92ddec564910",
-    "release_platform_policy.py": "e6c0a5fa81b4eff07727b514e155de6d11e877d45db7df157251a70da0876c67",
+    "release_platform_policy.py": "45e780b9667e3f6193ba1b2ae8d291ed44da699e60ee949fe9ae7c4b54b531dd",
     "test_toka_add.py": "18b656a21aff901f497f4d4d0aac39dfe5dd25b02a75635761bf980d3709dbe0",
     "test_toka_add_installed.py": "3f250187b467d53d2fd055a9055b9cf944fdcc41c6a6f18ea8a94c9523d762c7",
     "test_toka_evidence_installed.py": "13065cf2848c0616ac3176464c2eecaaa1389e41dcfdb7983ab217f9dc890061",

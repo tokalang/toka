@@ -97,6 +97,80 @@ class Contract018(unittest.TestCase):
                     ('bad_corrupt_iface_cmd', lambda p: p['source_hidden_tki'].pop('corrupt_interface_command')),
                     ('bad_counts_total', lambda p: p['counts'].update(total_receipts=109)),
                     ('bad_counts_groups', lambda p: p['counts'].update(groups={})),
+
+                    # [P1-2a] source_hidden_tki command forgery mutations
+                    ('p1_2a_bool_exit_code', lambda p: p['source_hidden_tki']['missing_interface_command'].update(exit_code=True)),
+                    ('p1_2a_signal_exit', lambda p: p['source_hidden_tki']['missing_interface_command'].update(signal=9, termination='signal 9')),
+                    ('p1_2a_cmd_bin_false', lambda p: p['source_hidden_tki']['missing_interface_command'].update(argv=['/bin/false', '--check-only', 'consumer.tk'])),
+                    ('p1_2a_missing_flag', lambda p: p['source_hidden_tki']['missing_interface_command'].update(argv=[p['source_hidden_tki']['missing_interface_command']['argv'][0], 'consumer.tk'])),
+                    ('p1_2a_stdout_sha_tamper', lambda p: p['source_hidden_tki']['missing_interface_command'].update(stdout_sha256='0'*64)),
+                    ('p1_2a_missing_diagnostic', lambda p: p['source_hidden_tki']['missing_interface_command'].update(stderr='some unrelated error\n', stderr_sha256=hashlib.sha256(b'some unrelated error\n').hexdigest())),
+                    ('p1_2a_cross_check_mismatch', lambda p: [
+                        p['source_hidden_tki'].__setitem__('missing_interface_command', dict(p['source_hidden_tki']['missing_interface_command'])),
+                        next(r for r in p['receipts'] if r['name'] == 'neg-tki-missing-iface').update(argv=['/sdk/bin/tokac', '--check-only', '/sdk/work/other_consumer.tk']),
+                    ]),
+
+                    # [P1-2b] negative command forgery mutations
+                    ('p1_2b_untrusted_expected_code', lambda p: [
+                        r.update(stderr='error[E9999]: fake\n', stderr_sha256=hashlib.sha256(b'error[E9999]: fake\n').hexdigest(), expected_code='E9999')
+                        for r in p['receipts'] if r['name'] == 'neg-neg1a_forged_block_on_noncede_start-check-only'
+                    ]),
+                    ('p1_2b_missing_check_only_flag', lambda p: [
+                        r.update(argv=[r['argv'][0], r['argv'][-1]])
+                        for r in p['receipts'] if r['name'] == 'neg-neg1a_forged_block_on_noncede_start-check-only'
+                    ]),
+                    ('p1_2b_missing_compile_obj_flag', lambda p: [
+                        r.update(argv=[r['argv'][0], r['argv'][2], '-o', r['argv'][4]])
+                        for r in p['receipts'] if r['name'] == 'neg-neg1a_forged_block_on_noncede_start-compile-obj'
+                    ]),
+                    ('p1_2b_missing_emit_llvm_flag', lambda p: [
+                        r.update(argv=[r['argv'][0], r['argv'][2], '-o', r['argv'][4]])
+                        for r in p['receipts'] if r['name'] == 'neg-neg1a_forged_block_on_noncede_start-emit-llvm'
+                    ]),
+                    ('p1_2b_missing_fixture', lambda p: [
+                        r.update(argv=[r['argv'][0], '--check-only'])
+                        for r in p['receipts'] if r['name'] == 'neg-neg1a_forged_block_on_noncede_start-check-only'
+                    ]),
+                    ('p1_2b_compiler_bin_false', lambda p: [
+                        r.update(argv=['/bin/false'] + r['argv'][1:])
+                        for r in p['receipts'] if r['name'] == 'neg-neg1a_forged_block_on_noncede_start-check-only'
+                    ]),
+
+                    # [P1-2c] positive command forgery mutations
+                    ('p1_2c_pos_tokac_bin_true', lambda p: [
+                        r.update(argv=['/bin/true'])
+                        for r in p['receipts'] if r['name'] == 'pos-pos1_async_close_7_lifecycle_paths-check-only'
+                    ]),
+                    ('p1_2c_pos_native_bin_true', lambda p: [
+                        r.update(argv=['/bin/true'])
+                        for r in p['receipts'] if r['name'] == 'pos-pos1_async_close_7_lifecycle_paths-native-execution'
+                    ]),
+                    ('p1_2c_pos_conv_bin_true', lambda p: [
+                        r.update(argv=['/bin/true'])
+                        for r in p['receipts'] if r['name'] == 'pos-compositional-convergence'
+                    ]),
+                    ('p1_2c_pos_conv_empty_output', lambda p: [
+                        r.update(stdout='', stdout_sha256=hashlib.sha256(b'').hexdigest())
+                        for r in p['receipts'] if r['name'] == 'pos-compositional-convergence'
+                    ]),
+                    ('p1_2c_pos_tki_bin_true', lambda p: [
+                        r.update(argv=['/bin/true'])
+                        for r in p['receipts'] if r['name'] == 'pos-tki-provider-compile'
+                    ]),
+
+                    # [P1-2d] version command forgery mutations
+                    ('p1_2d_version_echo', lambda p: [
+                        r.update(argv=['/bin/echo', '0.18.0'])
+                        for r in p['receipts'] if r['name'] == 'version-toka'
+                    ]),
+                    ('p1_2d_version_extra_arg', lambda p: [
+                        r.update(argv=[r['argv'][0], '--version', '--extra'])
+                        for r in p['receipts'] if r['name'] == 'version-tokafmt'
+                    ]),
+                    ('p1_2d_version_empty_stdout', lambda p: [
+                        r.update(stdout='', stdout_sha256=hashlib.sha256(b'').hexdigest())
+                        for r in p['receipts'] if r['name'] == 'version-tokalsp'
+                    ]),
                 ]
 
                 for name_mut, mut in mutations:
@@ -130,6 +204,10 @@ class Contract018(unittest.TestCase):
                     ('missing_receipts', lambda r: r['candidate_018'].update(receipts=[])),
                     ('garbage_receipt', lambda r: r['candidate_018'].update(receipts=[{'garbage': True}])),
                     ('bad_tki_sha_mismatch', lambda r: r['candidate_018']['source_hidden_tki'].update(consumed_tki_sha256='0'*64)),
+                    ('p1_2a_replay_bool_exit', lambda r: r['candidate_018']['source_hidden_tki']['missing_interface_command'].update(exit_code=True)),
+                    ('p1_2b_replay_neg_bin_true', lambda r: [x.update(argv=['/bin/true']) for x in r['candidate_018']['receipts'] if x['name'].startswith('neg-')][:1]),
+                    ('p1_2c_replay_pos_bin_true', lambda r: [x.update(argv=['/bin/true']) for x in r['candidate_018']['receipts'] if x['name'].startswith('pos-')][:1]),
+                    ('p1_2d_replay_version_echo', lambda r: [x.update(argv=['/bin/echo', '0.18.0']) for x in r['candidate_018']['receipts'] if x['name'] == 'version-toka'][:1]),
                 ]:
                     with self.subTest(replay_mutation=p_desc):
                         d_bad = copy.deepcopy(d)
@@ -145,6 +223,10 @@ class Contract018(unittest.TestCase):
                     ('summary_missing_c018', lambda s: s['reports'][0].pop('candidate_018', None)),
                     ('summary_c018_fail', lambda s: s['reports'][0]['candidate_018'].update(result='fail')),
                     ('summary_tki_mismatch', lambda s: s['reports'][0]['candidate_018']['source_hidden_tki'].update(consumed_tki_sha256='0'*64)),
+                    ('summary_p1_2a_bool_exit', lambda s: s['reports'][0]['candidate_018']['source_hidden_tki']['missing_interface_command'].update(exit_code=True)),
+                    ('summary_p1_2b_neg_bin_true', lambda s: [x.update(argv=['/bin/true']) for x in s['reports'][0]['candidate_018']['receipts'] if x['name'].startswith('neg-')][:1]),
+                    ('summary_p1_2c_pos_bin_true', lambda s: [x.update(argv=['/bin/true']) for x in s['reports'][0]['candidate_018']['receipts'] if x['name'].startswith('pos-')][:1]),
+                    ('summary_p1_2d_version_echo', lambda s: [x.update(argv=['/bin/echo', '0.18.0']) for x in s['reports'][0]['candidate_018']['receipts'] if x['name'] == 'version-toka'][:1]),
                 ]:
                     with self.subTest(summary_draft_mutation=s_desc):
                         d_bad = copy.deepcopy(d)
