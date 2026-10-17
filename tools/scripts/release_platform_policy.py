@@ -65,12 +65,14 @@ SHA = re.compile(r'[0-9a-f]{40}\Z')
 
 
 def modern(label):
-    if label.startswith(('v0.12.', 'v0.13.', 'v0.14.', 'v0.15.', 'v0.16.', 'v0.17.')) and not re.fullmatch(r'v0\.(?:12|13|14|15|16|17)\.(0|[1-9][0-9]*)', label):
+    if label.startswith(('v0.12.', 'v0.13.', 'v0.14.', 'v0.15.', 'v0.16.', 'v0.17.', 'v0.18.')) and not re.fullmatch(r'v0\.(?:12|13|14|15|16|17|18)\.(0|[1-9][0-9]*)', label):
         raise ValueError('noncanonical three-core release label')
-    return bool(re.fullmatch(r'v0\.(?:12|13|14|15|16|17)\.(0|[1-9][0-9]*)',label))
+    return bool(re.fullmatch(r'v0\.(?:12|13|14|15|16|17|18)\.(0|[1-9][0-9]*)',label))
 
 
 def policy_id(label):
+    if label.startswith('v0.18.'):
+        return 'toka.release-platforms.0.18.v1'
     if label.startswith('v0.17.'):
         return 'toka.release-platforms.0.17.v1'
     if label.startswith('v0.16.'):
@@ -83,7 +85,7 @@ def policy_id(label):
 
 
 def core_targets(label):
-    if not re.fullmatch(r'v0\.(?:11|12|13|14|15|16|17)\.(0|[1-9][0-9]*)',label):
+    if not re.fullmatch(r'v0\.(?:11|12|13|14|15|16|17|18)\.(0|[1-9][0-9]*)',label):
         raise ValueError('unsupported or noncanonical release label')
     return CORE if modern(label) else LEGACY
 
@@ -2065,6 +2067,13 @@ def expected_017_script_sha256():
     return None
 
 
+def expected_018_script_sha256():
+    m = get_bundle_manifest()
+    if m and isinstance(m.get('modules'), dict):
+        return m['modules'].get('test_0_18_candidate.py')
+    return None
+
+
 EXPECTED_017_VERSION_RECEIPTS = {
     'version-tokac',
     'version-toka',
@@ -2668,6 +2677,97 @@ def candidate_017_receipt_errors(receipt, revision, label, target=None):
     return errors
 
 
+def candidate_018_receipt_errors(receipt, revision, label, target=None):
+    if not isinstance(receipt, dict):
+        return ['0.18 candidate receipt is missing or not a dict']
+    errors = []
+    if receipt.get('schema') != 'toka.0.18-candidate-controls':
+        errors.append('0.18 receipt schema mismatch')
+    version = receipt.get('version')
+    if type(version) is not int or isinstance(version, bool) or version != 1:
+        errors.append('0.18 receipt version must be int 1')
+    if receipt.get('result') != 'pass':
+        errors.append('0.18 receipt result is not pass')
+    if receipt.get('candidate_revision') != revision:
+        errors.append('0.18 candidate revision mismatch')
+    if receipt.get('version_label') != label:
+        errors.append('0.18 version label mismatch')
+    target_val = receipt.get('target')
+    if not isinstance(target_val, str) or not target_val:
+        errors.append('0.18 target missing or invalid')
+    elif target is not None and target_val != target:
+        errors.append('0.18 target mismatch: expected %s, got %s' % (target, target_val))
+    if receipt.get('build_testing') is not False:
+        errors.append('0.18 receipt build_testing must be False')
+    if receipt.get('groups') != ['G-018-cede-self-async-trait']:
+        errors.append('0.18 receipt groups mismatch')
+
+    if receipt.get('control_script_name') != 'test_0_18_candidate.py':
+        errors.append('0.18 control script name mismatch')
+    control_sha = receipt.get('control_script_sha256')
+    expected_control_sha = expected_018_script_sha256()
+    if not isinstance(control_sha, str) or not re.fullmatch(r'[0-9a-f]{64}', control_sha):
+        errors.append('0.18 control script sha256 missing or invalid')
+    elif expected_control_sha and control_sha != expected_control_sha:
+        errors.append('0.18 control script digest mismatch')
+
+    # Source-hidden TKI facts validation
+    tki_facts = receipt.get('source_hidden_tki')
+    if not isinstance(tki_facts, dict):
+        errors.append('0.18 receipt missing source_hidden_tki dictionary')
+    else:
+        if tki_facts.get('missing_interface_rejected') is not True:
+            errors.append('0.18 source_hidden_tki missing_interface_rejected must be True')
+        if tki_facts.get('corrupt_interface_rejected') is not True:
+            errors.append('0.18 source_hidden_tki corrupt_interface_rejected must be True')
+        if tki_facts.get('consumer_result') != 'pass':
+            errors.append('0.18 source_hidden_tki consumer_result must be pass')
+        psp = tki_facts.get('provider_source_present')
+        if psp is not False or type(psp) is not bool:
+            errors.append('0.18 source_hidden_tki provider_source_present must exist and be exactly boolean False')
+        p_tki = tki_facts.get('provider_tki_sha256')
+        if not isinstance(p_tki, str) or not re.fullmatch(r'[0-9a-f]{64}', p_tki) or len(set(p_tki)) <= 4:
+            errors.append('0.18 source_hidden_tki provider_tki_sha256 missing, invalid or unbound dummy hash')
+        p_obj = tki_facts.get('provider_object_sha256')
+        if not isinstance(p_obj, str) or not re.fullmatch(r'[0-9a-f]{64}', p_obj) or len(set(p_obj)) <= 4:
+            errors.append('0.18 source_hidden_tki provider_object_sha256 missing, invalid or unbound dummy hash')
+
+    # Four tool versions validation
+    tools_dict = receipt.get('four_tool_versions')
+    if not isinstance(tools_dict, dict):
+        errors.append('0.18 receipt missing four_tool_versions dictionary')
+    else:
+        ver_exp = label.removeprefix('v')
+        for tool in ('tokac', 'toka', 'tokafmt', 'tokalsp'):
+            v_str = tools_dict.get(tool)
+            if not isinstance(v_str, str) or not v_str:
+                errors.append(f'0.18 receipt missing tool version for {tool}')
+            elif ver_exp not in v_str or '1.0.0-rc' in v_str:
+                errors.append(f'0.18 tool version mismatch for {tool}: {v_str}')
+
+    # Negative controls validation
+    neg = receipt.get('negative_controls')
+    if not isinstance(neg, dict) or neg.get('total') != 29 or neg.get('passed') != 29:
+        errors.append('0.18 negative_controls must be dict with total=29 and passed=29')
+
+    # Positive controls validation
+    pos = receipt.get('positive_controls')
+    if not isinstance(pos, dict) or pos.get('total') != 3 or pos.get('passed') != 3 or pos.get('native_rc0') is not True:
+        errors.append('0.18 positive_controls must be dict with total=3, passed=3, and native_rc0=True')
+
+    # Compositional convergence validation
+    conv = receipt.get('compositional_convergence')
+    if not isinstance(conv, dict) or conv.get('total') != 60 or conv.get('passed') != 60:
+        errors.append('0.18 compositional_convergence must be dict with total=60 and passed=60')
+
+    # Receipts validation
+    recs = receipt.get('receipts')
+    if not isinstance(recs, list) or len(recs) == 0:
+        errors.append('0.18 receipts must be a non-empty list of command receipts')
+
+    return errors
+
+
 def summary_errors(summary,revision,label):
     errors=[]
     if summary.get('schema')!='toka.release-qualification-summary' or summary.get('version')!=2 or \
@@ -2708,6 +2808,11 @@ def summary_errors(summary,revision,label):
             r_errors = candidate_017_receipt_errors(row.get('candidate_017'), revision, label, target=row.get('target'))
             if r_errors:
                 errors.append('0.17 installed candidate proof invalid for %s: %s' % (row.get('target'), '; '.join(r_errors)))
+    if label.startswith('v0.18.'):
+        for row in summary.get('reports',[]):
+            r_errors = candidate_018_receipt_errors(row.get('candidate_018'), revision, label, target=row.get('target'))
+            if r_errors:
+                errors.append('0.18 installed candidate proof invalid for %s: %s' % (row.get('target'), '; '.join(r_errors)))
     optional=summary.get('optional_targets')
     if not isinstance(optional,dict) or set(optional)!={OPTIONAL}:errors.append('optional target status must be explicit')
     else:errors+=optional_errors(optional[OPTIONAL],revision,label)

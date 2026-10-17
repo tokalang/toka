@@ -240,13 +240,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--version", default="v0.17.0")
+    parser.add_argument("--version", default="v0.18.0")
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
-    if not re.fullmatch(r"v0\.(?:11|12|13|14|15|16|17)\.(0|[1-9][0-9]*)", args.version):
-        parser.error("release label must be a canonical v0.11.x/v0.12.x/v0.13.x/v0.14.x/v0.15.x/v0.16.x/v0.17.x tag")
+    if not re.fullmatch(r"v0\.(?:11|12|13|14|15|16|17|18)\.(0|[1-9][0-9]*)", args.version):
+        parser.error("release label must be a canonical v0.11.x/v0.12.x/v0.13.x/v0.14.x/v0.15.x/v0.16.x/v0.17.x/v0.18.x tag")
 
     root = Path(__file__).resolve().parents[2]
     build_dir = (root / args.build_dir).resolve()
@@ -419,14 +419,16 @@ def main():
         )),
     )
 
-    if args.version.startswith(('v0.13.', 'v0.14.', 'v0.15.', 'v0.16.', 'v0.17.')):
+    if args.version.startswith(('v0.13.', 'v0.14.', 'v0.15.', 'v0.16.', 'v0.17.', 'v0.18.')):
         standard = work_dir/'standard-sdk-build'
         cache={}
         for line in (build_dir/'CMakeCache.txt').read_text().splitlines():
             if '=' in line and ':' in line.split('=',1)[0]:
                 key,value=line.split('=',1);cache[key.split(':',1)[0]]=value
         inherited=['-D'+key+'='+cache[key] for key in ('CMAKE_C_COMPILER','CMAKE_CXX_COMPILER','CMAKE_CXX_FLAGS','LLVM_DIR') if cache.get(key)]
-        if args.version.startswith('v0.17.'):
+        if args.version.startswith('v0.18.'):
+            controls_subdir = 'candidate-018-installed'
+        elif args.version.startswith('v0.17.'):
             controls_subdir = 'candidate-017-installed'
         elif args.version.startswith('v0.16.'):
             controls_subdir = 'candidate-016-installed'

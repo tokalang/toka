@@ -821,6 +821,64 @@ def valid_candidate_017(revision, label, target=None):
     }
 
 
+def valid_candidate_018(revision, label, target):
+    ver = label.removeprefix('v')
+    ctrl_sha = policy.expected_018_script_sha256() or 'e'*64
+    p_tki_sha = hashlib.sha256(b'provider.tki').hexdigest()
+    p_obj_sha = hashlib.sha256(b'provider.o').hexdigest()
+    receipts = [
+        {'name': f'version-{tool}', 'argv': [f'/sdk/bin/{tool}', '--version'], 'cmd': [f'/sdk/bin/{tool}', '--version'],
+         'cwd': '/sdk/work', 'exit_code': 0, 'stdout': f'{tool} {ver}\n', 'stderr': '',
+         'stdout_sha256': hashlib.sha256(f'{tool} {ver}\n'.encode('utf-8')).hexdigest(),
+         'stderr_sha256': hashlib.sha256(b'').hexdigest(), 'execution_ms': 10.0, 'elapsed_seconds': 0.01, 'ok': True}
+        for tool in ('tokac', 'toka', 'tokafmt', 'tokalsp')
+    ]
+    return {
+        'schema': 'toka.0.18-candidate-controls',
+        'version': 1,
+        'result': 'pass',
+        'candidate_revision': revision,
+        'version_label': label,
+        'target': target,
+        'build_testing': False,
+        'groups': ['G-018-cede-self-async-trait'],
+        'control_script_name': 'test_0_18_candidate.py',
+        'control_script_sha256': ctrl_sha,
+        'four_tool_versions': {
+            'tokac': f'tokac {ver}',
+            'toka': f'toka {ver}',
+            'tokafmt': f'tokafmt {ver}',
+            'tokalsp': f'tokalsp {ver}',
+        },
+        'SDK_root': '/sdk',
+        'source_hidden_tki': {
+            'provider_tki_sha256': p_tki_sha,
+            'provider_object_sha256': p_obj_sha,
+            'consumed_tki_sha256': p_tki_sha,
+            'consumed_object_sha256': p_obj_sha,
+            'missing_interface_rejected': True,
+            'corrupt_interface_rejected': True,
+            'consumer_result': 'pass',
+            'provider_source_present': False,
+        },
+        'negative_controls': {
+            'total': 29,
+            'passed': 29,
+            'modes': ['--check-only', '-c', '--emit-llvm'],
+        },
+        'positive_controls': {
+            'total': 3,
+            'passed': 3,
+            'native_rc0': True,
+        },
+        'compositional_convergence': {
+            'total': 60,
+            'passed': 60,
+        },
+        'receipts': receipts,
+    }
+
+
 def fixture(root,intel=False):
     targets=policy.CORE+(policy.OPTIONAL,) if intel else policy.CORE
     archives=root/'qualified';archives.mkdir(exist_ok=True);assets=root/'assets';assets.mkdir(exist_ok=True);zips=root/'zips';zips.mkdir(exist_ok=True);metadata=[];hashes={}
@@ -851,6 +909,9 @@ def fixture(root,intel=False):
     if TAG.startswith('v0.17.'):
         for row in summary['reports']:
             row['candidate_017']=valid_candidate_017(SHA,TAG,row['target'])
+    if TAG.startswith('v0.18.'):
+        for row in summary['reports']:
+            row['candidate_018']=valid_candidate_018(SHA,TAG,row['target'])
     replay_receipts=[{'target':target,'result':'pass','archive_sha256':hashes['toka-%s-%s.tar.gz'%(TAG,target)],'candidate_revision':SHA,'version_label':TAG,'policy_id':policy.policy_id(TAG),'asset_source':'candidate_run','qualification_run_id':11,'qualification_run_attempt':1} for target in targets]
     if TAG.startswith('v0.13.') and TAG != 'v0.13.0':
         for r in replay_receipts:
@@ -867,6 +928,9 @@ def fixture(root,intel=False):
     if TAG.startswith('v0.17.'):
         for r in replay_receipts:
             r['candidate_017']=valid_candidate_017(SHA,TAG,r['target'])
+    if TAG.startswith('v0.18.'):
+        for r in replay_receipts:
+            r['candidate_018']=valid_candidate_018(SHA,TAG,r['target'])
     documents={'summary':summary,'run':{'id':11,'run_attempt':1,'status':'completed','conclusion':'success','head_sha':SHA,'path':'.github/workflows/release.yml','event':'workflow_dispatch','repository':{'full_name':'tokalang/toka'},'head_repository':{'full_name':'tokalang/toka'}},
                'draft':{'tagName':TAG,'isDraft':True,'isPrerelease':False,'assets':[{'name':name} for name in [*hashes,'SHA256SUMS']]},'artifacts':{'artifacts':metadata},
                'optional_run':{'id':21,'run_attempt':2,'head_sha':SHA,'status':'completed','conclusion':'success','event':'workflow_dispatch','path':'.github/workflows/optional_macos_x64.yml'},
