@@ -565,19 +565,32 @@ void CodeGen::suppressDropForPartialMove(const MemberExpr *member) {
   for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
     for (auto entry = m_ScopeStack[i].rbegin();
          entry != m_ScopeStack[i].rend(); ++entry) {
-      if (!entry->DropMask)
-        continue;
-      const int index =
-          getDirectMemberDropIndex(*entry, member);
-      if (index < 0 || index >= 64)
-        continue;
-      llvm::Value *mask = m_Builder.CreateLoad(
-          llvm::Type::getInt64Ty(m_Context), entry->DropMask,
-          "drop.mask.current");
-      llvm::Value *cleared = m_Builder.CreateAnd(
-          mask, m_Builder.getInt64(~(1ULL << index)), "drop.mask.cleared");
-      m_Builder.CreateStore(cleared, entry->DropMask);
-      return;
+      if (entry->DropMask) {
+        const int index =
+            getDirectMemberDropIndex(*entry, member);
+        if (index < 0 || index >= 64)
+          continue;
+        llvm::Value *mask = m_Builder.CreateLoad(
+            llvm::Type::getInt64Ty(m_Context), entry->DropMask,
+            "drop.mask.current");
+        llvm::Value *cleared = m_Builder.CreateAnd(
+            mask, m_Builder.getInt64(~(1ULL << index)), "drop.mask.cleared");
+        m_Builder.CreateStore(cleared, entry->DropMask);
+        return;
+      }
+      if (entry->DropFlag && member) {
+        const Expr *curr = member->Object.get();
+        while (auto *m = dynamic_cast<const MemberExpr *>(curr))
+          curr = m->Object.get();
+        if (auto *root = dynamic_cast<const VariableExpr *>(curr)) {
+          if (Type::stripMorphology(root->Name) ==
+              Type::stripMorphology(entry->Name)) {
+            m_Builder.CreateStore(llvm::ConstantInt::getFalse(m_Context),
+                                  entry->DropFlag);
+            return;
+          }
+        }
+      }
     }
   }
 }
@@ -586,19 +599,32 @@ void CodeGen::suppressDropForPartialMove(const ArrayIndexExpr *index) {
   for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
     for (auto entry = m_ScopeStack[i].rbegin();
          entry != m_ScopeStack[i].rend(); ++entry) {
-      if (!entry->DropMask)
-        continue;
-      const int position = getDirectArrayDropIndex(*entry, index);
-      if (position < 0 || position >= 64)
-        continue;
-      llvm::Value *mask = m_Builder.CreateLoad(
-          llvm::Type::getInt64Ty(m_Context), entry->DropMask,
-          "drop.mask.current");
-      llvm::Value *cleared = m_Builder.CreateAnd(
-          mask, m_Builder.getInt64(~(1ULL << position)),
-          "drop.mask.cleared");
-      m_Builder.CreateStore(cleared, entry->DropMask);
-      return;
+      if (entry->DropMask) {
+        const int position = getDirectArrayDropIndex(*entry, index);
+        if (position < 0 || position >= 64)
+          continue;
+        llvm::Value *mask = m_Builder.CreateLoad(
+            llvm::Type::getInt64Ty(m_Context), entry->DropMask,
+            "drop.mask.current");
+        llvm::Value *cleared = m_Builder.CreateAnd(
+            mask, m_Builder.getInt64(~(1ULL << position)),
+            "drop.mask.cleared");
+        m_Builder.CreateStore(cleared, entry->DropMask);
+        return;
+      }
+      if (entry->DropFlag && index) {
+        const Expr *curr = index->Array.get();
+        while (auto *idxE = dynamic_cast<const ArrayIndexExpr *>(curr))
+          curr = idxE->Array.get();
+        if (auto *root = dynamic_cast<const VariableExpr *>(curr)) {
+          if (Type::stripMorphology(root->Name) ==
+              Type::stripMorphology(entry->Name)) {
+            m_Builder.CreateStore(llvm::ConstantInt::getFalse(m_Context),
+                                  entry->DropFlag);
+            return;
+          }
+        }
+      }
     }
   }
 }
@@ -654,7 +680,7 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
   for (int i = (int)m_ScopeStack.size() - 1; i >= (int)targetDepth; --i) {
     auto &scope = m_ScopeStack[i];
     for (auto it = scope.rbegin(); it != scope.rend(); ++it) {
-      if (!it->HasDrop)
+      if (!it->HasDrop && !it->IsUniquePointer && !it->IsShared)
         continue;
       llvm::BasicBlock *dropFlagContBB = nullptr;
       if (it->DropFlag) {

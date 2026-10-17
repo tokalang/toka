@@ -1,0 +1,208 @@
+import core/traits::{@Encap}
+import core/result::{Result}
+import std/task::{block_on, sleep_async}
+import std/async::{race2, RaceWinner}
+
+auto g_constructs# = 0:i32
+auto g_drops# = 0:i32
+auto g_outer_drops# = 0:i32
+
+shape Inner(id: i32)
+impl Inner@Encap {
+    fn drop(self#) {
+        g_drops += 1:i32
+    }
+}
+fn make_inner(id: i32) -> Inner {
+    g_constructs += 1:i32
+    return Inner(id = id)
+}
+
+shape Outer(inner: Inner)
+impl Outer {
+    fn close_cold(cede self) -> async i32 {
+        auto local_o = cede self
+        return local_o.inner.id
+    }
+    fn forward_return_sync(cede self) -> Outer {
+        return cede self
+    }
+}
+
+fn free_close_cold(cede o: Outer) -> async i32 {
+    auto local_o = cede o
+    return local_o.inner.id
+}
+
+shape MidPair(a: Inner, b: Inner)
+shape Choice(
+    One(Inner) |
+    None
+)
+shape ComplexOuter(
+    mid: MidPair,
+    ch: Choice,
+    arr: [Inner; 2]
+)
+fn consume_complex_async(cede c: ComplexOuter) -> async i32 {
+    auto local_c = cede c
+    return local_c.arr[0].id
+}
+
+fn consume_ptrs_and_result(
+    cede ^u: Inner,
+    cede ~s: Inner,
+    cede r: Result<Inner, Inner>
+) -> async i32 {
+    auto ^lu = cede ^u
+    auto ~ls = cede ~s
+    auto lr = cede r
+    return lu.id + ls.id
+}
+
+fn sync_early_return(flag: bool, cede o: Outer, cede arr: [Inner; 2]) -> i32 {
+    if flag {
+        return 7:i32
+    }
+    auto reb_o = cede o
+    auto reb_arr = cede arr
+    return reb_o.inner.id + reb_arr[0].id
+}
+
+fn sync_try_unwrap(res: Result<i32, i32>, cede o: Outer) -> Result<i32, i32> {
+    auto v = res!
+    auto reb_o = cede o
+    return Result<i32, i32>::Ok(v + reb_o.inner.id)
+}
+
+fn fast_winner() -> async i32 {
+    sleep_async(5:i32).await
+    return 77:i32
+}
+
+fn suspend_before_rebind(cede o: Outer) -> async i32 {
+    sleep_async(80:i32).await
+    auto local_o = cede o
+    return local_o.inner.id
+}
+
+fn suspend_after_rebind(cede o: Outer) -> async i32 {
+    auto local_o = cede o
+    sleep_async(80:i32).await
+    return local_o.inner.id
+}
+
+fn run_cancel_checks() -> async i32 {
+    auto w1 = race2<i32, i32>(
+        cede fast_winner(),
+        cede suspend_before_rebind(cede Outer(inner = make_inner(15:i32)))
+    ).await
+    match w1 {
+        auto RaceWinner<i32, i32>::First(v) => {
+            if v != 77:i32 { return 1:i32 }
+        }
+        auto RaceWinner<i32, i32>::Second(_) => { return 2:i32 }
+    }
+    auto w2 = race2<i32, i32>(
+        cede fast_winner(),
+        cede suspend_after_rebind(cede Outer(inner = make_inner(16:i32)))
+    ).await
+    match w2 {
+        auto RaceWinner<i32, i32>::First(v) => {
+            if v != 77:i32 { return 3:i32 }
+        }
+        auto RaceWinner<i32, i32>::Second(_) => { return 4:i32 }
+    }
+    return 0:i32
+}
+
+shape OuterEncap(inner: Inner, tag: i32)
+impl OuterEncap@Encap {
+    fn drop(self#) {
+        g_outer_drops += 1:i32
+    }
+}
+impl OuterEncap {
+    fn close_encap(cede self) -> async i32 {
+        auto local_e = cede self
+        return local_e.tag
+    }
+}
+
+shape PairOuter(a: Inner, b: Inner)
+fn partial_move_sync(cede p: PairOuter) -> Inner {
+    auto reb = cede p
+    auto taken = cede reb.a
+    return cede taken
+}
+fn partial_move_async(cede p: PairOuter) -> async i32 {
+    auto reb = cede p
+    auto taken = cede reb.a
+    return taken.id + reb.b.id
+}
+
+pub fn main() -> i32 {
+    // 1. Cold TaskHandle drop on cede self & cede arg
+    {
+        auto _t1 = Outer(inner = make_inner(1:i32)).close_cold()
+        auto _t2 = free_close_cold(cede Outer(inner = make_inner(2:i32)))
+    }
+    if g_constructs != 2:i32 || g_drops != 2:i32 { return 1:i32 }
+
+    // 2. Nested struct/enum/array cold drop
+    {
+        auto c = ComplexOuter(
+            mid = MidPair(a = make_inner(3:i32), b = make_inner(4:i32)),
+            ch = Choice::One(make_inner(5:i32)),
+            arr = [make_inner(6:i32), make_inner(7:i32)]
+        )
+        auto _t3 = consume_complex_async(cede c)
+    }
+    if g_constructs != 7:i32 || g_drops != 7:i32 { return 2:i32 }
+
+    // 3. Unique/Shared/Result cold drop
+    {
+        auto ^u = new Inner(id = 8:i32)
+        g_constructs += 1:i32
+        auto ~s = new Inner(id = 9:i32)
+        g_constructs += 1:i32
+        auto r = Result<Inner, Inner>::Ok(make_inner(10:i32))
+        auto _t4 = consume_ptrs_and_result(cede ^u, cede ~s, cede r)
+    }
+    if g_constructs != 10:i32 || g_drops != 10:i32 { return 3:i32 }
+
+    // 4. Sync early return & ! propagation
+    {
+        auto v = sync_early_return(true, cede Outer(inner = make_inner(11:i32)), cede [make_inner(12:i32), make_inner(13:i32)])
+        if v != 7:i32 { return 4:i32 }
+        auto r = sync_try_unwrap(Result<i32, i32>::Err(99:i32), cede Outer(inner = make_inner(14:i32)))
+        if r.is_ok() { return 5:i32 }
+    }
+    if g_constructs != 14:i32 || g_drops != 14:i32 { return 6:i32 }
+
+    // 5. Async cancel suspended before and after rebind
+    {
+        auto rc = block_on(run_cancel_checks())
+        if rc != 0:i32 { return 7:i32 }
+    }
+    if g_constructs != 16:i32 || g_drops != 16:i32 { return 7:i32 }
+
+    // 6. Explicit outer @Encap
+    {
+        auto _t5 = OuterEncap(inner = make_inner(17:i32), tag = 1:i32).close_encap()
+    }
+    if g_outer_drops != 1:i32 || g_constructs != 17:i32 || g_drops != 17:i32 { return 8:i32 }
+
+    // 7. Whole move/return and partial move after rebind (sync & async)
+    {
+        auto o2 = Outer(inner = make_inner(18:i32)).forward_return_sync()
+        if o2.inner.id != 18:i32 { return 9:i32 }
+        auto a1 = partial_move_sync(cede PairOuter(a = make_inner(19:i32), b = make_inner(20:i32)))
+        if a1.id != 19:i32 { return 10:i32 }
+        auto sum = block_on(partial_move_async(cede PairOuter(a = make_inner(21:i32), b = make_inner(22:i32))))
+        if sum != 43:i32 { return 11:i32 }
+    }
+    if g_constructs != 22:i32 || g_drops != 22:i32 { return 12:i32 }
+
+    return 0:i32
+}

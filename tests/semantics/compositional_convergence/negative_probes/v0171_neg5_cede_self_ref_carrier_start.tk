@@ -1,0 +1,16 @@
+pub shape RefCarrier(&view: i32, token: i32)
+impl RefCarrier {
+    pub fn read_async(cede self) -> async i32 {
+        auto owned = cede self
+        return owned.view + owned.token
+    }
+}
+pub fn start_borrowed_carrier() -> i32 {
+    auto local = 42:i32
+    auto c = RefCarrier(&view = &local, token = 7:i32)
+    auto _started = c.read_async().start
+    return 0:i32
+}
+pub fn main() -> i32 {
+    return 0:i32
+}

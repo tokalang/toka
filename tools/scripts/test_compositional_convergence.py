@@ -261,6 +261,13 @@ def main():
         ("r4_p0_2b_effects_self_bodyless_tki_call.tk", "E0456"),
         ("r5_neg1_borrowed_self_field_postfix_start.tk", "E04584"),
         ("r5_neg2_cede_self_carrier_with_borrowed_task_start.tk", "E04584"),
+        ("v0171_neg1_cede_self_borrowed_carrier_return.tk", "E0455"),
+        ("v0171_neg2_cede_arg_borrowed_carrier_return.tk", "E0455"),
+        ("v0171_neg3_inline_ctor_borrowed_carrier_return.tk", "E0455"),
+        ("v0171_neg4_ref_carrier_multi_field_return.tk", "E0455"),
+        ("v0171_neg5_cede_self_ref_carrier_start.tk", "E04584"),
+        ("v0171_neg6_explicit_dep_clause_with_ceded_borrow.tk", "E0455"),
+        ("v0171_neg7_cede_self_sync_detach_inner.tk", "E0456"),
     ]
 
     bodyless_negatives = [
@@ -284,6 +291,8 @@ def main():
         "r2_p1_1b_two_tasks_split_var_owned_start_pos.tk",
         "r3_p1_1a_two_tasks_fwd_call_owned_start_pos.tk",
         "r5_pos1_cede_self_receiver_start.tk",
+        "v0171_pos1_cede_param_drop_matrix.tk",
+        "v0171_pos2_owned_and_local_await_carriers.tk",
     ]
 
     receipt = {

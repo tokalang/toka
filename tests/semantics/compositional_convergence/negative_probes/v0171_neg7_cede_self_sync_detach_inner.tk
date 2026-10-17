@@ -1,0 +1,25 @@
+import core/task::{TaskHandle}
+
+pub shape Buffer(size: i32)
+pub fn read_buf(b: Buffer) -> async i32 {
+    return b.size
+}
+pub shape BorrowedCarrier(t: TaskHandle<i32>)
+
+impl BorrowedCarrier {
+    pub fn detach_inner(cede self) -> i32 {
+        auto owned = cede self
+        auto _s = owned.t.start
+        return 0:i32
+    }
+}
+
+pub fn test_detach_in_method() -> i32 {
+    auto buf = Buffer(size = 16:i32)
+    auto c = BorrowedCarrier(t = read_buf(buf))
+    return c.detach_inner()
+}
+
+pub fn main() -> i32 {
+    return 0:i32
+}

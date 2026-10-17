@@ -697,7 +697,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       // A resolved morphic shared value has the same real carrier address
       // as an explicitly hatted shared parameter, not a pointer wrapper.
       finalStorage = &arg;
-      isOwnedParam = false;
+      isOwnedParam = argDecl.IsCeded;
+      if (argDecl.IsCeded)
+        ownedValueStorage = &arg;
     } else {
       llvm::AllocaInst *alloca =
           createEntryBlockAlloca(allocaType, nullptr, argName + ".addr");
@@ -719,6 +721,13 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
       m_Builder.CreateStore(&arg, alloca);
       finalStorage = alloca;
+      const bool isConsumingClosureEnvSelf =
+          func->IsClosureInvoke &&
+          func->ClosureReceiver == CallableReceiverMode::Consuming &&
+          idx == 0;
+      isOwnedParam = argDecl.IsCeded && !isConsumingClosureEnvSelf;
+      if (isOwnedParam && needsCapture && arg.getType()->isPointerTy())
+        ownedValueStorage = &arg;
     }
 
     llvm::Type *debugStorageType = allocaType;
@@ -795,35 +804,73 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       std::string argDropFunc = "";
       std::string soulName = "";
       if (argDecl.ResolvedType) {
+        std::set<const ShapeDecl *> visitedShapes;
+        std::function<bool(const std::shared_ptr<Type> &)> paramTypeNeedsDrop =
+            [&](const std::shared_ptr<Type> &candidate) -> bool {
+          if (!candidate)
+            return false;
+          if (candidate->isArray())
+            return paramTypeNeedsDrop(candidate->getArrayElementType());
+          if (candidate->isSlice())
+            return paramTypeNeedsDrop(candidate->getPointeeType());
+          if (auto outcome =
+                  std::dynamic_pointer_cast<MissOutcomeType>(candidate))
+            return paramTypeNeedsDrop(outcome->PayloadType);
+          if (candidate->isSharedPtr() || candidate->isUniquePtr())
+            return true;
+          if (candidate->isDynFn())
+            return true;
+          if (candidate->isRawPointer() || candidate->isReference())
+            return false;
+          const auto candSoul = candidate->getSoulType();
+          if (!candSoul)
+            return false;
+          const ShapeDecl *candSD = nullptr;
+          if (auto exactShape = std::dynamic_pointer_cast<ShapeType>(candSoul))
+            candSD = exactShape->Decl;
+          if (!candSD && m_Shapes.count(candSoul->getSoulName()))
+            candSD = m_Shapes[candSoul->getSoulName()];
+          if (!candSD)
+            return false;
+          if (!candSD->MangledDestructorName.empty() || candSD->HasExplicitDrop)
+            return true;
+          if (!visitedShapes.insert(candSD).second)
+            return false;
+          for (const auto &member : candSD->Members) {
+            if (member.IsUnique || member.IsShared)
+              return true;
+            if (member.ResolvedType && paramTypeNeedsDrop(member.ResolvedType))
+              return true;
+            for (const auto &sub : member.SubMembers) {
+              if (sub.IsUnique || sub.IsShared)
+                return true;
+              if (sub.ResolvedType && paramTypeNeedsDrop(sub.ResolvedType))
+                return true;
+            }
+          }
+          return true;
+        };
+
         auto soul = argDecl.ResolvedType->getSoulType();
-        soulName = soul->getSoulName();
-        // Check authoritative metadata from Sema
+        soulName = soul ? soul->getSoulName() : "";
         const ShapeDecl *SD = nullptr;
         if (auto exactShape = std::dynamic_pointer_cast<ShapeType>(soul))
           SD = exactShape->Decl;
-        if (!SD && m_Shapes.count(soulName))
+        if (!SD && !soulName.empty() && m_Shapes.count(soulName))
           SD = m_Shapes[soulName];
         if (SD) {
-          if (!SD->MangledDestructorName.empty()) {
-            argHasDrop = true;
+          argHasDrop = true;
+          if (!SD->MangledDestructorName.empty())
             argDropFunc = SD->MangledDestructorName;
-          }
         }
-        if (auto outcome =
-                std::dynamic_pointer_cast<MissOutcomeType>(
-                    argDecl.ResolvedType)) {
-          auto payload = outcome->PayloadType;
-          auto payloadSoul = payload ? payload->getSoulType() : nullptr;
-          auto payloadShape =
-              std::dynamic_pointer_cast<ShapeType>(payloadSoul);
-          if ((payload &&
-               (payload->isUniquePtr() || payload->isSharedPtr())) ||
-              (payloadShape &&
-               (payloadShape->Decl ||
-                m_Shapes.count(payloadShape->getSoulName())))) {
+        if (argDecl.IsUnique || argDecl.IsShared ||
+            argDecl.ResolvedType->isUniquePtr() ||
+            argDecl.ResolvedType->isSharedPtr()) {
+          if (soul && paramTypeNeedsDrop(soul))
             argHasDrop = true;
-            argDropFunc.clear();
-          }
+        } else if (!argHasDrop && paramTypeNeedsDrop(argDecl.ResolvedType)) {
+          argHasDrop = true;
+          argDropFunc.clear();
         }
       }
 
@@ -836,13 +883,61 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       info.HasDrop = isOwnedParam && argHasDrop;
       info.DropFunc = isOwnedParam ? argDropFunc : "";
       info.SoulName = soulName;
-      if (isOwnedParam)
+      if (isOwnedParam) {
         info.DropType = typeObj;
+        if (info.HasDrop && info.Alloca && !info.IsUniquePointer && !info.IsShared && typeObj) {
+          if (typeObj->isArray()) {
+            auto array = std::dynamic_pointer_cast<ArrayType>(typeObj);
+            if (array && array->Size > 0 && array->Size <= 64) {
+              const uint64_t mask =
+                  array->Size == 64 ? ~0ULL : (1ULL << array->Size) - 1ULL;
+              info.PartialMove = PartialMovePlan::fixedArrayElements(mask);
+            }
+          } else if (typeObj->isShape()) {
+            auto soul = typeObj->getSoulType();
+            const ShapeDecl *SD = nullptr;
+            if (auto exactShape = std::dynamic_pointer_cast<ShapeType>(soul))
+              SD = exactShape->Decl;
+            if (!SD && !soulName.empty() && m_Shapes.count(soulName))
+              SD = m_Shapes[soulName];
+            if (SD && !SD->HasExplicitDrop &&
+                (SD->Kind == ShapeKind::Struct || SD->Kind == ShapeKind::Tuple) &&
+                !SD->Members.empty() && SD->Members.size() <= 64) {
+              bool hasSharedMember = false;
+              for (const auto &member : SD->Members) {
+                if (member.IsShared) {
+                  hasSharedMember = true;
+                  break;
+                }
+              }
+              if (!hasSharedMember) {
+                const uint64_t mask =
+                    SD->Members.size() == 64
+                        ? ~0ULL
+                        : (1ULL << SD->Members.size()) - 1ULL;
+                info.PartialMove = PartialMovePlan::directFields(mask);
+              }
+            }
+          }
+          if (info.PartialMove.isAdmitted()) {
+            info.DropMask = createEntryBlockAlloca(
+                llvm::Type::getInt64Ty(m_Context), nullptr,
+                argName + ".drop.mask");
+            m_Builder.CreateStore(
+                m_Builder.getInt64(info.PartialMove.eligibleMask()),
+                info.DropMask);
+          }
+        }
+      }
       if (finalStorage && isOwnedParam && (argHasDrop || argDecl.IsUnique || argDecl.IsShared || (typeObj && (typeObj->isUniquePtr() || typeObj->isSharedPtr())))) {
         info.DropFlag = createEntryBlockAlloca(
             llvm::Type::getInt1Ty(m_Context), nullptr, argName + ".drop.live");
         m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
                               info.DropFlag);
+      }
+      if (m_Symbols.count(argName)) {
+        m_Symbols[argName].hasDrop = info.HasDrop;
+        m_Symbols[argName].dropFunc = info.DropFunc;
       }
       m_ScopeStack.back().push_back(info);
     }
