@@ -1284,6 +1284,8 @@ private:
   bool closedTaskResultType(std::shared_ptr<Type> type);
   const ModuleScope *getDeclarationModuleScope(const ASTNode *node) const;
   bool isTrustedStdAsyncModule(const ModuleScope *module) const;
+  bool isTrustedStdTaskModule(const ModuleScope *module) const;
+  bool isTrustedStdTaskBlockOn(const FunctionDecl *fn) const;
   bool isTaskScopeType(const std::shared_ptr<Type> &type) const;
   bool containsTaskScope(const std::shared_ptr<Type> &type) const;
   bool isTrustedStdAsyncScopeDrainCall(const CallExpr *call, Expr *&scopeArg) const;
@@ -1504,6 +1506,7 @@ private:
       ASTNode *callSite,
       Expr *methodReceiver = nullptr);
   bool isSafeSynchronousTaskConsumer(FunctionDecl *calleeFn, size_t formalIndex);
+  bool isSafeAsyncTaskConsumer(FunctionDecl *calleeFn, size_t formalIndex);
   bool checkSafeTaskConsumerBody(ASTNode *body, const std::string &rootFormal, const std::string &allowedSelfReceiver = "");
   bool checkSafeTaskConsumerBodyHelper(ASTNode *node, std::set<std::string> &trackedVars, const std::string &allowedSelfReceiver = "");
   bool isSafeSynchronousTaskForwarder(FunctionDecl *calleeFn, size_t formalIndex);

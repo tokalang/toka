@@ -1,5 +1,5 @@
 trait @CedeReceiver {
-    pub fn fetch(cede self) -> async i32
+    pub fn fetch(cede self#) -> async i32
 }
 
 fn main() -> i32 {

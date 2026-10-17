@@ -268,6 +268,14 @@ def main():
         ("v0171_neg5_cede_self_ref_carrier_start.tk", "E04584"),
         ("v0171_neg6_explicit_dep_clause_with_ceded_borrow.tk", "E0455"),
         ("v0171_neg7_cede_self_sync_detach_inner.tk", "E0456"),
+        ("v018_s1_neg1_forged_block_on_start.tk", "E0456"),
+        ("v018_s1_neg2_untrusted_cede_self_impl_detach.tk", "E0456"),
+        ("v018_s1_neg3_generic_async_close_return_borrowed.tk", "E0455"),
+        ("v018_s1_neg4_generic_async_close_start_borrowed.tk", "E04584"),
+        ("v018_s1_neg5_ref_carrier_generic_close_return.tk", "E0455"),
+        ("v018_s1_neg6_ref_carrier_generic_close_start.tk", "E04584"),
+        ("v018_s1_neg7_unrelaxed_cede_self_mut.tk", "E0618"),
+        ("v018_s1_neg8_mismatch_trait_cede_self_impl_init.tk", "E0428"),
     ]
 
     bodyless_negatives = [
@@ -293,6 +301,8 @@ def main():
         "r5_pos1_cede_self_receiver_start.tk",
         "v0171_pos1_cede_param_drop_matrix.tk",
         "v0171_pos2_owned_and_local_await_carriers.tk",
+        "v018_s1_pos1_async_close_7_lifecycle_paths.tk",
+        "v018_s1_pos2_borrowed_and_ref_carrier_local_await_and_generic.tk",
     ]
 
     receipt = {

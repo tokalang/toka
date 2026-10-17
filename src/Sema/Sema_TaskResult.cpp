@@ -74,6 +74,29 @@ bool Sema::isTrustedStdAsyncModule(const ModuleScope *module) const {
   return true;
 }
 
+bool Sema::isTrustedStdTaskModule(const ModuleScope *module) const {
+  if (!module) return false;
+  bool trusted = module->IsTrustedSystemModule ||
+                 (module->SourceModule && module->SourceModule->IsTrustedSystemModule);
+  if (!trusted || !module->ShadowCoordinateKnown) return false;
+  if (module->ShadowCrateId.empty() ||
+      (module->ShadowLogicalModulePath != "std/task" &&
+       module->ShadowLogicalModulePath != "core/task"))
+    return false;
+  if (module->SourceModule && !module->SourceModule->ShadowCoordinateOrigin.empty() &&
+      module->SourceModule->ShadowCoordinateOrigin != "toolchain") return false;
+  return true;
+}
+
+bool Sema::isTrustedStdTaskBlockOn(const FunctionDecl *fn) const {
+  if (!fn) return false;
+  const auto *origin = fn->TemplateOrigin ? fn->TemplateOrigin : fn;
+  const auto *mod = getDeclarationModuleScope(origin);
+  if (!isTrustedStdTaskModule(mod) || mod->ShadowLogicalModulePath != "std/task")
+    return false;
+  return origin->Name == "block_on" || fn->Name == "block_on";
+}
+
 bool Sema::isTaskScopeType(const std::shared_ptr<Type> &type) const {
   if (!type) return false;
   std::shared_ptr<Type> target = type;
