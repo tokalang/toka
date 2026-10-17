@@ -1250,36 +1250,55 @@ void Sema::checkStmt(Stmt *S) {
             else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
                 std::vector<AccessPath> actualOrigins;
                 std::vector<SourceLocation> staticOrigins;
-                if (collectActualReturnReferents(Call, actualOrigins, &staticOrigins)) {
+                bool hasActualReferents = collectActualReturnReferents(Call, actualOrigins, &staticOrigins);
+                if (hasActualReferents) {
                   for (const auto &origin : actualOrigins)
                     recordDependencyPathTo(out, origin.toLegacyString());
-                  return;
                 }
                 if (Call->ResolvedFn) {
-                  for (const auto &dep : Call->ResolvedFn->LifeDependencies) {
-                    for (size_t i = 0; i < Call->ResolvedFn->Args.size(); ++i) {
-                      if (Call->ResolvedFn->Args[i].Name != dep ||
-                          i >= Call->Args.size())
-                        continue;
-                      std::string path = getPath(Call->Args[i].get());
-                      if (!path.empty())
-                        recordDependencyPathTo(out, path);
-                      break;
+                  if (!hasActualReferents) {
+                    for (const auto &dep : Call->ResolvedFn->LifeDependencies) {
+                      for (size_t i = 0; i < Call->ResolvedFn->Args.size(); ++i) {
+                        if (Call->ResolvedFn->Args[i].Name != dep ||
+                            i >= Call->Args.size())
+                          continue;
+                        if (Call->ResolvedFn->Args[i].IsCeded ||
+                            dynamic_cast<CedeExpr *>(Call->Args[i].get())) {
+                          std::set<std::string> cededDeps;
+                          bool hasUnknown = false;
+                          collectConsumingExpressionDependencies(
+                              Call->Args[i].get(), cededDeps, hasUnknown, true);
+                          for (const auto &d : cededDeps)
+                            recordDependencyPathTo(out, d);
+                        } else {
+                          std::string path = getPath(Call->Args[i].get());
+                          if (!path.empty())
+                            recordDependencyPathTo(out, path);
+                        }
+                        break;
+                      }
                     }
                   }
                   if (Call->ResolvedFn->Effect == EffectKind::Async) {
                     for (size_t i = 0; i < Call->ResolvedFn->Args.size(); ++i) {
-                      if (Call->ResolvedFn->Args[i].IsCeded ||
-                          (i < Call->Args.size() && dynamic_cast<CedeExpr *>(Call->Args[i].get())))
+                      if (i >= Call->Args.size())
                         continue;
-                      if (i < Call->Args.size()) {
-                        std::string path = getPath(Call->Args[i].get());
-                        if (!path.empty())
-                          recordDependencyPathTo(out, path);
+                      if (Call->ResolvedFn->Args[i].IsCeded ||
+                          dynamic_cast<CedeExpr *>(Call->Args[i].get())) {
+                        std::set<std::string> cededDeps;
+                        bool hasUnknown = false;
+                        collectConsumingExpressionDependencies(
+                            Call->Args[i].get(), cededDeps, hasUnknown, true);
+                        for (const auto &d : cededDeps)
+                          recordDependencyPathTo(out, d);
+                        continue;
                       }
+                      std::string path = getPath(Call->Args[i].get());
+                      if (!path.empty())
+                        recordDependencyPathTo(out, path);
                     }
                   }
-                } else {
+                } else if (!hasActualReferents) {
                   for (auto &Arg : Call->Args) {
                     collectDepsInto(Arg.get(), out);
                   }
@@ -1288,45 +1307,83 @@ void Sema::checkStmt(Stmt *S) {
             else if (auto *Method = dynamic_cast<MethodCallExpr *>(E)) {
                 std::vector<AccessPath> actualOrigins;
                 std::vector<SourceLocation> staticOrigins;
-                if (collectActualReturnReferents(Method, actualOrigins, &staticOrigins)) {
+                bool hasActualReferents = collectActualReturnReferents(Method, actualOrigins, &staticOrigins);
+                if (hasActualReferents) {
                   for (const auto &origin : actualOrigins)
                     recordDependencyPathTo(out, origin.toLegacyString());
-                  return;
                 }
                 if (Method->ResolvedFn) {
-                  for (const auto &dep : Method->ResolvedFn->LifeDependencies) {
-                    if (Type::stripMorphology(dep) == "self") {
-                      std::string path = getPath(Method->Object.get());
-                      if (!path.empty())
-                        recordDependencyPathTo(out, path);
-                      continue;
-                    }
-                    for (size_t i = 1;
-                         i < Method->ResolvedFn->Args.size(); ++i) {
-                      if (Method->ResolvedFn->Args[i].Name != dep ||
-                          i - 1 >= Method->Args.size())
+                  if (!hasActualReferents) {
+                    for (const auto &dep : Method->ResolvedFn->LifeDependencies) {
+                      if (Type::stripMorphology(dep) == "self") {
+                        if (!Method->ResolvedFn->Args.empty() &&
+                            Method->ResolvedFn->Args[0].IsCeded) {
+                          std::set<std::string> cededDeps;
+                          bool hasUnknown = false;
+                          collectConsumingExpressionDependencies(
+                              Method->Object.get(), cededDeps, hasUnknown, true);
+                          for (const auto &d : cededDeps)
+                            recordDependencyPathTo(out, d);
+                        } else {
+                          std::string path = getPath(Method->Object.get());
+                          if (!path.empty())
+                            recordDependencyPathTo(out, path);
+                        }
                         continue;
-                      std::string path = getPath(Method->Args[i - 1].get());
-                      if (!path.empty())
-                        recordDependencyPathTo(out, path);
-                      break;
+                      }
+                      for (size_t i = 1;
+                           i < Method->ResolvedFn->Args.size(); ++i) {
+                        if (Method->ResolvedFn->Args[i].Name != dep ||
+                            i - 1 >= Method->Args.size())
+                          continue;
+                        if (Method->ResolvedFn->Args[i].IsCeded ||
+                            dynamic_cast<CedeExpr *>(Method->Args[i - 1].get())) {
+                          std::set<std::string> cededDeps;
+                          bool hasUnknown = false;
+                          collectConsumingExpressionDependencies(
+                              Method->Args[i - 1].get(), cededDeps, hasUnknown, true);
+                          for (const auto &d : cededDeps)
+                            recordDependencyPathTo(out, d);
+                        } else {
+                          std::string path = getPath(Method->Args[i - 1].get());
+                          if (!path.empty())
+                            recordDependencyPathTo(out, path);
+                        }
+                        break;
+                      }
                     }
                   }
                   if (Method->ResolvedFn->Effect == EffectKind::Async) {
-                    if (!Method->ResolvedFn->Args.empty() && !Method->ResolvedFn->Args[0].IsCeded) {
-                      std::string path = getPath(Method->Object.get());
-                      if (!path.empty())
-                        recordDependencyPathTo(out, path);
-                    }
-                    for (size_t i = 1; i < Method->ResolvedFn->Args.size(); ++i) {
-                      if (Method->ResolvedFn->Args[i].IsCeded ||
-                          (i - 1 < Method->Args.size() && dynamic_cast<CedeExpr *>(Method->Args[i - 1].get())))
-                        continue;
-                      if (i - 1 < Method->Args.size()) {
-                        std::string path = getPath(Method->Args[i - 1].get());
+                    if (!Method->ResolvedFn->Args.empty()) {
+                      if (Method->ResolvedFn->Args[0].IsCeded) {
+                        std::set<std::string> cededDeps;
+                        bool hasUnknown = false;
+                        collectConsumingExpressionDependencies(
+                            Method->Object.get(), cededDeps, hasUnknown, true);
+                        for (const auto &d : cededDeps)
+                          recordDependencyPathTo(out, d);
+                      } else {
+                        std::string path = getPath(Method->Object.get());
                         if (!path.empty())
                           recordDependencyPathTo(out, path);
                       }
+                    }
+                    for (size_t i = 1; i < Method->ResolvedFn->Args.size(); ++i) {
+                      if (i - 1 >= Method->Args.size())
+                        continue;
+                      if (Method->ResolvedFn->Args[i].IsCeded ||
+                          dynamic_cast<CedeExpr *>(Method->Args[i - 1].get())) {
+                        std::set<std::string> cededDeps;
+                        bool hasUnknown = false;
+                        collectConsumingExpressionDependencies(
+                            Method->Args[i - 1].get(), cededDeps, hasUnknown, true);
+                        for (const auto &d : cededDeps)
+                          recordDependencyPathTo(out, d);
+                        continue;
+                      }
+                      std::string path = getPath(Method->Args[i - 1].get());
+                      if (!path.empty())
+                        recordDependencyPathTo(out, path);
                     }
                   }
                 }
@@ -3050,6 +3107,9 @@ void Sema::checkStmt(Stmt *S) {
       construction = cast->Expression.get();
     }
     auto *recordInitializer = dynamic_cast<InitStructExpr *>(Var->Init.get());
+    auto *callInitializer = dynamic_cast<CallExpr *>(construction);
+    if (callInitializer && !callInitializer->ResolvedShape)
+      callInitializer = nullptr;
     auto recordType = Info.TypeObj;
     if (auto *allocation = dynamic_cast<NewExpr *>(construction);
         allocation && !allocation->ArraySize && recordType &&
@@ -3057,14 +3117,19 @@ void Sema::checkStmt(Stmt *S) {
       // The allocation owns the descriptor, not the field's referent. Reuse
       // the same checked field-origin and PAL registration as a value record.
       auto *initializer = dynamic_cast<InitStructExpr *>(allocation->Initializer.get());
+      auto *allocCallInit = dynamic_cast<CallExpr *>(allocation->Initializer.get());
+      if (allocCallInit && !allocCallInit->ResolvedShape)
+        allocCallInit = nullptr;
       auto payload = std::dynamic_pointer_cast<ShapeType>(recordType->getPointeeType());
-      auto initialized = initializer ? std::dynamic_pointer_cast<ShapeType>(initializer->ResolvedType) : nullptr;
+      auto initialized = initializer ? std::dynamic_pointer_cast<ShapeType>(initializer->ResolvedType)
+                                     : (allocCallInit ? std::dynamic_pointer_cast<ShapeType>(allocCallInit->ResolvedType) : nullptr);
       if (payload && initialized && payload->Decl && payload->Decl == initialized->Decl) {
         recordInitializer = initializer;
+        callInitializer = allocCallInit;
         recordType = payload;
       }
     }
-    if (auto *init = recordInitializer; init && recordType && !HasError) {
+    if ((recordInitializer || callInitializer) && recordType && !HasError) {
       auto shape = std::dynamic_pointer_cast<ShapeType>(recordType);
       if (shape && shape->Decl) {
         std::map<std::string, std::shared_ptr<Type>> substitutions;
@@ -3072,7 +3137,21 @@ void Sema::checkStmt(Stmt *S) {
           for (size_t i = 0; i < shape->GenericArgs.size(); ++i)
             substitutions[shape->Decl->GenericParams[i].Name] = shape->GenericArgs[i];
         }
-        for (const auto &initializer : init->Members) {
+        std::vector<std::pair<std::string, Expr *>> fieldInitializers;
+        if (recordInitializer) {
+          for (const auto &initializer : recordInitializer->Members)
+            fieldInitializers.emplace_back(initializer.first, initializer.second.get());
+        } else if (callInitializer) {
+          for (const auto &arg : callInitializer->Args) {
+            if (auto *bin = dynamic_cast<BinaryExpr *>(arg.get())) {
+              if (bin->Op == "=") {
+                if (auto *varLHS = dynamic_cast<VariableExpr *>(bin->LHS.get()))
+                  fieldInitializers.emplace_back(varLHS->Name, bin->RHS.get());
+              }
+            }
+          }
+        }
+        for (const auto &initializer : fieldInitializers) {
           const auto fieldName = Type::stripMorphology(initializer.first);
           auto field = std::find_if(shape->Decl->Members.begin(),
               shape->Decl->Members.end(), [&](const ShapeMember &member) {
@@ -3087,9 +3166,18 @@ void Sema::checkStmt(Stmt *S) {
           auto ownership = queryExplicitCedeStage0OwnershipReadOnly(fieldType);
           if (ownership && *ownership == ValueOwnership::BorrowedView) {
             std::vector<AccessPath> origins;
-            if (collectActualReturnReferents(initializer.second.get(), origins)) {
+            if (collectActualReturnReferents(initializer.second, origins)) {
               for (const auto &origin : origins) {
                 const auto dependency = origin.toLegacyString();
+                Info.FieldDependencySet[fieldName].insert(dependency);
+                Info.LifeDependencySet.insert(dependency);
+                depsToCommitAsBorrow.insert(dependency);
+              }
+            } else {
+              std::set<std::string> fieldDeps;
+              bool hasUnknownFieldSource = false;
+              collectConsumingExpressionDependencies(initializer.second, fieldDeps, hasUnknownFieldSource);
+              for (const auto &dependency : fieldDeps) {
                 Info.FieldDependencySet[fieldName].insert(dependency);
                 Info.LifeDependencySet.insert(dependency);
                 depsToCommitAsBorrow.insert(dependency);
@@ -3099,7 +3187,7 @@ void Sema::checkStmt(Stmt *S) {
           if (isTaskLifetimeCarryingType(fieldType)) {
             std::set<std::string> fieldDeps;
             bool hasUnknownFieldSource = false;
-            collectConsumingExpressionDependencies(initializer.second.get(), fieldDeps, hasUnknownFieldSource);
+            collectConsumingExpressionDependencies(initializer.second, fieldDeps, hasUnknownFieldSource);
             Info.FieldDependencySet[fieldName] = fieldDeps;
             if (!fieldDeps.empty()) {
               Info.LifeDependencySet.insert(fieldDeps.begin(), fieldDeps.end());

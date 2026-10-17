@@ -4864,10 +4864,83 @@ void Sema::collectConsumingExpressionDependencies(
       expr = unsafe->Expression.get();
     else if (auto *postfix = dynamic_cast<PostfixExpr *>(expr))
       expr = postfix->LHS.get();
+    else if (auto *bin = dynamic_cast<BinaryExpr *>(expr);
+             bin && bin->Op == "=")
+      expr = bin->RHS.get();
     else
       break;
   }
   if (!expr) return;
+
+  auto recordBorrowTargetDeps = [&](Expr *target) {
+    while (target) {
+      if (auto *cast = dynamic_cast<CastExpr *>(target))
+        target = cast->Expression.get();
+      else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(target))
+        target = unsafe->Expression.get();
+      else if (auto *postfix = dynamic_cast<PostfixExpr *>(target))
+        target = postfix->LHS.get();
+      else
+        break;
+    }
+    if (!target) return;
+    Expr *rootExpr = target;
+    while (auto *mem = dynamic_cast<MemberExpr *>(rootExpr))
+      rootExpr = mem->Object.get();
+    while (auto *idx = dynamic_cast<ArrayIndexExpr *>(rootExpr))
+      rootExpr = idx->Array.get();
+    if (auto *var = dynamic_cast<VariableExpr *>(rootExpr)) {
+      SymbolInfo *binding = nullptr;
+      std::string actualName;
+      Scope *owner = nullptr;
+      bool found = false;
+      if (var->ResolvedBindingID &&
+          CurrentScope->findSymbolByID(var->ResolvedBindingID, binding) &&
+          binding) {
+        CurrentScope->findVariableWithDerefScope(var->Name, binding, actualName,
+                                                 owner);
+        found = true;
+      } else if (CurrentScope->findVariableWithDerefScope(
+                     var->Name, binding, actualName, owner) &&
+                 binding) {
+        found = true;
+      }
+      if (found && binding) {
+        size_t before = deps.size();
+        deps.insert(binding->LifeDependencySet.begin(),
+                    binding->LifeDependencySet.end());
+        for (const auto &kv : binding->FieldDependencySet)
+          deps.insert(kv.second.begin(), kv.second.end());
+        if (deps.size() == before && !binding->BorrowedFrom.empty())
+          deps.insert(binding->BorrowedFrom);
+        if (deps.size() == before && owner && owner->Depth > 0 &&
+            (binding->IsDeclaredVariable || binding->IsFunctionParameter)) {
+          deps.insert(actualName.empty() ? var->Name : actualName);
+        }
+        return;
+      }
+    }
+    collectConsumingExpressionDependencies(target, deps, hasUnknownSource,
+                                           false);
+  };
+
+  if (auto *unary = dynamic_cast<UnaryExpr *>(expr)) {
+    if (unary->Op == TokenType::Ampersand) {
+      recordBorrowTargetDeps(unary->RHS.get());
+      return;
+    }
+    if (unary->Op == TokenType::Caret || unary->Op == TokenType::Tilde ||
+        unary->Op == TokenType::Star) {
+      collectConsumingExpressionDependencies(unary->RHS.get(), deps,
+                                             hasUnknownSource, isCede);
+      return;
+    }
+  }
+  if (auto *addrOf = dynamic_cast<AddressOfExpr *>(expr)) {
+    recordBorrowTargetDeps(addrOf->Expression.get());
+    return;
+  }
+
   if (expr->ResolvedType &&
       !expr->ResolvedType->isPointer() &&
       !expr->ResolvedType->isSmartPointer() &&
@@ -4890,11 +4963,12 @@ void Sema::collectConsumingExpressionDependencies(
     std::string actualName;
     Scope *owner = nullptr;
     if (var->ResolvedBindingID && CurrentScope->findSymbolByID(var->ResolvedBindingID, binding) && binding) {
+      size_t before = deps.size();
       deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
       for (const auto &kv : binding->FieldDependencySet) {
         deps.insert(kv.second.begin(), kv.second.end());
       }
-      if (deps.empty() && !binding->BorrowedFrom.empty())
+      if (deps.size() == before && !binding->BorrowedFrom.empty())
         deps.insert(binding->BorrowedFrom);
       bool isScalar = binding->TypeObj &&
           (binding->TypeObj->isInteger() || binding->TypeObj->isFloatingPoint() ||
@@ -4904,16 +4978,17 @@ void Sema::collectConsumingExpressionDependencies(
            isTaskScopeType(binding->TypeObj) ||
            taskResultType(binding->TypeObj) != nullptr);
       std::string lookupName = var->Name;
-      if (!isCede && deps.empty() && !isScalar && !isPureTask && CurrentScope->findVariableWithDerefScope(lookupName, binding, actualName, owner) && owner && owner->Depth > 0 &&
+      if (!isCede && deps.size() == before && !isScalar && !isPureTask && CurrentScope->findVariableWithDerefScope(lookupName, binding, actualName, owner) && owner && owner->Depth > 0 &&
           (binding->IsDeclaredVariable || binding->IsFunctionParameter)) {
         deps.insert(actualName.empty() ? lookupName : actualName);
       }
     } else if (CurrentScope->findVariableWithDerefScope(var->Name, binding, actualName, owner) && binding) {
+      size_t before = deps.size();
       deps.insert(binding->LifeDependencySet.begin(), binding->LifeDependencySet.end());
       for (const auto &kv : binding->FieldDependencySet) {
         deps.insert(kv.second.begin(), kv.second.end());
       }
-      if (deps.empty() && !binding->BorrowedFrom.empty())
+      if (deps.size() == before && !binding->BorrowedFrom.empty())
         deps.insert(binding->BorrowedFrom);
       bool isScalar = binding->TypeObj &&
           (binding->TypeObj->isInteger() || binding->TypeObj->isFloatingPoint() ||
@@ -4922,7 +4997,7 @@ void Sema::collectConsumingExpressionDependencies(
           (binding->TypeObj->getSoulName().rfind("TaskHandle", 0) == 0 ||
            isTaskScopeType(binding->TypeObj) ||
            taskResultType(binding->TypeObj) != nullptr);
-      if (!isCede && deps.empty() && !isScalar && !isPureTask && owner && owner->Depth > 0 && (binding->IsDeclaredVariable || binding->IsFunctionParameter)) {
+      if (!isCede && deps.size() == before && !isScalar && !isPureTask && owner && owner->Depth > 0 && (binding->IsDeclaredVariable || binding->IsFunctionParameter)) {
         deps.insert(actualName.empty() ? var->Name : actualName);
       }
     } else {
@@ -4971,6 +5046,28 @@ void Sema::collectConsumingExpressionDependencies(
               }
             }
           }
+        }
+      }
+      for (const auto &dep : call->ResolvedFn->LifeDependencies) {
+        std::string depRoot = Type::stripMorphology(extractPathRoot(dep));
+        for (size_t i = 0; i < call->ResolvedFn->Args.size() && i < call->Args.size(); ++i) {
+          if (Type::stripMorphology(call->ResolvedFn->Args[i].Name) == depRoot) {
+            collectConsumingExpressionDependencies(
+                call->Args[i].get(), deps, hasUnknownSource,
+                call->ResolvedFn->Args[i].IsCeded);
+          }
+        }
+      }
+      if (call->ResolvedFn->Effect == EffectKind::Async) {
+        for (size_t i = 0; i < call->ResolvedFn->Args.size() && i < call->Args.size(); ++i) {
+          bool isCallableSelfWithoutExplicitDep =
+              (i == 0 &&
+               Type::stripMorphology(call->ResolvedFn->Args[0].Name) == "self" &&
+               call->ResolvedFn->LifeDependencies.empty());
+          collectConsumingExpressionDependencies(
+              call->Args[i].get(), deps, hasUnknownSource,
+              call->ResolvedFn->Args[i].IsCeded ||
+                  isCallableSelfWithoutExplicitDep);
         }
       }
     } else {
@@ -5215,8 +5312,23 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
   }
 
   if (auto *ret = dynamic_cast<ReturnStmt *>(node)) {
-    if (ret->ReturnValue && exprReferencesTracked(ret->ReturnValue.get()))
+    if (ret->ReturnValue && exprReferencesTracked(ret->ReturnValue.get())) {
+      auto retTy = ret->ReturnValue->ResolvedType;
+      if (!retTy || (!isLifetimeCarryingType(retTy) && !retTy->isReference() &&
+                     !retTy->isPointer())) {
+        return checkSafeTaskConsumerBodyHelper(ret->ReturnValue.get(),
+                                               trackedVars, allowedSelfReceiver);
+      }
+      if (dynamic_cast<AwaitExpr *>(unwrapExpr(ret->ReturnValue.get())) ||
+          dynamic_cast<WaitExpr *>(unwrapExpr(ret->ReturnValue.get()))) {
+        if (!retTy || (!isLifetimeCarryingType(retTy) && !retTy->isReference() &&
+                       !retTy->isPointer())) {
+          return checkSafeTaskConsumerBodyHelper(
+              ret->ReturnValue.get(), trackedVars, allowedSelfReceiver);
+        }
+      }
       return false;
+    }
     return true;
   }
 
@@ -5442,6 +5554,10 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
         }
         return false;
       }
+      return checkSafeTaskConsumerBodyHelper(bin->LHS.get(), trackedVars,
+                                             allowedSelfReceiver) &&
+             checkSafeTaskConsumerBodyHelper(bin->RHS.get(), trackedVars,
+                                             allowedSelfReceiver);
     }
 
     if (dynamic_cast<StartExpr *>(e))
@@ -5456,11 +5572,25 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
     if (auto *mcall = dynamic_cast<MethodCallExpr *>(e)) {
       if (mcall->Method == "start" || Type::stripMorphology(mcall->Method) == "start")
         return false;
-      if (exprReferencesTracked(mcall->Object.get()))
-        return false;
-      for (const auto &arg : mcall->Args) {
-        if (exprReferencesTracked(arg.get()))
+      if (exprReferencesTracked(mcall->Object.get())) {
+        Expr *unwrappedObj = unwrapExpr(mcall->Object.get());
+        if (!checkSafeTaskConsumerBodyHelper(unwrappedObj, trackedVars,
+                                             allowedSelfReceiver))
           return false;
+        if (!mcall->ResolvedFn ||
+            !isSafeSynchronousTaskConsumer(mcall->ResolvedFn, 0))
+          return false;
+      }
+      for (size_t i = 0; i < mcall->Args.size(); ++i) {
+        if (exprReferencesTracked(mcall->Args[i].get())) {
+          Expr *unwrappedArg = unwrapExpr(mcall->Args[i].get());
+          if (!checkSafeTaskConsumerBodyHelper(unwrappedArg, trackedVars,
+                                               allowedSelfReceiver))
+            return false;
+          if (!mcall->ResolvedFn ||
+              !isSafeSynchronousTaskConsumer(mcall->ResolvedFn, i + 1))
+            return false;
+        }
       }
       return true;
     }
@@ -5468,9 +5598,17 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
     if (auto *call = dynamic_cast<CallExpr *>(e)) {
       if (call->Callee == "start" || Type::stripMorphology(call->Callee) == "start")
         return false;
+      bool isBlockOn = (call->Callee == "block_on" ||
+                        Type::stripMorphology(call->Callee) == "block_on");
       for (size_t i = 0; i < call->Args.size(); ++i) {
         if (exprReferencesTracked(call->Args[i].get())) {
           Expr *unwrappedArg = unwrapExpr(call->Args[i].get());
+          if (isBlockOn) {
+            if (!checkSafeTaskConsumerBodyHelper(unwrappedArg, trackedVars,
+                                                 allowedSelfReceiver))
+              return false;
+            continue;
+          }
           if (auto *v = dynamic_cast<VariableExpr *>(unwrappedArg)) {
             if (trackedVars.count(Type::stripMorphology(v->Name))) {
               if (!call->ResolvedFn || !isSafeSynchronousTaskConsumer(call->ResolvedFn, i))
@@ -5540,10 +5678,17 @@ bool Sema::isSafeSynchronousTaskConsumer(FunctionDecl *calleeFn, size_t formalIn
   if (formalIndex >= calleeFn->Args.size()) return false;
   if (!calleeFn->Args[formalIndex].IsCeded) return false;
 
-  if (calleeFn->ResolvedReturnType &&
-      (isLifetimeCarryingType(calleeFn->ResolvedReturnType) ||
-       calleeFn->ResolvedReturnType->isReference() ||
-       calleeFn->ResolvedReturnType->isPointer())) {
+  std::shared_ptr<toka::Type> calleeRetTy = calleeFn->ResolvedReturnType;
+  if (!calleeRetTy) {
+    if (calleeFn->ReturnTypeSyntax)
+      calleeRetTy = resolveType(toka::Type::fromSyntax(calleeFn->ReturnTypeSyntax));
+    else if (!calleeFn->ReturnType.empty())
+      calleeRetTy = resolveType(toka::Type::fromString(calleeFn->ReturnType));
+  }
+  if (calleeRetTy &&
+      (isLifetimeCarryingType(calleeRetTy) ||
+       calleeRetTy->isReference() ||
+       calleeRetTy->isPointer())) {
     return false;
   }
 
@@ -5553,6 +5698,10 @@ bool Sema::isSafeSynchronousTaskConsumer(FunctionDecl *calleeFn, size_t formalIn
       if (Type::stripMorphology(src.Root) == formalName)
         return false;
     }
+  }
+  for (const auto &dep : calleeFn->LifeDependencies) {
+    if (Type::stripMorphology(extractPathRoot(dep)) == formalName)
+      return false;
   }
 
   static std::set<std::pair<FunctionDecl *, size_t>> activeChecking;
@@ -5635,6 +5784,19 @@ bool Sema::checkSafeTaskForwarderBodyHelper(
     return checkSafeTaskForwarderBodyHelper(initBlock->Body.get(), trackedVars, returnPathsCount, allReturnsTracked);
   }
 
+  auto isTrackedVarOrProjection = [&](Expr *expr) -> bool {
+    Expr *curr = unwrapExpr(expr);
+    while (auto *mem = dynamic_cast<MemberExpr *>(curr)) {
+      if (mem->IsTaskStart || Type::stripMorphology(mem->Member) == "start")
+        return false;
+      curr = unwrapExpr(mem->Object.get());
+    }
+    if (auto *v = dynamic_cast<VariableExpr *>(curr)) {
+      return trackedVars.count(Type::stripMorphology(v->Name)) > 0;
+    }
+    return false;
+  };
+
   if (auto *ret = dynamic_cast<ReturnStmt *>(node)) {
     returnPathsCount++;
     if (!ret->ReturnValue) {
@@ -5642,19 +5804,29 @@ bool Sema::checkSafeTaskForwarderBodyHelper(
       return false;
     }
     Expr *unwrapped = unwrapExpr(ret->ReturnValue.get());
-    if (auto *v = dynamic_cast<VariableExpr *>(unwrapped)) {
-      if (trackedVars.count(Type::stripMorphology(v->Name))) {
-        return true;
-      }
+    if (isTrackedVarOrProjection(unwrapped)) {
+      return true;
     }
     if (auto *call = dynamic_cast<CallExpr *>(unwrapped)) {
       for (size_t i = 0; i < call->Args.size(); ++i) {
         Expr *argUnwrapped = unwrapExpr(call->Args[i].get());
-        if (auto *v = dynamic_cast<VariableExpr *>(argUnwrapped)) {
-          if (trackedVars.count(Type::stripMorphology(v->Name))) {
-            if (call->ResolvedFn && isSafeSynchronousTaskForwarder(call->ResolvedFn, i)) {
-              return true;
-            }
+        if (isTrackedVarOrProjection(argUnwrapped)) {
+          if (call->ResolvedFn && isSafeSynchronousTaskForwarder(call->ResolvedFn, i)) {
+            return true;
+          }
+        }
+      }
+    }
+    if (auto *mcall = dynamic_cast<MethodCallExpr *>(unwrapped)) {
+      if (isTrackedVarOrProjection(mcall->Object.get())) {
+        if (mcall->ResolvedFn && isSafeSynchronousTaskForwarder(mcall->ResolvedFn, 0)) {
+          return true;
+        }
+      }
+      for (size_t i = 0; i < mcall->Args.size(); ++i) {
+        if (isTrackedVarOrProjection(mcall->Args[i].get())) {
+          if (mcall->ResolvedFn && isSafeSynchronousTaskForwarder(mcall->ResolvedFn, i + 1)) {
+            return true;
           }
         }
       }
@@ -5666,21 +5838,33 @@ bool Sema::checkSafeTaskForwarderBodyHelper(
   if (auto *varDecl = dynamic_cast<VariableDecl *>(node)) {
     if (varDecl->Init && exprReferencesTracked(varDecl->Init.get())) {
       Expr *unwrapped = unwrapExpr(varDecl->Init.get());
-      if (auto *v = dynamic_cast<VariableExpr *>(unwrapped)) {
-        if (trackedVars.count(Type::stripMorphology(v->Name))) {
-          trackedVars.insert(Type::stripMorphology(varDecl->Name));
-          return true;
-        }
+      if (isTrackedVarOrProjection(unwrapped)) {
+        trackedVars.insert(Type::stripMorphology(varDecl->Name));
+        return true;
       }
       if (auto *call = dynamic_cast<CallExpr *>(unwrapped)) {
         for (size_t i = 0; i < call->Args.size(); ++i) {
           Expr *argUnwrapped = unwrapExpr(call->Args[i].get());
-          if (auto *v = dynamic_cast<VariableExpr *>(argUnwrapped)) {
-            if (trackedVars.count(Type::stripMorphology(v->Name))) {
-              if (call->ResolvedFn && isSafeSynchronousTaskForwarder(call->ResolvedFn, i)) {
-                trackedVars.insert(Type::stripMorphology(varDecl->Name));
-                return true;
-              }
+          if (isTrackedVarOrProjection(argUnwrapped)) {
+            if (call->ResolvedFn && isSafeSynchronousTaskForwarder(call->ResolvedFn, i)) {
+              trackedVars.insert(Type::stripMorphology(varDecl->Name));
+              return true;
+            }
+          }
+        }
+      }
+      if (auto *mcall = dynamic_cast<MethodCallExpr *>(unwrapped)) {
+        if (isTrackedVarOrProjection(mcall->Object.get())) {
+          if (mcall->ResolvedFn && isSafeSynchronousTaskForwarder(mcall->ResolvedFn, 0)) {
+            trackedVars.insert(Type::stripMorphology(varDecl->Name));
+            return true;
+          }
+        }
+        for (size_t i = 0; i < mcall->Args.size(); ++i) {
+          if (isTrackedVarOrProjection(mcall->Args[i].get())) {
+            if (mcall->ResolvedFn && isSafeSynchronousTaskForwarder(mcall->ResolvedFn, i + 1)) {
+              trackedVars.insert(Type::stripMorphology(varDecl->Name));
+              return true;
             }
           }
         }
@@ -5751,14 +5935,12 @@ bool Sema::checkSafeTaskForwarderBodyHelper(
         if (exprReferencesTracked(bin->LHS.get())) return false;
         if (exprReferencesTracked(bin->RHS.get())) {
           Expr *unwrappedRHS = unwrapExpr(bin->RHS.get());
-          if (auto *v = dynamic_cast<VariableExpr *>(unwrappedRHS)) {
-            if (trackedVars.count(Type::stripMorphology(v->Name))) {
-              Expr *lhs = bin->LHS.get();
-              while (auto *u = dynamic_cast<UnaryExpr *>(lhs)) lhs = u->RHS.get();
-              if (auto *lv = dynamic_cast<VariableExpr *>(lhs)) {
-                trackedVars.insert(Type::stripMorphology(lv->Name));
-                return true;
-              }
+          if (isTrackedVarOrProjection(unwrappedRHS)) {
+            Expr *lhs = bin->LHS.get();
+            while (auto *u = dynamic_cast<UnaryExpr *>(lhs)) lhs = u->RHS.get();
+            if (auto *lv = dynamic_cast<VariableExpr *>(lhs)) {
+              trackedVars.insert(Type::stripMorphology(lv->Name));
+              return true;
             }
           }
           return false;
@@ -5788,8 +5970,14 @@ bool Sema::isSafeSynchronousTaskForwarder(FunctionDecl *calleeFn, size_t formalI
   if (formalIndex >= calleeFn->Args.size()) return false;
   if (!calleeFn->Args[formalIndex].IsCeded) return false;
 
-  if (!calleeFn->ResolvedReturnType ||
-      !isTaskLifetimeCarryingType(calleeFn->ResolvedReturnType)) {
+  std::shared_ptr<toka::Type> calleeRetTy = calleeFn->ResolvedReturnType;
+  if (!calleeRetTy) {
+    if (calleeFn->ReturnTypeSyntax)
+      calleeRetTy = resolveType(toka::Type::fromSyntax(calleeFn->ReturnTypeSyntax));
+    else if (!calleeFn->ReturnType.empty())
+      calleeRetTy = resolveType(toka::Type::fromString(calleeFn->ReturnType));
+  }
+  if (!calleeRetTy || !isTaskLifetimeCarryingType(calleeRetTy)) {
     return false;
   }
 
@@ -5802,6 +5990,14 @@ bool Sema::isSafeSynchronousTaskForwarder(FunctionDecl *calleeFn, size_t formalI
           routes = true;
           break;
         }
+      }
+    }
+  }
+  if (!routes) {
+    for (const auto &dep : calleeFn->LifeDependencies) {
+      if (Type::stripMorphology(extractPathRoot(dep)) == formalName) {
+        routes = true;
+        break;
       }
     }
   }
@@ -6019,7 +6215,8 @@ bool Sema::checkConsumingArgumentEscape(
 
   std::set<std::string> deps;
   bool hasUnknownSource = false;
-  collectConsumingExpressionDependencies(exactValue, deps, hasUnknownSource);
+  collectConsumingExpressionDependencies(exactValue, deps, hasUnknownSource,
+                                         true);
 
   if (deps.empty()) {
     if (!m_LastBorrowSource.empty())
@@ -6063,12 +6260,22 @@ bool Sema::checkConsumingArgumentEscape(
     int depDepth = getScopeDepth(depStr);
 
     bool routesToReturn = false;
-    if (calleeFn) {
+    if (calleeFn && formalIndex < calleeFn->Args.size()) {
+      const std::string formalName =
+          Type::stripMorphology(calleeFn->Args[formalIndex].Name);
       for (const auto &route : calleeFn->ReturnContract.Routes) {
         if (route.Target.Kind == ReturnDependencyTargetKind::ReturnValue) {
           for (const auto &src : route.Sources) {
-            if (formalIndex < calleeFn->Args.size() && src.Root == calleeFn->Args[formalIndex].Name)
+            if (Type::stripMorphology(src.Root) == formalName)
               routesToReturn = true;
+          }
+        }
+      }
+      if (!routesToReturn) {
+        for (const auto &dep : calleeFn->LifeDependencies) {
+          if (Type::stripMorphology(extractPathRoot(dep)) == formalName) {
+            routesToReturn = true;
+            break;
           }
         }
       }
@@ -6076,11 +6283,13 @@ bool Sema::checkConsumingArgumentEscape(
 
     if (methodReceiver) {
       bool routesToReceiver = false;
-      if (calleeFn) {
+      if (calleeFn && formalIndex < calleeFn->Args.size()) {
+        const std::string formalName =
+            Type::stripMorphology(calleeFn->Args[formalIndex].Name);
         for (const auto &route : calleeFn->ReturnContract.Routes) {
           if (route.Target.Kind == ReturnDependencyTargetKind::ReceiverPoststate) {
             for (const auto &src : route.Sources) {
-              if (formalIndex < calleeFn->Args.size() && src.Root == calleeFn->Args[formalIndex].Name)
+              if (Type::stripMorphology(src.Root) == formalName)
                 routesToReceiver = true;
             }
           }
@@ -6290,6 +6499,31 @@ bool Sema::checkConsumingArgumentEscape(
       // within this synchronous call frame, while the caller's local source
       // dependency remains alive. It does not escape.
       continue;
+    }
+
+    if (calleeFn && calleeFn->Effect == EffectKind::Async && calleeFn->Body &&
+        formalIndex < calleeFn->Args.size() &&
+        calleeFn->Args[formalIndex].IsCeded) {
+      const std::string formalName =
+          Type::stripMorphology(calleeFn->Args[formalIndex].Name);
+      std::shared_ptr<toka::Type> calleeRetTy = calleeFn->ResolvedReturnType;
+      if (!calleeRetTy) {
+        if (calleeFn->ReturnTypeSyntax)
+          calleeRetTy = resolveType(toka::Type::fromSyntax(calleeFn->ReturnTypeSyntax));
+        else if (!calleeFn->ReturnType.empty())
+          calleeRetTy = resolveType(toka::Type::fromString(calleeFn->ReturnType));
+      }
+      auto resTy = taskResultType(calleeRetTy);
+      bool resultCarriesBorrow =
+          resTy && (isLifetimeCarryingType(resTy) || resTy->isReference() ||
+                    resTy->isPointer());
+      if ((!resultCarriesBorrow || routesToReturn) &&
+          checkSafeTaskConsumerBody(calleeFn->Body.get(), formalName)) {
+        m_LastLifeDependencies.insert(depStr);
+        if (routesToReturn)
+          m_LastTaskResultDependencies.insert(depStr);
+        continue;
+      }
     }
 
     if (!depIsParam) {
@@ -13519,7 +13753,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         if (auto *varExpr = findVariableExpr(argExpr))
           argName = varExpr->Name;
       }
-      if (!argName.empty()) {
+      if (!isCededParam && !isCallerCeded && !argName.empty()) {
         std::string root = extractPathRoot(argName);
         SymbolInfo *info = nullptr;
         Scope *owner = nullptr;
@@ -13543,7 +13777,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (targetDep.empty() && argExpr) {
         std::set<std::string> deps;
         bool hasUnknownSource = false;
-        collectConsumingExpressionDependencies(argExpr, deps, hasUnknownSource);
+        collectConsumingExpressionDependencies(
+            argExpr, deps, hasUnknownSource, isCededParam || isCallerCeded);
         for (const auto &d : deps) {
           if (d.empty() || d == "<unknown>")
             continue;
@@ -14205,14 +14440,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     getPathString(Call->Args[i].get());
                 std::string argVar =
                     getDependencyPathString(Call->Args[i].get());
-                if (argVar.empty())
+                const bool isCededArg =
+                    Fn->Args[i].IsCeded ||
+                    dynamic_cast<CedeExpr *>(Call->Args[i].get()) != nullptr;
+                if (argVar.empty() && !isCededArg)
                   continue;
                 bool isExpressionDependency = structuralArgVar.empty();
-                if (argName != dep)
+                if (!argVar.empty() && argName != dep)
                   argVar += dep.substr(argName.size());
 
                 bool isCurrentFunctionParam = false;
-                if (CurrentFunction) {
+                if (CurrentFunction && !argVar.empty()) {
                   std::string baseArg = argVar;
                   size_t dotPos = baseArg.find('.');
                   if (dotPos != std::string::npos)
@@ -14262,22 +14500,49 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                   } else if (argInfo) {
                     contributedDeps = true;
                   }
-                } else if (argInfo) {
-                  if (!argInfo->BorrowedFrom.empty()) {
-                    m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
-                    if (Fn->Effect == EffectKind::Async || isAsync)
-                      m_LastTaskResultDependencies.insert(argInfo->BorrowedFrom);
-                    contributedDeps = true;
-                  }
-                  if (!argInfo->LifeDependencySet.empty()) {
-                    m_LastLifeDependencies.insert(
-                        argInfo->LifeDependencySet.begin(),
-                        argInfo->LifeDependencySet.end());
-                    if (Fn->Effect == EffectKind::Async || isAsync)
-                      m_LastTaskResultDependencies.insert(
+                } else {
+                  if (argInfo) {
+                    if (!argInfo->BorrowedFrom.empty()) {
+                      m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
+                      if (Fn->Effect == EffectKind::Async || isAsync)
+                        m_LastTaskResultDependencies.insert(argInfo->BorrowedFrom);
+                      contributedDeps = true;
+                    }
+                    if (!argInfo->LifeDependencySet.empty()) {
+                      m_LastLifeDependencies.insert(
                           argInfo->LifeDependencySet.begin(),
                           argInfo->LifeDependencySet.end());
-                    contributedDeps = true;
+                      if (Fn->Effect == EffectKind::Async || isAsync)
+                        m_LastTaskResultDependencies.insert(
+                            argInfo->LifeDependencySet.begin(),
+                            argInfo->LifeDependencySet.end());
+                      contributedDeps = true;
+                    }
+                    if (isCededArg && !argInfo->FieldDependencySet.empty()) {
+                      for (const auto &pair : argInfo->FieldDependencySet) {
+                        m_LastLifeDependencies.insert(
+                            pair.second.begin(), pair.second.end());
+                        if (Fn->Effect == EffectKind::Async || isAsync)
+                          m_LastTaskResultDependencies.insert(
+                              pair.second.begin(), pair.second.end());
+                        contributedDeps = true;
+                      }
+                    }
+                  }
+                  if (isCededArg) {
+                    std::set<std::string> cededDeps;
+                    bool hasUnknownCededSource = false;
+                    collectConsumingExpressionDependencies(
+                        Call->Args[i].get(), cededDeps, hasUnknownCededSource,
+                        true);
+                    if (!cededDeps.empty()) {
+                      m_LastLifeDependencies.insert(cededDeps.begin(),
+                                                    cededDeps.end());
+                      if (Fn->Effect == EffectKind::Async || isAsync)
+                        m_LastTaskResultDependencies.insert(cededDeps.begin(),
+                                                            cededDeps.end());
+                      contributedDeps = true;
+                    }
                   }
                 }
 
@@ -14295,7 +14560,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     ((argResolvedType && isTaskLifetimeCarryingType(argResolvedType)) ||
                      (Fn->Args[i].ResolvedType && isTaskLifetimeCarryingType(Fn->Args[i].ResolvedType)));
                 const bool carriesTaskFieldDeps =
-                    isCededTaskParam ||
+                    isCededArg || isCededTaskParam ||
                     ((argResolvedType && isTaskLifetimeCarryingType(argResolvedType)) &&
                      (ReturnType && isTaskLifetimeCarryingType(ReturnType)));
                 if (carriesTaskFieldDeps && argInfo && !argInfo->FieldDependencySet.empty()) {
@@ -14304,7 +14569,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                         pair.second.begin(), pair.second.end());
                   }
                 }
-                if (!isUnpackingTask && !isCededTaskParam &&
+                if (!isUnpackingTask && !isCededArg && !isCededTaskParam &&
+                    !argVar.empty() &&
                     (isExpressionDependency || isDottedDependency ||
                      isCurrentFunctionParam || !contributedDeps ||
                      isLifetimeAnchor)) {
@@ -14319,7 +14585,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                   : SemanticRuleID::EffRet001,
                     SemanticOperation::EscapingDependency,
                     SemanticDecision::Allow,
-                    SemanticReason::InterfaceContractApplied, argVar, dep,
+                    SemanticReason::InterfaceContractApplied,
+                    argVar.empty() ? dep : argVar, dep,
                     Fn->Args[i].Loc);
                 break;
              }
@@ -14331,13 +14598,22 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               m_HasTaskResultDependencies = true;
           }
           for (size_t i = 0; i < Fn->Args.size(); ++i) {
-              if (Fn->Args[i].IsCeded || (i < Call->Args.size() && dynamic_cast<CedeExpr *>(Call->Args[i].get())))
-                  continue;
               Expr *argExpr = i < Call->Args.size() ? Call->Args[i].get() : nullptr;
-              auto argType = argExpr ? argExpr->ResolvedType : nullptr;
+              if (!argExpr)
+                  continue;
+              const bool isCededArg =
+                  Fn->Args[i].IsCeded ||
+                  dynamic_cast<CedeExpr *>(argExpr) != nullptr;
+              auto argType = argExpr->ResolvedType;
               SymbolInfo *argInfo = nullptr;
               Expr *base = argExpr;
-              while (auto *mem = dynamic_cast<MemberExpr *>(base)) base = mem->Object.get();
+              while (base) {
+                  if (auto *c = dynamic_cast<CedeExpr *>(base)) { base = c->Value.get(); continue; }
+                  if (auto *cast = dynamic_cast<CastExpr *>(base)) { base = cast->Expression.get(); continue; }
+                  if (auto *unsafe = dynamic_cast<UnsafeExpr *>(base)) { base = unsafe->Expression.get(); continue; }
+                  if (auto *mem = dynamic_cast<MemberExpr *>(base)) { base = mem->Object.get(); continue; }
+                  break;
+              }
               if (auto *var = dynamic_cast<VariableExpr *>(base)) {
                   CurrentScope->findSymbol(var->Name, argInfo);
                   if (!argType && argInfo) argType = argInfo->TypeObj;
@@ -14345,6 +14621,26 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               if (argType && (argType->isInteger() || argType->isFloatingPoint() ||
                              argType->isBoolean() || argType->isUnit()))
                   continue;
+              if (isCededArg) {
+                  if (argInfo) {
+                      if (!argInfo->BorrowedFrom.empty())
+                          m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
+                      if (!argInfo->LifeDependencySet.empty())
+                          m_LastLifeDependencies.insert(argInfo->LifeDependencySet.begin(),
+                                                        argInfo->LifeDependencySet.end());
+                      for (const auto &pair : argInfo->FieldDependencySet) {
+                          m_LastLifeDependencies.insert(pair.second.begin(),
+                                                        pair.second.end());
+                      }
+                  }
+                  std::set<std::string> cededDeps;
+                  bool hasUnknownCededSource = false;
+                  collectConsumingExpressionDependencies(
+                      argExpr, cededDeps, hasUnknownCededSource, true);
+                  m_LastLifeDependencies.insert(cededDeps.begin(),
+                                                cededDeps.end());
+                  continue;
+              }
               std::string argVar = mapParamToArg(Fn->Args[i].Name);
               if (!argVar.empty()) {
                   if (argInfo) {

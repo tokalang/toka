@@ -6263,6 +6263,58 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 }
             }
             
+            if (!FD->Args.empty() && Met->Object) {
+                std::shared_ptr<toka::Type> expectedSelfTy =
+                    FD->Args[0].ResolvedType
+                        ? FD->Args[0].ResolvedType
+                        : resolveType(
+                              Sema::synthesizePhysicalTypeObject(FD->Args[0]));
+                if (!expectedSelfTy)
+                    expectedSelfTy = Met->Object->ResolvedType;
+                if ((FD->Effect == EffectKind::Async ||
+                     isTaskLifetimeCarryingType(FD->ResolvedReturnType)) &&
+                    !FD->Body) {
+                    Expr *selfExpr = Met->Object.get();
+                    auto selfType = selfExpr ? selfExpr->ResolvedType : nullptr;
+                    if (selfType && !selfType->isInteger() &&
+                        !selfType->isFloatingPoint() &&
+                        !selfType->isBoolean() && !selfType->isUnit()) {
+                        std::set<std::string> deps;
+                        bool hasUnknownSource = false;
+                        collectConsumingExpressionDependencies(
+                            selfExpr, deps, hasUnknownSource,
+                            FD->Args[0].IsCeded);
+                        if (!FD->Args[0].IsCeded) {
+                            std::string selfPath = getPathString(selfExpr);
+                            if (!selfPath.empty())
+                                deps.insert(selfPath);
+                        }
+                        if (!deps.empty() || hasUnknownSource) {
+                            std::string depName = !deps.empty()
+                                                      ? *deps.begin()
+                                                      : getPathString(selfExpr);
+                            error(selfExpr, DiagID::ERR_BORROW_LIFETIME,
+                                  FD->Name,
+                                  depName.empty() ? "self" : depName);
+                            SourceLocation originLoc =
+                                findPathDeclaration(depName);
+                            if (originLoc.isValid())
+                                DiagnosticEngine::report(
+                                    originLoc, DiagID::NOTE_GENERIC,
+                                    "shorter-lived dependency declared here");
+                            methodCallRollback.reject();
+                            return Type::fromString("unknown");
+                        }
+                    }
+                }
+                if (expectedSelfTy &&
+                    !checkConsumingArgumentEscape(
+                        Met->Object.get(), expectedSelfTy, FD->Args[0].IsCeded,
+                        FD, 0, Met->Args, Met, Met->Object.get())) {
+                    methodCallRollback.reject();
+                    return Type::fromString("unknown");
+                }
+            }
             for (size_t i = 0; i < Met->Args.size(); ++i) {
                 Met->Args[i] = foldGenericConstant(std::move(Met->Args[i]));
                 std::shared_ptr<toka::Type> expectedParamTy = nullptr;
@@ -6443,14 +6495,28 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                       auto argType = argExpr ? argExpr->ResolvedType : nullptr;
                       if (argType && !argType->isInteger() && !argType->isFloatingPoint() &&
                           !argType->isBoolean() && !argType->isUnit()) {
-                        std::string argName = getPathString(argExpr);
-                        error(Met->Args[i].get(), DiagID::ERR_BORROW_LIFETIME, FD->Name, argName.empty() ? "argument" : argName);
-                        SourceLocation originLoc = findPathDeclaration(argName);
-                        if (originLoc.isValid())
-                          DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
-                                                   "shorter-lived dependency declared here");
-                        methodCallRollback.reject();
-                        return Type::fromString("unknown");
+                        bool isCededParam = i + 1 < FD->Args.size() && FD->Args[i + 1].IsCeded;
+                        bool isCallerCeded = dynamic_cast<CedeExpr *>(argExpr) != nullptr;
+                        std::set<std::string> deps;
+                        bool hasUnknownSource = false;
+                        collectConsumingExpressionDependencies(
+                            argExpr, deps, hasUnknownSource,
+                            isCededParam || isCallerCeded);
+                        if (!isCededParam && !isCallerCeded) {
+                          std::string argName = getPathString(argExpr);
+                          if (!argName.empty())
+                            deps.insert(argName);
+                        }
+                        if (!deps.empty() || hasUnknownSource) {
+                          std::string depName = !deps.empty() ? *deps.begin() : getPathString(argExpr);
+                          error(Met->Args[i].get(), DiagID::ERR_BORROW_LIFETIME, FD->Name, depName.empty() ? "argument" : depName);
+                          SourceLocation originLoc = findPathDeclaration(depName);
+                          if (originLoc.isValid())
+                            DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                                     "shorter-lived dependency declared here");
+                          methodCallRollback.reject();
+                          return Type::fromString("unknown");
+                        }
                       }
                     }
                     if (!checkConsumingArgumentEscape(
@@ -6566,30 +6632,36 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             if (hasExplicitDeps) {
                 for (const auto &dep : FD->LifeDependencies) {
                    std::string argVar = mapParamToArg(dep);
-                   if (argVar.empty())
-                     continue;
-
                    Expr *structuralArg = Met->Object.get();
-                   for (size_t i = 1; i < FD->Args.size(); ++i) {
+                   size_t matchedParamIdx = 0;
+                   for (size_t i = 0; i < FD->Args.size(); ++i) {
                      const std::string argumentName =
                          Type::stripMorphology(FD->Args[i].Name);
                      const std::string normalized =
                          Type::stripMorphology(dep);
-                     if ((normalized == argumentName ||
-                          (normalized.size() > argumentName.size() &&
-                           normalized.compare(0, argumentName.size(),
-                                              argumentName) == 0 &&
-                           normalized[argumentName.size()] == '.')) &&
-                         i - 1 < Met->Args.size()) {
-                       structuralArg = Met->Args[i - 1].get();
+                     if (normalized == argumentName ||
+                         (normalized.size() > argumentName.size() &&
+                          normalized.compare(0, argumentName.size(),
+                                             argumentName) == 0 &&
+                          normalized[argumentName.size()] == '.')) {
+                       matchedParamIdx = i;
+                       if (i > 0 && i - 1 < Met->Args.size())
+                         structuralArg = Met->Args[i - 1].get();
                        break;
                      }
                    }
+                   const bool isCededArg =
+                       (matchedParamIdx < FD->Args.size() &&
+                        FD->Args[matchedParamIdx].IsCeded) ||
+                       dynamic_cast<CedeExpr *>(structuralArg) != nullptr;
+                   if (argVar.empty() && !isCededArg)
+                     continue;
+
                    bool isExpressionDependency =
                        getPathString(structuralArg).empty();
 
                    bool isCurrentFunctionParam = false;
-                   if (CurrentFunction) {
+                   if (CurrentFunction && !argVar.empty()) {
                      std::string baseArg = argVar;
                      size_t dotPos = baseArg.find('.');
                      if (dotPos != std::string::npos)
@@ -6603,30 +6675,30 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                    }
 
                    SymbolInfo *argInfo = nullptr;
-                   std::shared_ptr<toka::Type> argResolvedType = nullptr;
+                   std::shared_ptr<toka::Type> argResolvedType =
+                       structuralArg ? structuralArg->ResolvedType : nullptr;
                    bool contributedDeps = false;
 
-                   if (Type::stripMorphology(dep) == "self") {
-                     if (auto *selfVar = dynamic_cast<VariableExpr *>(Met->Object.get())) {
-                       if (CurrentScope->findSymbol(selfVar->Name, argInfo)) {
-                         argResolvedType = argInfo->TypeObj;
-                       }
-                     } else {
-                       argResolvedType = Met->Object ? Met->Object->ResolvedType : nullptr;
+                   Expr *unwrappedArg = structuralArg;
+                   while (unwrappedArg) {
+                     if (auto *c = dynamic_cast<CedeExpr *>(unwrappedArg)) {
+                       unwrappedArg = c->Value.get();
+                       continue;
                      }
-                   } else {
-                     for (size_t i = 0; i < FD->Args.size(); ++i) {
-                       if (FD->Args[i].Name != dep || i == 0 || (i - 1) >= Met->Args.size())
-                         continue;
-                       Expr *argExpr = Met->Args[i - 1].get();
-                       argResolvedType = argExpr ? argExpr->ResolvedType : nullptr;
-                       if (auto *var = dynamic_cast<VariableExpr *>(argExpr)) {
-                         if (CurrentScope->findSymbol(var->Name, argInfo)) {
-                           if (!argResolvedType)
-                             argResolvedType = argInfo->TypeObj;
-                         }
-                       }
-                       break;
+                     if (auto *cast = dynamic_cast<CastExpr *>(unwrappedArg)) {
+                       unwrappedArg = cast->Expression.get();
+                       continue;
+                     }
+                     if (auto *unsafe = dynamic_cast<UnsafeExpr *>(unwrappedArg)) {
+                       unwrappedArg = unsafe->Expression.get();
+                       continue;
+                     }
+                     break;
+                   }
+                   if (auto *var = dynamic_cast<VariableExpr *>(unwrappedArg)) {
+                     if (CurrentScope->findSymbol(var->Name, argInfo)) {
+                       if (!argResolvedType)
+                         argResolvedType = argInfo->TypeObj;
                      }
                    }
 
@@ -6647,6 +6719,30 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                              argInfo->LifeDependencySet.end());
                        contributedDeps = true;
                      }
+                     if (isCededArg && !argInfo->FieldDependencySet.empty()) {
+                       for (const auto &pair : argInfo->FieldDependencySet) {
+                         m_LastLifeDependencies.insert(
+                             pair.second.begin(), pair.second.end());
+                         if (FD->Effect == EffectKind::Async)
+                           m_LastTaskResultDependencies.insert(
+                               pair.second.begin(), pair.second.end());
+                         contributedDeps = true;
+                       }
+                     }
+                   }
+                   if (isCededArg && structuralArg) {
+                     std::set<std::string> cededDeps;
+                     bool hasUnknownCededSource = false;
+                     collectConsumingExpressionDependencies(
+                         structuralArg, cededDeps, hasUnknownCededSource, true);
+                     if (!cededDeps.empty()) {
+                       m_LastLifeDependencies.insert(cededDeps.begin(),
+                                                     cededDeps.end());
+                       if (FD->Effect == EffectKind::Async)
+                         m_LastTaskResultDependencies.insert(cededDeps.begin(),
+                                                             cededDeps.end());
+                       contributedDeps = true;
+                     }
                    }
 
                    bool isLifetimeAnchor = false;
@@ -6658,8 +6754,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                         retType &&
                                         resolveType(retType)->isReference();
                    }
-                   if (isExpressionDependency || isCurrentFunctionParam ||
-                       !contributedDeps || isLifetimeAnchor) {
+                   if (!isCededArg && !argVar.empty() &&
+                       (isExpressionDependency || isCurrentFunctionParam ||
+                        !contributedDeps || isLifetimeAnchor)) {
                      m_LastLifeDependencies.insert(argVar);
                      if (FD->Effect == EffectKind::Async)
                        m_LastTaskResultDependencies.insert(argVar);
@@ -6672,7 +6769,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                 : SemanticRuleID::EffRet001,
                        SemanticOperation::EscapingDependency,
                        SemanticDecision::Allow,
-                       SemanticReason::InterfaceContractApplied, argVar, dep,
+                       SemanticReason::InterfaceContractApplied,
+                       argVar.empty() ? dep : argVar, dep,
                        FD->Loc);
                 }
             }
@@ -6681,33 +6779,68 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     m_LastTaskResultDependencies.clear();
                     m_HasTaskResultDependencies = true;
                 }
-                if (!FD->Args.empty() && !FD->Args[0].IsCeded) {
-                    std::string selfVar = mapParamToArg("self");
-                    if (!selfVar.empty()) {
-                        SymbolInfo *argInfo = nullptr;
-                        Expr *base = Met->Object.get();
-                        while (auto *mem = dynamic_cast<MemberExpr *>(base)) base = mem->Object.get();
-                        if (auto *var = dynamic_cast<VariableExpr *>(base)) {
-                            CurrentScope->findSymbol(var->Name, argInfo);
-                        }
+                if (!FD->Args.empty() && Met->Object) {
+                    SymbolInfo *argInfo = nullptr;
+                    Expr *base = Met->Object.get();
+                    while (base) {
+                        if (auto *c = dynamic_cast<CedeExpr *>(base)) { base = c->Value.get(); continue; }
+                        if (auto *cast = dynamic_cast<CastExpr *>(base)) { base = cast->Expression.get(); continue; }
+                        if (auto *unsafe = dynamic_cast<UnsafeExpr *>(base)) { base = unsafe->Expression.get(); continue; }
+                        if (auto *mem = dynamic_cast<MemberExpr *>(base)) { base = mem->Object.get(); continue; }
+                        break;
+                    }
+                    if (auto *var = dynamic_cast<VariableExpr *>(base)) {
+                        CurrentScope->findSymbol(var->Name, argInfo);
+                    }
+                    if (FD->Args[0].IsCeded) {
                         if (argInfo) {
                             if (!argInfo->BorrowedFrom.empty())
                                 m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
                             if (!argInfo->LifeDependencySet.empty())
                                 m_LastLifeDependencies.insert(argInfo->LifeDependencySet.begin(),
                                                               argInfo->LifeDependencySet.end());
+                            for (const auto &pair : argInfo->FieldDependencySet) {
+                                m_LastLifeDependencies.insert(pair.second.begin(),
+                                                              pair.second.end());
+                            }
                         }
-                        m_LastLifeDependencies.insert(selfVar);
+                        std::set<std::string> cededDeps;
+                        bool hasUnknownCededSource = false;
+                        collectConsumingExpressionDependencies(
+                            Met->Object.get(), cededDeps, hasUnknownCededSource, true);
+                        m_LastLifeDependencies.insert(cededDeps.begin(),
+                                                      cededDeps.end());
+                    } else {
+                        std::string selfVar = mapParamToArg("self");
+                        if (!selfVar.empty()) {
+                            if (argInfo) {
+                                if (!argInfo->BorrowedFrom.empty())
+                                    m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
+                                if (!argInfo->LifeDependencySet.empty())
+                                    m_LastLifeDependencies.insert(argInfo->LifeDependencySet.begin(),
+                                                                  argInfo->LifeDependencySet.end());
+                            }
+                            m_LastLifeDependencies.insert(selfVar);
+                        }
                     }
                 }
                 for (size_t i = 1; i < FD->Args.size(); ++i) {
-                    if (FD->Args[i].IsCeded || (i - 1 < Met->Args.size() && dynamic_cast<CedeExpr *>(Met->Args[i - 1].get())))
-                        continue;
                     Expr *argExpr = i - 1 < Met->Args.size() ? Met->Args[i - 1].get() : nullptr;
-                    auto argType = argExpr ? argExpr->ResolvedType : nullptr;
+                    if (!argExpr)
+                        continue;
+                    const bool isCededArg =
+                        FD->Args[i].IsCeded ||
+                        dynamic_cast<CedeExpr *>(argExpr) != nullptr;
+                    auto argType = argExpr->ResolvedType;
                     SymbolInfo *argInfo = nullptr;
                     Expr *base = argExpr;
-                    while (auto *mem = dynamic_cast<MemberExpr *>(base)) base = mem->Object.get();
+                    while (base) {
+                        if (auto *c = dynamic_cast<CedeExpr *>(base)) { base = c->Value.get(); continue; }
+                        if (auto *cast = dynamic_cast<CastExpr *>(base)) { base = cast->Expression.get(); continue; }
+                        if (auto *unsafe = dynamic_cast<UnsafeExpr *>(base)) { base = unsafe->Expression.get(); continue; }
+                        if (auto *mem = dynamic_cast<MemberExpr *>(base)) { base = mem->Object.get(); continue; }
+                        break;
+                    }
                     if (auto *var = dynamic_cast<VariableExpr *>(base)) {
                         CurrentScope->findSymbol(var->Name, argInfo);
                         if (!argType && argInfo) argType = argInfo->TypeObj;
@@ -6715,6 +6848,26 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     if (argType && (argType->isInteger() || argType->isFloatingPoint() ||
                                    argType->isBoolean() || argType->isUnit()))
                         continue;
+                    if (isCededArg) {
+                        if (argInfo) {
+                            if (!argInfo->BorrowedFrom.empty())
+                                m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
+                            if (!argInfo->LifeDependencySet.empty())
+                                m_LastLifeDependencies.insert(argInfo->LifeDependencySet.begin(),
+                                                              argInfo->LifeDependencySet.end());
+                            for (const auto &pair : argInfo->FieldDependencySet) {
+                                m_LastLifeDependencies.insert(pair.second.begin(),
+                                                              pair.second.end());
+                            }
+                        }
+                        std::set<std::string> cededDeps;
+                        bool hasUnknownCededSource = false;
+                        collectConsumingExpressionDependencies(
+                            argExpr, cededDeps, hasUnknownCededSource, true);
+                        m_LastLifeDependencies.insert(cededDeps.begin(),
+                                                      cededDeps.end());
+                        continue;
+                    }
                     std::string argVar = mapParamToArg(FD->Args[i].Name);
                     if (!argVar.empty()) {
                         if (argInfo) {
