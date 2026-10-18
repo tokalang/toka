@@ -1495,6 +1495,7 @@ private:
   bool isBorrowLikeType(std::shared_ptr<toka::Type> type) const;
   bool isTaskLifetimeCarryingType(const std::shared_ptr<toka::Type> &type);
   bool isLifetimeCarryingType(std::shared_ptr<toka::Type> type);
+  bool canCarryLifetime(const std::shared_ptr<toka::Type> &type);
   bool hasBorrowedValueFields(std::shared_ptr<toka::Type> type);
   bool checkConsumingArgumentEscape(
       Expr *argument,

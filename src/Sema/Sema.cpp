@@ -9289,4 +9289,11 @@ bool Sema::isLifetimeCarryingType(std::shared_ptr<toka::Type> type) {
   return false;
 }
 
+bool Sema::canCarryLifetime(const std::shared_ptr<toka::Type> &type) {
+  if (!type || type->isUnknown()) return true;
+  if (isLifetimeCarryingType(type)) return true;
+  if (type->isFunction() || type->isDynFn()) return true;
+  return false;
+}
+
 } // namespace toka

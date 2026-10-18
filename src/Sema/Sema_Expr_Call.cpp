@@ -4952,6 +4952,9 @@ void Sema::collectConsumingExpressionDependencies(
        expr->ResolvedType->isVoid())) {
     return;
   }
+  if (isCede && expr->ResolvedType && !canCarryLifetime(expr->ResolvedType)) {
+    return;
+  }
 
   if (isCede && dynamic_cast<ArrayIndexExpr *>(expr)) {
     // Moving an element out of an array/container does not borrow the container.
