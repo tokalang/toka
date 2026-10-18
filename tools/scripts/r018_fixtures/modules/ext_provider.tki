@@ -1,0 +1,35 @@
+// @meta compiler_version: any
+// @meta local_body_policy: checked-local-v1
+// @meta local_body_definitions: f/0,f/1,f/2,f/3
+// @meta format_version: 5
+// @meta replay_surface_hash: 5a2747ac522bab8a
+// @meta target_triple: any
+// @meta source_hash: any
+// @meta identity_schema_version: 2
+// @meta place_yield_abi_schema: 1
+// @meta logical_module_path: unbound
+// @meta resolver_binding_digest: unbound
+// @tki v2 copy_proof: Buffer = proven-copy
+// @tki v2 copy_witness: Buffer = auto-structural
+// @tki v2 dup_provider: Buffer = intrinsic-copy
+// @tki v2 field_graph: Buffer.size = i32
+// @tki v2 field_graph: Buffer.tag = i32
+
+import core/task :: {TaskHandle}
+import std/async :: {TaskScope, spawn_scoped}
+
+pub shape Buffer(size: i32, tag: i32)
+
+pub fn compute_provider(buf: Buffer) -> async i32 {
+  return buf.size
+}
+pub fn consume_external(cede t: TaskHandle<i32>) {
+  auto owned = cede t
+}
+pub fn fwd_external(cede t: TaskHandle<i32>) -> TaskHandle<i32> <- t {
+  return cede t
+}
+pub fn spawn_scoped_external(scope#: TaskScope, cede t: TaskHandle<i32>) -> TaskHandle<i32> <- t {
+  return spawn_scoped(scope#, cede t)
+}
+

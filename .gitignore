@@ -98,6 +98,9 @@ promo/
 /xx_tokac
 /toka_bootc
 *.tki
+!/tools/scripts/r018_fixtures/modules/bodyless_consumer.tki
+!/tools/scripts/r018_fixtures/modules/bodyless_provider.tki
+!/tools/scripts/r018_fixtures/modules/ext_provider.tki
 *.tar.gz
 __pycache__/
 *.pyc
