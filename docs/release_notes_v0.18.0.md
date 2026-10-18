@@ -1,8 +1,8 @@
 # Toka 0.18.0 Release Notes
 
-Toka 0.18.0 is the consuming static async trait method release following `0.17.0` Compositional Consistency (`受限组合收敛 v1`). This release admits consuming `cede self` static async trait methods (`trait @T { fn m(cede self) -> async R }`) and their implementations, enabling canonical lifecycle completion patterns such as `close(cede self) -> async Result<T, E>`. Receiver borrow dependency propagation and escape analysis established in v0.17.1 are fully preserved without regression. No explicit lifetime annotation syntax is introduced, existing `E0617` / `E0618` restrictions on unrelaxed receiver forms remain enforced, and external utilities (`trg` and `tokakv`) remain untouched. Source and interface migration guidance follows `docs/compatibility_0.18.md`.
+Toka 0.18.0 is an iterative development release on the `0.1x` branch following `0.17.0` Compositional Consistency (`受限组合收敛 v1`) and the `v0.17.1` patch. As a pre-1.0 development release, it does not claim `1.0` stability and does not guarantee blanket cross-version binary ABI compatibility. This release strictly admits consuming `cede self` static async trait methods (`trait @T { fn m(cede self) -> async R }`) and their monomorphized static implementations, enabling canonical lifecycle completion patterns such as `close(cede self) -> async Result<T, E>`. It explicitly does not introduce general dynamic async traits (`dyn @Trait`), borrow receivers (`self#`, `&Self`, `~Self`), or constructor variants (`init cede self`). Receiver borrow dependency propagation and escape analysis established in v0.17.1 are fully preserved without regression. No explicit lifetime annotation syntax is introduced, existing `E0617` / `E0618` restrictions on unrelaxed receiver forms remain strictly enforced, historical assets remain immutable, and external utilities (`trg` and `tokakv`) remain untouched. Upgrading from `0.17.x` requires full recompilation of `.o` and `.tki` artifacts with compiler cache clearing. Source and interface migration guidance follows `docs/compatibility_0.18.md`.
 
-（Toka 0.18.0 是继 0.17.0 受限组合收敛之后的消费型静态 async trait 方法版本。本版精确放开 `cede self` 静态 async trait 方法声明与实现（如 `close(cede self) -> async Result<T,E>` 经典消费形态），并在编译器语义分析（Sema）、代码生成（CodeGen）及无源码 `.tki` 接口跨模块重放中完成端到端本地功能闭环。完整复用并守恒 v0.17.1 借用依赖传播与逃逸检查；不引入显式生命周期语法；不放宽 `E0617` 等既有拒绝规则；不触碰 `trg` 与 `tokakv`。）
+（Toka 0.18.0 是继 0.17.0 受限组合收敛及 v0.17.1 补丁之后的 `0.1x` 开发线迭代版本。作为 1.0 前的开发期版本，本版不作 1.0 级别稳定性承诺，不保证跨版本的通用二进制 ABI 兼容性。本版严格且精确地放开单所有权消费型 `cede self` 静态 async trait 方法声明与单态化静态实现（如 `close(cede self) -> async Result<T,E>` 经典生命周期终结形态），明确不放开动态分发（`dyn @Trait`）、借用 receiver（`self#` / `&Self` / `~Self`）或构造器变体（`init cede self`）。在编译器语义分析（Sema）、代码生成（CodeGen）及无源码 `.tki` 接口跨模块重放中完成端到端本地功能闭环。完整复用并守恒 v0.17.1 借用依赖传播与逃逸检查；不引入显式生命周期语法；严格维持 `E0617` / `E0618` 既有拒绝边界；历史发布资产保持不可变；不触碰 `trg` 与 `tokakv`。跨版本升级需全量重新编译 `.o` 与 `.tki` 并清理编译缓存。接口与源码迁移指引详见 `docs/compatibility_0.18.md`。）
 
 ## Key Highlights
 
@@ -17,7 +17,7 @@ Toka 0.18.0 is the consuming static async trait method release following `0.17.0
   - Types implement `@AsyncClose` with exact receiver and signature matching (`impl Carrier@AsyncClose { pub fn close(cede self) -> async Result<i32, CloseError> { ... } }`).
 - **Direct & Generic Consumption**:
   - Direct consumption via `.close().await` consumes the receiver, moving ownership into the coroutine frame.
-  - Generic dispatch functions (`fn close_any<T: @AsyncClose>(cede x: T) -> async Result<i32, CloseError>`) monomorphize and invoke consuming methods with static dispatch, verifying receiver ownership transfer and frame destruction.
+  - Generic dispatch functions (`fn close_any<T: @AsyncClose>(cede x: T) -> async Result<i32, CloseError>`) monomorphize and invoke consuming methods with static dispatch, verifying receiver ownership transfer and frame destruction. Trait object dispatch (`dyn @AsyncClose`) remains strictly disallowed (`error[E0617]`).
 - **7-Lifecycle-Path Verified Robustness**:
   - Verified across seven complete execution and cleanup paths: normal completion, secondary concrete type generic dispatch, pre-suspend `!` early error return, post-suspend `!` error return, cold `TaskHandle` direct drop without outer `@Encap`, caught cancellation (`await?`), and uncaught cancellation (`race2`).
   - Native runtime tracking verifies zero leaks (`g_live == 0`) and deterministic destruction (`g_drops == 12`).
@@ -40,18 +40,22 @@ Toka 0.18.0 is the consuming static async trait method release following `0.17.0
   - Shared borrow `self: &Self` and mutable borrow `self: ~Self` on async trait methods remain rejected (`error[E0618]`).
   - Static methods on async traits without receiver (`fn new() -> async R`) remain rejected (`error[E0618]`).
 - **Dynamic Dispatch Rejection (`error[E0617]`)**:
-  - `dyn @AsyncTrait` invocation remains rejected; trait object dispatch on async traits is not admitted.
+  - `dyn @AsyncTrait` invocation remains rejected; dynamic trait object dispatch on async traits is strictly disallowed.
 - **No Lifetime Syntax**: Toka 0.18.0 introduces no explicit lifetime syntax (`'a`, etc.); lifetime safety continues to rely on lexical structured concurrency, explicit cede linear transfers, and compiler flow analysis.
-- **Tooling Integrity**: No changes are introduced to `trg` or `tokakv`.
+- **Tooling Integrity & Asset Immutability**: No changes are introduced to `trg` or `tokakv`. All historical git tags, release archives, and qualification receipts for `v0.17.0` and earlier versions remain immutable.
 
-### 4. Cross-Platform Qualification
-- Verified with native compilation, linkage, and execution (`rc == 0`) across all three core release platforms:
+### 4. Cross-Platform Qualification & Platform Tiering
+- **Tier 1 (Core Blocking Release Targets)**: Verified with native compilation, linkage, and execution (`rc == 0`) across all three core release platforms:
   - **`macos-arm64`** (Native Apple Silicon, Clang / LLVM 20.1.8)
   - **`linux-arm64`** (Docker `linux/arm64`, Clang 20.1.8)
   - **`linux-x64`** (Docker `linux/amd64`, Clang 20.1.8)
-- Continuous validation wired into PR CI gate (`.github/workflows/ci.yml`) and Windows dogfood (`.github/workflows/windows-dogfood.yml`).
+- **Tier 2 (Continuous Dogfood & Compatibility Target)**:
+  - **`windows-x64`** (MSYS2 / MinGW-w64 Clang 20.1.8 SDK path, verified via `.github/workflows/windows-dogfood.yml`; validated for ecosystem dogfooding, non-blocking for Tier 1 standard archive release).
+- Continuous validation wired into PR CI gate (`.github/workflows/ci.yml`) and Native Windows dogfood (`.github/workflows/windows-dogfood.yml`).
 
 ## Release & Platform Policy
-- **Core Blocking Platforms**: Linux x64, Linux ARM64, and macOS ARM64.
+- **Core Blocking Platforms (Tier 1)**: Linux x64, Linux ARM64, and macOS ARM64. Standard release archives are published exclusively for Tier 1 platforms.
+- **Dogfood Platform (Tier 2)**: Windows x64 is verified for toolchain correctness and dogfood stability but is not packaged as a primary release binary.
 - **Standard SDK Packaging**: Build tree packaging (`BUILD_TESTING=OFF`) produces standard archives (`toka-v0.18.0-<target>.tar.gz`) bound to candidate revision, version label, and clean git state.
 - **Checkout-Free Qualification**: Packaging smoke and artifact replay verify the complete 0.18 cede self control suite directly on unpacked release archives.
+- **Full Test Suite Baseline**: All 141 full CTest suites pass 100% (141/141 PASS, 0 failed), 29 negative probes pass across 3 compilation modes (87 commands, zero artifacts), 75 contract mutation test cases pass fail-closed, 60 compositional convergence regression probes pass, and 110 command execution receipts validated with 0 errors.
