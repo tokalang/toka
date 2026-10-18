@@ -1035,7 +1035,7 @@ def build_tki_provider(tokac, toka_lib, env, tki_dir: pathlib.Path):
     obj_path = tki_dir / "tki_close_provider.o"
     bodyless_tki_path = tki_dir / "bodyless_close_consumer.tki"
     src_path.write_text(TKI_PROVIDER_SOURCE.lstrip(), encoding="utf-8")
-    bodyless_tki_path.write_text(BODYLESS_TKI_CONTENT, encoding="utf-8")
+    bodyless_tki_path.write_bytes(BODYLESS_TKI_CONTENT.encode("utf-8"))
 
     rc1, out1, err1 = run_cmd(
         [str(tokac), "-I", str(toka_lib), "-c", "--emit-interface", str(src_path), "-o", str(obj_path)],
