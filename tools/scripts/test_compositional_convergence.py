@@ -217,6 +217,7 @@ pub fn main() -> i32 {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", required=True, help="Path to compiler build directory")
+    parser.add_argument("--suite-dir", default=None, help="Optional suite directory for compositional convergence")
     parser.add_argument("--output-receipt", default=None, help="Optional output path for JSON execution receipt")
     args = parser.parse_args()
 
@@ -228,11 +229,28 @@ def main():
         tokac = build_dir / "bin/Release/tokac.exe"
     require(tokac.exists(), f"missing compiler: {tokac}")
 
-    toka_lib = os.environ.get("TOKA_LIB", str(ROOT / "lib"))
+    toka_lib = os.environ.get("TOKA_LIB")
+    if not toka_lib:
+        if (build_dir / "lib").is_dir():
+            toka_lib = str(build_dir / "lib")
+        else:
+            toka_lib = str(ROOT / "lib")
     env = dict(os.environ, TOKA_LIB=toka_lib)
 
-    suite_dir = ROOT / "tests/semantics/compositional_convergence"
-    require(suite_dir.exists(), f"missing suite dir: {suite_dir}")
+    suite_dir = None
+    if args.suite_dir:
+        cand = pathlib.Path(args.suite_dir).resolve()
+        if cand.is_dir():
+            suite_dir = cand
+    if suite_dir is None:
+        for cand in [
+            pathlib.Path(__file__).resolve().parent / "r018_fixtures",
+            ROOT / "tests/semantics/compositional_convergence",
+        ]:
+            if cand.is_dir() and (cand / "modules").is_dir():
+                suite_dir = cand
+                break
+    require(suite_dir is not None and suite_dir.exists(), f"missing suite dir: {suite_dir}")
     modules_dir = suite_dir / "modules"
     require(modules_dir.exists(), f"missing modules dir: {modules_dir}")
 
@@ -268,6 +286,14 @@ def main():
         ("v0171_neg5_cede_self_ref_carrier_start.tk", "E04584"),
         ("v0171_neg6_explicit_dep_clause_with_ceded_borrow.tk", "E0455"),
         ("v0171_neg7_cede_self_sync_detach_inner.tk", "E0456"),
+        ("v018_s1_neg1_forged_block_on_start.tk", "E0456"),
+        ("v018_s1_neg2_untrusted_cede_self_impl_detach.tk", "E0456"),
+        ("v018_s1_neg3_generic_async_close_return_borrowed.tk", "E0455"),
+        ("v018_s1_neg4_generic_async_close_start_borrowed.tk", "E04584"),
+        ("v018_s1_neg5_ref_carrier_generic_close_return.tk", "E0455"),
+        ("v018_s1_neg6_ref_carrier_generic_close_start.tk", "E04584"),
+        ("v018_s1_neg7_unrelaxed_cede_self_mut.tk", "E0618"),
+        ("v018_s1_neg8_mismatch_trait_cede_self_impl_init.tk", "E0428"),
     ]
 
     bodyless_negatives = [
@@ -293,6 +319,8 @@ def main():
         "r5_pos1_cede_self_receiver_start.tk",
         "v0171_pos1_cede_param_drop_matrix.tk",
         "v0171_pos2_owned_and_local_await_carriers.tk",
+        "v018_s1_pos1_async_close_7_lifecycle_paths.tk",
+        "v018_s1_pos2_borrowed_and_ref_carrier_local_await_and_generic.tk",
     ]
 
     receipt = {

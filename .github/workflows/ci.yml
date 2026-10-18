@@ -182,6 +182,11 @@ jobs:
           set -euo pipefail
           ctest --test-dir build --output-on-failure -R "^toka_compositional_convergence$"
 
+      - name: Run 0.18 cede self async trait gate
+        run: |
+          set -euo pipefail
+          ctest --test-dir build --output-on-failure -R "^toka_018_stage1_verification$"
+
       - name: Run G2 framed transport directed gate
         run: |
           set -euo pipefail

@@ -1,0 +1,16 @@
+import bodyless_consumer::{spawn_scoped_external_bodyless}
+import std/async::{TaskScope, join_scoped}
+import core/task::{TaskHandle}
+shape Buffer ( size: i32, tag: i32 )
+fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
+    return b.size + chunk_id
+}
+pub fn test_neg3() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto s# = TaskScope::new()
+    auto t = process_chunk(buf, 1:i32)
+    auto h = spawn_scoped_external_bodyless(s#, cede t)
+    join_scoped(s#).await
+    return 0:i32
+}
+pub fn main() -> i32 { return 0:i32 }

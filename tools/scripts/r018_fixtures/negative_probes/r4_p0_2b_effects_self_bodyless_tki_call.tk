@@ -1,0 +1,22 @@
+import bodyless_consumer::{consume_external_bodyless}
+import core/task::{TaskHandle}
+shape Buffer ( size: i32, tag: i32 )
+shape Dummy ( x#: i32 )
+impl Dummy {
+    pub fn absorb(self#, cede t: TaskHandle<i32>) -> i32
+    effects:
+        self <- t
+    {
+        consume_external_bodyless(cede t)
+        return 0:i32
+    }
+}
+fn worker(b: Buffer) -> async i32 <- b { return b.size }
+pub fn test1() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto d# = Dummy(x = 1:i32)
+    auto h = worker(buf)
+    auto _ = d#.absorb(cede h)
+    return 0:i32
+}
+pub fn main() -> i32 { return test1() }

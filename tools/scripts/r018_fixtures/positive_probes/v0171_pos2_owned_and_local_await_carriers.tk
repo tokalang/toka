@@ -1,0 +1,60 @@
+import core/task::{TaskHandle}
+import std/task::{block_on}
+
+pub fn pure_work(x: i32) -> async i32 {
+    return x + 10:i32
+}
+
+pub shape OwnedCarrier(t: TaskHandle<i32>)
+impl OwnedCarrier {
+    pub fn close(cede self) -> async i32 {
+        auto owned = cede self
+        auto v = owned.t.await
+        return v + 5:i32
+    }
+}
+
+pub fn make_owned_close_task() -> TaskHandle<i32> {
+    auto c = OwnedCarrier(t = pure_work(27:i32))
+    auto out = c.close()
+    return cede out
+}
+
+pub shape Buffer(size: i32)
+pub fn read_buf(b: Buffer) -> async i32 {
+    return b.size
+}
+
+pub shape BorrowedCarrier(t: TaskHandle<i32>)
+impl BorrowedCarrier {
+    pub fn close(cede self) -> async i32 {
+        auto owned = cede self
+        return owned.t.await + 4:i32
+    }
+}
+
+pub shape RefCarrier(&view: i32, token: i32)
+impl RefCarrier {
+    pub fn compute(cede self) -> async i32 {
+        auto owned = cede self
+        return owned.view + owned.token
+    }
+}
+
+pub fn local_await_both() -> async i32 {
+    auto buf = Buffer(size = 38:i32)
+    auto c1 = BorrowedCarrier(t = read_buf(buf))
+    auto v1 = c1.close().await
+
+    auto local = 10:i32
+    auto c2 = RefCarrier(&view = &local, token = 5:i32)
+    auto v2 = c2.compute().await
+    return v1 + v2
+}
+
+pub fn main() -> i32 {
+    auto t = make_owned_close_task()
+    if block_on(t) != 42:i32 { return 1:i32 }
+    if block_on(local_await_both()) != 57:i32 { return 2:i32 }
+    return 0:i32
+}

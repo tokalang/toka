@@ -1,0 +1,24 @@
+import core/task::{TaskHandle}
+import std/task::{block_on}
+shape Buffer ( size: i32, tag: i32 )
+shape TwoTasks ( borrowed_t#: TaskHandle<i32>, owned_t#: TaskHandle<i32> )
+fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
+    return b.size + chunk_id
+}
+fn dummy() -> async i32 { return 42:i32 }
+pub fn test() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto h = process_chunk(buf, 1:i32)
+    auto d = dummy()
+    auto c = TwoTasks(
+        borrowed_t = cede h,
+        owned_t = cede d
+    )
+    c.owned_t.start
+    return c.borrowed_t.await
+}
+pub fn main() -> i32 {
+    auto res = block_on<i32>(test().start)
+    if res != 101:i32 { return 1:i32 }
+    return 0:i32
+}

@@ -1,0 +1,21 @@
+import core/task::{TaskHandle}
+
+pub shape Buffer(size: i32)
+pub fn read_buf(b: Buffer) -> async i32 {
+    return b.size
+}
+pub shape BorrowedCarrier(t: TaskHandle<i32>)
+
+pub fn close_free(cede c: BorrowedCarrier) -> async i32 {
+    auto owned = cede c
+    return owned.t.await
+}
+
+pub fn escape_free_arg() -> TaskHandle<i32> {
+    auto buf = Buffer(size = 16:i32)
+    auto c = BorrowedCarrier(t = read_buf(buf))
+    return close_free(cede c)
+}
+pub fn main() -> i32 {
+    return 0:i32
+}

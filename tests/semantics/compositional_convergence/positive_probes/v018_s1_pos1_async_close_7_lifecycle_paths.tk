@@ -1,0 +1,223 @@
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_start}
+import std/task::{block_on, sleep_async, task_cancel}
+import std/async::{race2, RaceWinner}
+import core/result::{Result}
+import core/option::{Option}
+
+extern fn toka_rt_live_wait_registry_count() -> u32
+
+auto g_live# = 0:i32
+auto g_drops# = 0:i32
+
+pub shape CloseError(code: i32)
+
+pub trait @AsyncClose {
+    pub fn close(cede self) -> async Result<i32, CloseError>
+}
+
+pub fn close_any<T: @AsyncClose>(cede x: T) -> async Result<i32, CloseError> {
+    auto owned = cede x
+    return owned.close().await
+}
+
+pub shape TrackedGuard(id: i32)
+impl TrackedGuard@Encap {
+    fn drop(self#) {
+        g_live -= 1:i32
+        g_drops += 1:i32
+    }
+}
+
+fn make_guard(id: i32) -> TrackedGuard {
+    g_live += 1:i32
+    return TrackedGuard(id = id)
+}
+
+fn fail_if(flag: bool, code: i32) -> Result<i32, CloseError> {
+    if flag {
+        return Result<i32, CloseError>::Err(CloseError(code = code))
+    }
+    return Result<i32, CloseError>::Ok(1:i32)
+}
+
+// Composite carrier WITHOUT outer @Encap (relies on compiler-generated field glue for TrackedGuard)
+pub shape SessionA(
+    res_guard: TrackedGuard,
+    mode: i32,
+    base: i32
+)
+
+impl SessionA@AsyncClose {
+    pub fn close(cede self) -> async Result<i32, CloseError> {
+        auto owned = cede self
+        // mode == 1: pre-suspend error via !
+        auto _ok1 = fail_if(owned.mode == 1:i32, 101:i32)!
+        if owned.mode == 3:i32 {
+            // Caught cancellation inside close(cede self) via .await?
+            auto waited = sleep_async(500:i32).await?
+            if waited.is_none() {
+                return Result<i32, CloseError>::Err(CloseError(code = 303:i32))
+            }
+            return Result<i32, CloseError>::Ok(owned.base)
+        }
+        if owned.mode == 4:i32 {
+            // Uncaught cancellation inside close(cede self)
+            sleep_async(80:i32).await
+            return Result<i32, CloseError>::Ok(owned.base)
+        }
+        sleep_async(1:i32).await
+        // mode == 2: post-suspend error via !
+        auto _ok2 = fail_if(owned.mode == 2:i32, 202:i32)!
+        return Result<i32, CloseError>::Ok(owned.base + owned.res_guard.id)
+    }
+}
+
+// Second concrete type implementing @AsyncClose
+pub shape SessionB(
+    g1: TrackedGuard,
+    g2: TrackedGuard,
+    bonus: i32
+)
+
+impl SessionB@AsyncClose {
+    pub fn close(cede self) -> async Result<i32, CloseError> {
+        auto owned = cede self
+        sleep_async(1:i32).await
+        return Result<i32, CloseError>::Ok(owned.g1.id + owned.g2.id + owned.bonus)
+    }
+}
+
+fn fast_cancel_winner() -> async Result<i32, CloseError> {
+    sleep_async(5:i32).await
+    return Result<i32, CloseError>::Ok(999:i32)
+}
+
+fn run_all_7_paths() -> async i32 {
+    // Path 1: Normal completion (concrete & generic) -> 2 guards
+    {
+        auto s1 = SessionA(res_guard = make_guard(10:i32), mode = 0:i32, base = 32:i32)
+        auto r1 = s1.close().await
+        match r1 {
+            auto Result<i32, CloseError>::Ok(v) => { if v != 42:i32 { return 11:i32 } }
+            auto Result<i32, CloseError>::Err(_) => { return 12:i32 }
+        }
+        if g_live != 0:i32 { return 13:i32 }
+
+        auto s1b = SessionA(res_guard = make_guard(20:i32), mode = 0:i32, base = 22:i32)
+        auto r1b = close_any(cede s1b).await
+        match r1b {
+            auto Result<i32, CloseError>::Ok(v) => { if v != 42:i32 { return 14:i32 } }
+            auto Result<i32, CloseError>::Err(_) => { return 15:i32 }
+        }
+        if g_live != 0:i32 { return 16:i32 }
+    }
+
+    // Path 2: Second concrete type implementing @AsyncClose via generic close_any -> 2 guards
+    {
+        auto s2 = SessionB(g1 = make_guard(10:i32), g2 = make_guard(15:i32), bonus = 17:i32)
+        auto r2 = close_any(cede s2).await
+        match r2 {
+            auto Result<i32, CloseError>::Ok(v) => { if v != 42:i32 { return 21:i32 } }
+            auto Result<i32, CloseError>::Err(_) => { return 22:i32 }
+        }
+        if g_live != 0:i32 { return 23:i32 }
+    }
+
+    // Path 3: Pre-suspend early error return via ! -> 1 guard
+    {
+        auto s3 = SessionA(res_guard = make_guard(30:i32), mode = 1:i32, base = 0:i32)
+        auto r3 = close_any(cede s3).await
+        match r3 {
+            auto Result<i32, CloseError>::Ok(_) => { return 31:i32 }
+            auto Result<i32, CloseError>::Err(e) => { if e.code != 101:i32 { return 32:i32 } }
+        }
+        if g_live != 0:i32 { return 33:i32 }
+    }
+
+    // Path 4: Post-suspend error return via ! -> 1 guard
+    {
+        auto s4 = SessionA(res_guard = make_guard(40:i32), mode = 2:i32, base = 0:i32)
+        auto r4 = close_any(cede s4).await
+        match r4 {
+            auto Result<i32, CloseError>::Ok(_) => { return 41:i32 }
+            auto Result<i32, CloseError>::Err(e) => { if e.code != 202:i32 { return 42:i32 } }
+        }
+        if g_live != 0:i32 { return 43:i32 }
+    }
+
+    // Path 5: Cold TaskHandle drop on composite struct WITHOUT outer @Encap -> 3 guards
+    {
+        {
+            auto s5 = SessionA(res_guard = make_guard(50:i32), mode = 0:i32, base = 1:i32)
+            auto _cold_handle = s5.close()
+        }
+        if g_live != 0:i32 { return 51:i32 }
+        {
+            auto s5b = SessionB(g1 = make_guard(51:i32), g2 = make_guard(52:i32), bonus = 2:i32)
+            auto _cold_generic = close_any(cede s5b)
+        }
+        if g_live != 0:i32 { return 52:i32 }
+    }
+
+    // Path 6: Caught cancellation inside close(cede self) -> 1 guard
+    {
+        auto s6 = SessionA(res_guard = make_guard(60:i32), mode = 3:i32, base = 77:i32)
+        auto task6 = s6.close()
+        auto nul *tcb6 = task_get_coro_handle<Result<i32, CloseError>>(task6)
+        auto *live_tcb6 = tcb6.unwrap()
+        toka_task_start(*live_tcb6)
+        auto waited6# = 0:i32
+        loop toka_rt_live_wait_registry_count() == 0:u32 && waited6 < 100:i32 {
+            sleep_async(1:i32).await
+            waited6 += 1:i32
+        }
+        task_cancel<Result<i32, CloseError>>(task6)
+        auto out6 = task6.await?
+        match out6 {
+            auto Option<Result<i32, CloseError>>::Some(res) => {
+                match res {
+                    auto Result<i32, CloseError>::Err(e) => {
+                        if e.code != 303:i32 { return 61:i32 }
+                    }
+                    auto Result<i32, CloseError>::Ok(_) => { return 62:i32 }
+                }
+            }
+            auto Option<Result<i32, CloseError>>::None => { return 63:i32 }
+        }
+        if g_live != 0:i32 { return 64:i32 }
+    }
+
+    // Path 7: Uncaught cancellation via race2 (concrete & generic) -> 2 guards
+    {
+        auto s7a = SessionA(res_guard = make_guard(70:i32), mode = 4:i32, base = 88:i32)
+        auto w7a = race2<Result<i32, CloseError>, Result<i32, CloseError>>(
+            cede fast_cancel_winner(),
+            cede s7a.close()
+        ).await
+        match w7a {
+            auto RaceWinner<Result<i32, CloseError>, Result<i32, CloseError>>::First(_) => {}
+            auto RaceWinner<Result<i32, CloseError>, Result<i32, CloseError>>::Second(_) => { return 71:i32 }
+        }
+        if g_live != 0:i32 { return 72:i32 }
+
+        auto s7b = SessionA(res_guard = make_guard(71:i32), mode = 4:i32, base = 99:i32)
+        auto w7b = race2<Result<i32, CloseError>, Result<i32, CloseError>>(
+            cede fast_cancel_winner(),
+            cede close_any(cede s7b)
+        ).await
+        match w7b {
+            auto RaceWinner<Result<i32, CloseError>, Result<i32, CloseError>>::First(_) => {}
+            auto RaceWinner<Result<i32, CloseError>, Result<i32, CloseError>>::Second(_) => { return 73:i32 }
+        }
+        if g_live != 0:i32 { return 74:i32 }
+    }
+
+    if g_drops != 12:i32 {
+        return 80:i32
+    }
+    return 0:i32
+}
+
+pub fn main() -> i32 {
+    return block_on(run_all_7_paths())
+}

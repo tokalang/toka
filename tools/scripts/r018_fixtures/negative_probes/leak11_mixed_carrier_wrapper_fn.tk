@@ -1,0 +1,12 @@
+import bodyless_provider::{Buffer, compute_provider}
+import core/task::{TaskHandle}
+shape Mixed ( b: Buffer, t: TaskHandle<i32> )
+fn dummy() -> async i32 { return 0:i32 }
+fn get_buf(m: Mixed) -> Buffer <- m { return m.b }
+pub fn test2() -> i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto m = Mixed(b = buf, t = dummy())
+    auto task = compute_provider(get_buf(m))
+    return 0:i32
+}
+pub fn main() -> i32 { return test2() }

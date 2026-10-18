@@ -1,0 +1,10 @@
+trait @AsyncClose {
+    pub fn close(cede self) -> async i32
+}
+shape S(v: i32)
+impl S@AsyncClose {
+    pub fn close(init cede self) -> async i32 {
+        return self.v
+    }
+}
+fn main() -> i32 { return 0:i32 }

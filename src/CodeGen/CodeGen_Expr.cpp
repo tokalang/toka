@@ -5050,7 +5050,7 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
         info.Name = pName;
         info.Alloca = alloca;
         info.AllocType = targetType;
-        info.IsUniquePointer = isUnique;
+        info.IsUniquePointer = isUnique && transfersOwnership;
         info.IsShared = isShared;
         info.HasDrop = hasDrop;
         info.DropFunc = dropFunc;
@@ -5058,7 +5058,7 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
         info.PartialMove = pat->PartialMove;
         if (targetTypeObj)
           info.DropType = targetTypeObj;
-        if (alloca && (hasDrop || isUnique || isShared)) {
+        if (alloca && (hasDrop || info.IsUniquePointer || isShared)) {
           info.DropFlag = createEntryBlockAlloca(
               llvm::Type::getInt1Ty(m_Context), nullptr, pName + ".drop.live");
           m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),

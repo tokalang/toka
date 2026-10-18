@@ -2502,11 +2502,15 @@ void Sema::validateTraitAssociatedTypes(TraitDecl *Trait) {
     return;
   CheckedAssociatedTypeTraits.insert(Trait);
 
-  // 0.14 G1: Static dispatch async trait methods are permitted with strictly mutable self# receiver.
-  // Dynamic dispatch (dyn Trait) and plain self / &self / cede self / static async methods remain rejected.
+  // 0.14 G1 + 0.18 Stage 1: Static dispatch async trait methods are permitted
+  // with strictly mutable `self#` or strictly consuming `cede self` receiver.
+  // Dynamic dispatch (dyn Trait), plain `self`, `&self`, `&self#`, `~self`,
+  // `^self`, `*self`, `cede self#`, `init cede self`, and static async methods
+  // remain rejected.
   for (const auto &method : Trait->Methods) {
     if (method->Effect == EffectKind::Async) {
       bool validSelfMut = false;
+      bool validCedeSelf = false;
       if (!method->Args.empty()) {
         const auto &arg = method->Args.front();
         const bool isSelfNamed = (arg.Name == "self");
@@ -2524,15 +2528,37 @@ void Sema::validateTraitAssociatedTypes(TraitDecl *Trait) {
             arg.IsValueMutable &&
             !arg.IsValueBlocked &&
             !arg.IsCeded &&
+            !arg.IsInit &&
             !arg.IsReference &&
             !arg.IsRawPointer &&
             !arg.IsShared &&
             !arg.IsUnique &&
             !arg.IsRebindable &&
+            !arg.IsRebindBlocked &&
+            !arg.IsPointerNullable &&
+            !arg.IsValueNullable &&
+            !arg.IsMorphicExempt &&
+            !arg.HadRejectedTypeSideMorphology &&
+            isStrictSelfType;
+        validCedeSelf =
+            isSelfNamed &&
+            arg.IsCeded &&
+            !arg.IsValueMutable &&
+            !arg.IsValueBlocked &&
+            !arg.IsInit &&
+            !arg.IsReference &&
+            !arg.IsRawPointer &&
+            !arg.IsShared &&
+            !arg.IsUnique &&
+            !arg.IsRebindable &&
+            !arg.IsRebindBlocked &&
+            !arg.IsPointerNullable &&
+            !arg.IsValueNullable &&
+            !arg.IsMorphicExempt &&
             !arg.HadRejectedTypeSideMorphology &&
             isStrictSelfType;
       }
-      if (!validSelfMut) {
+      if (!validSelfMut && !validCedeSelf) {
         DiagnosticEngine::report(
             method->Loc, DiagID::ERR_TRAIT_ASYNC_METHOD_OUTSIDE_1_0,
             method->Name, Trait->Name);
@@ -5089,6 +5115,18 @@ void Sema::registerImpl(ImplDecl *Impl) {
                   const bool isAsyncContract =
                       (Method->Effect == EffectKind::Async || ImplMethod->Effect == EffectKind::Async);
                   if (isAsyncContract) {
+                    if (traitArg.IsInit != implArg.IsInit) {
+                      std::string traitInit = traitArg.IsInit ? "init (" + traitArg.Name + ")" : "non-init (" + traitArg.Name + ")";
+                      std::string implInit = implArg.IsInit ? "init (" + implArg.Name + ")" : "non-init (" + implArg.Name + ")";
+                      DiagnosticEngine::report(getLoc(ImplMethod),
+                                               DiagID::ERR_SIGNATURE_MISMATCH,
+                                               Method->Name,
+                                               "parameter '" + traitArg.Name + "' as " + traitInit,
+                                               implInit);
+                      HasError = true;
+                      argMismatch = true;
+                      break;
+                    }
                     if (traitArg.IsRawPointer != implArg.IsRawPointer) {
                       std::string traitRaw = traitArg.IsRawPointer ? "raw pointer (*" + traitArg.Name + ")" : "value (" + traitArg.Name + ")";
                       std::string implRaw = implArg.IsRawPointer ? "raw pointer (*" + implArg.Name + ")" : "value (" + implArg.Name + ")";
@@ -5228,11 +5266,17 @@ void Sema::registerImpl(ImplDecl *Impl) {
                     for (const auto &[name, ty] : associatedTypeSubstitutions) {
                       substituteSourceTypeSyntax(expectedSyntax, expectedSpelling, name, ty);
                     }
-                    auto expectedType = resolveType(expectedSyntax ? toka::Type::fromSyntax(expectedSyntax) : toka::Type::fromString(expectedSpelling), false);
-                    auto actualType = resolveType(implArg.TypeSyntax ? toka::Type::fromSyntax(implArg.TypeSyntax) : toka::Type::fromString(implArg.Type), false);
-                    bool typesMatch = expectedType && actualType && expectedType->equals(*actualType);
-                    if (!typesMatch && (!expectedType || !actualType)) {
+                    auto expectedType = expectedSyntax ? toka::Type::fromSyntax(expectedSyntax) : toka::Type::fromString(expectedSpelling);
+                    auto actualType = implArg.TypeSyntax ? toka::Type::fromSyntax(implArg.TypeSyntax) : toka::Type::fromString(implArg.Type);
+                    bool typesMatch = (expectedSpelling == implArg.Type) ||
+                                      (expectedType && actualType && expectedType->equals(*actualType));
+                    if (!typesMatch) {
                       typesMatch = (resolveType(expectedSpelling) == resolveType(implArg.Type));
+                    }
+                    if (!typesMatch) {
+                      expectedType = resolveType(expectedType, false);
+                      actualType = resolveType(actualType, false);
+                      typesMatch = expectedType && actualType && expectedType->equals(*actualType);
                     }
                     if (!typesMatch) {
                       DiagnosticEngine::report(getLoc(ImplMethod),
@@ -5253,11 +5297,17 @@ void Sema::registerImpl(ImplDecl *Impl) {
                   for (const auto &[name, ty] : associatedTypeSubstitutions) {
                     substituteSourceTypeSyntax(expectedRetSyntax, expectedRetSpelling, name, ty);
                   }
-                  auto expectedRetType = resolveType(expectedRetSyntax ? toka::Type::fromSyntax(expectedRetSyntax) : toka::Type::fromString(expectedRetSpelling), false);
-                  auto actualRetType = resolveType(ImplMethod->ReturnTypeSyntax ? toka::Type::fromSyntax(ImplMethod->ReturnTypeSyntax) : toka::Type::fromString(ImplMethod->ReturnType), false);
-                  bool retMatches = expectedRetType && actualRetType && expectedRetType->equals(*actualRetType);
-                  if (!retMatches && (!expectedRetType || !actualRetType)) {
+                  auto expectedRetType = expectedRetSyntax ? toka::Type::fromSyntax(expectedRetSyntax) : toka::Type::fromString(expectedRetSpelling);
+                  auto actualRetType = ImplMethod->ReturnTypeSyntax ? toka::Type::fromSyntax(ImplMethod->ReturnTypeSyntax) : toka::Type::fromString(ImplMethod->ReturnType);
+                  bool retMatches = (expectedRetSpelling == ImplMethod->ReturnType) ||
+                                    (expectedRetType && actualRetType && expectedRetType->equals(*actualRetType));
+                  if (!retMatches) {
                     retMatches = (resolveType(expectedRetSpelling) == resolveType(ImplMethod->ReturnType));
+                  }
+                  if (!retMatches) {
+                    expectedRetType = resolveType(expectedRetType, false);
+                    actualRetType = resolveType(actualRetType, false);
+                    retMatches = expectedRetType && actualRetType && expectedRetType->equals(*actualRetType);
                   }
                   if (!retMatches) {
                     DiagnosticEngine::report(getLoc(ImplMethod),
@@ -9236,6 +9286,13 @@ bool Sema::isLifetimeCarryingType(std::shared_ptr<toka::Type> type) {
   if (!type) return false;
   if (isBorrowLikeType(type)) return true;
   if (isTaskLifetimeCarryingType(type)) return true;
+  return false;
+}
+
+bool Sema::canCarryLifetime(const std::shared_ptr<toka::Type> &type) {
+  if (!type || type->isUnknown()) return true;
+  if (isLifetimeCarryingType(type)) return true;
+  if (type->isFunction() || type->isDynFn()) return true;
   return false;
 }
 

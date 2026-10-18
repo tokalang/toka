@@ -1,0 +1,15 @@
+import ext_provider::{Buffer, fwd_external}
+import core/task::{TaskHandle}
+import std/task::{block_on}
+fn worker(b: Buffer) -> async i32 <- b { return b.size }
+pub fn test_pos5() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto t = worker(buf)
+    auto ret = fwd_external(cede t)
+    return ret.await
+}
+pub fn main() -> i32 {
+    auto res = block_on<i32>(test_pos5().start)
+    if res != 100:i32 { return 1:i32 }
+    return 0:i32
+}

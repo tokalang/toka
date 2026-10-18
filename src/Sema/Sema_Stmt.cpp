@@ -3037,6 +3037,13 @@ void Sema::checkStmt(Stmt *S) {
           for (const auto &pair : srcInfo->FieldDependencySet) {
             Info.FieldDependencySet[pair.first].insert(pair.second.begin(), pair.second.end());
           }
+          Info.LifeDependencySet.insert(srcInfo->LifeDependencySet.begin(),
+                                        srcInfo->LifeDependencySet.end());
+          if (srcInfo->IsFunctionParameter && srcInfo->TypeObj &&
+              isBorrowLikeType(srcInfo->TypeObj)) {
+            Info.LifeDependencySet.insert(
+                actualSrc.empty() ? initVar->Name : actualSrc);
+          }
           if (srcInfo->CarriesTaskDependency) {
             Info.CarriesTaskDependency = true;
           }

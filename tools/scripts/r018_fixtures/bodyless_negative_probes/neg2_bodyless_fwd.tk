@@ -1,0 +1,13 @@
+import bodyless_consumer::{fwd_external_bodyless}
+import core/task::{TaskHandle}
+shape Buffer ( size: i32, tag: i32 )
+fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
+    return b.size + chunk_id
+}
+pub fn test_neg2() -> async i32 {
+    auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    auto t = process_chunk(buf, 1:i32)
+    auto ret = fwd_external_bodyless(cede t)
+    return ret.await
+}
+pub fn main() -> i32 { return 0:i32 }

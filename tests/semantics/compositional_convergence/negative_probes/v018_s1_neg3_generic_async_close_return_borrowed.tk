@@ -1,0 +1,56 @@
+import core/task::{TaskHandle}
+import std/task::{block_on, sleep_async}
+import core/result::{Result}
+
+pub shape CloseError(code: i32)
+
+pub trait @AsyncClose {
+    pub fn close(cede self) -> async Result<i32, CloseError>
+}
+
+pub fn close_any<T: @AsyncClose>(cede x: T) -> async Result<i32, CloseError> {
+    auto owned = cede x
+    return owned.close().await
+}
+
+pub shape BorrowedCarrier(
+    inner: TaskHandle<i32>,
+    tag: i32
+)
+
+impl BorrowedCarrier@AsyncClose {
+    pub fn close(cede self) -> async Result<i32, CloseError> {
+        auto owned = cede self
+        auto v = owned.inner.await
+        return Result<i32, CloseError>::Ok(v + owned.tag)
+    }
+}
+
+pub shape RefCarrier(
+    &view: i32,
+    token: i32
+)
+
+impl RefCarrier@AsyncClose {
+    pub fn close(cede self) -> async Result<i32, CloseError> {
+        auto owned = cede self
+        sleep_async(1:i32).await
+        return Result<i32, CloseError>::Ok(owned.view + owned.token)
+    }
+}
+
+pub shape Buffer(size: i32)
+pub fn read_buf(b: Buffer) -> async i32 {
+    return b.size
+}
+
+pub fn leak_generic() -> TaskHandle<Result<i32, CloseError>> {
+    auto buf = Buffer(size = 42:i32)
+    auto c = BorrowedCarrier(inner = read_buf(buf), tag = 1:i32)
+    auto t = close_any(cede c)
+    return cede t
+}
+
+pub fn main() -> i32 {
+    return 0:i32
+}

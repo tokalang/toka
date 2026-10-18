@@ -1,0 +1,63 @@
+import core/task::{TaskHandle}
+import std/task::{block_on, sleep_async}
+import core/result::{Result}
+
+pub shape CloseError(code: i32)
+
+pub trait @AsyncClose {
+    pub fn close(cede self) -> async Result<i32, CloseError>
+}
+
+pub fn close_any<T: @AsyncClose>(cede x: T) -> async Result<i32, CloseError> {
+    auto owned = cede x
+    return owned.close().await
+}
+
+pub shape BorrowedCarrier(
+    inner: TaskHandle<i32>,
+    tag: i32
+)
+
+impl BorrowedCarrier@AsyncClose {
+    pub fn close(cede self) -> async Result<i32, CloseError> {
+        auto owned = cede self
+        auto v = owned.inner.await
+        return Result<i32, CloseError>::Ok(v + owned.tag)
+    }
+}
+
+pub shape RefCarrier(
+    &view: i32,
+    token: i32
+)
+
+impl RefCarrier@AsyncClose {
+    pub fn close(cede self) -> async Result<i32, CloseError> {
+        auto owned = cede self
+        sleep_async(1:i32).await
+        return Result<i32, CloseError>::Ok(owned.view + owned.token)
+    }
+}
+
+pub shape Buffer(size: i32)
+pub fn read_buf(b: Buffer) -> async i32 {
+    return b.size
+}
+
+fn block_on(cede handle: TaskHandle<Result<i32, CloseError>>) -> i32 {
+    auto owned = cede handle
+    auto _s = owned.start
+    return 0:i32
+}
+
+fn launder_consumer<T: @AsyncClose>(cede x: T) -> i32 {
+    auto owned = cede x
+    auto t = owned.close()
+    return block_on(cede t)
+}
+
+pub fn main() -> i32 {
+    auto buf = Buffer(size = 42:i32)
+    auto c = BorrowedCarrier(inner = read_buf(buf), tag = 1:i32)
+    return launder_consumer(cede c)
+}

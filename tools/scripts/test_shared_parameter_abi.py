@@ -41,8 +41,10 @@ def verify_carrier_ir(text):
     assert forwarded and re.search(r'call i32 %[^ (]+\(ptr %[^,]+, ptr ' + re.escape(forwarded[1]) + r'\)', observer), "observer misses the carrier forwarding edge"
     for name in ("generic_take", "generic_echo"):
         assert f"load {{ ptr, ptr }}, ptr {argument}" in bodies[name], name + " move misses carrier"
-        assert f"store {{ ptr, ptr }} zeroinitializer, ptr {argument}" in bodies[name], name + " source not retired"
-    assert bodies["generic_take"].count("atomicrmw sub") == 1, "discard must release exactly one shared reference"
+    discard_ir, _, scope_guard_ir = bodies["generic_take"].partition("\ndrop.live:")
+    assert discard_ir.count("atomicrmw sub") == 1, "discard must release exactly one shared reference"
+    if scope_guard_ir:
+        assert "store i1 false, ptr %value.drop.live" in discard_ir and scope_guard_ir.count("atomicrmw sub") == 1, "scope guard must check drop.live and release shared reference"
     assert "ptr %unused.result.tmp)" not in bodies["generic_take"], "payload Drop called on a carrier"
     asynchronous = bodies["generic_take_async"]
     assert f"(ptr {argument}, ptr %reader)" in asynchronous.splitlines()[0], "async carrier ABI changed"

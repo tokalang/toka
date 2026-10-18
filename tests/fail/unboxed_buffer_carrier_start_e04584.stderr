@@ -1,0 +1,10 @@
+error[E04584]: Task started across execution boundary carries borrowed dependency 'buf'; consume it with '.await' or '.wait', or transfer ownership before '.start'
+ --> tests/fail/unboxed_buffer_carrier_start_e04584.tk:20:11
+    |
+ 20 |     c.task.start
+    |           ^
+note: borrowed dependency originates here
+ --> tests/fail/unboxed_buffer_carrier_start_e04584.tk:18:10
+    |
+ 18 |     auto buf = Buffer(size = 100:i32, tag = 1:i32)
+    |          ^

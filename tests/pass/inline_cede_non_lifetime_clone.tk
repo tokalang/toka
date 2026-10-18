@@ -1,0 +1,62 @@
+import std/context::{background, with_cancel, Canceler}
+import std/task::{block_on}
+
+shape PlainData(
+    val: i32
+)
+
+impl PlainData {
+    pub fn clone(self) -> PlainData {
+        return PlainData(val = self.val)
+    }
+}
+
+fn worker_string(cede s: string) -> async i32 {
+    auto owned_s = cede s
+    return owned_s.len() as i32
+}
+
+fn worker_canceler(cede c: Canceler) -> async i32 {
+    auto owned_c = cede c
+    owned_c.call()
+    return 0:i32
+}
+
+fn worker_plain(cede d: PlainData) -> async i32 {
+    auto owned_d = cede d
+    return owned_d.val
+}
+
+fn test_suite() -> async i32 {
+    // 1. Minimal reproduction: inline cede string.clone()
+    auto s = string::from("hello_toka_018")
+    auto task_inline = worker_string(cede s.clone()).start
+    auto res_inline = task_inline.await
+    assert(res_inline == 14:i32, "inline cede string.clone() len match")
+
+    // 2. Split variable version
+    auto cloned = s.clone()
+    auto task_split = worker_string(cede cloned).start
+    auto res_split = task_split.await
+    assert(res_split == 14:i32, "split var cede string.clone() len match")
+
+    // 3. Inline cede Canceler.clone()
+    auto ctx_res = with_cancel(cede background())
+    auto canceler = cede ctx_res.canceler
+    auto task_canceler = worker_canceler(cede canceler.clone()).start
+    auto res_canceler = task_canceler.await
+    assert(res_canceler == 0:i32, "inline cede Canceler.clone() success")
+    assert(canceler.active_token_count() == 0:usize, "canceler zero active tokens")
+
+    // 4. Custom non-lifetime struct clone
+    auto d = PlainData(val = 42:i32)
+    auto task_plain = worker_plain(cede d.clone()).start
+    auto res_plain = task_plain.await
+    assert(res_plain == 42:i32, "inline cede PlainData.clone() match")
+
+    return 0:i32
+}
+
+fn main() -> i32 {
+    return block_on<i32>(test_suite().start)
+}
