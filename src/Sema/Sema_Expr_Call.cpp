@@ -5343,8 +5343,7 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
       }
       if (dynamic_cast<AwaitExpr *>(unwrappedRet) ||
           dynamic_cast<WaitExpr *>(unwrappedRet)) {
-        if (!retTy || (!isLifetimeCarryingType(retTy) && !retTy->isReference() &&
-                       !retTy->isPointer())) {
+        if (!retTy || !isTaskLifetimeCarryingType(retTy)) {
           return checkSafeTaskConsumerBodyHelper(
                ret->ReturnValue.get(), trackedVars, allowedSelfReceiver);
         }
@@ -5375,9 +5374,15 @@ bool Sema::checkSafeTaskConsumerBodyHelper(
         if (mc->ResolvedFn && mc->ResolvedFn->Effect == EffectKind::Async)
           producesAsyncTask = true;
       }
-      if (producesAsyncTask ||
-          (initTy && (isLifetimeCarryingType(initTy) || initTy->isReference() ||
-                      initTy->isPointer()))) {
+      bool isAwaitOrWait = dynamic_cast<AwaitExpr *>(unwrapped) != nullptr ||
+                           dynamic_cast<WaitExpr *>(unwrapped) != nullptr;
+      if (isAwaitOrWait) {
+        if (initTy && isTaskLifetimeCarryingType(initTy)) {
+          trackedVars.insert(Type::stripMorphology(varDecl->Name));
+        }
+      } else if (producesAsyncTask ||
+                 (initTy && (isLifetimeCarryingType(initTy) || initTy->isReference() ||
+                             initTy->isPointer()))) {
         trackedVars.insert(Type::stripMorphology(varDecl->Name));
       }
       return true;
@@ -5796,18 +5801,44 @@ bool Sema::isSafeSynchronousTaskConsumer(FunctionDecl *calleeFn, size_t formalIn
     else if (!calleeFn->ReturnType.empty())
       calleeRetTy = resolveType(toka::Type::fromString(calleeFn->ReturnType));
   }
-  if (calleeRetTy &&
-      (isLifetimeCarryingType(calleeRetTy) ||
-       calleeRetTy->isReference() ||
-       calleeRetTy->isPointer())) {
-    return false;
+
+  const std::string formalName = Type::stripMorphology(calleeFn->Args[formalIndex].Name);
+  bool routesToReturn = false;
+  for (const auto &route : calleeFn->ReturnContract.Routes) {
+    if (route.Target.Kind == ReturnDependencyTargetKind::ReturnValue) {
+      for (const auto &src : route.Sources) {
+        if (Type::stripMorphology(src.Root) == formalName) {
+          routesToReturn = true;
+          break;
+        }
+      }
+    }
+  }
+  if (!routesToReturn) {
+    for (const auto &dep : calleeFn->LifeDependencies) {
+      if (Type::stripMorphology(extractPathRoot(dep)) == formalName) {
+        routesToReturn = true;
+        break;
+      }
+    }
+  }
+
+  if (calleeRetTy) {
+    if (isTaskLifetimeCarryingType(calleeRetTy)) {
+      return false;
+    }
+    if (isLifetimeCarryingType(calleeRetTy) ||
+        calleeRetTy->isReference() ||
+        calleeRetTy->isPointer()) {
+      if (!isDirectTaskFormal || !routesToReturn)
+        return false;
+    }
   }
 
   if (isTrustedStdTaskBlockOn(calleeFn) && formalIndex == 0) {
     return true;
   }
 
-  const std::string formalName = Type::stripMorphology(calleeFn->Args[formalIndex].Name);
   for (const auto &route : calleeFn->ReturnContract.Routes) {
     if (route.Target.Kind == ReturnDependencyTargetKind::ReceiverPoststate) {
       for (const auto &src : route.Sources) {
