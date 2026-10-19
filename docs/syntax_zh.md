@@ -766,7 +766,11 @@ auto value = match x {
 不计入穷尽性。非 enum 目标需要无 guard 的 wildcard 或无条件变量 arm。
 编译器不尝试证明整数、range 或字符串的完整值域覆盖。
 
-`pass` 从块表达式中产出值。
+`pass` 从块表达式中产出值。当 `match` 表达式通过 `pass` 产出 `str` 等借用视图时，
+其来源依赖会合并全部实际产值分支：静态字符串字面量提供已证明的静态存储来源，借用型
+变体 payload 绑定归属到真实的 `match` 目标 owner，而提前 `return` 的非产值分支按外层
+函数返回契约独立校验、不混入 `match` 结果依赖。从分支局部 owner 或 `match cede` 已消费
+payload 借出的视图仍会被拒绝（`E0455` / `E0456`）。
 
 ## 11. 模式匹配与解构
 

@@ -1,0 +1,15 @@
+
+// CASE_BODY
+
+fn pick(flag: bool) -> str {
+    auto result = match flag {
+        true => { pass "yes" }
+        _ => { pass "no" }
+    }
+    return result
+}
+fn main() -> i32 {
+    assert(pick(true).equals("yes"), "yes")
+    assert(pick(false).equals("no"), "no")
+    return 0:i32
+}

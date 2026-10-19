@@ -1,0 +1,67 @@
+import core/string::{string}
+import core/traits::{@Encap}
+
+auto g_block_drops# = 0:i32
+
+pub shape CachedBlock(payload: string)
+impl CachedBlock@Encap {
+    fn drop(self#) { g_block_drops += 1:i32 }
+}
+impl CachedBlock {
+    pub fn view(self) -> str <- self { return self.payload.as_str() }
+}
+
+pub shape BlockLease(~block: CachedBlock)
+impl BlockLease@Encap {}
+impl BlockLease {
+    pub fn new(~block: CachedBlock) -> BlockLease {
+        return BlockLease(~block = ~block)
+    }
+    pub fn value_at(self, index: usize) -> str <- self {
+        assert(index == 0:usize, "single-entry fixture index")
+        return self.block.view()
+    }
+}
+
+pub shape ValueLease(
+    Cached(BlockLease, usize) = 0 |
+    Owned(string) = 1
+)
+
+impl ValueLease {
+    pub fn as_str(self) -> str <- self {
+        match self {
+            auto ValueLease::Cached(&lease, index) => return lease.value_at(index)
+            auto ValueLease::Owned(&value) => return value.as_str()
+        }
+    }
+}
+
+
+fn make_cached() -> ValueLease {
+    auto ~block = new CachedBlock(payload = string::from("cached"))
+    return ValueLease::Cached(BlockLease::new(~block), 0:usize)
+}
+fn make_owned() -> ValueLease {
+    return ValueLease::Owned(string::from("owned"))
+}
+fn dispose(cede value: ValueLease) {
+    auto held = cede value
+}
+
+// CASE_BODY
+
+trait @View {
+    pub fn view(self) -> str <- self
+}
+impl ValueLease@View {
+    pub fn view(self) -> str <- self { return self.as_str() }
+}
+fn generic_view<T: @View>(value: T) -> str <- value { return value.view() }
+fn main() -> i32 {
+    auto a = make_owned()
+    auto b = make_cached()
+    assert(generic_view(a).equals("owned"), "generic owned")
+    assert(generic_view(b).equals("cached"), "generic cached")
+    return 0:i32
+}

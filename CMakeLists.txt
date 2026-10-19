@@ -6,7 +6,7 @@ if(APPLE)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-w")
 endif()
 
-project(TokaCompiler VERSION 0.18.0 LANGUAGES C CXX)
+project(TokaCompiler VERSION 0.18.1 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CTest)
 # Keep ordinary reconfiguration on the version declared above.  A cached
@@ -362,6 +362,11 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_binding_b3_static_return.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_str_match_expr_0181
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_str_match_expr_0181.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(toka_str_match_expr_0181 PROPERTIES TIMEOUT 300)
         add_test(NAME toka_b6_recorded_slots
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_b6_recorded_slots.py

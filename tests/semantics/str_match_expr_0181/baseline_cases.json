@@ -1,0 +1,243 @@
+[
+  {
+    "id": "P01_owned_read",
+    "description": "Owned(string): borrowed view and repeat read preserve owner",
+    "source": "probes/P01_owned_read.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "P02_cached_retention",
+    "description": "Cached: producer shared owner ends before lease/view use; last lease drops block once",
+    "source": "probes/P02_cached_retention.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "P03_runtime_variant_choice",
+    "description": "Runtime-selected branches preserve result dependency and contents",
+    "source": "probes/P03_runtime_variant_choice.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "P04_relay_and_record",
+    "description": "Borrow projection through a free helper and enclosing record",
+    "source": "probes/P04_relay_and_record.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "P05_match_expression",
+    "description": "match expression/pass merges borrowed results from both variants",
+    "source": "probes/P05_match_expression.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 54
+  },
+  {
+    "id": "P06_nested_option",
+    "description": "Option<ValueLease> nested borrowed patterns",
+    "source": "probes/P06_nested_option.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 54
+  },
+  {
+    "id": "P07_move_before_borrow",
+    "description": "Moving owner before taking a view remains legal",
+    "source": "probes/P07_move_before_borrow.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "P08_replace_after_borrow_scope",
+    "description": "Replace variant only after borrowed view scope ends",
+    "source": "probes/P08_replace_after_borrow_scope.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "P09_generic_trait_relay",
+    "description": "Ordinary borrowed trait + generic consumer preserves dependency",
+    "source": "probes/P09_generic_trait_relay.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "P10_tracked_payload_cleanup",
+    "description": "Observer-only OwnedText wrapper checks payload cleanup after borrow in both variants",
+    "source": "probes/P10_tracked_payload_cleanup.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "N01_return_local_owned",
+    "description": "Returning a view whose local lease is destroyed must be rejected",
+    "source": "probes/N01_return_local_owned.tk",
+    "expected": "reject",
+    "expected_diagnostics": [
+      "E0455",
+      "E0456"
+    ],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "N02_return_local_cached",
+    "description": "Returning a view whose local lease is destroyed must be rejected",
+    "source": "probes/N02_return_local_cached.tk",
+    "expected": "reject",
+    "expected_diagnostics": [
+      "E0455",
+      "E0456"
+    ],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "N03_outer_view_inner_owner",
+    "description": "Inner owner must not lend to an outer variable used after scope exit",
+    "source": "probes/N03_outer_view_inner_owner.tk",
+    "expected": "reject",
+    "expected_diagnostics": [
+      "E0456"
+    ],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "N04_move_with_live_view",
+    "description": "Consume/destroy lease while its view is used later",
+    "source": "probes/N04_move_with_live_view.tk",
+    "expected": "reject",
+    "expected_diagnostics": [
+      "E0440"
+    ],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "N05_replace_with_live_view",
+    "description": "Replace active variant while old view remains live",
+    "source": "probes/N05_replace_with_live_view.tk",
+    "expected": "reject",
+    "expected_diagnostics": [
+      "E0442"
+    ],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "N06_view_from_consumed_payload",
+    "description": "Consumed match payload must not escape as a borrowed view",
+    "source": "probes/N06_view_from_consumed_payload.tk",
+    "expected": "reject",
+    "expected_diagnostics": [
+      "E0455",
+      "E0456"
+    ],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "N07_missing_return_dependency",
+    "description": "Free-function borrowed return requires existing dependency contract",
+    "source": "probes/N07_missing_return_dependency.tk",
+    "expected": "reject",
+    "expected_diagnostics": [
+      "E0454"
+    ],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "N08_return_inner_payload_owner",
+    "description": "Borrow from a local value inside a variant arm cannot escape",
+    "source": "probes/N08_return_inner_payload_owner.tk",
+    "expected": "reject",
+    "expected_diagnostics": [
+      "E0455",
+      "E0456"
+    ],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "P11_vec_entry_projection",
+    "description": "High-fidelity Cached(BlockLease, index) through shared block / Vec<Entry> / entry.value",
+    "source": "probes/P11_vec_entry_projection.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 60
+  },
+  {
+    "id": "P12_direct_match_expression_return",
+    "description": "Return match expression directly instead of binding its borrowed result",
+    "source": "probes/P12_direct_match_expression_return.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "P13_typed_match_result",
+    "description": "Explicit str annotation on match result to distinguish inference from dependency loss",
+    "source": "probes/P13_typed_match_result.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 54,
+    "history_only": true,
+    "history_reason": "RC fixture used invalid declaration-side auto type annotation (E01266); not a language gap. Preserved and replaced by P16 initializer ascription."
+  },
+  {
+    "id": "P14_static_str_match_control",
+    "description": "Static str match expression requires no owner-borrow projection",
+    "source": "probes/P14_static_str_match_control.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "P15_scalar_match_control",
+    "description": "Scalar match result using enum borrowed payloads",
+    "source": "probes/P15_scalar_match_control.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 53
+  },
+  {
+    "id": "P16_initializer_ascription",
+    "description": "Valid initializer-side str ascription of enum match result",
+    "source": "probes/P16_initializer_ascription.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 54
+  },
+  {
+    "id": "P17_minimal_static_match",
+    "description": "Reduced static str match expression without any ValueLease or custom types",
+    "source": "probes/P17_minimal_static_match.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 3
+  },
+  {
+    "id": "P18_minimal_static_statement",
+    "description": "Equivalent reduced match statement with arm returns",
+    "source": "probes/P18_minimal_static_statement.tk",
+    "expected": "pass",
+    "expected_diagnostics": [],
+    "diagnostic_min_line": 3
+  },
+  {
+    "id": "N09_vec_entry_local_escape",
+    "description": "High-fidelity shared block / Vec<Entry> owner must not allow a local lease view to escape",
+    "source": "probes/N09_vec_entry_local_escape.tk",
+    "expected": "reject",
+    "expected_diagnostics": [
+      "E0455",
+      "E0456"
+    ],
+    "diagnostic_min_line": 60
+  }
+]

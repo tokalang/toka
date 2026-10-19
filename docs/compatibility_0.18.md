@@ -90,9 +90,10 @@ and the [0.18 consuming-slice verification suite](../tools/scripts/test_018_stag
 - **Retained-Body vs Bodyless `.tki` Boundary**: Hand-written or stripped bodyless `.tki` declarations cannot consume or forward borrowed receivers or local-borrowing `TaskHandle<T>` instances; attempting to do so triggers compile-time rejection (`error[E0456]`).
 
 ### 5. Version Identity Architecture & Platform Policy
-- **Product Release Version**: `0.18.0`
+- **Product Release Version**: `0.18.1` (patch release on the `0.18` line following `0.18.0`)
   - Emitted by CLI tools (`tokac --version`, `toka --version`, `tokafmt --version`, `tokalsp --version`).
-  - Recorded in `CMakeLists.txt`, `sdk.json`, and official release tarballs (`toka-v0.18.0-<target>.tar.gz`).
+  - Recorded in `CMakeLists.txt`, `sdk.json`, and official release tarballs (`toka-v0.18.1-<target>.tar.gz`).
+  - Resolves false rejection of `str`-valued `match` expressions (`E04661` / `E04658`) while preserving all `0.18.0` and `0.17.1` borrow-escape invariants.
 - **Compiler Interface Key**: `0.9.9-38`
   - Defined in `include/toka/InterfaceVersion.h` (`TOKA_COMPILER_INTERFACE_VERSION`).
   - Emitted in `.tki` interface metadata headers (`// @meta compiler_version: 0.9.9-38`).
@@ -104,10 +105,10 @@ and the [0.18 consuming-slice verification suite](../tools/scripts/test_018_stag
 ## SDK Acceptance Checklist
 
 1. **Tool Version Identifiers**:
-   - `tokac --version` reports `0.18.0`
-   - `toka --version` reports `0.18.0`
-   - `tokafmt --version` reports `0.18.0`
-   - `tokalsp --version` reports `0.18.0`
+   - `tokac --version` reports `0.18.1`
+   - `toka --version` reports `0.18.1`
+   - `tokafmt --version` reports `0.18.1`
+   - `tokalsp --version` reports `0.18.1`
 2. **Standard Build**:
    - Built in clean directory with `-DBUILD_TESTING=OFF`
    - Archive layout includes `bin/`, `lib/`, `include/`, `docs/`, `sdk.json`
@@ -117,6 +118,7 @@ and the [0.18 consuming-slice verification suite](../tools/scripts/test_018_stag
    - 75 contract mutation test cases pass fail-closed (including P1-2a/b/c/d).
    - 3 positive suites pass with compilation, linkage, and native execution (`rc == 0`) across 5 lifecycle steps (15 commands total).
    - 60 compositional convergence regression probes pass 100% (including 18 native executions `rc == 0`).
+   - 26 baseline `valuelease-v018` probes plus `P-A`..`P-F` and `N-A`..`N-F` in `toka_str_match_expr_0181` pass 100%.
    - 110 command execution receipts validated with 0 errors.
-   - 141 full CTest suites pass 100% (141/141 passed with 0 failed).
-   - 4-platform CI gates pass 100% (Pull Request Gate run 39143108284 and Windows Dogfood run 39143108277).
+   - 142 full CTest suites pass 100% (142/142 passed with 0 failed).
+   - 4-platform CI gates pass 100% across `linux-x64`, `linux-arm64`, `macos-arm64`, and `windows-x64`.

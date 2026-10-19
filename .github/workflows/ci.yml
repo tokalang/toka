@@ -187,6 +187,11 @@ jobs:
           set -euo pipefail
           ctest --test-dir build --output-on-failure -R "^toka_018_stage1_verification$"
 
+      - name: Run 0.18.1 str match expression gate
+        run: |
+          set -euo pipefail
+          ctest --test-dir build --output-on-failure -R "^toka_str_match_expr_0181$"
+
       - name: Run G2 framed transport directed gate
         run: |
           set -euo pipefail

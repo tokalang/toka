@@ -877,7 +877,14 @@ case but do not count as exhaustive. For non-enum targets, use an unguarded
 wildcard or unconditional variable arm. The compiler does not try to prove full
 integer, range, or string value-domain coverage.
 
-`pass` yields a value from a block expression.
+`pass` yields a value from a block expression. When a `match` expression yields
+a borrowed view such as `str` via `pass`, its dependency provenance merges all
+value-producing arms: static string literals contribute proven static storage
+origins, borrowed variant payload bindings resolve to the underlying `match`
+target owner, and early-`return` arms are checked against the enclosing function
+without adding spurious dependencies to the `match` result. Views borrowed from
+arm-local owners or from payloads consumed by `match cede` are rejected
+(`E0455` / `E0456`).
 
 ## 11. Pattern Matching And Destructuring
 
