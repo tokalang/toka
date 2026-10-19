@@ -453,6 +453,13 @@ impl Rect@Shape {
 }
 ```
 
+在 0.18.0 基线中，async trait 方法支持严格可变 receiver `self#`（0.14 G1）
+和严格消费型 receiver `cede self`（0.18 消费型静态 async trait 切片）的静态分派。
+普通 `self`、`self: &Self` / `self: ~Self` 等显式 handle receiver、`cede self#`、
+`init cede self` 及无 receiver 的 async trait 方法仍被 `E0618` 拒绝。
+含 async 方法或声明关联类型的 trait 仍不能构造动态对象（`E0617`）。
+完整范围见 [receiver 支持矩阵](compatibility_0.18.md#2-admitted-language-forms-in-0180)。
+
 Trait 可以声明关联类型。普通 `type` 关联类型对某个 shape 的整个 trait family 保持稳定：一旦 `Data@Mapper<i32>::Output` 被绑定，另一个 `Data@Mapper<bool>` 实现也必须使用相同的 `Output`。`per type` 关联类型则绑定到具体 trait 实例，因此不同 trait 参数可以选择不同输出类型。
 
 ```toka

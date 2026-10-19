@@ -1,12 +1,18 @@
 # Toka 0.18.0 Release Notes
 
-Toka 0.18.0 is an iterative development release on the `0.1x` branch following `0.17.0` Compositional Consistency (`受限组合收敛 v1`) and the `v0.17.1` patch. As a pre-1.0 development release, it does not claim `1.0` stability and does not guarantee blanket cross-version binary ABI compatibility. This release strictly admits consuming `cede self` static async trait methods (`trait @T { fn m(cede self) -> async R }`) and their monomorphized static implementations, enabling canonical lifecycle completion patterns such as `close(cede self) -> async Result<T, E>`. It explicitly does not introduce general dynamic async traits (`dyn @Trait`), borrow receivers (`self#`, `&Self`, `~Self`), or constructor variants (`init cede self`). Receiver borrow dependency propagation and escape analysis established in v0.17.1 are fully preserved without regression. No explicit lifetime annotation syntax is introduced, existing `E0617` / `E0618` restrictions on unrelaxed receiver forms remain strictly enforced, historical assets remain immutable, and external utilities (`trg` and `tokakv`) remain untouched. Upgrading from `0.17.x` requires full recompilation of `.o` and `.tki` artifacts with compiler cache clearing. Source and interface migration guidance follows `docs/compatibility_0.18.md`.
+Toka 0.18.0 is an iterative development release on the `0.1x` branch following `0.17.0` Compositional Consistency (`受限组合收敛 v1`) and the `v0.17.1` patch. As a pre-1.0 development release, it does not claim `1.0` stability and does not guarantee blanket cross-version binary ABI compatibility. This release strictly admits consuming `cede self` static async trait methods (`trait @T { fn m(cede self) -> async R }`) and their monomorphized static implementations, enabling canonical lifecycle completion patterns such as `close(cede self) -> async Result<T, E>`. The strict mutable receiver `self#`, admitted by 0.14 G1, remains supported. Plain `self`, explicit handle receivers such as `self: &Self` and `self: ~Self`, the combined form `cede self#`, constructor variants (`init cede self`), and receiverless async trait methods remain rejected; dynamic async traits (`dyn @Trait`) also remain unsupported. Receiver borrow dependency propagation and escape analysis established in v0.17.1 are fully preserved without regression. No explicit lifetime annotation syntax is introduced, existing `E0617` / `E0618` restrictions on unrelaxed receiver forms remain strictly enforced, historical assets remain immutable, and external utilities (`trg` and `tokakv`) remain untouched. Upgrading from `0.17.x` requires full recompilation of `.o` and `.tki` artifacts with compiler cache clearing. Source and interface migration guidance follows `docs/compatibility_0.18.md`.
 
-（Toka 0.18.0 是继 0.17.0 受限组合收敛及 v0.17.1 补丁之后的 `0.1x` 开发线迭代版本。作为 1.0 前的开发期版本，本版不作 1.0 级别稳定性承诺，不保证跨版本的通用二进制 ABI 兼容性。本版严格且精确地放开单所有权消费型 `cede self` 静态 async trait 方法声明与单态化静态实现（如 `close(cede self) -> async Result<T,E>` 经典生命周期终结形态），明确不放开动态分发（`dyn @Trait`）、借用 receiver（`self#` / `&Self` / `~Self`）或构造器变体（`init cede self`）。在编译器语义分析（Sema）、代码生成（CodeGen）及无源码 `.tki` 接口跨模块重放中完成端到端本地功能闭环。完整复用并守恒 v0.17.1 借用依赖传播与逃逸检查；不引入显式生命周期语法；严格维持 `E0617` / `E0618` 既有拒绝边界；历史发布资产保持不可变；不触碰 `trg` 与 `tokakv`。跨版本升级需全量重新编译 `.o` 与 `.tki` 并清理编译缓存。接口与源码迁移指引详见 `docs/compatibility_0.18.md`。）
+（Toka 0.18.0 是继 0.17.0 受限组合收敛及 v0.17.1 补丁之后的 `0.1x` 开发线迭代版本。作为 1.0 前的开发期版本，本版不作 1.0 级别稳定性承诺，不保证跨版本的通用二进制 ABI 兼容性。本版严格且精确地放开单所有权消费型 `cede self` 静态 async trait 方法声明与单态化静态实现（如 `close(cede self) -> async Result<T,E>` 经典生命周期终结形态），继续支持 0.14 G1 已放开的严格可变 receiver `self#`；普通 `self`、`self: &Self` / `self: ~Self` 等显式 handle receiver、组合形式 `cede self#`、构造器变体 `init cede self` 及无 receiver 的 async trait 方法仍被拒绝，动态 async trait 分发（`dyn @Trait`）也仍未开放。在编译器语义分析（Sema）、代码生成（CodeGen）及无源码 `.tki` 接口跨模块重放中完成端到端本地功能闭环。完整复用并守恒 v0.17.1 借用依赖传播与逃逸检查；不引入显式生命周期语法；严格维持 `E0617` / `E0618` 既有拒绝边界；历史发布资产保持不可变；不触碰 `trg` 与 `tokakv`。跨版本升级需全量重新编译 `.o` 与 `.tki` 并清理编译缓存。接口与源码迁移指引详见 `docs/compatibility_0.18.md`。）
 
 ## Key Highlights
 
 ### 1. Consuming Static Async Trait Methods (`cede self` Async Trait)
+
+This feature is the **0.18 consuming static async trait slice**, historically
+called “0.18 Stage 1” in verification identifiers. That label is local to this
+release slice. The existing **0.14 G1 static mutable-receiver async trait** slice
+remains supported; see the [complete receiver matrix](compatibility_0.18.md#2-admitted-language-forms-in-0180).
+
 - **Trait Declaration & Implementation**:
   - Traits may declare consuming asynchronous methods taking `cede self`:
     ```toka
@@ -34,10 +40,10 @@ Toka 0.18.0 is an iterative development release on the `0.1x` branch following `
 
 ### 3. Strict Boundary & Non-Relaxation Invariants
 - **Unrelaxed Receiver Forms (`error[E0618]`)**:
-  - Mutable borrow `cede self#` on async trait methods is rejected (`error[E0618]`).
+  - The combined consuming-and-mutable form `cede self#` on async trait methods is rejected (`error[E0618]`).
   - Constructor-like `init cede self` on async trait methods is rejected (`error[E0618]`).
   - Value receiver `plain self` without `cede` is rejected (`error[E0618]`).
-  - Shared borrow `self: &Self` and mutable borrow `self: ~Self` on async trait methods remain rejected (`error[E0618]`).
+  - Explicit reference `self: &Self` and shared-owner handle `self: ~Self` on async trait methods remain rejected (`error[E0618]`).
   - Static methods on async traits without receiver (`fn new() -> async R`) remain rejected (`error[E0618]`).
 - **Dynamic Dispatch Rejection (`error[E0617]`)**:
   - `dyn @AsyncTrait` invocation remains rejected; dynamic trait object dispatch on async traits is strictly disallowed.

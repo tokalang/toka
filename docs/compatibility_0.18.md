@@ -5,14 +5,31 @@
 ### 1. Positioning & Relationship with `v0.17.0` / `v0.17.1`
 - **Development Line Positioning**: Toka `0.18.0` is the subsequent release on the `0.1x` line following `0.17.0` Compositional Consistency and the `v0.17.1` borrow-escape and drop-unwinding patch. It introduces static consuming async trait methods taking `cede self`.
 - **No 1.0 Stability Claim**: As an iterative development release on the `0.1x` line, Toka `0.18.0` does not claim `1.0` stability. Language features and internal compiler ABIs continue to evolve.
-- **Strict Scope of Async Trait Support**: Support is strictly restricted to static dispatch, single-ownership consuming methods (`cede self`) with monomorphized generic dispatch. Dynamic dispatch (`dyn @AsyncTrait`), borrow receivers (`self#`, `&Self`, `~Self`), unrelaxed constructor receivers (`init cede self`), and static methods without self (`fn new() -> async Self`) are strictly disallowed (`error[E0617]` / `error[E0618]`).
+- **Strict Scope of Async Trait Support**: Static dispatch supports the strict mutable receiver `self#` retained from 0.14 G1 and the strict consuming receiver `cede self` added in 0.18. Both support monomorphized generic dispatch. Plain `self`, explicit handle receivers (`self: &Self`, `self: ~Self`, and other handle variants), `cede self#`, `init cede self`, and static async methods without self remain rejected (`error[E0618]`). Dynamic async trait objects remain rejected (`error[E0617]`).
 - **Invariants Preserved**: The receiver borrow dependency propagation and upstream borrow-escape checking implemented in `v0.17.1` are fully preserved without regression. All 60 compositional convergence regression probes, 141 full CTest suites (0 failed), and negative probes across all compiler modes remain verified and passing.
 - **No Lifetime Syntax Extension**: Toka `0.18.0` introduces no explicit lifetime syntax (`'a`, etc.). Structured concurrency and linear ownership transfer (`cede`) remain the sole lifetime management model.
 - **Zero External Tooling Impact**: No modifications are made to `trg` (tree-sitter search engine) or `tokakv` (embedded database).
 - **Immutability of Historical Assets**: Published `v0.17.0`, `v0.17.1`, and earlier Git tags, release tarballs, and historical qualification receipts remain immutable.
 
 ### 2. Admitted Language Forms in `0.18.0`
-The following pattern is admitted for static dispatch:
+
+The receiver matrix describes the complete current admission boundary, not only
+the forms newly added by this release:
+
+| Async trait receiver / dispatch | 0.18.0 status | Release slice |
+| --- | --- | --- |
+| `fn m(self#) -> async R` with static dispatch | Admitted; mutable receiver lease remains subject to PAL | 0.14 G1 static mutable-receiver async traits |
+| `fn m(cede self) -> async R` with static dispatch | Admitted; receiver ownership is consumed | 0.18 consuming static async trait slice |
+| Plain `self`, explicit handle receivers, `cede self#`, `init cede self`, or no receiver | Rejected with `E0618` | Not admitted by either slice |
+| `dyn @AsyncTrait` | Rejected with `E0617` | Dynamic async dispatch remains unsupported |
+
+Use **0.18 consuming static async trait slice** for the feature name. Historical
+verification identifiers such as `test_018_stage1_verification.py` and
+`v018_s1_*` retain their names; their “Stage 1” identifies this release slice,
+not a global polymorphism roadmap stage. The retained mutable-receiver slice is
+**0.14 G1**. Neither slice admits arbitrary async receiver forms.
+
+The new consuming pattern is:
 
 ```toka
 // Admitted in 0.18.0: consuming cede self static async trait method
@@ -45,7 +62,7 @@ All unauthorized, unverified, or escaping forms continue to fail closed at compi
 | Unrelaxed Receiver Syntax | `fn m(init cede self) -> async R` | `error[E0618]` | Rejected; zero artifacts |
 | Plain Self Receiver | `fn m(self) -> async R` | `error[E0618]` | Rejected; zero artifacts |
 | Explicit Borrow Receivers | `fn m(self: &Self) -> async R` | `error[E0618]` | Rejected; zero artifacts |
-| Explicit Mut Borrow Receivers| `fn m(self: ~Self) -> async R` | `error[E0618]` | Rejected; zero artifacts |
+| Explicit Shared-Owner Receiver | `fn m(self: ~Self) -> async R` | `error[E0618]` | Rejected; zero artifacts |
 | Static Method Without Self | `fn new() -> async Self` | `error[E0618]` | Rejected; zero artifacts |
 | Dynamic Trait Object | `dyn @AsyncClose` | `error[E0617]` | Rejected; zero artifacts |
 | Signature / Receiver Mismatch| Trait/Impl receiver discrepancy | `error[E0428]` | Rejected; zero artifacts |
@@ -54,6 +71,18 @@ All unauthorized, unverified, or escaping forms continue to fail closed at compi
 | Local Borrow Return | Returning borrowed state from async trait | `error[E0455]` / `error[E04584]` | Rejected; zero artifacts |
 | Carrier Escape | Detached start on `RefCarrier` | `error[E0455]` / `error[E04584]` | Rejected; zero artifacts |
 | Cross-Module Escape | Bodyless `.tki` borrowed receiver sink | `error[E0456]` | Rejected; zero artifacts |
+
+`self#` is not an explicit handle receiver and is not interchangeable with
+`cede self#` or `self: &Self`. A second conflicting use of a mutably borrowed
+receiver remains rejected with `E0441`, including after requesting cancellation
+but before completing the task's borrow lifetime.
+
+The admission rules are implemented by `Sema::validateTraitAssociatedTypes` and
+`Sema::validateDynTraitObjectSafety` in [Sema.cpp](../src/Sema/Sema.cpp).
+Existing controls include
+[`g14_static_async_trait_lifecycle.tk`](../tests/pass/g14_static_async_trait_lifecycle.tk),
+[`async_trait_use_receiver_before_await.tk`](../tests/fail/async_trait_use_receiver_before_await.tk),
+and the [0.18 consuming-slice verification suite](../tools/scripts/test_018_stage1_verification.py).
 
 ### 4. Migration & Cache Guidance
 - **Recompilation Across Versions & No Binary ABI Guarantee**: Binary object files (`.o`) and interface files (`.tki`) built with Toka `0.17.x` or earlier are **not** guaranteed to be binary compatible. Toka does not provide a blanket cross-version binary ABI guarantee. When upgrading to `0.18.0`, existing build caches must be cleared and all `.o` objects and `.tki` interface files must be recompiled using the `0.18.0` `tokac` compiler.
