@@ -1383,12 +1383,15 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         }
 
         if (!m_LastFieldDependencies.empty()) {
+          SymbolInfo *selfSym = nullptr;
+          const bool hasSelfInScope =
+              CurrentScope && CurrentScope->findSymbol("self", selfSym);
           targetInfo->FieldDependencySet.clear();
           for (const auto &pair : m_LastFieldDependencies) {
             targetInfo->FieldDependencySet[pair.first];
             for (const auto &dep : pair.second) {
               std::string actualDep = dep;
-              if (actualDep.rfind("self.", 0) == 0)
+              if (!hasSelfInScope && actualDep.rfind("self.", 0) == 0)
                 actualDep = targetObjName + actualDep.substr(4);
               targetInfo->FieldDependencySet[pair.first].insert(actualDep);
             }

@@ -236,6 +236,9 @@ SourceLocation Sema::findPathDeclaration(const std::string &Path) {
   if (!CurrentScope || Path.empty())
     return {};
   std::string root = Path.substr(0, Path.find('.'));
+  if (auto it = m_ExitedBorrowSourceLocs.find(root);
+      it != m_ExitedBorrowSourceLocs.end())
+    return it->second;
   SymbolInfo *info = nullptr;
   std::string actualName;
   if (CurrentScope->findVariableWithDeref(root, info, actualName) && info)

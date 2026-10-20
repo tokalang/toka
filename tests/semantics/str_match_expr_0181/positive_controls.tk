@@ -1,0 +1,272 @@
+import core/string::{string}
+import core/traits::{@Encap}
+
+auto g_block_drops# = 0:i32
+auto g_text_drops# = 0:i32
+auto g_target_hits# = 0:i32
+auto g_arm_hits# = 0:i32
+
+pub shape CachedBlock(payload: string)
+impl CachedBlock@Encap {
+    fn drop(self#) { g_block_drops += 1:i32 }
+}
+impl CachedBlock {
+    pub fn view(self) -> str <- self { return self.payload.as_str() }
+}
+
+pub shape BlockLease(~block: CachedBlock)
+impl BlockLease@Encap {}
+impl BlockLease {
+    pub fn new(~block: CachedBlock) -> BlockLease {
+        return BlockLease(~block = ~block)
+    }
+    pub fn value_at(self, index: usize) -> str <- self {
+        assert(index == 0:usize, "single-entry fixture index")
+        return self.block.view()
+    }
+}
+
+pub shape OwnedText(value: string)
+impl OwnedText@Encap {
+    fn drop(self#) { g_text_drops += 1:i32 }
+}
+impl OwnedText {
+    pub fn view(self) -> str <- self { return self.value.as_str() }
+}
+
+pub shape ValueLease(
+    Cached(BlockLease, usize) = 0 |
+    Owned(string) = 1
+)
+
+impl ValueLease {
+    pub fn as_str_expr(self) -> str <- self {
+        auto result = match self {
+            auto ValueLease::Cached(&lease, index) => { pass lease.value_at(index) }
+            auto ValueLease::Owned(&value) => { pass value.as_str() }
+        }
+        return result
+    }
+
+    pub fn as_str_direct(self) -> str <- self {
+        return match self {
+            auto ValueLease::Cached(&lease, index) => { pass lease.value_at(index) }
+            auto ValueLease::Owned(&value) => { pass value.as_str() }
+        }
+    }
+
+    pub fn as_str_ascribed(self) -> str <- self {
+        auto result = (match self {
+            auto ValueLease::Cached(&lease, index) => { pass lease.value_at(index) }
+            auto ValueLease::Owned(&value) => { pass value.as_str() }
+        }):str
+        return result
+    }
+
+    pub fn as_str_arm_return(self) -> str <- self {
+        match self {
+            auto ValueLease::Cached(&lease, index) => return lease.value_at(index)
+            auto ValueLease::Owned(&value) => return value.as_str()
+        }
+    }
+}
+
+trait @View {
+    pub fn view(self) -> str <- self
+}
+
+impl ValueLease@View {
+    pub fn view(self) -> str <- self { return self.as_str_expr() }
+}
+
+pub fn generic_view<T: @View>(value: T) -> str <- value {
+    return value.view()
+}
+
+pub shape ObservedLease(
+    Cached(BlockLease, usize) = 0 |
+    Owned(OwnedText) = 1
+)
+
+impl ObservedLease {
+    pub fn view_expr(self) -> str <- self {
+        auto result = match self {
+            auto ObservedLease::Cached(&lease, index) => { pass lease.value_at(index) }
+            auto ObservedLease::Owned(&text) => { pass text.view() }
+        }
+        return result
+    }
+
+    pub fn view_direct(self) -> str <- self {
+        return match self {
+            auto ObservedLease::Cached(&lease, index) => { pass lease.value_at(index) }
+            auto ObservedLease::Owned(&text) => { pass text.view() }
+        }
+    }
+}
+
+pub shape PairHolder(
+    left: string,
+    right: string
+)
+
+impl PairHolder {
+    pub fn pick_expr(self, flag: bool) -> str <- self {
+        auto result = match flag {
+            true => { pass self.left.as_str() }
+            _ => { pass self.right.as_str() }
+        }
+        return result
+    }
+
+    pub fn pick_direct(self, flag: bool) -> str <- self {
+        return match flag {
+            true => { pass self.left.as_str() }
+            _ => { pass self.right.as_str() }
+        }
+    }
+}
+
+pub fn pick_mixed_static_first(s: string, flag: bool) -> str <- s {
+    auto result = match flag {
+        true => { pass "static_fallback" }
+        _ => { pass s.as_str() }
+    }
+    return result
+}
+
+pub fn pick_mixed_dynamic_first(s: string, flag: bool) -> str <- s {
+    return match flag {
+        true => { pass s.as_str() }
+        _ => { pass "static_fallback" }
+    }
+}
+
+pub fn pick_two_owners(a: string, b: string, flag: bool) -> str <- a | b {
+    auto result = match flag {
+        true => { pass a.as_str() }
+        _ => { pass b.as_str() }
+    }
+    return result
+}
+
+pub fn pick_with_early_return(s: string, mode: i32) -> str <- s {
+    auto result = match mode {
+        0 => { return "early_exit" }
+        1 => { pass s.as_str() }
+        _ => { pass "default_static" }
+    }
+    return result
+}
+
+fn eval_target(mode: i32) -> i32 {
+    g_target_hits += 1:i32
+    return mode
+}
+
+fn eval_arm(s: string) -> str <- s {
+    g_arm_hits += 1:i32
+    return s.as_str()
+}
+
+fn make_cached(label: str) -> ValueLease {
+    auto ~block = new CachedBlock(payload = string::from(label))
+    return ValueLease::Cached(BlockLease::new(~block), 0:usize)
+}
+
+fn make_owned(label: str) -> ValueLease {
+    return ValueLease::Owned(string::from(label))
+}
+
+fn make_observed_cached(label: str) -> ObservedLease {
+    auto ~block = new CachedBlock(payload = string::from(label))
+    return ObservedLease::Cached(BlockLease::new(~block), 0:usize)
+}
+
+fn dispose_observed(cede value: ObservedLease) {
+    auto held = cede value
+}
+
+fn main() -> i32 {
+    // P-A & P-B: All variants across expr, direct, ascribed, and arm-return equivalence
+    {
+        auto o_lease = make_owned("owned_payload")
+        assert(o_lease.as_str_expr().equals(o_lease.as_str_arm_return()), "owned eq arm_return")
+        assert(o_lease.as_str_expr().equals("owned_payload"), "owned expr")
+        assert(o_lease.as_str_direct().equals("owned_payload"), "owned direct")
+        assert(o_lease.as_str_ascribed().equals("owned_payload"), "owned ascribed")
+
+        auto c_lease = make_cached("cached_payload")
+        assert(c_lease.as_str_expr().equals(c_lease.as_str_arm_return()), "cached eq arm_return")
+        assert(c_lease.as_str_expr().equals("cached_payload"), "cached expr")
+        assert(c_lease.as_str_direct().equals("cached_payload"), "cached direct")
+        assert(c_lease.as_str_ascribed().equals("cached_payload"), "cached ascribed")
+    }
+    assert(g_block_drops == 1:i32, "cached block from P-A/P-B dropped once")
+    g_block_drops = 0:i32
+
+    // P-C: Same external owner projections, mixed static+dynamic in both orders, and dual external owners
+    auto holder = PairHolder(left = string::from("left_val"), right = string::from("right_val"))
+    assert(holder.pick_expr(true).equals("left_val"), "holder expr true")
+    assert(holder.pick_expr(false).equals("right_val"), "holder expr false")
+    assert(holder.pick_direct(true).equals("left_val"), "holder direct true")
+    assert(holder.pick_direct(false).equals("right_val"), "holder direct false")
+
+    auto dyn_s = string::from("dyn_value")
+    assert(pick_mixed_static_first(dyn_s, true).equals("static_fallback"), "mixed static first true")
+    assert(pick_mixed_static_first(dyn_s, false).equals("dyn_value"), "mixed static first false")
+    assert(pick_mixed_dynamic_first(dyn_s, true).equals("dyn_value"), "mixed dynamic first true")
+    assert(pick_mixed_dynamic_first(dyn_s, false).equals("static_fallback"), "mixed dynamic first false")
+
+    auto owner_a = string::from("alpha")
+    auto owner_b = string::from("beta")
+    assert(pick_two_owners(owner_a, owner_b, true).equals("alpha"), "two owners true")
+    assert(pick_two_owners(owner_a, owner_b, false).equals("beta"), "two owners false")
+
+    // P-D: Non-value-producing early-return arm and single-evaluation proof
+    assert(pick_with_early_return(dyn_s, 0:i32).equals("early_exit"), "early return arm")
+    assert(pick_with_early_return(dyn_s, 1:i32).equals("dyn_value"), "dynamic arm after early return")
+    assert(pick_with_early_return(dyn_s, 2:i32).equals("default_static"), "static arm after early return")
+
+    g_target_hits = 0:i32
+    g_arm_hits = 0:i32
+    {
+        auto single_eval_view = match eval_target(1:i32) {
+            0 => { pass "unused" }
+            1 => { pass eval_arm(dyn_s) }
+            _ => { pass "other" }
+        }
+        assert(single_eval_view.equals("dyn_value"), "single eval view content")
+    }
+    assert(g_target_hits == 1:i32 && g_arm_hits == 1:i32, "target and selected arm evaluated once")
+
+    // P-E: Resource drop counting and owner consumption/replacement after view scope ends
+    g_block_drops = 0:i32
+    g_text_drops = 0:i32
+    {
+        auto obs_cached# = make_observed_cached("cached_pe")
+        auto obs_owned# = ObservedLease::Owned(OwnedText(value = string::from("owned_pe")))
+        {
+            auto v1 = obs_cached.view_expr()
+            auto v2 = obs_owned.view_direct()
+            assert(v1.equals("cached_pe") && v2.equals("owned_pe"), "P-E active views")
+            assert(g_block_drops == 0:i32 && g_text_drops == 0:i32, "P-E owners alive while views active")
+        }
+        // View scope ended; owners are still alive and can now be replaced or consumed
+        assert(g_block_drops == 0:i32 && g_text_drops == 0:i32, "P-E owners alive after view scope")
+        obs_owned = ObservedLease::Owned(OwnedText(value = string::from("owned_pe_replaced")))
+        assert(g_text_drops == 1:i32, "old OwnedText dropped on replacement after view scope")
+        assert(obs_owned.view_expr().equals("owned_pe_replaced"), "replaced owner readable via match expr")
+        dispose_observed(cede obs_cached)
+        assert(g_block_drops == 1:i32, "consumed CachedBlock dropped in dispose_observed")
+    }
+    assert(g_block_drops == 1:i32 && g_text_drops == 2:i32, "exact final drop counts")
+
+    // P-F (in-module generic trait relay part):
+    auto g_owned = make_owned("generic_owned")
+    auto g_cached = make_cached("generic_cached")
+    assert(generic_view(g_owned).equals("generic_owned"), "generic trait relay owned")
+    assert(generic_view(g_cached).equals("generic_cached"), "generic trait relay cached")
+
+    return 0:i32
+}

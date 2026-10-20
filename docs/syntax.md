@@ -543,6 +543,14 @@ impl Rect@Shape {
 }
 ```
 
+In the 0.18.0 baseline, async trait methods support static dispatch with a strict
+mutable receiver `self#` (0.14 G1) or a strict consuming receiver `cede self`
+(0.18 consuming static async trait slice). Plain `self`, explicit handle
+receivers such as `self: &Self` or `self: ~Self`, `cede self#`, `init cede self`,
+and receiverless async trait methods remain rejected with `E0618`.
+Dynamic objects for traits containing async methods or declaring associated
+types remain rejected with `E0617`. See the [receiver matrix](compatibility_0.18.md#2-admitted-language-forms-in-0180).
+
 Traits may declare associated types. A plain `type` associated type is stable for the whole trait family on a shape: once `Data@Mapper<i32>::Output` is bound, another `Data@Mapper<bool>` implementation must use the same `Output`. A `per type` associated type is bound per trait instance, so different trait arguments may choose different output types.
 
 ```toka
@@ -869,7 +877,14 @@ case but do not count as exhaustive. For non-enum targets, use an unguarded
 wildcard or unconditional variable arm. The compiler does not try to prove full
 integer, range, or string value-domain coverage.
 
-`pass` yields a value from a block expression.
+`pass` yields a value from a block expression. When a `match` expression yields
+a borrowed view such as `str` via `pass`, its dependency provenance merges all
+value-producing arms: static string literals contribute proven static storage
+origins, borrowed variant payload bindings resolve to the underlying `match`
+target owner, and early-`return` arms are checked against the enclosing function
+without adding spurious dependencies to the `match` result. Views borrowed from
+arm-local owners or from payloads consumed by `match cede` are rejected
+(`E0455` / `E0456`).
 
 ## 11. Pattern Matching And Destructuring
 

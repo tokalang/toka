@@ -2,7 +2,7 @@
 
 ## 1. Overview & Motivation
 
-In asynchronous systems, resources such as network sockets, database connections, and background task carriers require asynchronous cleanup. In previous Toka versions, traits could only declare synchronous methods or methods with borrow receivers. 
+In asynchronous systems, resources such as network sockets, database connections, and background task carriers require asynchronous cleanup. Since 0.14 G1, traits have supported statically dispatched async methods with a strict mutable receiver (`self#`). That support remains available in 0.18.0.
 
 Toka 0.18.0 introduces **Consuming Static Async Trait Methods** (`cede self` async trait methods). This feature allows traits to define lifecycle-terminating methods that consume the receiver and execute asynchronous teardown:
 
@@ -11,6 +11,11 @@ pub trait @AsyncClose {
     pub fn close(cede self) -> async Result<i32, CloseError>
 }
 ```
+
+The release slice is named **0.18 consuming static async trait slice**. Its
+historical verification names use “0.18 Stage 1”; this does not number the
+entire polymorphism roadmap. See the [complete receiver matrix and naming
+convention](compatibility_0.18.md#2-admitted-language-forms-in-0180).
 
 Key characteristics:
 - **Linear Ownership Transfer**: Passing `cede self` moves the receiver into the coroutine frame, preventing use-after-free or double-close bugs.
@@ -101,10 +106,18 @@ Consuming static async trait methods are verified across 7 lifecycle and unwindi
 
 The compiler enforces strict fail-closed boundaries:
 
+- **Admitted Static Receivers**:
+  Strict `self#` (retained from 0.14 G1) and strict `cede self` (added in 0.18)
+  are supported. Mutable receiver borrows continue to obey PAL conflict and
+  lifetime rules; consuming a receiver does not erase dependencies carried by
+  its fields.
 - **No Dynamic Dispatch (`error[E0617]`)**:
-  `dyn @AsyncClose` is rejected. Trait objects cannot represent consuming asynchronous state machines.
+  `dyn @AsyncClose` is rejected. Dynamic dispatch for traits containing async methods is not supported in 0.18.0.
 - **No Unrelaxed Receiver Variants (`error[E0618]`)**:
-  Borrow receivers (`self`, `self#`, `self: &Self`, `self: ~Self`) and constructor receivers (`init cede self`) on async trait methods are rejected.
+  Plain `self`, explicit handle receivers such as `self: &Self` and `self: ~Self`,
+  the combined form `cede self#`, constructor receivers (`init cede self`), and
+  async trait methods without a receiver remain rejected. `~Self` is a
+  shared-owner handle, not a spelling for the admitted mutable receiver `self#`.
 - **Trusted Wrapper Enforcement (`error[E0456]`)**:
   Attempting to bypass `cede` obligations by writing a user-defined function named `block_on` without `cede` triggers compile-time rejection (`error[E0456]`). The compiler authenticates `std/task::block_on` by module identity.
 - **Escape Prevention (`error[E0455]` / `error[E04584]`)**:

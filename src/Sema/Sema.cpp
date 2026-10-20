@@ -9139,6 +9139,8 @@ int Sema::getScopeDepth(const std::string &Name) {
     return 0;
 
   std::string root = extractPathRoot(Name);
+  if (m_ExitedBorrowSourceLocs.count(root))
+    return FAIL_CLOSED_SCOPE_DEPTH;
   SymbolInfo *info = nullptr;
   std::string actualName = root;
   Scope *ownerScope = nullptr;

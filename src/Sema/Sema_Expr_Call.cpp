@@ -4034,6 +4034,45 @@ bool Sema::collectActualReturnReferents(
       return visit(unsafe->Expression.get(), result);
     if (auto *cede = dynamic_cast<CedeExpr *>(value))
       return visit(cede->Value.get(), result);
+    if (auto *pass = dynamic_cast<PassExpr *>(value))
+      return visit(pass->Value.get(), result);
+    if (auto *match = dynamic_cast<MatchExpr *>(value)) {
+      auto it = m_ResolvedExpressionOrigins.find(match);
+      if (it == m_ResolvedExpressionOrigins.end() || !it->second.Complete)
+        return false;
+      for (const auto &origin : it->second.Referents) {
+        SymbolInfo *info = nullptr;
+        std::string actualName;
+        if (!CurrentScope ||
+            !CurrentScope->findVariableWithDeref(origin.RootName, info, actualName) ||
+            !info ||
+            (origin.RootLoc.isValid() && info->DeclLoc.isValid() &&
+             origin.RootLoc != info->DeclLoc))
+          return false;
+      }
+      result.insert(result.end(), it->second.Referents.begin(),
+                    it->second.Referents.end());
+      preparedStorage.insert(preparedStorage.end(),
+                             it->second.AddressedStorage.begin(),
+                             it->second.AddressedStorage.end());
+      preparedStatic.insert(preparedStatic.end(),
+                            it->second.StaticStorage.begin(),
+                            it->second.StaticStorage.end());
+      if (it->second.UsedCurrentReference && usedCurrentReference)
+        *usedCurrentReference = true;
+      if (fields && value == fieldOwner) {
+        for (const auto &[field, fieldOrigins] : it->second.Fields) {
+          preparedFields[field].Referents.insert(
+              preparedFields[field].Referents.end(),
+              fieldOrigins.Referents.begin(), fieldOrigins.Referents.end());
+          preparedFields[field].StaticStorage.insert(
+              preparedFields[field].StaticStorage.end(),
+              fieldOrigins.StaticStorage.begin(),
+              fieldOrigins.StaticStorage.end());
+        }
+      }
+      return !it->second.Referents.empty() || !it->second.StaticStorage.empty();
+    }
     if (auto *address = dynamic_cast<AddressOfExpr *>(value))
       return storageOrigin(address->Expression.get(), result);
     if (auto *unary = dynamic_cast<UnaryExpr *>(value);
@@ -7326,6 +7365,12 @@ bool Sema::Stage1BindingTransfer::prepare(
         validated && PropagatedOrigins && PropagationSource == source ? &*PropagatedOrigins : nullptr);
   }
   if (validated && !Plan->admitted()) {
+    const auto &diagnostics = DiagnosticEngine::records();
+    const bool priorError = Snapshot && std::any_of(
+        diagnostics.begin() + std::min(Snapshot->DiagnosticStart, diagnostics.size()),
+        diagnostics.end(), [](const auto &record) { return record.Level == DiagLevel::Error; });
+    if (Plan->Rejection == TransferPlanRejection::IncompleteFacts && priorError)
+      return false;
     Owner.error(source, DiagID::ERR_SEMA_BINDING_TRANSFER_REJECTED,
                 toString(Plan->Rejection));
     if (Plan->Rejection == TransferPlanRejection::AccessCapabilityMismatch) {
@@ -7688,6 +7733,8 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       exactValue = postfix->LHS.get();
     } else if (auto *cast = dynamic_cast<CastExpr *>(exactValue)) {
       exactValue = cast->Expression.get();
+    } else if (auto *pass = dynamic_cast<PassExpr *>(exactValue)) {
+      exactValue = pass->Value.get();
     } else {
       break;
     }
@@ -7770,6 +7817,7 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
       dynamic_cast<NewExpr *>(exactValue) != nullptr ||
       dynamic_cast<CallExpr *>(exactValue) != nullptr ||
       dynamic_cast<MethodCallExpr *>(exactValue) != nullptr ||
+      dynamic_cast<MatchExpr *>(exactValue) != nullptr ||
       dynamic_cast<InitStructExpr *>(exactValue) != nullptr ||
       dynamic_cast<ArrayExpr *>(exactValue) != nullptr ||
       dynamic_cast<RepeatedArrayExpr *>(exactValue) != nullptr ||
@@ -7985,6 +8033,7 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
         isMemberReferenceConstruction(exactValue);
     if ((dynamic_cast<CallExpr *>(exactValue) ||
          dynamic_cast<MethodCallExpr *>(exactValue) ||
+         dynamic_cast<MatchExpr *>(exactValue) ||
          dynamic_cast<WaitExpr *>(exactValue) || dynamic_cast<AwaitExpr *>(exactValue) || referenceConstruction ||
          (dynamic_cast<MemberExpr *>(exactValue) && actualType && actualType->isReference()) ||
          dynamic_cast<ArrayExpr *>(exactValue) ||

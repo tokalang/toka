@@ -558,7 +558,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       Info.HasPayloadFlowCeiling = true;
     }
 
-    if (!TransfersOwnership || (Pat->IsReference && !TargetPath.empty())) {
+    if (!TransfersOwnership) {
       const std::string dependencyPath =
           TargetAccessPath ? TargetAccessPath.toLegacyString() : TargetPath;
       if (!dependencyPath.empty()) {
@@ -576,9 +576,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
         }
       }
 
-      if (!TransfersOwnership) {
-        Info.IsPlaceAlias = true;
-      }
+      Info.IsPlaceAlias = true;
 
       // A direct match/guard reference binder is an active lexical borrow.
       // Recursive struct patterns extend TargetAccessPath with their exact
@@ -601,12 +599,21 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     // it does not borrow the dying container's descriptor. At a consuming
     // parameter boundary the actual matched input is the symbolic carrier,
     // not a dependency fabricated from this function's return declaration.
-    if (TransfersOwnership && !Pat->IsReference && TargetAccessPath &&
-        hasBorrowedValueFields(Info.TypeObj)) {
+    const bool unwrapsTransferredReference =
+        Pat->IsReference && !isAbstractWhole && expectedTypeObj &&
+        expectedTypeObj->isReference();
+    if (TransfersOwnership && TargetAccessPath &&
+        (unwrapsTransferredReference ||
+         (!Pat->IsReference && hasBorrowedValueFields(Info.TypeObj)))) {
       SymbolInfo *targetInfo = nullptr;
       CurrentScope->findSymbolByID(TargetAccessPath.RootID, targetInfo);
       if (targetInfo && !m_ReturnSourceUnknownRoots.count(targetInfo->SymbolID)) {
         Info.LifeDependencySet = targetInfo->LifeDependencySet;
+        if (unwrapsTransferredReference && Info.LifeDependencySet.size() == 1) {
+          Info.BorrowedFrom = *Info.LifeDependencySet.begin();
+          Info.BorrowedPath =
+              canonicalizeAccessPath(makeAccessPath(Info.BorrowedFrom));
+        }
         if (TargetAccessPath.Projections.empty() && targetInfo->TypeObj &&
             targetInfo->TypeObj->equals(*Info.TypeObj))
           Info.FieldDependencySet = targetInfo->FieldDependencySet;
@@ -625,7 +632,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     initializeProjectionFacts(Info);
 
     CurrentScope->define(Pat->Name, Info);
-    if ((Pat->IsReference || !TransfersOwnership) && TargetAccessPath)
+    if (!TransfersOwnership && TargetAccessPath)
       PALCheckerState.commitTransient(TargetAccessPath);
     break;
   }

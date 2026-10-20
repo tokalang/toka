@@ -1,0 +1,65 @@
+import core/string::{string}
+import std/vec::{Vec}
+import core/traits::{@Encap}
+
+auto g_block_drops# = 0:i32
+
+pub shape Entry(value: string)
+pub shape CachedBlock(entries: Vec<Entry>)
+impl CachedBlock@Encap {
+    fn drop(self#) { g_block_drops += 1:i32 }
+}
+impl CachedBlock {
+    pub fn value_at(self, index: usize) -> str <- self {
+        auto &entry = self.entries.borrow(index)
+        return entry.value.as_str()
+    }
+}
+
+pub shape BlockLease(~block: CachedBlock)
+impl BlockLease@Encap {}
+impl BlockLease {
+    pub fn new(~block: CachedBlock) -> BlockLease {
+        return BlockLease(~block = ~block)
+    }
+    pub fn value_at(self, index: usize) -> str <- self {
+        return self.block.value_at(index)
+    }
+}
+
+pub shape ValueLease(
+    Cached(BlockLease, usize) = 0 |
+    Owned(string) = 1
+)
+
+impl ValueLease {
+    pub fn as_str(self) -> str <- self {
+        match self {
+            auto ValueLease::Cached(&lease, index) => return lease.value_at(index)
+            auto ValueLease::Owned(&value) => return value.as_str()
+        }
+    }
+}
+
+
+fn make_cached() -> ValueLease {
+    auto entries# = Vec<Entry>::new()
+    entries#.push(Entry(value = string::from("unused")))
+    entries#.push(Entry(value = string::from("cached")))
+    auto ~block = new CachedBlock(entries = cede entries)
+    return ValueLease::Cached(BlockLease::new(~block), 1:usize)
+}
+fn make_owned() -> ValueLease {
+    return ValueLease::Owned(string::from("owned"))
+}
+fn dispose(cede value: ValueLease) {
+    auto held = cede value
+}
+
+// CASE_BODY
+
+fn escape() -> str {
+    auto lease = make_cached()
+    return lease.as_str()
+}
+fn main() -> i32 { return 0:i32 }

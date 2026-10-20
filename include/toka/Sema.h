@@ -931,6 +931,21 @@ private:
       const std::set<std::string> &declarationGenericNames) const;
   bool consumeMissingCallTransferFault(ASTNode *node);
 
+  struct ActualReturnFieldOrigins {
+    std::vector<AccessPath> Referents;
+    std::vector<SourceLocation> StaticStorage;
+  };
+  struct ResolvedExpressionOrigins {
+    bool Complete = false;
+    std::vector<AccessPath> Referents;
+    std::vector<SourceLocation> StaticStorage;
+    std::vector<AccessPath> AddressedStorage;
+    bool UsedCurrentReference = false;
+    std::map<std::string, ActualReturnFieldOrigins> Fields;
+  };
+  std::map<const Expr *, ResolvedExpressionOrigins> m_ResolvedExpressionOrigins;
+  std::map<std::string, SourceLocation> m_ExitedBorrowSourceLocs;
+
   struct ControlFlowInfo {
     std::string Label;
     std::string ExpectedType;
@@ -941,6 +956,18 @@ private:
     std::vector<AnalysisState> BreakStates;
     std::vector<AnalysisState> ContinueStates;
     Scope *CleanupTargetScope = nullptr;
+    Scope *ReceiverOuterScope = nullptr;
+    bool SawPassValue = false;
+    bool PassOriginsComplete = true;
+    std::vector<AccessPath> PassReferents;
+    std::vector<SourceLocation> PassStaticStorage;
+    std::vector<AccessPath> PassAddressedStorage;
+    bool PassUsedCurrentReference = false;
+    std::map<std::string, ActualReturnFieldOrigins> PassFieldOrigins;
+    std::set<std::string> PassLifeDependencies;
+    std::map<std::string, std::set<std::string>> PassFieldDependencies;
+    std::string PassBorrowSource;
+    std::map<std::string, SourceLocation> ExitedPassBorrowSources;
   };
   // This is analysis state, not a source type.  In particular it must never
   // reuse ABI `void`, which remains a real FFI type.
@@ -1053,10 +1080,6 @@ private:
       bool FormalIsInit, TransferFormalDeclarationFacts FormalDeclaration,
       TransferDestination Destination, TransferEligibilityContext Context,
       bool ReadOnlyTypes = false);
-  struct ActualReturnFieldOrigins {
-    std::vector<AccessPath> Referents;
-    std::vector<SourceLocation> StaticStorage;
-  };
   ExplicitCedePlan recordExplicitCedeStage0NonCallPlan(
       ASTNode *Site, Expr *Value, const std::shared_ptr<Type> &DestinationType,
       TransferDestination Destination, TransferEligibilityContext Context,

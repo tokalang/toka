@@ -1077,7 +1077,8 @@ void Sema::checkStmt(Stmt *S) {
 
             SymbolInfo *depInfo = nullptr;
             std::string actualName;
-            if (CurrentScope->findVariableWithDeref(baseName, depInfo,
+            if (!m_ExitedBorrowSourceLocs.count(baseName) &&
+                CurrentScope->findVariableWithDeref(baseName, depInfo,
                                                     actualName) &&
                 depInfo) {
               VariableExpr source(actualName);
@@ -1085,7 +1086,7 @@ void Sema::checkStmt(Stmt *S) {
               std::vector<AccessPath> dynamicOrigins;
               std::vector<SourceLocation> staticOrigins;
               if (collectActualReturnReferents(&source, dynamicOrigins,
-                                                &staticOrigins) &&
+                                               &staticOrigins) &&
                   dynamicOrigins.empty() && !staticOrigins.empty()) {
                 resolvingDependencyPaths.erase(dep);
                 return;
@@ -1159,6 +1160,19 @@ void Sema::checkStmt(Stmt *S) {
             if (auto *unsafe = dynamic_cast<UnsafeExpr *>(E);
                 m_EnableStage1ExplicitCallerCede && unsafe) {
               collectDepsInto(unsafe->Expression.get(), out);
+              return;
+            }
+            if (auto *pass = dynamic_cast<PassExpr *>(E)) {
+              collectDepsInto(pass->Value.get(), out);
+              return;
+            }
+            if (auto *match = dynamic_cast<MatchExpr *>(E)) {
+              std::vector<AccessPath> actualOrigins;
+              std::vector<SourceLocation> staticOrigins;
+              if (collectActualReturnReferents(match, actualOrigins, &staticOrigins)) {
+                for (const auto &origin : actualOrigins)
+                  recordDependencyPathTo(out, origin.toLegacyString());
+              }
               return;
             }
 
@@ -1635,6 +1649,8 @@ void Sema::checkStmt(Stmt *S) {
 
             auto isParamDependency = [&](const std::string &dep) -> bool {
               std::string baseDep = dep.substr(0, dep.find('.'));
+              if (m_ExitedBorrowSourceLocs.count(baseDep))
+                return false;
               const FunctionDecl::Arg *matchingArg = nullptr;
               for (const auto &Arg : CurrentFunction->Args) {
                 if (Arg.Name == baseDep) {
@@ -2834,7 +2850,8 @@ void Sema::checkStmt(Stmt *S) {
         SymbolInfo *depInfo = nullptr;
         std::string depRoot = extractPathRoot(dep);
         std::string actualDepName = depRoot;
-        if (CurrentScope->findVariableWithDeref(depRoot, depInfo, actualDepName) && depInfo) {
+        if (!m_ExitedBorrowSourceLocs.count(depRoot) &&
+            CurrentScope->findVariableWithDeref(depRoot, depInfo, actualDepName) && depInfo) {
           Info.LifeDependencySet.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
           depsToCommitAsBorrow.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
         }
@@ -2964,7 +2981,8 @@ void Sema::checkStmt(Stmt *S) {
       SymbolInfo *srcPtr = nullptr;
       std::string srcRoot = extractPathRoot(m_LastBorrowSource);
       std::string actualSrcName = srcRoot;
-      if (CurrentScope->findVariableWithDeref(srcRoot, srcPtr, actualSrcName) && srcPtr) {
+      if (!m_ExitedBorrowSourceLocs.count(srcRoot) &&
+          CurrentScope->findVariableWithDeref(srcRoot, srcPtr, actualSrcName) && srcPtr) {
         Info.LifeDependencySet.insert(srcPtr->LifeDependencySet.begin(), srcPtr->LifeDependencySet.end());
       }
 
@@ -3006,11 +3024,14 @@ void Sema::checkStmt(Stmt *S) {
     }
     
     if (!m_LastFieldDependencies.empty()) {
+      SymbolInfo *selfSym = nullptr;
+      const bool hasSelfInScope =
+          CurrentScope && CurrentScope->findSymbol("self", selfSym);
       for (const auto &pair : m_LastFieldDependencies) {
         Info.FieldDependencySet[pair.first];
         for (const auto &dep : pair.second) {
           std::string actualDep = dep;
-          if (actualDep.rfind("self.", 0) == 0)
+          if (!hasSelfInScope && actualDep.rfind("self.", 0) == 0)
             actualDep = Var->Name + actualDep.substr(4);
           Info.FieldDependencySet[pair.first].insert(actualDep);
           Info.LifeDependencySet.insert(actualDep);
@@ -3062,12 +3083,15 @@ void Sema::checkStmt(Stmt *S) {
           producer = cast->Expression.get();
         else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(producer))
           producer = unsafe->Expression.get();
+        else if (auto *pass = dynamic_cast<PassExpr *>(producer))
+          producer = pass->Value.get();
         else
           break;
       }
       auto shape = std::dynamic_pointer_cast<ShapeType>(Info.TypeObj);
       if ((dynamic_cast<CallExpr *>(producer) ||
-           dynamic_cast<MethodCallExpr *>(producer)) && shape && shape->Decl) {
+           dynamic_cast<MethodCallExpr *>(producer) ||
+           dynamic_cast<MatchExpr *>(producer)) && shape && shape->Decl) {
         bool hasBorrowedField = false;
         for (const auto &field : shape->Decl->Members) {
           auto type = resolveExplicitCedeStage0TypeReadOnly(getPhysicalType(field));
@@ -3284,7 +3308,7 @@ void Sema::checkStmt(Stmt *S) {
     // storage type made such lending APIs lose their PAL protection.
     if (!depsToCommitAsBorrow.empty()) {
       for (const auto &dep : depsToCommitAsBorrow) {
-        if (dep.empty())
+        if (dep.empty() || m_ExitedBorrowSourceLocs.count(extractPathRoot(dep)))
           continue;
         AccessPath dependencyPath =
             canonicalizeAccessPath(makeAccessPath(dep));

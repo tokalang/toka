@@ -453,6 +453,13 @@ impl Rect@Shape {
 }
 ```
 
+在 0.18.0 基线中，async trait 方法支持严格可变 receiver `self#`（0.14 G1）
+和严格消费型 receiver `cede self`（0.18 消费型静态 async trait 切片）的静态分派。
+普通 `self`、`self: &Self` / `self: ~Self` 等显式 handle receiver、`cede self#`、
+`init cede self` 及无 receiver 的 async trait 方法仍被 `E0618` 拒绝。
+含 async 方法或声明关联类型的 trait 仍不能构造动态对象（`E0617`）。
+完整范围见 [receiver 支持矩阵](compatibility_0.18.md#2-admitted-language-forms-in-0180)。
+
 Trait 可以声明关联类型。普通 `type` 关联类型对某个 shape 的整个 trait family 保持稳定：一旦 `Data@Mapper<i32>::Output` 被绑定，另一个 `Data@Mapper<bool>` 实现也必须使用相同的 `Output`。`per type` 关联类型则绑定到具体 trait 实例，因此不同 trait 参数可以选择不同输出类型。
 
 ```toka
@@ -759,7 +766,11 @@ auto value = match x {
 不计入穷尽性。非 enum 目标需要无 guard 的 wildcard 或无条件变量 arm。
 编译器不尝试证明整数、range 或字符串的完整值域覆盖。
 
-`pass` 从块表达式中产出值。
+`pass` 从块表达式中产出值。当 `match` 表达式通过 `pass` 产出 `str` 等借用视图时，
+其来源依赖会合并全部实际产值分支：静态字符串字面量提供已证明的静态存储来源，借用型
+变体 payload 绑定归属到真实的 `match` 目标 owner，而提前 `return` 的非产值分支按外层
+函数返回契约独立校验、不混入 `match` 结果依赖。从分支局部 owner 或 `match cede` 已消费
+payload 借出的视图仍会被拒绝（`E0455` / `E0456`）。
 
 ## 11. 模式匹配与解构
 

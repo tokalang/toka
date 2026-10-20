@@ -1433,6 +1433,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   }
   m_EnumExpressionResults.erase(E);
   m_EnumExpressionSelections.erase(E);
+  m_ResolvedExpressionOrigins.erase(E);
   if (auto *cede = dynamic_cast<CedeExpr *>(E)) cede->SourceCheckSucceeded = false;
   NativeSyncTemporaryGuardFrame nativeGuardFrame{CurrentFunction, {}};
   auto *previousNativeGuardFrame = m_NativeSyncTemporaryGuards;
@@ -1610,6 +1611,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
       m_LastLifeDependencies.clear();
       m_LastFieldDependencies.clear();
       m_LastBorrowSource = "";
+      m_ExitedBorrowSourceLocs.clear();
       m_LastTaskResultDependencies.clear();
       m_HasTaskResultDependencies = false;
   }
@@ -4833,6 +4835,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (isPrefixMatch || isPrefixIf || isPrefixFor ||
         isPrefixLoop) {
       pushControlFlow({"", NoProducedValue, nullptr, false, true});
+      m_ControlFlowStack.back().ReceiverOuterScope = CurrentScope;
       valTypeObj = checkExpr(pe->Value.get());
       valType = valTypeObj->toString();
       m_ControlFlowStack.pop_back();
@@ -4844,6 +4847,24 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       valTypeObj = checkExpr(pe->Value.get());
       valType = valTypeObj->toString();
     }
+
+    std::set<std::string> passLifeDeps = m_LastLifeDependencies;
+    std::map<std::string, std::set<std::string>> passFieldDeps =
+        m_LastFieldDependencies;
+    std::string passBorrowSource = m_LastBorrowSource;
+    std::map<std::string, SourceLocation> passExitedBorrowLocs =
+        m_ExitedBorrowSourceLocs;
+
+    std::vector<AccessPath> edgeReferents;
+    std::vector<SourceLocation> edgeStatics;
+    std::vector<AccessPath> edgeAddressed;
+    bool edgeUsedCurrentRef = false;
+    std::map<std::string, ActualReturnFieldOrigins> edgeFields;
+    const bool edgeComplete = collectActualReturnReferents(
+        pe->Value.get(), edgeReferents, &edgeStatics, &edgeAddressed,
+        &edgeUsedCurrentRef, &edgeFields);
+    for (const auto &origin : edgeReferents)
+      passLifeDeps.insert(origin.toLegacyString());
 
     bool foundReceiver = false;
     if (!m_ControlFlowStack.empty()) {
@@ -4857,6 +4878,201 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           } else if (!isTypeCompatible(it->ExpectedTypeObj, valTypeObj)) {
             error(pe, DiagID::ERR_TYPE_MISMATCH, valType, it->ExpectedType);
           }
+
+          Scope *targetOuterScope = it->ReceiverOuterScope
+                                        ? it->ReceiverOuterScope
+                                        : it->CleanupTargetScope;
+          Expr *unwrappedPass = pe->Value.get();
+          while (unwrappedPass) {
+            if (auto *c = dynamic_cast<CedeExpr *>(unwrappedPass)) {
+              unwrappedPass = c->Value.get();
+              continue;
+            }
+            if (auto *cast = dynamic_cast<CastExpr *>(unwrappedPass)) {
+              unwrappedPass = cast->Expression.get();
+              continue;
+            }
+            if (auto *unsafe = dynamic_cast<UnsafeExpr *>(unwrappedPass)) {
+              unwrappedPass = unsafe->Expression.get();
+              continue;
+            }
+            break;
+          }
+          if (auto *passVar = dynamic_cast<VariableExpr *>(unwrappedPass)) {
+            SymbolInfo *srcInfo = nullptr;
+            std::string actualSrc;
+            Scope *srcOwnerScope = nullptr;
+            if (CurrentScope &&
+                CurrentScope->findVariableWithDerefScope(
+                    passVar->Name, srcInfo, actualSrc, srcOwnerScope) &&
+                srcInfo) {
+              const std::string resolvedVarName =
+                  actualSrc.empty() ? passVar->Name : actualSrc;
+              if (!srcInfo->BorrowedFrom.empty())
+                passLifeDeps.insert(srcInfo->BorrowedFrom);
+              passLifeDeps.insert(srcInfo->LifeDependencySet.begin(),
+                                  srcInfo->LifeDependencySet.end());
+              for (const auto &pair : srcInfo->FieldDependencySet) {
+                passFieldDeps[pair.first].insert(pair.second.begin(),
+                                                 pair.second.end());
+              }
+              if (srcInfo->IsFunctionParameter && srcInfo->TypeObj &&
+                  !safeBorrowFreeType(srcInfo->TypeObj)) {
+                passLifeDeps.insert(resolvedVarName);
+              }
+              if (targetOuterScope && srcOwnerScope &&
+                  srcOwnerScope->Depth > targetOuterScope->Depth &&
+                  srcInfo->BorrowedFrom.empty() &&
+                  srcInfo->LifeDependencySet.empty() && srcInfo->TypeObj &&
+                  !safeBorrowFreeType(srcInfo->TypeObj)) {
+                passLifeDeps.insert(resolvedVarName);
+              }
+            }
+          }
+
+          std::set<std::string> normalizedLifeDeps;
+          std::map<std::string, std::set<std::string>> normalizedFieldDeps;
+          std::function<void(const std::string &, std::set<std::string> &,
+                             std::set<std::string> &)>
+              normalizeDepInto = [&](const std::string &dep,
+                                     std::set<std::string> &visited,
+                                     std::set<std::string> &outSet) {
+                if (dep.empty() || !visited.insert(dep).second)
+                  return;
+                std::string root = extractPathRoot(dep);
+                if (auto exitedIt = passExitedBorrowLocs.find(root);
+                    exitedIt != passExitedBorrowLocs.end()) {
+                  it->ExitedPassBorrowSources[root] = exitedIt->second;
+                  outSet.insert(dep);
+                  return;
+                }
+                SymbolInfo *depInfo = nullptr;
+                std::string actualDepName;
+                Scope *depOwnerScope = nullptr;
+                if (CurrentScope &&
+                    CurrentScope->findVariableWithDerefScope(
+                        root, depInfo, actualDepName, depOwnerScope) &&
+                    depInfo && depOwnerScope && targetOuterScope &&
+                    depOwnerScope->Depth > targetOuterScope->Depth) {
+                  bool expanded = false;
+                  if (!depInfo->BorrowedFrom.empty() &&
+                      depInfo->BorrowedFrom != dep) {
+                    normalizeDepInto(depInfo->BorrowedFrom, visited, outSet);
+                    expanded = true;
+                  }
+                  for (const auto &trans : depInfo->LifeDependencySet) {
+                    if (trans == dep || trans == depInfo->BorrowedFrom)
+                      continue;
+                    normalizeDepInto(trans, visited, outSet);
+                    expanded = true;
+                  }
+                  if (!expanded) {
+                    it->ExitedPassBorrowSources[root] = depInfo->DeclLoc;
+                    outSet.insert(dep);
+                  }
+                  return;
+                }
+                outSet.insert(dep);
+              };
+          for (const auto &dep : passLifeDeps) {
+            std::set<std::string> visited;
+            normalizeDepInto(dep, visited, normalizedLifeDeps);
+          }
+          for (const auto &[field, deps] : passFieldDeps) {
+            auto &outFieldSet = normalizedFieldDeps[field];
+            for (const auto &dep : deps) {
+              std::set<std::string> visited;
+              normalizeDepInto(dep, visited, outFieldSet);
+            }
+            normalizedLifeDeps.insert(outFieldSet.begin(), outFieldSet.end());
+          }
+          std::string normalizedBorrowSource;
+          if (!passBorrowSource.empty()) {
+            std::set<std::string> visited;
+            std::set<std::string> borrowSet;
+            normalizeDepInto(passBorrowSource, visited, borrowSet);
+            normalizedLifeDeps.insert(borrowSet.begin(), borrowSet.end());
+            if (!borrowSet.empty())
+              normalizedBorrowSource = *borrowSet.begin();
+          }
+
+          auto isOriginValidAtOuterScope = [&](const AccessPath &origin,
+                                               bool recordExited) -> bool {
+            SymbolInfo *originInfo = nullptr;
+            std::string actualOriginName;
+            Scope *originScope = nullptr;
+            if (!CurrentScope ||
+                !CurrentScope->findVariableWithDerefScope(
+                    origin.RootName, originInfo, actualOriginName,
+                    originScope) ||
+                !originInfo || !originScope ||
+                (origin.RootLoc.isValid() && originInfo->DeclLoc.isValid() &&
+                 origin.RootLoc != originInfo->DeclLoc) ||
+                (targetOuterScope &&
+                 originScope->Depth > targetOuterScope->Depth)) {
+              if (recordExited && originScope && targetOuterScope &&
+                  originScope->Depth > targetOuterScope->Depth) {
+                it->ExitedPassBorrowSources[origin.RootName] =
+                    origin.RootLoc.isValid() ? origin.RootLoc
+                                             : originInfo->DeclLoc;
+                normalizedLifeDeps.insert(origin.toLegacyString());
+              }
+              return false;
+            }
+            return true;
+          };
+
+          bool edgeOriginsValid = true;
+          std::vector<AccessPath> validEdgeReferents;
+          for (const auto &origin : edgeReferents) {
+            if (!isOriginValidAtOuterScope(origin, true)) {
+              edgeOriginsValid = false;
+            } else {
+              validEdgeReferents.push_back(origin);
+            }
+          }
+
+          if (!it->SawPassValue) {
+            it->SawPassValue = true;
+            it->PassOriginsComplete = edgeComplete && edgeOriginsValid;
+          } else {
+            it->PassOriginsComplete =
+                it->PassOriginsComplete && edgeComplete && edgeOriginsValid;
+          }
+          it->PassReferents.insert(it->PassReferents.end(),
+                                   validEdgeReferents.begin(),
+                                   validEdgeReferents.end());
+          it->PassStaticStorage.insert(it->PassStaticStorage.end(),
+                                       edgeStatics.begin(), edgeStatics.end());
+          it->PassAddressedStorage.insert(it->PassAddressedStorage.end(),
+                                          edgeAddressed.begin(),
+                                          edgeAddressed.end());
+          if (edgeUsedCurrentRef)
+            it->PassUsedCurrentReference = true;
+          for (const auto &[field, fieldOrigins] : edgeFields) {
+            for (const auto &origin : fieldOrigins.Referents) {
+              if (isOriginValidAtOuterScope(origin, true)) {
+                it->PassFieldOrigins[field].Referents.push_back(origin);
+              } else {
+                it->PassOriginsComplete = false;
+              }
+            }
+            it->PassFieldOrigins[field].StaticStorage.insert(
+                it->PassFieldOrigins[field].StaticStorage.end(),
+                fieldOrigins.StaticStorage.begin(),
+                fieldOrigins.StaticStorage.end());
+          }
+          it->PassLifeDependencies.insert(normalizedLifeDeps.begin(),
+                                          normalizedLifeDeps.end());
+          for (const auto &[field, deps] : normalizedFieldDeps)
+            it->PassFieldDependencies[field].insert(deps.begin(), deps.end());
+          if (!normalizedBorrowSource.empty()) {
+            if (it->PassBorrowSource.empty())
+              it->PassBorrowSource = normalizedBorrowSource;
+          }
+          for (const auto &[name, loc] : passExitedBorrowLocs)
+            it->ExitedPassBorrowSources[name] = loc;
+
           checkCleanupOnEdge(it->CleanupTargetScope, pe->Loc);
           break;
         }
@@ -4865,6 +5081,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     if (!foundReceiver) {
       error(pe, DiagID::ERR_PASS_NO_RECEIVER);
+    }
+
+    if (isPrefixMatch || isPrefixIf || isPrefixFor || isPrefixLoop) {
+      m_LastLifeDependencies = std::move(passLifeDeps);
+      m_LastFieldDependencies = std::move(passFieldDeps);
+      m_LastBorrowSource = std::move(passBorrowSource);
+      m_ExitedBorrowSourceLocs = std::move(passExitedBorrowLocs);
     }
 
     const std::string result =
@@ -7498,6 +7721,62 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::set<const ShapeMember *> outcomeMatchedVariants;
     bool hasInvalidOutcomeArm = false;
 
+    Scope *matchOuterScope = CurrentScope;
+    bool sawAnyPassValue = false;
+    bool matchOriginsComplete = true;
+    std::vector<AccessPath> matchReferents;
+    std::vector<SourceLocation> matchStatics;
+    std::vector<AccessPath> matchAddressed;
+    bool matchUsedCurrentRef = false;
+    std::map<std::string, ActualReturnFieldOrigins> matchFields;
+    std::set<std::string> matchLifeDeps;
+    std::map<std::string, std::set<std::string>> matchFieldDeps;
+    std::string matchBorrowSource;
+    std::map<std::string, SourceLocation> matchExitedBorrowLocs;
+
+    auto finalizeMatchOrigins = [&]() {
+      if (!isReceiver)
+        return;
+      auto dedupPaths = [](std::vector<AccessPath> &paths) {
+        std::vector<AccessPath> uniquePaths;
+        for (const auto &path : paths) {
+          if (std::find(uniquePaths.begin(), uniquePaths.end(), path) ==
+              uniquePaths.end())
+            uniquePaths.push_back(path);
+        }
+        paths = std::move(uniquePaths);
+      };
+      auto dedupLocs = [](std::vector<SourceLocation> &locs) {
+        std::vector<SourceLocation> uniqueLocs;
+        for (const auto &loc : locs) {
+          if (std::find(uniqueLocs.begin(), uniqueLocs.end(), loc) ==
+              uniqueLocs.end())
+            uniqueLocs.push_back(loc);
+        }
+        locs = std::move(uniqueLocs);
+      };
+      dedupPaths(matchReferents);
+      dedupLocs(matchStatics);
+      dedupPaths(matchAddressed);
+      for (auto &[_, fieldOrigins] : matchFields) {
+        dedupPaths(fieldOrigins.Referents);
+        dedupLocs(fieldOrigins.StaticStorage);
+      }
+      ResolvedExpressionOrigins resolved;
+      resolved.Complete = sawAnyPassValue && matchOriginsComplete &&
+                          matchExitedBorrowLocs.empty();
+      resolved.Referents = std::move(matchReferents);
+      resolved.StaticStorage = std::move(matchStatics);
+      resolved.AddressedStorage = std::move(matchAddressed);
+      resolved.UsedCurrentReference = matchUsedCurrentRef;
+      resolved.Fields = std::move(matchFields);
+      m_ResolvedExpressionOrigins[me] = std::move(resolved);
+      m_LastLifeDependencies = std::move(matchLifeDeps);
+      m_LastFieldDependencies = std::move(matchFieldDeps);
+      m_LastBorrowSource = std::move(matchBorrowSource);
+      m_ExitedBorrowSourceLocs = std::move(matchExitedBorrowLocs);
+    };
+
     for (auto &arm : me->Arms) {
       // Match arms do not share newly recorded raw-slot value evidence.
       // A store within an arm may justify a take in that same arm only.
@@ -7553,9 +7832,48 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
       }
       pushControlFlow({"", NoProducedValue, nullptr, false, isReceiver});
+      m_ControlFlowStack.back().ReceiverOuterScope = matchOuterScope;
       checkStmt(arm->Body.get());
-      std::string armType = m_ControlFlowStack.back().ExpectedType;
-      auto armTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
+      const auto &armFlow = m_ControlFlowStack.back();
+      std::string armType = armFlow.ExpectedType;
+      auto armTypeObj = armFlow.ExpectedTypeObj;
+      if (isReceiver) {
+        if (armFlow.SawPassValue) {
+          sawAnyPassValue = true;
+          matchOriginsComplete =
+              matchOriginsComplete && armFlow.PassOriginsComplete;
+          matchReferents.insert(matchReferents.end(),
+                                armFlow.PassReferents.begin(),
+                                armFlow.PassReferents.end());
+          matchStatics.insert(matchStatics.end(),
+                              armFlow.PassStaticStorage.begin(),
+                              armFlow.PassStaticStorage.end());
+          matchAddressed.insert(matchAddressed.end(),
+                                armFlow.PassAddressedStorage.begin(),
+                                armFlow.PassAddressedStorage.end());
+          if (armFlow.PassUsedCurrentReference)
+            matchUsedCurrentRef = true;
+          for (const auto &[field, fieldOrigins] : armFlow.PassFieldOrigins) {
+            matchFields[field].Referents.insert(
+                matchFields[field].Referents.end(),
+                fieldOrigins.Referents.begin(), fieldOrigins.Referents.end());
+            matchFields[field].StaticStorage.insert(
+                matchFields[field].StaticStorage.end(),
+                fieldOrigins.StaticStorage.begin(),
+                fieldOrigins.StaticStorage.end());
+          }
+          matchLifeDeps.insert(armFlow.PassLifeDependencies.begin(),
+                               armFlow.PassLifeDependencies.end());
+          for (const auto &[field, deps] : armFlow.PassFieldDependencies)
+            matchFieldDeps[field].insert(deps.begin(), deps.end());
+          if (!armFlow.PassBorrowSource.empty() && matchBorrowSource.empty())
+            matchBorrowSource = armFlow.PassBorrowSource;
+          for (const auto &[name, loc] : armFlow.ExitedPassBorrowSources)
+            matchExitedBorrowLocs[name] = loc;
+        } else if (!allPathsJump(arm->Body.get())) {
+          matchOriginsComplete = false;
+        }
+      }
       m_ControlFlowStack.pop_back();
 
       if (isReceiver && armType == NoProducedValue && !allPathsJump(arm->Body.get())) {
@@ -7706,6 +8024,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                  outcome->toString());
         HasError = true;
       }
+      finalizeMatchOrigins();
       return toka::Type::fromString(
           resultType == NoProducedValue ? "()" : resultType);
     }
@@ -7958,6 +8277,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
+    finalizeMatchOrigins();
     return toka::Type::fromString(resultType == NoProducedValue ? "()"
                                                                   : resultType);
   }
