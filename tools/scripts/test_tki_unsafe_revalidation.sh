@@ -29,7 +29,7 @@ write_metadata() {
     {
         echo "// @meta compiler_version: any"
         echo "// @meta format_version: 6"
-        echo "// @meta encap_epoch: 0.18"
+        echo "// @meta encap_epoch: 0.19"
         echo "// @meta target_triple: any"
         echo "// @meta source_hash: any"
         echo "// @meta identity_schema_version: 2"
@@ -48,7 +48,7 @@ import sys
 path = Path(sys.argv[1])
 header, body = path.read_text().split("\n\n", 1)
 digest = 14695981039346656037
-for byte in body.encode():
+for byte in ("// @encap_epoch 0.19\n" + body).encode():
     digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
 assert "// @meta format_version: 6" in header
 updated_header = header.replace("// @meta format_version: 6",

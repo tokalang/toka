@@ -578,6 +578,7 @@ def verify_tki05_bidirectional_isolation(recorder: ReceiptRecorder) -> dict[str,
             "TKI05_B_emit_v6_tki_with_new_tokac",
             [
                 str(NEW_TOKAC),
+                "--encap-epoch=0.18",
                 "--workspace-node",
                 "tki05-ws-v1",
                 "--workspace-root",
@@ -613,7 +614,6 @@ def verify_tki05_bidirectional_isolation(recorder: ReceiptRecorder) -> dict[str,
             NEW_TOKAC,
             consumer_v6_tk,
             [
-                "--encap-epoch=0.19",
                 "--workspace-node",
                 "tki05-ws-v1",
                 "--workspace-root",
@@ -649,7 +649,6 @@ def verify_tki05_bidirectional_isolation(recorder: ReceiptRecorder) -> dict[str,
             "TKI05_C2_emit_epoch019_tki",
             [
                 str(NEW_TOKAC),
-                "--encap-epoch=0.19",
                 "--workspace-node",
                 "tki05-ws-v1",
                 "--workspace-root",
@@ -710,7 +709,6 @@ def verify_tki05_bidirectional_isolation(recorder: ReceiptRecorder) -> dict[str,
             NEW_TOKAC,
             dir_no_epoch / "main.tk",
             [
-                "--encap-epoch=0.19",
                 "--workspace-node",
                 "tki05-ws-v1",
                 "--workspace-root",
@@ -816,13 +814,12 @@ def verify_tki06_same_source_hash_cache_invalidation(
         assert rec_018["fallback_triggered"] is False, rec_018
         assert rec_018["cache_status"] == "Ok", rec_018
 
-        # Step 2: Switch to --encap-epoch=0.19 with identical .tk bytes (same SourceHash)
+        # Step 2: Switch to default 0.19 with identical .tk bytes (same SourceHash)
         # Consumer must invalidate the 0.18 .tki and fallback to plain.tk
         dep_019_fallback = recorder.run(
             "TKI06_3_consumer_invalidates_018_tki_and_falls_back_to_source_under_019",
             [
                 str(NEW_TOKAC),
-                "--encap-epoch=0.19",
                 "-c",
                 "--dump-dependencies=json",
                 "--workspace-node",
@@ -845,12 +842,11 @@ def verify_tki06_same_source_hash_cache_invalidation(
             meta_018,
         )
 
-        # Step 3: Recompile provider under --encap-epoch=0.19 (without changing plain.tk)
+        # Step 3: Recompile provider under default 0.19 (without changing plain.tk)
         recorder.run(
             "TKI06_4_rebuild_provider_epoch019_same_source",
             [
                 str(NEW_TOKAC),
-                "--encap-epoch=0.19",
                 "--workspace-node",
                 "tki06-ws-v1",
                 "--workspace-root",
@@ -871,12 +867,11 @@ def verify_tki06_same_source_hash_cache_invalidation(
             meta_019,
         )
 
-        # Consumer under --encap-epoch=0.19 now hits the newly regenerated 0.19 .tki
+        # Consumer under default 0.19 now hits the newly regenerated 0.19 .tki
         dep_019_hit = recorder.run(
             "TKI06_5_consumer_hits_regenerated_019_tki",
             [
                 str(NEW_TOKAC),
-                "--encap-epoch=0.19",
                 "-c",
                 "--dump-dependencies=json",
                 "--workspace-node",
@@ -909,12 +904,11 @@ def verify_tki06_same_source_hash_cache_invalidation(
             "TOKA_USE_LIB_CACHE": "1",
         }
 
-        # Populate TOKA_BUILD_DIR under 0.19 first to capture 0.19 .tke digest
+        # Populate TOKA_BUILD_DIR under default 0.19 first to capture 0.19 .tke digest
         recorder.run(
             "TKI06_6a_populate_build_cache_epoch019",
             [
                 str(NEW_TOKAC),
-                "--encap-epoch=0.19",
                 "--workspace-node",
                 "tki06-ws-v1",
                 "--workspace-root",
@@ -971,12 +965,11 @@ def verify_tki06_same_source_hash_cache_invalidation(
         assert cache_rec_018["fallback_triggered"] is False, cache_rec_018
         assert cache_rec_018["cache_status"] == "Ok", cache_rec_018
 
-        # Invalidate & fallback to .tk under 0.19 when .tk is present
+        # Invalidate & fallback to .tk under default 0.19 when .tk is present
         cache_fb_019 = recorder.run(
             "TKI06_8_build_cache_invalidated_and_falls_back_under_019",
             [
                 str(NEW_TOKAC),
-                "--encap-epoch=0.19",
                 "--check-only",
                 "--dump-dependencies=json",
                 "--workspace-node",
@@ -992,7 +985,7 @@ def verify_tki06_same_source_hash_cache_invalidation(
         assert cache_rec_019["fallback_triggered"] is True, cache_rec_019
         assert cache_rec_019["cache_status"] == "FormatVersionMismatch", cache_rec_019
 
-        # Physically hide .tk source and restore adjacent 0.18 .tki: 0.19 must reject with E0901
+        # Physically hide .tk source and restore adjacent 0.18 .tki: default 0.19 must reject with E0901
         shutil.copy2(build_cache / "interfaces" / f"{stem}.tki", provider_tki)
         provider_tk.rename(ws / "plain.tk.hidden")
         for mode_name, mode_flags, product in (
@@ -1004,7 +997,6 @@ def verify_tki06_same_source_hash_cache_invalidation(
                 f"TKI06_9_build_cache_sourceless_rejected_{mode_name}",
                 [
                     str(NEW_TOKAC),
-                    "--encap-epoch=0.19",
                     "--workspace-node",
                     "tki06-ws-v1",
                     "--workspace-root",

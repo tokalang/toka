@@ -7,7 +7,7 @@
 #define TOKA_COMPILER_INTERFACE_VERSION "0.9.9-38"
 #define TOKA_LOCAL_BODY_POLICY "checked-local-v1"
 #define TOKA_PLACE_YIELD_ABI_SCHEMA_VERSION "1"
-#define TOKA_DEFAULT_ENCAP_EPOCH "0.18"
+#define TOKA_DEFAULT_ENCAP_EPOCH "0.19"
 
 namespace toka {
 

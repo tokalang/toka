@@ -695,7 +695,7 @@ impl LocalCounter {
     }
 }
 
-pub shape LocalBox<T>(value: T)
+pub shape LocalBox<T>(pub value: T)
 
 impl<T> LocalBox<T> {
     pub fn marker(self) -> i32 {
@@ -816,7 +816,7 @@ mkdir -p "$TEST_DIR/sourceless_interface"
 cat << 'EOF' > "$TEST_DIR/sourceless_interface/lib.tki"
 // @meta compiler_version: any
 // @meta format_version: 6
-// @meta encap_epoch: 0.18
+// @meta encap_epoch: 0.19
 // @meta target_triple: any
 // @meta source_hash: any
 // @meta identity_schema_version: 2
@@ -832,7 +832,7 @@ import sys
 path = Path(sys.argv[1])
 header, body = path.read_text().split("\n\n", 1)
 digest = 14695981039346656037
-for byte in body.encode():
+for byte in ("// @encap_epoch 0.19\n" + body).encode():
     digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
 assert "// @meta format_version: 6" in header
 updated_header = header.replace("// @meta format_version: 6",
@@ -871,7 +871,7 @@ pub trait @Readable {
     pub fn read(self) -> Item
 }
 
-pub shape IntBox(value: i32)
+pub shape IntBox(pub value: i32)
 
 impl IntBox@Readable {
     type Item = i32
@@ -990,7 +990,7 @@ pub trait @VisibleShape {
     fn private_id(self) -> i32
 }
 
-pub shape DynBox(value: i32)
+pub shape DynBox(pub value: i32)
 
 impl DynBox@VisibleShape {
     pub fn public_id(self) -> i32 {
@@ -1073,13 +1073,13 @@ mkdir -p "$TEST_DIR/where_interface"
 cat << 'EOF' > "$TEST_DIR/where_interface/lib.tk"
 pub trait @Marked {}
 
-pub shape Token(value: i32)
+pub shape Token(pub value: i32)
 
 impl Token@Marked {}
 
-pub shape Plain(value: i32)
+pub shape Plain(pub value: i32)
 
-pub shape Box<T>(item: T)
+pub shape Box<T>(pub item: T)
 
 impl<T> Box<T>
 where:
@@ -1147,13 +1147,11 @@ mkdir -p "$TEST_DIR/encap_interface"
 
 cat << 'EOF' > "$TEST_DIR/encap_interface/lib.tk"
 pub shape VisibilityBox(
-    open_val: i32,
+    pub open_val: i32,
     secret_val: i32
 )
 
 impl VisibilityBox@Encap {
-    pub open_val
-
     fn drop(self#) {}
 }
 
@@ -1192,8 +1190,8 @@ if ! grep -q "impl VisibilityBox@Encap" "$TEST_DIR/encap_interface/lib.tki"; the
     cat "$TEST_DIR/encap_interface/lib.tki"
     exit 1
 fi
-if ! grep -q "pub open_val" "$TEST_DIR/encap_interface/lib.tki"; then
-    echo "FAIL: @Encap public field entry was not emitted to lib.tki"
+if ! grep -q "pub open_val: i32" "$TEST_DIR/encap_interface/lib.tki"; then
+    echo "FAIL: inline public field entry was not emitted to lib.tki"
     cat "$TEST_DIR/encap_interface/lib.tki"
     exit 1
 fi

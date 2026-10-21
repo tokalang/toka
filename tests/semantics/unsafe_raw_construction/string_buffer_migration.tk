@@ -1,3 +1,5 @@
+import sys/libc::{libc_free}
+
 fn check_empty(value#: string) -> i32 {
     auto upper = value.to_upper()
     auto lower = value.to_lower()
@@ -13,7 +15,9 @@ fn check_empty(value#: string) -> i32 {
 
 fn main() -> i32 {
     // Default storage is nullable; allocated empty storage is a separate path.
-    auto empty# = string(..)
+    auto empty# = string::new()
+    unsafe { libc_free(empty.c_str() as *void) }
+    empty#.unsafe_forget()
     if check_empty(empty#) != 0 { return 1 }
     auto allocated# = string::new()
     if check_empty(allocated#) != 0 { return 2 }

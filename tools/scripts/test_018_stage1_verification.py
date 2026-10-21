@@ -575,14 +575,14 @@ def make_bodyless_tki_content() -> str:
         "pub fn bodyless_sync_consume(cede h: TaskHandle<Result<i32, CloseError>>) -> i32\n"
     )
     h = 14695981039346656037
-    for b in decls.encode("utf-8"):
+    for b in ("// @encap_epoch 0.19\n" + decls).encode("utf-8"):
         h ^= b
         h = (h * 1099511628211) & 0xFFFFFFFFFFFFFFFF
     surface_hash = f"{h:016x}"
     header = (
         "// @meta compiler_version: any\n"
         "// @meta format_version: 6\n"
-        "// @meta encap_epoch: 0.18\n"
+        "// @meta encap_epoch: 0.19\n"
         f"// @meta replay_surface_hash: {surface_hash}\n"
         "// @meta target_triple: any\n"
         "// @meta source_hash: any\n"

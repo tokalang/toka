@@ -11,9 +11,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PRELUDE = """import core/option::{Option}
 auto drops# = 0:i32
-shape Cell(id:i32)
+shape Cell(pub id:i32)
 impl Cell@Encap {
-    pub id
     fn drop(self#) { drops += 1 }
 }
 shape Holder(~value:Cell)

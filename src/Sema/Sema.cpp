@@ -9517,7 +9517,21 @@ bool Sema::checkVisibility(ASTNode *Node, ShapeDecl *SD) {
   }
 
   SourceLocation useLoc = Node ? getLoc(Node) : SourceLocation();
-  if (!isDeclAccessible(SD, effectiveVis, useLoc)) {
+  bool accessible = isDeclAccessible(SD, effectiveVis, useLoc);
+  if (!accessible && CurrentFunction) {
+    auto visibleTypes = InstantiationTypeNames.find(CurrentFunction);
+    if (visibleTypes != InstantiationTypeNames.end() &&
+        (visibleTypes->second.count(Type::stripMorphology(SD->Name)) ||
+         visibleTypes->second.count(Type::stripMorphology(originSD->Name)))) {
+      ModuleScope *owner = getDeclOwnerScope(SD);
+      auto context = InstantiationLexicalScopes.find(CurrentFunction);
+      if (context != InstantiationLexicalScopes.end() && context->second &&
+          isVisibilityAccessible(effectiveVis, owner, context->second)) {
+        accessible = true;
+      }
+    }
+  }
+  if (!accessible) {
     std::string sdFile =
         DiagnosticEngine::SrcMgr->getFullSourceLoc(originSD->Loc).FileName;
     DiagnosticEngine::report(useLoc, DiagID::ERR_PRIVATE_TYPE, SD->Name,

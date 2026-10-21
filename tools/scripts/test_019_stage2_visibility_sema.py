@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Stage 2 verification suite for Toka 0.19 encapsulation & visibility contract.
+"""Stage 2 & Stage 4.1 verification suite for Toka 0.19 encapsulation & visibility contract.
 
-Covers:
+Runs via the default compiler entry (TOKA_DEFAULT_ENCAP_EPOCH = "0.19", no --encap-epoch=0.19 flag)
+and verifies:
   - SP-01 .. SP-08 (same-module, same-package, cross-package field & decl visibility,
-    construct/destructure/elision, outer gating, PLAN-1 Fail-Closed, PLAN-2 effective visibility closure)
+    construct/destructure/elision, ref/mutability orthogonality, outer gating,
+    PLAN-1 Fail-Closed, PLAN-2 effective visibility closure)
   - XP-01 .. XP-09 (@Encap grant removal, drop capsule, no private/prv keyword,
     cross-package pkg rejection, pub import re-export ban, R2 enum/tuple/array boundaries)
   - PG-01 .. PG-04 (generic definition-module authority, whole-value pass/copy/drop)
-  - TKI-01 .. TKI-04 (.tki export & round-trip consumption for pub/pkg/private fields & decls)
+  - TKI-01 .. TKI-04 (.tki export & sourceless round-trip consumption for pub/pkg/private fields & decls)
+All negative controls verify 3-mode rejection (--check-only, -c, --emit-llvm) with exit 1,
+expected diagnostic, and zero leftover artifacts.
+All positive controls verify 3-mode compilation (--check-only, -c, --emit-llvm), linking,
+and native binary execution with exit 0.
 """
 
 from __future__ import annotations
@@ -34,7 +40,89 @@ def run_cmd(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProc
     )
 
 
-def expect_pass(name: str, cmd: list[str], cwd: Path | None = None) -> dict:
+def expect_pass(
+    name: str,
+    cmd: list[str],
+    cwd: Path | None = None,
+    extra_link_objs: list[Path] | None = None,
+) -> dict:
+    """If cmd is a --check-only invocation on a .tk file, upgrade to full 3-mode + link + native run."""
+    if "--check-only" in cmd and cmd[-1].endswith(".tk"):
+        src_path = Path(cmd[-1])
+        base_args = [arg for arg in cmd[1:-1] if arg != "--check-only"]
+        tokac_bin = cmd[0]
+        out_stem = src_path.parent / f"__ stage4_{name}"
+        out_stem = src_path.parent / f"__stage4_{name}"
+        obj_out = out_stem.with_suffix(".o")
+        ll_out = out_stem.with_suffix(".ll")
+        exe_out = out_stem.with_suffix(".bin")
+
+        mode_records = []
+        for mode_label, mode_flags, prod in (
+            ("check_only", ["--check-only"], None),
+            ("compile_obj", ["-c", "-o", str(obj_out)], obj_out),
+            ("emit_llvm", ["-c", "--emit-llvm", "-o", str(ll_out)], ll_out),
+        ):
+            if prod and prod.exists():
+                prod.unlink()
+            mcmd = [tokac_bin, *base_args, *mode_flags, str(src_path)]
+            res = run_cmd(mcmd, cwd)
+            if res.returncode != 0:
+                raise AssertionError(
+                    f"[FAIL] {name} ({mode_label}) expected PASS (exit 0), got {res.returncode}\n"
+                    f"CMD: {' '.join(mcmd)}\nSTDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}"
+                )
+            if prod and not prod.exists():
+                raise AssertionError(
+                    f"[FAIL] {name} ({mode_label}) did not produce expected artifact {prod}"
+                )
+            mode_records.append(
+                {
+                    "mode": mode_label,
+                    "exit_code": res.returncode,
+                    "cmd": mcmd,
+                }
+            )
+            if prod and prod.exists():
+                prod.unlink()
+
+        # Link and execute native binary when not an explicit 0.18 check without main execution need
+        if exe_out.exists():
+            exe_out.unlink()
+        link_inputs = [str(src_path)]
+        if extra_link_objs:
+            link_inputs.extend(str(p) for p in extra_link_objs)
+        link_cmd = [tokac_bin, *base_args, *link_inputs, "-o", str(exe_out)]
+        link_res = run_cmd(link_cmd, cwd)
+        if link_res.returncode != 0 or not exe_out.exists():
+            raise AssertionError(
+                f"[FAIL] {name} (link) expected PASS (exit 0), got {link_res.returncode}\n"
+                f"CMD: {' '.join(link_cmd)}\nSTDOUT:\n{link_res.stdout}\nSTDERR:\n{link_res.stderr}"
+            )
+        exec_res = run_cmd([str(exe_out)], cwd)
+        if exe_out.exists():
+            exe_out.unlink()
+        if exec_res.returncode != 0:
+            raise AssertionError(
+                f"[FAIL] {name} (native_exec) expected exit 0, got {exec_res.returncode}\n"
+                f"STDOUT:\n{exec_res.stdout}\nSTDERR:\n{exec_res.stderr}"
+            )
+        mode_records.append(
+            {
+                "mode": "link_and_native_exec",
+                "link_exit_code": link_res.returncode,
+                "exec_exit_code": exec_res.returncode,
+                "cmd": link_cmd,
+            }
+        )
+        print(f"[PASS] {name} (3-mode + link + native exec rc=0)")
+        return {
+            "case": name,
+            "expected": "pass",
+            "exit_code": 0,
+            "modes": mode_records,
+        }
+
     res = run_cmd(cmd, cwd)
     if res.returncode != 0:
         raise AssertionError(
@@ -58,6 +146,62 @@ def expect_fail(
     expected_substr: str | None = None,
     cwd: Path | None = None,
 ) -> dict:
+    """Run negative control across all 3 compiler modes (--check-only, -c, --emit-llvm)
+    and verify exit_code == 1, expected diagnostic substring, and zero leftover artifacts."""
+    if "--check-only" in cmd and cmd[-1].endswith(".tk"):
+        src_path = Path(cmd[-1])
+        base_args = [arg for arg in cmd[1:-1] if arg != "--check-only"]
+        tokac_bin = cmd[0]
+        out_stem = src_path.parent / f"__stage4_neg_{name}"
+        obj_out = out_stem.with_suffix(".o")
+        ll_out = out_stem.with_suffix(".ll")
+
+        mode_records = []
+        last_stderr = ""
+        for mode_label, mode_flags, prod in (
+            ("check_only", ["--check-only"], None),
+            ("compile_obj", ["-c", "-o", str(obj_out)], obj_out),
+            ("emit_llvm", ["-c", "--emit-llvm", "-o", str(ll_out)], ll_out),
+        ):
+            if prod and prod.exists():
+                prod.unlink()
+            mcmd = [tokac_bin, *base_args, *mode_flags, str(src_path)]
+            res = run_cmd(mcmd, cwd)
+            combined = (res.stdout or "") + "\n" + (res.stderr or "")
+            if res.returncode != 1:
+                raise AssertionError(
+                    f"[FAIL] {name} ({mode_label}) expected FAIL (exit 1), got {res.returncode}\n"
+                    f"CMD: {' '.join(mcmd)}\nOUTPUT:\n{combined}"
+                )
+            if expected_substr and expected_substr not in combined:
+                raise AssertionError(
+                    f"[FAIL] {name} ({mode_label}) failed with {res.returncode}, "
+                    f"but missing expected diagnostic '{expected_substr}'\n"
+                    f"CMD: {' '.join(mcmd)}\nOUTPUT:\n{combined}"
+                )
+            if prod and prod.exists():
+                raise AssertionError(
+                    f"[FAIL] {name} ({mode_label}) left residual artifact {prod} after failure"
+                )
+            last_stderr = res.stderr
+            mode_records.append(
+                {
+                    "mode": mode_label,
+                    "exit_code": res.returncode,
+                    "zero_residual_artifact": True,
+                    "cmd": mcmd,
+                }
+            )
+        print(f"[PASS] {name} (3-mode rejected as expected, zero artifacts)")
+        return {
+            "case": name,
+            "expected": "fail",
+            "exit_code": 1,
+            "expected_substr": expected_substr or "",
+            "modes": mode_records,
+            "stderr_sample": last_stderr,
+        }
+
     res = run_cmd(cmd, cwd)
     combined = (res.stdout or "") + "\n" + (res.stderr or "")
     if res.returncode == 0:
@@ -138,7 +282,7 @@ fn main() -> i32 {
     auto &r = &(acc.balance)
     auto h = Helper(tag = r)
     auto Account(a = .id, b = .branch, c = .balance) = acc
-    if a + b + c + h.inspect(acc) != 33 {
+    if a + b + c + h.inspect(acc) != 51 {
         return 1
     }
     return 0
@@ -150,7 +294,7 @@ fn main() -> i32 {
                 "SP-01_same_module_full_access",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     "--workspace-node",
                     "pkg-sp01-v1",
                     "--workspace-root",
@@ -163,7 +307,7 @@ fn main() -> i32 {
         receipts.append(
             expect_fail(
                 "PLAN-1_missing_coordinate_pkg_access_fail_closed",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(sp01)],
+                [str(tokac), "--check-only", str(sp01)],
                 "private",
             )
         )
@@ -212,13 +356,19 @@ fn priv_helper(v: i32) -> i32 {
 import ./provider::{MixedRecord, AllPkgVisible, PkgOnlyShape, PKG_MAGIC, pkg_helper}
 
 fn main() -> i32 {
-    auto m = MixedRecord::make(1, 2, 3)
-    auto sum1 = m.a + m.b + m.pkg_sum()
+    auto m# = MixedRecord::make(1, 2, 3)
+    m.a = m.a + 0
+    m.b = m.b + 0
+    auto &rb = &(m.b)
+    auto sum1 = m.a + rb + m.pkg_sum()
     auto v1 = AllPkgVisible(x = 10, y = 20)
     auto v2 = AllPkgVisible(x = 10, ..)
     auto p = PkgOnlyShape(x = 3, y = 4)
     auto AllPkgVisible(dx = .x, dy = .y) = v1
-    return sum1 + v2.y + p.x + p.y + dx + dy + pkg_helper(PKG_MAGIC)
+    if sum1 + v2.y + p.x + p.y + dx + dy + pkg_helper(PKG_MAGIC) != 150 {
+        return 1
+    }
+    return 0
 }
 """,
         )
@@ -231,7 +381,7 @@ fn main() -> i32 {
         receipts.append(
             expect_pass(
                 "SP-02_04_05_06_07_same_pkg_allowed",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", *alpha_ws_args, str(pkg_alpha / "same_pkg_ok.tk")],
+                [str(tokac), "--check-only", *alpha_ws_args, str(pkg_alpha / "same_pkg_ok.tk")],
             )
         )
 
@@ -250,9 +400,33 @@ fn main() -> i32 {
                 "SP-02_same_pkg_read_priv_field_rejected",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *alpha_ws_args,
                     str(pkg_alpha / "same_pkg_read_priv_field_bad.tk"),
+                ],
+                "private",
+            )
+        )
+
+        write_text(
+            pkg_alpha / "same_pkg_ref_priv_field_bad.tk",
+            """
+import ./provider::{MixedRecord}
+fn main() -> i32 {
+    auto m = MixedRecord::make(1, 2, 3)
+    auto &rc = &(m.c)
+    return rc
+}
+""",
+        )
+        receipts.append(
+            expect_fail(
+                "SP-06_same_pkg_borrow_ref_priv_field_rejected",
+                [
+                    str(tokac),
+                    "--check-only",
+                    *alpha_ws_args,
+                    str(pkg_alpha / "same_pkg_ref_priv_field_bad.tk"),
                 ],
                 "private",
             )
@@ -273,7 +447,7 @@ fn main() -> i32 {
                 "SP-04_same_pkg_direct_construct_priv_field_rejected",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *alpha_ws_args,
                     str(pkg_alpha / "same_pkg_construct_with_priv_field_bad.tk"),
                 ],
@@ -296,7 +470,7 @@ fn main() -> i32 {
                 "SP-05_same_pkg_elision_construct_priv_field_rejected",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *alpha_ws_args,
                     str(pkg_alpha / "same_pkg_elision_bypass_priv_field_bad.tk"),
                 ],
@@ -320,7 +494,7 @@ fn main() -> i32 {
                 "SP-05_same_pkg_destructure_priv_field_rejected",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *alpha_ws_args,
                     str(pkg_alpha / "same_pkg_destructure_priv_field_bad.tk"),
                 ],
@@ -342,7 +516,7 @@ fn main() -> i32 {
                 "SP-07_same_pkg_import_priv_shape_rejected",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *alpha_ws_args,
                     str(pkg_alpha / "same_pkg_import_priv_shape_bad.tk"),
                 ],
@@ -371,7 +545,10 @@ fn main() -> i32 {
     auto p1 = PublicAllPub(x = 1, y = 2)
     auto p2 = PublicAllPub(x = 3, ..)
     auto PublicAllPub(dx = .x, dy = .y) = p1
-    return m.a + p2.y + dx + dy
+    if m.a + p2.y + dx + dy != 18 {
+        return 1
+    }
+    return 0
 }
 """,
         )
@@ -398,7 +575,7 @@ fn main() -> i32 {
                 "SP-03_cross_pkg_pub_only_allowed",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *beta_cross_args,
                     str(pkg_beta / "ext_ok.tk"),
                 ],
@@ -420,7 +597,7 @@ fn main() -> i32 {
                 "SP-03_cross_pkg_read_pkg_field_rejected",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *beta_cross_args,
                     str(pkg_beta / "ext_read_pkg_field_bad.tk"),
                 ],
@@ -443,7 +620,7 @@ fn main() -> i32 {
                 "SP-04_05_cross_pkg_elision_construct_pkg_field_rejected",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *beta_cross_args,
                     str(pkg_beta / "ext_construct_pkg_field_bad.tk"),
                 ],
@@ -465,7 +642,7 @@ fn main() -> i32 {
                 "XP-06_cross_pkg_import_pkg_fn_rejected",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *beta_cross_args,
                     str(pkg_beta / "ext_import_pkg_decl_bad.tk"),
                 ],
@@ -487,7 +664,7 @@ fn main() -> i32 {
                 "SP-07_XP-06_cross_pkg_import_pkg_shape_rejected",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *beta_cross_args,
                     str(pkg_beta / "ext_import_pkg_shape_bad.tk"),
                 ],
@@ -526,7 +703,7 @@ fn main() -> i32 {
         receipts.append(
             expect_pass(
                 "SP-08_PLAN-2_allowed_combinations_1_2_3_5",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(plan2_ok)],
+                [str(tokac), "--check-only", str(plan2_ok)],
             )
         )
 
@@ -542,7 +719,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "SP-08_PLAN-2_case4_pkg_shape_pub_field_secret_rejected",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(plan2_case4_bad)],
+                [str(tokac), "--check-only", str(plan2_case4_bad)],
                 "narrower visibility",
             )
         )
@@ -559,7 +736,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "SP-08_PLAN-2_case6a_pub_shape_pkg_field_secret_rejected",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(plan2_case6a_bad)],
+                [str(tokac), "--check-only", str(plan2_case6a_bad)],
                 "narrower visibility",
             )
         )
@@ -576,7 +753,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "SP-08_PLAN-2_case6b_pub_shape_pub_field_pkgdata_rejected",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(plan2_case6b_bad)],
+                [str(tokac), "--check-only", str(plan2_case6b_bad)],
                 "narrower visibility",
             )
         )
@@ -594,7 +771,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "SP-08_PLAN-2_recursive_generic_type_tree_rejected",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(plan2_generic_tree_bad)],
+                [str(tokac), "--check-only", str(plan2_generic_tree_bad)],
                 "narrower visibility",
             )
         )
@@ -611,7 +788,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "SP-08_PLAN-2_pub_fn_exposing_pkg_type_rejected",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(plan2_pub_fn_pkg_arg_bad)],
+                [str(tokac), "--check-only", str(plan2_pub_fn_pkg_arg_bad)],
                 "narrower visibility",
             )
         )
@@ -628,7 +805,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "XP-07_PLAN-2_pub_type_alias_to_pkg_rejected",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(plan2_pub_alias_pkg_bad)],
+                [str(tokac), "--check-only", str(plan2_pub_alias_pkg_bad)],
                 "narrower visibility",
             )
         )
@@ -650,7 +827,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "XP-01_encap_pub_field_list_rejected_in_019",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(xp01_bad)],
+                [str(tokac), "--check-only", str(xp01_bad)],
                 "removed in 0.19",
             )
         )
@@ -682,7 +859,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "XP-01b_mix_inline_vis_and_encap_field_list_rejected_019",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(xp01_mix_bad)],
+                [str(tokac), "--check-only", str(xp01_mix_bad)],
                 "Cannot mix inline shape field visibility",
             )
         )
@@ -701,7 +878,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "XP-02_encap_pkg_grant_rejected",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(xp02_pkg_bad)],
+                [str(tokac), "--check-only", str(xp02_pkg_bad)],
                 "removed in 0.19",
             )
         )
@@ -720,7 +897,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_pass(
                 "XP-03_encap_private_drop_allowed",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(xp03_drop_ok)],
+                [str(tokac), "--check-only", str(xp03_drop_ok)],
             )
         )
 
@@ -738,7 +915,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "XP-03_encap_pkg_drop_rejected",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(xp03_pkg_drop_bad)],
+                [str(tokac), "--check-only", str(xp03_pkg_drop_bad)],
                 "drop hook must be private",
             )
         )
@@ -754,7 +931,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "XP-04_private_modifier_rejected",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(xp04_private_kw_bad)],
+                [str(tokac), "--check-only", str(xp04_private_kw_bad)],
             )
         )
 
@@ -777,7 +954,7 @@ fn main() -> i32 {
                 "XP-05_private_and_prv_remain_normal_identifiers",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     "--workspace-node",
                     "pkg-xp05-v1",
                     "--workspace-root",
@@ -798,7 +975,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "XP-07_pub_import_reexport_pkg_symbol_rejected",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", *alpha_ws_args, str(xp07_pub_reexport_pkg_bad)],
+                [str(tokac), "--check-only", *alpha_ws_args, str(xp07_pub_reexport_pkg_bad)],
                 "Cannot publicly re-export non-public symbol",
             )
         )
@@ -814,7 +991,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "XP-08_R2_enum_variant_inline_visibility_rejected",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(xp08_enum_vis_bad)],
+                [str(tokac), "--check-only", str(xp08_enum_vis_bad)],
                 "enum variants inherit the visibility",
             )
         )
@@ -830,7 +1007,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_fail(
                 "XP-09_R2_tuple_shape_still_hits_E0472",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(xp09_tuple_bad)],
+                [str(tokac), "--check-only", str(xp09_tuple_bad)],
                 "E0472",
             )
         )
@@ -846,7 +1023,7 @@ fn main() -> i32 { return 0 }
         receipts.append(
             expect_pass(
                 "XP-09_R2_canonical_array_shape_with_pkg_allowed",
-                [str(tokac), "--encap-epoch=0.19", "--check-only", str(xp09_array_ok)],
+                [str(tokac), "--check-only", str(xp09_array_ok)],
             )
         )
 
@@ -858,8 +1035,24 @@ fn main() -> i32 { return 0 }
             """
 import ./provider::{MixedRecord}
 
+pub shape ResourceWithDrop(pub id: i32, secret: i32)
+
+impl ResourceWithDrop@Encap {
+    fn drop(self#) {}
+}
+
+impl ResourceWithDrop {
+    pub fn make(id: i32, s: i32) -> ResourceWithDrop {
+        return ResourceWithDrop(id = id, secret = s)
+    }
+}
+
 pub fn read_via_generic<T>(rec: MixedRecord, tag: T) -> i32 {
     return rec.a + rec.b
+}
+
+pub fn copy_pair<T: @Copy>(val: T) -> T {
+    return val
 }
 
 pub fn forward_whole<T>(cede val: T) -> T {
@@ -872,13 +1065,19 @@ pub fn forward_whole<T>(cede val: T) -> T {
             pkg_beta / "pg_generic_cross_pkg_ok.tk",
             """
 import alpha_prov::{MixedRecord}
-import alpha_gen::{read_via_generic, forward_whole}
+import alpha_gen::{ResourceWithDrop, read_via_generic, copy_pair, forward_whole}
 
 fn main() -> i32 {
     auto m = MixedRecord::make(4, 5, 6)
     auto v = read_via_generic<i32>(m, 1)
+    auto m_copied = copy_pair<MixedRecord>(m)
     auto m2 = forward_whole<MixedRecord>(cede m)
-    return v + m2.a
+    auto res = ResourceWithDrop::make(7, 99)
+    auto res2 = forward_whole<ResourceWithDrop>(cede res)
+    if v + m_copied.a + m2.a + res2.id != 24 {
+        return 1
+    }
+    return 0
 }
 """,
         )
@@ -887,7 +1086,7 @@ fn main() -> i32 {
                 "PG-01_02_04_generic_def_module_authority_and_whole_value_move",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *beta_cross_args,
                     str(pkg_beta / "pg_generic_cross_pkg_ok.tk"),
                 ],
@@ -914,7 +1113,7 @@ fn main() -> i32 {
                 "PG-03_external_generic_cannot_access_pkg_field_rejected",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *beta_cross_args,
                     str(pkg_beta / "pg_external_generic_cannot_access_pkg_bad.tk"),
                 ],
@@ -928,6 +1127,7 @@ fn main() -> i32 {
         tki_pkg_a = tmp / "tki_pkg_a"
         tki_src = tki_pkg_a / "lib_mod.tk"
         tki_out = tki_pkg_a / "lib_mod.tki"
+        tki_obj = tki_pkg_a / "lib_mod.o"
         write_text(
             tki_src,
             """
@@ -957,16 +1157,16 @@ pkg const PKG_EXPORT_CONST: i32 = 99
                 "TKI-01_02_emit_tki_for_019_visibility",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19",
                     *tki_a_ws_args,
                     "-c",
                     "-o",
-                    str(tki_pkg_a / "lib_mod.o"),
+                    str(tki_obj),
                     str(tki_src),
                 ],
             )
         )
         tki_text = tki_out.read_text(encoding="utf-8")
+        assert "// @meta encap_epoch: 0.19" in tki_text, f"Missing encap_epoch: 0.19 in:\n{tki_text}"
         assert "pub shape ExportedRecord(pub pub_f: i32, pkg pkg_f: i32, priv_f: i32 = 11)" in tki_text, (
             f"Unexpected .tki shape export:\n{tki_text}"
         )
@@ -985,8 +1185,9 @@ pkg const PKG_EXPORT_CONST: i32 = 99
         assert "// @tki v2 field_graph: ExportedRecord.priv_f = i32 [private]" in tki_text, (
             f"Missing [private] field_graph fact:\n{tki_text}"
         )
-        # Remove source so consumer strictly loads .tki
+        # Physically remove .tk source so consumer strictly loads sourceless .tki
         tki_src.unlink()
+        assert not tki_src.exists()
 
         write_text(
             tki_pkg_a / "same_pkg_tki_consumer_ok.tk",
@@ -996,7 +1197,10 @@ import ./lib_mod::{ExportedRecord, PkgExported, PKG_EXPORT_CONST}
 fn main() -> i32 {
     auto r = ExportedRecord::create(3, 4)
     auto p = PkgExported(x = 1, y = 2)
-    return r.pub_f + r.pkg_f + r.pkg_read() + p.x + p.y + PKG_EXPORT_CONST
+    if r.pub_f + r.pkg_f + r.pkg_read() + p.x + p.y + PKG_EXPORT_CONST != 124 {
+        return 1
+    }
+    return 0
 }
 """,
         )
@@ -1005,10 +1209,11 @@ fn main() -> i32 {
                 "TKI-03_same_pkg_tki_consumer_allows_pub_and_pkg",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *tki_a_ws_args,
                     str(tki_pkg_a / "same_pkg_tki_consumer_ok.tk"),
                 ],
+                extra_link_objs=[tki_obj],
             )
         )
 
@@ -1028,7 +1233,7 @@ fn main() -> i32 {
                 "TKI-03_same_pkg_tki_consumer_rejects_priv_field",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *tki_a_ws_args,
                     str(tki_pkg_a / "same_pkg_tki_consumer_priv_bad.tk"),
                 ],
@@ -1054,7 +1259,10 @@ import tki_a::{ExportedRecord}
 
 fn main() -> i32 {
     auto r = ExportedRecord::create(3, 4)
-    return r.pub_f
+    if r.pub_f != 3 {
+        return 1
+    }
+    return 0
 }
 """,
         )
@@ -1063,10 +1271,11 @@ fn main() -> i32 {
                 "TKI-04_cross_pkg_tki_consumer_allows_pub_field",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *tki_b_cross_args,
                     str(tki_pkg_b / "cross_pkg_tki_consumer_ok.tk"),
                 ],
+                extra_link_objs=[tki_obj],
             )
         )
 
@@ -1086,7 +1295,7 @@ fn main() -> i32 {
                 "TKI-04_cross_pkg_tki_consumer_rejects_pkg_field",
                 [
                     str(tokac),
-                    "--encap-epoch=0.19", "--check-only",
+                    "--check-only",
                     *tki_b_cross_args,
                     str(tki_pkg_b / "cross_pkg_tki_consumer_pkg_bad.tk"),
                 ],
@@ -1099,7 +1308,8 @@ fn main() -> i32 {
             receipts_out.write_text(
                 json.dumps(
                     {
-                        "stage": "2",
+                        "stage": "4.1",
+                        "default_encap_epoch": "0.19",
                         "tokac": str(tokac),
                         "total_checks": len(receipts),
                         "receipts": receipts,
@@ -1111,7 +1321,7 @@ fn main() -> i32 {
                 encoding="utf-8",
             )
 
-        print(f"\nAll {len(receipts)} Stage 2 verification checks PASSED.")
+        print(f"\nAll {len(receipts)} Stage 2/4.1 verification checks PASSED.")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

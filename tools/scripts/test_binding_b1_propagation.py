@@ -56,7 +56,7 @@ def main():
             print("PASS runtime/plan/parity: " + name, flush=True)
 
         suffix = "fn suffix(input: str) -> Result<str, str> <- input { return Result<str, str>::Ok(input) }\n"
-        token = "shape Token(id: i32)\nimpl Token@Encap {\npub id\nfn drop(self#) {}\n}\n"
+        token = "shape Token(pub id: i32)\nimpl Token@Encap {\nfn drop(self#) {}\n}\n"
         negatives = {
             "local-view": suffix + "fn bad(input: str) -> Result<i32, str> <- input {\n"
                 "auto remaining# = input\n{ auto owner = string::from(\"local\"); remaining = suffix(owner.as_str())! }\n"

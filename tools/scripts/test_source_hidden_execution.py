@@ -27,7 +27,7 @@ def main():
             _, separator, declarations = text.partition('\n\n')
             assert separator, text
             digest = 14695981039346656037
-            for byte in declarations.encode('utf-8'):
+            for byte in ('// @encap_epoch 0.19\n' + declarations).encode('utf-8'):
                 digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
             text, count = re.subn(
                 r'(?m)^// @meta replay_surface_hash: [0-9a-f]{16}$',
@@ -128,7 +128,7 @@ pub fn prime() -> i32 { auto callback = make(0:i32); return callback(4) }
         assert not re.search(r'define linkonce_odr .*@__toka_gfn_', ir), ir
         print('PASS qualified generic instance is local despite primed provider', flush=True)
 
-        generic_method = provider('''pub shape Factory<T>(seed: T)
+        generic_method = provider('''pub shape Factory<T>(pub seed: T)
 impl<T> Factory<T> {
     pub fn make(self) -> fn(i32) -> i32 { return { value => value + 1 }:fn(i32) -> i32 }
 }
@@ -157,8 +157,8 @@ fn main() -> i32 {
         extra_objects.append('counter.o')
         drop_factory = '''import core/traits::{@Encap}
 extern fn record_drop(value: i32) -> void
-shape Token(id: i32)
-impl Token@Encap { pub id fn drop(self#) { record_drop(1) } }
+shape Token(pub id: i32)
+impl Token@Encap { fn drop(self#) { record_drop(1) } }
 pub fn make() -> dyn fn() -> i32 {
     auto token = Token(id = 7)
     return { [cede token] => token.id }:dyn fn() -> i32
@@ -183,8 +183,8 @@ fn main() -> i32 {
 
         enum_base = '''import core/traits::{@Encap}
 extern fn record_drop(value: i32) -> void
-pub shape Token(id: i32)
-impl Token@Encap { pub id fn drop(self#) { record_drop(1) } }
+pub shape Token(pub id: i32)
+impl Token@Encap { fn drop(self#) { record_drop(1) } }
 '''
         enum_consumer = '''import ./lib::{Token, Bundle, take}
 import std/task::{block_on}
@@ -235,7 +235,7 @@ pub fn take(cede bundle: Bundle) -> async i32 { cede bundle; return 7 }
         print('PASS both enum payload slots clean exactly once', flush=True)
 
         original = provider(enum_base + '''pub shape Bundle<A, B>(Pair(A, B) | Empty)
-pub shape Envelope(contents: Bundle<^Token, ~Token>)
+pub shape Envelope(pub contents: Bundle<^Token, ~Token>)
 pub fn take(cede value: Envelope) -> async i32 { cede value; return 7 }
 ''')
         assert 'record_drop(1)' in original

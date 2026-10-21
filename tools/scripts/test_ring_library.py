@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 SHARED_OWNER = '''import std/ring::{RingCore}
 auto drops# = 0:i32
-shape Cell(id:i32)
-impl Cell@Encap { pub id
+shape Cell(pub id:i32)
+impl Cell@Encap {
 fn drop(self#) { drops += 1 } }
 fn main() -> i32 {
     {
@@ -43,8 +43,8 @@ fn main() -> i32 {
 '''
 
 PLAIN = '''import std/ring::{RingCore}
-shape Plain(id:i32)
-impl Plain@Encap { pub id }
+shape Plain(pub id:i32)
+impl Plain@Encap {}
 fn main() -> i32 {
     auto q# = RingCore<Plain>::new()
     auto i# = 0:i32
@@ -90,8 +90,8 @@ DUP = '''import std/ring::{RingCore}
 import core/traits::{@Dup}
 auto drops# = 0:i32
 auto copies# = 0:i32
-shape Cell(id:i32)
-impl Cell@Encap { pub id
+shape Cell(pub id:i32)
+impl Cell@Encap {
 fn drop(self#) { drops += 1 } }
 impl Cell@Dup {
 pub fn dup(self) -> Self { copies += 1; return Cell(id=self.id) }
@@ -139,7 +139,7 @@ def resource_case(morph=''):
     # Push enough for repeated buffer growth; repeatedly refill both ends.
     element = morph + 'Cell'
     lines = ['import std/ring::{RingCore}', 'auto drops# = 0:i32',
-             'shape Cell(id:i32)', 'impl Cell@Encap { pub id',
+             'shape Cell(pub id:i32)', 'impl Cell@Encap {',
              'fn drop(self#) { drops += 1 } }',
              'fn exercise() -> i32 {', f'auto q# = RingCore<{element}>::new()']
     for i in range(40):
@@ -201,8 +201,8 @@ def main():
         negatives = {
             'non_dup': ((ROOT / 'tests/fail/ring_get_non_dup_resource.tk').read_text(), 'E0417'),
             'moved_source': ('''import std/ring::{RingCore}
-shape Cell(id:i32)
-impl Cell@Encap { pub id
+shape Cell(pub id:i32)
+impl Cell@Encap {
 fn drop(self#) {} }
 fn main() -> i32 {
     auto q# = RingCore<Cell>::new()

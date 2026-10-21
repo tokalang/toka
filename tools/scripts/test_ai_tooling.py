@@ -236,8 +236,8 @@ def main():
         temp_path = Path(temp_dir)
         lib_source = temp_path / "replay_lib.tk"
         lib_source.write_text(
-            "pub shape ReplayPoint(x: i32, y: i32)\n"
-            "pub shape ReplayConfig(x: i32, y: i32 = 99)\n\n"
+            "pub shape ReplayPoint(pub x: i32, pub y: i32)\n"
+            "pub shape ReplayConfig(pub x: i32, pub y: i32 = 99)\n\n"
             "pub fn make_point(x: i32, y: i32) -> ReplayPoint {\n"
             "    return ReplayPoint(x, y)\n"
             "}\n\n"
@@ -254,7 +254,7 @@ def main():
         run([tokac, "-c", lib_source, "-o", lib_obj], cwd=temp_path)
         require(lib_obj.is_file() and lib_tki.is_file(), "TKI/Obj compilation failed for replay_lib")
         tki_content = lib_tki.read_text(encoding="utf-8")
-        require("pub shape ReplayPoint(x: i32, y: i32)" in tki_content, "ReplayPoint missing from TKI")
+        require("pub shape ReplayPoint(pub x: i32, pub y: i32)" in tki_content, "ReplayPoint missing from TKI")
 
         # Remove source .tk file to guarantee pure source-less replay
         lib_source.unlink()

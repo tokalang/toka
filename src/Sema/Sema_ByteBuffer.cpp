@@ -41,7 +41,7 @@ bool Sema::byteBufferSchema(SourceLocation location, const std::string &module) 
   static const std::map<std::string, std::string> schemas = {
       {"std/vec", "dd1d5b0e70abcc5c4a7991812e318d8525410aae8565879ba3d66b825fcf211f"},
       {"std/bytes", "06e4f0a72569e9edaa2bad7b5eb9aded4cad5ea7ee9b9c8cee94134a68d9ccc6"},
-      {"std/net", "e7656e406482b85d0f377470b4d0f49f59d47e987a95bfe5d62eb633d447df1f"},
+      {"std/net", "dc945d28c7462cbef3ab9e33e1574a0bfd57998870121ed933b7ad523cd47c7b"},
   };
   const auto expected = schemas.find(module);
   if (expected == schemas.end() || !DiagnosticEngine::SrcMgr || !location.isValid()) return false;

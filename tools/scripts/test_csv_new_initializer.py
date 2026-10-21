@@ -26,7 +26,7 @@ def main():
             'auto output=File::open(string::from("/dev/null"),"w")\n'
             'auto ^writer=BufferedWriter<File>::make(cede output)\nreturn 0}',
         'factory-forward-drop-once': FILE + 'auto drops#=0:i32\n'
-            'shape Tracked(file:File)\nimpl Tracked@Encap {pub file\nfn drop(self#){drops+=1}}\n'
+            'shape Tracked(pub file:File)\nimpl Tracked@Encap {\nfn drop(self#){drops+=1}}\n'
             'shape Box(value:Tracked)\n'
             'fn forward(cede file:File)->^Box {return make(cede file)}\n'
             'fn make(cede file:File)->^Box {auto tracked=Tracked(file=cede file)\n'
@@ -40,8 +40,8 @@ def main():
             'assert(drops==1,"forwarded exact once")\nreturn 0}',
         'file-box': FILE + 'shape Box(file:File)\nfn main()->i32 {\n' + OPEN +
             'auto ^box=new Box(file=cede file)\nassert(box.file.is_valid(),"live File")\nreturn 0}',
-        'drop-once': FILE + 'auto drops#=0:i32\nshape Tracked(file:File)\n'
-            'impl Tracked@Encap {pub file\nfn drop(self#){drops+=1}}\n'
+        'drop-once': FILE + 'auto drops#=0:i32\nshape Tracked(pub file:File)\n'
+            'impl Tracked@Encap {\nfn drop(self#){drops+=1}}\n'
             'shape Box(value:Tracked)\nfn main()->i32 {{\n' + OPEN +
             'auto tracked=Tracked(file=cede file)\n'
             'auto ^box=new Box(value=cede tracked)\nassert(drops==0,"not dropped early")\n'

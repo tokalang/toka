@@ -31,8 +31,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="toka-receiver-tki-") as directory:
         work = Path(directory)
         provider = work / "slot.tk"
-        provider.write_text("""pub shape Input(view: str, other: str)
-pub shape Slot(view: str)
+        provider.write_text("""pub shape Input(pub view: str, pub other: str)
+pub shape Slot(pub view: str)
 impl Slot {
     pub fn replace(self#, next: Input)
     effects:
@@ -233,7 +233,7 @@ fn main() -> i32 {
         work = Path(directory)
         provider = work / "provider.tk"
         provider.write_text("pub unsafe fn make() -> i32 { return 7 }\n"
-                            "pub shape Cell(value: i32)\n"
+                            "pub shape Cell(pub value: i32)\n"
                             "impl Cell { pub unsafe fn make_cell() -> Cell "
                             "{ return Cell(value = 7) } }\n")
         built = subprocess.run(

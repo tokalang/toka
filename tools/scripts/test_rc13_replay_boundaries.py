@@ -9,8 +9,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIX = '''import core/traits::{@Encap}
-shape Token(id: i32, &drops#: i32)
-impl Token@Encap { pub id, drops fn drop(self#) { self.drops += 1 } }
+shape Token(pub id: i32, pub &drops#: i32)
+impl Token@Encap { fn drop(self#) { self.drops += 1 } }
 '''
 CASES = {
     'shared_borrowed': (PREFIX + '''
@@ -85,8 +85,8 @@ fn main() -> i32 {
 }
 ''', 'E0441')
 CASES['rejected_initializer_rollback'] = ('''import core/traits::{@Encap}
-shape Owned(id: i32)
-impl Owned@Encap { pub id fn drop(self#) {} }
+shape Owned(pub id: i32)
+impl Owned@Encap { fn drop(self#) {} }
 shape Holder(owned: Owned, &count#: i32)
 fn main() -> i32 {
     auto item = Owned(id = 7)
@@ -100,8 +100,8 @@ fn main() -> i32 {
 CASES['owned_iterator_cleanup'] = ('''import core/traits::{@Encap}
 import std/vec::{Vec}
 auto drops# = 0:i32
-shape Item(id: i32)
-impl Item@Encap { pub id fn drop(self#) { drops += 1 } }
+shape Item(pub id: i32)
+impl Item@Encap { fn drop(self#) { drops += 1 } }
 fn main() -> i32 {
     {
         auto values# = Vec<Item>::new()
@@ -125,8 +125,8 @@ fn main() -> i32 {
 
 OWNER = '''import core/traits::{@Encap}
 auto drops# = 0:i32
-shape View(&first: i32, &second: i32)
-impl View@Encap { pub first, second fn drop(self#) { drops += 1 } }
+shape View(pub &first: i32, pub &second: i32)
+impl View@Encap { fn drop(self#) { drops += 1 } }
 '''
 for route, hat, handed in (('shared_copy', '~', '~owner'),
                            ('shared_move', '~', 'cede ~owner'),
