@@ -1,4 +1,4 @@
-// EXPECT_TKI: pub shape Item(remote: i32)
+// EXPECT_TKI: pub shape Item(pub remote: i32)
 // EXPECT_TKI: pub fn value(self: Item) -> i32
 // EXPECT_TKI: pub fn make() -> Item
 

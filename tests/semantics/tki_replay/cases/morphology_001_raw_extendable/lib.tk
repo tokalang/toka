@@ -10,7 +10,7 @@ pub shape ConstrainedShape<T>
 where:
     T: morphology raw_extendable
 (
-    marker: i32
+    pub marker: i32
 )
 
 impl<T> RawDomain<T>

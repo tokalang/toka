@@ -1,4 +1,4 @@
-// EXPECT_TKI: pub shape Item<T>(val: T)
+// EXPECT_TKI: pub shape Item<T>(pub val: T)
 // EXPECT_TKI: pub shape Carrier<T>(Value(T) = 1)
 // EXPECT_TKI: pub shape RepeatCarrier<T>(Value(T) = 1)
 // EXPECT_TKI: pub shape IndexCarrier<T>(Value(T) = 1)

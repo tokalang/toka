@@ -1,4 +1,4 @@
-// EXPECT_TKI: pub shape Parcel<T>(^item: T)
+// EXPECT_TKI: pub shape Parcel<T>(pub ^item: T)
 // EXPECT_TKI: pub fn forward(cede self: Self) -> Self
 // EXPECT_TKI: pub fn forward_parcel<T>(cede parcel: Parcel<T>) -> Parcel<T>
 import core/traits::{@Encap}

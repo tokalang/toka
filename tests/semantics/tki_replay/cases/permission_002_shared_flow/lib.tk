@@ -50,12 +50,12 @@ impl CallableMutator@Callable {
     }
 }
 
-// EXPECT_TKI: pub shape ReadonlyRefBox(&slot: i32)
+// EXPECT_TKI: pub shape ReadonlyRefBox(pub &slot: i32)
 pub shape ReadonlyRefBox(
     pub &slot: i32
 )
 
-// EXPECT_TKI: pub shape WritableRefBox(&slot#: i32)
+// EXPECT_TKI: pub shape WritableRefBox(pub &slot#: i32)
 pub shape WritableRefBox(
     pub &slot#: i32
 )

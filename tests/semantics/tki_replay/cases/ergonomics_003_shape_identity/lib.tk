@@ -1,4 +1,4 @@
-// EXPECT_TKI: pub shape Counter(remote: i64)
+// EXPECT_TKI: pub shape Counter(pub remote: i64)
 // EXPECT_TKI: pub shape Choice
 // EXPECT_TKI: pub fn make_counter() -> Counter
 // EXPECT_TKI: pub fn remote_choice() -> Choice

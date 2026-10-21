@@ -1,4 +1,4 @@
-// EXPECT_TKI: pub shape Vault<T>(id: i32, ^secret: T)
+// EXPECT_TKI: pub shape Vault<T>(pub id: i32, ^secret: T)
 // EXPECT_TKI: impl<T> Vault<T>@Encap
 import core/traits::{@Encap}
 

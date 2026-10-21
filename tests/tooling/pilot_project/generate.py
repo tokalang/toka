@@ -23,8 +23,8 @@ def module_source(module_index):
         ])
     parts.extend([
         "pub shape Reading%s (" % module,
-        "    value: i32,",
-        "    quality: i32",
+        "    pub value: i32,",
+        "    pub quality: i32",
         ")",
         "",
     ])

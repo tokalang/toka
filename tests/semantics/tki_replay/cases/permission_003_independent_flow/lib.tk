@@ -1,4 +1,4 @@
-// EXPECT_TKI: pub shape Cell(value: i32)
+// EXPECT_TKI: pub shape Cell(pub value: i32)
 // EXPECT_TKI: pub fn consume(cede cell: Cell) -> i32
 // EXPECT_TKI: pub fn consume_static(cede cell: Cell) -> i32
 // EXPECT_TKI: pub fn take(cede self

@@ -1,4 +1,4 @@
-// EXPECT_TKI: pub shape Item(val: i32)
+// EXPECT_TKI: pub shape Item(pub val: i32)
 // EXPECT_TKI: pub alias Int = i32
 // EXPECT_TKI: pub alias OptUnique = Option<^Item>
 // EXPECT_TKI: pub alias OptShared = Option<~Item>
