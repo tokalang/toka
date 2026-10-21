@@ -3,10 +3,10 @@
 // EXPECT_TKI: pub fn forward_parcel<T>(cede parcel: Parcel<T>) -> Parcel<T>
 import core/traits::{@Encap}
 
-pub shape Parcel<T>(^item: T)
+pub shape Parcel<T>(pub ^item: T)
 
 impl<T> Parcel<T>@Encap {
-    pub item
+
     fn drop(self#) {}
 }
 

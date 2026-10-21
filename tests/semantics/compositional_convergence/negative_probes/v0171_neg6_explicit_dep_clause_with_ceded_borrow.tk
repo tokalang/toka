@@ -1,6 +1,6 @@
 import core/task::{TaskHandle}
 
-pub shape RefCarrier(&view: i32, token: i32)
+pub shape RefCarrier(pub &view: i32, pub token: i32)
 
 pub fn mix_explicit_dep(r: i32, cede c: RefCarrier) -> async i32 <- r {
     auto owned = cede c

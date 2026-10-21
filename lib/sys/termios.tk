@@ -9,14 +9,14 @@
 // c_ospeed: u64 (64)
 
 pub shape Termios (
-    c_iflag: u64,
-    c_oflag: u64,
-    c_cflag: u64,
-    c_lflag: u64,
-    c_cc: [u8; 20],
-    _pad: [u8; 4],
-    c_ispeed: u64,
-    c_ospeed: u64
+    pub c_iflag: u64,
+    pub c_oflag: u64,
+    pub c_cflag: u64,
+    pub c_lflag: u64,
+    pub c_cc: [u8; 20],
+    pub _pad: [u8; 4],
+    pub c_ispeed: u64,
+    pub c_ospeed: u64
 )
 
 // Constants

@@ -7,7 +7,7 @@ pub fn yield_now() { unsafe { libc_sched_yield() } }
 
 /// No-allocation native error. Kinds: Allocation=1, Create=2, Join=3,
 /// Detach=4, Closed=5, Busy=6, Setup=7. Native errors preserve native_code.
-pub shape ThreadError(kind: i32, native_code: i32)
+pub shape ThreadError(pub kind: i32, pub native_code: i32)
 pub alias ThreadClosure<T> = dyn fn#() -> T
 
 /// Transfers an owned callable environment to one native worker.

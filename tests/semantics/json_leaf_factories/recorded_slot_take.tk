@@ -1,7 +1,7 @@
 auto drops# = 0:i32
-shape Item(nul *marker: i32, id: i32)
+shape Item(pub nul *marker: i32, pub id: i32)
 impl Item@Encap {
-    pub marker, id
+
     fn drop(self#) { drops += 1 }
 }
 fn main() -> i32 {

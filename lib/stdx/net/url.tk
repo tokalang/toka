@@ -168,12 +168,12 @@ pub fn query_decode(cede input: string) -> Result<string, string> {
 }
 
 pub shape Url (
-    scheme: string,
-    host: string,
-    port: u16,        // 0 if none
-    path: string,
-    query: string,
-    fragment: string
+    pub scheme: string,
+    pub host: string,
+    pub port: u16,        // 0 if none
+    pub path: string,
+    pub query: string,
+    pub fragment: string
 )
 
 impl Url {

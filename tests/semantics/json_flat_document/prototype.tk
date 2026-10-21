@@ -3,9 +3,9 @@
 import std/vec::{Vec}
 auto destroyed# = 0:i32
 shape Node(kind: i32, first: usize, next: usize, start: usize, count: usize)
-shape Document(text#: string, nodes#: Vec<Node>)
+shape Document(pub text#: string, pub nodes#: Vec<Node>)
 impl Document@Encap {
-    pub text, nodes
+
     fn drop(self#) { destroyed += 1 }
 }
 fn build() -> Document {

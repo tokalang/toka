@@ -1,5 +1,5 @@
-shape Frozen(value$: i32)
-impl Frozen@Encap { pub value }
+shape Frozen(pub value$: i32)
+impl Frozen@Encap {}
 fn main() -> i32 {
     auto cell# = Frozen(value = 7)
     auto address = unsafe (&(cell.value) as Addr)

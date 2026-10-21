@@ -14,7 +14,7 @@ impl Resource@Encap {
 }
 
 shape Cache (
-    ~inner#: Resource
+    pub ~inner#: Resource
 )
 
 impl Cache {
@@ -24,7 +24,7 @@ impl Cache {
 }
 
 impl Cache@Encap {
-    pub inner
+
 
     fn drop(self#) {}
 }

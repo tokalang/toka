@@ -3,19 +3,19 @@ import core/option::{Option}
 import core/types::{Addr}
 
 shape Resource (
-    id: i32
+    pub id: i32
 )
 impl Resource@Encap {
-    pub id
+
     fn drop(self#) {}
 }
 
 shape SharedHandle (
-    data: Addr,
-    *ref_ptr: i32
+    pub data: Addr,
+    pub *ref_ptr: i32
 )
 impl SharedHandle@Encap {
-    pub data, ref_ptr
+
     fn drop(self#) {}
 }
 

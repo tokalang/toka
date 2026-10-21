@@ -56,9 +56,9 @@ pub const FRAMED_ERR_IO: i32 = 4:i32
 pub const FRAMED_ERR_TERMINATED: i32 = 5:i32
 
 pub shape FramedReadResult (
-    buffer#: Vec<u8>,
-    payload_len: usize,
-    eof: bool
+    pub buffer#: Vec<u8>,
+    pub payload_len: usize,
+    pub eof: bool
 )
 
 impl FramedReadResult {
@@ -70,8 +70,8 @@ impl FramedReadResult {
 }
 
 pub shape FramedWriteResult (
-    buffer#: Vec<u8>,
-    bytes_written: usize
+    pub buffer#: Vec<u8>,
+    pub bytes_written: usize
 )
 
 impl FramedWriteResult {
@@ -83,9 +83,9 @@ impl FramedWriteResult {
 }
 
 pub shape FramedError (
-    kind: i32,
-    buffer#: Vec<u8>,
-    message: string
+    pub kind: i32,
+    pub buffer#: Vec<u8>,
+    pub message: string
 )
 
 impl FramedError {
@@ -117,10 +117,10 @@ impl FramedError {
 }
 
 pub shape FramedStream<T: @AsyncTransport> (
-    transport: T,
-    state: i32,
-    frames_read: usize,
-    frames_written: usize
+    pub transport: T,
+    pub state: i32,
+    pub frames_read: usize,
+    pub frames_written: usize
 )
 
 shape FramedStreamCancelGuard<T> (
@@ -535,9 +535,9 @@ impl<T: @AsyncTransport> FramedStream<T> {
 }
 
 pub shape FramedReader<T: @AsyncTransport> (
-    transport: T,
-    state: i32,
-    frames_read: usize
+    pub transport: T,
+    pub state: i32,
+    pub frames_read: usize
 )
 
 shape FramedReaderCancelGuard<T> (
@@ -795,9 +795,9 @@ impl<T: @AsyncTransport> FramedReader<T> {
 }
 
 pub shape FramedWriter<T: @AsyncTransport> (
-    transport: T,
-    state: i32,
-    frames_written: usize
+    pub transport: T,
+    pub state: i32,
+    pub frames_written: usize
 )
 
 shape FramedWriterCancelGuard<T> (

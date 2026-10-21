@@ -1,7 +1,7 @@
 auto trace# = 0
-shape Token(id: i32)
+shape Token(pub id: i32)
 impl Token@Encap {
-    pub id
+
     fn drop(self#) { trace = trace * 10 + self.id }
 }
 fn make(id: i32) -> Token { return Token(id = id) }

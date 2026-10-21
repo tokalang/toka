@@ -31,13 +31,13 @@ extern fn toka_process_output_config_packed(*argv_blob: char, blob_len: usize, a
 extern fn toka_process_cancel(pid: i32, policy: i32) -> i32
 
 pub shape ProcessError(
-    code: i32,
-    message: string
+    pub code: i32,
+    pub message: string
 )
 
 pub shape ExitStatus(
-    code: i32,
-    signal: i32
+    pub code: i32,
+    pub signal: i32
 )
 
 impl ExitStatus {
@@ -60,9 +60,9 @@ impl ExitStatus {
 }
 
 pub shape Output(
-    status: ExitStatus,
-    stdout: string,
-    stderr: string
+    pub status: ExitStatus,
+    pub stdout: string,
+    pub stderr: string
 )
 
 // `output()` captures inherited stdout/stderr.  `STDIO_NULL` explicitly
@@ -80,18 +80,17 @@ pub const CANCEL_TERMINATE: CancelPolicy = 1
 pub const CANCEL_KILL: CancelPolicy = 2
 
 pub shape Environment(
-    key: string,
-    value: string
+    pub key: string,
+    pub value: string
 )
 
 pub shape Child(
-    pid#: i32,
+    pub pid#: i32,
     reaped#: bool = false,
     cancel_policy: CancelPolicy = CANCEL_TERMINATE
 )
 
 impl Child@Encap {
-    pub pid
 
     fn drop(self#) {
         // Child ownership is explicit; drop never introduces hidden blocking.
@@ -159,14 +158,14 @@ impl Child {
 }
 
 pub shape Command(
-    program: string,
-    args#: Vec<string>,
-    working_dir: string = string::from(""),
-    environment#: Vec<Environment> = Vec<Environment>::new(),
-    stdin_mode: Stdio = STDIO_INHERIT,
-    stdout_mode: Stdio = STDIO_INHERIT,
-    stderr_mode: Stdio = STDIO_INHERIT,
-    cancel_policy: CancelPolicy = CANCEL_TERMINATE
+    pub program: string,
+    pub args#: Vec<string>,
+    pub working_dir: string = string::from(""),
+    pub environment#: Vec<Environment> = Vec<Environment>::new(),
+    pub stdin_mode: Stdio = STDIO_INHERIT,
+    pub stdout_mode: Stdio = STDIO_INHERIT,
+    pub stderr_mode: Stdio = STDIO_INHERIT,
+    pub cancel_policy: CancelPolicy = CANCEL_TERMINATE
 )
 
 impl Command {

@@ -1,5 +1,6 @@
 // @meta compiler_version: any
-// @meta format_version: 5
+// @meta format_version: 6
+// @meta encap_epoch: 0.18
 // @meta replay_surface_hash: 49dbb6daf8ef87d3
 // @meta target_triple: any
 // @meta source_hash: any

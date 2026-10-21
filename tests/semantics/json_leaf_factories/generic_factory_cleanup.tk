@@ -1,8 +1,8 @@
 import stdx/serde/json_factory::{@JsonFactory, Parsed}
 auto drops# = 0
-shape Token(id: i32)
+shape Token(pub id: i32)
 impl Token@Encap {
-    pub id
+
     fn drop(self#) { drops += 1 }
 }
 impl Token@JsonFactory {

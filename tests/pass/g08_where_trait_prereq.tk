@@ -6,7 +6,7 @@ where:
 {
 }
 
-pub shape Data(value: i32)
+pub shape Data(pub value: i32)
 
 impl Data@Eq {}
 impl Data@Ord {}

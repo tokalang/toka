@@ -2,7 +2,7 @@ import core/result::{Result}
 import sys/libc::{libc_exit}
 import core/traits::{@Encap}
 
-shape Payload(val: i32)
+pub shape Payload(val: i32)
 impl Payload@Encap {
     fn drop(self#) {}
 }

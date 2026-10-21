@@ -26,12 +26,10 @@ import core/str::{bytes}
  * Directory Iterator
  */
 pub shape ReadDir (
-    handle: Addr,
-    finished#: bool
+    pub handle: Addr,
+    pub finished#: bool
 )
 impl ReadDir@Encap {
-    pub handle
-    pub finished
     
     fn drop(self#) {
         if !self.finished {
@@ -118,9 +116,9 @@ pub fn exists(path: string) -> bool {
 }
 
 pub shape Metadata(
-    len: u64,
-    mode: u32,
-    modified: i64
+    pub len: u64,
+    pub mode: u32,
+    pub modified: i64
 )
 
 impl Metadata {

@@ -1,6 +1,6 @@
 pub shape Point(
-    x: i32,
-    *ptr: f32
+    pub x: i32,
+    pub *ptr: f32
 )
 
 fn main() -> i32 {

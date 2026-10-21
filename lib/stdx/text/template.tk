@@ -5,9 +5,9 @@ import core/result::{Result}
 import core/option::{Option}
 
 pub shape TemplateError (
-    message: string,
-    line: usize,
-    column: usize
+    pub message: string,
+    pub line: usize,
+    pub column: usize
 )
 
 impl TemplateError {
@@ -31,13 +31,13 @@ impl TemplateError {
 
 // Flat owned list entries avoid a raw-backed Vec nested inside a HashMap value.
 // A marker preserves the distinction between an empty list and a missing key.
-shape TemplateListItem(key: string, value: string, has_value: bool)
+pub shape TemplateListItem(pub key: string, pub value: string, pub has_value: bool)
 
 pub shape TemplateContext (
-    vars: HashMap<string, string>,
-    lists: Vec<TemplateListItem>,
-    funcs: Vec<string>,
-    strict_vars: bool
+    pub vars: HashMap<string, string>,
+    pub lists: Vec<TemplateListItem>,
+    pub funcs: Vec<string>,
+    pub strict_vars: bool
 )
 
 impl TemplateContext {
@@ -165,16 +165,16 @@ impl TemplateContext {
 }
 
 pub shape TemplateNode (
-    content: string,
-    node_type: i32
+    pub content: string,
+    pub node_type: i32
 )
 
 pub const NODE_TEXT: i32 = 0
 pub const NODE_ACTION: i32 = 1
 
 pub shape Template (
-    source: string,
-    nodes: Vec<TemplateNode>
+    pub source: string,
+    pub nodes: Vec<TemplateNode>
 )
 
 impl Template {

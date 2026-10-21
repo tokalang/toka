@@ -4,7 +4,7 @@ import std/ring::{RingCore}
 auto g_drop_count# = 0
 auto g_clone_count# = 0
 
-shape Resource(id: i32)
+pub shape Resource(id: i32)
 
 impl Resource@Encap {
     fn drop(self#) {

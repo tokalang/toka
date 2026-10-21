@@ -8,7 +8,7 @@ import core/str::{str}
 import std/random::{secure_random_bytes}
 
 pub shape Uuid (
-    bytes: [u8; 16]
+    pub bytes: [u8; 16]
 )
 
 fn hex_nibble(b: char) -> i32 {

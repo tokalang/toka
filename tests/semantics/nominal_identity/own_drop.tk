@@ -1,8 +1,8 @@
 auto drops# = 0:i32
-shape Base(value: i32)
+shape Base(pub value: i32)
 type Strong = Base
 impl Strong@Encap {
-    pub value
+
     fn drop(self#) { drops += 1 }
 }
 fn main() -> i32 {

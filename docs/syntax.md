@@ -667,31 +667,34 @@ pub trait @Readable {
 }
 ```
 
-At declaration level, leading `pub` exports imports, constants, functions, shapes, traits, aliases, and nominal types from the module interface. Omitting `pub` keeps the declaration module-private.
+At declaration level, leading `pub` exports imports, constants, functions, shapes, traits, aliases, and nominal types from the module interface; leading `pkg` restricts visibility to the current authoritative package; omitting both keeps the declaration module-private.
 
-Inside normal `impl` and `trait` blocks, method visibility is written with `pub fn`. A method without `pub` is private to its defining module/interface context.
+Inside normal `impl` and `trait` blocks, method visibility is written with `pub fn` or `pkg fn`. A method without `pub` or `pkg` is private to its defining module/interface context.
 
-`@Encap` blocks additionally control member visibility. Once a shape has an `@Encap` block, its fields are private outside the defining module unless an `@Encap` visibility entry grants access.
+Struct field visibility is declared inline on each field in `shape Name(...)`: `pub field: Type` exposes that exact field globally, `pkg field: Type` exposes it within the authoritative package, and omitting a modifier keeps the field private to the defining module. `@Encap` blocks define the governed capsule and optional `fn drop(self#)` lifecycle hook, and no longer carry separate `pub field` grant lists:
 
 ```toka
-impl Device@Encap {
-    pub public_config, shared_state
+pub shape Device(
+    pub public_config: i32,
+    pkg shared_state: i32,
+    internal_handle: usize
+)
 
+impl Device@Encap {
     fn drop(self#) {}
 }
 ```
 
-`pub field` exposes that exact field globally. Parenthesized and wildcard
-forms are not part of `@Encap`: `pub(crate)`, `pub(path)`, and `pub *` are
-rejected.
+Parenthesized, wildcard, and policy-block field grant forms (`pub(crate)`, `pub(path)`, `pub *`, and `impl Type@Encap { pub ... }`) are rejected.
 
-Every `@Encap` field grant is explicit. The grammar has no catch-all member
-grant, so adding a field later cannot publish it accidentally:
+Every inline field grant is explicit. The grammar has no catch-all member grant, so adding a field later cannot publish it accidentally:
 
 ```toka
-impl PublicRecord@Encap {
-    pub visible_name, visible_id, cache_slot
-}
+pub shape PublicRecord(
+    pub visible_name: str,
+    pub visible_id: u64,
+    pkg cache_slot: u32
+)
 ```
 
 ## 8. Member Access And Whole-Value Generic Fields

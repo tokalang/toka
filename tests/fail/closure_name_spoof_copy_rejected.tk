@@ -1,6 +1,6 @@
-shape __Closure_Fake(value: i32)
+shape __Closure_Fake(pub value: i32)
 impl __Closure_Fake@Encap {
-    pub value
+
     fn drop(self#) {}
 }
 fn main() -> i32 {

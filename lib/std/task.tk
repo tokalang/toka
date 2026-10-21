@@ -17,7 +17,7 @@ pub fn current_time_ms() -> i64 {
     return inst.duration_since_boot.as_millis() as i64
 }
 
-pub shape TaskPtr(addr: Addr)
+pub shape TaskPtr(pub addr: Addr)
 
 import core/option::{Option}
 
@@ -35,10 +35,10 @@ pub trait @HostEventSource {
 }
 
 pub shape ExecutorPump (
-    ready_tasks: i32,
-    timer_wakes: i32,
-    reactor_events: i32,
-    host_poll: HostEventPoll
+    pub ready_tasks: i32,
+    pub timer_wakes: i32,
+    pub reactor_events: i32,
+    pub host_poll: HostEventPoll
 )
 
 shape TimerEntry(

@@ -72,37 +72,165 @@ static std::string logicalPathFromRoot(const std::string &canonicalPath,
     return logical;
 }
 
+struct PackageRootCoordinates {
+    std::string LogicalRoot;
+    std::string ContainmentRoot;
+    std::string EntryStem;
+};
+
+static PackageRootCoordinates derivePackageRoots(const std::string &alias,
+                                                 const std::string &rawTarget) {
+    PackageRootCoordinates coords;
+    std::string target = PathUtils::canonicalize(rawTarget);
+    while (target.size() > 1 && (target.back() == '/' || target.back() == '\\')) {
+        target.pop_back();
+    }
+    if (target.empty())
+        return coords;
+
+    if (target.size() >= 4 &&
+        target.compare(target.size() - 4, 4, "/lib") == 0) {
+        coords.LogicalRoot = target;
+        coords.ContainmentRoot = target;
+        return coords;
+    }
+    std::error_code ec;
+    if (!PathUtils::hasTokaSourceExtension(target) &&
+        std::filesystem::is_directory(target, ec) &&
+        !std::filesystem::is_regular_file(target + ".tk", ec) &&
+        !std::filesystem::is_regular_file(target + ".tki", ec)) {
+        coords.LogicalRoot = target;
+        coords.ContainmentRoot = target;
+        return coords;
+    }
+
+    std::filesystem::path targetPath(target);
+    const std::string parentDir =
+        PathUtils::canonicalize(targetPath.parent_path().string());
+    if (PathUtils::hasTokaSourceExtension(target)) {
+        coords.EntryStem = PathUtils::canonicalize(
+            (targetPath.parent_path() / targetPath.stem()).string());
+    } else {
+        coords.EntryStem = target;
+    }
+
+    const std::string normalizedAlias = PathUtils::normalize(alias);
+    const size_t libMarker = target.rfind("/lib/");
+    if (libMarker != std::string::npos) {
+        const std::string candidateRoot = target.substr(0, libMarker + 4);
+        const std::string rel = logicalPathFromRoot(target, candidateRoot);
+        if (!rel.empty()) {
+            const size_t firstSlash = rel.find('/');
+            const size_t lastSlash = rel.rfind('/');
+            const bool isDirectModule = (firstSlash == std::string::npos);
+            const bool isPackageMod =
+                (firstSlash != std::string::npos && firstSlash == lastSlash &&
+                 rel.size() > 4 &&
+                 rel.compare(rel.size() - 4, 4, "/mod") == 0);
+            const bool isOfficialModule =
+                (firstSlash != std::string::npos && firstSlash == lastSlash &&
+                 rel.rfind("official/", 0) == 0);
+            const bool matchesAlias =
+                (!normalizedAlias.empty() &&
+                 (rel == normalizedAlias ||
+                  rel == normalizedAlias + "/mod"));
+            if (isDirectModule) {
+                coords.LogicalRoot = candidateRoot;
+                coords.ContainmentRoot = candidateRoot;
+                return coords;
+            }
+            if (isPackageMod ||
+                (matchesAlias && rel.size() > 4 &&
+                 rel.compare(rel.size() - 4, 4, "/mod") == 0)) {
+                coords.LogicalRoot = candidateRoot;
+                coords.ContainmentRoot = parentDir;
+                return coords;
+            }
+            if (isOfficialModule || matchesAlias) {
+                coords.LogicalRoot = candidateRoot;
+                coords.ContainmentRoot = coords.EntryStem;
+                return coords;
+            }
+        }
+    }
+
+    coords.LogicalRoot = parentDir;
+    coords.ContainmentRoot = parentDir;
+    return coords;
+}
+
 ShadowModuleCoordinate ModuleResolver::deriveShadowCoordinate(
     const std::string &canonicalPath) const {
     ShadowModuleCoordinate result;
+    const std::string normalizedCanonical = PathUtils::canonicalize(canonicalPath);
 
     // A package node is the authoritative input for package identities.  The
     // installation path is used only to locate the already-locked node; it is
     // never emitted as, or used as, a crate identity.
+    bool matchedAnyPackage = false;
+    bool hasConflict = false;
+    std::string matchedAlias;
+    std::string matchedCrateId;
+    std::string matchedLogicalPath;
+    std::string conflictReason;
+
+    auto aliasBindingIt = m_ResolvedPackageAliases.find(normalizedCanonical);
     for (const auto &entry : m_PkgMap) {
-        const std::string target = PathUtils::canonicalize(entry.second);
-        const size_t libMarker = target.find("/lib/");
-        if (libMarker == std::string::npos)
+        const bool boundByAlias =
+            aliasBindingIt != m_ResolvedPackageAliases.end() &&
+            aliasBindingIt->second.count(entry.first) > 0;
+        const PackageRootCoordinates roots =
+            derivePackageRoots(entry.first, entry.second);
+        const bool isEntryFile =
+            !roots.EntryStem.empty() &&
+            (normalizedCanonical == roots.EntryStem ||
+             normalizedCanonical == roots.EntryStem + ".tk" ||
+             normalizedCanonical == roots.EntryStem + ".tki");
+        const bool withinContainmentRoot =
+            isEntryFile ||
+            (!roots.ContainmentRoot.empty() &&
+             isWithinRoot(normalizedCanonical, {roots.ContainmentRoot}));
+        if (!boundByAlias && !withinContainmentRoot)
             continue;
-        const std::string libraryRoot = target.substr(0, libMarker + 4);
-        if (!isWithinRoot(canonicalPath, {libraryRoot}))
-            continue;
+
         auto node = m_PackageNodeIds.find(entry.first);
         if (node == m_PackageNodeIds.end() || node->second.empty()) {
             result.Origin = "package";
             result.Reason = "missing locked package node identity for '" + entry.first + "'";
             return result;
         }
-        const std::string logical = logicalPathFromRoot(canonicalPath, libraryRoot);
+        const std::string logical =
+            roots.LogicalRoot.empty()
+                ? ""
+                : logicalPathFromRoot(normalizedCanonical, roots.LogicalRoot);
         if (logical.empty()) {
             result.Origin = "package";
             result.Reason = "cannot derive logical module path below package lib root";
             return result;
         }
-        result.Known = true;
-        result.CrateId = node->second;
-        result.LogicalModulePath = logical;
+        if (!matchedAnyPackage) {
+            matchedAnyPackage = true;
+            matchedAlias = entry.first;
+            matchedCrateId = node->second;
+            matchedLogicalPath = logical;
+        } else if (node->second != matchedCrateId ||
+                   logical != matchedLogicalPath) {
+            hasConflict = true;
+            if (conflictReason.empty()) {
+                conflictReason = "conflicting package root bindings for '" +
+                                 matchedAlias + "' and '" + entry.first + "'";
+            }
+        }
+    }
+    if (matchedAnyPackage) {
         result.Origin = "package";
+        if (hasConflict) {
+            result.Reason = conflictReason;
+            return result;
+        }
+        result.Known = true;
+        result.CrateId = matchedCrateId;
+        result.LogicalModulePath = matchedLogicalPath;
         return result;
     }
 
@@ -176,6 +304,7 @@ bool ModuleResolver::resolveAndParse(const std::string &rawFilename,
         m_ResolutionRecords.clear();
         m_Dependencies.clear();
         m_Roots.clear();
+        m_ResolvedPackageAliases.clear();
     }
     m_RecursionStack.clear();
     std::string actualPath;
@@ -246,10 +375,17 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
   // (for example, `official/compress` -> `.../compress.tk`); imports below
   // that root are resolved next to that module.
   auto resolvePackageTarget = [&](const std::string &mapped) {
+    std::string stem = mapped;
+    bool mappedIsTk = (mapped.size() >= 3 &&
+                       mapped.compare(mapped.size() - 3, 3, ".tk") == 0);
     bool mappedHasExt = PathUtils::hasTokaSourceExtension(mapped);
+    if (mappedIsTk) {
+      stem = mapped.substr(0, mapped.size() - 3);
+      mappedHasExt = false;
+    }
     if (!mappedHasExt) {
-      std::string mappedTk = mapped + ".tk";
-      std::string mappedTki = mapped + ".tki";
+      std::string mappedTk = stem + ".tk";
+      std::string mappedTki = stem + ".tki";
       bool canUseTk = fileExists(mappedTk);
       bool canUseTki = fileExists(mappedTki);
 
@@ -284,9 +420,12 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
     }
   };
 
+  std::string matchedPackageAlias;
   auto pkgIt = m_PkgMap.find(filename);
   if (pkgIt != m_PkgMap.end()) {
     resolvePackageTarget(pkgIt->second);
+    if (found)
+      matchedPackageAlias = pkgIt->first;
   } else {
     const std::pair<const std::string, std::string> *bestPrefix = nullptr;
     for (const auto &entry : m_PkgMap) {
@@ -308,6 +447,21 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
       }
       mapped += filename.substr(bestPrefix->first.size());
       resolvePackageTarget(mapped);
+      if (found)
+        matchedPackageAlias = bestPrefix->first;
+    }
+  }
+  if (found && !matchedPackageAlias.empty()) {
+    const std::string canonicalResolved = PathUtils::canonicalize(resolvedPath);
+    m_ResolvedPackageAliases[canonicalResolved].insert(matchedPackageAlias);
+    if (canonicalResolved.size() >= 4 &&
+        canonicalResolved.compare(canonicalResolved.size() - 4, 4, ".tki") == 0) {
+      std::string tkPeer = canonicalResolved.substr(0, canonicalResolved.size() - 4) + ".tk";
+      m_ResolvedPackageAliases[tkPeer].insert(matchedPackageAlias);
+    } else if (canonicalResolved.size() >= 3 &&
+               canonicalResolved.compare(canonicalResolved.size() - 3, 3, ".tk") == 0) {
+      std::string tkiPeer = canonicalResolved.substr(0, canonicalResolved.size() - 3) + ".tki";
+      m_ResolvedPackageAliases[tkiPeer].insert(matchedPackageAlias);
     }
   }
   // 1. Try exact filename
@@ -683,7 +837,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
 
   module->SourcePath = (finalIsInterface && !meta.SourcePath.empty())
       ? PathUtils::canonicalize(meta.SourcePath)
-      : resolvedPath;
+      : canonicalPath;
   module->ResolvedPath = canonicalPath;
   module->IsRootModule = (m_RecursionStack.size() == 1);
   module->IsInterface = finalIsInterface;
@@ -807,9 +961,9 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
     }
 
     std::vector<std::string> localSearchPaths = m_SearchPaths;
-    size_t libPos = resolvedPath.find("/lib/");
+    size_t libPos = resolvedPath.rfind("/lib/");
     if (libPos == std::string::npos) {
-        libPos = resolvedPath.find("\\lib\\");
+        libPos = resolvedPath.rfind("\\lib\\");
     }
     if (libPos != std::string::npos) {
         std::string pkgRoot = resolvedPath.substr(0, libPos);
@@ -875,6 +1029,7 @@ bool ModuleResolver::readTKIMetadata(const std::string &path, TKIMetadata &meta)
                 trim(val);
                 if (key == "compiler_version") meta.CompilerVersion = val;
                 else if (key == "format_version") meta.FormatVersion = val;
+                else if (key == "encap_epoch") meta.EncapEpoch = val;
                 else if (key == "replay_surface_hash") meta.ReplaySurfaceHash = val;
                 else if (key == "target_triple") meta.TargetTriple = val;
                 else if (key == "source_hash") meta.SourceHash = val;
@@ -938,6 +1093,12 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(
         reason = "Interface format version mismatch (expected " + std::string(TOKA_INTERFACE_FORMAT_VERSION) + ", got " + meta.FormatVersion + ")";
         return TKICacheStatus::FormatVersionMismatch;
     }
+    if (meta.EncapEpoch.empty() || meta.EncapEpoch != getActiveEncapEpoch()) {
+        reason = "Interface encap_epoch mismatch (expected " +
+                 getActiveEncapEpoch() + ", got " +
+                 (meta.EncapEpoch.empty() ? "<missing>" : meta.EncapEpoch) + ")";
+        return TKICacheStatus::FormatVersionMismatch;
+    }
     if (meta.ReplaySurfaceHash.empty()) {
         reason = "Missing replay_surface_hash metadata";
         return TKICacheStatus::FormatVersionMismatch;
@@ -948,7 +1109,9 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(
                             std::istreambuf_iterator<char>());
         const size_t declarationsBegin = content.find("\n\n");
         if (declarationsBegin == std::string::npos ||
-            calculateFNV1a(content.substr(declarationsBegin + 2)) !=
+            calculateFNV1a(formatReplaySurfaceHashInput(
+                content.substr(declarationsBegin + 2),
+                getActiveEncapEpoch())) !=
                 meta.ReplaySurfaceHash) {
             reason = "Interface replay surface hash mismatch";
             return TKICacheStatus::FormatVersionMismatch;

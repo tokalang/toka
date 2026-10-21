@@ -22,14 +22,14 @@ pub shape Device (
     id: i32,
     internal_state: i32,
     secret_key: [i32; 4],
-    public_config: i32,
-    crate_shared: i32
+    pub public_config: i32,
+    pub crate_shared: i32
 )
 
 // 2. Access Control (The @Encap block)
 impl Device@Encap {
-    pub public_config
-    pub crate_shared
+
+
     
     // New policies list each granted field explicitly.
     fn drop(self#) {

@@ -39,8 +39,8 @@ pub trait @MockTransport {
 }
 
 pub shape MockStream (
-    mode: i32,
-    op_count: i32
+    pub mode: i32,
+    pub op_count: i32
 )
 
 impl MockStream@MockTransport {

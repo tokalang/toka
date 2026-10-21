@@ -3,7 +3,7 @@ pub trait @Readable {
     pub fn read(self) -> Item
 }
 
-pub shape Box(value: i32)
+pub shape Box(pub value: i32)
 pub fn make_box() -> Box { return Box(value = 5) }
 
 impl Box@Readable {

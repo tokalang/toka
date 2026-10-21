@@ -1,5 +1,5 @@
-shape Linear(value: i32)
-impl Linear@Encap { pub value }
+shape Linear(pub value: i32)
+impl Linear@Encap {}
 type Strong = Linear
 fn main() -> i32 {
     auto value = Strong(value = 7)

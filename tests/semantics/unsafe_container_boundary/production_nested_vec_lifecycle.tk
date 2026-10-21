@@ -5,15 +5,15 @@ import core/traits::{@Encap}
 auto item_drops# = 0:i32
 auto leaf_drops# = 0:i32
 
-shape Leaf(label: string)
+shape Leaf(pub label: string)
 impl Leaf@Encap {
-    pub label
+
     fn drop(self#) { leaf_drops += 1:i32 }
 }
 
-shape Item(children: Vec<Leaf>)
+shape Item(pub children: Vec<Leaf>)
 impl Item@Encap {
-    pub children
+
     fn drop(self#) { item_drops += 1:i32 }
 }
 

@@ -11,7 +11,7 @@
 // EXPECT_TKI: pub fn pass_raw_option(x: Option<*Item>) -> bool
 // EXPECT_TKI_ROUNDTRIP
 
-pub shape Item(val: i32)
+pub shape Item(pub val: i32)
 
 pub alias Int = i32
 pub alias OptUnique = Option<^Item>

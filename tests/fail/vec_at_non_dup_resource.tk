@@ -1,11 +1,11 @@
 import std/vec::{Vec}
 
 shape SocketResource (
-    id: i32
+    pub id: i32
 )
 
 impl SocketResource@Encap {
-    pub id
+
     fn drop(self#) {}
 }
 

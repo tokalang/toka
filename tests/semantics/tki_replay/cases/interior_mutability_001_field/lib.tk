@@ -1,4 +1,4 @@
 pub shape Counter(
-    reads#: i32,
-    ordinary: i32
+    pub reads#: i32,
+    pub ordinary: i32
 )

@@ -14,20 +14,20 @@ pub shape TaskState (
 )
 
 pub shape TaskNode (
-    id: SlabID,
-    name: string,
-    src_path: string,
-    out_path: string,
-    dependencies#: Vec<SlabID> = Vec<SlabID>::new(),
-    dependents#: Vec<SlabID> = Vec<SlabID>::new(),
-    state#: TaskState = TaskState::Pending,
-    in_degree#: i32 = 0
+    pub id: SlabID,
+    pub name: string,
+    pub src_path: string,
+    pub out_path: string,
+    pub dependencies#: Vec<SlabID> = Vec<SlabID>::new(),
+    pub dependents#: Vec<SlabID> = Vec<SlabID>::new(),
+    pub state#: TaskState = TaskState::Pending,
+    pub in_degree#: i32 = 0
 )
 
 pub shape DependencyGraph (
-    slab#: Slab<TaskNode> = Slab<TaskNode>::new(),
-    path_to_id#: BTreeMap<string, SlabID> = BTreeMap<string, SlabID>::new(),
-    registered_ids#: Vec<SlabID> = Vec<SlabID>::new()
+    pub slab#: Slab<TaskNode> = Slab<TaskNode>::new(),
+    pub path_to_id#: BTreeMap<string, SlabID> = BTreeMap<string, SlabID>::new(),
+    pub registered_ids#: Vec<SlabID> = Vec<SlabID>::new()
 )
 
 pub fn parse_import_line(line: string) -> Option<string> {

@@ -9,7 +9,7 @@ extern fn toka_rt_live_wait_registry_count() -> u32
 auto g_live# = 0:i32
 auto g_drops# = 0:i32
 
-pub shape CloseError(code: i32)
+pub shape CloseError(pub code: i32)
 
 pub trait @AsyncClose {
     pub fn close(cede self) -> async Result<i32, CloseError>
@@ -42,9 +42,9 @@ fn fail_if(flag: bool, code: i32) -> Result<i32, CloseError> {
 
 // Composite carrier WITHOUT outer @Encap (relies on compiler-generated field glue for TrackedGuard)
 pub shape SessionA(
-    res_guard: TrackedGuard,
-    mode: i32,
-    base: i32
+    pub res_guard: TrackedGuard,
+    pub mode: i32,
+    pub base: i32
 )
 
 impl SessionA@AsyncClose {
@@ -74,9 +74,9 @@ impl SessionA@AsyncClose {
 
 // Second concrete type implementing @AsyncClose
 pub shape SessionB(
-    g1: TrackedGuard,
-    g2: TrackedGuard,
-    bonus: i32
+    pub g1: TrackedGuard,
+    pub g2: TrackedGuard,
+    pub bonus: i32
 )
 
 impl SessionB@AsyncClose {

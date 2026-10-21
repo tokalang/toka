@@ -1,9 +1,9 @@
 import std/sync::Mutex
 import std/thread::thread_spawn
 auto drops# = 0
-shape Cell(value: i32)
+shape Cell(pub value: i32)
 impl Cell@Encap {
-    pub value
+
     fn drop(self#) { drops += 1 }
 }
 impl Cell@Send {}

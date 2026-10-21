@@ -3,11 +3,11 @@ import core/traits::*
 import core/primitives
 
 pub shape BTreeNode<K, V> (
-    keys#: [K; 5],
-    vals#: [V; 5],
-    children#: [Addr; 6],
-    len#: usize = 0,
-    is_leaf#: bool = true
+    pub keys#: [K; 5],
+    pub vals#: [V; 5],
+    pub children#: [Addr; 6],
+    pub len#: usize = 0,
+    pub is_leaf#: bool = true
 )
 
 pub fn btree_node_new<K: @PartialOrd, V>() -> Addr {

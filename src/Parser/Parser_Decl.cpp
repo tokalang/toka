@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "toka/Parser.h"
+#include "toka/InterfaceVersion.h"
 #include <algorithm>
 #include <iostream>
 #include <memory>
@@ -573,6 +574,10 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
       kind = ShapeKind::Enum;
       while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
         ShapeMember v;
+        if (match(TokenType::KwPub) || match(TokenType::KwPkg)) {
+          error(previous(), DiagID::ERR_GENERIC_PARSE,
+                "enum variants inherit the visibility of their enclosing shape; inline 'pub' or 'pkg' is not allowed");
+        }
         Token variantToken = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_VARIANT);
         v.Name = variantToken.Text;
         v.Loc = variantToken.Loc;
@@ -580,6 +585,10 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           v.SubKind = ShapeKind::Tuple;
           while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
             ShapeMember field;
+            if (match(TokenType::KwPub) || match(TokenType::KwPkg)) {
+              error(previous(), DiagID::ERR_GENERIC_PARSE,
+                    "enum variant payload fields inherit the visibility of their enclosing shape; inline 'pub' or 'pkg' is not allowed");
+            }
             field.TypeSyntax = parseRequiredTypeSyntax();
             field.Type = canonicalType(field.TypeSyntax);
             v.SubMembers.push_back(std::move(field));
@@ -627,6 +636,19 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
         bool isExplicitBound = false;
         std::string memberPrefix = "";
         if (kind == ShapeKind::Struct) {
+          if (match(TokenType::KwPub)) {
+            m.Vis = Visibility::Public;
+            m.HasExplicitVisibility = true;
+          } else if (match(TokenType::KwPkg)) {
+            m.Vis = Visibility::Package;
+            m.HasExplicitVisibility = true;
+          }
+          if (m.HasExplicitVisibility &&
+              (check(TokenType::KwPub) || check(TokenType::KwPkg))) {
+            error(peek(), DiagID::ERR_GENERIC_PARSE,
+                  "duplicate or conflicting field visibility modifier");
+            advance();
+          }
           if (match(TokenType::Backtick)) {
             isExplicitBound = true;
           }
@@ -1436,14 +1458,29 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
   if (traitName == "Encap") {
     while (!check(TokenType::RBrace) && !check(TokenType::EndOfFile)) {
       if ((check(TokenType::KwFn)) ||
-          (check(TokenType::KwPub) && checkAt(1, TokenType::KwFn))) {
+          ((check(TokenType::KwPub) || check(TokenType::KwPkg)) &&
+           checkAt(1, TokenType::KwFn))) {
         // Parse as function
-        bool isPub = false;
+        Visibility methodVis = Visibility::Private;
         if (match(TokenType::KwPub)) {
-          isPub = true;
+          methodVis = Visibility::Public;
+        } else if (match(TokenType::KwPkg)) {
+          methodVis = Visibility::Package;
         }
-        methods.push_back(parseFunctionDecl(isPub));
+        auto fn = parseFunctionDecl(methodVis == Visibility::Public);
+        if (fn)
+          fn->setVisibility(methodVis);
+        methods.push_back(std::move(fn));
+      } else if (match(TokenType::KwPkg)) {
+        error(previous(), DiagID::ERR_GENERIC_PARSE,
+              "'@Encap' field grant lists are removed in 0.19; declare 'pkg' inline on shape fields");
+        while (!check(TokenType::RBrace) && !check(TokenType::EndOfFile) &&
+               !peek().HasNewlineBefore) {
+          advance();
+        }
+        continue;
       } else if (match(TokenType::KwPub)) {
+        Token pubTok = previous();
         EncapEntry entry;
         if (check(TokenType::LParen) || check(TokenType::Star)) {
           error(peek(), DiagID::ERR_PARSER_ENCAP_NONEXACT_GRANT_REMOVED);
@@ -1453,7 +1490,6 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
           }
           continue;
         }
-
         while (check(TokenType::Identifier)) {
           entry.Fields.push_back(advance().Text);
           if (!match(TokenType::Comma))
@@ -1475,21 +1511,33 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
         continue;
       }
 
-      bool isPub = false;
+      Visibility methodVis = Visibility::Private;
+      bool hasMethodVis = false;
       if (match(TokenType::KwPub)) {
-        isPub = true;
+        methodVis = Visibility::Public;
+        hasMethodVis = true;
+      } else if (match(TokenType::KwPkg)) {
+        methodVis = Visibility::Package;
+        hasMethodVis = true;
+      }
+      if (hasMethodVis && (check(TokenType::KwPub) || check(TokenType::KwPkg))) {
+        error(peek(), DiagID::ERR_GENERIC_PARSE,
+              "duplicate or conflicting method visibility modifier");
+        advance();
       }
 
       if (check(TokenType::KwFn) ||
           (check(TokenType::KwUnsafe) && checkAt(1, TokenType::KwFn))) {
         if (!traitName.empty() && check(TokenType::KwUnsafe))
           error(peek(), DiagID::ERR_UNSAFE_TRAIT_METHOD_UNSUPPORTED);
-        auto method = parseFunctionDecl(isPub);
+        auto method = parseFunctionDecl(methodVis == Visibility::Public);
         if (method) {
+          method->setVisibility(methodVis);
           methods.push_back(std::move(method));
         } else {
           while (!check(TokenType::RBrace) && !check(TokenType::EndOfFile) &&
-                 !check(TokenType::KwFn) && !check(TokenType::KwPub)) {
+                 !check(TokenType::KwFn) && !check(TokenType::KwPub) &&
+                 !check(TokenType::KwPkg)) {
             advance();
           }
         }
@@ -1538,20 +1586,32 @@ std::unique_ptr<TraitDecl> Parser::parseTrait(bool isPub) {
       continue;
     }
 
-    bool isPub = false;
+    Visibility methodVis = Visibility::Private;
+    bool hasMethodVis = false;
     if (match(TokenType::KwPub)) {
-      isPub = true;
+      methodVis = Visibility::Public;
+      hasMethodVis = true;
+    } else if (match(TokenType::KwPkg)) {
+      methodVis = Visibility::Package;
+      hasMethodVis = true;
+    }
+    if (hasMethodVis && (check(TokenType::KwPub) || check(TokenType::KwPkg))) {
+      error(peek(), DiagID::ERR_GENERIC_PARSE,
+            "duplicate or conflicting method visibility modifier");
+      advance();
     }
     if (check(TokenType::KwFn) ||
         (check(TokenType::KwUnsafe) && checkAt(1, TokenType::KwFn))) {
       if (check(TokenType::KwUnsafe))
         error(peek(), DiagID::ERR_UNSAFE_TRAIT_METHOD_UNSUPPORTED);
-      auto method = parseFunctionDecl(isPub);
+      auto method = parseFunctionDecl(methodVis == Visibility::Public);
       if (method) {
+        method->setVisibility(methodVis);
         methods.push_back(std::move(method));
       } else {
         while (!check(TokenType::RBrace) && !check(TokenType::EndOfFile) &&
                !check(TokenType::KwFn) && !check(TokenType::KwPub) &&
+               !check(TokenType::KwPkg) &&
                !isAssociatedTypeDeclStart()) {
           advance();
         }

@@ -1,6 +1,6 @@
 import std/vec::{Vec}
-shape Plain(value: i64)
-impl Plain@Encap { pub value }
+shape Plain(pub value: i64)
+impl Plain@Encap {}
 fn main() -> i32 {
     auto values# = Vec<Plain>::new()
     values#.push(Plain(value = 42))

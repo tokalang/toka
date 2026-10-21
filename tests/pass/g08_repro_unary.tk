@@ -14,11 +14,11 @@
 import std/io::println
 
 shape Data (
-    val: i32
+    pub val: i32
 )
 
 impl Data@Encap {
-    pub val
+
     fn drop(self#) {
         println("Dropping Data, val={}", self.val)
     }

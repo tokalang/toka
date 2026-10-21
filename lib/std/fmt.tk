@@ -170,8 +170,8 @@ impl AnsiStyle {
 // ------------------------------------------------------
 
 pub shape Location (
-    line: usize,
-    column: usize
+    pub line: usize,
+    pub column: usize
 )
 
 pub shape SourceFile (

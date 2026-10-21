@@ -644,11 +644,10 @@ fn _internal_str_cast(s: str) -> str <- s {
 
 // A raw null-terminated C-string pointer representation
 pub shape cstr(
-    nul *buf: char
+    pub nul *buf: char
 )
 
 impl cstr@Encap {
-    pub buf
 
 
     fn drop(self#) {}
@@ -690,17 +689,16 @@ impl cstr {
 // ============================================================================
 
 pub shape UnicodeError(
-    invalid_byte: byte,
-    position: usize
+    pub invalid_byte: byte,
+    pub position: usize
 )
 
 pub shape bytes(
-    &buf$: [byte],
-    len$: usize
+    pub &buf$: [byte],
+    pub len$: usize
 )
 
 impl bytes@Encap {
-    pub buf, len
 
     fn drop(self#) {}
 }

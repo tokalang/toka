@@ -1,7 +1,7 @@
 shape Count(value: i32)
 shape Box<T>(value: T)
-shape Mixed(view: str, nested: Box<Count>)
-impl Mixed@Encap { pub view }
+shape Mixed(pub view: str, nested: Box<Count>)
+impl Mixed@Encap {}
 fn factory(view: str) -> Mixed <- view {
     auto result = Mixed(view = view, nested = Box<Count>(value = Count(value = 7)))
     return cede result

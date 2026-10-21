@@ -18,18 +18,17 @@ import core/traits::{@Encap}
 
 // `cp` uses U+FFFD for malformed input so normal iteration can replace bad
 // bytes. `valid` remains separate because U+FFFD is also a valid scalar.
-pub shape Utf8Char(cp: Char32, bytes: usize, valid: bool)
+pub shape Utf8Char(pub cp: Char32, pub bytes: usize, pub valid: bool)
 
 pub const REPLACEMENT_CHAR = 0xFFFD:Char32
 
 pub shape Cursor(
-    &buf$: [char],
-    len$: usize,
-    pos#: usize
+    pub &buf$: [char],
+    pub len$: usize,
+    pub pos#: usize
 )
 
 impl Cursor@Encap {
-    pub buf, len, pos
     fn drop(self#) {}
 }
 

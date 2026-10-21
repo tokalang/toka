@@ -1,8 +1,8 @@
 import core/types::{usize, Addr}
 
 pub shape GenericArray<T> (
-    arr#: [T; 5],
-    len#: usize = 0
+    pub arr#: [T; 5],
+    pub len#: usize = 0
 )
 
 pub fn alloc_array<T>() -> Addr {

@@ -5,8 +5,8 @@ import core/string::{string}
 import std/vec::{Vec}
 
 pub shape Item(
-    remote: i64,
-    label: string
+    pub remote: i64,
+    pub label: string
 )
 
 pub fn make_items() -> Vec<Item> {

@@ -1,6 +1,6 @@
 /// A value used by semantic tooling tests.
 pub shape Box (
-    value: i32
+    pub value: i32
 )
 
 pub trait @Readable {

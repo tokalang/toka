@@ -15,11 +15,11 @@ pub shape TokenKind(
 )
 
 pub shape Token (
-    kind: TokenKind,
-    lexeme_addr: Addr,
-    lexeme_len: usize,
-    line: i32,
-    col: i32
+    pub kind: TokenKind,
+    pub lexeme_addr: Addr,
+    pub lexeme_len: usize,
+    pub line: i32,
+    pub col: i32
 )
 
 impl Token {

@@ -74,7 +74,7 @@ import sys/llvm_ffi::{
 
 // 1. LLVMContext
 pub shape LLVMContext (
-    *#handle: void,
+    pub *#handle: void,
     disposed#: bool = false
 )
 
@@ -92,7 +92,6 @@ impl LLVMContext {
 }
 
 impl LLVMContext@Encap {
-    pub handle
     fn drop(self#) {
         self#.dispose()
     }
@@ -100,7 +99,7 @@ impl LLVMContext@Encap {
 
 // 2. LLVMType
 pub shape LLVMType (
-    *handle: void
+    pub *handle: void
 )
 
 impl LLVMType {
@@ -180,7 +179,7 @@ pub shape LLVMRealPredicate (
 
 // 3. LLVMValue
 pub shape LLVMValue (
-    *handle: void
+    pub *handle: void
 )
 
 impl LLVMValue {
@@ -233,7 +232,7 @@ impl LLVMValue {
 
 // 4. LLVMBasicBlock
 pub shape LLVMBasicBlock (
-    *handle: void
+    pub *handle: void
 )
 
 impl LLVMBasicBlock {
@@ -251,7 +250,7 @@ impl LLVMBasicBlock {
 
 // 5. LLVMModule
 pub shape LLVMModule (
-    *#handle: void,
+    pub *#handle: void,
     disposed#: bool = false
 )
 
@@ -305,7 +304,6 @@ impl LLVMModule {
 }
 
 impl LLVMModule@Encap {
-    pub handle
     fn drop(self#) {
         self#.dispose()
     }
@@ -313,7 +311,7 @@ impl LLVMModule@Encap {
 
 // 6. LLVMBuilder
 pub shape LLVMBuilder (
-    *#handle: void,
+    pub *#handle: void,
     disposed#: bool = false
 )
 
@@ -546,7 +544,6 @@ impl LLVMBuilder {
 }
 
 impl LLVMBuilder@Encap {
-    pub handle
     fn drop(self#) {
         self#.dispose()
     }

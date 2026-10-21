@@ -1,7 +1,7 @@
 auto drops# = 0:i32
-shape Token(text: string)
+shape Token(pub text: string)
 impl Token@Encap {
-    pub text
+
     fn drop(self#) { drops += 1:i32 }
 }
 

@@ -10,14 +10,14 @@ pub shape SameSite (
 )
 
 pub shape Cookie (
-    name: string,
-    value: string,
-    path: Option<string>,
-    domain: Option<string>,
-    max_age: Option<i64>,
-    secure: bool,
-    http_only: bool,
-    same_site: Option<SameSite>
+    pub name: string,
+    pub value: string,
+    pub path: Option<string>,
+    pub domain: Option<string>,
+    pub max_age: Option<i64>,
+    pub secure: bool,
+    pub http_only: bool,
+    pub same_site: Option<SameSite>
 )
 
 fn is_token_byte(byte: u8) -> bool {

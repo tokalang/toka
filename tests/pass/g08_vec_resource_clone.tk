@@ -1,6 +1,6 @@
 import std/vec::{Vec}
 
-shape ResourceRow(key: u64, value: string)
+pub shape ResourceRow(key: u64, value: string)
 
 impl ResourceRow@Encap {
     fn drop(self#) {}

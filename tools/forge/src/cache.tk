@@ -5,8 +5,8 @@ import core/option::{Option}
 import core/traits::{@Dup}
 
 pub shape FileInfo (
-    mtime: i64,
-    size: u64
+    pub mtime: i64,
+    pub size: u64
 )
 
 pub fn get_file_info(path: string) -> Option<FileInfo> {
@@ -64,10 +64,10 @@ pub fn parse_u64(s: string) -> u64 {
 }
 
 pub shape FileState (
-    path: string,
-    mtime: i64,
-    size: u64,
-    artifact_path: string
+    pub path: string,
+    pub mtime: i64,
+    pub size: u64,
+    pub artifact_path: string
 )
 
 impl FileState@Dup {
@@ -82,8 +82,8 @@ impl FileState@Dup {
 }
 
 pub shape CacheStore (
-    states#: BTreeMap<string, FileState> = BTreeMap<string, FileState>::new(),
-    cache_path: string
+    pub states#: BTreeMap<string, FileState> = BTreeMap<string, FileState>::new(),
+    pub cache_path: string
 )
 
 impl CacheStore {

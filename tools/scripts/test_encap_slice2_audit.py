@@ -28,14 +28,21 @@ def compile_source(source: Path, root: Path, *, expect_success: bool,
     return completed
 
 
-def write_policy(path: Path, grant: str) -> None:
-    path.write_text(
-        "pub shape Box(visible: i32, hidden: i32)\n"
-        "impl Box@Encap {\n"
-        "    " + grant + "\n"
-        "}\n"
-        "pub fn make() -> Box { return Box(visible = 1, hidden = 2) }\n",
-        encoding="utf-8")
+def write_policy(path: Path, grant: str = "") -> None:
+    if not grant or grant == "pub visible":
+        path.write_text(
+            "pub shape Box(pub visible: i32, hidden: i32)\n"
+            "impl Box@Encap {}\n"
+            "pub fn make() -> Box { return Box(visible = 1, hidden = 2) }\n",
+            encoding="utf-8")
+    else:
+        path.write_text(
+            "pub shape Box(visible: i32, hidden: i32)\n"
+            "impl Box@Encap {\n"
+            "    " + grant + "\n"
+            "}\n"
+            "pub fn make() -> Box { return Box(visible = 1, hidden = 2) }\n",
+            encoding="utf-8")
 
 
 def main() -> int:
@@ -97,8 +104,8 @@ def main() -> int:
 
         conditional = root / "conditional.tk"
         conditional.write_text(
-            "shape Generic<T>(value: T)\n"
-            "impl<T: @Send> Generic<T>@Encap { pub value }\n"
+            "shape Generic<T>(pub value: T)\n"
+            "impl<T: @Send> Generic<T>@Encap {}\n"
             "fn main() -> i32 { return 0 }\n", encoding="utf-8")
         rejected_conditional = compile_source(conditional, root, expect_success=False)
         if "E0406" not in rejected_conditional.stderr:
@@ -106,17 +113,17 @@ def main() -> int:
 
         duplicate = root / "duplicate.tk"
         duplicate.write_text(
-            "shape Duplicate(value: i32)\n"
-            "impl Duplicate@Encap { pub value }\n"
-            "impl Duplicate@Encap { pub value }\n"
+            "shape Duplicate(pub value: i32)\n"
+            "impl Duplicate@Encap {}\n"
+            "impl Duplicate@Encap {}\n"
             "fn main() -> i32 { return 0 }\n", encoding="utf-8")
         rejected_duplicate = compile_source(duplicate, root, expect_success=False)
         assert "E0406" in rejected_duplicate.stderr
 
         drop = root / "drop.tk"
         drop.write_text(
-            "shape WithDrop(value: i32)\n"
-            "impl WithDrop@Encap { pub value fn drop(self#) {} }\n"
+            "shape WithDrop(pub value: i32)\n"
+            "impl WithDrop@Encap { fn drop(self#) {} }\n"
             "fn main() -> i32 { return 0 }\n", encoding="utf-8")
         compile_source(drop, root, expect_success=True)
 

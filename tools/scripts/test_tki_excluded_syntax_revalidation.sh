@@ -21,7 +21,8 @@ write_metadata() {
     local path="$1"
     {
         echo "// @meta compiler_version: any"
-        echo "// @meta format_version: 5"
+        echo "// @meta format_version: 6"
+        echo "// @meta encap_epoch: 0.18"
         echo "// @meta target_triple: any"
         echo "// @meta source_hash: any"
         echo "// @meta identity_schema_version: 2"
@@ -42,9 +43,11 @@ header, body = path.read_text().split("\n\n", 1)
 digest = 14695981039346656037
 for byte in body.encode():
     digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
-path.write_text(header.replace("// @meta format_version: 5",
-    f"// @meta format_version: 5\n// @meta replay_surface_hash: {digest:016x}", 1)
-    + "\n\n" + body)
+assert "// @meta format_version: 6" in header
+updated_header = header.replace("// @meta format_version: 6",
+    f"// @meta format_version: 6\n// @meta replay_surface_hash: {digest:016x}", 1)
+assert updated_header != header
+path.write_text(updated_header + "\n\n" + body)
 PY
 }
 

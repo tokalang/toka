@@ -3,12 +3,12 @@ import core/string::{string}
 
 auto g_drop_count# = 0:i32
 
-shape Config (
-    name: string
+pub shape Config (
+    pub name: string
 )
 
 impl Config@Encap {
-    pub name
+
     fn drop(self#) {
         g_drop_count += 1:i32
     }

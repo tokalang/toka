@@ -1,8 +1,8 @@
 import std/hashmap::{HashMap}
 import core/traits::{@Hash, @PartialEq}
-shape Key(id: i32)
+shape Key(pub id: i32)
 impl Key@Encap {
-    pub id
+
     fn drop(self#) {}
 }
 impl Key@Hash {

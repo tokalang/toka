@@ -1,8 +1,8 @@
 import std/sync::{Mutex, RwMutex}
 auto drops# = 0
-shape Token(value#: i32)
+shape Token(pub value#: i32)
 impl Token@Encap {
-    pub value
+
     fn drop(self#) { drops += 1 }
 }
 impl Token@Send {}

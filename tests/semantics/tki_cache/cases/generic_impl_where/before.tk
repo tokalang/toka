@@ -1,7 +1,7 @@
 pub trait @Marked {}
 
-pub shape Plain(value: i32)
-pub shape Box<T>(item: T)
+pub shape Plain(pub value: i32)
+pub shape Box<T>(pub item: T)
 
 impl<T> Box<T> {
     pub fn marker(self) -> i32 {

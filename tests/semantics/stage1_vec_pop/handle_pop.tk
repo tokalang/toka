@@ -1,8 +1,8 @@
 import std/vec::{Vec}
 auto drops# = 0
-shape Cell(value: i32)
+shape Cell(pub value: i32)
 impl Cell@Encap {
-    pub value
+
     fn drop(self#) { drops += 1 }
 }
 fn allocate<T>() -> *[T]# {

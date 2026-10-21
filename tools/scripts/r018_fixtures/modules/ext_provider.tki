@@ -1,8 +1,9 @@
 // @meta compiler_version: any
 // @meta local_body_policy: checked-local-v1
 // @meta local_body_definitions: f/0,f/1,f/2,f/3
-// @meta format_version: 5
-// @meta replay_surface_hash: 5a2747ac522bab8a
+// @meta format_version: 6
+// @meta encap_epoch: 0.18
+// @meta replay_surface_hash: 2aab1d65ae5ddb3a
 // @meta target_triple: any
 // @meta source_hash: any
 // @meta identity_schema_version: 2
@@ -14,11 +15,12 @@
 // @tki v2 dup_provider: Buffer = intrinsic-copy
 // @tki v2 field_graph: Buffer.size = i32
 // @tki v2 field_graph: Buffer.tag = i32
+// @tki v2 policy: Buffer = global:size,tag
 
 import core/task :: {TaskHandle}
 import std/async :: {TaskScope, spawn_scoped}
 
-pub shape Buffer(size: i32, tag: i32)
+pub shape Buffer(pub size: i32, pub tag: i32)
 
 pub fn compute_provider(buf: Buffer) -> async i32 {
   return buf.size
@@ -32,4 +34,3 @@ pub fn fwd_external(cede t: TaskHandle<i32>) -> TaskHandle<i32> <- t {
 pub fn spawn_scoped_external(scope#: TaskScope, cede t: TaskHandle<i32>) -> TaskHandle<i32> <- t {
   return spawn_scoped(scope#, cede t)
 }
-

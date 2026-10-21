@@ -7,7 +7,7 @@ pub trait @Transformer {
 }
 
 pub shape ByteMultiplier (
-    multiplier: i32
+    pub multiplier: i32
 )
 
 impl ByteMultiplier@Transformer {

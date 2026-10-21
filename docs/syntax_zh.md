@@ -570,30 +570,34 @@ pub trait @Readable {
 }
 ```
 
-在声明层，前导 `pub` 会把 import、const、fn、shape、trait、alias、nominal type 导出到模块接口中。不写 `pub` 时，声明保持模块私有。
+在声明层，前导 `pub` 会把 import、const、fn、shape、trait、alias、nominal type 导出到模块接口中；前导 `pkg` 将可见性收敛在当前权威包内；不写修饰符时，声明保持模块私有。
 
-在普通 `impl` 和 `trait` 块中，方法可见性写作 `pub fn`。没有 `pub` 的方法对定义模块 / 接口语境保持私有。
+在普通 `impl` 和 `trait` 块中，方法可见性写作 `pub fn` 或 `pkg fn`。未加修饰符的方法对定义模块 / 接口语境保持私有。
 
-`@Encap` 块还负责成员可见性控制。一旦某个 shape 拥有 `@Encap` 块，它的字段在定义模块之外默认私有，除非 `@Encap` 可见性条目显式授权。
+结构体字段可见性直接在 `shape Name(...)` 的字段定义处内联声明：`pub field: Type` 全局开放该精确字段，`pkg field: Type` 在当前权威包内开放该字段，省略修饰符则保持定义模块私有。`@Encap` 块仅承载受控胶囊边界与可选 `fn drop(self#)` 析构钩子，不再承载独立的字段开放列表：
 
 ```toka
-impl Device@Encap {
-    pub public_config, shared_state
+pub shape Device(
+    pub public_config: i32,
+    pkg shared_state: i32,
+    internal_handle: usize
+)
 
+impl Device@Encap {
     fn drop(self#) {}
 }
 ```
 
-`pub field` 只全局开放该精确字段。带括号和通配符形式不属于
-`@Encap`：`pub(crate)`、`pub(path)` 与 `pub *` 均会被拒绝。
+带括号、通配符以及写在 `@Encap` 块内的字段授权形式（`pub(crate)`、`pub(path)`、`pub *` 以及 `impl Type@Encap { pub ... }`）均会被拒绝。
 
-每一个 `@Encap` 字段授权都必须逐字段写出；语法没有“全部字段”形式，
-因此后续新增字段不会被意外公开：
+每一个字段授权都必须在字段定义处显式写出；语法没有“全部字段”形式，因此后续新增字段不会被意外公开：
 
 ```toka
-impl PublicRecord@Encap {
-    pub visible_name, visible_id, cache_slot
-}
+pub shape PublicRecord(
+    pub visible_name: str,
+    pub visible_id: u64,
+    pkg cache_slot: u32
+)
 ```
 
 ## 8. 成员访问与整值泛型字段

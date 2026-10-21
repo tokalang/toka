@@ -371,7 +371,9 @@ void TKIExporter::exportModule(const Module &module) {
         writeln("// @meta local_body_definitions: " + definitions);
     }
     writeln("// @meta format_version: " + std::string(TOKA_INTERFACE_FORMAT_VERSION));
-    writeln("// @meta replay_surface_hash: " + calculateFNV1a(declarations));
+    writeln("// @meta encap_epoch: " + getActiveEncapEpoch());
+    writeln("// @meta replay_surface_hash: " +
+            calculateFNV1a(formatReplaySurfaceHashInput(declarations)));
     writeln("// @meta target_triple: " + Parser::TargetTriple);
     writeln("// @meta source_hash: " + sourceHash);
     writeln("// @meta source_path: " + PathUtils::canonicalize(module.SourcePath));
@@ -573,6 +575,7 @@ void TKIExporter::exportImport(const ImportDecl &decl) {
 void TKIExporter::exportTypeAlias(const TypeAliasDecl &decl) {
     indent();
     if (decl.IsPub) m_OS << "pub ";
+    else if (decl.isPkg()) m_OS << "pkg ";
     m_OS << (decl.IsStrong ? "type " : "alias ") << decl.Name;
     printGenericParams(decl.GenericParams);
     if (printMorphologyWhereConstraints(decl.GenericParams))
@@ -585,6 +588,7 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
     if (decl.IsCompilerSynthesized) return;
     indent();
     if (decl.IsPub) m_OS << "pub ";
+    else if (decl.isPkg()) m_OS << "pkg ";
     m_OS << "shape " << decl.Name;
     printGenericParams(decl.GenericParams);
     if (printMorphologyWhereConstraints(decl.GenericParams))
@@ -602,6 +606,8 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
         for (size_t i = 0; i < decl.Members.size(); ++i) {
             if (i > 0) m_OS << ", ";
             const auto &m = decl.Members[i];
+            if (m.Vis == Visibility::Public) m_OS << "pub ";
+            else if (m.Vis == Visibility::Package) m_OS << "pkg ";
             std::string varStr = reconstructVar(
                 m.Name, exportTypeSyntax(m.TypeSyntax, m.Type),
                 m.IsRawPointer, m.IsUnique, m.IsShared, m.IsReference,
@@ -657,6 +663,7 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
 void TKIExporter::exportTrait(const TraitDecl &decl) {
     indent();
     if (decl.IsPub) m_OS << "pub ";
+    else if (decl.isPkg()) m_OS << "pkg ";
     m_OS << "trait @" << decl.Name;
     printGenericParams(decl.GenericParams);
     bool multilineHeader = false;
@@ -747,6 +754,7 @@ void TKIExporter::exportImpl(const ImplDecl &decl) {
 void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
     indent();
     if (decl.IsPub) m_OS << "pub ";
+    else if (decl.isPkg()) m_OS << "pkg ";
     if (decl.IsUnsafe) m_OS << "unsafe ";
     m_OS << "fn " << decl.Name;
     printGenericParams(decl.GenericParams);
@@ -924,9 +932,9 @@ void TKIExporter::exportExtern(const ExternDecl &decl) {
 
 void TKIExporter::exportGlobal(const Stmt &stmt) {
     if (auto decl = dynamic_cast<const VariableDecl *>(&stmt)) {
-        if (!decl->IsPub || !decl->IsConst) return;
+        if ((!decl->IsPub && !decl->isPkg()) || !decl->IsConst) return;
         indent();
-        m_OS << "pub const ";
+        m_OS << (decl->IsPub ? "pub const " : "pkg const ");
         std::string varStr = reconstructVar(
             decl->Name, exportTypeSyntax(decl->DeclaredTypeSyntax, decl->TypeName),
             decl->IsRawPointer, decl->IsUnique, decl->IsShared, decl->IsReference,

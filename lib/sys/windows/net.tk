@@ -247,11 +247,11 @@ pub fn net_set_nonblocking_impl(fd: i32) -> bool {
 }
 
 pub shape WinReactor (
-    fds: Addr,
-    coros: Addr,
-    is_write: Addr,
-    count#: i32,
-    capacity: i32
+    pub fds: Addr,
+    pub coros: Addr,
+    pub is_write: Addr,
+    pub count#: i32,
+    pub capacity: i32
 )
 
 auto g_win_reactor# = 0:Addr

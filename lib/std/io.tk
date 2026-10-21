@@ -41,9 +41,9 @@ pub shape File (
 )
 
 // Convenience Aliases for Generic Instantiation
-alias IoResult = Result<File, string>
-alias IoStringResult = Result<string, string>
-alias IoSizeResult = Result<usize, string>
+pub alias IoResult = Result<File, string>
+pub alias IoStringResult = Result<string, string>
+pub alias IoSizeResult = Result<usize, string>
 
 impl File {
     pub fn try_open(path: string, mode: str) -> Result<File, IoError> {

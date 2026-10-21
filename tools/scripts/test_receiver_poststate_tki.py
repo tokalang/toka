@@ -214,8 +214,13 @@ fn main() -> i32 {
                 "E0455" not in old.stderr,
                 "old interface was accepted or silently replayed")
 
-        interface.write_text(original.replace(
-            "format_version: 5", "format_version: 4", 1))
+        require("format_version: 6" in original,
+                "expected format_version: 6 in emitted interface")
+        mutated_format = original.replace(
+            "format_version: 6", "format_version: 5", 1)
+        require(mutated_format != original,
+                "format_version replacement was a no-op")
+        interface.write_text(mutated_format)
         old_format = subprocess.run(
             [str(compiler), "--check-only", str(consumer)], cwd=work,
             env=env, capture_output=True, text=True, timeout=45)
@@ -241,7 +246,7 @@ fn main() -> i32 {
         original = interface.read_text()
         require("pub unsafe fn make()" in original and
                 "pub unsafe fn make_cell()" in original and
-                "format_version: 5" in original,
+                "format_version: 6" in original,
                 "interface lost the unsafe call boundary")
         provider.rename(work / "provider.tk.hidden")
         consumer = work / "consumer.tk"

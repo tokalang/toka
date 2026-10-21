@@ -1,6 +1,6 @@
 import core/task::{TaskHandle}
 shape Buffer ( size: i32, tag: i32 )
-shape Holder ( task#: TaskHandle<i32> )
+pub shape Holder ( pub task#: TaskHandle<i32> )
 fn dummy() -> async i32 { return 0:i32 }
 fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
     return b.size + chunk_id

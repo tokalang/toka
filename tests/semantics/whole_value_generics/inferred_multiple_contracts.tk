@@ -12,8 +12,8 @@ fn wrap<T>(cede first:T, cede second:T) -> Box<T> {
     return cede result
 }
 auto drops# = 0:i32
-shape Resource(value:i32)
-impl Resource@Encap { pub value
+shape Resource(pub value:i32)
+impl Resource@Encap {
     fn drop(self#) { drops += 1 }
 }
 fn main() -> i32 {

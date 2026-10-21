@@ -1,4 +1,4 @@
-pub shape Model(value: i32)
+pub shape Model(pub value: i32)
 
 pub fn choose(value: Model) -> i32 {
     return 1:i32

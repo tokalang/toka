@@ -7,10 +7,10 @@ import std/io::{@Reader, @Writer}
 
 /// BufferedReader wraps a reader and buffers its input.
 pub shape BufferedReader<R: @Reader> (
-    reader: R,
-    buf: [u8; 4096],
-    pos: usize,
-    cap: usize
+    pub reader: R,
+    pub buf: [u8; 4096],
+    pub pos: usize,
+    pub cap: usize
 )
 
 impl<R: @Reader> BufferedReader<R> {
@@ -145,9 +145,9 @@ impl<R: @Reader> BufferedReader<R>@Reader {
 
 /// BufferedWriter wraps a writer and buffers its output.
 pub shape BufferedWriter<W: @Writer> (
-    writer: W,
-    buf: [u8; 4096],
-    pos: usize
+    pub writer: W,
+    pub buf: [u8; 4096],
+    pub pos: usize
 )
 
 impl<W: @Writer> BufferedWriter<W> {
@@ -240,14 +240,13 @@ import std/vec::{Vec}
 
 /// AsyncBufferedReader wraps a TcpStream and buffers its async reads.
 pub shape AsyncBufferedReader (
-    stream: TcpStream,
+    pub stream: TcpStream,
     buf: [u8; 4096],
     pos: usize,
     cap: usize
 )
 
 impl AsyncBufferedReader@Encap {
-    pub stream
     fn drop(self#) {}
 }
 

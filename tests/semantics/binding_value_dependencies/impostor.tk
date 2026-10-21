@@ -1,5 +1,5 @@
-pub shape string(&data: i32)
+pub shape string(pub &data: i32)
 impl string@Encap {
-    pub data
+
     fn drop(self#) {}
 }

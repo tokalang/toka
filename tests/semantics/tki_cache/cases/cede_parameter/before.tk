@@ -1,9 +1,9 @@
 import core/traits::{@Encap}
 
-pub shape Payload(val: i32)
+pub shape Payload(pub val: i32)
 
 impl Payload@Encap {
-    pub val
+
     fn drop(self#) {}
 }
 

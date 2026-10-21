@@ -1,9 +1,9 @@
 import std/thread::{thread_spawn}
 
 auto drops# = 0:i32
-shape SendItem(value: i32)
+shape SendItem(pub value: i32)
 impl SendItem@Encap {
-    pub value
+
     fn drop(self#) { drops += 1 }
 }
 impl SendItem@Send {}

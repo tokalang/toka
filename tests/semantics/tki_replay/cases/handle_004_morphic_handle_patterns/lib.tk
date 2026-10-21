@@ -12,9 +12,9 @@ import core/traits::{@Encap, @Copy}
 // instance, not a private global re-created by source-hidden replay.
 extern fn replay_item_drop() -> void
 extern fn item_drop_count() -> i32
-pub shape Item<T>(val: T)
+pub shape Item<T>(pub val: T)
 impl<T> Item<T>@Encap {
-    pub val
+
     fn drop(self#) { replay_item_drop() }
 }
 impl<T: @Copy> Item<T> { pub fn read(self) -> T { return self.val } }

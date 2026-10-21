@@ -5633,28 +5633,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                             });
             if (hasStage1CedeParameter)
               methodCallRollback.arm();
-            if (!M->IsPub) {
-              bool sameModule = false;
-              if (CurrentModule) {
-                std::string modFile = DiagnosticEngine::SrcMgr
-                                          ->getFullSourceLoc(CurrentModule->Loc)
-                                          .FileName;
-                std::string tdDeclFile =
-                    DiagnosticEngine::SrcMgr->getFullSourceLoc(TD->Loc)
-                        .FileName;
-                if (modFile == tdDeclFile) {
-                  sameModule = true;
-                }
-              }
-              std::string metCallFile =
-                  DiagnosticEngine::SrcMgr->getFullSourceLoc(Met->Loc).FileName;
-              std::string tdDeclFile =
-                  DiagnosticEngine::SrcMgr->getFullSourceLoc(TD->Loc).FileName;
-              if (metCallFile != tdDeclFile && !sameModule &&
-                  !Met->IsCompilerInternal) {
-                error(Met, DiagID::ERR_METHOD_PRIVATE, Met->Method,
-                      "trait " + traitName, getModuleName(CurrentModule));
-              }
+            if (!Met->IsCompilerInternal &&
+                !isDeclAccessible(M.get(), M->Vis, Met->Loc)) {
+              error(Met, DiagID::ERR_METHOD_PRIVATE, Met->Method,
+                    "trait " + traitName, getModuleName(CurrentModule));
             }
             if (m_EnableSignatureDrivenCallCede) {
               const size_t expectedArgs = M->Args.empty() ? 0 : M->Args.size() - 1;
@@ -6118,28 +6100,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                          Met->Method);
         }
         
-        if (!FD->IsPub) {
-          bool sameModule = false;
-          if (CurrentModule) {
-            std::string modFile =
-                DiagnosticEngine::SrcMgr->getFullSourceLoc(CurrentModule->Loc)
-                    .FileName;
-            std::string fdFile =
-                DiagnosticEngine::SrcMgr->getFullSourceLoc(FD->Loc).FileName;
-            if (modFile == fdFile) {
-              sameModule = true;
-            }
-          }
-          std::string metCallFile =
-              DiagnosticEngine::SrcMgr->getFullSourceLoc(Met->Loc).FileName;
-          std::string fdDeclFile =
-              DiagnosticEngine::SrcMgr->getFullSourceLoc(FD->Loc).FileName;
-
-          if (metCallFile != fdDeclFile && !sameModule &&
-              !Met->IsCompilerInternal) {
-            error(Met, DiagID::ERR_METHOD_PRIVATE, Met->Method, soulType,
-                  getModuleName(CurrentModule));
-          }
+        if (!Met->IsCompilerInternal &&
+            !isDeclAccessible(FD, FD->Vis, Met->Loc)) {
+          error(Met, DiagID::ERR_METHOD_PRIVATE, Met->Method, soulType,
+                getModuleName(CurrentModule));
         }
 
         if (SemanticEvidence::isCallTransferShadowEnabled() &&

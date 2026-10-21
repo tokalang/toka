@@ -98,18 +98,17 @@ pub const LIMITS = (
 
 // A memory-safe, zero-allocation reference to a string view.
 pub shape str(
-    &buf$: [char],
-    len$: usize
+    pub &buf$: [char],
+    pub len$: usize
 )
 
 impl str@Encap {
-    pub buf, len
     fn drop(self#) {}
 }
 
 pub shape SourceLoc(
-    file: str,
-    line: i32
+    pub file: str,
+    pub line: i32
 )
 
 pub shape RowFat<T>(
@@ -130,8 +129,8 @@ impl<T> RowFat<T> {
 }
 
 pub shape RefFat<T>(
-    &buf: [T],
-    len: usize
+    pub &buf: [T],
+    pub len: usize
 )
 
 //impl str@Encap {

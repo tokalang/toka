@@ -1,19 +1,18 @@
 import core/traits::{@Encap}
 
 pub shape Executable (
-    *name: char,
-    *version: char,
-    *src: char,
-    deps: string,
-    c_srcs: string = string::from(""),
-    lib_dirs: string = string::from(""),
-    libs: string = string::from(""),
-    include_dirs: string = string::from(""),
-    ldflags: string = string::from("")
+    pub *name: char,
+    pub *version: char,
+    pub *src: char,
+    pub deps: string,
+    pub c_srcs: string = string::from(""),
+    pub lib_dirs: string = string::from(""),
+    pub libs: string = string::from(""),
+    pub include_dirs: string = string::from(""),
+    pub ldflags: string = string::from("")
 )
 
 impl Executable@Encap {
-    pub name, version, src, deps, c_srcs, lib_dirs, libs, include_dirs, ldflags
 
     fn drop(self#) { }
 }
@@ -35,18 +34,17 @@ impl Executable {
 }
 
 pub shape Library (
-    *name: char,
-    *version: char,
-    *src: char,
-    deps: string,
-    c_srcs: string = string::from(""),
-    lib_dirs: string = string::from(""),
-    libs: string = string::from(""),
-    include_dirs: string = string::from("")
+    pub *name: char,
+    pub *version: char,
+    pub *src: char,
+    pub deps: string,
+    pub c_srcs: string = string::from(""),
+    pub lib_dirs: string = string::from(""),
+    pub libs: string = string::from(""),
+    pub include_dirs: string = string::from("")
 )
 
 impl Library@Encap {
-    pub name, version, src, deps, c_srcs, lib_dirs, libs, include_dirs
 
     fn drop(self#) { }
 }

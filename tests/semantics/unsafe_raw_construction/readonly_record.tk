@@ -1,5 +1,5 @@
-shape AddressBox(address: Addr)
-impl AddressBox@Encap { pub address }
+shape AddressBox(pub address: Addr)
+impl AddressBox@Encap {}
 fn main() -> i32 {
     auto value = 7:i32
     auto address = unsafe (&value as Addr)

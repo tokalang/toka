@@ -1,6 +1,6 @@
 import core/string::{string}
-shape Pair(left: str, right: str)
-impl Pair@Encap { pub left, right }
+shape Pair(pub left: str, pub right: str)
+impl Pair@Encap {}
 fn swapped(a: str, b: str) -> result: Pair
 effects:
     result.left <- b

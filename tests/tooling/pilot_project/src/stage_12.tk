@@ -2,8 +2,8 @@
 import ./stage_11::{stage_11}
 
 pub shape Reading12 (
-    value: i32,
-    quality: i32
+    pub value: i32,
+    pub quality: i32
 )
 
 /// Deterministic calibration rule 00 for stage 12.

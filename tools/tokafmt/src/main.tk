@@ -24,10 +24,10 @@ fn compiler_release_version() -> string {
 }
 
 pub shape Token (
-    kind: TokenKind,
-    lexeme: str,
-    line: i32,
-    col: i32
+    pub kind: TokenKind,
+    pub lexeme: str,
+    pub line: i32,
+    pub col: i32
 )
 
 impl Token {
@@ -43,10 +43,10 @@ impl Token {
 }
 
 pub shape Lexer (
-    source: str,
-    pos#: i32,
-    line#: i32,
-    col#: i32
+    pub source: str,
+    pub pos#: i32,
+    pub line#: i32,
+    pub col#: i32
 )
 
 impl Lexer {
@@ -164,7 +164,7 @@ impl Lexer {
             auto kind# = TokenKind::Identifier()
             // In a full formatter we'd check against a list of keywords here.
             // For now, simple keywords match
-            if ident.equals("fn") || ident.equals("return") || ident.equals("auto") || ident.equals("shape") || ident.equals("impl") {
+            if ident.equals("fn") || ident.equals("return") || ident.equals("auto") || ident.equals("shape") || ident.equals("impl") || ident.equals("pub") || ident.equals("pkg") || ident.equals("nul") {
                 kind = TokenKind::Keyword()
             }
             auto result = Token::new(kind, ident, start_line, start_col)
@@ -262,11 +262,11 @@ impl Lexer {
 fn _str_cast(s: str) -> str <- s { return s.clone() }
 
 pub shape Printer (
-    indent_level#: i32,
-    output#: string,
-    needs_indent#: bool,
-    in_shape#: bool,
-    paren_depth#: i32
+    pub indent_level#: i32,
+    pub output#: string,
+    pub needs_indent#: bool,
+    pub in_shape#: bool,
+    pub paren_depth#: i32
 )
 
 impl Printer {

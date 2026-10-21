@@ -1,9 +1,9 @@
 pub shape Item(
-    remote: i64
+    pub remote: i64
 )
 
 pub shape Box<T>(
-    value: T
+    pub value: T
 )
 
 impl<T> Box<T> {

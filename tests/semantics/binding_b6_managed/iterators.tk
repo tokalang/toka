@@ -1,9 +1,9 @@
 import std/hashmap::{HashMap, HashMapIterator}
 import std/vec::{Vec}
 auto drops# = 0:i32
-shape Cell(id: i32)
+shape Cell(pub id: i32)
 impl Cell@Encap {
-    pub id
+
     fn drop(self#) { drops += 1 }
 }
 fn main() -> i32 {

@@ -72,7 +72,7 @@ impl<T> HashSet<T>@Iterable {
 }
 
 pub shape HashSetIterator<T> (
-    map_iter#: HashMapIterator<T, bool>
+    pub map_iter#: HashMapIterator<T, bool>
 )
 
 impl<T> HashSetIterator<T>@Iterator {

@@ -1,5 +1,5 @@
-pub shape Leaf(val: i32)
-pub shape Data(left: Leaf, right: Leaf)
+pub shape Leaf(pub val: i32)
+pub shape Data(pub left: Leaf, pub right: Leaf)
 
 pub fn borrow_left(data: Data) -> &res: i32
 effects:

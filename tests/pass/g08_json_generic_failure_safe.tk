@@ -8,7 +8,7 @@ import stdx/serde/json::{@FromJson, @JsonFactory, Parsed}
 auto g_drops# = 0
 
 shape StrictRes (
-    id: i32
+    pub id: i32
 )
 impl StrictRes@JsonFactory {
     pub fn parse_value(json: str) -> Result<Parsed<StrictRes>, str> <- json {
@@ -29,7 +29,7 @@ impl StrictRes@JsonFactory {
     }
 }
 impl StrictRes@Encap {
-    pub id
+
     fn drop(self#) {
         g_drops += 1
     }

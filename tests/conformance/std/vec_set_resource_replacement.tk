@@ -4,10 +4,10 @@ import std/vec::{Vec}
 
 auto g_drop_count# = 0:i32
 
-shape Resource(id: i32, name: string)
+shape Resource(pub id: i32, pub name: string)
 
 impl Resource@Encap {
-    pub id, name
+
 
     fn drop(self#) {
         g_drop_count += 1:i32

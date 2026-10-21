@@ -10,11 +10,11 @@ fn rebuild_str(addr: Addr, len: usize) -> str <- addr {
 }
 
 pub shape Printer (
-    indent_level#: i32,
-    output#: string,
-    needs_indent#: bool,
-    in_shape#: bool,
-    paren_depth#: i32
+    pub indent_level#: i32,
+    pub output#: string,
+    pub needs_indent#: bool,
+    pub in_shape#: bool,
+    pub paren_depth#: i32
 )
 
 impl Printer {

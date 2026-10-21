@@ -6,7 +6,7 @@ import std/hashmap::{HashMap}
 import std/math
 pub alias JsonRes = Result<str, str>
 // Container factories return a numeric cursor, not an internal borrowed rest view.
-pub shape Complete<T>(value: T, consumed: usize)
+pub shape Complete<T>(pub value: T, pub consumed: usize)
 
 pub trait @JsonFactory {
     pub fn parse_value(json: str) -> Result<Parsed<Self>, str> <- json

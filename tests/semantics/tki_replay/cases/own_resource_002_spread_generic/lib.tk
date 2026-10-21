@@ -2,10 +2,10 @@
 // EXPECT_TKI: impl<T> Vault<T>@Encap
 import core/traits::{@Encap}
 
-pub shape Vault<T>(id: i32, ^secret: T)
+pub shape Vault<T>(pub id: i32, ^secret: T)
 
 impl<T> Vault<T>@Encap {
-    pub id
+
     fn drop(self#) {}
 }
 

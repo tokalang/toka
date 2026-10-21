@@ -1,5 +1,5 @@
 // EXPECT_TKI: pub fn make_payload() -> Payload
-pub shape Payload(val: i32)
+pub shape Payload(pub val: i32)
 
 pub fn make_payload() -> Payload {
     auto p = Payload(val = 7)

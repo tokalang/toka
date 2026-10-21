@@ -2,7 +2,7 @@
 // EXPECT_TKI: pub fn produce_async_pair(a: i32, b: i32) -> async Pair
 // EXPECT_TKI: pub fn produce_async_calc(base: i32) -> async i32
 
-pub shape Pair(a: i32, b: i32)
+pub shape Pair(pub a: i32, pub b: i32)
 
 pub fn produce_async_value(val: i32) -> async i32 {
     return val * 2 + 1

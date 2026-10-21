@@ -2,10 +2,10 @@ import core/str::{str}
 import src/token::{Token, TokenKind}
 
 pub shape Lexer (
-    source: str,
-    pos#: i32,
-    line#: i32,
-    col#: i32
+    pub source: str,
+    pub pos#: i32,
+    pub line#: i32,
+    pub col#: i32
 )
 
 impl Lexer {
@@ -118,7 +118,7 @@ impl Lexer {
             auto kind# = TokenKind::Identifier()
             // In a full formatter we'd check against a list of keywords here.
             // For now, simple keywords match
-            if ident.equals("fn") || ident.equals("return") || ident.equals("auto") || ident.equals("shape") || ident.equals("impl") {
+            if ident.equals("fn") || ident.equals("return") || ident.equals("auto") || ident.equals("shape") || ident.equals("impl") || ident.equals("pub") || ident.equals("pkg") || ident.equals("nul") {
                 kind = TokenKind::Keyword()
             }
             return Token::new(kind, (ident).raw_ptr() as Addr, (ident).len(), start_line, start_col)

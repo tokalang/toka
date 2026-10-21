@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleGrammarAudit.h"
+#include "toka/InterfaceVersion.h"
 #include "toka/MemberAccess.h"
 #include "toka/Parser.h"
 #include "toka/PathUtils.h"
@@ -1066,6 +1067,8 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
     if (selected && selected->ResolvedReturnType)
       return resolveExplicitCedeStage0TypeReadOnly(
           selected->ResolvedReturnType);
+    if (call->ResolvedType && !call->ResolvedType->isUnknown())
+      return resolveExplicitCedeStage0TypeReadOnly(call->ResolvedType);
     return toka::Type::fromString("unknown");
   }
   if (source->ResolvedType && !source->ResolvedType->isUnknown())
@@ -10403,6 +10406,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             MetAST = MethodDecls[methodKey][VariantName];
         }
         Call->ResolvedFn = MetAST;
+        if (staticShape && !checkVisibility(Call, staticShape)) {
+          return Type::fromString("unknown");
+        }
+        if (MetAST &&
+            (getActiveEncapEpoch() == "0.19" || MetAST->isPkg()) &&
+            !isDeclAccessible(MetAST, MetAST->Vis, Call->Loc)) {
+          error(Call, DiagID::ERR_METHOD_PRIVATE, MetAST->Name, ShapeName,
+                getModuleName(CurrentModule));
+          return Type::fromString("unknown");
+        }
         const size_t staticDiagnosticStart = DiagnosticEngine::records().size();
         if (MetAST && MetAST->IsUnsafe && !m_InUnsafeContext) {
           error(Call, DiagID::ERR_UNSAFE_CALL_REQUIRES_CONTEXT, MetAST->Name);
@@ -11529,6 +11542,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           Fn = pickModuleFunction(target, FuncName, target->Functions[FuncName]);
           if (d4InfrastructureFailed)
             return toka::Type::fromString("unknown");
+          if (Fn && (getActiveEncapEpoch() == "0.19" || Fn->isPkg()) &&
+              !isDeclAccessible(Fn, Fn->Vis, Call->Loc)) {
+            error(Call, DiagID::ERR_GENERIC_SEMA,
+                  "Function '" + FuncName +
+                      "' is not visible from module '" + ModName + "'");
+            return toka::Type::fromString("unknown");
+          }
         } else if (target->Externs.count(FuncName))
           Ext = target->Externs[FuncName];
         else if (target->Shapes.count(FuncName))

@@ -1,11 +1,11 @@
 auto drops# = 0:i32
-shape Token(value: i32)
+shape Token(pub value: i32)
 impl Token@Encap {
-    pub value
+
     fn drop(self#) { drops += 1 }
 }
-shape NonCopy(value: i32)
-impl NonCopy@Encap { pub value }
+shape NonCopy(pub value: i32)
+impl NonCopy@Encap {}
 shape Packet<T>(Empty | Value(T))
 shape Nested<T>(Empty | Value(Option<T>))
 shape Fixed<T>(Empty | Value([T; 2]))

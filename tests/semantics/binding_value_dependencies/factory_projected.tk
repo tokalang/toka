@@ -1,8 +1,8 @@
 import core/string::{string}
-shape Pair(left: str, right: str)
-impl Pair@Encap { pub left, right }
-shape Holder(view: str)
-impl Holder@Encap { pub view }
+shape Pair(pub left: str, pub right: str)
+impl Pair@Encap {}
+shape Holder(pub view: str)
+impl Holder@Encap {}
 fn left(pair: Pair) -> Holder
 effects: return <- pair.left {
     auto result = Holder(view = pair.left)

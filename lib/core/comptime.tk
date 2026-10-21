@@ -24,10 +24,10 @@ pub shape TypeKind(
 
 
 pub shape FieldInfo(
-    name: str,
-    type_name: str, // ()
-    offset: usize, 
-    size: usize 
+    pub name: str,
+    pub type_name: str, // ()
+    pub offset: usize, 
+    pub size: usize 
 )
 
 impl FieldInfo {
@@ -44,15 +44,14 @@ impl FieldInfo {
 
 // T
 pub shape TypeInfo(
-    name: str,
-    kind: TypeKind,
-    fields: RowFat<FieldInfo>, 
-    size: usize,
-    align: usize
+    pub name: str,
+    pub kind: TypeKind,
+    pub fields: RowFat<FieldInfo>, 
+    pub size: usize,
+    pub align: usize
 )
 
 impl TypeInfo@Encap {
-    pub name, kind, fields, size, align
     fn drop(self#) {}
 }
 

@@ -4,9 +4,9 @@ fn allocate<T>() -> *[T]# {
     return *buffer
 }
 auto drops# = 0
-shape Token(value: i32)
+shape Token(pub value: i32)
 impl Token@Encap {
-    pub value
+
     fn drop(self#) { drops += 1 }
 }
 fn unique_roundtrip(*buffer#: [^Token], cede ^value: Token) {

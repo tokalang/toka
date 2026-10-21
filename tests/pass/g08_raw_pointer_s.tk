@@ -13,12 +13,12 @@
 // limitations under the License.
 
 
-shape Hero (
-    *buf#: [i32]
+pub shape Hero (
+    pub *buf#: [i32]
 )
 
 impl Hero@Encap {
-    pub buf
+
 
     fn drop(self#) {
         

@@ -1,4 +1,4 @@
-pub shape Base(value: i32)
+pub shape Base(pub value: i32)
 pub type Strong = Base
 pub alias Transparent = Base
 pub fn make(value: i32) -> Strong { return Strong(value = value) }

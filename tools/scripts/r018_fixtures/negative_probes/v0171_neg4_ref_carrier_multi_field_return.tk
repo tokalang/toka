@@ -1,6 +1,6 @@
 import core/task::{TaskHandle}
 
-pub shape RefCarrier(&view: i32, token: i32)
+pub shape RefCarrier(pub &view: i32, pub token: i32)
 impl RefCarrier {
     pub fn read_async(cede self) -> async i32 {
         auto owned = cede self

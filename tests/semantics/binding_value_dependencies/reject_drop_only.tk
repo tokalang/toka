@@ -1,6 +1,6 @@
-shape ViewOwner(*data: i32)
+shape ViewOwner(pub *data: i32)
 impl ViewOwner@Encap {
-    pub data
+
     fn drop(self#) {}
 }
 fn rejected(*storage: [ViewOwner]) { unsafe raw_take storage[0] }

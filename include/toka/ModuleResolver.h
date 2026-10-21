@@ -33,6 +33,7 @@ enum class TKICacheStatus {
 struct TKIMetadata {
     std::string CompilerVersion;
     std::string FormatVersion;
+    std::string EncapEpoch;
     std::string ReplaySurfaceHash;
     std::string TargetTriple;
     std::string SourceHash;
@@ -136,6 +137,7 @@ private:
     std::vector<std::string> m_RecursionStack;
     std::map<std::string, std::vector<std::string>> m_Dependencies;
     std::map<std::string, ModuleResolutionInfo> m_ResolutionRecords;
+    std::map<std::string, std::set<std::string>> m_ResolvedPackageAliases;
 
     // Helper to search and resolve rawFilename to a lexically normalized path.
     // Returns empty string if not found.

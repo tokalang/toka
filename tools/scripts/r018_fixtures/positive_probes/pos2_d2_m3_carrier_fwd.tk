@@ -1,7 +1,7 @@
 import core/task::{TaskHandle}
 import std/task::{block_on}
 shape Buffer ( size: i32, tag: i32 )
-shape FwdCarrier(task#: TaskHandle<i32>)
+pub shape FwdCarrier(pub task#: TaskHandle<i32>)
 fn process_chunk(b: Buffer, chunk_id: i32) -> async i32 <- b {
     return b.size + chunk_id
 }

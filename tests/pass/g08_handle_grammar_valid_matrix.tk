@@ -12,12 +12,12 @@ shape Point (
 )
 
 shape DroppableResource (
-    id: i32,
+    pub id: i32,
     ^inner: Point
 )
 
 impl DroppableResource@Encap {
-    pub id
+
     fn drop(self#) {
         g_drop_count += 1
     }

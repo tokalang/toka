@@ -22,14 +22,13 @@ pub shape HttpMethod (
 // HttpHeaderView is a non-owning borrowed offset view into a parent raw_header_buf: Vec<u8>.
 // Accessing name() or value() borrows raw_buf# by reference, constructing an owned string return value.
 pub shape HttpHeaderView (
-    name_offset: usize,
-    name_len: usize,
-    value_offset: usize,
-    value_len: usize
+    pub name_offset: usize,
+    pub name_len: usize,
+    pub value_offset: usize,
+    pub value_len: usize
 )
 
 impl HttpHeaderView@Encap {
-    pub name_offset, name_len, value_offset, value_len
     fn drop(self#) {}
 }
 
@@ -75,13 +74,11 @@ impl HttpHeaderView {
 }
 
 pub shape HeaderEntry (
-    key: string,
-    value: string
+    pub key: string,
+    pub value: string
 )
 
 impl HeaderEntry@Encap {
-    pub key
-    pub value
     fn drop(self#) {}
 }
 
@@ -95,11 +92,10 @@ impl HeaderEntry {
 }
 
 pub shape HeaderMap (
-    entries: Vec<HeaderEntry>
+    pub entries: Vec<HeaderEntry>
 )
 
 impl HeaderMap@Encap {
-    pub entries
     fn drop(self#) {}
 }
 
@@ -266,19 +262,14 @@ impl HeaderMap {
 }
 
 pub shape HttpRequest (
-    method: HttpMethod,
-    path: string,
-    version: string,
-    headers: HeaderMap,
-    body: string
+    pub method: HttpMethod,
+    pub path: string,
+    pub version: string,
+    pub headers: HeaderMap,
+    pub body: string
 )
 
 impl HttpRequest@Encap {
-    pub method
-    pub path
-    pub version
-    pub headers
-    pub body
     fn drop(self#) {}
 
 }
@@ -363,17 +354,13 @@ impl HttpRequest {
 }
 
 pub shape HttpResponse (
-    status_code: i32,
-    content_type: string,
-    headers: HeaderMap,
-    body: string
+    pub status_code: i32,
+    pub content_type: string,
+    pub headers: HeaderMap,
+    pub body: string
 )
 
 impl HttpResponse@Encap {
-    pub status_code
-    pub content_type
-    pub headers
-    pub body
     fn drop(self#) {}
 
 }
@@ -501,10 +488,10 @@ impl HttpResponse {
 // Server-side lifecycle boundary.  Applications receive a parsed request and
 // write a complete response; TCP buffering and partial writes stay here.
 pub shape HttpServerConnection (
-    stream#: TcpStream,
-    max_request_bytes: usize,
-    timeout_ms: i32,
-    closed#: bool
+    pub stream#: TcpStream,
+    pub max_request_bytes: usize,
+    pub timeout_ms: i32,
+    pub closed#: bool
 )
 
 fn bytes_to_string(buf#: Vec<u8>) -> string {
@@ -615,8 +602,8 @@ impl HttpServer {
 }
 
 pub shape HeaderBoundary (
-    index: i32,
-    delim_len: usize
+    pub index: i32,
+    pub delim_len: usize
 )
 
 pub fn find_header_boundary(req_str: str) -> HeaderBoundary {
@@ -1055,13 +1042,13 @@ pub fn parse_http_response(resp_str: string) -> Result<HttpResponse, string> {
 }
 
 pub shape HttpResponseStream (
-    status_code: i32,
+    pub status_code: i32,
     raw_header_buf#: Vec<u8>,
-    headers: Vec<HttpHeaderView>,
+    pub headers: Vec<HttpHeaderView>,
     stream#: AsyncStream,
     content_length_remaining#: i64,
     chunk_remaining#: usize,
-    is_chunked: bool,
+    pub is_chunked: bool,
     chunk_state#: i32,
     surplus_buf#: Vec<u8>,
     bytes_read_total#: usize,
@@ -1070,7 +1057,6 @@ pub shape HttpResponseStream (
 )
 
 impl HttpResponseStream@Encap {
-    pub status_code, headers, is_chunked
     fn drop(self#) {}
 }
 
@@ -1558,7 +1544,7 @@ impl HttpResponseStream {
 }
 
 pub shape HttpClient (
-    timeout_ms: i32
+    pub timeout_ms: i32
 )
 
 impl HttpClient {

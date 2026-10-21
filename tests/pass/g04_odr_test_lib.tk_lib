@@ -2,7 +2,7 @@ pub trait @MyTrait {
     pub fn do_something(self) -> i32
 }
 
-pub shape MyBucket<T>(val: T)
+pub shape MyBucket<T>(pub val: T)
 
 impl<T> MyBucket<T>@MyTrait {
     pub fn do_something(self) -> i32 {

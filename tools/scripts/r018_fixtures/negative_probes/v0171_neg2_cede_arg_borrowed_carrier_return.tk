@@ -1,10 +1,10 @@
 import core/task::{TaskHandle}
 
-pub shape Buffer(size: i32)
+pub shape Buffer(pub size: i32)
 pub fn read_buf(b: Buffer) -> async i32 {
     return b.size
 }
-pub shape BorrowedCarrier(t: TaskHandle<i32>)
+pub shape BorrowedCarrier(pub t: TaskHandle<i32>)
 
 pub fn close_free(cede c: BorrowedCarrier) -> async i32 {
     auto owned = cede c

@@ -1,4 +1,4 @@
-pub shape Packet(value: i32)
+pub shape Packet(pub value: i32)
 
 pub shape BuildOutcome(
     Ok(i32) |

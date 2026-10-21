@@ -4,12 +4,12 @@ import core/string::{string}
 import core/traits::{@Dup}
 
 shape CustomDup (
-    value: string,
-    counter: i32
+    pub value: string,
+    pub counter: i32
 )
 
 impl CustomDup@Encap {
-    pub value, counter
+
     fn drop(self#) {}
 }
 

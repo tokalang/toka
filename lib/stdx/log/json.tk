@@ -8,13 +8,11 @@ import stdx/log/log::{LogLevel, LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR}
 import stdx/serde/json::{write_escaped_json_string}
 
 pub shape JsonField (
-    key: string,
-    value: string
+    pub key: string,
+    pub value: string
 )
 
 impl JsonField@Encap {
-    pub key
-    pub value
     fn drop(self#) {}
 }
 
@@ -41,7 +39,7 @@ fn append_level(out#: string, level: LogLevel) {
 }
 
 pub shape JsonLogger (
-    level: LogLevel
+    pub level: LogLevel
 )
 
 impl JsonLogger {

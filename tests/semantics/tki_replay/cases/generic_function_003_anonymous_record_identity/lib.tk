@@ -3,7 +3,7 @@
 // EXPECT_TKI: pub fn read_item(value: Item) -> i64
 
 pub shape Item(
-    remote: i64
+    pub remote: i64
 )
 
 pub fn make_item(value: i64) -> Item {

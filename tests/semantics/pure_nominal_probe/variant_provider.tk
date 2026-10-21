@@ -3,7 +3,7 @@ pub shape Msg(
     Quit
 )
 
-pub shape Other(value: i32)
+pub shape Other(pub value: i32)
 
 pub fn choose(value: Msg::Text) -> i32 {
     return 1:i32

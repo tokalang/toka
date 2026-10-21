@@ -3,8 +3,8 @@ import core/str::{bytes}
 import std/vec::{Vec}
 
 pub shape DecodeError (
-    position: usize,
-    message: string
+    pub position: usize,
+    pub message: string
 )
 
 fn decode_error(position: usize, message: str) -> DecodeError {

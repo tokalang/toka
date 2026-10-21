@@ -11,8 +11,8 @@ import std/vec::{Vec}
 /// then `a` will be placed closer to the top of the heap than `b`.
 /// For a min-heap, `cmp` should be `a < b`. For a max-heap, `a > b`.
 pub shape BinaryHeap<T>(
-    data#: Vec<T>,
-    cmp: fn(T, T) -> bool
+    pub data#: Vec<T>,
+    pub cmp: fn(T, T) -> bool
 )
 
 impl<T: @Copy> BinaryHeap<T> {

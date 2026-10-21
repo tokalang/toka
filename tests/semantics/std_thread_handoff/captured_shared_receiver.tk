@@ -1,7 +1,7 @@
 auto drops# = 0
-shape Counter(value#: i32)
+shape Counter(pub value#: i32)
 impl Counter@Encap {
-    pub value
+
     fn drop(self#) { drops += 1 }
 }
 impl Counter {

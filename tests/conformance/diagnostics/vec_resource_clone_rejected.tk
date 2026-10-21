@@ -2,10 +2,10 @@ import core/string::{string}
 import core/traits::{@Encap}
 import std/vec::{Vec}
 
-shape Resource(name: string)
+shape Resource(pub name: string)
 
 impl Resource@Encap {
-    pub name
+
     fn drop(self#) {}
 }
 

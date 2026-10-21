@@ -2,7 +2,7 @@ pub trait @SecretIdentity {
     fn get_secret(self) -> i32
 }
 
-pub shape Spy(id: i32)
+pub shape Spy(pub id: i32)
 
 impl Spy@SecretIdentity {
     fn get_secret(self) -> i32 {

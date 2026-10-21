@@ -1,9 +1,9 @@
 import core/traits::{@Encap}
 
-pub shape Token(value: i32)
+pub shape Token(pub value: i32)
 
 impl Token@Encap {
-    pub value
+
 
     fn drop(self#) {}
 }

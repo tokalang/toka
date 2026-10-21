@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/Sema.h"
 #include "toka/InterfaceBody.h"
+#include "toka/InterfaceVersion.h"
 #include "toka/TKIExporter.h"
 #include "toka/CanonicalDeclarationWitness.h"
 #include "toka/DiagnosticEngine.h"
@@ -678,6 +679,8 @@ TraitDecl *Sema::findVisibleTraitDecl(const std::string &traitName,
     if (!symbol->second.IsTraitName || !symbol->second.ASTPtr)
       return nullptr;
     auto *trait = static_cast<TraitDecl *>(symbol->second.ASTPtr);
+    if (!isDeclAccessible(trait, trait->Vis, loc))
+      return nullptr;
     symbol->second.HasBeenUsed = true;
     if (symbol->second.ImportingDecl) {
       const_cast<ImportDecl *>(symbol->second.ImportingDecl)->HasBeenUsed =
@@ -750,6 +753,8 @@ ShapeDecl *Sema::findVisibleShapeDecl(const std::string &shapeName,
           symbol->second.ASTPtr);
     }
     if (!shape)
+      return nullptr;
+    if (!isDeclAccessible(shape, shape->Vis, loc))
       return nullptr;
 
     symbol->second.HasBeenUsed = true;
@@ -1371,6 +1376,29 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
     HasError = true;
     return;
   }
+  if (!impl->EncapEntries.empty()) {
+    bool hasInlineFieldVis = false;
+    for (const auto &m : shape->Members) {
+      if (m.HasExplicitVisibility) {
+        hasInlineFieldVis = true;
+        break;
+      }
+    }
+    if (hasInlineFieldVis) {
+      DiagnosticEngine::report(
+          impl->Loc, DiagID::ERR_GENERIC_SEMA,
+          "Cannot mix inline shape field visibility with '@Encap' field grant list ('pub ...')");
+      HasError = true;
+      return;
+    }
+    if (getActiveEncapEpoch() == "0.19") {
+      DiagnosticEngine::report(
+          impl->Loc, DiagID::ERR_GENERIC_SEMA,
+          "@Encap field grant lists ('pub ...') are removed in 0.19; declare 'pub' or 'pkg' inline on shape fields");
+      HasError = true;
+      return;
+    }
+  }
   unsigned dropHooks = 0;
   for (const auto &method : impl->Methods) {
     if (method->Name == "drop")
@@ -1392,7 +1420,7 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
     const FunctionDecl *hook = nullptr;
     for (const auto &method : impl->Methods)
       if (method->Name == "drop") hook = method.get();
-    const bool validHook = hook && !hook->IsPub &&
+    const bool validHook = hook && !hook->IsPub && !hook->isPkg() &&
         hook->GenericParams.empty() && hook->Effect == EffectKind::None &&
         hook->ReturnContract.ResultKind == ReturnResultKind::Unit &&
         !hook->ReturnContract.HasArrow && hook->Args.size() == 1 &&
@@ -1453,8 +1481,177 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
   }
 }
 
+Sema::ModuleScope *Sema::getDeclOwnerScope(const ASTNode *decl) const {
+  if (!decl)
+    return nullptr;
+  auto it = DeclarationLexicalScopes.find(decl);
+  if (it != DeclarationLexicalScopes.end() && it->second)
+    return it->second;
+  if (auto *sh = dynamic_cast<const ShapeDecl *>(decl)) {
+    if (sh->InstantiationTemplate) {
+      auto tIt = DeclarationLexicalScopes.find(sh->InstantiationTemplate);
+      if (tIt != DeclarationLexicalScopes.end() && tIt->second)
+        return tIt->second;
+    }
+    if (sh->NominalLayoutOrigin) {
+      auto oIt = DeclarationLexicalScopes.find(sh->NominalLayoutOrigin);
+      if (oIt != DeclarationLexicalScopes.end() && oIt->second)
+        return oIt->second;
+    }
+  }
+  if (auto *fn = dynamic_cast<const FunctionDecl *>(decl)) {
+    if (fn->TemplateOrigin) {
+      auto tIt = DeclarationLexicalScopes.find(fn->TemplateOrigin);
+      if (tIt != DeclarationLexicalScopes.end() && tIt->second)
+        return tIt->second;
+    }
+    if (fn->InterfaceDefinitionOrigin) {
+      auto oIt = DeclarationLexicalScopes.find(fn->InterfaceDefinitionOrigin);
+      if (oIt != DeclarationLexicalScopes.end() && oIt->second)
+        return oIt->second;
+    }
+  }
+  if (decl->Loc.isValid())
+    return const_cast<Sema *>(this)->getLexicalModule(decl->Loc);
+  return nullptr;
+}
+
+Sema::ModuleScope *Sema::getEffectiveRequesterScope(SourceLocation useLoc) {
+  if (useLoc.isValid()) {
+    if (ModuleScope *locScope = getLexicalModule(useLoc))
+      return locScope;
+  }
+  if (CurrentFunction) {
+    if (ModuleScope *fnOwner = getDeclOwnerScope(CurrentFunction))
+      return fnOwner;
+  }
+  if (CurrentModule) {
+    if (!CurrentModule->ResolvedPath.empty()) {
+      if (ModuleScope *m = getModule(CurrentModule->ResolvedPath))
+        return m;
+    }
+    if (CurrentModule->Loc.isValid()) {
+      if (ModuleScope *m = getLexicalModule(CurrentModule->Loc))
+        return m;
+    }
+    if (!CurrentModule->SourcePath.empty()) {
+      if (ModuleScope *m = getModule(CurrentModule->SourcePath))
+        return m;
+    }
+  }
+  return nullptr;
+}
+
+bool Sema::isSameModuleScope(const ModuleScope *owner,
+                             const ModuleScope *requester) const {
+  if (!owner || !requester)
+    return false;
+  if (owner == requester)
+    return true;
+  if (owner->ShadowCoordinateKnown && requester->ShadowCoordinateKnown &&
+      !owner->ShadowCrateId.empty() &&
+      !owner->ShadowLogicalModulePath.empty() &&
+      owner->ShadowCrateId == requester->ShadowCrateId &&
+      owner->ShadowLogicalModulePath == requester->ShadowLogicalModulePath) {
+    return true;
+  }
+  return false;
+}
+
+bool Sema::isSameAuthoritativePackage(const ModuleScope *owner,
+                                      const ModuleScope *requester) const {
+  if (!owner || !requester)
+    return false;
+  if (!owner->ShadowCoordinateKnown || !requester->ShadowCoordinateKnown)
+    return false;
+  if (owner->ShadowCrateId.empty() || requester->ShadowCrateId.empty())
+    return false;
+  return owner->ShadowCrateId == requester->ShadowCrateId;
+}
+
+bool Sema::isVisibilityAccessible(Visibility vis, const ModuleScope *owner,
+                                  const ModuleScope *requester) const {
+  if (vis == Visibility::Public)
+    return true;
+  if (vis == Visibility::Package)
+    return isSameAuthoritativePackage(owner, requester);
+  return isSameModuleScope(owner, requester);
+}
+
+bool Sema::isDeclAccessible(const ASTNode *decl, Visibility vis,
+                            SourceLocation useLoc) {
+  if (m_DisableVisibilityCheck)
+    return true;
+  if (vis == Visibility::Public)
+    return true;
+  if (!decl)
+    return true;
+  ModuleScope *owner = getDeclOwnerScope(decl);
+  ModuleScope *requester = getEffectiveRequesterScope(useLoc);
+  return isVisibilityAccessible(vis, owner, requester);
+}
+
 bool Sema::canNameEncapField(const ShapeDecl *shape, const std::string &field,
                              SourceLocation useLoc) {
+  if (m_DisableVisibilityCheck || !shape)
+    return true;
+
+  const ShapeDecl *originShape = shape;
+  while (originShape &&
+         (originShape->NominalLayoutOrigin ||
+          originShape->InstantiationTemplate)) {
+    if (originShape->NominalLayoutOrigin)
+      originShape = originShape->NominalLayoutOrigin;
+    else
+      originShape = originShape->InstantiationTemplate;
+  }
+  if (!originShape)
+    originShape = shape;
+
+  // Anonymous records synthesized by the compiler have public structural fields.
+  if (originShape->Name.rfind("__Toka_Anon_Rec_", 0) == 0 ||
+      originShape->Name.rfind("__Closure_", 0) == 0 ||
+      (!originShape->Name.empty() && originShape->Name.front() == '(')) {
+    return true;
+  }
+
+  bool hasInlineFieldVis = false;
+  for (const auto &m : originShape->Members) {
+    if (m.HasExplicitVisibility) {
+      hasInlineFieldVis = true;
+      break;
+    }
+  }
+
+  ModuleScope *owner = getDeclOwnerScope(originShape);
+  const bool use019InlineRules =
+      hasInlineFieldVis || getActiveEncapEpoch() == "0.19";
+  if (use019InlineRules) {
+    if (originShape->Kind != ShapeKind::Struct)
+      return true;
+
+    const ShapeMember *foundMember = nullptr;
+    for (const auto &m : originShape->Members) {
+      if (Type::stripMorphology(m.Name) == field || m.Name == field) {
+        foundMember = &m;
+        break;
+      }
+    }
+    if (!foundMember && originShape != shape) {
+      for (const auto &m : shape->Members) {
+        if (Type::stripMorphology(m.Name) == field || m.Name == field) {
+          foundMember = &m;
+          break;
+        }
+      }
+    }
+    if (!foundMember)
+      return true;
+
+    ModuleScope *requester = getEffectiveRequesterScope(useLoc);
+    return isVisibilityAccessible(foundMember->Vis, owner, requester);
+  }
+
   auto policyIt = Slice2PolicyMap.find(shape);
   const Slice2Policy *policyPtr =
       policyIt == Slice2PolicyMap.end() ? nullptr : &policyIt->second;
@@ -1973,32 +2170,57 @@ void Sema::recordSlice5InterfaceFacts(Module &M) {
   M.CanonicalOutcomeDeclarationWitnesses.clear();
   for (const auto &shape : M.Shapes) {
     const std::string typeName = shape->Name;
-    std::function<void(const ShapeMember &, const std::string &)> recordField;
-    recordField = [&](const ShapeMember &member, const std::string &path) {
-      M.InterfaceV2Facts.push_back("field_graph: " + typeName + "." +
-                                   path + " = " +
-                                   synthesizePhysicalType(member));
+    std::function<void(const ShapeMember &, const std::string &, bool)> recordField;
+    recordField = [&](const ShapeMember &member, const std::string &path,
+                      bool isTopStructField) {
+      std::string entry = "field_graph: " + typeName + "." + path + " = " +
+                          synthesizePhysicalType(member);
+      if (isTopStructField && shape->Kind == ShapeKind::Struct &&
+          getActiveEncapEpoch() == "0.19") {
+        const char *visStr = member.Vis == Visibility::Public
+                                 ? "pub"
+                                 : (member.Vis == Visibility::Package ? "pkg" : "private");
+        entry += std::string(" [") + visStr + "]";
+      }
+      M.InterfaceV2Facts.push_back(std::move(entry));
       for (size_t index = 0; index < member.SubMembers.size(); ++index) {
         const auto &submember = member.SubMembers[index];
         const std::string child = submember.Name.empty()
             ? std::to_string(index)
             : submember.Name;
-        recordField(submember, path + "." + child);
+        recordField(submember, path + "." + child, false);
       }
     };
     for (size_t index = 0; index < shape->Members.size(); ++index) {
       const auto &member = shape->Members[index];
       const std::string name = member.Name.empty() ? std::to_string(index)
                                                     : member.Name;
-      recordField(member, name);
+      recordField(member, name, true);
     }
 
     auto policy = Slice2PolicyMap.find(shape.get());
     if (policy != Slice2PolicyMap.end()) {
+      bool hasInlineFieldVis = false;
+      for (const auto &member : shape->Members) {
+        if (member.HasExplicitVisibility) {
+          hasInlineFieldVis = true;
+          break;
+        }
+      }
       std::vector<std::string> grants;
-      for (const auto &entry : policy->second.Entries) {
-        for (const auto &field : entry.Fields)
-          grants.push_back("global:" + field);
+      if ((getActiveEncapEpoch() == "0.19" || hasInlineFieldVis) &&
+          shape->Kind == ShapeKind::Struct) {
+        for (const auto &member : shape->Members) {
+          if (member.Vis == Visibility::Public)
+            grants.push_back("global:" + Type::stripMorphology(member.Name));
+          else if (member.Vis == Visibility::Package)
+            grants.push_back("pkg:" + Type::stripMorphology(member.Name));
+        }
+      } else {
+        for (const auto &entry : policy->second.Entries) {
+          for (const auto &field : entry.Fields)
+            grants.push_back("global:" + field);
+        }
       }
       std::sort(grants.begin(), grants.end());
       std::string record = "policy: " + typeName + " =";
@@ -2232,9 +2454,18 @@ bool Sema::isTypeNameVisible(const std::string &typeName, SourceLocation loc) {
       return false;
     }
     auto *target = static_cast<ModuleScope *>(moduleInfo->ReferencedModule);
-    bool visible = target->Shapes.count(targetName) ||
-                   target->TypeAliases.count(targetName) ||
-                   target->Traits.count(targetName);
+    bool visible = false;
+    if (target->Shapes.count(targetName)) {
+      ShapeDecl *sh = target->Shapes[targetName];
+      visible = sh && isDeclAccessible(sh, sh->Vis, loc);
+    } else if (target->TypeAliases.count(targetName)) {
+      const auto &ai = target->TypeAliases[targetName];
+      visible = !ai.Declaration ||
+                isDeclAccessible(ai.Declaration, ai.Declaration->Vis, loc);
+    } else if (target->Traits.count(targetName)) {
+      TraitDecl *tr = target->Traits[targetName];
+      visible = tr && isDeclAccessible(tr, tr->Vis, loc);
+    }
     if (visible) {
       moduleInfo->HasBeenUsed = true;
       if (moduleInfo->ImportingDecl) {
@@ -2927,6 +3158,7 @@ bool Sema::checkModule(Module &M) {
   registerGlobals(M);
   // 2. Shape Analysis Pass (Safety Enforcement)
   analyzeShapes(M);
+  validateExposureTypeClosure(M);
   if (m_AuthorityFactsSession) {
     auto storeBuildBefore = captureAuthorityParentSentinel();
     auto candidateStore = buildAuthorityCleanupClassStore();
@@ -3988,9 +4220,18 @@ void Sema::declareGlobals(Module &M) {
         ms.LexicalTypes[name] = info;
       }
     };
+    auto canPreviewImport = [&](Visibility vis) -> bool {
+      if (Imp->IsImplicit && target->IsTrustedSystemModule)
+        return true;
+      if (getActiveEncapEpoch() == "0.19" || vis == Visibility::Package)
+        return isVisibilityAccessible(vis, target, &ms);
+      return true;
+    };
     auto bindFunction = [&](const std::string &name, FunctionDecl *fn) {
+      if (!fn || !canPreviewImport(fn->Vis))
+        return;
       bindValue(name, toka::Type::fromString("fn"), fn);
-      if (Imp->IsPub)
+      if (Imp->IsPub && fn->Vis == Visibility::Public)
         ms.Functions[name] = fn;
     };
     auto bindExtern = [&](const std::string &name, ExternDecl *ext) {
@@ -3999,25 +4240,35 @@ void Sema::declareGlobals(Module &M) {
         ms.Externs[name] = ext;
     };
     auto bindShape = [&](const std::string &name, ShapeDecl *shape) {
+      if (!shape || !canPreviewImport(shape->Vis))
+        return;
       bindType(name, shape);
-      if (Imp->IsPub)
+      if (Imp->IsPub && shape->Vis == Visibility::Public)
         ms.Shapes[name] = shape;
     };
     auto bindAlias = [&](const std::string &name,
                          const AliasInfo &alias) {
+      Visibility aliasVis =
+          alias.Declaration ? alias.Declaration->Vis : Visibility::Public;
+      if (!canPreviewImport(aliasVis))
+        return;
       bindType(name, nullptr);
-      if (Imp->IsPub)
+      if (Imp->IsPub && aliasVis == Visibility::Public)
         ms.TypeAliases[name] = alias;
     };
     auto bindTrait = [&](const std::string &name, TraitDecl *trait) {
+      if (!trait || !canPreviewImport(trait->Vis))
+        return;
       bindType(name, trait);
       auto symbol = ms.LexicalTypes.find(name);
       if (symbol != ms.LexicalTypes.end() && symbol->second.ASTPtr == trait)
         symbol->second.IsTraitName = true;
-      if (Imp->IsPub)
+      if (Imp->IsPub && trait->Vis == Visibility::Public)
         ms.Traits[name] = trait;
     };
     auto bindGlobal = [&](const std::string &name, VariableDecl *global) {
+      if (!global || !canPreviewImport(global->Vis))
+        return;
       bindValue(name,
                 toka::Type::fromString(global->TypeName.empty()
                                            ? "unknown"
@@ -4028,7 +4279,7 @@ void Sema::declareGlobals(Module &M) {
         symbol->second.CodegenName = global->Name;
         symbol->second.DeclLoc = global->Loc;
       }
-      if (Imp->IsPub)
+      if (Imp->IsPub && global->Vis == Visibility::Public)
         ms.Globals[name] = global;
     };
 
@@ -4443,11 +4694,34 @@ void Sema::registerGlobals(Module &M) {
         CurrentScope->define(modName, info);
       }
     } else {
+      auto canImportSymbol = [&](Visibility vis) -> bool {
+        if (Imp->IsImplicit && target->IsTrustedSystemModule)
+          return true;
+        if (getActiveEncapEpoch() == "0.19" || vis == Visibility::Package)
+          return isVisibilityAccessible(vis, target, &ms);
+        return true;
+      };
+      auto checkPubReexport = [&](const std::string &symName,
+                                  Visibility vis) -> bool {
+        if (!Imp->IsPub)
+          return false;
+        if (vis != Visibility::Public) {
+          DiagnosticEngine::report(
+              getLoc(Imp.get()), DiagID::ERR_GENERIC_SEMA,
+              "Cannot publicly re-export non-public symbol '" + symName +
+                  "' with 'pub import'");
+          HasError = true;
+          return false;
+        }
+        return true;
+      };
       // 2. Specific Import: import std/io::println
       for (auto &item : Imp->Items) {
         if (item.Symbol == "*") {
           // Import all functions
           for (auto const &[name, fn] : target->Functions) {
+            if (!fn || !canImportSymbol(fn->Vis))
+              continue;
             std::string actualName = item.Alias.empty() ? name : item.Alias;
             if (CurrentScope->Symbols.count(actualName)) {
               if (CurrentScope->Symbols[actualName].ASTPtr != fn) {
@@ -4473,40 +4747,48 @@ void Sema::registerGlobals(Module &M) {
               fnInfo.ImportingDecl = Imp.get();
               fnInfo.ASTPtr = fn;
               CurrentScope->define(actualName, fnInfo);
-              if (Imp->IsPub) {
+              if (Imp->IsPub && fn->Vis == Visibility::Public) {
                 ms.Functions[actualName] = fn;
               }
             }
           }
           // Import all shapes
           for (auto const &[name, sh] : target->Shapes) {
+            if (!sh || !canImportSymbol(sh->Vis))
+              continue;
             if (!importTypeName(name, sh))
               continue;
             ShapeMap[name] =
                 sh; // Still needs to be in global maps for resolution
             ShapeImportMap[name] = Imp.get(); // [NEW]
-            if (Imp->IsPub) {
+            if (Imp->IsPub && sh->Vis == Visibility::Public) {
               ms.Shapes[name] = sh;
             }
           }
           // Import all aliases
           for (auto const &[name, ai] : target->TypeAliases) {
+            Visibility aliasVis =
+                ai.Declaration ? ai.Declaration->Vis : Visibility::Public;
+            if (!canImportSymbol(aliasVis))
+              continue;
             if (!importTypeName(name, nullptr))
               continue;
             TypeAliasMap[name] = ai;
             ShapeImportMap[name] = Imp.get(); // [NEW]
-            if (Imp->IsPub) {
+            if (Imp->IsPub && aliasVis == Visibility::Public) {
               ms.TypeAliases[name] = ai;
             }
           }
           // Import all traits
           for (auto const &[name, trait] : target->Traits) {
+            if (!trait || !canImportSymbol(trait->Vis))
+              continue;
             if (!importTypeName(name, trait))
               continue;
             ms.LexicalTypes[name].IsTraitName = true;
             TraitMap[name] = trait;
             ShapeImportMap[name] = Imp.get(); // [NEW]
-            if (Imp->IsPub) {
+            if (Imp->IsPub && trait->Vis == Visibility::Public) {
               ms.Traits[name] = trait;
             }
           }
@@ -4543,6 +4825,8 @@ void Sema::registerGlobals(Module &M) {
           }
           // Import all globals (constants)
           for (auto const &[name, v] : target->Globals) {
+            if (!v || !canImportSymbol(v->Vis))
+              continue;
             BindingPermission Permission = v->Permission;
             // Keep imported globals behavior-identical to the previous path:
             // existing TypeName prefixes are preserved and blocked markers were
@@ -4575,7 +4859,7 @@ void Sema::registerGlobals(Module &M) {
               }
             } else {
               CurrentScope->define(actualName, globalInfo);
-              if (Imp->IsPub) {
+              if (Imp->IsPub && v->Vis == Visibility::Public) {
                 ms.Globals[actualName] = v;
               }
             }
@@ -4592,6 +4876,16 @@ void Sema::registerGlobals(Module &M) {
 
           if (target->Functions.count(item.Symbol)) {
             auto *fn = target->Functions[item.Symbol];
+            found = true;
+            if (!canImportSymbol(fn->Vis)) {
+              DiagnosticEngine::report(
+                  getLoc(Imp.get()), DiagID::ERR_GENERIC_SEMA,
+                  "Symbol '" + item.Symbol +
+                      "' is not visible from module '" + Imp->PhysicalPath +
+                      "'");
+              HasError = true;
+              continue;
+            }
             if (CurrentScope->Symbols.count(name)) {
               if (CurrentScope->Symbols[name].ASTPtr != fn) {
                 std::string existingType = CurrentScope->Symbols[name].TypeObj->toString();
@@ -4615,41 +4909,72 @@ void Sema::registerGlobals(Module &M) {
               fnInfo.ImportingDecl = Imp.get();
               fnInfo.ASTPtr = fn;
               CurrentScope->define(name, fnInfo);
-              if (Imp->IsPub) {
+              if (checkPubReexport(item.Symbol, fn->Vis)) {
                 ms.Functions[name] = fn;
               }
             }
-            found = true;
           } else if (target->Shapes.count(item.Symbol)) {
-            if (!importTypeName(name, target->Shapes[item.Symbol]))
-              continue;
-            ShapeMap[name] = target->Shapes[item.Symbol];
-            ShapeImportMap[name] = Imp.get(); // [NEW]
-            if (Imp->IsPub) {
-              ms.Shapes[name] = target->Shapes[item.Symbol];
-            }
+            auto *sh = target->Shapes[item.Symbol];
             found = true;
+            if (!canImportSymbol(sh->Vis)) {
+              DiagnosticEngine::report(
+                  getLoc(Imp.get()), DiagID::ERR_PRIVATE_TYPE,
+                  item.Symbol,
+                  Imp->PhysicalPath + "' (symbol is not visible)");
+              HasError = true;
+              continue;
+            }
+            if (!importTypeName(name, sh))
+              continue;
+            ShapeMap[name] = sh;
+            ShapeImportMap[name] = Imp.get(); // [NEW]
+            if (checkPubReexport(item.Symbol, sh->Vis)) {
+              ms.Shapes[name] = sh;
+            }
           } else if (target->TypeAliases.count(item.Symbol)) {
+            const auto &ai = target->TypeAliases[item.Symbol];
+            Visibility aliasVis =
+                ai.Declaration ? ai.Declaration->Vis : Visibility::Public;
+            found = true;
+            if (!canImportSymbol(aliasVis)) {
+              DiagnosticEngine::report(
+                  getLoc(Imp.get()), DiagID::ERR_GENERIC_SEMA,
+                  "Symbol '" + item.Symbol +
+                      "' is not visible from module '" + Imp->PhysicalPath +
+                      "'");
+              HasError = true;
+              continue;
+            }
             if (!importTypeName(name, nullptr))
               continue;
-            TypeAliasMap[name] = target->TypeAliases[item.Symbol];
+            TypeAliasMap[name] = ai;
             ShapeImportMap[name] = Imp.get(); // [NEW]
-            if (Imp->IsPub) {
-              ms.TypeAliases[name] = target->TypeAliases[item.Symbol];
+            if (checkPubReexport(item.Symbol, aliasVis)) {
+              ms.TypeAliases[name] = ai;
             }
-            found = true;
           } else if (target->Traits.count(lookupSym)) {
-            if (!importTypeName(name, target->Traits[lookupSym]))
+            auto *tr = target->Traits[lookupSym];
+            found = true;
+            if (!canImportSymbol(tr->Vis)) {
+              DiagnosticEngine::report(
+                  getLoc(Imp.get()), DiagID::ERR_GENERIC_SEMA,
+                  "Symbol '" + item.Symbol +
+                      "' is not visible from module '" + Imp->PhysicalPath +
+                      "'");
+              HasError = true;
+              continue;
+            }
+            if (!importTypeName(name, tr))
               continue;
             ms.LexicalTypes[name].IsTraitName = true;
-            TraitMap[name] = target->Traits[lookupSym];
+            TraitMap[name] = tr;
             ShapeImportMap[name] = Imp.get(); // [NEW]
-            if (Imp->IsPub) {
-              ms.Traits[name] = target->Traits[lookupSym];
+            if (checkPubReexport(item.Symbol, tr->Vis)) {
+              ms.Traits[name] = tr;
             }
-            found = true;
           } else if (target->Externs.count(item.Symbol)) {
             auto *ext = target->Externs[item.Symbol];
+            found = true;
             ExternMap[name] = ext;
             if (CurrentScope->Symbols.count(name)) {
               if (CurrentScope->Symbols[name].ASTPtr != ext) {
@@ -4678,9 +5003,18 @@ void Sema::registerGlobals(Module &M) {
                 ms.Externs[name] = ext;
               }
             }
-            found = true;
           } else if (target->Globals.count(item.Symbol)) {
             auto *v = target->Globals[item.Symbol];
+            found = true;
+            if (!canImportSymbol(v->Vis)) {
+              DiagnosticEngine::report(
+                  getLoc(Imp.get()), DiagID::ERR_GENERIC_SEMA,
+                  "Symbol '" + item.Symbol +
+                      "' is not visible from module '" + Imp->PhysicalPath +
+                      "'");
+              HasError = true;
+              continue;
+            }
             BindingPermission Permission = v->Permission;
             // Keep imported globals behavior-identical to the previous path:
             // existing TypeName prefixes are preserved and blocked markers were
@@ -4711,11 +5045,10 @@ void Sema::registerGlobals(Module &M) {
               }
             } else {
               CurrentScope->define(name, globalInfo);
-              if (Imp->IsPub) {
+              if (checkPubReexport(item.Symbol, v->Vis)) {
                 ms.Globals[name] = v;
               }
             }
-            found = true;
           }
 
           if (!found) {
@@ -5046,9 +5379,16 @@ void Sema::registerImpl(ImplDecl *Impl) {
             }
           }
           if (ImplMethod) {
-            if (ImplMethod->IsPub != Method->IsPub) {
-              std::string traitVis = Method->IsPub ? "pub" : "private";
-              std::string implVis = ImplMethod->IsPub ? "pub" : "private";
+            if (ImplMethod->Vis != Method->Vis) {
+              auto visLabel = [](Visibility v) -> std::string {
+                if (v == Visibility::Public)
+                  return "pub";
+                if (v == Visibility::Package)
+                  return "pkg";
+                return "private";
+              };
+              std::string traitVis = visLabel(Method->Vis);
+              std::string implVis = visLabel(ImplMethod->Vis);
               DiagnosticEngine::report(getLoc(ImplMethod),
                                        DiagID::ERR_SIGNATURE_MISMATCH,
                                        Method->Name, traitVis, implVis);
@@ -9159,38 +9499,433 @@ bool Sema::checkVisibility(ASTNode *Node, ShapeDecl *SD) {
   if (!SD)
     return true;
 
-  // Visibility Check Logic
-  std::string sdFile =
-      DiagnosticEngine::SrcMgr->getFullSourceLoc(SD->Loc).FileName;
-  std::string nodeFile =
-      DiagnosticEngine::SrcMgr->getFullSourceLoc(Node->Loc).FileName;
+  const ShapeDecl *originSD = SD;
+  while (originSD &&
+         (originSD->NominalLayoutOrigin || originSD->InstantiationTemplate)) {
+    if (originSD->NominalLayoutOrigin)
+      originSD = originSD->NominalLayoutOrigin;
+    else
+      originSD = originSD->InstantiationTemplate;
+  }
+  if (!originSD)
+    originSD = SD;
 
-  if (!SD->IsPub && sdFile != nodeFile) {
-    bool sameModule = false;
-    if (CurrentModule && !CurrentModule->Shapes.empty()) {
-      for (const auto &shapeInModule : CurrentModule->Shapes) {
-        if (DiagnosticEngine::SrcMgr->getFullSourceLoc(shapeInModule->Loc)
-                .FileName == sdFile) {
-          if (CurrentModule) {
-            std::string modFile =
-                DiagnosticEngine::SrcMgr->getFullSourceLoc(CurrentModule->Loc)
-                    .FileName;
-            if (modFile == sdFile) { // Simplified same-file/module check
-              sameModule = true;
-            }
+  Visibility effectiveVis = SD->Vis;
+  if (SD->IsCompilerSynthesized && originSD != SD &&
+      !SD->NominalLayoutOrigin) {
+    effectiveVis = originSD->Vis;
+  }
+
+  SourceLocation useLoc = Node ? getLoc(Node) : SourceLocation();
+  if (!isDeclAccessible(SD, effectiveVis, useLoc)) {
+    std::string sdFile =
+        DiagnosticEngine::SrcMgr->getFullSourceLoc(originSD->Loc).FileName;
+    DiagnosticEngine::report(useLoc, DiagID::ERR_PRIVATE_TYPE, SD->Name,
+                             sdFile);
+    HasError = true;
+    return false;
+  }
+  return true;
+}
+
+void Sema::validateExposureTypeClosure(Module &M) {
+  if (getActiveEncapEpoch() != "0.19")
+    return;
+
+  ModuleScope *declModule = nullptr;
+  if (!M.ResolvedPath.empty())
+    declModule = getModule(M.ResolvedPath);
+  if (!declModule && M.Loc.isValid())
+    declModule = getLexicalModule(M.Loc);
+  if (!declModule && !M.SourcePath.empty())
+    declModule = getModule(M.SourcePath);
+
+  auto isVisibilitySufficient = [&](Visibility itemVis,
+                                    const ModuleScope *itemOwner,
+                                    Visibility requiredVis) -> bool {
+    if (requiredVis == Visibility::Public)
+      return itemVis == Visibility::Public;
+    if (requiredVis == Visibility::Package) {
+      if (itemVis == Visibility::Public)
+        return true;
+      if (itemVis == Visibility::Package)
+        return isSameModuleScope(itemOwner, declModule) ||
+               isSameAuthoritativePackage(itemOwner, declModule);
+      return false;
+    }
+    return true;
+  };
+
+  auto checkTypeTree = [&](const std::shared_ptr<toka::Type> &rootType,
+                           const TypeSyntaxPtr &rootSyntax,
+                           Visibility requiredVis,
+                           const std::set<std::string> &allowedParams,
+                           SourceLocation reportLoc,
+                           const std::string &contextDesc) {
+    if (requiredVis == Visibility::Private)
+      return;
+
+    std::set<std::string> visitedNames;
+    std::set<const toka::Type *> visitedTypes;
+    std::set<const TypeSyntax *> visitedSyntax;
+
+    std::function<void(const std::shared_ptr<toka::Type> &)> walkType;
+    std::function<void(const TypeSyntaxPtr &)> walkSyntax;
+
+    auto verifyNominalName = [&](const std::string &rawName) {
+      std::string name = Type::stripMorphology(rawName);
+      if (name.rfind("cede ", 0) == 0)
+        name = name.substr(5);
+      if (name.rfind("async ", 0) == 0)
+        name = name.substr(6);
+      if (name.rfind("nul ", 0) == 0)
+        name = name.substr(4);
+      size_t lt = name.find('<');
+      if (lt != std::string::npos)
+        name = name.substr(0, lt);
+      name = trimTypeString(name);
+      if (!name.empty() && name.front() == '\'')
+        name.erase(0, 1);
+
+      if (name.empty() || name == "()" || name == "Self" || name == "void" ||
+          name == "never" || name == "str" || name == "cstr" ||
+          name == "unknown" || name.rfind("__Toka_", 0) == 0 ||
+          name.rfind("__Closure_", 0) == 0 ||
+          (!name.empty() && name.front() == '(') ||
+          allowedParams.count(name)) {
+        return;
+      }
+      auto parsedPrim = toka::Type::fromString(name);
+      if (parsedPrim && parsedPrim->typeKind == toka::Type::Primitive)
+        return;
+
+      if (!visitedNames.insert(name).second)
+        return;
+
+      if (name.rfind("dyn @", 0) == 0 || name.rfind("dyn@", 0) == 0) {
+        std::string trName =
+            getTraitFamilyName(name.substr(name.find('@') + 1));
+        TraitDecl *tr = findVisibleTraitDecl(trName, reportLoc);
+        if (!tr && declModule && declModule->Traits.count(trName))
+          tr = declModule->Traits[trName];
+        if (tr) {
+          ModuleScope *trOwner = getDeclOwnerScope(tr);
+          if (!isVisibilitySufficient(tr->Vis, trOwner, requiredVis)) {
+            DiagnosticEngine::report(
+                reportLoc, DiagID::ERR_GENERIC_SEMA,
+                contextDesc + " exposes trait '@" + tr->Name +
+                    "' with narrower visibility");
+            HasError = true;
           }
-          break;
+        }
+        return;
+      }
+
+      const AliasInfo *foundAlias = nullptr;
+      if (declModule && declModule->TypeAliases.count(name))
+        foundAlias = &declModule->TypeAliases[name];
+      else if (TypeAliasMap.count(name))
+        foundAlias = &TypeAliasMap[name];
+      if (foundAlias) {
+        if (foundAlias->IsStrong && foundAlias->Declaration) {
+          ModuleScope *aliasOwner = getDeclOwnerScope(foundAlias->Declaration);
+          if (!isVisibilitySufficient(foundAlias->Declaration->Vis, aliasOwner,
+                                      requiredVis)) {
+            DiagnosticEngine::report(
+                reportLoc, DiagID::ERR_GENERIC_SEMA,
+                contextDesc + " exposes type alias '" + name +
+                    "' with narrower visibility");
+            HasError = true;
+          }
+        }
+        if (foundAlias->TargetSyntax)
+          walkSyntax(foundAlias->TargetSyntax);
+        if (!foundAlias->Target.empty())
+          walkType(toka::Type::fromString(foundAlias->Target));
+      }
+
+      ShapeDecl *sh = nullptr;
+      if (declModule && declModule->Shapes.count(name))
+        sh = declModule->Shapes[name];
+      if (!sh)
+        sh = findVisibleShapeDecl(name, reportLoc);
+      if (!sh && ShapeMap.count(name))
+        sh = ShapeMap[name];
+      if (sh) {
+        const ShapeDecl *checkSh = sh;
+        if (checkSh->InstantiationTemplate && !checkSh->NominalLayoutOrigin)
+          checkSh = checkSh->InstantiationTemplate;
+        ModuleScope *shOwner = getDeclOwnerScope(checkSh);
+        if (!isVisibilitySufficient(checkSh->Vis, shOwner, requiredVis)) {
+          DiagnosticEngine::report(
+              reportLoc, DiagID::ERR_GENERIC_SEMA,
+              contextDesc + " exposes type '" + checkSh->Name +
+                  "' with narrower visibility");
+          HasError = true;
+        }
+      }
+
+      TraitDecl *tr = nullptr;
+      if (declModule && declModule->Traits.count(name))
+        tr = declModule->Traits[name];
+      if (!tr)
+        tr = findVisibleTraitDecl(name, reportLoc);
+      if (tr) {
+        ModuleScope *trOwner = getDeclOwnerScope(tr);
+        if (!isVisibilitySufficient(tr->Vis, trOwner, requiredVis)) {
+          DiagnosticEngine::report(
+              reportLoc, DiagID::ERR_GENERIC_SEMA,
+              contextDesc + " exposes trait '@" + tr->Name +
+                  "' with narrower visibility");
+          HasError = true;
+        }
+      }
+    };
+
+    walkSyntax = [&](const TypeSyntaxPtr &syn) {
+      if (!syn || !visitedSyntax.insert(syn.get()).second)
+        return;
+      if (syn->NodeKind == TypeSyntax::Kind::Named ||
+          syn->NodeKind == TypeSyntax::Kind::DynTrait) {
+        verifyNominalName(syn->toCanonicalString());
+      }
+      walkSyntax(syn->Subject);
+      for (const auto &arg : syn->Arguments)
+        walkSyntax(arg.Type);
+      for (const auto &elem : syn->Elements)
+        walkSyntax(elem);
+      for (const auto &field : syn->Fields)
+        walkSyntax(field.Type);
+      walkSyntax(syn->Result);
+    };
+
+    walkType = [&](const std::shared_ptr<toka::Type> &ty) {
+      if (!ty || !visitedTypes.insert(ty.get()).second)
+        return;
+      if (ty->isPointer()) {
+        walkType(ty->getPointeeType());
+        return;
+      }
+      if (auto *uninit = dynamic_cast<UninitType *>(ty.get())) {
+        walkType(uninit->InnerType);
+        return;
+      }
+      if (auto elem = ty->getArrayElementType()) {
+        walkType(elem);
+        return;
+      }
+      if (auto *miss = dynamic_cast<MissOutcomeType *>(ty.get())) {
+        walkType(miss->PayloadType);
+        return;
+      }
+      if (auto *fn = dynamic_cast<FunctionType *>(ty.get())) {
+        for (const auto &p : fn->ParamTypes)
+          walkType(p);
+        walkType(fn->ReturnType);
+        return;
+      }
+      if (auto *dynFn = dynamic_cast<DynFnType *>(ty.get())) {
+        for (const auto &p : dynFn->ParamTypes)
+          walkType(p);
+        walkType(dynFn->ReturnType);
+        return;
+      }
+      if (auto *sh = dynamic_cast<ShapeType *>(ty.get())) {
+        if (sh->Decl) {
+          const ShapeDecl *checkSh = sh->Decl;
+          if (checkSh->InstantiationTemplate && !checkSh->NominalLayoutOrigin)
+            checkSh = checkSh->InstantiationTemplate;
+          ModuleScope *shOwner = getDeclOwnerScope(checkSh);
+          if (!isVisibilitySufficient(checkSh->Vis, shOwner, requiredVis)) {
+            DiagnosticEngine::report(
+                reportLoc, DiagID::ERR_GENERIC_SEMA,
+                contextDesc + " exposes type '" + checkSh->Name +
+                    "' with narrower visibility");
+            HasError = true;
+          }
+          for (const auto &instArg : sh->Decl->InstantiationArgs)
+            walkType(instArg);
+        }
+        verifyNominalName(sh->Name);
+        for (const auto &gArg : sh->GenericArgs)
+          walkType(gArg);
+      }
+    };
+
+    walkSyntax(rootSyntax);
+    walkType(rootType);
+  };
+
+  auto collectParamSet = [](const std::vector<GenericParam> &params,
+                            std::set<std::string> &out) {
+    for (const auto &gp : params) {
+      out.insert(gp.Name);
+      if (!gp.Name.empty() && gp.Name.front() == '\'')
+        out.insert(gp.Name.substr(1));
+    }
+  };
+
+  for (const auto &shape : M.Shapes) {
+    if (!shape || shape->IsCompilerSynthesized)
+      continue;
+    std::set<std::string> allowedParams = {"Self"};
+    collectParamSet(shape->GenericParams, allowedParams);
+    if (shape->Kind == ShapeKind::Struct) {
+      for (const auto &member : shape->Members) {
+        Visibility effVis = std::min(shape->Vis, member.Vis);
+        if (effVis <= Visibility::Private)
+          continue;
+        auto memTy = getPhysicalType(member);
+        checkTypeTree(memTy, member.TypeSyntax, effVis, allowedParams,
+                      member.Loc.isValid() ? member.Loc : shape->Loc,
+                      "field '" + shape->Name + "." +
+                          Type::stripMorphology(member.Name) + "'");
+      }
+    } else if (shape->Vis > Visibility::Private) {
+      for (const auto &member : shape->Members) {
+        if (shape->Kind != ShapeKind::Enum || !member.IsUnitVariant) {
+          checkTypeTree(getPhysicalType(member), member.TypeSyntax, shape->Vis,
+                        allowedParams,
+                        member.Loc.isValid() ? member.Loc : shape->Loc,
+                        "shape '" + shape->Name + "'");
+        }
+        for (const auto &sub : member.SubMembers) {
+          checkTypeTree(getPhysicalType(sub), sub.TypeSyntax, shape->Vis,
+                        allowedParams,
+                        sub.Loc.isValid() ? sub.Loc : shape->Loc,
+                        "variant '" + shape->Name + "::" + member.Name + "'");
         }
       }
     }
-    if (!sameModule) {
-      DiagnosticEngine::report(getLoc(Node), DiagID::ERR_PRIVATE_TYPE, SD->Name,
-                               sdFile);
-      HasError = true;
-      return false;
+  }
+
+  for (const auto &alias : M.TypeAliases) {
+    if (!alias || alias->Vis <= Visibility::Private)
+      continue;
+    std::set<std::string> allowedParams;
+    collectParamSet(alias->GenericParams, allowedParams);
+    auto targetTy = alias->TargetTypeSyntax
+                        ? toka::Type::fromSyntax(alias->TargetTypeSyntax)
+                        : toka::Type::fromString(alias->TargetType);
+    checkTypeTree(targetTy, alias->TargetTypeSyntax, alias->Vis, allowedParams,
+                  alias->Loc, "type alias '" + alias->Name + "'");
+  }
+
+  for (const auto &fn : M.Functions) {
+    if (!fn || fn->Vis <= Visibility::Private)
+      continue;
+    std::set<std::string> allowedParams;
+    collectParamSet(fn->GenericParams, allowedParams);
+    for (const auto &arg : fn->Args) {
+      auto argTy = arg.ResolvedType
+                       ? arg.ResolvedType
+                       : Sema::synthesizePhysicalTypeObject(arg, false);
+      checkTypeTree(argTy, arg.TypeSyntax, fn->Vis, allowedParams,
+                    arg.Loc.isValid() ? arg.Loc : fn->Loc,
+                    "function '" + fn->Name + "' parameter '" + arg.Name + "'");
+    }
+    auto retTy = fn->ResolvedReturnType
+                     ? fn->ResolvedReturnType
+                     : (fn->ReturnTypeSyntax
+                            ? toka::Type::fromSyntax(fn->ReturnTypeSyntax)
+                            : toka::Type::fromString(fn->ReturnType));
+    checkTypeTree(retTy, fn->ReturnTypeSyntax, fn->Vis, allowedParams, fn->Loc,
+                  "function '" + fn->Name + "' return type");
+  }
+
+  for (const auto &trait : M.Traits) {
+    if (!trait || trait->Vis <= Visibility::Private)
+      continue;
+    std::set<std::string> allowedParams = {"Self"};
+    collectParamSet(trait->GenericParams, allowedParams);
+    for (const auto &assoc : trait->AssociatedTypes)
+      allowedParams.insert(assoc.Name);
+    for (const auto &method : trait->Methods) {
+      if (!method)
+        continue;
+      std::set<std::string> methodParams = allowedParams;
+      collectParamSet(method->GenericParams, methodParams);
+      for (const auto &arg : method->Args) {
+        if (Type::stripMorphology(arg.Name) == "self")
+          continue;
+        auto argTy = arg.ResolvedType
+                         ? arg.ResolvedType
+                         : Sema::synthesizePhysicalTypeObject(arg, false);
+        checkTypeTree(argTy, arg.TypeSyntax, trait->Vis, methodParams,
+                      method->Loc,
+                      "trait method '" + trait->Name + "::" + method->Name +
+                          "'");
+      }
+      auto retTy =
+          method->ResolvedReturnType
+              ? method->ResolvedReturnType
+              : (method->ReturnTypeSyntax
+                     ? toka::Type::fromSyntax(method->ReturnTypeSyntax)
+                     : toka::Type::fromString(method->ReturnType));
+      checkTypeTree(retTy, method->ReturnTypeSyntax, trait->Vis, methodParams,
+                    method->Loc,
+                    "trait method '" + trait->Name + "::" + method->Name +
+                        "' return type");
     }
   }
-  return true;
+
+  for (const auto &impl : M.Impls) {
+    if (!impl || !impl->TraitName.empty())
+      continue;
+    std::string baseOwner = impl->TypeName;
+    if (size_t lt = baseOwner.find('<'); lt != std::string::npos)
+      baseOwner.resize(lt);
+    ShapeDecl *owner =
+        impl->ResolvedOwner
+            ? impl->ResolvedOwner
+            : findVisibleShapeDecl(baseOwner, impl->Loc);
+    Visibility ownerVis = owner ? owner->Vis : Visibility::Public;
+    if (ownerVis <= Visibility::Private)
+      continue;
+    std::set<std::string> allowedParams = {"Self"};
+    collectParamSet(impl->GenericParams, allowedParams);
+    if (owner)
+      collectParamSet(owner->GenericParams, allowedParams);
+    for (const auto &method : impl->Methods) {
+      if (!method)
+        continue;
+      Visibility effVis = std::min(ownerVis, method->Vis);
+      if (effVis <= Visibility::Private)
+        continue;
+      std::set<std::string> methodParams = allowedParams;
+      collectParamSet(method->GenericParams, methodParams);
+      for (const auto &arg : method->Args) {
+        if (Type::stripMorphology(arg.Name) == "self")
+          continue;
+        auto argTy = arg.ResolvedType
+                         ? arg.ResolvedType
+                         : Sema::synthesizePhysicalTypeObject(arg, false);
+        checkTypeTree(argTy, arg.TypeSyntax, effVis, methodParams, method->Loc,
+                      "method '" + method->Name + "'");
+      }
+      auto retTy =
+          method->ResolvedReturnType
+              ? method->ResolvedReturnType
+              : (method->ReturnTypeSyntax
+                     ? toka::Type::fromSyntax(method->ReturnTypeSyntax)
+                     : toka::Type::fromString(method->ReturnType));
+      checkTypeTree(retTy, method->ReturnTypeSyntax, effVis, methodParams,
+                    method->Loc, "method '" + method->Name + "' return type");
+    }
+  }
+
+  for (const auto &g : M.Globals) {
+    auto *v = dynamic_cast<VariableDecl *>(g.get());
+    if (!v || v->Vis <= Visibility::Private)
+      continue;
+    auto gTy = v->ResolvedType
+                   ? v->ResolvedType
+                   : (v->DeclaredTypeSyntax
+                          ? toka::Type::fromSyntax(v->DeclaredTypeSyntax)
+                          : toka::Type::fromString(v->TypeName));
+    checkTypeTree(gTy, v->DeclaredTypeSyntax, v->Vis, {}, v->Loc,
+                  "global '" + v->Name + "'");
+  }
 }
 
 bool Sema::isBorrowLikeType(std::shared_ptr<toka::Type> type) const {

@@ -3,7 +3,7 @@ import std/io::{println}
 import core/types::{ADDR0}
 
 // A shape that tracks cloning
-shape Tracker (
+pub shape Tracker (
     id: i32,
     cloned: bool
 )
