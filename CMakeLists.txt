@@ -6,7 +6,7 @@ if(APPLE)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-w")
 endif()
 
-project(TokaCompiler VERSION 0.18.1 LANGUAGES C CXX)
+project(TokaCompiler VERSION 0.19.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CTest)
 # Keep ordinary reconfiguration on the version declared above.  A cached
@@ -734,6 +734,11 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tools/scripts/test_018_stage1_verification.py
                 --build-dir ${CMAKE_BINARY_DIR})
+        add_test(NAME toka_019_encap_visibility
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/scripts/test_019_stage2_visibility_sema.py
+                --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(toka_019_encap_visibility PROPERTIES TIMEOUT 300)
         set(_toka_compiler_driven_tests
             toka_call_transfer_shadow_m1
             toka_generic_body_call_qualification_stage0
@@ -762,7 +767,8 @@ if(BUILD_TESTING)
             toka_task_lifetime_escape
             toka_scoped_borrowed_tasks
             toka_compositional_convergence
-            toka_018_stage1_verification)
+            toka_018_stage1_verification
+            toka_019_encap_visibility)
         set_tests_properties(${_toka_compiler_driven_tests} PROPERTIES
             ENVIRONMENT "TOKA_LIB=${CMAKE_SOURCE_DIR}/lib")
     endif()

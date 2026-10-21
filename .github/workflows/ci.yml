@@ -192,6 +192,11 @@ jobs:
           set -euo pipefail
           ctest --test-dir build --output-on-failure -R "^toka_str_match_expr_0181$"
 
+      - name: Run 0.19 encapsulation and visibility gate
+        run: |
+          set -euo pipefail
+          ctest --test-dir build --output-on-failure -R "^toka_019_encap_visibility$"
+
       - name: Run G2 framed transport directed gate
         run: |
           set -euo pipefail

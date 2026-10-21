@@ -29,12 +29,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TOKAC = REPO_ROOT / "build" / "bin" / "tokac"
+_DEFAULT_CWD: Path = REPO_ROOT if REPO_ROOT.is_dir() else Path.cwd()
 
 
 def run_cmd(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         cmd,
-        cwd=str(cwd or REPO_ROOT),
+        cwd=str(cwd or _DEFAULT_CWD),
         text=True,
         capture_output=True,
     )
@@ -51,11 +52,11 @@ def expect_pass(
         src_path = Path(cmd[-1])
         base_args = [arg for arg in cmd[1:-1] if arg != "--check-only"]
         tokac_bin = cmd[0]
-        out_stem = src_path.parent / f"__ stage4_{name}"
         out_stem = src_path.parent / f"__stage4_{name}"
         obj_out = out_stem.with_suffix(".o")
         ll_out = out_stem.with_suffix(".ll")
-        exe_out = out_stem.with_suffix(".bin")
+        exe_suffix = ".exe" if (sys.platform == "win32" or os.name == "nt") else ".bin"
+        exe_out = out_stem.with_suffix(exe_suffix)
 
         mode_records = []
         for mode_label, mode_flags, prod in (
@@ -232,17 +233,35 @@ def write_text(path: Path, content: str) -> None:
 
 
 def main() -> int:
-    tokac = Path(os.environ.get("TOKAC", str(DEFAULT_TOKAC))).resolve()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Toka 0.19 encapsulation & visibility verification")
+    parser.add_argument("--build-dir", type=Path, default=None, help="Build or SDK root directory")
+    parser.add_argument("--receipts-out", type=Path, default=None, help="Output JSON path for receipts")
+    args = parser.parse_args()
+
+    if args.build_dir is not None:
+        bdir = args.build_dir.resolve()
+        cand = bdir / "bin" / "tokac"
+        if not cand.is_file() and (bdir / "bin" / "tokac.exe").is_file():
+            cand = bdir / "bin" / "tokac.exe"
+        tokac = cand
+    else:
+        tokac = Path(os.environ.get("TOKAC", str(DEFAULT_TOKAC))).resolve()
+        if not tokac.is_file() and tokac.with_suffix(".exe").is_file():
+            tokac = tokac.with_suffix(".exe")
+
     if not tokac.exists():
         print(f"tokac not found at {tokac}", file=sys.stderr)
         return 1
 
-    receipts_out: Path | None = None
-    if len(sys.argv) >= 3 and sys.argv[1] == "--receipts-out":
-        receipts_out = Path(sys.argv[2]).resolve()
+    receipts_out: Path | None = args.receipts_out.resolve() if args.receipts_out else None
 
     receipts: list[dict] = []
     tmp = Path(tempfile.mkdtemp(prefix="toka_019_stage2_"))
+    global _DEFAULT_CWD
+    if (tokac.parent.parent / "lib" / "core" / "prelude.tk").is_file():
+        _DEFAULT_CWD = tmp
     try:
         # ------------------------------------------------------------------
         # 1. SP-01: Same-module access (pub / pkg / private fields & methods)

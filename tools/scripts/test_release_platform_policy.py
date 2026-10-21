@@ -1148,6 +1148,403 @@ def valid_candidate_018(revision, label, target):
     }
 
 
+def valid_candidate_019(revision, label, target):
+    ver = label.removeprefix('v')
+    ctrl_sha = policy.expected_019_script_sha256() or 'f'*64
+    p_tki_sha = hashlib.sha256(b'provider.tki-bytes-019').hexdigest()
+    p_obj_sha = hashlib.sha256(b'provider.o-bytes-019').hexdigest()
+
+    receipts = []
+
+    for tool in ('tokac', 'toka', 'tokafmt', 'tokalsp'):
+        stdout = f'{tool} {ver}\n'
+        receipts.append({
+            'name': f'version-{tool}',
+            'argv': [f'/sdk/bin/{tool}', '--version'],
+            'cmd': [f'/sdk/bin/{tool}', '--version'],
+            'cwd': '/sdk/work',
+            'exit_code': 0,
+            'stdout': stdout,
+            'stderr': '',
+            'stdout_sha256': hashlib.sha256(stdout.encode('utf-8')).hexdigest(),
+            'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+            'execution_ms': 10.0,
+            'elapsed_seconds': 0.01,
+            'ok': True,
+            'result': 'pass',
+            'signal': None,
+            'termination': None,
+            'error': None,
+        })
+
+    receipts.append({
+        'name': 'pos-tki-provider-compile',
+        'argv': ['/sdk/bin/tokac', '-c', '--emit-interface', '/sdk/work/encap_019_provider.tk', '-o', '/sdk/work/encap_019_provider.o'],
+        'cmd': ['/sdk/bin/tokac', '-c', '--emit-interface', '/sdk/work/encap_019_provider.tk', '-o', '/sdk/work/encap_019_provider.o'],
+        'cwd': '/sdk/work',
+        'exit_code': 0,
+        'stdout': '',
+        'stderr': '',
+        'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+        'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+        'execution_ms': 15.0,
+        'ok': True,
+        'result': 'pass',
+        'signal': None,
+        'termination': None,
+        'error': None,
+    })
+
+    missing_iface_stderr = 'error[E0901]: missing interface\n'
+    missing_iface_cmd = {
+        'name': 'neg-tki-missing-iface',
+        'argv': ['/sdk/bin/tokac', '--check-only', '/sdk/work/consumer.tk'],
+        'cmd': ['/sdk/bin/tokac', '--check-only', '/sdk/work/consumer.tk'],
+        'cwd': '/sdk/work',
+        'exit_code': 1,
+        'stdout': '',
+        'stderr': missing_iface_stderr,
+        'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+        'stderr_sha256': hashlib.sha256(missing_iface_stderr.encode('utf-8')).hexdigest(),
+        'execution_ms': 12.0,
+        'ok': True,
+        'result': 'pass',
+        'expected_code': 'E0901',
+        'artifact_absent': True,
+        'signal': None,
+        'termination': None,
+        'error': None,
+    }
+    receipts.append(missing_iface_cmd)
+
+    corrupt_iface_stderr = 'error[E0901]: corrupt interface\n'
+    corrupt_iface_cmd = {
+        'name': 'neg-tki-corrupt-iface',
+        'argv': ['/sdk/bin/tokac', '--check-only', '/sdk/work/consumer.tk'],
+        'cmd': ['/sdk/bin/tokac', '--check-only', '/sdk/work/consumer.tk'],
+        'cwd': '/sdk/work',
+        'exit_code': 1,
+        'stdout': '',
+        'stderr': corrupt_iface_stderr,
+        'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+        'stderr_sha256': hashlib.sha256(corrupt_iface_stderr.encode('utf-8')).hexdigest(),
+        'execution_ms': 12.0,
+        'ok': True,
+        'result': 'pass',
+        'expected_code': 'E0901',
+        'artifact_absent': True,
+        'signal': None,
+        'termination': None,
+        'error': None,
+    }
+    receipts.append(corrupt_iface_cmd)
+
+    format5_iface_stderr = 'error[E0901]: Incompatible or stale interface file: encap_019_provider.tki (Interface format version mismatch (expected 6, got 5))\n'
+    format5_iface_cmd = {
+        'name': 'neg-tki-format5-iface',
+        'argv': ['/sdk/bin/tokac', '--check-only', '/sdk/work/consumer.tk'],
+        'cmd': ['/sdk/bin/tokac', '--check-only', '/sdk/work/consumer.tk'],
+        'cwd': '/sdk/work',
+        'exit_code': 1,
+        'stdout': '',
+        'stderr': format5_iface_stderr,
+        'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+        'stderr_sha256': hashlib.sha256(format5_iface_stderr.encode('utf-8')).hexdigest(),
+        'execution_ms': 12.0,
+        'ok': True,
+        'result': 'pass',
+        'expected_code': 'E0901',
+        'artifact_absent': True,
+        'signal': None,
+        'termination': None,
+        'error': None,
+    }
+    receipts.append(format5_iface_cmd)
+
+    epoch018_iface_stderr = 'error[E0901]: Incompatible or stale interface file: encap_019_provider.tki (Interface encap_epoch mismatch (expected 0.19, got 0.18))\n'
+    epoch018_iface_cmd = {
+        'name': 'neg-tki-epoch018-iface',
+        'argv': ['/sdk/bin/tokac', '--check-only', '/sdk/work/consumer.tk'],
+        'cmd': ['/sdk/bin/tokac', '--check-only', '/sdk/work/consumer.tk'],
+        'cwd': '/sdk/work',
+        'exit_code': 1,
+        'stdout': '',
+        'stderr': epoch018_iface_stderr,
+        'stdout_sha256': hashlib.sha256(b'').hexdigest(),
+        'stderr_sha256': hashlib.sha256(epoch018_iface_stderr.encode('utf-8')).hexdigest(),
+        'execution_ms': 12.0,
+        'ok': True,
+        'result': 'pass',
+        'expected_code': 'E0901',
+        'artifact_absent': True,
+        'signal': None,
+        'termination': None,
+        'error': None,
+    }
+    receipts.append(epoch018_iface_cmd)
+
+    for cid, exp_code in policy.NEG_019_CASES:
+        err_msg = f'error[{exp_code}]: negative test rejection\n'
+        err_sha = hashlib.sha256(err_msg.encode('utf-8')).hexdigest()
+        empty_sha = hashlib.sha256(b'').hexdigest()
+        receipts.append({
+            'name': f'neg-{cid}-check-only',
+            'argv': ['/sdk/bin/tokac', '--check-only', f'/sdk/work/{cid}.tk'],
+            'cmd': ['/sdk/bin/tokac', '--check-only', f'/sdk/work/{cid}.tk'],
+            'cwd': '/sdk/work',
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': err_msg,
+            'stdout_sha256': empty_sha,
+            'stderr_sha256': err_sha,
+            'execution_ms': 10.0,
+            'ok': True,
+            'result': 'pass',
+            'expected_code': exp_code,
+            'artifact_absent': True,
+            'signal': None,
+            'termination': None,
+            'error': None,
+        })
+        receipts.append({
+            'name': f'neg-{cid}-compile-obj',
+            'argv': ['/sdk/bin/tokac', '-c', f'/sdk/work/{cid}.tk', '-o', f'/sdk/work/{cid}.o'],
+            'cmd': ['/sdk/bin/tokac', '-c', f'/sdk/work/{cid}.tk', '-o', f'/sdk/work/{cid}.o'],
+            'cwd': '/sdk/work',
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': err_msg,
+            'stdout_sha256': empty_sha,
+            'stderr_sha256': err_sha,
+            'execution_ms': 10.0,
+            'ok': True,
+            'result': 'pass',
+            'expected_code': exp_code,
+            'artifact_absent': True,
+            'signal': None,
+            'termination': None,
+            'error': None,
+        })
+        receipts.append({
+            'name': f'neg-{cid}-emit-llvm',
+            'argv': ['/sdk/bin/tokac', '--emit-llvm', f'/sdk/work/{cid}.tk', '-o', f'/sdk/work/{cid}.ll'],
+            'cmd': ['/sdk/bin/tokac', '--emit-llvm', f'/sdk/work/{cid}.tk', '-o', f'/sdk/work/{cid}.ll'],
+            'cwd': '/sdk/work',
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': err_msg,
+            'stdout_sha256': empty_sha,
+            'stderr_sha256': err_sha,
+            'execution_ms': 10.0,
+            'ok': True,
+            'result': 'pass',
+            'expected_code': exp_code,
+            'artifact_absent': True,
+            'signal': None,
+            'termination': None,
+            'error': None,
+        })
+
+    for cid in policy.POS_019_CASES:
+        empty_sha = hashlib.sha256(b'').hexdigest()
+        receipts.append({
+            'name': f'pos-{cid}-check-only',
+            'argv': ['/sdk/bin/tokac', '--check-only', f'/sdk/work/{cid}.tk'],
+            'cmd': ['/sdk/bin/tokac', '--check-only', f'/sdk/work/{cid}.tk'],
+            'cwd': '/sdk/work',
+            'exit_code': 0,
+            'stdout': '',
+            'stderr': '',
+            'stdout_sha256': empty_sha,
+            'stderr_sha256': empty_sha,
+            'execution_ms': 20.0,
+            'ok': True,
+            'result': 'pass',
+            'signal': None,
+            'termination': None,
+            'error': None,
+        })
+        receipts.append({
+            'name': f'pos-{cid}-emit-llvm',
+            'argv': ['/sdk/bin/tokac', '--emit-llvm', f'/sdk/work/{cid}.tk', '-o', f'/sdk/work/{cid}.ll'],
+            'cmd': ['/sdk/bin/tokac', '--emit-llvm', f'/sdk/work/{cid}.tk', '-o', f'/sdk/work/{cid}.ll'],
+            'cwd': '/sdk/work',
+            'exit_code': 0,
+            'stdout': '',
+            'stderr': '',
+            'stdout_sha256': empty_sha,
+            'stderr_sha256': empty_sha,
+            'execution_ms': 20.0,
+            'ok': True,
+            'result': 'pass',
+            'signal': None,
+            'termination': None,
+            'error': None,
+        })
+        receipts.append({
+            'name': f'pos-{cid}-compile-obj',
+            'argv': ['/sdk/bin/tokac', '-c', f'/sdk/work/{cid}.tk', '-o', f'/sdk/work/{cid}.o'],
+            'cmd': ['/sdk/bin/tokac', '-c', f'/sdk/work/{cid}.tk', '-o', f'/sdk/work/{cid}.o'],
+            'cwd': '/sdk/work',
+            'exit_code': 0,
+            'stdout': '',
+            'stderr': '',
+            'stdout_sha256': empty_sha,
+            'stderr_sha256': empty_sha,
+            'execution_ms': 20.0,
+            'ok': True,
+            'result': 'pass',
+            'signal': None,
+            'termination': None,
+            'error': None,
+        })
+        receipts.append({
+            'name': f'pos-{cid}-binary-build',
+            'argv': ['/sdk/bin/tokac', f'/sdk/work/{cid}.tk', '-o', f'/sdk/work/{cid}'],
+            'cmd': ['/sdk/bin/tokac', f'/sdk/work/{cid}.tk', '-o', f'/sdk/work/{cid}'],
+            'cwd': '/sdk/work',
+            'exit_code': 0,
+            'stdout': '',
+            'stderr': '',
+            'stdout_sha256': empty_sha,
+            'stderr_sha256': empty_sha,
+            'execution_ms': 25.0,
+            'ok': True,
+            'result': 'pass',
+            'signal': None,
+            'termination': None,
+            'error': None,
+        })
+        receipts.append({
+            'name': f'pos-{cid}-native-execution',
+            'argv': [f'/sdk/work/{cid}'],
+            'cmd': [f'/sdk/work/{cid}'],
+            'cwd': '/sdk/work',
+            'exit_code': 0,
+            'stdout': '',
+            'stderr': '',
+            'stdout_sha256': empty_sha,
+            'stderr_sha256': empty_sha,
+            'execution_ms': 15.0,
+            'ok': True,
+            'result': 'pass',
+            'signal': None,
+            'termination': None,
+            'error': None,
+        })
+
+    vis_stdout = 'All 41 Stage 2/4.1 verification checks PASSED.\n'
+    receipts.append({
+        'name': 'pos-019-visibility-matrix',
+        'argv': [sys.executable, '/sdk/test_019_stage2_visibility_sema.py', '--build-dir', '/sdk'],
+        'cmd': [sys.executable, '/sdk/test_019_stage2_visibility_sema.py', '--build-dir', '/sdk'],
+        'cwd': '/sdk/work',
+        'exit_code': 0,
+        'stdout': vis_stdout,
+        'stderr': '',
+        'stdout_sha256': hashlib.sha256(vis_stdout.encode('utf-8')).hexdigest(),
+        'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+        'execution_ms': 50.0,
+        'ok': True,
+        'result': 'pass',
+        'signal': None,
+        'termination': None,
+        'error': None,
+    })
+
+    conv_stdout = '60/60 convergence passed\n'
+    receipts.append({
+        'name': 'pos-compositional-convergence',
+        'argv': [sys.executable, '/sdk/test_compositional_convergence.py', '--build-dir', '/sdk'],
+        'cmd': [sys.executable, '/sdk/test_compositional_convergence.py', '--build-dir', '/sdk'],
+        'cwd': '/sdk/work',
+        'exit_code': 0,
+        'stdout': conv_stdout,
+        'stderr': '',
+        'stdout_sha256': hashlib.sha256(conv_stdout.encode('utf-8')).hexdigest(),
+        'stderr_sha256': hashlib.sha256(b'').hexdigest(),
+        'execution_ms': 50.0,
+        'ok': True,
+        'result': 'pass',
+        'signal': None,
+        'termination': None,
+        'error': None,
+    })
+
+    return {
+        'schema': 'toka.0.19-candidate-controls',
+        'version': 1,
+        'result': 'pass',
+        'candidate_revision': revision,
+        'version_label': label,
+        'target': target,
+        'build_testing': False,
+        'default_encap_epoch': '0.19',
+        'interface_format_version': 6,
+        'groups': ['G-019-encap-field-visibility'],
+        'fixtures_digest': policy.EXPECTED_019_FIXTURES_DIGEST,
+        'control_script_name': 'test_0_19_candidate.py',
+        'control_script_sha256': ctrl_sha,
+        'four_tool_versions': {
+            'tokac': f'tokac {ver}',
+            'toka': f'toka {ver}',
+            'tokafmt': f'tokafmt {ver}',
+            'tokalsp': f'tokalsp {ver}',
+        },
+        'SDK_root': '/sdk',
+        'source_hidden_tki': {
+            'provider_format_version': 6,
+            'provider_encap_epoch': '0.19',
+            'provider_tki_sha256': p_tki_sha,
+            'provider_object_sha256': p_obj_sha,
+            'consumed_tki_sha256': p_tki_sha,
+            'consumed_object_sha256': p_obj_sha,
+            'missing_interface_rejected': True,
+            'corrupt_interface_rejected': True,
+            'format5_interface_rejected': True,
+            'epoch018_interface_rejected': True,
+            'consumer_result': 'pass',
+            'provider_source_present': False,
+            'missing_interface_command': missing_iface_cmd,
+            'corrupt_interface_command': corrupt_iface_cmd,
+            'format5_interface_command': format5_iface_cmd,
+            'epoch018_interface_command': epoch018_iface_cmd,
+        },
+        'negative_controls': {
+            'total': 10,
+            'passed': 10,
+            'modes': ['--check-only', '-c', '--emit-llvm'],
+        },
+        'positive_controls': {
+            'total': 3,
+            'passed': 3,
+            'native_rc0': True,
+        },
+        'visibility_matrix': {
+            'total': 41,
+            'passed': 41,
+        },
+        'compositional_convergence': {
+            'total': 60,
+            'passed': 60,
+        },
+        'counts': {
+            'total_receipts': len(receipts),
+            'passed': len(receipts),
+            'failed': 0,
+            'groups': {
+                'version': 4,
+                'source_hidden_tki': 5,
+                'negative_controls': 30,
+                'positive_controls': 15,
+                'visibility_matrix': 1,
+                'compositional_convergence': 1,
+            },
+        },
+        'receipts': receipts,
+    }
+
+
 def fixture(root,intel=False):
     targets=policy.CORE+(policy.OPTIONAL,) if intel else policy.CORE
     archives=root/'qualified';archives.mkdir(exist_ok=True);assets=root/'assets';assets.mkdir(exist_ok=True);zips=root/'zips';zips.mkdir(exist_ok=True);metadata=[];hashes={}
@@ -1181,6 +1578,9 @@ def fixture(root,intel=False):
     if TAG.startswith('v0.18.'):
         for row in summary['reports']:
             row['candidate_018']=valid_candidate_018(SHA,TAG,row['target'])
+    if TAG.startswith('v0.19.'):
+        for row in summary['reports']:
+            row['candidate_019']=valid_candidate_019(SHA,TAG,row['target'])
     replay_receipts=[{'target':target,'result':'pass','archive_sha256':hashes['toka-%s-%s.tar.gz'%(TAG,target)],'candidate_revision':SHA,'version_label':TAG,'policy_id':policy.policy_id(TAG),'asset_source':'candidate_run','qualification_run_id':11,'qualification_run_attempt':1} for target in targets]
     if TAG.startswith('v0.13.') and TAG != 'v0.13.0':
         for r in replay_receipts:
@@ -1200,6 +1600,9 @@ def fixture(root,intel=False):
     if TAG.startswith('v0.18.'):
         for r in replay_receipts:
             r['candidate_018']=valid_candidate_018(SHA,TAG,r['target'])
+    if TAG.startswith('v0.19.'):
+        for r in replay_receipts:
+            r['candidate_019']=valid_candidate_019(SHA,TAG,r['target'])
     documents={'summary':summary,'run':{'id':11,'run_attempt':1,'status':'completed','conclusion':'success','head_sha':SHA,'path':'.github/workflows/release.yml','event':'workflow_dispatch','repository':{'full_name':'tokalang/toka'},'head_repository':{'full_name':'tokalang/toka'}},
                'draft':{'tagName':TAG,'isDraft':True,'isPrerelease':False,'assets':[{'name':name} for name in [*hashes,'SHA256SUMS']]},'artifacts':{'artifacts':metadata},
                'optional_run':{'id':21,'run_attempt':2,'head_sha':SHA,'status':'completed','conclusion':'success','event':'workflow_dispatch','path':'.github/workflows/optional_macos_x64.yml'},
