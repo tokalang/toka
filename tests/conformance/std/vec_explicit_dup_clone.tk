@@ -12,10 +12,10 @@ impl CopyValue {
     }
 }
 
-shape Resource(value: string)
+shape Resource(pub value: string)
 
 impl Resource@Encap {
-    pub value
+
 
     fn drop(self#) {
         g_drop_count += 1:i32

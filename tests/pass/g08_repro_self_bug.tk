@@ -2,14 +2,14 @@ import core/result::{Result}
 import core/traits::{ @Encap }
 import core/types::{ ADDR0 }
 
-shape MyFile(
-    *h: void
+pub shape MyFile(
+    pub *h: void
 )
 
 shape Wrapper(val: i32)
 
 impl MyFile@Encap {
-    pub h
+
 
     fn drop(self#) {}
 }

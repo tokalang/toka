@@ -1,6 +1,7 @@
 // @meta compiler_version: any
-// @meta format_version: 5
-// @meta replay_surface_hash: 48b270f471852808
+// @meta format_version: 6
+// @meta encap_epoch: 0.19
+// @meta replay_surface_hash: d65293de2df7e0eb
 // @meta target_triple: any
 // @meta source_hash: any
 // @meta identity_schema_version: 2
@@ -8,6 +9,6 @@
 // @meta logical_module_path: unbound
 // @meta resolver_binding_digest: unbound
 
-pub shape Buffer ( size: i32, tag: i32 )
+pub shape Buffer ( pub size: i32, pub tag: i32 )
 
 pub fn compute_provider(buf: Buffer) -> async i32

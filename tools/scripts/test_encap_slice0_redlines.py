@@ -137,7 +137,7 @@ def grant_inventory() -> None:
         text = source.read_text(encoding="utf-8")
         if re.search(r"^\s*pub\s*\(", text, re.MULTILINE):
             scoped.append(source.relative_to(ROOT))
-        if re.search(r"^\s*pub\s+\*", text, re.MULTILINE):
+        if re.search(r"^\s*pub\s+\*(?:\s*!|\s*(?://|\n|$))", text, re.MULTILINE):
             wildcards.append(source.relative_to(ROOT))
 
     assert not scoped

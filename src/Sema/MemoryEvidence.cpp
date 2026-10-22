@@ -162,7 +162,8 @@ std::string canonicalPayload(
   out << "{\"schema\":\"toka.trusted-memory-evidence\",\"version\":"
       << MemoryEvidenceCache::SchemaVersion << ",\"compiler_version\":\""
       << TOKA_COMPILER_INTERFACE_VERSION << "\",\"interface_format\":\""
-      << TOKA_INTERFACE_FORMAT_VERSION << "\",\"target_triple\":\""
+      << TOKA_INTERFACE_FORMAT_VERSION << "\",\"encap_epoch\":\""
+      << escapeJSON(getActiveEncapEpoch()) << "\",\"target_triple\":\""
       << escapeJSON(targetTriple) << "\",\"source_hash\":\""
       << escapeJSON(sourceHash) << "\",\"functions\":"
       << functionsJSON(summaries) << '}';

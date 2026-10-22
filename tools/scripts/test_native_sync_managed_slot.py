@@ -11,8 +11,8 @@ SOURCE = ROOT / "tests/semantics/std_thread_handoff/sync_managed_slot_replace.tk
 PREFIX = """import std/sync::{Mutex, RwMutex}
 import std/thread::thread_spawn
 auto drops# = 0:i32
-shape Token(value: i32)
-impl Token@Encap { pub value
+shape Token(pub value: i32)
+impl Token@Encap {
 fn drop(self#) { drops += 1 }
 }
 impl Token@Send {}
@@ -52,8 +52,8 @@ def main():
         cases = {"complete": SOURCE}
         cases["rhs-order"] = materialize("rhs-order", """
 auto prepared# = false
-shape Ordered(value: i32)
-impl Ordered@Encap { pub value
+shape Ordered(pub value: i32)
+impl Ordered@Encap {
 fn drop(self#) {
 if self.value == 7 { assert(prepared, "old cleanup preceded RHS preparation") }
 drops += 1

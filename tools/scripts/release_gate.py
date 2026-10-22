@@ -163,6 +163,7 @@ def parse_counts(name, output):
                 if "candidate_016" in data:counts["candidate_016"]=data["candidate_016"]
                 if "candidate_017" in data:counts["candidate_017"]=data["candidate_017"]
                 if "candidate_018" in data:counts["candidate_018"]=data["candidate_018"]
+                if "candidate_019" in data:counts["candidate_019"]=data["candidate_019"]
                 if "r3_r5" in data:counts["r3_r5"]=data["r3_r5"]
                 break
     elif name == "native_build_reference":
@@ -241,13 +242,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--version", default="v0.18.1")
+    parser.add_argument("--version", default="v0.19.0")
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
-    if not re.fullmatch(r"v0\.(?:11|12|13|14|15|16|17|18)\.(0|[1-9][0-9]*)", args.version):
-        parser.error("release label must be a canonical v0.11.x/v0.12.x/v0.13.x/v0.14.x/v0.15.x/v0.16.x/v0.17.x/v0.18.x tag")
+    if not re.fullmatch(r"v0\.(?:11|12|13|14|15|16|17|18|19)\.(0|[1-9][0-9]*)", args.version):
+        parser.error("release label must be a canonical v0.11.x/v0.12.x/v0.13.x/v0.14.x/v0.15.x/v0.16.x/v0.17.x/v0.18.x/v0.19.x tag")
 
     root = Path(__file__).resolve().parents[2]
     build_dir = (root / args.build_dir).resolve()
@@ -420,14 +421,16 @@ def main():
         )),
     )
 
-    if args.version.startswith(('v0.13.', 'v0.14.', 'v0.15.', 'v0.16.', 'v0.17.', 'v0.18.')):
+    if args.version.startswith(('v0.13.', 'v0.14.', 'v0.15.', 'v0.16.', 'v0.17.', 'v0.18.', 'v0.19.')):
         standard = work_dir/'standard-sdk-build'
         cache={}
         for line in (build_dir/'CMakeCache.txt').read_text().splitlines():
             if '=' in line and ':' in line.split('=',1)[0]:
                 key,value=line.split('=',1);cache[key.split(':',1)[0]]=value
         inherited=['-D'+key+'='+cache[key] for key in ('CMAKE_C_COMPILER','CMAKE_CXX_COMPILER','CMAKE_CXX_FLAGS','LLVM_DIR') if cache.get(key)]
-        if args.version.startswith('v0.18.'):
+        if args.version.startswith('v0.19.'):
+            controls_subdir = 'candidate-019-installed'
+        elif args.version.startswith('v0.18.'):
             controls_subdir = 'candidate-018-installed'
         elif args.version.startswith('v0.17.'):
             controls_subdir = 'candidate-017-installed'

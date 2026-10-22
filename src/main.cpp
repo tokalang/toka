@@ -116,6 +116,7 @@ void printHelp() {
       << "  --emit-obj                      Emit native object code\n"
       << "  --emit-llvm                     Emit LLVM IR\n"
       << "  --emit-interface                Emit a TKI interface\n"
+      << "  --encap-epoch=<0.18|0.19>       Select encapsulation contract epoch\n"
       << "  --encap-slice1-facts=json       Dump audit-only @Encap Slice 1 "
          "facts\n"
       << "  --link-search <path>            Add a native library search path\n"
@@ -752,6 +753,7 @@ static std::string normalizePath(const std::string &path) {
 
 int main(int argc, char **argv) {
   toka::DiagnosticEngine::reset();
+  toka::setActiveEncapEpoch(TOKA_DEFAULT_ENCAP_EPOCH);
   std::vector<std::string> searchPaths;
   std::vector<std::string> trustedSystemRoots;
   auto splitEnvPaths = [&](const char* envName, std::vector<std::string> &out) {
@@ -1199,6 +1201,26 @@ int main(int argc, char **argv) {
       dumpMemoryContracts = true;
     } else if (arg == "--encap-slice1-facts=json") {
       dumpEncapSlice1Facts = true;
+    } else if (arg == "--encap-epoch") {
+      if (i + 1 >= argc) {
+        llvm::errs() << "--encap-epoch requires an argument (0.18 or 0.19)\n";
+        return 1;
+      }
+      std::string epoch = argv[++i];
+      if (!toka::isValidEncapEpoch(epoch)) {
+        llvm::errs() << "error: unsupported --encap-epoch value '" << epoch
+                     << "' (expected 0.18 or 0.19)\n";
+        return 1;
+      }
+      toka::setActiveEncapEpoch(std::move(epoch));
+    } else if (arg.rfind("--encap-epoch=", 0) == 0) {
+      std::string epoch = arg.substr(std::string("--encap-epoch=").size());
+      if (!toka::isValidEncapEpoch(epoch)) {
+        llvm::errs() << "error: unsupported --encap-epoch value '" << epoch
+                     << "' (expected 0.18 or 0.19)\n";
+        return 1;
+      }
+      toka::setActiveEncapEpoch(std::move(epoch));
     } else if (arg == "--experimental-memory-contracts=nocapture") {
       experimentalNoCapture = true;
     } else if (arg == "--experimental-memory-contracts=readonly") {

@@ -29,7 +29,7 @@ extern fn toka_tls_accept(*handle: void, fd: i32) -> i32
 extern fn toka_tls_backend_available() -> i32
 
 // Error type for network operations
-alias NetResult<T> = Result<T, string>
+pub alias NetResult<T> = Result<T, string>
 
 // TLS context/control adapters. The OpenSSL ABI is kept below stdx; callers
 // should use TcpStream::tls_* for I/O and handshakes.
@@ -85,9 +85,9 @@ pub fn net_tls_close(*handle: void) {
 // Owner-carrying async buffer results. The buffer is returned on every path;
 // the adapter never consumes it implicitly on timeout, cancellation, or error.
 pub shape AsyncReadResult (
-    buffer#: Vec<u8>,
-    bytes_read: usize,
-    eof: bool
+    pub buffer#: Vec<u8>,
+    pub bytes_read: usize,
+    pub eof: bool
 )
 
 impl AsyncReadResult {
@@ -99,9 +99,9 @@ impl AsyncReadResult {
 }
 
 pub shape AsyncWriteResult (
-    buffer#: Vec<u8>,
-    bytes_written: usize,
-    complete: bool
+    pub buffer#: Vec<u8>,
+    pub bytes_written: usize,
+    pub complete: bool
 )
 
 impl AsyncWriteResult {
@@ -113,8 +113,8 @@ impl AsyncWriteResult {
 }
 
 pub shape AsyncIoError (
-    buffer#: Vec<u8>,
-    message: string
+    pub buffer#: Vec<u8>,
+    pub message: string
 )
 
 impl AsyncIoError {
@@ -126,7 +126,7 @@ impl AsyncIoError {
 }
 
 pub shape Ipv4Addr (
-    octets: [u8; 4]
+    pub octets: [u8; 4]
 )
 
 impl Ipv4Addr {
@@ -162,8 +162,8 @@ pub fn resolve_ipv4(host: string) -> Result<Ipv4Addr, string> {
 }
 
 pub shape SocketAddrV4 (
-    ip: Ipv4Addr,
-    port: u16
+    pub ip: Ipv4Addr,
+    pub port: u16
 )
 
 impl SocketAddrV4 {
@@ -177,8 +177,8 @@ impl SocketAddrV4 {
 // ==========================================
 
 pub shape UdpRecvInfo (
-    len: usize,
-    addr: SocketAddrV4
+    pub len: usize,
+    pub addr: SocketAddrV4
 )
 
 pub shape UdpSocket (
@@ -274,12 +274,11 @@ impl UdpSocket {
 // ==========================================
 
 pub shape TcpStream (
-    fd: i32,
-    closed: bool
+    pub fd: i32,
+    pub closed: bool
 )
 
 impl TcpStream@Encap {
-    pub fd, closed
     fn drop(self#) {
         self#.close()
     }

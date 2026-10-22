@@ -3,10 +3,10 @@ import core/str::{bytes}
 import stdx/encoding/hex
 
 pub shape Sha1 (
-    state: [u32; 5],
-    data: [u8; 64],
-    datalen: u32,
-    bitlen: u64
+    pub state: [u32; 5],
+    pub data: [u8; 64],
+    pub datalen: u32,
+    pub bitlen: u64
 )
 
 fn rotl(val: u32, n: u32) -> u32 {

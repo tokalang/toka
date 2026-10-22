@@ -1,17 +1,17 @@
 import core/traits::{@Encap}
-pub shape Token(id: i32, &drops#: i32)
-impl Token@Encap { pub id, drops fn drop(self#) { self.drops += 1 } }
+pub shape Token(pub id: i32, pub &drops#: i32)
+impl Token@Encap {fn drop(self#) { self.drops += 1 } }
 pub shape Pair(
-    left: Token,
-    right: Token
+    pub left: Token,
+    pub right: Token
 )
 pub shape SharedPair(
-    ~shared: Token,
-    owned: Token
+    pub ~shared: Token,
+    pub owned: Token
 )
 pub fn make_pair(drops#: i32) -> Pair <- drops { return Pair(left = Token(id = 1, &drops = &drops), right = Token(id = 2, &drops = &drops)) }
 
-pub shape EnumCell(value: i32)
+pub shape EnumCell(pub value: i32)
 pub shape MaybeCell(
     Some(EnumCell) = 1 |
     None = 0
@@ -21,16 +21,16 @@ pub fn make_maybe_cell() -> MaybeCell {
 }
 
 pub shape CustomPair(
-    left: Token,
-    right: Token
+    pub left: Token,
+    pub right: Token
 )
 impl CustomPair@Encap {
-    pub left, right
+
     fn drop(self#) {}
 }
 pub fn make_custom_pair(drops#: i32) -> CustomPair <- drops { return CustomPair(left = Token(id = 1, &drops = &drops), right = Token(id = 2, &drops = &drops)) }
 
-pub shape ReceiverToken(id: i32)
+pub shape ReceiverToken(pub id: i32)
 impl ReceiverToken {
     pub fn consume(cede self#) -> i32 {
         auto owned = cede self
@@ -38,4 +38,4 @@ impl ReceiverToken {
     }
 }
 
-pub shape ReceiverHolder(item#: ReceiverToken)
+pub shape ReceiverHolder(pub item#: ReceiverToken)

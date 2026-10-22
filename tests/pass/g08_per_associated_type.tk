@@ -3,7 +3,7 @@ pub trait @Slot<K> {
     pub fn get(self) -> Value
 }
 
-pub shape IntSlot(value: i32)
+pub shape IntSlot(pub value: i32)
 
 impl IntSlot@Slot<i32> {
     per type Value = i32

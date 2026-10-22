@@ -7,9 +7,9 @@ import std/vec::{Vec}
 import std/math
 
 pub shape YamlError (
-    message: string,
-    line: usize,
-    column: usize
+    pub message: string,
+    pub line: usize,
+    pub column: usize
 )
 
 impl YamlError {

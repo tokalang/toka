@@ -1,4 +1,4 @@
-pub shape Capsule(id: i32, secret: i32)
+pub shape Capsule(pub id: i32, pub secret: i32)
 
 pub fn make_capsule() -> Capsule {
     return Capsule(id = 7, secret = 11)

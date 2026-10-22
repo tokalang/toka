@@ -41,11 +41,10 @@ impl char {
 pub shape string (
     nul *#buf#: [char] = null as nul *[char],
     len#: usize = 0,
-    cap#: usize = 0
+    pub cap#: usize = 0
 )
 
 impl string@Encap {
-    pub cap
 
     fn drop(self#) {
         unsafe {

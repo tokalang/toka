@@ -8,18 +8,18 @@ import core/option::{Option}
 
 /// The shared state protected by the channel Mutex
 pub shape WaitQueue<T: @Send>(
-    queue#: RingCore<T>,
-    closed#: bool,
-    senders#: i32,
-    receivers#: i32,
-    capacity#: i32
+    pub queue#: RingCore<T>,
+    pub closed#: bool,
+    pub senders#: i32,
+    pub receivers#: i32,
+    pub capacity#: i32
 )
 
 /// The channel synchronization core
 pub shape AsyncChannel<T: @Send>(
-    state#: Mutex<WaitQueue<T> >,
-    cond_not_empty#: CondVar<WaitQueue<T> >,
-    cond_not_full#: CondVar<WaitQueue<T> >   // For future bounded channels
+    pub state#: Mutex<WaitQueue<T> >,
+    pub cond_not_empty#: CondVar<WaitQueue<T> >,
+    pub cond_not_full#: CondVar<WaitQueue<T> >   // For future bounded channels
 )
 
 /// The sender half of a channel
@@ -47,8 +47,8 @@ impl<T: @Send> WaitQueue<T> {
 }
 
 pub shape ChannelPair<T: @Send>(
-    tx#: Sender<T>,
-    rx#: Receiver<T>
+    pub tx#: Sender<T>,
+    pub rx#: Receiver<T>
 )
 
 // Private storage-construction boundary. Both public factories must use the

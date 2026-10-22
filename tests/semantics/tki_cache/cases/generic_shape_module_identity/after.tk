@@ -1,6 +1,6 @@
 pub shape Box<T>(
-    changed: i64,
-    item: T
+    pub changed: i64,
+    pub item: T
 )
 
 pub fn make_box() -> Box<i32> {

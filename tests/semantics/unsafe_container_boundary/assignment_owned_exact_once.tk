@@ -3,9 +3,9 @@ import core/string::{string}
 import core/traits::{@Encap}
 
 auto drops# = 0:i32
-shape Token(label: string)
+shape Token(pub label: string)
 impl Token@Encap {
-    pub label
+
     fn drop(self#) { drops += 1:i32 }
 }
 

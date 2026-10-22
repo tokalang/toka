@@ -1,5 +1,5 @@
-shape Container<T>(
-    value: T
+pub shape Container<T>(
+    pub value: T
 )
 
 pub alias Int = i32

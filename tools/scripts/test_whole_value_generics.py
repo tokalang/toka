@@ -176,7 +176,7 @@ def main():
 
         # A provider's symbolic Slot<T> must not be rebound to a caller's
         # same-named declaration when a generic factory result is inferred.
-        provider.write_text('''pub shape Slot<T>(value:T)
+        provider.write_text('''pub shape Slot<T>(pub value:T)
 pub fn pack<T>(cede value:T) -> Slot<T> { return Slot<T>(value=cede value) }
 ''')
         emitted = subprocess.run(prefix + ['--emit-interface', '-c', str(provider),
@@ -260,7 +260,7 @@ fn main() -> i32 {
         associated_source = (ROOT / 'tests/semantics/whole_value_generics/associated_values.tk').read_text()
         associated_provider, associated_consumer = associated_source.split('shape Resource', 1)
         associated_provider = associated_provider.replace('trait @Producer', 'pub trait @Producer').replace(
-            'shape Provider', 'pub shape Provider').replace('    fn relay', '    pub fn relay')
+            'shape Provider<T>(marker:bool)', 'pub shape Provider<T>(pub marker:bool)').replace('    fn relay', '    pub fn relay')
         provider.write_text(associated_provider + '''
 pub fn borrow_forward<T>(&value:T) -> &T <- value {
     auto &local = &value
@@ -287,7 +287,7 @@ pub fn borrow_forward<T>(&value:T) -> &T <- value {
 
         alias_source = (ROOT / 'tests/semantics/whole_value_generics/alias_values.tk').read_text()
         alias_provider, alias_consumer = alias_source.split('shape Resource', 1)
-        alias_provider = re.sub(r'(?m)^(alias|shape|fn) ', r'pub \1 ', alias_provider)
+        alias_provider = re.sub(r'(?m)^(alias|shape|fn) ', r'pub \1 ', alias_provider).replace('(value:T)', '(pub value:T)')
         provider.write_text(alias_provider)
         emitted = subprocess.run(prefix + ['--emit-interface', '-c', str(provider),
                                   '-o', str(work / 'provider.o')], env=env, cwd=work,
@@ -337,7 +337,7 @@ pub fn borrow_forward<T>(&value:T) -> &T <- value {
         assert emitted.returncode == 0, emitted.stderr
         provider.unlink()
         consumer.write_text('import provider::{total, fill}\n'
-                            'shape Pair(left:i32, right:i32)\nfn main()' + reflection_main)
+                            'pub shape Pair(pub left:i32, pub right:i32)\nfn main()' + reflection_main)
         output = work / 'source-hidden-reflection'
         built = subprocess.run(prefix + [str(consumer), str(work / 'provider.o'),
                                 '-o', str(output)], env=env, cwd=work,
@@ -353,8 +353,8 @@ pub fn borrow_forward<T>(&value:T) -> &T <- value {
         hidden_nested = nested_source.replace(declarations,
             'import provider::{Box as RemoteBox, relay_box}\n').replace('Box<T>', 'RemoteBox<T>')
         for name, exported, client in (
-            ('nested-inference', declarations.replace('shape ', 'pub shape ', 1).replace('fn ', 'pub fn ', 1), hidden_nested),
-            ('alias-owner', 'pub shape T(value:i32)\npub alias Fixed = T\n',
+            ('nested-inference', declarations.replace('shape ', 'pub shape ', 1).replace('fn ', 'pub fn ', 1).replace('(value:T)', '(pub value:T)'), hidden_nested),
+            ('alias-owner', 'pub shape T(pub value:i32)\npub alias Fixed = T\n',
              'import provider::{T as Item, Fixed}\nshape T(unrelated:i32)\n'
              'fn read<T>(input:Fixed) -> i32 { return input.value }\n'
              'fn main() -> i32 { auto input = Item(value=7)\nreturn read<i32>(input) - 7 }\n'),

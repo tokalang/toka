@@ -4,7 +4,7 @@ import core/str::{str}
 import stdx/serde/json::{deserialize_shape, @JsonFactory, Parsed, parse_document}
 
 pub shape SentryScope (
-    _notifyingListeners: bool = false
+    pub _notifyingListeners: bool = false
 )
 
 impl SentryScope@JsonFactory {

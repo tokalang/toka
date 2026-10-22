@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleSurfaceStats.h"
+#include "toka/InterfaceVersion.h"
 #include "toka/MemberAccess.h"
 #include "toka/PathUtils.h"
 #include "toka/Parser.h"
@@ -235,11 +236,25 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
         }
         ModuleScope *target = (ModuleScope *)modSpec.ReferencedModule;
         if (target->Functions.count(Memb->Member)) {
+          FunctionDecl *fn = target->Functions[Memb->Member];
+          if (fn && (getActiveEncapEpoch() == "0.19" || fn->isPkg()) &&
+              !isDeclAccessible(fn, fn->Vis, Memb->Loc)) {
+            error(Memb, DiagID::ERR_GENERIC_SEMA,
+                  "Function '" + Memb->Member +
+                      "' is not visible from module '" + objVar->Name + "'");
+          }
           return toka::Type::fromString("fn");
         }
         if (target->Globals.count(Memb->Member)) {
+          VariableDecl *gv = target->Globals[Memb->Member];
+          if (gv && (getActiveEncapEpoch() == "0.19" || gv->isPkg()) &&
+              !isDeclAccessible(gv, gv->Vis, Memb->Loc)) {
+            error(Memb, DiagID::ERR_GENERIC_SEMA,
+                  "Constant '" + Memb->Member +
+                      "' is not visible from module '" + objVar->Name + "'");
+          }
           return toka::Type::fromString(
-              resolveType(target->Globals[Memb->Member]->TypeName));
+              resolveType(gv->TypeName));
         }
       }
     }

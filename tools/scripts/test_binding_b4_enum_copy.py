@@ -64,7 +64,7 @@ def main():
             "consuming_copy": "shape Packet<T>(Empty | Value(T))\nfn main()->i32 {auto once={=>7}:cede fn()->i32; auto value=Packet<cede fn()->i32>::Value(cede once); auto copied=value; return 0}\n",
             "direct_consuming_copy": "shape Packet<T>(Empty | Value(cede fn()->i32))\nfn main()->i32 {auto once={=>7}:cede fn()->i32; auto value=Packet<i32>::Value(cede once); auto copied=value; return 0}\n",
             "moved_source": prelude + "fn read(value:Packet<Token>)->i32{return 0}\nfn main()->i32 {auto value=Packet<Token>::Value(Token(value=1)); auto moved=cede value; return read(value)}\n",
-            "no_drop_noncopy": "shape Item(value:i32)\nimpl Item@Encap {pub value}\nshape Packet<T>(Empty | Value(T))\nfn main()->i32 {auto value=Packet<Item>::Value(Item(value=1)); auto copied=value; return 0}\n",
+            "no_drop_noncopy": "shape Item(pub value:i32)\nimpl Item@Encap {}\nshape Packet<T>(Empty | Value(T))\nfn main()->i32 {auto value=Packet<Item>::Value(Item(value=1)); auto copied=value; return 0}\n",
             "borrow_conflict": prelude + "fn read(value:Packet<Token>)->i32{return 0}\nfn main()->i32 {auto value=Packet<Token>::Value(Token(value=1)); auto &view=&value; auto moved=cede value; return read(view)}\n",
             "borrowed_parameter": prelude + "fn blocked(value:Packet<Token>) {auto moved=cede value}\nfn main()->i32{return 0}\n",
             "temporary_cede": "fn main()->i32 {auto value=cede string::from(\"temporary\"); return 0}\n",

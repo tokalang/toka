@@ -22,8 +22,8 @@ import core/traits::{@PartialEq, @PartialOrd}
 // Duration
 // ----------------------------------------------------------------------------
 pub shape Duration (
-    secs: u64,
-    nanos: u32
+    pub secs: u64,
+    pub nanos: u32
 )
 
 impl Duration {
@@ -123,7 +123,7 @@ impl Duration {
 // Instant (Monotonic Clock)
 // ----------------------------------------------------------------------------
 pub shape Instant (
-    duration_since_boot: Duration
+    pub duration_since_boot: Duration
 )
 
 impl Instant {
@@ -190,7 +190,7 @@ impl Instant {
 // SystemTime (Wall Clock)
 // ----------------------------------------------------------------------------
 pub shape SystemTime (
-    duration_since_epoch: Duration
+    pub duration_since_epoch: Duration
 )
 
 impl SystemTime {
@@ -310,15 +310,15 @@ impl SystemTime {
 // DateTime (Calendar Time)
 // ----------------------------------------------------------------------------
 pub shape DateTime (
-    year: i32,
-    month: i32,
-    day: i32,
-    hour: i32,
-    minute: i32,
-    second: i32,
-    wday: i32,
-    yday: i32,
-    isdst: i32
+    pub year: i32,
+    pub month: i32,
+    pub day: i32,
+    pub hour: i32,
+    pub minute: i32,
+    pub second: i32,
+    pub wday: i32,
+    pub yday: i32,
+    pub isdst: i32
 )
 
 impl DateTime {

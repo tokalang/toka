@@ -9,7 +9,7 @@ pub import core/intrinsics/atomic::Ordering
 // ==========================================
 
 pub shape AtomicI32 (
-    val#: i32
+    pub val#: i32
 )
 
 impl AtomicI32@Send {}
@@ -71,7 +71,7 @@ impl AtomicI32 {
 // ==========================================
 
 pub shape AtomicUsize (
-    val#: usize
+    pub val#: usize
 )
 
 impl AtomicUsize@Send {}
@@ -133,7 +133,7 @@ impl AtomicUsize {
 // ==========================================
 
 pub shape AtomicI64 (
-    val#: i64
+    pub val#: i64
 )
 
 impl AtomicI64@Send {}
@@ -197,7 +197,7 @@ impl AtomicI64 {
 // Toka's bool natively maps to i1. We wrap it around.
 
 pub shape AtomicBool (
-    val#: i32
+    pub val#: i32
 )
 
 impl AtomicBool@Send {}

@@ -1,7 +1,7 @@
 auto drops# = 0
-shape Resource(value:i32)
+shape Resource(pub value:i32)
 impl Resource@Encap {
-    pub value
+
     fn drop(self#) { drops += 1 }
 }
 fn main() -> i32 {

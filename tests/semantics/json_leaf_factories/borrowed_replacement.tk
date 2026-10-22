@@ -1,8 +1,8 @@
 extern fn token_drop(id: i32) -> void
 extern fn token_count(id: i32) -> i32
-shape Token(id: i32)
+shape Token(pub id: i32)
 impl Token@Encap {
-    pub id
+
     fn drop(self#) { token_drop(self.id) }
 }
 fn replace(target#: Token, cede incoming: Token) {

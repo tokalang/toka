@@ -18,7 +18,7 @@ import sys/os/base as sys
  * A structure representing a filesystem path.
  */
 pub shape Path (
-    inner: string
+    pub inner: string
 )
 
 impl Path {

@@ -27,9 +27,9 @@ import sys/libc::{
 
 /// ReadAt 成功结果（携带归还的 buffer 所有权）
 pub shape ReadAtResult (
-    buffer#: Vec<u8>,
-    bytes_read: usize,
-    eof: bool
+    pub buffer#: Vec<u8>,
+    pub bytes_read: usize,
+    pub eof: bool
 )
 
 impl ReadAtResult {
@@ -42,8 +42,8 @@ impl ReadAtResult {
 
 /// ReadAt 失败错误（原路归还 buffer 所有权）
 pub shape ReadAtError (
-    buffer#: Vec<u8>,
-    error: IoError
+    pub buffer#: Vec<u8>,
+    pub error: IoError
 )
 
 impl ReadAtError {
@@ -56,9 +56,9 @@ impl ReadAtError {
 
 /// WriteAt 成功结果
 pub shape WriteAtResult (
-    buffer#: Vec<u8>,
-    bytes_written: usize,
-    complete: bool
+    pub buffer#: Vec<u8>,
+    pub bytes_written: usize,
+    pub complete: bool
 )
 
 impl WriteAtResult {
@@ -71,9 +71,9 @@ impl WriteAtResult {
 
 /// WriteAt 失败错误（携带已写进度与归还的 buffer）
 pub shape WriteAtError (
-    buffer#: Vec<u8>,
-    bytes_written: usize,
-    error: IoError
+    pub buffer#: Vec<u8>,
+    pub bytes_written: usize,
+    pub error: IoError
 )
 
 impl WriteAtError {

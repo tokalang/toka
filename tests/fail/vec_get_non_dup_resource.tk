@@ -1,11 +1,11 @@
 import std/vec::{Vec}
 
 shape FileHandle (
-    fd: i32
+    pub fd: i32
 )
 
 impl FileHandle@Encap {
-    pub fd
+
     fn drop(self#) {}
 }
 

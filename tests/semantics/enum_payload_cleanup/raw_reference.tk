@@ -1,8 +1,8 @@
 import core/option::{Option}
 auto drops# = 0
-shape Resource(id: i32)
+shape Resource(pub id: i32)
 impl Resource@Encap {
-    pub id
+
     fn drop(self#) { drops += 1 }
 }
 fn main() -> i32 {

@@ -79,6 +79,7 @@ enum class TokenType {
   KwCopy,
   KwImport,
   KwPub,
+  KwPkg,
   KwAs,
   KwIs,
   KwIn,

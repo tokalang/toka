@@ -13,10 +13,10 @@ pub shape FlagValue (
 )
 
 pub shape FlagDef (
-    name: string,
-    short_name: char,
-    desc: string,
-    default_val: FlagValue
+    pub name: string,
+    pub short_name: char,
+    pub desc: string,
+    pub default_val: FlagValue
 )
 
 impl FlagValue {
@@ -42,8 +42,8 @@ impl FlagDef {
 }
 
 pub shape ParsedArgs (
-    values#: HashMap<string, FlagValue>,
-    pos_args#: Vec<string>
+    pub values#: HashMap<string, FlagValue>,
+    pub pos_args#: Vec<string>
 )
 
 impl ParsedArgs {
@@ -111,9 +111,9 @@ impl ParsedArgs {
 }
 
 pub shape Parser (
-    prog: string,
-    desc: string,
-    defs#: Vec<FlagDef>
+    pub prog: string,
+    pub desc: string,
+    pub defs#: Vec<FlagDef>
 )
 
 impl Parser {

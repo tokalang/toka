@@ -1,6 +1,6 @@
 import core/string::{string}
-shape Holder(view: str)
-impl Holder@Encap { pub view }
+shape Holder(pub view: str)
+impl Holder@Encap {}
 impl Holder {
     fn make(view: str) -> Holder <- view {
         auto result = Holder(view = view)

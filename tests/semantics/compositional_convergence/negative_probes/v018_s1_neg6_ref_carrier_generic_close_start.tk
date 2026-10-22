@@ -2,7 +2,7 @@ import core/task::{TaskHandle}
 import std/task::{block_on, sleep_async}
 import core/result::{Result}
 
-pub shape CloseError(code: i32)
+pub shape CloseError(pub code: i32)
 
 pub trait @AsyncClose {
     pub fn close(cede self) -> async Result<i32, CloseError>
@@ -14,8 +14,8 @@ pub fn close_any<T: @AsyncClose>(cede x: T) -> async Result<i32, CloseError> {
 }
 
 pub shape BorrowedCarrier(
-    inner: TaskHandle<i32>,
-    tag: i32
+    pub inner: TaskHandle<i32>,
+    pub tag: i32
 )
 
 impl BorrowedCarrier@AsyncClose {
@@ -27,8 +27,8 @@ impl BorrowedCarrier@AsyncClose {
 }
 
 pub shape RefCarrier(
-    &view: i32,
-    token: i32
+    pub &view: i32,
+    pub token: i32
 )
 
 impl RefCarrier@AsyncClose {
@@ -39,7 +39,7 @@ impl RefCarrier@AsyncClose {
     }
 }
 
-pub shape Buffer(size: i32)
+pub shape Buffer(pub size: i32)
 pub fn read_buf(b: Buffer) -> async i32 {
     return b.size
 }

@@ -2,12 +2,12 @@ import std/io::{println}
 import std/vec::{Vec}
 import core/string::{string}
 
-shape Element (
-    name: string
+pub shape Element (
+    pub name: string
 )
 
 impl Element@Encap {
-    pub name
+
     fn drop(self#) {}
 }
 

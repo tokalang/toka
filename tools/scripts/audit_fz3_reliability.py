@@ -310,7 +310,7 @@ def main():
         library = interface_dir / "lib.tk"
         consumer = interface_dir / "main.tk"
         library.write_text(
-            "pub shape Item(value: i32)\npub fn make() -> Item { return Item(value=7) }\n",
+            "pub shape Item(pub value: i32)\npub fn make() -> Item { return Item(value=7) }\n",
             encoding="utf-8",
         )
         consumer.write_text(

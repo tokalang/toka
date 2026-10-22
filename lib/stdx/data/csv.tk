@@ -5,9 +5,9 @@ import std/io::{@Reader, @Writer}
 import stdx/io/bufio::{BufferedReader, BufferedWriter}
 
 pub shape CsvError(
-    line: usize,
-    column: usize,
-    message: string
+    pub line: usize,
+    pub column: usize,
+    pub message: string
 )
 
 shape CsvWidth(
@@ -19,8 +19,8 @@ shape CsvWidth(
 // needs to be extracted from an outer Vec. Fields within each row are stored
 // in reverse order so an owned input row can be drained with ordinary pop.
 pub shape CsvRecords(
-    fields#: Vec<string>,
-    ends#: Vec<usize>
+    pub fields#: Vec<string>,
+    pub ends#: Vec<usize>
 )
 
 impl CsvRecords {

@@ -1,11 +1,11 @@
 import std/vec::{Vec}
 
 shape LockResource (
-    held: bool
+    pub held: bool
 )
 
 impl LockResource@Encap {
-    pub held
+
     fn drop(self#) {}
 }
 

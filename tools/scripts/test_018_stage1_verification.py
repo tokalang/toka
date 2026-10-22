@@ -26,7 +26,7 @@ import core/task::{TaskHandle}
 import std/task::{block_on, sleep_async}
 import core/result::{Result}
 
-pub shape CloseError(code: i32)
+pub shape CloseError(pub code: i32)
 
 pub trait @AsyncClose {
     pub fn close(cede self) -> async Result<i32, CloseError>
@@ -38,8 +38,8 @@ pub fn close_any<T: @AsyncClose>(cede x: T) -> async Result<i32, CloseError> {
 }
 
 pub shape BorrowedCarrier(
-    inner: TaskHandle<i32>,
-    tag: i32
+    pub inner: TaskHandle<i32>,
+    pub tag: i32
 )
 
 impl BorrowedCarrier@AsyncClose {
@@ -51,8 +51,8 @@ impl BorrowedCarrier@AsyncClose {
 }
 
 pub shape RefCarrier(
-    &view: i32,
-    token: i32
+    pub &view: i32,
+    pub token: i32
 )
 
 impl RefCarrier@AsyncClose {
@@ -63,7 +63,7 @@ impl RefCarrier@AsyncClose {
     }
 }
 
-pub shape Buffer(size: i32)
+pub shape Buffer(pub size: i32)
 pub fn read_buf(b: Buffer) -> async i32 {
     return b.size
 }
@@ -122,7 +122,7 @@ pub fn main() -> i32 {
         "expected_code": "E0456",
         "description": "User-defined forged spawn_scoped wrapper attempting to start a borrowed close() task",
         "source": COMMON_PREAMBLE + """
-pub shape FakeScope(id: i32)
+pub shape FakeScope(pub id: i32)
 
 fn spawn_scoped(scope#: FakeScope, cede task: TaskHandle<Result<i32, CloseError>>) -> i32 {
     auto owned = cede task
@@ -167,7 +167,7 @@ pub fn main() -> i32 {
         "expected_code": "E0456",
         "description": "Untrusted @AsyncClose impl that detaches self.inner.start instead of awaiting, called on local-borrowing carrier",
         "source": COMMON_PREAMBLE + """
-pub shape DetachCarrier(inner: TaskHandle<i32>)
+pub shape DetachCarrier(pub inner: TaskHandle<i32>)
 
 impl DetachCarrier@AsyncClose {
     pub fn close(cede self) -> async Result<i32, CloseError> {
@@ -542,7 +542,7 @@ import core/task::{TaskHandle}
 import std/task::{sleep_async}
 import core/result::{Result}
 
-pub shape CloseError(code: i32)
+pub shape CloseError(pub code: i32)
 
 pub trait @AsyncClose {
     pub fn close(cede self) -> async Result<i32, CloseError>
@@ -554,8 +554,8 @@ pub fn close_any<T: @AsyncClose>(cede x: T) -> async Result<i32, CloseError> {
 }
 
 pub shape RefCarrier(
-    &view: i32,
-    token: i32
+    pub &view: i32,
+    pub token: i32
 )
 
 impl RefCarrier@AsyncClose {
@@ -575,13 +575,14 @@ def make_bodyless_tki_content() -> str:
         "pub fn bodyless_sync_consume(cede h: TaskHandle<Result<i32, CloseError>>) -> i32\n"
     )
     h = 14695981039346656037
-    for b in decls.encode("utf-8"):
+    for b in ("// @encap_epoch 0.19\n" + decls).encode("utf-8"):
         h ^= b
         h = (h * 1099511628211) & 0xFFFFFFFFFFFFFFFF
     surface_hash = f"{h:016x}"
     header = (
         "// @meta compiler_version: any\n"
-        "// @meta format_version: 5\n"
+        "// @meta format_version: 6\n"
+        "// @meta encap_epoch: 0.19\n"
         f"// @meta replay_surface_hash: {surface_hash}\n"
         "// @meta target_triple: any\n"
         "// @meta source_hash: any\n"
@@ -673,7 +674,7 @@ extern fn toka_rt_live_wait_registry_count() -> u32
 auto g_live# = 0:i32
 auto g_drops# = 0:i32
 
-pub shape CloseError(code: i32)
+pub shape CloseError(pub code: i32)
 
 pub trait @AsyncClose {
     pub fn close(cede self) -> async Result<i32, CloseError>
@@ -684,7 +685,7 @@ pub fn close_any<T: @AsyncClose>(cede x: T) -> async Result<i32, CloseError> {
     return owned.close().await
 }
 
-pub shape TrackedGuard(id: i32)
+pub shape TrackedGuard(pub id: i32)
 impl TrackedGuard@Encap {
     fn drop(self#) {
         g_live -= 1:i32
@@ -706,9 +707,9 @@ fn fail_if(flag: bool, code: i32) -> Result<i32, CloseError> {
 
 // Composite carrier WITHOUT outer @Encap (relies on compiler-generated field glue for TrackedGuard)
 pub shape SessionA(
-    res_guard: TrackedGuard,
-    mode: i32,
-    base: i32
+    pub res_guard: TrackedGuard,
+    pub mode: i32,
+    pub base: i32
 )
 
 impl SessionA@AsyncClose {
@@ -738,9 +739,9 @@ impl SessionA@AsyncClose {
 
 // Second concrete type implementing @AsyncClose
 pub shape SessionB(
-    g1: TrackedGuard,
-    g2: TrackedGuard,
-    bonus: i32
+    pub g1: TrackedGuard,
+    pub g2: TrackedGuard,
+    pub bonus: i32
 )
 
 impl SessionB@AsyncClose {
@@ -899,7 +900,7 @@ fn sync_consume_close<T: @AsyncClose>(cede x: T) -> i32 {
     }
 }
 
-pub shape OwnedCarrier(value: i32)
+pub shape OwnedCarrier(pub value: i32)
 impl OwnedCarrier@AsyncClose {
     pub fn close(cede self) -> async Result<i32, CloseError> {
         auto owned = cede self
@@ -982,7 +983,7 @@ import tki_close_provider::{CloseError, @AsyncClose, RefCarrier, close_any}
 import std/task::{block_on, sleep_async}
 import core/result::{Result}
 
-pub shape LocalSession(code: i32)
+pub shape LocalSession(pub code: i32)
 
 impl LocalSession@AsyncClose {
     pub fn close(cede self) -> async Result<i32, CloseError> {

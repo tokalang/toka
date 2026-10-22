@@ -92,6 +92,7 @@ static std::unordered_map<std::string, TokenType> Keywords = {
     {"copy", TokenType::KwCopy},
     {"import", TokenType::KwImport},
     {"pub", TokenType::KwPub},
+    {"pkg", TokenType::KwPkg},
     {"as", TokenType::KwAs},
     {"is", TokenType::KwIs},
     {"in", TokenType::KwIn},

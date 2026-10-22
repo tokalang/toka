@@ -3,7 +3,7 @@
 import argparse,base64,fcntl,hashlib,json,os,select,subprocess,time
 from pathlib import Path
 
-LIB='''pub shape Data(val: i32)
+LIB='''pub shape Data(pub val: i32)
 pub fn read_pair(a: Data, b: Data) -> i32 { return a.val + b.val }
 pub fn mut_and_read(target#: Data, view: Data) -> i32 { target.val = 10; return view.val }
 pub fn dep_call(a: Data, b: Data) -> i32 { return read_pair(a,b) }

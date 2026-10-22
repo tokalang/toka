@@ -2,23 +2,23 @@
 
 // The universal fallback Error struct
 pub shape Error(
-    code: i32,
-    message: string
+    pub code: i32,
+    pub message: string
 )
 
 // Minimal cross-platform I/O failure contract. `operation` is stable API
 // context, `os_code` preserves the native error when one exists, and `message`
 // remains suitable for direct CLI diagnostics.
 pub shape IoError(
-    operation: string,
-    os_code: i32,
-    message: string
+    pub operation: string,
+    pub os_code: i32,
+    pub message: string
 )
 
 // Typed context preserves the original error instead of erasing it.
 pub shape ErrorContext<E>(
-    message: string,
-    source: E
+    pub message: string,
+    pub source: E
 )
 
 impl Error {

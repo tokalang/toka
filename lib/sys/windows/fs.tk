@@ -6,25 +6,25 @@ import sys/os/abi::*
 import sys/os/base::{to_utf16, from_utf16}
 
 pub shape WIN32_FIND_DATAW (
-    dwFileAttributes: u32,
-    ftCreationTime_dwLowDateTime: u32,
-    ftCreationTime_dwHighDateTime: u32,
-    ftLastAccessTime_dwLowDateTime: u32,
-    ftLastAccessTime_dwHighDateTime: u32,
-    ftLastWriteTime_dwLowDateTime: u32,
-    ftLastWriteTime_dwHighDateTime: u32,
-    nFileSizeHigh: u32,
-    nFileSizeLow: u32,
-    dwReserved0: u32,
-    dwReserved1: u32,
-    cFileName: [u16; 260],
-    cAlternateFileName: [u16; 14]
+    pub dwFileAttributes: u32,
+    pub ftCreationTime_dwLowDateTime: u32,
+    pub ftCreationTime_dwHighDateTime: u32,
+    pub ftLastAccessTime_dwLowDateTime: u32,
+    pub ftLastAccessTime_dwHighDateTime: u32,
+    pub ftLastWriteTime_dwLowDateTime: u32,
+    pub ftLastWriteTime_dwHighDateTime: u32,
+    pub nFileSizeHigh: u32,
+    pub nFileSizeLow: u32,
+    pub dwReserved0: u32,
+    pub dwReserved1: u32,
+    pub cFileName: [u16; 260],
+    pub cAlternateFileName: [u16; 14]
 )
 
 pub shape WinDir (
-    handle#: HANDLE,
-    find_data#: WIN32_FIND_DATAW,
-    first#: bool
+    pub handle#: HANDLE,
+    pub find_data#: WIN32_FIND_DATAW,
+    pub first#: bool
 )
 
 pub fn opendir_impl(path: Addr) -> Addr {
@@ -150,9 +150,9 @@ pub fn atomic_write_string_impl(path: string, content: string) -> bool {
 }
 
 pub shape WinStat (
-    size: u64,
-    mode: u32,
-    mtime: i64
+    pub size: u64,
+    pub mode: u32,
+    pub mtime: i64
 )
 
 pub fn stat_impl(path: Addr) -> Addr {

@@ -1,6 +1,6 @@
 auto evaluations# = 0
-shape Pair(first: i64, second: i64)
-impl Pair@Encap { pub first, second }
+shape Pair(pub first: i64, pub second: i64)
+impl Pair@Encap {}
 fn next_index() -> i32 {
     evaluations += 1
     return 1

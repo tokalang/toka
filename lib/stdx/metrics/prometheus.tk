@@ -9,15 +9,12 @@ pub const METRIC_COUNTER: MetricKind = 1
 pub const METRIC_GAUGE: MetricKind = 2
 
 pub shape MetricEntry (
-    name: string,
-    kind: MetricKind,
-    value: i64
+    pub name: string,
+    pub kind: MetricKind,
+    pub value: i64
 )
 
 impl MetricEntry@Encap {
-    pub name
-    pub kind
-    pub value
     fn drop(self#) {}
 }
 
@@ -55,11 +52,10 @@ pub fn is_valid_metric_name(name: str) -> bool {
 }
 
 pub shape PrometheusRegistry (
-    entries: Vec<MetricEntry>
+    pub entries: Vec<MetricEntry>
 )
 
 impl PrometheusRegistry@Encap {
-    pub entries
     fn drop(self#) {}
 }
 

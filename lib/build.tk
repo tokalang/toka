@@ -16,13 +16,12 @@ import build/internal/codec::{__deserialize_nested_shape, __deserialize_shape}
 extern fn toka_tls_backend_available() -> i32
 
 pub shape ModuleOutputs (
-    interface: string = string::from(""),
-    object: string = string::from(""),
-    executable: string = string::from("")
+    pub interface: string = string::from(""),
+    pub object: string = string::from(""),
+    pub executable: string = string::from("")
 )
 
 impl ModuleOutputs@Encap {
-    pub interface, object, executable
 
     fn drop(self#) { }
 }
@@ -58,22 +57,20 @@ impl ModuleOutputs@FromJson {
 }
 
 pub shape ModuleSnapshot (
-    kind: string = string::from(""),
-    fallback_triggered: bool = false,
-    cache_status: string = string::from(""),
-    cache_status_reason: string = string::from(""),
-    target_triple: string = string::from(""),
-    compiler_version: string = string::from(""),
-    interface_version: string = string::from(""),
-    source_hash: string = string::from(""),
-    content_hash: string = string::from(""),
-    outputs: ModuleOutputs = ModuleOutputs(..),
-    dependencies: BuildStrings = BuildStrings::new()
+    pub kind: string = string::from(""),
+    pub fallback_triggered: bool = false,
+    pub cache_status: string = string::from(""),
+    pub cache_status_reason: string = string::from(""),
+    pub target_triple: string = string::from(""),
+    pub compiler_version: string = string::from(""),
+    pub interface_version: string = string::from(""),
+    pub source_hash: string = string::from(""),
+    pub content_hash: string = string::from(""),
+    pub outputs: ModuleOutputs = ModuleOutputs(..),
+    pub dependencies: BuildStrings = BuildStrings::new()
 )
 
 impl ModuleSnapshot@Encap {
-    pub kind, fallback_triggered, cache_status, cache_status_reason, target_triple
-    pub compiler_version, interface_version, source_hash, content_hash, outputs, dependencies
 
     fn drop(self#) { }
 }
@@ -157,13 +154,12 @@ impl ModuleSnapshot@JsonFactory {
 }
 
 pub shape DependencyManifest (
-    manifest_version: string = string::from(""),
-    roots: BuildStrings = BuildStrings::new(),
-    modules: HashMap<string, ModuleSnapshot> = HashMap<string, ModuleSnapshot>::new()
+    pub manifest_version: string = string::from(""),
+    pub roots: BuildStrings = BuildStrings::new(),
+    pub modules: HashMap<string, ModuleSnapshot> = HashMap<string, ModuleSnapshot>::new()
 )
 
 impl DependencyManifest@Encap {
-    pub manifest_version, roots, modules
 
     fn drop(self#) { }
 }
@@ -231,12 +227,11 @@ impl DependencyManifest@FromJson {
 }
 
 pub shape RebuildModuleInfo (
-    reason: string = string::from(""),
-    dirty_deps: BuildStrings = BuildStrings::new()
+    pub reason: string = string::from(""),
+    pub dirty_deps: BuildStrings = BuildStrings::new()
 )
 
 impl RebuildModuleInfo@Encap {
-    pub reason, dirty_deps
 
     fn drop(self#) { }
 }
@@ -294,13 +289,12 @@ impl RebuildModuleInfo@JsonFactory {
 }
 
 pub shape RebuildPlan (
-    status: string = string::from(""),
-    dirty_roots: BuildStrings = BuildStrings::new(),
-    dirty_modules: HashMap<string, RebuildModuleInfo> = HashMap<string, RebuildModuleInfo>::new()
+    pub status: string = string::from(""),
+    pub dirty_roots: BuildStrings = BuildStrings::new(),
+    pub dirty_modules: HashMap<string, RebuildModuleInfo> = HashMap<string, RebuildModuleInfo>::new()
 )
 
 impl RebuildPlan@Encap {
-    pub status, dirty_roots, dirty_modules
 
     fn drop(self#) { }
 }

@@ -4,7 +4,7 @@ import core/traits::{@Encap, @Iterable, @Iterator}
 auto iterator_drop_count# = 0
 
 shape Values(source_value: i32)
-shape TestIteratorCursor(cursor_value: i32, done#: bool)
+pub shape TestIteratorCursor(cursor_value: i32, done#: bool)
 
 impl TestIteratorCursor@Encap {
     fn drop(self#) {

@@ -3,7 +3,7 @@ pub trait @Readable {
     pub fn read(self) -> Item
 }
 
-pub shape IntBox(value: i32)
+pub shape IntBox(pub value: i32)
 
 impl IntBox@Readable {
     type Item = i32

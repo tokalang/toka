@@ -1,9 +1,9 @@
 import core/intrinsics/thread_handoff_probe::{__toka_thread_probe_run, __toka_thread_probe_run_drop}
 auto drops# = 0
 // This is a user nominal type, not the unrelated runtime type with this short name.
-shape TimerHeap(value: i32)
+shape TimerHeap(pub value: i32)
 impl TimerHeap@Encap {
-    pub value
+
     fn drop(self#) { drops += 1 }
 }
 impl TimerHeap@Send {}

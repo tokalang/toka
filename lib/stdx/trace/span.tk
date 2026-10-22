@@ -6,8 +6,8 @@ import core/types::{usize, Addr, ADDR0}
 import core/str::{str}
 
 pub shape Span (
-    start_addr: Addr,
-    length: usize
+    pub start_addr: Addr,
+    pub length: usize
 )
 
 impl Span {
@@ -67,13 +67,13 @@ impl Span {
 }
 
 pub shape Location (
-    line: usize,
-    column: usize
+    pub line: usize,
+    pub column: usize
 )
 
 pub shape SourceMap (
-    file_name: str,
-    source: str
+    pub file_name: str,
+    pub source: str
 )
 
 impl SourceMap {

@@ -32,18 +32,18 @@ pub trait @AsyncTransport {
 }
 
 pub shape MockMemoryStream (
-    read_data: Vec<u8>,
-    read_pos: usize,
-    chunk_size: usize,
-    delay_ms: i32,
-    fail_after_reads: i32,
-    fail_after_writes: i32,
-    fail_message: string,
-    written_data: Vec<u8>,
-    is_closed: bool,
-    read_count: usize,
-    write_count: usize,
-    zero_write_mode: bool
+    pub read_data: Vec<u8>,
+    pub read_pos: usize,
+    pub chunk_size: usize,
+    pub delay_ms: i32,
+    pub fail_after_reads: i32,
+    pub fail_after_writes: i32,
+    pub fail_message: string,
+    pub written_data: Vec<u8>,
+    pub is_closed: bool,
+    pub read_count: usize,
+    pub write_count: usize,
+    pub zero_write_mode: bool
 )
 
 impl MockMemoryStream {
@@ -242,11 +242,10 @@ impl MockMemoryStream@AsyncTransport {
 }
 
 pub shape TcpTransport (
-    raw_tcp: TcpStream
+    pub raw_tcp: TcpStream
 )
 
 impl TcpTransport@Encap {
-    pub raw_tcp#
     fn drop(self#) {
         self.raw_tcp#.close()
     }
@@ -313,11 +312,10 @@ impl TcpTransport@AsyncTransport {
 }
 
 pub shape TlsTransport (
-    stream: AsyncStream
+    pub stream: AsyncStream
 )
 
 impl TlsTransport@Encap {
-    pub stream#
     fn drop(self#) {
         self.stream#.close()
     }
@@ -354,11 +352,10 @@ impl TlsTransport@AsyncTransport {
 }
 
 pub shape AsyncStreamTransport (
-    stream: AsyncStream
+    pub stream: AsyncStream
 )
 
 impl AsyncStreamTransport@Encap {
-    pub stream#
     fn drop(self#) {
         self.stream#.close()
     }
@@ -391,15 +388,15 @@ impl AsyncStreamTransport@AsyncTransport {
 }
 
 pub shape Metered<T: @AsyncTransport> (
-    inner: T,
-    bytes_read: usize,
-    bytes_written: usize,
-    read_ops: usize,
-    write_ops: usize,
-    failed_read_ops: usize,
-    failed_write_ops: usize,
-    frames_read: usize,
-    frames_written: usize
+    pub inner: T,
+    pub bytes_read: usize,
+    pub bytes_written: usize,
+    pub read_ops: usize,
+    pub write_ops: usize,
+    pub failed_read_ops: usize,
+    pub failed_write_ops: usize,
+    pub frames_read: usize,
+    pub frames_written: usize
 )
 
 impl<T: @AsyncTransport> Metered<T> {

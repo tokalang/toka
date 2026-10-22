@@ -3,9 +3,9 @@ import std/io::{println}
 import core/string::{string}
 
 pub shape TestPayload (
-    id: i32 = 0,
-    title: string = string::from(""),
-    enabled: bool = false
+    pub id: i32 = 0,
+    pub title: string = string::from(""),
+    pub enabled: bool = false
 )
 
 impl TestPayload@ToJson {

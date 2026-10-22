@@ -1,6 +1,6 @@
-shape Token(value: i32)
+shape Token(pub value: i32)
 impl Token@Encap {
-    pub value
+
     fn drop(self#) {}
 }
 fn consume_borrowed<F>(callback: F) -> i32 {

@@ -2,14 +2,14 @@ import std/hashmap::{HashMap}
 import core/traits::{@Hash, @PartialEq}
 auto drops# = 0:i32
 auto key_drops# = 0:i32
-shape Token(id: i32)
+shape Token(pub id: i32)
 impl Token@Encap {
-    pub id
+
     fn drop(self#) { drops += 1 }
 }
-shape Key(id: i32)
+shape Key(pub id: i32)
 impl Key@Encap {
-    pub id
+
     fn drop(self#) { key_drops += 1 }
 }
 impl Key@Hash {

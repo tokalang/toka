@@ -1,7 +1,7 @@
-pub shape Model(value: i32)
-pub shape Other(value: i32)
-pub shape Dep(&root: i32)
-pub shape DepOther(&root: i32)
+pub shape Model(pub value: i32)
+pub shape Other(pub value: i32)
+pub shape Dep(pub &root: i32)
+pub shape DepOther(pub &root: i32)
 
 pub fn arity_probe(value: Model, tag: i32) -> i32 { return tag }
 pub fn arity_probe(value: Other, tag: i32) -> i32 { return tag }

@@ -23,11 +23,11 @@ import stdx/net/url::{parse_url}
 import stdx/serde/json::{to_json}
 
 pub shape OpenAiCompatibleConfig (
-    url: string,
-    address: SocketAddrV4,
-    model: string,
-    api_key: string,
-    timeout_ms: i32
+    pub url: string,
+    pub address: SocketAddrV4,
+    pub model: string,
+    pub api_key: string,
+    pub timeout_ms: i32
 )
 
 pub shape AgentProvider (
@@ -36,9 +36,9 @@ pub shape AgentProvider (
 )
 
 pub shape AgentRunEvent (
-    run_id: string,
-    kind: string,
-    data: string
+    pub run_id: string,
+    pub kind: string,
+    pub data: string
 )
 
 shape AgentServiceState (
@@ -82,9 +82,6 @@ impl AgentProvider {
 }
 
 impl AgentRunEvent@Encap {
-    pub run_id
-    pub kind
-    pub data
     fn drop(self#) {}
 }
 impl AgentRunEvent {
@@ -94,13 +91,12 @@ impl AgentRunEvent {
 }
 
 impl AgentService@Encap {
-    pub state#
     fn drop(self#) {}
 }
 
 impl AgentService {
     pub fn clone(self#) -> AgentService
-    effects: return <- self.state {
+    effects: return <- self {
         return AgentService(~state = self.~state)
     }
 }

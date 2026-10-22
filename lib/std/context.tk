@@ -63,18 +63,18 @@ pub fn background() -> BackgroundContext {
 import core/task as core_task
 
 pub shape CancelState(
-    canceled: bool,
-    err: Option<string>,
-    waiters: Vec<Sender<bool>>,
-    has_parent: bool,
-    parent_rx: Receiver<bool>,
-    wait_ids: Vec<u32>,
-    wait_gens: Vec<u32>
+    pub canceled: bool,
+    pub err: Option<string>,
+    pub waiters: Vec<Sender<bool>>,
+    pub has_parent: bool,
+    pub parent_rx: Receiver<bool>,
+    pub wait_ids: Vec<u32>,
+    pub wait_gens: Vec<u32>
 )
 
 pub shape CancelContext<C: @Context> (
-    parent: C,
-    ~state: Mutex<CancelState>
+    pub parent: C,
+    pub ~state: Mutex<CancelState>
 )
 
 pub shape Canceler(
@@ -314,8 +314,8 @@ fn propagate_cancel(cede canceler: Canceler) -> async i32 {
 }
 
 pub shape CancelResult<C: @Context> (
-    ctx#: CancelContext<C>,
-    canceler: Canceler
+    pub ctx#: CancelContext<C>,
+    pub canceler: Canceler
 )
 
 pub fn with_cancel<C: @Context>(cede parent#: C) -> CancelResult<C> {
@@ -374,8 +374,8 @@ pub fn with_cancel<C: @Context>(cede parent#: C) -> CancelResult<C> {
 // ------------------------------------------------------
 
 pub shape TimeoutContext<C: @Context> (
-    cancel_ctx#: CancelContext<C>,
-    deadline_val: Instant
+    pub cancel_ctx#: CancelContext<C>,
+    pub deadline_val: Instant
 )
 
 impl<C: @Context> TimeoutContext<C>@Context {
@@ -401,8 +401,8 @@ impl<C: @Context> TimeoutContext<C>@Context {
 }
 
 pub shape TimeoutResult<C: @Context> (
-    ctx#: TimeoutContext<C>,
-    canceler: Canceler
+    pub ctx#: TimeoutContext<C>,
+    pub canceler: Canceler
 )
 
 fn timer_helper(ms: i32, cede ~state: Mutex<CancelState>) -> async i32 {
@@ -453,9 +453,9 @@ pub fn with_deadline<C: @Context>(cede parent#: C, deadline: Instant) -> Timeout
 // ------------------------------------------------------
 
 pub shape ValueContext<C: @Context> (
-    parent#: C,
-    key: string,
-    value: string
+    pub parent#: C,
+    pub key: string,
+    pub value: string
 )
 
 impl<C: @Context> ValueContext<C>@Context {

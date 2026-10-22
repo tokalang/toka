@@ -5,12 +5,12 @@ import std/vec::{Vec}
 auto g_local_drop_count# = 0:i32
 
 shape Item(
-    tag: u8,
-    value: i32
+    pub tag: u8,
+    pub value: i32
 )
 
 impl Item@Encap {
-    pub tag, value
+
 
     fn drop(self#) {
         g_local_drop_count += 1:i32

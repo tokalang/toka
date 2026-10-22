@@ -1,5 +1,5 @@
-pub shape Model(value: i32)
-pub shape Other(value: i32)
+pub shape Model(pub value: i32)
+pub shape Other(pub value: i32)
 
 pub alias AliasModel = Model
 

@@ -15,10 +15,10 @@ const SHA256_K: [u32; 64] = [
 ]
 
 pub shape Sha256 (
-    state: [u32; 8],
-    data: [u8; 64],
-    datalen: u32,
-    bitlen: u64
+    pub state: [u32; 8],
+    pub data: [u8; 64],
+    pub datalen: u32,
+    pub bitlen: u64
 )
 
 fn rotr(x: u32, n: u32) -> u32 {

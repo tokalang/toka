@@ -7,7 +7,7 @@ import core/result::{Result}
 
 // The inbox is bound to the thread that creates it.  It deliberately has no
 // Send implementation, so worker code can transfer only its sender half.
-shape HostThreadAffinity (
+pub shape HostThreadAffinity (
     nul *marker: void = null as nul *void
 )
 
@@ -18,7 +18,7 @@ impl HostThreadAffinity@Encap {
 // Values move from workers to the host thread.  They must be Send, but the
 // sender cannot carry a UI object or a borrowed closure across the boundary.
 pub shape HostMailboxSender<T: @Send> (
-    sender#: Sender<T>
+    pub sender#: Sender<T>
 )
 
 impl<T: @Send> HostMailboxSender<T>@Send {}
@@ -47,8 +47,8 @@ pub shape HostMailboxPoll<T: @Send> (
 )
 
 pub shape HostMailboxInbox<T: @Send> (
-    receiver#: Receiver<T>,
-    thread_affinity: HostThreadAffinity
+    pub receiver#: Receiver<T>,
+    pub thread_affinity: HostThreadAffinity
 )
 
 impl<T: @Send> HostMailboxInbox<T> {
@@ -95,8 +95,8 @@ pub fn host_mailbox_inbox<T: @Send>(cede receiver: Receiver<T>) -> HostMailboxIn
 }
 
 pub shape HostMailbox<T: @Send> (
-    sender#: HostMailboxSender<T>,
-    inbox#: HostMailboxInbox<T>
+    pub sender#: HostMailboxSender<T>,
+    pub inbox#: HostMailboxInbox<T>
 )
 
 // Construct this convenience aggregate beside the host event source. Moving

@@ -11,7 +11,7 @@ pub const hidden_global = 4
 
 extern fn hidden_external() -> i32
 
-pub shape SelectedShape(value: i32)
+pub shape SelectedShape(pub value: i32)
 pub alias SelectedAlias = SelectedShape
 
 pub trait @SelectedTrait {}

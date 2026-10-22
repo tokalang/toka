@@ -137,6 +137,126 @@ def main() -> int:
             "reason": "missing locked package node identity for 'second'",
         }
 
+        # Stage 1 (2.1.1 / R1 / PLAN-1): shared outer /lib/ ancestor, alias swap,
+        # relocation invariance, and overlapping/missing Fail-Closed checks.
+        for prefix_name in ("prefix-alpha", "prefix-beta"):
+            shared_cache = temporary_root / prefix_name / "lib" / "cache"
+            pkg_a_one = shared_cache / "package-a" / "lib" / "one.tk"
+            pkg_a_peer = shared_cache / "package-a" / "lib" / "peer.tk"
+            pkg_b_two = shared_cache / "package-b" / "lib" / "two.tk"
+            pkg_a_one.parent.mkdir(parents=True)
+            pkg_b_two.parent.mkdir(parents=True)
+            pkg_a_peer.write_text("pub fn peer_val() -> i32 { return 3 }\n", encoding="utf-8")
+            pkg_a_one.write_text("import ./peer::{peer_val}\npub fn one_val() -> i32 { return peer_val() }\n", encoding="utf-8")
+            pkg_b_two.write_text("pub fn two_val() -> i32 { return 4 }\n", encoding="utf-8")
+
+            dual_app = temporary_root / f"dual-app-{prefix_name}"
+            dual_app.mkdir()
+            dual_entry = dual_app / "entry.tk"
+            dual_entry.write_text("import first\nimport second\nfn main() -> i32 { return 0 }\n", encoding="utf-8")
+
+            forward = manifest(
+                "--workspace-node", "workspace-dual-v1", "--workspace-root", str(dual_app),
+                "--pkg", "first=" + str(pkg_a_one), "--pkg-node", "first=package-A",
+                "--pkg", "second=" + str(pkg_b_two), "--pkg-node", "second=package-B",
+                source=dual_entry)
+            swapped = manifest(
+                "--workspace-node", "workspace-dual-v1", "--workspace-root", str(dual_app),
+                "--pkg", "second=" + str(pkg_a_one), "--pkg-node", "second=package-A",
+                "--pkg", "first=" + str(pkg_b_two), "--pkg-node", "first=package-B",
+                source=dual_entry)
+            for doc in (forward, swapped):
+                assert module_coordinate(doc, pkg_a_one) == {
+                    "status": "known", "crate_id": "package-A",
+                    "logical_module_path": "one", "origin": "package", "reason": "",
+                }
+                assert module_coordinate(doc, pkg_a_peer) == {
+                    "status": "known", "crate_id": "package-A",
+                    "logical_module_path": "peer", "origin": "package", "reason": "",
+                }
+                assert module_coordinate(doc, pkg_b_two) == {
+                    "status": "known", "crate_id": "package-B",
+                    "logical_module_path": "two", "origin": "package", "reason": "",
+                }
+
+        overlap_root = temporary_root / "overlap-pkg" / "lib"
+        overlap_one = overlap_root / "one.tk"
+        overlap_two = overlap_root / "two.tk"
+        overlap_root.mkdir(parents=True)
+        overlap_one.write_text("pub fn a() -> i32 { return 1 }\n", encoding="utf-8")
+        overlap_two.write_text("pub fn b() -> i32 { return 2 }\n", encoding="utf-8")
+        overlap_entry = package_app / "overlap_entry.tk"
+        overlap_entry.write_text("import first\nimport second\nfn main() -> i32 { return 0 }\n", encoding="utf-8")
+        conflicting_crates = manifest(
+            "--workspace-node", "workspace-package-v1", "--workspace-root", str(package_app),
+            "--pkg", "first=" + str(overlap_one), "--pkg-node", "first=package-A",
+            "--pkg", "second=" + str(overlap_two), "--pkg-node", "second=package-B",
+            source=overlap_entry)
+        assert module_coordinate(conflicting_crates, overlap_one) == {
+            "status": "unknown", "crate_id": "", "logical_module_path": "",
+            "origin": "package",
+            "reason": "conflicting package root bindings for 'first' and 'second'",
+        }
+        assert module_coordinate(conflicting_crates, overlap_two) == {
+            "status": "unknown", "crate_id": "", "logical_module_path": "",
+            "origin": "package",
+            "reason": "conflicting package root bindings for 'first' and 'second'",
+        }
+
+        partial_missing_node = manifest(
+            "--workspace-node", "workspace-package-v1", "--workspace-root", str(package_app),
+            "--pkg", "first=" + str(overlap_one), "--pkg-node", "first=package-A",
+            "--pkg", "second=" + str(overlap_two),
+            source=overlap_entry)
+        assert module_coordinate(partial_missing_node, overlap_one) == {
+            "status": "unknown", "crate_id": "", "logical_module_path": "",
+            "origin": "package",
+            "reason": "missing locked package node identity for 'second'",
+        }
+
+        sibling_lib = temporary_root / "shared-mod-lib" / "lib"
+        sib_alpha_mod = sibling_lib / "pkg_alpha" / "mod.tk"
+        sib_alpha_peer = sibling_lib / "pkg_alpha" / "peer.tk"
+        sib_beta_mod = sibling_lib / "pkg_beta" / "mod.tk"
+        sib_alpha_mod.parent.mkdir(parents=True)
+        sib_beta_mod.parent.mkdir(parents=True)
+        sib_alpha_peer.write_text("pub fn p() -> i32 { return 1 }\n", encoding="utf-8")
+        sib_alpha_mod.write_text("import ./peer\npub fn a() -> i32 { return 1 }\n", encoding="utf-8")
+        sib_beta_mod.write_text("pub fn b() -> i32 { return 2 }\n", encoding="utf-8")
+        sibling_mod_doc = manifest(
+            "--workspace-node", "workspace-package-v1", "--workspace-root", str(package_app),
+            "--pkg", "first=" + str(sib_alpha_mod), "--pkg-node", "first=package-A",
+            "--pkg", "second=" + str(sib_beta_mod), "--pkg-node", "second=package-B",
+            source=overlap_entry)
+        assert module_coordinate(sibling_mod_doc, sib_alpha_mod) == {
+            "status": "known", "crate_id": "package-A",
+            "logical_module_path": "pkg_alpha/mod", "origin": "package", "reason": "",
+        }
+        assert module_coordinate(sibling_mod_doc, sib_alpha_peer) == {
+            "status": "known", "crate_id": "package-A",
+            "logical_module_path": "pkg_alpha/peer", "origin": "package", "reason": "",
+        }
+        assert module_coordinate(sibling_mod_doc, sib_beta_mod) == {
+            "status": "known", "crate_id": "package-B",
+            "logical_module_path": "pkg_beta/mod", "origin": "package", "reason": "",
+        }
+
+        nested_outer = temporary_root / "nested-pkg" / "lib" / "outer.tk"
+        nested_inner = temporary_root / "nested-pkg" / "lib" / "inner" / "lib" / "inner_mod.tk"
+        nested_inner.parent.mkdir(parents=True)
+        nested_outer.write_text("pub fn o() -> i32 { return 1 }\n", encoding="utf-8")
+        nested_inner.write_text("pub fn i() -> i32 { return 2 }\n", encoding="utf-8")
+        conflicting_paths = manifest(
+            "--workspace-node", "workspace-package-v1", "--workspace-root", str(package_app),
+            "--pkg", "first=" + str(nested_outer), "--pkg-node", "first=package-A",
+            "--pkg", "second=" + str(nested_inner), "--pkg-node", "second=package-A",
+            source=overlap_entry)
+        assert module_coordinate(conflicting_paths, nested_inner) == {
+            "status": "unknown", "crate_id": "", "logical_module_path": "",
+            "origin": "package",
+            "reason": "conflicting package root bindings for 'first' and 'second'",
+        }
+
         replay_root = temporary_root / "replay-workspace"
         replay_root.mkdir()
         replay_source = replay_root / "lib.tk"

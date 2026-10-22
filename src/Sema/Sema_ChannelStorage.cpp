@@ -108,7 +108,10 @@ NativeSyncOwnerCandidatePtr Sema::collectChannelStorageRecipe(Expr *source) {
         decl->InstantiationArgs.size() != 1 || !decl->InstantiationArgs[0]->equals(*element) ||
         decl->Members.size() != 1 || !decl->HasExplicitDrop) return false;
     auto policy = Slice2PolicyMap.find(expected->second);
-    if (policy == Slice2PolicyMap.end() || policy->second.Owner != module || !policy->second.Entries.empty()) return false;
+    if (policy == Slice2PolicyMap.end() || policy->second.Owner != module ||
+        !policy->second.Entries.empty() ||
+        decl->Members[0].Vis != Visibility::Private)
+      return false;
     auto storage = getPhysicalType(decl->Members[0]);
     if (!storage || !storage->isSharedPtr()) return false;
     auto core = channelShape(storage->getPointeeType());

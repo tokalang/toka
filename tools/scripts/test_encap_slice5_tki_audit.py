@@ -40,27 +40,27 @@ def main() -> int:
         provider = root / "lib.tk"
         consumer = root / "main.tk"
         provider.write_text(
-            "pub shape NonZero(raw: i32)\n"
-            "impl NonZero@Encap { pub raw }\n"
+            "pub shape NonZero(pub raw: i32)\n"
+            "impl NonZero@Encap {}\n"
             "impl NonZero@Copy {}\n"
-            "pub shape Capsule<T>(value: T)\n"
-            "impl<T> Capsule<T>@Encap { pub value }\n"
+            "pub shape Capsule<T>(pub value: T)\n"
+            "impl<T> Capsule<T>@Encap {}\n"
             "impl<T: @Copy> Capsule<T>@Copy {}\n"
-            "trait @Dup { pub fn dup(self) -> Self }\n"
-            "pub shape Resource(raw: i32)\n"
-            "impl Resource@Encap { pub raw fn drop(self#) {} }\n"
+            "pub trait @Dup { pub fn dup(self) -> Self }\n"
+            "pub shape Resource(pub raw: i32)\n"
+            "impl Resource@Encap { fn drop(self#) {} }\n"
             "impl Resource@Dup {\n"
             "  pub fn dup(self) -> Self { return Resource(raw = self.raw + 1) }\n"
             "}\n"
-            "pub shape Wrapper<T>(value: T)\n"
-            "impl<T> Wrapper<T>@Encap { pub value }\n"
+            "pub shape Wrapper<T>(pub value: T)\n"
+            "impl<T> Wrapper<T>@Encap {}\n"
             "impl<T: @Dup> Wrapper<T>@Dup {\n"
             "  pub fn dup(self) -> Self {\n"
             "    return Wrapper<T>(value = self.value.dup())\n"
             "  }\n"
             "}\n"
-            "pub shape Tracked(value: i32)\n"
-            "impl Tracked@Encap { pub value fn drop(self#) {} }\n"
+            "pub shape Tracked(pub value: i32)\n"
+            "impl Tracked@Encap { fn drop(self#) {} }\n"
             "pub fn make() -> NonZero { return NonZero(raw = 7) }\n",
             encoding="utf-8")
         consumer.write_text(
@@ -75,7 +75,7 @@ def main() -> int:
         assert interface.is_file(), "v5 provider did not emit a TKI"
         text = interface.read_text(encoding="utf-8")
         for expected in (
-                "// @meta format_version: 5",
+                "// @meta format_version: 6",
                 "// @meta replay_surface_hash:",
                 "// @meta identity_schema_version: 2",
                 "// @meta place_yield_abi_schema: 1",
@@ -127,7 +127,8 @@ def main() -> int:
             "fn main() -> i32 {\n"
             "  auto resource = Resource(raw = 1)\n"
             "  auto closure = { [dup resource] => resource.raw }:fn() -> i32\n"
-            "  return resource.raw + closure()\n"
+            "  auto cloned = closure()\n"
+            "  return resource.raw + cloned\n"
             "}\n", encoding="utf-8")
         compile_source(dup_consumer, root, expect_success=True, emit_llvm=True)
         dup_ir = dup_consumer.with_suffix(".ll").read_text(encoding="utf-8")
@@ -143,7 +144,8 @@ def main() -> int:
             "  auto resource = Resource(raw = 1)\n"
             "  auto wrapper = Wrapper<Resource>(value = cede resource)\n"
             "  auto closure = { [dup wrapper] => wrapper.value.raw }:fn() -> i32\n"
-            "  return wrapper.value.raw + closure()\n"
+            "  auto cloned = closure()\n"
+            "  return wrapper.value.raw + cloned\n"
             "}\n", encoding="utf-8")
         compile_source(generic_dup_consumer, root, expect_success=True,
                        emit_llvm=True)
@@ -155,8 +157,10 @@ def main() -> int:
             generic_dup_ir)
         assert len(generic_dup_calls) == 1, generic_dup_ir
 
-        v1 = text.replace("// @meta format_version: 5",
-                          "// @meta format_version: 1", 1)
+        assert "// @meta format_version: 6" in text
+        v1 = text.replace("// @meta format_version: 6",
+                          "// @meta format_version: 5", 1)
+        assert v1 != text
         interface.write_text(v1, encoding="utf-8")
         rejected_v1 = compile_source(consumer, root, expect_success=False)
         assert "Incompatible or stale interface file" in rejected_v1.stderr

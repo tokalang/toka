@@ -11,17 +11,17 @@ import core/result::{Result}
 import std/error::{Error}
 
 pub shape TaskExec (
-    id: SlabID,
-    src_path: string,
-    out_path: string,
-    cmd: string
+    pub id: SlabID,
+    pub src_path: string,
+    pub out_path: string,
+    pub cmd: string
 )
 
 pub shape TaskResult (
-    id: SlabID,
-    success: bool,
-    mtime: i64,
-    size: u64
+    pub id: SlabID,
+    pub success: bool,
+    pub mtime: i64,
+    pub size: u64
 )
 
 shape ReceiverBox<T: @Send> (

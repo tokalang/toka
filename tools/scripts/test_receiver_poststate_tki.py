@@ -31,8 +31,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="toka-receiver-tki-") as directory:
         work = Path(directory)
         provider = work / "slot.tk"
-        provider.write_text("""pub shape Input(view: str, other: str)
-pub shape Slot(view: str)
+        provider.write_text("""pub shape Input(pub view: str, pub other: str)
+pub shape Slot(pub view: str)
 impl Slot {
     pub fn replace(self#, next: Input)
     effects:
@@ -214,8 +214,13 @@ fn main() -> i32 {
                 "E0455" not in old.stderr,
                 "old interface was accepted or silently replayed")
 
-        interface.write_text(original.replace(
-            "format_version: 5", "format_version: 4", 1))
+        require("format_version: 6" in original,
+                "expected format_version: 6 in emitted interface")
+        mutated_format = original.replace(
+            "format_version: 6", "format_version: 5", 1)
+        require(mutated_format != original,
+                "format_version replacement was a no-op")
+        interface.write_text(mutated_format)
         old_format = subprocess.run(
             [str(compiler), "--check-only", str(consumer)], cwd=work,
             env=env, capture_output=True, text=True, timeout=45)
@@ -228,7 +233,7 @@ fn main() -> i32 {
         work = Path(directory)
         provider = work / "provider.tk"
         provider.write_text("pub unsafe fn make() -> i32 { return 7 }\n"
-                            "pub shape Cell(value: i32)\n"
+                            "pub shape Cell(pub value: i32)\n"
                             "impl Cell { pub unsafe fn make_cell() -> Cell "
                             "{ return Cell(value = 7) } }\n")
         built = subprocess.run(
@@ -241,7 +246,7 @@ fn main() -> i32 {
         original = interface.read_text()
         require("pub unsafe fn make()" in original and
                 "pub unsafe fn make_cell()" in original and
-                "format_version: 5" in original,
+                "format_version: 6" in original,
                 "interface lost the unsafe call boundary")
         provider.rename(work / "provider.tk.hidden")
         consumer = work / "consumer.tk"

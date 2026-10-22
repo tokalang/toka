@@ -5,7 +5,7 @@ pub fn pure_work(x: i32) -> async i32 {
     return x + 10:i32
 }
 
-pub shape OwnedCarrier(t: TaskHandle<i32>)
+pub shape OwnedCarrier(pub t: TaskHandle<i32>)
 impl OwnedCarrier {
     pub fn close(cede self) -> async i32 {
         auto owned = cede self
@@ -20,12 +20,12 @@ pub fn make_owned_close_task() -> TaskHandle<i32> {
     return cede out
 }
 
-pub shape Buffer(size: i32)
+pub shape Buffer(pub size: i32)
 pub fn read_buf(b: Buffer) -> async i32 {
     return b.size
 }
 
-pub shape BorrowedCarrier(t: TaskHandle<i32>)
+pub shape BorrowedCarrier(pub t: TaskHandle<i32>)
 impl BorrowedCarrier {
     pub fn close(cede self) -> async i32 {
         auto owned = cede self
@@ -33,7 +33,7 @@ impl BorrowedCarrier {
     }
 }
 
-pub shape RefCarrier(&view: i32, token: i32)
+pub shape RefCarrier(pub &view: i32, pub token: i32)
 impl RefCarrier {
     pub fn compute(cede self) -> async i32 {
         auto owned = cede self

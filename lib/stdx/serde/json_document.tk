@@ -7,7 +7,7 @@ shape JsonEntry(kind: i32, first#: usize, next#: usize, start: usize, count: usi
                 key_start: usize, key_count: usize, number: f64)
 pub shape Document(text#: string, nodes#: Vec<JsonEntry>)
 impl Document@Encap {}
-pub shape JsonError(offset: usize)
+pub shape JsonError(pub offset: usize)
 
 fn space(input: str, pos#: usize) {
     loop pos < input.len() {

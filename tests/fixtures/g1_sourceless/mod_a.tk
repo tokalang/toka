@@ -7,7 +7,7 @@ pub trait @MockTransport {
 }
 
 pub shape MockStream (
-    bytes_read: usize
+    pub bytes_read: usize
 )
 
 impl MockStream@MockTransport {

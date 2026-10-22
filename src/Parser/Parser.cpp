@@ -1180,41 +1180,77 @@ std::unique_ptr<Module> Parser::parseModule() {
 
   while (peek().Kind != TokenType::EndOfFile) {
 
-    bool isPub = false;
+    Visibility vis = Visibility::Private;
+    bool hasVis = false;
     if (match(TokenType::KwPub)) {
-      isPub = true;
+      vis = Visibility::Public;
+      hasVis = true;
+    } else if (match(TokenType::KwPkg)) {
+      vis = Visibility::Package;
+      hasVis = true;
     }
+    if (hasVis && (check(TokenType::KwPub) || check(TokenType::KwPkg))) {
+      error(peek(), DiagID::ERR_GENERIC_PARSE,
+            "duplicate or conflicting visibility modifier");
+      advance();
+    }
+    bool isPub = (vis == Visibility::Public);
 
     if (check(TokenType::KwImport)) {
-      module->Imports.push_back(parseImport(isPub));
+      if (vis == Visibility::Package) {
+        error(previous(), DiagID::ERR_GENERIC_PARSE,
+              "'pkg import' is not supported; use 'import' or 'pub import'");
+      }
+      auto imp = parseImport(isPub);
+      if (imp)
+        imp->setVisibility(vis);
+      module->Imports.push_back(std::move(imp));
     } else if (check(TokenType::KwFn) ||
                (check(TokenType::KwUnsafe) && checkAt(1, TokenType::KwFn))) {
-      module->Functions.push_back(parseFunctionDecl(isPub));
+      auto fn = parseFunctionDecl(isPub);
+      if (fn)
+        fn->setVisibility(vis);
+      module->Functions.push_back(std::move(fn));
     } else if (check(TokenType::KwLet) || check(TokenType::KwAuto) ||
                check(TokenType::KwConst) ||
                (check(TokenType::Identifier) && peek().Text == "var")) {
-      module->Globals.push_back(parseVariableDecl(isPub));
+      auto g = parseVariableDecl(isPub);
+      if (auto *vd = dynamic_cast<VariableDecl *>(g.get()))
+        vd->setVisibility(vis);
+      module->Globals.push_back(std::move(g));
     } else if (check(TokenType::KwType) || check(TokenType::KwAlias)) {
-      module->TypeAliases.push_back(parseTypeAliasDecl(isPub));
+      auto ta = parseTypeAliasDecl(isPub);
+      if (ta)
+        ta->setVisibility(vis);
+      module->TypeAliases.push_back(std::move(ta));
     } else if (check(TokenType::KwExtern)) {
-      if (isPub) {
+      if (hasVis) {
         error(peek(), DiagID::ERR_EXTERN_PUB);
       }
       module->Externs.push_back(parseExternDecl());
     } else if (check(TokenType::KwImpl)) {
-      if (isPub) {
+      if (hasVis) {
         error(peek(), DiagID::ERR_IMPL_PUB);
       }
       module->Impls.push_back(parseImpl());
     } else if (check(TokenType::KwTrait)) {
-      module->Traits.push_back(parseTrait(isPub));
+      auto tr = parseTrait(isPub);
+      if (tr)
+        tr->setVisibility(vis);
+      module->Traits.push_back(std::move(tr));
     } else if (check(TokenType::KwShape) || check(TokenType::KwUnion)) {
-      module->Shapes.push_back(parseShape(isPub));
+      auto sh = parseShape(isPub);
+      if (sh)
+        sh->setVisibility(vis);
+      module->Shapes.push_back(std::move(sh));
     } else if (check(TokenType::Identifier) && checkAt(1, TokenType::Equal)) {
       // Legacy or alternate struct init?
-      module->Shapes.push_back(parseShape(isPub));
+      auto sh = parseShape(isPub);
+      if (sh)
+        sh->setVisibility(vis);
+      module->Shapes.push_back(std::move(sh));
     } else {
-      if (isPub) {
+      if (hasVis) {
         error(peek(), DiagID::ERR_EXPECTED_DECL);
       } else {
         error(peek(), DiagID::ERR_PARSER_UNEXPECTED_TOP_LEVEL_TOKEN, peek().toString());

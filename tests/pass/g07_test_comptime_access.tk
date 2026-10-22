@@ -2,8 +2,8 @@ import std/io::println
 import core/comptime::reflect
 
 pub shape User(
-    name: str,
-    id: i32
+    pub name: str,
+    pub id: i32
 )
 
 pub fn main() -> i32 {

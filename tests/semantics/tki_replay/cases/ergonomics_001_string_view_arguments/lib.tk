@@ -10,7 +10,7 @@ effects:
     return value
 }
 
-pub shape ImportedReader(marker: i32)
+pub shape ImportedReader(pub marker: i32)
 
 impl ImportedReader {
     pub fn read_len(self, value: str) -> usize {

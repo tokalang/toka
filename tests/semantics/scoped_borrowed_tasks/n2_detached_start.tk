@@ -1,6 +1,6 @@
 // N2: Detached .start must be strictly rejected when carrying borrowed data
 import core/task::{TaskHandle}
-shape Buffer ( size: i32, tag: i32 )
+pub shape Buffer ( pub size: i32, pub tag: i32 )
 
 fn process_chunk(buf: Buffer, chunk_id: i32) -> async i32 {
     return buf.size + chunk_id

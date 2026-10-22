@@ -71,7 +71,7 @@ impl ValueLease {
     }
 }
 
-trait @View {
+pub trait @View {
     pub fn view(self) -> str <- self
 }
 
@@ -106,8 +106,8 @@ impl ObservedLease {
 }
 
 pub shape PairHolder(
-    left: string,
-    right: string
+    pub left: string,
+    pub right: string
 )
 
 impl PairHolder {

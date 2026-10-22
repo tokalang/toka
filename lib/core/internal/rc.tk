@@ -8,9 +8,9 @@ import core/intrinsics/atomic::{fetch_add, fetch_sub, fence_acquire}
 // ==========================================
 
 pub shape RcBox<T> (
-    strong#: u64, // #  ()
-    weak#: u64,
-    data: T
+    pub strong#: u64, // #  ()
+    pub weak#: u64,
+    pub data: T
 )
 
 // ==========================================

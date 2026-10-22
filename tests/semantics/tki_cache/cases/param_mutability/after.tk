@@ -1,4 +1,4 @@
-pub shape Data(val: i32)
+pub shape Data(pub val: i32)
 
 pub fn combine(a#: Data, b: Data) -> i32 {
     return a.val + b.val

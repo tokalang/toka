@@ -1,13 +1,13 @@
 import core/traits::@Encap
-shape Token(id: i32)
+shape Token(pub id: i32)
 impl Token@Encap {
-    pub id
+
     fn drop(self#) {}
 }
-shape Pair(left: Token, right: Token)
+shape Pair(pub left: Token, pub right: Token)
 impl Pair@Encap {
-    pub left
-    pub right
+
+
     fn drop(self#) {}
 }
 fn replace(flag: bool) -> i32 {

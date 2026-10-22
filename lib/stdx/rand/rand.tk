@@ -2,8 +2,8 @@
 
 /// A fast, statistically excellent pseudo-random number generator (PCG32).
 pub shape Random(
-    state#: u64,
-    inc: u64
+    pub state#: u64,
+    pub inc: u64
 )
 
 impl Random {

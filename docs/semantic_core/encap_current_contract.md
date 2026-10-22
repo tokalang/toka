@@ -11,27 +11,23 @@ of the removed epoch designs.
 
 ## 1. Policy is separate from ownership and lifecycle
 
-A shape with no `impl Type@Encap` policy is transparent: its accessible fields
-follow ordinary type visibility, morphology, and PAL authority. A shape with
-one valid `impl Type@Encap` policy is a governed capsule: its fields are closed
-outside the defining module except for exact `pub field` grants in that policy.
+Struct field visibility is declared inline on `shape Name(...)` fields (`pub field: Type` for global visibility, `pkg field: Type` for authoritative-package visibility, and private by default). A shape with one valid `impl Type@Encap` policy is a governed capsule whose Copy/Dup and lifecycle contracts are explicitly governed rather than structurally transparent.
 
-`@Encap` proves only that this explicit access policy exists. It does not prove
-Copy, explicit duplication, resource ownership, or a particular drop plan.
-Those facts are checked independently so no subsystem can manufacture one from
-another.
+`@Encap` proves only that this governed capsule boundary exists. It does not prove Copy, explicit duplication, resource ownership, or a particular drop plan. Those facts are checked independently so no subsystem can manufacture one from another.
 
 ```toka
-impl Device@Encap {
-    pub public_config, shared_state
+pub shape Device(
+    pub public_config: i32,
+    pkg shared_state: i32,
+    internal_handle: usize
+)
 
+impl Device@Encap {
     fn drop(self#) {}
 }
 ```
 
-The policy grammar has no wildcard or scoped grants: `pub *`, `pub(crate)`,
-and `pub(path)` are rejected. A future field is private by default until its
-exact name is granted.
+The grammar has no wildcard, scoped, or policy-block field grants: `pub *`, `pub(crate)`, `pub(path)`, and `impl Type@Encap { pub ... }` are rejected. A future field is private by default until its exact declaration is marked `pub` or `pkg`.
 
 ## 2. Copy and explicit duplication
 

@@ -5,7 +5,7 @@ import core/traits::{@Encap, @Iterable, @Iterator, @MutableBorrowIterator}
 // EXPECT_TKI: type BorrowedItem = &i32
 // EXPECT_TKI: pub fn next_mut(self#: UnsafeValuesMutCursor) -> Option<&i32> <- self
 
-pub shape Values(value#: i32)
+pub shape Values(pub value#: i32)
 
 pub shape ValuesCursor(
     &value: i32,

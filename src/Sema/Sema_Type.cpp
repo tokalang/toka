@@ -805,6 +805,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
                 cloned->GenericParams.clear();
                 ShapeMap[mangledName] = cloned;
                 if (aliasInfo.Declaration) {
+                  cloned->setVisibility(aliasInfo.Declaration->Vis);
                   auto owner = DeclarationLexicalScopes.find(aliasInfo.Declaration);
                   if (owner != DeclarationLexicalScopes.end())
                     DeclarationLexicalScopes[cloned] = owner->second;
@@ -927,6 +928,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
               cloned->OwnerLinkName = shape->Name;
               ShapeMap[cloned->Name] = cloned;
               if (aliasInfo.Declaration) {
+                cloned->setVisibility(aliasInfo.Declaration->Vis);
                 auto owner = DeclarationLexicalScopes.find(aliasInfo.Declaration);
                 if (owner != DeclarationLexicalScopes.end())
                   DeclarationLexicalScopes[cloned] = owner->second;
@@ -1072,6 +1074,7 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   auto NewDecl = std::make_unique<ShapeDecl>(
       Template->IsPub, mangledName, std::vector<GenericParam>{}, Template->Kind,
       std::vector<ShapeMember>{});
+  NewDecl->setVisibility(Template->Vis);
   NewDecl->IsCompilerSynthesized = true;
   // Preserve the exact instantiated arguments even though the materialized
   // declaration uses a concrete synthetic name.  Consumers need this to
@@ -1302,6 +1305,8 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
       }
     }
   }
+  Slice4CopyProofs.erase(storedDecl);
+  CopyProofMap.erase(canonicalTypeFactKey(storedDecl->Name, storedDecl->Loc));
   validateSlice4CopyAndDup(*GenericInstancesModule);
   auto result = std::dynamic_pointer_cast<ShapeType>(
       NewShapeTy->withAttributes(GenericShape->IsWritable,

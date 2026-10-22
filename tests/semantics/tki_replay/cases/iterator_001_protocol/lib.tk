@@ -1,7 +1,7 @@
 import core/option::{Option}
 import core/traits::{@Encap, @Iterable, @Iterator, @BorrowIterator}
 
-pub shape Values(value: i32)
+pub shape Values(pub value: i32)
 
 impl Values {
     pub fn set(self#, value: i32) {
@@ -10,12 +10,12 @@ impl Values {
 }
 
 pub shape ValuesCursor(
-    &value: i32,
-    done#: bool
+    pub &value: i32,
+    pub done#: bool
 )
 
 impl ValuesCursor@Encap {
-    pub value, done
+
 
     fn drop(self#) {}
 }

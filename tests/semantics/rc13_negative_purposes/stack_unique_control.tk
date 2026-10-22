@@ -6,9 +6,9 @@ import core/traits::@Encap
 
 auto drops# = 0:i32
 
-shape Resource(val: i32)
+shape Resource(pub val: i32)
 impl Resource@Encap {
-    pub val
+
     fn drop(self#) {
         drops += 1
     }

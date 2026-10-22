@@ -447,8 +447,8 @@ impl<T> CondVar<T>@Encap {
 
 /// A synchronization primitive that can be used to run a function exactly once.
 pub shape Once(
-    mutex#: Mutex<bool>,
-    done#: bool
+    pub mutex#: Mutex<bool>,
+    pub done#: bool
 )
 
 impl Once@Sync {}
@@ -483,8 +483,8 @@ impl Once {
 
 /// A WaitGroup waits for a collection of threads or tasks to finish.
 pub shape WaitGroup(
-    mutex#: Mutex<i32>,
-    cond: CondVar<i32>
+    pub mutex#: Mutex<i32>,
+    pub cond: CondVar<i32>
 )
 
 impl WaitGroup@Sync {}

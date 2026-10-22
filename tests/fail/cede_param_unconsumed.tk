@@ -1,4 +1,4 @@
-shape Resource(val: i32)
+pub shape Resource(pub val: i32)
 
 pub fn inspect_resource(cede r: Resource) -> i32 {
     return r.val

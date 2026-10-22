@@ -13,12 +13,12 @@ impl IgnoredResource@Encap {
 }
 
 shape ManagedResource (
-    id: i32,
-    &drop_count#: i32
+    pub id: i32,
+    pub &drop_count#: i32
 )
 
 impl ManagedResource@Encap {
-    pub id, drop_count
+
     fn drop(self#) {
         self.drop_count += 1
     }

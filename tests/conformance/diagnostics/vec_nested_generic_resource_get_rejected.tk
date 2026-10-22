@@ -2,11 +2,11 @@ import core/option::{Option}
 import std/vec::{Vec}
 
 shape Resource (
-    value: i32
+    pub value: i32
 )
 
 impl Resource@Encap {
-    pub value
+
 
     fn drop(self#) {}
 }

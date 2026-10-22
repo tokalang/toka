@@ -3,9 +3,9 @@ import std/io::{println}
 import core/string::{string}
 
 pub shape ServiceConfig (
-    service: string = string::from(""),
-    port: i32 = 0,
-    active: bool = false
+    pub service: string = string::from(""),
+    pub port: i32 = 0,
+    pub active: bool = false
 )
 
 impl ServiceConfig@ToJson {

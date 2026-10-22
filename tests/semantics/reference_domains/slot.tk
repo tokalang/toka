@@ -1,4 +1,4 @@
-pub shape Slot<T>(value:T)
+pub shape Slot<T>(pub value:T)
 impl<T> Slot<T>
 where:
     T: morphology non_reference

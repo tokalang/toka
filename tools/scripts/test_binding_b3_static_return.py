@@ -65,7 +65,7 @@ def main():
             "mutual": 'fn main() -> i32 { auto view = first(); return 0 }\nfn first() -> str { return second() }\nfn second() -> str { return first() }\n',
             "dynamic_escape": 'fn choose(value: str, flag: bool) -> str <- value {\nif flag { return "static" }\nreturn value\n}\nfn bad() -> str { auto owner = string::from("local"); return choose(owner.as_str(), false) }\nfn main() -> i32 { return 0 }\n',
             "generic_invalid_cache": 'fn main() -> i32 { auto first = text(true); auto second = text(true); return 0 }\nfn text<T>(value:T) -> str { auto wrong = value:i32; return "static" }\n',
-            "rollback": 'shape Token(value:i32)\nimpl Token@Encap {\npub value\nfn drop(self#) {}\n}\nfn read(value:Token)->i32 { return value.value }\nfn main()->i32 {\nauto token=Token(value=7)\nauto result=text(cede token)\nreturn read(token)\n}\nfn text(cede token:Token)->str {auto owned=cede token; auto wrong=true:i32; return "static"}\n',
+            "rollback": 'shape Token(pub value:i32)\nimpl Token@Encap {\nfn drop(self#) {}\n}\nfn read(value:Token)->i32 { return value.value }\nfn main()->i32 {\nauto token=Token(value=7)\nauto result=text(cede token)\nreturn read(token)\n}\nfn text(cede token:Token)->str {auto owned=cede token; auto wrong=true:i32; return "static"}\n',
             "journal": 'fn main()->i32 {auto failed=bad(1); auto recovered=text(); return 0}\nfn bad<T>(_value:T)->i32 {auto view=text(); return true}\nfn text()->str {return "static"}\n',
             "cede_temporary": 'fn text()->str {return "static"}\nfn main()->i32 {auto value=cede text(); return 0}\n',
         }

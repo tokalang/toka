@@ -1,6 +1,6 @@
 // Unnamed enum payloads preserve both complete handle morphologies.
-shape Resource(id: i32)
-impl Resource@Encap { pub id fn drop(self#) {} }
+shape Resource(pub id: i32)
+impl Resource@Encap {fn drop(self#) {} }
 shape Event(Both(^Resource, ~Resource) | Empty)
 fn main() -> i32 {
     auto ^first = new Resource(id = 1)

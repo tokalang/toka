@@ -5334,7 +5334,7 @@ bool CodeGen::validateNativeSyncOwner(const NativeSyncOwnerWitnessPtr &original,
     const auto &p = w->DataFile;
     auto *value = w->ValueType ? dynamic_cast<ShapeType *>(w->ValueType.get()) : nullptr;
     if (!p->Complete || p->SourceDigest !=
-            "8db6e8372ffc7c0cf85c2db47970850e27edf0848f18e0cb9c0bb0db2547c269" ||
+            "09d9bb383bac77f326d8b4b34fe4f9808e575905d1a092f46b9a3545e4e737be" ||
         p->NativeDeclarationsDigest !=
             "9ad7d86356a3e7da822b9ff78ce5eb17c315eba280d0b0e55f9ac319d48c87a0" ||
         !p->SourceModule || p->SourceModule->IsInterface || !p->Owner ||

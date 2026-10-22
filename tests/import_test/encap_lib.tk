@@ -13,12 +13,12 @@
 // limitations under the License.
 // tests/pass/encap_lib.tk
 pub shape Data (
-    public_val: i32,
+    pub public_val: i32,
     private_val: i32
 )
 
 impl Data@Encap {
-    pub public_val
+
     // private_val is implicitly private
 }
 

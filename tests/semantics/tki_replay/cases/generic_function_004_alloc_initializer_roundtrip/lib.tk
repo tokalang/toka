@@ -5,8 +5,8 @@
 // EXPECT_TKI: unsafe alloc Box<T>(Box<T>(value = value, marker = 9))
 
 pub shape Box<T>(
-    value: T,
-    marker: i32
+    pub value: T,
+    pub marker: i32
 )
 
 pub fn alloc_plain<T>(value: T) -> T {

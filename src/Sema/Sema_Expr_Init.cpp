@@ -1661,6 +1661,13 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
         continue;
       }
 
+      const std::string missingField =
+          toka::Type::stripMorphology(defField.Name);
+      if (!canNameEncapField(SD, missingField, Init->Loc)) {
+        error(Init, DiagID::ERR_MEMBER_PRIVATE, missingField, SD->Name);
+        continue;
+      }
+
       if (!hasElision) {
         if (defField.DefaultValue) {
            error(Init, DiagID::ERR_SEMA_MISSING_FIELD_IN_CONSTRUCTOR_FOR_USE_TO_E, defField.Name, Init->ShapeName);

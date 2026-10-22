@@ -36,10 +36,10 @@ def main() -> int:
         root = Path(temporary)
         source = root / "lifecycle.tk"
         source.write_text(
-            "shape Inner(^data: i32)\n"
-            "impl Inner@Encap { pub data }\n"
-            "shape Capsule(inner: Inner)\n"
-            "impl Capsule@Encap { pub inner fn drop(self#) {} }\n"
+            "shape Inner(pub ^data: i32)\n"
+            "impl Inner@Encap {}\n"
+            "shape Capsule(pub inner: Inner)\n"
+            "impl Capsule@Encap { fn drop(self#) {} }\n"
             "fn main() -> i32 {\n"
             "  auto value = Capsule(inner = Inner(^data = new i32(7)))\n"
             "  return 0\n"
@@ -53,10 +53,10 @@ def main() -> int:
 
         forbidden_operations = root / "forbidden_operations.tk"
         forbidden_operations.write_text(
-            "shape Inner(^data: i32)\n"
-            "impl Inner@Encap { pub data }\n"
-            "shape Capsule(inner: Inner)\n"
-            "impl Capsule@Encap { pub inner fn drop(self#) {} }\n"
+            "shape Inner(pub ^data: i32)\n"
+            "impl Inner@Encap {}\n"
+            "shape Capsule(pub inner: Inner)\n"
+            "impl Capsule@Encap { fn drop(self#) {} }\n"
             "fn main() -> i32 {\n"
             "  auto value = Capsule(inner = Inner(^data = new i32(7)))\n"
             "  auto moved = cede value.inner\n"
@@ -67,8 +67,8 @@ def main() -> int:
 
         direct_hook = root / "direct_hook.tk"
         direct_hook.write_text(
-            "shape Capsule(value: i32)\n"
-            "impl Capsule@Encap { pub value fn drop(self#) {} }\n"
+            "shape Capsule(pub value: i32)\n"
+            "impl Capsule@Encap { fn drop(self#) {} }\n"
             "fn main() -> i32 { auto value = Capsule(value = 1); value.drop(); return 0 }\n",
             encoding="utf-8")
         hook_call = compile_source(direct_hook, expect_success=False)
@@ -76,8 +76,8 @@ def main() -> int:
 
         invalid_hook = root / "invalid_hook.tk"
         invalid_hook.write_text(
-            "shape Invalid(value: i32)\n"
-            "impl Invalid@Encap { pub value pub fn drop(self#) {} }\n"
+            "shape Invalid(pub value: i32)\n"
+            "impl Invalid@Encap { pub fn drop(self#) {} }\n"
             "fn main() -> i32 { return 0 }\n", encoding="utf-8")
         rejected = compile_source(invalid_hook, expect_success=False)
         assert "E0406" in rejected.stderr

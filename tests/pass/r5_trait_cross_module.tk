@@ -3,7 +3,7 @@ import core/option::{Option}
 import ./r5_trait_module/mod.tk_lib::{@CrossModuleProcessor, run_remote}
 
 pub shape LocalWorker (
-    id: i32
+    pub id: i32
 )
 
 impl LocalWorker@CrossModuleProcessor {

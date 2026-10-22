@@ -13,7 +13,7 @@ extern fn selected_external() -> i32
 extern fn unselected_external() -> i32
 
 pub shape SelectedShape (
-    value: i32
+    pub value: i32
 )
 
 pub alias SelectedAlias = SelectedShape
@@ -23,11 +23,11 @@ pub trait @SelectedTrait {}
 impl SelectedShape@SelectedTrait {}
 
 pub shape RenameOnlyShape (
-    value: i32
+    pub value: i32
 )
 
 pub shape UnselectedShape (
-    value: i32
+    pub value: i32
 )
 
 pub alias UnselectedAlias = UnselectedShape

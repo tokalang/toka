@@ -1,6 +1,7 @@
 // @meta compiler_version: any
-// @meta format_version: 5
-// @meta replay_surface_hash: e0220ea503efb627
+// @meta format_version: 6
+// @meta encap_epoch: 0.19
+// @meta replay_surface_hash: a2388a11a77b2bec
 // @meta target_triple: any
 // @meta source_hash: any
 // @meta identity_schema_version: 2
@@ -8,8 +9,8 @@
 // @meta logical_module_path: unbound
 // @meta resolver_binding_digest: unbound
 
-pub shape Model(value: i32)
-pub shape Other(value: i32)
+pub shape Model(pub value: i32)
+pub shape Other(pub value: i32)
 
 pub fn source_hidden_probe(value: Model) -> i32
 pub fn source_hidden_probe(value: Other) -> i32

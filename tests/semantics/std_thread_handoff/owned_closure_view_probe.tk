@@ -1,7 +1,7 @@
 import std/thread::thread_spawn
-shape Token(value: i32)
+shape Token(pub value: i32)
 impl Token@Encap {
-    pub value
+
     fn drop(self#) {}
 }
 impl Token@Send {}

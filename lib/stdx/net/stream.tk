@@ -7,14 +7,12 @@ import std/vec::{Vec}
 import core/result::{Result}
 
 pub shape AsyncStream (
-    raw_tcp: TcpStream,
-    is_tls: bool,
+    pub raw_tcp: TcpStream,
+    pub is_tls: bool,
     tls#: TlsSession
 )
 
 impl AsyncStream@Encap {
-    pub raw_tcp#
-    pub is_tls#
 
     fn drop(self#) {
         if self.is_tls {

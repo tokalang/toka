@@ -1,7 +1,7 @@
 import core/comptime::{reflect, TypeInfo, FieldInfo}
 import std/io::println
 
-pub shape User(name: str, age: i32)
+pub shape User(pub name: str, pub age: i32)
 
 pub fn print_user_info(u: User) {
     println("User Fields:")

@@ -1,8 +1,8 @@
 // Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 
-alias HANDLE = Addr
-alias DWORD = u32
-alias BOOL = i32
+pub alias HANDLE = Addr
+pub alias DWORD = u32
+pub alias BOOL = i32
 
 extern fn GetStdHandle(nStdHandle: DWORD) -> HANDLE
 extern fn FindFirstFileW(*lpFileName: u16, lpFindFileData: Addr) -> HANDLE

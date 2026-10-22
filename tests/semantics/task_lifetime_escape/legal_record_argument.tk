@@ -1,7 +1,7 @@
 import core/task::{TaskHandle}
 fn process_val(x: i32) -> async i32 { return x }
 import std/vec::{Vec}
-shape Holder(task: TaskHandle<i32>, zz: i32)
+pub shape Holder(pub task: TaskHandle<i32>, pub zz: i32)
 pub fn legal_push(out_vec#: Vec<Holder>) {
  auto task = process_val(100:i32)
  out_vec#.push(Holder(task = cede task, zz = 0:i32))

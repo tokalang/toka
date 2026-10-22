@@ -131,6 +131,11 @@ def report_errors(report, revision, version_label):
             c_errors = platforms.candidate_018_receipt_errors(c018, revision, version_label, target=target)
             if c_errors:
                 errors.append(target+': required 0.18 installed candidate controls invalid: '+'; '.join(c_errors))
+        if version_label.startswith('v0.19.') and stage.get('name')=='package_smoke':
+            c019 = stage.get('counts',{}).get('candidate_019')
+            c_errors = platforms.candidate_019_receipt_errors(c019, revision, version_label, target=target)
+            if c_errors:
+                errors.append(target+': required 0.19 installed candidate controls invalid: '+'; '.join(c_errors))
     return errors
 
 
@@ -234,6 +239,8 @@ def main():
             reports[-1]['candidate_017']=next((stage.get('counts',{}).get('candidate_017') for stage in report.get('stages',[]) if stage.get('name')=='package_smoke'),None)
         if args.version_label.startswith('v0.18.'):
             reports[-1]['candidate_018']=next((stage.get('counts',{}).get('candidate_018') for stage in report.get('stages',[]) if stage.get('name')=='package_smoke'),None)
+        if args.version_label.startswith('v0.19.'):
+            reports[-1]['candidate_019']=next((stage.get('counts',{}).get('candidate_019') for stage in report.get('stages',[]) if stage.get('name')=='package_smoke'),None)
 
     missing = sorted(set(targets) - set(seen))
     unexpected = sorted(set(seen) - set(targets))

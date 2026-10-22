@@ -1,8 +1,8 @@
 extern fn libc_abort() -> void
 auto drops# = 0
-shape Resource(value:i32)
+shape Resource(pub value:i32)
 impl Resource@Encap {
-    pub value
+
     fn drop(self#) { drops += 1 }
 }
 shape Maybe<T>(Some(T) = 1 | None = 0)

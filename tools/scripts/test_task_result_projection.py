@@ -48,9 +48,8 @@ fn main() -> i32 {
 ''', None),
     "owned_result": ('''import std/task::{block_on}
 auto drops# = 0:i32
-shape Token(value: i32)
+shape Token(pub value: i32)
 impl Token@Encap {
-    pub value
     fn drop(self#) { drops += 1 }
 }
 fn make() -> async ^Token { return new Token(value = 17) }
@@ -99,7 +98,7 @@ fn bad() -> async &str {
 }
 fn main() -> i32 { return 0 }
 ''', "E0455"),
-    "unrelated_type": ('''shape TaskHandle<T>(nul *#coro_handle: void)
+    "unrelated_type": ('''shape TaskHandle<T>(pub nul *#coro_handle: void)
 fn main() -> i32 {
     auto task = TaskHandle<str>(*coro_handle = null)
     auto result = task.wait
@@ -283,9 +282,8 @@ fn main() -> i32 {
 ''', None)
 CASES["shared_result"] = ('''import std/task::{block_on}
 auto drops# = 0:i32
-shape Token(value: i32)
+shape Token(pub value: i32)
 impl Token@Encap {
-    pub value
     fn drop(self#) { drops += 1 }
 }
 fn make() -> async ~Token {
@@ -355,7 +353,7 @@ def main():
                     _, separator, declarations = text.partition('\n\n')
                     assert separator, text
                     digest = 14695981039346656037
-                    for byte in declarations.encode('utf-8'):
+                    for byte in ('// @encap_epoch 0.19\n' + declarations).encode('utf-8'):
                         digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
                     text, count = re.subn(
                         r'(?m)^// @meta replay_surface_hash: [0-9a-f]{16}$',

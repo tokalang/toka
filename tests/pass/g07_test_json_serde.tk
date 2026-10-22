@@ -3,9 +3,9 @@ import stdx/serde/json::{to_json, deserialize_shape, ToJson, serialize_shape}
 import std/io::{println}
 
 pub shape User (
-    id: i32 = 0,
-    name: string = string::from(""),
-    active: bool = false
+    pub id: i32 = 0,
+    pub name: string = string::from(""),
+    pub active: bool = false
 )
 
 impl User@ToJson {

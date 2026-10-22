@@ -22,31 +22,23 @@ pub shape WsOpcode (
 )
 
 pub shape WsMessage (
-    is_text: bool,
-    text_data: string,
-    binary_data: Vec<u8>
+    pub is_text: bool,
+    pub text_data: string,
+    pub binary_data: Vec<u8>
 )
 
 pub shape WsConnection (
-    stream: AsyncStream,
-    is_client: bool,
-    max_payload_size: usize,
-    surplus_vec: Vec<u8>,
-    surplus_offset: usize,
-    in_fragment: bool,
-    fragment_is_text: bool,
-    current_msg_len: usize
+    pub stream: AsyncStream,
+    pub is_client: bool,
+    pub max_payload_size: usize,
+    pub surplus_vec: Vec<u8>,
+    pub surplus_offset: usize,
+    pub in_fragment: bool,
+    pub fragment_is_text: bool,
+    pub current_msg_len: usize
 )
 
 impl WsConnection@Encap {
-    pub stream#
-    pub is_client
-    pub max_payload_size
-    pub surplus_vec#
-    pub surplus_offset#
-    pub in_fragment#
-    pub fragment_is_text#
-    pub current_msg_len#
     fn drop(self#) {}
 }
 

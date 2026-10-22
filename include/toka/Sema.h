@@ -691,6 +691,17 @@ private:
   void registerSlice2Policy(ImplDecl *Impl);
   bool canNameEncapField(const ShapeDecl *Shape, const std::string &Field,
                          SourceLocation UseLoc);
+  ModuleScope *getDeclOwnerScope(const ASTNode *decl) const;
+  ModuleScope *getEffectiveRequesterScope(SourceLocation useLoc);
+  bool isSameModuleScope(const ModuleScope *owner,
+                         const ModuleScope *requester) const;
+  bool isSameAuthoritativePackage(const ModuleScope *owner,
+                                  const ModuleScope *requester) const;
+  bool isVisibilityAccessible(Visibility vis, const ModuleScope *owner,
+                              const ModuleScope *requester) const;
+  bool isDeclAccessible(const ASTNode *decl, Visibility vis,
+                        SourceLocation useLoc);
+  void validateExposureTypeClosure(Module &M);
 
   std::map<const ShapeDecl *, const ImplDecl *> Slice4CopyRequests;
   std::map<const ShapeDecl *, const ImplDecl *> Slice4DupProviders;

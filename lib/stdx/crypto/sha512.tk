@@ -25,10 +25,10 @@ const SHA512_K: [u64; 80] = [
 ]
 
 pub shape Sha512(
-    state: [u64; 8],
-    data: [u8; 128],
-    datalen: u64,
-    bitlen: u64
+    pub state: [u64; 8],
+    pub data: [u8; 128],
+    pub datalen: u64,
+    pub bitlen: u64
 )
 
 fn rotr(value: u64, amount: u64) -> u64 {

@@ -1,11 +1,11 @@
 import sys/libc::{libc_printf}
 
 shape HandlerEnv (
-   count: i32
+   pub count: i32
 )
 
 impl HandlerEnv@Encap {
-   pub count
+
     fn drop(self#) {
        libc_printf(c"Dropping handler env! count=%d\n", self.count)
    }

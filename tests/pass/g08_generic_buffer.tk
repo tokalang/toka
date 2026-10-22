@@ -10,10 +10,10 @@ shape Buffer<T, N_: usize>(
 // 2. Nested generic usage
 shape Node<T>(
     // Nested: Node contains a Buffer, size fixed to 5
-    buf: Buffer<T, 5>
+    pub buf: Buffer<T, 5>
 )
 impl<T> Node<T>@Encap {
-    pub buf
+
     fn drop(self#) {
         println("dropping Node")
     }

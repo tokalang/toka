@@ -64,8 +64,8 @@ def main() -> int:
         dup = root / "dup.tk"
         dup.write_text(
             "pub trait @Dup {}\n"
-            "shape Valid(raw: i32)\n"
-            "impl Valid@Encap { pub raw fn drop(self#) {} }\n"
+            "shape Valid(pub raw: i32)\n"
+            "impl Valid@Encap { fn drop(self#) {} }\n"
             "impl Valid@Dup { pub fn dup(self) -> Self { return Valid(raw = self.raw) } }\n"
             "fn main() -> i32 { return 0 }\n", encoding="utf-8")
         dup_facts = facts(dup)

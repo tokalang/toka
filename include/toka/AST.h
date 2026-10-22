@@ -35,6 +35,12 @@
 
 namespace toka {
 
+enum class Visibility : uint8_t {
+  Private = 0,
+  Package = 1,
+  Public = 2,
+};
+
 class ASTNode;
 class FunctionDecl;
 class Expr;
@@ -1995,6 +2001,12 @@ public:
   bool IsShared = false;
   bool IsReference = false;
   bool IsPub = false;
+  Visibility Vis = Visibility::Private;
+  bool isPkg() const { return Vis == Visibility::Package; }
+  void setVisibility(Visibility v) {
+    Vis = v;
+    IsPub = (v == Visibility::Public);
+  }
   bool IsConst = false;
   // Permissions (Dual-Location Attributes)
   bool IsRebindable = false;      // Pointer Attribute # (^#p)
@@ -2027,6 +2039,7 @@ public:
     n->IsShared = IsShared;
     n->IsReference = IsReference;
     n->IsPub = IsPub;
+    n->Vis = Vis;
     n->IsConst = IsConst;
     n->IsRebindable = IsRebindable;
     n->IsValueMutable = IsValueMutable; // VariableDecl has this field
@@ -2073,6 +2086,12 @@ public:
 class TypeAliasDecl : public ASTNode {
 public:
   bool IsPub = false;
+  Visibility Vis = Visibility::Private;
+  bool isPkg() const { return Vis == Visibility::Package; }
+  void setVisibility(Visibility v) {
+    Vis = v;
+    IsPub = (v == Visibility::Public);
+  }
   std::string Name;
   std::string TargetType;
   TypeSyntaxPtr TargetTypeSyntax;
@@ -2081,7 +2100,8 @@ public:
 
   TypeAliasDecl(bool isPub, const std::string &name, const std::string &target,
                 bool isStrong = false, std::vector<GenericParam> generics = {})
-      : IsPub(isPub), Name(name), TargetType(target), IsStrong(isStrong),
+      : IsPub(isPub), Vis(isPub ? Visibility::Public : Visibility::Private),
+        Name(name), TargetType(target), IsStrong(isStrong),
         GenericParams(std::move(generics)) {}
   std::string toString() const override {
     return std::string(IsPub ? "Pub" : "") + "TypeAlias(" + Name + " = " +
@@ -2093,6 +2113,8 @@ enum class ShapeKind { Struct, Tuple, Array, Enum, Union };
 
 struct ShapeMember {
   SourceLocation Loc;
+  Visibility Vis = Visibility::Private;
+  bool HasExplicitVisibility = false;
   std::string Name; // Member or Variant name
   std::string Type;
   TypeSyntaxPtr TypeSyntax;
@@ -2128,6 +2150,8 @@ struct ShapeMember {
 
   ShapeMember(const ShapeMember &other) {
     Loc = other.Loc;
+    Vis = other.Vis;
+    HasExplicitVisibility = other.HasExplicitVisibility;
     Name = other.Name;
     Type = other.Type;
     TypeSyntax = other.TypeSyntax;
@@ -2159,6 +2183,8 @@ struct ShapeMember {
     if (this == &other)
       return *this;
     Loc = other.Loc;
+    Vis = other.Vis;
+    HasExplicitVisibility = other.HasExplicitVisibility;
     Name = other.Name;
     Type = other.Type;
     TypeSyntax = other.TypeSyntax;
@@ -2193,6 +2219,12 @@ struct ShapeMember {
 class ShapeDecl : public ASTNode {
 public:
   bool IsPub = false;
+  Visibility Vis = Visibility::Private;
+  bool isPkg() const { return Vis == Visibility::Package; }
+  void setVisibility(Visibility v) {
+    Vis = v;
+    IsPub = (v == Visibility::Public);
+  }
   std::string Name;
   std::string CodegenName;
   // Stable physical owner identity for impl/drop linkage.  CodegenName keeps
@@ -2222,7 +2254,8 @@ public:
   ShapeDecl(bool isPub, const std::string &name,
             std::vector<GenericParam> generics, ShapeKind kind,
             std::vector<ShapeMember> members)
-      : IsPub(isPub), Name(name),
+      : IsPub(isPub), Vis(isPub ? Visibility::Public : Visibility::Private),
+        Name(name),
         GenericParams(std::move(generics)), Kind(kind),
         Members(std::move(members)) {}
 
@@ -2263,6 +2296,12 @@ struct ImportItem {
 class ImportDecl : public ASTNode {
 public:
   bool IsPub = false;
+  Visibility Vis = Visibility::Private;
+  bool isPkg() const { return Vis == Visibility::Package; }
+  void setVisibility(Visibility v) {
+    Vis = v;
+    IsPub = (v == Visibility::Public);
+  }
   std::string PhysicalPath;
   std::string ResolvedPath;      // Pre-resolved canonical absolute path
   std::string Alias;             // Module alias (e.g. import path as alias)
@@ -2271,7 +2310,8 @@ public:
 
   ImportDecl(bool isPub, const std::string &path, const std::string &alias = "",
              std::vector<ImportItem> items = {})
-      : IsPub(isPub), PhysicalPath(path), Alias(alias),
+      : IsPub(isPub), Vis(isPub ? Visibility::Public : Visibility::Private),
+        PhysicalPath(path), Alias(alias),
         Items(std::move(items)) {}
 
   bool IsImplicit = false;
@@ -2558,6 +2598,12 @@ public:
   };
 
   bool IsPub = false;
+  Visibility Vis = Visibility::Private;
+  bool isPkg() const { return Vis == Visibility::Package; }
+  void setVisibility(Visibility v) {
+    Vis = v;
+    IsPub = (v == Visibility::Public);
+  }
   bool IsUnsafe = false;
   std::string Name;
   std::string CodegenName;
@@ -2610,12 +2656,13 @@ public:
   // materialized methods after those binders have been substituted.
   std::set<std::string> Stage0EnclosingGenericTypeNames;
 
-  FunctionDecl(bool isPub, const std::string &name, std::vector<Arg> args,
+    FunctionDecl(bool isPub, const std::string &name, std::vector<Arg> args,
                std::unique_ptr<BlockStmt> body, const std::string &retType,
                std::vector<GenericParam> generics = {},
                std::vector<std::string> lifeDeps = {},
                EffectKind effect = EffectKind::None)
-      : IsPub(isPub), Name(name), Args(std::move(args)), ReturnType(retType),
+      : IsPub(isPub), Vis(isPub ? Visibility::Public : Visibility::Private),
+        Name(name), Args(std::move(args)), ReturnType(retType),
         Effect(effect), Body(std::move(body)), GenericParams(std::move(generics)),
         LifeDependencies(std::move(lifeDeps)) {
     ReturnContract.Type = ReturnType;
@@ -2675,6 +2722,7 @@ public:
     auto n = std::make_unique<FunctionDecl>(IsPub, Name, std::move(clonedArgs),
                                             std::move(clonedBody), ReturnType,
                                             GenericParams, LifeDependencies, Effect);
+    n->Vis = Vis;
     n->IsUnsafe = IsUnsafe;
     n->CodegenName = CodegenName;
     n->setReturnContract(ReturnContract);
@@ -2956,6 +3004,12 @@ public:
 class TraitDecl : public ASTNode {
 public:
   bool IsPub = false;
+  Visibility Vis = Visibility::Private;
+  bool isPkg() const { return Vis == Visibility::Package; }
+  void setVisibility(Visibility v) {
+    Vis = v;
+    IsPub = (v == Visibility::Public);
+  }
   std::string Name;
   std::vector<GenericParam> GenericParams;
   std::vector<std::string> SelfTraitBounds;
@@ -2967,7 +3021,8 @@ public:
             std::vector<GenericParam> generics = {},
             std::vector<std::string> selfTraitBounds = {},
             std::vector<AssociatedTypeDecl> associatedTypes = {})
-      : IsPub(isPub), Name(name), GenericParams(std::move(generics)),
+      : IsPub(isPub), Vis(isPub ? Visibility::Public : Visibility::Private),
+        Name(name), GenericParams(std::move(generics)),
         SelfTraitBounds(std::move(selfTraitBounds)),
         AssociatedTypes(std::move(associatedTypes)),
         Methods(std::move(methods)) {}

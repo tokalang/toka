@@ -1,6 +1,6 @@
 import sys/libc::{libc_exit}
 
-shape Resource(val: i32)
+pub shape Resource(pub val: i32)
 
 pub fn consume_resource(cede r: Resource) -> Resource {
     return cede r

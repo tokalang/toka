@@ -1,13 +1,13 @@
 import core/option::{Option}
 
 pub shape ComplexPayload (
-    id: i32,
-    code: i32,
-    tag: i32
+    pub id: i32,
+    pub code: i32,
+    pub tag: i32
 )
 
 impl ComplexPayload@Encap {
-    pub id, code, tag
+
     fn drop(self#) {}
 }
 

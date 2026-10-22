@@ -77,11 +77,10 @@ pub fn task_get_coro_handle<T>(handle: TaskHandle<T>) -> nul *void {
 }
 
 pub shape TaskHandle<T>(
-    nul *#coro_handle: void
+    pub nul *#coro_handle: void
 )
 
 impl<T> TaskHandle<T>@Encap {
-    pub coro_handle
     fn drop(self#) {
         if self.*coro_handle != null {
             __toka_detach_task(self.*coro_handle)

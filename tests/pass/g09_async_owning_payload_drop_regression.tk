@@ -10,7 +10,7 @@ import core/result::{Result};
 
 auto global_owned_drop_count# = 0:i32;
 
-shape Owned(marker: i32)
+pub shape Owned(marker: i32)
 impl Owned@Encap {
     fn drop(self#) {
         global_owned_drop_count = global_owned_drop_count + 1;
