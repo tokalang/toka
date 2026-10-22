@@ -1,11 +1,11 @@
 // EXPECT: error[E0105]:
 
-pub shape SourceFile(
-    pub x: i32
+shape SourceFile(
+    x: i32
 )
 
 pub shape DiagnosticEngine(
-    pub source_file: &SourceFile
+    source_file: &SourceFile
 )
 
 pub fn main() -> i32 {

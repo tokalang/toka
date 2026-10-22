@@ -1,3 +1,8 @@
+error[E0406]: global 'POINT' exposes type 'Point' with narrower visibility
+ --> tests/fail/build_meta.tk:25:11
+    |
+ 25 | pub const POINT = Point(a = 1, b = 2, c = 3)
+    |           ^
 error[E0402]: Use of undeclared identifier 'println'
  --> tests/fail/build_meta.tk:35:5
     |
